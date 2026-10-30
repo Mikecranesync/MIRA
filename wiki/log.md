@@ -278,3 +278,8 @@ Changed: `wiki/hot.md`
 ## 2026-09-13T13:28:46Z — session auto-commit
 
 Changed: `wiki/hot.md`
+
+
+## [2026-10-27] session | Technician smart sheets proposal — ChatGPT Work cloud
+
+Mike requested committing the discussed sheet ideas as a PR. Added `docs/specs/technician-smart-sheets-pilot.md`: ten candidates, gap-check pilot requirements, deterministic comparisons, confirmation and review boundaries, proposed acceptance criteria, pilot evidence, and research links. Documentation only; no implementation, field validation, runtime changes, merge, or deploy. Next: obtain an authorized source form and approved limits before a separately scoped build.

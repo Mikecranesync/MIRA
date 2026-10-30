@@ -1,3 +1,9 @@
+# Technician smart sheets proposal — 2026-10-27 — ChatGPT Work cloud
+
+Docs-only branch `docs/technician-smart-sheets-pilot` preserves Mike's requested ten-sheet backlog and a proposed gap-check pilot in `docs/specs/technician-smart-sheets-pilot.md`. Proposed features are not implementation claims. Next: obtain a permitted source form and approved limits, inspect reusable components, and scope a separate implementation issue. No runtime, machine state, merge, or deployment changed.
+
+---
+
 # Conversation follow repair — 2026-10-24
 
 PR #4703 / #4680 incorporates merged runner fix #4700 without force-push. Follow now re-arms from an accepted Composer send, not changing message IDs, preserving scroll-away through live-to-persisted replacement. Focused regression red: 6 failures; green: 38 tests; shared suite: 440 pass; TypeScript/build pass. Exact-head review, CI and same-release deployed behavior remain gates. Watcher continuation and proof: `~/.factorylm/issue-repair-watch/queue.json`; worktree `conversation-continuity`. Foreman send/persistence and Notebook Prover answer ownership unchanged.
