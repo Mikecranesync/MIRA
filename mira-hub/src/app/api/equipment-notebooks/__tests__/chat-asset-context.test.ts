@@ -209,7 +209,10 @@ describe("turn snapshot", () => {
       expect.objectContaining({ equipmentEntityId: ENTITY, assetUnsPath: UNS, answerStatus: "answered" }),
     );
     const persisted = (domainMock.recordTurn.mock.calls[0] as unknown[])[2] as Record<string, unknown>;
-    expect(String(persisted.answerText)).toContain("⚠️");
+    // #4372: this is a FLAGGED turn and this file's judge stub returns no
+    // verdict, so the controlled unverified fallback is what persists — the
+    // snapshot still rides it.
+    expect(String(persisted.answerText)).toContain("safety review that could not be completed");
   });
 
   it("writes nulls, not undefined, when unbound", async () => {
