@@ -1,0 +1,424 @@
+/**
+ * Deterministic text helpers for the safety policy: Unicode fold, sentence split, quantity parse,
+ * hazard-context classification and rating conditions. No model call (zero-token rule).
+ *
+ * Detection only: nothing here is rendered. The fold is local on purpose (answer-validation.ts keeps
+ * its own private `foldForDetection`; this module must not change that file while #4929/#4931 are open).
+ */
+import type { Comparator, Condition, Quantity } from "./types";
+
+/** Fold Unicode into the ASCII shape the rules below are written against. */
+export function fold(s: string): string {
+  return s
+    // NFKC turns "1½" into "11⁄2" (eleven halves); keep the whole number apart from the fraction.
+    .replace(/(\d)([\u00BC-\u00BE\u2150-\u215E])/g, "$1 $2")
+    .normalize("NFKC")
+    .replace(/[*`_]/g, "")
+    .replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, "-")
+    .replace(/[\u2018\u2019\u201B\u2032]/g, "'")
+    .replace(/[\u201C\u201D\u2033]/g, '"')
+    .replace(/\p{Cf}/gu, "")
+    .replace(/[^\S\n]/gu, " ");
+}
+
+/**
+ * Sentences of a text. `wrapped` (source PDFs): a single newline is a line wrap, not a boundary.
+ * Answers: every newline is a boundary (list items are steps). A sentence that is only citation
+ * markers ("[1]") belongs to the sentence before it.
+ */
+export function sentences(text: string, wrapped: boolean): string[] {
+  return sentenceUnits(text, wrapped).map((u) => u.text);
+}
+
+/** A sentence with where it sits: its paragraph (blank-line block), and its list item within that
+ *  paragraph (`item` = -1 when it is plain paragraph text, not a bullet or numbered item). */
+export interface SentenceUnit {
+  text: string;
+  para: number;
+  item: number;
+}
+
+const ITEM_START_RE = /^\s*(?:[☑•▪]|\d+[.)]\s)/u;
+
+export function sentenceUnits(text: string, wrapped: boolean): SentenceUnit[] {
+  // Source PDFs: a "!" standing alone in the left margin (the ATTENTION icon in Rockwell manuals) is
+  // layout, not punctuation; left in, "wait three\n!  minutes" splits into two sentences.
+  const t = wrapped ? fold(text).replace(/(^|\n)[^\S\n]*!(?=[^\S\n])/g, "$1").replace(/(?<=\s)!(?=\s+[a-z])/g, "") : fold(text);
+  // Wrapped (source) text: a blank line ends a paragraph; inside it, a line that starts with a
+  // bullet or "1." starts a list item, and other line breaks are wraps. Answers: every line is its own.
+  const paras = wrapped ? t.split(/\n\s*\n/) : t.split(/\n+/);
+  const out: SentenceUnit[] = [];
+  paras.forEach((p, para) => {
+    const items: Array<{ text: string; item: number }> = [];
+    let n = -1;
+    for (const line of wrapped ? p.split("\n") : [p]) {
+      if (ITEM_START_RE.test(line) || items.length === 0) {
+        if (ITEM_START_RE.test(line)) n++;
+        items.push({ text: line, item: ITEM_START_RE.test(line) ? n : -1 });
+      } else items[items.length - 1].text += ` ${line}`;
+    }
+    for (const it of items) {
+      const segs = it.text.replace(/\s+/g, " ").split(/\s*[☑•▪]\s*/u);
+      segs.forEach((seg, k) => {
+        // The bullet that opened the line keeps its item; an inline bullet ("... ☑ next") opens a new one.
+        const item = k === 0 || (k === 1 && segs[0].trim() === "") ? it.item : ++n;
+        // No split inside a compound length ("3 ft. 6 in."), nor after an abbreviated unit that the
+        // sentence continues past in lowercase ("Wait 5 min. for the capacitors to discharge").
+        for (const raw of seg.split(/(?<=[.!?])(?!(?<=\b(?:ft|in)\.)\s+\d)(?!(?<=\b(?:mins?|secs?|hrs?)\.)\s+[a-z])\s+/u)) {
+          const s = raw.replace(/^\s*(?:[-+]|\d+[.)])\s+/, "").trim();
+          if (!s) continue;
+          if (/^(?:\[(?:\d+|photo)\]\s*[.,;]?\s*)+$/i.test(s) && out.length > 0) out[out.length - 1].text += ` ${s}`;
+          else out.push({ text: s, para, item });
+        }
+      });
+    }
+  });
+  return out;
+}
+
+/** Paragraphs of an answer, each as its sentences (context carries within a paragraph). */
+export function answerParagraphs(text: string): string[][] {
+  return fold(text)
+    .split(/\n\s*\n/)
+    .map((p) => sentences(p, false))
+    .filter((p) => p.length > 0);
+}
+
+const SMALL = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven",
+  "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
+const TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
+const WORDS = new Map<string, number>();
+SMALL.forEach((w, i) => WORDS.set(w, i));
+for (let t = 2; t < 10; t++) {
+  WORDS.set(TENS[t], t * 10);
+  for (let u = 1; u < 10; u++) WORDS.set(`${TENS[t]}-${SMALL[u]}`, t * 10 + u);
+}
+const WORD_ALT = [...WORDS.keys()].sort((a, b) => b.length - a.length).join("|");
+const NUM = `(?:\\d{1,3}(?:,\\d{3})+|\\d+(?:\\.\\d+)?|\\.\\d+|${WORD_ALT})`;
+const PAREN = `(?:\\s*\\(\\s*\\d+(?:\\.\\d+)?\\s*\\))?`;
+
+/** Fraction separators (#4959): "/", U+2044 FRACTION SLASH (NFKC of "½") and U+2215 DIVISION
+ *  SLASH (survives NFKC). One class, used by the fraction normalizer AND the QTY_RE lookbehind,
+ *  so a number can never start right after a separator the normalizer does not know. */
+export const FRACTION_SEP = "/\\u2044\\u2215";
+const SEP = `\\s*[${FRACTION_SEP}]\\s*`;
+
+/** w + n/d as a decimal string; a zero denominator becomes a non-number so nothing is parsed. */
+function fraction(w: number, n: string, d: string): string {
+  const v = w + Number(n) / Number(d);
+  return Number(d) === 0 || !Number.isFinite(v) ? "NaN" : String(Number(v.toFixed(6)));
+}
+
+function toNumber(tok: string): number {
+  const t = tok.toLowerCase();
+  return WORDS.has(t) ? WORDS.get(t)! : Number(t.replace(/,/g, ""));
+}
+
+/** A run of number words ("forty two", "one hundred twenty", "two thousand five hundred"). */
+const NUM_TOKEN = `(?:${WORD_ALT}|hundred|thousand)`;
+const WORD_RUN_RE = new RegExp(`\\b${NUM_TOKEN}(?:\\s+${NUM_TOKEN})*\\b`, "gi");
+
+function wordsToNumber(run: string): string {
+  let total = 0;
+  let cur = 0;
+  for (const tok of run.toLowerCase().split(/\s+/)) {
+    if (tok === "hundred") cur = (cur || 1) * 100;
+    else if (tok === "thousand") {
+      total += (cur || 1) * 1000;
+      cur = 0;
+    } else cur += toNumber(tok);
+  }
+  return String(total + cur);
+}
+
+/** Feet + inches written together ("3 ft 6 in", "3 ft. 6 in.", "3 ft-6 in", "3'6''") → inches. */
+const FT_IN_RE = /(\d+(?:\.\d+)?)\s*(?:ft|feet|foot|')\.?\s*(?:-\s*|and\s+)?(\d+(?:\.\d+)?)\s*(?:inch(?:es)?|in\b\.?|"|'')/gi;
+
+/** Rewrite fractional, worded and compound phrases into digits so the unit grammar sees them.
+ *  Value parsing only: it serves the answer and the source side alike. */
+function normalizePhrases(s: string): string {
+  return s
+    // #4956: "1 1/2", "1/2", NFKC "1⁄2" (from "½") → decimals, so a fraction never parses as its denominator.
+    .replace(new RegExp(`(\\d+)\\s+(\\d+)${SEP}(\\d+)`, "g"), (_m, w: string, n: string, d: string) => fraction(Number(w), n, d))
+    .replace(new RegExp(`(\\d+)${SEP}(\\d+)`, "g"), (_m, n: string, d: string) => fraction(0, n, d))
+    // Number words → digits: "a hundred and twenty" → "120", "forty two" → "42" (never "two").
+    .replace(/\ban?\s+(hundred|thousand)\b/gi, "one $1")
+    .replace(new RegExp(`\\b(hundred|thousand)\\s+and\\s+(?=${NUM_TOKEN}\\b)`, "gi"), "$1 ")
+    .replace(WORD_RUN_RE, (m) => wordsToNumber(m))
+    .replace(/(\d+(?:\.\d+)?)\s+and\s+a\s+half\b/gi, (_m, n: string) => String(Number(n) + 0.5))
+    .replace(/\b(?:an?|1)\s+(hour|minute|second)\s+and\s+a\s+half\b/gi, "1.5 $1s")
+    .replace(/\b(?:a\s+)?half\s+(?:an?\s+)?hour\b/gi, "30 minutes")
+    .replace(/\b(?:a\s+)?half\s+(?:a\s+)?minute\b/gi, "30 seconds")
+    .replace(/\b(?:a\s+)?quarter\s+(?:of\s+)?(?:an?\s+)?hour\b/gi, "15 minutes")
+    .replace(/\ban?\s+(hour|minute|second)\b/gi, "1 $1")
+    .replace(FT_IN_RE, (_m, ft: string, inch: string) => `${Number(ft) * 12 + Number(inch)} in`);
+}
+
+type Dim = "time" | "voltage" | "distance" | "energy" | "torque" | "pressure";
+interface UnitDef { dim: Dim; re: string; factor: (u: string) => number }
+
+const UNIT_DEFS: UnitDef[] = [
+  { dim: "time", re: "hours?|hrs?|minutes?|mins?|seconds?|secs?|s", factor: (u) => (u.startsWith("h") ? 3600 : u.startsWith("m") ? 60 : 1) },
+  { dim: "energy", re: "(?:cal(?:ories?)?|j(?:oules?)?)\\s*(?:/|per)\\s*(?:cm\\s*\\^?\\s*2|sq(?:uare)?\\.?\\s*cm|square\\s+centimet(?:er|re)s?)",
+    factor: (u) => (u.startsWith("j") ? 1 / 4.184 : 1) },
+  { dim: "torque", re: "n\\s*[-.\\u00B7\\u22C5]?\\s*m|newton[- ]?met(?:er|re)s?|lb[- .]?in|in[- .]?lbs?|lb[- .]?ft|ft[- .]?lbs?|pound[- ](?:feet|foot|inch(?:es)?)",
+    factor: (u) => (/^n|^newton/.test(u) ? 1 : /ft|feet|foot/.test(u) ? 1.35582 : 0.112985) },
+  { dim: "pressure",
+    re: "psig?|bar(?!\\s+(?:graphs?|segments?|charts?|codes?|indicators?))|kpa|mpa|lbs?\\s*/\\s*in\\s*\\^?\\s*2|pounds?\\s+per\\s+square\\s+inch|kgf?\\s*/\\s*cm\\s*\\^?\\s*2",
+    factor: (u) => (/^(?:psi|lb|pound)/.test(u) ? 6.89476 : u === "bar" ? 100 : u === "mpa" ? 1000 : u.startsWith("kg") ? 98.0665 : 1) },
+  { dim: "voltage", re: "mv|millivolts?|kv|kilovolts?|v\\s*dc|vdc|v\\s*ac|vac|volts?(?:\\s*(?:dc|ac))?|v",
+    factor: (u) => (u.startsWith("m") ? 0.001 : u.startsWith("k") ? 1000 : 1) },
+  { dim: "distance", re: "mm|millimet(?:er|re)s?|cm|centimet(?:er|re)s?|met(?:er|re)s?|m|inch(?:es)?|in\\.|in|\"|''|ft|feet|foot",
+    factor: (u) => (u.startsWith("mm") || u.startsWith("milli") ? 1 : u.startsWith("c") ? 10 : /^(?:in|"|'')/.test(u) ? 25.4 : u.startsWith("f") ? 304.8 : 1000) },
+];
+
+const QTY_RE = new RegExp(
+  `(?<![\\w.${FRACTION_SEP}])(${NUM})\\+?${PAREN}(?:\\s*(?:to|or|and|through|-)\\s*(${NUM})\\+?${PAREN})?(?:\\s+(?:full|whole|complete))?\\s*-?\\s*(${UNIT_DEFS.map((d) => d.re).join("|")})(?![a-z0-9])`,
+  "gi",
+);
+
+export interface Found { dim: Dim; values: number[]; start: number; end: number }
+
+/** Every dimensioned quantity in a sentence, canonical units, range endpoints separately.
+ *  Offsets refer to `normalizedSentence(sentence)`. */
+export function findQuantities(sentence: string): Found[] {
+  const s = normalizePhrases(sentence);
+  const out: Found[] = [];
+  for (const m of s.matchAll(QTY_RE)) {
+    const unit = m[3].toLowerCase().replace(/\s+/g, " ");
+    const def = UNIT_DEFS.find((d) => new RegExp(`^(?:${d.re})$`, "i").test(unit));
+    if (!def) continue;
+    const k = def.factor(unit);
+    const values = [toNumber(m[1]) * k, ...(m[2] ? [toNumber(m[2]) * k] : [])].filter((n) => Number.isFinite(n));
+    if (values.length > 0) out.push({ dim: def.dim, values, start: m.index!, end: m.index! + m[0].length });
+  }
+  return out;
+}
+
+/** The sentence as `findQuantities` sees it (offsets of `Found` index into this). */
+export const normalizedSentence = (sentence: string) => normalizePhrases(sentence);
+
+/** True when a time unit appears that no number was parsed for ("a few minutes"). */
+export function hasUnparsedTime(sentence: string): boolean {
+  const s = normalizePhrases(sentence);
+  const units = (s.match(/\b(?:seconds?|secs?|minutes?|mins?|hours?|hrs?)\b/gi) ?? []).length;
+  const parsed = findQuantities(sentence).filter((f) => f.dim === "time").length;
+  return units > parsed;
+}
+
+/** Stored electrical energy, broadly (a capacitor or bus is in the sentence). */
+export const STORED_RE =
+  /\b(?:capacitors?|caps|dc[- ]?(?:bus|link)|bus\s+(?:voltage|capacitors?|caps)|stored\s+(?:energy|charge)|residual\s+(?:voltage|charge)|discharg\w*|bleed\w*|(?:remain|stay|still)\w*\s+charged|hazardous\s+voltage|dangerous\s+voltage|shock\s+hazard|electric(?:al)?\s+shock)\b/i;
+/** A wait tied to discharge or to the interval after power removal / before contact. */
+export const DISCHARGE_LINK_RE =
+  /\b(?:discharg\w*|bleed\w*|drain\w*|(?:remain|stay|still)\w*\s+charged|stored|residual|after\s+(?:remov\w*|disconnect\w*|switch\w*\s+off|turn\w*\s+off|shut\w*|isolat\w*|de-?energi\w*|power(?:ing)?\s+(?:off|down)|lock\w*|all\s+display)|power\s+(?:is\s+)?(?:removed|off)|before\s+(?:touch|open|work|servic|remov|handl|access|inspect)\w*)\b/i;
+const UNRELATED_TIMING_RE =
+  /\b(?:accel\w*|decel\w*|ramp\w*|fans?|boot\w*|time-?outs?|scan\s+time|response\s+time|after\s+a\s+fault|fault\s+(?:has\s+been\s+)?cleared|reset\w*|re-?apply\w*|cycle\s+the\s+power|power[- ]?cycl\w*|reform\w*|cool\w*|overheat\w*|detection\s+time)\b/i;
+const CHARGE_UP_RE = /\b(?:power(?:ing)?[- ]?up|start[- ]?up|pre-?charg\w*|recharg\w*|to\s+charge|charging|apply\s+(?:input\s+)?power)\b/i;
+
+/** Stored-charge wording strong enough to make a nearby source time a discharge figure on its own.
+ *  Not a bare "DC bus" / "bus voltage" (the #4958 class: a bus check or display delay). */
+const STRONG_STORED_RE =
+  /\b(?:capacitors?|caps|stored\s+(?:energy|charge)|residual\s+(?:voltage|charge)|(?:remain|stay|still)\w*\s+(?:charged|energi[sz]ed|live)|(?:hold|holds|retain|retains)\s+(?:a\s+)?(?:\w+\s+)?charge|hazardous\s+voltage|dangerous\s+voltage|lethal|shock\s+hazard|electric(?:al)?\s+shock)\b/i;
+
+/** Round 2b source support (#4958 reworked): a sentence that ties time to discharge, contact or power
+ *  removal, or names stored charge. A source time is discharge support when this holds for its own
+ *  sentence or the sentence right next to it in the same chunk, and it is not positively unrelated
+ *  timing (fault reset, ramps, fans, recharge, reforming, cooling, power cycling). */
+/** #4962 tight continuation, sentence j-1 → j: an imperative wait opening j ("Capacitors remain
+ *  charged. Wait 5 minutes."), or j referring back ("this charge", "these capacitors"). */
+export const CONTINUES_RE =
+  /^\s*(?:then\s+)?(?:wait|allow|give)\b|\b(?:this|these|that|those|the)\s+(?:stored\s+)?(?:capacitors?|caps|charge|voltage|energy)\b|\b(?:it|they|them)\s+(?:to\s+)?(?:discharge|bleed|drain|dissipate)\w*/i;
+
+export const sourceSupport = (sentence: string) =>
+  DISCHARGE_LINK_RE.test(sentence) || ANSWER_LINK_RE.test(sentence) || STRONG_STORED_RE.test(sentence);
+
+/** Timing that is not a discharge wait: ramps, fans, fault resets, recharging, cooling.
+ *  Answer side (fail closed): any stored-energy word keeps a fault-worded wait a discharge claim. */
+export function isUnrelatedTiming(clause: string): boolean {
+  if (UNRELATED_TIMING_RE.test(clause) && !STORED_RE.test(clause)) return true;
+  return CHARGE_UP_RE.test(clause) && !DISCHARGE_LINK_RE.test(clause);
+}
+
+/** Source side (#4954): naming the DC bus does not turn a fault-reset or check delay into a
+ *  discharge time; only a discharge or contact link does. Support is read narrowly. */
+export function isUnrelatedSourceTiming(clause: string): boolean {
+  if (UNRELATED_TIMING_RE.test(clause) && !DISCHARGE_LINK_RE.test(clause)) return true;
+  return isUnrelatedTiming(clause);
+}
+
+/** A comparative threshold immediately before the value ("less than 25VDC", "below 50 V"). */
+const THRESHOLD_RE =
+  /(?:\b(?:less\s+than|below|under|lower\s+than|at\s+most|no(?:t)?\s+more\s+than|drops?\s+(?:to|below)|falls?\s+(?:to|below)|discharged?\s+(?:to|below)|bleeds?\s+down\s+to)|<=|=<|<|≤)\s*(?:about\s+|approximately\s+)?$/i;
+/** A comparative right after the value ("50 V or less", "50 V and below"). */
+const POST_THRESHOLD_RE = /^\s*(?:\[[^\]]*\]\s*)?(?:or\s+(?:less|lower|below|under)|and\s+(?:below|under|lower))/i;
+/** Answer side only: "a maximum of 50 V", "not to exceed 50 V", "50 V max". In a source these
+ *  phrase a RATING ceiling ("the DC bus can reach a maximum of 800 VDC"), never a meter threshold. */
+const ANSWER_THRESHOLD_RE = /\b(?:not\s+(?:to\s+)?exceed(?:ing)?|(?:a\s+)?max(?:imum)?(?:\s+of)?)\s*(?:about\s+|approximately\s+)?$/i;
+const ANSWER_POST_THRESHOLD_RE = /^\s*(?:\[[^\]]*\]\s*)?max(?:imum)?\b/i;
+const BUS_POINT_RE = /\b(?:dc\s*\+|\+\s*dc|dc\s*-|-\s*dc|dc[- ]?(?:bus|link)|bus|capacitors?|between\s*\+\s*and\s*-|discharg\w*|residual|stored)/i;
+/** Approach / arc-flash boundary wording. Not "clearance" (drive mounting) and not "working
+ *  distance" (where incident energy is calculated; it runs the opposite conservative direction). */
+/** Source context that makes an energy density the equipment's incident energy (#4963). */
+const INCIDENT_CTX_RE =
+  /\b(?:incident\s+energy|arc[- ]?flash\s+(?:study|analysis|label|hazard\s+analysis|risk\s+assessment|calculation|boundary)|available\s+(?:arc\s+)?energy|working\s+distance)\b/i;
+/** A PPE / garment arc rating (#4963): not the equipment's incident energy. */
+const PPE_RATING_RE =
+  /\b(?:arc[- ]?rated|ppe|suits?|garments?|clothing|shirts?|jackets?|coveralls?|hoods?|gloves?|face\s*shields?|balaclavas?|atpv|ebt|arc\s+ratings?|hrc)\b/i;
+const APPROACH_RE = /\b(?:approach|boundary|arc[- ]?flash|limited|restricted)\b/i;
+/** Answer side only (recall, fail closed): a distance from exposed / energized / live parts. Not
+ *  read on the source side, where "2 in away" wording would become boundary support. */
+const ANSWER_APPROACH_RE =
+  /\b(?:exposed|energi[sz]ed|live)\s+(?:energi[sz]ed\s+|live\s+)?(?:parts?|conductors?|components?|terminals?|circuits?|equipment|busbars?|bus)\b/i;
+
+/** Wording that ties a wait to power removal, to contact, or to the display going dark, beyond
+ *  DISCHARGE_LINK_RE. Answer side since round 2 (recall); source side too since round 2b, where
+ *  OEM manuals phrase their waits exactly this way ("wait ... after disconnecting the input power"). */
+export const ANSWER_LINK_RE =
+  /\b(?:after\s+(?:you\s+|we\s+|i\s+|the\s+)?(?:remov|disconnect|switch|turn|shut|isolat|de-?energi|kill|cut|open|lock)\w*|(?:kill|cut|remove|disconnect|isolate|shut\s+off|switch\s+off|turn\s+off)\s+(?:\w+\s+){0,4}?(?:power(?:\s+line)?|supply|mains)\b|(?:power|supply|mains)\s+(?:removal|disconnection|isolation)|removal\s+of\s+(?:the\s+)?(?:\w+\s+)?(?:power|supply|mains)|(?:display|lamps?|leds?|indicators?)\s+(?:\w+\s+){0,2}?(?:go|goes|gone|went|turn|turns|turned|are|is|have|has)\s+(?:gone\s+|turned\s+)?(?:out|off|dark)|(?:once|when|after|until)\s+(?:the\s+)?(?:power|drive|unit|disconnect|supply|equipment|machine|panel|breaker)\s+(?:is|has\s+been|was|are|have\s+been)\s+(?:removed|off|de-?energi\w*|isolated|opened|disconnected|locked\s+out|turned\s+off|switched\s+off|shut\s+off)|(?:kill|cut|remove|disconnect|shut\s+off|switch\s+off|turn\s+off)\s+(?:the\s+)?(?:input\s+)?(?:power|supply|mains)|before\s+(?:you\s+|we\s+)?(?:touch|open|work|servic|remov|handl|access|inspect)\w*|de-?energi[sz]ed|with\s+(?:the\s+)?power\s+(?:removed|off))\b/i;
+
+// Not the "-" of a terminal pair ("between + and - should be").
+const CLAUSE_DELIM_RE = /\s*;\s*|(?<!\+\s{0,3}and)\s+-\s+|,\s+(?=(?:and|but|then|while|although)\b)/gi;
+
+/** Clauses split at ";", spaced dashes and ", and/but/then" joins. */
+export function clauses(sentence: string): string[] {
+  return sentence.split(CLAUSE_DELIM_RE).filter((c) => c.trim());
+}
+
+/** [start, end) of the clause of `text` that contains offset `at`. */
+export function clauseAround(text: string, at: number): [number, number] {
+  let start = 0;
+  let end = text.length;
+  for (const m of text.matchAll(CLAUSE_DELIM_RE)) {
+    const a = m.index!;
+    const b = a + m[0].length;
+    if (b <= at) start = b;
+    else if (a >= at) {
+      end = a;
+      break;
+    }
+  }
+  return [start, end];
+}
+
+/**
+ * Which hazard-critical quantity a found value is, given its clause, the clause text just before
+ * the value, and whether stored-energy context is in force (the sentence, its paragraph, or the
+ * question). Null = not hazard-critical.
+ */
+export function classify(
+  dim: Dim,
+  clause: string,
+  before: string,
+  storedContext: boolean,
+  side: "answer" | "source" = "answer",
+  after = "",
+  sentence = clause,
+  timeSupport = storedContext,
+): Quantity | null {
+  switch (dim) {
+    case "time": {
+      // Source side (#4958, reworked in round 2b): `timeSupport` = sourceSupport() holds for the
+      // time's sentence or an adjacent one (chunkStatements). The unrelated-timing exclusion reads
+      // the time's clause, and the whole sentence when nothing in it names discharge ("Remove power,
+      // wait 5 seconds, then reapply power to clear the fault"). A bare bus word is never support.
+      if (side === "source") {
+        const unrelated = isUnrelatedSourceTiming(clause) || (UNRELATED_TIMING_RE.test(sentence) && !DISCHARGE_LINK_RE.test(sentence));
+        return timeSupport && !unrelated ? "discharge_time" : null;
+      }
+      // Answer side (fail closed, unchanged): any duration in stored-energy context is a claim.
+      return storedContext && !isUnrelatedTiming(clause) ? "discharge_time" : null;
+    }
+    case "voltage": {
+      const threshold =
+        THRESHOLD_RE.test(before) ||
+        POST_THRESHOLD_RE.test(after) ||
+        (side === "answer" && (ANSWER_THRESHOLD_RE.test(before) || ANSWER_POST_THRESHOLD_RE.test(after)));
+      // Answer side (recall): a measuring point anywhere in the sentence ("Measure between + and -;
+      // it should be less than 25VDC"). Source side keeps it to the clause.
+      const point = BUS_POINT_RE.test(clause) || (side === "answer" && BUS_POINT_RE.test(sentence));
+      return threshold && (point || storedContext) ? "residual_voltage" : null;
+    }
+    case "distance":
+      return APPROACH_RE.test(clause) || (side === "answer" && ANSWER_APPROACH_RE.test(clause)) ? "approach_boundary" : null;
+    case "energy":
+      // #4963: on the source side an energy density is the equipment's incident energy only with
+      // incident-energy / arc-flash-study context, and not when its clause is a PPE / garment arc
+      // rating ("The arc-rated suit is rated 8 cal/cm²"). The answer side stays broad (fail closed).
+      if (side === "source" && (!INCIDENT_CTX_RE.test(sentence) || (PPE_RATING_RE.test(clause) && !INCIDENT_CTX_RE.test(clause)))) {
+        return null;
+      }
+      return "incident_energy";
+    case "torque":
+      return "torque";
+    case "pressure":
+      return "pressure";
+  }
+}
+
+const ABOUT = "\\s*(?:about\\s+|approximately\\s+|~\\s*)?$";
+const CMP_BEFORE: Array<[RegExp, Comparator]> = [
+  [new RegExp(`(?:\\b(?:at\\s+most|no(?:t)?\\s+more\\s+than|not\\s+(?:to\\s+)?exceed(?:ing)?|(?:a\\s+)?max(?:imum)?(?:\\s+of)?)|≤|<=|=<)${ABOUT}`, "i"), "le"],
+  [new RegExp(`(?:\\b(?:less\\s+than|below|under|lower\\s+than|(?:drops?|falls?|discharged?)\\s+below)|<)${ABOUT}`, "i"), "lt"],
+  [new RegExp(`(?:\\b(?:at\\s+least|no(?:t)?\\s+less\\s+than|(?:a\\s+)?min(?:imum)?(?:\\s+of)?)|≥|>=|=>)${ABOUT}`, "i"), "ge"],
+  [new RegExp(`(?:\\b(?:more\\s+than|over|above|greater\\s+than)|>)${ABOUT}`, "i"), "gt"],
+  [new RegExp(`(?:\\b(?:(?:drops?|falls?|discharged?|bleeds?(?:\\s+down)?|bled(?:\\s+down)?)\\s+to|reads?|reading\\s+(?:is|of)|confirm|verify|measures?|shows?|equals?|is|to)|=)${ABOUT}`, "i"), "eq"],
+];
+const CMP_AFTER: Array<[RegExp, Comparator]> = [
+  [/^\s*(?:\[[^\]]*\]\s*)?(?:or\s+(?:less|lower|below|under)|and\s+(?:below|under|lower)|max(?:imum)?\b)/i, "le"],
+  [/^\s*(?:\[[^\]]*\]\s*)?(?:or\s+(?:more|longer|greater|above|over)|min(?:imum)?\b)/i, "ge"],
+];
+
+/** The comparator an answer states for a value, from the text right before and after it (#4964).
+ *  Undefined when none is stated; an exact-zero exception needs "eq" (fail closed). */
+export function comparatorOf(before: string, after: string): Comparator | undefined {
+  for (const [re, c] of CMP_AFTER) if (re.test(after)) return c;
+  for (const [re, c] of CMP_BEFORE) if (re.test(before)) return c;
+  return undefined;
+}
+
+/** D1: a pressure stated as a LIMIT — relief / safety valve, maximum (working) pressure, rated
+ *  pressure, burst, cut-out, do-not-exceed. "rated 30 hp" is a rating condition, not a limit. */
+export const PRESSURE_LIMIT_RE =
+  /\b(?:relief|safety\s+valve|max(?:imum)?\.?|mawp|rated(?!\s+\d+(?:\.\d+)?\s*(?:hp|kw)\b)|pressure\s+rating|burst|limit\w*|cut-?out|exceed\w*)\b/i;
+
+/** An exact-zero voltage MEASUREMENT claim (D2): a measuring point or a meter reading in the sentence. */
+export const ZERO_CLAIM_RE = /\b(?:dc\s*[+-]|bus|capacitors?|between\s*\+\s*and\s*-|terminals?|meter|multimeter|reads?|reading|measure\w*)/i;
+
+const COND_RES: Array<[RegExp, Condition["op"]]> = [
+  [/(?:≤|<=|<|\bup\s+to|\bunder|\bbelow|\bless\s+than|\bat\s+most)\s*(\d+(?:\.\d+)?)\s*(hp|kw)\b/i, "le"],
+  [/(?:≥|>=|>|\bover|\babove|\bmore\s+than|\bat\s+least)\s*(\d+(?:\.\d+)?)\s*(hp|kw)\b/i, "ge"],
+  [/\b(\d+(?:\.\d+)?)\s*(hp|kw)\s*(?:models?\s+|drives?\s+|units?\s+)?(?:and|or)\s+(?:below|under|less|smaller|lower)\b/i, "le"],
+  [/\b(\d+(?:\.\d+)?)\s*(hp|kw)\s*(?:models?\s+|drives?\s+|units?\s+)?(?:and|or)\s+(?:above|over|more|larger|higher|up)\b/i, "ge"],
+  [/\b(\d+(?:\.\d+)?)\s*(hp|kw)\b/i, "eq"],
+];
+
+/** The first rating condition in a window of text, if any. */
+export function conditionIn(window: string): Condition | undefined {
+  let best: { at: number; c: Condition } | undefined;
+  for (const [re, op] of COND_RES) {
+    const m = re.exec(window);
+    if (!m) continue;
+    if (best && m.index >= best.at) continue;
+    best = { at: m.index, c: { op, value: Number(m[1]), unit: m[2].toLowerCase() === "kw" ? "kW" : "hp" } };
+  }
+  return best?.c;
+}
+
+/** Whether a source's condition covers a known rating. No condition covers everything; an unknown
+ *  rating (or a different unit) is never excluded — only a rating provably outside drops a value. */
+export function conditionCovers(c: Condition | undefined, rating?: { value: number; unit: "hp" | "kW" }): boolean {
+  if (!c || !rating || c.unit !== rating.unit) return true;
+  if (c.op === "le") return rating.value <= c.value;
+  if (c.op === "ge") return rating.value >= c.value;
+  return Math.abs(rating.value - c.value) < 1e-9;
+}
+
+export const sameCondition = (a?: Condition, b?: Condition) =>
+  !!a && !!b && a.op === b.op && a.unit === b.unit && Math.abs(a.value - b.value) < 1e-9;
+
+/** Value equality in canonical units: exact for enforced quantities, 1% for converted units. */
+export function sameValue(q: Quantity, a: number, b: number): boolean {
+  const tol = q === "discharge_time" || q === "residual_voltage" ? 1e-9 : 0.01;
+  return Math.abs(a - b) <= tol * Math.max(1, Math.abs(a), Math.abs(b));
+}
