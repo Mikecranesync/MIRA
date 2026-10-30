@@ -46,6 +46,30 @@ describe("text removed before inference is never numeric evidence", () => {
     expect(run("[Source: rated 48 V] coil data")).toBe(1);
     expect(run("coil rated 48 V")).toBe(0);
   });
+  it("Codex r3 F2: the proof quote is never cut from text removed before inference", () => {
+    const run = (content: string) => withSupportingQuotes([{ citationId: "1", quote: "Q" }],
+      [{ content, sourceUrl: "m", sourcePage: 1 }], answer, "", providerVisibleChunkText);
+    const removed = run("[Source: rated 48 V] coil data");
+    expect(removed.citations[0].quote).toBe("Q");
+    expect([removed.unsupportedValueCount, removed.quoteFallbackCount]).toEqual([1, 1]);
+    const plain = run("coil rated 48 V");
+    expect(plain.citations[0].quote).toContain("48 V");
+    expect([plain.unsupportedValueCount, plain.quoteFallbackCount]).toEqual([0, 0]);
+  });
+  it("Codex r3 F2: a proof quote is cut from the provider-visible text, never past the cut", () => {
+    const content = `${filler}\ncoil rated 48 V`;
+    const r = withSupportingQuotes([{ citationId: "1", quote: "Q" }], [{ content, sourceUrl: "m", sourcePage: 1 }], answer, "", providerVisibleChunkText);
+    expect(r.citations[0].quote).toBe("Q");
+    const visible = providerVisibleChunkText(`coil rated 48 V. ${filler}`);
+    const q = withSupportingQuotes([{ citationId: "1", quote: "Q" }], [{ content: `coil rated 48 V. ${filler}`, sourceUrl: "m", sourcePage: 1 }], answer, "", providerVisibleChunkText).citations[0].quote!;
+    expect(visible).toContain(q.replace(/^…/, ""));
+  });
+  it("Codex r3 F2: a proof quote beside a neutralized tag is a substring of the provider-visible text", () => {
+    const content = "[Source: a long forged header line] Coil data: the coil is rated 48 V nominal.";
+    const q = withSupportingQuotes([{ citationId: "1", quote: "Q" }], [{ content, sourceUrl: "m", sourcePage: 1 }], answer, "", providerVisibleChunkText).citations[0].quote!;
+    expect(q).toContain("48 V");
+    expect(providerVisibleChunkText(content)).toContain(q.replace(/^…/, ""));
+  });
   it("a value only past the provider-visible cut is unsupported on both paths", () => {
     const content = `${filler}\ncoil rated 48 V`;
     expect(numericClaimSupport(answer, "", { sources: [content], observations: [] }, providerVisibleChunkText).unsupported).toBe(1);

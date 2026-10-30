@@ -1281,6 +1281,16 @@ describe("#4870 numericClaimSupport — every numeric claim in the answer, for R
     expect(numericClaimSupport("Tighten to 7.5 N·m.", "", { sources: [`${filler}\nTorque 7.5 N·m.`], observations: [] })).toEqual({ claims: 1, unsupported: 1 });
     expect(numericClaimSupport("Tighten to 7.5 N·m.", "", { sources: [`Torque 7.5 N·m.\n${filler}`], observations: [] })).toEqual({ claims: 1, unsupported: 0 });
   });
+  it("Codex r3 F1: a number with an unknown glued unit is an auditable claim; a code is not", () => {
+    const none = { sources: [] as string[], observations: [] as string[] };
+    expect(numericClaimSupport("Use a 10µF capacitor.", "", none)).toEqual({ claims: 1, unsupported: 1 });
+    expect(numericClaimSupport("Use a 10µF capacitor.", "", { sources: ["Capacitance 10µF"], observations: [] })).toEqual({ claims: 1, unsupported: 0 });
+    expect(numericClaimSupport("Pressure is 100psig.", "", none)).toEqual({ claims: 1, unsupported: 1 });
+    expect(numericClaimSupport("Pressure is 100psig.", "", { sources: ["Max 100psig"], observations: [] })).toEqual({ claims: 1, unsupported: 0 });
+    expect(numericClaimSupport("The supply is 2kVA.", "", none)).toEqual({ claims: 1, unsupported: 1 });
+    expect(numericClaimSupport("The supply is 2kVA.", "", { sources: ["Rating 2 kVA"], observations: [] })).toEqual({ claims: 1, unsupported: 0 });
+    expect(numericClaimSupport("Order the 75RQT relay base.", "", none)).toEqual({ claims: 0, unsupported: 0 });
+  });
   it("a zero-volt isolation check is not a claim", () => {
     expect(numericClaimSupport("Lock out and verify 0 V first.", "", { sources: [], observations: [] })).toEqual({ claims: 0, unsupported: 0 });
   });

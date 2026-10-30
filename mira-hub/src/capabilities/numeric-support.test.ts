@@ -40,6 +40,31 @@ describe("identifierAt — model, catalog, part and fault-code tokens are not nu
   it("a number after an all-caps family prefix is an identifier when no unit follows", () => {
     expect(ident("Check the QM 210-4 interface module.", "210")).toBe(true);
   });
+  // #4981 Codex r3 F1: an unrecognized glued suffix alone never proves an identifier.
+  it("a number glued to an unknown but unit-like suffix stays a claim (10µF, 100psig, 100PSIG, 5mbar, 3kvar)", () => {
+    expect(ident("Use a 10µF capacitor.", "10")).toBe(false);
+    expect(ident("Pressure is 100psig.", "100")).toBe(false);
+    expect(ident("Pressure is 100PSIG.", "100")).toBe(false);
+    expect(ident("Vacuum is 5mbar.", "5")).toBe(false);
+    expect(ident("Reactive load is 3kvar.", "3")).toBe(false);
+  });
+  it("only an all-caps code suffix that starts no unit is an identifier (75RQT, not 75AXB)", () => {
+    expect(ident("Order the 75RQT relay base.", "75")).toBe(true);
+    expect(ident("Order the 75AXB relay base.", "75")).toBe(false);
+  });
+  it("a code word or zero pad never swallows a number followed by a spaced unit-like token (Type 10 µF)", () => {
+    expect(ident("Use a Type 10 µF capacitor.", "10")).toBe(false);
+    expect(ident("Code 007 psig limit.", "007")).toBe(false);
+    expect(ident("Alarm 31 clears after reset.", "31")).toBe(true); // control: a plain word after it
+  });
+  it("a unit word before a number is not a family prefix (RPM 1750, HP 5)", () => {
+    expect(ident("Nameplate RPM 1750 at full load.", "1750")).toBe(false);
+    expect(ident("Nameplate HP 5 motor.", "5")).toBe(false);
+  });
+  it("a left hyphen to a letters-only token does not swallow a quantity with a unit (K-20 A)", () => {
+    expect(ident("Use the K-20 A breaker.", "20")).toBe(false);
+    expect(ident("The label reads ZT88120‑4 in black.", "4")).toBe(true); // alphanumeric code: still a tag
+  });
   // Controls — true quantities stay claims.
   it("CONTROL: a spaced quantity with a unit is a claim, even right after a model token", () => {
     const s = "The KM-3 30 A breaker feeds the panel.";

@@ -499,8 +499,10 @@ async function buildCitations(
       // A manufacturer manual's own address, so the reader can open it; only a
       // place a browser can actually go (http/https) is carried.
       ...(/^https?:\/\//i.test(c.sourceUrl ?? "") ? { sourceUrl: c.sourceUrl } : {}),
-      // Claim-centered window (CIT-07 phase 2) — not the chunk head.
-      quote: relevantQuoteWindow(c.content, question),
+      // Claim-centered window (CIT-07 phase 2) — not the chunk head. #4981 Codex r3: cut from the
+      // text the provider received (providerVisibleChunkText), never from bytes past the prompt's
+      // cut or inside a neutralized [Source: …] tag — this quote is shown to the user as proof.
+      quote: relevantQuoteWindow(providerVisibleChunkText(c.content), question),
     });
   }
   const citations = [...seen.values()];

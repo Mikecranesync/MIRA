@@ -713,8 +713,11 @@ export function supportingQuote(
   const ids = [...claimIdentifiers(question)];
   type Cand = { chunk: number; start: number; covered: number; idHits: number; q: number; prox: number };
   const cands: Cand[] = [];
-  chunks.forEach((full, ci) => {
-    const text = full.slice(0, MODEL_VISIBLE_CHARS);
+  // #4981 Codex r3 F2: every step — candidate parsing, window scoring, the returned proof quote and
+  // the unsupported count — reads the SAME provider-visible text, so a user-visible proof can never
+  // be cut from bytes the provider did not receive (past the cut, inside a neutralized tag).
+  const visible = chunks.map(visibleText);
+  visible.forEach((text, ci) => {
     const srcVals = findValues(text, "source");
     for (const sv of srcVals) {
       if (!claims.some((c) => satisfies(sv, c))) continue;
@@ -743,7 +746,7 @@ export function supportingQuote(
   // MODEL-VISIBLE text (the provider never sees past MODEL_VISIBLE_CHARS — Codex r1 F1), and a
   // model/catalog/fault-code token is not a claim at all. Only the cited page counts: a photo
   // reading never authenticates a document citation (Codex r1 F2).
-  const support = new ClaimSupport(chunks.map(visibleText), answer);
+  const support = new ClaimSupport(visible, answer);
   // Decided ONLY by the provider-visible text: a quote-window match on the raw chunk is not
   // support when the provider never got those bytes (e.g. inside a neutralized [Source: …] tag —
   // #4981 Codex r2 F2). For ordinary text the visible text holds everything the window held.
@@ -756,7 +759,7 @@ export function supportingQuote(
       b.covered - a.covered || b.idHits - a.idHits || b.q - a.q || a.prox - b.prox || a.chunk - b.chunk || a.start - b.start,
   );
   const w = cands[0];
-  const text = chunks[w.chunk].slice(0, MODEL_VISIBLE_CHARS);
+  const text = visible[w.chunk];
   return {
     quote: (w.start > 0 ? "…" : "") + text.slice(w.start, w.start + SPAN),
     support: w.covered === claims.length ? "claim" : "partial",

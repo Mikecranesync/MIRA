@@ -51,7 +51,7 @@ const CODE_HYPHEN = /[-‐‑]/u;
 const CODE_WORD =
   /(?:^|[^\p{L}\d])(?:fault|faults|error|errors|err|alarm|alarms|code|codes|warning|parameter|param|catalog|cat\.?|part|model|series|type|no\.|#)\s*$/iu;
 // An all-caps family prefix spaced from its number ("IM 155-6", "QM 210").
-const CAPS_PREFIX = /(?:^|[^\p{L}\d])\p{Lu}[\p{Lu}\d]{1,4} $/u;
+const CAPS_PREFIX = /(?:^|[^\p{L}\d])(\p{Lu}[\p{Lu}\d]{1,4}) $/u;
 
 /** Is a table unit the next word after `end` (glued "24V", hyphenated "12-volt", or spaced "30 A")? */
 function unitFollows(text: string, end: number): boolean {
@@ -64,32 +64,65 @@ function unitFollows(text: string, end: number): boolean {
   return false;
 }
 
+/** A spaced word after a number that is plausibly a unit the closed table lacks: a µ/° symbol, or a
+ *  gauge/absolute/energy/reactive variant of a table unit (psig, PSIA, barg, mbar, kvar, kWh). A
+ *  plain word ("is", "means", "clears") is not — the stricter test the spaced case needs. */
+const SPACED_UNIT_LIKE = /^(?:[µμ°]|(?:psi|bar)[ag]$|[mk]?bar$|k?var$|[kMG]?Wh$|[kM]?VAh$)/iu;
+
+/** Could this letter token be (the start of) a unit? A table unit, case-insensitively, at any of
+ *  its first four letters ("PSIG" ⇒ psi, "KVAR" ⇒ kV, "AXB" ⇒ A). Deliberately generous: a token
+ *  that might be a unit keeps its number an auditable claim (#4981 Codex r3 F1). */
+function unitLike(token: string): boolean {
+  for (let n = 1; n <= Math.min(4, token.length); n++) {
+    const head = token.slice(0, n);
+    if (tableUnit(head) || tableUnit(head.toLowerCase())) return true;
+  }
+  return false;
+}
+
 /**
  * Is the number whose digits span [start, end) of `text` part of an identifier rather than a
- * quantity? True for: digits glued to a letter or digit on the left (KX450) or joined by a code
- * hyphen to a token holding a letter (QR40-16, tag ZT88120‑4); digits glued to a non-unit word on
- * the right (75RQT, 240AC) or hyphen-joined to letters (3150-QR40, 1489-M); a zero-padded integer
- * (0042, 007); a number after a code word or an all-caps family prefix with no unit after it.
- * A number with a table unit after it (30 A, 24V, 12-volt) is a quantity unless it is glued
- * into a code on the left.
+ * quantity? Only STRONG identifier forms count (#4981 Codex r3 F1 — an unrecognized glued suffix
+ * alone is never enough, so 10µF, 100psig, 5mbar stay auditable claims):
+ *  - digits glued to a letter or digit on the left (KX450, LC20, F005);
+ *  - joined by a code hyphen to a token on the left that holds a letter (QR40-16, tag ZT88120‑4) —
+ *    and, when a unit follows, that token must also hold a digit, so "K-20 A" stays a quantity;
+ *  - hyphen-joined to letters on the right (3150-QR40, 1489-M);
+ *  - glued on the right to an ALL-CAPS code of 3+ letters that starts no unit (75RQT, 20QWB) —
+ *    the conservative rule for an unknown suffix: lowercase, mixed case, µ, two letters, or any
+ *    token that could begin a unit (PSIG, KVAR) keeps the number a claim;
+ *  - a zero-padded integer (0042, 007), or a number after a code word or an all-caps family prefix
+ *    (IM 155-6) with no unit after it; a unit word is never a family prefix (RPM 1750, HP 5).
+ * A number with a table unit after it (30 A, 24V, 12-volt) is a quantity unless it is glued into a
+ * code on the left.
  */
 export function identifierAt(text: string, start: number, end: number): boolean {
   const before = text[start - 1] ?? "";
   if (/[\p{L}\d]/u.test(before)) return true;
+  const unit = unitFollows(text, end);
   if (CODE_HYPHEN.test(before)) {
     const run = /[\p{L}\d]+$/u.exec(text.slice(Math.max(0, start - 40), start - 1))?.[0] ?? "";
-    if (/\p{L}/u.test(run)) return true;
+    if (/\p{L}/u.test(run) && (!unit || /\d/.test(run))) return true;
   }
-  const unit = unitFollows(text, end);
   // 1e-3, 1.5E+03: an exponent is part of a number, never a code suffix.
-  if (/^[eE][\s*_]*[-+−]?[\s*_]*\d/u.test(text.slice(end, end + 12))) return false;
-  const glued = /^[-‐‑]?(\p{L}[\p{L}\d]*)/u.exec(text.slice(end, end + 40));
-  if (glued && !unit) return true;
+  if (/^[eE][\s*_]*[-+\u2212]?[\s*_]*\d/u.test(text.slice(end, end + 12))) return false;
   if (unit) return false;
+  const glued = /^([-\u2010\u2011]?)(\p{L}[\p{L}\d]*)/u.exec(text.slice(end, end + 40));
+  if (glued) {
+    if (glued[1]) return true; // 1489-M, 3150-QR40
+    const letters = /^\p{L}+/u.exec(glued[2])?.[0] ?? "";
+    return /^\p{Lu}{3,}$/u.test(letters) && !unitLike(letters);
+  }
+  // A spaced token after the number that could be a unit (µF, psig, PSIA…) keeps it a claim before
+  // any of the weaker rules below can call it a code (#4981 Codex r3 F1 self-audit).
+  const next = /^[ \t]+([\p{L}°µ][\p{L}\d]*)/u.exec(text.slice(end, end + 24))?.[1];
+  if (next && SPACED_UNIT_LIKE.test(next)) return false;
   const digits = text.slice(start, end);
   if (/^0\d+$/.test(digits)) return true;
   const lead = text.slice(Math.max(0, start - 24), start);
-  return CODE_WORD.test(lead) || CAPS_PREFIX.test(lead);
+  if (CODE_WORD.test(lead)) return true;
+  const caps = CAPS_PREFIX.exec(lead)?.[1];
+  return caps !== undefined && !unitLike(caps);
 }
 
 /** Lowercase, one dash, one dot, one degree sign, plain spaces; markdown emphasis is spacing. */

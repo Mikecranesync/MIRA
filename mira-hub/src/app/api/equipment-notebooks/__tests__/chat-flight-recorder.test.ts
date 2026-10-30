@@ -1388,6 +1388,20 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     expect([p.answer_gate.numeric_claims, p.answer_gate.numeric_claims_unsupported]).toEqual([2, 0]);
   });
 
+  // #4981 Codex r3 F2 self-audit: the citation's fallback (question-window) quote is user-visible proof
+  // too, so it is cut from the provider-visible text, never from bytes past the cut or inside a tag.
+  it("#4870 r3: a citation's fallback quote never shows text the provider did not receive", async () => {
+    const filler = "filler text ".repeat(110);
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Siemens", model: "TP700 Comfort" }) as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([{ ...oemChunk(), content: `[Source: secret header] Mounting overview. ${filler} HIDDENTAIL mounting clamp torque` }] as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("See the mounting section [1].")));
+    const text = await (await POST(chatReq({ message: "mounting clamp torque", mode: "general" }), params)).text();
+    const cites = framesOf(text).find((f) => f.kind === "sources")?.citations as { quote: string }[];
+    expect(cites).toHaveLength(1);
+    expect(cites[0].quote).not.toContain("HIDDENTAIL");
+    expect(cites[0].quote).not.toContain("secret header");
+  });
+
   it("#4870 control: a value absent from the chunk keeps the unit-claim flag and the unsupported count", async () => {
     domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Siemens", model: "TP700 Comfort" }) as never);
     ragMock.retrieveManualChunks.mockResolvedValueOnce([oemChunk()] as never);
