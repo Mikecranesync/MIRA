@@ -26,6 +26,9 @@ describe("identifierAt — model, catalog, part and fault-code tokens are not nu
   it("a part tag followed by a unit-looking word is still an identifier (tag-2 in)", () => {
     expect(ident("The label reads ZT88120‑4 in black.", "4")).toBe(true);
   });
+  it("a zero-padded number is an identifier even with no code word before it", () => {
+    expect(ident("The display shows 0042 after reset.", "0042")).toBe(true);
+  });
   it("a zero-padded code is an identifier (fault 0042)", () => {
     expect(ident("Fault 0042 is an overvoltage trip.", "0042")).toBe(true);
     expect(ident("Code 007 means the cover is open.", "007")).toBe(true);
