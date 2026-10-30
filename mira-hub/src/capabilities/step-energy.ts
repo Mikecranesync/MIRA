@@ -18,14 +18,14 @@
  * Measured on 140 blind-labeled answers (step-energy-measure.test.ts).
  */
 
-const ISOLATED =
+export const ISOLATED =
   /\b(?:lock(?:ed)?[\s-]?out|lockout(?:\/tagout)?|LOTO|isolated|de[\s-]?energi[sz]ed|power(?:ed)?\s+(?:off|down)|with (?:the )?power (?:removed|off))\b/i;
-const RESTORE =
+export const RESTORE =
   /\b(?:remove (?:the )?lock(?:out)?|lock(?:out)? (?:is )?removed|restore (?:the )?power|power (?:is )?restored|re[\s-]?energi[sz](?:e|es|ed|ing)\b|re-?apply power|reconnect(?:ing)? (?:the )?power|turn (?:the )?power (?:back )?on|power (?:it|the \w+) (?:back )?(?:on|up)|bring (?:it|the \w+) back (?:up|on(?:line)?)|apply (?:main |the )?(?:power|voltage))\b/i;
 const DEAD_CHECK =
   /\b(?:absence of voltage|zero (?:volts|voltage|energy)|0\s?V\b|no voltage|(?:voltage|power) is (?:absent|off|removed)|is de[\s-]?energi[sz]ed|are de[\s-]?energi[sz]ed|is dead|are dead|confirmed dead|verif\w* (?:it is |they are )?dead|continuity|resistance|insulation|megger|open[\s-]circuit|(?:voltage |non-contact )?tester|test meter|test[\s-]lead|(?:low|high)[\s-]voltage|voltage (?:class|rating)|rated voltage)\b/gi;
 /** The lockout is taken off in this very step — a correct later energized step. */
-const LOCKOUT_REMOVED =
+export const LOCKOUT_REMOVED =
   /\b(?:remov\w* (?:the )?lock[\s-]?out|lock[\s-]?out (?:has been |is )?removed|lock[\s-]?out removal|locked out removed)\b/i;
 /** Isolation stated as still in force — contradicts any restore in the same step. */
 const STILL_ISOLATED = /\b(?:still (?:locked[\s-]?out|isolated|de[\s-]?energi[sz]ed)|under (?:lock[\s-]?out|LOTO)(?![\s-]*(?:removal|removed))|with the lock[\s-]?out (?:still )?in place)\b/i;
@@ -45,10 +45,10 @@ const DEAD_PURPOSE =
 /** A prohibition ("do not press start", "never measure the voltage") is not an instruction. */
 // Ends at "but"/"then" so the instruction after it survives (Codex #4146 r2 F2);
 // "do not forget to …" is an instruction, not a prohibition.
-const PROHIBITION = /\b(?:do not|don't|never|avoid|without)\b(?!\s+forget)[^,;.]*?(?=\s+(?:but|and then|then)\b|[,;.]|$)/gi;
+export const PROHIBITION = /\b(?:do not|don't|never|avoid|without)\b(?!\s+forget)[^,;.]*?(?=\s+(?:but|and then|then)\b|[,;.]|$)/gi;
 /** Isolation stated as a CONDITION of the step ("with the machine locked out, …") — as
  *  opposed to a sequence ("lock out, remove the drive, restore power"). */
-const STATE_ISOLATED = /\b(?:with|while|keeping) (?:the )?(?:[\w-]+ ){0,2}(?:locked[\s-]?out|isolated|de[\s-]?energi[sz]ed)\b/i;
+export const STATE_ISOLATED = /\b(?:with|while|keeping) (?:the )?(?:[\w-]+ ){0,2}(?:locked[\s-]?out|isolated|de[\s-]?energi[sz]ed)\b/i;
 /** "noted the display, then proceed to lock out" — the observation happens BEFORE isolation. */
 const OBSERVE_THEN_ISOLATE = /\b(?:display|LEDs?|status|fault)\b[^.]*?\b(?:then|proceed|before)\b[^.]*?\b(?:lock(?:ed)?[\s-]?out|lockout|LOTO|isolat\w*)\b/i;
 
@@ -73,6 +73,12 @@ function steps(text: string): { line: number; text: string; lead: boolean; list:
     for (const s of body.split(/(?<=[.!?])\s+(?=[A-Z0-9*])/)) out.push({ line, text: s, lead, list });
   });
   return out;
+}
+
+/** Step texts in the same order `stepEnergyContradiction` walks them.
+ *  List markers stay attached to their item; "1." is never a step of its own. */
+export function stepTexts(text: string): string[] {
+  return steps(text).map((s) => s.text).filter((t) => t.trim());
 }
 
 /** The first step that is both isolated and needs power, or null. */
