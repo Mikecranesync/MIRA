@@ -10,7 +10,7 @@
  * Never: PLC/drive writes, resets, energized-work instructions, interlock bypasses, invented numbers.
  */
 
-/** A piece of evidence the investigation may cite. `id` is stable within one run: `${docId}:${page}:${ordinal}`. */
+/** A piece of evidence the investigation may cite. `id` is stable across tool calls: `${docId}:${page}:${sha1(text)[:10]}`. */
 export type EvidenceItem = {
   id: string;
   source: "manual" | "drive_pack" | "alarm_pack" | "observation";

@@ -137,6 +137,46 @@ function valueNearIdentifier(text: string, identifier: string): string | null {
   return null;
 }
 
+/** Narrative questions (no code/parameter to anchor on): evidence counts as on-topic when its best item contains
+ *  at least this share of the question's distinctive words. Set on DEV forum sets only (pre-registration §6). */
+export const KEY_TERM_COVERAGE_MIN = 0.5;
+/** Round 2 for a narrative question re-asks with a wider pool: the Week-1 taxonomy found 76% of production misses
+ *  had the right page in the hub's own candidate pool, ranked 6–50 (taxonomy/classify-shipped). */
+export const SECOND_ROUND_WIDE_TOPK = 24;
+
+const STOPWORDS = new Set(
+  ("about above after again against also among another anyone anything around because been before being below " +
+    "between both cannot could does doing done down during each either else even every from further have having " +
+    "help here hello into just know like make many more most much need never only other over please same seem " +
+    "should since some still such than thank thanks that their them then there these they thing think this those " +
+    "though through under until upon very want were what when where which while will with within without would " +
+    "your yours using used working work works problem issue issues trying tried getting anybody someone something " +
+    "currently already really maybe right okay").split(" "),
+);
+
+/** Distinctive words of a message: lower-cased alphanumeric tokens of ≥ 4 chars, not stopwords, de-duplicated. */
+export function keyTerms(message: string): string[] {
+  const out: string[] = [];
+  for (const t of message.toLowerCase().match(/[a-z0-9]+/g) ?? []) {
+    if (t.length < 4 || STOPWORDS.has(t) || /^\d+$/.test(t) || out.includes(t)) continue;
+    out.push(t);
+  }
+  return out;
+}
+
+/** Best single evidence item's share of the message's key terms (0 when the message has none). */
+export function keyTermCoverage(message: string, evidence: EvidenceItem[]): number {
+  const terms = keyTerms(message);
+  if (terms.length === 0) return 0;
+  let best = 0;
+  for (const e of evidence) {
+    const words = new Set(e.text.toLowerCase().match(/[a-z0-9]+/g) ?? []);
+    const hit = terms.filter((t) => words.has(t)).length / terms.length;
+    if (hit > best) best = hit;
+  }
+  return best;
+}
+
 /** For each code/parameter the plan names, collect the (evidenceId, value)
  *  pairs reported near that identifier across every evidence item; flag a
  *  contradiction when 2+ DISTINCT values are reported for the SAME
@@ -170,6 +210,8 @@ export function checkSufficiency(
   plan: InvestigationPlan,
   evidence: EvidenceItem[],
   equipment: EquipmentContext,
+  /** The technician's message — enables the narrative-question topical check (omitted ⇒ check skipped). */
+  message?: string,
 ): SufficiencyCheck {
   const uncoveredTerms = computeUncoveredTerms(plan, evidence);
   const inapplicableEvidenceIds = computeInapplicableEvidenceIds(evidence, equipment);
@@ -192,11 +234,20 @@ export function checkSufficiency(
         ? plan.parameters.every((p) => isTermCovered(p, evidence))
         : true;
 
-  const sufficient = uncoveredTerms.length === 0 && applicableCount >= 1 && codeOrParamCovered;
+  // Narrative questions have no code to anchor coverage on: require the best evidence item to be on-topic.
+  const narrative = plan.intent !== "fault_code" && plan.intent !== "parameter";
+  const topical =
+    !narrative || message === undefined || keyTerms(message).length < 3
+      ? null
+      : keyTermCoverage(message, evidence);
+  const topicalOk = topical === null || topical >= KEY_TERM_COVERAGE_MIN;
+
+  const sufficient = uncoveredTerms.length === 0 && applicableCount >= 1 && codeOrParamCovered && topicalOk;
 
   const reasons: string[] = [];
   if (uncoveredTerms.length > 0) reasons.push(`no evidence covers: ${uncoveredTerms.join(", ")}`);
   if (applicableCount === 0) reasons.push("no applicable evidence for this equipment");
+  if (!topicalOk) reasons.push(`weak topical match: best evidence covers ${Math.round((topical ?? 0) * 100)}% of the question's key terms`);
   if (contradictions.length > 0) {
     reasons.push(`conflicting values documented for: ${contradictions.map((c) => c.quantity).join(", ")}`);
   }
@@ -243,6 +294,8 @@ export function secondRoundCalls(
   check: SufficiencyCheck,
   remainingToolBudget: number,
   drivePackId?: string | null,
+  /** The technician's message: the wide re-search query when there are no symptoms/parameters to search on. */
+  message?: string,
 ): Array<{ tool: ToolName; input: Record<string, unknown> }> {
   const calls: Array<{ tool: ToolName; input: Record<string, unknown> }> = [];
   if (remainingToolBudget <= 0) return calls;
@@ -266,8 +319,10 @@ export function secondRoundCalls(
   }
 
   if (calls.length === 0 && hasBudget()) {
-    const query = [...plan.symptoms, ...plan.parameters].join(" ").trim();
-    if (query) calls.push({ tool: "search_manual", input: { query, rawQuery: query } });
+    // Same question, wider candidate pool (ranks 9–24 become visible to the model). The raw message keeps the hub's
+    // exact-code and rare-term lanes working; symptom keywords alone lose them.
+    const query = (message ?? "").trim() || [...plan.symptoms, ...plan.parameters].join(" ").trim();
+    if (query) calls.push({ tool: "search_manual", input: { query, rawQuery: query, topK: SECOND_ROUND_WIDE_TOPK } });
   }
 
   return calls;

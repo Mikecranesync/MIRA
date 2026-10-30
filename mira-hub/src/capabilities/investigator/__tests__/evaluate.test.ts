@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkSufficiency, secondRoundCalls } from "../evaluate";
+import { checkSufficiency, keyTermCoverage, keyTerms, SECOND_ROUND_WIDE_TOPK, secondRoundCalls } from "../evaluate";
 import type { EquipmentContext, EvidenceItem, InvestigationPlan } from "../types";
 
 function basePlan(overrides: Partial<InvestigationPlan> = {}): InvestigationPlan {
@@ -222,5 +222,51 @@ describe("secondRoundCalls", () => {
     const check = checkSufficiency(plan, [], unknownEquipment);
     const calls = secondRoundCalls(plan, check, 2, "powerflex_525");
     expect(calls.length).toBeLessThanOrEqual(2);
+  });
+});
+
+describe("narrative questions — topical sufficiency", () => {
+  const msg = "Conveyor motor hums but will not accelerate after the soft starter ramp completes";
+  const equipment: EquipmentContext = { manufacturer: null, model: null, identityStatus: "user_confirmed", drivePackId: null };
+
+  it("keyTerms drops stopwords, short tokens, bare numbers and repeats", () => {
+    expect(keyTerms("The motor and the MOTOR will not start at 60 Hz, please help")).toEqual(["motor", "start"]);
+  });
+
+  it("keyTermCoverage is the best single item's share of key terms", () => {
+    const terms = keyTerms(msg);
+    const strong = ev("If the motor hums and does not accelerate when the soft starter ramp completes, check the conveyor load.");
+    const weak = ev("Mounting dimensions and enclosure ratings.");
+    expect(keyTermCoverage(msg, [weak])).toBe(0);
+    expect(keyTermCoverage(msg, [weak, strong])).toBeGreaterThanOrEqual(0.5);
+    expect(terms.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("off-topic evidence makes a narrative question insufficient; on-topic evidence does not", () => {
+    const plan = basePlan({ intent: "symptom" });
+    const off = checkSufficiency(plan, [ev("Mounting dimensions and enclosure ratings.")], equipment, msg);
+    expect(off.sufficient).toBe(false);
+    expect(off.reasons.join(" ")).toMatch(/weak topical match/);
+    const on = checkSufficiency(
+      plan,
+      [ev("If the motor hums and does not accelerate when the soft starter ramp completes, check the conveyor load.")],
+      equipment,
+      msg,
+    );
+    expect(on.sufficient).toBe(true);
+  });
+
+  it("the topical check never applies to fault-code questions or when no message is given", () => {
+    const plan = basePlan({ codes: ["F004"], intent: "fault_code" });
+    expect(checkSufficiency(plan, [ev("F004 UnderVoltage")], equipment, msg).sufficient).toBe(true);
+    expect(checkSufficiency(basePlan({ intent: "symptom" }), [ev("Mounting dimensions.")], equipment).sufficient).toBe(true);
+  });
+
+  it("round 2 for a narrative question re-searches the message with the wide pool", () => {
+    const plan = basePlan({ intent: "symptom" });
+    const check = checkSufficiency(plan, [ev("Mounting dimensions.")], equipment, msg);
+    expect(secondRoundCalls(plan, check, 3, null, msg)).toEqual([
+      { tool: "search_manual", input: { query: msg, rawQuery: msg, topK: SECOND_ROUND_WIDE_TOPK } },
+    ]);
   });
 });

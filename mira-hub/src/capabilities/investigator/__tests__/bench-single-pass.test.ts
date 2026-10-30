@@ -101,3 +101,15 @@ describe("defaultPostCheck (wired to CORE's grounding.ts)", () => {
  * `expect(lifted.sourceLine).toBe(325)` → `expected 999 to be 325`). Restored
  * the constant to `325` and reran — test passed again.
  */
+
+describe("chunksToEvidenceItems — stable ids", () => {
+  it("the same passage gets the same id whichever call returned it, and different passages differ", () => {
+    const chunk = (content: string, page: number) =>
+      ({ content, docId: "d1", manufacturer: "", modelNumber: "", sourceUrl: "u", sourcePage: page, title: "t", rank: 1 }) as never;
+    const a = chunksToEvidenceItems([chunk("alpha text", 3), chunk("beta text", 4)]);
+    const b = chunksToEvidenceItems([chunk("beta text", 4), chunk("alpha text", 3)]);
+    expect(a[0].id).toBe(b[1].id);
+    expect(a[1].id).toBe(b[0].id);
+    expect(a[0].id).not.toBe(a[1].id);
+  });
+});

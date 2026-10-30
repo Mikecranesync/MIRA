@@ -217,9 +217,11 @@ function emptyRow(stopReason: StopReason, trace: SinglePassRow["trace"]): Single
 
 /** Shared helper (also used by run_cases.ts's `createBenchTools`): map
  *  retrieved chunks onto the shared `EvidenceItem` contract (types.ts). */
+/** Evidence id = doc:page:sha1(text)[:10] — stable across tool calls, so the same passage found by two searches
+ *  (or by a search and a code lookup) dedupes instead of filling two of the model's evidence slots. */
 export function chunksToEvidenceItems(chunks: ManualChunk[]): EvidenceItem[] {
-  return chunks.map((c, i) => ({
-    id: `${c.docId ?? c.sourceUrl ?? "unknown"}:${c.sourcePage ?? "null"}:${i}`,
+  return chunks.map((c) => ({
+    id: `${c.docId ?? c.sourceUrl ?? "unknown"}:${c.sourcePage ?? "null"}:${createHash("sha1").update(c.content).digest("hex").slice(0, 10)}`,
     source: "manual",
     docId: c.docId ?? null,
     title: c.title,

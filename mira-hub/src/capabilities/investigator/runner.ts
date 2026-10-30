@@ -184,6 +184,9 @@ function synthesisOutputText(output: SynthesisOutput): string {
  * One lookup per distinct code: "F081" and "F81" are the same fault (the hub's exact-code lane already expands
  * zero-padding both ways, #4979), so looking both up spends two of the tool budget for one fact.
  */
+/** Extra evidence slots the model gets when round 2 ran (10 → 16 at DEFAULT_LIMITS). */
+export const ROUND2_EXTRA_EVIDENCE = 6;
+
 export function distinctCodes(codes: readonly string[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
@@ -398,20 +401,24 @@ export async function investigate(input: InvestigationInput, deps: InvestigateDe
     }
     return out;
   }
+  // A round-2 wide search adds up to ROUND2_EXTRA_EVIDENCE items to what the model reads; without the extra room the
+  // new (deeper-ranked) items would sit behind round 1's and be cut off before the model saw them.
+  let round2Ran = false;
   function finalEvidenceForModel(): EvidenceItem[] {
-    return dedupedEvidence().slice(0, limits.maxEvidenceItems);
+    return dedupedEvidence().slice(0, limits.maxEvidenceItems + (round2Ran ? ROUND2_EXTRA_EVIDENCE : 0));
   }
 
   // 7. First sufficiency check, over the FULL (uncapped) accumulated pool —
   //    the decision to spend a second round should see everything found so
   //    far, not an artificially truncated subset.
   const sufficiencyLog: SufficiencyCheck[] = [];
-  let check = checkSufficiency(plan, dedupedEvidence(), input.equipment);
+  let check = checkSufficiency(plan, dedupedEvidence(), input.equipment, input.message);
   sufficiencyLog.push(check);
 
   // 8. Round 2 (arm H2 only), targeted via secondRoundCalls.
   if (!check.sufficient && limits.maxRounds === 2) {
-    const calls = secondRoundCalls(plan, check, remainingBudget(), drivePackId);
+    const calls = secondRoundCalls(plan, check, remainingBudget(), drivePackId, input.message);
+    round2Ran = calls.length > 0;
     for (const c of calls) {
       if (remainingBudget() <= 0) break;
       if (c.tool === "lookup_code") {
@@ -437,17 +444,18 @@ export async function investigate(input: InvestigationInput, deps: InvestigateDe
       } else if (c.tool === "search_manual") {
         const query = String(c.input.query ?? "");
         const rawQuery = typeof c.input.rawQuery === "string" ? c.input.rawQuery : query;
+        const topK = typeof c.input.topK === "number" ? c.input.topK : limits.topK;
         const items = await callTool(
           2,
           "search_manual",
-          { query, rawQuery, docIds: input.docIds, topK: limits.topK },
-          () => deps.tools.searchManual({ query, rawQuery, docIds: input.docIds, topK: limits.topK }),
+          { query, rawQuery, docIds: input.docIds, topK },
+          () => deps.tools.searchManual({ query, rawQuery, docIds: input.docIds, topK }),
         );
         searchEvidence.push(...items);
       }
       toolCallsUsed += 1;
     }
-    check = checkSufficiency(plan, dedupedEvidence(), input.equipment);
+    check = checkSufficiency(plan, dedupedEvidence(), input.equipment, input.message);
     sufficiencyLog.push(check);
   }
 

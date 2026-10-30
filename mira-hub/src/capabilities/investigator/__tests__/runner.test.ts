@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { investigate, distinctCodes } from "../runner";
+import { investigate, distinctCodes, ROUND2_EXTRA_EVIDENCE } from "../runner";
 import type {
   EvidenceItem,
   InvestigationInput,
@@ -348,5 +348,26 @@ describe("distinctCodes", () => {
   });
   it("keeps codes with different letters apart", () => {
     expect(distinctCodes(["F4", "A4", "oC", "OC"])).toEqual(["F4", "A4", "oC"]);
+  });
+});
+
+describe("investigate — H2 wide second round for narrative questions", () => {
+  const msg = "Conveyor motor hums but will not accelerate after the soft starter ramp completes";
+  const offTopic = Array.from({ length: 10 }, (_, i) => ev(`Mounting dimensions table ${i}.`, { id: `off-${i}`, page: 100 + i }));
+
+  it("H2 re-searches with topK 24 and lets the extra items reach the model; H1 does not", async () => {
+    for (const arm of ["H1", "H2"] as const) {
+      const tools = fakeTools({ searchManual: offTopic });
+      await investigate(baseInput({ message: msg }), { tools, model: null, ledger: null, arm });
+      const searches = tools.calls.filter((c) => c.tool === "search_manual").map((c) => (c.input as { topK: number }).topK);
+      expect(searches).toEqual(arm === "H1" ? [8] : [8, 24]);
+    }
+  });
+
+  it("the round-2 evidence allowance is maxEvidenceItems + ROUND2_EXTRA_EVIDENCE", async () => {
+    const many = Array.from({ length: 30 }, (_, i) => ev(`Mounting dimensions table ${i}.`, { id: `m-${i}`, page: i + 1 }));
+    const tools = fakeTools({ searchManual: many });
+    const r = await investigate(baseInput({ message: msg }), { tools, model: null, ledger: null, arm: "H2" });
+    expect(r.evidence.length).toBeLessThanOrEqual(10 + ROUND2_EXTRA_EVIDENCE);
   });
 });
