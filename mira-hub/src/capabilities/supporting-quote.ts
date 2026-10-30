@@ -14,6 +14,7 @@
  * Deterministic and zero-token: no model call.
  */
 import { claimIdentifiers } from "@/lib/quote-window";
+import { appearsVerbatim, identifierAt, tableUnit } from "./numeric-support";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Root } from "mdast";
@@ -23,34 +24,8 @@ export const MODEL_VISIBLE_CHARS = 1200;
 const SPAN = 240; // relevantQuoteWindow's default span
 const MAX_MARKER_DISTANCE = 300;
 
-// Design rev 5 (#4315 §14): a value is usable only when EVERY part of it is recognized. Its
-// unit must be in this closed table. Symbols are matched exactly as written — case carries
-// meaning (mW ≠ MW, mΩ ≠ MΩ, N·m ≠ nm) — and only unambiguous case variants are listed. A
-// spelled-out name matches in any case. An unknown unit, or no unit, makes a value unusable.
-// Maps, not object literals: a lookup must never reach an inherited property ("constructor").
-const UNIT_SYMBOLS = new Map<string, string>(Object.entries({
-  V: "V", v: "V", mV: "mV", kV: "kV", KV: "kV", MV: "MV", Vrms: "Vrms", VRMS: "Vrms",
-  VAC: "VAC", Vac: "VAC", "V AC": "VAC", "V ac": "VAC", VDC: "VDC", Vdc: "VDC", "V DC": "VDC", "V dc": "VDC",
-  A: "A", mA: "mA", kA: "kA", W: "W", mW: "mW", kW: "kW", KW: "kW", kw: "kW", MW: "MW",
-  VA: "VA", kVA: "kVA", KVA: "kVA", kva: "kVA", Hz: "Hz", hz: "Hz", HZ: "Hz", kHz: "kHz", KHz: "kHz", khz: "kHz", MHz: "MHz",
-  rpm: "rpm", RPM: "rpm", "°C": "°C", "ºC": "°C", "℃": "°C", "°F": "°F", "ºF": "°F", "℉": "°F", "%": "%",
-  "Ω": "Ω", "kΩ": "kΩ", "MΩ": "MΩ", "mΩ": "mΩ", "N·m": "N·m", "N-m": "N·m", Nm: "N·m", "N m": "N·m",
-  "lb·in": "lb·in", "lb-in": "lb·in", "lb·ft": "lb·ft", "lb-ft": "lb·ft",
-  mm: "mm", cm: "cm", m: "m", km: "km", in: "in", ft: "ft", mm2: "mm²", m2: "m²", AWG: "AWG", awg: "AWG",
-  s: "s", ms: "ms", "µs": "µs", min: "min", h: "h", Pa: "Pa", kPa: "kPa", MPa: "MPa", bar: "bar",
-  psi: "psi", PSI: "psi", hp: "hp", HP: "hp",
-}));
-const UNIT_NAMES = new Map<string, string>(Object.entries({
-  volt: "V", volts: "V", amp: "A", amps: "A", ampere: "A", amperes: "A", watt: "W", watts: "W",
-  kilowatt: "kW", kilowatts: "kW", hertz: "Hz", second: "s", seconds: "s", sec: "s", secs: "s",
-  minute: "min", minutes: "min", mins: "min", hour: "h", hours: "h", hr: "h", hrs: "h", percent: "%",
-  ohm: "Ω", ohms: "Ω", millimeter: "mm", millimeters: "mm", millimetre: "mm", millimetres: "mm", inch: "in", inches: "in",
-}));
-/** The table unit a token names, or null. `N · m` and `lb - in` close up before lookup. */
-function tableUnit(token: string): string | null {
-  const k = token.replace(/\s*([·-])\s*/g, "$1").replace(/\s+/g, " ");
-  return UNIT_SYMBOLS.get(k) ?? UNIT_NAMES.get(k.toLowerCase()) ?? null;
-}
+// The unit table (design rev 5, #4315 §14) lives in numeric-support.ts, shared with the anomaly
+// detector's unit-claim check (#4870).
 // Words that follow a number without being its unit ("525 is", "12 and 13", "12 per shift").
 // Any OTHER word after a number is taken as its unit, so an explicit unit outside the table
 // ("12 furlongs") is captured — and is unusable — rather than silently dropped.
@@ -579,6 +554,94 @@ function satisfies(src: Value, claim: Value): boolean {
   return claim.nums.every((c) => src.nums.some((x) => x === c));
 }
 
+/** #4870: the number in a claimed value is part of an identifier (model, catalog, part or
+ *  fault code), so the value is not a numeric claim. */
+function identifierValue(answer: string, v: Value): boolean {
+  const m = /\d+(?:\.\d+)?/.exec(v.text);
+  if (!m) return false;
+  const s = v.start + m.index;
+  return identifierAt(answer, s, s + m[0].length);
+}
+
+/** #4870: does any of `texts` (full chunk text, photo observations) support a claimed value?
+ *  The parser stays authoritative for a value it can read: a usable claim needs a usable source
+ *  value that satisfies it. Only a value the parser cannot read (unitless, signed range, unknown
+ *  unit) falls back to its literal text appearing verbatim. Source values are parsed once. */
+class ClaimSupport {
+  private parsed: Value[] | null = null;
+  private plusComplete: Set<number> | null = null;
+  constructor(private readonly texts: readonly string[], private readonly answer: string) {}
+  holds(claim: Value): boolean {
+    if (this.texts.length === 0) return false;
+    if (claim.usable) {
+      this.parsed ??= this.texts.flatMap((t) => findValues(t, "source"));
+      return this.parsed.some((sv) => satisfies(sv, claim));
+    }
+    // Verbatim is only for a value the parser read whole: a fragment (1e-3, 1 000, 12 m/s) is
+    // never rescued by its pieces. The one exception is a leading "+", which the parser reads as
+    // a join mark: "+18.5 V" is re-read with that sign as a space, and counts if complete then.
+    // The sign then stays part of the literal: "+12 V" is never supported by a bare "12 V".
+    const plus = !claim.complete;
+    if (plus && !this.completeWithoutPlus(claim)) return false;
+    // A unitless number that shares the next value's unit ("12 or 24 V") is a quantity read
+    // without its unit, so a bare 12 on the page cannot support it.
+    if (claim.unit === null && SHARED_UNIT.test(this.answer.slice(claim.end, claim.end + 40))) return false;
+    return appearsVerbatim(plus ? `+${claim.text}` : claim.text, this.texts);
+  }
+  private completeWithoutPlus(claim: Value): boolean {
+    if (this.answer[claim.start - 1] !== "+") return false;
+    if (this.plusComplete === null) {
+      const unsigned = this.answer.replace(MARKER_RE, (m) => " ".repeat(m.length)).replace(/\+(?=\d)/g, " ");
+      this.plusComplete = new Set(findValues(unsigned, "answer").filter((v) => v.complete).map((v) => v.start));
+    }
+    return this.plusComplete.has(claim.start);
+  }
+}
+const SHARED_UNIT = /^[ \t]*(?:or|and|to|through|-|–|,|\/)[ \t]*[-+]?\d+(?:\.\d+)?[ \t]*[\p{L}°%µΩ℃℉]/u;
+
+/**
+ * #4870 R4 — every numeric claim in the WHOLE answer (cited or not, any unit or none) and how
+ * many of them the evidence the model was given does not support. Excluded, as in
+ * assignValues: a footnote "(1)", a page reference, a list ordinal, the machine the question
+ * names; and, new here, identifiers (identifierAt) and an all-zero magnitude ("verify 0 V" is
+ * an isolation check, never a rating — #3963). Support is ClaimSupport over the full chunk
+ * texts and photo observations. Pure; counts only, no text leaves this function.
+ */
+export function numericClaimSupport(
+  answer: string,
+  question: string,
+  evidence: { sources: readonly string[]; observations: readonly string[] },
+): { claims: number; unsupported: number } {
+  const identity = new Set(
+    [...normalize(question).matchAll(/([\p{L}][\p{L}-]*)[\s-]?(\d+)/gu)].map((m) => `${m[1]}|${m[2]}`),
+  );
+  const masked = answer.replace(MARKER_RE, (m) => " ".repeat(m.length));
+  const support = new ClaimSupport([...evidence.sources, ...evidence.observations], answer);
+  let claims = 0;
+  let unsupported = 0;
+  for (const v of findValues(masked, "answer")) {
+    const vs = v.start;
+    const ve = v.end;
+    const before = normalize(masked.slice(Math.max(0, vs - 24), vs));
+    const lineStart = Math.max(masked.lastIndexOf("\n", vs - 1), masked.lastIndexOf("\r", vs - 1)) + 1;
+    if (v.unit === null) {
+      if (masked[vs - 1] === "(" && masked[ve] === ")" && v.nums.length === 1 && Number.isInteger(v.nums[0]) && v.nums[0] < 10) continue;
+      if (PAGE_RE.test(before)) continue;
+      if (/^\s*(?:[-*•]\s+)?$/.test(masked.slice(lineStart, vs)) && /^[.)]\s/.test(masked.slice(ve, ve + 2))) continue;
+    }
+    if (v.unit === null || v.unit.startsWith("raw:")) {
+      const word = before.match(/([\p{L}][\p{L}-]*)[\s-]?$/u)?.[1] ?? "";
+      if (word && v.nums.length === 1 && identity.has(`${word}|${v.nums[0]}`)) continue;
+      if (/^\s*-?series/i.test(masked.slice(ve, ve + 8))) continue;
+    }
+    if (v.nums.every((n) => n === 0)) continue;
+    if (identifierValue(answer, v)) continue;
+    claims += 1;
+    if (!support.holds(v)) unsupported += 1;
+  }
+  return { claims, unsupported };
+}
+
 export type SupportingQuote = {
   /** null ⇒ no claimed value matched: keep the citation's existing quote (today's behavior). */
   quote: string | null;
@@ -592,6 +655,7 @@ export function supportingQuote(
   answer: string,
   citationId: string,
   question: string,
+  observations: readonly string[] = [],
 ): SupportingQuote {
   const claims = assignValues(answer, question).get(citationId) ?? [];
   if (claims.length === 0 || chunks.length === 0) return { quote: null, support: "question_fallback", unsupported: [] };
@@ -627,7 +691,13 @@ export function supportingQuote(
       });
     }
   });
-  const unsupported = claims.filter((_, k) => !everMatched.has(k)).map((c) => c.text.trim());
+  // #4870: the count is decided in a separate pass so the proof quote above never changes. A
+  // claim the model-visible window did not hold is still supported by the FULL chunk text or
+  // the turn's photo reading, and a model/catalog/fault-code token is not a claim at all.
+  const support = new ClaimSupport([...chunks, ...observations], answer);
+  const unsupported = claims
+    .filter((c, k) => !everMatched.has(k) && !identifierValue(answer, c) && !support.holds(c))
+    .map((c) => c.text.trim());
   if (cands.length === 0) return { quote: null, support: "question_fallback", unsupported };
   cands.sort(
     (a, b) =>
@@ -656,6 +726,8 @@ export function withSupportingQuotes<C extends QuotableCitation>(
   chunks: readonly PageChunk[],
   answer: string,
   question: string,
+  /** #4870: the turn's photo-observation texts — support for a cited value, never a quote. */
+  observations: readonly string[] = [],
 ): { citations: C[]; unsupportedValueCount: number; quoteFallbackCount: number } {
   const byKey = new Map<string, string[]>();
   for (const c of chunks) {
@@ -668,7 +740,7 @@ export function withSupportingQuotes<C extends QuotableCitation>(
   const out = citations.map((c) => {
     const pageChunks = pages[Number(c.citationId) - 1];
     if (!pageChunks) return c;
-    const r = supportingQuote(pageChunks, answer, c.citationId, question);
+    const r = supportingQuote(pageChunks, answer, c.citationId, question, observations);
     unsupportedValueCount += r.unsupported.length;
     if (r.quote === null) {
       quoteFallbackCount += 1;

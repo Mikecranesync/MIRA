@@ -54,7 +54,7 @@ import {
   openAiRunBudget,
   type BudgetReservation,
 } from "@/capabilities/openai-run-budget";
-import { withSupportingQuotes } from "@/capabilities/supporting-quote";
+import { numericClaimSupport, withSupportingQuotes } from "@/capabilities/supporting-quote";
 import { shadowVerifyCitedTurn } from "@/capabilities/claim-verifier-shadow";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
 import { isWeakEvidence, WEAK_EVIDENCE_LABEL, WEAK_EVIDENCE_RULE } from "@/capabilities/observability/jev-weak-evidence";
@@ -4770,11 +4770,18 @@ async function handleChatTurn(
       // #4315: each emitted citation's proof quote is re-derived from the ANSWER — the
       // window, across every chunk of the cited page, holding the values that citation
       // claims (number + unit). A citation with no matched value keeps its quote as is.
+      // #4870: the photo-observation text the model was given this turn (this turn's LOOK, the
+      // recalled earlier LOOKs, the bound asset's stored readings) and the FULL text of every
+      // chunk in context. Support for a stated number only — never quoted, never stored.
+      const observationTexts = [lookRow?.text ?? "", ...priorLookRows.map((r) => r.text), ...visualReadings]
+        .filter((t) => t.trim().length > 0);
+      const numericEvidence = { sources: chunks.map((c) => c.content), observations: observationTexts };
       const quoted = withSupportingQuotes(
         !docGrounded || !served || refused || outputRejected ? [] : citationsUsedInAnswer(answerText, citations),
         chunks,
         answerText,
         message,
+        observationTexts,
       );
       const emittedCitations = quoted.citations;
       const answerStatus: "answered" | "insufficient_evidence" | "error" = !served
@@ -4809,7 +4816,10 @@ async function handleChatTurn(
         const gateDecision: "answered" | "insufficient_evidence" | "blocked" | "error" = outputRejected
           ? "blocked"
           : answerStatus;
-        const ungroundedClaim = served && !refused ? ungroundedUnitClaim(answerText) : false;
+        const ungroundedClaim = served && !refused ? ungroundedUnitClaim(answerText, numericEvidence) : false;
+        // #4870 R4 (observe-only): every numeric claim in the answer, and how many the chunks in
+        // context and the photo reading do not support. Counts only.
+        const numericSupport = served && !refused ? numericClaimSupport(answerText, message, numericEvidence) : null;
         ungroundedClaimForBadge = ungroundedClaim;
         // #3962 — run on the RAW strings here, like ungroundedUnitClaim, because
         // the packet deliberately carries no answer text and so this can never
@@ -4852,6 +4862,9 @@ async function handleChatTurn(
           citations_shipped: emittedCitations.length,
           cited_values_unsupported: quoted.unsupportedValueCount,
           citation_quote_fallbacks: quoted.quoteFallbackCount,
+          ...(numericSupport
+            ? { numeric_claims: numericSupport.claims, numeric_claims_unsupported: numericSupport.unsupported }
+            : {}),
           evidence_followed: evidenceFollowed,
           gate_match: gateMatch,
         });

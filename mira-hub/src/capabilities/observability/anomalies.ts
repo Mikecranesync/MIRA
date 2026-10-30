@@ -13,6 +13,7 @@
  * from the raw packet every time.
  */
 import type { TurnEvidencePacket } from "./turn-evidence-packet";
+import { appearsVerbatim, identifierAt } from "@/capabilities/numeric-support";
 
 export type AnomalyCode =
   | "PHOTO_WITH_NO_OBSERVATIONS"
@@ -54,9 +55,21 @@ const UNGROUNDED_UNIT_CLAIM_RE = /\d+(\.\d+)?\s*(in|mm|cm|°C|V|A)\b/;
  * ever stored on the packet (`answer_gate.ungrounded_unit_claim`). This
  * function itself is pure text -> boolean and keeps no state.
  */
-export function ungroundedUnitClaim(answerText: string): boolean {
+export function ungroundedUnitClaim(
+  answerText: string,
+  evidence?: { sources: readonly string[]; observations: readonly string[] },
+): boolean {
+  // #4870 (R4 calibration, T-2): a match is grounded when its literal text is in the evidence
+  // the model was given — the full text of the chunks in context, or the turn's photo
+  // observation text — and is not a claim at all when its number is part of an identifier
+  // (a part tag like "ZT88120‑4 in"). Without `evidence` this is the evidence-blind regex.
+  const support = evidence ? [...evidence.sources, ...evidence.observations].filter(Boolean) : [];
   for (const m of answerText.matchAll(UNGROUNDED_UNIT_CLAIM_GLOBAL)) {
-    if (!isZeroMagnitude(m[0])) return true;
+    if (isZeroMagnitude(m[0])) continue;
+    const start = m.index ?? 0;
+    if (identifierAt(answerText, start, start + (m[0].match(/^\d+(\.\d+)?/)?.[0].length ?? 0))) continue;
+    if (support.length > 0 && appearsVerbatim(m[0], support)) continue;
+    return true;
   }
   return false;
 }

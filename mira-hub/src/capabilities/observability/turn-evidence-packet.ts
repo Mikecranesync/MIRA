@@ -226,11 +226,22 @@ export type TurnEvidencePacketAnswerGate = {
    *  that never evaluate it (read as false). */
   weak_evidence_badge?: boolean;
   /**
-   * #4315 (observe-only): numeric values the answer cited that appear nowhere in the
-   * cited page's model-visible text (number + unit). A count — never the values or any
-   * answer text. Optional: absent on gate paths that ship no citations (read as 0).
+   * #4315 (observe-only): numeric values the answer cited that the cited page does not
+   * support (number + unit). Since #4870 the page's FULL chunk text and the turn's photo
+   * observations count as support, a value the parser cannot read counts when its literal
+   * text is on the page, and model/catalog/fault-code tokens are not values. A count —
+   * never the values or any answer text. Optional: absent on gate paths that ship no
+   * citations (read as 0).
    */
   cited_values_unsupported?: number;
+  /**
+   * #4870 (observe-only): numeric claims anywhere in the answer (any unit or none;
+   * identifiers, footnotes, page references, list ordinals and zero magnitudes excluded),
+   * and how many of them neither the chunks in context nor the photo observation text
+   * support. Counts only. Optional: absent on paths that never evaluate them.
+   */
+  numeric_claims?: number;
+  numeric_claims_unsupported?: number;
   /** #4315: emitted citations that kept the question-window quote (no claimed value matched). */
   citation_quote_fallbacks?: number;
   /**

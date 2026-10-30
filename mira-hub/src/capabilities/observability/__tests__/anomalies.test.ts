@@ -403,3 +403,27 @@ describe("CITED_VALUE_NOT_IN_SOURCE (#4315, observe-only)", () => {
     expect(codesOf(turn1 as unknown as TurnEvidencePacket)).not.toContain("CITED_VALUE_NOT_IN_SOURCE");
   });
 });
+
+// #4870 T-2 — the unit-claim check consults the evidence the model was given. Constructed
+// examples; none copied from the calibration sample.
+describe("#4870 — ungroundedUnitClaim with evidence (verbatim, photo, identifiers)", () => {
+  const none = { sources: [] as string[], observations: [] as string[] };
+  it("a unit claim that appears verbatim in a context chunk is grounded", () => {
+    expect(ungroundedUnitClaim("Feed it 36 V from the bus.", { ...none, sources: ["Rated input 36 V"] })).toBe(false);
+  });
+  it("a unit claim read off the photo is grounded by the observation text", () => {
+    expect(ungroundedUnitClaim("The breaker is a 15 A unit.", { ...none, observations: ["breaker labeled 'C 15A'"] })).toBe(false);
+  });
+  it("CONTROL: evidence that does not hold the claim leaves it ungrounded", () => {
+    expect(ungroundedUnitClaim("The breaker is a 15 A unit.", { sources: ["Rated input 36 V"], observations: ["a 10A fuse"] })).toBe(true);
+  });
+  it("CONTROL: with no evidence argument it is the evidence-blind check", () => {
+    expect(ungroundedUnitClaim("Feed it 36 V from the bus.")).toBe(true);
+  });
+  it("a part tag glued to a unit-looking word is not a unit claim", () => {
+    expect(ungroundedUnitClaim("Tag ZT88120‑4 in the cabinet is the feeder.")).toBe(false);
+  });
+  it("one grounded claim does not launder an ungrounded one", () => {
+    expect(ungroundedUnitClaim("Feed it 36 V; the fuse is 5 A.", { ...none, sources: ["Rated input 36 V"] })).toBe(true);
+  });
+});
