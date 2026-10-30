@@ -48,12 +48,19 @@ test.describe("factorylm.com — marketing site", () => {
     // #4570: the public site publishes no dollar prices and no checkout. The
     // page's job is now to route a visitor to Mike, so assert that instead of
     // the retired price cards.
+    // Route identity first, so a homepage served at /pricing cannot pass.
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+      "href",
+      "https://factorylm.com/pricing",
+    );
+    await expect(page.getByText(/No published price menu/i).first()).toBeVisible({ timeout: 10_000 });
     await expect(page).toHaveTitle(/FactoryLM/i);
+
     const body = await page.locator("body").innerText();
     expect(body).not.toMatch(/\$\s?\d/);
 
-    const cta = page.locator('a[href^="mailto:mike@factorylm.com"]').first();
-    await expect(cta).toBeVisible({ timeout: 10_000 });
+    const cta = page.locator('a[href="mailto:mike@factorylm.com"]', { hasText: /Talk to Mike/i }).first();
+    await expect(cta).toBeVisible();
   });
 
   test("cmms page: 200 OK + magic link email form present", async ({ page }) => {
