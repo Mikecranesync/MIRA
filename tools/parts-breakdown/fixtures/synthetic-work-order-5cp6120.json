@@ -1,0 +1,55 @@
+{
+  "_provenance": {
+    "kind": "SYNTHETIC",
+    "note": "Fictional plant, asset, work order, whiteboard and people. Written 2026-10-30 for the #4982 work-packet demonstration. No employer records were used. The only real thing referenced is the public CAT Pumps 5CP6120 data sheet and CP service manual.",
+    "sources": [
+      {
+        "title": "CAT Pumps 5CP6120 / 5CP6120CS / 5CP6120CSSG1 Data Sheet, PN 993450 Rev G 5/22",
+        "url": "https://www.catpumps.com/sites/default/files/2022-05/5CP6120_G.pdf",
+        "sha256": "a3b9fdfeeb90bc32"
+      },
+      {
+        "title": "CP Plunger Pump Service Manual (3CP, 5CP, 7CP models), CPSvc(5)",
+        "url": "https://www.catpumps.com/sites/default/files/products/pdfs/CPSvc(5).pdf",
+        "sha256": "f05fb18880eadb32"
+      }
+    ]
+  },
+  "site": "Demo Plant 1 (fictional)",
+  "work_order": {
+    "id": "WO-DEMO-0001",
+    "cmms": "fictional CMMS export (screenshot-style)",
+    "status": "INPRG",
+    "priority": 2,
+    "asset": {
+      "tag": "FOG-PUMP-03",
+      "description": "Fog effect high-pressure pump, Zone B",
+      "manufacturer": "CAT Pumps",
+      "model": "5CP6120",
+      "seal_material_suffix": "unknown (nameplate not yet photographed)",
+      "serial": "unknown"
+    },
+    "title": "5CP6120 reseal: prepare parts, tools and isolation",
+    "reported_symptom": "Water weeping at the manifold during operation; pressure drops after 10 minutes at full flow.",
+    "tasks": [
+      { "seq": 10, "text": "Confirm pump model and seal material from the nameplate", "status": "COMP" },
+      { "seq": 20, "text": "Stage repair kits and consumables", "status": "INPRG" },
+      { "seq": 30, "text": "Isolate per site procedure and verify zero energy / zero pressure", "status": "WAPPR" },
+      { "seq": 40, "text": "Replace seals and valves per service manual", "status": "WAPPR" },
+      { "seq": 50, "text": "Refill crankcase oil; run-in and leak check", "status": "WAPPR" }
+    ],
+    "scheduled_start": "2026-11-03",
+    "target_finish": "2026-11-03"
+  },
+  "whiteboard": {
+    "photo_note": "fictional whiteboard transcription",
+    "columns": ["Weekly", "Monthly", "Quarterly"],
+    "rows": [
+      { "bucket": "Weekly", "item": "FOG-PUMP-03 reseal", "crew": "Crew A", "due": "2026-11-03" },
+      { "bucket": "Weekly", "item": "FOG-PUMP-01 filter dP check", "crew": "Crew B", "due": "2026-11-01" },
+      { "bucket": "Monthly", "item": "Zone B hose inspection", "crew": "Crew A", "due": "2026-11-15" }
+    ]
+  },
+  "technician": { "name": "Demo Technician", "role": "Maintenance Tech II" },
+  "supervisor": { "name": "Demo Supervisor", "role": "Maintenance Supervisor" }
+}
