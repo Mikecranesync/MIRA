@@ -6,7 +6,11 @@ import { renderCmms, renderSamplePlaceholder } from "../cmms.js";
 import { renderLimitations } from "../limitations.js";
 import { renderSecurity } from "../security.js";
 import { navbar, footer } from "../_topbar.js";
-import { FEATURES, renderFeaturePage } from "../../lib/feature-renderer.js";
+import {
+  FEATURES,
+  featuresFromRegistry,
+  renderFeaturePage,
+} from "../../lib/feature-renderer.js";
 import {
   renderBlogIndex,
   renderBlogPost,
@@ -616,6 +620,9 @@ describe("unproven registry claims are suppressed, not replaced with fallback co
       { name: "/blog (renderer)", html: renderBlogIndex(BLOG_POSTS, FAULT_CODES.length, flipped) },
       { name: "/blog/fault-codes (renderer)", html: renderFaultCodeIndex(FAULT_CODES, flipped) },
     ];
+    // Feature pages hardcode citation captions; they fail closed (throw) instead of rendering.
+    expect(() => featuresFromRegistry(flipped)).toThrow();
+
     for (const surface of surfaces) {
       const claims = citationClaims(surface.html);
       expect(claims, `${surface.name} still claims citations: ${claims.join(" | ")}`).toEqual([]);
