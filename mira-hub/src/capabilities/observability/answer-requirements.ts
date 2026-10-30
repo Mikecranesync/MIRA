@@ -52,10 +52,13 @@ export type AnswerRequirementsVerdict = {
  * check found at least one numeric claim in the answer (`answer_gate.numeric_claims`) and the
  * evidence the PROVIDER actually received supports ALL of them (`numeric_claims_unsupported`
  * = 0), and neither deterministic flag fired, the JEV `unsupported_numerics` signal ALONE does
- * not fail R4. "Received" is the route's contract for those counts (#4981, Codex r1 F1): each
- * chunk's model-visible text (first MODEL_VISIBLE_CHARS = manual-rag MAX_CONTENT_CHARS) plus the
- * photo observation text in the prompt — never raw chunk content past the cut, so text the
- * model never saw can never satisfy "all numbers found". This function only reads the counts. It never clears a deterministic flag, never applies when no claim was found, and
+ * not fail R4. "Received" is the route's contract for those counts (#4981, Codex r1 F1 / r2 F2):
+ * each chunk read through providerVisibleChunkText — the SAME transform the prompt is built with
+ * (MAX_CONTENT_CHARS cut, its ellipsis, reference-tag neutralization) — plus the photo
+ * observation text in the prompt, so text the model never saw (past the cut, or inside a
+ * neutralized [Source: …] tag) can never satisfy "all numbers found". The deterministic flag it
+ * also requires to be clear, ungrounded_unit_claim, is derived from the same sign-aware audit
+ * (r2 F1). This function only reads the counts. It never clears a deterministic flag, never applies when no claim was found, and
  * never applies to a packet from a build that does not record the counts. Flipping it changes
  * R4 verdicts: bump ANSWER_REQUIREMENTS_VERSION in the same change.
  */
