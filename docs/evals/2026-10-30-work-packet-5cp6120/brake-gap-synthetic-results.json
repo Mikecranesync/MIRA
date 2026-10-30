@@ -1,0 +1,163 @@
+{
+ "rows": [
+  {
+   "point_id": "DEMO-CAL-1",
+   "before": {
+    "status": "fail",
+    "reasons": [
+     "2.6 mm vs 0.8\u20132.0 mm (inclusive); source Fictional procedure FP-BRK-01 rev 2 \u00a74.2"
+    ],
+    "compared_value": 2.6,
+    "compared_unit": "mm",
+    "limit_source": "Fictional procedure FP-BRK-01 rev 2 \u00a74.2",
+    "notice": "An in-range reading never authorizes return to service; the site's release process decides."
+   },
+   "after": {
+    "status": "pass",
+    "reasons": [
+     "1.4 mm vs 0.8\u20132.0 mm (inclusive); source Fictional procedure FP-BRK-01 rev 2 \u00a74.2"
+    ],
+    "compared_value": 1.4,
+    "compared_unit": "mm",
+    "limit_source": "Fictional procedure FP-BRK-01 rev 2 \u00a74.2",
+    "notice": "An in-range reading never authorizes return to service; the site's release process decides."
+   },
+   "exception": false
+  },
+  {
+   "point_id": "DEMO-CAL-2",
+   "before": {
+    "status": "fail",
+    "reasons": [
+     "2.1 mm vs 0.8\u20132.0 mm (inclusive); source Fictional procedure FP-BRK-01 rev 2 \u00a74.2"
+    ],
+    "compared_value": 2.1,
+    "compared_unit": "mm",
+    "limit_source": "Fictional procedure FP-BRK-01 rev 2 \u00a74.2",
+    "notice": "An in-range reading never authorizes return to service; the site's release process decides."
+   },
+   "after": {
+    "status": "pass",
+    "reasons": [
+     "0.8 mm vs 0.8\u20132.0 mm (inclusive); source Fictional procedure FP-BRK-01 rev 2 \u00a74.2"
+    ],
+    "compared_value": 0.8,
+    "compared_unit": "mm",
+    "limit_source": "Fictional procedure FP-BRK-01 rev 2 \u00a74.2",
+    "notice": "An in-range reading never authorizes return to service; the site's release process decides."
+   },
+   "exception": false
+  },
+  {
+   "point_id": "DEMO-CAL-3",
+   "before": {
+    "status": "pass",
+    "reasons": [
+     "1.9 mm vs 0.8\u20132.0 mm (inclusive); source Fictional procedure FP-BRK-01 rev 2 \u00a74.2"
+    ],
+    "compared_value": 1.9,
+    "compared_unit": "mm",
+    "limit_source": "Fictional procedure FP-BRK-01 rev 2 \u00a74.2",
+    "notice": "An in-range reading never authorizes return to service; the site's release process decides."
+   },
+   "after": {
+    "status": "fail",
+    "reasons": [
+     "2.3 mm vs 0.8\u20132.0 mm (inclusive); source Fictional procedure FP-BRK-01 rev 2 \u00a74.2"
+    ],
+    "compared_value": 2.3,
+    "compared_unit": "mm",
+    "limit_source": "Fictional procedure FP-BRK-01 rev 2 \u00a74.2",
+    "notice": "An in-range reading never authorizes return to service; the site's release process decides."
+   },
+   "exception": true
+  },
+  {
+   "point_id": "DEMO-CAL-4",
+   "before": {
+    "status": "pass",
+    "reasons": [
+     "converted 0.07 in to 1.778 mm (explicit)",
+     "1.778 mm vs 0.8\u20132.0 mm (inclusive); source Fictional procedure FP-BRK-01 rev 2 \u00a74.2"
+    ],
+    "compared_value": 1.778,
+    "compared_unit": "mm",
+    "limit_source": "Fictional procedure FP-BRK-01 rev 2 \u00a74.2",
+    "notice": "An in-range reading never authorizes return to service; the site's release process decides."
+   },
+   "after": {
+    "status": "unassessed",
+    "reasons": [
+     "photo transcription not confirmed by the technician"
+    ],
+    "compared_value": 0.05,
+    "compared_unit": "in",
+    "limit_source": "Fictional procedure FP-BRK-01 rev 2 \u00a74.2",
+    "notice": "An in-range reading never authorizes return to service; the site's release process decides."
+   },
+   "exception": true
+  },
+  {
+   "point_id": "DEMO-CAL-5",
+   "before": {
+    "status": "pass",
+    "reasons": [
+     "1.5 mm vs 0.8\u20132.0 mm (inclusive); source Fictional procedure FP-BRK-01 rev 2 \u00a74.2"
+    ],
+    "compared_value": 1.5,
+    "compared_unit": "mm",
+    "limit_source": "Fictional procedure FP-BRK-01 rev 2 \u00a74.2",
+    "notice": "An in-range reading never authorizes return to service; the site's release process decides."
+   },
+   "after": {
+    "status": "incomplete",
+    "reasons": [
+     "no reading recorded"
+    ],
+    "compared_value": null,
+    "compared_unit": null,
+    "limit_source": "Fictional procedure FP-BRK-01 rev 2 \u00a74.2",
+    "notice": "An in-range reading never authorizes return to service; the site's release process decides."
+   },
+   "exception": true
+  },
+  {
+   "point_id": "DEMO-CAL-6",
+   "before": {
+    "status": "unassessed",
+    "reasons": [
+     "limit missing (min, max, unit and source are all required)"
+    ],
+    "compared_value": 1.2,
+    "compared_unit": "mm",
+    "limit_source": null,
+    "notice": "An in-range reading never authorizes return to service; the site's release process decides."
+   },
+   "after": {
+    "status": "unassessed",
+    "reasons": [
+     "limit missing (min, max, unit and source are all required)"
+    ],
+    "compared_value": 1.1,
+    "compared_unit": "mm",
+    "limit_source": null,
+    "notice": "An in-range reading never authorizes return to service; the site's release process decides."
+   },
+   "exception": true
+  }
+ ],
+ "summary": {
+  "pass": 2,
+  "fail": 1,
+  "unassessed": 2,
+  "incomplete": 1
+ },
+ "complete": false,
+ "exceptions": [
+  "DEMO-CAL-3",
+  "DEMO-CAL-4",
+  "DEMO-CAL-5",
+  "DEMO-CAL-6"
+ ],
+ "notice": "An in-range reading never authorizes return to service; the site's release process decides."
+}

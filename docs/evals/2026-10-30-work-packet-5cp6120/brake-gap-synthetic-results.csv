@@ -1,0 +1,9 @@
+point_id,before_status,before_value,after_status,after_value,unit,limit_source,exception,reasons
+DEMO-CAL-1,fail,2.6,pass,1.4,mm,Fictional procedure FP-BRK-01 rev 2 §4.2,False,1.4 mm vs 0.8–2.0 mm (inclusive); source Fictional procedure FP-BRK-01 rev 2 §4.2
+DEMO-CAL-2,fail,2.1,pass,0.8,mm,Fictional procedure FP-BRK-01 rev 2 §4.2,False,0.8 mm vs 0.8–2.0 mm (inclusive); source Fictional procedure FP-BRK-01 rev 2 §4.2
+DEMO-CAL-3,pass,1.9,fail,2.3,mm,Fictional procedure FP-BRK-01 rev 2 §4.2,True,2.3 mm vs 0.8–2.0 mm (inclusive); source Fictional procedure FP-BRK-01 rev 2 §4.2
+DEMO-CAL-4,pass,1.778,unassessed,0.05,in,Fictional procedure FP-BRK-01 rev 2 §4.2,True,photo transcription not confirmed by the technician
+DEMO-CAL-5,pass,1.5,incomplete,,,Fictional procedure FP-BRK-01 rev 2 §4.2,True,no reading recorded
+DEMO-CAL-6,unassessed,1.2,unassessed,1.1,mm,,True,"limit missing (min, max, unit and source are all required)"
+
+NOTICE,An in-range reading never authorizes return to service; the site's release process decides.
