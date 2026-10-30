@@ -2,8 +2,9 @@
  * Server-side HTML renderer for /feature/:slug pages.
  *
  * Each feature has a hero, an optional Loom video, a long-form description,
- * a benefits grid, and a primary CTA from the capabilities registry
- * (free 30-day pilot / Talk to Mike). Feature copy is proven claims only.
+ * a benefits grid, and a Talk to Mike contact link from the capabilities
+ * registry. Feature copy is proven claims only. No pilot/credit offer here:
+ * new offers belong in the canonical FactoryLM shell (Codex iteration 3 F1).
  *
  * Aesthetic: industrial HMI / telemetry overlay. Matches index.html's dark
  * gray + amber + Inter vocabulary but pushes HMI details harder (corner
@@ -196,7 +197,6 @@ export function featuresFromRegistry(
         badge: { label: "READY", tone: "green" },
         rows: [
           { label: "Manuals", value: "Your OEM PDFs" },
-          { label: "Pilot", value: "Five teams · 30 days" },
           { label: "CMMS", value: "Keep yours" },
           { label: "Required", value: "No connector needed", accent: "teal" },
         ],
@@ -400,7 +400,7 @@ function renderVideo(feature: Feature): string {
         <div class="placeholder-desc">
           ${escHtml(feature.videoCaption)}.
         </div>
-        <a href="${escAttr(loadCapabilities().contact.signup_href)}" class="placeholder-cta">${escHtml(loadCapabilities().contact.signup_cta)} &rarr;</a>
+        <a href="${escAttr(loadCapabilities().contact.href)}" class="placeholder-cta">${escHtml(loadCapabilities().contact.cta)} &rarr;</a>
       </div>
     </div>`;
 }
@@ -1215,7 +1215,7 @@ export function renderFeaturePage(
         <li><a href="/blog">Blog</a></li>
         <li><a href="/limitations">Limitations</a></li>
       </ul>
-      <a href="${escAttr(data.contact.signup_href)}" class="nav-cta">${escHtml(data.contact.signup_cta)}</a>
+      <a href="${escAttr(data.contact.href)}" class="nav-cta">${escHtml(data.contact.cta)}</a>
     </div>
   </nav>
 
@@ -1234,13 +1234,6 @@ export function renderFeaturePage(
         </h1>
         <p class="feature-lede fade-in">${escHtml(feature.lede)}</p>
         <div class="hero-actions fade-in">
-          <a href="${escAttr(data.contact.signup_href)}" class="cta-start">
-            <span class="cta-start-pulse" aria-hidden="true"></span>
-            <span class="cta-start-text">
-              <span class="cta-start-label">${escHtml(data.contact.signup_cta)}</span>
-              <span class="cta-start-action">${escHtml(data.contact.cta)} &rarr;</span>
-            </span>
-          </a>
           <a href="/#features" class="btn-ghost">&larr; All features</a>
         </div>
       </div>
@@ -1277,24 +1270,12 @@ export function renderFeaturePage(
     </section>
 
     <!-- ── CTA ── -->
-    <section class="cta-section" aria-labelledby="cta-heading">
+    <section class="cta-section" aria-label="Contact">
       <div class="cta-inner">
-        <div class="section-label fade-in">Free 30-day pilot</div>
-        <h2 class="cta-h2 fade-in" id="cta-heading">
-          Request a free<br>
-          <em>30-day pilot</em>
-        </h2>
         <p class="cta-sub fade-in">
           ${escHtml(data.chrome.connectors_note)}
         </p>
         <div class="fade-in">
-          <a href="${escAttr(data.contact.signup_href)}" class="cta-start">
-            <span class="cta-start-pulse" aria-hidden="true"></span>
-            <span class="cta-start-text">
-              <span class="cta-start-label">${escHtml(data.contact.signup_cta)}</span>
-              <span class="cta-start-action">${escHtml(data.contact.cta)} &rarr;</span>
-            </span>
-          </a>
           <p class="cta-note"><a href="${escAttr(data.contact.href)}" style="color:var(--amber)">${escHtml(data.contact.cta)}</a> — FactoryLM, Central Florida.</p>
         </div>
       </div>

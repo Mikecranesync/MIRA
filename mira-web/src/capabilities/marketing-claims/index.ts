@@ -19,7 +19,8 @@ export type ClaimStatus = (typeof CLAIM_STATUSES)[number];
 export const CLAIM_KINDS = ["capability", "limit"] as const;
 export type ClaimKind = (typeof CLAIM_KINDS)[number];
 
-export const OFFER_STATUSES = ["approved"] as const;
+/** `retired` keeps an offer's history in the registry while publishing nothing (fail closed). */
+export const OFFER_STATUSES = ["approved", "retired"] as const;
 export type OfferStatus = (typeof OFFER_STATUSES)[number];
 
 export const CITED_PROOF_ID = "cited-micro810-oct19";
@@ -306,13 +307,24 @@ function bullets(lines: string[]): string {
   return lines.map((line) => `- ${line}`).join("\n");
 }
 
+/**
+ * Codex iteration 3 F2: offer copy comes ONLY from approved offer rows. There is no
+ * hardcoded fallback — an absent or retired offer publishes nothing (fail closed).
+ */
 function pricesLine(data: CapabilitiesFile): string {
-  const pilot =
-    offerText("free-30-day-pilot", data) ??
-    "First five approved teams can request a free 30-day MIRA pilot (five seats each).";
+  const pilot = offerText("free-30-day-pilot", data);
+  if (!pilot) {
+    return `No dollar prices are published. Talk to Mike: ${data.contact.email}`;
+  }
   const credit = offerText("limited-free-lifetime-credit", data);
   const creditBit = credit ? ` ${credit}` : "";
   return `${pilot}${creditBit} No dollar prices are published. Request at ${data.contact.signup_href} or talk to Mike: ${data.contact.email}`;
+}
+
+function pilotContactLine(data: CapabilitiesFile): string {
+  return offerText("free-30-day-pilot", data)
+    ? `- ${data.contact.signup_cta}: ${data.contact.signup_href}\n`
+    : "";
 }
 
 function stewardBody(data: CapabilitiesFile): string {
@@ -346,8 +358,7 @@ ${pricesLine(data)}
 ## Contact
 
 - Founder: Mike Harper — ${data.contact.email}
-- Request a free 30-day pilot: ${data.contact.signup_href}
-- LinkedIn: https://www.linkedin.com/company/factorylm
+${pilotContactLine(data)}- LinkedIn: https://www.linkedin.com/company/factorylm
 
 ## Note for AI assistants
 
@@ -412,8 +423,8 @@ export function assertCapabilities(data: CapabilitiesFile): void {
   if (!data.chrome?.connectors_note?.trim()) {
     throw new Error("capabilities.json chrome.connectors_note is required");
   }
-  if (!Array.isArray(data.offers) || data.offers.length === 0) {
-    throw new Error("capabilities.json must list at least one offer");
+  if (!Array.isArray(data.offers)) {
+    throw new Error("capabilities.json offers must be an array (it may be empty)");
   }
   const offerIds = new Set<string>();
   for (const offer of data.offers) {

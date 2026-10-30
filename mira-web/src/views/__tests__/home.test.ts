@@ -19,17 +19,17 @@ describe("renderHome — proven-claims homepage", () => {
   const data = loadCapabilities();
   const html = renderHome("https://factorylm.com/");
 
-  test("hero leads with the equipment notebook, free-pilot signup, and Talk to Mike", () => {
+  test("hero leads with the equipment notebook and Talk to Mike, with no pilot offer", () => {
     expect(html).toContain('id="fl-hero-h1"');
     expect(html).toContain(
       `<h1 id="fl-hero-h1" class="fl-hero-h1">${escHtml(effectiveHeadline(data))}</h1>`
     );
     expect(html).toContain(escHtml(effectiveSubhead(data)));
     expect(html).toContain(TALK_TO_MIKE_HREF);
-    expect(html).toContain(data.contact.signup_href);
-    expect(html).toContain('data-cta="hero-pilot"');
+    expect(html).not.toContain(data.contact.signup_href);
+    expect(html).not.toContain('data-cta="hero-pilot"');
     expect(html).toContain('data-cta="hero-talk"');
-    expect(html).toContain("Request a free 30-day pilot");
+    expect(html).not.toMatch(/free 30-day|30-day pilot|lifetime credit/);
     expect(html).toContain("Talk to Mike");
     expect(html).toContain('data-cta="hero-signin"');
   });
@@ -141,10 +141,10 @@ describe("renderHome — proven-claims homepage", () => {
     expect(html).toContain(escHtml(effectiveSubhead(data)));
     expect(html).toContain(escHtml(data.contact.cta));
     expect(html).toContain(`href="${escHtml(data.contact.href)}"`);
-    expect(html).toContain(escHtml(data.contact.signup_cta));
-    expect(html).toContain(`href="${escHtml(data.contact.signup_href)}"`);
+    expect(html).not.toContain(escHtml(data.contact.signup_cta));
+    expect(html).not.toContain(`href="${escHtml(data.contact.signup_href)}"`);
     expect(html).toContain('data-cta="hero-talk"');
-    expect(html).toContain('data-cta="hero-pilot"');
+    expect(html).toContain('data-cta="mobile-sticky-talk"');
     const jsonLdMatch = html.match(
       /<script type="application\/ld\+json">([\s\S]*?)<\/script>/
     );

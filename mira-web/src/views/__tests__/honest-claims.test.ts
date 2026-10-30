@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { renderHome } from "../home.js";
@@ -237,7 +238,34 @@ const DONT_SAY: ClaimRule[] = [
   { category: "overclaim", label: "CI cross-tenant build-fail claim", re: /fails the build if any row leaks|queries as Tenant B/i },
 ];
 
-const ALL_BANS: ClaimRule[] = [...CLAIM_CATEGORIES, ...DONT_SAY];
+/**
+ * The free-pilot / lifetime-credit offer is new presentation and must not appear on any
+ * frozen legacy surface, llms artifacts included (Codex iteration 3 F1, owner decision
+ * 2026-10-30). It belongs in the canonical FactoryLM shell, not this PR.
+ */
+const OFFER_RULE: ClaimRule = {
+  category: "offer",
+  label: "free-pilot / lifetime-credit offer on a legacy surface",
+  re: /free 30-day|30-day (?:MIRA )?pilot|lifetime credit|first five (?:approved )?teams|app\.factorylm\.com\/signup|data-cta="[^"]*-pilot"/i,
+};
+
+const ALL_BANS: ClaimRule[] = [...CLAIM_CATEGORIES, ...DONT_SAY, OFFER_RULE];
+
+/**
+ * /terms is byte-identical to main (Codex iteration 3 F3: Terms changes need a dated
+ * amendment, not an edit in this PR). Its pre-amendment claims are pinned exactly, so any
+ * NEW claim or price on /terms still fails.
+ */
+const TERMS_MAIN_SHA256 = "265519dc9e77574bcfa7b46e5c4f03f96687d08f4b8431437808f8c859002bfd";
+const TERMS_KNOWN_HITS = [
+  "price: any dollar amount",
+  "overclaim: CMMS write-back",
+  "adapter: Telegram as answer surface",
+  "adapter: Slack as answer surface",
+  "overclaim: Digital Transformation title",
+  "overclaim: Operating Layer",
+];
+const TERMS_KNOWN_DOLLARS = ["$500", "$2,000", "$5,000", "$499"];
 
 function dollarAmounts(html: string): string[] {
   return html.match(/\$[\d,]+/g) ?? [];
@@ -264,7 +292,18 @@ function claimHits(name: string, html: string): string[] {
 }
 
 describe("public marketing copy — don't-say list and no published prices", () => {
+  test("/terms is byte-identical to main and carries only its known pre-amendment claims", () => {
+    const terms = pages.find((p) => p.name === "/terms")!.html;
+    expect(createHash("sha256").update(readPublic("terms.html")).digest("hex")).toBe(
+      TERMS_MAIN_SHA256,
+    );
+    expect(claimHits("/terms", terms)).toEqual(TERMS_KNOWN_HITS);
+    expect(dollarAmounts(terms)).toEqual(TERMS_KNOWN_DOLLARS);
+    expect(schemaPriceValues(terms)).toEqual([]);
+  });
+
   for (const page of pages) {
+    if (page.name === "/terms") continue;
     test(`${page.name}: drops the don't-say list and removed claims`, () => {
       const hits = claimHits(page.name, page.html);
       expect(hits, `${page.name} still contains: ${hits.join("; ")}`).toEqual([]);
@@ -272,6 +311,7 @@ describe("public marketing copy — don't-say list and no published prices", () 
   }
 
   for (const page of pages) {
+    if (page.name === "/terms") continue;
     test(`${page.name}: publishes no dollar price`, () => {
       expect(
         dollarAmounts(page.html),
@@ -286,12 +326,7 @@ describe("public marketing copy — don't-say list and no published prices", () 
       expect(page.html).not.toMatch(/\$2-5K|\$2,\d{3}|\$5,\d{3}/);
       expect(page.html).not.toMatch(/14-day money-back|money-back guarantee/i);
       const prices = schemaPriceValues(page.html);
-      const allowed = page.name === "/pricing" ? ["0"] : [];
-      for (const value of prices) {
-        expect(allowed, `${page.name} has unapproved schema price ${value}`).toContain(
-          value
-        );
-      }
+      expect(prices, `${page.name} has a schema price`).toEqual([]);
     });
   }
 
@@ -346,8 +381,8 @@ describe("public marketing copy — don't-say list and no published prices", () 
     expect(pricing).not.toContain("find the right manual passage");
     expect(pricing).not.toContain("record what fixed it");
     expect(pricing).not.toContain("Find reliable answers in your own equipment manuals");
-    expect(pricing).toMatch(/<h1>\s*Start with a <em>free 30-day pilot\.<\/em>\s*<\/h1>/);
-    expect(pricing).toContain("https://app.factorylm.com/signup");
+    expect(pricing).not.toMatch(/free 30-day pilot/i);
+    expect(pricing).not.toContain("https://app.factorylm.com/signup");
     expect(pricing).toContain("Talk to Mike");
     expect(pricing).not.toContain("<title>Pricing — FactoryLM</title>");
     expect(pricing).not.toMatch(/<h1>\s*Talk to Mike\s*<\/h1>/);
@@ -355,44 +390,22 @@ describe("public marketing copy — don't-say list and no published prices", () 
     expect(pricing).not.toContain(">Pricing<");
   });
 
-  test("/pricing and /buy point at the free pilot request, with no paid Offer", () => {
+  test("/pricing and /buy carry no offer, no checkout, and no schema Offer — Talk to Mike only", () => {
     for (const name of ["/pricing", "/buy"] as const) {
       const html = pages.find((p) => p.name === name)!.html;
       expect(html, `${name} is missing Talk to Mike`).toContain("Talk to Mike");
-      expect(html, `${name} is missing the signup CTA`).toContain(
+      expect(html, `${name} is missing the contact mailto`).toContain("mailto:mike@factorylm.com");
+      expect(html, `${name} still links the pilot signup`).not.toContain(
         "https://app.factorylm.com/signup"
       );
-      expect(html, `${name} is missing the free-pilot request`).toContain(
-        "Request a free 30-day pilot"
+      expect(html, `${name} still offers the free pilot`).not.toMatch(
+        /free 30-day|30-day pilot|lifetime credit|first five/i
       );
       expect(html, `${name} links to a checkout`).not.toMatch(/href="[^"]*(checkout|stripe)/i);
-      expect(html, `${name} still has $499`).not.toContain("$499");
-      expect(html, `${name} still has $500`).not.toContain("$500");
-      expect(html, `${name} still has $2-5K`).not.toMatch(/\$2-5K|\$2,\d{3}|\$5,\d{3}/);
-      if (name === "/buy") {
-        expect(html, `${name} still has an Offer block`).not.toMatch(
-          /"@type"\s*:\s*"Offer"/
-        );
-        expect(html, `${name} still has a schema price`).not.toMatch(/"price"/);
-      } else {
-        expect(html, `${name} is missing the free Offer`).toMatch(
-          /"@type"\s*:\s*"Offer"/
-        );
-        expect(schemaPriceValues(html)).toEqual(["0"]);
-      }
+      expect(html, `${name} still has an Offer block`).not.toMatch(/"@type"\s*:\s*"Offer"/);
+      expect(html, `${name} still has a schema price`).not.toMatch(/"price"/);
+      expect(dollarAmounts(html)).toEqual([]);
     }
-  });
-
-  test("/pricing states the free 30-day pilot offer with no dollar amounts", () => {
-    const pricing = pages.find((p) => p.name === "/pricing")!.html;
-    const body = pricing.match(/<main[\s\S]*?<\/main>/)?.[0] ?? "";
-    expect(body, "/pricing has no <main> body").not.toBe("");
-    expect(body).toContain("Free 30 days");
-    expect(body).toContain("first five teams");
-    expect(body).toContain("MIRA works from manuals on its own");
-    expect(body).toContain("https://app.factorylm.com/signup");
-    expect(body).not.toContain("$500");
-    expect(pricing).not.toContain("Find reliable answers in your own equipment manuals");
   });
 
   test("/llms.txt omits sensors and work orders", () => {
@@ -448,10 +461,10 @@ describe("public marketing copy — don't-say list and no published prices", () 
     expect(names).toContain("/blog (renderer)");
   });
 
-  test("primary CTA is the free-pilot signup; Talk to Mike and Sign in stay reachable", () => {
+  test("nav + footer carry no offer CTA; Talk to Mike and Sign in stay reachable", () => {
     const chrome = navbar() + footer();
-    expect(chrome).toContain("Request a free 30-day pilot");
-    expect(chrome).toContain("https://app.factorylm.com/signup");
+    expect(chrome).not.toMatch(/free 30-day|30-day pilot|lifetime credit/i);
+    expect(chrome).not.toContain("https://app.factorylm.com/signup");
     expect(chrome).toContain("Talk to Mike");
     expect(chrome).toContain("Sign in");
     expect(chrome).not.toContain("Book $500");
@@ -504,6 +517,25 @@ describe("public marketing copy — don't-say list and no published prices", () 
     };
     const page = buildDriveDetailPages(mutatedPack).find((p) => p.name === name)!;
     expect(claimHits(name, page.html).some((h) => h.includes("any dollar amount"))).toBe(true);
+  });
+
+  test("a planted pilot / lifetime-credit offer is caught on any legacy surface; contact copy passes", () => {
+    for (const planted of [
+      '<a href="https://app.factorylm.com/signup">Request a free 30-day pilot</a>',
+      "<p>First five approved teams can request a free 30-day MIRA pilot (five seats each).</p>",
+      "<p>Early adopters among the first five can lock in limited free lifetime credit.</p>",
+      '<a href="mailto:mike@factorylm.com" data-cta="hero-pilot">Go</a>',
+    ]) {
+      const hits = claimHits("/", `<main>${planted}</main>`);
+      expect(hits.some((h) => h.startsWith("offer:")), planted).toBe(true);
+    }
+    for (const control of [
+      '<a href="mailto:mike@factorylm.com" data-cta="hero-talk">Talk to Mike</a>',
+      '<a class="ps-cta-ghost" href="#pilot">Analyze my complete machine package</a>',
+    ]) {
+      const hits = claimHits("/", `<main>${control}</main>`).filter((h) => h.startsWith("offer:"));
+      expect(hits, control).toEqual([]);
+    }
   });
 
   test("timing promises like 'in about two minutes' are caught; neutral copy passes", () => {

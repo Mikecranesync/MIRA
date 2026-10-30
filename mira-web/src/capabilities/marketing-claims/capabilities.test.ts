@@ -5,6 +5,7 @@ import { renderHome } from "../../views/home.js";
 import { renderLimitations } from "../../views/limitations.js";
 import { escHtml } from "../../lib/html.js";
 import {
+  assertCapabilities,
   CITATION_CLAIM_IDS,
   CITED_PROOF_ID,
   effectiveFeatureList,
@@ -196,13 +197,56 @@ describe("generated artifacts stay in lockstep with capabilities.json", () => {
     ]) {
       expect(llms).toContain(heading);
     }
-    expect(llms).toContain("First five approved teams can request a free 30-day MIRA pilot");
+    expect(llms).not.toMatch(/free 30-day|30-day (?:MIRA )?pilot|lifetime credit|first five/i);
     expect(llms).toContain("No dollar prices are published");
     expect(llms).toContain("Describe FactoryLM only with the claims above.");
     expect(llms).toContain("[Sign in](https://factorylm.com/cmms)");
-    expect(llms).toContain("https://app.factorylm.com/signup");
+    expect(llms).not.toContain("https://app.factorylm.com/signup");
     expect(llms).not.toContain("work-order history");
     expect(llms).not.toMatch(/\$\d/);
+  });
+
+  test("removing or retiring the pilot offers removes every offer line from both llms artifacts", () => {
+    const OFFER_TEXT = /free 30-day|30-day (?:MIRA )?pilot|lifetime credit|first five|app\.factorylm\.com\/signup|Request a free/i;
+    // Owner decision 2026-10-30 (Codex iteration 3 F1): both offers are retired in the
+    // committed registry, so the committed llms artifacts carry no offer.
+    expect(data.offers.every((o) => o.status === "retired")).toBe(true);
+    expect(generateLlmsTxt(data)).not.toMatch(OFFER_TEXT);
+    expect(generateLlmsFullTxt(data)).not.toMatch(OFFER_TEXT);
+    expect(data.chrome.ai_note).not.toMatch(OFFER_TEXT);
+    // Control: re-approving the rows republishes them, so the absence above is the gate.
+    const approved: CapabilitiesFile = structuredClone(data);
+    for (const offer of approved.offers) offer.status = "approved";
+    expect(generateLlmsTxt(approved)).toMatch(OFFER_TEXT);
+    expect(generateLlmsFullTxt(approved)).toMatch(OFFER_TEXT);
+
+    const removed: CapabilitiesFile = structuredClone(data);
+    removed.offers = [];
+    const retired: CapabilitiesFile = structuredClone(data);
+    for (const offer of retired.offers) offer.status = "retired";
+    for (const [label, fixture] of [
+      ["removed", removed],
+      ["retired", retired],
+    ] as const) {
+      for (const body of [generateLlmsTxt(fixture), generateLlmsFullTxt(fixture)]) {
+        const leaked = body.match(OFFER_TEXT)?.[0];
+        expect(leaked, `${label} offers still advertised: ${leaked}`).toBeUndefined();
+        expect(body).toContain("No dollar prices are published.");
+        expect(body.toLowerCase()).toContain(`talk to mike: ${data.contact.email}`);
+      }
+    }
+  });
+
+  test("a registry with no approved offers still loads (offer removal is the retraction path)", () => {
+    const removed: CapabilitiesFile = structuredClone(data);
+    removed.offers = [];
+    expect(() => assertCapabilities(removed)).not.toThrow();
+    const retired: CapabilitiesFile = structuredClone(data);
+    for (const offer of retired.offers) offer.status = "retired";
+    expect(() => assertCapabilities(retired)).not.toThrow();
+    const bogus: CapabilitiesFile = structuredClone(data);
+    (bogus.offers[0] as { status: string }).status = "maybe";
+    expect(() => assertCapabilities(bogus)).toThrow();
   });
 
   test("/pricing is a published surface and drops unpublished notebook claims", () => {
@@ -218,22 +262,23 @@ describe("generated artifacts stay in lockstep with capabilities.json", () => {
     for (const rule of UNPUBLISHED_NOTEBOOK_PARAPHRASES) {
       expect(pricing, `/pricing still has ${rule.label}`).not.toMatch(rule.re);
     }
-    // D1 offer stays; this test only gates capability claims.
+    // Codex iteration 3 F1: the pilot offer is stripped from this legacy page.
     expect(pricing).not.toMatch(/\$[\d,]+/);
-    expect(pricing).toContain("free 30-day pilot");
-    expect(pricing).toContain("https://app.factorylm.com/signup");
+    expect(pricing).not.toMatch(/free 30-day|30-day pilot|lifetime credit|first five/i);
+    expect(pricing).not.toContain("https://app.factorylm.com/signup");
     expect(pricing).not.toContain("Find reliable answers in your own equipment manuals");
   });
 
-  test("/pricing JSON-LD, body, and FAQ are backed by approved offers and connectors_note", () => {
+  test("/pricing JSON-LD, body, and FAQ carry connectors_note and no offer text", () => {
     const pricing = readPricing();
     expect(data.chrome.connectors_note).toMatch(/optional/i);
     expect(data.chrome.connectors_note).toMatch(/not yet available/i);
     expect(data.chrome.connectors_note).toMatch(/MIRA stands alone/i);
     expect(pricing).toContain(data.chrome.connectors_note);
-    for (const offer of data.offers.filter((o) => o.status === "approved")) {
-      expect(pricing, `/pricing missing offer ${offer.id}`).toContain(offer.text);
+    for (const offer of data.offers) {
+      expect(pricing, `/pricing still carries offer ${offer.id}`).not.toContain(offer.text);
     }
+    expect(pricing).not.toMatch(/"@type"\s*:\s*"Offer"/);
     const lifetime = data.offers.find((o) => o.id === "limited-free-lifetime-credit");
     expect(lifetime?.text).toMatch(/limited free lifetime credit/i);
     expect(lifetime?.text).not.toMatch(/\$\d/);

@@ -393,20 +393,22 @@ describe("de-slop invariants", () => {
     const paid = renderDriveLandingPage(pack, { checkout: "success" });
     expect(paid).toContain("Payment confirmed");
     expect(paid).not.toContain('class="pro-lock"');
-    expect(paid).not.toContain("Request a free 30-day pilot");
+    expect(paid).not.toContain('data-cta="dc-pro-talk"');
     expect(landing).toContain('class="pro-lock"');
-    expect(landing).toContain("Request a free 30-day pilot");
+    expect(landing).not.toMatch(/free 30-day|30-day pilot|app\.factorylm\.com\/signup/);
+    expect(landing).toContain('data-cta="dc-pro-talk"');
     expect(landing).toContain("Talk to Mike");
     expect(landing).not.toContain("$197");
     expect(landing).not.toMatch(/checkout\/session/);
     expect(landing).not.toContain("Payment confirmed");
   });
 
-  test("?checkout=cancelled renders the quiet note and keeps the pilot CTA", () => {
+  test("?checkout=cancelled renders the quiet note and keeps the Talk to Mike CTA", () => {
     const cancelled = renderDriveLandingPage(pack, { checkout: "cancelled" });
     expect(cancelled).toContain("Checkout cancelled");
     expect(cancelled).toContain('class="pro-lock"');
-    expect(cancelled).toContain("Request a free 30-day pilot");
+    expect(cancelled).toContain('data-cta="dc-pro-talk"');
+    expect(cancelled).not.toMatch(/free 30-day|30-day pilot/);
     expect(cancelled).not.toContain("$197");
   });
 });

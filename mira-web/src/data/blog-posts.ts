@@ -624,7 +624,7 @@ export const BLOG_POSTS: BlogPost[] = [
       {
         type: "callout",
         variant: "info",
-        text: "FactoryLM is not a CMMS. CMMS connectors are optional and not yet available. MIRA stands alone. First five approved teams can request a free 30-day MIRA pilot.",
+        text: "FactoryLM is not a CMMS. CMMS connectors are optional and not yet available. MIRA stands alone.",
       },
     ],
     relatedPosts: ["predictive-vs-preventive-maintenance"],

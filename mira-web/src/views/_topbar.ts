@@ -18,7 +18,6 @@
  */
 
 import { btnGhost, btnPrimary } from "../lib/components.js";
-import { hubUrl } from "../capabilities/hub-origin.js";
 
 export interface TopbarOpts {
   /** Path of the current page, used to set aria-current="page". */
@@ -35,8 +34,6 @@ interface NavLink {
 
 export const APEX = "https://factorylm.com";
 export const TALK_TO_MIKE_HREF = "mailto:mike@factorylm.com";
-export const SIGNUP_HREF = hubUrl("/signup");
-export const SIGNUP_CTA = "Request a free 30-day pilot";
 
 const NAV_LINKS: NavLink[] = [
   { href: `${APEX}/pricing`, label: "Talk to Mike", ctaSlug: "pricing" },
@@ -60,7 +57,7 @@ function renderLink(link: NavLink, opts: TopbarOpts): string {
 export function navbar(opts: TopbarOpts = {}): string {
   const links = NAV_LINKS.map((l) => renderLink(l, opts)).join("\n    ");
   const signinCta = ctaName(opts.ctaPrefix, "signin");
-  const buyCta = ctaName(opts.ctaPrefix, "buy");
+  const talkCta = ctaName(opts.ctaPrefix, "talk");
   return `<header class="fl-topbar" role="banner">
   <a class="fl-topbar-brand" href="${APEX}/" aria-label="FactoryLM home">FactoryLM</a>
   <nav class="fl-topbar-nav" aria-label="Primary">
@@ -68,7 +65,7 @@ export function navbar(opts: TopbarOpts = {}): string {
   </nav>
   <div class="fl-topbar-cta">
     ${btnGhost("Sign in", { href: `${APEX}/cmms`, cta: signinCta })}
-    ${btnPrimary(SIGNUP_CTA, { href: SIGNUP_HREF, cta: buyCta })}
+    ${btnPrimary("Talk to Mike", { href: TALK_TO_MIKE_HREF, cta: talkCta })}
   </div>
 </header>`;
 }

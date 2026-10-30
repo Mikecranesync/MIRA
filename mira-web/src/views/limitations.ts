@@ -1,7 +1,7 @@
 import { head } from "../lib/head.js";
-import { btnGhost, btnPrimary } from "../lib/components.js";
+import { btnPrimary } from "../lib/components.js";
 import { escHtml } from "../lib/html.js";
-import { navbar, footer, TALK_TO_MIKE_HREF, SIGNUP_CTA, SIGNUP_HREF } from "./_topbar.js";
+import { navbar, footer, TALK_TO_MIKE_HREF } from "./_topbar.js";
 import {
   effectiveLimitations,
   loadCapabilities,
@@ -208,8 +208,7 @@ export function renderLimitations(
   </div>
 
   <div class="fl-lim-cta">
-    ${btnPrimary(SIGNUP_CTA, { href: SIGNUP_HREF, cta: "lim-cta-pilot" })}
-    ${btnGhost("Talk to Mike", { href: TALK_TO_MIKE_HREF, cta: "lim-cta-talk" })}
+    ${btnPrimary("Talk to Mike", { href: TALK_TO_MIKE_HREF, cta: "lim-cta-talk" })}
     <p>
       Spotted something we're not honest about?
       <a href="mailto:mike@factorylm.com">Email mike@factorylm.com</a> — we'll add it.

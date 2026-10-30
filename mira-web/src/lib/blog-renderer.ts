@@ -149,8 +149,7 @@ function marketingCtaCard(
   return `<div class="cta-card fade-in">
     <h3>${escHtml(heading)}</h3>
     ${bodyHtml}
-    <a href="${escAttr(data.contact.signup_href)}" class="btn-primary">${escHtml(data.contact.signup_cta)} ${ARROW_SVG}</a>
-    <p style="margin-top:12px"><a href="${escAttr(data.contact.href)}">${escHtml(data.contact.cta)}</a></p>
+    <a href="${escAttr(data.contact.href)}" class="btn-primary">${escHtml(data.contact.cta)} ${ARROW_SVG}</a>
   </div>`;
 }
 

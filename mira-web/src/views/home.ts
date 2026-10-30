@@ -1,5 +1,5 @@
 import { head } from "../lib/head.js";
-import { btnGhost, btnPrimary } from "../lib/components.js";
+import { btnPrimary } from "../lib/components.js";
 import { escHtml } from "../lib/html.js";
 import {
   effectiveHeadline,
@@ -35,8 +35,7 @@ function hero(data: CapabilitiesFile): string {
     ${sub}
     ${list}
     <div class="fl-hero-cta">
-      ${btnPrimary(escHtml(data.contact.signup_cta), { href: escHtml(data.contact.signup_href), cta: "hero-pilot" })}
-      ${btnGhost(escHtml(data.contact.cta), { href: escHtml(data.contact.href), cta: "hero-talk" })}
+      ${btnPrimary(escHtml(data.contact.cta), { href: escHtml(data.contact.href), cta: "hero-talk" })}
     </div>
     <p class="fl-hero-cta-foot">Already using FactoryLM? <a href="/cmms" data-cta="hero-signin">Sign in</a>.</p>
   </div>
@@ -82,8 +81,7 @@ function aboutMike(data: CapabilitiesFile): string {
   return `<section class="fl-section fl-pricing-teaser" aria-labelledby="fl-about-h">
   <h2 id="fl-about-h" class="fl-section-h">${escHtml(mike)}</h2>
   <div class="fl-hero-cta">
-    ${btnPrimary(escHtml(data.contact.signup_cta), { href: escHtml(data.contact.signup_href), cta: "about-pilot" })}
-    ${btnGhost(escHtml(data.contact.cta), { href: escHtml(data.contact.href), cta: "about-talk" })}
+    ${btnPrimary(escHtml(data.contact.cta), { href: escHtml(data.contact.href), cta: "about-talk" })}
   </div>
 </section>`;
 }
@@ -388,7 +386,7 @@ export function renderHome(
     ${aboutMike(data)}
   </main>
   ${footer()}
-  <a href="${escHtml(data.contact.signup_href)}" class="fl-mobile-cta" data-cta="mobile-sticky-pilot">${escHtml(data.contact.signup_cta)}</a>
+  <a href="${escHtml(data.contact.href)}" class="fl-mobile-cta" data-cta="mobile-sticky-talk">${escHtml(data.contact.cta)}</a>
   <script src="/sun-toggle.js"></script>
 </body>
 </html>`;

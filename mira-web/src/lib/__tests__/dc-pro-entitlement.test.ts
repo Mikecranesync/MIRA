@@ -253,16 +253,17 @@ describe("renderDriveLandingPage entitlement gate", () => {
     expect(html).not.toContain('class="pro-lock"');
   });
 
-  test("public CTA is Talk to Mike / free 30-day pilot, with no published price", async () => {
+  test("public CTA is Talk to Mike, with no pilot offer and no published price", async () => {
     const { renderDriveLandingPage } = await import("../drive-commander-renderer.js");
     const { getPack } = await import("../drive-pack-data.js");
     const pack = getPack("siemens-g120");
     if (!pack) return;
 
     const html = renderDriveLandingPage(pack, { isPro: false });
-    expect(html).toContain("Request a free 30-day pilot");
+    expect(html).not.toMatch(/free 30-day|30-day pilot|lifetime credit/);
     expect(html).toContain("Talk to Mike");
-    expect(html).toContain("https://app.factorylm.com/signup");
+    expect(html).toContain("mailto:mike@factorylm.com");
+    expect(html).not.toContain("https://app.factorylm.com/signup");
     expect(html).not.toContain("$197/yr");
     expect(html).not.toContain("$29/mo");
     expect(html).not.toMatch(/checkout\/session/);

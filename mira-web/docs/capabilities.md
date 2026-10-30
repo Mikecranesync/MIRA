@@ -4,7 +4,7 @@ Source of truth: `mira-web/src/capabilities/marketing-claims/capabilities.json`.
 
 The factorylm.com homepage, `/limitations`, schema.org JSON-LD, `/llms.txt`, and `/llms-full.txt` all read this file. **Every rendered sentence is a claim.** Generators join `slots.*` claim ids and print a sentence only when that claim's `status` is `proven` or `proven-dated`. Partial and not-yet rows stay in the file so a daily steward can promote them later — they must not appear as published sentences. `/llms-full.txt` lists those unpublished **ids** under **Not yet claimed** and repeats every proven `kind: limit` row under **Full limitations**.
 
-Dollar prices stay off the site. The public offer is a free 30-day MIRA pilot for the first five approved teams (five seats each). Contact also carries `signup_cta` / `signup_href` (`https://app.factorylm.com/signup`). Applying is not the same as being awarded a team. MIRA stands alone; a CMMS is optional, never required.
+Dollar prices stay off the site, and no offer is published on the legacy public pages. The two pilot offer rows are `retired` (owner decision 2026-10-30, Codex iteration 3 F1): an offer goes into the canonical FactoryLM shell, not a frozen legacy page. A retired or absent offer publishes nothing, including in `llms.txt` / `llms-full.txt`; there is no hardcoded fallback. Contact still carries `signup_cta` / `signup_href` for the registry, but no legacy page renders them. Applying is not the same as being awarded a team. MIRA stands alone; a CMMS is optional, never required.
 
 The headline and meta slots are `notebook-cited-answer` (P1; meta stays under the 160-character `head()` cap). The subhead is `equipment-notebook-not-cmms` (P3/P4). Published proven rows as of 2026-10-29:
 

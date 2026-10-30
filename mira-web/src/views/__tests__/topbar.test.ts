@@ -44,13 +44,14 @@ describe("shared topbar partial — contract", () => {
     }
   });
 
-  test("primary CTA is the free-pilot signup; Sign in stays a ghost button", () => {
+  test("primary CTA is a Talk to Mike mailto (no pilot offer); Sign in stays a ghost button", () => {
     const html = navbar();
     expect(html).toContain("Sign in");
     expect(html).toContain(`href="${APEX}/cmms"`);
     expect(html).toContain("fl-btn-ghost");
-    expect(html).toContain("Request a free 30-day pilot");
-    expect(html).toContain("https://app.factorylm.com/signup");
+    expect(html).toMatch(/fl-btn-primary[^>]*href="mailto:mike@factorylm\.com"|href="mailto:mike@factorylm\.com"[^>]*fl-btn-primary/);
+    expect(html).not.toMatch(/free 30-day|30-day pilot/);
+    expect(html).not.toContain("https://app.factorylm.com/signup");
     expect(html).not.toContain(">Pricing<");
   });
 

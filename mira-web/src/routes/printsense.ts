@@ -15,8 +15,8 @@
  * UnderVoltage on a PowerFlex 525 — the exploration draft's "F5 = DC bus
  * undervoltage" was itself a misread and died here).
  *
- * No browser upload here: the public path is Talk to Mike / the free 30-day
- * pilot request; the complete-package path is the managed pilot. Analytics
+ * No browser upload here: the public path is Talk to Mike; the
+ * complete-package path is the managed pilot. Analytics
  * lines carry event names and counts only — never emails, questions, or file content.
  */
 import { Hono } from "hono";
@@ -89,8 +89,6 @@ export function renderPrintsenseLanding(
   const notebook = provenText("equipment-notebook-not-cmms", caps);
   const cta = caps.contact.cta;
   const href = caps.contact.href;
-  const signupCta = caps.contact.signup_cta;
-  const signupHref = caps.contact.signup_href;
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -215,8 +213,8 @@ export function renderPrintsenseLanding(
     cited troubleshooting knowledge. It does not replace engineering review or claim complete
     reconstruction.</strong> Send one print page and a question &mdash; a human-reviewed, cited
     answer comes back, every claim tied to a page and a location on it.</p>
-    <a class="ps-cta" href="${escHtml(signupHref)}">${escHtml(signupCta)}</a>
-    <a class="ps-cta-ghost" href="${escHtml(href)}">${escHtml(cta)}</a>
+    <a class="ps-cta" href="${escHtml(href)}">${escHtml(cta)}</a>
+    <a class="ps-cta-ghost" href="#pilot">Analyze my complete machine package</a>
     <p class="ps-note">Read-only &middot; anything we can't prove is listed as unresolved, never guessed</p>
   </div>
 
@@ -354,7 +352,6 @@ ${message}
 <footer class="ps-footer"><div class="ps-wrap">
   PrintSense is read-only print intelligence from FactoryLM, grounded by the MIRA knowledge
   layer. It escalates to humans &mdash; it never acts. &middot;
-  <a href="${escHtml(signupHref)}">${escHtml(signupCta)}</a> &middot;
   <a href="${escHtml(href)}">${escHtml(cta)}</a>
 </div></footer>
 </body></html>`;

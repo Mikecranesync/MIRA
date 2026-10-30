@@ -224,8 +224,7 @@ function provBadge(pack: DrivePackDisplay): string {
 
 function waitlistCTA(): string {
   const data = loadCapabilities();
-  return `<a class="cta" href="${escAttr(data.contact.signup_href)}" data-cta="dc-pro-pilot"><small>Drive Commander Pro</small>${escHtml(data.contact.signup_cta)} &rarr;</a>
-    <p class="price-note"><a href="${escAttr(data.contact.href)}">${escHtml(data.contact.cta)}</a> about a free 30-day pilot.</p>`;
+  return `<a class="cta" href="${escAttr(data.contact.href)}" data-cta="dc-pro-talk"><small>Drive Commander Pro</small>${escHtml(data.contact.cta)} &rarr;</a>`;
 }
 
 // The Pro teaser. IMPORTANT: no real pack data (no value tables, no full param
