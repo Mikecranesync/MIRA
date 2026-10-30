@@ -1,0 +1,32 @@
+{
+  // LANE BENCH-B's own tsconfig — mira-hub/tsconfig.json's `include` is
+  // `**/*.ts` relative to mira-hub/, so it never reaches tools/investigator/
+  // at all (confirmed: `npx tsc --noEmit -p tsconfig.json | grep investigator`
+  // run from mira-hub is vacuously empty for every file here, not evidence
+  // of type safety). This file exists so BENCH-B's own 2 owned .ts files
+  // (+ their tests) get real type-checking. `include` names files
+  // EXPLICITLY, not a glob — tools/investigator/ is a SHARED directory
+  // (other lanes, e.g. BENCH-A's run_cases.ts/single_pass.ts/openai-model.ts/
+  // ingest.ts, live here too) and a glob would pull their files into BENCH-B's
+  // own type-check and fail on things this lane doesn't own/control.
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "types": ["node"],
+    "typeRoots": ["../../mira-hub/node_modules/@types"],
+    "paths": {
+      "@/*": ["../../mira-hub/src/*"]
+    }
+  },
+  "include": ["fusion_arms.ts", "judge.ts", "tests/fusion_arms.test.ts", "tests/judge.test.ts"],
+  "exclude": ["node_modules"]
+}
