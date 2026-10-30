@@ -15,12 +15,19 @@
  */
 import { claimIdentifiers } from "@/lib/quote-window";
 import { appearsVerbatim, identifierAt, tableUnit } from "./numeric-support";
+import { MAX_CONTENT_CHARS } from "./provider-visible-text";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Root } from "mdast";
 
-/** manual-rag.ts MAX_CONTENT_CHARS: the prefix of each chunk the model actually sees. */
-export const MODEL_VISIBLE_CHARS = 1200;
+/** manual-rag's MAX_CONTENT_CHARS (provider-visible-text.ts): the prefix of each chunk the model
+ *  actually sees. One constant, not a copy. */
+export const MODEL_VISIBLE_CHARS = MAX_CONTENT_CHARS;
+/** The chunk text the provider sees, as a function the caller supplies. Production passes manual-rag's
+ *  `providerVisibleChunkText` (cut + ellipsis + reference neutralization — #4981 Codex r2 F2); the
+ *  default is the bare MODEL_VISIBLE_CHARS cut for pure callers and tests. */
+export type VisibleText = (content: string) => string;
+const modelVisiblePrefix: VisibleText = (content) => content.slice(0, MODEL_VISIBLE_CHARS);
 const SPAN = 240; // relevantQuoteWindow's default span
 const MAX_MARKER_DISTANCE = 300;
 
@@ -617,29 +624,40 @@ class ClaimSupport {
 }
 const SHARED_UNIT = /^[ \t]*(?:or|and|to|through|-|–|,|\/)[ \t]*[-+]?\d+(?:\.\d+)?[ \t]*[\p{L}°%µΩ℃℉]/u;
 
+/** Every numeric claim in the answer, parsed (sign, ±, comparator and markdown included) and
+ *  judged once. ungroundedUnitClaim derives its boolean from these items, so there is ONE
+ *  sign-aware extractor and support test (#4981 Codex r2 F1). */
+export type NumericClaimAudit = {
+  claims: number;
+  unsupported: number;
+  /** One entry per claim: its canonical unit (comparator prefix kept, null when unitless) and
+   *  whether the evidence supports it. */
+  items: { unit: string | null; supported: boolean }[];
+};
+
 /**
  * #4870 R4 — every numeric claim in the WHOLE answer (cited or not, any unit or none) and how
  * many of them the evidence the model was given does not support. Excluded, as in
  * assignValues: a footnote "(1)", a page reference, a list ordinal, the machine the question
  * names; and, new here, identifiers (identifierAt) and an all-zero magnitude ("verify 0 V" is
- * an isolation check, never a rating — #3963). Support is ClaimSupport over the chunk text the
- * provider received (each source cut to MODEL_VISIBLE_CHARS here too, so a caller passing raw
- * chunk content cannot count text the model never saw — Codex r1 F1) and the photo observation
- * text. Pure; counts only, no text leaves this function.
+ * an isolation check, never a rating — #3963). Support is ClaimSupport over `visibleText` of each
+ * source — the chunk text the provider received; production passes providerVisibleChunkText, the
+ * same transform the prompt is built with (Codex r1 F1, r2 F2) — and the photo observation text.
+ * Pure; counts and offsets only, no text leaves this function.
  */
-export function numericClaimSupport(
+export function numericClaimAudit(
   answer: string,
   question: string,
   evidence: { sources: readonly string[]; observations: readonly string[] },
-): { claims: number; unsupported: number } {
+  visibleText: VisibleText = modelVisiblePrefix,
+): NumericClaimAudit {
   const identity = new Set(
     [...normalize(question).matchAll(/([\p{L}][\p{L}-]*)[\s-]?(\d+)/gu)].map((m) => `${m[1]}|${m[2]}`),
   );
   const masked = answer.replace(MARKER_RE, (m) => " ".repeat(m.length));
-  const visible = evidence.sources.map((t) => t.slice(0, MODEL_VISIBLE_CHARS));
+  const visible = evidence.sources.map(visibleText);
   const support = new ClaimSupport([...visible, ...evidence.observations], answer);
-  let claims = 0;
-  let unsupported = 0;
+  const items: NumericClaimAudit["items"] = [];
   for (const v of findValues(masked, "answer")) {
     const vs = v.start;
     const ve = v.end;
@@ -657,9 +675,19 @@ export function numericClaimSupport(
     }
     if (v.nums.every((n) => n === 0)) continue;
     if (identifierValue(answer, v)) continue;
-    claims += 1;
-    if (!support.holds(v)) unsupported += 1;
+    items.push({ unit: v.unit, supported: support.holds(v) });
   }
+  return { claims: items.length, unsupported: items.filter((x) => !x.supported).length, items };
+}
+
+/** The counts of numericClaimAudit (what the packet stores). */
+export function numericClaimSupport(
+  answer: string,
+  question: string,
+  evidence: { sources: readonly string[]; observations: readonly string[] },
+  visibleText: VisibleText = modelVisiblePrefix,
+): { claims: number; unsupported: number } {
+  const { claims, unsupported } = numericClaimAudit(answer, question, evidence, visibleText);
   return { claims, unsupported };
 }
 
@@ -676,6 +704,7 @@ export function supportingQuote(
   answer: string,
   citationId: string,
   question: string,
+  visibleText: VisibleText = modelVisiblePrefix,
 ): SupportingQuote {
   const claims = assignValues(answer, question).get(citationId) ?? [];
   if (claims.length === 0 || chunks.length === 0) return { quote: null, support: "question_fallback", unsupported: [] };
@@ -684,7 +713,6 @@ export function supportingQuote(
   const ids = [...claimIdentifiers(question)];
   type Cand = { chunk: number; start: number; covered: number; idHits: number; q: number; prox: number };
   const cands: Cand[] = [];
-  const everMatched = new Set<number>();
   chunks.forEach((full, ci) => {
     const text = full.slice(0, MODEL_VISIBLE_CHARS);
     const srcVals = findValues(text, "source");
@@ -699,7 +727,6 @@ export function supportingQuote(
       const inWin = srcVals.filter((x) => x.start >= start && x.end <= end);
       const covered = claims.map((c, k) => (inWin.some((x) => satisfies(x, c)) ? k : -1)).filter((k) => k >= 0);
       if (covered.length === 0) continue; // the window cannot hold the whole value (Codex r6 F12)
-      covered.forEach((k) => everMatched.add(k));
       const win = normalize(text.slice(start, end));
       cands.push({
         chunk: ci,
@@ -716,9 +743,12 @@ export function supportingQuote(
   // MODEL-VISIBLE text (the provider never sees past MODEL_VISIBLE_CHARS — Codex r1 F1), and a
   // model/catalog/fault-code token is not a claim at all. Only the cited page counts: a photo
   // reading never authenticates a document citation (Codex r1 F2).
-  const support = new ClaimSupport(chunks.map((c) => c.slice(0, MODEL_VISIBLE_CHARS)), answer);
+  const support = new ClaimSupport(chunks.map(visibleText), answer);
+  // Decided ONLY by the provider-visible text: a quote-window match on the raw chunk is not
+  // support when the provider never got those bytes (e.g. inside a neutralized [Source: …] tag —
+  // #4981 Codex r2 F2). For ordinary text the visible text holds everything the window held.
   const unsupported = claims
-    .filter((c, k) => !everMatched.has(k) && !identifierValue(answer, c) && !support.holds(c))
+    .filter((c) => !identifierValue(answer, c) && !support.holds(c))
     .map((c) => c.text.trim());
   if (cands.length === 0) return { quote: null, support: "question_fallback", unsupported };
   cands.sort(
@@ -748,6 +778,8 @@ export function withSupportingQuotes<C extends QuotableCitation>(
   chunks: readonly PageChunk[],
   answer: string,
   question: string,
+  /** The provider-visible chunk text (#4981 Codex r2 F2); support is read only from it. */
+  visibleText: VisibleText = modelVisiblePrefix,
 ): { citations: C[]; unsupportedValueCount: number; quoteFallbackCount: number } {
   const byKey = new Map<string, string[]>();
   for (const c of chunks) {
@@ -760,7 +792,7 @@ export function withSupportingQuotes<C extends QuotableCitation>(
   const out = citations.map((c) => {
     const pageChunks = pages[Number(c.citationId) - 1];
     if (!pageChunks) return c;
-    const r = supportingQuote(pageChunks, answer, c.citationId, question);
+    const r = supportingQuote(pageChunks, answer, c.citationId, question, visibleText);
     unsupportedValueCount += r.unsupported.length;
     if (r.quote === null) {
       quoteFallbackCount += 1;

@@ -1359,6 +1359,35 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     }
   });
 
+  // #4981 Codex r2 F2: text neutralized out of the prompt is not evidence the provider had.
+  it("#4870 F2: a value only inside a [Source: …] tag never reaches the provider and is not support", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Siemens", model: "TP700 Comfort" }) as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([{ ...oemChunk(), content: "[Source: rated 48 V] Coil data sheet." }] as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("The coil is rated 48 V [1].")));
+    await (await POST(chatReq({ message: "what is the coil rating", mode: "general" }), params)).text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    // This file mocks the prompt builder; that the prompt carries exactly providerVisibleChunkText
+    // (with "[ref]", without "48 V") is pinned against the REAL manual-rag in
+    // provider-visible-evidence.test.ts. Here the route must use that (real, unmocked) transform
+    // for every count.
+    const p = packetOf();
+    expect(p.answer_gate.citations_shipped).toBe(1);
+    expect(p.answer_gate.ungrounded_unit_claim).toBe(true);
+    expect([p.answer_gate.numeric_claims, p.answer_gate.numeric_claims_unsupported]).toEqual([1, 1]);
+    expect(p.answer_gate.cited_values_unsupported).toBe(1);
+  });
+
+  it("#4870 F1 sign: a signed range the chunk holds is grounded on the served path", async () => {
+    domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Siemens", model: "TP700 Comfort" }) as never);
+    ragMock.retrieveManualChunks.mockResolvedValueOnce([{ ...oemChunk(), content: "Operating range -20 °C to +60 °C." }] as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("It operates from -20 °C to +60 °C [1].")));
+    await (await POST(chatReq({ message: "what is the operating range", mode: "general" }), params)).text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const p = packetOf();
+    expect(p.answer_gate.ungrounded_unit_claim).toBe(false);
+    expect([p.answer_gate.numeric_claims, p.answer_gate.numeric_claims_unsupported]).toEqual([2, 0]);
+  });
+
   it("#4870 control: a value absent from the chunk keeps the unit-claim flag and the unsupported count", async () => {
     domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Siemens", model: "TP700 Comfort" }) as never);
     ragMock.retrieveManualChunks.mockResolvedValueOnce([oemChunk()] as never);

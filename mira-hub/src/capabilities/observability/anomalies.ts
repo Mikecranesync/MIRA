@@ -13,7 +13,7 @@
  * from the raw packet every time.
  */
 import type { TurnEvidencePacket } from "./turn-evidence-packet";
-import { appearsVerbatim, identifierAt } from "@/capabilities/numeric-support";
+import { identifierAt } from "@/capabilities/numeric-support";
 
 export type AnomalyCode =
   | "PHOTO_WITH_NO_OBSERVATIONS"
@@ -57,21 +57,28 @@ const UNGROUNDED_UNIT_CLAIM_RE = /\d+(\.\d+)?\s*(in|mm|cm|°C|V|A)\b/;
  */
 export function ungroundedUnitClaim(
   answerText: string,
-  evidence?: { sources: readonly string[]; observations: readonly string[] },
+  audit?: { items: readonly { unit: string | null; supported: boolean }[] },
 ): boolean {
-  // #4870 (R4 calibration, T-2): a match is grounded when its literal text is in the evidence
-  // the model was given — the full text of the chunks in context, or the turn's photo
-  // observation text — and is not a claim at all when its number is part of an identifier
-  // (a part tag like "ZT88120‑4 in"). Without `evidence` this is the evidence-blind regex.
-  const support = evidence ? [...evidence.sources, ...evidence.observations].filter(Boolean) : [];
+  // #4870 / #4981 Codex r2 F1: with `audit` — supporting-quote's numericClaimAudit over the
+  // evidence the provider actually received — the boolean is DERIVED from the parsed claims, the
+  // one sign-aware extractor and support test: "is any unsupported claim a unit claim in this
+  // detector's units?" ("-20 °C" is judged as -20 °C, "-**20** °C" is parsed, a part tag like
+  // "ZT88120‑4 in" is an identifier, not a claim). Without `audit` this is the evidence-blind regex.
+  if (audit) return audit.items.some((c) => !c.supported && isUnitClaimUnit(c.unit));
   for (const m of answerText.matchAll(UNGROUNDED_UNIT_CLAIM_GLOBAL)) {
     if (isZeroMagnitude(m[0])) continue;
     const start = m.index ?? 0;
     if (identifierAt(answerText, start, start + (m[0].match(/^\d+(\.\d+)?/)?.[0].length ?? 0))) continue;
-    if (support.length > 0 && appearsVerbatim(m[0], support)) continue;
     return true;
   }
   return false;
+}
+
+/** The regex's unit set (in, mm, cm, °C, V, A), as canonical parsed units: a V claim written
+ *  "24 V DC"/"24VDC" is a V claim; a ±/≤/≥/</> prefix belongs to the value, not the unit. */
+const UNIT_CLAIM_UNITS = new Set(["in", "mm", "cm", "°C", "V", "VAC", "VDC", "A"]);
+function isUnitClaimUnit(unit: string | null): boolean {
+  return unit !== null && UNIT_CLAIM_UNITS.has(unit.replace(/^[±≤≥<>=]+/u, ""));
 }
 
 /** Global twin of the regex above, so every match can be judged rather than
