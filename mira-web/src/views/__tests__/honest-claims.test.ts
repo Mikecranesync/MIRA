@@ -355,8 +355,6 @@ describe("public marketing copy — don't-say list and no published prices", () 
     expect(trust).toContain("Sub-processors");
     expect(trust).toMatch(/OpenAI/);
     expect(trust).toMatch(/OpenRouter/);
-    expect(trust).toMatch(/Groq/);
-    expect(trust).toMatch(/Together/);
     expect(trust).toContain("Anthropic is not in that cascade");
     expect(trust).not.toContain("We don't name providers");
     expect(privacy).toContain("Tenant isolation");
@@ -607,6 +605,97 @@ describe("public marketing copy — don't-say list and no published prices", () 
     expect(hits.some((h) => h.includes("automatic CMMS / work-order creation"))).toBe(
       true,
     );
+  });
+});
+
+/**
+ * #5005 (Codex r4 F1 on #4570): the live diagnostic cascade is OpenAI, then
+ * OpenRouter, and nothing else (root CLAUDE.md Hard Constraint #2). Groq
+ * (deprecated 2026-10-14) and Together (deprecated 2026-10-25) are billing-dead
+ * and must never be described as live or as processing chat/diagnosis data.
+ */
+const DEPRECATED_PROVIDERS = ["Groq", "Together"] as const;
+
+function trustCascadeViolations(html: string): string[] {
+  const out: string[] = [];
+  const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  const sentences = [...text.matchAll(/The live diagnostic cascade is ([^.]*)\./g)];
+  if (sentences.length !== 1) {
+    out.push(`expected exactly one "live diagnostic cascade" sentence, found ${sentences.length}`);
+  }
+  for (const s of sentences) {
+    const named = s[1];
+    if (!/\bOpenAI\b/.test(named)) out.push("cascade sentence omits OpenAI");
+    if (!/\bOpenRouter\b/.test(named)) out.push("cascade sentence omits OpenRouter");
+    for (const p of DEPRECATED_PROVIDERS) {
+      if (new RegExp(`\\b${p}\\b`).test(named)) out.push(`cascade sentence names ${p} as live`);
+    }
+  }
+  const rows = [...html.matchAll(/<tr>([\s\S]*?)<\/tr>/g)].map((m) =>
+    m[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ")
+  );
+  const inferenceRows = rows.filter((r) => /inference cascade/i.test(r));
+  if (inferenceRows.length !== 1) {
+    out.push(`expected exactly one inference-cascade sub-processor row, found ${inferenceRows.length}`);
+  }
+  for (const r of inferenceRows) {
+    if (!/\bOpenAI\b/.test(r) || !/\bOpenRouter\b/.test(r)) {
+      out.push("inference-cascade row must name OpenAI and OpenRouter");
+    }
+  }
+  for (const r of rows) {
+    for (const p of DEPRECATED_PROVIDERS) {
+      if (!new RegExp(`\\b${p}\\b`).test(r)) continue;
+      if (!/deprecated|inactive/i.test(r)) {
+        out.push(`sub-processor row names ${p} without labeling it deprecated/inactive`);
+      }
+      if (/inference cascade for chat|processes? (?:chat|diagnosis)/i.test(r)) {
+        out.push(`sub-processor row describes ${p} as processing chat/diagnosis data`);
+      }
+    }
+  }
+  return out;
+}
+
+describe("/trust names only the live OpenAI→OpenRouter cascade (#5005)", () => {
+  const OLD_SENTENCE =
+    "<li>The live diagnostic cascade is OpenAI, then OpenRouter, Groq, and Together (each key-gated). Anthropic is not in that cascade.</li>";
+  const NEW_SENTENCE =
+    "<li>The live diagnostic cascade is OpenAI, then OpenRouter (each key-gated). Anthropic is not in that cascade.</li>";
+  const OLD_ROW =
+    "<table><tr><td>OpenAI, OpenRouter, Groq, Together</td><td>AI inference cascade for chat, diagnosis, citations (key-gated).</td></tr></table>";
+  const NEW_ROW =
+    "<table><tr><td>OpenAI, OpenRouter</td><td>AI inference cascade for chat, diagnosis, citations (key-gated).</td></tr></table>";
+
+  test("the shipped /trust page passes the cascade contract", () => {
+    const trust = readPublic("trust.html");
+    expect(trust).toContain("The live diagnostic cascade is");
+    expect(trustCascadeViolations(trust)).toEqual([]);
+  });
+
+  test("planted: the pre-#5005 sentence and row are both rejected", () => {
+    const v = trustCascadeViolations(OLD_SENTENCE + OLD_ROW);
+    expect(v).toContain("cascade sentence names Groq as live");
+    expect(v).toContain("cascade sentence names Together as live");
+    expect(v).toContain("sub-processor row names Groq without labeling it deprecated/inactive");
+    expect(v).toContain("sub-processor row describes Together as processing chat/diagnosis data");
+  });
+
+  test("planted: the old sentence alone (with a corrected row) is still rejected", () => {
+    expect(trustCascadeViolations(OLD_SENTENCE + NEW_ROW)).toEqual([
+      "cascade sentence names Groq as live",
+      "cascade sentence names Together as live",
+    ]);
+  });
+
+  test("control: the corrected sentence and row pass", () => {
+    expect(trustCascadeViolations(NEW_SENTENCE + NEW_ROW)).toEqual([]);
+  });
+
+  test("control: a deprecated, no-data Groq/Together row is accepted", () => {
+    const deprecatedRow =
+      "<table><tr><td>Groq, Together</td><td>Deprecated, not in the live cascade; no chat or diagnosis data sent.</td></tr></table>";
+    expect(trustCascadeViolations(NEW_SENTENCE + NEW_ROW + deprecatedRow)).toEqual([]);
   });
 });
 
