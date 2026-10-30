@@ -3,7 +3,7 @@
 **INFORMATIVE DRAFT — discovery index, not launch approval or another tracker.**
 
 Last discovery check: **2026-10-29, America/New_York**. Repository baseline:
-`08e345f1aaae0ccd89d3e25ae74f948ff8df3dba` (`origin/main`).
+`1f2ef969518cda4fadf296b23fcc2f65b7f8e483` (`origin/main`, reconciliation refresh).
 Curator for this discovery pass: Codex / CHARLIE. Long-term curator: **unassigned**.
 
 This is the single proposed repository index for finding GTM plans, gates, boards,
@@ -18,8 +18,9 @@ and accessible Drive metadata. Missing access is not evidence that an asset is a
   reports fresh held-out forum retrieval **11/29 baseline → 11/29 candidate**
   (2 gained, 2 lost; Wilson lower bound 22.7%, required ≥70%). These are the PR's
   reported local results, not an independently rerun evaluation or deployed proof.
-  The PR was open at head `ebae15bfc269172b1de38f37ccef9772dd9ea074` when checked;
-  its body says committed proof rows precede remediation. Development-set gains
+  The PR is now merged as `1f2ef969518cda4fadf296b23fcc2f65b7f8e483`;
+  its body says committed proof rows precede remediation. Merge is not deployed
+  acceptance. Development-set gains
   do not pass T-1 or authorize pilots.
 - **T-1 through T-5 remain required.** Use [#4372](https://github.com/Mikecranesync/MIRA/issues/4372)
   for the evidence log and [#4875](https://github.com/Mikecranesync/MIRA/pull/4875)
@@ -40,6 +41,80 @@ and accessible Drive metadata. Missing access is not evidence that an asset is a
   records a proposed capped advertising experiment, planning only. No spend,
   outbound messages, publishing, account activation, merge or deployment is
   authorized by this index. No existing tracker status is changed here.
+
+## Strategy reconciliation with founder directive #4982
+
+**Proposed revision for the existing GTM plan, not a second execution tracker.**
+The [founder directive](https://github.com/Mikecranesync/MIRA/issues/4982) is verified
+product direction and a discovery brief. Its product ladder and experiments are
+proposals, not shipped capabilities, approved prices or implementation authority.
+The linked Claude GTM plan remains inaccessible in this pass; this section is a
+reviewable reconciliation for its maintainer to incorporate, not a claim that the
+original artifact was edited. #4372 remains the diagnostic-pilot evidence log.
+
+The proposed customer journey is **free maintenance toolkit → team workflows and
+draft MIRA Work Packets → paid intelligence → optional authorized read-only
+connections**. Immediate workflow usefulness and paid intelligence expansion are
+distinct outcomes. A photo-based draft does not prove CMMS migration, work-order
+writeback, approved maintenance steps or a safe return to service.
+
+### Revised critical path and start conditions
+
+Dependencies below are proposed sequencing; each named execution still needs the
+authority recorded in its owning workstream. No dates or statuses are changed.
+
+| Path | Activity and dependency | What can start / what must wait | Evidence required to advance |
+| --- | --- | --- | --- |
+| Preparation now | Reuse and claims audit → scoped synthetic acceptance design | Read existing components/claims and draft demonstrations, design-partner invitations, workflow-trial terms and service scopes. This does not authorize building new features, sending invitations or starting trials. | Links to existing components, an explicit working/proposed/unknown capability list, responsible owners and a reviewable design. |
+| Workflow usefulness | Approved design → authorized implementation/reuse → synthetic proof → owner-approved workflow trial | A free workflow trial may be considered separately from the diagnostic pilot only after its scope is proven. Do not relabel diagnostic work as a toolkit trial to bypass T-1–T-5. | Accurate capture, editable records, usable export, source provenance, uncertainty handling and mobile acceptance; privacy/site permission before real employer data. |
+| MIRA diagnostics | Existing retrieval and safety fixes → independent trust-gate proof → release approval → five free diagnostic pilots | T-1–T-5, exact-version acceptance and owner GO remain mandatory. T-1 still fails despite #4979 merging. A generated procedure or safety-critical work packet stays on this path. | Fresh held-out evidence, complete cited actions, applicable safety/tenant tests, actual citation opening and deployed acceptance. Use #4372/#4875/#4967, not a duplicate gate board. |
+| Paid services / continuation | Proven deliverable → agreed scope, exclusions, capacity, acceptance and payment terms → separate owner/customer agreement | Paid onboarding, non-diagnostic workflow setup and work-packet services are commercial experiments to scope, not approved offers. Paid diagnostic work packets retain the diagnostic safety dependencies. | Deliverable-specific proof, qualified review where needed, commercial approval and payment evidence. No unsupported price, guarantee, subscription or automatic conversion. |
+| Connected factory | Standalone value proven → authorized read-only integration scope → separately reviewed implementation and acceptance | Optional CMMS/PLC context does not block initial standalone discovery. Real access, data imports and integrations require their own permissions. | Exact supported connector, data ownership/tenant isolation, provenance, failure behavior and site acceptance. No automatic migration/writeback claim. |
+
+### Planning targets and decision boundaries
+
+- **November 21 gate review, December 1 pilot installation and three paying plants
+  by December 31** remain planning/commercial targets reported in the
+  [existing plan handoff](https://github.com/Mikecranesync/MIRA/issues/4372#issuecomment-6511884124).
+  Evidence and owner GO determine actual rollout; a missed gate moves the
+  installation/conversion sequence rather than weakening the gate.
+- A December 1 start leaves a full 30-day free pilot ending around December 31,
+  depending on its activation time. A day-25 review around December 26 is a
+  proposed learning/continuation checkpoint, not an early charge or renewal.
+  Three paying plants by year-end is therefore an ambitious target, not forecast
+  revenue. Track a separately agreed implementation service as service revenue;
+  do not count it as recurring MIRA subscription revenue or imply three plants
+  converted before that actually occurs.
+- **T-4 safety visibility:** explicit visibility is a proposal for safety review.
+  The latest recorded owner decision, [D5](https://github.com/Mikecranesync/MIRA/issues/4372#issuecomment-6510971529),
+  says **no banner over SAFETY_STOP**. Preserve that behavior until an explicit
+  superseding decision and the required safety review; #4982 does not override it.
+- November events require an identified event, attendee fit, expected qualified
+  conversations, full cost/cap and owner approval. No event or outreach is
+  authorized here. Keep free-toolkit acquisition as an experiment to validate,
+  with copy limited to demonstrated functionality.
+
+### Synthetic acceptance design to prepare
+
+Use #4982 for coordination; these are proposed fixtures, not completed tests.
+Never commit founder employer screenshots, employee details or real work orders.
+
+- **CAT Pumps 3520 preparation:** fictional work identity, confirmed model/variant
+  and verified manufacturer-source candidates; repair scope remains unknown until
+  supplied. Missing parts/tools/torques/procedure steps remain unknown. A draft
+  packet requires qualified approval; no generated LOTO or return-to-service step
+  becomes site approved by appearing in the packet.
+- **Brake-gap inspection:** synthetic before/after readings, known units and an
+  explicitly supplied demonstration tolerance; deterministic checks, source and
+  revision provenance, technician edits and export. No invented field limit.
+- **Gate inspection:** fictional asset and approved demo source, checklist and
+  assignment/status/date extraction, uncertainty and duplicate reconciliation,
+  signoff and mobile/export usability. No operational clearance from a mockup.
+
+Proposed measurements: extraction correctness, time to first useful output,
+mobile completion, correction/export success, cost per successful import and
+technician feedback. Define thresholds and reviewers before implementation or
+measurement. Keep each fixture's safety and diagnostic dependencies explicit.
 
 ## Evidence and lifecycle conventions
 
@@ -67,7 +142,8 @@ underlying asset or deployment was refreshed. Source dates remain in the row.
 | --- | --- | --- | --- |
 | [Customer punch list #4372](https://github.com/Mikecranesync/MIRA/issues/4372) | Mike: decisions; contributing engineering sessions | Current evidence log; OPEN, body and recent comments verified | Keep per-gate proof and decisions here. Old body checkboxes and newer comments can disagree; read dated updates before acting. |
 | [Trust gates #4875](https://github.com/Mikecranesync/MIRA/pull/4875), [existing register](../GATE_AND_BLOCKER_REGISTER.md) | Gate owners unassigned in proposal; Mike to assign | OPEN proposal for section 1d; PR body/file list verified; existing register on main | Do not describe the proposed section as merged. Preserve all five gates and obtain owner assignments. |
-| [T-1 retrieval #4979](https://github.com/Mikecranesync/MIRA/pull/4979) | CHARLIE / Fable implementation session; Mike decides release | OPEN implementation PR; reported failed held-out gate, not deployed acceptance | Preserve 11/29 → 11/29 and NO-GO; follow exact-head review and fresh evidence in the source PR. |
+| [T-1 retrieval #4979](https://github.com/Mikecranesync/MIRA/pull/4979) | CHARLIE / Fable implementation session; Mike decides release | MERGED as `1f2ef9695`; reported failed held-out gate, not deployed acceptance | Preserve 11/29 → 11/29 and NO-GO; follow fresh evidence in the source PR. |
+| [Founder field directive #4982](https://github.com/Mikecranesync/MIRA/issues/4982) | Mike: product direction; implementation owners not assigned here | OPEN discovery brief; issue content verified; proposed toolkit/work-packet ladder and acceptance experiments | Reconcile the existing GTM plan with the sequencing above. No feature, offer, employer-data access or diagnostic GO is authorized by the directive. |
 | [OEM manual-to-cited-action blocker #4967](https://github.com/Mikecranesync/MIRA/issues/4967) | Mike priority decision; existing engineering owners | OPEN; verified issue and [docs-package handoff](https://github.com/Mikecranesync/MIRA/issues/4967#issuecomment-6510751597) to #4969 | Intake/page hits do not prove complete correct actions, safety or opened citations. Follow child issues; do not duplicate their work. |
 | [Campaign #4873](https://github.com/Mikecranesync/MIRA/issues/4873) | Grokbot: creative/research; engineering: funnel; Mike: approval | OPEN planning record; [ownership/CTA update](https://github.com/Mikecranesync/MIRA/issues/4873#issuecomment-6459881646) verified | Proposed $150 total cap is not spending authority. Complete claims, consent, attribution and explicit launch packet first. |
 | [Funnel/consent/UTM/PostHog #4877](https://github.com/Mikecranesync/MIRA/issues/4877), [#4881](https://github.com/Mikecranesync/MIRA/pull/4881), [#4893](https://github.com/Mikecranesync/MIRA/pull/4893) | CHARLIE implementation; Mike configuration/approval | Issue OPEN; both PRs MERGED, bodies verified. Original standalone-form request was revised: Hub signup is the application; ads use native lead forms | [Agent recommends closure](https://github.com/Mikecranesync/MIRA/issues/4877#issuecomment-6482604877); this is not a closure or live consent/attribution acceptance. Reconcile deployment, configuration and actual events in source. |
@@ -82,6 +158,7 @@ underlying asset or deployment was refreshed. Source dates remain in the row.
 | --- | --- | --- | --- |
 | [GitHub Project #4](https://github.com/users/Mikecranesync/projects/4) | Mike / existing project maintainers | Metadata verified: open, title `@KANBAN Board`; current issue inbox per latest agent report below | Board status is not a gate verdict. Confirm the plan's authority before using deadlines; do not maintain another Kanban. |
 | [Private Mission Control runbook](../runbooks/mission-control.md), [#4737](https://github.com/Mikecranesync/MIRA/issues/4737) | CHARLIE service; existing owning session | Deployment documented on Oct 24; later [post-merge service report](https://github.com/Mikecranesync/MIRA/issues/4737#issuecomment-6395658184) verified as a report | Live availability not checked here. Tailnet-only URL deliberately omitted from public repo; authorized operators use the runbook. Read-only; Send remains disabled. |
+| Bravo / Grokbot Mission Control (private deployment, distinct from #4737) | Existing Bravo custodian; Codex unified-view update | Existing roster/core report inspected; Today/Agents/Delivery/GTM/Sources UI deployed and HTML/JSON read back over tailnet HTTPS in this session | Exact private URL/access route stays outside the public repo. Core updates use Bravo's existing local updater; GitHub is a saved snapshot. No dispatch adapter, public exposure or web-write endpoint. |
 | [MIRA Go-To-Market Plan](https://claude.ai/artifact/73QPJ4ksMqcrevw9T5x7uE), [discovery comment](https://github.com/Mikecranesync/MIRA/issues/4372#issuecomment-6511884124) | CHARLIE reporter; owner approval not independently established | New agent report, timestamp Oct 30 00:31 UTC (Oct 29 ET); comment verified, artifact inaccessible in this pass | Comment says this replaces dates in Oct 24 Next-Level Plan, Oct 27 First Pilot Package, June checklist and Project #4; #4372 remains gate log. Confirm contents/owner ratification. Reported Nov 21 review / Dec 1 installs / Dec 31 paid-conversion targets are planning targets, not gate waivers. |
 | [Linear Cranesync](https://linear.app/cranesync), [May 2 board snapshot](../memory-snapshots/2026-05-02/project_linear_board.md) | Unassigned current custodian | Historical Sales & GTM board (CRA-9/10/18); repository snapshot verified, live board unverified | Confirm whether still maintained and whether free-tier limits affected it before treating it as an execution source. |
 | [MIRA GTM Release Room Site](https://mira-gtm-release-room.factorylm-6922.chatgpt.site) | Unassigned; owner Library | Seed inventory reports Library metadata “active,” custom access; actual functionality unverified | Site could not be opened by the web reader. Verify access, interactions, data freshness and underlying source links; active metadata is not functional acceptance. |
@@ -172,6 +249,10 @@ content out of contributions. Link restricted sources without broadening access.
 - GitHub bodies/comments and repository paths were checked; evaluation runs,
   live product behavior, CRM, Linear, private Mission Control, Library uploads,
   Site functionality and Drive document contents were not independently audited.
+  Exception on reconciliation refresh: Bravo Mission Control HTML/JSON and update
+  files were inspected and served bytes verified; browser visual acceptance was
+  blocked by this machine's MagicDNS resolution. This is distinct from the
+  CHARLIE Mission Control deployment and the two private Sites.
 - Some source comments use UTC dates a day later than the ET discovery date.
   New evidence can arrive immediately after this snapshot: recheck before acting.
 - Suggested maintenance: the agent contributing a changed asset updates its row;
