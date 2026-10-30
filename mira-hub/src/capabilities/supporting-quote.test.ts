@@ -326,8 +326,12 @@ describe("Codex round 3 (PR #4319) — a value counts only when the parser consu
     expect(supportingQuote(["Input 24 V AC."], "Input is 24 VAC [1].", "1", "").support).toBe("claim");
     expect(supportingQuote(["Ripple 12 Vrms."], "Ripple is 12 Vrms [1].", "1", "").support).toBe("claim");
   });
-  it("the cost, stated: an identical but unconsumable quantity is not matched either", () =>
-    expect(supportingQuote(["Speed 12 m/s."], "Speed is 12 m/s [1].", "1", "")).toEqual(fallback("12 m")));
+  it("the cost, stated: an identical but unconsumable quantity is not matched either", () => {
+    // #4870: still never QUOTED — but the whole literal "12 m/s" is on the page, so it is no
+    // longer counted as unsupported. Its bare prefix on the page never is (control).
+    expect(supportingQuote(["Speed 12 m/s."], "Speed is 12 m/s [1].", "1", "")).toEqual(fallback());
+    expect(supportingQuote(["Length 12 m."], "Speed is 12 m/s [1].", "1", "")).toEqual(fallback("12 m"));
+  });
   it("the route seam counts an unconsumable claim and keeps the existing quote", () => {
     const r = withSupportingQuotes([{ citationId: "1", quote: "q" }], [{ content: "Current 12 A.", sourceUrl: "/m.pdf", sourcePage: 1 }], "Current density is 12 A/mm² [1].", "");
     expect(r.citations[0].quote).toBe("q");
@@ -1226,6 +1230,21 @@ describe("#4870 cited-value support: verbatim, full chunk, photo, identifiers", 
   });
   it("a zero-padded fault code with its name is not a cited value", () => {
     expect(supportingQuote([PAGE], "Fault 0042 OVERVOLT means the bus is high [1].", "1", "").unsupported).toEqual([]);
+  });
+  it("a slash-joined pair is supported when the whole pair is on the page, across a line break", () => {
+    const page = "Inputs: 24V DC/\n24V AC sink/source";
+    expect(supportingQuote([page], "It takes 24V DC/24V AC inputs [1].", "1", "").unsupported).toEqual([]);
+    expect(supportingQuote(["Inputs: 24V DC only"], "It takes 24V DC/24V AC inputs [1].", "1", "").unsupported).not.toEqual([]);
+  });
+  it("the joined literal must end where the quantity ends, not inside it (12 V/24 V is not 12 V/24)", () => {
+    expect(supportingQuote(["Range 12 V/24 setting."], "Range is 12 V/24 V [1].", "1", "").unsupported).not.toEqual([]);
+    expect(supportingQuote(["Range 12 V/24 V."], "Range is 12 V/24 V [1].", "1", "").unsupported).toEqual([]);
+    // a spaced second unit after the joined literal still continues the quantity
+    expect(supportingQuote(["Rating 12 V/24 kW."], "Rating is 12 V/24 kW h [1].", "1", "").unsupported).not.toEqual([]);
+  });
+  it("an AC/DC qualifier spelled apart on one side is the same literal (2 A DC ⇔ 2 ADC)", () => {
+    expect(supportingQuote(["Max switching current 2 ADC"], "It switches 2 A DC on the contacts [1].", "1", "").unsupported).toEqual([]);
+    expect(supportingQuote(["Max switching current 3 ADC"], "It switches 2 A DC on the contacts [1].", "1", "").unsupported).toEqual(["2 A"]);
   });
   it("CONTROL: a real unit value absent from the page stays unsupported", () => {
     expect(supportingQuote([PAGE], "Use a 99 mm spacer [1].", "1", "").unsupported).toEqual(["99 mm"]);

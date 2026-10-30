@@ -569,7 +569,6 @@ function identifierValue(answer: string, v: Value): boolean {
  *  unit) falls back to its literal text appearing verbatim. Source values are parsed once. */
 class ClaimSupport {
   private parsed: Value[] | null = null;
-  private plusComplete: Set<number> | null = null;
   constructor(private readonly texts: readonly string[], private readonly answer: string) {}
   holds(claim: Value): boolean {
     if (this.texts.length === 0) return false;
@@ -577,24 +576,42 @@ class ClaimSupport {
       this.parsed ??= this.texts.flatMap((t) => findValues(t, "source"));
       return this.parsed.some((sv) => satisfies(sv, claim));
     }
-    // Verbatim is only for a value the parser read whole: a fragment (1e-3, 1 000, 12 m/s) is
-    // never rescued by its pieces. The one exception is a leading "+", which the parser reads as
-    // a join mark: "+18.5 V" is re-read with that sign as a space, and counts if complete then.
-    // The sign then stays part of the literal: "+12 V" is never supported by a bare "12 V".
-    const plus = !claim.complete;
-    if (plus && !this.completeWithoutPlus(claim)) return false;
+    const literal = this.literal(claim);
+    if (literal === null) return false;
     // A unitless number that shares the next value's unit ("12 or 24 V") is a quantity read
     // without its unit, so a bare 12 on the page cannot support it.
     if (claim.unit === null && SHARED_UNIT.test(this.answer.slice(claim.end, claim.end + 40))) return false;
-    return appearsVerbatim(plus ? `+${claim.text}` : claim.text, this.texts);
+    return appearsVerbatim(literal, this.texts);
   }
-  private completeWithoutPlus(claim: Value): boolean {
-    if (this.answer[claim.start - 1] !== "+") return false;
-    if (this.plusComplete === null) {
-      const unsigned = this.answer.replace(MARKER_RE, (m) => " ".repeat(m.length)).replace(/\+(?=\d)/g, " ");
-      this.plusComplete = new Set(findValues(unsigned, "answer").filter((v) => v.complete).map((v) => v.start));
+  /** The value's literal text as written. A complete value is its own text. An incomplete one
+   *  is never rescued by a piece: only when everything before it is clean (re-read with the text
+   *  cut at its end — or with a leading "+" sign read as a sign) is it extended over what joins
+   *  it on the right ("24V DC/24V AC", "12 m/s", "2 A DC"), and that WHOLE literal must be on
+   *  the page. A left-joined piece (1 000, ≠0, 1e-3) returns null. */
+  private literal(claim: Value): string | null {
+    if (claim.complete) return claim.text;
+    const plus = this.answer[claim.start - 1] === "+";
+    const masked = this.answer.replace(MARKER_RE, (m) => " ".repeat(m.length));
+    const probe = `${(plus ? masked.replace(/\+(?=\d)/g, " ") : masked).slice(0, claim.end)} .`;
+    if (!findValues(probe, "answer").some((v) => v.start === claim.start && v.complete)) return null;
+    let end = claim.end;
+    for (let i = 0; i < 4; i++) {
+      const rest = masked.slice(end);
+      const glued = (/^[^\s,;!?()[\]{}"“”'‘’]*/u.exec(rest)?.[0] ?? "").replace(/[.:]+$/u, "");
+      // A joined number keeps its own spaced unit: "12 V/24 V".
+      const spaced = /\d$/.test(glued) ? /^[ \t]+([\p{L}°µΩ%℃℉][\p{L}\d·]*)/u.exec(rest.slice(glued.length)) : null;
+      const unit = spaced && tableUnit(spaced[1]) ? spaced[0] : "";
+      const at = glued.length + unit.length;
+      const qualifier = /^[ \t]+(?:ac|dc|a\.c\.|d\.c\.|rms|peak|pk)(?![\p{L}\d])/iu.exec(rest.slice(at))?.[0] ?? "";
+      if (!at && !qualifier) break;
+      end += at + qualifier.length;
     }
-    return this.plusComplete.has(claim.start);
+    // The extension must explain the incompleteness: it consumed the joined text (or the only
+    // problem was the "+"), and nothing after it still continues the quantity ("12 kW h",
+    // "12 V (AC)", "12 A   /mm²" stay null — their bare prefix is not the value).
+    if (end === claim.end && !plus) return null;
+    if (continues(tailAt(normalize(masked), end), tailAt(normalize(masked, true), end))) return null;
+    return `${plus ? "+" : ""}${this.answer.slice(claim.start, end)}`;
   }
 }
 const SHARED_UNIT = /^[ \t]*(?:or|and|to|through|-|–|,|\/)[ \t]*[-+]?\d+(?:\.\d+)?[ \t]*[\p{L}°%µΩ℃℉]/u;
