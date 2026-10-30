@@ -104,3 +104,8 @@ Inputs:
 7933cb8b0ad63814f9c34dccd546f03e62c920c2ad57a188a9b0f85f98102a29  tools/bench4589/forum-new-questions.json
 251aa8ea86ce7f71369eb267710dbc48beb17e3782192c089a2f5df249215f3b  tools/bench4589/forum-fresh-questions.json
 ```
+
+## Rebase note
+
+The proof ran on `5f2f91e5e` (branch head before rebasing onto `08e345f1a`, main's #4932). The rebase changed
+commit SHAs only: `git diff 5f2f91e5e <PR head> -- mira-hub/src/lib` is empty, and #4932 touches no retrieval code.
