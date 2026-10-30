@@ -18,6 +18,7 @@ import html
 import importlib.util
 import logging
 import os
+import re
 import string
 import sys
 import threading
@@ -113,6 +114,17 @@ def _e(s: object) -> str:
     return html.escape(str(s), quote=True)
 
 
+# Separate from _link()'s GitHub-only card guard (#4982): this is one operator-configured
+# header link to the GTM plan, never a card ref, so it must not widen _link()'s allowlist.
+_PLAN_URL_RE = re.compile(r"https://claude\.ai/artifact/[A-Za-z0-9_-]+")
+
+
+def _plan_url() -> Optional[str]:
+    """Read MC_PLAN_URL; return it only if it is exactly a claude.ai artifact URL, else None."""
+    url = os.getenv("MC_PLAN_URL", "")
+    return url if _PLAN_URL_RE.fullmatch(url) else None
+
+
 def _link(item: dict) -> str:
     url = item["url"] if str(item["url"]).startswith("https://github.com/") else "#"
     return f'<a href="{_e(url)}" target="_blank" rel="noopener">{_e(item["repo"].split("/")[-1])} #{_e(item["number"])}</a>'
@@ -153,12 +165,19 @@ def render(snap: Snapshot) -> str:
     error = f'<p class="error" role="alert">{_e(snap.error)}</p>' if snap.error else ""
     if snap.at is None and not snap.error:
         error = '<p class="error" role="status">Loading the board for the first time; reload in about 30 seconds.</p>'
+    plan_url = _plan_url()
+    plan_link = (
+        f'<a class="plan" href="{_e(plan_url)}" target="_blank" rel="noopener">View GTM plan</a>'
+        if plan_url
+        else ""
+    )
     return string.Template((HERE / "page.html").read_text()).substitute(
         snapshot_time=_e(when),
         total=v["total"],
         status_list=status,
         error=error,
         send_reason=_e(SEND_DISABLED_REASON),
+        plan_link=plan_link,
         focus=_section(
             "In progress",
             "Open cards with Status = In Progress (matches saved View 2).",
