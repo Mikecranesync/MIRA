@@ -1,3 +1,5 @@
+import { serializeJsonLd } from "./html.js";
+
 export interface HeadOpts {
   title: string;
   description: string;
@@ -31,7 +33,7 @@ export function head(opts: HeadOpts, reqUrl?: string): string {
   const ogImage = opts.ogImage ?? DEFAULT_OG_IMAGE;
 
   const jsonLdBlock = opts.jsonLd
-    ? `<script type="application/ld+json">${JSON.stringify(opts.jsonLd)}</script>`
+    ? `<script type="application/ld+json">${serializeJsonLd(opts.jsonLd)}</script>`
     : "";
 
   const gscTag = GOOGLE_VERIFY

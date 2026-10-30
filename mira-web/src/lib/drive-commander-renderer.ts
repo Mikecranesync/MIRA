@@ -24,6 +24,7 @@
  * NO Pro pack data is emitted into the free DOM. Every claim is cited from the pack;
  * nothing is generic-AI-generated.
  */
+import { loadCapabilities } from "../capabilities/marketing-claims/index.js";
 import type { DrivePackDisplay, FaultView, ParameterCard } from "./drive-pack-data.js";
 import {
   getFaultEntry,
@@ -34,12 +35,6 @@ import {
 } from "./drive-pack-data.js";
 
 const BASE_URL = "https://factorylm.com";
-// Live checkout: /api/checkout/session dispatches on ?product= and falls back
-// to /pricing?product=drive-commander-pro until STRIPE_DRIVE_COMMANDER_PRICE_ID
-// is provisioned in Doppler factorylm/prd.
-const PRICING_HREF = "/api/checkout/session?product=drive-commander-pro";
-const WAITLIST_HREF =
-  "mailto:hello@factorylm.com?subject=Drive%20Commander%20Pro%20interest";
 
 function escHtml(s: string): string {
   return s
@@ -228,9 +223,8 @@ function provBadge(pack: DrivePackDisplay): string {
 }
 
 function waitlistCTA(): string {
-  // Lead price is $197/yr annual (locked 2026-09-05). Monthly is not the primary offer.
-  return `<a class="cta" href="${PRICING_HREF}" data-cta="dc-pro-annual"><small>Individual technician license</small>Unlock Drive Commander Pro &mdash; $197/yr &rarr;</a>
-    <p class="price-note">Annual plan &middot; cancel anytime &middot; 30-day money-back guarantee</p>`;
+  const data = loadCapabilities();
+  return `<a class="cta" href="${escAttr(data.contact.href)}" data-cta="dc-pro-talk"><small>Drive Commander Pro</small>${escHtml(data.contact.cta)} &rarr;</a>`;
 }
 
 // The Pro teaser. IMPORTANT: no real pack data (no value tables, no full param
@@ -341,7 +335,7 @@ export function renderDriveLandingPage(
     <section class="hero">
       <div class="section-label">Drive Commander &middot; ${escHtml(product)}</div>
       <h1 class="dc-h1">${escHtml(product)} fault codes, decoded for the technician in front of the drive.</h1>
-      <p class="dc-lede">Search a fault code. Get what it means and the exact parameters to check &mdash; every answer cited to the ${escHtml(
+      <p class="dc-lede">Search a fault code. Get what it means and the exact parameters to check &mdash; each lookup cited to the ${escHtml(
         pack.family.series,
       )} manual. No PDF hunting, no generic AI guesses.</p>
       <div style="margin-bottom:8px">${provBadge(pack)}</div>

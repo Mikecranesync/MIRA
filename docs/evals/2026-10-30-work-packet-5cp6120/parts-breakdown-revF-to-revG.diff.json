@@ -1,0 +1,42 @@
+[
+ {
+  "item": 37,
+  "part": "92241",
+  "change": "qty",
+  "a": "1\u20132",
+  "b": "1\u20131\u20132"
+ },
+ {
+  "item": 38,
+  "part": "44428",
+  "change": "qty",
+  "a": "1\u20132",
+  "b": "1\u20131\u20132"
+ },
+ {
+  "item": 120,
+  "part": "49436",
+  "change": "only_in_a"
+ },
+ {
+  "kit": "seal",
+  "item": null,
+  "change": "only_in_b"
+ },
+ {
+  "kit": "seal",
+  "item": 106,
+  "material": "EPDM (.0220)",
+  "change": "kit_item_part",
+  "a": "48429",
+  "b": null
+ },
+ {
+  "kit": "seal",
+  "item": 106,
+  "material": "FPM (.0110)",
+  "change": "kit_item_part",
+  "a": "45153",
+  "b": null
+ }
+]

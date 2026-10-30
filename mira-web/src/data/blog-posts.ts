@@ -38,6 +38,7 @@ export const BLOG_POSTS: BlogPost[] = [
     description:
       "Learn how to read and interpret VFD fault codes from PowerFlex, Yaskawa, ABB, Siemens, and AutomationDirect drives. Step-by-step guide for maintenance technicians.",
     date: "2026-04-08",
+    updated: "2026-10-29",
     author: "FactoryLM Engineering",
     category: "Guides",
     readingTime: "6 min read",
@@ -104,7 +105,7 @@ export const BLOG_POSTS: BlogPost[] = [
       {
         type: "callout",
         variant: "info",
-        text: "FactoryLM's MIRA AI can diagnose VFD fault codes from any manufacturer in seconds. Just type or paste the fault code and MIRA searches your equipment manuals for the exact fix.",
+        text: "If you have the drive's OEM manual, look the code up there first. FactoryLM's equipment notebook is built for that same lookup against the manual you attach — not a promise that every manufacturer is covered, and not a CMMS work-order writer.",
       },
     ],
     relatedPosts: ["vfd-troubleshooting-checklist", "how-to-megger-test-a-motor"],
@@ -123,6 +124,7 @@ export const BLOG_POSTS: BlogPost[] = [
     description:
       "Understand the difference between predictive and preventive maintenance, when to use each, and how modern AI tools are changing the game for small maintenance teams.",
     date: "2026-04-08",
+    updated: "2026-10-29",
     author: "FactoryLM Engineering",
     category: "Industry",
     readingTime: "7 min read",
@@ -171,7 +173,7 @@ export const BLOG_POSTS: BlogPost[] = [
       { type: "heading", text: "Where AI Fits In" },
       {
         type: "paragraph",
-        text: "AI doesn't replace PM or PdM — it accelerates both. When a fault code fires on a VFD at 2 AM, you don't need to flip through a 400-page manual. You need the answer now. AI tools like Mira can search your equipment manuals, cross-reference fault histories, and suggest the most likely root cause in seconds. That's not replacing your expertise — it's giving you the right information faster.",
+        text: "AI doesn't replace PM or PdM — it accelerates both. When a fault code fires on a VFD at 2 AM, you don't need to flip through a 400-page manual. What you need is the right section of the OEM manual in front of you. That's not replacing your expertise.",
       },
       {
         type: "paragraph",
@@ -189,6 +191,7 @@ export const BLOG_POSTS: BlogPost[] = [
     description:
       "Complete guide to megger testing (insulation resistance testing) electric motors. Learn when to test, how to interpret readings, and what values mean pass or fail.",
     date: "2026-04-08",
+    updated: "2026-10-29",
     author: "FactoryLM Engineering",
     category: "Guides",
     readingTime: "8 min read",
@@ -207,7 +210,7 @@ export const BLOG_POSTS: BlogPost[] = [
       {
         type: "list",
         items: [
-          "Insulation resistance tester (megger) — 500V DC for motors up to 480V, 1000V DC for medium voltage",
+          "Insulation resistance tester (megger) — 500V DC for motors up to 480-volt class, 1000V DC for medium voltage",
           "Multimeter for verifying zero energy",
           "Motor leads disconnected from the drive/starter",
           "Clean, dry conditions (moisture will affect readings)",
@@ -220,7 +223,7 @@ export const BLOG_POSTS: BlogPost[] = [
         items: [
           "Lock out / tag out the motor circuit. Verify zero energy with a multimeter at the motor terminals.",
           "Disconnect the motor leads from the VFD or starter. You're testing the motor and its cable, not the drive.",
-          "Set the megger to the correct test voltage: 500V DC for motors rated 480V and below, 1000V DC for higher voltages.",
+          "Set the megger to the correct test voltage: 500V DC for motors rated 480-volt class and below, 1000V DC for higher voltages.",
           "Connect the megger's ground lead to the motor frame (a clean, unpainted surface). Connect the line lead to one motor phase lead (T1/U).",
           "Press the test button and hold for 60 seconds. Record the reading at 60 seconds — this is your insulation resistance value in megohms (MΩ).",
           "Repeat for each phase to ground (T1→GND, T2→GND, T3→GND).",
@@ -573,6 +576,7 @@ export const BLOG_POSTS: BlogPost[] = [
     description:
       "What a CMMS is, why small maintenance teams need one, and how to choose the right one. No jargon, just practical advice from teams who've been there.",
     date: "2026-04-08",
+    updated: "2026-10-29",
     author: "FactoryLM Engineering",
     category: "Product",
     readingTime: "5 min read",
@@ -603,24 +607,24 @@ export const BLOG_POSTS: BlogPost[] = [
         items: [
           "Mobile-friendly. Your technicians are on the floor, not at a desk. If the CMMS doesn't work on a phone, they won't use it.",
           "Fast work order creation. If it takes 5 minutes to create a WO, people will stop using it. One tap or one line of text should be enough.",
-          "Simple PM scheduling. Calendar-based or meter-based triggers. Bonus points if it auto-generates the WO when a PM is due.",
+          "Simple PM scheduling. Calendar-based or meter-based triggers.",
           "Asset hierarchy. Organize equipment by location → line → machine → component. This makes it easy to find the repair history for any asset.",
-          "Low per-user cost. Many CMMS tools charge $50–$150/user/month. For a small team, that adds up fast. Look for free tiers or flat-rate pricing.",
+          "Low per-user cost. Many CMMS tools charge per user per month. For a small team, that adds up fast. Look for pricing that fits a small crew, not a per-seat tax.",
         ],
       },
       { type: "heading", text: "Where AI Changes the Game" },
       {
         type: "paragraph",
-        text: "Traditional CMMS tools are databases — they store information but don't help you diagnose. AI-powered CMMS tools like FactoryLM add a diagnostic layer: you type a fault code or describe a symptom, and the system searches your uploaded equipment manuals to give you the fix. It even auto-creates the work order from the diagnosis.",
+        text: "Traditional CMMS tools are databases — they store information but don't help you diagnose. FactoryLM is not a CMMS and doesn't replace yours. MIRA reads the manuals you attach; it does not take PLC data and does not write work-order records.",
       },
       {
         type: "paragraph",
-        text: "For small teams without deep specialist knowledge on staff, this is transformative. Instead of Googling a fault code and hoping the forum post from 2014 applies to your drive model, you get the answer from your actual manual in seconds.",
+        text: "For small teams without deep specialist knowledge on staff, this is the gap MIRA fills. Instead of Googling a fault code and hoping the forum post from 2014 applies to your drive model, you start from the manual you attached.",
       },
       {
         type: "callout",
         variant: "info",
-        text: "FactoryLM offers a free CMMS tier: work orders, asset tracking, PM scheduling, and 5 AI diagnostic queries per day. No credit card required.",
+        text: "FactoryLM is not a CMMS. CMMS connectors are optional and not yet available. MIRA stands alone.",
       },
     ],
     relatedPosts: ["predictive-vs-preventive-maintenance"],

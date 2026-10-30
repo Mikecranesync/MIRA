@@ -32,11 +32,11 @@ interface NavLink {
   ctaSlug: string;
 }
 
-const APEX = "https://factorylm.com";
+export const APEX = "https://factorylm.com";
+export const TALK_TO_MIKE_HREF = "mailto:mike@factorylm.com";
 
 const NAV_LINKS: NavLink[] = [
-  { href: `${APEX}/cmms`, label: "CMMS", ctaSlug: "cmms" },
-  { href: `${APEX}/pricing`, label: "Pricing", ctaSlug: "pricing" },
+  { href: `${APEX}/pricing`, label: "Talk to Mike", ctaSlug: "pricing" },
   { href: `${APEX}/blog`, label: "Blog", ctaSlug: "blog" },
   { href: `${APEX}/limitations`, label: "Limitations", ctaSlug: "limitations" },
   { href: `${APEX}/security`, label: "Security", ctaSlug: "security" },
@@ -57,7 +57,7 @@ function renderLink(link: NavLink, opts: TopbarOpts): string {
 export function navbar(opts: TopbarOpts = {}): string {
   const links = NAV_LINKS.map((l) => renderLink(l, opts)).join("\n    ");
   const signinCta = ctaName(opts.ctaPrefix, "signin");
-  const buyCta = ctaName(opts.ctaPrefix, "buy");
+  const talkCta = ctaName(opts.ctaPrefix, "talk");
   return `<header class="fl-topbar" role="banner">
   <a class="fl-topbar-brand" href="${APEX}/" aria-label="FactoryLM home">FactoryLM</a>
   <nav class="fl-topbar-nav" aria-label="Primary">
@@ -65,14 +65,14 @@ export function navbar(opts: TopbarOpts = {}): string {
   </nav>
   <div class="fl-topbar-cta">
     ${btnGhost("Sign in", { href: `${APEX}/cmms`, cta: signinCta })}
-    ${btnPrimary("Book $500 Assessment", { href: `${APEX}/buy`, cta: buyCta })}
+    ${btnPrimary("Talk to Mike", { href: TALK_TO_MIKE_HREF, cta: talkCta })}
   </div>
 </header>`;
 }
 
 const FOOTER_LINKS = [
-  { href: `${APEX}/assess`, label: "Assessment", slug: "assess" },
   { href: `${APEX}/limitations`, label: "Limitations", slug: "limitations" },
+  { href: `${APEX}/security`, label: "Security", slug: "security" },
   { href: `${APEX}/trust`, label: "Trust", slug: "trust" },
   { href: `${APEX}/privacy`, label: "Privacy", slug: "privacy" },
   { href: `${APEX}/terms`, label: "Terms", slug: "terms" },

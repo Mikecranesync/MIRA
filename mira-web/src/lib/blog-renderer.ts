@@ -6,6 +6,11 @@
 
 import type { FaultCode } from "../data/fault-codes.js";
 import type { BlogPost, BlogSection } from "../data/blog-posts.js";
+import {
+  loadCapabilities,
+  provenText,
+  type CapabilitiesFile,
+} from "../capabilities/marketing-claims/index.js";
 
 const BASE_URL = "https://factorylm.com";
 
@@ -100,8 +105,7 @@ function nav(opts: BlogNavOpts = {}): string {
   <div class="nav-inner">
     <a href="/" class="nav-logo" aria-label="FactoryLM home">FactoryLM</a>
     <ul class="nav-links" role="list">
-      ${navLink("/cmms", "CMMS", opts.currentPath)}
-      ${navLink("/pricing", "Pricing", opts.currentPath)}
+      ${navLink("/pricing", "Talk to Mike", opts.currentPath)}
       ${navLink("/blog", "Blog", opts.currentPath)}
       ${navLink("/limitations", "Limitations", opts.currentPath)}
       ${navLink("/security", "Security", opts.currentPath)}
@@ -136,6 +140,19 @@ function siteFooter(): string {
 // chat). Removed the FAB until /api/mira/session has a real backend.
 // See CRA-60 / GitHub #992.
 
+function marketingCtaCard(
+  heading: string,
+  data: CapabilitiesFile = loadCapabilities(),
+): string {
+  const body = provenText("notebook-cited-answer", data);
+  const bodyHtml = body ? `<p>${escHtml(body)}</p>` : "";
+  return `<div class="cta-card fade-in">
+    <h3>${escHtml(heading)}</h3>
+    ${bodyHtml}
+    <a href="${escAttr(data.contact.href)}" class="btn-primary">${escHtml(data.contact.cta)} ${ARROW_SVG}</a>
+  </div>`;
+}
+
 function scripts(): string {
   return `<script>
   (function(){var n=document.getElementById('main-nav');function u(){n.classList.toggle('scrolled',window.scrollY>10)}window.addEventListener('scroll',u,{passive:true});u()})();
@@ -151,6 +168,7 @@ export function renderBlogPost(
   post: BlogPost,
   allPosts: BlogPost[],
   allCodes: FaultCode[],
+  data: CapabilitiesFile = loadCapabilities(),
 ): string {
   const canonical = `${BASE_URL}/blog/${post.slug}`;
 
@@ -216,11 +234,7 @@ ${nav({ currentPath: "/blog" })}
 
   ${buildRelatedHtml(related, relatedCodes)}
 
-  <div class="cta-card fade-in">
-    <h3>Try Mira — AI that reads your equipment manuals</h3>
-    <p>Type a fault code, describe a symptom, or upload a photo. Get the diagnostic answer in seconds.</p>
-    <a href="/cmms" class="btn-primary">Try free ${ARROW_SVG}</a>
-  </div>
+  ${marketingCtaCard("Have a question? Ask Mira.", data)}
 </article>
 
 </main>
@@ -238,6 +252,7 @@ ${scripts()}
 export function renderFaultCodePage(
   fc: FaultCode,
   allCodes: FaultCode[],
+  data: CapabilitiesFile = loadCapabilities(),
 ): string {
   const canonical = `${BASE_URL}/blog/${fc.slug}`;
   const causes = fc.commonCauses.map((c) => `      <li>${escHtml(c)}</li>`).join("\n");
@@ -365,11 +380,7 @@ ${fixSteps}
 
   ${relatedHtml}
 
-  <div class="cta-card fade-in">
-    <h3>Still stuck? Ask Mira.</h3>
-    <p>Paste your fault code into Mira and get an answer from your actual equipment manuals in seconds.</p>
-    <a href="/cmms" class="btn-primary">Try free ${ARROW_SVG}</a>
-  </div>
+  ${marketingCtaCard("Still stuck? Ask Mira.", data)}
 </article>
 
 </main>
@@ -387,6 +398,7 @@ ${scripts()}
 export function renderBlogIndex(
   posts: BlogPost[],
   faultCodeCount: number,
+  data: CapabilitiesFile = loadCapabilities(),
 ): string {
   const canonical = `${BASE_URL}/blog`;
   const sorted = [...posts].sort((a, b) => b.date.localeCompare(a.date));
@@ -454,11 +466,7 @@ ${postCards}
 </div>
 
 <div class="inner" style="padding-bottom: 48px;">
-  <div class="cta-card fade-in">
-    <h3>Get answers faster with MIRA AI</h3>
-    <p>Type a fault code and get the fix from your equipment manuals in seconds.</p>
-    <a href="/cmms" class="btn-primary">Try free ${ARROW_SVG}</a>
-  </div>
+  ${marketingCtaCard("Ask Mira from your equipment manuals", data)}
 </div>
 
 </main>
@@ -473,7 +481,10 @@ ${scripts()}
 // Fault code library index
 // ═══════════════════════════════════════════════════════════════════════════
 
-export function renderFaultCodeIndex(faultCodes: FaultCode[]): string {
+export function renderFaultCodeIndex(
+  faultCodes: FaultCode[],
+  data: CapabilitiesFile = loadCapabilities(),
+): string {
   const canonical = `${BASE_URL}/blog/fault-codes`;
 
   const grouped = new Map<string, FaultCode[]>();
@@ -534,11 +545,7 @@ ${nav({ currentPath: "/blog" })}
 <div class="inner">
 ${sections}
 
-  <div class="cta-card fade-in" style="margin-bottom: 48px;">
-    <h3>Can\u2019t find your fault code?</h3>
-    <p>Ask Mira \u2014 AI that reads your equipment manuals and gives you the answer in seconds.</p>
-    <a href="/cmms" class="btn-primary">Try free ${ARROW_SVG}</a>
-  </div>
+  ${marketingCtaCard("Can\u2019t find your fault code?", data)}
 </div>
 
 </main>

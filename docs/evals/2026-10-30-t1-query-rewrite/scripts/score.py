@@ -1,0 +1,61 @@
+"""Top-5 right-page score with a Wilson 95% interval.
+
+    python3 score.py [--questions <questions.json>] <rows.jsonl>...
+
+With --questions, every row must agree with the registered question file (same id, same `kind`, same
+`accepted`) — a row that disagrees is a scoring error and the run exits non-zero instead of counting it
+(Codex F5 on #5003: three questions registered unanswerable were being scored as answerable).
+"""
+
+import json
+import math
+import sys
+
+
+def wilson(k, n, z=1.96):
+    if n == 0:
+        return (0, 0)
+    p = k / n
+    d = 1 + z * z / n
+    c = p + z * z / (2 * n)
+    m = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n))
+    return ((c - m) / d, (c + m) / d)
+
+
+def validate(rows, qs, f):
+    for r in rows:
+        q = qs.get(r["id"])
+        if q is None:
+            sys.exit(f"{f}: row {r['id']} is not a registered question")
+        kind = "answerable" if q["accepted"] else "unanswerable"
+        if r["kind"] != kind or sorted(r["accepted"]) != sorted(q["accepted"]):
+            sys.exit(
+                f"{f}: row {r['id']} is {r['kind']} {r['accepted']} but registered as {kind} {q['accepted']}"
+            )
+
+
+def main():
+    args = sys.argv[1:]
+    qs = None
+    if args and args[0] == "--questions":
+        qs = {q["id"]: q for q in json.load(open(args[1]))}
+        args = args[2:]
+    for f in args:
+        rows = [json.loads(line) for line in open(f) if line.strip()]
+        if qs is not None:
+            validate(rows, qs, f)
+        ans = [r for r in rows if r["kind"] == "answerable"]
+        hits = []
+        miss = []
+        for r in ans:
+            acc = set(r["accepted"])
+            rp = r["ranked_pages"]
+            rank = next((i + 1 for i, p in enumerate(rp) if p in acc), None)
+            (hits if rank and rank <= 5 else miss).append((r["id"], rank))
+        lo, hi = wilson(len(hits), len(ans))
+        print(f"{f.split('/')[-1]}: {len(hits)}/{len(ans)} top5  wilson {lo:.1%}-{hi:.1%}")
+        print("  miss:", miss)
+
+
+if __name__ == "__main__":
+    main()

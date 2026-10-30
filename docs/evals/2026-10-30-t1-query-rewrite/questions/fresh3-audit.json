@@ -1,0 +1,782 @@
+{
+ "admitted": [
+  {
+   "id": "fr3-pf40-01",
+   "set": "forum-fresh3",
+   "manual": "pf40",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+   "url": "https://www.plctalk.net/forums/threads/power-flex-40-wont-start-from-keypad.134001/",
+   "forum": "plctalk.net",
+   "question": "Hello All. I have a Power Flex 40 that I am trying to run locally just to test a motor. I have a jumper from Terminal 1 to 11, P036=0, P038=0.....the respective LED's turn Green however, when I press the start button on the keypad the \"Run\" LED blinks real quick but doesn't stay on. No faults appear on the VFD either. Any ideas would be great. Thank you",
+   "accepted": [
+    96
+   ],
+   "evidence_quote": "Integral keypad is not enabled. Green LED above Start key is not illuminated. \u2022 Set parameter P036 [Start Source] to option 0 \u201cKeypad\u201d.",
+   "blind_pages": [
+    96
+   ],
+   "answerable": true,
+   "reasons": []
+  },
+  {
+   "id": "fr3-pf40-02",
+   "set": "forum-fresh3",
+   "manual": "pf40",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+   "url": "https://www.plctalk.net/threads/powerflex-40-and-dynamic-braking-resistors.61342/",
+   "forum": "plctalk.net",
+   "question": "I don't think I understand how to use the Dynamic Braking options for the Powerflex 4/40 drives. I have a Powerflex 40, and a properly sized Dynamic Braking resistor. I'm trying to quickly slow down a high speed motor when I drop out the Run/Forward command. If I set the Stop mode to Ramp, I can quickly slow it down, but if I go too fast, I get an F05 alarm, Overvoltage. I installed the braking resistor on the BR+/- terminals, but I do not believe I understand how to set A080, A081, and A082. The protection, DB Level, and DB Time options. If I set the Stop mode to DCBrake, leave the A081 to the default Drive Rated A x 0.05, and set the A082 to 4.0 seconds, the drive turns off, and the motor just coasts. My motor is a 380V 3 phase, 300HZ, 18000 RPM, 4.0A full load. My Powerflex 40 is rated 480V 6.0A I think my problem is I don't understand the Dynamic brake settings enough to comfortably play around with the settings. The User Manual for the Powerflex 40 doesn't explain the meaning of the settings very well.",
+   "accepted": [
+    68,
+    69
+   ],
+   "evidence_quote": "Enables/disables external dynamic braking. The drive is able to provide full braking indefinitely. Braking power is limited by the external DB resistor.",
+   "blind_pages": [
+    68,
+    69
+   ],
+   "answerable": true,
+   "reasons": []
+  },
+  {
+   "id": "fr3-pf4m-03",
+   "set": "forum-fresh3",
+   "manual": "pf4m",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+   "url": "https://community.automationdirect.com/s/question/0D53u00002AhhuGCAR/controlling-ac-drive-via-microcontroller",
+   "forum": "community.automationdirect.com",
+   "question": "Hi guys, I have Powerflex-4m AC drive. I want to control it without using PLC. I checked the user manual but there is no information about using with microcontroller. My drive allows mod-bus. I am using 4th and 5th pins of the RJ45. Do I need a converter to do this? Anyone knows, which data format do I sent to the register and which register adresses?",
+   "accepted": [
+    102,
+    103
+   ],
+   "evidence_quote": "The PowerFlex 4M drive can be controlled via the network by sending Function Code 06 writes to register address 8192 (Logic Command).",
+   "blind_pages": [
+    101,
+    102,
+    103
+   ],
+   "answerable": true,
+   "reasons": []
+  },
+  {
+   "id": "fr3-pf4m-04",
+   "set": "forum-fresh3",
+   "manual": "pf4m",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+   "url": "https://www.plctalk.net/threads/powerflex-4m-random-stopping-no-error.137363/",
+   "forum": "plctalk.net",
+   "question": "We have several Powerflex 4M (22F-D013N114) VFD\u2019s controlled by compactlogix PLC\u2019s. Control is simple, a run and direction signal with the speed controlled via 4-20mA. All works great for hours until one of them just stops,(the RUN light goes out but FWD signal is still on). Checking the system shows there is 24v on the run and plenty of mA on the speed reference. There is no error code or anything else to identify what is wrong, and whatever we do to the inverter it will not run again unless we reboot it (it then works fine again for a while). We have six (on different machines) that do this randomly throughout the day. Any ideas? Thanks",
+   "accepted": [
+    47
+   ],
+   "evidence_quote": "the drive must receive a leading edge from the start input for the drive to start after a stop input, loss of power, or fault condition.",
+   "blind_pages": [
+    47
+   ],
+   "answerable": true,
+   "reasons": []
+  },
+  {
+   "id": "fr3-pf4m-05",
+   "set": "forum-fresh3",
+   "manual": "pf4m",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+   "url": "https://www.plctalk.net/forums/threads/powerflex-4m-reset-program.135236/",
+   "forum": "plctalk.net",
+   "question": "I have a refurbished PowerFlex 4M that I am trying to re-use. The keypad is locked out, I cannot go to anything other than d001. I do not have the 1203-USB cable to connect it to my CCW software, and that cable is apparently sold out unless I want to spend big bucks on a used one on ebay. Is there any way to manually force the drive to erase its program, e.g a keypress or jumper combination or something inside the unit?",
+   "accepted": [
+    50
+   ],
+   "evidence_quote": "Stop drive before changing this parameter. Resets all parameter values to factory defaults.",
+   "blind_pages": [
+    50
+   ],
+   "answerable": true,
+   "reasons": []
+  },
+  {
+   "id": "fr3-micro820-um-08",
+   "set": "forum-fresh3",
+   "manual": "micro820-um",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+   "url": "https://www.plctalk.net/forums/threads/can-a-micro820-plc-communicate-with-a-3rd-party-device-through-rs232.146215/",
+   "forum": "plctalk.net",
+   "question": "Hello! Does anyone know if RS232 can be used with the Micro820 to communicate to a non-Rockwell device? The third party device does not speak CIP Serial, and it's a pretty basic device. I just want to repeatedly send a single message and get a response. The specific controller I want to use is the 8020-LC20-20QWB. I'd be sending a code to request the device for a load cell reading, and then receiving the value back. Thanks!",
+   "accepted": [
+    54
+   ],
+   "evidence_quote": "ASCII provides connection to other ASCII devices, such as bar code readers, weigh scales, Serial printers, and other intelligent devices.",
+   "blind_pages": [
+    54
+   ],
+   "answerable": true,
+   "reasons": []
+  },
+  {
+   "id": "fr3-micro820-um-09",
+   "set": "forum-fresh3",
+   "manual": "micro820-um",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+   "url": "https://www.plctalk.net/threads/allen-bradley-micro820-2080-lc20-20qwb-and-modbus-rtu.145708/",
+   "forum": "plctalk.net",
+   "question": "I think I am OK but I have to ask. Can the 2080-LC20-20QWB output a Modbus RTU signal to my wireless transmission device? It will then be sent back to a Gateway for reading in their SCADA Platform. Per the drawing It would be hardwired and not a DB-9 Connector... Thanks Tim",
+   "accepted": [
+    143
+   ],
+   "evidence_quote": "Micro820 controllers support Modbus RTU over a Serial port through the embedded, non- isolated Serial port. The 2080-SERIALISOL isolated Serial port plug-in module also supports Modbus RTU.",
+   "blind_pages": [
+    53,
+    143
+   ],
+   "answerable": true,
+   "reasons": []
+  },
+  {
+   "id": "fr3-ml1100-13",
+   "set": "forum-fresh3",
+   "manual": "ml1100",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+   "url": "https://community.automationdirect.com/s/question/0D53u00002AhhxFCAR/encoder-problems",
+   "forum": "AutomationDirect Community (community.automationdirect.com)",
+   "question": "Trying to read an encoder signal from 2040 drive with 100w low inertia motor. I am using a micrologix 1100 plc using the high speed inputs. I notice the encoder sends a 0-5v signal and my on state for my inputs are 10-24v. I have I:0/0 as my OA and 0/1 as OB. I have mode 6 set on my hsc tab. Don't know if it's a wiring issue or my plc can't read that 5v signal?",
+   "accepted": [
+    112
+   ],
+   "evidence_quote": "Off-state voltage range 0\u202620V AC 0\u20265V DC Operating frequency 47 Hz\u202663 Hz 0 Hz\u202620 kHz",
+   "blind_pages": [
+    112
+   ],
+   "answerable": true,
+   "reasons": []
+  },
+  {
+   "id": "fr3-smcflex-16",
+   "set": "forum-fresh3",
+   "manual": "smcflex",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+   "url": "https://www.plctalk.net/threads/ab-smc-flex-soft-starter.79035/",
+   "forum": "plctalk.net",
+   "question": "Hi, I have one SMC FLEX soft starter.When I connected to Power soft starter showing full output voltage even with out control Off.I am using terminal 16 & 17 for control (on / Off).Soft starter is showing \"stopped\".I checked with out load (Motor is not connected).Is it the reason for the out put voltage even starter is stopped.Anybody please advice me.",
+   "accepted": [
+    107
+   ],
+   "evidence_quote": "Measure the voltage drop across the SMC poles (L1\u2026T1) with power applied and without a start command or connected motor.",
+   "blind_pages": [
+    107
+   ],
+   "answerable": true,
+   "reasons": []
+  },
+  {
+   "id": "fr3-e3plus-19",
+   "set": "forum-fresh3",
+   "manual": "e3plus",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/aca6a4e5e28544658c2b385318927be3f95acf291cf3b811bd8baff080c7fd80.pdf",
+   "url": "https://control.com/forums/threads/allen-bradley-e3-devicenet-loses-mac-id.13509/",
+   "forum": "control.com",
+   "question": "We have installed Allen Bradley E3 devicenet overloads. They lose their Non volatile MAC id after a drownout or low voltage. Does anyone know the cause or a solution? We have to change them back from ID 63 to their correct node number when this happens. As it happens to more than one at a time the ADR function can not correct the problem.",
+   "accepted": [
+    95
+   ],
+   "evidence_quote": "E3 Overload Relays are shipped with a default software node address (MAC ID) setting of 63 and the data rate set to Autobaud.",
+   "blind_pages": [
+    222,
+    95
+   ],
+   "answerable": false,
+   "reasons": []
+  },
+  {
+   "id": "fr3-micro810-21",
+   "set": "forum-fresh3",
+   "manual": "micro810",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+   "url": "https://www.plctalk.net/threads/micro810-wiring-help.80484/",
+   "forum": "plctalk.net",
+   "question": "Hi Guys, I'm using my first Micro810 PLC and the wiring details are confusing me. Can someone take a look at page 10 of the manual located at http://literature.rockwellautomation.com/idc/groups/literature/documents/in/2080-in006_-en-p.pdf My model is 2080-LC10-12QBB. My main questions are: For the input side, why does one group have a COM0 connection and the other -DC24 For the output side, what is the purpose of the +CM0 and -CM0 terminals? Thanks!",
+   "accepted": [
+    58
+   ],
+   "evidence_quote": "DC Inputs (2080-LC10-12QWB, 2080-LC10-12QBB, 2080-LC10-12DWD) Attribute Non-isolated, shared with analog inputs (Inputs 4\u20267) Isolated (Inputs 0\u20263)",
+   "blind_pages": [
+    29,
+    58
+   ],
+   "answerable": true,
+   "reasons": []
+  },
+  {
+   "id": "fr3-micro810-22",
+   "set": "forum-fresh3",
+   "manual": "micro810",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+   "url": "https://www.plctalk.net/forums/threads/hmi-options-for-ab-micro810.147316/",
+   "forum": "plctalk.net",
+   "question": "We've got an Amcol saw luber with a Micro810 in it. The operators need to be able to go in and adjust the blade lube rate, but safety doesn't want them reaching into the enclosure. Has anyone had any success finding an HMI that's compatible with the 810s, or even a 2x8 pin ribbon cable that can go from the LCD to the socket for said LCD?",
+   "accepted": [
+    9
+   ],
+   "evidence_quote": "Micro810 controllers do not support Micro800 plug-in modules, but do support a USB adapter, and an LCD module, which can be used as a backup memory module.",
+   "blind_pages": [
+    9,
+    55,
+    66
+   ],
+   "answerable": false,
+   "reasons": []
+  },
+  {
+   "id": "fr3-gs4-ch2-24",
+   "set": "forum-fresh3",
+   "manual": "gs4-ch2",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/ch2.pdf",
+   "url": "https://community.automationdirect.com/s/question/0D53u00002AhhjTCAR/single-phase-vfd",
+   "forum": "automationdirect-community",
+   "question": "I have an application where I have a 10HP well pump that we want to control with a VFD. The issue is that we only have 230V single phase available at the location. I have heard that you can derate a 3 phase VFD to accept single phase input. I was wondering if the Durapulse line has this functionality and if so are there any drawings available on how to wire the drive with single phase power?",
+   "accepted": [
+    31
+   ],
+   "evidence_quote": "Connect 230VAC, Single-Phase power to any two of the R, S, or T terminals",
+   "blind_pages": [
+    31
+   ],
+   "answerable": true,
+   "reasons": []
+  },
+  {
+   "id": "fr3-se-m171-28",
+   "set": "forum-fresh3",
+   "manual": "se-m171",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-m171-performance-hardware-guide-EIO0000002030.pdf",
+   "url": "https://www.plctalk.net/forums/threads/tm172pdg28r-plc-tm171ep14r-can-expansion-module-communication-not-established.150101/",
+   "forum": "plctalk.net",
+   "question": "Hello everyone, I am working with a Schneider Electric TM172PDG28R PLC and a TM171EP14R expansion module. I am trying to establish communication between the PLC and the expansion module over CAN, but the communication is not being established.\n\nHardware:\n- PLC: TM172PDG28R\n- Expansion Module: TM171EP14R\n- Communication: CAN\n\nCurrent Settings:\n- I have assigned CAN ID = 2 to the expansion module.\n- PLC parameter Addr_CAN_OB = 1.\n- The expansion module is physically located very close to the PLC.\n- CAN communication is still not established.\n\nI have checked the basic configuration, but I am still unable to establish communication.\n\nMy questions:\n1. Is Addr_CAN_OB = 1 correct for the TM171EP14R?\n2. What should be the correct CAN Node ID/address for the TM171EP14R?\n3. What CAN baud rate should be configured for the TM172PDG28R and TM171EP14R?\n4. Are there any specific DIP-switch settings required on the TM171EP14R for CAN addressing?\n5. Is 120 \u03a9 termination required between the PLC and the expansion module when there are only two CAN nodes?\n6. Is there any additional configuration or initialization required in the TM172PbG42R program for the TM171EP14R to be recognized?\n\nI would appreciate it if someone could guide me through the correct CAN configuration and troubleshooting steps. Thank you.",
+   "accepted": [
+    102
+   ],
+   "evidence_quote": "The addressing comprises the sum of parameter Addr_CAN_OB plus the composite value of the 4-position dipswitches (only dip 1 and 2).",
+   "blind_pages": [
+    102
+   ],
+   "answerable": true,
+   "reasons": []
+  },
+  {
+   "id": "fr3-se-m171-29",
+   "set": "forum-fresh3",
+   "manual": "se-m171",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-m171-performance-hardware-guide-EIO0000002030.pdf",
+   "url": "https://community.se.com/t5/HVAC-and-Pumping-Forum/TM171-programming-cable/td-p/431427",
+   "forum": "se.com community (community.se.com, HVAC and Pumping Forum)",
+   "question": "Is there an alternative way to program a TM171 besides the TM171ADMI or the TM171AMFK ? Both products are unavailable (discontinued) locally and I need to program some PLCs.",
+   "accepted": [
+    72
+   ],
+   "evidence_quote": "1 Type mini-B USB female connector (Device) Connection between PC and device through USB standard CDC profile.",
+   "blind_pages": [
+    72,
+    129
+   ],
+   "answerable": true,
+   "reasons": []
+  },
+  {
+   "id": "fr3-se-m171-30",
+   "set": "forum-fresh3",
+   "manual": "se-m171",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-m171-performance-hardware-guide-EIO0000002030.pdf",
+   "url": "https://forum.digikey.com/t/modbus-to-bacnet-converter/38485",
+   "forum": "forum.digikey.com (DigiKey TechForum, Industrial Automation and Control category) -- NOTE: not on the suggested source list (plctalk/reddit/automationdirect/control.com/mrplc/se.com/rockwell/eng-tips/practicalmachinist); including it because it is a real, verifiable technician forum and I could not find an equivalent admissible thread on the listed sites for this exact topic. Flagging for the orchestrator to drop if off-list sources are disallowed.",
+   "question": "DIGIKEY P#. 4008-TM171ARS485-ND I would like to know if this will work for a fan controller speaking Modbus to the building management system using BACnet.\n\nGoal is to connect the modbus controller with this converter so they have access to control fans speed, on time, and the like.",
+   "accepted": [
+    59
+   ],
+   "evidence_quote": "The connection allows M171 Performance controllers to connect to a BACnet supervision system using the BACnet MS/TP communication protocol.",
+   "blind_pages": [
+    59
+   ],
+   "answerable": true,
+   "reasons": []
+  },
+  {
+   "id": "fr3-se-m172-31",
+   "set": "forum-fresh3",
+   "manual": "se-m172",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-m172-hardware-guide-EIO0000002015.pdf",
+   "url": "https://community.se.com/t5/HVAC-and-Pumping-Forum/TM172-System-Fault/td-p/406316",
+   "forum": "community.se.com (Schneider Electric Community, HVAC and Pumping Forum)",
+   "question": "I was reprogramming a TM172PDG28R a while ago. after changing the polarity of an input. So I did as always and I was not paying much attention to the whole process.\n\nHowever after restarting I got this:\n\nSystem Fault\n\nWDT : 3\n\nI had run into this issue only once before and last time I was able to restore the PLC by inserting a blank program, so I did it once again in the few seconds that the PLC responds at start up. So basically the PLC program has been cleared, but the HMI program is still there and it does start.\n\nIt seems I was not lucky this time, because the issue is still there.\n\nOnly thing slightly unusual about what I did is that I could not find the cable I usually work with and used a backup one instead. As the communication was succesfull I assumed everything was fine.\n\nSo the questions are: what are my choices ? WDT points to a watchdog timer issue, can I somehow try to get an instruction to ignore WDT ? Anyway to reset the PLC ?\n\nThe other even more important question is: what the ... may I have done to disrupt a PLC ? I swear I will throw away the other cable but since the communication established fine and the program seemed to have been downloaded, I doubt the cable is to blame.",
+   "accepted": [
+    167
+   ],
+   "evidence_quote": "NOTE: Do not apply voltage via 24 V ac/dc while the equipment is already\nconnected to a PC via Mini-B USB cable (TM172P\u2022\u2022\u2022\u2022\u2022\u2022 only).",
+   "blind_pages": [
+    167
+   ],
+   "answerable": false,
+   "reasons": []
+  },
+  {
+   "id": "fr3-se-m172-33",
+   "set": "forum-fresh3",
+   "manual": "se-m172",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-m172-hardware-guide-EIO0000002015.pdf",
+   "url": "https://community.se.com/t5/Industry-Automation-and-Control/M172/td-p/458665",
+   "forum": "community.se.com (Schneider Electric Community, Industry Automation and Control)",
+   "question": "I'm not typically on this forum. I am certified in EcoStruxure and spend most of my time on that forum. With that said we have a very important customer who has reached out and ask if we could help with this controller. It is labeled M172 TM172PBG42RI. Our customer is asking what the IP address is, and if it can be changed. Also does this controller support any type of open protocol such as BacNet, Modbus, etc... I would like to say I appreciate any/all help in advance.",
+   "accepted": [
+    175
+   ],
+   "evidence_quote": "The default IP address for a BRAND NEW controller is: 10.0.0.100",
+   "blind_pages": [
+    175
+   ],
+   "answerable": true,
+   "reasons": []
+  },
+  {
+   "id": "fr3-se-premium-serial-34",
+   "set": "forum-fresh3",
+   "manual": "se-premium-serial",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-premium-async-serial-35006178.pdf",
+   "url": "https://mrplc.com/forums/topic/8361-send_req-read_var/",
+   "forum": "mrplc.com",
+   "question": "Hi gang; Now I'm back to a Premium PLC project. The scene is like this.... Thre are 8 nos load cell instruments on MODBUS (serial) hung out, as slaves on the SCP111 card.This port, channel 1 being configured as Modbus master. I need to poll them for data and use them ASAP in the logic. There are 2 options (at least!) i.e. one could do a READ_VAR or send out a SEND_REQ to reqest these Modbus slaves to speak up with what they sense. I find that you could do this with either instruction. READ_VAR or SEND_REQ. My question therefore is... when do you use READ_VAR and when do you need SEND_REQ. really grateful if anyone has been here and done this, and is happy to share the experience with us.",
+   "accepted": [
+    206
+   ],
+   "evidence_quote": "Input bits reading 16#02 SEND_REQ Read input words (until 124 registers) 16#04 SEND_REQ",
+   "blind_pages": [
+    206
+   ],
+   "answerable": true,
+   "reasons": []
+  },
+  {
+   "id": "fr3-se-premium-serial-36",
+   "set": "forum-fresh3",
+   "manual": "se-premium-serial",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-premium-async-serial-35006178.pdf",
+   "url": "https://control.com/forums/threads/using-send_req-in-unity.25252/",
+   "forum": "control.com",
+   "question": "Hello, I am trying to read some data from a device on Modubs using the Send_Req block and function code 16#04 for reading 3x registers. I have a Premium processor and a TSX 114 PCMCIA card. I am able to use the Read_Var and Write_Var to access 4x registers, but the documentation for the Send_Req seems to only list examples for TCP/IP setups. Can anyone give a brief example of how to setup the Send_Req function to accomplish this? Thanks.",
+   "accepted": [
+    212
+   ],
+   "evidence_quote": "corresponds to the read function of n input word s (byte 0 = 16#04, byte 1 = 16#00) %MW11 := 16#0296 corresponds to t he identification of the Modbus function",
+   "blind_pages": [
+    212
+   ],
+   "answerable": true,
+   "reasons": []
+  },
+  {
+   "id": "fr3-se-x80-analog-37",
+   "set": "forum-fresh3",
+   "manual": "se-x80-analog",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-x80-analog-io-35011978.pdf",
+   "url": "https://forum-automatisme.net/viewtopic.php?t=7877",
+   "forum": "forum-automatisme.net",
+   "question": "Bonjour, Je viens vers vous parce que j'ai un probl\u00e8me sur un M340 je n'arrive pas \u00e0 param\u00e9trer ma carte d'entr\u00e9es en 4 20mA dans toute les config pas de soucis mais j'ai une erreur de carte quand je passe n'importe qu'elle de mes voies en 4 20mA ce qui entraine une non lecture de mon capteur est-ce un probl\u00e8me dans ma config ? avez vous des pistes ? j'arrive au bout des mes solutions",
+   "accepted": [
+    66
+   ],
+   "evidence_quote": "if channels are configured (range 4...20 mA or 1...5 V), a broken wire causes a detected I/O error",
+   "blind_pages": [
+    66
+   ],
+   "answerable": true,
+   "reasons": []
+  },
+  {
+   "id": "fr3-se-x80-analog-38",
+   "set": "forum-fresh3",
+   "manual": "se-x80-analog",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-x80-analog-io-35011978.pdf",
+   "url": "https://community.se.com/t5/Modicon-PAC-Forum/M340-analog-input-samplig/td-p/514461",
+   "forum": "community.se.com (Modicon PAC Forum)",
+   "question": "Hello, with Control Expert I have some problem to understand how to sample AI value connected on AMI0810 with M340. (now i have a Siemens S7-1200 simulating a ramp up and sending it every 2 seconds trough an analog output to an analog input of the AMI0810 in 0-10v or 0-20mA) check next image for the wave pattern, the ramp up duration is about 50 ms, then the value go back to 0 for 2 seconds I've disabled 7 analog input, to have faster sampling rate from the module (1ms + 1ms for channel active) created a FAST task cycling every 5ms, where: if the RAW value of the AI (%IW0.6.7 in that case) is growing and is greater than X and lower than Y, store that value inside an array I suppose to have at least six to ten stored value before the next AI signal will arrive. but the stored value are all the same (or two different value), doing a trace on the input signal I cannot see the curve sent by the Siemens PLC, but only 3 step Seems strange the timing into the trending tool, seems like 3ms every step, With the oscilloscope I can confirm that the output from siemens is OK I cannot understand what I'm doing wrong for sampling the data (the program seems working correctly, just the analog value seems not updated every cycle)",
+   "accepted": [
+    115
+   ],
+   "evidence_quote": "If the bus cycle time is less than the module's cycle time, some values will not have changed",
+   "blind_pages": [
+    115
+   ],
+   "answerable": true,
+   "reasons": []
+  }
+ ],
+ "dropped": [
+  {
+   "id": "fr3-pf40-00",
+   "set": "forum-fresh3",
+   "manual": "pf40",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+   "url": "https://www.plctalk.net/threads/vfd-mechanical-brake.129955/",
+   "forum": "plctalk.net",
+   "question": "Just curious how anyone else has controlled a VFD driven motor with a mechanical brake. I was using a PLC output to fire a brake relay while also sending command to the VFD. Originally I was using outputs from PLC to also run the VFD but my new system I am designing all the VFD's are getting all instructions via Ethernet. I was thinking of using the aux relay in the VFD set to close when the VFD is supplying power to the motor (power flex 40, A055 set to 2) and have these contacts fire the Mechanical Brake relay. Any Thoughts?",
+   "accepted": [
+    61
+   ],
+   "evidence_quote": "22 \u201cEM Brk Cntrl\u201d EM brake is energized. Program A160 [EM Brk Off Delay] and A161 [EM Brk On Delay] for desired action.",
+   "blind_pages": [
+    86
+   ],
+   "answerable": true,
+   "reasons": [
+    "blind-label-disagrees"
+   ]
+  },
+  {
+   "id": "fr3-acs355-06",
+   "set": "forum-fresh3",
+   "manual": "acs355",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+   "url": "https://www.plctalk.net/threads/acs355-overcurrent-issue.115225/",
+   "forum": "plctalk.net",
+   "question": "I have two ACS355 drives (240V, 1HP) each connected to a Marathon Black Max 1HP motor. In both cases, very shortly after I start the drives immediately to 5 seconds) the drives will fault on overcurrent. I initially had the drives set up to operate in vector speed mode. When this issue popped up I changed to scalar mode and the same thing happens. I disconnected the motor leads from the drives and started them in scalar mode and I still get an overcurrent fault, which seems like quite the trick. With the motors disconnected the current feedback value displayed on the drive never moves from zero but the drive faults on overcurrent. Both of them. Connected to different motors or not connected at all. Any ideas? It almost has to be a set-up issue but I have no idea what would cause something like this. I have never seen such a thing before; at least not from two brand-spankin'-new drives.",
+   "accepted": [
+    359
+   ],
+   "evidence_quote": "Drive gives an overcurrent fault after start command even when the motor is not connected (use scalar control in this trial). Replace the drive.",
+   "blind_pages": [
+    359
+   ],
+   "answerable": true,
+   "reasons": [
+    "dup-question"
+   ]
+  },
+  {
+   "id": "fr3-acs355-07",
+   "set": "forum-fresh3",
+   "manual": "acs355",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+   "url": "https://www.plctalk.net/threads/abb-acs355-drive-problem.84201/",
+   "forum": "plctalk.net",
+   "question": "Hi, I have a question outside the plc area, but I thought someone would have an idea. I was comissioning an ABB ACS355 drive (frequency inverter) with Basic-panel. I entered parameters and tried to manually operate the drive to check the rotation of the motor. When I pressed start button, the drive gives F0016 (earth fault). I checked the motor's and cable's insulation, they're ok. I tried to start drive without motor cable connected and it gave the same fault code. We discussed with ABB and they said it's warranty issue, so we got a new drive. But it didn't help. New drive gives the same fault code. User manual says that you can disable the earth fault monitoring, but you might lose the warranty by doing that. Then I had to power up and parametrize ACS 355 drive on different work cite and it runs fine. So long story short, does anyone had these kind of problems with drives?",
+   "accepted": [
+    363
+   ],
+   "evidence_quote": "Check motor cable. Motor cable length must not exceed maximum specifications. See section Motor connection data on page 387. Note: Disabling earth fault (ground fault) may damage drive.",
+   "blind_pages": [
+    363
+   ],
+   "answerable": true,
+   "reasons": [
+    "dup-question"
+   ]
+  },
+  {
+   "id": "fr3-micro820-um-10",
+   "set": "forum-fresh3",
+   "manual": "micro820-um",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+   "url": "https://www.plctalk.net/forums/threads/how-difficult-is-it-to-update-a-program-in-the-field-on-a-password-protected-micro820.110987/",
+   "forum": "plctalk.net",
+   "question": "How difficult is it to update a program in the field on a password protected Micro820 PLC using a SD card?",
+   "accepted": [
+    121
+   ],
+   "evidence_quote": "restore occurs in the [UPD] directory specified. \u2022 [BKD] setting implements even when the controller is locked or password protected.",
+   "blind_pages": [
+    118,
+    123
+   ],
+   "answerable": true,
+   "reasons": [
+    "blind-label-disagrees"
+   ]
+  },
+  {
+   "id": "fr3-micro820-in-11",
+   "set": "forum-fresh3",
+   "manual": "micro820-in",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/6dfc2d211eb1aaa1a03505f061d911da729c2251a65051fdfb968b22f77a7bd4.pdf",
+   "url": "https://www.plctalk.net/threads/standard-sd-cards-or-industrial.133947/",
+   "forum": "plctalk.net",
+   "question": "Hello everyone, Is it necessary to use industrial grade SD cards for the Allen Bradley 5570 controller and the 820 micro controller or will a standard SD card work well enough? Most of these are not in harsh environments. Thanks!",
+   "accepted": [
+    11
+   ],
+   "evidence_quote": "It supports Class 6 and 10 SDSC and SDHC microSD cards, with FAT32/16 formats, 32 GB maximum size.",
+   "blind_pages": [
+    11
+   ],
+   "answerable": true,
+   "reasons": [
+    "dup-url",
+    "dup-question"
+   ]
+  },
+  {
+   "id": "fr3-micro820-in-12",
+   "set": "forum-fresh3",
+   "manual": "micro820-in",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/6dfc2d211eb1aaa1a03505f061d911da729c2251a65051fdfb968b22f77a7bd4.pdf",
+   "url": "https://www.plctalk.net/threads/miro-820-power-supply.120423/",
+   "forum": "plctalk.net",
+   "question": "Micro 820 PLC manual shows 24V 0.5Amps 2080 PSAC 12W power supply to connect There is any problem to connect micro 820 to 1606-XLB240E power supply",
+   "accepted": [
+    16
+   ],
+   "evidence_quote": "Power supply voltage range 20.4\u202626.4 V DC, Class 2, or Limited Voltage Limited Current Source (LVLC)",
+   "blind_pages": [
+    16
+   ],
+   "answerable": true,
+   "reasons": [
+    "dup-url",
+    "dup-question"
+   ]
+  },
+  {
+   "id": "fr3-ml1100-14",
+   "set": "forum-fresh3",
+   "manual": "ml1100",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+   "url": "https://www.plctalk.net/forums/threads/micrologix-1100-firmware-update-trouble.115254/",
+   "forum": "PLCTalk / PLCS.net (plctalk.net)",
+   "question": "Hello Guys, I've tried updating my Micrologix 1100 to latest firmware (16) My PLC, is type 1763-L16BWA Ser. A Rev A, FRN 1 I've tried to update with ControlFlash 15.01.00 I use Windows 10, and is connected with a Serial Cable (with USB/RS232 Adapter) Before I tried the update I could connect with RSLogix Micro, and see the old owners program. After attempting update, it stops at block 25, the PLC reboots, and the 3 LEDs below power is flashing. - Did I brick it somehow, or is there a way out of this? Thanks in advance for any suggestions.",
+   "accepted": [
+    143
+   ],
+   "evidence_quote": "The controller must be configured for default communications (use the Communications Toggle functionality which is available on the LCD; DCOMM indicator on) and be in the Program mode",
+   "blind_pages": [
+    144
+   ],
+   "answerable": true,
+   "reasons": [
+    "dup-question",
+    "blind-label-disagrees"
+   ]
+  },
+  {
+   "id": "fr3-ml1100-15",
+   "set": "forum-fresh3",
+   "manual": "ml1100",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+   "url": "https://www.plctalk.net/threads/how-to-hook-up-micrologix-1100-fet-discrete-output.135900/",
+   "forum": "PLCTalk / PLCS.net (plctalk.net)",
+   "question": "Are the red and black wires in the image below the right way to drive a 0V or 24V discrete output signal from a O:0.0/2 of a MicroLogix 1100? Also, do I have the right behavior described for the voltage at the blue x? If yes to both, then I am pretty sure this is a sourcing output. Do I have that right? I realize the design of the load will also need to limit the current, but I am more interested in getting the wiring right for now. Also, I realize that 0V and 24V are nominal, and the actual signals might not be exactly those levels because O:0/2 uses a FET. The base diagram is from the ML1100 Installation Manual here. I understand Ohm's law reasonably well, but I am definitely weak when it comes to terminology and jargon of DC. After a while I finally realized (I hope) that \"DC 24V-\" is an alternate expression for \"COMmon\" i.e. the low side of a 24V range, and is not the same as \"DC - 24V\" i.e. a voltage 24V below a ground level voltage.",
+   "accepted": [
+    35
+   ],
+   "evidence_quote": "1763-L16BBB Group 0 VAC/VDC O/0 Isolated Relay output Group 1 VAC/VDC O/1 Isolated Relay output Group 2 DC +24V, DC -24V O/2 through O/5 FET output",
+   "blind_pages": [
+    37
+   ],
+   "answerable": true,
+   "reasons": [
+    "blind-label-disagrees"
+   ]
+  },
+  {
+   "id": "fr3-smcflex-17",
+   "set": "forum-fresh3",
+   "manual": "smcflex",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+   "url": "https://www.plctalk.net/forums/threads/smc-flex-line-loss-parameter.107664/",
+   "forum": "plctalk.net",
+   "question": "Dear all We have 8 motor controllers, all of them have the same trouble. Though the parameter #84 enabled \"Line Fault Disable\" there is no any faulty signals when cutting incomming voltage. It means controller does not detect line loss when incoming cuircuit breaker is off. It seems like that protection is inactive. I would appreciate if you had any ideas. Thanks Artur",
+   "accepted": [
+    104
+   ],
+   "evidence_quote": "Missing supply phase\n\u2022 Motor not connected properly\n\u2022 Check for line and load loose connections\n\u2022 Check for open line (for example, blown fuse)",
+   "blind_pages": [
+    101
+   ],
+   "answerable": true,
+   "reasons": [
+    "blind-label-disagrees"
+   ]
+  },
+  {
+   "id": "fr3-smcflex-18",
+   "set": "forum-fresh3",
+   "manual": "smcflex",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+   "url": "https://www.plctalk.net/threads/controllogix-to-smc-flex-via-20-comm-r.95708/",
+   "forum": "plctalk.net",
+   "question": "Customer installed two SMC Flex soft starters to replace Dialog Plus units that died. They have everything set up correctly on one of them and the other is locked out awaiting a motor replacement. Unit 1 is Rack 3, group 0, 1/4 rack and is apparently talking to the CPU just fine. Unit 2 is Rack 3, group 2, 1/4 rack and powered down. There are no more devices on this logical rack. Unit 1 shows no faults on the HIM, and I can run it in Hand (selector switch to the terminal strip) or from the Keypad. I have tried all possible wiring options and parameter changes in the book and some not in the book, and I cannot get this thing to run via RIO control. I always have bits 7, 8, and 9 coming in to the RIO input word 0. Bit 7 is the Fault bit according to my book and I forget what the others mean. I never see the enabled bit turn on. None of these bits ever change states unless I inhibit the module in RSLogix 5000and zero them myself. There are no faults on the HIM for the 20-COMM-R or the Flex SMC. I can make it fault by changing parameters and then the HIM will flash the Network Loss fault, but those three bits coming back over the RIO network are the only three I ever see and they never change.",
+   "accepted": [
+    96
+   ],
+   "evidence_quote": "XE n a b l e d 1 \u2014 Control Power Applied\n0 \u2014 No Control Power",
+   "blind_pages": [
+    93,
+    94
+   ],
+   "answerable": true,
+   "reasons": [
+    "blind-label-disagrees"
+   ]
+  },
+  {
+   "id": "fr3-e3plus-20",
+   "set": "forum-fresh3",
+   "manual": "e3plus",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/aca6a4e5e28544658c2b385318927be3f95acf291cf3b811bd8baff080c7fd80.pdf",
+   "url": "https://www.plctalk.net/forums/threads/devicenet-e3-plus-doesnt-restore-after-power-down.44307/",
+   "forum": "plctalk.net",
+   "question": "Hi: I have a DeviceNet with five E3 Plus and three PowerFlex 700 with a 1756-DNB scanner. The network is running OK, but the problem is when I shut down 1756 chasis power or disconnect the scanner cable to make some test, when I connect again all the E3 Plus states with the network led in flashing green, they don't \"get in\" to the network automatically, I have to power OFF an ON each one in th MCC. But the PowerFlex reconnect automatically (only I have to reset the comm Fault in the HIM). Any idea? Thanks!",
+   "accepted": [
+    216
+   ],
+   "evidence_quote": "The NETWORK ST A TUS LED will blink green if there are no network connections established with a network master.",
+   "blind_pages": [
+    222,
+    216
+   ],
+   "answerable": true,
+   "reasons": [
+    "quote-not-on-page"
+   ]
+  },
+  {
+   "id": "fr3-micro810-23",
+   "set": "forum-fresh3",
+   "manual": "micro810",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+   "url": "https://www.plctalk.net/threads/help-needed-please.123272/",
+   "forum": "plctalk.net",
+   "question": "Hi All, So as the name suggests, I'm new to this. I'm trying to up skill myself around work, an I'm hoping I can get some good advice from people on this site. I have a Bradley Allen Micro 810 QBB. I cannot seem to find out what the deal is with the two +com0 to the left on the output side, and what the two -Com0 on the right hand side of the outputs are for? Any help is much appreciated.",
+   "accepted": [
+    59
+   ],
+   "evidence_quote": "DC Output (2080-LC10-12QBB) Attribute Value User supply voltage, min 10V DC User supply voltage, max 26.4V DC",
+   "blind_pages": [
+    29
+   ],
+   "answerable": true,
+   "reasons": [
+    "blind-label-disagrees"
+   ]
+  },
+  {
+   "id": "fr3-gs4-ch6-25",
+   "set": "forum-fresh3",
+   "manual": "gs4-ch6",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/ch6.pdf",
+   "url": "https://www.plctalk.net/threads/gs4-vfd-and-motor-draw-excessive-current.117954/",
+   "forum": "plctalk.net",
+   "question": "Hello all, I just replaced a dead Yaskawa F7 drive with an Automation Direct GS4 This is driving a Roots screw type vacuum pump with an internal motor. The motor nameplate says 75 Volts at 60Hz max 50 Amps I have been fiddling with the Volts/Hertz settings in the drive but I am not having any luck. I don't have any reason to thing the motor is bad. (The drive was damaged when it was wired incorrectly) So at this point I have the max voltage turned down to 20 volts. The motor will start to spin up but the current starts to climb with the voltage until it is 70 amps and the drive shuts down on overload. This is actually the second time that I have run into this. I had another motor that did the same thing on a mill. We just replaced the motor and called it a day. What am I missing about this motor?",
+   "accepted": [
+    19
+   ],
+   "evidence_quote": "The GS4 drive detects excessive drive output current. 1) Check if the motor is overloaded. 2) Use the next higher HP drive model.",
+   "blind_pages": [
+    19
+   ],
+   "answerable": false,
+   "reasons": [
+    "quote-not-on-page"
+   ]
+  },
+  {
+   "id": "fr3-se-canopen-hw-26",
+   "set": "forum-fresh3",
+   "manual": "se-canopen-hw",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-canopen-hw-setup.pdf",
+   "url": "https://www.plctalk.net/forums/threads/m340-canopen-and-woodward-easygen.70403/",
+   "forum": "plctalk.net",
+   "question": "I'm trying to get a schneider m340 plc to talk to a woodward easygen 3100 enginer controller over canbus. The 3100 is just a unit to test with, final product will have two easygen 3400 and five LS-5 breaker controllers all talking on canbus. I've loaded the easygen 3100 EDS file in to the unity hardware catalog manager, added the 3100 to the canopen bus in unity, assigned the same node ID in the easygen as in unity, and have the two connected with a straight-through serial cable (both devices have DB9 male connectors for canbus.) no termination resistors ... I suppose this could be the problem? the M340 is the canbus master, the easygen and all other devices will be slaves. I can't get the easygen to leave the pre-operational state. I can send the NMT commands to stop it and the status for the slave ID goes to stopped in M340 canbus master. the m340 is configured to start the node in the bootup procedure configuration for the slave. When I send the NMT command to start the node it goes to preoperational but never leaves pre-operational. The number of transmitted and received frames shown in the M340 PLC climbs at a steady rate and they are nearly equal, leading me to believe that the straight-through serial cable without resistors is working fine as a communications channel.",
+   "accepted": [
+    12
+   ],
+   "evidence_quote": "transmit the differential signals, terminated at both physical ends with 120\u03a9 resistors",
+   "blind_pages": [
+    34
+   ],
+   "answerable": true,
+   "reasons": [
+    "blind-label-disagrees"
+   ]
+  },
+  {
+   "id": "fr3-se-canopen-hw-27",
+   "set": "forum-fresh3",
+   "manual": "se-canopen-hw",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-canopen-hw-setup.pdf",
+   "url": "https://www.plctalk.net/forums/threads/troubleshooting-of-can-network.141657/",
+   "forum": "plctalk.net",
+   "question": "I am currently working on a production line equipped with an IPC, several PLCs, and several drives all interconnected and communicating over a CAN network. Yesterday, we encountered multiple communication alarms associated with most devices on the network. To diagnose the issue, I initially checked the CAN high and low voltages, which were within acceptable ranges: CAN H ranged between 2.6 to 2.9V and CAN L between 2.1 to 2.5V. Subsequently, I powered off the system and measured the resistance between CAN H and CAN L, which read 43 ohms. Considering there should be two 120-ohm terminating resistors at each end, I expected the measurement to be around 60 ohms. One aspect that confused me is the presence of multiple CAN adapters. Some of these adapters split the CAN signal into two separate loops, each with its own set of resistors. I'm unsure whether these additional loops and resistors constitute separate networks or if they are part of the network I am troubleshooting. The specific network I am focusing on is highlighted with green boxes in the attached picture and the other loops connected to the same adapter are in red. Don't know if they affect my network or not since they are coming out of the same adapter. After noticing the 43-ohm reading, I suspected unnecessary resistors might be affecting the network. As a test, I turned off the terminator switch at the last node, increasing the network's resistance to 70 ohms. Surprisingly, this action restored communication.",
+   "accepted": [
+    34
+   ],
+   "evidence_quote": "if R > 65 \u03a9 the reason may be a missing termination resistor or a broken wire",
+   "blind_pages": [
+    34
+   ],
+   "answerable": true,
+   "reasons": [
+    "dup-question"
+   ]
+  },
+  {
+   "id": "fr3-se-m172-32",
+   "set": "forum-fresh3",
+   "manual": "se-m172",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-m172-hardware-guide-EIO0000002015.pdf",
+   "url": "https://community.se.com/t5/HVAC-and-Pumping-Forum/Ratiometric-pressure-sensor-power/td-p/426028",
+   "forum": "community.se.com (Schneider Electric Community, HVAC and Pumping Forum)",
+   "question": "I got a couple of ratiometric pressure sensors which are taking far more current than expected. This means DC 5V is dropping to about 3.6 V (TM172PDG28R)\n\nBesides ditching the sensors and getting new ones\u00b4is it possible to use an external power source ?",
+   "accepted": [
+    58
+   ],
+   "evidence_quote": "+5 Vdc power out for ratiometric analog inputs, max current 50 mA",
+   "blind_pages": [
+    86
+   ],
+   "answerable": true,
+   "reasons": [
+    "blind-label-disagrees"
+   ]
+  },
+  {
+   "id": "fr3-se-premium-serial-35",
+   "set": "forum-fresh3",
+   "manual": "se-premium-serial",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-premium-async-serial-35006178.pdf",
+   "url": "https://control.com/forums/threads/unity-pro-send_req-function.27477/",
+   "forum": "control.com",
+   "question": "I have spent numerous hours getting Unity Pro's Send_Req function (on a Premium platform) to read Modbus 3x registers from a field device. In short, the output from a Send_Req read of Modbus 3x registers contains 5 status bytes before the data. After processing these status bytes, the data then needs to be shifted by 1 byte so that the two bytes for each 3x register read are placed in a single 16 bit register rather than split across 2 registers. The bytes in each register then need to be swapped. (Think I am kidding with all this? - Have a try.) It appears that the Unity Pro programmers intended to provide a single \"whizz bang, do it all\" function as a solution to a number of communications protocols. However, it would be nice to see them have another look at it (Preferably writing a dedicated Modbus block to handle all modbus read and write functionality. Would be interested to hear of any other problems experienced using the Send_Req function with other protocols.",
+   "accepted": [
+    212,
+    213
+   ],
+   "evidence_quote": "%MW53:= PF1 pf0 byte 0 = pf0: least significant byte of first word byte 1 = PF1: most significant byte of second word",
+   "blind_pages": [
+    212,
+    213
+   ],
+   "answerable": true,
+   "reasons": [
+    "quote-not-on-page"
+   ]
+  },
+  {
+   "id": "fr3-se-x80-analog-39",
+   "set": "forum-fresh3",
+   "manual": "se-x80-analog",
+   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-x80-analog-io-35011978.pdf",
+   "url": "https://www.plctalk.net/threads/power-supply-wiring-of-modicon-m340-bmx-ami-0810.80929/",
+   "forum": "plctalk.net",
+   "question": "Can Anybody please tell me about the power supply wiring of Modicon M340 BMX AMI 0810 module. All i can get from the catalogues is Two wire sensor wiring.No info about power supply wiring. [Follow-up from OP, same thread:] I have done wiring of Digital I/O Modules only. This is the first time I am using an Analog Input Module.The Standard power supply module CPS 2000/2010 only powers up the module not the channels. I am getting confused because of wiring diagram of Analog Input Module as there is no explanation about how to power up the channels.",
+   "accepted": [
+    128
+   ],
+   "evidence_quote": "ISx: 24 V channel power supply",
+   "blind_pages": [
+    127,
+    128
+   ],
+   "answerable": true,
+   "reasons": [
+    "quote-under-10-words"
+   ]
+  }
+ ]
+}
