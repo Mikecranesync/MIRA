@@ -50,9 +50,12 @@ export type AnswerRequirementsVerdict = {
  * #4870 T-2 — R4 policy option, Mike's decision, shipped OFF. Mike's calibration fix 1 says a
  * number that appears verbatim in the evidence is supported. When ON: if the deterministic
  * check found at least one numeric claim in the answer (`answer_gate.numeric_claims`) and the
- * chunks in context or the photo reading support ALL of them (`numeric_claims_unsupported`
+ * evidence the PROVIDER actually received supports ALL of them (`numeric_claims_unsupported`
  * = 0), and neither deterministic flag fired, the JEV `unsupported_numerics` signal ALONE does
- * not fail R4. It never clears a deterministic flag, never applies when no claim was found, and
+ * not fail R4. "Received" is the route's contract for those counts (#4981, Codex r1 F1): each
+ * chunk's model-visible text (first MODEL_VISIBLE_CHARS = manual-rag MAX_CONTENT_CHARS) plus the
+ * photo observation text in the prompt — never raw chunk content past the cut, so text the
+ * model never saw can never satisfy "all numbers found". This function only reads the counts. It never clears a deterministic flag, never applies when no claim was found, and
  * never applies to a packet from a build that does not record the counts. Flipping it changes
  * R4 verdicts: bump ANSWER_REQUIREMENTS_VERSION in the same change.
  */

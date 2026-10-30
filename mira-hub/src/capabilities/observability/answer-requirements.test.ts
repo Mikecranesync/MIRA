@@ -247,6 +247,14 @@ describe("evaluateAnswerRequirements", () => {
     it("ON: one unsupported claim → the override does not apply", () => {
       expect(r4NoInventedValues(jevHigh({ numeric_claims_unsupported: 1 }), on).status).toBe("fail");
     });
+    // Codex r1 F1 on #4981: the counts are computed from the text the provider received. A number
+    // that appears only past a chunk's model-visible cut arrives here as unsupported (1 of 1), so
+    // it can never make "every claim supported" true; one model-visible claim beside it can't either.
+    it("ON: a claim backed only by text the model never saw blocks the override, alone or beside a supported one", () => {
+      expect(r4NoInventedValues(jevHigh({ numeric_claims: 1, numeric_claims_unsupported: 1 }), on).status).toBe("fail");
+      expect(r4NoInventedValues(jevHigh({ numeric_claims: 2, numeric_claims_unsupported: 1 }), on).status).toBe("fail");
+      expect(r4NoInventedValues(jevHigh({ numeric_claims: 2, numeric_claims_unsupported: 0 }), on).status).toBe("pass");
+    });
     it("ON: a packet from a build without the counts → the override does not apply", () => {
       const p = jevHigh();
       delete (p.answer_gate as Record<string, unknown>).numeric_claims;
