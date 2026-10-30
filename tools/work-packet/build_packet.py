@@ -30,6 +30,18 @@ from typing import Any
 
 LABELS = ("verified", "proposed", "unknown")
 PATH_TOKEN = re.compile(r"([^.\[\]]+)|\[(\d+)\]")
+# F3: the field a technician's `set` edit actually displays, by node type.
+# Checked in order — a measurement-like node has `value`; a step has `text`;
+# a part/simple-item node has `description`. A node with none of these is
+# rejected rather than silently gaining an unused `value` key.
+EDITABLE_FIELDS = ("value", "text", "description")
+
+
+def _editable_field(node: dict) -> str | None:
+    for f in EDITABLE_FIELDS:
+        if f in node:
+            return f
+    return None
 
 
 def iter_labeled(obj: Any, path: str = ""):
@@ -73,7 +85,8 @@ def resolve(packet: dict, path: str) -> tuple[Any, str | int]:
 
 
 def apply_edits(packet: dict, edits: list[dict]) -> dict:
-    review = packet.setdefault("approval", {}).setdefault(
+    approval = packet.setdefault("approval", {})
+    review = approval.setdefault(
         "technician_review", {"state": "draft", "by": None, "at": None, "edits": []}
     )
     for e in edits:
@@ -87,11 +100,32 @@ def apply_edits(packet: dict, edits: list[dict]) -> dict:
         record = {k: e.get(k) for k in ("path", "action", "by", "at", "note")}
         if action == "set":
             if isinstance(target, dict) and "label" in target:
-                target["value"] = e["value"]
+                # Whole-node set (e.g. "steps.items[1]"): F3 — write the
+                # field this node TYPE actually displays, not a hardcoded
+                # "value" that steps/parts never render. Reject rather than
+                # silently add an unused key when no editable field exists.
+                field = _editable_field(target)
+                if field is None:
+                    raise ValueError(
+                        f"set at {e['path']} needs a node with a "
+                        f"value/text/description field to edit"
+                    )
+                target[field] = e["value"]
                 target["label"] = (
                     "proposed"  # supplied by a person, still pending supervisor approval
                 )
                 target["review"] = {"by": e["by"], "at": e["at"], "action": "set"}
+            elif isinstance(container, dict) and "label" in container:
+                # F2: scalar sub-field set (e.g. "measurements[1].value") —
+                # `target` itself isn't a labeled node, but its immediate
+                # container is. The owning node's label/source/review must
+                # downgrade too, or the exported packet keeps showing the
+                # OLD value's "verified" label and source on the NEW value.
+                container[key] = e["value"]
+                container["label"] = "proposed"
+                if container.get("source"):
+                    container["source"] = f"(superseded by technician edit) {container['source']}"
+                container["review"] = {"by": e["by"], "at": e["at"], "action": "set"}
             else:
                 container[key] = e["value"]
             record["value"] = e["value"]
@@ -104,6 +138,23 @@ def apply_edits(packet: dict, edits: list[dict]) -> dict:
                 raise ValueError(f"strike needs an object at {e['path']}")
             target["struck"] = True
             target["review"] = {"by": e["by"], "at": e["at"], "action": "strike"}
+        if action in ("set", "strike"):
+            # F5: any content change after approval invalidates it — an
+            # approved packet whose measurements/steps/parts change must
+            # lose `approved_for_use` and show the DRAFT banner again until
+            # a supervisor re-approves the new content.
+            supervisor = approval.setdefault(
+                "supervisor_approval", {"state": "pending", "by": None, "at": None}
+            )
+            if supervisor.get("state") == "approved":
+                supervisor["state"] = "pending"
+                supervisor["invalidated_reason"] = (
+                    f"content changed by '{action}' at {e['path']} after approval"
+                )
+                supervisor["previous_approval_by"] = supervisor.get("by")
+                supervisor["previous_approval_at"] = supervisor.get("at")
+                supervisor["by"] = None
+                supervisor["at"] = None
         review["edits"].append(record)
         review["state"], review["by"], review["at"] = "reviewed", e["by"], e["at"]
     return packet
@@ -148,17 +199,30 @@ def _esc(v: Any) -> str:
     return html.escape("" if v is None else str(v))
 
 
-def _badge(node: dict) -> str:
+class Markup(str):
+    """A string that is ALREADY safe HTML (built only by this module's own
+    renderers, e.g. ``_badge``) and must never be re-escaped.
+
+    F1: the old trust test was "does the cell's text start with '<span'" —
+    any ordinary data value a technician typed (a part description, a step
+    instruction) that happened to start with that literal substring was
+    rendered verbatim, unescaped. Trust is now a distinct type, never a
+    string-content sniff.
+    """
+
+
+def _badge(node: dict) -> Markup:
     label = node.get("label", "unknown")
     rv = node.get("review")
     extra = f" · {rv['action']} by {_esc(rv['by'])}" if rv else ""
-    return f'<span class="badge badge-{label}">{label}{extra}</span>'
+    return Markup(f'<span class="badge badge-{label}">{label}{extra}</span>')
 
 
-def _row(cells: list[Any]) -> str:
+def _row(cells: list[Any], row_class: str = "") -> str:
+    cls = f" class='{row_class}'" if row_class else ""
     return (
-        "<tr>"
-        + "".join(f"<td>{c if str(c).startswith('<span') else _esc(c)}</td>" for c in cells)
+        f"<tr{cls}>"
+        + "".join(f"<td>{c if isinstance(c, Markup) else _esc(c)}</td>" for c in cells)
         + "</tr>"
     )
 
@@ -237,6 +301,9 @@ def to_html(packet: dict, tokens_css: str) -> str:
         f"<h2>Parts {_badge(p)}</h2><div class='muted'>{_esc(p['source'])}</div><div class='tablewrap'><table><tr><th>Part</th><th>Description</th><th>Qty</th><th>Basis</th><th>Condition</th><th></th></tr>"
     )
     for r in p["required"]:
+        # F4: a struck part must not render as an ordinary active
+        # requirement. Mark it (consistent with struck steps below), don't
+        # silently drop the strike state.
         out.append(
             _row(
                 [
@@ -246,7 +313,8 @@ def to_html(packet: dict, tokens_css: str) -> str:
                     r["basis"],
                     r.get("condition", "—"),
                     _badge(r),
-                ]
+                ],
+                row_class="struck" if r.get("struck") else "",
             )
         )
     out.append("</table></div>")
@@ -355,10 +423,20 @@ def to_markdown(packet: dict) -> str:
         "| Part | Description | Qty | Label | Condition |",
         "|---|---|---|---|---|",
     ]
-    lines += [
-        f"| {r['part']} | {r['description']} | {r['qty']} | {r['label']} | {r.get('condition', '')} |"
-        for r in p["required"]
-    ]
+    for r in p["required"]:
+        # F4: struck parts carry Markdown strikethrough rather than silently
+        # rendering as an ordinary active requirement (mirrors the struck
+        # step handling just below).
+        cells = [
+            str(r["part"]),
+            r["description"],
+            str(r["qty"]),
+            r["label"],
+            r.get("condition", ""),
+        ]
+        if r.get("struck"):
+            cells = [f"~~{c}~~" if c else c for c in cells]
+        lines.append("| " + " | ".join(cells) + " |")
     lines += [
         "",
         f"Kit coverage {tag(p['kit_contents_check'])}: {p['kit_contents_check']['detail']}",
@@ -386,6 +464,20 @@ def to_markdown(packet: dict) -> str:
         f"- technician review: {a['technician_review']['state']}",
         f"- supervisor approval: {a['supervisor_approval']['state']}",
     ]
+    # F4: the edit ledger is in the HTML export but was entirely missing
+    # from Markdown — a reviewer reading only the .md file had no record of
+    # what a technician changed.
+    edits = a.get("technician_review", {}).get("edits", [])
+    lines += ["", "## Technician edits"]
+    if edits:
+        lines += [
+            f"- {e['action']} {e['path']}"
+            f"{' = ' + str(e['value']) if 'value' in e else ''} — {e['by']} {e['at']}"
+            f"{' · ' + e['note'] if e.get('note') else ''}"
+            for e in edits
+        ]
+    else:
+        lines.append("- none")
     return "\n".join(lines) + "\n"
 
 

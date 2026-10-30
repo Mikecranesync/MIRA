@@ -22,9 +22,9 @@ Seal material [proposed]: the data sheet lists five seal materials (NBR standard
 | 33628 | Kit, Seal – Standard NBR | 1 | proposed | ONLY if the pump's seal material is NBR (standard). Other materials: FPM 31628, EPDM 31648, HT 31638, STHT 76536 (DS p.4) |
 | 30820 | Kit, Valve – Standard NBR | 2 | proposed | NBR standard; FPM 31263, EPDM 31259 (DS p.4) |
 | 6107 | Oil, Bottle (21 oz) ISO 68 Hydraulic | 1 | verified |  |
-| 6124 | Gasket, Liquid (3 oz) | 1 | proposed | only if Tech Bulletin 053 applies to this model/application |
+| ~~6124~~ | ~~Gasket, Liquid (3 oz)~~ | ~~1~~ | ~~proposed~~ | ~~only if Tech Bulletin 053 applies to this model/application~~ |
 
-Kit coverage [verified]: seal kit items 98, 106, 120, 121, 125 at 3 per kit × 1 kit = 3 each on the parts list; valve kit items 162, 163, 164, 166, 167, 168, 172 at 3 per kit × 2 kits = 6 each on the parts list (DS p.2 vs p.4)
+Kit coverage [verified]: seal kit items 98, 106, 121, 125 and valve kit items 162, 163, 164, 166, 167, 168, 172 at their expected per-pump quantity on the parts list; item 120 is NOT verified for the standard NBR (STD) seal kit — DS p.4 shows no NBR (STD) part number for item 120, only STHT (.3400) (49436); ordering the standard NBR kit alone will not supply a replacement for item 120 (DS p.2 vs p.4)
 
 ## Tools
 - M24 hex socket (CAT tool P/N 44046) — valve plugs, 5CP M22 thread (SM p.6 torque chart)
@@ -70,3 +70,9 @@ Kit coverage [verified]: seal kit items 98, 106, 120, 121, 125 at 3 per kit × 1
 - isolation: required
 - technician review: reviewed
 - supervisor approval: pending
+
+## Technician edits
+- set job.seal_material_suffix = NBR (standard) — nameplate shows no suffix — Demo Technician 2026-10-30T14:00:00Z · confirmed on the nameplate photo
+- confirm parts.required[0] — Demo Technician 2026-10-30T14:01:00Z
+- confirm steps.items[12] — Demo Technician 2026-10-30T14:02:00Z
+- strike parts.required[3] — Demo Technician 2026-10-30T14:03:00Z · TB053 not applicable per distributor
