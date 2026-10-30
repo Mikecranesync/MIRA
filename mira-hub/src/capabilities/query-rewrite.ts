@@ -12,7 +12,7 @@
  * lead retrieval — the rewrite can add candidates and synonyms, never remove.
  *
  * Measured (docs/evals/2026-10-30-t1-query-rewrite, pre-registered + one
- * post-hoc arm): 45 held-out real forum posts 13 → 16 right pages in the top 5;
+ * post-hoc arm): 42 held-out real forum posts 12 → 15 right pages in the top 5;
  * oem-index 86 → 93; oem-fault 137 → 136; t4-77 69 → 67 (top-6 unchanged,
  * top-1 46 → 49). The T-1 bar (Wilson LB ≥ 70%) is NOT met by this layer.
  *
@@ -75,11 +75,17 @@ export async function rewriteForManualSearch(message: string, complete: Complete
   // ONE deadline for the whole turn, not one per provider: the cascade tries
   // each configured provider with its own timeout, so two stalled providers
   // would otherwise hold retrieval for twice the advertised limit (Codex F2 on
-  // #5003). Past the deadline the caller proceeds on the original words; a
-  // late provider reply is dropped (the cascade settles its own budget hold).
+  // #5003). At the deadline the in-flight request is ABORTED and the cascade
+  // does not start another provider (`signal`); the caller proceeds on the
+  // original words. A late reply, if any, is dropped (the cascade settles its
+  // own budget hold).
+  const abort = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<"timeout">((resolve) => {
-    timer = setTimeout(() => resolve("timeout"), QUERY_REWRITE_TIMEOUT_MS);
+    timer = setTimeout(() => {
+      abort.abort();
+      resolve("timeout");
+    }, QUERY_REWRITE_TIMEOUT_MS);
   });
   try {
     const r = await Promise.race([
@@ -88,7 +94,7 @@ export async function rewriteForManualSearch(message: string, complete: Complete
           { role: "system", content: QUERY_REWRITE_PROMPT },
           { role: "user", content: message.slice(0, QUERY_REWRITE_MAX_INPUT_CHARS) },
         ],
-        { maxTokens: QUERY_REWRITE_MAX_TOKENS, temperature: 0, timeoutMs: QUERY_REWRITE_TIMEOUT_MS },
+        { maxTokens: QUERY_REWRITE_MAX_TOKENS, temperature: 0, timeoutMs: QUERY_REWRITE_TIMEOUT_MS, signal: abort.signal },
       ),
       deadline,
     ]);

@@ -1656,7 +1656,7 @@ export async function retrieveNodeChunks(
   // post restated in the manual's own vocabulary. ONE extra OR variant — it
   // joins the synonym passes below and feeds the rerank's synonym terms, and
   // never replaces the technician's words (the AND pass still leads). Measured
-  // 2026-10-30 on 45 held-out forum posts: 13 → 16 right pages in the top 5;
+  // 2026-10-30 on 42 held-out forum posts: 12 → 15 right pages in the top 5;
   // oem-index 86 → 93; oem-fault / t4-77 neutral (docs/evals/2026-10-30-t1-query-rewrite).
   const rewritten = opts.rewrittenQuery?.replace(/\s+/g, " ").trim();
   if (rewritten && !expanded.variants.includes(rewritten)) {

@@ -153,7 +153,9 @@ for r in admitted:
             "manual": r["manual"],
             "pdf": r["pdf"],
             "question": r["question"],
-            "accepted": r["accepted"],
+            # An unanswerable candidate keeps no accepted page: the harness derives
+            # `kind` from `accepted`, and a provisional page must never score (Codex F5 on #5003).
+            "accepted": r["accepted"] if r["answerable"] else [],
             "kind": "answerable" if r["answerable"] else "unanswerable",
         }
     )

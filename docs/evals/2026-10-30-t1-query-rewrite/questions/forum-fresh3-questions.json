@@ -106,9 +106,7 @@
   "manual": "e3plus",
   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/aca6a4e5e28544658c2b385318927be3f95acf291cf3b811bd8baff080c7fd80.pdf",
   "question": "We have installed Allen Bradley E3 devicenet overloads. They lose their Non volatile MAC id after a drownout or low voltage. Does anyone know the cause or a solution? We have to change them back from ID 63 to their correct node number when this happens. As it happens to more than one at a time the ADR function can not correct the problem.",
-  "accepted": [
-   95
-  ],
+  "accepted": [],
   "kind": "unanswerable"
  },
  {
@@ -128,9 +126,7 @@
   "manual": "micro810",
   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
   "question": "We've got an Amcol saw luber with a Micro810 in it. The operators need to be able to go in and adjust the blade lube rate, but safety doesn't want them reaching into the enclosure. Has anyone had any success finding an HMI that's compatible with the 810s, or even a 2x8 pin ribbon cable that can go from the LCD to the socket for said LCD?",
-  "accepted": [
-   9
-  ],
+  "accepted": [],
   "kind": "unanswerable"
  },
  {
@@ -183,9 +179,7 @@
   "manual": "se-m172",
   "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-m172-hardware-guide-EIO0000002015.pdf",
   "question": "I was reprogramming a TM172PDG28R a while ago. after changing the polarity of an input. So I did as always and I was not paying much attention to the whole process.\n\nHowever after restarting I got this:\n\nSystem Fault\n\nWDT : 3\n\nI had run into this issue only once before and last time I was able to restore the PLC by inserting a blank program, so I did it once again in the few seconds that the PLC responds at start up. So basically the PLC program has been cleared, but the HMI program is still there and it does start.\n\nIt seems I was not lucky this time, because the issue is still there.\n\nOnly thing slightly unusual about what I did is that I could not find the cable I usually work with and used a backup one instead. As the communication was succesfull I assumed everything was fine.\n\nSo the questions are: what are my choices ? WDT points to a watchdog timer issue, can I somehow try to get an instruction to ignore WDT ? Anyway to reset the PLC ?\n\nThe other even more important question is: what the ... may I have done to disrupt a PLC ? I swear I will throw away the other cable but since the communication established fine and the program seemed to have been downloaded, I doubt the cable is to blame.",
-  "accepted": [
-   167
-  ],
+  "accepted": [],
   "kind": "unanswerable"
  },
  {

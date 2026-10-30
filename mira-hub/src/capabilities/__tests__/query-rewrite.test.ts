@@ -9,7 +9,7 @@ import {
   queryRewriteEnabled,
   rewriteForManualSearch,
 } from "@/capabilities/query-rewrite";
-import type { CascadeResult } from "@/lib/llm/cascade";
+import { cascadeComplete, type CascadeResult } from "@/lib/llm/cascade";
 
 const POST =
   "Hi all, got a PowerFlex 40 on a conveyor that trips every time the belt loads up, " +
@@ -113,6 +113,52 @@ describe("query-rewrite (NOTEBOOK_QUERY_REWRITE)", () => {
       expect(await p2).toMatchObject({ rewritten: null, status: "timeout" });
     } finally {
       vi.useRealTimers();
+    }
+  });
+
+  it("at the deadline the REAL cascade aborts the request in flight and never contacts the next provider (Codex F2 round 2)", async () => {
+    vi.useFakeTimers();
+    const fetchCalls: string[] = [];
+    // Provider A stalls, then fails (HTTP 500) just AFTER the rewrite deadline unless
+    // its signal aborted it first; provider B would answer at once. Without the
+    // abort the cascade walks on to B after A's 500 — that is the regression.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init: { signal?: AbortSignal }) => {
+        fetchCalls.push(url);
+        if (url.includes("provider-a")) {
+          return new Promise<Response>((res, rej) => {
+            init.signal?.addEventListener("abort", () => rej(new DOMException("aborted", "AbortError")));
+            setTimeout(() => res(new Response("", { status: 500 })), QUERY_REWRITE_TIMEOUT_MS + 10);
+          });
+        }
+        return Promise.resolve(
+          new Response(JSON.stringify({ choices: [{ message: { content: "Overcurrent Fault" } }], usage: { prompt_tokens: 1, completion_tokens: 1 } }), { status: 200 }),
+        );
+      }),
+    );
+    try {
+      const providers = [
+        { name: "A", url: "https://provider-a.test/v1/chat/completions", key: "k", model: "m" },
+        { name: "B", url: "https://provider-b.test/v1/chat/completions", key: "k", model: "m" },
+      ];
+      const viaCascade: Complete = (messages, opts) => cascadeComplete(messages, { ...opts, providers });
+      let settled = false;
+      const p = rewriteForManualSearch(POST, viaCascade).then((r) => {
+        settled = true;
+        return r;
+      });
+      await vi.advanceTimersByTimeAsync(QUERY_REWRITE_TIMEOUT_MS - 1);
+      expect(settled).toBe(false);
+      expect(fetchCalls).toEqual(["https://provider-a.test/v1/chat/completions"]);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await p).toMatchObject({ rewritten: null, status: "timeout" });
+      // Let any abandoned continuation run: provider B must still never be called.
+      await vi.advanceTimersByTimeAsync(QUERY_REWRITE_TIMEOUT_MS * 3);
+      expect(fetchCalls).toEqual(["https://provider-a.test/v1/chat/completions"]);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
     }
   });
 
