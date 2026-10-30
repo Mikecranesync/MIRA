@@ -54,7 +54,6 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { pathToFileURL } from "node:url";
 import { chunkText, EMBED_DIM, EMBED_MODEL } from "@/lib/node-knowledge-ingest";
 
 /** The slice of `pg.Client` this file actually uses. */
@@ -263,13 +262,11 @@ async function main(): Promise<void> {
 
 // Guard: running this file via vite-node executes `main()`; importing its
 // pure exports (for tests, or from run_cases.ts) never touches the DB.
-const isMain = (() => {
-  try {
-    return import.meta.url === pathToFileURL(process.argv[1] ?? "").href;
-  } catch {
-    return false;
-  }
-})();
+// Entry detection (see run_cases.ts): launched by vite-node AND argv is `<set> <questions.json> ...` — never when
+// imported by run_cases.ts (whose first argument is an arm label) or by a vitest test.
+const ingestArgs = process.argv.slice(2).filter((a) => a !== "--");
+const isMain =
+  /vite-node$/.test(process.argv[1] ?? "") && !/^H[012]$/.test(ingestArgs[0] ?? "") && /\.json$/.test(ingestArgs[1] ?? "");
 if (isMain) {
   main().catch((err) => {
     console.error(err instanceof Error ? err.message : err);

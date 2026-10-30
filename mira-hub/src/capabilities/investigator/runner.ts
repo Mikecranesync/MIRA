@@ -180,6 +180,23 @@ function synthesisOutputText(output: SynthesisOutput): string {
 // investigate
 // ---------------------------------------------------------------------------
 
+/**
+ * One lookup per distinct code: "F081" and "F81" are the same fault (the hub's exact-code lane already expands
+ * zero-padding both ways, #4979), so looking both up spends two of the tool budget for one fact.
+ */
+export function distinctCodes(codes: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const code of codes) {
+    const m = /^([A-Za-z]{1,3})\s*0*(\d{1,5})$/.exec(code.trim());
+    const key = m ? `${m[1].toUpperCase()}${Number(m[2])}` : code.trim().toUpperCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(code);
+  }
+  return out;
+}
+
 export async function investigate(input: InvestigationInput, deps: InvestigateDeps): Promise<InvestigationResult> {
   const t0 = performance.now();
   const limits: InvestigatorLimits = {
@@ -302,7 +319,8 @@ export async function investigate(input: InvestigationInput, deps: InvestigateDe
     searchEvidence.push(...items);
     toolCallsUsed += 1;
   }
-  for (const code of plan.codes) {
+  const lookupCodes = distinctCodes(plan.codes);
+  for (const code of lookupCodes) {
     if (remainingBudget() <= 0) break;
     const items = await callTool(1, "lookup_code", { code, docIds: input.docIds }, () =>
       deps.tools.lookupCode({ code, docIds: input.docIds }),
@@ -319,7 +337,7 @@ export async function investigate(input: InvestigationInput, deps: InvestigateDe
     toolCallsUsed += 1;
   }
   if (drivePackId) {
-    for (const code of plan.codes) {
+    for (const code of lookupCodes) {
       if (remainingBudget() <= 0) break;
       const items = await callTool(1, "drive_pack_lookup", { packId: drivePackId, code }, () =>
         deps.tools.drivePackLookup({ packId: drivePackId, code }),

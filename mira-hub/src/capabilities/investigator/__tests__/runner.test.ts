@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { investigate } from "../runner";
+import { investigate, distinctCodes } from "../runner";
 import type {
   EvidenceItem,
   InvestigationInput,
@@ -339,5 +339,14 @@ describe("investigate — clean synthesis", () => {
     expect(result.citedEvidenceIds).toEqual(["ev-1"]);
     expect(result.trace.model.calls).toBe(1);
     expect(result.trace.model.model).toBe("fake-model");
+  });
+});
+
+describe("distinctCodes", () => {
+  it("collapses zero-padding spellings of one code, keeping the first", () => {
+    expect(distinctCodes(["F081", "F81", "F071", "F71", "DEVICENET"])).toEqual(["F081", "F071", "DEVICENET"]);
+  });
+  it("keeps codes with different letters apart", () => {
+    expect(distinctCodes(["F4", "A4", "oC", "OC"])).toEqual(["F4", "A4", "oC"]);
   });
 });

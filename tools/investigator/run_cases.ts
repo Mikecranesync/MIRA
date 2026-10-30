@@ -32,7 +32,6 @@ import { appendFileSync, readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 
 import { DEFAULT_LIMITS } from "@/capabilities/investigator/types";
 import { investigate } from "@/capabilities/investigator";
@@ -97,8 +96,8 @@ export interface BenchCase {
 
 /** Bench question rows name only a manual key; the notebook they are asked in is that product's.
  *  Product names follow the 19 IMIB bench manuals (`.planning/2026-10-29-t1-fix/rewrite/audit_fresh3.py` PDF map). */
-const BENCH_PRODUCTS: Record<string, { manufacturer: string; model: string }> = {
-  pf40: { manufacturer: "Allen-Bradley", model: "PowerFlex 40" },
+const BENCH_PRODUCTS: Record<string, { manufacturer: string; model: string; drivePackId?: string }> = {
+  pf40: { manufacturer: "Allen-Bradley", model: "PowerFlex 40", drivePackId: "powerflex_40" },
   pf4m: { manufacturer: "Allen-Bradley", model: "PowerFlex 4M" },
   acs355: { manufacturer: "ABB", model: "ACS355" },
   "micro820-um": { manufacturer: "Allen-Bradley", model: "Micro820" },
@@ -110,7 +109,7 @@ const BENCH_PRODUCTS: Record<string, { manufacturer: string; model: string }> = 
   micro810: { manufacturer: "Allen-Bradley", model: "Micro810" },
   "gs4-ch2": { manufacturer: "AutomationDirect", model: "DURApulse GS4" },
   "gs4-ch6": { manufacturer: "AutomationDirect", model: "DURApulse GS4" },
-  "gs10-ch6": { manufacturer: "AutomationDirect", model: "DURApulse GS10" },
+  "gs10-ch6": { manufacturer: "AutomationDirect", model: "DURApulse GS10", drivePackId: "durapulse_gs10" },
   "se-canopen-hw": { manufacturer: "Schneider Electric", model: "CANopen" },
   "se-lxm32a-canopen": { manufacturer: "Schneider Electric", model: "Lexium 32A" },
   "se-m171": { manufacturer: "Schneider Electric", model: "Modicon M171" },
@@ -120,7 +119,7 @@ const BENCH_PRODUCTS: Record<string, { manufacturer: string; model: string }> = 
 };
 
 /** Identity for a bench question row (no `equipment` field); null for scenario cases and unknown manuals. */
-export function benchIdentity(c: BenchCase): { manufacturer: string; model: string } | null {
+export function benchIdentity(c: BenchCase): { manufacturer: string; model: string; drivePackId?: string } | null {
   if (c.equipment || !c.question || !c.manual) return null;
   return BENCH_PRODUCTS[c.manual] ?? null;
 }
@@ -215,13 +214,20 @@ function pageFromCitation(c?: DrivePackSourceCitation): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** "F081" / "F81" / "f 81" → "81"; null when the code is not letter-prefix + digits (e.g. "oC", "DEVICENET"). */
+export function packFaultKey(code: string): string | null {
+  const m = /^[A-Za-z]{1,2}\s*0*(\d{1,4})$/.exec(code.trim());
+  return m ? String(Number(m[1])) : null;
+}
+
 function evidenceFromDrivePack(
   pack: DrivePackJson,
   q: { code?: string; parameter?: string },
 ): EvidenceItem[] {
   const items: EvidenceItem[] = [];
   if (q.code) {
-    const desc = pack.live_decode?.fault_codes?.[q.code];
+    // Packs key faults by bare number ("81"); the plan carries hub spellings ("F081", "F81", "oC").
+    const desc = pack.live_decode?.fault_codes?.[q.code] ?? pack.live_decode?.fault_codes?.[packFaultKey(q.code) ?? ""];
     if (desc) {
       const src = pack.provenance?.sources?.[0];
       items.push({
@@ -466,7 +472,7 @@ async function main(): Promise<void> {
   // at the START of the run (task brief: "record each pack's sha256... a
   // fetch between dev and sealed runs would silently change pack inputs").
   for (const c of cases) {
-    const packId = c.drive_pack ?? c.equipment?.drivePackId ?? null;
+    const packId = c.drive_pack ?? c.equipment?.drivePackId ?? benchIdentity(c)?.drivePackId ?? null;
     if (packId) loadPackCached(packId);
   }
 
@@ -477,7 +483,7 @@ async function main(): Promise<void> {
     for (const c of cases) {
       const { tenantId, docIds } = resolveCaseTenant(c, manualTenantMap);
       const message = c.message ?? c.question ?? "";
-      const packId = c.drive_pack ?? c.equipment?.drivePackId ?? null;
+      const packId = c.drive_pack ?? c.equipment?.drivePackId ?? benchIdentity(c)?.drivePackId ?? null;
       const drivePacks = new Map<string, DrivePackJson>();
       if (packId) {
         const pack = loadPackCached(packId);
@@ -587,13 +593,11 @@ async function main(): Promise<void> {
   }
 }
 
-const isMain = (() => {
-  try {
-    return import.meta.url === pathToFileURL(process.argv[1] ?? "").href;
-  } catch {
-    return false;
-  }
-})();
+// Entry detection: vite-node drops this script's path from argv ([node, <vite-node bin>, ...args]), so neither
+// import.meta.url === argv[1] nor a path match works. Run when launched by vite-node AND the first argument is an
+// arm label — an importing test runs under vitest (argv[1] is not vite-node) and stays inert.
+const cliArgs = process.argv.slice(2).filter((a) => a !== "--");
+const isMain = /vite-node$/.test(process.argv[1] ?? "") && /^H[012]$/.test(cliArgs[0] ?? "");
 if (isMain) {
   main().catch((err) => {
     console.error(err instanceof Error ? err.message : err);

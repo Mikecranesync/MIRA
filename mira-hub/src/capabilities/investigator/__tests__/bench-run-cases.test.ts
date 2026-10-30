@@ -13,6 +13,7 @@ import {
   createBenchTools,
   parseArgs,
   benchIdentity,
+  packFaultKey,
   resolveCaseTenant,
   type BenchCase,
   type DrivePackJson,
@@ -151,11 +152,24 @@ describe("benchIdentity", () => {
     expect(benchIdentity({ id: "q1", set: "forum-fresh", manual: "pf40", question: "F004 on start" })).toEqual({
       manufacturer: "Allen-Bradley",
       model: "PowerFlex 40",
+      drivePackId: "powerflex_40",
     });
   });
 
   it("leaves scenario cases (own equipment) and unknown manuals alone", () => {
     expect(benchIdentity({ id: "s1", set: "sc", manual: "pf40", message: "m", equipment: { model: "PowerFlex 525" } })).toBeNull();
     expect(benchIdentity({ id: "q2", set: "x", manual: "not-a-manual", question: "q" })).toBeNull();
+  });
+});
+
+describe("packFaultKey", () => {
+  it("maps hub code spellings to the pack's bare-number keys", () => {
+    expect(packFaultKey("F081")).toBe("81");
+    expect(packFaultKey("F81")).toBe("81");
+    expect(packFaultKey("F4")).toBe("4");
+  });
+  it("leaves non-numeric codes alone", () => {
+    expect(packFaultKey("oC")).toBeNull();
+    expect(packFaultKey("DEVICENET")).toBeNull();
   });
 });

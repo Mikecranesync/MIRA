@@ -27,6 +27,8 @@
       "@/*": ["../../mira-hub/src/*"]
     }
   },
-  "include": ["fusion_arms.ts", "judge.ts", "tests/fusion_arms.test.ts", "tests/judge.test.ts"],
-  "exclude": ["node_modules"]
+  "include": ["*.ts", "tests/*.ts"],
+  // bench/retrieval_dev.ts is a byte-identical pinned copy of the #4983 harness (sha256 d1f46b6c…); it passes
+  // `rewrittenQuery`, which exists only in that round's uncommitted diff — kept verbatim for provenance, not type-checked.
+  "exclude": ["node_modules", "bench/**"]
 }
