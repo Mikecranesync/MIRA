@@ -714,6 +714,61 @@ capabilities:
       - "Production: owner decision after the staging walk."
     review_by: "2026-11-17"
 
+  - id: notebook_query_rewrite
+    purpose: >-
+      Restate the technician's message in the manual's own vocabulary (section
+      titles, parameter names, normalised fault codes) with the cascade's lead
+      model before notebook retrieval, and add that restatement as ONE extra OR
+      lexical variant. The technician's words still lead; the rewrite only adds
+      candidates and synonyms.
+    customer_outcome: >-
+      A forum-style question ("drive trips when the belt loads up, no fault on
+      the keypad") reaches the manual page that calls it "Current Limit" or
+      "Overcurrent" more often than a word match alone can manage.
+    # The Hub reads NOTEBOOK_QUERY_REWRITE (TypeScript). feature_flag is omitted
+    # because tools/capability_closure.py discovers flags in Python only.
+    entrypoints:
+      - "mira-hub/src/capabilities/query-rewrite.ts   # rewriteForManualSearch(): prompt, caps, fail-open"
+      - "mira-hub/src/lib/manual-rag.ts                # retrieveNodeChunks({ rewrittenQuery }) adds the OR variant"
+    consumers:
+      - "mira-hub/src/app/api/equipment-notebooks/[id]/chat/route.ts   # notebook chat retrieval; trace attr mira.retrieval.query_rewrite"
+    environments:
+      dev: unset
+      staging: unset                        # new flag; forwarded by docker-compose.staging-vps.yml, not yet set in Doppler factorylm/stg
+      production: unset                     # forwarded by docker-compose.saas.yml, not set in factorylm/prd
+    state: deployed_disabled
+    reason: >-
+      Owner decision 2026-10-30 (Mike: "ship rewrite-only, flagged") after the
+      T-1 query-rewrite round. Pre-registered held-out measurement on 45 real
+      forum posts nothing was tuned on: 13 -> 16 right pages in the top 5
+      (28.9% -> 35.6%); oem-index 86 -> 93; oem-fault 137 -> 136; t4-77 69 -> 67
+      (top-6 unchanged, top-1 46 -> 49). The T-1 bar (#4875 row 5, Wilson LB
+      >= 70%) is NOT met by this layer — T-1 stays NO-GO. The pre-registered
+      arm that paired the rewrite with the vector lane reached 20/45 but lost
+      oem-fault 137 -> 128 and oem-index 86 -> 70, so only the rewrite ships.
+      Cost ~ $0.0004 per message (gpt-5.4-mini, inside openAiRunBudget), ~1 s
+      overlapped with the notebook loads.
+    owner: "Mike Harper"
+    ci_jobs:
+      - mira-hub-unit        # query-rewrite + manual-rag (rewrittenQuery variant) suites
+    required_checks: []
+    evidence:
+      - "docs/evals/2026-10-30-t1-query-rewrite/RESULTS.md"
+      - "docs/evals/2026-10-30-t1-query-rewrite/PREREGISTRATION.md"
+    rollback: >-
+      Unset NOTEBOOK_QUERY_REWRITE (or set anything other than 1) and redeploy
+      mira-hub. Flag off makes no model call and leaves retrieval byte-identical
+      to #4979.
+    blocker: null
+    acknowledged_rules: []
+    promotion_criteria:
+      - "Staging: set the flag in factorylm/stg; one notebook walk with a forum-style question shows mira.retrieval.query_rewrite=ran and a cited answer; refusals on unanswerable questions no worse than flag off."
+      - "Production: owner decision after the staging walk; spend visible in the OpenAI run-budget log."
+    review_by: "2026-12-15"
+    notes: >-
+      Any change to QUERY_REWRITE_PROMPT, the model, or the token cap reopens
+      the measurement above — the numbers belong to that exact prompt.
+
   - id: guided_troubleshooting
     purpose: >-
       Turn a manufacturer's troubleshooting chapter into a step-by-step, deterministic technician workflow on

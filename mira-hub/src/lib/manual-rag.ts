@@ -1292,6 +1292,12 @@ export async function retrieveNodeChunks(
      *  (e.g. a thread's P042) can only ADD candidates — never crowd the
      *  message's own keywords ("keypad") out of the pool. */
     rawQuery?: string;
+    /** #4983 — the question rewritten into the manual's vocabulary (search
+     *  phrases a model produced from the forum-style post). Rides as one more
+     *  query variant: its own OR pass for recall and its terms in the rerank's
+     *  synonym boost, exactly like the static SYNONYMS table. Never replaces
+     *  the technician's words; absent = unchanged behaviour. */
+    rewrittenQuery?: string;
     /** The notebook's machine (manufacturer/model), so its own name is never
      *  read as a fault code by the whole-token lane (Codex r6 on #4360). */
     identity?: EquipmentIdentity | null;
@@ -1646,6 +1652,16 @@ export async function retrieveNodeChunks(
     withoutIdentityCodes(withRawCodeTokens(expandIndustrialQuery(q), opts.rawQuery), opts.identity),
     requestedModel.model && !requestedModel.ambiguous ? { model: requestedModel.model } : null,
   );
+  // Query rewrite (NOTEBOOK_QUERY_REWRITE, query-rewrite.ts): the technician's
+  // post restated in the manual's own vocabulary. ONE extra OR variant — it
+  // joins the synonym passes below and feeds the rerank's synonym terms, and
+  // never replaces the technician's words (the AND pass still leads). Measured
+  // 2026-10-30 on 45 held-out forum posts: 13 → 16 right pages in the top 5;
+  // oem-index 86 → 93; oem-fault / t4-77 neutral (docs/evals/2026-10-30-t1-query-rewrite).
+  const rewritten = opts.rewrittenQuery?.replace(/\s+/g, " ").trim();
+  if (rewritten && !expanded.variants.includes(rewritten)) {
+    expanded = { ...expanded, variants: [...expanded.variants, rewritten] };
+  }
   // A code names ONE row. A token that matches more chunks than the candidate
   // pool holds ("20QWB" sits in the catalog number on every Micro820 spec
   // table; "TM171EP14R" heads every M171 wiring page) names the product, not a

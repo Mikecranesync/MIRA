@@ -149,6 +149,7 @@ import { extractCandidateIdentity, isSafeCandidateSearchIdentity, wantsManualDoc
 import { citationTitle } from "@/capabilities/citation-title";
 import { claimPartSearchProposal } from "@/capabilities/part-search-claim";
 import { translateForSearch } from "@/capabilities/translate-for-search";
+import { rewriteForManualSearch } from "@/capabilities/query-rewrite";
 import {
   buildRequestBody,
   canonicalProviders,
@@ -2253,6 +2254,10 @@ async function handleChatTurn(
   // in scope for a notebook that has no attached documents.
   // Fail-open by construction (a synchronous throw inside either helper must
   // not fail the turn either — the old `.catch` only covered rejections).
+  // Query rewrite (NOTEBOOK_QUERY_REWRITE, default off): the message restated
+  // in the manual's vocabulary, started here so its ~1 s overlaps the notebook
+  // loads; awaited only where retrieval needs it. Never throws (fail-open).
+  const queryRewritePromise = rewriteForManualSearch(message);
   const [nb, srcs] = await Promise.all([
     (async () => {
       try {
@@ -2438,7 +2443,9 @@ async function handleChatTurn(
   // the decline below must never say "I couldn't find it" when nothing ran.
   let oemRetrievalFailed = false;
   // Filled by retrieveNodeChunks: what the vector lane did this turn (#4548).
-  const retrievalDiagnostics: { vectorLane?: string } = {};
+  const retrievalDiagnostics: { vectorLane?: string; queryRewrite?: string } = {};
+  const queryRewrite = await queryRewritePromise;
+  retrievalDiagnostics.queryRewrite = queryRewrite.status;
   const chunks: ManualChunk[] = oemRetrieval
     ? await (async () => {
         // Raw pool on purpose (hybrid corpus law — see manual-rag.ts header):
@@ -2504,6 +2511,9 @@ async function handleChatTurn(
             // verified — confirmation is admission, not corpus promotion.
             approvedSourceDocIds: docIds,
             diagnostics: retrievalDiagnostics,
+            // The manual-vocabulary restatement of the message (query-rewrite.ts);
+            // undefined when the flag is off or the rewrite failed.
+            rewrittenQuery: queryRewrite.rewritten ?? undefined,
           }),
         ),
       );
@@ -2577,6 +2587,7 @@ async function handleChatTurn(
         "mira.retrieval.zero_result_reason": zeroResultReason,
         "mira.retrieval.prior_visual_observations_considered": priorLookRows.length,
         "mira.retrieval.vector_lane": retrievalDiagnostics.vectorLane ?? null,
+        "mira.retrieval.query_rewrite": retrievalDiagnostics.queryRewrite ?? null,
         "mira.visual.prior_file_ids": priorLookFileIds,
       },
       retrievalSpan,
