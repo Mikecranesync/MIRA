@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PrintSense — Cited answers from your industrial prints & manuals</title>
-<meta name="description" content="Ask a fault-code or wiring question. Get a grounded answer that cites the actual OEM manual, your fault history, and PM records — plus a deterministic verdict you can trust. 5 free reads.">
+<meta name="description" content="Ask about a print. Get a human-reviewed, cited answer. PrintSense does not replace engineering review. Talk to Mike.">
 <style>
   :root{
     --ink:#0A0E14;--ink-2:#0F1621;--panel:#131C2A;--panel-2:#0c131e;
@@ -185,9 +185,9 @@
       <a href="#answers">Real answers</a>
       <a href="#trust">Why trust it</a>
       <a href="#how">How it works</a>
-      <a href="#pricing">Pricing</a>
+      <a href="#pricing">Talk to Mike</a>
     </div>
-    <a href="#start" class="btn btn-primary">Try 5 free reads →</a>
+    <a href="mailto:mike@factorylm.com" class="btn btn-primary">Talk to Mike →</a>
   </div>
 </nav>
 
@@ -198,12 +198,11 @@
     <div>
       <span class="eyebrow"><span class="dot"></span> Cited print &amp; manual intelligence · read-only</span>
       <h1>Ask about any fault. Get the answer <span class="stroke">and its source.</span></h1>
-      <p class="lede">Snap a photo of an electrical print or ask a fault-code question. PrintSense answers with a <b>grounded, cited response</b> — pulled from the actual OEM manual, your fault history, and PM records — plus a deterministic verdict on whether it's safe to trust. <b>Claude reads it; a code shell owns the trust.</b></p>
+      <p class="lede">Send one print page and a question. A human-reviewed, cited answer comes back — every claim tied to a page and a location on it. PrintSense <b>does not replace engineering review</b> and does not write work-order records. MIRA stands alone.</p>
       <div class="hero-cta">
-        <a href="#start" class="btn btn-primary">Start with 5 free reads →</a>
-        <a href="#answers" class="btn btn-ghost">See real answers</a>
+        <a href="mailto:mike@factorylm.com" class="btn btn-primary">Talk to Mike →</a>
       </div>
-      <p class="free-note" style="margin-top:18px">No card. <b>5 free interpretations</b>, then paid · nothing writes back to your systems.</p>
+      <p class="free-note" style="margin-top:18px">Read-only.</p>
     </div>
 
     <!-- THE cited answer card -->
@@ -211,19 +210,18 @@
       <div class="q">
         <div class="avatar">🔧</div>
         <div>
-          <div class="qt">"PowerFlex 755 keeps tripping F5 around 1,200 RPM overnight — what do I check first?"</div>
-          <div class="qs">Asset POW-755-A12 · Line 3 · via Telegram · 02:14</div>
+          <div class="qt">"PowerFlex 525 keeps tripping F004 overnight — what do I check first?"</div>
+          <div class="qs">Sample of a delivered answer · synthetic material</div>
         </div>
       </div>
       <div class="a">
         <div class="mira"><span class="b">M</span><span class="n">MIRA <small>grounded answer</small></span></div>
         <div class="body">
-          F5 on this drive is a <mark>DC bus undervoltage</mark> fault. Your last 7 days show <mark>4 trips in the same RPM band, all overnight</mark> — a sagging-bus pattern, not a random fault. The manual's fault-recovery section sends you to the <mark>DC bus capacitor bank</mark> first, and your own history backs it up: the 2024-12-14 PM flagged bulging on capacitor 3. Check there before changing any drive parameters.
+          F004 on this drive is an <mark>UnderVoltage</mark> trip. The manual's fault list points at DC bus voltage falling below the minimum — on an overnight-only pattern, check the incoming supply for off-shift sag before touching drive parameters. What we couldn't read from your print is listed as unresolved below the answer.
         </div>
         <div class="cites">
-          <span class="cite"><span class="ico">📄</span> PowerFlex 755 Manual · §6.2 Fault F5</span>
-          <span class="cite"><span class="ico">🗂️</span> Fault history · 7 d</span>
-          <span class="cite"><span class="ico">🛠️</span> PM · 2024-12-14</span>
+          <span class="cite"><span class="ico">📄</span> PowerFlex 525 Manual · F004 UnderVoltage</span>
+          <span class="cite"><span class="ico">🗂️</span> Unresolved items listed, never guessed</span>
         </div>
       </div>
       <div class="foot"><span class="badge grounded">◆ GROUNDED 5/5</span><span>3 sources · 0 unsupported claims · read-only</span></div>
@@ -234,10 +232,10 @@
 <!-- TRUST STRIP -->
 <div class="strip">
   <div class="wrap strip-in">
-    <span><b>68,000+</b> OEM doc chunks indexed</span><span class="d">·</span>
-    <span>Allen-Bradley</span><span class="d">·</span><span>Siemens</span><span class="d">·</span>
-    <span>Schneider</span><span class="d">·</span><span>ABB</span><span class="d">·</span><span>Yaskawa</span><span class="d">·</span>
-    <span><b>0</b> confident misreads</span>
+    <span>Read-only print intelligence</span><span class="d">·</span>
+    <span>Rockwell</span><span class="d">·</span><span>Festo</span><span class="d">·</span>
+    <span>ABB</span><span class="d">·</span>
+    <span>Does not replace engineering review</span>
   </div>
 </div>
 
@@ -245,8 +243,8 @@
 <section class="sec" id="answers">
   <div class="wrap">
     <div class="kicker">Real answers, real sources</div>
-    <h2>Every answer points back to a manual.</h2>
-    <p class="sub">This is the whole product. Not a chatbot guessing — a grounded answer with the OEM page, the fault history, or the PM record it stands on. Here's the same rigor across the gear on your floor.</p>
+    <h2>Each cited answer points back to a manual.</h2>
+    <p class="sub">This is the whole product. Not a chatbot guessing — a grounded answer with the OEM page it stands on. Here's the same rigor across the gear on your floor.</p>
 
     <div class="gallery">
       <!-- Siemens -->
@@ -291,7 +289,7 @@
         </div></div>
         <div class="a">
           <div class="mira"><span class="b">M</span><span class="n">MIRA <small>safety escalation</small></span></div>
-          <div class="body"><mark>STOP — do not energize.</mark> The photo shows a meter reading <mark>480 V on a branch labeled 240 V</mark>. That's outside safe range for the downstream devices on this print. Verify with a meter and confirm the source before any next step. MIRA won't clear this — a human has to.</div>
+          <div class="body"><mark>STOP — do not energize.</mark> The photo shows a meter reading that does not match the labeled branch voltage on this print. That's outside the labeled range for the downstream devices. Verify with a meter and confirm the source before any next step. MIRA won't clear this — a human has to.</div>
           <div class="cites">
             <span class="cite"><span class="ico">📄</span> Panel schedule · PP-12 branch 4</span>
             <span class="cite"><span class="ico">⚠️</span> Safety rule · voltage-mismatch</span>
@@ -304,7 +302,7 @@
       <div class="answer reveal">
         <div class="q"><div class="avatar">🔧</div><div>
           <div class="qt">"ABB ACS880 fault 2310 — where do I even start?"</div>
-          <div class="qs">Asset MIX-880-A1 · via Telegram</div>
+          <div class="qs">Sample of a delivered answer · synthetic material</div>
         </div></div>
         <div class="a">
           <div class="mira"><span class="b">M</span><span class="n">MIRA <small>grounded answer</small></span></div>
@@ -331,7 +329,7 @@
       <p>Fluent language fools a judge. It must never unlock an import. So PrintSense splits the job: the model <b style="color:var(--paper)">interprets</b> the drawing, and a <b style="color:var(--paper)">deterministic shell</b> owns validation, evidence, and the import gate. <code>Fluent language can never clear the gate.</code> Read-only. Train before deploy.</p>
     </div>
     <div class="bento reveal">
-      <div class="stat"><div class="big cy">68,000+</div><div class="lbl">OEM doc chunks</div></div>
+      <div class="stat"><div class="big cy">Read-only</div><div class="lbl">no control actions</div></div>
       <div class="stat"><div class="big ok">91.7/A</div><div class="lbl">live read quality</div></div>
       <div class="stat"><div class="big ok">0</div><div class="lbl">confident misreads</div></div>
       <div class="stat"><div class="big cy">&lt;60s</div><div class="lbl">photo → verdict</div></div>
@@ -348,7 +346,7 @@
     <div class="steps">
       <div class="step reveal"><span class="ic">📸</span><div class="n">01</div><h3>Send it</h3><p>Text a drawing or a fault question to the bot. Skewed, rotated, phone-lit — handled.</p></div>
       <div class="step reveal"><span class="ic">🧠</span><div class="n">02</div><h3>Claude reads it</h3><p>Full-resolution, auto-uprighted, IEC-81346 grammar. Every device and wire typed into a graph.</p></div>
-      <div class="step reveal"><span class="ic">🔎</span><div class="n">03</div><h3>MIRA grounds it</h3><p>Cross-checked against 68k OEM chunks, your fault history, and PM records — every claim tied to a source.</p></div>
+      <div class="step reveal"><span class="ic">🔎</span><div class="n">03</div><h3>MIRA grounds it</h3><p>In an equipment notebook, MIRA answers from an uploaded OEM manual and cites the page. When the attached manual doesn't cover the question, MIRA says it can't find it there.</p></div>
       <div class="step reveal"><span class="ic">🛡️</span><div class="n">04</div><h3>The gate rules</h3><p>A deterministic grader + 14 import gates return a clear PASS or HELD. No LLM gets a vote here.</p></div>
     </div>
   </div>
@@ -367,8 +365,8 @@
       </div>
       <div class="card-good reveal">
         <div class="hd">✓ PrintSense</div>
-        <blockquote>"F5 = DC bus undervoltage. 4 overnight trips in the same RPM band. Manual §6.2 → check the bus capacitor bank; your 2024-12-14 PM already flagged cap 3."</blockquote>
-        <div class="note">Every claim cited. The actual root cause, surfaced from your own records.</div>
+        <blockquote>"F004 = UnderVoltage. The cited manual page lists supply sag before drive parameters. What we could not prove from the print is listed as unresolved — never guessed."</blockquote>
+        <div class="note">Cited when the manual covers it. Unresolved when it does not. No guess.</div>
       </div>
     </div>
   </div>
@@ -377,28 +375,15 @@
 <!-- PRICING -->
 <section class="sec price-wrap" id="pricing">
   <div class="wrap">
-    <div class="kicker">Pricing</div>
-    <h2>Start free. Pay when it saves you a call-out.</h2>
-    <p class="sub">Your first 5 interpretations are on us — no card, no demo. Keep going when you see it work.</p>
+    <div class="kicker">How to start</div>
+    <h2>Talk to Mike. No published price menu.</h2>
+    <p class="sub">PrintSense is the read-only front door — MIRA stands alone.</p>
     <div class="prices">
       <div class="plan reveal">
-        <div class="pname">Free</div><div class="amt">$0</div>
-        <div class="pdesc">See it answer a real question about your own gear.</div>
-        <ul><li><b>5 interpretations</b></li><li>Cited answers + sources</li><li>Typed graph + read quality</li><li>Import PASS / HELD verdict</li><li class="off">Batch &amp; history</li><li class="off">Namespace export</li></ul>
-        <a href="#start" class="btn btn-ghost">Claim 5 free reads</a>
-      </div>
-      <div class="plan feature reveal">
-        <div class="flag">MOST POPULAR</div>
-        <div class="pname">Pro</div><div class="amt">$49<small>/mo</small></div>
-        <div class="pdesc">For the tech or crew reading prints every week.</div>
-        <ul><li><b>150 interpretations / mo</b></li><li>Everything in Free</li><li>Batch upload &amp; saved history</li><li>Export to CSV / graph</li><li>Priority read queue</li><li>Email support</li></ul>
-        <a href="#start" class="btn btn-primary">Start Pro</a>
-      </div>
-      <div class="plan reveal">
-        <div class="pname">Shop / Team</div><div class="amt">Custom</div>
-        <div class="pdesc">For a plant standardizing on trustworthy reads.</div>
-        <ul><li><b>Unlimited</b> interpretations</li><li>Everything in Pro</li><li>Export straight into your FactoryLM namespace</li><li>Shared team library</li><li>Onboarding + priority support</li><li>Volume pricing</li></ul>
-        <a href="#start" class="btn btn-ghost">Talk to Mike</a>
+        <div class="pname">Questions / scope</div><div class="amt">Custom</div>
+        <div class="pdesc">Print-package pilots are agreed with Mike — this page does not publish amounts.</div>
+        <ul><li>No public monthly plan menu</li><li>Read-only — never acts</li><li>Does not replace engineering review</li><li>Direct line to Mike</li></ul>
+        <a href="mailto:mike@factorylm.com" class="btn btn-ghost">Talk to Mike</a>
       </div>
     </div>
   </div>
@@ -409,11 +394,11 @@
   <div class="wrap">
     <div class="kicker">Where PrintSense fits</div>
     <h2>The free tool is the front door.</h2>
-    <p class="sub">Every print you read and every answer MIRA grounds becomes structured asset context — the exact foundation FactoryLM's namespace is built on. Start small; the value compounds.</p>
+    <p class="sub">Prints you read and answers MIRA grounds become structured asset context — the foundation FactoryLM's namespace is built on. Start small; the value compounds.</p>
     <div class="ladder reveal">
-      <div class="rung here"><div class="lvl">Tier 0 · The hook</div><h3>PrintSense</h3><div class="who">for the technician</div><p>Read one drawing or answer one fault, free. Read-only, zero infra, seconds to value.</p><span class="badge-here">You are here</span></div>
-      <div class="rung"><div class="lvl">Tier 1 · Activate</div><h3>MIRA</h3><div class="who">for the maintenance team</div><p>Grounded troubleshooting that cites its sources — Telegram, web, and the CMMS.</p></div>
-      <div class="rung"><div class="lvl">Tier 2 · Expand</div><h3>FactoryLM</h3><div class="who">for the plant</div><p>The Maintenance Intelligence Namespace: manuals, PLC tags, and fault history structured into AI-ready context.</p></div>
+      <div class="rung here"><div class="lvl">Tier 0 · The hook</div><h3>PrintSense</h3><div class="who">for the technician</div><p>One print page, one question, one cited answer. Read-only, zero infrastructure.</p><span class="badge-here">You are here</span></div>
+      <div class="rung"><div class="lvl">Tier 1 · Activate</div><h3>MIRA</h3><div class="who">for the maintenance team</div><p>In an equipment notebook, MIRA answers from an uploaded OEM manual and cites the page.</p></div>
+      <div class="rung"><div class="lvl">Tier 2 · Expand</div><h3>FactoryLM</h3><div class="who">for the plant</div><p>An equipment notebook for maintenance crews. Not a CMMS. No PLC data, no work-order writes.</p></div>
     </div>
     <div class="arrow-note">PrintSense → MIRA → FactoryLM &nbsp;·&nbsp; <b>lead with context, not a copilot.</b></div>
   </div>
@@ -424,13 +409,9 @@
   <div class="grid-bg"></div>
   <div class="wrap">
     <div class="kicker" style="text-align:center">Get started</div>
-    <h2>Get one cited answer in the next 60 seconds.</h2>
-    <p class="sub" style="margin:14px auto 0;text-align:center">Drop your email to unlock 5 free interpretations and get the link to send your first print or fault question.</p>
-    <form class="capture" onsubmit="event.preventDefault();this.innerHTML='<p style=&quot;color:var(--lime);font-family:var(--mono)&quot;>✓ You&rsquo;re in. Check your inbox for your PrintSense link.</p>'">
-      <input type="email" placeholder="you@plant.com" required>
-      <button class="btn btn-primary" type="submit">Unlock 5 free reads →</button>
-    </form>
-    <p class="free-note" style="margin-top:16px">No card · read-only · nothing writes back to your systems</p>
+    <h2>Talk to Mike.</h2>
+    <p class="sub" style="margin:14px auto 0;text-align:center">PrintSense stays read-only. MIRA stands alone.</p>
+    <p class="free-note" style="margin-top:16px">Read-only · does not replace engineering review · <a href="mailto:mike@factorylm.com" style="color:var(--amber);text-decoration:underline">Talk to Mike</a></p>
   </div>
 </section>
 

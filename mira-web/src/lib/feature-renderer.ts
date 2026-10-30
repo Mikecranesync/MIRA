@@ -2,7 +2,9 @@
  * Server-side HTML renderer for /feature/:slug pages.
  *
  * Each feature has a hero, an optional Loom video, a long-form description,
- * a benefits grid, and a primary CTA back to the beta signup at /cmms.
+ * a benefits grid, and a Talk to Mike contact link from the capabilities
+ * registry. Feature copy is proven claims only. No pilot/credit offer here:
+ * new offers belong in the canonical FactoryLM shell (Codex iteration 3 F1).
  *
  * Aesthetic: industrial HMI / telemetry overlay. Matches index.html's dark
  * gray + amber + Inter vocabulary but pushes HMI details harder (corner
@@ -13,7 +15,20 @@
  * in real Loom URLs: just update Doppler and restart mira-web.
  */
 
+import {
+  loadCapabilities,
+  provenText,
+  type CapabilitiesFile,
+} from "../capabilities/marketing-claims/index.js";
+import { serializeJsonLd } from "./html.js";
+
 const BASE_URL = "https://factorylm.com";
+
+function provenOrThrow(id: string, data: CapabilitiesFile): string {
+  const text = provenText(id, data);
+  if (!text) throw new Error(`feature copy requires proven claim ${id}`);
+  return text;
+}
 
 export interface FeatureSlide {
   header: string;
@@ -48,19 +63,32 @@ export interface Feature {
   videoCaption: string;
 }
 
-export const FEATURES: Record<string, Feature> = {
+export function featuresFromRegistry(
+  data: CapabilitiesFile = loadCapabilities(),
+): Record<string, Feature> {
+  const cited = provenOrThrow("notebook-cited-answer", data);
+  const notebook = provenOrThrow("equipment-notebook-not-cmms", data);
+  const notCmms = provenOrThrow("not-a-cmms", data);
+  const noWrite = provenOrThrow("no-plc-or-work-order-write", data);
+  const manuals = provenOrThrow("qualified-manuals-only", data);
+  const saysNo = provenOrThrow("says-when-not-covered", data);
+  const desktop = provenOrThrow("desktop-citation-opens-page", data);
+  const continuity = provenOrThrow("web-android-continuity", data);
+  const faultPage = provenOrThrow("fault-code-right-page", data);
+  const connectors = data.chrome.connectors_note;
+
+  return {
   "fault-diagnosis": {
     slug: "fault-diagnosis",
     category: "Fault Diagnosis",
     title: "Fault Diagnosis | FactoryLM",
-    tagline: ["Answers in seconds,", "not hours"],
-    lede:
-      "Mira knows your equipment. Send a fault code, describe a symptom, or upload a photo — and get an actionable answer from your specific OEM documentation, with the manual and page when the answer comes from it.",
+    tagline: ["Cited answers from", "your manuals"],
+    lede: cited,
     longBody: [
-      "Every minute of VFD or PLC downtime costs money. The average maintenance technician wastes 20–40 minutes per fault code searching through PDFs, forum posts, and manufacturer websites — and the answer is still a guess.",
-      "Mira closes that gap to seconds. Paste a fault code into chat. Mira pulls the matching section from your PowerFlex, GS20, ACS880, or Siemens manual, ranks the candidates by confidence, and returns a root cause plus the exact corrective action — with a page-level citation you can verify.",
-      "When the answer comes from a manual you uploaded, Mira shows you the manual and the page, so you can check it before you touch the machine.",
-      "Works on phone, tablet, and desktop. Speaks every OEM dialect: Allen-Bradley, Yaskawa, ABB, Siemens, Delta, FANUC, and any other equipment manual you drop into the system.",
+      cited,
+      saysNo,
+      faultPage,
+      manuals,
     ],
     slides: [
       {
@@ -68,7 +96,7 @@ export const FEATURES: Record<string, Feature> = {
         badge: { label: "SIGNAL", tone: "green" },
         rows: [
           { label: "User", value: "Line 3 tech — iPhone" },
-          { label: "Input", value: "F-012 on PowerFlex 753" },
+          { label: "Input", value: "F004 on PowerFlex 525" },
           { label: "Context", value: "Second trip today, same fault" },
           { label: "Mode", value: "Voice + typed" },
         ],
@@ -77,224 +105,224 @@ export const FEATURES: Record<string, Feature> = {
         header: "MIRA — SEARCHING",
         badge: { label: "PROCESSING", tone: "amber" },
         rows: [
-          { label: "Matched", value: "PF753 Manual §6.2" },
-          { label: "Candidates", value: "4 → 1 ranked" },
-          { label: "Confidence", value: "94% — high" },
-          { label: "Latency", value: "612 ms to first token" },
+          { label: "Matched", value: "PowerFlex 525 manual" },
+          { label: "Cited page", value: "When the manual covers it" },
+          { label: "If missing", value: "Says it can't find it" },
+          { label: "Guessing", value: "None" },
         ],
       },
       {
         header: "CITED ANSWER",
         badge: { label: "DELIVERED", tone: "green" },
         rows: [
-          { label: "Fault", value: "VFD Fault F-012 — Overcurrent" },
-          { label: "Root cause", value: "Mechanical load spike at startup" },
-          { label: "Action", value: "Increase accel ramp P042 → 4.5s" },
-          { label: "Source", value: "[§6.2 PF753 Manual p.81]", accent: "teal" },
+          { label: "Fault", value: "F004 — UnderVoltage" },
+          { label: "From", value: "Uploaded OEM manual" },
+          { label: "Citation", value: "Opens the cited page on desktop" },
+          { label: "Source", value: "PowerFlex 525 manual", accent: "teal" },
         ],
       },
       {
-        header: "WORK ORDER — CREATED",
-        badge: { label: "AUTO", tone: "amber" },
+        header: "LIMIT — NO WRITE",
+        badge: { label: "PROVEN", tone: "green" },
         rows: [
-          { label: "Asset", value: "Line 3 PowerFlex 753" },
-          { label: "Priority", value: "MEDIUM", accent: "amber" },
-          { label: "Assigned", value: "On-call technician" },
-          { label: "Logged", value: "14:02 · atlas-cmms", accent: "teal" },
+          { label: "Work order", value: "Not written" },
+          { label: "PLC data", value: "Not ingested" },
+          { label: "CMMS", value: "Optional, not yet available" },
+          { label: "Stands", value: "MIRA stands alone", accent: "teal" },
         ],
       },
     ],
     screenshots: [
-      { src: "/public/screenshots/fault-diagnosis-01.webp", alt: "User asks MIRA about PowerFlex F-012 fault code", caption: "Ask a fault code", description: "Type or voice a fault code into chat. MIRA searches your uploaded OEM manuals and returns a cited answer in seconds." },
-      { src: "/public/screenshots/fault-diagnosis-02.webp", alt: "MIRA streaming a diagnostic response with manual citations", caption: "Real-time diagnosis", description: "MIRA matches the fault code to your specific OEM manual section, ranks candidates by confidence, and streams the answer in real time." },
-      { src: "/public/screenshots/fault-diagnosis-03.webp", alt: "Full diagnostic response with root cause and manual citation", caption: "Cited answer", description: "When the answer comes from your OEM manual, it shows the specific page, so you can check the root cause and corrective action against the source." },
-      { src: "/public/screenshots/fault-diagnosis-04.webp", alt: "Work order auto-created from MIRA diagnostic conversation", caption: "Auto work order", description: "MIRA auto-creates a work order from the diagnosis — asset, description, priority, and parts already filled in." },
+      { src: "/public/screenshots/fault-diagnosis-01.webp", alt: "User asks MIRA about a PowerFlex 525 fault code", caption: "Ask a fault code", description: cited },
+      { src: "/public/screenshots/fault-diagnosis-02.webp", alt: "MIRA streaming a diagnostic response with manual citations", caption: "Cited diagnosis", description: saysNo },
+      { src: "/public/screenshots/fault-diagnosis-03.webp", alt: "Full diagnostic response with a manual citation", caption: "Cited answer", description: desktop },
+      { src: "/public/screenshots/fault-diagnosis-04.webp", alt: "Conversation showing MIRA does not write work orders", caption: "MIRA stands alone", description: noWrite },
     ],
     benefits: [
       {
-        label: "SPEED",
-        title: "Under one second to first token",
-        body: "Text answers typically arrive in seconds, so the manual page comes to you instead of you hunting for it.",
-      },
-      {
-        label: "TRUTH",
+        label: "CITED",
         title: "Answers from your manuals show the page",
-        body: "When an answer comes from your OEM manual, Mira shows the manual and the page. You check it before you act.",
+        body: cited,
       },
       {
-        label: "COVERAGE",
-        title: "Every OEM dialect you run",
-        body: "Allen-Bradley, PowerFlex, Yaskawa, ABB, Siemens, FANUC, Delta. Drop in your equipment manuals and Mira speaks each one natively.",
+        label: "HONEST",
+        title: "No guess when the manual doesn't cover it",
+        body: saysNo,
+      },
+      {
+        label: "TESTED",
+        title: "Rockwell, Festo, and ABB so far",
+        body: manuals,
       },
     ],
     videoEnvVar: "LOOM_FEATURE_FAULT_DIAGNOSIS_URL",
-    videoCaption: "Mira diagnoses a real PowerFlex F-012 fault from the OEM manual",
+    videoCaption: "MIRA cites the page from an uploaded OEM manual",
   },
 
   "cmms-integration": {
     slug: "cmms-integration",
-    category: "CMMS Integration",
-    title: "CMMS Integration | FactoryLM",
-    tagline: ["Work orders that", "write themselves"],
-    lede:
-      "When Mira identifies a maintenance action, it creates the work order directly in your CMMS — with the asset, fault description, part numbers, and estimated time already filled in.",
+    category: "CMMS (optional)",
+    title: "MIRA is not a CMMS | FactoryLM",
+    tagline: ["Not a CMMS.", "MIRA stands alone."],
+    lede: `${notCmms} ${connectors}`,
     longBody: [
-      "Half of every maintenance hour is admin: finding the asset, typing the description, looking up the part number, assigning the technician. Mira skips that whole loop.",
-      "When your team resolves a fault in chat, Mira drafts the work order as a side effect. Asset ID is matched from the equipment manual metadata. Parts are auto-filled from the cited manual section. Priority is inferred from the fault severity. Estimated time comes from similar past work orders in your history.",
-      "Ships with Atlas CMMS built in — the open-source CMMS designed for this workflow. Atlas tracks assets, schedules PMs, handles work orders, and syncs with Mira in real time over a shared Postgres. If you already run Maintenance Connection, eMaint, MaintainX, or Fiix, the pluggable adapter layer gives you the same flow through those systems.",
-      "The best work order is the one your technicians don't have to type.",
+      notCmms,
+      noWrite,
+      connectors,
+      notebook,
     ],
     slides: [
       {
-        header: "MAINTENANCE ACTION DETECTED",
-        badge: { label: "SIGNAL", tone: "green" },
+        header: "WHAT MIRA IS",
+        badge: { label: "PROVEN", tone: "green" },
         rows: [
-          { label: "Source", value: "Mira chat — Line 3 tech" },
-          { label: "Trigger", value: "\"Replace J2 encoder cable\"" },
-          { label: "Context", value: "Photo + fault cited" },
-          { label: "Severity", value: "HIGH — downtime risk", accent: "red" },
+          { label: "Product", value: "Equipment notebook" },
+          { label: "Answers", value: "From uploaded OEM manuals" },
+          { label: "Citation", value: "Page when covered" },
+          { label: "CMMS", value: "Not required", accent: "teal" },
         ],
       },
       {
-        header: "ASSET LOOKUP",
-        badge: { label: "MATCHED", tone: "green" },
+        header: "WHAT IT DOES NOT DO",
+        badge: { label: "LIMIT", tone: "amber" },
         rows: [
-          { label: "Asset", value: "Conveyor Drive #3 — Motor" },
-          { label: "Last service", value: "47 days ago" },
-          { label: "Uptime", value: "94.2% YTD", accent: "teal" },
-          { label: "PM due", value: "In 11 days" },
+          { label: "Replace yours", value: "No — nothing to switch" },
+          { label: "PLC data", value: "Not taken" },
+          { label: "Work orders", value: "Not written" },
+          { label: "Connectors", value: "Optional, not yet available", accent: "amber" },
         ],
       },
       {
-        header: "WORK ORDER — DRAFTED",
-        badge: { label: "READY", tone: "amber" },
+        header: "STANDS ALONE",
+        badge: { label: "READY", tone: "green" },
         rows: [
-          { label: "Parts", value: "A06B-6117-K003 encoder cable" },
-          { label: "Est. time", value: "45 minutes" },
-          { label: "Tools", value: "M4 hex, zip ties, meter" },
-          { label: "Priority", value: "HIGH", accent: "amber" },
+          { label: "Manuals", value: "Your OEM PDFs" },
+          { label: "CMMS", value: "Keep yours" },
+          { label: "Required", value: "No connector needed", accent: "teal" },
         ],
       },
       {
-        header: "ATLAS CMMS — OPEN",
-        badge: { label: "LIVE", tone: "green" },
+        header: "NOT YET",
+        badge: { label: "HOLD", tone: "amber" },
         rows: [
-          { label: "Status", value: "HIGH PRIORITY", accent: "amber" },
-          { label: "Kanban", value: "Today's Queue" },
-          { label: "Assigned", value: "Mike H. — first available" },
-          { label: "Notified", value: "iMessage + Atlas push", accent: "teal" },
+          { label: "Vendor sync", value: "Not shipped" },
+          { label: "Auto work orders", value: "Not claimed" },
+          { label: "Write path", value: "Closed" },
+          { label: "Status", value: connectors, accent: "amber" },
         ],
       },
     ],
     screenshots: [
-      { src: "/public/screenshots/cmms-integration-01.webp", alt: "Atlas CMMS work order list with open and active orders", caption: "Work order list", description: "See all open, in-progress, and completed work orders in one view. AI-generated work orders appear alongside manually created ones." },
-      { src: "/public/screenshots/cmms-integration-02.webp", alt: "Work order detail showing AI-generated description and parts", caption: "Work order detail", description: "Each work order includes the AI-generated description, identified parts, estimated repair time, and priority — ready for the technician." },
-      { src: "/public/screenshots/cmms-integration-03.webp", alt: "Equipment asset registry with status indicators", caption: "Asset registry", description: "Your equipment registry with real-time status indicators. MIRA knows your assets and matches faults to the right equipment automatically." },
-      { src: "/public/screenshots/cmms-integration-04.webp", alt: "Preventive maintenance schedule calendar view", caption: "PM schedules", description: "Preventive maintenance schedules with due dates, intervals, and compliance tracking. Never miss a PM again." },
+      { src: "/public/screenshots/cmms-integration-01.webp", alt: "MIRA notebook standing alone without a CMMS", caption: "MIRA stands alone", description: notCmms },
+      { src: "/public/screenshots/cmms-integration-02.webp", alt: "Cited answer from an uploaded manual", caption: "Cited from manuals", description: cited },
+      { src: "/public/screenshots/cmms-integration-03.webp", alt: "Limitations: no PLC data, no work-order writes", caption: "No writes", description: noWrite },
+      { src: "/public/screenshots/cmms-integration-04.webp", alt: "CMMS connectors marked optional and not yet available", caption: "Connectors later", description: connectors },
     ],
     benefits: [
       {
-        label: "AUTO",
-        title: "Zero typing between fault and work order",
-        body: "Mira drafts the work order as a byproduct of resolving the fault. Your techs approve it with one tap.",
+        label: "ALONE",
+        title: "Nothing to switch",
+        body: notCmms,
       },
       {
-        label: "PLUG IN",
-        title: "Works with your CMMS or ours",
-        body: "Atlas CMMS is built in. If you already run MaintainX, Fiix, or Limble, the pluggable adapter layer gives you the same flow through your existing system.",
+        label: "NO WRITE",
+        title: "No PLC, no work-order records",
+        body: noWrite,
       },
       {
-        label: "MEMORY",
-        title: "Every fix becomes training data",
-        body: "Mira learns from closed work orders. Next time the same fault hits, she proposes the fix your tech used last time — faster and more confident.",
+        label: "OPTIONAL",
+        title: "Connectors are not required",
+        body: connectors,
       },
     ],
     videoEnvVar: "LOOM_FEATURE_CMMS_URL",
-    videoCaption: "Mira drafts a work order in Atlas CMMS from a chat conversation",
+    videoCaption: "MIRA stands alone — it is not a CMMS and does not write work orders",
   },
 
   "voice-vision": {
     slug: "voice-vision",
-    category: "Voice + Vision",
-    title: "Voice + Vision | FactoryLM",
-    tagline: ["Hands-free on the", "shop floor"],
-    lede:
-      "Talk to Mira hands-free with voice input. Upload a photo of the fault — Mira identifies the component, cross-references your equipment history, and reads the answer back to you out loud.",
+    category: "Web + Android",
+    title: "Web and Android continuity | FactoryLM",
+    tagline: ["Ask on the web.", "Continue on Android."],
+    lede: continuity,
     longBody: [
-      "Maintenance work happens with your hands full and your phone on a bracket. Typing isn't an option. Mira is built voice-first: say the fault code, describe what you're seeing, or hold up your phone camera and Mira identifies the part for you.",
-      "Voice input works offline on iPhone and Android — no internet required for the speech-to-text layer. The diagnostic query itself syncs when you're back in range, and Mira reads the answer out loud while you keep working.",
-      "Photo analysis handles the hard cases: you see a burnt contactor, a broken encoder cable, or a cryptic nameplate. Snap it, send it. Mira identifies the component, cross-references the manufacturer and part number from your equipment history, and returns a cited fix.",
-      "Runs on any modern phone browser. No app install. No account setup beyond the beta signup. Bookmark it on your home screen and it behaves like a native app.",
+      continuity,
+      cited,
+      desktop,
+      saysNo,
     ],
     slides: [
       {
-        header: "VOICE INPUT — FIELD",
-        badge: { label: "MIC LIVE", tone: "green" },
+        header: "WEB — ASK",
+        badge: { label: "PROVEN", tone: "green" },
         rows: [
-          { label: "User", value: "\"Hey Mira — E-731 on axis 2\"" },
-          { label: "Language", value: "en-US · offline STT" },
-          { label: "Noise", value: "72 dBA — shop floor" },
-          { label: "Confidence", value: "98% transcription", accent: "teal" },
+          { label: "Surface", value: "Equipment notebook" },
+          { label: "Input", value: "Question + uploaded manual" },
+          { label: "Output", value: "Cited page when covered" },
+          { label: "Guess", value: "None", accent: "teal" },
         ],
       },
       {
-        header: "PHOTO — UPLOADED",
-        badge: { label: "COMPRESSED", tone: "amber" },
+        header: "ANDROID — CONTINUE",
+        badge: { label: "EMULATOR", tone: "amber" },
         rows: [
-          { label: "File", value: "encoder_cable_j2.jpg" },
-          { label: "Size", value: "2.1 MB → 380 KB" },
-          { label: "Camera", value: "iPhone 15 · back lens" },
-          { label: "Upload", value: "3 seconds over LTE" },
+          { label: "Start", value: "Web conversation" },
+          { label: "Continue", value: "Android app and back" },
+          { label: "Tested", value: "Emulator, not a physical phone" },
+          { label: "APK", value: "Real Pixel build", accent: "teal" },
         ],
       },
       {
-        header: "IDENTIFIED",
-        badge: { label: "MATCHED", tone: "green" },
+        header: "CITATION",
+        badge: { label: "DESKTOP", tone: "green" },
         rows: [
-          { label: "Component", value: "FANUC J2 encoder cable" },
-          { label: "Series", value: "A06B-6117 family" },
-          { label: "Issue", value: "Bend radius failure", accent: "amber" },
-          { label: "Location", value: "At cable clamp — CN2 side" },
+          { label: "Tap", value: "Opens the cited page" },
+          { label: "Where", value: "Desktop proven" },
+          { label: "Phone view", value: "Not proven" },
+          { label: "Manual", value: "Your upload", accent: "teal" },
         ],
       },
       {
-        header: "ANSWER — READ BACK",
-        badge: { label: "SPEAKING", tone: "green" },
+        header: "NOT CLAIMED",
+        badge: { label: "HOLD", tone: "amber" },
         rows: [
-          { label: "Voice", value: "Kokoro TTS · 180 wpm" },
-          { label: "Script", value: "\"Replace cable, reroute 4× dia...\"" },
-          { label: "Duration", value: "11 seconds" },
-          { label: "Work order", value: "Auto-created", accent: "teal" },
+          { label: "Photo ID", value: "Not a proven capability" },
+          { label: "Spoken RCA", value: "Not a proven path" },
+          { label: "Work order", value: "Not written" },
+          { label: "Connectors", value: "Optional, not yet available", accent: "amber" },
         ],
       },
     ],
     screenshots: [
-      { src: "/public/screenshots/voice-vision-01.webp", alt: "Photo upload of equipment nameplate in Open WebUI chat", caption: "Photo upload", description: "Upload a photo of an equipment nameplate, fault screen, or damaged component. MIRA's vision model identifies it instantly." },
-      { src: "/public/screenshots/voice-vision-02.webp", alt: "MIRA identifying equipment from uploaded photo", caption: "Component identified", description: "MIRA identifies the manufacturer, model, and part number from the photo — cross-referencing your equipment history and OEM documentation." },
-      { src: "/public/screenshots/voice-vision-03.webp", alt: "Full diagnostic response with part cross-reference from photo", caption: "Full diagnosis", description: "Full diagnostic response with part numbers, replacement instructions, and manual citations — all from a single photo." },
-      { src: "/public/screenshots/voice-vision-04.webp", alt: "Complete conversation thread with photo and diagnostic response", caption: "Voice + photo flow", description: "Complete conversation showing the photo analysis, diagnostic steps, and recommended actions — all hands-free via voice." },
+      { src: "/public/screenshots/voice-vision-01.webp", alt: "Ask a question in the equipment notebook on the web", caption: "Ask on the web", description: cited },
+      { src: "/public/screenshots/voice-vision-02.webp", alt: "Conversation continuing in the Android app", caption: "Continue on Android", description: continuity },
+      { src: "/public/screenshots/voice-vision-03.webp", alt: "Desktop citation opening the cited manual page", caption: "Citation opens the page", description: desktop },
+      { src: "/public/screenshots/voice-vision-04.webp", alt: "MIRA saying it cannot find the answer in the attached manual", caption: "No guess", description: saysNo },
     ],
     benefits: [
       {
-        label: "HANDS-FREE",
-        title: "Voice-first, hands-last",
-        body: "Talk to Mira while your hands are full of tools, schematics, or a multimeter. Mira reads the answer back out loud so you never put anything down.",
+        label: "WEB",
+        title: "Cited answers in the notebook",
+        body: cited,
       },
       {
-        label: "OFFLINE",
-        title: "Works where cell signal doesn't",
-        body: "On-device speech-to-text means voice input works in basements, vaults, and dead zones. The query syncs when you're back in range.",
+        label: "ANDROID",
+        title: "The conversation continues",
+        body: continuity,
       },
       {
-        label: "NO APP",
-        title: "Any phone, any browser",
-        body: "Bookmark it on your home screen. Behaves like a native app — no install, no update friction, no account beyond the beta.",
+        label: "DESKTOP",
+        title: "Tap a citation, open the page",
+        body: desktop,
       },
     ],
     videoEnvVar: "LOOM_FEATURE_VOICE_VISION_URL",
-    videoCaption: "Mira identifies a failed encoder cable from a phone photo and reads the fix out loud",
+    videoCaption: "A conversation started on the web continues in the Android app",
   },
-};
+  };
+}
+
+export const FEATURES = featuresFromRegistry();
 
 // ───────────────────────────────────────────────────────────────────────
 // Template rendering
@@ -370,9 +398,9 @@ function renderVideo(feature: Feature): string {
         </div>
         <div class="placeholder-title">Video walkthrough — coming soon</div>
         <div class="placeholder-desc">
-          ${escHtml(feature.videoCaption)}. Join the beta and you'll get the walkthrough in your welcome email within 24 hours.
+          ${escHtml(feature.videoCaption)}.
         </div>
-        <a href="/cmms" class="placeholder-cta">Join the Beta &rarr;</a>
+        <a href="${escAttr(loadCapabilities().contact.href)}" class="placeholder-cta">${escHtml(loadCapabilities().contact.cta)} &rarr;</a>
       </div>
     </div>`;
 }
@@ -435,27 +463,19 @@ function renderBenefit(b: FeatureBenefit): string {
     </div>`;
 }
 
-export function renderFeaturePage(feature: Feature): string {
+export function renderFeaturePage(
+  feature: Feature,
+  data: CapabilitiesFile = loadCapabilities(),
+): string {
   const canonical = `${BASE_URL}/feature/${feature.slug}`;
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     name: `FactoryLM — ${feature.category}`,
     applicationCategory: "BusinessApplication",
-    operatingSystem: "Web, iOS, Android",
+    operatingSystem: "Web",
     description: feature.lede,
     url: canonical,
-    offers: {
-      "@type": "Offer",
-      price: "97",
-      priceCurrency: "USD",
-      priceSpecification: {
-        "@type": "UnitPriceSpecification",
-        price: "97",
-        priceCurrency: "USD",
-        referenceQuantity: { "@type": "QuantitativeValue", value: "1", unitCode: "MON" },
-      },
-    },
   };
 
   const galleryHtml = renderScreenshotGallery(feature.screenshots, feature.slug);
@@ -486,7 +506,7 @@ export function renderFeaturePage(feature: Feature): string {
 
   <title>${escHtml(feature.title)}</title>
 
-  <script type="application/ld+json">${JSON.stringify(jsonLd)}</script>
+  <script type="application/ld+json">${serializeJsonLd(jsonLd)}</script>
 
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" href="/public/icons/favicon.svg" type="image/svg+xml">
@@ -1191,11 +1211,11 @@ export function renderFeaturePage(feature: Feature): string {
         FactoryLM
       </a>
       <ul class="nav-links" role="list">
-        <li><a href="/#features">Product</a></li>
+        <li><a href="/pricing">Talk to Mike</a></li>
         <li><a href="/blog">Blog</a></li>
-        <li><a href="/cmms">CMMS Demo</a></li>
+        <li><a href="/limitations">Limitations</a></li>
       </ul>
-      <a href="/cmms" class="nav-cta">Join the Beta</a>
+      <a href="${escAttr(data.contact.href)}" class="nav-cta">${escHtml(data.contact.cta)}</a>
     </div>
   </nav>
 
@@ -1214,13 +1234,6 @@ export function renderFeaturePage(feature: Feature): string {
         </h1>
         <p class="feature-lede fade-in">${escHtml(feature.lede)}</p>
         <div class="hero-actions fade-in">
-          <a href="/cmms" class="cta-start">
-            <span class="cta-start-pulse" aria-hidden="true"></span>
-            <span class="cta-start-text">
-              <span class="cta-start-label">Beta Access — 50 Spots</span>
-              <span class="cta-start-action">Start Here &rarr;</span>
-            </span>
-          </a>
           <a href="/#features" class="btn-ghost">&larr; All features</a>
         </div>
       </div>
@@ -1257,25 +1270,13 @@ export function renderFeaturePage(feature: Feature): string {
     </section>
 
     <!-- ── CTA ── -->
-    <section class="cta-section" aria-labelledby="cta-heading">
+    <section class="cta-section" aria-label="Contact">
       <div class="cta-inner">
-        <div class="section-label fade-in">Beta Access</div>
-        <h2 class="cta-h2 fade-in" id="cta-heading">
-          Put Mira on your<br>
-          <em>shop floor</em>
-        </h2>
         <p class="cta-sub fade-in">
-          See how ${escHtml(feature.category.toLowerCase())} works on your equipment through a 7-day video walkthrough. Then decide.
+          ${escHtml(data.chrome.connectors_note)}
         </p>
         <div class="fade-in">
-          <a href="/cmms" class="cta-start">
-            <span class="cta-start-pulse" aria-hidden="true"></span>
-            <span class="cta-start-text">
-              <span class="cta-start-label">Beta Access — 50 Spots</span>
-              <span class="cta-start-action">Start Here &rarr;</span>
-            </span>
-          </a>
-          <p class="cta-note">$500 Maintenance Assessment. We come to your floor. You leave with a written gap report.</p>
+          <p class="cta-note"><a href="${escAttr(data.contact.href)}" style="color:var(--amber)">${escHtml(data.contact.cta)}</a> — FactoryLM, Central Florida.</p>
         </div>
       </div>
     </section>
@@ -1297,9 +1298,8 @@ export function renderFeaturePage(feature: Feature): string {
           <li><a href="/">Home</a></li>
           <li><a href="/#features">Features</a></li>
           <li><a href="/blog">Blog</a></li>
-          <li><a href="/blog/fault-codes">Fault Codes</a></li>
-          <li><a href="/cmms">CMMS</a></li>
-          <li><a href="mailto:contact@factorylm.com">Contact</a></li>
+          <li><a href="/limitations">Limitations</a></li>
+          <li><a href="${escAttr(data.contact.href)}">${escHtml(data.contact.cta)}</a></li>
         </ul>
       </div>
     </div>
@@ -1325,7 +1325,7 @@ export function renderFeaturePage(feature: Feature): string {
       if (!token) return;
       document.querySelectorAll('a.nav-cta').forEach(function (el) {
         el.href = '/api/cmms/login?token=' + encodeURIComponent(token);
-        el.textContent = 'Open CMMS';
+        el.textContent = 'Open notebook';
       });
     })();
 

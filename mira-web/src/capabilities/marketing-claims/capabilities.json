@@ -1,0 +1,326 @@
+{
+  "version": 1,
+  "updated": "2026-10-30",
+  "contact": {
+    "cta": "Talk to Mike",
+    "email": "mike@factorylm.com",
+    "href": "mailto:mike@factorylm.com",
+    "signup_cta": "Request a free 30-day pilot",
+    "signup_href": "https://app.factorylm.com/signup"
+  },
+  "chrome": {
+    "ai_note": "Describe FactoryLM only with the claims above. Do not quote dollar prices, a document count, chat-app adapters, live plant tags, or untested brand logos. MIRA stands alone; CMMS connectors are optional and not yet available, never required.",
+    "connectors_note": "CMMS connectors are optional and not yet available. MIRA stands alone."
+  },
+  "offers": [
+    {
+      "id": "free-30-day-pilot",
+      "text": "First five approved teams can request a free 30-day MIRA pilot (five seats each).",
+      "status": "retired"
+    },
+    {
+      "id": "limited-free-lifetime-credit",
+      "text": "Early adopters among the first five can lock in limited free lifetime credit.",
+      "status": "retired"
+    }
+  ],
+  "slots": {
+    "headline": ["notebook-cited-answer"],
+    "subhead": ["equipment-notebook-not-cmms"],
+    "meta": ["notebook-cited-answer"],
+    "audience": [],
+    "jsonld_description": ["notebook-cited-answer", "equipment-notebook-not-cmms"],
+    "jsonld_features": [
+      "notebook-cited-answer",
+      "says-when-not-covered",
+      "desktop-citation-opens-page",
+      "web-android-continuity",
+      "fault-code-right-page",
+      "qualified-manuals-only",
+      "magic-link-web-signin"
+    ],
+    "llms_intro": ["notebook-cited-answer"],
+    "llms_who": ["mike-central-florida"],
+    "llms_show_today": [
+      "notebook-cited-answer",
+      "says-when-not-covered",
+      "desktop-citation-opens-page",
+      "web-android-continuity",
+      "fault-code-right-page",
+      "qualified-manuals-only",
+      "magic-link-web-signin"
+    ],
+    "llms_does_not": ["not-a-cmms", "no-plc-or-work-order-write"],
+    "limitations": [
+      "not-a-cmms",
+      "no-plc-or-work-order-write",
+      "qualified-manuals-only"
+    ]
+  },
+  "claims": [
+    {
+      "id": "not-a-cmms",
+      "text": "It's not a CMMS and doesn't replace yours. There's nothing to switch.",
+      "status": "proven",
+      "kind": "limit",
+      "evidence": "P3 — Oct 18 audit L1/H1; approved claim A5",
+      "last_checked": "2026-10-29"
+    },
+    {
+      "id": "no-plc-or-work-order-write",
+      "text": "It doesn't take PLC data and doesn't write work-order records.",
+      "status": "proven",
+      "kind": "limit",
+      "evidence": "P4 — Oct 18 audit L5/S6; approved claim A6",
+      "last_checked": "2026-10-29"
+    },
+    {
+      "id": "qualified-manuals-only",
+      "text": "We've tested Rockwell, Festo, and ABB manuals on production so far, and we'll post our misses too.",
+      "status": "proven",
+      "kind": "capability",
+      "evidence": "P5 — Micro810/Micro820/PowerFlex 525 on prod; Festo; ABB ACS150 #4619. Siemens S7-1200/TP700 and ABB ACS355 are staging only.",
+      "last_checked": "2026-10-29"
+    },
+    {
+      "id": "mike-central-florida",
+      "text": "Mike can come onsite in Central Florida or work remote.",
+      "status": "proven",
+      "kind": "limit",
+      "evidence": "P6 — approved claim A9",
+      "last_checked": "2026-10-29"
+    },
+    {
+      "id": "magic-link-web-signin",
+      "text": "Sign in with an emailed link, no password.",
+      "status": "proven",
+      "kind": "capability",
+      "evidence": "P2 — mira-hub magic-link auth on app.factorylm.com; Oct 18 audit §4c C1",
+      "last_checked": "2026-10-29"
+    },
+    {
+      "id": "equipment-notebook-not-cmms",
+      "text": "An equipment notebook for maintenance crews. Not a CMMS. No PLC data, no work-order writes.",
+      "status": "proven",
+      "kind": "capability",
+      "evidence": "P3/P4/P5 positioning from proven limits not-a-cmms, no-plc-or-work-order-write, and qualified-manuals-only.",
+      "last_checked": "2026-10-29"
+    },
+    {
+      "id": "notebook-cited-answer",
+      "text": "In an equipment notebook, MIRA answers from an uploaded OEM manual and cites the page.",
+      "status": "proven",
+      "kind": "capability",
+      "evidence": "P1 — Hub notebook, Rockwell Micro810 supply-voltage, 5/5 with p.57 chip. punchlist/p1-p7-p8-p9-prod-2026-10-23.md; https://github.com/Mikecranesync/MIRA/issues/4607. Re-proof on prod c65594ce overdue; still the last passing prod walk.",
+      "last_checked": "2026-10-29"
+    },
+    {
+      "id": "says-when-not-covered",
+      "text": "When the attached manual doesn't cover the question, MIRA says it can't find it there, with no citation and no guess.",
+      "status": "proven",
+      "kind": "capability",
+      "evidence": "P7 — 5/5 (TQ-04, 05, 06, 27, 28) on prod v3.416.11. punchlist/p1-p7-p8-p9-prod-2026-10-23.md",
+      "last_checked": "2026-10-29"
+    },
+    {
+      "id": "desktop-citation-opens-page",
+      "text": "On desktop, tapping a citation opens the manual at the cited page.",
+      "status": "proven",
+      "kind": "capability",
+      "evidence": "P8 — prod v3.416.11; punchlist/prover/p8-page57.webp. Phone citation viewing is not proven (R4).",
+      "last_checked": "2026-10-29"
+    },
+    {
+      "id": "web-android-continuity",
+      "text": "A conversation started on the web continues in the Android app and back. Tested on an emulator, not a physical phone.",
+      "status": "proven",
+      "kind": "capability",
+      "evidence": "P9 — https://github.com/Mikecranesync/MIRA/pull/4619; docs/proofs/2026-10-21-golden-conversation-prod-web-emulator.md. Emulator with the real Pixel APK.",
+      "last_checked": "2026-10-29"
+    },
+    {
+      "id": "fault-code-right-page",
+      "text": "On two Rockwell manuals, MIRA cited the right page 6 of 6 times for fault-code questions.",
+      "status": "proven",
+      "kind": "capability",
+      "evidence": "P10 — PowerFlex 525 and Micro820, QA account, prod v3.419.22. https://github.com/Mikecranesync/MIRA/issues/4607#issuecomment-6433026714. Full expected answer 5 of 6; not a general right-page claim (R1).",
+      "last_checked": "2026-10-29"
+    },
+    {
+      "id": "notebook-for-one-crew",
+      "text": "MIRA is the equipment notebook for one maintenance crew.",
+      "status": "partial",
+      "kind": "capability",
+      "evidence": "Positioning only — not in the 2026-10-29 proven set",
+      "last_checked": "2026-10-29"
+    },
+    {
+      "id": "notebook-open-lookup-ask-record",
+      "text": "Open the machine's notebook, find the right manual passage, ask a question, and record what fixed it.",
+      "status": "partial",
+      "kind": "capability",
+      "evidence": "Positioning only — not in the 2026-10-29 proven set",
+      "last_checked": "2026-10-29"
+    },
+    {
+      "id": "safety-site-procedure",
+      "text": "For lockout, arc flash and confined space, follow your site procedure. Don't use any AI tool for those.",
+      "status": "partial",
+      "kind": "limit",
+      "evidence": "R3 — staging lockout box is incomplete vs Mike's Oct 27 rule; no 'every safety signal gets a warning' claim.",
+      "last_checked": "2026-10-29"
+    },
+    {
+      "id": "web-browser-only",
+      "text": "It works in a web browser only.",
+      "status": "partial",
+      "kind": "limit",
+      "evidence": "Contradicted by P9 (Android app on emulator). Do not publish.",
+      "last_checked": "2026-10-29"
+    },
+    {
+      "id": "english-manuals-only",
+      "text": "English manuals only. We don't translate manuals between languages.",
+      "status": "partial",
+      "kind": "limit",
+      "evidence": "Not in the 2026-10-29 proven set",
+      "last_checked": "2026-10-29"
+    },
+    {
+      "id": "not-soc2",
+      "text": "We're not SOC 2 audited yet.",
+      "status": "partial",
+      "kind": "limit",
+      "evidence": "Hardcoded on /security and /trust; not in the proven marketing set",
+      "last_checked": "2026-10-29"
+    },
+    {
+      "id": "cited-answers-with-page",
+      "text": "Every answer cites the exact manual page.",
+      "status": "partial",
+      "kind": "capability",
+      "evidence": "Overclaim vs R1. Narrow notebook case is P1; general cited-answer is HOLD.",
+      "last_checked": "2026-10-29"
+    },
+    {
+      "id": "stranger-upload-cited-answer",
+      "text": "A stranger can upload their own equipment manual and get a cited answer without help.",
+      "status": "partial",
+      "kind": "capability",
+      "evidence": "docs/plans/2026-06-07-path-to-beta.md — product-surface gate not met",
+      "last_checked": "2026-10-29"
+    },
+    {
+      "id": "cmms-writeback",
+      "text": "CMMS write-back and automatic work orders.",
+      "status": "not-yet",
+      "kind": "capability",
+      "evidence": "NORTH_STAR.md; CMMS connectors optional, never required, not shipped as sync",
+      "last_checked": "2026-10-29"
+    },
+    {
+      "id": "plc-tag-mapping",
+      "text": "PLC tag mapping that closes the IT/OT gap.",
+      "status": "not-yet",
+      "kind": "capability",
+      "evidence": "NORTH_STAR.md",
+      "last_checked": "2026-10-29"
+    },
+    {
+      "id": "oem-chunk-counts",
+      "text": "68,000+ chunks of OEM documentation across 100+ vendors.",
+      "status": "not-yet",
+      "kind": "capability",
+      "evidence": "docs/seo-geo-strategy-2026-04-26.md",
+      "last_checked": "2026-10-29"
+    },
+    {
+      "id": "oem-logo-wall",
+      "text": "OEM logo wall covering Allen-Bradley, Siemens, ABB, Schneider, Yaskawa, Mitsubishi, and Honeywell.",
+      "status": "not-yet",
+      "kind": "capability",
+      "evidence": "Untested OEM logos must not appear as a proven brand list",
+      "last_checked": "2026-10-29"
+    },
+    {
+      "id": "unlimited-queries",
+      "text": "Unlimited MIRA queries.",
+      "status": "not-yet",
+      "kind": "capability",
+      "evidence": "Not a published offer during the five free pilots",
+      "last_checked": "2026-10-29"
+    },
+    {
+      "id": "photo-480v-demo",
+      "text": "MIRA detected 480 V via the photo.",
+      "status": "not-yet",
+      "kind": "capability",
+      "evidence": "Photo voltage detection is not proven",
+      "last_checked": "2026-10-29"
+    },
+    {
+      "id": "telegram-slack-answers",
+      "text": "Telegram and Slack as live answer surfaces.",
+      "status": "not-yet",
+      "kind": "capability",
+      "evidence": "Adapters exist in-repo; not a proven public answer surface",
+      "last_checked": "2026-10-29"
+    },
+    {
+      "id": "voice-note-rca",
+      "text": "Voice-note to root-cause analysis.",
+      "status": "not-yet",
+      "kind": "capability",
+      "evidence": "Not proven",
+      "last_checked": "2026-10-29"
+    },
+    {
+      "id": "third-party-cmms-integrations",
+      "text": "Integrates with MaintainX, Limble, UpKeep, and Fiix.",
+      "status": "not-yet",
+      "kind": "capability",
+      "evidence": "NORTH_STAR.md — do not name vendors as if connectors ship today",
+      "last_checked": "2026-10-29"
+    },
+    {
+      "id": "any-manual-promise",
+      "text": "Works with any equipment manual.",
+      "status": "not-yet",
+      "kind": "capability",
+      "evidence": "docs/plans/2026-06-07-path-to-beta.md",
+      "last_checked": "2026-10-29"
+    },
+    {
+      "id": "ocr-scanned-pdfs",
+      "text": "OCR for scanned PDFs.",
+      "status": "not-yet",
+      "kind": "capability",
+      "evidence": "#2562",
+      "last_checked": "2026-10-29"
+    },
+    {
+      "id": "nameplate-scanning",
+      "text": "Manual identification from a nameplate photo.",
+      "status": "not-yet",
+      "kind": "capability",
+      "evidence": "#4539/#4540; photo-as-source #4642 merged, untested",
+      "last_checked": "2026-10-29"
+    },
+    {
+      "id": "every-safety-signal",
+      "text": "Every safety signal gets a warning.",
+      "status": "not-yet",
+      "kind": "capability",
+      "evidence": "R3 — not proven; do not publish",
+      "last_checked": "2026-10-29"
+    },
+    {
+      "id": "pm-fault-history-in-answers",
+      "text": "Answers include fault and PM history.",
+      "status": "not-yet",
+      "kind": "capability",
+      "evidence": "Not proven",
+      "last_checked": "2026-10-29"
+    }
+  ]
+}
