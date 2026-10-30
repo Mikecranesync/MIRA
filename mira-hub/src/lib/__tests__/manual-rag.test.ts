@@ -33,7 +33,7 @@ function makeClient(scriptedRows: Array<Record<string, unknown>[]>): {
     // The T-1 bookkeeping queries (code selectivity count, question-IDF table,
     // rare-term recall) return no rows here and do not consume a scripted lane:
     // these scenarios script WHICH lanes run and what each returns.
-    if (sql.includes("WITH ORDINALITY") || sql.includes("names_document") || sql.includes("quote_literal(lex)")) return { rows: [] };
+    if (sql.includes("WITH ORDINALITY") || sql.includes("names_document") || sql.includes("quote_literal(lex)") || /^\s*(SAVEPOINT|RELEASE SAVEPOINT|ROLLBACK TO SAVEPOINT)\b/.test(sql)) return { rows: [] };
     const rows = scriptedRows.shift() ?? [];
     return { rows };
   });
@@ -43,7 +43,7 @@ function makeClient(scriptedRows: Array<Record<string, unknown>[]>): {
 // Retrieval LANE calls only: the T-1 bookkeeping queries (code selectivity
 // count, question-IDF table, rare-term recall) are not lanes a scenario scripts.
 const lanes = (calls: Array<{ sql: string; params: unknown[] }>) =>
-  calls.filter((c) => !(c.sql.includes("WITH ORDINALITY") || c.sql.includes("names_document") || c.sql.includes("quote_literal(lex)")));
+  calls.filter((c) => !(c.sql.includes("WITH ORDINALITY") || c.sql.includes("names_document") || c.sql.includes("quote_literal(lex)") || /^\s*(SAVEPOINT|RELEASE SAVEPOINT|ROLLBACK TO SAVEPOINT)\b/.test(c.sql)));
 
 const row = (overrides: Partial<Record<string, unknown>> = {}) => ({
   content: "Set torque to 35 ft-lbs on motor mount bolts.",
@@ -830,7 +830,7 @@ describe("retrieveNodeChunks", () => {
     await retrieveNodeChunks(off.client, "t-1", "which register holds P042 output frequency", opts);
     expect(off.calls.length).toBeGreaterThan(0);
     for (const c of off.calls) {
-      expect(c.params.length).toBe(maxPlaceholder(c.sql));
+      expect((c.params ?? []).length).toBe(maxPlaceholder(c.sql)); // SAVEPOINT statements bind nothing
       expect(c.sql).not.toContain("is_private = true AND doc_id = ANY(");
     }
 
@@ -838,7 +838,7 @@ describe("retrieveNodeChunks", () => {
     const on = makeClient([[nodeRow()]]);
     await retrieveNodeChunks(on.client, "t-1", "which register holds P042 output frequency", opts);
     expect(on.calls.length).toBeGreaterThan(0);
-    for (const c of on.calls) expect(c.params.length).toBe(maxPlaceholder(c.sql));
+    for (const c of on.calls) expect((c.params ?? []).length).toBe(maxPlaceholder(c.sql));
     // The admission branch is present on the BM25 lane ($6 after $5 docIds) and the exact lane.
     expect(on.calls.some((c) => c.sql.includes("is_private = true AND doc_id = ANY($6::uuid[])"))).toBe(true);
   });

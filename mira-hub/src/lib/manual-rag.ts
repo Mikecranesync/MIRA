@@ -1655,7 +1655,7 @@ export async function retrieveNodeChunks(
   // before the lane runs or the bonus binds. One count query over the same
   // tenant/node/doc scope; any failure, or an unexpected shape, keeps the token
   // (fail-open: the guard only ever narrows, never invents).
-  if (expanded.codeTokens.length > 0) {
+  if (!lexicalV2 && expanded.codeTokens.length > 0) {
     const countParams: unknown[] = [tenantId, nodeIds, expanded.codeTokens.map((t) => codeTokenMatcher(t).sql)];
     let countDocClause = "";
     if (allowedDocIds.length > 0) {
@@ -1667,24 +1667,35 @@ export async function retrieveNodeChunks(
       countParams.push(approvedSourceDocIds);
       countApproval = approvedSourceFilterSql(countParams.length);
     }
+    // Optional read inside the caller's transaction (withTenantContext runs
+    // BEGIN/COMMIT): a failed statement leaves it aborted and the next lexical
+    // SELECT would die with 25P02 (Codex F1 on #4979). Same SAVEPOINT pattern as
+    // the vector lane; a raw-pool caller has no transaction and SAVEPOINT fails
+    // harmlessly.
+    let countSavepoint = false;
+    try {
+      await client.query("SAVEPOINT code_selectivity");
+      countSavepoint = true;
+    } catch {
+      countSavepoint = false;
+    }
     try {
       const res = await client.query(
-        `SELECT p.i::int AS i, count(knowledge_entries.id)::int AS n,
+        `SELECT p.i::int AS i,
+                (SELECT count(*)::int FROM knowledge_entries
+                  WHERE tenant_id = $1
+                    AND ingest_route = 'v2'
+                    ${countApproval}
+                    ${nodeClauseExact}
+                    ${countDocClause}
+                    AND content ~* p.pattern) AS n,
                 (SELECT count(*)::int FROM knowledge_entries
                   WHERE tenant_id = $1
                     AND ingest_route = 'v2'
                     ${countApproval}
                     ${nodeClauseExact}
                     ${countDocClause}) AS scope
-           FROM unnest($3::text[]) WITH ORDINALITY AS p(pattern, i)
-           LEFT JOIN knowledge_entries
-             ON tenant_id = $1
-            AND ingest_route = 'v2'
-            ${countApproval}
-            ${nodeClauseExact}
-            ${countDocClause}
-            AND content ~* p.pattern
-          GROUP BY p.i`,
+           FROM unnest($3::text[]) WITH ORDINALITY AS p(pattern, i)`,
         countParams,
       );
       const hits = new Map<number, number>();
@@ -1710,8 +1721,16 @@ export async function retrieveNodeChunks(
             : {}),
         };
       }
+      if (countSavepoint) await client.query("RELEASE SAVEPOINT code_selectivity");
     } catch (err) {
       console.warn("[retrieveNodeChunks] code-token selectivity check failed; keeping all codes:", err instanceof Error ? err.message : err);
+      if (countSavepoint) {
+        try {
+          await client.query("ROLLBACK TO SAVEPOINT code_selectivity");
+        } catch (rollbackErr) {
+          console.warn("[retrieveNodeChunks] code-selectivity savepoint rollback failed:", rollbackErr instanceof Error ? rollbackErr.message : rollbackErr);
+        }
+      }
     }
   }
   // `match` picks the predicate: ILIKE substring for the legacy exact tokens,
@@ -1837,14 +1856,19 @@ export async function retrieveNodeChunks(
       }
       return true;
   };
-  const add = (rs: Record<string, unknown>[]) => {
+  // Returns how many rows passed admission (new or already pooled): a sibling
+  // manual's rows that admit() rejects are not evidence (Codex F3 on #4979).
+  const add = (rs: Record<string, unknown>[]): number => {
+    let admitted = 0;
     for (const r of rs) {
       if (!admit(r)) continue;
+      admitted++;
       const key = keyOf(r);
       if (seen.has(key)) continue;
       seen.add(key);
       pool.push(r);
     }
+    return admitted;
   };
 
   // How many rows the LEXICAL passes (AND, synonym OR) produced — not the exact
@@ -1855,15 +1879,13 @@ export async function retrieveNodeChunks(
   // back with two pages, neither the lockout procedure).
   let lexicalRows = 0;
   const addLexical = async (tsquery: string, text: string) => {
-    const rows = await runRetrieval(tsquery, text);
-    lexicalRows += rows.length;
-    add(rows);
+    lexicalRows += add(await runRetrieval(tsquery, text));
   };
   await addLexical(AND_TSQUERY, expanded.variants[0]);
   for (const v of expanded.variants.slice(1)) await addLexical(OR_TSQUERY, v);
   // Recall for the question's rare words. Not lexical coverage: the full OR pass
   // below must still run when the AND and synonym passes found nothing.
-  add(await runRetrieval(RARE_TSQUERY, opts.rawQuery?.trim() || expanded.variants[0]));
+  if (!lexicalV2) add(await runRetrieval(RARE_TSQUERY, opts.rawQuery?.trim() || expanded.variants[0]));
   add(await runExactLane(expanded.exactTokens.map((t) => `%${t}%`)));
   // The code the technician JUST named gets its own whole-token pass with its
   // own window BEFORE the combined pass (Codex r8 on #4360): the combined query
@@ -2034,7 +2056,18 @@ export async function retrieveNodeChunks(
   // leaves every cover at 0: the rerank is then exactly the pre-feature order.
   const qIdf = new Map<string, number>();
   let qIdfTotal = 0;
-  try {
+  // Flag-off (production) only: NOTEBOOK_LEXICAL_V2 keeps its own IDF-sum scorer
+  // and its measured ranking (#4832) untouched (Codex F2 on #4979).
+  let idfSavepoint = false;
+  if (!lexicalV2) {
+    try {
+      await client.query("SAVEPOINT question_idf");
+      idfSavepoint = true;
+    } catch {
+      idfSavepoint = false;
+    }
+  }
+  if (!lexicalV2) try {
     const idfParams: unknown[] = [tenantId, boundBm25Query(opts.rawQuery?.trim() || q), nodeIds, POOL, ...docParams, ...approvedParams];
     const res = await client.query(
       `WITH qlex AS (
@@ -2083,10 +2116,18 @@ export async function retrieveNodeChunks(
       qIdf.set(String(r.lex), idf);
       qIdfTotal += idf;
     }
+    if (idfSavepoint) await client.query("RELEASE SAVEPOINT question_idf");
   } catch (err) {
     console.warn("[retrieveNodeChunks] question IDF lookup failed; coverage feature off:", err instanceof Error ? err.message : err);
     qIdf.clear();
     qIdfTotal = 0;
+    if (idfSavepoint) {
+      try {
+        await client.query("ROLLBACK TO SAVEPOINT question_idf");
+      } catch (rollbackErr) {
+        console.warn("[retrieveNodeChunks] question-IDF savepoint rollback failed:", rollbackErr instanceof Error ? rollbackErr.message : rollbackErr);
+      }
+    }
   }
   const idfCoverOf = (r: Record<string, unknown>): number => {
     if (qIdfTotal <= 0 || !Array.isArray(r.lexemes)) return 0;
@@ -2122,7 +2163,7 @@ export async function retrieveNodeChunks(
     })),
     // Contents/index demotion only rides with IDF scoring, whose presence-only sum
     // is what lets those pages lead; flag off stays byte-identical.
-    { intent, trace, demoteNavigation: lexicalV2, idfCoverWeight: IDF_COVER_WEIGHT },
+    { intent, trace, demoteNavigation: lexicalV2, idfCoverWeight: lexicalV2 ? 0 : IDF_COVER_WEIGHT },
   );
   // Item 4 — Reciprocal Rank Fusion of the lexical rerank and the vector order
   // (hybrid-retrieval.ts). With no vector lane this IS lexicalRanked.
