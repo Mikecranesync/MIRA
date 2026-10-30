@@ -244,9 +244,9 @@ describe("source contract — every Hub OpenAI spend path goes through the budge
     // request SENDS; the legacy body ignores outputCap.
     expect(route).toMatch(/const requestCap = seam \? Math\.min\(coverageDirective \? 1400 : 800, outputCap\) : coverageDirective \? 1400 : 800;/);
     expect(route).toMatch(/max_tokens: requestCap,/);
-    expect(route).toMatch(/openAiRunBudget\(\)\.reserve\(inputBound, requestCap\)/);
+    expect(route).toMatch(/openAiRunBudget\(\)\.reserve\(inputBound, requestCap, provider\.model\)/);
     expect(route).not.toMatch(/reservation\?\.settle\(inputBound, outputCap\)/);
-    const reserveAt = route.indexOf("openAiRunBudget().reserve(inputBound, requestCap)");
+    const reserveAt = route.indexOf("openAiRunBudget().reserve(inputBound, requestCap, provider.model)");
     // After the STRM-2 and D6 skips (a skipped provider must not take a hold)…
     expect(reserveAt).toBeGreaterThan(route.indexOf("if (clientAbort.signal.aborted) break cascade;"));
     expect(reserveAt).toBeGreaterThan(route.indexOf('reason: "quarantined"'));
@@ -278,6 +278,8 @@ describe("source contract — every Hub OpenAI spend path goes through the budge
       const src = read(file);
       expect(src, file).not.toMatch(/openAiRunBudget\(\)\.(precheck|record)\(/);
       expect(src, file).toMatch(/openAiRunBudget\(\)\.reserve\(inputBound, /);
+      // Priced by the model the call sends, not a flat default (#4968).
+      expect(src, file).toMatch(/openAiRunBudget\(\)\.reserve\(inputBound, (maxTokens|1200), (provider\.model|model)\)/);
       // The OpenAI fetch is the one that FOLLOWS the reserve (index.ts also
       // carries the Together/Groq fetch earlier in the file).
       const reserveAt = src.indexOf(".reserve(inputBound, ");
@@ -313,7 +315,7 @@ describe("source contract — every Hub OpenAI spend path goes through the budge
   it("non-streaming cascade (quickstart, hub ask, translate, extractor): reserve before the OpenAI fetch, settle after usage or an unknown outcome, release only on a rejection", () => {
     const cascade = read("../../lib/llm/cascade.ts");
     expect(cascade).toMatch(/const inputBound = boundInputTokens\(messages\)/);
-    expect(cascade).toMatch(/openAiRunBudget\(\)\.reserve\(inputBound, outputCap\)/);
+    expect(cascade).toMatch(/openAiRunBudget\(\)\.reserve\(inputBound, outputCap, provider\.model\)/);
     expect(cascade).not.toMatch(/estimateInputTokens/); // the average never sizes a hold here
     expect(cascade.indexOf(".reserve(")).toBeLessThan(cascade.indexOf("await fetch("));
     expect(cascade).toMatch(/reservation\?\.settle\(/);

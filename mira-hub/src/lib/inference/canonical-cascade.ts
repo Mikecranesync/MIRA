@@ -27,6 +27,7 @@
  * output_tokens/cost_usd_estimate/status`) so the NEXT slice can persist it
  * without redesigning the record. Emitting it is this slice; storing it is not.
  */
+import { openAiPricePerMtok } from "../../capabilities/openai-prices";
 
 /** One provider attempt, in canonical cascade order. */
 export type CanonicalProvider = {
@@ -134,16 +135,11 @@ const PRICE_PER_MTOK: Record<string, { input: number; output: number }> = {
 
 /**
  * OpenAI bills per MODEL and `OPENAI_MODEL` can name any model, so OpenAI is
- * priced by model id — never by the provider name (#4961). Standard-tier list
- * prices, USD per 1M tokens, from https://developers.openai.com/api/docs/pricing
- * (fetched 2026-10-29: gpt-5.4-mini $0.75 in / $0.075 cached / $4.50 out). They
- * equal `tools/review_router/prices.json`, which the test pins. A model missing
- * here estimates to null (unpriced), never 0 and never another model's rate.
- * Invalidation trigger: an OpenAI price change, or a new OPENAI_MODEL in use.
+ * priced by model id — never by the provider name (#4961) — from the ONE shared
+ * table in `capabilities/openai-prices.ts`, which the OpenAI spend cap reads
+ * too (#4968), so telemetry and the cap cannot drift. A model missing there
+ * estimates to null (unpriced), never 0 and never another model's rate.
  */
-const OPENAI_PRICE_PER_MTOK_BY_MODEL: Record<string, { input: number; output: number }> = {
-  "gpt-5.4-mini": { input: 0.75, output: 4.5 },
-};
 
 /** Cached input is billed at ~10% of the input rate across these providers. */
 const CACHED_INPUT_DISCOUNT = 0.1;
@@ -240,7 +236,7 @@ export function estimateCostUsd(
   const price =
     provider === "OpenAI"
       ? model
-        ? OPENAI_PRICE_PER_MTOK_BY_MODEL[model.trim()]
+        ? openAiPricePerMtok(model)
         : undefined
       : PRICE_PER_MTOK[provider];
   // Unpriced provider (or unpriced OpenAI model) → null, never 0. See PRICE_PER_MTOK.

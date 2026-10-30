@@ -116,11 +116,12 @@ describe("lib/llm/cascade — OpenAI leads, key-gated", () => {
     await cascadeComplete(MESSAGES);
     expect(calls[0].body.model).toBe("gpt-5.4-mini");
 
-    process.env.OPENAI_MODEL = "gpt-x";
-    process.env.OPENAI_CLASSIFIER_MODEL = "gpt-small";
+    // Both priced models: an unpriced one is refused before the fetch since #4968.
+    process.env.OPENAI_MODEL = "gpt-5.5";
+    process.env.OPENAI_CLASSIFIER_MODEL = "gpt-5-mini";
     process.env.OPENAI_REASONING_EFFORT = "medium";
     calls = stubFetch();
     await cascadeComplete(MESSAGES);
-    expect(calls[0].body).toMatchObject({ model: "gpt-small", reasoning_effort: "medium" });
+    expect(calls[0].body).toMatchObject({ model: "gpt-5-mini", reasoning_effort: "medium" });
   });
 });

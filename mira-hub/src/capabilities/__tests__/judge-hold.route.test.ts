@@ -209,7 +209,7 @@ describe("#4355 option 1 — OpenAI answers only when its safety judge also fits
     expect(turn).toMatchObject({ answerStatus: "answered" });
     expect(calls.openaiAnswer).toBe(1);
     expect(calls.openaiJudge).toBe(1);
-    expect(reserve.mock.calls).toContainEqual([judgeHoldInputBound(QUESTION, 800), JUDGE_OUTPUT_TOKENS]);
+    expect(reserve.mock.calls).toContainEqual([judgeHoldInputBound(QUESTION, 800), JUDGE_OUTPUT_TOKENS, "gpt-5.4-mini"]); // priced as the model it sends (#4968)
     // Dollar arithmetic may retain sub-picodollar IEEE-754 subtraction dust.
     expect(openAiRunBudget().heldUsd).toBeCloseTo(0, 12);
   });

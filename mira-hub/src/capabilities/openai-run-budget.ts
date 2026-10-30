@@ -19,17 +19,26 @@
  *
  *   OPENAI_RUN_BUDGET_USD        cap per window, default 10
  *   OPENAI_RUN_BUDGET_WINDOW_S   window length, default 86400 (one day)
- *   OPENAI_PRICE_PER_MTOK_IN     USD per million input tokens, default 0.75
- *   OPENAI_PRICE_PER_MTOK_OUT    USD per million output tokens, default 4.5
+ *   OPENAI_PRICE_PER_MTOK_IN     explicit override, USD per million input tokens
+ *   OPENAI_PRICE_PER_MTOK_OUT    explicit override, USD per million output tokens
  *
- * Default prices are gpt-5.4-mini's list rate as declared in
- * `tools/review_router/prices.json`; the test pins them equal to that file.
+ * Prices are keyed by the RESOLVED model id (#4968): each call is priced from
+ * the one shared table in `capabilities/openai-prices.ts` (the table telemetry
+ * reads too, #4961) for the model that call sends, defaulting to
+ * `OPENAI_MODEL || gpt-5.4-mini`. A model missing from that table is UNPRICED
+ * and refused at reserve time — never $0, never another model's rate. The two
+ * overrides replace a priced model's table rate (tests use them); they never
+ * price an unlisted model, and junk or 0 falls back to the table rate.
  */
+import { OPENAI_PRICE_PER_MTOK_BY_MODEL, openAiPricePerMtok, type OpenAiPrice } from "./openai-prices";
 
 export const DEFAULT_CAP_USD = 10;
 export const DEFAULT_WINDOW_S = 86_400;
-export const DEFAULT_PRICE_PER_MTOK_IN = 0.75;
-export const DEFAULT_PRICE_PER_MTOK_OUT = 4.5;
+/** The model a call is priced as when it names none: the same default the cascades send. */
+export const OPENAI_DEFAULT_MODEL = "gpt-5.4-mini";
+/** gpt-5.4-mini's rate, read from the shared table (not a second copy). */
+export const DEFAULT_PRICE_PER_MTOK_IN = OPENAI_PRICE_PER_MTOK_BY_MODEL[OPENAI_DEFAULT_MODEL].input;
+export const DEFAULT_PRICE_PER_MTOK_OUT = OPENAI_PRICE_PER_MTOK_BY_MODEL[OPENAI_DEFAULT_MODEL].output;
 
 /** Chars-per-token proxy for the PRE-call estimate; the post-call record uses real usage. */
 const CHARS_PER_TOKEN = 4;
@@ -48,6 +57,14 @@ function envNumber(name: string, fallback: number, minimum = 0, exclusive = fals
   return (exclusive ? n > minimum : n >= minimum) ? n : fallback;
 }
 
+/** An explicit price override from env, or null when unset / junk / not > 0 (0 is junk, not free). */
+function envPrice(name: string): number | null {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === "") return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 export type BudgetVerdict =
   | { ok: true }
   | { ok: false; reason: string; spentUsd: number; worstCaseUsd: number; capUsd: number };
@@ -55,8 +72,11 @@ export type BudgetVerdict =
 export class OpenAiRunBudget {
   private readonly cap: number;
   private readonly window: number;
-  private readonly priceIn: number;
-  private readonly priceOut: number;
+  /** Explicit per-Mtok overrides (constructor opts or env); null = use the model's table rate. */
+  private readonly priceInOverride: number | null;
+  private readonly priceOutOverride: number | null;
+  private readonly priceLookup: (model: string) => OpenAiPrice | null;
+  private readonly defaultModel: string;
   private readonly now: () => number;
   private windowStarted: number;
   private spent = 0;
@@ -71,13 +91,20 @@ export class OpenAiRunBudget {
     windowS?: number;
     priceInPerMtok?: number;
     priceOutPerMtok?: number;
+    /** The model a call is priced as when it names none; default `OPENAI_MODEL || gpt-5.4-mini`. */
+    model?: string;
+    /** Injectable for tests; default is the shared table. */
+    priceLookup?: (model: string) => OpenAiPrice | null;
     /** Seconds; injectable for tests. */
     now?: () => number;
   } = {}) {
     this.cap = opts.capUsd ?? envNumber("OPENAI_RUN_BUDGET_USD", DEFAULT_CAP_USD);
     this.window = opts.windowS ?? envNumber("OPENAI_RUN_BUDGET_WINDOW_S", DEFAULT_WINDOW_S, 1);
-    this.priceIn = opts.priceInPerMtok ?? envNumber("OPENAI_PRICE_PER_MTOK_IN", DEFAULT_PRICE_PER_MTOK_IN, 0, true);
-    this.priceOut = opts.priceOutPerMtok ?? envNumber("OPENAI_PRICE_PER_MTOK_OUT", DEFAULT_PRICE_PER_MTOK_OUT, 0, true);
+    this.priceInOverride = opts.priceInPerMtok ?? envPrice("OPENAI_PRICE_PER_MTOK_IN");
+    this.priceOutOverride = opts.priceOutPerMtok ?? envPrice("OPENAI_PRICE_PER_MTOK_OUT");
+    this.priceLookup = opts.priceLookup ?? openAiPricePerMtok;
+    // `||` because compose maps ${OPENAI_MODEL:-} to an EMPTY STRING in-container.
+    this.defaultModel = (opts.model || process.env.OPENAI_MODEL || OPENAI_DEFAULT_MODEL).trim();
     this.now = opts.now ?? (() => Date.now() / 1000);
     this.windowStarted = this.now();
   }
@@ -100,8 +127,23 @@ export class OpenAiRunBudget {
     return this.callCount;
   }
 
-  estimateUsd(inputTokens: number, outputTokens: number): number {
-    return (Math.max(0, inputTokens) / 1e6) * this.priceIn + (Math.max(0, outputTokens) / 1e6) * this.priceOut;
+  /** The model a call is priced as: the one it names, else this budget's default. */
+  private modelOf(model?: string | null): string {
+    return (model || this.defaultModel).trim();
+  }
+
+  /** Per-Mtok price for `model`, or null when it is unpriced (the caller must refuse). */
+  private priceOf(model?: string | null): OpenAiPrice | null {
+    const table = this.priceLookup(this.modelOf(model));
+    if (!table) return null;
+    return { input: this.priceInOverride ?? table.input, output: this.priceOutOverride ?? table.output };
+  }
+
+  /** USD for this token shape on `model`. +Infinity when the model is unpriced: never $0. */
+  estimateUsd(inputTokens: number, outputTokens: number, model?: string | null): number {
+    const price = this.priceOf(model);
+    if (!price) return Number.POSITIVE_INFINITY;
+    return (Math.max(0, inputTokens) / 1e6) * price.input + (Math.max(0, outputTokens) / 1e6) * price.output;
   }
 
   private roll(): void {
@@ -119,9 +161,20 @@ export class OpenAiRunBudget {
   }
 
   /** Hard stop. Call BEFORE the request with the worst-case token shape. */
-  precheck(inputTokens: number, outputTokens: number): BudgetVerdict {
+  precheck(inputTokens: number, outputTokens: number, model?: string | null): BudgetVerdict {
     this.roll();
-    const worst = this.estimateUsd(inputTokens, outputTokens);
+    if (!this.priceOf(model)) {
+      // Fail closed (#4968): an unpriced model would otherwise be counted at $0 or
+      // at another model's rate. Refused here, BEFORE the fetch, never at settle.
+      return {
+        ok: false,
+        reason: `openai run budget: unpriced model "${this.modelOf(model)}" — refusing; add it to capabilities/openai-prices.ts`,
+        spentUsd: this.spent,
+        worstCaseUsd: Number.POSITIVE_INFINITY,
+        capUsd: this.cap,
+      };
+    }
+    const worst = this.estimateUsd(inputTokens, outputTokens, model);
     const projected = this.spent + this.held + worst;
     if (projected > this.cap) {
       return {
@@ -136,9 +189,9 @@ export class OpenAiRunBudget {
   }
 
   /** Accumulate ACTUAL usage after the request. Returns this call's cost. */
-  record(inputTokens: number, outputTokens: number): number {
+  record(inputTokens: number, outputTokens: number, model?: string | null): number {
     this.roll();
-    const cost = this.estimateUsd(inputTokens, outputTokens);
+    const cost = this.estimateUsd(inputTokens, outputTokens, model);
     // A non-finite cost would make the shared total NaN, and every later
     // `projected > cap` comparison false — an open gate. Refuse it loudly.
     if (!Number.isFinite(cost)) throw new RangeError(`openai run budget: refusing a non-finite cost (${inputTokens}, ${outputTokens})`);
@@ -163,10 +216,10 @@ export class OpenAiRunBudget {
    * the request without billable work (a non-OK status). `precheck`/`record`
    * stay for callers that serialize their own requests.
    */
-  reserve(inputTokens: number, outputTokens: number): ReserveVerdict {
-    const verdict = this.precheck(inputTokens, outputTokens);
+  reserve(inputTokens: number, outputTokens: number, model?: string | null): ReserveVerdict {
+    const verdict = this.precheck(inputTokens, outputTokens, model);
     if (!verdict.ok) return verdict;
-    const worst = this.estimateUsd(inputTokens, outputTokens);
+    const worst = this.estimateUsd(inputTokens, outputTokens, model);
     this.held += worst;
     let open = true;
     const drop = (): void => {
@@ -184,7 +237,7 @@ export class OpenAiRunBudget {
           // can neither poison the shared total with NaN nor read as free (Codex r2
           // F8 on #4355). Every caller is covered, the cascade included.
           drop();
-          return this.record(...billableTokens({ prompt_tokens: actualIn, completion_tokens: actualOut }, inputTokens, outputTokens));
+          return this.record(...billableTokens({ prompt_tokens: actualIn, completion_tokens: actualOut }, inputTokens, outputTokens), model);
         },
         release: (): void => {
           if (!open) return;
@@ -356,9 +409,11 @@ export function reserveOpenAiAttempt(
   scope: string,
   inputBound: number,
   outputCap: number,
+  /** The model this attempt sends; priced from the shared table (#4968). */
+  model?: string | null,
 ): { ok: true; reservation: BudgetReservation | null } | { ok: false } {
   if (providerName !== "OpenAI") return { ok: true, reservation: null };
-  const verdict = openAiRunBudget().reserve(inputBound, outputCap);
+  const verdict = openAiRunBudget().reserve(inputBound, outputCap, model);
   if (!verdict.ok) {
     logBudgetExhausted(scope, verdict);
     return { ok: false };
