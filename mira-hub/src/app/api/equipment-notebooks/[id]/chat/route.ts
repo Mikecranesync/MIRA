@@ -54,7 +54,7 @@ import {
   openAiRunBudget,
   type BudgetReservation,
 } from "@/capabilities/openai-run-budget";
-import { numericClaimSupport, withSupportingQuotes } from "@/capabilities/supporting-quote";
+import { MODEL_VISIBLE_CHARS, numericClaimSupport, withSupportingQuotes } from "@/capabilities/supporting-quote";
 import { shadowVerifyCitedTurn } from "@/capabilities/claim-verifier-shadow";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
 import { isWeakEvidence, WEAK_EVIDENCE_LABEL, WEAK_EVIDENCE_RULE } from "@/capabilities/observability/jev-weak-evidence";
@@ -4770,18 +4770,22 @@ async function handleChatTurn(
       // #4315: each emitted citation's proof quote is re-derived from the ANSWER — the
       // window, across every chunk of the cited page, holding the values that citation
       // claims (number + unit). A citation with no matched value keeps its quote as is.
-      // #4870: the photo-observation text the model was given this turn (this turn's LOOK, the
-      // recalled earlier LOOKs, the bound asset's stored readings) and the FULL text of every
-      // chunk in context. Support for a stated number only — never quoted, never stored.
+      // #4870: the text the provider actually received — each chunk cut to MODEL_VISIBLE_CHARS
+      // (manual-rag MAX_CONTENT_CHARS, Codex r1 F1) — and the photo-observation text it was given
+      // this turn (this turn's LOOK, the recalled earlier LOOKs, the bound asset's readings).
+      // Support for a stated number on the R4 path only; never quoted, never stored, and never
+      // passed to withSupportingQuotes: a photo cannot authenticate a document citation (F2).
       const observationTexts = [lookRow?.text ?? "", ...priorLookRows.map((r) => r.text), ...visualReadings]
         .filter((t) => t.trim().length > 0);
-      const numericEvidence = { sources: chunks.map((c) => c.content), observations: observationTexts };
+      const numericEvidence = {
+        sources: chunks.map((c) => c.content.slice(0, MODEL_VISIBLE_CHARS)),
+        observations: observationTexts,
+      };
       const quoted = withSupportingQuotes(
         !docGrounded || !served || refused || outputRejected ? [] : citationsUsedInAnswer(answerText, citations),
         chunks,
         answerText,
         message,
-        observationTexts,
       );
       const emittedCitations = quoted.citations;
       const answerStatus: "answered" | "insufficient_evidence" | "error" = !served

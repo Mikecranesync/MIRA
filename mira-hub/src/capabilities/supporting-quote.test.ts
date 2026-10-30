@@ -167,9 +167,7 @@ describe("table layouts — the complete row is the claim", () => {
 describe("invariants", () => {
   it("values only past the model-visible 1200 chars are never quoted", () => {
     const long = "z".repeat(MODEL_VISIBLE_CHARS + 50) + " Torque 7.77 N•m.";
-    // #4870: never QUOTED (the window is model-visible text only), but the value is on the cited
-    // chunk, so it is no longer counted as unsupported — the count reads the full chunk text.
-    expect(supportingQuote([long], "Use 7.77 N·m [1].", "1", "torque")).toEqual({ quote: null, support: "question_fallback", unsupported: [] });
+    expect(supportingQuote([long], "Use 7.77 N·m [1].", "1", "torque")).toEqual({ quote: null, support: "question_fallback", unsupported: ["7.77 N·m"] });
   });
 });
 
@@ -498,8 +496,8 @@ describe("Codex round 4 (PR #4319) + design rev 5 — a value is usable only whe
   it("Codex r6 F12: a window that covers no claimed value never replaces the quote", () => {
     const r = withSupportingQuotes([{ citationId: "1", quote: "q" }], [{ content: `Rated 12${" ".repeat(250)}V.`, sourceUrl: "/m.pdf", sourcePage: 1 }], "Rated 12 V [1].", "");
     expect(r.citations[0].quote).toBe("q");
-    // #4870: the window cannot hold the value, so the quote stays; the full chunk text does hold
-    // "12 V", so the value is not counted as unsupported.
+    // #4870: the window cannot hold the value, so the quote stays; the model-visible chunk text
+    // does hold "12 V" (spacing aside), so the value is not counted as unsupported.
     expect([r.unsupportedValueCount, r.quoteFallbackCount]).toEqual([0, 1]);
   });
   it("the route seam counts every unusable piece of a space-grouped claim", () => {
@@ -1202,7 +1200,7 @@ it.each(["\r", "\n", "\r\n"].flatMap(eol => ["12 V", "**12 V**"].flatMap(value =
 // #4870 T-2 — cited-value support. Constructed examples, none copied from the calibration sample.
 // The parser stays authoritative for every value it can read (usable); the verbatim rule only
 // rescues a value the parser cannot read, and only when that text is literally on the page.
-describe("#4870 cited-value support: verbatim, full chunk, photo, identifiers", () => {
+describe("#4870 cited-value support: verbatim, model-visible text, cited page only, identifiers", () => {
   const PAGE = "Setup\nThe default value is 13.\nSupply range +18.5 V to +30.5 V.\n";
   it("a unitless value that appears verbatim on the cited page is supported", () => {
     expect(supportingQuote([PAGE], "The default is 13 [1].", "1", "").unsupported).toEqual([]);
@@ -1213,17 +1211,31 @@ describe("#4870 cited-value support: verbatim, full chunk, photo, identifiers", 
   it("a signed range the parser cannot use is supported when it is verbatim on the page", () => {
     expect(supportingQuote([PAGE], "The supply range is +18.5 V to +30.5 V [1].", "1", "").unsupported).toEqual([]);
   });
-  it("a value past the model-visible prefix of the cited chunk is supported (full chunk text)", () => {
-    const chunk = `${"filler text ".repeat(110)}\nTighten to 7.5 N·m.`;
-    expect(chunk.indexOf("7.5")).toBeGreaterThan(MODEL_VISIBLE_CHARS);
-    const r = supportingQuote([chunk], "Tighten to 7.5 N·m [1].", "1", "");
-    expect(r.unsupported).toEqual([]);
-    expect(r.quote).toBeNull(); // the proof quote is still cut from the model-visible prefix only
+  // Codex r1 F1: the provider only ever sees each chunk's first MODEL_VISIBLE_CHARS characters
+  // (manual-rag MAX_CONTENT_CHARS), so text past it is never evidence the model had.
+  it("a value only past the model-visible prefix of the cited chunk is NOT supported; before it, it is", () => {
+    const filler = "filler text ".repeat(110);
+    const after = `${filler}\nTighten to 7.5 N·m.`;
+    expect(after.indexOf("7.5")).toBeGreaterThan(MODEL_VISIBLE_CHARS);
+    expect(supportingQuote([after], "Tighten to 7.5 N·m [1].", "1", "").unsupported).toEqual(["7.5 N·m"]);
+    const before = `Tighten to 7.5 N·m.\n${filler}`;
+    expect(before.indexOf("7.5")).toBeLessThan(MODEL_VISIBLE_CHARS);
+    expect(supportingQuote([before], "Tighten to 7.5 N·m [1].", "1", "").unsupported).toEqual([]);
   });
-  it("a value read off the photo is supported when the observation text is given", () => {
-    const answer = "The relay coil is rated 48 V [1].";
-    expect(supportingQuote([PAGE], answer, "1", "", ["relay label: coil 48 V DC"]).unsupported).toEqual([]);
-    expect(supportingQuote([PAGE], answer, "1", "").unsupported).toEqual(["48 V"]); // control: no photo
+  it("a value the parser cannot read is not supported verbatim by text past the prefix", () => {
+    const filler = "filler text ".repeat(110);
+    expect(supportingQuote([`${filler}\nThe default value is 13.`], "The default is 13 [1].", "1", "").unsupported).toEqual(["13"]);
+    expect(supportingQuote([`The default value is 13.\n${filler}`], "The default is 13 [1].", "1", "").unsupported).toEqual([]);
+  });
+  // Codex r1 F2: a photo reading never authenticates a DOCUMENT citation. It counts only in the
+  // whole-answer numericClaimSupport (the R4 path).
+  it("a photo reading does not support a cited value, but does support the claim for R4", () => {
+    const answer = "The relay is rated 48 V [1].";
+    const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+      [{ content: PAGE, sourceUrl: "manual", sourcePage: 1 }], answer, "");
+    expect(r.unsupportedValueCount).toBe(1);
+    expect(numericClaimSupport(answer, "", { sources: [PAGE], observations: ["48 V DC"] })).toEqual({ claims: 1, unsupported: 0 });
+    expect(numericClaimSupport(answer, "", { sources: [PAGE], observations: [] })).toEqual({ claims: 1, unsupported: 1 });
   });
   it("a catalog number in the answer is not a cited value", () => {
     expect(supportingQuote([PAGE], "Use the 3150-QR40-16XYZ base [1].", "1", "").unsupported).toEqual([]);
@@ -1249,15 +1261,6 @@ describe("#4870 cited-value support: verbatim, full chunk, photo, identifiers", 
   it("CONTROL: a real unit value absent from the page stays unsupported", () => {
     expect(supportingQuote([PAGE], "Use a 99 mm spacer [1].", "1", "").unsupported).toEqual(["99 mm"]);
   });
-  it("proof quotes are byte-identical with and without observations", () => {
-    const base = withSupportingQuotes([{ citationId: "2", quote: "ORIGINAL" }],
-      [{ content: FUSES_CHUNK, sourceUrl: "m", sourcePage: 1 }, { content: VALUE_CHUNK, sourceUrl: "m", sourcePage: 2 }], REAL_ANSWER, Q_TORQUE);
-    const withObs = withSupportingQuotes([{ citationId: "2", quote: "ORIGINAL" }],
-      [{ content: FUSES_CHUNK, sourceUrl: "m", sourcePage: 1 }, { content: VALUE_CHUNK, sourceUrl: "m", sourcePage: 2 }], REAL_ANSWER, Q_TORQUE,
-      ["label 1.76 – 2.16 N·m"]);
-    expect(withObs.citations).toEqual(base.citations);
-    expect(base.citations[0].quote).toContain("1.76…2.16 N•m");
-  });
 });
 
 describe("#4870 numericClaimSupport — every numeric claim in the answer, for R4", () => {
@@ -1272,6 +1275,11 @@ describe("#4870 numericClaimSupport — every numeric claim in the answer, for R
   it("photo observation text counts as support", () => {
     const r = numericClaimSupport("The breaker is 15 A.", "", { sources: [], observations: ["breaker labeled C 15A"] });
     expect(r).toEqual({ claims: 1, unsupported: 0 });
+  });
+  it("Codex r1 F1: a source value past the model-visible prefix is not support; before it, it is", () => {
+    const filler = "filler text ".repeat(110);
+    expect(numericClaimSupport("Tighten to 7.5 N·m.", "", { sources: [`${filler}\nTorque 7.5 N·m.`], observations: [] })).toEqual({ claims: 1, unsupported: 1 });
+    expect(numericClaimSupport("Tighten to 7.5 N·m.", "", { sources: [`Torque 7.5 N·m.\n${filler}`], observations: [] })).toEqual({ claims: 1, unsupported: 0 });
   });
   it("a zero-volt isolation check is not a claim", () => {
     expect(numericClaimSupport("Lock out and verify 0 V first.", "", { sources: [], observations: [] })).toEqual({ claims: 0, unsupported: 0 });

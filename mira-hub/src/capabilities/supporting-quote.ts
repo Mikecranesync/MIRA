@@ -563,7 +563,8 @@ function identifierValue(answer: string, v: Value): boolean {
   return identifierAt(answer, s, s + m[0].length);
 }
 
-/** #4870: does any of `texts` (full chunk text, photo observations) support a claimed value?
+/** #4870: does any of `texts` (model-visible chunk text; photo observations on the R4 path only)
+ *  support a claimed value?
  *  The parser stays authoritative for a value it can read: a usable claim needs a usable source
  *  value that satisfies it. Only a value the parser cannot read (unitless, signed range, unknown
  *  unit) falls back to its literal text appearing verbatim. Source values are parsed once. */
@@ -621,8 +622,10 @@ const SHARED_UNIT = /^[ \t]*(?:or|and|to|through|-|–|,|\/)[ \t]*[-+]?\d+(?:\.\
  * many of them the evidence the model was given does not support. Excluded, as in
  * assignValues: a footnote "(1)", a page reference, a list ordinal, the machine the question
  * names; and, new here, identifiers (identifierAt) and an all-zero magnitude ("verify 0 V" is
- * an isolation check, never a rating — #3963). Support is ClaimSupport over the full chunk
- * texts and photo observations. Pure; counts only, no text leaves this function.
+ * an isolation check, never a rating — #3963). Support is ClaimSupport over the chunk text the
+ * provider received (each source cut to MODEL_VISIBLE_CHARS here too, so a caller passing raw
+ * chunk content cannot count text the model never saw — Codex r1 F1) and the photo observation
+ * text. Pure; counts only, no text leaves this function.
  */
 export function numericClaimSupport(
   answer: string,
@@ -633,7 +636,8 @@ export function numericClaimSupport(
     [...normalize(question).matchAll(/([\p{L}][\p{L}-]*)[\s-]?(\d+)/gu)].map((m) => `${m[1]}|${m[2]}`),
   );
   const masked = answer.replace(MARKER_RE, (m) => " ".repeat(m.length));
-  const support = new ClaimSupport([...evidence.sources, ...evidence.observations], answer);
+  const visible = evidence.sources.map((t) => t.slice(0, MODEL_VISIBLE_CHARS));
+  const support = new ClaimSupport([...visible, ...evidence.observations], answer);
   let claims = 0;
   let unsupported = 0;
   for (const v of findValues(masked, "answer")) {
@@ -672,7 +676,6 @@ export function supportingQuote(
   answer: string,
   citationId: string,
   question: string,
-  observations: readonly string[] = [],
 ): SupportingQuote {
   const claims = assignValues(answer, question).get(citationId) ?? [];
   if (claims.length === 0 || chunks.length === 0) return { quote: null, support: "question_fallback", unsupported: [] };
@@ -709,9 +712,11 @@ export function supportingQuote(
     }
   });
   // #4870: the count is decided in a separate pass so the proof quote above never changes. A
-  // claim the model-visible window did not hold is still supported by the FULL chunk text or
-  // the turn's photo reading, and a model/catalog/fault-code token is not a claim at all.
-  const support = new ClaimSupport([...chunks, ...observations], answer);
+  // claim the quote window did not hold is still supported anywhere in the cited page's
+  // MODEL-VISIBLE text (the provider never sees past MODEL_VISIBLE_CHARS — Codex r1 F1), and a
+  // model/catalog/fault-code token is not a claim at all. Only the cited page counts: a photo
+  // reading never authenticates a document citation (Codex r1 F2).
+  const support = new ClaimSupport(chunks.map((c) => c.slice(0, MODEL_VISIBLE_CHARS)), answer);
   const unsupported = claims
     .filter((c, k) => !everMatched.has(k) && !identifierValue(answer, c) && !support.holds(c))
     .map((c) => c.text.trim());
@@ -743,8 +748,6 @@ export function withSupportingQuotes<C extends QuotableCitation>(
   chunks: readonly PageChunk[],
   answer: string,
   question: string,
-  /** #4870: the turn's photo-observation texts — support for a cited value, never a quote. */
-  observations: readonly string[] = [],
 ): { citations: C[]; unsupportedValueCount: number; quoteFallbackCount: number } {
   const byKey = new Map<string, string[]>();
   for (const c of chunks) {
@@ -757,7 +760,7 @@ export function withSupportingQuotes<C extends QuotableCitation>(
   const out = citations.map((c) => {
     const pageChunks = pages[Number(c.citationId) - 1];
     if (!pageChunks) return c;
-    const r = supportingQuote(pageChunks, answer, c.citationId, question, observations);
+    const r = supportingQuote(pageChunks, answer, c.citationId, question);
     unsupportedValueCount += r.unsupported.length;
     if (r.quote === null) {
       quoteFallbackCount += 1;

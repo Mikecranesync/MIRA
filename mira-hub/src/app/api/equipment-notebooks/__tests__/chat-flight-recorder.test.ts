@@ -349,6 +349,23 @@ describe("#4870 — the photo reading supports a number read off the photo", () 
     expect([p.answer_gate.numeric_claims, p.answer_gate.numeric_claims_unsupported]).toEqual([1, 0]);
   });
 
+  // Codex r1 F2: the photo supports the claim for R4 but never authenticates the document citation.
+  it("F2: a value only the photo shows keeps cited_values_unsupported, but is supported for R4", async () => {
+    domainMock.getNotebook.mockResolvedValue({ id: NB, displayName: "Panel", manufacturer: "Siemens", model: "TP700 Comfort" } as never);
+    ragMock.retrieveManualChunks.mockReset();
+    ragMock.retrieveManualChunks.mockResolvedValue([{ docId: null, sourceUrl: "https://oem.example/tp700.pdf", title: "TP700 Comfort Operating Instructions",
+      content: "Rated 24 VDC, 0.85 A max.", sourcePage: 12, manufacturer: "Siemens", modelNumber: "TP700", rank: 1, verified: true }] as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("The breaker in the photo is 15 A [1].")));
+    const res = await POST(chatReq({ message: "what size is the breaker in my photo", mode: "general", visualEvidence: { fileId: PHOTO } }), params);
+    await res.text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const p = firstRecordedPacket();
+    expect(p.answer_gate.citations_shipped).toBe(1);
+    expect(p.answer_gate.cited_values_unsupported).toBe(1);
+    expect(p.answer_gate.ungrounded_unit_claim).toBe(false);
+    expect([p.answer_gate.numeric_claims, p.answer_gate.numeric_claims_unsupported]).toEqual([1, 0]);
+  });
+
   it("control: a rating the photo does not show is still flagged", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => providerStream("The photo shows a 20 A breaker on the rail.")));
     const res = await POST(chatReq({ message: "what size is the breaker in my photo", mode: "general", visualEvidence: { fileId: PHOTO } }), params);
@@ -1322,6 +1339,24 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     expect(p.answer_gate.decision).toBe("answered");
     expect(p.answer_gate.ungrounded_unit_claim).toBe(false);
     expect([p.answer_gate.numeric_claims, p.answer_gate.numeric_claims_unsupported]).toEqual([2, 0]);
+  });
+
+  // Codex r1 F1: only the first MODEL_VISIBLE_CHARS of a chunk reach the provider.
+  it("#4870 F1: a value only past the model-visible prefix is not support; before it, it is", async () => {
+    const filler = "filler text ".repeat(110);
+    for (const [content, unsupported] of [[`${filler}\nRated 0.85 A max.`, 1], [`Rated 0.85 A max.\n${filler}`, 0]] as const) {
+      persistMock.persistTurnUsage.mockClear();
+      domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Siemens", model: "TP700 Comfort" }) as never);
+      ragMock.retrieveManualChunks.mockResolvedValueOnce([{ ...oemChunk(), content }] as never);
+      vi.stubGlobal("fetch", vi.fn(async () => providerStream("The panel draws 0.85 A [1].")));
+      await (await POST(chatReq({ message: "what does this panel draw", mode: "general" }), params)).text();
+      await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+      const p = packetOf();
+      expect(p.answer_gate.citations_shipped).toBe(1);
+      expect(p.answer_gate.ungrounded_unit_claim).toBe(unsupported === 1);
+      expect([p.answer_gate.numeric_claims, p.answer_gate.numeric_claims_unsupported]).toEqual([1, unsupported]);
+      expect(p.answer_gate.cited_values_unsupported).toBe(unsupported);
+    }
   });
 
   it("#4870 control: a value absent from the chunk keeps the unit-claim flag and the unsupported count", async () => {
