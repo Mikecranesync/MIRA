@@ -2208,3 +2208,51 @@ describe("retrieveNodeChunks — the model a question names is not a fault code"
     expect(out[0]?.sourcePage).toBe(30);
   });
 });
+
+// Query rewrite (NOTEBOOK_QUERY_REWRITE → `rewrittenQuery`): the manual-vocabulary
+// restatement is ONE extra OR variant after the technician's own AND pass. It
+// never replaces the original words and never runs when absent or identical.
+describe("retrieveNodeChunks — rewrittenQuery variant", () => {
+  const Q = "What does GS10 code oC mean?";
+  const REWRITE = "Fault Descriptions over current oC Fault Codes table";
+
+  it("adds one OR pass carrying the rewrite, and still runs the original-words OR fallback when those words found nothing (Codex F1 on #5003)", async () => {
+    // AND on the question: nothing. Rewrite OR: a DISTRACTOR page. Original-words
+    // OR: the answer. A rewrite hit must not count as lexical coverage, or the
+    // fallback is skipped and the answer never enters the pool.
+    const distractor = nodeRow({ content: "Fault Descriptions: table of all fault codes.", source_page: 99, page_start: 99 });
+    const answer = nodeRow({ content: "oC: over current. The GS10 code oC means output current exceeded the limit.", source_page: 12, page_start: 12 });
+    const { client, calls } = makeClient([[], [distractor], [answer]]);
+    const out = await retrieveNodeChunks(client, "t-1", Q, { nodeId: "n-1", unsPath: null, rewrittenQuery: `  Fault Descriptions\nover current oC   Fault Codes table ` });
+    const l = lanes(calls);
+    expect(l).toHaveLength(3);
+    expect(l[0].sql).toContain("plainto_tsquery('english', $2)");
+    expect(l[0].params[1]).toBe(Q);
+    expect(l[1].sql).toContain("replace(plainto_tsquery('english', $2)::text, ' & ', ' | ')");
+    expect(l[1].params[1]).toBe(REWRITE); // whitespace-collapsed, as query-rewrite.ts emits it
+    expect(l[2].sql).toContain("replace(plainto_tsquery('english', $2)::text, ' & ', ' | ')");
+    expect(l[2].params[1]).toBe(Q); // the original words still get their recall pass
+    expect(out.map((c) => c.sourcePage).sort()).toEqual([12, 99]); // both candidates reach the pool
+  });
+
+  it("control: without a rewrite the same question runs the same two passes on its own words", async () => {
+    const { client, calls } = makeClient([[], [nodeRow()]]);
+    await retrieveNodeChunks(client, "t-1", Q, { nodeId: "n-1", unsPath: null });
+    const l = lanes(calls);
+    expect(l).toHaveLength(2);
+    expect(l[1].params[1]).toBe(Q);
+    expect(l.some((c) => String(c.params[1]).includes("Fault Descriptions"))).toBe(false);
+  });
+
+  it("a rewrite identical to the question (or blank) adds no pass", async () => {
+    // Every lane returns nothing, so a duplicate OR pass on the question's own
+    // words would be visible as a THIRD lane (AND, duplicate OR, last-resort OR).
+    for (const rw of [Q, "   ", undefined]) {
+      const { client, calls } = makeClient([[], [], []]);
+      await retrieveNodeChunks(client, "t-1", Q, { nodeId: "n-1", unsPath: null, rewrittenQuery: rw });
+      expect(lanes(calls)).toHaveLength(2);
+      expect(lanes(calls)[0].params[1]).toBe(Q);
+      expect(lanes(calls)[1].params[1]).toBe(Q);
+    }
+  });
+});

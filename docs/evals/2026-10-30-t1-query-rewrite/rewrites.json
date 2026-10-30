@@ -1,0 +1,2092 @@
+{
+ "model": "gpt-5.4-mini",
+ "spent_usd": 0.13935525000000004,
+ "in_tokens": 95933,
+ "out_tokens": 14979,
+ "rewrites": {
+  "92e4b3266638eb830f48b1938616fee041de51f52c5c4a0bab6efd5175ff8b55": {
+   "id": "fr-pf40-00",
+   "rewrite": "F005 Fault Description  \nA051 A052 A053 A054  \nP038 Motor Control Mode  \n0-10V Analog Input  \nMinimum Frequency 10 Hz"
+  },
+  "a0b8c8ad7d437fbb9a949a77804be9be48c8e171730a12fe4bf58f3b6e890053": {
+   "id": "fr-pf40-01",
+   "rewrite": "PowerFlex 40 PROFIBUS current feedback\nPROFIBUS analog output current\ndrive output current over PROFIBUS\nRSLogix 5000 PowerFlex 40 data words\nhigh amp alarm current parameter\nfeedback over PROFIBUS terminal/parameter mapping"
+  },
+  "f6f57cc629137b98f14dede209a13b9e32f94943a2c3e3bd90ec950631aaaf89": {
+   "id": "fr-pf4m-04",
+   "rewrite": "Modbus RTU communication\nDPI/DF1 communication settings\n1763-NC01 serial cable\nDrive communication parameters\nHandshake not enabled"
+  },
+  "096129803d061b64ab49f1d47bb9f5949119e79184fc7805366df29215fb1d14": {
+   "id": "fr-acs355-06",
+   "rewrite": "Overcurrent fault at start\nFxx overcurrent fault with motor disconnected\nScalar mode overcurrent trip\nCurrent feedback zero overcurrent fault\nDrive starts then faults immediately overcurrent"
+  },
+  "c478591ce7c372f8697c1e61ff548b05ff11559cd9b6405625025849c50ff4ac": {
+   "id": "fr-acs355-07",
+   "rewrite": "F0016 earth fault\nEarth fault monitoring disable\nMotor cable disconnected F0016\nStart command earth fault\nACS355 warranty issue"
+  },
+  "5c33279b22a918cea3b54276506ddb9fa5a07e6b2866e0775649a5e628881745": {
+   "id": "fr-acs355-08",
+   "rewrite": "Parameter Backup to Keypad\nDownload Parameters from Keypad\nCopy Drive Parameters\nParameter Transfer\nKeypad Upload Download"
+  },
+  "9d0db56135bde6b93736509d7ddf6c6df18a2bf3a2b99e24c0ce678950c6f060": {
+   "id": "fr-acs355-09",
+   "rewrite": "Fault A5001 control panel connection problem\n\nControl panel communication fault A5001\n\nACS355 control panel connection\n\nControl panel cable pinout\n\nDrive fault A5001 reset"
+  },
+  "7ef286acc79288b1768bbb92cdefb24f9b59675b21ce96e89c99af3831d2eb5a": {
+   "id": "fr-micro820-um-12",
+   "rewrite": "Recipe function\nRecipe write to SD card\nRecipe read error\nRecipe function output error code 15\nSD card write/read error\nFault code 3"
+  },
+  "3cb19401ab9305ce19b3cfa80cfa37b91a98dfb7980cdc7dfaa0d6eb771dece8": {
+   "id": "fr-micro820-in-14",
+   "rewrite": "Grounding the controller\nProtective Earth grounding\n24 V dc relay output surge suppression diode\nInductive load suppression diode\nPiezoelectric buzzer capacitive load suppression"
+  },
+  "00c2bc20254be1d1c8569c4074f8d5fbb18b56aa7723b8b78c6088b058067e9f": {
+   "id": "fr-ml1100-17",
+   "rewrite": "BOOTP/DHCP Enable\nIP Address Retentive\nController Properties\nEthernet Configuration\nNonvolatile Memory\nBOOTP Server Disabled"
+  },
+  "da49a23c1d1a614f35492b81e99c71719bcbcfa0bf90f0d0a1ae8c21d7aa4ace": {
+   "id": "fr-ml1100-18",
+   "rewrite": "firmware update failure\nControlFlash update aborted\ndownload stops at block 25\nLED flashing after firmware update\nflash recovery procedure"
+  },
+  "0b0f334dab29c97cade851d8f660f8903bdd54ca845dca0a4a53a394d90003cc": {
+   "id": "fr-smcflex-20",
+   "rewrite": "Soft Start no ramp\nRamp Time parameter\nMotor full speed on start\nBypass contactor closes immediately\nStart command output contactor"
+  },
+  "e953510145549a784ea3642f2226282b86bed4d56575a78e53fe4efa55c066a3": {
+   "id": "fr-smcflex-21",
+   "rewrite": "Fault 29 Loss of Communication\nDPI communication logic mask 32\nP_SMC Flex AOI start command bits\nInstruction input bits soft starter\nCommunications control start stop bits"
+  },
+  "9b436cfc1305b2ef52f820bddae2d0bccf8c624938c591279cd1873dae823b95": {
+   "id": "fr-e3plus-22",
+   "rewrite": "Phase Loss Trip\nOverload Relay Trip\nFault Descriptions\nThree Phase Loss\nInput Power Phase Loss"
+  },
+  "dcdeb248b4ef37fa97e97e7a3a06b63f2a41e2b9b1fdc5ea24e4b82c7cb80955": {
+   "id": "fr-e3plus-23",
+   "rewrite": "Input Status Bits\nBit Mapping\nDigital Input Status\n4-13\nStatus Word Input Bits"
+  },
+  "d1e9d7814472d34eb192b5164f285114a532082390f10e55050bfe98430f7559": {
+   "id": "fr-smc50-24",
+   "rewrite": "EtherNet/IP communication setup\n20-COMM-E adapter\nCommon parameter mapping\nPhase current power power factor\nLDT parameter read setup"
+  },
+  "5c85c6036ca81bf52c9532cf8629ed37b9efbd67c821b53a2a3ef7b959568fc3": {
+   "id": "fr-smc50-25",
+   "rewrite": "Soft Starter Quick Setup\n\nCurrent Limit Setting\n\nStarting Voltage / Kick Start\n\nMotor Nameplate Data Entry\n\nBypass Contactor and Power Factor Correction Contactor\n\nPump Load Starting Parameters"
+  },
+  "2eb6cd2479db0eb999ca507d253507e7d01b57c583a1f7a239e1bc98fa72ad26": {
+   "id": "fr-micro810-26",
+   "rewrite": "LCD keypad output control\nstatus display on LCD\ndigital output on/off using keys\nMicro810 keypad as HMI\nlocal output control from LCD keys"
+  },
+  "69ca365ec2aa3b467b6507fec788b29a4458447f782ef2c322cf4b548be37812": {
+   "id": "fr-micro810-28",
+   "rewrite": "Analog Input Configuration  \nAI_00 scaling 0-10V 4-20mA  \nIO_EM_AI_00 IO_EM_DI_00  \nI-00 analog/digital input  \nInput type configurable terminal I-00  \nAnalog input value 0 1018"
+  },
+  "d5e8d5705de6c250231ad8ffbcd27fabe07609a18758c51450ddd9c117baf871": {
+   "id": "fr-micro810-29",
+   "rewrite": "Analog Input Configuration\n\nAI:00\nI_04 analog input\n\n0-10 V input signal\n4-20 mA input signal\n\ninput voltage reading"
+  },
+  "f5172079563dcc2520c75b01474fce2145219ee6115d46be12cdf4a9cb7a765c": {
+   "id": "fr-gs4-ch2-30",
+   "rewrite": "Fault Descriptions OVn\nDynamic Braking Unit\nBraking Resistor\nB1 B2 terminals\nP06:28 braking function\nAccessories 1K0W016"
+  },
+  "ee11adebb45a5ad855a8bcdb8e8fcde7325bcf64991a2c9788a2673b49e17d7d": {
+   "id": "fr-gs4-ch2-31",
+   "rewrite": "RFI jumper removal  \n3 phase 240V high leg input  \nVFD grounding and noise suppression  \nGS4 EMC filter jumper  \ninput power connection 240V high leg"
+  },
+  "a5ce78ee92c3c931913cb6aff021cf04accaba11dfe2e31d240c7e0538446965": {
+   "id": "fr-gs4-ch6-33",
+   "rewrite": "MODBUS exception response 3  \nStatus Monitor 2 bits 8 and 10 communication control source speed reference  \nCE3 fault code  \nSM1 56  \nparameter write requires power cycle"
+  },
+  "ea37eda02e6f65ecf0dbc1bfc1a2be46d3b2f5d2e9793a09a80beca9a65e4ec3": {
+   "id": "fr-gs4-ch6-34",
+   "rewrite": "Overload trip\nMotor stall\nHigh pressure pump start\nVFD current limit\nOL fault"
+  },
+  "4cbc87a1bd9426f8a45eb506be1f61d5724b302a04f7ca80b472540a48ae4ce6": {
+   "id": "fr-se-canopen-hw-35",
+   "rewrite": "CAN bus communication fault  \nCAN H / CAN L voltage check  \nterminating resistor / bus termination  \nCAN network resistance 60 ohms  \ncommunication alarm fault description"
+  },
+  "8d130702c0a0f82c968f4f6ff8f9ab66d7a50e2ba5360f32b378587c6d1f1a99": {
+   "id": "fr-se-lxm32a-canopen-37",
+   "rewrite": "CANopen PDO Mapping\nCommunication Settings\nPDO 1\nPDO 2\nPDO Reading and Writing\nEDS File Import"
+  },
+  "8d4d567d2c612d6ac97d441a8da570e68a8c01add0c8e2f686344462c3a03811": {
+   "id": "fr-se-m171-38",
+   "rewrite": "EEPROM write system variable\nSystemWrite variable PLC Run Error\nDisplay function setpoint timeout\nAnalog output 5-20 mA scaling\nDigital output alarm event\nAnalog input to monitoring system"
+  },
+  "094f859ee205089e09c523ca44bec9b1fd1ce63b63bea93ec8a3a61aca410351": {
+   "id": "fr-se-m172-40",
+   "rewrite": "AOL3 AOL4 voltage modulation 0-10V  \nAnalog Outputs AOL1-AOL4 configuration  \nAOL5 analog output voltage measuring  \nAnalog Output test program  \nAOL3/AOL4 no voltage output"
+  },
+  "2119963927a8e207096442881a042f838af572f3850bce7c1835cc143dde0476": {
+   "id": "fr-se-premium-serial-44",
+   "rewrite": "TER port Character Mode link 9600 baud odd parity 1 stop bit 7 data bits\n\nTSXPACC01 master/slave switch TER ERR I/O LEDs\n\nCommunication Settings TER data bits 7\n\nCharacter Mode link 7 data bits not supported\n\nTER port reset error mode slave mode"
+  },
+  "0e284294bbde0591c8b10d9c98e01dbdad09c95b7d8cf98d6402db806d03c412": {
+   "id": "fn-pf40-1",
+   "rewrite": "F71 Fault Description\n\nDeviceNet network random faulting\n\n20-COMM-D DeviceNet communication fault\n\nnode address duplicate DeviceNet\n\npower supply and 120 ohm terminating resistors"
+  },
+  "1a36bfda0aa494790ab21eb37e2fe6e5e4e7b1e36669f35493ec74e37011cd07": {
+   "id": "fn-pf40-2",
+   "rewrite": "Fault history\nFault queue\nDrive fault history\nFault codes\nTrip history"
+  },
+  "6a7fd27f0e92b19b53d367b29c79075c67892f47da39379c131962dc4054937a": {
+   "id": "fn-pf40-3",
+   "rewrite": "F81 Comm Loss\nA105 Comm Loss Action\nContinue Last\nCommunication Loss\nPower cycle drive\nDisable fault response"
+  },
+  "2a26330c37992307763d977c63279c2da83525b8c84445e0907a06c28c903e8b": {
+   "id": "fn-pf40-4",
+   "rewrite": "F81 Comms Loss\nDSI communication loss\nEtherNet/IP port LED flashing\n20-COMM-E status LED\nDrive power cycle after E-Stop\nFault Descriptions"
+  },
+  "724d18800826d8710a3a3fe7f2c3ff56c0ce44e2ce1c80e31c99495723097c5b": {
+   "id": "fn-pf40-5",
+   "rewrite": "Local/Remote control source selection\nP036 [Command Source]\nP037 [Speed Reference]\nTerminal Block control\nHMI control and PLC control changeover"
+  },
+  "b95199dc5bec420ebc0795e461c6090c0cd9b1b59990f52c8768752c5cbd0475": {
+   "id": "fn-pf40-6",
+   "rewrite": "Startup / Smart Start Program Group\nMotor Nameplate Data\nDigital Input Configuration\nA051 A052 A053 A054\nHz Volts Amps Speed Reference\nLocal/Remote Control\nManual Start / Jog\nTerminal 1 Terminal 2 Terminal 3"
+  },
+  "b11df8d005ad8c08233368e0759420f61c26d5ce2cd831f39d7a609a9b2b6e6c": {
+   "id": "fn-pf4m-1",
+   "rewrite": "Phase UV Short\nPhase UW Short\nPhase VW Short\nOutput Short Circuit Fault\nHardware Overcurrent\nOutput Terminal Fault"
+  },
+  "207982721f2898036ffb9e9bda7b00eb21970d06ca954b873d0c25adf39b70ab": {
+   "id": "fn-pf4m-2",
+   "rewrite": "LCD display 8888  \nAll lights on non-responsive  \nFault reset not possible  \nPower cycle no response"
+  },
+  "2426c6fc1c65147f757f93310ddb781f9e2b8faab85b99063872f6d02d63ca57": {
+   "id": "fn-pf4m-3",
+   "rewrite": "Torque Current Limit\nCurrent Limit\nTorque Control\nMotor Torque\nParameter List"
+  },
+  "815e7b6ca79e72cd1f42b732793f9f291ddb61ec99ed4425b402af2da0db2609": {
+   "id": "fn-pf4m-4",
+   "rewrite": "EtherNet/IP communication fault\n22-COMM-E parameter download\nBOOTP/DHCP IP address\nConnected Parameter values\nDrive group 0 and 1\nFault Descriptions EtherNet/IP timeout"
+  },
+  "6ed1ec8db88fca1bf2cb196685c312a3ec83d319edb7a85a4272c378f593c330": {
+   "id": "fn-micro820-1",
+   "rewrite": "Startup Fault Auto Recovery\n\nFault Code Clear on Power Up\n\nNoise Immunity in Hazardous Area\n\nCommunication Error on Startup\n\nFault Reset Without Connected Components Workbench"
+  },
+  "c6f59f352029e4fa79e1bd1e3c549bfcd02a0f18800103507b54aea9ba4770c4": {
+   "id": "fn-micro820-2",
+   "rewrite": "GETACTIVERESOURCELIST download failed\n\nController has unaccepted changes\n\nUpload the project in the controller to overwrite current project content\n\nConnect button CCW crash\n\nCommunication fault download to controller"
+  },
+  "6c1b1f790e23ff0cb505f96eeed196f3a513261aa2e41f1e81d85eeadeef5b03": {
+   "id": "fn-micro820-3",
+   "rewrite": "Program upload failed\nCannot import file invalid format\nCCW upload option\nController project file corrupted\nMicro820 program recovery"
+  },
+  "feaf992aed2cde10b1a1df7dd1c177038a11607cd5d11a7401194e79faf6b8b6": {
+   "id": "fn-micro820-4",
+   "rewrite": "Embedded I/O output mapping\n_IO_EM_DO_00 output\nDigital Output configuration\nLED output wiring\nController Embedded I/O fault output"
+  },
+  "8537470bde1aa410b114a36713b5afe6c9ccf76f22a1e5abbcdb795f78c2e563": {
+   "id": "fn-micro820-5",
+   "rewrite": "RS485 wiring A1 (+485) B4 (-485) A2 (GND)\nMSG_MODBUS block TargetCfg MODBUSTARPARA\nAddr (UDINT) Node (USINT) Modbus node address\nModbus serial port configuration\nserialisol RS485 interface configuration"
+  },
+  "09994c7b8002f2bfff546e9dab65cb08a5442d2f5e9a3ef76ac69b884f3c5651": {
+   "id": "fn-ml1100-1",
+   "rewrite": "Analog Input Configuration\nInput Type 0-10 VDC\n4-20 mA to 0-10 VDC converter\nAnalog input terminals\nInput signal range\nScaling analog inputs"
+  },
+  "1dc17e368125a87bc40d17280dbb427b4d419dfeebf58a175e6b0c71c0814c5e": {
+   "id": "fn-ml1100-2",
+   "rewrite": "LCD panel ladder programming\nProgram PLC from LCD panel\nLocal program entry from HMI keypad\nMicroLogix 1100 manual program download\nLadder logic edit without RSLogix 500"
+  },
+  "5347e097c39cabcdbd99e38b33f62d676b0c69fc5c174e0105128ffa3d3de5e3": {
+   "id": "fn-ml1100-3",
+   "rewrite": "Modbus TCP\nEthernet Port 1\nCommunication Settings\nModbus Master\nModbus Slave"
+  },
+  "5a9356c20b24884b1e166e2b589e72620dcdf2d86657fb473e8741c3a07f95a6": {
+   "id": "fn-ml1100-4",
+   "rewrite": "Fault Display\nDisplay Not Show\nFault Codes\nMicroLogix 1100 Fault\nDiagnostic Display"
+  },
+  "c90e5c253eba06e2a552cb774a7ac00c9080aead90e7fa0d53816a0719f5ceba": {
+   "id": "fn-ml1100-5",
+   "rewrite": "PID setup analog input raw value\n1762-IF4 analog input configuration\n0-10V ultrasonic sensor raw value\nAnalog input scaling\nInput image register raw value"
+  },
+  "534f247ce393ed7294eb5a24e1b688edfaf28026f32704de480deec91d406f70": {
+   "id": "fn-ml1100-6",
+   "rewrite": "Analog Input Configuration\nBuilt-in Analog Inputs\nChannel 0 Input\nChannel 1 Input\nS: analog input data\nI: input image table"
+  },
+  "e0a4a21545cc097a7ee904ce72dc1a6110e37d6131ec29930cb0e6da1975f83a": {
+   "id": "fn-e3plus-1",
+   "rewrite": "Ground Fault protection motor\nGround Fault trip effect\nE3 Plus Ground Fault fault description\nGround Fault protection necessity\nFault Descriptions Ground Fault"
+  },
+  "116243f29a868bd772674d2ee162554b8d1b36605cab1b89974db04a93558642": {
+   "id": "fn-e3plus-2",
+   "rewrite": "DeviceNet explicit messaging parameter 60  \nparameter 60 61 62 63 input word mapping  \nanalog input configuration currents L1 L2 L3  \nparameter 60 = 114 page B-23  \nDeviceNet first word data mapping"
+  },
+  "ddbdac8ae5d0eb7e93a63ac125ae1286ca2ef7ff98dbc4b48c21f4d1a01694a8": {
+   "id": "fn-e3plus-3",
+   "rewrite": "Communication Fault F21  \nDeviceNet Reset  \nFault Reset  \nSoftstarter Overload Fault  \nEC3 Reset"
+  },
+  "b7b994b17c1fe3576c9f82cc5c81534e32a404b5466bd5e32aa6ce205afbe1a7": {
+   "id": "fn-e3plus-4",
+   "rewrite": "EtherNet/IP network topology  \nDLR ring port  \nDeviceNet nodes  \nStratix managed switch  \nPOINT I/O adapter  \n1734-AENTR dual-port Ethernet/IP"
+  },
+  "a51c0284c75f58f94d7ab0e71db7d51eb062e92f6b6d8e17f1bfeaad600cf526": {
+   "id": "fn-lxm32a-1",
+   "rewrite": "CANopen 3008:F digital input status  \nread 3008:F via SDO_read runtime  \nCANopen network ID unknown SDO_read  \ndigital input status hardware limit axis  \nterminal input status drive CANopen"
+  },
+  "d39a3e382193013b40f039dff7215d687d1f68d9b8eb1f9a8b7da8501bdaca0a": {
+   "id": "fn-m172-1",
+   "rewrite": "Structured Text procedure compile error\nScale analog value to INT\nLocal procedure compilation\nGlobal procedure compilation\nPage edit variable @localparameters.iLTemp_SPt1"
+  },
+  "a03ff82c2acb6a6719bd4e12a2f4aaf7483876105a0570b01b5e820d25d1b810": {
+   "id": "fn-premium-1",
+   "rewrite": "READ_VAR\nWRITE_VAR\nactivity bit %S6\nManagement Report\nlack of line resources\nlength error"
+  },
+  "c27f76d1d1523a16affef96ba972d27c512d23f52f5cd2ad719257d518c582ca": {
+   "id": "fn-x80-1",
+   "rewrite": "Analog input module data transfer to CPU memory address\n\nBMXAMI0810 analog input scaling\n\nRead analog input values in Unity Pro XL\n\nInput word address mapping analog module\n\nAnalog input %IW transfer to %MW or %MW register"
+  },
+  "b9c5fbe4bd25662f707b34d30faabac0626a079613cf8aa5eec9f3f115e68bf0": {
+   "id": "fn-micro810-1",
+   "rewrite": "communication settings\nprotocol selection\nethernet/ip connection\nmodbus tcp\npoint i/o analog input configuration"
+  },
+  "6e3342399bc57fceb56fe1d8ba2d8dda6beaf6415f6755195d251592bf26fe6e": {
+   "id": "fn-micro810-2",
+   "rewrite": "Digital Output DO\n24 V output voltage\nLogic value toggle\nOutput terminal voltage\nRelay close no 24 V output"
+  },
+  "e5b23fb6fa986fb5794122b68a0e83577d43bdc2eec1ea9fa95176f916c737bc": {
+   "id": "fn-ml1100-8",
+   "rewrite": "BOOTP Enable/Disable\nEthernet Communication Settings\nDHCP/BOOTP Server\nEthernet Port Configuration\n1763-L16BxBA BOOTP disable"
+  },
+  "4007c24e989b3ae1f1803da330efeba7f2cbc2dca30edbb775353b426189911d": {
+   "id": "fn-smcflex-1",
+   "rewrite": "Fault Descriptions\nF43 Line Loss C\nLine Loss C fault during acceleration\nCheck line wiring and phase loss detection\nStarting fault on ramp up with load\nSoft starter line loss troubleshooting"
+  },
+  "07108036c3c4952f0f971732461fde6f754cb720c5c879131e92dcfc4a39d4a4": {
+   "id": "fn-se-m172-2",
+   "rewrite": "Online programming without source code  \nModicon M172 upload program  \nlive edit PLC without original project  \nPLC go online without source code  \nproject upload from controller enabled"
+  },
+  "35202d2b829a4304d3ae1ef87e957cf98d8674492b7f15b822f2ac5b28d5129a": {
+   "id": "gs10-ch6-q1",
+   "rewrite": "Fault code ocA\nOCA fault corrective actions\nOvercurrent alarm drive\nGS10 drive fault code ocA\nFault Descriptions overcurrent fault"
+  },
+  "453a3e35cf8ec6e3f359cbe91470a5b9e974584711b65e2200bf11425d281f5e": {
+   "id": "gs10-ch6-q2",
+   "rewrite": "DC bus discharge time after power off\n\nDC bus voltage capacitors discharged\n\nSafe access waiting time after power off\n\nDC bus voltage threshold for discharged capacitors"
+  },
+  "bc83d5766801f956ad9692b773332d7f30542ea75cc7d823fe8e0bfd4b6b972d": {
+   "id": "gs10-ch6-q3",
+   "rewrite": "Fault Descriptions GFF fault\nGFF fault meaning\ngeneral fault function GFF\nfault code GFF\nGS10 fault descriptions"
+  },
+  "749ea5116b303195399cc140d336b5cb4def3b24eb513b06179eef0964ed7136": {
+   "id": "gs10-ch6-q4",
+   "rewrite": "IGBT overheating fault\noH1 fault code\nOvertemperature protection\nFault Descriptions IGBT overheat\nHeat sink temperature fault"
+  },
+  "0a454839d56442c52a0206e9b1cdb1fcb32f269cf112fe2f0e366d6b208c0c37": {
+   "id": "gs10-ch6-q5",
+   "rewrite": "DC link recharge procedure  \nPrecharge circuit  \nLong-term storage restart  \nPower-up after storage  \nDC bus capacitors reformation"
+  },
+  "3a6b976384b60940a09d574d0ed84f79a66a9a95510df22d181ca153b222ae82": {
+   "id": "pf40-q1",
+   "rewrite": "F5 OverVoltage\nOverVoltage fault description\nDC bus overvoltage\nFault Descriptions\nWhat to do for F5 fault"
+  },
+  "69998566df165fedc87e39423c120d2df40905a7b75d14bec2510d1a9279d82a": {
+   "id": "pf40-q2",
+   "rewrite": "PowerFlex 40 discharge time\nDC bus voltage decay\nWait after removing power\nSafe service interval\nBefore servicing after power removal"
+  },
+  "fd11c7d535dd7fae01ae8648f1b0cd492aee4bcb9428647bb08a9fa55f255e4d": {
+   "id": "pf40-q3",
+   "rewrite": "Fault Auto Reset\nAutomatic Restart After Fault\nFault Reset Mode\nRestart After Fault\nAuto Reset Faults"
+  },
+  "0ca6994524b28ee1bc32b7bf5c0b75df548dd84c82cb3026bfd2fb2f62f94f97": {
+   "id": "pf40-q4",
+   "rewrite": "Acceleration time\nSpeed reference\nMaximum frequency\nMotor overload\nFault Descriptions"
+  },
+  "ac019441ec40b9e878ba62ad0760c937c3fe1aab7ade7750f8b54de9ba46e41e": {
+   "id": "pf40-q5",
+   "rewrite": "Fault F33 Auto Restart Tries\nAuto Rstrt Tries fault description\nFault Descriptions F33\nPowerFlex 40 fault code F33\nAuto restart tries meaning"
+  },
+  "be28b76665f1089eaaa0b19e311153162b6c998b7b934256894579a77dca096b": {
+   "id": "pf4m-q1",
+   "rewrite": "Fault F13 Ground Fault\nGround Fault Fault Descriptions\nPowerFlex 4M fault codes F13\nDrive fault F13\nGround fault detection"
+  },
+  "d4f10488b92aa2adb4a818dc83405e99dba54e3b28bbf32222c07c59d30ddf98": {
+   "id": "pf4m-q2",
+   "rewrite": "DC bus voltage measurement\nverify bus capacitors discharged\npower terminal voltage check\nsafe torque off not applicable\ndrive safety before servicing"
+  },
+  "c6bc575b43387e054af58a1569a35ceb39d675d1864a5d6fa77b91b9aaba8b99": {
+   "id": "pf4m-q3",
+   "rewrite": "Run command terminal block\nDigital input wiring\nStart input terminal\nTerminal block run command\nDrive start enable input"
+  },
+  "7eec1bebe77a69f5b007dbaf054e1bc8303cd1c5be46fd12cea025a39fdb592c": {
+   "id": "pf4m-q4",
+   "rewrite": "F38 Phase U to Gnd\nFault Descriptions\nPhase U to Ground\nGround Fault U\nOutput Phase to Ground Fault\nFault F38"
+  },
+  "fc22167a0b82f11173bc073bac5cd3d294c8bc8bf20f5a46c72e28e154cb9d74": {
+   "id": "pf4m-q5",
+   "rewrite": "mounting clearances\nambient operating temperature\nminimum clearances\nPowerFlex 4M installation requirements\nenvironmental specifications"
+  },
+  "5d79aaf50e2aa71a6558e44546726e0a03df97891a5f04cb9098386a6b6791a7": {
+   "id": "acs355-q1",
+   "rewrite": "Fault 0001 OVERCURRENT\nF1 OVERCURRENT\nFault Descriptions\nOvercurrent fault\nDrive output overcurrent limit"
+  },
+  "2c99097ffa2c6e99651cb66e89f9b674659f2fe7fc9b89f3afbf25b278254d1e": {
+   "id": "acs355-q2",
+   "rewrite": "input power disconnection wait time  \ncapacitor discharge time  \nsafe work after power-off  \nDC bus voltage decay  \nresidual voltage after mains disconnection"
+  },
+  "77412a79d8a92d677755a70341b611696c979e48f4ab507e76c050042ff3f493": {
+   "id": "acs355-q3",
+   "rewrite": "Cooling fan replacement\nFrame size R1 R2 R3 R4\nFan replacement procedure\nMaintenance\nCooling fan removal and installation"
+  },
+  "f5198411d7d0cd3899a565d7f07f484eaf6bd829921f646c9a8402bcce20fb73": {
+   "id": "acs355-q4",
+   "rewrite": "Alarm 2035 SAFE TORQUE\nSafe torque off alarm ACS355\nSTO alarm 2035\nAlarm 2035 fault description\nACS355 alarm code 2035"
+  },
+  "277c1f21038881f189a0996a61e0a268c35ea472905b67d456bd75aab5c0a184": {
+   "id": "acs355-q5",
+   "rewrite": "Earth fault\nFault 16\nF16 earth fault\nFault 0016\nFault descriptions earth fault"
+  },
+  "4a94f3375f889c1d7468394613cda2f05c0be94ab71e71f88db549cb6df74f7a": {
+   "id": "micro820-um-q1",
+   "rewrite": "Fault code 0xD011\nMicro820 controller fault\nFault description 0xD011\nTroubleshooting fault 0xD011"
+  },
+  "a7459d6d472d75fab242c37db1e6d3e6ef2f4d99757c59b4d6c70756e00d7a71": {
+   "id": "micro820-um-q3",
+   "rewrite": "Project restore from microSD card\nPower-up restore\nSD card project recovery\nmicroSD card restore procedure"
+  },
+  "d98358bbee33e27c9ce94b88a9666ea996c3dd587a83f6bcf95d036497055aef": {
+   "id": "micro820-um-q4",
+   "rewrite": "hazardous location USB connection\nUSB cable power applied\nMicro820 hazardous area communication\nsafe connection under power\nexplosion hazard USB port"
+  },
+  "9b0c65595a7cd393c0dd7c607fd6c23107e12c4d4f7674c57ee8e8c281b75174": {
+   "id": "micro820-um-q5",
+   "rewrite": "DLG_ERR_RTC\ndata log error\nRTC fault\nreal-time clock error\nFault Descriptions"
+  },
+  "ad42d141d7688b0a3d676b940a6d6815503ddcf92ed631dfc8884d074e14dc55": {
+   "id": "micro820-in-q1",
+   "rewrite": "Analog input I-00 to I-03 voltage range\n\nMicro820 analog input range\n\nI-00 I-01 I-02 I-03 analog input specification\n\nAnalog Inputs configuration\n\nInput voltage range analog inputs"
+  },
+  "e1ce94a345cbc2e74ec9240ebf52e79f89bd6f7256bde7aad5392b5fe9e96a65": {
+   "id": "micro820-in-q2",
+   "rewrite": "relay contact ratings 120 V AC\nrelay output ratings\noutput relay contact current rating\nrelay contacts\noutput contact ratings"
+  },
+  "48b29fc75bea025439c03e2d800882c8cf0ec3b4fb66da35d37da06d3b497255": {
+   "id": "micro820-in-q3",
+   "rewrite": "analog input wiring cable shield grounding\nMicro820 analog input shield drain wire\nanalog input cable grounding terminal\nshielded cable analog input\nanalog signal wiring grounding recommendations"
+  },
+  "98737cb34b5573c0fced971002200d5320122157dbdaa381b5f8e4cb03692c11": {
+   "id": "micro820-in-q4",
+   "rewrite": "Micro820 controller module spacing\n20-point controller mounting spacing\ncontroller panel mount spacing requirements\nmodule clearance for Micro820\nmounting space between modules"
+  },
+  "086bc15216d7a0aca01aaa37764555ae68e005272c054f355871375b8b53dba3": {
+   "id": "micro820-in-q5",
+   "rewrite": "hazardous location serial cable disconnection\npower applied communication cable removal\nserial port disconnect energized equipment\nhazardous area communication wiring\nsafe disconnect under power"
+  },
+  "545a06f53be80d77a66303268dc0054064656e127693b879a6546b89933bba02": {
+   "id": "ml1100-q2",
+   "rewrite": "Real-Time Clock battery backup\nLow battery and power loss\nRTC data retention\nBattery low indication\nPower removal and clock memory"
+  },
+  "5dace29f7cff8947d283f636e783c713fab8ba456c0e6921655319dc6a47cce7": {
+   "id": "ml1100-q3",
+   "rewrite": "Operating system update\nFirmware upgrade\nController operating system\nOS revision\nMicroLogix 1100 firmware update"
+  },
+  "5817e34593ffaea8b7363e7151ade17ad1d34aad79084bdc4a780d5546b500d7": {
+   "id": "ml1100-q4",
+   "rewrite": "Lithium battery disposal procedure\nBattery disposal instructions\nRemove and replace battery\nBattery handling and disposal\nDisposal of lithium battery for controller"
+  },
+  "225305eb16ef5c6d36c1f033a6408687d381874a422a20897280c88f51709cba": {
+   "id": "ml1100-q5",
+   "rewrite": "Duplicate IP address detection\nIP address conflict\nNetwork duplicate address\nFault Descriptions\nCommunication Settings"
+  },
+  "37b9b982b3329b06d84ec156c0c38326214c5546da8c1fd16adc274d80331e84": {
+   "id": "smcflex-q1",
+   "rewrite": "Shorted SCR fault causes\nShorted SCR fault troubleshooting\nFault Descriptions Shorted SCR\nSCR short circuit diagnostic\nShorted SCR corrective action"
+  },
+  "72d297c1ade691ba45d204c3f0385aa2f6bf21ba52890757f69bc43462446ba6": {
+   "id": "smcflex-q2",
+   "rewrite": "Acceleration Time  \nStart Ramp Time  \nInitial Torque  \nCurrent Limit  \nKick Start"
+  },
+  "20f9f7590f5ba5b0dbcbf973b1beaa47dea7eb530dfa5a165a925e236cb6f880": {
+   "id": "smcflex-q3",
+   "rewrite": "Hazardous voltage motor circuit controller off\n\nMotor circuit voltage present when off\n\nHazardous voltage warning\n\nSMC Flex off state voltage\n\nMotor terminals hazardous voltage"
+  },
+  "9f32d1be8688b94e8a02106c359de01157945a180caa07b3a7e15e023929505e": {
+   "id": "smcflex-q4",
+   "rewrite": "Overload Class\nClass 10\nClass 15\nClass 20\nClass 30"
+  },
+  "6b9b1443a998ff71e97e22735574df5241a302572621720f6a34aa4c500ca717": {
+   "id": "smcflex-q5",
+   "rewrite": "NVS Error Fault 39\nFault 39 NVS Error\nNVS Error\nFault Descriptions\nF39 NVS Error"
+  },
+  "28cd14e8d0f018acf7abb526f7ce44ac496209625137b68ce07327104dad46d1": {
+   "id": "e3plus-q1",
+   "rewrite": "Fault Code 4\nTrip/Warn LED red code 4\nOverload relay trip code 4\nFault Descriptions\nE3 Plus trip code 4"
+  },
+  "a17095d820042debfdad9b93b3fe6fb5519df78abffb6bcab1f518e57f8f46b2": {
+   "id": "e3plus-q2",
+   "rewrite": "Trip Class parameter\nTrip Class range\nE3 overload relay Trip Class\nTrip Class setting\noverload relay parameter range"
+  },
+  "e5dffd8115a8965994aa35e58f9e41721a564243d77b1ed6f38e28c8e6626af7": {
+   "id": "e3plus-q3",
+   "rewrite": "Phase Loss Trip Delay\nPhase Loss Protection\nUnderload Fault Delay\nTrip Delay Default\nFault Descriptions Phase Loss"
+  },
+  "8074bbe23932e05418093658b6e9c98039bd77da51910118eeb2e3e7a86b70c1": {
+   "id": "e3plus-q4",
+   "rewrite": "Overload relay trip reset\nManual reset overload relay\nReset after overload trip\nFault reset\nReset pushbutton overload relay"
+  },
+  "740bc611f76609b203e1932fdd74a458bd8762820df9345c38f17a4d6bc1eac5": {
+   "id": "e3plus-q5",
+   "rewrite": "Test/Reset button motor running\nE3 relay test reset during run\ntrip test while motor running\nreset function operating state\nfault reset during operation"
+  },
+  "1fa484b81f27c4186bd8b93ba3c386cf6d82f421ef87fc826a4980e7d019cbc8": {
+   "id": "smc50-q1",
+   "rewrite": "Starts per Hour fault 29\nFault 29\nStart per Hour\nFault Descriptions\nSMC-50 Fault 29"
+  },
+  "5edbae1f50a284da45236c976093711ddaf1bc24715f6b951610b4201773c681": {
+   "id": "smc50-q2",
+   "rewrite": "SCR Overtemp fault code 10\nSCR Overtemp fault code 60\nFault Descriptions SCR Overtemp\nF10 F60 SCR Overtemp"
+  },
+  "fd0de4e0f89a4c83136bf70d11177fb9a42d08bde038e81fe316fce3da89e27e": {
+   "id": "smc50-q3",
+   "rewrite": "SMC-50 load terminals live when controller off\n\nIsolation contactor not used load terminals energized\n\nLine voltage present on load terminals when off\n\nController off load terminals live\n\nVoltage at T1 T2 T3 when off"
+  },
+  "dec20f57a20bba3be46aa1acafab34aa752a91c2f96361fd3d5aabad5ebd7e10": {
+   "id": "smc50-q4",
+   "rewrite": "Fault 46 Ov Pwr Reac+\nFault 46\nOver Power Reactive +\nReactive Power Over Limit\nFault Descriptions"
+  },
+  "98b89b75d4435a760cc1549fe9271e21fc34853db097583ac3fe9453dae234bf": {
+   "id": "smc50-q5",
+   "rewrite": "Power module check  \nDisconnect control power first  \nPower module inspection  \nModule removal procedure  \nSMC-50 power module diagnostics"
+  },
+  "cce019a21710ac9b0b9c66f8e2eadf295049f4f16a148bd75e97f80664c00078": {
+   "id": "tq-01",
+   "rewrite": "Maximum current\nCurrent limit\nRated output current\nOvercurrent setting"
+  },
+  "b1f8662f692c3f0ad7134e3dabc28350b2b8628e61f05b8ca82704a23f8bbd75": {
+   "id": "tq-02",
+   "rewrite": "supply voltage range\ninput power supply\n24 VDC supply\noperating voltage\nrated supply voltage"
+  },
+  "f8a914c74e355512c544c379b89600f9eb1eb7b3883226256b3d9fbf06411e81": {
+   "id": "tq-04",
+   "rewrite": "supply voltage\ninput voltage range\npower supply voltage\nmicro810 power supply\nrated supply voltage"
+  },
+  "c7744ddf33d1984f136005e23c76ff4a8a4706038d587a8986df296709a37e64": {
+   "id": "tq-06",
+   "rewrite": "supply voltage\npower supply voltage\ninput voltage range\nrated supply voltage\nvoltage requirements"
+  },
+  "725db02bd29dec06db1157e0395dd214b02fae04d87ea2aac9140b9d82572dea": {
+   "id": "tq-07",
+   "rewrite": "Operating temperature range  \nAmbient operating temperature  \nTemperature specifications  \nStorage temperature range"
+  },
+  "87ce5fbb753e9d7d40823ad4f00615923943716459304814dac77d92bc20c80f": {
+   "id": "tq-12",
+   "rewrite": "RFI jumper removal\nHigh-leg delta supply connection\nGround fault filter jumper\nLine-to-ground leakage current\nInput power configuration"
+  },
+  "c7d46320e7e2042e6a0b782019204a2315f2d083da486e82231eae3fa9eab330": {
+   "id": "tq-13",
+   "rewrite": "RFI jumper location\nFrame D0 RFI jumper\nRFI suppression jumper\nGround fault jumper RFI\nInstallation location jumper"
+  },
+  "ec643327714029676ead193a8b1389c06c25aa3842fc99345fe5fdfae1a39e3b": {
+   "id": "tq-14",
+   "rewrite": "RFI jumper removal\nhigh-leg delta supply\npowered maintenance procedure\ninput power isolation\nline reactor or EMI filter jumper"
+  },
+  "d309627504498b10b570584216fa7943a37af36204fb78e1c81e3f2cbc1b36f6": {
+   "id": "tq-15",
+   "rewrite": "RFI jumper\nradio frequency interference jumper\nEMI suppression jumper\nground jumper\nshield jumper"
+  },
+  "b97ebeb427ca7d915d19c900e2011a1f40c4e14bc688e7a80ce1a46096d2b672": {
+   "id": "tq-16",
+   "rewrite": "Overcurrent trip\nFault code F81\nFault code F081\nOutput current limit\nMotor overload fault"
+  },
+  "0c11f89e2b2fc2296770e5a6e9932189c73aef30f91c77fc13d7dda09a368219": {
+   "id": "tq-17",
+   "rewrite": "Overload trip\nOL fault code\nFault code OL\nMotor overload\nDrive overload protection"
+  },
+  "d764d83f729afa91cbdfd2bcfee5a5251acfa37af84fc36435bd1491e876c18d": {
+   "id": "tq-18",
+   "rewrite": "General Fault Flag\nFault Code F81\nFault Code F081\nFault Descriptions\nAlarm History"
+  },
+  "af203be5a4c14b203c4b65e6afa1ccd5ede4682c3fd4a59a1d187810001ba949": {
+   "id": "tq-19",
+   "rewrite": "Overvoltage trip\nDC bus overvoltage\nFault F81\nOvervoltage detection\nBraking resistor\nFAULT: OVD"
+  },
+  "0fdaa061eb199af913b38e192119cf3a34f29ab3ef6922709b776e0fea722c24": {
+   "id": "tq-20",
+   "rewrite": "Fault code F? ORP\nORP fault\nAnalogue Input ORP\nFault Descriptions\nProcess value ORP"
+  },
+  "5d3011c157b99e2ad3ee3202d549e7e4adc773baf7494c961a6aaa7bddbd3c1e": {
+   "id": "tq-21",
+   "rewrite": "F81 IGBT Over Heat\nIGBT over temperature fault\nFault Descriptions F81\nHeat sink temperature check\nDrive cooling fan check"
+  },
+  "efe005e005b5287bb334f80524a362d21bcef2e8c9242125a9a88e7c01f55fe4": {
+   "id": "tq-22",
+   "rewrite": "Low Voltage Alarm\nUndervoltage Fault\nDC Bus Undervoltage\nSupply Voltage Fault\nFault Code LVA"
+  },
+  "8e5b1ce5b6030819a9b91d381e6bf3b96c7a22352cefe954eb69c75768a2b58e": {
+   "id": "tq-23",
+   "rewrite": "Communication Timeout\nPLC polling timeout\nCE10 fault\nCommunication fault code CE10\nTimeout setting"
+  },
+  "83dc7157314aa3c2fc1f446e0da9e135f3298a2b5e8aac43dc7f77a36588c709": {
+   "id": "tq-29",
+   "rewrite": "CANopen M12 5-pin connector pinout\nM12 connector pin assignment\nCANopen signal and terminal names\nCAN_H CAN_L 0V +V pinout\nconnector wiring diagram 5-pin M12"
+  },
+  "34ecf9f19b8980defef07ac1fb4a732e7e8d8ba3c09573177022a74708fdc367": {
+   "id": "tq-30",
+   "rewrite": "CAN_H CAN_L 120 ohms termination resistance  \nCANopen bus termination resistance  \nCAN_H CAN_L 40 ohms fault  \nCANopen network resistance measurement  \nBus termination check"
+  },
+  "a5d66572186a4a05f791ab8a9745adc831f54b126cdb91f7d4b2b7878c891cf1": {
+   "id": "tq-31",
+   "rewrite": "CANopen boot-up COB-ID\nnode boot-up message COB-ID\nCANopen boot-up message identifier\nBOOTUP message COB-ID\ncommunication object identifier boot-up"
+  },
+  "f39e3c0500693138d6e885a3efeb24cb51f2e11bcb4c80d90d6b26a03b4c4a56": {
+   "id": "tq-32",
+   "rewrite": "CANopen SDO communication objects\nSDO client COB-ID\nSDO server COB-ID\nCOB-ID parameter\nCommunication Settings"
+  },
+  "1b49e02a12cfec69d44a1b79d9de4ead76f0a2188a2fa4de902b3e3ba4bf8f96": {
+   "id": "tq-34",
+   "rewrite": "CAN address setting\nExpansion module CAN address\nTM171EP14R CAN communication\nCAN node address\nCommunication Settings"
+  },
+  "4469cb1c66def77b8e6c04f48c8cbe279b022f97f7889a7138df1a16ea9e5464": {
+   "id": "tq-35",
+   "rewrite": "CAN bus cable length 500 kBd\nTM172 embedded CAN expansion bus\nCommunication Settings CAN\nMaximum bus length\nCAN baud rate 500 kBd"
+  },
+  "3e62c86625f864debc18ff96627fb6e3b8df589bdf3ffe3d6c4823830eb4091b": {
+   "id": "tq-36",
+   "rewrite": "CAN bus termination\nCAN expansion bus termination\nTM172 expansion bus\nbus terminator resistor\nend of line termination"
+  },
+  "679da5cca7cda3ecbf40351a1949295b4f201d402dddf4af8976ef6c8e0907c1": {
+   "id": "tq-37",
+   "rewrite": "CAN address default value\nCAN address range\nAddress setting CAN bus\nTM172 CAN object address\nCommunication settings CAN address"
+  },
+  "2a9cb6cc00fac838dbb002262488c54b80c67d6b14d3a3420354ee4cfb23af49": {
+   "id": "tq-39",
+   "rewrite": "Modbus RTU terminal port\nbuilt-in terminal port communication\nCommunication Settings Modbus RTU\nserial link terminal port\nModbus RTU protocol"
+  },
+  "d07f2f09ce55cc13ee502dde1ea8e0d6d59e2f56f71f08351c61703981fc937c": {
+   "id": "tq-40",
+   "rewrite": "I/O Error on Channels  \nBMXAMI0810 channel error  \nAnalog Input module no wiring  \nFault Descriptions I/O error  \nchannel status error"
+  },
+  "815a664bffa16be05fabe881d07b2fcada4645af9a57bd699972b1f7f1f2fcdd": {
+   "id": "tq-41",
+   "rewrite": "BMX AMI channel not in use\nAnalog input channel not used\nChannel status not in use\nDisabled analog input channel\nI/O channel configuration not in use"
+  },
+  "8a365163efcd95a61dd5099a8365a6d7333caf1fe442d2a702e49bc0dddaf1e5": {
+   "id": "tq-42",
+   "rewrite": "Lockout procedure rack power\nBMXAMI0810 replacement\nModule removal and installation\nBackplane power isolation\nRack de-energization sequence"
+  },
+  "780be17ab6e620a335e0e2765619388c72e91d87dc08ed172e85e2d41cd07650": {
+   "id": "fr2-pf40-00",
+   "rewrite": "F12 hardware overcurrent fault  \nCurrent limit 6 A  \nmotor start-up overcurrent  \noutput current below 2.5 A  \novercurrent fault troubleshooting"
+  },
+  "cbc1456620456ede280818b8d88984685533728e6957d1d7747e27d526b99f49": {
+   "id": "fr2-pf40-02",
+   "rewrite": "Digital Input 2  \nTerminal 6  \nSRC mode  \nSNK mode  \nDigital Input Wiring Diagram"
+  },
+  "84a391a2ad6f95ee5dd9b67967620b4693e54afbd18d2450e357689ae6f9a0fe": {
+   "id": "fr2-pf4m-03",
+   "rewrite": "Modbus RTU communication no response  \nRS485 receive no transmit  \nD015 parameter  \nCommunication Settings  \n2-wire half duplex RS485  \nModbus address baud rate parity"
+  },
+  "af106f7576c44fdb297862279a08cb22dcb6961f2f4af16be04cffbedfdc414b": {
+   "id": "fr2-pf4m-05",
+   "rewrite": "A433 Auto Run\nA451 Auto Rstrt Tries\nPower Up Start\nAuto Restart\nStart at Power Up"
+  },
+  "8ed8be83cdb2f610be8342aad6126922469f3fe500bae5c2dda51b52894d7fa3": {
+   "id": "fr2-acs355-06",
+   "rewrite": "parameter backup\nDriveWindow Light\nDriveComposer parameter backup\nfree software tool\nABB drive parameter backup"
+  },
+  "893b4e043c38fa62d82ecec12136ee7f3ee99e14cbbbae78ea19087011ae2667": {
+   "id": "fr2-micro820-um-08",
+   "rewrite": "Online Editing\nRun Mode\nProgram Mode\nDownload\nMicro820 CCW"
+  },
+  "ee08f336e4ab068e91e8721a9ff4de9e7bfd5689ed4f29c62db37882a4820a2e": {
+   "id": "fr2-micro820-um-09",
+   "rewrite": "Power cycle logical values reset to zero  \nRetentive memory variables reset to zero  \nChange logical value reverts to zero  \nProgram mode online offline download reverts  \nPLC data table values not retained"
+  },
+  "b5c517ad53badc6d8b8c89e08d865f1bec5acbd3a1f9b237dbf36c16250e762d": {
+   "id": "fr2-micro820-um-10",
+   "rewrite": "DHCP mode  \nstatic IP address  \ncommunication port  \nUSB communication  \nIP address configuration"
+  },
+  "a32c0b57008e761154a20414373846586c72c42aa40d5937411570d84b3ed680": {
+   "id": "fr2-micro820-in-11",
+   "rewrite": "24VDC power supply connection\n1606-XLB240E compatible power supply\n2080-PSAC-12W power supply\nMicro820 power input terminals\nPower supply current rating 0.5 A"
+  },
+  "82ac5c3c2af1319ddaa37c9049791bf759ecf495529dcb66d1da76c1e963d441": {
+   "id": "fr2-micro820-in-12",
+   "rewrite": "SD card compatibility\nIndustrial grade SD card\nStandard SD card\nController SD card requirements\nMemory card specification"
+  },
+  "a0cbd7492f1736f891b564da5a348c908f825565e140ebd2fec7089e4e0b9c48": {
+   "id": "fr2-ml1100-13",
+   "rewrite": "4-20mA Analog Input Signal Loss  \nControl Valve Not Throttling  \nTransducer Control Signal Missing  \nFault Reset Procedure  \nMicroLogix 1100 Fault Clearing Procedure"
+  },
+  "f451787c5b6602cef2672fa5e640a5e39a4b9fae6fee2c65adfb8a42764d22c6": {
+   "id": "fr2-ml1100-14",
+   "rewrite": "firmware update via serial port\nControlFlash communication error\nRS-232 driver RSLinx\nSystem Comms serial connection\nEthernet driver loaded\nLED flash fault condition"
+  },
+  "c2249038f09d372efd034f6eb487946f9aef9fcd85f1a6274c0567bf41115e9d": {
+   "id": "fr2-ml1100-15",
+   "rewrite": "DH485 communication loss\nRSLinx PIC/AIC driver\nNetwork AIC / NET AIC\nPLC not visible in RSLinx\nPower cycle restores communication"
+  },
+  "072e23aaca0062fc0814841b1de12523ea3fdf46075b9679ffa0c29f34a476f8": {
+   "id": "fr2-smcflex-16",
+   "rewrite": "DeviceNet I/O Status\nI/O Status Readback\n\nOutput Status\nInput Status\n\nDeviceNet Communication Settings"
+  },
+  "c2d7f70d701243116763fffe0b4482c5c838317a3150ad3700471ab872f08ce3": {
+   "id": "fr2-e3plus-19",
+   "rewrite": "Ground fault trip output B\nOutput B close on ground fault trip\nTrip Select ground fault output assignment\nOutput B relay function\nShunt trip output B ground fault"
+  },
+  "5a33632d84874704a43e50e02833a89d0f674e1e6d40493585b5189bd3cb25e4": {
+   "id": "fr2-e3plus-20",
+   "rewrite": "EtherNet/IP Input Tag Mapping\n\nOutputAData TripReset\nAuxiliary Feedback OutputA\n\nInput Tags Bit Mapping\n\nAOP Tag Structure"
+  },
+  "d9b8c484e9606f2c7b231018b3110f5960ae313f4f85dc15c75eab421b143e39": {
+   "id": "fr2-micro810-21",
+   "rewrite": "2-wire proximity sensor input\ninternal input resistor\nsourcing input common\n24V DC input circuit\ninput leakage current\ninput load resistor"
+  },
+  "b113f922981918ba8fb0da4db44076bc62671065d3a90c52ca3224c26c3f97ea": {
+   "id": "fr2-micro810-23",
+   "rewrite": "Password Protection\nProgram Password\nController Access Password\nMemory Protection\nRead/Write Protection"
+  },
+  "89e872345c74b0eff4250d6bd40010226f93cf0940ae2c58f54cb7c973954e56": {
+   "id": "fr2-se-canopen-hw-26",
+   "rewrite": "CANopen communication fault\nCAN_H CAN_L CAN_GND pin assignment\nRJ45 terminating jack\nFr1 = CANopen\nnode address\nCommunication settings"
+  },
+  "6734b0b53e1ef747eb800c4a8b3c830d05b53690f6ff0f6c3ef601c67356206e": {
+   "id": "fr2-se-premium-serial-30",
+   "rewrite": "TSX SCA50 installation\nMODBUS communication through integrated channel 0\nCommunication Settings\nMODBUS driver configuration\nTSX SCP 114 and integrated channel 0 hardware configuration"
+  },
+  "c41451038ee2e62e1c322ee645af167a6216af7909d59e61528a1ece1d64461a": {
+   "id": "fr2-se-premium-serial-31",
+   "rewrite": "Modbus communication fault\nRS232 communication card\nSub9 connector pinout\nCommunication Settings\nSerial link configuration"
+  },
+  "f8c9c47b26af757b4e18c291f9982d7ac75e2429182d6cc73096c181714cd88f": {
+   "id": "fr2-se-premium-serial-32",
+   "rewrite": "USB to Serial Converter\nPL7 Junior communication\nMicro PLC serial communication\nPremium PLC serial communication\nDriver not functioning"
+  },
+  "acab11439877688b2c2529977c0a2233c4269eb0ef95c39cc8eab6e1ed27016f": {
+   "id": "fr2-se-x80-analog-33",
+   "rewrite": "AMIo800 Analog Input Module I/O LED red\nAnalog Input Module fault LED\n4-20 mA input signal\nVFD auto batching not working\nAnalog input module connections\nFault Descriptions"
+  },
+  "66372c3d554cf9a9b6a356b1c72e47da7cace7e4d47f74e074c4d9d535ac8711": {
+   "id": "fr3-pf40-01",
+   "rewrite": "Local control start button no run LED\nTerminal 1 to 11 jumper\nP036=0 P038=0\nRun LED blinks no fault\nKeypad start no output\nFault Descriptions run command not accepted"
+  },
+  "e2ed426ef491c40f07efdd5c0c4221b3c351cb9910855c9d7bda8b2f9925a2b1": {
+   "id": "fr3-pf40-02",
+   "rewrite": "Dynamic Braking\nA080\nA081\nA082\nF05 Overvoltage\nStop Mode\nDC Brake\nBR+ / BR- terminals"
+  },
+  "ff15c5a320b9c07b83958b75b2ab4e2c789da10eb5292cdf10ee1c07bb9c3382": {
+   "id": "fr3-pf4m-03",
+   "rewrite": "Modbus communication parameters  \nModbus register addresses  \nRJ45 pin 4 pin 5  \nRS-485 converter  \nData format to register"
+  },
+  "daed06fa125ae13ba133ddbb370c1f2b2584afd67c87562c0ee3c27d9d1c2242": {
+   "id": "fr3-pf4m-04",
+   "rewrite": "RUN indicator off with FWD command present  \n24 VDC run input present no fault code  \n4-20 mA speed reference present drive stops  \nreboot required to restart inverter  \nFault Descriptions  \nDigital Input Status FWD RUN input"
+  },
+  "3d453282429657cf490c6e190397d963cd0f5c80b5baddd14d23aa57a4e859b0": {
+   "id": "fr3-pf4m-05",
+   "rewrite": "Keypad lockout\nd001 only\nfactory reset\nparameter reset\n1203-USB communication\nEEPROM clear"
+  },
+  "3f6a3a75a8fa3a6eff6bd6ae23711080b41e43f202f3bbee7bd54917b1c5de1a": {
+   "id": "fr3-micro820-um-08",
+   "rewrite": "RS232 communication with non-Rockwell device\n\nSerial port protocol configuration\n\nASCII message send and receive\n\nLoad cell reading request response\n\nCIP Serial alternative communication"
+  },
+  "3c5e2f92fd7c4893bfa44a0585e81064a77032e596742d4ec030825ace5ac3a9": {
+   "id": "fr3-micro820-um-09",
+   "rewrite": "Modbus RTU communication\nSerial communication output\nHardwired communication wiring\nGateway SCADA platform\nRS-485 connection"
+  },
+  "6e6c041d9320e58ae0820effec66146817d0be6d5a2c759ebeb3f6a62f836e3f": {
+   "id": "fr3-ml1100-13",
+   "rewrite": "High Speed Counter input voltage range  \nEncoder input 0-5 V  \nI:0/0 I:0/1 HSC mode 6  \n24 VDC input not compatible with 5 V signal  \nPulse train wiring to high speed input"
+  },
+  "9e883eedd24a6fa7f1ea26f6cab3f754427a534e7f289140249753693fdc251e": {
+   "id": "fr3-smcflex-16",
+   "rewrite": "Output Voltage with Starter Stopped  \nTerminal 16 17 Start Stop Control  \nFull Output Voltage no Motor Connected  \nSoft Starter Stopped Output Present  \nControl Input Off Output Voltage"
+  },
+  "1a52a42fc1a00428160028fa22911fa2e75afa3c248e64cc19c51f10f25e6774": {
+   "id": "fr3-e3plus-19",
+   "rewrite": "Non-volatile MAC ID loss\nDeviceNet overload node address reset\nADR function cannot correct MAC ID\nLow voltage causes MAC ID reset\nNode number changes to 63 after power loss"
+  },
+  "c81cecc72d572a31f8a8fe5bf5da06db2a5b0c7f6ace9bbf843fefc8183375a3": {
+   "id": "fr3-micro810-21",
+   "rewrite": "Input COM0 and -DC24 terminal function\n\nOutput +CM0 and -CM0 terminal purpose\n\nInput group common COM0 wiring\n\nOutput common terminals +CM0 -CM0"
+  },
+  "3934378ce8fe673275918c7418546f1ddafcdc57b52bba1adc4df2de42036364": {
+   "id": "fr3-micro810-22",
+   "rewrite": "Micro810 LCD socket\nHMI compatibility\noperator adjustable lube rate\nblade lube rate parameter\nLCD ribbon cable\nanalog output adjustment"
+  },
+  "2a35086432a34489246f4e6ce6202a7ea2969793948d4516aa017497585ce32f": {
+   "id": "fr3-gs4-ch2-24",
+   "rewrite": "single-phase input\n3-phase VFD derating\n230V single-phase power wiring\npower wiring diagram\ninput phase loss"
+  },
+  "c537991b6ae1ff5c9cb15a9b75f69893dc3d5482c5805042ed98678361f787e6": {
+   "id": "fr3-se-m171-28",
+   "rewrite": "CAN communication not established  \nAddr_CAN_OB  \nCAN node ID  \nCAN baud rate  \nDIP-switch settings  \n120 \u03a9 termination"
+  },
+  "f46142f919084d2e69673c1b1f761bb0ec7d0e8273f4e9eca1755396c6d6e268": {
+   "id": "fr3-se-m171-29",
+   "rewrite": "TM171 programming software\nTM171 communication cable\nTM171 download program\nTM171 PC programming\nTM171 controller programming interface"
+  },
+  "b6ff7e19ec271bc7ca2603d390a6f92c79932644946b854292e5b12a4a4e1f24": {
+   "id": "fr3-se-m171-30",
+   "rewrite": "Modbus to BACnet protocol converter  \nBACnet building management system interface  \nfan speed control via Modbus  \ncommunication settings Modbus BACnet  \nRS-485 protocol conversion"
+  },
+  "92b66ec5dbef7448051f946c8d276ee1b87292957794426618638ca9bfea740f": {
+   "id": "fr3-se-m172-31",
+   "rewrite": "System Fault\nWDT: 3\nWatchdog timer fault\nPLC program download\nblank program\nPLC reset\ncommunication cable\nUSB programming cable"
+  },
+  "2f2d24f01c08b17752572d9819a7a35b82550e1b2872ff908585e1d24c703434": {
+   "id": "fr3-se-m172-33",
+   "rewrite": "IP address configuration\nNetwork settings IP address change\nCommunication settings BACnet Modbus\nOpen protocol support\nEthernet communication settings"
+  },
+  "878503f19fb3e4afff29bf530d00a24630c13ae63e4ef17927839ba1c71b0c4f": {
+   "id": "fr3-se-premium-serial-34",
+   "rewrite": "READ_VAR vs SEND_REQ Modbus master  \nModbus serial slave polling  \nSCP111 channel 1 configuration  \nmodbus master read request  \nREAD_VAR SEND_REQ difference  \ncommunication settings Modbus protocol"
+  },
+  "101609f2f37d72701f06198916d36b13aa43af90f0797aae1e750c3c3b8eb20a": {
+   "id": "fr3-se-premium-serial-36",
+   "rewrite": "Send_Req Modbus function code 16#04\n3x registers read\nTSX 114 PCMCIA card\nPremium processor Send_Req\nRead_Var Write_Var 4x registers"
+  },
+  "20717776af69421ee6fefc4c17d10741e761c53b7750f5ee0d40b20fc40e91e8": {
+   "id": "fr3-se-x80-analog-37",
+   "rewrite": "Analog Input Configuration\n4-20 mA input channel configuration\nmodule fault\nchannel configuration error\ncurrent input 4-20 mA\ninput card error"
+  },
+  "f802c8958b5d192d04397e180e309e9c2f8a667243d64b8f422eb82a6553d649": {
+   "id": "fr3-se-x80-analog-38",
+   "rewrite": "Analog input update time  \nFAST task 5 ms analog input sampling  \nAMI0810 raw value %IW0.6.7  \nAnalog Input Configuration  \nAnalog input filter time  \nInput refresh rate 1 ms 1 ms per active channel"
+  },
+  "ab691f95a80e911e402ffda6ab8028e6d5ed7c6292854f28df32c7dddcd17901": {
+   "id": "of-acs355-4fac6dbe",
+   "rewrite": "Fault 0002\nFault 2\nFault Descriptions\nACS355 fault code 2"
+  },
+  "1c90f4aa9bb65abe0f4bdd69624b2f239fd92c35c552a1579a6b7782741ebf8c": {
+   "id": "of-acs355-446e21f2",
+   "rewrite": "Fault 0003\nFault code 0003\nFault descriptions 0003\nDrive fault 0003\nAlarm 0003"
+  },
+  "6ba337b399d209a19c5e27db91885b13140496c4cc5cbb32433b5afdbfb624bb": {
+   "id": "of-acs355-0b6dfcd5",
+   "rewrite": "Fault code 0008  \nFault 0008 description  \nFault Descriptions 0008  \nFault code meaning 0008"
+  },
+  "c1ab7249b019301bf2d8b5403e38feb6bc186bab3f740062c2feafedd1da3738": {
+   "id": "of-acs355-0b08e3dc",
+   "rewrite": "Fault 0010\nF10 fault code\nFault Descriptions\nACS355 fault 0010"
+  },
+  "ac0ac602e3da607ad76c3fd5ee9827a94633e1d1c1c147eb444219c06b37fdaf": {
+   "id": "of-acs355-07a8e31c",
+   "rewrite": "fault 0014\nF14\nFault Descriptions\nACS355 fault 0014"
+  },
+  "9d072e3f0603ba0634312f3af7fe62c4daeb9752ba19201b1403b325a9c32c87": {
+   "id": "of-acs355-d5153a8e",
+   "rewrite": "Fault code 0016\nFault code F16\nFault descriptions\nTrip code 0016\nDrive fault code 0016"
+  },
+  "8c19017e8121f3a495022c703f6e56ccd62d76fc7fbcbc29ab96b9b579ce0d71": {
+   "id": "of-acs355-c966f403",
+   "rewrite": "Fault 0024  \nFault 24  \nACS355 fault 0024  \nFault code 24 meaning  \nFault descriptions 0024"
+  },
+  "2cd51fbf1fcb27a3cc9393416bbf807a106291288b657f4c8ec7aa1df1cb85f2": {
+   "id": "of-acs355-6dedf838",
+   "rewrite": "Fault 27\nFault 0027\nFault code 27\nFault code 0027"
+  },
+  "0a715fbc82cb8ba4110facf2592e6d757145932253f3aa2349fecd7a0e7d0eeb": {
+   "id": "of-acs355-fb363655",
+   "rewrite": "Fault 0028\nF28 fault description\nACS355 fault code 0028\nFault Descriptions\nFault code 28 Meaning"
+  },
+  "ad283aadf79e96c20d7ddca61ee83f921a55827058500635f695edd7431f1795": {
+   "id": "of-acs355-d5d54e22",
+   "rewrite": "Fault 29\nF29\nFault 0029\nFault description 29"
+  },
+  "eb4e18bc3109d2a7179eee7f371ac83462634c91a0747802939e202397274ea9": {
+   "id": "of-acs355-727350de",
+   "rewrite": "Fault 0036\nFault code 0036\nFault descriptions 0036\nACS355 fault 0036\nFault Description 0036"
+  },
+  "c8d59e21631c8a3453132d3642c8120a1bb396a2fc6e3807e7328532d78997e9": {
+   "id": "of-acs355-59b68ead",
+   "rewrite": "fault 0037\nFault 0037\n0037 fault code\nfault description 0037"
+  },
+  "5a847234ae2ea1e69fb8cbf98948afbee80a3c1b921294219236a87fc8320cb4": {
+   "id": "of-acs355-b957fa06",
+   "rewrite": "Fault 0045\nFault code 45\nFault description 0045\nFault messages\nFault code meanings"
+  },
+  "2ca32fae0bb51b0ae5a39c392b89a1296c09b46800dc8a9f7c04abd556221dc9": {
+   "id": "of-acs355-07334386",
+   "rewrite": "Fault 0101\nFault 101\nFault code 0101\nFault code 101"
+  },
+  "deb769d4058769c38d5c3141e53a7b7a009d504477723e794f5570e67349a1fd": {
+   "id": "of-acs355-1a1ebe2a",
+   "rewrite": "Fault 0201\nACS355 fault code 0201\nF201\nFault Descriptions\nAlarm and fault codes"
+  },
+  "c1584c9dcc67b69c0ac91f0dd3a4a1987e5b7552b1e7e02b551c19045a660ea7": {
+   "id": "of-acs355-6249017f",
+   "rewrite": "Fault 0204  \nF204  \nFault Descriptions  \nACS355 fault code 204"
+  },
+  "8008607c87679d4c72894d463a753cc2c6b8466aaaf68d063226c921a894d2a2": {
+   "id": "of-acs355-8c9a013a",
+   "rewrite": "Fault 1003 meaning\nFault 1003\n1003 fault code\nACS355 fault 1003\nFault code 1003"
+  },
+  "8438bb05dd02217cd372a7ed0057f6766d15b7223a7a8210dcd8c72024f729dc": {
+   "id": "of-acs355-7f861bce",
+   "rewrite": "Fault code 1005\nFault description 1005\nFault message 1005\nFault 1005 meaning"
+  },
+  "561f928ec4b9f1dd9609aecc51056926a8fc6c670201c47cd5b3c16d411cb342": {
+   "id": "of-acs355-478c4ffb",
+   "rewrite": "Fault 1006\nACS355 fault 1006\nFault code 1006 meaning\nFault Descriptions 1006"
+  },
+  "96396a2ada34464dae9745729212c7369dcf348c40e4403f8969378972c627c3": {
+   "id": "of-acs355-6ad4a6b1",
+   "rewrite": "Fault 1009 meaning\nFault code 1009\n1009 fault description\nFault code F1009\nFault description 1009"
+  },
+  "b146cdd262d15b6fbe58bc7eb21a043c01d9d8fcb200b9e9efed4908d937ac08": {
+   "id": "of-acs355-95536279",
+   "rewrite": "Fault code 1015\nFault description 1015\nFault messages\nFault codes and descriptions"
+  },
+  "7d748e5dbf15f9fcf49ace8ca8a7f0eb9855c0a519a5ff0994bf1f488406e437": {
+   "id": "of-acs355-b0ab628c",
+   "rewrite": "Fault 1017\nFault code 1017\nFault descriptions 1017\nF1017\n1017 fault meaning"
+  },
+  "b5d46b6fc3dfe06c7652a7f0b0f1d51bfa736f56b9deaf1af879ec39c47d7fad": {
+   "id": "of-acs355-85d6385b",
+   "rewrite": "Alarm 2001\nACS355 alarm 2001\nAlarm code 2001 meaning\nFault descriptions alarm 2001"
+  },
+  "c4f1a1ff68448593cf5b471255c6ac4492e54f5c2afa9d53dd6fd52aa71838f6": {
+   "id": "of-acs355-72d1b5da",
+   "rewrite": "Fault Code 2011\nAlarm 2011\nFault Descriptions\nFault Code List\nDrive Alarm Codes"
+  },
+  "1e7b33bef456564059f99940275f134019e877f5a9347b6d5bca480894a8ac59": {
+   "id": "of-acs355-7931aa2a",
+   "rewrite": "Alarm 2013\nACS355 alarm code 2013\nfault code 2013 meaning\nAlarm 2013 description\nFault Descriptions 2013"
+  },
+  "5813b28cd231b0ee62679c4a36e828a680dc78231a99577f9146dde520cb67e6": {
+   "id": "of-acs355-152e69cf",
+   "rewrite": "Alarm 2018\nACS355 alarm code 2018\nFault Descriptions 2018\nAlarm 2018 meaning\nABB ACS355 alarm list"
+  },
+  "b4529fc6dff9faa20c8c117f6f0bda6ca8255b5d80006d3564e78540b0d6d709": {
+   "id": "of-acs355-1bea20e1",
+   "rewrite": "Alarm 2021 meaning\nACS355 alarm 2021\nFault Descriptions alarm 2021\nAlarm 2021 code\nACS355 fault code 2021"
+  },
+  "18d471334023219dd1714cd075daff654f5aba7228d001f03b93d08a30ced7a5": {
+   "id": "of-acs355-d398b29d",
+   "rewrite": "Alarm 2023\nACS355 alarm code 2023\nFault Descriptions alarm 2023\nAlarm 2023 meaning\nAlarm 2023 ABB ACS355"
+  },
+  "db9ccc661a5ffe1fbb66286f0cead840d9dbd2c294e810cdb8994d2d5103d6e2": {
+   "id": "of-acs355-158a323a",
+   "rewrite": "Fault code 2026\nFault 2026 description\nFault 2026 cause\nFault 2026 troubleshooting\nFault history code 2026"
+  },
+  "172cebbc943e92a459c42dca3f71659d70a5896b472855f01b6e62c17168815b": {
+   "id": "of-acs355-c7c1b4da",
+   "rewrite": "Alarm 2035\nFault code 2035\n2035 alarm description\nFault descriptions 2035\nACS355 alarm code 2035"
+  },
+  "363c621225d3356c33716bdd6185832dea726035d19016b6f44a36a6df2997ed": {
+   "id": "of-gs10-ch6-2f97c94d",
+   "rewrite": "Fault Descriptions AFE  \nAFE fault code  \nAlarm/Failure Display AFE  \nFault code AFE  \nDrive fault AFE"
+  },
+  "c324e60ddc8547a172fd3da7605f94fb40845a2202e8618a9f83b9af61f09ac8": {
+   "id": "of-gs10-ch6-28fc76fc",
+   "rewrite": "Fault code AUE\nFault Descriptions AUE\nAUE meaning\nGS10 fault AUE\nDrive fault AUE"
+  },
+  "8263ab71eb82006449176ee5273853192fa51798234afbba69ced9b535ba89ff": {
+   "id": "of-gs10-ch6-0366fbc8",
+   "rewrite": "Fault Code AUE3\nAUE3 fault description\nAlarm code AUE3\nFault Descriptions AUE3\nKeypad fault AUE3"
+  },
+  "e7be24c89c3ecccdb4474d6b02ee15eeac50b0ad35b8ab5b71e86a7125a77cdd": {
+   "id": "of-gs10-ch6-7d93758d",
+   "rewrite": "CE1 fault code\ncommunication error fault\nfault code CE1\ndrive fault code CE1"
+  },
+  "ae982c59125464bfe3917e568032a644b76ce8dee5d31c9ae2b7112a56ac4e62": {
+   "id": "of-gs10-ch6-e6ffa128",
+   "rewrite": "Fault Codes\nCE2\nCommunication Error\nDrive Fault Codes\nCE2 fault code\nFault description"
+  },
+  "4a72104ab3d7d56bad65cab94f4121467996dbfd68d4705863289c051c200db9": {
+   "id": "of-gs10-ch6-f7d8b8f9",
+   "rewrite": "Fault Code CE3\nCE3 fault description\nFault code CE3\nFault Descriptions\nDrive fault CE3"
+  },
+  "f251c2db4800ae7a97dfa4c8291d6bea2ac7fc34d148de50be75553315f3c543": {
+   "id": "of-gs10-ch6-f16e1ae5",
+   "rewrite": "Fault CE4\nCE4 fault code\nFault Descriptions CE4\nFault code CE4\nTroubleshooting CE4"
+  },
+  "ce7630d0f911093bedd5b85c56276051f27eed54560cc3078b5c44fa7e72014b": {
+   "id": "of-gs10-ch6-3b4afbd6",
+   "rewrite": "Fault code Hd0\nFault descriptions\nDrive fault code Hd0\nHd0 fault condition\nFault display Hd0"
+  },
+  "ab7e14994d0b3b149940174436f682636b6c3a0153c3688d2897af523eb4e391": {
+   "id": "of-gs10-ch6-919a5408",
+   "rewrite": "Fault Descriptions\nHd1 fault\nDisplay fault code Hd1\nFault code list\nDrive fault display codes"
+  },
+  "a899f9bbcac4aa5b8534db309b3ee3c9ebe5070de9bfc2079fb277ed9facda76": {
+   "id": "of-gs10-ch6-0ba7de91",
+   "rewrite": "Fault code Hd7\nFault descriptions\nKeypad display fault code Hd7\nAlarm code Hd7\nDrive fault code Hd7"
+  },
+  "a37016fcc7ec1b82dca5b1edf85fc3a1946b159ecb87e1c704c0339c47cfb387": {
+   "id": "of-gs10-ch6-6931b481",
+   "rewrite": "Low voltage fault\nUndervoltage fault\nDC bus undervoltage\nFault Lvn\nF81 undervoltage fault"
+  },
+  "25565934ee5e643f625128de8c985e927adf81d1eb4591780f641e3c6933cda3": {
+   "id": "of-gs10-ch6-5eff4437",
+   "rewrite": "Fault Descriptions\nSto fault\nSTO input\nSafety torque off\nF81 fault"
+  },
+  "d38bbabef5cd220b18799deb505bd9981f6af477ab0c15b0e960c98b0b3a8430": {
+   "id": "of-gs10-ch6-8279bd98",
+   "rewrite": "Fault B4GF  \nFault code B4GF  \nFault Descriptions  \nDrive fault code B4GF  \nAlarm/Fault display code"
+  },
+  "d3946c61f9f52264b6e8a543babaca6834fe2eb911cb2624c49d1c115f91df37": {
+   "id": "of-gs10-ch6-eb7d0df2",
+   "rewrite": "Overload fault\nMotor overload\nDrive overload protection\nF81 overload fault\nFault code oL"
+  },
+  "223c332a52bfce68d47a39aaed073275bce78f796cdd080c7bb3200c33cddb44": {
+   "id": "of-gs10-ch6-aa833c7f",
+   "rewrite": "Fault code ocS\novercurrent at startup\nFault Descriptions\nstartup overcurrent\nStart Inhibit / Overcurrent Startup"
+  },
+  "ebf51659acaabc3ad87ef46c6e277adc208a27fa728f75485e9c7106b62b447f": {
+   "id": "of-gs10-ch6-9579ea23",
+   "rewrite": "Fault Descriptions\novS fault\nOvervoltage Stall\nF81 overvoltage stall\nDrive fault code ovS\nFault code OVS"
+  },
+  "ca4b4c48793b9a0286e21cb737e1827e35ac4fcc60a1b2a1a3149c9761bfd240": {
+   "id": "of-gs10-ch6-18a2b0a4",
+   "rewrite": "Fault code tH1o\nThermal overload fault\nFault descriptions\nMotor thermal overload protection"
+  },
+  "aa61085097bb5b692d8dfb7f6f0eafb6b84fad0d79a43511bc1dd7e268e5344b": {
+   "id": "of-micro810-2c744f5a",
+   "rewrite": "0xF000 fault code\nFault Descriptions 0xF000\ncontroller fault code F000\ndiagnostic code 0xF000\nfault status F000"
+  },
+  "7352d836e40e64ff62657e9e0e2de9d4f2efb63e70c3c0a52c49e9f0b8789fd7": {
+   "id": "of-micro810-0878878d",
+   "rewrite": "F001 fault code\n0xF001 fault description\nF001 controller fault\nFault Descriptions F001\nMicro810 fault code F001"
+  },
+  "75b5cb7b40b22f5724b23a746d406997da928a5de79c3399bcb0241f70e76c27": {
+   "id": "of-micro810-8d114e40",
+   "rewrite": "Fault code F3\nF003 fault code\nMicro810 fault description\ncontroller fault code F3\nFault Descriptions F3"
+  },
+  "1e26d8644dda91e91a56e715e283a420810493a4314499bb668956ced0c15f5d": {
+   "id": "of-micro810-50f32076",
+   "rewrite": "Fault Descriptions F004  \nFault code F004  \n0xF004 fault  \ncontroller fault code F004  \nMicro800 fault descriptions"
+  },
+  "a59a529622e467228daaee1594c111b97116f7ff7fc9102bb698613e04238742": {
+   "id": "of-micro810-256f2d3e",
+   "rewrite": "F006 fault code\ncontroller fault code meaning\nFault Descriptions F006\nMicro810 fault code F006"
+  },
+  "92464b7d0e43e22b4859879f6c187d524492e713102cb41a47743b9c671815de": {
+   "id": "of-micro810-cd14fcc8",
+   "rewrite": "Fault Descriptions F010\nF010 fault code\n0xF010\ncontroller fault code\nalarm code F010"
+  },
+  "1287553e2fdfb8fda1244eb624f1c816ba6b0b54c0f558291c2ca636ffde7e55": {
+   "id": "of-micro810-f4eeae60",
+   "rewrite": "F014 fault code  \n0xF014  \nFault Descriptions  \ncontroller fault code F014  \nmicro800 fault code F014"
+  },
+  "1c55bbbc4a4ac95a7d58c03ce2d802af51c3eeb043647ae9ae7b89fd6c1ddc84": {
+   "id": "of-micro810-fe0434dd",
+   "rewrite": "Fault code F20\nFault Descriptions\n0xF020\nAlarm code F20"
+  },
+  "b1d21060d6e99a0547eff2f51d6fefa49c23cde8e73be635c8d97cf7570fa36b": {
+   "id": "of-micro810-6b1de660",
+   "rewrite": "F021 fault code\nFault Descriptions F021\n0xF021\nfault code explanation"
+  },
+  "4d68406c0ef5e9844f222f5e5f2bed901d669a98391ef02139ac534913eaea5b": {
+   "id": "of-micro810-317d54a1",
+   "rewrite": "F022 fault code\nFault Descriptions F022\n0xF022\nMicro810 fault code F022"
+  },
+  "94f09517566ca6d5852046088822707225b908ae62b5cd6e6c9071d06537ec96": {
+   "id": "of-micro810-9883f20c",
+   "rewrite": "F030 fault code\n0xF030 fault\nFault Descriptions F030\ncontroller fault code F030"
+  },
+  "3569890774850b09c1dd431f4246f1a6a6903cb9ec13cdadbcffc27dd82d8688": {
+   "id": "of-micro810-69325fd6",
+   "rewrite": "F050 fault code\nFault Descriptions F050\n0xF050\ncontroller fault code F050"
+  },
+  "1234c05f3a8d6279b5e5f14c3487cdedcd6b84593032235e7dd1244a9e0f7564": {
+   "id": "of-micro810-5cf54456",
+   "rewrite": "F100 fault code\nFault Descriptions\nerror code F100\ndiagnostic code F100\nalarm code F100"
+  },
+  "95a6ccc0a4d3cfdec70ed8abfaa3e64ff20640bdf8b1bedbc0099924503cbccb": {
+   "id": "of-micro810-086e02e4",
+   "rewrite": "F110 fault code\nFault Descriptions\nF110\ncontroller fault code\nfault code 0xF110"
+  },
+  "95cd5483050ef3db7278d1266e77a8edc09e2ed91e9c7b7118a70833071afa3f": {
+   "id": "of-micro810-2a97b72b",
+   "rewrite": "F210 fault code\nFault Descriptions F210\ncontroller fault code F210\nMicro810 fault code F210\ndiagnostic code F210"
+  },
+  "e87d1ca0e1a40ef20dec7f17dbcbec0878299bc4803b63c27edc91f04fc28b7f": {
+   "id": "of-micro810-05563e68",
+   "rewrite": "F230 fault code\nFault Descriptions F230\n0xF230\ncontroller fault code F230"
+  },
+  "3854424e6b8a241206539f1d7a4da7608296586cc813183f06d74d4b9027bbc7": {
+   "id": "of-micro810-0d172523",
+   "rewrite": "Fault Code F250\nF250 fault description\nMicro810 fault code F250\nFault Descriptions F250\nF250 meaning"
+  },
+  "3d51ee5a56d37c6d5b91a22cd5f10e21b77e93c1d6a68b9ca30f5e76c4d85cc9": {
+   "id": "of-micro810-250d7b6c",
+   "rewrite": "Fault Descriptions 0xF300\n0xF300 fault code\nF300\ncontroller fault code\nMicro800 fault code"
+  },
+  "622985e5f6d09440b4dc4a87d3832037bfaa75e8218a539ef147ec55c543cf9a": {
+   "id": "of-micro810-8e290df5",
+   "rewrite": "F301 fault code\n0xF301 fault\nFault Descriptions F301\nMicro810 fault code F301"
+  },
+  "a55e1f44fd0c552dfdd6b15e0f0528c57d2d64ca072eb5b76693aae43fca058d": {
+   "id": "of-micro810-53d52463",
+   "rewrite": "F302 fault code\nF302 fault description\nF81 fault code\nFault Descriptions\nerror code 0xF302"
+  },
+  "56781b79e6a896577b961886a26396df9a589e3b29d1ccf524881f3bb3b9d4e6": {
+   "id": "of-micro810-97ebaaca",
+   "rewrite": "F303 fault code\nFault Descriptions F303\n0xF303\ncontroller fault code F303\ndiagnostic code F303"
+  },
+  "3aef4ecf2e6916afecd91f53661d5dd03e430f00d987f2bb5b27c6818166775c": {
+   "id": "of-micro810-5a34bcd6",
+   "rewrite": "F830 fault code\n0xF830 fault description\nMicro810 fault code F830\nfault code 0xF830\nFault Descriptions F830"
+  },
+  "3334246fc9ed1333b6287a6f51c985059d4e73161f18c605ee2e80fd7efda070": {
+   "id": "of-micro810-e2646dd4",
+   "rewrite": "F840 fault code\n0xF840\nFault Descriptions\nMicro810 fault code F840"
+  },
+  "1ba62eef7a6e62a1960251f8a464a52737b6cc67d4d82e995c78057c421dba54": {
+   "id": "of-micro810-5c8d4aaf",
+   "rewrite": "Fault Descriptions\nF850\n0xF850 fault code\ncontroller fault code\ndiagnostic code F850"
+  },
+  "3e25c35a17e220d6ecaa9d4821e0c16555068ea4018f0b186e84df0cffdd6bd0": {
+   "id": "of-micro810-80699c16",
+   "rewrite": "F860 fault code\nFault Descriptions F860\n0xF860\nMicro810 fault code F860"
+  },
+  "1184632177b68d15b40164ee93f723ea49c0d6f1c0095d293b88c1065ba6e8c4": {
+   "id": "of-micro810-8dd25aa6",
+   "rewrite": "F870 fault code\nFault Descriptions F870\nMicro810 controller fault code F870\ndiagnostic code F870\ncontroller error code F870"
+  },
+  "4080afdc822ab5674388beba5597ea5b402f0b79dde85c4d2fc3f25d801d830c": {
+   "id": "of-micro810-0a57a22b",
+   "rewrite": "F880 fault code\nFault Descriptions F880\nController fault code F880\nError code F880 meaning\nMicro810 fault code F880"
+  },
+  "6d97d8d3374f575395075741ac4bb79e3797aac407f0caaa26a20baded708bc2": {
+   "id": "of-micro810-b97b677c",
+   "rewrite": "F898 fault code\n0xF898 fault description\nMicro810 fault code F898\nFault Descriptions F898\nController fault F898"
+  },
+  "c25c9e5d9c219fbe344cf2a2b7e78fc8418cfe5e645793f04059c1a31d8a2a1a": {
+   "id": "of-micro810-1336c4c8",
+   "rewrite": "Fault Codes F8A0\nMicro810 fault code interpretation\nFault Descriptions F8A0\nController fault code 0xF8A0\nDiagnostic code F8A0"
+  },
+  "1fd092013f91770b8bf2149a36a0c14dec092241a73a4b5fc087bfbdc32a2b12": {
+   "id": "of-micro810-bdd9c889",
+   "rewrite": "Fault Descriptions\nF8A1 fault code\nController fault code\nMicro810 fault code\nFault code 0xF8A1"
+  },
+  "4cd5ea24073f0dbece00b220e4846205ed17ee0dc3fe14ceeb91fd9b8f98bbf3": {
+   "id": "of-micro820-um-8ce09b57",
+   "rewrite": "EtherNet/IP connection fault 0x0004\nConnection fault 0x0004\n0x0004 fault meaning\nEtherNet/IP fault code 0x0004\nFault Descriptions 0x0004"
+  },
+  "4f7a175970213f341b557e28d6c32139f0829230fedcbfdd2067c4ba6da1f663": {
+   "id": "of-micro820-um-a30c1d11",
+   "rewrite": "EtherNet/IP connection fault 0x0005\nConnection fault 0x0005 meaning\nEtherNet/IP fault code 0x0005\nConnection status 0x0005\nFault Descriptions EtherNet/IP connection fault"
+  },
+  "f79a224dca180d6b121b49ea89e81929f08daadc146ae94b522b9782c0ffdb57": {
+   "id": "of-micro820-um-37353562",
+   "rewrite": "EtherNet/IP connection fault 0x0007  \n0x0007 connection fault  \nEtherNet/IP fault code 0x0007  \nConnection fault 7  \nFault Descriptions EtherNet/IP connection fault"
+  },
+  "771596de3c138fa73c27e34ce46b90241f267efd05c097ecb807418177e025ab": {
+   "id": "of-micro820-um-cd035d83",
+   "rewrite": "EtherNet/IP connection fault 0x0008\n0x0008 fault code\nConnection fault status\nEtherNet/IP fault code 8\nCommunications fault code 0x0008"
+  },
+  "861726d932836eb1da81c67f6457fdd7a7436fe5b2a7cf4b3f6058b9f9c33e4d": {
+   "id": "of-micro820-um-9dae4a6d",
+   "rewrite": "EtherNet/IP connection fault 0x0009\nConnection fault 0x0009 meaning\nF81 EtherNet/IP fault\nEtherNet/IP fault code 0x0009\nFault Descriptions EtherNet/IP connection"
+  },
+  "cb5b2fbb290cf7703eafb064592cc8c0cd97b178a0b7ae127e3c8984e95e99d0": {
+   "id": "of-micro820-um-311e6ce0",
+   "rewrite": "EtherNet/IP connection fault 0x000C\nconnection fault code 0x000C\nFault Descriptions EtherNet/IP\nEtherNet/IP fault codes\n0x000C meaning"
+  },
+  "67efe994081b81d8689221b1e7f2e53eaca136cb38178a0e15673ba4c53e6188": {
+   "id": "of-micro820-um-00b6f11e",
+   "rewrite": "EtherNet/IP connection fault 0x0011\nFault code 0x0011\nEtherNet/IP fault code 0x0011 meaning\nConnection fault 0x0011\nFault Descriptions 0x0011"
+  },
+  "bcef8b3b122567292518ec818de3923e36aceb34332a166d838dcc76015d34b1": {
+   "id": "of-micro820-um-01ced13f",
+   "rewrite": "EtherNet/IP connection fault 0x0106\n0x0106 connection fault\nEtherNet/IP fault code 0106\nConnection Fault\nCommunication Faults"
+  },
+  "a32425abe25cc1d9002faaffbf04109c41a2a2d8a3b416bd3b46185b892aed96": {
+   "id": "of-micro820-um-bd50cabd",
+   "rewrite": "EtherNet/IP connection fault 0x0108\n0x0108 fault code\nCommunication fault 0x0108\nEtherNet/IP fault code interpretation\nFault Descriptions 0x0108"
+  },
+  "13823c100a47358356b1c0a6bab496d1cd61dd265a34227e8fb08a977ed4553c": {
+   "id": "of-micro820-um-47d6f576",
+   "rewrite": "EtherNet/IP connection fault 0x0109\nFault code 0x0109\nEtherNet/IP fault code 0x0109\nConnection fault 0x0109\nNetwork connection fault 0x0109"
+  },
+  "1dbab74daa114d078dcf8a51e589a3ab0fb82532335cd07255461627bf52cb8b": {
+   "id": "of-micro820-um-023b359a",
+   "rewrite": "Fault 0x0118\nEtherNet/IP connection fault\nConnection status\nCommunication fault code\nFault Descriptions"
+  },
+  "1aefdf736fcc9081e2050c0d06ece7062aa3a2773f535d047224c264ecf7a15f": {
+   "id": "of-micro820-um-65289b5a",
+   "rewrite": "EtherNet/IP connection fault 0x0128\nFault code 0x0128\nCommunication fault\nNetwork connection status\nFault Descriptions"
+  },
+  "340deedf50b63f325903593dae02a14b4fd891674990496aea2050d4d19ec958": {
+   "id": "of-micro820-um-eb165543",
+   "rewrite": "EtherNet/IP connection fault 0x0306\n0x0306 fault code\nEtherNet/IP fault code 0x0306\nConnection fault 0x0306\nFault Descriptions"
+  },
+  "98f7a6d9e1c2903c181c9459a1793a4e55441d0fc80ee5a2d6ab7272ddf081df": {
+   "id": "of-micro820-um-37d8e425",
+   "rewrite": "EtherNet/IP connection fault 0x031E\nConnection fault 0x031E\nFault code 0x031E\nEtherNet/IP fault code 0x031E\nFault Descriptions 0x031E"
+  },
+  "70bfde0bf3b0ee5cd1704f5860d8ed7050fbc7a3ca172e6853fa67780d4a24ba": {
+   "id": "of-micro820-um-bff99ee6",
+   "rewrite": "EtherNet/IP connection fault 0x031F\nConnection fault 0x031F\nEtherNet/IP fault codes\nFault Descriptions\n0x031F meaning"
+  },
+  "1d1909219b4d212f5deec3a313122e3857e02629a30863dc8ca3abcb662cc924": {
+   "id": "of-micro820-um-616eb05f",
+   "rewrite": "EtherNet/IP connection fault 0x0322\nFault code 0x0322\nCommunication Fault\nEtherNet/IP Fault Descriptions\nConnection Status"
+  },
+  "8c78ebfd1f73452fcd247b0e382ff36bb04204ef5998aa5f92df8a780bdcc9bd": {
+   "id": "of-micro820-um-6ee35a47",
+   "rewrite": "EtherNet/IP connection fault 0x0800\nConnection fault 0x0800\nF81 EtherNet/IP\nFault Descriptions\nCommunication Settings"
+  },
+  "7175733e054c3d5a0c75259c89179928f724b2bc667bd3a245a2ae1c666d7930": {
+   "id": "of-micro820-um-a0bd0ec6",
+   "rewrite": "EtherNet/IP connection fault 0x0814\nF81 EtherNet/IP connection fault\nEtherNet/IP fault 0814 meaning\nCommunication fault 0x0814\nFault Descriptions EtherNet/IP connection fault"
+  },
+  "d183506f0246fa90e8593534c0fa65a2509d610cf89c697f9975f394dc415e91": {
+   "id": "of-micro820-um-0878878d",
+   "rewrite": "Fault Descriptions F001\nF001 fault code\nFault code 0xF001\nDiagnostic code F001\nFault message F001"
+  },
+  "a9d91d6e8ecbfedb35285f8a267b1c980d8438e30df9e591a268a323ab63c84d": {
+   "id": "of-micro820-um-8d114e40",
+   "rewrite": "F003 fault code\nFault Descriptions F003\n0xF003 fault\nError code F003\nFault code meaning"
+  },
+  "792d98afc805b479134ddf84d071dfb10646bea40d67d59bfa6762fca38605ea": {
+   "id": "of-micro820-um-0b2dd4f4",
+   "rewrite": "F01A fault code\n0xF01A fault description\nMicro820 fault codes\nFault Descriptions F01A\ncontroller diagnostic code F01A"
+  },
+  "7dafb82b93db280d9ba15bc22466a6c74556f594163027123712abbdd5ab15dd": {
+   "id": "of-micro820-um-6b1de660",
+   "rewrite": "Fault Descriptions 0xF021\nFault code F21\ncontroller fault code F21\ndiagnostic code F21\nMicro820 fault descriptions"
+  },
+  "bc46aa1d06e975c958b27cec48c69edaf2daa692c16d79f1a6b7fca69a305499": {
+   "id": "of-micro820-um-c744c25d",
+   "rewrite": "F31\nFault Descriptions\n0xF031\nController fault code F31"
+  },
+  "90c92cd7879fc88a4adaa565814bd5511f1121d42dccaea22b5ea9e592a9650d": {
+   "id": "of-micro820-um-69325fd6",
+   "rewrite": "F050 fault code\nFault Descriptions\n0xF050\ncontroller fault code F050"
+  },
+  "5edb97e9e48ebd0eadc93e37e8ee19bfc1fe58017722e14a47cadc8378983486": {
+   "id": "of-micro820-um-5cf54456",
+   "rewrite": "F100 fault code\n0xF100 fault\ncontroller fault code F100\nfault descriptions F100\nMicro820 fault code F100"
+  },
+  "1faf5b79067f3fb3a81f93a625737589ca6f57875c51aaad09c62fb74a999a12": {
+   "id": "of-micro820-um-53d52463",
+   "rewrite": "F302 fault code\nF302 meaning\nFault Descriptions F302\ncontroller fault code F302\ndiagnostic code F302"
+  },
+  "8c6a94afd19f0a1133cf7d16a883f73de720b601eab59c5cd17657b6c36794f9": {
+   "id": "of-micro820-um-97ebaaca",
+   "rewrite": "Fault Descriptions F303\n0xF303 fault code\nF303 meaning\ncontroller fault code F303\nFault code diagnostics"
+  },
+  "96775fe4faa996739f60d7db507b08927266e0fc4e28a47e464ef01f9a29d42d": {
+   "id": "of-micro820-um-5a34bcd6",
+   "rewrite": "F830 fault code\nFault Descriptions F830\n0xF830\nFault code meaning\nDrive fault code F830"
+  },
+  "8f30647ed6370ce00b6918850fa1b1c00a03e88ec6dafad77c674676643df542": {
+   "id": "of-micro820-um-5c8d4aaf",
+   "rewrite": "Fault code F850\nFault Descriptions\nF850 meaning\nError code F850\nFault code list"
+  },
+  "5417226e6e50b4e433414d48f802a6762503469ca33cff88de3ffdf434925fbc": {
+   "id": "of-micro820-um-2f14dd44",
+   "rewrite": "F8A3 fault code\nFault Descriptions F8A3\nFault code 0xF8A3\nController fault code F8A3\nDiagnostic code F8A3"
+  },
+  "451f5cb9c5a110d6c63375d45c993f5ec66f0926331c7263a48af5273726beb0": {
+   "id": "of-pf40-a486d588",
+   "rewrite": "F100 fault description\nFault F100\nPowerFlex 40 fault codes\nFault Descriptions F100\nF100 meaning"
+  },
+  "69a705be4cf7b06b24f8426a668bbd5bd02acfd13ca9086382171608be8b45c7": {
+   "id": "of-pf40-9aaec030",
+   "rewrite": "F122 fault description\nFault F122\nF122 meaning\nF122 code\nPowerFlex 40 fault F122"
+  },
+  "4dd2bad7a01dd6007ff5045d624bdec8fc05e38a24bca7c47416e810b2cdd57b": {
+   "id": "of-pf40-1e360cf7",
+   "rewrite": "F13 fault code  \nFault Descriptions  \nF13  \nfault meaning"
+  },
+  "8e613a823c1705a1c7318888686d2bd7e252dd774bd13cf466f9dc43e39f8ecc": {
+   "id": "of-pf40-8e2de333",
+   "rewrite": "Fault Descriptions F2\nF2 fault\nFault Code F2\nPowerFlex 40 F2\nFault code meaning F2"
+  },
+  "312ad644d0555c182895898f2f7b20aee9f5194f1bb80c784141ebc7c4c9e34a": {
+   "id": "of-pf40-626b5b12",
+   "rewrite": "F29 fault code\nFault Descriptions F29\nF29 meaning\nPowerFlex drive fault F29"
+  },
+  "159803fb9e74c112e211d17aed4a0347bf6e1618054c9d2bffca75494d20c362": {
+   "id": "of-pf40-7c96eb02",
+   "rewrite": "Fault Descriptions\nF3\nPowerFlex 40 fault code F3\ndrive fault F3 meaning\nfault code F3 description"
+  },
+  "9211b3148e938cba29e642a739ce88e72a26324b603069fbf696678f69d5ea24": {
+   "id": "of-pf40-16ee13fe",
+   "rewrite": "Fault Code F33\nFault Descriptions\nF33 fault meaning\nDrive fault code F33"
+  },
+  "dec03b21a68d98a741aa1ce72ea6de297793435f8faeda24dbbd6a464f338690": {
+   "id": "of-pf40-8b12cb8d",
+   "rewrite": "F39 fault code\nFault Descriptions F39\nF39 meaning\nfault code F39\nPowerFlex 40 F39"
+  },
+  "10c7619151ae401896bdaa39a264778094a6b11995e87a7ff623e11e4e796a6e": {
+   "id": "of-pf40-015b7913",
+   "rewrite": "Fault F4\nFault Descriptions\nPowerFlex 40 fault code F4\nDrive fault code F4"
+  },
+  "21316595420433be412a9fbedf2f6f389c5314a28da943bbdc00f218e22ac4cd": {
+   "id": "of-pf40-8a2fa5b1",
+   "rewrite": "F40 fault code meaning\nFault Descriptions F40\nF40\nFault code F40 description\nDrive fault F40"
+  },
+  "0e9d55acc94d74ece380a90f8db63e858ce455f760eba443b607c235893c3306": {
+   "id": "of-pf40-f304bcf0",
+   "rewrite": "Fault F42\nFault Descriptions\nPowerFlex 40 fault code F42\nDrive fault code F42"
+  },
+  "a8846ae6469e12be89e7d994aff6dca8a0293a587d98b2f92cb831fad6d2c4a6": {
+   "id": "of-pf40-ea19ea25",
+   "rewrite": "Fault F43\nFault Descriptions F43\nF43 fault meaning\nPowerFlex 40 fault code F43"
+  },
+  "aeec04d087c5eab43ff9afa415bce8c02b5fbc16e51429413fe8facbc0798511": {
+   "id": "of-pf40-54431eab",
+   "rewrite": "F48 fault description  \nFault F48  \nFault code F48 meaning  \nFault Descriptions F48  \nF48 drive fault"
+  },
+  "67342c9a91afd97fb0660d7804819ff539e091c476d1f7df6c534fe4834d1421": {
+   "id": "of-pf40-6cd28ed3",
+   "rewrite": "F5 fault description\nF5 fault code\nFault Descriptions F5\nPowerFlex 40 fault F5\nFault F5 meaning"
+  },
+  "ba07d24574ee4af37c931e7f3e4b71b9e2cb1283c48cc522dbd8fb88e6b34f90": {
+   "id": "of-pf40-1c003eb2",
+   "rewrite": "F6 fault\nF06 fault\nFault Descriptions F6\nF6 meaning\nFault code F6"
+  },
+  "8fef961053d88aa1884962ec4b8ea3e5cd2b3e4da595ea1f723c64c756b73ea6": {
+   "id": "of-pf40-a32eec43",
+   "rewrite": "F70 fault code\nFault Descriptions F70\ndrive fault F70\nfault code F70 meaning\nF70 alarm description"
+  },
+  "3e7bcc5c18508693bffe5afd7ad2dd92aedf913f5128edd4bb31b7db0a16f6d9": {
+   "id": "of-pf40-4aae415f",
+   "rewrite": "F71 fault code\nFault Descriptions F71\nF71 meaning\nfault code F71\nPowerFlex 40 F71"
+  },
+  "18996b7a636ea21cf090d90b1b61500d39fb74350be1bcc89b938d286388111f": {
+   "id": "of-pf40-a39b6e51",
+   "rewrite": "Fault code F8\nFault Descriptions F8\nF8 fault meaning\nDrive fault F8\nFault code F08"
+  },
+  "8db817c226946d54b9e51ee7e52b0e19563ee5ef7002e79f0aaa8353a22394ee": {
+   "id": "of-pf40-46fa3174",
+   "rewrite": "F80 fault description  \nFault F80  \nFault Code F80  \nF80 meaning  \nFault Descriptions F80"
+  },
+  "fd32bfba78ee5adbf5aa4303db7c06b0a4277995732d2314ecd5470121b402f8": {
+   "id": "of-pf40-0f6ee794",
+   "rewrite": "Fault F81\nFault Descriptions\nF81 meaning\nPowerFlex fault code F81"
+  },
+  "793b4729ed6c37dc5198bace177b1b5f273b0a3f038bed0a9a6ec46f1c5bd18c": {
+   "id": "of-pf4m-a486d588",
+   "rewrite": "F100 fault code\nFault Description F100\nF100 meaning\nFault Descriptions F100\nDrive fault F100"
+  },
+  "d2f2078bc430d86261147dc211e3c83e2c88d428dcfb40dbe7d351564ed698c1": {
+   "id": "of-pf4m-1e360cf7",
+   "rewrite": "Fault F13\nF13 fault description\nFault Descriptions F13\nPowerFlex 4M F13\nF13 meaning"
+  },
+  "ffb09f99db0b309fa3678b1db51fb40f5e0b38bd97a13bacbb4d4c4fd45bc4ec": {
+   "id": "of-pf4m-8e2de333",
+   "rewrite": "Fault F2\nFault Descriptions\nPowerFlex 4M fault code F2\nDrive fault code F2\nFault code F02"
+  },
+  "68f99539846e81b30551e06a8a425f0713a42ff8f3ea2f61596ab10b5f525323": {
+   "id": "of-pf4m-7c96eb02",
+   "rewrite": "Fault Descriptions F3\nF3 fault code\nF3 meaning\nFault code F3\nDrive fault F3"
+  },
+  "a2048c8ad81b62c89ed3ada9abbd18dbef41a1a877b36a80fd2cfa0c8a8c1510": {
+   "id": "of-pf4m-16ee13fe",
+   "rewrite": "F33 fault code\nFault Descriptions F33\nF33 meaning\nF33 code explanation\ndrive fault F33"
+  },
+  "9df23151b1a9e312758d723f190f45b9a7388f430c89b943a5d0026c70c3aee0": {
+   "id": "of-pf4m-8b12cb8d",
+   "rewrite": "Fault Descriptions\nF39\nF39 fault code\nfault meaning\ndrive fault code F39"
+  },
+  "8f3b40cc3cc4bc2e3a137212abec846b36055acdefe66752679fe98858dc121d": {
+   "id": "of-pf4m-015b7913",
+   "rewrite": "Fault F4\nFault Descriptions F4\nF4 meaning\nPowerFlex 4M fault code F4"
+  },
+  "92f1c6f25606c3355c0ec2c4f1b23bcea41561ae70411690d78969dd5436a976": {
+   "id": "of-pf4m-8a2fa5b1",
+   "rewrite": "Fault F40 meaning\nFault Descriptions F40\nF40 fault code\nOverload fault F40\nMotor overload fault"
+  },
+  "75ad2aa589c9e9093d5f203b8d41896faee73f3089c681e3a64ecbd15836d7a2": {
+   "id": "of-pf4m-f304bcf0",
+   "rewrite": "F42 fault description\nFault F42\nF42 meaning\nFault codes F42\nFault Descriptions F42"
+  },
+  "a951581f207af36a73b3d3922357ab5002ed0a86eb1ec5647e3f3cbd40a27f11": {
+   "id": "of-pf4m-ea19ea25",
+   "rewrite": "Fault F43\nFault Descriptions F43\nPowerFlex 4M fault code F43\nF43 meaning\nFault code F43 description"
+  },
+  "199415e481f8a95de8a0827a6e603b1c9b95e5eac6082a8e1f12cc1362c360a5": {
+   "id": "of-pf4m-54431eab",
+   "rewrite": "Fault F48\nFault Descriptions F48\nPowerFlex 4M fault code F48\nF48 meaning\nDrive fault F48 description"
+  },
+  "b352961ab1227c020e5cf3fff192a38868f1f3430bab52d80091e6fad99cd9cc": {
+   "id": "of-pf4m-6cd28ed3",
+   "rewrite": "Fault Descriptions F5\nF5 fault code\nfault code F5 meaning\nF5 display fault\ndrive fault F5"
+  },
+  "5667e534dc758c19e5425ca100a8c0d112f0a9a612d4e4c57161d0b5a59404a2": {
+   "id": "of-pf4m-1c003eb2",
+   "rewrite": "F6 fault description\nFault Descriptions F6\nF6 meaning\ndrive fault F6\nPowerFlex fault code F6"
+  },
+  "c1a14b995c89365c10c8e12d72a17fa3d1f3dd5f3e30adf69f1da752ce3c52d7": {
+   "id": "of-pf4m-a32eec43",
+   "rewrite": "Fault F70\nF70 fault description\nFault Descriptions F70\nPowerFlex 4M fault code F70"
+  },
+  "242d67c19ede737ed8cc5d985749ec26487af46dca875cf667e5defe08acac19": {
+   "id": "of-pf4m-4aae415f",
+   "rewrite": "F71 fault description\nFault code F71\nFault code F71 meaning\nFault Descriptions F71\nF71 trip condition"
+  },
+  "9d456ddbc0f6b092a473cf078000c7cd721b3112d588f0f4be09145d4531cdb8": {
+   "id": "of-pf4m-a39b6e51",
+   "rewrite": "Fault F8 meaning  \nF8 fault description  \nFault Descriptions F8  \nPowerFlex 4M fault F8  \nDrive fault F8 meaning"
+  },
+  "0e9d846ca66caedc2998db443fe99f195d2aa8e57dd41da207da3d925d5312bc": {
+   "id": "of-pf4m-0f6ee794",
+   "rewrite": "F81 fault description\nFault F81\nFault Codes F81\nPowerFlex 4M fault F81\nFault Descriptions F81"
+  },
+  "cab90ddc6ea58fbe8444e0fd65ce105c46688a7009148924a6884de75aafb470": {
+   "id": "of-smcflex-6b86b273",
+   "rewrite": "Fault 1\nF1\nFault Descriptions\nSMC Flex fault code 1"
+  },
+  "d28e52bf2a2975a2601321d2e704724d9af1ea37e3db156965bd9e312671bad5": {
+   "id": "of-smcflex-6b51d431",
+   "rewrite": "Fault Code 12\nF12\nFault Descriptions\nFault Code F12 Meaning"
+  },
+  "da4b2410fe431fae2462644b48bf31c497d0c1f9dbcd8a541c374c4707780e9f": {
+   "id": "of-smcflex-3fdba35f",
+   "rewrite": "Fault 13\nF13\nFault Descriptions\nSMC Flex soft starter fault 13"
+  },
+  "4c96d797a276f29d2f89600ee6ca6f7065e24bd2a21e6d435f78dd59eb3c6b62": {
+   "id": "of-smcflex-8527a891",
+   "rewrite": "Fault Code 14\nF14\nFault Descriptions\nFault 14 meaning"
+  },
+  "fc3fa7ae1293aa0d33d7cd33d56d155c49dd66df15237f31a0f6de43616f8d39": {
+   "id": "of-smcflex-e629fa65",
+   "rewrite": "F15 fault code meaning  \nFault Descriptions F15  \nF15 trip cause  \nFault code 15 description  \nFault 15 reset criteria"
+  },
+  "2050e28ebaeac09faf924c14b448bb1be3753ca817d63b36d85f4f3ad436d021": {
+   "id": "of-smcflex-b17ef6d1",
+   "rewrite": "Fault code F16\nFault Descriptions F16\nF16 meaning\nDrive fault F16\nFault code 16 alarm"
+  },
+  "8c48fed9dee452955b24b989d048a8b14d978195e37a49ae455b31406b9c5b17": {
+   "id": "of-smcflex-4523540f",
+   "rewrite": "Fault 17\nFault code 17\nFault Descriptions 17\nSMC Flex fault 17\nAlarm/Fault 17"
+  },
+  "683c1bf7c710308aaf218ec0cb0df3069f855ff06adecaa4bf8fb27cfd668fa6": {
+   "id": "of-smcflex-4ec9599f",
+   "rewrite": "Fault Code F18\nFault Descriptions F18\nF18 meaning\nOverload fault F18"
+  },
+  "fa2a3c8d348ded89c472e068a5c3983c37df50374e50af3ee5d8410a1dfc7b31": {
+   "id": "of-smcflex-f5ca38f7",
+   "rewrite": "Fault 20\nF20 fault code\nSMC Flex fault 20\nFault Descriptions F20\nSoft starter fault code 20"
+  },
+  "a343e439b3a7abab18850a9215a55685a8d3e074dbb4b892f67374759c5318a8": {
+   "id": "of-smcflex-6f4b6612",
+   "rewrite": "Fault 21\nSMC Flex fault 21\nFault code 21\nFault Descriptions fault 21"
+  },
+  "b59d8f29a2e3be5b22c97b8e1f8d9ef91274770063bf4a067dda45416501a0c9": {
+   "id": "of-smcflex-785f3ec7",
+   "rewrite": "Fault Code 22\nF22\nFault 22 Description\nFault Descriptions"
+  },
+  "f4e9b9c83bf4564b382bfbd9cb88b51667d41afdb67dc4458f38bbb2dcf75e72": {
+   "id": "of-smcflex-535fa30d",
+   "rewrite": "Fault 23\nFault Descriptions\n23\nSMC Flex fault code 23"
+  },
+  "30b020e738b8884ccea5fd859bc481a11a5d9f46aa9182df03ec7492b117c825": {
+   "id": "of-smcflex-c2356069",
+   "rewrite": "Fault 24\nSMC Flex fault code 24\nFault Descriptions\nF24 fault code"
+  },
+  "ce1634b8e074808fd8bdaee4bfbdbb5fa9ad7af1f448112078e20f06559ecbc4": {
+   "id": "of-smcflex-b7a56873",
+   "rewrite": "Fault 25 SMC Flex\nFault code 25\nFault 25 description\nFault Descriptions 25\nSMC Flex fault code 25"
+  },
+  "4e6b7b551bd04a80d03e6307779f0866e1c6f8c9851b455548551d39a372dc3f": {
+   "id": "of-smcflex-5f9c4ab0",
+   "rewrite": "F26 fault description\nFault 26 meaning\nFault code F26\nFault Descriptions F26\nFault 26 in manual"
+  },
+  "2b95a36acd8a74890d5452d07e394dfa1d991fdc89398ed75e0deef0a2fb0a5b": {
+   "id": "of-smcflex-4e074085",
+   "rewrite": "Fault Code 3\nF3\nFault Descriptions\nTrip Code 3\nFault code interpretation"
+  },
+  "86f9fab059aa15b46859cdc3696e30b00e91299d8457fe4783ac68d618446cb0": {
+   "id": "of-smcflex-624b60c5",
+   "rewrite": "Fault 30\nF30\nFault Descriptions\nsoft starter fault 30"
+  },
+  "d515943e326c3ea2ffe80b750acc8d2375225ae8039ea000603dfe0ff4389686": {
+   "id": "of-smcflex-eb1e33e8",
+   "rewrite": "Fault 31\nF31\nFault Descriptions\nSMC Flex fault 31"
+  },
+  "149cfcc24bb3f0a5faa2a27d983e66113c6c8bb04cd13577b84da801276623ce": {
+   "id": "of-smcflex-e29c9c18",
+   "rewrite": "Fault Code F32\nFault 32 meaning\nFault Descriptions F32\nF32 fault code\nFault code 32 description"
+  },
+  "53d0ccd0b83dc8d96401b8d9f6730f1c1b52226ec2a4aa3514858f79b452cf95": {
+   "id": "of-smcflex-c6f3ac57",
+   "rewrite": "Fault 33\nSMC Flex fault code 33\nFault Descriptions\nfault code 33 manual\nfault 33 soft starter"
+  },
+  "16879299993eeee3b49844413f4b19c7b84ee087c172c7ce1be0c42d8fdd564c": {
+   "id": "of-smcflex-9f14025a",
+   "rewrite": "Fault 35\nF35\nSMC Flex fault code 35\nFault Descriptions 35\n\u001b"
+  },
+  "c5fb5d108b227fb9a62668670074b0087744ef0a9a345fafcb1b306caeda3797": {
+   "id": "of-smcflex-7a61b537",
+   "rewrite": "Fault Code F37\nF37 meaning\nFault Descriptions F37\nF37 trip\nProblem code 37"
+  },
+  "0eff6b1362e6ab42385e158ba924ae26c11c409fe301261947d4a9554de65a94": {
+   "id": "of-smcflex-0b918943",
+   "rewrite": "F39 fault code meaning\nFault Descriptions F39\nFault Code 39\nF39\nTrip code 39"
+  },
+  "1402cc6f9fab6f6d77cb658b8eae502dddb52c8d17b9e3d193c64cafd09da944": {
+   "id": "of-smcflex-4b227777",
+   "rewrite": "Fault 4\nSMC Flex fault code 4\nFault Descriptions\nFault 4 trip condition"
+  },
+  "543349f3c823a98e4029e40212151349219d7bfa4b67ea120462611af6252baa": {
+   "id": "of-smcflex-d59eced1",
+   "rewrite": "Fault Code F40\nFault 40\nFault Descriptions F40\nF40 meaning\nFault code 40 description"
+  },
+  "00371645f07533104c40a4c62833ef8a24538610ff678c335b9bcc312e69ef70": {
+   "id": "of-smcflex-3d914f93",
+   "rewrite": "Fault 41\nF41\nFault Descriptions\nSMC Flex fault 41"
+  },
+  "8b97e3fe326741531c7bd3da025b7187e0da1e6727d4283e907ca05bcb6c5562": {
+   "id": "of-smcflex-73475cb4",
+   "rewrite": "Fault Code 42\nF42\nFault Descriptions\nTrip Code 42\nFault 42 Meaning"
+  },
+  "012bb51fb8a54084d23f1e11d8c308d7838432b40ad4f6d2d2a89328e2bca335": {
+   "id": "of-smcflex-44cb730c",
+   "rewrite": "Fault 43\nF43\nFault code 43\nSMC Flex fault description\nFault Descriptions 43"
+  },
+  "596575ff5abf932e7d831ebae4441fe49c48876373fe9eeeb120ae417dc09931": {
+   "id": "of-smcflex-ef2d127d",
+   "rewrite": "Fault 5  \nSMC Flex fault code 5  \nFault Descriptions  \nTrip code 5  \nFault code 5 explanation"
+  },
+  "a6126bb6e48c6bf7add417965df66dc8e6e4c22c33a61bfeb532ecdfc43d52c4": {
+   "id": "of-smcflex-e7f6c011",
+   "rewrite": "Fault Code 6\nFault Descriptions\nF6\nFault Code 06"
+  },
+  "f9def81cdfc08c8dbc8fd1656cb3fd6572f7637c37c182f1cbc2878722629206": {
+   "id": "oi-micro810-072a19cf",
+   "rewrite": "1492-EAHJ35 accessory\nMicro810 accessory compatibility\nExpansion modules and accessories\nCatalog numbers and ordering information"
+  },
+  "4450836c2db5035e44abfd88612e6a18425fe6e8089318dff745ccc33a1d3a5c": {
+   "id": "oi-micro810-10028b97",
+   "rewrite": "About Your Controller\nController identification\nProduct overview\nDocumentation and support\nLED status indicators"
+  },
+  "8b641e7d0b06c77bdd3f2c2deb3fb7fd468552508e178a4a6cf2e8d5dc02306e": {
+   "id": "oi-micro810-e67128a1",
+   "rewrite": "Compliance to European Union Directives\nEuropean Union Directives\nEU Directives\nMicro810 compliance\nCE compliance"
+  },
+  "dad2de01ce8d798b402620c52d9ac4344248a2ebe9ca74cbeeb0c694e3f58cc7": {
+   "id": "oi-micro810-676a0f14",
+   "rewrite": "controller password\npassword protection\naccess level\nsecurity settings\ndownload protection\nprogram upload password"
+  },
+  "7f409087d5bbbd1d4c9794c657f694a39bf40d9bf37d4ff07ab20ed2603f1541": {
+   "id": "oi-micro810-1375a8ad",
+   "rewrite": "count down function block\nCTD instruction\ndown counter preset value\ncount down timer\ncounter instruction manual"
+  },
+  "715943018830b1b4530104a7ae2ec232776b40a51196295819791b37253d4c2a": {
+   "id": "oi-micro810-b485a2ff",
+   "rewrite": "Fault Codes\nError Codes\nDiagnostics\nAlarm Codes\nTroubleshooting Errors"
+  },
+  "338da8ecbb0c92ae33919cd7a7d3891f7e9eaaec0e09d35630dcb32784a87fc9": {
+   "id": "oi-micro810-d0682a3f",
+   "rewrite": "Micro810 controller\n12-point controller\ncontroller specifications\npower supply terminals\ncommunication settings"
+  },
+  "2307c3031d6aeec4668ea6f5a8b692b07c581e2754f1bd41cf7363be0104e883": {
+   "id": "oi-micro810-6ff2ffa0",
+   "rewrite": "PID application example\nPID function block\nProcess control loop\nAnalog input scaling\nController tuning parameters"
+  },
+  "26d9d66c7e69c8e9028c42186029d6235758748643138b95631d94117a3e5155": {
+   "id": "oi-micro810-8938c724",
+   "rewrite": "RSLinx Classic communication settings\nMicro810 communication driver\nDF1 protocol\nEtherNet/IP communication\nDeviceNet communication settings"
+  },
+  "9d8c8aefd5e0b3134161a2d58923506c0db3d4a348eba6133a0223eb722cdea0": {
+   "id": "oi-micro810-015b4e0a",
+   "rewrite": "Specifications\nTechnical Specifications\nProduct Specifications\nElectrical Specifications\nEnvironmental Specifications"
+  },
+  "08c08ba17942f42128ad62d96cc22fb1da84c0772c099985689a0ca2379b4274": {
+   "id": "oi-micro810-c3af076f",
+   "rewrite": "Troubleshooting\nFault Descriptions\nDiagnostics\nError Codes\nAlarm Indications"
+  },
+  "e2cd558dd6599fc177b36a09316c43b81014931ec7a6fe466c1fec07ccb34e41": {
+   "id": "oi-micro810-5f1a3859",
+   "rewrite": "USB Adapter  \nUSB communication  \nCommunication Settings  \nUSB port  \nProgramming software"
+  },
+  "799b37773f89db461a8dbb81e8328f016b93378657ec3c523a424250b1004517": {
+   "id": "oi-micro810-20ae2fed",
+   "rewrite": "User Defined Function\nUDF\nFunction block user defined\nProgramming instructions\nManual section UDF"
+  },
+  "63e9ac2a10d52cf185cfc75a03d8c870d98b4149fdd78e21db1ed4ac63d3db03": {
+   "id": "oi-micro810-a1623989",
+   "rewrite": "controller description\ncontroller overview\nproduct description\ndevice description\nmanual overview\ncontroller specifications"
+  },
+  "74b084439676a73bde5a80530714c1e96b0c0e5f973c0d3bf501460543a50f51": {
+   "id": "oi-micro810-3a27383f",
+   "rewrite": "controller mounting dimensions\nmounting dimensions\ninstallation dimensions\ndimensions for panel mounting"
+  },
+  "6854221a9f1e921665bf32fcdfdae6c72c4aef2c33250c97c786b71a7abf7c3c": {
+   "id": "oi-micro810-8d3cf6ba",
+   "rewrite": "controller password\npassword protection\nsecurity settings\nprogram access password"
+  },
+  "de4d227e8fed544ad66823d38ca37a88e04279589adec0be1a22380315350c78": {
+   "id": "oi-micro810-c539f4f1",
+   "rewrite": "controller password\npassword compatibility\nuser password\nprogramming password\nsecurity access"
+  },
+  "ec6a7e0e15a72e6dfcf28edfc87dabf804e4b8eb6d0ddbad87e0c4c76be16cae": {
+   "id": "oi-micro810-37c27bc8",
+   "rewrite": "Overtemperature fault  \nThermal overload protection  \nController temperature alarm  \nFault code F81  \nHeat sink temperature sensor"
+  },
+  "e37acb6903ef7d52c8a76394d518abf3ef0eb14efba74f041475fe708d07b2e8": {
+   "id": "oi-micro810-fc4d847b",
+   "rewrite": "Isolation Transformer\nPower Considerations\nPrimary and Secondary Isolation\nTransformer Sizing\nPower Supply Isolation"
+  },
+  "30187cb5513953e75a4f166bbb7b33ed8c77d9d44b57cf12de68d10ef5e0dd3a": {
+   "id": "oi-micro810-ce7b1924",
+   "rewrite": "Master Control Relay\nPeriodic Test\nControl Circuit\nSafety Circuit\nMCR Test\nFault Descriptions"
+  },
+  "e12d81367066be0ca282d1d1db5cfe91605f46196d64adca97d0ba48ab20898a": {
+   "id": "oi-micro810-ba94d294",
+   "rewrite": "module spacing\ninstallation clearances\nmounting clearances\nclearance requirements"
+  },
+  "9c48eabaad63896ddb3027732fe8aab270964ec99dbbc2a6c3494c825c59d259": {
+   "id": "oi-micro810-45e0f738",
+   "rewrite": "Power Supply Considerations\nLoss of Power Source\nPower Source Loss\nShutdown on Power Loss\nPower Supply Requirements"
+  },
+  "fc86944d0d5b54bffae222017e3cb5ac600a704dbfa2c0135bbe6b25a6ffdc1b": {
+   "id": "oi-micro810-28568530",
+   "rewrite": "Power Supply Inrush Current\nInrush Current Limiting\nPower Supply Transient Current\nInput Supply Current Peak\nPower Supply Sizing Considerations"
+  },
+  "ab87491f3e962fc40b79bfa1640aafed304cd7cfc88489a902d84e891f7a74c0": {
+   "id": "oi-micro810-951ed1c2",
+   "rewrite": "Program Execution\nExecution Cycle\nRun Mode\nProgram Scan\nSequence of Operation"
+  },
+  "0324ba2b6a0c3ad613fffb70915d450de69ae0f17b7a057a7947e1ff3505ec9f": {
+   "id": "oi-micro810-f3a00369",
+   "rewrite": "Digital Output\nRelay Output\nOutput Function Block\nFunction Block Configuration\nDOY parameter"
+  },
+  "99892507c65948c05336b14fc93f08033b91c7d4117226761fe8919cb9ba8769": {
+   "id": "oi-micro810-2c044e2f",
+   "rewrite": "TOF relay function block\nOff Delay Timer (TOF)\nTimer instruction TOF\nFunction block TOF\nRelay output delay timer"
+  },
+  "019adbe3a6f55efa107aafa1834299b740bbce7d03e887994fccc08be41e7cc2": {
+   "id": "oi-micro810-b87065bb",
+   "rewrite": "Safety precautions\nSafety instructions\nImportant safety information\nGeneral safety warnings\nHazardous voltage precautions"
+  },
+  "2ae94e4a97cbc2dc50e085e0638c1933805213fa45f38844c0b448b257550dec": {
+   "id": "oi-micro810-6607a047",
+   "rewrite": "Status indicators\nLED indicators\nDisplay status\nFault status LEDs"
+  },
+  "dbb00baa1d940892b48ed8617330c85e4220a77ca648b999bdffda8b23ca6436": {
+   "id": "oi-micro810-2197edde",
+   "rewrite": "Controller status indicators\nStatus LED indications\nPower and fault indicators\nRUN/STOP status LED\nController LED meanings"
+  },
+  "c244c5ddd03e8e7b22b0ebc4ff140d3278c60975a494725aa89a869bfabace41": {
+   "id": "oi-micro810-c41a9ffb",
+   "rewrite": "wiring diagrams\nterminal connections\ninput wiring examples\noutput wiring examples\npower supply connections"
+  },
+  "7c8926b9bb597b51c84121b1633418db6d81b35f8f8624621d78b48aeef9d9d8": {
+   "id": "oi-micro820-um-f23c20ef",
+   "rewrite": "CIP Serial\nCommunication Settings\nSerial Communication\nEtherNet/IP and CIP\nProtocol Settings"
+  },
+  "182146ad9fb722693b5a82443bf66b8f42c30f6b198594573d59db0258fd667d": {
+   "id": "oi-micro820-um-de0ab79e",
+   "rewrite": "initial configuration file\nstartup configuration file\nConfigMeFirst.txt\ncontroller configuration file\nfirst-time setup file"
+  },
+  "9fec10caf38c598ef3d13452f4efb1c174a1807c3106597d355625a3068f6ad2": {
+   "id": "oi-micro820-um-bdfff885",
+   "rewrite": "Configuration file error\nConfigMeFirst.txt\nstartup configuration file\nload configuration file\nfile not found"
+  },
+  "a43131641879dcb290428cbd7e30ea4c947a137d70c58b8781dcfd445fd9d200": {
+   "id": "oi-micro820-um-edfd1509",
+   "rewrite": "Enclosure rating IP65\nIP65 protection rating\nEnvironmental specifications\nIngress protection class\nProtection degree IP65"
+  },
+  "ae88b5640347a8fcff13b7292e0ad5aa5a353f36bfe3e8b3ea69d932fd426308": {
+   "id": "oi-micro820-um-e7eed75f",
+   "rewrite": "KEY_READ_REM\nremote key read\nmanual location for KEY_READ_REM\nkey read remote\nMicro820 KEY_READ_REM"
+  },
+  "06edc4590dcb3b1bee1ffd99eeef9646ea91164e5b36a5e7fc841acc2cee2f83": {
+   "id": "oi-micro820-um-1f138997",
+   "rewrite": "Micro820 Controllers\nMicro820 manual\ncontroller overview\nproduct description\nsystem architecture"
+  },
+  "e7f6fd5dbcca944407a60215b20c4bd275f8d00610507e7da9496a8e44d82688": {
+   "id": "oi-micro820-um-2c6fcad7",
+   "rewrite": "Modbus communication\nCommunication settings\nModbus RTU\nModbus TCP\nRS-485\nSerial communication fault"
+  },
+  "b301cbdd26311e3b7fba31fb95e4e8c3dbbaa7730cfe1398be02bae6d2f69d3e": {
+   "id": "oi-micro820-um-261c5a85",
+   "rewrite": "Ethernet port RJ45\nRJ45 connector\nEthernet cable\nCommunication port\nNetwork cable"
+  },
+  "5a4eb4a0cd8f10f970c64d856e5540e1c10808b231a849d1373c0b9132d5632f": {
+   "id": "oi-micro820-um-583911d2",
+   "rewrite": "Ethernet\nCommunication Settings\nEtherNet/IP\nRockwell Automation Publication 2080-UM005H-EN-E\nMicro820 manual"
+  },
+  "831688eb3cb97e226a70499a67681eb4e1b5b4ee8a17d8252a8d54205c508262": {
+   "id": "oi-micro820-um-4b2b9e3f",
+   "rewrite": "Hardware Overview  \nMicro820 controller\nRockwell Automation Publication 2080-UM005H-EN-E  \n2080-UM005H-EN-E"
+  },
+  "d62adb852eff03df59f4f426ecb7885a1858c33782484edce0434415e6a24f4a": {
+   "id": "oi-micro820-um-b981d5c4",
+   "rewrite": "Fault Codes\nError Codes\nFault Descriptions\n2080-UM005H-EN-E\nDiagnostics and Alarms"
+  },
+  "140fc216b6f1a28dd2705a4ec0261f4eaa162e5dd4ef6aeb006a0fe798b75c94": {
+   "id": "oi-micro820-um-7509f009",
+   "rewrite": "Fault Descriptions\nError Detection\nDiagnostic Faults\nSystem Fault Codes\nFault Handling"
+  },
+  "36d3967365a16ce9f696f885442b37786224d7deef08c81b1b65e00fe0621fc1": {
+   "id": "oi-micro820-um-e5caca62",
+   "rewrite": "motor starter\nmotor starter control\nstarting motor\nmotor start\nstarter output\nstarter control circuit"
+  },
+  "51b0c8e8f04d156a1199f7784014ea1b50ac2ba80937edc40ba86d73ce3955c3": {
+   "id": "oi-micro820-um-adaad146",
+   "rewrite": "Motion Axis Fault Reset\nAxis Fault Reset\nFault Reset\nMotion Axis Fault\nReset Fault"
+  },
+  "f6ec1e102e4efcdf6bca8fef169cf30c7ebc40ad666d58dea25ce2d6b1947432": {
+   "id": "oi-micro820-um-4bf093dc",
+   "rewrite": "motion axis jog\naxis jog\njog function\nmotion axis\njog control"
+  },
+  "0e8ab58eac69bb10c7747070c7a75cf3ba4ab7836e5d7780ac593e5f515b017e": {
+   "id": "oi-micro820-um-5b417ee5",
+   "rewrite": "power distribution\nMicro820 manual\nRockwell Automation Publication 2080-UM005H-EN-E\n2080-UM005H-EN-E\nSeptember 2025"
+  },
+  "d63194d2015621f83ef7d42b888e3fb5fe9be2590b396ffa5fbe8b032f715a9f": {
+   "id": "oi-micro820-um-a7e66636",
+   "rewrite": "excessive heat prevention\nthermal overload protection\nhigh temperature shutdown\novertemperature fault\nheat dissipation requirements"
+  },
+  "01971d09ef8d8bc87155e4801ec9602f54aeaaa4b777aaeb690eeb14fcf2ece7": {
+   "id": "oi-micro820-um-a2a298e8",
+   "rewrite": "status indicators\nmodule status indicator\npower status indicator\nfault status indicator\ndiagnostic indicators"
+  },
+  "921b8e3d07729d1f8dac0c82ab841cc272ac346f1c99dbff3e9748e27ed7f603": {
+   "id": "oi-micro820-um-3be177fc",
+   "rewrite": "Run Mode Change (RMC)\nRun Mode Change\nRMC\nFault Descriptions\nOperating Mode Change"
+  },
+  "289fce9d8ae3e9db5afe18747906f2e67881165cd6fde7957eca7c1c36d918eb": {
+   "id": "oi-micro820-um-d5e5fd53",
+   "rewrite": "USB Mode\nUSB configuration\nCommunication Settings\nUSB port settings"
+  },
+  "3371d8d6586916d2a48a630ce6ca42c1fb025178dc2c6537b64ebe0fb5e4157c": {
+   "id": "oi-micro820-um-67d2f319",
+   "rewrite": "String array\nString data type\nArray element\nString variable\nArray of STRING"
+  },
+  "eece6871e4afa2ae83770f09eca44249d27131eba846b3b82055d9e634635eb8": {
+   "id": "oi-micro820-um-6c9d7e44",
+   "rewrite": "communication connection limit\nmaximum number of connections\nEtherNet/IP connection limit\nexplicit message connection limit\ncontroller connection capacity"
+  },
+  "d33c5d1e1b2f1ce0e878e887744f4c7f71b32e5912a5c127b29cec81cb7626b7": {
+   "id": "oi-micro820-um-069a9678",
+   "rewrite": "Electrical Noise Reduction\nMinimizing Electrical Noise\nController Noise Immunity\nGrounding and Shielding\nEMI/RFI Suppression"
+  },
+  "28d06e95d4fbcefd51e6a3ce791f3c31575facbb1467285b47dbac0cdb2ef8e6": {
+   "id": "oi-micro820-um-5b90071a",
+   "rewrite": "device discovery\nnetwork discovery\nEtherNet/IP discovery\ncommunication settings\nscanner discovery"
+  },
+  "3e025e94a154e88899427dc98a8c3320f32e84170304cc8b3d6d38575ed02d10": {
+   "id": "oi-micro820-um-ce7b1924",
+   "rewrite": "master control relay circuit periodic test\nperiodic test of master control relay circuit\nmaster control relay test\nMCR circuit test\nfault relay periodic test"
+  },
+  "ace2a47c6a30f85cfb77a4303eef0565ae3339fec140c69960f957c11e155bdb": {
+   "id": "oi-micro820-um-3b483077",
+   "rewrite": "Recipe function block parameters\nRecipe function block\nFunction block parameters\nRecipe parameter configuration\nRecipe data block parameters"
+  },
+  "da5aa03587e6d7701b77b8d2067674c014307865e7cb58926e8c349aed3219ae": {
+   "id": "oi-micro820-um-53b8a457",
+   "rewrite": "Resistance input configuration\nRTD input setup\nAnalog input type resistance\nSensor type resistance\nResistance measurement input"
+  },
+  "4960361b9d91e68ba5a7f7515526c625d063f5c66b52b565dfedf913987958fe": {
+   "id": "oi-micro820-um-d5c79fb4",
+   "rewrite": "startup screen\nLCD startup display\npower-up display\nboot screen\ninitialization screen"
+  },
+  "d24f2f6b892c198e69cb5eab1a66551d8608c06b28fadcebe24b8d4940f91904": {
+   "id": "oi-micro820-um-b9da8b91",
+   "rewrite": "User Defined Function\nUDF\nFunction Blocks\nProgramming Instructions\nApplication Instructions"
+  },
+  "8bc328c01492c19a3022448672c057209b8545fe2e68bf8a53052ee8ecc00700": {
+   "id": "oi-micro820-um-f814c170",
+   "rewrite": "wiring diagram\nterminal connections\nI/O wiring\npower supply wiring\nfield wiring diagram"
+  },
+  "afe492f2f823c93f7197583d6f94c1976dfcc95ece923b26989273bea8ed47f3": {
+   "id": "oi-ml1100-d26333bd",
+   "rewrite": "1762-IA8 wiring diagram\ninput module wiring diagram\ndiscrete input wiring\nterminal wiring diagram\nmicro800 input wiring"
+  },
+  "283426c4c4b40a4fbca428b4ca0213a5255b7675ea4c50c00443fc6b6beffc01": {
+   "id": "oi-ml1100-683e2a15",
+   "rewrite": "1762-IF4 analog input\nAnalog Input Configuration\nMicroLogix 1100 analog input module\n1762-IF4 input scaling\n1762-IF4 fault description"
+  },
+  "6f3c35a5702688ac59653638bc0ef7c0910d41e05348d692f8e3e263b416d341": {
+   "id": "oi-ml1100-6e956427",
+   "rewrite": "Manual Organization  \nPublication 1763-UM001G-EN-P  \nDIN Rail Mounting  \nMounting on DIN Rail  \nInstallation and Wiring"
+  },
+  "2aee955fc928c920aa5d68a17a815b2bce101c129e626847b1b61cd18b0a32a6": {
+   "id": "oi-ml1100-957ce380",
+   "rewrite": "I/O wiring\nInput wiring\nOutput wiring\nDiscrete I/O\nWiring diagrams"
+  },
+  "d6a70e6ad6512fa107abe330e071cacf6a5f1573962dcadbe7bfeba5d6a0bfad": {
+   "id": "oi-ml1100-2b994a51",
+   "rewrite": "Master Control Relay MCR\nMCR\n1763-UM001G-EN-P\nMaster Control Relay section\nRockwell Automation Publication 1763-UM001G-EN-P"
+  },
+  "82a084e72f7c244f42cccd35546f7f12e6c5d4414879599d3c93ac3080cc7b14": {
+   "id": "oi-ml1100-3e84b23c",
+   "rewrite": "Offline Editing\n1763-UM001G-EN-P\nMicroLogix 1100\nRockwell Automation Publication\nCommunication Settings"
+  },
+  "2002e1168ab12cd23ae78ea014ad7b5032097dbcb12499dc1f46d788d1245ac3": {
+   "id": "oi-ml1100-c14c9c8d",
+   "rewrite": "default communication configuration\nCommunication Settings\nDF1 communication\nChannel 0 default settings\nMicroLogix 1100 manual"
+  },
+  "204af5a707e8289456225081dc6c1d030be28cc97f0ea5a8d795888558a0defa": {
+   "id": "oi-ml1100-7282d949",
+   "rewrite": "disconnect main power\nmain power disconnect\npower removal procedure\nsafety precautions disconnecting power\n1763-UM001G-EN-P power disconnect"
+  },
+  "ad46bbdb38a4ffae41bdb6d1314bbb90aed78dd7ff0b11cf54aa8d9164ebbcd3": {
+   "id": "oi-ml1100-0f2be270",
+   "rewrite": "Grounding\nProtective Earth Ground\nMicroLogix 1100 installation grounding\nSafety Grounding\n1763-UM001G-EN-P grounding"
+  },
+  "3cd8f3ae3db532bb65943b6640e4c4fcae9eceff4d97d856086e0deda371d6ef": {
+   "id": "oi-ml1100-17b5ab6b",
+   "rewrite": "network settings\ncommunication settings\nEtherNet/IP\nbaud rate\nIP address"
+  },
+  "7434ba445c4a43df6e96fed231d5bae9845eb52dcaf9b501d5dd6ff67a908dcc": {
+   "id": "oi-ml1100-66b60914",
+   "rewrite": "nominal input current\nInput current\nAC input current\nDC input current\ninput rating\npower supply input current"
+  },
+  "ec2b3651787aa0db3631b55ee96c04d9c136d964fe5a0766cfabb5f3a7544996": {
+   "id": "oi-ml1100-02cced08",
+   "rewrite": "MicroLogix 1100 manual publication 1763-UM001G-EN-P\nRockwell Automation Publication 1763-UM001G-EN-P\nMay 2024\nnon-critical information\ndocumentation reference"
+  },
+  "ffaaad5a60f674c4062b5af19ba30d962c56558cfe82b307844b5e4b1f6403f6": {
+   "id": "oi-ml1100-0641be01",
+   "rewrite": "normally closed\n1763-UM001G-EN-P\nMicroLogix 1100 manual\npublication 1763-UM001G-EN-P\nnormal open normal closed contact symbols"
+  },
+  "ae09176457e359c28dcf39ffd509525f72f191faed88ed0adcd2be8764f4861a": {
+   "id": "oi-ml1100-aa3013da",
+   "rewrite": "Power Distribution\nMicroLogix 1100 power distribution\n1763-UM001G-EN-P power distribution\nSystem Power Distribution\nPower Supply Connections"
+  },
+  "48a62d9b73441a829beb2545cbf8614d6f0fa47c5a37aec2f5bd32e3c290bb42": {
+   "id": "oi-ml1100-70b17300",
+   "rewrite": "Run Mode\nProcessor Mode Switch\nController Status\nOperating Mode\nRUN indicator"
+  },
+  "af86d55fa8b46986f1b3d5dd7a15395eb618c8d1361a434fadaadab858c2aaa7": {
+   "id": "oi-ml1100-0ff2c2d1",
+   "rewrite": "Save procedure\nFile save\nMicroLogix 1100 save\nOnline saving\nController memory save"
+  },
+  "8d82f14e077e0604ba804282544b550381b659d9dea40d4ca8ff7cf79149b0f9": {
+   "id": "oi-ml1100-4ec2958a",
+   "rewrite": "Status indicators\nMicroLogix 1100 LED indicators\nController status indicators\nModule status indicators\nDiagnostic indicators"
+  },
+  "1721205783d06a77aa397f8ee58649ac90b8882e54527af287a3610ff9b3f934": {
+   "id": "oi-ml1100-b3cf0e9c",
+   "rewrite": "Modem configuration\nSerial communication using modem\nDF1 modem protocol\n1763-UM001G-EN-P modem\nCommunication Settings"
+  },
+  "cd1640d1783af891f59b413fdc50207ba095c5568df918df3a561dfad6114cce": {
+   "id": "oi-ml1100-9ae390fa",
+   "rewrite": "Write Protection\nProgram File Write Protection\nPassword Protection\n1763-UM001G-EN-P write protection\nMicroLogix 1100 protection features"
+  },
+  "c0209947d24505953346059088f53bff9d1d4c217d546df42373ebaf9b4cf9de": {
+   "id": "oi-ml1100-fcbcf165",
+   "rewrite": "false input\nfalse signal\nfalse indication\ninput status false\ndigital input false"
+  },
+  "bebdbaf00db1fb6bc793a7bb0f2fe93c662b8c7832156fcd1346dfd7a48e0610": {
+   "id": "oi-ml1100-a130e019",
+   "rewrite": "Off-state leakage current\nLeakage current specification\nOutput off-state current\nOutput leakage current\nOFF state current leakage"
+  },
+  "430a676a9408aee848c2de147c8bba533c89800a1b58ca1faeac4b551c99127a": {
+   "id": "oi-ml1100-d320455a",
+   "rewrite": "output type selection\noutput configuration\ndigital output configuration\noutput module configuration"
+  },
+  "cd01ba116a93c074e7936ac8183be8545a11222fa0f98ebe01f2eb4fa0d83d99": {
+   "id": "oi-ml1100-3fdde7cd",
+   "rewrite": "Power source loss\nLoss of power source\nFault Descriptions\nF81\nLow power supply fault"
+  },
+  "cffa1d628205697009904d794b838649f4c48b35c73b383949aabe581be2665b": {
+   "id": "oi-ml1100-a4ff9df3",
+   "rewrite": "programming device\nprogramming terminal\nPLC programming port\ncommunication settings\nserial programming cable"
+  },
+  "dd60ccc6884855c63cd23b0d0eb178861f7dcb976fc0e2464f7d19708ffe0531": {
+   "id": "oi-ml1100-3316348d",
+   "rewrite": "Read operation\nManual read\nRead instruction\nMicroLogix 1100 read\nRead section"
+  },
+  "923610543bff3b15e19f6303d1628b8223245637082c323b9d142a1c8ead4674": {
+   "id": "oi-ml1100-37be0c55",
+   "rewrite": "Battery replacement  \nReplace battery  \nBattery status  \nBattery installation  \nUser battery maintenance"
+  },
+  "6d84fdb5ef5aae708b8b3db148f4086d1a87f3aa9f214e3944e0def94447624c": {
+   "id": "oi-ml1100-e203531b",
+   "rewrite": "battery replacement\nbattery handling\ncontroller battery\nreplace battery\nbattery installation"
+  },
+  "0122b9d62b60ca3069cefa827527d853af50c10390fdafc1d4b45005ccdb002b": {
+   "id": "oi-ml1100-ff4085ad",
+   "rewrite": "Upload procedure\nProgram upload\nUpload from controller\nUpload to software\nCommunication port upload"
+  },
+  "211d458d035c726e85cdb0588430e3cc416aa4eea751e0dc59f0887700882548": {
+   "id": "oi-ml1100-93c7bf1f",
+   "rewrite": "wiring recommendation\ninput wiring\noutput wiring\nterminal wiring\nwiring diagram"
+  },
+  "a375037c3f0a2efb643f83ccf925763de2ba7b25ed7c3a9dc1a29c135f1b21cc": {
+   "id": "oi-ml1100-ebebe4a7",
+   "rewrite": "controller wiring  \nwiring your controller  \ninstallation wiring  \nterminal wiring  \npower supply wiring"
+  },
+  "7eba06a1203a1de143560bbe5ff0254c1e0844839f129ddccbec6af4c8b4c466": {
+   "id": "oi-pf4m-53387783",
+   "rewrite": "AC Supply Ground\nGrounding AC Supply\nPowerFlex 4M manual AC supply ground\nGrounding requirements AC supply\nProtective Earth connection"
+  },
+  "8bf17c9bf9911e5fe35f7c2a42d7aca57d42a264ce5a67426587cd50feff6553": {
+   "id": "oi-pf4m-694667d3",
+   "rewrite": "Auxiliary Input Fault\nAuxiliary Input\nFault F81\nFault F081\nInput Fault"
+  },
+  "e869a862353cb95e00704454d2d6c4ecf98b8dc906c252a7c2d9aa4c66111234": {
+   "id": "oi-pf4m-68b39610",
+   "rewrite": "Catalog Number Explanation  \nCatalog Number  \nDrive Catalog Number  \nSelection Guide  \nModel Number Meaning"
+  },
+  "875794d942df51d6e1a05cf655c114ba435ce55e42e3e795cc9f066eda72fe20": {
+   "id": "oi-pf4m-4edd9249",
+   "rewrite": "Display Group parameters\nDisplay group\nParameter group\nParameter list\nParameter numbers"
+  },
+  "9c63b82b0af889bf2488e4fae9a8fe659b1ce87dd42854df2ec099a32c6d95fa": {
+   "id": "oi-pf4m-3096af16",
+   "rewrite": "drive grounding\nground terminal\nprotective earth connection\nsafety ground\nPE terminal"
+  },
+  "07c787e9c60d18950c7de6edefdf32d3ac1d345a8d92da660bd3659e13542949": {
+   "id": "oi-pf4m-0be58e7c",
+   "rewrite": "ESD static discharge\nElectrostatic discharge\nStatic discharge protection\nFaults caused by ESD\nPrevent electrostatic discharge"
+  },
+  "0bca4cdd5d281e5eb388443e38f0d99e8337f0d63d7b7ce6f2e95c7a351b6796": {
+   "id": "oi-pf4m-ca9b3ac4",
+   "rewrite": "Auto Restart Tries\nFaults\nFault Descriptions\nF81\nFault Reset"
+  },
+  "1af2611e39e56412d36119cc0d9a1d12e1ec00a6b737b5f1081a5d4df0de7914": {
+   "id": "oi-pf4m-cd3fef7b",
+   "rewrite": "Communication Loss Fault\nFault Descriptions\nF81\nComm Loss\nFault Codes"
+  },
+  "b50976c41a5dbfbc555daeef8891072f75bbff761aa641f15a88f0427a21bca6": {
+   "id": "oi-pf4m-f19ac9fb",
+   "rewrite": "Drive Overload fault  \nFault Descriptions  \nF81  \nOverload trip  \nMotor overload fault"
+  },
+  "02ba5d1d7aaa1ae86103969f37173ddb10be54677624ad640e5736f81f1b4b15": {
+   "id": "oi-pf4m-7cefd671",
+   "rewrite": "Phase Short\nF81\nFault Descriptions\nPower Module Faults\nDrive Fault Codes"
+  },
+  "e593cce6c9e07fe8e74ef711adec79a70ce72970f785810a8f3fb9575437f813": {
+   "id": "oi-pf4m-654b903c",
+   "rewrite": "Fault Descriptions\nPhase to Ground Short fault\nF81\nOutput Phase to Ground Short\nFault Codes"
+  },
+  "bc8a0baa39200f94d9660be5d993765d9a3cb405efe96144e4c965ec32b0302c": {
+   "id": "oi-pf4m-f3160031",
+   "rewrite": "Parameter Checksum Fault\nF81 Parameter Checksum Fault\nfault description checksum\nfault code F81\nFault Descriptions"
+  },
+  "9dd722d15393f023fed50210794eff4c8a5bb782de016bf1449c769c7c46d2e7": {
+   "id": "oi-pf4m-c5795742",
+   "rewrite": "Parameter Viewing and Editing\nViewing and Editing Parameters\nParameter 14 - Parameter Viewing\nParameter 15 - Parameter Editing\nProgramming and Parameter Access"
+  },
+  "c6dc9df063d199a3e9413844d85bf9468404d6d60e377a10028371f662797079": {
+   "id": "oi-pf4m-75eb68de",
+   "rewrite": "Communications Group parameters\nDrive communication parameters\nCommunication group\nCommunication parameter list\nParameter group Communications"
+  },
+  "188c41104c663acc1f90004b4f64310e9dd916e61563ae6461e7e410da014750": {
+   "id": "oi-pf4m-3ebb83cf",
+   "rewrite": "Power Loss Fault\nDC Bus Undervoltage\nF81\nFault Descriptions\nPower Loss detection enabled"
+  },
+  "2c462eaf77e7d749fd11fb1b0b98729c5bf92208f7c7dcd1745788a88f252fd4": {
+   "id": "oi-pf4m-3346dc91",
+   "rewrite": "Power Unit Fault\nFault Descriptions\nF81 Power Unit Fault\nPower Unit"
+  },
+  "e9e1f4cc0766a6958df86e51bd048e19dd29d15acd824b243fd367c64a71874e": {
+   "id": "oi-pf4m-ff862693",
+   "rewrite": "Ratings\nNameplate Ratings\nEnvironmental Ratings\nElectrical Ratings\nMotor Ratings"
+  },
+  "b59003d6cbcbb32fe5470cb03da49595396f996b9b3a88a7adc87ea065b09105": {
+   "id": "oi-pf4m-4b1028af",
+   "rewrite": "F81 overcurrent fault\nFault Descriptions\nHW OverCurrent\nhardware overcurrent fault\novercurrent fault reset"
+  },
+  "1def76620a20fdc8a8fe2a37e53cceb5042ba7834d8d68c71d47a411c69f1a33": {
+   "id": "oi-pf4m-e4c5d58b",
+   "rewrite": "Heatsink Overtemperature Fault\nF081 F81\nFault Descriptions\nHeatsink Temperature\nDrive Faults"
+  },
+  "aa3a826ba95674eb2a8ae81ae92596746c751bc04ad20f0872cf514b1aaad348": {
+   "id": "oi-pf4m-47369f78",
+   "rewrite": "Input Contactor\nPowerFlex 4M input contactor\nPublication 22F-UM001E-EN-E\nInstallation and Wiring Requirements"
+  },
+  "4f44d43c1c40ccfb056ae956571f8daa85e1994272283b9f9edeb29182b689b0": {
+   "id": "oi-pf4m-7468275d",
+   "rewrite": "Input Potentiometer\nAnalog Input Configuration\nReference Signal\nParameter 90 [AI Volts]\nTerminal Block AI"
+  },
+  "673ca5f098e4b3cf712b19c66d3d161724196c5ebd3dbe6d1b5ad3f92a06c341": {
+   "id": "oi-pf4m-f3ef596f",
+   "rewrite": "Input Power Conditioning\nPower Line Noise Suppression\nLine Reactor\nAC Line Conditions\nInput Line Reactors"
+  },
+  "3638581a5b6c329e7ab6c4aa982d0d4116d4643cab27c549e4d8761bd477a42b": {
+   "id": "oi-pf4m-152db812",
+   "rewrite": "Motor Overload Fault\nFault Descriptions\nF6 Motor Overload\nOverload Fault Explanation"
+  },
+  "933fad91ba4e9b0bb16efeadfe60abaa3a0d9bed86099039bddfc68ef12b73d9": {
+   "id": "oi-pf4m-e6154683",
+   "rewrite": "Short Circuit Protection\nFault Descriptions\nF81\nOutput Short Circuit\nDrive Overcurrent Fault"
+  },
+  "f2c867eaba09bcdc099aeb539632b94441b41ecf6f0903ee3d46169b2a206ec3": {
+   "id": "oi-pf4m-fd50400a",
+   "rewrite": "Terminal Block Group Parameters\nParameter Group Terminal Block\nTerminal Block Parameters\nParameter Group 2 Terminal Block\nTB Group Parameters"
+  },
+  "987b8709565adef994be736cee002b6a892c5d9f6b8f9b3d6fce65fc2af9af6d": {
+   "id": "oi-pf4m-4baca84d",
+   "rewrite": "Terminal Block I/O\nDigital Input Terminal Block\nAnalog Input Terminal Block\nI/O Terminal Configuration\nTerminal 01 Terminal 02 Terminal 03"
+  },
+  "d3e6c4e59225264a56f8b8f2d1506e796ad16e509f9cde013b5c91e1eae3fa98": {
+   "id": "oi-pf4m-976508f5",
+   "rewrite": "Terminal Block Power\nPowerFlex 4M terminal block power\ncontrol terminal power\nmain control terminal power\nterminal block supply voltage"
+  },
+  "57415998315aa07068c640d005beb101a62d42cbd32363d04dcfb75a6a681b0b": {
+   "id": "oi-pf4m-8ae23e82",
+   "rewrite": "UnderVoltage fault\nF81 under voltage\nFault Descriptions\nDC bus under voltage\nLow bus voltage fault"
+  },
+  "fd715f80451b94043bb02c7ad9f47b9274458ef6dc6cd31ea0072c2e3bc37949": {
+   "id": "oi-pf4m-72529059",
+   "rewrite": "wiring diagram\npower wiring\ncontrol wiring\ninput terminals\noutput terminals"
+  },
+  "faea9526bfd19bf05d4edf1730fd1afb88a265b8357f3d9b23624a4cf26aec06": {
+   "id": "oi-pf4m-41c654dd",
+   "rewrite": "Wiring Block Diagram\nPowerFlex 4M\nBlock Diagram\nWiring Diagram"
+  },
+  "50a451f66c75c95181a78dc608245e1e08aa2fc476fa34cee8cb09e85fc0f643": {
+   "id": "oi-se-canopen-hw-66231a6c",
+   "rewrite": "VW3 CAN TAP2  \nCANopen manual  \nAccessory connections  \nCommunication settings  \nNetwork tap installation"
+  },
+  "a0028dce9681d5ebae5f9602074e450fae475d86ad49d15de9739b56f02c12c0": {
+   "id": "oi-se-m172-8f13a754",
+   "rewrite": "Real Time Clock\nRTC\nTimekeeping\nDate and Time Setting\nClock Configuration"
+  },
+  "258e8cae1fb8d3a0642a4a26586bb0b51cc70f940b9e60e9213e01c23ea1d407": {
+   "id": "oi-se-m172-fe646f32",
+   "rewrite": "Controller status indicators\nFault Descriptions\nCommunication Settings\nTM172DCLF fault codes\nLED status indications"
+  },
+  "f4a8c1a102f0ffdf5f392fa27b37660f7a01900a6b3be51f732ab4741dbb17f6": {
+   "id": "oi-se-m172-4b98da94",
+   "rewrite": "Modicon M172 manual TM172DCLWT  \nTM172DCLWT section  \nModicon M172 manual coverage  \nmanual reference TM172DCLWT"
+  },
+  "352341275559ee0f7ae1e5b5fe43ddc5130c3af1b280cde76baf222e49a838a3": {
+   "id": "oi-se-m172-3ed08ad1",
+   "rewrite": "Modicon M172 manual TM172DGRP\nTM172DGRP section\nTM172DGRP parameter\nTM172DGRP configuration\nTM172DGRP communication settings"
+  },
+  "d27c4381f3c4f6557f893569574b6cd497cce9ad08111677bca6b3821e8c63e9": {
+   "id": "oi-se-premium-serial-c4f66213",
+   "rewrite": "communication characteristics\nT_COM_CHAR parameter\nserial communication configuration\ncommunication settings\nprotocol settings"
+  },
+  "b45366239a28d9b61f793461247340dd4360f8c258025df37425fa04eca723ce": {
+   "id": "oi-se-premium-serial-a013d253",
+   "rewrite": "T_COM_MB\nCommunication Settings\nModbus communication fault\nSlave address\nBaud rate"
+  },
+  "52e1dbe08c125bd4d84fec88a36a4b20abbac6ffd70417e56ec73dc51b3f2fa5": {
+   "id": "oi-se-premium-serial-0afaecc9",
+   "rewrite": "T_COM_UTW_M\ncommunication fault\nserial link fault\ncommunication timeout\nF81 communication fault"
+  },
+  "4eab1dbc7ed6c0d8840c9074f5116cadac14349e7744260a6545a55b433938db": {
+   "id": "oi-se-premium-serial-3faa87fe",
+   "rewrite": "communication error\nT_COM_UTW_S\ncommunication fault\nserial link fault\ncomms status flag"
+  },
+  "3d25179c3488c5880b6c662e6f4740ea1225726e019d7f79e52abe9a53f291b4": {
+   "id": "oi-se-premium-serial-5b2ea1a3",
+   "rewrite": "T_GEN_MOD\nGeneral module\nModule configuration\nParameter T_GEN_MOD\nTechnical description"
+  },
+  "41fce4188589dbb30ddd0bc2511bd09ce175b1539913184856d3e22efc438d1f": {
+   "id": "oi-se-premium-serial-8205c556",
+   "rewrite": "Uni-Telway\nCommunication Settings\nUni-Telway protocol\nUni-Telway network\nSchneider Premium manual"
+  },
+  "54c37846847e0d5165f67f9c1a13d3030060e8c5cc01eb812b5ffcf6838ee861": {
+   "id": "oi-se-premium-serial-6f447d81",
+   "rewrite": "Uni-Telway bus address\nUni-Telway address\nCommunication Settings\nBus address configuration\nAddress assignment"
+  },
+  "344b7cee42d0848322fe4281526c1c0a9d0b561481d16183b6c8aafa336a7deb": {
+   "id": "oi-smc50-111f9c0a",
+   "rewrite": "digital I/O module  \nSM4 digital input output module  \ndigital I/O configuration  \nmodule fault description  \nsignal and terminal names"
+  },
+  "230f8e7827464947694fd3954db2b46e57ffa165c4e9ddbaed38d731bda8236b": {
+   "id": "oi-smc50-60602d89",
+   "rewrite": "multiple motors\nmotor selection\nmulti-motor operation\nmotor number\nmotor configuration"
+  },
+  "b255c77a764628976d1b8b0ec9e5666cf1cd04a6a4e8fe62cb5a8e2266699fe4": {
+   "id": "oi-smc50-514a0386",
+   "rewrite": "Protection Fault and Alarm\nFault Descriptions\nFault code F81\nAlarm Description\nProtection fault reset"
+  },
+  "1a51cbd132860447e4246a0d179eb298e09ba3bd48366dd542959bf0221396ce": {
+   "id": "oi-smc50-58132354",
+   "rewrite": "auxiliary relay output\nrelay output terminals\nauxiliary relay contacts\noutput relay\ndigital output relay"
+  },
+  "797b983b47169512bbfb0f1fa08bfab91be7cdf97493e3e365745f1cdba88015": {
+   "id": "oi-smc50-9fadf10c",
+   "rewrite": "SMC-50 controller manual\nPublication 150-UM011F-EN-P\nRockwell Automation Publication 150-UM011F-EN-P\ndocument 150-UM011F-EN-P\ncontroller section"
+  },
+  "69a9da2a9798177f756b8e489eeb49503c8fd53c3e2ae742a10c281a8f85e9cb": {
+   "id": "oi-smc50-6f703afe",
+   "rewrite": "fan wiring\npublication 150-um011f-en-p\nsmc-50 manual\nwiring diagram fan\nfault fan wiring"
+  },
+  "23b926511b2270bcc72fe2019852088aa139995337b117d722fe9126e3130487": {
+   "id": "oi-smc50-e8184add",
+   "rewrite": "integrated bypass units\nSMC-50 integrated bypass\n150-UM011F-EN-P integrated bypass\nbypass unit operation\nF81 integrated bypass fault"
+  },
+  "193244cd8c20140da3b02da8d0cbc8c8acd6f2e2567bbe472bd10c0ea47192d6": {
+   "id": "oi-smc50-6fcc3e49",
+   "rewrite": "SMC-50 manual publication 150-UM011F-EN-P\nkickstart procedure\nstartup commissioning\nmanual cover page\nPublication 150-UM011F-EN-P April 2025"
+  },
+  "60d7a58b74dd05c4868bfcb1ab74434b0110c0921fffbe9107f01ccd4565e1f2": {
+   "id": "oi-smc50-4e2fbaa4",
+   "rewrite": "Publication 150-UM011F-EN-P\nmotor protection\nSMC-50 manual\nFault Descriptions\nProtection Functions"
+  },
+  "57a1351cc7fd841b7669073ee9ea3c6907fe7e9797e0d48f5dffa08c067af3ed": {
+   "id": "oi-smc50-d2d528f7",
+   "rewrite": "Parameter Information\nRockwell Automation Publication 150-UM011F-EN-P\nSMC-50 manual parameter reference\nManual parameter section"
+  },
+  "a738c7040e3917cba62ce521398e082f3c833254bebb31b1dce35d21629c94b0": {
+   "id": "oi-smc50-621eb144",
+   "rewrite": "Pump Control Mode  \n150-UM011F-EN-P  \nMode of Operation  \nControl Mode  \nApplication Mode"
+  },
+  "5993d666fa979401bf0089eaa30fdc97c94ecc01c76c7e0af557e65f1814d756": {
+   "id": "oi-smc50-3b6010df",
+   "rewrite": "Resistance check\nOhmmeter test\nMotor resistance measurement\nInsulation resistance test\nStarter power circuit resistance"
+  },
+  "0897404d0a3f2f5f510c9ac8bfdef1b257a0919e3fc73cf2d3bb8d07707caefb": {
+   "id": "oi-smc50-000640d2",
+   "rewrite": "Soft Stop\nStopping Mode\nControlled Stop\nDeceleration Time\nSMC-50 soft stop"
+  },
+  "98df8697068688eede84bfe05140b86cbb86b581ba1ee7a7be0a778b34b142b1": {
+   "id": "oi-smc50-58063cc9",
+   "rewrite": "Solid-state controller\nSMC-50\nRockwell Automation Publication 150-UM011F-EN-P\nApril 2025"
+  },
+  "c274549c04761207f993bd982e29609f0eae2a668e03b070d102e0a18bb6eb2e": {
+   "id": "oi-smc50-9b3289a3",
+   "rewrite": "Software\nControl Software\nFirmware Version\nParameter Software\nUser Interface Software"
+  },
+  "bb550ad21c3e66bf49461b188965fc62dfc817b3b8d0ade8f33b34bf4a123456": {
+   "id": "oi-smc50-423c13f0",
+   "rewrite": "Fault Descriptions\nAlarm Indications\nAlarm History\nFault Codes\nDiagnostic Messages"
+  },
+  "39355ba7ae8ae233ad18df522d89a9bba77f3d20380c39d0de7b2a2d3fedd8a2": {
+   "id": "oi-smc50-c2a248f7",
+   "rewrite": "Fault reset\nClear fault\nFault acknowledgement\nReset fault display\nAlarm reset"
+  },
+  "a05164c1d98d521a557211a03f3c7ad1d00b2b1a4b0a0e05641cb02469bf67b4": {
+   "id": "oi-smc50-19ec6af8",
+   "rewrite": "Communication Settings\nCommunications\nNetwork Settings\nEtherNet/IP\nSerial Communications"
+  },
+  "39e27c392589bcd274c379648015d0e3054fdd03924eff731118f91de7609541": {
+   "id": "oi-smc50-2e8a8506",
+   "rewrite": "control wiring specifications\ncontrol circuit wiring\ncontrol wiring requirements\ncontrol wiring diagram\nterminal wiring specifications"
+  },
+  "5fa338069fb50da255bb05b58a48c652acd4d7e57ebb0504ad5680d5dec160b8": {
+   "id": "oi-smc50-8c1f490f",
+   "rewrite": "Controller Overview\nOverview\nController\nSMC-50 controller overview\nControl section overview"
+  },
+  "1c13db26a1ab1280a71ed71859e85b9abd39e20f481cc4c1477ca6e61cdbdbef": {
+   "id": "oi-smc50-8fa78148",
+   "rewrite": "Diagnostics\nFault Descriptions\nStatus Indicators\nAlarm History\nTroubleshooting"
+  },
+  "787144a6be85eeadf0db09a4c0fdb59b300311c4648c656171a9995508b27509": {
+   "id": "oi-smc50-6fdad852",
+   "rewrite": "Dual Ramp Start\nStart Mode\nAcceleration Ramp\nRamp Up Time\nSoft Start Configuration"
+  },
+  "e8a02620aaa83843bd2f8b3e4c0c03771b1e7cbc273f10c80f7c449e35009d5e": {
+   "id": "oi-smc50-e67e5f1b",
+   "rewrite": "Linear acceleration\nAcceleration ramp\nStart ramp time\nRamp configuration\nSoft start settings"
+  },
+  "8d9946a31adee3c71d5f3473de37257f2bc71ef45907844d5f10524149101f08": {
+   "id": "oi-smc50-178865a9",
+   "rewrite": "Starting Modes\nStart Mode\nMode of Starting\nStarting Method\nStart Configuration"
+  },
+  "957514f63dda7ac799d7e8725a0b568d41df021328197d0ca1e22bb15d4c6086": {
+   "id": "oi-smc50-10e98fee",
+   "rewrite": "PTC input\nPTC thermistor\nFault Descriptions PTC\nPTC protection\nMotor temperature input"
+  },
+  "a207d1b517cc54dcb61707fe9bff0e11a789478be97e9d00e937db9f4596d717": {
+   "id": "oi-smc50-de2aec34",
+   "rewrite": "Parameter Configuration Option Module\nOption Module Configuration\nConfiguration of Parameter Options\nModule Parameters\nOption Module Settings"
+  },
+  "6eaa1f1c5bdd3178fc05ff7d5500f98c486f45d31af54c1bb7e44b7cbded1178": {
+   "id": "oi-smc50-8f7f08dc",
+   "rewrite": "Soft Stop\nStopping Time\nDeceleration Ramp\nSoft Stop Parameter\nRamp-to-Stop"
+  },
+  "49bc954aa01903efe7343c2e7253dac7350ce817c5fd29a74f1be6cabad704b2": {
+   "id": "oi-smc50-44661d5c",
+   "rewrite": "Stall Protection\nMotor Stall Protection\nStall Trip\nStall Fault\nProtection Function: Stall"
+  },
+  "924422a247514b4ee536f331c5bffd2f94039e5b5e5a4a844d72f573ce422888": {
+   "id": "oi-smc50-03a98343",
+   "rewrite": "standard inputs\nanalog input configuration\ndigital input configuration\ninput signals\nterminal inputs"
+  },
+  "ce559092a08b55196e90a7443c1e487c6dc3203c4fd184ee8a432eea7541874f": {
+   "id": "oi-smc50-5798143c",
+   "rewrite": "Starting Mode\nPump Control Mode\nPump Control\nMotor Start Mode\nController Start Mode"
+  }
+ }
+}

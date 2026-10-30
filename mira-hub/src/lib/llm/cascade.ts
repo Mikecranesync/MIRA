@@ -104,6 +104,14 @@ export interface CascadeOpts {
   jsonMode?: boolean;
   timeoutMs?: number;
   providers?: CascadeProvider[];
+  /**
+   * One deadline for the WHOLE cascade. `timeoutMs` bounds each provider
+   * attempt; this aborts the attempt in flight and stops the walk to the next
+   * provider once the caller no longer wants an answer (query-rewrite.ts —
+   * Codex F2 on #5003). An attempt aborted after the request was accepted is
+   * still booked at its worst case, exactly like a timeout.
+   */
+  signal?: AbortSignal;
 }
 
 async function callOne(
@@ -157,7 +165,9 @@ async function callOne(
         Authorization: `Bearer ${provider.key}`,
       },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(opts.timeoutMs ?? 15_000),
+      signal: opts.signal
+        ? AbortSignal.any([AbortSignal.timeout(opts.timeoutMs ?? 15_000), opts.signal])
+        : AbortSignal.timeout(opts.timeoutMs ?? 15_000),
     });
   } catch {
     // Ambiguous: a timeout or a dropped connection after the request was
@@ -202,6 +212,8 @@ export async function cascadeComplete(
   const providers = opts.providers ?? defaultProviders();
   const start = Date.now();
   for (const p of providers) {
+    // The caller gave up (overall deadline): do not start the next provider.
+    if (opts.signal?.aborted) return null;
     const content = await callOne(p, messages, opts);
     if (content) {
       return { provider: p.name, content, durationMs: Date.now() - start };

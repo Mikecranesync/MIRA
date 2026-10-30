@@ -1292,6 +1292,12 @@ export async function retrieveNodeChunks(
      *  (e.g. a thread's P042) can only ADD candidates — never crowd the
      *  message's own keywords ("keypad") out of the pool. */
     rawQuery?: string;
+    /** #4983 — the question rewritten into the manual's vocabulary (search
+     *  phrases a model produced from the forum-style post). Rides as one more
+     *  query variant: its own OR pass for recall and its terms in the rerank's
+     *  synonym boost, exactly like the static SYNONYMS table. Never replaces
+     *  the technician's words; absent = unchanged behaviour. */
+    rewrittenQuery?: string;
     /** The notebook's machine (manufacturer/model), so its own name is never
      *  read as a fault code by the whole-token lane (Codex r6 on #4360). */
     identity?: EquipmentIdentity | null;
@@ -1646,6 +1652,16 @@ export async function retrieveNodeChunks(
     withoutIdentityCodes(withRawCodeTokens(expandIndustrialQuery(q), opts.rawQuery), opts.identity),
     requestedModel.model && !requestedModel.ambiguous ? { model: requestedModel.model } : null,
   );
+  // Query rewrite (NOTEBOOK_QUERY_REWRITE, query-rewrite.ts): the technician's
+  // post restated in the manual's own vocabulary. ONE extra OR variant — it
+  // joins the synonym passes below and feeds the rerank's synonym terms, and
+  // never replaces the technician's words (the AND pass still leads). Measured
+  // 2026-10-30 on 42 held-out forum posts: 12 → 15 right pages in the top 5;
+  // oem-index 86 → 93; oem-fault / t4-77 neutral (docs/evals/2026-10-30-t1-query-rewrite).
+  const rewritten = opts.rewrittenQuery?.replace(/\s+/g, " ").trim();
+  if (rewritten && !expanded.variants.includes(rewritten)) {
+    expanded = { ...expanded, variants: [...expanded.variants, rewritten] };
+  }
   // A code names ONE row. A token that matches more chunks than the candidate
   // pool holds ("20QWB" sits in the catalog number on every Micro820 spec
   // table; "TM171EP14R" heads every M171 wiring page) names the product, not a
@@ -1882,7 +1898,14 @@ export async function retrieveNodeChunks(
     lexicalRows += add(await runRetrieval(tsquery, text));
   };
   await addLexical(AND_TSQUERY, expanded.variants[0]);
-  for (const v of expanded.variants.slice(1)) await addLexical(OR_TSQUERY, v);
+  // The rewrite variant is recall only: its rows join the pool but do NOT count
+  // as lexical coverage, so the last-resort OR pass on the technician's own
+  // words still runs when those words found nothing (Codex F1 on #5003 — a
+  // rewrite that found an unrelated page must not silence the original words).
+  for (const v of expanded.variants.slice(1)) {
+    if (rewritten !== undefined && v === rewritten) add(await runRetrieval(OR_TSQUERY, v));
+    else await addLexical(OR_TSQUERY, v);
+  }
   // Recall for the question's rare words. Not lexical coverage: the full OR pass
   // below must still run when the AND and synonym passes found nothing.
   if (!lexicalV2) add(await runRetrieval(RARE_TSQUERY, opts.rawQuery?.trim() || expanded.variants[0]));
