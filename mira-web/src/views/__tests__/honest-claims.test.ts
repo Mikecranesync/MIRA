@@ -613,6 +613,9 @@ describe("public marketing copy — don't-say list and no published prices", () 
  * OpenRouter, and nothing else (root CLAUDE.md Hard Constraint #2). Groq
  * (deprecated 2026-10-14) and Together (deprecated 2026-10-25) are billing-dead
  * and must never be described as live or as processing chat/diagnosis data.
+ * Their keys are still configured, though, so the router can reach them as
+ * last-resort fallbacks (#5008 Codex F1). The sub-processor table must therefore
+ * still DISCLOSE them, labeled deprecated, until the router entries are removed.
  */
 const DEPRECATED_PROVIDERS = ["Groq", "Together"] as const;
 
@@ -671,6 +674,19 @@ describe("/trust names only the live OpenAI→OpenRouter cascade (#5005)", () =>
     const trust = readPublic("trust.html");
     expect(trust).toContain("The live diagnostic cascade is");
     expect(trustCascadeViolations(trust)).toEqual([]);
+  });
+
+  test("the shipped /trust page still discloses Groq and Together as deprecated fallbacks", () => {
+    const trust = readPublic("trust.html");
+    const rows = [...trust.matchAll(/<tr>([\s\S]*?)<\/tr>/g)].map((m) =>
+      m[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ")
+    );
+    for (const p of DEPRECATED_PROVIDERS) {
+      const disclosed = rows.filter((r) => new RegExp(`\\b${p}\\b`).test(r));
+      expect(disclosed.length, `${p} must be disclosed while its key can reach the router`).toBe(1);
+      expect(disclosed[0]).toMatch(/deprecated/i);
+      expect(disclosed[0]).toMatch(/fallback/i);
+    }
   });
 
   test("planted: the pre-#5005 sentence and row are both rejected", () => {
