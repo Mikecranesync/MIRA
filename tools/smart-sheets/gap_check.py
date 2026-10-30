@@ -25,28 +25,37 @@ import csv
 import json
 import sys
 from dataclasses import asdict, dataclass
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 NOTICE = (
     "An in-range reading never authorizes return to service; the site's release process decides."
 )
-UNIT_FACTORS = {("in", "mm"): 25.4, ("mm", "in"): 1 / 25.4}
+# 1 in = 25.4 mm is an EXACT definition. Decimal("25.4") multiplied by any
+# finite-decimal input stays exact (no binary-float rounding noise like the
+# 1.7526000000000002 float artifact at the 0.069in/1.7526mm boundary — F8).
+MM_PER_IN = Decimal("25.4")
+UNIT_FACTORS = {("in", "mm"): MM_PER_IN, ("mm", "in"): Decimal(1) / MM_PER_IN}
 BOUNDARIES = ("inclusive", "exclusive")
 PHOTO_SOURCES = ("photo", "photo_unconfirmed", "photo_confirmed")
 
 
 @dataclass
 class Reading:
-    value: float | None
+    value: Decimal | float | None
     unit: str | None
     source: str = "manual"  # manual | photo
-    confirmed: bool = True  # a photo transcription starts unconfirmed
+    # F10: a photo transcription must be explicitly confirmed by a person
+    # before it can be assessed; default to unconfirmed, never trust-by-default.
+    # Manual readings are unaffected — check_reading only consults `confirmed`
+    # when `source` is one of PHOTO_SOURCES.
+    confirmed: bool = False
 
 
 @dataclass
 class Limit:
-    min_value: float | None
-    max_value: float | None
+    min_value: Decimal | float | None
+    max_value: Decimal | float | None
     unit: str | None
     boundary: str | None
     source: str | None
@@ -62,29 +71,55 @@ class Result:
     notice: str = NOTICE
 
 
-def _num(v) -> float | None:
+def _num(v) -> Decimal | None:
     if v is None or v == "":
         return None
-    return float(v)
+    try:
+        return Decimal(str(v))
+    except InvalidOperation:
+        raise ValueError(f"not a valid decimal number: {v!r}") from None
+
+
+def _as_decimal(v) -> Decimal | None:
+    """Normalize a value (float, int, str, Decimal, None) to Decimal.
+
+    `Decimal(str(v))` rather than `Decimal(v)` so a Python float literal like
+    ``0.069`` (passed directly to ``Reading``/``Limit`` by callers that don't
+    go through ``_num``/CSV parsing) is read from its clean shortest-round-trip
+    string ("0.069"), not its raw binary representation.
+    """
+    if v is None:
+        return None
+    if isinstance(v, Decimal):
+        return v
+    return Decimal(str(v))
 
 
 def check_reading(reading: Reading, limit: Limit, convert: bool = False) -> Result:
+    # F8: every comparison below happens in Decimal, parsed from the clean
+    # (shortest round-trip) string form of whatever was passed in, so a
+    # binary-float artifact can never flip a boundary result. The Result
+    # object still reports plain floats (display/JSON-friendly); the pass/
+    # fail DECISION is made in Decimal before that conversion happens.
     reasons: list[str] = []
-    if reading.value is None:
+    raw_value = _as_decimal(reading.value)
+    if raw_value is None:
         return Result("incomplete", ["no reading recorded"], limit_source=limit.source)
     if reading.source in PHOTO_SOURCES and not reading.confirmed:
         return Result(
             "unassessed",
             ["photo transcription not confirmed by the technician"],
-            reading.value,
+            float(raw_value),
             reading.unit,
             limit.source,
         )
-    if limit.min_value is None or limit.max_value is None or not limit.unit or not limit.source:
+    limit_min = _as_decimal(limit.min_value)
+    limit_max = _as_decimal(limit.max_value)
+    if limit_min is None or limit_max is None or not limit.unit or not limit.source:
         return Result(
             "unassessed",
             ["limit missing (min, max, unit and source are all required)"],
-            reading.value,
+            float(raw_value),
             reading.unit,
             limit.source,
         )
@@ -92,26 +127,27 @@ def check_reading(reading: Reading, limit: Limit, convert: bool = False) -> Resu
         return Result(
             "unassessed",
             [f"boundary rule {limit.boundary!r} is not inclusive/exclusive"],
-            reading.value,
+            float(raw_value),
             reading.unit,
             limit.source,
         )
-    if limit.min_value > limit.max_value:
+    if limit_min > limit_max:
         return Result(
             "unassessed",
             ["conflicting limit: min is greater than max"],
-            reading.value,
+            float(raw_value),
             reading.unit,
             limit.source,
         )
-    value, unit = reading.value, reading.unit
+    value, unit = raw_value, reading.unit
     if unit != limit.unit:
         pair = (unit or "", limit.unit)
         if convert and pair in UNIT_FACTORS:
             value = value * UNIT_FACTORS[pair]
             unit = limit.unit
             reasons.append(
-                f"converted {reading.value} {reading.unit} to {value:.4g} {unit} (explicit)"
+                f"converted {reading.value} {reading.unit} to {value:.4g} {unit} "
+                "(explicit, exact decimal)"
             )
         else:
             return Result(
@@ -119,18 +155,18 @@ def check_reading(reading: Reading, limit: Limit, convert: bool = False) -> Resu
                 [
                     f"unit {unit!r} does not match limit unit {limit.unit!r}; no conversion requested"
                 ],
-                reading.value,
+                float(raw_value),
                 reading.unit,
                 limit.source,
             )
     if limit.boundary == "inclusive":
-        ok = limit.min_value <= value <= limit.max_value
+        ok = limit_min <= value <= limit_max
     else:
-        ok = limit.min_value < value < limit.max_value
+        ok = limit_min < value < limit_max
     reasons.append(
-        f"{value:.4g} {unit} vs {limit.min_value}–{limit.max_value} {limit.unit} ({limit.boundary}); source {limit.source}"
+        f"{value:.4g} {unit} vs {limit_min}–{limit_max} {limit.unit} ({limit.boundary}); source {limit.source}"
     )
-    return Result("pass" if ok else "fail", reasons, value, unit, limit.source)
+    return Result("pass" if ok else "fail", reasons, float(value), unit, limit.source)
 
 
 def _reading(row: dict, prefix: str) -> Reading:
@@ -197,7 +233,12 @@ def write_outputs(result: dict, out: Path) -> None:
                 "before_value",
                 "after_status",
                 "after_value",
-                "unit",
+                # F9: before/after can land in different units (e.g. before
+                # converted in->mm, after stayed in because it was unassessed
+                # and never converted) — one shared "unit" column was
+                # ambiguous and silently wrong. Report each side's own unit.
+                "before_unit",
+                "after_unit",
                 "limit_source",
                 "exception",
                 "reasons",
@@ -211,6 +252,7 @@ def write_outputs(result: dict, out: Path) -> None:
                     r["before"]["compared_value"],
                     r["after"]["status"],
                     r["after"]["compared_value"],
+                    r["before"]["compared_unit"],
                     r["after"]["compared_unit"],
                     r["after"]["limit_source"],
                     r["exception"],

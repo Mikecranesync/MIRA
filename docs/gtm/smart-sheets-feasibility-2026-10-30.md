@@ -108,6 +108,6 @@ A pure deterministic gap-check function with tests (`tools/smart-sheets/gap_chec
 - Guarded `mira-hub/src/lib/capabilities.ts` (no `supervisor`/`smart_sheets.*` capability) — **accepted for v0**, deferred per §2; re-open only with an explicit cutover exception.
 - Guarded `mira-mobile/src/api/resources.ts` control path — **accepted**, read-only reuse of its types, never edited by this path.
 - Missing `supervisor` role in `ROLE_CAPS` — **filed as a known gap** (matches `critic.json`); not actioned here.
-- Float-boundary risk on limit comparisons — **addressed in the `gap_check.py` prototype** (decimal/fixed-point), not yet carried into the TS port (§2, not built).
+- Float-boundary risk on limit comparisons — **was NOT addressed in the original `gap_check.py` prototype** despite this entry's prior claim: it compared binary floats, and PR #4986 review finding F8 (#4995) reproduced a false pass at the 0.069in/1.7526mm exclusive boundary (`0.069 * 25.4 == 1.7526000000000002` in float). **Fixed 2026-10-30** on `fix/work-packet-review-followups`: `gap_check.py` now parses and compares with `decimal.Decimal`, converting with the exact `25.4` factor; still not carried into the TS port (§2, not built).
 - Tenant-isolation negative test (criterion 8) — **not run**; design follows the proven `105` RLS template but is marked Partial, not Covered, above.
 - `packages/factorylm-ui` vs `mira-hub/src/factorylm-ui/` scheduling dependency (Codex review gate on #3626) — **noted, not resolved**; §2/§3 route around it by defaulting to the adapter root.

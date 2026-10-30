@@ -144,9 +144,7 @@
    "material": "FCM",
    "qty_raw": "1",
    "qty_by_model": {
-    "5CP6120": 1,
-    "5CP6120CS": 1,
-    "5CP6120CSSG1": 1
+    "5CP6120": 1
    },
    "qty_status": "single",
    "applies_to": [
@@ -164,7 +162,6 @@
    "material": "FCM",
    "qty_raw": "1",
    "qty_by_model": {
-    "5CP6120": 1,
     "5CP6120CS": 1,
     "5CP6120CSSG1": 1
    },
@@ -185,9 +182,7 @@
    "material": "AL",
    "qty_raw": "1",
    "qty_by_model": {
-    "5CP6120": 1,
-    "5CP6120CS": 1,
-    "5CP6120CSSG1": 1
+    "5CP6120CS": 1
    },
    "qty_status": "single",
    "applies_to": [
@@ -205,8 +200,6 @@
    "material": "AL",
    "qty_raw": "1",
    "qty_by_model": {
-    "5CP6120": 1,
-    "5CP6120CS": 1,
     "5CP6120CSSG1": 1
    },
    "qty_status": "single",
@@ -1282,6 +1275,7 @@
    "check": "kit_qty_covers_pump",
    "kit": "seal",
    "item": 98,
+   "material": "NBR (STD)",
    "status": "pass",
    "detail": "3 per kit x 1 kits = 3; parts list [3]"
   },
@@ -1289,6 +1283,7 @@
    "check": "kit_qty_covers_pump",
    "kit": "seal",
    "item": 106,
+   "material": "NBR (STD)",
    "status": "pass",
    "detail": "3 per kit x 1 kits = 3; parts list [3]"
   },
@@ -1296,13 +1291,15 @@
    "check": "kit_qty_covers_pump",
    "kit": "seal",
    "item": 120,
-   "status": "pass",
-   "detail": "3 per kit x 1 kits = 3; parts list [3]"
+   "material": "NBR (STD)",
+   "status": "not_covered",
+   "detail": "NBR (STD) has no part number for item 120 in this kit; that material cannot cover this item"
   },
   {
    "check": "kit_qty_covers_pump",
    "kit": "seal",
    "item": 121,
+   "material": "NBR (STD)",
    "status": "pass",
    "detail": "3 per kit x 1 kits = 3; parts list [3]"
   },
@@ -1310,6 +1307,7 @@
    "check": "kit_qty_covers_pump",
    "kit": "seal",
    "item": 125,
+   "material": "NBR (STD)",
    "status": "pass",
    "detail": "3 per kit x 1 kits = 3; parts list [3]"
   },
@@ -1317,6 +1315,7 @@
    "check": "kit_qty_covers_pump",
    "kit": "valve",
    "item": 162,
+   "material": "NBR (STD)",
    "status": "pass",
    "detail": "3 per kit x 2 kits = 6; parts list [6]"
   },
@@ -1324,6 +1323,7 @@
    "check": "kit_qty_covers_pump",
    "kit": "valve",
    "item": 163,
+   "material": "NBR (STD)",
    "status": "pass",
    "detail": "3 per kit x 2 kits = 6; parts list [6]"
   },
@@ -1331,6 +1331,7 @@
    "check": "kit_qty_covers_pump",
    "kit": "valve",
    "item": 164,
+   "material": "NBR (STD)",
    "status": "pass",
    "detail": "3 per kit x 2 kits = 6; parts list [6]"
   },
@@ -1338,6 +1339,7 @@
    "check": "kit_qty_covers_pump",
    "kit": "valve",
    "item": 166,
+   "material": "NBR (STD)",
    "status": "pass",
    "detail": "3 per kit x 2 kits = 6; parts list [6]"
   },
@@ -1345,6 +1347,7 @@
    "check": "kit_qty_covers_pump",
    "kit": "valve",
    "item": 167,
+   "material": "NBR (STD)",
    "status": "pass",
    "detail": "3 per kit x 2 kits = 6; parts list [6]"
   },
@@ -1352,6 +1355,7 @@
    "check": "kit_qty_covers_pump",
    "kit": "valve",
    "item": 168,
+   "material": "NBR (STD)",
    "status": "pass",
    "detail": "3 per kit x 2 kits = 6; parts list [6]"
   },
@@ -1359,6 +1363,7 @@
    "check": "kit_qty_covers_pump",
    "kit": "valve",
    "item": 172,
+   "material": "NBR (STD)",
    "status": "pass",
    "detail": "3 per kit x 2 kits = 6; parts list [6]"
   }
