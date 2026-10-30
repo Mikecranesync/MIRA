@@ -194,7 +194,8 @@ export type TurnEvidencePacketAnswerGate = {
   evidence_phrase_matched: boolean;
   safety_classification: "none" | "hazard_directive" | "safety_stop";
   evidence_sufficient: boolean;
-  /** ungroundedUnitClaim(answerText) result (anomalies.ts) — the ONLY trace
+  /** ungroundedUnitClaim(answerText, numericClaimAudit(...)) result (anomalies.ts; #4870:
+   * derived from the parsed claims over the provider-visible evidence) — the ONLY trace
    * of answer text this packet ever carries is this one boolean. */
   ungrounded_unit_claim: boolean;
   /** SHADOW (MIRA_JEV_SHADOW=1): Jev noul probability that the retrieved
@@ -227,9 +228,10 @@ export type TurnEvidencePacketAnswerGate = {
   weak_evidence_badge?: boolean;
   /**
    * #4315 (observe-only): numeric values the answer cited that the cited page does not
-   * support (number + unit). Since #4870 support is read from the cited page's whole
-   * model-visible text (each chunk's first MODEL_VISIBLE_CHARS — what the provider saw; a
-   * photo reading never counts here), a value the parser cannot read counts when its literal
+   * support (number + unit). Since #4870 support is read from the cited page's text exactly
+   * as the provider received it (providerVisibleChunkText: the MAX_CONTENT_CHARS cut, its
+   * ellipsis, reference-tag neutralization; a photo reading never counts here), a value the
+   * parser cannot read counts when its literal
    * text is there, and model/catalog/fault-code tokens are not values. A count — never the
    * values or any answer text. Optional: absent on gate paths that ship no citations (read
    * as 0).
@@ -238,9 +240,9 @@ export type TurnEvidencePacketAnswerGate = {
   /**
    * #4870 (observe-only): numeric claims anywhere in the answer (any unit or none;
    * identifiers, footnotes, page references, list ordinals and zero magnitudes excluded),
-   * and how many of them neither the model-visible text of the chunks in context (each
-   * chunk's first MODEL_VISIBLE_CHARS) nor the photo observation text supports. Counts
-   * only. Optional: absent on paths that never evaluate them.
+   * and how many of them neither the chunks in context, as the provider received them
+   * (providerVisibleChunkText), nor the photo observation text supports. Counts only.
+   * Optional: absent on paths that never evaluate them.
    */
   numeric_claims?: number;
   numeric_claims_unsupported?: number;
