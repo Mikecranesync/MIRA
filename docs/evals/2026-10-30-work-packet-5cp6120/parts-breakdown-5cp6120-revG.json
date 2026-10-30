@@ -1,0 +1,1376 @@
+{
+ "source": {
+  "file": "5CP6120_G.txt",
+  "sha256": "178b53a190adb0543f52717636f6c717f89ab4dd0219945493f58e1da79c16ef",
+  "document_part_number": "993450",
+  "revision": "Rev G 5/22",
+  "pages": 4,
+  "exploded_view_page": 3
+ },
+ "models": [
+  "5CP6120",
+  "5CP6120CS",
+  "5CP6120CSSG1"
+ ],
+ "parts": [
+  {
+   "item": 5,
+   "part": "126542",
+   "description": "Screw, HHC, Sems (M8 x 16)",
+   "material": "STCP",
+   "qty_raw": "8–4",
+   "qty_by_model": null,
+   "qty_status": "ambiguous",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": true,
+   "production_part_differs": false,
+   "notes": [
+    "See Tech Bulletin 074"
+   ],
+   "source_page": 2
+  },
+  {
+   "item": 8,
+   "part": "46910",
+   "description": "Cover, Bearing",
+   "material": "AL",
+   "qty_raw": "2–1–0",
+   "qty_by_model": {
+    "5CP6120": 2,
+    "5CP6120CS": 1,
+    "5CP6120CSSG1": 0
+   },
+   "qty_status": "resolved",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 10,
+   "part": "14028",
+   "description": "O-ring, Bearing Cover–70D",
+   "material": "NBR",
+   "qty_raw": "2–1",
+   "qty_by_model": null,
+   "qty_status": "ambiguous",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 11,
+   "part": "43222",
+   "description": "Seal, Oil, Crankshaft",
+   "material": "NBR",
+   "qty_raw": "2–1",
+   "qty_by_model": null,
+   "qty_status": "ambiguous",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 15,
+   "part": "14480",
+   "description": "Bearing, Ball",
+   "material": "STL",
+   "qty_raw": "2",
+   "qty_by_model": {
+    "5CP6120": 2,
+    "5CP6120CS": 2,
+    "5CP6120CSSG1": 2
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 20,
+   "part": "48742",
+   "description": "Rod, Connecting Assembly",
+   "material": "TNM",
+   "qty_raw": "3",
+   "qty_by_model": {
+    "5CP6120": 3,
+    "5CP6120CS": 3,
+    "5CP6120CSSG1": 3
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [
+    "See Tech Bulletin 074"
+   ],
+   "source_page": 2
+  },
+  {
+   "item": 25,
+   "part": "46928",
+   "description": "Crankshaft, Dual End M18",
+   "material": "FCM",
+   "qty_raw": "1",
+   "qty_by_model": {
+    "5CP6120": 1
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 25,
+   "part": "48233",
+   "description": "Crankshaft, Single End M18",
+   "material": "FCM",
+   "qty_raw": "1",
+   "qty_by_model": {
+    "5CP6120CS": 1,
+    "5CP6120CSSG1": 1
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 30,
+   "part": "48224",
+   "description": "Cover, Bearing, Blind",
+   "material": "AL",
+   "qty_raw": "1",
+   "qty_by_model": {
+    "5CP6120CS": 1
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120CS"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 30,
+   "part": "49776",
+   "description": "Cover, Bearing",
+   "material": "AL",
+   "qty_raw": "1",
+   "qty_by_model": {
+    "5CP6120CSSG1": 1
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 32,
+   "part": "46798",
+   "description": "Cap, Oil Filler, Domed",
+   "material": null,
+   "qty_raw": "1",
+   "qty_by_model": {
+    "5CP6120": 1,
+    "5CP6120CS": 1,
+    "5CP6120CSSG1": 1
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 33,
+   "part": "14179",
+   "description": "O-ring, Oil Filler Cap–70D",
+   "material": "NBR",
+   "qty_raw": "1",
+   "qty_by_model": {
+    "5CP6120": 1,
+    "5CP6120CS": 1,
+    "5CP6120CSSG1": 1
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 37,
+   "part": "92241",
+   "description": "Gauge, Oil, Bubble with Gasket–80D",
+   "material": "PC",
+   "qty_raw": "1–1–2",
+   "qty_by_model": {
+    "5CP6120": 1,
+    "5CP6120CS": 1,
+    "5CP6120CSSG1": 2
+   },
+   "qty_status": "resolved",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [
+    "See Tech Bulletin 074"
+   ],
+   "source_page": 2
+  },
+  {
+   "item": 38,
+   "part": "44428",
+   "description": "Gasket, Flat, Oil Gauge–80D",
+   "material": "NBR",
+   "qty_raw": "1–1–2",
+   "qty_by_model": {
+    "5CP6120": 1,
+    "5CP6120CS": 1,
+    "5CP6120CSSG1": 2
+   },
+   "qty_status": "resolved",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 40,
+   "part": "125824",
+   "description": "Screw, HHC, Sems (M6 x 16)",
+   "material": "STCP",
+   "qty_raw": "4",
+   "qty_by_model": {
+    "5CP6120": 4,
+    "5CP6120CS": 4,
+    "5CP6120CSSG1": 4
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": true,
+   "production_part_differs": false,
+   "notes": [
+    "See Tech Bulletin 074"
+   ],
+   "source_page": 2
+  },
+  {
+   "item": 48,
+   "part": "25625",
+   "description": "Plug, Drain ( 1/4\" x 19 BSP)",
+   "material": "STCP",
+   "qty_raw": "1",
+   "qty_by_model": {
+    "5CP6120": 1,
+    "5CP6120CS": 1,
+    "5CP6120CSSG1": 1
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 49,
+   "part": "23170",
+   "description": "O-ring, Drain Plug–70D",
+   "material": "NBR",
+   "qty_raw": "1",
+   "qty_by_model": {
+    "5CP6120": 1,
+    "5CP6120CS": 1,
+    "5CP6120CSSG1": 1
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 50,
+   "part": "46940",
+   "description": "Cover, Rear",
+   "material": "AL",
+   "qty_raw": "1",
+   "qty_by_model": {
+    "5CP6120": 1,
+    "5CP6120CS": 1,
+    "5CP6120CSSG1": 1
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 51,
+   "part": "14044",
+   "description": "O-ring, Rear Cover",
+   "material": "NBR",
+   "qty_raw": "1",
+   "qty_by_model": {
+    "5CP6120": 1,
+    "5CP6120CS": 1,
+    "5CP6120CSSG1": 1
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 53,
+   "part": "48617",
+   "description": "Crankcase",
+   "material": "AL",
+   "qty_raw": "1",
+   "qty_by_model": {
+    "5CP6120": 1,
+    "5CP6120CS": 1,
+    "5CP6120CSSG1": 1
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 64,
+   "part": "46746",
+   "description": "Pin, Crosshead",
+   "material": "CM",
+   "qty_raw": "3",
+   "qty_by_model": {
+    "5CP6120": 3,
+    "5CP6120CS": 3,
+    "5CP6120CSSG1": 3
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 65,
+   "part": "48458",
+   "description": "Rod, Plunger",
+   "material": "BBNP",
+   "qty_raw": "3",
+   "qty_by_model": {
+    "5CP6120": 3,
+    "5CP6120CS": 3,
+    "5CP6120CSSG1": 3
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 70,
+   "part": "46838",
+   "description": "Seal, Oil, Crankcase",
+   "material": "NBR",
+   "qty_raw": "3",
+   "qty_by_model": {
+    "5CP6120": 3,
+    "5CP6120CS": 3,
+    "5CP6120CSSG1": 3
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 75,
+   "part": "43328",
+   "description": "Slinger, Barrier",
+   "material": "S",
+   "qty_raw": "3",
+   "qty_by_model": {
+    "5CP6120": 3,
+    "5CP6120CS": 3,
+    "5CP6120CSSG1": 3
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 88,
+   "part": "45697",
+   "description": "Washer, Keyhole (M18 x 10)",
+   "material": "S",
+   "qty_raw": "3",
+   "qty_by_model": {
+    "5CP6120": 3,
+    "5CP6120CS": 3,
+    "5CP6120CSSG1": 3
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 90,
+   "part": "46841",
+   "description": "Plunger (M20 x 50)",
+   "material": "CC",
+   "qty_raw": "3",
+   "qty_by_model": {
+    "5CP6120": 3,
+    "5CP6120CS": 3,
+    "5CP6120CSSG1": 3
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 98,
+   "part": "46730",
+   "description": "Washer, Seal–90D",
+   "material": "NBR",
+   "qty_raw": "3",
+   "qty_by_model": {
+    "5CP6120": 3,
+    "5CP6120CS": 3,
+    "5CP6120CSSG1": 3
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 99,
+   "part": "48201",
+   "description": "Retainer, Plunger with Stud (M6)",
+   "material": "SS",
+   "qty_raw": "3",
+   "qty_by_model": {
+    "5CP6120": 3,
+    "5CP6120CS": 3,
+    "5CP6120CSSG1": 3
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": true,
+   "notes": [
+    "See Tech Bulletin 074"
+   ],
+   "source_page": 2
+  },
+  {
+   "item": 100,
+   "part": "46749",
+   "description": "Retainer, Seal",
+   "material": "PVDF",
+   "qty_raw": "3",
+   "qty_by_model": {
+    "5CP6120": 3,
+    "5CP6120CS": 3,
+    "5CP6120CSSG1": 3
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 106,
+   "part": "43305",
+   "description": "Seal, Low-Pressure with S-Spring",
+   "material": "NBR",
+   "qty_raw": "3",
+   "qty_by_model": {
+    "5CP6120": 3,
+    "5CP6120CS": 3,
+    "5CP6120CSSG1": 3
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 120,
+   "part": "46843",
+   "description": "Case, Seal",
+   "material": "BB",
+   "qty_raw": "3",
+   "qty_by_model": {
+    "5CP6120": 3,
+    "5CP6120CS": 3,
+    "5CP6120CSSG1": 3
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 121,
+   "part": "13978",
+   "description": "O-ring, Seal Case–70D",
+   "material": "NBR",
+   "qty_raw": "3",
+   "qty_by_model": {
+    "5CP6120": 3,
+    "5CP6120CS": 3,
+    "5CP6120CSSG1": 3
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 125,
+   "part": "43307",
+   "description": "Seal, High-Pressure with S-Support",
+   "material": "SNG",
+   "qty_raw": "3",
+   "qty_by_model": {
+    "5CP6120": 3,
+    "5CP6120CS": 3,
+    "5CP6120CSSG1": 3
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 162,
+   "part": "43248",
+   "description": "Backup Ring, Seat",
+   "material": "PTFE",
+   "qty_raw": "6",
+   "qty_by_model": {
+    "5CP6120": 6,
+    "5CP6120CS": 6,
+    "5CP6120CSSG1": 6
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 163,
+   "part": "43249",
+   "description": "O-ring, Seat–80D",
+   "material": "NBR",
+   "qty_raw": "6",
+   "qty_by_model": {
+    "5CP6120": 6,
+    "5CP6120CS": 6,
+    "5CP6120CSSG1": 6
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 164,
+   "part": "43722",
+   "description": "Seat",
+   "material": "S",
+   "qty_raw": "6",
+   "qty_by_model": {
+    "5CP6120": 6,
+    "5CP6120CS": 6,
+    "5CP6120CSSG1": 6
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 166,
+   "part": "43721",
+   "description": "Valve",
+   "material": "S",
+   "qty_raw": "6",
+   "qty_by_model": {
+    "5CP6120": 6,
+    "5CP6120CS": 6,
+    "5CP6120CSSG1": 6
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 167,
+   "part": "43751",
+   "description": "Spring",
+   "material": "S",
+   "qty_raw": "6",
+   "qty_by_model": {
+    "5CP6120": 6,
+    "5CP6120CS": 6,
+    "5CP6120CSSG1": 6
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 168,
+   "part": "44564",
+   "description": "Retainer, Spring",
+   "material": "PVDF",
+   "qty_raw": "6",
+   "qty_by_model": {
+    "5CP6120": 6,
+    "5CP6120CS": 6,
+    "5CP6120CSSG1": 6
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 172,
+   "part": "17617",
+   "description": "O-ring, Valve Plug–90D",
+   "material": "NBR",
+   "qty_raw": "6",
+   "qty_by_model": {
+    "5CP6120": 6,
+    "5CP6120CS": 6,
+    "5CP6120CSSG1": 6
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 174,
+   "part": "125214",
+   "description": "Plug, Valve",
+   "material": "BBCP",
+   "qty_raw": "6",
+   "qty_by_model": {
+    "5CP6120": 6,
+    "5CP6120CS": 6,
+    "5CP6120CSSG1": 6
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [
+    "See Tech Bulletin 074"
+   ],
+   "source_page": 2
+  },
+  {
+   "item": 185,
+   "part": "49761",
+   "description": "Manifold, Head",
+   "material": "BBCP",
+   "qty_raw": "1",
+   "qty_by_model": {
+    "5CP6120": 1,
+    "5CP6120CS": 1,
+    "5CP6120CSSG1": 1
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  },
+  {
+   "item": 188,
+   "part": "126513",
+   "description": "Screw, HSH (M8 x 70)",
+   "material": "STCP",
+   "qty_raw": "8",
+   "qty_by_model": {
+    "5CP6120": 8,
+    "5CP6120CS": 8,
+    "5CP6120CSSG1": 8
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": true,
+   "production_part_differs": false,
+   "notes": [
+    "See Tech Bulletin 074"
+   ],
+   "source_page": 2
+  },
+  {
+   "item": 500,
+   "part": "8076",
+   "description": "Gearbox 1\" Shaft (See Individual Data Sheet)",
+   "material": null,
+   "qty_raw": "1",
+   "qty_by_model": {
+    "5CP6120": 1,
+    "5CP6120CS": 1,
+    "5CP6120CSSG1": 1
+   },
+   "qty_status": "single",
+   "applies_to": [
+    "5CP6120",
+    "5CP6120CS",
+    "5CP6120CSSG1"
+   ],
+   "rohs": false,
+   "production_part_differs": false,
+   "notes": [],
+   "source_page": 2
+  }
+ ],
+ "optional_parts": [
+  {
+   "part": "30057",
+   "description": "Key (M6 x 6 x 25)",
+   "qty": 1,
+   "notes": [],
+   "source_page": 3
+  },
+  {
+   "part": "30611",
+   "description": "Assembly, Rail",
+   "qty": 1,
+   "notes": [],
+   "source_page": 3
+  },
+  {
+   "part": "30637",
+   "description": "Assembly, Rail (Retrofit - See Tech Bulletin 078)",
+   "qty": 1,
+   "notes": [],
+   "source_page": 3
+  },
+  {
+   "part": "30243",
+   "description": "Mount, Direct",
+   "qty": 1,
+   "notes": [],
+   "source_page": 3
+  },
+  {
+   "part": "127409",
+   "description": "Cap, Vented with O-ring (Rain Cap)",
+   "qty": 1,
+   "notes": [],
+   "source_page": 3
+  },
+  {
+   "part": "118672",
+   "description": "Protector, Shaft (5CP6120)",
+   "qty": 1,
+   "notes": [],
+   "source_page": 3
+  },
+  {
+   "part": "34334",
+   "description": "Kit, Oil Drain (3/8\" x 24\")",
+   "qty": 1,
+   "notes": [
+    "Not Shown"
+   ],
+   "source_page": 3
+  },
+  {
+   "part": "30696",
+   "description": "Pliers, Reverse",
+   "qty": 1,
+   "notes": [
+    "Not Shown"
+   ],
+   "source_page": 3
+  }
+ ],
+ "service_parts": [
+  {
+   "part": "33628",
+   "description": "Kit, Seal – Standard NBR",
+   "qty": 1,
+   "notes": [],
+   "source_page": 3
+  },
+  {
+   "part": "30820",
+   "description": "Kit, Valve – Standard NBR",
+   "qty": 2,
+   "notes": [],
+   "source_page": 3
+  },
+  {
+   "part": "6107",
+   "description": "Oil, Bottle (21 oz) ISO 68 Hydraulic (Fill to Specified Crankcase Capacity Prior to Start-up)",
+   "qty": 1,
+   "notes": [],
+   "source_page": 3
+  },
+  {
+   "part": "6124",
+   "description": "Gasket, Liquid (3 oz)",
+   "qty": 1,
+   "notes": [],
+   "source_page": 3
+  },
+  {
+   "part": "816666",
+   "description": "Head, Complete with NBR Seals & O-rings",
+   "qty": 1,
+   "notes": [],
+   "source_page": 3
+  }
+ ],
+ "kits": [
+  {
+   "kind": "seal",
+   "required_per_pump": 1,
+   "models": [
+    "5CP6120",
+    "5CP6120CS"
+   ],
+   "kit_by_material": {
+    "NBR (STD)": "33628",
+    "FPM (.0110)": "31628",
+    "EPDM (.0220)": "31648",
+    "HT (.3000)": "31638",
+    "STHT (.3400)": "76536"
+   },
+   "items": [
+    {
+     "item": 98,
+     "description": "O-Ring, Plunger Retainer",
+     "qty_per_kit": 3,
+     "part_by_material": {
+      "NBR (STD)": "46730",
+      "FPM (.0110)": "48394",
+      "EPDM (.0220)": "48432",
+      "HT (.3000)": "46730",
+      "STHT (.3400)": "46730"
+     }
+    },
+    {
+     "item": 106,
+     "description": "Seal, Low-Pressure with S-Spring",
+     "qty_per_kit": 3,
+     "part_by_material": {
+      "NBR (STD)": "43305",
+      "FPM (.0110)": null,
+      "EPDM (.0220)": null,
+      "HT (.3000)": "43305",
+      "STHT (.3400)": "76305"
+     }
+    },
+    {
+     "item": null,
+     "description": "Seal, Low-Pressure with SS-Spring",
+     "qty_per_kit": 3,
+     "part_by_material": {
+      "NBR (STD)": null,
+      "FPM (.0110)": "45153",
+      "EPDM (.0220)": "48429",
+      "HT (.3000)": null,
+      "STHT (.3400)": null
+     }
+    },
+    {
+     "item": 120,
+     "description": "Case, Seal",
+     "qty_per_kit": 3,
+     "part_by_material": {
+      "NBR (STD)": null,
+      "FPM (.0110)": null,
+      "EPDM (.0220)": null,
+      "HT (.3000)": null,
+      "STHT (.3400)": "49436"
+     }
+    },
+    {
+     "item": 121,
+     "description": "O-Ring, Seal Case",
+     "qty_per_kit": 3,
+     "part_by_material": {
+      "NBR (STD)": "13978",
+      "FPM (.0110)": "14329",
+      "EPDM (.0220)": "48904",
+      "HT (.3000)": "13978",
+      "STHT (.3400)": "13978"
+     }
+    },
+    {
+     "item": 125,
+     "description": "Seal, High-Pressure with S-Support",
+     "qty_per_kit": 3,
+     "part_by_material": {
+      "NBR (STD)": "43307",
+      "FPM (.0110)": "44936",
+      "EPDM (.0220)": "46667",
+      "HT (.3000)": "46667",
+      "STHT (.3400)": "46667"
+     }
+    }
+   ],
+   "source_page": 4,
+   "footnotes": [
+    "Review material codes for individual items (HT generally may be used as an alternative)",
+    "Silicone oil/grease required"
+   ]
+  },
+  {
+   "kind": "valve",
+   "required_per_pump": 2,
+   "models": [
+    "5CP6120",
+    "5CP6120CSSG1"
+   ],
+   "kit_by_material": {
+    "NBR (STD)": "30820",
+    "FPM (.0110)": "31263",
+    "EPDM (.0220)": "31259",
+    "HT (.3000)": "30820",
+    "STHT (.3400)": "30820"
+   },
+   "items": [
+    {
+     "item": 162,
+     "description": "Backup Ring, Seat",
+     "qty_per_kit": 3,
+     "part_by_material": {
+      "NBR (STD)": "43248",
+      "FPM (.0110)": "43248",
+      "EPDM (.0220)": "43248",
+      "HT (.3000)": "43248",
+      "STHT (.3400)": "43248"
+     }
+    },
+    {
+     "item": 163,
+     "description": "O-Ring, Seat",
+     "qty_per_kit": 3,
+     "part_by_material": {
+      "NBR (STD)": "43249",
+      "FPM (.0110)": "44383",
+      "EPDM (.0220)": "46206",
+      "HT (.3000)": "43249",
+      "STHT (.3400)": "43249"
+     }
+    },
+    {
+     "item": 164,
+     "description": "Seat",
+     "qty_per_kit": 3,
+     "part_by_material": {
+      "NBR (STD)": "43722",
+      "FPM (.0110)": "43722",
+      "EPDM (.0220)": "43722",
+      "HT (.3000)": "43722",
+      "STHT (.3400)": "43722"
+     }
+    },
+    {
+     "item": 166,
+     "description": "Valve",
+     "qty_per_kit": 3,
+     "part_by_material": {
+      "NBR (STD)": "43721",
+      "FPM (.0110)": "43721",
+      "EPDM (.0220)": "43721",
+      "HT (.3000)": "43721",
+      "STHT (.3400)": "43721"
+     }
+    },
+    {
+     "item": 167,
+     "description": "Spring",
+     "qty_per_kit": 3,
+     "part_by_material": {
+      "NBR (STD)": "43751",
+      "FPM (.0110)": "43751",
+      "EPDM (.0220)": "43751",
+      "HT (.3000)": "43751",
+      "STHT (.3400)": "43751"
+     }
+    },
+    {
+     "item": 168,
+     "description": "Retainer, Spring",
+     "qty_per_kit": 3,
+     "part_by_material": {
+      "NBR (STD)": "44564",
+      "FPM (.0110)": "44564",
+      "EPDM (.0220)": "44564",
+      "HT (.3000)": "44564",
+      "STHT (.3400)": "44564"
+     }
+    },
+    {
+     "item": 172,
+     "description": "O-Ring, Valve Plug",
+     "qty_per_kit": 3,
+     "part_by_material": {
+      "NBR (STD)": "17617",
+      "FPM (.0110)": "11691",
+      "EPDM (.0220)": "46207",
+      "HT (.3000)": "17617",
+      "STHT (.3400)": "17617"
+     }
+    }
+   ],
+   "source_page": 4,
+   "footnotes": [
+    "Silicone oil/grease required"
+   ]
+  }
+ ],
+ "checks": [
+  {
+   "check": "kit_qty_covers_pump",
+   "kit": "seal",
+   "item": 98,
+   "material": "NBR (STD)",
+   "status": "pass",
+   "detail": "3 per kit x 1 kits = 3; parts list [3]"
+  },
+  {
+   "check": "kit_qty_covers_pump",
+   "kit": "seal",
+   "item": 106,
+   "material": "NBR (STD)",
+   "status": "pass",
+   "detail": "3 per kit x 1 kits = 3; parts list [3]"
+  },
+  {
+   "check": "kit_qty_covers_pump",
+   "kit": "seal",
+   "item": 120,
+   "material": "NBR (STD)",
+   "status": "not_covered",
+   "detail": "NBR (STD) has no part number for item 120 in this kit; that material cannot cover this item"
+  },
+  {
+   "check": "kit_qty_covers_pump",
+   "kit": "seal",
+   "item": 121,
+   "material": "NBR (STD)",
+   "status": "pass",
+   "detail": "3 per kit x 1 kits = 3; parts list [3]"
+  },
+  {
+   "check": "kit_qty_covers_pump",
+   "kit": "seal",
+   "item": 125,
+   "material": "NBR (STD)",
+   "status": "pass",
+   "detail": "3 per kit x 1 kits = 3; parts list [3]"
+  },
+  {
+   "check": "kit_qty_covers_pump",
+   "kit": "valve",
+   "item": 162,
+   "material": "NBR (STD)",
+   "status": "pass",
+   "detail": "3 per kit x 2 kits = 6; parts list [6]"
+  },
+  {
+   "check": "kit_qty_covers_pump",
+   "kit": "valve",
+   "item": 163,
+   "material": "NBR (STD)",
+   "status": "pass",
+   "detail": "3 per kit x 2 kits = 6; parts list [6]"
+  },
+  {
+   "check": "kit_qty_covers_pump",
+   "kit": "valve",
+   "item": 164,
+   "material": "NBR (STD)",
+   "status": "pass",
+   "detail": "3 per kit x 2 kits = 6; parts list [6]"
+  },
+  {
+   "check": "kit_qty_covers_pump",
+   "kit": "valve",
+   "item": 166,
+   "material": "NBR (STD)",
+   "status": "pass",
+   "detail": "3 per kit x 2 kits = 6; parts list [6]"
+  },
+  {
+   "check": "kit_qty_covers_pump",
+   "kit": "valve",
+   "item": 167,
+   "material": "NBR (STD)",
+   "status": "pass",
+   "detail": "3 per kit x 2 kits = 6; parts list [6]"
+  },
+  {
+   "check": "kit_qty_covers_pump",
+   "kit": "valve",
+   "item": 168,
+   "material": "NBR (STD)",
+   "status": "pass",
+   "detail": "3 per kit x 2 kits = 6; parts list [6]"
+  },
+  {
+   "check": "kit_qty_covers_pump",
+   "kit": "valve",
+   "item": 172,
+   "material": "NBR (STD)",
+   "status": "pass",
+   "detail": "3 per kit x 2 kits = 6; parts list [6]"
+  }
+ ],
+ "unknowns": [
+  "item 5 part 126542: qty '8–4' has 2 values for 3 models; not resolved per model",
+  "item 10 part 14028: qty '2–1' has 2 values for 3 models; not resolved per model",
+  "item 11 part 43222: qty '2–1' has 2 values for 3 models; not resolved per model"
+ ]
+}

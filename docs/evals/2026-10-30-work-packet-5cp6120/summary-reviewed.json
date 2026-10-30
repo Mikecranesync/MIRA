@@ -1,0 +1,12 @@
+{
+ "labels": {
+  "verified": 14,
+  "proposed": 24,
+  "unknown": 9
+ },
+ "struck": 1,
+ "technician_review": "reviewed",
+ "supervisor_approval": "pending",
+ "isolation_signoff": "required",
+ "approved_for_use": false
+}
