@@ -1,0 +1,477 @@
+[
+ {
+  "id": "fr-pf40-00",
+  "set": "forum-fresh",
+  "manual": "pf40",
+  "pdf_sha256": "15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9",
+  "url": "https://www.plctalk.net/forums/threads/powerflex-40-f005-fault.126875/",
+  "forum": "plctalk.net",
+  "question": "I have a few different power flex 40's that give me this fault at start up. These drives have a line reactor between the drive and motor of a Big *** Fans (fan). 2hp drive. They were installed around 2006 and have not worked properly since 2017 or earlier. They are set up to run off the 0-10v source of a potentiometer. This is where I am seeing the fault of 2 particular drives. As soon as I cut the switch on and the pot is set at the minimum of 10hz the drives immediately bang 60hz then decels down to 10hz, but normally never makes it there because it pops up F005. A051-52 are set to 4 and A053 is 5 and A054 is 11. P038 is 2. The Another drive gives the same F005 fault after it has been running for about 20-30 mins. I can clear the fault and it will take back off for a little while.",
+  "accepted": [
+   93
+  ],
+  "evidence_quote": "Bus overvoltage can also be caused by motor regeneration. Extend the decel time or install dynamic brake option.",
+  "blind_label_pages": [
+   93
+  ]
+ },
+ {
+  "id": "fr-pf40-01",
+  "set": "forum-fresh",
+  "manual": "pf40",
+  "pdf_sha256": "15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9",
+  "url": "https://mrplc.com/forums/topic/26865-powerflex-40-amperage/",
+  "forum": "forums.mrplc.com",
+  "question": "I am very new to profibus and was wondering if it was possible to get a Powerflex 40 VFD amperage over profibus using RsLogix 5000. Trying to set up some high amp alarms for my facility and cant seem to find good information anywhere. Any information is appreciated! Thanks!",
+  "accepted": [
+   47
+  ],
+  "evidence_quote": "The output current present at T1, T2, and T3 (U, V, and W).",
+  "blind_label_pages": [
+   47
+  ]
+ },
+ {
+  "id": "fr-pf4m-04",
+  "set": "forum-fresh",
+  "manual": "pf4m",
+  "pdf_sha256": "f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5",
+  "url": "https://mrplc.com/forums/topic/19320-ml-1400-modbus-to-powerflex-4m/",
+  "forum": "mrplc.com",
+  "question": "Evening all, Can someone please tell me (i know the manuals say it is possible), if MicroLogix 1400 PLC will communicate thru 1763-NC01 cable to a PowerFlex 4M drive? I have been reading manuals on modbus, pf4m, ml1400 for weeks.  everything is there for it to work, but the manuals say \"if the device supports these modbus functions, it SHOULD work\".. :):):) thank you, Ken ps.  oh, and if so..... what the heck am i doing wrong??  ( and i got the only knowledgebase item i can find (handshake is not enabled) ) and i will gladly provide many, many more details if this is a possible thing to do.",
+  "accepted": [
+   100
+  ],
+  "evidence_quote": "If you have problems with initially establishing communications, try swapping the two network wires at the master controller.",
+  "blind_label_pages": [
+   99,
+   100,
+   101
+  ]
+ },
+ {
+  "id": "fr-acs355-06",
+  "set": "forum-fresh",
+  "manual": "acs355",
+  "pdf_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac",
+  "url": "https://www.plctalk.net/forums/threads/acs355-overcurrent-issue.115225/",
+  "forum": "plctalk.net",
+  "question": "I have two ACS355 drives (240V, 1HP) each connected to a Marathon Black Max 1HP motor. In both cases, very shortly after I start the drives immediately to 5 seconds) the drives will fault on overcurrent. I initially had the drives set up to operate in vector speed mode. When this issue popped up I changed to scalar mode and the same thing happens. I disconnected the motor leads from the drives and started them in scalar mode and I still get an overcurrent fault, which seems like quite the trick. With the motors disconnected the current feedback value displayed on the drive never moves from zero but the drive faults on overcurrent. Both of them. Connected to different motors or not connected at all. Any ideas? It almost has to be a set-up issue but I have no idea what would cause something like this. I have never seen such a thing before; at least not from two brand-spankin'-new drives. Keith",
+  "accepted": [
+   359
+  ],
+  "evidence_quote": "Drive gives an overcurrent fault after start command even when the motor is not connected (use scalar control in this trial). Replace the drive.",
+  "blind_label_pages": [
+   359
+  ]
+ },
+ {
+  "id": "fr-acs355-07",
+  "set": "forum-fresh",
+  "manual": "acs355",
+  "pdf_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac",
+  "url": "https://www.plctalk.net/forums/threads/abb-acs355-drive-problem.84201/",
+  "forum": "plctalk.net",
+  "question": "Hi, I have a question outside the plc area, but I thought someone would have an idea. I was comissioning an ABB ACS355 drive (frequency inverter) with Basic-panel. I entered parameters and tried to manually operate the drive to check the rotation of the motor. When I pressed start button, the drive gives F0016 (earth fault). I checked the motor's and cable's insulation, they're ok. I tried to start drive without motor cable connected and it gave the same fault code. We discussed with ABB and they said it's warranty issue, so we got a new drive. But it didn't help. New drive gives the same fault code. User manual says that you can disable the earth fault monitoring, but you might lose the warranty by doing that. Then I had to power up and parametrize ACS 355 drive on different work cite and it runs fine. So long story short, does anyone had these kind of problems with drives?",
+  "accepted": [
+   363
+  ],
+  "evidence_quote": "Internal short-circuit may cause earth fault indication. This has happened if fault 0001 appears after disabling the earth fault. Replace the drive.",
+  "blind_label_pages": [
+   363
+  ]
+ },
+ {
+  "id": "fr-acs355-08",
+  "set": "forum-fresh",
+  "manual": "acs355",
+  "pdf_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac",
+  "url": "https://www.plctalk.net/forums/threads/back-up-procedure-for-abb-drive-acs355.145059/",
+  "forum": "plctalk.net",
+  "question": "Pls i want to know the procedure to back up drive parameters to panel and then download to another drive from the keypad (panrl)",
+  "accepted": [
+   103
+  ],
+  "evidence_quote": "To copy all parameters (including user sets and internal parameters) from the drive to the control panel, select UPLOAD TO PANEL on the Par backup menu",
+  "blind_label_pages": [
+   103,
+   102
+  ]
+ },
+ {
+  "id": "fr-acs355-09",
+  "set": "forum-fresh",
+  "manual": "acs355",
+  "pdf_sha256": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac",
+  "url": "https://www.plctalk.net/threads/acs355.102851/",
+  "forum": "plctalk.net",
+  "question": "I have tried to connect abb acs355 with com cable with pinout on this site posted but after many tries i get a fault code on drive a5001 and i have learned in manual that this is control pannel connection problem how can i solve this problem help me pls",
+  "accepted": [
+   356
+  ],
+  "evidence_quote": "The basic control panel indicates control panel alarms with a code, A5xxx. ALARM CODE CAUSE WHAT TO DO 5001 Drive is not responding. Check panel connection.",
+  "blind_label_pages": [
+   356
+  ]
+ },
+ {
+  "id": "fr-micro820-um-12",
+  "set": "forum-fresh",
+  "manual": "micro820-um",
+  "pdf_sha256": "977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675",
+  "url": "https://www.plctalk.net/threads/micro820-recipe-function.127916/",
+  "forum": "plctalk.net",
+  "question": "My first time here so greetings all! As a little background, I have had to pick up CCW per my employer's request and so far have made a lot of progress and learned a lot considering i started from nothing. However I seem to be struggling with using the Recipe function in CCW. So a test program I made where I would push a button and update an INT value in a recipe has not given me any result. looking at the output value of function, I get an error 15, which is not listed or described in the paperwork i have seen for this plc. It seems like I cant get the error 15 to come back, and now I only see error 3 and then error 0. But there is not really a way for me to confirm that there is no error and that writing to the SD has actually occurred. This seems like it should be pretty straight forward. Not sure what I'm doing wrong. Any advice? I just looked and it seems that info IS being saved to the SD!!! Oh JOY! but i am still having read error. Other info : Using CCW v 12.0 MICRO SD SanDisk 32GB",
+  "accepted": [
+   131
+  ],
+  "evidence_quote": "2 RCP_ERR_DATAFILE_FULL Recipe files exceed the maximum number of files per recipe set folder. 3 RCP_ERR_DATAFILE_ACCESS Error to access recipe data file in microSD card",
+  "blind_label_pages": [
+   131
+  ]
+ },
+ {
+  "id": "fr-micro820-in-14",
+  "set": "forum-fresh",
+  "manual": "micro820-in",
+  "pdf_sha256": "6dfc2d211eb1aaa1a03505f061d911da729c2251a65051fdfb968b22f77a7bd4",
+  "url": "https://www.plctalk.net/threads/ab-micro820-questions.109816/",
+  "forum": "plctalk.net",
+  "question": "I have an AB Micro820 controller (pn# 2080-LC20-20QWB) and I am near completion of the project I have been working on and everything is working great. The one thing I have not been able to figure out is how to ground the system/controller. The controller has no labeled ground terminal as far as I can tell. I have attached an image of the terminal points of the 820 to this post for reference. The only other terminal (not shown in attached image) is the serial port which does have a marked ground point, but I don't think it's used for grounding the unit so I am not even looking at that. Also, I am going to be using diodes (pn# 1N1004) for surge suppression of my small 24vdc solenoids that are being powered directly from the relay digital outputs. I don't want to splice in to the wires near the solenoids so I am planning on running them individually from each -24vdc point on my din rail terminal blocks to the +24vdc output wires on each output (a total distance of about 8 inches from each negative point to positive output point). Does anyone see any problem with going this route? Also, the solenoids are only about 2-3 feet (conductor distance) from the controller, so I figure what harm can it be to have the diodes closer to the controller if it is a more convenient way for me to the wire them anyways. Lastly, do I also need to use a diode suppressor for a 24vdc audible alarm? It is a piezoelectric buzzer (pn# ECX2070-24) so it's a capacitive load if I'm not mistaken. Thank you in advance!",
+  "accepted": [
+   12
+  ],
+  "evidence_quote": "Because of the potentially high current surges that occur when switching inductive load devices, such as motor starters and solenoids, we recommend the use of some type of surge suppression",
+  "blind_label_pages": [
+   12
+  ]
+ },
+ {
+  "id": "fr-ml1100-17",
+  "set": "forum-fresh",
+  "manual": "ml1100",
+  "pdf_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9",
+  "url": "https://mrplc.com/forums/topic/37536-micrologix-1100-ip-addressing/",
+  "forum": "mrplc.com",
+  "question": "I have a micrologix 1100 PLC as well as a weintek HMI all connected through a network switch for them to communicate between each other, however I'm having an issue where the Micrologix Controller will not retain its IP address once I set it through Allen Bradleys BootP tool. I can set it through the tool and then go into RSlogix 500 and communicate with it and all that, but once the controller is turned off the IP address goes back to its factory setting of not showing an IP at all. Any suggestions/ ideas as to what I'm doing wrong?",
+  "accepted": [
+   161
+  ],
+  "evidence_quote": "The BOOTP request can be disabled by clearing the BOOTP Enable parameter in the channel",
+  "blind_label_pages": [
+   160,
+   161,
+   163
+  ]
+ },
+ {
+  "id": "fr-ml1100-18",
+  "set": "forum-fresh",
+  "manual": "ml1100",
+  "pdf_sha256": "7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9",
+  "url": "https://www.plctalk.net/threads/micrologix-1100-firmware-update-trouble.115254/",
+  "forum": "plctalk.net",
+  "question": "Hello Guys, I've tried updating my Micrologix 1100 to latest firmware (16) My PLC, is type 1763-L16BWA Ser. A Rev A, FRN 1 I've tried to update with ControlFlash 15.01.00 I use Windows 10, and is connected with a Serial Cable (with USB/RS232 Adapter) Before I tried the update I could connect with RSLogix Micro, and see the old owners program. After attempting update, it stops at block 25, the PLC reboots, and the 3 LEDs below power is flashing. Did I brick it somehow, or is there a way out of this? Thanks in advance for any suggestions.",
+  "accepted": [
+   144
+  ],
+  "evidence_quote": "valid operating system, the controller flashes the Run, Force, and Fault LEDs on and off.",
+  "blind_label_pages": [
+   144
+  ]
+ },
+ {
+  "id": "fr-smcflex-20",
+  "set": "forum-fresh",
+  "manual": "smcflex",
+  "pdf_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd",
+  "url": "https://www.plctalk.net/threads/smc-flex-problem.83596/",
+  "forum": "plctalk.net",
+  "question": "Hi everyone! I have a problem with a SMC Flex SoftStart. When I put it ''ON'', they seems to work like a contactor: no ramp, the motor goes full speed. I try to run the motor with no load (empty mixer) and with load (full mixer). I get the same result. I tried to put the Ramp Time to 30s (max) but I have the same result. Can you give me some advices? Thank you!",
+  "accepted": [
+   83
+  ],
+  "evidence_quote": "If the controller senses that the motor has reached full speed before it completes the Current Limit Start, it automatically switches to providing full voltage to the motor.",
+  "blind_label_pages": [
+   83
+  ]
+ },
+ {
+  "id": "fr-smcflex-21",
+  "set": "forum-fresh",
+  "manual": "smcflex",
+  "pdf_sha256": "a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd",
+  "url": "https://www.plctalk.net/forums/threads/150-smc-flex-soft-starter.138415/",
+  "forum": "plctalk.net",
+  "question": "Hi, I want to start 150 SMC Flex from Studio 5000. I have the AOP and P SMC flex AOI imported in my program. I have also set the logic mask to 32 for DPI communication. However, I am getting an error fault code #29 \"loss of communication\". Please tell me how to start the SMC flex from my P SMC flex AOI? Do I need to set the instruction input bits or change any other parameters on the soft starter? Thanks",
+  "accepted": [
+   101
+  ],
+  "evidence_quote": "The SMC Flex controller disables control through the DPI communication port as the factory default. To enable control, you must set the Logic Mask in the Communication programming group.",
+  "blind_label_pages": [
+   101,
+   94,
+   96
+  ]
+ },
+ {
+  "id": "fr-e3plus-22",
+  "set": "forum-fresh",
+  "manual": "e3plus",
+  "pdf_sha256": "aca6a4e5e28544658c2b385318927be3f95acf291cf3b811bd8baff080c7fd80",
+  "url": "https://www.plctalk.net/forums/threads/ab-e-3-plus-keeps-tripping.131683/",
+  "forum": "plctalk",
+  "question": "I have a few Allen Bradley E3 plus overload relays that keep tripping and it is indicating a phase loss. I;ve checked the connections and replaced the cabinet in the control center for 1 of the units. but it keeps tripping. I know these are discontinued, but could they just be getting old and faulty? Any direction would be greatly appreciative.",
+  "accepted": [
+   218
+  ],
+  "evidence_quote": "Check all power terminations from the branch circuit-protecting device down to the motor for proper tightness. Ensure that the overload connection to the contactor is secure.",
+  "blind_label_pages": [
+   218
+  ]
+ },
+ {
+  "id": "fr-e3plus-23",
+  "set": "forum-fresh",
+  "manual": "e3plus",
+  "pdf_sha256": "aca6a4e5e28544658c2b385318927be3f95acf291cf3b811bd8baff080c7fd80",
+  "url": "https://www.plctalk.net/forums/threads/e3-plus-device-net.92469/",
+  "forum": "plctalk",
+  "question": "The manual for the E3 Plus shows only a few bit mappings on 4-13 of https://rockwellautomation.custhelp.com/ci/fattach/get/97169/ How do you read the four input status bits Thanks",
+  "accepted": [
+   248
+  ],
+  "evidence_quote": "Bit 4 = Input 1 Bit 5 = Input 2 Bit 6 = Input 3",
+  "blind_label_pages": [
+   248
+  ]
+ },
+ {
+  "id": "fr-smc50-24",
+  "set": "forum-fresh",
+  "manual": "smc50",
+  "pdf_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069",
+  "url": "https://emersonexchange365.com/community-hubs/deltav-community-connect/f/deltav-discussions-questions/10897/rockwell-smc-50-soft-starter---ethernet-ip-parameter-mapping-to-pk-or-eioc",
+  "forum": "Emerson Exchange 365 (DeltaV Community Connect)",
+  "question": "Does anyone have information or experience setting up DeltaV to communicate via Ethernet IP to a Rockwell SMC-50 Soft Starter? The SMC-50 has a module called a 20-COMM-E adapter. I know this isn't a Rockwell group, but I am looking for some help with setting up the soft starter to map just some common parameters (phase currents, pp voltage, power, power factor, etc). Then also need help on setting up the LDT's to read the parameters.",
+  "accepted": [
+   196
+  ],
+  "evidence_quote": "To configure Datalinks, you must use parameters 153\u2026168 of the SMC-50 controller. See \nTable 124 for a detailed listing of these parameters.",
+  "blind_label_pages": [
+   196,
+   197
+  ]
+ },
+ {
+  "id": "fr-smc50-25",
+  "set": "forum-fresh",
+  "manual": "smc50",
+  "pdf_sha256": "7b8a6689a550060688a44d625cd522a41a0c983941e16dfbea9dadf7b174e069",
+  "url": "https://www.electriciantalk.com/threads/programming-ab-softstart.209817/",
+  "forum": "Electrician Talk",
+  "question": "Just replaced an AB DialogPlus with an SMC 50 as the old one decided to finally bite the dust after 18 years. Connected to a 200HP vertical turbine lift pump. Good GE motor on it with the following specs: 575vac, 197A, 1790 rpm (low slip). Starter has all the goodies like bypass and PFC correction contactor. I haven't programmed any modern softstarts before (lots of VFD's and some older Siemens softstarts >250 HP). Can someone give me some pointers as to what to watch for? For instance, I'll do the quick setup, but what are typical recommendations for current limits, starting voltage kick, etc? If some of you guru's could chime it, it would save me a bit of research :thumbsup:",
+  "accepted": [
+   72
+  ],
+  "evidence_quote": "This feature provides a torque (current) boost at startup to break away loads that require a \npulse of high torque to get started.",
+  "blind_label_pages": [
+   72
+  ]
+ },
+ {
+  "id": "fr-micro810-26",
+  "set": "forum-fresh",
+  "manual": "micro810",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605",
+  "url": "https://www.plctalk.net/threads/micro810-lcd-help.74397/",
+  "forum": "plctalk.net",
+  "question": "First time poster so hi all, First off I am new to Allen-Bradley programming so forgive my ignorance. Im trying to used the LCD key pad as a simple HMI. All i need to do is turn on and off an output using the LCD keys and maybe have the status displayed on the screen. I have done this on LOGO plc's but having no luck with the micro810. Any help is much appreciated. Stephen.",
+  "accepted": [
+   66
+  ],
+  "evidence_quote": "The LCD Display instructions can be used to display custom messages as well as to read keystrokes.",
+  "blind_label_pages": [
+   66,
+   67
+  ]
+ },
+ {
+  "id": "fr-micro810-28",
+  "set": "forum-fresh",
+  "manual": "micro810",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605",
+  "url": "https://www.plctalk.net/threads/micro810-connect-components-workbench-configuring-analog-input.103739/",
+  "forum": "plctalk.net",
+  "question": "I have a very simple program which is run by a 2080-LC10-12QWB Micro810 PLC connected to a single sensor. The sensor has two outputs, one which is analog, and the other which is a switching output. I have the sensor wired correctly (I believe) M12 with: - 1/BN connected to +DC of the PLC power supply - 2/WH connected to I-00 (which is both analog/digital input) - this is analog output - 3/BU connected to COM terminal of inputs which is jumpered to -DC of PLC power supply - 4/BK connected to I-07 which is strictly digital input - this is switching output - 5/GY not connected as it's an input to the sensor not required I have not found where to configure I-00 to say that I am using it as analog, or where to specify 4-20ma or 0-10v. The weird thing is, I'm getting a value in I-03 which is also analog/digital, but I have nothing connected to it. The value is always the same, 1018, and switches between that value and 0, with the sensor. Monitoring the variables shows both IO_EM_AI_00 and IO_EM_DI_00 (analog and digital) and I see the DI go high with the sensor, but AI is always 0. Manual specs shows: 8 Input (4 digital, 4 analog/digital, configurable) for this PLC, but where is it actually configurable? Any help would be appreciated!",
+  "accepted": [
+   29
+  ],
+  "evidence_quote": "I-04, I-05, I-06, I-07 apply as both digital inputs 4, 5, 6, 7 and analog inputs 0, 1, 2, 3 for the 2080-LC10-QWB, 2080-LC10-12DWD, and 2080-LC10-12QBB models.",
+  "blind_label_pages": [
+   29,
+   59
+  ]
+ },
+ {
+  "id": "fr-micro810-29",
+  "set": "forum-fresh",
+  "manual": "micro810",
+  "pdf_sha256": "8ce845ae1c0cfea8342106961780465813dc6bd13bdc52bdc5af2a8147f3e605",
+  "url": "https://www.plctalk.net/threads/micro-810-analog-input.138986/",
+  "forum": "plctalk.net",
+  "question": "Hello, I am trying to connect a 0-5v pressure sensor to the Micro 810, but I am not getting a clear input voltage reading. I connected the sensor signal wire to terminal I_04 and set the input to AI:00. I am wondering if I am not getting a reading because the Micro 810 wants either a 4-20ma or 0-10v signal. Any help would be appreciated. Thanks",
+  "accepted": [
+   59
+  ],
+  "evidence_quote": "Input type DC voltage Input voltage range 0\u202610V DC Input voltage, max 26.4V DC Value of LSB 10 mV Input resolution 10-bit Input data count range 0\u20261023",
+  "blind_label_pages": [
+   59
+  ]
+ },
+ {
+  "id": "fr-gs4-ch2-30",
+  "set": "forum-fresh",
+  "manual": "gs4-ch2",
+  "pdf_sha256": "82fff0d757339b4aa24ab8ae5ae1f58f5512d59def4abdbd0d72a786005f5546",
+  "url": "https://community.automationdirect.com/s/question/0D5PE00000Mgb210AB/durapulse-dynamic-braking-user-manual",
+  "forum": "community.automationdirect.com",
+  "question": "(1) I can;t find the braking resistor user manual? I have a GS4-4040 installation where I believe I need to install a braking resistor to clip an OVn (over volt at speed) fault I am experiencing due to load changes on the shaft that are interpreted the same as a decel event. When you look at the purchasing information for the GS4-4040 it states \"integrated dynamic braking unit\". However, in the manual I read on P06:28 that the integrated braking function is only \"integrated\" on models below 40hp (460vac). So, I currently have no way to brake the OVn I am seeing. (2) The \"accessories\" section of the manual list a braking resistor available for the GS4-4040 as 1K0W016. It states qty=4. I assume these are to be connected in series to the B1/B2 drive terminals?\n\nThank you - the system is working well - with a nuisance fault now and then when a solenoid valve switches - This VFD drives a hydraulic pump!I still have some fluid system issues to iron out causing the maximum oscillations seen. that's actually due to air in the system allowing a lunging effect on the oil as valves shift. My concern is the ability to clip the DC bus voltage spikes with the braking resistor along with proper settings in P06:28 to help absorb those events. I'm going back, hopefully, with the correct braking resistor arrangement. Eliminating the entrained air will probably solve the issue (that's the next visit) but I want both options in hand.\n\nThank you for your time to read this",
+  "accepted": [
+   19
+  ],
+  "evidence_quote": "For GS4 frame sizes A\u2013C, the external brake resistor should be connected to the terminals (B1, B2) of GS4 drives",
+  "blind_label_pages": [
+   19
+  ]
+ },
+ {
+  "id": "fr-gs4-ch2-31",
+  "set": "forum-fresh",
+  "manual": "gs4-ch2",
+  "pdf_sha256": "82fff0d757339b4aa24ab8ae5ae1f58f5512d59def4abdbd0d72a786005f5546",
+  "url": "https://www.plctalk.net/forums/threads/vfd-and-high-leg.150105/",
+  "forum": "plctalk.net",
+  "question": "Hi I am new here and eager to learn. Here is my question:Has anyone here ever installed a 3 phase 240V high leg feeding a VFD? I was reading that you may have to remove the RFI jumper on the drive. This is on a Durapulse GS4. Any insight or thoughts would be appreciated!",
+  "accepted": [
+   16
+  ],
+  "evidence_quote": "The RFI jumper must be removed in the following four situations. This is to prevent the system from grounding through the RFI capacitor, damaging the GS4 drive.",
+  "blind_label_pages": [
+   16
+  ]
+ },
+ {
+  "id": "fr-gs4-ch6-33",
+  "set": "forum-fresh",
+  "manual": "gs4-ch6",
+  "pdf_sha256": "eb56fcf7c9154982ae3ce47d8fbebe545c92e3c1ee23b1b0275490aa8b0611d2",
+  "url": "https://community.automationdirect.com/s/question/0D53u000029NUUQCA4/gs4-modbus",
+  "forum": "community.automationdirect.com",
+  "question": "I just recently commissioned my first GS4. The GS4 has problems. I spent a considerable amount of time on the phone with tech support to no avail. I am posting this to hopefully encourage AD to either fix the problem or at least have a clue to the problem. I was able to read the drive, via MODBUS, but received an exception response of 3 when trying to write to the drive. Status monitor 2 had bits 8 and 10 on indicating that the source of speed and control were by communication. (It turns out that these bits did not change even if P3.00 and P4.00 are not set to communication.) There were no error messages on the GS4 but the red (and green) com light was flashing. It eventually started working after I power cycled the drive. It turns out that any change to the parameters will require the drive to be power cycled before it will work again. After the initial power cycle the drive appears to be OK until a write to the drive is attempted. It will then show 56 in SM1 and display CE3 on the display.",
+  "accepted": [
+   22
+  ],
+  "evidence_quote": "PC Data Error 56 Illegal data value Check if the data value exceeds max/min value",
+  "blind_label_pages": [
+   22
+  ]
+ },
+ {
+  "id": "fr-gs4-ch6-34",
+  "set": "forum-fresh",
+  "manual": "gs4-ch6",
+  "pdf_sha256": "eb56fcf7c9154982ae3ce47d8fbebe545c92e3c1ee23b1b0275490aa8b0611d2",
+  "url": "https://community.automationdirect.com/s/question/0D5Dp00001430byKAA/gs4-vfd-stalling-under-load-on-30hp-motor",
+  "forum": "community.automationdirect.com",
+  "question": "30 hp motor driving hydraulic pumps. Motor stalls when kicking in 2nd hi vol pump. If left in this condition vfd will OL. Reducing 2nd pump psi obviously prevents this issue, but shouldn't VFD allow motor top run as it did with regular contactor. It was not tripping OL on contactor.",
+  "accepted": [
+   19
+  ],
+  "evidence_quote": "1) Check if the motor is overloaded. 2) Use the next higher HP drive model.",
+  "blind_label_pages": [
+   19
+  ]
+ },
+ {
+  "id": "fr-se-canopen-hw-35",
+  "set": "forum-fresh",
+  "manual": "se-canopen-hw",
+  "pdf_sha256": "37cef51be2e199e41113017cc98fbb1bb03d9ec7c57aadf78d6b942e4e9b09ae",
+  "url": "https://www.plctalk.net/forums/threads/troubleshooting-of-can-network.141657/",
+  "forum": "plctalk.net",
+  "question": "I am currently working on a production line equipped with an IPC, several PLCs, and several drives all interconnected and communicating over a CAN network. Yesterday, we encountered multiple communication alarms associated with most devices on the network. To diagnose the issue, I initially checked the CAN high and low voltages, which were within acceptable ranges: CAN H ranged between 2.6 to 2.9V and CAN L between 2.1 to 2.5V. Subsequently, I powered off the system and measured the resistance between CAN H and CAN L, which read 43 ohms. Considering there should be two 120-ohm terminating resistors at each end, I expected the measurement to be around 60 ohms. One aspect that confused me is the presence of multiple CAN adapters. Some of these adapters split the CAN signal into two separate loops, each with its own set of resistors. I'm unsure whether these additional loops and resistors constitute separate networks or if they are part of the network I am troubleshooting. The specific network I am focusing on is highlighted with green boxes in the attached picture and the other loops connected to the same adapter are in red. Don't know if they affect my network or not since they are coming out of the same adapter. After noticing the 43-ohm reading, I suspected unnecessary resistors might be affecting the network. As a test, I turned off the terminator switch at the last node, increasing the network's resistance to 70 ohms.",
+  "accepted": [
+   34
+  ],
+  "evidence_quote": "if R < 50 \u03a9 the reason may be a redundant termination resistor or a short",
+  "blind_label_pages": [
+   34
+  ]
+ },
+ {
+  "id": "fr-se-lxm32a-canopen-37",
+  "set": "forum-fresh",
+  "manual": "se-lxm32a-canopen",
+  "pdf_sha256": "184215ad40c6d9d8caaa49c067912c9d9ede16de03b6bfba2515996a5e353706",
+  "url": "https://forum.unitronics.com/topic/8589-unistream-canopen-problem/",
+  "forum": "forum.unitronics.com (Unitronics Support Forum) \u2014 outside the suggested source list, but a real, verbatim, publicly accessible forum thread",
+  "question": "Hi, I am communicating with Unistream with Schneider Lexium 32 A series canopen. I introduced the eds file of the driver.But only 1.pdo works for data reading and writing.It cannot read data from other pdo. As seen in the pictures;",
+  "accepted": [
+   26
+  ],
+  "evidence_quote": "The other PDOs must be activated manually in order to be used. A PDO is activated with bit 31 (valid bit) in subindex 01 hex of the respective communication object.",
+  "blind_label_pages": [
+   26
+  ]
+ },
+ {
+  "id": "fr-se-m171-38",
+  "set": "forum-fresh",
+  "manual": "se-m171",
+  "pdf_sha256": "0960ac80367576997446b100bf56cc9a5dbb3f1ea2e047fc88f9d005acb8133b",
+  "url": "https://www.plctalk.net/forums/threads/modicon-m171.120103/",
+  "forum": "plctalk.net",
+  "question": "The first has to do with changing the setpoint in my heating program. The user would like to be able to have an up button and down button that directly changes the value of the temperature setpoint. I have written the program to do this, but with one hitch. The variable for temp_setpoint is stored in EEPROM, so as not to be lost on a power outage. For the life of me, I cannot get the program to write to that variable. There is a function called \"SysWrite...\" something or other that is labeled as being able to do such, but adding it into my logic causes a \"PLC Run Error\" when I try to compile and send to the hardware. Anyone have any hints? The next thing is that when the above is sorted out, I want the display to switch to the setpoint for a few seconds when an adjustment button is pushed, then back to showing current room temp. I have not found a function that does anything with the display? And lastly, the customer is leaning toward a stand alone monitoring system for these remote sites. It is a cellular system that has digital and analog inputs. I can utilize my digital output alarm mentioned earlier to trigger an event on the monitoring system. What would be even better, would be to send a 5-20ma signal to the monitoring system that matches my room temp value. Again, wiring is not a problem, but the logic to accomplish this is my achilles heal. Any help is greatly appreciated! I hope I can continue to learn and become a master of the PLC!!",
+  "accepted": [
+   93
+  ],
+  "evidence_quote": "Outputs AO1, AO2, AO3, AO4, AO5 are configurable as: \u2022 0 = 4-20mA current analog output",
+  "blind_label_pages": [
+   93
+  ]
+ },
+ {
+  "id": "fr-se-m172-40",
+  "set": "forum-fresh",
+  "manual": "se-m172",
+  "pdf_sha256": "624c0605b759b2d49b0a2768d7ac5aba2cf9957e1802466a8e9ec045761e3d88",
+  "url": "https://community.se.com/t5/HVAC-and-Pumping-Forum/Modicon-M172-analog-output/td-p/261610",
+  "forum": "se.com community",
+  "question": "Hi All, I have problem with analog outputs AOL1-AOL4 the outputs AOL3 and AOL4 I configure in program as voltage modulation. I want using this outputs to control device like valve with input 0-10V. I wrote program I see the output is on working but when I measuring output physically using a multimeter there wasn't be a voltage. Even I wrote a test program to check all analog outputs and when I measuring every output I saw that on analog output AOL5 the voltage was changing propertly. Where can ba a problem? I using Machine Expert - HVAC 1.2.1 and modicon 172 File version 596.10",
+  "accepted": [
+   89
+  ],
+  "evidence_quote": "Cfg_AOx Description 0 Current modulation 4\u202620 mA, page 92 1 Current ON/OFF, page 92 2 V oltage modulation 0\u202610 Vdc, page 91",
+  "blind_label_pages": [
+   89,
+   91
+  ]
+ },
+ {
+  "id": "fr-se-premium-serial-44",
+  "set": "forum-fresh",
+  "manual": "se-premium-serial",
+  "pdf_sha256": "291fff98121f76823502f042104379482c2d167cc7355da893275d7b7ea7d571",
+  "url": "https://control.com/forums/threads/premium-character-mode-using-ter-port.28350/",
+  "forum": "control.com",
+  "question": "I have a Premium PLC with a processor TSX P572623. I have configured the TER port as Character Mode link with 9600 baud, odd parity, 1 stop bit, and 7 data bits. When I set the switch of the TSXPACC01 from master to slave, the PLC is immediately set in error mode (with TER, ERR and I/O LEDs on). The error persists even after reset as long as the switch is on the slave mode. To recover normal PLC status, I have to set the switch to master and reset again. This phenomenon occurs even with empty applications (no code in MAST, Fast... tasks). I have investigated the situation. The only setting that the PLC does not accept is the 7 data bits. If I use 8 data bits everything works fine. As I am intending to connect the PLC to ABB SPA bus, I have to use 7 data bits. Note: The PLC OS version was 5.8, and I updated it to 6.1 without any change. The PL7Pro (4.4) library I have has only OS version TSX P572623 V5.6 So, is the communication with 7 data bits not supported by TER?",
+  "accepted": [
+   54
+  ],
+  "evidence_quote": "9600 bits/s by modifiable default of 1200 to 19200 bits/s (7 or 8 data bits; even parity, odd parity or without parity; with or without echo.",
+  "blind_label_pages": [
+   54
+  ]
+ }
+]
