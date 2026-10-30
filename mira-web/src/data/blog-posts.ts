@@ -173,7 +173,7 @@ export const BLOG_POSTS: BlogPost[] = [
       { type: "heading", text: "Where AI Fits In" },
       {
         type: "paragraph",
-        text: "AI doesn't replace PM or PdM — it accelerates both. When a fault code fires on a VFD at 2 AM, you don't need to flip through a 400-page manual. An equipment notebook that cites the attached OEM page puts the passage in front of you. That's not replacing your expertise.",
+        text: "AI doesn't replace PM or PdM — it accelerates both. When a fault code fires on a VFD at 2 AM, you don't need to flip through a 400-page manual. What you need is the right section of the OEM manual in front of you. That's not replacing your expertise.",
       },
       {
         type: "paragraph",
@@ -619,7 +619,7 @@ export const BLOG_POSTS: BlogPost[] = [
       },
       {
         type: "paragraph",
-        text: "For small teams without deep specialist knowledge on staff, this is the gap MIRA fills. Instead of Googling a fault code and hoping the forum post from 2014 applies to your drive model, you get the cited passage from the manual you attached.",
+        text: "For small teams without deep specialist knowledge on staff, this is the gap MIRA fills. Instead of Googling a fault code and hoping the forum post from 2014 applies to your drive model, you start from the manual you attached.",
       },
       {
         type: "callout",

@@ -235,7 +235,7 @@ ${nav({ currentPath: "/blog" })}
 
   ${buildRelatedHtml(related, relatedCodes)}
 
-  ${marketingCtaCard("Ask Mira — it cites the page", data)}
+  ${marketingCtaCard("Have a question? Ask Mira.", data)}
 </article>
 
 </main>
