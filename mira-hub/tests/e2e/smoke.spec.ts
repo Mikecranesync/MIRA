@@ -41,20 +41,19 @@ test.describe("factorylm.com — marketing site", () => {
     await expect(page).toHaveTitle(/FactoryLM/i);
   });
 
-  test("pricing: 200 OK + pricing cards visible", async ({ page }) => {
+  test("pricing: 200 OK, no published price, Talk to Mike CTA visible", async ({ page }) => {
     const res = await page.goto(WEB + "/pricing", { waitUntil: "domcontentloaded" });
     expect(res?.status()).toBe(200);
 
-    // At least one price tier with a dollar amount
-    const priceEl = page.locator(".card-price").first();
-    await expect(priceEl).toBeVisible({ timeout: 10_000 });
+    // #4570: the public site publishes no dollar prices and no checkout. The
+    // page's job is now to route a visitor to Mike, so assert that instead of
+    // the retired price cards.
+    await expect(page).toHaveTitle(/FactoryLM/i);
+    const body = await page.locator("body").innerText();
+    expect(body).not.toMatch(/\$\s?\d/);
 
-    // Pricing page title
-    await expect(page).toHaveTitle(/Pricing/i);
-
-    // At least one CTA button on the page
-    const cta = page.locator(".card-cta").first();
-    await expect(cta).toBeVisible();
+    const cta = page.locator('a[href^="mailto:mike@factorylm.com"]').first();
+    await expect(cta).toBeVisible({ timeout: 10_000 });
   });
 
   test("cmms page: 200 OK + magic link email form present", async ({ page }) => {
