@@ -14,43 +14,25 @@
  * Deterministic and zero-token: no model call.
  */
 import { claimIdentifiers } from "@/lib/quote-window";
+import { appearsVerbatim, identifierAt, tableUnit } from "./numeric-support";
+import { MAX_CONTENT_CHARS } from "./provider-visible-text";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Root } from "mdast";
 
-/** manual-rag.ts MAX_CONTENT_CHARS: the prefix of each chunk the model actually sees. */
-export const MODEL_VISIBLE_CHARS = 1200;
+/** manual-rag's MAX_CONTENT_CHARS (provider-visible-text.ts): the prefix of each chunk the model
+ *  actually sees. One constant, not a copy. */
+export const MODEL_VISIBLE_CHARS = MAX_CONTENT_CHARS;
+/** The chunk text the provider sees, as a function the caller supplies. Production passes manual-rag's
+ *  `providerVisibleChunkText` (cut + ellipsis + reference neutralization — #4981 Codex r2 F2); the
+ *  default is the bare MODEL_VISIBLE_CHARS cut for pure callers and tests. */
+export type VisibleText = (content: string) => string;
+const modelVisiblePrefix: VisibleText = (content) => content.slice(0, MODEL_VISIBLE_CHARS);
 const SPAN = 240; // relevantQuoteWindow's default span
 const MAX_MARKER_DISTANCE = 300;
 
-// Design rev 5 (#4315 §14): a value is usable only when EVERY part of it is recognized. Its
-// unit must be in this closed table. Symbols are matched exactly as written — case carries
-// meaning (mW ≠ MW, mΩ ≠ MΩ, N·m ≠ nm) — and only unambiguous case variants are listed. A
-// spelled-out name matches in any case. An unknown unit, or no unit, makes a value unusable.
-// Maps, not object literals: a lookup must never reach an inherited property ("constructor").
-const UNIT_SYMBOLS = new Map<string, string>(Object.entries({
-  V: "V", v: "V", mV: "mV", kV: "kV", KV: "kV", MV: "MV", Vrms: "Vrms", VRMS: "Vrms",
-  VAC: "VAC", Vac: "VAC", "V AC": "VAC", "V ac": "VAC", VDC: "VDC", Vdc: "VDC", "V DC": "VDC", "V dc": "VDC",
-  A: "A", mA: "mA", kA: "kA", W: "W", mW: "mW", kW: "kW", KW: "kW", kw: "kW", MW: "MW",
-  VA: "VA", kVA: "kVA", KVA: "kVA", kva: "kVA", Hz: "Hz", hz: "Hz", HZ: "Hz", kHz: "kHz", KHz: "kHz", khz: "kHz", MHz: "MHz",
-  rpm: "rpm", RPM: "rpm", "°C": "°C", "ºC": "°C", "℃": "°C", "°F": "°F", "ºF": "°F", "℉": "°F", "%": "%",
-  "Ω": "Ω", "kΩ": "kΩ", "MΩ": "MΩ", "mΩ": "mΩ", "N·m": "N·m", "N-m": "N·m", Nm: "N·m", "N m": "N·m",
-  "lb·in": "lb·in", "lb-in": "lb·in", "lb·ft": "lb·ft", "lb-ft": "lb·ft",
-  mm: "mm", cm: "cm", m: "m", km: "km", in: "in", ft: "ft", mm2: "mm²", m2: "m²", AWG: "AWG", awg: "AWG",
-  s: "s", ms: "ms", "µs": "µs", min: "min", h: "h", Pa: "Pa", kPa: "kPa", MPa: "MPa", bar: "bar",
-  psi: "psi", PSI: "psi", hp: "hp", HP: "hp",
-}));
-const UNIT_NAMES = new Map<string, string>(Object.entries({
-  volt: "V", volts: "V", amp: "A", amps: "A", ampere: "A", amperes: "A", watt: "W", watts: "W",
-  kilowatt: "kW", kilowatts: "kW", hertz: "Hz", second: "s", seconds: "s", sec: "s", secs: "s",
-  minute: "min", minutes: "min", mins: "min", hour: "h", hours: "h", hr: "h", hrs: "h", percent: "%",
-  ohm: "Ω", ohms: "Ω", millimeter: "mm", millimeters: "mm", millimetre: "mm", millimetres: "mm", inch: "in", inches: "in",
-}));
-/** The table unit a token names, or null. `N · m` and `lb - in` close up before lookup. */
-function tableUnit(token: string): string | null {
-  const k = token.replace(/\s*([·-])\s*/g, "$1").replace(/\s+/g, " ");
-  return UNIT_SYMBOLS.get(k) ?? UNIT_NAMES.get(k.toLowerCase()) ?? null;
-}
+// The unit table (design rev 5, #4315 §14) lives in numeric-support.ts, shared with the anomaly
+// detector's unit-claim check (#4870).
 // Words that follow a number without being its unit ("525 is", "12 and 13", "12 per shift").
 // Any OTHER word after a number is taken as its unit, so an explicit unit outside the table
 // ("12 furlongs") is captured — and is unusable — rather than silently dropped.
@@ -579,6 +561,136 @@ function satisfies(src: Value, claim: Value): boolean {
   return claim.nums.every((c) => src.nums.some((x) => x === c));
 }
 
+/** #4870: the number in a claimed value is part of an identifier (model, catalog, part or
+ *  fault code), so the value is not a numeric claim. */
+function identifierValue(answer: string, v: Value): boolean {
+  const m = /\d+(?:\.\d+)?/.exec(v.text);
+  if (!m) return false;
+  const s = v.start + m.index;
+  return identifierAt(answer, s, s + m[0].length);
+}
+
+/** #4870: does any of `texts` (model-visible chunk text; photo observations on the R4 path only)
+ *  support a claimed value?
+ *  The parser stays authoritative for a value it can read: a usable claim needs a usable source
+ *  value that satisfies it. Only a value the parser cannot read (unitless, signed range, unknown
+ *  unit) falls back to its literal text appearing verbatim. Source values are parsed once. */
+class ClaimSupport {
+  private parsed: Value[] | null = null;
+  constructor(private readonly texts: readonly string[], private readonly answer: string) {}
+  holds(claim: Value): boolean {
+    if (this.texts.length === 0) return false;
+    if (claim.usable) {
+      this.parsed ??= this.texts.flatMap((t) => findValues(t, "source"));
+      return this.parsed.some((sv) => satisfies(sv, claim));
+    }
+    const literal = this.literal(claim);
+    if (literal === null) return false;
+    // A unitless number that shares the next value's unit ("12 or 24 V") is a quantity read
+    // without its unit, so a bare 12 on the page cannot support it.
+    if (claim.unit === null && SHARED_UNIT.test(this.answer.slice(claim.end, claim.end + 40))) return false;
+    return appearsVerbatim(literal, this.texts);
+  }
+  /** The value's literal text as written. A complete value is its own text. An incomplete one
+   *  is never rescued by a piece: only when everything before it is clean (re-read with the text
+   *  cut at its end — or with a leading "+" sign read as a sign) is it extended over what joins
+   *  it on the right ("24V DC/24V AC", "12 m/s", "2 A DC"), and that WHOLE literal must be on
+   *  the page. A left-joined piece (1 000, ≠0, 1e-3) returns null. */
+  private literal(claim: Value): string | null {
+    if (claim.complete) return claim.text;
+    const plus = this.answer[claim.start - 1] === "+";
+    const masked = this.answer.replace(MARKER_RE, (m) => " ".repeat(m.length));
+    const probe = `${(plus ? masked.replace(/\+(?=\d)/g, " ") : masked).slice(0, claim.end)} .`;
+    if (!findValues(probe, "answer").some((v) => v.start === claim.start && v.complete)) return null;
+    let end = claim.end;
+    for (let i = 0; i < 4; i++) {
+      const rest = masked.slice(end);
+      const glued = (/^[^\s,;!?()[\]{}"“”'‘’]*/u.exec(rest)?.[0] ?? "").replace(/[.:]+$/u, "");
+      // A joined number keeps its own spaced unit: "12 V/24 V".
+      const spaced = /\d$/.test(glued) ? /^[ \t]+([\p{L}°µΩ%℃℉][\p{L}\d·]*)/u.exec(rest.slice(glued.length)) : null;
+      const unit = spaced && tableUnit(spaced[1]) ? spaced[0] : "";
+      const at = glued.length + unit.length;
+      const qualifier = /^[ \t]+(?:ac|dc|a\.c\.|d\.c\.|rms|peak|pk)(?![\p{L}\d])/iu.exec(rest.slice(at))?.[0] ?? "";
+      if (!at && !qualifier) break;
+      end += at + qualifier.length;
+    }
+    // The extension must explain the incompleteness: it consumed the joined text (or the only
+    // problem was the "+"), and nothing after it still continues the quantity ("12 kW h",
+    // "12 V (AC)", "12 A   /mm²" stay null — their bare prefix is not the value).
+    if (end === claim.end && !plus) return null;
+    if (continues(tailAt(normalize(masked), end), tailAt(normalize(masked, true), end))) return null;
+    return `${plus ? "+" : ""}${this.answer.slice(claim.start, end)}`;
+  }
+}
+const SHARED_UNIT = /^[ \t]*(?:or|and|to|through|-|–|,|\/)[ \t]*[-+]?\d+(?:\.\d+)?[ \t]*[\p{L}°%µΩ℃℉]/u;
+
+/** Every numeric claim in the answer, parsed (sign, ±, comparator and markdown included) and
+ *  judged once. ungroundedUnitClaim derives its boolean from these items, so there is ONE
+ *  sign-aware extractor and support test (#4981 Codex r2 F1). */
+export type NumericClaimAudit = {
+  claims: number;
+  unsupported: number;
+  /** One entry per claim: its canonical unit (comparator prefix kept, null when unitless) and
+   *  whether the evidence supports it. */
+  items: { unit: string | null; supported: boolean }[];
+};
+
+/**
+ * #4870 R4 — every numeric claim in the WHOLE answer (cited or not, any unit or none) and how
+ * many of them the evidence the model was given does not support. Excluded, as in
+ * assignValues: a footnote "(1)", a page reference, a list ordinal, the machine the question
+ * names; and, new here, identifiers (identifierAt) and an all-zero magnitude ("verify 0 V" is
+ * an isolation check, never a rating — #3963). Support is ClaimSupport over `visibleText` of each
+ * source — the chunk text the provider received; production passes providerVisibleChunkText, the
+ * same transform the prompt is built with (Codex r1 F1, r2 F2) — and the photo observation text.
+ * Pure; counts and offsets only, no text leaves this function.
+ */
+export function numericClaimAudit(
+  answer: string,
+  question: string,
+  evidence: { sources: readonly string[]; observations: readonly string[] },
+  visibleText: VisibleText = modelVisiblePrefix,
+): NumericClaimAudit {
+  const identity = new Set(
+    [...normalize(question).matchAll(/([\p{L}][\p{L}-]*)[\s-]?(\d+)/gu)].map((m) => `${m[1]}|${m[2]}`),
+  );
+  const masked = answer.replace(MARKER_RE, (m) => " ".repeat(m.length));
+  const visible = evidence.sources.map(visibleText);
+  const support = new ClaimSupport([...visible, ...evidence.observations], answer);
+  const items: NumericClaimAudit["items"] = [];
+  for (const v of findValues(masked, "answer")) {
+    const vs = v.start;
+    const ve = v.end;
+    const before = normalize(masked.slice(Math.max(0, vs - 24), vs));
+    const lineStart = Math.max(masked.lastIndexOf("\n", vs - 1), masked.lastIndexOf("\r", vs - 1)) + 1;
+    if (v.unit === null) {
+      if (masked[vs - 1] === "(" && masked[ve] === ")" && v.nums.length === 1 && Number.isInteger(v.nums[0]) && v.nums[0] < 10) continue;
+      if (PAGE_RE.test(before)) continue;
+      if (/^\s*(?:[-*•]\s+)?$/.test(masked.slice(lineStart, vs)) && /^[.)]\s/.test(masked.slice(ve, ve + 2))) continue;
+    }
+    if (v.unit === null || v.unit.startsWith("raw:")) {
+      const word = before.match(/([\p{L}][\p{L}-]*)[\s-]?$/u)?.[1] ?? "";
+      if (word && v.nums.length === 1 && identity.has(`${word}|${v.nums[0]}`)) continue;
+      if (/^\s*-?series/i.test(masked.slice(ve, ve + 8))) continue;
+    }
+    if (v.nums.every((n) => n === 0)) continue;
+    if (identifierValue(answer, v)) continue;
+    items.push({ unit: v.unit, supported: support.holds(v) });
+  }
+  return { claims: items.length, unsupported: items.filter((x) => !x.supported).length, items };
+}
+
+/** The counts of numericClaimAudit (what the packet stores). */
+export function numericClaimSupport(
+  answer: string,
+  question: string,
+  evidence: { sources: readonly string[]; observations: readonly string[] },
+  visibleText: VisibleText = modelVisiblePrefix,
+): { claims: number; unsupported: number } {
+  const { claims, unsupported } = numericClaimAudit(answer, question, evidence, visibleText);
+  return { claims, unsupported };
+}
+
 export type SupportingQuote = {
   /** null ⇒ no claimed value matched: keep the citation's existing quote (today's behavior). */
   quote: string | null;
@@ -592,6 +704,7 @@ export function supportingQuote(
   answer: string,
   citationId: string,
   question: string,
+  visibleText: VisibleText = modelVisiblePrefix,
 ): SupportingQuote {
   const claims = assignValues(answer, question).get(citationId) ?? [];
   if (claims.length === 0 || chunks.length === 0) return { quote: null, support: "question_fallback", unsupported: [] };
@@ -600,9 +713,11 @@ export function supportingQuote(
   const ids = [...claimIdentifiers(question)];
   type Cand = { chunk: number; start: number; covered: number; idHits: number; q: number; prox: number };
   const cands: Cand[] = [];
-  const everMatched = new Set<number>();
-  chunks.forEach((full, ci) => {
-    const text = full.slice(0, MODEL_VISIBLE_CHARS);
+  // #4981 Codex r3 F2: every step — candidate parsing, window scoring, the returned proof quote and
+  // the unsupported count — reads the SAME provider-visible text, so a user-visible proof can never
+  // be cut from bytes the provider did not receive (past the cut, inside a neutralized tag).
+  const visible = chunks.map(visibleText);
+  visible.forEach((text, ci) => {
     const srcVals = findValues(text, "source");
     for (const sv of srcVals) {
       if (!claims.some((c) => satisfies(sv, c))) continue;
@@ -615,7 +730,6 @@ export function supportingQuote(
       const inWin = srcVals.filter((x) => x.start >= start && x.end <= end);
       const covered = claims.map((c, k) => (inWin.some((x) => satisfies(x, c)) ? k : -1)).filter((k) => k >= 0);
       if (covered.length === 0) continue; // the window cannot hold the whole value (Codex r6 F12)
-      covered.forEach((k) => everMatched.add(k));
       const win = normalize(text.slice(start, end));
       cands.push({
         chunk: ci,
@@ -627,14 +741,25 @@ export function supportingQuote(
       });
     }
   });
-  const unsupported = claims.filter((_, k) => !everMatched.has(k)).map((c) => c.text.trim());
+  // #4870: the count is decided in a separate pass so the proof quote above never changes. A
+  // claim the quote window did not hold is still supported anywhere in the cited page's
+  // MODEL-VISIBLE text (the provider never sees past MODEL_VISIBLE_CHARS — Codex r1 F1), and a
+  // model/catalog/fault-code token is not a claim at all. Only the cited page counts: a photo
+  // reading never authenticates a document citation (Codex r1 F2).
+  const support = new ClaimSupport(visible, answer);
+  // Decided ONLY by the provider-visible text: a quote-window match on the raw chunk is not
+  // support when the provider never got those bytes (e.g. inside a neutralized [Source: …] tag —
+  // #4981 Codex r2 F2). For ordinary text the visible text holds everything the window held.
+  const unsupported = claims
+    .filter((c) => !identifierValue(answer, c) && !support.holds(c))
+    .map((c) => c.text.trim());
   if (cands.length === 0) return { quote: null, support: "question_fallback", unsupported };
   cands.sort(
     (a, b) =>
       b.covered - a.covered || b.idHits - a.idHits || b.q - a.q || a.prox - b.prox || a.chunk - b.chunk || a.start - b.start,
   );
   const w = cands[0];
-  const text = chunks[w.chunk].slice(0, MODEL_VISIBLE_CHARS);
+  const text = visible[w.chunk];
   return {
     quote: (w.start > 0 ? "…" : "") + text.slice(w.start, w.start + SPAN),
     support: w.covered === claims.length ? "claim" : "partial",
@@ -656,6 +781,8 @@ export function withSupportingQuotes<C extends QuotableCitation>(
   chunks: readonly PageChunk[],
   answer: string,
   question: string,
+  /** The provider-visible chunk text (#4981 Codex r2 F2); support is read only from it. */
+  visibleText: VisibleText = modelVisiblePrefix,
 ): { citations: C[]; unsupportedValueCount: number; quoteFallbackCount: number } {
   const byKey = new Map<string, string[]>();
   for (const c of chunks) {
@@ -668,7 +795,7 @@ export function withSupportingQuotes<C extends QuotableCitation>(
   const out = citations.map((c) => {
     const pageChunks = pages[Number(c.citationId) - 1];
     if (!pageChunks) return c;
-    const r = supportingQuote(pageChunks, answer, c.citationId, question);
+    const r = supportingQuote(pageChunks, answer, c.citationId, question, visibleText);
     unsupportedValueCount += r.unsupported.length;
     if (r.quote === null) {
       quoteFallbackCount += 1;

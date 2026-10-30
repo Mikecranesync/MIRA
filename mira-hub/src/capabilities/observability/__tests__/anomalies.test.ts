@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { detectAnomalies, ungroundedUnitClaim, type AnomalyCode } from "../anomalies";
+import { numericClaimAudit } from "@/capabilities/supporting-quote";
 import { emptyPacket, type TurnEvidencePacket } from "../turn-evidence-packet";
 
 import turn1 from "../__fixtures__/pixel-2026-09-22/turn1.json";
@@ -401,5 +402,64 @@ describe("CITED_VALUE_NOT_IN_SOURCE (#4315, observe-only)", () => {
     p.answer_gate.cited_values_unsupported = 0;
     expect(codesOf(p)).not.toContain("CITED_VALUE_NOT_IN_SOURCE");
     expect(codesOf(turn1 as unknown as TurnEvidencePacket)).not.toContain("CITED_VALUE_NOT_IN_SOURCE");
+  });
+});
+
+// #4870 T-2 — the unit-claim check consults the evidence the model was given. Constructed
+// examples; none copied from the calibration sample.
+describe("#4870 — ungroundedUnitClaim with evidence (verbatim, photo, identifiers)", () => {
+  // The boolean is DERIVED from the parsed, sign-aware claim-support audit (numericClaimAudit),
+  // so there is one extractor (#4981 Codex r2 F1).
+  const ung = (answer: string, sources: string[], observations: string[] = []) =>
+    ungroundedUnitClaim(answer, numericClaimAudit(answer, "", { sources, observations }));
+  it("a unit claim that appears verbatim in a context chunk is grounded", () => {
+    expect(ung("Feed it 36 V from the bus.", ["Rated input 36 V"])).toBe(false);
+  });
+  it("a unit claim read off the photo is grounded by the observation text", () => {
+    expect(ung("The breaker is a 15 A unit.", [], ["breaker labeled 'C 15A'"])).toBe(false);
+  });
+  it("CONTROL: evidence that does not hold the claim leaves it ungrounded", () => {
+    expect(ung("The breaker is a 15 A unit.", ["Rated input 36 V"], ["a 10A fuse"])).toBe(true);
+  });
+  it("CONTROL: with no evidence argument it is the evidence-blind check", () => {
+    expect(ungroundedUnitClaim("Feed it 36 V from the bus.")).toBe(true);
+  });
+  it("a part tag glued to a unit-looking word is not a unit claim", () => {
+    expect(ungroundedUnitClaim("Tag ZT88120‑4 in the cabinet is the feeder.")).toBe(false);
+    expect(ung("Tag ZT88120‑4 in the cabinet is the feeder.", [])).toBe(false);
+  });
+  it("one grounded claim does not launder an ungrounded one", () => {
+    expect(ung("Feed it 36 V; the fuse is 5 A.", ["Rated input 36 V"])).toBe(true);
+  });
+});
+
+describe("#4981 Codex r2 F1 — the unit-claim check is sign-aware", () => {
+  const ung = (answer: string, sources: string[]) =>
+    ungroundedUnitClaim(answer, numericClaimAudit(answer, "", { sources, observations: [] }));
+  const SRC = "Operating range -20 °C to +60 °C.";
+  it("a signed range is grounded by the same signed range in the source", () => {
+    expect(ung("Range is -20 °C to +60 °C.", [SRC])).toBe(false);
+  });
+  it("a sign mismatch is not support (+20 °C or bare 20 °C vs -20 °C)", () => {
+    expect(ung("Range is +20 °C to +60 °C.", [SRC])).toBe(true);
+    expect(ung("The minimum is 20 °C.", [SRC])).toBe(true);
+  });
+  it("one absent endpoint still fires", () => {
+    expect(ung("Range is -20 °C to +70 °C.", [SRC])).toBe(true);
+  });
+  it("Unicode minus (U+2212) equals ASCII minus, either side", () => {
+    expect(ung("Range is \u221220 °C to +60 °C.", [SRC])).toBe(false);
+    expect(ung("The minimum is -20 °C.", ["Minimum \u221220 °C"])).toBe(false);
+    expect(ung("The minimum is \u221220 °C.", ["Minimum 20 °C"])).toBe(true);
+  });
+  it("± is part of the value: ±0.5 mm needs ±0.5 mm", () => {
+    expect(ung("Tolerance is ±0.5 mm.", ["Tolerance ±0.5 mm"])).toBe(false);
+    expect(ung("Tolerance is 0.5 mm.", ["Tolerance ±0.5 mm"])).toBe(true);
+    expect(ung("Tolerance is ±0.7 mm.", ["Tolerance ±0.5 mm"])).toBe(true);
+  });
+  it("spacing and markdown between the sign and the digit keep the sign", () => {
+    expect(ung("The minimum is - 20 °C.", ["Minimum -20 °C"])).toBe(false);
+    expect(ung("The minimum is -**20** °C.", ["Minimum -20 °C"])).toBe(false);
+    expect(ung("The minimum is -**20** °C.", ["Minimum 20 °C"])).toBe(true);
   });
 });

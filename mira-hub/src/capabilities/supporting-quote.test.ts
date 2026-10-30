@@ -2,7 +2,7 @@
 // (Rockwell 520-PC001 p.1: 142ed933 holds the torque table, ae744613 the Fuses/Wiring text).
 import { describe, expect, it } from "vitest";
 import { relevantQuoteWindow } from "../lib/quote-window";
-import { assignValues, findValues, MODEL_VISIBLE_CHARS, supportingQuote, withSupportingQuotes } from "./supporting-quote";
+import { assignValues, findValues, MODEL_VISIBLE_CHARS, numericClaimSupport, supportingQuote, withSupportingQuotes } from "./supporting-quote";
 
 const VALUE_CHUNK = "R+, BR- Dynamic Brake Resistor Connection\nSafety Ground – PE\nIMPORTANT Terminal screws may become loose during shipment. Verify that all\nterminal screws are tightened to the recommended torque before\nyou apply power to the drive.\nFrame Maximum Wire Size(1)\n(1) Maximum/minimum sizes that the terminal block accepts. These are not recommendations.\nMinimum Wire Size(1) Torque\nA 5.3 mm2 (10 AWG) 0.8 mm2 (18 AWG) 1.76…2.16 N•m (15.6…19.1 lb•in)\nB 8.4 mm2 (8 AWG) 2.1 mm2 (14 AWG) 1.76…2.16 N•m (15.6…19.1 lb•in)\nC 8.4 mm2 (8 AWG) 2.1 mm2 (14 AWG) 1.76…2.16 N•m (15.6…19.1 lb•in)\nD 13.3 mm2 (6 AWG) 5.3 mm2 (10 AWG) 1.76…2.16 N•m (15.6…19.1 lb•in)\nE 26.7 mm2 (3 AWG) 8.4 mm2 (8 AWG) 3.09…3.77 N•m (27.3…33.4 lb•in)\nFuses and Circuit Breakers – UL 61800-5-1 Applications (Continued)\nCatalog No.(1) Output Ratings Input Ratings Branch Circuit Protection\nIP20/Open Type\nWatts LossNormal\nDuty\nHeavy\nDuty\nAmps\nVoltage\nRange\nkVA\nMax Amps(2)\nFuse Ratings\nMin/Max\n140M/MT\nMotor\nProtectors\n(3) (4) (5)\nContactors";
 const FUSES_CHUNK = "owerFlex® 520-series Adjustable Frequency AC Drive User Manual for instructions on how\nto comply with the EMC Directive. Dimensions are in mm and (in.).\nFuses and Circuit Breakers\nSee the PowerFlex 520-series Adjustable Frequency AC Drive User Manual for fuses and circuit\nbreakers for non-UL applications.\nWiring\nSee the PowerFlex 520-series Adjustable Frequency AC Drive User Manual for instructions on how\nto wire the power terminals and control terminals.\nPower Wiring\nRecommended Shielded Wire\nPower Terminal Block\nPower Terminal Block Specifications\nATTENTION:\nBefore installing, configuring, operating, or maintaining this product,\nread this document and the documents that are listed in the Additional\nResources section for installing, configuring, or operating equipment.\nUsers should familiarize themselves with installation and wiring\ninstructions in addition to requirements of all applicable codes, laws,\nand standards.\nInstallation, adjustments, putting into service, use, assembly, dis";
@@ -324,8 +324,12 @@ describe("Codex round 3 (PR #4319) — a value counts only when the parser consu
     expect(supportingQuote(["Input 24 V AC."], "Input is 24 VAC [1].", "1", "").support).toBe("claim");
     expect(supportingQuote(["Ripple 12 Vrms."], "Ripple is 12 Vrms [1].", "1", "").support).toBe("claim");
   });
-  it("the cost, stated: an identical but unconsumable quantity is not matched either", () =>
-    expect(supportingQuote(["Speed 12 m/s."], "Speed is 12 m/s [1].", "1", "")).toEqual(fallback("12 m")));
+  it("the cost, stated: an identical but unconsumable quantity is not matched either", () => {
+    // #4870: still never QUOTED — but the whole literal "12 m/s" is on the page, so it is no
+    // longer counted as unsupported. Its bare prefix on the page never is (control).
+    expect(supportingQuote(["Speed 12 m/s."], "Speed is 12 m/s [1].", "1", "")).toEqual(fallback());
+    expect(supportingQuote(["Length 12 m."], "Speed is 12 m/s [1].", "1", "")).toEqual(fallback("12 m"));
+  });
   it("the route seam counts an unconsumable claim and keeps the existing quote", () => {
     const r = withSupportingQuotes([{ citationId: "1", quote: "q" }], [{ content: "Current 12 A.", sourceUrl: "/m.pdf", sourcePage: 1 }], "Current density is 12 A/mm² [1].", "");
     expect(r.citations[0].quote).toBe("q");
@@ -346,7 +350,10 @@ describe("Codex round 4 (PR #4319) + design rev 5 — a value is usable only whe
   });
   it("F6: N·m is never nm, and a unit outside the table is unusable rather than matching itself", () => {
     expect(supportingQuote(["Wavelength 12 nm."], "Tighten to 12 N·m [1].", "1", "")).toEqual(fallback("12 N·m"));
-    expect(supportingQuote(["Pitch 12 furlongs."], "Pitch is 12 furlongs [1].", "1", "")).toEqual(fallback("12 furlongs"));
+    // #4870: still never a quote match (unusable), but the literal "12 furlongs" is on the page,
+    // so the verbatim rule counts it as supported rather than invented.
+    expect(supportingQuote(["Pitch 12 furlongs."], "Pitch is 12 furlongs [1].", "1", "")).toEqual(fallback());
+    expect(supportingQuote(["Pitch 13 furlongs."], "Pitch is 12 furlongs [1].", "1", "")).toEqual(fallback("12 furlongs"));
   });
   it("F7: a space-grouped number is never read as its trailing group, in either direction", () => {
     for (const sep of [" ", " ", " "]) {
@@ -489,7 +496,9 @@ describe("Codex round 4 (PR #4319) + design rev 5 — a value is usable only whe
   it("Codex r6 F12: a window that covers no claimed value never replaces the quote", () => {
     const r = withSupportingQuotes([{ citationId: "1", quote: "q" }], [{ content: `Rated 12${" ".repeat(250)}V.`, sourceUrl: "/m.pdf", sourcePage: 1 }], "Rated 12 V [1].", "");
     expect(r.citations[0].quote).toBe("q");
-    expect([r.unsupportedValueCount, r.quoteFallbackCount]).toEqual([1, 1]);
+    // #4870: the window cannot hold the value, so the quote stays; the model-visible chunk text
+    // does hold "12 V" (spacing aside), so the value is not counted as unsupported.
+    expect([r.unsupportedValueCount, r.quoteFallbackCount]).toEqual([0, 1]);
   });
   it("the route seam counts every unusable piece of a space-grouped claim", () => {
     const r = withSupportingQuotes([{ citationId: "1", quote: "q" }], [{ content: "Output 0 V.", sourceUrl: "/m.pdf", sourcePage: 1 }], "Rated 1 000 V [1].", "");
@@ -1186,4 +1195,106 @@ it.each(["\r", "\n", "\r\n"].flatMap(eol => ["12 V", "**12 V**"].flatMap(value =
   expect(r.citations[0].quote).toBe(source);
   expect(r.unsupportedValueCount).toBe(0);
   expect(r.quoteFallbackCount).toBe(0);
+});
+
+// #4870 T-2 — cited-value support. Constructed examples, none copied from the calibration sample.
+// The parser stays authoritative for every value it can read (usable); the verbatim rule only
+// rescues a value the parser cannot read, and only when that text is literally on the page.
+describe("#4870 cited-value support: verbatim, model-visible text, cited page only, identifiers", () => {
+  const PAGE = "Setup\nThe default value is 13.\nSupply range +18.5 V to +30.5 V.\n";
+  it("a unitless value that appears verbatim on the cited page is supported", () => {
+    expect(supportingQuote([PAGE], "The default is 13 [1].", "1", "").unsupported).toEqual([]);
+  });
+  it("CONTROL: a unitless value absent from the page stays unsupported", () => {
+    expect(supportingQuote([PAGE], "The default is 14 [1].", "1", "").unsupported).toEqual(["14"]);
+  });
+  it("a signed range the parser cannot use is supported when it is verbatim on the page", () => {
+    expect(supportingQuote([PAGE], "The supply range is +18.5 V to +30.5 V [1].", "1", "").unsupported).toEqual([]);
+  });
+  // Codex r1 F1: the provider only ever sees each chunk's first MODEL_VISIBLE_CHARS characters
+  // (manual-rag MAX_CONTENT_CHARS), so text past it is never evidence the model had.
+  it("a value only past the model-visible prefix of the cited chunk is NOT supported; before it, it is", () => {
+    const filler = "filler text ".repeat(110);
+    const after = `${filler}\nTighten to 7.5 N·m.`;
+    expect(after.indexOf("7.5")).toBeGreaterThan(MODEL_VISIBLE_CHARS);
+    expect(supportingQuote([after], "Tighten to 7.5 N·m [1].", "1", "").unsupported).toEqual(["7.5 N·m"]);
+    const before = `Tighten to 7.5 N·m.\n${filler}`;
+    expect(before.indexOf("7.5")).toBeLessThan(MODEL_VISIBLE_CHARS);
+    expect(supportingQuote([before], "Tighten to 7.5 N·m [1].", "1", "").unsupported).toEqual([]);
+  });
+  it("a value the parser cannot read is not supported verbatim by text past the prefix", () => {
+    const filler = "filler text ".repeat(110);
+    expect(supportingQuote([`${filler}\nThe default value is 13.`], "The default is 13 [1].", "1", "").unsupported).toEqual(["13"]);
+    expect(supportingQuote([`The default value is 13.\n${filler}`], "The default is 13 [1].", "1", "").unsupported).toEqual([]);
+  });
+  // Codex r1 F2: a photo reading never authenticates a DOCUMENT citation. It counts only in the
+  // whole-answer numericClaimSupport (the R4 path).
+  it("a photo reading does not support a cited value, but does support the claim for R4", () => {
+    const answer = "The relay is rated 48 V [1].";
+    const r = withSupportingQuotes([{ citationId: "1", quote: "ORIGINAL" }],
+      [{ content: PAGE, sourceUrl: "manual", sourcePage: 1 }], answer, "");
+    expect(r.unsupportedValueCount).toBe(1);
+    expect(numericClaimSupport(answer, "", { sources: [PAGE], observations: ["48 V DC"] })).toEqual({ claims: 1, unsupported: 0 });
+    expect(numericClaimSupport(answer, "", { sources: [PAGE], observations: [] })).toEqual({ claims: 1, unsupported: 1 });
+  });
+  it("a catalog number in the answer is not a cited value", () => {
+    expect(supportingQuote([PAGE], "Use the 3150-QR40-16XYZ base [1].", "1", "").unsupported).toEqual([]);
+  });
+  it("a zero-padded fault code with its name is not a cited value", () => {
+    expect(supportingQuote([PAGE], "Fault 0042 OVERVOLT means the bus is high [1].", "1", "").unsupported).toEqual([]);
+  });
+  it("a slash-joined pair is supported when the whole pair is on the page, across a line break", () => {
+    const page = "Inputs: 24V DC/\n24V AC sink/source";
+    expect(supportingQuote([page], "It takes 24V DC/24V AC inputs [1].", "1", "").unsupported).toEqual([]);
+    expect(supportingQuote(["Inputs: 24V DC only"], "It takes 24V DC/24V AC inputs [1].", "1", "").unsupported).not.toEqual([]);
+  });
+  it("the joined literal must end where the quantity ends, not inside it (12 V/24 V is not 12 V/24)", () => {
+    expect(supportingQuote(["Range 12 V/24 setting."], "Range is 12 V/24 V [1].", "1", "").unsupported).not.toEqual([]);
+    expect(supportingQuote(["Range 12 V/24 V."], "Range is 12 V/24 V [1].", "1", "").unsupported).toEqual([]);
+    // a spaced second unit after the joined literal still continues the quantity
+    expect(supportingQuote(["Rating 12 V/24 kW."], "Rating is 12 V/24 kW h [1].", "1", "").unsupported).not.toEqual([]);
+  });
+  it("an AC/DC qualifier spelled apart on one side is the same literal (2 A DC ⇔ 2 ADC)", () => {
+    expect(supportingQuote(["Max switching current 2 ADC"], "It switches 2 A DC on the contacts [1].", "1", "").unsupported).toEqual([]);
+    expect(supportingQuote(["Max switching current 3 ADC"], "It switches 2 A DC on the contacts [1].", "1", "").unsupported).toEqual(["2 A"]);
+  });
+  it("CONTROL: a real unit value absent from the page stays unsupported", () => {
+    expect(supportingQuote([PAGE], "Use a 99 mm spacer [1].", "1", "").unsupported).toEqual(["99 mm"]);
+  });
+});
+
+describe("#4870 numericClaimSupport — every numeric claim in the answer, for R4", () => {
+  it("counts claims over the whole answer, identifiers and codes excluded", () => {
+    const r = numericClaimSupport("Set parameter 118, use 13 and run the KX450 at 36 V.", "", { sources: ["default 13; input 36 V"], observations: [] });
+    expect(r).toEqual({ claims: 2, unsupported: 0 });
+  });
+  it("one unsupported number anywhere is counted", () => {
+    const r = numericClaimSupport("Run it at 36 V and 60 Hz.", "", { sources: ["input 36 V"], observations: [] });
+    expect(r).toEqual({ claims: 2, unsupported: 1 });
+  });
+  it("photo observation text counts as support", () => {
+    const r = numericClaimSupport("The breaker is 15 A.", "", { sources: [], observations: ["breaker labeled C 15A"] });
+    expect(r).toEqual({ claims: 1, unsupported: 0 });
+  });
+  it("Codex r1 F1: a source value past the model-visible prefix is not support; before it, it is", () => {
+    const filler = "filler text ".repeat(110);
+    expect(numericClaimSupport("Tighten to 7.5 N·m.", "", { sources: [`${filler}\nTorque 7.5 N·m.`], observations: [] })).toEqual({ claims: 1, unsupported: 1 });
+    expect(numericClaimSupport("Tighten to 7.5 N·m.", "", { sources: [`Torque 7.5 N·m.\n${filler}`], observations: [] })).toEqual({ claims: 1, unsupported: 0 });
+  });
+  it("Codex r3 F1: a number with an unknown glued unit is an auditable claim; a code is not", () => {
+    const none = { sources: [] as string[], observations: [] as string[] };
+    expect(numericClaimSupport("Use a 10µF capacitor.", "", none)).toEqual({ claims: 1, unsupported: 1 });
+    expect(numericClaimSupport("Use a 10µF capacitor.", "", { sources: ["Capacitance 10µF"], observations: [] })).toEqual({ claims: 1, unsupported: 0 });
+    expect(numericClaimSupport("Pressure is 100psig.", "", none)).toEqual({ claims: 1, unsupported: 1 });
+    expect(numericClaimSupport("Pressure is 100psig.", "", { sources: ["Max 100psig"], observations: [] })).toEqual({ claims: 1, unsupported: 0 });
+    expect(numericClaimSupport("The supply is 2kVA.", "", none)).toEqual({ claims: 1, unsupported: 1 });
+    expect(numericClaimSupport("The supply is 2kVA.", "", { sources: ["Rating 2 kVA"], observations: [] })).toEqual({ claims: 1, unsupported: 0 });
+    expect(numericClaimSupport("Order the 75RQT relay base.", "", none)).toEqual({ claims: 0, unsupported: 0 });
+  });
+  it("a zero-volt isolation check is not a claim", () => {
+    expect(numericClaimSupport("Lock out and verify 0 V first.", "", { sources: [], observations: [] })).toEqual({ claims: 0, unsupported: 0 });
+  });
+  it("CONTROL: an answer with no numbers has no claims", () => {
+    expect(numericClaimSupport("Reseat the connector.", "", { sources: ["36 V"], observations: [] })).toEqual({ claims: 0, unsupported: 0 });
+  });
 });

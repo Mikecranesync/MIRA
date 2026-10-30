@@ -1,3 +1,4 @@
+import { neutralizeReferenceText, providerVisibleChunkText } from "@/capabilities/provider-visible-text";
 import type { PoolClient } from "pg";
 import { citationPageLabel } from "@/lib/citation-page";
 import type { IdentityStatus } from "@/lib/equipment-notebooks";
@@ -91,18 +92,10 @@ export interface ManualSource {
   verified: boolean;
 }
 
-const MAX_CONTENT_CHARS = 1200;
-const FORGED_HEADER_RE = /---\s*\[\s*\d+\s*\][^\n]*?---/gi;
-const SOURCE_TAG_RE = /\[Source:[^\]]+\]/gi;
-
-// Exported (not just module-local) so other prompt-interpolation call sites —
-// e.g. the chat route's machine-memory section (review Q1, PR #2414) — can
-// reuse this same forged-header/source-tag stripping instead of duplicating it.
-export function neutralizeReferenceText(text: string): string {
-  return text
-    .replace(FORGED_HEADER_RE, "[REF_DELIMITER]")
-    .replace(SOURCE_TAG_RE, "[ref]");
-}
+// The provider-visible chunk transform (cut + ellipsis + forged-header/source-tag stripping) lives
+// in capabilities/provider-visible-text.ts so numeric support reads the SAME text the prompt
+// carries (#4981 Codex r2 F2). Re-exported: existing importers are unchanged.
+export { neutralizeReferenceText, providerVisibleChunkText };
 
 export function approvalGateEnabled(): boolean {
   return process.env.MIRA_ENFORCE_APPROVED_RETRIEVAL === "true";
@@ -2346,10 +2339,7 @@ export function buildGroundedContext(chunks: ManualChunk[]): string {
     const head = headBits.join(" ") || c.title || "OEM document";
     const shownPage = displayPage(c);
     const page = shownPage != null ? `, p.${shownPage}` : "";
-    const rawContent = c.content.length > MAX_CONTENT_CHARS
-      ? `${c.content.slice(0, MAX_CONTENT_CHARS)}…`
-      : c.content;
-    const content = neutralizeReferenceText(rawContent);
+    const content = providerVisibleChunkText(c.content);
     return `[${n}] ${head}${page}\n${content}`;
   });
   return blocks.join("\n\n---\n\n");

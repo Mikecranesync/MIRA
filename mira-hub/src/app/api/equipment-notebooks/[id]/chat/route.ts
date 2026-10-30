@@ -54,7 +54,8 @@ import {
   openAiRunBudget,
   type BudgetReservation,
 } from "@/capabilities/openai-run-budget";
-import { withSupportingQuotes } from "@/capabilities/supporting-quote";
+import { numericClaimAudit, withSupportingQuotes } from "@/capabilities/supporting-quote";
+import { providerVisibleChunkText } from "@/capabilities/provider-visible-text";
 import { shadowVerifyCitedTurn } from "@/capabilities/claim-verifier-shadow";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
 import { isWeakEvidence, WEAK_EVIDENCE_LABEL, WEAK_EVIDENCE_RULE } from "@/capabilities/observability/jev-weak-evidence";
@@ -499,8 +500,10 @@ async function buildCitations(
       // A manufacturer manual's own address, so the reader can open it; only a
       // place a browser can actually go (http/https) is carried.
       ...(/^https?:\/\//i.test(c.sourceUrl ?? "") ? { sourceUrl: c.sourceUrl } : {}),
-      // Claim-centered window (CIT-07 phase 2) — not the chunk head.
-      quote: relevantQuoteWindow(c.content, question),
+      // Claim-centered window (CIT-07 phase 2) — not the chunk head. #4981 Codex r3: cut from the
+      // text the provider received (providerVisibleChunkText), never from bytes past the prompt's
+      // cut or inside a neutralized [Source: …] tag — this quote is shown to the user as proof.
+      quote: relevantQuoteWindow(providerVisibleChunkText(c.content), question),
     });
   }
   const citations = [...seen.values()];
@@ -4787,11 +4790,22 @@ async function handleChatTurn(
       // #4315: each emitted citation's proof quote is re-derived from the ANSWER — the
       // window, across every chunk of the cited page, holding the values that citation
       // claims (number + unit). A citation with no matched value keeps its quote as is.
+      // #4870: the text the provider actually received — each chunk through providerVisibleChunkText
+      // (cut + ellipsis + reference neutralization, Codex r1 F1 / r2 F2) — and the photo text it was given
+      // this turn (this turn's LOOK, the recalled earlier LOOKs, the bound asset's readings).
+      // Support for a stated number on the R4 path only; never quoted, never stored, and never
+      // passed to withSupportingQuotes: a photo cannot authenticate a document citation (F2).
+      const observationTexts = [lookRow?.text ?? "", ...priorLookRows.map((r) => r.text), ...visualReadings]
+        .filter((t) => t.trim().length > 0);
+      // Raw chunk contents in; every calculation reads them through providerVisibleChunkText, the
+      // SAME transform buildGroundedContext renders into the prompt (#4981 Codex r2 F2).
+      const numericEvidence = { sources: chunks.map((c) => c.content), observations: observationTexts };
       const quoted = withSupportingQuotes(
         !docGrounded || !served || refused || outputRejected ? [] : citationsUsedInAnswer(answerText, citations),
         chunks,
         answerText,
         message,
+        providerVisibleChunkText,
       );
       const emittedCitations = quoted.citations;
       const answerStatus: "answered" | "insufficient_evidence" | "error" = !served
@@ -4826,7 +4840,13 @@ async function handleChatTurn(
         const gateDecision: "answered" | "insufficient_evidence" | "blocked" | "error" = outputRejected
           ? "blocked"
           : answerStatus;
-        const ungroundedClaim = served && !refused ? ungroundedUnitClaim(answerText) : false;
+        // #4870 R4 (observe-only): every numeric claim in the answer, and how many the provider-
+        // visible chunk text and the photo reading do not support. ungrounded_unit_claim is derived
+        // from the same audit (one sign-aware extractor — #4981 Codex r2 F1). Counts only.
+        const numericSupport = served && !refused
+          ? numericClaimAudit(answerText, message, numericEvidence, providerVisibleChunkText)
+          : null;
+        const ungroundedClaim = numericSupport ? ungroundedUnitClaim(answerText, numericSupport) : false;
         ungroundedClaimForBadge = ungroundedClaim;
         // #3962 — run on the RAW strings here, like ungroundedUnitClaim, because
         // the packet deliberately carries no answer text and so this can never
@@ -4869,6 +4889,9 @@ async function handleChatTurn(
           citations_shipped: emittedCitations.length,
           cited_values_unsupported: quoted.unsupportedValueCount,
           citation_quote_fallbacks: quoted.quoteFallbackCount,
+          ...(numericSupport
+            ? { numeric_claims: numericSupport.claims, numeric_claims_unsupported: numericSupport.unsupported }
+            : {}),
           evidence_followed: evidenceFollowed,
           gate_match: gateMatch,
         });
