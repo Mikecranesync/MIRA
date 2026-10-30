@@ -686,6 +686,13 @@ describe("/trust names only the live OpenAI→OpenRouter cascade (#5005)", () =>
       expect(disclosed.length, `${p} must be disclosed while its key can reach the router`).toBe(1);
       expect(disclosed[0]).toMatch(/deprecated/i);
       expect(disclosed[0]).toMatch(/fallback/i);
+      // #5008 Codex r2 F1: direct Groq retrieval/classifier calls and a direct Together
+      // vision path exist, and Hub chat messages are not PII-sanitized, so the row may not
+      // promise "sanitized" data or an "only if OpenAI and OpenRouter fail" condition.
+      expect(disclosed[0]).not.toMatch(/sanitiz|only if/i);
+      for (const category of [/questions/i, /manual text/i, /photos/i]) {
+        expect(disclosed[0]).toMatch(category);
+      }
     }
   });
 
