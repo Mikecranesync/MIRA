@@ -1,0 +1,16 @@
+{
+  "pilot-consent-v1": {
+    "version": "pilot-consent-v1",
+    "status": "text_not_recorded",
+    "text": null,
+    "sha256": null,
+    "note": "Emitted by #4881 (3c4476c78) with no consent string in the repo; the form that showed it was removed before merge. Records consent:true only (#4902)."
+  },
+  "pilot-consent-v2": {
+    "version": "pilot-consent-v2",
+    "status": "draft",
+    "text": "I'm requesting a free 30-day FactoryLM pilot. There is no charge and no payment details are collected. FactoryLM may email me about this request and the pilot. My information is handled under the FactoryLM Privacy Policy at factorylm.com/privacy.",
+    "sha256": "b56346319bbd4cfe804295e4be113bdca252c8467dfee2f4468b1ead1f7b6656",
+    "note": "DRAFT pending owner approval (#4902). Not shown to anyone and not current."
+  }
+}
