@@ -85,8 +85,9 @@ function unitLike(token: string): boolean {
  * quantity? Only STRONG identifier forms count (#4981 Codex r3 F1 — an unrecognized glued suffix
  * alone is never enough, so 10µF, 100psig, 5mbar stay auditable claims):
  *  - digits glued to a letter or digit on the left (KX450, LC20, F005);
- *  - joined by a code hyphen to a token on the left that holds a letter (QR40-16, tag ZT88120‑4) —
- *    and, when a unit follows, that token must also hold a digit, so "K-20 A" stays a quantity;
+ *  - joined by a code hyphen to a hyphen chain on the left that holds a letter (QR40-16, tag
+ *    ZT88120‑4, QUINT-PS-100-240AC) — and, when a unit follows, that chain must also hold a digit,
+ *    so "K-20 A" stays a quantity;
  *  - hyphen-joined to letters on the right (3150-QR40, 1489-M);
  *  - glued on the right to an ALL-CAPS code of 3+ letters that starts no unit (75RQT, 20QWB) —
  *    the conservative rule for an unknown suffix: lowercase, mixed case, µ, two letters, or any
@@ -101,7 +102,8 @@ export function identifierAt(text: string, start: number, end: number): boolean 
   if (/[\p{L}\d]/u.test(before)) return true;
   const unit = unitFollows(text, end);
   if (CODE_HYPHEN.test(before)) {
-    const run = /[\p{L}\d]+$/u.exec(text.slice(Math.max(0, start - 40), start - 1))?.[0] ?? "";
+    // The whole hyphen chain on the left (QUINT-PS-100-240AC: "QUINT-PS-100"), not just its last link.
+    const run = /(?:[\p{L}\d]+[-\u2010\u2011])*[\p{L}\d]+$/u.exec(text.slice(Math.max(0, start - 60), start - 1))?.[0] ?? "";
     if (/\p{L}/u.test(run) && (!unit || /\d/.test(run))) return true;
   }
   // 1e-3, 1.5E+03: an exponent is part of a number, never a code suffix.

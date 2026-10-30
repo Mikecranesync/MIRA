@@ -61,6 +61,10 @@ describe("identifierAt — model, catalog, part and fault-code tokens are not nu
     expect(ident("Nameplate RPM 1750 at full load.", "1750")).toBe(false);
     expect(ident("Nameplate HP 5 motor.", "5")).toBe(false);
   });
+  it("a hyphen chain holding letters makes a catalog number, even when the last link is digits (PS-100-240AC)", () => {
+    expect(ident("Supply QUINT-PS-100-240AC/24DC/10 unit.", "240")).toBe(true);
+    expect(ident("Supply ranges 100-240 V AC.", "240")).toBe(false); // control: a plain digit range
+  });
   it("a left hyphen to a letters-only token does not swallow a quantity with a unit (K-20 A)", () => {
     expect(ident("Use the K-20 A breaker.", "20")).toBe(false);
     expect(ident("The label reads ZT88120‑4 in black.", "4")).toBe(true); // alphanumeric code: still a tag
