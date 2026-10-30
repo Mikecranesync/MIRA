@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 import {
   createBenchTools,
   parseArgs,
+  benchIdentity,
   resolveCaseTenant,
   type BenchCase,
   type DrivePackJson,
@@ -28,7 +29,12 @@ describe("parseArgs", () => {
       labelsPath: "labels.json",
       ledgerPath: "l.jsonl",
       capUsd: 2.5,
+      noModel: false,
     });
+  });
+
+  it("--no-model runs H1/H2 with model = null", () => {
+    expect(parseArgs(["H2", "c.json", "o.jsonl", "--cap", "0.01", "--no-model"]).noModel).toBe(true);
   });
 
   it("defaults ledgerPath to '<out>.ledger.jsonl' and labelsPath to null when omitted", () => {
@@ -139,3 +145,17 @@ describe("resolveCaseTenant", () => {
  * `Cli` object instead). Restored the check and reran — both tests passed
  * again (confirmed via `npx vitest run` on this file, see session log).
  */
+
+describe("benchIdentity", () => {
+  it("gives a bench question row its manual's product as identity", () => {
+    expect(benchIdentity({ id: "q1", set: "forum-fresh", manual: "pf40", question: "F004 on start" })).toEqual({
+      manufacturer: "Allen-Bradley",
+      model: "PowerFlex 40",
+    });
+  });
+
+  it("leaves scenario cases (own equipment) and unknown manuals alone", () => {
+    expect(benchIdentity({ id: "s1", set: "sc", manual: "pf40", message: "m", equipment: { model: "PowerFlex 525" } })).toBeNull();
+    expect(benchIdentity({ id: "q2", set: "x", manual: "not-a-manual", question: "q" })).toBeNull();
+  });
+});

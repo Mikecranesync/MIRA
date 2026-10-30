@@ -21,22 +21,11 @@
  * post-check (`ungroundedNumbers`/`unsafeInstructionPhrases`) are CORE's real
  * `grounding.ts`/`budget.ts` exports, reused via `./single_pass.ts`.
  *
- * ## Pending LOOP integration
- * `investigate()` is loaded via `loadInvestigate()` below using a dynamic
- * `import()` whose specifier is a variable, not a string literal — this is
- * deliberate: TypeScript only attempts static module resolution (and only
- * then can raise "Cannot find module") on a *literal* dynamic-import
- * specifier. A variable specifier types the whole expression as `Promise<any>`
- * and is never resolved at typecheck time, so this file (and this whole lane)
- * typechecks cleanly today even though the module it names does not exist
- * yet, and will pick up the real export automatically — no code change here —
- * the moment LOOP lands it. The ASSUMED signature (documented at
- * `loadInvestigate`, below) is inferred from `types.ts`'s own
- * `InvestigationInput`/`InvestigatorTools`/`SynthesisModel`/`SpendLedger`/
- * `InvestigatorLimits`/`InvestigationResult` shapes — that inference is the
- * only ungrounded part of this file; everything else imports real, existing
- * exports. If LOOP's actual signature differs, only `loadInvestigate`'s call
- * site below needs to change.
+ * ## Arms
+ * H1/H2 call the capability's `investigate(input, { tools, model, ledger, limits, arm })`
+ * (`@/capabilities/investigator/runner.ts`). `--no-model` passes model = null: evidence + trace only, $0.
+ * Bench question rows get the manual's product as a confirmed identity (`benchIdentity`); scenario cases
+ * keep their own `equipment.identityStatus`.
  */
 
 import { appendFileSync, readFileSync } from "node:fs";
@@ -46,6 +35,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { DEFAULT_LIMITS } from "@/capabilities/investigator/types";
+import { investigate } from "@/capabilities/investigator";
 import type {
   EvidenceItem,
   InvestigationInput,
@@ -98,10 +88,41 @@ export interface BenchCase {
     manufacturer?: string | null;
     model?: string | null;
     drivePackId?: string | null;
+    identityStatus?: "unknown" | "candidate" | "user_confirmed" | "verified" | null;
   };
   observations?: Array<{ name: string; value: number | string; unit?: string | null }>;
   drive_pack?: string;
   role?: "technician" | "supervisor";
+}
+
+/** Bench question rows name only a manual key; the notebook they are asked in is that product's.
+ *  Product names follow the 19 IMIB bench manuals (`.planning/2026-10-29-t1-fix/rewrite/audit_fresh3.py` PDF map). */
+const BENCH_PRODUCTS: Record<string, { manufacturer: string; model: string }> = {
+  pf40: { manufacturer: "Allen-Bradley", model: "PowerFlex 40" },
+  pf4m: { manufacturer: "Allen-Bradley", model: "PowerFlex 4M" },
+  acs355: { manufacturer: "ABB", model: "ACS355" },
+  "micro820-um": { manufacturer: "Allen-Bradley", model: "Micro820" },
+  "micro820-in": { manufacturer: "Allen-Bradley", model: "Micro820" },
+  ml1100: { manufacturer: "Allen-Bradley", model: "MicroLogix 1100" },
+  smcflex: { manufacturer: "Allen-Bradley", model: "SMC Flex" },
+  e3plus: { manufacturer: "Allen-Bradley", model: "E3 Plus" },
+  smc50: { manufacturer: "Allen-Bradley", model: "SMC-50" },
+  micro810: { manufacturer: "Allen-Bradley", model: "Micro810" },
+  "gs4-ch2": { manufacturer: "AutomationDirect", model: "DURApulse GS4" },
+  "gs4-ch6": { manufacturer: "AutomationDirect", model: "DURApulse GS4" },
+  "gs10-ch6": { manufacturer: "AutomationDirect", model: "DURApulse GS10" },
+  "se-canopen-hw": { manufacturer: "Schneider Electric", model: "CANopen" },
+  "se-lxm32a-canopen": { manufacturer: "Schneider Electric", model: "Lexium 32A" },
+  "se-m171": { manufacturer: "Schneider Electric", model: "Modicon M171" },
+  "se-m172": { manufacturer: "Schneider Electric", model: "Modicon M172" },
+  "se-premium-serial": { manufacturer: "Schneider Electric", model: "Modicon Premium" },
+  "se-x80-analog": { manufacturer: "Schneider Electric", model: "Modicon X80" },
+};
+
+/** Identity for a bench question row (no `equipment` field); null for scenario cases and unknown manuals. */
+export function benchIdentity(c: BenchCase): { manufacturer: string; model: string } | null {
+  if (c.equipment || !c.question || !c.manual) return null;
+  return BENCH_PRODUCTS[c.manual] ?? null;
 }
 
 /** The run_cases.ts output row shape, per this lane's task brief. */
@@ -361,33 +382,6 @@ export function resolveCaseTenant(
 // Pending LOOP integration — see header doc for why the specifier is a
 // variable, not a literal.
 // ---------------------------------------------------------------------------
-type InvestigateFn = (
-  input: InvestigationInput,
-  tools: InvestigatorTools,
-  model: SynthesisModel,
-  ledger: SpendLedger,
-  limits?: InvestigatorLimits,
-) => Promise<InvestigationResult>;
-
-async function loadInvestigate(): Promise<InvestigateFn> {
-  const specifier = "@/capabilities/investigator";
-  let mod: { investigate?: unknown };
-  try {
-    mod = (await import(specifier)) as { investigate?: unknown };
-  } catch (err) {
-    throw new Error(
-      `run_cases.ts: "@/capabilities/investigator" is not yet buildable (LOOP lane not integrated): ` +
-        `${err instanceof Error ? err.message : err}. H1/H2 require it; H0 is unaffected.`,
-    );
-  }
-  if (typeof mod.investigate !== "function") {
-    throw new Error(
-      'run_cases.ts: "@/capabilities/investigator" does not export `investigate` yet — LOOP lane not integrated. ' +
-        "H1/H2 cannot run until it lands; H0 is unaffected.",
-    );
-  }
-  return mod.investigate as InvestigateFn;
-}
 
 // ---------------------------------------------------------------------------
 // CLI
@@ -399,6 +393,8 @@ interface Cli {
   labelsPath: string | null;
   ledgerPath: string;
   capUsd: number;
+  /** --no-model: H1/H2 run with model = null (evidence + trace only, $0). */
+  noModel: boolean;
 }
 
 export function parseArgs(argv: string[]): Cli {
@@ -406,12 +402,14 @@ export function parseArgs(argv: string[]): Cli {
   let labelsPath: string | null = null;
   let ledgerPath: string | null = null;
   let capUsd: number | null = null;
+  let noModel = false;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--") continue;
     if (a === "--labels") labelsPath = argv[++i] ?? null;
     else if (a === "--ledger") ledgerPath = argv[++i] ?? null;
     else if (a === "--cap") capUsd = Number(argv[++i]);
+    else if (a === "--no-model") noModel = true;
     else positional.push(a);
   }
   const [arm, casesPath, outPath] = positional;
@@ -433,6 +431,7 @@ export function parseArgs(argv: string[]): Cli {
     labelsPath,
     ledgerPath: ledgerPath ?? `${outPath}.ledger.jsonl`,
     capUsd,
+    noModel,
   };
 }
 
@@ -471,10 +470,6 @@ async function main(): Promise<void> {
     if (packId) loadPackCached(packId);
   }
 
-  let investigate: InvestigateFn | null = null;
-  if (cli.arm === "H1" || cli.arm === "H2") {
-    investigate = await loadInvestigate();
-  }
 
   const manualTenantMap = await buildManualTenantMap(db);
 
@@ -538,15 +533,17 @@ async function main(): Promise<void> {
           nodeId: BENCH_NODE_ID,
           docIds,
           equipment: {
-            manufacturer: c.equipment?.manufacturer ?? null,
-            model: c.equipment?.model ?? null,
-            identityStatus: c.equipment ? "user_confirmed" : "unknown",
+            manufacturer: c.equipment?.manufacturer ?? benchIdentity(c)?.manufacturer ?? null,
+            model: c.equipment?.model ?? benchIdentity(c)?.model ?? null,
+            // Scenario cases carry their own identity status (some test an UNconfirmed identity on purpose).
+            // Bench question rows are asked inside the manual's own notebook, so the identity is that product, confirmed.
+            identityStatus: c.equipment ? (c.equipment.identityStatus ?? "user_confirmed") : benchIdentity(c) ? "user_confirmed" : "unknown",
             drivePackId: packId,
           },
           observations: c.observations ?? [],
         };
         const limits: InvestigatorLimits = { ...DEFAULT_LIMITS, maxRounds: cli.arm === "H1" ? 1 : 2 };
-        const result = await investigate!(input, tools, model, ledger, limits);
+        const result = await investigate(input, { tools, model: cli.noModel ? null : model, ledger, limits, arm: cli.arm });
         row = {
           id: c.id,
           arm: cli.arm,
