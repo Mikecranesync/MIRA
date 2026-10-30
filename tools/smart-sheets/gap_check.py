@@ -42,7 +42,7 @@ PHOTO_SOURCES = ("photo", "photo_unconfirmed", "photo_confirmed")
 
 @dataclass
 class Reading:
-    value: float | None
+    value: Decimal | float | None
     unit: str | None
     source: str = "manual"  # manual | photo
     # F10: a photo transcription must be explicitly confirmed by a person
@@ -54,8 +54,8 @@ class Reading:
 
 @dataclass
 class Limit:
-    min_value: float | None
-    max_value: float | None
+    min_value: Decimal | float | None
+    max_value: Decimal | float | None
     unit: str | None
     boundary: str | None
     source: str | None
