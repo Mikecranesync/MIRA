@@ -76,3 +76,11 @@ neutral on fault codes, ±0 on t4-77 top-6. It does not approach the T-1 bar eit
   almost no words with the post AND are not what the embedder ranks first either. Reaching 70% LB needs a different
   component (a stronger embedder / a re-ranker trained on manuals, or chunking that keeps tables with their headings),
   and more held-out questions to measure it on.
+
+## Codex round 1 (PR #5003 @ 76b5084f9) — F1 fix re-measured
+Codex F1: a rewrite hit counted as lexical coverage and could silence the last-resort OR pass on the technician's
+own words. Fixed (rewrite rows join the pool but do not count as coverage; the original-words fallback still runs).
+The rewrite-only arm was re-run once on every set with the fix (`raw/posthoc-after-codex-f1/`): fresh2 9/23, fresh3 7/22,
+oem-fault 136, oem-index 93, t4-77 67, forum-fresh 15, forum-new 11 — identical to the pre-fix numbers, question for
+question. The fix is a safety property (no candidate the technician's words would have found is ever lost), not a score change.
+F2 (one overall deadline for the rewrite) and F3 (no rewrite call on general / OEM-corpus turns) do not touch ranking.

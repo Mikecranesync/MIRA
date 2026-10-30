@@ -45,7 +45,7 @@ export const QUERY_REWRITE_MAX_TOKENS = 200;
 export const QUERY_REWRITE_MAX_OUTPUT_CHARS = 600;
 export const QUERY_REWRITE_TIMEOUT_MS = 6_000;
 
-export type QueryRewriteStatus = "off" | "ran" | "skipped_empty" | "skipped_unchanged" | "failed";
+export type QueryRewriteStatus = "off" | "ran" | "skipped_empty" | "skipped_unchanged" | "failed" | "timeout";
 
 export interface QueryRewrite {
   /** Whitespace-collapsed rewrite to pass as `rewrittenQuery`, or null when retrieval should run unchanged. */
@@ -72,15 +72,31 @@ export async function rewriteForManualSearch(message: string, complete: Complete
   if (!queryRewriteEnabled()) return { rewritten: null, status: "off", provider: null, durationMs: 0 };
   const text = message.replace(/\s+/g, " ").trim();
   if (!text) return { rewritten: null, status: "skipped_empty", provider: null, durationMs: 0 };
+  // ONE deadline for the whole turn, not one per provider: the cascade tries
+  // each configured provider with its own timeout, so two stalled providers
+  // would otherwise hold retrieval for twice the advertised limit (Codex F2 on
+  // #5003). Past the deadline the caller proceeds on the original words; a
+  // late provider reply is dropped (the cascade settles its own budget hold).
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<"timeout">((resolve) => {
+    timer = setTimeout(() => resolve("timeout"), QUERY_REWRITE_TIMEOUT_MS);
+  });
   try {
-    const r = await complete(
-      [
-        { role: "system", content: QUERY_REWRITE_PROMPT },
-        { role: "user", content: message.slice(0, QUERY_REWRITE_MAX_INPUT_CHARS) },
-      ],
-      { maxTokens: QUERY_REWRITE_MAX_TOKENS, temperature: 0, timeoutMs: QUERY_REWRITE_TIMEOUT_MS },
-    );
+    const r = await Promise.race([
+      complete(
+        [
+          { role: "system", content: QUERY_REWRITE_PROMPT },
+          { role: "user", content: message.slice(0, QUERY_REWRITE_MAX_INPUT_CHARS) },
+        ],
+        { maxTokens: QUERY_REWRITE_MAX_TOKENS, temperature: 0, timeoutMs: QUERY_REWRITE_TIMEOUT_MS },
+      ),
+      deadline,
+    ]);
     const durationMs = Date.now() - start;
+    if (r === "timeout") {
+      console.warn(`[query-rewrite] no reply within ${QUERY_REWRITE_TIMEOUT_MS} ms; retrieval runs on the original words`);
+      return { rewritten: null, status: "timeout", provider: null, durationMs };
+    }
     const rewritten = (r?.content ?? "").replace(/\s+/g, " ").trim();
     if (!rewritten || rewritten.length > QUERY_REWRITE_MAX_OUTPUT_CHARS) {
       return { rewritten: null, status: "failed", provider: r?.provider ?? null, durationMs };
@@ -92,5 +108,7 @@ export async function rewriteForManualSearch(message: string, complete: Complete
   } catch (err) {
     console.warn("[query-rewrite] failed (retrieval runs on the original words):", err instanceof Error ? err.message : err);
     return { rewritten: null, status: "failed", provider: null, durationMs: Date.now() - start };
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
   }
 }

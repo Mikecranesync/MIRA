@@ -5,9 +5,11 @@ import {
   QUERY_REWRITE_MAX_OUTPUT_CHARS,
   QUERY_REWRITE_MAX_TOKENS,
   QUERY_REWRITE_PROMPT,
+  QUERY_REWRITE_TIMEOUT_MS,
   queryRewriteEnabled,
   rewriteForManualSearch,
 } from "@/capabilities/query-rewrite";
+import type { CascadeResult } from "@/lib/llm/cascade";
 
 const POST =
   "Hi all, got a PowerFlex 40 on a conveyor that trips every time the belt loads up, " +
@@ -85,6 +87,33 @@ describe("query-rewrite (NOTEBOOK_QUERY_REWRITE)", () => {
     };
     expect(await rewriteForManualSearch(POST, throwing)).toMatchObject({ rewritten: null, status: "failed", provider: null });
     expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it("enforces ONE overall deadline: a cascade that keeps trying providers is abandoned at the limit (Codex F2 on #5003)", async () => {
+    vi.useFakeTimers();
+    try {
+      let settled = false;
+      // A cascade that never answers (two stalled providers, each with its own timeout).
+      const stalled: Complete = () => new Promise(() => {});
+      const p = rewriteForManualSearch(POST, stalled).then((r) => {
+        settled = true;
+        return r;
+      });
+      await vi.advanceTimersByTimeAsync(QUERY_REWRITE_TIMEOUT_MS - 1);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      const r = await p;
+      expect(r).toMatchObject({ rewritten: null, status: "timeout", provider: null });
+      // A reply that arrives AFTER the deadline is not used.
+      let resolveLate: ((v: CascadeResult | null) => void) | undefined;
+      const late: Complete = () => new Promise((res) => (resolveLate = res));
+      const p2 = rewriteForManualSearch(POST, late);
+      await vi.advanceTimersByTimeAsync(QUERY_REWRITE_TIMEOUT_MS);
+      resolveLate?.({ provider: "OpenAI", content: "Overcurrent Fault", durationMs: 1 });
+      expect(await p2).toMatchObject({ rewritten: null, status: "timeout" });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("skips an empty message without a call, and a rewrite identical to the message without using it", async () => {

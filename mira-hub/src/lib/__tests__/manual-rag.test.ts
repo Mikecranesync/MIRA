@@ -2216,16 +2216,23 @@ describe("retrieveNodeChunks — rewrittenQuery variant", () => {
   const Q = "What does GS10 code oC mean?";
   const REWRITE = "Fault Descriptions over current oC Fault Codes table";
 
-  it("adds exactly one OR pass carrying the rewrite, after the AND pass on the original words", async () => {
-    const { client, calls } = makeClient([[], [nodeRow()]]);
+  it("adds one OR pass carrying the rewrite, and still runs the original-words OR fallback when those words found nothing (Codex F1 on #5003)", async () => {
+    // AND on the question: nothing. Rewrite OR: a DISTRACTOR page. Original-words
+    // OR: the answer. A rewrite hit must not count as lexical coverage, or the
+    // fallback is skipped and the answer never enters the pool.
+    const distractor = nodeRow({ content: "Fault Descriptions: table of all fault codes.", source_page: 99, page_start: 99 });
+    const answer = nodeRow({ content: "oC: over current. The GS10 code oC means output current exceeded the limit.", source_page: 12, page_start: 12 });
+    const { client, calls } = makeClient([[], [distractor], [answer]]);
     const out = await retrieveNodeChunks(client, "t-1", Q, { nodeId: "n-1", unsPath: null, rewrittenQuery: `  Fault Descriptions\nover current oC   Fault Codes table ` });
-    expect(out).toHaveLength(1);
     const l = lanes(calls);
-    expect(l).toHaveLength(2);
+    expect(l).toHaveLength(3);
     expect(l[0].sql).toContain("plainto_tsquery('english', $2)");
     expect(l[0].params[1]).toBe(Q);
     expect(l[1].sql).toContain("replace(plainto_tsquery('english', $2)::text, ' & ', ' | ')");
     expect(l[1].params[1]).toBe(REWRITE); // whitespace-collapsed, as query-rewrite.ts emits it
+    expect(l[2].sql).toContain("replace(plainto_tsquery('english', $2)::text, ' & ', ' | ')");
+    expect(l[2].params[1]).toBe(Q); // the original words still get their recall pass
+    expect(out.map((c) => c.sourcePage).sort()).toEqual([12, 99]); // both candidates reach the pool
   });
 
   it("control: without a rewrite the same question runs the same two passes on its own words", async () => {

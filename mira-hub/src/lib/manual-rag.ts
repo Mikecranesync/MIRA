@@ -1898,7 +1898,14 @@ export async function retrieveNodeChunks(
     lexicalRows += add(await runRetrieval(tsquery, text));
   };
   await addLexical(AND_TSQUERY, expanded.variants[0]);
-  for (const v of expanded.variants.slice(1)) await addLexical(OR_TSQUERY, v);
+  // The rewrite variant is recall only: its rows join the pool but do NOT count
+  // as lexical coverage, so the last-resort OR pass on the technician's own
+  // words still runs when those words found nothing (Codex F1 on #5003 — a
+  // rewrite that found an unrelated page must not silence the original words).
+  for (const v of expanded.variants.slice(1)) {
+    if (rewritten !== undefined && v === rewritten) add(await runRetrieval(OR_TSQUERY, v));
+    else await addLexical(OR_TSQUERY, v);
+  }
   // Recall for the question's rare words. Not lexical coverage: the full OR pass
   // below must still run when the AND and synonym passes found nothing.
   if (!lexicalV2) add(await runRetrieval(RARE_TSQUERY, opts.rawQuery?.trim() || expanded.variants[0]));

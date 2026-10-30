@@ -48,6 +48,13 @@ e091906fbe0496927912aa0037dfb28fe1029c70936c2fe8fd1744e06fd55df8  raw/heldout/fo
 f6e299c19e92e122789551d4ddcc6dd1a9f73eb6dc99ce0b24253712abbc2ef9  raw/heldout/oem-fault-frozen-k10.jsonl
 1eb5f57921c3457d2c09fc6c3b10a3dad637b1124e4ba7ccb0566a84c81920f0  raw/heldout/oem-index-frozen-k10.jsonl
 45d665d899abcb3b5232d0064f82404e4e44741114926f1ed8daf3e512facf5b  raw/heldout/robust-frozen-k10.jsonl
+cd85d90d16f3ee0cf499355a01160ca6ff0f052b7e2011934a1c5aad88b6abf2  raw/posthoc-after-codex-f1/forum-fresh-rewrite-only-k10.jsonl
+1d3107ddf9146e87867881a8f09a89d6ca432deb9059e560e61bcdf74bc3bb79  raw/posthoc-after-codex-f1/forum-fresh2-rewrite-only-k10.jsonl
+72d9bc8f397dd8685b8b87a80ce8ef4f3017381be6c045dad0f4b67b29251787  raw/posthoc-after-codex-f1/forum-fresh3-rewrite-only-k10.jsonl
+21836f03ed79799cf7473225d319343d8d77b832075053dcf51f595b4f953312  raw/posthoc-after-codex-f1/forum-new-rewrite-only-k10.jsonl
+53e7d697034851036066456392242f4d2e5807e895eb4401c1a03c22d4a46f38  raw/posthoc-after-codex-f1/oem-fault-rewrite-only-k10.jsonl
+3a01760eee41ff3b5b890c6462cca86398bdd20091530f0e4a67c458c4502f50  raw/posthoc-after-codex-f1/oem-index-rewrite-only-k10.jsonl
+7b90785518ecd329c55c568092a9f4512ad91adb56202d10c7f08842fb8aae3d  raw/posthoc-after-codex-f1/t4-77-rewrite-only-k10.jsonl
 07842e378ab6a99291a9e3284b5ccc809aa17f8f9c8b010770ae4fd197258f4f  raw/posthoc/forum-fresh2-rewrite-only-k10.jsonl
 9a9b7d7dbc1fc6f8d76f50dad1d41a555974155917c3ca7db9b4efb3445b3f75  raw/posthoc/forum-fresh3-rewrite-only-k10.jsonl
 b9661412fe8a1a71d714672ea3d47fe6438c3daff874e2f7dc6735ee5a9259d7  raw/posthoc/oem-fault-frozen-with-rewrites-k10.jsonl

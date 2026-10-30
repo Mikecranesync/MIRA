@@ -149,7 +149,7 @@ import { extractCandidateIdentity, isSafeCandidateSearchIdentity, wantsManualDoc
 import { citationTitle } from "@/capabilities/citation-title";
 import { claimPartSearchProposal } from "@/capabilities/part-search-claim";
 import { translateForSearch } from "@/capabilities/translate-for-search";
-import { rewriteForManualSearch } from "@/capabilities/query-rewrite";
+import { rewriteForManualSearch, type QueryRewrite } from "@/capabilities/query-rewrite";
 import {
   buildRequestBody,
   canonicalProviders,
@@ -2257,7 +2257,13 @@ async function handleChatTurn(
   // Query rewrite (NOTEBOOK_QUERY_REWRITE, default off): the message restated
   // in the manual's vocabulary, started here so its ~1 s overlaps the notebook
   // loads; awaited only where retrieval needs it. Never throws (fail-open).
-  const queryRewritePromise = rewriteForManualSearch(message);
+  // Only a notebook-source turn consumes it — a general turn or an OEM-corpus
+  // turn (both `general || nodeId === null`, see notebookRetrieval below) must
+  // not pay for or wait on a rewrite nothing reads (Codex F3 on #5003).
+  const queryRewritePromise: Promise<QueryRewrite> =
+    general || nodeId === null
+      ? Promise.resolve({ rewritten: null, status: "off", provider: null, durationMs: 0 })
+      : rewriteForManualSearch(message);
   const [nb, srcs] = await Promise.all([
     (async () => {
       try {
