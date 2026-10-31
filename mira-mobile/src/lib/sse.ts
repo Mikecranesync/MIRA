@@ -81,6 +81,11 @@ export interface ChatTurn {
    *  the `evidence` frame's `identityDisputed` field; absent = not disputed,
    *  never inferred. */
   identityDisputed?: true;
+  /** #4074: the persisted `equipment_notebook_turns.id` the Hub saved for this
+   *  live answer (`turn_saved` frame, lowercase UUID). Absent when nothing was
+   *  saved or the server predates the frame — never inferred from the question
+   *  text or the request id. */
+  persistedTurnId?: string;
   /** Frames whose `kind` this parser version does not know (PRD §9.2
    *  unknown-part rule): preserved for inspection, never a crash, never
    *  rendered as content. `usage` is known-and-ignored, not unknown. */
@@ -169,6 +174,7 @@ export function createChatSseParser(httpStatus = 200): ChatSseParser {
   let safetyTrigger: string | undefined;
   let safetyDirective: string | undefined;
   let identityDisputed: true | undefined;
+  let persistedTurnId: string | undefined;
   let unknownFrames: unknown[] | undefined;
   let sawStatus = false;
   let buffer = "";
@@ -232,6 +238,10 @@ export function createChatSseParser(httpStatus = 200): ChatSseParser {
             }
           }
         }
+      } else if (frame.kind === "turn_saved") {
+        // #4074 — the row id the Hub persisted, validated before it is trusted.
+        const id = String(frame.turnRowId ?? "").toLowerCase();
+        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id)) persistedTurnId = id;
       } else if (frame.kind === "safety") {
         safetyTrigger = String(frame.trigger ?? "");
       } else if (frame.kind !== "usage") {
@@ -257,6 +267,7 @@ export function createChatSseParser(httpStatus = 200): ChatSseParser {
     ...(safetyTrigger !== undefined ? { safetyTrigger } : {}),
     ...(safetyDirective !== undefined ? { safetyDirective } : {}),
     ...(identityDisputed ? { identityDisputed } : {}),
+    ...(persistedTurnId ? { persistedTurnId } : {}),
     ...(unknownFrames ? { unknownFrames } : {}),
     // Present ONLY when the authoritative terminal frame never arrived.
     ...(sawStatus ? {} : { sawStatus: false as const }),
