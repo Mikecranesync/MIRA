@@ -356,6 +356,16 @@ def _identity_unknown(state: dict) -> bool:
     )
 
 
+def _proceed_consented(state: dict) -> bool:
+    """True once the technician typed PROCEED for this session (#3713).
+
+    The engine persists the consent on state["context"]["proceed_consent"]; it is
+    cleared on diagnostic carryover and asset re-pin so it cannot follow the
+    technician onto a different machine.
+    """
+    return bool((state.get("context") or {}).get("proceed_consent"))
+
+
 def _inject_reference_block(messages: list[dict], ref_block: str) -> None:
     """Prepend retrieved references to the final user turn, not system role."""
     if not ref_block:
@@ -1040,8 +1050,14 @@ class RAGWorker:
                             kg_context=local_kg_context,
                         )
                     else:
-                        clarification = _build_clarification_request(
-                            message, state.get("asset_identified", "")
+                        # #3713: after PROCEED the technician has accepted a best
+                        # estimate; re-asking for the manufacturer is the bug.
+                        clarification = (
+                            None
+                            if _proceed_consented(state)
+                            else _build_clarification_request(
+                                message, state.get("asset_identified", "")
+                            )
                         )
                         if clarification:
                             return clarification
