@@ -192,7 +192,7 @@ jobs:
 
           failed=""
           [ "${SMOKE_OUTCOME}" = "failure" ] && failed="${failed} smoke"
-          [ "${SIGNUP_OUTCOME}" = "failure" ] && failed="${failed} signup-money-path"
+          [ "${SIGNUP_OUTCOME}" = "failure" ] && failed="${failed} signup-contact-path"
 
           msg="$(printf 'FactoryLM — PRODUCTION smoke failed\nfailed:%s\nimpact: %s\nrun: https://github.com/%s/actions/runs/%s\ncontext: issue #3598 (intermittent 502 on app.factorylm.com/login)' \
             "${failed}" "${impact}" "${REPO}" "${RUN_ID}")"
