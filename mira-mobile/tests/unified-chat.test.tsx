@@ -216,6 +216,20 @@ describe("UnifiedChat", () => {
     expect(closeTopTransientLayer()).toBe(false);
   });
 
+  it("header New chat starts a fresh thread without opening the drawer", () => {
+    const h = { ...handlers(), onNewChat: vi.fn() };
+    render(<UnifiedChat turns={[TURN]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null} handlers={h} meta={META} />);
+
+    expect(document.querySelector(".fl-shell")?.getAttribute("data-navigation-visible")).toBe("false");
+    const button = document.querySelector<HTMLButtonElement>(".fl-shell__header-new-chat");
+    expect(button).toBeTruthy();
+    expect(button?.disabled).toBe(false);
+    expect(button?.getAttribute("aria-label")).toBe("New chat");
+    fireEvent.click(button as HTMLButtonElement);
+    expect(h.onNewChat).toHaveBeenCalledTimes(1);
+    expect(document.querySelector(".fl-shell")?.getAttribute("data-navigation-visible")).toBe("false");
+  });
+
   it("shows and clears honest screen-owned failure copy", () => {
     const h = handlers();
     const { rerender } = render(

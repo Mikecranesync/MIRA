@@ -205,7 +205,7 @@ export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, on
       <Sidebar state={state} dispatch={dispatch} onOpenItem={onOpenItem} onSelectProject={onSelectProject} footer={navigationFooter} inert={layered && !state.navigationVisible} hooks={hooks} />
     </Overlay>
     <main className="fl-shell__main">
-      <ThreadHeader state={state} dispatch={dispatch} />
+      <ThreadHeader state={state} dispatch={dispatch} hooks={hooks} />
       {/* Public surface only; a no-op elsewhere. Inside <main>, above the
           conversation, so it is read before any answer it qualifies. */}
       <DemoNotice state={state} hooks={hooks} />
