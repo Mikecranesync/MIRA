@@ -6,6 +6,7 @@ import {
   safetyChapterPage,
   SAFETY_CHAPTER_DIRECTIVE,
   SAFETY_CHAPTER_MAX_CHUNKS,
+  SAFETY_CHAPTER_REF_SQL,
 } from "./manual-safety-chapter";
 import type { PoolClient } from "pg";
 import type { ManualChunk } from "@/lib/manual-rag";
@@ -180,7 +181,7 @@ describe("retrieveSafetyChapterChunks", () => {
     expect(client.calls).toEqual([]);
   });
 
-  it("caps the chunks it adds", async () => {
+  it("caps the chunks it adds per manual", async () => {
     const many = Array.from({ length: 9 }, (_, i) => row(`00000000-0000-0000-0000-0000000001${i}0`, `${P18}\n(${i})`, 18 + (i % 3)));
     const added = await retrieveSafetyChapterChunks(fakeClient([...many, CORPUS[3]]), "tenant", [chunk(P372, 372)]);
     expect(added).toHaveLength(SAFETY_CHAPTER_MAX_CHUNKS);
@@ -195,7 +196,8 @@ describe("retrieveSafetyChapterChunks", () => {
     const client = fakeClient([...CORPUS, aRow(1), aRow(2), aRow(3), aRow(4)]);
     const aTask = { ...chunk("WARNING! Read and follow the instructions in chapter Safety on page 1.", 40, A), sourceUrl: A_URL, title: "other-drive.pdf" };
     const added = await retrieveSafetyChapterChunks(client, "tenant", [aTask, chunk(P372, 372)]);
-    expect(added).toHaveLength(SAFETY_CHAPTER_MAX_CHUNKS);
+    // Each manual has its own budget: A keeps its 4 pages and the ACS355 still keeps page 18.
+    expect(added.map((c) => `${c.docId === DOC ? "acs" : "a"}:${c.sourcePage}`)).toEqual(["a:1", "a:2", "a:3", "a:4", "acs:18"]);
     const acs = added.filter((c) => c.docId === DOC);
     expect(acs.map((c) => c.sourcePage)).toEqual([18]);
     expect(acs[0]).toMatchObject({ sourceUrl: URL, title: "acs355.pdf" });
@@ -213,9 +215,56 @@ describe("retrieveSafetyChapterChunks", () => {
       chunk(P372, 372), // the ACS355 task page, fifth in relevance order
     ];
     const added = await retrieveSafetyChapterChunks(fakeClient([...CORPUS, ...extra]), "tenant", retrieved);
-    expect(added).toHaveLength(5); // one per manual: the cap grows to cover every manual with a chapter
-    expect(added.map((c) => c.docId)).toEqual([...docs.map((d) => d.id), DOC]);
-    expect(added[4]).toMatchObject({ sourceUrl: URL, sourcePage: 18, content: P18 });
+    // Each manual keeps its own chapter (2 pages each here); the fifth still keeps page 18.
+    expect(added.map((c) => c.docId)).toEqual([...docs.flatMap((d) => [d.id, d.id]), DOC]);
+    expect(added[8]).toMatchObject({ sourceUrl: URL, sourcePage: 18, content: P18 });
+  });
+
+  it("three manuals: the applicable manual's second chapter chunk is not given to earlier manuals (Codex r3 F4)", async () => {
+    const mk = (n: number) => ({ id: `aaaaaaaa-0000-0000-0000-00000000000${n}`, url: `hub://drive-${n}.pdf` });
+    const [A, B, C] = [mk(1), mk(2), mk(3)];
+    const warn = (d: { id: string; url: string }, p: number, body: string): Row => ({ id: `${d.id}-${p}`, doc_id: d.id, content: body, source_url: d.url, page: p });
+    const STEPS = "WARNING! Wait for 5 minutes after disconnecting the input power. Measure with a multimeter that there is no voltage.";
+    const rows = [
+      warn(A, 1, "WARNING! Drive A: only qualified electricians may install this drive."),
+      warn(A, 2, "WARNING! Drive A: do not work on the drive while it is powered."),
+      warn(B, 1, "WARNING! Drive B: only qualified electricians may install this drive."),
+      warn(B, 2, "WARNING! Drive B: do not work on the drive while it is powered."),
+      warn(C, 1, "WARNING! Drive C: only qualified electricians may install this drive."),
+      warn(C, 2, STEPS), // the required procedure lives only in C's second chunk
+    ];
+    const ref = "WARNING! Read and follow the instructions in chapter Safety on page 1.";
+    const retrieved = [A, B, C].map((d) => ({ ...chunk(ref, 40, d.id), sourceUrl: d.url }));
+    const added = await retrieveSafetyChapterChunks(fakeClient(rows), "tenant", retrieved);
+    const c2 = added.find((c) => c.content === STEPS);
+    expect(c2).toMatchObject({ docId: C.id, sourceUrl: C.url, sourcePage: 2 });
+    expect(added.filter((c) => c.docId === C.id)).toHaveLength(2);
+  });
+
+  it("two manuals with byte-identical warnings each keep their own (Codex r3 F6)", async () => {
+    const A = { id: "aaaaaaaa-0000-0000-0000-000000000001", url: "hub://acs355-rev-b.pdf" };
+    const rows = [...CORPUS, { id: "a-18", doc_id: A.id, content: P18, source_url: A.url, page: 18 }];
+    const retrieved = [{ ...chunk(P372, 372, A.id), sourceUrl: A.url }, chunk(P372, 372)];
+    const added = await retrieveSafetyChapterChunks(fakeClient(rows), "tenant", retrieved);
+    expect(added.map((c) => [c.docId, c.sourceUrl, c.sourcePage])).toEqual([
+      [A.id, A.url, 18],
+      [DOC, URL, 18],
+    ]);
+  });
+
+  it("the document lookup recognises a curly-quoted reference (Codex r3 F5)", async () => {
+    const curly = row("00000000-0000-0000-0000-000000000099", "Read chapter \u201cSafety\u201d on page 17 before you start.", 99);
+    const client = fakeClient([curly, CORPUS[1], CORPUS[2]]);
+    const added = await retrieveSafetyChapterChunks(client, "tenant", [chunk(P355, 355)]);
+    expect(client.calls.some((c) => c.sql.includes("DISTINCT ON"))).toBe(true);
+    expect(added.map((c) => c.sourcePage)).toEqual([18]);
+  });
+
+  it("one grammar: the inline matcher and the lookup pattern accept the same quote forms", () => {
+    for (const q of ['chapter Safety on page 17', 'chapter "Safety" on page 17', "chapter \u201cSafety\u201d on page 17"]) {
+      expect(safetyChapterPage(q)).toBe(17);
+      expect(new RegExp(SAFETY_CHAPTER_REF_SQL, "i").test(q)).toBe(true);
+    }
   });
 
   it("the directive asks for the steps only on physical work", () => {

@@ -27,15 +27,17 @@ import {
   type ManualChunk,
 } from "@/lib/manual-rag";
 
+/** One grammar for both matchers: an optional straight or curly quote around "Safety". */
+const QUOTE = '["\u201c\u201d]?';
 /** "chapter Safety on page 17" — the manual's cross-reference to its own Safety chapter. */
-export const SAFETY_CHAPTER_REF = /\bchapter\s+["“]?safety["”]?\s+on\s+page\s+(\d{1,4})\b/i;
-/** The same reference as a Postgres regex, for the document-level lookup. */
-const SAFETY_CHAPTER_REF_SQL = "chapter\\s+\"?safety\"?\\s+on\\s+page\\s+[0-9]{1,4}";
+export const SAFETY_CHAPTER_REF = new RegExp(`\\bchapter\\s+${QUOTE}safety${QUOTE}\\s+on\\s+page\\s+(\\d{1,4})\\b`, "i");
+/** The same reference as a Postgres regex, for the document-level lookup (no \\b: it means backspace there). */
+export const SAFETY_CHAPTER_REF_SQL = `chapter\\s+${QUOTE}safety${QUOTE}\\s+on\\s+page\\s+[0-9]{1,4}`;
 /** Pages read from the referenced first page on (ACS355: 17 opens the chapter, 18-20 hold the warnings). */
 export const SAFETY_CHAPTER_SPAN = 4;
 /**
- * Chapter chunks added per turn: bounds the extra prompt tokens. The cap grows to one per manual
- * when more manuals than this carry a chapter, so no retrieved manual loses its warning.
+ * Chapter chunks added PER MANUAL: bounds the extra prompt tokens. Each retrieved manual has its own
+ * budget, so one manual's chapter can never use up the slots of the manual the task is about.
  */
 export const SAFETY_CHAPTER_MAX_CHUNKS = 4;
 
@@ -144,32 +146,26 @@ export async function retrieveSafetyChapterChunks(
     approvedSourceDocIds: opts.approvedSourceDocIds,
     keep: (t) => extractManualSafetyStatement(t) !== null,
   });
-  // Group per document, page order within each, so one manual's low-numbered chapter cannot
-  // crowd another manual's warning out of the cap.
-  const seen = new Set(chunks.map((c) => c.content));
+  // Group per document, page order within each. Dedupe is per document: two manuals with the same
+  // boilerplate warning each keep their own citable copy.
+  const keyOf = (sourceUrl: string, content: string) => `${sourceUrl}\u0000${content}`;
+  const seen = new Set(chunks.map((c) => keyOf(c.sourceUrl ?? "", c.content)));
   const perDoc = new Map(docs.map((d) => [d.sourceUrl, [] as typeof rows] as const));
   for (const r of rows) {
-    if (seen.has(r.content)) continue;
     const list = perDoc.get(r.sourceUrl);
-    if (!list) continue;
-    seen.add(r.content);
+    const key = keyOf(r.sourceUrl, r.content);
+    if (!list || seen.has(key)) continue;
+    seen.add(key);
     list.push(r);
   }
-  for (const list of perDoc.values()) list.sort((a, b) => a.sourcePage - b.sourcePage);
-  // Take one chunk per document in retrieval order, round after round, up to the cap.
-  const withChapter = [...perDoc.values()].filter((l) => l.length > 0).length;
-  const cap = Math.max(SAFETY_CHAPTER_MAX_CHUNKS, withChapter);
-  const out: ManualChunk[] = [];
-  for (let i = 0; out.length < cap; i++) {
-    const before = out.length;
-    for (const d of docs) {
-      const r = perDoc.get(d.sourceUrl)![i];
-      if (!r || out.length >= cap) continue;
-      out.push({ ...d.template, content: r.content, sourcePage: r.sourcePage, pageLabel: String(r.sourcePage), chunkIndex: null, rank: 0 });
-    }
-    if (out.length === before) break;
-  }
-  return out;
+  // Retrieval order across documents, page order within each, each document within its own budget.
+  return docs.flatMap((d) =>
+    perDoc
+      .get(d.sourceUrl)!
+      .sort((a, b) => a.sourcePage - b.sourcePage)
+      .slice(0, SAFETY_CHAPTER_MAX_CHUNKS)
+      .map((r) => ({ ...d.template, content: r.content, sourcePage: r.sourcePage, pageLabel: String(r.sourcePage), chunkIndex: null, rank: 0 })),
+  );
 }
 
 /** The prompt rule that rides with the chapter excerpts; only sent when some were added. */
