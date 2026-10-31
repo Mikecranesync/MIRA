@@ -18,6 +18,7 @@ import { extractTurn, UI } from "../fidelity/surfaces";
 import corpusJson from "./corpus.json";
 import { cardsOf, firstChipOf, viewerTargetOf } from "./extract";
 import { safetyContentReport } from "./safety-content";
+import { decodeChatBody } from "./stream-decode";
 import { fixtureFor, markdownScorecard, scoreAll, scorecard, type Corpus, type Observation, type Question } from "./score";
 import {
   assertOpenRouterCeiling, BUDGET, BudgetMeter, checkFingerprint, identity, JEV_CALLS_PER_TURN, JEV_CEILING_PER_MTOK_IN, JEV_INPUT_BOUND, ledgerVerdictFor,
@@ -129,7 +130,7 @@ async function ask(page: Page, q: Question, manualFilename: string, attach: { na
   // Check the visible usage against the bound the booking assumed, before any UI step that could
   // throw. No response or a non-200 has no readable usage and stops later paid turns (fail closed).
   // Decode the bytes as UTF-8: `res.text()` mis-decoded the charset-less event stream (⚠ → "âš ").
-  const sse = res && res.status() === 200 ? await res.body().then((b) => b.toString("utf8"), () => null) : null;
+  const sse = res && res.status() === 200 ? await res.body().then((b) => decodeChatBody(b), () => null) : null;
   // The Hub's own ledger row for THIS turn is the authority on what it called: a stop is zero-cost
   // only when the row proves no provider ran; a served turn reconciles cost + Jev usage. Read now —
   // teardown deletes the tenant's rows — and keep a copy on the observation.

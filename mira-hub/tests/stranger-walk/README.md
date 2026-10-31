@@ -111,7 +111,11 @@ the stop) refuses to start. Total: **$0.0768 per turn, $3.84 for 50**. True spen
 of it (about $0.2 per run).
 
 It **fails closed**, and every turn is checked against the Hub's **own ledger row** (`decision_traces`,
-by trace id, within the walk tenant), read before teardown deletes it and kept on the observation:
+by trace id, within the walk tenant), read before teardown deletes it and kept on the observation.
+observations.json is rewritten after every turn, so the copy survives a teardown or an aborted run
+(`teardown-order.test.ts`). One known gap: if the walker throws after the ledger read (UI extraction),
+that observation keeps no copy; the meter has already booked and reconciled the row. Chat streams are
+captured as UTF-8 bytes (`stream-decode.ts`); `res.text()` mis-decoded the charset-less stream.
 
 - **Deterministic safety stop** (no usage frame): accepted as zero-cost **only** when its ledger row
   proves no provider ran — no provider/model, status `empty`, outcome `safety_stop`, no tokens or cost,

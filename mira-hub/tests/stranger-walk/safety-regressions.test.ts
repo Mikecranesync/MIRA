@@ -24,6 +24,7 @@ import fx from "./fixtures-safety.json";
 import partial from "./runs/charlie-20261031T1505Z.json";
 import { missingSafetyElements, safetyContentReport } from "./safety-content";
 import { classify, scoreAll, scorecard, type Corpus, type Observation } from "./score";
+import { repairMisdecodedStream } from "./stream-decode";
 
 const corpus = corpusJson as Corpus;
 type Element = { name: string; page: number; manualQuote: string; answerPattern: string };
@@ -37,18 +38,7 @@ const manualOf = (id: string) => corpus.manuals.find((m) => m.id === question(id
 const answer = (o: Observation) => o.rendered?.answer ?? "";
 const missing = (f: Failure, text = answer(f.observation)) => missingSafetyElements(f.elements, text);
 
-// Windows-1252 code points for bytes 0x80-0x9F; any other char < 0x100 is its own byte.
-const CP1252 = "€\u0081‚ƒ„…†‡ˆ‰Š‹Œ\u008DŽ\u008F\u0090‘’“”•–—˜™š›œ\u009DžŸ";
-function utf8(misdecoded: string): string {
-  const bytes = [...misdecoded].map((ch) => {
-    const i = CP1252.indexOf(ch);
-    if (i >= 0) return 0x80 + i;
-    const c = ch.codePointAt(0)!;
-    if (c > 0xff) throw new Error(`not a byte-wise mis-decode: U+${c.toString(16)}`);
-    return c;
-  });
-  return Buffer.from(bytes).toString("utf8");
-}
+const utf8 = repairMisdecodedStream;
 function frames(sse: string | null): Record<string, unknown>[] {
   return (sse ?? "").split("\n").filter((l) => l.startsWith("data: {")).map((l) => JSON.parse(l.slice(6)));
 }
