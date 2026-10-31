@@ -122,7 +122,7 @@ export class AtlasWriteProvider implements CmmsWriteProvider {
         };
       }
     } catch (err) {
-      return this.mapWriteError(err);
+      return this.mapPreCreateLookupError(err);
     }
 
     let created: AtlasComment;
@@ -260,6 +260,19 @@ export class AtlasWriteProvider implements CmmsWriteProvider {
     return comments.filter(
       (c) => !c.system && typeof c.content === "string" && countMarker(c.content, marker) > 0,
     );
+  }
+
+  /**
+   * A failed marker lookup BEFORE create (#5027, Codex #5024 round 6 F13).
+   * `createComment` has not been called on this attempt, so nothing can have
+   * been written: a thrown network error is `retryable_failure`, never
+   * `outcome_unknown` (which the dispatcher reconciles read-only and would
+   * quarantine a fix that was never sent). HTTP and auth errors keep the
+   * shared mapping.
+   */
+  private mapPreCreateLookupError(err: unknown): CmmsWriteResult {
+    if (err instanceof AtlasAuthError || err instanceof AtlasHttpError) return this.mapWriteError(err);
+    return { kind: "retryable_failure", reason: "precreate_lookup_network_error", receipt: {} };
   }
 
   /**
