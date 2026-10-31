@@ -322,16 +322,21 @@ jobs:
             # lock_timeout (#5010): an ALTER TABLE on a hot table (109 on
             # hub_users) needs ACCESS EXCLUSIVE; without a bound it waits behind
             # any long transaction for up to the 15-minute job timeout, and every
-            # login/signup query queues behind IT. PGOPTIONS sets the session
-            # default for this file only; a file's own SET LOCAL still wins inside
-            # its transaction (110 uses 5s). On timeout psql exits non-zero, the
-            # single transaction rolls back, and the ledger INSERT below never
-            # runs, so a retry re-applies the whole file.
-            if PGOPTIONS="-c lock_timeout=5s" psql "$DATABASE_URL" \
+            # login/signup query queues behind IT. The bound is a SET LOCAL as the
+            # first statement of the single transaction, NOT PGOPTIONS: the Neon
+            # URLs are the pooled (-pooler, PgBouncer) endpoints, which reject
+            # lock_timeout as a startup option ("unsupported startup parameter in
+            # options: lock_timeout"). SET LOCAL is what 110 already does; it is
+            # transaction-scoped, so it covers the ALTERs whether or not the file
+            # carries its own BEGIN/COMMIT, and a file's own SET LOCAL still wins.
+            # On timeout psql exits non-zero, the transaction rolls back, and the
+            # ledger INSERT below never runs, so a retry re-applies the whole file.
+            if psql "$DATABASE_URL" \
                  --single-transaction \
                  --set ON_ERROR_STOP=1 \
                  --no-psqlrc \
                  -v ECHO=errors \
+                 -c "SET LOCAL lock_timeout = '5s'" \
                  -f "$f"; then
               END=$(date +%s)
               DUR=$((END-START))
