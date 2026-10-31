@@ -34,9 +34,19 @@ describe("splitCitationMarks", () => {
       { kind: "text", text: " too." },
     ]);
   });
-  it("an unknown [n] or non-numeric bracket stays literal — never a dead chip", () => {
+  it("an unknown [n] is stripped; a non-numeric bracket stays literal — never a dead chip", () => {
     expect(splitCitationMarks("see [9] and [note]", known)).toEqual([
-      { kind: "text", text: "see [9] and [note]" },
+      { kind: "text", text: "see and [note]" },
+    ]);
+  });
+  it("an unknown [n] takes ALL spaces/tabs before it, like the Hub renderer", () => {
+    expect(splitCitationMarks("See  \t[999] for details.", known)).toEqual([
+      { kind: "text", text: "See for details." },
+    ]);
+  });
+  it("a 4+-digit unknown [n] is stripped too (same \\d+ rule as Hub)", () => {
+    expect(splitCitationMarks("See [1234] for details.", known)).toEqual([
+      { kind: "text", text: "See for details." },
     ]);
   });
   it("no marks → one text segment; empty → none", () => {

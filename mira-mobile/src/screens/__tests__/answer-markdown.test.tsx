@@ -62,10 +62,11 @@ describe("AnswerMarkdown", () => {
     expect(screen.getAllByRole("button", { name: "Citation 2" })[0].closest("td")).not.toBeNull();
   });
 
-  it("an unknown [n] stays literal text and no dead chip is offered", () => {
+  it("an unknown [n] is stripped and no dead chip is offered", () => {
     render(<AnswerMarkdown text="see [7] here" citations={[cite("1")]} />);
     expect(screen.queryByRole("button", { name: "Citation 7" })).toBeNull();
-    expect(screen.getByText("see [7] here")).toBeTruthy();
+    expect(screen.queryByText(/\[7\]/)).toBeNull();
+    expect(screen.getByText("see here")).toBeTruthy();
   });
 
   it("links render as text + URL, never an <a> (window.open ban)", () => {
