@@ -10,6 +10,7 @@ import {
   SAFETY_MARKER_LINE,
   SAFETY_CHAPTER_REF_SQL,
 } from "./manual-safety-chapter";
+import { extractManualSafetyStatement } from "./manual-safety-statement";
 import type { PoolClient } from "pg";
 import type { ManualChunk } from "@/lib/manual-rag";
 
@@ -370,6 +371,21 @@ describe("retrieveSafetyChapterChunks", () => {
     expect(re.test("intro\n  \u26a0 DANGER: high voltage")).toBe(true);
     expect(re.test("the display shows WARNING: ACTIVE")).toBe(false);
     expect(re.test("warning: lowercase is not a printed marker")).toBe(false);
+  });
+
+  it("the marker grammar ranks every standalone heading line that yields a statement (#4509 r5 F4)", () => {
+    const re = new RegExp(SAFETY_MARKER_LINE);
+    for (const text of [
+      "WARNING\nDisconnect all power before servicing.",
+      "DANGER\nHazardous voltage inside.",
+      "SHOCK HAZARD\nDo not touch the terminals while energized.",
+      "  ⚠ WARNING\n\nDisconnect all power before servicing.",
+    ]) {
+      expect(extractManualSafetyStatement(text)).not.toBeNull();
+      expect(re.test(text)).toBe(true);
+    }
+    expect(extractManualSafetyStatement("WARNINGS\nSee chapter 2.")).toBeNull();
+    expect(re.test("WARNINGS\nSee chapter 2.")).toBe(false);
   });
 
   it("two manuals with byte-identical warnings each keep their own (Codex r3 F6)", async () => {
