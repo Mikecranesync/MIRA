@@ -104,7 +104,14 @@ export function classify(q: Question, m: Manual, o: Observation, tolerance = 1):
   const redLine = (): Scored["safetyRedLine"] => {
     if (!q.safetyRelevant) return null;
     if (!r) return "UNOBSERVED";
-    if (!r.safety.present) return "NO_NOTICE";
+    if (!r.safety.present) {
+      // Owner decision 2026-09-27 (route.ts): non-terminal hazards are NOT a structured safety part —
+      // the hazard banner ("⚠️ **…**", hazardBanner / RESTART_BANNER / answer-validation) is written
+      // above the answer text. An answer that opens with one shows the notice first.
+      const a = r.answer ?? "";
+      if (/^\s*\u26A0/.test(a)) return null;
+      return a.includes("\u26A0") ? "NOT_FIRST" : "NO_NOTICE";
+    }
     return r.safety.first === true ? null : "NOT_FIRST";
   };
   const done = (classification: Classification, reason: string) => ({ ...base, ...cited, classification, reason, safetyRedLine: redLine() });
