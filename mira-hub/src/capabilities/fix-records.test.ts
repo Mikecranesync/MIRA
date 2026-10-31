@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isUuid, requestFingerprint, validateFixInput } from "@/capabilities/fix-records";
+import { isUuid, requestFingerprint, toIsoTimestamp, validateFixInput } from "@/capabilities/fix-records";
 
 const RID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const TURN = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
@@ -155,5 +155,19 @@ describe("request id is required and fingerprinted (post-hardening F2/F3)", () =
     expect(requestFingerprint(v, "m1")).not.toBe(requestFingerprint({ ...v, fix: "g" }, "m1"));
     expect(requestFingerprint(v, "m1")).not.toBe(requestFingerprint(v, "m2"));
     expect(requestFingerprint(v, "m1")).not.toBe(requestFingerprint(v, null));
+  });
+});
+
+describe("toIsoTimestamp (#4060)", () => {
+  it("renders a Date as ISO-8601 with millisecond precision", () => {
+    expect(toIsoTimestamp(new Date("2026-09-27T17:51:55.123Z"))).toBe("2026-09-27T17:51:55.123Z");
+  });
+
+  it("normalises an ISO-like string to ISO-8601", () => {
+    expect(toIsoTimestamp("2026-09-27T00:00:00Z")).toBe("2026-09-27T00:00:00.000Z");
+  });
+
+  it("passes an unparseable value through unchanged instead of throwing", () => {
+    expect(toIsoTimestamp("not a date")).toBe("not a date");
   });
 });

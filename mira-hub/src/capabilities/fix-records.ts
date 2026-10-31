@@ -108,7 +108,17 @@ export function validateFixInput(body: unknown): ValidateFixInputResult {
   return { ok: true, value: { symptom, fix, faultCode, sourceTurnId, clientRequestId } };
 }
 
-function mapRow(r: Record<string, unknown>): FixRecord {
+/**
+ * node-postgres returns timestamptz as a JS Date; String(Date) is not ISO-8601
+ * (#4060). Serialize every timestamp the record exposes as ISO-8601. A value
+ * that does not parse is passed through unchanged rather than throwing.
+ */
+export function toIsoTimestamp(value: unknown): string {
+  const d = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(d.getTime()) ? String(value) : d.toISOString();
+}
+
+export function mapRow(r: Record<string, unknown>): FixRecord {
   return {
     id: String(r.id),
     notebookId: String(r.notebook_id),
@@ -117,7 +127,7 @@ function mapRow(r: Record<string, unknown>): FixRecord {
     faultCode: (r.fault_code as string) ?? null,
     fix: String(r.fix),
     recordedBy: (r.recorded_by as string) ?? null,
-    createdAt: String(r.created_at),
+    createdAt: toIsoTimestamp(r.created_at),
   };
 }
 
