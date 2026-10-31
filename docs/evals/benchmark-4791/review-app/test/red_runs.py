@@ -1,0 +1,184 @@
+"""Prove the review-page tests can fail: build one mutated page at a time and run the test that guards it.
+
+    cd test && python3 red_runs.py        (needs `npm i` and `npx playwright install chromium` here)
+
+Each mutation must turn its named test red on the Pixel project; the unmutated control must pass the WHOLE suite.
+Writes results/red-runs.json and exits 1 if any mutation survives.
+"""
+
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+APP = os.path.join(HERE, "..", "app.html")
+MUTATIONS = [
+    (
+        "control (no mutation)",
+        None,
+        None,
+        ".",
+    ),  # "." matches every test: the WHOLE suite must pass unmutated
+    (
+        "answer XP from the phone's copy, not the server",
+        "return s && s.confirmed ? s.data : null; }",
+        "return S.local[key] || null; }",
+        "XP counts only server-confirmed saves",
+    ),
+    (
+        "hazard XP from the phone's copy",
+        "const hazards = Object.values(S.serverHaz).filter(h => h.confirmed && !S.tomb[h.data.id]).length;",
+        "const hazards = localHazCount();",
+        "XP counts only server-confirmed saves",
+    ),
+    (
+        "page gate removed",
+        "seen = !!(S.seen[k] || pages[p]);",
+        "seen = true;",
+        "page buttons stay disabled until",
+    ),
+    (
+        "v1 records rewritten on load",
+        "if (!s) writer.put('answers', key, rec);",
+        "writer.put('answers', key, rec);",
+        "opening v2 writes nothing",
+    ),
+    (
+        "Safety Sentinel lock removed",
+        "const sentinelUnlocked = () => localHazCount() >= HAZARD_UNLOCK ||",
+        "const sentinelUnlocked = () => true ||",
+        "Safety Sentinel stays locked",
+    ),
+    (
+        "XP depends on the label",
+        "const forum = DATA.forum.filter(f => forumComplete(confirmedRec(forumKey(f)), f)).length;",
+        "const forum = DATA.forum.filter(f => forumComplete(confirmedRec(forumKey(f)), f) && !Object.values(confirmedRec(forumKey(f)).pages).includes('unsure')).length;",
+        "the label never changes XP",
+    ),
+    (
+        "overall alone completes a case",
+        "const forumComplete = (rec, f) => !!(rec && rec.overall && f.pages.every(p => rec.pages && rec.pages[p]));",
+        "const forumComplete = (rec, f) => !!(rec && rec.overall);",
+        "the label never changes XP",
+    ),
+    (
+        "edits allowed before the first sync (Codex F1)",
+        "const editable = () => S.dbState === 'off' || S.dbState === 'readonly' || S.serverReady;",
+        "const editable = () => true;",
+        "an edit cannot be made before the first sync",
+    ),
+    (
+        "offline edit replaces instead of merging (Codex F1)",
+        "const merged = mergeRec(s.data, rec);",
+        "const merged = rec;",
+        "an edit made while offline merges",
+    ),
+    (
+        "removed hazard kept on the phone (Codex F2)",
+        "S.tomb[h.id] = true; delete S.localHaz[h.id]; lsSave();",
+        "S.tomb[h.id] = true; lsSave();",
+        "a removed hazard stays removed",
+    ),
+    (
+        "no-op merge not kept on the phone (Codex round 2 F1)",
+        "      S.local[key] = merged;                                   // always keep the merged copy, write or not\n      if (!same(stripMeta(merged), stripMeta(s.data))) writer.put('answers', key, merged);",
+        "      if (!same(stripMeta(merged), stripMeta(s.data))) { S.local[key] = merged; writer.put('answers', key, merged); }",
+        "offline choice identical to the saved one",
+    ),
+    (
+        "save starts from the phone copy only (Codex round 2 F1)",
+        "const base = !sv ? (lc || {}) : !lc ? sv : ((lc.savedAt || '') > (sv.savedAt || '') ? mergeRec(sv, lc) : mergeRec(lc, sv));",
+        "const base = lc || sv || {};",
+        "a save never drops a field that the server copy holds",
+    ),
+    (
+        "session summary reads the cleared session (Codex round 2 F4)",
+        "  const ss = S.sessionDone;  ",
+        "  const ss = S.sessionDone; S.sessionDone = null;  ",
+        "finishing a quick session before the first sync",
+    ),
+    (
+        "subscription error swallowed (#4802)",
+        "const fail = e => { if (gen !== subGen) return; S.syncError = (e && e.code) || 'error'; render(); };",
+        "const fail = e => {};",
+        "#4802",
+    ),
+    (
+        "session summary never refreshes (#4803)",
+        "|| S.view === 'summary' || S.view === 'sessionEnd') render();",
+        "|| S.view === 'summary') render();",
+        "#4803",
+    ),
+    (
+        "hazards subscription error ignored (#4802)",
+        "      announceBadges(); refresh();\n    }, fail);",
+        "      announceBadges(); refresh();\n    }, () => {});",
+        "hazards-only load failure",
+    ),
+    (
+        "older phone copy overwrites the server",
+        "else if ((rec.savedAt || '') > (s.data.savedAt || '')) {",
+        "else if (true) {",
+        "older copy on the phone never overwrites",
+    ),
+]
+
+
+def main() -> None:
+    src = open(APP, encoding="utf-8").read()
+    out, bad = [], []
+    for i, (name, old, new, test) in enumerate(MUTATIONS):
+        code = src
+        if old:
+            if src.count(old) != 1:
+                bad.append(f"{name}: anchor found {src.count(old)} times")
+                continue
+            code = src.replace(old, new)
+        d = tempfile.mkdtemp()
+        try:
+            app = os.path.join(d, "app.html")
+            open(app, "w", encoding="utf-8").write(code)
+            subprocess.run(
+                [sys.executable, os.path.join(HERE, "..", "build.py"), "--out", d, "--app", app],
+                check=True,
+                capture_output=True,
+            )
+            os.symlink(os.path.join(HERE, "..", "dist", "pages"), os.path.join(d, "pages"))
+            env = {**os.environ, "REVIEW_DIST": d, "REVIEW_PORT": str(47920 + i)}
+            p = subprocess.run(
+                ["npx", "playwright", "test", "--project=pixel-9a", "--reporter=line", "-g", test],
+                cwd=HERE,
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+        failed = int(m.group(1)) if (m := re.search(r"(\d+) failed", p.stdout)) else 0
+        passed = int(m.group(1)) if (m := re.search(r"(\d+) passed", p.stdout)) else 0
+        ok = (failed == 0 and passed > 0) if old is None else failed > 0
+        out.append(
+            {
+                "mutation": name,
+                "guard_test": test,
+                "failed": failed,
+                "passed": passed,
+                "as_expected": ok,
+            }
+        )
+        print(f"{'OK ' if ok else 'BAD'} {name:42s} failed={failed} passed={passed}  [{test}]")
+        if not ok:
+            bad.append(name)
+    os.makedirs(os.path.join(HERE, "results"), exist_ok=True)
+    json.dump(out, open(os.path.join(HERE, "red-runs.json"), "w"), indent=1)
+    if bad:
+        print("PROBLEMS:", bad)
+        raise SystemExit(1)
+
+
+if __name__ == "__main__":
+    main()
