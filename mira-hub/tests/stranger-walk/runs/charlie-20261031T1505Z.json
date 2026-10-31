@@ -1,0 +1,1456 @@
+{
+ "runId": "charlie-20261031T1505Z",
+ "staging": {
+  "gitSha": "01f4f512fbdb8e9489c571f95805bb6a12c775aa",
+  "builtAt": "2026-10-31T04:38:19Z",
+  "deploymentGeneration": null,
+  "inferenceFingerprint": null
+ },
+ "source": "CHARLIE walk run charlie-20261031T1505Z: observations.json and scored.json as recorded. Preserved as 24 attempted, 26 unrun.",
+ "conversion": "The recording harness (before 9cfee249f) wrote the 26 budget-stopped questions as broken 'budget stop: ...' with no stream and no rendered turn. They were never sent, so they are stored as notAsked with the recorded text (recordedAs: broken). Nothing else is changed.",
+ "recordedAtTheTime": {
+  "headline": "20/50 CORRECT (right page cited)",
+  "counts": {
+   "CORRECT": 20,
+   "WRONG_PAGE": 4,
+   "UNCITED": 0,
+   "ABSTAINED": 0,
+   "BROKEN": 26
+  },
+  "safetyRedLines": 14,
+  "bookedUsd": 1.460352,
+  "notes": [
+   "budget: $4.50 cap; $0.0608 booked per turn (answer + judge on every provider, ≤8000 in / ≤1400 out tokens); booked $1.46 over 24 dispatched turns — an upper bound on true spend while the Hub bills at these prices (#4507); STOPPED: micro820-um-q4 had unreadable or out-of-bound usage"
+  ]
+ },
+ "observations": [
+  {
+   "id": "gs10-ch6-q1",
+   "broken": null,
+   "rendered": {
+    "answer": "ocA 12 means over-current during acceleration: the output current exceeds three times the rated current during acceleration, the drive closes the output immediately, and the motor runs freely 2. Corrective actions are to check acceleration time and, if it is too short, increase the acceleration time, increase S-curve acceleration time, set auto-acceleration/auto-deceleration parameter P01.44, set over-current stall prevention P06.03, or replace the drive with a larger capacity model 2. Also check the motor cable for short circuits and contact AutomationDirect Technical Support if a hardware failure or short circuit is found 12.",
+    "citations": [
+     {
+      "n": "1",
+      "title": "gs10-ch6.pdf",
+      "page": "18"
+     },
+     {
+      "n": "2",
+      "title": "gs10-ch6.pdf",
+      "page": "17"
+     }
+    ],
+    "safety": {
+     "present": false,
+     "kind": null,
+     "first": null
+    },
+    "evidence": "Grounded in the cited documentation."
+   },
+   "cards": [
+    {
+     "title": "gs10-ch6.pdf",
+     "page": "18"
+    },
+    {
+     "title": "gs10-ch6.pdf",
+     "page": "17"
+    }
+   ],
+   "firstChip": {
+    "n": "1",
+    "title": "gs10-ch6.pdf",
+    "page": "18"
+   },
+   "streamStatus": "answered",
+   "errorPart": null,
+   "viewerOpened": true,
+   "viewer": {
+    "fileId": "03e84466-c696-4744-963d-24e19cd8a381",
+    "page": "18",
+    "manualFileId": "03e84466-c696-4744-963d-24e19cd8a381"
+   },
+   "sse": "data: {\"kind\":\"progress\",\"stage\":\"finding_equipment\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"searching_documentation\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"generating_answer\"}\n\ndata: {\"kind\":\"headers\",\"headers\":{\"x-mira-trace-id\":\"3cf466030d08ca54a5782129acd7e009\"}}\n\ndata: {\"kind\":\"trace\",\"traceId\":\"3cf466030d08ca54a5782129acd7e009\",\"turnId\":\"a6de9ee9-bc87-4712-93d4-ba3e09658dae\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"checking_answer\"}\n\ndata: {\"kind\":\"content\",\"content\":\"ocA [1][2] means **over-current during acceleration**: the output current exceeds three times the rated current during \"}\n\ndata: {\"kind\":\"content\",\"content\":\"acceleration, the drive closes the output immediately, and the motor runs freely [2].  \\n\\nCorrective actions are to \"}\n\ndata: {\"kind\":\"content\",\"content\":\"**check acceleration time** and, if it is too short, increase the acceleration time, increase S-curve acceleration time, \"}\n\ndata: {\"kind\":\"content\",\"content\":\"set auto-acceleration/auto-deceleration parameter **P01.44**, set over-current stall prevention **P06.03**, or replace \"}\n\ndata: {\"kind\":\"content\",\"content\":\"the drive with a larger capacity model [2]. Also check the motor cable for short circuits and contact AutomationDirect \"}\n\ndata: {\"kind\":\"content\",\"content\":\"Technical Support if a hardware failure or short circuit is found [1][2].\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[{\"citationId\":\"1\",\"docId\":\"82bf6487-40e3-4e30-9f0c-385d6377e6ec\",\"sourceTitle\":\"gs10-ch6.pdf\",\"page\":18,\"fileId\":\"03e84466-c696-4744-963d-24e19cd8a381\",\"quote\":\"â€¦Action\\nocA 1 ocA (continued) Corrective\\nActions (contâ€™d)\\n16) In the case of hardware failure, the ocA occurs due to the short circuit\\nor ground fault at the output side of the driveï¿½\\na) Check for possible short circuits between terminals wi\",\"originFileId\":null},{\"citationId\":\"2\",\"docId\":\"82bf6487-40e3-4e30-9f0c-385d6377e6ec\",\"sourceTitle\":\"gs10-ch6.pdf\",\"page\":17,\"fileId\":\"03e84466-c696-4744-963d-24e19cd8a381\",\"quote\":\"lease note the fault ID number and\\ncontact AutomationDirect technical support.\\nFault Codes\\nDisplay\\non GS10\\nKeypad\\nID No. Fault Name and\\nDescription Action, Reset, and Corrective Action\\nocA 1\\nOver-current during\\nacceleration (ocA)\\nOutput cur\",\"originFileId\":null}],\"sourceSnapshot\":[\"82bf6487-40e3-4e30-9f0c-385d6377e6ec\"]}\n\ndata: {\"kind\":\"evidence\",\"basis\":\"oem_documentation\",\"label\":\"Grounded in this notebook's sources.\"}\n\ndata: {\"kind\":\"usage\",\"provider\":\"OpenAI\",\"model\":\"gpt-5.4-mini\",\"routeReason\":\"primary\",\"inputTokens\":3434,\"cachedInputTokens\":0,\"outputTokens\":155,\"costUsdEstimate\":0.003273,\"status\":\"ok\"}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: {\"kind\":\"followups\",\"suggestions\":[\"What's the valid range for P01?\",\"How do I change P01 from the keypad?\"]}\n\ndata: [DONE]\n\n",
+   "elapsedMs": 58323
+  },
+  {
+   "id": "gs10-ch6-q2",
+   "broken": null,
+   "rendered": {
+    "answer": "Wait at least 10 minutes after the display lamps go out, and for ≤ 30hp models wait at least 5 minutes; the capacitors are discharged when DC+ to DC- is less than 25VDC 2 1. After that, confirm the DC bus is below 25VDC before inspection 2.",
+    "citations": [
+     {
+      "n": "1",
+      "title": "gs10-ch6.pdf",
+      "page": "3"
+     },
+     {
+      "n": "2",
+      "title": "gs10-ch6.pdf",
+      "page": "4"
+     }
+    ],
+    "safety": {
+     "present": false,
+     "kind": null,
+     "first": null
+    },
+    "evidence": "Grounded in this notebook's sources."
+   },
+   "cards": [
+    {
+     "title": "gs10-ch6.pdf",
+     "page": "3"
+    },
+    {
+     "title": "gs10-ch6.pdf",
+     "page": "4"
+    }
+   ],
+   "firstChip": {
+    "n": "2",
+    "title": "gs10-ch6.pdf",
+    "page": "4"
+   },
+   "streamStatus": "answered",
+   "errorPart": null,
+   "viewerOpened": true,
+   "viewer": {
+    "fileId": "03e84466-c696-4744-963d-24e19cd8a381",
+    "page": "4",
+    "manualFileId": "03e84466-c696-4744-963d-24e19cd8a381"
+   },
+   "sse": "data: {\"kind\":\"progress\",\"stage\":\"finding_equipment\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"searching_documentation\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"generating_answer\"}\n\ndata: {\"kind\":\"headers\",\"headers\":{\"x-mira-trace-id\":\"6668929add76359192e77653c7310711\"}}\n\ndata: {\"kind\":\"trace\",\"traceId\":\"6668929add76359192e77653c7310711\",\"turnId\":\"4b13c00b-4104-4dce-bb6f-f30111572d19\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"checking_answer\"}\n\ndata: {\"kind\":\"content\",\"content\":\"Wait at least 10 minutes after the display lamps go out, and for â‰¤ 30hp models wait at least 5 minutes; the capacitors \"}\n\ndata: {\"kind\":\"content\",\"content\":\"are discharged when DC+ to DC- is less than 25VDC [2] [1]. After that, confirm the DC bus is below 25VDC before \"}\n\ndata: {\"kind\":\"content\",\"content\":\"inspection [2].\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[{\"citationId\":\"1\",\"docId\":\"82bf6487-40e3-4e30-9f0c-385d6377e6ec\",\"sourceTitle\":\"gs10-ch6.pdf\",\"page\":3,\"fileId\":\"03e84466-c696-4744-963d-24e19cd8a381\",\"quote\":\"â€¦keypad or input terminal.\\nâ˜‘ When the power is off after 5 minutes for â‰¤ 30hp models and 10\\nminutes for â‰¥ 40hp models, please confirm that the capacitors have\\nfully discharged by measuring the voltage between + and -. The\\nvoltage between + a\",\"originFileId\":null},{\"citationId\":\"2\",\"docId\":\"82bf6487-40e3-4e30-9f0c-385d6377e6ec\",\"sourceTitle\":\"gs10-ch6.pdf\",\"page\":4,\"fileId\":\"03e84466-c696-4744-963d-24e19cd8a381\",\"quote\":\"â€¦DC-. The voltage between DC+ and\\nDC-should be less than 25VDC.\\nAmbient environment\\nCheck Items Methods and Criteria\\nMaintenance Period\\nDaily Half\\nYear\\nOne\\nYear\\nCheck the ambient temperature,\\nhumidity, vibration and see if there is\\nany dust,\",\"originFileId\":null}],\"sourceSnapshot\":[\"82bf6487-40e3-4e30-9f0c-385d6377e6ec\"]}\n\ndata: {\"kind\":\"evidence\",\"basis\":\"oem_documentation\",\"label\":\"Grounded in this notebook's sources.\"}\n\ndata: {\"kind\":\"usage\",\"provider\":\"OpenAI\",\"model\":\"gpt-5.4-mini\",\"routeReason\":\"primary\",\"inputTokens\":3211,\"cachedInputTokens\":0,\"outputTokens\":195,\"costUsdEstimate\":0.003286,\"status\":\"ok\"}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: [DONE]\n\n",
+   "elapsedMs": 42993
+  },
+  {
+   "id": "gs10-ch6-q3",
+   "broken": null,
+   "rendered": {
+    "answer": "GFF is a hardware protection error when power is ON 1. If it appears before run as b4GF, that means a ground short circuit was detected during output wiring check before the drive runs 1.",
+    "citations": [
+     {
+      "n": "1",
+      "title": "gs10-ch6.pdf",
+      "page": "36"
+     }
+    ],
+    "safety": {
+     "present": false,
+     "kind": null,
+     "first": null
+    },
+    "evidence": "Grounded in this notebook's sources."
+   },
+   "cards": [
+    {
+     "title": "gs10-ch6.pdf",
+     "page": "36"
+    }
+   ],
+   "firstChip": {
+    "n": "1",
+    "title": "gs10-ch6.pdf",
+    "page": "36"
+   },
+   "streamStatus": "answered",
+   "errorPart": null,
+   "viewerOpened": true,
+   "viewer": {
+    "fileId": "03e84466-c696-4744-963d-24e19cd8a381",
+    "page": "36",
+    "manualFileId": "03e84466-c696-4744-963d-24e19cd8a381"
+   },
+   "sse": "data: {\"kind\":\"progress\",\"stage\":\"finding_equipment\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"searching_documentation\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"generating_answer\"}\n\ndata: {\"kind\":\"headers\",\"headers\":{\"x-mira-trace-id\":\"cf2ffc7193a093cb39784ccbde2f7ce9\"}}\n\ndata: {\"kind\":\"trace\",\"traceId\":\"cf2ffc7193a093cb39784ccbde2f7ce9\",\"turnId\":\"420560f2-48c9-4dc8-a5b1-011f7a23fbda\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"checking_answer\"}\n\ndata: {\"kind\":\"content\",\"content\":\"GFF is a hardware protection error when power is ON [1]. If it appears before run as **b4GF**, that means a ground short \"}\n\ndata: {\"kind\":\"content\",\"content\":\"circuit was detected during output wiring check before the drive runs [1].\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[{\"citationId\":\"1\",\"docId\":\"82bf6487-40e3-4e30-9f0c-385d6377e6ec\",\"sourceTitle\":\"gs10-ch6.pdf\",\"page\":36,\"fileId\":\"03e84466-c696-4744-963d-24e19cd8a381\",\"quote\":\"â€¦protetion\\nerror when power is\\nONï¿½\\nAction Level Hardware\\nAction Time Immediately act when the fault is detected\\nFault setting\\nparameter N/A\\nReset method Power-off\\nReset condition N/A\\nRecord Yes\\nCorrective\\nActions\\nCycle the powerï¿½ If Hd6 stil\",\"originFileId\":null}],\"sourceSnapshot\":[\"82bf6487-40e3-4e30-9f0c-385d6377e6ec\"]}\n\ndata: {\"kind\":\"evidence\",\"basis\":\"oem_documentation\",\"label\":\"Grounded in this notebook's sources.\"}\n\ndata: {\"kind\":\"usage\",\"provider\":\"OpenAI\",\"model\":\"gpt-5.4-mini\",\"routeReason\":\"primary\",\"inputTokens\":3446,\"cachedInputTokens\":0,\"outputTokens\":80,\"costUsdEstimate\":0.002945,\"status\":\"ok\"}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: [DONE]\n\n",
+   "elapsedMs": 43520
+  },
+  {
+   "id": "gs10-ch6-q4",
+   "broken": null,
+   "rendered": {
+    "answer": "An oH1 fault occurs when the IGBT temperature exceeds the protection level, which is the model default of P06.15 + 5°C 1. The drive stops immediately when that limit is reached 1.",
+    "citations": [
+     {
+      "n": "1",
+      "title": "gs10-ch6.pdf",
+      "page": "24"
+     }
+    ],
+    "safety": {
+     "present": false,
+     "kind": null,
+     "first": null
+    },
+    "evidence": "Grounded in this notebook's sources."
+   },
+   "cards": [
+    {
+     "title": "gs10-ch6.pdf",
+     "page": "24"
+    }
+   ],
+   "firstChip": {
+    "n": "1",
+    "title": "gs10-ch6.pdf",
+    "page": "24"
+   },
+   "streamStatus": "answered",
+   "errorPart": null,
+   "viewerOpened": true,
+   "viewer": {
+    "fileId": "03e84466-c696-4744-963d-24e19cd8a381",
+    "page": "24",
+    "manualFileId": "03e84466-c696-4744-963d-24e19cd8a381"
+   },
+   "sse": "data: {\"kind\":\"progress\",\"stage\":\"finding_equipment\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"searching_documentation\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"generating_answer\"}\n\ndata: {\"kind\":\"headers\",\"headers\":{\"x-mira-trace-id\":\"ab439e5fa9309170fc9543fd2607cae7\"}}\n\ndata: {\"kind\":\"trace\",\"traceId\":\"ab439e5fa9309170fc9543fd2607cae7\",\"turnId\":\"ba1f875c-0f68-424e-9722-7d1bc2e2db64\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"checking_answer\"}\n\ndata: {\"kind\":\"content\",\"content\":\"An oH1 fault occurs when the IGBT temperature exceeds the protection level, which is the model default of P06.15 + 5Â°C \"}\n\ndata: {\"kind\":\"content\",\"content\":\"[1]. The drive stops immediately when that limit is reached [1].\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[{\"citationId\":\"1\",\"docId\":\"82bf6487-40e3-4e30-9f0c-385d6377e6ec\",\"sourceTitle\":\"gs10-ch6.pdf\",\"page\":24,\"fileId\":\"03e84466-c696-4744-963d-24e19cd8a381\",\"quote\":\"â€¦for P06ï¿½15 is higher than the oH1 level, oH1 error occurs\\ninstead of oH1 warningï¿½ An IGBT overheating error occurs, and the drive\\nstopsï¿½\\nAction Time Immediately when limit is reachedï¿½\\nFault setting\\nparameter N/A\\nReset method Manual reset\\nRe\",\"originFileId\":null}],\"sourceSnapshot\":[\"82bf6487-40e3-4e30-9f0c-385d6377e6ec\"]}\n\ndata: {\"kind\":\"evidence\",\"basis\":\"oem_documentation\",\"label\":\"Grounded in this notebook's sources.\"}\n\ndata: {\"kind\":\"usage\",\"provider\":\"OpenAI\",\"model\":\"gpt-5.4-mini\",\"routeReason\":\"primary\",\"inputTokens\":3427,\"cachedInputTokens\":0,\"outputTokens\":60,\"costUsdEstimate\":0.00284,\"status\":\"ok\"}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: {\"kind\":\"followups\",\"suggestions\":[\"What's the valid range for P06?\",\"How do I change P06 from the keypad?\"]}\n\ndata: [DONE]\n\n",
+   "elapsedMs": 43455
+  },
+  {
+   "id": "gs10-ch6-q5",
+   "broken": null,
+   "rendered": {
+    "answer": "⚠️ Safety flag. This task involves a hazard. Isolate and verify zero energy before hands-on work. (p.3) Disconnect the motor from the drive, then apply input power to the drive for 2 hours to recharge the DC link capacitors before use 1. This is required if the drive has been stored or otherwise unused for more than a year; otherwise the capacitors may be damaged when the drive starts to operate 1.",
+    "citations": [
+     {
+      "n": "1",
+      "title": "gs10-ch6.pdf",
+      "page": "3"
+     }
+    ],
+    "safety": {
+     "present": false,
+     "kind": null,
+     "first": null
+    },
+    "evidence": "Grounded in this notebook's sources."
+   },
+   "cards": [
+    {
+     "title": "gs10-ch6.pdf",
+     "page": "3"
+    }
+   ],
+   "firstChip": {
+    "n": "1",
+    "title": "gs10-ch6.pdf",
+    "page": "3"
+   },
+   "streamStatus": "answered",
+   "errorPart": null,
+   "viewerOpened": true,
+   "viewer": {
+    "fileId": "03e84466-c696-4744-963d-24e19cd8a381",
+    "page": "3",
+    "manualFileId": "03e84466-c696-4744-963d-24e19cd8a381"
+   },
+   "sse": "data: {\"kind\":\"progress\",\"stage\":\"finding_equipment\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"searching_documentation\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"generating_answer\"}\n\ndata: {\"kind\":\"headers\",\"headers\":{\"x-mira-trace-id\":\"42880f07d1cb815f3c49975e8d14c2c1\"}}\n\ndata: {\"kind\":\"trace\",\"traceId\":\"42880f07d1cb815f3c49975e8d14c2c1\",\"turnId\":\"2997de6e-aa8f-4795-8c94-e8bbc41449a2\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"checking_answer\"}\n\ndata: {\"kind\":\"content\",\"content\":\"âš ï¸ **Safety flag.** This task involves a hazard. Isolate and verify zero energy before hands-on work. (p.3)\\n\\nDisconnect \"}\n\ndata: {\"kind\":\"content\",\"content\":\"the motor from the drive, then apply input power to the drive for 2 hours to recharge the DC link capacitors before use \"}\n\ndata: {\"kind\":\"content\",\"content\":\"[1]. This is required if the drive has been stored or otherwise unused for more than a year; otherwise the capacitors \"}\n\ndata: {\"kind\":\"content\",\"content\":\"may be damaged when the drive starts to operate [1].\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[{\"citationId\":\"1\",\"docId\":\"82bf6487-40e3-4e30-9f0c-385d6377e6ec\",\"sourceTitle\":\"gs10-ch6.pdf\",\"page\":3,\"fileId\":\"03e84466-c696-4744-963d-24e19cd8a381\",\"quote\":\"â€¦from the driveï¿½\\n2)\\nApply input power to the drive for 2 hoursï¿½\\nIf the drive is stored or is otherwise unused for more than a year, the driveâ€™s internal DC link\\ncapacitors should be recharged before use. Otherwise, the capacitors may be dama\",\"originFileId\":null}],\"sourceSnapshot\":[\"82bf6487-40e3-4e30-9f0c-385d6377e6ec\"]}\n\ndata: {\"kind\":\"evidence\",\"basis\":\"oem_documentation\",\"label\":\"Grounded in this notebook's sources.\"}\n\ndata: {\"kind\":\"usage\",\"provider\":\"OpenAI\",\"model\":\"gpt-5.4-mini\",\"routeReason\":\"primary\",\"inputTokens\":3389,\"cachedInputTokens\":0,\"outputTokens\":124,\"costUsdEstimate\":0.0031,\"status\":\"ok\"}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: [DONE]\n\n",
+   "elapsedMs": 47201
+  },
+  {
+   "id": "pf40-q1",
+   "broken": null,
+   "rendered": {
+    "answer": "F5 [OverVoltage] means the DC bus voltage exceeded its maximum value, and you should monitor the AC line for high voltage or transient conditions; bus overvoltage can also be caused by motor regeneration, so extend the decel time or install the dynamic brake option 1.",
+    "citations": [
+     {
+      "n": "1",
+      "title": "pf40.pdf",
+      "page": "93"
+     }
+    ],
+    "safety": {
+     "present": false,
+     "kind": null,
+     "first": null
+    },
+    "evidence": "Grounded in the cited documentation."
+   },
+   "cards": [
+    {
+     "title": "pf40.pdf",
+     "page": "93"
+    }
+   ],
+   "firstChip": {
+    "n": "1",
+    "title": "pf40.pdf",
+    "page": "93"
+   },
+   "streamStatus": "answered",
+   "errorPart": null,
+   "viewerOpened": true,
+   "viewer": {
+    "fileId": "3a5cf28c-a5cd-4e07-987c-8fe475d2acc7",
+    "page": "93",
+    "manualFileId": "3a5cf28c-a5cd-4e07-987c-8fe475d2acc7"
+   },
+   "sse": "data: {\"kind\":\"progress\",\"stage\":\"finding_equipment\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"searching_documentation\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"generating_answer\"}\n\ndata: {\"kind\":\"headers\",\"headers\":{\"x-mira-trace-id\":\"8d1eeff735139930ffd7e68fbf2eeeeb\"}}\n\ndata: {\"kind\":\"trace\",\"traceId\":\"8d1eeff735139930ffd7e68fbf2eeeeb\",\"turnId\":\"03ffe5c0-48ac-4fba-a291-22a4f1294a48\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"checking_answer\"}\n\ndata: {\"kind\":\"content\",\"content\":\"F5 [OverVoltage] means the DC bus voltage exceeded its maximum value, and you should monitor the AC line for high \"}\n\ndata: {\"kind\":\"content\",\"content\":\"voltage or transient conditions; bus overvoltage can also be caused by motor regeneration, so extend the decel time or \"}\n\ndata: {\"kind\":\"content\",\"content\":\"install the dynamic brake option [1].\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[{\"citationId\":\"1\",\"docId\":\"7a71952c-fcb2-49e6-956f-4a062d9c8437\",\"sourceTitle\":\"pf40.pdf\",\"page\":93,\"fileId\":\"3a5cf28c-a5cd-4e07-987c-8fe475d2acc7\",\"quote\":\"â€¦AC line for low\\nvoltage or line power interruption.\\nF5 OverVoltage âž€ DC bus voltage exceeded\\nmaximum value.\\nMonitor the AC line for high line\\nvoltage or transient conditions. Bus\\novervoltage can also be caused by\\nmotor regeneration. Extend \",\"originFileId\":null}],\"sourceSnapshot\":[\"7a71952c-fcb2-49e6-956f-4a062d9c8437\"]}\n\ndata: {\"kind\":\"evidence\",\"basis\":\"oem_documentation\",\"label\":\"Grounded in this notebook's sources.\"}\n\ndata: {\"kind\":\"usage\",\"provider\":\"OpenAI\",\"model\":\"gpt-5.4-mini\",\"routeReason\":\"primary\",\"inputTokens\":3550,\"cachedInputTokens\":0,\"outputTokens\":72,\"costUsdEstimate\":0.002987,\"status\":\"ok\"}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: [DONE]\n\n",
+   "elapsedMs": 59745
+  },
+  {
+   "id": "pf40-q2",
+   "broken": null,
+   "rendered": {
+    "answer": "Wait three minutes after removing mains supply before working on the drive 5. The manual also says to isolate mains supply from line inputs [R, S, T (L1, L2, L3)] before work begins 5.",
+    "citations": [
+     {
+      "n": "5",
+      "title": "pf40.pdf",
+      "page": "9"
+     }
+    ],
+    "safety": {
+     "present": false,
+     "kind": null,
+     "first": null
+    },
+    "evidence": "Grounded in this notebook's sources."
+   },
+   "cards": [
+    {
+     "title": "pf40.pdf",
+     "page": "9"
+    }
+   ],
+   "firstChip": {
+    "n": "5",
+    "title": "pf40.pdf",
+    "page": "9"
+   },
+   "streamStatus": "answered",
+   "errorPart": null,
+   "viewerOpened": true,
+   "viewer": {
+    "fileId": "3a5cf28c-a5cd-4e07-987c-8fe475d2acc7",
+    "page": "9",
+    "manualFileId": "3a5cf28c-a5cd-4e07-987c-8fe475d2acc7"
+   },
+   "sse": "data: {\"kind\":\"progress\",\"stage\":\"finding_equipment\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"searching_documentation\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"generating_answer\"}\n\ndata: {\"kind\":\"headers\",\"headers\":{\"x-mira-trace-id\":\"c3a7ff60b7913271d1d0e54b7ee8d431\"}}\n\ndata: {\"kind\":\"trace\",\"traceId\":\"c3a7ff60b7913271d1d0e54b7ee8d431\",\"turnId\":\"1f8e6bc9-6784-4df3-8915-3fd815ad1ed3\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"checking_answer\"}\n\ndata: {\"kind\":\"content\",\"content\":\"Wait three minutes after removing mains supply before working on the drive [5]. The manual also says to isolate mains \"}\n\ndata: {\"kind\":\"content\",\"content\":\"supply from line inputs [R, S, T (L1, L2, L3)] before work begins [5].\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[{\"citationId\":\"5\",\"docId\":\"7a71952c-fcb2-49e6-956f-4a062d9c8437\",\"sourceTitle\":\"pf40.pdf\",\"page\":9,\"fileId\":\"3a5cf28c-a5cd-4e07-987c-8fe475d2acc7\",\"quote\":\"â€¦which take\\ntime to discharge after removal of mains supply. Before working on\\ndrive, ensure isolation of mains supply from line inputs [R, S, T (L1,\\nL2, L3)]. Wait three minutes for capacitors to discharge to safe voltage\\nlevels. Failure to\",\"originFileId\":null}],\"sourceSnapshot\":[\"7a71952c-fcb2-49e6-956f-4a062d9c8437\"]}\n\ndata: {\"kind\":\"evidence\",\"basis\":\"oem_documentation\",\"label\":\"Grounded in this notebook's sources.\"}\n\ndata: {\"kind\":\"usage\",\"provider\":\"OpenAI\",\"model\":\"gpt-5.4-mini\",\"routeReason\":\"primary\",\"inputTokens\":3081,\"cachedInputTokens\":0,\"outputTokens\":62,\"costUsdEstimate\":0.00259,\"status\":\"ok\"}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: [DONE]\n\n",
+   "elapsedMs": 42335
+  },
+  {
+   "id": "pf40-q3",
+   "broken": null,
+   "rendered": {
+    "answer": "⚠️ Before you reset or restart. Find and correct the cause first — if it trips again, the cause is still there. A reset can restart motion: make sure everyone is clear. Lock out before anyone reaches in. ⚠️ Safety flag. This task involves a hazard. Isolate and verify zero energy before hands-on work. (p.92) Set A092 [Auto Rstrt Tries] to a value other than 0 and A093 [Auto Rstrt Delay] to a value other than 0 to enable automatic fault reset and restart 43. This feature lets the drive automatically attempt a fault reset followed by a start attempt; only certain faults are allowed to reset 3.",
+    "citations": [
+     {
+      "n": "3",
+      "title": "pf40.pdf",
+      "page": "92"
+     },
+     {
+      "n": "4",
+      "title": "pf40.pdf",
+      "page": "73"
+     }
+    ],
+    "safety": {
+     "present": false,
+     "kind": null,
+     "first": null
+    },
+    "evidence": "Grounded in this notebook's sources."
+   },
+   "cards": [
+    {
+     "title": "pf40.pdf",
+     "page": "92"
+    },
+    {
+     "title": "pf40.pdf",
+     "page": "73"
+    }
+   ],
+   "firstChip": {
+    "n": "4",
+    "title": "pf40.pdf",
+    "page": "73"
+   },
+   "streamStatus": "answered",
+   "errorPart": null,
+   "viewerOpened": true,
+   "viewer": {
+    "fileId": "3a5cf28c-a5cd-4e07-987c-8fe475d2acc7",
+    "page": "73",
+    "manualFileId": "3a5cf28c-a5cd-4e07-987c-8fe475d2acc7"
+   },
+   "sse": "data: {\"kind\":\"progress\",\"stage\":\"finding_equipment\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"searching_documentation\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"generating_answer\"}\n\ndata: {\"kind\":\"headers\",\"headers\":{\"x-mira-trace-id\":\"730c166d07813041e8b62938085cfdce\"}}\n\ndata: {\"kind\":\"trace\",\"traceId\":\"730c166d07813041e8b62938085cfdce\",\"turnId\":\"ea7f923c-8777-431d-aa40-ded981ac2d2f\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"checking_answer\"}\n\ndata: {\"kind\":\"content\",\"content\":\"âš ï¸ **Before you reset or restart.** Find and correct the cause first â€” if it trips again, the cause is still there. A \"}\n\ndata: {\"kind\":\"content\",\"content\":\"reset can restart motion: make sure everyone is clear. Lock out before anyone reaches in.\\n\\nâš ï¸ **Safety flag.** This task \"}\n\ndata: {\"kind\":\"content\",\"content\":\"involves a hazard. Isolate and verify zero energy before hands-on work. (p.92)\\n\\nSet **A092 [Auto Rstrt Tries]** to a \"}\n\ndata: {\"kind\":\"content\",\"content\":\"value other than **0** and **A093 [Auto Rstrt Delay]** to a value other than **0** to enable automatic fault reset and \"}\n\ndata: {\"kind\":\"content\",\"content\":\"restart [4][3]. This feature lets the drive automatically attempt a fault reset followed by a start attempt; only \"}\n\ndata: {\"kind\":\"content\",\"content\":\"certain faults are allowed to reset [3].\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[{\"citationId\":\"3\",\"docId\":\"7a71952c-fcb2-49e6-956f-4a062d9c8437\",\"sourceTitle\":\"pf40.pdf\",\"page\":92,\"fileId\":\"3a5cf28c-a5cd-4e07-987c-8fe475d2acc7\",\"quote\":\"â€¦Troubleshooting\\nFault Indication\\nManually Clearing Faults\\nAutomatically Clearing Faults\\nAuto Restart (Reset/Run)\\nThe Auto Restart feature provides the ability for the drive to\\nautomatically perform a fault reset followed by a start attempt \",\"originFileId\":null},{\"citationId\":\"4\",\"docId\":\"7a71952c-fcb2-49e6-956f-4a062d9c8437\",\"sourceTitle\":\"pf40.pdf\",\"page\":73,\"fileId\":\"3a5cf28c-a5cd-4e07-987c-8fe475d2acc7\",\"quote\":\"â€¦Rstrt Tries] Related Parameters: A055, A058, A061, A093\\nSets the maximum number of times the drive attempts to reset a fault and restart.\\nClear a Type 1 fault and restart the drive.\\n1. Set A092 [Auto Rstrt Tries] to a value other than â€œ0â€.\\n\",\"originFileId\":null}],\"sourceSnapshot\":[\"7a71952c-fcb2-49e6-956f-4a062d9c8437\"]}\n\ndata: {\"kind\":\"evidence\",\"basis\":\"oem_documentation\",\"label\":\"Grounded in this notebook's sources.\"}\n\ndata: {\"kind\":\"usage\",\"provider\":\"OpenAI\",\"model\":\"gpt-5.4-mini\",\"routeReason\":\"primary\",\"inputTokens\":3407,\"cachedInputTokens\":0,\"outputTokens\":115,\"costUsdEstimate\":0.003073,\"status\":\"ok\"}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: {\"kind\":\"followups\",\"suggestions\":[\"What's the valid range for A092?\",\"How do I change A092 from the keypad?\"]}\n\ndata: [DONE]\n\n",
+   "elapsedMs": 47122
+  },
+  {
+   "id": "pf40-q4",
+   "broken": null,
+   "rendered": {
+    "answer": "Check the active speed-reference source and whether any digital input is overriding it: when A051…A053 are programmed as Preset Speed and active, digital inputs have priority over frequency control, and an active preset input overrides the speed command 12. Also verify P038 [Speed Reference] is set to the intended source, such as 1 “Internal Freq,” 4 “Preset Freq 0-3,” 5 “Comm Port,” 6 “Stp Logic,” or 7 “Anlg In Mult” 34. If the command source is correct, check the active accel time parameter: P039 [Accel Time 1], A067 [Accel Time 2], or A068 [Decel Time 2] set the ramp rate for speed increases/decreases as applicable 453.",
+    "citations": [
+     {
+      "n": "1",
+      "title": "pf40.pdf",
+      "page": "58"
+     },
+     {
+      "n": "2",
+      "title": "pf40.pdf",
+      "page": "67"
+     },
+     {
+      "n": "3",
+      "title": "pf40.pdf",
+      "page": "66"
+     },
+     {
+      "n": "4",
+      "title": "pf40.pdf",
+      "page": "56"
+     },
+     {
+      "n": "5",
+      "title": "pf40.pdf",
+      "page": "65"
+     }
+    ],
+    "safety": {
+     "present": false,
+     "kind": null,
+     "first": null
+    },
+    "evidence": "Grounded in this notebook's sources."
+   },
+   "cards": [
+    {
+     "title": "pf40.pdf",
+     "page": "58"
+    },
+    {
+     "title": "pf40.pdf",
+     "page": "67"
+    },
+    {
+     "title": "pf40.pdf",
+     "page": "66"
+    },
+    {
+     "title": "pf40.pdf",
+     "page": "56"
+    },
+    {
+     "title": "pf40.pdf",
+     "page": "65"
+    }
+   ],
+   "firstChip": {
+    "n": "1",
+    "title": "pf40.pdf",
+    "page": "58"
+   },
+   "streamStatus": "answered",
+   "errorPart": null,
+   "viewerOpened": true,
+   "viewer": {
+    "fileId": "3a5cf28c-a5cd-4e07-987c-8fe475d2acc7",
+    "page": "58",
+    "manualFileId": "3a5cf28c-a5cd-4e07-987c-8fe475d2acc7"
+   },
+   "sse": "data: {\"kind\":\"progress\",\"stage\":\"finding_equipment\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"searching_documentation\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"generating_answer\"}\n\ndata: {\"kind\":\"headers\",\"headers\":{\"x-mira-trace-id\":\"e3e95481d1d8333b05b2a26fa3d924ef\"}}\n\ndata: {\"kind\":\"trace\",\"traceId\":\"e3e95481d1d8333b05b2a26fa3d924ef\",\"turnId\":\"f9382bf6-0f8c-4f12-8a11-3ce977abd8f3\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"checking_answer\"}\n\ndata: {\"kind\":\"content\",\"content\":\"Check the active speed-reference source and whether any digital input is overriding it: when A051â€¦A053 are programmed as \"}\n\ndata: {\"kind\":\"content\",\"content\":\"Preset Speed and active, digital inputs have priority over frequency control, and an active preset input overrides the \"}\n\ndata: {\"kind\":\"content\",\"content\":\"speed command [1][2]. Also verify P038 [Speed Reference] is set to the intended source, such as 1 â€œInternal Freq,â€ 4 \"}\n\ndata: {\"kind\":\"content\",\"content\":\"â€œPreset Freq 0-3,â€ 5 â€œComm Port,â€ 6 â€œStp Logic,â€ or 7 â€œAnlg In Multâ€ [3][4].\\n\\nIf the command source is correct, check \"}\n\ndata: {\"kind\":\"content\",\"content\":\"the active accel time parameter: P039 [Accel Time 1], A067 [Accel Time 2], or A068 [Decel Time 2] set the ramp rate for \"}\n\ndata: {\"kind\":\"content\",\"content\":\"speed increases/decreases as applicable [4][5][3].\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[{\"citationId\":\"1\",\"docId\":\"7a71952c-fcb2-49e6-956f-4a062d9c8437\",\"sourceTitle\":\"pf40.pdf\",\"page\":58,\"fileId\":\"3a5cf28c-a5cd-4e07-987c-8fe475d2acc7\",\"quote\":\"â€¦sets integral keypad as start source and potentiometer\\non the integral keypad as speed source.\\nImportant: Speed source for IP66, NEMA/UL Type 4X rated drives\\ncomes from A069 [Internal Freq].\\n6 â€œComm Portâ€ â€¢ When active, sets communications \",\"originFileId\":null},{\"citationId\":\"2\",\"docId\":\"7a71952c-fcb2-49e6-956f-4a062d9c8437\",\"sourceTitle\":\"pf40.pdf\",\"page\":67,\"fileId\":\"3a5cf28c-a5cd-4e07-987c-8fe475d2acc7\",\"quote\":\"â€¦[Digital Inx Sel] is set to 4 â€œPreset Frequenciesâ€.\\nAn active preset input will override speed command as shown in the flowchart on page 33.\\n(1) To activate A070 [Preset Freq 0] set P038 [Speed Reference] to option 4 â€œPreset Freq 0-3â€.\\nInpu\",\"originFileId\":null},{\"citationId\":\"3\",\"docId\":\"7a71952c-fcb2-49e6-956f-4a062d9c8437\",\"sourceTitle\":\"pf40.pdf\",\"page\":66,\"fileId\":\"3a5cf28c-a5cd-4e07-987c-8fe475d2acc7\",\"quote\":\"â€¦Related Parameters: P040, A051â€¦A054, A070â€¦A077,\\nA140â€¦A147\\nWhen active, sets the rate of deceleration for all speed decreases except jog. See the flowchart on page 34 for details.\\nValues Default: 20.0 Secs\\nMin/Max: 0.1/600.0 Secs\\nDisplay: 0.\",\"originFileId\":null},{\"citationId\":\"4\",\"docId\":\"7a71952c-fcb2-49e6-956f-4a062d9c8437\",\"sourceTitle\":\"pf40.pdf\",\"page\":56,\"fileId\":\"3a5cf28c-a5cd-4e07-987c-8fe475d2acc7\",\"quote\":\"â€¦P038, P040, A051â€¦A054,\\nA067, A070â€¦A077, A140â€¦A147\\nSets the rate of acceleration for all speed increases.\\nValues Default: 10.0 Secs\\nMin/Max: 0.0/600.0 Secs\\nDisplay: 0.1 Secs\\nMaximum Freq\\nAccel Time Accel Rate=\\nSpeed\\n0\\nTime\\nP035 [Maximum Freq\",\"originFileId\":null},{\"citationId\":\"5\",\"docId\":\"7a71952c-fcb2-49e6-956f-4a062d9c8437\",\"sourceTitle\":\"pf40.pdf\",\"page\":65,\"fileId\":\"3a5cf28c-a5cd-4e07-987c-8fe475d2acc7\",\"quote\":\"â€¦Related Parameters: P039, A051â€¦A054, A070â€¦A077,\\nA140â€¦A147\\nWhen active, sets the rate of acceleration for all speed increases except jog. See the flowchart on page 34 for details.\\nValues Default: 20.0 Secs\\nMin/Max: 0.0/600.0 Secs\\nDisplay: 0.\",\"originFileId\":null}],\"sourceSnapshot\":[\"7a71952c-fcb2-49e6-956f-4a062d9c8437\"]}\n\ndata: {\"kind\":\"evidence\",\"basis\":\"oem_documentation\",\"label\":\"Grounded in this notebook's sources.\"}\n\ndata: {\"kind\":\"usage\",\"provider\":\"OpenAI\",\"model\":\"gpt-5.4-mini\",\"routeReason\":\"primary\",\"inputTokens\":3586,\"cachedInputTokens\":0,\"outputTokens\":236,\"costUsdEstimate\":0.003752,\"status\":\"ok\"}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: {\"kind\":\"followups\",\"suggestions\":[\"What's the valid range for A051?\",\"How do I change A051 from the keypad?\"]}\n\ndata: [DONE]\n\n",
+   "elapsedMs": 44541
+  },
+  {
+   "id": "pf40-q5",
+   "broken": null,
+   "rendered": {
+    "answer": "F33 [Auto Rstrt Tries] means the drive unsuccessfully attempted to reset a fault and resume running for the programmed number of A092 [Auto Rstrt Tries]. Correct the cause of the fault and manually clear it 1.",
+    "citations": [
+     {
+      "n": "1",
+      "title": "pf40.pdf",
+      "page": "94"
+     }
+    ],
+    "safety": {
+     "present": false,
+     "kind": null,
+     "first": null
+    },
+    "evidence": "Grounded in this notebook's sources."
+   },
+   "cards": [
+    {
+     "title": "pf40.pdf",
+     "page": "94"
+    }
+   ],
+   "firstChip": {
+    "n": "1",
+    "title": "pf40.pdf",
+    "page": "94"
+   },
+   "streamStatus": "answered",
+   "errorPart": null,
+   "viewerOpened": true,
+   "viewer": {
+    "fileId": "3a5cf28c-a5cd-4e07-987c-8fe475d2acc7",
+    "page": "94",
+    "manualFileId": "3a5cf28c-a5cd-4e07-987c-8fe475d2acc7"
+   },
+   "sse": "data: {\"kind\":\"progress\",\"stage\":\"finding_equipment\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"searching_documentation\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"generating_answer\"}\n\ndata: {\"kind\":\"headers\",\"headers\":{\"x-mira-trace-id\":\"a7781ba11b190cef3f7862d0c4e49dc1\"}}\n\ndata: {\"kind\":\"trace\",\"traceId\":\"a7781ba11b190cef3f7862d0c4e49dc1\",\"turnId\":\"f0547c71-81a8-498f-b8b2-47d26e7f9cb5\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"checking_answer\"}\n\ndata: {\"kind\":\"content\",\"content\":\"F33 [Auto Rstrt Tries] means the drive unsuccessfully attempted to reset a fault and resume running for the programmed \"}\n\ndata: {\"kind\":\"content\",\"content\":\"number of A092 [Auto Rstrt Tries]. Correct the cause of the fault and manually clear it [1].\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[{\"citationId\":\"1\",\"docId\":\"7a71952c-fcb2-49e6-956f-4a062d9c8437\",\"sourceTitle\":\"pf40.pdf\",\"page\":94,\"fileId\":\"3a5cf28c-a5cd-4e07-987c-8fe475d2acc7\",\"quote\":\"â€¦22B-UM001J-EN-E - September 2025\\nChapter 4 Troubleshooting\\nF33 Auto Rstrt Tries âž Drive unsuccessfully attempted\\nto reset a fault and resume\\nrunning for the programmed\\nnumber of A092 [Auto Rstrt\\nTries].\\nCorrect the cause of the fault and\\nma\",\"originFileId\":null}],\"sourceSnapshot\":[\"7a71952c-fcb2-49e6-956f-4a062d9c8437\"]}\n\ndata: {\"kind\":\"evidence\",\"basis\":\"oem_documentation\",\"label\":\"Grounded in this notebook's sources.\"}\n\ndata: {\"kind\":\"usage\",\"provider\":\"OpenAI\",\"model\":\"gpt-5.4-mini\",\"routeReason\":\"primary\",\"inputTokens\":3399,\"cachedInputTokens\":0,\"outputTokens\":66,\"costUsdEstimate\":0.002846,\"status\":\"ok\"}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: {\"kind\":\"followups\",\"suggestions\":[\"How do I clear fault F33?\",\"What's the valid range for A092?\",\"How do I change A092 from the keypad?\"]}\n\ndata: [DONE]\n\n",
+   "elapsedMs": 45582
+  },
+  {
+   "id": "pf4m-q1",
+   "broken": null,
+   "rendered": {
+    "answer": "F13 [Ground Fault] means a current path to earth ground has been detected at one or more of the drive output terminals 1. Check the motor and external wiring to the drive output terminals for a grounded condition 1.",
+    "citations": [
+     {
+      "n": "1",
+      "title": "pf4m.pdf",
+      "page": "73"
+     }
+    ],
+    "safety": {
+     "present": false,
+     "kind": null,
+     "first": null
+    },
+    "evidence": "Grounded in the cited documentation."
+   },
+   "cards": [
+    {
+     "title": "pf4m.pdf",
+     "page": "73"
+    }
+   ],
+   "firstChip": {
+    "n": "1",
+    "title": "pf4m.pdf",
+    "page": "73"
+   },
+   "streamStatus": "answered",
+   "errorPart": null,
+   "viewerOpened": true,
+   "viewer": {
+    "fileId": "0a08bc17-fbb3-46b0-a8ed-c2f7bcd49cde",
+    "page": "73",
+    "manualFileId": "0a08bc17-fbb3-46b0-a8ed-c2f7bcd49cde"
+   },
+   "sse": "data: {\"kind\":\"progress\",\"stage\":\"finding_equipment\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"searching_documentation\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"generating_answer\"}\n\ndata: {\"kind\":\"headers\",\"headers\":{\"x-mira-trace-id\":\"dd97510722da5dd38f441ce0c00370db\"}}\n\ndata: {\"kind\":\"trace\",\"traceId\":\"dd97510722da5dd38f441ce0c00370db\",\"turnId\":\"bbb98f21-7636-4f75-9598-329472efad59\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"checking_answer\"}\n\ndata: {\"kind\":\"content\",\"content\":\"F13 [Ground Fault] means a current path to earth ground has been detected at one or more of the drive output terminals \"}\n\ndata: {\"kind\":\"content\",\"content\":\"[1]. Check the motor and external wiring to the drive output terminals for a grounded condition [1].\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[{\"citationId\":\"1\",\"docId\":\"213ff574-5f7d-4b82-846f-bd272d6f4569\",\"sourceTitle\":\"pf4m.pdf\",\"page\":73,\"fileId\":\"0a08bc17-fbb3-46b0-a8ed-c2f7bcd49cde\",\"quote\":\"â€¦volts set\\ntoo high or other causes of excess\\ncurrent.\\nF13 Ground Fault âž A current path to earth ground\\nhas been detected at one or\\nmore of the drive output\\nterminals.\\nCheck the motor and external wiring\\nto the drive output terminals for a\\n\",\"originFileId\":null}],\"sourceSnapshot\":[\"213ff574-5f7d-4b82-846f-bd272d6f4569\"]}\n\ndata: {\"kind\":\"evidence\",\"basis\":\"oem_documentation\",\"label\":\"Grounded in this notebook's sources.\"}\n\ndata: {\"kind\":\"usage\",\"provider\":\"OpenAI\",\"model\":\"gpt-5.4-mini\",\"routeReason\":\"primary\",\"inputTokens\":3372,\"cachedInputTokens\":0,\"outputTokens\":62,\"costUsdEstimate\":0.002808,\"status\":\"ok\"}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: {\"kind\":\"followups\",\"suggestions\":[\"How do I clear fault F13?\"]}\n\ndata: [DONE]\n\n",
+   "elapsedMs": 58197
+  },
+  {
+   "id": "pf4m-q2",
+   "broken": null,
+   "rendered": {
+    "answer": "⚠️ Lockout conflict in a step below: “With the drive isolated, locked out, and before any work on the drive, measure the DC bus voltage at the -DC and +DC terminals on the Power Terminal Block; the ”. That step mixes locked-out work with power on. Inspect, tighten and replace with the equipment locked out; any check that needs power is a separate step, after a qualified person removes the lockout and restores power under your site's energized-work procedure. With the drive isolated, locked out, and before any work on the drive, measure the DC bus voltage at the –DC and +DC terminals on the Power Terminal Block; the voltage must be zero 1. Darkened LEDs or a darkened LCD do not prove the capacitors are discharged 1.",
+    "citations": [
+     {
+      "n": "1",
+      "title": "pf4m.pdf",
+      "page": "9"
+     }
+    ],
+    "safety": {
+     "present": false,
+     "kind": null,
+     "first": null
+    },
+    "evidence": "Grounded in this notebook's sources."
+   },
+   "cards": [
+    {
+     "title": "pf4m.pdf",
+     "page": "9"
+    }
+   ],
+   "firstChip": {
+    "n": "1",
+    "title": "pf4m.pdf",
+    "page": "9"
+   },
+   "streamStatus": "answered",
+   "errorPart": null,
+   "viewerOpened": true,
+   "viewer": {
+    "fileId": "0a08bc17-fbb3-46b0-a8ed-c2f7bcd49cde",
+    "page": "9",
+    "manualFileId": "0a08bc17-fbb3-46b0-a8ed-c2f7bcd49cde"
+   },
+   "sse": "data: {\"kind\":\"progress\",\"stage\":\"finding_equipment\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"searching_documentation\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"generating_answer\"}\n\ndata: {\"kind\":\"headers\",\"headers\":{\"x-mira-trace-id\":\"c71fa7158db0a68f0ce16c8c09456b10\"}}\n\ndata: {\"kind\":\"trace\",\"traceId\":\"c71fa7158db0a68f0ce16c8c09456b10\",\"turnId\":\"681edfa2-0bb4-4503-a7a0-02a7959a64ce\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"checking_answer\"}\n\ndata: {\"kind\":\"content\",\"content\":\"âš ï¸ **Lockout conflict in a step below:** â€œWith the drive isolated, locked out, and before any work on the drive, measure \"}\n\ndata: {\"kind\":\"content\",\"content\":\"the DC bus voltage at the -DC and +DC terminals on the Power Terminal Block; the â€. That step mixes locked-out work with \"}\n\ndata: {\"kind\":\"content\",\"content\":\"power on. Inspect, tighten and replace with the equipment locked out; any check that needs power is a separate step, \"}\n\ndata: {\"kind\":\"content\",\"content\":\"after a qualified person removes the lockout and restores power under your site's energized-work procedure.\\n\\nWith the \"}\n\ndata: {\"kind\":\"content\",\"content\":\"drive isolated, locked out, and before any work on the drive, measure the DC bus voltage at the â€“DC and +DC terminals on \"}\n\ndata: {\"kind\":\"content\",\"content\":\"the Power Terminal Block; the voltage must be zero [1]. Darkened LEDs or a darkened LCD do not prove the capacitors are \"}\n\ndata: {\"kind\":\"content\",\"content\":\"discharged [1].\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[{\"citationId\":\"1\",\"docId\":\"213ff574-5f7d-4b82-846f-bd272d6f4569\",\"sourceTitle\":\"pf4m.pdf\",\"page\":9,\"fileId\":\"0a08bc17-fbb3-46b0-a8ed-c2f7bcd49cde\",\"quote\":\"â€¦To avoid an electric shock hazard, verify that the\\nvoltage on the bus capacitors has discharged before performing any\\nwork on the drive. Measure the DC bus voltage at the â€“DC and +DC\\nterminals on the Power Terminal Block (see Chapter 1 Powe\",\"originFileId\":null}],\"sourceSnapshot\":[\"213ff574-5f7d-4b82-846f-bd272d6f4569\"]}\n\ndata: {\"kind\":\"evidence\",\"basis\":\"oem_documentation\",\"label\":\"Grounded in this notebook's sources.\"}\n\ndata: {\"kind\":\"usage\",\"provider\":\"OpenAI\",\"model\":\"gpt-5.4-mini\",\"routeReason\":\"primary\",\"inputTokens\":3067,\"cachedInputTokens\":0,\"outputTokens\":78,\"costUsdEstimate\":0.002651,\"status\":\"ok\"}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: [DONE]\n\n",
+   "elapsedMs": 45885
+  },
+  {
+   "id": "pf4m-q3",
+   "broken": null,
+   "rendered": {
+    "answer": "With the drive locked out and the DC bus confirmed dead with a meter, check for a flashing red status light, incorrect P106 [Start Source] or t201…t202 [Digital Inx Select] programming, incorrect input wiring, and the Sink/Source DIP switch setting 1. Also verify the terminal-block inputs with d013 [Contrl In Status]: Input Present = 1, the Start/Run FWD input is I/O Terminal 02, and the Stop input on I/O Terminal 01 must be present for the drive to start 6.",
+    "citations": [
+     {
+      "n": "1",
+      "title": "pf4m.pdf",
+      "page": "76"
+     },
+     {
+      "n": "6",
+      "title": "pf4m.pdf",
+      "page": "43"
+     }
+    ],
+    "safety": {
+     "present": false,
+     "kind": null,
+     "first": null
+    },
+    "evidence": "Grounded in this notebook's sources."
+   },
+   "cards": [
+    {
+     "title": "pf4m.pdf",
+     "page": "76"
+    },
+    {
+     "title": "pf4m.pdf",
+     "page": "43"
+    }
+   ],
+   "firstChip": {
+    "n": "1",
+    "title": "pf4m.pdf",
+    "page": "76"
+   },
+   "streamStatus": "answered",
+   "errorPart": null,
+   "viewerOpened": true,
+   "viewer": {
+    "fileId": "0a08bc17-fbb3-46b0-a8ed-c2f7bcd49cde",
+    "page": "76",
+    "manualFileId": "0a08bc17-fbb3-46b0-a8ed-c2f7bcd49cde"
+   },
+   "sse": "data: {\"kind\":\"progress\",\"stage\":\"finding_equipment\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"searching_documentation\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"generating_answer\"}\n\ndata: {\"kind\":\"headers\",\"headers\":{\"x-mira-trace-id\":\"e915dc48506ceaf59497165bca80a61c\"}}\n\ndata: {\"kind\":\"trace\",\"traceId\":\"e915dc48506ceaf59497165bca80a61c\",\"turnId\":\"88d8ce79-c1b8-4cdb-b10b-b5c23ad94740\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"checking_answer\"}\n\ndata: {\"kind\":\"content\",\"content\":\"With the drive locked out and the DC bus confirmed dead with a meter, check for a flashing red status light, incorrect \"}\n\ndata: {\"kind\":\"content\",\"content\":\"P106 [Start Source] or t201â€¦t202 [Digital Inx Select] programming, incorrect input wiring, and the Sink/Source DIP \"}\n\ndata: {\"kind\":\"content\",\"content\":\"switch setting [1]. Also verify the terminal-block inputs with d013 [Contrl In Status]: Input Present = 1, the Start/Run \"}\n\ndata: {\"kind\":\"content\",\"content\":\"FWD input is I/O Terminal 02, and the Stop input on I/O Terminal 01 must be present for the drive to start [6].\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[{\"citationId\":\"1\",\"docId\":\"213ff574-5f7d-4b82-846f-bd272d6f4569\",\"sourceTitle\":\"pf4m.pdf\",\"page\":76,\"fileId\":\"0a08bc17-fbb3-46b0-a8ed-c2f7bcd49cde\",\"quote\":\"â€¦Automation Publication 22F-UM001E-EN-E - September 2024\\nDrive does not Start from Start or Run Inputs wired to the terminal block.\\nDrive does not respond to changes in speed command.\\nCause(s) Indication Corrective Action\\nDrive is Faulted Fl\",\"originFileId\":null},{\"citationId\":\"6\",\"docId\":\"213ff574-5f7d-4b82-846f-bd272d6f4569\",\"sourceTitle\":\"pf4m.pdf\",\"page\":43,\"fileId\":\"0a08bc17-fbb3-46b0-a8ed-c2f7bcd49cde\",\"quote\":\"â€¦[Contrl In Status] Related Parameters: d002, P104, P105\\nStatus of the control terminal block control inputs.\\nImportant: Actual control commands may come from a source other than the control terminal block.\\nValues Default Read Only\\nMin/Max: \",\"originFileId\":null}],\"sourceSnapshot\":[\"213ff574-5f7d-4b82-846f-bd272d6f4569\"]}\n\ndata: {\"kind\":\"evidence\",\"basis\":\"oem_documentation\",\"label\":\"Grounded in this notebook's sources.\"}\n\ndata: {\"kind\":\"usage\",\"provider\":\"OpenAI\",\"model\":\"gpt-5.4-mini\",\"routeReason\":\"primary\",\"inputTokens\":3283,\"cachedInputTokens\":0,\"outputTokens\":167,\"costUsdEstimate\":0.003214,\"status\":\"ok\"}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: {\"kind\":\"followups\",\"suggestions\":[\"What's the valid range for P106?\",\"How do I change P106 from the keypad?\"]}\n\ndata: [DONE]\n\n",
+   "elapsedMs": 43827
+  },
+  {
+   "id": "pf4m-q4",
+   "broken": null,
+   "rendered": {
+    "answer": "F38 [Phase U to Gnd] means a phase-to-ground fault has been detected between the drive and motor in phase U 1. Check the wiring between the drive and motor, check the motor for a grounded phase, and replace the drive if the fault cannot be cleared 1.",
+    "citations": [
+     {
+      "n": "1",
+      "title": "pf4m.pdf",
+      "page": "74"
+     }
+    ],
+    "safety": {
+     "present": false,
+     "kind": null,
+     "first": null
+    },
+    "evidence": "Grounded in this notebook's sources."
+   },
+   "cards": [
+    {
+     "title": "pf4m.pdf",
+     "page": "74"
+    }
+   ],
+   "firstChip": {
+    "n": "1",
+    "title": "pf4m.pdf",
+    "page": "74"
+   },
+   "streamStatus": "answered",
+   "errorPart": null,
+   "viewerOpened": true,
+   "viewer": {
+    "fileId": "0a08bc17-fbb3-46b0-a8ed-c2f7bcd49cde",
+    "page": "74",
+    "manualFileId": "0a08bc17-fbb3-46b0-a8ed-c2f7bcd49cde"
+   },
+   "sse": "data: {\"kind\":\"progress\",\"stage\":\"finding_equipment\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"searching_documentation\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"generating_answer\"}\n\ndata: {\"kind\":\"headers\",\"headers\":{\"x-mira-trace-id\":\"2b11d3a2f63c64af0be09fadfa7e9c0f\"}}\n\ndata: {\"kind\":\"trace\",\"traceId\":\"2b11d3a2f63c64af0be09fadfa7e9c0f\",\"turnId\":\"e0b2fb1e-854f-4e46-9add-e3563bf19117\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"checking_answer\"}\n\ndata: {\"kind\":\"content\",\"content\":\"F38 [Phase U to Gnd] means a phase-to-ground fault has been detected between the drive and motor in phase U [1]. Check \"}\n\ndata: {\"kind\":\"content\",\"content\":\"the wiring between the drive and motor, check the motor for a grounded phase, and replace the drive if the fault cannot \"}\n\ndata: {\"kind\":\"content\",\"content\":\"be cleared [1].\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[{\"citationId\":\"1\",\"docId\":\"213ff574-5f7d-4b82-846f-bd272d6f4569\",\"sourceTitle\":\"pf4m.pdf\",\"page\":74,\"fileId\":\"0a08bc17-fbb3-46b0-a8ed-c2f7bcd49cde\",\"quote\":\"â€¦Tries].\\nCorrect the cause of the fault and\\nmanually clear.\\nF38 Phase U to Gnd âž A phase to ground fault has been\\ndetected between the drive and\\nmotor in this phase.\\n1. Check the wiring between the\\ndrive and motor.\\n2. Check motor for grounde\",\"originFileId\":null}],\"sourceSnapshot\":[\"213ff574-5f7d-4b82-846f-bd272d6f4569\"]}\n\ndata: {\"kind\":\"evidence\",\"basis\":\"oem_documentation\",\"label\":\"Grounded in this notebook's sources.\"}\n\ndata: {\"kind\":\"usage\",\"provider\":\"OpenAI\",\"model\":\"gpt-5.4-mini\",\"routeReason\":\"primary\",\"inputTokens\":3357,\"cachedInputTokens\":0,\"outputTokens\":74,\"costUsdEstimate\":0.002851,\"status\":\"ok\"}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: {\"kind\":\"followups\",\"suggestions\":[\"How do I clear fault F38?\"]}\n\ndata: [DONE]\n\n",
+   "elapsedMs": 44155
+  },
+  {
+   "id": "pf4m-q5",
+   "broken": null,
+   "rendered": {
+    "answer": "The drive needs at least 0 mm, 25 mm, or 76.2 mm of horizontal clearance depending on the ambient temperature, with the listed ambient operating range from -10 °C to 40 °C or 50 °C 1. Specifically, 0 mm and greater is allowed at -10 °C to 40 °C, 25 mm and greater at -10 °C to 50 °C, and the table also shows 76.2 mm (3.0 in.) clearance 1.",
+    "citations": [
+     {
+      "n": "1",
+      "title": "pf4m.pdf",
+      "page": "12"
+     }
+    ],
+    "safety": {
+     "present": false,
+     "kind": null,
+     "first": null
+    },
+    "evidence": "Grounded in this notebook's sources."
+   },
+   "cards": [
+    {
+     "title": "pf4m.pdf",
+     "page": "12"
+    }
+   ],
+   "firstChip": {
+    "n": "1",
+    "title": "pf4m.pdf",
+    "page": "12"
+   },
+   "streamStatus": "answered",
+   "errorPart": null,
+   "viewerOpened": true,
+   "viewer": {
+    "fileId": "0a08bc17-fbb3-46b0-a8ed-c2f7bcd49cde",
+    "page": "12",
+    "manualFileId": "0a08bc17-fbb3-46b0-a8ed-c2f7bcd49cde"
+   },
+   "sse": "data: {\"kind\":\"progress\",\"stage\":\"finding_equipment\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"searching_documentation\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"generating_answer\"}\n\ndata: {\"kind\":\"headers\",\"headers\":{\"x-mira-trace-id\":\"8f57d2f31357c32f7bb371cfdbe61966\"}}\n\ndata: {\"kind\":\"trace\",\"traceId\":\"8f57d2f31357c32f7bb371cfdbe61966\",\"turnId\":\"5187545f-330a-40ab-a98c-55280a81c6aa\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"checking_answer\"}\n\ndata: {\"kind\":\"content\",\"content\":\"The drive needs at least 0 mm, 25 mm, or 76.2 mm of horizontal clearance depending on the ambient temperature, with the \"}\n\ndata: {\"kind\":\"content\",\"content\":\"listed ambient operating range from -10 Â°C to 40 Â°C or 50 Â°C [1]. Specifically, 0 mm and greater is allowed at -10 Â°C to \"}\n\ndata: {\"kind\":\"content\",\"content\":\"40 Â°C, 25 mm and greater at -10 Â°C to 50 Â°C, and the table also shows 76.2 mm (3.0 in.) clearance [1].\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[{\"citationId\":\"1\",\"docId\":\"213ff574-5f7d-4b82-846f-bd272d6f4569\",\"sourceTitle\":\"pf4m.pdf\",\"page\":12,\"fileId\":\"0a08bc17-fbb3-46b0-a8ed-c2f7bcd49cde\",\"quote\":\"â€¦Requirements\\nHorizontal Clearance between drives Ambient Temperature\\nMinimum Maximum\\n0 mm (0 in.) and greater -10 Â°C (14 Â°F) 40 Â°C (104 Â°F)\\n25 mm (0.08 in.) and greater -10 Â°C (14 Â°F) 50 Â°C (122 Â°F)\\n76.2 mm (3.0 in.)\\n76.2 mm (3.0 in.)\\nCl\",\"originFileId\":null}],\"sourceSnapshot\":[\"213ff574-5f7d-4b82-846f-bd272d6f4569\"]}\n\ndata: {\"kind\":\"evidence\",\"basis\":\"oem_documentation\",\"label\":\"Grounded in this notebook's sources.\"}\n\ndata: {\"kind\":\"usage\",\"provider\":\"OpenAI\",\"model\":\"gpt-5.4-mini\",\"routeReason\":\"primary\",\"inputTokens\":3608,\"cachedInputTokens\":0,\"outputTokens\":171,\"costUsdEstimate\":0.003476,\"status\":\"ok\"}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: [DONE]\n\n",
+   "elapsedMs": 42929
+  },
+  {
+   "id": "acs355-q1",
+   "broken": null,
+   "rendered": {
+    "answer": "Fault 0001 OVERCURRENT means the output current has exceeded the trip level 2. To fix it, check the motor load and mechanics, acceleration time 2202 and 2205, motor data in Group 99 against the motor rating plate, drive/motor sizing, motor cables and connections including phasing, and the STO cabling for high-frequency noise 2.",
+    "citations": [
+     {
+      "n": "2",
+      "title": "acs355.pdf",
+      "page": "359"
+     }
+    ],
+    "safety": {
+     "present": false,
+     "kind": null,
+     "first": null
+    },
+    "evidence": "Grounded in this notebook's sources."
+   },
+   "cards": [
+    {
+     "title": "acs355.pdf",
+     "page": "359"
+    }
+   ],
+   "firstChip": {
+    "n": "2",
+    "title": "acs355.pdf",
+    "page": "359"
+   },
+   "streamStatus": "answered",
+   "errorPart": null,
+   "viewerOpened": true,
+   "viewer": {
+    "fileId": "4893536c-a95f-47f5-a97e-1bc923ea8485",
+    "page": "359",
+    "manualFileId": "4893536c-a95f-47f5-a97e-1bc923ea8485"
+   },
+   "sse": "data: {\"kind\":\"progress\",\"stage\":\"finding_equipment\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"searching_documentation\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"generating_answer\"}\n\ndata: {\"kind\":\"headers\",\"headers\":{\"x-mira-trace-id\":\"a1ff0605b08845bcd8a0959370ddac31\"}}\n\ndata: {\"kind\":\"trace\",\"traceId\":\"a1ff0605b08845bcd8a0959370ddac31\",\"turnId\":\"53933d92-b50b-4ac8-8347-dc12c81b7993\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"checking_answer\"}\n\ndata: {\"kind\":\"content\",\"content\":\"Fault 0001 OVERCURRENT means the output current has exceeded the trip level [2]. To fix it, check the motor load and \"}\n\ndata: {\"kind\":\"content\",\"content\":\"mechanics, acceleration time 2202 and 2205, motor data in Group 99 against the motor rating plate, drive/motor sizing, \"}\n\ndata: {\"kind\":\"content\",\"content\":\"motor cables and connections including phasing, and the STO cabling for high-frequency noise [2].\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[{\"citationId\":\"2\",\"docId\":\"5e5036b4-68bc-492c-9f57-a9288056b37d\",\"sourceTitle\":\"acs355.pdf\",\"page\":359,\"fileId\":\"4893536c-a95f-47f5-a97e-1bc923ea8485\",\"quote\":\"â€¦generated by the drive\\nCODE FAULT CAUSE WHAT TO DO\\n0001 OVERCURRENT\\n(2310)\\n0305 bit 0\\nOutput current has\\nexceeded trip level.\\nSudden load change or\\nstall.\\nCheck motor load and mechanics.\\nInsufficient acceleration\\ntime.\\nCheck acceleration ti\",\"originFileId\":null}],\"sourceSnapshot\":[\"5e5036b4-68bc-492c-9f57-a9288056b37d\"]}\n\ndata: {\"kind\":\"evidence\",\"basis\":\"oem_documentation\",\"label\":\"Grounded in this notebook's sources.\"}\n\ndata: {\"kind\":\"usage\",\"provider\":\"OpenAI\",\"model\":\"gpt-5.4-mini\",\"routeReason\":\"primary\",\"inputTokens\":3392,\"cachedInputTokens\":0,\"outputTokens\":108,\"costUsdEstimate\":0.00303,\"status\":\"ok\"}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: [DONE]\n\n",
+   "elapsedMs": 66277
+  },
+  {
+   "id": "acs355-q2",
+   "broken": null,
+   "rendered": {
+    "answer": "Wait 5 minutes after disconnecting the input power before working on the ACS355 1. After that, verify with a multimeter that there is no voltage present before you start working 1.",
+    "citations": [
+     {
+      "n": "1",
+      "title": "acs355.pdf",
+      "page": "18"
+     }
+    ],
+    "safety": {
+     "present": false,
+     "kind": null,
+     "first": null
+    },
+    "evidence": "Grounded in this notebook's sources."
+   },
+   "cards": [
+    {
+     "title": "acs355.pdf",
+     "page": "18"
+    }
+   ],
+   "firstChip": {
+    "n": "1",
+    "title": "acs355.pdf",
+    "page": "18"
+   },
+   "streamStatus": "answered",
+   "errorPart": null,
+   "viewerOpened": true,
+   "viewer": {
+    "fileId": "4893536c-a95f-47f5-a97e-1bc923ea8485",
+    "page": "18",
+    "manualFileId": "4893536c-a95f-47f5-a97e-1bc923ea8485"
+   },
+   "sse": "data: {\"kind\":\"progress\",\"stage\":\"finding_equipment\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"searching_documentation\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"generating_answer\"}\n\ndata: {\"kind\":\"headers\",\"headers\":{\"x-mira-trace-id\":\"3f8acd90fd233ebeaa8738d04baaee38\"}}\n\ndata: {\"kind\":\"trace\",\"traceId\":\"3f8acd90fd233ebeaa8738d04baaee38\",\"turnId\":\"61e8d1d4-f68b-4d17-8a30-0ffa67254e90\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"checking_answer\"}\n\ndata: {\"kind\":\"content\",\"content\":\"Wait 5 minutes after disconnecting the input power before working on the ACS355 [1]. After that, verify with a \"}\n\ndata: {\"kind\":\"content\",\"content\":\"multimeter that there is no voltage present before you start working [1].\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[{\"citationId\":\"1\",\"docId\":\"5e5036b4-68bc-492c-9f57-a9288056b37d\",\"sourceTitle\":\"acs355.pdf\",\"page\":18,\"fileId\":\"4893536c-a95f-47f5-a97e-1bc923ea8485\",\"quote\":\"â€¦After\\ndisconnecting the input power, always wait for 5 minutes to let the intermediate\\ncircuit capacitors discharge before you start working on the drive, motor or motor\\ncable.\\nAlways ensure by measuring with a multimeter (impedance at leas\",\"originFileId\":null}],\"sourceSnapshot\":[\"5e5036b4-68bc-492c-9f57-a9288056b37d\"]}\n\ndata: {\"kind\":\"evidence\",\"basis\":\"oem_documentation\",\"label\":\"Grounded in this notebook's sources.\"}\n\ndata: {\"kind\":\"usage\",\"provider\":\"OpenAI\",\"model\":\"gpt-5.4-mini\",\"routeReason\":\"primary\",\"inputTokens\":2915,\"cachedInputTokens\":0,\"outputTokens\":54,\"costUsdEstimate\":0.002429,\"status\":\"ok\"}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: [DONE]\n\n",
+   "elapsedMs": 49405
+  },
+  {
+   "id": "acs355-q3",
+   "broken": null,
+   "rendered": {
+    "answer": "Stop the drive and disconnect it from the AC power source, then remove the hood if fitted, lever the fan holder off the frame with a screwdriver, lift the hinged holder slightly upward from the front edge, free the fan cable from the clip, disconnect the fan cable, and remove the fan holder from the hinges 1. Only frame sizes R1…R4 have a fan; frame size R0 has natural cooling 1.",
+    "citations": [
+     {
+      "n": "1",
+      "title": "acs355.pdf",
+      "page": "372"
+     }
+    ],
+    "safety": {
+     "present": false,
+     "kind": null,
+     "first": null
+    },
+    "evidence": "Grounded in this notebook's sources."
+   },
+   "cards": [
+    {
+     "title": "acs355.pdf",
+     "page": "372"
+    }
+   ],
+   "firstChip": {
+    "n": "1",
+    "title": "acs355.pdf",
+    "page": "372"
+   },
+   "streamStatus": "answered",
+   "errorPart": null,
+   "viewerOpened": true,
+   "viewer": {
+    "fileId": "4893536c-a95f-47f5-a97e-1bc923ea8485",
+    "page": "372",
+    "manualFileId": "4893536c-a95f-47f5-a97e-1bc923ea8485"
+   },
+   "sse": "data: {\"kind\":\"progress\",\"stage\":\"finding_equipment\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"searching_documentation\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"generating_answer\"}\n\ndata: {\"kind\":\"headers\",\"headers\":{\"x-mira-trace-id\":\"d307073e21b5a77ab1e5928653b6d787\"}}\n\ndata: {\"kind\":\"trace\",\"traceId\":\"d307073e21b5a77ab1e5928653b6d787\",\"turnId\":\"eaa2a034-54db-415b-8445-509d1c55c18c\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"checking_answer\"}\n\ndata: {\"kind\":\"content\",\"content\":\"Stop the drive and disconnect it from the AC power source, then remove the hood if fitted, lever the fan holder off the \"}\n\ndata: {\"kind\":\"content\",\"content\":\"frame with a screwdriver, lift the hinged holder slightly upward from the front edge, free the fan cable from the clip, \"}\n\ndata: {\"kind\":\"content\",\"content\":\"disconnect the fan cable, and remove the fan holder from the hinges [1]. Only frame sizes R1â€¦R4 have a fan; frame size \"}\n\ndata: {\"kind\":\"content\",\"content\":\"R0 has natural cooling [1].\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[{\"citationId\":\"1\",\"docId\":\"5e5036b4-68bc-492c-9f57-a9288056b37d\",\"sourceTitle\":\"acs355.pdf\",\"page\":372,\"fileId\":\"4893536c-a95f-47f5-a97e-1bc923ea8485\",\"quote\":\"â€¦from ABB. Do not\\nuse other than ABB specified spare parts.\\nï® Replacing the cooling fan (frame sizes R1â€¦R4)\\nOnly frame sizes R1â€¦R4 include a fan; frame size R0 has natural cooling.\\nWARNING! Read and follow the instructions in chapter Safety \",\"originFileId\":null}],\"sourceSnapshot\":[\"5e5036b4-68bc-492c-9f57-a9288056b37d\"]}\n\ndata: {\"kind\":\"evidence\",\"basis\":\"oem_documentation\",\"label\":\"Grounded in this notebook's sources.\"}\n\ndata: {\"kind\":\"usage\",\"provider\":\"OpenAI\",\"model\":\"gpt-5.4-mini\",\"routeReason\":\"primary\",\"inputTokens\":3551,\"cachedInputTokens\":0,\"outputTokens\":117,\"costUsdEstimate\":0.00319,\"status\":\"ok\"}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: [DONE]\n\n",
+   "elapsedMs": 48833
+  },
+  {
+   "id": "acs355-q4",
+   "broken": null,
+   "rendered": {
+    "answer": "Alarm 2035 SAFE TORQUE OFF means the STO (Safe torque off) input was requested and is functioning correctly 2. If this was not expected, check the cabling of the safety circuit connected to STO terminals X1C; if a different reaction is needed, change parameter 3025 STO OPERATION 2.",
+    "citations": [
+     {
+      "n": "2",
+      "title": "acs355.pdf",
+      "page": "355"
+     }
+    ],
+    "safety": {
+     "present": false,
+     "kind": null,
+     "first": null
+    },
+    "evidence": "Grounded in this notebook's sources."
+   },
+   "cards": [
+    {
+     "title": "acs355.pdf",
+     "page": "355"
+    }
+   ],
+   "firstChip": {
+    "n": "2",
+    "title": "acs355.pdf",
+    "page": "355"
+   },
+   "streamStatus": "answered",
+   "errorPart": null,
+   "viewerOpened": true,
+   "viewer": {
+    "fileId": "4893536c-a95f-47f5-a97e-1bc923ea8485",
+    "page": "355",
+    "manualFileId": "4893536c-a95f-47f5-a97e-1bc923ea8485"
+   },
+   "sse": "data: {\"kind\":\"progress\",\"stage\":\"finding_equipment\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"searching_documentation\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"generating_answer\"}\n\ndata: {\"kind\":\"headers\",\"headers\":{\"x-mira-trace-id\":\"fe5471990767e361245e8fba0539f64c\"}}\n\ndata: {\"kind\":\"trace\",\"traceId\":\"fe5471990767e361245e8fba0539f64c\",\"turnId\":\"b150cc15-59c3-49e5-9698-6d7f126fe346\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"checking_answer\"}\n\ndata: {\"kind\":\"content\",\"content\":\"Alarm 2035 SAFE TORQUE OFF means the STO (Safe torque off) input was requested and is functioning correctly [2]. If this \"}\n\ndata: {\"kind\":\"content\",\"content\":\"was not expected, check the cabling of the safety circuit connected to STO terminals X1C; if a different reaction is \"}\n\ndata: {\"kind\":\"content\",\"content\":\"needed, change parameter 3025 STO OPERATION [2].\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[{\"citationId\":\"2\",\"docId\":\"5e5036b4-68bc-492c-9f57-a9288056b37d\",\"sourceTitle\":\"acs355.pdf\",\"page\":355,\"fileId\":\"4893536c-a95f-47f5-a97e-1bc923ea8485\",\"quote\":\"â€¦FUNCTION.\\nOtherwise drive starts after motor has\\nstopped.\\n2035 SAFE TORQUE\\nOFF\\n0309 bit 13\\nSTO (Safe torque off)\\nrequested and it\\nfunctions correctly.\\nParameter 3025 STO\\nOPERATION is set to\\nreact with alarm.\\nIf this was not expected reactio\",\"originFileId\":null}],\"sourceSnapshot\":[\"5e5036b4-68bc-492c-9f57-a9288056b37d\"]}\n\ndata: {\"kind\":\"evidence\",\"basis\":\"oem_documentation\",\"label\":\"Grounded in this notebook's sources.\"}\n\ndata: {\"kind\":\"usage\",\"provider\":\"OpenAI\",\"model\":\"gpt-5.4-mini\",\"routeReason\":\"primary\",\"inputTokens\":3765,\"cachedInputTokens\":0,\"outputTokens\":107,\"costUsdEstimate\":0.003305,\"status\":\"ok\"}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: [DONE]\n\n",
+   "elapsedMs": 46152
+  },
+  {
+   "id": "acs355-q5",
+   "broken": null,
+   "rendered": {
+    "answer": "Fault 0016 EARTH FAULT means the drive has detected an earth (ground) fault in the motor or motor cable 2. Check the motor and motor cable; the manual also notes the cable length must not exceed maximum specifications 2.",
+    "citations": [
+     {
+      "n": "2",
+      "title": "acs355.pdf",
+      "page": "363"
+     }
+    ],
+    "safety": {
+     "present": false,
+     "kind": null,
+     "first": null
+    },
+    "evidence": "Grounded in this notebook's sources."
+   },
+   "cards": [
+    {
+     "title": "acs355.pdf",
+     "page": "363"
+    }
+   ],
+   "firstChip": {
+    "n": "2",
+    "title": "acs355.pdf",
+    "page": "363"
+   },
+   "streamStatus": "answered",
+   "errorPart": null,
+   "viewerOpened": true,
+   "viewer": {
+    "fileId": "4893536c-a95f-47f5-a97e-1bc923ea8485",
+    "page": "363",
+    "manualFileId": "4893536c-a95f-47f5-a97e-1bc923ea8485"
+   },
+   "sse": "data: {\"kind\":\"progress\",\"stage\":\"finding_equipment\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"searching_documentation\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"generating_answer\"}\n\ndata: {\"kind\":\"headers\",\"headers\":{\"x-mira-trace-id\":\"aace3e1772ca3c10b2ed92d5142de7a8\"}}\n\ndata: {\"kind\":\"trace\",\"traceId\":\"aace3e1772ca3c10b2ed92d5142de7a8\",\"turnId\":\"a232eda6-f68a-4851-95e2-6b03fbb564cf\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"checking_answer\"}\n\ndata: {\"kind\":\"content\",\"content\":\"Fault 0016 EARTH FAULT means the drive has detected an earth (ground) fault in the motor or motor cable [2]. Check the \"}\n\ndata: {\"kind\":\"content\",\"content\":\"motor and motor cable; the manual also notes the cable length must not exceed maximum specifications [2].\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[{\"citationId\":\"2\",\"docId\":\"5e5036b4-68bc-492c-9f57-a9288056b37d\",\"sourceTitle\":\"acs355.pdf\",\"page\":363,\"fileId\":\"4893536c-a95f-47f5-a97e-1bc923ea8485\",\"quote\":\"â€¦for faults.\\nCheck parameter 3004 EXTERNAL\\nFAULT 2 setting.\\n0016 EARTH FAULT\\n(2330)\\n0305 bit 15\\n(programmable\\nfault function\\n3017)\\nDrive has detected earth\\n(ground) fault in motor or\\nmotor cable.\\nCheck motor.\\nCheck motor cable. Motor cable\\nl\",\"originFileId\":null}],\"sourceSnapshot\":[\"5e5036b4-68bc-492c-9f57-a9288056b37d\"]}\n\ndata: {\"kind\":\"evidence\",\"basis\":\"oem_documentation\",\"label\":\"Grounded in this notebook's sources.\"}\n\ndata: {\"kind\":\"usage\",\"provider\":\"OpenAI\",\"model\":\"gpt-5.4-mini\",\"routeReason\":\"primary\",\"inputTokens\":3310,\"cachedInputTokens\":0,\"outputTokens\":65,\"costUsdEstimate\":0.002775,\"status\":\"ok\"}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: [DONE]\n\n",
+   "elapsedMs": 45425
+  },
+  {
+   "id": "micro820-um-q1",
+   "broken": null,
+   "rendered": {
+    "answer": "0xD011 is a recoverable fault meaning the program scan time exceeded the watchdog timeout value 1. Fix it by checking whether the program is caught in a loop, correcting the logic so the upper limit is not reached, rebuilding and downloading the program, and then putting the Micro800 controller back into Run mode 1. The guide notes this can happen with a Structured Text For loop that runs to the maximum value of the variable, and the watchdog setting defaults to 2 s and generally never needs to be changed 2.",
+    "citations": [
+     {
+      "n": "1",
+      "title": "micro820-um.pdf",
+      "page": "155"
+     },
+     {
+      "n": "2",
+      "title": "micro820-um.pdf",
+      "page": "68"
+     }
+    ],
+    "safety": {
+     "present": false,
+     "kind": null,
+     "first": null
+    },
+    "evidence": "Grounded in the cited documentation."
+   },
+   "cards": [
+    {
+     "title": "micro820-um.pdf",
+     "page": "155"
+    },
+    {
+     "title": "micro820-um.pdf",
+     "page": "68"
+    }
+   ],
+   "firstChip": {
+    "n": "1",
+    "title": "micro820-um.pdf",
+    "page": "155"
+   },
+   "streamStatus": "answered",
+   "errorPart": null,
+   "viewerOpened": true,
+   "viewer": {
+    "fileId": "2e303841-c0c9-4863-b1c3-e47cf3c6b66a",
+    "page": "155",
+    "manualFileId": "2e303841-c0c9-4863-b1c3-e47cf3c6b66a"
+   },
+   "sse": "data: {\"kind\":\"progress\",\"stage\":\"finding_equipment\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"searching_documentation\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"generating_answer\"}\n\ndata: {\"kind\":\"headers\",\"headers\":{\"x-mira-trace-id\":\"66cfcf42db07365aefc750a4aad6973c\"}}\n\ndata: {\"kind\":\"trace\",\"traceId\":\"66cfcf42db07365aefc750a4aad6973c\",\"turnId\":\"a1745395-8505-4a60-aa90-6edde87d60a3\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"checking_answer\"}\n\ndata: {\"kind\":\"content\",\"content\":\"0xD011 is a recoverable fault meaning the program scan time exceeded the watchdog timeout value [1]. Fix it by checking \"}\n\ndata: {\"kind\":\"content\",\"content\":\"whether the program is caught in a loop, correcting the logic so the upper limit is not reached, rebuilding and \"}\n\ndata: {\"kind\":\"content\",\"content\":\"downloading the program, and then putting the Micro800 controller back into Run mode [1].\\n\\nThe guide notes this can \"}\n\ndata: {\"kind\":\"content\",\"content\":\"happen with a Structured Text `For loop` that runs to the maximum value of the variable, and the watchdog setting \"}\n\ndata: {\"kind\":\"content\",\"content\":\"defaults to 2 s and generally never needs to be changed [2].\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[{\"citationId\":\"1\",\"docId\":\"7d139c31-e61a-4b28-aacc-679dfcd32d80\",\"sourceTitle\":\"micro820-um.pdf\",\"page\":155,\"fileId\":\"2e303841-c0c9-4863-b1c3-e47cf3c6b66a\",\"quote\":\"â€¦Get Fault Log button.\\n6. Save the fault log (.txt) file.\\n0xD011 Recoverable The program scan time exceeded the watchdog timeout\\nvalue.\\nPerform the following:\\nâ€¢ See Corrective Actions for Recoverable Faults on page 155.\\nâ€¢ Determine if the pr\",\"originFileId\":null},{\"citationId\":\"2\",\"docId\":\"7d139c31-e61a-4b28-aacc-679dfcd32d80\",\"sourceTitle\":\"micro820-um.pdf\",\"page\":68,\"fileId\":\"2e303841-c0c9-4863-b1c3-e47cf3c6b66a\",\"quote\":\"â€¦is set marginally. The Watchdog setting defaults to 2 s and\\ngenerally never needs to be changed.\\nIn firmware revision 23.011, significant usage of interrupts in the project can affect the\\nEthernet Implicit I/O messaging performance. As the \",\"originFileId\":null}],\"sourceSnapshot\":[\"7d139c31-e61a-4b28-aacc-679dfcd32d80\"]}\n\ndata: {\"kind\":\"evidence\",\"basis\":\"oem_documentation\",\"label\":\"Grounded in this notebook's sources.\"}\n\ndata: {\"kind\":\"usage\",\"provider\":\"OpenAI\",\"model\":\"gpt-5.4-mini\",\"routeReason\":\"primary\",\"inputTokens\":3172,\"cachedInputTokens\":0,\"outputTokens\":123,\"costUsdEstimate\":0.002933,\"status\":\"ok\"}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: [DONE]\n\n",
+   "elapsedMs": 62698
+  },
+  {
+   "id": "micro820-um-q2",
+   "broken": null,
+   "rendered": {
+    "answer": "0xF050 means the embedded I/O configuration in the user program is invalid 1. See the corrective actions for recoverable faults on page 155 1.",
+    "citations": [
+     {
+      "n": "1",
+      "title": "micro820-um.pdf",
+      "page": "152"
+     }
+    ],
+    "safety": {
+     "present": false,
+     "kind": null,
+     "first": null
+    },
+    "evidence": "Grounded in this notebook's sources."
+   },
+   "cards": [
+    {
+     "title": "micro820-um.pdf",
+     "page": "152"
+    }
+   ],
+   "firstChip": {
+    "n": "1",
+    "title": "micro820-um.pdf",
+    "page": "152"
+   },
+   "streamStatus": "answered",
+   "errorPart": null,
+   "viewerOpened": true,
+   "viewer": {
+    "fileId": "2e303841-c0c9-4863-b1c3-e47cf3c6b66a",
+    "page": "152",
+    "manualFileId": "2e303841-c0c9-4863-b1c3-e47cf3c6b66a"
+   },
+   "sse": "data: {\"kind\":\"progress\",\"stage\":\"finding_equipment\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"searching_documentation\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"generating_answer\"}\n\ndata: {\"kind\":\"headers\",\"headers\":{\"x-mira-trace-id\":\"f6edcf5986628eb95e45c05d7280cd55\"}}\n\ndata: {\"kind\":\"trace\",\"traceId\":\"f6edcf5986628eb95e45c05d7280cd55\",\"turnId\":\"a61191f4-1812-4569-a5c7-217052a483a8\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"checking_answer\"}\n\ndata: {\"kind\":\"content\",\"content\":\"0xF050 means the embedded I/O configuration in the user program is invalid [1]. See the corrective actions for \"}\n\ndata: {\"kind\":\"content\",\"content\":\"recoverable faults on page 155 [1].\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[{\"citationId\":\"1\",\"docId\":\"7d139c31-e61a-4b28-aacc-679dfcd32d80\",\"sourceTitle\":\"micro820-um.pdf\",\"page\":152,\"fileId\":\"2e303841-c0c9-4863-b1c3-e47cf3c6b66a\",\"quote\":\"0xF050 Recoverable The embedded I/O configuration in the user program is\\ninvalid. See Corrective Actions for Recoverable Faults on page 155.\\n0xF100 Recoverable\\nThere is general configuration error detected in the\\nmotion configuration downlo\",\"originFileId\":null}],\"sourceSnapshot\":[\"7d139c31-e61a-4b28-aacc-679dfcd32d80\"]}\n\ndata: {\"kind\":\"evidence\",\"basis\":\"oem_documentation\",\"label\":\"Grounded in this notebook's sources.\"}\n\ndata: {\"kind\":\"usage\",\"provider\":\"OpenAI\",\"model\":\"gpt-5.4-mini\",\"routeReason\":\"primary\",\"inputTokens\":3012,\"cachedInputTokens\":0,\"outputTokens\":49,\"costUsdEstimate\":0.002479,\"status\":\"ok\"}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: [DONE]\n\n",
+   "elapsedMs": 48667
+  },
+  {
+   "id": "micro820-um-q3",
+   "broken": null,
+   "rendered": {
+    "answer": "Insert the microSD card, cycle power to the controller, and wait for the SD status LED to display a steady green light; that indicates the project restore is complete 12. If this is a new controller, use ConfigMeFirst.txt in the root directory of the card to define the controller settings and the restore location 1.",
+    "citations": [
+     {
+      "n": "1",
+      "title": "micro820-um.pdf",
+      "page": "123"
+     },
+     {
+      "n": "2",
+      "title": "micro820-um.pdf",
+      "page": "124"
+     }
+    ],
+    "safety": {
+     "present": false,
+     "kind": null,
+     "first": null
+    },
+    "evidence": "Grounded in this notebook's sources."
+   },
+   "cards": [
+    {
+     "title": "micro820-um.pdf",
+     "page": "123"
+    },
+    {
+     "title": "micro820-um.pdf",
+     "page": "124"
+    }
+   ],
+   "firstChip": {
+    "n": "1",
+    "title": "micro820-um.pdf",
+    "page": "123"
+   },
+   "streamStatus": "answered",
+   "errorPart": null,
+   "viewerOpened": true,
+   "viewer": {
+    "fileId": "2e303841-c0c9-4863-b1c3-e47cf3c6b66a",
+    "page": "123",
+    "manualFileId": "2e303841-c0c9-4863-b1c3-e47cf3c6b66a"
+   },
+   "sse": "data: {\"kind\":\"progress\",\"stage\":\"finding_equipment\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"searching_documentation\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"generating_answer\"}\n\ndata: {\"kind\":\"headers\",\"headers\":{\"x-mira-trace-id\":\"66830d29cab894941f83b9676a63ef7e\"}}\n\ndata: {\"kind\":\"trace\",\"traceId\":\"66830d29cab894941f83b9676a63ef7e\",\"turnId\":\"d3cb9adc-6010-4a15-bde8-ac754d7d4e59\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"checking_answer\"}\n\ndata: {\"kind\":\"content\",\"content\":\"Insert the microSD card, cycle power to the controller, and wait for the SD status LED to display a steady green light; \"}\n\ndata: {\"kind\":\"content\",\"content\":\"that indicates the project restore is complete [1][2]. If this is a new controller, use `ConfigMeFirst.txt` in the root \"}\n\ndata: {\"kind\":\"content\",\"content\":\"directory of the card to define the controller settings and the restore location [1].\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[{\"citationId\":\"1\",\"docId\":\"7d139c31-e61a-4b28-aacc-679dfcd32d80\",\"sourceTitle\":\"micro820-um.pdf\",\"page\":123,\"fileId\":\"2e303841-c0c9-4863-b1c3-e47cf3c6b66a\",\"quote\":\"â€¦(default is Micro820\\\\USERPRJ).\\nRestore project from backup\\nThe last step is to restore the project to your controller from the microSD card. There are two\\nmethods to restore the backup, depending on the configuration of the controller.\\nExis\",\"originFileId\":null},{\"citationId\":\"2\",\"docId\":\"7d139c31-e61a-4b28-aacc-679dfcd32d80\",\"sourceTitle\":\"micro820-um.pdf\",\"page\":124,\"fileId\":\"2e303841-c0c9-4863-b1c3-e47cf3c6b66a\",\"quote\":\"â€¦root directory as the backup folder in the\\nmicroSD card.\\n1. Insert the microSD card into the microSD card slot.\\n2. Cycle power to the controller.\\n3. When the SD status LED displays a steady green light, the project restore is complete.\\nData\",\"originFileId\":null}],\"sourceSnapshot\":[\"7d139c31-e61a-4b28-aacc-679dfcd32d80\"]}\n\ndata: {\"kind\":\"evidence\",\"basis\":\"oem_documentation\",\"label\":\"Grounded in this notebook's sources.\"}\n\ndata: {\"kind\":\"usage\",\"provider\":\"OpenAI\",\"model\":\"gpt-5.4-mini\",\"routeReason\":\"primary\",\"inputTokens\":3144,\"cachedInputTokens\":0,\"outputTokens\":120,\"costUsdEstimate\":0.002898,\"status\":\"ok\"}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: [DONE]\n\n",
+   "elapsedMs": 47194
+  },
+  {
+   "id": "micro820-um-q4",
+   "broken": null,
+   "rendered": {
+    "answer": "⛔ SAFETY STOP — energized work. I won't give steps for working on this equipment while it is powered. De-energize it, lock out and tag out every energy source, and verify zero energy. Your manual's lockout / disconnect-power procedure is on p.27 — follow that page first. Once it is locked out and verified, ask again and I'll walk you through the job from the manual.",
+    "citations": [],
+    "safety": {
+     "present": true,
+     "kind": "stop",
+     "first": true
+    },
+    "evidence": null
+   },
+   "cards": [
+    {
+     "title": "Lockout / disconnect-power procedure",
+     "page": "27"
+    }
+   ],
+   "firstChip": null,
+   "streamStatus": "answered",
+   "errorPart": null,
+   "viewerOpened": true,
+   "viewer": {
+    "fileId": "2e303841-c0c9-4863-b1c3-e47cf3c6b66a",
+    "page": "27",
+    "manualFileId": "2e303841-c0c9-4863-b1c3-e47cf3c6b66a"
+   },
+   "sse": "data: {\"kind\":\"progress\",\"stage\":\"finding_equipment\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"searching_documentation\"}\n\ndata: {\"kind\":\"headers\",\"headers\":{\"x-mira-trace-id\":\"a08ed5d8e240893725d684ce7a0d3f7b\",\"x-safety-flag\":\"energized-work\"}}\n\ndata: {\"kind\":\"trace\",\"traceId\":\"a08ed5d8e240893725d684ce7a0d3f7b\",\"turnId\":\"c368b24e-ad0f-45e5-bb3f-a75efbff1215\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[{\"citationId\":\"1\",\"docId\":\"7d139c31-e61a-4b28-aacc-679dfcd32d80\",\"sourceTitle\":\"Lockout / disconnect-power procedure\",\"page\":27,\"fileId\":\"2e303841-c0c9-4863-b1c3-e47cf3c6b66a\",\"quote\":null,\"originFileId\":null}],\"sourceSnapshot\":[\"7d139c31-e61a-4b28-aacc-679dfcd32d80\"]}\n\ndata: {\"kind\":\"safety\",\"trigger\":\"energized-work\"}\n\ndata: {\"kind\":\"content\",\"content\":\"â›” **SAFETY STOP â€” energized work.**\\n\\nI won't give steps for working on this equipment while it is powered.\\n\\nDe-energize \"}\n\ndata: {\"kind\":\"content\",\"content\":\"it, lock out and tag out every energy source, and verify zero energy. Your manual's lockout / disconnect-power procedure \"}\n\ndata: {\"kind\":\"content\",\"content\":\"is on **p.27** â€” follow that page first.\\n\\nOnce it is locked out and verified, ask again and I'll walk you through the \"}\n\ndata: {\"kind\":\"content\",\"content\":\"job from the manual.\"}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: [DONE]\n\n",
+   "elapsedMs": 53674
+  },
+  {
+   "id": "micro820-um-q5",
+   "broken": null,
+   "rendered": null,
+   "cards": [],
+   "firstChip": null,
+   "streamStatus": null,
+   "errorPart": null,
+   "viewerOpened": null,
+   "sse": null,
+   "elapsedMs": 0,
+   "notAsked": "budget stop: micro820-um-q4 had unreadable or out-of-bound usage",
+   "recordedAs": "broken"
+  },
+  {
+   "id": "micro820-in-q1",
+   "broken": null,
+   "rendered": null,
+   "cards": [],
+   "firstChip": null,
+   "streamStatus": null,
+   "errorPart": null,
+   "viewerOpened": null,
+   "sse": null,
+   "elapsedMs": 0,
+   "notAsked": "budget stop: micro820-um-q4 had unreadable or out-of-bound usage",
+   "recordedAs": "broken"
+  },
+  {
+   "id": "micro820-in-q2",
+   "broken": null,
+   "rendered": null,
+   "cards": [],
+   "firstChip": null,
+   "streamStatus": null,
+   "errorPart": null,
+   "viewerOpened": null,
+   "sse": null,
+   "elapsedMs": 0,
+   "notAsked": "budget stop: micro820-um-q4 had unreadable or out-of-bound usage",
+   "recordedAs": "broken"
+  },
+  {
+   "id": "micro820-in-q3",
+   "broken": null,
+   "rendered": null,
+   "cards": [],
+   "firstChip": null,
+   "streamStatus": null,
+   "errorPart": null,
+   "viewerOpened": null,
+   "sse": null,
+   "elapsedMs": 0,
+   "notAsked": "budget stop: micro820-um-q4 had unreadable or out-of-bound usage",
+   "recordedAs": "broken"
+  },
+  {
+   "id": "micro820-in-q4",
+   "broken": null,
+   "rendered": null,
+   "cards": [],
+   "firstChip": null,
+   "streamStatus": null,
+   "errorPart": null,
+   "viewerOpened": null,
+   "sse": null,
+   "elapsedMs": 0,
+   "notAsked": "budget stop: micro820-um-q4 had unreadable or out-of-bound usage",
+   "recordedAs": "broken"
+  },
+  {
+   "id": "micro820-in-q5",
+   "broken": null,
+   "rendered": null,
+   "cards": [],
+   "firstChip": null,
+   "streamStatus": null,
+   "errorPart": null,
+   "viewerOpened": null,
+   "sse": null,
+   "elapsedMs": 0,
+   "notAsked": "budget stop: micro820-um-q4 had unreadable or out-of-bound usage",
+   "recordedAs": "broken"
+  },
+  {
+   "id": "ml1100-q1",
+   "broken": null,
+   "rendered": null,
+   "cards": [],
+   "firstChip": null,
+   "streamStatus": null,
+   "errorPart": null,
+   "viewerOpened": null,
+   "sse": null,
+   "elapsedMs": 0,
+   "notAsked": "budget stop: micro820-um-q4 had unreadable or out-of-bound usage",
+   "recordedAs": "broken"
+  },
+  {
+   "id": "ml1100-q2",
+   "broken": null,
+   "rendered": null,
+   "cards": [],
+   "firstChip": null,
+   "streamStatus": null,
+   "errorPart": null,
+   "viewerOpened": null,
+   "sse": null,
+   "elapsedMs": 0,
+   "notAsked": "budget stop: micro820-um-q4 had unreadable or out-of-bound usage",
+   "recordedAs": "broken"
+  },
+  {
+   "id": "ml1100-q3",
+   "broken": null,
+   "rendered": null,
+   "cards": [],
+   "firstChip": null,
+   "streamStatus": null,
+   "errorPart": null,
+   "viewerOpened": null,
+   "sse": null,
+   "elapsedMs": 0,
+   "notAsked": "budget stop: micro820-um-q4 had unreadable or out-of-bound usage",
+   "recordedAs": "broken"
+  },
+  {
+   "id": "ml1100-q4",
+   "broken": null,
+   "rendered": null,
+   "cards": [],
+   "firstChip": null,
+   "streamStatus": null,
+   "errorPart": null,
+   "viewerOpened": null,
+   "sse": null,
+   "elapsedMs": 0,
+   "notAsked": "budget stop: micro820-um-q4 had unreadable or out-of-bound usage",
+   "recordedAs": "broken"
+  },
+  {
+   "id": "ml1100-q5",
+   "broken": null,
+   "rendered": null,
+   "cards": [],
+   "firstChip": null,
+   "streamStatus": null,
+   "errorPart": null,
+   "viewerOpened": null,
+   "sse": null,
+   "elapsedMs": 0,
+   "notAsked": "budget stop: micro820-um-q4 had unreadable or out-of-bound usage",
+   "recordedAs": "broken"
+  },
+  {
+   "id": "smcflex-q1",
+   "broken": null,
+   "rendered": null,
+   "cards": [],
+   "firstChip": null,
+   "streamStatus": null,
+   "errorPart": null,
+   "viewerOpened": null,
+   "sse": null,
+   "elapsedMs": 0,
+   "notAsked": "budget stop: micro820-um-q4 had unreadable or out-of-bound usage",
+   "recordedAs": "broken"
+  },
+  {
+   "id": "smcflex-q2",
+   "broken": null,
+   "rendered": null,
+   "cards": [],
+   "firstChip": null,
+   "streamStatus": null,
+   "errorPart": null,
+   "viewerOpened": null,
+   "sse": null,
+   "elapsedMs": 0,
+   "notAsked": "budget stop: micro820-um-q4 had unreadable or out-of-bound usage",
+   "recordedAs": "broken"
+  },
+  {
+   "id": "smcflex-q3",
+   "broken": null,
+   "rendered": null,
+   "cards": [],
+   "firstChip": null,
+   "streamStatus": null,
+   "errorPart": null,
+   "viewerOpened": null,
+   "sse": null,
+   "elapsedMs": 0,
+   "notAsked": "budget stop: micro820-um-q4 had unreadable or out-of-bound usage",
+   "recordedAs": "broken"
+  },
+  {
+   "id": "smcflex-q4",
+   "broken": null,
+   "rendered": null,
+   "cards": [],
+   "firstChip": null,
+   "streamStatus": null,
+   "errorPart": null,
+   "viewerOpened": null,
+   "sse": null,
+   "elapsedMs": 0,
+   "notAsked": "budget stop: micro820-um-q4 had unreadable or out-of-bound usage",
+   "recordedAs": "broken"
+  },
+  {
+   "id": "smcflex-q5",
+   "broken": null,
+   "rendered": null,
+   "cards": [],
+   "firstChip": null,
+   "streamStatus": null,
+   "errorPart": null,
+   "viewerOpened": null,
+   "sse": null,
+   "elapsedMs": 0,
+   "notAsked": "budget stop: micro820-um-q4 had unreadable or out-of-bound usage",
+   "recordedAs": "broken"
+  },
+  {
+   "id": "e3plus-q1",
+   "broken": null,
+   "rendered": null,
+   "cards": [],
+   "firstChip": null,
+   "streamStatus": null,
+   "errorPart": null,
+   "viewerOpened": null,
+   "sse": null,
+   "elapsedMs": 0,
+   "notAsked": "budget stop: micro820-um-q4 had unreadable or out-of-bound usage",
+   "recordedAs": "broken"
+  },
+  {
+   "id": "e3plus-q2",
+   "broken": null,
+   "rendered": null,
+   "cards": [],
+   "firstChip": null,
+   "streamStatus": null,
+   "errorPart": null,
+   "viewerOpened": null,
+   "sse": null,
+   "elapsedMs": 0,
+   "notAsked": "budget stop: micro820-um-q4 had unreadable or out-of-bound usage",
+   "recordedAs": "broken"
+  },
+  {
+   "id": "e3plus-q3",
+   "broken": null,
+   "rendered": null,
+   "cards": [],
+   "firstChip": null,
+   "streamStatus": null,
+   "errorPart": null,
+   "viewerOpened": null,
+   "sse": null,
+   "elapsedMs": 0,
+   "notAsked": "budget stop: micro820-um-q4 had unreadable or out-of-bound usage",
+   "recordedAs": "broken"
+  },
+  {
+   "id": "e3plus-q4",
+   "broken": null,
+   "rendered": null,
+   "cards": [],
+   "firstChip": null,
+   "streamStatus": null,
+   "errorPart": null,
+   "viewerOpened": null,
+   "sse": null,
+   "elapsedMs": 0,
+   "notAsked": "budget stop: micro820-um-q4 had unreadable or out-of-bound usage",
+   "recordedAs": "broken"
+  },
+  {
+   "id": "e3plus-q5",
+   "broken": null,
+   "rendered": null,
+   "cards": [],
+   "firstChip": null,
+   "streamStatus": null,
+   "errorPart": null,
+   "viewerOpened": null,
+   "sse": null,
+   "elapsedMs": 0,
+   "notAsked": "budget stop: micro820-um-q4 had unreadable or out-of-bound usage",
+   "recordedAs": "broken"
+  },
+  {
+   "id": "smc50-q1",
+   "broken": null,
+   "rendered": null,
+   "cards": [],
+   "firstChip": null,
+   "streamStatus": null,
+   "errorPart": null,
+   "viewerOpened": null,
+   "sse": null,
+   "elapsedMs": 0,
+   "notAsked": "budget stop: micro820-um-q4 had unreadable or out-of-bound usage",
+   "recordedAs": "broken"
+  },
+  {
+   "id": "smc50-q2",
+   "broken": null,
+   "rendered": null,
+   "cards": [],
+   "firstChip": null,
+   "streamStatus": null,
+   "errorPart": null,
+   "viewerOpened": null,
+   "sse": null,
+   "elapsedMs": 0,
+   "notAsked": "budget stop: micro820-um-q4 had unreadable or out-of-bound usage",
+   "recordedAs": "broken"
+  },
+  {
+   "id": "smc50-q3",
+   "broken": null,
+   "rendered": null,
+   "cards": [],
+   "firstChip": null,
+   "streamStatus": null,
+   "errorPart": null,
+   "viewerOpened": null,
+   "sse": null,
+   "elapsedMs": 0,
+   "notAsked": "budget stop: micro820-um-q4 had unreadable or out-of-bound usage",
+   "recordedAs": "broken"
+  },
+  {
+   "id": "smc50-q4",
+   "broken": null,
+   "rendered": null,
+   "cards": [],
+   "firstChip": null,
+   "streamStatus": null,
+   "errorPart": null,
+   "viewerOpened": null,
+   "sse": null,
+   "elapsedMs": 0,
+   "notAsked": "budget stop: micro820-um-q4 had unreadable or out-of-bound usage",
+   "recordedAs": "broken"
+  },
+  {
+   "id": "smc50-q5",
+   "broken": null,
+   "rendered": null,
+   "cards": [],
+   "firstChip": null,
+   "streamStatus": null,
+   "errorPart": null,
+   "viewerOpened": null,
+   "sse": null,
+   "elapsedMs": 0,
+   "notAsked": "budget stop: micro820-um-q4 had unreadable or out-of-bound usage",
+   "recordedAs": "broken"
+  }
+ ]
+}
