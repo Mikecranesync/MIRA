@@ -125,3 +125,19 @@ describe("insertFixRecord answer-turn machine check (Codex #4058 post-cap F1)", 
     expect((await insertFixRecord(T, NB, null, V, "u1")).status).toBe("created");
   });
 });
+
+// #4060: node-postgres returns timestamptz as a JS Date. The record's createdAt
+// must still be ISO-8601 (not String(Date) = "Sun Sep 27 2026 ... GMT+0000"),
+// and the same value must reach the domain event's occurredAt.
+describe("createdAt serialization (#4060)", () => {
+  it("serializes a Date created_at as ISO-8601 on the record and the event", async () => {
+    queries.results = [SERVED_M1, { rows: [{ ...ROW, created_at: new Date("2026-09-27T17:51:55.000Z") }] }];
+    const r = await insertFixRecord(T, NB, "m1", V, "u1");
+    expect(r.status).toBe("created");
+    if (r.status !== "created") return;
+    expect(r.fix.createdAt).toBe("2026-09-27T17:51:55.000Z");
+    expect(enqueue.enqueueFixRecordedEvent.mock.calls[0][1]).toMatchObject({
+      occurredAt: "2026-09-27T17:51:55.000Z",
+    });
+  });
+});
