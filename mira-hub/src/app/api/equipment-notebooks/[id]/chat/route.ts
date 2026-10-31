@@ -191,6 +191,7 @@ import {
   retrieveNodeChunks,
   type ManualChunk,
 } from "@/lib/manual-rag";
+import { extractFaultCodes } from "@/capabilities/fault-code-token";
 import { inferEquipmentType } from "@/lib/equipment-type";
 import {
   sanitizeHistory,
@@ -476,6 +477,11 @@ function providers(): CascadeProvider[] {
       model: process.env.GEMINI_MODEL ?? "gemini-2.5-flash",
     },
   ];
+}
+
+/** A persisted evidence entry that is a shipped citation (same shape the replay reads). */
+function isCitationEntry(entry: unknown): entry is EvidenceCitation {
+  return typeof entry === "object" && entry !== null && typeof (entry as { docId?: unknown }).docId === "string";
 }
 
 /** Build numbered, per-doc citations consistent with appendManualContext's [n]
@@ -1317,6 +1323,11 @@ async function handleChatTurn(
     },
     rootSpan,
   );
+  // Pain 3 (recovery time): the technician named a fault code. Same extractor the
+  // retrieval code pass uses. Absent when the turn names none, never a null stamp.
+  if (extractFaultCodes(message).length > 0) {
+    setSpanAttrs({ "mira.chat.fault_asked": true, "mira.chat.fault_asked_at": new Date().toISOString() }, rootSpan);
+  }
   let rootEnded = false;
   // Child spans that may still be open when an early exit path ends the root
   // (identity.resolve stays open until the notebook row is loaded). endRoot()
@@ -1886,9 +1897,15 @@ async function handleChatTurn(
   // A current explicit photo owns its turn, so prior recall is skipped then.
   let priorLookRows: VisualEvidenceRow[] = [];
   let priorLookFileIds: string[] = [];
+  // Pain 3: is this the first cited answer in the thread? true = proven first (a
+  // short window with no cited answered turn); false = an earlier turn was cited;
+  // null = unknown (no read on a photo turn, a 6-turn window with none cited, or a read error).
+  let threadFirstCitedWindow: boolean | null = null;
   if (!visualEntry) {
     try {
       const recent = await listTurns(ctx.tenantId, notebookId, 6, { viewerUserId: ctx.userId, threadId });
+      const priorCited = recent.some((t) => t.answerStatus === "answered" && t.evidence.some(isCitationEntry));
+      threadFirstCitedWindow = priorCited ? false : recent.length < 6 ? true : null;
       const seen = new Set<string>();
       for (const t of [...recent].reverse()) {
         if (t.answerStatus !== "answered" || !t.answerText?.trim()) continue;
@@ -5252,6 +5269,11 @@ async function handleChatTurn(
         });
       }
       setSpanAttrs({ "mira.turn.row_id": finalTurnRowId, "mira.persist.outcome": "ok" }, finalPersistSpan);
+      // Pain 3: only the first cited answer in the thread. Absent unless the thread-level
+      // window proved no earlier cited turn (see threadFirstCitedWindow).
+      if (answerStatus === "answered" && emittedCitations.length > 0 && threadFirstCitedWindow === true) {
+        setSpanAttrs({ "mira.chat.first_cited_step_at": new Date().toISOString() }, rootSpan);
+      }
       endTimed(finalPersistSpan, "persist");
       endRoot();
       } catch (err) {

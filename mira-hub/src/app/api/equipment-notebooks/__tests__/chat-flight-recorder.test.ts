@@ -2680,3 +2680,70 @@ describe("#4075 — a confirmed identity with no manual starts, and then reports
     expect(String(fr.find((f) => f.kind === "status")?.message)).toContain("won't guess");
   });
 });
+
+// Pain 3 (recovery time): the notebook chat turn span carries whether the
+// technician named a fault code and when the first cited step was delivered.
+describe("Pain 3: fault-asked and first-cited stamps on the mira.turn root span", () => {
+  const iso = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+  const citedChunk = { docId: DOC_A, sourceUrl: "https://oem.example/tp700.pdf", title: "TP700 Comfort Operating Instructions", content: "Rated 24 VDC, 0.85 A max.", sourcePage: 12, manufacturer: "Siemens", modelNumber: "TP700", rank: 1, verified: true };
+  const nbRow = () => ({ id: NB, displayName: "Unknown box", manufacturer: null, model: null });
+  async function ask(message: string, chunks: unknown[] = [citedChunk]) {
+    domainMock.getNotebook.mockResolvedValue(nbRow() as never);
+    ragMock.retrieveNodeChunks.mockResolvedValueOnce(chunks as never);
+    vi.stubGlobal("fetch", vi.fn(async () => providerStream("Rated 24 VDC [1].")));
+    const before = Date.now();
+    await (await POST(chatReq({ message, sourceDocIds: [DOC_A] }), params)).text();
+    await vi.waitFor(() => expect(persistMock.persistTurnUsage).toHaveBeenCalledTimes(1));
+    const after = Date.now();
+    const root = handle.finished().find((s) => s.name === "mira.turn")!;
+    return { attrs: root.attributes as Record<string, unknown>, before, after };
+  }
+  const citedRow = { id: "t0", threadId: "th", question: "earlier?", answerStatus: "answered", answerText: "Rated 24 VDC [1].", evidence: [{ docId: DOC_A, citationId: "1" }], basis: null, createdAt: "2026-10-30T00:00:00.000Z", ownerUserId: "u1", sharedLegacy: false, clientRequestId: null };
+  const uncitedRow = { ...citedRow, answerText: "I cannot tell from the excerpts.", evidence: [] };
+
+  it("a turn that names a fault code stamps fault_asked and a server-clock fault_asked_at", async () => {
+    const { attrs, before, after } = await ask("F004 on the drive, what does it mean?");
+    expect(attrs["mira.chat.fault_asked"]).toBe(true);
+    const at = String(attrs["mira.chat.fault_asked_at"]);
+    expect(at).toMatch(iso);
+    expect(Date.parse(at)).toBeGreaterThanOrEqual(before);
+    expect(Date.parse(at)).toBeLessThanOrEqual(after);
+  });
+
+  it("a plain question carries neither fault attribute", async () => {
+    const { attrs } = await ask("what is the rated voltage?");
+    expect(attrs["mira.chat.fault_asked"]).toBeUndefined();
+    expect(attrs["mira.chat.fault_asked_at"]).toBeUndefined();
+  });
+
+  it("a model number is not a fault code", async () => {
+    const { attrs } = await ask("PF525 rated voltage?");
+    expect(attrs["mira.chat.fault_asked"]).toBeUndefined();
+    expect(attrs["mira.chat.fault_asked_at"]).toBeUndefined();
+  });
+
+  it("the first cited turn of a thread with no earlier turns stamps first_cited_step_at", async () => {
+    const { attrs, before, after } = await ask("rated voltage?");
+    const at = String(attrs["mira.chat.first_cited_step_at"]);
+    expect(at).toMatch(iso);
+    expect(Date.parse(at)).toBeGreaterThanOrEqual(before);
+    expect(Date.parse(at)).toBeLessThanOrEqual(after);
+  });
+
+  it("a later cited turn does not stamp first_cited_step_at once an earlier turn in the thread was cited", async () => {
+    domainMock.listTurns.mockResolvedValueOnce([citedRow] as never);
+    const { attrs } = await ask("rated voltage again?");
+    expect(attrs["mira.chat.first_cited_step_at"]).toBeUndefined();
+  });
+
+  it("an uncited answer never stamps first_cited_step_at", async () => {
+    const { attrs } = await ask("rated voltage?", []);
+    expect(attrs["mira.chat.first_cited_step_at"]).toBeUndefined();
+  });
+
+  it("a full six-turn window with no citation is unknown, so first_cited_step_at stays absent", async () => {
+    domainMock.listTurns.mockResolvedValueOnce(Array.from({ length: 6 }, () => uncitedRow) as never);
+    const { attrs } = await ask("rated voltage?");
+    expect(attrs["mira.chat.first_cited_step_at"]).toBeUndefined();
+  });
+});
