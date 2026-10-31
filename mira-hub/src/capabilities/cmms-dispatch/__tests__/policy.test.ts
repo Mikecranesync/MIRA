@@ -73,6 +73,30 @@ describe("parseWritePolicy", () => {
     expect(parseWritePolicy(raw)).toEqual({ version: 1, fixRecorded: { enabled: false } });
   });
 
+  // Codex round 3, F10: explicit incompatible values fail closed; omission keeps the default.
+  it.each([99, 0, 2, "1", null])("fails closed when version is explicitly %j (not the literal number 1)", (version) => {
+    expect(
+      parseWritePolicy({ version, fix_recorded: { enabled: true, target: { kind: "work_order", externalWorkOrderId: "7" } } }),
+    ).toEqual({ version: 1, fixRecorded: { enabled: false } });
+  });
+
+  it.each(["attach_evidence", "transition_work_order", "record_reading", "", null, 42])(
+    "fails closed when operation is explicitly %j (not append_work_log)",
+    (operation) => {
+      expect(
+        parseWritePolicy({ version: 1, fix_recorded: { enabled: true, operation, target: { kind: "work_order", externalWorkOrderId: "7" } } }),
+      ).toEqual({ version: 1, fixRecorded: { enabled: false } });
+    },
+  );
+
+  it("still parses when version and operation are omitted (defaults), and when they are the supported values", () => {
+    const expected = { version: 1, fixRecorded: { enabled: true, operation: "append_work_log", target: { kind: "work_order", externalWorkOrderId: "7" } } };
+    expect(parseWritePolicy({ fix_recorded: { enabled: true, target: { kind: "work_order", externalWorkOrderId: "7" } } })).toEqual(expected);
+    expect(
+      parseWritePolicy({ version: 1, fix_recorded: { enabled: true, operation: "append_work_log", target: { kind: "work_order", externalWorkOrderId: "7" } } }),
+    ).toEqual(expected);
+  });
+
   it("parses a valid work_order target", () => {
     const raw = { fix_recorded: { enabled: true, operation: "append_work_log", target: { kind: "work_order", externalWorkOrderId: "123" } } };
     expect(parseWritePolicy(raw)).toEqual({

@@ -103,10 +103,15 @@ const DISABLED_POLICY: WritePolicy = { version: 1, fixRecorded: { enabled: false
 export function parseWritePolicy(raw: unknown): WritePolicy {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return DISABLED_POLICY;
   const obj = raw as Record<string, unknown>;
+  // Codex round 3, F10: an EXPLICIT incompatible value fails closed. Only an
+  // omitted field takes the default — a policy that names another version or
+  // another operation did not authorize an append_work_log export.
+  if (obj.version !== undefined && obj.version !== 1) return DISABLED_POLICY;
 
   const fr = obj.fix_recorded;
   if (fr === null || typeof fr !== "object" || Array.isArray(fr)) return DISABLED_POLICY;
   const frObj = fr as Record<string, unknown>;
+  if (frObj.operation !== undefined && frObj.operation !== "append_work_log") return DISABLED_POLICY;
 
   if (frObj.enabled !== true) {
     return { version: 1, fixRecorded: { enabled: false } };

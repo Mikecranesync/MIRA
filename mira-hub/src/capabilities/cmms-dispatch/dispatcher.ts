@@ -34,13 +34,16 @@
  * that same `providerId`. Any mismatch is `blocked_policy` — retained, never
  * guessed, never written to a foreign vendor's record id.
  *
- * An ACKNOWLEDGED delivery is never written twice (Codex round 2, F7): once
- * the vendor has accepted a write (`accepted_pending_verification`, usually
- * with an `external_ref`), later ticks only READ BACK. Found once → verified;
- * found more than once → conflict; not visible yet → still pending until the
- * attempt budget quarantines it for a human. Only `outcome_unknown` (no
- * acknowledgement at all) goes back through `appendWorkLog`, whose contract
- * is read-back-then-write on the marker.
+ * A POSSIBLY-SENT delivery is never written twice (Codex round 2 F7, round 3
+ * F9): once a write may have reached the vendor — acknowledged
+ * (`accepted_pending_verification`, usually with an `external_ref`), ambiguous
+ * (`outcome_unknown`: the request was sent and the response lost), or an
+ * expired-lease reclaim whose previous owner had already pinned the
+ * destination and so may have reached the vendor before dying — later ticks
+ * only READ BACK. Found once → verified; found more than once → conflict; not
+ * visible yet → still pending until the attempt budget quarantines it for a
+ * human. Without destination-side idempotency there is no proof a write did
+ * NOT happen, so a lost write ends quarantined and visible, never duplicated.
  *
  * A single bad delivery must never stop the batch: every per-row step after
  * the claim is isolated so an unexpected throw degrades that ONE row.
@@ -172,14 +175,29 @@ type Plan = { kind: "outcome"; outcome: Outcome } | DeliverPlan;
 
 /** A claimed row plus the state it was in BEFORE this claim (the CLAIM query
  *  captures it from the locked subquery — `RETURNING d.*` alone would only
- *  ever say `leased`). An expired lease reclaim reports the last finalized
- *  state (`receipt.state`), or `queued` if the row was never finalized. */
-type ClaimedRow = DeliveryRow & { prior_state: string };
+ *  ever say `leased`) and whether it was reclaimed from an expired lease. A
+ *  reclaim reports the last finalized state (`receipt.state`), or `queued`
+ *  if the row was never finalized. */
+type ClaimedRow = DeliveryRow & { prior_state: string; reclaimed: boolean };
 
-/** Has the vendor already ACKNOWLEDGED this delivery? Then it is reconciled
- *  by read-back only — never written again (Codex round 2, F7). */
+/** Did the vendor ACKNOWLEDGE this delivery? (prior state accepted, or a
+ *  retained external_ref) — decides which pending state a not-yet-visible
+ *  read-back preserves: an ack is never downgraded, an ambiguity is never
+ *  promoted to an ack. */
 function isAcknowledged(row: ClaimedRow): boolean {
   return row.prior_state === "accepted_pending_verification" || row.external_ref !== null;
+}
+
+/** MAY a write already have reached the vendor? Then this row is reconciled
+ *  by read-back only — never written again (Codex round 2 F7, round 3 F9):
+ *  acknowledged, ambiguous (`outcome_unknown`), or reclaimed from an expired
+ *  lease whose previous owner had already PINNED the destination. PIN
+ *  precedes WRITE and only succeeds for the lease holder, so a reclaimed row
+ *  WITHOUT a pin was never written and may be delivered normally. */
+function isPossiblySent(row: ClaimedRow): boolean {
+  if (isAcknowledged(row)) return true;
+  if (row.prior_state === "outcome_unknown") return true;
+  return row.reclaimed && pinnedTargetOf(row) !== null;
 }
 
 /** The adapter, the target and the queued connection must all name the same
@@ -339,18 +357,20 @@ async function writeDelivery(row: ClaimedRow, plan: DeliverPlan, deps: DispatchD
 }
 
 /**
- * RECONCILE (Codex round 2, F7): read-only. The vendor already acknowledged
- * this write, so a second `appendWorkLog` could create a duplicate whenever
- * the vendor's search lags its own writes. Only read-back moves the row:
- * found exactly once → verified; more than once → conflict; not visible yet,
- * unsupported or failing read-back → still `accepted_pending_verification`
- * (the acknowledged `external_ref` is kept by FINALIZE's COALESCE) until the
- * attempt budget quarantines it for manual reconciliation.
+ * RECONCILE (Codex round 2 F7, round 3 F9): read-only. A write may already
+ * have reached the vendor, so a second `appendWorkLog` could create a
+ * duplicate whenever the vendor's search lags its own writes. Only read-back
+ * moves the row: found exactly once → verified; more than once → conflict;
+ * not visible yet, unsupported or failing read-back → the row KEEPS its
+ * pending state — `accepted_pending_verification` when the vendor acknowledged
+ * (the `external_ref` is kept by FINALIZE's COALESCE), `outcome_unknown` when
+ * it did not — until the attempt budget quarantines it for a human.
  */
 async function reconcileDelivery(row: ClaimedRow, plan: DeliverPlan, deps: DispatchDeps, maxAttempts: number): Promise<Outcome> {
+  const pending: DeliveryState = isAcknowledged(row) ? "accepted_pending_verification" : "outcome_unknown";
   const provider = deps.providerFor(row.connection_key);
   if (!provider) {
-    return { state: "accepted_pending_verification", reason: "provider_not_available" };
+    return { state: pending, reason: "provider_not_available" };
   }
   const mismatch = providerMismatch(row, plan, provider);
   if (mismatch) return mismatch;
@@ -361,7 +381,7 @@ async function reconcileDelivery(row: ClaimedRow, plan: DeliverPlan, deps: Dispa
     if (row.attempts >= maxAttempts) {
       return { state: "quarantined", reason: `poison: ${errMessage(err)}` };
     }
-    return { state: "accepted_pending_verification", reason: `readback_throw: ${errMessage(err)}` };
+    return { state: pending, reason: `readback_throw: ${errMessage(err)}` };
   }
   switch (readBack.kind) {
     case "found":
@@ -370,19 +390,11 @@ async function reconcileDelivery(row: ClaimedRow, plan: DeliverPlan, deps: Dispa
       }
       return { state: "verified_by_readback", externalRef: readBack.externalRef, receiptPatch: readBack.receipt };
     case "not_found":
-      return { state: "accepted_pending_verification", reason: "readback_not_yet_visible", receiptPatch: readBack.receipt };
+      return { state: pending, reason: "readback_not_yet_visible", receiptPatch: readBack.receipt };
     case "unsupported":
-      return {
-        state: "accepted_pending_verification",
-        reason: `readback_unsupported:${readBack.reason}`,
-        receiptPatch: readBack.receipt,
-      };
+      return { state: pending, reason: `readback_unsupported:${readBack.reason}`, receiptPatch: readBack.receipt };
     case "error":
-      return {
-        state: "accepted_pending_verification",
-        reason: `readback_error:${readBack.reason}`,
-        receiptPatch: readBack.receipt,
-      };
+      return { state: pending, reason: `readback_error:${readBack.reason}`, receiptPatch: readBack.receipt };
   }
 }
 
@@ -517,9 +529,10 @@ export async function runDispatchTick(deps: DispatchDeps): Promise<DispatchStats
   const stats = zeroStats();
 
   // The locked subquery also captures the state each row is claimed FROM
-  // (`prior_state`): `RETURNING d.*` alone would only ever say `leased`, and
-  // an acknowledged delivery must be reconciled, not re-written. For an
-  // expired-lease reclaim the last FINALIZED state is in `receipt.state`.
+  // (`prior_state`) and whether it is an expired-lease reclaim (`reclaimed`):
+  // `RETURNING d.*` alone would only ever say `leased`, and a possibly-sent
+  // delivery must be reconciled, not re-written. For a reclaim the last
+  // FINALIZED state is in `receipt.state`.
   const claimRes = await pool.query<ClaimedRow>(
     `UPDATE notebook_event_deliveries d
         SET state = 'leased',
@@ -529,7 +542,8 @@ export async function runDispatchTick(deps: DispatchDeps): Promise<DispatchStats
             updated_at = now()
        FROM (
          SELECT delivery_id,
-                CASE WHEN state = 'leased' THEN COALESCE(receipt->>'state', 'queued') ELSE state END AS prior_state
+                CASE WHEN state = 'leased' THEN COALESCE(receipt->>'state', 'queued') ELSE state END AS prior_state,
+                (state = 'leased') AS reclaimed
            FROM notebook_event_deliveries
           WHERE next_attempt_at <= now()
             AND ((state = ANY($2::text[])) OR (state = 'leased' AND lease_until < now()))
@@ -538,7 +552,7 @@ export async function runDispatchTick(deps: DispatchDeps): Promise<DispatchStats
           FOR UPDATE SKIP LOCKED
        ) s
       WHERE d.delivery_id = s.delivery_id
-    RETURNING d.*, s.prior_state`,
+    RETURNING d.*, s.prior_state, s.reclaimed`,
     [Math.round(leaseMs / 1000), RETRYABLE_STATES as readonly string[], batchSize],
   );
   stats.claimed = claimRes.rows.length;
@@ -591,9 +605,10 @@ export async function runDispatchTick(deps: DispatchDeps): Promise<DispatchStats
           stats.leaseLost++;
           continue;
         }
-        // WRITE or RECONCILE (outside any transaction): an acknowledged
-        // delivery is only ever read back, never written again (F7).
-        outcome = isAcknowledged(row)
+        // WRITE or RECONCILE (outside any transaction): a delivery that may
+        // already have reached the vendor is only ever read back, never
+        // written again (F7, F9).
+        outcome = isPossiblySent(row)
           ? await reconcileDelivery(row, plan, deps, maxAttempts)
           : await writeDelivery(row, plan, deps, maxAttempts);
       }

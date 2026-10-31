@@ -358,7 +358,7 @@ describe.skipIf(!URL_)("cmms-dispatch (real Postgres)", () => {
     expect(mock.records("WO-AC7")).toHaveLength(1);
   });
 
-  it("AC8: lost_response → outcome_unknown, then a second tick finds it by read-back → verified, exactly one record", async () => {
+  it("AC8: lost_response → outcome_unknown, then a second tick reconciles it by read-back only (no second append) → verified, exactly one record", async () => {
     const tenantId = uuid();
     const notebookId = await makeNotebook(tenantId);
     await setCmmsConfig(tenantId, { writePolicy: workOrderPolicy("WO-AC8") });
@@ -388,6 +388,8 @@ describe.skipIf(!URL_)("cmms-dispatch (real Postgres)", () => {
     ]);
     expect(row.rows[0]!.state).toBe("verified_by_readback");
     expect(mock.records("WO-AC8")).toHaveLength(1);
+    // Round 3 (F9): the second tick never calls appendWorkLog — read-back only.
+    expect(mock.calls.map((c) => c.op)).toEqual(["appendWorkLog", "readBackWorkLog"]);
   });
 
   it("AC9: poison (throw) quarantines after maxAttempts while a sibling aggregate verifies in the same ticks", async () => {
@@ -546,7 +548,7 @@ describe.skipIf(!URL_)("cmms-dispatch (real Postgres)", () => {
 
   // ── Codex round 1 remediation proofs (PR #5024) ────────────────────────────
 
-  it("F1: a retry after a lost response reconciles against the PINNED work order, never a retargeted one", async () => {
+  it("F1: a read-back reconciliation after a lost response targets the PINNED work order, never a retargeted one", async () => {
     const tenantId = uuid();
     const notebookId = await makeNotebook(tenantId);
     await setCmmsConfig(tenantId, { writePolicy: workOrderPolicy("WO-F1-A") });
@@ -876,6 +878,179 @@ describe.skipIf(!URL_)("cmms-dispatch (real Postgres)", () => {
     expect(content).toContain(symptom);
     expect(content).toContain("fault code: F0004");
     expect(content).toContain(fix);
+  });
+
+  // ── Codex round 3 (F9, F10) ──────────────────────────────────────────────
+
+  /** A fake Atlas v1.6+ whose create COMMITS but whose response is lost on the
+   *  first call (network error after send), and whose search lags until
+   *  `visible` is flipped. */
+  function lossyAtlas(): { api: AtlasCommentApi; stored: AtlasComment[]; creates: () => number; show: () => void } {
+    let visible = false;
+    let nextId = 1;
+    let creates = 0;
+    const stored: AtlasComment[] = [];
+    const api: AtlasCommentApi = {
+      async countComments() {
+        return { count: stored.length };
+      },
+      async createComment(payload) {
+        creates++;
+        stored.push({ id: nextId++, content: payload.content, system: false });
+        if (creates === 1) throw new TypeError("fetch failed"); // committed, response lost
+        return stored[stored.length - 1]!;
+      },
+      async searchComments() {
+        return visible ? [...stored] : [];
+      },
+    };
+    return { api, stored, creates: () => creates, show: () => void (visible = true) };
+  }
+
+  it("F9 (round 3): a committed-but-lost write (outcome_unknown) whose read-back lags is reconciled read-only — exactly one create, then verified", async () => {
+    const atlas = lossyAtlas();
+    const provider = new AtlasWriteProvider(atlas.api);
+    const tenantId = uuid();
+    const notebookId = await makeNotebook(tenantId);
+    await setCmmsConfig(tenantId, { provider: "atlas", writePolicy: workOrderPolicy("9") });
+    const deliveryId = requireDeliveryId((await enqueueOne(tenantId, notebookId)).result.delivery);
+    const deps = { providerFor: () => provider, tenantAllowlist: new Set([tenantId]) };
+
+    const s1 = await runDispatchTick(deps);
+    expect(s1.unknown).toBe(1);
+    expect(atlas.creates()).toBe(1);
+    let row = await testPool.query<{ state: string; external_ref: string | null; last_error: string | null }>(
+      `SELECT state, external_ref, last_error FROM notebook_event_deliveries WHERE delivery_id = $1`,
+      [deliveryId],
+    );
+    expect(row.rows[0]!.state).toBe("outcome_unknown");
+    expect(row.rows[0]!.external_ref).toBeNull();
+
+    // Still invisible: the dispatcher must NOT create again, and must not
+    // pretend the vendor acknowledged anything.
+    await testPool.query(`UPDATE notebook_event_deliveries SET next_attempt_at = now() WHERE delivery_id = $1`, [deliveryId]);
+    const s2 = await runDispatchTick(deps);
+    expect(s2.unknown).toBe(1);
+    expect(atlas.creates()).toBe(1);
+    expect(atlas.stored).toHaveLength(1);
+    row = await testPool.query(`SELECT state, external_ref, last_error FROM notebook_event_deliveries WHERE delivery_id = $1`, [deliveryId]);
+    expect(row.rows[0]!.state).toBe("outcome_unknown");
+    expect(row.rows[0]!.external_ref).toBeNull();
+    expect(row.rows[0]!.last_error).toBe("readback_not_yet_visible");
+
+    atlas.show();
+    await testPool.query(`UPDATE notebook_event_deliveries SET next_attempt_at = now() WHERE delivery_id = $1`, [deliveryId]);
+    const s3 = await runDispatchTick(deps);
+    expect(s3.verified).toBe(1);
+    expect(atlas.creates()).toBe(1);
+    expect(atlas.stored).toHaveLength(1);
+    row = await testPool.query(`SELECT state, external_ref, last_error FROM notebook_event_deliveries WHERE delivery_id = $1`, [deliveryId]);
+    expect(row.rows[0]!.state).toBe("verified_by_readback");
+    expect(row.rows[0]!.external_ref).toBe("1");
+  });
+
+  it("F9b (round 3): persistent uncertainty quarantines at the budget WITHOUT another create", async () => {
+    const atlas = lossyAtlas(); // never made visible
+    const provider = new AtlasWriteProvider(atlas.api);
+    const tenantId = uuid();
+    const notebookId = await makeNotebook(tenantId);
+    await setCmmsConfig(tenantId, { provider: "atlas", writePolicy: workOrderPolicy("9") });
+    const deliveryId = requireDeliveryId((await enqueueOne(tenantId, notebookId)).result.delivery);
+    const deps = { providerFor: () => provider, tenantAllowlist: new Set([tenantId]), maxAttempts: 2 };
+
+    const s1 = await runDispatchTick(deps);
+    expect(s1.unknown).toBe(1);
+    await testPool.query(`UPDATE notebook_event_deliveries SET next_attempt_at = now() WHERE delivery_id = $1`, [deliveryId]);
+    const s2 = await runDispatchTick(deps);
+    expect(s2.quarantined).toBe(1);
+    expect(atlas.creates()).toBe(1);
+    expect(atlas.stored).toHaveLength(1);
+    const row = await testPool.query<{ state: string; last_error: string | null }>(
+      `SELECT state, last_error FROM notebook_event_deliveries WHERE delivery_id = $1`,
+      [deliveryId],
+    );
+    expect(row.rows[0]!.state).toBe("quarantined");
+    expect(row.rows[0]!.last_error).toBe("max_attempts_unreconciled:outcome_unknown");
+  });
+
+  it("F9c (round 3): an expired-lease reclaim whose previous owner had PINNED the destination is reconciled, never re-written; one that never pinned is delivered", async () => {
+    const tenantId = uuid();
+    const notebookId = await makeNotebook(tenantId);
+    await setCmmsConfig(tenantId, { provider: "atlas", writePolicy: workOrderPolicy("WO-F9C") });
+
+    // (a) A worker pinned WO-F9C, then died before (or during) the write: its
+    // lease has expired and the receipt carries the pin. The write may have
+    // landed, so the reclaiming worker must only read back.
+    const pinnedId = requireDeliveryId((await enqueueOne(tenantId, notebookId)).result.delivery);
+    await testPool.query(
+      `UPDATE notebook_event_deliveries
+          SET state = 'leased', lease_token = gen_random_uuid(), lease_until = now() - interval '1 second',
+              attempts = 1, receipt = receipt || $2::jsonb
+        WHERE delivery_id = $1`,
+      [pinnedId, JSON.stringify({ pinned_target: { providerId: "atlas", externalWorkOrderId: "WO-F9C", source: "work_order", pinnedAt: new Date().toISOString() } })],
+    );
+    const mock = new MockCmmsWriteProvider({ providerId: "atlas" });
+    const s1 = await runDispatchTick({ providerFor: () => mock, tenantAllowlist: new Set([tenantId]) });
+    expect(s1.claimed).toBe(1);
+    expect(s1.unknown).toBe(1);
+    expect(mock.calls.map((c) => c.op)).toEqual(["readBackWorkLog"]);
+    expect(mock.records("WO-F9C")).toHaveLength(0);
+    const rowA = await testPool.query<{ state: string }>(`SELECT state FROM notebook_event_deliveries WHERE delivery_id = $1`, [pinnedId]);
+    expect(rowA.rows[0]!.state).toBe("outcome_unknown");
+
+    // (b) Control: a reclaim whose previous owner never got as far as the pin
+    // was never written — it is delivered normally.
+    await testPool.query(`DELETE FROM notebook_event_deliveries WHERE delivery_id = $1`, [pinnedId]);
+    const unpinnedId = requireDeliveryId((await enqueueOne(tenantId, notebookId)).result.delivery);
+    await testPool.query(
+      `UPDATE notebook_event_deliveries
+          SET state = 'leased', lease_token = gen_random_uuid(), lease_until = now() - interval '1 second', attempts = 1
+        WHERE delivery_id = $1`,
+      [unpinnedId],
+    );
+    const mockB = new MockCmmsWriteProvider({ providerId: "atlas" });
+    const s2 = await runDispatchTick({ providerFor: () => mockB, tenantAllowlist: new Set([tenantId]) });
+    expect(s2.verified).toBe(1);
+    expect(mockB.calls.map((c) => c.op)).toEqual(["appendWorkLog"]);
+    expect(mockB.records("WO-F9C")).toHaveLength(1);
+  });
+
+  it("F10 (round 3): a policy that explicitly names another version or operation never dispatches — no delivery at enqueue, blocked on retry", async () => {
+    // (a) Explicitly incompatible at enqueue time → the record is saved, no delivery row.
+    const tenantA = uuid();
+    const nbA = await makeNotebook(tenantA);
+    await setCmmsConfig(tenantA, {
+      provider: "atlas",
+      writePolicy: { version: 99, fix_recorded: { enabled: true, operation: "attach_evidence", target: { kind: "work_order", externalWorkOrderId: "7" } } },
+    });
+    const a = (await enqueueOne(tenantA, nbA)).result.delivery;
+    expect(a.deliveryId).toBeNull();
+    if (a.deliveryId !== null) throw new Error("expected no delivery row");
+    expect(a.reason).toBe("policy_disabled");
+    const mockA = new MockCmmsWriteProvider({ providerId: "atlas" });
+    const sA = await runDispatchTick({ providerFor: () => mockA, tenantAllowlist: new Set([tenantA]) });
+    expect(sA.claimed).toBe(0);
+    expect(mockA.calls).toHaveLength(0);
+
+    // (b) Valid at enqueue, flipped to a non-append operation before dispatch → blocked, zero calls.
+    const tenantB = uuid();
+    const nbB = await makeNotebook(tenantB);
+    await setCmmsConfig(tenantB, { provider: "atlas", writePolicy: workOrderPolicy("WO-F10") });
+    const b = requireDeliveryId((await enqueueOne(tenantB, nbB)).result.delivery);
+    await setCmmsConfig(tenantB, {
+      provider: "atlas",
+      writePolicy: { version: 1, fix_recorded: { enabled: true, operation: "attach_evidence", target: { kind: "work_order", externalWorkOrderId: "WO-F10" } } },
+    });
+    const mockB = new MockCmmsWriteProvider({ providerId: "atlas" });
+    const sB = await runDispatchTick({ providerFor: () => mockB, tenantAllowlist: new Set([tenantB]) });
+    expect(sB.blocked).toBe(1);
+    expect(mockB.calls).toHaveLength(0);
+    const row = await testPool.query<{ state: string; last_error: string | null }>(
+      `SELECT state, last_error FROM notebook_event_deliveries WHERE delivery_id = $1`,
+      [b],
+    );
+    expect(row.rows[0]!.state).toBe("blocked_policy");
+    expect(row.rows[0]!.last_error).toBe("policy_disabled");
   });
 
 });
