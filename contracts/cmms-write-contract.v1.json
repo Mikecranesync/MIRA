@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://factorylm.com/contracts/cmms-write-contract/v1",
+  "title": "FactoryLM vendor-neutral CMMS write contract v1 (#5020)",
+  "description": "Language-neutral twin of mira-hub/src/lib/cmms/write-contract.ts. A provider adapter (Atlas first, in-memory mock second, Python mira-mcp adapters later) reports support per operation and per target at runtime, returns exactly one closed-set outcome per write, and never treats a legacy error dict or an empty body as success. Delivery is at-least-once with explicit deduplication on the marker; outcome_unknown is reconciled by read-back, never by a blind second write.",
+  "operations": [
+    "append_work_log",
+    "attach_evidence",
+    "record_reading",
+    "transition_work_order",
+    "read_work_log",
+    "list_changes"
+  ],
+  "support": ["implemented", "unsupported", "unknown"],
+  "writeResultKinds": [
+    "success",
+    "accepted_pending_verification",
+    "verified_by_readback",
+    "unsupported",
+    "permission_denied",
+    "conflict",
+    "retryable_failure",
+    "permanent_failure",
+    "outcome_unknown"
+  ],
+  "readBackResultKinds": ["found", "not_found", "unsupported", "error"],
+  "deliveryStates": [
+    "queued",
+    "leased",
+    "accepted_pending_verification",
+    "verified_by_readback",
+    "conflict",
+    "unsupported",
+    "permission_denied",
+    "retryable_failure",
+    "permanent_failure",
+    "outcome_unknown",
+    "quarantined",
+    "blocked_policy"
+  ],
+  "retryableStates": ["queued", "retryable_failure", "outcome_unknown", "accepted_pending_verification"],
+  "$defs": {
+    "WorkOrderTarget": {
+      "type": "object",
+      "required": ["providerId", "externalWorkOrderId"],
+      "properties": {
+        "providerId": { "type": "string" },
+        "externalWorkOrderId": { "type": "string" }
+      }
+    },
+    "WorkLogNote": {
+      "type": "object",
+      "required": ["idempotencyKey", "marker", "text", "attributionLabel", "occurredAt", "sourceRef"],
+      "properties": {
+        "idempotencyKey": { "type": "string" },
+        "marker": { "type": "string", "pattern": "^\\[MIRA:[0-9a-f-]{36}\\]$" },
+        "text": { "type": "string" },
+        "attributionLabel": { "type": "string" },
+        "occurredAt": { "type": "string", "format": "date-time" },
+        "sourceRef": { "type": "string", "description": "'<table>:<id>' audit reference, never a URL" }
+      }
+    },
+    "Capability": {
+      "type": "object",
+      "required": ["support"],
+      "properties": {
+        "support": { "enum": ["implemented", "unsupported", "unknown"] },
+        "reason": { "type": "string" },
+        "probe": { "type": "string" }
+      }
+    }
+  },
+  "atlasSupportAtDeployedDigest": {
+    "backendImage": "intelloop/atlas-cmms-backend@sha256:21c42377dd758dbc4a9aa1676e62b01a13cf8822b0ecd3019b274b53c2369b1e",
+    "upstream": "github.com/Grashjs/cmms, build pushed 2026-03-27 (post-v1.5.0, pre-v1.5.1)",
+    "append_work_log": "unsupported — CommentController first appears upstream 2026-04-08 (v1.6.0); WorkOrderPatchDTO has no feedback field; PATCH /tasks/work-order/{id} replaces the whole task list",
+    "attach_evidence": "unknown — POST /files/upload exists but is gated by a license entitlement check",
+    "read_work_log": "unsupported at this digest; implemented for v1.6.0+ via POST /comments/search/{workOrderId}"
+  }
+}

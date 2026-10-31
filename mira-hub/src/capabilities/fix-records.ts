@@ -14,6 +14,7 @@
 
 import { createHash } from "node:crypto";
 import { withTenantContext } from "@/lib/tenant-context";
+import { enqueueFixRecordedEvent, type EnqueueResult } from "@/capabilities/cmms-dispatch";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -121,7 +122,10 @@ function mapRow(r: Record<string, unknown>): FixRecord {
 }
 
 export type InsertFixResult =
-  | { status: "created"; fix: FixRecord }
+  /** `event` is the domain event enqueued in the SAME transaction (#5020):
+   *  its delivery is `queued` only when the tenant's CMMS connection policy
+   *  opted in; otherwise the record is `saved` and nothing leaves the Hub. */
+  | { status: "created"; fix: FixRecord; event: EnqueueResult }
   | { status: "existing"; fix: FixRecord }
   | { status: "request_id_conflict" }
   | { status: "binding_changed" }
@@ -213,7 +217,26 @@ export async function insertFixRecord(
         fingerprint,
       ],
     );
-    if (res.rows.length > 0) return { status: "created", fix: mapRow(res.rows[0] as Record<string, unknown>) };
+    if (res.rows.length > 0) {
+      const fix = mapRow(res.rows[0] as Record<string, unknown>);
+      // #5020 slice B: the accepted record and its domain event commit together
+      // (same withTenantContext transaction, same client). If the event cannot
+      // be written the fix is not written either — never a saved fix whose
+      // event silently vanished, never an event for a fix that rolled back.
+      const event = await enqueueFixRecordedEvent(c, {
+        tenantId,
+        notebookId,
+        fixRecordId: fix.id,
+        sourceTurnId: input.sourceTurnId,
+        equipmentEntityId: fix.equipmentEntityId,
+        symptom: fix.symptom,
+        faultCode: fix.faultCode,
+        fix: fix.fix,
+        recordedBy,
+        occurredAt: fix.createdAt,
+      });
+      return { status: "created", fix, event };
+    }
     const prior = await c.query(
       `SELECT ${RETURN_COLS}, request_fingerprint FROM asset_fix_records
         WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND client_request_id = $3::uuid`,
