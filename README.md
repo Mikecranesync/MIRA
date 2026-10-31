@@ -1,78 +1,109 @@
-# MIRA — Maintenance Intelligence & Response Assistant
+# FactoryLM MIRA: your crew's machines, your manuals, the page cited
 
-> **⚠️ PRODUCT FRAMING UPDATE (2026-07-11):** This README describes the infrastructure layer. The **first
-> sellable product is Drive Commander**, a read-only VFD troubleshooting tool (issue #2577, PR #2504,
-> ADR-0025). The generic "AI-powered maintenance diagnostics" framing below is foundational but no
-> longer the lead pitch — **start at the [Drive Commander ADR](docs/adr/0025-drive-intelligence-packs-and-drive-commander.md)
-> and [product strategy](NORTH_STAR.md)** to understand the current direction. **See also the canonical
-> wedge statement in [NORTH_STAR.md](NORTH_STAR.md).**
+**Built around your crew's machines, not a generic chatbot.**
 
-**FactoryLM is the maintenance-context layer that makes a factory's messy reality trustworthy enough for AI.
-MIRA is the grounded agent that proves it by diagnosing with cited sources.**
+MIRA gives each of your machines its own notebook with its OEM manual.
+A technician asks a question in plain words.
+MIRA answers from that manual and shows the page, so the tech can check the source before acting.
+If the manual doesn't cover it, MIRA says so instead of guessing.
 
-The first product delivering this vision is **Drive Commander** — context-led, read-only VFD fault intelligence
-on a phone. Earlier framing (generic "copilot", whole-plant "signal difference engine") is archived; see
-`docs/product/` for those framings' superseded-by headers.
+<!-- hero-desktop.png: prod v3.416.11, Oct 23, 2026, sidebar cropped out. Fallback: docs/assets/cited-page-57-desktop.png -->
+![MIRA on desktop: a Micro810 supply-voltage question, the answer with citation [1], and the manual open at page 57 of 126](docs/assets/hero-desktop.png)
+
+**[Talk to Mike about a pilot →](mailto:mike@factorylm.com?subject=MIRA%20pilot%20inquiry)**
 
 ---
 
-## Where do I go?
+## Why it's different
 
-### 🏭 I'm a customer / plant user
-- **Live product:** [app.factorylm.com](https://app.factorylm.com)
-- **Marketing site:** [factorylm.com](https://factorylm.com)
-- **Product documentation:** [docs/product/](docs/product/)
-  - [What is MIRA?](docs/product/what-is-mira.md)
-  - [Getting started](docs/product/getting-started.md)
-  - [QR asset tagging](docs/product/qr-system.md)
-  - [CMMS integration](docs/product/cmms-integration.md)
-  - [Troubleshooting](docs/product/troubleshooting.md)
+**Your documents, not the internet.**
+A generic chatbot answers from anywhere and can't show its source.
+MIRA answers from the manual attached to that machine and cites the page.
 
-### 👩‍💻 I'm a developer or operator
-- **🗺️ Start here — [Codebase flowchart](docs/architecture/CODEBASE_FLOWCHART.md)** (system map, chat-turn paths, ingest, ship flow)
-- **Developer documentation:** [docs/developer/](docs/developer/)
-  - [Architecture overview](docs/developer/architecture.md)
-  - [Local setup](docs/developer/local-setup.md)
-  - [Deployment](docs/developer/deployment.md)
-  - [Contributing](docs/developer/contributing.md)
+**Checked before day one.**
+We load your manuals and check them before your crew starts, so answers come from your documents with the page cited.
 
-### 🔧 Reference material
-- [All environment variables](docs/env-vars.md)
-- [Architecture Decision Records](docs/adr/)
-- [Runbooks](docs/runbooks/)
-- [Known issues](docs/known-issues.md)
-- [Changelog](docs/CHANGELOG.md)
+**Honest when the manual is silent.**
+If the answer isn't in the manual, MIRA says so. It doesn't make something up.
+
+## What we've shown on the live app
+
+These are specific tests, not accuracy rates.
+
+- **Cited answers.** On a Rockwell Micro810 manual, the same question asked 5 times got the right answer citing page 57 all 5 times.[^p1]
+- **No guessing.** On 5 questions the manual doesn't cover, MIRA said so every time, with no citation.[^p7]
+- **One click to the page.** On a desktop browser, the citation opens the manual at the cited page.[^p8]
+- **Browser to Android app.** A conversation started in the browser continued in the Android app and back, with cited answers (tested on an Android emulator).[^p9]
+- **Manuals tested so far:** Rockwell, Festo and ABB.[^p5]
+- **No passwords.** Sign in with an emailed link.[^p2]
+
+## See it: ask, then check the page
+
+1. Open the machine's notebook. Its manual is already attached (example: Rockwell Micro810 user manual, 126 pages).
+2. Ask about the supply voltage, for example *"What is the supply voltage for the Micro810?"*
+3. MIRA answers with the supply voltage range for each model and cites **page 57**.
+4. On a desktop browser, click the citation. The manual opens at page 57, so you can see the answer for yourself.
+
+<!-- answer-phone.png: prod v3.416.11, Oct 23, 2026. Shows the answer and its citation only, not the opened page (phone citations: R4). -->
+![MIRA answer to a Micro810 supply-voltage question at phone width, with a citation to the manual file and page 57](docs/assets/answer-phone.png)
+
+*Phone-width view: the answer names its source file and page. To open the page itself, use a desktop browser for now.*
+
+## The pilot
+
+- **One crew.** Your maintenance team, not the whole company.
+- **Your machines.** A few machines you choose.
+- **Your manuals.** We load and check them before day one.
+- **Real questions.** Your crew uses it on the job and you decide whether it earns a place in your shop.
+
+Mike Harper, the founder, works with plants onsite in Central Florida or remotely.[^p6]
+
+**[Talk to Mike about a pilot →](mailto:mike@factorylm.com?subject=MIRA%20pilot%20inquiry)**
+
+Email works best if you include your machines and manuals.
+
+## What MIRA is (and isn't) for
+
+**For:** finding what your machine's manual says, fast, with the page to prove it.
+
+**Not for:**
+- **Safety, fault-reset, restart or lockout procedures.** Use your site procedure and qualified people.[^r3]
+- **Replacing your CMMS** or reading PLC data. It doesn't write work orders.[^p3][^p4]
+- **Any manual off the shelf.** We check yours first. Scanned PDFs without text aren't supported yet.[^r1]
+
+**Good to know:**
+- Ask again and the wording can change, or MIRA can decline. Check the cited page.[^r7]
+- For now, check citations on a desktop browser. Phone citations are still being improved.[^r4]
+- The Android app has been tested on an emulator. There's no app-store listing yet.
+
+**Coming later, not in a pilot today:** crew invites, equipment history across shifts, guided troubleshooting, automatic manual finding, nameplate photo lookup, OCR for scanned PDFs.
+
+Passing our own tests isn't the same as working in your plant. A pilot is how we find out together.
 
 ---
 
-## What MIRA does, in one minute
+## For developers and contributors
 
-1. A technician walks up to a faulting machine.
-2. They scan a QR sticker on the equipment (or type in the asset tag, or upload a nameplate photo).
-3. MIRA opens a chat pre-loaded with the asset's vendor, model, service history, and recent faults.
-4. The technician describes the symptom — by voice or text.
-5. MIRA asks diagnostic questions, pulls the relevant page from the manual, and proposes a fix.
-6. When the fault is resolved, MIRA auto-generates the CMMS work order closeout. One tap to confirm.
-
-Competitive differentiators: asset-scoped entry, industrial knowledge grounding (25K+ chunks across 100+ vendors), voice-first mobile UX, Atlas/MaintainX/Limble/Fiix CMMS integration.
-
----
-
-## Requirements (for self-hosting)
-
-- Docker + Docker Compose v2.20+
-- [Doppler CLI](https://docs.doppler.com/docs/install-cli) — all secrets via Doppler
-- Ollama running on host at `localhost:11434`
-- macOS (Apple Silicon preferred) or Linux
-- NeonDB account (free tier works for development)
-
-Full setup walkthrough: [docs/developer/local-setup.md](docs/developer/local-setup.md)
-
----
+Setup, architecture, runbooks and contribution guidelines are in **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)**.
 
 ## License
 
-Proprietary — Copyright (c) 2026 Cranesync. All rights reserved. See [LICENSE](LICENSE).
-Third-party bundled dependencies retain their original open-source licenses.
+Proprietary. Copyright (c) 2026 Cranesync. All rights reserved. See [LICENSE](LICENSE).
 
-For licensing inquiries: [mike@cranesync.com](mailto:mike@cranesync.com)
+---
+
+**Evidence.** Each claim above links to a proof. The public claims registry is being added in [#4570](https://github.com/Mikecranesync/MIRA/pull/4570) at `mira-web/src/capabilities/marketing-claims/capabilities.json`.
+
+[^p1]: Prod, Oct 23, 2026, build v3.416.11: 5 of 5 fresh threads cited page 57 (first shown Oct 19 and 21; [#4607](https://github.com/Mikecranesync/MIRA/issues/4607)).
+[^p7]: Prod, Oct 23, 2026, build v3.416.11: 5 of 5 out-of-manual test questions (first shown Oct 21; [#4607](https://github.com/Mikecranesync/MIRA/issues/4607)).
+[^p8]: Prod, Oct 23, 2026, build v3.416.11, desktop browser. Screenshot above.
+[^p9]: Android emulator round trip: prod, Oct 21, 2026, build v3.410.0, with the real app build, ABB ACS150 manual cited page 130. Web side re-checked on prod v3.416.11, Oct 23, 2026. [Proof](docs/proofs/2026-10-21-golden-conversation-prod-web-emulator.md), [#4619](https://github.com/Mikecranesync/MIRA/pull/4619).
+[^p5]: Rockwell Micro810/Micro820, Festo, and ABB ACS150 test runs, Oct 17–21, 2026. [#4619](https://github.com/Mikecranesync/MIRA/pull/4619).
+[^p2]: Sign-in at [app.factorylm.com](https://app.factorylm.com), audited Oct 18, 2026.
+[^p6]: Founder statement.
+[^p3]: Product scope. See [factorylm.com/limitations](https://factorylm.com/limitations).
+[^p4]: Product scope. See [factorylm.com/limitations](https://factorylm.com/limitations).
+[^r3]: Staging retest, Oct 23, 2026: 0 of 7 fault-reset questions got safety framing. [#4565](https://github.com/Mikecranesync/MIRA/issues/4565).
+[^r7]: Staging, Oct 21 and Oct 23, 2026: the same question was answered, then refused.
+[^r1]: Staging and prod measurements, Oct 18–23, 2026.
+[^r4]: Staging, Oct 21, 2026, 390 px wide screen.
