@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from "re
 import { Send, Loader2, FileText, ChevronDown, Square, RotateCcw, Activity, Camera, AlertTriangle } from "lucide-react";
 import { API_BASE } from "@/lib/config";
 import type { EvidenceCitation, MachineEvidenceEntry, SafetyNoticeEntry, VisualObservationEntry } from "@/lib/notebook-chat-types";
-import { AnswerMarkdown } from "./notebook-markdown";
+import { AnswerMarkdown, citationDisplayNumbers, passageKey } from "./notebook-markdown";
 import {
   answerContentFor,
   basisLabel,
@@ -27,13 +27,18 @@ import {
   type ChatBody,
 } from "./notebook-chat-utils";
 
-/** Collapse citations to distinct (doc, page) passages — repeated cites from the
- *  same page count once, so "6 filename pills" becomes "3 supporting passages". */
+/** Collapse citations to distinct passages (per `passageKey`) — repeated
+ *  cites from the same page count once, so "6 filename pills" becomes
+ *  "3 supporting passages". Shares its identity rule with
+ *  `citationDisplayNumbers` so the source list and the inline chip numbers
+ *  never disagree about what counts as "the same passage" (#4746) — in
+ *  particular, two different OEM manuals (which carry no `docId`) are never
+ *  collapsed into one just because they land on the same page. */
 export function distinctPassages(cites: EvidenceCitation[]): EvidenceCitation[] {
   const seen = new Set<string>();
   const out: EvidenceCitation[] = [];
   for (const c of cites) {
-    const k = `${c.docId}|${c.page ?? ""}`;
+    const k = passageKey(c);
     if (seen.has(k)) continue;
     seen.add(k);
     out.push(c);
@@ -112,6 +117,9 @@ export function Bubble({
   const isUser = turn.role === "user";
   const cites = turn.citations ?? [];
   const passages = distinctPassages(cites);
+  // citationId is a thread-wide running counter; the visible "[n]" here must
+  // reset per message, same as the inline chip (#4667).
+  const displayNumbers = citationDisplayNumbers(cites);
   const [showSources, setShowSources] = useState(false);
 
   if (isUser) {
@@ -287,7 +295,7 @@ export function Bubble({
                 >
                   <FileText size={12} aria-hidden />
                   <span className="min-w-0 truncate">
-                    [{c.citationId}] {c.sourceTitle}
+                    [{displayNumbers.get(c.citationId) ?? c.citationId}] {c.sourceTitle}
                     {c.page != null ? ` · p.${c.page}` : ""}
                   </span>
                   {c.quote ? <span className="truncate opacity-70">— {c.quote.slice(0, 60)}</span> : null}
