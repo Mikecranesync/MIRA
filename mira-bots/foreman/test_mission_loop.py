@@ -159,11 +159,24 @@ class TestACExactSHAForReview:
         assert not result.allowed
         assert "charlie" in result.reason.lower()
 
-    def test_reviewer_must_use_codex(self):
+    def test_reviewer_accepts_claude_or_codex(self):
+        """Mike decision 2026-09-17: Allow Claude for adversarial review on Charlie."""
         policy = _fresh_policy()
-        result = policy.dispatch_reviewer(git_ref=HEAD_SHA, session_id="rev-1", provider="claude")
+        # Claude accepted (current standing order)
+        result = policy.dispatch_reviewer(git_ref=HEAD_SHA, session_id="rev-claude", provider="claude")
+        assert result.allowed
+        assert policy.state.reviewer.provider == "claude"
+        # Codex also accepted (may return later)
+        policy2 = _fresh_policy()
+        result2 = policy2.dispatch_reviewer(git_ref=HEAD_SHA, session_id="rev-codex", provider="codex")
+        assert result2.allowed
+        assert policy2.state.reviewer.provider == "codex"
+
+    def test_reviewer_rejects_unknown_provider(self):
+        policy = _fresh_policy()
+        result = policy.dispatch_reviewer(git_ref=HEAD_SHA, session_id="rev-1", provider="gpt")
         assert not result.allowed
-        assert "codex" in result.reason.lower()
+        assert "claude or codex" in result.reason.lower()
 
     def test_valid_reviewer_dispatch_records_sha(self):
         policy = _fresh_policy()
@@ -172,7 +185,7 @@ class TestACExactSHAForReview:
         assert policy.state.reviewer is not None
         assert policy.state.reviewer.git_ref == HEAD_SHA
         assert policy.state.reviewer.node == "charlie"
-        assert policy.state.reviewer.provider == "codex"
+        assert policy.state.reviewer.provider == "claude"  # Default is now claude
 
 
 # ---------------------------------------------------------------------------
@@ -622,3 +635,88 @@ class TestVerifierRecordBinding:
         result = ForemanPolicy.load_state(state.to_json()).evaluate_go_no_go()
         assert result.verdict == "NO-GO"
         assert not any("re-review the current revision" in g for g in result.human_gates)
+
+
+# ---------------------------------------------------------------------------
+# IR verdict contract — BLOCKED | ERROR terminal incomplete outcomes
+# ---------------------------------------------------------------------------
+
+
+class TestIRVerdictContract:
+    """IR verdict contract (PR #3836): BLOCKED | ERROR are terminal incomplete outcomes."""
+
+    def test_reviewer_verdict_accepts_blocked(self):
+        policy = _fresh_policy()
+        policy.dispatch_reviewer(HEAD_SHA, session_id="cao-review-blocked")
+        result = policy.record_reviewer_verdict("BLOCKED")
+        assert result.allowed is True
+        assert policy.state.reviewer_verdict == "BLOCKED"
+
+    def test_reviewer_verdict_accepts_error(self):
+        policy = _fresh_policy()
+        policy.dispatch_reviewer(HEAD_SHA, session_id="cao-review-error")
+        result = policy.record_reviewer_verdict("ERROR")
+        assert result.allowed is True
+        assert policy.state.reviewer_verdict == "ERROR"
+
+    def test_verifier_verdict_accepts_blocked(self):
+        policy = _fresh_policy()
+        policy._state.head_sha = HEAD_SHA
+        policy._state.pr_url = PR_URL
+        policy.dispatch_reviewer(HEAD_SHA, session_id="cao-review-1")
+        policy.record_reviewer_verdict("PASS")
+        policy.dispatch_verifier(HEAD_SHA, session_id="cao-verify-blocked")
+        result = policy.record_verifier_verdict("BLOCKED")
+        assert result.allowed is True
+        assert policy.state.verifier_verdict == "BLOCKED"
+
+    def test_verifier_verdict_accepts_error(self):
+        policy = _fresh_policy()
+        policy._state.head_sha = HEAD_SHA
+        policy._state.pr_url = PR_URL
+        policy.dispatch_reviewer(HEAD_SHA, session_id="cao-review-2")
+        policy.record_reviewer_verdict("PASS")
+        policy.dispatch_verifier(HEAD_SHA, session_id="cao-verify-error")
+        result = policy.record_verifier_verdict("ERROR")
+        assert result.allowed is True
+        assert policy.state.verifier_verdict == "ERROR"
+
+    def test_no_go_when_reviewer_blocked(self):
+        policy = _fresh_policy()
+        policy._state.head_sha = HEAD_SHA
+        policy._state.pr_url = PR_URL
+        policy.dispatch_reviewer(HEAD_SHA, session_id="cao-review-blocked-2")
+        policy.record_reviewer_verdict("BLOCKED")
+        result = policy.evaluate_go_no_go()
+        assert result.verdict == "NO-GO"
+
+    def test_no_go_when_reviewer_error(self):
+        policy = _fresh_policy()
+        policy._state.head_sha = HEAD_SHA
+        policy._state.pr_url = PR_URL
+        policy.dispatch_reviewer(HEAD_SHA, session_id="cao-review-error-2")
+        policy.record_reviewer_verdict("ERROR")
+        result = policy.evaluate_go_no_go()
+        assert result.verdict == "NO-GO"
+
+    def test_no_go_when_verifier_blocked(self):
+        policy = _fresh_policy()
+        policy._state.head_sha = HEAD_SHA
+        policy._state.pr_url = PR_URL
+        policy.dispatch_reviewer(HEAD_SHA, session_id="cao-review-3")
+        policy.record_reviewer_verdict("PASS")
+        policy.dispatch_verifier(HEAD_SHA, session_id="cao-verify-blocked-2")
+        policy.record_verifier_verdict("BLOCKED")
+        result = policy.evaluate_go_no_go()
+        assert result.verdict == "NO-GO"
+
+    def test_no_go_when_verifier_error(self):
+        policy = _fresh_policy()
+        policy._state.head_sha = HEAD_SHA
+        policy._state.pr_url = PR_URL
+        policy.dispatch_reviewer(HEAD_SHA, session_id="cao-review-4")
+        policy.record_reviewer_verdict("PASS")
+        policy.dispatch_verifier(HEAD_SHA, session_id="cao-verify-error-2")
+        policy.record_verifier_verdict("ERROR")
+        result = policy.evaluate_go_no_go()
+        assert result.verdict == "NO-GO"
