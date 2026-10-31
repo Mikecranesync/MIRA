@@ -353,3 +353,63 @@ describe("updateNotebook — changing the machine drops identity_status to candi
     expect(setOf(updateCall())).not.toContain("identity_status");
   });
 });
+
+// #4083: a revised manual (same filename, same notebook) supersedes the prior
+// version for retrieval. Rows are kept (superseded_at), never deleted, so the
+// history stays auditable and reversible.
+describe("attachSource supersedes a prior same-named revision (#4083)", () => {
+  const SUPERSEDE = /UPDATE equipment_notebook_sources SET superseded_at = now\(\)/;
+  beforeEach(() => {
+    rowsByMatch.push({ re: /FROM equipment_notebooks WHERE tenant_id/, rows: [{ id: NB }] });
+  });
+
+  it("a confirmed revision supersedes the prior same-named source in this notebook, keeping the row", async () => {
+    poolMock.query.mockResolvedValueOnce({ rows: [{ id: DOC, filename: "GS10_Manual.pdf" }] }); // ownership
+    poolMock.query.mockResolvedValueOnce({ rows: [{ id: DOC2 }] }); // prior same-named uploads
+    const res = await attachSource(TENANT, NB, DOC, { matchState: "user_confirmed" });
+    expect(res).toEqual({ ok: true });
+    const sup = callFor(SUPERSEDE);
+    expect(sup).toBeDefined();
+    expect(sup!.sql).toContain("origin_file_id IS NULL");
+    expect(sup!.sql).toContain("doc_id <> $3::uuid");
+    expect(sup!.sql).toContain("doc_id = ANY($4::uuid[])");
+    expect(sup!.params).toEqual([TENANT, NB, DOC, [DOC2]]);
+    // History is kept: the revision supersedes, it never deletes.
+    expect(calls.some((c) => /DELETE FROM equipment_notebook_sources/.test(c.sql))).toBe(false);
+  });
+
+  it("the prior-version lookup matches the filename case- and whitespace-insensitively, excluding the new doc", async () => {
+    poolMock.query.mockResolvedValueOnce({ rows: [{ id: DOC, filename: "GS10_Manual.pdf" }] });
+    poolMock.query.mockResolvedValueOnce({ rows: [] });
+    await attachSource(TENANT, NB, DOC, { matchState: "user_confirmed" });
+    const lookup = poolMock.query.mock.calls[1] as [string, unknown[]];
+    expect(lookup[0]).toContain("FROM hub_uploads");
+    expect(lookup[0]).toContain("lower(btrim(filename)) = lower(btrim($2))");
+    expect(lookup[0]).toContain("id <> $3");
+    expect(lookup[1]).toEqual([TENANT, "GS10_Manual.pdf", DOC]);
+  });
+
+  it("no prior same-named upload means no supersede write", async () => {
+    poolMock.query.mockResolvedValueOnce({ rows: [{ id: DOC, filename: "GS10_Manual.pdf" }] });
+    poolMock.query.mockResolvedValueOnce({ rows: [] });
+    await attachSource(TENANT, NB, DOC, { matchState: "user_confirmed" });
+    expect(callFor(SUPERSEDE)).toBeUndefined();
+  });
+
+  it("a system candidate attach never supersedes a human-confirmed revision", async () => {
+    poolMock.query.mockResolvedValueOnce({ rows: [{ id: DOC, filename: "GS10_Manual.pdf" }] });
+    poolMock.query.mockResolvedValueOnce({ rows: [{ id: DOC2 }] });
+    await attachSource(TENANT, NB, DOC, { matchState: "candidate" });
+    expect(callFor(SUPERSEDE)).toBeUndefined();
+  });
+
+  it("a photo-derived attach (origin file) never runs the filename supersede", async () => {
+    poolMock.query.mockResolvedValueOnce({ rows: [{ id: DOC, filename: "GS10_Manual.pdf" }] });
+    poolMock.query.mockResolvedValueOnce({ rows: [{ id: DOC2 }] });
+    await attachSource(TENANT, NB, DOC, {
+      matchState: "user_confirmed",
+      originFileId: "66666666-6666-4666-8666-666666666666",
+    });
+    expect(callFor(SUPERSEDE)).toBeUndefined();
+  });
+});
