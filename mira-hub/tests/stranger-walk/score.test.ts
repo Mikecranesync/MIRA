@@ -388,6 +388,17 @@ describe("frozen manuals are reproduced before any account exists (OEM URLs are 
     expect(signup).toBeGreaterThan(abort);
     expect(spec.slice(signup)).not.toContain("await manualBytes(");
   });
+  it("the workflow seeds the cache from the private mirror after actions/cache and before the walk, with the token never echoed", () => {
+    const yml = readFileSync(path.join(__dirname, "../../../.github/workflows/stranger-walk.yml"), "utf8");
+    const cache = yml.indexOf("uses: actions/cache@");
+    const seed = yml.indexOf("gh release download frozen-2026-10-15 -R Mikecranesync/mira-stranger-walk-manuals");
+    const walk = yml.indexOf("- name: Walk");
+    expect(cache).toBeGreaterThan(-1);
+    expect(seed).toBeGreaterThan(cache);
+    expect(walk).toBeGreaterThan(seed);
+    expect(yml.slice(seed, walk)).toMatch(/--pattern "\*\.pdf"/);
+    expect(yml.slice(cache, walk)).not.toMatch(/echo .*GITHUB_PAT|echo .*GH_TOKEN/);
+  });
   it("the hint names the fix, not just the failure", () => {
     expect(FROZEN_MANUAL_HINT).toMatch(/STRANGER_WALK_CACHE/);
     expect(FROZEN_MANUAL_HINT).toMatch(/<sha256>\.pdf/);

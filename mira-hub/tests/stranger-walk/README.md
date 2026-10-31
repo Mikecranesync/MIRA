@@ -95,8 +95,16 @@ ASSESSED with the reason, the rest are scored. To make a run reproducible, put a
 of each PDF in `$STRANGER_WALK_CACHE` named `<sha256>.pdf` (the cache key in `corpus.json`). Known
 sha-verified copies: CHARLIE `~/MIRA/.planning/retrieval-phase0/manuals/`, BRAVO
 `~/.factorylm/imib-manuals/`. The PDFs are OEM copyright and the repository is public, so they are
-**never committed**; the workflow's `actions/cache` only spares a download, and a cold cache
-reproduces nothing. A private, durable mirror the workflow can read is an owner decision (open).
+**never committed**. The durable home is the **private** repository
+`Mikecranesync/mira-stranger-walk-manuals`, release `frozen-2026-10-15` (owner decision 2026-10-31:
+the VPS object store is firewalled from GitHub, so a private repo it is). The workflow seeds its
+cache from that release before the walk (read token: the stg Doppler `GITHUB_PAT`); the
+`actions/cache` step then only spares the download. Locally:
+
+```bash
+gh release download frozen-2026-10-15 -R Mikecranesync/mira-stranger-walk-manuals \
+  -D "$STRANGER_WALK_CACHE" --pattern '*.pdf' --clobber
+```
 
 ## Spend (zero-token rule)
 
