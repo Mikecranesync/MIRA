@@ -14,8 +14,28 @@ import functools
 import logging
 import os
 import sqlite3
+import uuid
 
 logger = logging.getLogger("mira.chat_tenant")
+
+
+def canonicalize_tenant_id(value: object) -> str:
+    """Canonicalize a tenant id for equality checks.
+
+    A value that parses as a UUID becomes ``str(uuid.UUID(...))``.
+    Any other value is compared byte-for-byte: no strip, no case fold,
+    no other normalization. ``None`` becomes ``""``.
+    """
+    if value is None:
+        return ""
+    text = str(value)
+    if not text:
+        return ""
+    try:
+        return str(uuid.UUID(text))
+    except (ValueError, AttributeError, TypeError):
+        return text
+
 
 _DB_PATH: str = os.environ.get("MIRA_DB_PATH", "/data/mira.db")
 
@@ -83,6 +103,19 @@ def _db_lookup(chat_id: str) -> str | None:
     except sqlite3.Error as exc:
         logger.error("Cannot connect to DB at %s: %s", _DB_PATH, exc)
         return None
+
+
+def resolve_mapped_only(chat_id: str) -> str:
+    """Return the stored tenant_id for chat_id without env/default fallback.
+
+    Returns the mapping from chat_tenant_map only. No MIRA_TENANT_ID,
+    no rag.tenant_id. Used for authenticated write operations where
+    a tenant_id must be explicit and not derived from env.
+    """
+    stored = _db_lookup(chat_id)
+    if stored is not None:
+        return stored
+    return ""
 
 
 def resolve(chat_id: str) -> str:

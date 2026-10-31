@@ -19,6 +19,7 @@ import httpx
 
 from . import print_recall, quality_gate
 from .answer_qc import qc_mode, run_output_qc
+from .chat_tenant import canonicalize_tenant_id, resolve_mapped_only
 from .chat_tenant import resolve as resolve_tenant
 from .citation_compliance import SOURCES_BLOCK_RE as _SOURCES_BLOCK_RE
 from .citation_compliance import check_citation_compliance as _check_citation_compliance
@@ -3046,6 +3047,13 @@ class Supervisor:
         # supply one, followed by the Supervisor's configured default.
         resolved_tenant = tenant_id or resolve_tenant(chat_id) or self.rag.tenant_id
 
+        # Write-tenant is separate: CMMS writes require explicit tenant_id from
+        # the caller, not env/default resolution. Derived from explicit tenant_id
+        # or the chat mapping only, never from MIRA_TENANT_ID or rag.tenant_id.
+        # If neither source has a tenant, write_tenant is ""; fail-closed writes
+        # will refuse it per F2.
+        write_tenant = tenant_id or resolve_mapped_only(chat_id)
+
         # Telemetry trace
         t = tl_trace("supervisor.process", user_id=chat_id)
         trace_id = t.id
@@ -3185,7 +3193,13 @@ class Supervisor:
                     message[:120],
                 )
             else:
-                return await self._handle_cmms_pending(chat_id, message, state, trace_id)
+                # Tenant is resolved once above. The confirm path must not
+                # re-resolve via resolve_tenant / MIRA_TENANT_ID / chat_id.
+                # Pass write_tenant (explicit or mapped-only) not resolved_tenant
+                # (which includes env fallback). See F2.
+                return await self._handle_cmms_pending(
+                    chat_id, message, state, trace_id, tenant_id=write_tenant
+                )
 
         # PM suggestion pending: user is answering a follow-up PM proposal.
         if (state.get("context") or {}).get("pm_suggestion_pending") and not photo_b64:
@@ -3260,7 +3274,7 @@ class Supervisor:
             # call (see `dialogue_acts._shortcircuit_act`).
             if _DST_ENABLED:
                 _dst_result = await self._maybe_dispatch_via_dst(
-                    chat_id, message, state, trace_id, sc, resolved_tenant
+                    chat_id, message, state, trace_id, sc, resolved_tenant, tenant_id=write_tenant
                 )
                 if _dst_result is not None:
                     return _dst_result
@@ -3281,7 +3295,9 @@ class Supervisor:
                     chat_id,
                     message[:80],
                 )
-                return await self._handle_wo_request(chat_id, message, state, trace_id)
+                return await self._handle_wo_request(
+                    chat_id, message, state, trace_id, tenant_id=write_tenant
+                )
 
             # Stage 0 (2026-06-06) — live-tag query fast-path (Q2 fix).
             # Fires when the user's QUESTION (not the status block) names a
@@ -3322,7 +3338,9 @@ class Supervisor:
                     state.get("state"),
                     message[:80],
                 )
-                return self._handle_dont_know_followup(chat_id, message, state, trace_id)
+                return self._handle_dont_know_followup(
+                    chat_id, message, state, trace_id, tenant_id=write_tenant
+                )
 
             # LLM conversation router — determines what the user wants THIS turn.
             # Runs in parallel with the synchronous keyword classifier as a fast fallback.
@@ -3668,7 +3686,9 @@ class Supervisor:
 
             # Router-exclusive dispatches — intents the keyword classifier doesn't handle
             if _router_intent == "log_work_order":
-                return await self._handle_wo_request(chat_id, message, state, trace_id)
+                return await self._handle_wo_request(
+                    chat_id, message, state, trace_id, tenant_id=write_tenant
+                )
 
             if _router_intent == "switch_asset":
                 return await self._handle_asset_switch(
@@ -4530,6 +4550,10 @@ class Supervisor:
             wo_auto.chat_id = chat_id
             wo_auto.fsm_state_at_creation = "RESOLVED"
             wo_dict = wo_auto.to_dict()
+            # Stamp the authenticated tenant into the draft (F1). The canonical
+            # tenant at draft-creation time is write_tenant (explicit or
+            # mapped-only). Later confirmation must match this.
+            wo_dict["tenant_id"] = write_tenant
             ctx["cmms_pending"] = True
             ctx["cmms_wo_draft"] = wo_dict
             preview = format_wo_preview(wo_auto)
@@ -4655,8 +4679,28 @@ class Supervisor:
             "asset_label": asset,
         }
 
-    async def _post_cmms_work_order(self, wo: UNSWorkOrder) -> str:
-        """Create work order in Atlas CMMS and Hub NeonDB. Returns confirmation string."""
+    async def _post_cmms_work_order(self, wo: UNSWorkOrder, *, tenant_id: str) -> str:
+        """Create work order in Atlas CMMS and Hub NeonDB. Returns confirmation string.
+
+        Hub reads/writes are scoped to the authenticated ``tenant_id`` passed
+        by the caller (``process_full`` → ``_handle_cmms_pending``). Never
+        read ``MIRA_TENANT_ID`` here, never take tenant_id from the WO
+        payload, and never call ``resolve_tenant`` from this method —
+        ``chat_tenant.resolve`` falls back to ``MIRA_TENANT_ID`` for
+        unmapped chats, which is the original bleed if a caller forgets
+        to pass the auth tenant (#3237). An empty ``tenant_id`` raises
+        before any Atlas or Hub write.
+        """
+        if not tenant_id:
+            raise RuntimeError("tenant_required")
+
+        auth_tenant = tenant_id
+        payload_tenant = getattr(wo, "tenant_id", None)
+        if payload_tenant not in (None, "") and canonicalize_tenant_id(
+            payload_tenant
+        ) != canonicalize_tenant_id(auth_tenant):
+            raise RuntimeError("tenant_mismatch")
+
         atlas_wo_id: str | None = None
         hub_wo_number: str | None = None
 
@@ -4674,25 +4718,23 @@ class Supervisor:
         atlas_wo_id = str(result.get("id", "unknown"))
 
         # --- Hub NeonDB (fire-and-forget; failure doesn't block the reply) ---
-        tenant_id = os.getenv("MIRA_TENANT_ID", wo.chat_id or "")
-        if tenant_id:
-            hub_result = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: create_hub_work_order(
-                    tenant_id=tenant_id,
-                    user_id=wo.chat_id or "mira-bot",
-                    title=wo.title,
-                    description=wo.to_atlas_description(),
-                    priority=wo.priority,
-                    asset_name=wo.asset,
-                    wo_number=f"MIRA-{atlas_wo_id}",
-                    source="telegram_text",
-                ),
-            )
-            if "error" not in hub_result:
-                hub_wo_number = hub_result.get("work_order_number", "")
-            else:
-                logger.warning("Hub NeonDB WO write skipped: %s", hub_result["error"])
+        hub_result = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: create_hub_work_order(
+                tenant_id=auth_tenant,
+                user_id=wo.chat_id or "mira-bot",
+                title=wo.title,
+                description=wo.to_atlas_description(),
+                priority=wo.priority,
+                asset_name=wo.asset,
+                wo_number=f"MIRA-{atlas_wo_id}",
+                source="telegram_text",
+            ),
+        )
+        if "error" not in hub_result:
+            hub_wo_number = hub_result.get("work_order_number", "")
+        else:
+            logger.warning("Hub NeonDB WO write skipped: %s", hub_result["error"])
 
         label = hub_wo_number or f"#{atlas_wo_id}"
         return f"Work order {label} created in CMMS for {wo.asset or 'equipment'} ✓"
@@ -4705,8 +4747,18 @@ class Supervisor:
         message: str,
         state: dict,
         trace_id: str,
+        *,
+        tenant_id: str,
     ) -> dict:
-        """Handle tech response to WO preview: yes/no, edit instructions, or missing-field supply."""
+        """Handle tech response to WO preview: yes/no, edit instructions, or missing-field supply.
+
+        ``tenant_id`` is required and must already be resolved by
+        ``process_full``. This method does not call ``resolve_tenant``,
+        read ``MIRA_TENANT_ID``, or treat ``chat_id`` as a tenant. An
+        empty tenant refuses before any write and before any state mutation
+        other than an explicit decline, which always cancels (#4759 F3).
+        """
+        auth_tenant = tenant_id
         ctx = state.get("context") or {}
         wo_draft = ctx.get("cmms_wo_draft", {})
 
@@ -4718,6 +4770,52 @@ class Supervisor:
             w in msg_lower for w in self._CMMS_NO if len(w) > 3
         )
 
+        # F4 (#4759 Codex R2): a draft belongs to the tenant that created it.
+        # An authenticated session for a different tenant may not preview,
+        # edit, confirm or cancel it. A legacy unstamped draft may only be
+        # declined (no content shown); it is never previewed, edited or
+        # adopted. An empty-tenant session keeps the F3 decline below.
+        if tenant_id and wo_draft:
+            draft_tenant = wo_draft.get("tenant_id")
+            if draft_tenant in (None, ""):
+                foreign = not is_no
+            else:
+                foreign = canonicalize_tenant_id(draft_tenant) != canonicalize_tenant_id(tenant_id)
+            if foreign:
+                reply = (
+                    "I can't use the pending work order on this chat — the session "
+                    "tenant doesn't match the account that created it, so I can't "
+                    "show, change or log it here."
+                )
+                self._record_exchange(chat_id, state, message, reply)
+                tl_flush()
+                return self._make_result(
+                    reply, "none", trace_id, "RESOLVED", dispatch_kind="cmms_pending"
+                )
+
+        # F3: a decline cancels even without a tenant; nothing is written.
+        if is_no:
+            ctx.pop("cmms_wo_draft", None)
+            ctx.pop("cmms_pending", None)
+            state["context"] = ctx
+            self._save_state(chat_id, state)
+            reply = "Understood — no work order logged. Let me know if you need anything else."
+            self._record_exchange(chat_id, state, message, reply)
+            tl_flush()
+            return self._make_result(
+                reply, "none", trace_id, "RESOLVED", dispatch_kind="cmms_pending"
+            )
+
+        if not tenant_id:
+            reply = (
+                "I can't log this work order — the session has no tenant. "
+                "The draft is still here. Say **no** to cancel it."
+            )
+            tl_flush()
+            return self._make_result(
+                reply, "none", trace_id, "RESOLVED", dispatch_kind="cmms_pending"
+            )
+
         # Check for edit instructions before yes/no — edits keep cmms_pending alive.
         if not is_yes and not is_no:
             edited = apply_wo_edit(wo_draft, message)
@@ -4725,7 +4823,7 @@ class Supervisor:
                 ctx["cmms_wo_draft"] = edited
                 state["context"] = ctx
                 self._save_state(chat_id, state)
-                wo = UNSWorkOrder(**edited)
+                wo = UNSWorkOrder(**{k: v for k, v in edited.items() if k != "tenant_id"})
                 reply = "Updated.\n\n" + format_wo_preview(wo)
                 self._record_exchange(chat_id, state, message, reply)
                 tl_flush()
@@ -4738,7 +4836,9 @@ class Supervisor:
                 ctx["cmms_wo_draft"] = {**wo_draft, "asset": message.strip()[:80]}
                 state["context"] = ctx
                 self._save_state(chat_id, state)
-                wo = UNSWorkOrder(**ctx["cmms_wo_draft"])
+                wo = UNSWorkOrder(
+                    **{k: v for k, v in ctx["cmms_wo_draft"].items() if k != "tenant_id"}
+                )
                 reply = "Got it — asset set.\n\n" + format_wo_preview(wo)
                 self._record_exchange(chat_id, state, message, reply)
                 tl_flush()
@@ -4750,7 +4850,9 @@ class Supervisor:
                 ctx["cmms_wo_draft"] = {**wo_draft, "fault_description": message.strip()[:500]}
                 state["context"] = ctx
                 self._save_state(chat_id, state)
-                wo = UNSWorkOrder(**ctx["cmms_wo_draft"])
+                wo = UNSWorkOrder(
+                    **{k: v for k, v in ctx["cmms_wo_draft"].items() if k != "tenant_id"}
+                )
                 reply = "Got it — fault description noted.\n\n" + format_wo_preview(wo)
                 self._record_exchange(chat_id, state, message, reply)
                 tl_flush()
@@ -4763,7 +4865,7 @@ class Supervisor:
             ctx["cmms_pending"] = True
             state["context"] = ctx
             self._save_state(chat_id, state)
-            wo = UNSWorkOrder(**wo_draft)
+            wo = UNSWorkOrder(**{k: v for k, v in wo_draft.items() if k != "tenant_id"})
             reply = (
                 "Say **yes** to log this work order, **no** to cancel, "
                 "or correct any field (e.g. *asset is Pump A3*).\n\n"
@@ -4774,13 +4876,35 @@ class Supervisor:
                 reply, "none", trace_id, "RESOLVED", dispatch_kind="cmms_pending"
             )
 
-        # Consume the pending state now that we have a definitive yes/no.
+        # Tenant check before any pending-state mutation. A rejected
+        # cross-tenant yes must leave cmms_pending / cmms_wo_draft intact
+        # so the confirmation is not consumed (Gate-7 on #3237 / #4759).
+        if is_yes and wo_draft:
+            # F1 (#4759): a draft must carry the tenant that created it. An
+            # unstamped (legacy) draft is refused, never adopted by the
+            # confirming tenant.
+            payload_tenant = wo_draft.get("tenant_id")
+            if payload_tenant in (None, "") or canonicalize_tenant_id(
+                payload_tenant
+            ) != canonicalize_tenant_id(auth_tenant):
+                reply = (
+                    "I can't log this work order — the session tenant doesn't match. "
+                    "The draft is still here. Say **yes** after correcting it, or **no** to cancel."
+                )
+                self._record_exchange(chat_id, state, message, reply)
+                tl_flush()
+                return self._make_result(
+                    reply, "none", trace_id, "RESOLVED", dispatch_kind="cmms_pending"
+                )
+
+        # Consume the pending state now that we have a definitive yes/no
+        # that is tenant-safe.
         ctx.pop("cmms_wo_draft", None)
         ctx.pop("cmms_pending", None)
         state["context"] = ctx
 
         if is_yes and wo_draft:
-            wo = UNSWorkOrder(**wo_draft)
+            wo = UNSWorkOrder(**{k: v for k, v in wo_draft.items() if k != "tenant_id"})
 
             # Validation gate — must have asset, title, fault_description.
             if not wo.is_valid:
@@ -4804,7 +4928,7 @@ class Supervisor:
                 )
 
             try:
-                reply = await self._post_cmms_work_order(wo)
+                reply = await self._post_cmms_work_order(wo, tenant_id=auth_tenant)
                 log_uns_event(wo)
                 logger.info(
                     "CMMS_WO_CREATED chat_id=%s title=%r uns=%s", chat_id, wo.title, wo.uns_topic
@@ -6868,9 +6992,14 @@ class Supervisor:
         return "", ""
 
     async def _handle_wo_request(
-        self, chat_id: str, message: str, state: dict, trace_id: str
+        self, chat_id: str, message: str, state: dict, trace_id: str, *, tenant_id: str = ""
     ) -> dict:
-        """Router detected 'log_work_order' intent — build WO draft from context + message."""
+        """Router detected 'log_work_order' intent — build WO draft from context + message.
+
+        ``tenant_id`` is the authenticated/mapped tenant. If empty, the draft
+        is still created (F3 allows "no" without tenant) but cannot be confirmed
+        as a write until a tenant is available.
+        """
         # Parse asset + fault from the message itself (cold "create WO for X — Y" pattern).
         parsed_asset, parsed_fault = self._parse_asset_fault_from_message(message)
 
@@ -6887,6 +7016,10 @@ class Supervisor:
         wo.chat_id = chat_id
         wo.fsm_state_at_creation = state.get("state", "IDLE")
         wo_dict = wo.to_dict()
+        # Stamp the authenticated tenant into the draft (F1). Empty is allowed
+        # at creation (user can still say "no" to cancel), but must be present
+        # and matching for writes.
+        wo_dict["tenant_id"] = tenant_id
         ctx = state.get("context") or {}
         ctx["cmms_pending"] = True
         ctx["cmms_wo_draft"] = wo_dict
@@ -6904,7 +7037,7 @@ class Supervisor:
         )
 
     def _handle_dont_know_followup(
-        self, chat_id: str, message: str, state: dict, trace_id: str
+        self, chat_id: str, message: str, state: dict, trace_id: str, *, tenant_id: str = ""
     ) -> dict:
         """Stage 0 (2026-05-04) handler for "I don't know" answers to MIRA's
         pending question.
@@ -6960,6 +7093,8 @@ class Supervisor:
         trace_id: str,
         sc: dict,
         resolved_tenant,
+        *,
+        tenant_id: str = "",
     ) -> dict | None:
         """Run one turn through the dialogue state tracker.
 
@@ -7034,7 +7169,9 @@ class Supervisor:
         if kind == DISPATCH_ACTION_INTERRUPT:
             action = plan.payload.get("action")
             if action == "log_work_order":
-                return await self._handle_wo_request(chat_id, message, state, trace_id)
+                return await self._handle_wo_request(
+                    chat_id, message, state, trace_id, tenant_id=tenant_id
+                )
             if action == "switch_asset":
                 return await self._handle_asset_switch(chat_id, message, state, trace_id)
             if action == "reset":
@@ -7047,7 +7184,9 @@ class Supervisor:
 
         # Priority 3 — slot-level dispatches we own
         if kind == DISPATCH_SLOT_DONT_KNOW:
-            return self._handle_dont_know_followup(chat_id, message, state, trace_id)
+            return self._handle_dont_know_followup(
+                chat_id, message, state, trace_id, tenant_id=tenant_id
+            )
 
         # Priority 4 — meta-control (cancel / reset / skip / back / stop)
         if kind == DISPATCH_META:
