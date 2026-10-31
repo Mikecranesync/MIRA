@@ -197,7 +197,10 @@ class _FakeProv:
 def _cascade():
     # Cerebras archived 2026-09-29. Since 2026-10-11 OpenAI LEADS the cascade
     # (gpt-5 dialect: max_completion_tokens); since 2026-10-14 OpenRouter is the
-    # backup tier right behind it (text + vision), then Groq → Together.
+    # backup tier right behind it (text + vision), then Groq → Together. The
+    # router still BUILDS Groq and Together while their keys are set, but since
+    # 2026-10-31 neither is EXPECTED (both deprecated, #4438 / #5008), so the
+    # fake cascade keeps them to prove that unexpected members are ignored.
     return [
         _FakeProv("openai", cap_key="max_completion_tokens"),
         _FakeProv(
@@ -210,12 +213,12 @@ def _cascade():
     ]
 
 
-def _run_main(monkeypatch, *, vision_ok: bool, tmp_path: Path, providers=None):
+def _run_main(monkeypatch, *, vision_ok: bool, tmp_path: Path, providers=None, probe=None):
     fake_router = types.ModuleType("shared.inference.router")
     built = _cascade() if providers is None else providers
     fake_router._build_providers = lambda: built
     monkeypatch.setitem(sys.modules, "shared.inference.router", fake_router)
-    monkeypatch.setattr(phc, "_probe", lambda *a: (True, 5, ""))
+    monkeypatch.setattr(phc, "_probe", probe or (lambda *a, **k: (True, 5, "")))
     monkeypatch.setattr(
         phc,
         "_vision_probe",
@@ -230,9 +233,11 @@ def _run_main(monkeypatch, *, vision_ok: bool, tmp_path: Path, providers=None):
 def test_main_all_up_exits_zero_and_reports_vision(monkeypatch, tmp_path, capsys) -> None:
     code, gh = _run_main(monkeypatch, vision_ok=True, tmp_path=tmp_path)
     assert code == 0
-    assert "vision_up_count=2" in gh and "vision_down_count=0" in gh
+    assert "vision_up_count=1" in gh and "vision_down_count=0" in gh
     out = capsys.readouterr().out
-    assert "together-vision" in out and "openrouter-vision" in out
+    assert "openrouter-vision" in out
+    # Together carries a vision model but is deprecated (not EXPECTED): no probe.
+    assert "together-vision" not in out
 
 
 def test_main_text_up_vision_down_exits_one(monkeypatch, tmp_path, capsys) -> None:
@@ -240,9 +245,9 @@ def test_main_text_up_vision_down_exits_one(monkeypatch, tmp_path, capsys) -> No
     text probe alone — vision down pages even when all text probes pass."""
     code, gh = _run_main(monkeypatch, vision_ok=False, tmp_path=tmp_path)
     assert code == 1
-    assert "vision_down_count=2" in gh
-    assert "vision_down_providers=openrouter,together" in gh
-    assert "up_count=4" in gh  # text coverage was fine — the page is vision-specific
+    assert "vision_down_count=1" in gh
+    assert "vision_down_providers=openrouter" in gh
+    assert "up_count=2" in gh  # text coverage was fine — the page is vision-specific
     assert "NOT fully up for PrintSense" not in capsys.readouterr().out or True
 
 
@@ -251,15 +256,63 @@ def test_archived_cerebras_absent_is_healthy(monkeypatch, tmp_path) -> None:
     code, gh = _run_main(monkeypatch, vision_ok=True, tmp_path=tmp_path)
     assert "cerebras" not in phc.EXPECTED
     assert code == 0
-    assert "up_count=4" in gh
+    assert "up_count=2" in gh
 
 
-@pytest.mark.parametrize("missing", ["openai", "openrouter", "groq", "together"])
+@pytest.mark.parametrize("missing", ["openai", "openrouter"])
 def test_missing_expected_provider_still_pages(monkeypatch, tmp_path, missing) -> None:
     """Control: a provider that IS expected and has no key is still DOWN (exit 1)."""
     providers = [p for p in _cascade() if p.name != missing]
     code, _gh = _run_main(monkeypatch, vision_ok=True, tmp_path=tmp_path, providers=providers)
     assert code == 1
+
+
+# ── Deprecated vendors (2026-10-31): Groq (#4438) and Together (#5008) ─────────
+# Both are billing-dead and will not be restored. The router still builds them
+# while their keys are set, so the canary must neither probe them nor page on
+# them: a dead deprecated vendor is a retirement task, not a coverage incident.
+
+DEPRECATED = ("groq", "together")
+
+
+def test_deprecated_vendors_are_not_expected() -> None:
+    assert phc.EXPECTED == ("openai", "openrouter")
+    assert not set(DEPRECATED) & set(phc.EXPECTED)
+
+
+def test_deprecated_vendors_down_is_not_an_incident(monkeypatch, tmp_path, capsys) -> None:
+    """The 2026-10-31 shape of #3096: keys set, both vendors HTTP 402, live
+    cascade healthy. Must exit 0 with nothing DOWN and no probe sent to either."""
+    providers = _cascade()
+    for p in providers:
+        p.api_url = f"https://{p.name}.example"
+    probed: list[str] = []
+
+    def probe(url, *a, **k):
+        probed.append(url)
+        if url in ("https://groq.example", "https://together.example"):
+            return (False, 0, "HTTP 402 insufficient balance")
+        return (True, 5, "")
+
+    code, gh = _run_main(
+        monkeypatch, vision_ok=True, tmp_path=tmp_path, providers=providers, probe=probe
+    )
+    assert code == 0
+    assert "down_count=0" in gh and "down_providers=\n" in gh
+    assert "up_count=2" in gh
+    assert sorted(probed) == ["https://openai.example", "https://openrouter.example"]
+    out = capsys.readouterr().out
+    assert "groq" not in out and "together" not in out
+
+
+@pytest.mark.parametrize("absent", DEPRECATED)
+def test_deprecated_vendor_absent_is_healthy(monkeypatch, tmp_path, absent) -> None:
+    """Control for the retirement path (#4438): unsetting a deprecated key
+    removes the vendor from the cascade and must not page."""
+    providers = [p for p in _cascade() if p.name != absent]
+    code, gh = _run_main(monkeypatch, vision_ok=True, tmp_path=tmp_path, providers=providers)
+    assert code == 0
+    assert "up_count=2" in gh
 
 
 # ── OpenRouter: the probe sends the runtime's request body (2026-10-14) ────────
@@ -301,5 +354,10 @@ def test_main_passes_each_providers_extra_body(monkeypatch, tmp_path) -> None:
     assert phc.main() == 0
     (vision,) = bodies["qwen/qwen3-vl-30b-a3b-instruct"]
     assert vision["provider"] == _ROUTING["provider"]
-    # Control: providers without an extra_body keep the exact old body.
-    assert all("provider" not in b for b in bodies["MiniMaxAI/MiniMax-M3"])
+    # Control: the provider without an extra_body (OpenAI) keeps the exact old
+    # body; only OpenRouter's text probe carries the routing block.
+    text = bodies["text-model"]
+    assert len(text) == 2
+    assert sorted(b.get("provider") == _ROUTING["provider"] for b in text) == [False, True]
+    # Deprecated Together (2026-10-31) is built but never probed, text or vision.
+    assert "MiniMaxAI/MiniMax-M3" not in bodies

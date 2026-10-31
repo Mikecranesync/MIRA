@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Provider health canary — probe every LLM cascade provider INDEPENDENTLY.
 
-The cascade (Groq → Cerebras → Together) is resilient by design: if a provider
-dies, the next one answers. That resilience is also a trap — it MASKS a dead
+The cascade (OpenAI → OpenRouter, then the deprecated key-gated fallbacks) is
+resilient by design: if a provider dies, the next one answers. That resilience is also a trap — it MASKS a dead
 provider. Gemini's 403 and Cerebras's `llama3.1-8b` 404 both went unnoticed for
 a while because Groq kept answering. This probe exists to catch that: it checks
 each provider on its own and reports degraded coverage BEFORE an outage.
@@ -16,10 +16,10 @@ spends its whole token budget reasoning. To avoid false "DOWN" pages, the probe
 uses a generous `max_tokens`, a trivial prompt, and one retry before declaring a
 provider down. A canary that cries wolf gets muted — that's worse than none.
 
-ADR-0031 PR 5: providers that carry a vision model (today: Together) get an
+ADR-0031 PR 5: providers that carry a vision model (today: OpenRouter) get an
 INDEPENDENT vision probe — a deterministic known-token image fixture
 (tools/canary_fixtures/vision_canary.png, printed text "MIRA CANARY 7") the
-model must actually READ back. Together answering text says nothing about
+model must actually READ back. A provider answering text says nothing about
 PrintSense readiness; a provider is NOT fully up for PrintSense unless the
 vision probe passes. Text and vision are reported as separate rows and
 separate GITHUB_OUTPUT counters.
@@ -51,9 +51,15 @@ import httpx
 # it is the provider that must be UP for the product to answer at all.
 # OpenRouter is the backup tier since 2026-10-14 (owner decision): its text AND
 # vision models are probed here, so a dead key or an exhausted credit balance
-# (HTTP 402) pages like any other provider. Groq stays expected so its billing
-# state is still paged.
-EXPECTED = ("openai", "openrouter", "groq", "together")
+# (HTTP 402) pages like any other provider.
+# Groq (DEPRECATED 2026-10-14, owner decision in #4438: billing-dead, will not be
+# restored) and Together (DEPRECATED 2026-10-25, see #5008) are NOT expected
+# since 2026-10-31. While their keys stay set the router still builds them as
+# last-resort fallbacks, so they are probed by nothing here on purpose: a dead
+# deprecated vendor is a retirement task (#4438), not a coverage incident, and
+# paging it every 6h on #3096 buried the live cascade's signal. Restoring either
+# = fund the account AND add its name back here.
+EXPECTED = ("openai", "openrouter")
 
 PROBE_PROMPT = [{"role": "user", "content": "Reply with the single word: OK"}]
 # Generous budget so a reasoning model (gpt-oss-120b) emits real content rather
@@ -274,7 +280,7 @@ def main() -> int:
             _gh_annotate("error", f"LLM provider DOWN: {name} ({prov.model}) — {reason}")
 
     # Vision probes — every expected provider that carries a vision model
-    # (today: together). Text-up alone is NOT PrintSense-ready (ADR-0031 PR 5).
+    # (today: openrouter). Text-up alone is NOT PrintSense-ready (ADR-0031 PR 5).
     vision_up: list[str] = []
     vision_down: list[str] = []
     vision_targets = [
