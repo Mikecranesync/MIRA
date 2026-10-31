@@ -4,7 +4,10 @@ import {
   printedPageOffset,
   retrieveSafetyChapterChunks,
   safetyChapterPage,
+  SAFETY_CHAPTER_BUDGET_CHARS,
   SAFETY_CHAPTER_DIRECTIVE,
+  SAFETY_CHAPTER_ROWS_PER_PAGE,
+  SAFETY_MARKER_LINE,
   SAFETY_CHAPTER_REF_SQL,
 } from "./manual-safety-chapter";
 import type { PoolClient } from "pg";
@@ -44,12 +47,42 @@ function fakeClient(rows: Row[]) {
         const hits = rows.filter((r) => docs.includes(r.doc_id) && re.test(r.content));
         return { rows: hits.slice(0, 1).map((r) => ({ doc_id: r.doc_id, content: r.content, page: r.page, page_label: r.page_label ?? null })) };
       }
-      const [, docs, urls, pageNos, pattern] = params as [string, string[], string[], number[], string];
-      const re = new RegExp(pattern, "i");
-      const out = rows.filter((r) =>
-        docs.some((d, i) => d === r.doc_id && urls[i] === r.source_url && pageNos[i] === r.page) && re.test(r.content),
+      if (!sql.includes("ROW_NUMBER")) {
+        // #4509's notice reader (the pre-r5 chapter path): id order, keyset cursor, LIMIT per batch —
+        // modelled so a test can show its first-hit-per-page exit.
+        const [, docs, urls, pageNos, candidate] = params as [string, string[], string[], number[], string];
+        const cand = new RegExp(candidate, "i");
+        const limit = Number(/LIMIT (\d+)/.exec(sql)?.[1] ?? Infinity);
+        const cursorParam = /AND id > \$(\d+)::uuid/.exec(sql)?.[1];
+        const after = cursorParam ? String(params[Number(cursorParam) - 1]) : null;
+        const out = rows
+          .filter((r) => docs.some((d, i) => d === r.doc_id && urls[i] === r.source_url && pageNos[i] === r.page) && cand.test(r.content))
+          .filter((r) => after === null || r.id > after)
+          .sort((a, b) => (a.id < b.id ? -1 : 1))
+          .slice(0, limit);
+        return { rows: out.map((r) => ({ id: r.id, content: r.content, source_url: r.source_url, page: r.page })) };
+      }
+      // The chapter read: per (file, page), rank marker line first, then procedure words, then id;
+      // keep rank <= the per-page cap; return in (file, page, id) order — the same semantics as the SQL.
+      const [, docs, urls, pageNos, candidate, marker, procedure, perPage] = params as [
+        string, string[], string[], number[], string, string, string, number,
+      ];
+      const cand = new RegExp(candidate, "i");
+      const mark = new RegExp(marker);
+      const proc = new RegExp(procedure, "i");
+      const hits = rows.filter((r) =>
+        docs.some((d, i) => d === r.doc_id && urls[i] === r.source_url && pageNos[i] === r.page) && cand.test(r.content),
       );
-      return { rows: out };
+      const groups = new Map<string, Row[]>();
+      for (const r of hits) groups.set(`${r.source_url}|${r.page}`, [...(groups.get(`${r.source_url}|${r.page}`) ?? []), r]);
+      const score = (r: Row) => [mark.test(r.content) ? 0 : 1, proc.test(r.content) ? 0 : 1] as const;
+      const kept = [...groups.values()].flatMap((g) =>
+        g
+          .sort((a, b) => score(a)[0] - score(b)[0] || score(a)[1] - score(b)[1] || (a.id < b.id ? -1 : 1))
+          .slice(0, perPage),
+      );
+      kept.sort((a, b) => (a.source_url < b.source_url ? -1 : a.source_url > b.source_url ? 1 : a.page - b.page || (a.id < b.id ? -1 : 1)));
+      return { rows: kept.map((r) => ({ id: r.id, content: r.content, source_url: r.source_url, page: r.page })) };
     },
   };
   return Object.assign(client as unknown as PoolClient, { calls });
@@ -181,10 +214,12 @@ describe("retrieveSafetyChapterChunks", () => {
     expect(client.calls).toEqual([]);
   });
 
-  it("keeps every warning on the chapter pages, in page order (no chunk-count cap)", async () => {
+  it("fills each manual's character budget and emits in page order", async () => {
     const many = Array.from({ length: 9 }, (_, i) => row(`00000000-0000-0000-0000-0000000001${i}0`, `${P18}\n(${i})`, 18 + (i % 3)));
     const added = await retrieveSafetyChapterChunks(fakeClient([...many, CORPUS[3]]), "tenant", [chunk(P372, 372)]);
-    expect(added).toHaveLength(9);
+    const used = added.reduce((n, c) => n + Math.min(c.content.length, 1200), 0);
+    expect(used).toBeLessThanOrEqual(SAFETY_CHAPTER_BUDGET_CHARS);
+    expect(used + Math.min(many[0].content.length, 1200)).toBeGreaterThan(SAFETY_CHAPTER_BUDGET_CHARS); // full: one more would not fit
     const pageNos = added.map((c) => c.sourcePage ?? -1);
     expect(pageNos).toEqual([...pageNos].sort((a, b) => a - b));
   });
@@ -250,6 +285,49 @@ describe("retrieveSafetyChapterChunks", () => {
     const added = await retrieveSafetyChapterChunks(fakeClient(rows), "tenant", [chunk(P372, 372)]);
     expect(added.map((c) => c.sourcePage)).toEqual([17, 17, 17, 17, 18]);
     expect(added[4]).toMatchObject({ docId: DOC, sourceUrl: URL, sourcePage: 18, content: STEPS });
+  });
+
+  it("a page with more than 200 early generic warnings still yields its later procedure (Codex r5 F11)", async () => {
+    const STEPS = "WARNING! Wait for 5 minutes after disconnecting the input power. Measure with a multimeter that there is no voltage.";
+    const generic = Array.from({ length: 250 }, (_, i) =>
+      row(`00000000-0000-0000-0000-${String(1000 + i).padStart(12, "0")}`, `WARNING! Generic notice ${i}: only qualified electricians may install this drive.`, 17 + (i % 4)),
+    );
+    const late = row("ffffffff-0000-0000-0000-000000000001", STEPS, 18); // highest id: last in any id-ordered scan
+    const added = await retrieveSafetyChapterChunks(fakeClient([...generic, late, CORPUS[3]]), "tenant", [chunk(P372, 372)]);
+    expect(added.find((c) => c.content === STEPS)).toMatchObject({ docId: DOC, sourceUrl: URL, sourcePage: 18 });
+  });
+
+  it("a dense upload stays inside the budget and keeps the procedure (Codex r5 F12)", async () => {
+    const STEPS = "WARNING! Wait for 5 minutes after disconnecting the input power. Measure with a multimeter that there is no voltage.";
+    const dense = Array.from({ length: 3000 }, (_, i) =>
+      row(`00000000-0000-0000-0000-${String(5000 + i).padStart(12, "0")}`, `WARNING! Dense notice ${i}: ${"read the manual. ".repeat(70)}`, 17 + (i % 3)),
+    );
+    const client = fakeClient([...dense, row("ffffffff-0000-0000-0000-000000000002", STEPS, 20), CORPUS[3]]);
+    const added = await retrieveSafetyChapterChunks(client, "tenant", [chunk(P372, 372)]);
+    const used = added.reduce((n, c) => n + Math.min(c.content.length, 1200), 0);
+    expect(used).toBeLessThanOrEqual(SAFETY_CHAPTER_BUDGET_CHARS);
+    expect(added.some((c) => c.content === STEPS)).toBe(true);
+    // The read itself is bounded per page; one query, no batches.
+    const reads = client.calls.filter((c) => c.sql.includes("ROW_NUMBER"));
+    expect(reads).toHaveLength(1);
+    expect(reads[0].params[7]).toBe(SAFETY_CHAPTER_ROWS_PER_PAGE);
+  });
+
+  it("the per-page rank puts a real WARNING ahead of chunks that merely say wait (#4509 r4 trap)", async () => {
+    const waitOnly = Array.from({ length: 120 }, (_, i) =>
+      row(`00000000-0000-0000-0000-${String(9000 + i).padStart(12, "0")}`, `Step ${i}: wait for the display to update.`, 18),
+    );
+    const real = row("ffffffff-0000-0000-0000-000000000003", "WARNING! Disconnect all power before servicing.", 18);
+    const added = await retrieveSafetyChapterChunks(fakeClient([...waitOnly, real, CORPUS[3]]), "tenant", [chunk(P372, 372)]);
+    expect(added.map((c) => c.content)).toEqual([real.content]);
+  });
+
+  it("the marker grammar matches extractManualSafetyStatement on line-opening markers only", () => {
+    const re = new RegExp(SAFETY_MARKER_LINE);
+    expect(re.test("WARNING! Read the chapter.")).toBe(true);
+    expect(re.test("intro\n  \u26a0 DANGER: high voltage")).toBe(true);
+    expect(re.test("the display shows WARNING: ACTIVE")).toBe(false);
+    expect(re.test("warning: lowercase is not a printed marker")).toBe(false);
   });
 
   it("two manuals with byte-identical warnings each keep their own (Codex r3 F6)", async () => {

@@ -34,6 +34,8 @@ const ragMock = vi.hoisted(() => ({
   retrieveCitedPageChunks: vi.fn(async () => [] as unknown[]),
   approvalGateEnabled: vi.fn(() => false),
   PAGE_LABEL_SQL: "NULL AS page_label",
+  CANDIDATE_PATTERN: "warning|danger|caution|attention|shock hazard|burn hazard|hazardous|discharged|wait",
+  MAX_CONTENT_CHARS: 1200,
   approvedSourceFilterSql: vi.fn(() => ""),
   appendManualContext: vi.fn((base: string) => base),
   buildManualUserContent: vi.fn(() => ""),
@@ -41,6 +43,8 @@ const ragMock = vi.hoisted(() => ({
 vi.mock("@/lib/manual-rag", () => ragMock);
 
 const tenantClient = vi.hoisted(() => ({ query: vi.fn(async (..._a: unknown[]) => ({ rows: [] as unknown[] })) }));
+/** The rows the chapter read sees this test; the tenant client serves them for its one ROW_NUMBER query. */
+let chapterCorpus: Array<{ sourceUrl: string; sourcePage: number; content: string }> = [];
 vi.mock("@/lib/tenant-context", () => ({
   withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) => fn(tenantClient)),
 }));
@@ -95,6 +99,16 @@ const QUESTION = "How do I replace the cooling fan on the ACS355?";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  chapterCorpus = CORPUS;
+  tenantClient.query.mockImplementation((async (sql: string, params: unknown[] = []) => {
+    if (!sql.includes("ROW_NUMBER")) return { rows: [] };
+    const urls = params[2] as string[];
+    const pageNos = params[3] as number[];
+    const rows = chapterCorpus
+      .map((r, i) => ({ id: `00000000-0000-0000-0000-${String(i).padStart(12, "0")}`, content: r.content, source_url: r.sourceUrl, page: r.sourcePage }))
+      .filter((r) => urls.some((u, i) => u === r.source_url && pageNos[i] === r.page));
+    return { rows };
+  }) as never);
   domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A, DOC_B], nodeId: "n1" });
   domainMock.resolveBoundAsset.mockResolvedValue({ state: "unbound" });
   domainMock.claimNotebookTurnRequest.mockResolvedValue(undefined);
@@ -148,6 +162,7 @@ describe("the cited manual's Safety chapter on a two-manual turn", () => {
       { sourceUrl: URL_C, sourcePage: 1, content: "WARNING! Drive C: only qualified electricians may install this drive." },
       { sourceUrl: URL_C, sourcePage: 2, content: STEPS },
     ];
+    chapterCorpus = corpus;
     ragMock.retrieveCitedPageChunks.mockImplementation((async (
       _c: unknown,
       _t: string,
@@ -177,6 +192,7 @@ describe("the cited manual's Safety chapter on a two-manual turn", () => {
       ...[1, 2, 3, 4].map((i) => ({ sourceUrl: URL_B, sourcePage: 17, content: `WARNING! Generic warning ${i}: only qualified electricians may install this drive.` })),
       { sourceUrl: URL_B, sourcePage: 18, content: STEPS },
     ];
+    chapterCorpus = corpus;
     ragMock.retrieveCitedPageChunks.mockImplementation((async (
       _c: unknown,
       _t: string,

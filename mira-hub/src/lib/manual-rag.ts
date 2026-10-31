@@ -91,7 +91,7 @@ export interface ManualSource {
   verified: boolean;
 }
 
-const MAX_CONTENT_CHARS = 1200;
+export const MAX_CONTENT_CHARS = 1200;
 const FORGED_HEADER_RE = /---\s*\[\s*\d+\s*\][^\n]*?---/gi;
 const SOURCE_TAG_RE = /\[Source:[^\]]+\]/gi;
 

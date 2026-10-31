@@ -15,6 +15,13 @@
  * from the referring chunk's own printed label (front matter shifts it); with no numeric label the
  * printed and PDF page are assumed equal (true for the ACS355).
  *
+ * The chapter is read by its own bounded query, not #4509's notice reader (that one stops at the first
+ * statement per page, which is right for a notice and wrong for grounding, Codex #5056 r5 F11). Each
+ * page keeps at most SAFETY_CHAPTER_ROWS_PER_PAGE rows, ranked so real safety statements come first
+ * and, among them, the ones carrying a procedure (wait time, voltage check, isolation). Each manual
+ * then gets SAFETY_CHAPTER_BUDGET_CHARS of excerpt text, filled procedure-first, emitted in page
+ * order. Rounds 1, 3, 4 and 5 all showed that a bound which ignores content can cut the procedure.
+ *
  * Read-only and fail-open: no write, and the caller keeps the retrieved chunks on any error.
  */
 import type { PoolClient } from "pg";
@@ -22,8 +29,9 @@ import { extractManualSafetyStatement } from "@/capabilities/manual-safety-state
 import {
   approvalGateEnabled,
   approvedSourceFilterSql,
+  CANDIDATE_PATTERN,
+  MAX_CONTENT_CHARS,
   PAGE_LABEL_SQL,
-  retrieveCitedPageChunks,
   type ManualChunk,
 } from "@/lib/manual-rag";
 
@@ -33,12 +41,20 @@ const QUOTE = '["\u201c\u201d]?';
 export const SAFETY_CHAPTER_REF = new RegExp(`\\bchapter\\s+${QUOTE}safety${QUOTE}\\s+on\\s+page\\s+(\\d{1,4})\\b`, "i");
 /** The same reference as a Postgres regex, for the document-level lookup (no \\b: it means backspace there). */
 export const SAFETY_CHAPTER_REF_SQL = `chapter\\s+${QUOTE}safety${QUOTE}\\s+on\\s+page\\s+[0-9]{1,4}`;
-/**
- * Pages read from the referenced first page on (ACS355: 17 opens the chapter, 18-20 hold the warnings).
- * This page span is the only bound: every safety-statement chunk on those pages is kept, because any
- * chunk-count cap can cut off the page that holds the procedure (Codex #5056 r1, r3, r4).
- */
+/** Pages read from the referenced first page on (ACS355: 17 opens the chapter, 18-20 hold the warnings). */
 export const SAFETY_CHAPTER_SPAN = 4;
+/** Rows read per chapter page, after ranking: bounds memory against a dense or hostile upload. */
+export const SAFETY_CHAPTER_ROWS_PER_PAGE = 40;
+/** Excerpt characters per manual (each chunk counted as the prompt renders it): bounds the prompt. */
+export const SAFETY_CHAPTER_BUDGET_CHARS = 6_000;
+/**
+ * A line opening with a printed safety marker, as extractManualSafetyStatement reads it. One string for
+ * Postgres (case-sensitive ~) and JS, so the SQL ranking and the JS check agree.
+ */
+export const SAFETY_MARKER_LINE = "(^|\\n)[\\s•*▪●■◆►▶⚠!-]*(WARNING|DANGER|CAUTION|ATTENTION|SHOCK HAZARD|BURN HAZARD)[:!\\s]";
+/** Words that mark a concrete procedure step. One string for Postgres (~*) and JS (flag i). */
+export const SAFETY_PROCEDURE_WORDS = "wait|minute|discharg|voltage|multimeter|measur|isolat|disconnect|lock.?out|de-?energi";
+const PROCEDURE_RE = new RegExp(SAFETY_PROCEDURE_WORDS, "i");
 
 /** The first page of the Safety chapter a text refers to, or null. */
 export function safetyChapterPage(text: string): number | null {
@@ -122,6 +138,79 @@ async function chapterStarts(
   return starts;
 }
 
+type ChapterRow = { id: string; content: string; sourceUrl: string; sourcePage: number };
+
+/**
+ * Every chapter page's candidate rows in ONE query, at most SAFETY_CHAPTER_ROWS_PER_PAGE per page,
+ * ranked marker line first, then procedure words, then id. No early exit: a page is read whole up to
+ * its rank cap. Pinned like retrieval: tenant, v2 route, the admitted (doc, file, page) tuples, and
+ * the approval predicate (the admission set bound only with the gate on).
+ */
+async function readChapterRows(
+  client: Pick<PoolClient, "query">,
+  tenantId: string,
+  pages: ReadonlyArray<{ docId: string; sourceUrl: string; page: number }>,
+  approvedSourceDocIds: readonly string[],
+): Promise<ChapterRow[]> {
+  const approved = approvedSourceDocIds.filter(Boolean);
+  const admitApproved = approved.length > 0 && approvalGateEnabled();
+  const params: unknown[] = [
+    tenantId,
+    pages.map((p) => p.docId),
+    pages.map((p) => p.sourceUrl),
+    pages.map((p) => p.page),
+    CANDIDATE_PATTERN,
+    SAFETY_MARKER_LINE,
+    SAFETY_PROCEDURE_WORDS,
+    SAFETY_CHAPTER_ROWS_PER_PAGE,
+  ];
+  if (admitApproved) params.push(approved);
+  await client.query("SET LOCAL statement_timeout = '3s'");
+  const res = await client.query(
+    `SELECT id::text AS id, content, source_url, page
+       FROM (
+         SELECT id, content, source_url, COALESCE(page_start, source_page) AS page,
+                ROW_NUMBER() OVER (
+                  PARTITION BY source_url, COALESCE(page_start, source_page)
+                  ORDER BY (content ~ $6) DESC, (content ~* $7) DESC, id
+                ) AS rn
+           FROM knowledge_entries
+          WHERE tenant_id = $1
+            AND ingest_route = 'v2'
+            ${approvedSourceFilterSql(admitApproved ? 9 : null)}
+            AND (doc_id::text, source_url, COALESCE(page_start, source_page)) IN (
+              SELECT * FROM unnest($2::text[], $3::text[], $4::int[])
+            )
+            AND content ~* $5
+       ) ranked
+      WHERE rn <= $8
+      ORDER BY source_url, page, id`,
+    params,
+  );
+  return (res.rows as Array<Record<string, unknown>>).map((r) => ({
+    id: String(r.id ?? ""),
+    content: String(r.content ?? ""),
+    sourceUrl: String(r.source_url ?? ""),
+    sourcePage: Number(r.page),
+  }));
+}
+
+/** One manual's rows within its budget: procedure-bearing statements first, then the rest, each in page order. */
+function withinBudget(rows: readonly ChapterRow[]): ChapterRow[] {
+  const byPage = (a: ChapterRow, b: ChapterRow) => a.sourcePage - b.sourcePage || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  const procedure = rows.filter((r) => PROCEDURE_RE.test(r.content)).sort(byPage);
+  const rest = rows.filter((r) => !PROCEDURE_RE.test(r.content)).sort(byPage);
+  const picked: ChapterRow[] = [];
+  let used = 0;
+  for (const r of [...procedure, ...rest]) {
+    const cost = Math.min(r.content.length, MAX_CONTENT_CHARS);
+    if (used + cost > SAFETY_CHAPTER_BUDGET_CHARS) continue;
+    used += cost;
+    picked.push(r);
+  }
+  return picked.sort(byPage);
+}
+
 /**
  * The warning chunks of each retrieved document's Safety chapter, as excerpts ready to append after
  * the retrieved chunks (so no existing citation number moves). Chunks retrieval already returned are
@@ -143,19 +232,16 @@ export async function retrieveSafetyChapterChunks(
       : Array.from({ length: SAFETY_CHAPTER_SPAN }, (_, i) => ({ docId: d.docId, sourceUrl: d.sourceUrl, page: first.pdfPage + i }));
   });
   if (pages.length === 0) return [];
-  const rows = await retrieveCitedPageChunks(client, tenantId, pages, {
-    approvedSourceDocIds: opts.approvedSourceDocIds,
-    keep: (t) => extractManualSafetyStatement(t) !== null,
-  });
-  // Group per document, page order within each. Dedupe is per document: two manuals with the same
-  // boilerplate warning each keep their own citable copy.
+  const rows = await readChapterRows(client, tenantId, pages, opts.approvedSourceDocIds ?? []);
+  // Only real safety statements; dedupe per document, so two manuals with the same boilerplate
+  // warning each keep their own citable copy.
   const keyOf = (sourceUrl: string, content: string) => `${sourceUrl}\u0000${content}`;
   const seen = new Set(chunks.map((c) => keyOf(c.sourceUrl ?? "", c.content)));
-  const perDoc = new Map(docs.map((d) => [d.sourceUrl, [] as typeof rows] as const));
+  const perDoc = new Map(docs.map((d) => [d.sourceUrl, [] as ChapterRow[]] as const));
   for (const r of rows) {
     const list = perDoc.get(r.sourceUrl);
     const key = keyOf(r.sourceUrl, r.content);
-    if (!list || seen.has(key)) continue;
+    if (!list || seen.has(key) || extractManualSafetyStatement(r.content) === null) continue;
     seen.add(key);
     list.push(r);
   }
@@ -163,17 +249,14 @@ export async function retrieveSafetyChapterChunks(
   // and citation keys use it); pageLabel is the manual's printed page (Codex #5056 r4 F8).
   return docs.flatMap((d) => {
     const offset = starts.get(d.docId)?.offset ?? 0;
-    return perDoc
-      .get(d.sourceUrl)!
-      .sort((a, b) => a.sourcePage - b.sourcePage)
-      .map((r) => ({
+    return withinBudget(perDoc.get(d.sourceUrl)!).map((r) => ({
         ...d.template,
         content: r.content,
         sourcePage: r.sourcePage,
         pageLabel: String(r.sourcePage - offset > 0 ? r.sourcePage - offset : r.sourcePage),
-        chunkIndex: null,
-        rank: 0,
-      }));
+      chunkIndex: null,
+      rank: 0,
+    }));
   });
 }
 
