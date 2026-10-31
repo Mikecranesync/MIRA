@@ -343,12 +343,13 @@ async function writeDelivery(row: ClaimedRow, plan: DeliverPlan, deps: DispatchD
     result = await provider.appendWorkLog(plan.target, plan.note);
   } catch (err) {
     // A throw is a poison signal, not an honest outcome — escalate to
-    // quarantine once retries are exhausted rather than treating it like
-    // any other `retryable_failure` forever.
+    // quarantine once retries are exhausted. Below that it is ambiguous, not
+    // retryable: the adapter was already invoked, so the write may have
+    // landed, and only read-back may move the row from here (Codex round 4).
     if (row.attempts >= maxAttempts) {
       return { state: "quarantined", reason: `poison: ${errMessage(err)}` };
     }
-    return { state: "retryable_failure", reason: `throw: ${errMessage(err)}` };
+    return { state: "outcome_unknown", reason: `throw: ${errMessage(err)}` };
   }
   const state = deliveryStateFor(result);
   const reason = "reason" in result ? result.reason : undefined;
@@ -527,6 +528,8 @@ export async function runDispatchTick(deps: DispatchDeps): Promise<DispatchStats
   const now = deps.now ?? (() => new Date());
   const rand = deps.rand ?? Math.random;
   const stats = zeroStats();
+  const nextAttemptFor = (outcome: Outcome, row: DeliveryRow): Date =>
+    RESCHEDULED_STATES.has(outcome.state) ? new Date(now().getTime() + backoffDelayMs(row.attempts, rand)) : now();
 
   // The locked subquery also captures the state each row is claimed FROM
   // (`prior_state`) and whether it is an expired-lease reclaim (`reclaimed`):
@@ -558,6 +561,12 @@ export async function runDispatchTick(deps: DispatchDeps): Promise<DispatchStats
   stats.claimed = claimRes.rows.length;
 
   for (const row of claimRes.rows) {
+    // What the error path may conclude (Codex round 4, F9): `invoked` once
+    // the vendor step has started — from then on the write may have landed;
+    // `obtained` once it returned — a failed FINALIZE must persist exactly
+    // that outcome (and its external_ref), never a downgrade to retryable.
+    let invoked = false;
+    let obtained: Outcome | null = null;
     try {
       // ORDERING (Codex F4): predecessors are the same aggregate's deliveries
       // whose EVENT sequence is lower — the sequence is allocated under the
@@ -608,29 +617,37 @@ export async function runDispatchTick(deps: DispatchDeps): Promise<DispatchStats
         // WRITE or RECONCILE (outside any transaction): a delivery that may
         // already have reached the vendor is only ever read back, never
         // written again (F7, F9).
+        invoked = true;
         outcome = isPossiblySent(row)
           ? await reconcileDelivery(row, plan, deps, maxAttempts)
           : await writeDelivery(row, plan, deps, maxAttempts);
       }
 
       outcome = boundOutcome(row, outcome, maxAttempts);
-      let nextAttemptAt = now();
-      if (RESCHEDULED_STATES.has(outcome.state)) {
-        nextAttemptAt = new Date(now().getTime() + backoffDelayMs(row.attempts, rand));
-      }
-      const ok = await finalizeDelivery(row, outcome, nextAttemptAt, now(), deps);
+      obtained = outcome;
+      const ok = await finalizeDelivery(row, outcome, nextAttemptFor(outcome, row), now(), deps);
       if (ok) bumpStat(stats, outcome.state);
     } catch (err) {
       // Isolation: one bad delivery never stops the batch. Best-effort
-      // finalize as retryable (bounded by maxAttempts); if even that fails,
-      // just log and move on.
+      // finalize with the most conservative outcome the facts allow (bounded
+      // by maxAttempts); if even that fails, log and move on — the row stays
+      // leased, and a reclaim of a pinned row is reconciled, never rewritten.
       deps.log?.(`[cmms-dispatch] delivery ${row.delivery_id} errored: ${errMessage(err)}`);
       try {
-        const state: DeliveryState = row.attempts >= maxAttempts ? "quarantined" : "retryable_failure";
-        const nextAttemptAt =
-          state === "retryable_failure" ? new Date(now().getTime() + backoffDelayMs(row.attempts, rand)) : now();
-        const ok = await finalizeDelivery(row, { state, reason: `tick_error: ${errMessage(err)}` }, nextAttemptAt, now(), deps);
-        if (ok) bumpStat(stats, state);
+        const reason = `tick_error: ${errMessage(err)}`;
+        let fallback: Outcome;
+        if (obtained) {
+          fallback = obtained;
+        } else if (invoked || isPossiblySent(row)) {
+          // The write may have landed (or already had): keep the pending
+          // state — an ack stays an ack, an ambiguity stays ambiguous.
+          const pending: DeliveryState = isAcknowledged(row) ? "accepted_pending_verification" : "outcome_unknown";
+          fallback = boundOutcome(row, { state: pending, reason }, maxAttempts);
+        } else {
+          fallback = { state: row.attempts >= maxAttempts ? "quarantined" : "retryable_failure", reason };
+        }
+        const ok = await finalizeDelivery(row, fallback, nextAttemptFor(fallback, row), now(), deps);
+        if (ok) bumpStat(stats, fallback.state);
       } catch (finalizeErr) {
         deps.log?.(`[cmms-dispatch] delivery ${row.delivery_id} could not even be finalized: ${errMessage(finalizeErr)}`);
       }

@@ -132,7 +132,7 @@ export class AtlasWriteProvider implements CmmsWriteProvider {
         content: renderWorkLogText(note),
       });
     } catch (err) {
-      return this.mapWriteError(err);
+      return this.mapCreateError(err);
     }
 
     try {
@@ -260,6 +260,27 @@ export class AtlasWriteProvider implements CmmsWriteProvider {
     return comments.filter(
       (c) => !c.system && typeof c.content === "string" && countMarker(c.content, marker) > 0,
     );
+  }
+
+  /**
+   * A failed CREATE (Codex round 4, F11). Only a response that proves Atlas
+   * rejected the request before acting on it may authorize another create:
+   * a 4xx other than 408. A 5xx (500/502/503/504 — a gateway can lose the
+   * upstream's committed 2xx), a 408 or a thrown network error does not prove
+   * the comment was NOT written, so it is `outcome_unknown` and the dispatcher
+   * only ever reconciles it by read-back.
+   */
+  private mapCreateError(err: unknown): CmmsWriteResult {
+    if (err instanceof AtlasAuthError) return this.mapWriteError(err);
+    if (err instanceof AtlasHttpError && err.status >= 400 && err.status < 500 && err.status !== 408) {
+      return this.mapWriteError(err);
+    }
+    const status = err instanceof AtlasHttpError ? err.status : undefined;
+    return {
+      kind: "outcome_unknown",
+      reason: status !== undefined ? `create_ambiguous_http_${status}` : "timeout_or_network_after_send",
+      receipt: status !== undefined ? { status } : {},
+    };
   }
 
   private mapWriteError(err: unknown): CmmsWriteResult {

@@ -28,7 +28,11 @@ interface FakeComment {
   [k: string]: unknown;
 }
 
-type InjectedFailure = { kind: "http"; status: number } | { kind: "throwNetwork" } | { kind: "authError" };
+type InjectedFailure =
+  | { kind: "http"; status: number }
+  | { kind: "httpAfterCommit"; status: number }
+  | { kind: "throwNetwork" }
+  | { kind: "authError" };
 
 type FakeOp = "countComments" | "createComment" | "searchComments";
 
@@ -77,6 +81,11 @@ class FakeAtlasCommentApi implements AtlasCommentApi {
       // The request landed server-side before the connection died.
       this.listFor(woId).push({ id: this.nextId++, content: payload.content, system: false });
       throw new TypeError("fetch failed");
+    }
+    if (failure?.kind === "httpAfterCommit") {
+      // Atlas committed the comment; a gateway lost the 2xx and answered with an error.
+      this.listFor(woId).push({ id: this.nextId++, content: payload.content, system: false });
+      throw new AtlasHttpError(failure.status, "upstream response lost", path);
     }
     if (failure) this.throwFailure(failure, path);
 
@@ -262,15 +271,36 @@ describe("AtlasWriteProvider — Atlas-specific behavior", () => {
     expect(result.kind).toBe("permission_denied");
   });
 
-  it("500 on create maps to retryable_failure", async () => {
+  // Codex round 4 F11: a 5xx or 408 on CREATE does not prove the comment was
+  // not written (a gateway can lose the upstream's committed 2xx), so it must
+  // never authorize another create.
+  it.each([500, 502, 503, 504, 408])("%i on create (comment committed) maps to outcome_unknown", async (status) => {
     const api = new FakeAtlasCommentApi("v16");
     const provider = new AtlasWriteProvider(api);
     const note = makeNote("77777777-7777-4777-8777-777777777777");
-    api.failNext("createComment", { kind: "http", status: 500 });
+    api.failNext("createComment", { kind: "httpAfterCommit", status });
 
     const result = await provider.appendWorkLog(target, note);
 
-    expect(result.kind).toBe("retryable_failure");
+    expect(result.kind).toBe("outcome_unknown");
+    if (result.kind === "outcome_unknown") {
+      expect(result.reason).toBe(`create_ambiguous_http_${status}`);
+    }
+  });
+
+  it.each([
+    [429, "retryable_failure"],
+    [401, "permission_denied"],
+    [409, "conflict"],
+  ])("%i on create is an authoritative rejection and keeps its mapping (%s)", async (status, kind) => {
+    const api = new FakeAtlasCommentApi("v16");
+    const provider = new AtlasWriteProvider(api);
+    const note = makeNote("77777777-7777-4777-8777-777777777777");
+    api.failNext("createComment", { kind: "http", status });
+
+    const result = await provider.appendWorkLog(target, note);
+
+    expect(result.kind).toBe(kind);
   });
 
   it("404 on create maps to permanent_failure (work_order_not_found)", async () => {

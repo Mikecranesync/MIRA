@@ -32,7 +32,7 @@ vi.mock("@/lib/db", () => ({ default: testPool }));
 import { withTenantContext } from "@/lib/tenant-context";
 import { MockCmmsWriteProvider } from "@/lib/cmms/mock-write-provider";
 import { AtlasWriteProvider, type AtlasCommentApi } from "@/lib/cmms/atlas-write-provider";
-import type { AtlasComment } from "@/lib/atlas/client";
+import { AtlasHttpError, type AtlasComment } from "@/lib/atlas/client";
 import { enqueueFixRecordedEvent, type EnqueueFixRecordedInput, type EnqueueResult } from "../enqueue";
 import { runDispatchTick, type DispatchDeps } from "../dispatcher";
 import { deliveryStatusForFixRecords } from "../status";
@@ -415,14 +415,17 @@ describe.skipIf(!URL_)("cmms-dispatch (real Postgres)", () => {
     poisonMock.failNext("throw");
     const stats1 = await runDispatchTick({ providerFor, tenantAllowlist: allow, maxAttempts });
     expect(stats1.claimed).toBe(2);
-    expect(stats1.retryable).toBe(1); // poison, attempt 1 of 2 — not yet exhausted
+    // poison, attempt 1 of 2 — not yet exhausted. The adapter was invoked
+    // before it threw, so the write may have landed: ambiguous, not
+    // retryable (Codex round 4) — the next attempt only reads back.
+    expect(stats1.unknown).toBe(1);
     expect(stats1.verified).toBe(1); // good, verified on the very first try
 
     let poisonRow = await testPool.query<{ state: string }>(
       `SELECT state FROM notebook_event_deliveries WHERE delivery_id = $1`,
       [poisonDeliveryId],
     );
-    expect(poisonRow.rows[0]!.state).toBe("retryable_failure");
+    expect(poisonRow.rows[0]!.state).toBe("outcome_unknown");
 
     await testPool.query(`UPDATE notebook_event_deliveries SET next_attempt_at = now() WHERE delivery_id = $1`, [
       poisonDeliveryId,
@@ -441,9 +444,9 @@ describe.skipIf(!URL_)("cmms-dispatch (real Postgres)", () => {
     );
     expect(poisonRow.rows[0]!.state).toBe("quarantined");
     // appendWorkLog logs every attempt (including ones that throw) in
-    // `.calls`, but a throw happens before the mock ever stores a record —
-    // that is the property actually worth proving here.
-    expect(poisonMock.calls.filter((c) => c.op === "appendWorkLog")).toHaveLength(2);
+    // `.calls`. The first attempt threw after the adapter was invoked, so the
+    // second only reads back — exactly one append, never a second write.
+    expect(poisonMock.calls.map((c) => c.op)).toEqual(["appendWorkLog", "readBackWorkLog"]);
     expect(poisonMock.records("WO-POISON")).toHaveLength(0);
   });
 
@@ -1051,6 +1054,197 @@ describe.skipIf(!URL_)("cmms-dispatch (real Postgres)", () => {
     );
     expect(row.rows[0]!.state).toBe("blocked_policy");
     expect(row.rows[0]!.last_error).toBe("policy_disabled");
+  });
+
+  // ── Codex round 4 (F9 reopened, F11) ─────────────────────────────────────
+
+  /** A fake Atlas v1.6+ whose creates always COMMIT, whose search lags until
+   *  `show()`, and whose first create can answer with an injected error
+   *  AFTER committing (a gateway that lost the upstream's 2xx). */
+  function laggingAtlas(firstCreateError?: () => Error): {
+    api: AtlasCommentApi;
+    stored: AtlasComment[];
+    creates: () => number;
+    show: () => void;
+  } {
+    let visible = false;
+    let nextId = 1;
+    let creates = 0;
+    const stored: AtlasComment[] = [];
+    const api: AtlasCommentApi = {
+      async countComments() {
+        return { count: stored.length };
+      },
+      async createComment(payload) {
+        creates++;
+        stored.push({ id: nextId++, content: payload.content, system: false });
+        if (creates === 1 && firstCreateError) throw firstCreateError();
+        return stored[stored.length - 1]!;
+      },
+      async searchComments() {
+        return visible ? [...stored] : [];
+      },
+    };
+    return { api, stored, creates: () => creates, show: () => void (visible = true) };
+  }
+
+  /** Make exactly one pool query whose SQL contains `needle` reject. */
+  function failOnceOn(needle: string): { restore: () => void; fired: () => boolean } {
+    const real = testPool.query.bind(testPool) as (...args: unknown[]) => Promise<unknown>;
+    let fired = false;
+    const spy = vi.spyOn(testPool, "query").mockImplementation(((...args: unknown[]) => {
+      if (!fired && typeof args[0] === "string" && args[0].includes(needle)) {
+        fired = true;
+        return Promise.reject(new Error(`injected failure on: ${needle}`));
+      }
+      return real(...args);
+    }) as never);
+    return { restore: () => spy.mockRestore(), fired: () => fired };
+  }
+
+  async function deliveryRow(deliveryId: string) {
+    const res = await testPool.query<{ state: string; external_ref: string | null; last_error: string | null }>(
+      `SELECT state, external_ref, last_error FROM notebook_event_deliveries WHERE delivery_id = $1`,
+      [deliveryId],
+    );
+    return res.rows[0]!;
+  }
+
+  async function makeDue(deliveryId: string): Promise<void> {
+    await testPool.query(`UPDATE notebook_event_deliveries SET next_attempt_at = now() WHERE delivery_id = $1`, [deliveryId]);
+  }
+
+  it("F9 (round 4): a FINALIZE that fails after an acknowledged write keeps the ack and its external_ref — never a second create", async () => {
+    const atlas = laggingAtlas();
+    const provider = new AtlasWriteProvider(atlas.api);
+    const tenantId = uuid();
+    const notebookId = await makeNotebook(tenantId);
+    await setCmmsConfig(tenantId, { provider: "atlas", writePolicy: workOrderPolicy("41") });
+    const deliveryId = requireDeliveryId((await enqueueOne(tenantId, notebookId)).result.delivery);
+    const deps = { providerFor: () => provider, tenantAllowlist: new Set([tenantId]) };
+
+    // The vendor commits and acknowledges; the first FINALIZE UPDATE fails,
+    // the error-path FINALIZE succeeds.
+    const inject = failOnceOn("SET state = $1");
+    let s1;
+    try {
+      s1 = await runDispatchTick(deps);
+    } finally {
+      inject.restore();
+    }
+    expect(inject.fired()).toBe(true);
+    expect(s1.accepted).toBe(1);
+    expect(atlas.creates()).toBe(1);
+    let row = await deliveryRow(deliveryId);
+    expect(row.state).toBe("accepted_pending_verification");
+    expect(row.external_ref).toBe("1");
+
+    // Still invisible: reconcile only.
+    await makeDue(deliveryId);
+    await runDispatchTick(deps);
+    expect(atlas.creates()).toBe(1);
+    row = await deliveryRow(deliveryId);
+    expect(row.state).toBe("accepted_pending_verification");
+
+    atlas.show();
+    await makeDue(deliveryId);
+    const s3 = await runDispatchTick(deps);
+    expect(s3.verified).toBe(1);
+    expect(atlas.creates()).toBe(1);
+    expect(atlas.stored).toHaveLength(1);
+    row = await deliveryRow(deliveryId);
+    expect(row.state).toBe("verified_by_readback");
+    expect(row.external_ref).toBe("1");
+  });
+
+  it("F9b (round 4): an error before the vendor step on an outcome_unknown retry keeps it ambiguous — later ticks stay read-only", async () => {
+    const atlas = laggingAtlas(() => new TypeError("fetch failed"));
+    const provider = new AtlasWriteProvider(atlas.api);
+    const tenantId = uuid();
+    const notebookId = await makeNotebook(tenantId);
+    await setCmmsConfig(tenantId, { provider: "atlas", writePolicy: workOrderPolicy("42") });
+    const deliveryId = requireDeliveryId((await enqueueOne(tenantId, notebookId)).result.delivery);
+    const deps = { providerFor: () => provider, tenantAllowlist: new Set([tenantId]) };
+
+    await runDispatchTick(deps);
+    expect((await deliveryRow(deliveryId)).state).toBe("outcome_unknown");
+    expect(atlas.creates()).toBe(1);
+
+    // The retry errors before reaching the vendor (the ordering query fails).
+    await makeDue(deliveryId);
+    const inject = failOnceOn("SELECT d2.state");
+    try {
+      await runDispatchTick(deps);
+    } finally {
+      inject.restore();
+    }
+    expect(inject.fired()).toBe(true);
+    let row = await deliveryRow(deliveryId);
+    expect(row.state).toBe("outcome_unknown");
+    expect(row.last_error).toMatch(/^tick_error: injected failure/);
+
+    await makeDue(deliveryId);
+    await runDispatchTick(deps);
+    expect(atlas.creates()).toBe(1);
+
+    atlas.show();
+    await makeDue(deliveryId);
+    const s4 = await runDispatchTick(deps);
+    expect(s4.verified).toBe(1);
+    expect(atlas.creates()).toBe(1);
+    row = await deliveryRow(deliveryId);
+    expect(row.state).toBe("verified_by_readback");
+  });
+
+  it.each([502, 504, 500])(
+    "F11 (round 4): a create that Atlas committed but answered %i is outcome_unknown — reconciled, exactly one create",
+    async (status) => {
+      const atlas = laggingAtlas(() => new AtlasHttpError(status, "upstream response lost", "/comments"));
+      const provider = new AtlasWriteProvider(atlas.api);
+      const tenantId = uuid();
+      const notebookId = await makeNotebook(tenantId);
+      await setCmmsConfig(tenantId, { provider: "atlas", writePolicy: workOrderPolicy("43") });
+      const deliveryId = requireDeliveryId((await enqueueOne(tenantId, notebookId)).result.delivery);
+      const deps = { providerFor: () => provider, tenantAllowlist: new Set([tenantId]) };
+
+      const s1 = await runDispatchTick(deps);
+      expect(s1.unknown).toBe(1);
+      let row = await deliveryRow(deliveryId);
+      expect(row.state).toBe("outcome_unknown");
+      expect(row.last_error).toBe(`create_ambiguous_http_${status}`);
+
+      await makeDue(deliveryId);
+      await runDispatchTick(deps);
+      expect(atlas.creates()).toBe(1);
+
+      atlas.show();
+      await makeDue(deliveryId);
+      const s3 = await runDispatchTick(deps);
+      expect(s3.verified).toBe(1);
+      expect(atlas.creates()).toBe(1);
+      expect(atlas.stored).toHaveLength(1);
+      row = await deliveryRow(deliveryId);
+      expect(row.state).toBe("verified_by_readback");
+    },
+  );
+
+  it("F11b (round 4): a committed-but-502 create that never becomes visible quarantines at the budget without another create", async () => {
+    const atlas = laggingAtlas(() => new AtlasHttpError(502, "upstream response lost", "/comments"));
+    const provider = new AtlasWriteProvider(atlas.api);
+    const tenantId = uuid();
+    const notebookId = await makeNotebook(tenantId);
+    await setCmmsConfig(tenantId, { provider: "atlas", writePolicy: workOrderPolicy("44") });
+    const deliveryId = requireDeliveryId((await enqueueOne(tenantId, notebookId)).result.delivery);
+    const deps = { providerFor: () => provider, tenantAllowlist: new Set([tenantId]), maxAttempts: 3 };
+
+    for (let i = 0; i < 3; i++) {
+      await runDispatchTick(deps);
+      await makeDue(deliveryId);
+    }
+    expect(atlas.creates()).toBe(1);
+    const row = await deliveryRow(deliveryId);
+    expect(row.state).toBe("quarantined");
+    expect(row.last_error).toBe("max_attempts_unreconciled:outcome_unknown");
   });
 
 });
