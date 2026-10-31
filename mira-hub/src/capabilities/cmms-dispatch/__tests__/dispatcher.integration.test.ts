@@ -232,6 +232,33 @@ describe.skipIf(!URL_)("cmms-dispatch (real Postgres)", () => {
     expect(deliveries.rows[0]!.n).toBe(1);
   });
 
+  it("AC2b: a replay after the tenant's provider changed still returns the ORIGINAL delivery, never a second one", async () => {
+    const tenantId = uuid();
+    const notebookId = await makeNotebook(tenantId);
+    await setCmmsConfig(tenantId, { provider: "atlas", writePolicy: workOrderPolicy("WO-AC2B") });
+
+    const fixRecordId = uuid();
+    const first = await enqueueOne(tenantId, notebookId, { fixRecordId });
+    const firstDeliveryId = requireDeliveryId(first.result.delivery);
+
+    // Provider changes between the original enqueue and the replay — the
+    // dedupe_key a fresh insert would compute now differs from the one the
+    // original delivery was stored under.
+    await setCmmsConfig(tenantId, { provider: "fiix", writePolicy: workOrderPolicy("WO-AC2B") });
+
+    const second = await enqueueOne(tenantId, notebookId, { fixRecordId });
+    expect(second.result.replayed).toBe(true);
+    expect(requireDeliveryId(second.result.delivery)).toBe(firstDeliveryId);
+
+    const deliveries = await testPool.query<{ n: number; connection_key: string }>(
+      `SELECT count(*)::int AS n, min(connection_key) AS connection_key
+         FROM notebook_event_deliveries WHERE event_id = $1`,
+      [first.result.eventId],
+    );
+    expect(deliveries.rows[0]!.n).toBe(1);
+    expect(deliveries.rows[0]!.connection_key).toBe("atlas"); // the ORIGINAL provider, not "fiix"
+  });
+
   it("AC3: two concurrent dispatch ticks on one queued delivery → the provider sees exactly one appendWorkLog call", async () => {
     const tenantId = uuid();
     const notebookId = await makeNotebook(tenantId);

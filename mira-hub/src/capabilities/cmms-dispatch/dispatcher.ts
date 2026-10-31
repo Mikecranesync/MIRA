@@ -305,10 +305,17 @@ export async function runDispatchTick(deps: DispatchDeps): Promise<DispatchStats
       // ORDERING: an older, still-active delivery on the same machine
       // (aggregate_key) must be resolved first — a delayed older event can
       // never overtake a newer one at delivery time (111's own design goal).
+      // Compares against the DB's own stored `created_at` via a subquery
+      // rather than round-tripping `row.created_at` through JS — a `Date`
+      // only carries millisecond precision, while the column is
+      // microsecond, so two deliveries created within the same millisecond
+      // could otherwise slip past this guard in either direction.
       const olderRes = await pool.query<{ state: DeliveryState }>(
         `SELECT state FROM notebook_event_deliveries
-          WHERE aggregate_key = $1 AND created_at < $2 AND delivery_id <> $3`,
-        [row.aggregate_key, row.created_at, row.delivery_id],
+          WHERE aggregate_key = $1
+            AND delivery_id <> $2
+            AND created_at < (SELECT created_at FROM notebook_event_deliveries WHERE delivery_id = $2)`,
+        [row.aggregate_key, row.delivery_id],
       );
       const hasOlderActive = olderRes.rows.some((r) => !isTerminalState(r.state));
       if (hasOlderActive) {

@@ -179,12 +179,36 @@ export async function enqueueFixRecordedEvent(
       throw new Error(`enqueueFixRecordedEvent: conflict on ${subjectRef} but no existing row found`);
     }
     eventRow = existingRow;
+
+    // On replay, the event's existing delivery (if any) is authoritative —
+    // return it as-is rather than re-running the policy gate below. This
+    // matters because the dedupe_key below is built from the CURRENT
+    // tenant_cmms_config.provider: if the tenant's provider changed between
+    // the original enqueue and this replay, re-deriving the key would miss
+    // the original delivery row and mint a second one for the same event,
+    // which is exactly the "never a second event or delivery" guarantee
+    // this function exists to uphold.
+    const existingDelivery = await c.query<{ delivery_id: string }>(
+      `SELECT delivery_id::text AS delivery_id FROM notebook_event_deliveries
+        WHERE event_id = $1::uuid ORDER BY created_at LIMIT 1`,
+      [eventRow.event_id],
+    );
+    if (existingDelivery.rows.length > 0) {
+      return {
+        eventId: eventRow.event_id,
+        sequence: Number(eventRow.sequence),
+        replayed: true,
+        delivery: { deliveryId: existingDelivery.rows[0]!.delivery_id, state: "queued" },
+      };
+    }
+    // No delivery was ever created for this event (e.g. policy was disabled
+    // at the original enqueue time) — fall through to (f) below, which may
+    // create one now under the CURRENT policy.
   }
 
-  // (f) Policy gate + delivery, keyed on the EVENT's own id so this step is
-  // naturally idempotent on replay too: a dedupe_key built from eventRow.event_id
-  // is identical whether this is the first enqueue or a replay, so a second
-  // attempt to insert it collides on notebook_event_deliveries_dedupe_uniq
+  // (f) Policy gate + delivery, keyed on the EVENT's own id so a concurrent
+  // double-attempt at creating the FIRST delivery for this event (same
+  // tenant, same provider) collides on notebook_event_deliveries_dedupe_uniq
   // and is resolved by lookup — never a second delivery row.
   const config = await loadTenantWritePolicy(c, input.tenantId);
 
