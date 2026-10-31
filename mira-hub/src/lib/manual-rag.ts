@@ -450,7 +450,8 @@ function approvalFilterSql(): string {
 
 /**
  * Hybrid-corpus admission under the approval gate — used ONLY by
- * `retrieveManualChunks` (Hub /ask, asset-chat manufacturer lane, quickstart).
+ * `retrieveManualChunks` (Hub /ask, asset-chat manufacturer lane, quickstart),
+ * on every lane of that read: BM25 AND/OR and the whole-token code lane.
  *
  * Shared OEM rows stay verified-only. The caller's own private uploads are
  * admitted by tenant ownership: the upload path never sets `verified = true`
@@ -1238,7 +1239,7 @@ async function runBm25Query(
           2::float4 AS rank
         FROM knowledge_entries
         WHERE (is_private = false OR tenant_id = $1)
-          ${approvalFilterSql()}
+          ${hybridApprovalFilterSql()}
           ${codeScope.mfrClause}
           ${codeScope.modelClause}
           ${codeScope.familyClause}
