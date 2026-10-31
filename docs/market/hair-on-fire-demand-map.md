@@ -1,7 +1,7 @@
 # Hair-on-Fire Demand Map
 
 **Proposal for Mike — Oct 31, 2026 (America/New_York).**  
-What industrial maintenance buyers are desperately funding right now, ranked by urgency × willingness to pay × MIRA fit — with evidence links, current repo status, smallest sellable moves, and marketing hooks.
+Hair-on-fire pains ranked by urgency × willingness to pay × MIRA fit, plus a verified public-complaint survey (45 counted instances with linked proof).
 
 **Info only.** Nothing here is customer-facing ship work. No public prices. This map does not authorize merge, deploy, Doppler, networking, PLC, paid cloud agents, or customer-facing launch.
 
@@ -181,6 +181,44 @@ Upper-right product lane: #1 cited manuals, #2 tribal knowledge, #3 MTTR (reuse 
 11. [Rockwell Singapore Maintenance Copilot (Microsoft Source)](https://news.microsoft.com/source/features/digital-transformation/rockwell-automation-pairs-ai-with-decades-of-shop-floor-know-how-so-workers-can-solve-glitches-faster/) (2026-09-24)
 12. [MIRA CAPABILITY_CLOSURE.yaml](https://github.com/Mikecranesync/MIRA/blob/main/docs/architecture/convergence/CAPABILITY_CLOSURE.yaml)
 13. [MIRA equipment-notebook chat route](https://github.com/Mikecranesync/MIRA/blob/main/mira-hub/src/app/api/equipment-notebooks/%5Bid%5D/chat/route.ts)
+
+---
+
+## Complaint survey
+
+**Method (not a statistical sample).** Counted only first-person or firsthand public complaints that match each pain’s inclusion criteria, with a live URL and a ≤25-word verbatim quote. Sources searched: Reddit (r/PLC, r/IndustrialMaintenance, related), control.com, and X public posts. PLCtalk / Mike Holt hits were dropped when URLs returned 403. Bias: English, forum-active technicians, Reddit-heavy — **not a market census**.
+
+Survey date: Oct 31, 2026 (America/New_York). Log file: `docs/market/complaint-survey.csv` (box: `/workspace/hair-on-fire-demand-map/complaint-survey.csv`).
+
+**Total counted complaints: 45**
+
+| # | Pain | Counted | Inclusion (short) |
+| ---: | --- | ---: | --- |
+| 1 | Cited answers from OUR manuals at the machine | 8 | Hunting OEM manuals / Ctrl+F hell / needs their manual for trustworthy answers |
+| 2 | Junior / night shift as capable as the retiring senior | 9 | Tribal knowledge in seniors’ heads; walk-out on retirement; night-shift silos |
+| 3 | Cut recovery time when unplanned downtime hits | 4 | Diagnosis/recovery time during unplanned downtime; line-down urgency |
+| 4 | Branching troubleshooting that isn’t a useless error-code echo | 4 | Fault codes / guides that restate the fault or dead-end to OEM |
+| 5 | Photo the nameplate → right manual → ask | 4 | Cannot ID asset / multi-OEM / missing nameplate → wrong or no manual |
+| 6 | AI that works without ripping out (or depending on) the CMMS | 7 | CMMS too complex/hostile for techs; floor still needs non-CMMS answers |
+| 7 | Record the fix once; next shift gets the guided workflow | 5 | Shift handoff / past-fix capture / seniors resist documenting |
+| 8 | Answers when the help file needs internet (or the cell drops) | 4 | Online-only help, wrong-system help, or docs stranded across the plant |
+
+### Top proof quotes
+
+> All knowledge is "tribal" (in the heads of senior techs)  
+> — [r/IndustrialMaintenance — Zero documentation](https://www.reddit.com/r/IndustrialMaintenance/comments/1sz9jwe/zero_documentation/)
+
+> Fuck you here's a 300 page manual. Find it yourself.  
+> — [r/PLC — The old manuals were so much better](https://www.reddit.com/r/PLC/comments/1cg2aa7/the_old_manuals_where_so_much_better/)
+
+> troubleshooting guide… says "there is a problem with the breaker" with no info  
+> — [r/PLC — industry meme thread](https://www.reddit.com/r/PLC/comments/1n2ibmv/saw_this_and_thought_it_sums_up_my_time_in_this/)
+
+> We currently use Fiix but it’s too complicated for many of my technicians.  
+> — [r/IndustrialMaintenance — MaintainX vs Limble](https://www.reddit.com/r/IndustrialMaintenance/comments/1an358b/maintainx_vs_limble/)
+
+> help files now require an internet connection to work  
+> — [r/PLC — industry meme thread](https://www.reddit.com/r/PLC/comments/1n2ibmv/saw_this_and_thought_it_sums_up_my_time_in_this/)
 
 ---
 
