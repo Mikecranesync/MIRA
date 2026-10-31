@@ -35,6 +35,7 @@ function baseline() {
     "MIRA_JEV_SHADOW",
     "MIRA_JEV_DECISION",
     "NOTEBOOK_QUERY_REWRITE",
+    "NOTEBOOK_SEMANTIC_CHECK",
   ]) {
     delete process.env[k];
   }
@@ -226,6 +227,7 @@ describe("inferenceFingerprint", () => {
       jevShadow: true,
       jevDecision: false,
       queryRewrite: { enabled: false },
+      safetyJudge: { enabled: true, maxOutputTokens: 200, providers: [] },
     });
   });
 
@@ -293,5 +295,75 @@ describe("inferenceFingerprint", () => {
         { name: "Gemini", model: "gemini-2.5-flash", pricePerMtok: null },
       ]);
     });
+  });
+});
+
+// #5050: the post-answer safety judge is a paid call the route makes on every
+// gated turn. It dispatches from canonicalProviders() whatever the seam says,
+// so with the seam OFF its providers differ from the answer's — the walk must
+// see them to book and price the judge.
+describe("safety judge lane (#5050)", () => {
+  it("is reported disabled only when the kill switch is set", () => {
+    process.env.OPENAI_API_KEY = "sk-test-not-a-real-key";
+    process.env.NOTEBOOK_SEMANTIC_CHECK = "0";
+    expect(inferenceFingerprint().summary.optionalMetered.safetyJudge).toEqual({ enabled: false });
+  });
+
+  it("reports the judge cap and its keyed canonical providers when on", () => {
+    process.env.OPENAI_API_KEY = "sk-test-not-a-real-key";
+    const lane = inferenceFingerprint().summary.optionalMetered.safetyJudge;
+    expect(lane).toEqual({
+      enabled: true,
+      maxOutputTokens: 200,
+      providers: [{ name: "OpenAI", model: "gpt-5.4-mini", pricePerMtok: expect.any(Object) }],
+    });
+  });
+
+  it("seam off: the judge still lists OpenAI although the answer cascade does not", () => {
+    process.env.MIRA_CANONICAL_SEAM = "0";
+    process.env.OPENAI_API_KEY = "sk-test-not-a-real-key";
+    process.env.GROQ_API_KEY = "gsk-test-not-a-real-key";
+    const { summary } = inferenceFingerprint();
+    expect(summary.providers.map((p) => p.name)).toEqual(["Groq"]);
+    const judge = summary.optionalMetered.safetyJudge;
+    expect(judge.enabled && judge.providers.map((p) => p.name)).toEqual(["OpenAI", "Groq"]);
+  });
+
+  it("switching the judge off changes the hash", () => {
+    const on = inferenceFingerprint().hash;
+    process.env.NOTEBOOK_SEMANTIC_CHECK = "0";
+    expect(inferenceFingerprint().hash).not.toBe(on);
+  });
+});
+
+// #5051: maxOutputTokens is the per-turn ceiling, not what the answer call
+// requests. The route asks for min(1400, cap) with the seam on and a flat 1400
+// (coverage directive) with it off, so the walk books against this value.
+describe("notebook answer output cap (#5051)", () => {
+  it("seam on: min(1400, MIRA_TURN_MAX_OUTPUT_TOKENS)", () => {
+    expect(inferenceFingerprint().summary.notebookMaxOutputTokens).toBe(1400);
+    process.env.MIRA_TURN_MAX_OUTPUT_TOKENS = "600";
+    expect(inferenceFingerprint().summary.notebookMaxOutputTokens).toBe(600);
+  });
+
+  it("seam off: 1400 regardless of the turn cap", () => {
+    process.env.MIRA_CANONICAL_SEAM = "0";
+    process.env.MIRA_TURN_MAX_OUTPUT_TOKENS = "600";
+    expect(inferenceFingerprint().summary.notebookMaxOutputTokens).toBe(1400);
+  });
+
+  it("matches the literals the chat route requests (source pin)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const route = readFileSync(join(__dirname, "../../../app/api/equipment-notebooks/[id]/chat/route.ts"), "utf8");
+    const m = route.match(
+      /const requestCap = seam \? Math\.min\(coverageDirective \? (\d+) : (\d+), outputCap\) : coverageDirective \? (\d+) : (\d+);/,
+    );
+    expect(m, "route requestCap expression moved or changed").not.toBeNull();
+    const [, seamHi, , offHi] = m!.map(Number) as number[];
+    expect(seamHi).toBe(1400);
+    expect(offHi).toBe(1400);
+    const { NOTEBOOK_ANSWER_MAX_OUTPUT_TOKENS } = await import("../runtime-identity");
+    expect(NOTEBOOK_ANSWER_MAX_OUTPUT_TOKENS).toBe(Math.max(...m!.slice(1).map(Number)));
   });
 });

@@ -13,8 +13,10 @@
  *   list when the seam is off, the canonical one when on, keyless entries
  *   dropped — #5048), each model id and its declared accounting rate, the
  *   per-turn output cap, the canonical seam flag and the optional metered
- *   lanes: Jev shadow/decision and the paid query-rewrite call with its own
- *   providers, model, cap and rate (#5049). Read at call time, so a Doppler
+ *   lanes: Jev shadow/decision, the paid query-rewrite call with its own
+ *   providers, model, cap and rate (#5049), and the post-answer safety judge
+ *   (#5050). `notebookMaxOutputTokens` is what the answer call requests,
+ *   which is smaller than the per-turn ceiling (#5051). Read at call time, so a Doppler
  *   change the running Hub has not picked up is not reported, and one it has
  *   picked up is — which is exactly the question the walk asks.
  *
@@ -23,11 +25,12 @@
  */
 import { createHash, randomBytes } from "node:crypto";
 
+import { JUDGE_OUTPUT_TOKENS, semanticCheckEnabled } from "../../capabilities/answer-safety-check";
 import { jevDecisionEnabled, jevShadowEnabled } from "../../capabilities/observability/config";
 import { openAiModelDispatchable } from "../../capabilities/openai-run-budget";
 import { QUERY_REWRITE_MAX_TOKENS, queryRewriteEnabled } from "../../capabilities/query-rewrite";
 import { classifierProviders } from "../llm/cascade";
-import { canonicalSeamEnabled, declaredPricePerMtok, maxOutputTokens } from "./canonical-cascade";
+import { canonicalProviders, canonicalSeamEnabled, declaredPricePerMtok, maxOutputTokens } from "./canonical-cascade";
 import { effectiveNotebookProviders } from "./legacy-cascade";
 
 const GENERATION = `${new Date().toISOString()}-${randomBytes(6).toString("hex")}`;
@@ -47,11 +50,29 @@ export type QueryRewriteLane =
   | { enabled: false }
   | { enabled: true; maxOutputTokens: number; providers: ProviderFingerprint[] };
 
+/** The post-answer safety judge (#5050): its own cap and its own providers. */
+export type SafetyJudgeLane = QueryRewriteLane;
+
+/**
+ * The most output the notebook answer call requests (#5051). The chat route
+ * asks for min(1400, turn cap) with the seam on and 1400 with it off; a source
+ * pin in the test keeps this equal to the route's literals.
+ */
+export const NOTEBOOK_ANSWER_MAX_OUTPUT_TOKENS = 1400;
+
 export type InferenceFingerprintSummary = {
   canonicalSeam: boolean;
+  /** The per-turn ceiling (MIRA_TURN_MAX_OUTPUT_TOKENS), not the request size. */
   maxOutputTokens: number;
+  /** What the notebook answer call actually requests at most (#5051). */
+  notebookMaxOutputTokens: number;
   providers: ProviderFingerprint[];
-  optionalMetered: { jevShadow: boolean; jevDecision: boolean; queryRewrite: QueryRewriteLane };
+  optionalMetered: {
+    jevShadow: boolean;
+    jevDecision: boolean;
+    queryRewrite: QueryRewriteLane;
+    safetyJudge: SafetyJudgeLane;
+  };
 };
 
 export type InferenceFingerprint = { hash: string; summary: InferenceFingerprintSummary };
@@ -97,15 +118,34 @@ function queryRewriteLane(): QueryRewriteLane {
   };
 }
 
+/**
+ * The judge runs on every gated turn unless NOTEBOOK_SEMANTIC_CHECK=0, and it
+ * dispatches from the canonical list whatever the seam flag says
+ * (`semanticSafetyCheck`), so with the seam off its providers differ from the
+ * answer's.
+ */
+function safetyJudgeLane(): SafetyJudgeLane {
+  if (!semanticCheckEnabled()) return { enabled: false };
+  return {
+    enabled: true,
+    maxOutputTokens: JUDGE_OUTPUT_TOKENS,
+    providers: canonicalProviders().filter(dispatchable).map(fingerprintOf),
+  };
+}
+
 export function inferenceFingerprint(): InferenceFingerprint {
+  const seam = canonicalSeamEnabled();
+  const cap = maxOutputTokens();
   const summary: InferenceFingerprintSummary = {
-    canonicalSeam: canonicalSeamEnabled(),
-    maxOutputTokens: maxOutputTokens(),
+    canonicalSeam: seam,
+    maxOutputTokens: cap,
+    notebookMaxOutputTokens: seam ? Math.min(NOTEBOOK_ANSWER_MAX_OUTPUT_TOKENS, cap) : NOTEBOOK_ANSWER_MAX_OUTPUT_TOKENS,
     providers: effectiveNotebookProviders().filter(dispatchable).map(fingerprintOf),
     optionalMetered: {
       jevShadow: jevShadowEnabled(),
       jevDecision: jevDecisionEnabled(),
       queryRewrite: queryRewriteLane(),
+      safetyJudge: safetyJudgeLane(),
     },
   };
   const hash = createHash("sha256").update(JSON.stringify(summary)).digest("hex").slice(0, 16);
