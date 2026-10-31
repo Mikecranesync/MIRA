@@ -667,6 +667,13 @@ export async function attachSource(
   docId: string,
   opts: AttachSourceOpts = {},
 ): Promise<{ ok: boolean; error?: string; docId?: string; alreadyAttached?: boolean }> {
+  // hub_uploads: raw pool + explicit tenant predicate (TEXT column vs UUID session).
+  // IDOR guard from main: ownership is checked before any notebook write.
+  const doc = await pool.query(
+    `SELECT id FROM hub_uploads WHERE tenant_id = $1 AND id = $2::uuid LIMIT 1`,
+    [tenantId, docId],
+  );
+  if (doc.rows.length === 0) return { ok: false, error: "doc_not_found" };
   return withTenantContext(tenantId, (c) => attachSourceTx(c, tenantId, notebookId, docId, opts));
 }
 
