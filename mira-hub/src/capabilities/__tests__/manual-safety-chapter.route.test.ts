@@ -171,6 +171,31 @@ describe("the cited manual's Safety chapter on a two-manual turn", () => {
     expect(turn.evidence.filter(isManualSafetyStatementEntry)).toEqual([expect.objectContaining({ sourceDocId: DOC_C, page: 2, sourceCitationId: "9" })]);
   });
 
+  it("one manual: four first-page warnings and the procedure page all reach the prompt and the notice (Codex r4 F7)", async () => {
+    const STEPS = "WARNING! Wait for 5 minutes after disconnecting the input power. Measure with a multimeter that there is no voltage.";
+    const corpus = [
+      ...[1, 2, 3, 4].map((i) => ({ sourceUrl: URL_B, sourcePage: 17, content: `WARNING! Generic warning ${i}: only qualified electricians may install this drive.` })),
+      { sourceUrl: URL_B, sourcePage: 18, content: STEPS },
+    ];
+    ragMock.retrieveCitedPageChunks.mockImplementation((async (
+      _c: unknown,
+      _t: string,
+      wanted: Array<{ sourceUrl: string; page: number }>,
+      opts: { keep?: (t: string) => boolean } = {},
+    ) => corpus.filter((r) => wanted.some((w) => w.sourceUrl === r.sourceUrl && w.page === r.sourcePage) && (opts.keep ? opts.keep(r.content) : true))) as never);
+    ragMock.retrieveNodeChunks.mockResolvedValue([chunk(DOC_B, URL_B, "ACS355 User's Manual", 372, P372)]);
+    domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_B], nodeId: "n1" });
+    // Excerpts: [1] p372; p17's four chunks share one source [2]; p18 is [3].
+    stubProvider("Wait 5 minutes and measure with a multimeter that no voltage is present [3].");
+    await (await POST(chatReq({ message: QUESTION, sourceDocIds: [DOC_B] }), params)).text();
+
+    const sent = ragMock.buildManualUserContent.mock.calls[0] as unknown as [string, Array<{ sourcePage: number; content: string }>];
+    expect(sent[1].map((c) => c.sourcePage)).toEqual([372, 17, 17, 17, 17, 18]);
+    expect(sent[1][5].content).toBe(STEPS);
+    const turn = (domainMock.recordTurn.mock.calls as unknown as Array<[string, string, { evidence: unknown[] }]>)[0][2];
+    expect(turn.evidence.filter(isManualSafetyStatementEntry)).toEqual([expect.objectContaining({ sourceDocId: DOC_B, page: 18, sourceCitationId: "3" })]);
+  });
+
   it("control: no retrieved page refers to a Safety chapter → no chapter chunks and no directive", async () => {
     ragMock.retrieveNodeChunks.mockResolvedValue([chunk(DOC_B, URL_B, "ACS355 User's Manual", 355, text("acs355-q4"))]);
     domainMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_B], nodeId: "n1" });

@@ -5,7 +5,6 @@ import {
   retrieveSafetyChapterChunks,
   safetyChapterPage,
   SAFETY_CHAPTER_DIRECTIVE,
-  SAFETY_CHAPTER_MAX_CHUNKS,
   SAFETY_CHAPTER_REF_SQL,
 } from "./manual-safety-chapter";
 import type { PoolClient } from "pg";
@@ -143,7 +142,8 @@ describe("retrieveSafetyChapterChunks", () => {
     const added = await retrieveSafetyChapterChunks(client, "tenant", [referring]);
     const read = client.calls.find((c) => c.sql.includes("unnest"))!;
     expect(read.params[3]).toEqual([21, 22, 23, 24]);
-    expect(added.map((c) => c.sourcePage)).toEqual([21]);
+    // PDF page for rereads; the manual's printed page as the label (Codex r4 F8).
+    expect(added.map((c) => [c.sourcePage, c.pageLabel])).toEqual([[21, "17"]]);
   });
 
   it("printed page offset on the document-level lookup comes from the referring row's own label", async () => {
@@ -152,7 +152,7 @@ describe("retrieveSafetyChapterChunks", () => {
     const added = await retrieveSafetyChapterChunks(client, "tenant", [chunk(P355, 355)]);
     const read = client.calls.find((c) => c.sql.includes("unnest"))!;
     expect(read.params[3]).toEqual([21, 22, 23, 24]);
-    expect(added.map((c) => c.sourcePage)).toEqual([22]);
+    expect(added.map((c) => [c.sourcePage, c.pageLabel])).toEqual([[22, "18"]]);
   });
 
   it("printedPageOffset: only a plain-number label shifts the page", () => {
@@ -181,10 +181,10 @@ describe("retrieveSafetyChapterChunks", () => {
     expect(client.calls).toEqual([]);
   });
 
-  it("caps the chunks it adds per manual", async () => {
+  it("keeps every warning on the chapter pages, in page order (no chunk-count cap)", async () => {
     const many = Array.from({ length: 9 }, (_, i) => row(`00000000-0000-0000-0000-0000000001${i}0`, `${P18}\n(${i})`, 18 + (i % 3)));
     const added = await retrieveSafetyChapterChunks(fakeClient([...many, CORPUS[3]]), "tenant", [chunk(P372, 372)]);
-    expect(added).toHaveLength(SAFETY_CHAPTER_MAX_CHUNKS);
+    expect(added).toHaveLength(9);
     const pageNos = added.map((c) => c.sourcePage ?? -1);
     expect(pageNos).toEqual([...pageNos].sort((a, b) => a - b));
   });
@@ -239,6 +239,17 @@ describe("retrieveSafetyChapterChunks", () => {
     const c2 = added.find((c) => c.content === STEPS);
     expect(c2).toMatchObject({ docId: C.id, sourceUrl: C.url, sourcePage: 2 });
     expect(added.filter((c) => c.docId === C.id)).toHaveLength(2);
+  });
+
+  it("four generic warnings on the chapter's first page cannot push out the procedure on the next (Codex r4 F7)", async () => {
+    const STEPS = "WARNING! Wait for 5 minutes after disconnecting the input power. Measure with a multimeter that there is no voltage.";
+    const generic = [1, 2, 3, 4].map((i) =>
+      row(`00000000-0000-0000-0000-00000000017${i}`, `WARNING! Generic warning ${i}: only qualified electricians may install this drive.`, 17),
+    );
+    const rows = [...generic, row("00000000-0000-0000-0000-000000000180", STEPS, 18), CORPUS[3]];
+    const added = await retrieveSafetyChapterChunks(fakeClient(rows), "tenant", [chunk(P372, 372)]);
+    expect(added.map((c) => c.sourcePage)).toEqual([17, 17, 17, 17, 18]);
+    expect(added[4]).toMatchObject({ docId: DOC, sourceUrl: URL, sourcePage: 18, content: STEPS });
   });
 
   it("two manuals with byte-identical warnings each keep their own (Codex r3 F6)", async () => {

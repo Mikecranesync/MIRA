@@ -33,13 +33,12 @@ const QUOTE = '["\u201c\u201d]?';
 export const SAFETY_CHAPTER_REF = new RegExp(`\\bchapter\\s+${QUOTE}safety${QUOTE}\\s+on\\s+page\\s+(\\d{1,4})\\b`, "i");
 /** The same reference as a Postgres regex, for the document-level lookup (no \\b: it means backspace there). */
 export const SAFETY_CHAPTER_REF_SQL = `chapter\\s+${QUOTE}safety${QUOTE}\\s+on\\s+page\\s+[0-9]{1,4}`;
-/** Pages read from the referenced first page on (ACS355: 17 opens the chapter, 18-20 hold the warnings). */
-export const SAFETY_CHAPTER_SPAN = 4;
 /**
- * Chapter chunks added PER MANUAL: bounds the extra prompt tokens. Each retrieved manual has its own
- * budget, so one manual's chapter can never use up the slots of the manual the task is about.
+ * Pages read from the referenced first page on (ACS355: 17 opens the chapter, 18-20 hold the warnings).
+ * This page span is the only bound: every safety-statement chunk on those pages is kept, because any
+ * chunk-count cap can cut off the page that holds the procedure (Codex #5056 r1, r3, r4).
  */
-export const SAFETY_CHAPTER_MAX_CHUNKS = 4;
+export const SAFETY_CHAPTER_SPAN = 4;
 
 /** The first page of the Safety chapter a text refers to, or null. */
 export function safetyChapterPage(text: string): number | null {
@@ -55,12 +54,14 @@ export function printedPageOffset(pdfPage: number | null, pageLabel: string | nu
   return pdfPage - Number(label);
 }
 
-/** The PDF page a printed chapter reference lands on, or null when the offset puts it before page 1. */
-function chapterPdfPage(text: string, pdfPage: number | null, pageLabel: string | null | undefined): number | null {
+type ChapterStart = { pdfPage: number; offset: number };
+
+/** Where a printed chapter reference lands (PDF page + the offset), or null when it falls before page 1. */
+function chapterStart(text: string, pdfPage: number | null, pageLabel: string | null | undefined): ChapterStart | null {
   const printed = safetyChapterPage(text);
   if (printed === null) return null;
-  const pdf = printed + printedPageOffset(pdfPage, pageLabel);
-  return pdf > 0 ? pdf : null;
+  const offset = printedPageOffset(pdfPage, pageLabel);
+  return printed + offset > 0 ? { pdfPage: printed + offset, offset } : null;
 }
 
 type Doc = { docId: string; sourceUrl: string; template: ManualChunk };
@@ -85,11 +86,11 @@ async function chapterStarts(
   docs: readonly Doc[],
   chunks: readonly ManualChunk[],
   approvedSourceDocIds: readonly string[],
-): Promise<Map<string, number>> {
-  const starts = new Map<string, number>();
+): Promise<Map<string, ChapterStart>> {
+  const starts = new Map<string, ChapterStart>();
   for (const c of chunks) {
-    const page = c.docId ? chapterPdfPage(c.content, c.sourcePage, c.pageLabel) : null;
-    if (page !== null && c.docId && !starts.has(c.docId)) starts.set(c.docId, page);
+    const start = c.docId ? chapterStart(c.content, c.sourcePage, c.pageLabel) : null;
+    if (start !== null && c.docId && !starts.has(c.docId)) starts.set(c.docId, start);
   }
   const missing = docs.filter((d) => !starts.has(d.docId));
   if (missing.length === 0) return starts;
@@ -115,8 +116,8 @@ async function chapterStarts(
   );
   for (const r of res.rows as Array<Record<string, unknown>>) {
     const pdfPage = r.page == null ? null : Number(r.page);
-    const page = chapterPdfPage(String(r.content ?? ""), pdfPage, r.page_label == null ? null : String(r.page_label));
-    if (page !== null) starts.set(String(r.doc_id), page);
+    const start = chapterStart(String(r.content ?? ""), pdfPage, r.page_label == null ? null : String(r.page_label));
+    if (start !== null) starts.set(String(r.doc_id), start);
   }
   return starts;
 }
@@ -139,7 +140,7 @@ export async function retrieveSafetyChapterChunks(
     const first = starts.get(d.docId);
     return first === undefined
       ? []
-      : Array.from({ length: SAFETY_CHAPTER_SPAN }, (_, i) => ({ docId: d.docId, sourceUrl: d.sourceUrl, page: first + i }));
+      : Array.from({ length: SAFETY_CHAPTER_SPAN }, (_, i) => ({ docId: d.docId, sourceUrl: d.sourceUrl, page: first.pdfPage + i }));
   });
   if (pages.length === 0) return [];
   const rows = await retrieveCitedPageChunks(client, tenantId, pages, {
@@ -158,14 +159,22 @@ export async function retrieveSafetyChapterChunks(
     seen.add(key);
     list.push(r);
   }
-  // Retrieval order across documents, page order within each, each document within its own budget.
-  return docs.flatMap((d) =>
-    perDoc
+  // Retrieval order across documents, page order within each. sourcePage stays the PDF page (rereads
+  // and citation keys use it); pageLabel is the manual's printed page (Codex #5056 r4 F8).
+  return docs.flatMap((d) => {
+    const offset = starts.get(d.docId)?.offset ?? 0;
+    return perDoc
       .get(d.sourceUrl)!
       .sort((a, b) => a.sourcePage - b.sourcePage)
-      .slice(0, SAFETY_CHAPTER_MAX_CHUNKS)
-      .map((r) => ({ ...d.template, content: r.content, sourcePage: r.sourcePage, pageLabel: String(r.sourcePage), chunkIndex: null, rank: 0 })),
-  );
+      .map((r) => ({
+        ...d.template,
+        content: r.content,
+        sourcePage: r.sourcePage,
+        pageLabel: String(r.sourcePage - offset > 0 ? r.sourcePage - offset : r.sourcePage),
+        chunkIndex: null,
+        rank: 0,
+      }));
+  });
 }
 
 /** The prompt rule that rides with the chapter excerpts; only sent when some were added. */
