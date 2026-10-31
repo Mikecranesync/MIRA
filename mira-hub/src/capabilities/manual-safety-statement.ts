@@ -37,10 +37,12 @@ function findMarkerAndStatement(text: string): ManualSafetyStatement | null {
       // The marker must open the line, after only whitespace and bullet/icon characters, and be
       // followed by ":", "!" (ABB) or whitespace — so "XWARNING" and a marker word inside ordinary
       // prose ("displays the WARNING: ACTIVE status") never count (#4509 Codex F2).
-      const markerMatch = new RegExp(`^[\\s\\-•*▪●■◆►▶⚠!]*(${marker})[:!\\s]`).exec(line);
+      // End of line is a boundary too: a standalone "WARNING" heading line (#4509 Codex r5 F4).
+      const markerMatch = new RegExp(`^[\\s\\-•*▪●■◆►▶⚠!]*(${marker})(?:[:!\\s]|$)`).exec(line);
       if (markerMatch) {
-        // Extract the statement following the marker
-        const markerIndex = markerMatch.index + markerMatch[0].length - marker.length - 1;
+        // Extract the statement following the marker. The prefix holds no letters, so the marker's
+        // offset is found directly — no delimiter is assumed consumed.
+        const markerIndex = markerMatch.index + markerMatch[0].indexOf(markerMatch[1]);
         // Drop the marker's own punctuation ("ATTENTION:" → the sentence itself).
         const afterMarker = line.substring(markerIndex + marker.length).replace(/^[\s:!\-–—]+/, '').trim();
 
