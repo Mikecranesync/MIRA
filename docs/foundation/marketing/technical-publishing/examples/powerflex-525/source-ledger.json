@@ -1,0 +1,230 @@
+{
+  "schema_version": "factorylm.source-ledger.v1",
+  "article_slug": "powerflex-525-f004-f005",
+  "revision": "Editorial prototype v2",
+  "reviewed_on": "2026-10-25",
+  "sources": [
+    {
+      "id": "rockwell-520-um001o",
+      "kind": "oem_manual",
+      "title": "PowerFlex 520-Series Adjustable Frequency AC Drive User Manual",
+      "publisher": "Rockwell Automation",
+      "publication_id": "520-UM001O-EN-E",
+      "edition_date": "September 2025",
+      "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/520-um001_-en-e.pdf",
+      "sha256": "b9445a63c78865037d22238ddedbb785b4309c9798da9da35029d628658636a6",
+      "page_mapping": "Reviewed printed page numbers equal the one-based PDF page numbers: 13, 78, 79, 134, 145, 159, 160, 161.",
+      "applicability": "PowerFlex 525; identify installed model/version and confirm applicable source before operational use. The manual also covers other 520-Series equipment."
+    }
+  ],
+  "claims": [
+    {
+      "id": "C01",
+      "locations": [
+        "page1.lead",
+        "page1.code-table"
+      ],
+      "statement": "F004 identifies DC-bus undervoltage; F005 identifies DC-bus overvoltage.",
+      "basis": "oem",
+      "source_ids": [
+        "rockwell-520-um001o"
+      ],
+      "pages": [
+        161
+      ],
+      "status": "supported",
+      "qualification": "These fault meanings alone do not diagnose a failed component."
+    },
+    {
+      "id": "C02",
+      "locations": [
+        "page1.lead",
+        "page1.code-table"
+      ],
+      "statement": "A reported F004/F005 sequence does not establish a single cause or prove a faulty component.",
+      "basis": "editorial_reasoning",
+      "source_ids": [
+        "rockwell-520-um001o"
+      ],
+      "pages": [
+        161
+      ],
+      "status": "qualified",
+      "qualification": "Inference from the distinct conditions and several OEM investigation paths; not an OEM field diagnosis."
+    },
+    {
+      "id": "C03",
+      "locations": [
+        "page1.notice"
+      ],
+      "statement": "Use qualified personnel, site isolation rules and full applicable OEM electrical procedures; a display state is not isolation.",
+      "basis": "scope_boundary",
+      "source_ids": [
+        "rockwell-520-um001o"
+      ],
+      "pages": [
+        13
+      ],
+      "status": "qualified",
+      "qualification": "Editorial notice is not a replacement for the complete OEM/site procedure or restart authorization."
+    },
+    {
+      "id": "C04",
+      "locations": [
+        "page2.history-table",
+        "page2.pairing"
+      ],
+      "statement": "b007/F651 identify the newest recorded code and bus snapshot; b008/F652 identify the previous recorded entry.",
+      "basis": "oem",
+      "source_ids": [
+        "rockwell-520-um001o"
+      ],
+      "pages": [
+        79,
+        145
+      ],
+      "status": "supported",
+      "qualification": "Pair by the stored index and actual code. F652 belongs to F004 only when b008 shows F004; an intervening fault changes the pairing."
+    },
+    {
+      "id": "C05",
+      "locations": [
+        "page2.record-limits"
+      ],
+      "statement": "Repetitive faults are recorded once.",
+      "basis": "oem",
+      "source_ids": [
+        "rockwell-520-um001o"
+      ],
+      "pages": [
+        79
+      ],
+      "status": "supported",
+      "qualification": "The note does not invent a deduplication interval or call this a complete event log."
+    },
+    {
+      "id": "C06",
+      "locations": [
+        "page2.record-limits"
+      ],
+      "statement": "The stored bus snapshots use filtered b005 data.",
+      "basis": "oem",
+      "source_ids": [
+        "rockwell-520-um001o"
+      ],
+      "pages": [
+        78,
+        145
+      ],
+      "status": "supported",
+      "qualification": "They are not a high-speed waveform or a guarantee that an event peak was captured. No numeric trip threshold is inferred from the display range."
+    },
+    {
+      "id": "C07",
+      "locations": [
+        "page2.operating-context"
+      ],
+      "statement": "Record machine state, observed disturbances/changes and available diagnostic evidence.",
+      "basis": "editorial_reasoning",
+      "source_ids": [
+        "rockwell-520-um001o"
+      ],
+      "pages": [
+        161
+      ],
+      "status": "qualified",
+      "qualification": "Evidence collection guidance; no instruction for live measurement or parameter modification."
+    },
+    {
+      "id": "C08",
+      "locations": [
+        "page2.operating-context"
+      ],
+      "statement": "OEM investigation paths include low incoming voltage or interrupted power for F004 and high line/transients or motor regeneration for F005.",
+      "basis": "oem",
+      "source_ids": [
+        "rockwell-520-um001o"
+      ],
+      "pages": [
+        161
+      ],
+      "status": "supported",
+      "qualification": "Potential paths only; the reader's actual cause remains unknown."
+    },
+    {
+      "id": "C09",
+      "locations": [
+        "page2.clearing-repair-restart"
+      ],
+      "statement": "Manual clearing follows addressing and correcting the cause; Type 1 does not remove the general requirement.",
+      "basis": "oem",
+      "source_ids": [
+        "rockwell-520-um001o"
+      ],
+      "pages": [
+        159,
+        160,
+        161
+      ],
+      "status": "supported",
+      "qualification": "No enabling steps or automatic-restart parameter settings are provided."
+    },
+    {
+      "id": "C10",
+      "locations": [
+        "page2.clearing-repair-restart"
+      ],
+      "statement": "Automatic fault clearing/restart depends on configuration; clearing without restart is documented.",
+      "basis": "oem",
+      "source_ids": [
+        "rockwell-520-um001o"
+      ],
+      "pages": [
+        134,
+        159,
+        160
+      ],
+      "status": "supported",
+      "qualification": "Clearing, corrected cause and permission to restart are separate decisions."
+    },
+    {
+      "id": "C11",
+      "locations": [
+        "page2.handoff"
+      ],
+      "statement": "Unresolved or repeated faults and work beyond authorization warrant a handoff with identity, records, context and unknowns.",
+      "basis": "scope_boundary",
+      "source_ids": [],
+      "pages": [],
+      "status": "qualified",
+      "qualification": "Practical editorial handoff guidance, not a manufacturer-issued repair procedure."
+    },
+    {
+      "id": "C12",
+      "locations": [
+        "hero",
+        "hero.caption",
+        "hero.alt"
+      ],
+      "statement": "The image is an AI-generated editorial illustration with a generic drive.",
+      "basis": "scope_boundary",
+      "source_ids": [],
+      "pages": [],
+      "status": "qualified",
+      "qualification": "It does not depict a verified PowerFlex525 configuration, actual measurements, a customer case or a tested product result."
+    },
+    {
+      "id": "C13",
+      "locations": [
+        "page2.review-note",
+        "page2.contact"
+      ],
+      "statement": "This is an AI-assisted editorial draft with no hardware test or MIRA case result claimed.",
+      "basis": "scope_boundary",
+      "source_ids": [],
+      "pages": [],
+      "status": "qualified",
+      "qualification": "The invitation to discuss manuals makes no claim of demonstrated product behavior."
+    }
+  ]
+}
