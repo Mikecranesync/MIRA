@@ -346,3 +346,23 @@ Verify voltage before working.`;
     });
   });
 });
+
+describe('#4509 Codex r5 F4 — an unpunctuated standalone marker line', () => {
+  it.each([
+    ['WARNING\nDisconnect all power before servicing.', 'WARNING'],
+    ['DANGER\nHazardous voltage inside.', 'DANGER'],
+    ['SHOCK HAZARD\nDo not touch the terminals while energized.', 'SHOCK HAZARD'],
+    ['  ⚠ WARNING\n\nDisconnect all power before servicing.', 'WARNING'],
+  ])('%j yields its statement', (text, marker) => {
+    const r = extractManualSafetyStatement(text);
+    expect(r?.marker).toBe(marker);
+    expect(r?.statement).toBe(text.split('\n').filter((l) => l.trim()).slice(1).join(' ').trim());
+  });
+  it('a marker with no following statement still yields nothing', () => {
+    expect(extractManualSafetyStatement('WARNING')).toBeNull();
+    expect(extractManualSafetyStatement('WARNING\n\n\n\n')).toBeNull();
+  });
+  it('control: the marker word inside a longer token still does not count', () => {
+    expect(extractManualSafetyStatement('WARNINGS\nSee chapter 2.')).toBeNull();
+  });
+});
