@@ -21,6 +21,7 @@ import type {
   EvidenceBasisKind,
   IdentityProposal,
   InteractionPart,
+  ProgressStage,
   InteractionThread,
   InteractionTurn,
   Lifecycle,
@@ -209,6 +210,8 @@ export function sourceFor(citation: EvidenceCitation, turnId: string): SourceRef
     kind: citation.fileId ? "workspace_file" : "oem_documentation",
     locator,
     ...(href ? { href } : {}),
+    // The canonical origin of a photo-derived source is the photograph (085).
+    ...(href && citation.originFileId ? { media: "image" as const } : {}),
   };
 }
 
@@ -349,6 +352,16 @@ export function identityProposalOf(evidence: readonly unknown[]): IdentityPropos
  *  - `status === "error"` with text is a stop; without text a provider failure.
  *  - `status === "insufficient_evidence"` renders the abstention text only.
  */
+/**
+ * #4687 — the assistant turn while the stream is still open: the server's latest stage in
+ * plain words until the first answer text arrives, then only the text (progress is never
+ * mixed into the answer, its persistence, or its citations).
+ */
+export function livePartsWhileRunning(content: string, progress: ProgressStage | undefined): InteractionPart[] {
+  if (content) return [{ type: "text", text: content }];
+  return progress ? [{ type: "progress", stage: progress }] : [];
+}
+
 export function partsFromStream(result: StatusAwareStreamResult, opts: { stopped?: boolean; turnId: string; notebookDocIds?: readonly string[] }): InteractionPart[] {
   const parts: InteractionPart[] = [];
   const truncated = !result.sawStatus;

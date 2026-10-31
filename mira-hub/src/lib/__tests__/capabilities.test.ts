@@ -45,17 +45,17 @@ describe("getCapabilities", () => {
     expect(caps).not.toContain("platform.users.read");
   });
 
-  it("platform-admin email (default ADMIN_EMAILS) gets review caps", () => {
+  it("platform-admin email (default ADMIN_EMAILS) gets review caps only with the DB admin flag (#4591)", () => {
     // harperhousebuyers@gmail.com is in the default ADMIN_EMAILS allowlist.
-    const caps = getCapabilities(ctx({ email: "harperhousebuyers@gmail.com", status: "trial" }));
+    expect(getCapabilities(ctx({ email: "harperhousebuyers@gmail.com", status: "trial" }))).not.toContain("review_queue.read");
+    const caps = getCapabilities(ctx({ email: "harperhousebuyers@gmail.com", status: "admin", platformAdmin: true }));
     expect(caps).toContain("review_queue.read");
     expect(caps).toContain("review_queue.decide");
-    // Review-admin by email does NOT imply the platform user-admin (status gate).
-    expect(caps).not.toContain("platform.users.read");
   });
 
-  it("status==='admin' grants platform.users.read (matches the existing API gate)", () => {
-    const caps = getCapabilities(ctx({ email: "owner@example.com", status: "admin" }));
+  it("the fresh DB admin flag (not the JWT status) grants platform.users.read (#4591)", () => {
+    expect(getCapabilities(ctx({ email: "owner@example.com", status: "admin" }))).not.toContain("platform.users.read");
+    const caps = getCapabilities(ctx({ email: "owner@example.com", status: "admin", platformAdmin: true }));
     expect(caps).toContain("platform.users.read");
     // status admin is not in the email allowlist → no review caps.
     expect(caps).not.toContain("review_queue.read");

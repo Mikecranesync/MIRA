@@ -19,6 +19,9 @@
  * always available. `/feed` remains the default landing until Gate 6.
  */
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
+import { useSession } from "next-auth/react";
+import { signOutToLogin } from "@/components/layout/sign-out-action";
+import { HubAccountFooter } from "./HubAccountFooter";
 import {
   shellReducer,
   type Attachment,
@@ -31,6 +34,7 @@ import {
   type ManualSearchStatus,
   type ProjectItem,
   type ShellState,
+  type ProgressStage,
 } from "@factorylm/interaction";
 import {
   FactoryLMShell,
@@ -47,21 +51,26 @@ import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebook
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
 import {
   isAbortError,
+  NotebookHttpError,
   readNotebookStream,
   type PersistedTurn,
 } from "@/components/equipment/notebook-chat-utils";
 import { AnswerMarkdown } from "@/components/equipment/notebook-markdown";
+import { AnswerWithSafety } from "./answer-with-safety";
+import { UserTurnText } from "./user-turn-text";
 import { browserAdapterDeps, createWebAdapter } from "./web-adapter";
 import { HOME_THREAD, createOutgoingOwner, withOutgoing, type Outgoing } from "./outgoing-turn";
 import { composeHubSend, pairAttachments, resolveUploadNode, runAttachedSend, type HeldFile } from "./hub-attachments";
 import { createManualSearchDriver, type ManualSearchDriver } from "./manual-search-driver";
+import { GuidedProcedure } from "./GuidedProcedure";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
-import { answerTurnId, citationIndex, contextFor, lifecycleFromStream, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus, withSettledFollowups, type SettledFollowups } from "./to-interaction";
+import { answerTurnId, citationIndex, contextFor, lifecycleFromStream, livePartsWhileRunning, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus, withSettledFollowups, type SettledFollowups } from "./to-interaction";
 import {
   EMPTY_FIXTURE,
   NO_PROJECT_ERROR,
   applyConfirmIdentityResult,
   chatBodyFor,
+  guidedDeadEndBody,
   createLatestLoadTracker,
   detailQueryFor,
   draftAfterSendSucceeded,
@@ -71,12 +80,15 @@ import {
   groundingLineFor,
   historyRows,
   homeSendPlan,
+  hubHostReducer,
   initialHubShellState,
   landingSelection,
   latestRequestGate,
+  loadingThread,
   metaFor,
   newThreadId,
   openNotebookSelection,
+  openThreadAction,
   retainedStreamInterruption,
   searchForSelection,
   selectionFromSearch,
@@ -107,6 +119,8 @@ type Live = {
   readonly startedAt: string;
   /** The outgoing message this stream answers (null: a retry, or none). */
   readonly outgoingId: string | null;
+  /** #4687: the latest stage the server reported, shown until answer text arrives. */
+  readonly progress?: ProgressStage;
 };
 
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<{ status: number; data: T | null }> {
@@ -131,7 +145,10 @@ export function HubShellHost() {
   // One capture timestamp per mount (state, not a ref: it is read during render).
   const [capturedAt] = useState(() => new Date().toISOString());
   const [signedOut, setSignedOut] = useState(false);
+  const { data: authSession } = useSession();
+  const [signingOut, setSigningOut] = useState(false);
   const [notebooks, setNotebooks] = useState<HubNotebook[] | null>(null);
+  const [notebookGate] = useState(() => latestRequestGate());
   const [selection, setSelection] = useState<HubSelection | null>(null);
   // Mirror for async callbacks that must know whether anything is open yet
   // without re-subscribing to the selection (the notebook list reloads after
@@ -163,7 +180,7 @@ export function HubShellHost() {
   // The web adapter holds the picked bytes until onSend uploads them (#4019).
   const adapter = useMemo(() => createWebAdapter(browserAdapterDeps()), []);
 
-  const [state, dispatch] = useReducer(shellReducer, undefined, initialHubShellState);
+  const [state, dispatch] = useReducer(hubHostReducer, undefined, initialHubShellState);
   // #4311: the send path finishes long after the render that started it; a
   // successful retry needs the composer's CURRENT draft to decide whether the
   // question it put back is still sitting there.
@@ -177,19 +194,16 @@ export function HubShellHost() {
    * differs from the one it holds, so the id must be kept in sync here or every
    * keystroke would be wiped by the next render.
    */
-  const syncThread = useCallback((sel: HubSelection) => {
+  const syncThread = useCallback((sel: HubSelection, how: "choose" | "land" = "choose") => {
     const at = new Date().toISOString();
-    dispatch({
-      type: "hydrate",
-      data: {
-        thread: { ...EMPTY_FIXTURE.thread, id: shellThreadId(sel), notebookId: sel.notebookId, createdAt: at, updatedAt: at },
-      },
-    });
+    dispatch(how === "land" ? { type: "land-thread", selection: sel, at } : openThreadAction(sel, at));
   }, []);
 
   // --- data: notebooks (projects/threads), then the selected notebook's detail ---
   const loadNotebooks = useCallback(async () => {
+    const token = notebookGate.begin();
     const { status, data } = await getJson<{ notebooks: HubNotebook[] }>("/api/equipment-notebooks/");
+    if (!notebookGate.isCurrent(token)) return;
     if (status === 401) { setSignedOut(true); return; }
     if (!data) return;
     setNotebooks(data.notebooks);
@@ -201,7 +215,8 @@ export function HubShellHost() {
     if (!selectionRef.current) {
       const next = selectionFromSearch(readSearch(), data.notebooks) ?? landingSelection(data.notebooks);
       if (next) {
-        syncThread(next);
+        // #4695: an automatic landing keeps what was typed while the list loaded.
+        syncThread(next, "land");
         setSelection(next);
         // A link without a thread opened a freshly minted one (#4444); name it
         // in the URL so a reload returns to this chat, not another blank one.
@@ -209,7 +224,8 @@ export function HubShellHost() {
       }
     }
     return data.notebooks;
-  }, [syncThread]);
+  }, [syncThread, notebookGate]);
+  useEffect(() => () => notebookGate.invalidate(), [notebookGate]);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async data load (codebase precedent: (hub)/equipment/[id]/page.tsx)
     void loadNotebooks();
@@ -256,6 +272,7 @@ export function HubShellHost() {
 
   /** Change what is open: abort any stream and any in-flight detail load, drop the previous notebook's data. */
   const select = useCallback((sel: HubSelection) => {
+    selectionRef.current = sel; // async list hydration must see this selection before React effects run
     abortRef.current?.abort();
     uploadAbortRef.current?.abort();
     detailGate.invalidate();
@@ -340,7 +357,7 @@ export function HubShellHost() {
       parts = partsFromStream(live.result, { stopped: live.stopped, turnId: aId, notebookDocIds: meta.notebookDocIds });
       lifecycle = lifecycleFromStream(live.result, { stopped: live.stopped });
     } else {
-      parts = live.content ? [{ type: "text", text: live.content }] : [];
+      parts = livePartsWhileRunning(live.content, live.stopped ? undefined : live.progress);
       lifecycle = live.stopped ? "stopped" : "running";
     }
     const a: InteractionTurn = {
@@ -360,7 +377,7 @@ export function HubShellHost() {
       // still shows (a first send creates its project before anything else).
       const openId = selection ? shellThreadId(selection) : HOME_THREAD;
       const turns = withOutgoing([], { turns: [], outgoingId: null }, outgoing, openId, EMPTY_FIXTURE.thread.id, state.activeContext);
-      const thread = turns.length ? { ...EMPTY_FIXTURE.thread, turns } : EMPTY_FIXTURE.thread;
+      const thread = loadingThread(selection, turns);
       return notebooks ? shellReducer(state, { type: "hydrate", data: { thread, projects, machines } }) : state;
     }
     const base = fixtureFor(detail.notebook, selection, detail.turns, meta, projects, machines);
@@ -412,7 +429,8 @@ export function HubShellHost() {
     setBusy(true);
     try {
       const res = await fetch(`${API_BASE}/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/chat/`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: ctrl.signal,
+        // #4687: ask for stage progress; a server without MIRA_CHAT_PROGRESS ignores the header.
+        method: "POST", headers: { "Content-Type": "application/json", "x-mira-progress": "1" }, body: JSON.stringify(body), signal: ctrl.signal,
       });
       if (res.status === 401) { setSignedOut(true); return; }
       if (!res.ok || !res.body) {
@@ -423,6 +441,8 @@ export function HubShellHost() {
       }
       const result = await readNotebookStream(res.body.getReader(), (content, cits) => {
         setLive((cur) => (cur && cur.id === id ? { ...cur, content, citations: cits } : cur));
+      }, null, {
+        onProgress: (stage) => setLive((cur) => (cur && cur.id === id ? { ...cur, progress: stage } : cur)),
       });
       setLive((cur) => (cur && cur.id === id ? { ...cur, result } : cur));
       // The server row is the source of truth; refresh it (also picks up a
@@ -443,7 +463,11 @@ export function HubShellHost() {
       // successful retry takes it away again (never a newer draft).
       const draft = draftAfterSendSucceeded(draftRef.current, question);
       if (draft !== null) dispatch({ type: "set-draft", draft });
-    } catch (err) {
+    } catch (caught) {
+      // #4687: a refusal delivered inside the progress stream is handled exactly
+      // like the non-OK response above (signed out, or the route's own message).
+      if (caught instanceof NotebookHttpError && caught.status === 401) { setSignedOut(true); return; }
+      const err = caught instanceof NotebookHttpError ? new Error(errorMessageFor(caught.code, caught.status)) : caught;
       const retained = retainedStreamInterruption(err);
       if (retained) {
         setLive((cur) =>
@@ -544,11 +568,16 @@ export function HubShellHost() {
     });
     if (res.status === 401) { setSignedOut(true); return null; }
     if (!res.ok) throw new Error(errorMessageFor("", res.status));
-    const created = (await res.json()) as { notebook?: { id?: string } };
-    const id = created.notebook?.id ?? null;
-    await loadNotebooks();
-    return id;
-  }, [loadNotebooks]);
+    const created = (await res.json()) as { notebook?: HubNotebook };
+    const notebook = created.notebook;
+    if (!notebook?.id) throw new Error("The project was created but could not be opened. Refresh projects before trying again.");
+    // POST already returned the authoritative notebook. Publish it immediately;
+    // a slow or failed sidebar refresh must not hold selection or fail creation.
+    notebookGate.invalidate();
+    setNotebooks(current => [notebook, ...(current ?? []).filter(item => item.id !== notebook.id)]);
+    void loadNotebooks().catch(error => console.warn("[hub-host] project list refresh failed", error));
+    return notebook.id;
+  }, [loadNotebooks, notebookGate]);
 
   /**
    * HOME send (L0): the question becomes a new thread in the preferred notebook
@@ -642,6 +671,14 @@ export function HubShellHost() {
     void send(chatBodyFor(q, docIds, historyRows(detail.turns), selection), q);
   }, [adapter, busy, selection, notebooks, detail, docIds, send, sendFromHome, composeAndSend, putOutgoing]);
 
+  // WP-1 guided dead end: sent in general mode with the session id; the route confirms it.
+  const onGuidedDeadEnd = useCallback((question: string, sessionId: string) => {
+    const q = question.trim();
+    if (!q || busy || !selection || !detail) return;
+    putOutgoing({ id: `out-${Date.now()}`, threadId: shellThreadId(selection), question: q, attachments: [], startedAt: new Date().toISOString() });
+    void send(guidedDeadEndBody(q, sessionId, historyRows(detail.turns), selection), q);
+  }, [busy, selection, detail, send, putOutgoing]);
+
   const onStop = useCallback(() => { abortRef.current?.abort(); uploadAbortRef.current?.abort(); }, []);
   const onRetry = useCallback(() => { if (failedBody) void send(failedBody.body, failedBody.question); }, [failedBody, send]);
 
@@ -693,7 +730,7 @@ export function HubShellHost() {
   // Answer text renders through the classic notebook's markdown + inline
   // citation marks, gated on the turn's own source parts.
   const renderText = useCallback((text: string, turn: InteractionTurn): ReactNode => {
-    if (turn.role === "user") return text;
+    if (turn.role === "user") return <UserTurnText text={text} />;
     const own: EvidenceCitation[] = [];
     for (const part of turn.parts) {
       if (part.type !== "source") continue;
@@ -701,7 +738,10 @@ export function HubShellHost() {
       if (c) own.push(c);
     }
     // The marker the reader clicks is this turn's "[n]"; the shell source it opens is this turn's.
-    return <AnswerMarkdown content={text} citations={own} onCite={(c) => openSource(sourceIdFor(turn.id, c.citationId))} />;
+    const markdown = (content: string) => <AnswerMarkdown content={content} citations={own} onCite={(c) => openSource(sourceIdFor(turn.id, c.citationId))} />;
+    // #4690: the server's ⚠️ lines above the answer get their own warning block,
+    // the shell's safety styling, instead of reading as the answer's first paragraph.
+    return <AnswerWithSafety text={text} markdown={markdown} />;
   }, [citations, openSource]);
 
   const onCopy = useCallback((turnId: string) => {
@@ -844,6 +884,45 @@ export function HubShellHost() {
     }
   }, [fixRequestIds, view.thread.turns]);
 
+  // Keep a photo from this conversation as one of the machine's sources, then
+  // reload the notebook so the next question's source scope includes it.
+  const onKeepPhoto = useCallback(async (fileId: string, reviewed?: Parameters<NonNullable<HostHooks["onKeepPhoto"]>>[1]) => {
+    const sel = selectionRef.current;
+    if (!sel?.notebookId) throw new Error("no_notebook");
+    const res = await fetch(
+      `${API_BASE}/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/photos/${encodeURIComponent(fileId)}/source/`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        // The conversation whose reading the technician is looking at.
+        body: JSON.stringify({ threadId: sel.threadId ?? "legacy", ...(reviewed ? { reviewed } : {}) }),
+      },
+    );
+    if (!res.ok) throw new Error(`keep_photo_${res.status}`);
+    try {
+      if (!await loadDetail(sel)) return "refresh_pending" as const;
+    } catch {
+      return "refresh_pending" as const;
+    }
+  }, [loadDetail]);
+  const onRefreshPhotoScope = useCallback(async () => {
+    const sel = selectionRef.current;
+    if (!sel?.notebookId) return false;
+    return loadDetail(sel);
+  }, [loadDetail]);
+  const onReviewPhoto = useCallback(async (fileId: string) => {
+    const sel = selectionRef.current;
+    if (!sel?.notebookId) throw new Error("no_notebook");
+    const query = sel.threadId ? `?threadId=${encodeURIComponent(sel.threadId)}` : "";
+    const res = await fetch(`${API_BASE}/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/photos/${encodeURIComponent(fileId)}/source/${query}`);
+    if (!res.ok) throw new Error(`photo_review_${res.status}`);
+    return await res.json() as { observationId: string; text: string; reviewed: boolean };
+  }, []);
+  const keptPhotoIds = useMemo(
+    () => new Set((detail?.sources ?? []).map((s) => s.originFileId).filter((id): id is string => !!id)),
+    [detail],
+  );
+
   const hooks: HostHooks = {
     onSend,
     renderText,
@@ -853,6 +932,7 @@ export function HubShellHost() {
       ? { onRecordFix: (turnId: string) => void onRecordFix(turnId), canRecordFix: (turnId: string) => serverTurnIdFor(turnId) !== null }
       : {}),
     ...(selection?.notebookId ? { onConfirmIdentity: onConfirmIdentity } : {}),
+    ...(selection?.notebookId ? { onKeepPhoto, onReviewPhoto, onRefreshPhotoScope, isPhotoKept: (fileId: string) => keptPhotoIds.has(fileId) } : {}),
     onSource: (source) => openSource(source.id),
     onNewChat,
     onCreateProject,
@@ -881,7 +961,35 @@ export function HubShellHost() {
         conversationSurface="assistant"
         onOpenItem={onOpenItem}
         onSelectProject={onSelectProject}
+        navigationFooter={
+          <HubAccountFooter
+            email={authSession?.user?.email}
+            signingOut={signingOut}
+            onSignOut={() => {
+              setSigningOut(true);
+              signOutToLogin();
+            }}
+          />
+        }
       />
+      {/* WP-1: shown only when the route is enabled and a manufacturer procedure applies. */}
+      {selection && detail && (
+        <GuidedProcedure
+          // Re-mount (and re-read availability) when the machine's identity or its manuals change
+          // in place — a confirm or an attach doesn't change the notebook id (Codex #4573 F4).
+          key={[
+            selection.notebookId,
+            detail.notebook.identityStatus,
+            detail.notebook.manufacturer ?? "",
+            detail.notebook.model ?? "",
+            detail.notebook.catalogNumber ?? "",
+            detail.sources.map((s) => s.docId).join(","),
+          ].join("|")}
+          notebookId={selection.notebookId}
+          onAskMira={onGuidedDeadEnd}
+          chatBusy={busy}
+        />
+      )}
     </div>
   );
 }

@@ -38,6 +38,16 @@ interface CascadeProvider {
   providerRouting?: CanonicalProvider["providerRouting"];
 }
 
+/**
+ * The short-task cascade (`cascadeComplete` with no `providers` option): the
+ * classifier-model variants, OpenAI leading. Exported so the runtime identity
+ * (#4507, #5049) can fingerprint the paid query-rewrite lane from the list that
+ * lane really calls; `cascadeComplete` skips every keyless entry.
+ */
+export function classifierProviders(): CascadeProvider[] {
+  return defaultProviders();
+}
+
 function defaultProviders(): CascadeProvider[] {
   // OpenAI leads, key-gated, exactly as `canonicalProviders()` does for the
   // streaming cascade (owner directive 2026-10-11). Found missing here by the
@@ -104,6 +114,14 @@ export interface CascadeOpts {
   jsonMode?: boolean;
   timeoutMs?: number;
   providers?: CascadeProvider[];
+  /**
+   * One deadline for the WHOLE cascade. `timeoutMs` bounds each provider
+   * attempt; this aborts the attempt in flight and stops the walk to the next
+   * provider once the caller no longer wants an answer (query-rewrite.ts —
+   * Codex F2 on #5003). An attempt aborted after the request was accepted is
+   * still booked at its worst case, exactly like a timeout.
+   */
+  signal?: AbortSignal;
 }
 
 async function callOne(
@@ -140,7 +158,7 @@ async function callOne(
   const inputBound = boundInputTokens(messages);
   let reservation: BudgetReservation | null = null;
   if (provider.name === "OpenAI") {
-    const verdict = openAiRunBudget().reserve(inputBound, outputCap);
+    const verdict = openAiRunBudget().reserve(inputBound, outputCap, provider.model);
     if (!verdict.ok) {
       logBudgetExhausted("llm-cascade", verdict);
       return null;
@@ -157,7 +175,9 @@ async function callOne(
         Authorization: `Bearer ${provider.key}`,
       },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(opts.timeoutMs ?? 15_000),
+      signal: opts.signal
+        ? AbortSignal.any([AbortSignal.timeout(opts.timeoutMs ?? 15_000), opts.signal])
+        : AbortSignal.timeout(opts.timeoutMs ?? 15_000),
     });
   } catch {
     // Ambiguous: a timeout or a dropped connection after the request was
@@ -202,6 +222,8 @@ export async function cascadeComplete(
   const providers = opts.providers ?? defaultProviders();
   const start = Date.now();
   for (const p of providers) {
+    // The caller gave up (overall deadline): do not start the next provider.
+    if (opts.signal?.aborted) return null;
     const content = await callOne(p, messages, opts);
     if (content) {
       return { provider: p.name, content, durationMs: Date.now() - start };

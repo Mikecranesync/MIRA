@@ -431,14 +431,6 @@ approved:
       FROM knowledge_entries
                    ORDER BY created_at DESC`,
                 )
-  "mira-hub/src/app/api/assets/[id]/documents/route.ts:111":
-    approved_classification: TENANT-ONLY
-    query_sha256: "f7a5972c46a691c2b65f9bd661471a780396dfabd456fc9f220cc56bee50740d"
-    reason: "TODO: justify this read pattern"
-    query_snippet: |
-      FROM knowledge_entries
-               WHERE tenant_id = $1
-                 AND LOWER(manufacturer) = LOWER($2)
   "mira-hub/src/app/api/assets/[id]/agent-status/route.ts:49":
     approved_classification: UNFILTERED
     query_sha256: "b168c34eb2ca4f1d9a946a570844930f91bc5bacae61ec700a96ce6ac9426c1c"
@@ -481,6 +473,46 @@ approved:
               WHERE tenant_id = $1
                 AND ($2::text IS NOT NULL)
                 AND ingest_route = 'v2'
+  "mira-hub/src/lib/manual-rag.ts:1490":
+    approved_classification: TENANT-ONLY
+    query_sha256: "3a3c71d04c8732b344f62ed0f9a0766950d21dd9ae33f1b9e901e894d823ebfd"
+    reason: "HASH MIGRATION 2026-10-29 (#4979, :1458->:1490): the idfSql SELECT list gained `tsvector_to_array(content_tsv) AS lexemes` (read by the flag-off rerank only); the scope CTE and every WHERE predicate are byte-identical, re-reviewed TENANT-ONLY. RE-APPROVED 2026-10-21 (#4597): the only change in this context is the IDF sum, now `sum(...::numeric)` for an exact, row-order-independent score; the scope predicates were re-read and are unchanged (tenant_id=$1, ingest_route='v2', the same approval/node/doc clauses). NEW (#4513, flag NOTEBOOK_LEXICAL_V2 default off; spec docs/specs/notebook-retrieval-idf-scoring.md): retrieveNodeChunks IDF-sum lexical pass. The `scope` CTE reads ONLY the BM25 pass's pure-tenant scope: tenant_id=$1, ingest_route='v2', and the SAME ${approvalClauseMain} / ${nodeClauseMain} / ${docClause} fragments at the SAME parameter positions ($3 node ids, $4 LIMIT, $5 validated doc scope, $6 server-derived confirmed set) as the ts_rank_cd pass it replaces under the flag. N and df are computed over this CTE only, so no out-of-scope row can shift a score. Node-attached uploads are the caller's own private rows, so this is a pure-tenant surface, not the OEM hybrid — TENANT-ONLY by the same rule as the BM25 pass and the vector lane (:1399)."
+  "mira-hub/src/lib/manual-rag.ts:1485":
+    approved_classification: TENANT-ONLY
+    query_sha256: "38ede17090d609673dcb6b633683ec7064c6488077454c8ce74d3c7897df0e9c"
+    reason: "NEW (#4513, flag NOTEBOOK_LEXICAL_V2 default off; spec docs/specs/notebook-retrieval-idf-scoring.md): retrieveNodeChunks IDF-sum lexical pass. Final select joins knowledge_entries back to the `scored` CTE by primary key; every id in `scored` comes from the tenant-scoped `scope` CTE, and the explicit `knowledge_entries.tenant_id = $1` repeats the tenant predicate as defence in depth. Never widens scope beyond the BM25 pass. TENANT-ONLY, pure-tenant node-attachment surface."
+  "mira-hub/src/lib/manual-rag.ts:1545":
+    approved_classification: TENANT-ONLY
+    query_sha256: "b74dd6f34de4c92e828fc1bf83a824db907ccbe0f2aaedb917843acd89621521"
+    reason: "HASH MIGRATION 2026-10-29 (#4979, :1519->:1545): SELECT list gained `tsvector_to_array(content_tsv) AS lexemes`; the join and the explicit tenant predicate are byte-identical, re-reviewed TENANT-ONLY. NEW (#4513, flag NOTEBOOK_LEXICAL_V2 default off; spec docs/specs/notebook-retrieval-idf-scoring.md): retrieveNodeChunks IDF-sum lexical pass. Same final select as the entry above (the checker reports the join's second line separately); the correlated document_heading subquery it carries is the one already allowlisted for the BM25 pass. TENANT-ONLY, pure-tenant node-attachment surface."
+  "mira-hub/src/lib/manual-rag.ts:1575":
+    approved_classification: TENANT-ONLY
+    query_sha256: "d38d7e923b479cd9edbf1d89ba3ab99060dfe1e1915189c2378dc3f001e42bae"
+    reason: "NEW (#4979, T-1 forum ranking, flag-off only): rareTermSql — the rare-term recall lane's final SELECT. Its `scope` CTE and this SELECT both read the SAME pure-tenant scope as the retrieveNodeChunks BM25 pass (:1108) and exact-token lane (:1163): tenant_id=$1, ingest_route='v2', and the same ${approvalClauseMain}/${nodeClauseMain}/${docClause} (or the exact lane's ${approvalClauseExact}/${nodeClauseExact}/doc clause) fragments at the same parameter positions. Node attachments are the caller's own private uploads, so this is a pure-tenant surface, not the OEM hybrid — TENANT-ONLY by the same rule. It adds candidates ranked by cover density over the question's rare lexemes; every row still passes admit() before entering the pool."
+  "mira-hub/src/lib/manual-rag.ts:1701":
+    approved_classification: TENANT-ONLY
+    query_sha256: "f077ab7014b149c0dbf4396d415593d5d814a5861f6792cb87338d495af4f7bf"
+    reason: "HASH MIGRATION (query-rewrite PR #5003, 2026-10-30, twice): the query is unchanged; its line moved 1685 -> 1701 and the comment above it (inside the checker's 50-line context window) was corrected once more, so the context hash was recomputed; the SQL text is byte-identical because the rewrittenQuery variant and its comment were inserted above it. NEW (#4979, T-1 forum ranking, flag-off only): code-selectivity count — per whole-token pattern, how many chunks IN SCOPE contain it. A correlated count subquery over the SAME pure-tenant scope as the retrieveNodeChunks BM25 pass (:1108) and exact-token lane (:1163): tenant_id=$1, ingest_route='v2', and the same ${approvalClauseMain}/${nodeClauseMain}/${docClause} (or the exact lane's ${approvalClauseExact}/${nodeClauseExact}/doc clause) fragments at the same parameter positions. Node attachments are the caller's own private uploads, so this is a pure-tenant surface, not the OEM hybrid — TENANT-ONLY by the same rule. It returns a count only (no content), used to drop a 'code' that names the product (>4 chunks and >5% of the scope) before the whole-token lane runs; it never admits a row."
+  "mira-hub/src/lib/manual-rag.ts:1708":
+    approved_classification: TENANT-ONLY
+    query_sha256: "dee656cf94155590b027157cfdb55518b25950383359bd299e7fc64b2b060df4"
+    reason: "HASH MIGRATION (query-rewrite PR, 2026-10-30): unchanged query, line moved 1692 -> 1708 (see :1701). NEW (#4979, T-1 forum ranking, flag-off only): code-selectivity scope size — count(*) over the same tenant/node/doc/approval scope as the entry above (:1701), the denominator for the >5% rule. Count only, no content; TENANT-ONLY by the same rule."
+  "mira-hub/src/lib/manual-rag.ts:2077":
+    approved_classification: TENANT-ONLY
+    query_sha256: "ca93aab02d6d14c1c6e20f1d45767901d37940b42ee1eec599a1d03527996578"
+    reason: "NEW (#4979, T-1 forum ranking, flag-off only): question-IDF table — the `scope` CTE reads the SAME pure-tenant scope as the retrieveNodeChunks BM25 pass (:1108) and exact-token lane (:1163): tenant_id=$1, ingest_route='v2', and the same ${approvalClauseMain}/${nodeClauseMain}/${docClause} (or the exact lane's ${approvalClauseExact}/${nodeClauseExact}/doc clause) fragments at the same parameter positions. Node attachments are the caller's own private uploads, so this is a pure-tenant surface, not the OEM hybrid — TENANT-ONLY by the same rule. It yields per-lexeme document frequency and the scope size (numbers only) for the rerank's coverage feature; no content leaves the query and no row is admitted by it."
+  "mira-hub/src/lib/manual-rag.ts:2087":
+    approved_classification: TENANT-ONLY
+    query_sha256: "515f57198d852f4251ed2d38850283306df25dda25c8a9f70a503a47fb94ef8c"
+    reason: "NEW (#4979, T-1 forum ranking, flag-off only): question-IDF table — the `heading` CTE reads the first chunk (left(content, 2000)) of each document in the SAME tenant/node/doc/approval scope as :2077, so cover-page words (brand, product, 'User Manual') can be left out of the IDF table. Same predicates, same parameter positions; the text is only tokenised into lexemes, never returned or cited. TENANT-ONLY by the same rule."
+  "mira-hub/src/lib/__tests__/manual-rag-optional-reads.integration.test.ts:28":
+    approved_classification: TENANT-ONLY
+    query_sha256: "2f42be93066b7cff58ca9e5fce1de92b00f526fe3f3a8a14152333ab36f1f22b"
+    reason: "Integration test fixture cleanup (disposable Postgres only, TEST_DATABASE_URL + MIRA_TEST_DB_CONFIRM): deletes the test tenant's own seeded node-attachment rows before seeding. Not a product read path."
+  "mira-hub/src/lib/__tests__/manual-rag-optional-reads.integration.test.ts:42":
+    approved_classification: TENANT-ONLY
+    query_sha256: "4cb5f8037e50c0d741cae67cd0c990e6867907e18d47e56e5f95205e45f7fa41"
+    reason: "Integration test fixture cleanup (disposable Postgres only): deletes the test tenant's own seeded rows after the suite. Not a product read path."
   "mira-hub/scripts/repair-garbled-chunks.ts:67":
     approved_classification: TENANT-ONLY
     query_sha256: "e9cbc91a77a576d679e2961c08089c817bf2347efc4234c5a1c8ea6e6b7b44b3"
@@ -618,22 +650,6 @@ approved:
     query_snippet: |
       if (sql.includes("FROM knowledge_entries")) return { rows: [], rowCount: 0 };
             return { rows: [], rowCount: 0 };
-  "mira-hub/src/lib/agents/asset-intelligence.ts:138":
-    approved_classification: TENANT-ONLY
-    query_sha256: "5eae93fe0497b1156cbc6bf1c968c41ac6271fda1d8a92c4faa8c0dbc66193dd"
-    reason: "TODO: justify this read pattern"
-    query_snippet: |
-      FROM knowledge_entries
-                 WHERE tenant_id = $1
-                   AND embedding IS NOT NULL
-  "mira-hub/src/lib/agents/asset-intelligence.ts:157":
-    approved_classification: TENANT-ONLY
-    query_sha256: "c75cd4cc1ca8d7296bcb78cf3a78bdc4dc60a3431a1b3b8a8a4bb783988d3d38"
-    reason: "TODO: justify this read pattern"
-    query_snippet: |
-      FROM knowledge_entries
-             WHERE tenant_id = $1
-               AND to_tsvector('english', content) @@ plainto_tsquery('english', $2)
   # Re-keyed 158 -> 159 by the Gate 9 F1 fix
   # (provenance enforcement added above these queries). Query unchanged;
   # the hash moves because it is computed over surrounding context.

@@ -330,6 +330,37 @@ services:
       # Embed retry sweep (#4293): backfill embed-on-write failures with an off switch.
       # Default ON (unset → 1); explicit 0 disables the sweep without rebuild.
       - NODE_EMBED_RETRY_SWEEP=${NODE_EMBED_RETRY_SWEEP:-1}
+      # #4487 vector lane for notebook retrieval (RRF with BM25). OFF unless the
+      # environment sets NOTEBOOK_HYBRID_RETRIEVAL=1; it was never passed through,
+      # so the Doppler value alone could not turn it on (#4513, 2026-10-18).
+      - NOTEBOOK_HYBRID_RETRIEVAL=${NOTEBOOK_HYBRID_RETRIEVAL:-0}
+      # Query rewrite for notebook retrieval (T-1 rewrite round, 2026-10-30). OFF
+      # unless the environment sets NOTEBOOK_QUERY_REWRITE=1; passed through from
+      # day one so the Doppler value alone can turn it on (lesson of #4513).
+      - NOTEBOOK_QUERY_REWRITE=${NOTEBOOK_QUERY_REWRITE:-0}
+      # #4687 truthful chat progress (stage frames on the notebook chat stream). OFF unless
+      # the environment sets MIRA_CHAT_PROGRESS=1; staging only — prod compose untouched.
+      - MIRA_CHAT_PROGRESS=${MIRA_CHAT_PROGRESS:-0}
+      # #4515 kill switch for the +29 decode at ingest: default ON in code;
+      # NOTEBOOK_GARBLE_DECODE=0 disables it without a rebuild.
+      - NOTEBOOK_GARBLE_DECODE=${NOTEBOOK_GARBLE_DECODE:-1}
+      # #4550 typed claim verifier, shadow only: writes mira.claim_verifier.* onto the
+      # answer-gate span and never changes the answer. OFF unless set to "shadow".
+      - NOTEBOOK_CLAIM_VERIFIER=${NOTEBOOK_CLAIM_VERIFIER:-off}
+      # CU-RR1 cross-encoder rerank lane. OFF unless the environment sets
+      # NOTEBOOK_RERANK=1. The service is the colocated mira-reranker below
+      # (internal network only); any failure or >1.5 s keeps today's order.
+      - NOTEBOOK_RERANK=${NOTEBOOK_RERANK:-0}
+      # WP-1 guided troubleshooting on the notebook (manufacturer procedures on the
+      # #4498 step runner). OFF unless NOTEBOOK_GUIDED_PROCEDURE=1. Staging only.
+      - NOTEBOOK_GUIDED_PROCEDURE=${NOTEBOOK_GUIDED_PROCEDURE:-0}
+      # #4513 IDF-sum lexical candidate scoring. OFF unless the environment sets
+      # NOTEBOOK_LEXICAL_V2=1. Staging only until its walk passes and Mike decides.
+      - NOTEBOOK_LEXICAL_V2=${NOTEBOOK_LEXICAL_V2:-0}
+      - NOTEBOOK_RERANK_POOL=${NOTEBOOK_RERANK_POOL:-}
+      # Client timeout, ms (default 1500): raise it if the host's measured p95 is higher.
+      - NOTEBOOK_RERANK_TIMEOUT_MS=${NOTEBOOK_RERANK_TIMEOUT_MS:-}
+      - RERANKER_URL=http://mira-reranker:8088
       - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-https://app-staging.factorylm.com}
       - OAUTH_TOKEN_ENC_KEY=${OAUTH_TOKEN_ENC_KEY:-}
       - AUTH_SECRET=${AUTH_SECRET:-}
@@ -455,6 +486,17 @@ services:
       - MIRA_TURN_RECONCILER_STALE_MIN=${MIRA_TURN_RECONCILER_STALE_MIN:-15}
       - MIRA_TURN_RECONCILER_INTERVAL_MIN=${MIRA_TURN_RECONCILER_INTERVAL_MIN:-5}
       - JEV_API_KEY=${JEV_API_KEY:-}
+      # #4877 pilot-application funnel (mira-hub/src/capabilities/pilot-funnel.ts).
+      # All four default empty/off — this line alone does not enable anything;
+      # it only lets a Doppler factorylm/stg value reach the container, the
+      # same #3328-class gap documented in docs/runbooks/pilot-funnel-events.md.
+      # Staging only (this PR) — production wiring is a separate,
+      # owner-authorized change against docker-compose.saas.yml.
+      - PLG_POSTHOG_KEY=${PLG_POSTHOG_KEY:-}
+      - PLG_POSTHOG_HOST=${PLG_POSTHOG_HOST:-}
+      - PILOT_OWNER_EMAIL=${PILOT_OWNER_EMAIL:-}
+      - MIRA_PILOT_APPROVAL_REQUIRED=${MIRA_PILOT_APPROVAL_REQUIRED:-}
+      - RESEND_API_KEY=${RESEND_API_KEY:-}  # owner notification (pilot-funnel.ts); same key mira-web uses
     networks:
       - staging-net
     volumes:
@@ -495,7 +537,11 @@ services:
       - NEON_DATABASE_URL=${NEON_DATABASE_URL}
       - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
       - PLG_DAILY_FREE_QUERIES=${PLG_DAILY_FREE_QUERIES:-5}
+      - PLG_CHECKOUT_ENABLED=${PLG_CHECKOUT_ENABLED:-}  # unset = checkout off while pilots are free (#4369); set 1 to restore
       - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - PLG_POSTHOG_KEY=${PLG_POSTHOG_KEY:-}
+      - PLG_POSTHOG_HOST=${PLG_POSTHOG_HOST:-}
+      - PLG_REGISTER_ALLOWED_ORIGINS=${PLG_REGISTER_ALLOWED_ORIGINS:-https://staging.factorylm.com,https://app-staging.factorylm.com}  # staging origin for /api/register and /api/pilot-request
       - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-noreply@factorylm.com}
       # Stripe — staging should NOT charge cards; leave secrets empty unless
       # the user has set test-mode keys in Doppler factorylm/stg.
@@ -729,6 +775,11 @@ services:
       - ATLAS_API_PASSWORD=${ATLAS_API_PASSWORD:-}
       - CMMS_SYNC_ENABLED=${CMMS_SYNC_ENABLED:-false}
       - CMMS_SYNC_INTERVAL_MS=${CMMS_SYNC_INTERVAL_MS:-60000}
+      # #5020 notebook domain-event outbox → Atlas work-log dispatcher (second tick
+      # in this same worker). Deployed-disabled: both default to off/empty; enable only
+      # for a positively identified internal test tenant via Doppler.
+      - NOTEBOOK_EVENT_DISPATCH_ENABLED=${NOTEBOOK_EVENT_DISPATCH_ENABLED:-false}
+      - NOTEBOOK_EVENT_DISPATCH_TENANTS=${NOTEBOOK_EVENT_DISPATCH_TENANTS:-}
     command: ["bun", "run", "scripts/cmms-sync-worker.ts", "--interval-ms", "${CMMS_SYNC_INTERVAL_MS:-60000}"]
     networks:
       - staging-net
@@ -913,12 +964,46 @@ services:
     restart: unless-stopped
     mem_limit: 2g
     memswap_limit: 2g
+    # CPU cap (Mike, 2026-10-19). Uncapped, this embedder used ~5.5 of the host's 6
+    # vCPUs while indexing uploads (557% during stranger walks), starving the
+    # reranker (2.3-4.1 s per question) and contending with production on the same
+    # host. Trade-off accepted: uploads become searchable more slowly.
+    cpus: 2
     healthcheck:
       test: ["CMD-SHELL", "ollama list | grep -E '^nomic-embed-text:v1.5[[:space:]]+0a109f422b47' && ollama list | grep -E '^nomic-embed-text:latest[[:space:]]+0a109f422b47'"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 300s
+
+  # CU-RR1: cross-encoder reranker for notebook retrieval (docs/architecture/
+  # convergence/units/CU-RR1.md). STAGING ONLY — not in docker-compose.saas.yml.
+  # This host also runs production, so CPU and memory are hard-capped and the
+  # thread count matches the CPU cap (host: 6 vCPU Haswell, load ~0.1 on 2026-10-19;
+  # 2 threads measured ~1.6 s per pool-24 request on CHARLIE, over the Hub's 1.5 s timeout). Model files are baked in and sha256-verified
+  # at build time; nothing downloads at runtime. No ports: no auth, internal only.
+  # Memory measured flat at ~300 MiB over 50 pool-50 requests (c46239d99).
+  mira-reranker:
+    build:
+      context: ./mira-reranker
+    container_name: stg-mira-reranker
+    environment:
+      - RERANKER_THREADS=3
+      # int8 (AVX2) model: same answers on the replay within 1 of 50/32, ~4x faster than
+      # fp32, which measured p95 4.1 s here. Rollback without a rebuild: RERANKER_MODEL=fp32.
+      - RERANKER_MODEL=${RERANKER_MODEL:-int8-avx2}
+    networks:
+      - staging-net
+    restart: unless-stopped
+    cpus: 3
+    mem_limit: 768m
+    memswap_limit: 768m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8088/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
 networks:
   staging-net:

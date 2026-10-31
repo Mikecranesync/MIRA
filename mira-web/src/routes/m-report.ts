@@ -152,7 +152,7 @@ mReport.get("/:asset_tag/report", async (c) => {
     <div class="footer" style="margin-top: 0.5rem;">
       Powered by FactoryLM — <a href="/buy" style="color:#b0aca2;text-decoration:underline;">Book Your Assessment</a>
     </div>
-    <a id="cmms-btn" class="cmms-link" href="/cmms">Open CMMS →</a>
+    <a id="cmms-btn" class="cmms-link" href="/cmms">Open notebook →</a>
   </div>
   <script>
     (function () {

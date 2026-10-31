@@ -11,7 +11,7 @@
 | Surface | Count |
 |---|---|
 | Pages | **70** (12 dynamic) |
-| API routes | **187** (71 dynamic) |
+| API routes | **192** (75 dynamic) |
 
 ## Pages (70)
 
@@ -88,11 +88,13 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (187)
+## API routes (192)
 
 | Route | Kind | Source |
 |---|---|---|
 | `/` | static | `route.ts` |
+| `/api/admin/pilots/[tenantId]/approve` | dynamic | `(hub)/api/admin/pilots/[tenantId]/approve/route.ts` |
+| `/api/admin/pilots/[tenantId]/end` | dynamic | `(hub)/api/admin/pilots/[tenantId]/end/route.ts` |
 | `/api/admin/review/asset/[...path]` | dynamic | `api/admin/review/asset/[...path]/route.ts` |
 | `/api/admin/review/queue` | static | `api/admin/review/queue/route.ts` |
 | `/api/admin/users` | static | `(hub)/api/admin/users/route.ts` |
@@ -181,6 +183,8 @@
 | `/api/equipment-notebooks/[id]/look` | dynamic | `api/equipment-notebooks/[id]/look/route.ts` |
 | `/api/equipment-notebooks/[id]/nameplate/confirm` | dynamic | `api/equipment-notebooks/[id]/nameplate/confirm/route.ts` |
 | `/api/equipment-notebooks/[id]/nameplate/recognize` | dynamic | `api/equipment-notebooks/[id]/nameplate/recognize/route.ts` |
+| `/api/equipment-notebooks/[id]/photos/[fileId]/source` | dynamic | `api/equipment-notebooks/[id]/photos/[fileId]/source/route.ts` |
+| `/api/equipment-notebooks/[id]/procedure` | dynamic | `api/equipment-notebooks/[id]/procedure/route.ts` |
 | `/api/equipment-notebooks/[id]/sources` | dynamic | `api/equipment-notebooks/[id]/sources/route.ts` |
 | `/api/equipment-notebooks/[id]/sources/[docId]` | dynamic | `api/equipment-notebooks/[id]/sources/[docId]/route.ts` |
 | `/api/equipment-notebooks/[id]/sources/[docId]/passage` | dynamic | `api/equipment-notebooks/[id]/sources/[docId]/passage/route.ts` |
@@ -224,6 +228,7 @@
 | `/api/library/chunks` | static | `api/library/chunks/route.ts` |
 | `/api/library/documents` | static | `api/library/documents/route.ts` |
 | `/api/library/tree` | static | `api/library/tree/route.ts` |
+| `/api/manual-harvester` | static | `api/manual-harvester/route.ts` |
 | `/api/me` | static | `api/me/route.ts` |
 | `/api/mira/ask` | static | `api/mira/ask/route.ts` |
 | `/api/mobile/live-update/manifest` | static | `api/mobile/live-update/manifest/route.ts` |

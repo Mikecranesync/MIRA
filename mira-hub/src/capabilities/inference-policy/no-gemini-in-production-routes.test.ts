@@ -35,16 +35,25 @@ const HUB_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 // in a shipped route, is the violation #3688 removed.
 const GEMINI_MARKERS = [/generativelanguage\.googleapis\.com/, /GEMINI_API_KEY/];
 
-// The ONE documented residual. The notebooks route keeps a byte-identical
-// LEGACY inline cascade (with Gemini) behind the default-OFF `MIRA_CANONICAL_SEAM`
+// The ONE documented residual. The notebooks route dispatches a byte-identical
+// LEGACY cascade (with Gemini) behind the default-OFF `MIRA_CANONICAL_SEAM`
 // flag, exercised only for parity by equipment-notebooks/__tests__/
-// chat-canonical-seam.test.ts (which proves seam-ON never calls Gemini). Fully
-// closing it = flipping the flag / deleting the legacy list, a separate migration
+// chat-canonical-seam.test.ts (which proves seam-ON never calls Gemini). Since
+// #4507 (#5048) that list lives in `src/lib/inference/legacy-cascade.ts` so
+// /api/health can fingerprint it; the route holds only an import. Fully closing
+// it = flipping the flag / deleting the legacy list, a separate migration
 // tracked under #3688's follow-up. Named here so it is an EXPLICIT known residual,
-// never a silent one.
-const ALLOWLIST = new Set<string>([
-  "src/app/api/equipment-notebooks/[id]/chat/route.ts",
-]);
+// never a silent one — and `legacyProviders` may be invoked from the notebooks
+// route ONLY (asserted below), so the residual cannot spread by import.
+const LEGACY_CASCADE = "src/lib/inference/legacy-cascade.ts";
+const LEGACY_ROUTE = "src/app/api/equipment-notebooks/[id]/chat/route.ts";
+const ALLOWLIST = new Set<string>([LEGACY_CASCADE]);
+// Files that may name the legacy dispatch list: the module that defines it, the
+// one route that dispatches it, and the runtime identity that reports it.
+const LEGACY_IMPORTERS = new Set<string>([LEGACY_CASCADE, LEGACY_ROUTE, "src/lib/inference/runtime-identity.ts"]);
+const LEGACY_DISPATCHERS = new Set<string>([LEGACY_CASCADE, LEGACY_ROUTE]);
+const LEGACY_IMPORT = /legacy-cascade/;
+const LEGACY_CALL = /\blegacyProviders\b/;
 
 function walkTsFiles(dir: string): string[] {
   const out: string[] = [];
@@ -73,9 +82,17 @@ function scannedFiles(): string[] {
   const routes = walkTsFiles(path.join(HUB_ROOT, "src/app/api")).filter((f) =>
     f.endsWith("/route.ts"),
   );
-  const libs = ["src/lib/llm/cascade.ts", "src/lib/inference/canonical-cascade.ts"].map((p) =>
+  const libs = ["src/lib/llm/cascade.ts", "src/lib/inference/canonical-cascade.ts", LEGACY_CASCADE].map((p) =>
     path.join(HUB_ROOT, p),
   );
+  return [...routes, ...libs];
+}
+
+// Every shipped route plus every backend module a route can import: the only
+// places `legacyProviders` could be dispatched from.
+function importableFiles(): string[] {
+  const routes = walkTsFiles(path.join(HUB_ROOT, "src/app/api")).filter((f) => f.endsWith("/route.ts"));
+  const libs = [...walkTsFiles(path.join(HUB_ROOT, "src/lib")), ...walkTsFiles(path.join(HUB_ROOT, "src/capabilities"))];
   return [...routes, ...libs];
 }
 
@@ -113,6 +130,32 @@ describe("provider-policy: no reachable Gemini in production Hub routes (#3688)"
     const cascade = readFileSync(path.join(HUB_ROOT, "src/lib/llm/cascade.ts"), "utf8");
     expect(cascade).toContain("api.together.xyz");
     expect(mentionsGemini(cascade)).toBe(false);
+  });
+
+  // #4507 / #5048: the residual moved out of the route. The guard must still
+  // SEE it (the module is scanned and does mention Gemini — the residual was
+  // relocated, not deleted), the route must no longer carry it inline, and no
+  // file other than the notebooks route may dispatch it.
+  it("the legacy cascade module is scanned and is where the residual now lives", () => {
+    const scanned = scannedFiles().map(rel);
+    expect(scanned).toContain(LEGACY_CASCADE);
+    expect(mentionsGemini(readFileSync(path.join(HUB_ROOT, LEGACY_CASCADE), "utf8"))).toBe(true);
+    // The route itself is clean inline: a reintroduced inline Gemini entry fails above, not here.
+    expect(mentionsGemini(readFileSync(path.join(HUB_ROOT, LEGACY_ROUTE), "utf8"))).toBe(false);
+  });
+
+  it("only the notebooks route dispatches legacyProviders; only it and the runtime identity import the module", () => {
+    const files = importableFiles();
+    expect(files.length).toBeGreaterThan(40);
+    const importers = files.filter((f) => LEGACY_IMPORT.test(readFileSync(f, "utf8"))).map(rel);
+    const dispatchers = files.filter((f) => LEGACY_CALL.test(readFileSync(f, "utf8"))).map(rel);
+    expect(importers.filter((f) => !LEGACY_IMPORTERS.has(f))).toEqual([]);
+    expect(dispatchers.filter((f) => !LEGACY_DISPATCHERS.has(f))).toEqual([]);
+    // Positive controls: the one route really does both, so an empty result above is not a dead matcher.
+    expect(importers).toContain(LEGACY_ROUTE);
+    expect(dispatchers).toContain(LEGACY_ROUTE);
+    expect(LEGACY_CALL.test(`const cascadeProviders = seam ? canonicalProviders() : legacyProviders();`)).toBe(true);
+    expect(LEGACY_CALL.test(`effectiveNotebookProviders()`)).toBe(false);
   });
 
   it("scans a non-trivial number of routes — the walk is not silently empty", () => {

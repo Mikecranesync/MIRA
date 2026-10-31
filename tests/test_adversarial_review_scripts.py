@@ -327,6 +327,119 @@ def _write_exec(path: Path, content: str) -> None:
     path.chmod(path.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
 
 
+GH_POST_HELPER_JS = r'''#!/usr/bin/env node
+// #4711 hardening (Mikecranesync/MIRA#4711): the test stub's reservation
+// POST acquires a lock, does a read-modify-write of the fake ledger file,
+// and releases the lock. Pre-#4711 this was a bash `until mkdir ...; do
+// ...; done` retry loop handing off to a SEPARATE `node -e` call for the
+// write. CI run 40209506846 attempt 1 (job 121218159125) captured a
+// lock.log trace showing BOTH racing processes logging "acquire" ~35ns
+// apart and holding the lock "simultaneously" for ~42ms -- i.e. the mkdir
+// lock did not exclude on that runner, root cause unconfirmed (not
+// reproducible locally: 0/1500 bare mkdir-race iterations and 0/59 full
+// harness iterations on macOS). This is the hardening the issue's own
+// investigation proposed: do the acquire, the write, and the release all
+// inside ONE process, with two independent defenses that make the fixture
+// safe even if a double-acquisition still occurs:
+//   1. Per-process (pid-suffixed) tmp file for the atomic replace, so two
+//      writers never contend on the SAME tmp path (the ENOENT-on-rename
+//      crash class).
+//   2. An "owner" marker written right after the lock is acquired; release
+//      re-reads it and removes the lock directory ONLY if it still names
+//      this process's pid -- so a process can never destroy another
+//      holder's lock (the "rmdir: No such file" crash class). If the
+//      marker does not match, this logs an explicit EXCLUSIVITY-VIOLATION
+//      line to lock.log instead of silently colliding or crashing.
+const fs = require("fs");
+
+const [lockDir, logFile, commentsFile, bodyFile, viewer] = process.argv.slice(2);
+const proc = process.env.ADV_TEST_PROC || "x";
+const ownerFile = lockDir + "/owner";
+
+function sleepMs(ms) {
+  // Synchronous sleep with no extra fork/exec per retry attempt (unlike the
+  // bash loop this replaces, which spawned a new `mkdir` process each try).
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+let acquired = false;
+for (let i = 0; i < 300; i++) {
+  try {
+    fs.mkdirSync(lockDir);
+    acquired = true;
+    break;
+  } catch (e) {
+    if (e.code !== "EEXIST") {
+      process.stderr.write(String((e && e.message) || e) + "\n");
+      process.exit(70);
+    }
+    sleepMs(50);
+  }
+}
+if (!acquired) {
+  process.stderr.write("LOCK_TIMEOUT\n");
+  process.exit(70);
+}
+
+fs.writeFileSync(ownerFile, String(process.pid));
+fs.appendFileSync(
+  logFile,
+  "acquire pid=" + process.pid + " proc=" + proc + " t=" + Date.now() / 1000 + "\n"
+);
+
+let id;
+let failure = null;
+try {
+  const arr = JSON.parse(fs.readFileSync(commentsFile, "utf8"));
+  id = arr.reduce((m, c) => Math.max(m, c.id || 0), 1000) + 1;
+  arr.push({ id, user: { login: viewer }, body: fs.readFileSync(bodyFile, "utf8") });
+  // Per-process tmp name -- see header comment, point 1.
+  const tmp = commentsFile + ".tmp." + process.pid;
+  fs.writeFileSync(tmp, JSON.stringify(arr));
+  fs.renameSync(tmp, commentsFile);
+} catch (e) {
+  failure = e;
+}
+
+fs.appendFileSync(
+  logFile,
+  "release pid=" + process.pid + " proc=" + proc + " t=" + Date.now() / 1000 + "\n"
+);
+
+let ownerNow = "";
+try {
+  ownerNow = fs.readFileSync(ownerFile, "utf8");
+} catch (e) {
+  // Owner marker already gone -- treated as "not ours" below.
+}
+if (ownerNow === String(process.pid)) {
+  try {
+    fs.unlinkSync(ownerFile);
+  } catch (e) {}
+  try {
+    fs.rmdirSync(lockDir);
+  } catch (e) {}
+} else {
+  fs.appendFileSync(
+    logFile,
+    "EXCLUSIVITY-VIOLATION pid=" +
+      process.pid +
+      " proc=" +
+      proc +
+      " saw-owner=" +
+      ownerNow +
+      "\n"
+  );
+}
+
+if (failure) {
+  process.stderr.write(String((failure && failure.stack) || failure) + "\n");
+  process.exit(1);
+}
+console.log(id);
+'''
+
+
 class Harness:
     """A scratch git repo (with bare origin), PATH stubs, and gh fixtures."""
 
@@ -407,6 +520,12 @@ class Harness:
         )
 
         fix = _posix(self.fix)
+        gh_post_helper = _posix(self.stubs / "gh-post-helper.cjs")
+        # #4711: the ledger-lock acquire + read-modify-write + verified-release
+        # now run as ONE node process (see the file's own header comment for
+        # why) instead of a bash `mkdir` retry loop handing off to a separate
+        # `node -e` call for the write.
+        _write_exec(self.stubs / "gh-post-helper.cjs", GH_POST_HELPER_JS)
         _write_exec(
             self.stubs / "gh",
             f'''#!/usr/bin/env bash
@@ -415,8 +534,8 @@ echo "$*" >> "$FIX/gh.log"
 case "$*" in
   "api user --jq .login") cat "$FIX/viewer" ;;
   api\\ repos/*/comments\\ -F\\ body=@*\\ --jq\\ .id)
-      # POST a comment (reservation). Atomic append under a mkdir lock —
-      # this is the shared ledger two racing processes contend on.
+      # POST a comment (reservation). #4711: acquire + read-modify-write +
+      # verified-release run as one node process -- see gh-post-helper.cjs.
       body=""
       for a in "$@"; do case "$a" in body=@*) body="${{a#body=@}}" ;; esac; done
       if [ "${{STUB_HOLD_POST:-0}}" = "1" ]; then
@@ -424,23 +543,8 @@ case "$*" in
         i=0
         until [ -e "$FIX/go-post" ]; do i=$((i+1)); [ "$i" -gt 300 ] && exit 71; sleep 0.1; done
       fi
-      i=0
-      until mkdir "$FIX/lock" 2>/dev/null; do i=$((i+1)); [ "$i" -gt 300 ] && exit 70; sleep 0.05; done
-      node -e '
-        const fs=require("fs");
-        const [cf,bf,viewer]=process.argv.slice(1);
-        const arr=JSON.parse(fs.readFileSync(cf,"utf8"));
-        const id=arr.reduce((m,c)=>Math.max(m,c.id||0),1000)+1;
-        arr.push({{id, user:{{login:viewer}}, body:fs.readFileSync(bf,"utf8")}});
-        // Atomic replace: concurrent readers must see the old or new ledger,
-        // never a truncated half-write (the real GitHub API is atomic).
-        fs.writeFileSync(cf+".tmp",JSON.stringify(arr));
-        fs.renameSync(cf+".tmp",cf);
-        console.log(id);
-      ' "$FIX/comments.json" "$body" "{VIEWER}"
-      rc=$?
-      rmdir "$FIX/lock"
-      exit "$rc" ;;
+      node "{gh_post_helper}" "$FIX/lock" "$FIX/lock.log" "$FIX/comments.json" "$body" "{VIEWER}"
+      exit $? ;;
   api\\ repos/*/comments\\ --paginate)
       if [ "${{STUB_FAIL_LIST:-0}}" = "1" ]; then exit 1; fi
       count_file="$FIX/list-count"
@@ -1616,6 +1720,10 @@ def test_race_two_processes_exactly_one_canonical_winner(tmp_path):
     out2, _ = p2.communicate(timeout=180)
     rcs = {p1.returncode, p2.returncode}
 
+    # #4711: include the ledger-lock trace in every assertion message below.
+    lock_log = h.fix / "lock.log"
+    trace = "\n--- lock.log ---\n" + (lock_log.read_text(encoding="utf-8") if lock_log.exists() else "(none)")
+    out1 += trace
     # Exactly one Codex review ran; runners never launch privileged remediation.
     assert h.codex_runs() == 1, out1 + out2
     assert h.claude_runs() == 0, out1 + out2

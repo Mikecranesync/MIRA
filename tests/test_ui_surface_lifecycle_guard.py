@@ -2071,8 +2071,6 @@ def test_real_and_sibling_legacy_presentation_surfaces_fail_closed(path):
         "tools/hooks/prod-guard.sh",
         ".githooks/pre-commit",
         "tools/guard-check.py",
-        "tools/guarded_commit_approval.py",
-        "tools/hooks/guarded_approval_guard.py",
         "tests/hooks/test_precommit_hook.sh",
         "tools/migration_drift.py",
         "tools/migration-drift-requirements.txt",
@@ -3553,7 +3551,6 @@ def test_production_mobile_release_jobs_refuse_non_main_refs(workflow_name, job_
     "workflow_name",
     [
         "ci.yml",
-        "deploy-nginx-staging-passthrough.yml",
         "deploy-nginx-stg.yml",
         "deploy-staging.yml",
         "deploy-vps.yml",
@@ -3561,8 +3558,6 @@ def test_production_mobile_release_jobs_refuse_non_main_refs(workflow_name, job_
         "mobile-release-distribute.yml",
         "nginx-sites-enabled-hygiene.yml",
         "ota-release.yml",
-        "printsense-production-activation.yml",
-        "printsense-staging-e2e.yml",
         "vps-cleanup.yml",
         "vps-install-amux.yml",
     ],
@@ -3643,7 +3638,6 @@ def _native_job_secret_refs(job: dict) -> set[str]:
 @pytest.mark.parametrize(
     ("workflow_name", "job_name"),
     [
-        ("deploy-nginx-staging-passthrough.yml", "deploy-nginx"),
         ("deploy-nginx-stg.yml", "deploy-nginx"),
         ("nginx-sites-enabled-hygiene.yml", "hygiene"),
         ("vps-cleanup.yml", "cleanup"),
@@ -3837,6 +3831,53 @@ def test_firebase_distribution_uses_verified_standalone_binary():
         index for index, step in enumerate(job["steps"]) if _native_job_secret_refs({"step": step})
     )
     assert validation_index < secret_index
+
+
+def test_firebase_distribution_log_redacts_tokenized_download_url(tmp_path):
+    """The public Actions log must never carry the CLI's tokenized binary URL (#4836)."""
+    job = _native_release_workflow()["jobs"]["firebase-distribute"]
+    step = next(
+        step
+        for step in job["steps"]
+        if step.get("name") == "Distribute signed APK to Firebase testers"
+    )
+    run = step["run"]
+
+    assert '--non-interactive >"$FIREBASE_LOG" 2>&1 || FIREBASE_STATUS=$?' in run
+    assert 'FIREBASE_LOG="$FIREBASE_SECRET_DIR/distribute.log"' in run
+    assert '[ "$FIREBASE_STATUS" -eq 0 ] ||' in run
+    assert 'exit "$FIREBASE_STATUS"' in run
+
+    match = re.search(r"^\s*sed -E '([^']+)' \"\$FIREBASE_LOG\"$", run, re.MULTILINE)
+    assert match, "the captured CLI output must be printed through the redaction filter"
+
+    token = "FAKE-download-token-for-redaction-test"
+    sample = tmp_path / "distribute.log"
+    sample.write_text(
+        "i  uploading binary...\n"
+        "+  uploaded new release 1.2.0 (16) successfully!\n"
+        "i  View this release in the Firebase console: "
+        "https://console.firebase.google.com/project/p/appdistribution/app/a/releases/r\n"
+        "i  Download the release binary (link expires in 1 hour): "
+        "https://firebaseappdistribution.googleapis.com/app-binary-downloads/projects/1/"
+        f"apps/a/releases/r/binaries/b?token={token}\n"
+        f"i  Mirror: https://example.invalid/apk?alt=media&token={token}\n"
+        "+  distributed to testers/groups successfully\n",
+        encoding="utf-8",
+    )
+    result = subprocess.run(
+        ["sed", "-E", match.group(1), str(sample)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    assert token not in result.stdout
+    assert "app-binary-downloads" not in result.stdout
+    assert result.stdout.count("[redacted download URL]") == 2
+    assert "uploaded new release 1.2.0 (16) successfully" in result.stdout
+    assert "distributed to testers/groups successfully" in result.stdout
+    assert "https://console.firebase.google.com/project/p/appdistribution" in result.stdout
 
 
 def test_direct_download_uses_governed_metadata_and_pinned_ssh_trust():
@@ -4062,15 +4103,12 @@ def test_license_ci_installs_and_allowlists_the_isolated_migration_driver():
 @pytest.mark.parametrize(
     "workflow_name",
     [
-        "deploy-nginx-staging-passthrough.yml",
         "deploy-nginx-stg.yml",
         "deploy-staging.yml",
         "deploy-vps.yml",
         "mobile-release-distribute.yml",
         "nginx-sites-enabled-hygiene.yml",
         "ota-release.yml",
-        "printsense-production-activation.yml",
-        "printsense-staging-e2e.yml",
         "vps-cleanup.yml",
     ],
 )
@@ -4783,3 +4821,152 @@ def test_cli_current_pull_snapshot_may_stand_alone_for_the_review_route(tmp_path
         ]
     )
     assert rc in (0, 1)  # parsed and evaluated — never a usage error
+
+
+# ---------------------------------------------------------------------------
+# CONVERGED (owner decision 2026-10-18; charter §3; SDLC §4.3): an exact-head,
+# exact-body ISSUES_FOUND with zero BLOCKER and zero HIGH authorizes only together
+# with a newer owner [REVIEW-FOLLOWUPS] record for the same snapshot that lists
+# one issue per MEDIUM.
+# ---------------------------------------------------------------------------
+
+
+def _converged_review(sha: str = _HEAD_A, *, blocker=0, high=0, medium=2, low=0, body=_VALID_BODY):
+    return (
+        _ledger_comment(sha, "ISSUES_FOUND", body=body)
+        .replace("BLOCKER: 0", f"BLOCKER: {blocker}")
+        .replace("HIGH: 0", f"HIGH: {high}")
+        .replace("MEDIUM: 0", f"MEDIUM: {medium}")
+        .replace("LOW: 0", f"LOW: {low}")
+    )
+
+
+def _followups(issues: str, sha: str = _HEAD_A, *, body: str = _VALID_BODY) -> str:
+    return (
+        "[REVIEW-FOLLOWUPS]\n\n```\n"
+        f"reviewed_sha: {sha}\nreviewed_body_sha256: {_body_sha256(body)}\n"
+        f"issues: {issues}\n```\n"
+    )
+
+
+def _converged_attestation(tmp_path, comments):
+    comments_path, pull_path = _write_codex_ledger(tmp_path, comments)
+    return load_codex_attestation(comments_path, pull_path)
+
+
+def test_converged_with_followups_for_every_medium_passes_guarded_touch(tmp_path):
+    att = _converged_attestation(
+        tmp_path,
+        [_owner_comment(1, _converged_review()), _owner_comment(2, _followups("#10 #11"))],
+    )
+    assert att.valid is True
+    assert att.status == "CONVERGED"
+    result = evaluate(_TOUCH, pr_body=_VALID_BODY, policy=_POLICY, codex_attestation=att)
+    assert result.allowed is True
+
+
+def test_converged_without_followups_record_fails(tmp_path):
+    att = _converged_attestation(tmp_path, [_owner_comment(1, _converged_review())])
+    assert att.valid is False
+    assert "REVIEW-FOLLOWUPS" in att.reason
+
+
+def test_converged_followups_bound_to_another_head_fail(tmp_path):
+    att = _converged_attestation(
+        tmp_path,
+        [_owner_comment(1, _converged_review()), _owner_comment(2, _followups("#10 #11", _HEAD_B))],
+    )
+    assert att.valid is False
+
+
+def test_converged_followups_bound_to_an_old_body_fail(tmp_path):
+    old = _VALID_BODY.replace("rollback route", "old rollback route")
+    att = _converged_attestation(
+        tmp_path,
+        [
+            _owner_comment(1, _converged_review()),
+            _owner_comment(2, _followups("#10 #11", body=old)),
+        ],
+    )
+    assert att.valid is False
+
+
+def test_converged_followups_listing_fewer_issues_than_mediums_fail(tmp_path):
+    """A repeated number counts once: `#10 #10` is one follow-up, not two."""
+    att = _converged_attestation(
+        tmp_path,
+        [_owner_comment(1, _converged_review()), _owner_comment(2, _followups("#10 #10"))],
+    )
+    assert att.valid is False
+
+
+def test_converged_followups_posted_before_the_review_fail(tmp_path):
+    att = _converged_attestation(
+        tmp_path,
+        [_owner_comment(1, _followups("#10 #11")), _owner_comment(2, _converged_review())],
+    )
+    assert att.valid is False
+
+
+def test_converged_followups_from_another_account_fail(tmp_path):
+    att = _converged_attestation(
+        tmp_path,
+        [
+            _owner_comment(1, _converged_review()),
+            _owner_comment(2, _followups("#10 #11"), login="someone-else"),
+        ],
+    )
+    assert att.valid is False
+
+
+@pytest.mark.parametrize("severity", ["blocker", "high"])
+def test_a_blocker_or_high_is_never_converged_even_with_followups(tmp_path, severity):
+    att = _converged_attestation(
+        tmp_path,
+        [
+            _owner_comment(1, _converged_review(**{severity: 1})),
+            _owner_comment(2, _followups("#10 #11 #12")),
+        ],
+    )
+    assert att.valid is False
+
+
+def test_low_only_converged_needs_one_followup(tmp_path):
+    review = _converged_review(medium=0, low=3)
+    assert _converged_attestation(tmp_path, [_owner_comment(1, review)]).valid is False
+    att = _converged_attestation(
+        tmp_path, [_owner_comment(1, review), _owner_comment(2, _followups("#10"))]
+    )
+    assert att.valid is True
+
+
+def test_a_newer_review_withdraws_a_converged_authorization(tmp_path):
+    att = _converged_attestation(
+        tmp_path,
+        [
+            _owner_comment(1, _converged_review()),
+            _owner_comment(2, _followups("#10 #11")),
+            _owner_comment(3, _converged_review(high=1)),
+        ],
+    )
+    assert att.valid is False
+
+
+_ROOT = Path(__file__).resolve().parents[1]
+_REVIEW_ENTRYPOINTS = (
+    "CLAUDE.md",
+    ".claude/CLAUDE.md",
+    ".claude/rules/multi-session-protocol.md",
+    ".claude/rules/factorylm-unified-ui-cutover.md",
+    "docs/architecture/mira-sdlc-v1.md",
+    "docs/architecture/convergence/UNIFIED_UI_CUTOVER.md",
+    "docs/adversarial-review-workflow.md",
+)
+
+
+@pytest.mark.parametrize("relpath", _REVIEW_ENTRYPOINTS)
+def test_every_review_entrypoint_names_the_converged_finish_line(relpath):
+    """If one entrypoint says GREEN is the only way to finish while another says
+    CONVERGED also is, sessions get contradictory instructions and the post-cap
+    treadmill comes back (#4525 Codex F3)."""
+    assert "CONVERGED" in (_ROOT / relpath).read_text(encoding="utf-8"), relpath

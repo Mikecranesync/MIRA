@@ -1,0 +1,418 @@
+{
+ "source": "Stranger Walk run charlie-20261031T1505Z (staging 01f4f512fbdb8e9489c571f95805bb6a12c775aa), observations.json verbatim; manual page text via pdftotext -layout, whitespace-collapsed",
+ "manuals": {
+  "gs10-ch6": "df9cfc7bf1b9fc1e0f1093122c0d5c358cea921f848d942da8e6fb3f18d43669",
+  "pf40": "15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9",
+  "acs355": "49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac"
+ },
+ "pages": {
+  "gs10-ch6-p3": "Chapter 6: Maintenance and Troubleshooting Recharge Capacitors (for drives not in service) Recharge the DC link before using any drive that has not been operated within a year: 1) Disconnect the motor from the drive. 2) Apply input power to the drive for 2 hours. If the drive is stored or is otherwise unused for more than a year, the drive’s internal DC link capacitors should be recharged before use. Otherwise, the capacitors may be damaged when the drive starts to operate. We recommend recharging the capacitors of any unused drive at least once per year. Disconnect AC power and ensure that the internal capacitors have fully discharged before inspecting the GS10 drive! Wait at least FIVE minutes after all display lamps have turned off. ☑ Wait 5 seconds after a fault has been cleared before performing reset via keypad or input terminal. ☑ When the power is off after 5 minutes for ≤ 30hp models and 10 minutes for ≥ 40hp models, please confirm that the capacitors have fully discharged by measuring the voltage between + and -. The voltage between + and - should be less than 25VDC. ☑ Only qualified personnel can install, wire and maintain drives. CAUTION Please take off any metal objects, such as watches and rings, before operation. And only insulated tools are allowed. ☑ Never reassemble internal components or wiring. ☑ Make sure that installation environment complies with regulations without abnormal noise, vibration and smell. DURApulse GS10 AC Drive User Manual – 1st Ed., Rev B Page 6–3",
+  "gs10-ch6-p4": "Chapter 6: Maintenance and Troubleshooting Recommended Inspection Schedules Before the check-up, always turn off the AC input power and remove the cover. Wait at least 10 minutes after all display lamps have gone out, and then confirm that the capacitors have fully discharged by measuring the voltage between DC+ and DC-. The voltage between DC+ and DC-should be less than 25VDC. Ambient environment Maintenance Period Check Items Methods and Criteria Half One Daily Year Year Check the ambient temperature, Visual inspection and humidity, vibration and see if there is measurement with equipment any dust, gas, oil or water drops against standard specifications If there are any dangerous objects Visual inspection Voltage Maintenance Period Check Items Methods and Criteria Half One Daily Year Year Check if the voltage of main circuit and Measure with multimeter control circuit is correct against standard specifications Digital Keypad Display Maintenance Period Check Items Methods and Criteria Half One Daily Year Year Is the display clear for reading Visual inspection Any missing characters Visual inspection Mechanical parts Maintenance Period Check Items Methods and Criteria Half One Daily Year Year If there is any abnormal sound or Visual and audible inspection vibration If there are any loose screws Tighten the screws If any part is deformed or damaged Visual inspection If there is any color change due to Visual inspection overheating If there is any dust or dirt Visual inspection Page 6–4 DURApulse GS10 AC Drive User Manual – 1st Ed., Rev B",
+  "pf40-p9": "22B-UM001.book Page 9 Tuesday, September 16, 2025 10:43 AM Preface Overview General Precautions ATTENTION: The drive contains high voltage capacitors which take time to discharge after removal of mains supply. Before working on ! drive, ensure isolation of mains supply from line inputs [R, S, T (L1, L2, L3)]. Wait three minutes for capacitors to discharge to safe voltage levels. Failure to do so may result in personal injury or death. Darkened display LEDs is not an indication that capacitors have discharged to safe voltage levels. ATTENTION: Only qualified personnel familiar with adjustable frequency AC drives and associated machinery should plan or ! implement the installation, start-up and subsequent maintenance of the system. Failure to comply may result in personal injury and/or equipment damage. ATTENTION: This drive contains ESD (Electrostatic Discharge) sensitive parts and assemblies. Static control precautions are required ! when installing, testing, servicing or repairing this assembly. Component damage may result if ESD control procedures are not followed. If you are not familiar with static control procedures, see Guarding Against Electrostatic Damage Service Bulletin, publication 8000-4.5.2 or any other applicable ESD protection handbook. ATTENTION: An incorrectly applied or installed drive can result in component damage or a reduction in product life. Wiring or application ! errors, such as, undersizing the motor, incorrect or inadequate AC supply, or excessive ambient temperatures may result in malfunction of the system. ATTENTION: The bus regulator function is extremely useful for preventing nuisance overvoltage faults resulting from aggressive ! decelerations, overhauling loads, and eccentric loads. However, it can also cause either of the following two conditions to occur. • Fast positive changes in input voltage or imbalanced input voltages can cause uncommanded positive speed changes; • Actual deceleration times can be longer than commanded deceleration times However, a “Stall Fault” is generated if the drive remains in this state for 1 minute. If this condition is unacceptable, the bus regulator must be disabled (see parameter A117). In addition, installing a properly sized dynamic brake resistor will provide equal or better performance in most cases. Rockwell Automation Publication 22B-UM001J-EN-E - September 2025 9",
+  "acs355-p18": "18 Safety Safety in installation and maintenance These warnings are intended for all who work on the drive, motor cable or motor.  Electrical safety WARNING! Ignoring the following instructions can cause physical injury or death, or damage to the equipment. Only qualified electricians are allowed to install and maintain the drive! • Never work on the drive, motor cable or motor when input power is applied. After disconnecting the input power, always wait for 5 minutes to let the intermediate circuit capacitors discharge before you start working on the drive, motor or motor cable. Always ensure by measuring with a multimeter (impedance at least 1 Mohm) that 1. there is no voltage between the drive input phases U1, V1 and W1 and the ground 2. there is no voltage between terminals BRK+ and BRK- and the ground. • Do not work on the control cables when power is applied to the drive or to the external control circuits. Externally supplied control circuits may carry dangerous voltage even when the input power of the drive is switched off. • Do not make any insulation or voltage withstand tests on the drive. • Disconnect the internal EMC filter when installing the drive on an IT system (an ungrounded power system or a high-resistance-grounded [over 30 ohms] power system), otherwise the system will be connected to ground potential through the EMC filter capacitors. This may cause danger or damage the drive. See page 50. Note: When the internal EMC filter is disconnected, the drive is not EMC compatible without an external filter. • Disconnect the internal EMC filter when installing the drive on a corner-grounded TN system, otherwise the drive will be damaged. See page 50. Note: When the internal EMC filter is disconnected, the drive is not EMC compatible without an external filter. • All ELV (extra low voltage) circuits connected to the drive must be used within a zone of equipotential bonding, ie, within a zone where all simultaneously accessible conductive parts are electrically connected to prevent hazardous voltages appearing between them. This is accomplished by a proper factory grounding. Note: • Even when the motor is stopped, dangerous voltage is present at the power circuit terminals U1, V1, W1 and U2, V2, W2 and BRK+ and BRK-.",
+  "acs355-p355": "Fault tracing 355 CODE ALARM CAUSE WHAT TO DO 2024 ENCODER ERROR Communication fault Check pulse encoder and its wiring, 0309 bit 7 between pulse pulse encoder interface module and encoder and pulse its wiring and parameter group 50 (programmable fault encoder interface ENCODER settings. function 5003) module or between module and drive. 2025 FIRST START Motor identification Wait until drive indicates that motor 0309 bit 8 magnetization is on. identification is completed. This alarm belongs to normal start-up procedure. 2026 INPUT PHASE Intermediate circuit DC Check input power line fuses. LOSS voltage is oscillating Check for input power supply 0309 bit 9 due to missing input imbalance. power line phase or (programmable fault blown fuse. Check fault function parameters. function 3016) Alarm is generated when DC voltage ripple exceeds 14% of nominal DC voltage. 2029 MOTOR BACK EMF Permanent magnet If start to rotating motor is required, 0309 bit 12 synchronous motor is select start mode 1 (AUTO) with rotating, start mode 2 parameter 2101 START FUNCTION. (DC MAGN) is Otherwise drive starts after motor has selected with stopped. parameter 2101 START FUNCTION, and run is requested. Drive warns that rotating motor cannot be magnetized with DC current. 2035 SAFE TORQUE STO (Safe torque off) If this was not expected reaction to OFF requested and it safety circuit interruption, check 0309 bit 13 functions correctly. cabling of safety circuit connected to Parameter 3025 STO STO terminals X1C. OPERATION is set to If different reaction is required, change react with alarm. value of parameter 3025 STO OPERATION. Note: Start signal must be reset (toggled to 0) if STO has been used while drive has been running. 1) Even when the relay output is configured to indicate alarm conditions (eg, parameter 1401 RELAY OUTPUT 1 = 5 (ALARM) or 16 (FLT/ALARM)), this alarm is not indicated by a relay output.",
+  "acs355-p372": "372 Maintenance and hardware diagnostics Cooling fan The life span of the cooling fan depends on the drive usage and ambient temperature. Automatic fan on/off control increases the life span (see parameter 1612 FAN CONTROL). When the assistant control panel is in use, the Notice handler assistant informs when the definable value of the operating hour counter is reached (see parameter 2901 COOLING FAN TRIG). This information can also be passed to the relay output (see group 14 RELAY OUTPUTS) regardless of the used panel type. Fan failure can be predicted by the increasing noise from the fan bearings. If the drive is operated in a critical part of a process, fan replacement is recommended once these symptoms start appearing. Replacement fans are available from ABB. Do not use other than ABB specified spare parts.  Replacing the cooling fan (frame sizes R1…R4) Only frame sizes R1…R4 include a fan; frame size R0 has natural cooling. WARNING! Read and follow the instructions in chapter Safety on page 17. Ignoring the instructions can cause physical injury or death, or damage to the equipment. 1. Stop the drive and disconnect it from the AC power source. 2. Remove the hood if the drive has the NEMA 1 option. 3. Lever the fan holder off the drive frame with, eg, a screwdriver and lift the hinged fan holder slightly upward from its front edge. 4. Free the fan cable from the clip. 5. Disconnect the fan cable. 6. Remove the fan holder from the hinges. 6 3 5 4"
+ },
+ "failures": [
+  {
+   "id": "gs10-ch6-q2",
+   "finding": "NOTICE_MISSING",
+   "observation": {
+    "id": "gs10-ch6-q2",
+    "broken": null,
+    "rendered": {
+     "answer": "Wait at least 10 minutes after the display lamps go out, and for ≤ 30hp models wait at least 5 minutes; the capacitors are discharged when DC+ to DC- is less than 25VDC 2 1. After that, confirm the DC bus is below 25VDC before inspection 2.",
+     "citations": [
+      {
+       "n": "1",
+       "title": "gs10-ch6.pdf",
+       "page": "3"
+      },
+      {
+       "n": "2",
+       "title": "gs10-ch6.pdf",
+       "page": "4"
+      }
+     ],
+     "safety": {
+      "present": false,
+      "kind": null,
+      "first": null
+     },
+     "evidence": "Grounded in this notebook's sources."
+    },
+    "cards": [
+     {
+      "title": "gs10-ch6.pdf",
+      "page": "3"
+     },
+     {
+      "title": "gs10-ch6.pdf",
+      "page": "4"
+     }
+    ],
+    "firstChip": {
+     "n": "2",
+     "title": "gs10-ch6.pdf",
+     "page": "4"
+    },
+    "streamStatus": "answered",
+    "errorPart": null,
+    "viewerOpened": true,
+    "viewer": {
+     "fileId": "03e84466-c696-4744-963d-24e19cd8a381",
+     "page": "4",
+     "manualFileId": "03e84466-c696-4744-963d-24e19cd8a381"
+    },
+    "sse": "data: {\"kind\":\"progress\",\"stage\":\"finding_equipment\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"searching_documentation\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"generating_answer\"}\n\ndata: {\"kind\":\"headers\",\"headers\":{\"x-mira-trace-id\":\"6668929add76359192e77653c7310711\"}}\n\ndata: {\"kind\":\"trace\",\"traceId\":\"6668929add76359192e77653c7310711\",\"turnId\":\"4b13c00b-4104-4dce-bb6f-f30111572d19\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"checking_answer\"}\n\ndata: {\"kind\":\"content\",\"content\":\"Wait at least 10 minutes after the display lamps go out, and for â‰¤ 30hp models wait at least 5 minutes; the capacitors \"}\n\ndata: {\"kind\":\"content\",\"content\":\"are discharged when DC+ to DC- is less than 25VDC [2] [1]. After that, confirm the DC bus is below 25VDC before \"}\n\ndata: {\"kind\":\"content\",\"content\":\"inspection [2].\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[{\"citationId\":\"1\",\"docId\":\"82bf6487-40e3-4e30-9f0c-385d6377e6ec\",\"sourceTitle\":\"gs10-ch6.pdf\",\"page\":3,\"fileId\":\"03e84466-c696-4744-963d-24e19cd8a381\",\"quote\":\"â€¦keypad or input terminal.\\nâ˜‘ When the power is off after 5 minutes for â‰¤ 30hp models and 10\\nminutes for â‰¥ 40hp models, please confirm that the capacitors have\\nfully discharged by measuring the voltage between + and -. The\\nvoltage between + a\",\"originFileId\":null},{\"citationId\":\"2\",\"docId\":\"82bf6487-40e3-4e30-9f0c-385d6377e6ec\",\"sourceTitle\":\"gs10-ch6.pdf\",\"page\":4,\"fileId\":\"03e84466-c696-4744-963d-24e19cd8a381\",\"quote\":\"â€¦DC-. The voltage between DC+ and\\nDC-should be less than 25VDC.\\nAmbient environment\\nCheck Items Methods and Criteria\\nMaintenance Period\\nDaily Half\\nYear\\nOne\\nYear\\nCheck the ambient temperature,\\nhumidity, vibration and see if there is\\nany dust,\",\"originFileId\":null}],\"sourceSnapshot\":[\"82bf6487-40e3-4e30-9f0c-385d6377e6ec\"]}\n\ndata: {\"kind\":\"evidence\",\"basis\":\"oem_documentation\",\"label\":\"Grounded in this notebook's sources.\"}\n\ndata: {\"kind\":\"usage\",\"provider\":\"OpenAI\",\"model\":\"gpt-5.4-mini\",\"routeReason\":\"primary\",\"inputTokens\":3211,\"cachedInputTokens\":0,\"outputTokens\":195,\"costUsdEstimate\":0.003286,\"status\":\"ok\"}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: [DONE]\n\n",
+    "elapsedMs": 42993
+   },
+   "elements": [
+    {
+     "name": "wait-10-min",
+     "page": 4,
+     "manualQuote": "Wait at least 10 minutes after all display lamps have gone out",
+     "answerPattern": "\\b10 minutes\\b"
+    },
+    {
+     "name": "dc-bus-below-25vdc",
+     "page": 4,
+     "manualQuote": "less than 25VDC",
+     "answerPattern": "(less than|below) 25 ?VDC"
+    }
+   ]
+  },
+  {
+   "id": "pf40-q2",
+   "finding": "NOTICE_MISSING",
+   "observation": {
+    "id": "pf40-q2",
+    "broken": null,
+    "rendered": {
+     "answer": "Wait three minutes after removing mains supply before working on the drive 5. The manual also says to isolate mains supply from line inputs [R, S, T (L1, L2, L3)] before work begins 5.",
+     "citations": [
+      {
+       "n": "5",
+       "title": "pf40.pdf",
+       "page": "9"
+      }
+     ],
+     "safety": {
+      "present": false,
+      "kind": null,
+      "first": null
+     },
+     "evidence": "Grounded in this notebook's sources."
+    },
+    "cards": [
+     {
+      "title": "pf40.pdf",
+      "page": "9"
+     }
+    ],
+    "firstChip": {
+     "n": "5",
+     "title": "pf40.pdf",
+     "page": "9"
+    },
+    "streamStatus": "answered",
+    "errorPart": null,
+    "viewerOpened": true,
+    "viewer": {
+     "fileId": "3a5cf28c-a5cd-4e07-987c-8fe475d2acc7",
+     "page": "9",
+     "manualFileId": "3a5cf28c-a5cd-4e07-987c-8fe475d2acc7"
+    },
+    "sse": "data: {\"kind\":\"progress\",\"stage\":\"finding_equipment\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"searching_documentation\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"generating_answer\"}\n\ndata: {\"kind\":\"headers\",\"headers\":{\"x-mira-trace-id\":\"c3a7ff60b7913271d1d0e54b7ee8d431\"}}\n\ndata: {\"kind\":\"trace\",\"traceId\":\"c3a7ff60b7913271d1d0e54b7ee8d431\",\"turnId\":\"1f8e6bc9-6784-4df3-8915-3fd815ad1ed3\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"checking_answer\"}\n\ndata: {\"kind\":\"content\",\"content\":\"Wait three minutes after removing mains supply before working on the drive [5]. The manual also says to isolate mains \"}\n\ndata: {\"kind\":\"content\",\"content\":\"supply from line inputs [R, S, T (L1, L2, L3)] before work begins [5].\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[{\"citationId\":\"5\",\"docId\":\"7a71952c-fcb2-49e6-956f-4a062d9c8437\",\"sourceTitle\":\"pf40.pdf\",\"page\":9,\"fileId\":\"3a5cf28c-a5cd-4e07-987c-8fe475d2acc7\",\"quote\":\"â€¦which take\\ntime to discharge after removal of mains supply. Before working on\\ndrive, ensure isolation of mains supply from line inputs [R, S, T (L1,\\nL2, L3)]. Wait three minutes for capacitors to discharge to safe voltage\\nlevels. Failure to\",\"originFileId\":null}],\"sourceSnapshot\":[\"7a71952c-fcb2-49e6-956f-4a062d9c8437\"]}\n\ndata: {\"kind\":\"evidence\",\"basis\":\"oem_documentation\",\"label\":\"Grounded in this notebook's sources.\"}\n\ndata: {\"kind\":\"usage\",\"provider\":\"OpenAI\",\"model\":\"gpt-5.4-mini\",\"routeReason\":\"primary\",\"inputTokens\":3081,\"cachedInputTokens\":0,\"outputTokens\":62,\"costUsdEstimate\":0.00259,\"status\":\"ok\"}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: [DONE]\n\n",
+    "elapsedMs": 42335
+   },
+   "elements": [
+    {
+     "name": "isolate-mains",
+     "page": 9,
+     "manualQuote": "ensure isolation of mains supply from line inputs",
+     "answerPattern": "isolat\\w* (the )?mains"
+    },
+    {
+     "name": "wait-3-min",
+     "page": 9,
+     "manualQuote": "Wait three minutes for capacitors to discharge",
+     "answerPattern": "\\b(three|3) minutes\\b"
+    }
+   ]
+  },
+  {
+   "id": "acs355-q2",
+   "finding": "NOTICE_MISSING",
+   "observation": {
+    "id": "acs355-q2",
+    "broken": null,
+    "rendered": {
+     "answer": "Wait 5 minutes after disconnecting the input power before working on the ACS355 1. After that, verify with a multimeter that there is no voltage present before you start working 1.",
+     "citations": [
+      {
+       "n": "1",
+       "title": "acs355.pdf",
+       "page": "18"
+      }
+     ],
+     "safety": {
+      "present": false,
+      "kind": null,
+      "first": null
+     },
+     "evidence": "Grounded in this notebook's sources."
+    },
+    "cards": [
+     {
+      "title": "acs355.pdf",
+      "page": "18"
+     }
+    ],
+    "firstChip": {
+     "n": "1",
+     "title": "acs355.pdf",
+     "page": "18"
+    },
+    "streamStatus": "answered",
+    "errorPart": null,
+    "viewerOpened": true,
+    "viewer": {
+     "fileId": "4893536c-a95f-47f5-a97e-1bc923ea8485",
+     "page": "18",
+     "manualFileId": "4893536c-a95f-47f5-a97e-1bc923ea8485"
+    },
+    "sse": "data: {\"kind\":\"progress\",\"stage\":\"finding_equipment\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"searching_documentation\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"generating_answer\"}\n\ndata: {\"kind\":\"headers\",\"headers\":{\"x-mira-trace-id\":\"3f8acd90fd233ebeaa8738d04baaee38\"}}\n\ndata: {\"kind\":\"trace\",\"traceId\":\"3f8acd90fd233ebeaa8738d04baaee38\",\"turnId\":\"61e8d1d4-f68b-4d17-8a30-0ffa67254e90\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"checking_answer\"}\n\ndata: {\"kind\":\"content\",\"content\":\"Wait 5 minutes after disconnecting the input power before working on the ACS355 [1]. After that, verify with a \"}\n\ndata: {\"kind\":\"content\",\"content\":\"multimeter that there is no voltage present before you start working [1].\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[{\"citationId\":\"1\",\"docId\":\"5e5036b4-68bc-492c-9f57-a9288056b37d\",\"sourceTitle\":\"acs355.pdf\",\"page\":18,\"fileId\":\"4893536c-a95f-47f5-a97e-1bc923ea8485\",\"quote\":\"â€¦After\\ndisconnecting the input power, always wait for 5 minutes to let the intermediate\\ncircuit capacitors discharge before you start working on the drive, motor or motor\\ncable.\\nAlways ensure by measuring with a multimeter (impedance at leas\",\"originFileId\":null}],\"sourceSnapshot\":[\"5e5036b4-68bc-492c-9f57-a9288056b37d\"]}\n\ndata: {\"kind\":\"evidence\",\"basis\":\"oem_documentation\",\"label\":\"Grounded in this notebook's sources.\"}\n\ndata: {\"kind\":\"usage\",\"provider\":\"OpenAI\",\"model\":\"gpt-5.4-mini\",\"routeReason\":\"primary\",\"inputTokens\":2915,\"cachedInputTokens\":0,\"outputTokens\":54,\"costUsdEstimate\":0.002429,\"status\":\"ok\"}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: [DONE]\n\n",
+    "elapsedMs": 49405
+   },
+   "elements": [
+    {
+     "name": "wait-5-min",
+     "page": 18,
+     "manualQuote": "After disconnecting the input power, always wait for 5 minutes to let the intermediate circuit capacitors discharge",
+     "answerPattern": "\\b(5|five)[- ]minutes?\\b"
+    },
+    {
+     "name": "measure-zero-voltage",
+     "page": 18,
+     "manualQuote": "Always ensure by measuring with a multimeter (impedance at least 1 Mohm) that 1. there is no voltage",
+     "answerPattern": "(multimeter|measur\\w*)[^.]{0,80}\\bno voltage|\\bno voltage\\b[^.]{0,40}(present|between)|\\bzero (volts|voltage)\\b"
+    }
+   ]
+  },
+  {
+   "id": "acs355-q3",
+   "finding": "NOTICE_MISSING_AND_UNSAFE_OMISSION",
+   "observation": {
+    "id": "acs355-q3",
+    "broken": null,
+    "rendered": {
+     "answer": "Stop the drive and disconnect it from the AC power source, then remove the hood if fitted, lever the fan holder off the frame with a screwdriver, lift the hinged holder slightly upward from the front edge, free the fan cable from the clip, disconnect the fan cable, and remove the fan holder from the hinges 1. Only frame sizes R1…R4 have a fan; frame size R0 has natural cooling 1.",
+     "citations": [
+      {
+       "n": "1",
+       "title": "acs355.pdf",
+       "page": "372"
+      }
+     ],
+     "safety": {
+      "present": false,
+      "kind": null,
+      "first": null
+     },
+     "evidence": "Grounded in this notebook's sources."
+    },
+    "cards": [
+     {
+      "title": "acs355.pdf",
+      "page": "372"
+     }
+    ],
+    "firstChip": {
+     "n": "1",
+     "title": "acs355.pdf",
+     "page": "372"
+    },
+    "streamStatus": "answered",
+    "errorPart": null,
+    "viewerOpened": true,
+    "viewer": {
+     "fileId": "4893536c-a95f-47f5-a97e-1bc923ea8485",
+     "page": "372",
+     "manualFileId": "4893536c-a95f-47f5-a97e-1bc923ea8485"
+    },
+    "sse": "data: {\"kind\":\"progress\",\"stage\":\"finding_equipment\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"searching_documentation\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"generating_answer\"}\n\ndata: {\"kind\":\"headers\",\"headers\":{\"x-mira-trace-id\":\"d307073e21b5a77ab1e5928653b6d787\"}}\n\ndata: {\"kind\":\"trace\",\"traceId\":\"d307073e21b5a77ab1e5928653b6d787\",\"turnId\":\"eaa2a034-54db-415b-8445-509d1c55c18c\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"checking_answer\"}\n\ndata: {\"kind\":\"content\",\"content\":\"Stop the drive and disconnect it from the AC power source, then remove the hood if fitted, lever the fan holder off the \"}\n\ndata: {\"kind\":\"content\",\"content\":\"frame with a screwdriver, lift the hinged holder slightly upward from the front edge, free the fan cable from the clip, \"}\n\ndata: {\"kind\":\"content\",\"content\":\"disconnect the fan cable, and remove the fan holder from the hinges [1]. Only frame sizes R1â€¦R4 have a fan; frame size \"}\n\ndata: {\"kind\":\"content\",\"content\":\"R0 has natural cooling [1].\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[{\"citationId\":\"1\",\"docId\":\"5e5036b4-68bc-492c-9f57-a9288056b37d\",\"sourceTitle\":\"acs355.pdf\",\"page\":372,\"fileId\":\"4893536c-a95f-47f5-a97e-1bc923ea8485\",\"quote\":\"â€¦from ABB. Do not\\nuse other than ABB specified spare parts.\\nï® Replacing the cooling fan (frame sizes R1â€¦R4)\\nOnly frame sizes R1â€¦R4 include a fan; frame size R0 has natural cooling.\\nWARNING! Read and follow the instructions in chapter Safety \",\"originFileId\":null}],\"sourceSnapshot\":[\"5e5036b4-68bc-492c-9f57-a9288056b37d\"]}\n\ndata: {\"kind\":\"evidence\",\"basis\":\"oem_documentation\",\"label\":\"Grounded in this notebook's sources.\"}\n\ndata: {\"kind\":\"usage\",\"provider\":\"OpenAI\",\"model\":\"gpt-5.4-mini\",\"routeReason\":\"primary\",\"inputTokens\":3551,\"cachedInputTokens\":0,\"outputTokens\":117,\"costUsdEstimate\":0.00319,\"status\":\"ok\"}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: [DONE]\n\n",
+    "elapsedMs": 48833
+   },
+   "elements": [
+    {
+     "name": "disconnect-ac-power",
+     "page": 372,
+     "manualQuote": "1. Stop the drive and disconnect it from the AC power source.",
+     "answerPattern": "disconnect\\w* (it )?from the AC power"
+    },
+    {
+     "name": "wait-5-min",
+     "page": 18,
+     "manualQuote": "After disconnecting the input power, always wait for 5 minutes to let the intermediate circuit capacitors discharge",
+     "answerPattern": "\\b(5|five)[- ]minutes?\\b"
+    },
+    {
+     "name": "measure-zero-voltage",
+     "page": 18,
+     "manualQuote": "Always ensure by measuring with a multimeter (impedance at least 1 Mohm) that 1. there is no voltage",
+     "answerPattern": "(multimeter|measur\\w*)[^.]{0,80}\\bno voltage|\\bno voltage\\b[^.]{0,40}(present|between)|\\bzero (volts|voltage)\\b"
+    }
+   ]
+  },
+  {
+   "id": "acs355-q4",
+   "finding": "NOTICE_MISSING_AND_UNSAFE_OMISSION",
+   "observation": {
+    "id": "acs355-q4",
+    "broken": null,
+    "rendered": {
+     "answer": "Alarm 2035 SAFE TORQUE OFF means the STO (Safe torque off) input was requested and is functioning correctly 2. If this was not expected, check the cabling of the safety circuit connected to STO terminals X1C; if a different reaction is needed, change parameter 3025 STO OPERATION 2.",
+     "citations": [
+      {
+       "n": "2",
+       "title": "acs355.pdf",
+       "page": "355"
+      }
+     ],
+     "safety": {
+      "present": false,
+      "kind": null,
+      "first": null
+     },
+     "evidence": "Grounded in this notebook's sources."
+    },
+    "cards": [
+     {
+      "title": "acs355.pdf",
+      "page": "355"
+     }
+    ],
+    "firstChip": {
+     "n": "2",
+     "title": "acs355.pdf",
+     "page": "355"
+    },
+    "streamStatus": "answered",
+    "errorPart": null,
+    "viewerOpened": true,
+    "viewer": {
+     "fileId": "4893536c-a95f-47f5-a97e-1bc923ea8485",
+     "page": "355",
+     "manualFileId": "4893536c-a95f-47f5-a97e-1bc923ea8485"
+    },
+    "sse": "data: {\"kind\":\"progress\",\"stage\":\"finding_equipment\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"searching_documentation\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"generating_answer\"}\n\ndata: {\"kind\":\"headers\",\"headers\":{\"x-mira-trace-id\":\"fe5471990767e361245e8fba0539f64c\"}}\n\ndata: {\"kind\":\"trace\",\"traceId\":\"fe5471990767e361245e8fba0539f64c\",\"turnId\":\"b150cc15-59c3-49e5-9698-6d7f126fe346\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"checking_answer\"}\n\ndata: {\"kind\":\"content\",\"content\":\"Alarm 2035 SAFE TORQUE OFF means the STO (Safe torque off) input was requested and is functioning correctly [2]. If this \"}\n\ndata: {\"kind\":\"content\",\"content\":\"was not expected, check the cabling of the safety circuit connected to STO terminals X1C; if a different reaction is \"}\n\ndata: {\"kind\":\"content\",\"content\":\"needed, change parameter 3025 STO OPERATION [2].\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[{\"citationId\":\"2\",\"docId\":\"5e5036b4-68bc-492c-9f57-a9288056b37d\",\"sourceTitle\":\"acs355.pdf\",\"page\":355,\"fileId\":\"4893536c-a95f-47f5-a97e-1bc923ea8485\",\"quote\":\"â€¦FUNCTION.\\nOtherwise drive starts after motor has\\nstopped.\\n2035 SAFE TORQUE\\nOFF\\n0309 bit 13\\nSTO (Safe torque off)\\nrequested and it\\nfunctions correctly.\\nParameter 3025 STO\\nOPERATION is set to\\nreact with alarm.\\nIf this was not expected reactio\",\"originFileId\":null}],\"sourceSnapshot\":[\"5e5036b4-68bc-492c-9f57-a9288056b37d\"]}\n\ndata: {\"kind\":\"evidence\",\"basis\":\"oem_documentation\",\"label\":\"Grounded in this notebook's sources.\"}\n\ndata: {\"kind\":\"usage\",\"provider\":\"OpenAI\",\"model\":\"gpt-5.4-mini\",\"routeReason\":\"primary\",\"inputTokens\":3765,\"cachedInputTokens\":0,\"outputTokens\":107,\"costUsdEstimate\":0.003305,\"status\":\"ok\"}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: [DONE]\n\n",
+    "elapsedMs": 46152
+   },
+   "elements": [
+    {
+     "name": "isolate-before-control-cabling",
+     "page": 18,
+     "manualQuote": "Do not work on the control cables when power is applied to the drive or to the external control circuits.",
+     "answerPattern": "(disconnect|isolat|switch\\w* off|de-?energi[sz]|lock\\w* ?out|remove)[^.]{0,60}(power|supply|circuit)"
+    },
+    {
+     "name": "external-control-voltage",
+     "page": 18,
+     "manualQuote": "Externally supplied control circuits may carry dangerous voltage even when the input power of the drive is switched off.",
+     "answerPattern": "external\\w*[^.]{0,40}(control )?circuits?[^.]{0,60}(voltage|energi[sz]ed|live)"
+    }
+   ]
+  }
+ ],
+ "controls": [
+  {
+   "id": "gs10-ch6-q5",
+   "observation": {
+    "id": "gs10-ch6-q5",
+    "broken": null,
+    "rendered": {
+     "answer": "⚠️ Safety flag. This task involves a hazard. Isolate and verify zero energy before hands-on work. (p.3) Disconnect the motor from the drive, then apply input power to the drive for 2 hours to recharge the DC link capacitors before use 1. This is required if the drive has been stored or otherwise unused for more than a year; otherwise the capacitors may be damaged when the drive starts to operate 1.",
+     "citations": [
+      {
+       "n": "1",
+       "title": "gs10-ch6.pdf",
+       "page": "3"
+      }
+     ],
+     "safety": {
+      "present": false,
+      "kind": null,
+      "first": null
+     },
+     "evidence": "Grounded in this notebook's sources."
+    },
+    "cards": [
+     {
+      "title": "gs10-ch6.pdf",
+      "page": "3"
+     }
+    ],
+    "firstChip": {
+     "n": "1",
+     "title": "gs10-ch6.pdf",
+     "page": "3"
+    },
+    "streamStatus": "answered",
+    "errorPart": null,
+    "viewerOpened": true,
+    "viewer": {
+     "fileId": "03e84466-c696-4744-963d-24e19cd8a381",
+     "page": "3",
+     "manualFileId": "03e84466-c696-4744-963d-24e19cd8a381"
+    },
+    "sse": "data: {\"kind\":\"progress\",\"stage\":\"finding_equipment\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"searching_documentation\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"generating_answer\"}\n\ndata: {\"kind\":\"headers\",\"headers\":{\"x-mira-trace-id\":\"42880f07d1cb815f3c49975e8d14c2c1\"}}\n\ndata: {\"kind\":\"trace\",\"traceId\":\"42880f07d1cb815f3c49975e8d14c2c1\",\"turnId\":\"2997de6e-aa8f-4795-8c94-e8bbc41449a2\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"checking_answer\"}\n\ndata: {\"kind\":\"content\",\"content\":\"âš ï¸ **Safety flag.** This task involves a hazard. Isolate and verify zero energy before hands-on work. (p.3)\\n\\nDisconnect \"}\n\ndata: {\"kind\":\"content\",\"content\":\"the motor from the drive, then apply input power to the drive for 2 hours to recharge the DC link capacitors before use \"}\n\ndata: {\"kind\":\"content\",\"content\":\"[1]. This is required if the drive has been stored or otherwise unused for more than a year; otherwise the capacitors \"}\n\ndata: {\"kind\":\"content\",\"content\":\"may be damaged when the drive starts to operate [1].\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[{\"citationId\":\"1\",\"docId\":\"82bf6487-40e3-4e30-9f0c-385d6377e6ec\",\"sourceTitle\":\"gs10-ch6.pdf\",\"page\":3,\"fileId\":\"03e84466-c696-4744-963d-24e19cd8a381\",\"quote\":\"â€¦from the driveï¿½\\n2)\\nApply input power to the drive for 2 hoursï¿½\\nIf the drive is stored or is otherwise unused for more than a year, the driveâ€™s internal DC link\\ncapacitors should be recharged before use. Otherwise, the capacitors may be dama\",\"originFileId\":null}],\"sourceSnapshot\":[\"82bf6487-40e3-4e30-9f0c-385d6377e6ec\"]}\n\ndata: {\"kind\":\"evidence\",\"basis\":\"oem_documentation\",\"label\":\"Grounded in this notebook's sources.\"}\n\ndata: {\"kind\":\"usage\",\"provider\":\"OpenAI\",\"model\":\"gpt-5.4-mini\",\"routeReason\":\"primary\",\"inputTokens\":3389,\"cachedInputTokens\":0,\"outputTokens\":124,\"costUsdEstimate\":0.0031,\"status\":\"ok\"}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: [DONE]\n\n",
+    "elapsedMs": 47201
+   }
+  },
+  {
+   "id": "pf4m-q2",
+   "observation": {
+    "id": "pf4m-q2",
+    "broken": null,
+    "rendered": {
+     "answer": "⚠️ Lockout conflict in a step below: “With the drive isolated, locked out, and before any work on the drive, measure the DC bus voltage at the -DC and +DC terminals on the Power Terminal Block; the ”. That step mixes locked-out work with power on. Inspect, tighten and replace with the equipment locked out; any check that needs power is a separate step, after a qualified person removes the lockout and restores power under your site's energized-work procedure. With the drive isolated, locked out, and before any work on the drive, measure the DC bus voltage at the –DC and +DC terminals on the Power Terminal Block; the voltage must be zero 1. Darkened LEDs or a darkened LCD do not prove the capacitors are discharged 1.",
+     "citations": [
+      {
+       "n": "1",
+       "title": "pf4m.pdf",
+       "page": "9"
+      }
+     ],
+     "safety": {
+      "present": false,
+      "kind": null,
+      "first": null
+     },
+     "evidence": "Grounded in this notebook's sources."
+    },
+    "cards": [
+     {
+      "title": "pf4m.pdf",
+      "page": "9"
+     }
+    ],
+    "firstChip": {
+     "n": "1",
+     "title": "pf4m.pdf",
+     "page": "9"
+    },
+    "streamStatus": "answered",
+    "errorPart": null,
+    "viewerOpened": true,
+    "viewer": {
+     "fileId": "0a08bc17-fbb3-46b0-a8ed-c2f7bcd49cde",
+     "page": "9",
+     "manualFileId": "0a08bc17-fbb3-46b0-a8ed-c2f7bcd49cde"
+    },
+    "sse": "data: {\"kind\":\"progress\",\"stage\":\"finding_equipment\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"searching_documentation\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"generating_answer\"}\n\ndata: {\"kind\":\"headers\",\"headers\":{\"x-mira-trace-id\":\"c71fa7158db0a68f0ce16c8c09456b10\"}}\n\ndata: {\"kind\":\"trace\",\"traceId\":\"c71fa7158db0a68f0ce16c8c09456b10\",\"turnId\":\"681edfa2-0bb4-4503-a7a0-02a7959a64ce\"}\n\ndata: {\"kind\":\"progress\",\"stage\":\"checking_answer\"}\n\ndata: {\"kind\":\"content\",\"content\":\"âš ï¸ **Lockout conflict in a step below:** â€œWith the drive isolated, locked out, and before any work on the drive, measure \"}\n\ndata: {\"kind\":\"content\",\"content\":\"the DC bus voltage at the -DC and +DC terminals on the Power Terminal Block; the â€. That step mixes locked-out work with \"}\n\ndata: {\"kind\":\"content\",\"content\":\"power on. Inspect, tighten and replace with the equipment locked out; any check that needs power is a separate step, \"}\n\ndata: {\"kind\":\"content\",\"content\":\"after a qualified person removes the lockout and restores power under your site's energized-work procedure.\\n\\nWith the \"}\n\ndata: {\"kind\":\"content\",\"content\":\"drive isolated, locked out, and before any work on the drive, measure the DC bus voltage at the â€“DC and +DC terminals on \"}\n\ndata: {\"kind\":\"content\",\"content\":\"the Power Terminal Block; the voltage must be zero [1]. Darkened LEDs or a darkened LCD do not prove the capacitors are \"}\n\ndata: {\"kind\":\"content\",\"content\":\"discharged [1].\"}\n\ndata: {\"kind\":\"sources\",\"citations\":[{\"citationId\":\"1\",\"docId\":\"213ff574-5f7d-4b82-846f-bd272d6f4569\",\"sourceTitle\":\"pf4m.pdf\",\"page\":9,\"fileId\":\"0a08bc17-fbb3-46b0-a8ed-c2f7bcd49cde\",\"quote\":\"â€¦To avoid an electric shock hazard, verify that the\\nvoltage on the bus capacitors has discharged before performing any\\nwork on the drive. Measure the DC bus voltage at the â€“DC and +DC\\nterminals on the Power Terminal Block (see Chapter 1 Powe\",\"originFileId\":null}],\"sourceSnapshot\":[\"213ff574-5f7d-4b82-846f-bd272d6f4569\"]}\n\ndata: {\"kind\":\"evidence\",\"basis\":\"oem_documentation\",\"label\":\"Grounded in this notebook's sources.\"}\n\ndata: {\"kind\":\"usage\",\"provider\":\"OpenAI\",\"model\":\"gpt-5.4-mini\",\"routeReason\":\"primary\",\"inputTokens\":3067,\"cachedInputTokens\":0,\"outputTokens\":78,\"costUsdEstimate\":0.002651,\"status\":\"ok\"}\n\ndata: {\"kind\":\"status\",\"status\":\"answered\"}\n\ndata: [DONE]\n\n",
+    "elapsedMs": 45885
+   }
+  }
+ ]
+}

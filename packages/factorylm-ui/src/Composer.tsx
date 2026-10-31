@@ -1,5 +1,5 @@
 import type { Attachment, PlatformAdapter, ShellAction, ShellState } from "@factorylm/interaction";
-import { useEffect, useRef, useState, type ClipboardEvent, type Dispatch, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type Dispatch, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
 import { AttachmentMenu } from "./AttachmentMenu";
 import { Overlay } from "./Overlay";
 import { openableUrl } from "./links";
@@ -58,6 +58,35 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
   // previews. A sent attachment has already left `pending`, so its preview —
   // which the host's outgoing message may still show — is not touched.
   const pendingRef = useRef(pending);
+  // Publish the composer's real height on the shell (#4620): it grows with the
+  // sync banner, send errors, pending attachments and the safe-area inset, and a
+  // followed sent turn must stop above it, not under it.
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    const form = formRef.current;
+    const shell = form?.closest<HTMLElement>(".fl-shell");
+    if (!form || !shell || typeof ResizeObserver === "undefined") return;
+    const publish = () => shell.style.setProperty("--fl-composer-block-size", `${Math.ceil(form.getBoundingClientRect().height)}px`);
+    const observer = new ResizeObserver(publish);
+    observer.observe(form);
+    publish();
+    return () => { observer.disconnect(); shell.style.removeProperty("--fl-composer-block-size"); };
+  }, []);
+  // #4695: a server-rendered page shows this field before the app has started,
+  // and a technician on a slow link starts typing into it. React keeps that text
+  // through hydration but the state does not know it, so the next render of the
+  // controlled field writes the state's draft back and the first words vanish
+  // ("How do I clear…" was sent as "do I clear…"). Adopt whatever the field
+  // already holds when it mounts. A client-only mount starts empty, so this is
+  // a no-op there.
+  const fieldRef = useRef<HTMLTextAreaElement>(null);
+  const draftAtMount = useRef(state.draft);
+  // Mount only: after mount the field and the state move together through onChange.
+  useLayoutEffect(() => {
+    const typed = fieldRef.current?.value ?? "";
+    if (typed && typed !== draftAtMount.current) dispatch({ type: "set-draft", draft: typed });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deliberately once, at mount (#4695)
+  }, []);
   pendingRef.current = pending;
   useEffect(() => () => {
     for (const item of pendingRef.current) adapter.release?.(item.attachment.id);
@@ -184,6 +213,7 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
   };
 
   return <form
+    ref={formRef}
     className="fl-composer"
     aria-label="Composer"
     data-menu-open={state.attachmentMenuVisible}
@@ -292,9 +322,10 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
         aria-busy={busy !== null}
         onClick={() => dispatch({ type: "set-attachment-menu-visible", visible: !state.attachmentMenuVisible })}
       >
-        ＋
+        <span aria-hidden="true">＋</span><span className="fl-composer__label">Attach</span>
       </button>
       <textarea
+        ref={fieldRef}
         aria-label="Ask MIRA"
         // The prototype's full prompt on web; at phone width it wrapped to three lines
         // beside four controls, so the mobile profile keeps the short form.
@@ -306,8 +337,8 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
         onPaste={onPaste}
       />
       {hooks?.busy && hooks.onStop
-        ? <button type="button" className="fl-composer__send" aria-label="Stop" onClick={hooks.onStop}>■</button>
-        : <button type="submit" className="fl-composer__send" aria-label="Send" disabled={!canSend || Boolean(hooks?.busy)}>↑</button>}
+        ? <button type="button" className="fl-composer__send" aria-label="Stop" onClick={hooks.onStop}><span aria-hidden="true">■</span><span className="fl-composer__label">Stop</span></button>
+        : <button type="submit" className="fl-composer__send" aria-label="Send" disabled={!canSend || Boolean(hooks?.busy)}><span aria-hidden="true">↑</span><span className="fl-composer__label">Send</span></button>}
     </div>
   </form>;
 }

@@ -2,7 +2,7 @@
  * playwright.signup.config.ts — signup-flow E2E configuration (#108)
  *
  * Runs only tests/e2e/signup-flow.spec.ts against production endpoints.
- * Tests the critical acquisition path: pricing CTA → cmms magic link → hub login.
+ * Tests the critical acquisition path: pricing → Talk to Mike (no self-serve offer, #4570) → cmms magic link → hub login.
  *
  * Usage:
  *   npx playwright test --config playwright.signup.config.ts

@@ -22,6 +22,7 @@ import { Login } from "./screens/Login";
 import { UnifiedRoot, type UnifiedDeepLink } from "./screens/UnifiedRoot";
 import { closeTopTransientLayer } from "./lib/transient-layer";
 import { signOutSyncInProgressCopy, signOutWarningCopy } from "./lib/sign-out-copy";
+import { loadSignedInAccount } from "./factorylm-ui/session/load-signed-in-account";
 const SECURE_CLEANUP_KEY = "flm.session.cleanup-required.v1";
 // Native LiveUpdate rolls an unconfirmed bundle back after 10 seconds. Give a
 // healthy local shell ample margin even when remote authentication is slow.
@@ -261,7 +262,9 @@ export default function App({ onBundleReady }: AppProps) {
           // transport (signIn) and by the generation bump above; keep its late
           // answer from replacing the session state too.
           authGeneration.current += 1;
-          const signedIn = await getMe();
+          // #4774: throws when the account can't load, so Login shows its
+          // retry path instead of staying up silently.
+          const signedIn = await loadSignedInAccount();
           resumeSessionLocalWrites();
           setMe(signedIn);
         }}

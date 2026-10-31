@@ -563,3 +563,118 @@ describe("notebook lane: tied same-page chunks resolve by primary key (#4373 R3 
     for (let i = 0; i < 5; i++) expect(await topFile()).toContain("LOW.pdf");
   });
 });
+
+// #4513 — IDF-sum lexical candidates (docs/specs/notebook-retrieval-idf-scoring.md),
+// behind NOTEBOOK_LEXICAL_V2. Each fixture reproduces one measured miss mechanism
+// from the 77-question harness in miniature, over real Postgres full-text SQL.
+describe("notebook lexical IDF scoring (#4513, NOTEBOOK_LEXICAL_V2)", () => {
+  const T = "39700000-0000-4000-8000-000000004513";
+  const HIJACK = "39700000-0000-4000-8000-0000000045a1";
+  const CHATTY = "39700000-0000-4000-8000-0000000045a2";
+  const CODES = "39700000-0000-4000-8000-0000000045a3";
+  const SIBLING = "39700000-0000-4000-8000-0000000045a4";
+  const ISOLATED = "39700000-0000-4000-8000-0000000045a5";
+
+  async function seed(doc: string, page: number, content: string) {
+    await client.query(
+      `INSERT INTO knowledge_entries
+         (tenant_id, content, manufacturer, model_number, source_url, source_page, page_start,
+          doc_id, ingest_route, metadata, verified, is_private)
+       VALUES ($1, $2, '', '', 'https://test.invalid/idf.pdf', $3, $3, $4, 'v2', '{"node_id":"n4513"}', true, true)`,
+      [T, content, page, doc],
+    );
+  }
+  async function pages(doc: string, question: string, flag: boolean): Promise<Array<number | null>> {
+    const prev = process.env.NOTEBOOK_LEXICAL_V2;
+    if (flag) process.env.NOTEBOOK_LEXICAL_V2 = "1";
+    else delete process.env.NOTEBOOK_LEXICAL_V2;
+    try {
+      const hits = await retrieveNodeChunks(client, T, question, {
+        nodeId: "n4513", unsPath: null, topK: 6, docIds: [doc], rawQuery: question, validatedDocScope: true,
+      });
+      return hits.map((h) => h.sourcePage);
+    } finally {
+      if (prev === undefined) delete process.env.NOTEBOOK_LEXICAL_V2;
+      else process.env.NOTEBOOK_LEXICAL_V2 = prev;
+    }
+  }
+
+  // AND hijack (micro820-um-q3, ml1100-q3/q5): one wrong page happens to contain
+  // every question word, so the all-words pass is non-empty and the any-words
+  // ranking never runs. The answer page holds the rare words but not "controller".
+  const HIJACK_Q = "what does a flashing red status light on the controller mean";
+  // Chatty near-miss (gs10-ch6-q3, tq-12, tq-23): no page holds every word, and
+  // pages dense in the common words ("drive", "show", "run") outrank the answer
+  // page, which holds the rare words ("undervoltage", "stopping"). Wording avoids
+  // the synonym triggers ("fault", "decel") that add extra OR passes on main.
+  const CHATTY_Q = "why does my drive show undervoltage when stopping and how do I run it again";
+
+  beforeAll(async () => {
+    await seed(HIJACK, 3, "Mean time between failures for the controller. The red status light housing is flashing-resistant.");
+    for (let p = 10; p <= 30; p++) {
+      await seed(HIJACK, p, `Controller wiring page ${p}. Connect the controller to the controller power supply. Controller mounting.`);
+    }
+    await seed(HIJACK, 42, "Status lights. STATUS light flashing red: a recoverable error. Solid red: a non-recoverable error.");
+
+    for (let p = 1; p <= 20; p++) {
+      await seed(CHATTY, p, `The drive display will show the drive run status. Run the drive. The drive will show run. Drive page ${p}.`);
+    }
+    await seed(CHATTY, 57, "Undervoltage while stopping: lengthen the stopping ramp or add a braking resistor.");
+
+    for (let p = 1; p <= 12; p++) await seed(CODES, p, `Fault list continued, page ${p}. Fault reset and fault history.`);
+    await seed(CODES, 31, "F004 Undervoltage. Cause: DC bus voltage below the trip level.");
+    await seed(CODES, 33, "P042 Decel Time 1. Range 0.1 to 600.0 s. Default 10.0 s.");
+    await seed(CODES, 35, "Accel and decel ramp table. Units seconds. Default ramp shape linear.");
+
+    await seed(ISOLATED, 1, "Cooling fan replacement for the enclosure.");
+    await seed(ISOLATED, 2, "Enclosure fan airflow and filter cleaning interval.");
+    await seed(ISOLATED, 3, "Terminal torque values for the enclosure.");
+  });
+
+  // Until the T-1 ranking fix (#4979) this test pinned the defect with the flag
+  // off ("the AND hijack keeps the answer page out"). The production path now
+  // finds the page too: the last-resort OR pass is keyed on lexical coverage and
+  // the rerank weighs the question's rare words.
+  it("the AND hijack no longer hides the answer page with the flag off either (T-1, #4979)", async () => {
+    expect((await pages(HIJACK, HIJACK_Q, false)).slice(0, 6)).toContain(42);
+  });
+
+  it("the AND hijack no longer hides the answer page (invariant 4)", async () => {
+    expect((await pages(HIJACK, HIJACK_Q, true)).slice(0, 6)).toContain(42);
+  });
+
+  it("a rare word outranks a repeated common one with the flag off too (T-1, #4979)", async () => {
+    expect((await pages(CHATTY, CHATTY_Q, false)).slice(0, 6)).toContain(57);
+  });
+
+  it("a rare word outranks a repeated common one (invariant 3)", async () => {
+    expect((await pages(CHATTY, CHATTY_Q, true))[0]).toBe(57);
+  });
+
+  it("control: a fault code still leads under the flag", async () => {
+    expect((await pages(CODES, "what does F004 mean", true))[0]).toBe(31);
+  });
+
+  it("control: a parameter ask still leads under the flag", async () => {
+    expect((await pages(CODES, "what is the default for P042", true))[0]).toBe(33);
+  });
+
+  it("control: a table ask still reaches its table under the flag", async () => {
+    expect((await pages(CODES, "accel decel ramp table units", true)).slice(0, 6)).toContain(35);
+  });
+
+  it("no lexical match returns nothing, never front matter (invariant 2)", async () => {
+    expect(await pages(ISOLATED, "zebra quantum banana", true)).toEqual([]);
+  });
+
+  it("a sibling document never leaks in or shifts the scores (invariant 1)", async () => {
+    const q = "enclosure fan filter";
+    const before = await pages(ISOLATED, q, true);
+    // The sibling repeats one query word everywhere: if it fed df, "filter" would
+    // stop being rare and the order inside ISOLATED could change.
+    for (let p = 1; p <= 40; p++) await seed(SIBLING, p, "Filter filter filter. Enclosure fan filter cleaning.");
+    const after = await pages(ISOLATED, q, true);
+    expect(after).toEqual(before);
+    expect(before[0]).toBe(2);
+  });
+});

@@ -24,6 +24,13 @@
  *   CMMS_SYNC_ENABLED   — must be "true" or worker is a no-op (safety flag
  *                         so we don't accidentally mix tenants while shared-
  *                         admin Atlas creds are still in use)
+ *   NOTEBOOK_EVENT_DISPATCH_ENABLED — "true" runs the notebook domain-event
+ *                         outbox dispatcher as a second tick (#5020). Default
+ *                         off. Independent of CMMS_SYNC_ENABLED: the two never
+ *                         write the same Atlas record (the dispatcher appends
+ *                         attributed work-log notes; the sync pushes rows).
+ *   NOTEBOOK_EVENT_DISPATCH_TENANTS — comma-separated tenant UUID allowlist.
+ *                         Empty = no tenant is dispatched (deployed-disabled).
  *
  * Exit codes:
  *   0  — clean exit (only meaningful with --once)
@@ -34,6 +41,8 @@
 
 import { AtlasClient } from "@/lib/atlas/client";
 import { runForwardSync, runReverseSync, syncEnabled } from "@/lib/atlas/sync";
+import { AtlasWriteProvider } from "@/lib/cmms/atlas-write-provider";
+import { dispatchEnabled, dispatchTenantAllowlist, runDispatchTick } from "@/capabilities/cmms-dispatch";
 
 function parseFlag(name: string): boolean {
   return process.argv.includes(`--${name}`);
@@ -80,6 +89,31 @@ process.on("SIGTERM", () => {
   stopping = true;
 });
 
+// #5020: one process owns every Atlas write. The outbox dispatcher runs as a
+// second tick in THIS worker (same image, same compose service, same creds)
+// rather than as a new service, so a competing writer can never be deployed
+// beside it by accident. Flag-off = the tick is skipped entirely.
+const DISPATCH_ENABLED = dispatchEnabled();
+const DISPATCH_TENANTS = dispatchTenantAllowlist();
+if (DISPATCH_ENABLED && DISPATCH_TENANTS.size === 0) {
+  console.warn(
+    "[event-dispatch] NOTEBOOK_EVENT_DISPATCH_ENABLED=true but NOTEBOOK_EVENT_DISPATCH_TENANTS is empty — " +
+      "every delivery will be blocked_policy (no tenant is allowlisted).",
+  );
+}
+const writeProvider = new AtlasWriteProvider(client, { log: (line) => console.log(line) });
+
+async function dispatchTick(): Promise<void> {
+  if (!DISPATCH_ENABLED) return;
+  const t0 = Date.now();
+  const stats = await runDispatchTick({
+    providerFor: (connectionKey) => (connectionKey === "atlas" ? writeProvider : null),
+    tenantAllowlist: DISPATCH_TENANTS,
+    log: (line) => console.log(line),
+  });
+  console.log(`[event-dispatch] tick ${JSON.stringify(stats)} in ${Date.now() - t0}ms`);
+}
+
 async function tick(): Promise<void> {
   const t0 = Date.now();
   if (!SKIP_FORWARD) {
@@ -87,6 +121,12 @@ async function tick(): Promise<void> {
   }
   if (!SKIP_REVERSE) {
     await runReverseSync(client);
+  }
+  // Isolated: a dispatcher error never stops the next sync tick, and vice versa.
+  try {
+    await dispatchTick();
+  } catch (err) {
+    console.error("[event-dispatch] tick error:", err instanceof Error ? err.message : err);
   }
   console.log(`[cmms-sync] tick complete in ${Date.now() - t0}ms`);
 }

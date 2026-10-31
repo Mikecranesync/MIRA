@@ -63,7 +63,8 @@ concurrency:
 jobs:
   apply:
     name: Apply migrations (${{ inputs.target }} / ${{ inputs.mode }})
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-26.04 has no postgresql-client-16 (#4697).
+    runs-on: ubuntu-24.04
     environment: ${{ inputs.target == 'prod' && 'production' || 'staging' }}
     timeout-minutes: 15
 
@@ -307,7 +308,7 @@ jobs:
           echo ""
           echo "Dry-run complete. Re-run with mode=apply to execute against $DB_HOST."
 
-      - name: Apply migrations (ON_ERROR_STOP=1, single transaction per file)
+      - name: Apply migrations (ON_ERROR_STOP=1, single transaction per file, lock_timeout=5s)
         if: inputs.mode == 'apply'
         run: |
           set -euo pipefail
@@ -318,11 +319,24 @@ jobs:
           while IFS= read -r f; do
             echo "::group::Applying $f"
             START=$(date +%s)
+            # lock_timeout (#5010): an ALTER TABLE on a hot table (109 on
+            # hub_users) needs ACCESS EXCLUSIVE; without a bound it waits behind
+            # any long transaction for up to the 15-minute job timeout, and every
+            # login/signup query queues behind IT. The bound is a SET LOCAL as the
+            # first statement of the single transaction, NOT PGOPTIONS: the Neon
+            # URLs are the pooled (-pooler, PgBouncer) endpoints, which reject
+            # lock_timeout as a startup option ("unsupported startup parameter in
+            # options: lock_timeout"). SET LOCAL is what 110 already does; it is
+            # transaction-scoped, so it covers the ALTERs whether or not the file
+            # carries its own BEGIN/COMMIT, and a file's own SET LOCAL still wins.
+            # On timeout psql exits non-zero, the transaction rolls back, and the
+            # ledger INSERT below never runs, so a retry re-applies the whole file.
             if psql "$DATABASE_URL" \
                  --single-transaction \
                  --set ON_ERROR_STOP=1 \
                  --no-psqlrc \
                  -v ECHO=errors \
+                 -c "SET LOCAL lock_timeout = '5s'" \
                  -f "$f"; then
               END=$(date +%s)
               DUR=$((END-START))

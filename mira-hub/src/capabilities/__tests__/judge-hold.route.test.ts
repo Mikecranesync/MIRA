@@ -209,8 +209,9 @@ describe("#4355 option 1 — OpenAI answers only when its safety judge also fits
     expect(turn).toMatchObject({ answerStatus: "answered" });
     expect(calls.openaiAnswer).toBe(1);
     expect(calls.openaiJudge).toBe(1);
-    expect(reserve.mock.calls).toContainEqual([judgeHoldInputBound(QUESTION, 800), JUDGE_OUTPUT_TOKENS]);
-    expect(openAiRunBudget().heldUsd).toBe(0);
+    expect(reserve.mock.calls).toContainEqual([judgeHoldInputBound(QUESTION, 800), JUDGE_OUTPUT_TOKENS, "gpt-5.4-mini"]); // priced as the model it sends (#4968)
+    // Dollar arithmetic may retain sub-picodollar IEEE-754 subtraction dust.
+    expect(openAiRunBudget().heldUsd).toBeCloseTo(0, 12);
   });
 
   it("the pair does NOT fit: OpenAI is never called for the answer, and nothing stays held", async () => {
@@ -223,7 +224,8 @@ describe("#4355 option 1 — OpenAI answers only when its safety judge also fits
     expect(calls.openaiJudge).toBe(0);
     const warned = (console.warn as unknown as ReturnType<typeof vi.fn>).mock.calls.flat().join(" ");
     expect(warned).toContain('"scope":"notebook-chat+safety-judge"');
-    expect(openAiRunBudget().heldUsd).toBe(0);
+    // Dollar arithmetic may retain sub-picodollar IEEE-754 subtraction dust.
+    expect(openAiRunBudget().heldUsd).toBeCloseTo(0, 12);
   });
 
   it("control: the pair just fits — the answer is written and judged on OpenAI", async () => {
@@ -233,7 +235,8 @@ describe("#4355 option 1 — OpenAI answers only when its safety judge also fits
     await run();
     expect(calls.openaiAnswer).toBe(1);
     expect(calls.openaiJudge).toBe(1);
-    expect(openAiRunBudget().heldUsd).toBe(0);
+    // Dollar arithmetic may retain sub-picodollar IEEE-754 subtraction dust.
+    expect(openAiRunBudget().heldUsd).toBeCloseTo(0, 12);
   });
 
   it("a concurrent turn takes the rest of the cap after the answer is booked: the judge STILL runs on OpenAI", async () => {
@@ -262,7 +265,8 @@ describe("#4355 option 1 — OpenAI answers only when its safety judge also fits
     expect(calls.openaiAnswer).toBe(1);
     expect(calls.openaiJudge).toBe(1);
     (squeezed as unknown as { release(): void }).release();
-    expect(openAiRunBudget().heldUsd).toBe(0);
+    // Dollar arithmetic may retain sub-picodollar IEEE-754 subtraction dust.
+    expect(openAiRunBudget().heldUsd).toBeCloseTo(0, 12);
   });
 
   it("with the judge off (gate off) no judge room is held: an answer that fits alone is written", async () => {
@@ -283,6 +287,7 @@ describe("#4355 option 1 — OpenAI answers only when its safety judge also fits
     await res.text();
     await new Promise((resolve) => setTimeout(resolve, 30));
     expect(fetchMock.mock.calls.length).toBeGreaterThan(0); // precondition: OpenAI was attempted
-    expect(openAiRunBudget().heldUsd).toBe(0);
+    // Dollar arithmetic may retain sub-picodollar IEEE-754 subtraction dust.
+    expect(openAiRunBudget().heldUsd).toBeCloseTo(0, 12);
   });
 });

@@ -40,8 +40,11 @@ jobs:
 
       - name: Run cleanup
         run: |
+          # OVH production host (#4048): ubuntu with sudo, the same pinned host
+          # and key deploy-vps.yml uses. The DigitalOcean droplet this used to
+          # target was retired in the #3800 move.
           ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes \
-            root@165.245.138.91 "bash -s" << 'ENDSSH'
+            ubuntu@40.160.141.61 "sudo bash -s" << 'ENDSSH'
           set -uo pipefail
 
           echo "=== BEFORE ==="
@@ -49,7 +52,12 @@ jobs:
           free -h
 
           echo "=== Docker prune ==="
-          docker system prune -a --volumes -f
+          # Staging is co-hosted on this machine (#3930). No --volumes: it would
+          # delete the named volumes of any stopped or profile-gated service.
+          # No -a: it would delete tagged images a rollback may need. Build
+          # cache older than three days is the large, safe reclaim.
+          docker system prune -f
+          docker builder prune -f --filter until=72h
 
           echo "=== Log trim ==="
           journalctl --vacuum-size=100M

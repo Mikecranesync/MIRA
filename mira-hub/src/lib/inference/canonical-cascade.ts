@@ -27,6 +27,7 @@
  * output_tokens/cost_usd_estimate/status`) so the NEXT slice can persist it
  * without redesigning the record. Emitting it is this slice; storing it is not.
  */
+import { openAiPricePerMtok, type OpenAiPrice } from "../../capabilities/openai-prices";
 
 /** One provider attempt, in canonical cascade order. */
 export type CanonicalProvider = {
@@ -132,7 +133,19 @@ const PRICE_PER_MTOK: Record<string, { input: number; output: number }> = {
   OpenRouter: { input: 0.2, output: 0.52 },
 };
 
-/** Cached input is billed at ~10% of the input rate across these providers. */
+/**
+ * OpenAI bills per MODEL and `OPENAI_MODEL` can name any model, so OpenAI is
+ * priced by model id — never by the provider name (#4961) — from the ONE shared
+ * table in `capabilities/openai-prices.ts`, which the OpenAI spend cap reads
+ * too (#4968), so telemetry and the cap cannot drift. A model missing there
+ * estimates to null (unpriced), never 0 and never another model's rate.
+ */
+
+/**
+ * Cached input for the provider-priced entries above is billed at ~10% of the
+ * input rate. OpenAI is NOT: each OpenAI model carries its declared
+ * `cached_input` rate in the shared table (#5011 F2; gpt-6.1-sol is 5%).
+ */
 const CACHED_INPUT_DISCOUNT = 0.1;
 
 /**
@@ -212,20 +225,50 @@ export function canonicalProviders(): CanonicalProvider[] {
   ];
 }
 
+/** A provider-reported token count: a non-negative safe integer. */
+function isTokenCount(n: unknown): n is number {
+  return typeof n === "number" && Number.isSafeInteger(n) && n >= 0;
+}
+
+/**
+ * The declared per-Mtok rate `estimateCostUsd` books `provider`/`model` at, or
+ * null when unpriced. The one lookup both the estimate and the runtime
+ * identity (#4507, `runtime-identity.ts`) read, so the fingerprint a walk
+ * prices its budget from cannot drift from what telemetry records.
+ */
+export function declaredPricePerMtok(
+  provider: string,
+  model?: string | null,
+): { input: number; output: number } | OpenAiPrice | null {
+  if (provider === "OpenAI") return model ? openAiPricePerMtok(model) : null;
+  return PRICE_PER_MTOK[provider] ?? null;
+}
+
 export function estimateCostUsd(
   provider: string,
   inputTokens: number | null,
   cachedInputTokens: number | null,
   outputTokens: number | null,
+  model?: string | null,
 ): number | null {
-  const price = PRICE_PER_MTOK[provider];
-  // Unpriced provider → null, never 0. See PRICE_PER_MTOK.
+  const price = declaredPricePerMtok(provider, model);
+  // Unpriced provider (or unpriced OpenAI model) → null, never 0. See PRICE_PER_MTOK.
   if (!price) return null;
-  const fresh = Math.max(0, (inputTokens ?? 0) - (cachedInputTokens ?? 0));
+  // Missing or invalid counts → null, never 0 (#4978). A lost usage frame
+  // (the route tolerates a failed post-stop drain) leaves the counts null; 0
+  // would book a paid turn as free and hide it from tenantSpendSince's
+  // `IS NULL` unpriced count (migration 080). Input and output are required;
+  // an absent cached count is 0 (prompt_tokens_details is optional), but a
+  // present one must be valid and cannot exceed the prompt.
+  if (!isTokenCount(inputTokens) || !isTokenCount(outputTokens)) return null;
+  const cached = cachedInputTokens ?? 0;
+  if (!isTokenCount(cached) || cached > inputTokens) return null;
+  const fresh = inputTokens - cached;
+  const cachedRate = "cached_input" in price ? price.cached_input : price.input * CACHED_INPUT_DISCOUNT;
   const cost =
     (fresh / 1_000_000) * price.input +
-    ((cachedInputTokens ?? 0) / 1_000_000) * price.input * CACHED_INPUT_DISCOUNT +
-    ((outputTokens ?? 0) / 1_000_000) * price.output;
+    (cached / 1_000_000) * cachedRate +
+    (outputTokens / 1_000_000) * price.output;
   // 6dp matches NUMERIC(12,6) in migration 078.
   return Number(cost.toFixed(6));
 }
@@ -255,7 +298,7 @@ export function usageFromRaw(
     inputTokens,
     cachedInputTokens,
     outputTokens,
-    costUsdEstimate: estimateCostUsd(provider, inputTokens, cachedInputTokens, outputTokens),
+    costUsdEstimate: estimateCostUsd(provider, inputTokens, cachedInputTokens, outputTokens, model),
     status,
     attempted,
   };

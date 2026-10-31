@@ -1,6 +1,13 @@
 # PrintSense Production Activation — Together/MiniMax
 
-**Status:** activation implementation  
+> **RETIRED 2026-10-27 (#4048, owner decision).** The `printsense-production-activation.yml`
+> workflow this runbook describes was deleted. It still targeted the decommissioned
+> DigitalOcean host (so it failed after every deploy without touching prod) and asserted
+> the Together provider, which was deprecated on 2026-10-25. Production has run without
+> this overlay since the OVH move. `docker-compose.printsense-production.yml` remains in
+> the repo, unapplied. Kept as history only.
+
+**Status:** retired (was: activation implementation)  
 **ADR:** ADR-0031 PR 8  
 **Release:** v3.212.0
 

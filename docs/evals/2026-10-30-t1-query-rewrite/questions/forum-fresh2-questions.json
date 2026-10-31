@@ -1,0 +1,232 @@
+[
+ {
+  "id": "fr2-pf40-00",
+  "set": "forum-fresh2",
+  "manual": "pf40",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+  "question": "Hi Can anyone advise? I have 2 motors which is rated at 0,75 kw each and 3 amp connected in series and a power flex 40 with a 6 amp max current rating. The current limit setting on the drive is 6A. The problem that I am experiencing is when the motor starts up to 70% it tripped with an F12 h/w over current fault, I measure the amps to be below 2.5A when it trips, I have replaced the motors and the drive . Any further ideas Thank you",
+  "accepted": [
+   93
+  ]
+ },
+ {
+  "id": "fr2-pf40-02",
+  "set": "forum-fresh2",
+  "manual": "pf40",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/15c10c6420379e8d286ee4c8a210b11683e97e727b39b592e6a9e0dfd023cae9.pdf",
+  "question": "I am Looking to wire a thermal switch off of one of the digital inputs on a powerflex 40. the manual provides a pretty straighforward wiring diagram of how to accomplish this but there are a couple of things that I would like to better understand. For my specific case I am using digital input 2 (terminal 6) and the VFD is in SNK mode. Based on the wiring diagram, my current assumption is that if I was in SRC mode, I would need to land the switch on terminals 11 and 6. If I was in SNK mode, I would need to land the switch on terminals 4 and 6. If this thinking is incorrect, please let me know! My main confusion lies around the wording of source and sink. Source and sink are relative terms and my assumption is that they are relative to the inputs. That said, it looks as though current is flowing INTO the inputs in source mode and OUT of the inputs in SINK mode. This is opposite to my understanding of sourcing and sinking inputs. I've included the wiring diagram and my assumption of current flow for both SRC and SNK mode. TLDR: How do I wire a digital input in SNK mode and for the terminology of SRC and SNK modes, what are they in reference to?",
+  "accepted": [
+   27
+  ]
+ },
+ {
+  "id": "fr2-pf4m-03",
+  "set": "forum-fresh2",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "Hi all. I have Powerflex 4m, i read a manual and find out that it support Modbus RTU via RS485. I try to communicate with it, but I have no answer from it. I looked at d015 parametr and find out that it recive my data, but it doesn't answer anything. From the PC side i'm using Linux and libmodbus-2.0.3. I think wiring is correct, becouse it recive my data. I've checked every parametrs according to ProwerFlex manual. Please, help what else can be? I need to do it very quickly, but i have never do it before. Thank you in advance.",
+  "accepted": [
+   101
+  ]
+ },
+ {
+  "id": "fr2-pf4m-05",
+  "set": "forum-fresh2",
+  "manual": "pf4m",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/f4a93fc51536422c2282a2a213721ba62820a04e4fe88cfbb97f2d09d253fba5.pdf",
+  "question": "hey people, I recently buy powerflex 4m, i need a some help, i wanted to autorun when power up it, i had set the a433 parameter to 1, but it still not autostart when power up. Should I set the A451 [Auto Rstrt Tries] to 1 or....? I really need it to better work, if anyone can help me please. thank you",
+  "accepted": [
+   62
+  ]
+ },
+ {
+  "id": "fr2-acs355-06",
+  "set": "forum-fresh2",
+  "manual": "acs355",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/49aab44098854107ee26a9b702bd23afc004fbb98d7a76d137ba12455699eeac.pdf",
+  "question": "Hi all, I've been asked to take full parameter backups of a series of ABB drives for a customer. There's about 20 ACS355 drives, and then one single ACS580 because...yeah, no idea. From what I've been able to find, the ACS355 will need DriveWindow Light, which is a paid software, and the ACS580 will need DriveComposer, which has a free and a paid version. It appears that the free version would be capable of taking a parameter backup. Anyone here have a little more experience with ABB drives that can (a) confirm or correct my initial findings, and (b) tell me if there's any free software tools that can back up the ACS355's? Any other tips/tricks/inside knowledge that would be useful in the process?",
+  "accepted": [
+   102
+  ]
+ },
+ {
+  "id": "fr2-micro820-um-08",
+  "set": "forum-fresh2",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Hello. I am beginner plc programmer working in a project at work using micro820 and CCW. Every time a modify the program I have to download the whole program again how can I modify the program without downloading it again. I tried with REM RUN & PROG modes but I can not make the changes directly in the PLC I have to change it in the computer and then download it to the PLC. Any help or suggestion is really appreciated. Thanks.",
+  "accepted": [
+   17
+  ]
+ },
+ {
+  "id": "fr2-micro820-um-09",
+  "set": "forum-fresh2",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "So I am somewhat new to CCW and recently had a micro 820 power cycle and all my variables were reset to zero I reset the logical values to the last known values from my scada program, which only reads and does not write to the PLC. for whatever reason every time I change the logical value they reset to zero. i\u2019ve tried this with plc online in program mode, off-line and download after changes but alway reverts. There is no reset\u2026.am I missing the special sauce?",
+  "accepted": [
+   69
+  ]
+ },
+ {
+  "id": "fr2-micro820-um-10",
+  "set": "forum-fresh2",
+  "manual": "micro820-um",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/977304703567acd7319ead7bbbf1403e349de3015041c1e720ab79907da87675.pdf",
+  "question": "Hi guys I am new to the threads and relatively new to the world of PLC programming. During a recent programming session, I was using the Micro820 in DHCP mode when I blindly tried to configure a static IP address. In doing so and while connected, I managed to remove all IP address settings from the controller and now I can not connect, the ENET light is not showing any signs of life when I plug in (it should show green even without config) and windows diagnostics is telling me that my device does not have IP config. While connected through DHCP, I changed my computers adapter settings to suit the 169.254.xxx.xxx address, then I changed the DHCP setting on CCW controller options while also unchecking the Port settings Disable button. I have read that I can communicate with the controller through USB, but the recommended route is to use the LCD add-on. Can somebody tell me if there is another way to connect directly through the comms port. Thanks!!",
+  "accepted": [
+   120
+  ]
+ },
+ {
+  "id": "fr2-micro820-in-11",
+  "set": "forum-fresh2",
+  "manual": "micro820-in",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/6dfc2d211eb1aaa1a03505f061d911da729c2251a65051fdfb968b22f77a7bd4.pdf",
+  "question": "Micro 820 PLC manual shows 24V 0.5Amps 2080 PSAC 12W power supply to connect There is any problem to connect micro 820 to 1606-XLB240E power supply",
+  "accepted": [
+   16
+  ]
+ },
+ {
+  "id": "fr2-micro820-in-12",
+  "set": "forum-fresh2",
+  "manual": "micro820-in",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/6dfc2d211eb1aaa1a03505f061d911da729c2251a65051fdfb968b22f77a7bd4.pdf",
+  "question": "Hello everyone, Is it necessary to use industrial grade SD cards for the Allen Bradley 5570 controller and the 820 micro controller or will a standard SD card work well enough? Most of these are not in harsh environments. Thanks!",
+  "accepted": [
+   11
+  ]
+ },
+ {
+  "id": "fr2-ml1100-13",
+  "set": "forum-fresh2",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "Our control valve suddenly stopped throttling. Troubleshooting revealed that the transducer is not receiving a control signal of 4-20mA from the allen bradley MicroLogix 1100 PLC. What could be the possible cause? and whats the procedure for clearing faults on 1100 allen bradley Micrologix PLC.",
+  "accepted": [
+   137
+  ]
+ },
+ {
+  "id": "fr2-ml1100-14",
+  "set": "forum-fresh2",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "Hello, I am pretty new to working with PLCs and am seeking to update a MicorLogix 1100 1763 series A from FRN 3.0 to something newer. I am hoping to get it to communicate with the Ignition network I am building. I read that my outdated firmware was likely why I could not get their driver to work with my 1100. I might have messed up though. At the bottom of this post, I get the below error codes in the log. In updating firmware, I understand that I need to connect through the serial connector rather than the Ethernet I have been using to program the device. So I was able to get the RS-232 driver configured in RSLinx. With that done, I proceeded to using ControlFlash 12 to update to FRN 15. It began going to work and seemed okay until it errored. The device now shows the power led with the three below flashing and the screen reads as shown in the attached photo. Since then, I have tried Control Flash 8.0, 10.0, and 12.0 with various different firmware versions in hopes that there is some compatibility issue with the Series A I can overcome. But it seems that something else is wrong. Maybe really wrong. I now can no longer access the device in RSLogix. I think this may have been my fatal error. I did not go into RSLogix to update the system Comms to the Serial connection I established in RSLinx. The PLC still had the Ethernet driver loaded.",
+  "accepted": [
+   144
+  ]
+ },
+ {
+  "id": "fr2-ml1100-15",
+  "set": "forum-fresh2",
+  "manual": "ml1100",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/7df1c906a14dc2b9603ea9c3f56936172ec432fd09a3f19508d20001d982d5c9.pdf",
+  "question": "Hi everyone! I have built a network with 3 ML1100 and a PC for SCADA. The network is DH485. I can see the plc's with the PIC AIC driver in RSLinx in PC through net aics. Sadenly the plc's are lost from Linx and i cant see them until i power down and up again each plc. This problem still exists after power down/up. Can you think which could be the problem? Thanx",
+  "accepted": [
+   63
+  ]
+ },
+ {
+  "id": "fr2-smcflex-16",
+  "set": "forum-fresh2",
+  "manual": "smcflex",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/a81650d0bd31773979ffb93b3cb601c5bca0422fd69a2206df52eea451912cbd.pdf",
+  "question": "I am trying to read the I/O statuses of an Allen Bradley SMC Flex softstarter over DeviceNet. Has ayone done something like this before and can it actually be done? I have spoken to Rockwell's helpdesk and they said it should be possible, however I have not been able to activate the outputs nor read the statuses of the inputs.",
+  "accepted": [
+   24
+  ]
+ },
+ {
+  "id": "fr2-e3plus-19",
+  "set": "forum-fresh2",
+  "manual": "e3plus",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/aca6a4e5e28544658c2b385318927be3f95acf291cf3b811bd8baff080c7fd80.pdf",
+  "question": "Hi\nI've been asked to program an E3+ so that when it trips because of a ground fault condition, that output B will close to operate a shunt trip.\nI was hoping someone could point me in the right direction with this, I have enabled ground fault trip in the trip select parameter but cannot find the information required to have it operate output B.\nI am using the 193-DNCT configuration terminal to program the E3+",
+  "accepted": [
+   130
+  ]
+ },
+ {
+  "id": "fr2-e3plus-20",
+  "set": "forum-fresh2",
+  "manual": "e3plus",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals/aca6a4e5e28544658c2b385318927be3f95acf291cf3b811bd8baff080c7fd80.pdf",
+  "question": "Hello, I am configuring a project with multiple E1 Plus and E3 Plus starters that will be used over ethernet. I have added the starters into my tree and the tag structure have been created as per the AOP. As this is the first time I've dealt with these over ethernet, could someone please help me with the tag \"mapping\" I'm familiar with the Input/Output/Configuration tags, but I am not 100% sure as to what each bit is used for. Is there a resource that I can find that will give me this information? The output tags are pretty straight forward OutputAData and TripReset - pretty self explanitory. How about the input tags? - Is \"OutputA\" the auxilary feedback? If anyone has info on where to get proper documentation instead of myself making assumptions that would be great as I have not been able to find it myself!",
+  "accepted": [
+   248
+  ]
+ },
+ {
+  "id": "fr2-micro810-21",
+  "set": "forum-fresh2",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "On a Micro 810 2080-LC10-12-AWA without a load, the two wire prox won\u2019t light up the Input. Incidentally on a 24V version Micro 810 2080-LC10-12-QWB without a load, the two wire prox will light up the Input. On a Micrologix 1400 1766-L32AWAA the 2 wire prox switch works great without a load. No resister needed. Is there an internal resistor in the Micrologix that allows the prox switch to work without a load?",
+  "accepted": [
+   58
+  ]
+ },
+ {
+  "id": "fr2-micro810-23",
+  "set": "forum-fresh2",
+  "manual": "micro810",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/oem-manual-micro810.pdf",
+  "question": "Hi all, I am new here. I am also not very practical with PlC terminology. I never learnt any programming what so ever, only through, local dealer help and trial and error, have i managed to use the M810 and M820. I Have installed quite a bit of them mostly M810. When i need to access for some kind of modification or diagnosis of the system, I have trouble with the passwords. I was thinking that maybe i have used different passwords or maybe a caps. Always managed to work around the problem as i could find the program on the pc and re load after a flash. However lately i saw that i had a password that i was sure about, i even had taken a photo before i stored it on the M810. However still it did not work. I don't know why this is happening. I have changed the laptop recently, but the local dealer told me it should not do such problems with the password. The concern is even worse because the latest M810 lets you know when giving it a password that it will be rendered useless without the correct password. So if this problem arises i would have to bin the controller. Anyone had this problem before?",
+  "accepted": [
+   55
+  ]
+ },
+ {
+  "id": "fr2-se-canopen-hw-26",
+  "set": "forum-fresh2",
+  "manual": "se-canopen-hw",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-canopen-hw-setup.pdf",
+  "question": "I have an application with a VW3A3608 communicating with a M241CEC24R. I've connected the two together with a CAT5 cable and connected CAN_H to Pin1, CAN_L to Pin 2 and CAN_Gnd to Pin3. The rest of the Pins unconnected. Running SoMachine 4.3 with all the updates. Terminated on the PLC with the switch and at the Drive with the RJ45 proper terminating jack. The ATV320 is setup as Fr1=CanOpen and Communications is setup with the proper node address. Any help appreciated.",
+  "accepted": [
+   61
+  ]
+ },
+ {
+  "id": "fr2-se-premium-serial-30",
+  "set": "forum-fresh2",
+  "manual": "se-premium-serial",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-premium-async-serial-35006178.pdf",
+  "question": "1. Presently I am using TSX 3721101 Modicon PLC for communicating with scada. Communication is based on MODBUS through TSX SCP 114 card. Up to this point communication is working fine. But further I want to add TSX SCA50. Please let me know how to club it hardwarewise in existing architecture. 2. If I want to use MODBUS communication through integrated channel 0, what steps I should followed? and how should be modbus driver configured in PLC?",
+  "accepted": [
+   138
+  ]
+ },
+ {
+  "id": "fr2-se-premium-serial-31",
+  "set": "forum-fresh2",
+  "manual": "se-premium-serial",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-premium-async-serial-35006178.pdf",
+  "question": "I am trying to use Modbus to communicate with a TSX P57 5634 Premium processor. I have installed a SCP 111 RS232 comm card in slot B, and I am using an SCP 1030 cable with a Sub9 connector on it. I have failed to get it to communicate with either my PC or the PanelView Plus. I would appreciate any help. Thank You. P.S. I have the card set up in the program. I am using Unity.",
+  "accepted": [
+   118
+  ]
+ },
+ {
+  "id": "fr2-se-premium-serial-32",
+  "set": "forum-fresh2",
+  "manual": "se-premium-serial",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-premium-async-serial-35006178.pdf",
+  "question": "I have a notebook with USB ports, but I haven't a serial port. I use one USB to Serial Converter (ATEN USB Model UC232A) to comunicate the Notebook with serial devices without problem, but when I conect the soft PL7 Junior with one Micro or Premium PLC the driver or the adapter doesn't function. Can you help me?",
+  "accepted": [
+   52
+  ]
+ },
+ {
+  "id": "fr2-se-x80-analog-33",
+  "set": "forum-fresh2",
+  "manual": "se-x80-analog",
+  "pdf": "/Users/charlienode/MIRA/.planning/retrieval-phase0/manuals-real/se-x80-analog-io-35011978.pdf",
+  "question": "Why AMIo800 Analog input module's I/O LED is Lighting up Red? Checked module connections, 4-20ma wires etc but this light is continuously Lighting up and auto batching via VFD is not working.",
+  "accepted": [
+   62
+  ]
+ }
+]

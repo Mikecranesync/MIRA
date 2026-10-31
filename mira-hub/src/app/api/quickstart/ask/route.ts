@@ -8,6 +8,7 @@ import {
   buildGroundedContext,
   displayPage,
   isRefusalAnswer,
+  withUngroundedNotice,
   type ManualChunk,
   type ManualSource,
 } from "@/lib/manual-rag";
@@ -16,6 +17,7 @@ import { flagDirectiveFor, hazardBanner, matchSafetyStop, safetyFlagHeaders, wit
 import { englishSearchQuery } from "@/capabilities/answer-language";
 import { normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
 import { translateForSearch } from "@/capabilities/translate-for-search";
+import { detectPromptLeak, PROMPT_LEAK_REFUSAL } from "@/capabilities/prompt-leak-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -62,7 +64,21 @@ interface AskResponse {
   provider: string | null;
 }
 
-const SYSTEM_PROMPT = [
+// Codex #4891 F13: restatable grounding/abstention guidance — a correct
+// answer declining to state an uncited parameter number, register address,
+// terminal number, torque/voltage/current value, part number, or fault-code
+// meaning (and redirecting to the manual section instead) legitimately
+// echoes this exact list and instruction. Carved into its own constant so
+// it can be named in `detectPromptLeak`'s `exclude`. Kept as the exact
+// original wrapped text (same embedded newlines + 2-space continuation
+// indent as the four array entries it replaces below) so splicing it back
+// into `SYSTEM_PROMPT`'s array+join construction renders byte-identically —
+// proved by an exact-equality test in quickstart-ask-prompt-leak-guard.test.ts
+// against the pre-carve-out literal value.
+export const QUICKSTART_UNCITED_VALUE_CAUTION =
+  "Never state a specific parameter number, register address, terminal\n  number, torque/voltage/current value, part number or fault-code meaning\n  unless a CONTEXT chunk you cite says it. For those, say which manual\n  section to check instead (e.g. 'the drive manual's parameter list').";
+
+export const SYSTEM_PROMPT = [
   "You are MIRA, a maintenance intelligence assistant for industrial",
   "equipment. You are answering an anonymous user on a public quickstart",
   "page — they have no namespace yet, and you must NEVER pretend to know",
@@ -77,10 +93,7 @@ const SYSTEM_PROMPT = [
   "  2. General guidance: anything the CONTEXT does not cover. Put it",
   "     under the heading 'General guidance (not from a manual):' and give",
   "     practical, standard industrial-maintenance advice.",
-  "- Never state a specific parameter number, register address, terminal",
-  "  number, torque/voltage/current value, part number or fault-code meaning",
-  "  unless a CONTEXT chunk you cite says it. For those, say which manual",
-  "  section to check instead (e.g. 'the drive manual's parameter list').",
+  `- ${QUICKSTART_UNCITED_VALUE_CAUTION}`,
   "- Answer in the language the technician wrote in. Keep manual titles,",
   "  parameter names and citations as they are.",
   "- Keep answers tight — 4-8 short bullets max. A maintenance tech is",
@@ -218,6 +231,41 @@ export async function POST(req: Request) {
   // Model citation hygiene (#4032): some providers emit their own tool-citation
   // markers ("【1†L3-L4】"); normalize them to the [n] form the page renders.
   const answerText = normalizeCitationMarkers(result.content);
+
+  // Codex #4891 F9 (round 5 — architectural inversion): compare ONLY against
+  // the PROTECTED CORE — `SYSTEM_PROMPT` itself, not `messages[0].content`
+  // (the full turn-assembled system message: SYSTEM_PROMPT + the optional
+  // safety-flag directive + withStepSafety's ISOLATION_STEP_RULE).
+  // `SYSTEM_PROMPT` is already a fixed-only constant — it never has per-turn
+  // data concatenated into its own text (the retrieved manual CONTEXT rides
+  // in the USER message, which this check never touches; the safety-flag
+  // directive and ISOLATION_STEP_RULE are concatenated SEPARATELY, never
+  // inside `SYSTEM_PROMPT` itself) — so neither of those conditionally-
+  // appended directives needs a carve-out or an `exclude` entry: they're out
+  // of scope by construction, for these and any directive added later. A
+  // full-prompt echo still contains `SYSTEM_PROMPT` as a literal substring,
+  // so signal 1 still fires. Same reused refusal/response shape this route
+  // already returns everywhere else (`{answer, citations, provider}` — see
+  // the `!result` branch above for provider exhaustion): never a new
+  // response shape, and this route makes NO DB write to guard against
+  // persisting the leak.
+  //
+  // Codex #4891 F13 (round 7): `SYSTEM_PROMPT` itself still contained one
+  // restatable grounding/abstention span — the uncited-value caution — mixed
+  // inline (not conditionally appended), so it needed the SAME carve-and-
+  // splice treatment F9/F10 gave the notebook route's base prompts. See
+  // `QUICKSTART_UNCITED_VALUE_CAUTION`'s definition above for the carve-out
+  // and the byte-identical-rendering proof; excluded here so a correct
+  // abstention echoing it is never mistaken for a leak.
+  const leak = detectPromptLeak(SYSTEM_PROMPT, answerText, [QUICKSTART_UNCITED_VALUE_CAUTION]);
+  if (leak.leaked) {
+    console.error(`[quickstart/ask] pre-display REJECTED ${leak.violation}: ${leak.detail}`);
+    return NextResponse.json(
+      { answer: PROMPT_LEAK_REFUSAL, citations: [], provider: result.provider } as AskResponse,
+      { status: 200 },
+    );
+  }
+
   // Ship only the sources the answer actually cited: a general-guidance answer
   // must not arrive with six unrelated source cards (the #1875 contradiction,
   // generalized now that the route answers instead of refusing).
@@ -234,9 +282,19 @@ export async function POST(req: Request) {
         verified: c.verified === true,
       })).filter((s) => cited.has(s.index));
 
+  // Grounding-honesty floor (#4224 Defect B): an answer that cited nothing must
+  // SAY it isn't grounded — like the authenticated notebook does — instead of
+  // arriving as a confident wall of text under the page's "if we can't cite a
+  // source, we say so" promise. isRefusalAnswer() already carries its own
+  // admission, so it is left alone (never double-stamped).
+  const answerBody =
+    citations.length === 0 && !isRefusalAnswer(answerText)
+      ? withUngroundedNotice(answerText)
+      : answerText;
+
   return NextResponse.json(
     {
-      answer: safetyTrigger ? `${hazardBanner(safetyTrigger)}\n\n${answerText}` : answerText,
+      answer: safetyTrigger ? `${hazardBanner(safetyTrigger)}\n\n${answerBody}` : answerBody,
       citations,
       provider: result.provider,
     } as AskResponse,

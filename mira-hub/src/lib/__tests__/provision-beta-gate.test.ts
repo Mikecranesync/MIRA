@@ -116,4 +116,37 @@ describe("provision-beta-gate self-cleans on post-registration failure", () => {
     expect(printed + err.mock.calls.join("\n")).not.toMatch(/!Aa1/);
     expect(queries.some((q) => /^DELETE FROM/.test(q.text))).toBe(false);
   });
+
+  it("releases only its OWN pending stranger from the pilot gate, off the cohort (#4927)", async () => {
+    delete process.env.BETA_GATE_FAIL_AFTER;
+    const mod = await import("../../../scripts/provision-beta-gate");
+    await mod.main();
+    const user = queries.find((q) => /^UPDATE hub_users SET status = 'trial'/.test(q.text));
+    const tenant = queries.find((q) => /^UPDATE hub_tenants SET pilot_status = NULL/.test(q.text));
+    expect(user?.values).toEqual([TENANT]);
+    expect(user?.text).toMatch(/status = 'pending'/);
+    expect(tenant?.values).toEqual([TENANT]);
+    expect(tenant?.text).toMatch(/pilot_status = 'pending'/);
+    // Never 'active': that would take one of the five real pilot slots.
+    expect(queries.some((q) => /pilot_status = 'active'/.test(q.text))).toBe(false);
+  });
+
+  it("a gate redirect on node create fails loudly instead of reading as 200 {} (#4927)", async () => {
+    delete process.env.BETA_GATE_FAIL_AFTER;
+    const base = fetchMock();
+    const seen: RequestInit[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).endsWith("/api/namespace/node/")) {
+          seen.push(init ?? {});
+          return new Response(null, { status: 307, headers: { location: "/pending-approval/" } });
+        }
+        return base(input, init);
+      }),
+    );
+    const mod = await import("../../../scripts/provision-beta-gate");
+    await expect(mod.main()).rejects.toThrow(/node create failed: 307/);
+    expect(seen[0]?.redirect).toBe("manual");
+  });
 });

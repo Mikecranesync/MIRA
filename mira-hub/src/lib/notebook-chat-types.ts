@@ -439,8 +439,19 @@ export function isManualSafetyStatementEntry(
     typeof (e as { sourceDocId?: unknown }).sourceDocId === "string"
   );
 }
+/** #4687 — opted-in clients only (`x-mira-progress: 1`, server flag MIRA_CHAT_PROGRESS):
+ *  a server stage really started. See mira-hub/src/capabilities/chat-progress.ts. */
+export type NotebookProgressFrame = {
+  kind: "progress";
+  stage: "finding_equipment" | "searching_documentation" | "generating_answer" | "checking_answer";
+};
+/** #4687 — opted-in clients only: the handler returned a non-stream (error) response after the
+ *  progress stream had already opened. Carries the status and JSON body it would have sent. */
+export type NotebookHttpErrorFrame = { kind: "http_error"; status: number; body: unknown };
 
 export type NotebookChatFrame =
+  | NotebookProgressFrame
+  | NotebookHttpErrorFrame
   | NotebookSourcesFrame
   | NotebookContentFrame
   | NotebookStatusFrame
@@ -475,6 +486,8 @@ const FRAME_KINDS = new Set([
   "evidence",
   "followups",
   "trace",
+  "progress",
+  "http_error",
 ]);
 
 export function parseFrame(data: string): NotebookChatFrame | null {

@@ -12,6 +12,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { OpenInCMMSButton } from "@/components/cmms/open-in-cmms-button";
+import { API_BASE } from "@/lib/config";
 import { PARTS } from "@/lib/parts-data";
 import { isWorkOrderInProgressStatus, WORK_ORDER_IN_PROGRESS_STATUS } from "@/lib/work-order-status";
 import { useToast } from "@/providers/toast-provider";
@@ -127,7 +128,7 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
   }
 
   useEffect(() => {
-    fetch(`/hub/api/work-orders/${id}/`)
+    fetch(`${API_BASE}/api/work-orders/${id}/`)
       .then(r => r.json())
       .then((data: { work_order?: WO }) => {
         if (data.work_order) {
@@ -150,7 +151,7 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
 
   async function startWork() {
     try {
-      const res = await fetch(`/hub/api/work-orders/${id}/`, {
+      const res = await fetch(`${API_BASE}/api/work-orders/${id}/`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: WORK_ORDER_IN_PROGRESS_STATUS }),
@@ -180,7 +181,7 @@ export default function WorkOrderDetailPage({ params }: { params: Promise<{ id: 
     setCompSubmitting(true);
     setCompMissingFields([]);
     try {
-      const res = await fetch(`/hub/api/work-orders/${id}/`, {
+      const res = await fetch(`${API_BASE}/api/work-orders/${id}/`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

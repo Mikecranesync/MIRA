@@ -1,0 +1,167 @@
+{
+ "t4-77": {
+  "F0_off_identical": true,
+  "n": 77,
+  "top1": {
+   "off": 31,
+   "main_on": 42,
+   "cand_on": 45,
+   "gained": 3,
+   "lost": 0,
+   "net": 3,
+   "p": 0.25,
+   "lost_ids": [],
+   "gained_ids": [
+    "pf40-q5",
+    "ml1100-q5",
+    "smcflex-q5"
+   ]
+  },
+  "top6": {
+   "off": 52,
+   "main_on": 69,
+   "cand_on": 69,
+   "gained": 0,
+   "lost": 0,
+   "net": 0,
+   "p": 1.0,
+   "lost_ids": [],
+   "gained_ids": []
+  }
+ },
+ "oem-fault": {
+  "F0_off_identical": true,
+  "n": 174,
+  "top1": {
+   "off": 72,
+   "main_on": 78,
+   "cand_on": 85,
+   "gained": 7,
+   "lost": 0,
+   "net": 7,
+   "p": 0.0156,
+   "lost_ids": [],
+   "gained_ids": [
+    "of-pf40-9aaec030",
+    "of-pf40-1e360cf7",
+    "of-pf40-16ee13fe",
+    "of-pf40-015b7913",
+    "of-pf40-8a2fa5b1",
+    "of-pf40-ea19ea25",
+    "of-pf40-a32eec43"
+   ]
+  },
+  "top5": {
+   "off": 99,
+   "main_on": 136,
+   "cand_on": 136,
+   "gained": 0,
+   "lost": 0,
+   "net": 0,
+   "p": 1.0,
+   "lost_ids": [],
+   "gained_ids": []
+  }
+ },
+ "robust": {
+  "F0_off_identical": true,
+  "n": 1264,
+  "top1": {
+   "off": 485,
+   "main_on": 606,
+   "cand_on": 643,
+   "gained": 37,
+   "lost": 0,
+   "net": 37,
+   "p": 0.0,
+   "lost_ids": [],
+   "gained_ids": [
+    "of-pf40-9aaec030~lower",
+    "of-pf40-9aaec030~chatter",
+    "of-pf40-9aaec030~terse",
+    "of-pf40-1e360cf7~lower",
+    "of-pf40-1e360cf7~typo",
+    "of-pf40-1e360cf7~chatter",
+    "of-pf40-1e360cf7~terse",
+    "of-pf40-16ee13fe~lower",
+    "of-pf40-16ee13fe~typo",
+    "of-pf40-16ee13fe~chatter",
+    "of-pf40-16ee13fe~terse",
+    "of-pf40-015b7913~lower",
+    "of-pf40-015b7913~terse",
+    "of-pf40-8a2fa5b1~lower",
+    "of-pf40-8a2fa5b1~typo",
+    "of-pf40-8a2fa5b1~chatter",
+    "of-pf40-8a2fa5b1~terse",
+    "of-pf40-ea19ea25~lower",
+    "of-pf40-ea19ea25~typo",
+    "of-pf40-ea19ea25~chatter"
+   ]
+  },
+  "top5": {
+   "off": 696,
+   "main_on": 982,
+   "cand_on": 984,
+   "gained": 2,
+   "lost": 0,
+   "net": 2,
+   "p": 0.5,
+   "lost_ids": [],
+   "gained_ids": [
+    "tq-04~chatter",
+    "tq-06~chatter"
+   ]
+  }
+ },
+ "oem-index": {
+  "F0_off_identical": true,
+  "n": 116,
+  "top1": {
+   "off": 34,
+   "main_on": 24,
+   "cand_on": 38,
+   "gained": 14,
+   "lost": 0,
+   "net": 14,
+   "p": 0.0001,
+   "lost_ids": [],
+   "gained_ids": [
+    "oi-micro810-e67128a1",
+    "oi-micro810-d0682a3f",
+    "oi-micro810-20ae2fed",
+    "oi-micro810-37c27bc8",
+    "oi-micro810-fc4d847b",
+    "oi-micro810-ce7b1924",
+    "oi-micro810-45e0f738",
+    "oi-micro810-28568530",
+    "oi-micro820-um-e7eed75f",
+    "oi-micro820-um-069a9678",
+    "oi-micro820-um-ce7b1924",
+    "oi-micro820-um-d5c79fb4",
+    "oi-pf4m-c5795742",
+    "oi-smc50-44661d5c"
+   ]
+  },
+  "top5": {
+   "off": 60,
+   "main_on": 68,
+   "cand_on": 73,
+   "gained": 6,
+   "lost": 1,
+   "net": 5,
+   "p": 0.125,
+   "lost_ids": [
+    "oi-se-m172-4b98da94"
+   ],
+   "gained_ids": [
+    "oi-micro810-015b4e0a",
+    "oi-micro810-6607a047",
+    "oi-ml1100-37be0c55",
+    "oi-pf4m-694667d3",
+    "oi-pf4m-f3160031",
+    "oi-se-premium-serial-c4f66213"
+   ]
+  }
+ }
+}
+VERDICT {'F0': True, 'G1': True, 'G2': True, 'G3': True, 'T1_index_top1': 38} PASS

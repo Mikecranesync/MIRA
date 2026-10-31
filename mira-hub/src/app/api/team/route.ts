@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import pool from "@/lib/db";
+import { inviteLinkExpiryCopy } from "@/capabilities/trial-access";
+import {
+  PilotSeatCapError,
+  releasePilotSeatReservation,
+  reservePilotSeat,
+} from "@/capabilities/pilot-access";
 import { createMagicToken, ensureSchema } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
@@ -39,16 +45,23 @@ export async function GET() {
   }
 }
 
-async function sendInviteEmail(email: string, token: string, inviterEmail: string): Promise<void> {
+/** Returns whether the email was actually sent. `false` (RESEND_API_KEY unset)
+ *  is a deliberate "not configured" signal the caller surfaces to the admin —
+ *  it is NOT the same as the throw below, which is a real send failure
+ *  (#4370: a missing key must not silently read back as "Invite sent"). */
+async function sendInviteEmail(email: string, token: string, inviterEmail: string): Promise<boolean> {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.factorylm.com";
   const apiBase = process.env.NEXT_PUBLIC_API_BASE ?? "/hub";
   const inviteUrl = `${appUrl}${apiBase}/magic?token=${token}`;
   const apiKey = process.env.RESEND_API_KEY;
 
   if (!apiKey) {
+    // Never log inviteUrl: it carries the bearer magic token — the complete
+    // credential a reader of server logs would need to sign in as this
+    // invitee. "Not sent" is surfaced to the caller (see POST below) without
+    // ever publishing the token anywhere.
     console.warn("[api/team] RESEND_API_KEY not set — skipping invite email");
-    console.log("[api/team] Invite URL:", inviteUrl);
-    return;
+    return false;
   }
 
   const res = await fetch("https://api.resend.com/emails", {
@@ -67,7 +80,7 @@ async function sendInviteEmail(email: string, token: string, inviterEmail: strin
             <span style="font-size:24px;font-weight:700;color:#2563EB;">FactoryLM</span>
           </div>
           <h2 style="font-size:20px;font-weight:600;margin-bottom:8px;">Join your FactoryLM workspace</h2>
-          <p style="color:#94A3B8;margin-bottom:24px;">${inviterEmail} invited you to join their maintenance workspace. This link expires in 15 minutes and can only be used once.</p>
+          <p style="color:#94A3B8;margin-bottom:24px;">${inviterEmail} invited you to join their maintenance workspace. ${inviteLinkExpiryCopy()} No password is needed — opening it signs you in.</p>
           <a href="${inviteUrl}"
              style="display:inline-block;padding:12px 28px;background:linear-gradient(135deg,#2563EB,#0891B2);color:#fff;text-decoration:none;border-radius:8px;font-weight:600;font-size:15px;">
             Accept invite
@@ -83,6 +96,7 @@ async function sendInviteEmail(email: string, token: string, inviterEmail: strin
     console.error("[api/team] Resend error:", res.status, body);
     throw new Error("Failed to send invite email");
   }
+  return true;
 }
 
 export async function POST(req: Request) {
@@ -140,14 +154,50 @@ export async function POST(req: Request) {
       );
     }
 
-    const token = await createMagicToken(email, {
-      tenantId: ctx.tenantId,
+    // #4878 (F1/F2/F4): no-op when the flag is off or this tenant isn't an
+    // active pilot (reservePilotSeat checks hub_tenants.pilot_status itself).
+    await reservePilotSeat(ctx.tenantId, email);
+
+    // F4 (Codex #4664 / #4878 review round 1): if the reservation above
+    // succeeded but the token itself can't be created, release the seat
+    // immediately rather than stranding it — otherwise a transient DB error
+    // here would permanently occupy the final seat with no usable invite.
+    // Safe even under a concurrent resend: redemption (admitPilotInvite)
+    // re-validates capacity itself, so releasing a pending reservation can
+    // never cause overbooking.
+    let token: string;
+    try {
+      token = await createMagicToken(email, {
+        tenantId: ctx.tenantId,
+        role,
+        invitedBy: ctx.userId,
+      });
+    } catch (tokenErr) {
+      await releasePilotSeatReservation(ctx.tenantId, email).catch((releaseErr) => {
+        console.error("[api/team] failed to release seat after token creation failure", releaseErr);
+      });
+      throw tokenErr;
+    }
+    const emailSent = await sendInviteEmail(email, token, ctx.email);
+    return NextResponse.json({
+      ok: true,
+      email,
       role,
-      invitedBy: ctx.userId,
+      emailSent,
+      ...(emailSent
+        ? {}
+        : {
+            // Honest "not sent" without a secret-delivery side channel — the
+            // invite link (which carries the bearer token) is never written
+            // to logs or returned here. See sendInviteEmail above.
+            warning:
+              "Invite created, but no email provider is configured — this invite was not emailed. Contact support to enable email delivery, then send the invite again.",
+          }),
     });
-    await sendInviteEmail(email, token, ctx.email);
-    return NextResponse.json({ ok: true, email, role });
   } catch (err) {
+    if (err instanceof PilotSeatCapError) {
+      return NextResponse.json({ error: err.message }, { status: 409 });
+    }
     console.error("[api/team] invite", err);
     return NextResponse.json({ error: "Invite failed" }, { status: 500 });
   }

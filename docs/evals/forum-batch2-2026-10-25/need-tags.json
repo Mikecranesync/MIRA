@@ -1,0 +1,852 @@
+[
+  {
+    "url": "https://mrplc.com/forums/topic/45895-wagob750gsd/",
+    "title": "WAGOB750.GSD file request (WAGO 750-301 PROFIBUS coupler)",
+    "posted_at": "2026-09-06T17:59:43Z",
+    "equipment": "WAGO 750-301 PROFIBUS coupler (file WAGOB750.GSD)",
+    "source_file": [
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-07-WAGO-750-301-freeze.md"
+    ],
+    "source_kind": "freeze",
+    "resolved_in_thread": {
+      "value": "unknown",
+      "quote": "Community answers inspected: NO",
+      "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-07-WAGO-750-301-freeze.md"
+    },
+    "manual_coverage_note": null,
+    "need_tags": [
+      {
+        "tag": "missing_manual",
+        "quote": "I'm looking for the WAGOB750.GSD file for the old WAGO 750-301 PROFIBUS coupler... If anyone has this file in their archive... I would really appreciate it",
+        "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-07-WAGO-750-301-freeze.md"
+      }
+    ]
+  },
+  {
+    "url": "https://mrplc.com/forums/topic/45896-rockwell-1756-l81e-%E2%86%94-omron-drt1-com-via-1756-dnb-%E2%80%93-analog-io-scaling-issue/",
+    "title": "Rockwell 1756-L81E <-> Omron DRT1-COM via 1756-DNB - analog IO scaling issue",
+    "posted_at": "2026-09-08T03:49:17Z",
+    "equipment": "Rockwell 1756-L81E + 1756-DNB <-> Omron DRT1-COM (GT1-ID16/GT1-OD16/GT1-AD04/GT1-DA04)",
+    "source_file": [
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-08-ROCKWELL-OMRON-DEVICENET-AO-freeze.md"
+    ],
+    "source_kind": "freeze",
+    "resolved_in_thread": {
+      "value": "unknown",
+      "quote": "Community answers inspected: NO",
+      "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-08-ROCKWELL-OMRON-DEVICENET-AO-freeze.md"
+    },
+    "manual_coverage_note": null,
+    "need_tags": [
+      {
+        "tag": "unknown",
+        "quote": "Community answers inspected: NO / Answer researched: NO",
+        "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-08-ROCKWELL-OMRON-DEVICENET-AO-freeze.md"
+      }
+    ]
+  },
+  {
+    "url": "https://mrplc.com/forums/topic/45899-connection-between-nx1p2-and-keyence-kv-x500/",
+    "title": "Connection between NX1P2 and Keyence KV-X500",
+    "posted_at": "2026-09-09T13:18:32Z",
+    "equipment": "Omron NX1P2 + Keyence KV-X500",
+    "source_file": [
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-09-OMRON-KEYENCE-EIP-freeze.md"
+    ],
+    "source_kind": "freeze",
+    "resolved_in_thread": {
+      "value": "unknown",
+      "quote": "community_answers_inspected: NO (OP text taken from MrPLC activity feed only; topic page not opened for replies)",
+      "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-09-OMRON-KEYENCE-EIP-freeze.md"
+    },
+    "manual_coverage_note": null,
+    "need_tags": [
+      {
+        "tag": "unknown",
+        "quote": "community_answers_inspected: NO (OP text taken from MrPLC activity feed only; topic page not opened for replies)",
+        "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-09-OMRON-KEYENCE-EIP-freeze.md"
+      }
+    ]
+  },
+  {
+    "url": "https://mrplc.com/forums/topic/45898-hmi-tp1200-comfort-panel-error-application-hmirtmexe-encountered-a-serious-error-and-must-shutdown/",
+    "title": "HMI TP1200 Comfort panel error: Application HMIRTM.EXE encountered a serious error and must shutdown",
+    "posted_at": "2026-09-08T17:41:31Z",
+    "equipment": "Siemens Simatic HMI TP1200 Comfort; TIA Portal V14 + ProSave",
+    "source_file": [
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-10-SIEMENS-TP1200-HMIRTM-freeze.md"
+    ],
+    "source_kind": "freeze",
+    "resolved_in_thread": {
+      "value": "unknown",
+      "quote": "community_answers_inspected: NO (freeze uses OP text only; replies not used for answer or research)",
+      "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-10-SIEMENS-TP1200-HMIRTM-freeze.md"
+    },
+    "manual_coverage_note": null,
+    "need_tags": [
+      {
+        "tag": "unknown",
+        "quote": "community_answers_inspected: NO (freeze uses OP text only; replies not used for answer or research)",
+        "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-10-SIEMENS-TP1200-HMIRTM-freeze.md"
+      }
+    ]
+  },
+  {
+    "url": "https://mrplc.com/forums/topic/45900-keyence-vs-symac-omron/",
+    "title": "Keyence vs Symac (Omron)",
+    "posted_at": "2026-09-10T14:39:19Z",
+    "equipment": "Keyence KV-X500 vs Omron Sysmac",
+    "source_file": [
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-11-KEYENCE-KV-X500-SYSMAC-COMPARE-freeze.md"
+    ],
+    "source_kind": "freeze",
+    "resolved_in_thread": {
+      "value": "unknown",
+      "quote": "Community answers inspected: NO (reply timestamps exist; OP body only used)",
+      "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-11-KEYENCE-KV-X500-SYSMAC-COMPARE-freeze.md"
+    },
+    "manual_coverage_note": null,
+    "need_tags": [
+      {
+        "tag": "unknown",
+        "quote": "Community answers inspected: NO (reply timestamps exist; OP body only used)",
+        "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-11-KEYENCE-KV-X500-SYSMAC-COMPARE-freeze.md"
+      }
+    ]
+  },
+  {
+    "url": "https://mrplc.com/forums/topic/45906-kinetix-5500-studio-5000/",
+    "title": "Kinetix 5500 Studio 5000 - safety reset",
+    "posted_at": "2026-09-14T13:36:59Z",
+    "equipment": "Rockwell Kinetix 5500 (Studio 5000)",
+    "source_file": [
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-15-KINETIX-5500-SAFETY-RESET-freeze.md"
+    ],
+    "source_kind": "freeze",
+    "resolved_in_thread": {
+      "value": "unknown",
+      "quote": "archaeologist: CONSOLIDATE / Gate BLOCKED",
+      "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-15-KINETIX-5500-SAFETY-RESET-freeze.md"
+    },
+    "manual_coverage_note": null,
+    "need_tags": [
+      {
+        "tag": "unknown",
+        "quote": "archaeologist: CONSOLIDATE / Gate BLOCKED",
+        "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-15-KINETIX-5500-SAFETY-RESET-freeze.md"
+      }
+    ]
+  },
+  {
+    "url": "https://mrplc.com/forums/topic/45913-fx5u-modbus-tcp-communication/",
+    "title": "FX5U Modbus tcp communication",
+    "posted_at": "2026-09-17T06:53:10Z",
+    "equipment": "Mitsubishi FX5U (GX Works3)",
+    "source_file": [
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-17-FX5U-MODBUS-TCP-H2222-freeze.md",
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-17-SCAN.md"
+    ],
+    "source_kind": "freeze",
+    "resolved_in_thread": {
+      "value": "unknown",
+      "quote": "community_replies_read: false (OP frozen before using replies)",
+      "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-17-FX5U-MODBUS-TCP-H2222-freeze.md"
+    },
+    "manual_coverage_note": null,
+    "need_tags": [
+      {
+        "tag": "unknown",
+        "quote": "community_replies_read: false (OP frozen before using replies)",
+        "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-17-FX5U-MODBUS-TCP-H2222-freeze.md"
+      }
+    ]
+  },
+  {
+    "url": "https://mrplc.com/forums/topic/45915-machine-down-need-help/",
+    "title": "Machine down need help (Omron CQM1 CPU44 program recovery)",
+    "posted_at": "2026-09-17T21:14:52Z",
+    "equipment": "Omron CQM1 CPU44",
+    "source_file": [
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-18-OMRON-CQM1-CPU44-PROGRAM-RECOVERY-freeze.md",
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-18-SCAN.md"
+    ],
+    "source_kind": "freeze",
+    "resolved_in_thread": {
+      "value": "unknown",
+      "quote": "community_replies_read: false (OP frozen before using replies)",
+      "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-18-OMRON-CQM1-CPU44-PROGRAM-RECOVERY-freeze.md"
+    },
+    "manual_coverage_note": null,
+    "need_tags": [
+      {
+        "tag": "unknown",
+        "quote": "community_replies_read: false (OP frozen before using replies)",
+        "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-18-OMRON-CQM1-CPU44-PROGRAM-RECOVERY-freeze.md"
+      }
+    ]
+  },
+  {
+    "url": "https://mrplc.com/forums/topic/45917-rj71seip91-t4-diagnostics/",
+    "title": "RJ71SEIP91-T4 Diagnostics",
+    "posted_at": "2026-09-19T09:57:33Z",
+    "equipment": "Mitsubishi RJ71SEIP91-T4",
+    "source_file": [
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-21-MITSUBISHI-RJ71SEIP91-T4-DIAGNOSTICS-freeze.md",
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-21-SCAN.md"
+    ],
+    "source_kind": "freeze",
+    "resolved_in_thread": {
+      "value": "unknown",
+      "quote": "community_replies_read: false (OP frozen before using replies)",
+      "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-21-MITSUBISHI-RJ71SEIP91-T4-DIAGNOSTICS-freeze.md"
+    },
+    "manual_coverage_note": null,
+    "need_tags": [
+      {
+        "tag": "unknown",
+        "quote": "community_replies_read: false (OP frozen before using replies)",
+        "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-21-MITSUBISHI-RJ71SEIP91-T4-DIAGNOSTICS-freeze.md"
+      }
+    ]
+  },
+  {
+    "url": "https://mrplc.com/forums/topic/45922-interlock-logic-for-dock-door-and-conveyor-safety-on-compactlogix/",
+    "title": "Interlock logic for dock door and conveyor safety on CompactLogix",
+    "posted_at": "2026-09-22T07:47:08Z",
+    "equipment": "Allen-Bradley CompactLogix (RSLogix / Studio 5000)",
+    "source_file": [
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-22-AB-COMPACTLOGIX-DOCK-INTERLOCK-freeze.md",
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-22-SCAN.md"
+    ],
+    "source_kind": "freeze",
+    "resolved_in_thread": {
+      "value": "unknown",
+      "quote": "community_replies_read: false (OP frozen before using replies)",
+      "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-22-AB-COMPACTLOGIX-DOCK-INTERLOCK-freeze.md"
+    },
+    "manual_coverage_note": null,
+    "need_tags": [
+      {
+        "tag": "unknown",
+        "quote": "community_replies_read: false (OP frozen before using replies)",
+        "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-22-AB-COMPACTLOGIX-DOCK-INTERLOCK-freeze.md"
+      }
+    ]
+  },
+  {
+    "url": "https://mrplc.com/forums/topic/45919-gx-developer-export-file/",
+    "title": "GX Developer Export File",
+    "posted_at": "2026-09-22T02:25:46Z",
+    "equipment": "Mitsubishi GX Developer / GX Works2/3 (project \"PLC TSUNE\")",
+    "source_file": [
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-23-MITSUBISHI-GX-DEVELOPER-EXPORT-freeze.md",
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-23-SCAN.md",
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-22-SCAN.md"
+    ],
+    "source_kind": "freeze",
+    "resolved_in_thread": {
+      "value": "yes",
+      "quote": "45919 — GX Developer Export File (Mitsubishi A1SH / GX Developer): real howto but already marked Solved and older (~11.7h)",
+      "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-22-SCAN.md"
+    },
+    "manual_coverage_note": null,
+    "need_tags": [
+      {
+        "tag": "unknown",
+        "quote": "community_replies_read: false (OP frozen before using replies)",
+        "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-23-MITSUBISHI-GX-DEVELOPER-EXPORT-freeze.md"
+      }
+    ]
+  },
+  {
+    "url": "https://mrplc.com/forums/topic/45928-mitsubishi-melsec-q-buildin-ethernet/",
+    "title": "Mitsubishi Melsec Q buildin ethernet (Q06UDV Modbus TCP server)",
+    "posted_at": "2026-09-28T07:56:00Z",
+    "equipment": "Mitsubishi Q06UDV (built-in Ethernet, predefined protocol)",
+    "source_file": [
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-29-MITSUBISHI-Q06UDV-MODBUS-TCP-BUILTIN-freeze.md",
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-29-SCAN.md"
+    ],
+    "source_kind": "freeze",
+    "resolved_in_thread": {
+      "value": "unknown",
+      "quote": "community_replies_read: false (OP frozen before using replies)",
+      "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-29-MITSUBISHI-Q06UDV-MODBUS-TCP-BUILTIN-freeze.md"
+    },
+    "manual_coverage_note": null,
+    "need_tags": [
+      {
+        "tag": "unknown",
+        "quote": "community_replies_read: false (OP frozen before using replies)",
+        "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-29-MITSUBISHI-Q06UDV-MODBUS-TCP-BUILTIN-freeze.md"
+      }
+    ]
+  },
+  {
+    "url": "https://www.plctalk.net/forums/threads/cant-figure-out-why-this-tag-didnt-unlatch-rockwell-1756-l84es-guardlogix-5580-safety-controller.150070/",
+    "title": "Can't figure out why this tag didn't unlatch - Rockwell 1756-L84ES GuardLogix 5580 Safety Controller",
+    "posted_at": "2026-09-30T05:23:10Z",
+    "equipment": "Rockwell 1756-L84ES GuardLogix 5580 Safety Controller, rev 33.015 (Studio 5000)",
+    "source_file": [
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-30-AB-GUARDLOGIX-L84ES-TAG-UNLATCH-freeze.md",
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-30-SCAN.md"
+    ],
+    "source_kind": "freeze",
+    "resolved_in_thread": {
+      "value": "unknown",
+      "quote": "community_replies_read: false (OP frozen before using replies for answer)",
+      "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-30-AB-GUARDLOGIX-L84ES-TAG-UNLATCH-freeze.md"
+    },
+    "manual_coverage_note": null,
+    "need_tags": [
+      {
+        "tag": "unknown",
+        "quote": "community_replies_read: false (OP frozen before using replies for answer)",
+        "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-09-30-AB-GUARDLOGIX-L84ES-TAG-UNLATCH-freeze.md"
+      }
+    ]
+  },
+  {
+    "url": "https://www.plctalk.net/forums/threads/disconnecting-shield-on-servo-power-cable-stops-noise-fault.150077/",
+    "title": "Disconnecting shield on servo power cable stops noise fault (Kinetix 6500 M04)",
+    "posted_at": "2026-09-30T18:51:29Z",
+    "equipment": "Allen-Bradley Kinetix 6500",
+    "source_file": [
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-10-01-AB-KINETIX-6500-M04-NOISE-freeze.md",
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-10-01-SCAN.md"
+    ],
+    "source_kind": "freeze",
+    "resolved_in_thread": {
+      "value": "unknown",
+      "quote": "community_replies_read: false (OP frozen before using replies for answer)",
+      "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-10-01-AB-KINETIX-6500-M04-NOISE-freeze.md"
+    },
+    "manual_coverage_note": null,
+    "need_tags": [
+      {
+        "tag": "unknown",
+        "quote": "community_replies_read: false (OP frozen before using replies for answer)",
+        "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-10-01-AB-KINETIX-6500-M04-NOISE-freeze.md"
+      }
+    ]
+  },
+  {
+    "url": "https://www.plctalk.net/forums/threads/tm172pdg28r-plc-tm171ep14r-can-expansion-module-communication-not-established.150101/",
+    "title": "TM172PDG28R PLC - TM171EP14R CAN Expansion Module Communication Not Established",
+    "posted_at": "2026-10-05T11:45:17Z",
+    "equipment": "Schneider Electric Modicon M172 TM172PDG28R + TM171EP14R expansion module",
+    "source_file": [
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-10-05-SCHNEIDER-TM172-TM171EP14R-CAN-EXPANSION-freeze.json",
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-10-05-plctalk-150101-OP-snapshot.html",
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-10-05-SCAN.md"
+    ],
+    "source_kind": "freeze",
+    "resolved_in_thread": {
+      "value": "unknown",
+      "quote": "Freeze taken from the OP only; page had a single post (no replies) at fetch time.",
+      "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-10-05-SCAN.md"
+    },
+    "manual_coverage_note": null,
+    "need_tags": [
+      {
+        "tag": "unknown",
+        "quote": "Freeze taken from the OP only; page had a single post (no replies) at fetch time.",
+        "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-10-05-SCAN.md"
+      }
+    ]
+  },
+  {
+    "url": "https://www.plctalk.net/forums/threads/m340-bmxami0810-showing-io-error.150103/",
+    "title": "M340 - BMXAMI0810 showing IO error",
+    "posted_at": "2026-10-05T22:16:25Z",
+    "equipment": "Schneider Electric Modicon M340 BMXAMI0810 analog input module",
+    "source_file": [
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-10-06-SCHNEIDER-M340-BMXAMI0810-CH0-4-IO-ERROR-freeze.json",
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-10-06-plctalk-150103-page-snapshot.html",
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-10-06-SCAN.md"
+    ],
+    "source_kind": "freeze",
+    "resolved_in_thread": {
+      "value": "yes",
+      "quote": "Hello @bogu You can select if the channel is used/unused, and if it is set as used and then detects no wired IO it will show as an IO Error",
+      "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-10-06-plctalk-150103-page-snapshot.html"
+    },
+    "manual_coverage_note": null,
+    "need_tags": [
+      {
+        "tag": "cant_interpret_apply",
+        "quote": "You can select if the channel is used/unused, and if it is set as used and then detects no wired IO it will show as an IO Error",
+        "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-10-06-plctalk-150103-page-snapshot.html"
+      }
+    ]
+  },
+  {
+    "url": "https://www.plctalk.net/forums/threads/hmi-small-text-after-update.150107/",
+    "title": "HMI small text after update (TP1200 Comfort faceplate shrink)",
+    "posted_at": "2026-10-07T09:14:57Z",
+    "equipment": "Siemens SIMATIC TP1200 Comfort HMI + S7-1500 CPU 1516F-3 PN/DP (TIA Portal)",
+    "source_file": [
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-10-07-SIEMENS-TP1200-COMFORT-FACEPLATE-TEXT-SHRINK-freeze.json",
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-10-07-plctalk-150107-page-snapshot.html",
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-10-07-SCAN.md"
+    ],
+    "source_kind": "freeze",
+    "resolved_in_thread": {
+      "value": "unknown",
+      "quote": "As I'm not 100% sure about this I will try and see what happens.",
+      "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-10-07-plctalk-150107-page-snapshot.html"
+    },
+    "manual_coverage_note": "PRESENT (shared library, verified, model-bound #4141): SIMATIC HMI Comfort Panels operating instructions A5E36770603-AE (TP700/TP900/TP1200). MISSING: WinCC (TIA Portal) Comfort/Advanced engineering system manual",
+    "need_tags": [
+      {
+        "tag": "missing_manual",
+        "quote": "MISSING: WinCC (TIA Portal) Comfort/Advanced engineering system manual — faceplates, text/font rendering & scaling, download/compile options, panel runtime settings incl. date/time sync",
+        "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-10-07-SIEMENS-TP1200-COMFORT-FACEPLATE-TEXT-SHRINK-freeze.json"
+      },
+      {
+        "tag": "field_experience",
+        "quote": "If you don't know, then you have not done a full recompile. ... you will get strange HMI behavior at runtime.",
+        "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-10-07-plctalk-150107-page-snapshot.html"
+      }
+    ]
+  },
+  {
+    "url": "https://www.plctalk.net/forums/threads/siemens-s7-1212c-tia-portal-on-hmi-appears-instead-of-real-values.150120/",
+    "title": "Siemens S7-1212C/TIA Portal: On HMI, #### appears instead of real values",
+    "posted_at": "2026-10-09T10:51:17Z",
+    "equipment": "Siemens S7-1212C (TIA Portal) + HMI (panel model not named)",
+    "source_file": [
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-10-09-SIEMENS-S7-1212C-HMI-HASH-VALUES-freeze.json",
+      "docs/briefs/2026-10-25/forum-freezes/ar-daily/ar-2026-10-09-freeze.json",
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-10-09-SCAN.md"
+    ],
+    "source_kind": "freeze",
+    "resolved_in_thread": {
+      "value": "unknown",
+      "quote": "Frozen OP-only before reading community replies; 9 replies exist unread. Replies not used for research.",
+      "source_file": "docs/briefs/2026-10-25/forum-freezes/ar-daily/ar-2026-10-09-freeze.json"
+    },
+    "manual_coverage_note": null,
+    "need_tags": [
+      {
+        "tag": "unknown",
+        "quote": "Frozen OP-only before reading community replies; 9 replies exist unread. Replies not used for research.",
+        "source_file": "docs/briefs/2026-10-25/forum-freezes/ar-daily/ar-2026-10-09-freeze.json"
+      }
+    ]
+  },
+  {
+    "url": "https://www.plctalk.net/forums/threads/issue-communicating-with-fatek-fbs-through-the-usb-port.150122/",
+    "title": "Issue communicating with fatek FBs through the USB port",
+    "posted_at": "2026-10-10T17:58:46Z",
+    "equipment": "Fatek FBs-series PLC + CBE module; WinProladder; Prolific USB-serial driver",
+    "source_file": [
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-10-12-FATEK-FBS-USB-COM-PORT-NOT-REACHABLE-freeze.json",
+      "docs/briefs/2026-10-25/forum-freezes/ar-daily/ar-2026-10-12-freeze.json",
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-10-12-plctalk-150122-page-snapshot.html",
+      "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-10-12-SCAN.md"
+    ],
+    "source_kind": "freeze",
+    "resolved_in_thread": {
+      "value": "yes",
+      "quote": "For those who experienced this issue, I have a solution: - The problem was related to the version of the driver and the version of the Prolific chip embedded in the Fatek PLC.",
+      "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-10-12-plctalk-150122-page-snapshot.html"
+    },
+    "manual_coverage_note": null,
+    "need_tags": [
+      {
+        "tag": "field_experience",
+        "quote": "I found a workaround for it provided on GitHub - johnstevenson/pl2303-legacy: Legacy PL2303 drivers for Windows 10 and Windows 11. It works very well.",
+        "source_file": "docs/briefs/2026-10-25/forum-freezes/answer-radar/AR-2026-10-12-plctalk-150122-page-snapshot.html"
+      }
+    ]
+  },
+  {
+    "url": "https://www.plctalk.net/forums/threads/produced-exchanges-pac-rx3i-to-a-niu-ic200ebi001.150111/",
+    "title": "Produced exchanges PAC RX3i to a NIU IC200EBI001",
+    "posted_at": "2026-10-08T07:56:45Z",
+    "equipment": "GE/Emerson PACSystems RX3i + VersaMax NIU IC200EBI001 (IC200MDL730/IC200MDL640/IC200ALG240/IC200ALG326)",
+    "source_file": [
+      "docs/briefs/2026-10-25/forum-freezes/ar-daily/ar-2026-10-08-freeze.json"
+    ],
+    "source_kind": "freeze",
+    "resolved_in_thread": {
+      "value": "unknown",
+      "quote": "Frozen OP-only before reading community replies; 1 reply exists unread. Replies not used for research.",
+      "source_file": "docs/briefs/2026-10-25/forum-freezes/ar-daily/ar-2026-10-08-freeze.json"
+    },
+    "manual_coverage_note": null,
+    "need_tags": [
+      {
+        "tag": "unknown",
+        "quote": "Frozen OP-only before reading community replies; 1 reply exists unread. Replies not used for research.",
+        "source_file": "docs/briefs/2026-10-25/forum-freezes/ar-daily/ar-2026-10-08-freeze.json"
+      }
+    ]
+  },
+  {
+    "url": "https://www.plctalk.net/threads/150128/",
+    "title": "IC752DPA062A HMI touch screen non-functional",
+    "posted_at": "2026-10-12T20:53:07Z",
+    "equipment": "GE Fanuc 90-30 CPU 350 (IC693CPU350) + Motion Mate DSM302 + IC752DPA062A HMI",
+    "source_file": [
+      "docs/briefs/2026-10-25/forum-freezes/ar-daily/ar-2026-10-13-freeze.json"
+    ],
+    "source_kind": "freeze",
+    "resolved_in_thread": {
+      "value": "unknown",
+      "quote": "Frozen OP-only before reading community replies; 1 reply exists unread. Answer not researched",
+      "source_file": "docs/briefs/2026-10-25/forum-freezes/ar-daily/ar-2026-10-13-freeze.json"
+    },
+    "manual_coverage_note": null,
+    "need_tags": [
+      {
+        "tag": "unknown",
+        "quote": "Frozen OP-only before reading community replies; 1 reply exists unread. Answer not researched",
+        "source_file": "docs/briefs/2026-10-25/forum-freezes/ar-daily/ar-2026-10-13-freeze.json"
+      }
+    ]
+  },
+  {
+    "url": "https://www.plctalk.net/threads/150129/",
+    "title": "Insufficient disk Space error when loading runtime application",
+    "posted_at": "2026-10-12T21:01:25Z",
+    "equipment": "Rockwell PanelView Plus (model/series not stated) running FactoryTalk View ME runtime",
+    "source_file": [
+      "docs/briefs/2026-10-25/forum-freezes/ar-daily/ar-2026-10-14-freeze.json"
+    ],
+    "source_kind": "freeze",
+    "resolved_in_thread": {
+      "value": "unknown",
+      "quote": "Frozen OP-only before reading community replies; 3 replies exist unread. Answer not researched",
+      "source_file": "docs/briefs/2026-10-25/forum-freezes/ar-daily/ar-2026-10-14-freeze.json"
+    },
+    "manual_coverage_note": null,
+    "need_tags": [
+      {
+        "tag": "unknown",
+        "quote": "Frozen OP-only before reading community replies; 3 replies exist unread. Answer not researched",
+        "source_file": "docs/briefs/2026-10-25/forum-freezes/ar-daily/ar-2026-10-14-freeze.json"
+      }
+    ]
+  },
+  {
+    "url": "https://www.plctalk.net/threads/150135/",
+    "title": "MTP700 unifi basic HMI Cannot Write Commands to Siemens S7-1200 PLC",
+    "posted_at": "2026-10-14T22:40:15Z",
+    "equipment": "Siemens SIMATIC MTP700 Unified Basic HMI + S7-1200 CPU 1214C DC/DC/DC (TIA Portal V19)",
+    "source_file": [
+      "docs/briefs/2026-10-25/forum-freezes/ar-daily/ar-2026-10-15-freeze.json"
+    ],
+    "source_kind": "freeze",
+    "resolved_in_thread": {
+      "value": "unknown",
+      "quote": "Frozen OP-only before any community replies (0 replies at scan).",
+      "source_file": "docs/briefs/2026-10-25/forum-freezes/ar-daily/ar-2026-10-15-freeze.json"
+    },
+    "manual_coverage_note": null,
+    "need_tags": [
+      {
+        "tag": "unknown",
+        "quote": "Frozen OP-only before any community replies (0 replies at scan).",
+        "source_file": "docs/briefs/2026-10-25/forum-freezes/ar-daily/ar-2026-10-15-freeze.json"
+      }
+    ]
+  },
+  {
+    "url": "https://www.plctalk.net/threads/150138/",
+    "title": "Keyence GL-R light curtains (random transmitter fault / stops)",
+    "posted_at": "2026-10-15T13:48:40Z",
+    "equipment": "Keyence GL-R series safety light curtain (model/length not stated)",
+    "source_file": [
+      "docs/briefs/2026-10-25/forum-freezes/ar-daily/ar-2026-10-16-freeze.json"
+    ],
+    "source_kind": "freeze",
+    "resolved_in_thread": {
+      "value": "unknown",
+      "quote": "Frozen OP-only; 12 community replies exist but were NOT read.",
+      "source_file": "docs/briefs/2026-10-25/forum-freezes/ar-daily/ar-2026-10-16-freeze.json"
+    },
+    "manual_coverage_note": null,
+    "need_tags": [
+      {
+        "tag": "unknown",
+        "quote": "Frozen OP-only; 12 community replies exist but were NOT read.",
+        "source_file": "docs/briefs/2026-10-25/forum-freezes/ar-daily/ar-2026-10-16-freeze.json"
+      }
+    ]
+  },
+  {
+    "url": "https://www.plctalk.net/threads/150157/",
+    "title": "Allen Bradley Kinetix 6000 (Series A to Series C IAM swap, PCB fuse blown)",
+    "posted_at": "2026-10-19T02:12:06Z",
+    "equipment": "Allen-Bradley Kinetix 6000 2094-AC09-M02-S Integrated Axis Module, Series A -> Series C",
+    "source_file": [
+      "docs/briefs/2026-10-25/forum-freezes/ar-daily/ar-2026-10-19-freeze.json"
+    ],
+    "source_kind": "freeze",
+    "resolved_in_thread": {
+      "value": "unknown",
+      "quote": "1 community reply exists, NOT read.",
+      "source_file": "docs/briefs/2026-10-25/forum-freezes/ar-daily/ar-2026-10-19-freeze.json"
+    },
+    "manual_coverage_note": null,
+    "need_tags": [
+      {
+        "tag": "unknown",
+        "quote": "1 community reply exists, NOT read.",
+        "source_file": "docs/briefs/2026-10-25/forum-freezes/ar-daily/ar-2026-10-19-freeze.json"
+      }
+    ]
+  },
+  {
+    "url": "https://www.plctalk.net/forums/threads/mitsubishi-a-series-communication-problem.150162/",
+    "title": "Mitsubishi A series communication problem (A2AS comm card, SD LED dark)",
+    "posted_at": "2026-10-20T08:26:59Z",
+    "equipment": "Mitsubishi MELSEC A2AS CPU + communication card (model not stated)",
+    "source_file": [
+      "docs/briefs/2026-10-25/forum-freezes/ar-daily/ar-2026-10-20-freeze.json"
+    ],
+    "source_kind": "freeze",
+    "resolved_in_thread": {
+      "value": "unknown",
+      "quote": "6 replies exist, NOT read.",
+      "source_file": "docs/briefs/2026-10-25/forum-freezes/ar-daily/ar-2026-10-20-freeze.json"
+    },
+    "manual_coverage_note": null,
+    "need_tags": [
+      {
+        "tag": "unknown",
+        "quote": "6 replies exist, NOT read.",
+        "source_file": "docs/briefs/2026-10-25/forum-freezes/ar-daily/ar-2026-10-20-freeze.json"
+      }
+    ]
+  },
+  {
+    "url": "https://www.plctalk.net/forums/threads/potential-equalization-between-chassis-and-dc-dc-converter.150164/",
+    "title": "Potential Equalization Between Chassis and DC-DC Converter",
+    "posted_at": "2026-10-20T15:40:03Z",
+    "equipment": "Siemens S7-1215 + KTP400 HMI; MEAN WELL DDR-240B-24 DC-DC converter; Eaton KBSDG4V-5-92L-80-M2-PH7 valve; Terex Fuchs excavator; SICK encoder",
+    "source_file": [
+      "docs/briefs/2026-10-25/forum-freezes/ar-daily/ar-2026-10-21-freeze.json"
+    ],
+    "source_kind": "freeze",
+    "resolved_in_thread": {
+      "value": "unknown",
+      "quote": "0 replies at freeze; none read.",
+      "source_file": "docs/briefs/2026-10-25/forum-freezes/ar-daily/ar-2026-10-21-freeze.json"
+    },
+    "manual_coverage_note": null,
+    "need_tags": [
+      {
+        "tag": "unknown",
+        "quote": "0 replies at freeze; none read.",
+        "source_file": "docs/briefs/2026-10-25/forum-freezes/ar-daily/ar-2026-10-21-freeze.json"
+      }
+    ]
+  },
+  {
+    "url": "https://mrplc.com/forums/topic/45944-caida-sistema-seguridad-sysmac-nx/",
+    "title": "Caida Sistema Seguridad Sysmac NX (non-safety node power loss trips safety system)",
+    "posted_at": "2026-10-21T18:24:21Z",
+    "equipment": "Omron Sysmac NX, NX-SL3300 safety CPU, NX-SID800/NX-SID400/NX-SOH200 safety I/O, EtherCAT coupler nodes",
+    "source_file": [
+      "docs/briefs/2026-10-25/forum-freezes/ar-daily/ar-2026-10-22-freeze.json"
+    ],
+    "source_kind": "freeze",
+    "resolved_in_thread": {
+      "value": "unknown",
+      "quote": "1 reply exists, not read.",
+      "source_file": "docs/briefs/2026-10-25/forum-freezes/ar-daily/ar-2026-10-22-freeze.json"
+    },
+    "manual_coverage_note": null,
+    "need_tags": [
+      {
+        "tag": "unknown",
+        "quote": "1 reply exists, not read.",
+        "source_file": "docs/briefs/2026-10-25/forum-freezes/ar-daily/ar-2026-10-22-freeze.json"
+      }
+    ]
+  },
+  {
+    "url": "https://www.plctalk.net/forums/threads/micro800-analog-values-randomly-read-min-or-max-and-stay-stuck.150183/",
+    "title": "Micro800 - Analog Values Randomly Read Min or Max and Stay Stuck",
+    "posted_at": "2026-10-23T11:03:03Z",
+    "equipment": "Rockwell Micro850 + 2080-IF4 analog plug-in module (alt 2085-IF4)",
+    "source_file": [
+      "docs/briefs/2026-10-25/forum-freezes/ar-daily/ar-2026-10-23-freeze.json"
+    ],
+    "source_kind": "freeze",
+    "resolved_in_thread": {
+      "value": "unknown",
+      "quote": "2 replies exist, not read.",
+      "source_file": "docs/briefs/2026-10-25/forum-freezes/ar-daily/ar-2026-10-23-freeze.json"
+    },
+    "manual_coverage_note": null,
+    "need_tags": [
+      {
+        "tag": "unknown",
+        "quote": "2 replies exist, not read.",
+        "source_file": "docs/briefs/2026-10-25/forum-freezes/ar-daily/ar-2026-10-23-freeze.json"
+      }
+    ]
+  },
+  {
+    "url": "https://www.plctalk.net/forums/threads/simatic-s7-1200-memory-card-program.125753/",
+    "title": "Simatic S7-1200 memory card program (won't load on a new/never-powered CPU)",
+    "posted_at": null,
+    "equipment": "Siemens Simatic S7-1200 (SD memory card program load)",
+    "source_file": [
+      "docs/briefs/2026-10-25/live-test/2026-10-25-batch2.md"
+    ],
+    "source_kind": "batch2",
+    "resolved_in_thread": {
+      "value": "no",
+      "quote": "There is no confirmed resolution in the thread.",
+      "source_file": "docs/briefs/2026-10-25/live-test/2026-10-25-batch2.md"
+    },
+    "manual_coverage_note": null,
+    "need_tags": [
+      {
+        "tag": "cant_find_page",
+        "quote": "I have been looking, but haven't found anything yet.",
+        "source_file": "docs/briefs/2026-10-25/live-test/2026-10-25-batch2.md"
+      },
+      {
+        "tag": "cant_find_page",
+        "quote": "The manual covers it on p.1047, which MIRA itself cited in the sanity check: flashing red ERROR = memory card error or configuration error (mismatched modules).",
+        "source_file": "docs/briefs/2026-10-25/live-test/2026-10-25-batch2.md"
+      },
+      {
+        "tag": "field_experience",
+        "quote": "Read the diagnostic buffer in TIA, and check whether the red flashing is something else, such as missing analog expansion supply.",
+        "source_file": "docs/briefs/2026-10-25/live-test/2026-10-25-batch2.md"
+      }
+    ]
+  },
+  {
+    "url": "https://www.plctalk.net/forums/threads/tp-700-comfort-scada-and-plc-communication.142881/",
+    "title": "TP 700 Comfort, SCADA and PLC communication",
+    "posted_at": null,
+    "equipment": "Siemens PLC 1214 (S7-1200) + HMI TP700 Comfort; SCADA / CP1243-1 question",
+    "source_file": [
+      "docs/briefs/2026-10-25/live-test/2026-10-25-batch2.md"
+    ],
+    "source_kind": "batch2",
+    "resolved_in_thread": {
+      "value": "yes",
+      "quote": "Best real answer (JesperMP, OP reacted): SCADA can connect to the S7-1200 at the same time as the TP700. ... No CP needed.",
+      "source_file": "docs/briefs/2026-10-25/live-test/2026-10-25-batch2.md"
+    },
+    "manual_coverage_note": null,
+    "need_tags": [
+      {
+        "tag": "cant_find_page",
+        "quote": "The manual covers it: connection resources (pp.526-529, multiple HMI/PG/S7/OPC UA connections over the integrated Ethernet).",
+        "source_file": "docs/briefs/2026-10-25/live-test/2026-10-25-batch2.md"
+      }
+    ]
+  },
+  {
+    "url": "https://www.plctalk.net/forums/threads/acs355.102851/",
+    "title": "ACS355 (A5001 fault after connecting with COM cable)",
+    "posted_at": null,
+    "equipment": "ABB ACS355",
+    "source_file": [
+      "docs/briefs/2026-10-25/live-test/2026-10-25-batch2.md"
+    ],
+    "source_kind": "batch2",
+    "resolved_in_thread": {
+      "value": "no",
+      "quote": "The OP did not confirm a fix.",
+      "source_file": "docs/briefs/2026-10-25/live-test/2026-10-25-batch2.md"
+    },
+    "manual_coverage_note": null,
+    "need_tags": [
+      {
+        "tag": "cant_interpret_apply",
+        "quote": "i have learned in manual that this is control pannel connection problem how can i solve this problem help me pls",
+        "source_file": "docs/briefs/2026-10-25/live-test/2026-10-25-batch2.md"
+      },
+      {
+        "tag": "field_experience",
+        "quote": "chenken78 later traced a persistent A5001 to a missing 3.3 V at X3 (failed DC-DC converter).",
+        "source_file": "docs/briefs/2026-10-25/live-test/2026-10-25-batch2.md"
+      }
+    ]
+  },
+  {
+    "url": "https://www.plctalk.net/forums/threads/ab-powerflex-525-drive-runs-but-motor-doesnt-turn.136237/",
+    "title": "AB PowerFlex 525 drive runs but motor doesn't turn (no voltage at U/V/W)",
+    "posted_at": null,
+    "equipment": "Allen-Bradley PowerFlex 525",
+    "source_file": [
+      "docs/briefs/2026-10-25/live-test/2026-10-25-batch2.md"
+    ],
+    "source_kind": "batch2",
+    "resolved_in_thread": {
+      "value": "unknown",
+      "quote": "Several posters found a failed power module/IGBT and replaced it.",
+      "source_file": "docs/briefs/2026-10-25/live-test/2026-10-25-batch2.md"
+    },
+    "manual_coverage_note": null,
+    "need_tags": [
+      {
+        "tag": "field_experience",
+        "quote": "jraef said to check that the S1/S2 safe-torque-off jumper actually makes contact (it's a base block that disables the transistors) and to look at b006 bit 5. Several posters found a failed power module/IGBT and replaced it.",
+        "source_file": "docs/briefs/2026-10-25/live-test/2026-10-25-batch2.md"
+      }
+    ]
+  },
+  {
+    "url": "https://www.plctalk.net/forums/threads/bootp-dhcp-not-showing-device-mac-or-ip.134924/",
+    "title": "BOOTP/DHCP not showing device MAC or IP (Micro820)",
+    "posted_at": null,
+    "equipment": "Rockwell Micro820",
+    "source_file": [
+      "docs/briefs/2026-10-25/live-test/2026-10-25-batch2.md"
+    ],
+    "source_kind": "batch2",
+    "resolved_in_thread": {
+      "value": "unknown",
+      "quote": "Ken Roach said the Micro820 is most likely set to a fixed IP with BOOTP/DHCP disabled, or the Windows firewall is blocking.",
+      "source_file": "docs/briefs/2026-10-25/live-test/2026-10-25-batch2.md"
+    },
+    "manual_coverage_note": null,
+    "need_tags": [
+      {
+        "tag": "field_experience",
+        "quote": "Another reply said EIPCommissionWinSer was holding port 67.",
+        "source_file": "docs/briefs/2026-10-25/live-test/2026-10-25-batch2.md"
+      },
+      {
+        "tag": "cant_find_page",
+        "quote": "Manual p.64 has the DHCP default.",
+        "source_file": "docs/briefs/2026-10-25/live-test/2026-10-25-batch2.md"
+      }
+    ]
+  },
+  {
+    "url": "https://www.plctalk.net/forums/threads/powerflex-525-f080-autotune-failure-anomaly.126768/",
+    "title": "PowerFlex 525 F080 Autotune Failure Anomaly",
+    "posted_at": null,
+    "equipment": "Allen-Bradley PowerFlex 525",
+    "source_file": [
+      "docs/briefs/2026-10-25/live-test/2026-10-25-batch2.md"
+    ],
+    "source_kind": "batch2",
+    "resolved_in_thread": {
+      "value": "yes",
+      "quote": "The OP confirmed that swapping the power module fixed it.",
+      "source_file": "docs/briefs/2026-10-25/live-test/2026-10-25-batch2.md"
+    },
+    "manual_coverage_note": null,
+    "need_tags": [
+      {
+        "tag": "field_experience",
+        "quote": "suspect drive A and swap the power module. The OP confirmed that swapping the power module fixed it.",
+        "source_file": "docs/briefs/2026-10-25/live-test/2026-10-25-batch2.md"
+      }
+    ]
+  }
+]

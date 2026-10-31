@@ -193,9 +193,33 @@ def _is_stale(held: dict[str, str], *, now: float) -> bool:
 # --------------------------------------------------------------------------
 
 
-def publish_branch(date: str, worker: str) -> str:
-    """The one branch this run pushes. Keyed the same way the fragment is."""
-    return f"docs/eval-fixer-{date}-{worker}"
+def publish_branch(worker: str) -> str:
+    """The one rolling branch this worker pushes, so every night lands in ONE open PR.
+
+    It used to be keyed on (date, worker), which opened a new draft PR every night: eight
+    of them were open at once on 2026-10-18 (#4346 … #4491), each a one-file report nobody
+    merged. Keyed on the worker alone, a night joins the PR that is already open.
+    """
+    return f"docs/eval-fixer-runs-{worker}"
+
+
+def _pending_fragments(repo: Path, branch_ref: str, base_sha: str) -> dict[str, str]:
+    """Fragments on the rolling branch that the base does not have yet: {path: blob}.
+
+    Read from the remote branch, not from this run, so a night that is still waiting for
+    review is carried forward instead of dropped when the next night force-pushes.
+    """
+    on_branch = _git(repo, "ls-tree", "-r", branch_ref, "--", "wiki/hot.d/", check=False)
+    if on_branch.returncode != 0:
+        return {}
+    on_base = _git(repo, "ls-tree", "-r", "--name-only", base_sha, "--", "wiki/hot.d/").stdout
+    have = set(on_base.split())
+    pending: dict[str, str] = {}
+    for line in on_branch.stdout.splitlines():
+        meta, path = line.split("\t", 1)
+        if path not in have:
+            pending[path] = meta.split()[2]
+    return pending
 
 
 def _git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -239,12 +263,17 @@ def publish_fragment(
     out with uncommitted work, so `git checkout -b` here would move HEAD out from under a
     live session. The same reasoning as `safe-cron-pull.sh` refusing to pull off `main`.
 
-    Idempotent: the branch is keyed on (date, worker) and owned solely by this run, so a
-    restart force-updates its own branch in place — the same argument that lets the
-    fragment itself be overwritten on a retry.
+    The commit is always ONE commit on top of the current base, holding this run's
+    fragment plus every fragment already on the worker's rolling branch that the base does
+    not have yet. So unmerged nights accumulate in the one open PR, and once that PR is
+    squash-merged its fragments are on the base and drop out of the next push.
+
+    Idempotent: the branch is owned solely by this worker, and a restart rebuilds the same
+    tree and force-updates it in place — the same argument that lets the fragment itself
+    be overwritten on a retry.
     """
     path = fragment_path(date, worker)
-    branch = publish_branch(date, worker)
+    branch = publish_branch(worker)
 
     content = read_fragment(repo, path)
     if content is None:
@@ -254,6 +283,18 @@ def publish_fragment(
         # Publish onto the CURRENT tip, not whatever this shared checkout last fetched.
         _git(repo, "fetch", "--quiet", "--no-tags", remote, base)
         base_sha = _git(repo, "rev-parse", f"{remote}/{base}").stdout.strip()
+        # Absent on the first night, or after a merged PR's branch was deleted: fine.
+        branch_ref = f"refs/remotes/{remote}/{branch}"
+        _git(
+            repo,
+            "fetch",
+            "--quiet",
+            "--no-tags",
+            remote,
+            f"+refs/heads/{branch}:{branch_ref}",
+            check=False,
+        )
+        pending = _pending_fragments(repo, branch_ref, base_sha)
         blob = subprocess.run(
             ["git", "-C", str(repo), "hash-object", "-w", "--stdin"],
             input=content,
@@ -283,6 +324,9 @@ def publish_fragment(
 
         try:
             idx("read-tree", base_sha)
+            for carried, carried_blob in pending.items():
+                if carried != path:  # tonight's content wins over the branch's copy
+                    idx("update-index", "--add", "--cacheinfo", f"100644,{carried_blob},{carried}")
             idx("update-index", "--add", "--cacheinfo", f"100644,{blob},{path}")
             tree = idx("write-tree").stdout.strip()
         except subprocess.CalledProcessError as exc:
@@ -344,12 +388,14 @@ def _open_draft_pr(
             "--head",
             branch,
             "--title",
-            f"docs(wiki): eval-fixer run {date} ({worker})",
+            f"docs(wiki): eval-fixer runs ({worker})",
             "--body",
-            f"Nightly eval-fixer run fragment for {date} on `{worker}`.\n\n"
-            f"Opened automatically by `tools/eval_fixer_fragment.py --publish`. The run's "
-            f"output used to be committed to local `main`, which is protected, so it was "
-            f"stranded until someone rescued it by hand (#3134, #3255, #3473, #3574).",
+            f"Nightly eval-fixer run fragments from `{worker}`, first night {date}.\n\n"
+            f"Opened automatically by `tools/eval_fixer_fragment.py --publish`. Later nights "
+            f"are added to this same PR until it merges, so there is one open eval-fixer PR "
+            f"per worker rather than one per night. The run's output used to be committed to "
+            f"local `main`, which is protected, so it was stranded until someone rescued it "
+            f"by hand (#3134, #3255, #3473, #3574).",
         ],
         cwd=repo,
         capture_output=True,
@@ -388,6 +434,13 @@ def main(argv: list[str] | None = None) -> int:
         release_lock(args.date, worker)
         return 0
     if args.publish:
+        # Off by default since 2026-10-01: the nightly wiki-fragment PR was noise. The
+        # scorecard still reaches #1876 via the agent's own issue comment. Exit 5 is the
+        # wrapper's existing "nothing to deliver" code, so no wrapper change is needed.
+        if os.environ.get("EVAL_FIXER_PUBLISH_WIKI", "0") != "1":
+            print("publish skipped: wiki fragment PRs are opt-in (EVAL_FIXER_PUBLISH_WIKI=1)",
+                  file=sys.stderr)
+            return 5
         repo = Path(args.repo) if args.repo else Path(__file__).resolve().parents[1]
         ok, reason = publish_fragment(args.date, worker, repo=repo)
         print(reason, file=sys.stderr)

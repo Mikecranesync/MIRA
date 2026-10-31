@@ -38,7 +38,9 @@ describe("GET /api/health approvedRetrievalEnforced", () => {
       [
         "approvedRetrievalEnforced",
         "builtAt",
+        "deploymentGeneration",
         "gitSha",
+        "inferenceFingerprint",
         "service",
         "status",
         "telemetry",
@@ -46,6 +48,48 @@ describe("GET /api/health approvedRetrievalEnforced", () => {
         "version",
       ],
     );
+  });
+
+  // #4507 — runtime identity for the Stranger Walk (F1/F2 of #4461).
+  describe("runtime identity", () => {
+    it("reports one deploymentGeneration for the life of the process", async () => {
+      process.env.NEON_DATABASE_URL = "postgres://x";
+      process.env.INGEST_URL = "http://ingest";
+      const a = await GET().json();
+      const b = await GET().json();
+      expect(typeof a.deploymentGeneration).toBe("string");
+      expect(a.deploymentGeneration.length).toBeGreaterThanOrEqual(20);
+      expect(b.deploymentGeneration).toBe(a.deploymentGeneration);
+    });
+
+    it("reports the effective cascade as a hash plus summary, and no provider secret", async () => {
+      process.env.NEON_DATABASE_URL = "postgres://x";
+      process.env.INGEST_URL = "http://ingest";
+      process.env.MIRA_CANONICAL_SEAM = "1";
+      process.env.OPENAI_API_KEY = "sk-test-hunter5";
+      process.env.OPENAI_MODEL = "gpt-5.4-mini";
+      const body = await GET().json();
+      expect(body.inferenceFingerprint.hash).toMatch(/^[0-9a-f]{16}$/);
+      expect(body.inferenceFingerprint.summary.providers[0]).toEqual({
+        name: "OpenAI",
+        model: "gpt-5.4-mini",
+        pricePerMtok: { input: 0.75, cached_input: 0.075, output: 4.5 },
+      });
+      expect(JSON.stringify(body)).not.toContain("hunter5");
+    });
+
+    it("changes the fingerprint when the serving model changes, without a redeploy", async () => {
+      process.env.NEON_DATABASE_URL = "postgres://x";
+      process.env.INGEST_URL = "http://ingest";
+      process.env.MIRA_CANONICAL_SEAM = "1";
+      process.env.OPENAI_API_KEY = "sk-test-not-a-real-key";
+      process.env.OPENAI_MODEL = "gpt-5.4-mini";
+      const before = await GET().json();
+      process.env.OPENAI_MODEL = "gpt-5.4";
+      const after = await GET().json();
+      expect(after.inferenceFingerprint.hash).not.toBe(before.inferenceFingerprint.hash);
+      expect(after.deploymentGeneration).toBe(before.deploymentGeneration);
+    });
   });
 
   describe("telemetry", () => {

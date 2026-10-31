@@ -503,12 +503,22 @@ jobs:
           echo "::add-mask::$APP_ID"
           unset DOPPLER_TOKEN
           export GOOGLE_APPLICATION_CREDENTIALS="$FIREBASE_SECRET_DIR/service-account.json"
+          # The CLI prints a binary download URL carrying a live token= query.
+          # This log is public (#4836): capture it privately, print it with
+          # every such URL redacted, and keep the CLI's own exit status.
+          FIREBASE_LOG="$FIREBASE_SECRET_DIR/distribute.log"
+          FIREBASE_STATUS=0
           "$RUNNER_TEMP/firebase-v15.29.0" appdistribution:distribute \
             "$RUNNER_TEMP/firebase-release/app-release.apk" \
             --app "$APP_ID" \
             --groups "$FIREBASE_GROUPS" \
             --release-notes "$RELEASE_NOTES_INPUT" \
-            --non-interactive
+            --non-interactive >"$FIREBASE_LOG" 2>&1 || FIREBASE_STATUS=$?
+          sed -E 's#https?://[^[:space:]]*(app-binary-downloads|[?&]token=)[^[:space:]]*#[redacted download URL]#g' "$FIREBASE_LOG"
+          [ "$FIREBASE_STATUS" -eq 0 ] || {
+            echo "::error::Firebase distribution failed with exit status $FIREBASE_STATUS"
+            exit "$FIREBASE_STATUS"
+          }
       - name: Confirm Firebase credential cleanup
         if: always()
         run: test ! -e "$RUNNER_TEMP/firebase-secret"
@@ -562,9 +572,11 @@ jobs:
           [[ "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]
           [[ "$VERSION_CODE" =~ ^[1-9][0-9]*$ ]]
 
+          # The pin file carries comment lines and more than one host (#3800),
+          # so validate the pin for the publish host itself, not the line count
+          # (#4782). 40.160.141.61 is the OVH production host (#4048).
           KNOWN_HOSTS=deployment/known_hosts.factorylm-prod
-          [ "$(wc -l < "$KNOWN_HOSTS")" -eq 1 ]
-          ssh-keygen -F 165.245.138.91 -f "$KNOWN_HOSTS" >/dev/null || {
+          ssh-keygen -F 40.160.141.61 -f "$KNOWN_HOSTS" >/dev/null || {
             echo "::error::pinned factorylm-prod SSH host key is missing"
             exit 1
           }
@@ -637,34 +649,52 @@ jobs:
             -o "UserKnownHostsFile=$SSH_DIR/known_hosts"
             -o StrictHostKeyChecking=yes
           )
-          TARGET=root@165.245.138.91
+          # OVH production host (#4048): the deploy login is ubuntu with sudo,
+          # the same pinned host and key deploy-vps.yml uses. /srv/factorylm/ota
+          # is root-owned, so files land in an ubuntu-owned upload directory
+          # first and a sudo step copies them into .incoming, which must stay on
+          # the same filesystem as app/ for the hardlinks below (#4782).
+          TARGET=ubuntu@40.160.141.61
           [[ "$GITHUB_RUN_ID" =~ ^[1-9][0-9]*$ ]]
           [[ "$GITHUB_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
+          UPLOAD="/tmp/factorylm-direct-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           INCOMING="/srv/factorylm/ota/.incoming/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-direct"
-          ssh "${SSH_OPTIONS[@]}" "$TARGET" sh -s -- "$INCOMING" <<'REMOTE'
+          ssh "${SSH_OPTIONS[@]}" "$TARGET" sh -s -- "$UPLOAD" <<'REMOTE'
           set -eu
-          mkdir -p "$1"
+          mkdir -m 0700 "$1"
           REMOTE
           scp "${SSH_OPTIONS[@]}" \
             "$RELEASE_STAGE/release.apk" \
             "$RELEASE_STAGE/latest.json" \
             "$RELEASE_STAGE/index.html" \
-            "$TARGET:${INCOMING}/"
+            "$TARGET:${UPLOAD}/"
           ssh "${SSH_OPTIONS[@]}" "$TARGET" \
-            sh -s -- \
+            sudo -n sh -s -- \
+              "$UPLOAD" \
               "$INCOMING" \
               "$RELEASE_APK_SHA256" \
               "$RELEASE_METADATA_SHA256" \
               "$RELEASE_INDEX_SHA256" \
               "$RELEASE_FILE" <<'REMOTE'
           set -eu
-          incoming=$1
-          release_sha256=$2
-          metadata_sha256=$3
-          index_sha256=$4
-          release_file=$5
+          upload=$1
+          incoming=$2
+          release_sha256=$3
+          metadata_sha256=$4
+          index_sha256=$5
+          release_file=$6
           root=/srv/factorylm/ota/app
-          trap 'rm -rf "$incoming"' EXIT
+          trap 'rm -rf "$incoming" "$upload"' EXIT
+          case "$upload" in
+            /tmp/factorylm-direct-[0-9]*-[0-9]*) ;;
+            *) echo "invalid upload directory" >&2; exit 1 ;;
+          esac
+          [ -d "$upload" ] && [ ! -L "$upload" ]
+          mkdir -p "$incoming"
+          for f in release.apk latest.json index.html; do
+            [ -f "$upload/$f" ] && [ ! -L "$upload/$f" ]
+            cp "$upload/$f" "$incoming/$f"
+          done
           case "$release_file" in
             factorylm-*-vc*-[0-9a-f][0-9a-f]*.apk) ;;
             *) echo "invalid content-addressed release name" >&2; exit 1 ;;

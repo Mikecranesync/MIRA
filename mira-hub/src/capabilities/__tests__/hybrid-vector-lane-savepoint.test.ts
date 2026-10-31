@@ -134,9 +134,11 @@ describe("hybrid vector lane — a failing vector SELECT must not abort the call
     expect(calls.some((c) => c.startsWith("ROLLBACK TO"))).toBe(false);
   });
 
-  it("control: flag OFF issues no savepoint at all", async () => {
+  it("control: flag OFF issues no vector-lane savepoint", async () => {
     const { client, calls } = txnClient({ inTransaction: true, vectorFails: true });
     await ask(client);
-    expect(calls.some((c) => /SAVEPOINT/.test(c))).toBe(false);
+    // The T-1 optional reads (#4979) carry their own savepoints on every path;
+    // the vector lane's must still appear only under the flag.
+    expect(calls.some((c) => /SAVEPOINT hybrid_vector_lane/.test(c))).toBe(false);
   });
 });

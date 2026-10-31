@@ -1,15 +1,52 @@
-# Hot Cache — 2026-10-09 — field-maintenance intelligence qualification
+# Honest landing Codex round 2 — 2026-10-29
 
-**Release status: BLOCKED; no merge/deployment from this session.** Production and staging health last checked at18:53Z: v3.392.4 / `d3129e82739e4cb0afd2eb714a943fb5d3a1d618`. This is health identity, not a fresh image-running receipt.
+Draft PR #4570 (`cursor/honest-landing-capabilities-ded8`). Codex round 2 on `c08384e0` (ISSUES_FOUND, 4 P2) fixed on the same draft: Drive Commander `/drive-commander/powerflex-525` drops `$197/yr` and checkout, CTA is Talk to Mike / free 30-day pilot; blog articles no longer claim auto work-order creation, a free CMMS tier, or "in seconds"; `provenText()` no longer falls back when a claim is unproven; honest-claims is recursive over public HTML, renders every real blog post plus Drive Commander and marketing renderers, uses semantic bans (auto+CMMS/work order, any `$`, timing promises), and has mutation + notebook-cited-answer flip tests. No merge, deploy, labels, ready, or Codex. mira-web full suite at new tip: 598 pass / 18 fail (21 fail on `origin/main`; the 18 remaining are pre-existing Neon/cookie/admin/DC-Pro).
 
-- CI-only draft #4332 at `960539bdc`: 34/34 checks pass, Hub5,877/53skip plus full Next16.3.8 standalone build, mobile916/build,45evaluation controls. CI merge `8fef6e01a` has the same tree. New test-only extension `b722871bc` adds trusted-GREEN #4336 bootstrap fixtures; fresh CI is pending. Runtime Hub/mobile source is unchanged after960.
-- Trusted GREEN source slices: #4325 security, #4326 evidence reasoning directive, #4331/#4333 four answer keys, #4334 archive provenance, #4335 infrastructure verdicts, #4336 positive bootstrap teardown. Exact source heads/bodies are retained outside repo; current CI may still be red on individual main-based sources due to independent gates. Combined CI does not substitute source review.
-- Final source review needs human post-cap authorization: #4321 (five rounds), #4327/#4328/#4329/#4330 (three each). No new branch/session/composition resets these budgets. #4306 preview retains its own owner; separate Sources repair remains outside this composition.
-- ASI-001 remains unresolved: each seat has its own rear slave; cable/slave changes and brief green after reteach do not prove a repair, onset/cause/model/address mapping remain unknown. No ride controls/configuration or return-to-service authority.
-- Curriculum: [eight lessons](../docs/plans/2026-10-09-field-maintenance-curriculum.md). Tonight: [progressive acceptance routine](../docs/plans/2026-10-09-field-maintenance-acceptance.md), including a correction beyond24messages. Earlier Codex replies and a separate ChatGPT setup chat were recovered at19:32Z; see the baseline addendum in the retained handoff. Different clues/runtime/history prevent a controlled numerical ranking. Continuity qualification requires leak-free provider inputs, original-report provenance and a matched recall-negative control.
-- Durable handoff: `/Users/charlienode/Documents/Codex/foundations-acceptance-2026-10-07/HANDOFF-NEXT-SESSION.md`; refreshed state/receipts under `field-intelligence-build/`. This docs snapshot was prepared at19:30Z; refresh the latest final receipt before continuing.
+---
 
-Next: finish final CI snapshot, then resolve review-extension authority before source integration; staging/model/device/rollback acceptance and production authorization remain separate. User's build window ends20:00Z /4p.m. Eastern. No further phone input/install, billing change or foreign worktree cleanup is authorized here.
+# Honest landing Codex P2s — 2026-10-29
+
+Draft PR #4570 (`cursor/honest-landing-capabilities-ded8`). Mike approved all five Codex P2s on the same draft: registry `offers` (free 30-day pilot + limited free lifetime credit, no amounts), `chrome.connectors_note` (optional and not yet available), public prices stripped from terms/PrintSense, feature/blog/PrintSense copy sourced from proven claims, honest-claims widened to every public HTML + llms + feature pages + blog renderer + PrintSense + terms, `/buy` Talk to Mike uses `--amber` on `#0d0e11`. No merge, deploy, labels, ready, or Codex. mira-web full suite: 561 pass / 18 fail (19 pre-existed on main; none new).
+
+---
+
+# Conversation follow repair — 2026-10-24
+
+PR #4703 / #4680 incorporates merged runner fix #4700 without force-push. Follow now re-arms from an accepted Composer send, not changing message IDs, preserving scroll-away through live-to-persisted replacement. Focused regression red: 6 failures; green: 38 tests; shared suite: 440 pass; TypeScript/build pass. Exact-head review, CI and same-release deployed behavior remain gates. Watcher continuation and proof: `~/.factorylm/issue-repair-watch/queue.json`; worktree `conversation-continuity`. Foreman send/persistence and Notebook Prover answer ownership unchanged.
+
+---
+
+# Photo correction publication race — 2026-10-23
+
+PR #4662 merged as c7efdb007. PR #4663 now fences source publication across independent conversation correction chains sharing a notebook/photo. Older conversation readings remain available, but delayed publication cannot replace a newer correction; new model readings cannot publish over a pending committed technician review. Real PostgreSQL: 29 tests pass, including both controls. Hub: 9216 pass/53 skipped; production build passes. Component version 2.39.0. Exact-head review/CI and staging, production, and physical-device acceptance remain outstanding. Mike authorized finishing through deployment and testing; no gates bypassed. Pixel connected and charging stay-awake verified; private evidence retains original settings.
+
+---
+
+# Photo correction review repairs — 2026-10-23
+
+PR #4663: local repairs remove the canonical mobile dependency on frozen FilePreview presentation, preserve technician-reviewed attribution in chat, and recover a committed reading before an edited retry with renewed acknowledgement. Hub 9177 pass/53 skipped, mobile 968 pass, shared UI 310 pass plus final 13 retry tests, real-Postgres 28 pass on a fresh database; Hub/mobile builds pass. Fresh exact-head review and same-release physical acceptance remain required. No merge/deploy authorization inferred.
+
+---
+
+# Hot Cache — 2026-10-23 — #4332 owner takeover
+
+Mike assigned #4332 to this CHARLIE Codex session. Current-main integration and Sources reopen repair are in the isolated `qualification-4332` workspace; see `PLAN.md`. Historical GREEN3 does not approve the changed candidate. Preserve source review caps. No physical Android device is connected; no merge, deployment or OTA acceptance is claimed.
+
+---
+
+# Hot Cache — 2026-10-09 — resumed field-maintenance release qualification
+
+**Security live; maintenance release BLOCKED.** Security #4325 is deployed as v3.392.6 / da37b8d16cdf6e91cb63f9cafdfa9ce28fc73bbb. Production37990055372 has built/running image identity; post-deploy smoke37990845257 passed15/skipped4/failed0. Rollbackv3.392.4/d3129e827. Curriculum #4337 is merged904f7114f.
+
+- User superseded4p.m. cutoff with “Finish it completely I approve.” Implementation and serial post-cap reviews continue with original ledgers. No gate waiver, billing/vendor changes, foreign WIP mutation or fabricated terminal approval.
+- Source repairs: citation #4321 900bf6186 uses installed GFM parser with original-source exclusions and container-relative cell positions;1056focused/6596Hub/53skip/buildPASS,74940 negative executions across line-ending variants with zero false support. trusted GREEN27. Retrieval #4328 87b6d7752 fixes multiline carrier headings;498focused/6118Hub/53skip/buildPASS; trusted GREEN16. Compatibility #4327 967d941d9 and continuity #4329 b2731e2ed retain exact trusted GREEN. Check latest external receipts for subsequent review verdicts.
+- Existing draft #4332 is refreshed on current main and includes both scoped report context and photo retrieval, original mobile retry/preview composition and current source repairs. Combined Hub7235tests/53skip and production buildPASS preceded the ignored-cell repair; latest7265tests/53skip and production buildPASS are sealed to the final source tree; earlier b722 CI is historical. Mobile916tests/typecheck/build and41evaluator/stream/bootstrap controls apply to unchanged source files. Current combined review/CI and live acceptance remain owed.
+- Fresh staging gates38007704722/38007868303 fail approved judges: Groq organization_delinquent, Cerebras402, Gemini429; all judges failed. No model or physical acceptance claim. Pixel absent fromADB. #4335 workflow extension remains owner-terminal blocked at treeeab4128033c85963367c64023afa189ae5d69e40. Foreign #4306 GitHub base94c61f23f differs from main904f7114f; trusted entry refuses it. Source ownership preserved.
+- ASI-001 remains unresolved: each seat has its own slave; mode/value, fault/identity and train recognition/address acquisition stay distinct. No confirmed root cause, model revision, permitted enclosure replacement method or ride readiness. Ten-photo manifest/five unvalidated fixtures/zero scorable cases; six recovered baseline pairs are qualitative and unmatched.
+- Curriculum: [eight lessons](../docs/plans/2026-10-09-field-maintenance-curriculum.md). Tonight: [progressive acceptance routine](../docs/plans/2026-10-09-field-maintenance-acceptance.md). Actual generated-answer continuity requires leak-free inputs, original-report provenance and a matched recall-negative control. Results remain NOT RUN.
+- Durable current state: /Users/charlienode/Documents/Codex/foundations-acceptance-2026-10-07/RELEASE-CHECKPOINT-2026-10-09.md and field-intelligence-build/SESSION-STATE.json. Refresh heads, review bodies, CI, providers and device before proceeding.
+
+Next: finish source and combined exact-head review/CI, restore approved provider access and genuine workflow terminal record, then obtain same-generation staging/progressive replay/identified Pixel acceptance before production promotion. Structured scene evidence within existing LOOK/Turn Evidence Packet is the planned next product phase, not implemented acceptance.
 
 ---
 

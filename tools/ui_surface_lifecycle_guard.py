@@ -15,7 +15,9 @@ control-plane file — unless the PR carries a single substantive
 impact / Rollback) AND a `[CODEX-ADVERSARIAL-REVIEW]` comment
   (the repository's existing Codex review ledger, `scripts/adversarial-review.sh`)
   whose `reviewed_sha` and `reviewed_body_sha256` bind it to the current PR
-  head/body snapshot and whose `status` is `GREEN`.
+  head/body snapshot and whose `status` is `GREEN` — or CONVERGED (`ISSUES_FOUND`
+  with zero BLOCKER and zero HIGH) plus a newer owner `[REVIEW-FOLLOWUPS]` record for
+  the same snapshot listing one issue per MEDIUM (charter §3).
   The Codex contract treats any expansion of frozen legacy presentation as
   a finding, so a GREEN at the exact head is the independent classification
   that the touch is migration / removal / adapter work. Any head movement
@@ -109,14 +111,10 @@ CONTROL_PATTERNS: tuple[str, ...] = (
     "scripts/adversarial-review-trusted.sh",
     "docs/adversarial-review-workflow.md",
     "tools/hooks/prod-guard.sh",
-    # The local pre-commit gate, its owner-approval path, and the Claude-side
-    # guard for it. Unguarded, any session could loosen the gate by editing it
-    # (core.hooksPath runs the worktree copy). Guarded, changing the gate needs
-    # the gate's own owner approval.
+    # The local pre-commit gate and its tests. The gate only warns on guarded
+    # paths, but a PR that changes it still goes through this guard.
     ".githooks/**",
     "tools/guard-check.py",
-    "tools/guarded_commit_approval.py",
-    "tools/hooks/guarded_approval_guard.py",
     "tests/hooks/test_precommit_hook.sh",
     "tools/ota_handset_evidence.py",
 )
@@ -660,6 +658,19 @@ _CODEX_REVIEW_RE = re.compile(
     r"```(?:\r?\n|$)"
 )
 
+# The owner's follow-up record that turns a CONVERGED verdict (exact-head ISSUES_FOUND
+# with zero BLOCKER and zero HIGH) into an authorization: bound to the same head and
+# body as the review, posted after it, and listing one issue per MEDIUM (at least one
+# when only LOWs remain). Strict from the first character, like the review envelope;
+# anything else is ignored. Charter §3 and docs/architecture/mira-sdlc-v1.md §4.3.
+_REVIEW_FOLLOWUPS_RE = re.compile(
+    r"^\[REVIEW-FOLLOWUPS\]\r?\n\r?\n```\r?\n"
+    r"reviewed_sha: (?P<sha>[0-9a-f]{40})\r?\n"
+    r"reviewed_body_sha256: (?P<body_sha256>[0-9a-f]{64})\r?\n"
+    r"issues:(?P<issues>(?: #[1-9][0-9]*)+)\r?\n"
+    r"```(?:\r?\n|$)"
+)
+
 # GitHub pull-files `status` values this guard understands, mapped to the
 # same normalized vocabulary `changed_files_between()` produces from git.
 _GITHUB_STATUS_MAP = {
@@ -739,7 +750,9 @@ class CodexAttestation:
     """Latest Codex adversarial-review verdict, bound to one exact PR snapshot.
 
     `valid` is True only when the newest well-formed ledger comment for the
-    CURRENT head and body reports `GREEN`. The reviewed identifiers describe
+    CURRENT head and body reports `GREEN`, or is CONVERGED (`ISSUES_FOUND` with
+    zero BLOCKER and zero HIGH) and a newer owner `[REVIEW-FOLLOWUPS]` record for
+    the same head and body lists enough follow-up issues. The reviewed identifiers describe
     the newest well-formed ledger comment of any status, or are both None when
     no ledger comment exists.
     """
@@ -1436,6 +1449,8 @@ def load_codex_attestation(comments_path: Path, current_pull_path: Path) -> Code
 
     newest_id = -1
     newest: Optional[tuple[str, str, str]] = None
+    newest_counts: tuple[int, int, int, int] = (0, 0, 0, 0)
+    followups: list[tuple[int, str, str, frozenset[int]]] = []
     for line_number, line in enumerate(text.splitlines(), start=1):
         if not line.strip():
             continue
@@ -1456,6 +1471,13 @@ def load_codex_attestation(comments_path: Path, current_pull_path: Path) -> Code
             continue
         if user.get("type") != "User" or user.get("login") != owner_login:
             continue
+        followup = _REVIEW_FOLLOWUPS_RE.match(body)
+        if followup is not None:
+            issues = frozenset(int(n) for n in followup.group("issues").split("#")[1:])
+            followups.append(
+                (comment_id, followup.group("sha"), followup.group("body_sha256"), issues)
+            )
+            continue
         match = _CODEX_REVIEW_RE.match(body)
         if match is None:
             continue
@@ -1469,6 +1491,9 @@ def load_codex_attestation(comments_path: Path, current_pull_path: Path) -> Code
                 match.group("sha"),
                 match.group("body_sha256"),
                 match.group("status"),
+            )
+            newest_counts = tuple(  # type: ignore[assignment]
+                int(match.group(name)) for name in ("blocker", "high", "medium", "low")
             )
 
     if newest is None:
@@ -1501,6 +1526,41 @@ def load_codex_attestation(comments_path: Path, current_pull_path: Path) -> Code
                 f"review body stale: newest {_CODEX_REVIEW_MARKER} reviewed "
                 f"{reviewed_body_sha256} ({status}) but the pull request body is "
                 f"{current_body_sha256}"
+            ),
+        )
+    blocker, high, medium, low = newest_counts
+    if status == "ISSUES_FOUND" and blocker == 0 and high == 0:
+        needed = max(medium, 1)  # LOW-only still needs one follow-up issue
+        listed = max(
+            (
+                len(issues)
+                for fid, fsha, fbody, issues in followups
+                if fid > newest_id and fsha == current_sha and fbody == current_body_sha256
+            ),
+            default=-1,
+        )
+        if listed >= needed:
+            return CodexAttestation(
+                valid=True,
+                reviewed_sha=reviewed_sha,
+                reviewed_body_sha256=reviewed_body_sha256,
+                status="CONVERGED",
+                reason=(
+                    f"{_CODEX_REVIEW_MARKER} CONVERGED (0 BLOCKER, 0 HIGH, {medium} MEDIUM, "
+                    f"{low} LOW) bound to the current head {current_sha} and body "
+                    f"{current_body_sha256}, with a [REVIEW-FOLLOWUPS] record listing "
+                    f"{listed} issue(s)"
+                ),
+            )
+        return CodexAttestation(
+            valid=False,
+            reviewed_sha=reviewed_sha,
+            reviewed_body_sha256=reviewed_body_sha256,
+            status=status,
+            reason=(
+                f"newest {_CODEX_REVIEW_MARKER} at the current head/body is CONVERGED "
+                f"(0 BLOCKER, 0 HIGH) but no newer [REVIEW-FOLLOWUPS] record for this "
+                f"head and body lists at least {needed} follow-up issue(s)"
             ),
         )
     if status != "GREEN":
@@ -1838,7 +1898,8 @@ def evaluate(
     of a guarded tree and a rename-in to a guarded tree are both violations.
 
     A guarded touch passes only with a substantive lifecycle rationale and a
-    strict-v2 Codex ledger GREEN bound to the current head and body.
+    strict-v2 Codex ledger GREEN (or CONVERGED with its follow-up record) bound to the
+    current head and body.
     """
     touched: list[str] = []
     seen: set[str] = set()
@@ -1910,8 +1971,7 @@ def evaluate(
         guarded_paths=tuple(touched),
         missing_fields=tuple(missing),
         message=(
-            headline
-            + ". Guarded legacy presentation or control-plane path(s) touched without "
+            headline + ". Guarded legacy presentation or control-plane path(s) touched without "
             "all required rationale and review evidence. Touched: "
             + ", ".join(touched)
             + ". Missing: "

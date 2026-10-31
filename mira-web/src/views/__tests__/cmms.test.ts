@@ -1,12 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { renderCmms, renderSamplePlaceholder } from "../cmms.js";
 
-describe("#SO-070 renderCmms — magic-link landing acceptance", () => {
+describe("renderCmms — sign-in only", () => {
   const html = renderCmms("https://factorylm.com/cmms");
 
   test("AC1: page shows ONE visible email input (+ hidden plan field) and one CTA", () => {
-    // Exactly one user-facing input (the work email) plus a hidden `cmms-plan`
-    // field that carries plan intent → total <input> count is 2.
     const inputCount = (html.match(/<input\b/g) || []).length;
     expect(inputCount).toBe(2);
     const emailIds = (html.match(/id="cmms-email"/g) || []).length;
@@ -25,35 +23,22 @@ describe("#SO-070 renderCmms — magic-link landing acceptance", () => {
 
   test("AC2: form posts to /api/magic-link", () => {
     expect(html).toContain("/api/magic-link");
-    expect(html).toContain('method: \'POST\'');
+    expect(html).toContain("method: 'POST'");
   });
 
-  test("AC5: 3-step 'Operating Layer is one component' strip with stateBadge markers", () => {
-    expect(html).toContain('aria-labelledby="fl-steps-h"');
-    expect(html).toContain("The Operating Layer is one component.");
-    const stepCount = (html.match(/<li class="fl-step">/g) || []).length;
-    expect(stepCount).toBe(3);
-    expect(html).toContain("fl-state-indexed");
-    expect(html).toContain("Asset hierarchy + nameplates");
-    expect(html).toContain("CMMS write-back");
-    expect(html).toContain("MIRA on the floor");
-  });
-
-  test("AC6: compareBlock — generic AI vs MIRA on a namespace is present", () => {
-    expect(html).toContain('class="fl-compare"');
-    expect(html).toContain("Generic AI");
-    expect(html).toContain("MIRA");
-    expect(html).toContain("PowerFlex 755");
+  test("does not sell CMMS write-back, F005, or priced offers", () => {
+    expect(html).toContain("It's not a CMMS");
+    expect(html).not.toContain("Operating Layer");
+    expect(html).not.toContain("CMMS write-back");
+    expect(html).not.toContain("F005");
+    expect(html).not.toContain("$499");
+    expect(html).not.toContain("$500 Assessment");
   });
 
   test("AC6: sun-readable toggle present", () => {
     expect(html).toContain('id="fl-sun-toggle"');
     expect(html).toContain("Sun-readable");
     expect(html).toContain('<script src="/sun-toggle.js"></script>');
-  });
-
-  test("Reassurance copy: 'No credit card. No call. No demo.'", () => {
-    expect(html).toContain("No credit card. No call. No demo.");
   });
 
   test("Form has aria-describedby pointing at error region", () => {
@@ -82,12 +67,10 @@ describe("#SO-070 renderCmms — magic-link landing acceptance", () => {
     expect(headings[0]).toBe(1);
   });
 
-  test("SEO: title + canonical + description match spec", () => {
-    expect(html).toContain(
-      "<title>Maintenance Operating Layer — FactoryLM</title>"
-    );
+  test("SEO: title + canonical + description", () => {
+    expect(html).toContain("<title>Sign in — FactoryLM</title>");
     expect(html).toContain('<link rel="canonical" href="https://factorylm.com/cmms">');
-    expect(html).toMatch(/<meta name="description" content="Sign in to the Operating Layer/);
+    expect(html).toMatch(/<meta name="description" content="Sign in to FactoryLM/);
   });
 
   test("Tokens + components stylesheets are linked via head()", () => {
@@ -101,7 +84,7 @@ describe("#SO-070 renderCmms — magic-link landing acceptance", () => {
   });
 });
 
-describe("#SO-070 renderSamplePlaceholder — Phase-0 /sample destination", () => {
+describe("renderSamplePlaceholder — Phase-0 /sample destination", () => {
   const html = renderSamplePlaceholder();
 
   test("Tells user they're signed in", () => {
@@ -118,9 +101,14 @@ describe("#SO-070 renderSamplePlaceholder — Phase-0 /sample destination", () =
     expect(html).toMatch(/href="\/"[^>]*class="fl-btn fl-btn-ghost"/);
   });
 
-  test("Mentions Phase 1 sample workspace truthfully", () => {
-    expect(html).toContain("Phase 1 ships");
-    expect(html).toContain("upload your first manual");
+  test("does not show Open CMMS; the signed-in door is Open notebook", () => {
+    expect(html).not.toContain("Open CMMS");
+    expect(html).toContain("Open notebook");
+  });
+
+  test("Does not claim OCR or citations", () => {
+    expect(html).not.toContain("OCR");
+    expect(html).not.toContain("citations");
   });
 
   test("SEO: title set; canonical points at /sample", () => {

@@ -30,11 +30,20 @@ function makeClient(scriptedRows: Array<Record<string, unknown>[]>): {
   const calls: Array<{ sql: string; params: unknown[] }> = [];
   const query = vi.fn(async (sql: string, params: unknown[]) => {
     calls.push({ sql, params });
+    // The T-1 bookkeeping queries (code selectivity count, question-IDF table,
+    // rare-term recall) return no rows here and do not consume a scripted lane:
+    // these scenarios script WHICH lanes run and what each returns.
+    if (sql.includes("WITH ORDINALITY") || sql.includes("names_document") || sql.includes("quote_literal(lex)") || /^\s*(SAVEPOINT|RELEASE SAVEPOINT|ROLLBACK TO SAVEPOINT)\b/.test(sql)) return { rows: [] };
     const rows = scriptedRows.shift() ?? [];
     return { rows };
   });
   return { client: { query } as unknown as PoolClient, calls };
 }
+
+// Retrieval LANE calls only: the T-1 bookkeeping queries (code selectivity
+// count, question-IDF table, rare-term recall) are not lanes a scenario scripts.
+const lanes = (calls: Array<{ sql: string; params: unknown[] }>) =>
+  calls.filter((c) => !(c.sql.includes("WITH ORDINALITY") || c.sql.includes("names_document") || c.sql.includes("quote_literal(lex)") || /^\s*(SAVEPOINT|RELEASE SAVEPOINT|ROLLBACK TO SAVEPOINT)\b/.test(c.sql)));
 
 const row = (overrides: Partial<Record<string, unknown>> = {}) => ({
   content: "Set torque to 35 ft-lbs on motor mount bolts.",
@@ -821,7 +830,7 @@ describe("retrieveNodeChunks", () => {
     await retrieveNodeChunks(off.client, "t-1", "which register holds P042 output frequency", opts);
     expect(off.calls.length).toBeGreaterThan(0);
     for (const c of off.calls) {
-      expect(c.params.length).toBe(maxPlaceholder(c.sql));
+      expect((c.params ?? []).length).toBe(maxPlaceholder(c.sql)); // SAVEPOINT statements bind nothing
       expect(c.sql).not.toContain("is_private = true AND doc_id = ANY(");
     }
 
@@ -829,7 +838,7 @@ describe("retrieveNodeChunks", () => {
     const on = makeClient([[nodeRow()]]);
     await retrieveNodeChunks(on.client, "t-1", "which register holds P042 output frequency", opts);
     expect(on.calls.length).toBeGreaterThan(0);
-    for (const c of on.calls) expect(c.params.length).toBe(maxPlaceholder(c.sql));
+    for (const c of on.calls) expect((c.params ?? []).length).toBe(maxPlaceholder(c.sql));
     // The admission branch is present on the BM25 lane ($6 after $5 docIds) and the exact lane.
     expect(on.calls.some((c) => c.sql.includes("is_private = true AND doc_id = ANY($6::uuid[])"))).toBe(true);
   });
@@ -863,15 +872,15 @@ describe("retrieveNodeChunks", () => {
     });
     expect(out).toHaveLength(1);
     expect(out[0].title).toBe("gs10_fault_codes.pdf");
-    expect(calls).toHaveLength(2);
+    expect(lanes(calls)).toHaveLength(2);
     // First query is the precise AND (plainto), with the BM25 content match.
-    expect(calls[0].sql).toContain("plainto_tsquery('english', $2)");
-    expect(calls[0].sql).not.toContain("replace(");
+    expect(lanes(calls)[0].sql).toContain("plainto_tsquery('english', $2)");
+    expect(lanes(calls)[0].sql).not.toContain("replace(");
     // Fallback rewrites '&' → '|' so a conversational question still grounds.
-    expect(calls[1].sql).toContain("replace(plainto_tsquery('english', $2)::text, ' & ', ' | ')");
+    expect(lanes(calls)[1].sql).toContain("replace(plainto_tsquery('english', $2)::text, ' & ', ' | ')");
     // node scoping + route discriminator preserved on both queries.
-    expect(calls[1].sql).toContain("ingest_route = 'v2'");
-    expect(calls[1].sql).toContain("metadata->>'node_id'");
+    expect(lanes(calls)[1].sql).toContain("ingest_route = 'v2'");
+    expect(lanes(calls)[1].sql).toContain("metadata->>'node_id'");
   });
 
   it("expands a synonym query into extra recall passes (vocabulary bridge)", async () => {
@@ -905,8 +914,8 @@ describe("retrieveNodeChunks", () => {
       unsPath: null,
     });
     expect(out).toHaveLength(1);
-    expect(calls).toHaveLength(1);
-    expect(calls[0].sql).not.toContain("replace(");
+    expect(lanes(calls)).toHaveLength(1);
+    expect(lanes(calls)[0].sql).not.toContain("replace(");
   });
 
   it("resolves the subtree before retrieving when unsPath is set", async () => {
@@ -917,10 +926,10 @@ describe("retrieveNodeChunks", () => {
       unsPath: "enterprise.garage.demo_cell.cv_101",
     });
     expect(out).toHaveLength(1);
-    expect(calls).toHaveLength(2);
-    expect(calls[0].sql).toContain("uns_path <@ $2::ltree");
+    expect(lanes(calls)).toHaveLength(2);
+    expect(lanes(calls)[0].sql).toContain("uns_path <@ $2::ltree");
     // retrieval is scoped to the resolved subtree ids
-    expect(calls[1].params[2]).toEqual(["n-1", "child-1"]);
+    expect(lanes(calls)[1].params[2]).toEqual(["n-1", "child-1"]);
   });
 
   it("adds the approved-only filter for node retrieval when enabled", async () => {
@@ -1357,9 +1366,9 @@ describe("retrieveNodeChunks docId scope", () => {
       docId: DOC_ID,
     });
     expect(out).toHaveLength(1);
-    expect(calls).toHaveLength(1);
-    expect(calls[0].sql).toContain("doc_id = ANY($5::uuid[])");
-    expect(calls[0].params).toContainEqual([DOC_ID]);
+    expect(lanes(calls)).toHaveLength(1);
+    expect(lanes(calls)[0].sql).toContain("doc_id = ANY($5::uuid[])");
+    expect(lanes(calls)[0].params).toContainEqual([DOC_ID]);
   });
 
   it("keeps the doc_id filter on the OR fallback (gate F holds for conversational queries)", async () => {
@@ -1369,10 +1378,10 @@ describe("retrieveNodeChunks docId scope", () => {
       unsPath: null,
       docId: DOC_ID,
     });
-    expect(calls).toHaveLength(2);
-    expect(calls[0].sql).toContain("doc_id = ANY($5::uuid[])");
-    expect(calls[1].sql).toContain("doc_id = ANY($5::uuid[])");
-    expect(calls[1].params).toContainEqual([DOC_ID]);
+    expect(lanes(calls)).toHaveLength(2);
+    expect(lanes(calls)[0].sql).toContain("doc_id = ANY($5::uuid[])");
+    expect(lanes(calls)[1].sql).toContain("doc_id = ANY($5::uuid[])");
+    expect(lanes(calls)[1].params).toContainEqual([DOC_ID]);
   });
 
   it("omits the doc_id filter entirely when no docId is given (node-scope unchanged)", async () => {
@@ -2096,5 +2105,154 @@ describe("retrieveNodeChunks — hybrid (vector + lexical, RRF) behind NOTEBOOK_
     const out = await ask(client);
     expect(out.some((c) => c.docId === "d-2")).toBe(false);
     expect(out.map((c) => c.sourcePage)[0]).toBe(40);
+  });
+});
+
+// Foreman T-038 diagnosis fix A (docs/briefs/2026-10-25, batch 2 sanity check):
+// a question that NAMES a model went through documentCoversRequest, which has
+// no family rule, so the PowerFlex 520-Series manual could not answer a single
+// "PowerFlex 525" question and the Comfort Panels manual could not answer a
+// "TP700" one — insufficient_evidence with the answer on p.65 / p.91. The
+// notebook branch already admits a family manual for its members; a named ask
+// gets the same rule, and a sibling model still never admits.
+describe("retrieveNodeChunks named-ask family coverage (fix A, #4788 batch 2)", () => {
+  const scope = { nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true };
+  const pf520Row = (overrides: Partial<Record<string, unknown>> = {}) => nodeRow({
+    filename: "520-um001.pdf",
+    document_heading: "PowerFlex 520-Series Adjustable Frequency AC Drive\nUser Manual",
+    content: "P034 [Motor NP FLA] Sets the motor nameplate full load amps.",
+    source_page: 65, page_start: 65,
+    ...overrides,
+  });
+  const comfortRow = (overrides: Partial<Record<string, unknown>> = {}) => nodeRow({
+    filename: "comfort_panels_operating_instructions.pdf",
+    document_heading: "SIMATIC HMI Comfort Panels Operating Instructions",
+    content: "Calibrating the touch screen: open Touch in the Control Panel and select Recalibrate.",
+    source_page: 91, page_start: 91,
+    ...overrides,
+  });
+
+  it("a PowerFlex 525 question is answered from the PowerFlex 520-Series manual", async () => {
+    const { client } = makeClient([[pf520Row()]]);
+    const out = await retrieveNodeChunks(client, "t-1", "Which PowerFlex 525 parameter sets the motor nameplate full load amps?", scope);
+    expect(out).toHaveLength(1);
+    expect(out[0]!.sourcePage).toBe(65);
+  });
+
+  it("a TP700 Comfort question is answered from the Comfort Panels manual", async () => {
+    const { client } = makeClient([[comfortRow()]]);
+    const out = await retrieveNodeChunks(client, "t-1", "How do I recalibrate the touch screen on a TP700 Comfort panel?", scope);
+    expect(out).toHaveLength(1);
+    expect(out[0]!.sourcePage).toBe(91);
+  });
+
+  it("control: a PowerFlex 755 question is NOT answered from the 520-Series manual", async () => {
+    const { client } = makeClient([[pf520Row()]]);
+    expect(await retrieveNodeChunks(client, "t-1", "Which PowerFlex 755 parameter sets the motor nameplate full load amps?", scope)).toEqual([]);
+  });
+
+  it("control: a KTP700 Basic question is NOT answered from the Comfort Panels manual", async () => {
+    const { client } = makeClient([[comfortRow()]]);
+    expect(await retrieveNodeChunks(client, "t-1", "How do I recalibrate the touch screen on a KTP700 Basic panel?", scope)).toEqual([]);
+  });
+
+  it("control: a family title that also names a sibling model does not answer another member", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "manual.pdf",
+      document_heading: "Micro800 Micro810 Programmable Controllers User Manual",
+      content: "Configure the embedded Ethernet port communication settings.",
+    })]]);
+    expect(await retrieveNodeChunks(client, "t-1", "Micro820 embedded Ethernet communication settings", scope)).toEqual([]);
+  });
+
+  it("control: a family title that names the requested member still answers it", async () => {
+    const { client } = makeClient([[nodeRow({
+      filename: "manual.pdf",
+      document_heading: "Micro800 Micro820 Programmable Controllers User Manual",
+      content: "Configure the embedded Ethernet port communication settings.",
+    })]]);
+    expect(await retrieveNodeChunks(client, "t-1", "Micro820 embedded Ethernet communication settings", scope)).toHaveLength(1);
+  });
+});
+
+// Forum-batch2 rerun, production flags (docs/evals/forum-batch2-2026-10-25):
+// "What does ACS355 fault code 0001 mean?" in a notebook with no confirmed
+// identity ranked p.359 outside the top 12, because "ACS355" (the model the
+// QUESTION names) was taken for a code the technician named — every page that
+// says ACS355 earned the exact-code bonus and current-code priority. The model
+// a question names is never a code, just as the notebook's own model is not.
+describe("retrieveNodeChunks — the model a question names is not a fault code", () => {
+  const scope = { nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true, topK: 1 };
+  const generic = nodeRow({
+    filename: "abb-acs355-users-manual-3AUA0000066143.pdf",
+    document_heading: "ACS355 User's manual",
+    content: "ACS355 drives: what this chapter contains. ACS355 fault tracing overview and ACS355 fault messages.",
+    source_page: 30, page_start: 30, rank: 0.9,
+  });
+  const faultTable = nodeRow({
+    filename: "abb-acs355-users-manual-3AUA0000066143.pdf",
+    document_heading: "ACS355 User's manual",
+    content: "Fault messages generated by the drive. CODE FAULT CAUSE. 0001 OVERCURRENT Output current has exceeded trip level.",
+    source_page: 359, page_start: 359, rank: 0.4,
+  });
+
+  it("fault code 0001 leads with the fault-table page, not a page that only repeats ACS355", async () => {
+    const { client } = makeClient([[generic, faultTable]]);
+    const out = await retrieveNodeChunks(client, "t-1", "What does ACS355 fault code 0001 mean?", scope);
+    expect(out[0]?.sourcePage).toBe(359);
+  });
+
+  it("control: with no code in the question, ranking by text match is unchanged", async () => {
+    const { client } = makeClient([[generic, faultTable]]);
+    const out = await retrieveNodeChunks(client, "t-1", "ACS355 fault tracing overview", scope);
+    expect(out[0]?.sourcePage).toBe(30);
+  });
+});
+
+// Query rewrite (NOTEBOOK_QUERY_REWRITE → `rewrittenQuery`): the manual-vocabulary
+// restatement is ONE extra OR variant after the technician's own AND pass. It
+// never replaces the original words and never runs when absent or identical.
+describe("retrieveNodeChunks — rewrittenQuery variant", () => {
+  const Q = "What does GS10 code oC mean?";
+  const REWRITE = "Fault Descriptions over current oC Fault Codes table";
+
+  it("adds one OR pass carrying the rewrite, and still runs the original-words OR fallback when those words found nothing (Codex F1 on #5003)", async () => {
+    // AND on the question: nothing. Rewrite OR: a DISTRACTOR page. Original-words
+    // OR: the answer. A rewrite hit must not count as lexical coverage, or the
+    // fallback is skipped and the answer never enters the pool.
+    const distractor = nodeRow({ content: "Fault Descriptions: table of all fault codes.", source_page: 99, page_start: 99 });
+    const answer = nodeRow({ content: "oC: over current. The GS10 code oC means output current exceeded the limit.", source_page: 12, page_start: 12 });
+    const { client, calls } = makeClient([[], [distractor], [answer]]);
+    const out = await retrieveNodeChunks(client, "t-1", Q, { nodeId: "n-1", unsPath: null, rewrittenQuery: `  Fault Descriptions\nover current oC   Fault Codes table ` });
+    const l = lanes(calls);
+    expect(l).toHaveLength(3);
+    expect(l[0].sql).toContain("plainto_tsquery('english', $2)");
+    expect(l[0].params[1]).toBe(Q);
+    expect(l[1].sql).toContain("replace(plainto_tsquery('english', $2)::text, ' & ', ' | ')");
+    expect(l[1].params[1]).toBe(REWRITE); // whitespace-collapsed, as query-rewrite.ts emits it
+    expect(l[2].sql).toContain("replace(plainto_tsquery('english', $2)::text, ' & ', ' | ')");
+    expect(l[2].params[1]).toBe(Q); // the original words still get their recall pass
+    expect(out.map((c) => c.sourcePage).sort()).toEqual([12, 99]); // both candidates reach the pool
+  });
+
+  it("control: without a rewrite the same question runs the same two passes on its own words", async () => {
+    const { client, calls } = makeClient([[], [nodeRow()]]);
+    await retrieveNodeChunks(client, "t-1", Q, { nodeId: "n-1", unsPath: null });
+    const l = lanes(calls);
+    expect(l).toHaveLength(2);
+    expect(l[1].params[1]).toBe(Q);
+    expect(l.some((c) => String(c.params[1]).includes("Fault Descriptions"))).toBe(false);
+  });
+
+  it("a rewrite identical to the question (or blank) adds no pass", async () => {
+    // Every lane returns nothing, so a duplicate OR pass on the question's own
+    // words would be visible as a THIRD lane (AND, duplicate OR, last-resort OR).
+    for (const rw of [Q, "   ", undefined]) {
+      const { client, calls } = makeClient([[], [], []]);
+      await retrieveNodeChunks(client, "t-1", Q, { nodeId: "n-1", unsPath: null, rewrittenQuery: rw });
+      expect(lanes(calls)).toHaveLength(2);
+      expect(lanes(calls)[0].params[1]).toBe(Q);
+      expect(lanes(calls)[1].params[1]).toBe(Q);
+    }
   });
 });

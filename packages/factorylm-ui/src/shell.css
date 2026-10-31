@@ -22,7 +22,7 @@
 .fl-shell__brand { font-size: var(--fl-workspace-fs-title); font-weight: 700; }
 .fl-shell__nav-icon { inline-size: 1rem; block-size: 1rem; flex: 0 0 auto; }
 .fl-shell__hint { margin: 0 0 var(--fl-workspace-space-3); padding-inline: var(--fl-workspace-space-2); color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); }
-.fl-shell__search { display: flex; align-items: center; gap: var(--fl-workspace-space-2); margin-block-end: var(--fl-workspace-space-2); padding-inline: var(--fl-workspace-space-2); border: 1px solid var(--fl-workspace-line); border-radius: var(--fl-workspace-radius); background: var(--fl-workspace-bg); color: var(--fl-workspace-muted); }
+.fl-shell__search { display: flex; align-items: center; min-block-size: max(2.75rem, 44px); gap: var(--fl-workspace-space-2); margin-block-end: var(--fl-workspace-space-2); padding-inline: var(--fl-workspace-space-2); border: 1px solid var(--fl-workspace-line); border-radius: var(--fl-workspace-radius); background: var(--fl-workspace-bg); color: var(--fl-workspace-muted); }
 .fl-shell__search input { flex: 1 1 auto; min-inline-size: 0; min-block-size: 2.25rem; font-size: var(--fl-workspace-fs); border: 0; background: transparent; color: var(--fl-workspace-ink); font: inherit; }
 .fl-shell__search input:focus-visible { outline: none; }
 .fl-shell__search:focus-within { border-color: var(--fl-workspace-accent); }
@@ -129,14 +129,17 @@
 .fl-shell__inspector dd { margin: var(--fl-workspace-space-1) 0 0; font-family: var(--fl-workspace-mono); font-size: var(--fl-workspace-fs-sm); }
 
 @media (max-width: 48rem) {
-  .fl-shell { grid-template-columns: minmax(0, 1fr); }
+  /* Phone type scale (issues 4613 and 4614): 16px body, 14px secondary, 13px labels
+     and chips. Scoped to the shell so desktop keeps the base scale. Absolute px,
+     never rem: hosts set different root sizes (the Hub's is 14px). */
+  .fl-shell { grid-template-columns: minmax(0, 1fr); --fl-workspace-fs-body: 16px; --fl-workspace-fs-sm: 14px; --fl-workspace-fs-xs: 13px; }
   .fl-shell__header { padding: var(--fl-workspace-space-2) var(--fl-workspace-space-3); }
   .fl-shell__sidebar {
     position: fixed;
     inset-block: 0;
     inset-inline-start: 0;
     z-index: 1;
-    inline-size: min(18rem, 88vw);
+    inline-size: min(352px, 85vw);
     block-size: 100dvh;
     padding-block-start: calc(var(--fl-workspace-space-4) + env(safe-area-inset-top, 0px));
     padding-block-end: calc(var(--fl-workspace-space-4) + env(safe-area-inset-bottom, 0px));

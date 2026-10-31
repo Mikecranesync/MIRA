@@ -15,6 +15,9 @@
 //   POST /preventive-maintenances/search    — same paging shape
 //   GET  /assets/{id}, /work-orders/{id}    — single record
 //   GET  /health-check                      — liveness probe
+//   GET  /comments/count/{workOrderId}      — { count } — v1.6.0+ only; 404/405 on older deploys (#5020)
+//   POST /comments                          — { workOrder:{id}, content } → CommentShowDTO
+//   POST /comments/search/{workOrderId}     — {} → CommentShowDTO[] (includes synthetic system rows)
 //
 // Asset IDs in Atlas are integers; we transport them as strings on the NeonDB
 // side (`atlas_id TEXT`) and coerce when calling Atlas. Same for PM IDs.
@@ -73,6 +76,18 @@ export interface AtlasPM {
   description?: string;
   asset?: { id: number } | null;
   updatedAt?: string;
+  [k: string]: unknown;
+}
+
+// Atlas v1.6.0+ CommentShowDTO. `search` results also include synthetic
+// system-generated history rows (system=true) that are not technician notes —
+// callers filter those out when looking for a delivered work-log marker.
+export interface AtlasComment {
+  id: number;
+  content?: string;
+  system?: boolean;
+  createdAt?: string;
+  user?: { id?: number; firstName?: string; lastName?: string } | null;
   [k: string]: unknown;
 }
 
@@ -269,6 +284,23 @@ export class AtlasClient {
     } catch (e) {
       return { ok: false, error: String(e) };
     }
+  }
+
+  // ── Comments (work-order write-back, #5020) ──────────────────────────────────
+  // Only present on Atlas v1.6.0+ (upstream fabbff237, 2026-04-08). On older
+  // deploys every /comments/* request 404s or 405s — callers must treat that
+  // as "unsupported", never as a signal to fall back to a destructive write.
+
+  countComments(workOrderId: string | number): Promise<{ count: number }> {
+    return this.request("GET", `/comments/count/${workOrderId}`);
+  }
+
+  createComment(payload: { workOrder: { id: number }; content: string }): Promise<AtlasComment> {
+    return this.request("POST", "/comments", payload);
+  }
+
+  searchComments(workOrderId: string | number): Promise<AtlasComment[]> {
+    return this.request("POST", `/comments/search/${workOrderId}`, {});
   }
 }
 

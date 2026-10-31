@@ -29,6 +29,7 @@
  */
 
 import { stepEnergyContradiction } from "./step-energy";
+import { firstUngovernedMatch } from "./hazard-modifiers";
 
 export type AnswerValidation =
   | { ok: true }
@@ -59,8 +60,12 @@ export type AnswerValidation =
 // Each pattern is a conjunction: an affirmation head, a hazard action, and an
 // energized/bypass object — so the CORRECT safety sentence ("never work on it
 // while energized", "it is not safe to bypass the interlock") does not match.
-// Negations are excluded by lookbehind or by requiring the affirmative form
-// contiguously. Tested against both directions in answer-validation.test.ts.
+// Each rule matches only the AFFIRMATIVE shape. Whether a match is cancelled
+// by a negation directly in front of it ("never", "not", "not all", "no",
+// "cannot", "-n't") is decided once, for every rule here and RIGGING_RE, by
+// the shared negation table in hazard-modifiers.ts — never by a per-rule
+// lookbehind. Caution / myth frames ("never assume X") are not cancellations. Tested in both directions in answer-validation.test.ts and the
+// hazard-modifiers*.test.ts matrix.
 const HAZARD_ACTIONS =
   "(?:reset(?:ting)?|clear(?:ing)?|work(?:ing)?|reach(?:ing)?|touch(?:ing)?|open(?:ing)?|remov\\w+|replac\\w+|repair(?:ing)?|servic\\w+|maintenance|adjust(?:ing)?|probe|probing|test(?:ing)?|measur\\w+|perform(?:ing)?|conduct(?:ing)?|carry(?:ing)?(?:\\s+out)?|disconnect\\w*|loosen(?:ing)?|unbolt(?:ing)?|crack(?:ing)?|clamp(?:ing|ed|s)?(?![-\\s]?meter))";
 const ENERGIZED_STATE = "(?:energized|live|hot|powered(?:\\s+on)?|running)";
@@ -79,7 +84,7 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
   {
     id: "affirm-energized-work",
     re: new RegExp(
-      "\\b(?:yes,?\\s+)?(?:you\\s+(?:can|may)|it(?:'s|\\s+is)\\s+(?:safe|permitted|acceptable|fine|ok(?:ay)?)|(?<!\\bnot\\s)(?<!n't\\s)(?<!\\bnever\\s)(?<!\\bcannot\\s)safe(?:ly)?\\s+to)\\b[^.!?\\n]{0,50}\\b" +
+      "\\b(?:yes,?\\s+)?(?:you\\s+(?:can|may)|it(?:'s|\\s+is)\\s+(?:safe|permitted|acceptable|fine|ok(?:ay)?)|safe(?:ly)?\\s+to)\\b[^.!?\\n]{0,50}\\b" +
         HAZARD_ACTIONS +
         "\\b[^.!?\\n]{0,60}\\b" + ENERGIZED_LINK + "\\b[^.!?\\n]{0,40}\\b" +
         ENERGIZED_STATE +
@@ -114,7 +119,7 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
   // "it's fine to bypass the interlock" / "you can jumper the light curtain"
   {
     id: "bypass-safety-device",
-    re: /\b(?:(?<!\bnever\s)(?<!\bnot\s)(?<!n't\s)safe|fine|ok(?:ay)?|acceptable|permitted|you\s+(?:can|may)|go\s+ahead)\b[^.!?\n]{0,50}\b(?:bypass|defeat|jumper|disable|overrid\w+)\w*\b[^.!?\n]{0,40}\b(?:interlock|guard|safety|light\s+curtain|e[-\s]?stop)\b/i,
+    re: /\b(?:safe|fine|ok(?:ay)?|acceptable|permitted|you\s+(?:can|may)|go\s+ahead)\b[^.!?\n]{0,50}\b(?:bypass|defeat|jumper|disable|overrid\w+)\w*\b[^.!?\n]{0,40}\b(?:interlock|guard|safety|light\s+curtain|e[-\s]?stop)\b/i,
   },
   // F1 (Codex adversarial review, iteration 1 — BLOCKER): the unsafe
   // instruction as a BARE clause-initial imperative — "Reset the E-12 fault
@@ -137,10 +142,10 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
   // coupled to a maintenance/hazard context — "Keep the machine energized
   // during the reset" is rejected; "Keep the machine energized during normal
   // production" is ordinary operating guidance and passes. Negations
-  // ("do not keep…", "never leave…") are excluded by lookbehind.
+  // ("do not keep…", "never leave…") are the shared modifier layer's job.
   {
     id: "imperative-stay-energized",
-    re: /(?<!\bnot\s)(?<!\bnever\s)(?<!n't\s)\b(?:keep|keeping|leave|leaving)\b[^.!?\n]{0,40}\b(?:energized|live|hot|powered(?:\s+on)?|running)\b[^.!?\n]{0,60}\b(?:during|while|when|before|until|as)\b[^.!?\n]{0,40}\b(?:reset(?:ting)?|repair\w*|servic\w*|maintenance|work(?:ing)?|clear(?:ing)?|replac\w*|remov\w*|open(?:ing)?|troubleshoot\w*|fault|adjust\w*|inspect\w*)\b/i,
+    re: /\b(?:keep|keeping|leave|leaving)\b[^.!?\n]{0,40}\b(?:energized|live|hot|powered(?:\s+on)?|running)\b[^.!?\n]{0,60}\b(?:during|while|when|before|until|as)\b[^.!?\n]{0,40}\b(?:reset(?:ting)?|repair\w*|servic\w*|maintenance|work(?:ing)?|clear(?:ing)?|replac\w*|remov\w*|open(?:ing)?|troubleshoot\w*|fault|adjust\w*|inspect\w*)\b/i,
   },
   // "the machine must/should/can remain energized … during the reset" — the
   // prohibition form ("must NOT remain") fails the adjacency naturally, and
@@ -163,9 +168,9 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
     // R1 (Codex): `(?<![\w-])` keeps "de-energized work is safe" out, and the
     // noun→predicate gap is at most four plain words — no clause punctuation,
     // no negation — so "energized reset, which is never safe, ... is approved"
-    // cannot bridge two clauses. R3 (Codex F5): a governing "No" / "Not all" /
-    // "Never" directly before the noun phrase negates the approval.
-    re: /(?<![\w-])(?<!\b(?:no|not\s+all|never)\s+)(?:energi[sz]ed|live|hot|power[-\s]on)\s+(?:[\w-]+\s+){0,2}?(?:reset|work|inspection|servicing|maintenance|repair|testing|troubleshooting)s?\b(?!\s+permits?\b)(?:\s+(?!(?:not|never|no)\b)[\w()\[\]-]+){0,4}?\s+(?:is|are|has\s+been|was)\s+(?:approved|allowed|permitted|acceptable|fine|ok(?:ay)?|safe|authori[sz]ed)\b/i,
+    // cannot bridge two clauses. A governing "No" / "Not all" / "Never"
+    // before the noun phrase (Codex F5) is the shared modifier layer's job.
+    re: /(?<![\w-])(?:energi[sz]ed|live|hot|power[-\s]on)\s+(?:[\w-]+\s+){0,2}?(?:reset|work|inspection|servicing|maintenance|repair|testing|troubleshooting)s?\b(?!\s+permits?\b)(?:\s+(?!(?:not|never|no)\b)[\w()\[\]-]+){0,4}?\s+(?:is|are|has\s+been|was)\s+(?:approved|allowed|permitted|acceptable|fine|ok(?:ay)?|safe|authori[sz]ed)\b/i,
   },
   // R2 (Codex): the predicate gap is bounded like energized-work-approved —
   // ≤4 plain words, no clause punctuation, no not/never/no.
@@ -183,9 +188,12 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
   // absence of voltage is a legitimate qualified-person step.
   {
     id: "passive-energized-permission",
-    // R3 (Codex F5): "never/don't assume … can be inspected live" is caution,
-    // not permission. The lookbehind stays inside one clause (no ; : . ! ?).
-    re: /(?<!\b(?:never|don't|do\s+not)\s+(?:assume|think|believe|expect)\b[^.!?\n;:]{0,40})\b(?:can|may|could|should)\s+(?:safely\s+|still\s+)?be\s+(?:inspected|serviced|reset|repaired|adjusted|cleaned|touched|handled|opened|worked\s+on|cleared|replaced|removed)\s+(?:while\s+(?:it\s+is\s+|still\s+)?)?(?:live|energi[sz]ed|hot|running|powered(?:\s+on)?|with\s+(?:the\s+)?power\s+(?:still\s+)?on)\b/i,
+    // Inherited from main (#4200 R3, Codex F5): "never/don't assume … can be
+    // inspected live" is caution, not permission. The ONE caution exclusion
+    // kept per-rule while frames are out of the shared layer's scope — so this
+    // sentence stays released exactly as on main. Its window now also stops at
+    // , — – (main's did not, which leaked "Don't think twice — … live").
+    re: /(?<!\b(?:never|don't|do\s+not)\s+(?:assume|think|believe|expect)\b[^.!?\n;:,—–]{0,40})\b(?:can|may|could|should)\s+(?:safely\s+|still\s+)?be\s+(?:inspected|serviced|reset|repaired|adjusted|cleaned|touched|handled|opened|worked\s+on|cleared|replaced|removed)\s+(?:while\s+(?:it\s+is\s+|still\s+)?)?(?:live|energi[sz]ed|hot|running|powered(?:\s+on)?|with\s+(?:the\s+)?power\s+(?:still\s+)?on)\b/i,
   },
   // R2 (Codex): the gap may not cross ; or : or pass an isolation word
   // ("leave it on for monitoring; lock out, then repair" is the safe sequence).
@@ -195,7 +203,7 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
   // watch the HMI") have no hazard verb in the imperative slot.
   {
     id: "leave-on-then-act",
-    re: /(?<!\bnot\s)(?<!\bnever\s)(?<!n't\s)\b(?:leave|keep)\s+(?:the\s+|this\s+)?(?:machine|unit|equipment|power|drive|motor|press|line|conveyor|system|sealer|it)\s+(?:on|running|energi[sz]ed|powered(?:\s+on)?|live)\b(?:(?!\b(?:lock\w*|tag\w*|isolat\w*|de-?energi[sz]\w*|shut\w*|loto)\b)[^.!?\n;:]){0,40}?(?:,|\band\b|\bthen\b)\s+(?:then\s+)?(?:press\s+(?:the\s+)?reset|reset|open(?!\s+(?:the\s+)?(?:hmi|screen|alarm|menu|page|display|tab|app|log|history|trend|faceplate)\b)|remove|replace|repair|service|adjust|touch|reach\s+(?:into|in))\b/i,
+    re: /\b(?:leave|keep)\s+(?:the\s+|this\s+)?(?:machine|unit|equipment|power|drive|motor|press|line|conveyor|system|sealer|it)\s+(?:on|running|energi[sz]ed|powered(?:\s+on)?|live)\b(?:(?!\b(?:lock\w*|tag\w*|isolat\w*|de-?energi[sz]\w*|shut\w*|loto)\b)[^.!?\n;:]){0,40}?(?:,|\band\b|\bthen\b)\s+(?:then\s+)?(?:press\s+(?:the\s+)?reset|reset|open(?!\s+(?:the\s+)?(?:hmi|screen|alarm|menu|page|display|tab|app|log|history|trend|faceplate)\b)|remove|replace|repair|service|adjust|touch|reach\s+(?:into|in))\b/i,
   },
   // Iteration-3 blocker: MODAL/advisory instruction heads — "You should
   // reset … while energized" / "It is advisable to perform maintenance while
@@ -252,14 +260,14 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
   // correction.
   {
     id: "flame-near-gas",
-    re: /(?<!\bnever\s)(?<!\bnot\s)(?<!n't\s)\b(?:use|using|strike|light|hold)\b[^.!?\n,;]{0,30}\b(?:lighter|match(?:es)?|open\s+flame|flame|torch|candle)\b[^.!?\n,;]{0,50}\b(?:gas|leak|fuel|propane|methane|vapou?r)\b|(?<!\bnever\s)(?<!\bnot\s)\b(?:locate|find|detect|check(?:ing)?|test(?:ing)?|trace)\b[^.!?\n,;]{0,40}\bleak\b[^.!?\n,;]{0,40}\b(?:with|using)\s+(?:a\s+|an\s+)?(?:lighter|match|open\s+flame|flame|torch)\b/i,
+    re: /\b(?:use|using|strike|light|hold)\b[^.!?\n,;]{0,30}\b(?:lighter|match(?:es)?|open\s+flame|flame|torch|candle)\b[^.!?\n,;]{0,50}\b(?:gas|leak|fuel|propane|methane|vapou?r)\b|\b(?:locate|find|detect|check(?:ing)?|test(?:ing)?|trace)\b[^.!?\n,;]{0,40}\bleak\b[^.!?\n,;]{0,40}\b(?:with|using)\s+(?:a\s+|an\s+)?(?:lighter|match|open\s+flame|flame|torch)\b/i,
   },
   // Gravity — body position under a load that is raised or held only by a
   // cylinder/hoist ("work beneath the raised platen", "stand under the
   // suspended die", "… supported only by …").
   {
     id: "under-unsupported-load",
-    re: /(?<!\bnever\s)(?<!\bnot\s)(?<!n't\s)\b(?:work(?:ing)?|stand(?:ing)?|reach(?:ing)?|crawl(?:ing)?|position(?:ing)?|get|go(?:ing)?)\b[^.!?\n,;]{0,20}\b(?:under|beneath|below)\b[^.!?\n]{0,40}\b(?:raised|suspended|elevated|lifted|jacked)\b|\b(?:under|beneath|below)\b[^.!?\n]{0,60}\bsupported\s+only\s+by\b/i,
+    re: /\b(?:work(?:ing)?|stand(?:ing)?|reach(?:ing)?|crawl(?:ing)?|position(?:ing)?|get|go(?:ing)?)\b[^.!?\n,;]{0,20}\b(?:under|beneath|below)\b[^.!?\n]{0,40}\b(?:raised|suspended|elevated|lifted|jacked)\b|\b(?:under|beneath|below)\b[^.!?\n]{0,60}\bsupported\s+only\s+by\b/i,
   },
   // MIRA claiming to have verified an isolation/safety state it cannot
   // verify remotely — "I have verified zero energy from this photo." The
@@ -274,12 +282,12 @@ const HAZARD_AFFIRMATIONS: readonly { readonly id: string; readonly re: RegExp }
 // Rigging overload — "Lift this 4-ton load using the 2-ton hoist." The two
 // same-unit ratings are parsed and compared; a lift within capacity does not
 // match, and different units are left to the semantic layer rather than
-// guessed. Negations occupy the pre-verb slot ("must never lift…").
+// guessed. Negation ("never lift…") is the shared modifier layer's job.
 const RIGGING_RE =
-  /(?<!\bnever\s)(?<!\bnot\s)(?<!n't\s)\b(?:lift(?:ing)?|hoist(?:ing)?|rais(?:e|ing)|carry(?:ing)?|mov(?:e|ing))\b[^.!?\n]{0,40}?\b(\d+(?:\.\d+)?)[-\s]?(tons?|tonnes?|t|kg|lbs?|pounds?)\b[^.!?\n]{0,50}?\b(?:using|with|on)\b[^.!?\n]{0,30}?\b(\d+(?:\.\d+)?)[-\s]?(tons?|tonnes?|t|kg|lbs?|pounds?)[-\s]?(?:rated\s+)?(?:hoist|crane|sling|shackle|strap|chain|winch)\b/i;
+  /\b(?:lift(?:ing)?|hoist(?:ing)?|rais(?:e|ing)|carry(?:ing)?|mov(?:e|ing))\b[^.!?\n]{0,40}?\b(\d+(?:\.\d+)?)[-\s]?(tons?|tonnes?|t|kg|lbs?|pounds?)\b[^.!?\n]{0,50}?\b(?:using|with|on)\b[^.!?\n]{0,30}?\b(\d+(?:\.\d+)?)[-\s]?(tons?|tonnes?|t|kg|lbs?|pounds?)[-\s]?(?:rated\s+)?(?:hoist|crane|sling|shackle|strap|chain|winch)\b/i;
 
 function riggingOverload(text: string): string | null {
-  const m = RIGGING_RE.exec(text);
+  const m = firstUngovernedMatch(RIGGING_RE, text);
   if (!m) return null;
   const unit = (u: string) => (u.startsWith("t") ? "t" : u.startsWith("kg") ? "kg" : "lb");
   if (unit(m[2].toLowerCase()) !== unit(m[4].toLowerCase())) return null;
@@ -1287,7 +1295,9 @@ export function validateAnswer(opts: {
       ? part.replace(/[^\r\n.!?]/g, " ") : part)
     .join("");
   for (const p of HAZARD_AFFIRMATIONS) {
-    const m = p.re.exec(affirmationScanText);
+    // Negation / caution / hypothetical scope is decided once, by the shared
+    // ConText-style modifier table (hazard-modifiers.ts), not per rule.
+    const m = firstUngovernedMatch(p.re, affirmationScanText);
     if (m) return hazardWarning(`unsafe-answer:${p.id}`, m[0].slice(0, 160), answerText);
   }
 
