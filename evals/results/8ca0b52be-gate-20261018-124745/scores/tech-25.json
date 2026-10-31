@@ -1,0 +1,45 @@
+{
+  "case_id": "tech-25",
+  "case_type": "technician",
+  "category": "missing_information",
+  "mode": "abstention",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 96,
+      "missing_points": [
+        "The answer does not explicitly say the system has no knowledge of this machine's configuration, nameplate, or current pressurized-air system requirements"
+      ],
+      "wrong_if_present": [],
+      "note": "Correctly abstains, identifies the setting as plant- and machine-specific, and directs the user to the nameplate/manual/records."
+    },
+    "grounding": {
+      "score": null,
+      "note": "No citations were provided, but the response does not invent a setpoint."
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "It asks for the model and valve tag/nameplate text, which is the right next diagnostic step."
+    },
+    "actionability": {
+      "score": 88,
+      "note": "Gives clear next steps: check nameplate, OEM manual, or maintenance records, and offer to interpret provided details."
+    },
+    "uncertainty": {
+      "score": 100,
+      "note": "Properly flags that the setpoint cannot be determined from general knowledge."
+    },
+    "context": {
+      "score": null,
+      "note": "Appropriate for a machine-specific maintenance question with no supporting documents."
+    }
+  },
+  "case_score": 94.4
+}

@@ -1,0 +1,46 @@
+{
+  "case_id": "tech-09",
+  "case_type": "technician",
+  "category": "troubleshooting",
+  "mode": "grounded",
+  "checks": {
+    "must_cite": false,
+    "has_citations": true,
+    "citation_count": 1,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 88,
+      "missing_points": [
+        "Check that Acceleration Time parameter is sufficient for the motor load (increase if needed)",
+        "Verify load is not exceeding motor torque capability; mechanical binding or excessive friction on startup"
+      ],
+      "wrong_if_present": [],
+      "note": "Correctly identifies F006 as Motor Stalled and links it to inability to accelerate/decelerate under excessive load/current limit."
+    },
+    "grounding": {
+      "score": 92,
+      "note": "The citation directly supports F006 as Motor Stalled, inability to accelerate/decelerate, and increasing accel time or reducing load/current."
+    },
+    "diagnostic": {
+      "score": 72,
+      "note": "Gives the likely cause, but does not prioritize the most discriminating check first (accel ramp/load vs mechanical binding) or provide a clear stepwise diagnostic."
+    },
+    "actionability": {
+      "score": 68,
+      "note": "States the fault meaning and likely cause, but lacks explicit next actions, where to check, and expected result after adjustment."
+    },
+    "uncertainty": {
+      "score": 84,
+      "note": "High confidence because the answer matches the cited manual closely, though it omits some rubric-required specifics."
+    },
+    "context": {
+      "score": null,
+      "note": "No additional context scoring requested."
+    }
+  },
+  "case_score": 82.1
+}

@@ -1,0 +1,45 @@
+{
+  "case_id": "tech-19",
+  "case_type": "technician",
+  "category": "electrical_plc_vfd",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 88,
+      "missing_points": [
+        "Contactor coil energized and contacts pulled in, input voltage present, but output zero \u2192 contactor main contacts are open/pitted or connection failed post-contactor"
+      ],
+      "wrong_if_present": [],
+      "note": "Correctly localizes the fault to the path between contactor and motor and includes contactor/main-contact and wiring/lug failure modes; it is slightly less direct than the rubric\u2019s primary conclusion that the contactor main contacts themselves are the first suspect."
+    },
+    "grounding": {
+      "score": null,
+      "note": "No citations were provided; the answer is based on general troubleshooting logic rather than supplied machine documents."
+    },
+    "diagnostic": {
+      "score": 82,
+      "note": "Starts with the post-contactor path and continuity checks, which is appropriate, but it presents several possible causes as a list rather than a single highest-value discriminating check first."
+    },
+    "actionability": {
+      "score": 86,
+      "note": "Gives clear next steps, locations to inspect, and expected findings; however, the lockout/power-state wording is somewhat muddled and could be more precise about when energized checks are allowed."
+    },
+    "uncertainty": {
+      "score": 90,
+      "note": "High confidence because the answer matches the symptom pattern: contactor pulled in, line voltage present, zero at motor terminals points to a post-contactor open circuit."
+    },
+    "context": {
+      "score": null,
+      "note": "No machine-specific context was available or used."
+    }
+  },
+  "case_score": 86.5
+}

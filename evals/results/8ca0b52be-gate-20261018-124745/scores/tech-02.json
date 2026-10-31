@@ -1,0 +1,46 @@
+{
+  "case_id": "tech-02",
+  "case_type": "technician",
+  "category": "general_industrial",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 78,
+      "missing_points": [
+        "Control signal source may be wired incorrectly or not active",
+        "Motor nameplate FLA may exceed drive current rating, causing startup current limit"
+      ],
+      "wrong_if_present": [],
+      "note": "Covers permissive/interlock, mechanical jam, and general control mismatch causes, but does not explicitly mention wiring/source activation or drive current-limit/FLA mismatch."
+    },
+    "grounding": {
+      "score": null,
+      "note": "No citations were provided; the response is general troubleshooting guidance rather than document-grounded."
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "The answer gives plausible causes and a useful follow-up question, but it is not a stepwise diagnostic procedure."
+    },
+    "actionability": {
+      "score": 82,
+      "note": "Identifies likely causes, where to look (enable/interlock, reference, safety circuit, wiring, load), and suggests checking status indications and output current."
+    },
+    "uncertainty": {
+      "score": 86,
+      "note": "High confidence because the answer aligns well with common no-start conditions and avoids the listed incorrect claims."
+    },
+    "context": {
+      "score": null,
+      "note": "Appropriate for a general industrial-maintenance context, but not tied to a specific machine or product documentation."
+    }
+  },
+  "case_score": 80.8
+}

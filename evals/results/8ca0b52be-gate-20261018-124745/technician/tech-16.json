@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-16",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-16",
+    "category": "electrical_plc_vfd",
+    "mode": "grounded",
+    "equipment": "Allen-Bradley PowerFlex 40 VFD",
+    "question": "PowerFlex 40 showing F2 fault. What does this code mean and what's the most likely root cause?",
+    "turns": [],
+    "expected": {
+      "must_cite": true,
+      "key_points": [
+        "F2 = overcurrent fault",
+        "Overcurrent indicates load exceeding drive's rated current capacity or phase loss on input",
+        "Must check for stalled motor, mechanical jam, or undersized drive"
+      ],
+      "wrong_if": [
+        "Confuses F2 with overvoltage (that's F1)",
+        "States F2 is a temperature fault",
+        "Recommends resetting without investigating cause"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "PowerFlex 40 showing F2 fault. What does this code mean and what's the most likely root cause?",
+      "answer": "I can\u2019t identify a PowerFlex 40 F2 fault from the loaded excerpts; they cover PowerFlex 525 and GS10 only, and the PowerFlex 40 fault table isn\u2019t present. If you provide the PowerFlex 40 manual page or the fault-code table, I can decode F2 and help narrow the likely root cause.",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 7.135335922241211,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-10-18T12:47:47.624534+00:00"
+}

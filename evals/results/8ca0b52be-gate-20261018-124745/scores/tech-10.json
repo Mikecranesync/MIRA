@@ -1,0 +1,47 @@
+{
+  "case_id": "tech-10",
+  "case_type": "technician",
+  "category": "troubleshooting",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 72,
+      "missing_points": [
+        "The jerking indicates a rapid change in acceleration or current draw during initialization",
+        "DC bus may be unstable at power-on; check input line voltage stability and any inrush limiting components",
+        "Motor mechanical connection may be loose or have slack in the coupling"
+      ],
+      "wrong_if_present": [],
+      "note": "Identifies several plausible startup causes, especially start logic and accel settings, but misses the rubric\u2019s key emphasis on initialization current/acceleration behavior, DC bus stability, and mechanical looseness."
+    },
+    "grounding": {
+      "score": null,
+      "note": "No citations were provided, so the response is not document-grounded."
+    },
+    "diagnostic": {
+      "score": 78,
+      "note": "Starts with startup command logic and speed reference, then accel/start settings, which is reasonably prioritized, though it is still a broad cause list rather than a single discriminating check."
+    },
+    "actionability": {
+      "score": 82,
+      "note": "Gives concrete checks and what to inspect, with some implied next steps, but lacks explicit expected observations and how each finding would confirm the cause."
+    },
+    "uncertainty": {
+      "score": 84,
+      "note": "The answer is broadly plausible and avoids incorrect claims, but it is not tightly aligned to the expected rubric and omits several required diagnostic angles."
+    },
+    "context": {
+      "score": null,
+      "note": "No machine-specific context was available; the answer is general guidance only."
+    }
+  },
+  "case_score": 77.5
+}

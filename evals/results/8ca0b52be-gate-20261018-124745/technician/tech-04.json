@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-04",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-04",
+    "category": "general_industrial",
+    "mode": "general",
+    "equipment": null,
+    "question": "Describe the difference between a constant-torque load and a variable-torque load in motor applications.",
+    "turns": [],
+    "expected": {
+      "key_points": [
+        "Constant-torque loads require the same torque output across all speeds (conveyors, punch presses, hoists)",
+        "Variable-torque loads require less torque at lower speeds (centrifugal fans, centrifugal pumps)",
+        "AC drives can be sized more conservatively for variable-torque because power demand scales with speed",
+        "Constant-torque applications may require larger drives due to full torque requirement at low speeds"
+      ],
+      "wrong_if": [
+        "Confuses constant-torque with constant-speed operation",
+        "Claims all HVAC and pump applications are constant-torque",
+        "States that variable-torque drives cannot be used for hoists or lifting"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Describe the difference between a constant-torque load and a variable-torque load in motor applications.",
+      "answer": "A **constant-torque load** needs about the same torque from the motor across its operating speed range, while a **variable-torque load** needs much less torque as speed drops.\n\nIn practice:\n- **Constant torque:** the load torque stays roughly flat with speed. Examples are conveyors, extruders, positive-displacement pumps, and mixers.\n- **Variable torque:** the required torque changes with speed, usually dropping off rapidly at lower speeds. Examples are centrifugal fans and centrifugal pumps.\n\nWhy it matters: constant-torque loads usually need more robust low-speed torque from the drive and motor, while variable-torque loads often need less torque at lower speed and can be more energy-efficient when slowed down.",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 4.447438716888428,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-10-18T12:49:35.797124+00:00"
+}

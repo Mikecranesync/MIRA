@@ -1,0 +1,46 @@
+{
+  "case_id": "tech-04",
+  "case_type": "technician",
+  "category": "general_industrial",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 92,
+      "missing_points": [
+        "AC drives can be sized more conservatively for variable-torque because power demand scales with speed",
+        "Constant-torque applications may require larger drives due to full torque requirement at low speeds"
+      ],
+      "wrong_if_present": [],
+      "note": "Correctly distinguishes flat torque demand vs reduced torque at lower speeds and gives appropriate examples."
+    },
+    "grounding": {
+      "score": null,
+      "note": "No citations were provided, but the task does not require them."
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "The answer is broadly correct and only omits a couple of sizing/drive-implication details from the rubric."
+    },
+    "actionability": {
+      "score": 88,
+      "note": "Clearly states what each load type is, gives examples, and explains why it matters for motor/drive selection."
+    },
+    "uncertainty": {
+      "score": 96,
+      "note": "High confidence because the response matches standard motor-load definitions closely."
+    },
+    "context": {
+      "score": null,
+      "note": "General guidance context is sufficient; no document grounding was available."
+    }
+  },
+  "case_score": 91.6
+}

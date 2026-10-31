@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-23",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-23",
+    "category": "sensors_instrumentation",
+    "mode": "general",
+    "equipment": "PNP proximity sensor, Allen-Bradley Micro820 PLC, 24 VDC I/O",
+    "question": "Proximity sensor on pump discharge is PNP type, wired to a 24 DC input on the Micro820. Sensor is not triggering the input even though the object is in range. What should you verify?",
+    "turns": [],
+    "expected": {
+      "must_cite": false,
+      "key_points": [
+        "PNP sensor switches to +24V (supply/high) when triggered; NPN switches to ground (common)",
+        "PNP output can drive an input if sensor common and input common are the same reference; if isolated, wiring will fail",
+        "Verify: sensor supply voltage, sensor common connected to input common, input voltage reading with object present"
+      ],
+      "wrong_if": [
+        "Blames the sensor without checking wiring or power supply",
+        "Confuses PNP (switches to +V/supply) with NPN (switches to ground/common)",
+        "Assumes the input is broken without testing voltage at the input terminal"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Proximity sensor on pump discharge is PNP type, wired to a 24 DC input on the Micro820. Sensor is not triggering the input even though the object is in range. What should you verify?",
+      "answer": "The most likely issue is a wiring/reference mismatch between the PNP sensor output and the Micro820 input common.\n\n1. Verify the sensor has correct power: brown to +24 VDC, blue to 0 VDC, and the supply is present.  \n2. Verify the sensor output wire is on the correct input channel and the Micro820 input common is tied so the input sees a positive signal from the sensor.  \n3. With the system de-energized if you need to move wires, confirm the input is configured for a standard digital input and not inverted or disabled in the program.  \n4. Check the sensor itself by measuring its output relative to 0 V while the target is in range; it should switch to near +24 V for a PNP output.  \n5. Verify the target is within the actual sensing distance and is the right material/size for that sensor.\n\nIf you want, I can help you trace the exact 3-wire hookup for PNP to a Micro820 input.",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 5.840918064117432,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-10-18T12:48:33.686683+00:00"
+}

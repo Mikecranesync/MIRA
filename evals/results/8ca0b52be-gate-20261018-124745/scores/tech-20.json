@@ -1,0 +1,47 @@
+{
+  "case_id": "tech-20",
+  "case_type": "technician",
+  "category": "electrical_plc_vfd",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 62,
+      "missing_points": [
+        "Induction motor inrush current at cold start can be 5\u20137x FLA for 1\u20132 seconds (soft-starters or VFDs not present)",
+        "Overload relay calibrated to 10A may not have sufficient tolerance for inrush if it's time-delayed improperly or if motor is starting under load",
+        "If motor is cold and load is normal, increase overload trip point to ~12A or verify that 3RU2 time-delay curve is appropriate for the motor"
+      ],
+      "wrong_if_present": [],
+      "note": "It correctly points to startup current, slow acceleration, and load/fase issues, but it does not state the expected inrush magnitude or the specific 3RU2 setting/curve implication."
+    },
+    "grounding": {
+      "score": null,
+      "note": "No citations were provided; answer is general troubleshooting guidance only."
+    },
+    "diagnostic": {
+      "score": 78,
+      "note": "Starts with the most discriminating check\u2014whether the trip timing matches startup/inrush\u2014then moves to load, setting, and phase checks."
+    },
+    "actionability": {
+      "score": 70,
+      "note": "Gives concrete checks and asks for trip timing, but lacks a specific corrective setting or curve recommendation tied to the 3RU2."
+    },
+    "uncertainty": {
+      "score": 72,
+      "note": "Reasonable diagnosis, but incomplete relative to the expected explanation and no machine-specific evidence."
+    },
+    "context": {
+      "score": null,
+      "note": "No product documents were cited, so context is limited to generic motor-overload behavior."
+    }
+  },
+  "case_score": 69.1
+}

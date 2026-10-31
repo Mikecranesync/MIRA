@@ -1,0 +1,47 @@
+{
+  "case_id": "tech-03",
+  "case_type": "technician",
+  "category": "general_industrial",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 78,
+      "missing_points": [
+        "Network switch or hub with proper Ethernet cabling and RJ45 connectors",
+        "Drive firmware must support Modbus TCP protocol version used by the master",
+        "Network latency and packet loss must be within drive specification (typically <100 ms typical response)"
+      ],
+      "wrong_if_present": [],
+      "note": "The answer covers stable Ethernet, IP configuration, role matching, and network quality, but omits the explicit hardware/connectivity and firmware/protocol-compatibility requirements from the rubric."
+    },
+    "grounding": {
+      "score": null,
+      "note": "No citations were provided, so the response cannot be checked against source documents."
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "The answer is technically plausible and specific, but it is not traceable to supplied evidence."
+    },
+    "actionability": {
+      "score": 82,
+      "note": "It states what is needed and gives practical configuration checks, though it could be more explicit about the exact network hardware and performance limits."
+    },
+    "uncertainty": {
+      "score": 72,
+      "note": "High confidence in the rubric-based grading, but limited by the absence of citations and product-specific documentation."
+    },
+    "context": {
+      "score": null,
+      "note": "General guidance only; no machine-specific context or source grounding was provided."
+    }
+  },
+  "case_score": 78.0
+}

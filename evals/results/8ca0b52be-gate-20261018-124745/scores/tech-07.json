@@ -1,0 +1,48 @@
+{
+  "case_id": "tech-07",
+  "case_type": "technician",
+  "category": "troubleshooting",
+  "mode": "grounded",
+  "checks": {
+    "must_cite": false,
+    "has_citations": true,
+    "citation_count": 3,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 35,
+      "missing_points": [
+        "Verify parameter P00.20 (Master Frequency Command Source) is set to the correct input source (0=Digital keypad, 1=RS-485 communication, 2=External analog input)",
+        "Check that the speed reference input (analog or digital terminal) is actually changing and is wired correctly per the manual's wiring diagram",
+        "If using terminal inputs, verify the terminal block connector is fully seated and the input signal is present with a voltmeter",
+        "Review the Speed Reference Control chart to ensure the correct parameter settings for the input source in use"
+      ],
+      "wrong_if_present": [],
+      "note": "The answer identifies the general issue of wrong speed-reference selection, but it does not name the specific GS10 checks or the top two causes requested."
+    },
+    "grounding": {
+      "score": 30,
+      "note": "The citations support that different speed reference sources exist, but they do not clearly support the specific GS10 parameters or the claimed start/source selection details."
+    },
+    "diagnostic": {
+      "score": 40,
+      "note": "It starts with a plausible first check, but it remains broad and does not isolate the two highest-value causes in a prioritized, testable way."
+    },
+    "actionability": {
+      "score": 35,
+      "note": "It suggests what to verify at a high level, but lacks exact parameter names, measurement steps, and expected results."
+    },
+    "uncertainty": {
+      "score": 55,
+      "note": "Moderately confident the answer is directionally relevant, but the evidence is weak and incomplete for the specific GS10 troubleshooting question."
+    },
+    "context": {
+      "score": null,
+      "note": "No additional context scoring requested."
+    }
+  },
+  "case_score": 37.1
+}
