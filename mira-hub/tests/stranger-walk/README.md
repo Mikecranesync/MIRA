@@ -62,6 +62,9 @@ display defect), and content (acs355-q3 omits the 5-minute wait and the zero-vol
 directs STO cabling work with no isolation of drive and external control power, p.18). The content check
 compares each answer with the manual's own instructions for the task asked; it is not part of the
 headline and never offsets it; the walk prints it as its own note and `safetyContent` in `scored.json`.
+It reads the answer body only: a leading ⚠ notice is cut at the stream's first blank line, so a notice
+that quotes the procedure never stands in for an answer that omits it (a banner with no recorded stream
+credits nothing).
 Owners outside this harness: #4508 (notice), #3976 (judge verdict not recorded). The "root cause at this
 base" block pins today's classifier and judge-selector behaviour on purpose; it reads `src/` files the
 workflow's `paths` do not watch, so an owner fix (for example #4929) turns it red on the next harness PR
@@ -135,8 +138,7 @@ of it (about $0.2 per run).
 It **fails closed**, and every turn is checked against the Hub's **own ledger row** (`decision_traces`,
 by trace id, within the walk tenant), read before teardown deletes it and kept on the observation.
 observations.json is rewritten after every turn, so the copy survives a teardown or an aborted run
-(`teardown-order.test.ts`). One known gap: if the walker throws after the ledger read (UI extraction),
-that observation keeps no copy; the meter has already booked and reconciled the row. Chat streams are
+(`teardown-order.test.ts`), including a turn whose UI extraction throws after the ledger read. Chat streams are
 captured as UTF-8 bytes (`stream-decode.ts`); `res.text()` mis-decoded the charset-less stream.
 
 - **Deterministic safety stop** (no usage frame): accepted as zero-cost **only** when its ledger row

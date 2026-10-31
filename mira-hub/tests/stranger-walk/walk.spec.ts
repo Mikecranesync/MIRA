@@ -26,6 +26,8 @@ import {
 } from "./staging";
 
 const corpus = corpusJson as Corpus;
+/** Each dispatched turn's ledger copy, by question id: teardown deletes the rows it was read from. */
+const ledgerById = new Map<string, Observation["ledger"]>();
 const RUN_ID = process.env.STRANGER_WALK_RUN_ID ?? new Date().toISOString().replace(/[:.]/g, "-");
 const OUT = path.resolve(process.env.STRANGER_WALK_OUT ?? path.join(__dirname, ".out", RUN_ID));
 const ONLY = process.env.STRANGER_WALK_ONLY ? new Set(process.env.STRANGER_WALK_ONLY.split(",")) : null;
@@ -135,6 +137,7 @@ async function ask(page: Page, q: Question, manualFilename: string, attach: { na
   // only when the row proves no provider ran; a served turn reconciles cost + Jev usage. Read now —
   // teardown deletes the tenant's rows — and keep a copy on the observation.
   const ledger = DRY || !sse ? null : await ledgerVerdictFor(tenantId, sse, undefined, prices);
+  ledgerById.set(q.id, ledger); // kept even if a later UI step throws (the walker catch reattaches it)
   if (!DRY) meter.verify(q.id, sse, ledger?.verdict);
   if (!res) {
     const err = await page.getByRole("alert", { name: "Send error" }).innerText().catch(() => "");
@@ -235,7 +238,7 @@ test("stranger walk", async ({ page }) => {
           obs.push(o);
         } catch (e) {
           await page.screenshot({ path: path.join(OUT, "shots", `${q.id}.png`) }).catch(() => undefined);
-          obs.push(brokenObs(q.id, `walker: ${(e as Error).message.split("\n")[0].slice(0, 200)}`));
+          obs.push({ ...brokenObs(q.id, `walker: ${(e as Error).message.split("\n")[0].slice(0, 200)}`), ledger: ledgerById.get(q.id) ?? null });
         }
         writeFileSync(path.join(OUT, "observations.json"), JSON.stringify(obs, null, 2));
       }

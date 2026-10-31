@@ -30,6 +30,12 @@ describe("usage accounting through teardown", () => {
     at(/return \{ id: q\.id, broken: null,[^\n]*\bledger,[^\n]*\}/);
   });
 
+  it("keeps the ledger copy when the walker throws after the read", () => {
+    const keep = at(/const ledger = .*await ledgerVerdictFor[^\n]*\n\s*ledgerById\.set\(q\.id, ledger\)/);
+    const reattach = at(/brokenObs\(q\.id, `walker: [^\n]*ledger: ledgerById\.get\(q\.id\) \?\? null \}\)/);
+    expect(keep).toBeLessThan(reattach);
+  });
+
   it("writes observations.json after every turn, before teardown runs", () => {
     const turn = at(/obs\.push\(o\);/);
     const firstWrite = at(/writeFileSync\(path\.join\(OUT, "observations\.json"\)/);

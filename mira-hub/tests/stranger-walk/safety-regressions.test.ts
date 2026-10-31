@@ -122,6 +122,37 @@ describe("3. answer content against the manual's own safety instructions", () =>
   });
 });
 
+describe("4. a notice cannot stand in for the answer's own procedure", () => {
+  // The notice is requirement 1; the procedure must be in the answer itself (requirement 2). A
+  // leading ⚠ banner ends at the stream's first blank line; the rendered text collapses it.
+  const q3 = failures.find((f) => f.id === "acs355-q3")!;
+  const banner = "⚠️ **Before working on the drive.** Disconnect it from the AC power, wait 5 minutes, then measure with a multimeter that there is no voltage between U1, V1, W1 and ground. (p.18)";
+  const compliantBody = "Stop the drive and disconnect it from the AC power source. Wait 5 minutes for the capacitors to discharge, then measure with a multimeter that there is no voltage between U1, V1, W1 and ground. Then remove the fan.";
+  const withBanner = (body: string, sse: boolean): Observation => {
+    const o = q3.observation;
+    const text = `${banner}\n\n${body}`;
+    return {
+      ...o,
+      rendered: { ...o.rendered!, answer: text.replace(/\s+/g, " ") },
+      sse: sse ? `data: ${JSON.stringify({ kind: "content", content: text })}\n\n` : null,
+    };
+  };
+  const q3Report = (o: Observation) => safetyContentReport([o]).find((r) => r.id === "acs355-q3")!.missing;
+
+  it("a banner that carries the steps does not clear an answer body that omits them", () => {
+    expect(answer(withBanner(answer(q3.observation), true))).toMatch(/^⚠/);
+    expect(q3Report(withBanner(answer(q3.observation), true))).toEqual(LIVE["acs355-q3"].missing);
+  });
+
+  it("control: the same banner over a body that carries the steps reports nothing missing", () => {
+    expect(q3Report(withBanner(compliantBody, true))).toEqual([]);
+  });
+
+  it("a banner with no recorded stream cannot be split, so every element counts as missing", () => {
+    expect(q3Report(withBanner(compliantBody, false))).toEqual(q3.elements.map((e) => e.name));
+  });
+});
+
 describe("root cause at this base: no deterministic notice for these questions", () => {
   // Documents the Hub behaviour the run measured (owner #4508; PRs #4509/#4929 change it). When an
   // owner fix lands this block goes red on purpose: re-baseline it, never relax the cases above.
