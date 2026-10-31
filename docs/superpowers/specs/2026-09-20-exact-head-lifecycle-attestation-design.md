@@ -57,6 +57,46 @@ absent, stale, malformed, or negative.
 
 For a PR that touches no guarded path, the guard passes without an attestation.
 
+**Marketing-site narrowing (owner-approved 2026-10-20):** a PR that only
+touches public factorylm.com marketing pages and docs also passes without an
+attestation. Removed from the guarded-path scope (path-scope only; not a
+phrase list):
+
+- an exact allowlist of public marketing pages under `mira-web/public/`
+  plus `llms.txt` / `llms-full.txt` (not that directory)
+- an exact allowlist of marketing views under `mira-web/src/views/` and
+  the current public-site tests under `mira-web/src/__tests__/` and
+  `mira-web/src/views/__tests__/` (not those directories)
+- `mira-web/src/lib/blog-renderer.ts` and `mira-web/src/lib/feature-renderer.ts`
+
+`docs/**` was already open except control-plane files
+(`docs/architecture/convergence/REGISTRY.yaml`,
+`docs/architecture/convergence/UNIFIED_UI_CUTOVER.md`,
+`docs/adversarial-review-workflow.md`) and the preview surface
+`docs/preview/**`. Those stay guarded.
+
+Ambiguous product-adjacent paths kept guarded: every unlisted
+`mira-web/src/views/` file (including `scan-not-found.html` and any future
+admin/checkout page), `mira-web/src/lib/drive-commander-renderer.ts`,
+`mira-web/src/lib/head.ts`, `mira-web/src/lib/components.ts`,
+`mira-web/src/data/**`, `mira-web/emails/**`, `mira-web/public/robots.txt`,
+`.well-known/**`, and every unlisted file under `mira-web/public/**`.
+Hub/app screens, shared UI packages, and
+control-plane paths stay fail-closed exactly as before.
+
+HTML-safety runs on the full raw PR body, footer included. The
+author-written `## Lifecycle guard rationale` check ignores the
+auto-injected Cursor agent wrapper and a trailing footer only when that
+footer is the final trailing block and the end marker is the last
+occurrence followed by nothing but that footer or whitespace. Mid-body
+quotes of the marker or footer stay as author text. The trailing footer
+must match the genuine Cursor template (one anchored regex;
+`href`/`src`/`srcset` only on `https://cursor.com/`; no `on*` /
+`style` / `javascript:` / `data:` / extra attributes). A fake
+footer-shaped `<div>` that hides `<script>`, `onerror`, or other HTML
+fails closed. HTML inside the author-written rationale still fails
+closed.
+
 For a PR that touches one or more guarded legacy or control-plane paths, all of
 the following are required:
 

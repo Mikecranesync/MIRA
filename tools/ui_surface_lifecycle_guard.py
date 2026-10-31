@@ -128,14 +128,68 @@ CONTROL_PATTERNS: tuple[str, ...] = (
 # bypasses, while this trusted-base code keeps API/transport/domain paths
 # available for the canonical adapters to reuse.
 #
-# Public trees are blanket guarded. Images, fonts, PDFs, and manifests all
-# change the shipped legacy experience; "non-executable" never meant
-# "non-presentational". New canonical assets belong in the shared packages or
-# a bounded `src/factorylm-ui/**` adapter, not in an old public tree.
+# Public trees are blanket guarded except the marketing-site carve-out in
+# `_is_open_marketing_site_path`. Images, fonts, PDFs, manifests, and
+# executable public assets still change the shipped legacy experience;
+# "non-executable" never meant "non-presentational". New canonical assets
+# belong in the shared packages or a bounded `src/factorylm-ui/**` adapter,
+# not in an old public tree.
 # ---------------------------------------------------------------------------
 PUBLIC_STATIC_GUARDED_ROOTS: tuple[str, ...] = (
     "mira-web/public/",
     "mira-hub/public/",
+)
+
+# Owner-approved 2026-10-20: public marketing pages no longer require a
+# rationale + exact-head Codex GREEN. Path-scope only — not a phrase list.
+# Exact public marketing pages plus the two marketing-generated llms files.
+# robots.txt, .well-known/**, and any new public file stay fail-closed.
+_WEB_MARKETING_PUBLIC_PATHS: frozenset[str] = frozenset(
+    {
+        "mira-web/public/assess.html",
+        "mira-web/public/buy.html",
+        "mira-web/public/legal/dpa.html",
+        "mira-web/public/llms-full.txt",
+        "mira-web/public/llms.txt",
+        "mira-web/public/pricing.html",
+        "mira-web/public/privacy.html",
+        "mira-web/public/terms.html",
+        "mira-web/public/trust.html",
+    }
+)
+
+_WEB_MARKETING_LIB_PATHS: frozenset[str] = frozenset(
+    {
+        "mira-web/src/lib/blog-renderer.ts",
+        "mira-web/src/lib/feature-renderer.ts",
+    }
+)
+
+# Exact public marketing views. Anything else under `mira-web/src/views/` —
+# including a future admin/checkout page — stays fail-closed. The QR-scan
+# miss page is omitted on purpose.
+_WEB_MARKETING_VIEW_PATHS: frozenset[str] = frozenset(
+    {
+        "mira-web/src/views/_topbar.ts",
+        "mira-web/src/views/cmms.ts",
+        "mira-web/src/views/home.ts",
+        "mira-web/src/views/limitations.ts",
+        "mira-web/src/views/security.ts",
+    }
+)
+
+# Exact public-site tests that currently live under the two marketing test
+# roots. Unlisted `__tests__/` files stay fail-closed.
+_WEB_MARKETING_TEST_PATHS: frozenset[str] = frozenset(
+    {
+        "mira-web/src/__tests__/health-identity.test.ts",
+        "mira-web/src/__tests__/printsense-landing.test.ts",
+        "mira-web/src/__tests__/site-wide-topbar.test.ts",
+        "mira-web/src/views/__tests__/cmms.test.ts",
+        "mira-web/src/views/__tests__/home.test.ts",
+        "mira-web/src/views/__tests__/honest-claims.test.ts",
+        "mira-web/src/views/__tests__/topbar.test.ts",
+    }
 )
 
 # Production build, mount, native-wrapper, and release controls sit outside
@@ -360,10 +414,8 @@ _WEB_PRESERVED_ROUTE_PATHS: frozenset[str] = frozenset(
 
 _WEB_PRESENTATION_LIB_PATHS: frozenset[str] = frozenset(
     {
-        "mira-web/src/lib/blog-renderer.ts",
         "mira-web/src/lib/components.ts",
         "mira-web/src/lib/drive-commander-renderer.ts",
-        "mira-web/src/lib/feature-renderer.ts",
         "mira-web/src/lib/head.ts",
     }
 )
@@ -635,6 +687,49 @@ _MIN_SUBSTANTIVE_TOKENS = 3
 _MIN_SUBSTANTIVE_ALNUM_CHARS = 12
 _FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _GITHUB_MARKDOWN = MarkdownIt("commonmark").enable(["table", "strikethrough"])
+# Cursor wraps agent-authored PR bodies in these comments and appends an
+# HTML footer after the end marker. That footer is not attestation text.
+_CURSOR_AGENT_BODY_BEGIN = "<!-- CURSOR_AGENT_PR_BODY_BEGIN -->"
+_CURSOR_AGENT_BODY_END = "<!-- CURSOR_AGENT_PR_BODY_END -->"
+# Genuine Cursor cloud-agent footer template. HTML-safety runs on the full
+# raw PR body (footer included). Exemption and rationale-strip apply only
+# when the trailing block matches this anchored template exactly — one
+# <div> of two picture CTAs, href/src/srcset only on https://cursor.com/,
+# and only the listed attributes. on*/style/javascript:/data:/extra
+# attributes cannot match and therefore get the full HTML-safety check.
+_CURSOR_HTTPS_ASSET = r"https://cursor\.com/[A-Za-z0-9._~/-]+"
+_CURSOR_FOOTER_AGENT_HREF = (
+    r"https://cursor\.com/agents/[A-Za-z0-9._~-]+"
+    r"\?cursor_ref=pr_footer"
+    r"(?:(?:&|&amp;)cursor_cta=open_in_web)?"
+)
+_CURSOR_FOOTER_BG_HREF = (
+    r"https://cursor\.com/background-agent\?bcId=[A-Za-z0-9._~-]+"
+    r"(?:&|&amp;)cursor_ref=pr_footer"
+    r"(?:(?:&|&amp;)cursor_cta=open_in_cursor)?"
+)
+_CURSOR_FOOTER_SOURCE = (
+    r'<source media="\(prefers-color-scheme: (?:dark|light)\)" '
+    rf'srcset="{_CURSOR_HTTPS_ASSET}">'
+)
+_CURSOR_FOOTER_IMG = (
+    r'<img alt="Open in (?:Web|Cursor)"'
+    r'(?: width="[0-9]{1,4}")?'
+    r'(?: height="[0-9]{1,4}")?'
+    rf' src="{_CURSOR_HTTPS_ASSET}">'
+)
+_CURSOR_FOOTER_PICTURE = (
+    f"<picture>{_CURSOR_FOOTER_SOURCE}{_CURSOR_FOOTER_SOURCE}"
+    f"{_CURSOR_FOOTER_IMG}</picture>"
+)
+_CURSOR_PR_FOOTER_RE = re.compile(
+    r"\s*<div>"
+    rf'<a href="{_CURSOR_FOOTER_AGENT_HREF}">{_CURSOR_FOOTER_PICTURE}</a>'
+    r"(?:&nbsp;)?"
+    rf'<a href="{_CURSOR_FOOTER_BG_HREF}">{_CURSOR_FOOTER_PICTURE}</a>'
+    r"(?:&nbsp;)?"
+    r"</div>\s*\Z"
+)
 # The Codex review ledger's comment envelope, byte-for-byte the shape
 # `scripts/adversarial-review-ledger.mjs` (V2_REVIEW_RE) accepts. Anything that
 # does not match from the first character is not an attestation — it cannot
@@ -999,6 +1094,9 @@ def _classify_web_source(path: str) -> bool:
         # escape hatch from the presentation freeze.
         return path not in _WEB_PRESERVED_LIB_PATHS
     if path.startswith("mira-web/src/views/") or path.startswith("mira-web/src/data/"):
+        # Allowlisted marketing views are opened by `_is_open_marketing_site_path`
+        # before this classifier runs. Unlisted views and content data stay
+        # fail-closed here.
         return True
     if path == "mira-web/src/server.ts":
         return True
@@ -1072,7 +1170,24 @@ def _classify_source_path(path: str) -> Optional[bool]:
     return None
 
 
+def _is_open_marketing_site_path(path: str) -> bool:
+    """True for public factorylm.com marketing pages that no longer need attestation.
+
+    Path-scope only. Hub screens, shared UI packages, and control-plane
+    files never match. Unlisted `src/views/`, `__tests__/`, and
+    `mira-web/public/` files stay guarded.
+    """
+    return (
+        path in _WEB_MARKETING_PUBLIC_PATHS
+        or path in _WEB_MARKETING_LIB_PATHS
+        or path in _WEB_MARKETING_VIEW_PATHS
+        or path in _WEB_MARKETING_TEST_PATHS
+    )
+
+
 def path_is_guarded(path: str, policy: GuardPolicy) -> bool:
+    if _is_open_marketing_site_path(path):
+        return False
     surface_control = _classify_legacy_surface_control(path)
     if surface_control is not None:
         return surface_control
@@ -1645,14 +1760,20 @@ def _has_unsafe_html(tokens) -> bool:
     emitted as a level-zero heading token. HTML comment recovery also differs
     between Markdown renderers and HTML5 browsers. Permit only one strictly
     valid standalone comment per HTML token; reject tags, unclosed/malformed
-    comments, or combined comment/tag tokens anywhere in the PR body.
+    comments, or combined comment/tag tokens. The check runs on the full
+    raw PR body, footer included. The genuine Cursor cloud-agent footer
+    template (anchored regex) is the sole non-comment HTML exception.
     """
     for token in tokens:
         for candidate in (token, *(token.children or ())):
-            if candidate.type in {"html_block", "html_inline"} and not (
-                _is_safe_standalone_html_comment(candidate.content)
-            ):
-                return True
+            if candidate.type not in {"html_block", "html_inline"}:
+                continue
+            content = candidate.content
+            if _is_safe_standalone_html_comment(content):
+                continue
+            if _is_exact_cursor_pr_footer(content):
+                continue
+            return True
     return False
 
 
@@ -1674,8 +1795,58 @@ def _has_renderer_specific_markup(source: str) -> bool:
     return _GITHUB_FOOTNOTE_RE.search(source) is not None or source.count("$") >= 2 or "~" in source
 
 
+def _is_exact_cursor_pr_footer(block: str) -> bool:
+    """True only when *block* is the genuine Cursor cloud-agent footer.
+
+    Exemption is the anchored template regex only. A footer-shaped
+    ``<div>`` with extra tags, ``on*`` / ``style`` attributes,
+    ``javascript:`` / ``data:`` URLs, or any other deviation is not
+    exempt and receives the full HTML-safety check.
+    """
+    return _CURSOR_PR_FOOTER_RE.fullmatch(block) is not None
+
+
+def _strip_trailing_cursor_pr_footer(source: str) -> str:
+    """Remove the genuine footer only when it is the final trailing block."""
+    div_at = source.rfind("<div>")
+    if div_at == -1:
+        return source
+    start = div_at
+    while start > 0 and source[start - 1].isspace():
+        start -= 1
+    if _CURSOR_PR_FOOTER_RE.fullmatch(source[start:]):
+        return source[:start]
+    return source
+
+
+def _author_written_pr_body(pr_body: str) -> str:
+    """Return the author-written PR body, ignoring Cursor agent injection.
+
+    Cursor wraps agent-authored bodies in HTML comments and appends a
+    marketing footer after the end marker. Both strips are end-anchored:
+    the footer is removed only when it is the final trailing block
+    (optional surrounding whitespace), and the end marker is cut only
+    when it is the last occurrence and is followed by nothing but that
+    footer or whitespace. Mid-body quotes of the marker or footer stay
+    as author text. HTML-safety still runs on the full raw body first.
+    """
+    source = _strip_trailing_cursor_pr_footer(pr_body or "")
+    end_at = source.rfind(_CURSOR_AGENT_BODY_END)
+    if end_at != -1:
+        after = source[end_at + len(_CURSOR_AGENT_BODY_END) :]
+        if after.strip() == "":
+            source = source[:end_at]
+    begin_at = source.find(_CURSOR_AGENT_BODY_BEGIN)
+    if begin_at != -1:
+        source = source[begin_at + len(_CURSOR_AGENT_BODY_BEGIN) :]
+    return source
+
+
 def _find_exception_sections(pr_body: str) -> tuple[list[str], Optional[str]]:
-    source = pr_body or ""
+    raw = pr_body or ""
+    if _has_unsafe_html(_GITHUB_MARKDOWN.parse(raw)):
+        return [], "body:unsafe or non-comment HTML invalidates Lifecycle guard rationale"
+    source = _author_written_pr_body(raw)
     tokens = _GITHUB_MARKDOWN.parse(source)
     if _has_unsafe_html(tokens):
         return [], "body:unsafe or non-comment HTML invalidates Lifecycle guard rationale"
