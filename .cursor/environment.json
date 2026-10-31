@@ -1,0 +1,10 @@
+{
+  "name": "MIRA — offline dev + SimLab",
+  "install": "bash .cursor/install.sh",
+  "terminals": [
+    {
+      "name": "simlab",
+      "command": "source .venv/bin/activate && python -m simlab --host 127.0.0.1 --port 8099"
+    }
+  ]
+}
