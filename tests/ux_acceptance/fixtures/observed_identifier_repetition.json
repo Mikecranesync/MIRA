@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "buildSha": "0000000000000000000000000000000000000003",
+  "surface": "mobile",
+  "route": "/notebook/sensor-v0-overnight",
+  "viewport": {
+    "width": 412,
+    "height": 915
+  },
+  "styleProperties": [
+    "color",
+    "background-color"
+  ],
+  "_provenance": "Pixel 9a 2026-09-07, .audit/device/01-current.png. FOUR DISTINCT COMPONENTS render one identifier in the top third (mobile teardown 1.2): header title, breadcrumb, confirmed pill, composer 'Using:' line. Ancestry is modelled because the defect is SPATIAL \u2014 four components that do not compose \u2014 and a flat fixture cannot express that.",
+  "nodes": [
+    {
+      "id": "header",
+      "tag": "header",
+      "text": "",
+      "attrs": {
+        "class": "fl-shell__header"
+      },
+      "rendered": true,
+      "hittable": true
+    },
+    {
+      "id": "header-title",
+      "tag": "h1",
+      "text": "Sensor v0 overnight 2026-08-28",
+      "attrs": {
+        "class": "fl-shell__title"
+      },
+      "parentId": "header",
+      "rendered": true,
+      "hittable": true
+    },
+    {
+      "id": "nav",
+      "tag": "nav",
+      "text": "",
+      "attrs": {
+        "class": "fl-breadcrumb"
+      },
+      "rendered": true,
+      "hittable": true
+    },
+    {
+      "id": "breadcrumb",
+      "tag": "span",
+      "text": "Notebooks / Sensor v0 overnight 2026-08-28",
+      "attrs": {
+        "class": "fl-card__meta"
+      },
+      "parentId": "nav",
+      "rendered": true,
+      "hittable": true
+    },
+    {
+      "id": "turn1",
+      "tag": "li",
+      "text": "",
+      "attrs": {
+        "class": "fl-turn"
+      },
+      "rendered": true,
+      "hittable": true
+    },
+    {
+      "id": "turn1-head",
+      "tag": "div",
+      "text": "",
+      "attrs": {
+        "class": "fl-turn__head"
+      },
+      "parentId": "turn1",
+      "rendered": true,
+      "hittable": true
+    },
+    {
+      "id": "machine-pill",
+      "tag": "span",
+      "text": "Sensor v0 overnight 2026-08-28 \u00b7 confirmed",
+      "attrs": {
+        "class": "fl-card__meta"
+      },
+      "parentId": "turn1-head",
+      "rendered": true,
+      "hittable": true
+    },
+    {
+      "id": "composer",
+      "tag": "form",
+      "text": "",
+      "attrs": {
+        "class": "fl-composer"
+      },
+      "rendered": true,
+      "hittable": true
+    },
+    {
+      "id": "composer-using",
+      "tag": "p",
+      "text": "Using: Sensor v0 overnight 2026-08-28",
+      "attrs": {
+        "class": "fl-card__meta"
+      },
+      "parentId": "composer",
+      "rendered": true,
+      "hittable": true
+    }
+  ]
+}
