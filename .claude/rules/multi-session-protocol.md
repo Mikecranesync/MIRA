@@ -45,6 +45,30 @@ Do not create an empty/noisy PR when an assigned issue or existing canonical
 PR already provides an adequate claim. A PR that carries the actual work is
 itself a valid claim.
 
+**An adjudication that is not on the PR thread does not exist.** Automation and
+other sessions read the thread; they do not read your peer messages or the
+human's chat. On 2026-09-08 two reviewers agreed in peer messages that a finding
+was deferred, left it there for two hours, and the Foreman — which *does* read
+the thread each wake — dispatched a P0 work order from the stale finding text.
+The resulting push broke the surface and cost a revert. Post the conclusion to
+the thread **when you reach it**, not when a collision forces you to.
+
+**No push to a branch under active review without a posted `[WORK-CLAIM]`.**
+Two unclaimed pushes landed on one PR that night; one required a revert, one
+improved the branch, and the difference was luck rather than process. An
+unclaimed push is revertible on sight regardless of its quality — the shared
+Git identity means the commit itself cannot tell anyone who wrote it, which is
+exactly what the claim exists to supply. If you must push without a claim,
+post `[WORK-CLAIM] … Status: COMPLETE` with the exact 40-character SHA
+immediately after, and say which session you are.
+
+**Never run `gh pr merge --delete-branch` from the shared checkout.** When the
+PR branch exists locally, `gh` checks it out, resets it, merges, then switches
+to the base branch — silently rewriting `HEAD` in a working tree another session
+may be using. It reads as a purely remote operation and is not one. Use a
+throwaway detached worktree, or omit `--delete-branch` and delete the remote
+branch separately.
+
 **Claim acquisition is check-then-act and therefore racy — the winner is
 decided by a post-claim reread, not by the pre-check.** After posting your
 claim, RE-READ the claim namespace (open PRs + issues + markers for the
