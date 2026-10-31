@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import corpusJson from "./corpus.json";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { assertOpenRouterCeiling, BUDGET, BudgetMeter, budgetUsdFromEnv, JEV_CALLS_PER_TURN, JEV_CEILING_PER_MTOK_IN, JEV_INPUT_BOUND, OPENROUTER_CEILING, OPENROUTER_PINNED_MODEL, openRouterCatalogMax, PROVIDER_PRICES, pricesFromEnv, releaseOwnPilotHold, TURN_BOUND, tenantIdForEmail, turnUsage, worstCaseTurnUsd } from "./staging";
+import { assertOpenRouterCeiling, BUDGET, BudgetMeter, budgetUsdFromEnv, FROZEN_MANUAL_HINT, JEV_CALLS_PER_TURN, JEV_CEILING_PER_MTOK_IN, JEV_INPUT_BOUND, OPENROUTER_CEILING, OPENROUTER_PINNED_MODEL, openRouterCatalogMax, PROVIDER_PRICES, pricesFromEnv, releaseOwnPilotHold, TURN_BOUND, tenantIdForEmail, turnUsage, worstCaseTurnUsd } from "./staging";
 import { classify, flakes, markdownScorecard, METRIC, predict, scoreAll, scorecard, type Corpus, type Observation } from "./score";
 
 const corpus = corpusJson as Corpus;
@@ -374,6 +374,23 @@ describe("pilot approval gate: the walk releases only its own throwaway tenant (
     expect(release).toBeGreaterThan(persist);
     expect(refresh).toBeGreaterThan(release);
     expect(wait).toBeGreaterThan(refresh);
+  });
+});
+
+describe("frozen manuals are reproduced before any account exists (OEM URLs are not durable)", () => {
+  const spec = readFileSync(path.join(__dirname, "walk.spec.ts"), "utf8");
+  it("every in-scope manual is fetched and sha-verified before signUp; the loop reuses those bytes", () => {
+    const fetchAll = spec.indexOf("pdfs.set(m.id, await manualBytes(m, cacheDir))");
+    const abort = spec.indexOf("throw new Error(`no frozen manual could be reproduced");
+    const signup = spec.indexOf("await signUp(page, base);");
+    expect(fetchAll).toBeGreaterThan(-1);
+    expect(abort).toBeGreaterThan(fetchAll);
+    expect(signup).toBeGreaterThan(abort);
+    expect(spec.slice(signup)).not.toContain("await manualBytes(");
+  });
+  it("the hint names the fix, not just the failure", () => {
+    expect(FROZEN_MANUAL_HINT).toMatch(/STRANGER_WALK_CACHE/);
+    expect(FROZEN_MANUAL_HINT).toMatch(/<sha256>\.pdf/);
   });
 });
 

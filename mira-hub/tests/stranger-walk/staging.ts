@@ -528,6 +528,9 @@ export function runtimeOf(id: Identity): RuntimeIdentity {
   return { gitSha: id.gitSha, builtAt: id.builtAt, deploymentGeneration: id.deploymentGeneration, fingerprintHash: typeof h === "string" ? h : null };
 }
 
+/** The OEM URLs are not a durable source (Rockwell returns 403 to some hosts; AutomationDirect
+ *  republished GS10 ch6 on 2026-10-20 with new bytes). A sha-verified copy in the cache is. */
+export const FROZEN_MANUAL_HINT = "the OEM URL is not a durable source — seed STRANGER_WALK_CACHE with a sha-verified copy named <sha256>.pdf (README § Frozen manuals)";
 /** Fetch (or reuse from cache) one corpus PDF; null + reason when the bytes are not the frozen ones. */
 export async function manualBytes(m: Manual, cacheDir: string): Promise<{ bytes: Buffer | null; problem: string | null }> {
   mkdirSync(cacheDir, { recursive: true });
@@ -536,14 +539,14 @@ export async function manualBytes(m: Manual, cacheDir: string): Promise<{ bytes:
   if (existsSync(file) && sha(readFileSync(file)) === m.sha256) return { bytes: readFileSync(file), problem: null };
   try {
     const res = await fetch(m.url, { headers: { "user-agent": "Mozilla/5.0 (FactoryLM stranger-walk)" } });
-    if (!res.ok) return { bytes: null, problem: `manual download ${res.status}` };
+    if (!res.ok) return { bytes: null, problem: `manual download ${res.status}; ${FROZEN_MANUAL_HINT}` };
     const b = Buffer.from(await res.arrayBuffer());
     const got = sha(b);
-    if (got !== m.sha256) return { bytes: null, problem: `manual sha256 mismatch (got ${got.slice(0, 12)}…)` };
+    if (got !== m.sha256) return { bytes: null, problem: `manual sha256 mismatch (got ${got.slice(0, 12)}…); ${FROZEN_MANUAL_HINT}` };
     writeFileSync(file, b);
     return { bytes: b, problem: null };
   } catch (e) {
-    return { bytes: null, problem: `manual download failed: ${(e as Error).message}` };
+    return { bytes: null, problem: `manual download failed: ${(e as Error).message}; ${FROZEN_MANUAL_HINT}` };
   }
 }
 
