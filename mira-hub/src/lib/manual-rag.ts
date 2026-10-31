@@ -6,7 +6,7 @@ import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } f
 import { MODEL_PATTERNS, modelIdentitiesInText, resolveModelFromObservationText } from "@/capabilities/model-token";
 import { embedQueryDetailed, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
 import { setSpanAttrs } from "@/capabilities/observability/tracing";
-import { orderByScores, rerankEnabled, rerankPool, rerankScores } from "@/capabilities/reranker";
+import { logRerankFallback, orderByScores, rerankEnabled, rerankPool, rerankScores } from "@/capabilities/reranker";
 import {
   codeTokenMatcher,
   expandIndustrialQuery,
@@ -1330,7 +1330,7 @@ export async function retrieveNodeChunks(
      *  failed) so the caller can put it on its own retrieval span: callers
      *  start stage spans without activating them, so setSpanAttrs() on the
      *  active span alone never reached the trace (#4548). */
-    diagnostics?: { vectorLane?: string };
+    diagnostics?: { vectorLane?: string; rerank?: string };
   },
 ): Promise<ManualChunk[]> {
   const q = query.trim();
@@ -2204,12 +2204,34 @@ export async function retrieveNodeChunks(
   // Runs BEFORE prioritizeCurrentCodeEvidence so the code the technician just named still
   // leads the final cut (#4360). Broad questions keep their page-diverse, facet-guaranteed
   // shape and are not reranked. Any reranker failure returns null: today's order stands.
+  // #4579: the outcome is recorded on the span (off | ran | skipped_broad | skipped_short |
+  // fallback_<reason>), not only logged, so a staging A/B can tell whether rerank ran.
   let modelRanked = hybridRanked;
-  if (!broad.broad && rerankEnabled() && hybridRanked.length > 1) {
+  let rerankOutcome: string;
+  if (!rerankEnabled()) {
+    rerankOutcome = "off";
+  } else if (broad.broad) {
+    rerankOutcome = "skipped_broad";
+  } else if (hybridRanked.length <= 1) {
+    rerankOutcome = "skipped_short";
+  } else {
     const head = hybridRanked.slice(0, rerankPool());
-    const scores = await rerankScores(opts.rawQuery ?? q, head.map((c) => c.content));
-    if (scores) modelRanked = [...orderByScores(head, scores), ...hybridRanked.slice(head.length)];
+    let fallbackReason: string | undefined;
+    const scores = await rerankScores(opts.rawQuery ?? q, head.map((c) => c.content), {
+      log: (reason, detail) => {
+        fallbackReason = reason;
+        logRerankFallback(reason, detail);
+      },
+    });
+    if (scores) {
+      modelRanked = [...orderByScores(head, scores), ...hybridRanked.slice(head.length)];
+      rerankOutcome = "ran";
+    } else {
+      rerankOutcome = `fallback_${fallbackReason ?? "unknown"}`;
+    }
   }
+  setSpanAttrs({ "mira.retrieval.rerank": rerankOutcome });
+  if (opts.diagnostics) opts.diagnostics.rerank = rerankOutcome;
   const rerankedAll = prioritizeCurrentCodeEvidence(modelRanked, expanded.currentCodeTokens);
   // Facet-guaranteed slots (answer completeness): rerank picks the BEST chunks
   // overall, so one family (e.g. overload) can fill every slot while a planned
