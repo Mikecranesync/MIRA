@@ -98,7 +98,8 @@ export class NoExtractableTextError extends Error {
 }
 
 // A line that starts a code-keyed table row: "F005 OverVoltage …", "0xF003 Recoverable …".
-const TABLE_ROW_START = /^(0x[0-9A-Fa-f]{3,4}|[A-Za-z]{1,3}\d{1,4}[A-Za-z]?)\s+[A-Z][A-Za-z]/gm;
+// Plain 4-digit codes (ABB: "0001 OVERCURRENT") count too (#4863), so an ABB table is a table.
+const TABLE_ROW_START = /^(0x[0-9A-Fa-f]{3,4}|\d{4}(?!\d)|[A-Za-z]{1,3}\d{1,4}[A-Za-z]?)\s+[A-Z][A-Za-z]/gm;
 const TABLE_MIN_ROWS = 3;
 
 /**
@@ -156,7 +157,10 @@ export function chunkText(
     let end = Math.min(i + size, clean.length);
     let atRow = false;
     if (end < clean.length) {
-      const rowBreak = rowStarts.filter((s) => s > i + size * 0.5 && s < end).pop();
+      // The last row start inside the window is the row that would cross `end`, so
+      // cut at its start even before the 50% mark (#4851). Only a row longer than the
+      // whole window falls through to the sentence fallback.
+      const rowBreak = rowStarts.filter((s) => s > i && s < end).pop();
       if (rowBreak !== undefined) {
         end = rowBreak;
         atRow = true;
