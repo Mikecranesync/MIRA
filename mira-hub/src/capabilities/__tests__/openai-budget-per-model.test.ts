@@ -56,7 +56,7 @@ afterEach(() => {
 });
 
 const DEFAULT = OPENAI_PRICE_PER_MTOK_BY_MODEL["gpt-5.4-mini"];
-const TEN_X: OpenAiPrice = { input: DEFAULT.input * 10, output: DEFAULT.output * 10 };
+const TEN_X: OpenAiPrice = { input: DEFAULT.input * 10, cached_input: DEFAULT.cached_input * 10, output: DEFAULT.output * 10 };
 const lookup = (m: string | null | undefined): OpenAiPrice | null =>
   m === "gpt-test-10x" ? TEN_X : openAiPricePerMtok(m);
 
