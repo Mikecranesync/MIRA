@@ -113,23 +113,30 @@ export async function retrieveSafetyChapterChunks(
     approvedSourceDocIds: opts.approvedSourceDocIds,
     keep: (t) => extractManualSafetyStatement(t) !== null,
   });
+  // Group per document, page order within each, so one manual's low-numbered chapter cannot
+  // crowd another manual's warning out of the cap.
   const seen = new Set(chunks.map((c) => c.content));
-  const byUrl = new Map(docs.map((d) => [d.sourceUrl, d] as const));
-  return rows
-    .filter((r) => byUrl.has(r.sourceUrl) && !seen.has(r.content) && seen.add(r.content))
-    .sort((a, b) => a.sourcePage - b.sourcePage)
-    .slice(0, SAFETY_CHAPTER_MAX_CHUNKS)
-    .map((r) => {
-      const t = byUrl.get(r.sourceUrl)!.template;
-      return {
-        ...t,
-        content: r.content,
-        sourcePage: r.sourcePage,
-        pageLabel: String(r.sourcePage),
-        chunkIndex: null,
-        rank: 0,
-      };
-    });
+  const perDoc = new Map(docs.map((d) => [d.sourceUrl, [] as typeof rows] as const));
+  for (const r of rows) {
+    if (seen.has(r.content)) continue;
+    const list = perDoc.get(r.sourceUrl);
+    if (!list) continue;
+    seen.add(r.content);
+    list.push(r);
+  }
+  for (const list of perDoc.values()) list.sort((a, b) => a.sourcePage - b.sourcePage);
+  // Take one chunk per document in retrieval order, round after round, up to the cap.
+  const out: ManualChunk[] = [];
+  for (let i = 0; out.length < SAFETY_CHAPTER_MAX_CHUNKS; i++) {
+    const before = out.length;
+    for (const d of docs) {
+      const r = perDoc.get(d.sourceUrl)![i];
+      if (!r || out.length >= SAFETY_CHAPTER_MAX_CHUNKS) continue;
+      out.push({ ...d.template, content: r.content, sourcePage: r.sourcePage, pageLabel: String(r.sourcePage), chunkIndex: null, rank: 0 });
+    }
+    if (out.length === before) break;
+  }
+  return out;
 }
 
 /** The prompt rule that rides with the chapter excerpts; only sent when some were added. */

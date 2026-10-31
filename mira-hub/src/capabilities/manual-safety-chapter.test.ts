@@ -116,6 +116,21 @@ describe("retrieveSafetyChapterChunks", () => {
     expect(pageNos).toEqual([...pageNos].sort((a, b) => a - b));
   });
 
+  it("two manuals: a low-numbered chapter in one cannot crowd out the other's warning", async () => {
+    const A = "aaaaaaaa-0000-0000-0000-000000000001";
+    const A_URL = "hub://other-drive.pdf";
+    const aRow = (p: number): Row => ({ id: `a-${p}`, doc_id: A, content: `${P18}\n(other drive p${p})`, source_url: A_URL, page: p });
+    const client = fakeClient([...CORPUS, aRow(1), aRow(2), aRow(3), aRow(4)]);
+    const aTask = { ...chunk("WARNING! Read and follow the instructions in chapter Safety on page 1.", 40, A), sourceUrl: A_URL, title: "other-drive.pdf" };
+    const added = await retrieveSafetyChapterChunks(client, "tenant", [aTask, chunk(P372, 372)]);
+    expect(added).toHaveLength(SAFETY_CHAPTER_MAX_CHUNKS);
+    const acs = added.filter((c) => c.docId === DOC);
+    expect(acs.map((c) => c.sourcePage)).toEqual([18]);
+    expect(acs[0]).toMatchObject({ sourceUrl: URL, title: "acs355.pdf" });
+    // Every chunk keeps its own document's identity.
+    for (const c of added.filter((x) => x.docId === A)) expect(c).toMatchObject({ sourceUrl: A_URL, title: "other-drive.pdf" });
+  });
+
   it("the directive asks for the steps only on physical work", () => {
     expect(SAFETY_CHAPTER_DIRECTIVE).toMatch(/physically work/);
     expect(SAFETY_CHAPTER_DIRECTIVE).toMatch(/no physical work/);
