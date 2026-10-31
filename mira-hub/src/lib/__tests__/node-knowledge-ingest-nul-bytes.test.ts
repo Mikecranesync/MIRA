@@ -2,7 +2,7 @@
  * #4923 — a 4-page text PDF (Allen-Bradley SMC-3 install sheet shape: multilingual
  * text, Identity-H CID font) failed with "Couldn't process this file" on every try.
  *
- * Root cause (verified): unpdf emits U+0000 for a glyph whose ToUnicode entry is
+ * Suspected root cause (hypothesis, reproduced on a synthetic fixture, not confirmed on the customer file): unpdf emits U+0000 for a glyph whose ToUnicode entry is
  * <0000>. writeChunkRowsForNode then inserts that text into knowledge_entries.content.
  * Postgres rejects NUL in text (`invalid byte sequence for encoding "UTF8": 0x00`),
  * the transaction aborts, and friendlyIngestError has no pattern for that message,
