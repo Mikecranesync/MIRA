@@ -36,6 +36,13 @@ from feedback_sync import run_loop as feedback_sync_loop
 from memory import ConversationMemory
 from qr_bridge import build_clear_cookie_header, process_pending_scan
 from shared.engine import Supervisor
+from shared.session_manager import (
+    CONVERSATION_STATE_TABLE,
+    UNSCOPED_CONVERSATION_TENANT,
+    ensure_table,
+    load_state,
+    save_state,
+)
 from shared.telemetry import flush as _telemetry_flush
 from shared.telemetry import span as _telemetry_span
 from shared.telemetry import trace as _telemetry_trace
@@ -185,8 +192,9 @@ def _detect_and_rollback_regenerate(db_path: str, chat_id: str, user_message: st
     this chat_id.  If ``user_message`` matches, it is a regenerate.
 
     Rollback: find the FSM state from the interaction BEFORE the last one and
-    write it back to ``conversation_state``.  The engine will then re-process
-    the message starting from the correct prior state.
+    write it back to ``conversation_state_v2`` under the declared unscoped
+    tenant (pipeline / Open WebUI has no per-call tenant).  The engine will
+    then re-process the message starting from the correct prior state.
 
     Returns True if a rollback was performed, False otherwise.
     """
@@ -220,13 +228,17 @@ def _detect_and_rollback_regenerate(db_path: str, chat_id: str, user_message: st
         prior_state = rows[1]["fsm_state"] if len(rows) > 1 else "IDLE"
         prior_state = prior_state or "IDLE"
 
-        db.execute(
-            """UPDATE conversation_state
-               SET state = ?, updated_at = CURRENT_TIMESTAMP
-               WHERE chat_id = ?""",
-            (prior_state, chat_id),
+        # Engine I/O is conversation_state_v2 under the declared unscoped
+        # tenant. Do not UPDATE the legacy chat_id-only table (#4852 BRAVO).
+        ensure_table(db_path)
+        state = load_state(
+            db_path, chat_id, tenant_id=UNSCOPED_CONVERSATION_TENANT
         )
-        # Also remove the last interaction row so history stays consistent
+        state["state"] = prior_state
+        save_state(
+            db_path, chat_id, state, tenant_id=UNSCOPED_CONVERSATION_TENANT
+        )
+
         db.execute("DELETE FROM interactions WHERE id = ?", (last["id"],))
         db.commit()
         db.close()
@@ -580,7 +592,7 @@ async def chat_completions(request: Request, req: ChatCompletionRequest):
     if last_user_msg.strip().lower() in reset_phrases or any(
         last_user_msg.strip().lower().startswith(p) for p in ("never mind", "nevermind", "wrong ")
     ):
-        engine.reset(chat_id)
+        engine.reset(chat_id, tenant_id=UNSCOPED_CONVERSATION_TENANT)
         logger.info("FSM_RESET chat_id=%s", chat_id)
         reset_body = {
             "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
@@ -855,7 +867,10 @@ async def get_conversation_state(chat_id: str):
 
     db = _sqlite3.connect(DB_PATH)
     db.row_factory = _sqlite3.Row
-    row = db.execute("SELECT * FROM conversation_state WHERE chat_id = ?", (chat_id,)).fetchone()
+    row = db.execute(
+        f"SELECT * FROM {CONVERSATION_STATE_TABLE} WHERE tenant_id = ? AND chat_id = ?",
+        (UNSCOPED_CONVERSATION_TENANT, chat_id),
+    ).fetchone()
     db.close()
     if not row:
         raise HTTPException(404, f"No state for chat {chat_id}")
@@ -885,8 +900,8 @@ async def list_recent_sessions():
     db = _sqlite3.connect(DB_PATH)
     db.row_factory = _sqlite3.Row
     rows = db.execute(
-        "SELECT chat_id, state, exchange_count, asset_identified, updated_at "
-        "FROM conversation_state ORDER BY rowid DESC LIMIT 10"
+        f"SELECT chat_id, state, exchange_count, asset_identified, updated_at "
+        f"FROM {CONVERSATION_STATE_TABLE} ORDER BY rowid DESC LIMIT 10"
     ).fetchall()
     db.close()
     photo_dir = Path(DB_PATH).parent / "session_photos"
@@ -1003,7 +1018,9 @@ async def learning_stats():
     approved_today = db.execute(
         "SELECT COUNT(*) FROM feedback_log WHERE feedback = 'positive' AND created_at >= date('now')"
     ).fetchone()[0]
-    total_conversations = db.execute("SELECT COUNT(*) FROM conversation_state").fetchone()[0]
+    total_conversations = db.execute(
+        f"SELECT COUNT(*) FROM {CONVERSATION_STATE_TABLE}"
+    ).fetchone()[0]
     db.close()
 
     min_examples = 50

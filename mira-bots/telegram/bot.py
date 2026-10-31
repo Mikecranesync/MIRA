@@ -444,45 +444,56 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     asyncio.create_task(_do_submit_doc())
 
 
-def _get_voice_enabled(chat_id: str) -> bool:
-    """Read voice_enabled flag from DB for this chat."""
-    import sqlite3
+def _trusted_telegram_tenant(update: Update) -> str | None:
+    """Resolve the authenticated tenant for a Telegram command.
+
+    Uses identity_links via IdentityService.lookup_only — never MIRA_TENANT_ID
+    or the raw chat_id. Empty result means fail closed for state writes (#4844).
+    Telegram admin bypass without an identity_links row is an uncovered path
+    (Slice 3); those operators cannot mutate conversation_state from /reset
+    or /voice until they are enrolled.
+    """
+    user = getattr(update, "effective_user", None)
+    if user is None or _identity_service is None:
+        return None
+    try:
+        mira_user = _identity_service.lookup_only("telegram", str(user.id))
+    except Exception as exc:
+        logger.warning("TELEGRAM_TENANT_LOOKUP_FAILED user=%s err=%s", user.id, exc)
+        return None
+    if mira_user is None:
+        return None
+    tid = (mira_user.tenant_id or "").strip()
+    return tid or None
+
+
+def _get_voice_enabled(chat_id: str, tenant_id: str) -> bool:
+    """Read voice_enabled flag from DB for this (tenant, chat)."""
+    from shared.session_manager import MissingConversationTenant, get_voice_enabled
 
     db_path = os.environ.get("MIRA_DB_PATH", "/data/mira.db")
     try:
-        db = sqlite3.connect(db_path)
-        db.execute("PRAGMA journal_mode=WAL")
-        row = db.execute(
-            "SELECT voice_enabled FROM conversation_state WHERE chat_id = ?", (chat_id,)
-        ).fetchone()
-        db.close()
-        return bool(row[0]) if row else False
+        return get_voice_enabled(db_path, chat_id, tenant_id=tenant_id)
+    except MissingConversationTenant:
+        return False
     except Exception:
         return False
 
 
-def _set_voice_enabled(chat_id: str, enabled: bool) -> None:
-    """Write voice_enabled flag to DB for this chat."""
-    import sqlite3
+def _set_voice_enabled(chat_id: str, tenant_id: str, enabled: bool) -> None:
+    """Write voice_enabled flag to DB for this (tenant, chat). Fail closed."""
+    from shared.session_manager import set_voice_enabled
 
     db_path = os.environ.get("MIRA_DB_PATH", "/data/mira.db")
-    db = sqlite3.connect(db_path)
-    db.execute("PRAGMA journal_mode=WAL")
-    db.execute(
-        """INSERT INTO conversation_state (chat_id, voice_enabled)
-           VALUES (?, ?)
-           ON CONFLICT(chat_id) DO UPDATE SET voice_enabled = excluded.voice_enabled""",
-        (chat_id, 1 if enabled else 0),
-    )
-    db.commit()
-    db.close()
+    set_voice_enabled(db_path, chat_id, enabled, tenant_id=tenant_id)
 
 
 async def _maybe_send_voice(
     update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id: str, text: str
 ) -> None:
     """If voice is enabled, synthesize OGG and send as voice message."""
-    if not _get_voice_enabled(chat_id):
+    tenant_id = _trusted_telegram_tenant(update)
+    if not tenant_id or not _get_voice_enabled(chat_id, tenant_id):
         return
     await context.bot.send_chat_action(
         chat_id=update.effective_chat.id, action=ChatAction.RECORD_VOICE
@@ -495,15 +506,22 @@ async def _maybe_send_voice(
 async def voice_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Enable, disable, or query voice responses with /voice on|off."""
     chat_id = str(update.effective_chat.id)
+    tenant_id = _trusted_telegram_tenant(update)
+    if not tenant_id:
+        await update.message.reply_text(
+            "I can't change voice settings because the workspace is not authenticated. "
+            "Ask your admin to enroll you."
+        )
+        return
     arg = (context.args[0].lower() if context.args else "").strip()
     if arg == "on":
-        _set_voice_enabled(chat_id, True)
+        _set_voice_enabled(chat_id, tenant_id, True)
         await update.message.reply_text("Voice responses enabled. Use /voice off to disable.")
     elif arg == "off":
-        _set_voice_enabled(chat_id, False)
+        _set_voice_enabled(chat_id, tenant_id, False)
         await update.message.reply_text("Voice responses disabled.")
     else:
-        status = "on" if _get_voice_enabled(chat_id) else "off"
+        status = "on" if _get_voice_enabled(chat_id, tenant_id) else "off"
         await update.message.reply_text(
             f"Voice responses are currently {status}.\nUse /voice on or /voice off to change."
         )
@@ -2330,7 +2348,14 @@ async def _photo_batch_worker(application: Application) -> None:
 async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Reset GSD conversation state."""
     chat_id = str(update.effective_chat.id)
-    engine.reset(chat_id)
+    tenant_id = _trusted_telegram_tenant(update)
+    if not tenant_id:
+        await update.message.reply_text(
+            "I can't reset this conversation because the workspace is not authenticated. "
+            "Ask your admin to enroll you."
+        )
+        return
+    engine.reset(chat_id, tenant_id=tenant_id)
     # D4b: the print workspace persisted past engine.reset (7-day TTL) and
     # kept routing text turns into the print rung after a "fresh" session.
     print_workspace.clear_workspace(chat_id)
@@ -2340,7 +2365,14 @@ async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def new_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Hard-reset conversation state — no preview of WO, no carryover from prior sessions."""
     chat_id = str(update.effective_chat.id)
-    engine.reset(chat_id)
+    tenant_id = _trusted_telegram_tenant(update)
+    if not tenant_id:
+        await update.message.reply_text(
+            "I can't start a fresh session because the workspace is not authenticated. "
+            "Ask your admin to enroll you."
+        )
+        return
+    engine.reset(chat_id, tenant_id=tenant_id)
     print_workspace.clear_workspace(chat_id)
     logger.info("NEW_SESSION chat_id=%s user=%s", chat_id, update.effective_user.first_name)
     await update.message.reply_text("🔄 Fresh start. What can I help with?")
@@ -2726,7 +2758,14 @@ def main():
         # Args present → invite-token consumption flow (unchanged).
         if not (context.args or []):
             chat_id = str(update.effective_chat.id)
-            engine.reset(chat_id)
+            tenant_id = _trusted_telegram_tenant(update)
+            if not tenant_id:
+                await update.message.reply_text(
+                    "I can't start a fresh session because the workspace is not authenticated. "
+                    "Ask your admin to enroll you."
+                )
+                return
+            engine.reset(chat_id, tenant_id=tenant_id)
             logger.info(
                 "START_RESET chat_id=%s user=%s",
                 chat_id,
