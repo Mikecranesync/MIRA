@@ -1,0 +1,5 @@
+login ok
+health {"status":"ok","service":"mira-hub","version":"3.419.18","gitSha":"feaabc25bfd3fdb4160aa83bff13d9fedd36107a","builtAt":"2026-10-25T17:06:36Z","approvedRetrievalEnforced":true,"telemetry":{"tracing":"enabled","exporter":"otlp-http","environment":"staging","contentCapture":true},"ts":1792949465482}
+skip pf525
+upload acs355 201 12787 {"ok":true,"indexed":true,"uploadId":"c86cafc1-dcdc-4e21-978b-a43176cc8654","chunkCount":974,"fileId":"d7a12b71-d935-4281-9e3e-e75baddb407e","file":{"id":"d7a12b71-d935-4281-9e3e-e75baddb407e","filename":"abb-acs355-users-manual-3AUA0000066143.pdf","size_bytes":11378626,"capability":"indexable"}}
+attach 201 {"ok":true}

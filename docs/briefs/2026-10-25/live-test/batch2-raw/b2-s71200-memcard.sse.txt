@@ -1,0 +1,20 @@
+data: {"kind":"trace","traceId":"00ff72209a25bcce7ed91dc82d742993","turnId":"5fa9e036-6f68-4435-b476-4d5cfbe46540"}
+
+data: {"kind":"content","content":"The manual says the CPU must be in STOP before you insert the program card, and then you must power-cycle the CPU to "}
+
+data: {"kind":"content","content":"evaluate the memory card [5]. If the card is inserted while the CPU is in RUN, the CPU switches to STOP and the MAINT "}
+
+data: {"kind":"content","content":"LED flashes to show the card needs to be evaluated [5].\n\nI don’t see any excerpt saying the PLC needs a separate setup "}
+
+data: {"kind":"content","content":"or configuration first; the loaded documentation only covers the card-insert and power-cycle behavior [5]."}
+
+data: {"kind":"sources","citations":[{"citationId":"5","docId":"67d09e1e-862a-4b7c-aa82-eb64df83f875","sourceTitle":"siemens-s7-1200-system-manual-A5E02486680-AQ-2024-12-en.pdf","page":114,"fileId":"cd4a5772-8c60-4fc9-a868-dd5841c0a220","quote":"…completed without errors, click the\n\"Finish\" button.\nUsing a program card as the load memory for a CPU\nWARNING\nRisks associated with inserting a program card\nUse caution when inserting a program card while the CPU is in RUN mode. If a progr","originFileId":null}],"sourceSnapshot":["67d09e1e-862a-4b7c-aa82-eb64df83f875"]}
+
+data: {"kind":"evidence","basis":"oem_documentation","label":"Grounded in this notebook's sources."}
+
+data: {"kind":"usage","provider":"OpenAI","model":"gpt-5.4-mini","routeReason":"primary","inputTokens":3460,"cachedInputTokens":0,"outputTokens":322,"costUsdEstimate":null,"status":"ok"}
+
+data: {"kind":"status","status":"answered"}
+
+data: [DONE]
+

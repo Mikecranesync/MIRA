@@ -1,0 +1,61 @@
+{
+  "label": "s1-pf525",
+  "notebookId": "fc6519a4-67a8-45f9-b751-6ce5aa4a8a3f",
+  "docId": "7119eaa1-bc0c-4221-96b5-9fde89d0147c",
+  "question": "Which PowerFlex 525 parameter sets the motor nameplate full load amps?",
+  "requestBody": {
+    "message": "Which PowerFlex 525 parameter sets the motor nameplate full load amps?",
+    "sourceDocIds": [
+      "7119eaa1-bc0c-4221-96b5-9fde89d0147c"
+    ],
+    "threadId": "thrd_01c30e5338c0fd52396e87bc78bcf886"
+  },
+  "httpStatus": 200,
+  "headers": {
+    "cache-control": "no-cache, no-transform",
+    "connection": "keep-alive",
+    "content-security-policy": "default-src 'self'; script-src 'self' 'nonce-ZDMxNDI5M2EtMjRjMy00OGY3LTk1ODgtN2Q2NmQ5ZGNhODZm' https://accounts.google.com https://apis.google.com https://js.stripe.com https://www.dropbox.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://js.stripe.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://accounts.google.com https://api.hubapi.com https://api.stripe.com https://js.stripe.com https://www.dropbox.com; frame-src 'self' https://accounts.google.com https://js.stripe.com https://hooks.stripe.com https://mikecranesync.github.io https://www.dropbox.com; frame-ancestors 'self'",
+    "content-type": "text/event-stream",
+    "date": "Sun, 25 Oct 2026 20:36:29 GMT",
+    "referrer-policy": "same-origin",
+    "server": "nginx/1.24.0 (Ubuntu)",
+    "strict-transport-security": "max-age=63072000; includeSubDomains; preload",
+    "transfer-encoding": "chunked",
+    "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "x-mira-trace-id": "465d3aa26895ea73afa5f7028600f682"
+  },
+  "ttftMs": null,
+  "totalMs": 4172,
+  "kinds": [
+    "trace",
+    "sources",
+    "status",
+    "[DONE]"
+  ],
+  "answer": "",
+  "frames": [
+    {
+      "kind": "trace",
+      "traceId": "465d3aa26895ea73afa5f7028600f682",
+      "turnId": "0e5d012d-8ac7-415e-a03a-f5d1cb17cb34"
+    },
+    {
+      "kind": "sources",
+      "citations": [],
+      "sourceSnapshot": [
+        "7119eaa1-bc0c-4221-96b5-9fde89d0147c"
+      ]
+    },
+    {
+      "kind": "status",
+      "status": "insufficient_evidence",
+      "message": "I couldn't find support for that in this notebook's manuals. Add the manual for the equipment you're asking about, or the page that covers it, and ask again."
+    },
+    {
+      "kind": "[DONE]"
+    }
+  ],
+  "startedAt": "2026-10-25T20:36:25.174Z"
+}
