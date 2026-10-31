@@ -16,6 +16,7 @@
 import {
   openRouterProviders,
   requestDialectFields,
+  withoutFreeOpenRouterModels,
   type CanonicalProvider,
 } from "@/lib/inference/canonical-cascade";
 import {
@@ -57,7 +58,7 @@ function defaultProviders(): CascadeProvider[] {
         },
       ]
     : [];
-  return [
+  return withoutFreeOpenRouterModels([
     ...openai,
     // Backup tier (2026-10-14), the same member the streaming cascade uses.
     ...openRouterProviders(),
@@ -84,7 +85,7 @@ function defaultProviders(): CascadeProvider[] {
         process.env.TOGETHERAI_MODEL ??
         "meta-llama/Llama-3.3-70B-Instruct-Turbo",
     },
-  ];
+  ]);
 }
 
 export interface CascadeMessage {
