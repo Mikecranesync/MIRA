@@ -13,6 +13,11 @@ import { NotebookDeleteDialog } from "@/components/equipment/NotebookDeleteDialo
 import { deleteFailureMessage, createSubmitGuard } from "@/lib/notebook-delete";
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
 import { persistedTurns } from "@/components/equipment/notebook-chat-utils";
+import {
+  notebookSourcesButtonCount,
+  notebookSourcesCountLine,
+  SOURCES_LOADING_LABEL,
+} from "@/factorylm-ui/notebook-sources-copy";
 
 type Notebook = {
   id: string;
@@ -37,6 +42,11 @@ export default function NotebookPage() {
   const router = useRouter();
   const [notebook, setNotebook] = useState<Notebook | null>(null);
   const [sources, setSources] = useState<Source[]>([]);
+  // True only once THIS id's detail GET has settled. Derived from the id so a
+  // client navigation never reports the previous notebook's count, or "0 of 0"
+  // while the new GET is in flight (#4371).
+  const [loadedForId, setLoadedForId] = useState<string | null>(null);
+  const sourcesKnown = loadedForId === id;
   const [initialTurns, setInitialTurns] = useState<ChatTurn[]>([]);
   const [enabled, setEnabled] = useState<Record<string, boolean>>({});
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -50,15 +60,29 @@ export default function NotebookPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadNote, setUploadNote] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Same rule as `latestRequestGate` on the /v3 host: a GET started for A must
+  // not commit after the technician has opened B (or a newer refresh of B).
+  // Without this, a late A response would setLoadedForId(A) while `id` is B,
+  // so sourcesKnown stays false forever and the header sticks on loading.
+  const loadGen = useRef(0);
 
   const load = useCallback(async () => {
-    const res = await fetch(`${API_BASE}/api/equipment-notebooks/${id}/`, { cache: "no-store" });
-    if (res.status === 404) return setNotFound(true);
+    const requestedId = id;
+    const token = ++loadGen.current;
+    const res = await fetch(`${API_BASE}/api/equipment-notebooks/${requestedId}/`, { cache: "no-store" });
+    if (token !== loadGen.current) return;
+    if (res.status === 404) {
+      setNotFound(true);
+      return;
+    }
     if (!res.ok) return;
     const data = await res.json();
+    if (token !== loadGen.current) return;
+    setNotFound(false);
     setNotebook(data.notebook);
     const srcs: Source[] = data.sources ?? [];
     setSources(srcs);
+    setLoadedForId(requestedId);
     setEnabled((prev) => {
       const next = { ...prev };
       for (const s of srcs) if (!(s.docId in next)) next[s.docId] = s.enabledByDefault && s.matchState !== "rejected";
@@ -71,7 +95,11 @@ export default function NotebookPage() {
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async data load (codebase precedent: namespace/page.tsx)
+    setNotFound(false);
     void load();
+    return () => {
+      loadGen.current += 1;
+    };
   }, [load]);
 
   const enabledDocIds = useMemo(
@@ -236,10 +264,15 @@ export default function NotebookPage() {
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold">{notebook?.displayName ?? "…"}</div>
           <div className="truncate text-xs" style={{ color: "var(--foreground-muted)" }}>
-            {[[notebook?.manufacturer, notebook?.model].filter(Boolean).join(" ") || "No model set", notebook?.locationLabel]
-              .filter(Boolean)
-              .join(" · ")}
-            {` · ${enabledDocIds.length} of ${usableCount} sources`}
+            {sourcesKnown
+              ? [
+                  [notebook?.manufacturer, notebook?.model].filter(Boolean).join(" ") || "No model set",
+                  notebook?.locationLabel,
+                  notebookSourcesCountLine(true, enabledDocIds.length, usableCount),
+                ]
+                  .filter(Boolean)
+                  .join(" · ")
+              : notebookSourcesCountLine(false, 0, 0)}
           </div>
         </div>
         <button
@@ -249,7 +282,7 @@ export default function NotebookPage() {
           className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium"
           style={{ border: "1px solid var(--border)" }}
         >
-          <Layers size={14} aria-hidden /> Sources · {enabledDocIds.length}/{usableCount}
+          <Layers size={14} aria-hidden /> Sources · {notebookSourcesButtonCount(sourcesKnown, enabledDocIds.length, usableCount)}
         </button>
         <button
           onClick={() => {
@@ -311,7 +344,11 @@ export default function NotebookPage() {
                 <X size={18} />
               </button>
             </div>
-            {sources.length === 0 ? (
+            {!sourcesKnown ? (
+              <p className="py-4 text-center text-sm" style={{ color: "var(--foreground-muted)" }}>
+                {SOURCES_LOADING_LABEL}
+              </p>
+            ) : sources.length === 0 ? (
               <p className="py-4 text-center text-sm" style={{ color: "var(--foreground-muted)" }}>
                 Add a manual, drawing, or photo to start asking questions.
               </p>

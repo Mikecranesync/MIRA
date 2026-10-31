@@ -9,6 +9,7 @@ import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebook
 import { buildChatBody, isAbortError, type ChatBody, type PersistedTurn, type StreamResult } from "@/components/equipment/notebook-chat-utils";
 import { isSafetyNoticeEntry } from "@/lib/notebook-chat-types";
 import { LEGACY_THREAD_ID, machineNameFor, notebookLabel, threadItemId, type HubNotebook } from "./notebook-tree";
+import { SOURCES_LOADING_GROUNDING } from "./notebook-sources-copy";
 import { contextFor, hasTerminalSafetyStop, threadFromPersisted, type HubNotebookMeta } from "./to-interaction";
 
 /** The shell's fixture before any notebook loads: an empty, untitled thread. */
@@ -332,8 +333,11 @@ export function historyRows(rows: readonly PersistedTurn[]): { role: "user" | "a
   return out;
 }
 
-/** The first-run line under the greeting: claims only what this notebook can do. */
-export function groundingLineFor(nb: EquipmentNotebook | null, enabledCount: number): string | undefined {
+/** The first-run line under the greeting: claims only what this notebook can do.
+ *  `sourcesKnown` is false while a selected notebook's detail GET is in flight
+ *  — never the HOME line and never "no selected sources yet" (#4371). */
+export function groundingLineFor(nb: EquipmentNotebook | null, enabledCount: number, sourcesKnown = true): string | undefined {
+  if (!sourcesKnown) return SOURCES_LOADING_GROUNDING;
   if (!nb) return "General question — answered from general knowledge, nothing cited. Pick a project to ask about its manuals.";
   const label = nb.asset ? machineNameFor(nb) : notebookLabel(nb);
   if (enabledCount === 0) return `${label} has no selected sources yet — general help only, nothing is cited.`;
