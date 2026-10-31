@@ -66,6 +66,20 @@ entry has its OEM URL and sha256; a changed or missing PDF makes its questions N
 silently different corpus. Never weaken an expected page to raise the score — fix the product or change
 the question in its own reviewed commit.
 
+### Frozen manuals — the OEM URLs are not a durable source
+
+Found 2026-10-31: Rockwell's literature site returns 403 to some hosts (8 of the 10 manuals), and
+AutomationDirect republished GS10 ch.6 on 2026-10-20 with different bytes, so a fresh download
+cannot reproduce the frozen corpus. The walk therefore checks every in-scope manual (cache first,
+then the OEM URL, always sha-verified) **before it creates an account**: nothing is reproduced →
+the run aborts at $0 with no tenant and no register slot used; some are → their rows are NOT
+ASSESSED with the reason, the rest are scored. To make a run reproducible, put a sha-verified copy
+of each PDF in `$STRANGER_WALK_CACHE` named `<sha256>.pdf` (the cache key in `corpus.json`). Known
+sha-verified copies: CHARLIE `~/MIRA/.planning/retrieval-phase0/manuals/`, BRAVO
+`~/.factorylm/imib-manuals/`. The PDFs are OEM copyright and the repository is public, so they are
+**never committed**; the workflow's `actions/cache` only spares a download, and a cold cache
+reproduces nothing. A private, durable mirror the workflow can read is an owner decision (open).
+
 ## Spend (zero-token rule)
 
 Hard budget **$4.50 per run** (`staging.ts BudgetMeter`). Every turn **books its worst case at

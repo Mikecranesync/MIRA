@@ -19,7 +19,7 @@ import corpusJson from "./corpus.json";
 import { cardsOf, firstChipOf, viewerTargetOf } from "./extract";
 import { fixtureFor, markdownScorecard, scoreAll, scorecard, type Corpus, type Observation, type Question } from "./score";
 import {
-  assertOpenRouterCeiling, BUDGET, BudgetMeter, checkFingerprint, identity, JEV_CALLS_PER_TURN, JEV_CEILING_PER_MTOK_IN, JEV_INPUT_BOUND, ledgerVerdictFor,
+  assertOpenRouterCeiling, BUDGET, BudgetMeter, checkFingerprint, FROZEN_MANUAL_HINT, identity, JEV_CALLS_PER_TURN, JEV_CEILING_PER_MTOK_IN, JEV_INPUT_BOUND, ledgerVerdictFor,
   manualBytes, pricesFromEnv, releaseOwnPilotHold, runtimeDrift, runtimeOf, stagingBase, teardownTenant, tenantIdForEmail, TURN_BOUND, worstCaseTurnUsd,
 } from "./staging";
 
@@ -191,12 +191,21 @@ test("stranger walk", async ({ page }) => {
     : "runtime identity unavailable (staging serves no inferenceFingerprint): lanes booked from the walk's stg env + production constants; gitSha/builtAt checked before every paid dispatch (#5045 accepted limits)"];
   let tenantId: string | null = null;
   try {
+    // Every frozen manual in scope is reproduced (cache, then the OEM URL; sha-verified) BEFORE any
+    // account exists: a corpus that cannot be reproduced costs no tenant, no register slot, no money.
+    const cacheDir = process.env.STRANGER_WALK_CACHE ?? path.join(__dirname, ".out", "manuals");
+    const inScope = corpus.manuals.filter((m) => corpus.questions.some((q) => q.manual === m.id && (!ONLY || ONLY.has(q.id))));
+    const pdfs = new Map<string, Awaited<ReturnType<typeof manualBytes>>>();
+    for (const m of inScope) pdfs.set(m.id, await manualBytes(m, cacheDir));
+    const missing = inScope.filter((m) => !pdfs.get(m.id)?.bytes);
+    if (missing.length) notes.push(`frozen manuals not reproduced (${missing.length}/${inScope.length}): ${missing.map((m) => m.id).join(", ")} — ${FROZEN_MANUAL_HINT}`);
+    if (inScope.length && missing.length === inScope.length) throw new Error(`no frozen manual could be reproduced — ${FROZEN_MANUAL_HINT}`);
     const walkTenant = await signUp(page, base);
     tenantId = walkTenant; // tenant.txt is already written; teardown reads it on every exit path
     for (const m of corpus.manuals) {
       const qs = corpus.questions.filter((q) => q.manual === m.id && (!ONLY || ONLY.has(q.id)));
       if (!qs.length) continue;
-      const pdf = await manualBytes(m, process.env.STRANGER_WALK_CACHE ?? path.join(__dirname, ".out", "manuals"));
+      const pdf = pdfs.get(m.id)!;
       if (!pdf.bytes) { for (const q of qs) obs.push(notAskedObs(q.id, `manual unavailable: ${pdf.problem}`)); continue; }
       let uploaded = false;
       try { await newProject(page, `${m.oem} ${m.id}`); } catch (e) {
