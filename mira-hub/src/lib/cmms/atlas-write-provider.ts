@@ -34,7 +34,13 @@ export interface AtlasCommentApi {
 
 export interface AtlasWriteProviderOptions {
   log?: (line: string) => void;
+  /** How long a DEFINITIVE capability answer is trusted. Default 10 minutes. */
+  capabilityTtlMs?: number;
+  /** Injectable clock (ms) for tests. */
+  now?: () => number;
 }
+
+export const CAPABILITY_TTL_MS = 10 * 60_000;
 
 const PROBE = "GET /comments/count/{id}";
 
@@ -43,21 +49,39 @@ export class AtlasWriteProvider implements CmmsWriteProvider {
 
   private readonly api: AtlasCommentApi;
   private readonly log: (line: string) => void;
-  private readonly capabilityCache = new Map<string, CmmsCapabilityMatrix>();
+  // Codex round 1, F2: only DEFINITIVE probe results are cached, and only for
+  // a bounded time. A transient error (network, 5xx, expired token) yields
+  // `unknown`, which is never cached, so the next attempt re-probes; a
+  // definitive answer (200 = comments exist, 404/405 = this Atlas version has
+  // no comment endpoint) is re-checked after the TTL so an Atlas upgrade is
+  // noticed without a worker restart.
+  private readonly capabilityCache = new Map<string, { matrix: CmmsCapabilityMatrix; expiresAt: number }>();
+  private readonly ttlMs: number;
+  private readonly clock: () => number;
 
   constructor(api: AtlasCommentApi, opts: AtlasWriteProviderOptions = {}) {
     this.api = api;
     this.log = opts.log ?? (() => {});
+    this.ttlMs = opts.capabilityTtlMs ?? CAPABILITY_TTL_MS;
+    this.clock = opts.now ?? Date.now;
   }
 
   async capabilities(target: WorkOrderTarget): Promise<CmmsCapabilityMatrix> {
     const key = this.targetKey(target);
     const cached = this.capabilityCache.get(key);
-    if (cached) return cached;
+    if (cached && cached.expiresAt > this.clock()) return cached.matrix;
+    this.capabilityCache.delete(key);
 
     const matrix = await this.probeCapabilities(target);
-    this.capabilityCache.set(key, matrix);
+    if (matrix.append_work_log.support !== "unknown") {
+      this.capabilityCache.set(key, { matrix, expiresAt: this.clock() + this.ttlMs });
+    }
     return matrix;
+  }
+
+  /** Drop every cached probe (e.g. after re-authentication). */
+  invalidateCapabilities(): void {
+    this.capabilityCache.clear();
   }
 
   async appendWorkLog(target: WorkOrderTarget, note: WorkLogNote): Promise<CmmsWriteResult> {

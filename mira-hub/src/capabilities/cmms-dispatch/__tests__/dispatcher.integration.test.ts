@@ -541,4 +541,175 @@ describe.skipIf(!URL_)("cmms-dispatch (real Postgres)", () => {
     expect(row.rows[0]!.state).toBe("retryable_failure");
     expect(row.rows[0]!.last_error).toBe("legacy_push_pending");
   });
+
+  // ── Codex round 1 remediation proofs (PR #5024) ────────────────────────────
+
+  it("F1: a retry after a lost response reconciles against the PINNED work order, never a retargeted one", async () => {
+    const tenantId = uuid();
+    const notebookId = await makeNotebook(tenantId);
+    await setCmmsConfig(tenantId, { writePolicy: workOrderPolicy("WO-F1-A") });
+    const { result } = await enqueueOne(tenantId, notebookId);
+    const deliveryId = requireDeliveryId(result.delivery);
+
+    const mock = new MockCmmsWriteProvider();
+    mock.failNext("lost_response"); // the comment lands on WO-F1-A, the response is lost
+    const stats1 = await runDispatchTick({ providerFor: () => mock, tenantAllowlist: new Set([tenantId]) });
+    expect(stats1.unknown).toBe(1);
+    expect(mock.records("WO-F1-A")).toHaveLength(1);
+
+    // The destination was persisted BEFORE the external write.
+    const pinned = await testPool.query<{ receipt: Record<string, unknown> }>(
+      `SELECT receipt FROM notebook_event_deliveries WHERE delivery_id = $1`,
+      [deliveryId],
+    );
+    expect((pinned.rows[0]!.receipt.pinned_target as { externalWorkOrderId: string }).externalWorkOrderId).toBe("WO-F1-A");
+
+    // Policy is retargeted to a different work order while the delivery is in flight.
+    await setCmmsConfig(tenantId, { writePolicy: workOrderPolicy("WO-F1-B") });
+    await testPool.query(`UPDATE notebook_event_deliveries SET next_attempt_at = now() WHERE delivery_id = $1`, [deliveryId]);
+
+    const stats2 = await runDispatchTick({ providerFor: () => mock, tenantAllowlist: new Set([tenantId]) });
+    expect(stats2.verified).toBe(1);
+    // Reconciled on A; nothing ever reaches B.
+    expect(mock.records("WO-F1-A")).toHaveLength(1);
+    expect(mock.records("WO-F1-B")).toHaveLength(0);
+    const row = await testPool.query<{ state: string; external_ref: string | null }>(
+      `SELECT state, external_ref FROM notebook_event_deliveries WHERE delivery_id = $1`,
+      [deliveryId],
+    );
+    expect(row.rows[0]!.state).toBe("verified_by_readback");
+  });
+
+  it("F1b: policy REVOCATION after the first attempt still stops delivery (pinning never overrides revocation)", async () => {
+    const tenantId = uuid();
+    const notebookId = await makeNotebook(tenantId);
+    await setCmmsConfig(tenantId, { writePolicy: workOrderPolicy("WO-F1B") });
+    const { result } = await enqueueOne(tenantId, notebookId);
+    const deliveryId = requireDeliveryId(result.delivery);
+    const mock = new MockCmmsWriteProvider();
+    mock.failNext("lost_response");
+    await runDispatchTick({ providerFor: () => mock, tenantAllowlist: new Set([tenantId]) });
+    await setCmmsConfig(tenantId, { enabled: false, writePolicy: workOrderPolicy("WO-F1B") });
+    await testPool.query(`UPDATE notebook_event_deliveries SET next_attempt_at = now() WHERE delivery_id = $1`, [deliveryId]);
+    const stats2 = await runDispatchTick({ providerFor: () => mock, tenantAllowlist: new Set([tenantId]) });
+    expect(stats2.blocked).toBe(1);
+    const row = await testPool.query<{ state: string }>(`SELECT state FROM notebook_event_deliveries WHERE delivery_id = $1`, [deliveryId]);
+    expect(row.rows[0]!.state).toBe("blocked_policy");
+  });
+
+  it("F3: a worker whose lease is no longer valid at pin-time never writes; a later owner delivers exactly once", async () => {
+    const tenantId = uuid();
+    const notebookId = await makeNotebook(tenantId);
+    await setCmmsConfig(tenantId, { writePolicy: workOrderPolicy("WO-F3") });
+    const { result } = await enqueueOne(tenantId, notebookId);
+    const deliveryId = requireDeliveryId(result.delivery);
+
+    // Worker A claims with a zero-length lease: by the time it reaches the
+    // pin/renew step its lease has already expired, exactly the "slow batch
+    // consumed the window" condition. It must skip, not write.
+    const mockA = new MockCmmsWriteProvider();
+    const statsA = await runDispatchTick({ providerFor: () => mockA, tenantAllowlist: new Set([tenantId]), leaseMs: 0 });
+    expect(statsA.claimed).toBe(1);
+    expect(statsA.leaseLost).toBe(1);
+    expect(mockA.calls.filter((c) => c.op === "appendWorkLog")).toHaveLength(0);
+    expect(mockA.records("WO-F3")).toHaveLength(0);
+
+    // Worker B reclaims the expired row and delivers it once.
+    const mockB = new MockCmmsWriteProvider();
+    const statsB = await runDispatchTick({ providerFor: () => mockB, tenantAllowlist: new Set([tenantId]) });
+    expect(statsB.verified).toBe(1);
+    expect(mockB.records("WO-F3")).toHaveLength(1);
+    const row = await testPool.query<{ state: string }>(`SELECT state FROM notebook_event_deliveries WHERE delivery_id = $1`, [deliveryId]);
+    expect(row.rows[0]!.state).toBe("verified_by_readback");
+  });
+
+  it("F4: ordering follows the EVENT sequence even when delivery created_at disagrees", async () => {
+    const tenantId = uuid();
+    const notebookId = await makeNotebook(tenantId);
+    await setCmmsConfig(tenantId, { writePolicy: workOrderPolicy("WO-F4") });
+    const first = await enqueueOne(tenantId, notebookId); // sequence 1
+    const second = await enqueueOne(tenantId, notebookId); // sequence 2
+    const d1 = requireDeliveryId(first.result.delivery);
+    const d2 = requireDeliveryId(second.result.delivery);
+
+    // Make the FIRST event's delivery still active but not due, and give the
+    // SECOND event's delivery an EARLIER created_at than the first's — the
+    // disagreement a created_at-based guard would get wrong.
+    await testPool.query(
+      `UPDATE notebook_event_deliveries SET state = 'retryable_failure', next_attempt_at = now() + interval '1 hour' WHERE delivery_id = $1`,
+      [d1],
+    );
+    await testPool.query(`UPDATE notebook_event_deliveries SET created_at = now() - interval '1 day' WHERE delivery_id = $1`, [d2]);
+
+    const mock = new MockCmmsWriteProvider();
+    const stats = await runDispatchTick({ providerFor: () => mock, tenantAllowlist: new Set([tenantId]) });
+    expect(stats.skippedOrdering).toBe(1);
+    expect(mock.records("WO-F4")).toHaveLength(0);
+    const row = await testPool.query<{ state: string }>(`SELECT state FROM notebook_event_deliveries WHERE delivery_id = $1`, [d2]);
+    expect(row.rows[0]!.state).toBe("queued");
+  });
+
+  it("F5: every rescheduled outcome is bounded — ambiguous outcomes are quarantined, retryable ones become permanent", async () => {
+    const maxAttempts = 2;
+
+    // (a) outcome_unknown forever (the provider never stores the record).
+    const ambiguous: import("@/lib/cmms/write-contract").CmmsWriteProvider = {
+      providerId: "atlas",
+      capabilities: async () => ({
+        append_work_log: { support: "implemented" },
+        read_work_log: { support: "implemented" },
+        attach_evidence: { support: "unsupported" },
+        record_reading: { support: "unsupported" },
+        transition_work_order: { support: "unsupported" },
+        list_changes: { support: "unsupported" },
+      }),
+      appendWorkLog: async () => ({ kind: "outcome_unknown", reason: "always_ambiguous", receipt: {} }),
+      readBackWorkLog: async () => ({ kind: "not_found", receipt: {} }),
+    };
+    const tenantA = uuid();
+    const nbA = await makeNotebook(tenantA);
+    await setCmmsConfig(tenantA, { writePolicy: workOrderPolicy("WO-F5A") });
+    const a = requireDeliveryId((await enqueueOne(tenantA, nbA)).result.delivery);
+    await runDispatchTick({ providerFor: () => ambiguous, tenantAllowlist: new Set([tenantA]), maxAttempts });
+    await testPool.query(`UPDATE notebook_event_deliveries SET next_attempt_at = now() WHERE delivery_id = $1`, [a]);
+    const s2 = await runDispatchTick({ providerFor: () => ambiguous, tenantAllowlist: new Set([tenantA]), maxAttempts });
+    expect(s2.quarantined).toBe(1);
+    const rowA = await testPool.query<{ state: string; last_error: string | null }>(
+      `SELECT state, last_error FROM notebook_event_deliveries WHERE delivery_id = $1`,
+      [a],
+    );
+    expect(rowA.rows[0]!.state).toBe("quarantined");
+    expect(rowA.rows[0]!.last_error).toBe("max_attempts_unreconciled:outcome_unknown");
+
+    // (b) legacy_push_pending forever (asset-linked work order never synced).
+    const tenantB = uuid();
+    const nbB = await makeNotebook(tenantB);
+    const equipmentEntityId = uuid();
+    await setCmmsConfig(tenantB, { writePolicy: assetLinkedPolicy() });
+    await makeWorkOrder(tenantB, equipmentEntityId, { synced: false });
+    const b = requireDeliveryId((await enqueueOne(tenantB, nbB, { equipmentEntityId })).result.delivery);
+    const mockB = new MockCmmsWriteProvider();
+    await runDispatchTick({ providerFor: () => mockB, tenantAllowlist: new Set([tenantB]), maxAttempts });
+    await testPool.query(`UPDATE notebook_event_deliveries SET next_attempt_at = now() WHERE delivery_id = $1`, [b]);
+    const s4 = await runDispatchTick({ providerFor: () => mockB, tenantAllowlist: new Set([tenantB]), maxAttempts });
+    expect(s4.permanent).toBe(1);
+    const rowB = await testPool.query<{ state: string; last_error: string | null }>(
+      `SELECT state, last_error FROM notebook_event_deliveries WHERE delivery_id = $1`,
+      [b],
+    );
+    expect(rowB.rows[0]!.state).toBe("permanent_failure");
+    expect(rowB.rows[0]!.last_error).toBe("max_attempts:legacy_push_pending");
+    expect(mockB.calls).toHaveLength(0);
+
+    // A quarantined/permanent predecessor is terminal: a later event on the
+    // same aggregate is no longer deferred behind it.
+    const laterA = requireDeliveryId((await enqueueOne(tenantA, nbA)).result.delivery);
+    const good = new MockCmmsWriteProvider();
+    const s5 = await runDispatchTick({ providerFor: () => good, tenantAllowlist: new Set([tenantA]), maxAttempts });
+    expect(s5.skippedOrdering).toBe(0);
+    expect(s5.verified).toBe(1);
+    const rowLater = await testPool.query<{ state: string }>(`SELECT state FROM notebook_event_deliveries WHERE delivery_id = $1`, [laterA]);
+    expect(rowLater.rows[0]!.state).toBe("verified_by_readback");
+  });
+
 });
