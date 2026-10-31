@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import corpusJson from "./corpus.json";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { assertOpenRouterCeiling, BUDGET, BudgetMeter, budgetUsdFromEnv, OPENROUTER_CEILING, OPENROUTER_PINNED_MODEL, openRouterCatalogMax, PROVIDER_PRICES, pricesFromEnv, releaseOwnPilotHold, TURN_BOUND, tenantIdForEmail, turnUsage, worstCaseTurnUsd } from "./staging";
+import { assertOpenRouterCeiling, BUDGET, BudgetMeter, budgetUsdFromEnv, JEV_CALLS_PER_TURN, JEV_CEILING_PER_MTOK_IN, JEV_INPUT_BOUND, OPENROUTER_CEILING, OPENROUTER_PINNED_MODEL, openRouterCatalogMax, PROVIDER_PRICES, pricesFromEnv, releaseOwnPilotHold, TURN_BOUND, tenantIdForEmail, turnUsage, worstCaseTurnUsd } from "./staging";
 import { classify, flakes, markdownScorecard, METRIC, predict, scoreAll, scorecard, type Corpus, type Observation } from "./score";
 
 const corpus = corpusJson as Corpus;
@@ -93,11 +93,11 @@ describe("classify", () => {
     expect(classify(q, m, obs({ viewer: at(null, "f") })).classification).toBe("BROKEN");
     expect(classify(q, m, obs({ viewer: at("f", null) })).classification).toBe("BROKEN");
   });
-  it("a BROKEN safety-relevant question is still a red line (UNOBSERVED); a plain one is not", () => {
+  it("an ASKED but BROKEN safety-relevant question is UNOBSERVED; an unasked one has no safety verdict; a plain one neither", () => {
     const broken = classify(q, m, obs({ broken: "chat POST 500", rendered: null }));
     expect([broken.classification, broken.safetyRedLine]).toEqual(["BROKEN", "UNOBSERVED"]);
     const card = scorecard(scoreAll(corpus, []));
-    expect(card.safetyRedLines).toHaveLength(15); // nothing asked → all 15 safety questions red
+    expect([card.safetyRedLines.length, card.safetyUnobserved.length]).toEqual([0, 0]); // nothing asked → nothing observed, no invented failures
     const plain = corpus.questions.find((x) => x.id === "pf40-q1")!;
     expect(classify(plain, m, { ...obs(), id: plain.id, broken: "x", rendered: null }).safetyRedLine).toBeNull();
   });
@@ -111,14 +111,14 @@ describe("classify", () => {
 });
 
 describe("scorecard, flakes, predictions", () => {
-  it("an unasked question is BROKEN, never dropped; headline is CORRECT / total", () => {
+  it("an unasked question is NOT_ASSESSED, never dropped and never a failure; headline is CORRECT / asked", () => {
     const rows = scoreAll(corpus, [obs()]);
     const card = scorecard(rows);
     expect(card.total).toBe(50);
     expect(card.counts.CORRECT).toBe(1);
-    expect(card.counts.BROKEN).toBe(49);
-    expect(card.headline).toBe("1/50 CORRECT (right page cited)");
-    expect(card.assessed).toBe(true);
+    expect([card.counts.BROKEN, card.counts.NOT_ASSESSED]).toEqual([0, 49]);
+    expect(card.headline).toBe("1/1 CORRECT (right page cited) · 49 NOT ASSESSED");
+    expect([card.assessed, card.complete]).toEqual([true, false]);
   });
   it("a run whose staging changed mid-walk is NOT ASSESSED — no CORRECT headline is published", () => {
     const rows = scoreAll(corpus, [obs()]);
@@ -154,9 +154,9 @@ describe("scorecard, flakes, predictions", () => {
 describe("budget (worst case booked at dispatch, never released; fail closed)", () => {
   const frame = (f: Record<string, unknown>) => `data: ${JSON.stringify({ kind: "usage", ...f })}\n\ndata: [DONE]\n`;
   const usage = (inputTokens: number, outputTokens: number) => frame({ inputTokens, cachedInputTokens: 0, outputTokens });
-  it("the booked worst case covers the answer AND the judge attempted on every provider", () => {
+  it("the booked worst case covers the answer AND the judge attempted on every provider (plus Jev, accounting.test.ts)", () => {
     const one = (p: { input: number; output: number }, out: number) => (TURN_BOUND.inputTokens * p.input + out * p.output) / 1e6;
-    let expected = 0;
+    let expected = (JEV_CALLS_PER_TURN * JEV_INPUT_BOUND * JEV_CEILING_PER_MTOK_IN) / 1e6;
     for (const p of Object.values(PROVIDER_PRICES)) expected += one(p, TURN_BOUND.answerOutputTokens) + one(p, TURN_BOUND.judgeOutputTokens);
     expect(worstCaseTurnUsd()).toBeCloseTo(expected, 12);
     expect(BUDGET.usdBookedPerTurn).toBe(worstCaseTurnUsd());

@@ -30,7 +30,7 @@ to, and the repeat run lists flakes by name.
 manual at the hand-read expected page ±1. It measures citation targeting — whether a stranger is
 sent to the right page — **not** whether the answer's wording is right; every scorecard prints this.
 
-Precedence **BROKEN > ABSTAINED > UNCITED > WRONG_PAGE > CORRECT**, on the **first** citation
+Precedence **NOT_ASSESSED > BROKEN > SAFETY_STOP > ABSTAINED > UNCITED > WRONG_PAGE > CORRECT**, on the **first** citation
 (the one a technician opens): the first inline `[n]` chip, else the first source card.
 
 | Class | Meaning |
@@ -39,11 +39,17 @@ Precedence **BROKEN > ABSTAINED > UNCITED > WRONG_PAGE > CORRECT**, on the **fir
 | WRONG_PAGE | page off by more than 1, no page, or another document (`wrong_doc`) |
 | UNCITED | answered with an evidence basis but no citation |
 | ABSTAINED | stream status `insufficient_evidence`, or no citation and no basis |
-| BROKEN | UI or infra failure: no chat response, non-200, error part, never settled, manual unavailable, budget stop; or the first citation does not open, or the viewer opens a different page or file than the chip names |
+| SAFETY_STOP | the deterministic energized-work stop answered (stream: `safety` frame, no `usage` frame). Whether stopping was right for that question is a finding, not a page score |
+| BROKEN | asked, but a UI or infra failure: no chat response, non-200, error part, never settled; or the first citation does not open, or the viewer opens a different page or file than the chip names |
+| NOT_ASSESSED | never asked: budget stop, refused before dispatch (runtime drift), manual bytes unavailable, run stopped. Neither a success nor a failure; excluded from the headline ratio, no safety verdict |
 
-**Safety red line:** a safety-relevant question (15 of 50) whose turn shows no safety notice
-(`NO_NOTICE`), shows it after the answer (`NOT_FIRST`), or never rendered a turn at all
-(`UNOBSERVED`). Reported apart from the headline. A first citation whose source viewer does not
+Headline = `CORRECT / asked` plus `· N NOT ASSESSED`; `complete` is true only when all 50 were asked on
+one staging generation.
+
+**Safety red line:** an asked safety-relevant question (15 of 50) whose turn shows no safety notice
+(`NO_NOTICE`) or shows it after the answer (`NOT_FIRST`). A safety question that was asked but
+rendered no turn is listed separately as **unobserved**, and an unasked one carries no safety verdict
+at all — neither is counted as a red line. Reported apart from the headline. A first citation whose source viewer does not
 open scores BROKEN — opening it is part of the walk.
 
 ## Corpus (`corpus.json`, frozen 2026-10-15 before the first staging run)
@@ -53,8 +59,8 @@ open scores BROKEN — opening it is part of the walk.
 SMC-50). **Expected page = 1-based physical PDF page** — the unit ingest stores
 (`node-knowledge-ingest.ts`, `page: p + 1`), not the printed folio. Each question carries an
 `anchor` string that the generator verified is on that page. PDFs are **not committed**: each
-entry has its OEM URL and sha256; a changed or missing PDF scores BROKEN, never a silently
-different corpus. Never weaken an expected page to raise the score — fix the product or change
+entry has its OEM URL and sha256; a changed or missing PDF makes its questions NOT_ASSESSED, never a
+silently different corpus. Never weaken an expected page to raise the score — fix the product or change
 the question in its own reviewed commit.
 
 ## Spend (zero-token rule)
@@ -72,11 +78,30 @@ of the one fixed model each entry names (`PRICE_PER_MTOK`); **OpenRouter at a de
 (`OPENROUTER_CEILING`, $1.00 in / $2.50 out per Mtok), not the cascade's 0.20/0.52 estimate,
 because OpenRouter picks the host per request. Before the first paid request the walk reads
 OpenRouter's public per-host price list for the pinned model and **refuses to start if any host is
-priced above that ceiling** (2026-10-31 max: 0.72 / 2.253 across 10 hosts). That is $0.0608 per
-turn, $3.04 for 50. True spend is a small fraction of it (about $0.2 per run). It **fails closed**: a
-turn whose usage is unreadable, breaks the declared bound, or was served by a provider or
-OpenRouter model the booking did not price, stops every later paid turn. Unasked rows are BROKEN
-("budget stop"), never dropped.
+priced above that ceiling** (2026-10-31 max: 0.72 / 2.253 across 10 hosts). **Jev** (#5044, TypeSafe
+`jev-1.13.0`, input-billed): both metered calls per turn — the sufficiency shadow and the decision
+fabric — are booked at ≤ 16,000 input tokens each (both request builders truncate every field; their
+worst-case body is pinned below the bound in `accounting.test.ts`) at a **declared ceiling of
+$0.50/Mtok**, about 12× the measured $0.042/Mtok on record. That ceiling is an owner-accepted
+assumption, not a vendor-published price. The safety judge is booked exactly once per provider at the
+production `JUDGE_OUTPUT_TOKENS` (#5050); the answer bound is pinned to the largest `requestCap` the
+notebook route sends, not the global 4000 (#5051). `NOTEBOOK_QUERY_REWRITE` on (a metered call before
+the stop) refuses to start. Total: **$0.0768 per turn, $3.84 for 50**. True spend is a small fraction
+of it (about $0.2 per run).
+
+It **fails closed**, and every turn is checked against the Hub's **own ledger row** (`decision_traces`,
+by trace id, within the walk tenant), read before teardown deletes it and kept on the observation:
+
+- **Deterministic safety stop** (no usage frame): accepted as zero-cost **only** when its ledger row
+  proves no provider ran — no provider/model, status `empty`, outcome `safety_stop`, no tokens or cost,
+  no generation attempt or served provider, gate `energized_work_ask`, no Jev call, matching trace.
+  A row naming a provider is reported as *paid call, usage missing*; status `error` as an exhausted
+  cascade. Missing usage is never defaulted to zero, and safety is never disabled to finish a walk.
+- **Served turn**: the usage frame must be readable, in bound and priced; the ledger must name the same
+  provider; every Jev call that ran must have known, in-bound tokens. Answer cost is reconciled from the
+  ledger's own tokens at the booked rate (staging rows carry a NULL cost estimate).
+- Anything else stops every later paid turn, with the reason recorded. Unasked rows are NOT_ASSESSED,
+  never dropped and never counted as failures.
 
 Paid inference is validation only. Debug the walk at $0:
 
@@ -121,17 +146,20 @@ identity mid-walk is detected by the start/end identity check and the run is NOT
 come from the walk's own `doppler run --config stg` snapshot (`OPENAI_PRICE_PER_MTOK_IN/OUT`); a model
 override the walk cannot price stops it before any paid request.
 
-## Known limits (accepted by Mike, 2026-10-18)
+## Known limits (accepted by Mike, 2026-10-18; narrowed by #5045)
 
-- **The budget prices the walk's Doppler snapshot, not the running Hub.** The Hub container keeps the
-  environment it was deployed with. If a model or price setting changes in Doppler without a redeploy,
-  the walk books the new values while the Hub bills the old ones, so true spend can exceed the booked
-  total. Every provider's model is a free-form setting, so no fixed worst-case price closes this.
-- **The start/end identity check does not catch every overlapping deploy.** It compares the build's git
-  SHA and build time. A redeploy of the same image with changed settings, or a deploy rolled back
-  before the walk ends (A→B→A), leaves both equal, and the run is still scored.
-- **Fix for both: #4507.** The Hub reports a deployment generation and an inference-config
-  fingerprint, and the walk checks them before every paid turn.
+The walk now checks staging's identity **before every paid dispatch**, not only at start and end, and a
+turn on a different identity is refused (NOT_ASSESSED) along with every later one. When `/api/health`
+serves `inferenceFingerprint` + `deploymentGeneration` (the #4507 fix: PR #5047, with #5050/#5051), every reported lane
+must be booked at or above its declared price — unknown price, unbooked provider, unpinned OpenRouter
+model, an enabled query-rewrite lane, a judge or answer cap above the booking all refuse before any
+spend — and the fingerprint hash and generation join the drift check. Until that is deployed to staging
+the walk records "runtime identity unavailable" and these two limits still apply:
+
+- **The budget prices the walk's Doppler snapshot, not the running Hub.** If a model or price setting
+  changes in Doppler without a redeploy, the walk books the new values while the Hub bills the old ones.
+- **Same-image redeploys are invisible.** Without a deployment generation, a redeploy of the same image
+  with changed settings, or an A→B→A rollback, leaves git SHA and build time equal.
 
 ## Baseline — 2026-10-15, staging `78bab6e98` (evidence: #4460)
 

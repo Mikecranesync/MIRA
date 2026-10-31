@@ -18,7 +18,10 @@ import { extractTurn, UI } from "../fidelity/surfaces";
 import corpusJson from "./corpus.json";
 import { cardsOf, firstChipOf, viewerTargetOf } from "./extract";
 import { fixtureFor, markdownScorecard, scoreAll, scorecard, type Corpus, type Observation, type Question } from "./score";
-import { assertOpenRouterCeiling, BUDGET, BudgetMeter, identity, manualBytes, pricesFromEnv, releaseOwnPilotHold, stagingBase, teardownTenant, tenantIdForEmail, TURN_BOUND, worstCaseTurnUsd } from "./staging";
+import {
+  assertOpenRouterCeiling, BUDGET, BudgetMeter, checkFingerprint, identity, JEV_CALLS_PER_TURN, JEV_CEILING_PER_MTOK_IN, JEV_INPUT_BOUND, ledgerVerdictFor,
+  manualBytes, pricesFromEnv, releaseOwnPilotHold, runtimeDrift, runtimeOf, stagingBase, teardownTenant, tenantIdForEmail, TURN_BOUND, worstCaseTurnUsd,
+} from "./staging";
 
 const corpus = corpusJson as Corpus;
 const RUN_ID = process.env.STRANGER_WALK_RUN_ID ?? new Date().toISOString().replace(/[:.]/g, "-");
@@ -31,6 +34,8 @@ const ANSWER_TIMEOUT = DRY ? 15_000 : 180_000;
 const turnSel = '.fl-turn--aui[data-role="assistant"]';
 const brokenObs = (id: string, why: string | null, elapsedMs = 0): Observation =>
   ({ id, broken: why, rendered: null, cards: [], firstChip: null, streamStatus: null, errorPart: null, viewerOpened: null, sse: null, elapsedMs });
+/** Never sent (budget stop, drift refusal, manual unavailable): NOT ASSESSED, not a failure. */
+const notAskedObs = (id: string, why: string): Observation => ({ ...brokenObs(id, null), notAsked: why });
 const sseStatus = (sse: string | null) => {
   let status: string | null = null;
   for (const line of (sse ?? "").split("\n")) {
@@ -102,7 +107,7 @@ async function waitReady(page: Page, filename: string): Promise<string> {
   throw new Error(`source never became ready (last label: ${label})`);
 }
 
-async function ask(page: Page, q: Question, manualFilename: string, attach: { name: string; buffer: Buffer } | null, meter: BudgetMeter): Promise<Observation> {
+async function ask(page: Page, q: Question, manualFilename: string, attach: { name: string; buffer: Buffer } | null, meter: BudgetMeter, tenantId: string, prices: Record<string, { input: number; output: number }>): Promise<Observation> {
   const t0 = Date.now();
   const before = await page.locator(turnSel).count();
   if (attach) {
@@ -123,7 +128,11 @@ async function ask(page: Page, q: Question, manualFilename: string, attach: { na
   // Check the visible usage against the bound the booking assumed, before any UI step that could
   // throw. No response or a non-200 has no readable usage and stops later paid turns (fail closed).
   const sse = res && res.status() === 200 ? await res.text().catch(() => null) : null;
-  if (!DRY) meter.verify(q.id, sse);
+  // The Hub's own ledger row for THIS turn is the authority on what it called: a stop is zero-cost
+  // only when the row proves no provider ran; a served turn reconciles cost + Jev usage. Read now —
+  // teardown deletes the tenant's rows — and keep a copy on the observation.
+  const ledger = DRY || !sse ? null : await ledgerVerdictFor(tenantId, sse, undefined, prices);
+  if (!DRY) meter.verify(q.id, sse, ledger?.verdict);
   if (!res) {
     const err = await page.getByRole("alert", { name: "Send error" }).innerText().catch(() => "");
     return broken(`no chat response${err ? `: ${err.replace(/\s+/g, " ").slice(0, 160)}` : ""}`);
@@ -133,7 +142,7 @@ async function ask(page: Page, q: Question, manualFilename: string, attach: { na
   try {
     await turn.and(page.locator(':not([data-lifecycle="running"])')).waitFor({ timeout: ANSWER_TIMEOUT });
   } catch {
-    return { ...broken("answer never settled"), sse };
+    return { ...broken("answer never settled"), sse, ledger };
   }
   await page.waitForTimeout(1_500); // the post-turn detail refetch swaps live → persisted; read what then stays on screen
   const settled = await UI.clone.settled(page);
@@ -157,7 +166,7 @@ async function ask(page: Page, q: Question, manualFilename: string, attach: { na
     }
     await page.keyboard.press("Escape");
   }
-  return { id: q.id, broken: null, rendered, cards, firstChip, streamStatus: sseStatus(sse), errorPart, viewerOpened, viewer, sse, elapsedMs: Date.now() - t0 };
+  return { id: q.id, broken: null, rendered, cards, firstChip, streamStatus: sseStatus(sse), errorPart, viewerOpened, viewer, sse, ledger, elapsedMs: Date.now() - t0 };
 }
 
 test("stranger walk", async ({ page }) => {
@@ -169,26 +178,39 @@ test("stranger walk", async ({ page }) => {
   const start = await identity(base);
   const obs: Observation[] = [];
   // Priced from the deployed env before anything is sent; throws (no paid request) if unpriceable.
-  const meter = new BudgetMeter(BUDGET.usdPerRun, worstCaseTurnUsd(pricesFromEnv()));
+  const prices = pricesFromEnv();
+  const meter = new BudgetMeter(BUDGET.usdPerRun, worstCaseTurnUsd(prices));
+  // #5045: the Hub's own report of its lanes, when it serves one, must be booked before any spend.
+  const fingerprint = checkFingerprint(start.inferenceFingerprint, prices);
+  const runtime = runtimeOf(start);
   // OpenRouter picks the host per request, so its booked rate is a ceiling, not the cascade's
   // estimate: refuse to start if the live catalog lists any host priced above it (Codex F3).
   if (!DRY) await assertOpenRouterCeiling();
-  const notes: string[] = [];
+  const notes: string[] = [fingerprint.available
+    ? `runtime identity: fingerprint ${fingerprint.hash}, generation ${start.deploymentGeneration ?? "none"} — every lane booked at or above its declared price`
+    : "runtime identity unavailable (staging serves no inferenceFingerprint): lanes booked from the walk's stg env + production constants; gitSha/builtAt checked before every paid dispatch (#5045 accepted limits)"];
   let tenantId: string | null = null;
   try {
-    tenantId = await signUp(page, base); // tenant.txt is already written; teardown reads it on every exit path
+    const walkTenant = await signUp(page, base);
+    tenantId = walkTenant; // tenant.txt is already written; teardown reads it on every exit path
     for (const m of corpus.manuals) {
       const qs = corpus.questions.filter((q) => q.manual === m.id && (!ONLY || ONLY.has(q.id)));
       if (!qs.length) continue;
       const pdf = await manualBytes(m, process.env.STRANGER_WALK_CACHE ?? path.join(__dirname, ".out", "manuals"));
-      if (!pdf.bytes) { for (const q of qs) obs.push(brokenObs(q.id, pdf.problem)); continue; }
+      if (!pdf.bytes) { for (const q of qs) obs.push(notAskedObs(q.id, `manual unavailable: ${pdf.problem}`)); continue; }
       let uploaded = false;
       try { await newProject(page, `${m.oem} ${m.id}`); } catch (e) {
         for (const q of qs) obs.push(brokenObs(q.id, `project create failed: ${(e as Error).message.split("\n")[0]}`));
         continue;
       }
       for (const [i, q] of qs.entries()) {
-        if (!DRY && !meter.canAfford()) { obs.push(brokenObs(q.id, meter.unbounded ? `budget stop: ${meter.unbounded} had unreadable or out-of-bound usage` : "budget stop")); continue; }
+        if (!DRY && !meter.canAfford()) { obs.push(notAskedObs(q.id, meter.unbounded ? `budget stop: ${meter.unbounded} — ${meter.unboundedReason}` : "budget stop: the next turn's worst case would cross the cap")); continue; }
+        if (!DRY) {
+          // Drift before EVERY paid dispatch, not only at the end: a turn on a different deploy or
+          // lane configuration than the one booked is refused, and so is every later one.
+          const drift = runtimeDrift(runtime, await identity(base).then(runtimeOf, () => null));
+          if (drift) { meter.halt(q.id, drift); obs.push(notAskedObs(q.id, `refused before dispatch: ${drift}`)); continue; }
+        }
         try {
           if (i > 0) {
             await page.getByRole("button", { name: "New chat" }).click();
@@ -197,7 +219,7 @@ test("stranger walk", async ({ page }) => {
             uploaded ||= (await sourceReadiness(page, m.filename)) !== null;
             if (uploaded) notes.push(`${q.id}: readiness "${await waitReady(page, m.filename)}"`);
           }
-          const o = await ask(page, q, m.filename, uploaded ? null : { name: m.filename, buffer: pdf.bytes }, meter);
+          const o = await ask(page, q, m.filename, uploaded ? null : { name: m.filename, buffer: pdf.bytes }, meter, walkTenant, prices);
           obs.push(o);
         } catch (e) {
           await page.screenshot({ path: path.join(OUT, "shots", `${q.id}.png`) }).catch(() => undefined);
@@ -210,8 +232,9 @@ test("stranger walk", async ({ page }) => {
     notes.push(`run aborted: ${(e as Error).message.split("\n")[0]}`);
   } finally {
     const end = await identity(base).catch(() => null);
-    const superseded = !end || end.gitSha !== start.gitSha || end.builtAt !== start.builtAt;
-    if (superseded) notes.push(`SUPERSEDED: staging changed during the run (${start.gitSha.slice(0, 9)}@${start.builtAt} → ${end ? `${end.gitSha.slice(0, 9)}@${end.builtAt}` : "unreadable"})`);
+    const endDrift = runtimeDrift(runtime, end ? runtimeOf(end) : null);
+    const superseded = endDrift !== null;
+    if (superseded) notes.push(`SUPERSEDED: ${endDrift}`);
     // The persisted id, not the return value: signUp may have created a tenant and then failed.
     let tenantLookupFailed: string | null = null;
     const persisted = existsSync(path.join(OUT, "tenant.txt")) ? readFileSync(path.join(OUT, "tenant.txt"), "utf8").trim() : null;
@@ -229,20 +252,23 @@ test("stranger walk", async ({ page }) => {
       : tenantId ? teardownTenant(tenantId) : { ok: true, detail: "no tenant was created" };
     notes.push(`teardown: ${td.ok ? "OK" : "FAILED"} — ${td.detail}`);
     const asked = ONLY ? { ...corpus, questions: corpus.questions.filter((q) => ONLY.has(q.id)) } : corpus;
-    notes.unshift(`budget: $${meter.budget.toFixed(2)} cap; $${meter.perTurn.toFixed(4)} booked per turn (answer + judge on every provider, ≤${TURN_BOUND.inputTokens} in / ≤${TURN_BOUND.answerOutputTokens} out tokens); booked $${meter.booked.toFixed(2)} over ${meter.turns} dispatched turns — an upper bound on true spend while the Hub bills at these prices (#4507)${meter.unbounded ? `; STOPPED: ${meter.unbounded} had unreadable or out-of-bound usage` : ""}`);
+    const jevUsd = (meter.jevInputTokens * JEV_CEILING_PER_MTOK_IN) / 1e6;
+    notes.unshift(`budget: $${meter.budget.toFixed(2)} cap; $${meter.perTurn.toFixed(4)} booked per turn (answer + judge on every provider, ≤${TURN_BOUND.inputTokens} in / ≤${TURN_BOUND.answerOutputTokens} out tokens, + ${JEV_CALLS_PER_TURN} Jev calls ≤${JEV_INPUT_BOUND} in at a declared $${JEV_CEILING_PER_MTOK_IN}/Mtok ceiling); booked $${meter.booked.toFixed(4)} over ${meter.turns} dispatched turns — an upper bound on true spend while the Hub bills at these prices`);
+    notes.splice(1, 0, `reconciled from the Hub ledger: answers $${meter.reconciledAnswerUsd.toFixed(6)} (ledger tokens at the booked rate; ${meter.unknownAnswerCostTurns} served turn(s) with unknown tokens, not counted as zero) + Jev ${meter.jevInputTokens} input tokens (≤ $${jevUsd.toFixed(6)} at the ceiling); ${meter.zeroCallTurns} safety stop(s) proven zero-call; the safety judge has no ledger column and stays booked-only${meter.unbounded ? `; STOPPED at ${meter.unbounded}: ${meter.unboundedReason}` : ""}`);
     const aborted = notes.find((n) => n.startsWith("run aborted: "));
     const rows = scoreAll(asked, obs).map((r) => (aborted && !obs.some((o) => o.id === r.id) ? { ...r, reason: aborted } : r));
     const card = scorecard(rows, superseded);
-    const meta = { ...start, runId: RUN_ID };
+    const meta = { gitSha: start.gitSha, builtAt: start.builtAt, deploymentGeneration: start.deploymentGeneration, runId: RUN_ID };
     for (const r of rows.filter((x) => x.classification !== "CORRECT" || x.safetyRedLine)) {
       const q = corpus.questions.find((x) => x.id === r.id)!;
       const o = obs.find((x) => x.id === r.id) ?? brokenObs(r.id, r.reason);
       writeFileSync(path.join(OUT, "fixtures", `${r.id}.json`), JSON.stringify(fixtureFor(q, corpus.manuals.find((x) => x.id === q.manual)!, o, r, meta, corpus.tolerance), null, 2));
     }
     writeFileSync(path.join(OUT, "observations.json"), JSON.stringify(obs, null, 2));
-    writeFileSync(path.join(OUT, "scored.json"), JSON.stringify({ meta, turns: meter.turns, bookedUsd: meter.booked, notes, card, rows }, null, 2));
+    const reconciled = { answerUsd: meter.reconciledAnswerUsd, unknownAnswerCostTurns: meter.unknownAnswerCostTurns, jevInputTokens: meter.jevInputTokens, zeroCallTurns: meter.zeroCallTurns, stoppedAt: meter.unbounded, stopReason: meter.unboundedReason };
+    writeFileSync(path.join(OUT, "scored.json"), JSON.stringify({ meta, turns: meter.turns, bookedUsd: meter.booked, reconciled, notes, card, rows }, null, 2));
     writeFileSync(path.join(OUT, "scorecard.md"), `${markdownScorecard(rows, card, meta)}\n\n${notes.map((n) => `- ${n}`).join("\n")}\n`);
-    console.log(`stranger walk ${card.headline} · ${JSON.stringify(card.counts)} · red lines ${card.safetyRedLines.length} · ${OUT}`);
+    console.log(`stranger walk ${card.headline} · ${JSON.stringify(card.counts)} · red lines ${card.safetyRedLines.length} · unobserved ${card.safetyUnobserved.length} · ${OUT}`);
     if (!td.ok) throw new Error(`tenant teardown failed: ${td.detail}`);
     if (superseded) throw new Error("NOT ASSESSED: staging changed during the run — the rows span two deploy generations");
   }

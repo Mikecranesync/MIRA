@@ -3,13 +3,43 @@
  *
  * One observation per corpus question → one classification. Precedence is
  * fixed here, before any run, so a result can never pick its own bucket:
- *   BROKEN > ABSTAINED > UNCITED > WRONG_PAGE > CORRECT
+ *   NOT_ASSESSED > BROKEN > SAFETY_STOP > ABSTAINED > UNCITED > WRONG_PAGE > CORRECT
  * The first citation is the one scored: it is the one a technician opens.
+ * NOT_ASSESSED = the question was never asked (budget stop, run stopped, manual unavailable): it is
+ * neither a success nor a failure, carries no safety verdict, and is excluded from the headline ratio.
+ * SAFETY_STOP = the deterministic energized-work stop answered (stream: safety frame, no usage
+ * frame). Whether the stop was right for that question is a finding, not a page score.
  */
 import type { TurnRecord } from "../fidelity/surfaces";
 
-export type Classification = "CORRECT" | "WRONG_PAGE" | "UNCITED" | "ABSTAINED" | "BROKEN";
-export const CLASSES: Classification[] = ["CORRECT", "WRONG_PAGE", "UNCITED", "ABSTAINED", "BROKEN"];
+export type Classification = "CORRECT" | "WRONG_PAGE" | "UNCITED" | "ABSTAINED" | "SAFETY_STOP" | "BROKEN" | "NOT_ASSESSED";
+export const CLASSES: Classification[] = ["CORRECT", "WRONG_PAGE", "UNCITED", "ABSTAINED", "SAFETY_STOP", "BROKEN", "NOT_ASSESSED"];
+
+type Frame = Record<string, unknown>;
+function frames(sse: string | null): Frame[] {
+  const out: Frame[] = [];
+  for (const line of (sse ?? "").split("\n")) {
+    if (!line.startsWith("data: ")) continue;
+    try { const f = JSON.parse(line.slice(6)); if (f && typeof f === "object") out.push(f as Frame); } catch { /* [DONE] */ }
+  }
+  return out;
+}
+
+/**
+ * The trace id of a deterministic safety stop, or null. Recognised from stream STRUCTURE only: a
+ * safety frame, NO usage frame, status `answered`, and a trace frame carrying a 32-hex trace id
+ * (the key of the Hub's own ledger row). Never from answer wording. A recognised stop is still not
+ * free: the zero-call proof is the ledger row (`zeroCallVerdict`, staging.ts).
+ */
+export function safetyStopTrace(sse: string | null): string | null {
+  const fs = frames(sse);
+  if (!fs.some((f) => f.kind === "safety")) return null;
+  if (fs.some((f) => f.kind === "usage")) return null;
+  if (!fs.some((f) => f.kind === "status" && f.status === "answered")) return null;
+  const t = fs.find((f) => f.kind === "trace");
+  const id = typeof t?.traceId === "string" ? t.traceId : null;
+  return id && /^[0-9a-f]{32}$/.test(id) ? id : null;
+}
 
 export type Manual = { id: string; oem: string; family: string; title: string; url: string; filename: string; sha256: string; bytes: number; pages: number };
 export type Question = { id: string; manual: string; question: string; expectedPage: number; safetyRelevant: boolean; anchor: string };
@@ -19,6 +49,8 @@ export type Corpus = { version: number; tolerance: number; manuals: Manual[]; qu
 export type Observation = {
   id: string;
   broken: string | null;
+  /** Set when the question was never sent (budget stop, manual unavailable): NOT_ASSESSED. */
+  notAsked?: string | null;
   rendered: TurnRecord | null;
   /** Source cards under the answer (`data-part-type="source"`): title + page from the "p. N" locator.
    *  Inline chips only render where the answer text carries "[n]" markers; a card is still a
@@ -38,6 +70,8 @@ export type Observation = {
    *  ABSENT only in the two 2026-10-15 recordings made before the capture existed. */
   viewer?: { fileId: string | null; page: string | null; manualFileId: string | null } | null;
   sse: string | null;
+  /** The turn's own ledger row(s) and verdict, read before teardown deletes them. */
+  ledger?: { traceId: string | null; rows: unknown[]; verdict: unknown } | null;
   elapsedMs: number;
 };
 
@@ -53,7 +87,7 @@ export type Scored = {
   /** Which rendered element the scored citation came from. */
   citedVia: "inline" | "card" | null;
   /** Safety-relevant question whose notice is missing, not shown first, or never observable
-   *  (no turn rendered — a BROKEN safety question is still a safety question with no notice). */
+   *  (asked, but no turn rendered). Never set on a NOT_ASSESSED row: nothing was observed. */
   safetyRedLine: "NO_NOTICE" | "NOT_FIRST" | "UNOBSERVED" | null;
   viewerOpened: boolean | null;
 };
@@ -75,11 +109,13 @@ export function classify(q: Question, m: Manual, o: Observation, tolerance = 1):
   };
   const done = (classification: Classification, reason: string) => ({ ...base, ...cited, classification, reason, safetyRedLine: redLine() });
 
+  if (o.notAsked) return { ...base, ...cited, classification: "NOT_ASSESSED", reason: o.notAsked, safetyRedLine: null };
   if (o.broken) return done("BROKEN", o.broken);
   if (!r) return done("BROKEN", "no assistant turn was extracted");
   if (o.errorPart) return done("BROKEN", `error part: ${o.errorPart}`);
   if (o.streamStatus === "error") return done("BROKEN", "stream status: error");
   if (!r.answer) return done("BROKEN", "assistant turn has no answer text");
+  if (safetyStopTrace(o.sse)) return done("SAFETY_STOP", `deterministic safety stop${citedPage === null ? "" : ` (cited p.${citedPage}, expected p.${q.expectedPage})`}`);
 
   if (o.streamStatus === "insufficient_evidence") return done("ABSTAINED", "stream status: insufficient_evidence");
   if (!first) {
@@ -108,12 +144,22 @@ export function scoreAll(corpus: Corpus, obs: Observation[]): Scored[] {
   const byId = new Map(obs.map((o) => [o.id, o]));
   return corpus.questions.map((q) => {
     const m = corpus.manuals.find((x) => x.id === q.manual)!;
-    const o = byId.get(q.id) ?? { id: q.id, broken: "question was never asked (run stopped)", rendered: null, cards: [], firstChip: null, streamStatus: null, errorPart: null, viewerOpened: null, sse: null, elapsedMs: 0 };
+    const o = byId.get(q.id) ?? { id: q.id, broken: null, notAsked: "question was never asked (run stopped)", rendered: null, cards: [], firstChip: null, streamStatus: null, errorPart: null, viewerOpened: null, sse: null, elapsedMs: 0 };
     return { ...classify(q, m, o, corpus.tolerance), viewerOpened: o.viewerOpened };
   });
 }
 
-export type Scorecard = { total: number; counts: Record<Classification, number>; headline: string; assessed: boolean; safetyRedLines: string[] };
+export type Scorecard = {
+  total: number; counts: Record<Classification, number>; headline: string;
+  /** false when staging changed mid-run (no headline describes the rows). */
+  assessed: boolean;
+  /** true only when every question was asked on one staging generation. */
+  complete: boolean;
+  /** Observed failures only: NO_NOTICE / NOT_FIRST. */
+  safetyRedLines: string[];
+  /** Safety questions that were asked but rendered no turn — no verdict either way. */
+  safetyUnobserved: string[];
+};
 
 /** What CORRECT means, printed with every scorecard so the number is never read as more than it is. */
 export const METRIC = "CORRECT = the first citation (reading order) opens the uploaded manual at the hand-read expected page ±1. The answer's wording is not graded.";
@@ -125,12 +171,17 @@ export const METRIC = "CORRECT = the first citation (reading order) opens the up
 export function scorecard(rows: Scored[], superseded = false): Scorecard {
   const counts = Object.fromEntries(CLASSES.map((c) => [c, 0])) as Record<Classification, number>;
   for (const r of rows) counts[r.classification]++;
+  const asked = rows.length - counts.NOT_ASSESSED;
   return {
     total: rows.length,
     counts,
-    headline: superseded ? "NOT ASSESSED — staging changed during the run" : `${counts.CORRECT}/${rows.length} CORRECT (right page cited)`,
+    headline: superseded
+      ? "NOT ASSESSED — staging changed during the run"
+      : `${counts.CORRECT}/${asked} CORRECT (right page cited)${counts.NOT_ASSESSED ? ` · ${counts.NOT_ASSESSED} NOT ASSESSED` : ""}`,
     assessed: !superseded,
-    safetyRedLines: rows.filter((r) => r.safetyRedLine).map((r) => `${r.id} ${r.safetyRedLine}`),
+    complete: !superseded && counts.NOT_ASSESSED === 0,
+    safetyRedLines: rows.filter((r) => r.safetyRedLine === "NO_NOTICE" || r.safetyRedLine === "NOT_FIRST").map((r) => `${r.id} ${r.safetyRedLine}`),
+    safetyUnobserved: rows.filter((r) => r.safetyRedLine === "UNOBSERVED").map((r) => r.id),
   };
 }
 
@@ -150,7 +201,7 @@ export const PAGE_OFFSET = 5;
 
 export function predict(row: Scored, mutation: Mutation, tolerance = 1): Classification {
   const c = row.classification;
-  if (c === "BROKEN" || c === "ABSTAINED" || c === "UNCITED") return c;
+  if (c === "BROKEN" || c === "ABSTAINED" || c === "UNCITED" || c === "SAFETY_STOP" || c === "NOT_ASSESSED") return c;
   if (mutation === "strip-sources") return "UNCITED";
   // viewer-page: the viewer opens a different page than the chip shows. A citation to another
   // document stays WRONG_PAGE (that check comes first); a pageless citation has no anchor to move.
@@ -201,9 +252,9 @@ export function markdownScorecard(rows: Scored[], card: Scorecard, meta: { gitSh
     "",
     `_${METRIC}_`,
     "",
-    `| ${CLASSES.join(" | ")} | safety red lines |`,
-    `|${CLASSES.map(() => "---").join("|")}|---|`,
-    `| ${CLASSES.map((c) => card.counts[c]).join(" | ")} | ${card.safetyRedLines.length} |`,
+    `| ${CLASSES.join(" | ")} | safety red lines | safety unobserved |`,
+    `|${CLASSES.map(() => "---").join("|")}|---|---|`,
+    `| ${CLASSES.map((c) => card.counts[c]).join(" | ")} | ${card.safetyRedLines.length} | ${card.safetyUnobserved.length} |`,
     "",
     "| # | id | class | expected | cited | safety | reason |",
     "|---|---|---|---|---|---|---|",
