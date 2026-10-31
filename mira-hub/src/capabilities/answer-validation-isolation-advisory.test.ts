@@ -303,3 +303,26 @@ describe("Codex #4867 r3", () => {
     flagged("Install the control card [1].");
   });
 });
+
+describe("Codex #4867 r4 — affirmative energy isolation, ordered walk, bounded object", () => {
+  const flagged = (t: string) => expect(judge(t)).toMatchObject({ ok: false, violation: "hazard-warning:isolation-advisory" });
+  const silent = (t: string) => expect(judge(t)).toEqual({ ok: true });
+  it("F1: only affirmative equipment-energy isolation opens the scope", () => {
+    flagged("Isolate the control signal. Replace the fuse.");
+    flagged("The lockout timer has expired. Replace the fuse.");
+    flagged("If you are locked out of the HMI, replace the fuse.");
+    silent("Isolate the drive. Replace the fuse.");
+    silent("Perform LOTO. Then replace the fuse.");
+    silent("With the conveyor under lockout, replace the fuse.");
+  });
+  it("F4: every isolation, restoration and work action is walked in order", () => {
+    flagged("Lock out the drive. Replace the fan, restore power, then lock out the drive, replace the fuse, restore power, then replace the contactor.");
+    silent("Lock out the drive. Replace the fan, restore power, then lock out the drive, replace the fuse.");
+  });
+  it("F7: a later temporal software clause does not hide the repair", () => {
+    flagged("Replace the fuse after checking the parameters.");
+    flagged("Replace the fuse after reviewing the configuration.");
+    flagged("Replace the fuse before changing the settings.");
+    silent("Change the settings.");
+  });
+});

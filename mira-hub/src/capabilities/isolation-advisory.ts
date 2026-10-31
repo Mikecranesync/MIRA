@@ -120,11 +120,11 @@ const ISO_VOID_POST =
  *  "Change the fan") carry none of these words. */
 const SOFTWARE_HEAD_RE =
   /^(?:firmware|software|updates?|patch(?:es)?|apps?|applications?|programs?|parameters?|settings?|setpoints?|menus?|history|logs?|records?|entry|entries|passwords?|licen[cs]es?|configurations?|config|profiles?|accounts?|faults?|alarms?|errors?|codes?)$/i;
+/** Codex #4867 r3 F3: manner adverbs never name the object ("Measure voltage directly across …"). */
+const MANNER_ADVERB_RE = /^(?:directly|carefully|safely|exactly|actually|quickly|slowly|again|first|now|then|also|only|still|here|there|immediately|properly|correctly)$/i;
 /** Codex #4867 r2 F2: the exemption reads the object's HEAD noun only — the last word before a
  *  preposition — so "Replace the firmware module", "Disconnect the motor driver wires" and
  *  "Replace the fan with a model matching the drive configuration" stay physical work. */
-/** Codex #4867 r3 F3: manner adverbs never name the object ("Measure voltage directly across …"). */
-const MANNER_ADVERB_RE = /^(?:directly|carefully|safely|exactly|actually|quickly|slowly|again|first|now|then|also|only|still|here|there|immediately|properly|correctly)$/i;
 function headNoun(window: string): string {
   // Codex #4867 r3 F5: a citation marker ("[1]", "[1, 2]") is not part of the object.
   const clean = window.replace(/\[\s*\d+(?:\s*[,–-]\s*\d+)*\s*\]/g, " ");
@@ -148,8 +148,10 @@ function liveMeasurement(window: string): boolean {
   return LIVE_MEASURAND_HEAD_RE.test(headNoun(window)) || LIVE_MEASURAND_FOR_RE.test(window);
 }
 
-/** Dual-use object window ends at the next coordinator or purpose "to". */
-const OBJECT_WINDOW_CUT = /\s+(?:then|so|and(?:\s+then)?)\b|,\s+(?:then|and|or)\b|[;.]|\bto\b/i;
+/** Dual-use object window ends at the next coordinator or purpose "to".
+ *  Codex #4867 r4 F7: "Replace the fuse after checking the parameters" — the object ends at a
+ *  temporal clause, so a later software clause never becomes the repair's object. */
+const OBJECT_WINDOW_CUT = /\s+(?:then|so|and(?:\s+then)?|after|before|while|when|once|until|unless|because|if)\b|,\s+(?:then|and|or)\b|[;.]|\bto\b/i;
 
 function withoutProhibitions(text: string): string {
   // Em-dash / colon are the same clause cut PROHIBITION already makes at comma.
@@ -170,60 +172,42 @@ function isolatedIsAdjective(text: string, index: number, matched: string): bool
 /** Codex #4867 F1: shutting down a computer / HMI / app isolates nothing. */
 const SOFTWARE_SHUTDOWN_POST =
   /^\s+(?:the\s+|your\s+)?(?:hmi|pc|computer|laptop|tablet|app|application|software|program|browser|engineering software|screen|monitor)\b/i;
-/** Codex #4867 F1: naming the lockout procedure is not taking the lockout —
- *  "The lockout procedure is in the manual" opens no isolation scope, while
- *  "Follow the lockout procedure" does. */
-const LOCKOUT_DOC_POST =
-  /^(?:\/tagout)?\s+(?:procedure|instructions?|section|page|chapter|steps?|requirements?|policy|diagram|sheet|indicator|light|lamp|led|status|signal|alarm|input|relay|switch|device|hasp|box|kit|station)\b/i;
-/** Codex #4867 r2 F1: fault isolation ("isolate the fault") is diagnosis, not power isolation. */
-const ISOLATE_NONPOWER_POST = /^\s+(?:the\s+|a\s+|which\s+)?(?:fault|problem|cause|issue|failure|symptom|root cause|signal|input|output|channel|network|node|segment|communications?|comms|noise|ground loop)\b/i;
+/** Codex #4867 r4 F1: isolation counts only when it is affirmatively about equipment energy —
+ *  an allowlist, not exclusions. The lockout NOUN counts only as an act ("Follow the lockout
+ *  procedure", "Perform LOTO", "LOTO the drive", "under lockout"), never as a name ("the lockout
+ *  timer", "the lockout procedure is in the manual"); "isolate" needs an equipment / energy object
+ *  ("Isolate the drive", never "the fault" or "the control signal"); being locked out OF a
+ *  screen or account is not isolation. */
 const LOCKOUT_DOC_ACT_PRE = /\b(?:follow(?:ing)?|perform(?:ing)?|apply(?:ing)?|complet(?:e|ing)|carry(?:ing)? out|do|use|using|start)\b[^.;:]*$/i;
+const LOCKOUT_NOUN_STATE_PRE = /\b(?:under|with|in)\s+(?:a\s+|the\s+)?$/i;
+const DETERMINER_POST = /^\s+(?:the|your|this|that|these|those|each|every|all|it|them|everything)\b/i;
+const ENERGY_OBJECT_RE = new RegExp(
+  "^\\s+(?:the\\s+|your\\s+|this\\s+|that\\s+|all\\s+|each\\s+)?(?:[\\w-]+\\s+){0,2}?(?:" +
+    "it|them|everything|power|supply|supplies|feeds?|feeders?|mains|energy|source|transformer|generator|air|hydraulics?|pneumatics?|steam|gas|equipment|machine|machinery|motor|drive|vfd|inverter|" +
+    "circuit|breaker|disconnect|panel|cabinet|enclosure|unit|system|conveyor|pump|compressor|line|bus|load|" +
+    WORK_OBJECT_RE.source.replace(/^\\b\(\?:/, "").replace(/\)\\b$/, "") +
+    ")\\b",
+  "i",
+);
+const ACCOUNT_LOCKOUT_POST = /^\s+of\s+(?:the\s+|your\s+)?(?:hmi|app|application|software|account|system|program|laptop|pc|computer|screen|menu)\b/i;
+
+function affirmativeIsolation(before: string, matched: string, after: string): boolean {
+  const m = matched.toLowerCase();
+  if (/^(?:lockout|loto)(?:\/tagout)?$/.test(m)) {
+    return LOCKOUT_DOC_ACT_PRE.test(before) || LOCKOUT_NOUN_STATE_PRE.test(before) || DETERMINER_POST.test(after);
+  }
+  if (/^lock/.test(m)) return !ACCOUNT_LOCKOUT_POST.test(after);
+  if (/^isolate$/.test(m)) return ENERGY_OBJECT_RE.test(after);
+  return true;
+}
 
 function isolationIsVoid(text: string, index: number, matched = ""): boolean {
   const before = text.slice(Math.max(0, index - 48), index);
   const after = text.slice(index + matched.length);
   if (ISO_VOID_PRE.test(before)) return true;
   if (/^(?:shut|power)/i.test(matched) && SOFTWARE_SHUTDOWN_POST.test(after)) return true;
-  if (/lock|loto/i.test(matched) && LOCKOUT_DOC_POST.test(after) && !LOCKOUT_DOC_ACT_PRE.test(before)) return true;
-  if (/^isolat/i.test(matched) && ISOLATE_NONPOWER_POST.test(after)) return true;
+  if (/lock|loto|^isolate$/i.test(matched) && !affirmativeIsolation(before, matched, after)) return true;
   return ISO_VOID_POST.test(after);
-}
-
-function firstMatchIndex(
-  re: RegExp,
-  text: string,
-  opts: { skipAdj?: boolean; skipVoid?: boolean } = {},
-): number {
-  const copy = new RegExp(re.source, re.flags.includes("g") ? re.flags : `${re.flags}g`);
-  let best = -1;
-  for (const m of text.matchAll(copy)) {
-    const idx = m.index ?? 0;
-    if (opts.skipVoid && isolationIsVoid(text, idx, m[0])) continue;
-    if (opts.skipAdj && isolatedIsAdjective(text, idx, m[0])) continue;
-    if (best < 0 || idx < best) best = idx;
-  }
-  return best;
-}
-
-function stateIsolatedIndex(step: string): number {
-  const copy = new RegExp(STATE_ISOLATED.source, STATE_ISOLATED.flags.includes("g") ? STATE_ISOLATED.flags : `${STATE_ISOLATED.flags}g`);
-  let best = -1;
-  for (const m of step.matchAll(copy)) {
-    const idx = m.index ?? 0;
-    if (isolationIsVoid(step, idx, m[0])) continue;
-    const isoWord = /isolated/i.exec(m[0]);
-    if (isoWord && isolatedIsAdjective(step, idx + (isoWord.index ?? 0), isoWord[0])) continue;
-    if (best < 0 || idx < best) best = idx;
-  }
-  return best;
-}
-
-function restoreIndex(step: string): number {
-  const candidates = [
-    firstMatchIndex(RESTORE, step, { skipVoid: true }),
-    firstMatchIndex(LOCKOUT_REMOVED, step, { skipVoid: true }),
-  ].filter((n) => n >= 0);
-  return candidates.length ? Math.min(...candidates) : -1;
 }
 
 /** Isolation words that exist only as part of a restore / lockout-removed
@@ -235,19 +219,6 @@ function withoutRestores(step: string): string {
     s = s.replace(copy, (m) => " ".repeat(m.length));
   }
   return s;
-}
-
-/** Earliest live isolation / verify-dead language in this step, or -1. */
-function isolationIndex(step: string): number {
-  const candidates = [
-    firstMatchIndex(ISOLATED, step, { skipAdj: true, skipVoid: true }),
-    firstMatchIndex(VERIFY_DEAD, step, { skipVoid: true }),
-    firstMatchIndex(ISOLATION_IMPERATIVE, step, { skipVoid: true }),
-    // LOCKOUT_VERB_RE is applied to lowercased text in the classifier
-    // (no `i` flag). Same form, case-insensitive, for answer text.
-    firstMatchIndex(new RegExp(LOCKOUT_VERB_RE.source, "i"), step, { skipVoid: true }),
-  ].filter((n) => n >= 0);
-  return candidates.length ? Math.min(...candidates) : -1;
 }
 
 function objectWindow(after: string): string {
@@ -298,43 +269,85 @@ function clauseStartBefore(text: string, index: number): number {
  *  scope — isolation stated in a prior (non-prohibited) step, or in the
  *  same clause before / conditioning the work. A lockout the answer
  *  forbids, skips, or places after the work does not count. */
+function allMatchIndices(re: RegExp, text: string, opts: { skipAdj?: boolean; skipVoid?: boolean } = {}): number[] {
+  const copy = new RegExp(re.source, re.flags.includes("g") ? re.flags : `${re.flags}g`);
+  const out: number[] = [];
+  for (const m of text.matchAll(copy)) {
+    const idx = m.index ?? 0;
+    if (opts.skipVoid && isolationIsVoid(text, idx, m[0])) continue;
+    if (opts.skipAdj && isolatedIsAdjective(text, idx, m[0])) continue;
+    out.push(idx);
+  }
+  return out;
+}
+
+function allHandsOnIndices(step: string): number[] {
+  INSTRUCTION_RE.lastIndex = 0;
+  try {
+    const out: number[] = [];
+    for (const m of step.matchAll(INSTRUCTION_RE)) {
+      const after = step.slice((m.index ?? 0) + m[0].length, (m.index ?? 0) + m[0].length + 80);
+      if (instructionIsHandsOn(m[0], after)) out.push(m.index ?? 0);
+    }
+    return out;
+  } finally {
+    INSTRUCTION_RE.lastIndex = 0;
+  }
+}
+
+type EnergyEvent = { at: number; kind: "isolate" | "restore" | "work" };
+
+/** Every isolation, restoration and hands-on instruction in one step, in textual order. */
+function stepEvents(step: string): EnergyEvent[] {
+  const blanked = withoutRestores(step);
+  const restores = [
+    ...allMatchIndices(RESTORE, step, { skipVoid: true }),
+    ...allMatchIndices(LOCKOUT_REMOVED, step, { skipVoid: true }),
+  ];
+  const isolations = [
+    ...allMatchIndices(ISOLATED, blanked, { skipAdj: true, skipVoid: true }),
+    ...allMatchIndices(VERIFY_DEAD, blanked, { skipVoid: true }),
+    ...allMatchIndices(ISOLATION_IMPERATIVE, blanked, { skipVoid: true }),
+    // LOCKOUT_VERB_RE is applied to lowercased text in the classifier (no `i` flag).
+    ...allMatchIndices(new RegExp(LOCKOUT_VERB_RE.source, "i"), blanked, { skipVoid: true }),
+  ];
+  // "measure … with the circuit isolated" conditions its own clause: it takes effect at the clause
+  // start (after any restore earlier in that clause), not for an earlier "Replace the fuse, then…".
+  const conditioned: number[] = [];
+  const copy = new RegExp(STATE_ISOLATED.source, STATE_ISOLATED.flags.includes("g") ? STATE_ISOLATED.flags : `${STATE_ISOLATED.flags}g`);
+  for (const m of blanked.matchAll(copy)) {
+    const idx = m.index ?? 0;
+    if (isolationIsVoid(blanked, idx, m[0])) continue;
+    const isoWord = /isolated/i.exec(m[0]);
+    if (isoWord && isolatedIsAdjective(blanked, idx + (isoWord.index ?? 0), isoWord[0])) continue;
+    const start = clauseStartBefore(step, idx);
+    const priorRestore = Math.max(-1, ...restores.filter((r) => r >= start && r < idx));
+    conditioned.push(priorRestore >= 0 ? priorRestore + 0.5 : start - 0.5);
+  }
+  const events: EnergyEvent[] = [
+    ...isolations.map((at) => ({ at, kind: "isolate" as const })),
+    ...conditioned.map((at) => ({ at, kind: "isolate" as const })),
+    ...restores.map((at) => ({ at, kind: "restore" as const })),
+    ...allHandsOnIndices(step).map((at) => ({ at, kind: "work" as const })),
+  ];
+  const rank = { isolate: 0, restore: 1, work: 2 } as const;
+  return events.sort((a, b) => a.at - b.at || rank[a.kind] - rank[b.kind]);
+}
+
+/** True when EVERY hands-on instruction is under isolation (Codex #4867 r4 F4): every isolation,
+ *  restoration and hands-on instruction is walked in textual order across all steps — an
+ *  isolation opens the scope, a restoration closes it, and work outside the scope needs the
+ *  notice. A lockout the answer forbids, skips, or places after the work does not count. */
 function firstHandsOnAlreadyIsolated(text: string): boolean {
   let isolated = false;
   let sawWork = false;
   for (const raw of stepTexts(text)) {
-    const step = withoutProhibitions(raw);
-    const isoAt = isolationIndex(withoutRestores(step));
-    const conditionedAt = stateIsolatedIndex(withoutRestores(step));
-    const restoredAt = restoreIndex(step);
-    const workAt = firstHandsOnIndex(step);
-    if (workAt >= 0) {
-      const restoredBeforeWork = restoredAt >= 0 && restoredAt <= workAt
-        && (isoAt < 0 || restoredAt >= isoAt);
-      // Trailing "measure … with the circuit isolated" conditions only
-      // the clause it attaches to, not an earlier "Replace the fuse, then…".
-      const covered = !restoredBeforeWork && (
-        (isoAt >= 0 && isoAt <= workAt)
-        || (conditionedAt >= 0 && workAt >= clauseStartBefore(step, conditionedAt)
-          && (restoredAt < 0 || restoredAt < conditionedAt || restoredAt > workAt))
-        || isolated);
-      // Codex #4867 r2 F4: every hands-on step must be under isolation — work after
-      // "Restore power." with no renewed lockout gets the notice.
-      if (!covered) return false;
-      // Codex #4867 r3 F4: "Replace the fan, restore power, then replace the fuse." — hands-on work
-      // after a restore in the same step needs a renewed isolation before it.
-      if (restoredAt > workAt) {
-        const tail = step.slice(restoredAt);
-        const laterWork = firstHandsOnIndex(tail);
-        const laterIso = isolationIndex(withoutRestores(tail));
-        if (laterWork >= 0 && (laterIso < 0 || laterIso > laterWork)) return false;
-      }
-      sawWork = true;
-      if (restoredAt > workAt && (isoAt < 0 || restoredAt > isoAt)) isolated = false;
-      else isolated = true;
-      continue;
+    for (const e of stepEvents(withoutProhibitions(raw))) {
+      if (e.kind === "isolate") isolated = true;
+      else if (e.kind === "restore") isolated = false;
+      else if (!isolated) return false;
+      else sawWork = true;
     }
-    if (restoredAt >= 0 && (isoAt < 0 || restoredAt > isoAt)) isolated = false;
-    else if (isoAt >= 0 || conditionedAt >= 0) isolated = true;
   }
   return sawWork;
 }
