@@ -136,7 +136,13 @@ export class OpenAiRunBudget {
   private priceOf(model?: string | null): OpenAiPrice | null {
     const table = this.priceLookup(this.modelOf(model));
     if (!table) return null;
-    return { input: this.priceInOverride ?? table.input, output: this.priceOutOverride ?? table.output };
+    // cached_input is carried through untouched: the cap charges every input
+    // token at the full rate (it bounds spend), only telemetry uses the cached rate.
+    return {
+      input: this.priceInOverride ?? table.input,
+      cached_input: table.cached_input,
+      output: this.priceOutOverride ?? table.output,
+    };
   }
 
   /** USD for this token shape on `model`. +Infinity when the model is unpriced: never $0. */

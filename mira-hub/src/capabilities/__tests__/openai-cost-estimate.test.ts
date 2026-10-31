@@ -32,6 +32,21 @@ describe("cost estimation — OpenAI is priced per MODEL (#4961)", () => {
     expect(estimateCostUsd("OpenAI", 1_000_000, 1_000_000, 0, "gpt-5.4-mini")).toBeCloseTo(p.cached_input, 6);
   });
 
+  it("bills cached input at each model's DECLARED cached rate, not a flat 10% of input (#5011 F2)", () => {
+    // gpt-6.1-sol: cached_input 0.10 against input 2.00 (5%). A flat 10% books 0.20.
+    const sol = estimateCostUsd("OpenAI", 1_000_000, 1_000_000, 0, "gpt-6.1-sol");
+    expect(sol).toBeCloseTo(0.1, 6);
+    expect(sol).not.toBeCloseTo(0.2, 6);
+    // Parity for every priced model, so a future price refresh cannot drift the two.
+    for (const [m, p] of Object.entries(declared)) {
+      expect(estimateCostUsd("OpenAI", 1_000_000, 1_000_000, 0, m), m).toBeCloseTo(p.cached_input, 6);
+    }
+  });
+
+  it("provider-priced entries keep the 10% cached discount (control)", () => {
+    expect(estimateCostUsd("Groq", 1_000_000, 1_000_000, 0, "openai/gpt-oss-120b")).toBeCloseTo(0.015, 6);
+  });
+
   it("an OpenAI model with no declared price is null — never 0 and never another model's rate", () => {
     expect(estimateCostUsd("OpenAI", 1_000_000, 0, 1_000_000, "gpt-5.5-unlisted")).toBeNull();
     expect(usageFromRaw("OpenAI", "gpt-5.5-unlisted", { prompt_tokens: 10, completion_tokens: 10 }, "primary", []).costUsdEstimate).toBeNull();

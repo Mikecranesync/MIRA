@@ -141,7 +141,11 @@ const PRICE_PER_MTOK: Record<string, { input: number; output: number }> = {
  * estimates to null (unpriced), never 0 and never another model's rate.
  */
 
-/** Cached input is billed at ~10% of the input rate across these providers. */
+/**
+ * Cached input for the provider-priced entries above is billed at ~10% of the
+ * input rate. OpenAI is NOT: each OpenAI model carries its declared
+ * `cached_input` rate in the shared table (#5011 F2; gpt-6.1-sol is 5%).
+ */
 const CACHED_INPUT_DISCOUNT = 0.1;
 
 /**
@@ -251,9 +255,10 @@ export function estimateCostUsd(
   const cached = cachedInputTokens ?? 0;
   if (!isTokenCount(cached) || cached > inputTokens) return null;
   const fresh = inputTokens - cached;
+  const cachedRate = "cached_input" in price ? price.cached_input : price.input * CACHED_INPUT_DISCOUNT;
   const cost =
     (fresh / 1_000_000) * price.input +
-    (cached / 1_000_000) * price.input * CACHED_INPUT_DISCOUNT +
+    (cached / 1_000_000) * cachedRate +
     (outputTokens / 1_000_000) * price.output;
   // 6dp matches NUMERIC(12,6) in migration 078.
   return Number(cost.toFixed(6));

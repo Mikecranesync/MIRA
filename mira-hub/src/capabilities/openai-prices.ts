@@ -12,27 +12,29 @@
  * Standard-tier list prices, USD per 1M tokens, from
  * https://developers.openai.com/api/docs/pricing (fetched 2026-10-29). They
  * equal `tools/review_router/prices.json`, which the tests pin entry by entry.
- * Cached input is not listed here: telemetry bills it at 10% of the input
- * rate, and the cap counts every input token at the full rate.
+ * `cached_input` is each model's declared cached-input rate (#5011 F2):
+ * telemetry bills cached prompt tokens at it (a flat 10% of `input` over-billed
+ * gpt-6.1-sol, whose cached rate is 5%). The cap still counts every input token
+ * at the full `input` rate: it bounds spend, so it errs high on purpose.
  *
  * A model missing here is UNPRICED: telemetry records null and the cap refuses
  * the call. Never 0, and never another model's rate.
  * Invalidation trigger: an OpenAI price change, or a model in use that is not
  * listed here.
  */
-export type OpenAiPrice = { readonly input: number; readonly output: number };
+export type OpenAiPrice = { readonly input: number; readonly cached_input: number; readonly output: number };
 
 export const OPENAI_PRICE_PER_MTOK_BY_MODEL: Readonly<Record<string, OpenAiPrice>> = {
-  "gpt-6-astra": { input: 10.0, output: 50.0 },
-  "gpt-6-sol": { input: 2.0, output: 10.0 },
-  "gpt-6.1-sol": { input: 2.0, output: 10.0 },
-  "gpt-6-luna": { input: 0.1, output: 0.5 },
-  "gpt-5.5": { input: 5.0, output: 30.0 },
-  "gpt-5.4": { input: 2.5, output: 15.0 },
-  "gpt-5.4-mini": { input: 0.75, output: 4.5 },
-  "gpt-5.4-nano": { input: 0.2, output: 1.25 },
-  "gpt-5-mini": { input: 0.25, output: 2.0 },
-  "gpt-5-nano": { input: 0.05, output: 0.4 },
+  "gpt-6-astra": { input: 10.0, cached_input: 1.0, output: 50.0 },
+  "gpt-6-sol": { input: 2.0, cached_input: 0.2, output: 10.0 },
+  "gpt-6.1-sol": { input: 2.0, cached_input: 0.1, output: 10.0 },
+  "gpt-6-luna": { input: 0.1, cached_input: 0.01, output: 0.5 },
+  "gpt-5.5": { input: 5.0, cached_input: 0.5, output: 30.0 },
+  "gpt-5.4": { input: 2.5, cached_input: 0.25, output: 15.0 },
+  "gpt-5.4-mini": { input: 0.75, cached_input: 0.075, output: 4.5 },
+  "gpt-5.4-nano": { input: 0.2, cached_input: 0.02, output: 1.25 },
+  "gpt-5-mini": { input: 0.25, cached_input: 0.025, output: 2.0 },
+  "gpt-5-nano": { input: 0.05, cached_input: 0.005, output: 0.4 },
 };
 
 /** The declared price for `model`, or null when it is unpriced (callers must not substitute a rate). */
