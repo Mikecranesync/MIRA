@@ -169,6 +169,39 @@ CREATE POLICY notebook_event_deliveries_tenant_isolation ON notebook_event_deliv
 -- removes queued events.
 GRANT SELECT, INSERT, UPDATE ON notebook_event_deliveries TO factorylm_app;
 
+-- tenant_cmms_config (008) is NOT present on every Neon branch: the first
+-- migration-verify run of this file (PR #5024, staging branch) failed with
+-- `relation "tenant_cmms_config" does not exist` and rolled back whole, so
+-- nothing from this file persisted there. Create the table when missing —
+-- same type, columns, RLS shape and GRANT as 008, WITHOUT 008's backfill from
+-- work_orders (a table this environment may not have either). Where 008 has
+-- run, both statements are no-ops and only the column below is added.
+DO $$ BEGIN
+  CREATE TYPE cmms_provider AS ENUM ('atlas', 'maximo', 'fiix', 'maintainx', 'upkeep');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+CREATE TABLE IF NOT EXISTS tenant_cmms_config (
+  tenant_id           TEXT PRIMARY KEY,
+  provider            cmms_provider NOT NULL DEFAULT 'atlas',
+  base_url            TEXT NOT NULL DEFAULT 'https://cmms.factorylm.com',
+  link_templates      JSONB NOT NULL DEFAULT '{}'::jsonb,
+  auth_credential_ref TEXT,
+  enabled             BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE tenant_cmms_config ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tenant_isolation_cmms_config ON tenant_cmms_config;
+CREATE POLICY tenant_isolation_cmms_config ON tenant_cmms_config
+  FOR ALL
+  TO factorylm_app
+  USING (tenant_id = current_setting('app.tenant_id', TRUE));
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON tenant_cmms_config TO factorylm_app;
+
 ALTER TABLE tenant_cmms_config
   ADD COLUMN IF NOT EXISTS write_policy JSONB NOT NULL DEFAULT '{}'::jsonb;
 
