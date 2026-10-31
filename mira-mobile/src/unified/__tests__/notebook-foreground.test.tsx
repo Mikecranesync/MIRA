@@ -270,10 +270,15 @@ describe("unified shell returns to the foreground (#3990)", () => {
     await resume();
     expect(getNotebookDetail.mock.calls.length).toBe(calls);
 
+    // #4074: the Hub names the saved row of the live answer in its turn_saved frame,
+    // so the answer needs no re-read and the foreground catch-up stays the only fetch.
+    const savedRow = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     getNotebookDetail.mockResolvedValue(
-      detail([rowFor("t1", "What trips F0003?", "F0003 trips at 135 C.", sent[0]!), rowFor("t2", "And F0002?", "F0002 trips at 840 V.", "web-1")]),
+      detail([rowFor(savedRow, "What trips F0003?", "F0003 trips at 135 C.", sent[0]!), rowFor("t2", "And F0002?", "F0002 trips at 840 V.", "web-1")]),
     );
-    await act(async () => settle({ answer: "F0003 trips at 135 C.", citations: [], status: "answered" }));
+    await act(async () =>
+      settle({ answer: "F0003 trips at 135 C.", citations: [], status: "answered", persistedTurnId: savedRow }),
+    );
 
     await screen.findByText("F0002 trips at 840 V.");
     expect(getNotebookDetail.mock.calls.length).toBe(calls + 1);

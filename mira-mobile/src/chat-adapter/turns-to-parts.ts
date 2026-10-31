@@ -283,6 +283,13 @@ export function hydrateMessages(rows: NotebookServerTurn[]): AdapterMessage[] {
 
 /** One completed live turn → canonical messages. `idx` keys the session-only
  *  live list the same way the legacy render does. */
+/** #4074 — a live answer is identified by its persisted row id once the Hub's
+ *  `turn_saved` frame delivered it (`<uuid>-a`, the shape the shared
+ *  `serverTurnIdFor` reads). Without the frame it keeps the session-only id. */
+function liveAnswerId(a: ChatTurn, idx: number): string {
+  return a.persistedTurnId ? `${a.persistedTurnId}-a` : `live-${idx}-a`;
+}
+
 export function liveTurnMessages(q: string, a: ChatTurn, idx: number): AdapterMessage[] {
   const user = userMessage(`live-${idx}-q`, q);
   // TRUNCATION HONESTY: the stream ended without the authoritative `status`
@@ -296,7 +303,7 @@ export function liveTurnMessages(q: string, a: ChatTurn, idx: number): AdapterMe
     return [
       user,
       {
-        id: `live-${idx}-a`,
+        id: liveAnswerId(a, idx),
         role: "assistant",
         parts: assistantParts({
           text: a.answer,
@@ -323,7 +330,7 @@ export function liveTurnMessages(q: string, a: ChatTurn, idx: number): AdapterMe
     return [
       user,
       {
-        id: `live-${idx}-a`,
+        id: liveAnswerId(a, idx),
         role: "assistant",
         parts: assistantParts({
           text: a.answer,
@@ -345,7 +352,7 @@ export function liveTurnMessages(q: string, a: ChatTurn, idx: number): AdapterMe
   return [
     user,
     {
-      id: `live-${idx}-a`,
+      id: liveAnswerId(a, idx),
       role: "assistant",
       parts: assistantParts({
         text: answerBody(a.answer, a.status, a.statusMessage, (a.visualEvidence?.length ?? 0) > 0),
