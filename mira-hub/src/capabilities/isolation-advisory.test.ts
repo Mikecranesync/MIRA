@@ -144,3 +144,16 @@ describe("isolation-safety wording", () => {
     expect(isolationBannerFor("Replace the worn belt.")).toBe(ISOLATION_BANNER);
   });
 });
+
+describe("#4858 — a descriptive third-person verb is not a work instruction", () => {
+  // The alarm card's own site-procedure line (alarm-card.ts) must not be read as
+  // "touch the circuit": the card is look-and-read only and already names lockout.
+  it("the alarm card's lockout reminder gets no banner", () => {
+    const line = "Anything that opens an enclosure or touches the circuit follows your site's lockout procedure with the equipment out of service.";
+    expect(directsHandsOnWork(line)).toBe(false);
+    expect(isolationBannerFor(line)).toBeNull();
+  });
+  it("control: the imperative still does", () => {
+    expect(isolationBannerFor("Open the enclosure or touch the circuit to find the loose wire.")).not.toBeNull();
+  });
+});

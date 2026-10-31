@@ -89,7 +89,11 @@ const INSTRUCTION_RE = new RegExp(
     "|" +
     "\\b(?:or|and(?:\\s+then)?|then|so|also|otherwise|you\\s+(?:can|should|must|may|need\\s+to|have\\s+to|will\\s+need\\s+to))\\s+" +
     ")" +
-    VERB_SRC,
+    VERB_SRC +
+    // Whole verb only: "touches"/"opens" in a descriptive clause ("Anything that opens an
+    // enclosure or touches the circuit follows your site's lockout procedure") is not an
+    // instruction to touch it — that line is the alarm card's own lockout reminder.
+    "\\b",
   "gi",
 );
 
