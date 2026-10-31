@@ -151,12 +151,12 @@ describe("env overrides keep working, explicitly", () => {
 describe("ONE shared price table: telemetry and the cap cannot diverge (#4961 + #4968)", () => {
   const declared = JSON.parse(
     readFileSync(resolve(__dirname, "../../../../tools/review_router/prices.json"), "utf8"),
-  ).usd_per_mtok as Record<string, { input: number; output: number }>;
+  ).usd_per_mtok as Record<string, { input: number; cached_input: number; output: number }>;
 
-  it("the table equals tools/review_router/prices.json, model for model", () => {
+  it("the table equals tools/review_router/prices.json, model for model (input, cached_input, output)", () => {
     expect(Object.keys(OPENAI_PRICE_PER_MTOK_BY_MODEL).sort()).toEqual(Object.keys(declared).sort());
     for (const [m, p] of Object.entries(declared)) {
-      expect(OPENAI_PRICE_PER_MTOK_BY_MODEL[m], m).toEqual({ input: p.input, output: p.output });
+      expect(OPENAI_PRICE_PER_MTOK_BY_MODEL[m], m).toEqual({ input: p.input, cached_input: p.cached_input, output: p.output });
     }
   });
 
