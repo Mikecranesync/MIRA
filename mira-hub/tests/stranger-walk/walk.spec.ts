@@ -63,6 +63,8 @@ async function signUp(page: Page, base: string): Promise<string> {
   // Release only this run's own throwaway tenant (as #4928 does), then open /v3 ourselves.
   await page.waitForURL(/\/(v3|pending-approval)\/?/, { timeout: 60_000 });
   await releaseOwnPilotHold(created, EMAIL);
+  // The session cookie still says 'pending' until a session read re-runs the jwt callback.
+  await page.evaluate(async () => { await fetch("/api/auth/session/"); });
   if (/\/pending-approval\/?/.test(new URL(page.url()).pathname)) await page.goto(`${base}/v3/`);
   await page.waitForURL(/\/v3\/?/, { timeout: 60_000 });
   const me = await page.evaluate(async () => (await (await fetch("/api/me/")).json()) as { tenantId?: string });

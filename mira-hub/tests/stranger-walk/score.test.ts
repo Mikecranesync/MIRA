@@ -367,10 +367,13 @@ describe("pilot approval gate: the walk releases only its own throwaway tenant (
     const spec = readFileSync(path.join(__dirname, "walk.spec.ts"), "utf8");
     const persist = spec.indexOf("persistTenant(created);");
     const release = spec.indexOf("await releaseOwnPilotHold(created, EMAIL);");
+    // The session cookie still says 'pending' until a session read re-runs the jwt callback.
+    const refresh = spec.indexOf('fetch("/api/auth/session/")');
     const wait = spec.indexOf("await page.waitForURL(/\\/v3\\/?/");
     expect(persist).toBeGreaterThan(-1);
     expect(release).toBeGreaterThan(persist);
-    expect(wait).toBeGreaterThan(release);
+    expect(refresh).toBeGreaterThan(release);
+    expect(wait).toBeGreaterThan(refresh);
   });
 });
 
