@@ -6,7 +6,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
-import { attachSource } from "@/lib/equipment-notebooks";
+import { attachSourceHeld } from "@/lib/equipment-notebooks";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +39,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (sourceRole !== null && !SOURCE_ROLES.includes(sourceRole)) {
     return NextResponse.json({ error: "invalid_source_role" }, { status: 400 });
   }
-  const res = await attachSource(ctx.tenantId, id, docId, {
+  // Held attach (Codex review of #4091, F7): a concurrent upload delete can
+  // never leave this notebook a dangling source for the document.
+  const res = await attachSourceHeld(ctx.tenantId, id, docId, {
     matchState,
     sourceRole,
     addedBy: ctx.userId ?? null,
