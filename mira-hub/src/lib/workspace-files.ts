@@ -300,7 +300,7 @@ export async function linkFileToUpload(
 // The claim is a test-and-set on the row: winners ingest and release via
 // linkFileToUpload; losers report an explicit "ingest_in_progress" partial.
 
-const INGEST_CLAIM_STALE_MINUTES = 10;
+export const INGEST_CLAIM_STALE_MINUTES = 10;
 
 export type IngestClaim =
   | { claimed: true; claimToken: string }
