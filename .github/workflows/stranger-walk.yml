@@ -133,6 +133,25 @@ jobs:
           path: ${{ env.STRANGER_WALK_CACHE }}
           key: stranger-walk-manuals-${{ hashFiles('mira-hub/tests/stranger-walk/corpus.json') }}
 
+      # The OEM URLs are not a durable source (Rockwell 403s some hosts; GS10 ch.6 was republished
+      # 2026-10-20), so a cold cache is seeded from the private mirror of the frozen bytes —
+      # Mikecranesync/mira-stranger-walk-manuals, release frozen-2026-10-15 (owner decision
+      # 2026-10-31). The walk still sha-verifies every file; a wrong byte is never scored. The read
+      # token is the stg Doppler GITHUB_PAT, never echoed. If the mirror is unreachable the walk
+      # falls back to the OEM URLs and reports what it could not reproduce.
+      - name: Seed the manual cache from the private frozen-manuals mirror
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          [ -n "${DOPPLER_TOKEN:-}" ] || { echo "::error::DOPPLER_TOKEN not set"; exit 1; }
+          mkdir -p "$STRANGER_WALK_CACHE"
+          doppler run --project factorylm --config stg -- bash -c '
+            export GH_TOKEN="$GITHUB_PAT"
+            gh release download frozen-2026-10-15 -R Mikecranesync/mira-stranger-walk-manuals \
+              -D "$STRANGER_WALK_CACHE" --pattern "*.pdf" --clobber' \
+            || echo "::warning::frozen-manuals mirror unavailable; the walk will try the OEM URLs"
+          echo "cached PDFs: $(find "$STRANGER_WALK_CACHE" -maxdepth 1 -name "*.pdf" | wc -l)"
+
       - name: Walk
         working-directory: mira-hub
         env:
