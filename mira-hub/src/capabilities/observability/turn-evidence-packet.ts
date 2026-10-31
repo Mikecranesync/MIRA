@@ -24,6 +24,7 @@
 
 import type { EvidenceFollowedAssessment } from "./evidence-consistency";
 
+import type { AnswerRequirementsVerdict } from "./answer-requirements";
 import type { JevDecisionRecord } from "./jev-decision";
 
 export const TURN_EVIDENCE_PACKET_VERSION = "2" as const;
@@ -194,7 +195,8 @@ export type TurnEvidencePacketAnswerGate = {
   evidence_phrase_matched: boolean;
   safety_classification: "none" | "hazard_directive" | "safety_stop";
   evidence_sufficient: boolean;
-  /** ungroundedUnitClaim(answerText) result (anomalies.ts) — the ONLY trace
+  /** ungroundedUnitClaim(answerText, numericClaimAudit(...)) result (anomalies.ts; #4870:
+   * derived from the parsed claims over the provider-visible evidence) — the ONLY trace
    * of answer text this packet ever carries is this one boolean. */
   ungrounded_unit_claim: boolean;
   /** SHADOW (MIRA_JEV_SHADOW=1): Jev noul probability that the retrieved
@@ -226,11 +228,25 @@ export type TurnEvidencePacketAnswerGate = {
    *  that never evaluate it (read as false). */
   weak_evidence_badge?: boolean;
   /**
-   * #4315 (observe-only): numeric values the answer cited that appear nowhere in the
-   * cited page's model-visible text (number + unit). A count — never the values or any
-   * answer text. Optional: absent on gate paths that ship no citations (read as 0).
+   * #4315 (observe-only): numeric values the answer cited that the cited page does not
+   * support (number + unit). Since #4870 support is read from the cited page's text exactly
+   * as the provider received it (providerVisibleChunkText: the MAX_CONTENT_CHARS cut, its
+   * ellipsis, reference-tag neutralization; a photo reading never counts here), a value the
+   * parser cannot read counts when its literal
+   * text is there, and model/catalog/fault-code tokens are not values. A count — never the
+   * values or any answer text. Optional: absent on gate paths that ship no citations (read
+   * as 0).
    */
   cited_values_unsupported?: number;
+  /**
+   * #4870 (observe-only): numeric claims anywhere in the answer (any unit or none;
+   * identifiers, footnotes, page references, list ordinals and zero magnitudes excluded),
+   * and how many of them neither the chunks in context, as the provider received them
+   * (providerVisibleChunkText), nor the photo observation text supports. Counts only.
+   * Optional: absent on paths that never evaluate them.
+   */
+  numeric_claims?: number;
+  numeric_claims_unsupported?: number;
   /** #4315: emitted citations that kept the question-window quote (no claimed value matched). */
   citation_quote_fallbacks?: number;
   /**
@@ -300,6 +316,17 @@ export type TurnEvidencePacket = {
    * output never self-promotes).
    */
   jev_decision?: JevDecisionRecord | null;
+  /**
+   * SHADOW. Answer Requirements Gate verdict for this turn.
+   *
+   * Produced after `jev_decision`, stamping whether the answer meets seven
+   * delivery requirements (grounded, right equipment, consistent with photos,
+   * no invented values, uses relevant evidence, calibrated, cited). null when
+   * jev_decision is absent (flag off).
+   *
+   * NOTHING reads this. It is shadow observability only (ADR-0029 rule 9).
+   */
+  answer_requirements?: AnswerRequirementsVerdict | null;
 };
 
 /** What is known at request.receive, before any stage has run. */

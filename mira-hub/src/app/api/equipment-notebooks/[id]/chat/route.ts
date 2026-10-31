@@ -75,6 +75,7 @@ import {
   startManualAcquisition,
 } from "@/capabilities/notebook-manual-acquisition";
 import { evaluateTurnDecision } from "@/capabilities/observability/jev-decision";
+import { evaluateAnswerRequirements } from "@/capabilities/observability/answer-requirements";
 import { buildTurnDecisionState, type TurnDecisionState } from "@/capabilities/observability/turn-decision-state";
 import {
   captureContentEnabled,
@@ -1493,6 +1494,9 @@ async function handleChatTurn(
     if (decisionState) {
       packet.jev_decision = await evaluateTurnDecision(decisionState).catch(() => null);
     }
+    // SHADOW (#4858-adjacent answer requirements gate): one verdict per answered turn, derived
+    // from the fabric record above. Read by nothing; null when the fabric did not run.
+    packet.answer_requirements = evaluateAnswerRequirements(packet);
     setSpanAttrs({ "mira.turn.row_id": turnRowId, "mira.anomalies": anomalies.map((a) => a.code) }, rootSpan);
     if (anomalies.length > 0) {
       console.log(
