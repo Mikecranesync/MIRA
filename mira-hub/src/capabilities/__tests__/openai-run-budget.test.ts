@@ -323,3 +323,25 @@ describe("source contract — every Hub OpenAI spend path goes through the budge
     expect(cascade).toMatch(/logBudgetExhausted\("llm-cascade"/);
   });
 });
+
+// #5047 round 2 F1: the static half of the gate (is this model priced at all?)
+// is exported so the runtime identity omits exactly the OpenAI entries
+// `precheck` would refuse before any fetch.
+describe("openAiModelDispatchable (#4507 runtime identity shares the static gate)", () => {
+  it("is true for a listed model, false for an unlisted one, and uses the budget default when the model is empty", async () => {
+    const { openAiModelDispatchable } = await import("../openai-run-budget");
+    expect(openAiModelDispatchable("gpt-5.4-mini")).toBe(true);
+    expect(openAiModelDispatchable("gpt-99-unlisted")).toBe(false);
+    expect(openAiModelDispatchable("")).toBe(true);
+    expect(openAiModelDispatchable(null)).toBe(true);
+  });
+
+  it("agrees with precheck: an unlisted model is refused there for the same reason", async () => {
+    const { OpenAiRunBudget, openAiModelDispatchable } = await import("../openai-run-budget");
+    const b = new OpenAiRunBudget({ capUsd: 100 });
+    const v = b.precheck(10, 10, "gpt-99-unlisted");
+    expect(v.ok).toBe(false);
+    expect(openAiModelDispatchable("gpt-99-unlisted")).toBe(v.ok);
+    expect(b.precheck(10, 10, "gpt-5.4-mini").ok).toBe(openAiModelDispatchable("gpt-5.4-mini"));
+  });
+});

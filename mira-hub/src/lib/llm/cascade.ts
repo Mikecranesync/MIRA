@@ -38,6 +38,16 @@ interface CascadeProvider {
   providerRouting?: CanonicalProvider["providerRouting"];
 }
 
+/**
+ * The short-task cascade (`cascadeComplete` with no `providers` option): the
+ * classifier-model variants, OpenAI leading. Exported so the runtime identity
+ * (#4507, #5049) can fingerprint the paid query-rewrite lane from the list that
+ * lane really calls; `cascadeComplete` skips every keyless entry.
+ */
+export function classifierProviders(): CascadeProvider[] {
+  return defaultProviders();
+}
+
 function defaultProviders(): CascadeProvider[] {
   // OpenAI leads, key-gated, exactly as `canonicalProviders()` does for the
   // streaming cascade (owner directive 2026-10-11). Found missing here by the

@@ -7,6 +7,7 @@ import {
 } from "@/capabilities/observability/config";
 import { ensureEmbedRetrySweep } from "@/capabilities/embed-retry-sweep";
 import { warmQueryEmbedder } from "@/capabilities/hybrid-retrieval";
+import { deploymentGeneration, inferenceFingerprint } from "@/lib/inference/runtime-identity";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,12 @@ export function GET() {
     version: process.env.MIRA_APP_VERSION || "unknown",
     gitSha: process.env.MIRA_GIT_SHA || "unknown",
     builtAt: process.env.MIRA_BUILD_TIME || "unknown",
+    // Runtime identity (#4507): WHICH process (changes on every recreate, even
+    // from the same image) and WHAT it bills with (the effective cascade), so
+    // the Stranger Walk can detect a same-image redeploy and price its budget
+    // from the running Hub instead of its own Doppler snapshot. Non-secret.
+    deploymentGeneration: deploymentGeneration(),
+    inferenceFingerprint: inferenceFingerprint(),
   };
 
   // Effective retrieval-approval gate (Workstream B, PRD §8.2). Non-secret:

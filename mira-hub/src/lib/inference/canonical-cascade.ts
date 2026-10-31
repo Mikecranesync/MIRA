@@ -27,7 +27,7 @@
  * output_tokens/cost_usd_estimate/status`) so the NEXT slice can persist it
  * without redesigning the record. Emitting it is this slice; storing it is not.
  */
-import { openAiPricePerMtok } from "../../capabilities/openai-prices";
+import { openAiPricePerMtok, type OpenAiPrice } from "../../capabilities/openai-prices";
 
 /** One provider attempt, in canonical cascade order. */
 export type CanonicalProvider = {
@@ -230,6 +230,20 @@ function isTokenCount(n: unknown): n is number {
   return typeof n === "number" && Number.isSafeInteger(n) && n >= 0;
 }
 
+/**
+ * The declared per-Mtok rate `estimateCostUsd` books `provider`/`model` at, or
+ * null when unpriced. The one lookup both the estimate and the runtime
+ * identity (#4507, `runtime-identity.ts`) read, so the fingerprint a walk
+ * prices its budget from cannot drift from what telemetry records.
+ */
+export function declaredPricePerMtok(
+  provider: string,
+  model?: string | null,
+): { input: number; output: number } | OpenAiPrice | null {
+  if (provider === "OpenAI") return model ? openAiPricePerMtok(model) : null;
+  return PRICE_PER_MTOK[provider] ?? null;
+}
+
 export function estimateCostUsd(
   provider: string,
   inputTokens: number | null,
@@ -237,12 +251,7 @@ export function estimateCostUsd(
   outputTokens: number | null,
   model?: string | null,
 ): number | null {
-  const price =
-    provider === "OpenAI"
-      ? model
-        ? openAiPricePerMtok(model)
-        : undefined
-      : PRICE_PER_MTOK[provider];
+  const price = declaredPricePerMtok(provider, model);
   // Unpriced provider (or unpriced OpenAI model) → null, never 0. See PRICE_PER_MTOK.
   if (!price) return null;
   // Missing or invalid counts → null, never 0 (#4978). A lost usage frame
