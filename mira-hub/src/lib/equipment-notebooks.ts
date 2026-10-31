@@ -1890,3 +1890,60 @@ export async function listThreads(
     }));
   });
 }
+
+/**
+ * `listThreads` for many notebooks in ONE tenant-context round trip, keyed by
+ * notebook id. Same rows, owner predicate and per-notebook limit as calling
+ * `listThreads` once per notebook — which the sidebar list did, opening a
+ * transaction per notebook (~4.9 s for 63 notebooks on staging, 2026-10-21,
+ * while /v3 showed an empty workspace).
+ */
+export async function listThreadsByNotebook(
+  tenantId: string,
+  notebookIds: readonly string[],
+  limit = 50,
+  opts: { viewerUserId?: string | null } = {},
+): Promise<Map<string, Awaited<ReturnType<typeof listThreads>>>> {
+  const byNotebook = new Map<string, Awaited<ReturnType<typeof listThreads>>>();
+  if (notebookIds.length === 0) return byNotebook;
+  const viewer = (opts.viewerUserId ?? "").trim() || null;
+  return withTenantContext(tenantId, async (c) => {
+    const ownerPredicate = viewer ? `(owner_user_id = $4 OR owner_user_id IS NULL)` : `owner_user_id IS NULL`;
+    const values: unknown[] = [tenantId, [...notebookIds], limit];
+    if (viewer) values.push(viewer);
+    const res = await c.query(
+      `SELECT notebook_id, thread_id, created_at, updated_at, turn_count, first_question, shared_legacy
+         FROM (SELECT notebook_id,
+                      thread_id,
+                      min(created_at) AS created_at,
+                      max(created_at) AS updated_at,
+                      count(*)::int AS turn_count,
+                      (array_agg(question ORDER BY created_at ASC))[1] AS first_question,
+                      bool_or(owner_user_id IS NULL) AS shared_legacy,
+                      row_number() OVER (PARTITION BY notebook_id ORDER BY max(created_at) DESC) AS rn
+                 FROM equipment_notebook_turns
+                WHERE tenant_id = $1::uuid AND notebook_id = ANY($2::uuid[])
+                  AND client_request_state = 'complete'
+                  AND ${ownerPredicate}
+                GROUP BY notebook_id, thread_id) t
+        WHERE rn <= $3
+        ORDER BY notebook_id, updated_at DESC`,
+      values,
+    );
+    for (const r of res.rows as Record<string, unknown>[]) {
+      const notebookId = String(r.notebook_id);
+      const threads = byNotebook.get(notebookId) ?? [];
+      threads.push({
+        id: publicThreadId(r.thread_id),
+        notebookId,
+        title: threadTitleFromQuestion(String(r.first_question ?? "")),
+        createdAt: String(r.created_at),
+        updatedAt: String(r.updated_at),
+        turnCount: Number(r.turn_count ?? 0),
+        sharedLegacy: Boolean(r.shared_legacy),
+      });
+      byNotebook.set(notebookId, threads);
+    }
+    return byNotebook;
+  });
+}
