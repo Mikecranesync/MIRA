@@ -1,6 +1,7 @@
 import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
 import { jwtDecrypt } from "jose";
 import { landingRedirect } from "@/capabilities/hub-landing";
+import { wellKnownAppLinkBody } from "@/capabilities/well-known-app-links";
 
 // Next.js 16 middleware runs in the edge runtime. We must NOT import
 // `node:crypto` or `next-auth/middleware` here — both pull native modules
@@ -164,6 +165,18 @@ export default async function middleware(req: NextRequest, _ev: NextFetchEvent) 
   // Forwarded as x-nonce request header so RootLayout can attach it to <Script>.
   const nonce = b64Nonce(crypto.randomUUID());
   const csp = buildCsp(nonce, pathname);
+
+  // Android App Links + iOS Universal Links fetch these with no cookie.
+  // Exempt only these two exact paths (trailing slash folded) — an unknown
+  // /.well-known/* still bounces to /login. Serving JSON here is the
+  // code-only alternative to the undeployed nginx exact-match locations.
+  const appLinkBody = wellKnownAppLinkBody(pathname);
+  if (appLinkBody !== null) {
+    const resp = NextResponse.json(appLinkBody);
+    resp.headers.set("Content-Type", "application/json");
+    resp.headers.set("Cache-Control", "max-age=3600");
+    return applySecurityHeaders(resp, pathname, csp);
+  }
 
   const cookieValue =
     req.cookies.get(SECURE_NAME)?.value ?? req.cookies.get(REGULAR_NAME)?.value;
