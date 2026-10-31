@@ -451,6 +451,39 @@ describe("a zero-source SAFETY STOP is persisted like every other turn (asset sn
       expect(content).toContain("⚠️");
     }
   });
+
+  it("#5006: an UNRESOLVABLE binding never answers an ENERGIZED-WORK ask with 're-select the machine' either — the stop wins over the 422", async () => {
+    // The hazard-report case above is exempt via `safetyTrigger`. An
+    // energized-work ask that matches NO phrase-level trigger ("…while the
+    // VFD is energized" → isEnergizedWorkAsk true, notebookSafetyTrigger null)
+    // reached the unresolvable-binding 422 with `safetyTrigger` falsy, so the
+    // technician saw "re-select the machine" instead of the de-energize /
+    // lockout stop. The 422 now also skips `energizedAskEarly`, mirroring the
+    // no-sources refusal's exemption.
+    nbMock.resolveBoundAsset.mockResolvedValue({ state: "unresolvable", entityId: ASSET });
+    const ENERGIZED = "Can I check the motor leads with my meter while the VFD is energized?";
+    for (const body of [
+      { message: ENERGIZED, sourceDocIds: [DOC_A] },
+      { message: ENERGIZED, sourceDocIds: [] },
+    ]) {
+      nbMock.recordTurn.mockClear();
+      (fetch as unknown as { mockClear: () => void }).mockClear();
+      const res = await POST(req(body), params);
+      expect(res.status).toBe(200);
+      const fr = await frames(res);
+      expect(fr.find((f) => f.kind === "safety")).toMatchObject({ kind: "safety", trigger: "energized-work" });
+      const content = fr.filter((f) => f.kind === "content").map((f) => String(f.content ?? "")).join("");
+      expect(content).toMatch(/SAFETY STOP/);
+      // A stop, not an answer: no provider call, and the persisted turn is a
+      // terminal safety_stop about no machine in particular (unresolvable →
+      // null snapshot, the honest record).
+      expect(fetch).not.toHaveBeenCalled();
+      expect(nbMock.recordTurn).toHaveBeenCalledTimes(1);
+      const turn = lastTurn();
+      expect(turn.evidence.some((e) => e.kind === "safety_stop")).toBe(true);
+      expect(turn.equipmentEntityId ?? null).toBeNull();
+    }
+  });
 });
 
 describe("a disputed identity is on the wire FIRST on every path — live ≡ hydrated for the terminal paths too", () => {
