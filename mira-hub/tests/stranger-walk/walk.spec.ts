@@ -18,7 +18,7 @@ import { extractTurn, UI } from "../fidelity/surfaces";
 import corpusJson from "./corpus.json";
 import { cardsOf, firstChipOf, viewerTargetOf } from "./extract";
 import { fixtureFor, markdownScorecard, scoreAll, scorecard, type Corpus, type Observation, type Question } from "./score";
-import { assertOpenRouterCeiling, BUDGET, BudgetMeter, identity, manualBytes, pricesFromEnv, stagingBase, teardownTenant, tenantIdForEmail, TURN_BOUND, worstCaseTurnUsd } from "./staging";
+import { assertOpenRouterCeiling, BUDGET, BudgetMeter, identity, manualBytes, pricesFromEnv, releaseOwnPilotHold, stagingBase, teardownTenant, tenantIdForEmail, TURN_BOUND, worstCaseTurnUsd } from "./staging";
 
 const corpus = corpusJson as Corpus;
 const RUN_ID = process.env.STRANGER_WALK_RUN_ID ?? new Date().toISOString().replace(/[:.]/g, "-");
@@ -59,6 +59,11 @@ async function signUp(page: Page, base: string): Promise<string> {
   const created = ((await reg.json().catch(() => ({}))) as { tenantId?: unknown }).tenantId;
   if (typeof created !== "string" || !/^[0-9a-f-]{36}$/.test(created)) throw new Error("register succeeded without a tenantId — cannot guarantee teardown");
   persistTenant(created);
+  // #4927: with the pilot approval gate on, register lands on /pending-approval, never /v3.
+  // Release only this run's own throwaway tenant (as #4928 does), then open /v3 ourselves.
+  await page.waitForURL(/\/(v3|pending-approval)\/?/, { timeout: 60_000 });
+  await releaseOwnPilotHold(created, EMAIL);
+  if (/\/pending-approval\/?/.test(new URL(page.url()).pathname)) await page.goto(`${base}/v3/`);
   await page.waitForURL(/\/v3\/?/, { timeout: 60_000 });
   const me = await page.evaluate(async () => (await (await fetch("/api/me/")).json()) as { tenantId?: string });
   if (me.tenantId !== created) throw new Error(`signed in as tenant ${me.tenantId ?? "none"}, but registration created ${created}`);

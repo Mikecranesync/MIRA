@@ -223,6 +223,48 @@ export async function tenantIdForEmail(email: string): Promise<string | null> {
   }
 }
 
+type Queryable = { query: (sql: string, params: unknown[]) => Promise<unknown> };
+
+/**
+ * #4927: with MIRA_PILOT_APPROVAL_REQUIRED on (staging and prod since 2026-10-28), register makes the
+ * stranger 'pending' and middleware sends every page to /pending-approval, so the walk never reaches
+ * /v3. Put THIS run's own throwaway tenant back on the flag-off path, exactly as the acceptance
+ * provisioner does (#4928): owner on a trial, tenant pilot_status NULL — never 'active', so the run
+ * never takes one of the real pilot cohort slots. With the flag off both UPDATEs match nothing.
+ * Scoped by tenant AND the run-unique walk email; refuses anything else before touching the database.
+ */
+export async function releaseOwnPilotHold(tenantId: string, email: string, db?: Queryable): Promise<void> {
+  if (!/^strangerwalk-[a-z0-9-]+@factorylm\.com$/.test(email)) throw new Error(`refusing a non-walk email: ${email}`);
+  if (!/^[0-9a-f-]{36}$/.test(tenantId)) throw new Error(`refusing: not a tenant uuid: ${tenantId}`);
+  let c: (Queryable & { end?: () => Promise<void> }) | undefined = db;
+  if (!c) {
+    if (!process.env.NEON_DATABASE_URL) throw new Error("NEON_DATABASE_URL unset — cannot release the walk tenant from the pilot gate");
+    const { Client } = await import("pg");
+    const pg = new Client({ connectionString: process.env.NEON_DATABASE_URL, ssl: { rejectUnauthorized: false } });
+    await pg.connect();
+    c = pg;
+  }
+  try {
+    await c.query(
+      `UPDATE hub_users SET status = 'trial', trial_expires_at = NOW() + INTERVAL '1 day', updated_at = NOW()
+       WHERE tenant_id = $1 AND email = $2 AND status = 'pending'`,
+      [tenantId, email],
+    );
+    try {
+      await c.query(
+        `UPDATE hub_tenants SET pilot_status = NULL WHERE id = $1 AND pilot_status = 'pending'
+         AND EXISTS (SELECT 1 FROM hub_users WHERE tenant_id = $1 AND email = $2)`,
+        [tenantId, email],
+      );
+    } catch (err) {
+      // Pre-107 schema has no pilot_status column — nothing to undo there.
+      if ((err as { code?: string }).code !== "42703") throw err;
+    }
+  } finally {
+    if (!db) await c.end?.();
+  }
+}
+
 export type Identity = { gitSha: string; builtAt: string };
 
 export async function identity(base: string): Promise<Identity> {

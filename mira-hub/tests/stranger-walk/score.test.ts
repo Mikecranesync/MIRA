@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import corpusJson from "./corpus.json";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { assertOpenRouterCeiling, BUDGET, BudgetMeter, budgetUsdFromEnv, OPENROUTER_CEILING, OPENROUTER_PINNED_MODEL, openRouterCatalogMax, PROVIDER_PRICES, pricesFromEnv, TURN_BOUND, tenantIdForEmail, turnUsage, worstCaseTurnUsd } from "./staging";
+import { assertOpenRouterCeiling, BUDGET, BudgetMeter, budgetUsdFromEnv, OPENROUTER_CEILING, OPENROUTER_PINNED_MODEL, openRouterCatalogMax, PROVIDER_PRICES, pricesFromEnv, releaseOwnPilotHold, TURN_BOUND, tenantIdForEmail, turnUsage, worstCaseTurnUsd } from "./staging";
 import { classify, flakes, markdownScorecard, METRIC, predict, scoreAll, scorecard, type Corpus, type Observation } from "./score";
 
 const corpus = corpusJson as Corpus;
@@ -316,6 +316,61 @@ describe("honest residual risk (#4461 Codex F1/F2, accepted by Mike 2026-10-18)"
     expect(limits).toMatch(/without a redeploy/);
     expect(limits).toMatch(/A→B→A/);
     expect(limits).toMatch(/#4507/);
+  });
+});
+
+describe("pilot approval gate: the walk releases only its own throwaway tenant (#4927, as #4928)", () => {
+  const T = "4c36ea9a-1464-4d3f-8af6-e6d8541b15bb";
+  const E = "strangerwalk-charlie-20261031t1358z@factorylm.com";
+  const fakeDb = (fail?: { onTenants?: string }) => {
+    const calls: { sql: string; params: unknown[] }[] = [];
+    return {
+      calls,
+      query: async (sql: string, params: unknown[]) => {
+        calls.push({ sql, params });
+        if (fail?.onTenants && /hub_tenants/.test(sql)) throw Object.assign(new Error("boom"), { code: fail.onTenants });
+        return { rowCount: 1 };
+      },
+    };
+  };
+  it("puts the owner on a trial and the tenant back to pilot_status NULL, never 'active'", async () => {
+    const db = fakeDb();
+    await releaseOwnPilotHold(T, E, db);
+    expect(db.calls).toHaveLength(2);
+    expect(db.calls[0].sql).toMatch(/UPDATE hub_users SET status = 'trial'/);
+    expect(db.calls[0].sql).toMatch(/tenant_id = \$1 AND email = \$2 AND status = 'pending'/);
+    expect(db.calls[0].params).toEqual([T, E]);
+    expect(db.calls[1].sql).toMatch(/UPDATE hub_tenants SET pilot_status = NULL WHERE id = \$1 AND pilot_status = 'pending'/);
+    expect(db.calls[1].sql).toMatch(/EXISTS \(SELECT 1 FROM hub_users WHERE tenant_id = \$1 AND email = \$2\)/);
+    expect(db.calls.map((c) => c.sql).join("\n")).not.toMatch(/'active'/);
+  });
+  it("refuses anything but a walk email or a uuid tenant, before touching the database", async () => {
+    const db = fakeDb();
+    await expect(releaseOwnPilotHold(T, "mike@factorylm.com", db)).rejects.toThrow(/non-walk email/);
+    await expect(releaseOwnPilotHold("mike", E, db)).rejects.toThrow(/not a tenant uuid/);
+    expect(db.calls).toHaveLength(0);
+  });
+  it("tolerates a schema without pilot_status (42703) and rethrows anything else", async () => {
+    await expect(releaseOwnPilotHold(T, E, fakeDb({ onTenants: "42703" }))).resolves.toBeUndefined();
+    await expect(releaseOwnPilotHold(T, E, fakeDb({ onTenants: "08006" }))).rejects.toThrow(/boom/);
+  });
+  it("fails closed when no database is configured", async () => {
+    const prior = process.env.NEON_DATABASE_URL;
+    delete process.env.NEON_DATABASE_URL;
+    try {
+      await expect(releaseOwnPilotHold(T, E)).rejects.toThrow(/NEON_DATABASE_URL unset/);
+    } finally {
+      if (prior !== undefined) process.env.NEON_DATABASE_URL = prior;
+    }
+  });
+  it("signUp releases the hold after persisting the tenant and before waiting for /v3", () => {
+    const spec = readFileSync(path.join(__dirname, "walk.spec.ts"), "utf8");
+    const persist = spec.indexOf("persistTenant(created);");
+    const release = spec.indexOf("await releaseOwnPilotHold(created, EMAIL);");
+    const wait = spec.indexOf("await page.waitForURL(/\\/v3\\/?/");
+    expect(persist).toBeGreaterThan(-1);
+    expect(release).toBeGreaterThan(persist);
+    expect(wait).toBeGreaterThan(release);
   });
 });
 
