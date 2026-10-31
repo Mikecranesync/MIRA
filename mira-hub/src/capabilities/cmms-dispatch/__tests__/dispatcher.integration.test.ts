@@ -37,6 +37,7 @@ import { enqueueFixRecordedEvent, type EnqueueFixRecordedInput, type EnqueueResu
 import { runDispatchTick, type DispatchDeps } from "../dispatcher";
 import { deliveryStatusForFixRecords } from "../status";
 import { subjectRefForFix } from "../types";
+import { deleteNotebook } from "@/lib/equipment-notebooks";
 
 const URL_ = process.env.TEST_DATABASE_URL;
 
@@ -1245,6 +1246,78 @@ describe.skipIf(!URL_)("cmms-dispatch (real Postgres)", () => {
     const row = await deliveryRow(deliveryId);
     expect(row.state).toBe("quarantined");
     expect(row.last_error).toBe("max_attempts_unreconciled:outcome_unknown");
+  });
+
+  // ── Codex round 5 (F12) ──────────────────────────────────────────────────
+
+  async function outboxCounts(notebookId: string): Promise<{ events: number; deliveries: number }> {
+    const res = await testPool.query<{ events: number; deliveries: number }>(
+      `SELECT (SELECT count(*)::int FROM notebook_domain_events WHERE notebook_id = $1::uuid) AS events,
+              (SELECT count(*)::int FROM notebook_event_deliveries d
+                 JOIN notebook_domain_events e ON e.event_id = d.event_id
+                WHERE e.notebook_id = $1::uuid) AS deliveries`,
+      [notebookId],
+    );
+    return res.rows[0]!;
+  }
+
+  it("F12 (round 5): deleting a notebook removes its outbox events and queued deliveries — a later tick sends nothing", async () => {
+    const tenantId = uuid();
+    const notebookId = await makeNotebook(tenantId);
+    await setCmmsConfig(tenantId, { provider: "atlas", writePolicy: workOrderPolicy("WO-F12") });
+    const deliveryId = requireDeliveryId((await enqueueOne(tenantId, notebookId)).result.delivery);
+    expect(await outboxCounts(notebookId)).toEqual({ events: 1, deliveries: 1 });
+
+    const res = await deleteNotebook(tenantId, notebookId);
+    expect(res.deleted).toBe(true);
+    expect(await outboxCounts(notebookId)).toEqual({ events: 0, deliveries: 0 });
+    const gone = await testPool.query(`SELECT 1 FROM notebook_event_deliveries WHERE delivery_id = $1`, [deliveryId]);
+    expect(gone.rowCount).toBe(0);
+
+    const mock = new MockCmmsWriteProvider({ providerId: "atlas" });
+    const stats = await runDispatchTick({ providerFor: () => mock, tenantAllowlist: new Set([tenantId]) });
+    expect(stats.claimed).toBe(0);
+    expect(mock.calls).toHaveLength(0);
+    expect(mock.records("WO-F12")).toHaveLength(0);
+  });
+
+  it("F12b (round 5): an enqueue that loses the race with a notebook delete fails instead of leaving an orphan event", async () => {
+    const tenantId = uuid();
+    const notebookId = await makeNotebook(tenantId);
+    await setCmmsConfig(tenantId, { provider: "atlas", writePolicy: workOrderPolicy("WO-F12B") });
+    expect((await deleteNotebook(tenantId, notebookId)).deleted).toBe(true);
+
+    await expect(enqueueOne(tenantId, notebookId)).rejects.toMatchObject({ code: "23503" });
+    expect(await outboxCounts(notebookId)).toEqual({ events: 0, deliveries: 0 });
+  });
+
+  it("F12c (round 5): a notebook deleted after the dispatcher planned but before the PIN is never written", async () => {
+    const tenantId = uuid();
+    const notebookId = await makeNotebook(tenantId);
+    await setCmmsConfig(tenantId, { provider: "atlas", writePolicy: workOrderPolicy("WO-F12C") });
+    requireDeliveryId((await enqueueOne(tenantId, notebookId)).result.delivery);
+
+    // Delete the notebook at the instant the dispatcher issues its PIN.
+    const real = testPool.query.bind(testPool) as (...args: unknown[]) => Promise<unknown>;
+    let deletedAtPin = false;
+    const spy = vi.spyOn(testPool, "query").mockImplementation((async (...args: unknown[]) => {
+      if (!deletedAtPin && typeof args[0] === "string" && args[0].includes("SET receipt = receipt || $1::jsonb")) {
+        deletedAtPin = (await deleteNotebook(tenantId, notebookId)).deleted;
+      }
+      return real(...args);
+    }) as never);
+    const mock = new MockCmmsWriteProvider({ providerId: "atlas" });
+    let stats;
+    try {
+      stats = await runDispatchTick({ providerFor: () => mock, tenantAllowlist: new Set([tenantId]) });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(deletedAtPin).toBe(true);
+    expect(stats.leaseLost).toBe(1);
+    expect(mock.calls).toHaveLength(0);
+    expect(mock.records("WO-F12C")).toHaveLength(0);
+    expect(await outboxCounts(notebookId)).toEqual({ events: 0, deliveries: 0 });
   });
 
 });

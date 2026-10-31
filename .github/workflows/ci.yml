@@ -1716,10 +1716,11 @@ jobs:
     env:
       TEST_DATABASE_URL: postgres://postgres:testpw@127.0.0.1:5432/mira_test
       MIRA_TEST_DB_CONFIRM: DISPOSABLE
-      # asset_fix_records lineage (095-098) + the outbox (111). tenant_cmms_config
-      # comes from db/integration-fixtures/001_tenant_cmms_config.sql, applied
-      # before the extra migrations by setup-integration-db.mjs.
-      MIRA_INTEGRATION_EXTRA_MIGRATIONS: "095_asset_fix_records.sql,096_asset_fix_records_notebook_fk.sql,097_asset_fix_records_idempotency.sql,098_asset_fix_records_request_fingerprint.sql,111_notebook_domain_events_outbox.sql"
+      # asset_fix_records lineage (095-098) + the outbox (111) and its notebook
+      # FK (112). tenant_cmms_config comes from
+      # db/integration-fixtures/001_tenant_cmms_config.sql, applied before the
+      # extra migrations by setup-integration-db.mjs.
+      MIRA_INTEGRATION_EXTRA_MIGRATIONS: "095_asset_fix_records.sql,096_asset_fix_records_notebook_fk.sql,097_asset_fix_records_idempotency.sql,098_asset_fix_records_request_fingerprint.sql,111_notebook_domain_events_outbox.sql,112_notebook_domain_events_notebook_fk.sql"
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
@@ -1728,7 +1729,7 @@ jobs:
         with:
           filters: |
             outbox:
-              - 'mira-hub/db/migrations/111_notebook_domain_events_outbox.sql'
+              - 'mira-hub/db/migrations/11[12]_notebook_domain_events_*.sql'
               - 'mira-hub/db/migrations/09[5-8]_asset_fix_records*.sql'
               - 'mira-hub/db/integration-fixtures/**'
               - 'mira-hub/src/capabilities/cmms-dispatch/**'
