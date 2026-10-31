@@ -52,9 +52,16 @@ export const SAFETY_CHAPTER_BUDGET_CHARS = 6_000;
  * Postgres (case-sensitive ~) and JS, so the SQL ranking and the JS check agree.
  */
 export const SAFETY_MARKER_LINE = "(^|\\n)[\\s•*▪●■◆►▶⚠!-]*(WARNING|DANGER|CAUTION|ATTENTION|SHOCK HAZARD|BURN HAZARD)[:!\\s]";
-/** Words that mark a concrete procedure step. One string for Postgres (~*) and JS (flag i). */
-export const SAFETY_PROCEDURE_WORDS = "wait|minute|discharg|voltage|multimeter|measur|isolat|disconnect|lock.?out|de-?energi";
-const PROCEDURE_RE = new RegExp(SAFETY_PROCEDURE_WORDS, "i");
+/**
+ * The prerequisite steps a hands-on answer must carry, one pattern per kind: wait time, discharge, and
+ * the zero-voltage check. A chunk ranks by how many kinds it names, so generic isolation warnings can
+ * never tie with it. One string each for Postgres (~*) and JS (flag i).
+ */
+export const SAFETY_PREREQUISITE_KINDS = ["wait|minute", "discharg", "measur|multimeter|voltage"];
+/** Isolation words: a procedure, but ranked below every chunk that names a prerequisite kind. */
+export const SAFETY_ISOLATION_WORDS = "isolat|disconnect|lock.?out|de-?energi";
+const PREREQUISITE_RES = SAFETY_PREREQUISITE_KINDS.map((k) => new RegExp(k, "i"));
+const ISOLATION_RE = new RegExp(SAFETY_ISOLATION_WORDS, "i");
 
 /** The first page of the Safety chapter a text refers to, or null. */
 export function safetyChapterPage(text: string): number | null {
@@ -142,7 +149,7 @@ type ChapterRow = { id: string; content: string; sourceUrl: string; sourcePage: 
 
 /**
  * Every chapter page's candidate rows in ONE query, at most SAFETY_CHAPTER_ROWS_PER_PAGE per page,
- * ranked marker line first, then procedure words, then id. No early exit: a page is read whole up to
+ * ranked marker line first, then prerequisite kinds named, then isolation words, then id. No early exit: a page is read whole up to
  * its rank cap. Pinned like retrieval: tenant, v2 route, the admitted (doc, file, page) tuples, and
  * the approval predicate (the admission set bound only with the gate on).
  */
@@ -161,7 +168,8 @@ async function readChapterRows(
     pages.map((p) => p.page),
     CANDIDATE_PATTERN,
     SAFETY_MARKER_LINE,
-    SAFETY_PROCEDURE_WORDS,
+    SAFETY_PREREQUISITE_KINDS,
+    SAFETY_ISOLATION_WORDS,
     SAFETY_CHAPTER_ROWS_PER_PAGE,
   ];
   if (admitApproved) params.push(approved);
@@ -172,18 +180,20 @@ async function readChapterRows(
          SELECT id, content, source_url, COALESCE(page_start, source_page) AS page,
                 ROW_NUMBER() OVER (
                   PARTITION BY source_url, COALESCE(page_start, source_page)
-                  ORDER BY (content ~ $6) DESC, (content ~* $7) DESC, id
+                  ORDER BY (content ~ $6) DESC,
+                           (SELECT count(*) FROM unnest($7::text[]) AS kind WHERE content ~* kind) DESC,
+                           (content ~* $8) DESC, id
                 ) AS rn
            FROM knowledge_entries
           WHERE tenant_id = $1
             AND ingest_route = 'v2'
-            ${approvedSourceFilterSql(admitApproved ? 9 : null)}
+            ${approvedSourceFilterSql(admitApproved ? 10 : null)}
             AND (doc_id::text, source_url, COALESCE(page_start, source_page)) IN (
               SELECT * FROM unnest($2::text[], $3::text[], $4::int[])
             )
             AND content ~* $5
        ) ranked
-      WHERE rn <= $8
+      WHERE rn <= $9
       ORDER BY source_url, page, id`,
     params,
   );
@@ -195,14 +205,22 @@ async function readChapterRows(
   }));
 }
 
-/** One manual's rows within its budget: procedure-bearing statements first, then the rest, each in page order. */
+/** Prerequisite kinds a chunk names (0-3), then whether it names isolation: the read's rank, in JS. */
+function procedureRank(content: string): [number, number] {
+  return [PREREQUISITE_RES.filter((re) => re.test(content)).length, ISOLATION_RE.test(content) ? 1 : 0];
+}
+
+/** One manual's rows within its budget, filled by procedure rank (most prerequisite kinds first), then page order. */
 function withinBudget(rows: readonly ChapterRow[]): ChapterRow[] {
   const byPage = (a: ChapterRow, b: ChapterRow) => a.sourcePage - b.sourcePage || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-  const procedure = rows.filter((r) => PROCEDURE_RE.test(r.content)).sort(byPage);
-  const rest = rows.filter((r) => !PROCEDURE_RE.test(r.content)).sort(byPage);
+  const byRank = (a: ChapterRow, b: ChapterRow) => {
+    const [ka, ia] = procedureRank(a.content);
+    const [kb, ib] = procedureRank(b.content);
+    return kb - ka || ib - ia || byPage(a, b);
+  };
   const picked: ChapterRow[] = [];
   let used = 0;
-  for (const r of [...procedure, ...rest]) {
+  for (const r of [...rows].sort(byRank)) {
     const cost = Math.min(r.content.length, MAX_CONTENT_CHARS);
     if (used + cost > SAFETY_CHAPTER_BUDGET_CHARS) continue;
     used += cost;

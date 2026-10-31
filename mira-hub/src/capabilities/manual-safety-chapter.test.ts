@@ -62,23 +62,29 @@ function fakeClient(rows: Row[]) {
           .slice(0, limit);
         return { rows: out.map((r) => ({ id: r.id, content: r.content, source_url: r.source_url, page: r.page })) };
       }
-      // The chapter read: per (file, page), rank marker line first, then procedure words, then id;
-      // keep rank <= the per-page cap; return in (file, page, id) order — the same semantics as the SQL.
-      const [, docs, urls, pageNos, candidate, marker, procedure, perPage] = params as [
-        string, string[], string[], number[], string, string, string, number,
+      // The chapter read: per (file, page), rank marker line first, then prerequisite kinds named, then
+      // isolation words, then id; keep rank <= the per-page cap; return in (file, page, id) order — the
+      // same semantics as the SQL.
+      const [, docs, urls, pageNos, candidate, marker, kinds, isolation, perPage] = params as [
+        string, string[], string[], number[], string, string, string[], string, number,
       ];
       const cand = new RegExp(candidate, "i");
       const mark = new RegExp(marker);
-      const proc = new RegExp(procedure, "i");
+      const kindRes = kinds.map((k) => new RegExp(k, "i"));
+      const iso = new RegExp(isolation, "i");
       const hits = rows.filter((r) =>
         docs.some((d, i) => d === r.doc_id && urls[i] === r.source_url && pageNos[i] === r.page) && cand.test(r.content),
       );
       const groups = new Map<string, Row[]>();
       for (const r of hits) groups.set(`${r.source_url}|${r.page}`, [...(groups.get(`${r.source_url}|${r.page}`) ?? []), r]);
-      const score = (r: Row) => [mark.test(r.content) ? 0 : 1, proc.test(r.content) ? 0 : 1] as const;
+      const score = (r: Row) => [
+        mark.test(r.content) ? 0 : 1,
+        -kindRes.filter((re) => re.test(r.content)).length,
+        iso.test(r.content) ? 0 : 1,
+      ] as const;
       const kept = [...groups.values()].flatMap((g) =>
         g
-          .sort((a, b) => score(a)[0] - score(b)[0] || score(a)[1] - score(b)[1] || (a.id < b.id ? -1 : 1))
+          .sort((a, b) => score(a)[0] - score(b)[0] || score(a)[1] - score(b)[1] || score(a)[2] - score(b)[2] || (a.id < b.id ? -1 : 1))
           .slice(0, perPage),
       );
       kept.sort((a, b) => (a.source_url < b.source_url ? -1 : a.source_url > b.source_url ? 1 : a.page - b.page || (a.id < b.id ? -1 : 1)));
@@ -310,7 +316,43 @@ describe("retrieveSafetyChapterChunks", () => {
     // The read itself is bounded per page; one query, no batches.
     const reads = client.calls.filter((c) => c.sql.includes("ROW_NUMBER"));
     expect(reads).toHaveLength(1);
-    expect(reads[0].params[7]).toBe(SAFETY_CHAPTER_ROWS_PER_PAGE);
+    expect(reads[0].params[8]).toBe(SAFETY_CHAPTER_ROWS_PER_PAGE);
+    // The fake applies the cap from the bound value; the SQL must actually filter on it.
+    expect(reads[0].sql).toMatch(/WHERE rn <= \$9\s+ORDER BY/);
+  });
+
+  it("an isolation warning outranks generic boilerplate for the budget", async () => {
+    const generic = Array.from({ length: 30 }, (_, i) =>
+      row(`00000000-0000-0000-0000-${String(14000 + i).padStart(12, "0")}`, `WARNING! Only qualified people may service unit ${i}. `.padEnd(300, "Read the manual. "), 17),
+    );
+    expect(generic.every((r) => !/wait|minute|discharg|measur|multimeter|voltage|isolat|disconnect|lock.?out|de-?energi/i.test(r.content))).toBe(true);
+    const iso = row("ffffffff-0000-0000-0000-000000000006", "WARNING! Disconnect and lock out the supply before servicing.", 18);
+    const added = await retrieveSafetyChapterChunks(fakeClient([...generic, iso, CORPUS[3]]), "tenant", [chunk(P372, 372)]);
+    expect(added.find((c) => c.content === iso.content)).toMatchObject({ sourcePage: 18 });
+  });
+
+  it("40 earlier disconnect warnings on the same page cannot take the read slots of the wait and voltage check (Codex r6 F13)", async () => {
+    const STEPS = "WARNING! Wait for 5 minutes after disconnecting the input power. Measure with a multimeter that there is no voltage.";
+    const isolation = Array.from({ length: 40 }, (_, i) =>
+      row(`00000000-0000-0000-0000-${String(12000 + i).padStart(12, "0")}`, `WARNING! Disconnect the supply before task ${i}.`, 18),
+    );
+    const late = row("ffffffff-0000-0000-0000-000000000004", STEPS, 18); // ties every earlier row on marker and isolation words
+    const client = fakeClient([...isolation, late, CORPUS[3]]);
+    const added = await retrieveSafetyChapterChunks(client, "tenant", [chunk(P372, 372)]);
+    expect(added.find((c) => c.content === STEPS)).toMatchObject({ docId: DOC, sourceUrl: URL, sourcePage: 18 });
+  });
+
+  it("disconnect warnings on an earlier page cannot spend the budget ahead of the wait and voltage check (Codex r6 F13)", async () => {
+    const STEPS = "WARNING! Wait for 5 minutes after disconnecting the input power. Measure with a multimeter that there is no voltage.";
+    const isolation = Array.from({ length: 30 }, (_, i) =>
+      // 300 characters each: 20 of them fill the budget exactly, leaving no room after them.
+      row(`00000000-0000-0000-0000-${String(13000 + i).padStart(12, "0")}`, `WARNING! Disconnect the supply before task ${i}. `.padEnd(300, "Follow the site rules. "), 17),
+    );
+    expect(SAFETY_CHAPTER_BUDGET_CHARS % 300).toBe(0);
+    expect(isolation.reduce((n, r) => n + r.content.length, 0)).toBeGreaterThan(SAFETY_CHAPTER_BUDGET_CHARS);
+    const added = await retrieveSafetyChapterChunks(fakeClient([...isolation, row("ffffffff-0000-0000-0000-000000000005", STEPS, 18), CORPUS[3]]), "tenant", [chunk(P372, 372)]);
+    expect(added.find((c) => c.content === STEPS)).toMatchObject({ sourcePage: 18 });
+    expect(added.reduce((n, c) => n + Math.min(c.content.length, 1200), 0)).toBeLessThanOrEqual(SAFETY_CHAPTER_BUDGET_CHARS);
   });
 
   it("the per-page rank puts a real WARNING ahead of chunks that merely say wait (#4509 r4 trap)", async () => {
