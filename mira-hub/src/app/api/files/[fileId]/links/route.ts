@@ -17,6 +17,7 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { attachFileToTargets, isLinkTargetType, type AttachTarget } from "@/lib/workspace-files";
+import { indexParkedFileForTargets } from "@/lib/parked-file-index";
 
 export const dynamic = "force-dynamic";
 
@@ -83,7 +84,21 @@ export async function POST(
     const res = await attachFileToTargets(ctx.tenantId, fileId, parsed.targets, {
       createdBy: ctx.userId ?? null,
     });
-    if (res.ok) return NextResponse.json({ links: res.links });
+    if (res.ok) {
+      // #4367: a parked file attached to a node or notebook is indexed now, so
+      // it becomes citable. The attach already committed; indexing never fails it.
+      const outcome = await indexParkedFileForTargets({
+        tenantId: ctx.tenantId,
+        fileId,
+        targets: parsed.targets,
+        userId: ctx.userId ?? null,
+      });
+      return NextResponse.json({
+        links: res.links,
+        indexing: outcome.indexing,
+        ...(outcome.uploadId ? { uploadId: outcome.uploadId } : {}),
+      });
+    }
     if (res.error === "file_not_found") {
       return NextResponse.json({ error: "not_found" }, { status: 404 });
     }
