@@ -188,7 +188,67 @@ describe("retrieveManualChunks", () => {
     const { client, calls } = makeClient([[row({ verified: true })]]);
     const out = await retrieveManualChunks(client, "tenant-1", "torque");
     expect(out[0].verified).toBe(true);
-    expect(calls[0].sql).toContain("AND verified = true");
+    // Shared OEM stays verified-only; tenant-private uploads are admitted
+    // without knowledge_entries.verified (that flag is never set on upload).
+    expect(calls[0].sql).toMatch(
+      /AND \(verified = true OR \(is_private = true AND tenant_id = \$1\)\)/,
+    );
+    expect(calls[0].sql).toContain("(is_private = false OR tenant_id = $1)");
+    // Blanket `AND verified = true` (pre-fix) hid fresh tenant uploads.
+    expect(calls[0].sql).not.toMatch(
+      /WHERE \(is_private = false OR tenant_id = \$1\)\s+AND verified = true\s/,
+    );
+  });
+
+  it("does not apply an approval clause when the gate is off", async () => {
+    const { client, calls } = makeClient([[row()]]);
+    await retrieveManualChunks(client, "tenant-1", "torque");
+    expect(calls[0].sql).not.toContain("verified = true");
+  });
+
+  // Gate-1 (#3437 / #3738 / #3739): the tenant upload path never sets verified,
+  // so a blanket `AND verified = true` hides the caller's own private manuals
+  // on the general ask path. The gate must admit the caller's private rows.
+  it("admits the caller's own private uploads under the approval gate", async () => {
+    process.env.MIRA_ENFORCE_APPROVED_RETRIEVAL = "true";
+    const { client, calls } = makeClient([[row({ verified: false })]]);
+    await retrieveManualChunks(client, "tenant-1", "torque");
+    expect(calls[0].sql).toContain("is_private = true AND tenant_id = $1");
+    expect(calls[0].sql).not.toContain("AND verified = true\n");
+  });
+
+  // Gate-1, whole-token code lane (#4224 Defect A query inside runBm25Query):
+  // a technician naming a fault code from their OWN uploaded manual must get
+  // that chunk under the gate. Every lane of the same read uses the same
+  // hybrid admission; a blanket `verified = true` on the code lane alone would
+  // hide the private chunk that literally contains the code.
+  it("admits the caller's own private uploads on the whole-token code lane too", async () => {
+    process.env.MIRA_ENFORCE_APPROVED_RETRIEVAL = "true";
+    const privateHit = row({ content: "ovA: Overvoltage during acceleration. Check decel time.", verified: false, source_page: 20 });
+    // Lane 1: BM25 AND (empty) → lane 2: BM25 OR (empty) → lane 3: code lane (private hit)
+    const { client, calls } = makeClient([[], [], [privateHit]]);
+    const out = await retrieveManualChunks(client, "tenant-1", "What does fault ovA mean on this drive");
+    const codeLane = lanes(calls).filter((c) => c.sql.includes("content ~* ANY("));
+    expect(codeLane).toHaveLength(1);
+    expect(codeLane[0].sql).toMatch(
+      /AND \(verified = true OR \(is_private = true AND tenant_id = \$1\)\)/,
+    );
+    expect(codeLane[0].sql).not.toMatch(
+      /WHERE \(is_private = false OR tenant_id = \$1\)\s+AND verified = true\s/,
+    );
+    expect(out.map((c) => c.content)).toEqual([privateHit.content]);
+  });
+
+  it("control: the code lane stays verified-only for shared OEM rows (no tenant-wide widening)", async () => {
+    process.env.MIRA_ENFORCE_APPROVED_RETRIEVAL = "true";
+    const { client, calls } = makeClient([[], [], [row({ verified: true })]]);
+    await retrieveManualChunks(client, "tenant-1", "What does fault ovA mean on this drive");
+    const codeLane = lanes(calls).filter((c) => c.sql.includes("content ~* ANY("));
+    expect(codeLane).toHaveLength(1);
+    // Shared rows (is_private = false) are admitted only via `verified = true`;
+    // the predicate never collapses to bare tenant membership.
+    expect(codeLane[0].sql).toContain("verified = true OR (is_private = true AND tenant_id = $1)");
+    expect(codeLane[0].sql).not.toMatch(/OR tenant_id = \$1\)\s*\)\s*\n\s*AND content/);
   });
 });
 
