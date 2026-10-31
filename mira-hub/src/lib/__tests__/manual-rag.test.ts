@@ -190,6 +190,17 @@ describe("retrieveManualChunks", () => {
     expect(out[0].verified).toBe(true);
     expect(calls[0].sql).toContain("AND verified = true");
   });
+
+  // Gate-1 (#3437 / #3738 / #3739): the tenant upload path never sets verified,
+  // so a blanket `AND verified = true` hides the caller's own private manuals
+  // on the general ask path. The gate must admit the caller's private rows.
+  it("admits the caller's own private uploads under the approval gate", async () => {
+    process.env.MIRA_ENFORCE_APPROVED_RETRIEVAL = "true";
+    const { client, calls } = makeClient([[row({ verified: false })]]);
+    await retrieveManualChunks(client, "tenant-1", "torque");
+    expect(calls[0].sql).toContain("is_private = true AND tenant_id = $1");
+    expect(calls[0].sql).not.toContain("AND verified = true\n");
+  });
 });
 
 describe("extractModelNumber (#2178)", () => {
