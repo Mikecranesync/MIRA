@@ -557,3 +557,52 @@ describe("Review A — lockout forms flag on the notebook surface only", () => {
     expect(matchSafetyStop("there are exposed wires near the panel")).not.toBeNull();
   });
 });
+
+// ── 2026-10-30 Investigator mission (#5006 "related observation") ──
+// "Line is running, can I pop the front cover off the PLC and wiggle the
+// output terminals to find the loose one?" returned false on d73809742: the
+// powered state is a sentence-START assertion with a bare machine subject
+// ("Line is running", no "the", no while/with/when), and the round-6
+// machine-is-ON assertion ends in `on` only. "running" is the WEAKEST state,
+// so the assertion form stops only with a work object, powered contact, or a
+// verb that can only mean touching the equipment — never on change/adjust/
+// connect, which are also what a technician says about a parameter or a
+// network. A status preamble in front of a diagnostic question stays answered.
+describe("machine-is-running assertion + hands-on ask (sealed case sc-B-17 restated)", () => {
+  it.each([
+    "Line is running, can I pop the front cover off the PLC and wiggle the output terminals to find the loose one?",
+    "Line is running, can I pop the front cover off the PLC and wiggle the output terminals instead of waiting for a shutdown window?",
+    "Line's running, can I open the cover and tighten the terminals?",
+    "The line is running. Can I open the PLC cover and wiggle the output terminals?",
+    "Machine is running, how do I swap the fan?",
+    "The drive is running. How do I pull the keypad off to get at the connector?",
+    "It's running, can I pop the cover off and check the terminals?",
+    "Conveyor is still running, is it ok to open the panel and reach in?",
+  ])("is energized work: %s", (msg) => {
+    expect(isEnergizedWorkAsk(msg)).toBe(true);
+  });
+
+  it.each([
+    // status preamble + diagnostic question (the round-2 controls, restated
+    // with the assertion form)
+    "The line is running fine, what does fault F004 mean?",
+    "Line is running, the drive display shows oL. what do I check?",
+    "the motor is running hot, is that normal?",
+    "The pump is running, can I check the fault history on the HMI?",
+    // a parameter or setting change is keypad work, not hands-on work
+    "The drive is running. How do I change the acceleration time?",
+    "The line is running but the conveyor is slow. How do I adjust the speed?",
+    // work deferred to a shutdown is not an energized-work ask
+    "Line is running, I'll replace the fan at the next shutdown. What torque on the cover screws?",
+    "The drive is running now; once it's locked out, how do I pull the control card?",
+    // a report of PAST work is not an ask
+    "Line is running again after I pulled the cover and tightened the terminals, thanks",
+    // "is the line running?" is a question about state, not an assertion of it
+    "Is the line running? How do I reset the fault?",
+    // unchanged controls from the TQ-29 suite
+    "is the power on light supposed to blink while running",
+    "check the fault log while running",
+  ])("is NOT energized work (control): %s", (msg) => {
+    expect(isEnergizedWorkAsk(msg)).toBe(false);
+  });
+});
