@@ -20,7 +20,7 @@ const DOC_A = "aaaaaaaa-0000-4000-8000-000000000001";
 
 const HYBRID_WHERE = "WHERE (is_private = false OR tenant_id = $1)";
 const HYBRID_ADMISSION_RE =
-  /AND \(true AND verified = true OR \(is_private = true AND tenant_id = \$1\)\)/;
+  /AND \(verified = true OR \(is_private = true AND tenant_id = \$1\)\)/;
 const keRead = (sql: string) => sql.includes("knowledge_entries");
 
 type Call = { sql: string; params: unknown[] };

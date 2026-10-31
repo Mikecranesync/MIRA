@@ -115,7 +115,11 @@ describe("POST /api/assets/[id]/chat — ownership fail-closed", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("still hard-stops a LOTO phrase when the ownership probe would throw", async () => {
+  // Owner decision 2026-09-27: no hard stop, only safety flags. So a DB blip
+  // on the ownership probe fails closed (503) for a LOTO phrase too; there is
+  // no canned safety-stop bypass. Whether a hazard phrase should still get a
+  // flagged answer during an ownership outage is an open decision for Mike.
+  it("fails closed (503) for a LOTO phrase when the ownership probe throws — no bypass", async () => {
     poolMock.connect.mockRejectedValue(new Error("pool exhausted"));
 
     const res = await POST(
@@ -127,9 +131,8 @@ describe("POST /api/assets/[id]/chat — ownership fail-closed", () => {
       params,
     );
 
-    expect(res.status).toBe(200);
-    expect(res.headers.get("X-Safety-Stop")).toBe("melted insulation");
+    expect(res.status).toBe(503);
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(poolMock.connect).not.toHaveBeenCalled();
+    expect(poolMock.connect).toHaveBeenCalledTimes(1);
   });
 });
