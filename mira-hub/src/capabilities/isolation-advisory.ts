@@ -118,8 +118,31 @@ const ISO_VOID_POST =
  *  parameter" (the physical noun is inside the parameter name), "Remove the
  *  fault from the alarm history". Physical twins ("Install the control card",
  *  "Change the fan") carry none of these words. */
-const SOFTWARE_TARGET_RE =
-  /\b(?:firmware|software|update|patch|app|application|driver|programs?|parameters?|settings?|setpoints?|menu|history|logs?|records?|entry|entries|password|license|configuration|config|profile|account)\b/i;
+const SOFTWARE_HEAD_RE =
+  /^(?:firmware|software|updates?|patch(?:es)?|apps?|applications?|programs?|parameters?|settings?|setpoints?|menus?|history|logs?|records?|entry|entries|passwords?|licen[cs]es?|configurations?|config|profiles?|accounts?|faults?|alarms?|errors?|codes?)$/i;
+/** Codex #4867 r2 F2: the exemption reads the object's HEAD noun only — the last word before a
+ *  preposition — so "Replace the firmware module", "Disconnect the motor driver wires" and
+ *  "Replace the fan with a model matching the drive configuration" stay physical work. */
+function headNoun(window: string): string {
+  const phrase = window.split(/\s+(?:with|from|in|into|on|at|for|matching|via|using|under|by|of|across|between)\b/i)[0] ?? "";
+  const words = phrase.replace(/[^\w\s-]/g, " ").trim().split(/\s+/).filter(Boolean);
+  return words[words.length - 1] ?? "";
+}
+function softwareTarget(window: string): boolean {
+  return SOFTWARE_HEAD_RE.test(headNoun(window));
+}
+/** Owner decision 2026-10-31 (#5055): an answer that recommends a live test or measurement gets
+ *  no disconnect-power notice — that is wrong advice for a reading that needs the circuit live.
+ *  Live REPAIR is a separate category (the energized-work stop). Dead tests (resistance,
+ *  continuity, insulation) are not in this set and keep the notice. */
+const LIVE_MEASURAND_HEAD_RE = /^(?:voltages?|volts?|current|amps?|amperage|frequency|signal)$/i;
+/** "Probe the terminals for voltage" — the measurand named as the purpose. */
+const LIVE_MEASURAND_FOR_RE = /\bfor\s+(?:the\s+|any\s+)?(?:\w+\s+)?(?:voltage|volts|current|amps|frequency|signal)\b/i;
+/** The measurand must be what is measured (the head noun), so "Check the current transformer
+ *  wiring" stays physical work. */
+function liveMeasurement(window: string): boolean {
+  return LIVE_MEASURAND_HEAD_RE.test(headNoun(window)) || LIVE_MEASURAND_FOR_RE.test(window);
+}
 
 /** Dual-use object window ends at the next coordinator or purpose "to". */
 const OBJECT_WINDOW_CUT = /\s+(?:then|so|and(?:\s+then)?)\b|,\s+(?:then|and|or)\b|[;.]|\bto\b/i;
@@ -147,7 +170,9 @@ const SOFTWARE_SHUTDOWN_POST =
  *  "The lockout procedure is in the manual" opens no isolation scope, while
  *  "Follow the lockout procedure" does. */
 const LOCKOUT_DOC_POST =
-  /^(?:\/tagout)?\s+(?:procedure|instructions?|section|page|chapter|steps?|requirements?|policy|diagram|sheet)\b/i;
+  /^(?:\/tagout)?\s+(?:procedure|instructions?|section|page|chapter|steps?|requirements?|policy|diagram|sheet|indicator|light|lamp|led|status|signal|alarm|input|relay)\b/i;
+/** Codex #4867 r2 F1: fault isolation ("isolate the fault") is diagnosis, not power isolation. */
+const ISOLATE_NONPOWER_POST = /^\s+(?:the\s+|a\s+|which\s+)?(?:fault|problem|cause|issue|failure|symptom|root cause)\b/i;
 const LOCKOUT_DOC_ACT_PRE = /\b(?:follow(?:ing)?|perform(?:ing)?|apply(?:ing)?|complet(?:e|ing)|carry(?:ing)? out|do|use|using|start)\b[^.;:]*$/i;
 
 function isolationIsVoid(text: string, index: number, matched = ""): boolean {
@@ -156,6 +181,7 @@ function isolationIsVoid(text: string, index: number, matched = ""): boolean {
   if (ISO_VOID_PRE.test(before)) return true;
   if (/^(?:shut|power)/i.test(matched) && SOFTWARE_SHUTDOWN_POST.test(after)) return true;
   if (/lock|loto/i.test(matched) && LOCKOUT_DOC_POST.test(after) && !LOCKOUT_DOC_ACT_PRE.test(before)) return true;
+  if (/^isolat/i.test(matched) && ISOLATE_NONPOWER_POST.test(after)) return true;
   return ISO_VOID_POST.test(after);
 }
 
@@ -233,7 +259,8 @@ function instructionIsHandsOn(match: string, after: string): boolean {
   if (/^open/i.test(verb) && DISPLAY_SURFACE_RE.test(window) && !WORK_OBJECT_RE.test(window)) {
     return false;
   }
-  if (SOFTWARE_TARGET_RE.test(window)) return false;
+  if (softwareTarget(window)) return false;
+  if (/^(?:measur|test|check|prob)/i.test(verb) && liveMeasurement(window)) return false;
   return WORK_OBJECT_RE.test(clause) || Boolean(verb && !DUAL_USE_VERB_RE.test(verb));
 }
 
@@ -263,12 +290,13 @@ function clauseStartBefore(text: string, index: number): number {
   return cut < 0 ? 0 : cut;
 }
 
-/** True when the first hands-on instruction is already under an isolation
+/** True when EVERY hands-on instruction (Codex #4867 r2 F4; was: the first) is under an isolation
  *  scope — isolation stated in a prior (non-prohibited) step, or in the
  *  same clause before / conditioning the work. A lockout the answer
  *  forbids, skips, or places after the work does not count. */
 function firstHandsOnAlreadyIsolated(text: string): boolean {
   let isolated = false;
+  let sawWork = false;
   for (const raw of stepTexts(text)) {
     const step = withoutProhibitions(raw);
     const isoAt = isolationIndex(withoutRestores(step));
@@ -278,20 +306,25 @@ function firstHandsOnAlreadyIsolated(text: string): boolean {
     if (workAt >= 0) {
       const restoredBeforeWork = restoredAt >= 0 && restoredAt <= workAt
         && (isoAt < 0 || restoredAt >= isoAt);
-      if (restoredBeforeWork) isolated = false;
-      else if (isoAt >= 0 && isoAt <= workAt) return true;
       // Trailing "measure … with the circuit isolated" conditions only
       // the clause it attaches to, not an earlier "Replace the fuse, then…".
-      else if (conditionedAt >= 0 && workAt >= clauseStartBefore(step, conditionedAt)
-        && (restoredAt < 0 || restoredAt < conditionedAt || restoredAt > workAt)) {
-        return true;
-      }
-      return isolated;
+      const covered = !restoredBeforeWork && (
+        (isoAt >= 0 && isoAt <= workAt)
+        || (conditionedAt >= 0 && workAt >= clauseStartBefore(step, conditionedAt)
+          && (restoredAt < 0 || restoredAt < conditionedAt || restoredAt > workAt))
+        || isolated);
+      // Codex #4867 r2 F4: every hands-on step must be under isolation — work after
+      // "Restore power." with no renewed lockout gets the notice.
+      if (!covered) return false;
+      sawWork = true;
+      if (restoredAt > workAt && (isoAt < 0 || restoredAt > isoAt)) isolated = false;
+      else isolated = true;
+      continue;
     }
     if (restoredAt >= 0 && (isoAt < 0 || restoredAt > isoAt)) isolated = false;
     else if (isoAt >= 0 || conditionedAt >= 0) isolated = true;
   }
-  return false;
+  return sawWork;
 }
 
 function dischargeAlreadyStated(text: string): boolean {

@@ -247,3 +247,36 @@ describe("Codex #4867 r1 — isolation scope and software targets", () => {
     flagged("Change the fan.");
   });
 });
+
+describe("Codex #4867 r2 + owner decision #5055", () => {
+  const flagged = (t: string) => expect(judge(t)).toMatchObject({ ok: false, violation: "hazard-warning:isolation-advisory" });
+  const silent = (t: string) => expect(judge(t)).toEqual({ ok: true });
+  it("F1: fault isolation and a lockout indicator are not power isolation", () => {
+    flagged("Isolate the fault. Replace the input fuse.");
+    flagged("The lockout indicator is off. Replace the fuse.");
+    silent("Lock out the drive. Then replace the input fuse.");
+  });
+  it("F2: a physical head noun stays hands-on even beside a software word", () => {
+    flagged("Replace the firmware module.");
+    flagged("Disconnect the motor driver wires.");
+    flagged("Replace the fan with a model matching the drive configuration.");
+    silent("Install the firmware update.");
+    silent("Change the fan speed parameter.");
+    silent("Remove the fault from the alarm history.");
+  });
+  it("owner #5055: a live test or measurement gets no disconnect-power notice", () => {
+    silent("Measure voltage across L1 and L2.");
+    silent("Measure the actual line voltage at the input terminals.");
+    silent("Read the voltage from the drive display.");
+    // Dead tests are done isolated and keep the notice.
+    flagged("Measure the resistance across the motor terminals.");
+    silent("Probe the terminals for voltage.");
+    // The measurand must be what is measured, not a word inside a part name.
+    flagged("Check the current transformer wires.");
+    flagged("Check the voltage, then replace the fuse.");
+  });
+  it("F4: work after power is restored needs a renewed lockout", () => {
+    flagged("Lock out the drive. Replace the fan. Restore power. Replace the fuse.");
+    silent("Lock out the drive. Replace the fan. Restore power. Lock out the drive again. Replace the fuse.");
+  });
+});
