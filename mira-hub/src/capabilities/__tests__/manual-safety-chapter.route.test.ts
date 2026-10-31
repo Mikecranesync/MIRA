@@ -33,6 +33,7 @@ const ragMock = vi.hoisted(() => ({
   retrieveNodeChunks: vi.fn(async () => [] as unknown[]),
   retrieveCitedPageChunks: vi.fn(async () => [] as unknown[]),
   approvalGateEnabled: vi.fn(() => false),
+  PAGE_LABEL_SQL: "NULL AS page_label",
   approvedSourceFilterSql: vi.fn(() => ""),
   appendManualContext: vi.fn((base: string) => base),
   buildManualUserContent: vi.fn(() => ""),

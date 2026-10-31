@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import pages from "./manual-safety-statement.real-pages.json";
 import {
+  printedPageOffset,
   retrieveSafetyChapterChunks,
   safetyChapterPage,
   SAFETY_CHAPTER_DIRECTIVE,
@@ -21,7 +22,7 @@ const chunk = (content: string, page: number, docId: string | null = DOC): Manua
   content, docId, sourceUrl: URL, sourcePage: page, manufacturer: "ABB", modelNumber: "ACS355", title: "acs355.pdf", rank: 1,
 });
 
-type Row = { id: string; doc_id: string; content: string; source_url: string; page: number };
+type Row = { id: string; doc_id: string; content: string; source_url: string; page: number; page_label?: string };
 
 /**
  * A knowledge_entries stand-in that answers the two reads the module makes, and records them.
@@ -41,7 +42,7 @@ function fakeClient(rows: Row[]) {
         const docs = params[1] as string[];
         const re = new RegExp(String(params[2]), "i");
         const hits = rows.filter((r) => docs.includes(r.doc_id) && re.test(r.content));
-        return { rows: hits.slice(0, 1).map((r) => ({ doc_id: r.doc_id, content: r.content })) };
+        return { rows: hits.slice(0, 1).map((r) => ({ doc_id: r.doc_id, content: r.content, page: r.page, page_label: r.page_label ?? null })) };
       }
       const [, docs, urls, pageNos, pattern] = params as [string, string[], string[], number[], string];
       const re = new RegExp(pattern, "i");
@@ -132,6 +133,34 @@ describe("retrieveSafetyChapterChunks", () => {
     const lookup = client.calls.find((c) => c.sql.includes("DISTINCT ON"))!;
     expect(lookup.params).toHaveLength(3);
     expect(lookup.sql).toContain("verified = true");
+  });
+
+  it("printed page offset: a manual with front matter reads the chapter at its PDF page", async () => {
+    // Printed page 13 sits on PDF page 17, so "chapter Safety on page 17" is PDF page 21.
+    const client = fakeClient([...CORPUS, row("00000000-0000-0000-0000-000000000021", P18, 21)]);
+    const referring = { ...chunk("WARNING! Read and follow the instructions in chapter Safety on page 17.", 17), pageLabel: "13" };
+    const added = await retrieveSafetyChapterChunks(client, "tenant", [referring]);
+    const read = client.calls.find((c) => c.sql.includes("unnest"))!;
+    expect(read.params[3]).toEqual([21, 22, 23, 24]);
+    expect(added.map((c) => c.sourcePage)).toEqual([21]);
+  });
+
+  it("printed page offset on the document-level lookup comes from the referring row's own label", async () => {
+    const referring: Row = { ...row("00000000-0000-0000-0000-000000000376", P372, 376), page_label: "372" };
+    const client = fakeClient([referring, row("00000000-0000-0000-0000-000000000022", P18, 22)]);
+    const added = await retrieveSafetyChapterChunks(client, "tenant", [chunk(P355, 355)]);
+    const read = client.calls.find((c) => c.sql.includes("unnest"))!;
+    expect(read.params[3]).toEqual([21, 22, 23, 24]);
+    expect(added.map((c) => c.sourcePage)).toEqual([22]);
+  });
+
+  it("printedPageOffset: only a plain-number label shifts the page", () => {
+    expect(printedPageOffset(17, "13")).toBe(4);
+    expect(printedPageOffset(17, "17")).toBe(0);
+    expect(printedPageOffset(17, null)).toBe(0);
+    expect(printedPageOffset(17, "6-12")).toBe(0);
+    expect(printedPageOffset(17, "xiv")).toBe(0);
+    expect(printedPageOffset(null, "13")).toBe(0);
   });
 
   it("control: a document that never refers to a Safety chapter adds nothing", async () => {

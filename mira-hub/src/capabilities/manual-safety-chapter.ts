@@ -11,11 +11,21 @@
  * excerpts. The model then carries the steps in the answer and cites the chapter page, and the cited
  * page's statement becomes the notice (#4509). A page the answer does not cite shows nothing.
  *
+ * The reference names a PRINTED page; chunks are keyed by PDF page. The offset between them is read
+ * from the referring chunk's own printed label (front matter shifts it); with no numeric label the
+ * printed and PDF page are assumed equal (true for the ACS355).
+ *
  * Read-only and fail-open: no write, and the caller keeps the retrieved chunks on any error.
  */
 import type { PoolClient } from "pg";
 import { extractManualSafetyStatement } from "@/capabilities/manual-safety-statement";
-import { approvalGateEnabled, approvedSourceFilterSql, retrieveCitedPageChunks, type ManualChunk } from "@/lib/manual-rag";
+import {
+  approvalGateEnabled,
+  approvedSourceFilterSql,
+  PAGE_LABEL_SQL,
+  retrieveCitedPageChunks,
+  type ManualChunk,
+} from "@/lib/manual-rag";
 
 /** "chapter Safety on page 17" — the manual's cross-reference to its own Safety chapter. */
 export const SAFETY_CHAPTER_REF = /\bchapter\s+["“]?safety["”]?\s+on\s+page\s+(\d{1,4})\b/i;
@@ -28,14 +38,27 @@ export const SAFETY_CHAPTER_SPAN = 4;
  * when more manuals than this carry a chapter, so no retrieved manual loses its warning.
  */
 export const SAFETY_CHAPTER_MAX_CHUNKS = 4;
-/** Documents per turn whose chapter is looked up: the notebook route retrieves at most 6 chunks. */
-const MAX_DOCS = 6;
 
 /** The first page of the Safety chapter a text refers to, or null. */
 export function safetyChapterPage(text: string): number | null {
   const m = SAFETY_CHAPTER_REF.exec(text);
   const page = m ? Number(m[1]) : NaN;
   return Number.isInteger(page) && page > 0 ? page : null;
+}
+
+/** PDF page minus printed page for one chunk, from its own printed label; 0 when the label is not a plain number. */
+export function printedPageOffset(pdfPage: number | null, pageLabel: string | null | undefined): number {
+  const label = String(pageLabel ?? "").trim();
+  if (pdfPage === null || !Number.isInteger(pdfPage) || !/^\d{1,4}$/.test(label)) return 0;
+  return pdfPage - Number(label);
+}
+
+/** The PDF page a printed chapter reference lands on, or null when the offset puts it before page 1. */
+function chapterPdfPage(text: string, pdfPage: number | null, pageLabel: string | null | undefined): number | null {
+  const printed = safetyChapterPage(text);
+  if (printed === null) return null;
+  const pdf = printed + printedPageOffset(pdfPage, pageLabel);
+  return pdf > 0 ? pdf : null;
 }
 
 type Doc = { docId: string; sourceUrl: string; template: ManualChunk };
@@ -45,14 +68,13 @@ function retrievedDocs(chunks: readonly ManualChunk[]): Doc[] {
   for (const c of chunks) {
     if (!c.docId || !c.sourceUrl || out.has(c.docId)) continue;
     out.set(c.docId, { docId: c.docId, sourceUrl: c.sourceUrl, template: c });
-    if (out.size >= MAX_DOCS) break;
   }
   return [...out.values()];
 }
 
 /**
- * Where each retrieved document's Safety chapter starts: from a retrieved chunk's own reference
- * first, else from any chunk of the same document (one bounded query). Pinned to the tenant, the
+ * The PDF page where each retrieved document's Safety chapter starts: from a retrieved chunk's own
+ * reference first, else from any chunk of the same document (one bounded query). Pinned to the tenant, the
  * documents retrieval already admitted, and the same approval predicate retrieval uses.
  */
 async function chapterStarts(
@@ -64,7 +86,7 @@ async function chapterStarts(
 ): Promise<Map<string, number>> {
   const starts = new Map<string, number>();
   for (const c of chunks) {
-    const page = c.docId ? safetyChapterPage(c.content) : null;
+    const page = c.docId ? chapterPdfPage(c.content, c.sourcePage, c.pageLabel) : null;
     if (page !== null && c.docId && !starts.has(c.docId)) starts.set(c.docId, page);
   }
   const missing = docs.filter((d) => !starts.has(d.docId));
@@ -77,7 +99,9 @@ async function chapterStarts(
   if (admitApproved) params.push(approved);
   await client.query("SET LOCAL statement_timeout = '2s'");
   const res = await client.query(
-    `SELECT DISTINCT ON (doc_id) doc_id::text AS doc_id, content
+    `SELECT DISTINCT ON (doc_id) doc_id::text AS doc_id, content,
+            COALESCE(page_start, source_page) AS page,
+            ${PAGE_LABEL_SQL}
        FROM knowledge_entries
       WHERE tenant_id = $1
         AND ingest_route = 'v2'
@@ -88,7 +112,8 @@ async function chapterStarts(
     params,
   );
   for (const r of res.rows as Array<Record<string, unknown>>) {
-    const page = safetyChapterPage(String(r.content ?? ""));
+    const pdfPage = r.page == null ? null : Number(r.page);
+    const page = chapterPdfPage(String(r.content ?? ""), pdfPage, r.page_label == null ? null : String(r.page_label));
     if (page !== null) starts.set(String(r.doc_id), page);
   }
   return starts;

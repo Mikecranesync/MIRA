@@ -988,7 +988,7 @@ const rowKey = (r: Record<string, unknown>): string =>
  * hold "2-15"; reading the text keys and never Number()-coercing them is what
  * lets the safety banner cite p.2-15 (TQ-29).
  */
-const PAGE_LABEL_SQL = `COALESCE(
+export const PAGE_LABEL_SQL = `COALESCE(
           NULLIF(BTRIM(metadata->>'page_label'), ''),
           NULLIF(BTRIM(metadata->>'page'), ''),
           NULLIF(BTRIM(metadata->>'page_num'), '')
