@@ -315,6 +315,30 @@ def test_deprecated_vendor_absent_is_healthy(monkeypatch, tmp_path, absent) -> N
     assert "up_count=2" in gh
 
 
+# ── Runbook contract (Codex r1 F1 on #5015) ──────────────────────────────────
+# The workflow links docs/runbooks/provider-health-canary.md from every page.
+# Its scope line and its remediation steps must describe the SAME expected set
+# as the probe, and must not send an operator to a deprecated vendor.
+
+RUNBOOK = REPO / "docs" / "runbooks" / "provider-health-canary.md"
+
+
+def test_runbook_matches_expected_set_and_omits_deprecated_vendors() -> None:
+    text = RUNBOOK.read_text(encoding="utf-8")
+    scope, rest = text.split("## Pieces", 1)
+    scope_l = scope.lower()
+    for name in phc.EXPECTED:
+        assert name in scope_l, f"runbook scope does not name expected provider {name!r}"
+    # The dated note that states the current expected set, verbatim.
+    assert "expects **openai + openrouter only**" in scope_l
+    remediation = rest.split("## When the canary pages", 1)[1].split("## Run it locally", 1)[0]
+    rem_l = remediation.lower()
+    for name in phc.EXPECTED:
+        assert name in rem_l, f"runbook remediation has no step for {name!r}"
+    for host in ("api.groq.com", "api.together.xyz", "api.cerebras.ai"):
+        assert host not in remediation, f"runbook still sends operators to retired vendor {host}"
+
+
 # ── OpenRouter: the probe sends the runtime's request body (2026-10-14) ────────
 # OpenRouter requests carry a data-policy block (no training, no retention). A
 # probe without it could pass while every real request finds no host, so main()
