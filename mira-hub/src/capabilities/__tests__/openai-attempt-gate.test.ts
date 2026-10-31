@@ -177,7 +177,7 @@ describe("option 1 — a judge whose room was held with the answer's", () => {
     expect((await judge({ reservation: v.reservation, inputBound: 10 })).verdict).toBe("safe");
     const realBound = boundInputTokens(buildJudgeMessages({ question: "q", answerText: "a", general: false, selectedClass: "pressure" }));
     expect(realBound).toBeGreaterThan(10); // precondition: the hold really was too small
-    expect(reserve.mock.calls).toContainEqual([realBound, JUDGE_OUTPUT_TOKENS]);
+    expect(reserve.mock.calls).toContainEqual([realBound, JUDGE_OUTPUT_TOKENS, "gpt-5.4-mini"]); // priced as the model it sends (#4968)
     expect(openAiRunBudget().heldUsd).toBe(0);
     expect(openAiRunBudget().spentUsd).toBeCloseTo(usd(30, 12), 12);
   });

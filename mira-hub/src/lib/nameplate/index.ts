@@ -220,7 +220,7 @@ async function openAiCompatVision(
         throw new Error("recognizer_model_unverified");
       }
       inputBound = visionBound;
-      const verdict = openAiRunBudget().reserve(inputBound, 1200);
+      const verdict = openAiRunBudget().reserve(inputBound, 1200, model);
       if (!verdict.ok) {
         logBudgetExhausted("nameplate-recognize", verdict);
         throw new Error("recognizer_budget_exhausted");

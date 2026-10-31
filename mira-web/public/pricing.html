@@ -3,17 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pricing — FactoryLM Maintenance Digital Transformation</title>
-  <meta name="description" content="FactoryLM pricing — three offers: Assessment ($500 one-time), Pilot ($2–5K/mo, 3-mo min), Operating Layer ($499/mo per plant). Maintenance digital transformation, not a self-serve SaaS.">
+  <title>Talk to Mike — FactoryLM (no published price menu)</title>
+  <meta name="description" content="FactoryLM does not publish a self-serve price menu. CMMS connectors are optional and not yet available. MIRA stands alone. Talk to Mike — mike@factorylm.com.">
   <link rel="canonical" href="https://factorylm.com/pricing">
-  <meta property="og:title" content="Pricing — FactoryLM AI Troubleshooter">
-  <meta property="og:description" content="FactoryLM pricing — Assessment $500, Pilot $2–5K/mo, Operating Layer $499/mo. Maintenance digital transformation firm.">
+  <meta property="og:title" content="Talk to Mike — FactoryLM">
+  <meta property="og:description" content="No published price menu. MIRA stands alone. Talk to Mike.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://factorylm.com/pricing">
   <meta property="og:image" content="https://factorylm.com/og-image.png">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Pricing — FactoryLM AI Troubleshooter">
-  <meta name="twitter:description" content="FactoryLM pricing — Assessment $500, Pilot $2–5K/mo, Operating Layer $499/mo. Maintenance digital transformation firm.">
+  <meta name="twitter:title" content="Talk to Mike — FactoryLM">
+  <meta name="twitter:description" content="No published price menu. MIRA stands alone. Talk to Mike.">
   <link rel="icon" href="/public/icons/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -54,7 +54,6 @@
     .inner { max-width: var(--max-w); margin: 0 auto; padding: 0 40px; }
     @media (max-width: 768px) { .inner { padding: 0 24px; } }
 
-    /* Nav */
     nav {
       height: 56px;
       border-bottom: 1px solid var(--border);
@@ -70,7 +69,6 @@
       display: flex; align-items: center; gap: 8px;
       text-decoration: none; color: var(--text); font-weight: 500; font-size: 15px;
     }
-    .nav-logo svg { width: 22px; height: 22px; }
     .nav-links { display: flex; gap: 28px; list-style: none; }
     .nav-links a {
       font-size: 14px; color: rgba(255,255,255,0.6); text-decoration: none;
@@ -84,9 +82,13 @@
       border-radius: 6px; padding: 11px 14px; text-decoration: none;
       min-height: 44px; display: flex; align-items: center;
     }
+    .nav-cta-ghost {
+      background: transparent; color: var(--text);
+      border: 1px solid var(--border-hi);
+      margin-right: 10px;
+    }
     @media (max-width: 640px) { .nav-links { display: none; } }
 
-    /* Hero */
     .hero { padding: 100px 0 60px; text-align: center; }
     .hero-eyebrow {
       font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em;
@@ -98,14 +100,13 @@
     }
     .hero h1 em { font-style: normal; color: var(--amber); }
     .hero p {
-      font-size: 17px; color: var(--text-dim); max-width: 540px;
+      font-size: 17px; color: var(--text-dim); max-width: 580px;
       margin: 0 auto; font-weight: 300; line-height: 1.6;
     }
 
-    /* Pricing cards */
     .pricing-grid {
       display: grid; grid-template-columns: repeat(2, 1fr);
-      gap: 20px; padding: 60px 0 100px;
+      gap: 20px; padding: 40px 0 80px;
       max-width: 720px; margin: 0 auto;
     }
     @media (max-width: 760px) { .pricing-grid { grid-template-columns: 1fr; max-width: 420px; } }
@@ -116,6 +117,7 @@
       border-radius: 12px;
       padding: 36px 28px;
       display: flex; flex-direction: column;
+      scroll-margin-top: 72px;
     }
     .pricing-card.featured {
       border-color: var(--amber);
@@ -123,7 +125,7 @@
       position: relative;
     }
     .pricing-card.featured::before {
-      content: 'Most popular';
+      content: 'Early adopter';
       position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
       background: var(--amber); color: #0a0a08;
       font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
@@ -135,8 +137,8 @@
       color: var(--amber); font-weight: 600; margin-bottom: 8px;
     }
     .card-price {
-      font-size: 42px; font-weight: 600; letter-spacing: -0.03em;
-      line-height: 1; margin-bottom: 4px;
+      font-size: 36px; font-weight: 600; letter-spacing: -0.03em;
+      line-height: 1.1; margin-bottom: 4px;
     }
     .card-price .unit {
       font-size: 15px; font-weight: 400; color: var(--text-dim);
@@ -181,8 +183,8 @@
       color: var(--text-faint); margin-top: 12px;
       font-weight: 400;
     }
+    .card-footnote a { color: var(--amber); text-decoration: underline; }
 
-    /* Comparison note */
     .comparison {
       text-align: center; padding: 0 0 80px;
       border-top: 1px solid var(--border); padding-top: 60px;
@@ -209,7 +211,6 @@
     .comp-cell:not(:first-child) { text-align: center; color: var(--text-dim); }
     .comp-cell.highlight { color: var(--amber); font-weight: 500; }
 
-    /* FAQ */
     .faq { padding: 0 0 80px; }
     .faq h2 { font-size: 24px; font-weight: 400; letter-spacing: -0.02em; margin-bottom: 24px; text-align: center; }
     .faq-item { border-bottom: 1px solid var(--border); max-width: 640px; margin: 0 auto; }
@@ -225,9 +226,6 @@
     }
     .faq-q.open + .faq-a { display: block; }
 
-    /* ── Accessibility ── */
-
-    /* Skip-to-content link: hidden off-screen until focused */
     .skip-link {
       position: fixed; top: -100%; left: 0; z-index: 9999;
       background: var(--amber); color: #0a0a08;
@@ -239,25 +237,19 @@
     }
     .skip-link:focus { top: 0; outline: 3px solid #0a0a08; outline-offset: 2px; }
 
-    /* Global focus-visible ring — visible on keyboard, not on mouse click */
     :focus-visible {
       outline: 2px solid var(--amber);
       outline-offset: 3px;
       border-radius: 3px;
     }
 
-    /* Bring sticky-nav elements into view with scroll-margin */
     #main-content { scroll-margin-top: 64px; }
-    .pricing-card { scroll-margin-top: 72px; }
-
-    /* FAQ keyboard accessibility */
     .faq-q:focus-visible {
       outline: 2px solid var(--amber);
       outline-offset: 2px;
       border-radius: 3px;
     }
 
-    /* Footer */
     footer {
       border-top: 1px solid var(--border);
       padding: 24px 0;
@@ -274,249 +266,79 @@
   {
     "@context": "https://schema.org",
     "@type": "Product",
-    "name": "FactoryLM — Maintenance Digital Transformation",
+    "name": "FactoryLM — MIRA maintenance Q&amp;A",
     "url": "https://factorylm.com/pricing",
-    "description": "FactoryLM organizes manuals, sensors, and work orders into one Project per asset and answers maintenance questions with cited OEM sources. Engaged as a service + SaaS hybrid.",
-    "brand": { "@type": "Organization", "name": "FactoryLM" },
-    "offers": [
-      {
-        "@type": "Offer",
-        "name": "Assessment",
-        "description": "One-time maintenance AI readiness assessment.",
-        "price": "500",
-        "priceCurrency": "USD",
-        "url": "https://factorylm.com/pricing"
-      },
-      {
-        "@type": "Offer",
-        "name": "Pilot",
-        "description": "3-month minimum pilot engagement.",
-        "priceCurrency": "USD",
-        "priceSpecification": {
-          "@type": "PriceSpecification",
-          "minPrice": "2000",
-          "maxPrice": "5000",
-          "priceCurrency": "USD",
-          "unitText": "MONTH"
-        },
-        "url": "https://factorylm.com/pricing"
-      },
-      {
-        "@type": "Offer",
-        "name": "Operating Layer",
-        "description": "Ongoing per-plant site license — MIRA running on the plant floor.",
-        "price": "499",
-        "priceCurrency": "USD",
-        "priceSpecification": {
-          "@type": "UnitPriceSpecification",
-          "price": "499",
-          "priceCurrency": "USD",
-          "unitText": "MONTH"
-        },
-        "url": "https://factorylm.com/cmms"
-      }
-    ]
+    "description": "CMMS connectors are optional and not yet available. MIRA stands alone.",
+    "brand": { "@type": "Organization", "name": "FactoryLM" }
   }
   </script>
 </head>
 <body>
 
-  <!-- Skip to main content: first Tab stop, satisfies WCAG 2.4.1 -->
   <a href="#main-content" class="skip-link">Skip to main content</a>
 
   <nav>
     <div class="nav-inner">
       <a href="/" class="nav-logo" aria-label="FactoryLM home">FactoryLM</a>
       <ul class="nav-links">
-        <li><a href="/cmms">CMMS</a></li>
-        <li><a href="/pricing" aria-current="page">Pricing</a></li>
+        <li><a href="/pricing" aria-current="page">Talk to Mike</a></li>
         <li><a href="/blog">Blog</a></li>
         <li><a href="/limitations">Limitations</a></li>
         <li><a href="/security">Security</a></li>
       </ul>
-      <a href="/buy" class="nav-cta" data-cta="pricing-nav-buy">Get Started</a>
+      <a href="/cmms" class="nav-cta nav-cta-ghost">Sign in</a>
+      <a href="mailto:mike@factorylm.com" class="nav-cta" data-cta="pricing-nav-talk">Talk to Mike</a>
     </div>
   </nav>
 
   <main id="main-content">
     <section class="hero">
       <div class="inner">
-        <div class="hero-eyebrow">Pricing</div>
-        <h1>Three ways to <em>work with us.</em></h1>
-        <p>Infrastructure first. AI second. Most plants start with the $500 Assessment — it's the easiest yes you'll make this quarter.</p>
+        <div class="hero-eyebrow">No published price menu</div>
+        <h1>Talk to <em>Mike.</em></h1>
+        <p>FactoryLM does not publish a self-serve price menu. There is no self-serve checkout on this page. <a href="mailto:mike@factorylm.com" data-cta="pricing-hero-talk" style="color:var(--amber)">Email mike@factorylm.com</a>.</p>
       </div>
     </section>
 
-    <section>
-      <div class="inner">
-        <div class="pricing-grid">
-
-          <!-- Assessment — featured (the wedge) -->
-          <div class="pricing-card featured">
-            <div class="card-tier">1. Assessment</div>
-            <div class="card-price">$500 <span class="unit">one-time</span></div>
-            <div class="card-desc">We walk your floor. Score your Maintenance AI Readiness. Deliver a written gap report + namespace blueprint.</div>
-            <ul class="card-features">
-              <li>Onsite or remote (1 day)</li>
-              <li>Asset inventory walkthrough</li>
-              <li>Document &amp; manual audit</li>
-              <li>PLC tag &amp; CMMS hygiene review</li>
-              <li>Written report with prioritized roadmap</li>
-              <li>No software demo, no upsell</li>
-            </ul>
-            <a href="/buy" class="card-cta card-cta-primary" data-cta="pricing-assessment">Book Assessment — $500 →</a>
-            <p class="card-footnote">Limited slots — Central Florida onsite or remote anywhere · <a href="#sample-assessment" data-cta="pricing-assessment-sample">See a sample report →</a></p>
-          </div>
-
-          <!-- Pilot -->
-          <div class="pricing-card">
-            <div class="card-tier">2. Pilot</div>
-            <div class="card-price">$2–5K <span class="unit">/mo · 3-mo min</span></div>
-            <div class="card-desc">We structure one line: nameplates, manuals, PLC tags, PMs, fault history. MIRA goes live on that scope.</div>
-            <ul class="card-features">
-              <li>Hands-on namespace structuring</li>
-              <li>OEM manual indexing</li>
-              <li>PLC tag ↔ asset reconciliation</li>
-              <li>MIRA deployed on the pilot line</li>
-              <li>Before/after namespace report</li>
-              <li>Direct line to Mike + the team</li>
-            </ul>
-            <a href="mailto:mike@factorylm.com?subject=FactoryLM%20Pilot%20scope%20request" class="card-cta card-cta-ghost" data-cta="pricing-pilot">Request pilot scope →</a>
-            <p class="card-footnote">Scoped to one line / one cell during pilot · <a href="#pilot-deliverables" data-cta="pricing-pilot-includes">What a pilot includes →</a></p>
-          </div>
-
-          <!-- Operating Layer -->
-          <div class="pricing-card">
-            <div class="card-tier">3. Operating Layer</div>
-            <div class="card-price">$499 <span class="unit">/mo per plant</span></div>
-            <div class="card-desc">MIRA in production on a structured namespace. Telegram + web + CMMS write-back. Quarterly namespace audits.</div>
-            <ul class="card-features">
-              <li>Unlimited MIRA queries, whole team</li>
-              <li>Cited OEM answers + fault history</li>
-              <li>CMMS write-back (MaintainX, Limble, UpKeep, Atlas)</li>
-              <li>Continuous structuring as assets come online</li>
-              <li>Quarterly namespace quality audit</li>
-              <li>14-day money-back guarantee</li>
-            </ul>
-            <a href="/buy" class="card-cta card-cta-ghost" data-cta="pricing-operating">Check plant fit →</a>
-            <p class="card-footnote">Recommended after a Pilot, or for plants already well-structured</p>
-          </div>
-
-        </div>
-      </div>
-    </section>
-
-    <!-- What a pilot delivers (30/60/90) — anchor target from buy/pricing CTAs.
-         TODO: promote to a standalone /pilot page with a real before/after case study once one ships. -->
-    <section class="comparison" id="pilot-deliverables">
-      <div class="inner">
-        <h2>What a pilot delivers</h2>
-        <p>A pilot structures one line and stands MIRA up on it. Here's the shape of the work — scope, not promised metrics.</p>
-        <div class="comp-table" style="max-width:760px;">
-          <div class="comp-row header">
-            <div class="comp-cell">By day 30</div>
-            <div class="comp-cell">By day 60</div>
-            <div class="comp-cell">By day 90</div>
-          </div>
-          <div class="comp-row" style="grid-template-columns:1fr 1fr 1fr;text-align:left;">
-            <div class="comp-cell" style="text-align:left;">One line mapped · 20–50 assets structured · manuals bound to top assets · first cited fault-code answers live</div>
-            <div class="comp-cell" style="text-align:left;">PM candidates extracted from OEM manuals · fault history captured · CMMS write-back tested</div>
-            <div class="comp-cell" style="text-align:left;">Technician workflow live (Slack / Telegram / web) · namespace quality report · go / no-go rollout plan</div>
-          </div>
-        </div>
-        <p style="margin-top:16px;font-size:12px;color:var(--text-faint);">Exact scope is set in your assessment. <a href="/buy" data-cta="pilot-deliverables-book" style="color:var(--amber);text-decoration:underline;">Request a pilot scope →</a></p>
-      </div>
-    </section>
-
-    <!-- Sample assessment report — anchor target from buy/pricing CTAs.
-         TODO: replace the email CTA with a downloadable redacted sample PDF once one is produced. -->
-    <section class="comparison" id="sample-assessment">
-      <div class="inner">
-        <h2>What's in the assessment report</h2>
-        <p>The $500 assessment ends in a written report. Every section is evidence from your floor — no generic template.</p>
-        <div class="comp-table" style="max-width:560px;text-align:left;">
-          <div class="comp-row"><div class="comp-cell" style="grid-column:1 / -1;">Maintenance AI Readiness score</div></div>
-          <div class="comp-row"><div class="comp-cell" style="grid-column:1 / -1;">Asset hierarchy quality</div></div>
-          <div class="comp-row"><div class="comp-cell" style="grid-column:1 / -1;">Manual &amp; document coverage</div></div>
-          <div class="comp-row"><div class="comp-cell" style="grid-column:1 / -1;">PLC tag hygiene</div></div>
-          <div class="comp-row"><div class="comp-cell" style="grid-column:1 / -1;">CMMS hygiene</div></div>
-          <div class="comp-row"><div class="comp-cell" style="grid-column:1 / -1;">Top 5 gaps, prioritized</div></div>
-          <div class="comp-row"><div class="comp-cell" style="grid-column:1 / -1;">30-day roadmap + pilot recommendation</div></div>
-        </div>
-        <p style="margin-top:16px;font-size:12px;color:var(--text-faint);">Want to see a sample before you book? Email <a href="mailto:mike@factorylm.com?subject=Sample%20assessment%20report" style="color:var(--amber);text-decoration:underline;">mike@factorylm.com</a> · <a href="/assess" data-cta="sample-assessment-scorecard" style="color:var(--amber);text-decoration:underline;">Take the free readiness scorecard →</a></p>
-      </div>
-    </section>
-
-    <!-- Why this stack, not seat-licensed SaaS -->
     <section class="comparison">
       <div class="inner">
-        <h2>Why this stack, not seat-licensed SaaS</h2>
-        <p>Pure consultancies leave you with a binder. Pure SaaS leaves you hallucinating. We do both — the structuring and the execution layer that runs on top.</p>
+        <h2>MIRA stands alone</h2>
+        <p>MIRA works with your manuals on its own. CMMS connectors are optional and not yet available. MIRA stands alone.</p>
         <div class="comp-table">
           <div class="comp-row header">
             <div class="comp-cell">What you get</div>
-            <div class="comp-cell">Generic AI / Per-seat CMMS</div>
+            <div class="comp-cell">Generic AI / seat SaaS</div>
             <div class="comp-cell highlight">FactoryLM</div>
           </div>
           <div class="comp-row">
-            <div class="comp-cell">Asset hierarchy &amp; nameplates structured</div>
-            <div class="comp-cell">You do it</div>
-            <div class="comp-cell highlight">We do it</div>
+            <div class="comp-cell">Answers grounded in your OEM manuals</div>
+            <div class="comp-cell">Often uncited</div>
+            <div class="comp-cell highlight">Cited when covered</div>
           </div>
           <div class="comp-row">
-            <div class="comp-cell">OEM manuals indexed &amp; bound to assets</div>
-            <div class="comp-cell">You do it</div>
-            <div class="comp-cell highlight">We do it</div>
+            <div class="comp-cell">Works without replacing your CMMS</div>
+            <div class="comp-cell">Switch / rip-and-replace</div>
+            <div class="comp-cell highlight">Optional, not yet available</div>
           </div>
           <div class="comp-row">
-            <div class="comp-cell">PLC tag ↔ asset reconciliation</div>
-            <div class="comp-cell">You do it (or never)</div>
-            <div class="comp-cell highlight">We do it</div>
-          </div>
-          <div class="comp-row">
-            <div class="comp-cell">AI answers grounded in your namespace</div>
-            <div class="comp-cell">Hallucinations</div>
-            <div class="comp-cell highlight">Cited every time</div>
+            <div class="comp-cell">Safety sign-off / LOTO responsibility</div>
+            <div class="comp-cell">Varies</div>
+            <div class="comp-cell highlight">Yours — reference tool only</div>
           </div>
         </div>
-        <p style="margin-top:16px;font-size:12px;color:var(--text-faint);">We integrate with MaintainX, Limble, UpKeep, Atlas — we don't replace them. The structuring is the wedge.</p>
+        <p style="margin-top:16px;font-size:12px;color:var(--text-faint);">MIRA does not require a CMMS. CMMS connectors are optional and not yet available. MIRA stands alone.</p>
       </div>
     </section>
 
-    <!-- FAQ -->
     <section class="faq">
       <div class="inner">
         <h2>Questions</h2>
 
         <div class="faq-item">
-          <div class="faq-q">Why start with a $500 Assessment?</div>
-          <div class="faq-a">Because most plants don't know which of their problems are structural and which are tooling. The Assessment shows you the gap in writing — assets, documents, PLC context, CMMS hygiene — so the Pilot scope is informed, not guessed. It's also a low-friction first step. No contract, no commitment beyond the visit.</div>
-        </div>
-
-        <div class="faq-item">
-          <div class="faq-q">What's actually delivered in a Pilot?</div>
-          <div class="faq-a">A working, structured namespace on one bounded scope — typically one line or one cell. That means scanned nameplates, indexed manuals bound to assets, PLC tags reconciled, PM schedules extracted, fault history captured, and MIRA deployed against that scope. You get a before/after namespace report at the end of month 3 so you can see the lift in writing.</div>
-        </div>
-
-        <div class="faq-item">
           <div class="faq-q">Do you replace my CMMS?</div>
-          <div class="faq-a">No. We integrate with MaintainX, Limble, UpKeep, and our own Atlas. Your CMMS is where work orders live. The Operating Layer writes work orders into it automatically when MIRA confirms a fault. Your techs never leave the tools they know.</div>
+          <div class="faq-a">No. CMMS connectors are optional and not yet available. MIRA stands alone.</div>
         </div>
 
-        <div class="faq-item">
-          <div class="faq-q">Why not a self-serve SaaS sign-up?</div>
-          <div class="faq-a">Because the work that makes AI actually useful — structuring your assets, manuals, PLC tags, and history — can't be done by a wizard. It takes hands on the floor. We tried the self-serve route. AI hallucinated because there was no namespace to ground it on. The Assessment exists precisely because the work is real.</div>
-        </div>
-
-        <div class="faq-item">
-          <div class="faq-q">Can I skip straight to the Operating Layer?</div>
-          <div class="faq-a">If your plant is already well-structured — clean asset hierarchy, manuals digitized, PLC tags consistent — yes. Most plants aren't, which is why we start with an Assessment. The scorecard at <a href="/assess">/assess</a> will tell you honestly where you stand.</div>
-        </div>
-
-        <div class="faq-item">
-          <div class="faq-q">Multi-plant pricing?</div>
-          <div class="faq-a">Enterprise — talk to Mike. 5+ plants get a dedicated transformation lead, on-prem option, SSO/SAML, and SLA.</div>
-        </div>
       </div>
     </section>
   </main>
@@ -537,7 +359,6 @@
 
   <script>
     document.querySelectorAll('.faq-q').forEach(function (q) {
-      // Keyboard accessibility: make div focusable + toggle on Enter/Space
       q.setAttribute('tabindex', '0');
       q.setAttribute('role', 'button');
       q.setAttribute('aria-expanded', 'false');

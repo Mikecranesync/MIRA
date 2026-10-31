@@ -152,7 +152,7 @@ async function streamFromProvider(
   // Per-run OpenAI spend hard stop (#4355): hold the worst case before the fetch;
   // refused at the cap → fall through like a provider that is down.
   const inputBound = boundInputTokens(messages);
-  const gate = reserveOpenAiAttempt(provider.name, "asset-chat", inputBound, 800);
+  const gate = reserveOpenAiAttempt(provider.name, "asset-chat", inputBound, 800, provider.model);
   if (!gate.ok) return false;
   const reservation = gate.reservation;
   try {

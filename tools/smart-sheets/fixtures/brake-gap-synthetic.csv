@@ -1,0 +1,7 @@
+point_id,before_value,before_unit,before_source,before_confirmed,after_value,after_unit,after_source,after_confirmed,limit_min,limit_max,limit_unit,boundary,limit_source
+DEMO-CAL-1,2.6,mm,manual,,1.4,mm,manual,,0.8,2.0,mm,inclusive,Fictional procedure FP-BRK-01 rev 2 §4.2
+DEMO-CAL-2,2.1,mm,manual,,0.8,mm,manual,,0.8,2.0,mm,inclusive,Fictional procedure FP-BRK-01 rev 2 §4.2
+DEMO-CAL-3,1.9,mm,manual,,2.3,mm,manual,,0.8,2.0,mm,inclusive,Fictional procedure FP-BRK-01 rev 2 §4.2
+DEMO-CAL-4,0.07,in,photo,true,0.05,in,photo,,0.8,2.0,mm,inclusive,Fictional procedure FP-BRK-01 rev 2 §4.2
+DEMO-CAL-5,1.5,mm,manual,,,,,,0.8,2.0,mm,inclusive,Fictional procedure FP-BRK-01 rev 2 §4.2
+DEMO-CAL-6,1.2,mm,manual,,1.1,mm,manual,,,,,,

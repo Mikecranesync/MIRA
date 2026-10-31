@@ -631,16 +631,20 @@ describe("notebook lexical IDF scoring (#4513, NOTEBOOK_LEXICAL_V2)", () => {
     await seed(ISOLATED, 3, "Terminal torque values for the enclosure.");
   });
 
-  it("RED on main: the AND hijack keeps the answer page out (flag off documents today's behaviour)", async () => {
-    expect(await pages(HIJACK, HIJACK_Q, false)).not.toContain(42);
+  // Until the T-1 ranking fix (#4979) this test pinned the defect with the flag
+  // off ("the AND hijack keeps the answer page out"). The production path now
+  // finds the page too: the last-resort OR pass is keyed on lexical coverage and
+  // the rerank weighs the question's rare words.
+  it("the AND hijack no longer hides the answer page with the flag off either (T-1, #4979)", async () => {
+    expect((await pages(HIJACK, HIJACK_Q, false)).slice(0, 6)).toContain(42);
   });
 
   it("the AND hijack no longer hides the answer page (invariant 4)", async () => {
     expect((await pages(HIJACK, HIJACK_Q, true)).slice(0, 6)).toContain(42);
   });
 
-  it("RED on main: dense common words bury the chatty question's answer page", async () => {
-    expect(await pages(CHATTY, CHATTY_Q, false)).not.toContain(57);
+  it("a rare word outranks a repeated common one with the flag off too (T-1, #4979)", async () => {
+    expect((await pages(CHATTY, CHATTY_Q, false)).slice(0, 6)).toContain(57);
   });
 
   it("a rare word outranks a repeated common one (invariant 3)", async () => {

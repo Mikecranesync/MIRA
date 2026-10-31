@@ -1076,6 +1076,13 @@ export type DeleteNotebookResult = {
  * future notebook issued the same UUID. Every dependant is therefore removed
  * explicitly, in dependency order, inside ONE transaction.
  *
+ * The exceptions are tables added later WITH an ON DELETE CASCADE foreign key
+ * to equipment_notebooks, which the parent DELETE below removes in the same
+ * statement: `asset_fix_records` (096) and the CMMS outbox
+ * `notebook_domain_events` (112), whose `notebook_event_deliveries` cascade
+ * off the event (111). A queued delivery therefore never outlives its
+ * notebook, and a deleted repair is never exported to the CMMS.
+ *
  * What is deliberately NOT deleted:
  *   - the uploaded documents themselves (`namespace_direct_uploads` /
  *     `hub_uploads` / `knowledge_entries`). One file may be linked to many

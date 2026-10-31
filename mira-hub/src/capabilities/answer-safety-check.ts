@@ -421,10 +421,10 @@ export async function semanticSafetyCheck(opts: {
           gate = { ok: true, reservation: h.reservation };
         } else {
           h.reservation.release(); // the answer was denser than the hold assumed
-          gate = reserveOpenAiAttempt(p.name, "safety-judge", inputBound, JUDGE_OUTPUT_TOKENS);
+          gate = reserveOpenAiAttempt(p.name, "safety-judge", inputBound, JUDGE_OUTPUT_TOKENS, p.model);
         }
       } else {
-        gate = reserveOpenAiAttempt(p.name, "safety-judge", inputBound, JUDGE_OUTPUT_TOKENS);
+        gate = reserveOpenAiAttempt(p.name, "safety-judge", inputBound, JUDGE_OUTPUT_TOKENS, p.model);
       }
       if (!gate.ok) {
         budgetRefused = true;

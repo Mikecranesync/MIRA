@@ -1,0 +1,176 @@
+[
+ {
+  "id": "fr-pf40-02",
+  "manual": "pf40",
+  "url": "https://www.plctalk.net/forums/threads/power-flex-40-devicenet-not-varying-speed.90866/",
+  "reasons": [
+   "blind-label-disagrees"
+  ],
+  "question": "Hi - I have done some searching and answered a lot of my questions but..... I have a Powerflex 40 drive communicating to an 1769-L35 over devicenet. I am able to start and stop the drive no problems b"
+ },
+ {
+  "id": "fr-pf4m-03",
+  "manual": "pf4m",
+  "url": "https://forums.mikeholt.com/threads/powerflex-4m.123691/",
+  "reasons": [
+   "blind-label-disagrees"
+  ],
+  "question": "Background: I am replacing an obsolete Allen Bradley 160 VFD with a PowerFlex 4M. Older 160 used a dynamic braking resistor. When we powered up the PFlex, the dynamic braking resistor burned immediate"
+ },
+ {
+  "id": "fr-pf4m-05",
+  "manual": "pf4m",
+  "url": "https://mrplc.com/forums/topic/24280-powerflex-4m-contrologix/",
+  "reasons": [
+   "blind-label-disagrees"
+  ],
+  "question": "hello everybody  i am using a contrologix plc equipped with a modbus card MVI 56 MCM to communicate with a powerflex 4m drive. the problem i am facing is that the drive support function 3 to read and "
+ },
+ {
+  "id": "fr-micro820-um-10",
+  "manual": "micro820-um",
+  "url": "https://www.plctalk.net/forums/threads/reading-rtd-w-micro800-system.118557/",
+  "reasons": [
+   "blind-label-disagrees"
+  ],
+  "question": "Hi all, I'm looking at starting a project that would require me to use an RTD to monitor temperature in an enclosed environment. I'd be using an Allen-Bradley Micro800 system (likely Micro820) to moni"
+ },
+ {
+  "id": "fr-micro820-um-11",
+  "manual": "micro820-um",
+  "url": "https://www.plctalk.net/forums/threads/problems-between-panelview-800-and-micro820.144811/",
+  "reasons": [
+   "quote-not-on-page",
+   "blind-label-disagrees"
+  ],
+  "question": "Hello guys, how are you doing? So i have a little project using a PanelView 800 2711R-T7T with Micro 820 using RS485 to communicate. But I'm having problems with two multistate buttons where I defined"
+ },
+ {
+  "id": "fr-micro820-um-13",
+  "manual": "micro820-um",
+  "url": "https://www.plctalk.net/forums/threads/micro820-modbus-serial-to-vfd-yaskawa-v1000-flashes-call-alarm.103713/",
+  "reasons": [
+   "blind-label-disagrees"
+  ],
+  "question": "Problem 1: I have the two wired up as shown below. ( Dip switch 2 is set to on on the VFD) Serial connections: Micro820 > V1000 D- > R- and S- D+ > R+ and S+ Ground to Ground CallError.jpg shows the e"
+ },
+ {
+  "id": "fr-micro820-in-15",
+  "manual": "micro820-in",
+  "url": "https://www.plctalk.net/threads/micro820-2080-lc20-20awb-110v-relay-output.144961/",
+  "reasons": [
+   "quote-not-on-page",
+   "blind-label-disagrees"
+  ],
+  "question": "Currently I am putting in this model Micro820 to switch on a boiler. I am currently just going to set it up on a solid state 110v relay or ice cube to get power moved. however, I see that it has up to"
+ },
+ {
+  "id": "fr-ml1100-16",
+  "manual": "ml1100",
+  "url": "https://mrplc.com/forums/topic/23238-control-flash-help/",
+  "reasons": [
+   "blind-label-disagrees"
+  ],
+  "question": "Well I am having a issue flashing MicroLogix 1100 PLC. I'm hooked direct to the PLC thru a crossover cable and able to make changes to the PLC, see it in RSLinx, and ping it. When i go to use Control "
+ },
+ {
+  "id": "fr-smcflex-19",
+  "manual": "smcflex",
+  "url": "https://www.plctalk.net/forums/threads/smc-flex-e-soft-stop.133379/",
+  "reasons": [
+   "blind-label-disagrees"
+  ],
+  "question": "Hi there, very much new to AB Drives / Drives in general. Driving a pump with SMC Flex Drive Rating: Pump (5-135) Revision 6.008. Currently the drive parameters indicate: Option Input 1 = Stop Option "
+ },
+ {
+  "id": "fr-micro810-27",
+  "manual": "micro810",
+  "url": "https://www.plctalk.net/threads/allen-bradley-micro810.70329/",
+  "reasons": [
+   "source-check-failed"
+  ],
+  "question": "Good day. I'm trying to program an Allen-Bradley Mico810. I have the LCD/Keypad for programming. What I was hoping to do with this was to turn on a wash system, twice per day. I went to Rockwell Softw"
+ },
+ {
+  "id": "fr-gs4-ch2-32",
+  "manual": "gs4-ch2",
+  "url": "https://community.automationdirect.com/s/question/0D53u000029NUVJCA4/gs4-switch",
+  "reasons": [
+   "quote-not-on-page"
+  ],
+  "question": "need help with wiring a forward reverse switch on a gs4. could someone please provide some input thanks"
+ },
+ {
+  "id": "fr-se-canopen-hw-36",
+  "manual": "se-canopen-hw",
+  "url": "https://www.plctalk.net/threads/plc-network-canbus.57761/",
+  "reasons": [
+   "blind-label-disagrees"
+  ],
+  "question": "I'm trying to set up a network of Sauer-Danfoss Plus +1 controllers (CANBUS), and I have to have numerous units very far apart from each other ( > 50' ). Are there any options for setting up a reliabl"
+ },
+ {
+  "id": "fr-se-m172-39",
+  "manual": "se-m172",
+  "url": "https://community.se.com/t5/HVAC-and-Pumping-Forum/M172-PT100-Analog-Input/td-p/450505",
+  "reasons": [
+   "quote-not-on-page",
+   "blind-label-disagrees"
+  ],
+  "question": "Hello, I want to connect PT 100, 3 wire to M172. Pls, help me configure AI and make an analog input register that can read from the Modbus pool. Many thanks"
+ },
+ {
+  "id": "fr-se-m172-41",
+  "manual": "se-m172",
+  "url": "https://community.se.com/t5/HVAC-and-Pumping-Forum/M172-Modbus-Master/td-p/194310",
+  "reasons": [
+   "blind-label-disagrees"
+  ],
+  "question": "Hello guys,\n\nI have some troubles to set up the a TM172PDG42R as Modbus master.\n\n- I set the RS485-2 to Modbus master and the different modbus properties,\n\n- I created a \"Generic Modbus\" device proper"
+ },
+ {
+  "id": "fr-se-premium-serial-42",
+  "manual": "se-premium-serial",
+  "url": "https://www.plctalk.net/threads/modicon-tsx-premium-plc-protocol.13071/",
+  "reasons": [
+   "blind-label-disagrees"
+  ],
+  "question": "I am Looking for the Details of the Modicon TSX Premium PLC. Basic communication setup for this PLC using the PL7 Pro Software is already established. I had connected it to the PLC\u2019s TER port and able"
+ },
+ {
+  "id": "fr-se-premium-serial-43",
+  "manual": "se-premium-serial",
+  "url": "https://control.com/forums/threads/rs-485-interface-with-modicon-plc.28222/",
+  "reasons": [
+   "quote-not-on-page"
+  ],
+  "question": "I have some questions about interfacing RS 485 mode with my Premium PLCs. I have to interface a Caterpillar engine C.C.M module with my Premium PLC. The Chasis Communication module (C.C.M) is 9-pin fe"
+ },
+ {
+  "id": "fr-se-x80-analog-45",
+  "manual": "se-x80-analog",
+  "url": "https://www.plctalk.net/forums/threads/bmxamo0410-bmxami0810-signaling-wiring-issues-any-suggestions.115169/",
+  "reasons": [
+   "blind-label-disagrees"
+  ],
+  "question": "Hello All, I am helping a Water Treatment Plant troubleshoot signal issues with their Schneider Electric PLCs. They have an M580 PLC (PLC-A) sending a 0-10 VDC signal from a BMXAMO0410 analog output c"
+ },
+ {
+  "id": "fr-se-x80-analog-46",
+  "manual": "se-x80-analog",
+  "url": "https://www.plctalk.net/threads/help-troubleshooting-modicon-m340-problem.136562/",
+  "reasons": [
+   "blind-label-disagrees"
+  ],
+  "question": "Hey all, I am having an issue concerning the Modicon System Responsible for the operation of our Generator System. (Particularly Dresser-Rand SFGLD 560). The Problem is with the analog Output Module B"
+ },
+ {
+  "id": "fr-se-x80-analog-47",
+  "manual": "se-x80-analog",
+  "url": "https://www.plctalk.net/forums/threads/amo-0410-schneider-electric-analog-output-io-red-led.137948/",
+  "reasons": [
+   "blind-label-disagrees"
+  ],
+  "question": "Hello, Does anyone know why this AMO 0410 or AMO0410 module flashing all 4 channels with green LED and the IO LED on the display is solid red ? Is there some configuration that is required to be done "
+ }
+]

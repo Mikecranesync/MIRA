@@ -2,8 +2,8 @@ name: provider-health canary
 
 # Catches a dead LLM cascade provider BEFORE it costs us coverage.
 #
-# Background: the cascade (Groq -> Cerebras -> Together) is resilient — if a
-# provider dies, the next answers. That resilience MASKS a dead provider:
+# Background: the cascade (OpenAI -> OpenRouter, then deprecated key-gated
+# fallbacks) is resilient — if a provider dies, the next answers. That resilience MASKS a dead provider:
 # Gemini's 403 and Cerebras's llama3.1-8b 404 both went unnoticed because Groq
 # kept answering. By the time anyone noticed, coverage had silently dropped to
 # one provider. This canary probes each provider INDEPENDENTLY and pages when
@@ -16,8 +16,9 @@ name: provider-health canary
 # returning empty content does NOT false-page.
 #
 # Keys come from Doppler (the shared DOPPLER_TOKEN, factorylm/stg — provider
-# keys are account-global, so stg validates the same Groq/Cerebras/Together
-# accounts prod uses). Exit codes:
+# keys are account-global, so stg validates the same OpenAI/OpenRouter
+# accounts prod uses). Groq and Together are deprecated (#4438, #5008) and are
+# deliberately NOT expected by the probe since 2026-10-31. Exit codes:
 #   0 = all providers UP
 #   1 = >=1 provider DOWN (coverage degraded) -> opens/updates a provider-incident issue
 #   2 = probe could not run (no keys / import error) -> red, but does NOT page (infra, not a death)
@@ -47,7 +48,7 @@ jobs:
     # the provider keys (the repo-level token can't read stg). Same mechanism as
     # beta-gate.yml; staging has no required-reviewer protection, so the cron runs
     # unattended. Provider keys are account-global, so stg validates the same
-    # Groq/Cerebras/Together accounts prod uses.
+    # OpenAI/OpenRouter accounts prod uses.
     environment: staging
     timeout-minutes: 8
     permissions:

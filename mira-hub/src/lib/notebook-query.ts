@@ -132,6 +132,37 @@ const CAPS_MNEMONIC = {
   test: (w: string): boolean => DRIVE_MNEMONICS.has(w),
 };
 
+// A technician types a code from memory, the manual prints it from a table, and
+// the two disagree on leading zeros: forum-new fn-pf40-4 asked about "F081"
+// where the PowerFlex 40 manual lists "F81 Comm Loss", and fn-pf40-6 wrote
+// "A51-A54" for "A051…A054". Each spelling names the same row, so a code is
+// searched under both: the significant digits padded to three ("A51" → "A051",
+// "F81" → "F081") and the zeros stripped ("F081" → "F81"). A stripped form
+// keeps at least two digits — "F004" never becomes "F4", whose substring sits
+// inside F40…F49 on every fault page. One letter only: a two-letter prefix is
+// a family name or a drive mnemonic ("GS10", "oC"), never a zero-padded ID.
+export function codeSpellings(tok: string): string[] {
+  const m = /^([A-Za-z])(\d{2,4})$/.exec(tok.trim());
+  if (!m) return [tok];
+  const [, letters, digits] = m;
+  const out = new Set<string>([tok]);
+  const significant = digits.replace(/^0+/, "");
+  if (significant.length >= 2 && significant !== digits) out.add(`${letters}${significant}`);
+  if (digits.length < 3) out.add(`${letters}${digits.padStart(3, "0")}`);
+  return [...out];
+}
+
+// "parameter 60" / "param 60" / "parameters 60, 61" — the manual's own way of
+// naming a row in a numbered parameter list (E3 Plus "Input Assembly,
+// Parameter 60"). The number alone is meaningless; bound to its keyword it is
+// a whole-token phrase, like "Alarm 7".
+const PARAMETER_REF = /\b(?:parameter|param)s?\s*#?\s*(\d{1,4})\b/gi;
+
+// A hexadecimal code ("0xF003", Micro800 controller error codes) is a code by
+// its prefix alone: nothing else in a technician's sentence starts with 0x. It
+// needs no fault keyword next to it ("What does 0xF003 mean?").
+const HEX_CODE = /\b0x[0-9A-Fa-f]{2,8}\b/g;
+
 function extractCodeTokens(q: string): string[] {
   const out = new Set<string>();
   for (const m of q.matchAll(CODE_AFTER_KEYWORD)) {
@@ -155,7 +186,9 @@ function extractCodeTokens(q: string): string[] {
   if (words.length > 0 && words.length <= 2 && words.every((w) => codeLike(w) || CAPS_MNEMONIC.test(w))) {
     for (const w of words) out.add(w);
   }
-  return [...out];
+  for (const m of q.matchAll(PARAMETER_REF)) out.add(`parameter ${m[1]}`);
+  for (const m of q.matchAll(HEX_CODE)) out.add(m[0]);
+  return [...out].flatMap(codeSpellings).filter((t, i, a) => a.indexOf(t) === i);
 }
 
 /** The machine a retrieval lane is bound to (the notebook's or LOOK's identity). */
@@ -288,6 +321,8 @@ export function expandIndustrialQuery(query: string): ExpandedQuery {
     const code = /^[AF](\d{4})$/.exec(tok);
     if (code) exact.add(code[1]!);
   }
+  // Both zero-padding spellings of a parameter or fault ID (see codeSpellings).
+  for (const tok of [...exact]) for (const s of codeSpellings(tok)) exact.add(s.toUpperCase());
   // "terminal 07" / "term 7" → the terminal number as an exact token.
   for (const m of lower.matchAll(/\b(?:terminal|term|digital input|din)\s*#?\s*0*(\d{1,2})\b/g)) {
     exact.add(`0${m[1]}`.slice(-2)); // 7 → "07"
@@ -305,7 +340,7 @@ export function expandIndustrialQuery(query: string): ExpandedQuery {
   // whole-token recall/rank lane. They remain query candidates, not identity.
   const quotedCodes = quoted.filter(token => /^[A-Za-z0-9_.-]+$/.test(token)
     && (codeLike(token) || /^[A-Z]{2,}$/.test(token)));
-  const codeTokens = [...new Set([...extractCodeTokens(q), ...quotedCodes])].slice(0, 4);
+  const codeTokens = [...new Set([...extractCodeTokens(q), ...quotedCodes])].slice(0, 8);
   const phrases = quoted.filter(phrase => !codeTokens.includes(phrase));
 
   // Build variants: original first (precision), then original + each synonym
@@ -318,7 +353,7 @@ export function expandIndustrialQuery(query: string): ExpandedQuery {
 
   return {
     variants: [...new Set(variants)].slice(0, 4),
-    exactTokens: [...exact].slice(0, 8),
+    exactTokens: [...exact].slice(0, 12),
     codeTokens,
     phrases: phrases.slice(0, 4),
   };
@@ -329,6 +364,9 @@ export type Rerankable = {
   rank: number; // ts_rank_cd from SQL (may be 0 for ILIKE-only candidates)
   sourcePage: number | null;
   docId: string | null;
+  /** IDF-weighted share of the question's lexemes this chunk holds (0..1),
+   *  computed by the caller over the retrieval scope; absent = 0. */
+  idfCover?: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -481,6 +519,7 @@ export type RerankTraceRow = {
   index: number;
   proc: number;
   comm: number;
+  cover: number;
 };
 
 /**
@@ -494,7 +533,7 @@ export type RerankTraceRow = {
 export function rerankChunks<T extends Rerankable>(
   expanded: ExpandedQuery,
   chunks: T[],
-  opts?: { intent?: Intent; trace?: RerankTraceRow[]; demoteNavigation?: boolean },
+  opts?: { intent?: Intent; trace?: RerankTraceRow[]; demoteNavigation?: boolean; idfCoverWeight?: number },
 ): T[] {
   const exact = expanded.exactTokens.map((t) => t.toLowerCase());
   const phrases = expanded.phrases.map((p) => p.toLowerCase());
@@ -515,6 +554,13 @@ export function rerankChunks<T extends Rerankable>(
   const scored = chunks.map((c, i) => {
     const text = c.content.toLowerCase();
     let score = (c.rank / maxRank) * 1.0; // 0..1 base
+    // Rarity, which ts_rank_cd ignores: the chunk that holds the question's
+    // rare words ("bootp", "local/remote") over one that repeats its common
+    // ones. Cover is 0..1 and SCALES the base (a chunk must score on the
+    // question's words at all before rarity can lift it), so a cover-only hit
+    // on forum chatter ("decided", "small project") cannot outrank a chunk that
+    // matches the question densely. 0 when the caller computed no cover.
+    score *= 1 + (c.idfCover ?? 0) * (opts?.idfCoverWeight ?? 0);
     let exactHit = false;
     // Exact-ID dominance is right when the ID is the SUBJECT (spec/param/fault
     // lookups). On a procedure question the ID is thread context, not the
@@ -566,7 +612,7 @@ export function rerankChunks<T extends Rerankable>(
     // "what protections?" — protection evidence lives in fault tables that read
     // as index-like, so penalizing them demoted the answer's own evidence.)
 
-    opts?.trace?.push({ page: c.sourcePage, base: c.rank, score, exactHit, index: idx, proc, comm });
+    opts?.trace?.push({ page: c.sourcePage, base: c.rank, score, exactHit, index: idx, proc, comm, cover: c.idfCover ?? 0 });
     return { c, score, exactHit, i };
   });
 

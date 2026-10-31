@@ -93,7 +93,7 @@ jobs:
           SMOKE_CHECKOUT_CHECK: "" # off until a sellable product exists; set "1" to re-enable
         run: npx playwright test --config playwright.smoke.config.ts
 
-      - name: Run signup money-path tests (pricing → trial CTA → checkout → magic link)
+      - name: Run signup contact-path tests (pricing → Talk to Mike → magic link; checkout skipped while SMOKE_CHECKOUT_CHECK is empty)
         id: signup
         working-directory: mira-hub
         env:
@@ -192,7 +192,7 @@ jobs:
 
           failed=""
           [ "${SMOKE_OUTCOME}" = "failure" ] && failed="${failed} smoke"
-          [ "${SIGNUP_OUTCOME}" = "failure" ] && failed="${failed} signup-money-path"
+          [ "${SIGNUP_OUTCOME}" = "failure" ] && failed="${failed} signup-contact-path"
 
           msg="$(printf 'FactoryLM — PRODUCTION smoke failed\nfailed:%s\nimpact: %s\nrun: https://github.com/%s/actions/runs/%s\ncontext: issue #3598 (intermittent 502 on app.factorylm.com/login)' \
             "${failed}" "${impact}" "${REPO}" "${RUN_ID}")"
@@ -223,9 +223,9 @@ jobs:
           echo "| Check | What was verified |" >> "$GITHUB_STEP_SUMMARY"
           echo "|-----|-----------------|" >> "$GITHUB_STEP_SUMMARY"
           echo "| factorylm.com/ | OG tags, FactoryLM title |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| factorylm.com/pricing | Pricing cards + Start Free Trial CTA |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| factorylm.com/pricing | No published price, no Assessment or /buy CTA, Talk to Mike mailto link |" >> "$GITHUB_STEP_SUMMARY"
           echo "| factorylm.com/cmms | Magic link email form |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| /api/checkout/session | 303 → checkout.stripe.com |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| /api/checkout/session | SKIPPED while SMOKE_CHECKOUT_CHECK is empty (no sellable product); 303 → checkout.stripe.com when set to 1 |" >> "$GITHUB_STEP_SUMMARY"
           echo "| app.factorylm.com/ → /login | Redirect + email/password/Google |" >> "$GITHUB_STEP_SUMMARY"
           echo "| **/quickstart** | **Public grounded chat returns an answer (money path, P1-1)** |" >> "$GITHUB_STEP_SUMMARY"
           echo "| **/api/quickstart/ask** | **Flood → HTTP 429 (rate-limit holds, P0-1)** |" >> "$GITHUB_STEP_SUMMARY"
