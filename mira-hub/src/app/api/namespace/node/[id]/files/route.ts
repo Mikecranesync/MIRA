@@ -6,7 +6,9 @@ import { ingestPdfToNode, ingestTextToNode, deleteOrphanNodeIngest } from "@/lib
 import { findDuplicateUpload } from "@/lib/uploads";
 import pool from "@/lib/db";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/config";
+import { indexingStateFor } from "@/lib/upload-indexing-state";
 import {
+  INGEST_CLAIM_STALE_MINUTES,
   parkOrReuseFile,
   linkFileToUpload,
   attachFileToTargets,
@@ -45,6 +47,7 @@ interface FileRow {
   created_at: string;
   upload_id: string | null;
   verified: boolean;
+  claim_live: boolean;
 }
 
 export async function GET(
@@ -98,7 +101,9 @@ export async function GET(
       // which is BYPASSRLS. Keep both.
       const directRes = await c.query<FileRow>(
         `SELECT u.id, u.filename, u.mime_type, u.size_bytes::text, 'direct' AS source,
-                u.created_at, u.upload_id::text AS upload_id, u.verified
+                u.created_at, u.upload_id::text AS upload_id, u.verified,
+                (u.ingest_claim_token IS NOT NULL
+                  AND u.ingest_claimed_at > now() - make_interval(mins => $3::int)) AS claim_live
          FROM namespace_direct_uploads u
          WHERE u.tenant_id = $2
            AND (
@@ -113,7 +118,7 @@ export async function GET(
              )
            )
          ORDER BY u.created_at DESC`,
-        [id, ctx.tenantId],
+        [id, ctx.tenantId, INGEST_CLAIM_STALE_MINUTES],
       );
 
       return directRes.rows.map((r) => ({
@@ -126,6 +131,12 @@ export async function GET(
         verified: r.verified === true,
         indexed: r.upload_id !== null,
         upload_id: r.upload_id,
+        // #4784: the state the attachment composer polls on.
+        indexingState: indexingStateFor({
+          indexable: fileCapability(r.mime_type, r.filename) === "indexable",
+          indexed: r.upload_id !== null,
+          claimLive: r.claim_live === true,
+        }),
       }));
     });
 
@@ -375,7 +386,7 @@ export async function POST(
           );
         }
         return NextResponse.json(
-          { ok: true, indexed: false, indexing: true, fileId: directId },
+          { ok: true, indexed: false, indexing: true, indexingState: "parsing", fileId: directId },
           { status: 202 },
         );
       }
@@ -399,7 +410,7 @@ export async function POST(
           // Fence lost → duplicate chunk set; remove it (best-effort).
           await deleteOrphanNodeIngest(ctx.tenantId, uploadId);
           return NextResponse.json(
-            { ok: true, indexed: false, indexing: true, fileId: directId },
+            { ok: true, indexed: false, indexing: true, indexingState: "parsing", fileId: directId },
             { status: 202 },
           );
         }
@@ -429,6 +440,7 @@ export async function POST(
           {
             ok: true,
             indexed: false,
+            indexingState: "failed",
             warning: friendlyIngestError((err as Error)?.message ?? ""),
             fileId: directId,
             file: {

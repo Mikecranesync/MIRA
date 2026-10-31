@@ -537,7 +537,7 @@ describe("GET — a file filed only through workspace_file_links (#3396)", () =>
     // Bound to the requested node + tenant, not interpolated.
     expect(client.query).toHaveBeenCalledWith(
       expect.stringContaining("workspace_file_links"),
-      [VALID_UUID, TENANT_ID],
+      [VALID_UUID, TENANT_ID, 10],
     );
   });
 });

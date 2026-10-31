@@ -24,6 +24,7 @@
  */
 import type { Attachment } from "../../../packages/factorylm-interaction/src";
 import { enabledDocIds } from "./hub-host-logic";
+import { pollDecision } from "../lib/upload-indexing-state";
 
 /** Same copy as mobile (#3837), so both surfaces say the same thing. */
 export const PHOTO_ANALYSIS_UNAVAILABLE =
@@ -35,6 +36,10 @@ export interface HubUploadDeps {
   /** Idempotency key for /look (a retry replays the same link). */
   newKey(): string;
   maxUploadMb: number;
+  /** #4784: wait between polls for an indexing manual (tests inject a no-op). */
+  sleep?(ms: number): Promise<void>;
+  /** #4784: polls before an indexing manual is reported as still indexing. */
+  indexPollAttempts?: number;
 }
 
 export interface HeldFile {
@@ -121,6 +126,36 @@ export async function runAttachedSend(opts: {
   return "sent";
 }
 
+/**
+ * #4784: poll the node's file list until the parked original reports indexed
+ * (returns its upload id), failed, or the attempts run out (pending).
+ */
+async function awaitIndexed(
+  deps: HubUploadDeps,
+  nodeId: string,
+  fileId: string,
+): Promise<{ uploadId: string } | "failed" | "pending"> {
+  const attempts = deps.indexPollAttempts ?? 30;
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  for (let i = 0; i < attempts; i++) {
+    await sleep(2000);
+    const r = await deps.fetch(`${deps.apiBase}/api/namespace/node/${encodeURIComponent(nodeId)}/files/`, {
+      cache: "no-store",
+      headers: { accept: "application/json" },
+    });
+    if (!r.ok) continue;
+    const files = (await body(r)).files;
+    const row = Array.isArray(files)
+      ? (files as Array<Record<string, unknown>>).find((f) => f.id === fileId)
+      : undefined;
+    const state = (row?.indexingState ?? null) as Parameters<typeof pollDecision>[0];
+    const decision = pollDecision(state);
+    if (decision === "ready" && row?.upload_id) return { uploadId: String(row.upload_id) };
+    if (decision === "failed") return "failed";
+  }
+  return "pending";
+}
+
 async function body(res: Response): Promise<Record<string, unknown>> {
   try {
     return ((await res.json()) ?? {}) as Record<string, unknown>;
@@ -171,7 +206,29 @@ export async function composeHubSend(
       if (!up.ok) {
         return { question, failure: `${doc.attachment.name} didn't upload — try again.` };
       }
-      if (!d.indexed || !d.uploadId) {
+      let uploadId = d.uploadId;
+      const parkedId = typeof d.fileId === "string" ? d.fileId : null;
+      const waiting = (!d.indexed || !d.uploadId) && d.indexing === true && parkedId !== null;
+      if (waiting && parkedId !== null) {
+        // #4784: the ingest is running elsewhere. Wait for it; never send the
+        // question while the manual is still unsearchable.
+        const waited = await awaitIndexed(deps, opts.nodeId, parkedId);
+        if (waited === "pending") {
+          return {
+            question,
+            failure: `${doc.attachment.name} is still being indexed — send your question again in a moment.`,
+          };
+        }
+        if (waited === "failed") {
+          return {
+            question,
+            reattach: false,
+            failure: `${doc.attachment.name} was saved to this project, but it couldn't be read for chat, so I didn't send your question.`,
+          };
+        }
+        uploadId = waited.uploadId;
+      }
+      if (!waiting && (!d.indexed || !uploadId)) {
         // Parked but not searchable (image-only PDF etc.). The question was
         // about this file, so answering without it would be a general answer
         // dressed as a grounded one (Codex #4024 F5): stop and say so.
@@ -186,12 +243,12 @@ export async function composeHubSend(
       const att = await deps.fetch(`${deps.apiBase}/api/equipment-notebooks/${nb}/sources/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ docId: d.uploadId, sourceRole: "manual" }),
+        body: JSON.stringify({ docId: uploadId, sourceRole: "manual" }),
       });
       if (!att.ok) {
         return { question, failure: `${doc.attachment.name} uploaded, but it couldn't be added as a source — try again.` };
       }
-      attached.push(String(d.uploadId));
+      attached.push(String(uploadId));
     }
     // A failed re-read leaves the host's scope in charge rather than failing an
     // upload that already succeeded.
