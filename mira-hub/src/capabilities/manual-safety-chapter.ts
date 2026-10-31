@@ -15,7 +15,7 @@
  */
 import type { PoolClient } from "pg";
 import { extractManualSafetyStatement } from "@/capabilities/manual-safety-statement";
-import { approvedSourceFilterSql, retrieveCitedPageChunks, type ManualChunk } from "@/lib/manual-rag";
+import { approvalGateEnabled, approvedSourceFilterSql, retrieveCitedPageChunks, type ManualChunk } from "@/lib/manual-rag";
 
 /** "chapter Safety on page 17" — the manual's cross-reference to its own Safety chapter. */
 export const SAFETY_CHAPTER_REF = /\bchapter\s+["“]?safety["”]?\s+on\s+page\s+(\d{1,4})\b/i;
@@ -23,10 +23,13 @@ export const SAFETY_CHAPTER_REF = /\bchapter\s+["“]?safety["”]?\s+on\s+page\
 const SAFETY_CHAPTER_REF_SQL = "chapter\\s+\"?safety\"?\\s+on\\s+page\\s+[0-9]{1,4}";
 /** Pages read from the referenced first page on (ACS355: 17 opens the chapter, 18-20 hold the warnings). */
 export const SAFETY_CHAPTER_SPAN = 4;
-/** Chapter chunks added per turn: bounds the extra prompt tokens. */
+/**
+ * Chapter chunks added per turn: bounds the extra prompt tokens. The cap grows to one per manual
+ * when more manuals than this carry a chapter, so no retrieved manual loses its warning.
+ */
 export const SAFETY_CHAPTER_MAX_CHUNKS = 4;
-/** Documents per turn whose chapter is looked up. */
-const MAX_DOCS = 3;
+/** Documents per turn whose chapter is looked up: the notebook route retrieves at most 6 chunks. */
+const MAX_DOCS = 6;
 
 /** The first page of the Safety chapter a text refers to, or null. */
 export function safetyChapterPage(text: string): number | null {
@@ -66,16 +69,19 @@ async function chapterStarts(
   }
   const missing = docs.filter((d) => !starts.has(d.docId));
   if (missing.length === 0) return starts;
+  // Bind the admission set only when the gate is on: with it off the filter emits no clause, and a
+  // fourth value with no $4 placeholder is a Postgres error (same rule as retrieveNodeChunks).
   const approved = approvedSourceDocIds.filter(Boolean);
+  const admitApproved = approved.length > 0 && approvalGateEnabled();
   const params: unknown[] = [tenantId, missing.map((d) => d.docId), SAFETY_CHAPTER_REF_SQL];
-  if (approved.length > 0) params.push(approved);
+  if (admitApproved) params.push(approved);
   await client.query("SET LOCAL statement_timeout = '2s'");
   const res = await client.query(
     `SELECT DISTINCT ON (doc_id) doc_id::text AS doc_id, content
        FROM knowledge_entries
       WHERE tenant_id = $1
         AND ingest_route = 'v2'
-        ${approvedSourceFilterSql(approved.length > 0 ? 4 : null)}
+        ${approvedSourceFilterSql(admitApproved ? 4 : null)}
         AND doc_id::text = ANY($2::text[])
         AND content ~* $3
       ORDER BY doc_id, id`,
@@ -126,12 +132,14 @@ export async function retrieveSafetyChapterChunks(
   }
   for (const list of perDoc.values()) list.sort((a, b) => a.sourcePage - b.sourcePage);
   // Take one chunk per document in retrieval order, round after round, up to the cap.
+  const withChapter = [...perDoc.values()].filter((l) => l.length > 0).length;
+  const cap = Math.max(SAFETY_CHAPTER_MAX_CHUNKS, withChapter);
   const out: ManualChunk[] = [];
-  for (let i = 0; out.length < SAFETY_CHAPTER_MAX_CHUNKS; i++) {
+  for (let i = 0; out.length < cap; i++) {
     const before = out.length;
     for (const d of docs) {
       const r = perDoc.get(d.sourceUrl)![i];
-      if (!r || out.length >= SAFETY_CHAPTER_MAX_CHUNKS) continue;
+      if (!r || out.length >= cap) continue;
       out.push({ ...d.template, content: r.content, sourcePage: r.sourcePage, pageLabel: String(r.sourcePage), chunkIndex: null, rank: 0 });
     }
     if (out.length === before) break;

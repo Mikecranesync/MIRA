@@ -32,14 +32,16 @@ vi.mock("@/lib/equipment-notebooks", () => domainMock);
 const ragMock = vi.hoisted(() => ({
   retrieveNodeChunks: vi.fn(async () => [] as unknown[]),
   retrieveCitedPageChunks: vi.fn(async () => [] as unknown[]),
+  approvalGateEnabled: vi.fn(() => false),
   approvedSourceFilterSql: vi.fn(() => ""),
   appendManualContext: vi.fn((base: string) => base),
   buildManualUserContent: vi.fn(() => ""),
 }));
 vi.mock("@/lib/manual-rag", () => ragMock);
 
+const tenantClient = vi.hoisted(() => ({ query: vi.fn(async (..._a: unknown[]) => ({ rows: [] as unknown[] })) }));
 vi.mock("@/lib/tenant-context", () => ({
-  withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) => fn({ query: vi.fn(async () => ({ rows: [] })) })),
+  withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) => fn(tenantClient)),
 }));
 
 const poolMock = vi.hoisted(() => ({ query: vi.fn(async () => ({ rows: [] })) }));
@@ -139,6 +141,10 @@ describe("the cited manual's Safety chapter on a two-manual turn", () => {
     const f = stubProvider("Alarm 2010 means overcurrent [1].");
     await (await POST(chatReq({ message: QUESTION, sourceDocIds: [DOC_B] }), params)).text();
 
+    // Precondition: the document-level lookup really ran (and found nothing), not a failure that fell open.
+    const lookups = tenantClient.query.mock.calls.filter((c) => String(c[0]).includes("DISTINCT ON"));
+    expect(lookups).toHaveLength(1);
+    expect(lookups[0][1]).toHaveLength(3);
     const sent = ragMock.buildManualUserContent.mock.calls[0] as unknown as [string, unknown[]];
     expect(sent[1]).toHaveLength(1);
     const system = JSON.parse(String((f.mock.calls[0] as unknown as [string, { body: string }])[1].body)).messages[0].content as string;

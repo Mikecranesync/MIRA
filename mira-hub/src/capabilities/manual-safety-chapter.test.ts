@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import pages from "./manual-safety-statement.real-pages.json";
 import {
   retrieveSafetyChapterChunks,
@@ -23,11 +23,18 @@ const chunk = (content: string, page: number, docId: string | null = DOC): Manua
 
 type Row = { id: string; doc_id: string; content: string; source_url: string; page: number };
 
-/** A knowledge_entries stand-in that answers the two reads the module makes, and records them. */
+/**
+ * A knowledge_entries stand-in that answers the two reads the module makes, and records them.
+ * Like Postgres, it rejects a bind count that does not match the highest placeholder.
+ */
 function fakeClient(rows: Row[]) {
   const calls: Array<{ sql: string; params: unknown[] }> = [];
   const client = {
     async query(sql: string, params: unknown[] = []) {
+      const needed = Math.max(0, ...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
+      if (needed !== params.length) {
+        throw new Error(`bind message supplies ${params.length} parameters, but prepared statement requires ${needed}`);
+      }
       calls.push({ sql, params });
       if (sql.startsWith("SET LOCAL")) return { rows: [] };
       if (sql.includes("DISTINCT ON (doc_id)")) {
@@ -54,6 +61,13 @@ const CORPUS = [
   row("00000000-0000-0000-0000-000000000355", P355, 355),
   row("00000000-0000-0000-0000-000000000372", P372, 372),
 ];
+
+const GATE = "MIRA_ENFORCE_APPROVED_RETRIEVAL";
+const gateBefore = process.env[GATE];
+afterEach(() => {
+  if (gateBefore === undefined) delete process.env[GATE];
+  else process.env[GATE] = gateBefore;
+});
 
 describe("safetyChapterPage", () => {
   it("reads the manual's own reference, across the line break the PDF puts in it", () => {
@@ -89,6 +103,35 @@ describe("retrieveSafetyChapterChunks", () => {
     expect(added[0].content).toMatch(/external control circuits/i);
     const lookup = client.calls.find((c) => c.sql.includes("DISTINCT ON"))!;
     expect(lookup.params[1]).toEqual([DOC]);
+  });
+
+  it("approval gate OFF: the document lookup binds exactly its three values (acs355-q4 path)", async () => {
+    delete process.env[GATE];
+    const client = fakeClient(CORPUS);
+    const added = await retrieveSafetyChapterChunks(client, "tenant", [chunk(P355, 355)], { approvedSourceDocIds: [DOC] });
+    expect(added.map((c) => c.sourcePage)).toEqual([18]);
+    const lookup = client.calls.find((c) => c.sql.includes("DISTINCT ON"))!;
+    expect(lookup.params).toHaveLength(3);
+    expect(lookup.sql).not.toContain("verified");
+  });
+
+  it("approval gate ON: the lookup carries the approved-source predicate and its fourth value", async () => {
+    process.env[GATE] = "true";
+    const client = fakeClient(CORPUS);
+    const added = await retrieveSafetyChapterChunks(client, "tenant", [chunk(P355, 355)], { approvedSourceDocIds: [DOC] });
+    expect(added.map((c) => c.sourcePage)).toEqual([18]);
+    const lookup = client.calls.find((c) => c.sql.includes("DISTINCT ON"))!;
+    expect(lookup.params).toEqual(["tenant", [DOC], expect.any(String), [DOC]]);
+    expect(lookup.sql).toContain("doc_id = ANY($4::uuid[])");
+  });
+
+  it("approval gate ON with no admission set: the global verified-only rule, three values", async () => {
+    process.env[GATE] = "true";
+    const client = fakeClient(CORPUS);
+    await retrieveSafetyChapterChunks(client, "tenant", [chunk(P355, 355)]);
+    const lookup = client.calls.find((c) => c.sql.includes("DISTINCT ON"))!;
+    expect(lookup.params).toHaveLength(3);
+    expect(lookup.sql).toContain("verified = true");
   });
 
   it("control: a document that never refers to a Safety chapter adds nothing", async () => {
@@ -129,6 +172,21 @@ describe("retrieveSafetyChapterChunks", () => {
     expect(acs[0]).toMatchObject({ sourceUrl: URL, title: "acs355.pdf" });
     // Every chunk keeps its own document's identity.
     for (const c of added.filter((x) => x.docId === A)) expect(c).toMatchObject({ sourceUrl: A_URL, title: "other-drive.pdf" });
+  });
+
+  it("five manuals: the last-retrieved manual's chapter still gets a warning (Codex r2 F2)", async () => {
+    const docs = [1, 2, 3, 4].map((n) => ({ id: `aaaaaaaa-0000-0000-0000-00000000000${n}`, url: `hub://drive-${n}.pdf` }));
+    const extra: Row[] = docs.flatMap((d) =>
+      [1, 2].map((p) => ({ id: `${d.id}-${p}`, doc_id: d.id, content: `${P18}\n(${d.url} p${p})`, source_url: d.url, page: p })),
+    );
+    const retrieved = [
+      ...docs.map((d) => ({ ...chunk("WARNING! Read and follow the instructions in chapter Safety on page 1.", 40, d.id), sourceUrl: d.url })),
+      chunk(P372, 372), // the ACS355 task page, fifth in relevance order
+    ];
+    const added = await retrieveSafetyChapterChunks(fakeClient([...CORPUS, ...extra]), "tenant", retrieved);
+    expect(added).toHaveLength(5); // one per manual: the cap grows to cover every manual with a chapter
+    expect(added.map((c) => c.docId)).toEqual([...docs.map((d) => d.id), DOC]);
+    expect(added[4]).toMatchObject({ sourceUrl: URL, sourcePage: 18, content: P18 });
   });
 
   it("the directive asks for the steps only on physical work", () => {
