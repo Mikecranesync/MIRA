@@ -13,6 +13,8 @@
  *              → [`followups`] → `data: [DONE]`
  *   abstain  : `sources` (empty) → `status` → `[DONE]`
  *   safety   : `sources` (empty) → `content`* → `safety` → `status` → `[DONE]`
+ *   #4074 : `turn_saved` {turnRowId} sits immediately BEFORE `status` on every path
+ *             that persisted a row (UUID-shaped id only); absent when nothing was saved.
  * `sources` is emitted AFTER generation on the answered path — citations are
  * filtered to the [n] the answer actually used, which is unknowable before
  * the model finishes. `usage` (MIRA_CANONICAL_SEAM only) rides before
@@ -237,6 +239,7 @@ import type {
   NotebookSourcesFrame,
   NotebookStatusFrame,
   NotebookTraceFrame,
+  NotebookTurnSavedFrame,
   NotebookChatFrame,
   SafetyNoticeEntry,
   SafetyStopEntry,
@@ -909,6 +912,14 @@ export function citationsUsedInAnswer(answer: string, citations: EvidenceCitatio
   return citations.filter((c) => used.has(c.citationId));
 }
 
+/** #4074 — the persisted row id as a `turn_saved` frame. Null (no frame) unless
+ *  `recordTurn` actually returned a UUID-shaped id, so a failed insert never
+ *  invents an identity for the live answer. */
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function turnSavedFrame(turnRowId: string | null | undefined): NotebookTurnSavedFrame | null {
+  return turnRowId && UUID_SHAPE.test(turnRowId) ? { kind: "turn_saved", turnRowId } : null;
+}
+
 function sse(obj: unknown): string {
   return `data: ${JSON.stringify(obj)}\n\n`;
 }
@@ -1130,6 +1141,8 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
         : turn.answerStatus === "error"
           ? replayedErrorStatus(turn.evidence)
           : { kind: "status", status: "answered", ...(weakEvidence ? { evidence: "weak" as const } : {}) };
+      const replaySaved = turnSavedFrame(turn.id);
+      if (replaySaved) emit(replaySaved);
       emit(status);
       // Codex #4120 F4 — the stored proposal replays exactly as it was delivered.
       if (storedProposal) controller.enqueue(enc.encode(sse(storedProposal)));
@@ -1843,6 +1856,8 @@ async function handleChatTurn(
           status: "insufficient_evidence",
           message: SCOPE_REPLY,
         };
+        const offTopicSaved = turnSavedFrame(offTopicTurnRowId);
+        if (offTopicSaved) controller.enqueue(offTopicEnc.encode(sse(offTopicSaved)));
         controller.enqueue(offTopicEnc.encode(sse(status)));
         controller.enqueue(offTopicEnc.encode("data: [DONE]\n\n"));
         controller.close();
@@ -3328,6 +3343,8 @@ async function handleChatTurn(
         for (const piece of chunkForRelease(stopText)) {
           controller.enqueue(enc.encode(sse({ kind: "content", content: piece })));
         }
+        const stopSaved = turnSavedFrame(stopTurnRowId);
+        if (stopSaved) controller.enqueue(enc.encode(sse(stopSaved)));
         const status: NotebookStatusFrame = { kind: "status", status: "answered" };
         controller.enqueue(enc.encode(sse(status)));
         controller.enqueue(enc.encode("data: [DONE]\n\n"));
@@ -3478,6 +3495,8 @@ async function handleChatTurn(
         if (visualEntry) {
           controller.enqueue(enc.encode(sse(visualEvidenceMarker(visualEntry))));
         }
+        const gateSaved = turnSavedFrame(gateTurnRowId);
+        if (gateSaved) controller.enqueue(enc.encode(sse(gateSaved)));
         controller.enqueue(enc.encode(sse(status)));
         // Codex r1 F1 (#4172, HIGH) — emitted whatever the answer status
         // (mirrors the answered path below): the client offers "Use its
@@ -5186,6 +5205,8 @@ async function handleChatTurn(
         pendingUsage = finalUsage;
       }
 
+      const finalSaved = turnSavedFrame(finalTurnRowId);
+      if (finalSaved) controller.enqueue(enc.encode(sse(finalSaved)));
       controller.enqueue(enc.encode(sse(statusFrame)));
 
       // Deterministic follow-up chips (CONV-4, answered turns only) — derived

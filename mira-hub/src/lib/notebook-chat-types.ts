@@ -407,7 +407,8 @@ export type NotebookChatFrame =
   | NotebookUsageFrame
   | NotebookEvidenceFrame
   | NotebookFollowupsFrame
-  | NotebookTraceFrame;
+  | NotebookTraceFrame
+  | NotebookTurnSavedFrame;
 
 /** Deterministic follow-up suggestions (notebook-followups.ts) — emitted after
  *  `status` on answered turns only; each string is a complete question the
@@ -425,6 +426,15 @@ export type NotebookFollowupsFrame = { kind: "followups"; suggestions: string[] 
  */
 export type NotebookTraceFrame = { kind: "trace"; traceId: string | null; turnId: string };
 
+/**
+ * #4074 — the persisted `equipment_notebook_turns.id` for this live answer.
+ * Emitted immediately BEFORE `status`, ONLY when `recordTurn` returned a
+ * UUID-shaped row id (a failed or skipped insert emits nothing). `turnRowId`
+ * is the database row; it is never the client request id that `trace.turnId`
+ * carries. Additive: clients that predate it ignore the unknown kind.
+ */
+export type NotebookTurnSavedFrame = { kind: "turn_saved"; turnRowId: string };
+
 const FRAME_KINDS = new Set([
   "sources",
   "content",
@@ -434,6 +444,7 @@ const FRAME_KINDS = new Set([
   "evidence",
   "followups",
   "trace",
+  "turn_saved",
   "progress",
   "http_error",
 ]);
