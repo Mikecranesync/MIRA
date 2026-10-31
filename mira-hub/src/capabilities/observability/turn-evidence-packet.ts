@@ -185,6 +185,27 @@ export type TurnEvidencePacketGeneration = {
   has_observation_text: boolean;
 };
 
+/**
+ * Safety Phase 0 (#4372): which safety layer decided this answered turn and what
+ * it did. Closed vocabulary only — codes and violation ids from code, never
+ * question, answer, or source text.
+ *  - layer: pre_llm_trigger (question/photo/energized trigger), deterministic_floor
+ *    (answer-validation / prompt-leak), semantic_judge, or none.
+ *  - outcome: allow | warn (served with a safety warning) | block (SAFETY_STOP or
+ *    a deterministic replacement for an unsafe shape) | fallback (a controlled
+ *    replacement, e.g. the unverified-judge fallback).
+ *  - flagged: a pre-LLM trigger fired or the floor returned a hazard/energized warning.
+ *  - semantic_verdict: the judge's verdict, or not_run (gate/judge off, refused, or
+ *    an earlier layer already replaced the draft).
+ */
+export type SafetyOutcome = {
+  layer: "pre_llm_trigger" | "deterministic_floor" | "semantic_judge" | "none";
+  outcome: "allow" | "warn" | "block" | "fallback";
+  flagged: boolean;
+  violation: string | null;
+  semantic_verdict: "safe" | "unsafe" | "unknown" | "not_run";
+};
+
 export type TurnEvidencePacketAnswerGate = {
   invoked: boolean;
   decision: AnswerGateDecision;
@@ -243,6 +264,8 @@ export type TurnEvidencePacketAnswerGate = {
    *  fired (e.g. {term:"nominal", unit:"ω"}). Tokens of the rule's closed
    *  vocabulary, never answer text; null when that rule did not fire. */
   gate_match: { term: string; unit: string } | null;
+  /** #4372 safety outcome; null on paths that never evaluated it. */
+  safety_outcome?: SafetyOutcome | null;
 };
 
 export type TurnEvidencePacketPersistence = {
@@ -434,6 +457,7 @@ export function emptyPacket(init: PacketInit): TurnEvidencePacket {
       weak_evidence_badge: false,
       evidence_followed: null,
       gate_match: null,
+      safety_outcome: null,
     },
     persistence: {
       turn_row_id: null,
