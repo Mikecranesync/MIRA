@@ -2098,7 +2098,12 @@ async function handleChatTurn(
   // A hazard report is never answered with "re-select the machine": a flagged
   // turn skips this 422 and is answered (banner + general answer) about no
   // machine in particular — the null snapshot below is the honest record.
-  if (boundAsset.state === "unresolvable" && !safetyTrigger) {
+  // #5006: neither is an energized-work ask. One that matches no phrase-level
+  // trigger ("…while the VFD is energized") has `safetyTrigger` null, so this
+  // 422 used to pre-empt the energized-work STOP below (de-energize / lockout
+  // page) — the same gap the no-sources refusal already closes with
+  // `!energizedAskEarly`. The stop then serves with the same null snapshot.
+  if (boundAsset.state === "unresolvable" && !safetyTrigger && !energizedAskEarly) {
     // Fail closed. Quietly answering as if unbound is the downgrade
     // .claude/rules/direct-connection-uns-certified.md forbids — the notebook
     // would keep showing the last stored machine name while answering about
