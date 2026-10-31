@@ -590,9 +590,12 @@ function UnifiedChatForNotebook({
 
   // #4061: the answer just received has no server turn id (`live-<i>-a`), so
   // it could not offer "Record what fixed it" until the notebook was reopened.
-  // Once the stream is idle, re-read the persisted turns (as the Hub does) and
-  // pair each live answer with its row. The mapping is only honoured for the
-  // exact live list it was built from; anything unpaired keeps no button.
+  // #4074: a live answer the Hub saved carries its row id (`turn_saved` frame)
+  // and is identified without any re-read. Only an answered live turn WITHOUT
+  // that id (an older Hub, or a failed save) falls back to: once the stream is
+  // idle, re-read the persisted turns and pair it with its row by question
+  // text. The mapping is only honoured for the exact live list it was built
+  // from; anything unpaired keeps no button.
   const liveSig = liveTurnsSignature(meta.notebookId, attachmentThreadId, liveTurns);
   const [liveIds, setLiveIds] = useState<{ sig: string; ids: ReadonlyMap<string, string> }>({ sig: "", ids: new Map() });
   // Failed re-reads for THIS live list (Codex #4073 F2): bounded retry, reset

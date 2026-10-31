@@ -19,7 +19,9 @@
 
 export interface LiveTurnLike {
   readonly q: string;
-  readonly a: { readonly status: string };
+  /** #4074: the row id from the stream's `turn_saved` frame. When present the
+   *  answer is already identified and never paired or re-read (see below). */
+  readonly a: { readonly status: string; readonly persistedTurnId?: string };
 }
 
 export interface PersistedTurnLike {
@@ -49,6 +51,9 @@ export function mapLiveAnswersToServerIds(
   // device's same-question row, so the one-to-one count below would pair them
   // wrongly (Codex #4073 round 2). Only a short (complete) history is proof.
   if (persisted.length >= NOTEBOOK_TURN_WINDOW) return new Map();
+  // #4074: rows already named by a turn_saved frame belong to their own live
+  // turn; they must not be offered to a pairing for a different live turn.
+  const named = new Set(liveTurns.map((t) => t.a.persistedTurnId?.toLowerCase()).filter(Boolean));
   const candidates = persisted
     .map((t, order) => ({ t, order }))
     .filter(
@@ -56,6 +61,7 @@ export function mapLiveAnswersToServerIds(
         UUID.test(t.id) &&
         t.answerStatus === "answered" &&
         !opts.alreadyRendered.has(t.id.toLowerCase()) &&
+        !named.has(t.id.toLowerCase()) &&
         (!opts.threadId || !t.threadId || t.threadId === opts.threadId),
     )
     .sort((x, y) => {
@@ -76,7 +82,7 @@ export function mapLiveAnswersToServerIds(
   }
   const liveByQuestion = new Map<string, number[]>();
   liveTurns.forEach((turn, i) => {
-    if (turn.a.status !== "answered") return;
+    if (turn.a.status !== "answered" || turn.a.persistedTurnId) return;
     const q = norm(turn.q);
     liveByQuestion.set(q, [...(liveByQuestion.get(q) ?? []), i]);
   });
@@ -89,12 +95,15 @@ export function mapLiveAnswersToServerIds(
   return out;
 }
 
-/** Live answers that are answered but not yet mapped — the trigger for a
- *  re-read. Empty means there is nothing to fetch. */
+/** Live answers that are answered, carry no `turn_saved` id, and are not yet
+ *  mapped — the trigger for a re-read. Empty means there is nothing to fetch.
+ *  #4074: a turn that carries its persisted id is identified already, so the
+ *  re-read (and the pairing it feeds) is the fallback for servers that do not
+ *  send the frame, or for a save that failed. */
 export function unmappedLiveAnswers(liveTurns: readonly LiveTurnLike[], mapped: ReadonlyMap<string, string>): string[] {
   return liveTurns
     .map((t, i) => ({ t, id: `live-${i}-a` }))
-    .filter(({ t, id }) => t.a.status === "answered" && !mapped.has(id))
+    .filter(({ t, id }) => t.a.status === "answered" && !t.a.persistedTurnId && !mapped.has(id))
     .map(({ id }) => id);
 }
 
@@ -106,7 +115,11 @@ export function liveTurnsSignature(
   threadId: string | null | undefined,
   liveTurns: readonly LiveTurnLike[],
 ): string {
-  return JSON.stringify([notebookId ?? "", threadId ?? "", liveTurns.map((t) => [norm(t.q), t.a.status])]);
+  return JSON.stringify([
+    notebookId ?? "",
+    threadId ?? "",
+    liveTurns.map((t) => [norm(t.q), t.a.status, t.a.persistedTurnId ?? ""]),
+  ]);
 }
 
 /** Codex #4073 F2: a failed re-read is retried a bounded number of times while

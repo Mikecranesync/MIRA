@@ -120,3 +120,26 @@ describe("mapLiveAnswersToServerIds — the answer just received gets its server
   });
 });
 
+
+describe("#4074 — a live answer that carries its persisted id needs no pairing", () => {
+  const livePersisted = (q: string, persistedTurnId: string) => ({ q, a: { status: "answered", persistedTurnId } });
+
+  it("is not listed for a re-read (the turn_saved frame already named its row)", () => {
+    expect(unmappedLiveAnswers([livePersisted("GS10 trips oC", A)], new Map())).toEqual([]);
+  });
+
+  it("is never paired, and its row cannot be paired to another live turn with the same question", () => {
+    // Live turn 0 already knows row A from turn_saved; live turn 1 (no frame) must pair only with the other row B.
+    const m = mapLiveAnswersToServerIds(
+      [livePersisted("why", A), live("why")],
+      [row(A, "why", { createdAt: "2026-09-27T20:01:00Z" }), row(B, "why", { createdAt: "2026-09-27T20:02:00Z" })],
+      { alreadyRendered: new Set() },
+    );
+    expect(m.has("live-0-a")).toBe(false);
+    expect(m.get("live-1-a")).toBe(B);
+  });
+
+  it("an unpersisted answered turn still gets re-read (fallback for servers without turn_saved)", () => {
+    expect(unmappedLiveAnswers([livePersisted("q", A), live("q")], new Map())).toEqual(["live-1-a"]);
+  });
+});
