@@ -458,7 +458,7 @@ function approvalFilterSql(): string {
  * NARROW (it is intersected with the validated doc scope upstream), and with
  * no set — or the gate off — this collapses to the pre-existing predicate.
  */
-function approvedSourceFilterSql(approvedParam: number | null): string {
+export function approvedSourceFilterSql(approvedParam: number | null): string {
   if (!approvalGateEnabled()) return "";
   if (approvedParam == null) return approvalFilterSql();
   return `AND (verified = true OR (is_private = true AND doc_id = ANY($${approvedParam}::uuid[])))`;
