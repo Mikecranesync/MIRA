@@ -2445,26 +2445,33 @@ export type CitedPageRef = { docId: string; sourceUrl: string; page: number };
  * can never yield a statement, so filtering on it never drops a warning (#4509 Codex r3 F1).
  */
 export const CANDIDATE_PATTERN = "warning|danger|caution|attention|shock hazard|burn hazard|hazardous|discharged|wait";
-/** Row bound on the candidate read. Only statement-candidate chunks of the cited pages count toward it. */
-const CITED_PAGE_CANDIDATE_LIMIT = 500;
+/** Rows per keyset batch of the candidate read (#4509 Codex r4 F1). */
+export const CITED_PAGE_BATCH = 200;
+/** Wall-clock bound on the whole cited-page read; past it the caller decides from what was found. */
+export const CITED_PAGE_DEADLINE_MS = 4_000;
 
 /**
  * The statement-candidate chunks of each cited page (#4509 Codex F1). Top-K retrieval returns
  * individual chunks, so a page's WARNING can sit in a chunk retrieval left out; this reads the
  * rest of the page. Each page is pinned to the exact document, file and page of a chunk retrieval
  * already admitted, under the same tenant and the same approval predicate retrieval uses, so it
- * can never widen what the turn may read beyond pages the answer cites. Bounded (Codex r3 F1):
- * only chunks matching CANDIDATE_PATTERN, at most CITED_PAGE_CANDIDATE_LIMIT rows, under a
- * transaction-local statement timeout. The caller fails open on any error.
+ * can never widen what the turn may read beyond pages the answer cites.
+ *
+ * Bounded without a total-row cap (Codex r4 F1: a cap let 500 chunks that merely say "wait" hide
+ * the page's only WARNING): only chunks matching CANDIDATE_PATTERN are read, in keyset batches of
+ * CITED_PAGE_BATCH ordered by id, each under a transaction-local statement timeout. With `keep`,
+ * only the chunks it accepts are retained (memory stays batch-bounded) and the scan stops as soon
+ * as every cited page has one; the whole read stops at CITED_PAGE_DEADLINE_MS. The caller fails
+ * open on any error.
  */
 export async function retrieveCitedPageChunks(
   client: Pick<PoolClient, "query">,
   tenantId: string,
   pages: readonly CitedPageRef[],
-  opts: { approvedSourceDocIds?: string[] } = {},
+  opts: { approvedSourceDocIds?: string[]; keep?: (content: string) => boolean; now?: () => number } = {},
 ): Promise<Array<{ content: string; sourceUrl: string; sourcePage: number }>> {
   if (pages.length === 0) return [];
-  const params: unknown[] = [
+  const base: unknown[] = [
     tenantId,
     pages.map((p) => p.docId),
     pages.map((p) => p.sourceUrl),
@@ -2473,25 +2480,48 @@ export async function retrieveCitedPageChunks(
   ];
   const approved = (opts.approvedSourceDocIds ?? []).filter(Boolean);
   const admitApproved = approved.length > 0 && approvalGateEnabled();
-  if (admitApproved) params.push(approved);
+  if (admitApproved) base.push(approved);
+  const now = opts.now ?? Date.now;
+  const deadline = now() + CITED_PAGE_DEADLINE_MS;
+  const keyOf = (url: string, page: number) => `${url}\u0000${page}`;
+  const wanted = new Set(pages.map((p) => keyOf(p.sourceUrl, p.page)));
+  const found = new Set<string>();
+  const out: Array<{ content: string; sourceUrl: string; sourcePage: number }> = [];
   await client.query("SET LOCAL statement_timeout = '3s'");
-  const res = await client.query(
-    `SELECT content, source_url, COALESCE(page_start, source_page) AS page
-       FROM knowledge_entries
-      WHERE tenant_id = $1
-        AND ingest_route = 'v2'
-        ${approvedSourceFilterSql(admitApproved ? 6 : null)}
-        AND (doc_id::text, source_url, COALESCE(page_start, source_page)) IN (
-          SELECT * FROM unnest($2::text[], $3::text[], $4::int[])
-        )
-        AND content ~* $5
-      ORDER BY doc_id, COALESCE(page_start, source_page), metadata->>'chunk_index', id
-      LIMIT ${CITED_PAGE_CANDIDATE_LIMIT}`,
-    params,
-  );
-  return res.rows.map((r: Record<string, unknown>) => ({
-    content: String(r.content ?? ""),
-    sourceUrl: String(r.source_url ?? ""),
-    sourcePage: Number(r.page),
-  }));
+  let cursor: string | null = null;
+  for (;;) {
+    const params = cursor === null ? base : [...base, cursor];
+    const res = await client.query(
+      `SELECT id, content, source_url, COALESCE(page_start, source_page) AS page
+         FROM knowledge_entries
+        WHERE tenant_id = $1
+          AND ingest_route = 'v2'
+          ${approvedSourceFilterSql(admitApproved ? 6 : null)}
+          AND (doc_id::text, source_url, COALESCE(page_start, source_page)) IN (
+            SELECT * FROM unnest($2::text[], $3::text[], $4::int[])
+          )
+          AND content ~* $5
+          ${cursor === null ? "" : `AND id > $${params.length}::uuid`}
+        ORDER BY id
+        LIMIT ${CITED_PAGE_BATCH}`,
+      params,
+    );
+    const rows = res.rows as Array<Record<string, unknown>>;
+    for (const r of rows) {
+      const row = { content: String(r.content ?? ""), sourceUrl: String(r.source_url ?? ""), sourcePage: Number(r.page) };
+      if (opts.keep && !opts.keep(row.content)) continue;
+      out.push(row);
+      found.add(keyOf(row.sourceUrl, row.sourcePage));
+    }
+    if (rows.length < CITED_PAGE_BATCH) break;
+    if (opts.keep && [...wanted].every((k) => found.has(k))) break;
+    if (now() >= deadline) {
+      console.warn(`[manual-rag] cited-page read stopped at its ${CITED_PAGE_DEADLINE_MS}ms deadline (notice from what was found)`);
+      break;
+    }
+    const last = rows[rows.length - 1]?.id;
+    if (typeof last !== "string" || last === cursor) break;
+    cursor = last;
+  }
+  return out;
 }

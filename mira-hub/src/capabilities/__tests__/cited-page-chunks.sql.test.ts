@@ -99,3 +99,52 @@ describe("retrieveCitedPageChunks (#4509 Codex F1)", () => {
     expect(params).toHaveLength(5);
   });
 });
+
+/** A one-page upload with `n` candidate chunks in id order; `table` is what keyset batches read. */
+function pagedClient(n: number, contentAt: (i: number) => string) {
+  const id = (i: number) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`;
+  const table = Array.from({ length: n }, (_, i) => ({ id: id(i), content: contentAt(i), source_url: "manual.txt", page: 1 }));
+  let peak = 0;
+  const query = vi.fn(async (sql: string, params: unknown[]) => {
+    if (/SET LOCAL/.test(sql)) return { rows: [] };
+    const limit = Number(/LIMIT (\d+)/.exec(sql)?.[1]);
+    const after = /AND id > \$(\d+)::uuid/.exec(sql);
+    const cursor = after ? String(params[Number(after[1]) - 1]) : null;
+    const rows = table.filter((r) => cursor === null || r.id > cursor).slice(0, limit);
+    peak = Math.max(peak, rows.length);
+    return { rows };
+  });
+  return { client: { query } as never, query, peak: () => peak };
+}
+const keep = (t: string) => extractManualSafetyStatement(t) !== null;
+const onePage = { docId: DOC, sourceUrl: "manual.txt", page: 1 };
+
+describe("cited-page read: keyset batches, no total-row cap (#4509 Codex r4 F1)", () => {
+  it("finds the only WARNING in the final batch of a 59,000-chunk one-page upload", async () => {
+    const N = 59_000;
+    const { client, query, peak } = pagedClient(N, (i) => (i === N - 1 ? "WARNING: Hazardous voltage. Disconnect power before servicing." : `Please wait while the parameter saves (${i}).`));
+    const out = await retrieveCitedPageChunks(client, TENANT, [onePage], { keep });
+    expect(out.map((r) => r.content)).toEqual(["WARNING: Hazardous voltage. Disconnect power before servicing."]);
+    const reads = query.mock.calls.filter(([q]) => !/SET LOCAL/.test(q));
+    expect(reads.length).toBe(Math.ceil(N / 200));
+    for (const [q] of reads) expect(q).toMatch(/ORDER BY id\s+LIMIT 200\b/);
+    expect(reads.slice(1).every(([q]) => /AND id > \$\d+::uuid/.test(q))).toBe(true);
+    expect(peak()).toBeLessThanOrEqual(200);
+  });
+
+  it("stops as soon as every cited page has a statement", async () => {
+    const { client, query } = pagedClient(5_000, (i) => (i === 10 ? "WARNING: Hot surface. Allow to cool." : `Please wait (${i}).`));
+    const out = await retrieveCitedPageChunks(client, TENANT, [onePage], { keep });
+    expect(out).toHaveLength(1);
+    expect(query.mock.calls.filter(([q]) => !/SET LOCAL/.test(q))).toHaveLength(1);
+  });
+
+  it("stops at the wall-clock deadline and returns what it found (fail open)", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    let t = 0;
+    const { client, query } = pagedClient(10_000, (i) => `Please wait (${i}).`);
+    const out = await retrieveCitedPageChunks(client, TENANT, [onePage], { keep, now: () => (t += 1_000) });
+    expect(out).toEqual([]);
+    expect(query.mock.calls.filter(([q]) => !/SET LOCAL/.test(q)).length).toBeLessThan(10);
+  });
+});

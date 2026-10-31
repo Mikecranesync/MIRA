@@ -56,7 +56,7 @@ import {
   type BudgetReservation,
 } from "@/capabilities/openai-run-budget";
 import { withSupportingQuotes } from "@/capabilities/supporting-quote";
-import { citedPagesFor, manualSafetyStatementForCitations } from "@/capabilities/manual-safety-statement";
+import { citedPagesFor, extractManualSafetyStatement, manualSafetyStatementForCitations } from "@/capabilities/manual-safety-statement";
 import { shadowVerifyCitedTurn } from "@/capabilities/claim-verifier-shadow";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
 import { isWeakEvidence, WEAK_EVIDENCE_LABEL, WEAK_EVIDENCE_RULE } from "@/capabilities/observability/jev-weak-evidence";
@@ -4804,7 +4804,7 @@ async function handleChatTurn(
       if (citedPages.length > 0) {
         try {
           citedPageChunks = await withTenantContext(ctx.tenantId, (c) =>
-            retrieveCitedPageChunks(c, ctx.tenantId, citedPages, { approvedSourceDocIds: docIds }),
+            retrieveCitedPageChunks(c, ctx.tenantId, citedPages, { approvedSourceDocIds: docIds, keep: (t) => extractManualSafetyStatement(t) !== null }),
           );
         } catch (err) {
           console.warn("[notebook-chat] cited-page read failed (notice from retrieved chunks only):", err instanceof Error ? err.message : err);
