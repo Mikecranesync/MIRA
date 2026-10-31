@@ -43,7 +43,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { context, SpanStatusCode, trace, type Context, type Span } from "@opentelemetry/api";
 import { getTracer, setSpanAttrs, type SpanAttrs } from "@/capabilities/observability/tracing";
 import { startTurnRecorder, type TurnRecorder } from "@/capabilities/observability/turn-recorder";
-import type { TurnEvidencePacket } from "@/capabilities/observability/turn-evidence-packet";
+import type { SafetyOutcome, TurnEvidencePacket } from "@/capabilities/observability/turn-evidence-packet";
 import { citesOnlyUnconfirmedPhotoReadings } from "@/capabilities/photo-source";
 import type { GenerationAttempt } from "@/capabilities/observability/turn-evidence-packet";
 import { ungroundedUnitClaim } from "@/capabilities/observability/anomalies";
@@ -116,6 +116,7 @@ import {
   isEnergizedWorkAsk,
   matchSafetyStop,
   notebookSafetyTrigger,
+  SAFETY_STOP,
   safetyFlagDirective,
   safetyFlagHeaders,
   withSafetyFlag,
@@ -265,8 +266,10 @@ import { declineKind, declineText, unidentifiedServiceDecline } from "@/capabili
 import { asksAboutThisEquipment, asksForDocumentedValue } from "@/capabilities/documented-value-question";
 import { progressCancelSignal, reportProgress, wantsProgress, withProgressStream } from "@/capabilities/chat-progress";
 import {
+  closedSemanticClass,
   JUDGE_OUTPUT_TOKENS,
   judgeHoldInputBound,
+  SEMANTIC_UNVERIFIED_FALLBACK,
   selectForSemanticCheck,
   semanticCheckEnabled,
   semanticSafetyCheck,
@@ -1746,6 +1749,9 @@ async function handleChatTurn(
       safety_classification: "none",
       evidence_sufficient: false,
       ungrounded_unit_claim: false,
+      // Fixed scope reply, no generated text: no safety layer acted. Only the early
+      // energized-ask check has run at this point, so it is the only flag source.
+      safety_outcome: { layer: "none", outcome: "allow", flagged: energizedAskEarly, violation: null, semantic_verdict: "not_run" },
     });
     setSpanAttrs(
       {
@@ -3232,6 +3238,9 @@ async function handleChatTurn(
       safety_classification: "safety_stop",
       evidence_sufficient: false,
       ungrounded_unit_claim: false,
+      // Codex #4949 F1: every served turn records its safety outcome — this stop is the
+      // pre-LLM trigger blocking before any provider runs, so no semantic verdict exists.
+      safety_outcome: { layer: "pre_llm_trigger", outcome: "block", flagged: true, violation: stopTrigger, semantic_verdict: "not_run" },
     });
     setSpanAttrs(
       {
@@ -3363,6 +3372,12 @@ async function handleChatTurn(
       safety_classification: "none",
       evidence_sufficient: false,
       ungrounded_unit_claim: false,
+      // Fixed abstain text, no generated answer to judge (spec: every served turn records one).
+      safety_outcome: {
+        layer: "none", outcome: "allow",
+        flagged: Boolean(safetyTrigger) || electricalHazardDirective || energizedAskEarly || hazardEntries.length > 0,
+        violation: null, semantic_verdict: "not_run",
+      },
     });
     setSpanAttrs(
       {
@@ -3977,7 +3992,8 @@ async function handleChatTurn(
       // The semantic judge runs on every served answer while the gate is on, and
       // it calls OpenAI first. Its room is sized now, before the answer exists.
       const judgeWillRun = gate && semanticCheckEnabled();
-      const judgeInputBound = judgeWillRun ? judgeHoldInputBound(message, requestCap) : 0;
+      // #4372: the judge also reads this turn's retrieved sources, so they size the room too.
+      const judgeInputBound = judgeWillRun ? judgeHoldInputBound(message, requestCap, chunks.map((c) => c.content)) : 0;
       cascade: for (const provider of cascadeProviders) {
         if (!provider.key) continue;
         // STRM-2: a stopped turn must never open a second provider stream.
@@ -4373,6 +4389,12 @@ async function handleChatTurn(
           safety_classification: "none",
           evidence_sufficient: false,
           ungrounded_unit_claim: false,
+          // The user stopped the stream before the judge ran on a complete answer.
+          safety_outcome: {
+            layer: "none", outcome: "allow",
+            flagged: Boolean(safetyTrigger) || electricalHazardDirective || energizedAskEarly || hazardEntries.length > 0,
+            violation: null, semantic_verdict: "not_run",
+          },
         });
         setSpanAttrs(
           { "mira.answer_gate.invoked": true, "mira.answer_gate.decision": "error", "mira.answer_gate.reason": "client_stop" },
@@ -4538,6 +4560,19 @@ async function handleChatTurn(
         manualSearchRunning: fallbackSearchRunning,
       });
       let outputRejected: { kind: "unsafe_answer" | "unsupported_specificity"; violation: string } | null = null;
+      // Safety Phase 0 (#4372): which layer decided, recorded on the packet as
+      // closed-vocabulary codes only. A FLAGGED turn is one where a pre-LLM
+      // safety trigger fired (question/photo trigger, the energized directive,
+      // an energized-work ask) or the deterministic floor returned a hazard /
+      // energized warning — on those, a judge that cannot decide fails CLOSED.
+      const preLlmTriggered = Boolean(safetyTrigger) || electricalHazardDirective || energizedAskEarly || hazardEntries.length > 0;
+      const floorWarning =
+        gate && !validation.ok && (validation.kind === "hazard_warning" || validation.kind === "energized_warning")
+          ? validation.violation
+          : null;
+      const flaggedTurn = preLlmTriggered || floorWarning !== null;
+      let semanticVerdictCode: SafetyOutcome["semantic_verdict"] = "not_run";
+      let semanticDecided = false;
       // #4098: which quantity word + unit the exact-rating rule matched —
       // closed-vocabulary tokens, never text — so false refusals are
       // diagnosable from the Turn Evidence Packet. Recorded gate on or off.
@@ -4703,29 +4738,41 @@ async function handleChatTurn(
           answerText,
           general: !docGrounded,
           selectedClass,
+          sources: chunks.map((c) => c.content),
           openAiHold: judgeHold,
         });
-        console.log(`[notebook-chat] semantic-check class=${selectedClass} verdict=${sv.verdict} in ${Date.now() - semStart}ms`);
-        // 2026-09-27 (Mike, settles #4022): the judge FLAGS, it never
-        // withholds. "unsafe" puts a hazard banner above the answer; a judge
-        // that could not decide (timeout, provider blip) fails OPEN — a broken
-        // judge is not evidence of a dangerous answer.
+        console.log(`[notebook-chat] semantic-check class=${selectedClass} verdict=${sv.verdict} flagged=${flaggedTurn} in ${Date.now() - semStart}ms`);
+        semanticVerdictCode = sv.verdict;
+        // Safety Phase 0 (#4372, owner authorization 2026-10-29 — supersedes the
+        // 2026-09-27 flag-only decision of #4022): the judge may only ADD a block.
+        // "unsafe" -> SAFETY_STOP on every turn; an undecided judge (timeout,
+        // provider failure, malformed verdict, budget) -> the controlled
+        // unverified fallback on a FLAGGED turn, served on an unflagged one.
+        // Both reuse the `unsafe_answer` branch below: zero citations, basis
+        // null, safety_notice + safety_stop evidence, the draft never persisted.
         if (sv.verdict === "unsafe") {
-          const cls = (sv.hazardClass ?? selectedClass).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 30);
-          console.warn(`[notebook-chat] semantic FLAGGED ${cls}: ${sv.reason ?? ""}`);
-          answerText = `${withPageCitation(hazardBanner(cls), pageFromRetrievedChunks(chunks))}\n\n${answerText}`;
+          const cls = closedSemanticClass(sv.hazardClass, selectedClass);
+          console.warn(`[notebook-chat] semantic BLOCKED ${cls}: ${sv.reason ?? ""}`);
+          outputRejected = { kind: "unsafe_answer", violation: `unsafe-answer:semantic-${cls}` };
+          answerText = SAFETY_STOP;
+          semanticDecided = true;
+        } else if (sv.verdict !== "safe" && flaggedTurn) {
+          console.warn(`[notebook-chat] semantic UNVERIFIED (${sv.reason ?? "unknown"}) on a flagged turn: controlled fallback`);
+          outputRejected = { kind: "unsafe_answer", violation: "unsafe-answer:semantic-unverified" };
+          answerText = SEMANTIC_UNVERIFIED_FALLBACK;
+          semanticDecided = true;
         } else if (sv.verdict !== "safe") {
-          console.warn(`[notebook-chat] semantic UNVERIFIED (${sv.reason ?? "unknown"}): serving the answer (fail-open)`);
+          console.warn(`[notebook-chat] semantic UNVERIFIED (${sv.reason ?? "unknown"}) on an unflagged turn: serving the answer`);
         }
       }
 
-      if (flagBanner && served && !refused && answerText) answerText = `${flagBanner}\n\n${answerText}`;
+      if (flagBanner && served && !refused && !outputRejected && answerText) answerText = `${flagBanner}\n\n${answerText}`;
 
       // #4068 — owner decision 2026-09-27 ("allow with a warning"): an answer
       // grounded on related-manual pages (the same-family fallback) may relay
       // that manual's steps, but ALWAYS under a fixed, server-written warning —
       // never left to the model's phrasing. Stacked below any hazard banner.
-      if (relatedManualWarning && served && !refused && answerText) {
+      if (relatedManualWarning && served && !refused && !outputRejected && answerText) {
         answerText = flagBanner && answerText.startsWith(flagBanner)
           ? `${flagBanner}\n\n${relatedManualWarning}${answerText.slice(flagBanner.length)}`
           : `${relatedManualWarning}\n\n${answerText}`;
@@ -4847,6 +4894,29 @@ async function handleChatTurn(
               : refused
                 ? "refused"
                 : "answered";
+        const safetyOutcome: SafetyOutcome | null = !served
+          ? null
+          : semanticDecided && outputRejected
+            ? {
+                layer: "semantic_judge",
+                outcome: outputRejected.violation === "unsafe-answer:semantic-unverified" ? "fallback" : "block",
+                flagged: flaggedTurn,
+                violation: outputRejected.violation,
+                semantic_verdict: semanticVerdictCode,
+              }
+            : outputRejected
+              ? {
+                  layer: "deterministic_floor",
+                  outcome: outputRejected.kind === "unsafe_answer" ? "block" : "fallback",
+                  flagged: flaggedTurn,
+                  violation: outputRejected.violation,
+                  semantic_verdict: semanticVerdictCode,
+                }
+              : floorWarning !== null
+                ? { layer: "deterministic_floor", outcome: "warn", flagged: true, violation: floorWarning, semantic_verdict: semanticVerdictCode }
+                : preLlmTriggered
+                  ? { layer: "pre_llm_trigger", outcome: "warn", flagged: true, violation: null, semantic_verdict: semanticVerdictCode }
+                  : { layer: "none", outcome: "allow", flagged: false, violation: null, semantic_verdict: semanticVerdictCode };
         rec.stage("answer_gate", {
           invoked: true,
           decision: gateDecision,
@@ -4854,7 +4924,8 @@ async function handleChatTurn(
           answer_chars: served ? answerText.length : 0,
           refusal_phrase_matched: refusalPhraseMatched,
           evidence_phrase_matched: evidencePhraseMatched,
-          safety_classification: electricalHazardDirective ? "hazard_directive" : "none",
+          safety_classification:
+            outputRejected?.kind === "unsafe_answer" ? "safety_stop" : electricalHazardDirective ? "hazard_directive" : "none",
           evidence_sufficient: evidenceSufficient,
           ungrounded_unit_claim: ungroundedClaim,
           jev_sufficient: jev.noul,
@@ -4868,6 +4939,7 @@ async function handleChatTurn(
           citation_quote_fallbacks: quoted.quoteFallbackCount,
           evidence_followed: evidenceFollowed,
           gate_match: gateMatch,
+          safety_outcome: safetyOutcome,
         });
         // SHADOW. Assemble the judgeable view of this turn while the text still
         // exists. The packet deliberately stores no question and no answer, so

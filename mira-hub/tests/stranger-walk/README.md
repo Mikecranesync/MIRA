@@ -109,6 +109,21 @@ gh release download frozen-2026-10-15 -R Mikecranesync/mira-stranger-walk-manual
   -D "$STRANGER_WALK_CACHE" --pattern '*.pdf' --clobber
 ```
 
+## Build under test (`required-fixes.json`, owner decision 2026-10-31)
+
+A paid walk refuses to start unless every PR in `required-fixes.json` is merged **and** its merge
+commit is in the build staging reports on `/api/health` (`gitSha`). The check runs before pricing,
+the manuals or signUp, so a refusal costs $0. It fails closed: no GitHub token (`GH_TOKEN` /
+`GITHUB_TOKEN` / `GITHUB_PAT` / `gh auth token`), an API error or a diverged history all refuse.
+
+- `STRANGER_WALK_REQUIRE_PRS=4900,4901` adds PRs for one run.
+- `STRANGER_WALK_BASELINE=<reason>` deliberately measures a build without them (a "before" number);
+  the scorecard's first note names the reason and every missing fix.
+- `STRANGER_WALK_DRY=1` reports the gate but never refuses on it ($0 either way).
+
+When a fix under test lands, the order is: merge → deploy staging → walk. Edit the list when the set
+of fixes a run is meant to measure changes.
+
 ## Spend (zero-token rule)
 
 Hard budget **$4.50 per run** (`staging.ts BudgetMeter`). Every turn **books its worst case at
