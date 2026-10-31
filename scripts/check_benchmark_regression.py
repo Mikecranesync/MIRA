@@ -124,6 +124,23 @@ def main() -> int:
         )
         return 2
 
+    # The baseline is a judge's score, not MIRA's alone: a run graded by a
+    # different judge model is not comparable with the pin. #4349 put
+    # openai/gpt-5.4-mini in front of the cascade the pin was graded under
+    # (groq/openai/gpt-oss-120b), and runs 10-14/10-21/10-28 then filed
+    # "regressions" against a pin the new judge never scored. Only compared
+    # when both sides record a judge, so older raw/baseline files still work.
+    run_judges = sorted({str(j) for j in raw.get("meta", {}).get("judge_models") or [] if j})
+    base_judge = str(base.get("judge_model") or "")
+    if run_judges and base_judge and run_judges != [base_judge]:
+        print(
+            f"::error::INCONCLUSIVE — judge mismatch: run graded by {run_judges} but the "
+            f"baseline was pinned under '{base_judge}'; re-pin the baseline under the "
+            "current judge (reviewed) before this run can count as pass or regression",
+            file=sys.stderr,
+        )
+        return 2
+
     mira, baseline, per_q, n_questions, n_graded = _totals(raw)
     if n_questions and n_graded < MIN_GRADED_SHARE * n_questions:
         print(
