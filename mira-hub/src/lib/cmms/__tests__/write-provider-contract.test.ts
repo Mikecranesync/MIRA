@@ -288,6 +288,30 @@ describe("AtlasWriteProvider — Atlas-specific behavior", () => {
     }
   });
 
+  // #5027 (Codex #5024 round 6, F13): the marker lookup BEFORE create failing
+  // on the network proves nothing was written — CREATE was never called — so
+  // it must stay retryable, never outcome_unknown (which is read-back only
+  // forever and would quarantine a fix that was never sent).
+  it("a network error on the pre-create marker lookup is retryable_failure and never calls create", async () => {
+    const api = new FakeAtlasCommentApi("v16");
+    const provider = new AtlasWriteProvider(api);
+    const note = makeNote("5027aaaa-5027-4027-8027-502750275027");
+    await provider.capabilities(target);
+    api.failNext("searchComments", { kind: "throwNetwork" });
+
+    const result = await provider.appendWorkLog(target, note);
+
+    expect(result.kind).toBe("retryable_failure");
+    if (result.kind === "retryable_failure") {
+      expect(result.reason).toBe("precreate_lookup_network_error");
+    }
+    expect(api.calls.some((c) => c.op === "createComment")).toBe(false);
+
+    const retry = await provider.appendWorkLog(target, note);
+    expect(retry.kind).toBe("verified_by_readback");
+    expect(api.calls.filter((c) => c.op === "createComment")).toHaveLength(1);
+  });
+
   it.each([
     [429, "retryable_failure"],
     [401, "permission_denied"],

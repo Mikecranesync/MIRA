@@ -1320,4 +1320,51 @@ describe.skipIf(!URL_)("cmms-dispatch (real Postgres)", () => {
     expect(await outboxCounts(notebookId)).toEqual({ events: 0, deliveries: 0 });
   });
 
+  // ── #5027 (Codex #5024 round 6, F13) ─────────────────────────────────────
+
+  it("F13 (#5027): a network error on the pre-create marker lookup is retried as a WRITE — one create on the next tick, then verified", async () => {
+    let searches = 0;
+    let creates = 0;
+    let nextId = 1;
+    const stored: AtlasComment[] = [];
+    const api: AtlasCommentApi = {
+      async countComments() {
+        return { count: stored.length };
+      },
+      async createComment(payload) {
+        creates++;
+        const c = { id: nextId++, content: payload.content, system: false };
+        stored.push(c);
+        return c;
+      },
+      async searchComments() {
+        searches++;
+        if (searches === 1) throw new TypeError("fetch failed"); // before any create
+        return [...stored];
+      },
+    };
+    const provider = new AtlasWriteProvider(api);
+    const tenantId = uuid();
+    const notebookId = await makeNotebook(tenantId);
+    await setCmmsConfig(tenantId, { provider: "atlas", writePolicy: workOrderPolicy("45") });
+    const deliveryId = requireDeliveryId((await enqueueOne(tenantId, notebookId)).result.delivery);
+    const deps = { providerFor: () => provider, tenantAllowlist: new Set([tenantId]) };
+
+    const s1 = await runDispatchTick(deps);
+    expect(s1.retryable).toBe(1);
+    expect(creates).toBe(0);
+    let row = await deliveryRow(deliveryId);
+    expect(row.state).toBe("retryable_failure");
+    expect(row.last_error).toBe("precreate_lookup_network_error");
+
+    await makeDue(deliveryId);
+    const s2 = await runDispatchTick(deps);
+    expect(s2.verified).toBe(1);
+    expect(creates).toBe(1);
+    expect(stored).toHaveLength(1);
+    row = await deliveryRow(deliveryId);
+    expect(row.state).toBe("verified_by_readback");
+    expect(row.external_ref).toBe("1");
+  });
+
 });
