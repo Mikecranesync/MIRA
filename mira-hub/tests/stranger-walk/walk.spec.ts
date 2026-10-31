@@ -17,6 +17,7 @@ import { test, type Page, type Response } from "@playwright/test";
 import { extractTurn, UI } from "../fidelity/surfaces";
 import corpusJson from "./corpus.json";
 import { cardsOf, firstChipOf, viewerTargetOf } from "./extract";
+import { safetyContentReport } from "./safety-content";
 import { fixtureFor, markdownScorecard, scoreAll, scorecard, type Corpus, type Observation, type Question } from "./score";
 import {
   assertOpenRouterCeiling, BUDGET, BudgetMeter, checkFingerprint, identity, JEV_CALLS_PER_TURN, JEV_CEILING_PER_MTOK_IN, JEV_INPUT_BOUND, ledgerVerdictFor,
@@ -259,7 +260,10 @@ test("stranger walk", async ({ page }) => {
     const aborted = notes.find((n) => n.startsWith("run aborted: "));
     const rows = scoreAll(asked, obs).map((r) => (aborted && !obs.some((o) => o.id === r.id) ? { ...r, reason: aborted } : r));
     const card = scorecard(rows, superseded);
-    const meta = { gitSha: start.gitSha, builtAt: start.builtAt, deploymentGeneration: start.deploymentGeneration, runId: RUN_ID };
+    // Watched safety content (safety-content.ts): reported beside the red lines, never in the headline.
+    const safetyContent = safetyContentReport(obs);
+    notes.push(`safety content (separate from the headline and the notice red lines): ${safetyContent.map((s) => `${s.id} ${s.missing === null ? "not observed" : s.missing.length ? `omits ${s.missing.join(", ")}` : "carries the manual's instructions"}`).join("; ")}`);
+    const meta ={ gitSha: start.gitSha, builtAt: start.builtAt, deploymentGeneration: start.deploymentGeneration, runId: RUN_ID };
     for (const r of rows.filter((x) => x.classification !== "CORRECT" || x.safetyRedLine)) {
       const q = corpus.questions.find((x) => x.id === r.id)!;
       const o = obs.find((x) => x.id === r.id) ?? brokenObs(r.id, r.reason);
@@ -267,7 +271,7 @@ test("stranger walk", async ({ page }) => {
     }
     writeFileSync(path.join(OUT, "observations.json"), JSON.stringify(obs, null, 2));
     const reconciled = { answerUsd: meter.reconciledAnswerUsd, unknownAnswerCostTurns: meter.unknownAnswerCostTurns, jevInputTokens: meter.jevInputTokens, zeroCallTurns: meter.zeroCallTurns, stoppedAt: meter.unbounded, stopReason: meter.unboundedReason };
-    writeFileSync(path.join(OUT, "scored.json"), JSON.stringify({ meta, turns: meter.turns, bookedUsd: meter.booked, reconciled, notes, card, rows }, null, 2));
+    writeFileSync(path.join(OUT, "scored.json"), JSON.stringify({ meta, turns: meter.turns, bookedUsd: meter.booked, reconciled, notes, card, safetyContent, rows }, null, 2));
     writeFileSync(path.join(OUT, "scorecard.md"), `${markdownScorecard(rows, card, meta)}\n\n${notes.map((n) => `- ${n}`).join("\n")}\n`);
     console.log(`stranger walk ${card.headline} · ${JSON.stringify(card.counts)} · red lines ${card.safetyRedLines.length} · unobserved ${card.safetyUnobserved.length} · ${OUT}`);
     if (!td.ok) throw new Error(`tenant teardown failed: ${td.detail}`);

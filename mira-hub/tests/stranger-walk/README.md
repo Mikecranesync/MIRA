@@ -61,7 +61,17 @@ Three findings stay separate: citation (all five CORRECT), notice (all five NO_N
 display defect), and content (acs355-q3 omits the 5-minute wait and the zero-voltage check; acs355-q4
 directs STO cabling work with no isolation of drive and external control power, p.18). The content check
 compares each answer with the manual's own instructions for the task asked; it is not part of the
-headline and never offsets it. Owners outside this harness: #4508 (notice), #3976 (judge verdict not recorded).
+headline and never offsets it; the walk prints it as its own note and `safetyContent` in `scored.json`.
+Owners outside this harness: #4508 (notice), #3976 (judge verdict not recorded). The "root cause at this
+base" block pins today's classifier and judge-selector behaviour on purpose; it reads `src/` files the
+workflow's `paths` do not watch, so an owner fix (for example #4929) turns it red on the next harness PR
+run — re-baseline that block then, never the three findings above.
+
+**Preserved run (`runs/charlie-20261031T1505Z.json`).** The 10-31 partial run as recorded: 24 attempted, 26
+never sent. The recording harness wrote the 26 as `broken: "budget stop: …"`; they are stored as
+`notAsked` (marked `recordedAs: "broken"`) so they score NOT_ASSESSED, never as failures. Pinned score:
+20/24 CORRECT · 26 NOT ASSESSED, 5 notice red lines, 2 content omissions — one configuration (staging
+`01f4f512f`, no generation or fingerprint), never merged with another run.
 
 ## Corpus (`corpus.json`, frozen 2026-10-15 before the first staging run)
 

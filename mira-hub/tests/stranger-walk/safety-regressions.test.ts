@@ -21,7 +21,9 @@ import { selectForSemanticCheck } from "@/capabilities/answer-safety-check";
 import { isEnergizedWorkAsk, notebookSafetyTrigger } from "@/lib/safety-classifier";
 import corpusJson from "./corpus.json";
 import fx from "./fixtures-safety.json";
-import { classify, type Corpus, type Observation } from "./score";
+import partial from "./runs/charlie-20261031T1505Z.json";
+import { missingSafetyElements, safetyContentReport } from "./safety-content";
+import { classify, scoreAll, scorecard, type Corpus, type Observation } from "./score";
 
 const corpus = corpusJson as Corpus;
 type Element = { name: string; page: number; manualQuote: string; answerPattern: string };
@@ -33,8 +35,7 @@ const pages = fx.pages as Record<string, string>;
 const question = (id: string) => corpus.questions.find((q) => q.id === id)!;
 const manualOf = (id: string) => corpus.manuals.find((m) => m.id === question(id).manual)!;
 const answer = (o: Observation) => o.rendered?.answer ?? "";
-const missing = (f: Failure, text = answer(f.observation)) =>
-  f.elements.filter((e) => !new RegExp(e.answerPattern, "i").test(text)).map((e) => e.name);
+const missing = (f: Failure, text = answer(f.observation)) => missingSafetyElements(f.elements, text);
 
 // Windows-1252 code points for bytes 0x80-0x9F; any other char < 0x100 is its own byte.
 const CP1252 = "€\u0081‚ƒ„…†‡ˆ‰Š‹Œ\u008DŽ\u008F\u0090‘’“”•–—˜™š›œ\u009DžŸ";
@@ -154,5 +155,38 @@ describe("root cause at this base: no deterministic notice for these questions",
       expect(notebookSafetyTrigger(question(id).question), id).toBeNull();
       expect(selectForSemanticCheck(answer(controls.find((c) => c.id === id)!.observation), question(id).question), id).toBe("electrical");
     }
+  });
+});
+
+describe("the partial run is preserved as 24 attempted, 26 unrun", () => {
+  const obs = partial.observations as unknown as Observation[];
+  const rows = scoreAll(corpus, obs);
+  const card = scorecard(rows);
+
+  it("pins the staging identity the 24 ran on", () => {
+    expect(partial.staging).toEqual({ gitSha: "01f4f512fbdb8e9489c571f95805bb6a12c775aa", builtAt: "2026-10-31T04:38:19Z", deploymentGeneration: null, inferenceFingerprint: null });
+    expect(obs).toHaveLength(50);
+  });
+
+  it("scores 20/24 on citation with 26 NOT ASSESSED and no BROKEN", () => {
+    expect(card.headline).toBe("20/24 CORRECT (right page cited) · 26 NOT ASSESSED");
+    expect(card.counts).toMatchObject({ CORRECT: 20, WRONG_PAGE: 3, SAFETY_STOP: 1, BROKEN: 0, NOT_ASSESSED: 26 });
+    expect(card.complete).toBe(false);
+  });
+
+  it("the 26 were never sent: no stream, no turn, recorded as a budget stop", () => {
+    const unrun = obs.filter((o) => o.notAsked);
+    expect(unrun).toHaveLength(26);
+    for (const o of unrun) expect([o.sse, o.rendered, o.notAsked!.startsWith("budget stop:")], o.id).toEqual([null, null, true]);
+  });
+
+  it("reports the five safety red lines separately, none on an unrun question", () => {
+    expect(card.safetyRedLines).toEqual(Object.keys(LIVE).map((id) => `${id} NO_NOTICE`));
+    expect(card.safetyUnobserved).toEqual([]);
+  });
+
+  it("the walk's separate content report flags exactly the two unsafe omissions", () => {
+    expect(safetyContentReport(obs)).toEqual(Object.entries(LIVE).map(([id, v]) => ({ id, missing: v.missing })));
+    expect(safetyContentReport([]).every((r) => r.missing === null)).toBe(true);
   });
 });
