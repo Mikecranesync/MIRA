@@ -113,6 +113,14 @@ const ISO_VOID_PRE =
 const ISO_VOID_POST =
   /^\s+(?:is|are)\s+not\s+(?:possible|required|needed|present)\b/i;
 
+/** Codex #4867 F2: a software, record or parameter target is not physical
+ *  maintenance — "Install the firmware update", "Change the fan speed
+ *  parameter" (the physical noun is inside the parameter name), "Remove the
+ *  fault from the alarm history". Physical twins ("Install the control card",
+ *  "Change the fan") carry none of these words. */
+const SOFTWARE_TARGET_RE =
+  /\b(?:firmware|software|update|patch|app|application|driver|programs?|parameters?|settings?|setpoints?|menu|history|logs?|records?|entry|entries|password|license|configuration|config|profile|account)\b/i;
+
 /** Dual-use object window ends at the next coordinator or purpose "to". */
 const OBJECT_WINDOW_CUT = /\s+(?:then|so|and(?:\s+then)?)\b|,\s+(?:then|and|or)\b|[;.]|\bto\b/i;
 
@@ -132,9 +140,23 @@ function isolatedIsAdjective(text: string, index: number, matched: string): bool
   return /^\s+(?!and\b|then\b|or\b|but\b|with\b|while\b|so\b|is\b|are\b)/i.test(after);
 }
 
+/** Codex #4867 F1: shutting down a computer / HMI / app isolates nothing. */
+const SOFTWARE_SHUTDOWN_POST =
+  /^\s+(?:the\s+|your\s+)?(?:hmi|pc|computer|laptop|tablet|app|application|software|program|browser|engineering software|screen|monitor)\b/i;
+/** Codex #4867 F1: naming the lockout procedure is not taking the lockout —
+ *  "The lockout procedure is in the manual" opens no isolation scope, while
+ *  "Follow the lockout procedure" does. */
+const LOCKOUT_DOC_POST =
+  /^(?:\/tagout)?\s+(?:procedure|instructions?|section|page|chapter|steps?|requirements?|policy|diagram|sheet)\b/i;
+const LOCKOUT_DOC_ACT_PRE = /\b(?:follow(?:ing)?|perform(?:ing)?|apply(?:ing)?|complet(?:e|ing)|carry(?:ing)? out|do|use|using|start)\b[^.;:]*$/i;
+
 function isolationIsVoid(text: string, index: number, matched = ""): boolean {
-  if (ISO_VOID_PRE.test(text.slice(Math.max(0, index - 48), index))) return true;
-  return ISO_VOID_POST.test(text.slice(index + matched.length));
+  const before = text.slice(Math.max(0, index - 48), index);
+  const after = text.slice(index + matched.length);
+  if (ISO_VOID_PRE.test(before)) return true;
+  if (/^(?:shut|power)/i.test(matched) && SOFTWARE_SHUTDOWN_POST.test(after)) return true;
+  if (/lock|loto/i.test(matched) && LOCKOUT_DOC_POST.test(after) && !LOCKOUT_DOC_ACT_PRE.test(before)) return true;
+  return ISO_VOID_POST.test(after);
 }
 
 function firstMatchIndex(
@@ -211,6 +233,7 @@ function instructionIsHandsOn(match: string, after: string): boolean {
   if (/^open/i.test(verb) && DISPLAY_SURFACE_RE.test(window) && !WORK_OBJECT_RE.test(window)) {
     return false;
   }
+  if (SOFTWARE_TARGET_RE.test(window)) return false;
   return WORK_OBJECT_RE.test(clause) || Boolean(verb && !DUAL_USE_VERB_RE.test(verb));
 }
 

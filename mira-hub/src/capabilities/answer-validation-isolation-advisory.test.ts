@@ -225,3 +225,25 @@ describe("#4858 the banner is uncited site practice", () => {
     expect(notice).not.toMatch(INVENTED_MINUTES);
   });
 });
+
+describe("Codex #4867 r1 — isolation scope and software targets", () => {
+  const flagged = (t: string) => expect(judge(t)).toMatchObject({ ok: false, violation: "hazard-warning:isolation-advisory" });
+  const silent = (t: string) => expect(judge(t)).toEqual({ ok: true });
+  it("F1: a software shutdown or a named lockout procedure does not isolate the fuse", () => {
+    flagged("Shut down the HMI. Replace the input fuse.");
+    flagged("The lockout procedure is in the manual. Replace the input fuse.");
+  });
+  it("F1 controls: a real lockout still scopes the work", () => {
+    silent("Lock out the drive. Then replace the input fuse.");
+    silent("Follow the lockout procedure. Then replace the input fuse.");
+  });
+  it("F2: software, parameter and record targets get no disconnect-power notice", () => {
+    silent("Install the firmware update.");
+    silent("Change the fan speed parameter.");
+    silent("Remove the fault from the alarm history.");
+  });
+  it("F2 controls: the physical twins stay flagged", () => {
+    flagged("Install the control card.");
+    flagged("Change the fan.");
+  });
+});
