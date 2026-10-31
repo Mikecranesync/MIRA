@@ -32,21 +32,71 @@ export function stagingBase(): string {
  *  - safety judge: every provider may attempt it — same input bound, ≤ 200 out
  *    (`max_completion_tokens 200`, src/capabilities/answer-safety-check.ts).
  * Input bound: static system prompt + ≤ 6 chunks of ≤ 1200 chars (`manual-rag.ts`) + no history
- * (every question is a fresh chat) — ~3k tokens observed; 16k declared.
- * Prices ($/Mtok): gpt-5.4-mini from tools/review_router/prices.json; the rest from
- * `PRICE_PER_MTOK` in src/lib/inference/canonical-cascade.ts (Cerebras included though archived).
+ * (every question is a fresh chat) — ~3.2k tokens observed over 50 turns; 8k declared (2.5×), and
+ * a turn that shows more stops every later paid turn.
+ * Prices ($/Mtok): gpt-5.4-mini from tools/review_router/prices.json; Groq / Cerebras / Together are
+ * the list price of the ONE fixed model each cascade entry names (`PRICE_PER_MTOK` in
+ * src/lib/inference/canonical-cascade.ts; Cerebras included though archived). OpenRouter is NOT
+ * booked at that table's 0.20/0.52 — the cascade itself says that number is an estimate (it picks
+ * among hosts per request). It is booked at `OPENROUTER_CEILING`, and `assertOpenRouterCeiling`
+ * checks the live per-host catalog against that ceiling before the first paid request.
  *
- * FAILS CLOSED: a turn whose final usage is unreadable or breaks the declared bound stops every
- * later paid turn — the booking assumed a bound that no longer holds.
+ * FAILS CLOSED: a turn whose final usage is unreadable, breaks the declared bound, or was served
+ * by a provider/model this table does not price stops every later paid turn — the booking assumed
+ * a bound that no longer holds.
  */
+/** The one OpenRouter model the deployed cascade requests (`OPENROUTER_TEXT_MODEL`, canonical-cascade.ts). */
+export const OPENROUTER_PINNED_MODEL = "meta-llama/llama-3.3-70b-instruct";
+/**
+ * $/Mtok booked for OpenRouter: a declared ceiling over every host that can serve the pinned model,
+ * not the cascade's estimate. 2026-10-31 catalog max was 0.72 in / 2.253 out (Cloudflare fp8) across
+ * 10 hosts. Preflight refuses to spend if the live catalog ever lists a host above this.
+ */
+export const OPENROUTER_CEILING = { input: 1.0, output: 2.5 };
 export const PROVIDER_PRICES: Record<string, { input: number; output: number }> = {
   OpenAI: { input: 0.75, output: 4.5 },
-  OpenRouter: { input: 0.2, output: 0.52 },
+  OpenRouter: OPENROUTER_CEILING,
   Groq: { input: 0.15, output: 0.75 },
   Cerebras: { input: 0.1, output: 0.6 },
   Together: { input: 0.88, output: 0.88 },
 };
-export const TURN_BOUND = { inputTokens: 16_000, answerOutputTokens: 1_400, judgeOutputTokens: 200 };
+export const TURN_BOUND = { inputTokens: 8_000, answerOutputTokens: 1_400, judgeOutputTokens: 200 };
+
+/** OpenRouter's public per-host price list for one model (no key needed). The catalog is every host,
+ *  not only the zero-retention ones the Hub routes to, so its maximum bounds whatever the Hub lands on. */
+export const OPENROUTER_ENDPOINTS_URL = `https://openrouter.ai/api/v1/models/${OPENROUTER_PINNED_MODEL}/endpoints`;
+
+/** Highest input / output $/Mtok across the catalog's hosts. Throws on anything unreadable: wrong
+ *  model, no hosts, or a non-finite / negative price — never a silent 0. */
+export function openRouterCatalogMax(catalog: unknown): { input: number; output: number; hosts: number } {
+  const data = (catalog as { data?: { id?: unknown; endpoints?: unknown } } | null)?.data;
+  if (!data || data.id !== OPENROUTER_PINNED_MODEL) throw new Error(`OpenRouter catalog is not for ${OPENROUTER_PINNED_MODEL} — refusing to spend`);
+  if (!Array.isArray(data.endpoints) || data.endpoints.length === 0) throw new Error("OpenRouter catalog lists no hosts — refusing to spend");
+  let input = 0, output = 0;
+  for (const e of data.endpoints as Array<{ pricing?: { prompt?: unknown; completion?: unknown } }>) {
+    const i = Number(e?.pricing?.prompt) * 1e6, o = Number(e?.pricing?.completion) * 1e6;
+    if (!Number.isFinite(i) || !Number.isFinite(o) || i < 0 || o < 0) throw new Error("OpenRouter catalog has an unreadable host price — refusing to spend");
+    input = Math.max(input, i); output = Math.max(output, o);
+  }
+  return { input, output, hosts: data.endpoints.length };
+}
+
+/** Preflight: every host that can serve the pinned model must be priced at or below the booked
+ *  ceiling, or the walk refuses to start. Any fetch/parse failure also refuses (fail closed). */
+export async function assertOpenRouterCeiling(fetchImpl: typeof fetch = fetch): Promise<{ input: number; output: number; hosts: number }> {
+  let max: { input: number; output: number; hosts: number };
+  try {
+    const res = await fetchImpl(OPENROUTER_ENDPOINTS_URL, { headers: { accept: "application/json" } });
+    if (res.status !== 200) throw new Error(`HTTP ${res.status}`);
+    max = openRouterCatalogMax(await res.json());
+  } catch (e) {
+    throw new Error(`OpenRouter price catalog unreadable (${(e as Error).message}) — refusing to spend`);
+  }
+  if (max.input > OPENROUTER_CEILING.input || max.output > OPENROUTER_CEILING.output) {
+    throw new Error(`OpenRouter host priced $${max.input}/$${max.output} per Mtok, above the booked ceiling $${OPENROUTER_CEILING.input}/$${OPENROUTER_CEILING.output} — refusing to spend`);
+  }
+  return max;
+}
 
 /** Model env vars the deployed cascades honour: the answer cascade (canonical-cascade.ts) and the
  *  safety-judge cascade (src/lib/llm/cascade.ts). The table above prices only the defaults, so ANY
@@ -114,7 +164,7 @@ const count = (v: unknown): number | null => (typeof v === "number" && Number.is
 /** Did the turn's visible usage stay inside the bound the booking assumed? `readable: false` = no
  *  response, no usage frame, or null / negative / non-finite counts. */
 export function turnUsage(sse: string | null): { readable: boolean; inBound: boolean; inputTokens: number; outputTokens: number } {
-  let frames = 0, input = 0, output = 0;
+  let frames = 0, input = 0, output = 0, priced = true;
   for (const line of (sse ?? "").split("\n")) {
     if (!line.startsWith("data: ")) continue;
     let f: Record<string, unknown>;
@@ -123,9 +173,16 @@ export function turnUsage(sse: string | null): { readable: boolean; inBound: boo
     const i = count(f.inputTokens), c = count(f.cachedInputTokens ?? 0), o = count(f.outputTokens);
     if (i === null || c === null || o === null) return { readable: false, inBound: false, inputTokens: 0, outputTokens: 0 };
     input = Math.max(input, i); output = Math.max(output, o); frames++;
+    // The booking priced the five cascade providers, and OpenRouter only on its pinned model. A
+    // turn served by anything else was billed at a rate the booking never covered (fail closed).
+    // provider null = no provider served (error / empty turn): nothing was billed for the answer.
+    if (typeof f.provider === "string") {
+      if (!(f.provider in PROVIDER_PRICES)) priced = false;
+      if (f.provider === "OpenRouter" && f.model !== OPENROUTER_PINNED_MODEL) priced = false;
+    }
   }
   if (!frames) return { readable: false, inBound: false, inputTokens: 0, outputTokens: 0 };
-  return { readable: true, inBound: input <= TURN_BOUND.inputTokens && output <= TURN_BOUND.answerOutputTokens, inputTokens: input, outputTokens: output };
+  return { readable: true, inBound: priced && input <= TURN_BOUND.inputTokens && output <= TURN_BOUND.answerOutputTokens, inputTokens: input, outputTokens: output };
 }
 
 export class BudgetMeter {

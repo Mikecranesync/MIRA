@@ -18,7 +18,7 @@ import { extractTurn, UI } from "../fidelity/surfaces";
 import corpusJson from "./corpus.json";
 import { cardsOf, firstChipOf, viewerTargetOf } from "./extract";
 import { fixtureFor, markdownScorecard, scoreAll, scorecard, type Corpus, type Observation, type Question } from "./score";
-import { BUDGET, BudgetMeter, identity, manualBytes, pricesFromEnv, stagingBase, teardownTenant, tenantIdForEmail, TURN_BOUND, worstCaseTurnUsd } from "./staging";
+import { assertOpenRouterCeiling, BUDGET, BudgetMeter, identity, manualBytes, pricesFromEnv, stagingBase, teardownTenant, tenantIdForEmail, TURN_BOUND, worstCaseTurnUsd } from "./staging";
 
 const corpus = corpusJson as Corpus;
 const RUN_ID = process.env.STRANGER_WALK_RUN_ID ?? new Date().toISOString().replace(/[:.]/g, "-");
@@ -163,6 +163,9 @@ test("stranger walk", async ({ page }) => {
   const obs: Observation[] = [];
   // Priced from the deployed env before anything is sent; throws (no paid request) if unpriceable.
   const meter = new BudgetMeter(BUDGET.usdPerRun, worstCaseTurnUsd(pricesFromEnv()));
+  // OpenRouter picks the host per request, so its booked rate is a ceiling, not the cascade's
+  // estimate: refuse to start if the live catalog lists any host priced above it (Codex F3).
+  if (!DRY) await assertOpenRouterCeiling();
   const notes: string[] = [];
   let tenantId: string | null = null;
   try {

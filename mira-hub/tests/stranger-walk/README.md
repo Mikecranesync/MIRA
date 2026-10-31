@@ -64,13 +64,19 @@ dispatch**, before the request leaves, and nothing is ever released, because som
 reach the client's stream (an attempt the Hub timed out and retried on the next provider, the safety
 judge). A turn is sent only if its booking still fits, so the booked total bounds true spend **as long
 as the deployed Hub bills at the prices the walk reads** (see Known limits). The worst case comes from production constants: the answer
-**and** the judge, each attempted on **every** cascade provider, with ≤ 16,000 input tokens (static
-prompt + ≤ 6 chunks of ≤ 1200 chars + no history; ~3k observed), ≤ 1400 answer / ≤ 200 judge output
-tokens (`requestCap`, judge `max_completion_tokens`), at the repo's declared prices (gpt-5.4-mini
-from `tools/review_router/prices.json`, the rest from `PRICE_PER_MTOK`). That is $0.0782 per turn,
-$3.91 for 50. True spend is a small fraction of it (about $0.2 per run). It **fails closed**: a
-turn whose usage is unreadable, or breaks the declared bound, stops every later paid turn. Unasked
-rows are BROKEN ("budget stop"), never dropped.
+**and** the judge, each attempted on **every** cascade provider, with ≤ 8,000 input tokens (static
+prompt + ≤ 6 chunks of ≤ 1200 chars + no history; ~3.2k observed over 50 turns), ≤ 1400 answer /
+≤ 200 judge output tokens (`requestCap`, judge `max_completion_tokens`), at declared prices:
+gpt-5.4-mini from `tools/review_router/prices.json`; Groq / Cerebras / Together at the list price
+of the one fixed model each entry names (`PRICE_PER_MTOK`); **OpenRouter at a declared ceiling**
+(`OPENROUTER_CEILING`, $1.00 in / $2.50 out per Mtok), not the cascade's 0.20/0.52 estimate,
+because OpenRouter picks the host per request. Before the first paid request the walk reads
+OpenRouter's public per-host price list for the pinned model and **refuses to start if any host is
+priced above that ceiling** (2026-10-31 max: 0.72 / 2.253 across 10 hosts). That is $0.0608 per
+turn, $3.04 for 50. True spend is a small fraction of it (about $0.2 per run). It **fails closed**: a
+turn whose usage is unreadable, breaks the declared bound, or was served by a provider or
+OpenRouter model the booking did not price, stops every later paid turn. Unasked rows are BROKEN
+("budget stop"), never dropped.
 
 Paid inference is validation only. Debug the walk at $0:
 

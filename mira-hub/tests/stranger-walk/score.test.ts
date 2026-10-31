@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import corpusJson from "./corpus.json";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { BUDGET, BudgetMeter, budgetUsdFromEnv, PROVIDER_PRICES, pricesFromEnv, TURN_BOUND, tenantIdForEmail, turnUsage, worstCaseTurnUsd } from "./staging";
+import { assertOpenRouterCeiling, BUDGET, BudgetMeter, budgetUsdFromEnv, OPENROUTER_CEILING, OPENROUTER_PINNED_MODEL, openRouterCatalogMax, PROVIDER_PRICES, pricesFromEnv, TURN_BOUND, tenantIdForEmail, turnUsage, worstCaseTurnUsd } from "./staging";
 import { classify, flakes, markdownScorecard, METRIC, predict, scoreAll, scorecard, type Corpus, type Observation } from "./score";
 
 const corpus = corpusJson as Corpus;
@@ -246,6 +246,53 @@ describe("teardown fallback lookup", () => {
   });
   it("refuses anything but a run-unique walk email", async () => {
     await expect(tenantIdForEmail("mike@factorylm.com")).rejects.toThrow(/non-walk email/);
+  });
+});
+
+describe("OpenRouter is booked at a declared ceiling, not the cascade's estimate (#4461 Codex F3)", () => {
+  const catalog = (hosts: Array<[number, number]>) => JSON.stringify({
+    data: { id: OPENROUTER_PINNED_MODEL, endpoints: hosts.map(([i, o], n) => ({ provider_name: `host${n}`, pricing: { prompt: String(i / 1e6), completion: String(o / 1e6) } })) },
+  });
+  const ok = catalog([[0.1, 0.32], [0.72, 0.72], [0.293, 2.253]]); // the 2026-10-31 live spread
+  const fetchOf = (status: number, body: string) => (async () => new Response(body, { status })) as unknown as typeof fetch;
+  it("the booked OpenRouter rate is the ceiling, above the cascade's 0.20/0.52 estimate and every 2026-10-31 host", () => {
+    expect(PROVIDER_PRICES.OpenRouter).toEqual(OPENROUTER_CEILING);
+    expect(OPENROUTER_CEILING.input).toBeGreaterThan(0.2);
+    expect(OPENROUTER_CEILING.output).toBeGreaterThan(0.52);
+    const live = openRouterCatalogMax(JSON.parse(ok));
+    expect(live).toEqual({ input: 0.72, output: 2.253, hosts: 3 });
+    expect(live.input).toBeLessThanOrEqual(OPENROUTER_CEILING.input);
+    expect(live.output).toBeLessThanOrEqual(OPENROUTER_CEILING.output);
+  });
+  it("preflight refuses to spend when any catalog host is priced above the ceiling (and control: passes at or below it)", async () => {
+    await expect(assertOpenRouterCeiling(fetchOf(200, ok))).resolves.toMatchObject({ hosts: 3 });
+    const pricierIn = catalog([[0.1, 0.32], [OPENROUTER_CEILING.input + 0.01, 0.5]]);
+    const pricierOut = catalog([[0.1, 0.32], [0.2, OPENROUTER_CEILING.output + 0.01]]);
+    await expect(assertOpenRouterCeiling(fetchOf(200, pricierIn))).rejects.toThrow(/above the booked ceiling.*refusing to spend/);
+    await expect(assertOpenRouterCeiling(fetchOf(200, pricierOut))).rejects.toThrow(/above the booked ceiling.*refusing to spend/);
+  });
+  it("preflight refuses to spend when the catalog is unreadable: non-200, empty, malformed, non-numeric, or the wrong model", async () => {
+    await expect(assertOpenRouterCeiling(fetchOf(503, ok))).rejects.toThrow(/refusing to spend/);
+    await expect(assertOpenRouterCeiling(fetchOf(200, catalog([])))).rejects.toThrow(/refusing to spend/);
+    await expect(assertOpenRouterCeiling(fetchOf(200, "{not json"))).rejects.toThrow(/refusing to spend/);
+    await expect(assertOpenRouterCeiling(fetchOf(200, JSON.stringify({ data: { id: OPENROUTER_PINNED_MODEL, endpoints: [{ pricing: { prompt: "abc", completion: "1" } }] } })))).rejects.toThrow(/refusing to spend/);
+    await expect(assertOpenRouterCeiling(fetchOf(200, ok.replace(OPENROUTER_PINNED_MODEL, "other/model")))).rejects.toThrow(/refusing to spend/);
+    await expect(assertOpenRouterCeiling((async () => { throw new Error("ECONNRESET"); }) as unknown as typeof fetch)).rejects.toThrow(/refusing to spend/);
+  });
+  it("a turn served by OpenRouter on an unpinned model, or by an unpriced provider, stops every later paid turn", () => {
+    const served = (provider: string | null, model: string | null) => `data: ${JSON.stringify({ kind: "usage", provider, model, inputTokens: 3000, cachedInputTokens: 0, outputTokens: 250 })}\n\ndata: [DONE]\n`;
+    expect(turnUsage(served("OpenRouter", OPENROUTER_PINNED_MODEL)).inBound).toBe(true); // control
+    expect(turnUsage(served("OpenAI", "gpt-5.4-mini")).inBound).toBe(true); // control
+    expect(turnUsage(served(null, null)).inBound).toBe(true); // control: no provider served (error/empty turn)
+    for (const sse of [served("OpenRouter", "anthropic/claude-sonnet-4"), served("OpenRouter", null), served("Anthropic", "claude")]) {
+      expect(turnUsage(sse).inBound, sse).toBe(false);
+      const meter = new BudgetMeter();
+      meter.book(); meter.verify("bad", sse);
+      expect([meter.canAfford(), meter.unbounded]).toEqual([false, "bad"]);
+    }
+  });
+  it("control: 50 questions still fit the $4.50 budget with the ceiling booked", () => {
+    expect(worstCaseTurnUsd() * 50).toBeLessThanOrEqual(4.5);
   });
 });
 
