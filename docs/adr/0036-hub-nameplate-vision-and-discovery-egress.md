@@ -5,8 +5,16 @@
   the Manual-First PRD v1.7.1 (recorded at
   https://github.com/Mikecranesync/MIRA/issues/4160#issuecomment-5922449058). Automatic,
   identity-only search, within the limits in § "Accepted Serper scope" below.
-- **Nameplate vision (Together / optional Groq): still PROPOSED — NOT accepted.** Options
-  (A)/(B) remain the owner's decision; nothing here authorizes runtime vision egress.
+- **Hub vision (nameplate + LOOK photos): ACCEPTED 2026-10-24.** Owner decision (Mike):
+  **OpenAI `gpt-5.4-mini` is the primary vision provider, and OpenRouter must be the fallback**.
+  OpenRouter runs with the same zero-retention (ZDR) / no-data-collection routing and Claude-model
+  refusal as the text cascade (`mira-hub/src/lib/inference/canonical-cascade.ts`). Recorded in
+  `docs/proposals/photo-intake-librarian.md` §0 (PR #4708).
+  - **Open gap at acceptance:** the vision code still falls back OpenAI → Together → Groq. Wiring
+    OpenRouter into the vision path is tracked as PR P1.0 in that proposal.
+  - Together and Groq remain only as later tiers until that ships.
+  - Any other vision provider needs a new owner decision.
+  - The original 2026-08-16 text below is kept as history.
 **Date:** 2026-08-16
 **Raised by:** Codex review of PR #3245 (rounds 1–2): "the Hub calls Together directly,
 bypassing the governed inference router/sanitizer; Serper lacks a documented production
