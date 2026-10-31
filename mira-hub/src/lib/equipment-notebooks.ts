@@ -633,6 +633,20 @@ export async function unbindNotebookAsset(
   });
 }
 
+/** #4083: uploads whose filename matches `filename` (case- and whitespace-
+ *  insensitive), other than `docId`. Raw pool, like the ownership check: hub_uploads
+ *  has no app grant, so it cannot be joined from a tenant-scoped client. */
+async function priorSameNamedUploadIds(tenantId: string, docId: string, filename: string): Promise<string[]> {
+  const name = filename.trim();
+  if (!name) return [];
+  const res = await pool.query(
+    `SELECT id::text AS id FROM hub_uploads
+      WHERE tenant_id = $1 AND lower(btrim(filename)) = lower(btrim($2)) AND id <> $3::uuid`,
+    [tenantId, name, docId],
+  );
+  return res.rows.map((r: Record<string, unknown>) => String(r.id));
+}
+
 export async function attachSource(
   tenantId: string,
   notebookId: string,
@@ -656,10 +670,18 @@ export async function attachSource(
 ): Promise<{ ok: boolean; error?: string; docId?: string; alreadyAttached?: boolean }> {
   // hub_uploads: raw pool + explicit tenant predicate (TEXT column vs UUID session).
   const doc = await pool.query(
-    `SELECT id FROM hub_uploads WHERE tenant_id = $1 AND id = $2::uuid LIMIT 1`,
+    `SELECT id, filename FROM hub_uploads WHERE tenant_id = $1 AND id = $2::uuid LIMIT 1`,
     [tenantId, docId],
   );
   if (doc.rows.length === 0) return { ok: false, error: "doc_not_found" };
+  // #4083: a human-confirmed manual attach is a REVISION of any same-named
+  // upload already in this notebook. Photo-derived sources keep their own
+  // origin supersede contract and are never matched by filename.
+  const revisionOf =
+    (opts.matchState ?? "user_confirmed") === "user_confirmed" &&
+    !opts.originFileId && !opts.reviewedPhoto && !opts.candidatePhoto
+      ? await priorSameNamedUploadIds(tenantId, docId, String(doc.rows[0].filename ?? ""))
+      : [];
 
   return withTenantContext(tenantId, async (c) => {
     const nb = await c.query(
@@ -737,6 +759,14 @@ export async function attachSource(
       await c.query(`UPDATE equipment_notebook_sources SET superseded_at = now()
         WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND origin_file_id = $3::uuid
           AND doc_id <> $4::uuid AND superseded_at IS NULL`, [tenantId, notebookId, opts.originFileId, docId]);
+    }
+    // Keep history: the prior version's membership row is superseded, not deleted.
+    // Retrieval admits only un-superseded confirmed sources, so the old chunks drop out.
+    if (revisionOf.length) {
+      await c.query(`UPDATE equipment_notebook_sources SET superseded_at = now()
+        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND doc_id <> $3::uuid
+          AND doc_id = ANY($4::uuid[]) AND origin_file_id IS NULL AND superseded_at IS NULL`,
+      [tenantId, notebookId, docId, revisionOf]);
     }
     return opts.reuseVisibleOrigin || opts.reviewedPhoto ? { ok: true, docId, alreadyAttached: false } : { ok: true };
   });
