@@ -231,3 +231,41 @@ def test_failed_refresh_keeps_the_last_good_data():
 def test_first_load_shows_a_loading_notice_not_an_empty_board():
     empty = server.Snapshot(lambda: [])
     assert "Loading the board for the first time" in server.render(empty.get())
+
+
+def test_plan_url_renders_when_set(monkeypatch):
+    monkeypatch.setenv("MC_PLAN_URL", "https://claude.ai/artifact/synthetic-test-id-1")
+    html = server.render(_Snap([]))
+    assert "View GTM plan" in html
+    assert 'href="https://claude.ai/artifact/synthetic-test-id-1"' in html
+
+
+def test_plan_url_hidden_when_unset(monkeypatch):
+    monkeypatch.delenv("MC_PLAN_URL", raising=False)
+    assert "View GTM plan" not in server.render(_Snap([]))
+
+
+@pytest.mark.parametrize(
+    "bad_url",
+    [
+        "javascript:alert(1)",  # not a URL at all
+        "http://claude.ai/artifact/synthetic-test-id-1",  # wrong scheme
+        "https://claude.ai.evil.com/artifact/synthetic-test-id-1",  # non-claude host
+        "https://claude.ai/artifact/../../evil",  # path traversal
+    ],
+)
+def test_plan_url_rejected_for_unsafe_values(monkeypatch, bad_url):
+    monkeypatch.setenv("MC_PLAN_URL", bad_url)
+    assert "View GTM plan" not in server.render(_Snap([]))
+
+
+def test_card_link_guard_still_rejects_claude_ai_refs(monkeypatch):
+    # The plan-link allowance (#4982) must not leak into _link()'s GitHub-only card guard.
+    monkeypatch.setenv("MC_PLAN_URL", "https://claude.ai/artifact/synthetic-test-id-1")
+    bad = board.normalise(node(1))
+    bad["url"] = "https://claude.ai/artifact/synthetic-test-id-2"
+    html = server.render(_Snap([bad]))
+    assert "https://claude.ai/artifact/synthetic-test-id-2" not in html
+    assert (
+        'href="https://claude.ai/artifact/synthetic-test-id-1"' in html
+    )  # control: header link still renders
