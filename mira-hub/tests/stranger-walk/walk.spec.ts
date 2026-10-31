@@ -127,7 +127,8 @@ async function ask(page: Page, q: Question, manualFilename: string, attach: { na
   const res = await chat.catch(() => null);
   // Check the visible usage against the bound the booking assumed, before any UI step that could
   // throw. No response or a non-200 has no readable usage and stops later paid turns (fail closed).
-  const sse = res && res.status() === 200 ? await res.text().catch(() => null) : null;
+  // Decode the bytes as UTF-8: `res.text()` mis-decoded the charset-less event stream (⚠ → "âš ").
+  const sse = res && res.status() === 200 ? await res.body().then((b) => b.toString("utf8"), () => null) : null;
   // The Hub's own ledger row for THIS turn is the authority on what it called: a stop is zero-cost
   // only when the row proves no provider ran; a served turn reconciles cost + Jev usage. Read now —
   // teardown deletes the tenant's rows — and keep a copy on the observation.
