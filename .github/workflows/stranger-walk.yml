@@ -145,6 +145,7 @@ jobs:
         run: |
           [ -n "${DOPPLER_TOKEN:-}" ] || { echo "::error::DOPPLER_TOKEN not set"; exit 1; }
           mkdir -p "$STRANGER_WALK_CACHE"
+          # shellcheck disable=SC2016  # GITHUB_PAT must expand inside doppler's shell, not this one
           doppler run --project factorylm --config stg -- bash -c '
             export GH_TOKEN="$GITHUB_PAT"
             gh release download frozen-2026-10-15 -R Mikecranesync/mira-stranger-walk-manuals \
