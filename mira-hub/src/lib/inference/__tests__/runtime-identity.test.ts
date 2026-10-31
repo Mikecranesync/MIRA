@@ -248,11 +248,50 @@ describe("inferenceFingerprint", () => {
     }
   });
 
-  it("reports an unpriced model as null rate, never 0 and never another model's rate", () => {
-    process.env.OPENAI_API_KEY = "sk-test-not-a-real-key";
-    process.env.OPENAI_MODEL = "gpt-99-unlisted";
-    const { summary } = inferenceFingerprint();
-    expect(summary.providers[0].model).toBe("gpt-99-unlisted");
-    expect(summary.providers[0].pricePerMtok).toBeNull();
+  // Codex round 2 on #5047, F1: the OpenAI budget gate refuses an unlisted
+  // model BEFORE any fetch, so dispatch can never serve it; the fingerprint
+  // must omit it the same way, not advertise it first with a null rate.
+  describe("omits OpenAI entries the budget gate statically refuses (#5047 round 2 F1)", () => {
+    it("an unlisted OPENAI_MODEL drops OpenAI from the notebook cascade; the priced fallback stays", () => {
+      process.env.OPENAI_API_KEY = "sk-test-not-a-real-key";
+      process.env.OPENAI_MODEL = "gpt-99-unlisted";
+      process.env.OPENROUTER_API_KEY = "or-test-not-a-real-key";
+      const { summary } = inferenceFingerprint();
+      expect(summary.providers.map((p) => p.name)).toEqual(["OpenRouter"]);
+    });
+
+    it("a listed OPENAI_MODEL keeps OpenAI first (control)", () => {
+      process.env.OPENAI_API_KEY = "sk-test-not-a-real-key";
+      process.env.OPENAI_MODEL = "gpt-5.4-nano";
+      process.env.OPENROUTER_API_KEY = "or-test-not-a-real-key";
+      const { summary } = inferenceFingerprint();
+      expect(summary.providers.map((p) => p.name)).toEqual(["OpenAI", "OpenRouter"]);
+      expect(summary.providers[0].pricePerMtok).toEqual({ input: 0.2, cached_input: 0.02, output: 1.25 });
+    });
+
+    it("a price override never makes an unlisted model dispatchable (same rule as the cap)", () => {
+      process.env.OPENAI_API_KEY = "sk-test-not-a-real-key";
+      process.env.OPENAI_MODEL = "gpt-99-unlisted";
+      process.env.OPENAI_PRICE_PER_MTOK_IN = "1";
+      process.env.OPENAI_PRICE_PER_MTOK_OUT = "2";
+      expect(inferenceFingerprint().summary.providers).toEqual([]);
+    });
+
+    it("an unlisted OPENAI_CLASSIFIER_MODEL drops OpenAI from the query-rewrite lane too", () => {
+      process.env.OPENAI_API_KEY = "sk-test-not-a-real-key";
+      process.env.OPENROUTER_API_KEY = "or-test-not-a-real-key";
+      process.env.NOTEBOOK_QUERY_REWRITE = "1";
+      process.env.OPENAI_CLASSIFIER_MODEL = "gpt-99-unlisted";
+      const lane = inferenceFingerprint().summary.optionalMetered.queryRewrite;
+      expect(lane.enabled && lane.providers.map((p) => p.name)).toEqual(["OpenRouter"]);
+    });
+
+    it("a non-OpenAI provider with no declared rate is still listed, at a null rate (dispatch does not gate it)", () => {
+      process.env.MIRA_CANONICAL_SEAM = "0";
+      process.env.GEMINI_API_KEY = "gm-test-not-a-real-key";
+      expect(inferenceFingerprint().summary.providers).toEqual([
+        { name: "Gemini", model: "gemini-2.5-flash", pricePerMtok: null },
+      ]);
+    });
   });
 });

@@ -24,6 +24,7 @@
 import { createHash, randomBytes } from "node:crypto";
 
 import { jevDecisionEnabled, jevShadowEnabled } from "../../capabilities/observability/config";
+import { openAiModelDispatchable } from "../../capabilities/openai-run-budget";
 import { QUERY_REWRITE_MAX_TOKENS, queryRewriteEnabled } from "../../capabilities/query-rewrite";
 import { classifierProviders } from "../llm/cascade";
 import { canonicalSeamEnabled, declaredPricePerMtok, maxOutputTokens } from "./canonical-cascade";
@@ -74,15 +75,25 @@ function fingerprintOf(p: { name: string; model: string }): ProviderFingerprint 
   return { name: p.name, model: p.model, pricePerMtok: price };
 }
 
+/**
+ * What dispatch can actually reach: keyless entries are skipped by every
+ * serving loop, and an OpenAI entry whose model the price table does not list
+ * is refused by the budget gate before any fetch (#4968) — the same static
+ * rule, shared, so the fingerprint never advertises a provider that cannot
+ * serve (#5047 round 2 F1). A non-OpenAI provider with no declared rate is
+ * still dispatched and so still listed, at a null rate.
+ */
+function dispatchable(p: { name: string; key?: string; model: string }): boolean {
+  if (!p.key) return false;
+  return p.name !== "OpenAI" || openAiModelDispatchable(p.model);
+}
+
 function queryRewriteLane(): QueryRewriteLane {
   if (!queryRewriteEnabled()) return { enabled: false };
   return {
     enabled: true,
     maxOutputTokens: QUERY_REWRITE_MAX_TOKENS,
-    // `cascadeComplete` skips keyless entries, the same rule as the notebook loop.
-    providers: classifierProviders()
-      .filter((p) => Boolean(p.key))
-      .map(fingerprintOf),
+    providers: classifierProviders().filter(dispatchable).map(fingerprintOf),
   };
 }
 
@@ -90,7 +101,7 @@ export function inferenceFingerprint(): InferenceFingerprint {
   const summary: InferenceFingerprintSummary = {
     canonicalSeam: canonicalSeamEnabled(),
     maxOutputTokens: maxOutputTokens(),
-    providers: effectiveNotebookProviders().map(fingerprintOf),
+    providers: effectiveNotebookProviders().filter(dispatchable).map(fingerprintOf),
     optionalMetered: {
       jevShadow: jevShadowEnabled(),
       jevDecision: jevDecisionEnabled(),

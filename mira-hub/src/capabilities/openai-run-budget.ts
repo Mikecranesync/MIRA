@@ -69,6 +69,22 @@ export type BudgetVerdict =
   | { ok: true }
   | { ok: false; reason: string; spentUsd: number; worstCaseUsd: number; capUsd: number };
 
+/**
+ * The STATIC half of the OpenAI gate: can `model` be dispatched at all? An
+ * unlisted model is refused by `precheck` before any fetch (#4968), whatever
+ * the dynamic budget state says, so a runtime identity (#4507) that reports
+ * what dispatch can serve omits it with this same rule. Empty or null means
+ * the default model, exactly as the budget prices it. Overrides never price
+ * an unlisted model, so they do not enter here.
+ */
+export function openAiModelDispatchable(
+  model: string | null | undefined,
+  lookup: (model: string) => OpenAiPrice | null = openAiPricePerMtok,
+  defaultModel: string = OPENAI_DEFAULT_MODEL,
+): boolean {
+  return lookup((model || defaultModel).trim()) !== null;
+}
+
 export class OpenAiRunBudget {
   private readonly cap: number;
   private readonly window: number;
@@ -169,7 +185,7 @@ export class OpenAiRunBudget {
   /** Hard stop. Call BEFORE the request with the worst-case token shape. */
   precheck(inputTokens: number, outputTokens: number, model?: string | null): BudgetVerdict {
     this.roll();
-    if (!this.priceOf(model)) {
+    if (!openAiModelDispatchable(model, this.priceLookup, this.defaultModel)) {
       // Fail closed (#4968): an unpriced model would otherwise be counted at $0 or
       // at another model's rate. Refused here, BEFORE the fetch, never at settle.
       return {
