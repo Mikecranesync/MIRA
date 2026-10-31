@@ -280,3 +280,26 @@ describe("Codex #4867 r2 + owner decision #5055", () => {
     silent("Lock out the drive. Replace the fan. Restore power. Lock out the drive again. Replace the fuse.");
   });
 });
+
+describe("Codex #4867 r3", () => {
+  const flagged = (t: string) => expect(judge(t)).toMatchObject({ ok: false, violation: "hazard-warning:isolation-advisory" });
+  const silent = (t: string) => expect(judge(t)).toEqual({ ok: true });
+  it("F1: a lockout switch / signal isolation is not energy isolation", () => {
+    flagged("The lockout switch is defective. Replace the fuse.");
+    flagged("Isolate the signal. Replace the fuse.");
+    silent("Apply your lockout device to the disconnect. Then replace the fuse.");
+  });
+  it("F3: manner adverbs do not break the live-measurement decision (owner #5055)", () => {
+    silent("Measure voltage directly across the input terminals.");
+    silent("Measure the line voltage carefully at the input terminals.");
+  });
+  it("F4: work after a restore inside one sentence needs renewed isolation", () => {
+    flagged("Lock out the drive. Replace the fan, restore power, then replace the fuse.");
+    silent("Lock out the drive. Replace the fan, restore power, then check the display.");
+  });
+  it("F5: citation markers do not change the decision", () => {
+    silent("Install the firmware update [1].");
+    silent("Change the fan speed parameter [1].");
+    flagged("Install the control card [1].");
+  });
+});

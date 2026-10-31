@@ -123,9 +123,13 @@ const SOFTWARE_HEAD_RE =
 /** Codex #4867 r2 F2: the exemption reads the object's HEAD noun only — the last word before a
  *  preposition — so "Replace the firmware module", "Disconnect the motor driver wires" and
  *  "Replace the fan with a model matching the drive configuration" stay physical work. */
+/** Codex #4867 r3 F3: manner adverbs never name the object ("Measure voltage directly across …"). */
+const MANNER_ADVERB_RE = /^(?:directly|carefully|safely|exactly|actually|quickly|slowly|again|first|now|then|also|only|still|here|there|immediately|properly|correctly)$/i;
 function headNoun(window: string): string {
-  const phrase = window.split(/\s+(?:with|from|in|into|on|at|for|matching|via|using|under|by|of|across|between)\b/i)[0] ?? "";
-  const words = phrase.replace(/[^\w\s-]/g, " ").trim().split(/\s+/).filter(Boolean);
+  // Codex #4867 r3 F5: a citation marker ("[1]", "[1, 2]") is not part of the object.
+  const clean = window.replace(/\[\s*\d+(?:\s*[,–-]\s*\d+)*\s*\]/g, " ");
+  const phrase = clean.split(/\s+(?:with|from|in|into|on|at|for|matching|via|using|under|by|of|across|between)\b/i)[0] ?? "";
+  const words = phrase.replace(/[^\w\s-]/g, " ").trim().split(/\s+/).filter((w) => w && !/^\d+$/.test(w) && !MANNER_ADVERB_RE.test(w));
   return words[words.length - 1] ?? "";
 }
 function softwareTarget(window: string): boolean {
@@ -170,9 +174,9 @@ const SOFTWARE_SHUTDOWN_POST =
  *  "The lockout procedure is in the manual" opens no isolation scope, while
  *  "Follow the lockout procedure" does. */
 const LOCKOUT_DOC_POST =
-  /^(?:\/tagout)?\s+(?:procedure|instructions?|section|page|chapter|steps?|requirements?|policy|diagram|sheet|indicator|light|lamp|led|status|signal|alarm|input|relay)\b/i;
+  /^(?:\/tagout)?\s+(?:procedure|instructions?|section|page|chapter|steps?|requirements?|policy|diagram|sheet|indicator|light|lamp|led|status|signal|alarm|input|relay|switch|device|hasp|box|kit|station)\b/i;
 /** Codex #4867 r2 F1: fault isolation ("isolate the fault") is diagnosis, not power isolation. */
-const ISOLATE_NONPOWER_POST = /^\s+(?:the\s+|a\s+|which\s+)?(?:fault|problem|cause|issue|failure|symptom|root cause)\b/i;
+const ISOLATE_NONPOWER_POST = /^\s+(?:the\s+|a\s+|which\s+)?(?:fault|problem|cause|issue|failure|symptom|root cause|signal|input|output|channel|network|node|segment|communications?|comms|noise|ground loop)\b/i;
 const LOCKOUT_DOC_ACT_PRE = /\b(?:follow(?:ing)?|perform(?:ing)?|apply(?:ing)?|complet(?:e|ing)|carry(?:ing)? out|do|use|using|start)\b[^.;:]*$/i;
 
 function isolationIsVoid(text: string, index: number, matched = ""): boolean {
@@ -316,6 +320,14 @@ function firstHandsOnAlreadyIsolated(text: string): boolean {
       // Codex #4867 r2 F4: every hands-on step must be under isolation — work after
       // "Restore power." with no renewed lockout gets the notice.
       if (!covered) return false;
+      // Codex #4867 r3 F4: "Replace the fan, restore power, then replace the fuse." — hands-on work
+      // after a restore in the same step needs a renewed isolation before it.
+      if (restoredAt > workAt) {
+        const tail = step.slice(restoredAt);
+        const laterWork = firstHandsOnIndex(tail);
+        const laterIso = isolationIndex(withoutRestores(tail));
+        if (laterWork >= 0 && (laterIso < 0 || laterIso > laterWork)) return false;
+      }
       sawWork = true;
       if (restoredAt > workAt && (isoAt < 0 || restoredAt > isoAt)) isolated = false;
       else isolated = true;
