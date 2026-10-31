@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
 import type { HubNotebook } from "./notebook-tree";
@@ -30,6 +31,7 @@ import {
   selectionFromSearch,
   shellThreadId,
   stoppedStreamResult,
+  tabTitleFor,
   type HubSelection,
 } from "./hub-host-logic";
 
@@ -356,6 +358,36 @@ describe("enabledDocIds / historyRows / groundingLineFor", () => {
     expect(groundingLineFor(nb(), 0)).toMatch(/no selected sources yet — general help only, nothing is cited/);
     expect(groundingLineFor(nb(), 1)).toBe("Answers cite 1 selected source for Conveyor CV-101.");
     expect(groundingLineFor(nb({ asset: { entityId: "a", name: null, assetTag: null, selectedVia: null, confirmedBy: null, confirmedAt: null } }), 3)).toBe("Answers cite 3 selected sources for Automation Direct GS10.");
+  });
+});
+
+describe("tabTitleFor - #4753 two open projects must have different tab titles", () => {
+  const DOT = "●";
+  const MIDDOT = "·";
+
+  it("falls back to the plain app name on the home screen (no project open)", () => {
+    expect(tabTitleFor(null, false)).toBe("FactoryLM Hub");
+    expect(tabTitleFor(undefined, false)).toBe("FactoryLM Hub");
+  });
+  it("falls back to the plain app name for an empty or whitespace-only name, same as no project (review r2 finding)", () => {
+    expect(tabTitleFor("", false)).toBe("FactoryLM Hub");
+    expect(tabTitleFor("   ", false)).toBe("FactoryLM Hub");
+  });
+  it("names the open project so two tabs can be told apart", () => {
+    expect(tabTitleFor("Conveyor CV-101", false)).toBe(`Conveyor CV-101 ${MIDDOT} FactoryLM Hub`);
+  });
+  it("trims incidental surrounding whitespace off a real name", () => {
+    expect(tabTitleFor("  Conveyor CV-101  ", false)).toBe(`Conveyor CV-101 ${MIDDOT} FactoryLM Hub`);
+  });
+  it("prefixes a busy marker while an answer is generating", () => {
+    expect(tabTitleFor("Conveyor CV-101", true)).toBe(`${DOT} Conveyor CV-101 ${MIDDOT} FactoryLM Hub`);
+  });
+  it("never shows the busy marker on the home screen (control)", () => {
+    expect(tabTitleFor(null, true)).toBe("FactoryLM Hub");
+  });
+  it("is wired to document.title in hub-host.tsx, keyed on the open notebook and busy state", () => {
+    const host = readFileSync(new URL("./hub-host.tsx", import.meta.url), "utf8");
+    expect(host).toContain("document.title = tabTitleFor(detail?.notebook.displayName, busy);");
   });
 });
 

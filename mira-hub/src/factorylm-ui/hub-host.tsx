@@ -18,7 +18,7 @@
  * "General" project when the workspace has none; New chat and New project are
  * always available. `/feed` remains the default landing until Gate 6.
  */
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import { useSession } from "next-auth/react";
 import { signOutToLogin } from "@/components/layout/sign-out-action";
 import { HubAccountFooter } from "./HubAccountFooter";
@@ -94,6 +94,7 @@ import {
   selectionFromSearch,
   sendFailureMessage,
   shellThreadId,
+  tabTitleFor,
   type CompatibleStreamResult,
   type HubSelection,
 } from "./hub-host-logic";
@@ -165,6 +166,11 @@ export function HubShellHost() {
   // The technician's message from the moment Send is tapped (outgoing-turn.ts).
   const [outgoing, setOutgoing] = useState<Outgoing | null>(null);
   const [busy, setBusy] = useState(false);
+  // Layout effect (not a plain effect): commits before the browser paints, so
+  // switching between already-open notebooks never flashes the prior title.
+  useLayoutEffect(() => {
+    document.title = tabTitleFor(detail?.notebook.displayName, busy);
+  }, [detail, busy]);
   const [failedBody, setFailedBody] = useState<{ body: ReturnType<typeof chatBodyFor>; question: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   // The upload half of an attached send (#4019 round 2 F2): Stop and thread
