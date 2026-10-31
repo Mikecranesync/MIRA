@@ -2,7 +2,7 @@
  * E2E signup-flow test — trial CTA + magic link + login gate (#108)
  *
  * Walks the critical acquisition path:
- *   factorylm.com/pricing  → Community CTA → hub login
+ *   factorylm.com/pricing  → Talk to Mike (no self-serve offer, #4570)
  *   factorylm.com/cmms     → magic link form → success / rate-limited
  *   app.factorylm.com/login → all 3 auth options visible
  *
@@ -35,8 +35,8 @@ const RUN_CHECKOUT_CHECK = process.env.SMOKE_CHECKOUT_CHECK === "1";
 // Pricing page — trial CTA + Stripe checkout gate
 // ---------------------------------------------------------------------------
 
-test.describe("factorylm.com/pricing — trial CTA", () => {
-  test("featured plan 'Book Assessment' is visible and links to /buy", async ({
+test.describe("factorylm.com/pricing — contact CTA (no self-serve offer)", () => {
+  test("pricing routes to Mike: no Assessment card, no /buy CTA, no published price", async ({
     page,
   }) => {
     const res = await page.goto(WEB + "/pricing", {
@@ -44,19 +44,21 @@ test.describe("factorylm.com/pricing — trial CTA", () => {
     });
     expect(res?.status()).toBe(200);
 
-    // Production pricing uses .pricing-card.featured for the primary plan. Its
-    // primary CTA is the assessment offer (data-cta="pricing-assessment") →
-    // "Book Assessment" → /buy. (The Stripe checkout path is exercised
-    // separately by the /api/checkout/session test below.)
-    const featuredCard = page.locator(".pricing-card.featured");
-    await expect(featuredCard).toBeVisible({ timeout: 10_000 });
+    // #4570 retired the paid Assessment offer and every published price. The
+    // acquisition path from /pricing is now an email to Mike.
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+      "href",
+      "https://factorylm.com/pricing",
+    );
+    await expect(page.getByText(/No published price menu/i).first()).toBeVisible({ timeout: 10_000 });
 
-    const cta = featuredCard.locator('[data-cta="pricing-assessment"]');
+    await expect(page.locator(".pricing-card.featured")).toHaveCount(0);
+    await expect(page.locator('[data-cta="pricing-assessment"]')).toHaveCount(0);
+    await expect(page.locator('a[href$="/buy"], a[href*="/buy?"]')).toHaveCount(0);
+    expect(await page.locator("body").innerText()).not.toMatch(/\$\s?\d|book assessment/i);
+
+    const cta = page.locator('a[href="mailto:mike@factorylm.com"]', { hasText: /Talk to Mike/i }).first();
     await expect(cta).toBeVisible();
-    await expect(cta).toContainText(/book assessment/i);
-
-    const href = await cta.getAttribute("href");
-    expect(href).toMatch(/\/buy\b/);
   });
 
   test("checkout session API: 303 redirects to checkout.stripe.com", async ({
