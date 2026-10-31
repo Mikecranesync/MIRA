@@ -1,6 +1,7 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import type { PoolClient } from "pg";
+import { isUndefinedRelationOrColumn } from "@/lib/machine-memory";
 
 // Unified review-queue aggregator. Each source contributes ReviewItem rows that
 // the /hub/admin/review page renders. Read-only — no approve/publish workflow
@@ -19,9 +20,52 @@ export interface ReviewItem {
   meta?: Record<string, string>;
 }
 
+export type ReviewQueueNotice = {
+  code: "schema_behind";
+  message: string;
+  sqlstate?: string;
+};
+
 export interface ReviewQueueResponse {
   items: ReviewItem[];
   counts: Record<ReviewItemType | "total", number>;
+  notice?: ReviewQueueNotice;
+}
+
+const NOT_IN_TRANSACTION = "25P01";
+const EPOCH_ISO = new Date(0).toISOString();
+
+function sqlstateOf(err: unknown): string | undefined {
+  const code = (err as { code?: string } | null | undefined)?.code;
+  return typeof code === "string" && code ? code : undefined;
+}
+
+// Same law as machine-memory.ts / GET /api/work-orders: only undefined_table
+// (42P01) and undefined_column (42703) mean "migration not applied". An aborted
+// transaction (25P02), GRANT miss (42501), or missing role (42704) must not be
+// reported as #3355/#3952 — those are recovery or tenant-preamble failures.
+export function isReviewQueueSchemaBehind(err: unknown): boolean {
+  return isUndefinedRelationOrColumn(err);
+}
+
+export function schemaBehindNotice(sqlstate?: string): ReviewQueueNotice {
+  return {
+    code: "schema_behind",
+    message:
+      "Review queue cannot load proposals because the database schema is behind (unapplied migrations). See #3355 (staging) and #3952 (prod).",
+    ...(sqlstate ? { sqlstate } : {}),
+  };
+}
+
+// pg returns Date objects for timestamptz (no setTypeParser override here) —
+// same class as uploads.ts toIsoString. localeCompare must never see a Date.
+// Invalid Date is epoch, not a throw after RELEASE that would abort the txn.
+function toIsoString(value: Date | string | null | undefined): string {
+  if (value instanceof Date) {
+    return Number.isFinite(value.getTime()) ? value.toISOString() : EPOCH_ISO;
+  }
+  if (typeof value === "string" && value) return value;
+  return EPOCH_ISO;
 }
 
 // Where to find on-disk assets. Container deploy bind-mounts the repo root
@@ -56,7 +100,7 @@ export function isReviewAdmin(email: string | null | undefined): boolean {
   return ADMIN_EMAILS.includes(email.toLowerCase());
 }
 
-// ── proposal source ────────────────────────────────────────────────────────
+// ── proposal source ─────────────────────────────
 
 interface ProposalRow {
   id: string;
@@ -69,15 +113,47 @@ interface ProposalRow {
   status: string;
   created_by: string;
   reasoning: string | null;
-  created_at: string;
+  created_at: Date | string | null;
+}
+
+function mapProposalRows(rows: ProposalRow[]): ReviewItem[] {
+  return rows.map((r) => ({
+    id: `prop:${r.id}`,
+    type: "proposal" as const,
+    title: `${r.source_name ?? r.source_entity_type} ─ ${r.relationship_type} ─ ${
+      r.target_name ?? r.target_entity_type
+    }`,
+    previewUrl: null,
+    body: r.reasoning ?? null,
+    source: `relationship_proposals`,
+    createdAt: toIsoString(r.created_at),
+    meta: {
+      confidence: `${Math.round(r.confidence * 100)}%`,
+      createdBy: r.created_by,
+    },
+  }));
 }
 
 export async function fetchProposals(
   client: PoolClient,
   tenantId: string,
-): Promise<ReviewItem[]> {
-  const { rows } = await client.query<ProposalRow>(
-    `SELECT
+): Promise<{ items: ReviewItem[]; notice?: ReviewQueueNotice }> {
+  // Same class as manual-rag.ts hybrid_vector_lane (#4487): a failing SELECT
+  // inside withTenantContext's transaction aborts it, so the later COMMIT
+  // raises 25P02. Fence the optional proposals query in a SAVEPOINT.
+  // 25P01 is the only SAVEPOINT miss that means "no transaction to recover".
+  // Any other SAVEPOINT error (including 25P02 already-aborted) propagates so
+  // withTenantContext rolls back instead of reporting schema_behind.
+  let savepoint = false;
+  try {
+    await client.query("SAVEPOINT review_queue_proposals");
+    savepoint = true;
+  } catch (err) {
+    if (sqlstateOf(err) !== NOT_IN_TRANSACTION) throw err;
+  }
+  try {
+    const { rows } = await client.query<ProposalRow>(
+      `SELECT
         p.id,
         p.source_entity_type,
         p.target_entity_type,
@@ -94,26 +170,30 @@ export async function fetchProposals(
         AND p.status = 'proposed'
       ORDER BY p.created_at DESC
       LIMIT 200`,
-    [tenantId],
-  );
-  return rows.map((r) => ({
-    id: `prop:${r.id}`,
-    type: "proposal" as const,
-    title: `${r.source_name ?? r.source_entity_type} ─ ${r.relationship_type} ─ ${
-      r.target_name ?? r.target_entity_type
-    }`,
-    previewUrl: null,
-    body: r.reasoning ?? null,
-    source: `relationship_proposals`,
-    createdAt: r.created_at,
-    meta: {
-      confidence: `${Math.round(r.confidence * 100)}%`,
-      createdBy: r.created_by,
-    },
-  }));
+      [tenantId],
+    );
+    // Map before RELEASE so a mapping throw still has a savepoint to roll back to.
+    const items = mapProposalRows(rows);
+    if (savepoint) await client.query("RELEASE SAVEPOINT review_queue_proposals");
+    return { items };
+  } catch (err) {
+    // Do not swallow ROLLBACK TO — same as pg-unique-retry.ts. A failed
+    // rollback leaves the caller transaction aborted; getReviewQueue must not
+    // turn that into a successful empty page + schema_behind notice.
+    if (savepoint) await client.query("ROLLBACK TO SAVEPOINT review_queue_proposals");
+    if (isReviewQueueSchemaBehind(err)) {
+      const sqlstate = sqlstateOf(err);
+      console.warn("[review-queue] fetchProposals failed (schema behind)", sqlstate, err);
+      return { items: [], notice: schemaBehindNotice(sqlstate) };
+    }
+    // Same law as machine-memory.ts: permission / timeout / connection after a
+    // recovered savepoint must rethrow. Only undefined relation/column degrades.
+    console.error("[review-queue] fetchProposals failed", err);
+    throw err;
+  }
 }
 
-// ── filesystem image sources ───────────────────────────────────────────────
+// ── filesystem image sources ───────────────
 
 async function* walkImages(absDir: string, base: string): AsyncGenerator<{
   absPath: string;
@@ -164,14 +244,14 @@ async function fetchImageQueue(
       createdAt: f.mtime.toISOString(),
     });
   }
-  return items.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return items.sort((a, b) => toIsoString(b.createdAt).localeCompare(toIsoString(a.createdAt)));
 }
 
 export const fetchCartoons = () => fetchImageQueue("cartoon", "marketing/cartoons");
 export const fetchScreenshots = () =>
   fetchImageQueue("screenshot", "docs/promo-screenshots");
 
-// ── web-review audit source ────────────────────────────────────────────────
+// ── web-review audit source ──────────────────
 
 interface AuditFinding {
   url?: string;
@@ -223,18 +303,17 @@ export async function fetchWebReviewFindings(): Promise<ReviewItem[]> {
   }));
 }
 
-// ── orchestrator ───────────────────────────────────────────────────────────
+// ── orchestrator ───────────────────────
 
 export async function getReviewQueue(
   client: PoolClient,
   tenantId: string,
 ): Promise<ReviewQueueResponse> {
-  // Fan-out fetch. Each source isolated so one failure doesn't bury the rest.
-  const [proposals, cartoons, screenshots, audits] = await Promise.all([
-    fetchProposals(client, tenantId).catch((e) => {
-      console.error("[review-queue] fetchProposals failed", e);
-      return [] as ReviewItem[];
-    }),
+  // Proposals are fenced by SAVEPOINT and must not be swallowed: a failed
+  // rollback leaves the caller transaction aborted, and withTenantContext's
+  // COMMIT would then raise 25P02. Filesystem sources do not use the client.
+  const [proposalFetch, cartoons, screenshots, audits] = await Promise.all([
+    fetchProposals(client, tenantId),
     fetchCartoons().catch((e) => {
       console.error("[review-queue] fetchCartoons failed", e);
       return [] as ReviewItem[];
@@ -248,8 +327,9 @@ export async function getReviewQueue(
       return [] as ReviewItem[];
     }),
   ]);
+  const proposals = proposalFetch.items;
   const items = [...proposals, ...cartoons, ...screenshots, ...audits].sort((a, b) =>
-    b.createdAt.localeCompare(a.createdAt),
+    toIsoString(b.createdAt).localeCompare(toIsoString(a.createdAt)),
   );
   const counts = {
     proposal: proposals.length,
@@ -258,7 +338,9 @@ export async function getReviewQueue(
     audit: audits.length,
     total: items.length,
   };
-  return { items, counts };
+  return proposalFetch.notice
+    ? { items, counts, notice: proposalFetch.notice }
+    : { items, counts };
 }
 
 // Helper used by the asset route. Anchors a relative path inside one of the
