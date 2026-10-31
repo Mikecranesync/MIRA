@@ -22,7 +22,8 @@
  * fix. They are pinned anyway so the fix cannot introduce that failure later.
  */
 import { describe, it, expect } from "vitest";
-import { validateAnswer, ENERGIZED_WARNING } from "./answer-validation";
+import { SAFETY_STOP } from "@/lib/safety-classifier";
+import { validateAnswer } from "./answer-validation";
 
 import { STAGING_RESTORE_POWER_LEAK_2026_09_24 as LIVE_LEAK } from "./__fixtures__/staging-restore-power-leak-2026-09-24";
 
@@ -40,9 +41,15 @@ describe("#3973 — Unicode hyphens must not bypass the answer floor", () => {
   });
 
   it("blocks the answer staging actually served, verbatim", () => {
+    // Owner decision 2026-10-16 (#4122/#3790): step 4 of this fixture is
+    // "worse than the category it belongs to" (see the fixture's own
+    // docstring) — it asserts the lockout is STILL in force while telling
+    // the technician to close the feeder breaker, a literal contradiction
+    // A4 was never designed to catch. The #4122 step-energy-contradiction
+    // check now catches it first and BLOCKS, outranking A4's warning.
     const r = check(LIVE_LEAK);
     expect(r.ok).toBe(false);
-    expect(r.ok === false && r.violation).toBe("energized-warning:energized-procedure");
+    expect(r.ok === false && r.violation).toBe("unsafe-answer:lockout-step-contradiction");
   });
 
   it("blocks the minimal restore-to-measure sentence with a U+2011 hyphen", () => {
@@ -59,14 +66,16 @@ describe("#3973 — Unicode hyphens must not bypass the answer floor", () => {
     expect(uni.ok === false && [uni.kind, uni.violation]).toEqual(asc.ok === false && [asc.kind, asc.violation]);
   });
 
-  it("#3984: serves the answer under the energized warning instead of withholding it", () => {
+  it("2026-10-16: the self-contradictory step (still locked out, breaker closed) is blocked, not warned", () => {
     const r = check(LIVE_LEAK);
     expect(r.ok).toBe(false);
     if (r.ok === false) {
-      expect(r.kind).toBe("energized_warning");
-      expect(r.replacement.startsWith(ENERGIZED_WARNING)).toBe(true);
-      // The displayed text is the ORIGINAL candidate (the fold is detection-only).
-      expect(r.replacement.endsWith(LIVE_LEAK)).toBe(true);
+      expect(r.kind).toBe("unsafe_answer");
+      expect(r.replacement).toBe(SAFETY_STOP);
+      // The fixture's step 4 ("the lock remains in place, but the breaker
+      // is closed") must never reach the technician verbatim.
+      expect(r.replacement).not.toContain(LIVE_LEAK);
+      expect(r.replacement).not.toContain("the lock remains in place");
     }
   });
 
