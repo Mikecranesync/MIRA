@@ -13,18 +13,32 @@ import { deploymentGeneration, inferenceFingerprint } from "../runtime-identity"
 
 const saved = { ...process.env };
 
+// Pinned, never inherited (prove-the-test-fails rule 6). The canonical seam is
+// ON here so the OpenAI-shaped assertions below exercise the canonical cascade;
+// the #5048 block sets it per test.
 function baseline() {
   process.env = { ...saved };
-  delete process.env.OPENAI_API_KEY;
-  delete process.env.OPENAI_MODEL;
-  delete process.env.OPENAI_PRICE_PER_MTOK_IN;
-  delete process.env.OPENAI_PRICE_PER_MTOK_OUT;
-  delete process.env.OPENROUTER_API_KEY;
-  delete process.env.GROQ_MODEL;
-  delete process.env.MIRA_TURN_MAX_OUTPUT_TOKENS;
-  delete process.env.MIRA_CANONICAL_SEAM;
-  delete process.env.MIRA_JEV_SHADOW;
-  delete process.env.MIRA_JEV_DECISION;
+  for (const k of [
+    "OPENAI_API_KEY",
+    "OPENAI_MODEL",
+    "OPENAI_CLASSIFIER_MODEL",
+    "OPENAI_PRICE_PER_MTOK_IN",
+    "OPENAI_PRICE_PER_MTOK_OUT",
+    "OPENROUTER_API_KEY",
+    "GROQ_API_KEY",
+    "GROQ_MODEL",
+    "CEREBRAS_API_KEY",
+    "TOGETHERAI_API_KEY",
+    "GEMINI_API_KEY",
+    "GEMINI_MODEL",
+    "MIRA_TURN_MAX_OUTPUT_TOKENS",
+    "MIRA_JEV_SHADOW",
+    "MIRA_JEV_DECISION",
+    "NOTEBOOK_QUERY_REWRITE",
+  ]) {
+    delete process.env[k];
+  }
+  process.env.MIRA_CANONICAL_SEAM = "1";
 }
 
 beforeEach(baseline);
@@ -63,6 +77,7 @@ describe("inferenceFingerprint", () => {
   });
 
   it("lists the effective providers in cascade order with model and accounting rate", () => {
+    process.env.MIRA_CANONICAL_SEAM = "1";
     process.env.OPENAI_API_KEY = "sk-test-not-a-real-key";
     process.env.OPENAI_MODEL = "gpt-5.4-mini";
     process.env.OPENROUTER_API_KEY = "or-test-not-a-real-key";
@@ -72,15 +87,94 @@ describe("inferenceFingerprint", () => {
       model: "gpt-5.4-mini",
       pricePerMtok: { input: 0.75, cached_input: 0.075, output: 4.5 },
     });
-    expect(summary.providers.map((p) => p.name)).toEqual([
-      "OpenAI",
-      "OpenRouter",
-      "Groq",
-      "Cerebras",
-      "Together",
-    ]);
+    expect(summary.providers.map((p) => p.name)).toEqual(["OpenAI", "OpenRouter"]);
     expect(summary.maxOutputTokens).toBe(4000);
-    expect(summary.canonicalSeam).toBe(false);
+    expect(summary.canonicalSeam).toBe(true);
+  });
+
+  // Codex round 1 on #5047, F1 (#5048): the fingerprint must describe the
+  // cascade the notebook route DISPATCHES — the legacy registry when the seam
+  // is off (the production default), the canonical one when on — and only the
+  // entries dispatch can reach (it skips every keyless provider).
+  describe("describes the cascade the notebook route dispatches (#5048)", () => {
+    it("seam off with only a Gemini key: the legacy registry's Gemini, nothing else", () => {
+      process.env.MIRA_CANONICAL_SEAM = "0";
+      process.env.GEMINI_API_KEY = "gm-test-not-a-real-key";
+      const { summary } = inferenceFingerprint();
+      expect(summary.canonicalSeam).toBe(false);
+      expect(summary.providers).toEqual([{ name: "Gemini", model: "gemini-2.5-flash", pricePerMtok: null }]);
+    });
+
+    it("seam on with only an OpenAI key: OpenAI, nothing else", () => {
+      process.env.MIRA_CANONICAL_SEAM = "1";
+      process.env.OPENAI_API_KEY = "sk-test-not-a-real-key";
+      const { summary } = inferenceFingerprint();
+      expect(summary.providers.map((p) => p.name)).toEqual(["OpenAI"]);
+    });
+
+    it("seam off ignores an OpenAI key the legacy registry never dispatches", () => {
+      process.env.MIRA_CANONICAL_SEAM = "0";
+      process.env.OPENAI_API_KEY = "sk-test-not-a-real-key";
+      process.env.GROQ_API_KEY = "gsk-test-not-a-real-key";
+      const { summary } = inferenceFingerprint();
+      expect(summary.providers.map((p) => p.name)).toEqual(["Groq"]);
+    });
+
+    it("with no key at all the summary lists no provider (control: adding one key adds one provider)", () => {
+      process.env.MIRA_CANONICAL_SEAM = "1";
+      expect(inferenceFingerprint().summary.providers).toEqual([]);
+      process.env.GROQ_API_KEY = "gsk-test-not-a-real-key";
+      expect(inferenceFingerprint().summary.providers.map((p) => p.name)).toEqual(["Groq"]);
+    });
+  });
+
+  // Codex round 1 on #5047, F2 (#5049): NOTEBOOK_QUERY_REWRITE=1 adds a paid
+  // cascade call (200 output tokens, classifier model) before retrieval.
+  describe("exposes the paid query-rewrite lane (#5049)", () => {
+    it("is reported off, with no lane detail, when NOTEBOOK_QUERY_REWRITE is unset", () => {
+      const { summary } = inferenceFingerprint();
+      expect(summary.optionalMetered.queryRewrite).toEqual({ enabled: false });
+    });
+
+    it("enabling it changes the hash and exposes the lane's providers, model, cap and rate", () => {
+      process.env.OPENAI_API_KEY = "sk-test-not-a-real-key";
+      process.env.OPENAI_MODEL = "gpt-5.4-mini";
+      const before = inferenceFingerprint().hash;
+      process.env.NOTEBOOK_QUERY_REWRITE = "1";
+      const after = inferenceFingerprint();
+      expect(after.hash).not.toBe(before);
+      expect(after.summary.optionalMetered.queryRewrite).toEqual({
+        enabled: true,
+        maxOutputTokens: 200,
+        providers: [
+          {
+            name: "OpenAI",
+            model: "gpt-5.4-mini",
+            pricePerMtok: { input: 0.75, cached_input: 0.075, output: 4.5 },
+          },
+        ],
+      });
+    });
+
+    it("with it enabled, changing only OPENAI_CLASSIFIER_MODEL changes the hash and the reported model", () => {
+      process.env.OPENAI_API_KEY = "sk-test-not-a-real-key";
+      process.env.NOTEBOOK_QUERY_REWRITE = "1";
+      const before = inferenceFingerprint();
+      process.env.OPENAI_CLASSIFIER_MODEL = "gpt-5.4-nano";
+      const after = inferenceFingerprint();
+      expect(after.hash).not.toBe(before.hash);
+      const lane = after.summary.optionalMetered.queryRewrite;
+      expect(lane.enabled && lane.providers[0].model).toBe("gpt-5.4-nano");
+      // The main turn still names its own model: the classifier override is the lane's alone.
+      expect(after.summary.providers[0].model).toBe(before.summary.providers[0].model);
+    });
+
+    it("with it disabled, the classifier model does not move the hash (control)", () => {
+      process.env.OPENAI_API_KEY = "sk-test-not-a-real-key";
+      const before = inferenceFingerprint().hash;
+      process.env.OPENAI_CLASSIFIER_MODEL = "gpt-5.4-nano";
+      expect(inferenceFingerprint().hash).toBe(before);
+    });
   });
 
   it("changes when the serving model changes", () => {
@@ -120,15 +214,19 @@ describe("inferenceFingerprint", () => {
 
   it("changes when the canonical seam or an optional metered lane is switched", () => {
     const base = inferenceFingerprint().hash;
-    process.env.MIRA_CANONICAL_SEAM = "1";
+    process.env.MIRA_CANONICAL_SEAM = "0";
     const seam = inferenceFingerprint();
     expect(seam.hash).not.toBe(base);
-    expect(seam.summary.canonicalSeam).toBe(true);
-    delete process.env.MIRA_CANONICAL_SEAM;
+    expect(seam.summary.canonicalSeam).toBe(false);
+    process.env.MIRA_CANONICAL_SEAM = "1";
     process.env.MIRA_JEV_SHADOW = "1";
     const jev = inferenceFingerprint();
     expect(jev.hash).not.toBe(base);
-    expect(jev.summary.optionalMetered).toEqual({ jevShadow: true, jevDecision: false });
+    expect(jev.summary.optionalMetered).toEqual({
+      jevShadow: true,
+      jevDecision: false,
+      queryRewrite: { enabled: false },
+    });
   });
 
   it("does not change when only a secret's value changes", () => {

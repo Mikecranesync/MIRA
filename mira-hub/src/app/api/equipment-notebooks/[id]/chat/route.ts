@@ -30,8 +30,9 @@
  * visual-evidence-abstain.test.ts). `x-mira-trace-id` is set the same way.
  *
 
- * PROVIDER SELECTION: `providers()` below is the LEGACY inline cascade and is
- * the fallback path. When MIRA_CANONICAL_SEAM=1 the turn is served by the
+ * PROVIDER SELECTION: `legacyProviders()` (@/lib/inference/legacy-cascade,
+ * moved out of this file byte-identical for #4507/#5048 so /api/health can
+ * fingerprint it) is the LEGACY inline cascade and is the fallback path. When MIRA_CANONICAL_SEAM=1 the turn is served by the
  * canonical seam (@/lib/inference/canonical-cascade), which is the single
  * definition of the cascade and matches Hard Constraint #2 (Groq → Cerebras →
  * Together). The legacy list still contains Gemini; that divergence is exactly
@@ -162,6 +163,7 @@ import {
   usageFromRaw,
   type TurnUsage,
 } from "@/lib/inference/canonical-cascade";
+import { legacyProviders } from "@/lib/inference/legacy-cascade";
 import { persistTurnUsage } from "@/lib/inference/persist-usage";
 import {
   logProvidersExhausted,
@@ -445,38 +447,6 @@ export const FIELD_OBSERVATION_DIRECTIVE = `FIELD OBSERVATIONS — this rule out
 - Name the next evidence that would distinguish the hypotheses: exact alarm/status, timestamp and repeatability, full device label, circuit/address/channel, or the applicable schematic/manual. Separate a communication fault from a safety-input state when the diagnostics support that distinction.
 - For safety interlocks or passenger restraints, explain existing observations without suggesting fault creation or release tests. Do not recommend bypassing an interlock, forcing an output, changing safety configuration, or treating an earlier green indication as a release authorization. Physical work follows the OEM/site isolation and qualified-person procedure.
 - Old troubleshooting notes are historical evidence, not proof of this event's cause. Preserve uncertainty until the cited diagnostics or documented mapping resolves it.`;
-
-type CascadeProvider = { name: string; url: string; key?: string; model: string };
-
-/**
- * LEGACY inline cascade — the fallback when MIRA_CANONICAL_SEAM is off.
- * Diverges from Hard Constraint #2 by listing Gemini; kept byte-identical so
- * the flag-off path is provably unchanged. Delete when the seam is default-on.
- */
-function providers(): CascadeProvider[] {
-  return [
-    {
-      name: "Groq",
-      url: "https://api.groq.com/openai/v1/chat/completions",
-      key: process.env.GROQ_API_KEY,
-      // llama-3.3-70b-versatile shuts down 2026-08-16 (Phase 1.5 bakeoff §7 P0);
-      // default to the current gpt-oss model so the primary provider keeps serving.
-      model: process.env.GROQ_MODEL ?? "openai/gpt-oss-120b",
-    },
-    {
-      name: "Cerebras",
-      url: "https://api.cerebras.ai/v1/chat/completions",
-      key: process.env.CEREBRAS_API_KEY,
-      model: process.env.CEREBRAS_MODEL ?? "gpt-oss-120b",
-    },
-    {
-      name: "Gemini",
-      url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-      key: process.env.GEMINI_API_KEY,
-      model: process.env.GEMINI_MODEL ?? "gemini-2.5-flash",
-    },
-  ];
-}
 
 /** Build numbered, per-doc citations consistent with appendManualContext's [n]
  *  blocks (same ordering source: the chunk array). */
@@ -3964,7 +3934,7 @@ async function handleChatTurn(
 
       // ONE cascade definition per turn. Flag off => byte-identical legacy list.
       const seam = canonicalSeamEnabled();
-      const cascadeProviders = seam ? canonicalProviders() : providers();
+      const cascadeProviders = seam ? canonicalProviders() : legacyProviders();
       const outputCap = maxOutputTokens();
       const attempted: string[] = [];
       // D6 — every failed attempt, in order, with the HTTP status when there
