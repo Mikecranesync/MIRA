@@ -57,8 +57,9 @@ import httpx
 # since 2026-10-31. While their keys stay set the router still builds them as
 # last-resort fallbacks, so they are probed by nothing here on purpose: a dead
 # deprecated vendor is a retirement task (#4438), not a coverage incident, and
-# paging it every 6h on #3096 buried the live cascade's signal. Restoring either
-# = fund the account AND add its name back here.
+# paging it every 6h on #3096 buried the live cascade's signal. There is no
+# restoration recipe: root CLAUDE.md says do not fund or restore them; a name
+# goes back here only on a new owner decision that supersedes the retirement.
 EXPECTED = ("openai", "openrouter")
 
 PROBE_PROMPT = [{"role": "user", "content": "Reply with the single word: OK"}]

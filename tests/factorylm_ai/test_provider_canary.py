@@ -337,6 +337,13 @@ def test_runbook_matches_expected_set_and_omits_deprecated_vendors() -> None:
         assert name in rem_l, f"runbook remediation has no step for {name!r}"
     for host in ("api.groq.com", "api.together.xyz", "api.cerebras.ai"):
         assert host not in remediation, f"runbook still sends operators to retired vendor {host}"
+    # Codex r2 F1: the deprecation note must not hand an operator a restoration
+    # recipe. Root CLAUDE.md says Groq and Together are not to be funded or
+    # restored; re-adding a name to EXPECTED needs a superseding owner decision.
+    note = next(p for p in scope.split("\n>") if "2026-10-31" in p)
+    note_l = note.lower()
+    assert "fund the account" not in note_l and "add its name back" not in note_l
+    assert "owner decision" in note_l and "supersed" in note_l
 
 
 # ── OpenRouter: the probe sends the runtime's request body (2026-10-14) ────────
