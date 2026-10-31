@@ -142,10 +142,12 @@ export function chunkText(
   size = CHUNK_CHARS,
   overlap = CHUNK_OVERLAP,
 ): string[] {
-  // #4923: unpdf emits U+0000 for glyphs whose ToUnicode entry is <0000>. Postgres
-  // text rejects NUL (22021), which aborted the whole insert and surfaced as the
-  // generic "Couldn't process this file". A NUL is a spacer glyph, so it becomes
-  // a word break, not a glued word.
+  // #4923 (suspected cause, reproduced on a synthetic fixture only; the customer
+  // sheet returns 403 so it is not confirmed on the real file): unpdf emits
+  // U+0000 for glyphs whose ToUnicode entry is <0000>. Postgres text rejects NUL
+  // (22021), which would abort the whole insert and surface as the generic
+  // "Couldn't process this file". A NUL is a spacer glyph, so it becomes a word
+  // break, not a glued word. Harmless when the real cause differs.
   const clean = text
     .replace(/\u0000/g, " ")
     .replace(/\r\n/g, "\n")
