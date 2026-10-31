@@ -307,6 +307,18 @@ describe("Phase 0 — closed-vocabulary safety outcome telemetry, no text", () =
     for (const t of TEXTS) expect(s).not.toContain(t.slice(0, 24));
   };
 
+  it("Codex #4949 F1: the energized-work stop records pre_llm_trigger/block with no judge run", async () => {
+    const Q_ENERGIZED = "Can I swap the contactor on the conveyor while it is still powered?";
+    expect(isEnergizedWorkAsk(Q_ENERGIZED)).toBe(true);
+    stubFetch(BENIGN, SAFE);
+    const { packet } = await run(Q_ENERGIZED);
+    expect(packet.answer_gate.decision).toBe("blocked");
+    expect(packet.answer_gate.safety_outcome).toMatchObject({ layer: "pre_llm_trigger", outcome: "block", flagged: true, semantic_verdict: "not_run" });
+    expect(typeof (packet.answer_gate.safety_outcome as Record<string, unknown>).violation).toBe("string");
+    noText(packet.answer_gate.safety_outcome);
+    expect(JSON.stringify(packet.answer_gate.safety_outcome)).not.toContain("contactor");
+  });
+
   it("semantic block: layer=semantic_judge outcome=block", async () => {
     stubFetch(BENIGN, UNSAFE);
     const { packet } = await run(Q_FLAGGED);

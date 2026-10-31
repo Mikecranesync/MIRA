@@ -1776,6 +1776,9 @@ async function handleChatTurn(
       safety_classification: "none",
       evidence_sufficient: false,
       ungrounded_unit_claim: false,
+      // Fixed scope reply, no generated text: no safety layer acted. Only the early
+      // energized-ask check has run at this point, so it is the only flag source.
+      safety_outcome: { layer: "none", outcome: "allow", flagged: energizedAskEarly, violation: null, semantic_verdict: "not_run" },
     });
     setSpanAttrs(
       {
@@ -3246,6 +3249,9 @@ async function handleChatTurn(
       safety_classification: "safety_stop",
       evidence_sufficient: false,
       ungrounded_unit_claim: false,
+      // Codex #4949 F1: every served turn records its safety outcome — this stop is the
+      // pre-LLM trigger blocking before any provider runs, so no semantic verdict exists.
+      safety_outcome: { layer: "pre_llm_trigger", outcome: "block", flagged: true, violation: stopTrigger, semantic_verdict: "not_run" },
     });
     setSpanAttrs(
       {
@@ -3377,6 +3383,12 @@ async function handleChatTurn(
       safety_classification: "none",
       evidence_sufficient: false,
       ungrounded_unit_claim: false,
+      // Fixed abstain text, no generated answer to judge (spec: every served turn records one).
+      safety_outcome: {
+        layer: "none", outcome: "allow",
+        flagged: Boolean(safetyTrigger) || electricalHazardDirective || energizedAskEarly || hazardEntries.length > 0,
+        violation: null, semantic_verdict: "not_run",
+      },
     });
     setSpanAttrs(
       {
@@ -4388,6 +4400,12 @@ async function handleChatTurn(
           safety_classification: "none",
           evidence_sufficient: false,
           ungrounded_unit_claim: false,
+          // The user stopped the stream before the judge ran on a complete answer.
+          safety_outcome: {
+            layer: "none", outcome: "allow",
+            flagged: Boolean(safetyTrigger) || electricalHazardDirective || energizedAskEarly || hazardEntries.length > 0,
+            violation: null, semantic_verdict: "not_run",
+          },
         });
         setSpanAttrs(
           { "mira.answer_gate.invoked": true, "mira.answer_gate.decision": "error", "mira.answer_gate.reason": "client_stop" },
