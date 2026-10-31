@@ -27,6 +27,21 @@
  * be reconciled within the budget becomes `quarantined` (retained, operator-
  * visible) rather than retrying forever or claiming failure it cannot prove.
  *
+ * Provider identity is checked three times before any vendor call (Codex
+ * round 2, F1): the tenant's CURRENT connection must still be the one the
+ * delivery was queued for (`connection_key`), the pinned/resolved target must
+ * name that same provider, and the adapter selected for the row must report
+ * that same `providerId`. Any mismatch is `blocked_policy` — retained, never
+ * guessed, never written to a foreign vendor's record id.
+ *
+ * An ACKNOWLEDGED delivery is never written twice (Codex round 2, F7): once
+ * the vendor has accepted a write (`accepted_pending_verification`, usually
+ * with an `external_ref`), later ticks only READ BACK. Found once → verified;
+ * found more than once → conflict; not visible yet → still pending until the
+ * attempt budget quarantines it for a human. Only `outcome_unknown` (no
+ * acknowledgement at all) goes back through `appendWorkLog`, whose contract
+ * is read-back-then-write on the marker.
+ *
  * A single bad delivery must never stop the batch: every per-row step after
  * the claim is isolated so an unexpected throw degrades that ONE row.
  */
@@ -38,6 +53,7 @@ import {
   deliveryStateFor,
   isTerminalState,
   markerFor,
+  type CmmsReadBackResult,
   type CmmsWriteProvider,
   type CmmsWriteResult,
   type DeliveryState,
@@ -105,9 +121,17 @@ function errMessage(err: unknown): string {
 
 const CONTROL_CHARS_RE = /[\x00-\x1F\x7F]/g;
 
+/**
+ * The exported text carries the WHOLE accepted record (Codex round 2, F8).
+ * Its bound is the record's own validation in `fix-records.ts` (symptom 500,
+ * fault code 64, fix 2000 chars), and Atlas stores comment content as TEXT
+ * (upstream `Comment.java`: `@Column(columnDefinition = "TEXT")`), so nothing
+ * is cut here: a silent cut would let marker read-back "verify" an incomplete
+ * maintenance record.
+ */
 function buildNoteText(symptom: string, faultCode: string | null, fix: string): string {
   const raw = `Recorded fix — symptom: ${symptom}` + (faultCode ? `; fault code: ${faultCode}` : "") + `; fix: ${fix}`;
-  return raw.replace(CONTROL_CHARS_RE, "").slice(0, 1500);
+  return raw.replace(CONTROL_CHARS_RE, "");
 }
 
 /** Receipt key under which the FIRST attempt pins the destination (Codex F1).
@@ -143,9 +167,30 @@ type Outcome = {
   receiptPatch?: Record<string, unknown>;
 };
 
-type Plan =
-  | { kind: "outcome"; outcome: Outcome }
-  | { kind: "deliver"; target: WorkOrderTarget; targetSource: string; alreadyPinned: boolean; note: WorkLogNote };
+type DeliverPlan = { kind: "deliver"; target: WorkOrderTarget; targetSource: string; alreadyPinned: boolean; note: WorkLogNote };
+type Plan = { kind: "outcome"; outcome: Outcome } | DeliverPlan;
+
+/** A claimed row plus the state it was in BEFORE this claim (the CLAIM query
+ *  captures it from the locked subquery — `RETURNING d.*` alone would only
+ *  ever say `leased`). An expired lease reclaim reports the last finalized
+ *  state (`receipt.state`), or `queued` if the row was never finalized. */
+type ClaimedRow = DeliveryRow & { prior_state: string };
+
+/** Has the vendor already ACKNOWLEDGED this delivery? Then it is reconciled
+ *  by read-back only — never written again (Codex round 2, F7). */
+function isAcknowledged(row: ClaimedRow): boolean {
+  return row.prior_state === "accepted_pending_verification" || row.external_ref !== null;
+}
+
+/** The adapter, the target and the queued connection must all name the same
+ *  provider (Codex round 2, F1). Checked immediately before every vendor call. */
+function providerMismatch(row: ClaimedRow, plan: DeliverPlan, provider: CmmsWriteProvider): Outcome | null {
+  if (provider.providerId === row.connection_key && plan.target.providerId === row.connection_key) return null;
+  return {
+    state: "blocked_policy",
+    reason: `provider_mismatch:adapter=${provider.providerId},target=${plan.target.providerId},connection=${row.connection_key}`,
+  };
+}
 
 /**
  * PLAN: everything tenant-scoped, in one short `withTenantContext` transaction
@@ -169,12 +214,29 @@ async function planDelivery(row: DeliveryRow): Promise<Plan> {
     if (!config.policy.fixRecorded.enabled) {
       return { kind: "outcome", outcome: { state: "blocked_policy", reason: "policy_disabled" } };
     }
+    // PROVIDER IDENTITY (Codex round 2, F1): the delivery was accepted for
+    // `connection_key`. If the tenant has since switched providers, the
+    // current config would resolve a target that belongs to the NEW vendor
+    // while the adapter is chosen by the OLD key. Fail closed before any
+    // target resolution; the event is retained for a human.
+    if (config.provider !== row.connection_key) {
+      return {
+        kind: "outcome",
+        outcome: { state: "blocked_policy", reason: `provider_changed:${row.connection_key}->${config.provider}` },
+      };
+    }
 
     let target: WorkOrderTarget;
     let targetSource: string;
     let alreadyPinned = false;
     const pinned = pinnedTargetOf(row);
     if (pinned) {
+      if (pinned.providerId !== row.connection_key) {
+        return {
+          kind: "outcome",
+          outcome: { state: "blocked_policy", reason: `pinned_provider_mismatch:${pinned.providerId}` },
+        };
+      }
       target = { providerId: pinned.providerId, externalWorkOrderId: pinned.externalWorkOrderId };
       targetSource = pinned.source;
       alreadyPinned = true;
@@ -193,6 +255,12 @@ async function planDelivery(row: DeliveryRow): Promise<Plan> {
       }
       target = targetRes.target;
       targetSource = targetRes.source;
+      if (target.providerId !== row.connection_key) {
+        return {
+          kind: "outcome",
+          outcome: { state: "blocked_policy", reason: `target_provider_mismatch:${target.providerId}` },
+        };
+      }
     }
 
     const payload = event.payload as { symptom?: unknown; faultCode?: unknown; fix?: unknown };
@@ -218,12 +286,7 @@ async function planDelivery(row: DeliveryRow): Promise<Plan> {
  * a long batch cannot run past its window mid-row. Zero rows = the lease was
  * reclaimed (or expired) — the caller must not write.
  */
-async function pinAndRenewLease(
-  row: DeliveryRow,
-  plan: Extract<Plan, { kind: "deliver" }>,
-  leaseMs: number,
-  now: Date,
-): Promise<boolean> {
+async function pinAndRenewLease(row: ClaimedRow, plan: DeliverPlan, leaseMs: number, now: Date): Promise<boolean> {
   const patch: Record<string, unknown> = plan.alreadyPinned
     ? {}
     : {
@@ -250,16 +313,13 @@ async function pinAndRenewLease(
 }
 
 /** WRITE: the provider call, outside every database transaction. */
-async function writeDelivery(
-  row: DeliveryRow,
-  plan: Extract<Plan, { kind: "deliver" }>,
-  deps: DispatchDeps,
-  maxAttempts: number,
-): Promise<Outcome> {
+async function writeDelivery(row: ClaimedRow, plan: DeliverPlan, deps: DispatchDeps, maxAttempts: number): Promise<Outcome> {
   const provider = deps.providerFor(row.connection_key);
   if (!provider) {
     return { state: "unsupported", reason: "provider_not_available" };
   }
+  const mismatch = providerMismatch(row, plan, provider);
+  if (mismatch) return mismatch;
   let result: CmmsWriteResult;
   try {
     result = await provider.appendWorkLog(plan.target, plan.note);
@@ -276,6 +336,54 @@ async function writeDelivery(
   const reason = "reason" in result ? result.reason : undefined;
   const externalRef = "externalRef" in result ? result.externalRef : null;
   return { state, reason, externalRef, receiptPatch: result.receipt };
+}
+
+/**
+ * RECONCILE (Codex round 2, F7): read-only. The vendor already acknowledged
+ * this write, so a second `appendWorkLog` could create a duplicate whenever
+ * the vendor's search lags its own writes. Only read-back moves the row:
+ * found exactly once → verified; more than once → conflict; not visible yet,
+ * unsupported or failing read-back → still `accepted_pending_verification`
+ * (the acknowledged `external_ref` is kept by FINALIZE's COALESCE) until the
+ * attempt budget quarantines it for manual reconciliation.
+ */
+async function reconcileDelivery(row: ClaimedRow, plan: DeliverPlan, deps: DispatchDeps, maxAttempts: number): Promise<Outcome> {
+  const provider = deps.providerFor(row.connection_key);
+  if (!provider) {
+    return { state: "accepted_pending_verification", reason: "provider_not_available" };
+  }
+  const mismatch = providerMismatch(row, plan, provider);
+  if (mismatch) return mismatch;
+  let readBack: CmmsReadBackResult;
+  try {
+    readBack = await provider.readBackWorkLog(plan.target, plan.note.marker);
+  } catch (err) {
+    if (row.attempts >= maxAttempts) {
+      return { state: "quarantined", reason: `poison: ${errMessage(err)}` };
+    }
+    return { state: "accepted_pending_verification", reason: `readback_throw: ${errMessage(err)}` };
+  }
+  switch (readBack.kind) {
+    case "found":
+      if (readBack.count > 1) {
+        return { state: "conflict", reason: "duplicate_marker", receiptPatch: readBack.receipt };
+      }
+      return { state: "verified_by_readback", externalRef: readBack.externalRef, receiptPatch: readBack.receipt };
+    case "not_found":
+      return { state: "accepted_pending_verification", reason: "readback_not_yet_visible", receiptPatch: readBack.receipt };
+    case "unsupported":
+      return {
+        state: "accepted_pending_verification",
+        reason: `readback_unsupported:${readBack.reason}`,
+        receiptPatch: readBack.receipt,
+      };
+    case "error":
+      return {
+        state: "accepted_pending_verification",
+        reason: `readback_error:${readBack.reason}`,
+        receiptPatch: readBack.receipt,
+      };
+  }
 }
 
 /** Outcomes the tick reschedules instead of closing. Every one of them is
@@ -300,7 +408,7 @@ function boundOutcome(row: DeliveryRow, outcome: Outcome, maxAttempts: number): 
  *  if the lease was stolen out from under this attempt — the row is left
  *  for whoever holds it now; this tick never retries it itself. */
 async function finalizeDelivery(
-  row: DeliveryRow,
+  row: ClaimedRow,
   outcome: Outcome,
   nextAttemptAt: Date,
   now: Date,
@@ -380,18 +488,23 @@ function bumpStat(stats: DispatchStats, state: DeliveryState): void {
   }
 }
 
-/** Put a claimed row back without counting an attempt (ordering deferral). */
-async function releaseForOrdering(row: DeliveryRow): Promise<void> {
+/** Put a claimed row back without counting an attempt (ordering deferral).
+ *  It goes back to the state it was claimed FROM — an acknowledged delivery
+ *  must not be demoted to `queued`, or the next claim would write it again. */
+async function releaseForOrdering(row: ClaimedRow): Promise<void> {
+  const restore: DeliveryState = (RETRYABLE_STATES as readonly string[]).includes(row.prior_state)
+    ? (row.prior_state as DeliveryState)
+    : "queued";
   await pool.query(
     `UPDATE notebook_event_deliveries
-        SET state = 'queued',
+        SET state = $3,
             next_attempt_at = now() + interval '30 seconds',
             attempts = attempts - 1,
             lease_token = NULL,
             lease_until = NULL,
             updated_at = now()
       WHERE delivery_id = $1 AND lease_token = $2`,
-    [row.delivery_id, row.lease_token],
+    [row.delivery_id, row.lease_token, restore],
   );
 }
 
@@ -403,7 +516,11 @@ export async function runDispatchTick(deps: DispatchDeps): Promise<DispatchStats
   const rand = deps.rand ?? Math.random;
   const stats = zeroStats();
 
-  const claimRes = await pool.query<DeliveryRow>(
+  // The locked subquery also captures the state each row is claimed FROM
+  // (`prior_state`): `RETURNING d.*` alone would only ever say `leased`, and
+  // an acknowledged delivery must be reconciled, not re-written. For an
+  // expired-lease reclaim the last FINALIZED state is in `receipt.state`.
+  const claimRes = await pool.query<ClaimedRow>(
     `UPDATE notebook_event_deliveries d
         SET state = 'leased',
             lease_token = gen_random_uuid(),
@@ -411,7 +528,9 @@ export async function runDispatchTick(deps: DispatchDeps): Promise<DispatchStats
             attempts = attempts + 1,
             updated_at = now()
        FROM (
-         SELECT delivery_id FROM notebook_event_deliveries
+         SELECT delivery_id,
+                CASE WHEN state = 'leased' THEN COALESCE(receipt->>'state', 'queued') ELSE state END AS prior_state
+           FROM notebook_event_deliveries
           WHERE next_attempt_at <= now()
             AND ((state = ANY($2::text[])) OR (state = 'leased' AND lease_until < now()))
           ORDER BY created_at
@@ -419,7 +538,7 @@ export async function runDispatchTick(deps: DispatchDeps): Promise<DispatchStats
           FOR UPDATE SKIP LOCKED
        ) s
       WHERE d.delivery_id = s.delivery_id
-    RETURNING d.*`,
+    RETURNING d.*, s.prior_state`,
     [Math.round(leaseMs / 1000), RETRYABLE_STATES as readonly string[], batchSize],
   );
   stats.claimed = claimRes.rows.length;
@@ -472,8 +591,11 @@ export async function runDispatchTick(deps: DispatchDeps): Promise<DispatchStats
           stats.leaseLost++;
           continue;
         }
-        // WRITE (outside any transaction).
-        outcome = await writeDelivery(row, plan, deps, maxAttempts);
+        // WRITE or RECONCILE (outside any transaction): an acknowledged
+        // delivery is only ever read back, never written again (F7).
+        outcome = isAcknowledged(row)
+          ? await reconcileDelivery(row, plan, deps, maxAttempts)
+          : await writeDelivery(row, plan, deps, maxAttempts);
       }
 
       outcome = boundOutcome(row, outcome, maxAttempts);

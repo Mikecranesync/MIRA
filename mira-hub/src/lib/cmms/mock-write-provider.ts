@@ -33,6 +33,11 @@ export interface MockRecord {
 export interface MockCmmsWriteProviderOptions {
   /** Default true. When false, append/read-work-log report `unsupported`. */
   supportsWorkLog?: boolean;
+  /** The provider slug this mock stands in for (default "mock"). The
+   *  dispatcher refuses an adapter whose id differs from the delivery's
+   *  `connection_key`, so a test wiring a mock to an "atlas" connection
+   *  must say so explicitly. */
+  providerId?: string;
 }
 
 export interface MockCall {
@@ -42,7 +47,7 @@ export interface MockCall {
 }
 
 export class MockCmmsWriteProvider implements CmmsWriteProvider {
-  readonly providerId = "mock";
+  readonly providerId: string;
 
   private readonly supportsWorkLog: boolean;
   private readonly recordsByWorkOrder = new Map<string, MockRecord[]>();
@@ -52,6 +57,7 @@ export class MockCmmsWriteProvider implements CmmsWriteProvider {
 
   constructor(options: MockCmmsWriteProviderOptions = {}) {
     this.supportsWorkLog = options.supportsWorkLog ?? true;
+    this.providerId = options.providerId ?? "mock";
   }
 
   /** Inject exactly one failure on the next `appendWorkLog` call. */

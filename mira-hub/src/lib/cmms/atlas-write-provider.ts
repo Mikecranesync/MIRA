@@ -67,6 +67,7 @@ export class AtlasWriteProvider implements CmmsWriteProvider {
   }
 
   async capabilities(target: WorkOrderTarget): Promise<CmmsCapabilityMatrix> {
+    if (target.providerId !== this.providerId) return this.foreignTargetMatrix(target);
     const key = this.targetKey(target);
     const cached = this.capabilityCache.get(key);
     if (cached && cached.expiresAt > this.clock()) return cached.matrix;
@@ -85,6 +86,11 @@ export class AtlasWriteProvider implements CmmsWriteProvider {
   }
 
   async appendWorkLog(target: WorkOrderTarget, note: WorkLogNote): Promise<CmmsWriteResult> {
+    // Codex round 2, F1: a target that names another vendor is never sent to
+    // Atlas, whatever its id happens to look like.
+    if (target.providerId !== this.providerId) {
+      return { kind: "permanent_failure", reason: `target_provider_mismatch:${target.providerId}`, receipt: {} };
+    }
     const caps = await this.capabilities(target);
     const cap = caps.append_work_log;
 
@@ -161,6 +167,9 @@ export class AtlasWriteProvider implements CmmsWriteProvider {
   }
 
   async readBackWorkLog(target: WorkOrderTarget, marker: string): Promise<CmmsReadBackResult> {
+    if (target.providerId !== this.providerId) {
+      return { kind: "error", reason: `target_provider_mismatch:${target.providerId}`, retryable: false, receipt: {} };
+    }
     try {
       const matches = await this.findByMarker(target, marker);
       if (matches.length === 0) {
@@ -184,6 +193,18 @@ export class AtlasWriteProvider implements CmmsWriteProvider {
       }
       return { kind: "error", reason: "atlas_read_back_failed", retryable: true, receipt: {} };
     }
+  }
+
+  private foreignTargetMatrix(target: WorkOrderTarget): CmmsCapabilityMatrix {
+    const cap: CmmsCapability = { support: "unsupported", reason: `target_provider_mismatch:${target.providerId}` };
+    return {
+      append_work_log: cap,
+      read_work_log: cap,
+      attach_evidence: cap,
+      record_reading: cap,
+      transition_work_order: cap,
+      list_changes: cap,
+    };
   }
 
   private targetKey(target: WorkOrderTarget): string {
