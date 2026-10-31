@@ -7,7 +7,7 @@
  *
  * This suite reads each rendered/served page and asserts:
  *   - No M-icon SVG in the topbar (wordmark only, per audit's recommended logo)
- *   - The standard 5-link nav set (CMMS, Pricing, Blog, Limitations, Security)
+ *   - The standard 4-link nav set (Pricing, Blog, Limitations, Security)
  *     OR — for blog renderer — the standard nav-link helper output
  *   - The "Sign in" CTA copy (no "Get Started", "Try free", "Join the Beta")
  *
@@ -75,13 +75,18 @@ const blogPages: PageCase[] = [
     ? [
         {
           name: `/blog/${FAULT_CODES[0].slug}`,
-          html: renderFaultCodePage(FAULT_CODES[0], BLOG_POSTS, FAULT_CODES),
+          html: renderFaultCodePage(FAULT_CODES[0], FAULT_CODES),
         },
       ]
     : []),
 ];
 
 const allPages: PageCase[] = [...tsViewPages, ...staticPages, ...blogPages];
+
+// /terms is a contract kept identical to main (Codex F2 on #4570). It changes only
+// through a versioned, owner-approved amendment, so its topbar keeps main's CMMS
+// link until then. Every other page must drop it.
+const CMMS_LINK_EXEMPT = new Set(["/terms", "/privacy"]);
 
 // Extracts the topbar (header.fl-topbar OR <nav>) so footer/body links
 // don't pollute assertions.
@@ -94,6 +99,12 @@ function extractTopbar(html: string): string {
 }
 
 describe("site-wide topbar coherence (v0.6.0)", () => {
+  test("only /terms and /privacy may keep the CMMS topbar link, and both are pages under test", () => {
+    expect([...CMMS_LINK_EXEMPT].sort()).toEqual(["/privacy", "/terms"]);
+    expect(allPages.map((p) => p.name)).toContain("/terms");
+    expect(allPages.map((p) => p.name)).toContain("/privacy");
+  });
+
   for (const page of allPages) {
     test(`${page.name}: topbar logo is wordmark only — no M-icon SVG`, () => {
       const topbar = extractTopbar(page.html);
@@ -119,11 +130,13 @@ describe("site-wide topbar coherence (v0.6.0)", () => {
       // TS-rendered views (home/cmms/limitations/security) use absolute URLs
       // since PR #996; static HTML pages still use root-relative until Phase 2.
       // Accept both: check that the path appears in the href.
-      expect(topbar).toMatch(/href="[^"]*\/cmms"/);
       expect(topbar).toMatch(/href="[^"]*\/pricing"/);
       expect(topbar).toMatch(/href="[^"]*\/blog"/);
       expect(topbar).toMatch(/href="[^"]*\/limitations"/);
       expect(topbar).toMatch(/href="[^"]*\/security"/);
+      if (!CMMS_LINK_EXEMPT.has(page.name)) {
+        expect(topbar).not.toContain(">CMMS<");
+      }
     });
 
     test(`${page.name}: topbar dropped the "Troubleshooter" / "Product" / "Fault Codes" labels`, () => {

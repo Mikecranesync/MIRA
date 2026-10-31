@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { getNotebook } from "@/lib/equipment-notebooks";
 import { insertFixRecord, isUuid, listFixRecords, validateFixInput } from "@/capabilities/fix-records";
+import { deliveryStatusForFixRecords } from "@/capabilities/cmms-dispatch";
 
 export const dynamic = "force-dynamic";
 
@@ -47,7 +48,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: "invalid_limit" }, { status: 400 });
   }
   const { fixes, nextCursor } = await listFixRecords(ctx.tenantId, id, { limit, before });
-  return NextResponse.json({ fixes, nextCursor, assetConfirmed: notebook.asset ? true : null });
+  // #5020: additive per-record delivery state (saved | queued | … |
+  // verified_by_readback). Status is read under RLS; a lookup failure degrades
+  // to `null` so the list itself never fails because of the outbox.
+  let delivery = new Map<string, Awaited<ReturnType<typeof deliveryStatusForFixRecords>> extends Map<string, infer V> ? V : never>();
+  try {
+    delivery = await deliveryStatusForFixRecords(ctx.tenantId, fixes.map((f) => f.id));
+  } catch (err) {
+    console.error("[fixes] delivery status unavailable:", err instanceof Error ? err.message : err);
+  }
+  return NextResponse.json({
+    fixes: fixes.map((f) => ({ ...f, delivery: delivery.get(f.id) ?? null })),
+    nextCursor,
+    assetConfirmed: notebook.asset ? true : null,
+  });
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -127,5 +141,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       { status: 409 },
     );
   }
-  return NextResponse.json({ fix: result.fix }, { status: result.status === "created" ? 201 : 200 });
+  // #5020: tell the client whether anything will leave the Hub for this record.
+  // `saved` = event recorded, no CMMS connection opted in; `queued` = a delivery
+  // row exists and the dispatcher owns it from here. A replayed save reports
+  // nothing new (its event already exists).
+  let delivery: { state: "queued" | "saved"; eventId: string; reason?: string } | null = null;
+  if (result.status === "created") {
+    const d = result.event.delivery;
+    delivery =
+      d.deliveryId === null
+        ? { state: "saved", eventId: result.event.eventId, reason: d.reason }
+        : { state: "queued", eventId: result.event.eventId };
+  }
+  return NextResponse.json({ fix: result.fix, delivery }, { status: result.status === "created" ? 201 : 200 });
 }

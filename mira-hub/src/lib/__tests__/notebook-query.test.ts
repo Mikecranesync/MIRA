@@ -18,6 +18,7 @@ import {
   classifyIntent,
   diversifyByPage,
   codeTokenMatcher,
+  isNavigationChunk,
   type ChatHistoryTurn,
 } from "../notebook-query";
 
@@ -756,5 +757,98 @@ describe("expandIndustrialQuery — panel letter + 4-digit code also searches th
 
   it("control: a model token (ACS355) adds no bare-digit token", () => {
     expect(expandIndustrialQuery("ACS355 panel connection problem").exactTokens).not.toContain("355");
+  });
+});
+
+// Pre-registered 2026-10-26 (docs/evals/2026-10-26-lexical-v2-navigation-demotion-preregistration.md):
+// under NOTEBOOK_LEXICAL_V2 the Micro810 contents (p.5) and index (p.123) chunks led
+// over the page that explains the topic (p.51, "controller password").
+describe("isNavigationChunk + demoteNavigation", () => {
+  const mk = (content: string, rank: number, page: number) => ({ content, rank, sourcePage: page, docId: "d" });
+  const contents = [
+    "Table of Contents",
+    "Preface Who Should Use this Manual . . . . . . . . . . . . . . . 3",
+    "Purpose of this Manual . . . . . . . . . . . . . . . . . . . . 3",
+    "Controller Security . . . . . . . . . . . . . . . . . . . . . . 51",
+    "Controller Password . . . . . . . . . . . . . . . . . . . . . . 51",
+  ].join("\n");
+  const index = [
+    "Index",
+    "About Your Controller 11",
+    "Accessories 65",
+    "Agency Certifications 11",
+    "CE mark 11, 12",
+    "Compliance to European Union Directives 11",
+    "controller password 51",
+    "DIN Rail Mounting 23",
+    "disconnecting main power 15",
+    "low current relay chart 61",
+  ].join("\n");
+  const answer = mk(
+    "Controller Password. Set a password to restrict access to the controller. When the controller is locked, " +
+      "you must enter the password before you can upload or download the project.",
+    0.6,
+    51,
+  );
+  const faultTable = [
+    "Fault code Description Action",
+    "0xF003 The controller was powered off during execution. Cycle power and download the program.",
+    "0xF301 A hardware fault occurred. Replace the controller if the fault persists after a power cycle.",
+  ].join("\n");
+
+  it("recognises dot-leader contents and back-of-book index chunks", () => {
+    expect(isNavigationChunk(contents)).toBe(true);
+    expect(isNavigationChunk(index)).toBe(true);
+  });
+
+  it("does not flag prose or a fault table", () => {
+    expect(isNavigationChunk(answer.content)).toBe(false);
+    expect(isNavigationChunk(faultTable)).toBe(false);
+  });
+
+  it("does not flag a short spec list whose lines end in numbers", () => {
+    // A value table is an answer, not a pointer: under 8 entry lines never qualifies.
+    expect(isNavigationChunk("Input voltage 24\nOutput current 2\nNumber of relays 4\nWeight 450")).toBe(false);
+  });
+
+  it("recognises a heading-less index continuation chunk", () => {
+    const terms = ["backup", "baud rate", "battery", "cable", "coast", "configuration", "controller password",
+      "counter", "current cycle time", "data types", "directory structure", "disconnecting main power",
+      "embedded serial port", "execution rules", "function block", "grounding", "heat", "input states",
+      "installation", "jam detection", "keypad", "logic"];
+    expect(isNavigationChunk(terms.map((t, i) => `${t} ${10 + i}`).join("\n"))).toBe(true);
+  });
+
+  // Codex F1 on #4832: an 8-row spec table read as an index and fell out of the top 6.
+  it("keeps an 8-row specification table in the final context", () => {
+    const spec = mk(
+      ["Controller specifications", "Input voltage 24", "Output current 2", "Number of relays 4", "Weight 450",
+        "Digital inputs 8", "Analog inputs 2", "Digital outputs 4", "Analog outputs 1"].join("\n"),
+      1.0,
+      12,
+    );
+    expect(isNavigationChunk(spec.content)).toBe(false);
+    const prose = [1, 2, 3, 4, 5, 6].map((n) => mk(`General description of the controller family, part ${n}.`, 0.3, 20 + n));
+    const e = expandIndustrialQuery("What is the number of relays on this controller?");
+    const top6 = rerankChunks(e, [spec, ...prose], { intent: "spec", demoteNavigation: true }).slice(0, 6);
+    expect(top6).toContain(spec);
+  });
+
+  it("demotes contents/index chunks below the answer page when asked", () => {
+    const e = expandIndustrialQuery("Where does the Micro810 manual cover controller password?");
+    const pool = [mk(contents, 1.0, 5), mk(index, 0.95, 123), answer];
+    expect(rerankChunks(e, pool, { intent: "generic", demoteNavigation: true })[0]).toBe(answer);
+  });
+
+  it("leaves the order unchanged without demoteNavigation (flag-off parity)", () => {
+    const e = expandIndustrialQuery("Where does the Micro810 manual cover controller password?");
+    const pool = [mk(contents, 1.0, 5), mk(index, 0.95, 123), answer];
+    expect(rerankChunks(e, pool, { intent: "generic" })[0].sourcePage).toBe(5);
+  });
+
+  it("keeps a navigation chunk when it is the only candidate", () => {
+    const e = expandIndustrialQuery("controller password");
+    const only = mk(index, 0.5, 123);
+    expect(rerankChunks(e, [only], { demoteNavigation: true })).toEqual([only]);
   });
 });

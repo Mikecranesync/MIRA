@@ -21,7 +21,7 @@ async function callLLM(prompt: string): Promise<string> {
     // the cap → next provider. Every exit below decides the hold.
     const messages = [{ role: "user", content: prompt }];
     const inputBound = boundInputTokens(messages);
-    const gate = reserveOpenAiAttempt(p.name, "report-generate", inputBound, 500);
+    const gate = reserveOpenAiAttempt(p.name, "report-generate", inputBound, 500, p.model);
     if (!gate.ok) continue;
     const reservation = gate.reservation;
     try {

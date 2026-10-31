@@ -856,7 +856,7 @@ jobs:
         working-directory: mira-web
         run: bun install --frozen-lockfile
 
-      - name: Run deterministic pack-truth + landing suites
+      - name: Run deterministic pack-truth + landing + marketing-claims suites
         if: steps.web.outputs.web == 'true'
         working-directory: mira-web
         run: >
@@ -865,6 +865,8 @@ jobs:
           src/__tests__/printsense-landing.test.ts
           src/lib/__tests__/components.test.ts
           src/lib/__tests__/hub-handoff.test.ts
+          src/capabilities/marketing-claims/capabilities.test.ts
+          src/views/__tests__/honest-claims.test.ts
 
   architecture-check:
     name: Architecture Check
@@ -1684,6 +1686,100 @@ jobs:
           grep -qE "✓ tests/integration/lexical-v2-determinism\.integration\.test\.ts" /tmp/reconciliation.plain || {
             echo "::error::lexical-v2-determinism suite did not run and pass"; exit 1; }
 
+  notebook-event-outbox-pg:
+    name: Notebook event outbox + CMMS dispatcher (disposable Postgres, migration 111)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # WHY THIS JOB EXISTS (#5020)
+    # The outbox's guarantees — fix + event commit together or not at all,
+    # one delivery per event under two concurrent workers (FOR UPDATE SKIP
+    # LOCKED + lease token), tenant isolation under RLS, per-aggregate
+    # ordering, poison isolation and outcome_unknown reconciliation — are
+    # properties of real Postgres, not of mocks. The suite lives behind
+    # vitest.integration.config.ts, which the unit run EXCLUDES, and it
+    # self-skips when TEST_DATABASE_URL is unset, so without this job it would
+    # silently never run. Same shape and the same anti-skip guard as
+    # turn-lifecycle-reconciliation above.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: testpw
+          POSTGRES_DB: mira_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://postgres:testpw@127.0.0.1:5432/mira_test
+      MIRA_TEST_DB_CONFIRM: DISPOSABLE
+      # asset_fix_records lineage (095-098) + the outbox (111) and its notebook
+      # FK (112). tenant_cmms_config comes from
+      # db/integration-fixtures/001_tenant_cmms_config.sql, applied before the
+      # extra migrations by setup-integration-db.mjs.
+      MIRA_INTEGRATION_EXTRA_MIGRATIONS: "095_asset_fix_records.sql,096_asset_fix_records_notebook_fk.sql,097_asset_fix_records_idempotency.sql,098_asset_fix_records_request_fingerprint.sql,111_notebook_domain_events_outbox.sql,112_notebook_domain_events_notebook_fk.sql"
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3
+        id: changes
+        with:
+          filters: |
+            outbox:
+              - 'mira-hub/db/migrations/11[12]_notebook_domain_events_*.sql'
+              - 'mira-hub/db/migrations/09[5-8]_asset_fix_records*.sql'
+              - 'mira-hub/db/integration-fixtures/**'
+              - 'mira-hub/src/capabilities/cmms-dispatch/**'
+              - 'mira-hub/src/capabilities/fix-records.ts'
+              - 'mira-hub/src/lib/cmms/**'
+              - 'mira-hub/src/lib/atlas/**'
+              - 'mira-hub/src/app/api/equipment-notebooks/[id]/fixes/**'
+              - 'mira-hub/scripts/cmms-sync-worker.ts'
+              - 'mira-hub/scripts/setup-integration-db.mjs'
+              - 'mira-hub/vitest.integration.config.ts'
+              - '.github/workflows/ci.yml'
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        if: steps.changes.outputs.outbox == 'true'
+        with:
+          bun-version: latest
+
+      - name: Install mira-hub dependencies
+        if: steps.changes.outputs.outbox == 'true'
+        working-directory: mira-hub
+        run: bun install --frozen-lockfile
+
+      - name: Apply the outbox schema
+        if: steps.changes.outputs.outbox == 'true'
+        working-directory: mira-hub
+        run: node scripts/setup-integration-db.mjs
+
+      - name: Outbox + dispatcher suite (must RUN, not skip)
+        if: steps.changes.outputs.outbox == 'true'
+        working-directory: mira-hub
+        run: |
+          set -euo pipefail
+          node node_modules/vitest/vitest.mjs run \
+            --config vitest.integration.config.ts \
+            src/capabilities/cmms-dispatch/__tests__/dispatcher.integration.test.ts \
+            2>&1 | tee /tmp/outbox.out
+          # Same three-clause anti-skip guard as turn-lifecycle-reconciliation
+          # (strip ANSI first; vitest prints "N skipped", never "0 passed").
+          sed -E 's/\x1b\[[0-9;]*[A-Za-z]//g' /tmp/outbox.out > /tmp/outbox.plain
+          if grep -qiE "no test files found" /tmp/outbox.plain; then
+            echo "::error::no test file matched — the gate proved nothing"; exit 1
+          fi
+          if grep -qE "Tests +[0-9]+ skipped" /tmp/outbox.plain; then
+            echo "::error::outbox suite SKIPPED (TEST_DATABASE_URL unset?) — the gate proved nothing"; exit 1
+          fi
+          grep -qE "Tests +[1-9][0-9]* passed" /tmp/outbox.plain || {
+            echo "::error::could not confirm a positive passing test count"; exit 1; }
+          grep -qE "✓ src/capabilities/cmms-dispatch/__tests__/dispatcher\.integration\.test\.ts" /tmp/outbox.plain || {
+            echo "::error::dispatcher integration suite did not run and pass"; exit 1; }
+
   manual-search-quota-pg:
     name: Manual-search quota caps (disposable Postgres, migration 103)
     runs-on: ubuntu-latest
@@ -1765,6 +1861,7 @@ jobs:
       - mira-hub-unit
       - turn-lifecycle-reconciliation
       - manual-search-quota-pg
+      - notebook-event-outbox-pg
       - mobile-unit-tests
       - mira-web-pack-tests
       - architecture-check
@@ -1793,6 +1890,7 @@ jobs:
           HUB_UNIT_RESULT: ${{ needs.mira-hub-unit.result }}
           LIFECYCLE_RECON_RESULT: ${{ needs.turn-lifecycle-reconciliation.result }}
           QUOTA_PG_RESULT: ${{ needs.manual-search-quota-pg.result }}
+          OUTBOX_PG_RESULT: ${{ needs.notebook-event-outbox-pg.result }}
           MOBILE_UNIT_RESULT: ${{ needs.mobile-unit-tests.result }}
           WEB_PACK_RESULT: ${{ needs.mira-web-pack-tests.result }}
           ARCH_RESULT: ${{ needs.architecture-check.result }}
@@ -1834,6 +1932,7 @@ jobs:
           require_success turn-lifecycle-reconciliation "$LIFECYCLE_RECON_RESULT"
           # #4160 S4: same shape — step-level paths filter, never job-level skipped.
           require_success manual-search-quota-pg "$QUOTA_PG_RESULT"
+          require_success notebook-event-outbox-pg "$OUTBOX_PG_RESULT"
           # Added 2026-09-19: mobile-unit-tests was never in `needs` NOR read
           # here, so a red mobile suite could not fail the merge (observed on
           # #3837: "Mobile Unit Tests" FAIL while CI Gate was green). Same shape

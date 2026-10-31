@@ -1292,6 +1292,12 @@ export async function retrieveNodeChunks(
      *  (e.g. a thread's P042) can only ADD candidates — never crowd the
      *  message's own keywords ("keypad") out of the pool. */
     rawQuery?: string;
+    /** #4983 — the question rewritten into the manual's vocabulary (search
+     *  phrases a model produced from the forum-style post). Rides as one more
+     *  query variant: its own OR pass for recall and its terms in the rerank's
+     *  synonym boost, exactly like the static SYNONYMS table. Never replaces
+     *  the technician's words; absent = unchanged behaviour. */
+    rewrittenQuery?: string;
     /** The notebook's machine (manufacturer/model), so its own name is never
      *  read as a fault code by the whole-token lane (Codex r6 on #4360). */
     identity?: EquipmentIdentity | null;
@@ -1513,6 +1519,7 @@ export async function retrieveNodeChunks(
           metadata->>'filename' AS filename,
           ${documentHeadingSql},
           verified,
+          tsvector_to_array(content_tsv) AS lexemes,
           scored.score::float8 AS rank
         FROM scored JOIN knowledge_entries ON knowledge_entries.id = scored.id
         WHERE knowledge_entries.tenant_id = $1
@@ -1520,11 +1527,75 @@ export async function retrieveNodeChunks(
         LIMIT $4`;
 
   // $2 is the tsquery text (per-pass), $6 the exact-token ILIKE patterns.
+  // Rare-term recall lane. The OR pass ranks by ts_rank_cd, which weighs every
+  // lexeme the same: a thirty-word forum post lets pages dense in the common
+  // words ("drive", "parameter", "set") fill the pool while the one page that
+  // holds the rare ones ("local/remote", "bootp", "noisy") never enters it
+  // (forum-new fn-pf40-5, fn-ml1100-8, fn-micro820-1: answer chunk in scope,
+  // never in the pool). This extra pass keeps only the lexemes that are
+  // informative IN THIS SCOPE — document frequency over the same tenant/node/
+  // doc/approval rows, at most OR_IDF_TAU of them, always the OR_IDF_MIN rarest
+  // — and ranks by cover density over those. The lexemes are already
+  // normalised (they come from to_tsvector), so the query is rebuilt by the
+  // tsquery cast, which takes quoted lexemes literally. The full OR pass stays
+  // (its proximity over common words is what finds "ground fault … protection");
+  // this lane can only add candidates, and the rerank's IDF coverage feature
+  // (idfCover) decides between them.
+  const OR_IDF_TAU = 0.1;
+  const OR_IDF_MIN = 4;
+  const RARE_TSQUERY = "__rare_terms__";
+  const rareTermSql = `WITH qlex AS (
+        SELECT DISTINCT unnest(tsvector_to_array(to_tsvector('english', $2))) AS lex
+      ), scope AS (
+        SELECT id, tsvector_to_array(content_tsv) AS lexemes
+          FROM knowledge_entries
+          WHERE tenant_id = $1
+            AND ingest_route = 'v2'
+            ${approvalClauseMain}
+            ${nodeClauseMain}
+            ${docClause}
+      ), n AS (
+        SELECT count(*)::float8 AS n FROM scope
+      ), df AS (
+        SELECT q.lex, count(s.id)::float8 AS df FROM qlex q LEFT JOIN scope s ON q.lex = ANY(s.lexemes) GROUP BY q.lex
+      ), ranked AS (
+        SELECT lex, df, row_number() OVER (ORDER BY df, lex) AS rn FROM df WHERE df > 0
+      ), kept AS (
+        SELECT lex FROM ranked CROSS JOIN n WHERE df / n.n <= ${OR_IDF_TAU} OR rn <= ${OR_IDF_MIN}
+      ), q AS (
+        SELECT string_agg(quote_literal(lex), ' | ')::tsquery AS tsq FROM kept
+      )
+      SELECT
+          content,
+          doc_id::text AS doc_id,
+          source_url,
+          source_page,
+          page_start,
+          ${PAGE_LABEL_SQL},
+          section_path,
+          metadata->>'filename' AS filename,
+          ${documentHeadingSql},
+          verified,
+          tsvector_to_array(content_tsv) AS lexemes,
+          ts_rank_cd(content_tsv, q.tsq) AS rank
+        FROM knowledge_entries, q
+        WHERE tenant_id = $1
+          AND ingest_route = 'v2'
+          ${approvalClauseMain}
+          ${nodeClauseMain}
+          ${docClause}
+          AND content_tsv @@ q.tsq
+        ORDER BY rank DESC, doc_id, page_start NULLS LAST, source_page NULLS LAST, metadata->>'chunk_index', id
+        LIMIT $4`;
   const runRetrieval = async (tsquery: string, queryText: string) => {
     const rows: Record<string, unknown>[] = [];
     for (const window of docWindows) {
       const res = await client.query(
-        lexicalV2 ? idfSql : `SELECT
+        lexicalV2
+          ? idfSql
+          : tsquery === RARE_TSQUERY
+            ? rareTermSql
+            : `SELECT
             content,
             doc_id::text AS doc_id,
             source_url,
@@ -1535,6 +1606,7 @@ export async function retrieveNodeChunks(
             metadata->>'filename' AS filename,
             ${documentHeadingSql},
             verified,
+            tsvector_to_array(content_tsv) AS lexemes,
             ts_rank_cd(content_tsv, ${tsquery}) AS rank
           FROM knowledge_entries
           WHERE tenant_id = $1
@@ -1548,6 +1620,17 @@ export async function retrieveNodeChunks(
         [tenantId, boundBm25Query(queryText), nodeIds, POOL, ...(window.length ? [window] : []), ...approvedParams],
       );
       rows.push(...res.rows);
+    }
+    // Each pass ranks with ts_rank_cd over ITS OWN query, so the raw scores of
+    // two passes are not comparable: a five-lexeme AND pass and the rare-term
+    // pass score the same chunk on different scales, and the rerank's single
+    // max-normalisation then squashed one lane's rows to nothing (t4-77 tq-13:
+    // the AND-pass answer chunk fell to base 0.002 under the rare lane's max).
+    // Normalise within the pass, so every lane hands the rerank a 0..1 base.
+    // The IDF-sum path (NOTEBOOK_LEXICAL_V2) is left byte-identical.
+    if (!lexicalV2) {
+      const max = Math.max(1e-6, ...rows.map((r) => Number(r.rank ?? 0)));
+      for (const r of rows) r.rank = Number(r.rank ?? 0) / max;
     }
     return rows;
   };
@@ -1565,10 +1648,107 @@ export async function retrieveNodeChunks(
   // Nor is the model the QUESTION names (forum-batch2 rerun): in a notebook with
   // no confirmed identity, "ACS355 fault code 0001" let ACS355 earn the code
   // bonus on every page that repeats it, and the 0001 fault table fell out.
-  const expanded = withoutIdentityCodes(
+  let expanded = withoutIdentityCodes(
     withoutIdentityCodes(withRawCodeTokens(expandIndustrialQuery(q), opts.rawQuery), opts.identity),
     requestedModel.model && !requestedModel.ambiguous ? { model: requestedModel.model } : null,
   );
+  // Query rewrite (NOTEBOOK_QUERY_REWRITE, query-rewrite.ts): the technician's
+  // post restated in the manual's own vocabulary. ONE extra OR variant — it
+  // joins the synonym passes below and feeds the rerank's synonym terms, and
+  // never replaces the technician's words (the AND pass still leads). Measured
+  // 2026-10-30 on 42 held-out forum posts: 12 → 15 right pages in the top 5;
+  // oem-index 86 → 93; oem-fault / t4-77 neutral (docs/evals/2026-10-30-t1-query-rewrite).
+  const rewritten = opts.rewrittenQuery?.replace(/\s+/g, " ").trim();
+  if (rewritten && !expanded.variants.includes(rewritten)) {
+    expanded = { ...expanded, variants: [...expanded.variants, rewritten] };
+  }
+  // A code names ONE row. A token that matches more chunks than the candidate
+  // pool holds ("20QWB" sits in the catalog number on every Micro820 spec
+  // table; "TM171EP14R" heads every M171 wiring page) names the product, not a
+  // row: its whole-token lane returns the first POOL pages in page order and
+  // each earns the code bonus, so the page that answers falls out (t4-77
+  // micro820-in-q2, tq-34). Such a token is demoted to an ordinary query word
+  // before the lane runs or the bonus binds. One count query over the same
+  // tenant/node/doc scope; any failure, or an unexpected shape, keeps the token
+  // (fail-open: the guard only ever narrows, never invents).
+  if (!lexicalV2 && expanded.codeTokens.length > 0) {
+    const countParams: unknown[] = [tenantId, nodeIds, expanded.codeTokens.map((t) => codeTokenMatcher(t).sql)];
+    let countDocClause = "";
+    if (allowedDocIds.length > 0) {
+      countParams.push(allowedDocIds);
+      countDocClause = "AND doc_id = ANY($4::uuid[])";
+    }
+    let countApproval = approvedSourceFilterSql(null);
+    if (admitApproved) {
+      countParams.push(approvedSourceDocIds);
+      countApproval = approvedSourceFilterSql(countParams.length);
+    }
+    // Optional read inside the caller's transaction (withTenantContext runs
+    // BEGIN/COMMIT): a failed statement leaves it aborted and the next lexical
+    // SELECT would die with 25P02 (Codex F1 on #4979). Same SAVEPOINT pattern as
+    // the vector lane; a raw-pool caller has no transaction and SAVEPOINT fails
+    // harmlessly.
+    let countSavepoint = false;
+    try {
+      await client.query("SAVEPOINT code_selectivity");
+      countSavepoint = true;
+    } catch {
+      countSavepoint = false;
+    }
+    try {
+      const res = await client.query(
+        `SELECT p.i::int AS i,
+                (SELECT count(*)::int FROM knowledge_entries
+                  WHERE tenant_id = $1
+                    AND ingest_route = 'v2'
+                    ${countApproval}
+                    ${nodeClauseExact}
+                    ${countDocClause}
+                    AND content ~* p.pattern) AS n,
+                (SELECT count(*)::int FROM knowledge_entries
+                  WHERE tenant_id = $1
+                    AND ingest_route = 'v2'
+                    ${countApproval}
+                    ${nodeClauseExact}
+                    ${countDocClause}) AS scope
+           FROM unnest($3::text[]) WITH ORDINALITY AS p(pattern, i)`,
+        countParams,
+      );
+      const hits = new Map<number, number>();
+      let scope = 0;
+      for (const r of res.rows as Array<Record<string, unknown>>) {
+        if (typeof r.i === "number" && typeof r.n === "number") hits.set(r.i, r.n);
+        if (typeof r.scope === "number") scope = r.scope;
+      }
+      // "One row" is relative to the document: a fault code sits in a few
+      // chunks of a 1,000-chunk manual, a catalog number on a sizeable share of
+      // a 50-chunk installation sheet. Up to four chunks is always a row; past
+      // that, more than 5% of the scope is the product's name (measured
+      // 2026-10-29: 12QWB 9/261 keeps, TM171EP14R 15/270 and 20QWB 7/53 drop,
+      // every oem-fault code keeps).
+      const namesProduct = (n: number) => n > 4 && scope > 0 && n / scope > 0.05;
+      const selective = expanded.codeTokens.filter((_, idx) => !namesProduct(hits.get(idx + 1) ?? 0));
+      if (selective.length !== expanded.codeTokens.length) {
+        expanded = {
+          ...expanded,
+          codeTokens: selective,
+          ...(expanded.currentCodeTokens
+            ? { currentCodeTokens: expanded.currentCodeTokens.filter((t) => selective.includes(t)) }
+            : {}),
+        };
+      }
+      if (countSavepoint) await client.query("RELEASE SAVEPOINT code_selectivity");
+    } catch (err) {
+      console.warn("[retrieveNodeChunks] code-token selectivity check failed; keeping all codes:", err instanceof Error ? err.message : err);
+      if (countSavepoint) {
+        try {
+          await client.query("ROLLBACK TO SAVEPOINT code_selectivity");
+        } catch (rollbackErr) {
+          console.warn("[retrieveNodeChunks] code-selectivity savepoint rollback failed:", rollbackErr instanceof Error ? rollbackErr.message : rollbackErr);
+        }
+      }
+    }
+  }
   // `match` picks the predicate: ILIKE substring for the legacy exact tokens,
   // or a whole-token regex for fault codes (codeTokenMatcher) — "%ova%" would
   // also hit "removal", and "%alarm 7%" every "ALARM 70".
@@ -1597,6 +1777,7 @@ export async function retrieveNodeChunks(
             ${PAGE_LABEL_SQL},
             section_path, metadata->>'filename' AS filename, verified,
             ${documentHeadingSql},
+            tsvector_to_array(content_tsv) AS lexemes,
             0::float4 AS rank
           FROM knowledge_entries
           WHERE tenant_id = $1
@@ -1691,18 +1872,43 @@ export async function retrieveNodeChunks(
       }
       return true;
   };
-  const add = (rs: Record<string, unknown>[]) => {
+  // Returns how many rows passed admission (new or already pooled): a sibling
+  // manual's rows that admit() rejects are not evidence (Codex F3 on #4979).
+  const add = (rs: Record<string, unknown>[]): number => {
+    let admitted = 0;
     for (const r of rs) {
       if (!admit(r)) continue;
+      admitted++;
       const key = keyOf(r);
       if (seen.has(key)) continue;
       seen.add(key);
       pool.push(r);
     }
+    return admitted;
   };
 
-  add(await runRetrieval(AND_TSQUERY, expanded.variants[0]));
-  for (const v of expanded.variants.slice(1)) add(await runRetrieval(OR_TSQUERY, v));
+  // How many rows the LEXICAL passes (AND, synonym OR) produced — not the exact
+  // lanes. The last-resort OR pass below keys on this, not on the pool size: a
+  // question whose only lexical hit is the AND pass's "nothing" must still get
+  // its OR recall even when an exact token ("20QWB", "BMXAMI0810") found a few
+  // rows on its own, or those few rows are the whole context (t4-77 tq-42 came
+  // back with two pages, neither the lockout procedure).
+  let lexicalRows = 0;
+  const addLexical = async (tsquery: string, text: string) => {
+    lexicalRows += add(await runRetrieval(tsquery, text));
+  };
+  await addLexical(AND_TSQUERY, expanded.variants[0]);
+  // The rewrite variant is recall only: its rows join the pool but do NOT count
+  // as lexical coverage, so the last-resort OR pass on the technician's own
+  // words still runs when those words found nothing (Codex F1 on #5003 — a
+  // rewrite that found an unrelated page must not silence the original words).
+  for (const v of expanded.variants.slice(1)) {
+    if (rewritten !== undefined && v === rewritten) add(await runRetrieval(OR_TSQUERY, v));
+    else await addLexical(OR_TSQUERY, v);
+  }
+  // Recall for the question's rare words. Not lexical coverage: the full OR pass
+  // below must still run when the AND and synonym passes found nothing.
+  if (!lexicalV2) add(await runRetrieval(RARE_TSQUERY, opts.rawQuery?.trim() || expanded.variants[0]));
   add(await runExactLane(expanded.exactTokens.map((t) => `%${t}%`)));
   // The code the technician JUST named gets its own whole-token pass with its
   // own window BEFORE the combined pass (Codex r8 on #4360): the combined query
@@ -1722,8 +1928,8 @@ export async function retrieveNodeChunks(
   // every variant and the chunk answering the message's OWN subject (keypad
   // navigation) never enters the pool.
   const rawQ = opts.rawQuery?.trim();
-  if (rawQ && rawQ !== q) add(await runRetrieval(OR_TSQUERY, rawQ));
-  if (opts.includeQueryRecall === true) add(await runRetrieval(OR_TSQUERY, expanded.variants[0]));
+  if (rawQ && rawQ !== q) await addLexical(OR_TSQUERY, rawQ);
+  if (opts.includeQueryRecall === true) await addLexical(OR_TSQUERY, expanded.variants[0]);
 
   // Broad/enumeration questions ("what comm options?", "all the ways to command
   // speed?", "what protections?") fail single-cluster retrieval: the top section
@@ -1743,9 +1949,10 @@ export async function retrieveNodeChunks(
     for (const facet of COMM_FACETS) add(await runRetrieval(OR_TSQUERY, facet));
   }
 
-  // Last-resort recall: if precise + expanded + exact all found nothing, fall
-  // back to the original OR pass (a fully off-vocabulary conversational query).
-  if (pool.length === 0 && opts.includeQueryRecall !== true) add(await runRetrieval(OR_TSQUERY, expanded.variants[0]));
+  // Last-resort recall: if precise + expanded found nothing, fall back to the
+  // original OR pass (a fully off-vocabulary conversational query). Exact-lane
+  // rows do not count as lexical coverage (see lexicalRows).
+  if (lexicalRows === 0 && opts.includeQueryRecall !== true) await addLexical(OR_TSQUERY, expanded.variants[0]);
 
   // 2026-10-17 prod-test item 4 — the VECTOR lane, behind NOTEBOOK_HYBRID_RETRIEVAL
   // (default off). node ingest already stores a nomic-embed-text vector on every
@@ -1811,6 +2018,7 @@ export async function retrieveNodeChunks(
                 metadata->>'filename' AS filename,
                 ${documentHeadingSql},
                 verified,
+                tsvector_to_array(content_tsv) AS lexemes,
                 0::float4 AS rank,
                 (1 - (embedding <=> $${vecSlot}::vector))::float4 AS vscore
               FROM knowledge_entries
@@ -1861,6 +2069,103 @@ export async function retrieveNodeChunks(
   setSpanAttrs({ "mira.retrieval.vector_lane": vectorLane });
   if (opts.diagnostics) opts.diagnostics.vectorLane = vectorLane;
 
+  // IDF coverage of the question, per candidate (rerank feature). One query
+  // returns the document frequency of every question lexeme over the SAME
+  // scope the lanes read; a candidate's cover is the IDF-weighted share of
+  // those lexemes its own tsvector holds (lexemes column, every lane). It is
+  // 0..1, so a chunk holding the question's rare words leads one holding only
+  // its common words at equal ts_rank — the rarity ts_rank_cd ignores — while
+  // proximity, exact codes and intent features keep their say. Any failure
+  // leaves every cover at 0: the rerank is then exactly the pre-feature order.
+  const qIdf = new Map<string, number>();
+  let qIdfTotal = 0;
+  // Flag-off (production) only: NOTEBOOK_LEXICAL_V2 keeps its own IDF-sum scorer
+  // and its measured ranking (#4832) untouched (Codex F2 on #4979).
+  let idfSavepoint = false;
+  if (!lexicalV2) {
+    try {
+      await client.query("SAVEPOINT question_idf");
+      idfSavepoint = true;
+    } catch {
+      idfSavepoint = false;
+    }
+  }
+  if (!lexicalV2) try {
+    const idfParams: unknown[] = [tenantId, boundBm25Query(opts.rawQuery?.trim() || q), nodeIds, POOL, ...docParams, ...approvedParams];
+    const res = await client.query(
+      `WITH qlex AS (
+          SELECT DISTINCT unnest(tsvector_to_array(to_tsvector('english', $2))) AS lex
+        ), scope AS (
+          SELECT id, tsvector_to_array(content_tsv) AS lexemes
+            FROM knowledge_entries
+            WHERE tenant_id = $1
+              AND ingest_route = 'v2'
+              ${approvalClauseMain}
+              ${nodeClauseMain}
+              ${docClause}
+        ), n AS (
+          SELECT count(*)::float8 AS n FROM scope
+        ), heading AS (
+          SELECT DISTINCT ON (doc_id) left(content, 2000) AS content
+            FROM knowledge_entries
+            WHERE tenant_id = $1
+              AND ingest_route = 'v2'
+              ${approvalClauseMain}
+              ${nodeClauseMain}
+              ${docClause}
+            ORDER BY doc_id, page_start NULLS LAST, source_page NULLS LAST, (metadata->>'chunk_index')::int NULLS LAST, id
+        ), hlex AS (
+          SELECT DISTINCT unnest(tsvector_to_array(to_tsvector('english', content))) AS lex FROM heading
+        ), df AS (
+          SELECT q.lex, count(s.id)::float8 AS df, (q.lex IN (SELECT lex FROM hlex)) AS names_document
+            FROM qlex q LEFT JOIN scope s ON q.lex = ANY(s.lexemes) GROUP BY q.lex
+        )
+        SELECT df.lex, df.df, n.n, df.names_document FROM df CROSS JOIN n WHERE df.df > 0 AND ($4::int IS NOT NULL)`,
+      idfParams,
+    );
+    // A word on the document's own cover ("Allen-Bradley", "PowerFlex",
+    // "User Manual") names the document, not a page of it: it is rare in the
+    // body (the brand sits on the cover and the back page) and so would
+    // outweigh the topic words. forum-new fn-pf40-2 ("check fault history in
+    // Allen Bradley powerflex 40") led with the cover pages until the heading
+    // lexemes were left out. Only when at least one topic lexeme remains.
+    const rows = res.rows as Array<Record<string, unknown>>;
+    const topical = rows.filter((r) => r.names_document !== true);
+    for (const r of topical.length > 0 ? topical : rows) {
+      const df = Number(r.df);
+      const n = Number(r.n);
+      if (!(df > 0) || !(n > 0)) continue;
+      const idf = Math.log((n - df + 0.5) / (df + 0.5) + 1);
+      qIdf.set(String(r.lex), idf);
+      qIdfTotal += idf;
+    }
+    if (idfSavepoint) await client.query("RELEASE SAVEPOINT question_idf");
+  } catch (err) {
+    console.warn("[retrieveNodeChunks] question IDF lookup failed; coverage feature off:", err instanceof Error ? err.message : err);
+    qIdf.clear();
+    qIdfTotal = 0;
+    if (idfSavepoint) {
+      try {
+        await client.query("ROLLBACK TO SAVEPOINT question_idf");
+      } catch (rollbackErr) {
+        console.warn("[retrieveNodeChunks] question-IDF savepoint rollback failed:", rollbackErr instanceof Error ? rollbackErr.message : rollbackErr);
+      }
+    }
+  }
+  const idfCoverOf = (r: Record<string, unknown>): number => {
+    if (qIdfTotal <= 0 || !Array.isArray(r.lexemes)) return 0;
+    let sum = 0;
+    for (const lex of r.lexemes as unknown[]) {
+      const w = qIdf.get(String(lex));
+      if (w) sum += w;
+    }
+    return sum / qIdfTotal;
+  };
+  // Chosen on the 19 forum questions plus t4-77 / oem-fault / oem-index (dev
+  // sets, 2026-10-29): 6 as a multiplier on the lexical base; the fresh forum
+  // set was held out and run once afterwards.
+  const IDF_COVER_WEIGHT = 6;
+
   // Deterministic rerank (exact-token/phrase/synonym boosts over ts_rank). For a
   // broad question, keep a bigger, page-DIVERSE slice so distinct facets survive
   // (no single page may fill the context); otherwise the tight topK.
@@ -1876,9 +2181,12 @@ export async function retrieveNodeChunks(
       rank: Number(r.rank ?? 0),
       sourcePage: r.page_start != null ? Number(r.page_start) : r.source_page == null ? null : Number(r.source_page),
       docId: r.doc_id == null ? null : String(r.doc_id),
+      idfCover: idfCoverOf(r),
       _row: r,
     })),
-    { intent, trace },
+    // Contents/index demotion only rides with IDF scoring, whose presence-only sum
+    // is what lets those pages lead; flag off stays byte-identical.
+    { intent, trace, demoteNavigation: lexicalV2, idfCoverWeight: lexicalV2 ? 0 : IDF_COVER_WEIGHT },
   );
   // Item 4 — Reciprocal Rank Fusion of the lexical rerank and the vector order
   // (hybrid-retrieval.ts). With no vector lane this IS lexicalRanked.
@@ -1922,7 +2230,7 @@ export async function retrieveNodeChunks(
     console.log(
       `[retrieval-trace] q=${JSON.stringify(q)} intent=${intent} pool=${pool.length} ` +
         `final=${JSON.stringify(reranked.map((c) => c.sourcePage))} ` +
-        `cands=${JSON.stringify(trace.slice(0, 12).map((t) => ({ p: t.page, s: +t.score.toFixed(2), b: +t.base.toFixed(3), i: +t.index.toFixed(2), pr: +t.proc.toFixed(2), cm: +t.comm.toFixed(2), x: t.exactHit })))}`,
+        `cands=${JSON.stringify(trace.slice(0, 12).map((t) => ({ p: t.page, s: +t.score.toFixed(2), b: +t.base.toFixed(3), c: +t.cover.toFixed(2), i: +t.index.toFixed(2), pr: +t.proc.toFixed(2), cm: +t.comm.toFixed(2), x: t.exactHit })))}`,
     );
   }
 

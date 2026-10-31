@@ -11,7 +11,8 @@ vi.mock("@/lib/users", async (orig) => ({ ...(await orig<typeof import("@/lib/us
 import { cookies } from "next/headers";
 import { decode } from "next-auth/jwt";
 import { findUserById } from "@/lib/users";
-import { requireSession, type SessionContext } from "@/lib/session";
+import { NextResponse } from "next/server";
+import { requireSession, sessionOr401, SessionUnavailableError, UnauthorizedError, type SessionContext } from "@/lib/session";
 import { getCapabilities } from "@/lib/capabilities";
 
 const TID = "11111111-2222-4333-8444-555555555555";
@@ -78,20 +79,55 @@ describe("requireSession derives platformAdmin fresh from hub_users.status (#459
     expect((await requireSession()).platformAdmin).toBe(false);
   });
 
-  it.each(["approved", "pending", "expired", "Admin ", ""])("DB status %j → false", async (status) => {
+  // "expired" deliberately excluded from this list (F8, #4882 @ 66f379a90):
+  // requireSession() now THROWS for a DB status that resolves to the
+  // "upgrade" entitlement decision, so it never reaches a `platformAdmin`
+  // return value to assert on — see the dedicated "expired" test below.
+  it.each(["approved", "pending", "Admin ", ""])("DB status %j → false", async (status) => {
     token();
     vi.mocked(findUserById).mockResolvedValue({ role: "owner", status } as never);
     expect((await requireSession()).platformAdmin).toBe(false);
   });
 
-  it("deleted user or a DB error → false (fail closed), session itself still resolves", async () => {
+  it("DB status 'expired' → requireSession denies before platformAdmin is ever observed (F8, #4882 @ 66f379a90)", async () => {
+    token();
+    vi.mocked(findUserById).mockResolvedValue({ role: "owner", status: "expired" } as never);
+    await expect(requireSession()).rejects.toBeInstanceOf(UnauthorizedError);
+  });
+
+  it("deleted user (lookup succeeds, returns null) → false (fail closed), session itself still resolves", async () => {
     token();
     vi.mocked(findUserById).mockResolvedValue(null);
-    expect((await requireSession()).platformAdmin).toBe(false);
-    vi.mocked(findUserById).mockRejectedValue(new Error("db blip"));
     const s = await requireSession();
     expect(s.platformAdmin).toBe(false);
     expect(s.tenantId).toBe(TID);
+  });
+
+  it("F8 option B (Mike's decision, 2026-10-28) — a DB error on lookup now fails CLOSED: requireSession throws SessionUnavailableError instead of returning a stale-claim session", async () => {
+    token();
+    vi.mocked(findUserById).mockRejectedValue(new Error("db blip"));
+    await expect(requireSession()).rejects.toBeInstanceOf(SessionUnavailableError);
+    // Not an UnauthorizedError — a client must not treat this as "signed out".
+    await expect(requireSession()).rejects.not.toBeInstanceOf(UnauthorizedError);
+  });
+
+  it("sessionOr401 F8 option B — a DB lookup failure maps to 503 with Retry-After, not the generic 401", async () => {
+    token();
+    vi.mocked(findUserById).mockRejectedValue(new Error("db blip"));
+    const res = await sessionOr401();
+    expect(res).toBeInstanceOf(NextResponse);
+    const r = res as NextResponse;
+    expect(r.status).toBe(503);
+    expect(r.headers.get("Retry-After")).toBe("30");
+    const body = await r.json();
+    expect(body.error).toBe("MIRA is temporarily unavailable. Try again in a minute.");
+  });
+
+  it("sessionOr401 control — a healthy lookup still returns the session, not a 503", async () => {
+    token();
+    vi.mocked(findUserById).mockResolvedValue({ role: "owner", status: "trial" } as never);
+    const res = await sessionOr401();
+    expect(res).not.toBeInstanceOf(NextResponse);
   });
 });
 

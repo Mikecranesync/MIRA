@@ -81,7 +81,9 @@ describe("lib/llm/cascade — the OpenAI leg is spend-capped", () => {
   });
 
   it("control (Codex r2 F4 on #4355): a TEXT call on a model with no verified image bound still goes to OpenAI", async () => {
-    process.env.OPENAI_MODEL = "gpt-5.6-sol";
+    // A PRICED model with no verified image bound (only gpt-5.4-mini has one). An
+    // UNPRICED model is refused for text too since #4968 — see openai-budget-per-model.test.ts.
+    process.env.OPENAI_MODEL = "gpt-5.5";
     stubFetch({ content: "from openai", usage: { prompt_tokens: 50, completion_tokens: 100 } });
     const r = await cascadeComplete(MESSAGES);
     expect(r?.provider).toBe("OpenAI");

@@ -1,0 +1,4 @@
+[{"path":"job.seal_material_suffix","action":"set","value":"NBR (standard) — nameplate shows no suffix","by":"Demo Technician","at":"2026-10-30T14:00:00Z","note":"confirmed on the nameplate photo"},
+ {"path":"parts.required[0]","action":"confirm","by":"Demo Technician","at":"2026-10-30T14:01:00Z"},
+ {"path":"steps.items[12]","action":"confirm","by":"Demo Technician","at":"2026-10-30T14:02:00Z"},
+ {"path":"parts.required[3]","action":"strike","by":"Demo Technician","at":"2026-10-30T14:03:00Z","note":"TB053 not applicable per distributor"}]

@@ -215,3 +215,59 @@ describe("#4645 — restart-safety framing on reset / restart-after-fault questi
     expect(reset.fetchMock.mock.calls.length).toBe(plainCalls);
   });
 });
+
+describe("#4891 F8 — a correct RESTART_DIRECTIVE explanation is not refused as a prompt leak", () => {
+  function frames(raw: string): Record<string, unknown>[] {
+    return raw
+      .split("\n\n")
+      .map((l) => l.replace(/^data: /, "").trim())
+      .filter((l) => l && l !== "[DONE]")
+      .map((l) => {
+        try {
+          return JSON.parse(l) as Record<string, unknown>;
+        } catch {
+          return {};
+        }
+      });
+  }
+  function contentOf(fr: Record<string, unknown>[]): string {
+    return fr.filter((f) => f.kind === "content").map((f) => String(f.content ?? "")).join("");
+  }
+
+  it("Codex's exact RESTART_DIRECTIVE explanation is answered, not refused", async () => {
+    // Calibrate: confirm RESTART_DIRECTIVE actually rides this turn's prompt
+    // (gate defaults ON — not set by this file's beforeEach — matching the
+    // production shape Codex's finding is against).
+    const calibration = capturingProvider("Clear fault F004 by pressing STOP/RESET [1].");
+    vi.stubGlobal("fetch", calibration.fetchMock);
+    await ask("How do I reset fault F004 and get it running again?");
+    expect(calibration.prompts.some((p) => p.includes("RESET / RESTART AFTER A FAULT"))).toBe(true);
+
+    const answer =
+      "Before resetting, identify and correct the cause before resetting; confirm people are clear before anything can move; lockout/tagout before any hands-in work.";
+    const { fetchMock } = capturingProvider(answer);
+    vi.stubGlobal("fetch", fetchMock);
+    const { text } = await ask("How do I reset fault F004 and get it running again?");
+    const fr = frames(text);
+    const streamed = contentOf(fr);
+    expect(streamed).toContain("identify and correct the cause");
+    expect(fr.find((f) => f.kind === "safety" && String(f.trigger).startsWith("prompt-leak:"))).toBeUndefined();
+  });
+
+  it("a full verbatim echo of the restart-directive-carrying prompt is still caught", async () => {
+    const calibration = capturingProvider("Clear fault F004 by pressing STOP/RESET [1].");
+    vi.stubGlobal("fetch", calibration.fetchMock);
+    await ask("How do I reset fault F004 and get it running again?");
+    const realSystemPrompt = calibration.prompts.find((p) => p.includes("RESET / RESTART AFTER A FAULT")) ?? "";
+    expect(realSystemPrompt).toContain("RESET / RESTART AFTER A FAULT");
+
+    const { fetchMock } = capturingProvider(realSystemPrompt);
+    vi.stubGlobal("fetch", fetchMock);
+    const { text } = await ask("How do I reset fault F004 and get it running again?");
+    const fr = frames(text);
+    expect(contentOf(fr)).not.toContain("You are MIRA");
+    const safety = fr.find((f) => f.kind === "safety");
+    expect(safety).toBeDefined();
+    expect(String(safety?.trigger)).toMatch(/^prompt-leak:/);
+  });
+});

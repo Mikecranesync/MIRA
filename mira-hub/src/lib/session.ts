@@ -40,6 +40,59 @@ export class UnauthorizedError extends Error {
   }
 }
 
+/**
+ * F8 (Mike-authorized post-cap Codex pass, #4882 @ 66f379a90): thrown by
+ * `requireSession` when the DB-fresh `status` is `expired` — the pilot ended
+ * (`endPilotTenant` moved this user to `expired`) or an admin ended access.
+ * A trial whose date merely passed is NOT denied here (see the call site). A SUBCLASS of `UnauthorizedError`, deliberately: every existing route
+ * that does `if (err instanceof UnauthorizedError) return 401` already
+ * denies this case correctly with zero changes (an `instanceof` check on a
+ * subclass is `true`), so introducing this as an unrelated error class would
+ * have required touching every one of those call sites to keep them
+ * fail-closed. `sessionOr401` — the ~150-caller shared helper — special-cases
+ * this subclass to return the friendlier 403 below instead of the generic
+ * 401; everywhere else it is caught, this is the same deny-by-default
+ * `UnauthorizedError` behavior as before.
+ */
+export class SessionUpgradeRequiredError extends UnauthorizedError {
+  constructor() {
+    super();
+    this.name = "SessionUpgradeRequiredError";
+    this.message = "Your pilot has ended. Contact FactoryLM to continue.";
+  }
+}
+
+/**
+ * F8 option B (Mike's decision, 2026-10-28, Codex #4882 post-cap review):
+ * thrown by `requireSession` when the `hub_users` entitlement lookup itself
+ * THROWS (DB unavailable) — not a subclass of `UnauthorizedError`, on
+ * purpose. The previous fail-open behavior (keep the stale JWT claim when
+ * the lookup errors) let an ended pilot's cookie keep working through any
+ * window where the lookup happened to fail instead of succeeding-with-
+ * `expired`. Failing closed here means a transient DB outage now denies
+ * every active session, not just ended-pilot ones — that tradeoff was
+ * explicit and owner-decided, see the PR's "Decided: B" note.
+ *
+ * Deliberately NOT an `UnauthorizedError`: client code treats that class as
+ * "you are signed out" (sign-out redirect, re-auth prompt). A DB outage is
+ * not that — it is "try again shortly" — so this is its own root `Error`
+ * subclass, mapped by `sessionOr401` to 503 + `Retry-After`, not 401/403.
+ *
+ * A MISSING row (the user was deleted, lookup succeeds with `null`) is a
+ * different case and is NOT covered here — that keeps today's existing
+ * fail-closed-on-role / fail-open-on-status behavior unchanged (see the
+ * comment at the `findUserById` call site below).
+ */
+export class SessionUnavailableError extends Error {
+  constructor(cause?: unknown) {
+    super("MIRA is temporarily unavailable. Try again in a minute.");
+    this.name = "SessionUnavailableError";
+    if (cause !== undefined) {
+      (this as { cause?: unknown }).cause = cause;
+    }
+  }
+}
+
 // Decode the next-auth JWT directly from the cookie store.
 //
 // Why not getServerSession: In Next.js 16+ the headers/cookies APIs are async;
@@ -88,28 +141,65 @@ export async function requireSession(): Promise<SessionContext> {
 
   // Derive the role fresh from hub_users.role (issue #2360). Deliberately a DB
   // read, not a JWT claim: revocation must be instant and already-issued/saved
-  // sessions must reflect the live role. If the lookup fails (DB blip) or the
-  // row is gone, fall back to least-privilege ("") rather than failing the
-  // whole request — the token-based auth itself stays valid, so read routes
-  // keep working while every role gate denies. One indexed PK SELECT per
-  // authed request; hub_users is tiny.
+  // sessions must reflect the live role. One indexed PK SELECT per authed
+  // request; hub_users is tiny.
+  //
+  // F8 (Mike-authorized post-cap Codex pass, #4882 @ 66f379a90, related
+  // pre-existing #3831): `status`/`trialExpiresAt` below are ALSO now taken
+  // from this same already-loaded row, not the JWT claims. The claims are
+  // written once at sign-in and refreshed only when NextAuth's own `jwt`
+  // callback runs (`refreshEntitlementClaims`, src/auth.ts) — a browser-side
+  // session read, not this server-side route path. Without this, ending a
+  // pilot (`endPilotTenant` sets every non-admin member to 'expired')
+  // doesn't deny an already-issued cookie: the holder keeps whatever
+  // status/deadline was in the JWT until their browser happens to refresh
+  // it, which can be long after the admin ended the pilot.
+  //
+  // F8 OPTION B (Mike's decision, 2026-10-28): the lookup THROWING is now a
+  // hard fail-closed — see `SessionUnavailableError` above for the full
+  // tradeoff. This differs from a MISSING row (the lookup SUCCEEDS, returns
+  // null — the user was deleted): that case is unchanged from before this
+  // fix and stays fail-closed-on-role / fail-open-on-status, consistent with
+  // existing tests and the "deny the dangerous direction only" principle —
+  // a deleted user granting no role is still safe even if `status` falls
+  // back to a stale JWT value, because there's no live row to restore
+  // access TO.
   let role = "";
   let platformAdmin = false;
+  let status = (token.status as string) ?? "trial";
+  let trialExpiresAt: string | null = (token.trialExpiresAt as string) ?? null;
+
+  let user: Awaited<ReturnType<typeof findUserById>>;
   try {
-    const user = await findUserById(token.uid as string);
-    role = (user?.role ?? "").toLowerCase().trim();
-    platformAdmin = user?.status === "admin";
-  } catch {
-    role = "";
-    platformAdmin = false;
+    user = await findUserById(token.uid as string);
+  } catch (err) {
+    throw new SessionUnavailableError(err);
+  }
+
+  role = (user?.role ?? "").toLowerCase().trim();
+  platformAdmin = user?.status === "admin";
+  if (user) {
+    status = user.status;
+    trialExpiresAt = user.trialExpiresAt ? user.trialExpiresAt.toISOString() : null;
+  }
+
+  // Deny only an EXPLICIT end of access: status 'expired' is written by
+  // endPilotTenant (#4882) or by an admin. A trial whose date has merely
+  // passed keeps today's behavior (the cookie-based page gate sends it to
+  // /upgrade); enforcing the date here would lock every older trial account
+  // out of the API on the first deploy, a much wider change than ending a
+  // pilot needs. pending/admin/approved/in-date-or-past-date-trial sessions
+  // are unaffected.
+  if (user && status === "expired") {
+    throw new SessionUpgradeRequiredError();
   }
 
   return {
     userId: token.uid as string,
     tenantId: tid,
     email: (token.email as string) ?? "",
-    status: (token.status as string) ?? "trial",
-    trialExpiresAt: (token.trialExpiresAt as string) ?? null,
+    status,
+    trialExpiresAt,
     role,
     platformAdmin,
   };
@@ -128,7 +218,29 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export async function sessionOr401(): Promise<SessionContext | NextResponse> {
   try {
     return await requireSession();
-  } catch {
+  } catch (err) {
+    // F8: the ~150 callers of this shared helper get the friendlier,
+    // specific 403 for an ended pilot / lapsed trial without each one
+    // needing to know about SessionUpgradeRequiredError. Every other
+    // UnauthorizedError (including this subclass, for any of the 9 routes
+    // that call requireSession() directly and catch UnauthorizedError
+    // themselves) still denies via its own existing instanceof check.
+    if (err instanceof SessionUpgradeRequiredError) {
+      return NextResponse.json({ error: err.message }, { status: 403 });
+    }
+    // F8 option B: a DB-lookup failure is not "signed out" — it's a 503,
+    // not a 401, and carries Retry-After so a well-behaved client backs off
+    // instead of immediately redirecting to sign-in. Checked BEFORE the
+    // generic fallback below; SessionUnavailableError is not an
+    // UnauthorizedError, so it would otherwise fall through to 401, which is
+    // exactly the "client treats it as signed-out" outcome this error class
+    // exists to avoid.
+    if (err instanceof SessionUnavailableError) {
+      return NextResponse.json(
+        { error: err.message },
+        { status: 503, headers: { "Retry-After": "30" } },
+      );
+    }
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 }

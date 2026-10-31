@@ -41,19 +41,25 @@ test.describe("factorylm.com — marketing site", () => {
     await expect(page).toHaveTitle(/FactoryLM/i);
   });
 
-  test("pricing: 200 OK + pricing cards visible", async ({ page }) => {
+  test("pricing: 200 OK, no published price, Talk to Mike CTA visible", async ({ page }) => {
     const res = await page.goto(WEB + "/pricing", { waitUntil: "domcontentloaded" });
     expect(res?.status()).toBe(200);
 
-    // At least one price tier with a dollar amount
-    const priceEl = page.locator(".card-price").first();
-    await expect(priceEl).toBeVisible({ timeout: 10_000 });
+    // #4570: the public site publishes no dollar prices and no checkout. The
+    // page's job is now to route a visitor to Mike, so assert that instead of
+    // the retired price cards.
+    // Route identity first, so a homepage served at /pricing cannot pass.
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+      "href",
+      "https://factorylm.com/pricing",
+    );
+    await expect(page.getByText(/No published price menu/i).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page).toHaveTitle(/FactoryLM/i);
 
-    // Pricing page title
-    await expect(page).toHaveTitle(/Pricing/i);
+    const body = await page.locator("body").innerText();
+    expect(body).not.toMatch(/\$\s?\d/);
 
-    // At least one CTA button on the page
-    const cta = page.locator(".card-cta").first();
+    const cta = page.locator('a[href="mailto:mike@factorylm.com"]', { hasText: /Talk to Mike/i }).first();
     await expect(cta).toBeVisible();
   });
 

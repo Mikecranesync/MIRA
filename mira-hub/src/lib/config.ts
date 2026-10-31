@@ -40,3 +40,9 @@ export const PILOT_WINDOW_DAYS = 30;
 // Workspace invitations use the same 30-day window as the trial.
 export const LOGIN_MAGIC_LINK_TTL_MINUTES = 15;
 export const INVITE_MAGIC_LINK_TTL_MINUTES = PILOT_WINDOW_DAYS * 24 * 60;
+
+// Approval-required pilot access (#4878, owner decision 2026-10-28): the first
+// cohort is 5 approved organizations, 5 seats per organization, entirely behind
+// MIRA_PILOT_APPROVAL_REQUIRED (default off). See mira-hub/src/capabilities/pilot-access.ts.
+export const PILOT_COHORT_MAX_ORGS = 5;
+export const PILOT_SEAT_MAX_USERS = 5;

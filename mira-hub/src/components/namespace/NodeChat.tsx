@@ -13,6 +13,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Bot, Send, AlertTriangle, RotateCcw, FileText, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { API_BASE } from "@/lib/config";
+import { AnswerMarkdown } from "@/components/equipment/notebook-markdown";
 import { nodeChatFailureMessage } from "@/factorylm-ui/onboarding-try-mira";
 
 interface Source {
@@ -47,11 +48,30 @@ interface NodeChatProps {
   docName?: string;
 }
 
-const WELCOME = (name: string) =>
-  `Hi — I'm MIRA. Ask me about **${name}** and everything beneath it in the namespace.\n\nI answer only from the documents attached to this part of your namespace, and I cite the source. If nothing's attached here yet, attach a manual and ask again.`;
+// #4948: node and document names are tenant data (and `docname` comes from the
+// query string), so they render as React text nodes, never as markdown.
+function Welcome({ name }: { name: string }) {
+  return (
+    <>
+      <p>Hi — I&apos;m MIRA. Ask me about <strong>{name}</strong> and everything beneath it in the namespace.</p>
+      <p className="mt-2">
+        I answer only from the documents attached to this part of your namespace, and I cite the source. If
+        nothing&apos;s attached here yet, attach a manual and ask again.
+      </p>
+    </>
+  );
+}
 
-const DOC_WELCOME = (doc: string) =>
-  `Hi — I'm MIRA. Ask me anything about **${doc}**.\n\nI answer only from this document, and I cite the page. If it doesn't cover your question, I'll say so.`;
+function DocWelcome({ doc }: { doc: string }) {
+  return (
+    <>
+      <p>Hi — I&apos;m MIRA. Ask me anything about <strong>{doc}</strong>.</p>
+      <p className="mt-2">
+        I answer only from this document, and I cite the page. If it doesn&apos;t cover your question, I&apos;ll say so.
+      </p>
+    </>
+  );
+}
 
 function uid(): string {
   return Math.random().toString(36).slice(2, 10);
@@ -80,26 +100,59 @@ export function restoreComposer(current: string, failedMessage: string): string 
   return current.trim() ? current : failedMessage;
 }
 
+/** Only absolute http(s) URLs open; an uploaded document's `node-doc/<id>/<file>` storage path would 404. */
+function isOpenableUrl(url: string | null): url is string {
+  return !!url && /^https?:\/\//i.test(url);
+}
+
 function SourceChips({ sources }: { sources: Source[] }) {
   if (!sources || sources.length === 0) return null;
   return (
     <div className="mt-2 flex flex-wrap gap-1.5">
-      {sources.map((s) => (
-        <span
-          key={`${s.index}-${s.title}`}
-          className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px]"
-          style={{
-            background: "var(--surface-1)",
-            border: "1px solid var(--border)",
-            color: "var(--foreground-muted)",
-          }}
-          title={s.url ?? s.title}
-        >
-          <FileText className="h-2.5 w-2.5" style={{ color: "var(--brand-blue)" }} />
-          [{s.index}] {s.title}
-          {s.page != null ? ` p.${s.page}` : ""}
-        </span>
-      ))}
+      {sources.map((s) => {
+        const element = (
+          <>
+            <FileText className="h-2.5 w-2.5" style={{ color: "var(--brand-blue)" }} />
+            [{s.index}] {s.title}
+            {s.page != null ? ` p.${s.page}` : ""}
+          </>
+        );
+
+        if (isOpenableUrl(s.url)) {
+          return (
+            <a
+              key={`${s.index}-${s.title}`}
+              href={s.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] hover:opacity-80 transition-opacity cursor-pointer"
+              style={{
+                background: "var(--surface-1)",
+                border: "1px solid var(--border)",
+                color: "var(--foreground-muted)",
+              }}
+              title={`Open ${s.title}`}
+            >
+              {element}
+            </a>
+          );
+        }
+
+        return (
+          <span
+            key={`${s.index}-${s.title}`}
+            className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px]"
+            style={{
+              background: "var(--surface-1)",
+              border: "1px solid var(--border)",
+              color: "var(--foreground-muted)",
+            }}
+            title={s.title}
+          >
+            {element}
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -140,14 +193,21 @@ export function MessageBubble({ msg }: { msg: ChatMessage }) {
       </div>
       <div className="flex-1 min-w-0">
         <div
-          className="rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm whitespace-pre-wrap"
+          className={`rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm break-words${isSafety ? " whitespace-pre-wrap" : ""}`}
           style={{
             background: isSafety ? "var(--status-red-bg)" : "var(--surface-1)",
             color: isSafety ? "#991B1B" : "var(--foreground)",
             border: isSafety ? "1px solid #FECACA" : "1px solid var(--border)",
           }}
         >
-          {msg.content || <span style={{ color: "var(--foreground-subtle)" }}>…</span>}
+          {/* #4880 defect 4: answers are markdown — reuse the notebook renderer
+              (no raw HTML, no images). Citations stay in SourceChips below.
+              A safety stop keeps its verbatim plain-text render, unchanged. */}
+          {!msg.content
+            ? <span style={{ color: "var(--foreground-subtle)" }}>…</span>
+            : isSafety
+              ? msg.content
+              : <AnswerMarkdown content={msg.content} citations={[]} />}
         </div>
         {msg.hasSafetyAlert && (
           <div className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-amber-600">
@@ -422,7 +482,7 @@ export function NodeChat({ nodeId, nodeName, unsPath, docId, docName }: NodeChat
     }
   }
 
-  const welcome = docId ? DOC_WELCOME(docName ?? "this document") : WELCOME(nodeName);
+  const welcome = docId ? <DocWelcome doc={docName ?? "this document"} /> : <Welcome name={nodeName} />;
 
   return (
     <div className="flex flex-col h-full" style={{ minHeight: 360 }}>
@@ -484,7 +544,7 @@ export function NodeChat({ nodeId, nodeName, unsPath, docId, docName }: NodeChat
               border: "1px solid var(--border)",
             }}
           >
-            <p className="whitespace-pre-line">{welcome}</p>
+            {welcome}
           </div>
         </div>
 

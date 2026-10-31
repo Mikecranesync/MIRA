@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import pool from "@/lib/db";
 import { inviteLinkExpiryCopy } from "@/capabilities/trial-access";
+import {
+  PilotSeatCapError,
+  releasePilotSeatReservation,
+  reservePilotSeat,
+} from "@/capabilities/pilot-access";
 import { createMagicToken, ensureSchema } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
@@ -149,11 +154,30 @@ export async function POST(req: Request) {
       );
     }
 
-    const token = await createMagicToken(email, {
-      tenantId: ctx.tenantId,
-      role,
-      invitedBy: ctx.userId,
-    });
+    // #4878 (F1/F2/F4): no-op when the flag is off or this tenant isn't an
+    // active pilot (reservePilotSeat checks hub_tenants.pilot_status itself).
+    await reservePilotSeat(ctx.tenantId, email);
+
+    // F4 (Codex #4664 / #4878 review round 1): if the reservation above
+    // succeeded but the token itself can't be created, release the seat
+    // immediately rather than stranding it — otherwise a transient DB error
+    // here would permanently occupy the final seat with no usable invite.
+    // Safe even under a concurrent resend: redemption (admitPilotInvite)
+    // re-validates capacity itself, so releasing a pending reservation can
+    // never cause overbooking.
+    let token: string;
+    try {
+      token = await createMagicToken(email, {
+        tenantId: ctx.tenantId,
+        role,
+        invitedBy: ctx.userId,
+      });
+    } catch (tokenErr) {
+      await releasePilotSeatReservation(ctx.tenantId, email).catch((releaseErr) => {
+        console.error("[api/team] failed to release seat after token creation failure", releaseErr);
+      });
+      throw tokenErr;
+    }
     const emailSent = await sendInviteEmail(email, token, ctx.email);
     return NextResponse.json({
       ok: true,
@@ -171,6 +195,9 @@ export async function POST(req: Request) {
           }),
     });
   } catch (err) {
+    if (err instanceof PilotSeatCapError) {
+      return NextResponse.json({ error: err.message }, { status: 409 });
+    }
     console.error("[api/team] invite", err);
     return NextResponse.json({ error: "Invite failed" }, { status: 500 });
   }

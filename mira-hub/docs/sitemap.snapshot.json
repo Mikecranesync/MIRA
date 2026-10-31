@@ -2,7 +2,7 @@
   "basePath": "/hub",
   "counts": {
     "pages": 70,
-    "apiRoutes": 190
+    "apiRoutes": 192
   },
   "pages": [
     "/admin",
@@ -78,6 +78,8 @@
   ],
   "apiRoutes": [
     "/",
+    "/api/admin/pilots/[tenantId]/approve",
+    "/api/admin/pilots/[tenantId]/end",
     "/api/admin/review/asset/[...path]",
     "/api/admin/review/queue",
     "/api/admin/users",

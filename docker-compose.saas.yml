@@ -181,7 +181,10 @@ services:
       - NEON_DATABASE_URL=${NEON_DATABASE_URL}
       - MCP_REST_API_KEY=${MCP_REST_API_KEY:-}
       - PLG_DAILY_FREE_QUERIES=${PLG_DAILY_FREE_QUERIES:-5}
+      - PLG_CHECKOUT_ENABLED=${PLG_CHECKOUT_ENABLED:-}  # unset = checkout off while pilots are free (#4369); set 1 to restore
       - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - PLG_POSTHOG_KEY=${PLG_POSTHOG_KEY:-}  # site + server funnel events; empty = no-op stub
+      - PLG_POSTHOG_HOST=${PLG_POSTHOG_HOST:-}
       - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-noreply@factorylm.com}
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
       - STRIPE_PRICE_ID=${STRIPE_PRICE_ID:-}
@@ -856,6 +859,10 @@ services:
       # environment sets NOTEBOOK_HYBRID_RETRIEVAL=1; it was never passed through,
       # so the Doppler value alone could not turn it on (#4513, 2026-10-18).
       - NOTEBOOK_HYBRID_RETRIEVAL=${NOTEBOOK_HYBRID_RETRIEVAL:-0}
+      # Query rewrite for notebook retrieval (T-1 rewrite round, 2026-10-30). OFF
+      # unless the environment sets NOTEBOOK_QUERY_REWRITE=1; passed through from
+      # day one so the Doppler value alone can turn it on (lesson of #4513).
+      - NOTEBOOK_QUERY_REWRITE=${NOTEBOOK_QUERY_REWRITE:-0}
       # #4515 kill switch for the +29 decode at ingest: default ON in code;
       # NOTEBOOK_GARBLE_DECODE=0 disables it without a rebuild.
       - NOTEBOOK_GARBLE_DECODE=${NOTEBOOK_GARBLE_DECODE:-1}
@@ -897,6 +904,11 @@ services:
       # Magic-link + team-invite email sender (Resend). Without this the Hub
       # silently skips the send and logs the magic URL instead (login broken).
       - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - PLG_POSTHOG_KEY=${PLG_POSTHOG_KEY:-}  # pilot funnel events (pilot-funnel.ts); empty = no-op
+      - HUBSPOT_API_KEY=${HUBSPOT_API_KEY:-}  # signup lead capture (api/auth/register captureHubSpotLead); empty = no-op. Production only: staging test signups must not create leads
+      - PLG_POSTHOG_HOST=${PLG_POSTHOG_HOST:-}
+      - PILOT_OWNER_EMAIL=${PILOT_OWNER_EMAIL:-}
+      - MIRA_PILOT_APPROVAL_REQUIRED=${MIRA_PILOT_APPROVAL_REQUIRED:-}  # empty = off (open signup)
       - NEXTAUTH_URL=${NEXTAUTH_URL:-https://app.factorylm.com/api/auth}
       - NEXTAUTH_URL_INTERNAL=${NEXTAUTH_URL_INTERNAL:-https://app.factorylm.com/api/auth}
       # Sign-in OAuth client. Named HUB_AUTH_GOOGLE_* to avoid collision with
@@ -1209,6 +1221,11 @@ services:
       - CMMS_SYNC_ENABLED=${CMMS_SYNC_ENABLED:-false}
       # Override default 60s tick by setting CMMS_SYNC_INTERVAL_MS in Doppler.
       - CMMS_SYNC_INTERVAL_MS=${CMMS_SYNC_INTERVAL_MS:-60000}
+      # #5020 notebook domain-event outbox → Atlas work-log dispatcher (second tick
+      # in this same worker). Deployed-disabled: both default to off/empty; enable only
+      # for a positively identified internal test tenant via Doppler.
+      - NOTEBOOK_EVENT_DISPATCH_ENABLED=${NOTEBOOK_EVENT_DISPATCH_ENABLED:-false}
+      - NOTEBOOK_EVENT_DISPATCH_TENANTS=${NOTEBOOK_EVENT_DISPATCH_TENANTS:-}
     command: ["bun", "run", "scripts/cmms-sync-worker.ts", "--interval-ms", "${CMMS_SYNC_INTERVAL_MS:-60000}"]
     networks:
       - mira-net
