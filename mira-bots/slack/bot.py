@@ -461,7 +461,25 @@ def create_app(runtime: SlackRuntime):
         await ack()
         channel = command["channel_id"]
         session = f"slack:{channel}:main"
-        runtime.engine.reset(session)
+        user_id = str(command.get("user_id") or "")
+        tenant_id = None
+        identity = getattr(runtime.dispatcher, "_identity", None)
+        if identity is not None and user_id:
+            try:
+                mira_user = await asyncio.to_thread(identity.lookup_only, "slack", user_id)
+                if mira_user is not None:
+                    tenant_id = (mira_user.tenant_id or "").strip() or None
+            except Exception as exc:
+                logger.warning("SLACK_RESET_TENANT_LOOKUP_FAILED user=%s err=%s", user_id, exc)
+        if not tenant_id:
+            await say(
+                text=(
+                    "I can't reset this conversation because the workspace is not authenticated. "
+                    "Ask your admin to enroll you."
+                )
+            )
+            return
+        runtime.engine.reset(session, tenant_id=tenant_id)
         await say(text="Conversation reset. Start fresh anytime.")
 
     async def _dispatch_command(command, say, text: str) -> None:
