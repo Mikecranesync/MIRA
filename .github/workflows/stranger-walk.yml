@@ -35,11 +35,12 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read # required-fixes gate reads pulls/N (merged + merge commit)
 
 jobs:
   unit:
     name: Stranger walk scorer + budget tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # ubuntu-latest became 26.04, where Playwright ships no chromium (run 41240904294)
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -69,7 +70,7 @@ jobs:
 
   walk:
     name: Stranger walk — 50 questions on staging /v3
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # ubuntu-latest became 26.04, where Playwright ships no chromium (run 41240904294)
     environment: staging # inherits DOPPLER_TOKEN scoped to factorylm/stg
     # Its OWN group, never `staging-environment`: GitHub keeps one pending run per group, so joining
     # the deploy/acceptance queue could cancel a pending staging deploy. A deploy that changes the
@@ -153,10 +154,14 @@ jobs:
             || echo "::warning::frozen-manuals mirror unavailable; the walk will try the OEM URLs"
           echo "cached PDFs: $(find "$STRANGER_WALK_CACHE" -maxdepth 1 -name "*.pdf" | wc -l)"
 
+      # GH_TOKEN lets the walk prove every PR in tests/stranger-walk/required-fixes.json is merged and
+      # in the build staging serves before it spends anything (required-fixes.ts); without it the
+      # walk refuses (fail closed). Read-only: pulls + compare.
       - name: Walk
         working-directory: mira-hub
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           [ -n "${DOPPLER_TOKEN:-}" ] || { echo "::error::DOPPLER_TOKEN not set"; exit 1; }
           doppler run --project factorylm --config stg -- \
