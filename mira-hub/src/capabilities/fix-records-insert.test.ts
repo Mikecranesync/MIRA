@@ -12,6 +12,18 @@ vi.mock("@/lib/tenant-context", () => ({
   ),
 }));
 
+// #5020: the domain event is enqueued inside the same transaction; mock the
+// enqueue so this stays a scripted-client test, and pin that it is called with
+// the transaction client and the created record (never on replay/conflict).
+const enqueue = vi.hoisted(() => ({
+  enqueueFixRecordedEvent: vi.fn(async (client: unknown, input: Record<string, unknown>) => {
+    void client;
+    void input;
+    return { eventId: "ev1", sequence: 1, replayed: false, delivery: { deliveryId: null, reason: "no_connection" } };
+  }),
+}));
+vi.mock("@/capabilities/cmms-dispatch", () => enqueue);
+
 import { insertFixRecord, requestFingerprint, type ValidatedFixInput } from "@/capabilities/fix-records";
 
 const T = "11111111-1111-4111-8111-111111111111";
@@ -33,12 +45,33 @@ const SERVED_M1 = { rows: [{ equipment_entity_id: "m1" }] };
 
 beforeEach(() => {
   queries.results = [];
+  enqueue.enqueueFixRecordedEvent.mockClear();
 });
 
 describe("insertFixRecord replay decision", () => {
   it("creates when the insert returns a row", async () => {
     queries.results = [SERVED_M1, { rows: [ROW] }];
-    expect((await insertFixRecord(T, NB, "m1", V, "u1")).status).toBe("created");
+    const r = await insertFixRecord(T, NB, "m1", V, "u1");
+    expect(r.status).toBe("created");
+    // #5020: the event rides in the same transaction, keyed to the created record.
+    expect(enqueue.enqueueFixRecordedEvent).toHaveBeenCalledTimes(1);
+    expect(enqueue.enqueueFixRecordedEvent.mock.calls[0][1]).toMatchObject({
+      tenantId: T, notebookId: NB, fixRecordId: "f1", sourceTurnId: V.sourceTurnId,
+      equipmentEntityId: "m1", symptom: "trips oC", faultCode: "oC", fix: "raised accel", recordedBy: "u1",
+    });
+    expect(r.status === "created" && r.event.eventId).toBe("ev1");
+  });
+
+  it("propagates an enqueue failure so the transaction rolls back (#5020 both-or-neither)", async () => {
+    queries.results = [SERVED_M1, { rows: [ROW] }];
+    enqueue.enqueueFixRecordedEvent.mockRejectedValueOnce(new Error("outbox insert failed"));
+    await expect(insertFixRecord(T, NB, "m1", V, "u1")).rejects.toThrow("outbox insert failed");
+  });
+
+  it("enqueues nothing on a replayed save (#5020)", async () => {
+    queries.results = [SERVED_M1, { rows: [] }, { rows: [{ ...ROW, request_fingerprint: requestFingerprint(V, "m1") }] }];
+    expect((await insertFixRecord(T, NB, "m1", V, "u1")).status).toBe("existing");
+    expect(enqueue.enqueueFixRecordedEvent).not.toHaveBeenCalled();
   });
 
   it("replays the stored record only for an identical fingerprint", async () => {

@@ -1,0 +1,32 @@
+# ADR-0039: Notebook domain-event outbox and the vendor-neutral CMMS write contract
+
+**Status:** Accepted (implementation PR for #5020, 2026-10-31)
+**Owner decision applied:** Mike's 2026-10-31 overnight directive — verify, catalog, implement test-first, release eligible slices with write-back enabled only for an internal test connection.
+**Supersedes:** nothing. **Related:** ADR-0035 (canonical asset identity), migration 095 (asset_fix_records), docs/specs/hub-cmms-integration-spec.md §3.4, issue #4606, catalog `.planning/trusted-interviewer-context-cmms/EVIDENCE/catalog-A*.md` (CHARLIE, private).
+
+## Context
+
+A technician's accepted maintenance record must reach the linked CMMS work order with a receipt and read-back, without duplicates, and must stay private until a connection explicitly opts in. The repository had four unreconciled CMMS write surfaces (catalog critic §3a): the Hub TypeScript `AtlasClient` + `sync.ts` worker (deployed, flag-off), the Python `mira-mcp/cmms` adapters (dormant in production — no Atlas env), the bot SQLite `wo_outbox` (Telegram only), and the unwired `mira_connectors` framework. None offered an append-only, attributed work-log write, a transactional outbox in the canonical database, or honest per-operation support reporting.
+
+The canonical technician record already exists: `asset_fix_records` (migrations 095–098), written by `insertFixRecord()` through `POST /api/equipment-notebooks/[id]/fixes` and the shipped web UI (`hub-host.tsx` "Record what fixed it"). It is append-only, idempotent on `client_request_id`, tenant-scoped (UUID family), and snapshots the machine the answer was served for.
+
+The deployed Atlas CMMS (both staging and production pin backend digest `21c42377…`, an upstream build from 2026-03-27, between v1.5.0 and v1.5.1) has **no comment endpoint** (`CommentController` first appears upstream 2026-04-08, shipped in v1.6.0), `WorkOrderPatchDTO` carries no `feedback` field, `PATCH /tasks/work-order/{id}` replaces the whole task list, and `POST /files/upload` is license-gated. At this version there is no non-destructive, attributed text write on a work order.
+
+## Decision
+
+1. **Write seam = Hub TypeScript.** The vendor-neutral write contract lives in `mira-hub/src/lib/cmms/write-contract.ts`, with a language-neutral twin at `contracts/cmms-write-contract.v1.json`. Python adapters (`mira-mcp/cmms/base.py`) are untouched and adopt the JSON contract later, compatibly. `sync.ts` is not the seam (it pushes whole rows and is destructive on partial PATCH at this Atlas version); `mira_connectors` stays unwired.
+2. **Transactional outbox in the canonical database.** Migration 111 adds `notebook_domain_events` (append-only, per-aggregate sequence, correlation/causation, `subject_ref` unique per event type) and `notebook_event_deliveries` (one row per destination/operation; lease, bounded attempts, sanitized receipt, dedupe key). The `fix_recorded` event is written inside `insertFixRecord()`'s existing `withTenantContext` transaction: both-or-neither. A retry that replays an existing fix enqueues nothing.
+3. **One dispatch authority.** The outbox dispatcher runs as a second tick inside the existing `scripts/cmms-sync-worker.ts` process (same image, same compose service), behind `NOTEBOOK_EVENT_DISPATCH_ENABLED` (default `false`) and `NOTEBOOK_EVENT_DISPATCH_TENANTS` (empty = nobody). No new compose service, no new deploy allowlist entry. The legacy row sync (`CMMS_SYNC_ENABLED`) and the dispatcher never write the same Atlas record; the dispatcher refuses a work order whose NeonDB row still has a pending legacy push (`legacy_push_pending`).
+4. **Connection-level opt-in.** `tenant_cmms_config.write_policy` (default `{}`) must explicitly enable `fix_recorded` and name a target policy. A global flag alone never enables write-back for any customer. Production ships `DEPLOYED_DISABLED`.
+5. **Capability negotiation, not a compatibility claim.** `AtlasWriteProvider` probes `GET /comments/count/{id}` per target. At the deployed digest it reports `append_work_log: unsupported (atlas_version_without_comments)`, the event is retained, and nothing is written. On Atlas ≥ v1.6.0 it appends one comment carrying the `[MIRA:<event_id>]` marker, then reads back and reports `verified_by_readback` only when the marker is found exactly once. Description/feedback/tasks are never overwritten to emulate append.
+6. **Honest states only.** `saved` (event, no connection) → `queued` → `leased` → `accepted_pending_verification` → `verified_by_readback`; or `conflict`, `unsupported`, `permission_denied`, `retryable_failure`, `permanent_failure`, `outcome_unknown` (reconciled by read-back, never by a blind second write), `quarantined` (poison), `blocked_policy`. `GET /fixes` exposes the state per record; the UI must not say "synced" for anything but `verified_by_readback`.
+7. **Payload hygiene.** Exported text is symptom, fault code, fix, the marker, "Technician via MIRA", the time, and an audit `sourceRef` (`asset_fix_records:<id>`). No hub user id, email, notebook URL, or model output leaves the Hub.
+
+## Consequences
+
+- Flag off: `POST /fixes` behaves as before plus one event row per fix; `GET /fixes` gains additive `delivery` fields. No other surface changes.
+- Rollback: revert the code; schema stays (old code never reads it). Pending deliveries stop when the flag is off; nothing is deleted. Rollback SQL is in migration 111's header.
+- Inbound CMMS changes are **not** implemented beyond read-back and marker echo-prevention; the legacy reverse sync is unchanged.
+- Context/UNS: the fix record's `equipment_entity_id` is the canonical association. No broker publisher exists; none is claimed.
+- The interviewer slice (`interview_ask` evidence kind, catalog A8 §6) is designed, not built.
+- To get live `verified_by_readback` on Atlas, the owner must advance the Atlas image pin to a v1.6.0+ digest (a reviewed infra change, outside this ADR); no Hub code change is needed afterwards.
