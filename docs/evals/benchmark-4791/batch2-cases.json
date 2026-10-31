@@ -1,0 +1,162 @@
+{
+ "source": "docs/briefs/2026-10-25 (PR #4790 @ daf10d42), live-test/2026-10-25-batch2.md",
+ "frozenAt": "2026-10-26",
+ "cases": [
+  {
+   "id": "S1",
+   "kind": "sanity",
+   "question": "Which PowerFlex 525 parameter sets the motor nameplate full load amps?",
+   "expectedPages": [
+    65,
+    73,
+    76,
+    77,
+    85,
+    89,
+    155,
+    165
+   ],
+   "expectedFact": "P034 Motor NP FLA",
+   "baseline": "insufficient_evidence, no citation",
+   "notebookId": "fc6519a4-67a8-45f9-b751-6ce5aa4a8a3f",
+   "docId": "7119eaa1-bc0c-4221-96b5-9fde89d0147c",
+   "notebookKey": "pf525"
+  },
+  {
+   "id": "S2",
+   "kind": "sanity",
+   "question": "What does ACS355 fault code 0001 mean?",
+   "expectedPages": [
+    359
+   ],
+   "expectedFact": "0001 OVERCURRENT",
+   "baseline": "cited p.359",
+   "notebookId": "8212012f-b47b-4ade-8fb9-718785e5f2fa",
+   "docId": "c86cafc1-dcdc-4e21-978b-a43176cc8654",
+   "notebookKey": "acs355"
+  },
+  {
+   "id": "S3",
+   "kind": "sanity",
+   "question": "What is the default IP address setting of the Micro820 embedded Ethernet port?",
+   "expectedPages": [
+    64
+   ],
+   "expectedFact": "DHCP, then 169.254 fallback",
+   "baseline": "insufficient_evidence, no citation",
+   "notebookId": "3bb54ef7-9fe3-4fa8-beff-b6c7f35b2867",
+   "docId": "1d6acc64-3ba7-4f95-b798-b0f617a68002",
+   "notebookKey": "micro820"
+  },
+  {
+   "id": "S4",
+   "kind": "sanity",
+   "question": "What does a flashing red ERROR LED on an S7-1200 CPU mean?",
+   "expectedPages": [
+    1047
+   ],
+   "expectedFact": "memory card / configuration error",
+   "baseline": "cited p.1047",
+   "notebookId": "c872fc29-8066-4ca8-bd06-3772bfbc354d",
+   "docId": "67d09e1e-862a-4b7c-aa82-eb64df83f875",
+   "notebookKey": "s71200"
+  },
+  {
+   "id": "S5",
+   "kind": "sanity",
+   "question": "How do I recalibrate the touch screen on a TP700 Comfort panel?",
+   "expectedPages": [
+    91
+   ],
+   "expectedFact": "touch calibration procedure",
+   "baseline": "insufficient_evidence, empty answer",
+   "notebookId": "b66b1236-c412-4900-be79-d8f22c5e82e6",
+   "docId": "abdc71c7-f60c-47b7-8dc3-d4bd8cd52f4f",
+   "notebookKey": "comfort"
+  },
+  {
+   "id": "F1",
+   "kind": "forum",
+   "question": "I have a product that uses a Siemens Simatic s7-1200 PLC. My company did not write the PLC program, but we have the program on an SD card. We usually are working on existing products that are sent to us for repair, and our procedure is to install the SD card, power on the PLC and it loads the program from the card. Once the light blinking is done, the program is loaded and away we go. We are now building the product from scratch, so the PLC has never been powered on before. We tried the same procedure to load the program from the memory card, but didn't have any luck. Does the PLC need to be setup or configured first, before you can load the program from the memory card? If anyone has any helpful articles or youtube videos, I would appreciate it. I have been looking, but haven't found anything yet.   Like Reply",
+   "expectedPages": [
+    114,
+    1047
+   ],
+   "expectedFact": "program-card procedure (p.114); flashing ERROR = card/config error (p.1047)",
+   "baseline": "PARTIAL (cited p.114)",
+   "url": "https://www.plctalk.net/forums/threads/simatic-s7-1200-memory-card-program.125753/",
+   "notebookId": "c872fc29-8066-4ca8-bd06-3772bfbc354d",
+   "docId": "67d09e1e-862a-4b7c-aa82-eb64df83f875",
+   "notebookKey": "s71200"
+  },
+  {
+   "id": "F2",
+   "kind": "forum",
+   "question": "For a project using the PLC 1214 and HMI TP700 Comfort, we now want to connect it to SCADA. Can I connect it through the HMI, or do I need to purchase a CP1243-1 for this?   Like Reply",
+   "expectedPages": [
+    526,
+    527,
+    528,
+    529
+   ],
+   "expectedFact": "connection resources: multiple HMI/PG/S7 connections over integrated Ethernet",
+   "baseline": "ABSTAIN (false)",
+   "url": "https://www.plctalk.net/forums/threads/tp-700-comfort-scada-and-plc-communication.142881/",
+   "notebookId": "c872fc29-8066-4ca8-bd06-3772bfbc354d",
+   "docId": "67d09e1e-862a-4b7c-aa82-eb64df83f875",
+   "notebookKey": "s71200"
+  },
+  {
+   "id": "F3",
+   "kind": "forum",
+   "question": "I have tried to connect abb acs355 with com cable with pinout on this site posted but after many tries i get a fault code on drive a5001 and i have learned in manual that this is control pannel connection problem how can i solve this problem help me pls   Like Reply",
+   "expectedPages": [
+    356
+   ],
+   "expectedFact": "5001 Drive is not responding. Check panel connection.",
+   "baseline": "FAIL (false abstain)",
+   "url": "https://www.plctalk.net/forums/threads/acs355.102851/",
+   "notebookId": "8212012f-b47b-4ade-8fb9-718785e5f2fa",
+   "docId": "c86cafc1-dcdc-4e21-978b-a43176cc8654",
+   "notebookKey": "acs355"
+  },
+  {
+   "id": "F4",
+   "kind": "forum",
+   "question": "Hi all, I have a powerflex 525 where there is no voltage coming out to the motor. The drive was reset to factory defaults with stop and saftey jumpers in place for testing purposes. The drive fan comes on and the control panel shows the hz ramp up but there is no voltage at the u v w terminals. No faults displayed Would anyone know what could be wrong? Thanks   Like Reply",
+   "expectedPages": null,
+   "expectedFact": "best answer: S1/S2 safe-torque-off jumper contact, b006 bit 5; often failed power module (field). No manual page frozen.",
+   "baseline": "NOT RUN (gate)",
+   "url": "https://www.plctalk.net/forums/threads/ab-powerflex-525-drive-runs-but-motor-doesnt-turn.136237/",
+   "notebookId": "fc6519a4-67a8-45f9-b751-6ce5aa4a8a3f",
+   "docId": "7119eaa1-bc0c-4221-96b5-9fde89d0147c",
+   "notebookKey": "pf525"
+  },
+  {
+   "id": "F5",
+   "kind": "forum",
+   "question": "I am not sure what i am doing wrong laptop ip 192.168.1.233 with subnet mask 255.255.255.0 micro820 ip unknown 1) i connected a micro820 and my laptop ethernet port to an ethernet hub. 2) run BOOTP DHCP UTILITY 3) Selected my laptop ethernet card from the popup network interface list. 4) waited 15 min and nothing populate in BOOTP?. 5) Changed the laptop Ethernet setting to DHCP and nothing populated in BOOTP?   Like Reply",
+   "expectedPages": [
+    64
+   ],
+   "expectedFact": "DHCP default (p.64); best answers also cite fixed IP / firewall / port 67 (field)",
+   "baseline": "NOT RUN (gate)",
+   "url": "https://www.plctalk.net/forums/threads/bootp-dhcp-not-showing-device-mac-or-ip.134924/",
+   "notebookId": "3bb54ef7-9fe3-4fa8-beff-b6c7f35b2867",
+   "docId": "1d6acc64-3ba7-4f95-b798-b0f617a68002",
+   "notebookKey": "micro820"
+  },
+  {
+   "id": "F6",
+   "kind": "forum",
+   "question": "Hey everyone, ran into a strange issue trying to autotune a motor using a PF525. For context, there's an enclosure with two 525s in it, controlling two motors with identical nameplate data: 575V, 60Hz, 3HP, 3.44A, 1720RPM We went to run a Static Tune on Motor A through Drive A and we got fault F080 - Autotune failure. After checking the troubleshooting section of the manual, it said either the start command was interrupted or the autotune actually failed. After double checking that we weren't losing our start input (we were jumpering +24VDC from terminal 11 directly to terminal 2 and didn't pull it off), and trying the autotune several times, we kept getting the same fault. Afterwards we ran the Static Tune on Motor B through Drive B and it went off without a hitch. After doing a resistance test of the windings in addition to meggering the motors (11 ohms on all 3 windings on both motors, 550Mohm on the megger on both motors), and thinking about how to narrow down the cause, we swapped the motor leads on the two drives so that Motor A was connected to Drive B and vice versa. We then ran the Static Tune on Motor A (which was failing the autotune) through Drive B and it completed the autotune successfully, while the Static Tune on Motor B through Drive A returned the same F080 fault again. We double checked that the parameters were all the same on both (motor NP data etc), and everything was the same across both. Anyone have any idea why one drive would fail an autotune on multiple motors that another drive were able to successfully autotune? We do have a spare 3HP drive so we're going to try swapping the power section out tomorrow and see if that works, and if not we're going to try swapping out the control module as well. Is it unreasonable to assume that there's an issue with the drive out of the box? The only other thing I can come up with if it's not the drive is some strange wiring issue that is causing an induced voltage in a conductor or something like that.   Like Reply",
+   "expectedPages": null,
+   "expectedFact": "best answer: power module swap (confirmed by OP; field). No manual page frozen.",
+   "baseline": "NOT RUN (gate)",
+   "url": "https://www.plctalk.net/forums/threads/powerflex-525-f080-autotune-failure-anomaly.126768/",
+   "notebookId": "fc6519a4-67a8-45f9-b751-6ce5aa4a8a3f",
+   "docId": "7119eaa1-bc0c-4221-96b5-9fde89d0147c",
+   "notebookKey": "pf525"
+  }
+ ]
+}
