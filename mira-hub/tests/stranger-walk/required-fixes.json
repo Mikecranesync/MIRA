@@ -1,0 +1,8 @@
+{
+  "_comment": "A paid walk refuses to start unless every PR below is merged AND its merge commit is in the build staging serves (required-fixes.ts). Owner decision 2026-10-31: never pay to re-measure a build the fixes under test are not in. Remove a row only when its fix is superseded; add the replacement PR in the same change.",
+  "fixes": [
+    { "pr": 4867, "why": "isolation notice on hands-on answers (#4858)" },
+    { "pr": 4949, "why": "semantic safety judge blocks unsafe answers and fails closed" },
+    { "pr": 4509, "why": "the cited manual's own safety warning shown first on /v3 (#4508)" }
+  ]
+}

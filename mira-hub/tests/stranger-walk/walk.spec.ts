@@ -19,6 +19,7 @@ import corpusJson from "./corpus.json";
 import { cardsOf, firstChipOf, viewerTargetOf } from "./extract";
 import { safetyContentReport } from "./safety-content";
 import { decodeChatBody } from "./stream-decode";
+import { checkBuildContainsFixes, describeGate, githubToken, requiredFixes } from "./required-fixes";
 import { fixtureFor, markdownScorecard, scoreAll, scorecard, type Corpus, type Observation, type Question } from "./score";
 import {
   assertOpenRouterCeiling, BUDGET, BudgetMeter, checkFingerprint, FROZEN_MANUAL_HINT, identity, JEV_CALLS_PER_TURN, JEV_CEILING_PER_MTOK_IN, JEV_INPUT_BOUND, ledgerVerdictFor,
@@ -182,6 +183,10 @@ test("stranger walk", async ({ page }) => {
   mkdirSync(path.join(OUT, "shots"), { recursive: true });
   if (DRY) await page.route(/\/chat\/?$/, (r) => r.request().method() === "POST" ? r.abort() : r.fallback());
   const start = await identity(base);
+  // Owner decision 2026-10-31: never pay to measure a build the fixes under test are not in.
+  // Checked before pricing, the OpenRouter ceiling, the manuals and signUp — a refusal costs $0.
+  const gate = await checkBuildContainsFixes({ deployedSha: start.gitSha, fixes: requiredFixes(), token: githubToken(), repo: process.env.GITHUB_REPOSITORY, baseline: process.env.STRANGER_WALK_BASELINE });
+  if (!DRY && !gate.ok) throw new Error(describeGate(gate));
   const obs: Observation[] = [];
   // Priced from the deployed env before anything is sent; throws (no paid request) if unpriceable.
   const prices = pricesFromEnv();
@@ -192,7 +197,7 @@ test("stranger walk", async ({ page }) => {
   // OpenRouter picks the host per request, so its booked rate is a ceiling, not the cascade's
   // estimate: refuse to start if the live catalog lists any host priced above it (Codex F3).
   if (!DRY) await assertOpenRouterCeiling();
-  const notes: string[] = [fingerprint.available
+  const notes: string[] = [describeGate(gate), fingerprint.available
     ? `runtime identity: fingerprint ${fingerprint.hash}, generation ${start.deploymentGeneration ?? "none"} — every lane booked at or above its declared price`
     : "runtime identity unavailable (staging serves no inferenceFingerprint): lanes booked from the walk's stg env + production constants; gitSha/builtAt checked before every paid dispatch (#5045 accepted limits)"];
   let tenantId: string | null = null;
