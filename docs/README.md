@@ -33,6 +33,7 @@
 
 | Document | Description |
 |----------|-------------|
+| [Customer discovery operating plan](customer-interviews.md#proposed-customer-development-operating-plan) | Proposed 30-day process, privacy boundaries, qualification and customer acceptance gates |
 | [PRD v1.0](PRD_v1.0.md) | Config 1 MVP implementation plan — source of truth |
 | [AUDIT.md](AUDIT.md) | Baseline system state, risk register, hardening results |
 | [CHANGELOG](../CHANGELOG.md) | Root-level version history |
