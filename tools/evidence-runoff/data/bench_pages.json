@@ -1,0 +1,16 @@
+{"rule": "BENCHMARK_PLAN.md page selection + Amendment 1; screened on contact sheets, first two qualifying per manual",
+ "pages": {
+  "pf40": [22, 25], "pf4m": [80, 86], "micro820-um": [193, 100], "ml1100": [11, 73],
+  "smcflex": [107, 89], "e3plus": [262, 258], "smc50": [232, 75],
+  "se-m172-hardware-guide-EIO0000002015": [153, 156], "gs10-ch6": [30, 7], "acs355": [330, 258],
+  "micro820-in": [15, 20], "oem-manual-micro810": [10, 28],
+  "se-m171-performance-hardware-guide-EIO0000002030": [107, 99], "se-x80-analog-io-35011978": [337, 81],
+  "se-lxm32a-canopen-0198441113779": [51, 22], "se-premium-async-serial-35006178": [362, 180]},
+ "screen_skips": {
+  "smc50": {"257": "one value column"}, "acs355": {"387": "one value column"},
+  "micro820-in": {"12": "no table", "4": "bilingual prose columns", "2": "contents", "1": "contents", "6": "one value column", "10": "no table"},
+  "oem-manual-micro810": {"102": "no table", "42": "no table", "45": "no table"},
+  "se-m171-performance-hardware-guide-EIO0000002030": {"27": "diagrams", "3": "blank", "131": "blank", "80": "menu screens", "87": "menu screens", "59": "diagram"},
+  "se-x80-analog-io-35011978": {"339": "one value column", "331": "diagram", "133": "label/sub-label/value only", "13": "no table", "123": "diagram", "311": "no table"},
+  "se-lxm32a-canopen-0198441113779": {"54": "one value column", "93": "two-column tables", "55": "one value column", "109": "two-column", "95": "two-column", "6": "no table", "86": "two-column", "105": "two-column", "19": "no table"},
+  "se-premium-async-serial-35006178": {"329": "diagram", "6": "contents", "118": "diagram", "295": "one value column", "83": "no table", "153": "drawing", "173": "drawing"}}}
