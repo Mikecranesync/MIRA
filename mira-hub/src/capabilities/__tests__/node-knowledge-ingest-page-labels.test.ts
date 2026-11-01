@@ -7,7 +7,7 @@
  * does not line up with the extracted pages, writes no `page_label` at all —
  * never a guess.
  *
- * Run: npx vitest run src/lib/__tests__/node-knowledge-ingest-page-labels.test.ts
+ * Run: npx vitest run src/capabilities/__tests__/node-knowledge-ingest-page-labels.test.ts
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -57,7 +57,7 @@ const PAGE = (n: number) => `Page ${n} body text about the drive terminals and p
 async function ingest(pages: string[], labels: unknown) {
   pdf.pages = pages;
   pdf.labels = labels;
-  const { writePdfChunksForNode } = await import("../node-knowledge-ingest");
+  const { writePdfChunksForNode } = await import("@/lib/node-knowledge-ingest");
   return writePdfChunksForNode({
     tenantId: "tenant-a",
     uploadId: "upload-1",
@@ -130,7 +130,7 @@ describe("writePdfChunksForNode stores the PDF's own page labels", () => {
 
 describe("writeTextChunksForNode never writes a page_label", () => {
   it("a text upload has no page labels", async () => {
-    const { writeTextChunksForNode } = await import("../node-knowledge-ingest");
+    const { writeTextChunksForNode } = await import("@/lib/node-knowledge-ingest");
     await writeTextChunksForNode({
       tenantId: "tenant-a",
       uploadId: "upload-2",

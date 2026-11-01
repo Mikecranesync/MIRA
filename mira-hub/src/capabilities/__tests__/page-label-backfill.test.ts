@@ -13,7 +13,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { chunkText } from "@/lib/node-knowledge-ingest";
-import { planPageLabelBackfill, type BackfillRow } from "@/capabilities/page-label-backfill";
+import { planPageLabelBackfill, uploadIdentity, type BackfillRow } from "@/capabilities/page-label-backfill";
 
 const PAGES = [
   "Front matter page with the copyright notice and the document number.",
@@ -129,5 +129,21 @@ describe("planPageLabelBackfill", () => {
 
   it("refuses when the label list does not line up with the local pages", () => {
     expect(planPageLabelBackfill(storedRows(), PAGES, ["i", "ii"])).toEqual({ ok: false, reason: "no_labels" });
+  });
+});
+
+// #5065 Codex r1 F1: /PageLabels is metadata the extracted text does not reveal, so text placement
+// can never prove which label tree the uploaded bytes carried. Only the upload's own hash can.
+describe("uploadIdentity", () => {
+  const SHA = "49aab44098854107".padEnd(64, "0");
+  it("accepts a local file whose sha256 equals the upload's recorded hash", () => {
+    expect(uploadIdentity(SHA, SHA)).toEqual({ ok: true });
+  });
+  it("refuses a different file", () => {
+    expect(uploadIdentity(SHA, SHA.replace(/0$/, "1"))).toEqual({ ok: false, reason: "sha_mismatch" });
+  });
+  it("refuses an upload with no recorded hash, whatever the text says", () => {
+    expect(uploadIdentity(null, SHA)).toEqual({ ok: false, reason: "no_upload_hash" });
+    expect(uploadIdentity("  ", SHA)).toEqual({ ok: false, reason: "no_upload_hash" });
   });
 });

@@ -32,6 +32,18 @@ export type BackfillPlan =
   | { ok: true; updates: Array<{ id: string; label: string }>; unchanged: number }
   | { ok: false; reason: BackfillRefusal };
 
+export type IdentityCheck = { ok: true } | { ok: false; reason: "no_upload_hash" | "sha_mismatch" };
+
+/**
+ * Is the local file the uploaded file? Only the upload's recorded sha256 can say: /PageLabels is
+ * metadata the extracted text does not reveal, so text placement proves the pages, never the labels
+ * (#5065 Codex r1 F1). An upload with no recorded hash is refused.
+ */
+export function uploadIdentity(storedSha: string | null, localSha: string): IdentityCheck {
+  if (!storedSha || !storedSha.trim()) return { ok: false, reason: "no_upload_hash" };
+  return storedSha.trim().toLowerCase() === localSha.toLowerCase() ? { ok: true } : { ok: false, reason: "sha_mismatch" };
+}
+
 /** Opening characters of a row that must be found on its page. */
 const PROBE_CHARS = 60;
 

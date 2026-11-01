@@ -4,7 +4,7 @@
  * /PageLabels tree numbers its pages "i", "ii", "1" must land those labels in
  * chunk metadata, and the same PDF without the tree must land none.
  *
- * Run: npx vitest run src/lib/__tests__/node-knowledge-ingest-page-labels-real.test.ts
+ * Run: npx vitest run src/capabilities/__tests__/node-knowledge-ingest-page-labels-real.test.ts
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -64,7 +64,7 @@ function labelsByPage(): Array<[number, unknown]> {
 }
 
 async function ingest(buffer: Buffer) {
-  const { writePdfChunksForNode } = await import("../node-knowledge-ingest");
+  const { writePdfChunksForNode } = await import("@/lib/node-knowledge-ingest");
   return writePdfChunksForNode({
     tenantId: "tenant-a",
     uploadId: "upload-1",

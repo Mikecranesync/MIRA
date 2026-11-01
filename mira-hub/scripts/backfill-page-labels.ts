@@ -7,10 +7,11 @@
  *
  * The upload bytes are deleted after parsing, so the labels come from a LOCAL
  * copy of the PDF. The script refuses the document unless that copy provably
- * is the uploaded file: its sha256 must equal hub_uploads.content_sha256 when
- * one is recorded, and every stored row's text must be on its recorded page of
- * the local PDF (planPageLabelBackfill). Rows that already carry a label are
- * never changed.
+ * is the uploaded file: its sha256 must equal hub_uploads.content_sha256 (an
+ * upload with no recorded hash is refused — page text cannot prove which label
+ * tree the bytes carried), and every stored row's text must be on its recorded
+ * page of the local PDF (planPageLabelBackfill). Rows that already carry a
+ * label are never changed.
  *
  * DRY RUN by default. It writes ONLY when BOTH are true:
  *   PAGE_LABEL_BACKFILL=1   (the flag the owner sets on purpose)
@@ -31,7 +32,7 @@ import { readFileSync } from "node:fs";
 import { extractText, getDocumentProxy } from "unpdf";
 import pool from "@/lib/db";
 import { printedPageLabels } from "@/lib/node-knowledge-ingest";
-import { planPageLabelBackfill, type BackfillRow } from "@/capabilities/page-label-backfill";
+import { planPageLabelBackfill, uploadIdentity, type BackfillRow } from "@/capabilities/page-label-backfill";
 
 function parseArg(flag: string): string | null {
   const idx = process.argv.indexOf(flag);
@@ -70,12 +71,17 @@ if (up.rows.length === 0) {
   process.exit(2);
 }
 const storedSha = up.rows[0].content_sha256;
-if (storedSha && storedSha !== localSha) {
-  console.error(`${tag} REFUSED: local sha256 ${localSha} does not match the upload's ${storedSha}`);
+const identity = uploadIdentity(storedSha, localSha);
+if (!identity.ok) {
+  console.error(
+    identity.reason === "no_upload_hash"
+      ? `${tag} REFUSED: the upload has no recorded sha256, so the local file cannot be proven to be it`
+      : `${tag} REFUSED: local sha256 ${localSha} does not match the upload's ${storedSha}`,
+  );
   await pool.end();
   process.exit(2);
 }
-console.log(`${tag} sha256 ${storedSha ? "matches the upload" : "not recorded on the upload (content proof only)"}`);
+console.log(`${tag} sha256 matches the upload`);
 
 const pdf = await getDocumentProxy(new Uint8Array(bytes));
 const { text } = await extractText(pdf, { mergePages: false });
