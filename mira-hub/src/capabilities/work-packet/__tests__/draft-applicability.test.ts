@@ -249,3 +249,20 @@ describe("F14 — only a CAT Pumps machine gets a packet from CAT Pumps document
     }
   });
 });
+
+describe("a step worded for one model is shown only for that model (5CP6120 real-manual re-check)", () => {
+  const LAST = "2. Remove the exposed Coil Spring from the top of the Spring Retainer.";
+  const doc = () => {
+    expect(M35).toContain(LAST);
+    return docFromText(M35.replace(LAST, `${LAST}\n3. On the model 8527 remove the extra shim.`), "manual-35style.txt", "sm");
+  };
+
+  it("'On the model 8527 …' is left out of an 8520 packet", () => {
+    expect(stepTexts(build("8520", [doc()], "valve service"))).not.toContain("On the model 8527 remove the extra shim.");
+  });
+
+  it("control: the 8527 packet keeps it, and the section's other steps stay for 8520", () => {
+    expect(stepTexts(build("8527", [doc()], "valve service"))).toContain("On the model 8527 remove the extra shim.");
+    expect(stepTexts(build("8520", [doc()], "valve service"))).toContain("Remove the six (6) M41 Hex Valve Plugs.");
+  });
+});
