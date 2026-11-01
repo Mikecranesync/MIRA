@@ -79,6 +79,9 @@ describe("real PDF → pdfDocPages → parser → builder", () => {
   it("control: the fixture manual's real caption under its photo is skipped, and nothing is left unplaced", async () => {
     const { packet, doc } = await packetFrom(layout(M35));
     expect(doc.pages[1].figureLines).toEqual(["All models except 8560", "Removal of Discharge Valve Plug"]);
+    // The photo itself comes through as a PNG with its caption, attached to the section on its page.
+    expect(doc.pages[1].figures).toEqual([{ image: expect.stringMatching(/^data:image\/png;base64,/), caption: ["All models except 8560", "Removal of Discharge Valve Plug"] }]);
+    expect(packet.figures?.map((f) => ({ page: f.page, caption: f.caption }))).toEqual([{ page: 2, caption: ["All models except 8560", "Removal of Discharge Valve Plug"] }]);
     expect(stepTexts(packet)).toContain("Remove the six (6) M41 Hex Valve Plugs.");
     expect(placeGaps(packet)).toEqual([]);
     expect(packet.safety.cautions.some((c) => c.label === "verified" && (c.value ?? "").includes("Relieve all discharge line pressure"))).toBe(true);

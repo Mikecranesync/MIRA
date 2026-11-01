@@ -41,6 +41,8 @@ export interface ImageBox {
   y0: number;
   x1: number;
   y1: number;
+  /** pdf.js object name of an XObject image (to fetch its pixels); absent for inline images. */
+  name?: string;
 }
 
 /** Caption rows sit at most this far (pt) below the image's bottom edge — two rows (real: 21–23pt). */
@@ -84,6 +86,24 @@ function underPhoto(it: LayoutItem, img: ImageBox): boolean {
     it.x >= img.x0 - COLUMN_SLACK_PT &&
     it.x + it.w <= img.x1 + COLUMN_SLACK_PT
   );
+}
+
+/** The page's photos, each with the caption rows printed under it (non-body-size text inside its
+ *  caption band, top to bottom). Used to show the manufacturer's photo beside the steps. */
+export function figuresForPage(items: LayoutItem[], images: ImageBox[]): { box: ImageBox; caption: string[] }[] {
+  const photos = images.filter((b) => b.x1 - b.x0 >= MIN_PHOTO_PT && b.y1 - b.y0 >= MIN_PHOTO_PT);
+  const text = items.filter((it) => norm(it.str).length > 0);
+  const body = bodySize(text);
+  return photos.map((box) => {
+    const under = text.filter((it) => it.size !== body && underPhoto(it, box)).sort((a, b) => b.y - a.y || a.x - b.x);
+    const rows: LayoutItem[][] = [];
+    for (const it of under) {
+      const row = rows[rows.length - 1];
+      if (row && row[0].y - it.y < ROW_TOLERANCE_PT) row.push(it);
+      else rows.push([it]);
+    }
+    return { box, caption: rows.map((r) => norm(r.map((it) => it.str).join(" "))) };
+  });
 }
 
 export function figureLinesForPage(items: LayoutItem[], images: ImageBox[], pageText: string): string[] {
@@ -151,7 +171,8 @@ export function imageBoxesFromOps(fnArray: number[], argsArray: unknown[], ops: 
     else if (fn === ops.paintImageXObject || fn === ops.paintInlineImageXObject || fn === ops.paintImageXObjectRepeat) {
       const xs = [ctm[4], ctm[4] + ctm[0], ctm[4] + ctm[2], ctm[4] + ctm[0] + ctm[2]];
       const ys = [ctm[5], ctm[5] + ctm[1], ctm[5] + ctm[3], ctm[5] + ctm[1] + ctm[3]];
-      boxes.push({ x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) });
+      const name = fn !== ops.paintInlineImageXObject && typeof args?.[0] === "string" ? (args[0] as string) : undefined;
+      boxes.push({ x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys), ...(name ? { name } : {}) });
     }
   }
   return boxes;

@@ -18,6 +18,7 @@ import {
   syntheticDemoWorkOrder,
   toolFieldPath,
   unknownFieldPath,
+  stepsWithFigures,
 } from "../work-packet-view";
 
 const SOURCE: SourceRef = { docId: "doc-1", fileId: null, filename: "3520_J.pdf", page: 4, line: "Crankcase Capacity 4.2 qts 4 l" };
@@ -155,5 +156,24 @@ describe("confirmedRevisionsPayload", () => {
       { docId: "d1", revision: "PN 993450 Rev G" },
       { docId: "d2", revision: null },
     ]);
+  });
+});
+
+describe("stepsWithFigures — a section's manufacturer photos follow its last step", () => {
+  const step = (section: string) => ({ section, topic: "valves" as const, text: { value: "x", label: "verified" as const, source: null, basis: "t" } });
+  const fig = (section: string, page: number) => ({ section, docId: "d", filename: "m.pdf", page, image: null, caption: [] });
+
+  it("photos come after the section's last step, not after every step", () => {
+    const out = stepsWithFigures({ steps: [step("VALVES"), step("VALVES"), step("SEALS")], figures: [fig("VALVES", 2), fig("SEALS", 3)] });
+    expect(out.map((o) => o.figures.map((f) => f.page))).toEqual([[], [2], [3]]);
+  });
+
+  it("a section name that recurs (a second manual) shows its photos once, after its final run", () => {
+    const out = stepsWithFigures({ steps: [step("VALVES"), step("SEALS"), step("VALVES")], figures: [fig("VALVES", 2)] });
+    expect(out.map((o) => o.figures.length)).toEqual([0, 0, 1]);
+  });
+
+  it("a packet saved before photos existed has none", () => {
+    expect(stepsWithFigures({ steps: [step("VALVES")] }).map((o) => o.figures)).toEqual([[]]);
   });
 });
