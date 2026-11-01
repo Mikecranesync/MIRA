@@ -11,7 +11,7 @@
 | Surface | Count |
 |---|---|
 | Pages | **70** (12 dynamic) |
-| API routes | **194** (77 dynamic) |
+| API routes | **195** (78 dynamic) |
 
 ## Pages (70)
 
@@ -88,7 +88,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (194)
+## API routes (195)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -192,6 +192,7 @@
 | `/api/equipment-notebooks/[id]/sources/[docId]/passage` | dynamic | `api/equipment-notebooks/[id]/sources/[docId]/passage/route.ts` |
 | `/api/equipment-notebooks/[id]/turns/[turnId]/diagnostics` | dynamic | `api/equipment-notebooks/[id]/turns/[turnId]/diagnostics/route.ts` |
 | `/api/equipment-notebooks/[id]/turns/diagnostics` | dynamic | `api/equipment-notebooks/[id]/turns/diagnostics/route.ts` |
+| `/api/equipment-notebooks/[id]/work-packet` | dynamic | `api/equipment-notebooks/[id]/work-packet/route.ts` |
 | `/api/equipment-notebooks/recognize-nameplate` | static | `api/equipment-notebooks/recognize-nameplate/route.ts` |
 | `/api/events` | static | `api/events/route.ts` |
 | `/api/events/[id]` | dynamic | `api/events/[id]/route.ts` |
