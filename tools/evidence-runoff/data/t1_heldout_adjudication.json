@@ -1,0 +1,11 @@
+{"raw_agreement": {"cells": 370, "agree": 350, "rate": 0.946},
+ "labeller": "blind Claude Sonnet subagent (same model family as the gold labeller; not provider-independent)",
+ "adjudication": [
+  {"cells": 13, "where": "pf4m p85 i0; smcflex p114 i0,i1; m171 p125 i1; m171 p98 i1", "verdict": "task ambiguity, gold correct",
+   "why": "the identifying cell value repeats across row groups; the blind labeller chose a different occurrence (it flagged each one). Gold rows follow the row-position rule and were re-checked on the images."},
+  {"cells": 3, "where": "acs355 p104 i0-i2", "verdict": "convention difference", "why": "blind transcribed key-icon names (MENU, EXIT); gold drops drawn glyphs per amendment 2"},
+  {"cells": 2, "where": "micro820-in p16 i1,i2", "verdict": "convention difference", "why": "value printed once across three model columns; gold records it as a horizontal span, blind left the cell blank as merged"},
+  {"cells": 1, "where": "ml1100 p138 i2 col2", "verdict": "blind error, gold correct", "why": "PDF text reads 'indicated in the extended error field'"},
+  {"cells": 1, "where": "smcflex p39 i0 col2", "verdict": "blind error, gold correct", "why": "PDF text row: '5…85 A — 18…20 mm …'"}],
+ "gold_errors_found": 0,
+ "finding": "label-uniqueness: 5 of 110 held-out rows cannot be identified by their first cell alone because the value repeats in the table; the table scorer requires the whole row on one line, so it is unaffected, and the B1 builder already skips repeated values"}
