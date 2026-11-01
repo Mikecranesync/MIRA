@@ -93,7 +93,7 @@ describe("real PDF → pdfDocPages → parser → builder", () => {
       expect(stepTexts(packet).some((t) => t.startsWith("Remove the valve plug"))).toBe(false);
       const gaps = placeGaps(packet).filter((u) => /Disassembly \(All models except 8560\)/.test(u.basis));
       expect(gaps).toHaveLength(1);
-      expect(gaps[0].basis).toContain("ONLY AFTER RELIEVING");
+      expect(gaps[0].basis).toContain("text after step 2 (p.2)");
     });
   }
 
@@ -101,6 +101,26 @@ describe("real PDF → pdfDocPages → parser → builder", () => {
     const cont = "AND RELIEVE ALL DISCHARGE PRESSURE (0 psi)";
     const raw = edit([[CAPTION, ""], [CAUTION_TAIL, `shut off drive (electric motor)\n${CAPTION}${cont}\n`]]);
     const { packet } = await packetFrom(layout(raw, { [cont]: 8 }));
+    expect(packet.safety.cautions.some((c) => c.label === "verified" && (c.value ?? "").startsWith("Before commencing"))).toBe(false);
+    expect(packet.safety.cautions.filter((c) => c.label === "unknown" && /could not be placed/.test(c.basis ?? ""))).toHaveLength(1);
+  });
+
+  // Codex r11: a ONE-line caption 12pt under the photo, then a small-print safety line 23pt under it —
+  // inside the caption band and the photo's column, so layout alone cannot tell it from a caption.
+  const ONE_LINE_CAPTION = "@fig Removal of Valve Plug\n";
+  const SHORT = "ONLY AFTER RELIEVING ALL PRESSURE";
+
+  it("Codex r11: a one-line caption then an 8pt safety line inside the band, after a step: a gap, no Verified fragment", async () => {
+    const raw = edit([[CAPTION, ""], [STEP2, `2. Remove the valve plug (M41)\n${ONE_LINE_CAPTION}${SHORT}\n`]]);
+    const { packet, doc } = await packetFrom(layout(raw, { [SHORT]: 8 }));
+    expect(doc.pages[1].figureLines).toContain(SHORT); // the layout alone does take it for caption text
+    expect(stepTexts(packet).some((t) => t.startsWith("Remove the valve plug"))).toBe(false);
+    expect(placeGaps(packet).filter((u) => /Disassembly \(All models except 8560\)/.test(u.basis))).toHaveLength(1);
+  });
+
+  it("Codex r11: the same after a caution: Unknown in Safety, not Verified", async () => {
+    const raw = edit([[CAPTION, ""], [CAUTION_TAIL, `shut off drive (electric motor)\n${ONE_LINE_CAPTION}${SHORT}\n`]]);
+    const { packet } = await packetFrom(layout(raw, { [SHORT]: 8 }));
     expect(packet.safety.cautions.some((c) => c.label === "verified" && (c.value ?? "").startsWith("Before commencing"))).toBe(false);
     expect(packet.safety.cautions.filter((c) => c.label === "unknown" && /could not be placed/.test(c.basis ?? ""))).toHaveLength(1);
   });

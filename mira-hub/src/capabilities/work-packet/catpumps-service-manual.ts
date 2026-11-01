@@ -574,11 +574,12 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
         continue;
       }
 
-      // Orphan text: not consumed above. Only hard furniture and layout-confirmed figure lines are
-      // skipped; a line that merely looks like a caption may be the rest of the block before it —
-      // the words alone cannot tell (Codex #5062 F15, rounds 6–9) — so it fails closed. Intro prose
-      // before a section's first step or caution has no `lastBlock` and stays dropped.
-      if (isHardFurniture(line) || figure.has(line)) continue;
+      // Orphan text: not consumed above. Only hard furniture is skipped. A line that looks like a
+      // caption — by its words (Codex #5062 F15, rounds 6–9) or by its place under a photo (rounds
+      // 10–11) — may still be the rest of the block before it, so caption lines are never joined
+      // into a step and never skipped either: they fail closed here. Intro prose before a section's
+      // first step or caution has no `lastBlock` and stays dropped.
+      if (isHardFurniture(line)) continue;
       let tainted: string | null = null;
       if (lastBlock?.kind === "step" && open) {
         tainted = `step ${lastBlock.n} (p.${lastBlock.page})`;

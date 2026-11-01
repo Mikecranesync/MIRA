@@ -281,10 +281,11 @@ describe("parseCatPumpsServiceManual — wrapped lines keep their numbers checka
     expect(imp.source.line).toBe("IMPORTANT: Apply anti-seize lubricant (PN9119) to all stainless threads.");
   });
 
-  it("does not join Title Case figure titles onto a finished caution sentence", () => {
-    const note = sm.cautions.find((c) => c.kind === "NOTE")!;
-    expect(note.text).toBe("Two screwdrivers may be used to assist separation.");
-    expect(note.source.line).toBe("NOTE: Two screwdrivers may be used to assist separation.");
+  it("does not join figure titles onto a caution, and does not skip them either: the NOTE is omitted, never shown verified", () => {
+    expect(sm.cautions.some((c) => c.kind === "NOTE")).toBe(false);
+    const omitted = (sm.omittedCautions ?? []).find((c) => c.kind === "NOTE")!;
+    expect(omitted.source.line).toBe("NOTE: Two screwdrivers may be used to assist separation.");
+    expect(omitted.reason).toMatch(/could not be placed/);
   });
 
   it("text only (no layout): the same titles after the NOTE may be its rest, so the NOTE is omitted, never shown verified", () => {

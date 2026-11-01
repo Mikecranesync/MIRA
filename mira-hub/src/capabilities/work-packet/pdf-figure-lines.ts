@@ -13,6 +13,11 @@
  * (rounds 9–10: a smaller-font safety continuation under a caption, or a smaller-font CAUTION below
  * a large gap, was dropped). The words are never consulted.
  *
+ * Even a positively established caption band can hold the rest of an instruction (round 11: a
+ * one-line caption, then a small-print safety line inside the band). So the parser uses these lines
+ * only to keep caption text out of step and caution text; it never skips one after a step or caution
+ * — that block becomes a gap instead (`catpumps-service-manual.ts`).
+ *
  * Pure: takes the page's text items and image boxes (pdf.js `getTextContent` / `getOperatorList`)
  * and the extracted page text, returns the extracted lines that consist only of caption-band items.
  * Every condition fails toward "not a figure line" — the parser then treats the line as content.
