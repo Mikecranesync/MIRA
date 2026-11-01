@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { bookExternalSpend, CAMPAIGN, campaignTotal, entryBody, reserveWalkSpend, settleWalkSpend, tally, type Campaign, type Comment } from "./spend-ledger";
 
@@ -126,5 +128,29 @@ describe("settle and external", () => {
     await bookExternalSpend({ ...f.gh, entryId: "phone-q1-q2", usd: 0.1536, note: "two Pixel questions" });
     expect((await campaignTotal(f.gh)).totalUsd).toBeCloseTo(0.1536, 6);
     await expect(bookExternalSpend({ ...f.gh, entryId: "phone-q1-q2", usd: 0.1536, note: "again" })).rejects.toThrow(/already/);
+  });
+});
+
+/** Source-order pins on walk.spec (as teardown-order.test.ts does): the wiring cannot be run here
+ *  without a paid staging walk, so these fail if the reservation moves after the first spend, stops
+ *  refusing, or the settle leaves the finally block. */
+describe("walk.spec wiring", () => {
+  const code = readFileSync(path.join(__dirname, "walk.spec.ts"), "utf8").replace(/^\s*(\/\/|\*).*$/gm, "");
+  const at = (re: RegExp) => {
+    const m = re.exec(code);
+    expect(m, String(re)).not.toBeNull();
+    return m!.index;
+  };
+  it("reserves the full meter budget before any manual, account or turn, and refuses on a refusal", () => {
+    const reserve = at(/if \(!DRY\) \{\s*reservation = await reserveWalkSpend\(\{[^\n]*usd: meter\.budget,/);
+    const refuse = at(/if \(!reservation\.ok\) throw new Error\(`refusing to spend/);
+    expect(reserve).toBeLessThan(refuse);
+    expect(refuse).toBeLessThan(at(/await manualBytes\(/));
+    expect(refuse).toBeLessThan(at(/await signUp\(/));
+  });
+  it("settles at the meter's booked spend inside the finally block", () => {
+    const fin = at(/\} finally \{/);
+    const settle = at(/await settleWalkSpend\(\{[^\n]*reservedUsd: r\.reservedUsd, bookedUsd: meter\.booked,/);
+    expect(fin).toBeLessThan(settle);
   });
 });
