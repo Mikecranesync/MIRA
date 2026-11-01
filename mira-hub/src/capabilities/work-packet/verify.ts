@@ -40,6 +40,13 @@ export function collectFields(packet: WorkPacket): FieldLocation[] {
     out.push({ path: `measurements[${i}].value`, field: m.value });
     out.push({ path: `measurements[${i}].tool`, field: m.tool });
   });
+  (packet.jha ?? []).forEach((r, i) => {
+    out.push({ path: `jha[${i}].task`, field: r.task });
+    out.push({ path: `jha[${i}].hazard`, field: r.hazard });
+    out.push({ path: `jha[${i}].controls`, field: r.controls });
+  });
+  (packet.qualifications ?? []).forEach((f, i) => out.push({ path: `qualifications[${i}]`, field: f }));
+  (packet.restoration ?? []).forEach((f, i) => out.push({ path: `restoration[${i}]`, field: f }));
   packet.unknowns.forEach((f, i) => out.push({ path: `unknowns[${i}]`, field: f }));
   return out;
 }
@@ -57,6 +64,8 @@ function tokensNotOnLine(value: string, line: string): string[] {
 }
 
 const MEASUREMENT_VALUE_PATH = /^measurements\[\d+\]\.value$/;
+const JHA_CONTROLS_PATH = /^jha\[\d+\]\.controls$/;
+const QUALIFICATION_PATH = /^qualifications\[\d+\]$/;
 
 export function verifyPacket(packet: WorkPacket): string[] {
   const problems: string[] = [];
@@ -75,6 +84,12 @@ export function verifyPacket(packet: WorkPacket): string[] {
 
     if (path === "safety.siteIsolation" && field.label !== "unknown") {
       problems.push(`${path}: site isolation must stay unknown — the site owns isolation and lockout`);
+    }
+
+    // Hazard controls and qualifications are site decisions: the tool never writes them. A technician
+    // may type the site's answer (an edit makes it "proposed"); nothing may present one as verified.
+    if ((JHA_CONTROLS_PATH.test(path) || QUALIFICATION_PATH.test(path)) && field.label === "verified") {
+      problems.push(`${path}: hazard controls and qualifications come from the site, never verified from manufacturer documents`);
     }
 
     // A measurement's value carries real numbers a technician will torque to — hold it to the

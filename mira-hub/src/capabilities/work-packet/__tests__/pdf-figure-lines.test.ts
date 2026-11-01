@@ -6,7 +6,7 @@
  * other case — including Codex round-10's smaller-font safety continuations — must come back as content.
  */
 import { describe, expect, it } from "vitest";
-import { figureLinesForPage, imageBoxesFromOps, type ImageBox, type LayoutItem } from "../pdf-figure-lines";
+import { figureLinesForPage, figuresForPage, imageBoxesFromOps, type ImageBox, type LayoutItem } from "../pdf-figure-lines";
 
 const item = (str: string, y: number, size: number, x = 18, w = str.length * size * 0.5): LayoutItem => ({ str, x, y, w, size });
 const body = (str: string, y: number, x = 18) => item(str, y, 10, x);
@@ -82,16 +82,28 @@ describe("figureLinesForPage", () => {
   });
 });
 
+describe("figuresForPage", () => {
+  it("each photo carries the caption rows printed under it, top to bottom", () => {
+    const items = [...STEPS, ...CAPTION, ...BELOW];
+    expect(figuresForPage(items, [PHOTO])).toEqual([{ box: PHOTO, caption: ["9XP1000, 9XP1010", "Removal of Cover"] }]);
+  });
+
+  it("body-size text and text outside the photo's column are not its caption; small images are not photos", () => {
+    const items = [...STEPS, item("the rest of a step", 449, 10, 18, 150), item("Removal of Cover", 438, 8.5, 210, 80), ...BELOW];
+    expect(figuresForPage(items, [PHOTO, { x0: 18, y0: 300, x1: 189, y1: 304 }])).toEqual([{ box: PHOTO, caption: [] }]);
+  });
+});
+
 describe("imageBoxesFromOps", () => {
   const OPS = { save: 10, restore: 11, transform: 12, paintFormXObjectBegin: 74, paintFormXObjectEnd: 75, paintImageXObject: 85, paintInlineImageXObject: 86, paintImageXObjectRepeat: 88 };
 
   it("an image fills its transform's unit square; save/restore scope the transform", () => {
     const boxes = imageBoxesFromOps([10, 12, 85, 11, 85], [null, [171, 0, 0, 161, 18, 461], ["img1"], null, ["img2"]], OPS);
-    expect(boxes).toEqual([{ x0: 18, y0: 461, x1: 189, y1: 622 }, { x0: 0, y0: 0, x1: 1, y1: 1 }]);
+    expect(boxes).toEqual([{ x0: 18, y0: 461, x1: 189, y1: 622, name: "img1" }, { x0: 0, y0: 0, x1: 1, y1: 1, name: "img2" }]);
   });
 
   it("a form XObject's matrix applies inside it and is dropped after it", () => {
     const boxes = imageBoxesFromOps([74, 12, 86, 75, 85], [[[1, 0, 0, 1, 100, 200], null], [10, 0, 0, 20, 0, 0], ["inline"], null, ["img"]], OPS);
-    expect(boxes).toEqual([{ x0: 100, y0: 200, x1: 110, y1: 220 }, { x0: 0, y0: 0, x1: 1, y1: 1 }]);
+    expect(boxes).toEqual([{ x0: 100, y0: 200, x1: 110, y1: 220 }, { x0: 0, y0: 0, x1: 1, y1: 1, name: "img" }]);
   });
 });

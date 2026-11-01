@@ -24,6 +24,16 @@ export interface PageText {
   /** Lines of `text` the PDF layout places in a figure-caption band (read from the original PDF);
    *  absent when the page came from chunk text. The service-manual parser skips only these. */
   figureLines?: string[];
+  /** Photos drawn on the page (original PDF only): each image as a PNG data URL with the caption
+   *  text printed under it. Absent for chunk text. */
+  figures?: PageFigure[];
+}
+
+export interface PageFigure {
+  /** `data:image/png;base64,…`, downscaled; null when the image could not be decoded. */
+  image: string | null;
+  /** Caption rows printed directly under the image, top to bottom (may be empty). */
+  caption: string[];
 }
 
 export interface DocText {
@@ -213,6 +223,9 @@ export interface ServiceManual {
   omitted?: SmOmittedSection[];
   /** Cautions left out of `cautions` — a packet must show these in Safety as unknown. */
   omittedCautions?: SmOmittedCaution[];
+  /** Where the manual prints its start-up check-list heading (e.g. "INLET CONDITION CHECK-LIST" /
+   *  "Review Before Start-Up"), cited by its exact heading lines. The items themselves are not parsed. */
+  startupChecklist?: SourceRef[];
 }
 
 // ─────────────────────────────────────────────── work order, identity, packet
@@ -270,6 +283,26 @@ export interface PacketMeasurement {
   tool: Field;
 }
 
+/** A manufacturer photo from the manual page a section's steps are printed on. */
+export interface PacketFigure {
+  /** The step section the photo belongs to — same text as `PacketStep.section`. */
+  section: string;
+  docId: string;
+  filename: string | null;
+  page: number;
+  image: string | null;
+  caption: string[];
+}
+
+/** One row of the job hazard analysis. The hazard is the manufacturer's own caution (verbatim, cited);
+ *  the controls — PPE, isolation, permits — are the site's decision and are always unknown here. */
+export interface JhaRow {
+  /** Where in the job the hazard applies (manual section/page), or the work-order text for a flag. */
+  task: Field;
+  hazard: Field;
+  controls: Field;
+}
+
 export interface WorkPacket {
   version: 1;
   packetId: string;
@@ -295,7 +328,16 @@ export interface WorkPacket {
   parts: PacketPart[];
   tools: Field[];
   steps: PacketStep[];
+  /** Manufacturer photos for the selected sections (original PDF only). Optional: absent on packets
+   *  saved before figures existed. */
+  figures?: PacketFigure[];
   measurements: PacketMeasurement[];
+  /** Job hazard analysis built from the manufacturer's cautions and the work-order hazard flags. */
+  jha?: JhaRow[];
+  /** Who may do the job. Not in manufacturer documents, so always unknown — the site defines it. */
+  qualifications?: Field[];
+  /** Return-to-service: the manufacturer's start-up checks and ratings, cited; acceptance limits unknown. */
+  restoration?: Field[];
   unknowns: Field[];
   approval: {
     technicianReview: { state: "draft" | "reviewed"; entries: ReviewEntry[] };

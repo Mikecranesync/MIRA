@@ -5,7 +5,7 @@
  * a value, so it is tested without a browser or a server. `WorkPacketPanel.tsx` wires these to
  * fetch, component state, and rendering; it never duplicates the logic that lives here.
  */
-import type { Label, PacketDocument, SourceRef, WorkOrderInput, WorkPacket, WorkPacketAvailability } from "@/capabilities/work-packet/types";
+import type { Label, PacketDocument, PacketFigure, SourceRef, WorkOrderInput, WorkPacket, WorkPacketAvailability } from "@/capabilities/work-packet/types";
 
 // ───────────────────────────────────────────── label → badge text
 
@@ -60,6 +60,29 @@ export function measurementFieldPath(index: number, field: "name" | "value" | "t
 
 export function unknownFieldPath(index: number): string {
   return `unknowns[${index}]`;
+}
+
+export function jhaFieldPath(index: number, field: "task" | "hazard" | "controls"): string {
+  return `jha[${index}].${field}`;
+}
+
+export function qualificationFieldPath(index: number): string {
+  return `qualifications[${index}]`;
+}
+
+export function restorationFieldPath(index: number): string {
+  return `restoration[${index}]`;
+}
+
+/** Steps in packet order, each with the manufacturer photos to show after it: a section's photos
+ *  follow its last step. Packets saved before photos existed have none. */
+export function stepsWithFigures(packet: Pick<WorkPacket, "steps" | "figures">): { index: number; figures: PacketFigure[] }[] {
+  const figs = packet.figures ?? [];
+  return packet.steps.map((s, i) => {
+    // Photos go after the last step carrying the section's name (a name can recur across manuals).
+    const later = packet.steps.slice(i + 1).some((t) => t.section === s.section);
+    return { index: i, figures: later ? [] : figs.filter((f) => f.section === s.section) };
+  });
 }
 
 // ───────────────────────────────────────────── source chip ("p.N filename")

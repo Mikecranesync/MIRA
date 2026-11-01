@@ -22,8 +22,10 @@ import type {
   DraftResult,
   Field,
   Identity,
+  JhaRow,
   ModelScope,
   PacketDocument,
+  PacketFigure,
   PacketMeasurement,
   PacketPart,
   PacketStep,
@@ -37,6 +39,9 @@ import { isSupportedManufacturer, manufacturerRefusalMessage } from "./manufactu
 import { parseCatPumpsDataSheet, sheetModelFor } from "./catpumps-datasheet";
 import { parseCatPumpsServiceManual } from "./catpumps-service-manual";
 import { collectFields, verifyPacket } from "./verify";
+
+/** A caution about starting the pump back up (e.g. "Do not lubricate wicks at initial start-up …"). */
+const STARTUP_RE = /\bstart-?\s?up\b/i;
 
 const DISCLAIMER =
   "DRAFT prepared from the manufacturer documents attached to this notebook. It is not an " +
@@ -567,6 +572,67 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
     tools.push({ value: "Torque wrench", label: "proposed", source: null, basis: "torque values specified" });
   }
 
+  // ---- figures: the manufacturer's photos on the pages the selected steps are printed on ----
+  // Only a kept original PDF has them (document-text.ts). A photo is attached to the first selected
+  // section printed on its page; a page's photos are attached once.
+  const figures: PacketFigure[] = [];
+  const figurePages = new Set<string>();
+  for (const step of steps) {
+    const src = step.text.source;
+    if (!src) continue;
+    const key = `${src.docId}#${src.page}`;
+    if (figurePages.has(key)) continue;
+    figurePages.add(key);
+    const doc = applicableManuals.find((p) => p.doc.docId === src.docId)?.doc;
+    const page = doc?.pages.find((pg) => pg.page === src.page);
+    for (const f of page?.figures ?? []) {
+      figures.push({ section: step.section, docId: src.docId, filename: src.filename, page: src.page, image: f.image, caption: f.caption });
+    }
+  }
+
+  // ---- job hazard analysis ----
+  // One row per manufacturer caution (verbatim, cited) and per work-order hazard flag. The controls —
+  // PPE, isolation, permits — are the site's decision: always unknown, never generated.
+  const siteControls = (): Field => ({ value: null, label: "unknown", source: null, basis: "controls, PPE and isolation — the site defines them" });
+  const jha: JhaRow[] = [
+    ...cautions.map((c) => ({
+      task: { value: c.source ? `Manual p.${c.source.page}` : "Manual", label: "proposed" as const, source: c.source, basis: "where the manual prints this caution" },
+      hazard: { ...c },
+      controls: siteControls(),
+    })),
+    ...hazardFlags.map((flag) => ({
+      task: { value: workOrder.title || workOrder.id, label: "proposed" as const, source: null, basis: "the work order" },
+      hazard: { value: flag, label: "proposed" as const, source: null, basis: "raised by the Hub's safety classifier on the work-order text" },
+      controls: siteControls(),
+    })),
+  ];
+
+  const qualifications: Field[] = [
+    { value: null, label: "unknown", source: null, basis: "technician qualification is not specified in the attached documents — the site defines who may do this job" },
+  ];
+
+  // ---- restoration / return to service ----
+  // The manual's start-up check-list (cited by its heading), its start-up cautions, and the data
+  // sheet's oil capacity and ratings — all verbatim. Pass/fail limits are not in the documents.
+  const restoration: Field[] = [];
+  for (const p of applicableManuals) {
+    for (const ref of p.manual.startupChecklist ?? []) {
+      restoration.push({ value: ref.line, label: "verified", source: ref, basis: `review every item of this check-list in the manual (p.${ref.page}) before start-up` });
+    }
+  }
+  for (const c of cautions) {
+    if (c.label === "verified" && STARTUP_RE.test(c.value ?? "")) restoration.push({ ...c, basis: `${c.basis} — start-up` });
+  }
+  for (const p of applicableDataSheets) {
+    for (const key of ["crankcase_capacity", "pressure", "flow", "rpm"]) {
+      const spec = p.dataSheet.specs.find((sp) => sp.key === key);
+      if (!spec) continue;
+      const basis = key === "crankcase_capacity" ? "data sheet: fill the crankcase to this capacity before start-up" : "data sheet rating — do not exceed during the run test";
+      restoration.push({ value: `${spec.label} ${spec.value}`, label: "verified", source: spec.source, basis });
+    }
+  }
+  restoration.push({ value: null, label: "unknown", source: null, basis: "functional-test acceptance limits are not specified in the attached documents" });
+
   // ---- unknowns (always-present entries) ----
   unknowns.push(
     identity.serialNumber
@@ -574,8 +640,6 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
       : { value: null, label: "unknown", source: null, basis: "serial — not in the attached documents" },
     { value: null, label: "unknown", source: null, basis: "this pump's seal material is unknown — confirm against the nameplate suffix" },
     { value: null, label: "unknown", source: null, basis: "site isolation / lockout — the site owns isolation and lockout" },
-    { value: null, label: "unknown", source: null, basis: "functional-test acceptance limits are not specified in the attached documents" },
-    { value: null, label: "unknown", source: null, basis: "technician qualification is not specified in the attached documents" },
   );
   // A half-documented machine must say so: without its service manual there are no steps, tools,
   // torque values or manual cautions; without its data sheet there are no parts or kits.
@@ -601,7 +665,11 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
     parts,
     tools,
     steps,
+    figures,
     measurements,
+    jha,
+    qualifications,
+    restoration,
     unknowns,
     approval: {
       technicianReview: { state: "draft", entries: [] },

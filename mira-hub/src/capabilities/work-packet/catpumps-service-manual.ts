@@ -183,6 +183,8 @@ const SECTION_HEADING_RE = /^(SERVICING THE [A-Z][A-Z \-]*|REMOVING THE [A-Z][A-
  *  page is reference material (inlet checklist, PM schedule, tech-bulletin index), never steps. */
 const BODY_END_HEADING_RE = /^(INLET CONDITION CHECK-LIST|PREVENTATIVE MAINTENANCE CHECK-LIST|TECHNICAL BULLETIN REFERENCE CHART)$/;
 const TORQUE_HEADING_RE = /^TORQUE CHART$/;
+const STARTUP_CHECKLIST_RE = /^INLET CONDITION CHECK-LIST$/;
+const STARTUP_SUBTITLE_RE = /^Review Before Start-Up$/i;
 
 function isAllCapsHeading(line: string): boolean {
   return line.length > 0 && line === line.toUpperCase() && /[A-Z]/.test(line);
@@ -455,6 +457,7 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
   let phaseScope: ModelScope = scopeAll();
   // Persists across pages like `open`; cleared at every section/subheading/torque/body-end boundary.
   let lastBlock: LastBlock | null = null;
+  const startupChecklist: SourceRef[] = [];
 
   const sorted: PageText[] = [...doc.pages].sort((a, b) => a.page - b.page);
 
@@ -481,6 +484,15 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
       }
 
       if (BODY_END_HEADING_RE.test(line)) {
+        // The inlet-condition check-list is what the manual says to review before start-up. Its items
+        // mix check boxes with run-in sub-headings, so they are not split up: the packet cites the
+        // heading and its page, and the technician works the list from the manual.
+        // It can follow another reference heading on the same page, so look through the rest of it.
+        for (let k = i; k < lines.length; k++) {
+          if (!STARTUP_CHECKLIST_RE.test(lines[k])) continue;
+          const next = lines[k + 1] ?? "";
+          startupChecklist.push({ ...src, page: pg.page, line: STARTUP_SUBTITLE_RE.test(next) ? `${lines[k]} ${next}` : lines[k] });
+        }
         flushSection(open, sections, problems, omitted);
         open = null;
         lastBlock = null;
@@ -603,5 +615,5 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
   }
   flushSection(open, sections, problems, omitted);
 
-  return { kind: "catpumps_service_manual", modelsCovered, sections, torque, cautions, problems, omitted, omittedCautions };
+  return { kind: "catpumps_service_manual", modelsCovered, sections, torque, cautions, problems, omitted, omittedCautions, startupChecklist };
 }

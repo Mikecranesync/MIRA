@@ -341,8 +341,11 @@ describe("buildDraftPacket — assembly", () => {
     expect(packet.safety.cautions[0]).toMatchObject({ value: "Relieve system pressure before servicing.", label: "verified" });
     expect(packet.safety.siteIsolation).toMatchObject({ value: null, label: "unknown" });
 
-    // unknowns: item-2 NBR blank + inconsistent valve-plugs row + the 5 always-present entries
-    expect(packet.unknowns.length).toBe(7);
+    // unknowns: item-2 NBR blank + inconsistent valve-plugs row + the 3 always-present entries
+    // (qualification and functional-test limits now have their own sections)
+    expect(packet.unknowns.length).toBe(5);
+    expect(packet.qualifications).toEqual([expect.objectContaining({ value: null, label: "unknown" })]);
+    expect(packet.restoration?.at(-1)).toMatchObject({ value: null, label: "unknown", basis: expect.stringContaining("acceptance limits") });
     expect(packet.unknowns.some((u) => u.basis.includes("item 2") || u.basis.includes("O-ring"))).toBe(true);
     expect(packet.unknowns.some((u) => u.basis.includes("inconsistent"))).toBe(true);
     expect(packet.unknowns.some((u) => u.basis.includes("seal material"))).toBe(true);

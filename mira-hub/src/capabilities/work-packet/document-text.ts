@@ -18,8 +18,9 @@ import pool from "@/lib/db";
 import { withTenantContext } from "@/lib/tenant-context";
 import { listSources } from "@/lib/equipment-notebooks";
 import { acquireIngestSlot } from "@/lib/node-knowledge-ingest";
-import { figureLinesForPage, imageBoxesFromOps, type LayoutItem } from "./pdf-figure-lines";
-import type { DocText, PageText } from "./types";
+import { figureLinesForPage, figuresForPage, imageBoxesFromOps, type LayoutItem } from "./pdf-figure-lines";
+import { decodedImageToPng, type DecodedImage } from "./pdf-image-png";
+import type { DocText, PageFigure, PageText } from "./types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -123,13 +124,35 @@ async function readPdfPages(bytes: Uint8Array): Promise<PageText[]> {
         items.push({ str: it.str, x, y, w: it.width, size: Math.round(Math.hypot(b, d) * 10) / 10 });
       }
       const ops = await pg.getOperatorList();
-      page.figureLines = figureLinesForPage(items, imageBoxesFromOps(ops.fnArray, ops.argsArray, OPS), texts[i]);
+      const boxes = imageBoxesFromOps(ops.fnArray, ops.argsArray, OPS);
+      page.figureLines = figureLinesForPage(items, boxes, texts[i]);
+      const figures: PageFigure[] = [];
+      for (const f of figuresForPage(items, boxes)) {
+        figures.push({ image: f.box.name ? await photoPng(pg, f.box.name) : null, caption: f.caption });
+      }
+      if (figures.length > 0) page.figures = figures;
     } catch (err) {
       console.error(`[work-packet/document-text] page ${i + 1} layout read failed (no figure lines):`, err instanceof Error ? err.message : err);
     }
     pages.push(page);
   }
   return pages;
+}
+
+/** The decoded pixels of one page image as a PNG data URL; null if pdf.js cannot hand them over. */
+async function photoPng(pg: { objs: PdfObjs; commonObjs: PdfObjs }, name: string): Promise<string | null> {
+  try {
+    const store = name.startsWith("g_") ? pg.commonObjs : pg.objs;
+    const img = await new Promise<unknown>((resolve) => store.get(name, resolve));
+    return img && typeof img === "object" && "data" in img ? decodedImageToPng(img as DecodedImage) : null;
+  } catch (err) {
+    console.error(`[work-packet/document-text] image ${name} could not be read:`, err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+interface PdfObjs {
+  get(name: string, callback: (data: unknown) => void): unknown;
 }
 
 interface ChunkRow {

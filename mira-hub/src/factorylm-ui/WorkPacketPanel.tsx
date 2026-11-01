@@ -38,6 +38,7 @@ import {
   confirmedRevisionsPayload,
   confidencePercent,
   documentsSignature,
+  jhaFieldPath,
   measurementFieldPath,
   packetForNotebook,
   packetHeaderRows,
@@ -45,9 +46,12 @@ import {
   revisionTickHolds,
   partFieldPath,
   printTitle,
+  qualificationFieldPath,
+  restorationFieldPath,
   scopeFieldPath,
   sourceChipLabel,
   stepFieldPath,
+  stepsWithFigures,
   syntheticDemoWorkOrder,
   toolFieldPath,
   unknownFieldPath,
@@ -75,6 +79,9 @@ const S: Record<string, CSSProperties> = {
   muted: { color: "var(--fl-muted)", fontSize: "var(--fl-fs-xs)" },
   section: { border: "1px solid var(--fl-line)", borderRadius: "var(--fl-radius-card, 10px)", padding: 14, marginTop: 12 },
   sectionTitle: { fontSize: "var(--fl-fs-sm)", fontWeight: 600, margin: "0 0 8px 0" },
+  figure: { margin: "10px 0 0 0", breakInside: "avoid" },
+  figureImg: { display: "block", maxWidth: "100%", width: 240, height: "auto", border: "1px solid var(--fl-line)", borderRadius: "var(--fl-radius, 6px)" },
+  jhaRow: { borderTop: "1px solid var(--fl-line)", paddingTop: 8, marginTop: 8, breakInside: "avoid" },
   warn: { background: "var(--fl-warn-bg)", border: "1px solid var(--fl-warn)", borderRadius: "var(--fl-radius-sm, 6px)", padding: 12, whiteSpace: "pre-wrap", fontSize: "var(--fl-fs-sm)" },
   fault: { background: "var(--fl-fault-bg)", border: "1px solid var(--fl-fault)", borderRadius: "var(--fl-radius-sm, 6px)", padding: 12, whiteSpace: "pre-wrap", fontSize: "var(--fl-fs-sm)" },
   ok: { background: "var(--fl-ok-bg)", border: "1px solid var(--fl-ok)", borderRadius: "var(--fl-radius-sm, 6px)", padding: 12, fontSize: "var(--fl-fs-sm)" },
@@ -711,6 +718,27 @@ export function WorkPacketPanel({
                   </div>
                 </section>
 
+                {(packet.jha?.length ?? 0) > 0 && (
+                  <section style={S.section} data-testid="wp-jha">
+                    <h3 style={S.sectionTitle}>Job hazard analysis</h3>
+                    <div style={S.muted}>Hazards are the manufacturer&apos;s cautions. Controls, PPE and isolation are set by your site.</div>
+                    {packet.jha!.map((r, i) => (
+                      <div key={i} style={i > 0 ? S.jhaRow : { marginTop: 8 }}>
+                        <FieldRow path={jhaFieldPath(i, "task")} field={r.task} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />
+                        <FieldRow path={jhaFieldPath(i, "hazard")} field={r.hazard} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />
+                        <FieldRow path={jhaFieldPath(i, "controls")} field={r.controls} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />
+                      </div>
+                    ))}
+                  </section>
+                )}
+
+                {(packet.qualifications?.length ?? 0) > 0 && (
+                  <section style={S.section} data-testid="wp-qualifications">
+                    <h3 style={S.sectionTitle}>Qualifications</h3>
+                    {packet.qualifications!.map((f, i) => <FieldRow key={i} path={qualificationFieldPath(i)} field={f} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />)}
+                  </section>
+                )}
+
                 <section style={S.section}>
                   <h3 style={S.sectionTitle}>Parts &amp; kits</h3>
                   {packet.parts.map((p, i) => (
@@ -730,7 +758,23 @@ export function WorkPacketPanel({
 
                 <section style={S.section}>
                   <h3 style={S.sectionTitle}>Steps</h3>
-                  {packet.steps.map((s, i) => <FieldRow key={i} path={stepFieldPath(i)} field={s.text} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />)}
+                  {stepsWithFigures(packet).map(({ index: i, figures }) => (
+                    <div key={i}>
+                      <FieldRow path={stepFieldPath(i)} field={packet.steps[i].text} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />
+                      {figures.map((f, j) => (
+                        <figure key={j} style={S.figure} data-testid="wp-figure">
+                          {f.image
+                            ? // eslint-disable-next-line @next/next/no-img-element -- an inline data: URL photo; next/image cannot optimise it
+                              <img src={f.image} alt={f.caption.join(" — ") || `Manufacturer photo, p.${f.page}`} style={S.figureImg} />
+                            : <div style={S.muted}>Photo could not be read — see the manual.</div>}
+                          <figcaption style={S.muted}>{[...f.caption, `Manufacturer photo, p.${f.page} ${f.filename ?? "document"}`].join(" · ")}</figcaption>
+                        </figure>
+                      ))}
+                    </div>
+                  ))}
+                  {packet.steps.length > 0 && (packet.figures?.length ?? 0) === 0 && (
+                    <div style={{ ...S.muted, marginTop: 8 }}>Photos: open the cited manual page (this document was read as text only).</div>
+                  )}
                 </section>
 
                 <section style={S.section}>
@@ -744,8 +788,15 @@ export function WorkPacketPanel({
                   ))}
                 </section>
 
+                {(packet.restoration?.length ?? 0) > 0 && (
+                  <section style={S.section} data-testid="wp-restoration">
+                    <h3 style={S.sectionTitle}>Return to service</h3>
+                    {packet.restoration!.map((f, i) => <FieldRow key={i} path={restorationFieldPath(i)} field={f} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />)}
+                  </section>
+                )}
+
                 <section style={S.section}>
-                  <h3 style={S.sectionTitle}>Unknowns</h3>
+                  <h3 style={S.sectionTitle}>Exceptions &amp; unknowns</h3>
                   {packet.unknowns.map((f, i) => <FieldRow key={i} path={unknownFieldPath(i)} field={f} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />)}
                 </section>
 
