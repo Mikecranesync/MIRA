@@ -383,6 +383,12 @@ export interface OrphanLine {
  *  and the headquarters address line ("1681 - 94th Lane N.E. Minneapolis, MN 55449 - 4324"). A
  *  "repeats on several pages" rule is deliberately absent: in real manuals the repeated lines are
  *  content ("needed.", "hand.", a NOTE), so it would hide exactly the continuations this guards. */
+/** Lines that can never carry an instruction: page header/footer furniture, a trademark footnote,
+ *  a bare digit sequence (a tightening-sequence diagram). Skipped wherever they fall. */
+function isHardFurniture(line: string): boolean {
+  return isPageFurniture(line) || /^[\d\s]+$/.test(line) || /registered trademarks?/i.test(line);
+}
+
 function isPageFurniture(line: string): boolean {
   if (/^PN\s+\d{4,6}\s+Rev\s+[A-Z]\b/.test(line)) return true;
   if (/Minneapolis,\s*MN\b/.test(line)) return true;
@@ -449,7 +455,6 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
   // Scope of the last Disassembly/Reassembly subheading in the open section; a nested model-list
   // header narrows it instead of replacing it.
   let phaseScope: ModelScope = scopeAll();
-  let skippingCaption = false;
   // Persists across pages like `open`; cleared at every section/subheading/torque/body-end boundary.
   let lastBlock: LastBlock | null = null;
 
@@ -460,7 +465,9 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
       .split("\n")
       .map((l) => l.trim())
       .filter((l) => l.length > 0);
-    skippingCaption = false;
+    // Lines the PDF layout places in a figure (caption) band — known only when the original PDF was
+    // read (`document-text.ts`); absent for chunk text, where every unplaced line counts.
+    const figure = new Set(pg.figureLines ?? []);
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
@@ -484,7 +491,6 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
 
       const marker = line.match(CAUTION_MARKER_RE);
       if (marker) {
-        skippingCaption = false;
         const kind = marker[1] as SmCaution["kind"];
         const textParts = [marker[2]];
         let j = i + 1;
@@ -497,6 +503,7 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
           !BODY_END_HEADING_RE.test(lines[j]) &&
           !TORQUE_HEADING_RE.test(lines[j]) &&
           !matchSubheading(lines[j]) &&
+          !figure.has(lines[j]) &&
           !isInterleavedFurniture(textParts.join(" "), lines[j])
         ) {
           textParts.push(lines[j]);
@@ -518,7 +525,6 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
         open = { heading: line, subheading: null, topic: topicFor(line), models: scopeAll(), page: pg.page, steps: [], firstLines: [], incomplete: null };
         phaseScope = scopeAll();
         lastBlock = null;
-        skippingCaption = false;
         continue;
       }
 
@@ -534,13 +540,11 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
         if (!sub.nested) phaseScope = sub.scope;
         open = { heading: open!.heading, subheading: sub.text, topic: open!.topic, models: sectionModels, page: pg.page, steps: [], firstLines: [], incomplete: null };
         lastBlock = null;
-        skippingCaption = false;
         continue;
       }
 
       const step = line.match(STEP_RE);
       if (step && open) {
-        skippingCaption = false;
         const n = Number(step[1]);
         const textParts = [step[2]];
         let j = i + 1;
@@ -553,6 +557,7 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
           !BODY_END_HEADING_RE.test(lines[j]) &&
           !TORQUE_HEADING_RE.test(lines[j]) &&
           !matchSubheading(lines[j]) &&
+          !figure.has(lines[j]) &&
           !isInterleavedFurniture(textParts.join(" "), lines[j])
         ) {
           textParts.push(lines[j]);
@@ -571,21 +576,11 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
         continue;
       }
 
-      if (isModelListLine(line)) {
-        // The start of a figure-caption run (a model list, then a short title line, often
-        // repeating) interleaved by the extractor between real content.
-        skippingCaption = true;
-        continue;
-      }
-      if (skippingCaption) {
-        // Only lines that look like caption titles belong to the run (Codex #5062 F15, round 6);
-        // the first line that does not ends it and is accounted for below like any other line.
-        if (looksLikeFigureTitle(line)) continue;
-        skippingCaption = false;
-      }
-      // Orphan text: not furniture and not consumed above. Intro prose before a section's first
-      // step or caution has no `lastBlock` and stays dropped; anything after one may be its rest.
-      if (isPageFurniture(line) || (lastBlock && isInterleavedFurniture(lastBlock.text, line))) continue;
+      // Orphan text: not consumed above. Only hard furniture and layout-confirmed figure lines are
+      // skipped; a line that merely looks like a caption may be the rest of the block before it —
+      // the words alone cannot tell (Codex #5062 F15, rounds 6–9) — so it fails closed. Intro prose
+      // before a section's first step or caution has no `lastBlock` and stays dropped.
+      if (isHardFurniture(line) || figure.has(line)) continue;
       let tainted: string | null = null;
       if (lastBlock?.kind === "step" && open) {
         tainted = `step ${lastBlock.n} (p.${lastBlock.page})`;

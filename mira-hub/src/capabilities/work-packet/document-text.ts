@@ -17,6 +17,7 @@ import { extractText, getDocumentProxy } from "unpdf";
 import pool from "@/lib/db";
 import { withTenantContext } from "@/lib/tenant-context";
 import { listSources } from "@/lib/equipment-notebooks";
+import { figureLinesForPage, type LayoutItem } from "./pdf-figure-lines";
 import type { DocText, PageText } from "./types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -74,8 +75,12 @@ interface UploadBytesRow {
  * read-only loader needs, so the unpdf call itself is reused directly rather
  * than through it. Returns null when no row matches (wrong tenant, or the file
  * was never parked) so the caller can fall back to the chunk text.
+ *
+ * Each page also carries `figureLines` — the lines its layout places in a figure-caption band
+ * (`pdf-figure-lines.ts`). If reading a page's layout fails, that page simply has none, and the
+ * parser treats every unplaced line on it as content (Codex #5062 F15).
  */
-async function fileDocPages(tenantId: string, fileId: string): Promise<string[] | null> {
+async function fileDocPages(tenantId: string, fileId: string): Promise<PageText[] | null> {
   const row = await withTenantContext(tenantId, async (c) => {
     const res = await c.query<UploadBytesRow>(
       `SELECT content FROM namespace_direct_uploads WHERE id = $1 AND tenant_id = $2`,
@@ -84,9 +89,33 @@ async function fileDocPages(tenantId: string, fileId: string): Promise<string[] 
     return res.rows[0] ?? null;
   });
   if (!row) return null;
-  const pdf = await getDocumentProxy(new Uint8Array(row.content));
+  return pdfDocPages(new Uint8Array(row.content));
+}
+
+/** A PDF's own pages: unpdf page text plus each page's layout-derived `figureLines`. */
+export async function pdfDocPages(bytes: Uint8Array): Promise<PageText[]> {
+  const pdf = await getDocumentProxy(bytes);
   const { text } = await extractText(pdf, { mergePages: false });
-  return Array.isArray(text) ? text : [text];
+  const texts = Array.isArray(text) ? text : [text];
+  const pages: PageText[] = [];
+  for (let i = 0; i < texts.length; i++) {
+    const page: PageText = { page: i + 1, text: texts[i] };
+    try {
+      const pg = await pdf.getPage(i + 1);
+      const content = await pg.getTextContent();
+      const items: LayoutItem[] = [];
+      for (const it of content.items) {
+        if (!("str" in it) || !("transform" in it)) continue;
+        const [, b, , d, , y] = it.transform as number[];
+        items.push({ str: it.str, y, size: Math.round(Math.hypot(b, d) * 10) / 10 });
+      }
+      page.figureLines = figureLinesForPage(items, pg.getViewport({ scale: 1 }).height, texts[i]);
+    } catch (err) {
+      console.error(`[work-packet/document-text] page ${i + 1} layout read failed (no figure lines):`, err instanceof Error ? err.message : err);
+    }
+    pages.push(page);
+  }
+  return pages;
 }
 
 interface ChunkRow {
@@ -162,9 +191,9 @@ export async function loadNotebookDocTexts(tenantId: string, notebookId: string)
     let via: DocText["via"] = "chunks";
     if (s.fileId && UUID_RE.test(s.fileId)) {
       try {
-        const raw = await fileDocPages(tenantId, s.fileId);
-        if (raw) {
-          pages = raw.map((text, i) => ({ page: i + 1, text }));
+        const filePages = await fileDocPages(tenantId, s.fileId);
+        if (filePages) {
+          pages = filePages;
           via = "file";
         }
       } catch (err) {

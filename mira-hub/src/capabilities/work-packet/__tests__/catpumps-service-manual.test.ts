@@ -13,20 +13,14 @@
  * the parser (per `document-text.ts`, pages arrive pre-split — the marker is a scratch-dump
  * artifact, not a production format).
  */
-import { FIXTURES } from "./fixtures";
+import { FIXTURES, fixturePages } from "./fixtures";
 import { describe, expect, it } from "vitest";
 import { parseCatPumpsServiceManual } from "../catpumps-service-manual";
 import type { DocText } from "../types";
 
 
 function docTextFromDump(fixtureName: string, docId = "doc1"): DocText {
-  const raw = FIXTURES[fixtureName];
-  const parts = raw.split(/\n?===== PAGE (\d+) =====\n/).slice(1);
-  const pages: DocText["pages"] = [];
-  for (let i = 0; i < parts.length; i += 2) {
-    pages.push({ page: Number(parts[i]), text: parts[i + 1] });
-  }
-  return { docId, fileId: null, filename: fixtureName, pages, via: "file" };
+  return { docId, fileId: null, filename: fixtureName, pages: fixturePages(FIXTURES[fixtureName]), via: "file" };
 }
 
 describe("parseCatPumpsServiceManual — recognition", () => {
@@ -250,9 +244,11 @@ describe("parseCatPumpsServiceManual — wrapped lines keep their numbers checka
     "Removal of Inlet Manifold O-Rings 9XP1000, 9XP1010",
     "Removal of V-Packing Spacer",
   ].join("\n");
+  // The two figure titles are what the PDF layout reports as captions for a kept original.
+  const figureLines = ["Removal of Inlet Manifold O-Rings 9XP1000, 9XP1010", "Removal of V-Packing Spacer"];
   const sm = parseCatPumpsServiceManual({
-    docId: "m9", fileId: null, filename: "9XPSvc.pdf", via: "chunks",
-    pages: [{ page: 1, text: cover }, { page: 2, text: body }],
+    docId: "m9", fileId: null, filename: "9XPSvc.pdf", via: "file",
+    pages: [{ page: 1, text: cover }, { page: 2, text: body, figureLines }],
   })!;
   const steps = sm.sections.flatMap((s) => s.steps);
   const step = (n: number) => steps.find((s) => s.n === n)!;
@@ -289,5 +285,14 @@ describe("parseCatPumpsServiceManual — wrapped lines keep their numbers checka
     const note = sm.cautions.find((c) => c.kind === "NOTE")!;
     expect(note.text).toBe("Two screwdrivers may be used to assist separation.");
     expect(note.source.line).toBe("NOTE: Two screwdrivers may be used to assist separation.");
+  });
+
+  it("text only (no layout): the same titles after the NOTE may be its rest, so the NOTE is omitted, never shown verified", () => {
+    const textOnly = parseCatPumpsServiceManual({
+      docId: "m9", fileId: null, filename: "9XPSvc.pdf", via: "chunks",
+      pages: [{ page: 1, text: cover }, { page: 2, text: body }],
+    })!;
+    expect(textOnly.cautions.some((c) => c.kind === "NOTE")).toBe(false);
+    expect((textOnly.omittedCautions ?? []).some((c) => c.kind === "NOTE" && /could not be placed/.test(c.reason))).toBe(true);
   });
 });

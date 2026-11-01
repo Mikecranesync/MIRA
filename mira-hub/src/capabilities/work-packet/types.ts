@@ -21,6 +21,9 @@ export type Label = "verified" | "proposed" | "unknown";
 export interface PageText {
   page: number;
   text: string;
+  /** Lines of `text` the PDF layout places in a figure-caption band (read from the original PDF);
+   *  absent when the page came from chunk text. The service-manual parser skips only these. */
+  figureLines?: string[];
 }
 
 export interface DocText {
