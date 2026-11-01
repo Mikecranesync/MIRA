@@ -111,6 +111,17 @@ function modelScopeAdmits(scope: ModelScope, model: string): boolean {
   return true;
 }
 
+// A step inside a general section can still be limited to one model by its own wording
+// ("On the model 7CP6170 remove …"). Such a step is shown only for a pump it names.
+const STEP_MODEL_RE = /^On (?:the )?models? ([A-Z0-9][A-Z0-9-]*(?:\s*(?:,|and|&)\s*[A-Z0-9][A-Z0-9-]*)*)\s/i;
+
+function stepNamesOtherModels(text: string, model: string): boolean {
+  const m = STEP_MODEL_RE.exec(text);
+  if (!m) return false;
+  const named = m[1].split(/\s*(?:,|and|&)\s*/i).filter((t) => /\d/.test(t));
+  return named.length > 0 && !named.some((t) => modelsMatch(t, model));
+}
+
 // ─────────────────────────────────────────────── verbatim-line search (for citations + modelFoundOn)
 
 function normalizeLine(s: string): string {
@@ -415,6 +426,7 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
       }
       if (!modelScopeAdmits(section.models, scopeKey)) continue;
       for (const step of section.steps) {
+        if (stepNamesOtherModels(step.text, scopeKey)) continue;
         steps.push({
           section: section.heading,
           topic: section.topic,
