@@ -143,7 +143,8 @@ async def _try_nameplate_drive_pack(
     # overrides the nameplate reading. Off by default.
     code_payload = None
     if os.getenv("MIRA_QR_IDENTIFICATION_LINK", "0") == "1":
-        codes = await asyncio.to_thread(decode_codes, att.data)
+        # Decode the full-size upload when the adapter kept one (#5073).
+        codes = await asyncio.to_thread(decode_codes, getattr(att, "original", b"") or att.data)
         code_payload = codes[0].text if codes else None
     build_asset_identity(  # audit/evidence (Phase 2)
         nameplate=fields, resolution=resolution, barcode_or_qr_payload=code_payload

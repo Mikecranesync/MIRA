@@ -732,6 +732,8 @@ services:
       - MANUAL_SEARCH_TIMEOUT=${MANUAL_SEARCH_TIMEOUT:-15}
       - MANUAL_HEAD_TIMEOUT=${MANUAL_HEAD_TIMEOUT:-8}
       - MANUAL_DISCOVERY_TIMEOUT=${MANUAL_DISCOVERY_TIMEOUT:-50}
+      # Optional identification_link field on /manual-discovery/search (#5070/#5077). Default off.
+      - MIRA_QR_IDENTIFICATION_LINK=${MIRA_QR_IDENTIFICATION_LINK:-0}
       # Atomic per-user/tenant/global provider-query caps (#4160 S4, PRD R13).
       # Global monthly cap: NO fallback — unset/invalid fails closed
       # ("global_cap_unconfigured"); owner decision D4 not yet made.

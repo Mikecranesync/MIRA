@@ -262,6 +262,7 @@ class SlackRuntime:
                 try:
                     raw_bytes = await self.adapter.download_attachment(img_att)
                     img_att.data = self.resize_for_vision(raw_bytes)
+                    img_att.original = raw_bytes  # 2D-code decode reads full size (#5073)
                     if not normalized.text:
                         normalized.text = "Analyze this equipment photo"
                 except Exception as exc:
