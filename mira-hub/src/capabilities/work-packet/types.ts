@@ -213,6 +213,8 @@ export interface PacketDocument {
   /** Pages where the identified model (or catalog number) appears verbatim. */
   modelFoundOn: number[];
   via: "file" | "chunks";
+  /** Revision read verbatim from the document footer (`PN … Rev …`); `unknown` when absent. */
+  revision: Field;
 }
 
 export interface PacketPart {
