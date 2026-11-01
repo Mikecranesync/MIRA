@@ -641,7 +641,17 @@ export async function writePdfChunksForNode(opts: {
  * tree, the tree cannot be read, or its length does not match the pages. A
  * non-string or blank entry is null for that page only. Never throws: a label
  * failure must not fail the upload.
+ *
+ * Size-bounded (#5065 Codex r3 F1): each label is copied onto every chunk of its
+ * page, and a /PageLabels prefix can be megabytes. One label over
+ * MAX_PAGE_LABEL_BYTES, or all labels together over MAX_PAGE_LABELS_TOTAL_BYTES
+ * (UTF-8), drops the whole document's labels — never truncated, never partial.
+ * The character-length check runs first so an oversized label is rejected
+ * before trim or byte counting flattens it.
  */
+export const MAX_PAGE_LABEL_BYTES = 64;
+export const MAX_PAGE_LABELS_TOTAL_BYTES = 256 * 1024;
+
 export async function printedPageLabels(
   pdf: { getPageLabels?: () => Promise<unknown> },
   pageCount: number,
@@ -655,7 +665,26 @@ export async function printedPageLabels(
     return null;
   }
   if (!Array.isArray(raw) || raw.length !== pageCount) return null;
-  return raw.map((l) => (typeof l === "string" && l.trim() ? l.trim() : null));
+  const labels: Array<string | null> = [];
+  let total = 0;
+  for (const l of raw) {
+    if (typeof l !== "string") {
+      labels.push(null);
+      continue;
+    }
+    if (l.length > MAX_PAGE_LABEL_BYTES * 4) return oversized(filename);
+    const t = l.trim();
+    const bytes = Buffer.byteLength(t, "utf8");
+    total += bytes;
+    if (bytes > MAX_PAGE_LABEL_BYTES || total > MAX_PAGE_LABELS_TOTAL_BYTES) return oversized(filename);
+    labels.push(t || null);
+  }
+  return labels;
+}
+
+function oversized(filename: string): null {
+  console.warn(`[node-ingest] page labels over the size limit for ${filename}; storing none`);
+  return null;
 }
 
 /**

@@ -128,6 +128,50 @@ describe("writePdfChunksForNode stores the PDF's own page labels", () => {
   });
 });
 
+// #5065 Codex r3 F1: a /PageLabels prefix is attacker-sized and is copied onto every chunk of
+// its page, so an oversized label drops the WHOLE document's labels (fail closed, never truncated).
+describe("page labels are size-bounded before any chunk carries them", () => {
+  it("keeps a label exactly at the per-label byte limit", async () => {
+    const { MAX_PAGE_LABEL_BYTES } = await import("@/lib/node-knowledge-ingest");
+    const atLimit = "A".repeat(MAX_PAGE_LABEL_BYTES);
+    await ingest([PAGE(1), PAGE(2)], [atLimit, "2"]);
+    expect(insertedRows().map((r) => r.meta.page_label)).toEqual([atLimit, "2"]);
+  });
+
+  it("drops every label when one label is one byte over the limit", async () => {
+    const { MAX_PAGE_LABEL_BYTES } = await import("@/lib/node-knowledge-ingest");
+    await ingest([PAGE(1), PAGE(2)], ["A".repeat(MAX_PAGE_LABEL_BYTES + 1), "2"]);
+    const rows = insertedRows();
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => !("page_label" in r.meta))).toBe(true);
+  });
+
+  it("counts UTF-8 bytes, not characters", async () => {
+    const { MAX_PAGE_LABEL_BYTES } = await import("@/lib/node-knowledge-ingest");
+    // "é" is 2 UTF-8 bytes: half the limit in characters plus one is over the byte limit.
+    await ingest([PAGE(1)], ["é".repeat(MAX_PAGE_LABEL_BYTES / 2 + 1)]);
+    expect(insertedRows()[0].meta).not.toHaveProperty("page_label");
+  });
+
+  it("drops every label when the document's labels together exceed the aggregate budget", async () => {
+    const { MAX_PAGE_LABEL_BYTES, MAX_PAGE_LABELS_TOTAL_BYTES } = await import("@/lib/node-knowledge-ingest");
+    const n = Math.floor(MAX_PAGE_LABELS_TOTAL_BYTES / MAX_PAGE_LABEL_BYTES) + 1;
+    const pages = Array.from({ length: n }, (_, i) => PAGE(i + 1));
+    await ingest(pages, pages.map(() => "A".repeat(MAX_PAGE_LABEL_BYTES)));
+    const rows = insertedRows();
+    expect(rows).toHaveLength(n);
+    expect(rows.every((r) => !("page_label" in r.meta))).toBe(true);
+  });
+
+  it("keeps labels whose total is exactly the aggregate budget", async () => {
+    const { MAX_PAGE_LABEL_BYTES, MAX_PAGE_LABELS_TOTAL_BYTES } = await import("@/lib/node-knowledge-ingest");
+    const n = MAX_PAGE_LABELS_TOTAL_BYTES / MAX_PAGE_LABEL_BYTES;
+    const pages = Array.from({ length: n }, (_, i) => PAGE(i + 1));
+    await ingest(pages, pages.map(() => "A".repeat(MAX_PAGE_LABEL_BYTES)));
+    expect(insertedRows().every((r) => r.meta.page_label === "A".repeat(MAX_PAGE_LABEL_BYTES))).toBe(true);
+  });
+});
+
 describe("writeTextChunksForNode never writes a page_label", () => {
   it("a text upload has no page labels", async () => {
     const { writeTextChunksForNode } = await import("@/lib/node-knowledge-ingest");
