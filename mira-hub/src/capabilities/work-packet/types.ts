@@ -75,6 +75,10 @@ export interface Field {
   basis: string;
   struck?: boolean;
   review?: ReviewEntry;
+  /** Set on a copy of another field shown in a second section (a caution repeated in the hazard
+   *  analysis or return to service): the path of the original. Edits go to the original and every
+   *  copy follows it (Codex #5062 F18). */
+  copyOf?: string;
 }
 
 // ─────────────────────────────────────────────── CAT Pumps data sheet (parts list + kits)
@@ -137,6 +141,10 @@ export interface DsSpec {
   label: string;
   value: string;
   source: SourceRef;
+  /** The models named on the line that heads this value's block (e.g. "5CP6120, 5CP6120CS"), when
+   *  the sheet prints one. A sheet can print the same item once per block, with different values;
+   *  each value applies only to its block's models (Codex #5062 F19). Absent: the whole sheet. */
+  models?: string[];
 }
 
 export interface DataSheet {

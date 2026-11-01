@@ -413,18 +413,39 @@ const SPEC_PATTERNS: Array<{ key: string; label: string; regex: RegExp }> = [
   { key: "crankcase_capacity", label: "Crankcase Capacity", regex: /^Crankcase Capacity\s+(.+)$/ },
 ];
 
+// A line that only names models ("5CP6120, 5CP6120CS", "5CP6120CSSG1") heads a spec block. Every
+// spec line right under it, up to the first line that is not a spec, belongs to those models.
+const MODEL_TOKEN = "[0-9]{1,2}[A-Z]{1,4}[0-9][0-9A-Z]*";
+const MODEL_LIST_RE = new RegExp(`^${MODEL_TOKEN}(?:\\s*,\\s*${MODEL_TOKEN})*$`);
+
+const normSpec = (v: string): string => v.replace(/\s+/g, " ").trim().toLowerCase();
+
 function parseSpecs(lines: Line[], mkSource: MkSource): DsSpec[] {
-  const found = new Map<string, DsSpec>();
+  const out: DsSpec[] = [];
+  const seen = new Set<string>();
+  let block: string[] | undefined;
+  let blockPage = -1;
   for (const { page, text } of lines) {
-    for (const def of SPEC_PATTERNS) {
-      if (found.has(def.key)) continue;
-      const m = def.regex.exec(text);
-      if (m) {
-        found.set(def.key, { key: def.key, label: def.label, value: m[1].trim(), source: mkSource(page, text) });
-      }
+    if (page !== blockPage) block = undefined;
+    if (MODEL_LIST_RE.test(text)) {
+      block = text.split(",").map((m) => m.trim());
+      blockPage = page;
+      continue;
     }
+    let matched = false;
+    for (const def of SPEC_PATTERNS) {
+      const m = def.regex.exec(text);
+      if (!m) continue;
+      matched = true;
+      const value = m[1].trim();
+      const id = `${def.key}|${normSpec(value)}|${(block ?? []).join(",")}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push({ key: def.key, label: def.label, value, source: mkSource(page, text), ...(block ? { models: block } : {}) });
+    }
+    if (!matched) block = undefined;
   }
-  return Array.from(found.values());
+  return out;
 }
 
 // ─────────────────────────────────────────────── entry point
