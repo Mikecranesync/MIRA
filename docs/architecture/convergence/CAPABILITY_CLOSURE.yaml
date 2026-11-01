@@ -180,7 +180,8 @@ capabilities:
       - "Produce one diff from REAL production tag_events through NeonRunStore, not the in-memory store."
       - "REVIEW DEFERRED 2026-09-20 -> 2026-10-19 (reason): the 2026-09-19 review date lapsed during the #3875 merge train, which failed the capability-closure check on main. Open promotion criteria remain unchanged - CI enumeration, artifact questions, and production NeonRunStore proof. Re-decide by the new date."
       - "REVIEW DEFERRED 2026-10-19 -> 2026-11-10 (reason): moved without re-deciding by an owner-approved agent PR (Mike, in chat, 2026-10-14) so the date does not lapse at UTC midnight and fail CI Gate on every open PR and on main. Nothing about the capability changed. Re-decide by the new date."
-    review_by: "2026-11-10"
+      - "REVIEW 2026-10-28 -> 2026-11-24 (reason): re-decided, not just date-bumped. production-enabled but still unproven: its three suites run in no CI job. Not part of the first-five free pilot offer, which is manual-grounded troubleshooting only. It has been deferred twice without a re-decision, so this date is deliberately short: the next review must either name an owner and enumerate the suites in a CI job, or turn it off in production through an owner-approved deploy. Proposed by CHARLIE; awaiting Mike's decision."
+    review_by: "2026-11-24"
     notes: >-
       Issue #2341 still describes this engine as not existing. It shipped and is
       enabled. Commented there 2026-08-18; the issue text remains stale.
@@ -297,7 +298,8 @@ capabilities:
       - "REVIEW DEFERRED 2026-09-06 -> 2026-10-05 (reason): the 2026-09-05 review date lapsed with the owner still unassigned, which failed the capability-closure check on every open PR and blocked the #3597 release train. Nothing about the capability changed - it is production_enabled and runtime-proven (evidence above). The only open item remains recording an owner; that is the owner's decision (Mike), not this deferral's. Re-decide by the new date."
       - "REVIEW DEFERRED 2026-10-01 -> 2026-10-14 (reason): moved without re-deciding, together with machine_memory_observer_cv101, so a date lapsing mid-queue does not fail CI Gate on every open PR again; owner-approved agent PR (same route as #4027). Recording an owner is still the open item. Re-decide by the new date."
       - "REVIEW DEFERRED 2026-10-14 -> 2026-11-10 (reason): moved without re-deciding by an owner-approved agent PR (Mike, in chat, 2026-10-14) so the date does not lapse at UTC midnight and fail CI Gate on every open PR and on main. Nothing about the capability changed. Re-decide by the new date."
-    review_by: "2026-11-10"
+      - "REVIEW 2026-10-28 -> 2026-12-01 (reason): re-decided, not just date-bumped. proven in production 2026-08-27, and every pilot answer depends on it. Staging and production /api/health both report approvedRetrievalEnforced:true (read 2026-10-28). The only open criterion is an owner. Proposed owner: Mike Harper, pending his confirmation."
+    review_by: "2026-12-01"
 
   # =========================================================================
   - id: technician_context_contract
@@ -339,7 +341,8 @@ capabilities:
       - "A staging turn whose decision_traces.context_manifest is reviewed and recorded here."
       - "REVIEW DEFERRED 2026-09-20 -> 2026-10-19 (reason): the 2026-09-19 review date lapsed during the #3875 merge train, which failed the capability-closure check on main. Open promotion criteria remain unchanged - ADR-0033 decision and staging evidence. Re-decide by the new date."
       - "REVIEW DEFERRED 2026-10-19 -> 2026-11-10 (reason): moved without re-deciding by an owner-approved agent PR (Mike, in chat, 2026-10-14) so the date does not lapse at UTC midnight and fail CI Gate on every open PR and on main. Nothing about the capability changed. Re-decide by the new date."
-    review_by: "2026-11-10"
+      - "REVIEW 2026-10-28 -> 2026-12-08 (reason): re-decided, not just date-bumped. staging only. ADR-0033 is still Proposed (#3887), and the record is not part of the first-five pilot offer. Keep it staging_enabled and leave production unset. Next review: accept, re-scope or retire ADR-0033 using pilot evidence."
+    review_by: "2026-12-08"
 
   # =========================================================================
   - id: live_machine_state
@@ -410,7 +413,8 @@ capabilities:
       - "A confirmation-gated flow so identity is proposed, never asserted."
       - "tests/test_nameplate_e2e.py enumerated in a named CI job (currently --ignore'd)."
       - "REVIEW DEFERRED 2026-10-19 -> 2026-11-10 (reason): moved without re-deciding by an owner-approved agent PR (Mike, in chat, 2026-10-14) so the date does not lapse at UTC midnight and fail CI Gate on every open PR and on main. Nothing about the capability changed. Re-decide by the new date."
-    review_by: "2026-11-10"
+      - "REVIEW 2026-10-28 -> 2026-12-10 (reason): re-decided, not just date-bumped. off in every environment. ADR-0036 is still Proposed, and 66.4% identity accuracy is below the assert bar. Not part of the pilot offer, which runs on customer-uploaded manuals. Keep it deployed_disabled."
+    review_by: "2026-12-10"
 
   # =========================================================================
   - id: photo_ocr_evidence
@@ -456,7 +460,8 @@ capabilities:
       - "PHOTO_OCR_ENABLED=1 in Doppler factorylm/prd for mira-ask AND mira-hub; deploy services=mira-ask,mira-hub."
       - "One real spec-table photo -> [1] citation whose file opens the photograph, on prod (server-side proof acceptable)."
       - "mira-ask RSS under the 1536m cap during OCR observed once (tesseract is light; confirm, don't assume)."
-    review_by: "2026-12-15"
+      - "REVIEW 2026-10-28 -> 2026-12-22 (reason): moved only to avoid a three-record collision on 2026-12-15 (notebook_manual_acquisition and manual_discovery_judge are deliberately paired on that day). Disposition unchanged from #4838: deployed_disabled, not part of the first-five pilot offer."
+    review_by: "2026-12-22"
 
   # =========================================================================
   - id: machine_memory_observer_cv101
@@ -508,7 +513,8 @@ capabilities:
     promotion_criteria:
       - "Mike sets MACHINE_MEMORY_OBSERVER_ENABLED=1, _ASSET_ID, _EMAIL/_PASSWORD in Doppler prd; redeploy dogfood worker+beat via deploy-vps.yml."
       - "series.json: consecutive_days >= 7, defects == [], real_fault_window_with_rows == true."
-    review_by: "2026-11-10"
+      - "REVIEW 2026-10-28 -> 2026-12-17 (reason): re-decided, not just date-bumped. ships dark, and the observer credentials are not set in production. Not part of the pilot offer. Keep it deployed_disabled until Mike chooses to start the seven-day series."
+    review_by: "2026-12-17"
     notes: >-
       Workstream C of docs/prd/2026-08-29-technician-beta-recovery-prd.md (PR #3486).
       REVIEW DEFERRED 2026-10-01 -> 2026-10-14: the 2026-09-30 date lapsed at UTC
@@ -585,7 +591,8 @@ capabilities:
       - "Enable in production for the supervised mike-pilot Pixel run; record device, build, backend SHA, time, outcome."
       - "GS10-20P5 positive and Harrington negative both pass on the phone; disable on any failure."
       - "Then: whole-manual preference when the OEM splits chapters (GS10 still lands on a chapter); free-tier vs OpenAI judge benchmark (later evaluation)."
-    review_by: "2026-11-10"
+      - "REVIEW 2026-10-28 -> 2026-12-15 (reason): re-decided, not just date-bumped. ships dark. Pairs with notebook_manual_acquisition, which the owner kept OFF in production on 2026-10-28 until staging validation passes (#4874). Same disposition, reviewed on the same day as that record."
+    review_by: "2026-12-15"
     notes: >-
       Review date moved 2026-10-10 -> 2026-11-10 without re-deciding (PROPOSED by the land-the-queue agent 2026-10-11; awaiting Mike, gate G2 — the 10-10 expiry turned Capability Closure Registry + Eval Offline red on every PR); re-decide at the next Gate sitting.
       Previously moved 2026-09-26 -> 2026-10-10 without re-deciding (owner-authorized by Mike, 2026-09-27 ~00:45Z, to unblock the merge queue).
@@ -937,7 +944,8 @@ capabilities:
       - "Deploy and prove the exact Hub /v3 release (#3879), then prove one persisted thread phone -> web -> phone (#3882)."
       - "Make /v3 the authenticated default only with a tested legacy recovery path (#3880); public demo proof remains separate (#3883)."
       - "REVIEW 2026-09-20 -> 2026-09-27 (reason): #3839/#3875 connect and exercise Hub /v3 on main, so the record was re-decided rather than date-bumped. Production, current Pixel release (#3881), cross-surface continuity (#3882), and default cutover (#3880) remain open. Re-decide after exact-release evidence; do not extend again as a date-only fix."
-    review_by: "2026-11-10"
+      - "REVIEW 2026-10-28 -> 2026-12-03 (reason): re-decided, not just date-bumped. Hub /v3 is the web surface the first-five pilot walk exercises on staging, while production's authenticated default is still /feed (#3880). Keep it staging_enabled. Next review records the pilot walk evidence and the #3881 handset proof."
+    review_by: "2026-12-03"
     notes: >-
       Review date moved 2026-10-10 -> 2026-11-10 without re-deciding (PROPOSED by the land-the-queue agent 2026-10-11; awaiting Mike, gate G2 — the 10-10 expiry turned Capability Closure Registry + Eval Offline red on every PR); re-decide at the next Gate sitting.
       Previously moved 2026-09-27 -> 2026-10-10 without re-deciding (owner-authorized by Mike, 2026-09-27 ~00:45Z, to unblock the merge queue).
