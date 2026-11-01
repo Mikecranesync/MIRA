@@ -70,14 +70,17 @@ function isInterleavedFurniture(soFar: string, next: string): boolean {
   if (/registered trademarks?/i.test(next)) return true;
   if (isModelListLine(next)) return true;
   const sentenceDone = /[.!?)]$/.test(soFar.trim());
-  // A figure title is Title Case with no sentence punctuation ("Removal of Inlet Manifold O-Rings
-  // 3531, 3535"); a new sentence that wraps has lowercase words ("Change crankcase oil … See").
-  // "from" is the one lowercase word real figure titles carry ("Removal of V-Packing Spacer from
-  // Inlet Manifold", 35FR2Svc p.3).
-  const words = next.split(/\s+/).filter((w) => /^[A-Za-z][A-Za-z-]{3,}$/.test(w) && w !== "from");
-  const looksLikeTitle =
-    !/[.!?:;]$/.test(next) && !/[.!?] /.test(next) && words.length > 0 && words.every((w) => /^[A-Z]/.test(w));
-  return sentenceDone && looksLikeTitle;
+  return sentenceDone && looksLikeFigureTitle(next);
+}
+
+/** A figure title is Title Case with no sentence punctuation ("Removal of Inlet Manifold O-Rings
+ *  3531, 3535"); a new sentence that wraps has lowercase words ("Change crankcase oil … See").
+ *  "from" and "with" are the lowercase words real figure titles carry ("Removal of V-Packing Spacer
+ *  from Inlet Manifold", 35FR2Svc p.3; "V-Packing Spacer and Spacer with Coil Springs", p.4). */
+const TITLE_LOWERCASE_WORDS = new Set(["from", "with"]);
+function looksLikeFigureTitle(line: string): boolean {
+  const words = line.split(/\s+/).filter((w) => /^[A-Za-z][A-Za-z-]{3,}$/.test(w) && !TITLE_LOWERCASE_WORDS.has(w));
+  return !/[.!?:;]$/.test(line) && !/[.!?] /.test(line) && words.length > 0 && words.every((w) => /^[A-Z]/.test(w));
 }
 
 // ─────────────────────────────────────────────── cover page → modelsCovered
@@ -555,13 +558,16 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
       }
 
       if (isModelListLine(line)) {
-        // The start of a figure-caption run (a model list, then a short description line, often
-        // repeating) interleaved by the extractor between real content. Skip the whole run.
+        // The start of a figure-caption run (a model list, then a short title line, often
+        // repeating) interleaved by the extractor between real content.
         skippingCaption = true;
         continue;
       }
       if (skippingCaption) {
-        continue; // description half of a caption pair, or a further caption line
+        // Only lines that look like caption titles belong to the run (Codex #5062 F15, round 6);
+        // the first line that does not ends it and is accounted for below like any other line.
+        if (looksLikeFigureTitle(line)) continue;
+        skippingCaption = false;
       }
       // Orphan text: not furniture and not consumed above. Intro prose before a section's first
       // step or caution has no `lastBlock` and stays dropped; anything after one may be its rest.
