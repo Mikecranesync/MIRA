@@ -350,6 +350,30 @@ describe("F15 — text after a step or caution that cannot be placed turns that 
     expect(packet.safety.cautions.filter((c) => c.label === "unknown" && /CAUTION on p\.2 .*could not be placed/.test(c.basis ?? ""))).toHaveLength(1);
   });
 
+  // Round 7: capitals alone never make a line a caption title — CAT manuals print warnings in capitals.
+  it("a step interrupted by a caption, then an ALL-CAPS continuation: its section is a gap", () => {
+    const doc = edited([STEP2, `2. Remove the valve plug (M41)\n${CAPTION}ONLY AFTER RELIEVING ALL SYSTEM PRESSURE\n`]);
+    const packet = build("8520", [doc], "valve service");
+    expect(stepTexts(packet).some((t) => (t ?? "").startsWith("Remove the valve plug"))).toBe(false);
+    const gap = placeGaps(packet, /Disassembly \(All models except 8560\)/);
+    expect(gap).toHaveLength(1);
+    expect(gap[0].basis).toContain("ONLY AFTER RELIEVING");
+  });
+
+  it("a caution interrupted by a caption, then an ALL-CAPS continuation: unknown in Safety, not verified", () => {
+    const doc = edited([CAUTION_TAIL, `shut off drive (electric motor)\n${CAPTION}AND RELIEVE ALL DISCHARGE PRESSURE\n`]);
+    const packet = build("8520", [doc], "valve service");
+    expect(packet.safety.cautions.some((c) => c.label === "verified" && (c.value ?? "").startsWith("Before commencing"))).toBe(false);
+    expect(packet.safety.cautions.filter((c) => c.label === "unknown" && /CAUTION on p\.2 .*could not be placed/.test(c.basis ?? ""))).toHaveLength(1);
+  });
+
+  it("a step ending in ')' with an ALL-CAPS continuation on the next page: its section is a gap", () => {
+    const doc = edited([STEP2, "2. Remove the valve plug (M41)\n===== PAGE 3 =====\nONLY AFTER RELIEVING ALL SYSTEM PRESSURE\n"]);
+    const packet = build("8520", [doc], "valve service");
+    expect(stepTexts(packet).some((t) => (t ?? "").startsWith("Remove the valve plug"))).toBe(false);
+    expect(placeGaps(packet, /Disassembly \(All models except 8560\)/)).toHaveLength(1);
+  });
+
   it("control: a multi-line caption run between two whole steps makes no gap", () => {
     const run = "Removal of Inlet Manifold O-Rings 8520, 8521\n8520, 8521\nRemoval of Valve Spacer from Valve Plug\n8560\nSpring and Spacer with Coil Springs\n";
     const doc = edited([STEP2, `${STEP2}${run}3. Remove the Valve Seat.\n`]);
