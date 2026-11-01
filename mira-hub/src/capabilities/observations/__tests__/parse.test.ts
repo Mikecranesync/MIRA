@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { previewObservation } from "../parse";
+import { previewObservation, validTimeZone } from "../parse";
 
 const TZ = "America/New_York";
 // 2026-06-15 is EDT (UTC-4). 09:10 local = 13:10Z.
@@ -55,5 +55,28 @@ describe("previewObservation (zero-token deterministic parser)", () => {
     // 2026-11-01 switches at 02:00 local; 09:10 that morning is EST.
     const p = previewObservation("seal leaking at 09:10", { now: new Date("2026-11-01T18:00:00.000Z"), timeZone: TZ });
     expect(p.observedAt).toBe("2026-11-01T14:10:00.000Z");
+  });
+
+  // #5091 Codex r2 F2: a bare "09:10" is wall-clock time where the technician is.
+  // The zone is the caller's (the device at the plant), never a silent Lake Wales default.
+  it("same_bare_time_in_two_plant_zones_is_three_hours_apart", () => {
+    const now = new Date("2026-06-15T20:00:00.000Z"); // after 09:10 in both zones
+    const ny = previewObservation("seal leaking at 09:10", { now, timeZone: "America/New_York" });
+    const la = previewObservation("seal leaking at 09:10", { now, timeZone: "America/Los_Angeles" });
+    expect(ny.observedAt).toBe("2026-06-15T13:10:00.000Z");
+    expect(la.observedAt).toBe("2026-06-15T16:10:00.000Z");
+  });
+
+  it("no_zone_means_no_guess_the_technician_must_enter_the_time", () => {
+    const p = previewObservation("seal leaking at 09:10", { now: SUMMER_NOON_UTC, timeZone: null });
+    expect(p.factKey).toBe("seal_leak");
+    expect(p.observedAt).toBeNull();
+    expect(p.needs).toEqual(["observed_at"]);
+  });
+
+  it("validTimeZone_accepts_iana_names_and_rejects_everything_else", () => {
+    expect(validTimeZone("America/Los_Angeles")).toBe("America/Los_Angeles");
+    expect(validTimeZone("America/New_York")).toBe("America/New_York");
+    for (const bad of ["Mars/Base", "", "  ", 5, null, undefined, {}, "a".repeat(80)]) expect(validTimeZone(bad)).toBeNull();
   });
 });

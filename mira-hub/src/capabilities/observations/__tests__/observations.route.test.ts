@@ -98,7 +98,7 @@ describe("observation routes: storage missing", () => {
 describe("observation routes: preview never writes", () => {
   it("returns the preview and the server binding, and writes nothing", async () => {
     const res = await POST_PREVIEW(
-      req(`/api/equipment-notebooks/${NB}/observations/preview`, "POST", { text: "seal leaking at 09:10" }),
+      req(`/api/equipment-notebooks/${NB}/observations/preview`, "POST", { text: "seal leaking at 09:10", timeZone: "America/New_York" }),
       params,
     );
     expect(res.status).toBe(200);
@@ -107,6 +107,31 @@ describe("observation routes: preview never writes", () => {
     expect(body.preview.observedAt).toEqual(expect.any(String));
     expect(body.asset).toEqual({ equipmentEntityId: ENTITY, displayName: "Pump 07", unsPath: UNS });
     expect(store.insertObservation).not.toHaveBeenCalled();
+  });
+
+  // #5091 Codex r2 F2: the bare time is read in the caller's zone, never a hard-coded plant zone.
+  it("reads a bare time in the caller's IANA zone; no or invalid zone leaves the time for the technician", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-06-15T20:00:00.000Z"));
+    try {
+      const at = async (timeZone: unknown) => {
+        const res = await POST_PREVIEW(
+          req(`/api/equipment-notebooks/${NB}/observations/preview`, "POST", { text: "seal leaking at 09:10", timeZone }),
+          params,
+        );
+        expect(res.status).toBe(200);
+        return (await res.json()).preview as { observedAt: string | null; needs: string[] };
+      };
+      expect((await at("America/New_York")).observedAt).toBe("2026-06-15T13:10:00.000Z");
+      expect((await at("America/Los_Angeles")).observedAt).toBe("2026-06-15T16:10:00.000Z");
+      for (const bad of [undefined, "Mars/Base", 7]) {
+        const p = await at(bad);
+        expect(p.observedAt).toBeNull();
+        expect(p.needs).toContain("observed_at");
+      }
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("an unconfirmed binding is refused with 409 asset_not_confirmed", async () => {

@@ -47,6 +47,7 @@ let notebookId = "";
 let server: http.Server;
 let base = "";
 let bundle = "";
+let strictBundle = "";
 
 async function seedAsset(tenantId: string, entityId: string, name: string, uns: string): Promise<void> {
   await testPool.query(
@@ -82,10 +83,11 @@ async function dispatch(req: http.IncomingMessage, res: http.ServerResponse): Pr
     res.end(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
       <link rel="stylesheet" href="/tokens.css"><style>body{margin:0;font-family:var(--fl-font);background:var(--fl-bg,#f6f7f9)}</style>
       </head><body><div style="position:relative;min-height:100vh"><div id="root"></div></div>
-      <script>window.__NB__=${JSON.stringify(notebookId)}</script><script src="/bundle.js"></script></body></html>`);
+      <script>window.__NB__=${JSON.stringify(notebookId)}</script><script src="${url.searchParams.get("strict") ? "/strict.js" : "/bundle.js"}"></script></body></html>`);
     return;
   }
   if (url.pathname === "/bundle.js") { res.setHeader("content-type", "text/javascript"); res.end(bundle); return; }
+  if (url.pathname === "/strict.js") { res.setHeader("content-type", "text/javascript"); res.end(strictBundle); return; }
   if (url.pathname === "/tokens.css") {
     res.setHeader("content-type", "text/css");
     res.end(readFileSync(path.resolve(HUB, "../docs/design/factorylm-tokens.css")));
@@ -119,21 +121,31 @@ describe.skipIf(!RUN)("Mission 001 browser proof (real panel, real routes, real 
     await seedNotebook(TENANT, PUMP_08);
 
     const { build } = await import("esbuild");
-    const built = await build({
-      stdin: {
-        contents: `import { createElement } from "react"; import { createRoot } from "react-dom/client";
-          import { MachineObservations } from "@/factorylm-ui/MachineObservations";
-          createRoot(document.getElementById("root")).render(createElement(MachineObservations, { notebookId: window.__NB__ }));`,
-        resolveDir: HUB, loader: "tsx",
-      },
-      bundle: true, write: false, format: "iife", jsx: "automatic", platform: "browser",
-      alias: { "@": path.join(HUB, "src") },
-      define: { "process.env.NEXT_PUBLIC_API_BASE": '"/hub"', "process.env.NODE_ENV": '"production"' },
-      // Next defines process.env for client code; a plain page needs the same shape.
-      banner: { js: `var process = { env: { NEXT_PUBLIC_API_BASE: "/hub", NODE_ENV: "production" } };` },
-      logLevel: "silent",
-    });
-    bundle = built.outputFiles[0]!.text;
+    // strict: a development React build under <StrictMode>, which replays effects
+    // (setup, cleanup, setup) the way `next dev` does (#5091 Codex r2 F3).
+    const bundleFor = async (strict: boolean) => {
+      const env = strict ? "development" : "production";
+      const el = strict
+        ? `createElement(StrictMode, null, createElement(MachineObservations, { notebookId: window.__NB__ }))`
+        : `createElement(MachineObservations, { notebookId: window.__NB__ })`;
+      const built = await build({
+        stdin: {
+          contents: `import { createElement, StrictMode } from "react"; import { createRoot } from "react-dom/client";
+            import { MachineObservations } from "@/factorylm-ui/MachineObservations";
+            createRoot(document.getElementById("root")).render(${el});`,
+          resolveDir: HUB, loader: "tsx",
+        },
+        bundle: true, write: false, format: "iife", jsx: "automatic", platform: "browser",
+        alias: { "@": path.join(HUB, "src") },
+        define: { "process.env.NEXT_PUBLIC_API_BASE": '"/hub"', "process.env.NODE_ENV": `"${env}"` },
+        // Next defines process.env for client code; a plain page needs the same shape.
+        banner: { js: `var process = { env: { NEXT_PUBLIC_API_BASE: "/hub", NODE_ENV: "${env}" } };` },
+        logLevel: "silent",
+      });
+      return built.outputFiles[0]!.text;
+    };
+    bundle = await bundleFor(false);
+    strictBundle = await bundleFor(true);
 
     server = http.createServer((req, res) => {
       dispatch(req, res).catch((err) => { res.statusCode = 500; res.end(String(err)); });
@@ -158,7 +170,7 @@ describe.skipIf(!RUN)("Mission 001 browser proof (real panel, real routes, real 
       // --- Technician A on Pump-07 --------------------------------------------------
       who.tenantId = TENANT;
       who.userId = "tech-a";
-      const ctxA = await browser.newContext({ viewport: { width: 412, height: 915 } });
+      const ctxA = await browser.newContext({ viewport: { width: 412, height: 915 }, timezoneId: "America/New_York" });
       const page = await ctxA.newPage();
       page.on("pageerror", (e) => console.log("[pageerror]", e.message));
       await page.goto(base);
@@ -210,7 +222,7 @@ describe.skipIf(!RUN)("Mission 001 browser proof (real panel, real routes, real 
 
       // --- Technician B, same tenant, same machine, own session --------------------
       who.userId = "tech-b";
-      const ctxB = await browser.newContext({ viewport: { width: 412, height: 915 } });
+      const ctxB = await browser.newContext({ viewport: { width: 412, height: 915 }, timezoneId: "America/New_York" });
       const pageB = await ctxB.newPage();
       await pageB.goto(base);
       await pageB.getByTestId("machine-state-pill").click();
@@ -272,4 +284,32 @@ describe.skipIf(!RUN)("Mission 001 browser proof (real panel, real routes, real 
       await browser.close();
     }
   }, 120_000);
+
+  it("the panel survives StrictMode effect replay, and a bare time is read on a Los Angeles device's own clock", async () => {
+    const { chromium } = await import("playwright");
+    const browser = await chromium.launch();
+    try {
+      who.tenantId = TENANT;
+      who.userId = "tech-c";
+      const ctx = await browser.newContext({ viewport: { width: 412, height: 915 }, timezoneId: "America/Los_Angeles" });
+      const page = await ctx.newPage();
+      const errors: string[] = [];
+      page.on("pageerror", (e) => errors.push(e.message));
+      await page.goto(`${base}/?strict=1`);
+      // F3: under StrictMode the readback must still enable the panel.
+      await page.getByTestId("machine-state-pill").waitFor({ timeout: 15_000 });
+      await page.getByTestId("machine-state-pill").click();
+      // F2: the device zone travels with the preview, so "09:10" stays 09:10 in review.
+      const before = await dbCounts();
+      await page.getByTestId("observation-text").fill("seal leaking, observed at 09:10");
+      await page.getByTestId("observation-preview").click();
+      await page.getByTestId("observation-review").waitFor();
+      expect(await page.getByTestId("observation-time").inputValue()).toMatch(/T09:10$/);
+      expect(await dbCounts()).toEqual(before); // preview never writes
+      expect(errors).toEqual([]);
+      await ctx.close();
+    } finally {
+      await browser.close();
+    }
+  }, 60_000);
 });

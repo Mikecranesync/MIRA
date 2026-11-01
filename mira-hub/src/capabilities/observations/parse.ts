@@ -23,8 +23,11 @@ export type ObservationPreview = {
 export type PreviewOptions = {
   /** Reference instant: its calendar date in `timeZone` anchors a bare time. */
   now: Date;
-  /** IANA zone the technician's clock is in (the plant's zone). */
-  timeZone: string;
+  /**
+   * IANA zone the technician's clock is in, from the caller's device at the plant.
+   * null ⇒ no bare time is interpreted; the technician enters it (no silent default).
+   */
+  timeZone: string | null;
 };
 
 const FACT_PATTERNS: Record<FactKey, RegExp> = {
@@ -99,6 +102,19 @@ function timeOf(text: string): { hh: number; mm: number } | null {
   return { hh, mm };
 }
 
+/** A caller-supplied IANA zone name, or null for anything Intl does not accept. */
+export function validTimeZone(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const zone = v.trim();
+  if (!zone || zone.length > 64) return null;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: zone });
+    return zone;
+  } catch {
+    return null;
+  }
+}
+
 /** Pure and deterministic: same text, same `now`, same zone → same preview. */
 export function previewObservation(text: string, opts: PreviewOptions): ObservationPreview {
   const rawReport = text.trim();
@@ -107,7 +123,7 @@ export function previewObservation(text: string, opts: PreviewOptions): Observat
 
   const time = timeOf(rawReport);
   let observedAt: string | null = null;
-  if (time) {
+  if (time && opts.timeZone) {
     const { y, m, d } = calendarDateIn(opts.now, opts.timeZone);
     observedAt = zonedWallClockToIso(y, m, d, time.hh, time.mm, opts.timeZone);
   }

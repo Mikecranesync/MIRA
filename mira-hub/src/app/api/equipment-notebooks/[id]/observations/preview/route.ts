@@ -10,12 +10,10 @@ import { getNotebook, resolveBoundAsset } from "@/lib/equipment-notebooks";
 import { isUuid } from "@/capabilities/fix-records";
 import { observationStateEnabled } from "@/capabilities/observations/flag";
 import { confirmedAssetOf } from "@/capabilities/observations/gate";
-import { previewObservation } from "@/capabilities/observations/parse";
+import { previewObservation, validTimeZone } from "@/capabilities/observations/parse";
 
 export const dynamic = "force-dynamic";
 
-/** Lake Wales, FL. A bare "09:10" on a technician's clock is read in plant time. */
-const PLANT_TIME_ZONE = "America/New_York";
 const NOT_FOUND = { error: "notebook_not_found" };
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -42,7 +40,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "text_required" }, { status: 400 });
   }
 
-  const preview = previewObservation(text, { now: new Date(), timeZone: PLANT_TIME_ZONE });
+  // A bare "09:10" is read on the technician's own clock: the IANA zone their device
+  // sends. No stored site zone exists, so a missing or invalid zone interprets no time
+  // and the technician enters it in review (#5091 Codex r2 F2), never a silent default.
+  const timeZone = validTimeZone((body as Record<string, unknown>).timeZone);
+  const preview = previewObservation(text, { now: new Date(), timeZone });
   return NextResponse.json({
     preview,
     asset: { equipmentEntityId: asset.asset.entityId, displayName: asset.asset.name, unsPath: asset.asset.unsPath },

@@ -8,7 +8,7 @@
 import { createHash } from "node:crypto";
 import type { FactKey, FactValue } from "./parse";
 
-export const PROJECTOR_VERSION = "obs-proj-2";
+export const PROJECTOR_VERSION = "obs-proj-3";
 /** Two different reports this close in observed time are contested, not ordered. */
 export const CONTEST_WINDOW_MS = 60 * 60 * 1000;
 
@@ -65,7 +65,8 @@ export type ObservedState = {
 /**
  * Only "present" and "absent" contradict each other. "repaired" after "present"
  * is a fault-then-repair sequence, and "present" after "repaired" is a recurrence:
- * both are ordinary history, not a disagreement (#5092). obs-proj-2.
+ * both are ordinary history, not a disagreement (#5092). obs-proj-2; obs-proj-3
+ * adds the repair boundary in deriveObservedState.
  */
 function contradicts(a: FactValue, b: FactValue): boolean {
   return (a === "present" && b === "absent") || (a === "absent" && b === "present");
@@ -110,7 +111,12 @@ export function deriveObservedState(rows: ObservationRow[], opts: { now: Date })
   for (const factKey of keys) {
     const ofKey = active.filter((r) => r.factKey === factKey); // already newest-first
     const current = ofKey[0]!;
-    const windowStart = Date.parse(current.observedAt) - CONTEST_WINDOW_MS;
+    // A repair is an epoch boundary: reports observed before the newest repair (at or
+    // before the current report) describe the machine before the work and cannot
+    // contest what was seen after it. They stay in history (#5091 Codex r2 F1).
+    const boundary = ofKey.find((r) => r.id !== current.id && r.factValue === "repaired");
+    const epochStart = boundary ? Date.parse(boundary.observedAt) : Number.NEGATIVE_INFINITY;
+    const windowStart = Math.max(Date.parse(current.observedAt) - CONTEST_WINDOW_MS, epochStart);
     const windowEnd = Date.parse(current.observedAt) + CONTEST_WINDOW_MS;
     const opposed = ofKey.filter(
       (r) =>

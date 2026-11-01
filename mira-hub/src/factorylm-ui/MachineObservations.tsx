@@ -85,6 +85,14 @@ function FactLine({ fact }: { fact: FactState }) {
   );
 }
 
+function deviceTimeZone(): string | null {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+  } catch {
+    return null;
+  }
+}
+
 export function MachineObservations({ notebookId }: { notebookId: string }) {
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [open, setOpen] = useState(false);
@@ -93,8 +101,13 @@ export function MachineObservations({ notebookId }: { notebookId: string }) {
   const [state, setState] = useState<ObservedStateView | null>(null);
   const [readError, setReadError] = useState<string | null>(null);
   const requestIds = useMemo(() => createObservationRequestIds(), []);
-  const mounted = useRef(true);
-  useEffect(() => () => { mounted.current = false; }, []);
+  // StrictMode replays effects (setup, cleanup, setup): set the flag in setup, not only at
+  // init, or the replayed cleanup leaves it false and the panel never shows (#5091 Codex r2 F3).
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
 
   const readBack = useCallback(async (): Promise<ObservedStateView | null> => {
     const res = await fetch(base(notebookId), { credentials: "include", headers: { accept: "application/json" } });
@@ -122,7 +135,8 @@ export function MachineObservations({ notebookId }: { notebookId: string }) {
       const res = await fetch(`${base(notebookId)}preview/`, {
         method: "POST", credentials: "include",
         headers: { "content-type": "application/json", accept: "application/json" },
-        body: JSON.stringify({ text: report }),
+        // The device is at the plant: its zone is how a bare "09:10" is meant (and how review shows it).
+        body: JSON.stringify({ text: report, timeZone: deviceTimeZone() }),
       });
       const body = (await res.json().catch(() => null)) as ({ preview?: ObservationPreview; error?: string; message?: string }) | null;
       if (!res.ok || !body?.preview) {

@@ -110,6 +110,35 @@ describe("deriveObservedState (pure projection, A3/A4)", () => {
     expect(s.facts[0]!.contested).toBe(false);
   });
 
+  // #5091 Codex r2 F1: a repair is a boundary. Reports before it cannot contest
+  // the state after it, but every row stays in history.
+  it("absent_then_repair_then_leak_is_a_post_repair_recurrence_not_contested", () => {
+    const absent = ENTITY_ROW({ id: "a", factValue: "absent", observedAt: "2026-06-15T09:00:00.000Z", recordedAt: "2026-06-15T09:01:00.000Z" });
+    const repair = ENTITY_ROW({ id: "b", factValue: "repaired", observedAt: "2026-06-15T09:20:00.000Z", recordedAt: "2026-06-15T09:21:00.000Z" });
+    const leak = ENTITY_ROW({ id: "c", factValue: "present", observedAt: "2026-06-15T09:30:00.000Z", recordedAt: "2026-06-15T09:31:00.000Z" });
+    const s = deriveObservedState([absent, repair, leak], { now: NOW });
+    expect(s.facts[0]!.state).toBe("leak_reported");
+    expect(s.facts[0]!.contested).toBe(false);
+    expect(s.history).toHaveLength(3);
+  });
+
+  it("leak_then_repair_then_not_seen_is_not_contested", () => {
+    const leak = ENTITY_ROW({ id: "a", factValue: "present", observedAt: "2026-06-15T09:00:00.000Z", recordedAt: "2026-06-15T09:01:00.000Z" });
+    const repair = ENTITY_ROW({ id: "b", factValue: "repaired", observedAt: "2026-06-15T09:20:00.000Z", recordedAt: "2026-06-15T09:21:00.000Z" });
+    const clear = ENTITY_ROW({ id: "c", factValue: "absent", observedAt: "2026-06-15T09:30:00.000Z", recordedAt: "2026-06-15T09:31:00.000Z" });
+    const s = deriveObservedState([leak, repair, clear], { now: NOW });
+    expect(s.facts[0]!.state).toBe("seal_leak_not_observed");
+    expect(s.facts[0]!.contested).toBe(false);
+  });
+
+  it("contradiction_after_the_same_repair_is_still_contested", () => {
+    const repair = ENTITY_ROW({ id: "a", factValue: "repaired", observedAt: "2026-06-15T09:00:00.000Z" });
+    const leak = ENTITY_ROW({ id: "b", factValue: "present", observedAt: "2026-06-15T09:20:00.000Z", recordedAt: "2026-06-15T09:21:00.000Z" });
+    const clear = ENTITY_ROW({ id: "c", factValue: "absent", observedAt: "2026-06-15T09:30:00.000Z", recordedAt: "2026-06-15T09:31:00.000Z" });
+    const s = deriveObservedState([repair, leak, clear], { now: NOW });
+    expect(s.facts[0]!.state).toBe("contested");
+  });
+
   it("repair_reported_never_sets_health_root_cause_or_safe", () => {
     const repaired = ENTITY_ROW({ id: "a", factValue: "repaired" });
     const s = deriveObservedState([repaired], { now: NOW });

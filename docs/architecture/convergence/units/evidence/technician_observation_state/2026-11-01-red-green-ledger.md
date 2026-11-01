@@ -80,3 +80,11 @@ Counts are `failed / passed`. "unit" = default vitest config (parse, project, ro
 |---|---|---|---|---|
 | #5092 (F1) leak then repair within 60 minutes projected as contested | `leak_then_repair_within_window_is_repair_reported_not_contested`, `recurrence_after_repair_within_window_is_leak_reported_not_contested`, browser proof with repair pinned 5 minutes after the leak | restore the obs-proj-1 rule `r.factValue !== current.factValue` | unit 2F/6P; browser 1F ("contested" where "repair_reported" expected) | unit 8/8, browser 1/1 |
 | #5093 (F2) rollback narrows the CHECK while observation events remain | `documented_rollback_succeeds_after_an_observation_event_exists` (runs the ROLLBACK-BEGIN block from 113 in one transaction on a dedicated client) | delete the `DELETE FROM notebook_domain_events ...` line from the block | int 1F/10P, "check constraint ... is violated by some row" | int 11/11 |
+
+## Codex round 2 findings (fixed in PR #5091 before round 3)
+
+| Finding | Test | Mutation | Red | Green |
+|---|---|---|---|---|
+| F1 (MEDIUM) a pre-repair report contests a post-repair one | `absent_then_repair_then_leak_is_a_post_repair_recurrence_not_contested`, `leak_then_repair_then_not_seen_is_not_contested`, control `contradiction_after_the_same_repair_is_still_contested` | obs-proj-2 rule (no repair boundary) | unit 2F (control green) | unit 13/13 |
+| F2 (MEDIUM) bare times read as Lake Wales for every tenant | parse `same_bare_time_in_two_plant_zones_is_three_hours_apart`, `no_zone_means_no_guess_...`, `validTimeZone_...`; route `reads a bare time in the caller's IANA zone ...`; browser on a Los Angeles device | panel stops sending its zone | unit 3F; browser 2F (empty time field) | unit, route and browser green |
+| F3 (LOW) StrictMode replay leaves the panel hidden | browser: development React under StrictMode must show the pill | restore `useRef(true)` with cleanup-only effect | browser 1F (pill never appears, 15 s timeout) | browser 2/2 |
