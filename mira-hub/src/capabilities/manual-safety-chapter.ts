@@ -12,14 +12,11 @@
  * page's statement becomes the notice (#4509). A page the answer does not cite shows nothing.
  *
  * The reference names a PRINTED page; chunks are keyed by PDF page. The offset between them is read
- * from the referring chunk's own printed label (front matter shifts it). Hub uploads store no label,
- * so then the offset is found in the document itself (#5059 Codex r2 F1, r3 F1): across the pages
- * from the printed number to SAFETY_CHAPTER_MAX_SHIFT pages after it, an offset counts only when
- * at least SAFETY_PAGE_RUN consecutive pages print their own page number under it (PDF page minus
- * printed number), and exactly one offset may qualify. Only the first line of a page's first chunk
- * and the last line of its last chunk count; a line longer than HEADER_MAX_CHARS or with a contents
- * leader (". . .") never does. With no proof, or two competing offsets, the document adds nothing:
- * the offset is never assumed.
+ * from the referring chunk's own printed label (front matter shifts it). When the referring chunk
+ * carries no numeric label, the chapter page is the one PDF page whose stored label is that printed
+ * number: ingest saves each PDF page's own /PageLabels entry (#5065), and an older upload gets it from
+ * the hash-proven backfill. No such page, or two of them, and the document adds nothing: the page is
+ * never inferred from headers and never assumed equal to the PDF page (#5059 Codex r2 F1, r3 F1).
  *
  * The chapter is read by its own bounded query, not #4509's notice reader (that one stops at the first
  * statement per page, which is right for a notice and wrong for grounding, Codex #5056 r5 F11). Each
@@ -84,13 +81,6 @@ export function printedPageOffset(pdfPage: number | null, pageLabel: string | nu
 
 type ChapterStart = { pdfPage: number; offset: number };
 
-/** How many pages of front matter may sit before printed page 1 when the printed page is found from headers. */
-export const SAFETY_CHAPTER_MAX_SHIFT = 40;
-/** A running header or footer is short; a longer line is body text. */
-const HEADER_MAX_CHARS = 60;
-/** Consecutive pages that must print their page number under one offset before it is trusted. */
-export const SAFETY_PAGE_RUN = 3;
-
 /** A printed chapter reference: the printed page, and the offset when the chunk's own label gives it. */
 type ChapterRef = { printed: number; offset: number | null };
 
@@ -99,51 +89,6 @@ function chapterRef(text: string, pdfPage: number | null, pageLabel: string | nu
   if (printed === null) return null;
   const numericLabel = pdfPage !== null && Number.isInteger(pdfPage) && /^\d{1,4}$/.test(String(pageLabel ?? "").trim());
   return { printed, offset: numericLabel ? printedPageOffset(pdfPage, pageLabel) : null };
-}
-
-/** The standalone page numbers a header or footer line prints; none for body text or a contents leader. */
-export function headerPageNumbers(line: string): number[] {
-  const l = line.trim();
-  if (l.length === 0 || l.length > HEADER_MAX_CHARS || /\.\s*\.\s*\./.test(l)) return [];
-  return [...l.matchAll(/(?:^|\s)(\d{1,4})(?=\s|$)/g)].map((m) => Number(m[1]));
-}
-
-/**
- * The PDF page that prints `printed`, from each page's first and last line (rows in chunk order).
- * Each offset in [0, SAFETY_CHAPTER_MAX_SHIFT] is proven by a run of SAFETY_PAGE_RUN consecutive
- * pages that each print (PDF page minus offset); section or table numbers rarely run that long, and
- * when two offsets are both proven the mapping is ambiguous. Null unless exactly one offset is proven.
- */
-export function pdfPageForPrinted(
-  printed: number,
-  rows: ReadonlyArray<{ page: number; first_line: string; last_line: string }>,
-): number | null {
-  const shows = new Map<number, Set<number>>();
-  const firstSeen = new Set<number>();
-  const lastOf = new Map<number, string>();
-  for (const r of rows) {
-    const set = shows.get(r.page) ?? new Set<number>();
-    if (!firstSeen.has(r.page)) {
-      firstSeen.add(r.page);
-      for (const n of headerPageNumbers(r.first_line)) set.add(n);
-    }
-    lastOf.set(r.page, r.last_line);
-    shows.set(r.page, set);
-  }
-  for (const [page, line] of lastOf) for (const n of headerPageNumbers(line)) shows.get(page)!.add(n);
-  const proven: number[] = [];
-  for (let offset = 0; offset <= SAFETY_CHAPTER_MAX_SHIFT; offset++) {
-    let run = 0;
-    for (const page of [...shows.keys()].sort((a, b) => a - b)) {
-      const n = page - offset;
-      run = shows.get(page)!.has(n) && (run === 0 || shows.get(page - 1)?.has(n - 1)) ? run + 1 : shows.get(page)!.has(n) ? 1 : 0;
-      if (run >= SAFETY_PAGE_RUN) {
-        proven.push(offset);
-        break;
-      }
-    }
-  }
-  return proven.length === 1 ? printed + proven[0] : null;
 }
 
 type Doc = { docId: string; sourceUrl: string; template: ManualChunk };
@@ -216,9 +161,11 @@ async function lookupRefs(
 }
 
 /**
- * Each reference's PDF start page: from the label offset when there is one, else from the pages'
- * own printed numbers (one bounded query for every unlabelled document). A document whose printed
- * page cannot be proven, or whose start falls before page 1, is left out.
+ * Each reference's PDF start page: from the referring chunk's label offset when there is one, else
+ * the one PDF page the document's own stored labels call by that printed number (one bounded query,
+ * one row per unlabelled document). Labels are the PDF's own /PageLabels, saved at ingest (#5065). A
+ * document with no page so labelled, or more than one, or whose start falls before page 1, is left
+ * out: the page is never guessed.
  */
 async function resolveStarts(
   client: Pick<PoolClient, "query">,
@@ -234,49 +181,30 @@ async function resolveStarts(
     else if (ref.printed + ref.offset > 0) starts.set(docId, { pdfPage: ref.printed + ref.offset, offset: ref.offset });
   }
   if (unlabelled.length === 0) return starts;
-  const params: unknown[] = [
-    tenantId,
-    unlabelled.map(([d]) => d),
-    unlabelled.map(([, n]) => Math.max(1, n - 1)),
-    unlabelled.map(([, n]) => n + SAFETY_CHAPTER_MAX_SHIFT + 1),
-  ];
+  const params: unknown[] = [tenantId, unlabelled.map(([d]) => d), unlabelled.map(([, n]) => String(n))];
   if (admitApproved) params.push(approved);
   await client.query("SET LOCAL statement_timeout = '2s'");
   const res = await client.query(
-    // Only each page's first and last chunk come back (at most 2 rows per page, 86 per document), so
-    // the LIMIT cannot cut a later document's pages short.
-    `SELECT doc_id, page, first_line, last_line
-       FROM (
-         SELECT doc_id::text AS doc_id, COALESCE(page_start, source_page) AS page, id,
-                ${CHUNK_INDEX_SQL} AS chunk_index,
-                left(split_part(content, E'\\n', 1), 200) AS first_line,
-                right(regexp_replace(content, '^.*\\n', ''), 200) AS last_line,
-                ROW_NUMBER() OVER (PARTITION BY doc_id, COALESCE(page_start, source_page)
-                                   ORDER BY ${CHUNK_INDEX_SQL} NULLS LAST, id) AS rn_first,
-                ROW_NUMBER() OVER (PARTITION BY doc_id, COALESCE(page_start, source_page)
-                                   ORDER BY ${CHUNK_INDEX_SQL} DESC NULLS FIRST, id DESC) AS rn_last
-           FROM knowledge_entries
-          WHERE tenant_id = $1
-            AND ingest_route = 'v2'
-            ${approvedSourceFilterSql(admitApproved ? 5 : null)}
-            AND (doc_id::text, COALESCE(page_start, source_page)) IN (
-              SELECT w.doc, g FROM unnest($2::text[], $3::int[], $4::int[]) AS w(doc, lo, hi), generate_series(w.lo, w.hi) AS g
-            )
-       ) edges
-      WHERE rn_first = 1 OR rn_last = 1
-      ORDER BY doc_id, page, chunk_index NULLS LAST, id
-      LIMIT 5000`,
+    `SELECT doc_id::text AS doc_id,
+            min(COALESCE(page_start, source_page)) AS label_lo,
+            max(COALESCE(page_start, source_page)) AS label_hi
+       FROM knowledge_entries
+      WHERE tenant_id = $1
+        AND ingest_route = 'v2'
+        ${approvedSourceFilterSql(admitApproved ? 4 : null)}
+        AND (doc_id::text, NULLIF(BTRIM(metadata->>'page_label'), '')) IN (
+          SELECT * FROM unnest($2::text[], $3::text[])
+        )
+      GROUP BY doc_id`,
     params,
   );
-  const byDoc = new Map<string, Array<{ page: number; first_line: string; last_line: string }>>();
+  const printedOf = new Map(unlabelled);
   for (const r of res.rows as Array<Record<string, unknown>>) {
-    const list = byDoc.get(String(r.doc_id)) ?? [];
-    list.push({ page: Number(r.page), first_line: String(r.first_line ?? ""), last_line: String(r.last_line ?? "") });
-    byDoc.set(String(r.doc_id), list);
-  }
-  for (const [docId, printed] of unlabelled) {
-    const pdfPage = pdfPageForPrinted(printed, byDoc.get(docId) ?? []);
-    if (pdfPage !== null) starts.set(docId, { pdfPage, offset: pdfPage - printed });
+    const docId = String(r.doc_id);
+    const printed = printedOf.get(docId);
+    const lo = Number(r.label_lo);
+    if (printed === undefined || !Number.isInteger(lo) || lo < 1 || lo !== Number(r.label_hi)) continue;
+    starts.set(docId, { pdfPage: lo, offset: lo - printed });
   }
   return starts;
 }

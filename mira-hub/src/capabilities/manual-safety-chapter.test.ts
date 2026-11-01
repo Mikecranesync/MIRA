@@ -6,12 +6,9 @@ import {
   safetyChapterPage,
   SAFETY_CHAPTER_BUDGET_CHARS,
   SAFETY_CHAPTER_DIRECTIVE,
-  SAFETY_CHAPTER_MAX_SHIFT,
   SAFETY_CHAPTER_ROWS_PER_PAGE,
   SAFETY_MARKER_LINE,
   SAFETY_CHAPTER_REF_SQL,
-  headerPageNumbers,
-  pdfPageForPrinted,
 } from "./manual-safety-chapter";
 import { extractManualSafetyStatement } from "./manual-safety-statement";
 import type { PoolClient } from "pg";
@@ -36,11 +33,11 @@ type Row = { id: string; doc_id: string; content: string; source_url: string; pa
  * A knowledge_entries stand-in that answers the reads the module makes, and records them.
  * Like Postgres, it rejects a bind count that does not match the highest placeholder.
  *
- * Page headers: by default every page prints its own PDF page number as its running header (the
- * staging ACS355 shape: "Safety 17", "18 Safety"), so printed and PDF pages agree. With
- * `headers: "rows"` the header read is answered from the rows themselves, as Postgres would.
+ * Stored page labels: by default every page is labelled with its own PDF page number (the staging
+ * ACS355 after its #5065 backfill), so printed and PDF pages agree. With `labels: "rows"` the label
+ * lookup is answered from the rows' own page_label, as Postgres would.
  */
-function fakeClient(rows: Row[], opts: { headers?: "auto" | "rows" } = {}) {
+function fakeClient(rows: Row[], opts: { labels?: "auto" | "rows" } = {}) {
   const calls: Array<{ sql: string; params: unknown[] }> = [];
   const client = {
     async query(sql: string, params: unknown[] = []) {
@@ -50,22 +47,16 @@ function fakeClient(rows: Row[], opts: { headers?: "auto" | "rows" } = {}) {
       }
       calls.push({ sql, params });
       if (sql.startsWith("SET LOCAL")) return { rows: [] };
-      if (sql.includes("first_line")) {
-        const [, docs, lo, hi] = params as [string, string[], number[], number[]];
-        if (opts.headers !== "rows") {
-          return { rows: docs.flatMap((d, i) => Array.from({ length: hi[i] - lo[i] + 1 }, (_, k) => {
-            const page = lo[i] + k;
-            return { doc_id: d, page, chunk_index: 0, first_line: String(page), last_line: String(page) };
-          })) };
+      if (sql.includes("label_lo")) {
+        const [, docs, printed] = params as [string, string[], string[]];
+        if (opts.labels !== "rows") {
+          // Default: every page is labelled with its own PDF page number (the backfilled staging ACS355).
+          return { rows: docs.map((d, i) => ({ doc_id: d, label_lo: Number(printed[i]), label_hi: Number(printed[i]) })) };
         }
-        const idx = (r: Row) => r.chunk_index ?? Number.MAX_SAFE_INTEGER;
-        const hits = rows
-          .filter((r) => docs.some((d, i) => d === r.doc_id && r.page >= lo[i] && r.page <= hi[i]))
-          .sort((a, b) => a.page - b.page || idx(a) - idx(b) || (a.id < b.id ? -1 : 1));
-        return { rows: hits.map((r) => ({
-          doc_id: r.doc_id, page: r.page, chunk_index: r.chunk_index ?? null,
-          first_line: r.content.split("\n")[0], last_line: r.content.split("\n").pop(),
-        })) };
+        return { rows: docs.flatMap((d, i) => {
+          const pagesHit = rows.filter((r) => r.doc_id === d && (r.page_label ?? "").trim() === printed[i]).map((r) => r.page);
+          return pagesHit.length ? [{ doc_id: d, label_lo: Math.min(...pagesHit), label_hi: Math.max(...pagesHit) }] : [];
+        }) };
       }
       if (sql.includes("DISTINCT ON (doc_id)")) {
         const docs = params[1] as string[];
@@ -519,144 +510,93 @@ describe("retrieveSafetyChapterChunks", () => {
     expect(kept).not.toContain(tail.content);
   });
 
-  describe("printed page found from the page headers (uploads store no page label, #5059 Codex r2 F1)", () => {
+  describe("printed page found from the stored page labels (#5059 Codex r2 F1, r3 F1; #5065)", () => {
     const FM = "fm000000-0000-0000-0000-000000000001";
     const FM_URL = "node-doc/u1/front-matter-drive.pdf";
-    /** Rows the way writePdfChunksForNode writes them: chunkText per page, page = index + 1, one running chunk_index, no label. */
-    function ingest(pageTexts: string[]): Row[] {
+    /**
+     * Rows the way writePdfChunksForNode writes them: chunkText per page, page = index + 1, one running
+     * chunk_index, and metadata.page_label = the PDF's own printed label when it has a label tree (#5065).
+     */
+    function ingest(pageTexts: string[], labels: Array<string | null> | null): Row[] {
       let idx = 0;
       return pageTexts.flatMap((t, p) => chunkText(t).map((content) => ({
         id: `${String(p + 1).padStart(8, "0")}-0000-0000-0000-${String(idx).padStart(12, "0")}`,
         doc_id: FM, content, source_url: FM_URL, page: p + 1, chunk_index: idx++,
+        ...(labels?.[p] ? { page_label: labels[p]! } : {}),
       })));
     }
-    /** PDF pages 1-4 unnumbered front matter, then printed page = PDF page - 4. */
+    /** PDF pages 1-4 are front matter labelled i-iv, then printed page = PDF page - 4. */
+    const LABELS = Array.from({ length: 380 }, (_, i) => (i < 4 ? ["i", "ii", "iii", "iv"][i] : String(i + 1 - 4)));
     function manual(over: Record<number, string> = {}): string[] {
       return Array.from({ length: 380 }, (_, i) => {
         const pdf = i + 1;
         if (over[pdf] !== undefined) return over[pdf];
         if (pdf <= 4) return ["Test drive\nUser's manual", "Contents\nSafety . . . . . . . 17\nWiring . . . . . . 30", "ii", "iii"][pdf - 1];
-        return `${pdf - 4} Section\nGeneral description of the drive, page ${pdf - 4}.`;
+        return `General description of the drive on this page.`;
       });
     }
     const SAFETY = {
-      21: "Safety 17\nSafety\nWhat this chapter contains\nThe chapter contains safety instructions.",
-      22: `18 Safety\n${P18}`,
-      376: `372 Maintenance\n${P372}`,
+      17: "WARNING! Wrong-page notice: the chapter is not on PDF page 17.", // what offset 0 would read
+      21: "Safety\nWhat this chapter contains\nThe chapter contains safety instructions.",
+      22: P18,
+      376: P372,
     };
+    /** The retrieved fan page as retrieval hands it over: no label on the chunk itself. */
     const fanChunk = (rows: Row[]) => {
       const r = rows.find((x) => x.page === 376)!;
       return { ...chunk(r.content, 376, FM), sourceUrl: FM_URL };
     };
 
-    it("four front-matter pages: printed page 17 is read at PDF page 21, steps reach the prompt", async () => {
-      const rows = ingest(manual({
-        ...SAFETY,
-        20: "Table 17 ratings\nCurrent ratings by frame size.", // a lone 17, before the real page, with no neighbouring 16 or 18
-        18: "Safety . . . . . . . . . 17\nIndex of warnings", // a contents leader, with a leader neighbour
-        19: "Wiring . . . . . . . . . 18\nIndex of terminals",
-        17: "13 Section\nWARNING! Wrong-page notice: the chapter is not on PDF page 17.", // what offset 0 would read
-      }));
-      expect(rows.some((r) => r.page_label !== undefined)).toBe(false);
+    it("front matter: printed page 17 is the PDF page labelled 17 (PDF 21), steps reach the prompt", async () => {
+      const rows = ingest(manual(SAFETY), LABELS);
       const retrieved = [fanChunk(rows)];
-      const added = await retrieveSafetyChapterChunks(fakeClient(rows, { headers: "rows" }), "tenant", retrieved);
-      expect(added.length).toBeGreaterThan(0);
+      const added = await retrieveSafetyChapterChunks(fakeClient(rows, { labels: "rows" }), "tenant", retrieved);
       expect(new Set(added.map((c) => c.sourcePage))).toEqual(new Set([22]));
       expect(added.every((c) => c.pageLabel === "18")).toBe(true);
+      expect(added.some((c) => /Wrong-page/.test(c.content))).toBe(false);
       const prompt = buildManualUserContent("How do I replace the cooling fan", [...retrieved, ...added]);
       for (const step of ["wait for 5 minutes", "measuring with a multimeter", "Externally supplied control circuits may carry dangerous"]) {
         expect(prompt).toContain(step);
       }
     });
 
-    it("consecutive section headings ahead of the real headers do not win (#5059 Codex r3 F1)", async () => {
-      const rows = ingest(manual({
-        ...SAFETY,
-        17: "Section 17 Maintenance\nWARNING! Wrong-page notice on PDF page 17.",
-        18: "Section 18 Wiring\nWARNING! Wrong-page notice on PDF page 18.",
-      }));
-      const retrieved = [fanChunk(rows)];
-      const added = await retrieveSafetyChapterChunks(fakeClient(rows, { headers: "rows" }), "tenant", retrieved);
-      expect(new Set(added.map((c) => c.sourcePage))).toEqual(new Set([22]));
-      expect(added.some((c) => /Wrong-page/.test(c.content))).toBe(false);
-      const prompt = buildManualUserContent("How do I replace the cooling fan", [...retrieved, ...added]);
-      expect(prompt).toContain("wait for 5 minutes");
-      expect(prompt).toContain("measuring with a multimeter");
+    it("an upload stored before labels: nothing is added, and PDF page 17 is never read (never offset 0)", async () => {
+      const rows = ingest(manual(SAFETY), null);
+      expect(rows.some((r) => r.page_label !== undefined)).toBe(false);
+      const client = fakeClient(rows, { labels: "rows" });
+      const added = await retrieveSafetyChapterChunks(client, "tenant", [fanChunk(rows)]);
+      expect(added).toEqual([]);
+      expect(client.calls.some((c) => c.sql.includes("ROW_NUMBER"))).toBe(false);
     });
 
-    it("two offsets each with a run of page numbers: ambiguous, nothing is added", async () => {
-      const over: Record<number, string> = { ...SAFETY };
-      for (const p of [17, 18, 19, 20]) over[p] = `Section ${p} Maintenance\nWARNING! Wrong-page notice on PDF page ${p}.`;
-      const rows = ingest(manual(over));
-      const added = await retrieveSafetyChapterChunks(fakeClient(rows, { headers: "rows" }), "tenant", [fanChunk(rows)]);
+    it("two pages carry the label 17: ambiguous, nothing is added", async () => {
+      const labels = [...LABELS];
+      labels[16] = "17"; // PDF page 17 also labelled 17
+      const added = await retrieveSafetyChapterChunks(fakeClient(ingest(manual(SAFETY), labels), { labels: "rows" }), "tenant", [fanChunk(ingest(manual(SAFETY), labels))]);
       expect(added).toEqual([]);
     });
 
-    it("a page number printed only as a footer still maps the chapter", async () => {
-      const rows = ingest(manual({
-        21: "Safety\nWhat this chapter contains\n17",
-        22: "WARNING! Disconnect the supply, wait 5 minutes, then measure that no voltage is present.\n18",
-        376: `${P372}\n372`,
-      }).map((t, i) => (i + 1 > 4 && !/^(Safety|WARNING)/.test(t) && i + 1 !== 376 ? `General description.\n${i + 1 - 4}` : t)));
-      const added = await retrieveSafetyChapterChunks(fakeClient(rows, { headers: "rows" }), "tenant", [fanChunk(rows)]);
-      expect(added.map((c) => [c.sourcePage, c.pageLabel])).toEqual([[22, "18"]]);
-    });
-
-    it("no page shows the printed number: nothing is added (never offset 0)", async () => {
-      const rows = ingest(manual({ ...SAFETY }).map((t, i) =>
-        i + 1 === 21 || i + 1 === 22 || i + 1 === 376 ? t : i + 1 === 17 ? "WARNING! Wrong-page notice on PDF page 17." : "General description."));
-      const bare = rows.map((r) => (r.page === 21 || r.page === 22 ? { ...r, content: r.content.replace(/^(Safety 17|18 Safety)\n/, "") } : r));
-      const added = await retrieveSafetyChapterChunks(fakeClient(bare, { headers: "rows" }), "tenant", [fanChunk(bare)]);
+    it("a page whose text prints 17 but whose label is not 17 is not the chapter", async () => {
+      const labels = [...LABELS];
+      labels[20] = "xvii"; // the chapter page is labelled differently; no page carries label 17
+      const rows = ingest(manual({ ...SAFETY, 21: "Safety 17\nSafety\nWhat this chapter contains" }), labels);
+      const added = await retrieveSafetyChapterChunks(fakeClient(rows, { labels: "rows" }), "tenant", [fanChunk(rows)]);
       expect(added).toEqual([]);
-      // The fallback is not "PDF page = printed page": page 17 was never read.
-      expect(added.some((c) => c.sourcePage === 17)).toBe(false);
     });
 
-    it("the header read is bounded and binds exactly its values", async () => {
-      const rows = ingest(manual(SAFETY));
+    it("the label lookup binds exactly its values and returns one row per document", async () => {
+      const rows = ingest(manual(SAFETY), LABELS);
       process.env[GATE] = "false";
-      const client = fakeClient(rows, { headers: "rows" });
+      const client = fakeClient(rows, { labels: "rows" });
       await retrieveSafetyChapterChunks(client, "tenant", [fanChunk(rows)], { approvedSourceDocIds: [FM] });
-      const read = client.calls.find((c) => c.sql.includes("first_line"))!;
-      expect(read.params).toEqual(["tenant", [FM], [16], [17 + SAFETY_CHAPTER_MAX_SHIFT + 1]]);
-      expect(read.sql).toMatch(/LIMIT \d+/);
-      // only each page's first and last chunk, so the LIMIT cannot starve a later document
-      expect(read.sql).toMatch(/WHERE rn_first = 1 OR rn_last = 1/);
+      const read = client.calls.find((c) => c.sql.includes("label_lo"))!;
+      expect(read.params).toEqual(["tenant", [FM], ["17"]]);
+      expect(read.sql).toMatch(/GROUP BY doc_id/);
+      expect(read.sql).toMatch(/metadata->>'page_label'/);
       process.env[GATE] = "true";
-      const gated = fakeClient(rows, { headers: "rows" });
+      const gated = fakeClient(rows, { labels: "rows" });
       await retrieveSafetyChapterChunks(gated, "tenant", [fanChunk(rows)], { approvedSourceDocIds: [FM] });
-      expect(gated.calls.find((c) => c.sql.includes("first_line"))!.params).toHaveLength(5);
-    });
-
-    it("pdfPageForPrinted: proof needs a run of short header lines with one offset, inside the window", () => {
-      const pg = (page: number, first: string, last = "") => ({ page, first_line: first, last_line: last });
-      expect(pdfPageForPrinted(17, [pg(21, "Safety 17"), pg(22, "18 Safety"), pg(23, "Safety 19")])).toBe(21);
-      expect(pdfPageForPrinted(17, [pg(19, "15"), pg(20, "16"), pg(21, "Safety 17")])).toBe(21);
-      // a run of three is the proof; two consecutive numbers are not
-      expect(pdfPageForPrinted(17, [pg(21, "Safety 17"), pg(22, "18 Safety")])).toBeNull();
-      // the run must be on consecutive pages: three scattered pages with the right offset are not one
-      expect(pdfPageForPrinted(17, [pg(21, "17"), pg(23, "19"), pg(25, "21")])).toBeNull();
-      // body text that happens to hold the numbers is not a header
-      const body = (n: number) => `The ${n} terminals on this frame size are rated for the full motor current at ${n} A.`;
-      expect(body(17).length).toBeGreaterThan(60);
-      expect(pdfPageForPrinted(17, [pg(21, body(17)), pg(22, body(18)), pg(23, body(19))])).toBeNull();
-      // a proven run past the window is ignored even when the read returns it
-      const k = 17 + SAFETY_CHAPTER_MAX_SHIFT + 1;
-      expect(pdfPageForPrinted(17, [pg(k, "Safety 17"), pg(k + 1, "18 Safety"), pg(k + 2, "Safety 19")])).toBeNull();
-      expect(headerPageNumbers("Safety . . . . . 17")).toEqual([]);
-      expect(headerPageNumbers("18 Safety")).toEqual([18]);
-    });
-
-    it("a match beyond the front-matter window is not used", async () => {
-      const far = 17 + SAFETY_CHAPTER_MAX_SHIFT + 2;
-      const texts = Array.from({ length: 380 }, (_, i) => `General description ${i}.`);
-      texts[far - 1] = "Safety 17\nSafety\nWhat this chapter contains";
-      texts[far] = `18 Safety\n${P18}`;
-      texts[375] = `${P372}`;
-      texts[16] = "WARNING! Wrong-page notice on PDF page 17.";
-      const rows = ingest(texts);
-      const added = await retrieveSafetyChapterChunks(fakeClient(rows, { headers: "rows" }), "tenant", [fanChunk(rows)]);
-      expect(added).toEqual([]);
+      expect(gated.calls.find((c) => c.sql.includes("label_lo"))!.params).toHaveLength(4);
     });
   });
 
