@@ -245,6 +245,33 @@ describe("data-sheet ratings — one value per model, or unknown (Codex #5062 F1
     }
   });
 
+  // Round 14 F19: heading formats. A heading for other models, however it is typed, never lets its
+  // ratings reach this model as Verified.
+  const OTHERS = "Flow 10 gpm 38 lpm\nPressure Range 100\u20133000 psi 6.9\u2013207 bar\nPump RPM* 1700 rpm 1700 rpm\n";
+  for (const [name, head] of [
+    ["space-separated", "9XP1000CS 9XP1000G"],
+    ["trailing comma", "9XP1000CS, 9XP1000G,"],
+    ["comma-separated (control)", "9XP1000CS, 9XP1000G"],
+  ] as const) {
+    it(`a ${name} heading for other models gives this model cited unknowns, and those models their values`, () => {
+      const raw = SHEET.replace(ONE_BLOCK, `${head}\n${OTHERS}`);
+      const p = build([sheetDoc(raw), doc("manual-cpstyle.txt", "sm")], "valve service");
+      expect(unknowns(p)).toEqual(["unknown:null:cited", "unknown:null:cited", "unknown:null:cited"]);
+      expect(ratings(p).every((f) => f.basis.includes("only for other models (9XP1000CS, 9XP1000G)"))).toBe(true);
+      const g = build([sheetDoc(raw)], "valve service", [], "9XP1000G");
+      expect(values(g)).toEqual(["verified:Pressure Range 100\u20133000 psi 6.9\u2013207 bar", "verified:Flow 10 gpm 38 lpm", "verified:Pump RPM 1700 rpm 1700 rpm"]);
+    });
+  }
+
+  it("a heading that names models in words it cannot read leaves its ratings unknown for every model", () => {
+    const raw = SHEET.replace(ONE_BLOCK, `Models 9XP1000CS and 9XP1000G only\n${OTHERS}`);
+    for (const model of ["9XP1000", "9XP1000G"]) {
+      const p = build([sheetDoc(raw), doc("manual-cpstyle.txt", "sm")], "valve service", [], model);
+      expect(unknowns(p)).toEqual(["unknown:null:cited", "unknown:null:cited", "unknown:null:cited"]);
+      expect(ratings(p).every((f) => f.basis.includes("cannot be tied to a model"))).toBe(true);
+    }
+  });
+
   it("a compact heading (9XP2000/C) scopes its block to both models it names", () => {
     const BIG = FIXTURES["datasheet-9xp2000.txt"];
     const head = "SPECIFICATIONS U.S. Measure Metric Measure\n";

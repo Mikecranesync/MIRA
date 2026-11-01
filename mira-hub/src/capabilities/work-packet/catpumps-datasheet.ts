@@ -413,20 +413,25 @@ const SPEC_PATTERNS: Array<{ key: string; label: string; regex: RegExp }> = [
   { key: "crankcase_capacity", label: "Crankcase Capacity", regex: /^Crankcase Capacity\s+(.+)$/ },
 ];
 
-// A line that only names models ("5CP6120, 5CP6120CS", "5CP6120CSSG1", "8521") heads a spec block.
+// A line that only names models ("5CP6120, 5CP6120CS", "5CP6120CSSG1", "8521", "9XP1000CS 9XP1000G")
+// heads a spec block.
 // Every spec line after it belongs to those models until the next heading, a "COMMON" heading, or a
 // page break — a row this module does not read (e.g. "Engine RPM") does not end the block (Codex
 // #5062 F19). A token is a model when it is on the sheet's own model list (digits-only and compact
 // "3520/C" forms included) or has the letters-in-the-middle shape ("5CP6120"). A digits-only token
 // that is not on the list cannot be told apart from a stray number, so its block's values are
-// marked unresolved, never applied to every model. Once a sheet has any block of values, a value outside
+// marked unresolved, never applied to every model; so are values under any other line that names a
+// model. Once a sheet has any block of values, a value outside
 // every block and outside the common section is unresolved as well.
 const MODEL_TOKEN_RE = /^[0-9]{1,2}[A-Z]{1,4}[0-9][0-9A-Z]*$/;
 const BARE_MODEL_RE = /^[0-9]{4,5}[A-Z]{0,4}$/;
 const COMMON_RE = /^COMMON\b/;
 
 function headingModels(text: string, roster: Map<string, string>): { models: string[]; known: boolean } | null {
-  const toks = text.split(",").map((t) => t.trim());
+  // Commas, spaces and a trailing separator all separate models: "5CP6120, 5CP6120CS",
+  // "9XP1000CS 9XP1000G" and "9XP1000CS, 9XP1000G," are the same heading (Codex #5062 F19).
+  const toks = text.split(/[\s,]+/).filter(Boolean);
+  if (toks.length === 0) return null;
   const models: string[] = [];
   let known = true;
   for (const tok of toks) {
@@ -441,6 +446,15 @@ function headingModels(text: string, roster: Map<string, string>): { models: str
     }
   }
   return { models, known };
+}
+
+/** A line that is not a heading this module can read but names a model ("Models 9XP1000CS and
+ *  9XP1000G only") may restrict the ratings under it, so their scope is unresolved. */
+function mentionsModel(text: string, roster: Map<string, string>): boolean {
+  return text
+    .split(/[^0-9A-Za-z/]+/)
+    .filter(Boolean)
+    .some((tok) => expandModelToken(tok).some((m) => roster.has(normalizeModelKey(m)) || MODEL_TOKEN_RE.test(m)));
 }
 
 type SpecScope = { kind: "sheet" } | { kind: "common" } | { kind: "models"; models: string[] } | { kind: "unresolved" };
@@ -467,9 +481,11 @@ function parseSpecs(lines: Line[], models: string[], mkSource: MkSource): DsSpec
       scope = heading.known ? { kind: "models", models: heading.models } : { kind: "unresolved" };
       continue;
     }
+    let matched = false;
     for (const def of SPEC_PATTERNS) {
       const m = def.regex.exec(text);
       if (!m) continue;
+      matched = true;
       const value = m[1].trim();
       const id = `${def.key}|${normSpec(value)}|${scope.kind}|${scope.kind === "models" ? scope.models.join(",") : ""}`;
       if (seen.has(id)) continue;
@@ -479,6 +495,7 @@ function parseSpecs(lines: Line[], models: string[], mkSource: MkSource): DsSpec
       if (scope.kind === "unresolved") spec.scopeUnresolved = true;
       out.push({ spec, scope });
     }
+    if (!matched && mentionsModel(text, roster)) scope = { kind: "unresolved" };
   }
   // Only a heading that actually heads ratings counts — the parts-list and kit-table model lines on
   // later pages have the same shape.
