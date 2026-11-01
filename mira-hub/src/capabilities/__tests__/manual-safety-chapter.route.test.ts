@@ -101,6 +101,14 @@ beforeEach(() => {
   vi.clearAllMocks();
   chapterCorpus = CORPUS;
   tenantClient.query.mockImplementation((async (sql: string, params: unknown[] = []) => {
+    if (sql.includes("first_line")) {
+      // Every test manual prints its own page number as a running header ("Safety 18"), as the
+      // staging ACS355 upload does, so the printed page is the PDF page (#5059 Codex r2 F1).
+      const [, docs, lo, hi] = params as [string, string[], number[], number[]];
+      return { rows: docs.flatMap((d, i) => Array.from({ length: hi[i] - lo[i] + 1 }, (_, k) => ({
+        doc_id: d, page: lo[i] + k, first_line: `Safety ${lo[i] + k}`, last_line: "",
+      }))) };
+    }
     if (!sql.includes("ROW_NUMBER")) return { rows: [] };
     const urls = params[2] as string[];
     const pageNos = params[3] as number[];

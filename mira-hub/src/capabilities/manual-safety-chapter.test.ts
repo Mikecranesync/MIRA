@@ -6,9 +6,12 @@ import {
   safetyChapterPage,
   SAFETY_CHAPTER_BUDGET_CHARS,
   SAFETY_CHAPTER_DIRECTIVE,
+  SAFETY_CHAPTER_MAX_SHIFT,
   SAFETY_CHAPTER_ROWS_PER_PAGE,
   SAFETY_MARKER_LINE,
   SAFETY_CHAPTER_REF_SQL,
+  headerPageNumbers,
+  pdfPageForPrinted,
 } from "./manual-safety-chapter";
 import { extractManualSafetyStatement } from "./manual-safety-statement";
 import type { PoolClient } from "pg";
@@ -30,10 +33,14 @@ const chunk = (content: string, page: number, docId: string | null = DOC): Manua
 type Row = { id: string; doc_id: string; content: string; source_url: string; page: number; page_label?: string; chunk_index?: number };
 
 /**
- * A knowledge_entries stand-in that answers the two reads the module makes, and records them.
+ * A knowledge_entries stand-in that answers the reads the module makes, and records them.
  * Like Postgres, it rejects a bind count that does not match the highest placeholder.
+ *
+ * Page headers: by default every page prints its own PDF page number as its running header (the
+ * staging ACS355 shape: "Safety 17", "18 Safety"), so printed and PDF pages agree. With
+ * `headers: "rows"` the header read is answered from the rows themselves, as Postgres would.
  */
-function fakeClient(rows: Row[]) {
+function fakeClient(rows: Row[], opts: { headers?: "auto" | "rows" } = {}) {
   const calls: Array<{ sql: string; params: unknown[] }> = [];
   const client = {
     async query(sql: string, params: unknown[] = []) {
@@ -43,6 +50,23 @@ function fakeClient(rows: Row[]) {
       }
       calls.push({ sql, params });
       if (sql.startsWith("SET LOCAL")) return { rows: [] };
+      if (sql.includes("first_line")) {
+        const [, docs, lo, hi] = params as [string, string[], number[], number[]];
+        if (opts.headers !== "rows") {
+          return { rows: docs.flatMap((d, i) => Array.from({ length: hi[i] - lo[i] + 1 }, (_, k) => {
+            const page = lo[i] + k;
+            return { doc_id: d, page, chunk_index: 0, first_line: String(page), last_line: String(page) };
+          })) };
+        }
+        const idx = (r: Row) => r.chunk_index ?? Number.MAX_SAFE_INTEGER;
+        const hits = rows
+          .filter((r) => docs.some((d, i) => d === r.doc_id && r.page >= lo[i] && r.page <= hi[i]))
+          .sort((a, b) => a.page - b.page || idx(a) - idx(b) || (a.id < b.id ? -1 : 1));
+        return { rows: hits.map((r) => ({
+          doc_id: r.doc_id, page: r.page, chunk_index: r.chunk_index ?? null,
+          first_line: r.content.split("\n")[0], last_line: r.content.split("\n").pop(),
+        })) };
+      }
       if (sql.includes("DISTINCT ON (doc_id)")) {
         const docs = params[1] as string[];
         const re = new RegExp(String(params[2]), "i");
@@ -132,7 +156,7 @@ describe("retrieveSafetyChapterChunks", () => {
     // The reference came from the retrieved chunk, so no document-level lookup ran.
     expect(client.calls.some((c) => c.sql.includes("DISTINCT ON"))).toBe(false);
     // Pages 17..20 of that one document were read.
-    const read = client.calls.find((c) => c.sql.includes("unnest"))!;
+    const read = client.calls.find((c) => c.sql.includes("rn <= $8"))!;
     expect(read.params[3]).toEqual([17, 18, 19, 20]);
   });
 
@@ -179,7 +203,7 @@ describe("retrieveSafetyChapterChunks", () => {
     const client = fakeClient([...CORPUS, row("00000000-0000-0000-0000-000000000021", P18, 21)]);
     const referring = { ...chunk("WARNING! Read and follow the instructions in chapter Safety on page 17.", 17), pageLabel: "13" };
     const added = await retrieveSafetyChapterChunks(client, "tenant", [referring]);
-    const read = client.calls.find((c) => c.sql.includes("unnest"))!;
+    const read = client.calls.find((c) => c.sql.includes("rn <= $8"))!;
     expect(read.params[3]).toEqual([21, 22, 23, 24]);
     // PDF page for rereads; the manual's printed page as the label (Codex r4 F8).
     expect(added.map((c) => [c.sourcePage, c.pageLabel])).toEqual([[21, "17"]]);
@@ -189,7 +213,7 @@ describe("retrieveSafetyChapterChunks", () => {
     const referring: Row = { ...row("00000000-0000-0000-0000-000000000376", P372, 376), page_label: "372" };
     const client = fakeClient([referring, row("00000000-0000-0000-0000-000000000022", P18, 22)]);
     const added = await retrieveSafetyChapterChunks(client, "tenant", [chunk(P355, 355)]);
-    const read = client.calls.find((c) => c.sql.includes("unnest"))!;
+    const read = client.calls.find((c) => c.sql.includes("rn <= $8"))!;
     expect(read.params[3]).toEqual([21, 22, 23, 24]);
     expect(added.map((c) => [c.sourcePage, c.pageLabel])).toEqual([[22, "18"]]);
   });
@@ -206,7 +230,7 @@ describe("retrieveSafetyChapterChunks", () => {
   it("control: a document that never refers to a Safety chapter adds nothing", async () => {
     const client = fakeClient([row("00000000-0000-0000-0000-000000000355", P355, 355)]);
     expect(await retrieveSafetyChapterChunks(client, "tenant", [chunk(P355, 355)])).toEqual([]);
-    expect(client.calls.some((c) => c.sql.includes("unnest"))).toBe(false);
+    expect(client.calls.some((c) => c.sql.includes("rn <= $8"))).toBe(false);
   });
 
   it("does not repeat a chapter chunk retrieval already returned (acs355-q2)", async () => {
@@ -314,7 +338,7 @@ describe("retrieveSafetyChapterChunks", () => {
     expect(used).toBeLessThanOrEqual(SAFETY_CHAPTER_BUDGET_CHARS);
     expect(added.some((c) => c.content === STEPS)).toBe(true);
     // The read itself is bounded per page; one query, no batches.
-    const reads = client.calls.filter((c) => c.sql.includes("ROW_NUMBER"));
+    const reads = client.calls.filter((c) => c.sql.includes("rn <= $8"));
     expect(reads).toHaveLength(1);
     expect(reads[0].params[7]).toBe(SAFETY_CHAPTER_ROWS_PER_PAGE);
     // The fake applies the cap from the bound value; the SQL must actually filter on it.
@@ -493,6 +517,120 @@ describe("retrieveSafetyChapterChunks", () => {
     expect(first.every((r) => kept.includes(r.content))).toBe(true);
     expect(kept).not.toContain(middle.content);
     expect(kept).not.toContain(tail.content);
+  });
+
+  describe("printed page found from the page headers (uploads store no page label, #5059 Codex r2 F1)", () => {
+    const FM = "fm000000-0000-0000-0000-000000000001";
+    const FM_URL = "node-doc/u1/front-matter-drive.pdf";
+    /** Rows the way writePdfChunksForNode writes them: chunkText per page, page = index + 1, one running chunk_index, no label. */
+    function ingest(pageTexts: string[]): Row[] {
+      let idx = 0;
+      return pageTexts.flatMap((t, p) => chunkText(t).map((content) => ({
+        id: `${String(p + 1).padStart(8, "0")}-0000-0000-0000-${String(idx).padStart(12, "0")}`,
+        doc_id: FM, content, source_url: FM_URL, page: p + 1, chunk_index: idx++,
+      })));
+    }
+    /** PDF pages 1-4 unnumbered front matter, then printed page = PDF page - 4. */
+    function manual(over: Record<number, string> = {}): string[] {
+      return Array.from({ length: 380 }, (_, i) => {
+        const pdf = i + 1;
+        if (over[pdf] !== undefined) return over[pdf];
+        if (pdf <= 4) return ["Test drive\nUser's manual", "Contents\nSafety . . . . . . . 17\nWiring . . . . . . 30", "ii", "iii"][pdf - 1];
+        return `${pdf - 4} Section\nGeneral description of the drive, page ${pdf - 4}.`;
+      });
+    }
+    const SAFETY = {
+      21: "Safety 17\nSafety\nWhat this chapter contains\nThe chapter contains safety instructions.",
+      22: `18 Safety\n${P18}`,
+      376: `372 Maintenance\n${P372}`,
+    };
+    const fanChunk = (rows: Row[]) => {
+      const r = rows.find((x) => x.page === 376)!;
+      return { ...chunk(r.content, 376, FM), sourceUrl: FM_URL };
+    };
+
+    it("four front-matter pages: printed page 17 is read at PDF page 21, steps reach the prompt", async () => {
+      const rows = ingest(manual({
+        ...SAFETY,
+        20: "Table 17 ratings\nCurrent ratings by frame size.", // a lone 17, before the real page, with no neighbouring 16 or 18
+        18: "Safety . . . . . . . . . 17\nIndex of warnings", // a contents leader, with a leader neighbour
+        19: "Wiring . . . . . . . . . 18\nIndex of terminals",
+        17: "13 Section\nWARNING! Wrong-page notice: the chapter is not on PDF page 17.", // what offset 0 would read
+      }));
+      expect(rows.some((r) => r.page_label !== undefined)).toBe(false);
+      const retrieved = [fanChunk(rows)];
+      const added = await retrieveSafetyChapterChunks(fakeClient(rows, { headers: "rows" }), "tenant", retrieved);
+      expect(added.length).toBeGreaterThan(0);
+      expect(new Set(added.map((c) => c.sourcePage))).toEqual(new Set([22]));
+      expect(added.every((c) => c.pageLabel === "18")).toBe(true);
+      const prompt = buildManualUserContent("How do I replace the cooling fan", [...retrieved, ...added]);
+      for (const step of ["wait for 5 minutes", "measuring with a multimeter", "Externally supplied control circuits may carry dangerous"]) {
+        expect(prompt).toContain(step);
+      }
+    });
+
+    it("a page number printed only as a footer still maps the chapter", async () => {
+      const rows = ingest(manual({
+        21: "Safety\nWhat this chapter contains\n17",
+        22: "WARNING! Disconnect the supply, wait 5 minutes, then measure that no voltage is present.\n18",
+        376: `${P372}\n372`,
+      }).map((t, i) => (i + 1 > 4 && !/^(Safety|WARNING)/.test(t) && i + 1 !== 376 ? `General description.\n${i + 1 - 4}` : t)));
+      const added = await retrieveSafetyChapterChunks(fakeClient(rows, { headers: "rows" }), "tenant", [fanChunk(rows)]);
+      expect(added.map((c) => [c.sourcePage, c.pageLabel])).toEqual([[22, "18"]]);
+    });
+
+    it("no page shows the printed number: nothing is added (never offset 0)", async () => {
+      const rows = ingest(manual({ ...SAFETY }).map((t, i) =>
+        i + 1 === 21 || i + 1 === 22 || i + 1 === 376 ? t : i + 1 === 17 ? "WARNING! Wrong-page notice on PDF page 17." : "General description."));
+      const bare = rows.map((r) => (r.page === 21 || r.page === 22 ? { ...r, content: r.content.replace(/^(Safety 17|18 Safety)\n/, "") } : r));
+      const added = await retrieveSafetyChapterChunks(fakeClient(bare, { headers: "rows" }), "tenant", [fanChunk(bare)]);
+      expect(added).toEqual([]);
+      // The fallback is not "PDF page = printed page": page 17 was never read.
+      expect(added.some((c) => c.sourcePage === 17)).toBe(false);
+    });
+
+    it("the header read is bounded and binds exactly its values", async () => {
+      const rows = ingest(manual(SAFETY));
+      process.env[GATE] = "false";
+      const client = fakeClient(rows, { headers: "rows" });
+      await retrieveSafetyChapterChunks(client, "tenant", [fanChunk(rows)], { approvedSourceDocIds: [FM] });
+      const read = client.calls.find((c) => c.sql.includes("first_line"))!;
+      expect(read.params).toEqual(["tenant", [FM], [16], [17 + SAFETY_CHAPTER_MAX_SHIFT + 1]]);
+      expect(read.sql).toMatch(/LIMIT \d+/);
+      // only each page's first and last chunk, so the LIMIT cannot starve a later document
+      expect(read.sql).toMatch(/WHERE rn_first = 1 OR rn_last = 1/);
+      process.env[GATE] = "true";
+      const gated = fakeClient(rows, { headers: "rows" });
+      await retrieveSafetyChapterChunks(gated, "tenant", [fanChunk(rows)], { approvedSourceDocIds: [FM] });
+      expect(gated.calls.find((c) => c.sql.includes("first_line"))!.params).toHaveLength(5);
+    });
+
+    it("pdfPageForPrinted: proof needs a short header line and a neighbour, inside the window", () => {
+      const pg = (page: number, first: string, last = "") => ({ page, first_line: first, last_line: last });
+      expect(pdfPageForPrinted(17, [pg(21, "Safety 17"), pg(22, "18 Safety")])).toBe(21);
+      expect(pdfPageForPrinted(17, [pg(20, "16"), pg(21, "Safety 17")])).toBe(21);
+      // body text that happens to hold the numbers is not a header
+      const body = (n: number) => `The ${n} terminals on this frame size are rated for the full motor current at ${n} A.`;
+      expect(body(17).length).toBeGreaterThan(60);
+      expect(pdfPageForPrinted(17, [pg(21, body(17)), pg(22, body(18))])).toBeNull();
+      // a proven pair past the window is ignored even when the read returns it
+      const k = 17 + SAFETY_CHAPTER_MAX_SHIFT + 1;
+      expect(pdfPageForPrinted(17, [pg(k, "Safety 17"), pg(k + 1, "18 Safety")])).toBeNull();
+      expect(headerPageNumbers("Safety . . . . . 17")).toEqual([]);
+      expect(headerPageNumbers("18 Safety")).toEqual([18]);
+    });
+
+    it("a match beyond the front-matter window is not used", async () => {
+      const far = 17 + SAFETY_CHAPTER_MAX_SHIFT + 2;
+      const texts = Array.from({ length: 380 }, (_, i) => `General description ${i}.`);
+      texts[far - 1] = "Safety 17\nSafety\nWhat this chapter contains";
+      texts[far] = `18 Safety\n${P18}`;
+      texts[375] = `${P372}`;
+      texts[16] = "WARNING! Wrong-page notice on PDF page 17.";
+      const rows = ingest(texts);
+      const added = await retrieveSafetyChapterChunks(fakeClient(rows, { headers: "rows" }), "tenant", [fanChunk(rows)]);
+      expect(added).toEqual([]);
+    });
   });
 
   it("the directive asks for the steps only on physical work", () => {
