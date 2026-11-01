@@ -1,0 +1,48 @@
+===== PAGE 1 =====
+SPECIFICATIONS U.S. Measure Metric Measure
+Flow 25 gpm 94.6 lpm
+Pump Pressure Range 100–2000 psi 6.9–138 bar
+Pump RPM* 870 rpm 870 rpm
+Bore 1.260" 32 mm
+Stroke 1.890" 48 mm
+Crankcase Capacity 4.2 qts 4 l
+Weight 139 lbs 63 kg
+*Pump minimum is 100 RPM.
+DATA SHEET
+9X FRAME PLUNGER PUMPS (fictional)
+Brass Model: 9XP2000
+Brass Flushed Model: 9XP2000C
+===== PAGE 2 =====
+PARTS LIST
+ITEM P/N MATL DESCRIPTION QTY
+9XP2000/C
+5 200001 S Screw, HHC Sems (M10 x 25) 8
+20 200002 TNM Rod, Connecting Assembly 3
+65 † 200003 SSZZ Rod, Plunger 3
+110 200004 BBCP R Manifold, Inlet 1
+200004C BBCP R Manifold, Inlet, Flushed (Model 9XP2000C) 1
+185 200005 BBCP Manifold, Discharge 1
+===== PAGE 3 =====
+EXPLODED VIEW
+OPTIONAL PARTS AND ACCESSORIES
+PART DESCRIPTION QTY
+210001 Key (M10 x 8 x 70) 1
+SERVICE PARTS
+PART DESCRIPTION QTY
+220001 Seal Kit – Standard NBR 1
+220002 Valve Kit – Standard NBR 2
+===== PAGE 4 =====
+Model 9XP2000
+SEAL KITS One (1) seal kit required per pump
+PUMP MODELS NBR (STD) FPM (.0110) EPDM (.0220)
+9XP2000, 9XP2000C 220001* 220011 220021 *
+ITEM (Included in Seal Kits) DESCRIPTION QTY
+97 230001 230011 230021 O-Ring, Plunger Retainer 3
+u Silicone oil/grease required *Review material codes for individual items
+VALVE KITS Two (2) valve kits required per pump
+PUMP MODELS NBR (STD) FPM (.0110) EPDM (.0220)
+9XP2000, 9XP2000C 220002 220012 220022
+ITEM (Included in Valve Kits) DESCRIPTION QTY
+162 240001 240001 240001 Backup Ring, Valve Seat 3
+PN 993999 Rev A 1/24
+CAT PUMPS 1681 94th Lane N.E., Minneapolis, MN 55449-4324

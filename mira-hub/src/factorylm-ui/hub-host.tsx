@@ -64,6 +64,7 @@ import { composeHubSend, pairAttachments, resolveUploadNode, runAttachedSend, ty
 import { createManualSearchDriver, type ManualSearchDriver } from "./manual-search-driver";
 import { GuidedProcedure } from "./GuidedProcedure";
 import { MachineObservations } from "./MachineObservations";
+import { WorkPacketPanel } from "./WorkPacketPanel";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
 import { answerTurnId, citationIndex, contextFor, lifecycleFromStream, livePartsWhileRunning, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus, withSettledFollowups, type SettledFollowups } from "./to-interaction";
 import {
@@ -997,6 +998,10 @@ export function HubShellHost() {
           key={`${selection.notebookId}|${detail.notebook.identityStatus}`}
           notebookId={selection.notebookId}
         />
+      )}
+      {/* #4982: shown only when NOTEBOOK_WORK_PACKET is on (the panel renders nothing on 404). */}
+      {selection && (
+        <WorkPacketPanel notebookId={selection.notebookId} technicianName={authSession?.user?.email ?? null} />
       )}
     </div>
   );
