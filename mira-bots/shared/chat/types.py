@@ -24,6 +24,9 @@ class NormalizedAttachment:
     data: bytes = field(
         default_factory=bytes
     )  # pre-downloaded content (set by adapter before dispatch)
+    original: bytes = field(
+        default_factory=bytes
+    )  # full-size bytes when `data` is a resized vision copy (local decoding only, #5073)
 
 
 @dataclass
