@@ -60,6 +60,24 @@ function dedupe(xs: string[]): string[] {
   return Array.from(new Set(xs));
 }
 
+/** True when `next` must NOT be joined onto a caution/step whose text so far is `soFar`, because it
+ *  is page furniture the extractor interleaved rather than the sentence wrapping: a tightening-
+ *  sequence diagram ("1 3 5 7 8 6 4 2"), a trademark footnote, a model-list caption line, or a
+ *  Title Case figure title with no sentence punctuation that follows a finished sentence
+ *  ("Removal of Discharge Valve Plug"). A mid-sentence wrap never ends the previous line with a full stop, so it still joins. */
+function isInterleavedFurniture(soFar: string, next: string): boolean {
+  if (/^[\d\s]+$/.test(next)) return true;
+  if (/registered trademarks?/i.test(next)) return true;
+  if (isModelListLine(next)) return true;
+  const sentenceDone = /[.!?)]$/.test(soFar.trim());
+  // A figure title is Title Case with no sentence punctuation ("Removal of Inlet Manifold O-Rings
+  // 3531, 3535"); a new sentence that wraps has lowercase words ("Change crankcase oil … See").
+  const words = next.split(/\s+/).filter((w) => /^[A-Za-z][A-Za-z-]{3,}$/.test(w));
+  const looksLikeTitle =
+    !/[.!?:;]$/.test(next) && !/[.!?] /.test(next) && words.length > 0 && words.every((w) => /^[A-Z]/.test(w));
+  return sentenceDone && looksLikeTitle;
+}
+
 // ─────────────────────────────────────────────── cover page → modelsCovered
 
 /** Extracts the cover block's model roster: lines of the shape "<LABEL>: <list>" (CPSvc5's
@@ -381,12 +399,15 @@ export function parseCatPumpsServiceManual(doc: DocText): ServiceManual | null {
           !SECTION_HEADING_RE.test(lines[j]) &&
           !BODY_END_HEADING_RE.test(lines[j]) &&
           !TORQUE_HEADING_RE.test(lines[j]) &&
-          !matchSubheading(lines[j])
+          !matchSubheading(lines[j]) &&
+          !isInterleavedFurniture(textParts.join(" "), lines[j])
         ) {
           textParts.push(lines[j]);
           j++;
         }
-        cautions.push({ kind, text: textParts.join(" ").replace(/\s{2,}/g, " ").trim(), source: { ...src, page: pg.page, line } });
+        // The source is the exact run of physical lines the text was joined from, so a number that
+        // wrapped onto a continuation line is still checkable word-for-word against its source.
+        cautions.push({ kind, text: textParts.join(" ").replace(/\s{2,}/g, " ").trim(), source: { ...src, page: pg.page, line: lines.slice(i, j).join(" ") } });
         i = j - 1;
         continue;
       }
@@ -426,7 +447,7 @@ export function parseCatPumpsServiceManual(doc: DocText): ServiceManual | null {
           !BODY_END_HEADING_RE.test(lines[j]) &&
           !TORQUE_HEADING_RE.test(lines[j]) &&
           !matchSubheading(lines[j]) &&
-          !isModelListLine(lines[j])
+          !isInterleavedFurniture(textParts.join(" "), lines[j])
         ) {
           textParts.push(lines[j]);
           j++;
@@ -434,7 +455,8 @@ export function parseCatPumpsServiceManual(doc: DocText): ServiceManual | null {
         open.steps.push({
           n,
           text: textParts.join(" ").replace(/\s{2,}/g, " ").trim(),
-          source: { ...src, page: pg.page, line },
+          // Same as cautions: the source spans every physical line the step text was joined from.
+          source: { ...src, page: pg.page, line: lines.slice(i, j).join(" ") },
         });
         open.firstLines.push(line);
         i = j - 1;
