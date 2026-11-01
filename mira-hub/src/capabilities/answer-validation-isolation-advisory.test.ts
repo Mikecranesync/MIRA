@@ -326,3 +326,24 @@ describe("Codex #4867 r4 — affirmative energy isolation, ordered walk, bounded
     silent("Change the settings.");
   });
 });
+
+describe("Codex #4867 r5", () => {
+  const flagged = (t: string) => expect(judge(t)).toMatchObject({ ok: false, violation: "hazard-warning:isolation-advisory" });
+  const silent = (t: string) => expect(judge(t)).toEqual({ ok: true });
+  it("F1: a powered-off HMI and a lockout indicator are not isolation", () => {
+    flagged("The HMI is powered off. Replace the fuse.");
+    flagged("Use the lockout indicator to locate the drive. Replace the fuse.");
+    silent("The drive is powered off. Replace the fuse.");
+    silent("Perform lockout. Replace the fuse.");
+    silent("Follow the lockout procedure, then replace the fuse.");
+  });
+  it("F7: an alternative software clause does not hide the repair", () => {
+    flagged("Replace the fuse or change the settings.");
+    silent("Change the settings.");
+  });
+  it("F8: a dead test naming a voltage part keeps the notice; the live reading stays silent", () => {
+    flagged("Measure the terminal resistance for the voltage sensor.");
+    silent("Probe the terminals for voltage.");
+    silent("Measure the line voltage at the input terminals.");
+  });
+});

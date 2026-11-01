@@ -141,17 +141,22 @@ function softwareTarget(window: string): boolean {
  *  continuity, insulation) are not in this set and keep the notice. */
 const LIVE_MEASURAND_HEAD_RE = /^(?:voltages?|volts?|current|amps?|amperage|frequency|signal)$/i;
 /** "Probe the terminals for voltage" — the measurand named as the purpose. */
-const LIVE_MEASURAND_FOR_RE = /\bfor\s+(?:the\s+|any\s+)?(?:\w+\s+)?(?:voltage|volts|current|amps|frequency|signal)\b/i;
+const LIVE_MEASURAND_FOR_RE =
+  /\bfor\s+(?:the\s+|any\s+)?(?:\w+\s+)?(?:voltage|volts|current|amps|frequency|signal)(?=\s*(?:$|[.,;:!]|\s+(?:at|on|across|between|with|in|from|to)\b))/i;
+/** Dead tests (Codex #4867 r5 F8): "Measure the terminal resistance for the voltage sensor". */
+const DEAD_MEASURAND_HEAD_RE = /^(?:resistance|continuity|insulation|ohms?|megger|impedance|capacitance)$/i;
 /** The measurand must be what is measured (the head noun), so "Check the current transformer
  *  wiring" stays physical work. */
 function liveMeasurement(window: string): boolean {
-  return LIVE_MEASURAND_HEAD_RE.test(headNoun(window)) || LIVE_MEASURAND_FOR_RE.test(window);
+  const head = headNoun(window);
+  if (DEAD_MEASURAND_HEAD_RE.test(head)) return false;
+  return LIVE_MEASURAND_HEAD_RE.test(head) || LIVE_MEASURAND_FOR_RE.test(window);
 }
 
 /** Dual-use object window ends at the next coordinator or purpose "to".
  *  Codex #4867 r4 F7: "Replace the fuse after checking the parameters" — the object ends at a
  *  temporal clause, so a later software clause never becomes the repair's object. */
-const OBJECT_WINDOW_CUT = /\s+(?:then|so|and(?:\s+then)?|after|before|while|when|once|until|unless|because|if)\b|,\s+(?:then|and|or)\b|[;.]|\bto\b/i;
+const OBJECT_WINDOW_CUT = /\s+(?:then|so|and(?:\s+then)?|or|after|before|while|when|once|until|unless|because|if)\b|,\s+(?:then|and|or)\b|[;.]|\bto\b/i;
 
 function withoutProhibitions(text: string): string {
   // Em-dash / colon are the same clause cut PROHIBITION already makes at comma.
@@ -189,13 +194,22 @@ const ENERGY_OBJECT_RE = new RegExp(
     ")\\b",
   "i",
 );
+/** The lockout noun as the act ("Perform lockout.", "Follow the lockout procedure, then …"), not a
+ *  modifier of another noun ("the lockout indicator", "the lockout timer") — Codex #4867 r5 F1. */
+const LOCKOUT_NOUN_ACT_POST =
+  /^(?:\/tagout)?(?:\s+(?:procedures?|process|program|steps?|plan|sequence|devices?|locks?|padlocks?|hasps?|tags?))?\s*(?:$|[.,;:!]|\s+(?:and|then|on|to|for|before|first|at|per|as|of|in)\b)/i;
+/** "The HMI is powered off" — a software device switched off isolates no equipment energy. */
+const SOFTWARE_DEVICE_STATE_PRE =
+  /\b(?:hmi|pc|computer|laptop|tablet|app|application|software|program|screen|monitor|display|browser)\s+(?:is|are|was|were|has been|have been|gets?|got|stays?)\s+$/i;
 const ACCOUNT_LOCKOUT_POST = /^\s+of\s+(?:the\s+|your\s+)?(?:hmi|app|application|software|account|system|program|laptop|pc|computer|screen|menu)\b/i;
 
 function affirmativeIsolation(before: string, matched: string, after: string): boolean {
   const m = matched.toLowerCase();
   if (/^(?:lockout|loto)(?:\/tagout)?$/.test(m)) {
-    return LOCKOUT_DOC_ACT_PRE.test(before) || LOCKOUT_NOUN_STATE_PRE.test(before) || DETERMINER_POST.test(after);
+    if (DETERMINER_POST.test(after)) return true;
+    return (LOCKOUT_DOC_ACT_PRE.test(before) || LOCKOUT_NOUN_STATE_PRE.test(before)) && LOCKOUT_NOUN_ACT_POST.test(after);
   }
+  if (/^power/.test(m) && SOFTWARE_DEVICE_STATE_PRE.test(before)) return false;
   if (/^lock/.test(m)) return !ACCOUNT_LOCKOUT_POST.test(after);
   if (/^isolate$/.test(m)) return ENERGY_OBJECT_RE.test(after);
   return true;
@@ -206,7 +220,7 @@ function isolationIsVoid(text: string, index: number, matched = ""): boolean {
   const after = text.slice(index + matched.length);
   if (ISO_VOID_PRE.test(before)) return true;
   if (/^(?:shut|power)/i.test(matched) && SOFTWARE_SHUTDOWN_POST.test(after)) return true;
-  if (/lock|loto|^isolate$/i.test(matched) && !affirmativeIsolation(before, matched, after)) return true;
+  if (/lock|loto|^isolate$|^power/i.test(matched) && !affirmativeIsolation(before, matched, after)) return true;
   return ISO_VOID_POST.test(after);
 }
 
