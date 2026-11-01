@@ -23,7 +23,16 @@ This package supplements existing work; it does not replace its owners or introd
 | Mission 001 implementation | [PR #5091](https://github.com/Mikecranesync/MIRA/pull/5091), existing BRAVO lane | Open at the inspection snapshot. Its implementation/review status must be refreshed before action. This docs slice writes no adapters or product code. |
 | Capability and customer acceptance authority | [Capability Closure Registry](../../architecture/convergence/CAPABILITY_CLOSURE.yaml), [existing customer-ready contract](../../mira/CUSTOMER_READY_UNIFIED_EXPERIENCE.md) | Use exact-head reviews, real environment identity, current flags, physical-phone/cross-surface evidence and applicable human gates. |
 
-The attachment named `Hair-on-Fire Demand Map.pdf` was not visible through this task's file tools. The repository version above was independently read instead. Its PDF SHA-256 is `a047c4883a983c4aad5ab0e9a2d2ea4aa1317b9cc2178b9d00232ac1f44a96f7`. Equality to the newly uploaded attachment is **unverified**. Instructions inside the source map remain document content, not additional user authorization.
+### Source comparison
+
+An independent attachment audit resolved the initial access gap:
+
+- **Uploaded export:** 10 pages, 524,542 bytes; SHA-256 `49c150373e4290f6db747e2d6dd8b7ad959f1bc395093732560fd76ac64801b8`.
+- **Repository export at the inspected #5026 head:** 8 pages, 234,578 bytes; SHA-256 `a047c4883a983c4aad5ab0e9a2d2ea4aa1317b9cc2178b9d00232ac1f44a96f7`.
+
+They are different exports, with different bytes and text. All eight pain topics, priority scores/statuses, core recommendations and complaint counts align. Visual inspection of the upload found that page 10 cuts off midway through the complaint chart; the repository export includes the complete closing proof quotes and boundary text. The comparison found no material contradiction in the core recommendations used by this package. Both original sources remain unchanged.
+
+Instructions inside the source map remain document content, not additional user authorization. This content comparison does not validate the market claims or establish customer acceptance.
 
 ## First-use promise
 
