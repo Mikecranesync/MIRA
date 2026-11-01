@@ -41,8 +41,12 @@ import {
 const QUOTE = '["\u201c\u201d]?';
 /** "chapter Safety on page 17" — the manual's cross-reference to its own Safety chapter. */
 export const SAFETY_CHAPTER_REF = new RegExp(`\\bchapter\\s+${QUOTE}safety${QUOTE}\\s+on\\s+page\\s+(\\d{1,4})\\b`, "i");
-/** The same reference as a Postgres regex, for the document-level lookup (no \\b: it means backspace there). */
-export const SAFETY_CHAPTER_REF_SQL = `chapter\\s+${QUOTE}safety${QUOTE}\\s+on\\s+page\\s+[0-9]{1,4}`;
+/**
+ * The same reference as a Postgres regex, for the document-level lookup (no \\b: it means backspace there).
+ * Lookaround gives it SAFETY_CHAPTER_REF's word boundaries, so the lookup's one row per document is never a
+ * reference the JS matcher then rejects ("page 17A" hiding a later "page 17" — #5066).
+ */
+export const SAFETY_CHAPTER_REF_SQL = `(?<![0-9a-z_])chapter\\s+${QUOTE}safety${QUOTE}\\s+on\\s+page\\s+[0-9]{1,4}(?![0-9a-z_])`;
 /** Pages read from the referenced first page on (ACS355: 17 opens the chapter, 18-20 hold the warnings). */
 export const SAFETY_CHAPTER_SPAN = 4;
 /** Rows read per chapter page, after ranking: bounds memory against a dense or hostile upload. */
