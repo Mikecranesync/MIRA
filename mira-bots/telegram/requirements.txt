@@ -5,7 +5,7 @@ Pillow>=12.2.0
 zxing-cpp==3.1.1
 pytesseract>=0.3.13
 PyYAML==6.0.3
-langfuse>=2.50.0,<3.0.0
+langfuse>=5.0.4,<6.0.0
 # 2.1 defaults PostgreSQL URLs to psycopg 3; these services use psycopg2.
 sqlalchemy>=2.0.50,<2.1
 psycopg2-binary>=2.9.13
