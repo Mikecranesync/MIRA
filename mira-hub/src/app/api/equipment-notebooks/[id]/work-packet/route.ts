@@ -183,6 +183,19 @@ type WorkOrderParse = { ok: true; workOrder: WorkOrderInput } | { ok: false; err
 /** Strict validation of the work-order body — lengths and types only, never
  *  written anywhere (`workOrder` is echoed back inside the packet, never
  *  persisted to work_orders/CMMS). */
+/** `confirmedRevisions: [{docId, revision}]` from the panel's "I checked the revisions" step.
+ *  Malformed or absent → [] (which then refuses `revision_not_confirmed`). */
+function parseConfirmedRevisions(body: unknown): { docId: string; revision: string | null }[] {
+  const raw = body && typeof body === "object" ? (body as Record<string, unknown>).confirmedRevisions : undefined;
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, 50).flatMap((c) => {
+    if (!c || typeof c !== "object") return [];
+    const r = c as Record<string, unknown>;
+    if (typeof r.docId !== "string" || !(typeof r.revision === "string" || r.revision === null)) return [];
+    return [{ docId: r.docId, revision: r.revision as string | null }];
+  });
+}
+
 function parseWorkOrder(body: unknown): WorkOrderParse {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     return { ok: false, error: "A work order is required." };
@@ -268,6 +281,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const parsed = parseWorkOrder(rawBody);
   if (!parsed.ok) return NextResponse.json({ error: "invalid_body", message: parsed.error }, { status: 400 });
   const workOrder = parsed.workOrder;
+  const confirmedRevisions = parseConfirmedRevisions(rawBody);
 
   try {
     const notebook = await getNotebook(ctx.tenantId, id);
@@ -295,7 +309,26 @@ export async function POST(req: NextRequest, { params }: Params) {
       hazardFlags,
     };
     const result = buildDraftPacket(input);
-    return NextResponse.json(result, { status: result.ok ? 200 : 422 });
+    if (!result.ok) return NextResponse.json(result, { status: 422 });
+    // The technician confirmed the machine and each manual revision in the panel; the packet records
+    // exactly which revisions, by whom and when. Any document whose current revision was not the one
+    // confirmed (changed since, or never shown) refuses the draft rather than printing a stale check.
+    const by = ctx.email || ctx.userId;
+    for (const [i, d] of result.packet.documents.entries()) {
+      const want = d.revision.value ?? null;
+      if (!confirmedRevisions.some((c) => c.docId === d.docId && c.revision === want)) {
+        const refusal: DraftResult = {
+          ok: false,
+          reason: "revision_not_confirmed",
+          message: "The manual revisions were not confirmed, or changed since you checked them. Re-check the documents list and confirm again.",
+        };
+        return NextResponse.json(refusal, { status: 422 });
+      }
+      result.packet.approval.technicianReview.entries.push({
+        path: `documents[${i}].revision`, action: "confirm", by, at: input.now, previous: null, next: want,
+      });
+    }
+    return NextResponse.json(result, { status: 200 });
   } catch (err) {
     console.error("[api/equipment-notebooks work-packet POST]", err);
     return NextResponse.json({ error: "Query failed" }, { status: 500 });

@@ -217,7 +217,7 @@ describe("POST /work-packet", () => {
     (energizedHardStopEnabled as ReturnType<typeof vi.fn>).mockReturnValue(true);
     (isEnergizedWorkAsk as ReturnType<typeof vi.fn>).mockReturnValue(false);
     (notebookSafetyTrigger as ReturnType<typeof vi.fn>).mockReturnValue(null);
-    (buildDraftPacket as ReturnType<typeof vi.fn>).mockReturnValue({ ok: true, packet: { version: 1 }, warnings: [] });
+    (buildDraftPacket as ReturnType<typeof vi.fn>).mockReturnValue({ ok: true, packet: { version: 1, documents: [], approval: { technicianReview: { state: "draft", entries: [] } } }, warnings: [] });
   });
 
   it("404s not_enabled when the flag is off", async () => {
@@ -299,7 +299,7 @@ describe("POST /work-packet", () => {
 
   it("assembles DraftInput correctly and returns buildDraftPacket's result verbatim (ok:true -> 200)", async () => {
     (loadNotebookDocTexts as ReturnType<typeof vi.fn>).mockResolvedValue([doc()]);
-    const draftResult = { ok: true, packet: { version: 1, packetId: "fixed" }, warnings: ["w1"] };
+    const draftResult = { ok: true, packet: { version: 1, packetId: "fixed", documents: [], approval: { technicianReview: { state: "draft", entries: [] } } }, warnings: ["w1"] };
     (buildDraftPacket as ReturnType<typeof vi.fn>).mockReturnValue(draftResult);
 
     const res = await POST(makePost({ workOrder: baseWorkOrder }), makeParams(NOTEBOOK_ID));
@@ -323,6 +323,55 @@ describe("POST /work-packet", () => {
     expect(input.packetId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
     expect(typeof input.now).toBe("string");
     expect(new Date(input.now).toISOString()).toBe(input.now);
+  });
+
+  describe("revision confirmation is recorded, never assumed", () => {
+    const withDocs = () => ({
+      ok: true,
+      packet: {
+        version: 1,
+        documents: [
+          { docId: "d1", revision: { value: "PN 993450 Rev G" } },
+          { docId: "d2", revision: { value: null } },
+        ],
+        approval: { technicianReview: { state: "draft", entries: [] } },
+      },
+      warnings: [],
+    });
+    const both = [{ docId: "d1", revision: "PN 993450 Rev G" }, { docId: "d2", revision: null }];
+
+    it("refuses revision_not_confirmed when the body carries no confirmations", async () => {
+      (buildDraftPacket as ReturnType<typeof vi.fn>).mockReturnValue(withDocs());
+      const res = await POST(makePost({ workOrder: baseWorkOrder }), makeParams(NOTEBOOK_ID));
+      expect(res.status).toBe(422);
+      expect((await res.json()).reason).toBe("revision_not_confirmed");
+    });
+
+    it("refuses when the confirmed revision differs from the document's current one", async () => {
+      (buildDraftPacket as ReturnType<typeof vi.fn>).mockReturnValue(withDocs());
+      const stale = [{ docId: "d1", revision: "PN 993450 Rev F" }, { docId: "d2", revision: null }];
+      const res = await POST(makePost({ workOrder: baseWorkOrder, confirmedRevisions: stale }), makeParams(NOTEBOOK_ID));
+      expect(res.status).toBe(422);
+      expect((await res.json()).reason).toBe("revision_not_confirmed");
+    });
+
+    it("refuses when one of two documents is unconfirmed", async () => {
+      (buildDraftPacket as ReturnType<typeof vi.fn>).mockReturnValue(withDocs());
+      const res = await POST(makePost({ workOrder: baseWorkOrder, confirmedRevisions: [both[0]] }), makeParams(NOTEBOOK_ID));
+      expect(res.status).toBe(422);
+    });
+
+    it("stamps one confirm entry per document, by the signed-in technician", async () => {
+      (buildDraftPacket as ReturnType<typeof vi.fn>).mockReturnValue(withDocs());
+      const res = await POST(makePost({ workOrder: baseWorkOrder, confirmedRevisions: both }), makeParams(NOTEBOOK_ID));
+      expect(res.status).toBe(200);
+      const entries = (await res.json()).packet.approval.technicianReview.entries;
+      const input = (buildDraftPacket as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(entries).toEqual([
+        { path: "documents[0].revision", action: "confirm", by: session.email || session.userId, at: input.now, previous: null, next: "PN 993450 Rev G" },
+        { path: "documents[1].revision", action: "confirm", by: session.email || session.userId, at: input.now, previous: null, next: null },
+      ]);
+    });
   });
 
   it("returns buildDraftPacket's refusal verbatim (ok:false -> 422)", async () => {

@@ -5,7 +5,7 @@
  * a value, so it is tested without a browser or a server. `WorkPacketPanel.tsx` wires these to
  * fetch, component state, and rendering; it never duplicates the logic that lives here.
  */
-import type { Label, SourceRef, WorkOrderInput, WorkPacket } from "@/capabilities/work-packet/types";
+import type { Label, PacketDocument, SourceRef, WorkOrderInput, WorkPacket } from "@/capabilities/work-packet/types";
 
 // ───────────────────────────────────────────── label → badge text
 
@@ -116,4 +116,15 @@ export function printTitle(packet: Pick<WorkPacket, "workOrder" | "equipment">):
   const model = packet.equipment.model.value ?? "unknown model";
   const synthetic = packet.workOrder.synthetic ? " — SYNTHETIC" : "";
   return `DRAFT Work Packet — ${mfr} ${model} — WO ${packet.workOrder.id}${synthetic}`;
+}
+
+/** The revisions the technician just confirmed, exactly as shown on screen. Nothing is sent until
+ *  the confirm box is ticked — the route then refuses `revision_not_confirmed`. `revision?.` tolerates
+ *  an availability payload from before revisions existed (the route still refuses it). */
+export function confirmedRevisionsPayload(
+  confirmed: boolean,
+  docs: Pick<PacketDocument, "docId" | "revision">[],
+): { docId: string; revision: string | null }[] {
+  if (!confirmed) return [];
+  return docs.map((d) => ({ docId: d.docId, revision: d.revision?.value ?? null }));
 }
