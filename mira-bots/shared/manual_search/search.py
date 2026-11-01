@@ -993,7 +993,12 @@ class ManualSearchUnavailable(RuntimeError):
     """
 
 
-async def search_manual(make: str, model: str, deadline_at: float | None = None) -> dict | None:
+async def search_manual(
+    make: str,
+    model: str,
+    deadline_at: float | None = None,
+    identification_link: str | None = None,
+) -> dict | None:
     """Multi-pass real-time search for a (make, model) manual.
 
     Returns the best HEAD-validated PDF candidate, or a lower-confidence
@@ -1005,6 +1010,11 @@ async def search_manual(make: str, model: str, deadline_at: float | None = None)
     ``deadline_at`` (``time.monotonic()`` seconds) is the caller's own timeout; the
     judge's optional upgrade batch is capped by it so a timeout never costs the
     match already found.
+
+    ``identification_link`` is a URL decoded from the nameplate's own QR code
+    (#5070). It joins the pool as the top-ranked candidate ONLY when it is https
+    on the OEM list for ``make``; it never changes the queries (the nameplate
+    reading drives them) and, like any hit, must validate to be trusted.
     """
     started_at = time.monotonic()  # the judge's upgrade deadline counts from here
     make = (make or "").strip()
@@ -1123,6 +1133,25 @@ async def search_manual(make: str, model: str, deadline_at: float | None = None)
         hits = await _send(q3, "q3 (wide)")
         if hits:
             candidates.extend(_tagged(_collect(hits, make, model), "q3"))
+
+    if identification_link:
+        from ..drive_packs.identification_link import classify_payload  # noqa: PLC0415
+
+        if classify_payload(identification_link, make).kind == "oem_url":
+            link = identification_link.strip()
+            top = max((c["score"] for c in candidates), default=0)
+            candidates.insert(
+                0,
+                {
+                    "url": link,
+                    "title": "Nameplate identification link",
+                    "host": urlparse(link).netloc,
+                    "score": top + 1,
+                    "doc_type": _guess_doc_type("", link),
+                    "is_direct_pdf": _is_direct_pdf(link),
+                    "pass": "identification_link",
+                },
+            )
 
     if not candidates:
         if sent and failures == sent:

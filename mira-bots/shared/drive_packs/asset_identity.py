@@ -145,6 +145,7 @@ def build_asset_identity(
     raw_text: str | None = None,
     resolution: Any = None,
     evidence_image_id: str | None = None,
+    barcode_or_qr_payload: str | None = None,
 ) -> AssetIdentityPacket:
     """Build an :class:`AssetIdentityPacket` from a nameplate read.
 
@@ -167,6 +168,8 @@ def build_asset_identity(
     kwargs: dict[str, Any] = {
         "raw_text": _clean(effective_raw_text),
         "evidence_image_id": evidence_image_id,
+        # Raw 2D-code payload is evidence only; it never fills an interpreted field.
+        "barcode_or_qr_payload": _clean(barcode_or_qr_payload),
     }
 
     if not has_parse_error:

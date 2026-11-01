@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
+import os
 import re
 
 from shared import chat_tenant, wiring_intake
@@ -26,6 +27,7 @@ from shared.drive_packs import (
     load_pack,
     resolve_service_pack,
 )
+from shared.drive_packs.identification_link import decode_codes
 from shared.guardrails import classify_intent
 
 logger = logging.getLogger("fast-paths")
@@ -137,7 +139,15 @@ async def _try_nameplate_drive_pack(
         return None
 
     resolution = resolve_service_pack(nameplate=fields)
-    build_asset_identity(nameplate=fields, resolution=resolution)  # audit/evidence (Phase 2)
+    # #5070: a QR/DataMatrix payload rides the packet as evidence; it never
+    # overrides the nameplate reading. Off by default.
+    code_payload = None
+    if os.getenv("MIRA_QR_IDENTIFICATION_LINK", "0") == "1":
+        codes = await asyncio.to_thread(decode_codes, att.data)
+        code_payload = codes[0].text if codes else None
+    build_asset_identity(  # audit/evidence (Phase 2)
+        nameplate=fields, resolution=resolution, barcode_or_qr_payload=code_payload
+    )
 
     caption = event.text or ""
     has_question = bool(caption) and caption != DEFAULT_PHOTO_CAPTION

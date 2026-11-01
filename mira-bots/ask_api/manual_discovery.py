@@ -90,6 +90,8 @@ class ManualSearchRequest(BaseModel):
     manufacturer: str | None = Field(default=None, max_length=_MAX_FIELD_LEN)
     model: str | None = Field(default=None, max_length=_MAX_FIELD_LEN)
     catalog_number: str | None = Field(default=None, max_length=_MAX_FIELD_LEN)
+    # #5070: URL decoded from the nameplate QR; honored only with MIRA_QR_IDENTIFICATION_LINK=1.
+    identification_link: str | None = Field(default=None, max_length=2048)
 
 
 # reason_detail for the two "search_unavailable" infra misses (#4401).
@@ -269,11 +271,15 @@ async def manual_discovery_search(
             acquisition_trail() as trail,
         ):
             try:
+                extra = {}
+                if req.identification_link and os.getenv("MIRA_QR_IDENTIFICATION_LINK", "0") == "1":
+                    extra["identification_link"] = req.identification_link
                 candidate = await asyncio.wait_for(
                     search_manual(
                         manufacturer,
                         search_identifier,
                         deadline_at=time.monotonic() + timeout_s,
+                        **extra,
                     ),
                     timeout=timeout_s,
                 )
