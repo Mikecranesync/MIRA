@@ -113,9 +113,13 @@ True QR recall is therefore UNKNOWN. Decoded counts are a lower bound.
    extracted as a part-number candidate.
 3. Fill `AssetIdentityPacket.barcode_or_qr_payload` behind `MIRA_QR_IDENTIFICATION_LINK`
    (default off).
-4. Next slice: a trusted manufacturer URL ranks first in `search_manual` candidates, and a `1P`
-   value is tried as the model string when the OCR model is missing. The nameplate reading always
-   wins a conflict.
+4. `search_manual(..., identification_link=...)` adds the link as the top-ranked candidate only
+   when it classifies as `oem_url` for the nameplate make. Queries still use the nameplate make and
+   model, and the link must pass the same judge or HEAD validation as any hit. The manual-discovery
+   endpoint passes the optional `identification_link` request field through only when the flag is
+   on.
+5. Follow-ups (#5071): the `1P` value as a model fallback, `go2adc.com`, Telegram adoption, Hub
+   uploads, and #5073 (Slack hands the decoder its 512-pixel copy).
 
 ## Out of scope
 

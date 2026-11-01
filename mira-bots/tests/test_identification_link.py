@@ -216,3 +216,116 @@ async def test_flag_on_with_no_code_leaves_payload_none(fp_spy, monkeypatch):
     await fp._try_nameplate_drive_pack(_photo_event(buf.getvalue()), engine)
     assert seen["nameplate"]["model"] == "GS11N"
     assert seen.get("barcode_or_qr_payload") is None
+
+
+# ---------------------------------------------------------------- search ranking
+
+
+QR_LINK = "https://www.automationdirect.com/gs10-identification"
+SEARCH_PDF = "https://cdn.automationdirect.com/static/manuals/gs10m/gs10m.pdf"
+
+
+@pytest.fixture
+def search_spy(monkeypatch):
+    import shared.manual_search.search as search_mod
+
+    monkeypatch.setenv("MANUAL_JUDGE_ENABLED", "0")
+    sent, probed = [], []
+
+    async def fake_serper(query, num=10):
+        sent.append(query)
+        return [{"link": SEARCH_PDF, "title": "GS10 user manual"}]
+
+    async def fake_validate(url):
+        probed.append(url)
+        return url == SEARCH_PDF  # a product page is not a PDF; the search hit is
+
+    monkeypatch.setattr(search_mod, "_serper_search", fake_serper)
+    monkeypatch.setattr(search_mod, "validate_pdf", fake_validate)
+    return search_mod, sent, probed
+
+
+@pytest.mark.asyncio
+async def test_trusted_identification_link_is_tried_first(search_spy):
+    search_mod, _, probed = search_spy
+    await search_mod.search_manual("AutomationDirect", "GS10", identification_link=QR_LINK)
+    assert probed[0] == QR_LINK
+
+
+@pytest.mark.asyncio
+async def test_without_a_link_the_search_hit_is_tried_first(search_spy):
+    # control for the test above: same search, no link
+    search_mod, _, probed = search_spy
+    await search_mod.search_manual("AutomationDirect", "GS10")
+    assert probed[0] == SEARCH_PDF
+    assert QR_LINK not in probed
+
+
+@pytest.mark.asyncio
+async def test_link_for_another_make_never_enters_the_pool(search_spy):
+    search_mod, _, probed = search_spy
+    await search_mod.search_manual("Siemens", "GS10", identification_link=QR_LINK)
+    assert QR_LINK not in probed
+
+
+@pytest.mark.asyncio
+async def test_link_never_replaces_the_nameplate_search(search_spy):
+    search_mod, sent, probed = search_spy
+    result = await search_mod.search_manual("AutomationDirect", "GS10", identification_link=QR_LINK)
+    assert sent and all("GS10" in q for q in sent)  # queries still use the nameplate model
+    assert result["url"] == SEARCH_PDF  # the link is only a candidate: it must validate to win
+
+
+@pytest.mark.asyncio
+async def test_link_is_returned_for_review_when_search_finds_nothing(search_spy, monkeypatch):
+    search_mod, _, _ = search_spy
+
+    async def empty(query, num=10):
+        return []
+
+    monkeypatch.setattr(search_mod, "_serper_search", empty)
+    result = await search_mod.search_manual("AutomationDirect", "GS10", identification_link=QR_LINK)
+    assert result is not None and result["url"] == QR_LINK
+    assert result["validated"] is False  # never promoted without validation
+
+
+# ---------------------------------------------------------------- discovery endpoint
+
+
+def _discovery_client(monkeypatch, received):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from ask_api.manual_discovery import router
+
+    monkeypatch.setenv("MANUAL_DISCOVERY_API_KEY", "k")
+    monkeypatch.delenv("ASK_API_KEY", raising=False)
+
+    async def fake_search_manual(make, model, deadline_at=None, **kwargs):
+        received.update(kwargs, make=make, model=model)
+        return None
+
+    monkeypatch.setattr("ask_api.manual_discovery.search_manual", fake_search_manual)
+    app = FastAPI()
+    app.include_router(router)
+    return TestClient(app, headers={"X-Mira-Key": "k", "X-Mira-Tenant": "t", "X-Mira-User": "u"})
+
+
+def test_discovery_passes_the_link_with_the_flag_on(monkeypatch):
+    received = {}
+    monkeypatch.setenv("MIRA_QR_IDENTIFICATION_LINK", "1")
+    client = _discovery_client(monkeypatch, received)
+    body = {"manufacturer": "AutomationDirect", "model": "GS10", "identification_link": QR_LINK}
+    client.post("/manual-discovery/search", json=body)
+    assert received["model"] == "GS10"  # precondition: the search ran with the nameplate model
+    assert received.get("identification_link") == QR_LINK
+
+
+def test_discovery_ignores_the_link_with_the_flag_off(monkeypatch):
+    received = {}
+    monkeypatch.delenv("MIRA_QR_IDENTIFICATION_LINK", raising=False)
+    client = _discovery_client(monkeypatch, received)
+    body = {"manufacturer": "AutomationDirect", "model": "GS10", "identification_link": QR_LINK}
+    client.post("/manual-discovery/search", json=body)
+    assert received["model"] == "GS10"
+    assert "identification_link" not in received
