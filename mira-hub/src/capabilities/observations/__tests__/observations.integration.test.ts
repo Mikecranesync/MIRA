@@ -28,6 +28,7 @@ import {
   insertObservation,
   listObservationHistory,
   listProjectionRows,
+  PROJECTION_ROWS_PER_VALUE,
   type HistoryRecord,
   type InsertObservationResult,
 } from "../store";
@@ -446,6 +447,124 @@ describe("observation reads are bounded (real Postgres)", () => {
     expect(results.length).toBeGreaterThan(0);
     for (const res of results) expect(res.fields).not.toContain("raw_report");
     expect(Math.max(...results.map((r) => r.rowCount))).toBeLessThanOrEqual(5);
+  });
+
+  // #5099 (Codex #5091 r4 F1): every active opposing report in the window contributes,
+  // so the per-value bound must never drop one of them.
+  for (const [currentValue, opposingValue] of [["absent", "present"], ["present", "absent"]] as const) {
+    it(`projection_keeps_every_opposing_report_beyond_the_per_value_bound_${currentValue}`, async () => {
+      const tenant = uuid();
+      const entity = `cmms-${uuid()}`;
+      const nb = await makeNotebook(tenant, entity, true);
+      const opposing = await seed(tenant, nb, entity, Array.from({ length: PROJECTION_ROWS_PER_VALUE + 1 }, (_, i) => ({
+        factValue: opposingValue,
+        observedAt: new Date(Date.now() - (50 - i) * MIN).toISOString(),
+      })));
+      const [current] = await seed(tenant, nb, entity, [{ factValue: currentValue, observedAt: new Date(Date.now() - 2 * MIN).toISOString() }]);
+
+      const now = new Date();
+      const full = deriveObservedState(await allRows(tenant, entity), { now });
+      const bounded = deriveObservedState(await listProjectionRows(tenant, entity), { now });
+      expect(full.facts[0]!.conflicting).toHaveLength(PROJECTION_ROWS_PER_VALUE + 2);
+      expect(bounded.facts).toEqual(full.facts);
+      expect(bounded.stateVersion).toBe(full.stateVersion);
+      expect([...bounded.contributingObservationIds].sort()).toEqual([current!, ...opposing].sort());
+
+      const turn = await loadObservedStateForTurn(tenant, entity, now);
+      expect(turn.frame?.stateVersion).toBe(full.stateVersion);
+      expect(turn.frame?.observationIds).toHaveLength(PROJECTION_ROWS_PER_VALUE + 2);
+      expect(turn.section.split("\n").filter((l) => l.startsWith("  - seal_leak="))).toHaveLength(PROJECTION_ROWS_PER_VALUE + 2);
+    });
+  }
+
+  // Two technicians type the same "observed at" with opposite values. The store must pick
+  // the projector's current report (newestFirst: recorded ms, then id) or it uncaps the
+  // wrong value. Both values exceed the bound, so any wrong pick drops a contributor.
+  for (const tieCase of ["recorded_a_second_apart", "recorded_same_instant", "recorded_same_millisecond"] as const) {
+    it(`projection_picks_the_projectors_current_report_on_an_observed_time_tie_${tieCase}`, async () => {
+      const tenant = uuid();
+      const entity = `cmms-${uuid()}`;
+      const nb = await makeNotebook(tenant, entity, true);
+      for (const factValue of ["present", "absent"] as const) {
+        await seed(tenant, nb, entity, Array.from({ length: PROJECTION_ROWS_PER_VALUE + 1 }, (_, i) => ({
+          factValue,
+          observedAt: new Date(Date.now() - (45 - i) * MIN - (factValue === "absent" ? 1000 : 0)).toISOString(),
+        })));
+      }
+      const tie = new Date(Date.now() - 5 * MIN).toISOString();
+      const [presentId] = await seed(tenant, nb, entity, [{ factValue: "present", observedAt: tie }]);
+      const [absentId] = await seed(tenant, nb, entity, [{ factValue: "absent", observedAt: tie }]);
+      const [lo, hi] = [presentId!, absentId!].sort();
+      // Fixture timestamps only (the app role cannot UPDATE; this pool is the owner).
+      const setRecorded = (id: string, expr: string) =>
+        testPool.query(`UPDATE asset_observations SET recorded_at = ${expr} WHERE id = $1::uuid`, [id]);
+      const base = "date_trunc('milliseconds', now())";
+      if (tieCase === "recorded_a_second_apart") {
+        await setRecorded(presentId!, `${base} - interval '1 second'`);
+        await setRecorded(absentId!, base);
+      } else if (tieCase === "recorded_same_instant") {
+        await setRecorded(presentId!, base);
+        await setRecorded(absentId!, base);
+      } else {
+        // Same millisecond to the projector; the larger id is later in microseconds.
+        await setRecorded(lo!, `${base} + interval '100 microseconds'`);
+        await setRecorded(hi!, `${base} + interval '600 microseconds'`);
+      }
+
+      const now = new Date();
+      const full = deriveObservedState(await allRows(tenant, entity), { now });
+      const expectedCurrent = tieCase === "recorded_a_second_apart" ? absentId : lo;
+      expect(full.facts[0]!.current.observationId).toBe(expectedCurrent);
+      expect(full.facts[0]!.conflicting).toHaveLength(PROJECTION_ROWS_PER_VALUE + 3);
+      const bounded = deriveObservedState(await listProjectionRows(tenant, entity), { now });
+      expect(bounded.facts).toEqual(full.facts);
+      expect(bounded.stateVersion).toBe(full.stateVersion);
+    });
+  }
+
+  it("projection_does_not_read_opposing_reports_from_before_the_newest_repair", async () => {
+    const tenant = uuid();
+    const entity = `cmms-${uuid()}`;
+    const nb = await makeNotebook(tenant, entity, true);
+    // 30 "no leak" reports, a repair, then a new leak — all inside one hour. The old
+    // reports describe the machine before the work, so they neither contest nor get read.
+    await seed(tenant, nb, entity, Array.from({ length: 30 }, (_, i) => ({
+      factValue: "absent",
+      observedAt: new Date(Date.now() - (55 - i / 2) * MIN).toISOString(),
+    })));
+    await seed(tenant, nb, entity, [
+      { factValue: "repaired", observedAt: new Date(Date.now() - 20 * MIN).toISOString() },
+      { factValue: "present", observedAt: new Date(Date.now() - 5 * MIN).toISOString() },
+    ]);
+
+    const now = new Date();
+    const projection = await listProjectionRows(tenant, entity);
+    expect(projection.length).toBeLessThanOrEqual(PROJECTION_ROWS_PER_VALUE + 2);
+    const full = deriveObservedState(await allRows(tenant, entity), { now });
+    expect(full.facts[0]!.state).toBe("leak_reported");
+    const bounded = deriveObservedState(projection, { now });
+    expect(bounded.facts).toEqual(full.facts);
+    expect(bounded.stateVersion).toBe(full.stateVersion);
+  });
+
+  it("projection_still_bounds_reports_that_do_not_oppose_the_current_one", async () => {
+    const tenant = uuid();
+    const entity = `cmms-${uuid()}`;
+    const nb = await makeNotebook(tenant, entity, true);
+    // 30 agreeing leaks and 30 repairs before a final leak: none opposes the current report.
+    await seed(tenant, nb, entity, Array.from({ length: 60 }, (_, i) => ({
+      factValue: i % 2 === 0 ? "present" : "repaired",
+      observedAt: new Date(Date.now() - (58 - i / 2) * MIN).toISOString(),
+    })));
+    await seed(tenant, nb, entity, [{ observedAt: new Date(Date.now() - MIN / 4).toISOString() }]);
+
+    const now = new Date();
+    const projection = await listProjectionRows(tenant, entity);
+    expect(projection.length).toBeLessThanOrEqual(2 * PROJECTION_ROWS_PER_VALUE);
+    const full = deriveObservedState(await allRows(tenant, entity), { now });
+    const bounded = deriveObservedState(projection, { now });
+    expect(bounded.facts).toEqual(full.facts);
+    expect(bounded.stateVersion).toBe(full.stateVersion);
   });
 
   it("projection_matches_the_full_projection_on_random_report_sequences", async () => {
