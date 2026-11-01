@@ -367,3 +367,24 @@ describe("Codex #4867 r6", () => {
     silent("The drive is now de-energized. Replace the fuse.");
   });
 });
+
+describe("Codex #4867 r7", () => {
+  const flagged = (t: string) => expect(judge(t)).toMatchObject({ ok: false, violation: "hazard-warning:isolation-advisory" });
+  const silent = (t: string) => expect(judge(t)).toEqual({ ok: true });
+  it("F1: de-energizing or isolating the HMI is not equipment isolation", () => {
+    flagged("De-energize the HMI. Replace the fuse.");
+    flagged("With the HMI isolated, replace the fuse.");
+    silent("De-energize the drive. Replace the fuse.");
+    silent("With the drive isolated, replace the fuse.");
+  });
+  it("F7: a dash-separated settings edit does not hide the repair", () => {
+    flagged("Replace the fuse — change the settings.");
+  });
+  it("F10: negation through state adverbs", () => {
+    flagged("The drive is not currently isolated. Replace the fuse.");
+  });
+  it("F11: a conditional isolation does not leak into the alternative branch", () => {
+    flagged("If the drive is isolated, replace the fuse. Otherwise replace the fan.");
+    silent("If the drive is isolated, replace the fuse.");
+  });
+});

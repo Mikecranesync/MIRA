@@ -156,7 +156,7 @@ function liveMeasurement(window: string): boolean {
 /** Dual-use object window ends at the next coordinator or purpose "to".
  *  Codex #4867 r4 F7: "Replace the fuse after checking the parameters" — the object ends at a
  *  temporal clause, so a later software clause never becomes the repair's object. */
-const OBJECT_WINDOW_CUT = /\s+(?:then|so|and(?:\s+then)?|or|after|before|while|when|once|until|unless|because|if)\b|,|[;.]|\bto\b/i;
+const OBJECT_WINDOW_CUT = /\s+(?:then|so|and(?:\s+then)?|or|after|before|while|when|once|until|unless|because|if)\b|,|\s[-–—]\s|[;.]|\bto\b/i;
 
 function withoutProhibitions(text: string): string {
   // Em-dash / colon are the same clause cut PROHIBITION already makes at comma.
@@ -199,8 +199,10 @@ const ENERGY_OBJECT_RE = new RegExp(
 const COPULA_SUBJECT_PRE =
   /(?:^|\b)([\w-]+)\s+(?:is|are|was|were|has been|have been|remains|remain|stays|stay|gets|got)\s+(?:now\s+|fully\s+|properly\s+|already\s+|still\s+)*$/i;
 const ENERGY_SUBJECT_RE = new RegExp("^(?:" + ENERGY_NOUNS + ")$", "i");
+/** Codex #4867 r7 F1: "With the HMI isolated" — the state's subject after with/while/keeping. */
+const ABSOLUTE_SUBJECT_PRE = /\b(?:with|while|keeping|once)\s+(?:the\s+|your\s+|all\s+|this\s+|that\s+)?(?:[\w-]+\s+){0,2}?([\w-]+)\s+(?:(?:under|in)\s+(?:a\s+|the\s+)?)?$/i;
 /** Codex #4867 r6 F10: "has not been locked out", "is not yet isolated", "isn't isolated". */
-const NEGATED_STATE_PRE = /(?:\b(?:not|never)|n't)\s+(?:yet\s+|been\s+|be\s+|fully\s+|properly\s+|already\s+)*$/i;
+const NEGATED_STATE_PRE = /(?:\b(?:not|never)|n't)\s+(?:yet\s+|been\s+|be\s+|already\s+|\w+ly\s+)*$/i;
 /** The lockout noun as the act ("Perform lockout.", "Follow the lockout procedure, then …"), not a
  *  modifier of another noun ("the lockout indicator", "the lockout timer") — Codex #4867 r5 F1. */
 const LOCKOUT_NOUN_ACT_POST =
@@ -213,8 +215,9 @@ const ACCOUNT_LOCKOUT_POST = /^\s+of\s+(?:the\s+|your\s+)?(?:hmi|app|application
 function affirmativeIsolation(before: string, matched: string, after: string): boolean {
   const m = matched.toLowerCase();
   if (NEGATED_STATE_PRE.test(before)) return false;
-  const subject = COPULA_SUBJECT_PRE.exec(before);
+  const subject = COPULA_SUBJECT_PRE.exec(before) ?? ABSOLUTE_SUBJECT_PRE.exec(before);
   if (subject && !ENERGY_SUBJECT_RE.test(subject[1])) return false;
+  if (/^de[\s-]?energi[sz]e$/.test(m)) return ENERGY_OBJECT_RE.test(after);
   if (/^(?:lockout|loto)(?:\/tagout)?$/.test(m)) {
     if (DETERMINER_POST.test(after)) return true;
     return (LOCKOUT_DOC_ACT_PRE.test(before) || LOCKOUT_NOUN_STATE_PRE.test(before)) && LOCKOUT_NOUN_ACT_POST.test(after);
@@ -319,7 +322,10 @@ function allHandsOnIndices(step: string): number[] {
   }
 }
 
-type EnergyEvent = { at: number; kind: "isolate" | "restore" | "work" };
+type EnergyEvent = { at: number; kind: "isolate" | "isolate_if" | "restore" | "work" };
+/** Codex #4867 r7 F11: "If the drive is isolated, replace the fuse. Otherwise replace the fan." —
+ *  an isolation stated as a CONDITION holds for its own step only, never for a later branch. */
+const CONDITIONAL_PRE = /\b(?:if|when|whether|unless|assuming|provided(?: that)?|in case)\b[^,.;:]*$/i;
 
 /** Every isolation, restoration and hands-on instruction in one step, in textual order. */
 function stepEvents(step: string): EnergyEvent[] {
@@ -344,17 +350,20 @@ function stepEvents(step: string): EnergyEvent[] {
     if (isolationIsVoid(blanked, idx, m[0])) continue;
     const isoWord = /isolated/i.exec(m[0]);
     if (isoWord && isolatedIsAdjective(blanked, idx + (isoWord.index ?? 0), isoWord[0])) continue;
+    // Codex #4867 r7 F1: "With the HMI isolated" — the state needs an equipment / energy subject.
+    const subjectWords = m[0].replace(/^\S+\s+(?:the\s+)?/i, "").split(/\s+/).slice(0, -1);
+    if (!subjectWords.some((w) => ENERGY_SUBJECT_RE.test(w))) continue;
     const start = clauseStartBefore(step, idx);
     const priorRestore = Math.max(-1, ...restores.filter((r) => r >= start && r < idx));
     conditioned.push(priorRestore >= 0 ? priorRestore + 0.5 : start - 0.5);
   }
   const events: EnergyEvent[] = [
-    ...isolations.map((at) => ({ at, kind: "isolate" as const })),
+    ...isolations.map((at) => ({ at, kind: CONDITIONAL_PRE.test(blanked.slice(0, at)) ? ("isolate_if" as const) : ("isolate" as const) })),
     ...conditioned.map((at) => ({ at, kind: "isolate" as const })),
     ...restores.map((at) => ({ at, kind: "restore" as const })),
     ...allHandsOnIndices(step).map((at) => ({ at, kind: "work" as const })),
   ];
-  const rank = { isolate: 0, restore: 1, work: 2 } as const;
+  const rank = { isolate: 0, isolate_if: 0, restore: 1, work: 2 } as const;
   return events.sort((a, b) => a.at - b.at || rank[a.kind] - rank[b.kind]);
 }
 
@@ -366,10 +375,12 @@ function firstHandsOnAlreadyIsolated(text: string): boolean {
   let isolated = false;
   let sawWork = false;
   for (const raw of stepTexts(text)) {
+    let conditional = false;
     for (const e of stepEvents(withoutProhibitions(raw))) {
       if (e.kind === "isolate") isolated = true;
-      else if (e.kind === "restore") isolated = false;
-      else if (!isolated) return false;
+      else if (e.kind === "isolate_if") conditional = true;
+      else if (e.kind === "restore") isolated = conditional = false;
+      else if (!isolated && !conditional) return false;
       else sawWork = true;
     }
   }
