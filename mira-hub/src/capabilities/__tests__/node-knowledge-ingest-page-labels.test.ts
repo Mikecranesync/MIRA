@@ -19,13 +19,17 @@ const pdf = vi.hoisted(() => ({
 }));
 
 vi.mock("unpdf", () => ({
-  getDocumentProxy: vi.fn(async () => ({
-    getPageLabels: async () => {
-      if (pdf.labelsThrow) throw new Error("bad /PageLabels tree");
-      return pdf.labels;
-    },
-  })),
+  getDocumentProxy: vi.fn(async () => ({})),
   extractText: vi.fn(async () => ({ text: pdf.pages })),
+}));
+
+// The real reader runs pdfjs in a bounded worker (pdf-page-label-reader.test.ts); here it hands back
+// a ready array so these tests pin what ingest does with labels.
+vi.mock("@/capabilities/pdf-page-label-reader", () => ({
+  readPageLabelsBounded: vi.fn(async () => {
+    if (pdf.labelsThrow) throw new Error("bad /PageLabels tree");
+    return pdf.labels;
+  }),
 }));
 
 vi.mock("@/lib/tenant-context", () => ({

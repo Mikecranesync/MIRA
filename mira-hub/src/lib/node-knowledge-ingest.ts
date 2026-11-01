@@ -25,6 +25,7 @@ import { proposeDocumentEdgesForNode } from "@/lib/node-document-proposals";
 import { extractText, getDocumentProxy } from "unpdf";
 import { repairExtractedPage, type PageRepair } from "@/capabilities/garbled-text";
 import { ocrExtractPage } from "@/capabilities/garbled-text-ocr";
+import { readPageLabelsBounded } from "@/capabilities/pdf-page-label-reader";
 
 const CHUNK_CHARS = 1000;
 const CHUNK_OVERLAP = 120;
@@ -626,7 +627,11 @@ export async function writePdfChunksForNode(opts: {
     const { text } = await extractText(pdf, { mergePages: false });
     const pages: string[] = Array.isArray(text) ? text : [text];
     const repairs = await repairGarbledPages(pages, rest);
-    const labels = await printedPageLabels(pdf, pages.length, rest.filename);
+    const labels = await printedPageLabels(
+      { getPageLabels: () => readPageLabelsBounded(buffer, rest.filename) },
+      pages.length,
+      rest.filename,
+    );
     return await writeChunkRowsForNode(pages, rest, repairs, labels);
   } finally {
     release();
