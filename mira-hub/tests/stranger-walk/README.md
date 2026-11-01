@@ -37,7 +37,8 @@ checks that line against the sha-pinned PDF when the frozen cache is present. An
 exactly (no ±1), and the scorecard reason says "an accepted page". A page that is only on topic, without the
 asked fact, is never added. Safety-relevant questions may list accepted pages (owner decision 2026-11-01).
 Their notice is still graded separately as a red line. Re-scoring an old run under v2 can raise its number:
-that is the key changing, not the product.
+that is the key changing, not the product. Evidence for every v2 page, and the split of past WRONG_PAGE rows into valid / partial / real misses:
+`diagnoses/2026-11-01-wrong-page.md`.
 
 Precedence **NOT_ASSESSED > BROKEN > SAFETY_STOP > ABSTAINED > UNCITED > WRONG_PAGE > CORRECT**, on the **first** citation
 (the one a technician opens): the first inline `[n]` chip, else the first source card.
