@@ -276,7 +276,9 @@ export function WorkPacketPanel({
   // The notebook this panel is showing right now. A response that arrives after the technician
   // moved to another notebook is dropped, never shown under the new machine (Codex #5062 F4).
   const liveNotebook = useRef(notebookId);
-  liveNotebook.current = notebookId;
+  useEffect(() => {
+    liveNotebook.current = notebookId;
+  }, [notebookId]);
 
   const refreshAvailability = useCallback(async () => {
     try {
