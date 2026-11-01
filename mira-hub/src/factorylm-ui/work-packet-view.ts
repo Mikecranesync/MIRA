@@ -143,6 +143,12 @@ export function documentsSignature(docs: Pick<PacketDocument, "docId" | "revisio
   return docs.map((d) => `${d.docId}@${d.revision?.value ?? ""}`).join("|");
 }
 
+/** The "matches my paper copy" tick holds only for the exact document list it was given for — a
+ *  newly attached manual or a changed revision voids it (Codex #5062 F5). */
+export function revisionTickHolds(tickedFor: string | null, currentSignature: string): boolean {
+  return tickedFor !== null && tickedFor === currentSignature;
+}
+
 /** Why a saved packet no longer matches the notebook it is shown under, or null when it still does
  *  (Codex #5062 F13). A packet restored from this device was built from the documents and identity
  *  of that moment; if a manual was replaced, removed or re-revised since, or the machine was

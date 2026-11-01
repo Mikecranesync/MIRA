@@ -20,6 +20,7 @@ const { unpdfExtract, getDocumentProxyMock, poolQuery, tenantQuery, listSourcesM
 vi.mock("unpdf", () => ({
   getDocumentProxy: getDocumentProxyMock,
   extractText: unpdfExtract,
+  getResolvedPDFJS: async () => ({ OPS: { save: 10, restore: 11, transform: 12, paintFormXObjectBegin: 74, paintFormXObjectEnd: 75, paintImageXObject: 85, paintInlineImageXObject: 86, paintImageXObjectRepeat: 88 } }),
 }));
 
 vi.mock("@/lib/db", () => ({ default: { query: (...args: unknown[]) => poolQuery(...args) } }));
@@ -35,6 +36,7 @@ vi.mock("@/lib/equipment-notebooks", () => ({
 }));
 
 import { stitchChunks, loadNotebookDocTexts } from "../document-text";
+import { acquireIngestSlot } from "@/lib/node-knowledge-ingest";
 
 const TENANT_ID = "tenant-aaaa";
 const NOTEBOOK_ID = "11111111-2222-3333-4444-555555555555";
@@ -235,5 +237,64 @@ describe("loadNotebookDocTexts", () => {
 
     const docs = await loadNotebookDocTexts(TENANT_ID, NOTEBOOK_ID);
     expect(docs[0].pages).toEqual([{ page: 0, text: "unanchored text" }]);
+  });
+});
+
+// Codex #5062 F17: a kept PDF is parsed whole, in memory — the same peak ingest serialises. The
+// work-packet read must wait for the shared parse slot and give it back on success and on failure.
+describe("loadNotebookDocTexts — shared PDF-parse slot", () => {
+  beforeEach(() => {
+    unpdfExtract.mockReset();
+    getDocumentProxyMock.mockReset().mockImplementation(async () => ({}));
+    poolQuery.mockReset();
+    tenantQuery.mockReset();
+    listSourcesMock.mockReset();
+  });
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  it("does not start parsing a kept PDF while ingest holds the slot", async () => {
+    listSourcesMock.mockResolvedValue([source()]);
+    tenantQuery.mockResolvedValue({ rows: [{ content: Buffer.from("pdf-bytes") }] });
+    unpdfExtract.mockResolvedValue({ text: ["PAGE ONE TEXT"] });
+    const releaseIngest = await acquireIngestSlot();
+    const pending = loadNotebookDocTexts(TENANT_ID, NOTEBOOK_ID);
+    await flush();
+    await flush();
+    expect(tenantQuery).toHaveBeenCalled(); // reached the file read …
+    expect(getDocumentProxyMock).not.toHaveBeenCalled(); // … but is waiting for the slot
+    releaseIngest();
+    const docs = await pending;
+    expect(getDocumentProxyMock).toHaveBeenCalledTimes(1);
+    expect(docs[0].via).toBe("file");
+  });
+
+  it("two concurrent kept-PDF reads never parse at the same time", async () => {
+    listSourcesMock.mockResolvedValue([source()]);
+    tenantQuery.mockResolvedValue({ rows: [{ content: Buffer.from("pdf-bytes") }] });
+    let active = 0;
+    let peak = 0;
+    unpdfExtract.mockImplementation(async () => {
+      active++;
+      peak = Math.max(peak, active);
+      await new Promise((r) => setTimeout(r, 5));
+      active--;
+      return { text: ["PAGE ONE TEXT"] };
+    });
+    await Promise.all([loadNotebookDocTexts(TENANT_ID, NOTEBOOK_ID), loadNotebookDocTexts(TENANT_ID, NOTEBOOK_ID)]);
+    expect(unpdfExtract).toHaveBeenCalledTimes(2);
+    expect(peak).toBe(1);
+  });
+
+  it("a failed parse gives the slot back", async () => {
+    listSourcesMock.mockResolvedValue([source()]);
+    tenantQuery.mockResolvedValue({ rows: [{ content: Buffer.from("pdf-bytes") }] });
+    getDocumentProxyMock.mockImplementation(async () => {
+      throw new Error("bad PDF structure");
+    });
+    poolQuery.mockImplementation(async (sql: string) => (sql.includes("equipment_notebook_sources") ? { rows: [{ "1": 1 }] } : { rows: [] }));
+    await loadNotebookDocTexts(TENANT_ID, NOTEBOOK_ID);
+    const next = await Promise.race([acquireIngestSlot(), new Promise<null>((r) => setTimeout(() => r(null), 50))]);
+    expect(next).not.toBeNull();
+    next?.();
   });
 });

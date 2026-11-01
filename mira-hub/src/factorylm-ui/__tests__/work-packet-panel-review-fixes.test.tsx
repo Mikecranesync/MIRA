@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Field, WorkPacket } from "@/capabilities/work-packet/types";
 import { FieldRow, PacketHeader } from "../WorkPacketPanel";
-import { documentsSignature, packetForNotebook, packetHeaderRows, packetStaleReason } from "../work-packet-view";
+import { documentsSignature, packetForNotebook, packetHeaderRows, packetStaleReason, revisionTickHolds } from "../work-packet-view";
 
 const NB_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const NB_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -44,6 +44,16 @@ describe("F5 — the revision tick is tied to the exact documents shown", () => 
   });
   it("control: same documents, same signature", () => {
     expect(documentsSignature([{ docId: "d1", revision: rev("J") }])).toBe(documentsSignature([{ docId: "d1", revision: rev("J") }]));
+  });
+  it("a tick given for one document list does not hold for another", () => {
+    const shown = documentsSignature([{ docId: "d1", revision: rev("J") }]);
+    const changed = documentsSignature([{ docId: "d1", revision: rev("K") }]);
+    expect(revisionTickHolds(shown, changed)).toBe(false);
+    expect(revisionTickHolds(null, shown)).toBe(false);
+  });
+  it("control: the tick holds for the list it was given for", () => {
+    const shown = documentsSignature([{ docId: "d1", revision: rev("J") }]);
+    expect(revisionTickHolds(shown, shown)).toBe(true);
   });
 });
 
