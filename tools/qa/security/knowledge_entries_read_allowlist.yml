@@ -513,6 +513,10 @@ approved:
     approved_classification: TENANT-ONLY
     query_sha256: "4cb5f8037e50c0d741cae67cd0c990e6867907e18d47e56e5f95205e45f7fa41"
     reason: "Integration test fixture cleanup (disposable Postgres only): deletes the test tenant's own seeded rows after the suite. Not a product read path."
+  "mira-hub/scripts/backfill-page-labels.ts:107":
+    approved_classification: TENANT-ONLY
+    query_sha256: "9d7a8532bedf59899c0310b5e824d44e96e439f39175f5f0158b13edba54f076"
+    reason: "NEW (#4508, PDF printed page labels): an operator-run CLI that reads ONE document's own node-attachment chunks (tenant_id = $1 AND doc_id = $2 AND ingest_route = 'v2' AND source_type = 'node_attachment') to plan a metadata.page_label backfill from a local copy of that PDF. Pure-tenant surface by the same rule as repair-garbled-chunks.ts: node attachments are per-tenant uploads (is_private = true at write, #1903), so the is_private hybrid filter does NOT apply; adding is_private = false would select the shared OEM corpus, which this script must never touch. DRY-RUN unless BOTH PAGE_LABEL_BACKFILL=1 and --apply are given; it refuses the document unless its sha256 equals hub_uploads.content_sha256 (no recorded hash = refused) and every stored row's text is on its recorded page of the local PDF; its UPDATE re-asserts tenant_id and only adds page_label where none exists, in one transaction. Not a retrieval/citation path."
   "mira-hub/scripts/repair-garbled-chunks.ts:67":
     approved_classification: TENANT-ONLY
     query_sha256: "e9cbc91a77a576d679e2961c08089c817bf2347efc4234c5a1c8ea6e6b7b44b3"

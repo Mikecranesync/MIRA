@@ -1164,6 +1164,10 @@ _KE_INSERT_ALLOWLIST: dict[str, str] = {
     "(#4486, garbled-extraction repair at ingest); the real writer (node-knowledge-ingest.ts) pins true.",
     "mira-hub/src/capabilities/__tests__/garble-repair-ingest-contracts.test.ts": "not a writer — same mock-capture assertion string "
     "(#4486 round 4, partial-marker / embed-fence contracts); the real writer (node-knowledge-ingest.ts) pins true.",
+    "mira-hub/src/capabilities/__tests__/node-knowledge-ingest-page-labels.test.ts": "not a writer — same mock-capture "
+    "assertion string (#5065, PDF page labels at ingest); the real writer (node-knowledge-ingest.ts) pins true.",
+    "mira-hub/src/capabilities/__tests__/node-knowledge-ingest-page-labels-real.test.ts": "not a writer — same mock-capture "
+    "assertion string (#5065, a real PDF's /PageLabels through ingest); the real writer (node-knowledge-ingest.ts) pins true.",
 }
 
 
