@@ -20,7 +20,7 @@
  *    [25324]" is one row, one item name, one part number).
  */
 
-import type { DocText, ModelScope, PageText, ServiceManual, SmCaution, SmSection, SmStep, SmTorque, SourceRef, Topic } from "./types";
+import type { DocText, ModelScope, PageText, ServiceManual, SmCaution, SmOmittedSection, SmSection, SmStep, SmTorque, SourceRef, Topic } from "./types";
 
 // ─────────────────────────────────────────────── recognition + model-list helpers
 
@@ -342,7 +342,7 @@ interface OpenSection {
   firstLines: string[]; // first line of each step, parallel to steps, for order-jump detection
 }
 
-function flushSection(open: OpenSection | null, sections: SmSection[], problems: string[]): void {
+function flushSection(open: OpenSection | null, sections: SmSection[], problems: string[], omitted: SmOmittedSection[]): void {
   if (!open || open.steps.length === 0) return;
   const nums = open.steps.map((s) => s.n).filter((n): n is number => n !== null);
   let outOfOrder = false;
@@ -353,11 +353,18 @@ function flushSection(open: OpenSection | null, sections: SmSection[], problems:
     }
   }
   if (outOfOrder) {
-    problems.push(
-      `page ${open.page}: step numbers out of order in "${open.heading}${open.subheading ? " — " + open.subheading : ""}" (saw ${nums.join(
-        ",",
-      )}) — likely a two-column extraction garble; steps omitted rather than mixed`,
-    );
+    const reason = `step numbers out of order (saw ${nums.join(",")}) — likely a two-column extraction garble; steps omitted rather than mixed`;
+    const where = `${open.heading}${open.subheading ? " — " + open.subheading : ""}`;
+    problems.push(`page ${open.page}: step numbers out of order in "${where}" (saw ${nums.join(",")}) — likely a two-column extraction garble; steps omitted rather than mixed`);
+    omitted.push({
+      heading: open.heading,
+      subheading: open.subheading,
+      topic: open.topic,
+      models: open.models,
+      page: open.page,
+      source: open.steps[0].source,
+      reason,
+    });
     return;
   }
   sections.push({
@@ -382,6 +389,7 @@ export function parseCatPumpsServiceManual(doc: DocText): ServiceManual | null {
   const torque: SmTorque[] = [];
   const cautions: SmCaution[] = [];
   const problems: string[] = [];
+  const omitted: SmOmittedSection[] = [];
 
   let open: OpenSection | null = null;
   // Scope of the last Disassembly/Reassembly subheading in the open section; a nested model-list
@@ -402,7 +410,7 @@ export function parseCatPumpsServiceManual(doc: DocText): ServiceManual | null {
       const line = lines[i];
 
       if (TORQUE_HEADING_RE.test(line)) {
-        flushSection(open, sections, problems);
+        flushSection(open, sections, problems, omitted);
         open = null;
         const { rows, nextIdx } = parseTorqueChart(lines, i + 1, pg.page, src);
         torque.push(...rows);
@@ -411,7 +419,7 @@ export function parseCatPumpsServiceManual(doc: DocText): ServiceManual | null {
       }
 
       if (BODY_END_HEADING_RE.test(line)) {
-        flushSection(open, sections, problems);
+        flushSection(open, sections, problems, omitted);
         open = null;
         break; // rest of this page is reference material (checklists, PM schedule, bulletin index)
       }
@@ -444,7 +452,7 @@ export function parseCatPumpsServiceManual(doc: DocText): ServiceManual | null {
       }
 
       if (SECTION_HEADING_RE.test(line) && isAllCapsHeading(line)) {
-        flushSection(open, sections, problems);
+        flushSection(open, sections, problems, omitted);
         open = { heading: line, subheading: null, topic: topicFor(line), models: scopeAll(), page: pg.page, steps: [], firstLines: [] };
         phaseScope = scopeAll();
         skippingCaption = false;
@@ -453,7 +461,7 @@ export function parseCatPumpsServiceManual(doc: DocText): ServiceManual | null {
 
       const sub: SubheadingMatch | null = open ? matchSubheading(line) : null;
       if (sub) {
-        flushSection(open, sections, problems);
+        flushSection(open, sections, problems, omitted);
         if (!sub.scopeKnown) {
           problems.push(
             `page ${pg.page}: subheading "${sub.text}" has a model or hardware-variant restriction that could not be resolved — its steps are left out of packets rather than guessed`,
@@ -509,7 +517,7 @@ export function parseCatPumpsServiceManual(doc: DocText): ServiceManual | null {
       // Free text with no open step (section intro prose, a note's lead-in) — not modeled; dropped.
     }
   }
-  flushSection(open, sections, problems);
+  flushSection(open, sections, problems, omitted);
 
-  return { kind: "catpumps_service_manual", modelsCovered, sections, torque, cautions, problems };
+  return { kind: "catpumps_service_manual", modelsCovered, sections, torque, cautions, problems, omitted };
 }

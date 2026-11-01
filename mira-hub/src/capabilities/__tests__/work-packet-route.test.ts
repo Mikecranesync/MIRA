@@ -173,6 +173,17 @@ describe("GET /work-packet", () => {
     expect(body.documents[0].role).toBe("datasheet");
   });
 
+  it("blocks manufacturer_not_supported for another maker's pump, even when a CAT document names its model (Codex #5062 F14)", async () => {
+    process.env.NOTEBOOK_WORK_PACKET = "1";
+    (getNotebook as ReturnType<typeof vi.fn>).mockResolvedValue(notebook({ manufacturer: "Other Pump Manufacturer", model: "9XP1000" }));
+    (loadNotebookDocTexts as ReturnType<typeof vi.fn>).mockResolvedValue([doc()]);
+    (parseCatPumpsDataSheet as ReturnType<typeof vi.fn>).mockReturnValue({ kind: "catpumps_datasheet", models: ["9XP1000"], parts: [], kits: [], specs: [], problems: [] });
+    (sheetModelFor as ReturnType<typeof vi.fn>).mockReturnValue("9XP1000");
+    const body = await (await GET(makeGet(), makeParams(NOTEBOOK_ID))).json();
+    expect(body.blocking?.reason).toBe("manufacturer_not_supported");
+    expect(body.blocking?.message).toContain("Other Pump Manufacturer");
+  });
+
   it("is not blocked (null) and reports the model's pages when everything lines up", async () => {
     process.env.NOTEBOOK_WORK_PACKET = "1";
     (getNotebook as ReturnType<typeof vi.fn>).mockResolvedValue(notebook({ model: "9XP1000" }));

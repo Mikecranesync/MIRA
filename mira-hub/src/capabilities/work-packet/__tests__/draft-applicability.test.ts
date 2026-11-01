@@ -19,8 +19,8 @@ function docFromText(raw: string, name: string, docId: string): DocText {
 
 const docFromFixture = (name: string, docId: string) => docFromText(FIXTURES[name], name, docId);
 
-function attempt(model: string, docs: DocText[], description: string, catalogNumber: string | null = null) {
-  const identity: Identity = { manufacturer: "CAT Pumps", model, catalogNumber, serialNumber: null, status: "user_confirmed", confidence: 0.9 };
+function attempt(model: string, docs: DocText[], description: string, catalogNumber: string | null = null, manufacturer: string | null = "CAT Pumps") {
+  const identity: Identity = { manufacturer, model, catalogNumber, serialNumber: null, status: "user_confirmed", confidence: 0.9 };
   const input: DraftInput = {
     notebookId: "11111111-1111-4111-8111-111111111111",
     packetId: "pk-1",
@@ -166,5 +166,86 @@ describe("F10 — restrictions are judged against the identifier the documents n
     const r = attempt("8520", [docFromFixture("manual-35style.txt", "sm")], "replace plungers", "8560");
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toBe("identity_not_confirmed");
+  });
+});
+
+describe("F11 — each kit-number row keeps its own models", () => {
+  const SHEET = FIXTURES["datasheet-9xp1000.txt"];
+  const WRAPPED = "9XP1000,\n9XP1000CS 300001 300011 * 300021";
+  // The kit number itself (not a kit component): its part-number row cites the kit-number line.
+  const sealKits = (p: DraftPacket) =>
+    p.parts.filter((x) => x.kit === "seal" && x.item === null && /^Standard material/.test(x.partNumber.basis)).map((x) => x.partNumber.value);
+
+  it("separate rows for 9XP1000 and 9XP1000CS: each model gets only its own seal kit", () => {
+    expect(SHEET).toContain(WRAPPED);
+    const doc = docFromText(SHEET.replace(WRAPPED, "9XP1000 300001 300011 300021\n9XP1000CS 310001 310011 310021"), "ds.txt", "ds");
+    expect(sealKits(build("9XP1000", [doc], "reseal"))).toEqual(["300001"]);
+    expect(sealKits(build("9XP1000CS", [doc], "reseal"))).toEqual(["310001"]);
+  });
+
+  it("a second row that names no model is refused as ambiguous, never applied to every model", () => {
+    const doc = docFromText(SHEET.replace(WRAPPED, "9XP1000 300001 300011 300021\n310001 310011 310021"), "ds.txt", "ds");
+    const packet = build("9XP1000", [doc], "reseal");
+    expect(sealKits(packet)).toEqual([]);
+    expect(packet.unknowns.some((u) => /No seal kit for model 9XP1000/.test(u.basis))).toBe(true);
+  });
+
+  it("control: a wrapped model list sharing one row still gives both models that kit", () => {
+    const doc = docFromFixture("datasheet-9xp1000.txt", "ds");
+    expect(sealKits(build("9XP1000", [doc], "reseal"))).toEqual(["300001"]);
+    expect(sealKits(build("9XP1000CS", [doc], "reseal"))).toEqual(["300001"]);
+  });
+});
+
+describe("F12 — a procedure the parser had to leave out is listed as a gap", () => {
+  const GOOD = "1. Remove the six (6) M41 Hex Valve Plugs.\n2. Remove the exposed Coil Spring";
+  const garbled = () => {
+    expect(M35).toContain(GOOD);
+    return docFromText(M35.replace(GOOD, "1. Remove the six (6) M41 Hex Valve Plugs.\n3. Remove the exposed Coil Spring"), "manual-35style.txt", "sm");
+  };
+
+  it("scrambled disassembly steps: left out, and the packet names the missing disassembly", () => {
+    const packet = build("8520", [garbled()], "valve service");
+    expect(stepTexts(packet)).not.toContain("Remove the six (6) M41 Hex Valve Plugs.");
+    expect(stepTexts(packet).some((t) => (t ?? "").startsWith("Examine the O-Rings"))).toBe(true); // reassembly survives
+    const gap = packet.unknowns.filter((u) => /SERVICING THE VALVES — Disassembly \(All models except 8560\).*could not be read reliably/.test(u.basis));
+    expect(gap).toHaveLength(1);
+    expect(gap[0].label).toBe("unknown");
+    expect(gap[0].source?.page).toBe(2);
+  });
+
+  it("control: the gap is not listed for 8560, which that section excludes", () => {
+    const packet = build("8560", [garbled()], "valve service");
+    expect(packet.unknowns.some((u) => /could not be read reliably/.test(u.basis))).toBe(false);
+  });
+
+  it("control: the intact manual lists no such gap", () => {
+    const packet = build("8520", [docFromFixture("manual-35style.txt", "sm")], "valve service");
+    expect(packet.unknowns.some((u) => /could not be read reliably/.test(u.basis))).toBe(false);
+  });
+});
+
+describe("F14 — only a CAT Pumps machine gets a packet from CAT Pumps documents", () => {
+  const manual = () => [docFromFixture("manual-35style.txt", "sm")];
+
+  it("another manufacturer with a model number the CAT manual names is refused by name", () => {
+    const result = attempt("8560", manual(), "replace plungers", null, "Other Pump Manufacturer");
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe("manufacturer_not_supported");
+    expect(result.message).toContain("Other Pump Manufacturer");
+  });
+
+  it("a blank manufacturer is refused, and 'Caterpillar' or a bare 'Cat' is not taken for CAT Pumps", () => {
+    for (const m of [null, "", "Caterpillar", "Cat"]) {
+      const result = attempt("8560", manual(), "replace plungers", null, m);
+      expect(result.ok ? "ok" : result.reason).toBe("manufacturer_not_supported");
+    }
+  });
+
+  it("control: CAT Pumps spelled as on a nameplate or invoice is accepted", () => {
+    for (const m of ["CAT Pumps", "Cat Pumps", "CAT PUMPS", "Cat Pumps Inc."]) {
+      expect(attempt("8560", manual(), "replace plungers", null, m).ok).toBe(true);
+    }
   });
 });

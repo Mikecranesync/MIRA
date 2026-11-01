@@ -328,7 +328,7 @@ function parseKitItemRow(toks: string[], materials: string[]): Omit<DsKitItem, "
   return { item, description: desc, qtyRaw: last, partsByMaterial };
 }
 
-function parseKits(lines: Line[], models: string[], mkSource: MkSource): DsKit[] {
+function parseKits(lines: Line[], models: string[], mkSource: MkSource, problems: string[]): DsKit[] {
   const kits: DsKit[] = [];
   for (let idx = 0; idx < lines.length; idx++) {
     const headLine = lines[idx];
@@ -340,8 +340,11 @@ function parseKits(lines: Line[], models: string[], mkSource: MkSource): DsKit[]
     const perPumpSource = mkSource(headLine.page, headLine.text);
 
     let materials: string[] = [];
-    const modelsAcc: string[] = [];
-    let kitNumbersEntry: DsKitNumbers | null = null;
+    // Models named since the last value row; a value row closes them into one entry (Codex #5062
+    // F11) so each model keeps its own kit number when the sheet lists one row per model.
+    let modelsAcc: string[] = [];
+    const kitNumbers: DsKitNumbers[] = [];
+    let ambiguous = false;
     const items: DsKitItem[] = [];
 
     for (let j = idx + 1; j < lines.length; j++) {
@@ -367,14 +370,23 @@ function parseKits(lines: Line[], models: string[], mkSource: MkSource): DsKit[]
         if (parsed) {
           for (const m of parsed.models) if (!modelsAcc.includes(m)) modelsAcc.push(m);
           if (parsed.values) {
-            kitNumbersEntry = {
-              models: [...modelsAcc],
+            // A value row with no model of its own reads as "fits every model" downstream — only
+            // safe when it is the table's one row.
+            if (modelsAcc.length === 0 && kitNumbers.length > 0) ambiguous = true;
+            kitNumbers.push({
+              models: modelsAcc,
               byMaterial: Object.fromEntries(materials.map((m, i) => [m, parsed.values![i]])),
               source: mkSource(page, text),
-            };
+            });
+            modelsAcc = [];
           }
         }
       }
+    }
+
+    if (!ambiguous && kitNumbers.length > 1 && kitNumbers.some((kn) => kn.models.length === 0)) ambiguous = true;
+    if (ambiguous) {
+      problems.push(`${kind} kit table (page ${headLine.page}): a kit-number row names no pump model while other rows do — kit numbers left out rather than guessed`);
     }
 
     kits.push({
@@ -382,7 +394,7 @@ function parseKits(lines: Line[], models: string[], mkSource: MkSource): DsKit[]
       perPump: Number.isNaN(perPumpNum) ? null : perPumpNum,
       perPumpSource,
       materials,
-      kitNumbers: kitNumbersEntry ? [kitNumbersEntry] : [],
+      kitNumbers: ambiguous ? [] : kitNumbers,
       items,
     });
   }
@@ -427,10 +439,10 @@ export function parseCatPumpsDataSheet(doc: DocText): DataSheet | null {
   const { models, parts: mainParts } = parsePartsList(lines, mkSource);
   const optional = parseSimpleSection(lines, "OPTIONAL PARTS AND ACCESSORIES", "optional", models, mkSource);
   const service = parseSimpleSection(lines, "SERVICE PARTS", "service", models, mkSource);
-  const kits = parseKits(lines, models, mkSource);
+  const problems: string[] = [];
+  const kits = parseKits(lines, models, mkSource, problems);
   const specs = parseSpecs(lines, mkSource);
 
-  const problems: string[] = [];
   if (models.length === 0) problems.push("no parts-list header found (ITEM PART NUMBERS / ITEM P/N) — models unknown");
   if (kits.length === 0) problems.push("no seal/valve kit tables found");
   for (const p of mainParts) {

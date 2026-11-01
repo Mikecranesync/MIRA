@@ -179,6 +179,18 @@ export interface SmCaution {
   source: SourceRef;
 }
 
+/** A procedure section the parser detected but left out (steps garbled in extraction). */
+export interface SmOmittedSection {
+  heading: string;
+  subheading: string | null;
+  topic: Topic | "other";
+  models: ModelScope;
+  page: number;
+  /** First line the parser saw in the section, so the gap cites where to look. */
+  source: SourceRef;
+  reason: string;
+}
+
 export interface ServiceManual {
   kind: "catpumps_service_manual";
   /** Every model the manual's cover/title names (e.g. "3520", "3521", "3527", …). */
@@ -187,6 +199,8 @@ export interface ServiceManual {
   torque: SmTorque[];
   cautions: SmCaution[];
   problems: string[];
+  /** Sections left out of `sections` (Codex #5062 F12) — a packet must show these as gaps. */
+  omitted?: SmOmittedSection[];
 }
 
 // ─────────────────────────────────────────────── work order, identity, packet
@@ -279,6 +293,8 @@ export type DraftRefusal =
    *  existing stop text bare (no hazard banner over a stop — owner decision D5, #4372). */
   | "safety_stop"
   | "identity_not_confirmed"
+  /** The confirmed manufacturer is not CAT Pumps (or is blank) — these parsers only read CAT Pumps documents. */
+  | "manufacturer_not_supported"
   | "no_documents"
   | "unsupported_documents"
   | "model_not_in_documents"

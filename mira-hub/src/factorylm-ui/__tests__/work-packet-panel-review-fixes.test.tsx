@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Field, WorkPacket } from "@/capabilities/work-packet/types";
 import { FieldRow, PacketHeader } from "../WorkPacketPanel";
-import { documentsSignature, packetForNotebook, packetHeaderRows } from "../work-packet-view";
+import { documentsSignature, packetForNotebook, packetHeaderRows, packetStaleReason } from "../work-packet-view";
 
 const NB_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const NB_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -80,5 +80,39 @@ describe("F6 — the PDF says which job, which pump, and where each line came fr
   it("print CSS reveals .wp-print-only on paper", () => {
     const src = readFileSync(join(__dirname, "..", "WorkPacketPanel.tsx"), "utf8");
     expect(src).toMatch(/@media print[\s\S]*\.wp-print-root \.wp-print-only \{ display: block !important; \}/);
+  });
+});
+
+describe("F13 — a saved packet built from documents that have since changed is not exported as current", () => {
+  const rev = (v: string | null) => ({ value: v, label: (v ? "verified" : "unknown") as Field["label"], source: null, basis: "t" });
+  const identity = { manufacturer: "CAT Pumps", model: "3520", catalogNumber: null, serialNumber: null, status: "user_confirmed", confidence: 0.9 };
+  const saved = {
+    documents: [{ docId: "d1", revision: rev("J") }, { docId: "d2", revision: rev("A") }],
+    equipment: HEAD.equipment,
+  } as unknown as WorkPacket;
+  const availWith = (docs: { docId: string; revision: Field }[], over: Partial<typeof identity> = {}) =>
+    ({ identity: { ...identity, ...over }, documents: docs }) as unknown as Parameters<typeof packetStaleReason>[1];
+
+  it("manual re-revised (J → K): stale", () => {
+    expect(packetStaleReason(saved, availWith([{ docId: "d1", revision: rev("K") }, { docId: "d2", revision: rev("A") }]))).toMatch(/documents or their revisions have changed/);
+  });
+  it("manual removed: stale", () => expect(packetStaleReason(saved, availWith([{ docId: "d1", revision: rev("J") }]))).not.toBeNull());
+  it("manual replaced by another document: stale", () => {
+    expect(packetStaleReason(saved, availWith([{ docId: "d3", revision: rev("J") }, { docId: "d2", revision: rev("A") }]))).not.toBeNull();
+  });
+  it("machine re-identified as another model: stale", () => {
+    const docs = [{ docId: "d1", revision: rev("J") }, { docId: "d2", revision: rev("A") }];
+    expect(packetStaleReason(saved, availWith(docs, { model: "3521" }))).toMatch(/model has changed/);
+  });
+  it("control: same documents in another order, same identity: current", () => {
+    expect(packetStaleReason(saved, availWith([{ docId: "d2", revision: rev("A") }, { docId: "d1", revision: rev("J") }]))).toBeNull();
+  });
+  it("the panel disables Export and prints the warning when stale", () => {
+    const src = readFileSync(join(__dirname, "..", "WorkPacketPanel.tsx"), "utf8");
+    expect(src).toContain("packetStaleReason(packet, avail)");
+    expect(src).toMatch(/if \(!packet \|\| stale\) return;/);
+    expect(src).toMatch(/data-testid="wp-export"[\s\S]{0,200}disabled=\{stale !== null\}/);
+    const banner = src.slice(src.indexOf('data-testid="wp-stale"') - 120, src.indexOf('data-testid="wp-stale"'));
+    expect(banner).not.toContain("data-no-print");
   });
 });
