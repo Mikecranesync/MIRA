@@ -1247,6 +1247,188 @@ function energizedWarningOr(restore: string | null, answerText: string): AnswerV
  * Entry point                                                               *
  * ------------------------------------------------------------------------ */
 
+// ── Owner decision 4 (#4372, 2026-10-29): DC-bus discharge wait times ─────────
+// "Block equipment-specific wait-time numbers unless an applicable verified
+// source supports them." A discharge wait is drive-specific (frame size, bus
+// capacitance, bleeder design), and the wrong drive's figure is the hazard, so
+// hedging does NOT exempt ("typically 5 minutes" is blocked). A claimed wait is
+// supported only when the same length of time appears in a passage retrieved
+// for this turn (or the photo observation) that is itself about stored
+// electrical energy. The technician's own message is never a source.
+const SMALL_NUMBER_WORDS = [
+  "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+  "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen",
+];
+const TENS_WORDS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
+const NUMBER_WORDS: Map<string, number> = (() => {
+  const m = new Map<string, number>();
+  SMALL_NUMBER_WORDS.forEach((w, i) => m.set(w, i));
+  for (let t = 2; t < 10; t++) {
+    m.set(TENS_WORDS[t], t * 10);
+    for (let u = 1; u < 10; u++) m.set(`${TENS_WORDS[t]}-${SMALL_NUMBER_WORDS[u]}`, t * 10 + u);
+  }
+  return m;
+})();
+const NUM_TOKEN = `(?:\\d+(?:\\.\\d+)?|${[...NUMBER_WORDS.keys()].sort((a, b) => b.length - a.length).join("|")})`;
+const PAREN_NUM = "(?:\\s*\\(\\s*\\d+(?:\\.\\d+)?\\s*\\))?";
+const DURATION_UNIT = "(seconds?|secs?|s|minutes?|mins?|min|hours?|hrs?|hr)";
+// "5 minutes", "five (5) minutes", "5-minute", "5mins", "3 to 5 minutes", "3–5 min".
+const DURATION_RE = new RegExp(
+  `\\b(${NUM_TOKEN})${PAREN_NUM}(?:\\s*(?:to|or|and|-|–|—)\\s*(${NUM_TOKEN})${PAREN_NUM})?\\s*-?\\s*${DURATION_UNIT}(?![a-z])`,
+  "gi",
+);
+const STORED_ENERGY_CONTEXT_RE =
+  /\b(?:capacitors?|caps|dc[- ]?(?:bus|link)|bus\s+(?:voltage|capacitors?|caps)|stored\s+(?:energy|charge)|residual\s+(?:voltage|charge)|discharg\w*|bleed\w*|retain\w*\s+(?:a\s+)?(?:hazardous\s+)?(?:voltage|charge)|(?:remain|stay|still)\w*\s+charged|electric(?:al)?\s+shock|shock\s+hazard|hazardous\s+voltage|dangerous\s+voltage)\b/i;
+// A source sentence supports a figure only when the sentence itself ties the
+// duration to discharge, retained charge, or a post-isolation / pre-touch
+// interval (Codex #4929 F2: a neighbouring stored-energy sentence is not enough).
+const DISCHARGE_LINK_RE =
+  /\b(?:discharg\w*|bleed\w*|drain\w*|retain\w*|(?:remain|stay|still)\w*\s+charged|stored\s+(?:energy|charge)|residual|after\s+(?:remov\w*|disconnect\w*|switch\w*\s+off|turn\w*\s+off|shut\w*|isolat\w*|de-?energi\w*|power(?:ing)?\s+(?:off|down)|lock\w*)|power\s+(?:is\s+)?removed|before\s+(?:touch|open|work|servic|remov|handl|access)\w*|(?:do\s+not|don't|never)\s+touch|safe\s+to\s+touch)\b/i;
+// Timing that is not a discharge wait (Codex #4929 F4): charging on power-up,
+// boot, ramps and fans. A sentence matching these, with no discharge link, is
+// not a claim and not support.
+const CHARGE_UP_RE =
+  /\b(?:power(?:ing)?[- ]?up|start[- ]?up|pre-?charg\w*|to\s+charge|charg(?:es|ed)?\s+(?:up|within|in)|charging|charge[- ]up)\b/i;
+const OTHER_SUBJECT_RE = /\b(?:leds?|lamps?|lights?|indicators?|display|screen|keypad|motors?|fans?|pumps?|brakes?)\b/i;
+const UNRELATED_TIMING_RE = /\b(?:accel\w*|decel\w*|ramp\w*|fans?|boot\w*|time-?outs?|scan\s+time|response\s+time)\b/i;
+
+// Codex #4929 r2 F2: judge each clause, not the whole sentence, and a clause is
+// unrelated timing only when it carries no stored-energy wording of its own.
+function isUnrelatedTiming(clause: string): boolean {
+  if (UNRELATED_TIMING_RE.test(clause) && !STORED_ENERGY_CONTEXT_RE.test(clause)) return true;
+  return CHARGE_UP_RE.test(clause) && !DISCHARGE_LINK_RE.test(clause);
+}
+
+/** Clauses split at ";", a spaced or em dash, and ", and/but/while …" joins.
+ *  An unspaced en dash stays inside: it is a range ("3–5 minutes"). */
+const splitClauses = (sentence: string) =>
+  sentence.split(/\s*;\s*|\s+[—–]\s+|—|,\s+(?=(?:and|but|while|although|whereas)\b)|\s+(?=(?:while|whereas)\b)/i).filter((x) => x.trim());
+
+function toNumber(token: string): number {
+  const t = token.toLowerCase();
+  return NUMBER_WORDS.has(t) ? NUMBER_WORDS.get(t)! : Number(t);
+}
+
+function unitSeconds(unit: string): number {
+  const u = unit.toLowerCase();
+  if (u.startsWith("h")) return 3600;
+  if (u.startsWith("m")) return 60;
+  return 1;
+}
+
+// Codex #4929 r3 F1: rewrite fractional and compound-hundred phrases into digits
+// before parsing, so "half an hour" is 30 minutes and "one hundred twenty
+// seconds" is 120 seconds (never its "twenty seconds" suffix).
+const SMALL_WORD_ALT = SMALL_NUMBER_WORDS.slice(1).join("|");
+const TENS_WORD_ALT = [...NUMBER_WORDS.keys()].filter((k) => NUMBER_WORDS.get(k)! >= 20).sort((a, b) => b.length - a.length).join("|");
+const HUNDREDS_RE = new RegExp(
+  `\\b(${SMALL_WORD_ALT})\\s+hundred(?:\\s+and)?(?:\\s+(${TENS_WORD_ALT}|${SMALL_WORD_ALT}))?\\b`,
+  "gi",
+);
+function normalizeDurations(text: string): string {
+  return text
+    .replace(/\b(?:an?|one)\s+hour\s+and\s+a\s+half\b/gi, "90 minutes")
+    .replace(/\b(?:a\s+)?half\s+(?:an?\s+)?hour\b/gi, "30 minutes")
+    .replace(/\b(?:a\s+)?half\s+(?:a\s+)?minute\b/gi, "30 seconds")
+    .replace(/\b(?:a\s+)?quarter\s+(?:of\s+)?(?:an?\s+)?hour\b/gi, "15 minutes")
+    .replace(/\ban?\s+(hour|minute|second)\b/gi, "1 $1")
+    .replace(HUNDREDS_RE, (_m, h: string, rest?: string) =>
+      String(toNumber(h) * 100 + (rest ? toNumber(rest) : 0)),
+    );
+}
+
+const TIME_UNIT_WORD_RE = /\b(?:seconds?|secs?|minutes?|mins?|hours?|hrs?)\b/gi;
+
+/** Durations in the text, in seconds (each range endpoint separately), and
+ *  whether some time unit could not be parsed ("a few minutes"). An unparsed
+ *  unit in a discharge context fails closed (Codex #4929 r3 F1). */
+function parseDurations(text: string): { seconds: number[]; unparsed: boolean } {
+  const t = normalizeDurations(text);
+  const seconds = durationsInSeconds(t);
+  const units = (t.match(TIME_UNIT_WORD_RE) ?? []).length;
+  const parsed = [...t.matchAll(DURATION_RE)].length;
+  return { seconds, unparsed: units > parsed };
+}
+
+/** Every duration in the text, in seconds (each range endpoint separately). */
+function durationsInSeconds(text: string): number[] {
+  const out: number[] = [];
+  for (const m of text.matchAll(DURATION_RE)) {
+    const k = unitSeconds(m[3]);
+    out.push(toNumber(m[1]) * k);
+    if (m[2]) out.push(toNumber(m[2]) * k);
+  }
+  return out.filter((n) => Number.isFinite(n));
+}
+
+const splitSentences = (text: string) => text.split(/(?<=[.!?])\s+|\n+/).filter((x) => x.trim());
+
+/** The answer's first unsupported discharge-wait sentence, or null.
+ *
+ *  Fail closed (Codex #4929 F1): in a stored-energy conversation every duration
+ *  is a claim unless the sentence is positively unrelated timing, so "the caps
+ *  can remain charged for 5 minutes" counts as much as "wait 5 minutes". */
+export function unsupportedDischargeWait(answerText: string, question: string, sourceTexts: string[]): string | null {
+  // Codex #4929 r4 F2: stored-energy context carries through the rest of its
+  // paragraph (an intervening "Lock out the disconnect." does not break it); a
+  // blank line is a topic change.
+  const paragraphs = foldForDetection(answerText).split(/\n\s*\n/).map(splitSentences);
+  const q = foldForDetection(question);
+  const questionContext = STORED_ENERGY_CONTEXT_RE.test(q) && !isUnrelatedTiming(q);
+  let supported: Set<number> | null = null;
+  for (const sentences of paragraphs) {
+  let seenStored = false;
+  for (const s of sentences) {
+    const sentenceContext = STORED_ENERGY_CONTEXT_RE.test(s) || seenStored || questionContext;
+    seenStored = seenStored || STORED_ENERGY_CONTEXT_RE.test(s);
+    if (!sentenceContext) continue;
+    for (const clause of splitClauses(s)) {
+      const { seconds: claimed, unparsed } = parseDurations(clause);
+      if ((claimed.length === 0 && !unparsed) || isUnrelatedTiming(clause)) continue;
+      if (unparsed) return s.slice(0, 160);
+      if (supported === null) {
+        supported = new Set<number>();
+        for (const src of sourceTexts) {
+          // Support is deliberately conservative (Codex #4929 r3 F2): every
+          // coordinated proposition stands alone, and one that mentions fan,
+          // boot or ramp timing at all supports nothing. A miss only shows the
+          // safe fallback.
+          // Codex #4929 r4 F1: a post-shutdown time supports a discharge wait only
+          // when its own proposition names stored energy, or it is a bare
+          // post-isolation wait (no LED/display/motor/fan subject) directly after
+          // a stored-energy sentence, as on a drive warning label.
+          const srcSentences = splitSentences(foldForDetection(src));
+          srcSentences.forEach((sent, j) => {
+            const prevStored = j > 0 && STORED_ENERGY_CONTEXT_RE.test(srcSentences[j - 1]);
+            for (const x of splitClauses(sent).flatMap((c) => c.split(/\s+(?:and|or|but)\s+/i))) {
+              if (UNRELATED_TIMING_RE.test(x) || isUnrelatedTiming(x)) continue;
+              const ok =
+                STORED_ENERGY_CONTEXT_RE.test(x) ||
+                (DISCHARGE_LINK_RE.test(x) && !OTHER_SUBJECT_RE.test(x) && prevStored);
+              if (!ok) continue;
+              for (const n of parseDurations(x).seconds) supported!.add(n);
+            }
+          });
+        }
+      }
+      if (claimed.some((n) => !supported!.has(n))) return s.slice(0, 160);
+    }
+  }
+  }
+  return null;
+}
+
+/** The answer served in place of an unsupported discharge wait time. It gives
+ *  the safe procedure without any figure of its own. */
+export const DISCHARGE_WAIT_FALLBACK = `I won't give a capacitor discharge wait time for this drive: none of the sources in this conversation states one, and the right figure depends on the exact drive.
+
+What to do:
+- Use the wait time printed on the drive's warning label or stated in its manual.
+- After that wait, measure across DC+ and DC- with a meter rated for the bus voltage, and confirm it reads zero before you touch anything.
+- If it has not dropped to zero, keep waiting and measure again. Do not short the bus to discharge it.
+
+If you add this drive's manual or a photo of its warning label and ask again, I'll quote its figure with a reference.`;
+
 export function validateAnswer(opts: {
   answerText: string;
   question: string;
@@ -1261,6 +1443,9 @@ export function validateAnswer(opts: {
    *  notebook (this turn started it, or a recorded one is still running), so a
    *  specificity fallback must not tell the technician to fetch it themselves. */
   manualSearchRunning?: ManualSearchRunning;
+  /** Owner decision 4: passages retrieved for THIS turn (chunk text, photo
+   *  observation). A DC-bus discharge wait time must appear in one. */
+  sourceTexts?: string[];
 }): AnswerValidation {
   const { answerText, question, general, served, refused } = opts;
   const evidenceSufficient = opts.evidenceSufficient ?? true;
@@ -1372,6 +1557,20 @@ export function validateAnswer(opts: {
         ),
       };
     }
+  }
+
+  // Owner decision 4 (#4372): a DC-bus discharge wait time needs a source that
+  // states it — both lanes, sources or not, refusals included ("I can't confirm,
+  // but typically 5 minutes" is still the number).
+  const wait = unsupportedDischargeWait(answerText, question, opts.sourceTexts ?? []);
+  if (wait) {
+    return {
+      ok: false,
+      kind: "unsupported_specificity",
+      violation: "unsupported-specificity:discharge-wait-time",
+      detail: wait,
+      replacement: DISCHARGE_WAIT_FALLBACK,
+    };
   }
 
   // B — general lane only. The grounded lane's specificity discipline is the
