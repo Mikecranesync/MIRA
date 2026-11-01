@@ -64,6 +64,8 @@ import { composeHubSend, pairAttachments, resolveUploadNode, runAttachedSend, ty
 import { createManualSearchDriver, type ManualSearchDriver } from "./manual-search-driver";
 import { GuidedProcedure } from "./GuidedProcedure";
 import { MachineObservations } from "./MachineObservations";
+import { WorkPacketPanel } from "./WorkPacketPanel";
+import { NOTEBOOK_ACTIONS_STYLE } from "./notebook-actions";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
 import { answerTurnId, citationIndex, contextFor, lifecycleFromStream, livePartsWhileRunning, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus, withSettledFollowups, type SettledFollowups } from "./to-interaction";
 import {
@@ -991,6 +993,9 @@ export function HubShellHost() {
           chatBusy={busy}
         />
       )}
+      {/* The notebook's action buttons share one column below the guided-procedure pill, each in its
+          own row, so Machine state and Work Packet never cover each other (#5102). */}
+      <div data-testid="notebook-actions" style={NOTEBOOK_ACTIONS_STYLE}>
       {/* Mission 001: report an observation and read back machine state; renders nothing while off. */}
       {selection && detail && (
         <MachineObservations
@@ -998,6 +1003,25 @@ export function HubShellHost() {
           notebookId={selection.notebookId}
         />
       )}
+      {/* #4982: shown only when NOTEBOOK_WORK_PACKET is on (the panel renders nothing on 404). */}
+      {selection && (
+        <WorkPacketPanel
+          // Same remount rule as GuidedProcedure above: a notebook switch, an identity confirm or a
+          // manual attach starts the panel fresh, so it never shows stale manuals or another
+          // machine's packet (Codex #5062 F4/F5). `detail` may still be loading here.
+          key={[
+            selection.notebookId,
+            detail?.notebook.identityStatus ?? "",
+            detail?.notebook.manufacturer ?? "",
+            detail?.notebook.model ?? "",
+            detail?.notebook.catalogNumber ?? "",
+            (detail?.sources ?? []).map((s) => s.docId).join(","),
+          ].join("|")}
+          notebookId={selection.notebookId}
+          technicianName={authSession?.user?.email ?? null}
+        />
+      )}
+      </div>
     </div>
   );
 }

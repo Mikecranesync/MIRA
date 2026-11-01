@@ -354,6 +354,9 @@ services:
       # WP-1 guided troubleshooting on the notebook (manufacturer procedures on the
       # #4498 step runner). OFF unless NOTEBOOK_GUIDED_PROCEDURE=1. Staging only.
       - NOTEBOOK_GUIDED_PROCEDURE=${NOTEBOOK_GUIDED_PROCEDURE:-0}
+      # #4982 technician Work Packet (sourced draft from CAT Pumps manuals, PDF export). OFF
+      # unless NOTEBOOK_WORK_PACKET=1 (the route 404s otherwise). Staging only.
+      - NOTEBOOK_WORK_PACKET=${NOTEBOOK_WORK_PACKET:-0}
       # #4513 IDF-sum lexical candidate scoring. OFF unless the environment sets
       # NOTEBOOK_LEXICAL_V2=1. Staging only until its walk passes and Mike decides.
       - NOTEBOOK_LEXICAL_V2=${NOTEBOOK_LEXICAL_V2:-0}
