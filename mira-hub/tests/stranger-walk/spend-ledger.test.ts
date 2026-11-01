@@ -153,4 +153,11 @@ describe("walk.spec wiring", () => {
     const settle = at(/await settleWalkSpend\(\{[^\n]*reservedUsd: r\.reservedUsd, bookedUsd: meter\.booked,/);
     expect(fin).toBeLessThan(settle);
   });
+  it("never releases a reservation once the meter's bound is broken (Codex F1)", () => {
+    const keep = at(/if \(reservation\?\.ok && meter\.unbounded\) \{/);
+    const settleBranch = at(/\} else if \(reservation\?\.ok\) \{/);
+    expect(keep).toBeLessThan(settleBranch);
+    expect(settleBranch).toBeLessThan(at(/await settleWalkSpend\(/));
+    expect(code.match(/await settleWalkSpend\(/g)).toHaveLength(1);
+  });
 });

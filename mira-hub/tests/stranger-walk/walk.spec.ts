@@ -280,7 +280,10 @@ test("stranger walk", async ({ page }) => {
       ? { ok: false, detail: tenantLookupFailed }
       : tenantId ? teardownTenant(tenantId) : { ok: true, detail: "no tenant was created" };
     notes.push(`teardown: ${td.ok ? "OK" : "FAILED"} — ${td.detail}`);
-    if (reservation?.ok) {
+    // An unbounded meter means booked no longer bounds true spend: keep the whole reservation counted.
+    if (reservation?.ok && meter.unbounded) {
+      notes.push(`campaign spend: NOT settled — meter unbounded at ${meter.unbounded}; the full $${reservation.reservedUsd.toFixed(2)} reservation stays counted until reconciled by hand`);
+    } else if (reservation?.ok) {
       const r = reservation;
       const settled = await settleWalkSpend({ token: githubToken(), repo: process.env.GITHUB_REPOSITORY, entryId: r.entryId, reservedUsd: r.reservedUsd, bookedUsd: meter.booked, note: `${meter.turns} turns booked` })
         .catch((e) => `settle FAILED (${(e as Error).message}): the full $${r.reservedUsd.toFixed(2)} reservation stays counted`);
