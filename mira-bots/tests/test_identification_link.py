@@ -87,6 +87,8 @@ def test_denied_host_is_denied_url():
         "https://www.automationdirect.com:8443/gs10",
         "https://10.0.0.5/gs10",
         "https://[::1]/gs10",
+        "http://www.automationdirect.com/gs10",
+        "https://www.automationdirect.com:80/gs10",
     ],
 )
 def test_unsafe_urls_are_never_oem(url):

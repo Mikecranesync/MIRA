@@ -20,10 +20,6 @@ import re
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
-from PIL import Image, ImageOps
-
-from ..manual_search.search import _is_denied, _is_oem_host
-
 try:
     import zxingcpp
 except ImportError:  # decoder absent → every decode returns [] (feature inert)
@@ -55,6 +51,8 @@ def decode_codes(image_bytes: bytes | None) -> list[DecodedCode]:
     if zxingcpp is None or not image_bytes:
         return []
     try:
+        from PIL import Image, ImageOps  # noqa: PLC0415 — lazy: flag-off import costs nothing
+
         formats = [
             zxingcpp.BarcodeFormat.QRCode,
             zxingcpp.BarcodeFormat.MicroQRCode,
@@ -88,6 +86,8 @@ def classify_payload(text: object, make: str | None) -> LinkClass:
         return LinkClass("no_url")
     t = text.strip()
     try:
+        from ..manual_search.search import _is_denied, _is_oem_host  # noqa: PLC0415
+
         u = urlsplit(t)
         if u.scheme.lower() not in ("http", "https") or not u.netloc:
             return LinkClass("no_url", part_number=_part_number(t))
@@ -99,10 +99,12 @@ def classify_payload(text: object, make: str | None) -> LinkClass:
             return LinkClass("unsafe_url", host)
         except ValueError:
             pass
+        # Same handoff rules manual_search applies to a browser link: https, 443 only.
         if (
-            u.username
+            u.scheme.lower() != "https"
+            or u.username
             or u.password
-            or u.port not in (None, 80, 443)
+            or u.port not in (None, 443)
             or re.search(r"[\\\s<>\"']", t)
         ):
             return LinkClass("unsafe_url", host)
@@ -115,5 +117,5 @@ def classify_payload(text: object, make: str | None) -> LinkClass:
         if make and _is_oem_host(host, make):
             return LinkClass("oem_url", host)
         return LinkClass("other_url", host)
-    except ValueError:  # malformed URL (bad IPv6 literal, bad port)
+    except (ValueError, ImportError):  # malformed URL, or host rules unavailable
         return LinkClass("unsafe_url")
