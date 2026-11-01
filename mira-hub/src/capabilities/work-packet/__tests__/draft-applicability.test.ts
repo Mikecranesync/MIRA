@@ -267,33 +267,80 @@ describe("a step worded for one model is shown only for that model (5CP6120 real
   });
 });
 
-describe("F15 — a step or caution cut off by a page break is never shown as a verified fragment", () => {
-  // Move the old page 3 to page 4 and break page 2 mid-sentence onto a new page 3.
-  const split = (cut: string, rest: string) => {
-    expect(M35).toContain(cut + rest);
-    const text = M35.replace("===== PAGE 3 =====", "===== PAGE 4 =====").replace(cut + rest, `${cut}\n===== PAGE 3 =====\n${rest.trimStart()}`);
+describe("F15 — text after a step or caution that cannot be placed turns that block into a gap", () => {
+  // Old page 3 becomes page 4; each edit may insert a new "===== PAGE 3 =====" break into page 2.
+  const edited = (...edits: [string, string][]) => {
+    let text = M35.replace("===== PAGE 3 =====", "===== PAGE 4 =====");
+    for (const [from, to] of edits) {
+      expect(text).toContain(from);
+      text = text.replace(from, to);
+    }
     return docFromText(text, "manual-35style.txt", "sm");
   };
+  const STEP2 = "2. Remove the exposed Coil Spring from the top of the Spring Retainer.\n";
+  const CAUTION_TAIL = "shut off drive (electric motor, gas or diesel engine) and turn off water supply to\npump. Relieve all discharge line pressure by triggering gun or opening valve in discharge line.\n";
+  const placeGaps = (p: DraftPacket, section: RegExp) => p.unknowns.filter((u) => section.test(u.basis) && /could not be placed/.test(u.basis));
+  const noPlaceGap = (p: DraftPacket) => p.unknowns.some((u) => /could not be placed/.test(u.basis)) || p.safety.cautions.some((c) => /could not be placed/.test(c.basis ?? ""));
 
-  it("a step that ends one page mid-sentence: its section is left out and listed as a gap", () => {
-    const doc = split("2. Remove the exposed Coil Spring from the top of the", " Spring Retainer.\nDisassembly (Model 8560)");
+  it("a step split after a parenthetical: no verified fragment, one gap for that section", () => {
+    const doc = edited([STEP2, "2. Remove the valve plug (M41)\n===== PAGE 3 =====\nonly after relieving all system pressure.\n"]);
     const packet = build("8520", [doc], "valve service");
-    expect(stepTexts(packet).some((t) => (t ?? "").startsWith("Remove the exposed Coil Spring"))).toBe(false);
-    const gap = packet.unknowns.filter((u) => /Disassembly \(All models except 8560\).*may continue on the next page/.test(u.basis));
+    expect(stepTexts(packet).some((t) => (t ?? "").startsWith("Remove the valve plug"))).toBe(false);
+    expect(stepTexts(packet)).not.toContain("Remove the six (6) M41 Hex Valve Plugs.");
+    const gap = placeGaps(packet, /Disassembly \(All models except 8560\)/);
+    expect(gap).toHaveLength(1);
+    expect(gap[0].label).toBe("unknown");
+    expect(gap[0].source?.page).toBe(2);
+  });
+
+  it("a caution split after a parenthetical: not verified, one unknown Safety line citing page 2", () => {
+    const doc = edited([CAUTION_TAIL, "shut off drive (electric motor)\n===== PAGE 3 =====\nand relieve all discharge pressure.\n"]);
+    const packet = build("8520", [doc], "valve service");
+    expect(packet.safety.cautions.some((c) => c.label === "verified" && (c.value ?? "").startsWith("Before commencing"))).toBe(false);
+    const gap = packet.safety.cautions.filter((c) => c.label === "unknown" && /CAUTION on p\.2 .*could not be placed/.test(c.basis ?? ""));
     expect(gap).toHaveLength(1);
   });
 
-  it("a caution that ends one page mid-sentence: shown in Safety as unknown, not as verified text", () => {
-    const doc = split("shut off drive (electric motor, gas or diesel engine) and turn off water supply to", "\npump. Relieve all discharge");
+  it("a multi-sentence step split after a full stop: its section is a gap", () => {
+    const doc = edited([
+      "2. Slowly thread the Valve Plug into chamber. Then torque to\nspecifications per chart.\n",
+      "2. Slowly thread the Valve Plug into chamber.\n===== PAGE 3 =====\nThen torque to specifications per chart.\n",
+    ]);
     const packet = build("8520", [doc], "valve service");
-    expect(packet.safety.cautions.some((c) => c.label === "verified" && (c.value ?? "").startsWith("Before commencing"))).toBe(false);
-    const gap = packet.safety.cautions.filter((c) => c.label === "unknown" && /CAUTION on p\.2 .*may continue on the next page/.test(c.basis));
+    expect(stepTexts(packet).some((t) => (t ?? "").startsWith("Slowly thread the Valve Plug"))).toBe(false);
+    expect(placeGaps(packet, /Reassembly \(All models except 8560\)/)).toHaveLength(1);
+  });
+
+  it("an unfinished step, then a diagram and a caption run, then the rest on the next page: furniture skipped, the continuation still makes a gap", () => {
+    const doc = edited([
+      STEP2,
+      "2. Remove the valve plug and\n1 3 5 7 8 6 4 2\n8520, 8521\nRemoval of Valve Plug\n===== PAGE 3 =====\nonly after relieving all system pressure.\n",
+    ]);
+    const packet = build("8520", [doc], "valve service");
+    expect(stepTexts(packet).some((t) => (t ?? "").startsWith("Remove the valve plug"))).toBe(false);
+    const gap = placeGaps(packet, /Disassembly \(All models except 8560\)/);
     expect(gap).toHaveLength(1);
+    expect(gap[0].basis).toContain("only after relieving");
   });
 
   it("control: the intact manual keeps the step and the caution as verified", () => {
     const packet = build("8520", [docFromFixture("manual-35style.txt", "sm")], "valve service");
     expect(stepTexts(packet)).toContain("Remove the exposed Coil Spring from the top of the Spring Retainer.");
     expect(packet.safety.cautions.some((c) => c.label === "verified" && (c.value ?? "").startsWith("Before commencing"))).toBe(true);
+    expect(noPlaceGap(packet)).toBe(false);
+  });
+
+  it("control: a page that starts with a page header and then step 3 makes no gap", () => {
+    const doc = edited([STEP2, `${STEP2}===== PAGE 3 =====\nPN 993999 Rev A 1/24\n3. Remove the Valve Seat.\n`]);
+    const packet = build("8520", [doc], "valve service");
+    expect(stepTexts(packet)).toContain("Remove the Valve Seat.");
+    expect(noPlaceGap(packet)).toBe(false);
+  });
+
+  it("control: intro prose before a section's step 1 makes no gap", () => {
+    const doc = edited(["Reassembly (All models except 8560)\n", "Reassembly (All models except 8560)\nUse only genuine parts when servicing the valves.\n"]);
+    const packet = build("8520", [doc], "valve service");
+    expect(stepTexts(packet).some((t) => (t ?? "").startsWith("Examine the O-Rings"))).toBe(true);
+    expect(noPlaceGap(packet)).toBe(false);
   });
 });
