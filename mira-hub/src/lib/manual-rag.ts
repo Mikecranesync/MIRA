@@ -91,7 +91,7 @@ export interface ManualSource {
   verified: boolean;
 }
 
-const MAX_CONTENT_CHARS = 1200;
+export const MAX_CONTENT_CHARS = 1200;
 const FORGED_HEADER_RE = /---\s*\[\s*\d+\s*\][^\n]*?---/gi;
 const SOURCE_TAG_RE = /\[Source:[^\]]+\]/gi;
 
@@ -458,7 +458,7 @@ function approvalFilterSql(): string {
  * NARROW (it is intersected with the validated doc scope upstream), and with
  * no set — or the gate off — this collapses to the pre-existing predicate.
  */
-function approvedSourceFilterSql(approvedParam: number | null): string {
+export function approvedSourceFilterSql(approvedParam: number | null): string {
   if (!approvalGateEnabled()) return "";
   if (approvedParam == null) return approvalFilterSql();
   return `AND (verified = true OR (is_private = true AND doc_id = ANY($${approvedParam}::uuid[])))`;
@@ -988,7 +988,7 @@ const rowKey = (r: Record<string, unknown>): string =>
  * hold "2-15"; reading the text keys and never Number()-coercing them is what
  * lets the safety banner cite p.2-15 (TQ-29).
  */
-const PAGE_LABEL_SQL = `COALESCE(
+export const PAGE_LABEL_SQL = `COALESCE(
           NULLIF(BTRIM(metadata->>'page_label'), ''),
           NULLIF(BTRIM(metadata->>'page'), ''),
           NULLIF(BTRIM(metadata->>'page_num'), '')

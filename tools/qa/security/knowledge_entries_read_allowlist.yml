@@ -1416,3 +1416,23 @@ approved:
       FROM knowledge_entries
               WHERE tenant_id = $1
                 AND ingest_route = 'v2'
+  "mira-hub/src/capabilities/manual-safety-chapter.ts:141":
+    approved_classification: TENANT-ONLY
+    query_sha256: "37dfe2c276b61675f0036eacf39c3aeb5d232b5130efac37555b29fea423c2b2"
+    reason: "NEW (#4508 / PR #5056): chapterStarts document-level lookup for the manual's own 'chapter Safety on page N' cross-reference. Pure-tenant surface, same rule as retrieveNodeChunks (manual-rag.ts:1108): tenant_id=$1, ingest_route='v2', doc_id = ANY($2) where $2 is ONLY doc ids retrieval already returned for this turn (never caller-supplied), plus the same approvedSourceFilterSql clause retrieval uses (bound as $4 only when MIRA_ENFORCE_APPROVED_RETRIEVAL is on). Runs only on the notebook non-OEM path, so the shared OEM corpus is excluded by design (not the is_private hybrid). Read-only, SET LOCAL statement_timeout 2s, DISTINCT ON (doc_id) one row per already-admitted document; it cannot reach another tenant's rows or a document retrieval did not admit."
+    query_snippet: |
+      FROM knowledge_entries
+            WHERE tenant_id = $1
+              AND ingest_route = 'v2'
+  "mira-hub/src/capabilities/manual-safety-chapter.ts:180":
+    approved_classification: TENANT-ONLY
+    query_sha256: "ce599cb798a1b7f5908642af90653557d1fc6aad4b62371ab716dbf7b2fa80c5"
+    reason: "NEW (#5059, replaces the r2/r3 header read): resolveStarts finds the one PDF page whose stored metadata.page_label equals the printed Safety chapter page the manual refers to (labels are the PDF's own /PageLabels, saved at ingest by #5065). Returns only doc_id with min/max page per document (GROUP BY doc_id), never content. Pure-tenant surface, same rule as retrieveNodeChunks (manual-rag.ts): tenant_id=$1, ingest_route='v2', doc_id limited to documents retrieval already admitted for this turn, plus the same approved-source predicate retrieval uses when the gate is on. Node attachments are per-tenant uploads (is_private=true at write), so the is_private hybrid filter does not apply; adding is_private=false would read the shared OEM corpus, which this lookup must never do."
+  "mira-hub/src/capabilities/manual-safety-chapter.ts:245":
+    approved_classification: TENANT-ONLY
+    query_sha256: "1533f0cd180d7f5b8c9eb3a5c70e58da8148bb113f5ca001374c47494096fb0e"
+    reason: "NEW (#4508 / PR #5056): readChapterRows reads the referenced Safety chapter pages. Pure-tenant surface, same rule as retrieveNodeChunks (manual-rag.ts:1108): tenant_id=$1, ingest_route='v2', the same approvedSourceFilterSql clause retrieval uses (bound as $9 only when the approval gate is on), and (doc_id, source_url, page) IN unnest($2,$3,$4) where every tuple is built from documents retrieval already returned this turn and a page span of 4 from the manual's own cross-reference. Ranked per page by ROW_NUMBER and capped at $8 (40) rows per page; SET LOCAL statement_timeout 3s; read-only. It cannot reach another tenant's rows, another document, or a page outside the admitted tuples; the shared OEM corpus is excluded by design on this notebook non-OEM path. HASH MIGRATION (#5059 Codex r1 F1): the keyword filter was removed (a split page's continuation chunks carry no keyword) and chunk_index ordering was added; params renumbered; the tenant, route, approval and admitted-tuple predicates are unchanged, so the scope is identical."
+    query_snippet: |
+      FROM knowledge_entries
+          WHERE tenant_id = $1
+            AND ingest_route = 'v2'
