@@ -88,3 +88,15 @@ Counts are `failed / passed`. "unit" = default vitest config (parse, project, ro
 | F1 (MEDIUM) a pre-repair report contests a post-repair one | `absent_then_repair_then_leak_is_a_post_repair_recurrence_not_contested`, `leak_then_repair_then_not_seen_is_not_contested`, control `contradiction_after_the_same_repair_is_still_contested` | obs-proj-2 rule (no repair boundary) | unit 2F (control green) | unit 13/13 |
 | F2 (MEDIUM) bare times read as Lake Wales for every tenant | parse `same_bare_time_in_two_plant_zones_is_three_hours_apart`, `no_zone_means_no_guess_...`, `validTimeZone_...`; route `reads a bare time in the caller's IANA zone ...`; browser on a Los Angeles device | panel stops sending its zone | unit 3F; browser 2F (empty time field) | unit, route and browser green |
 | F3 (LOW) StrictMode replay leaves the panel hidden | browser: development React under StrictMode must show the pill | restore `useRef(true)` with cleanup-only effect | browser 1F (pill never appears, 15 s timeout) | browser 2/2 |
+
+## Codex round 3 findings (fixed in PR #5091 before round 4)
+
+Mutations run by `m5098.sh` (scratchpad) on a fresh CI-order database: one mutation at a time, the integration count printed each time, files restored and re-run green at the end (14/14).
+
+| Finding | Test | Mutation | Red | Green |
+|---|---|---|---|---|
+| #5097 (F1) an idempotent replay recomputed `observedState` instead of returning the served one | route `idempotent replay returns the persisted observedState, not a recomputed one` | replay ignores the persisted `observed_state` evidence entry | route 1F/5P | route 6/6 |
+| #5098 (F2) projection and GET read the full history with raw reports | `projection_read_is_bounded_has_no_raw_report_and_matches_the_full_projection` (130 rows; also captures every Postgres result during `loadObservedStateForTurn`) | M1 no contest window; M2 select `raw_report`; M3 turn context reads a full history page; M7 window of 1 minute | int 1F/13P each (M7 2F) | int 14/14 |
+| #5098 | `projection_matches_the_full_projection_on_random_report_sequences` (6 rounds × 30 random reports with corrections) | M6 projection keeps superseded rows; M7 | int 1F/13P; 2F | int 14/14 |
+| #5098 | `history_is_cursor_paginated_with_a_maximum_page_size` (131 rows: 50 + 50 + 31, superseded flag, invalid and foreign cursors, by-id readback scoped to the machine) | M4 no page cap; M5 unknown cursor restarts; M8 cursor not asset-scoped; M9 by-id read not asset-scoped | int 1F/13P each | int 14/14 |
+| #5098 | route `GET is bounded` (3 tests: projection + one page + cursor, no `state.history`; limit clamp; bad cursor and bad id 400) | (new route contract, red before the store functions existed) | unit 8F before implementation | unit 40/40 |

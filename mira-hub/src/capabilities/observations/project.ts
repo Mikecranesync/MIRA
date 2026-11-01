@@ -61,7 +61,15 @@ export type ObservedState = {
   health: "not_established";
 };
 
-/** State label per fact. Repairs never imply a healthy machine. */
+/** What the GET route serves as `state`: the history comes separately, in pages (#5098). */
+export type ObservedStateSummary = Omit<ObservedState, "history">;
+
+export function summaryOf(state: ObservedState): ObservedStateSummary {
+  const { history: _history, ...summary } = state;
+  void _history;
+  return summary;
+}
+
 /**
  * Only "present" and "absent" contradict each other. "repaired" after "present"
  * is a fault-then-repair sequence, and "present" after "repaired" is a recurrence:

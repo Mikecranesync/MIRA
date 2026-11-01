@@ -227,7 +227,7 @@ import {
 } from "@/lib/visual-evidence-context";
 import { photoLinkedToTarget } from "@/lib/workspace-files";
 import { observationStateEnabled } from "@/capabilities/observations/flag";
-import { loadObservedStateForTurn } from "@/capabilities/observations/turn-context";
+import { isObservedStateEntry, loadObservedStateForTurn, observedStateEntry } from "@/capabilities/observations/turn-context";
 import { discoverManual } from "@/lib/manual-discovery";
 import {
   approvedAskEnforcementEnabled,
@@ -1049,6 +1049,8 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
   ) ? safetyNotice : null;
   const machineEvidence = turn.evidence.find(isMachineEvidenceEntry) ?? null;
   const visualEvidence = turn.evidence.find(isVisualObservationEntry) ?? null;
+  // Mission 001 (#5097): the persisted observed-state provenance, replayed as delivered.
+  const observedEntry = turn.evidence.find(isObservedStateEntry) ?? null;
   const identityDisputed = turn.evidence.some(
     (entry) => typeof entry === "object" && entry !== null && (entry as { kind?: unknown }).kind === "identity_dispute",
   );
@@ -1091,6 +1093,9 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
             ...(machineEvidence ? { machineEvidence } : {}),
             ...(visualEvidence ? { visualEvidence } : {}),
             ...(identityDisputed ? { identityDisputed: true } : {}),
+            ...(observedEntry
+              ? { observedState: { stateVersion: observedEntry.stateVersion, observationIds: observedEntry.observationIds } }
+              : {}),
           });
         } else if (visualEvidence) {
           emit(visualEvidenceMarker(visualEvidence));
@@ -5120,6 +5125,7 @@ async function handleChatTurn(
       // Mission 001: the observed-state key rides the same frame (the frame
       // type lives in a guarded lib file, so it is attached without widening it).
       if (observedFrame) Object.assign(evidenceFrame, { observedState: observedFrame });
+      const observedPersistEntry = observedStateEntry(observedFrame);
 
       // Weak-evidence badge (jev-weak-evidence.ts; `MIRA_JEV_WEAK_EVIDENCE_BADGE`).
       // The ONLY consulted use of the sufficiency shadow. Decided here — after
@@ -5186,7 +5192,7 @@ async function handleChatTurn(
                   ...(visualEntry ? [visualEntry] : []),
                   ...proposalEntries,
                 ]
-              : [...hazardEntries, ...(manualSafetyEntry ? [manualSafetyEntry] : []), ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries, ...proposalEntries, ...(weakEntry ? [weakEntry] : [])]
+              : [...hazardEntries, ...(manualSafetyEntry ? [manualSafetyEntry] : []), ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries, ...proposalEntries, ...(observedPersistEntry ? [observedPersistEntry] : []), ...(weakEntry ? [weakEntry] : [])]
             // Not served: the technician's own photo still stays on their saved
             // question (#4289 F4); hydration shows no observation on a failed answer.
             : [...hazardEntries, ...emittedCitations, ...disputeEntries, ...proposalEntries, ...(visualEntry ? [visualEntry] : []), ...providerFailureEntries],

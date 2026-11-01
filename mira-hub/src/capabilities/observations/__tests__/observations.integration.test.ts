@@ -22,8 +22,17 @@ const { testPool } = vi.hoisted(() => {
 });
 vi.mock("@/lib/db", () => ({ default: testPool }));
 
-import { insertObservation, listObservationsForAsset, type InsertObservationResult } from "../store";
+import {
+  getObservationForAsset,
+  HISTORY_PAGE_MAX,
+  insertObservation,
+  listObservationHistory,
+  listProjectionRows,
+  type HistoryRecord,
+  type InsertObservationResult,
+} from "../store";
 import { deriveObservedState } from "../project";
+import { loadObservedStateForTurn } from "../turn-context";
 import type { ValidatedObservationInput } from "../validate";
 import { enqueueFixRecordedEvent } from "@/capabilities/cmms-dispatch/enqueue";
 import { withTenantContext } from "@/lib/tenant-context";
@@ -64,6 +73,19 @@ async function counts(notebookId: string, entityId: string): Promise<{ obs: numb
     [notebookId],
   );
   return { obs: Number(o.rows[0]!.n), events: Number(e.rows[0]!.n) };
+}
+
+/** Every row via the paginated history (the only full read the store offers). */
+async function allRows(tenantId: string, entityId: string): Promise<HistoryRecord[]> {
+  const out: HistoryRecord[] = [];
+  let cursor: string | null = null;
+  for (;;) {
+    const page = await listObservationHistory(tenantId, entityId, { cursor, limit: HISTORY_PAGE_MAX });
+    if (page.status !== "ok") throw new Error(page.status);
+    out.push(...page.rows);
+    if (!page.nextCursor) return out;
+    cursor = page.nextCursor;
+  }
 }
 
 function created(r: InsertObservationResult): Extract<InsertObservationResult, { status: "created" }> {
@@ -137,8 +159,8 @@ describe("observation store (real Postgres)", () => {
 
     const write = await insertObservation(intruder, nb, entity, null, input(), "tech-x");
     expect(write.status).toBe("binding_changed");
-    expect(await listObservationsForAsset(intruder, entity)).toEqual([]);
-    expect(await listObservationsForAsset(owner, entity)).toHaveLength(1);
+    expect(await allRows(intruder, entity)).toEqual([]);
+    expect(await allRows(owner, entity)).toHaveLength(1);
   });
 
   it("event_failure_rolls_back_observation", async () => {
@@ -173,7 +195,7 @@ describe("observation store (real Postgres)", () => {
     );
     const nbB = await makeNotebook(tenant, entity, true);
 
-    const rows = await listObservationsForAsset(tenant, entity);
+    const rows = await allRows(tenant, entity);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ factKey: "seal_leak", factValue: "present", recordedBy: "tech-a" });
     const keys = Object.keys(rows[0]!);
@@ -185,7 +207,7 @@ describe("observation store (real Postgres)", () => {
     const state = deriveObservedState(rows, { now: new Date() });
     expect(state.facts[0]!.state).toBe("leak_reported");
     expect(nbB).not.toBe(nbA);
-    const readFromB = await listObservationsForAsset(tenant, entity);
+    const readFromB = await allRows(tenant, entity);
     expect(readFromB.map((r) => r.id)).toEqual(rows.map((r) => r.id));
   });
 
@@ -196,8 +218,8 @@ describe("observation store (real Postgres)", () => {
     const nb = await makeNotebook(tenant, pumpA, true);
     created(await insertObservation(tenant, nb, pumpA, null, input(), "tech-1"));
 
-    expect(await listObservationsForAsset(tenant, pumpB)).toEqual([]);
-    const controlState = deriveObservedState(await listObservationsForAsset(tenant, pumpB), { now: new Date() });
+    expect(await allRows(tenant, pumpB)).toEqual([]);
+    const controlState = deriveObservedState(await allRows(tenant, pumpB), { now: new Date() });
     expect(controlState.facts).toEqual([]);
     expect(controlState.health).toBe("not_established");
   });
@@ -317,5 +339,143 @@ describe("observation store (real Postgres)", () => {
     }
     const still = await testPool.query<{ r: string | null }>(`SELECT to_regclass('public.asset_observations')::text AS r`);
     expect(still.rows[0]!.r).toBe("asset_observations");
+  });
+});
+
+// #5098 (Codex #5091 r3 F2): the projection reads only what derives state, and the
+// history is served in bounded pages. The table is append-only, so neither read may
+// grow with the asset's lifetime.
+describe("observation reads are bounded (real Postgres)", () => {
+  const MIN = 60_000;
+
+  async function seed(tenant: string, nb: string, entity: string, spec: Array<Partial<ValidatedObservationInput>>) {
+    const ids: string[] = [];
+    for (const over of spec) ids.push(created(await insertObservation(tenant, nb, entity, null, input(over), "tech-1")).observation.id);
+    return ids;
+  }
+
+  /** Captures every result the app receives from Postgres while `fn` runs. */
+  async function capturingResults<T>(fn: () => Promise<T>): Promise<{ value: T; results: Array<{ fields: string[]; rowCount: number }> }> {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { Client } = require("pg");
+    const orig = Client.prototype.query;
+    const results: Array<{ fields: string[]; rowCount: number }> = [];
+    const spy = vi.spyOn(Client.prototype, "query").mockImplementation(function (this: unknown, ...args: unknown[]) {
+      const r = orig.apply(this, args);
+      if (r && typeof (r as Promise<unknown>).then === "function") {
+        (r as Promise<{ fields?: Array<{ name: string }>; rows?: unknown[] }>).then(
+          (res) => results.push({ fields: (res.fields ?? []).map((f) => f.name), rowCount: res.rows?.length ?? 0 }),
+          () => undefined,
+        );
+      }
+      return r;
+    });
+    try {
+      return { value: await fn(), results };
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  it("history_is_cursor_paginated_with_a_maximum_page_size", async () => {
+    const tenant = uuid();
+    const entity = `cmms-${uuid()}`;
+    const nb = await makeNotebook(tenant, entity, true);
+    const t0 = Date.now() - 200 * MIN;
+    const ids = await seed(tenant, nb, entity, Array.from({ length: 130 }, (_, i) => ({ observedAt: new Date(t0 + i * MIN).toISOString() })));
+    const correction = created(
+      await insertObservation(tenant, nb, entity, null, input({ factValue: "absent", supersedesId: ids[129]!, observedAt: new Date(t0 + 140 * MIN).toISOString() }), "tech-2"),
+    ).observation.id;
+
+    const p1 = await listObservationHistory(tenant, entity, { cursor: null, limit: 50 });
+    if (p1.status !== "ok") throw new Error(p1.status);
+    expect(p1.rows).toHaveLength(50);
+    expect(p1.nextCursor).toEqual(expect.any(String));
+    expect(p1.rows[0]!.id).toBe(correction);
+    expect(p1.rows.find((r) => r.id === ids[129])?.superseded).toBe(true);
+    expect(p1.rows[0]!.superseded).toBe(false);
+
+    const all = await allRows(tenant, entity);
+    expect(all).toHaveLength(131);
+    expect(new Set(all.map((r) => r.id)).size).toBe(131);
+    const observed = all.map((r) => r.observedAt);
+    expect([...observed].sort().reverse()).toEqual(observed);
+
+    const huge = await listObservationHistory(tenant, entity, { cursor: null, limit: 10_000 });
+    if (huge.status !== "ok") throw new Error(huge.status);
+    expect(huge.rows).toHaveLength(HISTORY_PAGE_MAX);
+
+    // A cursor from another machine (or a made-up one) is refused, never treated as "start over".
+    expect((await listObservationHistory(tenant, entity, { cursor: uuid(), limit: 50 })).status).toBe("invalid_cursor");
+    const other = `cmms-${uuid()}`;
+    const nbOther = await makeNotebook(tenant, other, true);
+    const [foreign] = await seed(tenant, nbOther, other, [{}]);
+    expect((await listObservationHistory(tenant, entity, { cursor: foreign!, limit: 50 })).status).toBe("invalid_cursor");
+
+    expect((await getObservationForAsset(tenant, entity, ids[3]!))?.id).toBe(ids[3]);
+    expect(await getObservationForAsset(tenant, other, ids[3]!)).toBeNull();
+    expect(await getObservationForAsset(uuid(), entity, ids[3]!)).toBeNull();
+  });
+
+  it("projection_read_is_bounded_has_no_raw_report_and_matches_the_full_projection", async () => {
+    const tenant = uuid();
+    const entity = `cmms-${uuid()}`;
+    const nb = await makeNotebook(tenant, entity, true);
+    const t0 = Date.now() - 300 * MIN;
+    // 120 old reports, then a leak and a repair 5 minutes apart in the last hour.
+    await seed(tenant, nb, entity, Array.from({ length: 120 }, (_, i) => ({ observedAt: new Date(t0 + i * MIN).toISOString() })));
+    const [leak, repair] = await seed(tenant, nb, entity, [
+      { observedAt: new Date(Date.now() - 20 * MIN).toISOString() },
+      { factValue: "repaired", observedAt: new Date(Date.now() - 15 * MIN).toISOString() },
+    ]);
+
+    const now = new Date();
+    const projection = await listProjectionRows(tenant, entity);
+    expect(projection.length).toBeLessThanOrEqual(5);
+    expect(projection.map((r) => r.id)).toEqual(expect.arrayContaining([leak, repair]));
+    for (const r of projection) expect(Object.keys(r)).not.toContain("rawReport");
+
+    const full = deriveObservedState(await allRows(tenant, entity), { now });
+    const bounded = deriveObservedState(projection, { now });
+    expect(bounded.facts).toEqual(full.facts);
+    expect(bounded.stateVersion).toBe(full.stateVersion);
+    expect(bounded.facts[0]!.state).toBe("repair_reported");
+
+    const { value, results } = await capturingResults(() => loadObservedStateForTurn(tenant, entity, now));
+    expect(value.frame?.stateVersion).toBe(full.stateVersion);
+    expect(results.length).toBeGreaterThan(0);
+    for (const res of results) expect(res.fields).not.toContain("raw_report");
+    expect(Math.max(...results.map((r) => r.rowCount))).toBeLessThanOrEqual(5);
+  });
+
+  it("projection_matches_the_full_projection_on_random_report_sequences", async () => {
+    let seedN = 5098;
+    const rand = () => ((seedN = (seedN * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
+    const keys = ["seal_leak", "vibration"] as const;
+    const values = ["present", "absent", "repaired"] as const;
+    for (let round = 0; round < 6; round++) {
+      const tenant = uuid();
+      const entity = `cmms-${uuid()}`;
+      const nb = await makeNotebook(tenant, entity, true);
+      const made: Array<{ id: string; factKey: string }> = [];
+      for (let i = 0; i < 30; i++) {
+        const factKey = keys[Math.floor(rand() * keys.length)]!;
+        const sameKey = made.filter((m) => m.factKey === factKey);
+        const supersedesId = sameKey.length > 0 && rand() < 0.2 ? sameKey[Math.floor(rand() * sameKey.length)]!.id : null;
+        const r = created(
+          await insertObservation(tenant, nb, entity, null, input({
+            factKey,
+            factValue: values[Math.floor(rand() * values.length)]!,
+            observedAt: new Date(Date.now() - Math.floor(rand() * 180) * MIN - 1000).toISOString(),
+            supersedesId,
+          }), "tech-1"),
+        );
+        made.push({ id: r.observation.id, factKey });
+      }
+      const now = new Date();
+      const full = deriveObservedState(await allRows(tenant, entity), { now });
+      const bounded = deriveObservedState(await listProjectionRows(tenant, entity), { now });
+      expect({ round, facts: bounded.facts, v: bounded.stateVersion }).toEqual({ round, facts: full.facts, v: full.stateVersion });
+    }
   });
 });

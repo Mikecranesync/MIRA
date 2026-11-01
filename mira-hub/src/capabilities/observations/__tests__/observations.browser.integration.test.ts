@@ -268,10 +268,12 @@ describe.skipIf(!RUN)("Mission 001 browser proof (real panel, real routes, real 
       expect(await pageB.getByTestId("observed-fact-seal_leak").getAttribute("data-state")).toBe("repair_reported");
       await shot(pageB, "07-repair-reported");
       const after = (await (await fetch(`${base}/hub/api/equipment-notebooks/${notebookId}/observations/`)).json()) as {
-        state: { safeToOperate: string; health: string; rootCause: null; history: unknown[] };
+        state: Record<string, unknown>; history: unknown[]; nextCursor: string | null;
       };
       expect(after.state).toMatchObject({ safeToOperate: "not_established", health: "not_established", rootCause: null });
-      expect(after.state.history).toHaveLength(2);
+      expect(after.state).not.toHaveProperty("history");
+      expect(after.history).toHaveLength(2);
+      expect(after.nextCursor).toBeNull();
       const afterTurn = await loadObservedStateForTurn(TENANT, PUMP_07, new Date());
       expect(afterTurn.section).toMatch(/seal_leak: repair_reported/);
       expect(afterTurn.section).not.toMatch(/contested/);

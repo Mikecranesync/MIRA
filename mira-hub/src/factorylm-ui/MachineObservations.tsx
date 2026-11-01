@@ -109,8 +109,9 @@ export function MachineObservations({ notebookId }: { notebookId: string }) {
     return () => { mounted.current = false; };
   }, []);
 
-  const readBack = useCallback(async (): Promise<ObservedStateView | null> => {
-    const res = await fetch(base(notebookId), { credentials: "include", headers: { accept: "application/json" } });
+  const readBack = useCallback(async (observationId?: string): Promise<ObservedStateView | null> => {
+    const url = observationId ? `${base(notebookId)}?observation=${encodeURIComponent(observationId)}` : base(notebookId);
+    const res = await fetch(url, { credentials: "include", headers: { accept: "application/json" } });
     if (res.status === 404) {
       const body = (await res.json().catch(() => null)) as { error?: string } | null;
       if (body?.error === "observations_disabled") { if (mounted.current) setEnabled(false); return null; }
@@ -169,8 +170,9 @@ export function MachineObservations({ notebookId }: { notebookId: string }) {
       }
       const id = body.observation.id;
       // Confirmed only once the machine state read back from the server lists this observation.
-      const view = await readBack();
-      const listed = view?.state.history.some((h) => h.id === id) ?? false;
+      // Read back by id: history is paged, so a late report may not be on the first page (#5098).
+      const view = await readBack(id);
+      const listed = view?.observation?.id === id;
       if (!listed) {
         setPhase({ kind: "failed", preview, message: "Saved, but the machine state has not shown it yet. Retry to check again." });
         return;

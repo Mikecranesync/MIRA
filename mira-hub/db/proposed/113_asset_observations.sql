@@ -78,6 +78,12 @@ CREATE TABLE IF NOT EXISTS asset_observations (
 
 CREATE INDEX IF NOT EXISTS idx_asset_observations_asset_fact
   ON asset_observations (tenant_id, equipment_entity_id, fact_key, observed_at DESC);
+-- History pages (newest observed first, keyset cursor) and the "is this row
+-- superseded" probe both reads run per row (#5098).
+CREATE INDEX IF NOT EXISTS idx_asset_observations_asset_history
+  ON asset_observations (tenant_id, equipment_entity_id, observed_at DESC, recorded_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_asset_observations_supersedes
+  ON asset_observations (supersedes_id) WHERE supersedes_id IS NOT NULL;
 
 ALTER TABLE asset_observations ENABLE ROW LEVEL SECURITY;
 

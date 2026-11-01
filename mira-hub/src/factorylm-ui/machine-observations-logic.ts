@@ -4,11 +4,18 @@
  * the hub's node vitest environment.
  */
 import type { ObservationPreview as ServerPreview } from "@/capabilities/observations/parse";
-import type { FactState, HistoryRow, ObservedState } from "@/capabilities/observations/project";
+import type { FactState, HistoryRow, ObservedStateSummary } from "@/capabilities/observations/project";
 
 /** What the technician is reviewing: the server preview, possibly corrected. */
 export type ObservationPreview = ServerPreview;
-export type ObservedStateView = { equipmentEntityId: string; state: ObservedState; history: HistoryRow[] };
+/** GET observations: the state, one page of history, and (on a save readback) the saved row. */
+export type ObservedStateView = {
+  equipmentEntityId: string;
+  state: ObservedStateSummary;
+  history: HistoryRow[];
+  nextCursor: string | null;
+  observation?: HistoryRow | null;
+};
 export type { FactState };
 
 const FACT_LABELS: Record<string, string> = {

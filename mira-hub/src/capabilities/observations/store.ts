@@ -14,8 +14,8 @@ import type { PoolClient } from "pg";
 import { withTenantContext } from "@/lib/tenant-context";
 import { aggregateKeyFor, POLICY_VERSION } from "@/capabilities/cmms-dispatch/types";
 import { lockAggregate, nextAggregateSequence } from "@/capabilities/cmms-dispatch/enqueue";
-import type { FactKey, FactValue } from "./parse";
-import { PROJECTOR_VERSION, type ObservationRow } from "./project";
+import { FACT_KEYS, FACT_VALUES, type FactKey, type FactValue } from "./parse";
+import { CONTEST_WINDOW_MS, PROJECTOR_VERSION, type ObservationRow } from "./project";
 import type { ValidatedObservationInput } from "./validate";
 
 /** What leaves this module: the fact, its author and times, the machine it
@@ -248,22 +248,127 @@ export async function insertObservation(
   });
 }
 
+/** Rows kept per (fact, value) inside the contest window. The projection needs the
+ *  newest row of a fact, its newest repair and whether an opposed report exists, so a
+ *  burst larger than this can only shorten a contested fact's `conflicting` list. */
+export const PROJECTION_ROWS_PER_VALUE = 20;
+export const HISTORY_PAGE_DEFAULT = 50;
+export const HISTORY_PAGE_MAX = 100;
+
+const PROJECTION_COLS = `o.id::text AS id, o.fact_key, o.fact_value, o.observed_at, o.recorded_at,
+  o.recorded_by, o.verification_method, o.uncertainty, o.supersedes_id::text AS supersedes_id`;
+const NOT_SUPERSEDED = (alias: string) =>
+  `NOT EXISTS (SELECT 1 FROM asset_observations s WHERE s.supersedes_id = ${alias}.id)`;
+
 /**
- * Every observation on this MACHINE, across all notebooks of the tenant. The
- * readback is asset-scoped, so technician B recovers what A recorded on a
- * different notebook. No source turn, notebook thread or chat text is selected.
+ * The rows deriveObservedState needs for this MACHINE, and no more (#5098): per fact,
+ * the active (not superseded) reports observed within the contest window of that fact's
+ * newest active report, at most PROJECTION_ROWS_PER_VALUE per fact value. Older rows
+ * cannot change the state (the window and the repair boundary only look back from the
+ * newest report). No raw report, notebook, source turn or fingerprint is selected.
  */
-export async function listObservationsForAsset(
-  tenantId: string,
-  equipmentEntityId: string,
-): Promise<ObservationRecord[]> {
+export async function listProjectionRows(tenantId: string, equipmentEntityId: string): Promise<ObservationRow[]> {
   return withTenantContext(tenantId, async (c) => {
     const res = await c.query(
-      `SELECT ${RECORD_COLS} FROM asset_observations o
-        WHERE o.tenant_id = $1::uuid AND o.equipment_entity_id = $2
-        ORDER BY o.observed_at DESC, o.recorded_at DESC, o.id DESC`,
-      [tenantId, equipmentEntityId],
+      `SELECT r.* FROM unnest($3::text[]) AS k(fact_key)
+       CROSS JOIN LATERAL (
+         SELECT a.observed_at AS key_max FROM asset_observations a
+          WHERE a.tenant_id = $1::uuid AND a.equipment_entity_id = $2 AND a.fact_key = k.fact_key
+            AND ${NOT_SUPERSEDED("a")}
+          ORDER BY a.observed_at DESC LIMIT 1
+       ) m
+       CROSS JOIN unnest($4::text[]) AS v(fact_value)
+       CROSS JOIN LATERAL (
+         SELECT ${PROJECTION_COLS} FROM asset_observations o
+          WHERE o.tenant_id = $1::uuid AND o.equipment_entity_id = $2
+            AND o.fact_key = k.fact_key AND o.fact_value = v.fact_value
+            AND o.observed_at >= m.key_max - make_interval(secs => $5::double precision)
+            AND ${NOT_SUPERSEDED("o")}
+          ORDER BY o.observed_at DESC, o.recorded_at DESC, o.id DESC
+          LIMIT $6
+       ) r`,
+      [tenantId, equipmentEntityId, [...FACT_KEYS], [...FACT_VALUES], CONTEST_WINDOW_MS / 1000, PROJECTION_ROWS_PER_VALUE],
     );
-    return res.rows.map((r) => publicRecord(toRecord(r as Record<string, unknown>)));
+    return res.rows.map((r) => {
+      const row = r as Record<string, unknown>;
+      return {
+        id: String(row.id),
+        factKey: row.fact_key as FactKey,
+        factValue: row.fact_value as FactValue,
+        observedAt: new Date(row.observed_at as string).toISOString(),
+        recordedAt: new Date(row.recorded_at as string).toISOString(),
+        recordedBy: (row.recorded_by as string) ?? null,
+        verificationMethod: String(row.verification_method),
+        uncertainty: String(row.uncertainty),
+        supersedesId: (row.supersedes_id as string) ?? null,
+      };
+    });
+  });
+}
+
+/** A history row as the customer inspects it: the record plus whether a correction replaced it. */
+export type HistoryRecord = ObservationRecord & { superseded: boolean };
+
+export type HistoryPage =
+  | { status: "ok"; rows: HistoryRecord[]; nextCursor: string | null }
+  | { status: "invalid_cursor" };
+
+const HISTORY_COLS = `${RECORD_COLS},
+  EXISTS (SELECT 1 FROM asset_observations s WHERE s.supersedes_id = o.id) AS superseded`;
+
+function toHistory(r: Record<string, unknown>): HistoryRecord {
+  return { ...publicRecord(toRecord(r)), superseded: r.superseded === true };
+}
+
+/**
+ * Every observation on this MACHINE, across all notebooks of the tenant, newest
+ * observed first, one bounded page at a time (#5098). The cursor is the id of the
+ * last row of the previous page and must be a row of this machine; anything else is
+ * `invalid_cursor`, never a silent restart. The readback is asset-scoped, so
+ * technician B recovers what A recorded on a different notebook. No source turn,
+ * notebook thread or chat text is selected.
+ */
+export async function listObservationHistory(
+  tenantId: string,
+  equipmentEntityId: string,
+  opts: { cursor: string | null; limit: number },
+): Promise<HistoryPage> {
+  const limit = Math.min(Math.max(1, Math.floor(opts.limit)), HISTORY_PAGE_MAX);
+  return withTenantContext(tenantId, async (c) => {
+    if (opts.cursor) {
+      const cur = await c.query(
+        `SELECT 1 FROM asset_observations WHERE id = $1::uuid AND tenant_id = $2::uuid AND equipment_entity_id = $3`,
+        [opts.cursor, tenantId, equipmentEntityId],
+      );
+      if (cur.rows.length === 0) return { status: "invalid_cursor" };
+    }
+    // The keyset comparison stays in SQL: timestamptz carries microseconds a JS Date would drop.
+    const res = await c.query(
+      `SELECT ${HISTORY_COLS} FROM asset_observations o
+        WHERE o.tenant_id = $1::uuid AND o.equipment_entity_id = $2
+          ${opts.cursor ? `AND (o.observed_at, o.recorded_at, o.id) <
+            (SELECT c.observed_at, c.recorded_at, c.id FROM asset_observations c WHERE c.id = $4::uuid)` : ""}
+        ORDER BY o.observed_at DESC, o.recorded_at DESC, o.id DESC
+        LIMIT $3`,
+      opts.cursor ? [tenantId, equipmentEntityId, limit + 1, opts.cursor] : [tenantId, equipmentEntityId, limit + 1],
+    );
+    const rows = res.rows.slice(0, limit).map((r) => toHistory(r as Record<string, unknown>));
+    return { status: "ok", rows, nextCursor: res.rows.length > limit ? rows[rows.length - 1]!.id : null };
+  });
+}
+
+/** One observation on this MACHINE by id (the panel's save readback), or null. */
+export async function getObservationForAsset(
+  tenantId: string,
+  equipmentEntityId: string,
+  observationId: string,
+): Promise<HistoryRecord | null> {
+  return withTenantContext(tenantId, async (c) => {
+    const res = await c.query(
+      `SELECT ${HISTORY_COLS} FROM asset_observations o
+        WHERE o.id = $3::uuid AND o.tenant_id = $1::uuid AND o.equipment_entity_id = $2`,
+      [tenantId, equipmentEntityId, observationId],
+    );
+    return res.rows[0] ? toHistory(res.rows[0] as Record<string, unknown>) : null;
   });
 }

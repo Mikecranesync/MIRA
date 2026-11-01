@@ -21,7 +21,11 @@ vi.mock("@/lib/equipment-notebooks", () => nb);
 
 const store = vi.hoisted(() => ({
   insertObservation: vi.fn(),
-  listObservationsForAsset: vi.fn(),
+  listProjectionRows: vi.fn(),
+  listObservationHistory: vi.fn(),
+  getObservationForAsset: vi.fn(),
+  HISTORY_PAGE_DEFAULT: 50,
+  HISTORY_PAGE_MAX: 100,
 }));
 vi.mock("@/capabilities/observations/store", () => store);
 
@@ -56,7 +60,9 @@ beforeEach(() => {
   process.env.MIRA_OBSERVATION_STATE = "1";
   nb.getNotebook.mockResolvedValue({ id: NB, displayName: "Pump 07" });
   nb.resolveBoundAsset.mockResolvedValue(confirmed);
-  store.listObservationsForAsset.mockResolvedValue([]);
+  store.listProjectionRows.mockResolvedValue([]);
+  store.listObservationHistory.mockResolvedValue({ status: "ok", rows: [], nextCursor: null });
+  store.getObservationForAsset.mockResolvedValue(null);
   store.insertObservation.mockResolvedValue({
     status: "created",
     observation: { id: "o1", factKey: "seal_leak", factValue: "present", observedAt: "x", recordedAt: "y", recordedBy: "tech-1", verificationMethod: "self_reported", uncertainty: "unverified", supersedesId: null, rawReport: "seal leaking", equipmentEntityId: ENTITY, assetUnsPath: UNS },
@@ -83,7 +89,7 @@ describe("observation routes: flag", () => {
 describe("observation routes: storage missing", () => {
   it("flag on + table missing (42P01) ⇒ 503 observations_unavailable", async () => {
     store.insertObservation.mockRejectedValue(Object.assign(new Error('relation "asset_observations" does not exist'), { code: "42P01" }));
-    store.listObservationsForAsset.mockRejectedValue(Object.assign(new Error("missing"), { code: "42P01" }));
+    store.listProjectionRows.mockRejectedValue(Object.assign(new Error("missing"), { code: "42P01" }));
 
     const post = await POST_OBS(req(`/api/equipment-notebooks/${NB}/observations`, "POST", validBody()), params);
     expect(post.status).toBe(503);
@@ -92,6 +98,55 @@ describe("observation routes: storage missing", () => {
     const get = await GET_OBS(req(`/api/equipment-notebooks/${NB}/observations`, "GET"), params);
     expect(get.status).toBe(503);
     expect(await get.json()).toEqual({ error: "observations_unavailable" });
+  });
+});
+
+// #5098: GET serves a bounded history page; the state comes from the bounded projection read.
+describe("observation routes: GET is bounded", () => {
+  const get = (qs = "") => GET_OBS(req(`/api/equipment-notebooks/${NB}/observations/${qs}`, "GET"), params);
+  const row = (id: string) => ({ id, factKey: "seal_leak", factValue: "present", observedAt: "2026-06-15T09:10:00.000Z", recordedAt: "2026-06-15T09:11:00.000Z", recordedBy: "tech-1", verificationMethod: "self_reported", uncertainty: "unverified", supersedesId: null });
+
+  it("returns the state from the projection rows, one history page and its cursor — never a full history", async () => {
+    store.listProjectionRows.mockResolvedValue([row("o1")]);
+    store.listObservationHistory.mockResolvedValue({ status: "ok", rows: [{ ...row("o1"), rawReport: "seal leaking", superseded: false }], nextCursor: "o1" });
+    const res = await get();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(store.listProjectionRows).toHaveBeenCalledWith(TENANT, ENTITY);
+    expect(store.listObservationHistory).toHaveBeenCalledWith(TENANT, ENTITY, { cursor: null, limit: 50 });
+    expect(body.state.facts[0]).toMatchObject({ factKey: "seal_leak", state: "leak_reported" });
+    expect(body.state).not.toHaveProperty("history");
+    expect(body.history.map((h: { id: string }) => h.id)).toEqual(["o1"]);
+    expect(body.nextCursor).toBe("o1");
+  });
+
+  it("clamps the page size, passes the cursor, and refuses a malformed or unknown cursor", async () => {
+    const CURSOR = "44444444-4444-4444-8444-444444444444";
+    await get(`?limit=5000&cursor=${CURSOR}`);
+    expect(store.listObservationHistory).toHaveBeenLastCalledWith(TENANT, ENTITY, { cursor: CURSOR, limit: 100 });
+    await get("?limit=0");
+    expect(store.listObservationHistory).toHaveBeenLastCalledWith(TENANT, ENTITY, { cursor: null, limit: 50 });
+
+    const bad = await get("?cursor=not-a-uuid");
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toEqual({ error: "invalid_cursor" });
+
+    store.listObservationHistory.mockResolvedValue({ status: "invalid_cursor" });
+    const unknown = await get(`?cursor=${CURSOR}`);
+    expect(unknown.status).toBe(400);
+    expect(await unknown.json()).toEqual({ error: "invalid_cursor" });
+  });
+
+  it("?observation=<id> reads back that one row on this machine, wherever it sits in history", async () => {
+    const ID = "55555555-5555-4555-8555-555555555555";
+    store.getObservationForAsset.mockResolvedValue({ ...row(ID), rawReport: "seal leaking", superseded: false });
+    const body = await (await get(`?observation=${ID}`)).json();
+    expect(store.getObservationForAsset).toHaveBeenCalledWith(TENANT, ENTITY, ID);
+    expect(body.observation.id).toBe(ID);
+
+    const res = await get("?observation=nope");
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_observation_id" });
   });
 });
 

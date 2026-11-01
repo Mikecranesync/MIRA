@@ -21,7 +21,8 @@ const nbMock = vi.hoisted(() => ({
   validateChatSources: vi.fn(),
   getNotebook: vi.fn(),
   resolveBoundAsset: vi.fn(),
-  recordTurn: vi.fn(async () => undefined),
+  recordTurn: vi.fn<(...args: unknown[]) => Promise<undefined>>(async () => undefined),
+  claimNotebookTurnRequest: vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => ({ status: "claimed", claimToken: "tok" })),
   listSources: vi.fn(async () => [] as { filename: string | null }[]),
   originFileIdsByDoc: vi.fn(async () => new Map<string, string>()),
 }));
@@ -54,7 +55,7 @@ const seamMock = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/inference/canonical-cascade", () => seamMock);
 
-const obsStore = vi.hoisted(() => ({ listObservationsForAsset: vi.fn() }));
+const obsStore = vi.hoisted(() => ({ listProjectionRows: vi.fn() }));
 vi.mock("@/capabilities/observations/store", () => obsStore);
 
 import { POST } from "../../../app/api/equipment-notebooks/[id]/chat/route";
@@ -115,7 +116,7 @@ const ROW: ObservationRow = {
 
 /** Only the store (DB edge) is replaced; the observation rows are per asset. */
 function storeFor(rowsByAsset: Record<string, ObservationRow[]>) {
-  obsStore.listObservationsForAsset.mockImplementation(async (_t: string, entity: string) => rowsByAsset[entity] ?? []);
+  obsStore.listProjectionRows.mockImplementation(async (_t: string, entity: string) => rowsByAsset[entity] ?? []);
 }
 
 function systemPrompt(): string {
@@ -151,7 +152,7 @@ describe("observed state in the chat prompt", () => {
     expect(system).toContain("recorded 2026-06-15T13:12:00.000Z");
     expect(system).toContain("verification self_reported");
     expect(system).toContain("Root cause, health and safe-to-operate are NOT established");
-    expect(obsStore.listObservationsForAsset).toHaveBeenCalledWith(TENANT, PUMP07);
+    expect(obsStore.listProjectionRows).toHaveBeenCalledWith(TENANT, PUMP07);
   });
 
   it("an evidence frame carries the observation id and the state_version", async () => {
@@ -163,13 +164,39 @@ describe("observed state in the chat prompt", () => {
     expect(observed.stateVersion).toBe(deriveObservedState([ROW], { now: new Date() }).stateVersion);
   });
 
+  // #5097 (Codex #5091 r3 F1): an idempotent replay must carry the SAME provenance as the
+  // live answer, from the persisted turn, even if machine state changed before the retry.
+  it("idempotent replay returns the persisted observedState, not a recomputed one", async () => {
+    const clientRequestId = "8b0d7a5e-3c1f-4a2b-9c4d-5e6f7a8b9c0d";
+    const live = await POST(req({ message: QUESTION, clientRequestId }), params);
+    expect(live.status).toBe(200);
+    const liveObserved = ((await frames(live)).find((f) => f.kind === "evidence") as Record<string, unknown>).observedState;
+    expect(liveObserved).toBeDefined();
+
+    const turn = nbMock.recordTurn.mock.calls.at(-1)![2] as {
+      answerText: string | null; enabledSourceDocIds: string[]; evidence: unknown[]; model: string | null; basis: string | null;
+    };
+    expect(turn.evidence).toContainEqual({ kind: "observed_state", ...(liveObserved as object) });
+
+    storeFor({ [PUMP07]: [] }); // state moved on before the retry
+    nbMock.claimNotebookTurnRequest.mockResolvedValueOnce({
+      status: "replay",
+      turn: { id: "turn-1", question: QUESTION, answerStatus: "answered", answerText: turn.answerText,
+        enabledSourceDocIds: turn.enabledSourceDocIds, evidence: turn.evidence, model: turn.model, basis: turn.basis },
+    });
+    const replay = await POST(req({ message: QUESTION, clientRequestId }), params);
+    expect(replay.headers.get("X-Idempotent-Replay")).toBe("true");
+    const replayed = ((await frames(replay)).find((f) => f.kind === "evidence") as Record<string, unknown>).observedState;
+    expect(replayed).toEqual(liveObserved);
+  });
+
   it("a notebook bound to a different asset gets no observed section", async () => {
     nbMock.resolveBoundAsset.mockResolvedValue(boundTo(PUMP_B));
     const res = await POST(req({ message: QUESTION }), params);
     expect(res.status).toBe(200);
     await frames(res);
     expect(systemPrompt()).not.toContain("Technician-reported observations");
-    expect(obsStore.listObservationsForAsset).toHaveBeenCalledWith(TENANT, PUMP_B);
+    expect(obsStore.listProjectionRows).toHaveBeenCalledWith(TENANT, PUMP_B);
   });
 
   it("flag off: nothing is loaded and the prompt is byte-identical to the flag-on, zero-observation prompt", async () => {
@@ -177,7 +204,7 @@ describe("observed state in the chat prompt", () => {
     delete process.env.MIRA_OBSERVATION_STATE;
     await frames(await POST(req({ message: QUESTION }), params));
     const flagOff = systemPrompt();
-    expect(obsStore.listObservationsForAsset).not.toHaveBeenCalled();
+    expect(obsStore.listProjectionRows).not.toHaveBeenCalled();
     expect(flagOff).not.toContain("Technician-reported observations");
 
     vi.clearAllMocks();
@@ -195,7 +222,7 @@ describe("observed state in the chat prompt", () => {
   });
 
   it("table missing (42P01): the turn still answers, without the section", async () => {
-    obsStore.listObservationsForAsset.mockRejectedValue(Object.assign(new Error("relation missing"), { code: "42P01" }));
+    obsStore.listProjectionRows.mockRejectedValue(Object.assign(new Error("relation missing"), { code: "42P01" }));
     const res = await POST(req({ message: QUESTION }), params);
     expect(res.status).toBe(200);
     const events = await frames(res);

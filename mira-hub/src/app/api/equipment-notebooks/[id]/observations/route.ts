@@ -1,7 +1,9 @@
 /**
  * GET  /api/equipment-notebooks/[id]/observations — the bound machine's observed
- *      state and history. Asset-scoped: any notebook of this tenant bound to the
- *      same confirmed machine returns the same answer.
+ *      state and one page of its history (`?cursor=<id>&limit=<n>`, at most
+ *      HISTORY_PAGE_MAX). `?observation=<id>` also returns that one row (the panel's
+ *      save readback). Asset-scoped: any notebook of this tenant bound to the same
+ *      confirmed machine returns the same answer.
  * POST /api/equipment-notebooks/[id]/observations — record a technician-confirmed
  *      observation (append-only; a correction supersedes an earlier row).
  *
@@ -15,15 +17,28 @@ import { isUuid } from "@/capabilities/fix-records";
 import { observationStateEnabled } from "@/capabilities/observations/flag";
 import { confirmedAssetOf, observationsStorageUnavailable } from "@/capabilities/observations/gate";
 import { validateObservationInput } from "@/capabilities/observations/validate";
-import { insertObservation, listObservationsForAsset } from "@/capabilities/observations/store";
-import { deriveObservedState } from "@/capabilities/observations/project";
+import {
+  getObservationForAsset,
+  HISTORY_PAGE_DEFAULT,
+  HISTORY_PAGE_MAX,
+  insertObservation,
+  listObservationHistory,
+  listProjectionRows,
+} from "@/capabilities/observations/store";
+import { deriveObservedState, summaryOf } from "@/capabilities/observations/project";
 
 export const dynamic = "force-dynamic";
 
 const DISABLED = { error: "observations_disabled" };
 const NOT_FOUND = { error: "notebook_not_found" };
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+function pageLimit(raw: string | null): number {
+  const n = Number(raw);
+  if (!raw || !Number.isFinite(n) || n < 1) return HISTORY_PAGE_DEFAULT;
+  return Math.min(Math.floor(n), HISTORY_PAGE_MAX);
+}
+
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
   if (!observationStateEnabled()) return NextResponse.json(DISABLED, { status: 404 });
@@ -36,10 +51,26 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const asset = confirmedAssetOf(await resolveBoundAsset(ctx.tenantId, id));
   if (!asset.ok) return asset.response;
 
+  const q = req.nextUrl.searchParams;
+  const cursor = q.get("cursor");
+  if (cursor !== null && !isUuid(cursor)) return NextResponse.json({ error: "invalid_cursor" }, { status: 400 });
+  const observationId = q.get("observation");
+  if (observationId !== null && !isUuid(observationId)) {
+    return NextResponse.json({ error: "invalid_observation_id" }, { status: 400 });
+  }
+
   try {
-    const rows = await listObservationsForAsset(ctx.tenantId, asset.asset.entityId);
-    const state = deriveObservedState(rows, { now: new Date() });
-    return NextResponse.json({ equipmentEntityId: asset.asset.entityId, state, history: state.history });
+    const entityId = asset.asset.entityId;
+    const state = deriveObservedState(await listProjectionRows(ctx.tenantId, entityId), { now: new Date() });
+    const page = await listObservationHistory(ctx.tenantId, entityId, { cursor, limit: pageLimit(q.get("limit")) });
+    if (page.status === "invalid_cursor") return NextResponse.json({ error: "invalid_cursor" }, { status: 400 });
+    return NextResponse.json({
+      equipmentEntityId: entityId,
+      state: summaryOf(state),
+      history: page.rows,
+      nextCursor: page.nextCursor,
+      ...(observationId ? { observation: await getObservationForAsset(ctx.tenantId, entityId, observationId) } : {}),
+    });
   } catch (err) {
     const unavailable = observationsStorageUnavailable(err);
     if (unavailable) return unavailable;
