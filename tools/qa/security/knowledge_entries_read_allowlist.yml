@@ -1404,3 +1404,11 @@ approved:
                ON k.doc_id = s.doc_id
               AND k.tenant_id = s.tenant_id
        WHERE s.tenant_id = $1::uuid
+  "mira-hub/src/lib/manual-rag.ts:2496":
+    approved_classification: TENANT-ONLY
+    query_sha256: "c65e84b944a74b413eba2080695196810bc035773ab641a9d2c6ddb87e3df83a"
+    reason: "NEW (#4509, the cited manual's own safety warning shown first): retrieveCitedPageChunks — reads the rest of each notebook page the answer CITES, so a page's WARNING in a chunk top-K retrieval left out still reaches the safety notice. Same pure-tenant scope as the retrieveNodeChunks BM25 pass (:1108): tenant_id=$1, ingest_route='v2', and the SAME approvedSourceFilterSql predicate retrieval uses (verified rows, or the caller's own private approved docs bound at $6). Each page is pinned to the exact (doc_id, source_url, page) tuple of a chunk retrieval already admitted ($2-$4), so it can never widen what the turn may read beyond pages the answer cites; only statement-candidate chunks ($5 regex) in id-keyset batches of 200 under a 3s statement timeout. Node attachments are the caller's own uploads — TENANT-ONLY by the same rule as :1108."
+    query_snippet: |
+      FROM knowledge_entries
+              WHERE tenant_id = $1
+                AND ingest_route = 'v2'

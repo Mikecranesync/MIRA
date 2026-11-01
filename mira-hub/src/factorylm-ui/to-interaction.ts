@@ -32,10 +32,17 @@ import { sameManufacturerModel } from "../../../packages/factorylm-interaction/s
 import type {
   EvidenceCitation,
   MachineEvidenceEntry,
+  ManualSafetyStatementEntry,
   SafetyNoticeEntry,
   VisualObservationEntry,
 } from "@/lib/notebook-chat-types";
-import { isMachineEvidenceEntry, isProviderFailureEntry, isSafetyNoticeEntry, isVisualObservationEntry } from "@/lib/notebook-chat-types";
+import {
+  isMachineEvidenceEntry,
+  isManualSafetyStatementEntry,
+  isProviderFailureEntry,
+  isSafetyNoticeEntry,
+  isVisualObservationEntry,
+} from "@/lib/notebook-chat-types";
 import { API_BASE } from "@/lib/config";
 import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
 import { PROVIDER_EXHAUSTION_COPY } from "@/capabilities/provider-health";
@@ -279,6 +286,27 @@ export function safetyNoticePart(entry: SafetyNoticeEntry): InteractionPart {
   };
 }
 
+/** The trigger a manual-statement notice carries; never a stop sentinel. */
+export const MANUAL_SAFETY_STATEMENT_TRIGGER = "manual_safety_statement";
+
+/**
+ * #4508 — the manual's own safety statement on a page the answer cited, as a
+ * WARNING notice: the marker and verbatim statement, then the cited source.
+ * Its own evidence kind (not `safety_notice`), so `isTerminalSafetyNotice`
+ * never sees it and it can never become a stop.
+ */
+export function manualSafetyStatementPart(entry: ManualSafetyStatementEntry): InteractionPart {
+  const where = [entry.sourceTitle, entry.page !== null ? `p. ${entry.page}` : null].filter(Boolean).join(", ");
+  return {
+    type: "safety_notice",
+    notice: {
+      severity: "warning",
+      message: `${entry.marker}: ${entry.statement}${where ? ` (${where})` : ""}`,
+      trigger: MANUAL_SAFETY_STATEMENT_TRIGGER,
+    },
+  };
+}
+
 /** Persisted `{kind:"identity_dispute"}` marker (086 §3). `splitEvidence` drops
  *  it (no docId, not a typed entry it knows), so it is detected here. */
 export function hasIdentityDispute(evidence: readonly unknown[]): boolean {
@@ -484,6 +512,11 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
     for (const m of machineEvidence) parts.push(machineEvidencePart(m));
     for (const v of visualEvidence) parts.push(visualObservationPart(v));
     for (const n of notices) parts.push(safetyNoticePart(n));
+    // #4508: read off the raw evidence (`splitEvidence` drops unknown kinds).
+    // Persisted before the answer streams, so the reload that ends every live
+    // send (hub-host `loadDetail`) shows it too.
+    const manualStatement = (row.evidence as readonly unknown[]).find(isManualSafetyStatementEntry);
+    if (manualStatement) parts.push(manualSafetyStatementPart(manualStatement));
   } else if (stopped) {
     parts.push({ type: "error", error: { code: "stopped", message: "Stopped before the answer completed.", retryable: false } });
   } else {
