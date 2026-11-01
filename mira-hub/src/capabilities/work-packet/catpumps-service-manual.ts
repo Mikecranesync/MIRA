@@ -73,18 +73,28 @@ function isInterleavedFurniture(soFar: string, next: string): boolean {
   return sentenceDone && looksLikeFigureTitle(next);
 }
 
-/** A figure title is Title Case with no sentence punctuation ("Removal of Inlet Manifold O-Rings
- *  3531, 3535"); a new sentence that wraps has lowercase words ("Change crankcase oil … See").
- *  "from" and "with" are the lowercase words real figure titles carry ("Removal of V-Packing Spacer
- *  from Inlet Manifold", 35FR2Svc p.3; "V-Packing Spacer and Spacer with Coil Springs", p.4). */
-const TITLE_LOWERCASE_WORDS = new Set(["from", "with"]);
+/** A figure title, recognised by an allow-list rather than by what it lacks (Codex #5062 F15,
+ *  rounds 6–8): every word is a Title Case word ("Removal", "Lo-Pressure", "O-Rings",
+ *  "V-Packing-Spacer"), a model number ("3531,"), or one of a few small joining words — real titles
+ *  carry "of", "and", "from" ("Removal of V-Packing Spacer from Inlet Manifold", 35FR2Svc p.3) and
+ *  "with" ("V-Packing Spacer and Spacer with Coil Springs", p.4). A word may end in a comma and
+ *  Title Case words may be joined by "/" ("Valve Plug, O-Ring and Back-up Ring", CPSvc5 p.2;
+ *  "Stacked Inlet/Discharge Valve Design", 35FR2Svc p.2). Anything else — an all-caps
+ *  warning ("DO NOT RUN PUMP WITHOUT OIL IN"), a unit ("(0 psi)"), a lowercase word, punctuation —
+ *  makes the line content, never a title. */
+const TITLE_SMALL_WORDS = new Set(["of", "and", "the", "to", "for", "in", "on", "a", "an", "or", "from", "with"]);
+const TITLE_WORD_RE = /^(?:[A-Z][a-z]+|[A-Z])(?:-(?:[A-Z][a-z]*|[a-z]+))*$/;
 function looksLikeFigureTitle(line: string): boolean {
-  const words = line.split(/\s+/).filter((w) => /^[A-Za-z][A-Za-z-]{3,}$/.test(w) && !TITLE_LOWERCASE_WORDS.has(w));
-  // Real figure titles are Title Case. A line with no lowercase letter is ALL-CAPS prose — CAT
-  // manuals print warnings that way ("DO NOT RUN PUMP WITHOUT OIL IN") — so it is content, never a
-  // title (Codex #5062 F15, round 7).
-  if (!/[a-z]/.test(line)) return false;
-  return !/[.!?:;]$/.test(line) && !/[.!?] /.test(line) && words.length > 0 && words.every((w) => /^[A-Z]/.test(w));
+  const words = line.split(/\s+/).filter(Boolean);
+  let titleWords = 0;
+  for (const raw of words) {
+    const w = raw.replace(/,$/, "");
+    if (TITLE_SMALL_WORDS.has(w)) continue;
+    if (isModelToken(w)) continue;
+    if (w.length < 2 || !w.split("/").every((part) => TITLE_WORD_RE.test(part))) return false;
+    titleWords++;
+  }
+  return titleWords > 0;
 }
 
 // ─────────────────────────────────────────────── cover page → modelsCovered
