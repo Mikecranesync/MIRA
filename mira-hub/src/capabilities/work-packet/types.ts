@@ -71,6 +71,10 @@ export interface ModelScope {
   include: string[];
   /** Models explicitly excluded ("All models except 3560" → ["3560"]). */
   exclude: string[];
+  /** The manual restricts this block to some models or hardware variants but the restriction could
+   *  not be resolved to a model list (e.g. "Hi-Pressure Seal Models:"). Never admitted to a packet —
+   *  the builder lists it as Unknown instead of guessing which alternative applies. */
+  unresolved?: boolean;
 }
 
 export interface DsPart {

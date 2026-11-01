@@ -1001,7 +1001,21 @@ export function HubShellHost() {
       )}
       {/* #4982: shown only when NOTEBOOK_WORK_PACKET is on (the panel renders nothing on 404). */}
       {selection && (
-        <WorkPacketPanel notebookId={selection.notebookId} technicianName={authSession?.user?.email ?? null} />
+        <WorkPacketPanel
+          // Same remount rule as GuidedProcedure above: a notebook switch, an identity confirm or a
+          // manual attach starts the panel fresh, so it never shows stale manuals or another
+          // machine's packet (Codex #5062 F4/F5). `detail` may still be loading here.
+          key={[
+            selection.notebookId,
+            detail?.notebook.identityStatus ?? "",
+            detail?.notebook.manufacturer ?? "",
+            detail?.notebook.model ?? "",
+            detail?.notebook.catalogNumber ?? "",
+            (detail?.sources ?? []).map((s) => s.docId).join(","),
+          ].join("|")}
+          notebookId={selection.notebookId}
+          technicianName={authSession?.user?.email ?? null}
+        />
       )}
     </div>
   );

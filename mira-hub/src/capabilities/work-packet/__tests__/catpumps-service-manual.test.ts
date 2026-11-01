@@ -100,10 +100,20 @@ describe("parseCatPumpsServiceManual — CPSvc5-style layout (manual-cpstyle.txt
     expect(vPacking.steps.map((s) => s.n)).toEqual([1, 2]);
   });
 
-  it("records a problems entry for the nested '<Label> Models:' sub-blocks instead of guessing a pump-model restriction, and defaults their scope to 'all'", () => {
-    const hiPressure = sm!.sections.find((s) => s.subheading === "Hi-Pressure Seal Models:")!;
-    expect(hiPressure.models).toEqual({ include: [], exclude: [] });
-    expect(sm!.problems.some((p) => p.includes("Hi-Pressure Seal Models:") && p.includes("left as \"all\""))).toBe(true);
+  it("records a problems entry for the nested '<Label> Models:' hardware-variant sub-blocks and marks their scope unresolved, never 'all' (Codex #5062 F2)", () => {
+    for (const sub of ["Hi-Pressure Seal Models:", "V-Packing Models:"]) {
+      const block = sm!.sections.find((s) => s.subheading === sub)!;
+      expect(block.models).toEqual({ include: [], exclude: [], unresolved: true });
+      expect(sm!.problems.some((p) => p.includes(sub) && p.includes("left out of packets"))).toBe(true);
+    }
+  });
+
+  it("treats a '<Label>-All Models:' sub-block as applying to every model", () => {
+    const base = docTextFromDump("manual-cpstyle.txt");
+    const doc: DocText = { ...base, pages: base.pages.map((pg) => ({ ...pg, text: pg.text.replace("V-Packing Models:", "Lo-Pressure Seal-All Models:") })) };
+    const parsed = parseCatPumpsServiceManual(doc)!;
+    const lo = parsed.sections.find((s) => s.subheading === "Lo-Pressure Seal-All Models:")!;
+    expect(lo.models).toEqual({ include: [], exclude: [] });
   });
 
   it("parses the inline-bracket torque chart: a bare group header ('Valve Plugs') plus per-model rows, part number extracted out of the tool column's bracket", () => {

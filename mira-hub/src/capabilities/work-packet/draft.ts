@@ -103,6 +103,7 @@ function modelsMatch(a: string, b: string): boolean {
 }
 
 function modelScopeAdmits(scope: ModelScope, model: string): boolean {
+  if (scope.unresolved) return false;
   if (!model) return scope.include.length === 0;
   if (scope.exclude.some((m) => modelsMatch(m, model))) return false;
   if (scope.include.length > 0) return scope.include.some((m) => modelsMatch(m, model));
@@ -308,16 +309,28 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
   const wantValves = selectedTopics.includes("valves");
 
   for (const p of applicableDataSheets) {
+    const sheetModel = sheetModelFor(identity, p.dataSheet.models);
     for (const kit of p.dataSheet.kits) {
       if (kit.kind === "seal" && !wantSeals) continue;
       if (kit.kind === "valve" && !wantValves) continue;
+      // A kit row names the pump models it fits; another model on the same sheet never gets it.
+      const kitNumbers = kit.kitNumbers.filter((kn) => kn.models.length === 0 || (sheetModel !== null && kn.models.some((m) => modelsMatch(m, sheetModel))));
+      if (kitNumbers.length === 0) {
+        unknowns.push({
+          value: null,
+          label: "unknown",
+          source: kit.kitNumbers[0]?.source ?? kit.perPumpSource,
+          basis: `No ${kit.kind} kit for model ${sheetModel ?? modelKey} is listed on the data sheet (kits listed for: ${kit.kitNumbers.map((kn) => kn.models.join(", ")).join("; ") || "none"}).`,
+        });
+        continue;
+      }
 
       const qty: Field =
         kit.perPump !== null && kit.perPumpSource
           ? { value: String(kit.perPump), label: "verified", source: kit.perPumpSource, basis: "stated per pump on the data sheet" }
           : { value: kit.perPump !== null ? String(kit.perPump) : null, label: "unknown", source: null, basis: "kit quantity per pump not stated on a single line" };
 
-      for (const kn of kit.kitNumbers) {
+      for (const kn of kitNumbers) {
         const nbrKey = findNbrStdKey(kn.byMaterial);
         const nbrPart = nbrKey !== undefined ? kn.byMaterial[nbrKey] : null;
         const otherMaterials = Object.entries(kn.byMaterial)
@@ -373,6 +386,15 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
     for (const section of p.manual.sections) {
       if (section.topic === "other") continue;
       if (!selectedTopics.includes(section.topic)) continue;
+      if (section.models.unresolved && section.steps.length > 0) {
+        unknowns.push({
+          value: null,
+          label: "unknown",
+          source: section.steps[0].source,
+          basis: `${section.heading} — ${section.subheading ?? "section"}: the manual limits these steps to some models or hardware variants and this tool cannot tell whether this pump is one. Steps left out; use the manual directly for this part.`,
+        });
+        continue;
+      }
       if (!modelScopeAdmits(section.models, modelKey ?? "")) continue;
       for (const step of section.steps) {
         steps.push({
@@ -394,8 +416,33 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
   const torqueTools = new Map<string, Field>();
 
   for (const p of applicableManuals) {
-    for (const row of p.manual.torque) {
-      if (!modelScopeAdmits(row.models, modelKey ?? "")) continue;
+    const torqueKey = (item: string) => item.toUpperCase().replace(/\s+/g, " ").trim();
+    const admitted = p.manual.torque.filter((row) => modelScopeAdmits(row.models, modelKey ?? ""));
+    // A model-specific row ("Model 8560 Only") replaces the chart's general row for that model.
+    const overridden = new Set(admitted.filter((r) => r.models.include.length > 0).map((r) => torqueKey(r.item)));
+    const effective = admitted.filter((r) => r.models.include.length > 0 || !overridden.has(torqueKey(r.item)));
+    // Two rows still left for one item with different values: neither is safe to show as Verified.
+    const valuesByItem = new Map<string, Set<string>>();
+    for (const r of effective) {
+      const k = torqueKey(r.item);
+      if (!valuesByItem.has(k)) valuesByItem.set(k, new Set());
+      valuesByItem.get(k)!.add(`${r.inLbs}|${r.ftLbs}|${r.nm}`);
+    }
+    const reportedConflict = new Set<string>();
+    for (const row of effective) {
+      const conflictKey = torqueKey(row.item);
+      if ((valuesByItem.get(conflictKey)?.size ?? 0) > 1) {
+        if (!reportedConflict.has(conflictKey)) {
+          reportedConflict.add(conflictKey);
+          unknowns.push({
+            value: null,
+            label: "unknown",
+            source: row.source,
+            basis: `Torque chart gives more than one value for '${row.item}' that could apply to this pump — not used as a measurement.`,
+          });
+        }
+        continue;
+      }
       const relevant = selectedTopics.some((t) => {
         const re = TOPIC_TORQUE_RE[t];
         return re ? re.test(row.item) : false;

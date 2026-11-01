@@ -124,6 +124,22 @@ function scopeAll(): ModelScope {
   return { include: [], exclude: [] };
 }
 
+function scopeUnresolved(): ModelScope {
+  return { include: [], exclude: [], unresolved: true };
+}
+
+/** A nested model list ("Models 3535, 3531") inside "Disassembly (All models except 3560)" keeps
+ *  the outer restriction: excludes add up, includes narrow, unresolved is sticky. */
+function intersectScopes(outer: ModelScope, inner: ModelScope): ModelScope {
+  const include =
+    outer.include.length === 0 ? inner.include : inner.include.length === 0 ? outer.include : inner.include.filter((m) => outer.include.includes(m));
+  const scope: ModelScope = { include, exclude: dedupe([...outer.exclude, ...inner.exclude]) };
+  // Both sides named models but none in common: nothing is admitted rather than everything.
+  if (outer.include.length > 0 && inner.include.length > 0 && include.length === 0) scope.unresolved = true;
+  if (outer.unresolved || inner.unresolved) scope.unresolved = true;
+  return scope;
+}
+
 /** Parses the parenthetical / bare model-restriction phrases this manual uses:
  *    "All models except 3560"  -> exclude ["3560"]
  *    "Model 3560" / "Models 3535, 3531, 3537" / "3535, 3531, 3537 Only" -> include [...]
@@ -135,6 +151,9 @@ function parseModelScopePhrase(text: string): ModelScope | null {
   if (/^all\s+models$/i.test(t)) return scopeAll();
   const modelsOnly = t.match(/^models?\s+(.+?)\s+only$/i);
   if (modelsOnly) return { include: splitModelList(modelsOnly[1]), exclude: [] };
+  // "8520 Only" / "3535, 3531, 3537 Only" — the bare-number restriction form.
+  const bareOnly = t.match(/^(.+?)\s+only$/i);
+  if (bareOnly && isModelListLine(bareOnly[1])) return { include: splitModelList(bareOnly[1]), exclude: [] };
   const models = t.match(/^models?\s+(.+)$/i);
   if (models && isModelListLine(models[1])) return { include: splitModelList(models[1]), exclude: [] };
   return null;
@@ -173,6 +192,8 @@ function topicFor(heading: string): Topic | "other" {
 interface SubheadingMatch {
   text: string;
   scope: ModelScope;
+  /** true for a bare model-list header nested under a Disassembly/Reassembly phase. */
+  nested?: boolean;
   /** false for case 4 — the scope could not be resolved locally; caller records a `problems` note. */
   scopeKnown: boolean;
 }
@@ -180,19 +201,24 @@ interface SubheadingMatch {
 function matchSubheading(line: string): SubheadingMatch | null {
   const paren = line.match(/^(Disassembly|Reassembly)\s*\(([^)]+)\)\s*$/);
   if (paren) {
-    const scope = parseModelScopePhrase(paren[2]) ?? scopeAll();
-    return { text: line, scope, scopeKnown: true };
+    const parsed = parseModelScopePhrase(paren[2]);
+    // An unrecognized restriction is never widened to "all models".
+    return { text: line, scope: parsed ?? scopeUnresolved(), scopeKnown: parsed !== null };
   }
   if (/^(Disassembly|Reassembly)(\s+of\s+the\s+[A-Za-z][A-Za-z \-]*)?\s*$/.test(line)) {
     return { text: line, scope: scopeAll(), scopeKnown: true };
   }
   const bareModels = line.match(/^Models?\s+([\dA-Za-z, ]+?)\s*:?\s*$/);
   if (bareModels && isModelListLine(bareModels[1])) {
-    return { text: line, scope: { include: splitModelList(bareModels[1]), exclude: [] }, scopeKnown: true };
+    return { text: line, scope: { include: splitModelList(bareModels[1]), exclude: [] }, scopeKnown: true, nested: true };
   }
   const labelModels = line.match(/^([A-Za-z][A-Za-z \-]+Models):\s*$/);
   if (labelModels) {
-    return { text: line, scope: scopeAll(), scopeKnown: false };
+    // "Lo-Pressure Seal-All Models:" applies to every model; "Hi-Pressure Seal Models:" /
+    // "V-Packing Models:" are alternative hardware variants — which one this pump has is not
+    // stated, so that block is unresolved, not "all".
+    if (/all\s+models$/i.test(labelModels[1])) return { text: line, scope: scopeAll(), scopeKnown: true };
+    return { text: line, scope: scopeUnresolved(), scopeKnown: false };
   }
   return null;
 }
@@ -356,6 +382,9 @@ export function parseCatPumpsServiceManual(doc: DocText): ServiceManual | null {
   const problems: string[] = [];
 
   let open: OpenSection | null = null;
+  // Scope of the last Disassembly/Reassembly subheading in the open section; a nested model-list
+  // header narrows it instead of replacing it.
+  let phaseScope: ModelScope = scopeAll();
   let skippingCaption = false;
 
   const sorted: PageText[] = [...doc.pages].sort((a, b) => a.page - b.page);
@@ -415,6 +444,7 @@ export function parseCatPumpsServiceManual(doc: DocText): ServiceManual | null {
       if (SECTION_HEADING_RE.test(line) && isAllCapsHeading(line)) {
         flushSection(open, sections, problems);
         open = { heading: line, subheading: null, topic: topicFor(line), models: scopeAll(), page: pg.page, steps: [], firstLines: [] };
+        phaseScope = scopeAll();
         skippingCaption = false;
         continue;
       }
@@ -424,10 +454,12 @@ export function parseCatPumpsServiceManual(doc: DocText): ServiceManual | null {
         flushSection(open, sections, problems);
         if (!sub.scopeKnown) {
           problems.push(
-            `page ${pg.page}: subheading "${sub.text}" names a hardware variant, not a pump-model restriction stated on this page — model scope left as "all" rather than guessed`,
+            `page ${pg.page}: subheading "${sub.text}" has a model or hardware-variant restriction that could not be resolved — its steps are left out of packets rather than guessed`,
           );
         }
-        open = { heading: open!.heading, subheading: sub.text, topic: open!.topic, models: sub.scope, page: pg.page, steps: [], firstLines: [] };
+        const sectionModels: ModelScope = sub.nested ? intersectScopes(phaseScope, sub.scope) : sub.scope;
+        if (!sub.nested) phaseScope = sub.scope;
+        open = { heading: open!.heading, subheading: sub.text, topic: open!.topic, models: sectionModels, page: pg.page, steps: [], firstLines: [] };
         skippingCaption = false;
         continue;
       }

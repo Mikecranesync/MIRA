@@ -128,3 +128,37 @@ export function confirmedRevisionsPayload(
   if (!confirmed) return [];
   return docs.map((d) => ({ docId: d.docId, revision: d.revision?.value ?? null }));
 }
+
+// ───────────────────────────────────────────── notebook ownership + document snapshot (Codex #5062 F4/F5)
+
+/** A saved or freshly built packet is shown only under the notebook it was built for — never
+ *  under another machine's identity (a late response, or a stale draft under the wrong key). */
+export function packetForNotebook(packet: WorkPacket | null, notebookId: string): WorkPacket | null {
+  return packet && packet.notebookId === notebookId ? packet : null;
+}
+
+/** Which documents (and which revisions) the technician is confirming. When this changes, the
+ *  earlier "revisions match my paper copy" tick no longer applies and is cleared. */
+export function documentsSignature(docs: Pick<PacketDocument, "docId" | "revision">[]): string {
+  return docs.map((d) => `${d.docId}@${d.revision?.value ?? ""}`).join("|");
+}
+
+// ───────────────────────────────────────────── job header (screen + paper, Codex #5062 F6)
+
+/** The work order and machine a packet belongs to, as label/value rows. Printed at the top of the
+ *  PDF so the paper copy says which job and which pump it is without relying on browser headers. */
+export function packetHeaderRows(packet: Pick<WorkPacket, "workOrder" | "equipment">): { label: string; value: string }[] {
+  const wo = packet.workOrder;
+  const eq = packet.equipment;
+  const rows: { label: string; value: string }[] = [
+    { label: "Work order", value: wo.id },
+    { label: "Title", value: wo.title || "(none)" },
+    { label: "Job", value: wo.description || "(none)" },
+    { label: "Asset tag", value: wo.assetTag ?? "(none)" },
+    { label: "Site", value: wo.site ?? "(none)" },
+    { label: "Manufacturer", value: eq.manufacturer.value ?? "(unknown)" },
+    { label: "Model", value: eq.model.value ?? "(unknown)" },
+    { label: "Serial", value: eq.serial.value ?? "(unknown)" },
+  ];
+  return rows;
+}
