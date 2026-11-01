@@ -42,6 +42,7 @@ import {
   packetForNotebook,
   packetHeaderRows,
   packetStaleReason,
+  revisionTickHolds,
   partFieldPath,
   printTitle,
   scopeFieldPath,
@@ -177,6 +178,16 @@ const REFUSAL_LABEL: Record<DraftRefusal, string> = {
 type WOFields = { id: string; title: string; description: string; assetTag: string; site: string };
 const EMPTY_WO: WOFields = { id: "", title: "", description: "", assetTag: "", site: "" };
 
+/** The notebook's work-packet availability, or null when it cannot be read. */
+async function fetchAvailability(baseUrl: string): Promise<WorkPacketAvailability | null> {
+  try {
+    const res = await fetch(baseUrl, { credentials: "include", headers: { accept: "application/json" } });
+    return res.ok ? ((await res.json()) as WorkPacketAvailability) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** One editable/citable field row, used for every section the task lists as editable (Scope,
  *  Parts & kits, Tools, Steps, Torque/measurements, Unknowns). Equipment and site isolation are
  *  rendered separately (read-only) — see their own call sites below. */
@@ -268,7 +279,6 @@ export function WorkPacketPanel({
 }) {
   const [avail, setAvail] = useState<WorkPacketAvailability | null>(null);
   const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const openerRef = useRef<HTMLButtonElement>(null);
@@ -283,26 +293,21 @@ export function WorkPacketPanel({
   }, [notebookId]);
 
   const refreshAvailability = useCallback(async () => {
-    try {
-      const res = await fetch(baseUrl, { credentials: "include", headers: { accept: "application/json" } });
-      if (liveNotebook.current !== notebookId) return;
-      if (!res.ok) {
-        setAvail(null);
-        return;
-      }
-      const body = (await res.json()) as WorkPacketAvailability;
-      if (liveNotebook.current !== notebookId) return;
-      setAvail(body);
-    } catch {
-      setAvail(null);
-    }
+    const body = await fetchAvailability(baseUrl);
+    if (liveNotebook.current === notebookId) setAvail(body);
   }, [baseUrl, notebookId]);
 
+  // The host keys this panel by notebook, identity and manuals, so a change remounts it with fresh
+  // state; on mount only the availability needs fetching (dropped if the panel unmounts first).
   useEffect(() => {
-    setAvail(null);
-    setOpen(false);
-    void refreshAvailability();
-  }, [refreshAvailability]);
+    let live = true;
+    void fetchAvailability(baseUrl).then((body) => {
+      if (live) setAvail(body);
+    });
+    return () => {
+      live = false;
+    };
+  }, [baseUrl]);
 
   useEffect(() => {
     const d = dialogRef.current;
@@ -416,10 +421,11 @@ export function WorkPacketPanel({
   const [wo, setWo] = useState<WOFields>(EMPTY_WO);
   const [synthetic, setSynthetic] = useState(false);
   // The technician confirms the machine AND the manual revisions before a draft can be built.
-  const [revConfirmed, setRevConfirmed] = useState(false);
-  // A changed document list or revision voids an earlier "matches my paper copy" tick (Codex #5062 F5).
+  // The tick records the document list it was given for; a changed document list or revision voids
+  // it (Codex #5062 F5). Within one notebook — a different notebook remounts the panel.
   const docsSig = documentsSignature(avail?.documents ?? []);
-  useEffect(() => setRevConfirmed(false), [notebookId, docsSig]);
+  const [revConfirmedFor, setRevConfirmedFor] = useState<string | null>(null);
+  const revConfirmed = revisionTickHolds(revConfirmedFor, docsSig);
 
   const loadSyntheticDemo = useCallback(() => {
     const demo = syntheticDemoWorkOrder(newId());
@@ -428,15 +434,12 @@ export function WorkPacketPanel({
   }, []);
 
   // ── Build draft packet ────────────────────────────────────────────────────────────────────────
+  // Restored once per mount: the host remounts the panel when the notebook changes.
   const [packet, setPacket] = useState<WorkPacket | null>(() => packetForNotebook(loadDraft(notebookId), notebookId));
   const [warnings, setWarnings] = useState<string[]>([]);
   const [refusal, setRefusal] = useState<{ reason: DraftRefusal; message: string } | null>(null);
   const [buildBusy, setBuildBusy] = useState(false);
   const [editBusy, setEditBusy] = useState(false);
-
-  useEffect(() => {
-    setPacket(packetForNotebook(loadDraft(notebookId), notebookId));
-  }, [notebookId]);
 
   const onBuild = useCallback(async () => {
     const id = wo.id.trim() || newId();
@@ -620,7 +623,7 @@ export function WorkPacketPanel({
                   <label style={{ ...S.label, marginTop: 8 }} data-no-print>
                     <input
                       type="checkbox" data-testid="wp-rev-confirm" checked={revConfirmed}
-                      disabled={!identityConfirmed} onChange={(e) => setRevConfirmed(e.target.checked)}
+                      disabled={!identityConfirmed} onChange={(e) => setRevConfirmedFor(e.target.checked ? docsSig : null)}
                     />{" "}
                     I checked the machine and these manual revisions against what I have in hand.
                   </label>

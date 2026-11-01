@@ -137,8 +137,6 @@ function extractModelsCovered(coverText: string): string[] {
 
 // ─────────────────────────────────────────────── model scope parsing
 
-const EMPTY_SCOPE: ModelScope = Object.freeze({ include: [], exclude: [] }) as ModelScope;
-
 function scopeAll(): ModelScope {
   return { include: [], exclude: [] };
 }

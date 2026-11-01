@@ -1,32 +1,51 @@
 /**
  * Work Packet (#4982) — figure-caption lines from PDF layout (Codex #5062 F15).
  *
- * In CAT Pumps service manuals each photo has its caption printed directly beneath it, in a type
- * size different from the procedure text. Measured on the real 35-frame and 3CP/5CP/7CP manuals
- * (pages 2–5): every caption block starts with a line that has 190–250pt of text-free space above
- * it (the photo), in size 8.5/9.5 against body 8/10, and its second line sits ~10pt below; a
- * CAUTION block, the nearest look-alike, has only 26–34pt above it. The words alone cannot tell a
- * caption from a Title Case sentence; the photo gap and the type size can.
+ * In CAT Pumps service manuals each photo is an image drawn on the page, and its caption is printed
+ * directly beneath it, inside the photo's column. Measured on the real 35-frame and 3CP/5CP/7CP
+ * manuals (pages 2–5, every caption): the caption is one or two rows whose baselines sit 10–12pt and
+ * 21–23pt below the image's bottom edge, starting at the image's left edge and never wider than the
+ * image, in a type size other than the page's body size (9.5/8.5 against body 10, 8.5 against body
+ * 8). A CAUTION block is as wide as the text column, so it never fits under a photo.
  *
- * Pure: takes the page's text items (pdf.js `getTextContent`) and the extracted page text, returns
- * the extracted lines that consist only of figure-band items. Every condition fails toward "not a
- * figure line" — the parser then treats the line as content, never skips it.
+ * So a caption is recognised only where it is positively established: an actual image, and text
+ * inside the band directly under it. Spacing or a smaller font alone never make text a caption
+ * (rounds 9–10: a smaller-font safety continuation under a caption, or a smaller-font CAUTION below
+ * a large gap, was dropped). The words are never consulted.
+ *
+ * Pure: takes the page's text items and image boxes (pdf.js `getTextContent` / `getOperatorList`)
+ * and the extracted page text, returns the extracted lines that consist only of caption-band items.
+ * Every condition fails toward "not a figure line" — the parser then treats the line as content.
  */
 
 export interface LayoutItem {
   str: string;
+  /** Left edge in PDF user space. */
+  x: number;
   /** Baseline y in PDF user space (0 = bottom of the page). */
   y: number;
+  /** Advance width (pt). */
+  w: number;
   /** Font size (pt). */
   size: number;
 }
 
-/** A caption block starts below at least this much text-free space (pt) — the photo above it. */
-const PHOTO_GAP_PT = 100;
-/** …and continues onto following lines at most this far below the previous one (pt). */
-const CAPTION_LEADING_PT = 15;
+/** An image drawn on the page, in PDF user space. */
+export interface ImageBox {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+/** Caption rows sit at most this far (pt) below the image's bottom edge — two rows (real: 21–23pt). */
+const CAPTION_BAND_PT = 26;
+/** Caption text may start/end at most this far (pt) outside the image's left/right edge (real: ≤1pt). */
+const COLUMN_SLACK_PT = 3;
 /** Items whose baselines differ by less than this are on the same printed row (pt). */
 const ROW_TOLERANCE_PT = 2;
+/** Images smaller than this (pt) on either side are rules, bullets or logos, not photos. */
+const MIN_PHOTO_PT = 40;
 
 const norm = (s: string) => s.replace(/\s+/g, " ").trim();
 
@@ -53,28 +72,82 @@ function composedOf(line: string, pieces: Set<string>): boolean {
   return ok[line.length];
 }
 
-export function figureLinesForPage(items: LayoutItem[], pageHeight: number, pageText: string): string[] {
+function underPhoto(it: LayoutItem, img: ImageBox): boolean {
+  return (
+    it.y < img.y0 &&
+    it.y >= img.y0 - CAPTION_BAND_PT &&
+    it.x >= img.x0 - COLUMN_SLACK_PT &&
+    it.x + it.w <= img.x1 + COLUMN_SLACK_PT
+  );
+}
+
+export function figureLinesForPage(items: LayoutItem[], images: ImageBox[], pageText: string): string[] {
+  const photos = images.filter((b) => b.x1 - b.x0 >= MIN_PHOTO_PT && b.y1 - b.y0 >= MIN_PHOTO_PT);
   const text = items.filter((it) => norm(it.str).length > 0);
   const body = bodySize(text);
-  if (body === null || !(pageHeight > 0)) return [];
-  // Printed rows, top of the page first.
-  const rows: { y: number; items: LayoutItem[] }[] = [];
+  if (body === null || photos.length === 0) return [];
+  // Printed rows; a row counts only if every item on it is non-body text inside a photo's caption band.
+  const rows: LayoutItem[][] = [];
   for (const it of [...text].sort((a, b) => b.y - a.y)) {
     const row = rows[rows.length - 1];
-    if (row && row.y - it.y < ROW_TOLERANCE_PT) row.items.push(it);
-    else rows.push({ y: it.y, items: [it] });
+    if (row && row[0].y - it.y < ROW_TOLERANCE_PT) row.push(it);
+    else rows.push([it]);
   }
   const pieces = new Set<string>();
-  let inBlock = false;
-  for (let k = 0; k < rows.length; k++) {
-    const above = k === 0 ? pageHeight - rows[k].y : rows[k - 1].y - rows[k].y;
-    const notBody = rows[k].items.every((it) => it.size !== body);
-    inBlock = notBody && (above >= PHOTO_GAP_PT || (inBlock && above <= CAPTION_LEADING_PT));
-    if (inBlock) for (const it of rows[k].items) pieces.add(norm(it.str));
+  for (const row of rows) {
+    const caption = row.every((it) => it.size !== body && photos.some((img) => underPhoto(it, img)));
+    if (caption) for (const it of row) pieces.add(norm(it.str));
   }
   if (pieces.size === 0) return [];
   return pageText
     .split("\n")
     .map((l) => l.trim())
     .filter((l) => l.length > 0 && composedOf(norm(l), pieces));
+}
+
+type Matrix = [number, number, number, number, number, number];
+const mul = (a: Matrix, b: number[]): Matrix => [
+  a[0] * b[0] + a[2] * b[1],
+  a[1] * b[0] + a[3] * b[1],
+  a[0] * b[2] + a[2] * b[3],
+  a[1] * b[2] + a[3] * b[3],
+  a[0] * b[4] + a[2] * b[5] + a[4],
+  a[1] * b[4] + a[3] * b[5] + a[5],
+];
+
+/** pdf.js operator codes this reader needs (`OPS` from pdfjs). */
+export interface ImageOps {
+  save: number;
+  restore: number;
+  transform: number;
+  paintFormXObjectBegin: number;
+  paintFormXObjectEnd: number;
+  paintImageXObject: number;
+  paintInlineImageXObject: number;
+  paintImageXObjectRepeat: number;
+}
+
+/** Bounding boxes of the images a page's operator list paints (an image fills its CTM's unit square). */
+export function imageBoxesFromOps(fnArray: number[], argsArray: unknown[], ops: ImageOps): ImageBox[] {
+  let ctm: Matrix = [1, 0, 0, 1, 0, 0];
+  const stack: Matrix[] = [];
+  const boxes: ImageBox[] = [];
+  for (let i = 0; i < fnArray.length; i++) {
+    const fn = fnArray[i];
+    const args = argsArray[i] as unknown[] | null;
+    if (fn === ops.save) stack.push(ctm);
+    else if (fn === ops.restore) ctm = stack.pop() ?? ctm;
+    else if (fn === ops.transform && args) ctm = mul(ctm, args as number[]);
+    else if (fn === ops.paintFormXObjectBegin) {
+      stack.push(ctm);
+      const m = args?.[0];
+      if (Array.isArray(m) && m.length === 6) ctm = mul(ctm, m as number[]);
+    } else if (fn === ops.paintFormXObjectEnd) ctm = stack.pop() ?? ctm;
+    else if (fn === ops.paintImageXObject || fn === ops.paintInlineImageXObject || fn === ops.paintImageXObjectRepeat) {
+      const xs = [ctm[4], ctm[4] + ctm[0], ctm[4] + ctm[2], ctm[4] + ctm[0] + ctm[2]];
+      const ys = [ctm[5], ctm[5] + ctm[1], ctm[5] + ctm[3], ctm[5] + ctm[1] + ctm[3]];
+      boxes.push({ x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) });
+    }
+  }
+  return boxes;
 }

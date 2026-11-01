@@ -13,11 +13,12 @@
  * Read-only: no notebook, source or knowledge_entries row is ever written here.
  */
 
-import { extractText, getDocumentProxy } from "unpdf";
+import { extractText, getDocumentProxy, getResolvedPDFJS } from "unpdf";
 import pool from "@/lib/db";
 import { withTenantContext } from "@/lib/tenant-context";
 import { listSources } from "@/lib/equipment-notebooks";
-import { figureLinesForPage, type LayoutItem } from "./pdf-figure-lines";
+import { acquireIngestSlot } from "@/lib/node-knowledge-ingest";
+import { figureLinesForPage, imageBoxesFromOps, type LayoutItem } from "./pdf-figure-lines";
 import type { DocText, PageText } from "./types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -71,13 +72,14 @@ interface UploadBytesRow {
  * The kept original's own page text via unpdf — same call shape
  * (`getDocumentProxy` + `extractText(pdf, { mergePages: false })`) as
  * `writePdfChunksForNode` in `@/lib/node-knowledge-ingest`. That function also
- * writes chunk rows and holds a parse concurrency slot, neither of which this
- * read-only loader needs, so the unpdf call itself is reused directly rather
- * than through it. Returns null when no row matches (wrong tenant, or the file
+ * writes chunk rows, which this read-only loader must not, so the unpdf call is
+ * reused directly — but the parse holds the SAME concurrency slot ingest does
+ * (`acquireIngestSlot`), because a whole PDF in memory is the documented OOM
+ * term whether it is being ingested or re-read (Codex #5062 F17). Returns null when no row matches (wrong tenant, or the file
  * was never parked) so the caller can fall back to the chunk text.
  *
- * Each page also carries `figureLines` — the lines its layout places in a figure-caption band
- * (`pdf-figure-lines.ts`). If reading a page's layout fails, that page simply has none, and the
+ * Each page also carries `figureLines` — the lines its layout places in the caption band directly
+ * under a photo (`pdf-figure-lines.ts`). If reading a page's layout fails, that page simply has none, and the
  * parser treats every unplaced line on it as content (Codex #5062 F15).
  */
 async function fileDocPages(tenantId: string, fileId: string): Promise<PageText[] | null> {
@@ -92,8 +94,18 @@ async function fileDocPages(tenantId: string, fileId: string): Promise<PageText[
   return pdfDocPages(new Uint8Array(row.content));
 }
 
-/** A PDF's own pages: unpdf page text plus each page's layout-derived `figureLines`. */
+/** A PDF's own pages: unpdf page text plus each page's layout-derived `figureLines`. Holds one
+ *  shared PDF-parse slot for the whole read, released on success and on failure. */
 export async function pdfDocPages(bytes: Uint8Array): Promise<PageText[]> {
+  const release = await acquireIngestSlot();
+  try {
+    return await readPdfPages(bytes);
+  } finally {
+    release();
+  }
+}
+
+async function readPdfPages(bytes: Uint8Array): Promise<PageText[]> {
   const pdf = await getDocumentProxy(bytes);
   const { text } = await extractText(pdf, { mergePages: false });
   const texts = Array.isArray(text) ? text : [text];
@@ -101,15 +113,17 @@ export async function pdfDocPages(bytes: Uint8Array): Promise<PageText[]> {
   for (let i = 0; i < texts.length; i++) {
     const page: PageText = { page: i + 1, text: texts[i] };
     try {
+      const { OPS } = await getResolvedPDFJS();
       const pg = await pdf.getPage(i + 1);
       const content = await pg.getTextContent();
       const items: LayoutItem[] = [];
       for (const it of content.items) {
         if (!("str" in it) || !("transform" in it)) continue;
-        const [, b, , d, , y] = it.transform as number[];
-        items.push({ str: it.str, y, size: Math.round(Math.hypot(b, d) * 10) / 10 });
+        const [, b, , d, x, y] = it.transform as number[];
+        items.push({ str: it.str, x, y, w: it.width, size: Math.round(Math.hypot(b, d) * 10) / 10 });
       }
-      page.figureLines = figureLinesForPage(items, pg.getViewport({ scale: 1 }).height, texts[i]);
+      const ops = await pg.getOperatorList();
+      page.figureLines = figureLinesForPage(items, imageBoxesFromOps(ops.fnArray, ops.argsArray, OPS), texts[i]);
     } catch (err) {
       console.error(`[work-packet/document-text] page ${i + 1} layout read failed (no figure lines):`, err instanceof Error ? err.message : err);
     }
