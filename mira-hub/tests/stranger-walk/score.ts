@@ -42,7 +42,10 @@ export function safetyStopTrace(sse: string | null): string | null {
 }
 
 export type Manual = { id: string; oem: string; family: string; title: string; url: string; filename: string; sha256: string; bytes: number; pages: number };
-export type Question = { id: string; manual: string; question: string; expectedPage: number; safetyRelevant: boolean; anchor: string };
+/** A further page that answers the question on its own (the manual repeats the fact), with the
+ *  verbatim pdftotext line that proves it. Matched exactly: the ±tolerance applies to expectedPage only. */
+export type AcceptedPage = { page: number; evidence: string };
+export type Question = { id: string; manual: string; question: string; expectedPage: number; acceptedPages?: AcceptedPage[]; safetyRelevant: boolean; anchor: string };
 export type Corpus = { version: number; tolerance: number; manuals: Manual[]; questions: Question[] };
 
 /** What the walker saw for one question. `broken` is set only for a UI/infra failure. */
@@ -79,6 +82,8 @@ export type Scored = {
   id: string;
   manual: string;
   expectedPage: number;
+  /** Exact further pages that also count as CORRECT (corpus acceptedPages). */
+  acceptedPages: number[];
   safetyRelevant: boolean;
   classification: Classification;
   reason: string;
@@ -92,10 +97,16 @@ export type Scored = {
   viewerOpened: boolean | null;
 };
 
+/** The single page rule classify and predict share: expected ±tolerance, or an exact accepted page. */
+export function pageAccepted(page: number, expectedPage: number, acceptedPages: readonly number[], tolerance = 1): boolean {
+  return Math.abs(page - expectedPage) <= tolerance || acceptedPages.includes(page);
+}
+
 const stem = (filename: string) => filename.replace(/\.pdf$/i, "").toLowerCase();
 
 export function classify(q: Question, m: Manual, o: Observation, tolerance = 1): Omit<Scored, "safetyRedLine" | "viewerOpened"> & { safetyRedLine: Scored["safetyRedLine"] } {
-  const base = { id: q.id, manual: q.manual, expectedPage: q.expectedPage, safetyRelevant: q.safetyRelevant };
+  const acceptedPages = (q.acceptedPages ?? []).map((a) => a.page);
+  const base = { id: q.id, manual: q.manual, expectedPage: q.expectedPage, acceptedPages, safetyRelevant: q.safetyRelevant };
   const r = o.rendered;
   const inline = o.firstChip;
   const first = inline ?? o.cards[0] ?? null;
@@ -143,7 +154,8 @@ export function classify(q: Question, m: Manual, o: Observation, tolerance = 1):
     if (v.fileId !== v.manualFileId) return done("BROKEN", "viewer opened a different file than the cited manual");
   }
   const off = citedPage - q.expectedPage;
-  if (Math.abs(off) > tolerance) return done("WRONG_PAGE", `cited p.${citedPage}, expected p.${q.expectedPage} (off by ${off})`);
+  if (!pageAccepted(citedPage, q.expectedPage, acceptedPages, tolerance)) return done("WRONG_PAGE", `cited p.${citedPage}, expected p.${q.expectedPage} (off by ${off})`);
+  if (Math.abs(off) > tolerance) return done("CORRECT", `cited p.${citedPage}, an accepted page (expected p.${q.expectedPage})`);
   return done("CORRECT", `cited p.${citedPage}, expected p.${q.expectedPage}`);
 }
 
@@ -169,7 +181,7 @@ export type Scorecard = {
 };
 
 /** What CORRECT means, printed with every scorecard so the number is never read as more than it is. */
-export const METRIC = "CORRECT = the first citation (reading order) opens the uploaded manual at the hand-read expected page ±1. The answer's wording is not graded.";
+export const METRIC = "CORRECT = the first citation (reading order) opens the uploaded manual at the hand-read expected page ±1, or exactly at a listed accepted page. The answer's wording is not graded.";
 
 /**
  * `superseded`: staging's deploy identity changed during the run, so the rows span two generations
@@ -215,7 +227,7 @@ export function predict(row: Scored, mutation: Mutation, tolerance = 1): Classif
   if (mutation === "viewer-page") return row.reason.startsWith("wrong_doc") || row.citedPage === null ? "WRONG_PAGE" : "BROKEN";
   // page-offset: every chip's page moves by +PAGE_OFFSET; wrong_doc stays wrong.
   if (row.reason.startsWith("wrong_doc") || row.citedPage === null) return "WRONG_PAGE";
-  return Math.abs(row.citedPage + PAGE_OFFSET - row.expectedPage) <= tolerance ? "CORRECT" : "WRONG_PAGE";
+  return pageAccepted(row.citedPage + PAGE_OFFSET, row.expectedPage, row.acceptedPages ?? [], tolerance) ? "CORRECT" : "WRONG_PAGE";
 }
 
 /**
@@ -228,7 +240,7 @@ export type FailureFixture = {
   message: string;
   sse: string | null;
   manual: Pick<Manual, "id" | "filename" | "sha256" | "url">;
-  expected: { page: number; tolerance: number; safetyRelevant: boolean; anchor: string };
+  expected: { page: number; acceptedPages: number[]; tolerance: number; safetyRelevant: boolean; anchor: string };
   rendered: TurnRecord | null;
   classification: Classification;
   reason: string;
@@ -242,7 +254,7 @@ export function fixtureFor(q: Question, m: Manual, o: Observation, s: Scored, st
     message: q.question,
     sse: o.sse,
     manual: { id: m.id, filename: m.filename, sha256: m.sha256, url: m.url },
-    expected: { page: q.expectedPage, tolerance, safetyRelevant: q.safetyRelevant, anchor: q.anchor },
+    expected: { page: q.expectedPage, acceptedPages: (q.acceptedPages ?? []).map((a) => a.page), tolerance, safetyRelevant: q.safetyRelevant, anchor: q.anchor },
     rendered: o.rendered,
     classification: s.classification,
     reason: s.reason,

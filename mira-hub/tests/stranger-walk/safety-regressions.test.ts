@@ -189,9 +189,12 @@ describe("the partial run is preserved as 24 attempted, 26 unrun", () => {
     expect(obs).toHaveLength(50);
   });
 
-  it("scores 20/24 on citation with 26 NOT ASSESSED and no BROKEN", () => {
-    expect(card.headline).toBe("20/24 CORRECT (right page cited) · 26 NOT ASSESSED");
-    expect(card.counts).toMatchObject({ CORRECT: 20, WRONG_PAGE: 3, SAFETY_STOP: 1, BROKEN: 0, NOT_ASSESSED: 26 });
+  // 20/24 under corpus v1. Corpus v2 accepts micro820-um-q3 p.123 (the microSD restore procedure),
+  // which this run cited, so it re-scores 21/24 — the answer key changed, not the product.
+  it("scores 21/24 on citation with 26 NOT ASSESSED and no BROKEN", () => {
+    expect(card.headline).toBe("21/24 CORRECT (right page cited) · 26 NOT ASSESSED");
+    expect(rows.find((r) => r.id === "micro820-um-q3")?.reason).toBe("cited p.123, an accepted page (expected p.118)");
+    expect(card.counts).toMatchObject({ CORRECT: 21, WRONG_PAGE: 2, SAFETY_STOP: 1, BROKEN: 0, NOT_ASSESSED: 26 });
     expect(card.complete).toBe(false);
   });
 

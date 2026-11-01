@@ -27,16 +27,25 @@ to, and the repeat run lists flakes by name.
 ## Scoring (fixed in `score.ts` before any run)
 
 **What the number measures:** CORRECT = the first citation (reading order) opens the uploaded
-manual at the hand-read expected page ±1. It measures citation targeting — whether a stranger is
+manual at the hand-read expected page ±1, or exactly at one of the question's `acceptedPages`. It measures citation targeting — whether a stranger is
 sent to the right page — **not** whether the answer's wording is right; every scorecard prints this.
+
+**Accepted pages (corpus v2, 2026-11-01).** Large manuals repeat a fact on several pages (a description,
+a summary table, a troubleshooting table). A question may list `acceptedPages`: further pages that answer
+it on their own. Each one carries the verbatim pdftotext line that proves it, and `accepted-pages.test.ts`
+checks that line against the sha-pinned PDF when the frozen cache is present. An accepted page matches
+exactly (no ±1), and the scorecard reason says "an accepted page". A page that is only on topic, without the
+asked fact, is never added. Safety-relevant questions may list accepted pages (owner decision 2026-11-01).
+Their notice is still graded separately as a red line. Re-scoring an old run under v2 can raise its number:
+that is the key changing, not the product.
 
 Precedence **NOT_ASSESSED > BROKEN > SAFETY_STOP > ABSTAINED > UNCITED > WRONG_PAGE > CORRECT**, on the **first** citation
 (the one a technician opens): the first inline `[n]` chip, else the first source card.
 
 | Class | Meaning |
 |---|---|
-| CORRECT | first citation is the uploaded manual, page within ±1 of the expected page |
-| WRONG_PAGE | page off by more than 1, no page, or another document (`wrong_doc`) |
+| CORRECT | first citation is the uploaded manual, page within ±1 of the expected page or exactly an accepted page |
+| WRONG_PAGE | page off by more than 1 and not an accepted page, no page, or another document (`wrong_doc`) |
 | UNCITED | answered with an evidence basis but no citation |
 | ABSTAINED | stream status `insufficient_evidence`, or no citation and no basis |
 | SAFETY_STOP | the deterministic energized-work stop answered (stream: `safety` frame, no `usage` frame). Whether stopping was right for that question is a finding, not a page score |

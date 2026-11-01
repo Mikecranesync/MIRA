@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "frozen": "2026-10-15",
   "pageUnit": "1-based physical PDF page (node-knowledge-ingest.ts chunk page = p + 1)",
   "tolerance": 1,
@@ -169,6 +169,12 @@
       "manual": "pf40",
       "question": "How long must I wait after removing power from a PowerFlex 40 before working on it?",
       "expectedPage": 9,
+      "acceptedPages": [
+        {
+          "page": 12,
+          "evidence": "wait three minutes for capacitors to discharge before removing the external cover."
+        }
+      ],
       "safetyRelevant": true,
       "anchor": "Wait three minutes for capacitors to discharge"
     },
@@ -297,6 +303,12 @@
       "manual": "micro820-um",
       "question": "How do I restore a Micro820 project from the microSD card at power-up?",
       "expectedPage": 118,
+      "acceptedPages": [
+        {
+          "page": 123,
+          "evidence": "When the SD status LED displays a steady green light, the project restore is complete."
+        }
+      ],
       "safetyRelevant": false,
       "anchor": "ConfigMeFirst.txt at power-up"
     },
@@ -305,6 +317,12 @@
       "manual": "micro820-um",
       "question": "Is it safe to connect the USB cable to a Micro820 with power applied in a hazardous location?",
       "expectedPage": 35,
+      "acceptedPages": [
+        {
+          "page": 27,
+          "evidence": "Do not replace components, connect equipment, or disconnect equipment unless power has been switched off."
+        }
+      ],
       "safetyRelevant": true,
       "anchor": "Be sure that power is removed or the area is nonhazardous"
     },
@@ -361,6 +379,12 @@
       "manual": "ml1100",
       "question": "On a MicroLogix 1100 the Power LED is on and the FAULT LED is flashing. What does that mean?",
       "expectedPage": 135,
+      "acceptedPages": [
+        {
+          "page": 133,
+          "evidence": "FAULT Flashing red Application fault detected"
+        }
+      ],
       "safetyRelevant": false,
       "anchor": "Hardware/software major"
     },
@@ -377,6 +401,12 @@
       "manual": "ml1100",
       "question": "How do I upgrade the operating system on a MicroLogix 1100?",
       "expectedPage": 141,
+      "acceptedPages": [
+        {
+          "page": 143,
+          "evidence": "Use ControlFLASH to Upgrade Your Operating System"
+        }
+      ],
       "safetyRelevant": false,
       "anchor": "ControlFLASH"
     },
@@ -441,6 +471,12 @@
       "manual": "e3plus",
       "question": "The Trip/Warn LED on my E3 Plus overload relay flashes a red code 4. What trip is that?",
       "expectedPage": 214,
+      "acceptedPages": [
+        {
+          "page": 54,
+          "evidence": "TRIP/WARN LED will flash a red 4-blink pattern"
+        }
+      ],
       "safetyRelevant": false,
       "anchor": "Ground Fault"
     },
@@ -457,6 +493,12 @@
       "manual": "e3plus",
       "question": "How long does an E3 Plus wait before tripping on phase loss by default?",
       "expectedPage": 115,
+      "acceptedPages": [
+        {
+          "page": 89,
+          "evidence": "Phase Loss ➌ 0.1…25.0 s 1.0 s"
+        }
+      ],
       "safetyRelevant": false,
       "anchor": "PL TRIP DELAY"
     },
@@ -489,6 +531,16 @@
       "manual": "smc50",
       "question": "What does fault code 10 or 60, SCR Overtemp, mean on an SMC-50?",
       "expectedPage": 210,
+      "acceptedPages": [
+        {
+          "page": 127,
+          "evidence": "SCR Overtemperature Fault (Code 10)"
+        },
+        {
+          "page": 213,
+          "evidence": "SCR Overtemp or PTC"
+        }
+      ],
       "safetyRelevant": false,
       "anchor": "SCR Overtemp"
     },
@@ -505,6 +557,12 @@
       "manual": "smc50",
       "question": "What does fault 46 Ov Pwr Reac+ mean on an SMC-50?",
       "expectedPage": 212,
+      "acceptedPages": [
+        {
+          "page": 122,
+          "evidence": "Motor Over Power Reactive Positive Fault (Code 46)"
+        }
+      ],
       "safetyRelevant": false,
       "anchor": "Ov Pwr Reac+"
     },
