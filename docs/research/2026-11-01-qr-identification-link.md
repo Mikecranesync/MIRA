@@ -18,7 +18,7 @@ Apache-2.0 exists and runs in under 0.2 s per photo at p95.
 
 | Entry point | File and line | Decodes codes? |
 |---|---|---|
-| Shared chat fast path (Slack and other normalized adapters) | `mira-bots/shared/chat/fast_paths.py:124` `_try_nameplate_drive_pack`, identity built at line 140 | no |
+| Shared chat fast path (Slack and other normalized adapters) | `mira-bots/shared/chat/fast_paths.py:126` `_try_nameplate_drive_pack`, identity built at line 148 | no on main; this PR adds a decode behind `MIRA_QR_IDENTIFICATION_LINK` (default off) |
 | Telegram nameplate fast path | `mira-bots/telegram/bot.py:1281` `_try_nameplate_drive_pack_reply`, identity at line 1325 | no |
 | Slack file download | `mira-bots/slack/bot.py:163` `download_slack_file` (feeds the shared fast path) | no |
 | Hub notebook nameplate recognize | `mira-hub/src/app/api/equipment-notebooks/[id]/nameplate/recognize/route.ts:52` | no (guarded legacy path) |
@@ -78,8 +78,9 @@ The dataset manifest mentions a code on 18 images. 8 of those decoded. 20 decode
 mention. Of the 10 mentioned but not decoded:
 
 - 4 are 1D barcodes (ITF, Code39, Code128), which are outside the scanned formats.
-- 4 decode nothing (glare, angle or size).
-- 2 were not checked (file lookup failed).
+- 5 decode nothing in any format (glare, angle or size). This includes P1341, which was re-checked
+  with all 2D and 1D formats and has no readable code.
+- 1 is UNKNOWN: P1089 could not be checked because its file is not in the local copy of the set.
 
 True QR recall is therefore UNKNOWN. Decoded counts are a lower bound.
 
@@ -125,3 +126,56 @@ True QR recall is therefore UNKNOWN. Decoded counts are a lower bound.
 
 Merge, staging enablement, opening or resolving QR URLs, Hub and mobile scan changes (guarded
 legacy paths), and 1D barcodes.
+
+## Appendix: per-test red evidence
+
+Every test in `mira-bots/tests/test_identification_link.py` was made to fail by name on a
+behaviour mutation of the code it protects (31 mutations, one at a time, full file run each
+time, tree restored after each). The first test-first run against a raising stub, before the
+code existed, gave 30 failed and 2 passed; the table below is the behaviour proof for all 41.
+
+| Test | Behaviour mutation that turns it red |
+|---|---|
+| `test_classify_never_raises[]` | bad kind on non-string |
+| `test_classify_never_raises[123]` | bad kind on non-string |
+| `test_classify_never_raises[http://[bad]` | malformed URL raises |
+| `test_classify_never_raises[https://]` | bad kind on empty netloc |
+| `test_classify_never_raises[None]` | bad kind on non-string |
+| `test_decode_never_raises_on_bad_input[]` | early return invents code |
+| `test_decode_never_raises_on_bad_input[\x89PNG\r\n\x1a\n broken]` | decode swallow |
+| `test_decode_never_raises_on_bad_input[None]` | early return invents code |
+| `test_decode_never_raises_on_bad_input[not an image]` | decode swallow |
+| `test_decode_reads_a_datamatrix_payload` | drop DataMatrix format |
+| `test_decode_reads_a_qr_payload` | drop QR format |
+| `test_decode_returns_empty_for_a_plain_image` | no-code invents code |
+| `test_decode_returns_empty_when_decoder_missing` | drop QR format, early return invents code |
+| `test_denied_host_is_denied_url` | deny check |
+| `test_discovery_ignores_the_link_with_the_flag_off` | discovery flag |
+| `test_discovery_passes_the_link_with_the_flag_on` | discovery drops link |
+| `test_factorylm_asset_tag` | tag demoted |
+| `test_factorylm_host_without_tag_path_is_other_url` | factorylm path |
+| `test_flag_off_does_not_decode` | flag ignored |
+| `test_flag_on_fills_payload_at_the_fast_path` | drop QR format, payload dropped |
+| `test_flag_on_with_no_code_leaves_payload_none` | no-code invents code, no-code payload |
+| `test_identity_packet_carries_the_payload` | packet carries |
+| `test_identity_packet_without_payload_stays_none` | packet default |
+| `test_identity_payload_never_overrides_the_nameplate_model` | payload->model |
+| `test_link_for_another_make_never_enters_the_pool` | make gate, rank oem only |
+| `test_link_is_returned_for_review_when_search_finds_nothing` | link pre-validated, oem demoted |
+| `test_link_never_replaces_the_nameplate_search` | link pre-validated |
+| `test_mh10_part_number_inside_iso15434_envelope` | part slice |
+| `test_mh10_part_number_is_extracted` | bad kind on empty netloc, part slice |
+| `test_oem_host_for_a_different_make_is_not_trusted` | make gate |
+| `test_oem_host_for_the_named_make_is_oem_url` | oem demoted |
+| `test_oem_host_with_no_make_is_not_trusted` | make gate |
+| `test_plain_text_has_no_part_number` | bad kind on empty netloc, part from plain text |
+| `test_trusted_identification_link_is_tried_first` | link pre-validated, oem demoted (+1 more) |
+| `test_unsafe_urls_are_never_oem[http://www.automationdirect.com/gs10]` | https only |
+| `test_unsafe_urls_are_never_oem[https://[::1]/gs10]` | ip literal |
+| `test_unsafe_urls_are_never_oem[https://10.0.0.5/gs10]` | ip literal |
+| `test_unsafe_urls_are_never_oem[https://user:pw@www.automationdirect.com/gs10]` | userinfo |
+| `test_unsafe_urls_are_never_oem[https://www.automationdirect.com:80/gs10]` | port 443 |
+| `test_unsafe_urls_are_never_oem[https://www.automationdirect.com:8443/gs10]` | port 443 |
+| `test_without_a_link_the_search_hit_is_tried_first` | link always added |
+
+41 tests, 41 with a behaviour red.
