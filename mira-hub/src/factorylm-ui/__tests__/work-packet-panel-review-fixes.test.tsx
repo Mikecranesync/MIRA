@@ -88,7 +88,7 @@ describe("F13 — a saved packet built from documents that have since changed is
   const identity = { manufacturer: "CAT Pumps", model: "3520", catalogNumber: null, serialNumber: null, status: "user_confirmed", confidence: 0.9 };
   const saved = {
     documents: [{ docId: "d1", revision: rev("J") }, { docId: "d2", revision: rev("A") }],
-    equipment: HEAD.equipment,
+    identitySnapshot: { manufacturer: "CAT Pumps", model: "3520", catalogNumber: null },
   } as unknown as WorkPacket;
   const availWith = (docs: { docId: string; revision: Field }[], over: Partial<typeof identity> = {}) =>
     ({ identity: { ...identity, ...over }, documents: docs }) as unknown as Parameters<typeof packetStaleReason>[1];
@@ -114,5 +114,31 @@ describe("F13 — a saved packet built from documents that have since changed is
     expect(src).toMatch(/data-testid="wp-export"[\s\S]{0,200}disabled=\{stale !== null\}/);
     const banner = src.slice(src.indexOf('data-testid="wp-stale"') - 120, src.indexOf('data-testid="wp-stale"'));
     expect(banner).not.toContain("data-no-print");
+  });
+});
+
+describe("Codex #5062 round 4", () => {
+  const rev = (v: string) => ({ value: v, label: "verified" as Field["label"], source: null, basis: "t" });
+  const docs = [{ docId: "d1", revision: rev("J") }];
+  const identity = { manufacturer: "CAT Pumps", model: "85PFR", catalogNumber: "8560", serialNumber: null, status: "user_confirmed", confidence: 0.9 };
+  const avail = (over: Partial<typeof identity> = {}) =>
+    ({ identity: { ...identity, ...over }, documents: docs }) as unknown as Parameters<typeof packetStaleReason>[1];
+  const saved = (snap: WorkPacket["identitySnapshot"]) => ({ documents: docs, identitySnapshot: snap }) as unknown as WorkPacket;
+  const snap = { manufacturer: "CAT Pumps", model: "85PFR", catalogNumber: "8560" };
+
+  it("F13: catalog number corrected 8560 → 8520 under the same family model: stale", () => {
+    expect(packetStaleReason(saved(snap), avail({ catalogNumber: "8520" }))).toMatch(/catalog number has changed/);
+  });
+  it("F13: a saved packet with no identity record must be rebuilt", () => {
+    expect(packetStaleReason(saved(undefined), avail())).toMatch(/saved before it recorded the identity/);
+  });
+  it("F13 control: unchanged identity and documents: current", () => {
+    expect(packetStaleReason(saved(snap), avail())).toBeNull();
+  });
+
+  it("F16: Correct reloads the edit box from the row's current value, and a rebuilt packet remounts its rows", () => {
+    const src = readFileSync(join(__dirname, "..", "WorkPacketPanel.tsx"), "utf8");
+    expect(src).toContain('onClick={() => { setDraft(field.value ?? ""); setEditing(true); }}>Correct</button>');
+    expect(src).toContain('<div data-testid="wp-packet" key={packet.packetId}>');
   });
 });

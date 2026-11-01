@@ -20,7 +20,7 @@
  *    [25324]" is one row, one item name, one part number).
  */
 
-import type { DocText, ModelScope, PageText, ServiceManual, SmCaution, SmOmittedSection, SmSection, SmStep, SmTorque, SourceRef, Topic } from "./types";
+import type { DocText, ModelScope, PageText, ServiceManual, SmCaution, SmOmittedCaution, SmOmittedSection, SmSection, SmStep, SmTorque, SourceRef, Topic } from "./types";
 
 // ─────────────────────────────────────────────── recognition + model-list helpers
 
@@ -340,6 +340,16 @@ interface OpenSection {
   page: number;
   steps: SmStep[];
   firstLines: string[]; // first line of each step, parallel to steps, for order-jump detection
+  /** Set when a step ran to the end of its page without finishing its sentence (Codex #5062 F15). */
+  incomplete: string | null;
+}
+
+// A step or caution that reaches the last line of its page without ending its sentence may
+// continue on the next page; the continuation is not joined across pages, so the block is
+// treated as incomplete rather than shown as a verified fragment.
+const SENTENCE_END_RE = /[.!?:;)\]"”']$/;
+function cutAtPageEnd(endIdx: number, pageLines: number, text: string): boolean {
+  return endIdx >= pageLines && !SENTENCE_END_RE.test(text);
 }
 
 function flushSection(open: OpenSection | null, sections: SmSection[], problems: string[], omitted: SmOmittedSection[]): void {
@@ -351,6 +361,12 @@ function flushSection(open: OpenSection | null, sections: SmSection[], problems:
       outOfOrder = true;
       break;
     }
+  }
+  if (open.incomplete) {
+    const where = `${open.heading}${open.subheading ? " — " + open.subheading : ""}`;
+    problems.push(`page ${open.page}: "${where}": ${open.incomplete}`);
+    omitted.push({ heading: open.heading, subheading: open.subheading, topic: open.topic, models: open.models, page: open.page, source: open.steps[0].source, reason: open.incomplete });
+    return;
   }
   if (outOfOrder) {
     const reason = `step numbers out of order (saw ${nums.join(",")}) — likely a two-column extraction garble; steps omitted rather than mixed`;
@@ -390,6 +406,7 @@ export function parseCatPumpsServiceManual(doc: DocText): ServiceManual | null {
   const cautions: SmCaution[] = [];
   const problems: string[] = [];
   const omitted: SmOmittedSection[] = [];
+  const omittedCautions: SmOmittedCaution[] = [];
 
   let open: OpenSection | null = null;
   // Scope of the last Disassembly/Reassembly subheading in the open section; a nested model-list
@@ -446,14 +463,21 @@ export function parseCatPumpsServiceManual(doc: DocText): ServiceManual | null {
         }
         // The source is the exact run of physical lines the text was joined from, so a number that
         // wrapped onto a continuation line is still checkable word-for-word against its source.
-        cautions.push({ kind, text: textParts.join(" ").replace(/\s{2,}/g, " ").trim(), source: { ...src, page: pg.page, line: lines.slice(i, j).join(" ") } });
+        const cautionText = textParts.join(" ").replace(/\s{2,}/g, " ").trim();
+        const cautionSource = { ...src, page: pg.page, line: lines.slice(i, j).join(" ") };
+        if (cutAtPageEnd(j, lines.length, cautionText)) {
+          problems.push(`page ${pg.page}: a ${kind} runs to the end of the page and may continue on the next page — not shown as verified`);
+          omittedCautions.push({ kind, source: cautionSource, reason: "runs to the end of the page and may continue on the next page" });
+        } else {
+          cautions.push({ kind, text: cautionText, source: cautionSource });
+        }
         i = j - 1;
         continue;
       }
 
       if (SECTION_HEADING_RE.test(line) && isAllCapsHeading(line)) {
         flushSection(open, sections, problems, omitted);
-        open = { heading: line, subheading: null, topic: topicFor(line), models: scopeAll(), page: pg.page, steps: [], firstLines: [] };
+        open = { heading: line, subheading: null, topic: topicFor(line), models: scopeAll(), page: pg.page, steps: [], firstLines: [], incomplete: null };
         phaseScope = scopeAll();
         skippingCaption = false;
         continue;
@@ -469,7 +493,7 @@ export function parseCatPumpsServiceManual(doc: DocText): ServiceManual | null {
         }
         const sectionModels: ModelScope = sub.nested ? intersectScopes(phaseScope, sub.scope) : sub.scope;
         if (!sub.nested) phaseScope = sub.scope;
-        open = { heading: open!.heading, subheading: sub.text, topic: open!.topic, models: sectionModels, page: pg.page, steps: [], firstLines: [] };
+        open = { heading: open!.heading, subheading: sub.text, topic: open!.topic, models: sectionModels, page: pg.page, steps: [], firstLines: [], incomplete: null };
         skippingCaption = false;
         continue;
       }
@@ -494,9 +518,13 @@ export function parseCatPumpsServiceManual(doc: DocText): ServiceManual | null {
           textParts.push(lines[j]);
           j++;
         }
+        const stepText = textParts.join(" ").replace(/\s{2,}/g, " ").trim();
+        if (!open.incomplete && cutAtPageEnd(j, lines.length, stepText)) {
+          open.incomplete = `step ${n} runs to the end of page ${pg.page} and may continue on the next page — steps omitted rather than shown in part`;
+        }
         open.steps.push({
           n,
-          text: textParts.join(" ").replace(/\s{2,}/g, " ").trim(),
+          text: stepText,
           // Same as cautions: the source spans every physical line the step text was joined from.
           source: { ...src, page: pg.page, line: lines.slice(i, j).join(" ") },
         });
@@ -519,5 +547,5 @@ export function parseCatPumpsServiceManual(doc: DocText): ServiceManual | null {
   }
   flushSection(open, sections, problems, omitted);
 
-  return { kind: "catpumps_service_manual", modelsCovered, sections, torque, cautions, problems, omitted };
+  return { kind: "catpumps_service_manual", modelsCovered, sections, torque, cautions, problems, omitted, omittedCautions };
 }
