@@ -374,6 +374,39 @@ describe("F15 — text after a step or caution that cannot be placed turns that 
     expect(placeGaps(packet, /Disassembly \(All models except 8560\)/)).toHaveLength(1);
   });
 
+  // Round 8: a caption title is recognised by an allow-list — any word outside it (a unit like
+  // "psi", an all-caps word) makes the line content.
+  it("a step interrupted by a caption, then an all-caps continuation with a lowercase unit: its section is a gap", () => {
+    const doc = edited([STEP2, `2. Remove the valve plug (M41)\n${CAPTION}ONLY AFTER RELIEVING ALL SYSTEM PRESSURE (0 psi)\n`]);
+    const packet = build("8520", [doc], "valve service");
+    expect(stepTexts(packet).some((t) => (t ?? "").startsWith("Remove the valve plug"))).toBe(false);
+    const gap = placeGaps(packet, /Disassembly \(All models except 8560\)/);
+    expect(gap).toHaveLength(1);
+    expect(gap[0].basis).toContain("(0 psi)");
+  });
+
+  it("the same continuation at the top of the next page, after a caption: its section is a gap", () => {
+    const doc = edited([STEP2, `2. Remove the valve plug (M41)\n===== PAGE 3 =====\n${CAPTION}ONLY AFTER RELIEVING ALL SYSTEM PRESSURE (0 psi)\n`]);
+    const packet = build("8520", [doc], "valve service");
+    expect(stepTexts(packet).some((t) => (t ?? "").startsWith("Remove the valve plug"))).toBe(false);
+    expect(placeGaps(packet, /Disassembly \(All models except 8560\)/)).toHaveLength(1);
+  });
+
+  it("a caution interrupted by a caption, then an all-caps continuation with a lowercase unit: unknown in Safety", () => {
+    const doc = edited([CAUTION_TAIL, `shut off drive (electric motor)\n${CAPTION}AND RELIEVE ALL DISCHARGE PRESSURE (0 psi)\n`]);
+    const packet = build("8520", [doc], "valve service");
+    expect(packet.safety.cautions.some((c) => c.label === "verified" && (c.value ?? "").startsWith("Before commencing"))).toBe(false);
+    expect(packet.safety.cautions.filter((c) => c.label === "unknown" && /CAUTION on p\.2 .*could not be placed/.test(c.basis ?? ""))).toHaveLength(1);
+  });
+
+  it("control: captions shaped like the real manuals' (comma, slash, hyphenated words) make no gap", () => {
+    const run = "8520, 8521\nValve Plug, O-Ring and Back-up Ring\n8560\nStacked Inlet/Discharge Valve Design\n8520\nV-Packing-Spacer Arrangement\n";
+    const doc = edited([STEP2, `${STEP2}${run}3. Remove the Valve Seat.\n`]);
+    const packet = build("8520", [doc], "valve service");
+    expect(stepTexts(packet)).toContain("Remove the Valve Seat.");
+    expect(noPlaceGap(packet)).toBe(false);
+  });
+
   it("control: a multi-line caption run between two whole steps makes no gap", () => {
     const run = "Removal of Inlet Manifold O-Rings 8520, 8521\n8520, 8521\nRemoval of Valve Spacer from Valve Plug\n8560\nSpring and Spacer with Coil Springs\n";
     const doc = edited([STEP2, `${STEP2}${run}3. Remove the Valve Seat.\n`]);
