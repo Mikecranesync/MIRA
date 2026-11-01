@@ -387,6 +387,58 @@ export function isWeakEvidenceEntry(e: unknown): e is WeakEvidenceEntry {
   );
 }
 
+/**
+ * Manual safety statement extracted from cited documentation.
+ *
+ * When an answer cites a chunk containing a manual safety statement (WARNING,
+ * CAUTION, etc., or a prose hazard pattern), this entry captures the marker
+ * and statement verbatim from the source, along with the document and page.
+ *
+ * Rides INSIDE the turn's existing `evidence[]` JSONB, discriminated by `kind`.
+ * It is NOT a citation: it carries NO `docId` field on purpose. Every reader
+ * that splits evidence (`splitEvidence`, the chat route's idempotent replay,
+ * `enrichCitationsWithOrigin`) treats ANY entry with a string `docId` as a
+ * citation (and mobile's `normalizeCitations` does the same for `citationId`),
+ * so the source fields are named `sourceDocId` / `sourceCitationId` instead. The marker and
+ * statement are DISPLAYED as a safety notice to the technician, BEFORE the
+ * answer text, and persisted for reload fidelity.
+ *
+ * The /v3 adapter maps this to a `safety_notice` part with
+ * `severity: "warning"`, preserving the marker and statement.
+ */
+export type ManualSafetyStatementEntry = {
+  kind: "manual_safety_statement";
+  /** The marker from the manual: WARNING, DANGER, CAUTION, ATTENTION,
+   * SHOCK HAZARD, BURN HAZARD, or "WARNING (manual text)" for prose fallback. */
+  marker: string;
+  /** Verbatim statement from the manual, whitespace collapsed, capped at ~400 chars. */
+  statement: string;
+  /** The cited doc this statement came from (a citation's `docId`; "" for a
+   *  shared-library chunk). Deliberately NOT named `docId` — see above. */
+  sourceDocId: string;
+  /** The citation number the statement's chunk was cited under ("1", "2", ...).
+   *  Deliberately NOT named `citationId`: mobile's `normalizeCitations`
+   *  (mira-mobile/src/lib/sse.ts) treats any entry with that key as a citation. */
+  sourceCitationId: string;
+  /** The cited source's display title, so the notice can name its source. */
+  sourceTitle: string;
+  /** The physical page number in the source (1-based). */
+  page: number | null;
+};
+
+/** Type guard: an `evidence[]` entry that is a manual safety statement. */
+export function isManualSafetyStatementEntry(
+  e: unknown,
+): e is ManualSafetyStatementEntry {
+  return (
+    typeof e === "object" &&
+    e !== null &&
+    (e as { kind?: unknown }).kind === "manual_safety_statement" &&
+    typeof (e as { marker?: unknown }).marker === "string" &&
+    typeof (e as { statement?: unknown }).statement === "string" &&
+    typeof (e as { sourceDocId?: unknown }).sourceDocId === "string"
+  );
+}
 /** #4687 — opted-in clients only (`x-mira-progress: 1`, server flag MIRA_CHAT_PROGRESS):
  *  a server stage really started. See mira-hub/src/capabilities/chat-progress.ts. */
 export type NotebookProgressFrame = {
