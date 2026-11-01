@@ -303,7 +303,7 @@ describe("the rest of a cited page is read (#4509 Codex F1)", () => {
       { approvedSourceDocIds: [DOC_A], keep: expect.any(Function) },
     ]);
     // Codex r4 F1: the route keeps only chunks the extractor can turn into a statement.
-    const keep = (ragMock.retrieveCitedPageChunks.mock.calls[0][3] as { keep: (t: string) => boolean }).keep;
+    const keep = ((ragMock.retrieveCitedPageChunks.mock.calls[0] as unknown[])[3] as { keep: (t: string) => boolean }).keep;
     expect(keep(ATTENTION_TEXT)).toBe(true);
     expect(keep(PLAIN_TEXT)).toBe(false);
     const entries = recorded().evidence.filter(isManualSafetyStatementEntry);
