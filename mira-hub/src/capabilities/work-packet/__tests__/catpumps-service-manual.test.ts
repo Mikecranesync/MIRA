@@ -217,3 +217,67 @@ describe("parseCatPumpsServiceManual — real cover rosters with long model name
     ]);
   });
 });
+
+describe("parseCatPumpsServiceManual — wrapped lines keep their numbers checkable; page furniture is not joined", () => {
+  // Fictional 9XP manual in the real layout: a number that wraps onto a continuation line, a new
+  // sentence that wraps after a finished one, and the extractor's interleaved furniture (figure
+  // titles, a tightening-sequence diagram, a trademark footnote) right after finished sentences.
+  const cover = ["9XP PLUNGER PUMP SERVICE MANUAL", "9XP MODELS: 9XP1000, 9XP1010", "CAT PUMPS (fictional fixture)"].join("\n");
+  const body = [
+    "SERVICING THE VALVES",
+    "1. Remove the Coil Spring. Thread an",
+    "M10 bolt into the Spring Retainer.",
+    "2. Check oil level and for water in oil.",
+    "Change crankcase oil on a regular schedule. See",
+    "Preventative Maintenance Check-List.",
+    "3. Torque per chart and in this sequence.",
+    "1 3 5 7 8 6 4 2",
+    "4. Contact your distributor if service is required.",
+    "Loctite and 242 are registered trademarks of the Henkel Corporation.",
+    "IMPORTANT: Apply anti-seize lubricant",
+    "(PN9119) to all stainless threads.",
+    "NOTE: Two screwdrivers may be used to assist separation.",
+    "Removal of Inlet Manifold O-Rings 9XP1000, 9XP1010",
+    "Removal of V-Packing Spacer",
+  ].join("\n");
+  const sm = parseCatPumpsServiceManual({
+    docId: "m9", fileId: null, filename: "9XPSvc.pdf", via: "chunks",
+    pages: [{ page: 1, text: cover }, { page: 2, text: body }],
+  })!;
+  const steps = sm.sections.flatMap((s) => s.steps);
+  const step = (n: number) => steps.find((s) => s.n === n)!;
+
+  it("cites every physical line a wrapped step was joined from, so a number on the continuation line is on its source", () => {
+    expect(step(1).text).toBe("Remove the Coil Spring. Thread an M10 bolt into the Spring Retainer.");
+    expect(step(1).source.line).toBe("1. Remove the Coil Spring. Thread an M10 bolt into the Spring Retainer.");
+    expect(step(1).source.line).toContain("M10");
+    expect(step(1).source.page).toBe(2);
+  });
+
+  it("still joins a new sentence that wraps after a finished one (lowercase words — not a figure title)", () => {
+    expect(step(2).text).toBe(
+      "Check oil level and for water in oil. Change crankcase oil on a regular schedule. See Preventative Maintenance Check-List.",
+    );
+  });
+
+  it("does not join a tightening-sequence diagram line onto the step", () => {
+    expect(step(3).text).toBe("Torque per chart and in this sequence.");
+    expect(step(3).source.line).not.toContain("8 6 4 2");
+  });
+
+  it("does not join a trademark footnote onto the step", () => {
+    expect(step(4).text).toBe("Contact your distributor if service is required.");
+  });
+
+  it("cites every physical line a wrapped caution was joined from, so its part number is on its source", () => {
+    const imp = sm.cautions.find((c) => c.kind === "IMPORTANT")!;
+    expect(imp.text).toBe("Apply anti-seize lubricant (PN9119) to all stainless threads.");
+    expect(imp.source.line).toBe("IMPORTANT: Apply anti-seize lubricant (PN9119) to all stainless threads.");
+  });
+
+  it("does not join Title Case figure titles onto a finished caution sentence", () => {
+    const note = sm.cautions.find((c) => c.kind === "NOTE")!;
+    expect(note.text).toBe("Two screwdrivers may be used to assist separation.");
+    expect(note.source.line).toBe("NOTE: Two screwdrivers may be used to assist separation.");
+  });
+});

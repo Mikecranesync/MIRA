@@ -38,6 +38,8 @@ export interface SourceRef {
   fileId: string | null;
   filename: string | null;
   page: number;
+  /** The exact text cited: one physical line, or — for a step or caution that wraps — the run of
+   *  consecutive physical lines on `page` it was joined from, separated by single spaces. */
   line: string;
 }
 
