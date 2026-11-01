@@ -569,6 +569,29 @@ describe("retrieveSafetyChapterChunks", () => {
       }
     });
 
+    it("consecutive section headings ahead of the real headers do not win (#5059 Codex r3 F1)", async () => {
+      const rows = ingest(manual({
+        ...SAFETY,
+        17: "Section 17 Maintenance\nWARNING! Wrong-page notice on PDF page 17.",
+        18: "Section 18 Wiring\nWARNING! Wrong-page notice on PDF page 18.",
+      }));
+      const retrieved = [fanChunk(rows)];
+      const added = await retrieveSafetyChapterChunks(fakeClient(rows, { headers: "rows" }), "tenant", retrieved);
+      expect(new Set(added.map((c) => c.sourcePage))).toEqual(new Set([22]));
+      expect(added.some((c) => /Wrong-page/.test(c.content))).toBe(false);
+      const prompt = buildManualUserContent("How do I replace the cooling fan", [...retrieved, ...added]);
+      expect(prompt).toContain("wait for 5 minutes");
+      expect(prompt).toContain("measuring with a multimeter");
+    });
+
+    it("two offsets each with a run of page numbers: ambiguous, nothing is added", async () => {
+      const over: Record<number, string> = { ...SAFETY };
+      for (const p of [17, 18, 19, 20]) over[p] = `Section ${p} Maintenance\nWARNING! Wrong-page notice on PDF page ${p}.`;
+      const rows = ingest(manual(over));
+      const added = await retrieveSafetyChapterChunks(fakeClient(rows, { headers: "rows" }), "tenant", [fanChunk(rows)]);
+      expect(added).toEqual([]);
+    });
+
     it("a page number printed only as a footer still maps the chapter", async () => {
       const rows = ingest(manual({
         21: "Safety\nWhat this chapter contains\n17",
@@ -605,17 +628,21 @@ describe("retrieveSafetyChapterChunks", () => {
       expect(gated.calls.find((c) => c.sql.includes("first_line"))!.params).toHaveLength(5);
     });
 
-    it("pdfPageForPrinted: proof needs a short header line and a neighbour, inside the window", () => {
+    it("pdfPageForPrinted: proof needs a run of short header lines with one offset, inside the window", () => {
       const pg = (page: number, first: string, last = "") => ({ page, first_line: first, last_line: last });
-      expect(pdfPageForPrinted(17, [pg(21, "Safety 17"), pg(22, "18 Safety")])).toBe(21);
-      expect(pdfPageForPrinted(17, [pg(20, "16"), pg(21, "Safety 17")])).toBe(21);
+      expect(pdfPageForPrinted(17, [pg(21, "Safety 17"), pg(22, "18 Safety"), pg(23, "Safety 19")])).toBe(21);
+      expect(pdfPageForPrinted(17, [pg(19, "15"), pg(20, "16"), pg(21, "Safety 17")])).toBe(21);
+      // a run of three is the proof; two consecutive numbers are not
+      expect(pdfPageForPrinted(17, [pg(21, "Safety 17"), pg(22, "18 Safety")])).toBeNull();
+      // the run must be on consecutive pages: three scattered pages with the right offset are not one
+      expect(pdfPageForPrinted(17, [pg(21, "17"), pg(23, "19"), pg(25, "21")])).toBeNull();
       // body text that happens to hold the numbers is not a header
       const body = (n: number) => `The ${n} terminals on this frame size are rated for the full motor current at ${n} A.`;
       expect(body(17).length).toBeGreaterThan(60);
-      expect(pdfPageForPrinted(17, [pg(21, body(17)), pg(22, body(18))])).toBeNull();
-      // a proven pair past the window is ignored even when the read returns it
+      expect(pdfPageForPrinted(17, [pg(21, body(17)), pg(22, body(18)), pg(23, body(19))])).toBeNull();
+      // a proven run past the window is ignored even when the read returns it
       const k = 17 + SAFETY_CHAPTER_MAX_SHIFT + 1;
-      expect(pdfPageForPrinted(17, [pg(k, "Safety 17"), pg(k + 1, "18 Safety")])).toBeNull();
+      expect(pdfPageForPrinted(17, [pg(k, "Safety 17"), pg(k + 1, "18 Safety"), pg(k + 2, "Safety 19")])).toBeNull();
       expect(headerPageNumbers("Safety . . . . . 17")).toEqual([]);
       expect(headerPageNumbers("18 Safety")).toEqual([18]);
     });

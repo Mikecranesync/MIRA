@@ -13,12 +13,13 @@
  *
  * The reference names a PRINTED page; chunks are keyed by PDF page. The offset between them is read
  * from the referring chunk's own printed label (front matter shifts it). Hub uploads store no label,
- * so then the printed page is found in the document itself: the PDF page, at most
- * SAFETY_CHAPTER_MAX_SHIFT pages after the printed number, whose running header or footer prints
- * that number, with a neighbouring page printing the next or previous number (#5059 Codex r2 F1).
- * Only the first line of a page's first chunk and the last line of its last chunk count, a line
- * longer than HEADER_MAX_CHARS or with a contents leader (". . .") never does. When no page proves
- * the mapping the document adds nothing: the offset is never assumed.
+ * so then the offset is found in the document itself (#5059 Codex r2 F1, r3 F1): across the pages
+ * from the printed number to SAFETY_CHAPTER_MAX_SHIFT pages after it, an offset counts only when
+ * at least SAFETY_PAGE_RUN consecutive pages print their own page number under it (PDF page minus
+ * printed number), and exactly one offset may qualify. Only the first line of a page's first chunk
+ * and the last line of its last chunk count; a line longer than HEADER_MAX_CHARS or with a contents
+ * leader (". . .") never does. With no proof, or two competing offsets, the document adds nothing:
+ * the offset is never assumed.
  *
  * The chapter is read by its own bounded query, not #4509's notice reader (that one stops at the first
  * statement per page, which is right for a notice and wrong for grounding, Codex #5056 r5 F11). Each
@@ -87,6 +88,8 @@ type ChapterStart = { pdfPage: number; offset: number };
 export const SAFETY_CHAPTER_MAX_SHIFT = 40;
 /** A running header or footer is short; a longer line is body text. */
 const HEADER_MAX_CHARS = 60;
+/** Consecutive pages that must print their page number under one offset before it is trusted. */
+export const SAFETY_PAGE_RUN = 3;
 
 /** A printed chapter reference: the printed page, and the offset when the chunk's own label gives it. */
 type ChapterRef = { printed: number; offset: number | null };
@@ -106,9 +109,10 @@ export function headerPageNumbers(line: string): number[] {
 }
 
 /**
- * The PDF page that prints `printed`, from each page's first and last line (rows in chunk order):
- * the lowest page in [printed, printed + SAFETY_CHAPTER_MAX_SHIFT] that shows the number while a
- * neighbouring page shows the next or previous one. Null when no page proves it.
+ * The PDF page that prints `printed`, from each page's first and last line (rows in chunk order).
+ * Each offset in [0, SAFETY_CHAPTER_MAX_SHIFT] is proven by a run of SAFETY_PAGE_RUN consecutive
+ * pages that each print (PDF page minus offset); section or table numbers rarely run that long, and
+ * when two offsets are both proven the mapping is ambiguous. Null unless exactly one offset is proven.
  */
 export function pdfPageForPrinted(
   printed: number,
@@ -127,11 +131,19 @@ export function pdfPageForPrinted(
     shows.set(r.page, set);
   }
   for (const [page, line] of lastOf) for (const n of headerPageNumbers(line)) shows.get(page)!.add(n);
-  const has = (page: number, n: number) => shows.get(page)?.has(n) ?? false;
-  for (let p = printed; p <= printed + SAFETY_CHAPTER_MAX_SHIFT; p++) {
-    if (has(p, printed) && (has(p + 1, printed + 1) || has(p - 1, printed - 1))) return p;
+  const proven: number[] = [];
+  for (let offset = 0; offset <= SAFETY_CHAPTER_MAX_SHIFT; offset++) {
+    let run = 0;
+    for (const page of [...shows.keys()].sort((a, b) => a - b)) {
+      const n = page - offset;
+      run = shows.get(page)!.has(n) && (run === 0 || shows.get(page - 1)?.has(n - 1)) ? run + 1 : shows.get(page)!.has(n) ? 1 : 0;
+      if (run >= SAFETY_PAGE_RUN) {
+        proven.push(offset);
+        break;
+      }
+    }
   }
-  return null;
+  return proven.length === 1 ? printed + proven[0] : null;
 }
 
 type Doc = { docId: string; sourceUrl: string; template: ManualChunk };
