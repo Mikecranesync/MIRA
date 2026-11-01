@@ -29,7 +29,6 @@ import { extractManualSafetyStatement } from "@/capabilities/manual-safety-state
 import {
   approvalGateEnabled,
   approvedSourceFilterSql,
-  CANDIDATE_PATTERN,
   MAX_CONTENT_CHARS,
   PAGE_LABEL_SQL,
   type ManualChunk,
@@ -145,12 +144,17 @@ async function chapterStarts(
   return starts;
 }
 
-type ChapterRow = { id: string; content: string; sourceUrl: string; sourcePage: number };
+type ChapterRow = { id: string; content: string; sourceUrl: string; sourcePage: number; chunkIndex: number | null };
+
+/** The chunk's position within its upload (ingest writes it on every v2 row); NULL when absent or not an integer. */
+const CHUNK_INDEX_SQL = "CASE WHEN metadata->>'chunk_index' ~ '^[0-9]+$' THEN (metadata->>'chunk_index')::int END";
 
 /**
- * Every chapter page's candidate rows in ONE query, at most SAFETY_CHAPTER_ROWS_PER_PAGE per page,
- * ranked marker line first, then prerequisite kinds named, then isolation words, then id. No early exit: a page is read whole up to
- * its rank cap. Pinned like retrieval: tenant, v2 route, the admitted (doc, file, page) tuples, and
+ * Every chapter page's rows in ONE query, at most SAFETY_CHAPTER_ROWS_PER_PAGE per page, ranked
+ * marker line first, then prerequisite kinds named, then isolation words, then chunk order. No early
+ * exit and no keyword filter: a page is read whole up to its rank cap, because ingest splits a page
+ * into ~1000-character chunks and a warning's later steps land in chunks with no marker or keyword
+ * of their own (#5059 Codex r1 F1). Pinned like retrieval: tenant, v2 route, the admitted (doc, file, page) tuples, and
  * the approval predicate (the admission set bound only with the gate on).
  */
 async function readChapterRows(
@@ -166,7 +170,6 @@ async function readChapterRows(
     pages.map((p) => p.docId),
     pages.map((p) => p.sourceUrl),
     pages.map((p) => p.page),
-    CANDIDATE_PATTERN,
     SAFETY_MARKER_LINE,
     SAFETY_PREREQUISITE_KINDS,
     SAFETY_ISOLATION_WORDS,
@@ -175,26 +178,26 @@ async function readChapterRows(
   if (admitApproved) params.push(approved);
   await client.query("SET LOCAL statement_timeout = '3s'");
   const res = await client.query(
-    `SELECT id::text AS id, content, source_url, page
+    `SELECT id::text AS id, content, source_url, page, chunk_index
        FROM (
          SELECT id, content, source_url, COALESCE(page_start, source_page) AS page,
+                ${CHUNK_INDEX_SQL} AS chunk_index,
                 ROW_NUMBER() OVER (
                   PARTITION BY source_url, COALESCE(page_start, source_page)
-                  ORDER BY (content ~ $6) DESC,
-                           (SELECT count(*) FROM unnest($7::text[]) AS kind WHERE content ~* kind) DESC,
-                           (content ~* $8) DESC, id
+                  ORDER BY (content ~ $5) DESC,
+                           (SELECT count(*) FROM unnest($6::text[]) AS kind WHERE content ~* kind) DESC,
+                           (content ~* $7) DESC, ${CHUNK_INDEX_SQL} NULLS LAST, id
                 ) AS rn
            FROM knowledge_entries
           WHERE tenant_id = $1
             AND ingest_route = 'v2'
-            ${approvedSourceFilterSql(admitApproved ? 10 : null)}
+            ${approvedSourceFilterSql(admitApproved ? 9 : null)}
             AND (doc_id::text, source_url, COALESCE(page_start, source_page)) IN (
               SELECT * FROM unnest($2::text[], $3::text[], $4::int[])
             )
-            AND content ~* $5
        ) ranked
-      WHERE rn <= $9
-      ORDER BY source_url, page, id`,
+      WHERE rn <= $8
+      ORDER BY source_url, page, chunk_index NULLS LAST, id`,
     params,
   );
   return (res.rows as Array<Record<string, unknown>>).map((r) => ({
@@ -202,6 +205,7 @@ async function readChapterRows(
     content: String(r.content ?? ""),
     sourceUrl: String(r.source_url ?? ""),
     sourcePage: Number(r.page),
+    chunkIndex: r.chunk_index === null || r.chunk_index === undefined ? null : Number(r.chunk_index),
   }));
 }
 
@@ -210,21 +214,55 @@ function procedureRank(content: string): [number, number] {
   return [PREREQUISITE_RES.filter((re) => re.test(content)).length, ISOLATION_RE.test(content) ? 1 : 0];
 }
 
-/** One manual's rows within its budget, filled by procedure rank (most prerequisite kinds first), then page order. */
-function withinBudget(rows: readonly ChapterRow[]): ChapterRow[] {
-  const byPage = (a: ChapterRow, b: ChapterRow) => a.sourcePage - b.sourcePage || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-  const byRank = (a: ChapterRow, b: ChapterRow) => {
-    const [ka, ia] = procedureRank(a.content);
-    const [kb, ib] = procedureRank(b.content);
-    return kb - ka || ib - ia || byPage(a, b);
-  };
+/** Page, then chunk order (a row without a chunk index after those with one), then id. */
+function byPage(a: ChapterRow, b: ChapterRow): number {
+  const ca = a.chunkIndex ?? Number.MAX_SAFE_INTEGER;
+  const cb = b.chunkIndex ?? Number.MAX_SAFE_INTEGER;
+  return a.sourcePage - b.sourcePage || ca - cb || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+}
+
+/**
+ * One page's rows as warning runs: a chunk holding a safety statement starts a run, and the chunks
+ * that follow it on the page (by chunk index) continue it, since ingest split one page's text into
+ * them (#5059 Codex r1 F1). A row without a chunk index cannot be placed, so it stands alone and only
+ * if it holds a statement. Chunks before the page's first statement are not part of any warning.
+ */
+function warningRuns(pageRows: readonly ChapterRow[]): ChapterRow[][] {
+  const runs: ChapterRow[][] = [];
+  let open: ChapterRow[] | null = null;
+  for (const r of [...pageRows].sort(byPage)) {
+    const statement = extractManualSafetyStatement(r.content) !== null;
+    if (r.chunkIndex === null) {
+      open = null;
+      if (statement) runs.push([r]);
+    } else if (open && !statement) {
+      open.push(r);
+    } else if (statement) {
+      open = [r];
+      runs.push(open);
+    }
+  }
+  return runs;
+}
+
+/**
+ * One manual's warning runs within its budget, filled by procedure rank (most prerequisite kinds
+ * first, across the whole run), then page order. A run is spent in chunk order and stops at the
+ * first chunk that no longer fits, so a warning is never kept without the steps before its last kept
+ * chunk.
+ */
+function withinBudget(runs: readonly ChapterRow[][]): ChapterRow[] {
+  const ranked = runs.map((run) => ({ run, rank: procedureRank(run.map((r) => r.content).join("\n")) }));
+  ranked.sort((a, b) => b.rank[0] - a.rank[0] || b.rank[1] - a.rank[1] || byPage(a.run[0], b.run[0]));
   const picked: ChapterRow[] = [];
   let used = 0;
-  for (const r of [...rows].sort(byRank)) {
-    const cost = Math.min(r.content.length, MAX_CONTENT_CHARS);
-    if (used + cost > SAFETY_CHAPTER_BUDGET_CHARS) continue;
-    used += cost;
-    picked.push(r);
+  for (const { run } of ranked) {
+    for (const r of run) {
+      const cost = Math.min(r.content.length, MAX_CONTENT_CHARS);
+      if (used + cost > SAFETY_CHAPTER_BUDGET_CHARS) break;
+      used += cost;
+      picked.push(r);
+    }
   }
   return picked.sort(byPage);
 }
@@ -251,17 +289,25 @@ export async function retrieveSafetyChapterChunks(
   });
   if (pages.length === 0) return [];
   const rows = await readChapterRows(client, tenantId, pages, opts.approvedSourceDocIds ?? []);
-  // Only real safety statements; dedupe per document, so two manuals with the same boilerplate
-  // warning each keep their own citable copy.
+  // Warning runs per page (a statement chunk and its continuations); dedupe per document, so two
+  // manuals with the same boilerplate warning each keep their own citable copy.
   const keyOf = (sourceUrl: string, content: string) => `${sourceUrl}\u0000${content}`;
   const seen = new Set(chunks.map((c) => keyOf(c.sourceUrl ?? "", c.content)));
-  const perDoc = new Map(docs.map((d) => [d.sourceUrl, [] as ChapterRow[]] as const));
-  for (const r of rows) {
-    const list = perDoc.get(r.sourceUrl);
-    const key = keyOf(r.sourceUrl, r.content);
-    if (!list || seen.has(key) || extractManualSafetyStatement(r.content) === null) continue;
-    seen.add(key);
-    list.push(r);
+  const byDocPage = new Map<string, ChapterRow[]>();
+  for (const r of rows) byDocPage.set(`${r.sourceUrl}\u0000${r.sourcePage}`, [...(byDocPage.get(`${r.sourceUrl}\u0000${r.sourcePage}`) ?? []), r]);
+  const perDoc = new Map(docs.map((d) => [d.sourceUrl, [] as ChapterRow[][]] as const));
+  for (const pageRows of byDocPage.values()) {
+    const list = perDoc.get(pageRows[0].sourceUrl);
+    if (!list) continue;
+    for (const run of warningRuns(pageRows)) {
+      const fresh = run.filter((r) => {
+        const key = keyOf(r.sourceUrl, r.content);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      if (fresh.length > 0) list.push(fresh);
+    }
   }
   // Retrieval order across documents, page order within each. sourcePage stays the PDF page (rereads
   // and citation keys use it); pageLabel is the manual's printed page (Codex #5056 r4 F8).

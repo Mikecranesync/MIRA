@@ -12,7 +12,8 @@ import {
 } from "./manual-safety-chapter";
 import { extractManualSafetyStatement } from "./manual-safety-statement";
 import type { PoolClient } from "pg";
-import type { ManualChunk } from "@/lib/manual-rag";
+import { buildManualUserContent, type ManualChunk } from "@/lib/manual-rag";
+import { chunkText } from "@/lib/node-knowledge-ingest";
 
 // Real ACS355 page text from the frozen manual (#4509's 50-page corpus).
 const text = (id: string) => (pages as Array<{ id: string; text: string }>).find((p) => p.id === id)!.text;
@@ -26,7 +27,7 @@ const chunk = (content: string, page: number, docId: string | null = DOC): Manua
   content, docId, sourceUrl: URL, sourcePage: page, manufacturer: "ABB", modelNumber: "ACS355", title: "acs355.pdf", rank: 1,
 });
 
-type Row = { id: string; doc_id: string; content: string; source_url: string; page: number; page_label?: string };
+type Row = { id: string; doc_id: string; content: string; source_url: string; page: number; page_label?: string; chunk_index?: number };
 
 /**
  * A knowledge_entries stand-in that answers the two reads the module makes, and records them.
@@ -63,19 +64,17 @@ function fakeClient(rows: Row[]) {
           .slice(0, limit);
         return { rows: out.map((r) => ({ id: r.id, content: r.content, source_url: r.source_url, page: r.page })) };
       }
-      // The chapter read: per (file, page), rank marker line first, then prerequisite kinds named, then
-      // isolation words, then id; keep rank <= the per-page cap; return in (file, page, id) order — the
-      // same semantics as the SQL.
-      const [, docs, urls, pageNos, candidate, marker, kinds, isolation, perPage] = params as [
-        string, string[], string[], number[], string, string, string[], string, number,
+      // The chapter read: per (file, page), no keyword filter; rank marker line first, then prerequisite
+      // kinds named, then isolation words, then chunk index (absent last), then id; keep rank <= the
+      // per-page cap; return in (file, page, chunk index, id) order — the same semantics as the SQL.
+      const [, docs, urls, pageNos, marker, kinds, isolation, perPage] = params as [
+        string, string[], string[], number[], string, string[], string, number,
       ];
-      const cand = new RegExp(candidate, "i");
       const mark = new RegExp(marker);
       const kindRes = kinds.map((k) => new RegExp(k, "i"));
       const iso = new RegExp(isolation, "i");
-      const hits = rows.filter((r) =>
-        docs.some((d, i) => d === r.doc_id && urls[i] === r.source_url && pageNos[i] === r.page) && cand.test(r.content),
-      );
+      const hits = rows.filter((r) => docs.some((d, i) => d === r.doc_id && urls[i] === r.source_url && pageNos[i] === r.page));
+      const idx = (r: Row) => r.chunk_index ?? Number.MAX_SAFE_INTEGER;
       const groups = new Map<string, Row[]>();
       for (const r of hits) groups.set(`${r.source_url}|${r.page}`, [...(groups.get(`${r.source_url}|${r.page}`) ?? []), r]);
       const score = (r: Row) => [
@@ -85,11 +84,11 @@ function fakeClient(rows: Row[]) {
       ] as const;
       const kept = [...groups.values()].flatMap((g) =>
         g
-          .sort((a, b) => score(a)[0] - score(b)[0] || score(a)[1] - score(b)[1] || score(a)[2] - score(b)[2] || (a.id < b.id ? -1 : 1))
+          .sort((a, b) => score(a)[0] - score(b)[0] || score(a)[1] - score(b)[1] || score(a)[2] - score(b)[2] || idx(a) - idx(b) || (a.id < b.id ? -1 : 1))
           .slice(0, perPage),
       );
-      kept.sort((a, b) => (a.source_url < b.source_url ? -1 : a.source_url > b.source_url ? 1 : a.page - b.page || (a.id < b.id ? -1 : 1)));
-      return { rows: kept.map((r) => ({ id: r.id, content: r.content, source_url: r.source_url, page: r.page })) };
+      kept.sort((a, b) => (a.source_url < b.source_url ? -1 : a.source_url > b.source_url ? 1 : a.page - b.page || idx(a) - idx(b) || (a.id < b.id ? -1 : 1)));
+      return { rows: kept.map((r) => ({ id: r.id, content: r.content, source_url: r.source_url, page: r.page, chunk_index: r.chunk_index ?? null })) };
     },
   };
   return Object.assign(client as unknown as PoolClient, { calls });
@@ -317,9 +316,12 @@ describe("retrieveSafetyChapterChunks", () => {
     // The read itself is bounded per page; one query, no batches.
     const reads = client.calls.filter((c) => c.sql.includes("ROW_NUMBER"));
     expect(reads).toHaveLength(1);
-    expect(reads[0].params[8]).toBe(SAFETY_CHAPTER_ROWS_PER_PAGE);
+    expect(reads[0].params[7]).toBe(SAFETY_CHAPTER_ROWS_PER_PAGE);
     // The fake applies the cap from the bound value; the SQL must actually filter on it.
-    expect(reads[0].sql).toMatch(/WHERE rn <= \$9\s+ORDER BY/);
+    expect(reads[0].sql).toMatch(/WHERE rn <= \$8\s+ORDER BY/);
+    // No keyword filter on the page read, and pages come back in chunk order (#5059 Codex r1 F1).
+    expect(reads[0].sql).not.toMatch(/AND content ~\*/);
+    expect(reads[0].sql).toMatch(/ORDER BY source_url, page, chunk_index NULLS LAST, id`?\s*$/);
   });
 
   it("an isolation warning outranks generic boilerplate for the budget", async () => {
@@ -412,6 +414,85 @@ describe("retrieveSafetyChapterChunks", () => {
       expect(safetyChapterPage(q)).toBe(17);
       expect(new RegExp(SAFETY_CHAPTER_REF_SQL, "i").test(q)).toBe(true);
     }
+  });
+
+  it("a chapter page split by the production chunker reaches the prompt whole (#5059 Codex r1 F1)", async () => {
+    const pieces = chunkText(P18);
+    expect(pieces.length).toBe(3);
+    expect(pieces.slice(1).every((p) => extractManualSafetyStatement(p) === null)).toBe(true);
+    // Ids run against chunk order, so only chunk_index can put the page back together.
+    const rows = pieces.map((content, i) => ({ ...row(`00000000-0000-0000-0000-00000000180${9 - i}`, content, 18), chunk_index: i }));
+    const retrieved = [chunk(P372, 372)];
+    const added = await retrieveSafetyChapterChunks(fakeClient([CORPUS[0], ...rows, CORPUS[3]]), "tenant", retrieved);
+    expect(added.map((c) => c.content)).toEqual(pieces);
+    const prompt = buildManualUserContent("How do I replace the cooling fan", [...retrieved, ...added]);
+    for (const step of [
+      "wait for 5 minutes",
+      "measuring with a multimeter",
+      "Externally supplied control circuits may carry dangerous",
+      "Disconnect the internal EMC filter when installing the drive on an IT system",
+      "zone of equipotential bonding",
+      "dangerous voltage is present at the power",
+    ]) expect(prompt).toContain(step);
+  });
+
+  it("a wait step and a measurement-only step in later chunks stay with their warning (#5059 Codex r1 F1)", async () => {
+    const page = [
+      "WARNING! Hazardous voltage. Before you open the drive cover, follow every step below.",
+      "Isolate the drive from the supply at the main disconnect. ".repeat(18),
+      "Wait 10 minutes for the DC bus capacitors to drain. ".repeat(16),
+      "Check with a multimeter that U1, V1 and W1 read 0 V to ground. ".repeat(24),
+    ].join("\n\n");
+    const pieces = chunkText(page);
+    expect(pieces.length).toBe(4);
+    expect(extractManualSafetyStatement(pieces[0])).not.toBeNull();
+    expect(pieces.slice(1).every((p) => extractManualSafetyStatement(p) === null)).toBe(true);
+    const waitAt = pieces.findIndex((p) => /Wait 10 minutes/.test(p));
+    const measureAt = pieces.findIndex((p) => /0 V to ground/.test(p) && !/Wait|WARNING/.test(p));
+    expect(waitAt).toBeGreaterThan(0);
+    expect(measureAt).toBeGreaterThan(waitAt);
+    const rows = pieces.map((content, i) => ({ ...row(`00000000-0000-0000-0000-00000000190${9 - i}`, content, 18), chunk_index: i }));
+    const retrieved = [chunk(P372, 372)];
+    const added = await retrieveSafetyChapterChunks(fakeClient([...rows, CORPUS[3]]), "tenant", retrieved);
+    const prompt = buildManualUserContent("How do I replace the cooling fan", [...retrieved, ...added]);
+    expect(prompt).toContain("Wait 10 minutes for the DC bus capacitors to drain.");
+    expect(prompt).toContain("read 0 V to ground");
+    expect(added.map((c) => c.content)).toEqual(pieces);
+  });
+
+  it("chunks before the page's first warning are not continuations of it", async () => {
+    const intro = { ...row("00000000-0000-0000-0000-000000002001", "Contents of this chapter: wiring, fans, voltage ratings.", 18), chunk_index: 0 };
+    const warn = { ...row("00000000-0000-0000-0000-000000002002", "WARNING! Disconnect all power before servicing.", 18), chunk_index: 1 };
+    const tail = { ...row("00000000-0000-0000-0000-000000002003", "then wait 5 minutes and measure the DC voltage.", 18), chunk_index: 2 };
+    const added = await retrieveSafetyChapterChunks(fakeClient([intro, warn, tail, CORPUS[3]]), "tenant", [chunk(P372, 372)]);
+    expect(added.map((c) => c.content)).toEqual([warn.content, tail.content]);
+  });
+
+  it("a row without a chunk index is never taken as a continuation", async () => {
+    const warn = row("00000000-0000-0000-0000-000000002101", "WARNING! Disconnect all power before servicing.", 18);
+    const loose = row("00000000-0000-0000-0000-000000002102", "Fan kit part numbers and torque values.", 18);
+    expect(warn.chunk_index).toBeUndefined();
+    const added = await retrieveSafetyChapterChunks(fakeClient([warn, loose, CORPUS[3]]), "tenant", [chunk(P372, 372)]);
+    expect(added.map((c) => c.content)).toEqual([warn.content]);
+  });
+
+  it("a run that runs out of budget stops there; it does not skip to a later chunk", async () => {
+    const steps = "Wait 5 minutes for the capacitors to discharge, then measure the voltage. ";
+    const first = [0, 1, 2, 3].map((i) => ({
+      ...row(`00000000-0000-0000-0000-00000000220${i}`, `${i === 0 ? "WARNING! " : ""}Part ${i}. ${steps.repeat(17)}`, 17),
+      chunk_index: i,
+    }));
+    expect(first.every((r) => r.content.length >= 1200)).toBe(true); // 4 x 1200 of the 6000 spent
+    expect(new Set(first.map((r) => r.content)).size).toBe(4); // distinct, so none is deduped away
+    const head = { ...row("00000000-0000-0000-0000-000000002301", "WARNING! Keep the cover closed while running.", 18), chunk_index: 0 };
+    const middle = { ...row("00000000-0000-0000-0000-000000002302", "Keep it closed. ".repeat(80), 18), chunk_index: 1 };
+    const tail = { ...row("00000000-0000-0000-0000-000000002303", "Then close the door.", 18), chunk_index: 2 };
+    const added = await retrieveSafetyChapterChunks(fakeClient([...first, head, middle, tail, CORPUS[3]]), "tenant", [chunk(P372, 372)]);
+    const kept = added.map((c) => c.content);
+    expect(kept).toContain(head.content);
+    expect(first.every((r) => kept.includes(r.content))).toBe(true);
+    expect(kept).not.toContain(middle.content);
+    expect(kept).not.toContain(tail.content);
   });
 
   it("the directive asks for the steps only on physical work", () => {
