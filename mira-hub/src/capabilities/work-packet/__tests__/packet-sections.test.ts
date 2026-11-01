@@ -274,7 +274,7 @@ describe("data-sheet ratings — one value per model, or unknown (Codex #5062 F1
 
   // #5101 (Codex #5062 round 15 F19): a restriction naming numeric models the sheet does not list,
   // in any wording, never lets its ratings reach another model as Verified.
-  for (const head of ["Model 7777 only", "Models 7777 and 7778 only", "For model 7777:", "7777 / 7778 pumps", "Gear-drive models only"]) {
+  for (const head of ["Model 7777 only", "Models 7777 and 7778 only", "For model 7777:", "7777 / 7778 pumps", "Gear-drive models only", "CS versions only", "Belt drive only", "Geared units only", "Stainless steel heads", "Gearbox drive"]) {
     it(`a "${head}" restriction above the only rating block leaves every rating a cited unknown`, () => {
       const raw = SHEET.replace(ONE_BLOCK, `${head}\n${OTHERS}`);
       for (const model of ["9XP1000", "9XP1000G"]) {
