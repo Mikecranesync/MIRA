@@ -20,6 +20,7 @@ import { cardsOf, firstChipOf, viewerTargetOf } from "./extract";
 import { safetyContentReport } from "./safety-content";
 import { decodeChatBody } from "./stream-decode";
 import { checkBuildContainsFixes, describeGate, githubToken, requiredFixes } from "./required-fixes";
+import { reserveWalkSpend, settleWalkSpend, type Reservation } from "./spend-ledger";
 import { fixtureFor, markdownScorecard, scoreAll, scorecard, type Corpus, type Observation, type Question } from "./score";
 import {
   assertOpenRouterCeiling, BUDGET, BudgetMeter, checkFingerprint, FROZEN_MANUAL_HINT, identity, JEV_CALLS_PER_TURN, JEV_CEILING_PER_MTOK_IN, JEV_INPUT_BOUND, ledgerVerdictFor,
@@ -200,6 +201,14 @@ test("stranger walk", async ({ page }) => {
   const notes: string[] = [describeGate(gate), fingerprint.available
     ? `runtime identity: fingerprint ${fingerprint.hash}, generation ${start.deploymentGeneration ?? "none"} — every lane booked at or above its declared price`
     : "runtime identity unavailable (staging serves no inferenceFingerprint): lanes booked from the walk's stg env + production constants; gitSha/builtAt checked before every paid dispatch (#5045 accepted limits)"];
+  // #5081: the campaign TOTAL across every run, restart and lane, reserved before any manual, account
+  // or token is spent. A refusal costs $0; a run that crashes keeps its whole reservation counted.
+  let reservation: Reservation | null = null;
+  if (!DRY) {
+    reservation = await reserveWalkSpend({ token: githubToken(), repo: process.env.GITHUB_REPOSITORY, entryId: `walk-${RUN_ID}`, usd: meter.budget, note: `stranger walk ${RUN_ID} on ${start.gitSha.slice(0, 9)}` });
+    if (!reservation.ok) throw new Error(`refusing to spend: ${reservation.reason}`);
+    notes.push(`campaign spend: reserved $${reservation.reservedUsd.toFixed(2)}; campaign total with this reservation $${reservation.totalUsd.toFixed(4)} of $${reservation.capUsd.toFixed(2)}`);
+  }
   let tenantId: string | null = null;
   try {
     // Every frozen manual in scope is reproduced (cache, then the OEM URL; sha-verified) BEFORE any
@@ -271,6 +280,12 @@ test("stranger walk", async ({ page }) => {
       ? { ok: false, detail: tenantLookupFailed }
       : tenantId ? teardownTenant(tenantId) : { ok: true, detail: "no tenant was created" };
     notes.push(`teardown: ${td.ok ? "OK" : "FAILED"} — ${td.detail}`);
+    if (reservation?.ok) {
+      const r = reservation;
+      const settled = await settleWalkSpend({ token: githubToken(), repo: process.env.GITHUB_REPOSITORY, entryId: r.entryId, reservedUsd: r.reservedUsd, bookedUsd: meter.booked, note: `${meter.turns} turns booked` })
+        .catch((e) => `settle FAILED (${(e as Error).message}): the full $${r.reservedUsd.toFixed(2)} reservation stays counted`);
+      notes.push(`campaign spend: settled at $${Math.min(meter.booked, r.reservedUsd).toFixed(4)} booked — ${settled}`);
+    }
     const asked = ONLY ? { ...corpus, questions: corpus.questions.filter((q) => ONLY.has(q.id)) } : corpus;
     const jevUsd = (meter.jevInputTokens * JEV_CEILING_PER_MTOK_IN) / 1e6;
     notes.unshift(`budget: $${meter.budget.toFixed(2)} cap; $${meter.perTurn.toFixed(4)} booked per turn (answer + judge on every provider, ≤${TURN_BOUND.inputTokens} in / ≤${TURN_BOUND.answerOutputTokens} out tokens, + ${JEV_CALLS_PER_TURN} Jev calls ≤${JEV_INPUT_BOUND} in at a declared $${JEV_CEILING_PER_MTOK_IN}/Mtok ceiling); booked $${meter.booked.toFixed(4)} over ${meter.turns} dispatched turns — an upper bound on true spend while the Hub bills at these prices`);
