@@ -80,6 +80,10 @@ function isInterleavedFurniture(soFar: string, next: string): boolean {
 const TITLE_LOWERCASE_WORDS = new Set(["from", "with"]);
 function looksLikeFigureTitle(line: string): boolean {
   const words = line.split(/\s+/).filter((w) => /^[A-Za-z][A-Za-z-]{3,}$/.test(w) && !TITLE_LOWERCASE_WORDS.has(w));
+  // Real figure titles are Title Case. A line with no lowercase letter is ALL-CAPS prose — CAT
+  // manuals print warnings that way ("DO NOT RUN PUMP WITHOUT OIL IN") — so it is content, never a
+  // title (Codex #5062 F15, round 7).
+  if (!/[a-z]/.test(line)) return false;
   return !/[.!?:;]$/.test(line) && !/[.!?] /.test(line) && words.length > 0 && words.every((w) => /^[A-Z]/.test(w));
 }
 
