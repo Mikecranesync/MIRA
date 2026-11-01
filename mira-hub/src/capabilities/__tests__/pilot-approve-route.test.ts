@@ -13,7 +13,7 @@ vi.mock("@/capabilities/pilot-access", async (importOriginal) => {
   return { ...real, isPilotApprovalRequired: () => true, approvePilotTenant: approveMock };
 });
 
-import { PilotSeatCapError } from "@/capabilities/pilot-access";
+import { PilotAutomatedAccountError, PilotSeatCapError } from "@/capabilities/pilot-access";
 import { POST } from "@/app/(hub)/api/admin/pilots/[tenantId]/approve/route";
 
 describe("POST /api/admin/pilots/[tenantId]/approve", () => {
@@ -24,6 +24,13 @@ describe("POST /api/admin/pilots/[tenantId]/approve", () => {
     const res = await POST(new Request("http://x/"), { params: Promise.resolve({ tenantId: "t1" }) });
     expect(res.status).toBe(409);
     expect((await res.json()).error).toContain("limited to 5 users");
+  });
+
+  it("returns 409 for an automated account instead of approving it", async () => {
+    approveMock.mockRejectedValueOnce(new PilotAutomatedAccountError());
+    const res = await POST(new Request("http://x/"), { params: Promise.resolve({ tenantId: "t1" }) });
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toContain("automated test account");
   });
 
   it("still returns 500 for an unexpected error", async () => {

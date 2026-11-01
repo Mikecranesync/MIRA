@@ -1,3 +1,4 @@
+import { isAutomatedSignup } from "./automated-signup";
 import type { PoolClient } from "pg";
 import pool from "@/lib/db";
 import { PILOT_COHORT_MAX_ORGS, PILOT_SEAT_MAX_USERS, PILOT_WINDOW_DAYS } from "@/lib/config";
@@ -81,6 +82,13 @@ export class PilotCohortCapError extends Error {
     super(`The pilot cohort is limited to ${maxOrgs} approved organizations.`);
     this.name = "PilotCohortCapError";
     this.maxOrgs = maxOrgs;
+  }
+}
+
+export class PilotAutomatedAccountError extends Error {
+  constructor() {
+    super("An automated test account cannot be approved into the pilot cohort.");
+    this.name = "PilotAutomatedAccountError";
   }
 }
 
@@ -184,13 +192,19 @@ export async function approvePilotTenant(
     ]);
 
     const { rows } = await client.query(
-      `SELECT id, owner_user_id, pilot_status, pilot_approved_at, pilot_expires_at, pilot_approved_by
+      `SELECT id, owner_user_id, pilot_status, pilot_approved_at, pilot_expires_at, pilot_approved_by,
+         (SELECT email FROM hub_users WHERE id = hub_tenants.owner_user_id) AS owner_email
        FROM hub_tenants WHERE id = $1 FOR UPDATE`,
       [tenantId],
     );
     const tenant = rows[0] as Record<string, unknown> | undefined;
     if (!tenant || !tenant.owner_user_id) {
       throw new PilotTenantNotFoundError();
+    }
+    // Never admit harness identities into the real five-org offer. The
+    // harness releases its own staging hold without pilot activation (#4928).
+    if (isAutomatedSignup(String(tenant.owner_email ?? ""))) {
+      throw new PilotAutomatedAccountError();
     }
     if (tenant.pilot_status === "active") {
       await client.query("COMMIT");

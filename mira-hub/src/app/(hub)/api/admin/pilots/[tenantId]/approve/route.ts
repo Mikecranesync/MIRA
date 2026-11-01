@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireSession, UnauthorizedError } from "@/lib/session";
 import { requireCapability } from "@/lib/capabilities";
 import {
+  PilotAutomatedAccountError,
   PilotCohortCapError,
   PilotCohortRenewalError,
   PilotSeatCapError,
@@ -41,6 +42,7 @@ export async function POST(
       return NextResponse.json({ error: err.message }, { status: 404 });
     }
     if (
+      err instanceof PilotAutomatedAccountError ||
       err instanceof PilotCohortRenewalError ||
       err instanceof PilotCohortCapError ||
       err instanceof PilotSeatCapError
