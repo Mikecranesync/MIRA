@@ -30,7 +30,7 @@ vi.mock("@/lib/safety-classifier", () => ({
   notebookSafetyTrigger: vi.fn(),
 }));
 
-import { GET, POST } from "../route";
+import { GET, POST } from "@/app/api/equipment-notebooks/[id]/work-packet/route";
 import { sessionOr401 } from "@/lib/session";
 import { getNotebook } from "@/lib/equipment-notebooks";
 import { loadNotebookDocTexts } from "@/capabilities/work-packet/document-text";

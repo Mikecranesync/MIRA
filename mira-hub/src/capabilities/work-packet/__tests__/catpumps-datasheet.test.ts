@@ -15,14 +15,13 @@
  *
  * Run: npx vitest run src/capabilities/work-packet/__tests__/catpumps-datasheet.test.ts
  */
-import { readFileSync } from "fs";
-import { join } from "path";
+import { FIXTURES } from "./fixtures";
 import { describe, expect, it } from "vitest";
 import { parseCatPumpsDataSheet, sheetModelFor } from "../catpumps-datasheet";
 import type { DataSheet, DocText, DsKit, DsPart, PageText } from "../types";
 
 function loadFixture(name: string): DocText {
-  const raw = readFileSync(join(__dirname, "fixtures", name), "utf8");
+  const raw = FIXTURES[name];
   const pages: PageText[] = [];
   const re = /===== PAGE (\d+) =====\n/g;
   const indices: { page: number; start: number }[] = [];

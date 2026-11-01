@@ -892,7 +892,7 @@ capabilities:
     required_checks: []
     evidence:
       - "mira-hub/src/capabilities/work-packet/__tests__/draft.test.ts"
-      - "mira-hub/src/app/api/equipment-notebooks/[id]/work-packet/__tests__/route.test.ts"
+      - "mira-hub/src/capabilities/__tests__/work-packet-route.test.ts"
     rollback: >-
       Unset NOTEBOOK_WORK_PACKET (or set anything other than 1) and redeploy mira-hub: the route returns
       404 and the panel renders nothing. Nothing is stored server-side.

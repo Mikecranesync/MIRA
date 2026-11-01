@@ -1,7 +1,7 @@
 /**
  * catpumps-service-manual.test.ts — parseCatPumpsServiceManual.
  *
- * Fixtures (`fixtures/manual-*.txt`) are fictional CAT Pumps service-manual excerpts (invented
+ * Fixtures (`fixtures/index.ts`, keys `manual-*.txt`) are fictional CAT Pumps service-manual excerpts (invented
  * model numbers 9XP1000/9XP1010/9XP1020 and 8520/8521/8527/8560) kept in the EXACT real line
  * layouts observed in the two real documents this was built against (`CPSvc5.unpdf.txt`,
  * `35FR2Svc.unpdf.txt`, read locally from the scratchpad — never committed, never quoted here).
@@ -13,17 +13,14 @@
  * the parser (per `document-text.ts`, pages arrive pre-split — the marker is a scratch-dump
  * artifact, not a production format).
  */
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { FIXTURES } from "./fixtures";
 import { describe, expect, it } from "vitest";
 import { parseCatPumpsServiceManual } from "../catpumps-service-manual";
 import type { DocText } from "../types";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
 
 function docTextFromDump(fixtureName: string, docId = "doc1"): DocText {
-  const raw = readFileSync(join(__dirname, "fixtures", fixtureName), "utf8");
+  const raw = FIXTURES[fixtureName];
   const parts = raw.split(/\n?===== PAGE (\d+) =====\n/).slice(1);
   const pages: DocText["pages"] = [];
   for (let i = 0; i < parts.length; i += 2) {
