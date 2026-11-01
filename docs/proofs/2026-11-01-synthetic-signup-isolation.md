@@ -45,7 +45,7 @@ Before merge, require exact-head independent review and CI. No merge or deployme
 ## Local validation
 
 - Regression check before the fix: six failures exposed synthetic CRM writes, funnel persistence and missing cohort refusal; 83 existing cases passed.
-- Current lockfile installed in the isolated worktree; nine focused/neighboring suites: **126 passed**.
+- Current lockfile installed in the isolated worktree; ten focused/neighboring suites: **130 passed**.
 - ESLint on all changed TypeScript files: passed. Production `npm run build`: passed.
 - Standalone `tsc --noEmit`: 77 diagnostics on both candidate and a clean checkout of the exact base, at the same locations/codes. No changed-file diagnostics; three messages only reorder the same Request/URL union. This is not a clean repository-wide standalone typecheck.
 - No live signup probe or database integration suite was run. Mocked service/transaction tests validate the isolation behavior; a real rollout remains subject to review and approval.
