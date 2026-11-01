@@ -456,7 +456,13 @@ function headingModels(text: string, roster: Map<string, string>): { models: str
  *  common section, or a sheet with no model restriction at all — lets a rating be Verified. */
 const UNIT_RE = /^(?:rpm|psi|gpm|lpm|bar|lbs?|kg|oz|qts?|l|mm|in|hp|kw|v|hz|°?[fc])$/i;
 
+// A line that limits the ratings under it in words, naming no model: "Belt drive only",
+// "CS versions only", "Geared units only", "Stainless steel heads" (Codex #5062 #5101).
+const RESTRICTION_RE =
+  /\b(?:only|except|excluding|versions?|units?|geared|gearbox|gear-drive|belt[- ]drive|direct[- ]drive|heads?|stainless|brass)\b/i;
+
 function mentionsModel(text: string, roster: Map<string, string>): boolean {
+  if (RESTRICTION_RE.test(text)) return true;
   const toks = text.split(/[^0-9A-Za-z/°]+/).filter(Boolean);
   return toks.some((tok, i) => {
     if (/^models?$/i.test(tok)) return true;
