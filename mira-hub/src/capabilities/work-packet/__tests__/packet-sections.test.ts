@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { FIXTURES, fixturePages } from "./fixtures";
 import { buildDraftPacket } from "../draft";
 import { verifyPacket } from "../verify";
+import { applyEdit } from "../edits";
 import type { DocText, DraftInput, PageFigure, WorkPacket } from "../types";
 
 const PNG = "data:image/png;base64,AAAA";
@@ -17,12 +18,12 @@ function doc(name: string, docId: string, figures: Record<number, PageFigure[]> 
   return { docId, fileId: null, filename: name, pages, via };
 }
 
-function build(docs: DocText[], description: string, hazardFlags: string[] = []): WorkPacket {
+function build(docs: DocText[], description: string, hazardFlags: string[] = [], model = "9XP1000"): WorkPacket {
   const input: DraftInput = {
     notebookId: "11111111-1111-4111-8111-111111111111",
     packetId: "pk-1",
     now: "2026-11-01T12:00:00Z",
-    identity: { manufacturer: "CAT Pumps", model: "9XP1000", catalogNumber: null, serialNumber: null, status: "user_confirmed", confidence: 0.9 },
+    identity: { manufacturer: "CAT Pumps", model, catalogNumber: null, serialNumber: null, status: "user_confirmed", confidence: 0.9 },
     workOrder: { id: "WO-1", title: "Valve service", description, assetTag: null, site: null, synthetic: true },
     docs,
     hazardFlags,
@@ -68,7 +69,7 @@ describe("job hazard analysis", () => {
     expect(verified.length).toBeGreaterThan(0);
     expect(p.jha).toHaveLength(p.safety.cautions.length);
     for (const [i, c] of p.safety.cautions.entries()) {
-      expect(p.jha![i].hazard).toEqual(c);
+      expect(p.jha![i].hazard).toEqual({ ...c, copyOf: `safety.cautions[${i}]` });
       expect(p.jha![i].task.value).toBe(`Manual p.${c.source!.page}`);
       expect(p.jha![i].controls).toMatchObject({ value: null, label: "unknown" });
     }
@@ -141,5 +142,131 @@ describe("return to service", () => {
     expect(startup).toHaveLength(1);
     expect(startup[0]).toMatchObject({ label: "verified", source: expect.objectContaining({ page: 2 }) });
     expect(p.restoration!.some((f) => /Relieve all discharge/.test(f.value ?? ""))).toBe(false);
+  });
+});
+
+describe("data-sheet ratings — one value per model, or unknown (Codex #5062 F19, F20)", () => {
+  const SHEET = FIXTURES["datasheet-9xp1000.txt"];
+  const ONE_BLOCK = "9XP1000, 9XP1000CS\nFlow 7.4 gpm 28 lpm\nPressure Range 100\u20131500 psi 6.9\u2013103 bar\nPump RPM* 1725 rpm 1725 rpm\n";
+  const sheetDoc = (raw: string, docId = "ds", filename = "datasheet-9xp1000.txt"): DocText => ({ docId, fileId: null, filename, pages: fixturePages(raw), via: "file" });
+  const ratings = (p: WorkPacket) => p.restoration!.filter((f) => /Flow|Pressure Range|Pump RPM/.test(f.value ?? f.basis));
+
+  const TWO_BLOCKS = "9XP1000\nFlow 7.4 gpm 28 lpm\nPressure Range 100\u20131500 psi 6.9\u2013103 bar\nPump RPM* 1725 rpm 1725 rpm\n9XP1000CS\nFlow 5.0 gpm 19 lpm\nPressure Range 100\u2013750 psi 6.9\u201352 bar\nPump RPM* 860 rpm 860 rpm\n";
+  const values = (p: WorkPacket) => ratings(p).map((f) => `${f.label}:${f.value}`);
+
+  it("a sheet with a block per model gives each model only its own block's values", () => {
+    expect(SHEET).toContain(ONE_BLOCK);
+    const raw = SHEET.replace(ONE_BLOCK, TWO_BLOCKS);
+    const a = build([sheetDoc(raw), doc("manual-cpstyle.txt", "sm")], "valve service");
+    expect(values(a)).toEqual(["verified:Pressure Range 100\u20131500 psi 6.9\u2013103 bar", "verified:Flow 7.4 gpm 28 lpm", "verified:Pump RPM 1725 rpm 1725 rpm"]);
+    const cs = build([sheetDoc(raw)], "valve service", [], "9XP1000CS");
+    expect(values(cs)).toEqual(["verified:Pressure Range 100\u2013750 psi 6.9\u201352 bar", "verified:Flow 5.0 gpm 19 lpm", "verified:Pump RPM 860 rpm 860 rpm"]);
+    expect(verifyPacket(a)).toEqual([]);
+    expect(verifyPacket(cs)).toEqual([]);
+  });
+
+  it("two different values that cannot be tied to a model give a cited unknown, never the first", () => {
+    const raw = SHEET.replace(ONE_BLOCK, TWO_BLOCKS.replace("9XP1000\n", "").replace("9XP1000CS\n", "Notes\n"));
+    const p = build([sheetDoc(raw), doc("manual-cpstyle.txt", "sm")], "valve service");
+    const r = ratings(p);
+    expect(r).toHaveLength(3);
+    for (const f of r) {
+      expect(f).toMatchObject({ value: null, label: "unknown", basis: expect.stringContaining("more than one") });
+      expect(f.source).not.toBeNull();
+    }
+    expect(p.restoration!.some((f) => f.label === "verified" && /1500|1725|750|860/.test(f.value ?? ""))).toBe(false);
+    // the item printed once (crankcase capacity) is still verified
+    expect(p.restoration).toContainEqual(expect.objectContaining({ value: "Crankcase Capacity 12 oz 0.35 l", label: "verified" }));
+    expect(verifyPacket(p)).toEqual([]);
+  });
+
+  it("a value printed only for other models is a cited unknown for this one", () => {
+    const raw = SHEET.replace(ONE_BLOCK, TWO_BLOCKS.slice(TWO_BLOCKS.indexOf("9XP1000CS\n")));
+    const p = build([sheetDoc(raw), doc("manual-cpstyle.txt", "sm")], "valve service");
+    expect(ratings(p)).toHaveLength(3);
+    for (const f of ratings(p)) expect(f).toMatchObject({ value: null, label: "unknown", basis: expect.stringContaining("only for other models (9XP1000CS)") });
+  });
+
+  it("a second block for a geared variant (ending at an Engine RPM line) does not touch this model's ratings", () => {
+    const raw = SHEET.replace(ONE_BLOCK, ONE_BLOCK + "Weight 19.9 lbs 9 kg\n9XP1000CSSG1\nFlow 7.2 gpm 27 lpm\nPressure Range 100\u20131500 psi 6.9\u2013103 bar\nEngine RPM 3450 rpm 3450 rpm\nWeight 26.5 lbs 12 kg\n");
+    const p = build([sheetDoc(raw), doc("manual-cpstyle.txt", "sm")], "valve service");
+    expect(values(p)).toEqual(["verified:Pressure Range 100\u20131500 psi 6.9\u2013103 bar", "verified:Flow 7.4 gpm 28 lpm", "verified:Pump RPM 1725 rpm 1725 rpm"]);
+    expect(p.restoration).toContainEqual(expect.objectContaining({ value: "Crankcase Capacity 12 oz 0.35 l", label: "verified" }));
+  });
+
+  it("the same value printed twice on one sheet is still one verified line", () => {
+    const twice = SHEET.replace(ONE_BLOCK, ONE_BLOCK + "Flow 7.4 gpm 28 lpm\n");
+    const p = build([sheetDoc(twice), doc("manual-cpstyle.txt", "sm")], "valve service");
+    expect(ratings(p).filter((f) => f.value === "Flow 7.4 gpm 28 lpm" && f.label === "verified")).toHaveLength(1);
+  });
+
+  it("two sheets that disagree on oil capacity give one cited unknown, no fill amount verified", () => {
+    const other = SHEET.replace("Crankcase Capacity 12 oz 0.35 l", "Crankcase Capacity 17 oz 0.5 l");
+    const p = build([sheetDoc(SHEET), sheetDoc(other, "ds2", "copy.txt"), doc("manual-cpstyle.txt", "sm")], "valve service");
+    const cap = p.restoration!.filter((f) => /Crankcase Capacity/.test(f.value ?? f.basis));
+    expect(cap).toHaveLength(1);
+    expect(cap[0]).toMatchObject({ value: null, label: "unknown", basis: expect.stringContaining("more than one Crankcase Capacity") });
+    expect(cap[0].basis).toContain("12 oz 0.35 l");
+    expect(cap[0].basis).toContain("17 oz 0.5 l");
+    expect(verifyPacket(p)).toEqual([]);
+  });
+
+  it("two identical sheets give each rating once", () => {
+    const p = build([sheetDoc(SHEET), sheetDoc(SHEET, "ds2", "copy.txt"), doc("manual-cpstyle.txt", "sm")], "valve service");
+    expect(p.restoration!.filter((f) => f.value === "Crankcase Capacity 12 oz 0.35 l" && f.label === "verified")).toHaveLength(1);
+    expect(ratings(p).filter((f) => f.label === "verified")).toHaveLength(3);
+  });
+});
+
+describe("a caution shown in three sections is one field (Codex #5062 F18)", () => {
+  const raw = FIXTURES["manual-cpstyle.txt"].replace("3. Grasp Spring Retainer", "NOTE: Do not lubricate wicks at initial start-up.\n3. Grasp Spring Retainer");
+  const packet = () => build([sheet(), { docId: "sm", fileId: null, filename: "m.pdf", pages: fixturePages(raw), via: "file" }], "valve service");
+  const occurrences = (p: WorkPacket, at?: number) => {
+    const i = at ?? p.safety.cautions.findIndex((c) => /lubricate wicks/.test(c.value ?? ""));
+    const original = `safety.cautions[${i}]`;
+    const jha = p.jha!.findIndex((r) => r.hazard.copyOf === original);
+    const rest = p.restoration!.findIndex((f) => f.copyOf === original);
+    return { i, paths: [original, `jha[${jha}].hazard`, `restoration[${rest}]`], fields: [p.safety.cautions[i], p.jha![jha]?.hazard, p.restoration![rest]] };
+  };
+
+  it("every occurrence links back to the safety caution", () => {
+    const o = occurrences(packet());
+    expect(o.i).toBeGreaterThanOrEqual(0);
+    expect(o.fields.every(Boolean)).toBe(true);
+    expect(o.fields.map((f) => f!.label)).toEqual(["verified", "verified", "verified"]);
+  });
+
+  for (const action of ["set", "strike", "mark_unknown"] as const) {
+    for (const via of [0, 1, 2]) {
+      it(`${action} through occurrence ${via} reaches all three, and survives save/reload`, () => {
+        const before = packet();
+        const { i, paths: start } = occurrences(before);
+        const path = start[via];
+        const edited = applyEdit(before, { path, action, value: action === "set" ? "Site note: wick check" : undefined }, "Tech", "2026-11-01T12:00:00Z");
+        const reloaded = JSON.parse(JSON.stringify(edited)) as WorkPacket;
+        const { fields, paths } = occurrences(reloaded, i);
+        expect(paths).toEqual(start);
+        const [orig, ...copies] = fields;
+        for (const c of copies) {
+          expect(c!.value).toBe(orig!.value);
+          expect(c!.label).toBe(orig!.label);
+          expect(!!c!.struck).toBe(!!orig!.struck);
+        }
+        expect(orig!.label).not.toBe(action === "strike" ? "unknown" : "verified");
+        if (action === "strike") expect(orig!.struck).toBe(true);
+        expect(reloaded.approval.technicianReview.entries.at(-1)!.path).toBe(paths[0]);
+        expect(verifyPacket(reloaded)).toEqual([]);
+      });
+    }
+  }
+
+  it("the check flags a copy that no longer matches its original", () => {
+    const p = packet();
+    const { paths } = occurrences(p);
+    const stale = structuredClone(p);
+    stale.safety.cautions[occurrences(p).i] = { ...stale.safety.cautions[occurrences(p).i], value: null, label: "unknown" };
+    const problems = verifyPacket(stale);
+    expect(problems.some((m) => m.startsWith(`${paths[1]}: differs from its original`))).toBe(true);
+    expect(problems.some((m) => m.startsWith(`${paths[2]}: differs from its original`))).toBe(true);
   });
 });

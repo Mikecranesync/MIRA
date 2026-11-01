@@ -70,7 +70,20 @@ const QUALIFICATION_PATH = /^qualifications\[\d+\]$/;
 export function verifyPacket(packet: WorkPacket): string[] {
   const problems: string[] = [];
 
-  for (const { path, field } of collectFields(packet)) {
+  const all = collectFields(packet);
+  const byPath = new Map(all.map((l) => [l.path, l.field]));
+
+  for (const { path, field } of all) {
+    // A copy shown in a second section must match its original (Codex #5062 F18).
+    if (field.copyOf) {
+      const original = byPath.get(field.copyOf);
+      if (!original) {
+        problems.push(`${path}: copy of '${field.copyOf}', which is not in the packet`);
+      } else if (original.value !== field.value || original.label !== field.label || !!original.struck !== !!field.struck) {
+        problems.push(`${path}: differs from its original '${field.copyOf}'`);
+      }
+    }
+
     if (field.label === "verified") {
       if (!field.source) {
         problems.push(`${path}: verified without a source`);

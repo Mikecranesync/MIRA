@@ -17,7 +17,8 @@
  * Any edit, of any action, resets `approval.supervisor` to pending (#4999: broadened from the
  * Python original, which only reset on `set`/`strike` — here EVERY edit, including a bare
  * `confirm`, invalidates a prior supervisor approval) and sets `technicianReview.state` to
- * "reviewed". An edit at a path that does not resolve to a `Field` throws.
+ * "reviewed". An edit at a path that does not resolve to a `Field` throws. An edit addressed to a
+ * copy (`Field.copyOf`) is applied to the original, and every copy is updated to match it.
  */
 
 import type { EditAction, Field, PacketEdit, ReviewEntry, WorkPacket } from "./types";
@@ -61,12 +62,27 @@ function cloneDeep<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+/** Every copy of `path` takes the original's value, label, strike and review; it keeps its own
+ *  basis (the section it is shown in). */
+function syncCopies(packet: WorkPacket, path: string, original: Field): void {
+  const copies = [...(packet.jha ?? []).map((r) => r.hazard), ...(packet.restoration ?? [])].filter((f) => f.copyOf === path);
+  for (const copy of copies) {
+    copy.value = original.value;
+    copy.label = original.label;
+    copy.review = original.review;
+    if (original.struck) copy.struck = true;
+  }
+}
+
 export function applyEdit(packet: WorkPacket, edit: PacketEdit, by: string, at: string): WorkPacket {
   if (!KNOWN_ACTIONS.includes(edit.action)) {
     throw new Error(`Unknown edit action: '${edit.action}' at '${edit.path}'`);
   }
   const next = cloneDeep(packet);
-  const field = resolveField(next, edit.path);
+  // A caution repeated in another section is a copy: the edit lands on the original (F18).
+  const target = resolveField(next, edit.path);
+  const path = target.copyOf ?? edit.path;
+  const field = target.copyOf ? resolveField(next, target.copyOf) : target;
   const previous = field.value;
   let nextValue = previous;
 
@@ -88,8 +104,9 @@ export function applyEdit(packet: WorkPacket, edit: PacketEdit, by: string, at: 
       break;
   }
 
-  const entry: ReviewEntry = { path: edit.path, action: edit.action, by, at, previous, next: nextValue };
+  const entry: ReviewEntry = { path, action: edit.action, by, at, previous, next: nextValue };
   field.review = entry;
+  syncCopies(next, path, field);
 
   next.approval.technicianReview.entries = [...next.approval.technicianReview.entries, entry];
   next.approval.technicianReview.state = "reviewed";

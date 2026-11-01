@@ -229,6 +229,31 @@ function titleCase(s: string): string {
   return s.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function cite(ref: SourceRef): string {
+  return `${ref.filename ?? "document"} p.${ref.page}`;
+}
+
+/** One data-sheet item (oil capacity, a rating) for the confirmed pump, across every applicable
+ *  sheet (Codex #5062 F19/F20). A value printed under a block that names other models is not used.
+ *  Verified only when every remaining printing agrees; otherwise a cited unknown, never a pick. */
+function resolveSpec(sheets: readonly ParsedDoc[], key: string, basis: string, models: readonly string[]): { label: string; field: Field } | null {
+  const all = sheets.flatMap((p) => p.dataSheet?.specs.filter((sp) => sp.key === key) ?? []);
+  if (all.length === 0) return null;
+  const label = all[0].label;
+  const specs = all.filter((sp) => !sp.models || sp.models.some((m) => models.some((k) => modelsMatch(m, k))));
+  if (specs.length === 0) {
+    const named = Array.from(new Set(all.flatMap((sp) => sp.models ?? []))).join(", ");
+    return { label, field: { value: null, label: "unknown", source: all[0].source, basis: `the data sheet gives ${label} only for other models (${named}) — check the value for this model` } };
+  }
+  const first = specs[0];
+  const norm = (v: string) => v.replace(/\s+/g, " ").trim().toLowerCase();
+  const other = specs.find((sp) => norm(sp.value) !== norm(first.value));
+  if (other) {
+    return { label, field: { value: null, label: "unknown", source: first.source, basis: `the attached data sheets print more than one ${label} for this model: ${first.value} (${cite(first.source)}) vs ${other.value} (${cite(other.source)}) — check the value` } };
+  }
+  return { label, field: { value: first.value, label: "verified", source: first.source, basis } };
+}
+
 function refuse(reason: DraftRefusal, message: string): DraftResult {
   return { ok: false, reason, message };
 }
@@ -539,15 +564,13 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
   }
 
   if (selectedTopics.includes("lubrication")) {
-    for (const p of applicableDataSheets) {
-      const spec = p.dataSheet.specs.find((s) => s.key === "crankcase_capacity");
-      if (spec) {
-        measurements.push({
-          name: { value: spec.label, label: "verified", source: spec.source, basis: "data sheet spec" },
-          value: { value: spec.value, label: "verified", source: spec.source, basis: "data sheet spec" },
-          tool: { value: null, label: "unknown", source: null, basis: "not a torque item" },
-        });
-      }
+    const capacity = resolveSpec(applicableDataSheets, "crankcase_capacity", "data sheet spec", identityKeys(identity));
+    if (capacity) {
+      measurements.push({
+        name: { value: capacity.label, label: "verified", source: capacity.field.source, basis: "data sheet spec" },
+        value: capacity.field,
+        tool: { value: null, label: "unknown", source: null, basis: "not a torque item" },
+      });
     }
   }
 
@@ -595,9 +618,9 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
   // PPE, isolation, permits — are the site's decision: always unknown, never generated.
   const siteControls = (): Field => ({ value: null, label: "unknown", source: null, basis: "controls, PPE and isolation — the site defines them" });
   const jha: JhaRow[] = [
-    ...cautions.map((c) => ({
+    ...cautions.map((c, i) => ({
       task: { value: c.source ? `Manual p.${c.source.page}` : "Manual", label: "proposed" as const, source: c.source, basis: "where the manual prints this caution" },
-      hazard: { ...c },
+      hazard: { ...c, copyOf: `safety.cautions[${i}]` },
       controls: siteControls(),
     })),
     ...hazardFlags.map((flag) => ({
@@ -620,16 +643,14 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
       restoration.push({ value: ref.line, label: "verified", source: ref, basis: `review every item of this check-list in the manual (p.${ref.page}) before start-up` });
     }
   }
-  for (const c of cautions) {
-    if (c.label === "verified" && STARTUP_RE.test(c.value ?? "")) restoration.push({ ...c, basis: `${c.basis} — start-up` });
-  }
-  for (const p of applicableDataSheets) {
-    for (const key of ["crankcase_capacity", "pressure", "flow", "rpm"]) {
-      const spec = p.dataSheet.specs.find((sp) => sp.key === key);
-      if (!spec) continue;
-      const basis = key === "crankcase_capacity" ? "data sheet: fill the crankcase to this capacity before start-up" : "data sheet rating — do not exceed during the run test";
-      restoration.push({ value: `${spec.label} ${spec.value}`, label: "verified", source: spec.source, basis });
-    }
+  cautions.forEach((c, i) => {
+    if (c.label === "verified" && STARTUP_RE.test(c.value ?? "")) restoration.push({ ...c, basis: `${c.basis} — start-up`, copyOf: `safety.cautions[${i}]` });
+  });
+  for (const key of ["crankcase_capacity", "pressure", "flow", "rpm"]) {
+    const basis = key === "crankcase_capacity" ? "data sheet: fill the crankcase to this capacity before start-up" : "data sheet rating — do not exceed during the run test";
+    const spec = resolveSpec(applicableDataSheets, key, basis, identityKeys(identity));
+    if (!spec) continue;
+    restoration.push(spec.field.label === "verified" ? { ...spec.field, value: `${spec.label} ${spec.field.value}` } : spec.field);
   }
   restoration.push({ value: null, label: "unknown", source: null, basis: "functional-test acceptance limits are not specified in the attached documents" });
 
