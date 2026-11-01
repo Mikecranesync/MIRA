@@ -1,6 +1,6 @@
 # 2026-11-01 — Synthetic signup isolation investigation
 
-Branch `codex/pilot-test-isolation`, base `31c8e324c`: 141 delivered pilot notices matched Beta Gate/Stranger Walk fixtures; shared stg/prd HubSpot and Resend config values confirmed without disclosure. CRM still has 843 Beta Gate Stranger contacts, newest September 27; recent inflow and exact quota causality remain unproven. See `docs/proofs/2026-11-01-synthetic-signup-isolation.md`. Narrow fixture guard excludes CRM/application effects and cohort approval; normal signup/gate and harness trial release remain. Local: 126 tests, lint, production build pass; standalone typecheck has same 77 baseline diagnostics. No credential/customer-data writes, merge or deployment. PR/review handoff pending.
+Branch `codex/pilot-test-isolation`, base `31c8e324c`: 141 delivered pilot notices matched Beta Gate/Stranger Walk fixtures; shared stg/prd HubSpot and Resend config values confirmed without disclosure. CRM still has 843 Beta Gate Stranger contacts, newest September 27; recent inflow and exact quota causality remain unproven. See `docs/proofs/2026-11-01-synthetic-signup-isolation.md`. Narrow fixture guard excludes CRM/application effects and cohort approval; normal signup/gate and harness trial release remain. Local: 126 tests, lint, production build pass; standalone typecheck has same 77 baseline diagnostics. No credential/customer-data writes, merge or deployment. Draft PR #5067; independent Sonnet review passed with admin-filter follow-up addressed; exact-head review and CI still required.
 
 ---
 

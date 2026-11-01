@@ -4,6 +4,8 @@ import { isSystemAccount } from "../users";
 describe("isSystemAccount", () => {
   it("flags the synthetic accounts seen in the prod admin list (Hub QA 2026-05-28 #8)", () => {
     const synthetic = [
+      { email: "betagate-1793524261387@factorylm.com", name: "Beta Gate Stranger" },
+      { email: "strangerwalk-charlie-dry3-1500@factorylm.com", name: null },
       { email: "playwright-probe@factorylm.com", name: null },
       { email: "playwright@factorylm.com", name: null },
       { email: "drawer-test-001@factorylm.com", name: null },
@@ -18,6 +20,8 @@ describe("isSystemAccount", () => {
 
   it("does NOT flag real users", () => {
     const real = [
+      { email: "betagate-123@customer.com", name: "Beta Gate Stranger" },
+      { email: "strangerwalk-123@customer.com", name: null },
       { email: "harperhousebuyers@gmail.com", name: "Mike Harper" },
       { email: "mike@cranesync.com", name: "Mike" },
       { email: "latest.news@example.com", name: "Latest News" }, // contains "test" but not as a token

@@ -29,7 +29,7 @@ Base: `31c8e324c00bfe330d5e528466689d9babe7b2c2` (`origin/main`). Service invest
 
 ## Bounded fix and review requirements
 
-One narrow classifier recognizes the two reserved harness formats on factorylm.com, with case/whitespace normalization. It excludes those identities from CRM capture and application persistence/telemetry/email. Cohort approval checks the stored owner's email and returns 409 for a harness identity. No display-name heuristics or caller-supplied test flags suppress applicants. Ordinary registration and approval gates remain intact; harness release and retrieval coverage are unchanged.
+One narrow classifier recognizes the two reserved harness formats on factorylm.com, with case/whitespace normalization. It excludes those identities from CRM capture and application persistence/telemetry/email. Cohort approval checks the stored owner's email and returns 409 for a harness identity. No display-name heuristics or caller-supplied test flags suppress applicants. Ordinary registration and approval gates remain intact; harness release and retrieval coverage are unchanged. The existing admin system-account filter reuses the same narrow classifier; fixtures remain visible with includeSystem=1.
 
 This protects the two evidenced harness families, not every possible test account. Existing CRM contacts, application rows and telemetry are untouched. New fixture conventions need explicit classifier review and tests.
 
