@@ -25,6 +25,7 @@ import { proposeDocumentEdgesForNode } from "@/lib/node-document-proposals";
 import { extractText, getDocumentProxy } from "unpdf";
 import { repairExtractedPage, type PageRepair } from "@/capabilities/garbled-text";
 import { ocrExtractPage } from "@/capabilities/garbled-text-ocr";
+import { readPageLabelsBounded } from "@/capabilities/pdf-page-label-reader";
 
 const CHUNK_CHARS = 1000;
 const CHUNK_OVERLAP = 120;
@@ -424,6 +425,9 @@ async function writeChunkRowsForNode(
    *  chunk of that page as `metadata.text_repair` so a decoded row is
    *  auditable and reversible (TQ-05/06). Absent = untouched extraction. */
   repairs?: ReadonlyArray<TextRepair | null>,
+  /** Per-page printed label from the PDF's own /PageLabels tree (index-aligned
+   *  with `pages`), recorded as `metadata.page_label` (#4508). Absent = none. */
+  pageLabels?: ReadonlyArray<string | null> | null,
 ): Promise<number> {
   const { tenantId, uploadId, nodeId, unsPath, filename } = opts;
 
@@ -431,7 +435,13 @@ async function writeChunkRowsForNode(
   // against the partial UNIQUE (tenant_id, source_url, metadata->>'chunk_index').
   const sourceUrl = `node-doc/${uploadId}/${filename}`;
 
-  type ChunkRow = { content: string; page: number; idx: number; repair: TextRepair | null };
+  type ChunkRow = {
+    content: string;
+    page: number;
+    idx: number;
+    repair: TextRepair | null;
+    label: string | null;
+  };
   let idx = 0;
   let batch: ChunkRow[] = [];
 
@@ -460,6 +470,7 @@ async function writeChunkRowsForNode(
             chunk_index: r.idx,
             source: "hub_node_attachment",
             ...(r.repair ? { text_repair: r.repair } : {}),
+            ...(r.label ? { page_label: r.label } : {}),
           }),
         );
       }
@@ -486,7 +497,13 @@ async function writeChunkRowsForNode(
       const pageText = pages[p];
       pages[p] = ""; // release each page's text once chunked — bounds peak memory
       for (const piece of chunkText(pageText)) {
-        batch.push({ content: piece, page: p + 1, idx: idx++, repair: repairs?.[p] ?? null });
+        batch.push({
+          content: piece,
+          page: p + 1,
+          idx: idx++,
+          repair: repairs?.[p] ?? null,
+          label: pageLabels?.[p] ?? null,
+        });
         if (batch.length >= BATCH_ROWS) await flush();
       }
     }
@@ -610,10 +627,69 @@ export async function writePdfChunksForNode(opts: {
     const { text } = await extractText(pdf, { mergePages: false });
     const pages: string[] = Array.isArray(text) ? text : [text];
     const repairs = await repairGarbledPages(pages, rest);
-    return await writeChunkRowsForNode(pages, rest, repairs);
+    const labels = await printedPageLabels(
+      { getPageLabels: () => readPageLabelsBounded(buffer, rest.filename) },
+      pages.length,
+      rest.filename,
+    );
+    return await writeChunkRowsForNode(pages, rest, repairs, labels);
   } finally {
     release();
   }
+}
+
+/**
+ * #4508 — the PDF's own printed page labels (/PageLabels, via pdfjs
+ * `getPageLabels()`), index-aligned with the extracted pages. The Safety
+ * chapter reader maps a printed page ("Safety ... 17") through these instead of
+ * guessing an offset. Returns null — never a guess — when the PDF has no label
+ * tree, the tree cannot be read, or its length does not match the pages. A
+ * non-string or blank entry is null for that page only. Never throws: a label
+ * failure must not fail the upload.
+ *
+ * Size-bounded (#5065 Codex r3 F1): each label is copied onto every chunk of its
+ * page, and a /PageLabels prefix can be megabytes. One label over
+ * MAX_PAGE_LABEL_BYTES, or all labels together over MAX_PAGE_LABELS_TOTAL_BYTES
+ * (UTF-8), drops the whole document's labels — never truncated, never partial.
+ * The character-length check runs first so an oversized label is rejected
+ * before trim or byte counting flattens it.
+ */
+export const MAX_PAGE_LABEL_BYTES = 64;
+export const MAX_PAGE_LABELS_TOTAL_BYTES = 256 * 1024;
+
+export async function printedPageLabels(
+  pdf: { getPageLabels?: () => Promise<unknown> },
+  pageCount: number,
+  filename: string,
+): Promise<Array<string | null> | null> {
+  let raw: unknown;
+  try {
+    raw = await pdf.getPageLabels?.();
+  } catch (err) {
+    console.warn(`[node-ingest] page labels unreadable for ${filename}:`, err);
+    return null;
+  }
+  if (!Array.isArray(raw) || raw.length !== pageCount) return null;
+  const labels: Array<string | null> = [];
+  let total = 0;
+  for (const l of raw) {
+    if (typeof l !== "string") {
+      labels.push(null);
+      continue;
+    }
+    if (l.length > MAX_PAGE_LABEL_BYTES * 4) return oversized(filename);
+    const t = l.trim();
+    const bytes = Buffer.byteLength(t, "utf8");
+    total += bytes;
+    if (bytes > MAX_PAGE_LABEL_BYTES || total > MAX_PAGE_LABELS_TOTAL_BYTES) return oversized(filename);
+    labels.push(t || null);
+  }
+  return labels;
+}
+
+function oversized(filename: string): null {
+  console.warn(`[node-ingest] page labels over the size limit for ${filename}; storing none`);
+  return null;
 }
 
 /**

@@ -22,6 +22,12 @@ vi.mock("unpdf", () => ({
   }),
 }));
 
+// The page-label worker has its own tests (pdf-page-label-reader.test.ts); here it must not add
+// real worker start-up time between the gated parses.
+vi.mock("@/capabilities/pdf-page-label-reader", () => ({
+  readPageLabelsBounded: vi.fn(async () => null),
+}));
+
 vi.mock("@/lib/tenant-context", () => ({
   withTenantContext: vi.fn(
     async (_tenantId: string, fn: (c: { query: () => Promise<{ rows: [] }> }) => Promise<unknown>) =>
