@@ -347,3 +347,23 @@ describe("Codex #4867 r5", () => {
     silent("Measure the line voltage at the input terminals.");
   });
 });
+
+describe("Codex #4867 r6", () => {
+  const flagged = (t: string) => expect(judge(t)).toMatchObject({ ok: false, violation: "hazard-warning:isolation-advisory" });
+  const silent = (t: string) => expect(judge(t)).toEqual({ ok: true });
+  it("F1: an isolated state needs an equipment / energy subject", () => {
+    flagged("The control signal is isolated. Replace the input fuse.");
+    flagged("The HMI is isolated. Replace the fuse.");
+    silent("The drive is isolated. Replace the fuse.");
+    silent("The conveyor has been locked out. Replace the fuse.");
+  });
+  it("F7: a comma-separated settings edit does not hide the repair", () => {
+    flagged("Replace the fuse, change the settings.");
+  });
+  it("F10: a negated isolation state opens no scope", () => {
+    flagged("The drive has not been locked out. Replace the fuse.");
+    flagged("The drive is not yet isolated. Replace the fuse.");
+    flagged("The drive isn't de-energized. Replace the fuse.");
+    silent("The drive is now de-energized. Replace the fuse.");
+  });
+});

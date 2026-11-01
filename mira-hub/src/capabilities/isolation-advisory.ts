@@ -156,7 +156,7 @@ function liveMeasurement(window: string): boolean {
 /** Dual-use object window ends at the next coordinator or purpose "to".
  *  Codex #4867 r4 F7: "Replace the fuse after checking the parameters" — the object ends at a
  *  temporal clause, so a later software clause never becomes the repair's object. */
-const OBJECT_WINDOW_CUT = /\s+(?:then|so|and(?:\s+then)?|or|after|before|while|when|once|until|unless|because|if)\b|,\s+(?:then|and|or)\b|[;.]|\bto\b/i;
+const OBJECT_WINDOW_CUT = /\s+(?:then|so|and(?:\s+then)?|or|after|before|while|when|once|until|unless|because|if)\b|,|[;.]|\bto\b/i;
 
 function withoutProhibitions(text: string): string {
   // Em-dash / colon are the same clause cut PROHIBITION already makes at comma.
@@ -186,14 +186,21 @@ const SOFTWARE_SHUTDOWN_POST =
 const LOCKOUT_DOC_ACT_PRE = /\b(?:follow(?:ing)?|perform(?:ing)?|apply(?:ing)?|complet(?:e|ing)|carry(?:ing)? out|do|use|using|start)\b[^.;:]*$/i;
 const LOCKOUT_NOUN_STATE_PRE = /\b(?:under|with|in)\s+(?:a\s+|the\s+)?$/i;
 const DETERMINER_POST = /^\s+(?:the|your|this|that|these|those|each|every|all|it|them|everything)\b/i;
+const ENERGY_NOUNS =
+  "it|them|everything|power|supply|supplies|feeds?|feeders?|mains|energy|source|transformer|generator|air|hydraulics?|pneumatics?|steam|gas|equipment|machine|machinery|motor|drive|vfd|inverter|" +
+  "circuit|breaker|disconnect|panel|cabinet|enclosure|unit|system|conveyor|pump|compressor|line|bus|load|" +
+  WORK_OBJECT_RE.source.replace(/^\\b\(\?:/, "").replace(/\)\\b$/, "");
 const ENERGY_OBJECT_RE = new RegExp(
-  "^\\s+(?:the\\s+|your\\s+|this\\s+|that\\s+|all\\s+|each\\s+)?(?:[\\w-]+\\s+){0,2}?(?:" +
-    "it|them|everything|power|supply|supplies|feeds?|feeders?|mains|energy|source|transformer|generator|air|hydraulics?|pneumatics?|steam|gas|equipment|machine|machinery|motor|drive|vfd|inverter|" +
-    "circuit|breaker|disconnect|panel|cabinet|enclosure|unit|system|conveyor|pump|compressor|line|bus|load|" +
-    WORK_OBJECT_RE.source.replace(/^\\b\(\?:/, "").replace(/\)\\b$/, "") +
-    ")\\b",
+  "^\\s+(?:the\\s+|your\\s+|this\\s+|that\\s+|all\\s+|each\\s+)?(?:[\\w-]+\\s+){0,2}?(?:" + ENERGY_NOUNS + ")\\b",
   "i",
 );
+/** Codex #4867 r6 F1: a copular state ("X is isolated", "X has been locked out") counts only when
+ *  X is equipment / energy — "The control signal is isolated", "The HMI is isolated" do not. */
+const COPULA_SUBJECT_PRE =
+  /(?:^|\b)([\w-]+)\s+(?:is|are|was|were|has been|have been|remains|remain|stays|stay|gets|got)\s+(?:now\s+|fully\s+|properly\s+|already\s+|still\s+)*$/i;
+const ENERGY_SUBJECT_RE = new RegExp("^(?:" + ENERGY_NOUNS + ")$", "i");
+/** Codex #4867 r6 F10: "has not been locked out", "is not yet isolated", "isn't isolated". */
+const NEGATED_STATE_PRE = /(?:\b(?:not|never)|n't)\s+(?:yet\s+|been\s+|be\s+|fully\s+|properly\s+|already\s+)*$/i;
 /** The lockout noun as the act ("Perform lockout.", "Follow the lockout procedure, then …"), not a
  *  modifier of another noun ("the lockout indicator", "the lockout timer") — Codex #4867 r5 F1. */
 const LOCKOUT_NOUN_ACT_POST =
@@ -205,6 +212,9 @@ const ACCOUNT_LOCKOUT_POST = /^\s+of\s+(?:the\s+|your\s+)?(?:hmi|app|application
 
 function affirmativeIsolation(before: string, matched: string, after: string): boolean {
   const m = matched.toLowerCase();
+  if (NEGATED_STATE_PRE.test(before)) return false;
+  const subject = COPULA_SUBJECT_PRE.exec(before);
+  if (subject && !ENERGY_SUBJECT_RE.test(subject[1])) return false;
   if (/^(?:lockout|loto)(?:\/tagout)?$/.test(m)) {
     if (DETERMINER_POST.test(after)) return true;
     return (LOCKOUT_DOC_ACT_PRE.test(before) || LOCKOUT_NOUN_STATE_PRE.test(before)) && LOCKOUT_NOUN_ACT_POST.test(after);
@@ -220,7 +230,7 @@ function isolationIsVoid(text: string, index: number, matched = ""): boolean {
   const after = text.slice(index + matched.length);
   if (ISO_VOID_PRE.test(before)) return true;
   if (/^(?:shut|power)/i.test(matched) && SOFTWARE_SHUTDOWN_POST.test(after)) return true;
-  if (/lock|loto|^isolate$|^power/i.test(matched) && !affirmativeIsolation(before, matched, after)) return true;
+  if (/lock|loto|^isolat|^power|^de[\s-]?energi/i.test(matched) && !affirmativeIsolation(before, matched, after)) return true;
   return ISO_VOID_POST.test(after);
 }
 
