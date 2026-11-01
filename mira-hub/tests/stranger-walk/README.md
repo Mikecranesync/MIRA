@@ -150,6 +150,24 @@ notebook route sends, not the global 4000 (#5051). `NOTEBOOK_QUERY_REWRITE` on (
 the stop) refuses to start. Total: **$0.0768 per turn, $3.84 for 50**. True spend is a small fraction
 of it (about $0.2 per run).
 
+### Campaign cap across runs (#5081)
+
+The $4.50 meter caps one process. The owner's cap is a **campaign total** across every run, restart
+and lane (`spend-ledger.json`: `walk-2026-11-01`, **$11.52, never reset**; a new cap is a new
+campaign id, never an edit). The total lives as append-only `[WALK-SPEND]` comments on issue
+**#5085**, read with the same token as the required-fixes gate (`spend-ledger.ts`):
+
+- Before any manual, account or paid turn, a non-dry walk **reserves its full $4.50**. If the
+  ledger total plus that reservation would pass the cap, it refuses and spends nothing.
+- At the end (every exit path) it **settles** at what the meter booked, never above the
+  reservation. A run that crashes before settling stays counted at its full reservation.
+- Paid checks outside the harness (phone questions, manual probes) are booked as `external` entries.
+- It **fails closed**: no token, an unreadable issue, a malformed or duplicate entry, a settle
+  without a reservation refuses the walk. Comments by anyone outside `authors` are ignored. Two
+  walks racing: the earlier comment wins; the later one posts a $0 settle and refuses.
+- The CI workflow's token is `contents: read`, so a CI walk is refused until the workflow gets
+  `issues: write` and its poster is added to `authors` (an owner decision, with re-enabling it).
+
 It **fails closed**, and every turn is checked against the Hub's **own ledger row** (`decision_traces`,
 by trace id, within the walk tenant), read before teardown deletes it and kept on the observation.
 observations.json is rewritten after every turn, so the copy survives a teardown or an aborted run

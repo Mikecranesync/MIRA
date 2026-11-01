@@ -1,0 +1,7 @@
+{
+  "_comment": "The campaign the walk books into (#5081). Owner decision, Mike 2026-11-01: $11.52 TOTAL across all lanes and runs, never reset. A new cap is a NEW campaign id here, never an edit of capUsd for the same campaign. Entries live as [WALK-SPEND] comments on the ledger issue; spend-ledger.ts reads them before every paid walk.",
+  "campaign": "walk-2026-11-01",
+  "capUsd": 11.52,
+  "issue": 5085,
+  "authors": ["Mikecranesync"]
+}
