@@ -59,16 +59,16 @@ import {
 
 // ───────────────────────────────────────────── styles ("--fl-*" tokens only, no hex — ui-style.md)
 
+// Placed by the host's notebook-actions stack (hub-host.tsx), below GuidedProcedure's pill and in
+// its own row under Machine state, so no two buttons overlap on a phone (#5102).
+export const WP_PILL_STYLE: CSSProperties = {
+  background: "var(--fl-accent)", color: "var(--fl-surface)", border: "none",
+  borderRadius: "var(--fl-radius-pill, 999px)", padding: "8px 14px", fontSize: "var(--fl-fs-sm)",
+  minHeight: 44, cursor: "pointer",
+};
+
 const S: Record<string, CSSProperties> = {
-  // Offset below GuidedProcedure's pill (top 72px + its own ~44px height + a gap) so the two
-  // pills never overlap on a phone-width screen (task §E: "place it so it never overlaps the
-  // guided pill (offset below it)").
-  pill: {
-    position: "absolute", top: "calc(env(safe-area-inset-top, 0px) + 128px)", right: 12, zIndex: 40,
-    background: "var(--fl-accent)", color: "var(--fl-surface)", border: "none",
-    borderRadius: "var(--fl-radius-pill, 999px)", padding: "8px 14px", fontSize: "var(--fl-fs-sm)",
-    minHeight: 44, cursor: "pointer",
-  },
+  pill: WP_PILL_STYLE,
   dialog: {
     border: "none", padding: 0, margin: "0 auto", width: "100%", maxWidth: 640, height: "100%", maxHeight: "100%",
     background: "var(--fl-surface)", color: "var(--fl-ink)",

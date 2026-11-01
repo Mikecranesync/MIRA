@@ -448,13 +448,26 @@ function headingModels(text: string, roster: Map<string, string>): { models: str
   return { models, known };
 }
 
-/** A line that is not a heading this module can read but names a model ("Models 9XP1000CS and
- *  9XP1000G only") may restrict the ratings under it, so their scope is unresolved. */
+/** A line that is not a heading this module can read but may restrict the ratings under it to some
+ *  models: it names a listed model, a model-shaped code, a 4–5 digit number (a model this sheet may
+ *  not list), or says "model(s)" — "Models 9XP1000CS and 9XP1000G only", "Model 7777 only",
+ *  "7777 / 7778 pumps". The ratings under it cannot be tied to a model, so they are unresolved
+ *  (Codex #5062 F19, #5101). Only positive evidence — a readable heading naming the model, the
+ *  common section, or a sheet with no model restriction at all — lets a rating be Verified. */
+const UNIT_RE = /^(?:rpm|psi|gpm|lpm|bar|lbs?|kg|oz|qts?|l|mm|in|hp|kw|v|hz|°?[fc])$/i;
+
 function mentionsModel(text: string, roster: Map<string, string>): boolean {
-  return text
-    .split(/[^0-9A-Za-z/]+/)
-    .filter(Boolean)
-    .some((tok) => expandModelToken(tok).some((m) => roster.has(normalizeModelKey(m)) || MODEL_TOKEN_RE.test(m)));
+  const toks = text.split(/[^0-9A-Za-z/°]+/).filter(Boolean);
+  return toks.some((tok, i) => {
+    if (/^models?$/i.test(tok)) return true;
+    return expandModelToken(tok).some(
+      (m) =>
+        roster.has(normalizeModelKey(m)) ||
+        MODEL_TOKEN_RE.test(m) ||
+        // "3450 rpm" is a measurement, not a model.
+        (BARE_MODEL_RE.test(m) && !UNIT_RE.test(toks[i + 1] ?? "")),
+    );
+  });
 }
 
 type SpecScope = { kind: "sheet" } | { kind: "common" } | { kind: "models"; models: string[] } | { kind: "unresolved" };

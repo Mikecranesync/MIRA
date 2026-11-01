@@ -65,6 +65,7 @@ import { createManualSearchDriver, type ManualSearchDriver } from "./manual-sear
 import { GuidedProcedure } from "./GuidedProcedure";
 import { MachineObservations } from "./MachineObservations";
 import { WorkPacketPanel } from "./WorkPacketPanel";
+import { NOTEBOOK_ACTIONS_STYLE } from "./notebook-actions";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
 import { answerTurnId, citationIndex, contextFor, lifecycleFromStream, livePartsWhileRunning, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus, withSettledFollowups, type SettledFollowups } from "./to-interaction";
 import {
@@ -992,6 +993,9 @@ export function HubShellHost() {
           chatBusy={busy}
         />
       )}
+      {/* The notebook's action buttons share one column below the guided-procedure pill, each in its
+          own row, so Machine state and Work Packet never cover each other (#5102). */}
+      <div data-testid="notebook-actions" style={NOTEBOOK_ACTIONS_STYLE}>
       {/* Mission 001: report an observation and read back machine state; renders nothing while off. */}
       {selection && detail && (
         <MachineObservations
@@ -1017,6 +1021,7 @@ export function HubShellHost() {
           technicianName={authSession?.user?.email ?? null}
         />
       )}
+      </div>
     </div>
   );
 }
