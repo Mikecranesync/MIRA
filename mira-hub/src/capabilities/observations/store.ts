@@ -248,9 +248,10 @@ export async function insertObservation(
   });
 }
 
-/** Rows kept per (fact, value) inside the contest window. The projection needs the
- *  newest row of a fact, its newest repair and whether an opposed report exists, so a
- *  burst larger than this can only shorten a contested fact's `conflicting` list. */
+/** Rows kept per (fact, value) inside the contest window, for every value that does
+ *  NOT oppose the fact's current report. The projection needs only the newest row of
+ *  those values (the current report and the newest repair). The opposing value is never
+ *  capped: each of its active reports in the window is a contributor (#5099). */
 export const PROJECTION_ROWS_PER_VALUE = 20;
 export const HISTORY_PAGE_DEFAULT = 50;
 export const HISTORY_PAGE_MAX = 100;
@@ -263,29 +264,47 @@ const NOT_SUPERSEDED = (alias: string) =>
 /**
  * The rows deriveObservedState needs for this MACHINE, and no more (#5098): per fact,
  * the active (not superseded) reports observed within the contest window of that fact's
- * newest active report, at most PROJECTION_ROWS_PER_VALUE per fact value. Older rows
- * cannot change the state (the window and the repair boundary only look back from the
- * newest report). No raw report, notebook, source turn or fingerprint is selected.
+ * newest active report. Values that do not oppose the current report keep at most
+ * PROJECTION_ROWS_PER_VALUE rows; the opposing value keeps every report after the newest
+ * repair, so `conflicting`, the contributors and stateVersion equal the full projection
+ * (#5099). Older rows cannot change the state (the window and the repair boundary only
+ * look back from the newest report). No raw report, notebook, source turn or
+ * fingerprint is selected.
+ *
+ * `m` picks the current report in the projector's own order (newestFirst: observed,
+ * then recorded, both at millisecond precision, then id ascending), so an observed-time
+ * tie between opposing reports uncaps the right value. Lower bounds give 1 ms of slack
+ * because the projector compares millisecond instants; a superset is safe.
  */
 export async function listProjectionRows(tenantId: string, equipmentEntityId: string): Promise<ObservationRow[]> {
   return withTenantContext(tenantId, async (c) => {
     const res = await c.query(
       `SELECT r.* FROM unnest($3::text[]) AS k(fact_key)
        CROSS JOIN LATERAL (
-         SELECT a.observed_at AS key_max FROM asset_observations a
+         SELECT a.observed_at AS key_max,
+                CASE a.fact_value WHEN 'present' THEN 'absent' WHEN 'absent' THEN 'present' END AS opposing
+           FROM asset_observations a
           WHERE a.tenant_id = $1::uuid AND a.equipment_entity_id = $2 AND a.fact_key = k.fact_key
             AND ${NOT_SUPERSEDED("a")}
-          ORDER BY a.observed_at DESC LIMIT 1
+          ORDER BY date_trunc('milliseconds', a.observed_at) DESC, date_trunc('milliseconds', a.recorded_at) DESC, a.id ASC
+          LIMIT 1
        ) m
+       CROSS JOIN LATERAL (
+         SELECT max(b.observed_at) AS repaired_at FROM asset_observations b
+          WHERE b.tenant_id = $1::uuid AND b.equipment_entity_id = $2 AND b.fact_key = k.fact_key
+            AND b.fact_value = 'repaired' AND ${NOT_SUPERSEDED("b")}
+       ) e
        CROSS JOIN unnest($4::text[]) AS v(fact_value)
        CROSS JOIN LATERAL (
          SELECT ${PROJECTION_COLS} FROM asset_observations o
           WHERE o.tenant_id = $1::uuid AND o.equipment_entity_id = $2
             AND o.fact_key = k.fact_key AND o.fact_value = v.fact_value
-            AND o.observed_at >= m.key_max - make_interval(secs => $5::double precision)
+            AND o.observed_at >= m.key_max - make_interval(secs => $5::double precision) - interval '1 millisecond'
+            AND (v.fact_value IS DISTINCT FROM m.opposing OR e.repaired_at IS NULL
+                 OR o.observed_at >= e.repaired_at - interval '1 millisecond')
             AND ${NOT_SUPERSEDED("o")}
           ORDER BY o.observed_at DESC, o.recorded_at DESC, o.id DESC
-          LIMIT $6
+          LIMIT CASE WHEN v.fact_value = m.opposing THEN NULL ELSE $6::int END
        ) r`,
       [tenantId, equipmentEntityId, [...FACT_KEYS], [...FACT_VALUES], CONTEST_WINDOW_MS / 1000, PROJECTION_ROWS_PER_VALUE],
     );
