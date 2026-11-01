@@ -35,6 +35,7 @@ import { applyEdit } from "@/capabilities/work-packet/edits";
 import {
   badgeText,
   cautionFieldPath,
+  confirmedRevisionsPayload,
   confidencePercent,
   measurementFieldPath,
   partFieldPath,
@@ -113,7 +114,7 @@ const PRINT_CSS = `
 @media print {
   body * { visibility: hidden; }
   .wp-print-root, .wp-print-root * { visibility: visible; }
-  .wp-print-root { position: absolute; inset: 0; width: 100%; }
+  .wp-print-root { position: absolute; left: 0; top: 0; width: 100%; }
   .wp-print-root [data-no-print] { display: none !important; }
   .wp-watermark { display: block !important; }
 }
@@ -155,6 +156,7 @@ const REFUSAL_LABEL: Record<DraftRefusal, string> = {
   unsupported_documents: "Unsupported documents",
   model_not_in_documents: "Model not in documents",
   no_task_matched: "No matching task",
+  revision_not_confirmed: "Revisions not confirmed",
 };
 
 type WOFields = { id: string; title: string; description: string; assetTag: string; site: string };
@@ -415,7 +417,10 @@ export function WorkPacketPanel({
       const res = await fetch(baseUrl, {
         method: "POST", credentials: "include",
         headers: { "content-type": "application/json", accept: "application/json" },
-        body: JSON.stringify({ workOrder }),
+        body: JSON.stringify({
+          workOrder,
+          confirmedRevisions: confirmedRevisionsPayload(revConfirmed, avail?.documents ?? []),
+        }),
       });
       const data = (await res.json().catch(() => null)) as DraftResult | null;
       if (!data) {
@@ -436,7 +441,7 @@ export function WorkPacketPanel({
     } finally {
       setBuildBusy(false);
     }
-  }, [baseUrl, notebookId, wo, synthetic]);
+  }, [baseUrl, notebookId, wo, synthetic, revConfirmed, avail]);
 
   const onEditField = useCallback((path: string, action: EditAction, value?: string) => {
     setPacket((p) => {
@@ -687,6 +692,13 @@ export function WorkPacketPanel({
                   <h3 style={S.sectionTitle}>Sources</h3>
                   <ul style={{ margin: 0, padding: "0 0 0 18px", fontSize: "var(--fl-fs-sm)" }}>
                     {packet.documents.map((d) => <li key={d.docId}>{documentLine(d)}</li>)}
+                    {packet.approval.technicianReview.entries
+                      .filter((e) => /^documents\[\d+\]\.revision$/.test(e.path) && e.action === "confirm")
+                      .map((e, i) => (
+                        <li key={`rev-${i}`} data-testid="wp-rev-confirmed">
+                          Revision {String(e.next ?? "unknown")} confirmed against the manual in hand by {e.by} at {e.at}
+                        </li>
+                      ))}
                   </ul>
                 </section>
 

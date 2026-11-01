@@ -276,7 +276,9 @@ export type DraftRefusal =
   | "no_documents"
   | "unsupported_documents"
   | "model_not_in_documents"
-  | "no_task_matched";
+  | "no_task_matched"
+  /** The technician did not confirm every attached document revision, or a revision changed since. */
+  | "revision_not_confirmed";
 
 export type DraftResult =
   | { ok: true; packet: WorkPacket; warnings: string[] }

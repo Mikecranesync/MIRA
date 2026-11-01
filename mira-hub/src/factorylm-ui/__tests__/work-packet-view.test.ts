@@ -5,6 +5,7 @@ import type { Field, SourceRef, WorkPacket } from "@/capabilities/work-packet/ty
 import {
   badgeText,
   cautionFieldPath,
+  confirmedRevisionsPayload,
   confidencePercent,
   equipmentFieldPath,
   measurementFieldPath,
@@ -138,5 +139,21 @@ describe("printTitle", () => {
       equipment: { ...base.equipment, manufacturer: field("unknown", null), model: field("unknown", null) },
     };
     expect(printTitle(blank)).toBe("DRAFT Work Packet — Unknown manufacturer unknown model — WO wo-1");
+  });
+});
+
+describe("confirmedRevisionsPayload", () => {
+  const docs = [
+    { docId: "d1", revision: field("verified", "PN 993450 Rev G") },
+    { docId: "d2", revision: field("unknown", null) },
+  ];
+  it("sends nothing until the technician ticks the confirm box", () => {
+    expect(confirmedRevisionsPayload(false, docs)).toEqual([]);
+  });
+  it("sends every shown document with the exact revision on screen, null when unknown", () => {
+    expect(confirmedRevisionsPayload(true, docs)).toEqual([
+      { docId: "d1", revision: "PN 993450 Rev G" },
+      { docId: "d2", revision: null },
+    ]);
   });
 });
