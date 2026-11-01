@@ -72,23 +72,17 @@ export function safetyChapterPage(text: string): number | null {
   return Number.isInteger(page) && page > 0 ? page : null;
 }
 
-/** PDF page minus printed page for one chunk, from its own printed label; 0 when the label is not a plain number. */
-export function printedPageOffset(pdfPage: number | null, pageLabel: string | null | undefined): number {
-  const label = String(pageLabel ?? "").trim();
-  if (pdfPage === null || !Number.isInteger(pdfPage) || !/^\d{1,4}$/.test(label)) return 0;
-  return pdfPage - Number(label);
-}
-
 type ChapterStart = { pdfPage: number; offset: number };
 
-/** A printed chapter reference: the printed page, and the offset when the chunk's own label gives it. */
-type ChapterRef = { printed: number; offset: number | null };
+/**
+ * A printed chapter reference: just the printed page. The referring page's own label is never used to
+ * place the chapter: a PDF label tree can change numbering segments between the two pages (#5059 Codex r5 F1).
+ */
+type ChapterRef = { printed: number };
 
-function chapterRef(text: string, pdfPage: number | null, pageLabel: string | null | undefined): ChapterRef | null {
+function chapterRef(text: string): ChapterRef | null {
   const printed = safetyChapterPage(text);
-  if (printed === null) return null;
-  const numericLabel = pdfPage !== null && Number.isInteger(pdfPage) && /^\d{1,4}$/.test(String(pageLabel ?? "").trim());
-  return { printed, offset: numericLabel ? printedPageOffset(pdfPage, pageLabel) : null };
+  return printed === null ? null : { printed };
 }
 
 type Doc = { docId: string; sourceUrl: string; template: ManualChunk };
@@ -116,7 +110,7 @@ async function chapterStarts(
 ): Promise<Map<string, ChapterStart>> {
   const refs = new Map<string, ChapterRef>();
   for (const c of chunks) {
-    const ref = c.docId ? chapterRef(c.content, c.sourcePage, c.pageLabel) : null;
+    const ref = c.docId ? chapterRef(c.content) : null;
     if (ref !== null && c.docId && !refs.has(c.docId)) refs.set(c.docId, ref);
   }
   // Bind the admission set only when the gate is on: with it off the filter emits no clause, and an
@@ -154,18 +148,17 @@ async function lookupRefs(
     params,
   );
   for (const r of res.rows as Array<Record<string, unknown>>) {
-    const pdfPage = r.page == null ? null : Number(r.page);
-    const ref = chapterRef(String(r.content ?? ""), pdfPage, r.page_label == null ? null : String(r.page_label));
+    const ref = chapterRef(String(r.content ?? ""));
     if (ref !== null) refs.set(String(r.doc_id), ref);
   }
 }
 
 /**
- * Each reference's PDF start page: from the referring chunk's label offset when there is one, else
- * the one PDF page the document's own stored labels call by that printed number (one bounded query,
- * one row per unlabelled document). Labels are the PDF's own /PageLabels, saved at ingest (#5065). A
- * document with no page so labelled, or more than one, or whose start falls before page 1, is left
- * out: the page is never guessed.
+ * Each reference's PDF start page: the one PDF page the document's own stored labels call by that
+ * printed number (one bounded query, one row per document). Labels are the PDF's own /PageLabels, saved
+ * at ingest (#5065). Every document takes this lookup, including one whose referring chunk is labelled,
+ * since a label tree may change numbering segments (#5059 Codex r5 F1). A document with no page so
+ * labelled, or more than one, or whose start falls before page 1, is left out: the page is never guessed.
  */
 async function resolveStarts(
   client: Pick<PoolClient, "query">,
@@ -175,13 +168,9 @@ async function resolveStarts(
   approved: readonly string[],
 ): Promise<Map<string, ChapterStart>> {
   const starts = new Map<string, ChapterStart>();
-  const unlabelled: Array<[string, number]> = [];
-  for (const [docId, ref] of refs) {
-    if (ref.offset === null) unlabelled.push([docId, ref.printed]);
-    else if (ref.printed + ref.offset > 0) starts.set(docId, { pdfPage: ref.printed + ref.offset, offset: ref.offset });
-  }
-  if (unlabelled.length === 0) return starts;
-  const params: unknown[] = [tenantId, unlabelled.map(([d]) => d), unlabelled.map(([, n]) => String(n))];
+  const wanted: Array<[string, number]> = [...refs].map(([docId, ref]) => [docId, ref.printed]);
+  if (wanted.length === 0) return starts;
+  const params: unknown[] = [tenantId, wanted.map(([d]) => d), wanted.map(([, n]) => String(n))];
   if (admitApproved) params.push(approved);
   await client.query("SET LOCAL statement_timeout = '2s'");
   const res = await client.query(
@@ -198,7 +187,7 @@ async function resolveStarts(
       GROUP BY doc_id`,
     params,
   );
-  const printedOf = new Map(unlabelled);
+  const printedOf = new Map(wanted);
   for (const r of res.rows as Array<Record<string, unknown>>) {
     const docId = String(r.doc_id);
     const printed = printedOf.get(docId);

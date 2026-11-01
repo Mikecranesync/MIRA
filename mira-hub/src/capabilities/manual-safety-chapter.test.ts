@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import pages from "./manual-safety-statement.real-pages.json";
 import {
-  printedPageOffset,
   retrieveSafetyChapterChunks,
   safetyChapterPage,
   SAFETY_CHAPTER_BUDGET_CHARS,
@@ -189,9 +188,12 @@ describe("retrieveSafetyChapterChunks", () => {
     expect(lookup.sql).toContain("verified = true");
   });
 
-  it("printed page offset: a manual with front matter reads the chapter at its PDF page", async () => {
-    // Printed page 13 sits on PDF page 17, so "chapter Safety on page 17" is PDF page 21.
-    const client = fakeClient([...CORPUS, row("00000000-0000-0000-0000-000000000021", P18, 21)]);
+  it("front matter: the chapter is read at the PDF page whose stored label is the printed page", async () => {
+    // Printed page 13 sits on PDF page 17; the PDF page labelled 17 is PDF page 21.
+    const client = fakeClient(
+      [...CORPUS, { ...row("00000000-0000-0000-0000-000000000021", P18, 21), page_label: "17" }],
+      { labels: "rows" },
+    );
     const referring = { ...chunk("WARNING! Read and follow the instructions in chapter Safety on page 17.", 17), pageLabel: "13" };
     const added = await retrieveSafetyChapterChunks(client, "tenant", [referring]);
     const read = client.calls.find((c) => c.sql.includes("rn <= $8"))!;
@@ -200,22 +202,16 @@ describe("retrieveSafetyChapterChunks", () => {
     expect(added.map((c) => [c.sourcePage, c.pageLabel])).toEqual([[21, "17"]]);
   });
 
-  it("printed page offset on the document-level lookup comes from the referring row's own label", async () => {
+  it("the document-level lookup also places the chapter through the stored labels", async () => {
     const referring: Row = { ...row("00000000-0000-0000-0000-000000000376", P372, 376), page_label: "372" };
-    const client = fakeClient([referring, row("00000000-0000-0000-0000-000000000022", P18, 22)]);
+    const client = fakeClient(
+      [referring, { ...row("00000000-0000-0000-0000-000000000021", "Safety", 21), page_label: "17" }, { ...row("00000000-0000-0000-0000-000000000022", P18, 22), page_label: "18" }],
+      { labels: "rows" },
+    );
     const added = await retrieveSafetyChapterChunks(client, "tenant", [chunk(P355, 355)]);
     const read = client.calls.find((c) => c.sql.includes("rn <= $8"))!;
     expect(read.params[3]).toEqual([21, 22, 23, 24]);
     expect(added.map((c) => [c.sourcePage, c.pageLabel])).toEqual([[22, "18"]]);
-  });
-
-  it("printedPageOffset: only a plain-number label shifts the page", () => {
-    expect(printedPageOffset(17, "13")).toBe(4);
-    expect(printedPageOffset(17, "17")).toBe(0);
-    expect(printedPageOffset(17, null)).toBe(0);
-    expect(printedPageOffset(17, "6-12")).toBe(0);
-    expect(printedPageOffset(17, "xiv")).toBe(0);
-    expect(printedPageOffset(null, "13")).toBe(0);
   });
 
   it("control: a document that never refers to a Safety chapter adds nothing", async () => {
@@ -582,6 +578,47 @@ describe("retrieveSafetyChapterChunks", () => {
       const rows = ingest(manual({ ...SAFETY, 21: "Safety 17\nSafety\nWhat this chapter contains" }), labels);
       const added = await retrieveSafetyChapterChunks(fakeClient(rows, { labels: "rows" }), "tenant", [fanChunk(rows)]);
       expect(added).toEqual([]);
+    });
+
+    /**
+     * #5059 Codex r5 F1: a labelled referring page must not stand in for the target label. Here an inserted
+     * sheet after PDF page 300 changes the offset: printed 17 is PDF 21 (offset 4) but printed 372 is PDF 377
+     * (offset 5), so the referring page's own offset would read PDF 22-25 and miss the chapter start.
+     */
+    const SEGMENTED = Array.from({ length: 380 }, (_, i) => (i < 4 ? ["i", "ii", "iii", "iv"][i] : i < 300 ? String(i + 1 - 4) : String(i + 1 - 5)));
+    const segmentedSafety = { 17: SAFETY[17], 21: SAFETY[21], 22: SAFETY[22], 25: "WARNING! Wrong-page notice: offset 5 reads this page.", 377: P372 };
+    const labelledFanChunk = (rows: Row[]) => {
+      const r = rows.find((x) => x.page === 377)!;
+      return { ...chunk(r.content, 377, FM), sourceUrl: FM_URL, pageLabel: r.page_label! };
+    };
+
+    it("a numbering segment change: the chapter is the page labelled 17, not the referring page's offset (Codex r5 F1)", async () => {
+      const rows = ingest(manual(segmentedSafety), SEGMENTED);
+      const referring = labelledFanChunk(rows);
+      expect(referring.pageLabel).toBe("372"); // precondition: the referring chunk carries a numeric label
+      const client = fakeClient(rows, { labels: "rows" });
+      const added = await retrieveSafetyChapterChunks(client, "tenant", [referring]);
+      expect(client.calls.find((c) => c.sql.includes("rn <= $8"))!.params[3]).toEqual([21, 22, 23, 24]);
+      expect(new Set(added.map((c) => c.sourcePage))).toEqual(new Set([22]));
+      expect(added.some((c) => /Wrong-page/.test(c.content))).toBe(false);
+    });
+
+    it("two pages labelled 17 with a numeric referring label: ambiguous, nothing is added (Codex r5 F1)", async () => {
+      const labels = [...SEGMENTED];
+      labels[16] = "17"; // PDF page 17 also labelled 17
+      const rows = ingest(manual(segmentedSafety), labels);
+      const client = fakeClient(rows, { labels: "rows" });
+      expect(await retrieveSafetyChapterChunks(client, "tenant", [labelledFanChunk(rows)])).toEqual([]);
+      expect(client.calls.some((c) => c.sql.includes("ROW_NUMBER"))).toBe(false);
+    });
+
+    it("control: a numeric referring label with one page labelled 17 still reads the chapter", async () => {
+      const rows = ingest(manual(SAFETY), LABELS);
+      const r = rows.find((x) => x.page === 376)!;
+      const added = await retrieveSafetyChapterChunks(fakeClient(rows, { labels: "rows" }), "tenant", [
+        { ...chunk(r.content, 376, FM), sourceUrl: FM_URL, pageLabel: r.page_label! },
+      ]);
+      expect(new Set(added.map((c) => c.sourcePage))).toEqual(new Set([22]));
     });
 
     it("the label lookup binds exactly its values and returns one row per document", async () => {
