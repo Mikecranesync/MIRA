@@ -220,7 +220,7 @@ export function FieldRow({
         </div>
       ) : (
         <div data-no-print>
-          <button type="button" style={S.btn} disabled={busy} onClick={() => setEditing(true)}>Correct</button>
+          <button type="button" style={S.btn} disabled={busy} onClick={() => { setDraft(field.value ?? ""); setEditing(true); }}>Correct</button>
           <button type="button" style={S.btn} disabled={busy} onClick={() => onEdit(path, "confirm")}>Confirm</button>
           <button type="button" style={S.btn} disabled={busy} onClick={() => onEdit(path, "strike")}>Strike</button>
           <button type="button" style={S.btn} disabled={busy} onClick={() => onEdit(path, "mark_unknown")}>Mark unknown</button>
@@ -668,7 +668,9 @@ export function WorkPacketPanel({
 
             {/* ── (5) Packet view ───────────────────────────────────────────────────────── */}
             {packet && (
-              <div data-testid="wp-packet">
+              // Keyed by packet: a rebuilt packet remounts every row, so no row keeps an edit box or
+              // draft text from the packet it replaced (Codex #5062 F16).
+              <div data-testid="wp-packet" key={packet.packetId}>
                 {stale && (
                   // Printed too: a stale packet that reaches paper by the browser's own print still says so.
                   <div role="alert" style={{ ...S.fault, marginBottom: 8 }} data-testid="wp-stale">

@@ -191,6 +191,13 @@ export interface SmOmittedSection {
   reason: string;
 }
 
+/** A caution/warning the parser could not read in full (Codex #5062 F15). */
+export interface SmOmittedCaution {
+  kind: SmCaution["kind"];
+  source: SourceRef;
+  reason: string;
+}
+
 export interface ServiceManual {
   kind: "catpumps_service_manual";
   /** Every model the manual's cover/title names (e.g. "3520", "3521", "3527", …). */
@@ -201,6 +208,8 @@ export interface ServiceManual {
   problems: string[];
   /** Sections left out of `sections` (Codex #5062 F12) — a packet must show these as gaps. */
   omitted?: SmOmittedSection[];
+  /** Cautions left out of `cautions` — a packet must show these in Safety as unknown. */
+  omittedCautions?: SmOmittedCaution[];
 }
 
 // ─────────────────────────────────────────────── work order, identity, packet
@@ -266,6 +275,9 @@ export interface WorkPacket {
   /** Fixed text: draft from manufacturer documents, requires qualified review, not a diagnosis. */
   disclaimer: string;
   equipment: { manufacturer: Field; model: Field; serial: Field; identityStatus: string };
+  /** The confirmed identity the packet was built for, as entered (Codex #5062 F13). A saved packet
+   *  without it, or whose snapshot differs from the notebook's current identity, is stale. */
+  identitySnapshot?: { manufacturer: string | null; model: string | null; catalogNumber: string | null };
   workOrder: WorkOrderInput;
   documents: PacketDocument[];
   /** Topics selected from the work-order text; label "proposed", basis names the matched words. */

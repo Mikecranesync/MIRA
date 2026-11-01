@@ -266,3 +266,34 @@ describe("a step worded for one model is shown only for that model (5CP6120 real
     expect(stepTexts(build("8520", [doc()], "valve service"))).toContain("Remove the six (6) M41 Hex Valve Plugs.");
   });
 });
+
+describe("F15 — a step or caution cut off by a page break is never shown as a verified fragment", () => {
+  // Move the old page 3 to page 4 and break page 2 mid-sentence onto a new page 3.
+  const split = (cut: string, rest: string) => {
+    expect(M35).toContain(cut + rest);
+    const text = M35.replace("===== PAGE 3 =====", "===== PAGE 4 =====").replace(cut + rest, `${cut}\n===== PAGE 3 =====\n${rest.trimStart()}`);
+    return docFromText(text, "manual-35style.txt", "sm");
+  };
+
+  it("a step that ends one page mid-sentence: its section is left out and listed as a gap", () => {
+    const doc = split("2. Remove the exposed Coil Spring from the top of the", " Spring Retainer.\nDisassembly (Model 8560)");
+    const packet = build("8520", [doc], "valve service");
+    expect(stepTexts(packet).some((t) => (t ?? "").startsWith("Remove the exposed Coil Spring"))).toBe(false);
+    const gap = packet.unknowns.filter((u) => /Disassembly \(All models except 8560\).*may continue on the next page/.test(u.basis));
+    expect(gap).toHaveLength(1);
+  });
+
+  it("a caution that ends one page mid-sentence: shown in Safety as unknown, not as verified text", () => {
+    const doc = split("shut off drive (electric motor, gas or diesel engine) and turn off water supply to", "\npump. Relieve all discharge");
+    const packet = build("8520", [doc], "valve service");
+    expect(packet.safety.cautions.some((c) => c.label === "verified" && (c.value ?? "").startsWith("Before commencing"))).toBe(false);
+    const gap = packet.safety.cautions.filter((c) => c.label === "unknown" && /CAUTION on p\.2 .*may continue on the next page/.test(c.basis));
+    expect(gap).toHaveLength(1);
+  });
+
+  it("control: the intact manual keeps the step and the caution as verified", () => {
+    const packet = build("8520", [docFromFixture("manual-35style.txt", "sm")], "valve service");
+    expect(stepTexts(packet)).toContain("Remove the exposed Coil Spring from the top of the Spring Retainer.");
+    expect(packet.safety.cautions.some((c) => c.label === "verified" && (c.value ?? "").startsWith("Before commencing"))).toBe(true);
+  });
+});

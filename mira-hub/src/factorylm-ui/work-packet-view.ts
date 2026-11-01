@@ -148,7 +148,7 @@ export function documentsSignature(docs: Pick<PacketDocument, "docId" | "revisio
  *  of that moment; if a manual was replaced, removed or re-revised since, or the machine was
  *  re-identified, the old packet is not exported as current. Edits are kept on screen. */
 export function packetStaleReason(
-  packet: Pick<WorkPacket, "documents" | "equipment">,
+  packet: Pick<WorkPacket, "documents" | "identitySnapshot">,
   avail: Pick<WorkPacketAvailability, "identity" | "documents">,
 ): string | null {
   const sig = (docs: Pick<PacketDocument, "docId" | "revision">[]) =>
@@ -157,14 +157,17 @@ export function packetStaleReason(
     return "the notebook's documents or their revisions have changed since this packet was built";
   }
   const norm = (v: string | null | undefined) => (v ?? "").trim().toLowerCase();
-  const mfr = packet.equipment.manufacturer.value;
-  if (mfr !== null && norm(mfr) !== norm(avail.identity.manufacturer)) {
+  const snap = packet.identitySnapshot;
+  if (!snap) return "this packet was saved before it recorded the identity it was built for";
+  if (norm(snap.manufacturer) !== norm(avail.identity.manufacturer)) {
     return "the machine's confirmed manufacturer has changed since this packet was built";
   }
-  const model = packet.equipment.model.value;
-  const current = [avail.identity.model, avail.identity.catalogNumber].map(norm);
-  if (model !== null && !current.includes(norm(model))) {
+  if (norm(snap.model) !== norm(avail.identity.model)) {
     return "the machine's confirmed model has changed since this packet was built";
+  }
+  // The catalog number can decide which torque rows and procedures apply (Codex #5062 F13).
+  if (norm(snap.catalogNumber) !== norm(avail.identity.catalogNumber)) {
+    return "the machine's confirmed catalog number has changed since this packet was built";
   }
   return null;
 }

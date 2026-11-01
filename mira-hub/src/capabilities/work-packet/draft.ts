@@ -329,6 +329,17 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
       basis: `${c.kind} — ${p.doc.filename ?? p.doc.docId}`,
     })),
   );
+  // A caution the parser could not read in full is listed in Safety as unknown, never dropped.
+  for (const p of applicableManuals) {
+    for (const c of p.manual.omittedCautions ?? []) {
+      cautions.push({
+        value: null,
+        label: "unknown",
+        source: c.source,
+        basis: `${c.kind} on p.${c.source.page} of ${p.doc.filename ?? p.doc.docId} ${c.reason}. Read it in the manual before work starts.`,
+      });
+    }
+  }
   const siteIsolation: Field = { value: null, label: "unknown", source: null, basis: "the site owns isolation and lockout" };
 
   // ---- parts & kits ----
@@ -582,6 +593,7 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
     notebookId: input.notebookId,
     disclaimer: DISCLAIMER,
     equipment: { manufacturer, model, serial, identityStatus: identity.status },
+    identitySnapshot: { manufacturer: identity.manufacturer, model: identity.model, catalogNumber: identity.catalogNumber },
     workOrder,
     documents,
     scope,
