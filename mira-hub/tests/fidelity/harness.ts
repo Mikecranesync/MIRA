@@ -109,6 +109,11 @@ export async function installRoutes(page: Page, scenario: Scenario) {
     if (m === "GET" && p === `${nbPath}/procedure`) {
       return route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ error: "not_enabled" }) });
     }
+    // Mission 001 (#5088): the Machine state panel reads observed state for the open notebook.
+    // Off in this harness, as the route is when MIRA_OBSERVATION_STATE is unset; the panel hides.
+    if (m === "GET" && p === `${nbPath}/observations`) {
+      return route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ error: "observations_disabled" }) });
+    }
     if (m === "GET" && p === "/api/assets") {
       return route.fulfill(json([]));
     }

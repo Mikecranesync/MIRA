@@ -63,6 +63,7 @@ import { HOME_THREAD, createOutgoingOwner, withOutgoing, type Outgoing } from ".
 import { composeHubSend, pairAttachments, resolveUploadNode, runAttachedSend, type HeldFile } from "./hub-attachments";
 import { createManualSearchDriver, type ManualSearchDriver } from "./manual-search-driver";
 import { GuidedProcedure } from "./GuidedProcedure";
+import { MachineObservations } from "./MachineObservations";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
 import { answerTurnId, citationIndex, contextFor, lifecycleFromStream, livePartsWhileRunning, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus, withSettledFollowups, type SettledFollowups } from "./to-interaction";
 import {
@@ -988,6 +989,13 @@ export function HubShellHost() {
           notebookId={selection.notebookId}
           onAskMira={onGuidedDeadEnd}
           chatBusy={busy}
+        />
+      )}
+      {/* Mission 001: report an observation and read back machine state; renders nothing while off. */}
+      {selection && detail && (
+        <MachineObservations
+          key={`${selection.notebookId}|${detail.notebook.identityStatus}`}
+          notebookId={selection.notebookId}
         />
       )}
     </div>
