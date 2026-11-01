@@ -194,6 +194,70 @@ describe("data-sheet ratings — one value per model, or unknown (Codex #5062 F1
     expect(p.restoration).toContainEqual(expect.objectContaining({ value: "Crankcase Capacity 12 oz 0.35 l", label: "verified" }));
   });
 
+  // Round 13 F19: a digits-only model heading, and a non-rating row inside a block.
+  const NUMERIC = SHEET.split("9XP1000CS").join("9001"); // roster: 9XP1000, 9001, 9XP1000G
+  const NUMERIC_BLOCK = "9001\nFlow 5.0 gpm 19 lpm\nPressure Range 100–750 psi 6.9–52 bar\nPump RPM* 860 rpm 860 rpm\n";
+  const unknowns = (p: WorkPacket) => ratings(p).map((f) => `${f.label}:${f.value}:${f.source ? "cited" : "uncited"}`);
+
+  it("a digits-only heading from the sheet's model list scopes its block to that model only", () => {
+    const raw = NUMERIC.replace("9XP1000, 9001\nFlow 7.4 gpm 28 lpm\nPressure Range 100–1500 psi 6.9–103 bar\nPump RPM* 1725 rpm 1725 rpm\n", NUMERIC_BLOCK);
+    expect(raw).toContain(NUMERIC_BLOCK);
+    for (const model of ["9XP1000", "9XP1000G"]) {
+      const p = build([sheetDoc(raw)], "valve service", [], model);
+      expect(unknowns(p)).toEqual(["unknown:null:cited", "unknown:null:cited", "unknown:null:cited"]);
+      expect(ratings(p).every((f) => f.basis.includes("only for other models (9001)"))).toBe(true);
+    }
+    const own = build([sheetDoc(raw)], "valve service", [], "9001");
+    expect(values(own)).toEqual(["verified:Pressure Range 100–750 psi 6.9–52 bar", "verified:Flow 5.0 gpm 19 lpm", "verified:Pump RPM 860 rpm 860 rpm"]);
+  });
+
+  it("an Engine RPM row in the middle of a block does not let the rest of the block apply to every model", () => {
+    const mid = TWO_BLOCKS.replace("Flow 5.0 gpm 19 lpm\n", "Flow 5.0 gpm 19 lpm\nEngine RPM 3450 rpm 3450 rpm\n");
+    const raw = SHEET.replace(ONE_BLOCK, mid);
+    const a = build([sheetDoc(raw), doc("manual-cpstyle.txt", "sm")], "valve service");
+    expect(values(a)).toEqual(["verified:Pressure Range 100–1500 psi 6.9–103 bar", "verified:Flow 7.4 gpm 28 lpm", "verified:Pump RPM 1725 rpm 1725 rpm"]);
+    const cs = build([sheetDoc(raw)], "valve service", [], "9XP1000CS");
+    expect(values(cs)).toEqual(["verified:Pressure Range 100–750 psi 6.9–52 bar", "verified:Flow 5.0 gpm 19 lpm", "verified:Pump RPM 860 rpm 860 rpm"]);
+    const g = build([sheetDoc(raw)], "valve service", [], "9XP1000G");
+    expect(unknowns(g)).toEqual(["unknown:null:cited", "unknown:null:cited", "unknown:null:cited"]);
+    // the common section still applies to every model
+    expect(g.restoration).toContainEqual(expect.objectContaining({ value: "Crankcase Capacity 12 oz 0.35 l", label: "verified" }));
+  });
+
+  it("on a sheet with model blocks, a rating outside any block or the common section is a cited unknown", () => {
+    const raw = SHEET.replace("SPECIFICATIONS U.S. Measure Metric Measure\n", "SPECIFICATIONS U.S. Measure Metric Measure\nFlow 9.9 gpm 37 lpm\n");
+    const p = build([sheetDoc(raw), doc("manual-cpstyle.txt", "sm")], "valve service");
+    const flow = ratings(p).filter((f) => /Flow/.test(f.value ?? f.basis));
+    expect(flow).toHaveLength(1);
+    expect(flow[0]).toMatchObject({ value: null, label: "unknown", basis: expect.stringContaining("cannot be tied to a model") });
+    expect(flow[0].source).not.toBeNull();
+    expect(verifyPacket(p)).toEqual([]);
+  });
+
+  it("a heading naming a model the sheet does not list leaves its block's ratings unknown", () => {
+    const raw = SHEET.replace(ONE_BLOCK, TWO_BLOCKS.replace("9XP1000CS\n", "7777\n"));
+    // Fail closed for every model: "7777" may be a misread of any model on the sheet, so even the
+    // model with its own clean block gets Unknown rather than a value that may be contradicted.
+    for (const model of ["9XP1000G", "9XP1000"]) {
+      const p = build([sheetDoc(raw), doc("manual-cpstyle.txt", "sm")], "valve service", [], model);
+      expect(unknowns(p)).toEqual(["unknown:null:cited", "unknown:null:cited", "unknown:null:cited"]);
+      expect(ratings(p).every((f) => f.basis.includes("cannot be tied to a model"))).toBe(true);
+    }
+  });
+
+  it("a compact heading (9XP2000/C) scopes its block to both models it names", () => {
+    const BIG = FIXTURES["datasheet-9xp2000.txt"];
+    const head = "SPECIFICATIONS U.S. Measure Metric Measure\n";
+    const tail = "*Pump minimum is 100 RPM.\n";
+    expect(BIG).toContain(head);
+    expect(BIG).toContain(tail);
+    const raw = BIG.replace(head, head + "9XP2000/C\n").replace(tail, "9XP2050\nFlow 30 gpm 113 lpm\nPump Pressure Range 100\u20131800 psi 6.9\u2013124 bar\nPump RPM* 950 rpm 950 rpm\n" + tail);
+    for (const model of ["9XP2000", "9XP2000C"]) {
+      const p = build([sheetDoc(raw, "ds", "datasheet-9xp2000.txt")], "valve service", [], model);
+      expect(values(p)).toEqual(["verified:Pressure Range 100\u20132000 psi 6.9\u2013138 bar", "verified:Flow 25 gpm 94.6 lpm", "verified:Pump RPM 870 rpm 870 rpm"]);
+    }
+  });
+
   it("the same value printed twice on one sheet is still one verified line", () => {
     const twice = SHEET.replace(ONE_BLOCK, ONE_BLOCK + "Flow 7.4 gpm 28 lpm\n");
     const p = build([sheetDoc(twice), doc("manual-cpstyle.txt", "sm")], "valve service");

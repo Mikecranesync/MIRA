@@ -145,6 +145,10 @@ export interface DsSpec {
    *  the sheet prints one. A sheet can print the same item once per block, with different values;
    *  each value applies only to its block's models (Codex #5062 F19). Absent: the whole sheet. */
   models?: string[];
+  /** The sheet prints model blocks, but this value could not be tied to one (outside every block and
+   *  the common section, or under a heading naming a model the sheet does not list). It applies to no
+   *  model for sure; the packet shows it as a cited Unknown (Codex #5062 F19). */
+  scopeUnresolved?: boolean;
 }
 
 export interface DataSheet {
