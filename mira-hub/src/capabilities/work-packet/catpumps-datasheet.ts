@@ -413,39 +413,78 @@ const SPEC_PATTERNS: Array<{ key: string; label: string; regex: RegExp }> = [
   { key: "crankcase_capacity", label: "Crankcase Capacity", regex: /^Crankcase Capacity\s+(.+)$/ },
 ];
 
-// A line that only names models ("5CP6120, 5CP6120CS", "5CP6120CSSG1") heads a spec block. Every
-// spec line right under it, up to the first line that is not a spec, belongs to those models.
-const MODEL_TOKEN = "[0-9]{1,2}[A-Z]{1,4}[0-9][0-9A-Z]*";
-const MODEL_LIST_RE = new RegExp(`^${MODEL_TOKEN}(?:\\s*,\\s*${MODEL_TOKEN})*$`);
+// A line that only names models ("5CP6120, 5CP6120CS", "5CP6120CSSG1", "8521") heads a spec block.
+// Every spec line after it belongs to those models until the next heading, a "COMMON" heading, or a
+// page break — a row this module does not read (e.g. "Engine RPM") does not end the block (Codex
+// #5062 F19). A token is a model when it is on the sheet's own model list (digits-only and compact
+// "3520/C" forms included) or has the letters-in-the-middle shape ("5CP6120"). A digits-only token
+// that is not on the list cannot be told apart from a stray number, so its block's values are
+// marked unresolved, never applied to every model. Once a sheet has any block of values, a value outside
+// every block and outside the common section is unresolved as well.
+const MODEL_TOKEN_RE = /^[0-9]{1,2}[A-Z]{1,4}[0-9][0-9A-Z]*$/;
+const BARE_MODEL_RE = /^[0-9]{4,5}[A-Z]{0,4}$/;
+const COMMON_RE = /^COMMON\b/;
+
+function headingModels(text: string, roster: Map<string, string>): { models: string[]; known: boolean } | null {
+  const toks = text.split(",").map((t) => t.trim());
+  const models: string[] = [];
+  let known = true;
+  for (const tok of toks) {
+    if (!/^[0-9A-Z]+(?:\/[0-9A-Z]+)*$/.test(tok)) return null;
+    for (const m of expandModelToken(tok)) {
+      const hit = roster.get(normalizeModelKey(m));
+      if (hit || MODEL_TOKEN_RE.test(m)) models.push(hit ?? m);
+      else if (BARE_MODEL_RE.test(m)) {
+        models.push(m);
+        known = false;
+      } else return null;
+    }
+  }
+  return { models, known };
+}
+
+type SpecScope = { kind: "sheet" } | { kind: "common" } | { kind: "models"; models: string[] } | { kind: "unresolved" };
 
 const normSpec = (v: string): string => v.replace(/\s+/g, " ").trim().toLowerCase();
 
-function parseSpecs(lines: Line[], mkSource: MkSource): DsSpec[] {
-  const out: DsSpec[] = [];
+function parseSpecs(lines: Line[], models: string[], mkSource: MkSource): DsSpec[] {
+  const roster = new Map(models.map((m) => [normalizeModelKey(m), m]));
+  const out: Array<{ spec: DsSpec; scope: SpecScope }> = [];
   const seen = new Set<string>();
-  let block: string[] | undefined;
-  let blockPage = -1;
+  let scope: SpecScope = { kind: "sheet" };
+  let scopePage = -1;
   for (const { page, text } of lines) {
-    if (page !== blockPage) block = undefined;
-    if (MODEL_LIST_RE.test(text)) {
-      block = text.split(",").map((m) => m.trim());
-      blockPage = page;
+    if (page !== scopePage) {
+      scope = { kind: "sheet" };
+      scopePage = page;
+    }
+    if (COMMON_RE.test(text)) {
+      scope = { kind: "common" };
       continue;
     }
-    let matched = false;
+    const heading = headingModels(text, roster);
+    if (heading) {
+      scope = heading.known ? { kind: "models", models: heading.models } : { kind: "unresolved" };
+      continue;
+    }
     for (const def of SPEC_PATTERNS) {
       const m = def.regex.exec(text);
       if (!m) continue;
-      matched = true;
       const value = m[1].trim();
-      const id = `${def.key}|${normSpec(value)}|${(block ?? []).join(",")}`;
+      const id = `${def.key}|${normSpec(value)}|${scope.kind}|${scope.kind === "models" ? scope.models.join(",") : ""}`;
       if (seen.has(id)) continue;
       seen.add(id);
-      out.push({ key: def.key, label: def.label, value, source: mkSource(page, text), ...(block ? { models: block } : {}) });
+      const spec: DsSpec = { key: def.key, label: def.label, value, source: mkSource(page, text) };
+      if (scope.kind === "models") spec.models = scope.models;
+      if (scope.kind === "unresolved") spec.scopeUnresolved = true;
+      out.push({ spec, scope });
     }
-    if (!matched) block = undefined;
   }
-  return out;
+  // Only a heading that actually heads ratings counts — the parts-list and kit-table model lines on
+  // later pages have the same shape.
+  const sawBlock = out.some((o) => o.scope.kind === "models" || o.scope.kind === "unresolved");
+  if (sawBlock) for (const o of out) if (o.scope.kind === "sheet") o.spec.scopeUnresolved = true;
+  return out.map((o) => o.spec);
 }
 
 // ─────────────────────────────────────────────── entry point
@@ -462,7 +501,7 @@ export function parseCatPumpsDataSheet(doc: DocText): DataSheet | null {
   const service = parseSimpleSection(lines, "SERVICE PARTS", "service", models, mkSource);
   const problems: string[] = [];
   const kits = parseKits(lines, models, mkSource, problems);
-  const specs = parseSpecs(lines, mkSource);
+  const specs = parseSpecs(lines, models, mkSource);
 
   if (models.length === 0) problems.push("no parts-list header found (ITEM PART NUMBERS / ITEM P/N) — models unknown");
   if (kits.length === 0) problems.push("no seal/valve kit tables found");

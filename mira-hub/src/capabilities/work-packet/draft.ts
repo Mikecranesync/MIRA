@@ -240,6 +240,12 @@ function resolveSpec(sheets: readonly ParsedDoc[], key: string, basis: string, m
   const all = sheets.flatMap((p) => p.dataSheet?.specs.filter((sp) => sp.key === key) ?? []);
   if (all.length === 0) return null;
   const label = all[0].label;
+  // A value the sheet prints under model blocks but that cannot be tied to one may belong to this
+  // model and contradict its own block, so it makes the rating Unknown for every model (Codex #5062 F19).
+  const loose = all.find((sp) => sp.scopeUnresolved);
+  if (loose) {
+    return { label, field: { value: null, label: "unknown", source: loose.source, basis: `the data sheet prints ${label} ${loose.value} (${cite(loose.source)}) where it cannot be tied to a model — check the value for this model` } };
+  }
   const specs = all.filter((sp) => !sp.models || sp.models.some((m) => models.some((k) => modelsMatch(m, k))));
   if (specs.length === 0) {
     const named = Array.from(new Set(all.flatMap((sp) => sp.models ?? []))).join(", ");
