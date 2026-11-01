@@ -447,3 +447,19 @@ describe("Simple rule ('do 1', 2026-10-31) — a plain lockout instruction or ve
     silent("Lock out the drive. Replace the fan. Restore power. Lock out the drive again. Replace the fuse.");
   });
 });
+
+describe("#4867 round 9 follow-ups", () => {
+  const flagged = (t: string) => expect(judge(t)).toMatchObject({ ok: false, violation: "hazard-warning:isolation-advisory" });
+  const silent = (t: string) => expect(judge(t)).toEqual({ ok: true });
+  it("#5060: a bare, negated or pending absence-of-voltage mention is not a verification", () => {
+    flagged("The absence of voltage has not been verified. Replace the fuse.");
+    flagged("The absence of voltage must be verified. Replace the fuse.");
+    silent("Verify absence of voltage, then replace the fuse.");
+    silent("With the drive locked out and the DC bus confirmed dead with a meter, replace the fuse.");
+  });
+  it("#5061: an otherwise branch does not inherit the other branch's lockout", () => {
+    flagged("If the drive trips, lock out the drive; otherwise replace the fuse.");
+    flagged("If the drive trips, then lock out the drive. Otherwise replace the fuse.");
+    silent("Lock out the drive, then replace the fuse.");
+  });
+});
