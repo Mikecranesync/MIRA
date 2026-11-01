@@ -95,6 +95,39 @@ describe("POST /api/auth/register — pilot-funnel hook", () => {
     expect(mockAttributionFromRequest).toHaveBeenCalledTimes(1);
   });
 
+  it.each(["betagate-1793524261387@factorylm.com", "strangerwalk-charlie-dry3-1500@factorylm.com"])(
+    "registers %s without a CRM write", async (email) => {
+      vi.stubEnv("HUBSPOT_API_KEY", "fake-key");
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+      vi.stubGlobal("fetch", fetchMock);
+      try {
+        const res = await POST(makeRequest({ email, password: "password123" }, freshIp()));
+        expect(res.status).toBe(201);
+        expect(mockEnsureUserAndTenant).toHaveBeenCalledWith(expect.objectContaining({ email }));
+        expect(fetchMock).not.toHaveBeenCalled();
+        // The real funnel is covered separately; this seam remains callable for tests.
+      } finally {
+        vi.unstubAllEnvs();
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
+  it("keeps real CRM capture even when the applicant name sounds like a test", async () => {
+    vi.stubEnv("HUBSPOT_API_KEY", "fake-key");
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const res = await POST(makeRequest({ email: "tech@acme.com", name: "Beta Gate Stranger", password: "password123", synthetic: true }, freshIp(), { "x-test-account": "true" }));
+      expect(res.status).toBe(201);
+      expect(fetchMock).toHaveBeenCalledWith("https://api.hubapi.com/crm/v3/objects/contacts", expect.any(Object));
+      expect(mockHandlePilotApplicationSubmitted).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("does NOT fire the hook for an existing-user return (409)", async () => {
     mockFindUserByEmail.mockResolvedValue({
       id: "existing-user",
