@@ -424,6 +424,9 @@ async function writeChunkRowsForNode(
    *  chunk of that page as `metadata.text_repair` so a decoded row is
    *  auditable and reversible (TQ-05/06). Absent = untouched extraction. */
   repairs?: ReadonlyArray<TextRepair | null>,
+  /** Per-page printed label from the PDF's own /PageLabels tree (index-aligned
+   *  with `pages`), recorded as `metadata.page_label` (#4508). Absent = none. */
+  pageLabels?: ReadonlyArray<string | null> | null,
 ): Promise<number> {
   const { tenantId, uploadId, nodeId, unsPath, filename } = opts;
 
@@ -431,7 +434,13 @@ async function writeChunkRowsForNode(
   // against the partial UNIQUE (tenant_id, source_url, metadata->>'chunk_index').
   const sourceUrl = `node-doc/${uploadId}/${filename}`;
 
-  type ChunkRow = { content: string; page: number; idx: number; repair: TextRepair | null };
+  type ChunkRow = {
+    content: string;
+    page: number;
+    idx: number;
+    repair: TextRepair | null;
+    label: string | null;
+  };
   let idx = 0;
   let batch: ChunkRow[] = [];
 
@@ -460,6 +469,7 @@ async function writeChunkRowsForNode(
             chunk_index: r.idx,
             source: "hub_node_attachment",
             ...(r.repair ? { text_repair: r.repair } : {}),
+            ...(r.label ? { page_label: r.label } : {}),
           }),
         );
       }
@@ -486,7 +496,13 @@ async function writeChunkRowsForNode(
       const pageText = pages[p];
       pages[p] = ""; // release each page's text once chunked — bounds peak memory
       for (const piece of chunkText(pageText)) {
-        batch.push({ content: piece, page: p + 1, idx: idx++, repair: repairs?.[p] ?? null });
+        batch.push({
+          content: piece,
+          page: p + 1,
+          idx: idx++,
+          repair: repairs?.[p] ?? null,
+          label: pageLabels?.[p] ?? null,
+        });
         if (batch.length >= BATCH_ROWS) await flush();
       }
     }
@@ -610,10 +626,36 @@ export async function writePdfChunksForNode(opts: {
     const { text } = await extractText(pdf, { mergePages: false });
     const pages: string[] = Array.isArray(text) ? text : [text];
     const repairs = await repairGarbledPages(pages, rest);
-    return await writeChunkRowsForNode(pages, rest, repairs);
+    const labels = await printedPageLabels(pdf, pages.length, rest.filename);
+    return await writeChunkRowsForNode(pages, rest, repairs, labels);
   } finally {
     release();
   }
+}
+
+/**
+ * #4508 — the PDF's own printed page labels (/PageLabels, via pdfjs
+ * `getPageLabels()`), index-aligned with the extracted pages. The Safety
+ * chapter reader maps a printed page ("Safety ... 17") through these instead of
+ * guessing an offset. Returns null — never a guess — when the PDF has no label
+ * tree, the tree cannot be read, or its length does not match the pages. A
+ * non-string or blank entry is null for that page only. Never throws: a label
+ * failure must not fail the upload.
+ */
+export async function printedPageLabels(
+  pdf: { getPageLabels?: () => Promise<unknown> },
+  pageCount: number,
+  filename: string,
+): Promise<Array<string | null> | null> {
+  let raw: unknown;
+  try {
+    raw = await pdf.getPageLabels?.();
+  } catch (err) {
+    console.warn(`[node-ingest] page labels unreadable for ${filename}:`, err);
+    return null;
+  }
+  if (!Array.isArray(raw) || raw.length !== pageCount) return null;
+  return raw.map((l) => (typeof l === "string" && l.trim() ? l.trim() : null));
 }
 
 /**
