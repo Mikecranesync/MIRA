@@ -72,7 +72,9 @@ function isInterleavedFurniture(soFar: string, next: string): boolean {
   const sentenceDone = /[.!?)]$/.test(soFar.trim());
   // A figure title is Title Case with no sentence punctuation ("Removal of Inlet Manifold O-Rings
   // 3531, 3535"); a new sentence that wraps has lowercase words ("Change crankcase oil … See").
-  const words = next.split(/\s+/).filter((w) => /^[A-Za-z][A-Za-z-]{3,}$/.test(w));
+  // "from" is the one lowercase word real figure titles carry ("Removal of V-Packing Spacer from
+  // Inlet Manifold", 35FR2Svc p.3).
+  const words = next.split(/\s+/).filter((w) => /^[A-Za-z][A-Za-z-]{3,}$/.test(w) && w !== "from");
   const looksLikeTitle =
     !/[.!?:;]$/.test(next) && !/[.!?] /.test(next) && words.length > 0 && words.every((w) => /^[A-Z]/.test(w));
   return sentenceDone && looksLikeTitle;
@@ -340,16 +342,34 @@ interface OpenSection {
   page: number;
   steps: SmStep[];
   firstLines: string[]; // first line of each step, parallel to steps, for order-jump detection
-  /** Set when a step ran to the end of its page without finishing its sentence (Codex #5062 F15). */
+  /** Set when text after one of its steps could not be placed — it may be the rest of that step
+   *  (Codex #5062 F15). The section is then omitted and becomes a cited gap. */
   incomplete: string | null;
 }
 
-// A step or caution that reaches the last line of its page without ending its sentence may
-// continue on the next page; the continuation is not joined across pages, so the block is
-// treated as incomplete rather than shown as a verified fragment.
-const SENTENCE_END_RE = /[.!?:;)\]"”']$/;
-function cutAtPageEnd(endIdx: number, pageLines: number, text: string): boolean {
-  return endIdx >= pageLines && !SENTENCE_END_RE.test(text);
+/** The last step or caution emitted, for orphan-text accounting (Codex #5062 F15). Every
+ *  non-furniture line inside a procedure must be consumed as a step, caution, heading, torque row
+ *  or caption; a line that is not ("orphan text") may be the rest of this block — a page-cut
+ *  continuation, or text after a diagram — so the block is never shown as verified. Text is not
+ *  joined across pages (each citation is one page); the block fails closed to a gap instead. */
+type LastBlock = { kind: "step"; n: number; page: number; text: string } | { kind: "caution"; caution: SmCaution; text: string };
+
+/** One orphan line and what it tainted — reported to the optional `onOrphan` hook (real-manual checks). */
+export interface OrphanLine {
+  page: number;
+  line: string;
+  tainted: string | null;
+}
+
+/** Page header/footer lines the extractor interleaves into the body. Only shapes that occur verbatim
+ *  in real CAT manuals: the part-number/revision line ("PN 30009 Rev J 8405", "PN 33009 Rev J 7709")
+ *  and the headquarters address line ("1681 - 94th Lane N.E. Minneapolis, MN 55449 - 4324"). A
+ *  "repeats on several pages" rule is deliberately absent: in real manuals the repeated lines are
+ *  content ("needed.", "hand.", a NOTE), so it would hide exactly the continuations this guards. */
+function isPageFurniture(line: string): boolean {
+  if (/^PN\s+\d{4,6}\s+Rev\s+[A-Z]\b/.test(line)) return true;
+  if (/Minneapolis,\s*MN\b/.test(line)) return true;
+  return false;
 }
 
 function flushSection(open: OpenSection | null, sections: SmSection[], problems: string[], omitted: SmOmittedSection[]): void {
@@ -393,7 +413,7 @@ function flushSection(open: OpenSection | null, sections: SmSection[], problems:
   });
 }
 
-export function parseCatPumpsServiceManual(doc: DocText): ServiceManual | null {
+export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLine) => void): ServiceManual | null {
   const page1 = doc.pages.find((p) => p.page === 1) ?? doc.pages[0];
   if (!page1) return null;
   if (!SERVICE_MANUAL_TITLE.test(page1.text) || !CAT_PUMPS.test(page1.text)) return null;
@@ -413,6 +433,8 @@ export function parseCatPumpsServiceManual(doc: DocText): ServiceManual | null {
   // header narrows it instead of replacing it.
   let phaseScope: ModelScope = scopeAll();
   let skippingCaption = false;
+  // Persists across pages like `open`; cleared at every section/subheading/torque/body-end boundary.
+  let lastBlock: LastBlock | null = null;
 
   const sorted: PageText[] = [...doc.pages].sort((a, b) => a.page - b.page);
 
@@ -429,6 +451,7 @@ export function parseCatPumpsServiceManual(doc: DocText): ServiceManual | null {
       if (TORQUE_HEADING_RE.test(line)) {
         flushSection(open, sections, problems, omitted);
         open = null;
+        lastBlock = null;
         const { rows, nextIdx } = parseTorqueChart(lines, i + 1, pg.page, src);
         torque.push(...rows);
         i = nextIdx - 1;
@@ -438,6 +461,7 @@ export function parseCatPumpsServiceManual(doc: DocText): ServiceManual | null {
       if (BODY_END_HEADING_RE.test(line)) {
         flushSection(open, sections, problems, omitted);
         open = null;
+        lastBlock = null;
         break; // rest of this page is reference material (checklists, PM schedule, bulletin index)
       }
 
@@ -465,12 +489,9 @@ export function parseCatPumpsServiceManual(doc: DocText): ServiceManual | null {
         // wrapped onto a continuation line is still checkable word-for-word against its source.
         const cautionText = textParts.join(" ").replace(/\s{2,}/g, " ").trim();
         const cautionSource = { ...src, page: pg.page, line: lines.slice(i, j).join(" ") };
-        if (cutAtPageEnd(j, lines.length, cautionText)) {
-          problems.push(`page ${pg.page}: a ${kind} runs to the end of the page and may continue on the next page — not shown as verified`);
-          omittedCautions.push({ kind, source: cautionSource, reason: "runs to the end of the page and may continue on the next page" });
-        } else {
-          cautions.push({ kind, text: cautionText, source: cautionSource });
-        }
+        const caution: SmCaution = { kind, text: cautionText, source: cautionSource };
+        cautions.push(caution);
+        lastBlock = { kind: "caution", caution, text: cautionText };
         i = j - 1;
         continue;
       }
@@ -479,6 +500,7 @@ export function parseCatPumpsServiceManual(doc: DocText): ServiceManual | null {
         flushSection(open, sections, problems, omitted);
         open = { heading: line, subheading: null, topic: topicFor(line), models: scopeAll(), page: pg.page, steps: [], firstLines: [], incomplete: null };
         phaseScope = scopeAll();
+        lastBlock = null;
         skippingCaption = false;
         continue;
       }
@@ -494,6 +516,7 @@ export function parseCatPumpsServiceManual(doc: DocText): ServiceManual | null {
         const sectionModels: ModelScope = sub.nested ? intersectScopes(phaseScope, sub.scope) : sub.scope;
         if (!sub.nested) phaseScope = sub.scope;
         open = { heading: open!.heading, subheading: sub.text, topic: open!.topic, models: sectionModels, page: pg.page, steps: [], firstLines: [], incomplete: null };
+        lastBlock = null;
         skippingCaption = false;
         continue;
       }
@@ -519,9 +542,7 @@ export function parseCatPumpsServiceManual(doc: DocText): ServiceManual | null {
           j++;
         }
         const stepText = textParts.join(" ").replace(/\s{2,}/g, " ").trim();
-        if (!open.incomplete && cutAtPageEnd(j, lines.length, stepText)) {
-          open.incomplete = `step ${n} runs to the end of page ${pg.page} and may continue on the next page — steps omitted rather than shown in part`;
-        }
+        lastBlock = { kind: "step", n, page: pg.page, text: stepText };
         open.steps.push({
           n,
           text: stepText,
@@ -542,7 +563,28 @@ export function parseCatPumpsServiceManual(doc: DocText): ServiceManual | null {
       if (skippingCaption) {
         continue; // description half of a caption pair, or a further caption line
       }
-      // Free text with no open step (section intro prose, a note's lead-in) — not modeled; dropped.
+      // Orphan text: not furniture and not consumed above. Intro prose before a section's first
+      // step or caution has no `lastBlock` and stays dropped; anything after one may be its rest.
+      if (isPageFurniture(line) || (lastBlock && isInterleavedFurniture(lastBlock.text, line))) continue;
+      let tainted: string | null = null;
+      if (lastBlock?.kind === "step" && open) {
+        tainted = `step ${lastBlock.n} (p.${lastBlock.page})`;
+        if (!open.incomplete) {
+          open.incomplete = `text after step ${lastBlock.n} (p.${lastBlock.page}) could not be placed — it may be the rest of that step, e.g. "${line.slice(0, 60)}"; steps omitted rather than shown in part`;
+        }
+      } else if (lastBlock?.kind === "caution") {
+        const c = lastBlock.caution;
+        tainted = `${c.kind} (p.${c.source.page})`;
+        const idx = cautions.indexOf(c);
+        if (idx !== -1) {
+          cautions.splice(idx, 1);
+          const reason = `text after it could not be placed — it may be the rest of this ${c.kind}, e.g. "${line.slice(0, 60)}"`;
+          problems.push(`page ${c.source.page}: a ${c.kind} is followed by text that could not be placed — not shown as verified`);
+          omittedCautions.push({ kind: c.kind, source: c.source, reason });
+        }
+        lastBlock = null;
+      }
+      onOrphan?.({ page: pg.page, line, tainted });
     }
   }
   flushSection(open, sections, problems, omitted);
