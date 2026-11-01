@@ -613,7 +613,8 @@ export function WorkPacketPanel({
               <button type="button" style={S.btn} data-testid="wp-load-synthetic" onClick={loadSyntheticDemo}>Load synthetic demo work order</button>
 
               <button
-                type="button" style={{ ...S.btn, ...S.btnBlock, ...S.primary, marginTop: 12 }} data-testid="wp-build"
+                type="button" data-testid="wp-build"
+                style={{ ...S.btn, ...S.btnBlock, ...S.primary, marginTop: 12, ...(buildBusy || !revConfirmed ? { opacity: 0.45, cursor: "not-allowed" } : {}) }}
                 disabled={buildBusy || !revConfirmed} onClick={() => void onBuild()}
               >
                 Build draft packet
