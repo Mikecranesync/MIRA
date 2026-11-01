@@ -317,12 +317,11 @@ describe("F15 — text after a step or caution that cannot be placed turns that 
     expect(stepTexts(packet).some((t) => (t ?? "").startsWith("Remove the valve plug"))).toBe(false);
     const gap = placeGaps(packet, /Disassembly \(All models except 8560\)/);
     expect(gap).toHaveLength(1);
-    expect(gap[0].basis).toContain("only after relieving");
+    expect(gap[0].basis).toContain("text after step 2 (p.2)");
   });
 
-  // Rounds 6–9: a figure caption is skipped only when the PDF layout places it under a photo
-  // ("@fig", what pdf-figure-lines.ts reports for a kept original). The line after it is then
-  // accounted for like any other — words alone never make a line a caption.
+  // A figure caption ("@fig", what pdf-figure-lines.ts reports for a kept original) is never joined
+  // into a step and never skipped after one (rounds 6–11): the step's section becomes a gap.
   const CAPTION = "@fig 8520, 8521\n@fig Removal of Valve Plug\n";
 
   it("a step interrupted by a caption on the same page: its section is a gap", () => {
@@ -331,7 +330,7 @@ describe("F15 — text after a step or caution that cannot be placed turns that 
     expect(stepTexts(packet).some((t) => (t ?? "").startsWith("Remove the valve plug"))).toBe(false);
     const gap = placeGaps(packet, /Disassembly \(All models except 8560\)/);
     expect(gap).toHaveLength(1);
-    expect(gap[0].basis).toContain("only after relieving");
+    expect(gap[0].basis).toContain("text after step 2 (p.2)");
   });
 
   it("a split step whose next page starts with a caption: its section is a gap", () => {
@@ -355,7 +354,7 @@ describe("F15 — text after a step or caution that cannot be placed turns that 
     expect(stepTexts(packet).some((t) => (t ?? "").startsWith("Remove the valve plug"))).toBe(false);
     const gap = placeGaps(packet, /Disassembly \(All models except 8560\)/);
     expect(gap).toHaveLength(1);
-    expect(gap[0].basis).toContain("ONLY AFTER RELIEVING");
+    expect(gap[0].basis).toContain("text after step 2 (p.2)");
   });
 
   it("a caution interrupted by a caption, then an ALL-CAPS continuation: unknown in Safety, not verified", () => {
@@ -380,7 +379,7 @@ describe("F15 — text after a step or caution that cannot be placed turns that 
     expect(stepTexts(packet).some((t) => (t ?? "").startsWith("Remove the valve plug"))).toBe(false);
     const gap = placeGaps(packet, /Disassembly \(All models except 8560\)/);
     expect(gap).toHaveLength(1);
-    expect(gap[0].basis).toContain("(0 psi)");
+    expect(gap[0].basis).toContain("text after step 2 (p.2)");
   });
 
   it("the same continuation at the top of the next page, after a caption: its section is a gap", () => {
@@ -397,22 +396,24 @@ describe("F15 — text after a step or caution that cannot be placed turns that 
     expect(packet.safety.cautions.filter((c) => c.label === "unknown" && /CAUTION on p\.2 .*could not be placed/.test(c.basis ?? ""))).toHaveLength(1);
   });
 
-  it("control: layout-confirmed captions shaped like the real manuals' (comma, slash, hyphenated words) make no gap", () => {
+  // Round 11: a caption run right after a step makes that section a gap even when the layout
+  // confirms it — a small-print line under a photo may still be the rest of the step.
+  it("a layout-confirmed caption run (comma, slash, hyphenated words) after a whole step: its section is a gap", () => {
     const run = "@fig 8520, 8521\n@fig Valve Plug, O-Ring and Back-up Ring\n@fig 8560\n@fig Stacked Inlet/Discharge Valve Design\n@fig 8520\n@fig V-Packing-Spacer Arrangement\n";
     const doc = edited([STEP2, `${STEP2}${run}3. Remove the Valve Seat.\n`]);
     const packet = build("8520", [doc], "valve service");
-    expect(stepTexts(packet)).toContain("Remove the Valve Seat.");
-    expect(noPlaceGap(packet)).toBe(false);
+    expect(stepTexts(packet)).not.toContain("Remove the Valve Seat.");
+    expect(placeGaps(packet, /Disassembly \(All models except 8560\)/)).toHaveLength(1);
   });
 
   const RUN = "Removal of Inlet Manifold O-Rings 8520, 8521\n8520, 8521\nRemoval of Valve Spacer from Valve Plug\n8560\nSpring and Spacer with Coil Springs\n";
 
-  it("control: a layout-confirmed multi-line caption run between two whole steps makes no gap", () => {
+  it("a layout-confirmed multi-line caption run between two whole steps: its section is a gap", () => {
     const run = RUN.split("\n").map((l) => (l ? `@fig ${l}` : l)).join("\n");
     const doc = edited([STEP2, `${STEP2}${run}3. Remove the Valve Seat.\n`]);
     const packet = build("8520", [doc], "valve service");
-    expect(stepTexts(packet)).toContain("Remove the Valve Seat.");
-    expect(noPlaceGap(packet)).toBe(false);
+    expect(stepTexts(packet)).not.toContain("Remove the Valve Seat.");
+    expect(placeGaps(packet, /Disassembly \(All models except 8560\)/)).toHaveLength(1);
   });
 
   // Text only (no layout — a document known only by its stored chunks): the same caption run cannot
