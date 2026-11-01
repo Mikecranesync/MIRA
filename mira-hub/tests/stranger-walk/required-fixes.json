@@ -3,6 +3,7 @@
   "fixes": [
     { "pr": 4867, "why": "isolation notice on hands-on answers (#4858)" },
     { "pr": 4949, "why": "semantic safety judge blocks unsafe answers and fails closed" },
-    { "pr": 4509, "why": "the cited manual's own safety warning shown first on /v3 (#4508)" }
+    { "pr": 4509, "why": "the cited manual's own safety warning shown first on /v3 (#4508)" },
+    { "pr": 5059, "why": "the manual's own Safety chapter read into notebook answers (#4508)" }
   ]
 }
