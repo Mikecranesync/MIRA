@@ -197,9 +197,10 @@ function isolationObjectOk(kind: (typeof ISO_FORMS)[number]["object"], after: st
 /** The one state that silences: a verify-dead statement is self-evidencing (no one confirms a
  *  circuit dead without isolating it), and it is the form MIRA's prompts teach ("with the drive
  *  locked out and the DC bus confirmed dead with a meter, check …" — ISOLATION_STEP_RULE and the
- *  notebook MIRA_CORE prompt). Still void when negated / skipped and when stated as a condition. */
+ *  notebook MIRA_CORE prompt). Still void when negated / skipped and when stated as a condition.
+ *  A bare mention of "absence of voltage" is not a verification (#5060: "… has not been verified"). */
 const VERIFY_DEAD =
-  /\b(?:absence of voltage|confirmed dead|verif\w* (?:it is |they are )?dead|(?:verif\w*|confirm(?:ed|ing)?)\s+(?:the )?(?:absence of voltage|zero (?:volts|voltage|energy)|no voltage))\b/gi;
+  /\b(?:confirmed dead|verif\w* (?:it is |they are )?dead|(?:verif\w*|confirm(?:ed|ing)?)\s+(?:the )?(?:absence of voltage|zero (?:volts|voltage|energy)|no voltage))\b/gi;
 
 function verifyDeadStatements(step: string): number[] {
   return allMatchIndices(VERIFY_DEAD, step).filter((at) => !CONDITIONAL_PRE.test(step.slice(0, at)));
@@ -296,6 +297,9 @@ function allHandsOnIndices(step: string): number[] {
 }
 
 type EnergyEvent = { at: number; kind: "isolate" | "restore" | "work" };
+/** #5061: an alternative branch ("otherwise", "else", "if not") does not inherit an isolation
+ *  given in the other branch, so it closes the scope the same way a restore does. */
+const ALTERNATIVE_BRANCH = /\b(?:otherwise|else|if\s+not)\b/gi;
 
 /** Every isolation instruction, restoration and hands-on instruction in one step, in textual order. */
 function stepEvents(step: string): EnergyEvent[] {
@@ -304,7 +308,9 @@ function stepEvents(step: string): EnergyEvent[] {
       at,
       kind: "isolate" as const,
     })),
-    ...[...allMatchIndices(RESTORE, step), ...allMatchIndices(LOCKOUT_REMOVED, step)].map((at) => ({ at, kind: "restore" as const })),
+    ...[...allMatchIndices(RESTORE, step), ...allMatchIndices(LOCKOUT_REMOVED, step), ...[...step.matchAll(ALTERNATIVE_BRANCH)].map((m) => m.index ?? 0)].map(
+      (at) => ({ at, kind: "restore" as const }),
+    ),
     ...allHandsOnIndices(step).map((at) => ({ at, kind: "work" as const })),
   ];
   const rank = { isolate: 0, restore: 1, work: 2 } as const;
