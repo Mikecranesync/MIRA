@@ -4,7 +4,7 @@
  * Why: the key held one page per question, but the large manuals state the same fact in a
  * description, a summary table and a troubleshooting table. The 2026-11-01 offline review of five
  * past walks found 18/41 WRONG_PAGE rows cited such a page. Each accepted page carries the verbatim
- * pdftotext line that proves it, checked against the sha-pinned PDF when the frozen cache is present.
+ * pdftotext line that proves it, checked against committed page text (and the PDF itself when cached).
  */
 import { describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
@@ -12,6 +12,7 @@ import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import corpusJson from "./corpus.json";
+import fixture from "./fixtures-accepted-pages.json";
 import { classify, pageAccepted, predict, type Corpus, type Observation, type Scored } from "./score";
 
 const corpus = corpusJson as Corpus;
@@ -43,16 +44,27 @@ describe("corpus acceptedPages", () => {
     }
   });
 
-  const cache = process.env.STRANGER_WALK_CACHE ?? path.join(os.homedir(), ".cache", "stranger-walk-manuals");
-  const pdftotext = ["/opt/homebrew/bin/pdftotext", "/usr/bin/pdftotext"].find((p) => existsSync(p));
-  const local = !!pdftotext && withAccepted.every((x) => existsSync(path.join(cache, `${manualOf(x.id).sha256}.pdf`)));
-  it.skipIf(!local)("each evidence line is on that page of the sha-pinned manual (needs the frozen cache)", () => {
+  // Always runs: each evidence line is on its committed page text (fixtures-accepted-pages.json),
+  // pinned to the corpus sha256. Where the frozen cache and pdftotext exist, the committed text is
+  // also re-derived from the PDF — a conditional assertion, not a skip (CI asserts passed == total).
+  it("each evidence line is on that page of the sha-pinned manual", () => {
     const norm = (t: string) => t.replace(/\s+/g, " ").trim();
+    const fx = fixture as { manuals: Record<string, string>; pages: Record<string, { mode: "raw" | "layout"; text: string }> };
+    const cache = process.env.STRANGER_WALK_CACHE ?? path.join(os.homedir(), ".cache", "stranger-walk-manuals");
+    const pdftotext = ["/opt/homebrew/bin/pdftotext", "/usr/bin/pdftotext"].find((p) => existsSync(p));
+    const listed = withAccepted.flatMap((x) => x.acceptedPages!.map((a) => `${manualOf(x.id).id}:${a.page}`));
+    expect(Object.keys(fx.pages).sort()).toEqual([...listed].sort());
     for (const x of withAccepted) {
-      const file = path.join(cache, `${manualOf(x.id).sha256}.pdf`);
+      const m = manualOf(x.id);
+      expect(fx.manuals[m.id], m.id).toBe(m.sha256);
       for (const a of x.acceptedPages!) {
-        const page = (layout: boolean) => norm(execFileSync(pdftotext!, [...(layout ? ["-layout"] : []), "-f", String(a.page), "-l", String(a.page), file, "-"], { encoding: "utf8" }));
-        expect(page(false).includes(norm(a.evidence)) || page(true).includes(norm(a.evidence)), `${x.id} p.${a.page}: "${a.evidence}"`).toBe(true);
+        const pg = fx.pages[`${m.id}:${a.page}`];
+        expect(pg.text.includes(norm(a.evidence)), `${x.id} p.${a.page}: "${a.evidence}"`).toBe(true);
+        const file = path.join(cache, `${m.sha256}.pdf`);
+        if (pdftotext && existsSync(file)) {
+          const fromPdf = norm(execFileSync(pdftotext, [...(pg.mode === "layout" ? ["-layout"] : []), "-f", String(a.page), "-l", String(a.page), file, "-"], { encoding: "utf8" }));
+          expect(fromPdf, `${x.id} p.${a.page}: committed text drifted from the PDF`).toBe(pg.text);
+        }
       }
     }
   });
