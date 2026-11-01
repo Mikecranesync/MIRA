@@ -9,7 +9,7 @@
  *      observation (append-only; a correction supersedes an earlier row).
  *
  * Mission 001. Flag `MIRA_OBSERVATION_STATE` off ⇒ 404. See
- * capabilities/observations/store.ts for the write and db/proposed/113 for the schema.
+ * capabilities/observations/store.ts for the write and db/migrations/113 for the schema.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";

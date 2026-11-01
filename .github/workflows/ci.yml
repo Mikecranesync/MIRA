@@ -1745,7 +1745,7 @@ jobs:
               - 'mira-hub/src/lib/cmms/**'
               - 'mira-hub/src/lib/atlas/**'
               - 'mira-hub/src/app/api/equipment-notebooks/[id]/fixes/**'
-              - 'mira-hub/db/proposed/113_asset_observations.sql'
+              - 'mira-hub/db/migrations/113_asset_observations.sql'
               - 'mira-hub/src/capabilities/observations/**'
               - 'mira-hub/src/app/api/equipment-notebooks/[id]/observations/**'
               - 'mira-hub/scripts/cmms-sync-worker.ts'
@@ -1793,7 +1793,7 @@ jobs:
 
       # Mission 001 (#5088): observation record + same-transaction event against the
       # same disposable DB. A separate step, AFTER the dispatcher suite, because its
-      # beforeAll applies the proposed migration 113 (widens the outbox event CHECK);
+      # beforeAll applies migration 113 (widens the outbox event CHECK);
       # running both files in parallel on one database would race that DDL.
       - name: Observation store suite (must RUN, not skip)
         if: steps.changes.outputs.outbox == 'true'

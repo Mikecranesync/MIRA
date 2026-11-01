@@ -395,8 +395,8 @@ capabilities:
       - "mira-hub/src/factorylm-ui/MachineObservations.tsx              # Machine state panel"
     environments:
       dev: unset
-      staging: unset
-      production: unset
+      staging: unset                        # forwarded by docker-compose.staging-vps.yml (default 0); Doppler stg not set
+      production: unset                     # not forwarded by docker-compose.saas.yml
     state: deployed_disabled
     owner: null
     owner_missing: "Mission 001 lane; owner assigned at promotion (Mike)."
@@ -406,9 +406,10 @@ capabilities:
     evidence: []
     rollback: "n/a — off in every environment; flag off returns 404 and leaves the chat prompt byte-identical."
     reason: >-
-      Migration 113 is still proposed (mira-hub/db/proposed/), not applied to any
-      shared database, and the flag is not forwarded by any compose file. Staging
-      enablement needs Mike to authorize promoting 113 and forwarding the flag.
+      Migration 113 is in mira-hub/db/migrations/ (Migration Verify applies it to
+      staging Neon when the promotion PR opens) and the staging compose forwards
+      MIRA_OBSERVATION_STATE with default 0. The flag is not set in Doppler stg, so
+      staging stays off until Mike authorizes that write and a staging deploy.
     promotion_criteria:
       - "Mike authorizes promoting 113 to db/migrations (staging auto-apply) and forwarding MIRA_OBSERVATION_STATE in the staging compose."
       - "Staging trace: confirm on a real asset, readback by a second technician, later chat answer carries the observedState frame."

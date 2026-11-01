@@ -3,7 +3,7 @@
  * Harness copied from cmms-dispatch/__tests__/dispatcher.integration.test.ts:
  * the real withTenantContext (SET LOCAL ROLE factorylm_app + RLS) runs against
  * a disposable database. Migration 113 is applied here, twice, from
- * db/proposed (never db/migrations).
+ * db/migrations (idempotency).
  *
  * Run (disposable DB only):
  *   TEST_DATABASE_URL=postgres://postgres@127.0.0.1:55433/m001 MIRA_TEST_DB_CONFIRM=DISPOSABLE \
@@ -39,7 +39,7 @@ import type { ValidatedObservationInput } from "../validate";
 import { enqueueFixRecordedEvent } from "@/capabilities/cmms-dispatch/enqueue";
 import { withTenantContext } from "@/lib/tenant-context";
 
-const MIGRATION = path.resolve(__dirname, "../../../../db/proposed/113_asset_observations.sql");
+const MIGRATION = path.resolve(__dirname, "../../../../db/migrations/113_asset_observations.sql");
 
 async function makeNotebook(tenantId: string, entityId: string | null, confirmed: boolean): Promise<string> {
   const res = await testPool.query<{ id: string }>(

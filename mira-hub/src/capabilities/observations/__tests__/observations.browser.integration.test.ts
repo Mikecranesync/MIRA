@@ -37,7 +37,7 @@ import { POST as previewRoute } from "@/app/api/equipment-notebooks/[id]/observa
 import { loadObservedStateForTurn } from "../turn-context";
 
 const HUB = path.resolve(__dirname, "../../../..");
-const MIGRATION = path.join(HUB, "db/proposed/113_asset_observations.sql");
+const MIGRATION = path.join(HUB, "db/migrations/113_asset_observations.sql");
 const SHOTS = process.env.MIRA_PROOF_SHOTS ?? path.resolve(HUB, "../docs/promo-screenshots");
 const TENANT = uuid();
 const OTHER_TENANT = uuid();

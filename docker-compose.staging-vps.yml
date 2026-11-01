@@ -392,6 +392,10 @@ services:
       - SLACK_CLIENT_ID=${SLACK_CLIENT_ID:-}
       # Visual Focus Workspace (PR V2): optional HMAC secret for signed evidence-view tokens (fail-closed when unset).
       - VISUAL_EVIDENCE_SIGNING_SECRET=${VISUAL_EVIDENCE_SIGNING_SECRET:-}
+      # Mission 001 (#5088) technician observation state. OFF unless
+      # MIRA_OBSERVATION_STATE=1 (the routes 404 and the chat section is absent
+      # otherwise). Staging only; docker-compose.saas.yml does not forward it.
+      - MIRA_OBSERVATION_STATE=${MIRA_OBSERVATION_STATE:-0}
       - SLACK_CLIENT_SECRET=${SLACK_CLIENT_SECRET:-}
       # SLACK_BOT_TOKEN is intentionally omitted — the prod bot polls with the
       # same token and a second connection would dual-poll. The hub status
