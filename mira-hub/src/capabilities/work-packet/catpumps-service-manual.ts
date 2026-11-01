@@ -192,7 +192,7 @@ function topicFor(heading: string): Topic | "other" {
 interface SubheadingMatch {
   text: string;
   scope: ModelScope;
-  /** true for a bare model-list header nested under a Disassembly/Reassembly phase. */
+  /** true for a model-list or hardware-variant header nested under a Disassembly/Reassembly phase. */
   nested?: boolean;
   /** false for case 4 — the scope could not be resolved locally; caller records a `problems` note. */
   scopeKnown: boolean;
@@ -217,8 +217,10 @@ function matchSubheading(line: string): SubheadingMatch | null {
     // "Lo-Pressure Seal-All Models:" applies to every model; "Hi-Pressure Seal Models:" /
     // "V-Packing Models:" are alternative hardware variants — which one this pump has is not
     // stated, so that block is unresolved, not "all".
-    if (/all\s+models$/i.test(labelModels[1])) return { text: line, scope: scopeAll(), scopeKnown: true };
-    return { text: line, scope: scopeUnresolved(), scopeKnown: false };
+    // Both sit inside the current Disassembly/Reassembly phase, so they keep its model restriction
+    // (Codex #5062 F9).
+    if (/all\s+models$/i.test(labelModels[1])) return { text: line, scope: scopeAll(), scopeKnown: true, nested: true };
+    return { text: line, scope: scopeUnresolved(), scopeKnown: false, nested: true };
   }
   return null;
 }

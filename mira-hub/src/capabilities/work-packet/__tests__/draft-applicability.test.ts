@@ -19,8 +19,8 @@ function docFromText(raw: string, name: string, docId: string): DocText {
 
 const docFromFixture = (name: string, docId: string) => docFromText(FIXTURES[name], name, docId);
 
-function build(model: string, docs: DocText[], description: string): DraftPacket {
-  const identity: Identity = { manufacturer: "CAT Pumps", model, catalogNumber: null, serialNumber: null, status: "user_confirmed", confidence: 0.9 };
+function attempt(model: string, docs: DocText[], description: string, catalogNumber: string | null = null) {
+  const identity: Identity = { manufacturer: "CAT Pumps", model, catalogNumber, serialNumber: null, status: "user_confirmed", confidence: 0.9 };
   const input: DraftInput = {
     notebookId: "11111111-1111-4111-8111-111111111111",
     packetId: "pk-1",
@@ -30,7 +30,11 @@ function build(model: string, docs: DocText[], description: string): DraftPacket
     docs,
     hazardFlags: [],
   };
-  const result = buildDraftPacket(input);
+  return buildDraftPacket(input);
+}
+
+function build(model: string, docs: DocText[], description: string, catalogNumber: string | null = null): DraftPacket {
+  const result = attempt(model, docs, description, catalogNumber);
   expect(result.ok).toBe(true);
   if (!result.ok) throw new Error("refused");
   return result.packet;
@@ -104,5 +108,63 @@ describe("F3 — kits are filtered by the models each kit row names", () => {
   it("control: 9XP1000 gets both kits", () => {
     const packet = build("9XP1000", ds(), "reseal and valve service");
     expect(kitNumbers(packet)).toEqual(expect.arrayContaining(["300001", "400001"]));
+  });
+});
+
+const M35 = FIXTURES["manual-35style.txt"];
+const stepTexts = (p: DraftPacket) => p.steps.map((x) => x.text.value);
+
+describe("F8 — torque conflicts are resolved across all attached manuals", () => {
+  it("two manuals giving 8560 different Plunger Retainer torques: neither is shown, the conflict is listed", () => {
+    const other = docFromText(M35.replace("Model 8560 Only M7 M14 Hex 90 7.5 10", "Model 8560 Only M7 M14 Hex 120 10 13.56"), "other.txt", "sm2");
+    const packet = build("8560", [docFromFixture("manual-35style.txt", "sm"), other], "replace plungers");
+    expect(plungerRetainer(packet)).toEqual([]);
+    expect(packet.unknowns.some((u) => /more than one value for 'Plunger Retainer'/.test(u.basis))).toBe(true);
+  });
+
+  it("control: the same value in two manuals is shown once", () => {
+    const packet = build("8560", [docFromFixture("manual-35style.txt", "sm"), docFromFixture("manual-35style.txt", "sm2")], "replace plungers");
+    expect(plungerRetainer(packet)).toHaveLength(1);
+    expect(plungerRetainer(packet)[0]).toContain("90 in-lbs");
+  });
+});
+
+describe("F9 — a hardware heading keeps the model restriction of the phase it sits in", () => {
+  const withBlock = (phase: string) =>
+    docFromText(
+      M35.replace(
+        "Reassembly (All models except 8560)",
+        `${phase}\nLo-Pressure Seal-All Models:\n1. Only 8520 low pressure step.\nReassembly (All models except 8560)`,
+      ),
+      "manual-35style.txt",
+      "sm",
+    );
+
+  it("under 'Reassembly (Model 8520)': shown for 8520, never for 8560", () => {
+    expect(stepTexts(build("8520", [withBlock("Reassembly (Model 8520)")], "valve service"))).toContain("Only 8520 low pressure step.");
+    expect(stepTexts(build("8560", [withBlock("Reassembly (Model 8520)")], "valve service"))).not.toContain("Only 8520 low pressure step.");
+  });
+
+  it("under 'Reassembly (All models except 8560)': excluded for 8560", () => {
+    const doc = withBlock("Reassembly (All models except 8560)");
+    expect(stepTexts(build("8560", [doc], "valve service"))).not.toContain("Only 8520 low pressure step.");
+    expect(stepTexts(build("8520", [doc], "valve service"))).toContain("Only 8520 low pressure step.");
+  });
+});
+
+describe("F10 — restrictions are judged against the identifier the documents name", () => {
+  it("model '85PFR' + catalog '8560' gives the same torque and steps as model '8560'", () => {
+    const viaCatalog = build("85PFR", [docFromFixture("manual-35style.txt", "sm")], "replace plungers and valve service", "8560");
+    const direct = build("8560", [docFromFixture("manual-35style.txt", "sm")], "replace plungers and valve service");
+    expect(plungerRetainer(viaCatalog)).toEqual(plungerRetainer(direct));
+    expect(plungerRetainer(viaCatalog)[0]).toContain("90 in-lbs");
+    expect(stepTexts(viaCatalog)).toEqual(stepTexts(direct));
+    expect(stepTexts(viaCatalog)).not.toContain("Remove the six (6) M41 Hex Valve Plugs.");
+  });
+
+  it("model and catalog number naming two different documented pumps is refused", () => {
+    const r = attempt("8520", [docFromFixture("manual-35style.txt", "sm")], "replace plungers", "8560");
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe("identity_not_confirmed");
   });
 });

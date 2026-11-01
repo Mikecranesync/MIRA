@@ -251,6 +251,20 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
     );
   }
 
+  // The identifier the documents actually name (Codex #5062 F10): model and section/torque
+  // restrictions are judged against it, never against a family name the documents don't list.
+  const namedInDocs = (k: string) =>
+    applicableManuals.some((p) => p.manual.modelsCovered.some((m) => modelsMatch(m, k))) ||
+    applicableDataSheets.some((p) => p.dataSheet.models.some((m) => modelsMatch(m, k)));
+  const matchedKeys = identityKeys(identity).filter(namedInDocs);
+  if (matchedKeys.length > 1 && !modelsMatch(matchedKeys[0], matchedKeys[1])) {
+    return refuse(
+      "identity_not_confirmed",
+      `The model "${matchedKeys[0]}" and catalog number "${matchedKeys[1]}" name different pumps in the attached documents. Confirm which one this pump is before drafting a job packet.`,
+    );
+  }
+  const scopeKey = matchedKeys[0] ?? modelKey ?? "";
+
   const matches = selectTopics(`${workOrder.title} ${workOrder.description}`);
   const selectedTopics = Array.from(new Set(matches.map((m) => m.topic)));
   if (selectedTopics.length === 0) {
@@ -395,7 +409,7 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
         });
         continue;
       }
-      if (!modelScopeAdmits(section.models, modelKey ?? "")) continue;
+      if (!modelScopeAdmits(section.models, scopeKey)) continue;
       for (const step of section.steps) {
         steps.push({
           section: section.heading,
@@ -415,20 +429,22 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
   const measurements: PacketMeasurement[] = [];
   const torqueTools = new Map<string, Field>();
 
-  for (const p of applicableManuals) {
-    const torqueKey = (item: string) => item.toUpperCase().replace(/\s+/g, " ").trim();
-    const admitted = p.manual.torque.filter((row) => modelScopeAdmits(row.models, modelKey ?? ""));
-    // A model-specific row ("Model 8560 Only") replaces the chart's general row for that model.
-    const overridden = new Set(admitted.filter((r) => r.models.include.length > 0).map((r) => torqueKey(r.item)));
-    const effective = admitted.filter((r) => r.models.include.length > 0 || !overridden.has(torqueKey(r.item)));
-    // Two rows still left for one item with different values: neither is safe to show as Verified.
-    const valuesByItem = new Map<string, Set<string>>();
-    for (const r of effective) {
-      const k = torqueKey(r.item);
-      if (!valuesByItem.has(k)) valuesByItem.set(k, new Set());
-      valuesByItem.get(k)!.add(`${r.inLbs}|${r.ftLbs}|${r.nm}`);
-    }
-    const reportedConflict = new Set<string>();
+  // Torque rows from every applicable manual are resolved together (Codex #5062 F8): a
+  // model-specific row ("Model 8560 Only") replaces the general row for that model, and two
+  // different values left for one item — in one manual or across manuals — are never shown.
+  const torqueKey = (item: string) => item.toUpperCase().replace(/\s+/g, " ").trim();
+  const admitted = applicableManuals.flatMap((p) => p.manual.torque.filter((row) => modelScopeAdmits(row.models, scopeKey)));
+  const overridden = new Set(admitted.filter((r) => r.models.include.length > 0).map((r) => torqueKey(r.item)));
+  const effective = admitted.filter((r) => r.models.include.length > 0 || !overridden.has(torqueKey(r.item)));
+  const valuesByItem = new Map<string, Set<string>>();
+  for (const r of effective) {
+    const k = torqueKey(r.item);
+    if (!valuesByItem.has(k)) valuesByItem.set(k, new Set());
+    valuesByItem.get(k)!.add(`${r.inLbs}|${r.ftLbs}|${r.nm}`);
+  }
+  const reportedConflict = new Set<string>();
+  const emittedItem = new Set<string>();
+  {
     for (const row of effective) {
       const conflictKey = torqueKey(row.item);
       if ((valuesByItem.get(conflictKey)?.size ?? 0) > 1) {
@@ -457,6 +473,8 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
         });
         continue;
       }
+      if (emittedItem.has(torqueKey(row.item))) continue; // same value from a second manual
+      emittedItem.add(torqueKey(row.item));
       const valueParts = [row.inLbs ? `${row.inLbs} in-lbs` : null, row.ftLbs ? `${row.ftLbs} ft-lbs` : null, row.nm ? `${row.nm} Nm` : null].filter(
         (v): v is string => v !== null,
       );
