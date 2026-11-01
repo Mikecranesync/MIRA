@@ -41,6 +41,7 @@ import {
   measurementFieldPath,
   packetForNotebook,
   packetHeaderRows,
+  packetStaleReason,
   partFieldPath,
   printTitle,
   scopeFieldPath,
@@ -165,6 +166,7 @@ function newId(): string {
 const REFUSAL_LABEL: Record<DraftRefusal, string> = {
   safety_stop: "Stopped",
   identity_not_confirmed: "Identity not confirmed",
+  manufacturer_not_supported: "Manufacturer not supported",
   no_documents: "No documents attached",
   unsupported_documents: "Unsupported documents",
   model_not_in_documents: "Model not in documents",
@@ -498,13 +500,15 @@ export function WorkPacketPanel({
   }, [notebookId, by]);
 
   // ── Export PDF ────────────────────────────────────────────────────────────────────────────────
+  const stale = packet && avail ? packetStaleReason(packet, avail) : null;
+
   const onExport = useCallback(() => {
-    if (!packet) return;
+    if (!packet || stale) return;
     const prior = document.title;
     document.title = printTitle(packet);
     window.print();
     document.title = prior;
-  }, [packet]);
+  }, [packet, stale]);
 
   const identity = avail?.identity;
   const identityConfirmed = identity?.status === "user_confirmed" || identity?.status === "verified";
@@ -665,6 +669,12 @@ export function WorkPacketPanel({
             {/* ── (5) Packet view ───────────────────────────────────────────────────────── */}
             {packet && (
               <div data-testid="wp-packet">
+                {stale && (
+                  // Printed too: a stale packet that reaches paper by the browser's own print still says so.
+                  <div role="alert" style={{ ...S.fault, marginBottom: 8 }} data-testid="wp-stale">
+                    <strong>Out of date — do not use.</strong> This packet was saved on this device, and {stale}. Build the packet again before exporting it.
+                  </div>
+                )}
                 {packet.workOrder.synthetic && <div style={S.stamp} data-testid="wp-synthetic-stamp">SYNTHETIC — not a real job</div>}
                 <PacketHeader packet={packet} />
                 <div style={S.warn} data-testid="wp-disclaimer">{packet.disclaimer}</div>
@@ -753,7 +763,13 @@ export function WorkPacketPanel({
                   <div style={{ marginTop: 10 }}>Supervisor signature: ______________________________  Date: ____________</div>
                 </section>
 
-                <button type="button" style={{ ...S.btn, ...S.primary }} data-no-print data-testid="wp-export" onClick={onExport}>Export PDF</button>
+                <button
+                  type="button" data-no-print data-testid="wp-export"
+                  style={{ ...S.btn, ...S.primary, ...(stale ? { opacity: 0.45, cursor: "not-allowed" } : {}) }}
+                  disabled={stale !== null} onClick={onExport}
+                >
+                  Export PDF
+                </button>
               </div>
             )}
           </div>

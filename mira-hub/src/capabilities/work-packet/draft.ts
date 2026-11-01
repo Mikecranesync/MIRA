@@ -33,6 +33,7 @@ import type {
   WorkPacket,
 } from "./types";
 import { documentRevision } from "./revision";
+import { isSupportedManufacturer, manufacturerRefusalMessage } from "./manufacturer";
 import { parseCatPumpsDataSheet, sheetModelFor } from "./catpumps-datasheet";
 import { parseCatPumpsServiceManual } from "./catpumps-service-manual";
 import { collectFields, verifyPacket } from "./verify";
@@ -221,6 +222,9 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
 
   if (identity.status !== "user_confirmed" && identity.status !== "verified") {
     return refuse("identity_not_confirmed", "Confirm the equipment's identity (manufacturer and model) before drafting a job packet.");
+  }
+  if (!isSupportedManufacturer(identity.manufacturer)) {
+    return refuse("manufacturer_not_supported", manufacturerRefusalMessage(identity.manufacturer));
   }
   if (docs.length === 0) {
     return refuse(
@@ -422,6 +426,21 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
           },
         });
       }
+    }
+  }
+
+  // Sections the parser detected but had to leave out (Codex #5062 F12): the packet says which
+  // work is missing instead of quietly showing only the part that survived extraction.
+  for (const p of applicableManuals) {
+    for (const o of p.manual.omitted ?? []) {
+      if (o.topic === "other" || !selectedTopics.includes(o.topic)) continue;
+      if (!o.models.unresolved && !modelScopeAdmits(o.models, scopeKey)) continue;
+      unknowns.push({
+        value: null,
+        label: "unknown",
+        source: o.source,
+        basis: `${o.heading} — ${o.subheading ?? "section"} (p.${o.page}): these steps could not be read reliably from the manual (${o.reason}). Steps left out; use the manual directly for this part.`,
+      });
     }
   }
 

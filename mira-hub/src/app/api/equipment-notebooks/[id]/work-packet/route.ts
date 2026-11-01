@@ -5,7 +5,7 @@
  *        document classified (CAT Pumps data sheet / service manual / other)
  *        with the pages its model was found on, and — when a draft could NOT
  *        yet be built — the first of the non-text-dependent refusals
- *        (`identity_not_confirmed` | `no_documents` | `unsupported_documents` |
+ *        (`identity_not_confirmed` | `manufacturer_not_supported` | `no_documents` | `unsupported_documents` |
  *        `model_not_in_documents`). `no_task_matched` is deliberately NOT
  *        evaluated here: it depends on the work-order text, which does not
  *        exist until POST, and reporting it on every GET (before the
@@ -46,6 +46,7 @@ import { loadNotebookDocTexts } from "@/capabilities/work-packet/document-text";
 import { parseCatPumpsDataSheet, sheetModelFor } from "@/capabilities/work-packet/catpumps-datasheet";
 import { parseCatPumpsServiceManual } from "@/capabilities/work-packet/catpumps-service-manual";
 import { buildDraftPacket } from "@/capabilities/work-packet/draft";
+import { isSupportedManufacturer, manufacturerRefusalMessage } from "@/capabilities/work-packet/manufacturer";
 import { documentRevision } from "@/capabilities/work-packet/revision";
 import type {
   DataSheet,
@@ -144,6 +145,9 @@ function availabilityBlocking(
       reason: "identity_not_confirmed",
       message: "Confirm this machine's identity before preparing a job packet.",
     };
+  }
+  if (!isSupportedManufacturer(identity.manufacturer)) {
+    return { reason: "manufacturer_not_supported", message: manufacturerRefusalMessage(identity.manufacturer) };
   }
   if (classified.length === 0) {
     return {

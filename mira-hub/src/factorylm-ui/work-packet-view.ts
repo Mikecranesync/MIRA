@@ -5,7 +5,7 @@
  * a value, so it is tested without a browser or a server. `WorkPacketPanel.tsx` wires these to
  * fetch, component state, and rendering; it never duplicates the logic that lives here.
  */
-import type { Label, PacketDocument, SourceRef, WorkOrderInput, WorkPacket } from "@/capabilities/work-packet/types";
+import type { Label, PacketDocument, SourceRef, WorkOrderInput, WorkPacket, WorkPacketAvailability } from "@/capabilities/work-packet/types";
 
 // ───────────────────────────────────────────── label → badge text
 
@@ -141,6 +141,32 @@ export function packetForNotebook(packet: WorkPacket | null, notebookId: string)
  *  earlier "revisions match my paper copy" tick no longer applies and is cleared. */
 export function documentsSignature(docs: Pick<PacketDocument, "docId" | "revision">[]): string {
   return docs.map((d) => `${d.docId}@${d.revision?.value ?? ""}`).join("|");
+}
+
+/** Why a saved packet no longer matches the notebook it is shown under, or null when it still does
+ *  (Codex #5062 F13). A packet restored from this device was built from the documents and identity
+ *  of that moment; if a manual was replaced, removed or re-revised since, or the machine was
+ *  re-identified, the old packet is not exported as current. Edits are kept on screen. */
+export function packetStaleReason(
+  packet: Pick<WorkPacket, "documents" | "equipment">,
+  avail: Pick<WorkPacketAvailability, "identity" | "documents">,
+): string | null {
+  const sig = (docs: Pick<PacketDocument, "docId" | "revision">[]) =>
+    documentsSignature([...docs].sort((a, b) => (a.docId < b.docId ? -1 : a.docId > b.docId ? 1 : 0)));
+  if (sig(packet.documents) !== sig(avail.documents)) {
+    return "the notebook's documents or their revisions have changed since this packet was built";
+  }
+  const norm = (v: string | null | undefined) => (v ?? "").trim().toLowerCase();
+  const mfr = packet.equipment.manufacturer.value;
+  if (mfr !== null && norm(mfr) !== norm(avail.identity.manufacturer)) {
+    return "the machine's confirmed manufacturer has changed since this packet was built";
+  }
+  const model = packet.equipment.model.value;
+  const current = [avail.identity.model, avail.identity.catalogNumber].map(norm);
+  if (model !== null && !current.includes(norm(model))) {
+    return "the machine's confirmed model has changed since this packet was built";
+  }
+  return null;
 }
 
 // ───────────────────────────────────────────── job header (screen + paper, Codex #5062 F6)
