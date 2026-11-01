@@ -114,7 +114,15 @@ const PRINT_CSS = `
 @media print {
   body * { visibility: hidden; }
   .wp-print-root, .wp-print-root * { visibility: visible; }
-  .wp-print-root { position: absolute; left: 0; top: 0; width: 100%; }
+  html, body { height: auto !important; overflow: visible !important; }
+  /* The open packet lives in a full-height modal <dialog> whose sheet scrolls; on paper both must
+     grow with the content or only the visible scroll window prints (one page). */
+  dialog[data-testid="wp-dialog"] {
+    position: absolute !important; inset: 0 auto auto 0 !important; margin: 0 !important;
+    width: 100% !important; max-width: none !important; height: auto !important; max-height: none !important;
+    overflow: visible !important;
+  }
+  .wp-print-root { position: static !important; height: auto !important; overflow: visible !important; }
   .wp-print-root [data-no-print] { display: none !important; }
   .wp-watermark { display: block !important; }
 }
@@ -610,7 +618,7 @@ export function WorkPacketPanel({
               >
                 Build draft packet
               </button>
-              {!revConfirmed && (
+              {!revConfirmed && (avail?.documents.length ?? 0) > 0 && (
                 <div style={{ ...S.muted, marginTop: 8 }} data-testid="wp-rev-needed">
                   Confirm the machine and the manual revisions above before building.
                 </div>
@@ -630,9 +638,16 @@ export function WorkPacketPanel({
                 {packet.workOrder.synthetic && <div style={S.stamp} data-testid="wp-synthetic-stamp">SYNTHETIC — not a real job</div>}
                 <div style={S.warn} data-testid="wp-disclaimer">{packet.disclaimer}</div>
                 {warnings.length > 0 && (
-                  <div style={{ ...S.muted, marginTop: 8 }} data-testid="wp-warnings">
-                    {warnings.map((w, i) => <div key={i}>{w}</div>)}
-                  </div>
+                  // Every warning is a verifyPacket line check; each such line is already shown below
+                  // as Unknown with its reason. On paper only the count prints.
+                  <details style={{ ...S.muted, marginTop: 8 }} data-testid="wp-warnings">
+                    <summary>
+                      {warnings.length === 1 ? "1 line" : `${warnings.length} lines`} from the manuals could not be
+                      checked word-for-word against their source line, so they are marked Unknown below. Check
+                      those against the manual.
+                    </summary>
+                    <div data-no-print>{warnings.map((w, i) => <div key={i}>{w}</div>)}</div>
+                  </details>
                 )}
                 {packet.safety.hazardFlags.map((h, i) => <div key={i} style={{ ...S.warn, marginTop: 8 }} data-testid={`wp-hazard-${i}`}>{h}</div>)}
 
