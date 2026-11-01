@@ -37,7 +37,10 @@ import {
   cautionFieldPath,
   confirmedRevisionsPayload,
   confidencePercent,
+  documentsSignature,
   measurementFieldPath,
+  packetForNotebook,
+  packetHeaderRows,
   partFieldPath,
   printTitle,
   scopeFieldPath,
@@ -124,8 +127,10 @@ const PRINT_CSS = `
   }
   .wp-print-root { position: static !important; height: auto !important; overflow: visible !important; }
   .wp-print-root [data-no-print] { display: none !important; }
+  .wp-print-root .wp-print-only { display: block !important; }
   .wp-watermark { display: block !important; }
 }
+.wp-print-only { display: none; }
 .wp-watermark {
   display: none;
   position: fixed; top: 35%; left: 8%; font-size: 90px; font-weight: 800;
@@ -173,7 +178,7 @@ const EMPTY_WO: WOFields = { id: "", title: "", description: "", assetTag: "", s
 /** One editable/citable field row, used for every section the task lists as editable (Scope,
  *  Parts & kits, Tools, Steps, Torque/measurements, Unknowns). Equipment and site isolation are
  *  rendered separately (read-only) — see their own call sites below. */
-function FieldRow({
+export function FieldRow({
   path, field, onEdit, onOpenSource, busy,
 }: {
   path: string;
@@ -202,6 +207,8 @@ function FieldRow({
           {chip}
         </button>
       )}
+      {/* The chip is a button and is hidden on paper; the PDF still says where each line came from. */}
+      {chip && <div className="wp-print-only" style={S.muted} data-testid="wp-print-source">Source: {chip}</div>}
       {chip && !onOpenSource && expanded && <div style={S.muted}>{field.source!.line}</div>}
       {editing ? (
         <div data-no-print>
@@ -218,6 +225,17 @@ function FieldRow({
         </div>
       )}
     </div>
+  );
+}
+
+/** Which job and which machine this packet is for — on screen and on the PDF (Codex #5062 F6). */
+export function PacketHeader({ packet }: { packet: Pick<WorkPacket, "workOrder" | "equipment"> }) {
+  return (
+    <section style={S.section} data-testid="wp-packet-header">
+      {packetHeaderRows(packet).map((r) => (
+        <div key={r.label}><strong>{r.label}:</strong> {r.value}</div>
+      ))}
+    </section>
   );
 }
 
@@ -255,20 +273,26 @@ export function WorkPacketPanel({
   const by = technicianName && technicianName.trim() ? technicianName.trim() : "technician (Hub panel)";
 
   const baseUrl = `${API_BASE}/api/equipment-notebooks/${encodeURIComponent(notebookId)}/work-packet/`;
+  // The notebook this panel is showing right now. A response that arrives after the technician
+  // moved to another notebook is dropped, never shown under the new machine (Codex #5062 F4).
+  const liveNotebook = useRef(notebookId);
+  liveNotebook.current = notebookId;
 
   const refreshAvailability = useCallback(async () => {
     try {
       const res = await fetch(baseUrl, { credentials: "include", headers: { accept: "application/json" } });
+      if (liveNotebook.current !== notebookId) return;
       if (!res.ok) {
         setAvail(null);
         return;
       }
       const body = (await res.json()) as WorkPacketAvailability;
+      if (liveNotebook.current !== notebookId) return;
       setAvail(body);
     } catch {
       setAvail(null);
     }
-  }, [baseUrl]);
+  }, [baseUrl, notebookId]);
 
   useEffect(() => {
     setAvail(null);
@@ -389,7 +413,9 @@ export function WorkPacketPanel({
   const [synthetic, setSynthetic] = useState(false);
   // The technician confirms the machine AND the manual revisions before a draft can be built.
   const [revConfirmed, setRevConfirmed] = useState(false);
-  useEffect(() => setRevConfirmed(false), [notebookId]);
+  // A changed document list or revision voids an earlier "matches my paper copy" tick (Codex #5062 F5).
+  const docsSig = documentsSignature(avail?.documents ?? []);
+  useEffect(() => setRevConfirmed(false), [notebookId, docsSig]);
 
   const loadSyntheticDemo = useCallback(() => {
     const demo = syntheticDemoWorkOrder(newId());
@@ -398,14 +424,14 @@ export function WorkPacketPanel({
   }, []);
 
   // ── Build draft packet ────────────────────────────────────────────────────────────────────────
-  const [packet, setPacket] = useState<WorkPacket | null>(() => loadDraft(notebookId));
+  const [packet, setPacket] = useState<WorkPacket | null>(() => packetForNotebook(loadDraft(notebookId), notebookId));
   const [warnings, setWarnings] = useState<string[]>([]);
   const [refusal, setRefusal] = useState<{ reason: DraftRefusal; message: string } | null>(null);
   const [buildBusy, setBuildBusy] = useState(false);
   const [editBusy, setEditBusy] = useState(false);
 
   useEffect(() => {
-    setPacket(loadDraft(notebookId));
+    setPacket(packetForNotebook(loadDraft(notebookId), notebookId));
   }, [notebookId]);
 
   const onBuild = useCallback(async () => {
@@ -441,6 +467,7 @@ export function WorkPacketPanel({
         setRefusal({ reason: data.reason, message: data.message });
         return;
       }
+      if (liveNotebook.current !== notebookId || data.packet.notebookId !== notebookId) return;
       setPacket(data.packet);
       setWarnings(data.warnings);
       saveDraft(notebookId, data.packet);
@@ -488,7 +515,7 @@ export function WorkPacketPanel({
   return (
     <>
       <style data-testid="work-packet-print-css">{PRINT_CSS}</style>
-      <button type="button" ref={openerRef} data-testid="wp-open" style={S.pill} onClick={() => setOpen(true)}>{pillLabel}</button>
+      <button type="button" ref={openerRef} data-testid="wp-open" style={S.pill} onClick={() => { setOpen(true); void refreshAvailability(); }}>{pillLabel}</button>
       <dialog
         ref={dialogRef}
         style={S.dialog}
@@ -637,6 +664,7 @@ export function WorkPacketPanel({
             {packet && (
               <div data-testid="wp-packet">
                 {packet.workOrder.synthetic && <div style={S.stamp} data-testid="wp-synthetic-stamp">SYNTHETIC — not a real job</div>}
+                <PacketHeader packet={packet} />
                 <div style={S.warn} data-testid="wp-disclaimer">{packet.disclaimer}</div>
                 {warnings.length > 0 && (
                   // Every warning is a verifyPacket line check; each such line is already shown below
