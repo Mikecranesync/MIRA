@@ -9,7 +9,7 @@ if (process.env.MIRA_TEST_DB_CONFIRM !== "DISPOSABLE" || !url || !["127.0.0.1", 
 const dir = path.resolve(__dirname, "../../../../db");
 const sql = {
   111: readFileSync(path.join(dir, "migrations/111_notebook_domain_events_outbox.sql"), "utf8"),
-  113: readFileSync(path.join(dir, "proposed/113_asset_observations.sql"), "utf8"),
+  113: readFileSync(path.join(dir, "migrations/113_asset_observations.sql"), "utf8"),
   114: readFileSync(path.join(dir, "migrations/114_living_work_sheet.sql"), "utf8"),
 };
 const kinds = ["fix_recorded", "observation_recorded", "job_finished", "work_order_requested"];

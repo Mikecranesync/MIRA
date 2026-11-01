@@ -1,7 +1,7 @@
 /**
  * Technician observations — the writer and the asset-scoped reader.
  *
- * Schema: db/proposed/113_asset_observations.sql (append-only, RLS UUID family).
+ * Schema: db/migrations/113_asset_observations.sql (append-only, RLS UUID family).
  * Same shape as capabilities/fix-records.ts::insertFixRecord: one
  * withTenantContext transaction, the binding checked IN the insert statement
  * (FOR SHARE), idempotency keyed on (tenant, client_request_id) with a request
