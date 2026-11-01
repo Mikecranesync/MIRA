@@ -323,6 +323,41 @@ describe("F15 — text after a step or caution that cannot be placed turns that 
     expect(gap[0].basis).toContain("only after relieving");
   });
 
+  // Round 6: a figure caption (model list + title) between a block and its rest ends at the first
+  // line that is not a caption title; that line is then accounted for like any other.
+  const CAPTION = "8520, 8521\nRemoval of Valve Plug\n";
+
+  it("a step interrupted by a caption on the same page: its section is a gap", () => {
+    const doc = edited([STEP2, `2. Remove the valve plug (M41)\n${CAPTION}only after relieving all system pressure.\n`]);
+    const packet = build("8520", [doc], "valve service");
+    expect(stepTexts(packet).some((t) => (t ?? "").startsWith("Remove the valve plug"))).toBe(false);
+    const gap = placeGaps(packet, /Disassembly \(All models except 8560\)/);
+    expect(gap).toHaveLength(1);
+    expect(gap[0].basis).toContain("only after relieving");
+  });
+
+  it("a split step whose next page starts with a caption: its section is a gap", () => {
+    const doc = edited([STEP2, `2. Remove the valve plug (M41)\n===== PAGE 3 =====\n${CAPTION}only after relieving all system pressure.\n`]);
+    const packet = build("8520", [doc], "valve service");
+    expect(stepTexts(packet).some((t) => (t ?? "").startsWith("Remove the valve plug"))).toBe(false);
+    expect(placeGaps(packet, /Disassembly \(All models except 8560\)/)).toHaveLength(1);
+  });
+
+  it("a caution interrupted by a caption on the same page: unknown in Safety, not verified", () => {
+    const doc = edited([CAUTION_TAIL, `shut off drive (electric motor)\n${CAPTION}and relieve all discharge pressure.\n`]);
+    const packet = build("8520", [doc], "valve service");
+    expect(packet.safety.cautions.some((c) => c.label === "verified" && (c.value ?? "").startsWith("Before commencing"))).toBe(false);
+    expect(packet.safety.cautions.filter((c) => c.label === "unknown" && /CAUTION on p\.2 .*could not be placed/.test(c.basis ?? ""))).toHaveLength(1);
+  });
+
+  it("control: a multi-line caption run between two whole steps makes no gap", () => {
+    const run = "Removal of Inlet Manifold O-Rings 8520, 8521\n8520, 8521\nRemoval of Valve Spacer from Valve Plug\n8560\nSpring and Spacer with Coil Springs\n";
+    const doc = edited([STEP2, `${STEP2}${run}3. Remove the Valve Seat.\n`]);
+    const packet = build("8520", [doc], "valve service");
+    expect(stepTexts(packet)).toContain("Remove the Valve Seat.");
+    expect(noPlaceGap(packet)).toBe(false);
+  });
+
   it("control: the intact manual keeps the step and the caution as verified", () => {
     const packet = build("8520", [docFromFixture("manual-35style.txt", "sm")], "valve service");
     expect(stepTexts(packet)).toContain("Remove the exposed Coil Spring from the top of the Spring Retainer.");
