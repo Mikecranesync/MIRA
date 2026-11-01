@@ -134,6 +134,21 @@ describe("safetyChapterPage", () => {
   });
 });
 
+describe("SAFETY_CHAPTER_REF_SQL", () => {
+  // The fake client applies the SQL pattern as a JS regex; the same pattern is checked on real Postgres in the PR.
+  const sql = new RegExp(SAFETY_CHAPTER_REF_SQL, "i");
+  it("agrees with the JS matcher on page tokens (#5066)", () => {
+    for (const t of ["chapter Safety on page 17A", "chapter Safety on page 12345", "subchapter Safety on page 17"]) {
+      expect(safetyChapterPage(t)).toBeNull();
+      expect(sql.test(t)).toBe(false);
+    }
+    for (const t of ["chapter Safety on page 17", 'see chapter "Safety" on page 9.', "chapter Safety on page\n17."]) {
+      expect(safetyChapterPage(t)).not.toBeNull();
+      expect(sql.test(t)).toBe(true);
+    }
+  });
+});
+
 describe("retrieveSafetyChapterChunks", () => {
   it("acs355-q3: the retrieved fan page's reference adds the p.18 warning, after the retrieved chunks", async () => {
     const client = fakeClient(CORPUS);
@@ -157,6 +172,16 @@ describe("retrieveSafetyChapterChunks", () => {
     expect(added[0].content).toMatch(/external control circuits/i);
     const lookup = client.calls.find((c) => c.sql.includes("DISTINCT ON"))!;
     expect(lookup.params[1]).toEqual([DOC]);
+  });
+
+  it("#5066: a lower-id '17A' reference does not hide the document's valid one", async () => {
+    const rows = [
+      row("00000000-0000-0000-0000-000000000005", "For the appendix see chapter Safety on page 17A.", 5),
+      row("00000000-0000-0000-0000-000000000009", "Read the instructions in chapter Safety on page 17.", 9),
+      ...CORPUS,
+    ];
+    const added = await retrieveSafetyChapterChunks(fakeClient(rows), "tenant", [chunk(P355, 355)], { approvedSourceDocIds: [DOC] });
+    expect(added.map((c) => c.sourcePage)).toEqual([18]);
   });
 
   it("approval gate OFF: the document lookup binds exactly its three values (acs355-q4 path)", async () => {
