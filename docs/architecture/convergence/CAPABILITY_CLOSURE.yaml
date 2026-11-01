@@ -860,6 +860,49 @@ capabilities:
       - "Staging: three complete technician workflows at phone size on staging with screenshots."
       - "Production: owner decision."
     review_by: "2026-11-21"
+  - id: technician_work_packet
+    purpose: >-
+      Turn an authorized, supported equipment manual (today: CAT Pumps data sheets and service manuals) plus a
+      technician's typed work order into a draft work packet on the equipment notebook (#4982): parts, kits,
+      steps, tools, torque values and the manual's own cautions, each labelled verified / proposed / unknown
+      with page and line sources, editable on the phone and printed to PDF. Zero model calls. Unsupported or
+      incomplete inputs refuse with a named reason instead of producing a packet.
+    customer_outcome: >-
+      A technician confirms the pump and the manual revisions in hand, describes the job, and leaves with a
+      sourced, editable draft packet that says plainly what the manual does not cover.
+    # The Hub reads NOTEBOOK_WORK_PACKET (TypeScript). feature_flag is omitted
+    # because tools/capability_closure.py discovers flags in Python only.
+    entrypoints:
+      - "mira-hub/src/app/api/equipment-notebooks/[id]/work-packet/route.ts   # GET availability, POST draft"
+      - "mira-hub/src/capabilities/work-packet/draft.ts   # deterministic draft + verifyPacket"
+      - "mira-hub/src/capabilities/work-packet/catpumps-service-manual.ts   # CAT Pumps service-manual parser"
+    consumers:
+      - "mira-hub/src/factorylm-ui/WorkPacketPanel.tsx   # notebook panel, mounted by hub-host.tsx"
+    environments:
+      dev: unset
+      staging: unset                        # not forwarded by docker-compose.staging-vps.yml
+      production: unset                     # not forwarded by docker-compose.saas.yml
+    state: deployed_disabled
+    reason: >-
+      #4982. Draft-only; work orders are never persisted or sent to a CMMS. Staging enablement needs the
+      compose forward plus phone-size walks; this record moves to staging_enabled with that evidence.
+    owner: "Mike Harper"
+    ci_jobs:
+      - mira-hub-unit
+    required_checks: []
+    evidence:
+      - "mira-hub/src/capabilities/work-packet/__tests__/draft.test.ts"
+      - "mira-hub/src/app/api/equipment-notebooks/[id]/work-packet/__tests__/route.test.ts"
+    rollback: >-
+      Unset NOTEBOOK_WORK_PACKET (or set anything other than 1) and redeploy mira-hub: the route returns
+      404 and the panel renders nothing. Nothing is stored server-side.
+    blocker: >-
+      Staging: compose forward and the technician walks. Production: owner decision after them.
+    acknowledged_rules: []
+    promotion_criteria:
+      - "Staging: supported, incomplete and unsupported walks at phone size with screenshots and a printed PDF."
+      - "Production: owner decision after the five-technician trial."
+    review_by: "2026-12-15"
   - id: unified_ui_shell
     purpose: >-
       Shared FactoryLM presentation shell (design tokens, interaction
