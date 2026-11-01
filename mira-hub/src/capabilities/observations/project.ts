@@ -8,7 +8,7 @@
 import { createHash } from "node:crypto";
 import type { FactKey, FactValue } from "./parse";
 
-export const PROJECTOR_VERSION = "obs-proj-1";
+export const PROJECTOR_VERSION = "obs-proj-2";
 /** Two different reports this close in observed time are contested, not ordered. */
 export const CONTEST_WINDOW_MS = 60 * 60 * 1000;
 
@@ -62,6 +62,15 @@ export type ObservedState = {
 };
 
 /** State label per fact. Repairs never imply a healthy machine. */
+/**
+ * Only "present" and "absent" contradict each other. "repaired" after "present"
+ * is a fault-then-repair sequence, and "present" after "repaired" is a recurrence:
+ * both are ordinary history, not a disagreement (#5092). obs-proj-2.
+ */
+function contradicts(a: FactValue, b: FactValue): boolean {
+  return (a === "present" && b === "absent") || (a === "absent" && b === "present");
+}
+
 function stateLabel(factKey: FactKey, factValue: FactValue): string {
   if (factValue === "repaired") return "repair_reported";
   if (factValue === "absent") return `${factKey}_not_observed`;
@@ -106,7 +115,7 @@ export function deriveObservedState(rows: ObservationRow[], opts: { now: Date })
     const opposed = ofKey.filter(
       (r) =>
         r.id !== current.id &&
-        r.factValue !== current.factValue &&
+        contradicts(r.factValue, current.factValue) &&
         Date.parse(r.observedAt) >= windowStart &&
         Date.parse(r.observedAt) <= windowEnd &&
         r.supersedesId !== current.id &&

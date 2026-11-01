@@ -270,4 +270,52 @@ describe("observation store (real Postgres)", () => {
     expect(fix.delivery.deliveryId).not.toBeNull();
     expect(fix.sequence).toBe(2); // observation took sequence 1 on the same aggregate
   });
+  // #5093 (Codex #5091 F2): the rollback documented in 113 must succeed once an
+  // observation_recorded event exists. The block is run statement-for-statement in
+  // one transaction on a dedicated client, the end state asserted, then rolled back
+  // so suites sharing this disposable database keep the table. ADD CONSTRAINT
+  // validates immediately (nothing is deferred), so success here means COMMIT succeeds.
+  it("documented_rollback_succeeds_after_an_observation_event_exists", async () => {
+    const text = readFileSync(MIGRATION, "utf8");
+    const m = text.match(/^-- ROLLBACK-BEGIN\n([\s\S]*?)^-- ROLLBACK-END$/m);
+    expect(m, "113 must carry a ROLLBACK-BEGIN / ROLLBACK-END block").not.toBeNull();
+    const block = m![1]!.split("\n").map((l) => l.replace(/^--   ?/, "")).join("\n").trim();
+    expect(block.startsWith("BEGIN;")).toBe(true);
+    expect(block.endsWith("COMMIT;")).toBe(true);
+    const body = block.slice("BEGIN;".length, -"COMMIT;".length);
+
+    const tenant = uuid();
+    const entity = `cmms-${uuid()}`;
+    const nb = await makeNotebook(tenant, entity, true);
+    created(await insertObservation(tenant, nb, entity, null, input(), "tech-1"));
+    const fix = await testPool.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM notebook_domain_events WHERE event_type = 'fix_recorded'`,
+    );
+
+    const c = await testPool.connect();
+    try {
+      await c.query("BEGIN");
+      await c.query(body);
+      const table = await c.query<{ r: string | null }>(`SELECT to_regclass('public.asset_observations')::text AS r`);
+      expect(table.rows[0]!.r).toBeNull();
+      const dangling = await c.query<{ n: string }>(
+        `SELECT count(*)::text AS n FROM notebook_domain_events WHERE event_type = 'observation_recorded'`,
+      );
+      expect(dangling.rows[0]!.n).toBe("0");
+      const kept = await c.query<{ n: string }>(
+        `SELECT count(*)::text AS n FROM notebook_domain_events WHERE event_type = 'fix_recorded'`,
+      );
+      expect(kept.rows[0]!.n).toBe(fix.rows[0]!.n); // fix events are untouched
+      const def = await c.query<{ d: string }>(
+        `SELECT pg_get_constraintdef(oid) AS d FROM pg_constraint WHERE conname = 'notebook_domain_events_event_type_check'`,
+      );
+      expect(def.rows[0]!.d).toMatch(/fix_recorded/);
+      expect(def.rows[0]!.d).not.toMatch(/observation_recorded/);
+    } finally {
+      await c.query("ROLLBACK");
+      c.release();
+    }
+    const still = await testPool.query<{ r: string | null }>(`SELECT to_regclass('public.asset_observations')::text AS r`);
+    expect(still.rows[0]!.r).toBe("asset_observations");
+  });
 });

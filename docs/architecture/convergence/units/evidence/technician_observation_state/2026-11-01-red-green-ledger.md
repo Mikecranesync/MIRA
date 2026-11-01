@@ -73,3 +73,10 @@ Counts are `failed / passed`. "unit" = default vitest config (parse, project, ro
 | machine-observations-logic: repair reads as reported, not healthy | label `repaired: "fixed"` | ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
       Tests  1 failed | 6 passed (7) |       Tests  7 passed (7) |
 | observations.browser.integration: A previews, confirms through a lost reply, B reads back + next answer | `idFor` never reuses | expected {obs: 2, events: 2} to equal {obs: 1, events: 1} (1 failed) | 1 passed |
+
+## Codex round 1 follow-ups (fixed in PR #5091 before round 2)
+
+| Finding | Test | Mutation | Red | Green |
+|---|---|---|---|---|
+| #5092 (F1) leak then repair within 60 minutes projected as contested | `leak_then_repair_within_window_is_repair_reported_not_contested`, `recurrence_after_repair_within_window_is_leak_reported_not_contested`, browser proof with repair pinned 5 minutes after the leak | restore the obs-proj-1 rule `r.factValue !== current.factValue` | unit 2F/6P; browser 1F ("contested" where "repair_reported" expected) | unit 8/8, browser 1/1 |
+| #5093 (F2) rollback narrows the CHECK while observation events remain | `documented_rollback_succeeds_after_an_observation_event_exists` (runs the ROLLBACK-BEGIN block from 113 in one transaction on a dedicated client) | delete the `DELETE FROM notebook_domain_events ...` line from the block | int 1F/10P, "check constraint ... is violated by some row" | int 11/11 |

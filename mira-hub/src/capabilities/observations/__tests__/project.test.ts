@@ -86,6 +86,30 @@ describe("deriveObservedState (pure projection, A3/A4)", () => {
     expect(fact.conflicting.map((e) => e.observationId).sort()).toEqual(["a", "b"]);
   });
 
+  // #5092 (Codex #5091 F1): a fault then a repair inside the contest window is a
+  // sequence, not a disagreement. Neither row supersedes the other (the panel
+  // sends no supersedesId), and both stay in history.
+  it("leak_then_repair_within_window_is_repair_reported_not_contested", () => {
+    const leak = ENTITY_ROW({ id: "a", factValue: "present", observedAt: "2026-06-15T09:10:00.000Z", recordedAt: "2026-06-15T09:11:00.000Z" });
+    const repair = ENTITY_ROW({ id: "b", factValue: "repaired", observedAt: "2026-06-15T09:20:00.000Z", recordedAt: "2026-06-15T09:21:00.000Z", recordedBy: "tech-b" });
+    const s = deriveObservedState([leak, repair], { now: NOW });
+    const fact = s.facts[0]!;
+    expect(fact.current.observationId).toBe("b");
+    expect(fact.state).toBe("repair_reported");
+    expect(fact.contested).toBe(false);
+    expect(s.history.map((h) => h.id).sort()).toEqual(["a", "b"]);
+    expect(s.health).toBe("not_established");
+    expect(s.safeToOperate).toBe("not_established");
+  });
+
+  it("recurrence_after_repair_within_window_is_leak_reported_not_contested", () => {
+    const repair = ENTITY_ROW({ id: "a", factValue: "repaired", observedAt: "2026-06-15T09:10:00.000Z" });
+    const leakAgain = ENTITY_ROW({ id: "b", factValue: "present", observedAt: "2026-06-15T09:40:00.000Z", recordedAt: "2026-06-15T09:41:00.000Z" });
+    const s = deriveObservedState([repair, leakAgain], { now: NOW });
+    expect(s.facts[0]!.state).toBe("leak_reported");
+    expect(s.facts[0]!.contested).toBe(false);
+  });
+
   it("repair_reported_never_sets_health_root_cause_or_safe", () => {
     const repaired = ENTITY_ROW({ id: "a", factValue: "repaired" });
     const s = deriveObservedState([repaired], { now: NOW });

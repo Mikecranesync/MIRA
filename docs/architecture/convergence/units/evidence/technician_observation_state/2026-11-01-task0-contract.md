@@ -28,10 +28,10 @@ This note pins the canonical writer, event, projection and consumer for technici
    - No delivery row: observations never dispatch to the CMMS.
 2. **UNS event:** the domain event row is the typed, asset-scoped event. It carries `equipment_entity_id`, the `asset_uns_path` snapshot from the server binding, and a structured payload (fact key, value, observed time, verification method). The technician's words are never in the payload. This reuses the outbox from #5020. It is not a second ledger, and no broker is added.
 3. **Projection:** `deriveObservedState` is a pure function evaluated at read time over the asset's observation rows. There is no projector table or worker, so persistence and projection cannot diverge: a crash before commit leaves nothing, and a commit is visible at once. The projector version and a `state_version` hash are returned with every read.
-4. **Derivation rules (`obs-proj-1`):**
+4. **Derivation rules (`obs-proj-2`; `obs-proj-1` treated any differing value as opposed, #5092):**
    - The newest observed report wins. A report observed earlier but recorded later stays in history.
    - A correction (`supersedes_id`) removes the superseded row from the projection but keeps it in history.
-   - Opposite reports observed within 60 minutes of each other are `contested`.
+   - Only contradictory reports (present against absent) observed within 60 minutes of each other are `contested`. A repair after a fault, or a fault after a repair, is a sequence, and the newest report wins.
    - "Repair reported" is a maintenance fact. `health`, `root_cause` and `safe_to_operate` are always `not_established` or null for human reports.
 5. **Human versus machine:** observations are `self_reported` and `unverified`. They never write `machine_state_window` or tag tables, and they never count toward approved-context gate counters. In the prompt they appear under a header that says they are unverified and are not machine measurements.
 6. **Access:** readback is asset-scoped. Any notebook of the same tenant bound to the same confirmed asset sees the facts and history. Turn text, thread ids and the notebook id are never returned. Other tenants see nothing because of RLS plus explicit tenant predicates.

@@ -171,7 +171,8 @@ describe.skipIf(!RUN)("Mission 001 browser proof (real panel, real routes, real 
       await page.getByTestId("observation-review").waitFor();
       expect(await page.getByTestId("observation-fact").inputValue()).toBe("seal_leak");
       expect(await page.getByTestId("observation-value").inputValue()).toBe("present");
-      expect(await page.getByTestId("observation-time").inputValue()).toMatch(/T09:10$/);
+      const leakTime = await page.getByTestId("observation-time").inputValue();
+      expect(leakTime).toMatch(/T09:10$/);
       expect(await dbCounts()).toEqual({ obs: 0, events: 0 }); // preview wrote nothing
       await shot(page, "02-review");
 
@@ -240,13 +241,16 @@ describe.skipIf(!RUN)("Mission 001 browser proof (real panel, real routes, real 
       await pageB.getByTestId("observation-preview").click();
       await pageB.getByTestId("observation-review").waitFor();
       expect(await pageB.getByTestId("observation-value").inputValue()).toBe("repaired");
-      if (!(await pageB.getByTestId("observation-time").inputValue())) {
-        const now = new Date(Date.now() - 60_000);
-        const pad = (n: number) => String(n).padStart(2, "0");
-        await pageB.getByTestId("observation-time").fill(
-          `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`,
-        );
-      }
+      // #5092: pin the repair 5 minutes after the leak, inside the 60-minute contest window,
+      // so this never depends on the wall clock. A leak then a repair is a sequence, not a dispute.
+      const [d, hm] = leakTime.split("T") as [string, string];
+      const [y, mo, da] = d.split("-").map(Number) as [number, number, number];
+      const [h, mi] = hm.split(":").map(Number) as [number, number];
+      const repairAt = new Date(y, mo - 1, da, h, mi + 5);
+      const pad = (n: number) => String(n).padStart(2, "0");
+      await pageB.getByTestId("observation-time").fill(
+        `${repairAt.getFullYear()}-${pad(repairAt.getMonth() + 1)}-${pad(repairAt.getDate())}T${pad(repairAt.getHours())}:${pad(repairAt.getMinutes())}`,
+      );
       await pageB.getByTestId("observation-confirm").click();
       await expect.poll(() => pageB.getByTestId("observation-status").getAttribute("data-phase")).toBe("confirmed");
       expect(await pageB.getByTestId("observed-fact-seal_leak").getAttribute("data-state")).toBe("repair_reported");
@@ -256,6 +260,9 @@ describe.skipIf(!RUN)("Mission 001 browser proof (real panel, real routes, real 
       };
       expect(after.state).toMatchObject({ safeToOperate: "not_established", health: "not_established", rootCause: null });
       expect(after.state.history).toHaveLength(2);
+      const afterTurn = await loadObservedStateForTurn(TENANT, PUMP_07, new Date());
+      expect(afterTurn.section).toMatch(/seal_leak: repair_reported/);
+      expect(afterTurn.section).not.toMatch(/contested/);
 
       // Desktop viewport of the final state (screenshot rule: both viewports).
       await pageB.setViewportSize({ width: 1440, height: 900 });

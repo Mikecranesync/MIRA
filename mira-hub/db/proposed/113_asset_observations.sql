@@ -23,10 +23,22 @@
 -- notebook of the same asset, so a plain NO ACTION FK would make deleting the
 -- older notebook fail. The link is dropped instead (the older row is gone with it).
 --
--- Rollback (old code never reads these objects):
+-- Rollback (old code never reads these objects). Run the whole block below as
+-- ONE transaction. It first DELETES every observation_recorded outbox event:
+-- those rows have no delivery row and no FK to asset_observations, so dropping
+-- the table alone leaves them behind and the narrowed CHECK fails (#5093).
+-- DATA LOSS: this discards all technician observations and their events. If the
+-- history must be kept, copy asset_observations and those events out first.
+-- Executed by observations.integration.test.ts
+-- (documented_rollback_succeeds_after_an_observation_event_exists).
+-- ROLLBACK-BEGIN
+--   BEGIN;
+--   DELETE FROM notebook_domain_events WHERE event_type = 'observation_recorded';
 --   DROP TABLE IF EXISTS asset_observations;
 --   ALTER TABLE notebook_domain_events DROP CONSTRAINT IF EXISTS notebook_domain_events_event_type_check;
 --   ALTER TABLE notebook_domain_events ADD CONSTRAINT notebook_domain_events_event_type_check CHECK (event_type IN ('fix_recorded'));
+--   COMMIT;
+-- ROLLBACK-END
 
 BEGIN;
 SET LOCAL lock_timeout = '5s';
