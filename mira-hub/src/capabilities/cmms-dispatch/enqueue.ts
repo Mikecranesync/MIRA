@@ -58,6 +58,23 @@ export type EnqueueFixRecordedInput = {
   occurredAt: string;
 };
 
+/** Serialize sequence allocation for one aggregate. Held for the rest of the
+ *  CALLER's transaction (xact-scoped — no manual unlock). Shared with the
+ *  observation writer (observations/store.ts) so both event types on one
+ *  notebook take the same lock. */
+export async function lockAggregate(c: PoolClient, aggregateKey: string): Promise<void> {
+  await c.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [aggregateKey]);
+}
+
+/** Next sequence for an aggregate. Only meaningful under `lockAggregate`. */
+export async function nextAggregateSequence(c: PoolClient, aggregateKey: string): Promise<number> {
+  const seqRes = await c.query<{ next_sequence: string }>(
+    `SELECT COALESCE(MAX(sequence), 0) + 1 AS next_sequence FROM notebook_domain_events WHERE aggregate_key = $1`,
+    [aggregateKey],
+  );
+  return Number(seqRes.rows[0]!.next_sequence);
+}
+
 export async function enqueueFixRecordedEvent(
   c: PoolClient,
   input: EnqueueFixRecordedInput,
@@ -65,9 +82,8 @@ export async function enqueueFixRecordedEvent(
   const aggregateKey = aggregateKeyFor(input.notebookId);
   const subjectRef = subjectRefForFix(input.fixRecordId);
 
-  // (a) Serialize sequence allocation for this notebook's aggregate. Held
-  // for the rest of THIS transaction (xact-scoped — no manual unlock).
-  await c.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [aggregateKey]);
+  // (a) Serialize sequence allocation for this notebook's aggregate.
+  await lockAggregate(c, aggregateKey);
 
   // (b) Per-turn snapshot (081): the machine + thread this answer was
   // actually grounded on, never re-resolved live. Nullable — not every fix
@@ -109,11 +125,7 @@ export async function enqueueFixRecordedEvent(
   }
 
   // (d) Next sequence for this aggregate, under the advisory lock from (a).
-  const seqRes = await c.query<{ next_sequence: string }>(
-    `SELECT COALESCE(MAX(sequence), 0) + 1 AS next_sequence FROM notebook_domain_events WHERE aggregate_key = $1`,
-    [aggregateKey],
-  );
-  const sequence = Number(seqRes.rows[0]!.next_sequence);
+  const sequence = await nextAggregateSequence(c, aggregateKey);
 
   const payload = {
     fixRecordId: input.fixRecordId,

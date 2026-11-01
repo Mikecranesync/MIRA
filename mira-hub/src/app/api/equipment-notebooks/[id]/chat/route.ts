@@ -226,6 +226,8 @@ import {
   type VisualEvidenceRow,
 } from "@/lib/visual-evidence-context";
 import { photoLinkedToTarget } from "@/lib/workspace-files";
+import { observationStateEnabled } from "@/capabilities/observations/flag";
+import { loadObservedStateForTurn } from "@/capabilities/observations/turn-context";
 import { discoverManual } from "@/lib/manual-discovery";
 import {
   approvedAskEnforcementEnabled,
@@ -3585,6 +3587,27 @@ async function handleChatTurn(
     }
   }
 
+  // Mission 001: technician-reported observations on the bound machine. Same
+  // guard as the visual section. Flag off ⇒ nothing is loaded and the prompt is
+  // byte-identical. Own try/catch: a missing table (42P01) answers without it.
+  // Deliberately NOT in approvedSummary: observed state never counts toward the
+  // approved-context gate.
+  let observedSection = "";
+  let observedFrame: { stateVersion: string; observationIds: string[] } | null = null;
+  if (boundAsset.state === "resolved" && !identityDisputed && observationStateEnabled()) {
+    try {
+      const observed = await loadObservedStateForTurn(ctx.tenantId, boundAsset.entityId, new Date());
+      observedSection = observed.section;
+      observedFrame = observed.frame;
+    } catch (err) {
+      console.error(
+        `[notebook-chat] observed state load failed code=${(err as { code?: string }).code ?? "?"} ` +
+          "(continuing without it):",
+        err,
+      );
+    }
+  }
+
   // #3788 — the LOOK observation for the photo attached THIS turn. Keyed ONLY on
   // the SERVER-VERIFIED file id (`visualEntry.fileId`, already checked by
   // `photoLinkedToTarget` in verifyVisualEntry), so a client string can never
@@ -3756,6 +3779,8 @@ async function handleChatTurn(
   // Visual (photographed nameplate) evidence rides after machine evidence; with
   // none the string is byte-identical to before.
   const withVisual = visualSection ? `${withMachine}\n\n${visualSection}` : withMachine;
+  // Mission 001 observed state rides after the visual section; empty = byte-identical.
+  const withObserved = observedSection ? `${withVisual}\n\n${observedSection}` : withVisual;
   // #4131: a label data identifier ("1P <order no.>") in this turn's photo
   // context gets its standard meaning stated; otherwise byte-identical.
   // #4133: a retail/warehouse code (FNSKU) in the photo context is named as
@@ -3781,8 +3806,8 @@ async function handleChatTurn(
   // `systemPrompt` via their own independent conditionals, unchanged.
   const systemPrompt = withRetailCodeNote(withLabelDataIdentifiers(withPhotoProvenance(withStepSafety(withAnswerLanguage(
     docGrounded
-      ? appendManualContext(withVisual, chunks) + machineContext + coverageDirective + vendorFallbackDirective + (safetyChapterChunks.length > 0 ? SAFETY_CHAPTER_DIRECTIVE : "")
-      : withVisual + machineContext + identityProposalDirective,
+      ? appendManualContext(withObserved, chunks) + machineContext + coverageDirective + vendorFallbackDirective + (safetyChapterChunks.length > 0 ? SAFETY_CHAPTER_DIRECTIVE : "")
+      : withObserved + machineContext + identityProposalDirective,
  )), lookContext), lookContext), lookContext);
   // appendManualContext only appends the grounding RULES — the excerpts
   // themselves ride in the user message (injection-hardened data channel),
@@ -5092,6 +5117,9 @@ async function handleChatTurn(
       if (visualEntry) evidenceFrame.visualEvidence = visualEntry;
       if (hazardEntries.length > 0) evidenceFrame.hazardEntries = hazardEntries;
       if (identityDisputed) evidenceFrame.identityDisputed = true;
+      // Mission 001: the observed-state key rides the same frame (the frame
+      // type lives in a guarded lib file, so it is attached without widening it).
+      if (observedFrame) Object.assign(evidenceFrame, { observedState: observedFrame });
 
       // Weak-evidence badge (jev-weak-evidence.ts; `MIRA_JEV_WEAK_EVIDENCE_BADGE`).
       // The ONLY consulted use of the sufficiency shadow. Decided here — after

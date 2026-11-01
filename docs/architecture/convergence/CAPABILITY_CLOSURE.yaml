@@ -375,6 +375,52 @@ capabilities:
     notes: "Gate 11 API-consumer edge: mira-fault-detective is not deletion-safe while this exists."
 
   # =========================================================================
+  - id: technician_observation_state
+    purpose: >-
+      Turn a technician-confirmed report ("seal leaking, observed at 09:10") into
+      one durable, asset-scoped observation plus a same-transaction outbox event,
+      project it at read time into reported machine state, and feed that state
+      to the asset-bound notebook chat. Mission 001 (#5088).
+    customer_outcome: >-
+      A technician reports what they saw without a PLC; the next technician on
+      that machine, and the next MIRA answer, see it with author, times and
+      verification status.
+    feature_flag: null   # hub TS flag MIRA_OBSERVATION_STATE — see notes
+    entrypoints:
+      - "mira-hub/src/app/api/equipment-notebooks/[id]/observations/route.ts"
+      - "mira-hub/src/app/api/equipment-notebooks/[id]/observations/preview/route.ts"
+      - "mira-hub/src/capabilities/observations/turn-context.ts"
+    consumers:
+      - "mira-hub/src/app/api/equipment-notebooks/[id]/chat/route.ts   # observed-state prompt section"
+      - "mira-hub/src/factorylm-ui/MachineObservations.tsx              # Machine state panel"
+    environments:
+      dev: unset
+      staging: unset
+      production: unset
+    state: deployed_disabled
+    owner: null
+    owner_missing: "Mission 001 lane; owner assigned at promotion (Mike)."
+    ci_jobs:
+      - notebook-event-outbox-pg   # observations.integration.test.ts on real Postgres
+    required_checks: []
+    evidence: []
+    rollback: "n/a — off in every environment; flag off returns 404 and leaves the chat prompt byte-identical."
+    reason: >-
+      Migration 113 is still proposed (mira-hub/db/proposed/), not applied to any
+      shared database, and the flag is not forwarded by any compose file. Staging
+      enablement needs Mike to authorize promoting 113 and forwarding the flag.
+    promotion_criteria:
+      - "Mike authorizes promoting 113 to db/migrations (staging auto-apply) and forwarding MIRA_OBSERVATION_STATE in the staging compose."
+      - "Staging trace: confirm on a real asset, readback by a second technician, later chat answer carries the observedState frame."
+      - "Customer acceptance on a physical device (Level 3), not local tests alone."
+    review_by: "2026-12-01"
+    notes: >-
+      Gate flag is MIRA_OBSERVATION_STATE ("1"/"true" = on), read at call time in
+      mira-hub/src/capabilities/observations/flag.ts. Recorded in notes, not
+      feature_flag, because tools/capability_closure.py scans Python modules
+      only (code_flag_defaults) and would report a TypeScript flag as missing.
+
+  # =========================================================================
   - id: nameplate_identification
     purpose: "Identify the exact asset from a nameplate photo (OCR + vision)."
     customer_outcome: "The technician photographs a drive and MIRA knows which one it is."
