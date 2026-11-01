@@ -272,6 +272,35 @@ describe("data-sheet ratings — one value per model, or unknown (Codex #5062 F1
     }
   });
 
+  // #5101 (Codex #5062 round 15 F19): a restriction naming numeric models the sheet does not list,
+  // in any wording, never lets its ratings reach another model as Verified.
+  for (const head of ["Model 7777 only", "Models 7777 and 7778 only", "For model 7777:", "7777 / 7778 pumps", "Gear-drive models only"]) {
+    it(`a "${head}" restriction above the only rating block leaves every rating a cited unknown`, () => {
+      const raw = SHEET.replace(ONE_BLOCK, `${head}\n${OTHERS}`);
+      for (const model of ["9XP1000", "9XP1000G"]) {
+        const p = build([sheetDoc(raw), doc("manual-cpstyle.txt", "sm")], "valve service", [], model);
+        expect(unknowns(p)).toEqual(["unknown:null:cited", "unknown:null:cited", "unknown:null:cited"]);
+        expect(p.restoration!.some((f) => f.label === "verified" && /3000|10 gpm|1700/.test(f.value ?? ""))).toBe(false);
+      }
+    });
+  }
+
+  it("a line naming a model in words between blocks does not inherit the block above it", () => {
+    // Block for 9XP1000, then a restriction the parser cannot read, then more ratings: those later
+    // ratings are not 9XP1000's (and not anyone's for sure).
+    const raw = SHEET.replace(ONE_BLOCK, `9XP1000\nFlow 7.4 gpm 28 lpm\nModel 7777 only\nPressure Range 100\u20133000 psi 6.9\u2013207 bar\n`);
+    const p = build([sheetDoc(raw), doc("manual-cpstyle.txt", "sm")], "valve service");
+    const pressure = ratings(p).filter((f) => /Pressure Range/.test(f.value ?? f.basis));
+    expect(pressure).toHaveLength(1);
+    expect(pressure[0]).toMatchObject({ value: null, label: "unknown" });
+  });
+
+  it("a lone four-digit line far from any rating block does not touch a sheet without model blocks", () => {
+    // Control: the 9XP2000-style sheet prints an address with a street number on its last page.
+    const p = build([sheetDoc(FIXTURES["datasheet-9xp2000.txt"], "ds", "datasheet-9xp2000.txt")], "valve service", [], "9XP2000");
+    expect(values(p)).toEqual(["verified:Pressure Range 100\u20132000 psi 6.9\u2013138 bar", "verified:Flow 25 gpm 94.6 lpm", "verified:Pump RPM 870 rpm 870 rpm"]);
+  });
+
   it("a compact heading (9XP2000/C) scopes its block to both models it names", () => {
     const BIG = FIXTURES["datasheet-9xp2000.txt"];
     const head = "SPECIFICATIONS U.S. Measure Metric Measure\n";

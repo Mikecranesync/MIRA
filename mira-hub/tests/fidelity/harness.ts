@@ -114,6 +114,11 @@ export async function installRoutes(page: Page, scenario: Scenario) {
     if (m === "GET" && p === `${nbPath}/observations`) {
       return route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ error: "observations_disabled" }) });
     }
+    // #4982: the Work Packet panel reads availability for the open notebook. Off in this harness, as
+    // the route is when NOTEBOOK_WORK_PACKET is unset (404 not_enabled); the panel hides.
+    if (m === "GET" && p === `${nbPath}/work-packet`) {
+      return route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ error: "not_enabled" }) });
+    }
     if (m === "GET" && p === "/api/assets") {
       return route.fulfill(json([]));
     }
