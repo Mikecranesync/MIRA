@@ -57,6 +57,7 @@ import {
 } from "@/capabilities/openai-run-budget";
 import { withSupportingQuotes } from "@/capabilities/supporting-quote";
 import { citedPagesFor, extractManualSafetyStatement, manualSafetyStatementForCitations } from "@/capabilities/manual-safety-statement";
+import { retrieveSafetyChapterChunks, SAFETY_CHAPTER_DIRECTIVE } from "@/capabilities/manual-safety-chapter";
 import { shadowVerifyCitedTurn } from "@/capabilities/claim-verifier-shadow";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
 import { isWeakEvidence, WEAK_EVIDENCE_LABEL, WEAK_EVIDENCE_RULE } from "@/capabilities/observability/jev-weak-evidence";
@@ -2430,7 +2431,7 @@ async function handleChatTurn(
   const retrievalDiagnostics: { vectorLane?: string; queryRewrite?: string } = {};
   const queryRewrite = await queryRewritePromise;
   retrievalDiagnostics.queryRewrite = queryRewrite.status;
-  const chunks: ManualChunk[] = oemRetrieval
+  const retrievedChunks: ManualChunk[] = oemRetrieval
     ? await (async () => {
         // Raw pool on purpose (hybrid corpus law — see manual-rag.ts header):
         // under withTenantContext the RLS policy hides every shared OEM row.
@@ -2501,6 +2502,22 @@ async function handleChatTurn(
           }),
         ),
       );
+  // #4508: when a retrieved notebook document points to its own Safety chapter ("chapter Safety
+  // on page 17"), that chapter's warning chunks join the excerpts, after the retrieved ones so no
+  // citation number moves. The answer then carries the manual's own wait and verification steps,
+  // and citing the chapter page shows its statement as the notice (#4509). Notebook path only;
+  // fail-open: a failed read keeps exactly the retrieved chunks.
+  let safetyChapterChunks: ManualChunk[] = [];
+  if (notebookRetrieval && !oemRetrieval && retrievedChunks.length > 0) {
+    try {
+      safetyChapterChunks = await withTenantContext(ctx.tenantId, (client) =>
+        retrieveSafetyChapterChunks(client, ctx.tenantId, retrievedChunks, { approvedSourceDocIds: docIds }),
+      );
+    } catch (err) {
+      console.warn("[notebook-chat] safety-chapter read failed (retrieved chunks only):", err instanceof Error ? err.message : err);
+    }
+  }
+  const chunks: ManualChunk[] = safetyChapterChunks.length > 0 ? [...retrievedChunks, ...safetyChapterChunks] : retrievedChunks;
   // Banner is classified before retrieval; the page citation can only be
   // written now that chunks exist. Prefer the WARNING/CAUTION/DANGER chunk's
   // printed label (TQ-29: p.2-15) over INTEGER source_page.
@@ -3764,7 +3781,7 @@ async function handleChatTurn(
   // `systemPrompt` via their own independent conditionals, unchanged.
   const systemPrompt = withRetailCodeNote(withLabelDataIdentifiers(withPhotoProvenance(withStepSafety(withAnswerLanguage(
     docGrounded
-      ? appendManualContext(withVisual, chunks) + machineContext + coverageDirective + vendorFallbackDirective
+      ? appendManualContext(withVisual, chunks) + machineContext + coverageDirective + vendorFallbackDirective + (safetyChapterChunks.length > 0 ? SAFETY_CHAPTER_DIRECTIVE : "")
       : withVisual + machineContext + identityProposalDirective,
  )), lookContext), lookContext), lookContext);
   // appendManualContext only appends the grounding RULES — the excerpts

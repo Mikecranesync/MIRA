@@ -1412,3 +1412,19 @@ approved:
       FROM knowledge_entries
               WHERE tenant_id = $1
                 AND ingest_route = 'v2'
+  "mira-hub/src/capabilities/manual-safety-chapter.ts:131":
+    approved_classification: TENANT-ONLY
+    query_sha256: "37dfe2c276b61675f0036eacf39c3aeb5d232b5130efac37555b29fea423c2b2"
+    reason: "NEW (#4508 / PR #5056): chapterStarts document-level lookup for the manual's own 'chapter Safety on page N' cross-reference. Pure-tenant surface, same rule as retrieveNodeChunks (manual-rag.ts:1108): tenant_id=$1, ingest_route='v2', doc_id = ANY($2) where $2 is ONLY doc ids retrieval already returned for this turn (never caller-supplied), plus the same approvedSourceFilterSql clause retrieval uses (bound as $4 only when MIRA_ENFORCE_APPROVED_RETRIEVAL is on). Runs only on the notebook non-OEM path, so the shared OEM corpus is excluded by design (not the is_private hybrid). Read-only, SET LOCAL statement_timeout 2s, DISTINCT ON (doc_id) one row per already-admitted document; it cannot reach another tenant's rows or a document retrieval did not admit."
+    query_snippet: |
+      FROM knowledge_entries
+            WHERE tenant_id = $1
+              AND ingest_route = 'v2'
+  "mira-hub/src/capabilities/manual-safety-chapter.ts:187":
+    approved_classification: TENANT-ONLY
+    query_sha256: "1389229501343e631d1ab461d7f728886b0518267b57600f8998ca3e343bae94"
+    reason: "NEW (#4508 / PR #5056): readChapterRows reads the referenced Safety chapter pages. Pure-tenant surface, same rule as retrieveNodeChunks (manual-rag.ts:1108): tenant_id=$1, ingest_route='v2', the same approvedSourceFilterSql clause retrieval uses (bound as $10 only when the approval gate is on), and (doc_id, source_url, page) IN unnest($2,$3,$4) where every tuple is built from documents retrieval already returned this turn and a page span of 4 from the manual's own cross-reference. Ranked per page by ROW_NUMBER and capped at $9 (40) rows per page; SET LOCAL statement_timeout 3s; read-only. It cannot reach another tenant's rows, another document, or a page outside the admitted tuples; the shared OEM corpus is excluded by design on this notebook non-OEM path."
+    query_snippet: |
+      FROM knowledge_entries
+          WHERE tenant_id = $1
+            AND ingest_route = 'v2'
