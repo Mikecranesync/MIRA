@@ -110,11 +110,9 @@ describe("#4858 the notice warns and never withholds", () => {
 describe("#4858 already-isolated answers stay silent", () => {
   it.each([
     "De-energize, lock out per site procedure, and verify absence of voltage. Then replace the input fuse.",
-    "With the drive locked out, open the cover and replace the fan.",
     "Isolate the feeder, apply lockout/tagout, and confirm zero voltage. Then rewire the motor terminals.",
     "De-energize the drive. Then replace the input fuse.",
     "Isolate the feeder. Then replace the fuse.",
-    "1. With the drive locked out, check the input fuse for continuity.\n2. Inspect the terminals for loose or burnt wiring.",
     "Leave the machine on while you read the alarm, lock it out, then repair the seal bar.",
   ])("does not prepend: %s", (text) => {
     expect(judge(text).ok).toBe(true);
@@ -313,7 +311,7 @@ describe("Codex #4867 r4 — affirmative energy isolation, ordered walk, bounded
     flagged("If you are locked out of the HMI, replace the fuse.");
     silent("Isolate the drive. Replace the fuse.");
     silent("Perform LOTO. Then replace the fuse.");
-    silent("With the conveyor under lockout, replace the fuse.");
+    flagged("With the conveyor under lockout, replace the fuse."); // simple rule ("do 1"): a described state does not silence
   });
   it("F4: every isolation, restoration and work action is walked in order", () => {
     flagged("Lock out the drive. Replace the fan, restore power, then lock out the drive, replace the fuse, restore power, then replace the contactor.");
@@ -333,7 +331,7 @@ describe("Codex #4867 r5", () => {
   it("F1: a powered-off HMI and a lockout indicator are not isolation", () => {
     flagged("The HMI is powered off. Replace the fuse.");
     flagged("Use the lockout indicator to locate the drive. Replace the fuse.");
-    silent("The drive is powered off. Replace the fuse.");
+    flagged("The drive is powered off. Replace the fuse."); // simple rule ("do 1")
     silent("Perform lockout. Replace the fuse.");
     silent("Follow the lockout procedure, then replace the fuse.");
   });
@@ -350,12 +348,11 @@ describe("Codex #4867 r5", () => {
 
 describe("Codex #4867 r6", () => {
   const flagged = (t: string) => expect(judge(t)).toMatchObject({ ok: false, violation: "hazard-warning:isolation-advisory" });
-  const silent = (t: string) => expect(judge(t)).toEqual({ ok: true });
   it("F1: an isolated state needs an equipment / energy subject", () => {
     flagged("The control signal is isolated. Replace the input fuse.");
     flagged("The HMI is isolated. Replace the fuse.");
-    silent("The drive is isolated. Replace the fuse.");
-    silent("The conveyor has been locked out. Replace the fuse.");
+    flagged("The drive is isolated. Replace the fuse."); // simple rule ("do 1")
+    flagged("The conveyor has been locked out. Replace the fuse."); // simple rule ("do 1")
   });
   it("F7: a comma-separated settings edit does not hide the repair", () => {
     flagged("Replace the fuse, change the settings.");
@@ -364,7 +361,7 @@ describe("Codex #4867 r6", () => {
     flagged("The drive has not been locked out. Replace the fuse.");
     flagged("The drive is not yet isolated. Replace the fuse.");
     flagged("The drive isn't de-energized. Replace the fuse.");
-    silent("The drive is now de-energized. Replace the fuse.");
+    flagged("The drive is now de-energized. Replace the fuse."); // simple rule ("do 1")
   });
 });
 
@@ -375,7 +372,7 @@ describe("Codex #4867 r7", () => {
     flagged("De-energize the HMI. Replace the fuse.");
     flagged("With the HMI isolated, replace the fuse.");
     silent("De-energize the drive. Replace the fuse.");
-    silent("With the drive isolated, replace the fuse.");
+    flagged("With the drive isolated, replace the fuse."); // simple rule ("do 1")
   });
   it("F7: a dash-separated settings edit does not hide the repair", () => {
     flagged("Replace the fuse — change the settings.");
@@ -385,6 +382,68 @@ describe("Codex #4867 r7", () => {
   });
   it("F11: a conditional isolation does not leak into the alternative branch", () => {
     flagged("If the drive is isolated, replace the fuse. Otherwise replace the fan.");
-    silent("If the drive is isolated, replace the fuse.");
+    flagged("If the drive is isolated, replace the fuse."); // simple rule ("do 1"): a condition does not silence
+  });
+});
+
+describe("Simple rule ('do 1', 2026-10-31) — a plain lockout instruction or verify-dead silences", () => {
+  const flagged = (t: string) => expect(judge(t)).toMatchObject({ ok: false, violation: "hazard-warning:isolation-advisory" });
+  const silent = (t: string) => expect(judge(t)).toEqual({ ok: true });
+  it("a described isolated state does not silence (was silent before the simple rule)", () => {
+    flagged("With the drive locked out, open the cover and replace the fan.");
+    flagged("1. With the drive locked out, check the input fuse for continuity.\n2. Inspect the terminals for loose or burnt wiring.");
+    flagged("The HMI is currently isolated. Replace the fuse.");
+    flagged("Once the drive is locked out, replace the fuse.");
+  });
+  it("verify-dead is self-evidencing and is the form the prompts teach", () => {
+    silent("With the drive isolated, locked out and the DC bus confirmed dead with a meter, check continuity across terminals 07-08.");
+    silent("With the drive locked out and the DC bus confirmed dead with a meter, replace the fuse.");
+    flagged("The bus is not confirmed dead. Replace the fuse.");
+    flagged("If the bus is confirmed dead, replace the fuse.");
+    flagged("Replace the fuse, then verify absence of voltage.");
+  });
+  it("the allowlisted instructions silence", () => {
+    silent("Lock out the drive. Then replace the input fuse.");
+    silent("Lock out and tag out the drive, then replace the fuse.");
+    silent("Disconnect power, then replace the fuse.");
+    silent("Remove power from the drive. Replace the fuse.");
+    silent("Switch off the main breaker. Then replace the fuse.");
+    silent("Open the main disconnect. Then replace the fuse.");
+    silent("Verify absence of voltage, then replace the fuse.");
+    silent("First isolate the conveyor at the main disconnect, then replace the belt.");
+    silent("You must lock out the drive before you replace the fuse.");
+  });
+  it("controls: near-miss instructions do not silence", () => {
+    flagged("Turn off the drive. Replace the fuse.");
+    flagged("Shut down the machine. Replace the fuse.");
+    flagged("Open the breaker panel and replace the fuse.");
+    flagged("Remove the cover and replace the fuse.");
+    flagged("Disconnect the power wires. Replace the fuse.");
+  });
+  it("r8 F1: an HMI or a control signal is not equipment isolation", () => {
+    flagged("De-energize the drive control signal. Replace the fuse.");
+    silent("De-energize the drive. Replace the fuse.");
+  });
+  it("r8 F7: but / slash software clauses do not hide the repair", () => {
+    flagged("Replace the fuse but keep the settings.");
+    flagged("Replace the fuse / change the settings.");
+    silent("Change the settings.");
+  });
+  it("r8 F11 / F12: conditional and unless isolation never silences", () => {
+    flagged("If the drive is isolated, replace the fuse; otherwise replace the fan.");
+    flagged("Unless the drive is isolated, replace the fuse.");
+    flagged("If you lock out the drive, replace the fuse.");
+    // An instruction-shaped lockout inside the condition still opens no scope.
+    flagged("If the drive trips then lock out the drive, replace the fuse.");
+    flagged("Unless you must lock out the drive, replace the fuse.");
+  });
+  it("r8 F13: a repair after a dash is still an instruction", () => {
+    flagged("Read the alarm — replace the fuse.");
+    flagged("Change the settings — replace the fuse.");
+    silent("Read the alarm — change the settings.");
+  });
+  it("a restore closes the scope", () => {
+    flagged("Lock out the drive. Restore power. Replace the fuse.");
+    silent("Lock out the drive. Replace the fan. Restore power. Lock out the drive again. Replace the fuse.");
   });
 });

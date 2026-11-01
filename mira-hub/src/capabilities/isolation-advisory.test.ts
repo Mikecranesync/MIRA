@@ -106,12 +106,14 @@ describe("isolation-safety wording", () => {
     expect(isolationBannerFor("Disconnect the power wires.")).toBe(ISOLATION_BANNER);
     expect(isolationBannerFor("Disconnect power. Then replace the fuse.")).toBeNull();
   });
-  it("same-step isolation before the work stays silent, including lock-it-out", () => {
+  it("a described locked-out state gets the notice (#4867 simple rule)", () => {
     expect(
       isolationBannerFor(
         "1. With the drive locked out, check the input fuse for continuity.\n2. Inspect the terminals for loose or burnt wiring.",
       ),
-    ).toBeNull();
+    ).toBe(ISOLATION_BANNER);
+  });
+  it("same-step isolation instruction before the work stays silent, including lock-it-out", () => {
     expect(
       isolationBannerFor(
         "Leave the machine on while you read the alarm, lock it out, then repair the seal bar.",
@@ -121,7 +123,7 @@ describe("isolation-safety wording", () => {
       isolationBannerFor(
         "Measure resistance across the terminals with the circuit isolated and locked out then restore power.",
       ),
-    ).toBeNull();
+    ).toBe(ISOLATION_BANNER);
   });
   it("DC-bus work adds the follow-the-manual discharge wait", () => {
     const banner = isolationBannerFor(

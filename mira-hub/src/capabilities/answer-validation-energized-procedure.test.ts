@@ -184,11 +184,16 @@ describe("review repair: procedure scope and external readings", () => {
     "Turn the pump back on. Read the flow rate from the gauge.",
     "Switch the compressor back on and take a pressure reading using the installed probe.",
     "Re-energize the feeder. Read each phase current on the installed power monitor display.",
-    "Measure resistance with the circuit isolated. Only after completing the work and replacing the covers, restore power.",
     "Never re-energize the panel to take a reading with a clamp meter.",
     "Restore power and confirm operation. De-energize the panel, lock out and verify zero voltage. Measure resistance across the terminals.",
   ])("preserves an external reading, prohibition, or isolated measurement: %s", (text) => {
     expect(judge(text).ok).toBe(true);
+  });
+  // #4867 simple rule: a described isolated state no longer silences the isolation NOTICE, so
+  // this answer now carries it. What this case pins is that the energized-work check stays quiet.
+  it("no energized-work violation (isolation notice only): Measure resistance with the circuit isolated. Only after completing the work and replacing the covers, restore power.", () => {
+    const v = judge("Measure resistance with the circuit isolated. Only after completing the work and replacing the covers, restore power.");
+    expect(v.ok ? null : v.violation).toBe("hazard-warning:isolation-advisory");
   });
 });
 
@@ -230,11 +235,16 @@ describe("review: affirmative verification and temporal ordering", () => {
   it.each([
     "Re-energize the panel. From the VFD display, read the current.",
     "Re-energize the panel. On the installed power monitor display, check the phase current.",
-    "Measure resistance across the terminals with the circuit isolated and locked out then restore power.",
     "With the circuit isolated and locked out measure resistance across the terminals then restore power.",
     "Turn the panel back on after taking the resistance reading across the isolated terminals.",
   ])("accepts an external or prior isolated measurement: %s", (text) => {
     expect(judge(text).ok).toBe(true);
+  });
+  // #4867 simple rule: a described isolated state no longer silences the isolation NOTICE, so
+  // this answer now carries it. What this case pins is that the energized-work check stays quiet.
+  it("no energized-work violation (isolation notice only): Measure resistance across the terminals with the circuit isolated and locked out then restore power.", () => {
+    const v = judge("Measure resistance across the terminals with the circuit isolated and locked out then restore power.");
+    expect(v.ok ? null : v.violation).toBe("hazard-warning:isolation-advisory");
   });
 });
 

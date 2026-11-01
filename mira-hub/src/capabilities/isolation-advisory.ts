@@ -22,11 +22,16 @@
  *   - the banner is prepended by validateAnswer the same way ENERGIZED_WARNING
  *     / hazard_warning already are (route.ts ~4324–4337).
  *
- * Isolation is ordered and polarity-aware: a lockout the answer forbids,
- * skips, or places after the first hands-on instruction does not count.
- * STATE_ISOLATED scopes only its own clause. Dual-use object windows cut
- * at the next coordinator / purpose "to", so they cannot read a later
- * WORK_OBJECT. `disconnect` is isolation only with `power` (Mike's wording).
+ * Simple rule (owner GO "do 1", 2026-10-31; supersedes the 2026-10-27 "already-isolated
+ * stays silent" parsing — the state-form consequence is pending owner OK): only a plain
+ * lockout INSTRUCTION, or a verify-dead statement, silences the notice — an
+ * allowlisted imperative in instruction position, outside any if / unless /
+ * when / whether / in-case clause. Any other described state ("the drive is
+ * isolated", "with the drive locked out") does not silence; the notice is
+ * cheap and the state may be wrong. Isolation, restoration and hands-on work
+ * are walked in textual order; a restore closes the scope. Dual-use object
+ * windows cut at the next coordinator / purpose "to", so they cannot read a
+ * later WORK_OBJECT.
  *
  * Zero-token, deterministic, Hub-only.
  */
@@ -35,16 +40,8 @@ import {
   HANDS_ON_VERB_RE,
   WORK_OBJECT_RE,
   LETHAL_VOLTAGE_CONTEXT,
-  LOCKOUT_VERB_RE,
 } from "@/lib/safety-classifier";
-import {
-  ISOLATED,
-  LOCKOUT_REMOVED,
-  PROHIBITION,
-  RESTORE,
-  STATE_ISOLATED,
-  stepTexts,
-} from "./step-energy";
+import { LOCKOUT_REMOVED, PROHIBITION, RESTORE, stepTexts } from "./step-energy";
 
 /** Fixed banner shown above a hands-on answer. No page citation (see header). */
 export const ISOLATION_BANNER =
@@ -55,19 +52,6 @@ export const ISOLATION_BANNER =
  * cite OEM text that is already in the answer, or say this.
  */
 export const DISCHARGE_WAIT_LINE = "Follow the manual's discharge wait.";
-
-/** Verify-dead half of step-energy's DEAD_CHECK — the phrases that mean the
- *  answer already told the tech to prove the circuit is dead. The rest of
- *  DEAD_CHECK blanks tester/resistance/insulation so they do not count as
- *  needing power; those are not "already isolated". */
-const VERIFY_DEAD =
-  /\b(?:absence of voltage|confirmed dead|verif\w* (?:it is |they are )?dead|(?:verif\w*|confirm(?:ed|ing)?)\s+(?:the )?(?:absence of voltage|zero (?:volts|voltage|energy)|no voltage))\b/i;
-
-/** Imperative siblings of ISOLATED's participles. `disconnect` counts only
- *  with a bare `power` (Mike: disconnect power) — "disconnect the power
- *  wires" is the work, so `power` must not start a longer noun phrase. */
-const ISOLATION_IMPERATIVE =
-  /\b(?:isolate|de[\s-]?energi[sz]e|disconnect(?:ing)?\s+(?:the\s+)?power(?!\s+(?!then\b|and\b|or\b|to\b)\w)|shut(?:ting)?\s+(?:off|down)|power(?:ing)?\s+(?:off|down))\b/i;
 
 /** Dual-use verbs: the same words edit a parameter or open a screen.
  *  They count only with a WORK_OBJECT. `work on` / connect / disconnect
@@ -85,7 +69,8 @@ const VERB_SRC = HANDS_ON_VERB_RE.source.replace(/^\\b/, "").replace(/\\b$/, "")
  *  not a work direction (pinned by answer-validation.test.ts). */
 const INSTRUCTION_RE = new RegExp(
   "(?:" +
-    "(?:^|[.!?:;,]\\s+|[—–]\\s*|\\n)\\s*(?:[-*•]\\s+|\\d+[.)]\\s+)?(?:then\\s+|next\\s+|now\\s+|first\\s+|simply\\s+|just\\s+|so\\s+|please\\s+|also\\s+)?" +
+    // Codex #4867 r8 F13: stepTexts folds an em dash to " - ", so the spaced ASCII dash is a clause cut too.
+    "(?:^|[.!?:;,]\\s+|[—–]\\s*|\\s-\\s+|\\n)\\s*(?:[-*•]\\s+|\\d+[.)]\\s+)?(?:then\\s+|next\\s+|now\\s+|first\\s+|simply\\s+|just\\s+|so\\s+|please\\s+|also\\s+)?" +
     "|" +
     "\\b(?:or|and(?:\\s+then)?|then|so|also|otherwise|you\\s+(?:can|should|must|may|need\\s+to|have\\s+to|will\\s+need\\s+to))\\s+" +
     ")" +
@@ -105,13 +90,6 @@ const ALREADY_DISCHARGE =
  *  (`open(?!…hmi|screen|alarm|…)` in answer-validation.ts). */
 const DISPLAY_SURFACE_RE =
   /\b(?:hmi|screen|alarm|menu|page|display|tab|app|log|history|trend|faceplate)\b/i;
-
-/** Isolation mention is void when a negation / skip / "before you" governs it. */
-const ISO_VOID_PRE =
-  /(?:\b(?:do\s+not|don't|never|not|cannot|can't|can\s+not|skip(?:ping)?|without|until(?:\s+you)?|before(?:\s+you)?)\s+|\b(?:is|are|was|were|be)\s+not\s+(?:possible\s+)?)$/i;
-
-const ISO_VOID_POST =
-  /^\s+(?:is|are)\s+not\s+(?:possible|required|needed|present)\b/i;
 
 /** Codex #4867 F2: a software, record or parameter target is not physical
  *  maintenance — "Install the firmware update", "Change the fan speed
@@ -156,7 +134,7 @@ function liveMeasurement(window: string): boolean {
 /** Dual-use object window ends at the next coordinator or purpose "to".
  *  Codex #4867 r4 F7: "Replace the fuse after checking the parameters" — the object ends at a
  *  temporal clause, so a later software clause never becomes the repair's object. */
-const OBJECT_WINDOW_CUT = /\s+(?:then|so|and(?:\s+then)?|or|after|before|while|when|once|until|unless|because|if)\b|,|\s[-–—]\s|[;.]|\bto\b/i;
+const OBJECT_WINDOW_CUT = /\s+(?:then|so|and(?:\s+then)?|or|but|after|before|while|when|once|until|unless|because|if)\b|,|\s[-–—/]\s|[;.]|\bto\b/i;
 
 function withoutProhibitions(text: string): string {
   // Em-dash / colon are the same clause cut PROHIBITION already makes at comma.
@@ -165,76 +143,86 @@ function withoutProhibitions(text: string): string {
   return normalized.replace(copy, " ");
 }
 
-/** `isolated` as a prenominal adjective ("isolated analog input module")
- *  is not an isolation state. The state form is clause-final or copular
- *  ("is isolated", "with the terminals isolated"). */
-function isolatedIsAdjective(text: string, index: number, matched: string): boolean {
-  if (!/^isolated$/i.test(matched)) return false;
-  const after = text.slice(index + matched.length);
-  return /^\s+(?!and\b|then\b|or\b|but\b|with\b|while\b|so\b|is\b|are\b)/i.test(after);
-}
-
-/** Codex #4867 F1: shutting down a computer / HMI / app isolates nothing. */
-const SOFTWARE_SHUTDOWN_POST =
-  /^\s+(?:the\s+|your\s+)?(?:hmi|pc|computer|laptop|tablet|app|application|software|program|browser|engineering software|screen|monitor)\b/i;
-/** Codex #4867 r4 F1: isolation counts only when it is affirmatively about equipment energy —
- *  an allowlist, not exclusions. The lockout NOUN counts only as an act ("Follow the lockout
- *  procedure", "Perform LOTO", "LOTO the drive", "under lockout"), never as a name ("the lockout
- *  timer", "the lockout procedure is in the manual"); "isolate" needs an equipment / energy object
- *  ("Isolate the drive", never "the fault" or "the control signal"); being locked out OF a
- *  screen or account is not isolation. */
-const LOCKOUT_DOC_ACT_PRE = /\b(?:follow(?:ing)?|perform(?:ing)?|apply(?:ing)?|complet(?:e|ing)|carry(?:ing)? out|do|use|using|start)\b[^.;:]*$/i;
-const LOCKOUT_NOUN_STATE_PRE = /\b(?:under|with|in)\s+(?:a\s+|the\s+)?$/i;
-const DETERMINER_POST = /^\s+(?:the|your|this|that|these|those|each|every|all|it|them|everything)\b/i;
 const ENERGY_NOUNS =
   "it|them|everything|power|supply|supplies|feeds?|feeders?|mains|energy|source|transformer|generator|air|hydraulics?|pneumatics?|steam|gas|equipment|machine|machinery|motor|drive|vfd|inverter|" +
   "circuit|breaker|disconnect|panel|cabinet|enclosure|unit|system|conveyor|pump|compressor|line|bus|load|" +
   WORK_OBJECT_RE.source.replace(/^\\b\(\?:/, "").replace(/\)\\b$/, "");
-const ENERGY_OBJECT_RE = new RegExp(
-  "^\\s+(?:the\\s+|your\\s+|this\\s+|that\\s+|all\\s+|each\\s+)?(?:[\\w-]+\\s+){0,2}?(?:" + ENERGY_NOUNS + ")\\b",
-  "i",
-);
-/** Codex #4867 r6 F1: a copular state ("X is isolated", "X has been locked out") counts only when
- *  X is equipment / energy — "The control signal is isolated", "The HMI is isolated" do not. */
-const COPULA_SUBJECT_PRE =
-  /(?:^|\b)([\w-]+)\s+(?:is|are|was|were|has been|have been|remains|remain|stays|stay|gets|got)\s+(?:now\s+|fully\s+|properly\s+|already\s+|still\s+)*$/i;
-const ENERGY_SUBJECT_RE = new RegExp("^(?:" + ENERGY_NOUNS + ")$", "i");
-/** Codex #4867 r7 F1: "With the HMI isolated" — the state's subject after with/while/keeping. */
-const ABSOLUTE_SUBJECT_PRE = /\b(?:with|while|keeping|once)\s+(?:the\s+|your\s+|all\s+|this\s+|that\s+)?(?:[\w-]+\s+){0,2}?([\w-]+)\s+(?:(?:under|in)\s+(?:a\s+|the\s+)?)?$/i;
-/** Codex #4867 r6 F10: "has not been locked out", "is not yet isolated", "isn't isolated". */
-const NEGATED_STATE_PRE = /(?:\b(?:not|never)|n't)\s+(?:yet\s+|been\s+|be\s+|already\s+|\w+ly\s+)*$/i;
-/** The lockout noun as the act ("Perform lockout.", "Follow the lockout procedure, then …"), not a
- *  modifier of another noun ("the lockout indicator", "the lockout timer") — Codex #4867 r5 F1. */
-const LOCKOUT_NOUN_ACT_POST =
-  /^(?:\/tagout)?(?:\s+(?:procedures?|process|program|steps?|plan|sequence|devices?|locks?|padlocks?|hasps?|tags?))?\s*(?:$|[.,;:!]|\s+(?:and|then|on|to|for|before|first|at|per|as|of|in)\b)/i;
-/** "The HMI is powered off" — a software device switched off isolates no equipment energy. */
-const SOFTWARE_DEVICE_STATE_PRE =
-  /\b(?:hmi|pc|computer|laptop|tablet|app|application|software|program|screen|monitor|display|browser)\s+(?:is|are|was|were|has been|have been|gets?|got|stays?)\s+$/i;
-const ACCOUNT_LOCKOUT_POST = /^\s+of\s+(?:the\s+|your\s+)?(?:hmi|app|application|software|account|system|program|laptop|pc|computer|screen|menu)\b/i;
+const ENERGY_HEAD_RE = new RegExp("^(?:" + ENERGY_NOUNS + ")$", "i");
+/** Heads a "shut off / turn off / remove / kill" may take and still mean isolation. */
+const SUPPLY_HEAD_RE = /^(?:power|supply|supplies|mains|breakers?|disconnects?|feeds?|feeders?|electricity)$/i;
 
-function affirmativeIsolation(before: string, matched: string, after: string): boolean {
-  const m = matched.toLowerCase();
-  if (NEGATED_STATE_PRE.test(before)) return false;
-  const subject = COPULA_SUBJECT_PRE.exec(before) ?? ABSOLUTE_SUBJECT_PRE.exec(before);
-  if (subject && !ENERGY_SUBJECT_RE.test(subject[1])) return false;
-  if (/^de[\s-]?energi[sz]e$/.test(m)) return ENERGY_OBJECT_RE.test(after);
-  if (/^(?:lockout|loto)(?:\/tagout)?$/.test(m)) {
-    if (DETERMINER_POST.test(after)) return true;
-    return (LOCKOUT_DOC_ACT_PRE.test(before) || LOCKOUT_NOUN_STATE_PRE.test(before)) && LOCKOUT_NOUN_ACT_POST.test(after);
-  }
-  if (/^power/.test(m) && SOFTWARE_DEVICE_STATE_PRE.test(before)) return false;
-  if (/^lock/.test(m)) return !ACCOUNT_LOCKOUT_POST.test(after);
-  if (/^isolate$/.test(m)) return ENERGY_OBJECT_RE.test(after);
-  return true;
-}
+/** Isolation mention is void when a negation / skip / "before you" governs it
+ *  (restores and discharge statements; isolation instructions are positional). */
+const ISO_VOID_PRE =
+  /(?:\b(?:do\s+not|don't|never|not|cannot|can't|can\s+not|skip(?:ping)?|without|until(?:\s+you)?|before(?:\s+you)?)\s+|\b(?:is|are|was|were|be)\s+not\s+(?:possible\s+)?)$/i;
+const ISO_VOID_POST = /^\s+(?:is|are)\s+not\s+(?:possible|required|needed|present)\b/i;
 
 function isolationIsVoid(text: string, index: number, matched = ""): boolean {
   const before = text.slice(Math.max(0, index - 48), index);
-  const after = text.slice(index + matched.length);
-  if (ISO_VOID_PRE.test(before)) return true;
-  if (/^(?:shut|power)/i.test(matched) && SOFTWARE_SHUTDOWN_POST.test(after)) return true;
-  if (/lock|loto|^isolat|^power|^de[\s-]?energi/i.test(matched) && !affirmativeIsolation(before, matched, after)) return true;
-  return ISO_VOID_POST.test(after);
+  return ISO_VOID_PRE.test(before) || ISO_VOID_POST.test(text.slice(index + matched.length));
+}
+
+/** Simple rule ("do 1"): the isolation allowlist, matched only in instruction position
+ *  (clause start, or after and / then / first / "you must"). `kind` says which object test applies. */
+const ISO_POSITION =
+  "(?:(?:^|[.!?:;,]\\s+|[—–]\\s*|\\s-\\s+|\\n)\\s*(?:[-*•]\\s+|\\d+[.)]\\s+)?(?:(?:then|next|now|first|always|please|also|so)\\s+)?" +
+  "|\\b(?:and(?:\\s+then)?|then|first|you\\s+(?:should|must|need\\s+to|have\\s+to|will\\s+need\\s+to))\\s+)";
+const ISO_FORMS: ReadonlyArray<{ re: RegExp; object: "energy" | "supply" | "none" | "lockout_noun" }> = [
+  { re: /lock(?:ing)?[\s-]?out(?:\s*(?:and|\/|&)\s*tag(?:[\s-]?out)?)?|loto|isolate|de[\s-]?energi[sz]e/iy, object: "energy" },
+  { re: /(?:follow|perform|apply|complete|carry\s+out|do|use)\s+(?:the\s+|your\s+|a\s+)?(?:(?:site|plant)(?:'s)?\s+)?(?:lock[\s-]?out|loto)(?:[\s/-]*tag[\s-]?out)?/iy, object: "lockout_noun" },
+  { re: /(?:disconnect|remove|kill|cut|shut\s+off|turn\s+off|switch\s+off|open)\b/iy, object: "supply" },
+  {
+    re: /(?:verify|confirm|check\s+for|test\s+for|ensure)\s+(?:that\s+)?(?:there\s+is\s+)?(?:the\s+)?(?:absence\s+of\s+voltage|zero\s+(?:volts|voltage|energy)|no\s+voltage|(?:it\s+is|they\s+are)\s+(?:dead|de-?energi[sz]ed))/iy,
+    object: "none",
+  },
+  { re: /lock\s+(?:it|them|everything)\s+out/iy, object: "none" },
+];
+/** The lockout noun as the act ("Perform lockout.", "Follow the lockout procedure, then …"), not a
+ *  modifier of another noun ("the lockout indicator", "the lockout timer") — Codex #4867 r5 F1. */
+const LOCKOUT_NOUN_ACT_POST =
+  /^(?:\s+(?:procedures?|process|program|steps?|plan|sequence|devices?|locks?|padlocks?|hasps?|tags?))?\s*(?:$|[.,;:!]|\s+(?:and|then|on|to|for|before|first|at|per|as|of|in)\b)/i;
+/** No object at all ("De-energize, lock out per site procedure …", "Lock out first"). */
+const NO_OBJECT_POST = /^\s*(?:$|[.,;:!]|(?:per|before|first|now|then|and|according|as)\b)/i;
+/** Codex #4867 r7 F11 / r8 F11–F12: an isolation stated inside a condition never opens a scope. */
+const CONDITIONAL_PRE = /\b(?:if|when|whenever|whether|unless|assuming|provided(?:\s+that)?|in\s+case)\b[^,.;:]*$/i;
+
+function isolationObjectOk(kind: (typeof ISO_FORMS)[number]["object"], after: string): boolean {
+  if (kind === "none") return true;
+  if (kind === "lockout_noun") return LOCKOUT_NOUN_ACT_POST.test(after);
+  if (NO_OBJECT_POST.test(after)) return kind === "energy";
+  const head = headNoun(objectWindow(after));
+  return kind === "energy" ? ENERGY_HEAD_RE.test(head) : SUPPLY_HEAD_RE.test(head);
+}
+
+/** The one state that silences: a verify-dead statement is self-evidencing (no one confirms a
+ *  circuit dead without isolating it), and it is the form MIRA's prompts teach ("with the drive
+ *  locked out and the DC bus confirmed dead with a meter, check …" — ISOLATION_STEP_RULE and the
+ *  notebook MIRA_CORE prompt). Still void when negated / skipped and when stated as a condition. */
+const VERIFY_DEAD =
+  /\b(?:absence of voltage|confirmed dead|verif\w* (?:it is |they are )?dead|(?:verif\w*|confirm(?:ed|ing)?)\s+(?:the )?(?:absence of voltage|zero (?:volts|voltage|energy)|no voltage))\b/gi;
+
+function verifyDeadStatements(step: string): number[] {
+  return allMatchIndices(VERIFY_DEAD, step).filter((at) => !CONDITIONAL_PRE.test(step.slice(0, at)));
+}
+
+/** Start indices of every plain isolation instruction in `step`. */
+function isolationInstructions(step: string): number[] {
+  const out: number[] = [];
+  const pos = new RegExp(ISO_POSITION, "gi");
+  for (const m of step.matchAll(pos)) {
+    const at = (m.index ?? 0) + m[0].length;
+    if (CONDITIONAL_PRE.test(step.slice(0, at))) continue;
+    for (const form of ISO_FORMS) {
+      form.re.lastIndex = at;
+      const hit = form.re.exec(step);
+      if (!hit) continue;
+      const end = at + hit[0].length;
+      if (/^\w/.test(step.slice(end))) continue;
+      if (isolationObjectOk(form.object, step.slice(end))) { out.push(at); break; }
+    }
+    if (pos.lastIndex === m.index) pos.lastIndex++;
+  }
+  return out;
 }
 
 /** Isolation words that exist only as part of a restore / lockout-removed
@@ -282,28 +270,12 @@ function firstHandsOnIndex(step: string): number {
   }
 }
 
-/** Start of the clause that contains `index` — after the last `then` / `;`. */
-function clauseStartBefore(text: string, index: number): number {
-  const head = text.slice(0, index);
-  const cut = Math.max(head.lastIndexOf(";"), ...[" then ", " then,", ", then "].map((s) => {
-    const at = head.toLowerCase().lastIndexOf(s);
-    return at < 0 ? -1 : at + s.length;
-  }));
-  return cut < 0 ? 0 : cut;
-}
-
-/** True when EVERY hands-on instruction (Codex #4867 r2 F4; was: the first) is under an isolation
- *  scope — isolation stated in a prior (non-prohibited) step, or in the
- *  same clause before / conditioning the work. A lockout the answer
- *  forbids, skips, or places after the work does not count. */
-function allMatchIndices(re: RegExp, text: string, opts: { skipAdj?: boolean; skipVoid?: boolean } = {}): number[] {
+function allMatchIndices(re: RegExp, text: string): number[] {
   const copy = new RegExp(re.source, re.flags.includes("g") ? re.flags : `${re.flags}g`);
   const out: number[] = [];
   for (const m of text.matchAll(copy)) {
     const idx = m.index ?? 0;
-    if (opts.skipVoid && isolationIsVoid(text, idx, m[0])) continue;
-    if (opts.skipAdj && isolatedIsAdjective(text, idx, m[0])) continue;
-    out.push(idx);
+    if (!isolationIsVoid(text, idx, m[0])) out.push(idx);
   }
   return out;
 }
@@ -314,7 +286,8 @@ function allHandsOnIndices(step: string): number[] {
     const out: number[] = [];
     for (const m of step.matchAll(INSTRUCTION_RE)) {
       const after = step.slice((m.index ?? 0) + m[0].length, (m.index ?? 0) + m[0].length + 80);
-      if (instructionIsHandsOn(m[0], after)) out.push(m.index ?? 0);
+      // The verb's own index, so it orders against an isolation instruction at the same spot.
+      if (instructionIsHandsOn(m[0], after)) out.push((m.index ?? 0) + (new RegExp(VERB_SRC, "i").exec(m[0])?.index ?? 0));
     }
     return out;
   } finally {
@@ -322,65 +295,33 @@ function allHandsOnIndices(step: string): number[] {
   }
 }
 
-type EnergyEvent = { at: number; kind: "isolate" | "isolate_if" | "restore" | "work" };
-/** Codex #4867 r7 F11: "If the drive is isolated, replace the fuse. Otherwise replace the fan." —
- *  an isolation stated as a CONDITION holds for its own step only, never for a later branch. */
-const CONDITIONAL_PRE = /\b(?:if|when|whether|unless|assuming|provided(?: that)?|in case)\b[^,.;:]*$/i;
+type EnergyEvent = { at: number; kind: "isolate" | "restore" | "work" };
 
-/** Every isolation, restoration and hands-on instruction in one step, in textual order. */
+/** Every isolation instruction, restoration and hands-on instruction in one step, in textual order. */
 function stepEvents(step: string): EnergyEvent[] {
-  const blanked = withoutRestores(step);
-  const restores = [
-    ...allMatchIndices(RESTORE, step, { skipVoid: true }),
-    ...allMatchIndices(LOCKOUT_REMOVED, step, { skipVoid: true }),
-  ];
-  const isolations = [
-    ...allMatchIndices(ISOLATED, blanked, { skipAdj: true, skipVoid: true }),
-    ...allMatchIndices(VERIFY_DEAD, blanked, { skipVoid: true }),
-    ...allMatchIndices(ISOLATION_IMPERATIVE, blanked, { skipVoid: true }),
-    // LOCKOUT_VERB_RE is applied to lowercased text in the classifier (no `i` flag).
-    ...allMatchIndices(new RegExp(LOCKOUT_VERB_RE.source, "i"), blanked, { skipVoid: true }),
-  ];
-  // "measure … with the circuit isolated" conditions its own clause: it takes effect at the clause
-  // start (after any restore earlier in that clause), not for an earlier "Replace the fuse, then…".
-  const conditioned: number[] = [];
-  const copy = new RegExp(STATE_ISOLATED.source, STATE_ISOLATED.flags.includes("g") ? STATE_ISOLATED.flags : `${STATE_ISOLATED.flags}g`);
-  for (const m of blanked.matchAll(copy)) {
-    const idx = m.index ?? 0;
-    if (isolationIsVoid(blanked, idx, m[0])) continue;
-    const isoWord = /isolated/i.exec(m[0]);
-    if (isoWord && isolatedIsAdjective(blanked, idx + (isoWord.index ?? 0), isoWord[0])) continue;
-    // Codex #4867 r7 F1: "With the HMI isolated" — the state needs an equipment / energy subject.
-    const subjectWords = m[0].replace(/^\S+\s+(?:the\s+)?/i, "").split(/\s+/).slice(0, -1);
-    if (!subjectWords.some((w) => ENERGY_SUBJECT_RE.test(w))) continue;
-    const start = clauseStartBefore(step, idx);
-    const priorRestore = Math.max(-1, ...restores.filter((r) => r >= start && r < idx));
-    conditioned.push(priorRestore >= 0 ? priorRestore + 0.5 : start - 0.5);
-  }
   const events: EnergyEvent[] = [
-    ...isolations.map((at) => ({ at, kind: CONDITIONAL_PRE.test(blanked.slice(0, at)) ? ("isolate_if" as const) : ("isolate" as const) })),
-    ...conditioned.map((at) => ({ at, kind: "isolate" as const })),
-    ...restores.map((at) => ({ at, kind: "restore" as const })),
+    ...[...isolationInstructions(withoutRestores(step)), ...verifyDeadStatements(withoutRestores(step))].map((at) => ({
+      at,
+      kind: "isolate" as const,
+    })),
+    ...[...allMatchIndices(RESTORE, step), ...allMatchIndices(LOCKOUT_REMOVED, step)].map((at) => ({ at, kind: "restore" as const })),
     ...allHandsOnIndices(step).map((at) => ({ at, kind: "work" as const })),
   ];
-  const rank = { isolate: 0, isolate_if: 0, restore: 1, work: 2 } as const;
+  const rank = { isolate: 0, restore: 1, work: 2 } as const;
   return events.sort((a, b) => a.at - b.at || rank[a.kind] - rank[b.kind]);
 }
 
-/** True when EVERY hands-on instruction is under isolation (Codex #4867 r4 F4): every isolation,
- *  restoration and hands-on instruction is walked in textual order across all steps — an
- *  isolation opens the scope, a restoration closes it, and work outside the scope needs the
- *  notice. A lockout the answer forbids, skips, or places after the work does not count. */
+/** True when EVERY hands-on instruction comes after a plain isolation instruction with no
+ *  restoration in between, walking all steps in textual order (Codex #4867 r4 F4). A lockout the
+ *  answer forbids, skips, conditions, or places after the work does not count. */
 function firstHandsOnAlreadyIsolated(text: string): boolean {
   let isolated = false;
   let sawWork = false;
   for (const raw of stepTexts(text)) {
-    let conditional = false;
     for (const e of stepEvents(withoutProhibitions(raw))) {
       if (e.kind === "isolate") isolated = true;
-      else if (e.kind === "isolate_if") conditional = true;
-      else if (e.kind === "restore") isolated = conditional = false;
-      else if (!isolated && !conditional) return false;
+      else if (e.kind === "restore") isolated = false;
+      else if (!isolated) return false;
       else sawWork = true;
     }
   }
