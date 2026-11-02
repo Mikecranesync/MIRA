@@ -154,7 +154,19 @@ elif args[:1] == ["api"] and not any(a.startswith(WRITE_FLAGS) for a in args[1:]
         runs = st["checks"].get(path.split("/")[4], st["check_default"])
         print(json.dumps({"total_count": len(runs), "check_runs": runs}))
     elif re.fullmatch(r"repos/[^/]+/[^/]+/commits/[0-9a-f]{40}/statuses\?per_page=100", path):
-        print(json.dumps(st["statuses"].get(path.split("/")[4], [])))
+        sha = path.split("/")[4]
+        sd = st.get("status_dispatch")
+        if sd and sd["head"] == sha:
+            # Like ui-lifecycle-guard.yml: after some reads a pending status, then the final one.
+            sd["reads"] += 1
+            if sd["reads"] == sd["delay"] + 1:
+                st["statuses"].setdefault(sha, []).insert(
+                    0, {"id": 8000, "context": GUARD, "state": "pending"})
+            elif sd["reads"] == sd["delay"] + 2:
+                st["statuses"][sha].insert(0, {"id": 8001, "context": GUARD, "state": "success"})
+                st["status_dispatch"] = None
+            save()
+        print(json.dumps(st["statuses"].get(sha, [])))
     elif re.fullmatch(r"repos/[^/]+/[^/]+/pulls/77/files\?per_page=100", path) and args[2:] == [
         "--paginate"
     ]:
@@ -184,7 +196,9 @@ elif args == ["workflow", "run", "ui-lifecycle-guard.yml", "--ref", "main", "-f"
     runs = [c for c in st["checks"].get(head, st["check_default"]) if c["name"] != GUARD]
     runs.append({"id": 9000 + len(st["dispatches"]), "name": GUARD,
                  "status": "completed", "conclusion": "success"})
-    if st.get("dispatch_delay"):
+    if st.get("status_dispatch_delay") is not None:
+        st["status_dispatch"] = {"head": head, "delay": st["status_dispatch_delay"], "reads": 0}
+    elif st.get("dispatch_delay"):
         # Like GitHub: the dispatched run registers a few reads later; the old one stays visible.
         st["pending_dispatch"] = {"head": head, "left": st["dispatch_delay"], "runs": runs}
     else:
@@ -606,8 +620,10 @@ def test_item4_guard_failure_tolerated_only_for_exact_review_item(tmp_path, monk
         plan=({"status": "GREEN"},),
     )
     run = run_pr(w, capsys)
-    assert run.rc == 0
-    assert run.result["status"] == "GREEN"
+    # Every gate passes; a guarded diff is R3, so the verdict is the owner's (rc 3).
+    assert run.rc == 3, run.reasons
+    assert run.result["status"] == "NEEDS_APPROVAL"
+    assert "Lifecycle Guard" in run.reasons
     assert len(w.review_runs()) == 1
     assert w.dispatches() == [GUARD_DISPATCH]
 
@@ -860,7 +876,7 @@ def test_item9_converged_guarded_dispatches_guard_then_goes_green(tmp_path, monk
     # Three cycles only: the follow-up path itself must dispatch the guard, since a later
     # "guard" action would otherwise mask its absence.
     run = run_pr(w, capsys, "--max-cycles", "3")
-    assert run.result["status"] == "GREEN"
+    assert run.result["status"] == "NEEDS_APPROVAL", run.reasons
     assert "CONVERGED" in run.reasons
     assert len(w.issues()) == 1
     assert w.dispatches() == [GUARD_DISPATCH]
@@ -1126,6 +1142,15 @@ def test_f5_rerun_after_partial_filing_reuses_issues(tmp_path, monkeypatch, caps
         "mira-mobile/android/app/build.gradle",
         "mira-hub/src/lib/rls-helpers.ts",
         "mira-crawler/ingest/private_upload.py",
+        "mira-hub/src/lib/session.tsx",
+        "mira-pipeline/session_store.py",
+        "mira-hub/src/app/api/auth/[...nextauth]/route.ts",
+        "mira-bots/shared/eval/answer_judge.py",
+        "mira-connect/fieldbus/reader.py",
+        "mira-relay/sparkplug_decode.py",
+        "tools/acceptance_receipt_writer.py",
+        "mira-hub/src/lib/__tests__/scopeguard.test.ts",
+        "tools/kg_write_guard.py",
     ],
 )
 def test_r2_f1_tenant_safety_and_release_paths_need_authorization(path):
@@ -1214,5 +1239,49 @@ def test_r2_f4_guard_dispatch_waits_for_the_new_run(tmp_path, monkeypatch, capsy
     st["dispatch_delay"] = 2  # the old failed guard stays visible for two reads
     w.state_path.write_text(json.dumps(st), encoding="utf-8")
     run = run_pr(w, capsys, "--max-cycles", "3")
-    assert run.result["status"] == "GREEN", run.reasons
+    assert run.result["status"] == "NEEDS_APPROVAL", run.reasons
     assert w.dispatches() == [GUARD_DISPATCH]
+
+
+def test_r2_f4_guard_dispatch_waits_for_a_new_commit_status(tmp_path, monkeypatch, capsys):
+    # The real guard reports by commit status: the old failure stays visible, then a pending
+    # status appears, then the final one. Only a status newer than the old one is evidence.
+    plan = ({"status": "ISSUES_FOUND", "medium": 1, "findings": [("F1", "Pin the parser")]},)
+    old = {"id": 7000, "context": GUARD, "state": "failure"}
+    w = build_world(
+        tmp_path,
+        monkeypatch,
+        missing=(REVIEW_ITEM,),
+        checks=[c for c in ci() if c["name"] != GUARD],
+        statuses={HEAD_A: [old]},
+        plan=plan,
+    )
+    st = w.state()
+    st["status_dispatch_delay"] = 2
+    w.state_path.write_text(json.dumps(st), encoding="utf-8")
+    run = run_pr(w, capsys, "--max-cycles", "3")
+    assert run.result["status"] == "NEEDS_APPROVAL", run.reasons
+    assert w.dispatches() == [GUARD_DISPATCH]
+
+
+def test_r2_guarded_diff_is_needs_approval_even_when_paths_look_backend(
+    tmp_path, monkeypatch, capsys
+):
+    w = build_world(
+        tmp_path,
+        monkeypatch,
+        files=("mira-hub/src/app/page.tsx",),
+        missing=(REVIEW_ITEM,),
+        checks=ci(guard="success"),
+        plan=({"status": "GREEN"},),
+    )
+    run = run_pr(w, capsys)
+    assert run.rc == 3, run.reasons
+    assert run.result["tier"] == "needs_authorization"
+
+
+def test_r2_control_unguarded_backend_diff_stays_green(tmp_path, monkeypatch, capsys):
+    w = build_world(tmp_path, monkeypatch, files=("mira-hub/src/app/page.tsx",))
+    run = run_pr(w, capsys)
+    assert run.rc == 0, run.reasons
+    assert run.result["tier"] == "backend"

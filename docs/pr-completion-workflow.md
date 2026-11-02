@@ -81,6 +81,7 @@ because the evidence is stale.
 | docs, tests, screenshots, `factorylm-ui` adapters | GREEN, low risk | eligible for automated merge once Mike approves that policy |
 | other code (backend, usually behind a disabled flag) | GREEN, "activation stays separately gated" | merge-ready; turning it on is a separate approval |
 | the SDLC v1 section 2.1 R3 list: migrations, `.github/**`, compose, deployment, nginx, Dockerfiles, secrets/Doppler/env, auth, sessions and middleware, `guardrails.py`, Ignition; the governance floor (`CLAUDE.md`, `AGENTS.md`, `.claude/**`, `.githooks/**`, hooks, review producers, this controller, the lifecycle guard, `tools/ci/**`, registries, test config and guard tests, process docs and runbooks) | NEEDS_APPROVAL | needs explicit owner approval |
+| any path the base lifecycle guard covers (frozen legacy UI and its control plane): the guard runs without review comments, so a Missing list means the diff touches one | NEEDS_APPROVAL | R3 per SDLC section 2.1 |
 | PLC, Modbus, ladder, interlock, lockout, safety | NEEDS_APPROVAL | needs a separate human safety authorization |
 
 These are the patterns in `NEEDS_AUTH`, `HUMAN_SAFETY` and `LOW_RISK` in `tools/pr_completion.py`.

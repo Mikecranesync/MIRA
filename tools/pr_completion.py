@@ -79,6 +79,19 @@ NEEDS_AUTH = (  # SDLC v1 section 2.1 R3 list; checked before LOW_RISK, so it wi
     "docs/architecture/mira-sdlc-v1.md",
     "guardrails.py",
     "*session*.ts",
+    "*session*.tsx",
+    "*session*.py",
+    "*nextauth*",
+    "*judge*",
+    "*fieldbus*",
+    "*sparkplug*",
+    "*opcua*",
+    "*ethernet_ip*",
+    "tools/*receipt*",
+    "*_guard.py",
+    "*-guard.*",
+    "test_*guard*.py",
+    "*guard*.test.ts",
     "*middleware*",
     "*auth*",
     "*ignition*",
@@ -708,11 +721,15 @@ def main(argv=None):
             )
             required = (prot.get("required_status_checks") or {}).get("contexts") or []
             tier = risk_tier(snap["files"], snap["patches"])
+            ci = ci_state(snap, required, a.ci_timeout, a.poll)
+            guard = guard_missing(snap)
+            # The base guard runs without review comments, so it passes only when the diff
+            # touches no guarded legacy or control path; any Missing list means it does (R3).
+            if guard is not None and tier[0] in ("backend", "low"):
+                tier = ("needs_authorization", ["paths under the Legacy UI Lifecycle Guard"])
             result.update(
                 head=snap["head"], base=snap["base"], body_sha256=snap["body_sha256"], tier=tier[0]
             )
-            ci = ci_state(snap, required, a.ci_timeout, a.poll)
-            guard = guard_missing(snap)
             used, verdict, followups = ledger(a.pr, snap, viewer)
             result["codex_rounds_used"] = used
             status, reasons, action = decide(snap, ci, guard, (verdict, followups), used, tier)
