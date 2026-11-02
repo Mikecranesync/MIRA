@@ -7,7 +7,7 @@
 #   docker compose -f docker-compose.saas.yml -f docker-compose.production.yml \
 #     up -d --no-deps mira-hub mira-web
 #
-# Scope: `mira-hub` + `mira-web` + `mira-ask` are overridden. Both run localhost-only on
+# Scope: `mira-hub` + `mira-web` + `mira-ask` + `mira-relay` are overridden. Both run localhost-only on
 # mira-net; external cmms-ext network is dropped (Atlas/CMMS not yet restored).
 #
 # `mira-ask` was restored 2026-09-27 for manual discovery (nameplate →
@@ -81,6 +81,28 @@ services:
     # 100.68.120.99, the retired droplet's Tailscale IP: it does not exist on
     # OVH and would make `compose up` fail, so it is reset, not rebound.
     ports: !reset []
+
+  mira-relay:
+    # Restored for the CV-101 telemetry route (Ignition collector → HTTPS →
+    # POST /api/v1/tags/ingest → approved_tags → tag_events + live_signal_cache).
+    # LOOPBACK ONLY, pinned with !override: the base publish takes RELAY_BIND_ADDR,
+    # which factorylm/prd still sets to 100.68.120.99 — the retired droplet's
+    # Tailscale IP, absent on OVH (bind would fail) and a tailnet exposure the
+    # outbound-HTTPS architecture (ADR-0021) does not need. nginx fronts it.
+    ports: !override
+      - "127.0.0.1:8765:8765"
+    # Drop any external network the base may gain; mira-net only.
+    networks: !override
+      - mira-net
+    environment:
+      # Fail closed: the relay is OPEN when no key is configured
+      # (relay_server._authenticate_http). RELAY_REQUIRE_HMAC=1 makes it refuse to
+      # START without MIRA_IGNITION_HMAC_KEY (the key the gateway signs with; the
+      # base already passes it and NEON_DATABASE_URL through). Enforced in the
+      # relay rather than with a compose `:?` so offline renders (ovh-preflight,
+      # rendered-config tests) keep working.
+      RELAY_REQUIRE_HMAC: "1"
+      RELAY_LEGACY_BEARER: "0"
 
 volumes:
   mira-hub-upload-buffers:

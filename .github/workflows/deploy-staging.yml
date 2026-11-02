@@ -100,7 +100,7 @@ jobs:
             SEEN_SERVICES=" "
             for service in $SERVICES_INPUT; do
               case "$service" in
-                atlas-api|atlas-db|atlas-frontend|atlas-minio|mira-ask|mira-bot-telegram|mira-cmms-sync|mira-hub|mira-mcp|mira-ollama|mira-pipeline|mira-reranker|mira-tika|mira-web)
+                atlas-api|atlas-db|atlas-frontend|atlas-minio|mira-ask|mira-bot-telegram|mira-cmms-sync|mira-hub|mira-mcp|mira-ollama|mira-pipeline|mira-relay|mira-reranker|mira-tika|mira-web)
                   ;;
                 *)
                   fail "service is not in the staging compose allowlist: $service"
@@ -355,7 +355,10 @@ jobs:
           # omitted), so adding it would fail `compose build`. mira-reranker (CU-RR1,
           # staging only) is built from source: without it here, `up -d` would keep
           # an old reranker image forever after the first deploy.
-          TARGETS="${SERVICES:-mira-pipeline mira-mcp mira-hub mira-web mira-bot-telegram mira-ask mira-ollama mira-reranker}"
+          # mira-relay (CV-101 tag-ingest receiver) is a default target for the same
+          # reason: `up -d` alone never rebuilds it, and its image identity must be
+          # in the receipt for deploy-vps.yml to promote it.
+          TARGETS="${SERVICES:-mira-pipeline mira-mcp mira-hub mira-web mira-bot-telegram mira-ask mira-ollama mira-reranker mira-relay}"
           read -r -a TARGET_LIST <<< "$TARGETS"
           echo "Rebuild targets: $TARGETS"
 
@@ -450,6 +453,19 @@ jobs:
             2??|3??|401|403) ;;
             *) echo "::error::stg-atlas-api did not answer HTTP (code ${ATLAS_CODE}) — STOP"; exit 1;;
           esac
+
+          echo "--- stg-mira-relay (4765) ---"
+          # The receiver must be up AND must refuse an unsigned ingest: it is OPEN
+          # when no key is configured, so "healthy" alone proves nothing about auth.
+          curl -sf -o /dev/null -w "HTTP %{http_code}\n" --max-time 15 http://127.0.0.1:4765/health
+          RELAY_UNSIGNED="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 -X POST \
+            -H 'Content-Type: application/json' --data '{"tags":[]}' \
+            http://127.0.0.1:4765/api/v1/tags/ingest)" || RELAY_UNSIGNED="000"
+          echo "unsigned ingest -> HTTP ${RELAY_UNSIGNED}"
+          [ "$RELAY_UNSIGNED" = "401" ] || {
+            echo "::error::stg-mira-relay accepted or failed an UNSIGNED ingest (HTTP ${RELAY_UNSIGNED}, expected 401) — HMAC is not enforced — STOP"
+            exit 1
+          }
 
           # Runtime identity — for every deployed surface the reported gitSha MUST
           # equal the approved SHA. An unreadable answer is a STOP, not a warning.

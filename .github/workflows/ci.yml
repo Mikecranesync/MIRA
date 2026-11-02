@@ -687,6 +687,14 @@ jobs:
         # both deploys must rebuild mira-ask. Hermetic (reads repo files).
         run: pytest tests/test_mira_ask_wiring.py -v
 
+      - name: CV-101 relay route contract (tag-ingest receiver)
+        # mira-relay must be stageable (staging allowlist + compose), fail closed
+        # (RELAY_REQUIRE_HMAC + a proven unsigned 401), loopback-only in staging AND
+        # production (the prod overlay pins it despite RELAY_BIND_ADDR naming the
+        # retired droplet), and nginx must expose exactly POST /api/v1/tags/ingest.
+        # Static checks are hermetic; the rendered-config checks need docker compose.
+        run: pytest tests/test_cv101_relay_route_contract.py -v
+
       - name: PR merge-blocker resolver (#3109)
         # Pins the classification that keeps a bare "BLOCKED" from being reported
         # as a finding: QUEUED/IN_PROGRESS are pending (not failures), a REQUIRED

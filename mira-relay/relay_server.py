@@ -26,6 +26,18 @@ RELAY_API_KEY = os.getenv("RELAY_API_KEY", "")
 RELAY_LEGACY_BEARER = os.getenv("RELAY_LEGACY_BEARER", "0") == "1"
 MIRA_IGNITION_HMAC_KEY = os.getenv("MIRA_IGNITION_HMAC_KEY", "")
 
+
+def _env_flag_on(raw: str) -> bool:
+    """The relay's flag convention: only the literal "1" turns a flag on."""
+    return raw == "1"
+
+
+# Set RELAY_REQUIRE_HMAC=1 on every DEPLOYED receiver (staging + production
+# compose do). With no key configured _authenticate_http is OPEN — right for a
+# laptop bench, never for a deployed ingest route — so the flag refuses startup
+# without MIRA_IGNITION_HMAC_KEY (and with the legacy bearer path enabled).
+RELAY_REQUIRE_HMAC = _env_flag_on(os.getenv("RELAY_REQUIRE_HMAC", "0"))
+
 # Historian Query API (#2339). Backend is swappable via env; postgres is prod
 # over the existing Hub tables. The WS poll loop is OPT-IN (off in tests so the
 # Starlette TestClient never blocks on a background broadcaster).
@@ -709,6 +721,17 @@ async def _ws_poll_loop() -> None:
 async def _lifespan(app):
     """Start the OPT-IN ws/tags poll loop only when explicitly enabled, so the
     TestClient (which runs the lifespan) never spawns a background broadcaster."""
+    if RELAY_REQUIRE_HMAC:
+        if not MIRA_IGNITION_HMAC_KEY:
+            raise RuntimeError(
+                "RELAY_REQUIRE_HMAC=1 but MIRA_IGNITION_HMAC_KEY is empty — refusing to "
+                "start an unauthenticated receiver"
+            )
+        if RELAY_LEGACY_BEARER:
+            raise RuntimeError(
+                "RELAY_REQUIRE_HMAC=1 forbids RELAY_LEGACY_BEARER=1 — refusing to start"
+            )
+        logger.info("RELAY_REQUIRE_HMAC=1: HMAC key present, legacy bearer off")
     task = None
     if MIRA_HISTORIAN_WS_POLL:
         task = asyncio.create_task(_ws_poll_loop())
