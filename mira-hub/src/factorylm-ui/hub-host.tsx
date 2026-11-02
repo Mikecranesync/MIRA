@@ -22,6 +22,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type Rea
 import { useSession } from "next-auth/react";
 import { signOutToLogin } from "@/components/layout/sign-out-action";
 import { HubAccountFooter } from "./HubAccountFooter";
+import { useBackClosesLayers } from "./back-closes-layers";
 import {
   shellReducer,
   type Attachment,
@@ -942,6 +943,8 @@ export function HubShellHost() {
     groundingLine: () => groundingLineFor(detail?.notebook ?? null, docIds.length),
     busy,
   };
+
+  useBackClosesLayers(view); // #5069: phone web Back closes the open layer first
 
   if (signedOut) {
     return (
