@@ -184,3 +184,59 @@ def test_clock_falls_back_to_host_time_when_ntp_unreachable_and_stale():
     clock.refresh()  # fails again, anchor too old
     ts, meta = clock.stamp(t.wall, t.mono)
     assert ts == t.wall and meta["clock_source"] == "host" and "clock_offset_s" not in meta
+
+
+def _reply(
+    request, t1, *, li=0, mode=4, stratum=2, offset=45.6, rtt=0.04, originate=None, zero=False
+):
+    t2 = t1 + rtt / 2 + offset
+    t3 = t2 + 0.001
+    hdr = bytes([(li << 6) | (4 << 3) | mode, stratum]) + bytes(22)
+    orig = request[40:48] if originate is None else originate
+    rx, tx = (bytes(8), bytes(8)) if zero else (p._to_ntp(t2), p._to_ntp(t3))
+    return hdr + orig + rx + tx, t1 + rtt + 0.001
+
+
+def test_parse_sntp_accepts_a_valid_server_reply():
+    t1 = 1793590925.0
+    req = p.sntp_request(t1)
+    data, t4 = _reply(req, t1)
+    assert p.parse_sntp(data, req, t1, t4, 2.0) == pytest.approx(45.6, abs=0.01)
+
+
+@pytest.mark.parametrize(
+    "kw",
+    [
+        {"stratum": 0},  # kiss-o'-death (DENY/RATE)
+        {"stratum": 16},  # unsynchronized
+        {"li": 3},  # alarm: clock not synchronized
+        {"mode": 3},  # not a server reply
+        {"originate": bytes(8)},  # does not echo our transmit timestamp
+        {"zero": True},  # zero receive/transmit timestamps
+        {"offset": -4002579725.0},  # the 1900 timestamp Codex produced
+        {"rtt": 5.0},  # over-timeout round trip
+    ],
+)
+def test_parse_sntp_rejects_invalid_replies(kw):
+    t1 = 1793590925.0
+    req = p.sntp_request(t1)
+    data, t4 = _reply(req, t1, **kw)
+    assert p.parse_sntp(data, req, t1, t4, 2.0) is None
+    assert p.parse_sntp(data[:47], req, t1, t4, 2.0) is None
+
+
+def test_refresh_tries_next_server_and_keeps_valid_anchor_on_bad_replies():
+    t = FakeClocks()
+    answers = {"a": [45.6, None], "b": [None, None]}
+    clock = p.Clock(
+        query=lambda host: answers[host].pop(0), wall=lambda: t.wall, mono=lambda: t.mono
+    )
+    p_hosts, p.NTP_HOSTS = p.NTP_HOSTS, ("a", "b")
+    try:
+        clock.refresh()
+        t.advance(p.NTP_REFRESH_S + 1)
+        clock.refresh()  # both servers reply invalid -> keep the existing anchor
+    finally:
+        p.NTP_HOSTS = p_hosts
+    ts, meta = clock.stamp(t.wall, t.mono)
+    assert ts == pytest.approx(t.wall + 45.6) and meta["clock_source"] == "sntp:a"

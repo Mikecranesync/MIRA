@@ -87,6 +87,7 @@ NTP_HOSTS = tuple(
 NTP_REFRESH_S = 600.0
 NTP_MAX_AGE_S = 3600.0  # older than this → stop correcting, fall back to host time
 NTP_EPOCH_DELTA = 2208988800
+NTP_MAX_ABS_OFFSET_S = 3600.0  # a larger "correction" is treated as a bad reply
 
 log = logging.getLogger("cv101-relay-poller")
 
@@ -138,16 +139,46 @@ def map_signature_ok(read: Callable[[int], tuple[Optional[bool], Optional[int]]]
 
 def sntp_offset(host: str, timeout: float = 2.0) -> Optional[float]:
     """RFC 4330 client: offset (s) to add to the host clock, or None on failure."""
+    t1 = time.time()
+    request = sntp_request(t1)
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.settimeout(timeout)
-            t1 = time.time()
-            s.sendto(b"\x23" + 47 * b"\x00", (host, 123))
-            data, _ = s.recvfrom(48)
+            s.sendto(request, (host, 123))
+            data, _ = s.recvfrom(512)
             t4 = time.time()
     except OSError:
         return None
+    return parse_sntp(data, request, t1, t4, timeout)
+
+
+def _to_ntp(ts: float) -> bytes:
+    sec = int(ts)
+    return struct.pack("!II", sec + NTP_EPOCH_DELTA, int((ts - sec) * 2**32) & 0xFFFFFFFF)
+
+
+def sntp_request(t1: float) -> bytes:
+    """Client-mode (LI 0, VN 4, mode 3) request carrying t1 as transmit timestamp."""
+    return bytes([0x23]) + bytes(39) + _to_ntp(t1)
+
+
+def parse_sntp(
+    data: bytes, request: bytes, t1: float, t4: float, timeout: float
+) -> Optional[float]:
+    """Validate a server reply (RFC 4330 §5) and return the offset, else None.
+
+    Rejected: short packet; leap indicator 3 (unsynchronized); mode != 4 (server);
+    stratum 0 (kiss-o'-death DENY/RATE/…) or > 15; originate != our transmit
+    timestamp (stale/spoofed reply); zero receive/transmit timestamps; negative or
+    over-timeout round trip; an implausible offset (> NTP_MAX_ABS_OFFSET_S)."""
     if len(data) < 48:
+        return None
+    li, mode, stratum = data[0] >> 6, data[0] & 0x07, data[1]
+    if li == 3 or mode != 4 or not 1 <= stratum <= 15:
+        return None
+    if data[24:32] != request[40:48]:
+        return None
+    if data[32:40] == bytes(8) or data[40:48] == bytes(8):
         return None
 
     def ntp(off: int) -> float:
@@ -155,7 +186,11 @@ def sntp_offset(host: str, timeout: float = 2.0) -> Optional[float]:
         return sec - NTP_EPOCH_DELTA + frac / 2**32
 
     t2, t3 = ntp(32), ntp(40)
-    return ((t2 - t1) + (t3 - t4)) / 2
+    rtt = (t4 - t1) - (t3 - t2)
+    if rtt < 0 or rtt > timeout:
+        return None
+    offset = ((t2 - t1) + (t3 - t4)) / 2
+    return offset if abs(offset) <= NTP_MAX_ABS_OFFSET_S else None
 
 
 class Clock:
