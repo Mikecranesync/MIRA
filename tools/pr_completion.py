@@ -32,7 +32,7 @@ GUARD_CHECK = "Legacy UI Lifecycle Guard"
 GUARD_REVIEW_ITEM = "review:exact-head and exact-body Codex GREEN"
 MAX_ROUNDS = 3  # durable Codex budget per PR (docs/adversarial-review-workflow.md)
 PAID_WORKFLOWS = (".github/workflows/beta-gate.yml",)  # pull_request runs that spend money
-NEEDS_AUTH = (
+NEEDS_AUTH = (  # SDLC v1 section 2.1 R3 list; checked before LOW_RISK, so it wins over docs/tests
     "*/db/migrations/*",
     ".github/*",
     "docker-compose*",
@@ -44,11 +44,44 @@ NEEDS_AUTH = (
     "*secret*",
     "*credential*",
     "CODEOWNERS",
+    "CLAUDE.md",
+    "AGENTS.md",
+    ".claude/*",
+    ".githooks/*",
+    "tools/hooks/*",
+    "*/install/*",
     "scripts/adversarial-review*",
     "tools/ui_surface_lifecycle_guard.py",
     "tools/pr_completion.py",
-    "tools/hooks/*",
-    "*/install/*",
+    "tools/gate7_review.py",
+    "tools/ci/*",
+    "tools/capability_closure.py",
+    "tools/release_train.py",
+    "tools/staging_receipt.py",
+    "tools/migration_drift.py",
+    "tools/qa/retrieval_acceptance.py",
+    "docs/contracts/contract-index.yaml",
+    ".ast-grep-rules/*",
+    "sgconfig.yml",
+    "scripts/kg_write_guard_allowlist.txt",
+    "docs/architecture/convergence/*.yaml",
+    "pytest.ini",
+    "pyproject.toml",
+    "conftest.py",
+    "tests/test_*guard*",
+    "tests/test_adversarial_review*",
+    "tests/test_pr_completion.py",
+    "tests/test_capability_closure*",
+    "docs/adversarial-review-workflow.md",
+    "docs/environments.md",
+    "docs/versioning.md",
+    "docs/runbooks/*",
+    "docs/architecture/mira-sdlc-v1.md",
+    "guardrails.py",
+    "*session*.ts",
+    "*middleware*",
+    "*auth*",
+    "*ignition*",
 )
 HUMAN_SAFETY = ("*plc*", "*PLC*", "*modbus*", "*ladder*", "*interlock*", "*lockout*", "*safety*")
 LOW_RISK = (
@@ -68,13 +101,14 @@ REVIEW_RE = re.compile(
     r"reviewed_body_sha256: ([0-9a-f]{64})\r?\nbase_sha: [^\r\n]+\r?\nstatus: (GREEN|ISSUES_FOUND)\r?\n"
     r"review_iteration: [0-9]+\r?\n(?:post_cap_human_authorized: true\r?\n)?"
     r"(?:run_id: [0-9a-f]{32}\r?\nreservation_comment_id: [1-9][0-9]*\r?\n)?\r?\n"
-    r"BLOCKER: ([0-9]+)\r?\nHIGH: ([0-9]+)\r?\nMEDIUM: ([0-9]+)\r?\n"
+    r"BLOCKER: ([0-9]+)\r?\nHIGH: ([0-9]+)\r?\nMEDIUM: ([0-9]+)\r?\nLOW: ([0-9]+)\r?\n"
 )
 FOLLOWUPS_RE = re.compile(
     r"^\[REVIEW-FOLLOWUPS\]\r?\n\r?\n```\r?\nreviewed_sha: ([0-9a-f]{40})\r?\n"
     r"reviewed_body_sha256: ([0-9a-f]{64})\r?\nissues:((?: #[0-9]+)+)\r?\n```"
 )
 FINDING_RE = re.compile(r"^### (F[0-9]+) · MEDIUM · (.+)$", re.M)
+MAX_PR_FILES = 3000  # the REST files endpoint stops listing here; beyond it the diff is unknown
 
 
 class Blocked(Exception):
@@ -170,19 +204,32 @@ def snapshot(pr):
             "view",
             str(pr),
             "--json",
-            "state,isDraft,headRefOid,baseRefOid,baseRefName,body,files",
+            "state,isDraft,headRefOid,baseRefOid,baseRefName,body,changedFiles",
         )
     )
     body = j.get("body") or ""
     if j["state"] != "OPEN" or not re.fullmatch(r"[0-9a-f]{40}", j["headRefOid"] or ""):
         raise Blocked(f"PR is {j['state']} or has no exact head")
+    # `pr view --json files` truncates at 100 and drops rename origins, so the risk tier reads
+    # the paginated REST list. A rename counts both sides: moving a guarded file out is guarded.
+    listed = concat_json(
+        gh("api", f"repos/{{owner}}/{{repo}}/pulls/{pr}/files?per_page=100", "--paginate")
+    )
+    if len(listed) != j.get("changedFiles") or len(listed) >= MAX_PR_FILES:
+        raise Blocked(
+            f"tooling: listed {len(listed)} changed files for changedFiles={j.get('changedFiles')}; "
+            "refusing a partial file list"
+        )
+    files = {f["filename"] for f in listed} | {
+        f["previous_filename"] for f in listed if f.get("previous_filename")
+    }
     return {
         "head": j["headRefOid"],
         "base": j["baseRefOid"],
         "base_ref": j["baseRefName"],
         "draft": j["isDraft"],
         "body": body,
-        "files": sorted(f["path"] for f in j["files"]),
+        "files": sorted(files),
         "body_sha256": hashlib.sha256(body.encode()).hexdigest(),
     }
 
@@ -303,7 +350,9 @@ def ledger(pr, snap, viewer):
                 "blocker": int(m.group(4)),
                 "high": int(m.group(5)),
                 "medium": int(m.group(6)),
+                "low": int(m.group(7)),
                 "comment_id": x["id"],
+                "created_at": x.get("created_at"),
                 "body": x["body"],
             }
             followups = None
@@ -355,10 +404,14 @@ def decide(snap, ci, guard, review, budget_used, tier):
             "fix",
         )
     if verdict["status"] == "ISSUES_FOUND":
-        if not followups or len(followups["issues"]) < verdict["medium"]:
+        # The guard wants one issue per MEDIUM, and one when only LOWs remain.
+        if not followups or len(followups["issues"]) < max(verdict["medium"], 1):
             return (
                 "BLOCKED",
-                [f"CONVERGED with {verdict['medium']} MEDIUM; follow-ups not filed"],
+                [
+                    f"CONVERGED with {verdict['medium']} MEDIUM / {verdict['low']} LOW; "
+                    "follow-ups not filed"
+                ],
                 "followups",
             )
         reasons.append(f"CONVERGED; MEDIUMs accepted as follow-ups {' '.join(followups['issues'])}")
@@ -388,28 +441,56 @@ def loop_supports_converged(base):
     return bool(re.search(r"^\s*exit 5\s*$", text, re.M)) and "CONVERGED" in text
 
 
-def run_review(pr, snap, full):
-    """One round through the trusted entrypoint loaded from the captured base object."""
+def run_review(pr, snap, full, rounds_left):
+    """One action through the trusted entrypoint loaded from the captured base object.
+
+    Full mode runs up to two loop cycles: review, remediate a BLOCKER/HIGH, review the new head.
+    The loop breaks before remediation once its cycle count reaches --max-iter, so --max-iter 1
+    could never remediate. With one round left it only reviews."""
     entry = run(["git", "show", f"{snap['base']}:scripts/adversarial-review-trusted.sh"]).stdout
-    args = ["--max-iter", "1"] if full else ["--review-only"]
+    args = ["--max-iter", str(min(2, rounds_left))] if full else ["--review-only"]
     p = run(["bash", "-s", "--", str(pr), *args], stdin=entry, check=False, timeout=5400)
     sys.stderr.write(p.stdout[-2000:] + p.stderr[-2000:])
     if p.returncode not in (0, 1, 5):
         raise Blocked(f"review tooling failed (rc={p.returncode}); not a verdict")
 
 
-def file_followups(pr, snap, verdict):
+def file_followups(pr, snap, verdict, viewer):
+    """One issue per MEDIUM (one aggregate issue when only LOWs remain), then the record.
+
+    Idempotent across reruns: each issue body carries a marker bound to the PR, head, body
+    digest and finding, and an existing owner issue with that marker is reused, not refiled."""
     found = FINDING_RE.findall(verdict["body"])
     if len(found) != verdict["medium"]:
         raise Blocked(
             f"review lists {len(found)} MEDIUM headings for {verdict['medium']} MEDIUM; file by hand"
         )
+    if not found:
+        found = [("LOW", f"{verdict['low']} LOW findings from the Codex review")]
+    query = f"repos/{{owner}}/{{repo}}/issues?state=all&creator={viewer}&per_page=100"
+    if verdict.get("created_at"):
+        query += f"&since={verdict['created_at']}"  # an issue filed later was updated later
+    existing = {}
+    for x in concat_json(gh("api", query, "--paginate")):
+        if "pull_request" in x or (x.get("user") or {}).get("login") != viewer:
+            continue
+        for m in re.finditer(r"^pr-completion-followup: .+$", x.get("body") or "", re.M):
+            existing.setdefault(m.group(0), x["number"])
     nums = []
     for fid, title in found:
+        marker = (
+            f"pr-completion-followup: pr={pr} sha={snap['head']} "
+            f"body={snap['body_sha256']} finding={fid}"
+        )
+        if marker in existing:
+            nums.append(f"#{existing[marker]}")
+            continue
+        severity = "LOW" if fid == "LOW" else "MEDIUM"
         body = (
             f"Follow-up from the Codex review of PR #{pr} at {snap['head']} "
-            f"(comment {verdict['comment_id']}), finding {fid}, MEDIUM. Accepted under the CONVERGED "
-            "rule (docs/architecture/mira-sdlc-v1.md section 4.3); the finding text is in that comment."
+            f"(comment {verdict['comment_id']}), finding {fid}, {severity}. Accepted under the "
+            "CONVERGED rule (docs/architecture/mira-sdlc-v1.md section 4.3); the finding text is "
+            f"in that comment.\n\n{marker}\n"
         )
         url = gh(
             "issue", "create", "--title", f"{title[:200]} (#{pr} {fid})", "--body", body
@@ -547,7 +628,7 @@ def main(argv=None):
                     raise Blocked(
                         f"full mode would push into paid workflow paths: {', '.join(paid[:5])}"
                     )
-                run_review(a.pr, snap, full)
+                run_review(a.pr, snap, full, MAX_ROUNDS - used)
                 expected = None if full else snap["head"]
             elif action == "fix":
                 raise Blocked(
@@ -555,7 +636,9 @@ def main(argv=None):
                     "remediate a deduplicated verdict, so a human or Claude session must fix it"
                 )
             elif action == "followups":
-                result["actions"].append("filed " + " ".join(file_followups(a.pr, snap, verdict)))
+                result["actions"].append(
+                    "filed " + " ".join(file_followups(a.pr, snap, verdict, viewer))
+                )
                 if guard is not None:
                     gh(
                         "workflow",

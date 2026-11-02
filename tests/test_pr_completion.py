@@ -129,7 +129,7 @@ if args[:2] == ["pr", "view"]:
         "baseRefOid": pr["baseRefOid"],
         "baseRefName": pr["baseRefName"],
         "body": pr["body"],
-        "files": [{"path": p} for p in pr["files"]],
+        "changedFiles": pr.get("changed_files_override", len(pr["files"])),
     }))
 elif args == ["api", "user"]:
     print(json.dumps({"login": st["viewer"]}))
@@ -142,6 +142,18 @@ elif args[:1] == ["api"] and not any(a.startswith(WRITE_FLAGS) for a in args[1:]
         print(json.dumps({"total_count": len(runs), "check_runs": runs}))
     elif re.fullmatch(r"repos/[^/]+/[^/]+/commits/[0-9a-f]{40}/statuses\?per_page=100", path):
         print(json.dumps(st["statuses"].get(path.split("/")[4], [])))
+    elif re.fullmatch(r"repos/[^/]+/[^/]+/pulls/77/files\?per_page=100", path) and args[2:] == [
+        "--paginate"
+    ]:
+        rows = [f if isinstance(f, dict) else {"filename": f} for f in st["pr"]["files"]]
+        pages = [rows[i:i + 100] for i in range(0, len(rows), 100)] or [[]]
+        print("".join(json.dumps(page) for page in pages))
+    elif path.startswith("repos/{owner}/{repo}/issues?state=all&creator=") and args[2:] == [
+        "--paginate"
+    ]:
+        st["issue_queries"].append(path)
+        save()
+        print(json.dumps(st["issues"]))
     elif re.fullmatch(r"repos/[^/]+/[^/]+/issues/[0-9]+/comments", path) and args[2:] in (
         [],
         ["--paginate"],
@@ -166,9 +178,13 @@ elif args[:3] == ["pr", "comment", "77"] and len(args) == 5 and args[3] == "--bo
     print(f"https://github.com/example/mira/pull/77#issuecomment-{cid}")
 elif (args[:2] == ["issue", "create"] and len(args) == 6
       and args[2] == "--title" and args[4] == "--body"):
+    if st.get("fail_issue_create_at") == len(st["issues"]) + 1:
+        sys.stderr.write("fake gh: simulated outage\n")
+        sys.exit(1)
     number = st["next_issue"]
     st["next_issue"] += 1
-    st["issues"].append({"number": number, "title": args[3], "body": args[5]})
+    st["issues"].append({"number": number, "title": args[3], "body": args[5],
+                         "user": {"login": st["viewer"], "type": "User"}})
     save()
     print(f"https://github.com/example/mira/issues/{number}")
 else:
@@ -200,12 +216,13 @@ if step.get("status") and step.get("write", True):
         f"status: {step['status']}\n"
         f"review_iteration: {iteration}\n\n"
         f"BLOCKER: {step.get('blocker', 0)}\nHIGH: {step.get('high', 0)}\n"
-        f"MEDIUM: {step.get('medium', 0)}\nLOW: 0\nFALSE_POSITIVE: 0\n```\n"
+        f"MEDIUM: {step.get('medium', 0)}\nLOW: {step.get('low', 0)}\nFALSE_POSITIVE: 0\n```\n"
     )
     for fid, title in step.get("findings", []):
         text += f"\n### {fid} · MEDIUM · {title}\n\nDetail for {fid}.\n"
     st["comments"].append(
-        {"id": st["next_id"], "body": text, "user": {"login": st["viewer"], "type": "User"}}
+        {"id": st["next_id"], "body": text, "created_at": "2026-11-02T00:00:00Z",
+         "user": {"login": st["viewer"], "type": "User"}}
     )
     st["next_id"] += 1
 if "move_head_to" in step:
@@ -389,6 +406,7 @@ def build_world(
         "issues": [],
         "next_issue": 100,
         "dispatches": [],
+        "issue_queries": [],
         "pr_view_calls": 0,
         "before_pr_view": {str(k): v for k, v in (before_pr_view or {}).items()},
         "review_runs": [],
@@ -455,7 +473,9 @@ def test_item2_full_mode_reviews_moved_head_and_ends_green_there(tmp_path, monke
     assert run.result["head"] == HEAD_B
     runs = w.review_runs()
     assert len(runs) == 2
-    assert all(args[1:] == ["--max-iter", "1"] for args in runs), runs
+    # Two cycles per action: the loop breaks before remediation once it reaches --max-iter,
+    # so --max-iter 1 could review but never fix (Codex r1 F1 on #5112).
+    assert all(args[1:] == ["--max-iter", "2"] for args in runs), runs
 
 
 def test_item2_review_mode_high_verdict_blocks_without_second_run(tmp_path, monkeypatch, capsys):
@@ -956,3 +976,117 @@ def test_status_history_is_judged_by_its_newest_entry_over_a_green_check_run(
     )
     run = run_pr(w, capsys)
     assert run.result["status"] == expected, run.result
+
+
+# ── Codex round 1 on #5112: regressions for F1-F5 ───────────────────────────
+
+
+def test_f1_full_mode_with_one_round_left_only_reviews(tmp_path, monkeypatch, capsys):
+    # Two rounds already used: a two-cycle action would exceed the durable budget.
+    comments = (seed(10, HEAD_C, "ISSUES_FOUND", 1, high=1), seed(11, HEAD_D, "GREEN", 2))
+    w = build_world(tmp_path, monkeypatch, comments=comments, plan=({"status": "GREEN"},))
+    run = run_pr(w, capsys, "--mode", "full")
+    assert run.result["status"] == "GREEN", run.reasons
+    assert [args[1:] for args in w.review_runs()] == [["--max-iter", "1"]]
+
+
+def test_f2_file_list_beyond_one_hundred_still_sees_the_last_file(tmp_path, monkeypatch, capsys):
+    files = tuple(f"docs/page-{i:03d}.md" for i in range(100)) + ("mira-hub/db/migrations/9.sql",)
+    w = build_world(tmp_path, monkeypatch, files=files, plan=({"status": "GREEN"},))
+    run = run_pr(w, capsys)
+    assert run.rc == 3, run.reasons
+    assert run.result["tier"] == "needs_authorization"
+
+
+def test_f2_rename_out_of_a_guarded_path_counts_the_origin(tmp_path, monkeypatch, capsys):
+    renamed = {"filename": "docs/old-workflow.md", "previous_filename": ".github/workflows/x.yml"}
+    w = build_world(tmp_path, monkeypatch, files=(renamed,), plan=({"status": "GREEN"},))
+    run = run_pr(w, capsys)
+    assert run.rc == 3, run.reasons
+    assert ".github/workflows/x.yml" in run.reasons
+
+
+def test_f2_rename_control_inside_docs_stays_low(tmp_path, monkeypatch, capsys):
+    renamed = {"filename": "docs/new.md", "previous_filename": "docs/old.md"}
+    w = build_world(tmp_path, monkeypatch, files=(renamed,), plan=({"status": "GREEN"},))
+    run = run_pr(w, capsys)
+    assert run.rc == 0, run.reasons
+    assert run.result["tier"] == "low"
+
+
+def test_f2_file_count_mismatch_is_blocked_not_classified(tmp_path, monkeypatch, capsys):
+    w = build_world(tmp_path, monkeypatch, plan=({"status": "GREEN"},))
+    st = w.state()
+    st["pr"]["changed_files_override"] = 2
+    w.state_path.write_text(json.dumps(st), encoding="utf-8")
+    run = run_pr(w, capsys)
+    assert run.rc == 1
+    assert "partial file list" in run.reasons
+    assert w.review_runs() == []
+
+
+def test_f3_low_only_converged_files_one_issue_then_goes_green(tmp_path, monkeypatch, capsys):
+    plan = ({"status": "ISSUES_FOUND", "low": 2},)
+    w = build_world(tmp_path, monkeypatch, plan=plan)
+    run = run_pr(w, capsys)
+    assert run.rc == 0, run.reasons
+    assert "CONVERGED" in run.reasons
+    issues = w.issues()
+    assert len(issues) == 1
+    assert "finding=LOW" in issues[0]["body"]
+    assert len(w.review_runs()) == 1
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "CLAUDE.md",
+        ".claude/rules/multi-session-protocol.md",
+        ".githooks/pre-commit",
+        "docs/runbooks/rollback.md",
+        "docs/environments.md",
+        "docs/architecture/mira-sdlc-v1.md",
+        "docs/architecture/convergence/REGISTRY.yaml",
+        "tests/conftest.py",
+        "tests/test_ui_surface_lifecycle_guard.py",
+        "pyproject.toml",
+        "tools/ci/check.py",
+        "mira-bots/shared/guardrails.py",
+    ],
+)
+def test_f4_sdlc_r3_paths_need_authorization_before_low_risk(path):
+    assert load_controller().risk_tier([path])[0] == "needs_authorization"
+
+
+@pytest.mark.parametrize("path", ["docs/notes.md", "tests/test_engine_reply.py", "wiki/hot.md"])
+def test_f4_control_ordinary_docs_and_tests_stay_low(path):
+    assert load_controller().risk_tier([path])[0] == "low"
+
+
+def test_f5_rerun_after_partial_filing_reuses_issues(tmp_path, monkeypatch, capsys):
+    findings = (("F1", "First"), ("F2", "Second"))
+    plan = ({"status": "ISSUES_FOUND", "medium": 2, "findings": findings},)
+    w = build_world(tmp_path, monkeypatch, plan=plan)
+    st = w.state()
+    st["fail_issue_create_at"] = 2  # the second create fails, after the first succeeded
+    w.state_path.write_text(json.dumps(st), encoding="utf-8")
+    first = run_pr(w, capsys)
+    assert first.rc == 1
+    assert len(w.issues()) == 1
+    st = w.state()
+    st.pop("fail_issue_create_at")
+    w.state_path.write_text(json.dumps(st), encoding="utf-8")
+    for old in w.out.glob("*"):
+        old.unlink()
+    second = run_pr(w, capsys)
+    assert second.rc == 0, second.reasons
+    issues = w.issues()
+    assert len(issues) == 2, [i["title"] for i in issues]
+    assert sorted(re.search(r"finding=(F[0-9])", i["body"]).group(1) for i in issues) == [
+        "F1",
+        "F2",
+    ]
+    record = [c["body"] for c in w.comments() if c["body"].startswith("[REVIEW-FOLLOWUPS]")]
+    assert len(record) == 1 and "issues: #100 #101" in record[0]
+    assert all("since=2026-11-02T00:00:00Z" in q for q in w.state()["issue_queries"])
+    assert len(w.review_runs()) == 1

@@ -2435,6 +2435,17 @@ def test_loop_still_remediates_a_high_finding(tmp_path, severity):
     assert "CONVERGED" not in h.posted()
 
 
+def test_loop_max_iter_one_reviews_a_high_finding_but_never_remediates(tmp_path):
+    """Why the controller's full mode asks for two cycles: one cycle stops before the fix."""
+    h = Harness(tmp_path)
+    h.set_envelope(
+        {**ISSUES_ENVELOPE, "findings": [{**ISSUES_ENVELOPE["findings"][0], "severity": "HIGH"}]}
+    )
+    r = h.run("adversarial-review-loop.sh", "99", "--max-iter", "1")
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert h.claude_runs() == 0
+
+
 def test_loop_green_verdict_is_unchanged_by_the_converged_stop(tmp_path):
     """(c) GREEN keeps its meaning and its exit code."""
     h = Harness(tmp_path)
