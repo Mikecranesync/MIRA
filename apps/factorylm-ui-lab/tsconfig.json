@@ -31,5 +31,8 @@
     "../../packages/factorylm-interaction/src",
     "../../packages/factorylm-theme/src",
     "../../packages/factorylm-ui/src"
+  ],
+  "exclude": [
+    "e2e/fixtures/back-closes-layers.tsx"
   ]
 }
