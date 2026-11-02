@@ -240,3 +240,46 @@ def test_refresh_tries_next_server_and_keeps_valid_anchor_on_bad_replies():
         p.NTP_HOSTS = p_hosts
     ts, meta = clock.stamp(t.wall, t.mono)
     assert ts == pytest.approx(t.wall + 45.6) and meta["clock_source"] == "sntp:a"
+
+
+def test_post_signs_with_corrected_time_so_a_slow_host_still_authenticates():
+    """F5: host 600 s behind true time; SNTP anchor +600 s. Both the reading ts and
+    the HMAC timestamp must use corrected time and pass the real verify_hmac."""
+    from auth import verify_hmac
+
+    server_now = 1793590925.0
+    t = FakeClocks(wall=server_now - 600, mono=50.0)
+    clock = p.Clock(query=lambda host: 600.0, wall=lambda: t.wall, mono=lambda: t.mono)
+    clock.refresh()
+    stamped, meta = clock.stamp(t.wall, t.mono)
+    payload = p.build_payload(True, stamped, 3.0, meta)
+
+    class VerifyingHttp:
+        def post(self, url, content, headers):
+            tenant = verify_hmac(headers, content, "k" * 32, _now=server_now)
+            assert tenant == "tenant-a"
+            body = json.loads(content)
+
+            class R:
+                status_code = 200
+
+                @staticmethod
+                def json():
+                    return {"accepted": 1, "ts": body["tags"][0]["ts"]}
+
+            return R()
+
+    sign_now, _ = clock.stamp(t.wall, t.mono)
+    code, resp = p.post(VerifyingHttp(), payload, "tenant-a", "k" * 32, sign_now)
+    assert code == 200 and resp["accepted"] == 1
+    assert resp["ts"] == "2026-11-02T03:42:05.000Z"
+
+
+def test_uncorrected_host_signing_time_would_be_rejected():
+    """Negative control: signing with the slow host clock fails the relay window."""
+    from auth import sign_hmac_headers, verify_hmac
+
+    server_now = 1793590925.0
+    headers = sign_hmac_headers("tenant-a", b"{}", "k" * 32, now=server_now - 600)
+    with pytest.raises(ValueError, match="bad_timestamp"):
+        verify_hmac(headers, b"{}", "k" * 32, _now=server_now)

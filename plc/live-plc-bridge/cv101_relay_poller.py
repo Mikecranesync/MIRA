@@ -273,10 +273,17 @@ def should_post(value: bool, last_value: Optional[bool], last_post: float, now: 
     return last_value is None or value != last_value or (now - last_post) >= HEARTBEAT_S
 
 
-def post(http: Any, payload: dict[str, Any], tenant: str, key: str) -> tuple[int, dict]:
-    """Sign the exact bytes and POST them on a kept-alive client (one TLS handshake)."""
+def post(http: Any, payload: dict[str, Any], tenant: str, key: str, now: float) -> tuple[int, dict]:
+    """Sign the exact bytes and POST them on a kept-alive client (one TLS handshake).
+
+    ``now`` is the Clock-corrected UTC: the HMAC timestamp must use the same
+    true time as the reading, or a slow host clock (> the relay's 300 s skew
+    window) gets every post rejected ``bad_timestamp`` despite a valid anchor."""
     body = json.dumps(payload, separators=(",", ":")).encode()
-    headers = {"Content-Type": "application/json", **sign_hmac_headers(tenant, body, key)}
+    headers = {
+        "Content-Type": "application/json",
+        **sign_hmac_headers(tenant, body, key, now=now),
+    }
     r = http.post(INGEST_URL, content=body, headers=headers)
     try:
         return r.status_code, r.json()
@@ -327,7 +334,8 @@ def run() -> None:
                 if should_post(value, last_value, last_post, read_mono):
                     stamped, clock_meta = clock.stamp(read_wall, read_mono)
                     payload = build_payload(value, stamped, (read_mono - t0) * 1000, clock_meta)
-                    code, resp = post(http, payload, tenant, key)
+                    sign_now, _ = clock.stamp(time.time(), time.monotonic())
+                    code, resp = post(http, payload, tenant, key, sign_now)
                     ok = code == 200 and resp.get("accepted") == 1
                     (log.info if ok else log.warning)(
                         "post DI_05=%s change=%s http=%s accepted=%s rejected=%s",
