@@ -51,6 +51,12 @@ const EXACT_PATTERNS: ReadonlyArray<RegExp> = [
   /\bF\d{2,4}\b/gi, // fault codes: F004
   /\b25[AB]-[A-Z0-9]+\b/gi, // PowerFlex catalog numbers
   /\b\d{2,3}-[A-Z]\d{2,}\b/gi, // generic catalog-ish
+  // #5127 — Rockwell catalog numbers whose prefix carries a letter or whose
+  // body has more segments: PowerFlex 4 "22A-B4P5N104", Micro820
+  // "2080-LC20-20QWB". The body starts with a letter and holds two digits, and
+  // every later segment mixes letters and digits, so "120-240V", "380-480VAC"
+  // and "2026-10-31" stay ordinary text.
+  /\b\d{2,4}[A-Z]?-[A-Z](?=(?:[A-Z0-9]*\d){2})[A-Z0-9]{3,}(?:-(?=[A-Z0-9]*[A-Z])(?=[A-Z0-9]*\d)[A-Z0-9]{2,})*\b/gi,
 ];
 
 export type ExpandedQuery = {

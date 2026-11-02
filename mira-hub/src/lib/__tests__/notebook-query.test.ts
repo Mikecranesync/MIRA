@@ -58,6 +58,22 @@ describe("expandIndustrialQuery", () => {
     expect(expandIndustrialQuery("read b001").exactTokens).toContain("B001");
   });
 
+  // #5127 — a catalog number whose prefix carries a letter (PowerFlex 4
+  // "22A-B4P5N104", Micro820 "2080-LC20-20QWB") was no exact token, so the
+  // ratings row it names never reached the excerpts under NOTEBOOK_LEXICAL_V2
+  // (staging replay: pf4.pdf p.78/p.83 hold it verbatim, top 6 missed both).
+  it("extracts a catalog number with a letter in its prefix verbatim", () => {
+    expect(expandIndustrialQuery("what is the input current for a 22A-B4P5N104").exactTokens).toContain("22A-B4P5N104");
+    expect(expandIndustrialQuery("wiring for the 2080-LC20-20QWB").exactTokens).toContain("2080-LC20-20QWB");
+    expect(expandIndustrialQuery("output current of the 25B-D4P0N114").exactTokens).toContain("25B-D4P0N114");
+  });
+
+  it("does not read a voltage range or a date as a catalog number", () => {
+    expect(expandIndustrialQuery("is it rated 120-240V").exactTokens).toEqual([]);
+    expect(expandIndustrialQuery("what changed on 2026-10-31").exactTokens).toEqual([]);
+    expect(expandIndustrialQuery("rated 380-480VAC input").exactTokens).toEqual([]);
+  });
+
   it("extracts a terminal number as a zero-padded exact token", () => {
     expect(expandIndustrialQuery("Which terminal sets second speed? terminal 7").exactTokens).toContain("07");
     expect(expandIndustrialQuery("what is terminal 07").exactTokens).toContain("07");
