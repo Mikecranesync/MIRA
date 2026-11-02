@@ -30,7 +30,10 @@ exception 2 (unmapped). A different map flashed → it refuses to post.
 
 Freshness and safety:
   * every posted reading comes from a read completed in that cycle; ts is the
-    UTC read-completion time (ms resolution).
+    UTC read-completion time (ms resolution), corrected by an SNTP-measured offset
+    when the host clock is unsynced (the bench laptop's Windows Time service is
+    stopped — measured 45.6 s slow on 2026-11-02). The raw host time, offset and
+    clock source ride in metadata so the correction is auditable, never hidden.
   * on a read/connect failure NOTHING is posted — no last-known value is replayed;
     the server-side 60 s last_seen_at window turns the signal stale.
   * posts on change immediately, otherwise a heartbeat every HEARTBEAT_S.
@@ -41,6 +44,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import socket
+import struct
 import sys
 import time
 from datetime import datetime, timezone
@@ -73,6 +78,12 @@ DI05_COIL_OFFSET = 22  # coil 000023
 MAP_READABLE = (0,)  # coil 000001 motor_running — mapped in v4
 MAP_UNMAPPED = (1, 99)  # v4 gaps; the step-1 IO-check map maps both
 MODBUS_ILLEGAL_ADDRESS = 2
+NTP_HOSTS = tuple(
+    h for h in os.getenv("NTP_HOSTS", "time.cloudflare.com,time.google.com").split(",") if h
+)
+NTP_REFRESH_S = 600.0
+NTP_MAX_AGE_S = 3600.0  # older than this → stop correcting, fall back to host time
+NTP_EPOCH_DELTA = 2208988800
 
 log = logging.getLogger("cv101-relay-poller")
 
@@ -126,6 +137,58 @@ def map_signature_ok(read: Callable[[int], tuple[Optional[bool], Optional[int]]]
     return read(DI05_COIL_OFFSET)[0] is not None
 
 
+def sntp_offset(host: str, timeout: float = 2.0) -> Optional[float]:
+    """RFC 4330 client: offset (s) to add to the host clock, or None on failure."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.settimeout(timeout)
+            t1 = time.time()
+            s.sendto(b"\x23" + 47 * b"\x00", (host, 123))
+            data, _ = s.recvfrom(48)
+            t4 = time.time()
+    except OSError:
+        return None
+    if len(data) < 48:
+        return None
+
+    def ntp(off: int) -> float:
+        sec, frac = struct.unpack("!II", data[off : off + 8])
+        return sec - NTP_EPOCH_DELTA + frac / 2**32
+
+    t2, t3 = ntp(32), ntp(40)
+    return ((t2 - t1) + (t3 - t4)) / 2
+
+
+class Clock:
+    """Host clock + periodically measured SNTP offset (auditable correction)."""
+
+    def __init__(self, query: Callable[[str], Optional[float]] = sntp_offset) -> None:
+        self._query = query
+        self.offset: Optional[float] = None
+        self.source = "host"
+        self._measured = float("-inf")
+        self._tried = float("-inf")
+
+    def refresh(self, mono: float) -> None:
+        if mono - self._tried < NTP_REFRESH_S:
+            return
+        self._tried = mono
+        for host in NTP_HOSTS:
+            off = self._query(host)
+            if off is not None:
+                self.offset, self.source, self._measured = off, f"sntp:{host}", mono
+                return
+        if mono - self._measured > NTP_MAX_AGE_S:
+            self.offset, self.source = None, "host"
+
+    def stamp(self, host_ts: float) -> tuple[float, dict[str, Any]]:
+        meta: dict[str, Any] = {"host_clock_utc": utc_iso(host_ts), "clock_source": self.source}
+        if self.offset is None:
+            return host_ts, meta
+        meta["clock_offset_s"] = round(self.offset, 3)
+        return host_ts + self.offset, meta
+
+
 def utc_iso(ts: float) -> str:
     return (
         datetime.fromtimestamp(ts, tz=timezone.utc)
@@ -134,8 +197,11 @@ def utc_iso(ts: float) -> str:
     )
 
 
-def build_payload(value: bool, read_at: float, read_ms: float) -> dict[str, Any]:
-    """One genuine reading → the canonical batch (HMAC path: no body tenant)."""
+def build_payload(
+    value: bool, read_at: float, read_ms: float, clock_meta: Optional[dict[str, Any]] = None
+) -> dict[str, Any]:
+    """One genuine reading → the canonical batch (HMAC path: no body tenant).
+    ``read_at`` is the (clock-corrected) UTC read-completion time."""
     entry = build_tag_entry(
         TAG_PATH,
         bool(value),
@@ -151,6 +217,7 @@ def build_payload(value: bool, read_at: float, read_ms: float) -> dict[str, Any]
             "plc_variable": "_IO_EM_DI_05",
             "slave_map": "MbSrvConf_v4 slave-map v2",
             "read_ms": round(read_ms, 1),
+            **(clock_meta or {}),
         },
     )
     return build_ingest_batch(SOURCE_SYSTEM, [entry], source_connection_id=SOURCE_CONNECTION_ID)
@@ -177,6 +244,9 @@ def run() -> None:
 
     tenant, key = load_credentials()
     http = httpx.Client(timeout=10)
+    clock = Clock()
+    clock.refresh(time.monotonic())
+    log.info("clock: source=%s offset_s=%s", clock.source, clock.offset)
     log.info(
         "start: PLC %s:%d unit %d coil 000023 -> %s (source=%s/%s tag=%s)",
         PLC_HOST,
@@ -201,15 +271,16 @@ def run() -> None:
             last_value: Optional[bool] = None
             last_post = 0.0
             while True:
+                clock.refresh(time.monotonic())
                 t0 = time.time()
                 value, exc = read_coil(client, DI05_COIL_OFFSET)
                 read_at = time.time()
                 if value is None:
                     raise OSError(f"DI_05 read rejected, modbus exception {exc}")
                 if should_post(value, last_value, last_post, read_at):
-                    code, resp = post(
-                        http, build_payload(value, read_at, (read_at - t0) * 1000), tenant, key
-                    )
+                    stamped, clock_meta = clock.stamp(read_at)
+                    payload = build_payload(value, stamped, (read_at - t0) * 1000, clock_meta)
+                    code, resp = post(http, payload, tenant, key)
                     ok = code == 200 and resp.get("accepted") == 1
                     (log.info if ok else log.warning)(
                         "post DI_05=%s change=%s http=%s accepted=%s rejected=%s",

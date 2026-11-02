@@ -108,3 +108,23 @@ def test_normalized_key_matches_seed():
 )
 def test_should_post(value, last, last_post, now, expected):
     assert p.should_post(value, last, last_post, now) is expected
+
+
+def test_clock_applies_measured_offset_and_records_it():
+    clock = p.Clock(query=lambda host: 45.6)
+    clock.refresh(0.0)
+    ts, meta = clock.stamp(1000.0)
+    assert ts == pytest.approx(1045.6)
+    assert meta["clock_offset_s"] == 45.6 and meta["clock_source"].startswith("sntp:")
+    assert meta["host_clock_utc"] == "1970-01-01T00:16:40.000Z"
+
+
+def test_clock_falls_back_to_host_time_when_ntp_unreachable_and_stale():
+    answers = iter([45.6])
+    clock = p.Clock(query=lambda host: next(answers, None))
+    clock.refresh(0.0)
+    clock.refresh(p.NTP_REFRESH_S + 1)  # NTP fails, offset still fresh enough
+    assert clock.offset == 45.6
+    clock.refresh(p.NTP_MAX_AGE_S + p.NTP_REFRESH_S * 2)  # fails again, now too old
+    ts, meta = clock.stamp(1000.0)
+    assert ts == 1000.0 and meta["clock_source"] == "host" and "clock_offset_s" not in meta
