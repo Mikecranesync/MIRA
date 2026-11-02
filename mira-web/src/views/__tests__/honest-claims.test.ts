@@ -236,6 +236,10 @@ const DONT_SAY: ClaimRule[] = [
   { category: "price", label: "locked $3,990", re: /\$3,990|\$3990/ },
   { category: "overclaim", label: "dedicated Atlas container per customer", re: /own Atlas container|Physical isolation|no shared tables/i },
   { category: "overclaim", label: "CI cross-tenant build-fail claim", re: /fails the build if any row leaks|queries as Tenant B/i },
+  { category: "overclaim", label: "no third-party tracking", re: /no third-party tracking/i },
+  { category: "overclaim", label: "no tracking cookies", re: /no tracking cookies/i },
+  { category: "overclaim", label: "do not use cookies for tracking", re: /do not use cookies for tracking/i },
+  { category: "overclaim", label: "third-party tracking scripts", re: /third-party tracking scripts/i },
 ];
 
 /**
@@ -359,6 +363,38 @@ describe("public marketing copy — don't-say list and no published prices", () 
     expect(trust).not.toContain("We don't name providers");
     expect(privacy).toContain("Tenant isolation");
     expect(privacy).toContain("never shared with other tenants");
+  });
+
+  test("/privacy and /trust name PostHog, drop the no-tracking claim, and state session replay is off", () => {
+    const privacy = pages.find((p) => p.name === "/privacy")!.html;
+    const trust = pages.find((p) => p.name === "/trust")!.html;
+    for (const [name, html] of [
+      ["/privacy", privacy],
+      ["/trust", trust],
+    ] as const) {
+      expect(html, `${name} must name PostHog`).toContain("PostHog");
+      expect(html, `${name} must state session replay is off`).toContain(
+        "Session replay is off",
+      );
+      expect(html, `${name} must not claim Hub analytics`).not.toMatch(
+        /app\.factorylm\.com/i,
+      );
+      expect(html, `${name} still mentions sessionStorage`).not.toContain(
+        "sessionStorage",
+      );
+    }
+    expect(privacy).toContain(
+      "We use <strong>PostHog</strong> for product and marketing analytics on factorylm.com.",
+    );
+    expect(privacy).toContain("Hub sign-in uses a signed session cookie");
+    expect(privacy).toContain("We do not use Google Analytics.");
+    expect(privacy).toContain("We do not use advertising pixels.");
+    expect(privacy).toContain(
+      "Product and marketing analytics on factorylm.com (page views and CTA clicks). Session replay is off.",
+    );
+    expect(trust).toContain(
+      "Product and marketing analytics on factorylm.com (page views and CTA clicks). Session replay is off.",
+    );
   });
 
   test("public pages show no Open CMMS text", () => {
@@ -659,6 +695,31 @@ function trustCascadeViolations(html: string): string[] {
   }
   return out;
 }
+
+describe("/privacy and /trust disclose PostHog (analytics honesty)", () => {
+  const OLD_PRIVACY_TRACKING =
+    "We do not use cookies for tracking. We do not use Google Analytics or any third-party tracking scripts. Session state is managed via JWT tokens stored in browser sessionStorage (cleared when you close the tab).";
+  const OLD_TECHNICAL =
+    "IP address, browser type, device type (server logs only, no tracking cookies)";
+
+  test("planted: the pre-disclosure /privacy tracking paragraph is rejected", () => {
+    const hits = claimHits("/privacy", OLD_PRIVACY_TRACKING + " " + OLD_TECHNICAL);
+    expect(hits).toContain("overclaim: do not use cookies for tracking");
+    expect(hits).toContain("overclaim: third-party tracking scripts");
+    expect(hits).toContain("overclaim: no tracking cookies");
+  });
+
+  test("control: the shipped /privacy and /trust pages pass the PostHog disclosure contract", () => {
+    const privacy = readPublic("privacy.html");
+    const trust = readPublic("trust.html");
+    expect(claimHits("/privacy", privacy)).toEqual([]);
+    expect(claimHits("/trust", trust)).toEqual([]);
+    expect(privacy).toContain("PostHog");
+    expect(trust).toContain("PostHog");
+    expect(privacy).toContain("Session replay is off");
+    expect(trust).toContain("Session replay is off");
+  });
+});
 
 describe("/trust names only the live OpenAI→OpenRouter cascade (#5005)", () => {
   const OLD_SENTENCE =
