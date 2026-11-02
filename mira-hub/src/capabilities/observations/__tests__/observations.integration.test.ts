@@ -496,9 +496,13 @@ describe("observation reads are bounded (real Postgres)", () => {
       const [absentId] = await seed(tenant, nb, entity, [{ factValue: "absent", observedAt: tie }]);
       const [lo, hi] = [presentId!, absentId!].sort();
       // Fixture timestamps only (the app role cannot UPDATE; this pool is the owner).
+      // One base instant for both rows: now() per statement can cross a millisecond.
+      const { rows: [{ base: baseAt }] } = await testPool.query<{ base: string }>(
+        "SELECT date_trunc('milliseconds', now())::text AS base",
+      );
       const setRecorded = (id: string, expr: string) =>
-        testPool.query(`UPDATE asset_observations SET recorded_at = ${expr} WHERE id = $1::uuid`, [id]);
-      const base = "date_trunc('milliseconds', now())";
+        testPool.query(`UPDATE asset_observations SET recorded_at = ${expr} WHERE id = $1::uuid`, [id, baseAt]);
+      const base = "$2::timestamptz";
       if (tieCase === "recorded_a_second_apart") {
         await setRecorded(presentId!, `${base} - interval '1 second'`);
         await setRecorded(absentId!, base);
