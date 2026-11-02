@@ -1,5 +1,14 @@
 import pool from "@/lib/db";
 import { isPilotApprovalRequired } from "./pilot-access";
+import {
+  posthogHost,
+  posthogKey,
+  signupCompletedProperties,
+  type SignupMethod,
+} from "./posthog";
+import type { PilotAttribution } from "./utm";
+
+export { attributionFromRequest, type PilotAttribution } from "./utm";
 
 // Pilot-application funnel plumbing (#4877). Mike's decision: the Hub signup
 // at app.factorylm.com IS the free 30-day pilot application. This module is
@@ -8,122 +17,9 @@ import { isPilotApprovalRequired } from "./pilot-access";
 // Three concerns, kept together because they're always triggered by the same
 // event (a NEW account created at /api/auth/register) and are all best-effort:
 //   1. attributionFromRequest — parse utm_*/gclid/fbclid off the signup request
+//      (body + first-touch cookie + Referer; see capabilities/utm.ts)
 //   2. recordPilotApplication — persist one row per tenant (108_pilot_applications.sql)
 //   3. captureFunnelEvent / notifyOwnerOfApplication — telemetry + owner email
-
-// ---------------------------------------------------------------------------
-// 1. Attribution
-// ---------------------------------------------------------------------------
-
-export interface PilotAttribution {
-  utmSource: string | null;
-  utmMedium: string | null;
-  utmCampaign: string | null;
-  utmContent: string | null;
-  utmTerm: string | null;
-  /** Presence only — the click id itself is never stored (ad-click-bound
-   * identifier, PII-adjacent; see security-boundaries.md). */
-  hasGclid: boolean;
-  hasFbclid: boolean;
-}
-
-const EMPTY_ATTRIBUTION: PilotAttribution = {
-  utmSource: null,
-  utmMedium: null,
-  utmCampaign: null,
-  utmContent: null,
-  utmTerm: null,
-  hasGclid: false,
-  hasFbclid: false,
-};
-
-const MAX_FIELD_LEN = 128;
-// Allowlist charset covering real ad-platform UTM values (letters, digits,
-// space, -, _, ., %, +). Everything else — quotes, angle brackets, control
-// chars, newlines — is stripped before this value is stored or emailed.
-const UNSAFE_CHARS_RE = /[^a-zA-Z0-9 ._%+-]/g;
-
-function sanitizeField(raw: unknown): string | null {
-  if (typeof raw !== "string") return null;
-  const cleaned = raw.trim().replace(UNSAFE_CHARS_RE, "").slice(0, MAX_FIELD_LEN);
-  return cleaned.length > 0 ? cleaned : null;
-}
-
-function hasNonEmptyString(value: unknown): boolean {
-  return typeof value === "string" && value.length > 0;
-}
-
-function attributionFromParams(params: URLSearchParams): PilotAttribution {
-  return {
-    utmSource: sanitizeField(params.get("utm_source")),
-    utmMedium: sanitizeField(params.get("utm_medium")),
-    utmCampaign: sanitizeField(params.get("utm_campaign")),
-    utmContent: sanitizeField(params.get("utm_content")),
-    utmTerm: sanitizeField(params.get("utm_term")),
-    hasGclid: hasNonEmptyString(params.get("gclid")),
-    hasFbclid: hasNonEmptyString(params.get("fbclid")),
-  };
-}
-
-function attributionFromBody(body: unknown): PilotAttribution {
-  if (!body || typeof body !== "object") return EMPTY_ATTRIBUTION;
-  const b = body as Record<string, unknown>;
-  return {
-    utmSource: sanitizeField(b.utm_source),
-    utmMedium: sanitizeField(b.utm_medium),
-    utmCampaign: sanitizeField(b.utm_campaign),
-    utmContent: sanitizeField(b.utm_content),
-    utmTerm: sanitizeField(b.utm_term),
-    hasGclid: hasNonEmptyString(b.gclid),
-    hasFbclid: hasNonEmptyString(b.fbclid),
-  };
-}
-
-function mergeAttribution(primary: PilotAttribution, fallback: PilotAttribution): PilotAttribution {
-  return {
-    utmSource: primary.utmSource ?? fallback.utmSource,
-    utmMedium: primary.utmMedium ?? fallback.utmMedium,
-    utmCampaign: primary.utmCampaign ?? fallback.utmCampaign,
-    utmContent: primary.utmContent ?? fallback.utmContent,
-    utmTerm: primary.utmTerm ?? fallback.utmTerm,
-    hasGclid: primary.hasGclid || fallback.hasGclid,
-    hasFbclid: primary.hasFbclid || fallback.hasFbclid,
-  };
-}
-
-/**
- * Attribution for a new pilot-application signup. The frozen `/signup` page
- * (`.claude/rules/factorylm-unified-ui-cutover.md` — pages are guarded, this
- * PR never edits one) carries `utm_*` on ITS OWN url's query string
- * (`/signup?utm_source=...`). Its `fetch` to `/api/auth/register/` is
- * same-origin in every deployed environment (`NEXT_PUBLIC_API_BASE=""` per
- * docker-compose.saas.yml build args, consumed as `API_BASE` in
- * `mira-hub/src/lib/config.ts`), and a same-origin request always carries the
- * FULL referring URL — including its query string — regardless of
- * `Referrer-Policy` (that header only restricts CROSS-origin leakage).
- * Verified no override exists anywhere in mira-hub (`next.config.ts`,
- * `middleware.ts`, `app/signup/page.tsx`, `app/layout.tsx`): no
- * `Referrer-Policy` header, no `<meta name="referrer">`, no `referrerPolicy`
- * on the fetch call. So Referer is a real signal for this specific flow, not
- * a hopeful one.
- *
- * The signup page's own POST body never carries utm/gclid/fbclid today (it
- * sends only `{email, password, name}`) — the body path exists for a FUTURE
- * ad landing page or non-browser client to supply them directly. Body fields
- * win when present; Referer fills in whatever the body didn't supply.
- */
-export function attributionFromRequest(req: Request, body?: unknown): PilotAttribution {
-  let fromReferer = EMPTY_ATTRIBUTION;
-  const referer = req.headers.get("referer");
-  if (referer) {
-    try {
-      fromReferer = attributionFromParams(new URL(referer).searchParams);
-    } catch {
-      // Malformed/relative Referer header — not fatal, just no signal.
-    }
-  }
-  return mergeAttribution(attributionFromBody(body), fromReferer);
-}
 
 // ---------------------------------------------------------------------------
 // 2. Persistence (108_pilot_applications.sql)
@@ -197,20 +93,15 @@ export const PILOT_FUNNEL_EVENTS = [
   "pilot_answer_rated",
 ] as const;
 export type PilotFunnelEvent = (typeof PILOT_FUNNEL_EVENTS)[number];
+export type HubCaptureEvent = PilotFunnelEvent | "signup_completed";
 
 export type PilotFunnelEventProperties = Record<string, string | number | boolean | null>;
 
 // Named PLG_POSTHOG_KEY / PLG_POSTHOG_HOST — NOT a new POSTHOG_PROJECT_KEY
 // name — to match mira-web/src/lib/posthog-server.ts exactly, so one Doppler
 // key/host pair serves both mira-web's and mira-hub's server-side capture.
-// Read at CALL time (not module load) so tests can toggle them per-case.
-function posthogKey(): string {
-  return (process.env.PLG_POSTHOG_KEY ?? "").trim();
-}
-function posthogHost(): string {
-  // `||`, not `??`: compose forwards an UNSET var as "" (${PLG_POSTHOG_HOST:-}).
-  return (process.env.PLG_POSTHOG_HOST?.trim() || "https://us.i.posthog.com").replace(/\/+$/, "");
-}
+// Read at CALL time via capabilities/posthog.ts so the client snippet and
+// this capture path cannot drift onto different env vars.
 
 const CAPTURE_TIMEOUT_MS = 3000;
 
@@ -226,7 +117,7 @@ const CAPTURE_TIMEOUT_MS = 3000;
  * free text, question text, or file names (security-boundaries.md PII rule).
  */
 export function captureFunnelEvent(
-  event: PilotFunnelEvent,
+  event: HubCaptureEvent,
   distinctId: string,
   properties?: PilotFunnelEventProperties,
 ): void {
@@ -387,6 +278,8 @@ export interface PilotApplicationSubmittedInput {
   name: string | null;
   tenantName: string;
   attribution: PilotAttribution;
+  /** How the account was created. Defaults to credentials (email/password). */
+  method?: SignupMethod;
 }
 
 /**
@@ -421,6 +314,7 @@ export async function handlePilotApplicationSubmitted(
 
   if (isDuplicate) return;
 
+  const method = input.method ?? "credentials";
   captureFunnelEvent("pilot_application_submitted", input.tenantId, {
     has_gclid: input.attribution.hasGclid,
     has_fbclid: input.attribution.hasFbclid,
@@ -428,6 +322,12 @@ export async function handlePilotApplicationSubmitted(
     utm_medium: input.attribution.utmMedium,
     utm_campaign: input.attribution.utmCampaign,
   });
+  // Conversion event for Hub signup attribution (UTMs + method only; no PII).
+  captureFunnelEvent(
+    "signup_completed",
+    input.tenantId,
+    signupCompletedProperties(input.attribution, method),
+  );
 
   if (isPilotApprovalRequired()) {
     await notifyOwnerOfApplication({

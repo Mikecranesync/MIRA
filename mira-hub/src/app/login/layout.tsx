@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { PostHogInit } from "@/factorylm-ui/PostHogInit";
 
 export const metadata: Metadata = {
   title: "Sign In",
@@ -9,5 +10,10 @@ export const metadata: Metadata = {
 };
 
 export default function LoginLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+  return (
+    <>
+      <PostHogInit />
+      {children}
+    </>
+  );
 }

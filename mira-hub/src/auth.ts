@@ -2,7 +2,10 @@ import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
+import { cookies } from "next/headers";
 import { ensureInvitedUser, ensureUserAndTenant, findUserByEmail, findUserById, validateMagicToken } from "@/lib/users";
+import { handlePilotApplicationSubmitted } from "@/capabilities/pilot-funnel";
+import { EMPTY_ATTRIBUTION, parseUtmCookieValue, UTM_COOKIE_NAME } from "@/capabilities/utm";
 import { NO_ROLE, normalizeRole, type ResolvedRole } from "@/lib/role";
 import { refreshEntitlementClaims } from "@/capabilities/session-entitlement";
 
@@ -129,6 +132,7 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async signIn({ user, account, profile }) {
       if (account?.provider === "google" && profile?.email) {
+        const prior = await findUserByEmail(profile.email);
         const existing = await ensureUserAndTenant({
           email: profile.email,
           googleSub: account.providerAccountId,
@@ -140,6 +144,25 @@ export const authOptions: NextAuthOptions = {
         user.tenantId = existing.tenantId;
         user.status = fullUser?.status ?? "trial";
         user.trialExpiresAt = fullUser?.trialExpiresAt?.toISOString() ?? null;
+        if (!prior) {
+          let attribution = EMPTY_ATTRIBUTION;
+          try {
+            const jar = await cookies();
+            attribution = parseUtmCookieValue(jar.get(UTM_COOKIE_NAME)?.value);
+          } catch {
+            // Cookie store unavailable in this runtime — still record the signup.
+          }
+          const displayName = (profile as { name?: string }).name ?? null;
+          void handlePilotApplicationSubmitted({
+            tenantId: existing.tenantId,
+            userId: existing.id,
+            email: existing.email,
+            name: displayName,
+            tenantName: displayName?.trim() || existing.email,
+            attribution,
+            method: "google",
+          }).catch((err) => console.error("[auth] google signup analytics hook failed:", err));
+        }
       }
       return true;
     },

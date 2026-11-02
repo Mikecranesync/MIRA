@@ -1,6 +1,13 @@
 import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
 import { jwtDecrypt } from "jose";
 import { landingRedirect } from "@/capabilities/hub-landing";
+import { posthogCspOriginList } from "@/capabilities/posthog";
+import {
+  firstTouchUtmCookieValue,
+  isSignupOrLoginPath,
+  UTM_COOKIE_MAX_AGE_S,
+  UTM_COOKIE_NAME,
+} from "@/capabilities/utm";
 
 // Next.js 16 middleware runs in the edge runtime. We must NOT import
 // `node:crypto` or `next-auth/middleware` here — both pull native modules
@@ -106,14 +113,14 @@ function buildCsp(nonce: string, pathname: string): string {
     // there (script-src), the Chooser makes XHRs back to it (connect-src), and the
     // modern Chooser renders its UI in a www.dropbox.com iframe (frame-src, below).
     // Without these the script is CSP-blocked and `window.Dropbox` is never defined (#1902).
-    `script-src 'self' 'nonce-${nonce}' https://accounts.google.com https://apis.google.com https://js.stripe.com https://www.dropbox.com`,
+    `script-src 'self' 'nonce-${nonce}' https://accounts.google.com https://apis.google.com https://js.stripe.com https://www.dropbox.com ${posthogCspOriginList()}`,
     `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://js.stripe.com`,
     `font-src 'self' https://fonts.gstatic.com`,
     // blob: shows a photo the technician just picked, before it is uploaded
     // (`URL.createObjectURL` in factorylm-ui/web-adapter.ts). A blob: URL can
     // only be minted by this page's own script, so it adds no outside origin.
     `img-src 'self' data: blob: https:`,
-    `connect-src 'self' https://accounts.google.com https://api.hubapi.com https://api.stripe.com https://js.stripe.com https://www.dropbox.com`,
+    `connect-src 'self' https://accounts.google.com https://api.hubapi.com https://api.stripe.com https://js.stripe.com https://www.dropbox.com ${posthogCspOriginList()}`,
     // Command Center display hosts (DISPLAY_FRAME_SRC) are appended so the framed
     // HMI loads. CSP checks the post-redirect URL, so even though the iframe src is
     // the same-origin /api/command-center/display/[id] route, the display host it
@@ -164,6 +171,31 @@ export default async function middleware(req: NextRequest, _ev: NextFetchEvent) 
   // Forwarded as x-nonce request header so RootLayout can attach it to <Script>.
   const nonce = b64Nonce(crypto.randomUUID());
   const csp = buildCsp(nonce, pathname);
+
+  // /signup and /login are public (no session) but still need CSP + the
+  // first-touch UTM cookie so Google OAuth (which drops Referer) keeps
+  // campaign params through account creation.
+  if (isSignupOrLoginPath(pathname)) {
+    const requestHeaders = new Headers(req.headers);
+    requestHeaders.set("x-nonce", nonce);
+    const response = NextResponse.next({ request: { headers: requestHeaders } });
+    const stamped = firstTouchUtmCookieValue(
+      req.nextUrl.search,
+      req.cookies.get(UTM_COOKIE_NAME)?.value,
+    );
+    if (stamped) {
+      response.cookies.set({
+        name: UTM_COOKIE_NAME,
+        value: stamped,
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        maxAge: UTM_COOKIE_MAX_AGE_S,
+        secure: req.nextUrl.protocol === "https:",
+      });
+    }
+    return applySecurityHeaders(response, pathname, csp);
+  }
 
   const cookieValue =
     req.cookies.get(SECURE_NAME)?.value ?? req.cookies.get(REGULAR_NAME)?.value;
@@ -242,7 +274,9 @@ export default async function middleware(req: NextRequest, _ev: NextFetchEvent) 
 
 export const config = {
   matcher: [
-    // `quickstart` and `api/quickstart/*` are public — the Twilio-moment landing
+    // `login` and `signup` ARE matched (public-path branch above applies CSP
+    // + first-touch UTM cookie without an auth bounce). Other public routes:
+    // `quickstart` and `api/quickstart/*` — the Twilio-moment landing
     // page (ADR-0014). Excluding from the matcher prevents the middleware from
     // bouncing anonymous visitors to /login.
     // api/uploads/folder (POST) and api/uploads/[id] (GET, dual-auth) are the
@@ -256,6 +290,6 @@ export const config = {
     // session cookie, so add-to-home-screen breaks if they bounce to /login.
     // Exact filenames only — a bare `manifest` or `icon` prefix would also
     // exempt real routes (capabilities/pwa-manifest.ts lists the icons).
-    "/((?!login|signup|magic|m/|quickstart|api/auth|api/public|api/quickstart|api/health|api/version|api/i3x/|api/scanbe/healthz|api/uploads/folder|api/uploads/[a-f0-9]|_next/static|_next/image|favicon\\.ico|favicon\\.svg|manifest\\.webmanifest|apple-touch-icon\\.png|pwa-icon-192\\.png|pwa-icon-512\\.png|pwa-icon-maskable-512\\.png|sitemap\\.xml|robots\\.txt).*)",
+    "/((?!magic|m/|quickstart|api/auth|api/public|api/quickstart|api/health|api/version|api/i3x/|api/scanbe/healthz|api/uploads/folder|api/uploads/[a-f0-9]|_next/static|_next/image|favicon\\.ico|favicon\\.svg|manifest\\.webmanifest|apple-touch-icon\\.png|pwa-icon-192\\.png|pwa-icon-512\\.png|pwa-icon-maskable-512\\.png|sitemap\\.xml|robots\\.txt).*)",
   ],
 };

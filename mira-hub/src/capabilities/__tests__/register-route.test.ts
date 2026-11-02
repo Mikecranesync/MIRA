@@ -92,6 +92,7 @@ describe("POST /api/auth/register — pilot-funnel hook", () => {
     expect(call.userId).toBe("user-1");
     expect(call.email).toBe("new@example.com");
     expect(call.name).toBe("Jordan");
+    expect(call.method).toBe("credentials");
     expect(mockAttributionFromRequest).toHaveBeenCalledTimes(1);
   });
 
