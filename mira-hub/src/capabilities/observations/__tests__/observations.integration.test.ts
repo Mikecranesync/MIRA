@@ -729,6 +729,59 @@ describe("observation reads are bounded (real Postgres)", () => {
     expect(last).toEqual({ status: "ok", rows: [], nextCursor: null });
   });
 
+  // The contest window and the repair boundary are compared at millisecond precision, as
+  // the projector compares them. Sub-millisecond times on both sides of each edge.
+  it("contest_edges_follow_the_projector_at_millisecond_precision", async () => {
+    const tenant = uuid();
+    const entity = `cmms-${uuid()}`;
+    const nb = await makeNotebook(tenant, entity, true);
+    const T = Math.floor(Date.now() / 1000) * 1000 - 5 * MIN;
+    const at = (ms: number) => new Date(ms).toISOString();
+    const [current] = await seed(tenant, nb, entity, [{ factValue: "present", observedAt: at(T) }]);
+    const [inEdge, outEdge, outSubMs, inSubMs] = await seed(tenant, nb, entity, [
+      { factValue: "absent", observedAt: at(T - 60 * MIN) },
+      { factValue: "absent", observedAt: at(T - 60 * MIN - 1) },
+      { factValue: "absent", observedAt: at(T - 60 * MIN - 1) },
+      { factValue: "absent", observedAt: at(T - 60 * MIN) },
+    ]);
+    // Fixture microseconds: current 0.7 ms past T; one row 0.2 ms before the hour edge (the
+    // projector truncates it to 1 ms before: out, though a full-precision bound with 1 ms of
+    // slack would keep it), one 0.2 ms after the edge (truncates onto it: in).
+    const micro = (id: string, us: number) =>
+      testPool.query(`UPDATE asset_observations SET observed_at = observed_at + make_interval(secs => $2::double precision) WHERE id = $1::uuid`, [id, us / 1e6]);
+    await micro(current!, 700);
+    await micro(outSubMs!, 800);
+    await micro(inSubMs!, 200);
+
+    const now = new Date();
+    const full = deriveObservedState(await allRows(tenant, entity), { now });
+    expect(full.facts[0]!.conflicting.map((e) => e.observationId).sort()).toEqual([current!, inEdge!, inSubMs!].sort());
+    expect(outEdge).not.toBe(outSubMs);
+    const bounded = await boundedState(tenant, entity, now);
+    expect(bounded.facts).toEqual(full.facts);
+    expect(bounded.stateVersion).toBe(full.stateVersion);
+
+    // Repair boundary: a repair 0.6 ms into a millisecond; an opposing report 0.3 ms into the
+    // same millisecond is not before it to the projector, so it still contests.
+    const entity2 = `cmms-${uuid()}`;
+    const nb2 = await makeNotebook(tenant, entity2, true);
+    const R = T - 30 * MIN;
+    const [repair, sameMs, before] = await seed(tenant, nb2, entity2, [
+      { factValue: "repaired", observedAt: at(R) },
+      { factValue: "absent", observedAt: at(R) },
+      { factValue: "absent", observedAt: at(R - 1) },
+    ]);
+    const [cur2] = await seed(tenant, nb2, entity2, [{ factValue: "present", observedAt: at(T) }]);
+    await micro(repair!, 600);
+    await micro(sameMs!, 300);
+    await micro(before!, 900);
+    const full2 = deriveObservedState(await allRows(tenant, entity2), { now });
+    expect(full2.facts[0]!.conflicting.map((e) => e.observationId).sort()).toEqual([cur2!, sameMs!].sort());
+    const bounded2 = await boundedState(tenant, entity2, now);
+    expect(bounded2.facts).toEqual(full2.facts);
+    expect(bounded2.stateVersion).toBe(full2.stateVersion);
+  });
+
   it("projection_matches_the_full_projection_at_millisecond_ties_and_window_edges", async () => {
     let seedN = 5106;
     const rand = () => ((seedN = (seedN * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
