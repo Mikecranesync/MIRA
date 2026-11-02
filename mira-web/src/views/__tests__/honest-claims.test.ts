@@ -236,8 +236,8 @@ const DONT_SAY: ClaimRule[] = [
   { category: "price", label: "locked $3,990", re: /\$3,990|\$3990/ },
   { category: "overclaim", label: "dedicated Atlas container per customer", re: /own Atlas container|Physical isolation|no shared tables/i },
   { category: "overclaim", label: "CI cross-tenant build-fail claim", re: /fails the build if any row leaks|queries as Tenant B/i },
-  { category: "overclaim", label: "no third-party tracking", re: /no third-party tracking/i },
-  { category: "overclaim", label: "no tracking cookies", re: /no tracking cookies/i },
+  { category: "overclaim", label: "no third-party tracking", re: /third[- ]party tracking/i },
+  { category: "overclaim", label: "no tracking cookies", re: /no tracking cookies|not use tracking cookies/i },
   { category: "overclaim", label: "do not use cookies for tracking", re: /do not use cookies for tracking/i },
   { category: "overclaim", label: "third-party tracking scripts", re: /third-party tracking scripts/i },
 ];
@@ -273,6 +273,11 @@ const TERMS_KNOWN_DOLLARS = ["$500", "$2,000", "$5,000", "$499"];
 
 function dollarAmounts(html: string): string[] {
   return html.match(/\$[\d,]+/g) ?? [];
+}
+
+/** Visible copy only — HTML comments must not satisfy disclosure locks. */
+function withoutComments(html: string): string {
+  return html.replace(/<!--[\s\S]*?-->/g, "");
 }
 
 function schemaPriceValues(html: string): string[] {
@@ -365,36 +370,35 @@ describe("public marketing copy — don't-say list and no published prices", () 
     expect(privacy).toContain("never shared with other tenants");
   });
 
-  test("/privacy and /trust name PostHog, drop the no-tracking claim, and state session replay is off", () => {
-    const privacy = pages.find((p) => p.name === "/privacy")!.html;
-    const trust = pages.find((p) => p.name === "/trust")!.html;
+  test("/privacy and /trust name PostHog, drop the no-tracking claim, and do not enable session replay", () => {
+    const privacy = withoutComments(pages.find((p) => p.name === "/privacy")!.html);
+    const trust = withoutComments(pages.find((p) => p.name === "/trust")!.html);
     for (const [name, html] of [
       ["/privacy", privacy],
       ["/trust", trust],
     ] as const) {
-      expect(html, `${name} must name PostHog`).toContain("PostHog");
-      expect(html, `${name} must state session replay is off`).toContain(
-        "Session replay is off",
+      expect(html, `${name} must name PostHog in visible copy`).toContain("PostHog");
+      expect(
+        html,
+        `${name} must state the snippet does not enable session replay`,
+      ).toContain("The factorylm.com snippet does not enable session replay");
+      expect(html, `${name} still claims no third-party tracking`).not.toMatch(
+        /third[- ]party tracking/i,
       );
-      expect(html, `${name} must not claim Hub analytics`).not.toMatch(
-        /app\.factorylm\.com/i,
+      expect(html, `${name} still claims no tracking cookies`).not.toMatch(
+        /no tracking cookies|do not use cookies for tracking/i,
       );
-      expect(html, `${name} still mentions sessionStorage`).not.toContain(
-        "sessionStorage",
+      expect(html, `${name} still claims third-party tracking scripts`).not.toMatch(
+        /third-party tracking scripts/i,
       );
     }
     expect(privacy).toContain(
-      "We use <strong>PostHog</strong> for product and marketing analytics on factorylm.com.",
+      "We use <strong>PostHog</strong> for product and marketing analytics.",
     );
-    expect(privacy).toContain("Hub sign-in uses a signed session cookie");
     expect(privacy).toContain("We do not use Google Analytics.");
     expect(privacy).toContain("We do not use advertising pixels.");
-    expect(privacy).toContain(
-      "Product and marketing analytics on factorylm.com (page views and CTA clicks). Session replay is off.",
-    );
-    expect(trust).toContain(
-      "Product and marketing analytics on factorylm.com (page views and CTA clicks). Session replay is off.",
-    );
+    expect(privacy).toContain("server-side product-funnel events");
+    expect(trust).toContain("server-side product-funnel events");
   });
 
   test("public pages show no Open CMMS text", () => {
@@ -709,15 +713,31 @@ describe("/privacy and /trust disclose PostHog (analytics honesty)", () => {
     expect(hits).toContain("overclaim: no tracking cookies");
   });
 
+  test("planted: shortened no-tracking claims and comment-only PostHog are rejected", () => {
+    expect(claimHits("/privacy", "We do not use any third-party tracking.")).toContain(
+      "overclaim: no third-party tracking",
+    );
+    expect(claimHits("/privacy", "We do not use third-party tracking.")).toContain(
+      "overclaim: no third-party tracking",
+    );
+    const commentOnly = "<!-- PostHog analytics --><p>We do not use cookies for tracking.</p>";
+    expect(withoutComments(commentOnly)).not.toContain("PostHog");
+    expect(claimHits("/privacy", commentOnly)).toContain(
+      "overclaim: do not use cookies for tracking",
+    );
+  });
+
   test("control: the shipped /privacy and /trust pages pass the PostHog disclosure contract", () => {
-    const privacy = readPublic("privacy.html");
-    const trust = readPublic("trust.html");
+    const privacy = withoutComments(readPublic("privacy.html"));
+    const trust = withoutComments(readPublic("trust.html"));
     expect(claimHits("/privacy", privacy)).toEqual([]);
     expect(claimHits("/trust", trust)).toEqual([]);
     expect(privacy).toContain("PostHog");
     expect(trust).toContain("PostHog");
-    expect(privacy).toContain("Session replay is off");
-    expect(trust).toContain("Session replay is off");
+    expect(privacy).toContain("The factorylm.com snippet does not enable session replay");
+    expect(trust).toContain("The factorylm.com snippet does not enable session replay");
+    expect(privacy).toContain("server-side product-funnel events");
+    expect(trust).toContain("server-side product-funnel events");
   });
 });
 
