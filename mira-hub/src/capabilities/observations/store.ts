@@ -273,7 +273,9 @@ const NOT_SUPERSEDED = (alias: string) =>
  *
  * `m` picks the current report in the projector's own order (newestFirst: observed,
  * then recorded, both at millisecond precision, then id ascending), so an observed-time
- * tie between opposing reports uncaps the right value. Lower bounds give 1 ms of slack
+ * tie between opposing reports uncaps the right value. The capped read `r` uses the same
+ * order, so a millisecond tie among more than the bound cannot drop that row (#5105).
+ * Lower bounds give 1 ms of slack
  * because the projector compares millisecond instants; a superset is safe.
  */
 export async function listProjectionRows(tenantId: string, equipmentEntityId: string): Promise<ObservationRow[]> {
@@ -303,7 +305,7 @@ export async function listProjectionRows(tenantId: string, equipmentEntityId: st
             AND (v.fact_value IS DISTINCT FROM m.opposing OR e.repaired_at IS NULL
                  OR o.observed_at >= e.repaired_at - interval '1 millisecond')
             AND ${NOT_SUPERSEDED("o")}
-          ORDER BY o.observed_at DESC, o.recorded_at DESC, o.id DESC
+          ORDER BY date_trunc('milliseconds', o.observed_at) DESC, date_trunc('milliseconds', o.recorded_at) DESC, o.id ASC
           LIMIT CASE WHEN v.fact_value = m.opposing THEN NULL ELSE $6::int END
        ) r`,
       [tenantId, equipmentEntityId, [...FACT_KEYS], [...FACT_VALUES], CONTEST_WINDOW_MS / 1000, PROJECTION_ROWS_PER_VALUE],

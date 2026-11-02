@@ -526,6 +526,39 @@ describe("observation reads are bounded (real Postgres)", () => {
     });
   }
 
+  // #5105 (Codex #5104 r1 F1): more than the per-value bound of same-value reports, tied to
+  // the millisecond. The projector picks the lowest id; the capped read must keep that row.
+  it("projection_keeps_the_projectors_current_report_among_millisecond_tied_same_value_reports", async () => {
+    const tenant = uuid();
+    const entity = `cmms-${uuid()}`;
+    const nb = await makeNotebook(tenant, entity, true);
+    const tie = new Date(Date.now() - 5 * MIN).toISOString();
+    const ids = await seed(tenant, nb, entity, Array.from({ length: PROJECTION_ROWS_PER_VALUE + 1 }, () => ({ observedAt: tie })));
+    const [opposingId] = await seed(tenant, nb, entity, [{ factValue: "absent", observedAt: new Date(Date.now() - 10 * MIN).toISOString() }]);
+    // Fixture timestamps only: one millisecond, the lowest id gets the smallest microseconds,
+    // so a full-precision "newest recorded first" order ranks the projector's pick last.
+    const { rows: [{ base: baseAt }] } = await testPool.query<{ base: string }>(
+      "SELECT date_trunc('milliseconds', now())::text AS base",
+    );
+    const sorted = [...ids].sort();
+    for (const [rank, id] of sorted.entries()) {
+      await testPool.query(
+        `UPDATE asset_observations SET recorded_at = $2::timestamptz + make_interval(secs => $3::double precision) WHERE id = $1::uuid`,
+        [id, baseAt, (rank * 10) / 1e6],
+      );
+    }
+
+    const now = new Date();
+    const full = deriveObservedState(await allRows(tenant, entity), { now });
+    expect(full.facts[0]!.current.observationId).toBe(sorted[0]);
+    expect(full.facts[0]!.contested).toBe(true);
+    const bounded = deriveObservedState(await listProjectionRows(tenant, entity), { now });
+    expect(bounded.facts[0]!.current.observationId).toBe(sorted[0]);
+    expect(bounded.facts).toEqual(full.facts);
+    expect(bounded.stateVersion).toBe(full.stateVersion);
+    expect(opposingId).toEqual(expect.any(String));
+  });
+
   it("projection_does_not_read_opposing_reports_from_before_the_newest_repair", async () => {
     const tenant = uuid();
     const entity = `cmms-${uuid()}`;
