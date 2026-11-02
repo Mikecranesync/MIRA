@@ -1285,3 +1285,58 @@ def test_r2_control_unguarded_backend_diff_stays_green(tmp_path, monkeypatch, ca
     run = run_pr(w, capsys)
     assert run.rc == 0, run.reasons
     assert run.result["tier"] == "backend"
+
+
+# ── Pre-round-3 self-review: pagination decoding, tooling errors, lock states ─
+
+
+def test_concat_json_keeps_brackets_inside_strings_across_pages():
+    ctrl = load_controller()
+    raw = json.dumps([{"patch": "+x = arr[0][1]"}]) + "\n" + json.dumps([{"patch": "] ["}])
+    assert ctrl.concat_json(raw) == [{"patch": "+x = arr[0][1]"}, {"patch": "] ["}]
+    assert ctrl.concat_json(" \n") == []
+
+
+def test_run_turns_a_timeout_into_blocked():
+    ctrl = load_controller()
+    with pytest.raises(ctrl.Blocked, match="did not complete"):
+        ctrl.run(["sleep", "2"], timeout=0.1)
+
+
+def test_unexpected_tool_output_still_writes_a_blocked_report(tmp_path, monkeypatch, capsys):
+    w = build_world(tmp_path, monkeypatch)
+    ctrl = load_controller()
+
+    def broken(pr):
+        raise KeyError("headRefOid")
+
+    monkeypatch.setattr(ctrl, "snapshot", broken)
+    rc = ctrl.main([str(PR), "--poll", "0", "--ci-timeout", "2", "--out", str(w.out)])
+    assert rc == 1
+    result = json.loads(next(w.out.glob(f"pr-{PR}-*.json")).read_text(encoding="utf-8"))
+    assert result["status"] == "BLOCKED"
+    assert "KeyError" in " ".join(result["reasons"])
+    assert not (w.repo / ".git" / f"pr-completion-{PR}.lock").exists()
+
+
+def test_lock_without_a_pid_is_never_called_stale(tmp_path, monkeypatch, capsys):
+    w = build_world(tmp_path, monkeypatch)
+    lock = w.repo / ".git" / f"pr-completion-{PR}.lock"
+    lock.mkdir()
+    run = run_pr(w, capsys)
+    assert run.result["status"] == "BLOCKED"
+    assert "no pid yet" in run.reasons
+    assert "stale" not in run.reasons
+    assert w.gh_calls() == []
+
+
+def test_lock_with_a_dead_pid_is_reported_stale(tmp_path, monkeypatch, capsys):
+    w = build_world(tmp_path, monkeypatch)
+    lock = w.repo / ".git" / f"pr-completion-{PR}.lock"
+    lock.mkdir()
+    dead = subprocess.Popen(["true"])
+    dead.wait()
+    (lock / "pid").write_text(str(dead.pid))
+    run = run_pr(w, capsys)
+    assert "stale controller lock" in run.reasons
+    assert w.gh_calls() == []

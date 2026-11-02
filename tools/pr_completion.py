@@ -160,7 +160,10 @@ class Blocked(Exception):
 
 
 def run(argv, *, stdin=None, check=True, timeout=600):
-    p = subprocess.run(argv, input=stdin, capture_output=True, text=True, timeout=timeout)
+    try:
+        p = subprocess.run(argv, input=stdin, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise Blocked(f"tooling: {' '.join(argv[:3])} did not complete: {e}") from None
     if check and p.returncode != 0:
         raise Blocked(
             f"tooling: {' '.join(argv[:3])} failed rc={p.returncode}: {p.stderr.strip()[:200]}"
@@ -186,12 +189,19 @@ def gh(*args, stdin=None):
     return run(["gh", *a], stdin=stdin).stdout
 
 
-def concat_json(raw):  # gh --paginate emits concatenated arrays
-    return (
-        json.loads("[" + re.sub(r"\]\s*\[", ",", raw.strip()).strip("[]") + "]")
-        if raw.strip()
-        else []
-    )
+def concat_json(raw):
+    """gh --paginate emits one JSON array per page back to back; decode them in sequence
+    (a textual join would rewrite `][` inside string values such as diffs)."""
+    out, i, dec = [], 0, json.JSONDecoder()
+    while True:
+        while i < len(raw) and raw[i].isspace():
+            i += 1
+        if i == len(raw):
+            return out
+        page, i = dec.raw_decode(raw, i)
+        if not isinstance(page, list):
+            raise Blocked("tooling: paginated GitHub response is not a list of pages")
+        out += page
 
 
 def match_any(path, pats):
@@ -635,14 +645,25 @@ def acquire_lock(pr):
         os.mkdir(path)
     except FileExistsError:
         try:
-            os.kill(int(open(os.path.join(path, "pid")).read()), 0)
-            raise Blocked(f"another controller owns PR #{pr} ({path})")
+            pid = int(open(os.path.join(path, "pid")).read())
         except (OSError, ValueError):
+            # No readable pid yet: the owner may still be starting. Never call that stale.
+            raise Blocked(f"controller lock {path} has no pid yet; check it by hand") from None
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
             raise Blocked(
-                f"stale controller lock {path}; remove it by hand after checking"
+                f"stale controller lock {path} (pid {pid} is gone); remove it by hand"
             ) from None
-    with open(os.path.join(path, "pid"), "w") as fh:
-        fh.write(str(os.getpid()))
+        except PermissionError:
+            pass  # the process exists under another user
+        raise Blocked(f"another controller owns PR #{pr} ({path}, pid {pid})")
+    try:
+        with open(os.path.join(path, "pid"), "w") as fh:
+            fh.write(str(os.getpid()))
+    except OSError as e:
+        os.rmdir(path)
+        raise Blocked(f"could not record the controller lock pid: {e}") from None
     return path
 
 
@@ -785,6 +806,11 @@ def main(argv=None):
             )
     except Blocked as e:
         result.update(status="BLOCKED", reasons=result["reasons"] + [str(e)])
+    except (ValueError, KeyError, TypeError, OSError) as e:  # malformed tool output
+        result.update(
+            status="BLOCKED",
+            reasons=result["reasons"] + [f"tooling: unexpected {type(e).__name__}: {e}"],
+        )
     finally:
         if lock:
             os.unlink(os.path.join(lock, "pid"))
