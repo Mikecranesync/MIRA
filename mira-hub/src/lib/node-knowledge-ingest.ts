@@ -56,9 +56,10 @@ const ingestWaiters: Array<() => void> = [];
  * Acquire one of INGEST_CONCURRENCY parse slots; returns a release fn. A
  * releaser with a waiter hands its slot straight to that waiter (no decrement),
  * so the active count can never transiently exceed the limit between a release
- * and the woken waiter resuming. Double-release is a no-op.
+ * and the woken waiter resuming. Double-release is a no-op. Exported so every
+ * whole-PDF parse (ingest, and work-packet re-extraction) shares one budget.
  */
-async function acquireIngestSlot(): Promise<() => void> {
+export async function acquireIngestSlot(): Promise<() => void> {
   if (activeIngests < INGEST_CONCURRENCY) {
     activeIngests++;
   } else {

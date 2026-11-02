@@ -28,8 +28,8 @@ type Phase =
   | { kind: "failed"; preview: ObservationPreview; message: string }
   | { kind: "confirmed"; observationId: string };
 
+// Placed by the host's notebook-actions stack (hub-host.tsx), so it never sits on another button.
 export const OBS_PILL_STYLE: CSSProperties = {
-  position: "absolute", top: "calc(env(safe-area-inset-top, 0px) + 124px)", right: 12, zIndex: 40,
   background: "var(--fl-surface)", color: "var(--fl-text)", border: "1px solid var(--fl-line)",
   borderRadius: "var(--fl-radius-pill, 999px)", padding: "8px 14px", fontSize: "var(--fl-fs-sm)",
   minHeight: 44, cursor: "pointer",
