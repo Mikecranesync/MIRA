@@ -517,6 +517,10 @@ function rowRestriction(value: string, roster: Map<string, string>): string[] | 
   if (dash.length > 1) segments.push(dash[dash.length - 1]);
   const named = segments.filter((seg) => mentionsModel(seg, roster));
   if (named.length !== 1) return "unresolved";
+  // Restriction wording left outside the segments ("… (Model X only) except geared units") is
+  // applicability the segment does not account for — never drop it.
+  const rest = (dash.length > 1 ? dash.slice(0, -1).join(" ") : value).replace(/\([^)]*\)|\[[^\]]*\]/g, " ");
+  if (mentionsModel(rest, roster)) return "unresolved";
   return restrictedModels(named[0], roster) ?? "unresolved";
 }
 

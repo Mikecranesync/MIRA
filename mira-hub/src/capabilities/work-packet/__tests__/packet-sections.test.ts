@@ -313,6 +313,12 @@ describe("data-sheet ratings — one value per model, or unknown (Codex #5062 F1
     ["row restriction in words", `9XP1000, 9XP1000CS\n${ROW(" (CS versions only)")}`, "UUU"],
     ["row with two different restrictions", `9XP1000, 9XP1000CS\n${ROW(" (Model 9XP1000CS only) [9XP1000G only]")}`, "UUU"],
     ["row restriction naming an unlisted number", `9XP1000, 9XP1000CS\n${ROW(" (Model 7777 only)")}`, "UUU"],
+    // Codex #5062 round 17 F19: restriction wording outside the bracket must not be dropped.
+    ["row restriction followed by an unbracketed exclusion", `COMMON\n${ROW(" (Model 9XP1000CS only) except geared units")}`, "UUU"],
+    ["row restriction followed by an exclusion of its own model", `COMMON\n${ROW(" (Model 9XP1000CS only) except 9XP1000CS")}`, "UUU"],
+    ["row restriction plus exclusion under a family heading", `9XP1000, 9XP1000CS\n${ROW(" (Model 9XP1000CS only) except geared units")}`, "UUU"],
+    ["row restriction preceded by unbracketed wording", `COMMON\n${ROW(" geared units (Model 9XP1000CS only)")}`, "UUU"],
+    ["row restriction on a COMMON sheet (control)", `COMMON\n${ROW(" (Model 9XP1000CS only)")}`, "UVU"],
   ];
   for (const [name, layout, expected] of APPLICABILITY) {
     it(`${name}: no rating is Verified for a model the sheet does not tie it to (${expected})`, () => {
