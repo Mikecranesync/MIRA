@@ -81,7 +81,7 @@ Ambiguous paths fall to the stricter tier.
 
 | Automatic, under existing standing rules | Always Mike |
 |---|---|
-| CI wait and classification, guard run, ledger reads | merge (auto-merge is not enabled and this tool has no merge call) |
+| CI wait and classification, guard run, ledger reads | merge (this tool has no merge call and never enables auto-merge, although the repository setting allows it) |
 | Codex rounds within the durable 3-round budget | any round past the budget (`ADV_REVIEW_HUMAN_AUTHORIZED`, set by a human) |
 | trusted-loop remediation of BLOCKER/HIGH in `--mode full` | migrations, staging or production deploys, flags, Doppler, credentials |
 | CONVERGED follow-up issues, `[REVIEW-FOLLOWUPS]`, guard dispatch | paid runs beyond what a PR push already fires (full mode on paid paths needs `--allow-paid-push`) |

@@ -93,7 +93,7 @@ def run(argv, *, stdin=None, check=True, timeout=600):
 def gh(*args, stdin=None):
     """Every GitHub call passes this allowlist; anything else is a bug, not a request."""
     a = list(args)
-    writes = {"-X", "--method", "-f", "-F", "--field", "--raw-field", "--input"}
+    writes = ("-X", "--method", "-f", "-F", "--field", "--raw-field", "--input")
     ok = (
         a[:2] in (["pr", "view"], ["pr", "comment"], ["issue", "create"])
         or (
@@ -101,7 +101,7 @@ def gh(*args, stdin=None):
             and a[:6] == ["workflow", "run", "ui-lifecycle-guard.yml", "--ref", "main", "-f"]
             and re.fullmatch(r"pr_number=[0-9]+", a[6])
         )
-        or (a[:1] == ["api"] and not writes & set(a))
+        or (a[:1] == ["api"] and not any(x.startswith(writes) for x in a[1:]))
     )
     if not ok or "merge" in a:
         raise Blocked(f"refused non-allowlisted GitHub call: gh {' '.join(a[:3])}")
@@ -135,13 +135,31 @@ def risk_tier(files):
 
 
 def paid_paths(base, files):
-    """Files that make a pull_request push fire a paid workflow, from the base YAML."""
+    """Files that make a pull_request push fire a paid workflow, from the base YAML.
+
+    Fails closed: an unreadable or unparsable workflow, or a pull_request trigger without a
+    path filter, counts every changed file as paid."""
     hits = []
     for wf in PAID_WORKFLOWS:
-        text = run(["git", "show", f"{base}:{wf}"], check=False).stdout
-        block = re.search(r"pull_request:\s*\n\s*paths:\s*\n((?:\s+- .*\n)+)", text)
-        globs = re.findall(r'- "?([^"\n]+)"?', block.group(1)) if block else []
-        hits += [f for f in files if any(fnmatch.fnmatch(f, g.replace("**", "*")) for g in globs)]
+        p = run(["git", "show", f"{base}:{wf}"], check=False)
+        if p.returncode != 0:
+            continue  # the workflow does not exist at this base
+        try:
+            import yaml
+
+            doc = yaml.safe_load(p.stdout) or {}
+            on = doc.get("on", doc.get(True)) or {}
+            pr = on.get("pull_request", None) if isinstance(on, dict) else None
+            if pr is None and not (isinstance(on, (list, str)) and "pull_request" in on):
+                continue
+            globs = (pr or {}).get("paths")
+            if not isinstance(globs, list):
+                return sorted(files)
+        except Exception:  # noqa: BLE001 - any parse failure is treated as paid
+            return sorted(files)
+        hits += [
+            f for f in files if any(fnmatch.fnmatch(f, str(g).replace("**", "*")) for g in globs)
+        ]
     return sorted(set(hits))
 
 
@@ -178,18 +196,25 @@ def ci_state(snap, required, timeout_s, poll_s):
         )
         if runs.get("total_count", 0) > len(runs.get("check_runs", [])):
             raise Blocked("tooling: more than 100 check runs; refusing a partial CI read")
-        latest = {}
+        run_latest = {}
         for c in sorted(runs["check_runs"], key=lambda c: c["id"]):
-            latest[c["name"]] = (c["status"], c["conclusion"])
+            run_latest[c["name"]] = (c["status"], c["conclusion"])
+        latest = dict(run_latest)
         for s in reversed(
             concat_json(
                 gh("api", f"repos/{{owner}}/{{repo}}/commits/{snap['head']}/statuses?per_page=100")
             )
         ):
-            latest[s["context"]] = (
+            status = (
                 "completed" if s["state"] != "pending" else "pending",
                 {"success": "success", "pending": None}.get(s["state"], "failure"),
             )
+            run_result = run_latest.get(s["context"])
+            # A same-named status never hides a failed or pending check run, except the
+            # lifecycle guard, whose dispatched status is the documented exact-head verdict.
+            if run_result and s["context"] != GUARD_CHECK and run_result[1] != "success":
+                continue
+            latest[s["context"]] = status
         pending = [n for n, (st, _) in latest.items() if st != "completed"]
         if not pending:
             failed = sorted(
@@ -359,7 +384,8 @@ def decide(snap, ci, guard, review, budget_used, tier):
 
 
 def loop_supports_converged(base):
-    return "exit 5" in run(["git", "show", f"{base}:scripts/adversarial-review-loop.sh"]).stdout
+    text = run(["git", "show", f"{base}:scripts/adversarial-review-loop.sh"]).stdout
+    return bool(re.search(r"^\s*exit 5\s*$", text, re.M)) and "CONVERGED" in text
 
 
 def run_review(pr, snap, full):
@@ -512,6 +538,10 @@ def main(argv=None):
             result["actions"].append(f"{action} at {snap['head'][:12]}")
             if action == "review":
                 full = a.mode == "full" and loop_supports_converged(snap["base"])
+                if a.mode == "full" and not full:
+                    result["actions"].append(
+                        "full mode unavailable: base loop lacks the CONVERGED stop"
+                    )
                 paid = paid_paths(snap["base"], snap["files"])
                 if full and paid and not a.allow_paid_push:
                     raise Blocked(
@@ -563,12 +593,12 @@ def main(argv=None):
             os.unlink(os.path.join(lock, "pid"))
             os.rmdir(lock)
     text = report(result, a.out)
-    print(text)
+    sys.stdout.write(text + "\n")
     if a.post_status and result["head"]:
         try:
             gh("pr", "comment", str(a.pr), "--body", text)
         except Blocked as e:
-            print(f"status comment not posted: {e}", file=sys.stderr)
+            sys.stderr.write(f"status comment not posted: {e}\n")
     return {"GREEN": 0, "NEEDS_APPROVAL": 3}.get(result["status"], 1)
 
 
