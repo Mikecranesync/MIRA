@@ -27,7 +27,7 @@ worktrees. Options:
 |---|---|
 | `--mode review` (default) | Codex rounds are review-only. A BLOCKER or HIGH ends the run BLOCKED with the findings for a Claude session to fix. |
 | `--mode full` | One trusted-loop action of up to two cycles (`--max-iter 2`): Codex review, Claude remediation in the trusted loop for BLOCKER/HIGH only, then a review of the new head. The loop stops before remediation once it reaches `--max-iter`, so one cycle could never fix anything. With one round left in the budget it asks for `--max-iter 1`, a review only. Used only when the base loop has the CONVERGED stop (exit 5). Otherwise it falls back to review-only. |
-| `--allow-paid-push` | Allows full mode when the PR touches the `pull_request.paths` of a paid workflow (Beta Gate), since each remediation push fires it again. |
+| `--allow-paid-push` | Required for full mode whenever the base has a paid `pull_request` workflow (Beta Gate). A remediation push can add files the current diff does not touch, so the controller cannot prove in advance that the push stays off the paid paths. |
 | `--no-followups` | On CONVERGED, report instead of filing issues. |
 | `--max-cycles N` | Hard bound on cycles (default 4). |
 | `--ci-timeout S`, `--poll S` | Bound on the CI wait (default 3600 s, polled every 60 s). |
@@ -64,10 +64,14 @@ carried over from an earlier cycle or read back from a status comment.
      `[REVIEW-FOLLOWUPS]` record, and a guard dispatch. Each issue body carries a
      `pr-completion-followup:` marker for the PR, head, body digest and finding; a rerun after a
      partial filing reuses the owner issue with that marker instead of filing a duplicate.
-5. **Guard status**: a guarded PR also needs a `success` guard status at the exact head.
-6. **Risk policy**: once every gate passes, the changed paths decide the verdict.
+5. **Guard status**: a guarded PR also needs a `success` guard status at the exact head. After a
+   dispatch the controller waits for a guard run or status newer than any it saw before the
+   dispatch, so it never judges the previous run's failure.
+6. **Merge preconditions**: a draft, a merge conflict, unknown mergeability, `BEHIND`, `DIRTY`
+   or requested changes is BLOCKED, even when every review and CI gate passed.
+7. **Risk policy**: once every gate passes, the changed paths and their diff decide the verdict.
 
-A final re-snapshot runs before reporting. If the head or body changed, the report is BLOCKED,
+A final re-snapshot runs before reporting. If the head, base or body changed, the report is BLOCKED,
 because the evidence is stale.
 
 ## Risk policy
@@ -80,6 +84,11 @@ because the evidence is stale.
 | PLC, Modbus, ladder, interlock, lockout, safety | NEEDS_APPROVAL | needs a separate human safety authorization |
 
 These are the patterns in `NEEDS_AUTH`, `HUMAN_SAFETY` and `LOW_RISK` in `tools/pr_completion.py`.
+Some R3 families are defined by what code does, not where it lives: tenant filters, RLS, private
+ingest, safety keywords. So for every file outside the low tier the controller also reads its diff.
+A changed line naming an `R3_DIFF_TOKENS` entry (`tenant_id`, `is_private`, `knowledge_entries`,
+`CREATE POLICY` and others) is NEEDS_APPROVAL, and so is a file whose diff GitHub did not send
+(binary or too large). The diff can only raise the tier, never lower it.
 The tiers are checked in that order, so a governance doc or a guard test is NEEDS_APPROVAL even
 though it sits under `docs/` or `tests/`. A path that matches no list is treated as other code
 (GREEN only with activation gated), never as low risk. The R2 behavioral class (answer path,

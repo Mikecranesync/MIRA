@@ -118,7 +118,9 @@ def refuse():
 if args[:2] == ["pr", "view"]:
     st["pr_view_calls"] += 1
     hook = st["before_pr_view"].get(str(st["pr_view_calls"]))
-    if hook:
+    if isinstance(hook, dict):
+        st["pr"].update(hook)
+    elif hook:
         st["pr"]["headRefOid"] = hook
     save()
     pr = st["pr"]
@@ -130,6 +132,9 @@ if args[:2] == ["pr", "view"]:
         "baseRefName": pr["baseRefName"],
         "body": pr["body"],
         "changedFiles": pr.get("changed_files_override", len(pr["files"])),
+        "mergeable": pr.get("mergeable", "MERGEABLE"),
+        "mergeStateStatus": pr.get("mergeStateStatus", "CLEAN"),
+        "reviewDecision": pr.get("reviewDecision", ""),
     }))
 elif args == ["api", "user"]:
     print(json.dumps({"login": st["viewer"]}))
@@ -138,6 +143,14 @@ elif args[:1] == ["api"] and not any(a.startswith(WRITE_FLAGS) for a in args[1:]
     if re.fullmatch(r"repos/[^/]+/[^/]+/branches/[^/]+/protection", path):
         print(json.dumps(st["protection"]))
     elif re.fullmatch(r"repos/[^/]+/[^/]+/commits/[0-9a-f]{40}/check-runs\?per_page=100", path):
+        pend = st.get("pending_dispatch")
+        if pend and pend["left"] > 0:
+            pend["left"] -= 1
+            save()
+        elif pend:
+            st["pending_dispatch"] = None
+            st["checks"][pend["head"]] = pend["runs"]
+            save()
         runs = st["checks"].get(path.split("/")[4], st["check_default"])
         print(json.dumps({"total_count": len(runs), "check_runs": runs}))
     elif re.fullmatch(r"repos/[^/]+/[^/]+/commits/[0-9a-f]{40}/statuses\?per_page=100", path):
@@ -145,7 +158,12 @@ elif args[:1] == ["api"] and not any(a.startswith(WRITE_FLAGS) for a in args[1:]
     elif re.fullmatch(r"repos/[^/]+/[^/]+/pulls/77/files\?per_page=100", path) and args[2:] == [
         "--paginate"
     ]:
-        rows = [f if isinstance(f, dict) else {"filename": f} for f in st["pr"]["files"]]
+        rows = [
+            {"patch": "@@ -1 +1 @@\n-old line\n+new line"}
+            | (f if isinstance(f, dict) else {"filename": f})
+            for f in st["pr"]["files"]
+        ]
+        rows = [{k: v for k, v in r.items() if v is not None} for r in rows]
         pages = [rows[i:i + 100] for i in range(0, len(rows), 100)] or [[]]
         print("".join(json.dumps(page) for page in pages))
     elif path.startswith("repos/{owner}/{repo}/issues?state=all&creator=") and args[2:] == [
@@ -166,7 +184,11 @@ elif args == ["workflow", "run", "ui-lifecycle-guard.yml", "--ref", "main", "-f"
     runs = [c for c in st["checks"].get(head, st["check_default"]) if c["name"] != GUARD]
     runs.append({"id": 9000 + len(st["dispatches"]), "name": GUARD,
                  "status": "completed", "conclusion": "success"})
-    st["checks"][head] = runs
+    if st.get("dispatch_delay"):
+        # Like GitHub: the dispatched run registers a few reads later; the old one stays visible.
+        st["pending_dispatch"] = {"head": head, "left": st["dispatch_delay"], "runs": runs}
+    else:
+        st["checks"][head] = runs
     st["dispatches"].append(args)
     save()
 elif args[:3] == ["pr", "comment", "77"] and len(args) == 5 and args[3] == "--body":
@@ -467,7 +489,7 @@ def test_item2_full_mode_reviews_moved_head_and_ends_green_there(tmp_path, monke
         {"status": "GREEN"},
     )
     w = build_world(tmp_path, monkeypatch, plan=plan)
-    run = run_pr(w, capsys, "--mode", "full")
+    run = run_pr(w, capsys, "--mode", "full", "--allow-paid-push")
     assert run.rc == 0
     assert run.result["status"] == "GREEN"
     assert run.result["head"] == HEAD_B
@@ -985,7 +1007,7 @@ def test_f1_full_mode_with_one_round_left_only_reviews(tmp_path, monkeypatch, ca
     # Two rounds already used: a two-cycle action would exceed the durable budget.
     comments = (seed(10, HEAD_C, "ISSUES_FOUND", 1, high=1), seed(11, HEAD_D, "GREEN", 2))
     w = build_world(tmp_path, monkeypatch, comments=comments, plan=({"status": "GREEN"},))
-    run = run_pr(w, capsys, "--mode", "full")
+    run = run_pr(w, capsys, "--mode", "full", "--allow-paid-push")
     assert run.result["status"] == "GREEN", run.reasons
     assert [args[1:] for args in w.review_runs()] == [["--max-iter", "1"]]
 
@@ -1090,3 +1112,107 @@ def test_f5_rerun_after_partial_filing_reuses_issues(tmp_path, monkeypatch, caps
     assert len(record) == 1 and "issues: #100 #101" in record[0]
     assert all("since=2026-11-02T00:00:00Z" in q for q in w.state()["issue_queries"])
     assert len(w.review_runs()) == 1
+
+
+# ── Codex round 2 on #5112: regressions for F1-F4 ───────────────────────────
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "mira-hub/src/capabilities/answer-validation.ts",
+        "mira-hub/src/lib/tenant-context.ts",
+        "mira-mobile/scripts/ota-publish.mjs",
+        "mira-mobile/android/app/build.gradle",
+        "mira-hub/src/lib/rls-helpers.ts",
+        "mira-crawler/ingest/private_upload.py",
+    ],
+)
+def test_r2_f1_tenant_safety_and_release_paths_need_authorization(path):
+    assert load_controller().risk_tier([path], {path: "+x"})[0] == "needs_authorization"
+
+
+@pytest.mark.parametrize("token", ["tenant_id", "is_private", "knowledge_entries", "CREATE POLICY"])
+def test_r2_f1_a_changed_line_naming_an_r3_token_needs_authorization(token):
+    path = "mira-hub/src/lib/report-builder.ts"
+    tier = load_controller().risk_tier([path], {path: f"@@ -1 +1 @@\n-a\n+where {token} = $1"})
+    assert tier[0] == "needs_authorization"
+    assert token in tier[1][0]
+
+
+def test_r2_f1_an_uninspectable_backend_diff_needs_authorization():
+    path = "mira-hub/src/lib/report-builder.ts"
+    tier = load_controller().risk_tier([path], {path: None})
+    assert tier == ("needs_authorization", [f"{path} (diff not inspectable)"])
+
+
+def test_r2_f1_control_plain_backend_change_stays_backend():
+    path = "mira-hub/src/lib/report-builder.ts"
+    assert load_controller().risk_tier([path], {path: "@@ -1 +1 @@\n-a\n+b"})[0] == "backend"
+
+
+def test_r2_f1_control_tokens_in_low_risk_docs_do_not_promote():
+    path = "docs/notes.md"
+    assert load_controller().risk_tier([path], {path: "+tenant_id"})[0] == "low"
+
+
+@pytest.mark.parametrize(
+    "fields, needle",
+    [
+        ({"isDraft": True}, "draft"),
+        ({"mergeable": "CONFLICTING"}, "mergeable=CONFLICTING"),
+        ({"mergeStateStatus": "BEHIND"}, "BEHIND"),
+        ({"reviewDecision": "CHANGES_REQUESTED"}, "changes requested"),
+    ],
+)
+def test_r2_f2_unmergeable_pr_is_never_green(tmp_path, monkeypatch, capsys, fields, needle):
+    w = build_world(tmp_path, monkeypatch, plan=({"status": "GREEN"},))
+    st = w.state()
+    st["pr"].update(fields)
+    w.state_path.write_text(json.dumps(st), encoding="utf-8")
+    run = run_pr(w, capsys)
+    assert run.rc == 1
+    assert needle in run.reasons
+
+
+def test_r2_f2_base_moving_before_final_snapshot_is_stale(tmp_path, monkeypatch, capsys):
+    w = build_world(tmp_path, monkeypatch, plan=({"status": "GREEN"},))
+    st = w.state()
+    st["before_pr_view"] = {"3": {"baseRefOid": "e" * 40}}
+    w.state_path.write_text(json.dumps(st), encoding="utf-8")
+    run = run_pr(w, capsys)
+    assert run.rc == 1
+    assert "stale" in run.reasons
+
+
+def test_r2_f3_full_mode_needs_the_flag_even_off_paid_paths(tmp_path, monkeypatch, capsys):
+    w = build_world(tmp_path, monkeypatch, files=("mira-bots/shared/util.py",))
+    run = run_pr(w, capsys, "--mode", "full")
+    assert run.rc == 1
+    assert "--allow-paid-push" in run.reasons
+    assert w.review_runs() == []
+
+
+def test_r2_f3_control_full_mode_without_a_paid_workflow_runs(tmp_path, monkeypatch, capsys):
+    w = build_world(tmp_path, monkeypatch, files=("mira-bots/shared/util.py",), beta_gate="")
+    _git(w.repo, "rm", "-q", ".github/workflows/beta-gate.yml")
+    _git(w.repo, "commit", "-q", "-m", "no paid workflow")
+    st = w.state()
+    st["pr"]["baseRefOid"] = _git(w.repo, "rev-parse", "HEAD").strip()
+    w.state_path.write_text(json.dumps(st), encoding="utf-8")
+    run = run_pr(w, capsys, "--mode", "full")
+    assert run.rc == 0, run.reasons
+    assert len(w.review_runs()) == 1
+
+
+def test_r2_f4_guard_dispatch_waits_for_the_new_run(tmp_path, monkeypatch, capsys):
+    plan = ({"status": "ISSUES_FOUND", "medium": 1, "findings": [("F1", "Pin the parser")]},)
+    w = build_world(
+        tmp_path, monkeypatch, missing=(REVIEW_ITEM,), checks=ci(guard="failure"), plan=plan
+    )
+    st = w.state()
+    st["dispatch_delay"] = 2  # the old failed guard stays visible for two reads
+    w.state_path.write_text(json.dumps(st), encoding="utf-8")
+    run = run_pr(w, capsys, "--max-cycles", "3")
+    assert run.result["status"] == "GREEN", run.reasons
+    assert w.dispatches() == [GUARD_DISPATCH]

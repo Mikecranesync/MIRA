@@ -82,6 +82,37 @@ NEEDS_AUTH = (  # SDLC v1 section 2.1 R3 list; checked before LOW_RISK, so it wi
     "*middleware*",
     "*auth*",
     "*ignition*",
+    "*tenant*",
+    "*rls*",
+    "*RLS*",
+    "*knowledge_entries*",
+    "*knowledge-entries*",
+    "*private*",
+    "*answer-validation*",
+    "*answer_validation*",
+    "*hazard*",
+    "*ota-*",
+    "*ota_*",
+    "*/ota/*",
+    "*native-fingerprint*",
+    "mira-mobile/android/*",
+    "mira-mobile/ios/*",
+    "*capacitor.config*",
+)
+# R3 families that are defined by what the code does, not where it lives (tenant filters,
+# RLS, private ingest, safety keywords). A changed line naming one promotes the PR to R3.
+R3_DIFF_TOKENS = (
+    "knowledge_entries",
+    "is_private",
+    "tenant_id",
+    "tenantId",
+    "withTenantContext",
+    "TenantScopedSession",
+    "ROW LEVEL SECURITY",
+    "CREATE POLICY",
+    "SAFETY_KEYWORDS",
+    "answer_validation",
+    "answerValidation",
 )
 HUMAN_SAFETY = ("*plc*", "*PLC*", "*modbus*", "*ladder*", "*interlock*", "*lockout*", "*safety*")
 LOW_RISK = (
@@ -156,11 +187,26 @@ def match_any(path, pats):
     )
 
 
-def risk_tier(files):
-    """human_safety > needs_authorization > backend > low (policy in the workflow doc)."""
+def risk_tier(files, patches=None):
+    """human_safety > needs_authorization > backend > low (policy in the workflow doc).
+
+    `patches` maps each changed file to its unified diff, or None when GitHub sent none
+    (binary or too large). A non-low file whose diff cannot be read, or whose changed lines
+    name an R3 token, needs authorization: the diff can only raise the tier, never lower it."""
     if any(match_any(f, HUMAN_SAFETY) for f in files):
         return "human_safety", sorted(f for f in files if match_any(f, HUMAN_SAFETY))
     hits = sorted(f for f in files if match_any(f, NEEDS_AUTH))
+    for f in sorted(files):
+        if patches is None or f in hits or match_any(f, LOW_RISK):
+            continue
+        patch = patches.get(f)
+        if patch is None:
+            hits.append(f"{f} (diff not inspectable)")
+            continue
+        changed = [ln[1:] for ln in patch.splitlines() if ln[:1] in "+-"]
+        token = next((t for t in R3_DIFF_TOKENS if any(t in ln for ln in changed)), None)
+        if token:
+            hits.append(f"{f} (changes {token})")
     if hits:
         return "needs_authorization", hits
     if all(match_any(f, LOW_RISK) for f in files):
@@ -197,16 +243,56 @@ def paid_paths(base, files):
     return sorted(set(hits))
 
 
-def snapshot(pr):
-    j = json.loads(
-        gh(
-            "pr",
-            "view",
-            str(pr),
-            "--json",
-            "state,isDraft,headRefOid,baseRefOid,baseRefName,body,changedFiles",
-        )
+def has_paid_workflow(base):
+    return any(
+        run(["git", "show", f"{base}:{wf}"], check=False).returncode == 0 for wf in PAID_WORKFLOWS
     )
+
+
+def guard_marks(snap):
+    """Newest lifecycle-guard check-run id and commit-status id at the exact head."""
+    runs = json.loads(
+        gh("api", f"repos/{{owner}}/{{repo}}/commits/{snap['head']}/check-runs?per_page=100")
+    )
+    statuses = concat_json(
+        gh("api", f"repos/{{owner}}/{{repo}}/commits/{snap['head']}/statuses?per_page=100")
+    )
+    return (
+        max([c["id"] for c in runs.get("check_runs", []) if c["name"] == GUARD_CHECK] + [0]),
+        max([x["id"] for x in statuses if x.get("context") == GUARD_CHECK] + [0]),
+    )
+
+
+def dispatch_guard(pr, snap, timeout_s, poll_s):
+    """Dispatch the guard, then wait until a guard run or status newer than any seen before
+    the dispatch exists, so the next cycle never judges the previous run's result."""
+    before = guard_marks(snap)
+    gh("workflow", "run", "ui-lifecycle-guard.yml", "--ref", "main", "-f", f"pr_number={pr}")
+    deadline = time.monotonic() + timeout_s
+    while True:
+        now = guard_marks(snap)
+        if now[0] > before[0] or now[1] > before[1]:
+            return
+        if time.monotonic() > deadline:
+            raise Blocked(f"dispatched lifecycle guard never reported within {timeout_s}s")
+        time.sleep(poll_s)
+
+
+def snapshot(pr):
+    for _ in range(4):  # GitHub computes mergeability lazily; the first read may be UNKNOWN
+        j = json.loads(
+            gh(
+                "pr",
+                "view",
+                str(pr),
+                "--json",
+                "state,isDraft,headRefOid,baseRefOid,baseRefName,body,changedFiles,"
+                "mergeable,mergeStateStatus,reviewDecision",
+            )
+        )
+        if j.get("mergeable") != "UNKNOWN":
+            break
+        time.sleep(5)
     body = j.get("body") or ""
     if j["state"] != "OPEN" or not re.fullmatch(r"[0-9a-f]{40}", j["headRefOid"] or ""):
         raise Blocked(f"PR is {j['state']} or has no exact head")
@@ -223,13 +309,21 @@ def snapshot(pr):
     files = {f["filename"] for f in listed} | {
         f["previous_filename"] for f in listed if f.get("previous_filename")
     }
+    patches = {f["filename"]: f.get("patch") for f in listed}
+    patches.update(
+        {f["previous_filename"]: f.get("patch") for f in listed if f.get("previous_filename")}
+    )
     return {
         "head": j["headRefOid"],
         "base": j["baseRefOid"],
         "base_ref": j["baseRefName"],
         "draft": j["isDraft"],
+        "mergeable": j.get("mergeable"),
+        "merge_state": j.get("mergeStateStatus"),
+        "review_decision": j.get("reviewDecision"),
         "body": body,
         "files": sorted(files),
+        "patches": patches,
         "body_sha256": hashlib.sha256(body.encode()).hexdigest(),
     }
 
@@ -417,6 +511,18 @@ def decide(snap, ci, guard, review, budget_used, tier):
         reasons.append(f"CONVERGED; MEDIUMs accepted as follow-ups {' '.join(followups['issues'])}")
     if guard is not None and latest.get(GUARD_CHECK, (None, None))[1] != "success":
         return "BLOCKED", ["lifecycle guard has no success status at this exact head"], "guard"
+    # GitHub's own merge preconditions; a PR GitHub would refuse is never reported ready.
+    blockers = []
+    if snap.get("draft"):
+        blockers.append("PR is a draft")
+    if snap.get("mergeable") != "MERGEABLE":
+        blockers.append(f"mergeable={snap.get('mergeable')}")
+    if snap.get("merge_state") in ("BEHIND", "DIRTY", "UNKNOWN", None):
+        blockers.append(f"mergeStateStatus={snap.get('merge_state')}")
+    if snap.get("review_decision") == "CHANGES_REQUESTED":
+        blockers.append("changes requested")
+    if blockers:
+        return "BLOCKED", reasons + ["not mergeable as-is: " + ", ".join(blockers)], None
     if tier[0] in ("needs_authorization", "human_safety"):
         who = (
             "a separate human safety authorization"
@@ -601,7 +707,7 @@ def main(argv=None):
                 gh("api", f"repos/{{owner}}/{{repo}}/branches/{snap['base_ref']}/protection")
             )
             required = (prot.get("required_status_checks") or {}).get("contexts") or []
-            tier = risk_tier(snap["files"])
+            tier = risk_tier(snap["files"], snap["patches"])
             result.update(
                 head=snap["head"], base=snap["base"], body_sha256=snap["body_sha256"], tier=tier[0]
             )
@@ -623,10 +729,14 @@ def main(argv=None):
                     result["actions"].append(
                         "full mode unavailable: base loop lacks the CONVERGED stop"
                     )
+                # Remediation can add files the current diff does not touch, so full mode needs
+                # the flag whenever the base has a paid pull_request workflow at all.
                 paid = paid_paths(snap["base"], snap["files"])
-                if full and paid and not a.allow_paid_push:
+                if full and not a.allow_paid_push and (paid or has_paid_workflow(snap["base"])):
+                    what = ", ".join(paid[:5]) or "paths a remediation might add"
                     raise Blocked(
-                        f"full mode would push into paid workflow paths: {', '.join(paid[:5])}"
+                        f"full mode could push into paid workflow paths ({what}); "
+                        "pass --allow-paid-push to accept that spend"
                     )
                 run_review(a.pr, snap, full, MAX_ROUNDS - used)
                 expected = None if full else snap["head"]
@@ -640,31 +750,18 @@ def main(argv=None):
                     "filed " + " ".join(file_followups(a.pr, snap, verdict, viewer))
                 )
                 if guard is not None:
-                    gh(
-                        "workflow",
-                        "run",
-                        "ui-lifecycle-guard.yml",
-                        "--ref",
-                        "main",
-                        "-f",
-                        f"pr_number={a.pr}",
-                    )
+                    dispatch_guard(a.pr, snap, a.ci_timeout, a.poll)
             elif action == "guard":
-                gh(
-                    "workflow",
-                    "run",
-                    "ui-lifecycle-guard.yml",
-                    "--ref",
-                    "main",
-                    "-f",
-                    f"pr_number={a.pr}",
-                )
-                time.sleep(a.poll)
+                dispatch_guard(a.pr, snap, a.ci_timeout, a.poll)
         else:
             result["status"] = "BLOCKED"
             result["reasons"].append(f"cycle limit {a.max_cycles} reached before a final verdict")
         final = snapshot(a.pr)
-        if (final["head"], final["body_sha256"]) != (result["head"], result["body_sha256"]):
+        if (final["head"], final["base"], final["body_sha256"]) != (
+            result["head"],
+            result["base"],
+            result["body_sha256"],
+        ):
             result.update(
                 status="BLOCKED",
                 reasons=["PR head or body changed after evaluation; evidence is stale"],
