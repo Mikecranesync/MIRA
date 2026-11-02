@@ -1,4 +1,4 @@
-fastapi==0.136.*
+fastapi==0.162.*
 uvicorn[standard]==0.48.*
 httpx==0.28.*
 Pillow>=13.0.0
