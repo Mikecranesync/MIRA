@@ -476,6 +476,50 @@ function mentionsModel(text: string, roster: Map<string, string>): boolean {
   });
 }
 
+// A restriction that names its models plainly — "Model 9XP1000CS only", "COMMON TO 9XP1000CS AND
+// 9XP1000G", "[9XP1000CS only]" — scopes its ratings to exactly those models; any other wording
+// ("except", "CS versions", an unlisted number) cannot be tied to a model (Codex #5062 round 16 F19).
+const RESTRICTION_FILLER = new Set(["MODEL", "MODELS", "PUMP", "PUMPS", "ONLY", "FOR", "TO", "AND", "&", "-"]);
+
+function restrictedModels(text: string, roster: Map<string, string>): string[] | null {
+  const toks = text
+    .toUpperCase()
+    .replace(/[()[\]:;,\u2013\u2014]/g, " ")
+    .split(/\s+/)
+    .filter((t) => t && !RESTRICTION_FILLER.has(t));
+  if (toks.length === 0) return null;
+  const h = headingModels(toks.join(" "), roster);
+  return h && h.known ? h.models : null;
+}
+
+// A COMMON line is shared by every model only when nothing else is on it but column labels or
+// "to all models"; "COMMON TO 9XP1000CS ONLY" is a restriction like any other.
+const COMMON_LABELS = new Set(["SPECIFICATIONS", "U.S.", "MEASURE", "METRIC"]);
+const COMMON_ALL_RE = /^(?:TO )?ALL(?: MODELS| PUMPS)?$/;
+
+function commonScope(rest: string, roster: Map<string, string>): SpecScope {
+  const words = rest
+    .toUpperCase()
+    .split(/\s+/)
+    .filter((t) => t && !COMMON_LABELS.has(t))
+    .join(" ");
+  if (words === "" || COMMON_ALL_RE.test(words)) return { kind: "common" };
+  const models = restrictedModels(words, roster);
+  return models ? { kind: "models", models } : { kind: "unresolved" };
+}
+
+/** A restriction printed on the rating row itself — "100–3000 psi (Model 9XP1000CS only)",
+ *  "… [9XP1000CS only]", "… – 9XP1000CS only". Returns null when the row restricts nothing. */
+function rowRestriction(value: string, roster: Map<string, string>): string[] | "unresolved" | null {
+  if (!mentionsModel(value, roster)) return null;
+  const segments = Array.from(value.matchAll(/\(([^)]*)\)|\[([^\]]*)\]/g), (m) => m[1] ?? m[2]);
+  const dash = value.split(/\s[\u2013\u2014-]\s/);
+  if (dash.length > 1) segments.push(dash[dash.length - 1]);
+  const named = segments.filter((seg) => mentionsModel(seg, roster));
+  if (named.length !== 1) return "unresolved";
+  return restrictedModels(named[0], roster) ?? "unresolved";
+}
+
 type SpecScope = { kind: "sheet" } | { kind: "common" } | { kind: "models"; models: string[] } | { kind: "unresolved" };
 
 const normSpec = (v: string): string => v.replace(/\s+/g, " ").trim().toLowerCase();
@@ -491,8 +535,9 @@ function parseSpecs(lines: Line[], models: string[], mkSource: MkSource): DsSpec
       scope = { kind: "sheet" };
       scopePage = page;
     }
-    if (COMMON_RE.test(text)) {
-      scope = { kind: "common" };
+    const common = COMMON_RE.exec(text);
+    if (common) {
+      scope = commonScope(text.slice(common[0].length), roster);
       continue;
     }
     const heading = headingModels(text, roster);
@@ -506,13 +551,23 @@ function parseSpecs(lines: Line[], models: string[], mkSource: MkSource): DsSpec
       if (!m) continue;
       matched = true;
       const value = m[1].trim();
-      const id = `${def.key}|${normSpec(value)}|${scope.kind}|${scope.kind === "models" ? scope.models.join(",") : ""}`;
+      // A restriction on the row narrows the block's scope; one that names a model outside the
+      // block contradicts it, so the value cannot be tied to a model.
+      let rowScope: SpecScope = scope;
+      const row = rowRestriction(value, roster);
+      if (row === "unresolved") rowScope = { kind: "unresolved" };
+      else if (row && scope.kind === "models") {
+        const block = scope.models;
+        const inBlock = row.every((r) => block.some((b) => normalizeModelKey(b) === normalizeModelKey(r)));
+        rowScope = inBlock ? { kind: "models", models: row } : { kind: "unresolved" };
+      } else if (row && scope.kind !== "unresolved") rowScope = { kind: "models", models: row };
+      const id = `${def.key}|${normSpec(value)}|${rowScope.kind}|${rowScope.kind === "models" ? rowScope.models.join(",") : ""}`;
       if (seen.has(id)) continue;
       seen.add(id);
       const spec: DsSpec = { key: def.key, label: def.label, value, source: mkSource(page, text) };
-      if (scope.kind === "models") spec.models = scope.models;
-      if (scope.kind === "unresolved") spec.scopeUnresolved = true;
-      out.push({ spec, scope });
+      if (rowScope.kind === "models") spec.models = rowScope.models;
+      if (rowScope.kind === "unresolved") spec.scopeUnresolved = true;
+      out.push({ spec, scope: rowScope });
     }
     if (!matched && mentionsModel(text, roster)) scope = { kind: "unresolved" };
   }

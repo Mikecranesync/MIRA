@@ -285,6 +285,61 @@ describe("data-sheet ratings — one value per model, or unknown (Codex #5062 F1
     });
   }
 
+  // Codex #5062 round 16 F19: an explicit model restriction — on a COMMON heading or on the rating
+  // row itself — overrides any broader scope. A rating is Verified for a model only when the sheet
+  // ties it to that model; anything ambiguous or conflicting is a cited Unknown for every model.
+  // Expected per model, in order 9XP1000 / 9XP1000CS / 9XP1000G: V = all three ratings Verified,
+  // U = all three cited Unknowns.
+  const ROW = (suffix: string) => OTHERS.replace(/\n/g, `${suffix}\n`);
+  const APPLICABILITY: Array<[string, string, string]> = [
+    ["COMMON heading for one model", `COMMON TO 9XP1000CS ONLY\n${OTHERS}`, "UVU"],
+    ["COMMON heading with a dash", `COMMON \u2014 9XP1000CS only\n${OTHERS}`, "UVU"],
+    ["COMMON heading for two models", `COMMON TO 9XP1000CS AND 9XP1000G\n${OTHERS}`, "UVV"],
+    ["COMMON heading with an exception", `COMMON (except 9XP1000)\n${OTHERS}`, "UUU"],
+    ["COMMON heading in words", `COMMON TO CS VERSIONS\n${OTHERS}`, "UUU"],
+    ["COMMON heading for an unlisted number", `COMMON TO 7777 ONLY\n${OTHERS}`, "UUU"],
+    ["lower-case common heading for one model", `Common to 9xp1000cs only\n${OTHERS}`, "UUU"],
+    ["plain COMMON (control)", `COMMON\n${OTHERS}`, "VVV"],
+    ["COMMON TO ALL MODELS (control)", `COMMON TO ALL MODELS\n${OTHERS}`, "VVV"],
+    ["COMMON with column labels (control)", `COMMON\nSPECIFICATIONS U.S. Metric\n${OTHERS}`, "VVV"],
+    ["row restriction under a family heading", `9XP1000, 9XP1000CS\n${ROW(" (Model 9XP1000CS only)")}`, "UVU"],
+    ["row restriction in brackets", `9XP1000, 9XP1000CS\n${ROW(" [9XP1000CS only]")}`, "UVU"],
+    ["row restriction after a dash", `9XP1000, 9XP1000CS\n${ROW(" \u2013 9XP1000CS only")}`, "UVU"],
+    ["lower-case row restriction", `9XP1000, 9XP1000CS\n${ROW(" (model 9xp1000cs only)")}`, "UVU"],
+    ["row restriction for two models on an unheaded sheet", ROW(" (Models 9XP1000CS and 9XP1000G only)"), "UVV"],
+    ["row restriction that contradicts its heading", `9XP1000G\n${ROW(" (Model 9XP1000CS only)")}`, "UUU"],
+    ["row restriction that contradicts a COMMON heading", `COMMON TO 9XP1000CS ONLY\n${ROW(" (Model 9XP1000G only)")}`, "UUU"],
+    ["row restriction with an exception", `9XP1000, 9XP1000CS\n${ROW(" (except 9XP1000CS)")}`, "UUU"],
+    ["row restriction in words", `9XP1000, 9XP1000CS\n${ROW(" (CS versions only)")}`, "UUU"],
+    ["row with two different restrictions", `9XP1000, 9XP1000CS\n${ROW(" (Model 9XP1000CS only) [9XP1000G only]")}`, "UUU"],
+    ["row restriction naming an unlisted number", `9XP1000, 9XP1000CS\n${ROW(" (Model 7777 only)")}`, "UUU"],
+  ];
+  for (const [name, layout, expected] of APPLICABILITY) {
+    it(`${name}: no rating is Verified for a model the sheet does not tie it to (${expected})`, () => {
+      const raw = SHEET.replace(ONE_BLOCK, layout);
+      expect(raw).not.toBe(SHEET);
+      ["9XP1000", "9XP1000CS", "9XP1000G"].forEach((model, i) => {
+        const r = ratings(build([sheetDoc(raw)], "valve service", [], model));
+        expect(r, model).toHaveLength(3);
+        if (expected[i] === "V") {
+          expect(r.map((f) => f.label), model).toEqual(["verified", "verified", "verified"]);
+          expect(r.every((f) => /3000|10 gpm|1700/.test(f.value ?? "")), model).toBe(true);
+        } else {
+          expect(unknowns({ restoration: r } as WorkPacket), model).toEqual(["unknown:null:cited", "unknown:null:cited", "unknown:null:cited"]);
+        }
+      });
+    });
+  }
+
+  it("a row restriction on one rating leaves the other ratings of its block alone", () => {
+    const raw = SHEET.replace(ONE_BLOCK, ONE_BLOCK.replace("103 bar\n", "103 bar (Model 9XP1000CS only)\n"));
+    const p = build([sheetDoc(raw)], "valve service");
+    expect(ratings(p).map((f) => `${f.label}:${/Pressure Range/.test(f.value ?? f.basis) ? "pressure" : "other"}`)).toEqual(["unknown:pressure", "verified:other", "verified:other"]);
+    const pressure = ratings(p).find((f) => f.label === "unknown")!;
+    expect(pressure.basis).toContain("only for other models (9XP1000CS)");
+    expect(pressure.source).not.toBeNull();
+  });
+
   it("a line naming a model in words between blocks does not inherit the block above it", () => {
     // Block for 9XP1000, then a restriction the parser cannot read, then more ratings: those later
     // ratings are not 9XP1000's (and not anyone's for sure).
