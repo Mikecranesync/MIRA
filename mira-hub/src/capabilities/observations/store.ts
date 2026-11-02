@@ -272,21 +272,39 @@ const NOT_SUPERSEDED = (alias: string) =>
 const PROJECTOR_ORDER = (alias: string) =>
   `date_trunc('milliseconds', ${alias}.observed_at) DESC, date_trunc('milliseconds', ${alias}.recorded_at) DESC, ${alias}.id ASC`;
 
+/** Sargable superset of "observed in the contest window": the exact millisecond predicates sit
+ *  beside it, and this bound lets the (tenant, machine, fact, observed_at) index range-scan the
+ *  window instead of the machine's whole history (#5106). */
+const IN_WINDOW = (alias: string) =>
+  `${alias}.observed_at >= c.key_max - make_interval(secs => $4::double precision) - interval '1 millisecond'`;
+
 /**
  * `cur`: per fact ($3), the current report in the projector's order and the newest active
- * repair. `contest`: every active report opposing it, by the projector's exact rule at
- * millisecond precision (opposite value, observed no earlier than one hour before the current
- * report and no earlier than the newest repair). The two supersedes exclusions of the projector
- * hold by construction here: both rows are active, so neither supersedes the other.
+ * repair inside the window (an older repair cannot move the window start). `contest`: every
+ * active report opposing it, by the projector's exact rule at millisecond precision (opposite
+ * value, observed no earlier than one hour before the current report and no earlier than the
+ * newest repair). The two supersedes exclusions of the projector hold by construction here:
+ * both rows are active, so neither supersedes the other.
+ * Every read is bounded by the window, not by history: `n` walks the index from the newest
+ * row, `m` sorts only that row's millisecond, and `e`, `contest` and the samples carry a
+ * sargable 1 ms superset bound beside their exact predicates.
  */
 const CONTEST_CTES = `cur AS (
     SELECT k.fact_key, m.id AS cur_id, m.observed_at AS key_max, m.opposing, e.repaired_at
       FROM unnest($3::text[]) AS k(fact_key)
       CROSS JOIN LATERAL (
+        SELECT t.observed_at AS newest FROM asset_observations t
+         WHERE t.tenant_id = $1::uuid AND t.equipment_entity_id = $2 AND t.fact_key = k.fact_key
+           AND ${NOT_SUPERSEDED("t")}
+         ORDER BY t.observed_at DESC
+         LIMIT 1
+      ) n
+      CROSS JOIN LATERAL (
         SELECT a.id, a.observed_at,
                CASE a.fact_value WHEN 'present' THEN 'absent' WHEN 'absent' THEN 'present' END AS opposing
           FROM asset_observations a
          WHERE a.tenant_id = $1::uuid AND a.equipment_entity_id = $2 AND a.fact_key = k.fact_key
+           AND a.observed_at >= date_trunc('milliseconds', n.newest)
            AND ${NOT_SUPERSEDED("a")}
          ORDER BY ${PROJECTOR_ORDER("a")}
          LIMIT 1
@@ -294,18 +312,24 @@ const CONTEST_CTES = `cur AS (
       CROSS JOIN LATERAL (
         SELECT max(b.observed_at) AS repaired_at FROM asset_observations b
          WHERE b.tenant_id = $1::uuid AND b.equipment_entity_id = $2 AND b.fact_key = k.fact_key
-           AND b.fact_value = 'repaired' AND ${NOT_SUPERSEDED("b")}
+           AND b.fact_value = 'repaired'
+           AND b.observed_at >= m.observed_at - make_interval(secs => $4::double precision) - interval '1 millisecond'
+           AND ${NOT_SUPERSEDED("b")}
       ) e
   ),
   contest AS (
     SELECT c.fact_key, o.id
-      FROM cur c JOIN asset_observations o
-        ON o.tenant_id = $1::uuid AND o.equipment_entity_id = $2
-       AND o.fact_key = c.fact_key AND o.fact_value = c.opposing
-       AND date_trunc('milliseconds', o.observed_at)
-           >= date_trunc('milliseconds', c.key_max) - make_interval(secs => $4::double precision)
-       AND (c.repaired_at IS NULL OR date_trunc('milliseconds', o.observed_at) >= date_trunc('milliseconds', c.repaired_at))
-     WHERE ${NOT_SUPERSEDED("o")}
+      FROM cur c CROSS JOIN LATERAL (
+        SELECT o.id FROM asset_observations o
+         WHERE o.tenant_id = $1::uuid AND o.equipment_entity_id = $2
+           AND o.fact_key = c.fact_key AND o.fact_value = c.opposing
+           AND ${IN_WINDOW("o")}
+           AND (c.repaired_at IS NULL OR o.observed_at >= c.repaired_at - interval '1 millisecond')
+           AND date_trunc('milliseconds', o.observed_at)
+               >= date_trunc('milliseconds', c.key_max) - make_interval(secs => $4::double precision)
+           AND (c.repaired_at IS NULL OR date_trunc('milliseconds', o.observed_at) >= date_trunc('milliseconds', c.repaired_at))
+           AND ${NOT_SUPERSEDED("o")}
+      ) o
   )`;
 
 function toProjectionRow(row: Record<string, unknown>): ObservationRow {
@@ -334,7 +358,8 @@ export type ProjectionInput = { rows: ObservationRow[]; contests: Partial<Record
  * - contests: per fact, the exact number of opposing reports and the digest of all
  *   contributor ids (contributorDigestOf in SQL), so state, totals and stateVersion equal
  *   the full projection while the app holds a bounded number of rows.
- * The database scans the contest window to count it; nothing past the bound leaves it.
+ * The database reads the contest window to count it, never the machine's older history;
+ * nothing past the bound leaves it.
  * No raw report, notebook, source turn or fingerprint is selected.
  */
 export async function listProjectionRows(tenantId: string, equipmentEntityId: string): Promise<ProjectionInput> {
@@ -359,10 +384,10 @@ export async function listProjectionRows(tenantId: string, equipmentEntityId: st
           SELECT ${PROJECTION_COLS} FROM asset_observations o
            WHERE o.tenant_id = $1::uuid AND o.equipment_entity_id = $2
              AND o.fact_key = c.fact_key AND o.fact_value = v.fact_value
+             AND ${IN_WINDOW("o")}
              AND CASE WHEN v.fact_value = c.opposing
                       THEN o.id IN (SELECT x.id FROM contest x WHERE x.fact_key = c.fact_key)
-                      ELSE o.observed_at >= c.key_max - make_interval(secs => $4::double precision) - interval '1 millisecond'
-                           AND ${NOT_SUPERSEDED("o")}
+                      ELSE ${NOT_SUPERSEDED("o")}
                  END
            ORDER BY ${PROJECTOR_ORDER("o")}
            LIMIT $6::int
