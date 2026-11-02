@@ -16,6 +16,9 @@ describe("/posthog-init.js wiring", () => {
     expect(src).toMatch(/app\.get\(\s*"\/posthog-init\.js"/);
     expect(src).toContain("PLG_POSTHOG_KEY");
   });
+  test("the live snippet disables session replay", () => {
+    expect(src).toMatch(/posthog\.init\([\s\S]*disable_session_recording:\s*true/);
+  });
 });
 
 describe("service worker never serves /posthog-init.js from cache (Codex #4900 F4)", () => {

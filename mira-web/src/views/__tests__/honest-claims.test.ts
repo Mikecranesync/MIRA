@@ -397,6 +397,8 @@ describe("public marketing copy — don't-say list and no published prices", () 
     );
     expect(privacy).toContain("We do not use Google Analytics.");
     expect(privacy).toContain("We do not use advertising pixels.");
+    expect(privacy).toContain("autocapture");
+    expect(trust).toContain("autocapture");
     expect(privacy).toContain("server-side product-funnel events");
     expect(trust).toContain("server-side product-funnel events");
   });
@@ -736,6 +738,8 @@ describe("/privacy and /trust disclose PostHog (analytics honesty)", () => {
     expect(trust).toContain("PostHog");
     expect(privacy).toContain("The factorylm.com snippet does not enable session replay");
     expect(trust).toContain("The factorylm.com snippet does not enable session replay");
+    expect(privacy).toContain("autocapture");
+    expect(trust).toContain("autocapture");
     expect(privacy).toContain("server-side product-funnel events");
     expect(trust).toContain("server-side product-funnel events");
   });
