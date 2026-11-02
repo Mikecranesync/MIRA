@@ -4,7 +4,7 @@
  * the hub's node vitest environment.
  */
 import type { ObservationPreview as ServerPreview } from "@/capabilities/observations/parse";
-import type { FactState, HistoryRow, ObservedStateSummary } from "@/capabilities/observations/project";
+import type { FactEntry, FactState, HistoryRow, ObservedStateSummary } from "@/capabilities/observations/project";
 
 /** What the technician is reviewing: the server preview, possibly corrected. */
 export type ObservationPreview = ServerPreview;
@@ -15,8 +15,10 @@ export type ObservedStateView = {
   history: HistoryRow[];
   nextCursor: string | null;
   observation?: HistoryRow | null;
+  /** Present when asked for with ?conflicts=<factKey>: one page of that fact's opposing reports. */
+  conflicts?: { factKey: string; rows: FactEntry[]; nextCursor: string | null };
 };
-export type { FactState };
+export type { FactEntry, FactState };
 
 const FACT_LABELS: Record<string, string> = {
   seal_leak: "Seal leak",
@@ -36,6 +38,11 @@ export function factLine(fact: FactState): string {
   const name = FACT_LABELS[fact.factKey] ?? fact.factKey;
   if (fact.contested) return `${name} — contested: technician reports disagree`;
   return `${name} — ${STATE_LABELS[fact.current.factValue] ?? fact.current.factValue}`;
+}
+
+/** "Showing 20 of 135 reports" when a contested fact lists only some of them, else null. */
+export function conflictCountLine(shown: number, total: number): string | null {
+  return total > shown ? `Showing ${shown} of ${total} reports` : null;
 }
 
 function contentKey(p: ObservationPreview): string {

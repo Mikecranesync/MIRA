@@ -314,4 +314,51 @@ describe.skipIf(!RUN)("Mission 001 browser proof (real panel, real routes, real 
       await browser.close();
     }
   }, 60_000);
+  // #5106: a contested fact with more reports than the panel lists says how many exist and
+  // pages the rest on request, in the projector's order, with no raw report text.
+  it("a contested fact shows K of N reports and pages the rest with Show more", async () => {
+    const { chromium } = await import("playwright");
+    const browser = await chromium.launch();
+    const PUMP_09 = `pump-09-${uuid().slice(0, 8)}`;
+    await seedAsset(TENANT, PUMP_09, "Pump-09", "enterprise.lake_wales.utilities.pump_09");
+    const nb = await seedNotebook(TENANT, PUMP_09);
+    // Fixture rows (owner pool): 45 "no leak" reports, then one leak report.
+    await testPool.query(
+      `INSERT INTO asset_observations (tenant_id, notebook_id, equipment_entity_id, fact_key, fact_value, raw_report,
+         observed_at, recorded_by, verification_method, client_request_id, request_fingerprint, projector_version)
+       SELECT $1::uuid, $2::uuid, $3, 'seal_leak', CASE WHEN g.i = 0 THEN 'present' ELSE 'absent' END, 'secret raw words',
+              now() - interval '40 minutes' + CASE WHEN g.i = 0 THEN interval '35 minutes' ELSE g.i * interval '10 seconds' END,
+              'tech-' || (g.i % 5), 'self_reported', gen_random_uuid(), 'bulk', 'fixture'
+         FROM generate_series(0, 45) AS g(i)`,
+      [TENANT, nb, PUMP_09],
+    );
+    const prior = notebookId;
+    notebookId = nb;
+    try {
+      who.tenantId = TENANT;
+      who.userId = "tech-d";
+      for (const [label, viewport] of [["mobile", { width: 412, height: 915 }], ["desktop", { width: 1440, height: 900 }]] as const) {
+        const ctx = await browser.newContext({ viewport, timezoneId: "America/New_York" });
+        const page = await ctx.newPage();
+        await page.goto(base);
+        await page.getByTestId("machine-state-pill").click();
+        const fact = page.getByTestId("observed-fact-seal_leak");
+        await fact.waitFor();
+        expect(await fact.getAttribute("data-state")).toBe("contested");
+        expect(await page.getByTestId("observed-fact-seal_leak-count").innerText()).toMatch(/Showing 20 of 46 reports/);
+        expect(await fact.locator("div").filter({ hasText: /reported by/ }).count()).toBe(20);
+        await page.screenshot({ path: path.join(SHOTS, `2026-11-01_machine-state-08-contested-20-of-46_${label}.png`), fullPage: true });
+
+        await page.getByTestId("observed-fact-seal_leak-more").click();
+        await page.getByTestId("observed-fact-seal_leak-count").waitFor({ state: "detached" });
+        expect(await fact.locator("div").filter({ hasText: /reported by/ }).count()).toBe(46);
+        expect(await fact.innerText()).not.toMatch(/secret raw words/);
+        await page.screenshot({ path: path.join(SHOTS, `2026-11-01_machine-state-09-contested-all-46_${label}.png`), fullPage: true });
+        await ctx.close();
+      }
+    } finally {
+      notebookId = prior;
+      await browser.close();
+    }
+  }, 90_000);
 });

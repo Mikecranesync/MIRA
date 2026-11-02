@@ -8,9 +8,12 @@
 import { createHash } from "node:crypto";
 import type { FactKey, FactValue } from "./parse";
 
-export const PROJECTOR_VERSION = "obs-proj-3";
+export const PROJECTOR_VERSION = "obs-proj-4";
 /** Two different reports this close in observed time are contested, not ordered. */
 export const CONTEST_WINDOW_MS = 60 * 60 * 1000;
+/** Most reports a contested fact lists (the current one first, then the newest opposing).
+ *  The rest are counted exactly and paged, never dropped (#5106). */
+export const CONFLICTS_SHOWN = 20;
 
 export type ObservationRow = {
   id: string;
@@ -42,17 +45,29 @@ export type FactState = {
   state: string;
   contested: boolean;
   current: FactEntry;
-  /** Present only when contested: every report on the disputed fact, current included. */
+  /** Present only when contested: the current report, then the newest opposing reports,
+   *  at most CONFLICTS_SHOWN in all (projector order). */
   conflicting: FactEntry[];
+  /** Every report in the dispute, current included; 0 when not contested. Exact, never capped. */
+  conflictTotal: number;
+  /** Opposing reports not listed continue after this id (GET ?conflicts=<factKey>&conflictCursor=); null when all are listed. */
+  conflictsNextCursor: string | null;
+  /** sha256 of this fact's sorted contributor ids: the current report, plus every opposing one when contested. */
+  contributorDigest: string;
 };
+
+/** What the store computed in SQL over the full opposing set of one fact (#5106). */
+export type ContestSummary = { opposingTotal: number; contributorDigest: string };
 
 export type HistoryRow = ObservationRow & { superseded: boolean };
 
 export type ObservedState = {
   projectorVersion: typeof PROJECTOR_VERSION;
   stateVersion: string;
-  /** Sorted ids of the rows that shape the state (see stateVersion). */
-  contributingObservationIds: string[];
+  /** How many reports shape the state (see stateVersion), listed or not. */
+  contributorCount: number;
+  /** Sorted ids of the reports the facts list: what a reader of this state actually sees. */
+  shownObservationIds: string[];
   asOf: string;
   facts: FactState[];
   history: HistoryRow[];
@@ -86,7 +101,7 @@ function stateLabel(factKey: FactKey, factValue: FactValue): string {
   return factKey === "seal_leak" ? "leak_reported" : `${factKey}_reported`;
 }
 
-function entryOf(r: ObservationRow): FactEntry {
+export function entryOf(r: ObservationRow): FactEntry {
   return {
     observationId: r.id,
     factValue: r.factValue,
@@ -106,7 +121,19 @@ function newestFirst(a: ObservationRow, b: ObservationRow): number {
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
-export function deriveObservedState(rows: ObservationRow[], opts: { now: Date }): ObservedState {
+/** sha256 of sorted ids joined by commas; store.ts computes the same in SQL (COLLATE "C"). */
+export function contributorDigestOf(ids: string[]): string {
+  return createHash("sha256").update([...ids].sort().join(",")).digest("hex");
+}
+
+/**
+ * `contests` carries what the store counted in SQL over a fact's whole opposing set when
+ * `rows` holds only the newest of them. Without it the rows are taken as complete.
+ */
+export function deriveObservedState(
+  rows: ObservationRow[],
+  opts: { now: Date; contests?: Partial<Record<FactKey, ContestSummary>> },
+): ObservedState {
   const superseded = new Set(rows.map((r) => r.supersedesId).filter((id): id is string => id !== null));
   const history: HistoryRow[] = [...rows]
     .sort(newestFirst)
@@ -135,29 +162,37 @@ export function deriveObservedState(rows: ObservationRow[], opts: { now: Date })
         r.supersedesId !== current.id &&
         current.supersedesId !== r.id,
     );
-    const contested = opposed.length > 0;
+    const summary = opts.contests?.[factKey] ?? {
+      opposingTotal: opposed.length,
+      contributorDigest: contributorDigestOf([current.id, ...opposed.map((r) => r.id)]),
+    };
+    const contested = summary.opposingTotal > 0;
+    const conflicting = contested ? [current, ...opposed].slice(0, CONFLICTS_SHOWN).map(entryOf) : [];
+    const conflictTotal = contested ? summary.opposingTotal + 1 : 0;
     facts.push({
       factKey,
       state: contested ? "contested" : stateLabel(factKey, current.factValue),
       contested,
       current: entryOf(current),
-      conflicting: contested ? [current, ...opposed].map(entryOf) : [],
+      conflicting,
+      conflictTotal,
+      conflictsNextCursor: conflictTotal > conflicting.length ? conflicting[conflicting.length - 1]!.observationId : null,
+      contributorDigest: summary.contributorDigest,
     });
   }
 
   // Only the rows that shape the state are versioned: a late, non-conflicting,
-  // superseded or unrelated row does not change the version.
-  const contributing = facts
-    .flatMap((f) => (f.contested ? f.conflicting : [f.current]).map((e) => e.observationId))
-    .sort();
+  // superseded or unrelated row does not change the version. Each fact's digest covers
+  // every contributor, listed or not, so a hidden opposing report still moves it.
   const stateVersion = createHash("sha256")
-    .update(JSON.stringify([PROJECTOR_VERSION, contributing]))
+    .update(JSON.stringify([PROJECTOR_VERSION, facts.map((f) => [f.factKey, f.contributorDigest])]))
     .digest("hex");
 
   return {
     projectorVersion: PROJECTOR_VERSION,
     stateVersion,
-    contributingObservationIds: contributing,
+    contributorCount: facts.reduce((n, f) => n + (f.contested ? f.conflictTotal : 1), 0),
+    shownObservationIds: facts.flatMap((f) => (f.contested ? f.conflicting : [f.current]).map((e) => e.observationId)).sort(),
     asOf: opts.now.toISOString(),
     facts,
     history,
