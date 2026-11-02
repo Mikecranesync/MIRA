@@ -780,6 +780,30 @@ describe("observation reads are bounded (real Postgres)", () => {
     const bounded2 = await boundedState(tenant, entity2, now);
     expect(bounded2.facts).toEqual(full2.facts);
     expect(bounded2.stateVersion).toBe(full2.stateVersion);
+
+    // Current report inside one millisecond: the report 0.2 ms in was recorded later than the
+    // one 0.8 ms in, so the projector picks it; a full-precision "newest" bound would drop it.
+    const entity3 = `cmms-${uuid()}`;
+    const nb3 = await makeNotebook(tenant, entity3, true);
+    // An earlier "present" report opposes the true current report but not the mutant's pick.
+    const [late, early, earlier] = await seed(tenant, nb3, entity3, [
+      { factValue: "present", observedAt: at(T) },
+      { factValue: "absent", observedAt: at(T) },
+      { factValue: "present", observedAt: at(T - 10 * MIN) },
+    ]);
+    await micro(late!, 800);
+    await micro(early!, 200);
+    await testPool.query(
+      `UPDATE asset_observations SET recorded_at = (SELECT recorded_at FROM asset_observations WHERE id = $1::uuid) + interval '5 milliseconds' WHERE id = $2::uuid`,
+      [late, early],
+    );
+    const full3 = deriveObservedState(await allRows(tenant, entity3), { now });
+    expect(full3.facts[0]!.current.observationId).toBe(early!);
+    expect(full3.facts[0]!.conflictTotal).toBe(3);
+    expect(full3.facts[0]!.conflicting.map((e) => e.observationId).sort()).toEqual([early!, late!, earlier!].sort());
+    const bounded3 = await boundedState(tenant, entity3, now);
+    expect(bounded3.facts).toEqual(full3.facts);
+    expect(bounded3.stateVersion).toBe(full3.stateVersion);
   });
 
   it("projection_matches_the_full_projection_at_millisecond_ties_and_window_edges", async () => {
