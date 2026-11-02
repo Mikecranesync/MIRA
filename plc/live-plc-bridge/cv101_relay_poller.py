@@ -23,10 +23,14 @@ Identity (never borrowed from Ignition):
   tag_path             = micro820/_IO_EM_DI_05 (the PLC variable itself)
 UNS identity comes from the relay's approved_tags row, not from this payload.
 
-Live map (plc/MbSrvConf_v4.xml, slave-map v2): `_IO_EM_DI_05` → coil 000023 =
-pymodbus offset 22. Before trusting coil 23 the poller checks the map signature on
-every (re)connect — offset 0 readable, offsets 1 and 99 rejected with Modbus
-exception 2 (unmapped). A different map flashed → it refuses to post.
+Live map: `_IO_EM_DI_05` → coil 000023 = pymodbus offset 22. Two maps put it there —
+the full plc/MbSrvConf_v4.xml and the sparse bench slave-map v2 actually flashed on
+2026-11-02 (ConvSimple coils + 000021..000023; offset 1 unmapped). Every other map
+in the repo leaves 000023 unmapped (v3, ConvSimple v1.9, step-1 IO-check, which
+puts DI_05 at 000006 and a heartbeat at 000100). So on every (re)connect the poller
+requires coil 000023 readable AND coil 000100 rejected with Modbus exception 2; any
+other result → it refuses to post. This identifies DI_05 among the repo's known
+maps; it cannot detect an unrecorded map that also maps 000023.
 
 Freshness and safety:
   * every posted reading comes from a read completed in that cycle; ts is the
@@ -75,8 +79,7 @@ SOURCE_SYSTEM = "plc_bridge"
 SOURCE_CONNECTION_ID = "cv101-bench-modbus"
 TAG_PATH = "micro820/_IO_EM_DI_05"
 DI05_COIL_OFFSET = 22  # coil 000023
-MAP_READABLE = (0,)  # coil 000001 motor_running — mapped in v4
-MAP_UNMAPPED = (1, 99)  # v4 gaps; the step-1 IO-check map maps both
+STEP1_HEARTBEAT_OFFSET = 99  # coil 000100 — mapped only by the step-1 IO-check map
 MODBUS_ILLEGAL_ADDRESS = 2
 NTP_HOSTS = tuple(
     h for h in os.getenv("NTP_HOSTS", "time.cloudflare.com,time.google.com").split(",") if h
@@ -127,14 +130,10 @@ def read_coil(client: Any, offset: int) -> tuple[Optional[bool], Optional[int]]:
 
 
 def map_signature_ok(read: Callable[[int], tuple[Optional[bool], Optional[int]]]) -> bool:
-    """True only when the flashed map looks like MbSrvConf_v4 (DI_05 at coil 23)."""
-    for off in MAP_READABLE:
-        if read(off)[0] is None:
-            return False
-    for off in MAP_UNMAPPED:
-        if read(off)[1] != MODBUS_ILLEGAL_ADDRESS:
-            return False
-    return read(DI05_COIL_OFFSET)[0] is not None
+    """True only for a map that puts `_IO_EM_DI_05` at coil 000023 (see module doc)."""
+    if read(DI05_COIL_OFFSET)[0] is None:
+        return False
+    return read(STEP1_HEARTBEAT_OFFSET)[1] == MODBUS_ILLEGAL_ADDRESS
 
 
 def sntp_offset(host: str, timeout: float = 2.0) -> Optional[float]:
@@ -160,33 +159,45 @@ def sntp_offset(host: str, timeout: float = 2.0) -> Optional[float]:
 
 
 class Clock:
-    """Host clock + periodically measured SNTP offset (auditable correction)."""
+    """True UTC anchored to the monotonic clock at each SNTP measurement.
 
-    def __init__(self, query: Callable[[str], Optional[float]] = sntp_offset) -> None:
-        self._query = query
-        self.offset: Optional[float] = None
+    A reading is stamped ``anchor_utc + (mono_now - anchor_mono)`` — it tracks
+    elapsed monotonic time, so a host-clock step between refreshes (e.g. Windows
+    Time starting) neither double-applies the offset nor jumps backwards. The
+    effective offset vs the host clock is recorded per reading (auditable)."""
+
+    def __init__(
+        self,
+        query: Callable[[str], Optional[float]] = sntp_offset,
+        wall: Callable[[], float] = time.time,
+        mono: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._query, self._wall, self._mono = query, wall, mono
         self.source = "host"
-        self._measured = float("-inf")
+        self._anchor: Optional[tuple[float, float]] = None  # (utc, mono)
         self._tried = float("-inf")
 
-    def refresh(self, mono: float) -> None:
-        if mono - self._tried < NTP_REFRESH_S:
+    def refresh(self) -> None:
+        now = self._mono()
+        if now - self._tried < NTP_REFRESH_S:
             return
-        self._tried = mono
+        self._tried = now
         for host in NTP_HOSTS:
             off = self._query(host)
             if off is not None:
-                self.offset, self.source, self._measured = off, f"sntp:{host}", mono
+                self._anchor = (self._wall() + off, self._mono())
+                self.source = f"sntp:{host}"
                 return
-        if mono - self._measured > NTP_MAX_AGE_S:
-            self.offset, self.source = None, "host"
+        if self._anchor and now - self._anchor[1] > NTP_MAX_AGE_S:
+            self._anchor, self.source = None, "host"
 
-    def stamp(self, host_ts: float) -> tuple[float, dict[str, Any]]:
+    def stamp(self, host_ts: float, mono_ts: float) -> tuple[float, dict[str, Any]]:
         meta: dict[str, Any] = {"host_clock_utc": utc_iso(host_ts), "clock_source": self.source}
-        if self.offset is None:
+        if self._anchor is None:
             return host_ts, meta
-        meta["clock_offset_s"] = round(self.offset, 3)
-        return host_ts + self.offset, meta
+        utc = self._anchor[0] + (mono_ts - self._anchor[1])
+        meta["clock_offset_s"] = round(utc - host_ts, 3)
+        return utc, meta
 
 
 def utc_iso(ts: float) -> str:
@@ -245,8 +256,9 @@ def run() -> None:
     tenant, key = load_credentials()
     http = httpx.Client(timeout=10)
     clock = Clock()
-    clock.refresh(time.monotonic())
-    log.info("clock: source=%s offset_s=%s", clock.source, clock.offset)
+    clock.refresh()
+    _, cmeta = clock.stamp(time.time(), time.monotonic())
+    log.info("clock: source=%s offset_s=%s", clock.source, cmeta.get("clock_offset_s"))
     log.info(
         "start: PLC %s:%d unit %d coil 000023 -> %s (source=%s/%s tag=%s)",
         PLC_HOST,
@@ -267,19 +279,19 @@ def run() -> None:
                 client.close()
                 time.sleep(60)
                 continue
-            log.info("connected; map signature OK (v4: DI_05 = coil 000023)")
+            log.info("connected; map signature OK (DI_05 = coil 000023, no coil 000100)")
             last_value: Optional[bool] = None
-            last_post = 0.0
+            last_post = float("-inf")  # monotonic
             while True:
-                clock.refresh(time.monotonic())
-                t0 = time.time()
+                clock.refresh()
+                t0 = time.monotonic()
                 value, exc = read_coil(client, DI05_COIL_OFFSET)
-                read_at = time.time()
+                read_mono, read_wall = time.monotonic(), time.time()
                 if value is None:
                     raise OSError(f"DI_05 read rejected, modbus exception {exc}")
-                if should_post(value, last_value, last_post, read_at):
-                    stamped, clock_meta = clock.stamp(read_at)
-                    payload = build_payload(value, stamped, (read_at - t0) * 1000, clock_meta)
+                if should_post(value, last_value, last_post, read_mono):
+                    stamped, clock_meta = clock.stamp(read_wall, read_mono)
+                    payload = build_payload(value, stamped, (read_mono - t0) * 1000, clock_meta)
                     code, resp = post(http, payload, tenant, key)
                     ok = code == 200 and resp.get("accepted") == 1
                     (log.info if ok else log.warning)(
@@ -290,8 +302,8 @@ def run() -> None:
                         resp.get("accepted"),
                         resp.get("rejected"),
                     )
-                    last_value, last_post = value, read_at
-                time.sleep(max(0.0, POLL_S - (time.time() - t0)))
+                    last_value, last_post = value, read_mono
+                time.sleep(max(0.0, POLL_S - (time.monotonic() - t0)))
         except Exception as e:  # noqa: BLE001 — never replay a value; reconnect
             log.warning("read/post failed: %s — posting nothing, reconnect in 2 s", e)
         finally:

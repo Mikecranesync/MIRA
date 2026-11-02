@@ -2,12 +2,25 @@
 
 import ast
 import json
+import re
 from pathlib import Path
 
 import cv101_relay_poller as p
 import pytest
 
 SRC = Path(p.__file__).read_text(encoding="utf-8")
+PLC_DIR = Path(p.__file__).resolve().parents[1]
+
+
+def coil_offsets(xml_rel: str) -> set[int]:
+    """0-based coil offsets a Modbus slave-map XML declares (addresses 000001..099999)."""
+    text = (PLC_DIR / xml_rel).read_text(encoding="utf-8")
+    return {int(a) - 1 for a in re.findall(r'address="(0\d{5})"', text) if 0 < int(a) < 100000}
+
+
+# Observed on the bench Micro820 2026-11-02 (read-only probe): ConvSimple coils +
+# slave-map v2 offsets 20..22; offset 1 and 99 return exception 2.
+BENCH_SPARSE_V2 = {0, 3, 5, 9, *range(11, 23)}
 
 
 class _Resp:
@@ -19,9 +32,9 @@ class _Resp:
 
 
 class FakeV4Plc:
-    """Coil space of MbSrvConf_v4: 0,3,5,9,11..22 mapped; 1 and 99 unmapped."""
+    """Coil space of the flashed bench map unless ``mapped`` is given."""
 
-    MAPPED = {0, 3, 5, 9, *range(11, 23)}
+    MAPPED = BENCH_SPARSE_V2
 
     def __init__(self, di05=False, mapped=None):
         self.di05, self.mapped, self.calls = di05, mapped or self.MAPPED, []
@@ -49,16 +62,29 @@ def test_reads_coil_000023_only_for_di05():
     assert plc.calls == [("read_coils", 22, 1)]
 
 
-def test_map_signature_accepts_v4_map():
-    plc = FakeV4Plc()
-    assert p.map_signature_ok(lambda off: p.read_coil(plc, off)) is True
+def test_xml_fixtures_put_di05_where_the_guard_expects():
+    v4 = (PLC_DIR / "MbSrvConf_v4.xml").read_text(encoding="utf-8")
+    assert re.search(r'variable="_IO_EM_DI_05"[^>]*address="000023"', v4)
+    step1 = (PLC_DIR / "ccw/drive_test/step1_io_check/MbSrvConf_import.xml").read_text(
+        encoding="utf-8"
+    )
+    assert re.search(r'variable="_IO_EM_DI_05"[^>]*address="000006"', step1)
+
+
+@pytest.mark.parametrize(
+    "mapped,expected",
+    [
+        (coil_offsets("MbSrvConf_v4.xml"), True),  # canonical full v4 (offset 1 mapped)
+        (BENCH_SPARSE_V2, True),  # what is actually flashed today
+        (coil_offsets("MbSrvConf_v3.xml"), False),  # 000023 unmapped
+        (coil_offsets("MbSrvConf_ConvSimple_v1.9.xml"), False),  # 000023 unmapped
+        (coil_offsets("ccw/drive_test/step1_io_check/MbSrvConf_import.xml"), False),  # DI_05 @ 6
+    ],
+)
+def test_map_signature_against_repo_maps(mapped, expected):
+    plc = FakeV4Plc(mapped=mapped)
+    assert p.map_signature_ok(lambda off: p.read_coil(plc, off)) is expected
     assert all(c[0] == "read_coils" for c in plc.calls)
-
-
-def test_map_signature_rejects_step1_io_check_map():
-    # Step-1 IO-check map: coils 1..20 + 100 mapped -> DI_05 lives at coil 6, not 23.
-    plc = FakeV4Plc(mapped={*range(0, 20), 99})
-    assert p.map_signature_ok(lambda off: p.read_coil(plc, off)) is False
 
 
 def test_transport_failure_raises_not_a_value():
@@ -110,21 +136,51 @@ def test_should_post(value, last, last_post, now, expected):
     assert p.should_post(value, last, last_post, now) is expected
 
 
+class FakeClocks:
+    def __init__(self, wall=1000.0, mono=0.0):
+        self.wall, self.mono = wall, mono
+
+    def advance(self, dt):
+        self.wall += dt
+        self.mono += dt
+
+
 def test_clock_applies_measured_offset_and_records_it():
-    clock = p.Clock(query=lambda host: 45.6)
-    clock.refresh(0.0)
-    ts, meta = clock.stamp(1000.0)
+    t = FakeClocks()
+    clock = p.Clock(query=lambda host: 45.6, wall=lambda: t.wall, mono=lambda: t.mono)
+    clock.refresh()
+    ts, meta = clock.stamp(t.wall, t.mono)
     assert ts == pytest.approx(1045.6)
     assert meta["clock_offset_s"] == 45.6 and meta["clock_source"].startswith("sntp:")
     assert meta["host_clock_utc"] == "1970-01-01T00:16:40.000Z"
 
 
+@pytest.mark.parametrize("host_step", [45.6, -30.0])
+def test_host_clock_step_between_refreshes_is_not_double_applied(host_step):
+    t = FakeClocks()
+    clock = p.Clock(query=lambda host: 45.6, wall=lambda: t.wall, mono=lambda: t.mono)
+    clock.refresh()
+    t.advance(10)
+    t.wall += host_step  # e.g. Windows Time starts and steps the host clock
+    clock.refresh()  # inside NTP_REFRESH_S: no re-measure
+    ts, meta = clock.stamp(t.wall, t.mono)
+    assert ts == pytest.approx(1055.6)  # tracks elapsed monotonic time, no jump
+    assert meta["clock_offset_s"] == pytest.approx(45.6 - host_step)
+    t.advance(1)
+    assert clock.stamp(t.wall, t.mono)[0] == pytest.approx(1056.6)
+
+
 def test_clock_falls_back_to_host_time_when_ntp_unreachable_and_stale():
     answers = iter([45.6])
-    clock = p.Clock(query=lambda host: next(answers, None))
-    clock.refresh(0.0)
-    clock.refresh(p.NTP_REFRESH_S + 1)  # NTP fails, offset still fresh enough
-    assert clock.offset == 45.6
-    clock.refresh(p.NTP_MAX_AGE_S + p.NTP_REFRESH_S * 2)  # fails again, now too old
-    ts, meta = clock.stamp(1000.0)
-    assert ts == 1000.0 and meta["clock_source"] == "host" and "clock_offset_s" not in meta
+    t = FakeClocks()
+    clock = p.Clock(
+        query=lambda host: next(answers, None), wall=lambda: t.wall, mono=lambda: t.mono
+    )
+    clock.refresh()
+    t.advance(p.NTP_REFRESH_S + 1)
+    clock.refresh()  # NTP fails, anchor still young enough
+    assert clock.stamp(t.wall, t.mono)[1]["clock_source"].startswith("sntp:")
+    t.advance(p.NTP_MAX_AGE_S)
+    clock.refresh()  # fails again, anchor too old
+    ts, meta = clock.stamp(t.wall, t.mono)
+    assert ts == t.wall and meta["clock_source"] == "host" and "clock_offset_s" not in meta
