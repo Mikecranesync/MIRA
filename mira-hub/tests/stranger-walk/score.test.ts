@@ -414,4 +414,25 @@ describe("workflow", () => {
     expect(walk).toMatch(/\n {4}concurrency:\n {6}group: stranger-walk/);
     expect(walk).toMatch(/if: \$\{\{ github\.event_name != 'pull_request' && github\.ref == 'refs\/heads\/main' \}\}/);
   });
+  it("the paid workflow has no pull_request trigger and no unit job (they live in stranger-walk-unit.yml)", () => {
+    const on = yml.slice(yml.indexOf("\non:"), yml.indexOf("\npermissions:"));
+    expect(on).not.toMatch(/^ {2}pull_request:/m);
+    expect(yml).not.toMatch(/^ {2}unit:$/m);
+  });
+});
+
+describe("unit workflow (stranger-walk-unit.yml)", () => {
+  const unit = readFileSync(path.join(__dirname, "../../../.github/workflows/stranger-walk-unit.yml"), "utf8");
+  it("runs these tests on PRs that touch the harness or either walk workflow", () => {
+    const paths = unit.slice(unit.indexOf("  pull_request:"), unit.indexOf("\npermissions:"));
+    for (const p of ['"mira-hub/tests/stranger-walk/**"', '".github/workflows/stranger-walk.yml"', '".github/workflows/stranger-walk-unit.yml"']) expect(paths, p).toContain(p);
+    expect(unit).toMatch(/npx vitest run --config tests\/stranger-walk\/vitest\.stranger-walk\.config\.ts/);
+    expect(unit).toMatch(/if failed or total < 28 or passed != total:/);
+  });
+  it("is $0 by construction: no schedule, no secrets, no staging, read-only token, never walks", () => {
+    expect(unit).not.toMatch(/^ {2}schedule:/m);
+    expect(unit).not.toMatch(/secrets\.|DOPPLER|STRANGER_WALK_BASE|playwright test/);
+    expect(unit.slice(unit.indexOf("\npermissions:"), unit.indexOf("\njobs:"))).toBe("\npermissions:\n  contents: read\n");
+    expect(unit).not.toMatch(/^ {2}walk:$/m);
+  });
 });
