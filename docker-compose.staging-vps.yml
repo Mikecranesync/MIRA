@@ -18,9 +18,10 @@
 #
 # Phase 1 services + staging Telegram bot (@Mira_stagong_bot — separate token
 # from prod, safe to dual-deploy). Still NO Slack bot (shared token would
-# dual-poll prod), NO docling (1.7GB RAM), NO mira-core/ingest/sidecar/relay/
+# dual-poll prod), NO docling (1.7GB RAM), NO mira-core/ingest/sidecar/
 # bridge. The goal is "test from phone against staging NeonDB branch" — not a
-# full replica.
+# full replica. mira-relay (the tag-ingest receiver) IS staged: it is the
+# release prerequisite for restoring the CV-101 telemetry route.
 #
 # Production runs on docker-compose.saas.yml and is NEVER touched by this file.
 #
@@ -35,6 +36,7 @@
 #   4433 → atlas-db         (prod 5433)
 #   4900 → atlas-minio API  (prod 9000)
 #   4901 → atlas-minio UI   (prod 9001)
+#   4765 → mira-relay       (prod 8765) — nginx exposes only POST /api/v1/tags/ingest
 
 name: factorylm-staging
 
@@ -1006,6 +1008,46 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+
+  # ─── mira-relay — CV-101 tag-ingest receiver (staging) ──────────────────────
+  # The same receiver production runs (POST /api/v1/tags/ingest → approved_tags
+  # → tag_events + live_signal_cache), against the STAGING Neon branch only.
+  # Loopback-only: nginx exposes exactly `POST /api/v1/tags/ingest` on
+  # app-staging.factorylm.com (deployment/nginx-staging-factorylm.conf); the
+  # historian/websocket routes stay unreachable from outside the host.
+  #
+  # Fail closed on credentials: the relay is OPEN when no key is configured
+  # (relay_server._authenticate_http), so RELAY_REQUIRE_HMAC=1 makes it refuse to
+  # START without MIRA_IGNITION_HMAC_KEY (enforced in the relay, not with a compose
+  # `:?`, which would break every offline render of this file). deploy-staging.yml
+  # then probes that an UNSIGNED ingest is refused 401.
+  # factorylm/stg carries its OWN MIRA_IGNITION_HMAC_KEY; never copy the prd value.
+  # No legacy bearer, no RELAY_BIND_ADDR, no host volume (the legacy SQLite
+  # /ingest path is not exposed and needs no persistence here).
+  mira-relay:
+    build: ./mira-relay
+    container_name: stg-mira-relay
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:4765:8765"
+    environment:
+      - RELAY_PORT=8765
+      - MIRA_DB_PATH=/tmp/mira-relay-legacy.db
+      - RELAY_LEGACY_BEARER=0
+      - RELAY_API_KEY=
+      - RELAY_REQUIRE_HMAC=1
+      - MIRA_IGNITION_HMAC_KEY=${MIRA_IGNITION_HMAC_KEY:-}
+      - NEON_DATABASE_URL=${NEON_DATABASE_URL:-}
+    networks:
+      - staging-net
+    mem_limit: 256m
+    memswap_limit: 256m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/health', timeout=3)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
 networks:
   staging-net:
