@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveObservedState, type ObservationRow } from "../project";
+import { CONFLICTS_SHOWN, contributorDigestOf, deriveObservedState, type ObservationRow } from "../project";
 
 const NOW = new Date("2026-06-15T18:00:00.000Z");
 const ENTITY_ROW = (over: Partial<ObservationRow> & { id: string }): ObservationRow => ({
@@ -173,3 +173,58 @@ describe("deriveObservedState (pure projection, A3/A4)", () => {
     expect(v3).not.toBe(v1);
   });
 });
+
+// #5106: a contested fact lists a bounded, ordered slice and states the exact rest.
+describe("deriveObservedState bounds what it lists, never what it counts", () => {
+  const opposing = (n: number) =>
+    Array.from({ length: n }, (_, i) =>
+      ENTITY_ROW({ id: `b${String(i).padStart(3, "0")}`, factValue: "absent", observedAt: `2026-06-15T09:${String(30 + (i % 29)).padStart(2, "0")}:00.000Z` }),
+    );
+  const current = ENTITY_ROW({ id: "a", observedAt: "2026-06-15T10:00:00.000Z" });
+
+  it("lists at most CONFLICTS_SHOWN, current first, counts all and points at the continuation", () => {
+    const rows = [current, ...opposing(30)];
+    const fact = deriveObservedState(rows, { now: NOW }).facts[0]!;
+    expect(fact.conflictTotal).toBe(31);
+    expect(fact.conflicting).toHaveLength(CONFLICTS_SHOWN);
+    expect(fact.conflicting[0]!.observationId).toBe("a");
+    expect(fact.conflictsNextCursor).toBe(fact.conflicting.at(-1)!.observationId);
+    expect(fact.contributorDigest).toBe(contributorDigestOf(rows.map((r) => r.id)));
+    const s = deriveObservedState(rows, { now: NOW });
+    expect(s.contributorCount).toBe(31);
+    expect(s.shownObservationIds).toEqual(fact.conflicting.map((e) => e.observationId).sort());
+  });
+
+  it("a fully listed contest has no continuation; an uncontested fact counts one contributor", () => {
+    const small = deriveObservedState([current, ...opposing(3)], { now: NOW });
+    expect(small.facts[0]!.conflictsNextCursor).toBeNull();
+    expect(small.facts[0]!.conflictTotal).toBe(4);
+    const alone = deriveObservedState([current], { now: NOW });
+    expect(alone.facts[0]).toMatchObject({ conflictTotal: 0, conflictsNextCursor: null, conflicting: [] });
+    expect(alone.contributorCount).toBe(1);
+  });
+
+  it("a hidden opposing report moves stateVersion though the listed slice is unchanged", () => {
+    const rows = [current, ...opposing(30)];
+    const extra = ENTITY_ROW({ id: "zzz", factValue: "absent", observedAt: "2026-06-15T09:01:00.000Z" });
+    const v1 = deriveObservedState(rows, { now: NOW });
+    const v2 = deriveObservedState([...rows, extra], { now: NOW });
+    expect(v2.facts[0]!.conflicting).toEqual(v1.facts[0]!.conflicting);
+    expect(v2.stateVersion).not.toBe(v1.stateVersion);
+  });
+
+  it("a store-computed contest summary is authoritative for the rows it did not send", () => {
+    const all = [current, ...opposing(30)];
+    const full = deriveObservedState(all, { now: NOW });
+    // The store sends the current report and the newest opposing ones only.
+    const sent = [current, ...full.facts[0]!.conflicting.slice(1).map((e) => all.find((r) => r.id === e.observationId)!)];
+    const bounded = deriveObservedState(sent, {
+      now: NOW,
+      contests: { seal_leak: { opposingTotal: 30, contributorDigest: contributorDigestOf(all.map((r) => r.id)) } },
+    });
+    expect(bounded.facts).toEqual(full.facts);
+    expect(bounded.stateVersion).toBe(full.stateVersion);
+    expect(bounded.contributorCount).toBe(31);
+  });
+});
+

@@ -227,7 +227,13 @@ import {
 } from "@/lib/visual-evidence-context";
 import { photoLinkedToTarget } from "@/lib/workspace-files";
 import { observationStateEnabled } from "@/capabilities/observations/flag";
-import { isObservedStateEntry, loadObservedStateForTurn, observedStateEntry } from "@/capabilities/observations/turn-context";
+import {
+  isObservedStateEntry,
+  loadObservedStateForTurn,
+  observedStateEntry,
+  observedStateFrameOf,
+  type ObservedStateFrame,
+} from "@/capabilities/observations/turn-context";
 import { discoverManual } from "@/lib/manual-discovery";
 import {
   approvedAskEnforcementEnabled,
@@ -1093,9 +1099,7 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
             ...(machineEvidence ? { machineEvidence } : {}),
             ...(visualEvidence ? { visualEvidence } : {}),
             ...(identityDisputed ? { identityDisputed: true } : {}),
-            ...(observedEntry
-              ? { observedState: { stateVersion: observedEntry.stateVersion, observationIds: observedEntry.observationIds } }
-              : {}),
+            ...(observedEntry ? { observedState: observedStateFrameOf(observedEntry) } : {}),
           });
         } else if (visualEvidence) {
           emit(visualEvidenceMarker(visualEvidence));
@@ -3598,7 +3602,7 @@ async function handleChatTurn(
   // Deliberately NOT in approvedSummary: observed state never counts toward the
   // approved-context gate.
   let observedSection = "";
-  let observedFrame: { stateVersion: string; observationIds: string[] } | null = null;
+  let observedFrame: ObservedStateFrame | null = null;
   if (boundAsset.state === "resolved" && !identityDisputed && observationStateEnabled()) {
     try {
       const observed = await loadObservedStateForTurn(ctx.tenantId, boundAsset.entityId, new Date());

@@ -22,6 +22,7 @@ vi.mock("@/lib/equipment-notebooks", () => nb);
 const store = vi.hoisted(() => ({
   insertObservation: vi.fn(),
   listProjectionRows: vi.fn(),
+  listConflictPage: vi.fn(),
   listObservationHistory: vi.fn(),
   getObservationForAsset: vi.fn(),
   HISTORY_PAGE_DEFAULT: 50,
@@ -60,7 +61,7 @@ beforeEach(() => {
   process.env.MIRA_OBSERVATION_STATE = "1";
   nb.getNotebook.mockResolvedValue({ id: NB, displayName: "Pump 07" });
   nb.resolveBoundAsset.mockResolvedValue(confirmed);
-  store.listProjectionRows.mockResolvedValue([]);
+  store.listProjectionRows.mockResolvedValue({ rows: [], contests: {} });
   store.listObservationHistory.mockResolvedValue({ status: "ok", rows: [], nextCursor: null });
   store.getObservationForAsset.mockResolvedValue(null);
   store.insertObservation.mockResolvedValue({
@@ -107,7 +108,7 @@ describe("observation routes: GET is bounded", () => {
   const row = (id: string) => ({ id, factKey: "seal_leak", factValue: "present", observedAt: "2026-06-15T09:10:00.000Z", recordedAt: "2026-06-15T09:11:00.000Z", recordedBy: "tech-1", verificationMethod: "self_reported", uncertainty: "unverified", supersedesId: null });
 
   it("returns the state from the projection rows, one history page and its cursor — never a full history", async () => {
-    store.listProjectionRows.mockResolvedValue([row("o1")]);
+    store.listProjectionRows.mockResolvedValue({ rows: [row("o1")], contests: {} });
     store.listObservationHistory.mockResolvedValue({ status: "ok", rows: [{ ...row("o1"), rawReport: "seal leaking", superseded: false }], nextCursor: "o1" });
     const res = await get();
     expect(res.status).toBe(200);
@@ -233,5 +234,40 @@ describe("observation routes: input rules", () => {
     expect(res.status).toBe(409);
     expect(await res.json()).toMatchObject({ error: "asset_mismatch" });
     expect(store.insertObservation).not.toHaveBeenCalled();
+  });
+});
+
+// #5106: the conflicts a state does not list continue on GET, one bounded page at a time.
+describe("observation routes: conflict continuation", () => {
+  const get = (qs = "") => GET_OBS(req(`/api/equipment-notebooks/${NB}/observations/${qs}`, "GET"), params);
+  const CURSOR = "55555555-5555-4555-8555-555555555555";
+  const entry = { observationId: CURSOR, factValue: "absent", source: "technician", author: "tech-2", observedAt: "2026-06-15T09:00:00.000Z", recordedAt: "2026-06-15T09:01:00.000Z", verificationMethod: "self_reported", uncertainty: "unverified" };
+
+  it("returns one page for the named fact with its own cursor, clamped like history", async () => {
+    store.listObservationHistory.mockResolvedValue({ status: "ok", rows: [], nextCursor: null });
+    store.listConflictPage.mockResolvedValue({ status: "ok", rows: [entry], nextCursor: CURSOR });
+    const res = await get(`?conflicts=seal_leak&conflictCursor=${CURSOR}&limit=5000`);
+    expect(res.status).toBe(200);
+    expect(store.listConflictPage).toHaveBeenCalledWith(TENANT, ENTITY, "seal_leak", { cursor: CURSOR, limit: 100 });
+    expect((await res.json()).conflicts).toEqual({ factKey: "seal_leak", rows: [entry], nextCursor: CURSOR });
+  });
+
+  it("does not page conflicts unless asked", async () => {
+    store.listObservationHistory.mockResolvedValue({ status: "ok", rows: [], nextCursor: null });
+    const res = await get();
+    expect(store.listConflictPage).not.toHaveBeenCalled();
+    expect(await res.json()).not.toHaveProperty("conflicts");
+  });
+
+  it("refuses an unknown fact, a cursor without a fact, a malformed cursor and a cursor the store rejects", async () => {
+    store.listObservationHistory.mockResolvedValue({ status: "ok", rows: [], nextCursor: null });
+    expect((await get("?conflicts=vibes")).status).toBe(400);
+    expect((await get(`?conflictCursor=${CURSOR}`)).status).toBe(400);
+    expect((await get("?conflicts=seal_leak&conflictCursor=nope")).status).toBe(400);
+    expect(store.listConflictPage).not.toHaveBeenCalled();
+    store.listConflictPage.mockResolvedValue({ status: "invalid_cursor" });
+    const res = await get(`?conflicts=seal_leak&conflictCursor=${CURSOR}`);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_conflict_cursor" });
   });
 });

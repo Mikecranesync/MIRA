@@ -2,8 +2,9 @@
  * GET  /api/equipment-notebooks/[id]/observations — the bound machine's observed
  *      state and one page of its history (`?cursor=<id>&limit=<n>`, at most
  *      HISTORY_PAGE_MAX). `?observation=<id>` also returns that one row (the panel's
- *      save readback). Asset-scoped: any notebook of this tenant bound to the same
- *      confirmed machine returns the same answer.
+ *      save readback). `?conflicts=<factKey>&conflictCursor=<id>` also returns one page
+ *      of that fact's opposing reports past the ones the state lists (#5106). Asset-scoped:
+ *      any notebook of this tenant bound to the same confirmed machine returns the same answer.
  * POST /api/equipment-notebooks/[id]/observations — record a technician-confirmed
  *      observation (append-only; a correction supersedes an earlier row).
  *
@@ -22,9 +23,11 @@ import {
   HISTORY_PAGE_DEFAULT,
   HISTORY_PAGE_MAX,
   insertObservation,
+  listConflictPage,
   listObservationHistory,
   listProjectionRows,
 } from "@/capabilities/observations/store";
+import { FACT_KEYS, type FactKey } from "@/capabilities/observations/parse";
 import { deriveObservedState, summaryOf } from "@/capabilities/observations/project";
 
 export const dynamic = "force-dynamic";
@@ -58,17 +61,33 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (observationId !== null && !isUuid(observationId)) {
     return NextResponse.json({ error: "invalid_observation_id" }, { status: 400 });
   }
+  const conflicts = q.get("conflicts");
+  if (conflicts !== null && !(FACT_KEYS as readonly string[]).includes(conflicts)) {
+    return NextResponse.json({ error: "invalid_fact_key" }, { status: 400 });
+  }
+  const conflictCursor = q.get("conflictCursor");
+  if (conflictCursor !== null && (conflicts === null || !isUuid(conflictCursor))) {
+    return NextResponse.json({ error: "invalid_conflict_cursor" }, { status: 400 });
+  }
 
   try {
     const entityId = asset.asset.entityId;
-    const state = deriveObservedState(await listProjectionRows(ctx.tenantId, entityId), { now: new Date() });
+    const { rows, contests } = await listProjectionRows(ctx.tenantId, entityId);
+    const state = deriveObservedState(rows, { now: new Date(), contests });
     const page = await listObservationHistory(ctx.tenantId, entityId, { cursor, limit: pageLimit(q.get("limit")) });
     if (page.status === "invalid_cursor") return NextResponse.json({ error: "invalid_cursor" }, { status: 400 });
+    const conflictPage = conflicts
+      ? await listConflictPage(ctx.tenantId, entityId, conflicts as FactKey, { cursor: conflictCursor, limit: pageLimit(q.get("limit")) })
+      : null;
+    if (conflictPage?.status === "invalid_cursor") return NextResponse.json({ error: "invalid_conflict_cursor" }, { status: 400 });
     return NextResponse.json({
       equipmentEntityId: entityId,
       state: summaryOf(state),
       history: page.rows,
       nextCursor: page.nextCursor,
+      ...(conflictPage?.status === "ok"
+        ? { conflicts: { factKey: conflicts, rows: conflictPage.rows, nextCursor: conflictPage.nextCursor } }
+        : {}),
       ...(observationId ? { observation: await getObservationForAsset(ctx.tenantId, entityId, observationId) } : {}),
     });
   } catch (err) {

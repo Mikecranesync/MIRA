@@ -9,9 +9,13 @@ import { listProjectionRows } from "./store";
 import { deriveObservedState } from "./project";
 import { renderObservedStateSection } from "./context";
 
+/** stateVersion covers every contributor; observationIds are the ones the prompt listed
+ *  (bounded, #5106); contributorCount says how many exist in all. */
+export type ObservedStateFrame = { stateVersion: string; observationIds: string[]; contributorCount: number };
+
 export type ObservedTurnContext = {
   section: string;
-  frame: { stateVersion: string; observationIds: string[] } | null;
+  frame: ObservedStateFrame | null;
 };
 
 export async function loadObservedStateForTurn(
@@ -19,11 +23,14 @@ export async function loadObservedStateForTurn(
   equipmentEntityId: string,
   now: Date,
 ): Promise<ObservedTurnContext> {
-  const observed = deriveObservedState(await listProjectionRows(tenantId, equipmentEntityId), { now });
+  const { rows, contests } = await listProjectionRows(tenantId, equipmentEntityId);
+  const observed = deriveObservedState(rows, { now, contests });
   const section = renderObservedStateSection(observed);
   return {
     section,
-    frame: section ? { stateVersion: observed.stateVersion, observationIds: observed.contributingObservationIds } : null,
+    frame: section
+      ? { stateVersion: observed.stateVersion, observationIds: observed.shownObservationIds, contributorCount: observed.contributorCount }
+      : null,
   };
 }
 
@@ -32,10 +39,17 @@ export async function loadObservedStateForTurn(
  * turn's evidence array so an idempotent replay returns the frame the technician
  * originally got, not a recomputation over rows that may have changed (#5097).
  */
-export type ObservedStateEntry = { kind: "observed_state"; stateVersion: string; observationIds: string[] };
+export type ObservedStateEntry = { kind: "observed_state" } & ObservedStateFrame;
 
 export function observedStateEntry(frame: ObservedTurnContext["frame"]): ObservedStateEntry | null {
-  return frame ? { kind: "observed_state", stateVersion: frame.stateVersion, observationIds: [...frame.observationIds] } : null;
+  return frame
+    ? { kind: "observed_state", stateVersion: frame.stateVersion, observationIds: [...frame.observationIds], contributorCount: frame.contributorCount }
+    : null;
+}
+
+/** The frame a replay re-sends, exactly as persisted. */
+export function observedStateFrameOf(entry: ObservedStateEntry): ObservedStateFrame {
+  return { stateVersion: entry.stateVersion, observationIds: entry.observationIds, contributorCount: entry.contributorCount };
 }
 
 export function isObservedStateEntry(entry: unknown): entry is ObservedStateEntry {
@@ -45,6 +59,7 @@ export function isObservedStateEntry(entry: unknown): entry is ObservedStateEntr
     e.kind === "observed_state" &&
     typeof e.stateVersion === "string" &&
     Array.isArray(e.observationIds) &&
-    e.observationIds.every((id) => typeof id === "string")
+    e.observationIds.every((id) => typeof id === "string") &&
+    Number.isInteger(e.contributorCount)
   );
 }

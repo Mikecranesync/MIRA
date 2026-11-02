@@ -16,7 +16,13 @@ export function renderObservedStateSection(state: ObservedState | null): string 
     const who = (e: ObservedState["facts"][number]["current"]) =>
       `${f.factKey}=${e.factValue} by ${e.author ?? "unknown technician"}, observed ${e.observedAt}, recorded ${e.recordedAt}, verification ${e.verificationMethod}, ${e.uncertainty}`;
     if (f.contested) {
-      return [`- ${f.factKey}: contested (conflicting reports within one hour)`, ...f.conflicting.map((e) => `  - ${who(e)}`)].join("\n");
+      const hidden = f.conflictTotal - f.conflicting.length;
+      return [
+        `- ${f.factKey}: contested (${f.conflictTotal} conflicting reports within one hour)`,
+        ...f.conflicting.map((e) => `  - ${who(e)}`),
+        // Bounded list, exact count (#5106): the rest are unresolved, not dismissed.
+        ...(hidden > 0 ? [`  - ${hidden} more conflicting reports are not listed here; they are unresolved, not dismissed.`] : []),
+      ].join("\n");
     }
     return `- ${f.factKey}: ${f.state} — ${who(f.current)}`;
   });

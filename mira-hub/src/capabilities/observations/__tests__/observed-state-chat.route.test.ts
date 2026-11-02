@@ -116,7 +116,7 @@ const ROW: ObservationRow = {
 
 /** Only the store (DB edge) is replaced; the observation rows are per asset. */
 function storeFor(rowsByAsset: Record<string, ObservationRow[]>) {
-  obsStore.listProjectionRows.mockImplementation(async (_t: string, entity: string) => rowsByAsset[entity] ?? []);
+  obsStore.listProjectionRows.mockImplementation(async (_t: string, entity: string) => ({ rows: rowsByAsset[entity] ?? [], contests: {} }));
 }
 
 function systemPrompt(): string {
@@ -159,8 +159,9 @@ describe("observed state in the chat prompt", () => {
     const res = await POST(req({ message: QUESTION }), params);
     const evidence = (await frames(res)).find((f) => f.kind === "evidence") as Record<string, unknown> | undefined;
     expect(evidence).toBeDefined();
-    const observed = evidence!.observedState as { stateVersion: string; observationIds: string[] };
+    const observed = evidence!.observedState as { stateVersion: string; observationIds: string[]; contributorCount: number };
     expect(observed.observationIds).toEqual([OBS_ID]);
+    expect(observed.contributorCount).toBe(1);
     expect(observed.stateVersion).toBe(deriveObservedState([ROW], { now: new Date() }).stateVersion);
   });
 

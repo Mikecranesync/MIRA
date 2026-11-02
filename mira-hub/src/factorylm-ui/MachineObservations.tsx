@@ -12,9 +12,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { API_BASE } from "@/lib/config";
 import {
+  conflictCountLine,
   createObservationRequestIds,
   factLine,
   observationSaveMessage,
+  type FactEntry,
   type FactState,
   type ObservationPreview,
   type ObservedStateView,
@@ -69,8 +71,13 @@ function fromLocalInput(value: string): string | null {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
-function FactLine({ fact }: { fact: FactState }) {
-  const entries = fact.contested ? fact.conflicting : [fact.current];
+/** More opposing reports for one contested fact, loaded on request (#5106). */
+type MoreConflicts = { entries: FactEntry[]; cursor: string | null; loading: boolean; error: string | null };
+
+function FactLine({ fact, more, onMore }: { fact: FactState; more?: MoreConflicts; onMore: () => void }) {
+  const entries = fact.contested ? [...fact.conflicting, ...(more?.entries ?? [])] : [fact.current];
+  const cursor = more ? more.cursor : fact.conflictsNextCursor;
+  const count = fact.contested ? conflictCountLine(entries.length, fact.conflictTotal) : null;
   return (
     <li data-testid={`observed-fact-${fact.factKey}`} data-state={fact.state} style={{ marginBottom: 8 }}>
       <strong>{factLine(fact)}</strong>
@@ -81,6 +88,18 @@ function FactLine({ fact }: { fact: FactState }) {
           {e.verificationMethod === "self_reported" ? "self-reported, not verified" : e.verificationMethod}
         </div>
       ))}
+      {count && (
+        <div data-testid={`observed-fact-${fact.factKey}-count`} style={{ fontSize: "var(--fl-fs-sm)", marginTop: 4 }}>
+          {count}
+          {cursor && (
+            <button type="button" onClick={onMore} disabled={more?.loading} style={{ ...BUTTON_STYLE, marginInlineStart: 8 }}
+              data-testid={`observed-fact-${fact.factKey}-more`}>
+              {more?.loading ? "Loading…" : "Show more"}
+            </button>
+          )}
+          {more?.error && <span role="alert" style={{ marginInlineStart: 8 }}>{more.error}</span>}
+        </div>
+      )}
     </li>
   );
 }
@@ -100,6 +119,7 @@ export function MachineObservations({ notebookId }: { notebookId: string }) {
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const [state, setState] = useState<ObservedStateView | null>(null);
   const [readError, setReadError] = useState<string | null>(null);
+  const [more, setMore] = useState<Record<string, MoreConflicts>>({});
   const requestIds = useMemo(() => createObservationRequestIds(), []);
   // StrictMode replays effects (setup, cleanup, setup): set the flag in setup, not only at
   // init, or the replayed cleanup leaves it false and the panel never shows (#5091 Codex r2 F3).
@@ -120,9 +140,36 @@ export function MachineObservations({ notebookId }: { notebookId: string }) {
     if (res.status === 409) { if (mounted.current) setEnabled(false); return null; }
     if (!res.ok) throw new Error(`readback ${res.status}`);
     const view = (await res.json()) as ObservedStateView;
-    if (mounted.current) { setEnabled(true); setState(view); setReadError(null); }
+    if (mounted.current) { setEnabled(true); setState(view); setReadError(null); setMore({}); }
     return view;
   }, [notebookId]);
+
+  // The next page of one contested fact's opposing reports, after the last one shown. A
+  // refused cursor means the state moved: reread it rather than mixing two states.
+  const loadMore = useCallback(async (fact: FactState) => {
+    const prior = more[fact.factKey];
+    const cursor = prior ? prior.cursor : fact.conflictsNextCursor;
+    if (!cursor) return;
+    setMore((m) => ({ ...m, [fact.factKey]: { entries: prior?.entries ?? [], cursor, loading: true, error: null } }));
+    try {
+      const qs = `?conflicts=${encodeURIComponent(fact.factKey)}&conflictCursor=${encodeURIComponent(cursor)}&limit=50`;
+      const res = await fetch(`${base(notebookId)}${qs}`, { credentials: "include", headers: { accept: "application/json" } });
+      if (res.status === 400) { await readBack(); return; }
+      if (!res.ok) throw new Error(`conflicts ${res.status}`);
+      const view = (await res.json()) as ObservedStateView;
+      if (!mounted.current || !view.conflicts) return;
+      if (view.state.stateVersion !== state?.state.stateVersion) { setState(view); setMore({}); return; }
+      const page = view.conflicts;
+      setMore((m) => ({
+        ...m,
+        [fact.factKey]: { entries: [...(prior?.entries ?? []), ...page.rows], cursor: page.nextCursor, loading: false, error: null },
+      }));
+    } catch {
+      if (mounted.current) {
+        setMore((m) => ({ ...m, [fact.factKey]: { entries: prior?.entries ?? [], cursor, loading: false, error: "More reports could not be loaded." } }));
+      }
+    }
+  }, [more, notebookId, readBack, state]);
 
   useEffect(() => {
     readBack().catch(() => { if (mounted.current) { setEnabled(true); setReadError("Machine state could not be loaded."); } });
@@ -210,7 +257,9 @@ export function MachineObservations({ notebookId }: { notebookId: string }) {
           {state && state.state.facts.length === 0 && <p data-testid="machine-state-empty">No technician reports for this machine yet.</p>}
           {state && state.state.facts.length > 0 && (
             <ul style={{ paddingInlineStart: 16 }} data-testid="machine-state-facts" data-state-version={state.state.stateVersion}>
-              {state.state.facts.map((f) => <FactLine key={f.factKey} fact={f} />)}
+              {state.state.facts.map((f) => (
+                <FactLine key={f.factKey} fact={f} more={more[f.factKey]} onMore={() => void loadMore(f)} />
+              ))}
             </ul>
           )}
           {state && (
