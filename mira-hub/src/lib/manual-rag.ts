@@ -5,6 +5,7 @@ import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
 import { MODEL_PATTERNS, modelIdentitiesInText, resolveModelFromObservationText } from "@/capabilities/model-token";
 import { embedQueryDetailed, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
+import { restoreDecimalGlyph } from "@/capabilities/decimal-glyph";
 import { setSpanAttrs } from "@/capabilities/observability/tracing";
 import { orderByScores, rerankEnabled, rerankPool, rerankScores } from "@/capabilities/reranker";
 import {
@@ -1240,7 +1241,7 @@ async function runBm25Query(
   }
 
   return rows.map((r: Record<string, unknown>) => ({
-    content: String(r.content ?? ""),
+    content: restoreDecimalGlyph(String(r.content ?? "")),
     manufacturer: String(r.manufacturer ?? ""),
     modelNumber: String(r.model_number ?? ""),
     sourceUrl: String(r.source_url ?? ""),
@@ -1909,7 +1910,9 @@ export async function retrieveNodeChunks(
   // Recall for the question's rare words. Not lexical coverage: the full OR pass
   // below must still run when the AND and synonym passes found nothing.
   if (!lexicalV2) add(await runRetrieval(RARE_TSQUERY, opts.rawQuery?.trim() || expanded.variants[0]));
-  add(await runExactLane(expanded.exactTokens.map((t) => `%${t}%`)));
+  // "_" where a dotted ID has its period (#5130): some manuals store that period
+  // as U+FFFD, and a one-character wildcard matches either spelling.
+  add(await runExactLane(expanded.exactTokens.map((t) => `%${t.replace(/\./g, "_")}%`)));
   // The code the technician JUST named gets its own whole-token pass with its
   // own window BEFORE the combined pass (Codex r8 on #4360): the combined query
   // binds history and current patterns together, orders by page and LIMITs to
@@ -2177,7 +2180,7 @@ export async function retrieveNodeChunks(
   const lexicalRanked = rerankChunks(
     expanded,
     pool.map((r) => ({
-      content: String(r.content ?? ""),
+      content: restoreDecimalGlyph(String(r.content ?? "")),
       rank: Number(r.rank ?? 0),
       sourcePage: r.page_start != null ? Number(r.page_start) : r.source_page == null ? null : Number(r.source_page),
       docId: r.doc_id == null ? null : String(r.doc_id),
@@ -2235,7 +2238,7 @@ export async function retrieveNodeChunks(
   }
 
   return reranked.map(({ _row: r }) => ({
-    content: String(r.content ?? ""),
+    content: restoreDecimalGlyph(String(r.content ?? "")),
     docId: r.doc_id == null ? null : String(r.doc_id),
     // Node attachments have no manufacturer/model — the filename is the citable title.
     manufacturer: "",
@@ -2508,7 +2511,7 @@ export async function retrieveCitedPageChunks(
     );
     const rows = res.rows as Array<Record<string, unknown>>;
     for (const r of rows) {
-      const row = { content: String(r.content ?? ""), sourceUrl: String(r.source_url ?? ""), sourcePage: Number(r.page) };
+      const row = { content: restoreDecimalGlyph(String(r.content ?? "")), sourceUrl: String(r.source_url ?? ""), sourcePage: Number(r.page) };
       if (opts.keep && !opts.keep(row.content)) continue;
       out.push(row);
       found.add(keyOf(row.sourceUrl, row.sourcePage));
