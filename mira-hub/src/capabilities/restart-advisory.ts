@@ -37,7 +37,23 @@ const OBJECT_THEN_VERB = new RegExp(`\\b${FAULT_OBJECT}\\W+(?:\\w+\\W+){0,1}?(?:
  *  only counts with a fault / stop context in the same message. */
 const RESTART_PHRASE =
   /\b(?:re-?start(?:ing)?|start\s+(?:it|this|that|the\s+\w+)\s+(?:back\s+)?(?:up|again)|get(?:ting)?\s+(?:it|this|that|the\s+\w+(?:\s+\w+)?)\s+(?:running|going|started|moving)\s+again|back\s+up\s+and\s+running)\b/i;
-const STOP_CONTEXT = new RegExp(`\\b(?:${FAULT_OBJECT}|stopped|went\\s+down|shut\\s+down|tripped)\\b`, "i");
+const STOP_CONTEXT = new RegExp(
+  `\\b(?:${FAULT_OBJECT}|stopped|went\\s+down|shut\\s+down|tripped|dropped\\s+out|red\\s+(?:led|light))\\b`,
+  "i",
+);
+
+/** #5129 — a drive fault code named in place of the word "fault" ("reset the
+ *  ov", "clear F004", "reset the oC"): a drive mnemonic, or an F/E/A/Er/AL
+ *  letter prefix on digits. A P-number is a parameter and never counts. */
+const FAULT_CODE = "(?:o[cvlh]|uv|lv|gf|ef|ce|bb|[fe]\\d{1,5}|a\\d{3,5}|er\\d{1,4}|al\\d{1,4})";
+const VERB_THEN_CODE = new RegExp(
+  `\\b(?:reset|re-set|clear|acknowledge)\\s+(?:the\\s+|an?\\s+|that\\s+|this\\s+)?${FAULT_CODE}\\b`,
+  "i",
+);
+
+/** #5129 — "… relays dropped out, how do I reset": a bare reset with no object,
+ *  counted only alongside a stop or fault context in the same message. */
+const BARE_RESET = /\bhow\s+(?:do|can|should|would)\s+(?:i|we|you)\s+(?:reset|re-set|clear)\s*(?:it|this|that)?\s*[?.!]*\s*$/i;
 
 /** A reset aimed at something that is not the machine — an account, a device, a
  *  counter. Checked first, so a fault word elsewhere in the message ("reset my
@@ -54,8 +70,8 @@ const PRONOUN_RESET = /\b(?:reset|re-set|clear|acknowledge)\s+(?:it|this|that|th
 export function isFaultResetAsk(message: string): boolean {
   const msg = (message || "").trim();
   if (!msg || NON_MACHINE_RESET.test(msg)) return false;
-  if (VERB_THEN_OBJECT.test(msg) || OBJECT_THEN_VERB.test(msg)) return true;
-  if (PRONOUN_RESET.test(msg) && STOP_CONTEXT.test(msg)) return true;
+  if (VERB_THEN_OBJECT.test(msg) || OBJECT_THEN_VERB.test(msg) || VERB_THEN_CODE.test(msg)) return true;
+  if ((PRONOUN_RESET.test(msg) || BARE_RESET.test(msg)) && STOP_CONTEXT.test(msg)) return true;
   return RESTART_PHRASE.test(msg) && STOP_CONTEXT.test(msg);
 }
 
