@@ -41,6 +41,11 @@ export function rerankTimeoutMs(): number {
 
 export type RerankFallback = "not_configured" | "http_error" | "timeout" | "malformed" | "network";
 
+/** The one log line for a fallback (kept verbatim so existing greps still match). */
+export function logRerankFallback(reason: RerankFallback, detail?: string): void {
+  console.warn(`[reranker] reranker_fallback reason=${reason}${detail ? ` ${detail}` : ""}`);
+}
+
 /**
  * Score each passage against the query. Returns one finite score per passage, in input order,
  * or null (with a logged reason) — never throws.
@@ -50,10 +55,7 @@ export async function rerankScores(
   passages: readonly string[],
   deps: { fetch?: typeof fetch; log?: (reason: RerankFallback, detail?: string) => void } = {},
 ): Promise<number[] | null> {
-  const log =
-    deps.log ??
-    ((reason: RerankFallback, detail?: string) =>
-      console.warn(`[reranker] reranker_fallback reason=${reason}${detail ? ` ${detail}` : ""}`));
+  const log = deps.log ?? logRerankFallback;
   const base = process.env.RERANKER_URL;
   if (!base) {
     log("not_configured");

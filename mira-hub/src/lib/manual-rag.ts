@@ -6,7 +6,7 @@ import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } f
 import { MODEL_PATTERNS, modelIdentitiesInText, resolveModelFromObservationText } from "@/capabilities/model-token";
 import { embedQueryDetailed, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
 import { setSpanAttrs } from "@/capabilities/observability/tracing";
-import { orderByScores, rerankEnabled, rerankPool, rerankScores } from "@/capabilities/reranker";
+import { logRerankFallback, orderByScores, rerankEnabled, rerankPool, rerankScores } from "@/capabilities/reranker";
 import {
   codeTokenMatcher,
   expandIndustrialQuery,
@@ -1330,7 +1330,7 @@ export async function retrieveNodeChunks(
      *  failed) so the caller can put it on its own retrieval span: callers
      *  start stage spans without activating them, so setSpanAttrs() on the
      *  active span alone never reached the trace (#4548). */
-    diagnostics?: { vectorLane?: string };
+    diagnostics?: { vectorLane?: string; rerank?: string; rerankMs?: number | null; searchPath?: string };
   },
 ): Promise<ManualChunk[]> {
   const q = query.trim();
@@ -2204,11 +2204,53 @@ export async function retrieveNodeChunks(
   // Runs BEFORE prioritizeCurrentCodeEvidence so the code the technician just named still
   // leads the final cut (#4360). Broad questions keep their page-diverse, facet-guaranteed
   // shape and are not reranked. Any reranker failure returns null: today's order stands.
+  // #4579: the outcome is recorded on the span (off | ran | skipped_broad | skipped_short |
+  // fallback_<reason>), not only logged, so a staging A/B can tell whether rerank ran.
+  // rerank_ms is the service wait (null when no call was made), so a turn near the timeout
+  // is visible before it becomes a fallback.
   let modelRanked = hybridRanked;
-  if (!broad.broad && rerankEnabled() && hybridRanked.length > 1) {
+  let rerankOutcome: string;
+  let rerankMs: number | null = null;
+  if (!rerankEnabled()) {
+    rerankOutcome = "off";
+  } else if (broad.broad) {
+    rerankOutcome = "skipped_broad";
+  } else if (hybridRanked.length <= 1) {
+    rerankOutcome = "skipped_short";
+  } else {
     const head = hybridRanked.slice(0, rerankPool());
-    const scores = await rerankScores(opts.rawQuery ?? q, head.map((c) => c.content));
-    if (scores) modelRanked = [...orderByScores(head, scores), ...hybridRanked.slice(head.length)];
+    let fallbackReason: string | undefined;
+    const rerankStart = Date.now();
+    const scores = await rerankScores(opts.rawQuery ?? q, head.map((c) => c.content), {
+      log: (reason, detail) => {
+        fallbackReason = reason;
+        logRerankFallback(reason, detail);
+      },
+    });
+    rerankMs = Date.now() - rerankStart;
+    if (scores) {
+      modelRanked = [...orderByScores(head, scores), ...hybridRanked.slice(head.length)];
+      rerankOutcome = "ran";
+    } else {
+      rerankOutcome = `fallback_${fallbackReason ?? "unknown"}`;
+    }
+  }
+  // The search path whose order was actually served: the lexical mode, then each stage
+  // that changed the order this turn (a skipped or failed stage is absent).
+  const searchPath = [
+    lexicalV2 ? "lexical_v2" : "lexical",
+    ...(vectorKeys && vectorKeys.length > 0 ? ["vector"] : []),
+    ...(rerankOutcome === "ran" ? ["rerank"] : []),
+  ].join("+");
+  setSpanAttrs({
+    "mira.retrieval.rerank": rerankOutcome,
+    "mira.retrieval.rerank_ms": rerankMs,
+    "mira.retrieval.search_path": searchPath,
+  });
+  if (opts.diagnostics) {
+    opts.diagnostics.rerank = rerankOutcome;
+    opts.diagnostics.rerankMs = rerankMs;
+    opts.diagnostics.searchPath = searchPath;
   }
   const rerankedAll = prioritizeCurrentCodeEvidence(modelRanked, expanded.currentCodeTokens);
   // Facet-guaranteed slots (answer completeness): rerank picks the BEST chunks
