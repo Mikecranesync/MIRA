@@ -1,0 +1,302 @@
+{
+  "capability": "notebook_cross_encoder_rerank",
+  "revision": "92e6ebc4fa5b90e65023d3872c47183ea6ad08df",
+  "case_set": "notebook_failing_turns_5127",
+  "hit_rule": "the oracle answer page and its text appear in the top 6 retrieved chunks",
+  "runner": "BRAVO zero-token read-only staging replay (#5169 r5), not the implementer of the treatment",
+  "repeat": "two runs per arm, identical hits, outcomes and page lists",
+  "outcome_source": "per-case diagnostics.rerank from retrieveNodeChunks (the #5037 span value); rerank_calls = /rerank requests intercepted in-process",
+  "reranker_model_sha256": "5d3e70fd0c9ff14b9b5169a51e957b7a9c74897afd0a35ce4bd318150c1d4d4a",
+  "baseline": {
+    "description": "production path (every NOTEBOOK_* retrieval flag off)",
+    "flags": {
+      "NOTEBOOK_LEXICAL_V2": "0",
+      "NOTEBOOK_QUERY_REWRITE": "unset",
+      "NOTEBOOK_HYBRID_RETRIEVAL": "unset",
+      "NOTEBOOK_RERANK": "unset"
+    },
+    "runtime": {
+      "NOTEBOOK_RERANK": "unset",
+      "NOTEBOOK_RERANK_POOL": "unset",
+      "NOTEBOOK_RERANK_TIMEOUT_MS": "unset",
+      "RERANKER_URL": "unset"
+    },
+    "endpoint": {
+      "health": "not_configured"
+    }
+  },
+  "treatment": {
+    "description": "NOTEBOOK_RERANK=1, local fp32 reranker, timeout 4000 ms, pool default 50",
+    "flags": {
+      "NOTEBOOK_LEXICAL_V2": "0",
+      "NOTEBOOK_QUERY_REWRITE": "unset",
+      "NOTEBOOK_HYBRID_RETRIEVAL": "unset",
+      "NOTEBOOK_RERANK": "1"
+    },
+    "runtime": {
+      "NOTEBOOK_RERANK": "1",
+      "NOTEBOOK_RERANK_POOL": "unset",
+      "NOTEBOOK_RERANK_TIMEOUT_MS": "4000",
+      "RERANKER_URL": "http://127.0.0.1:18088"
+    },
+    "endpoint": {
+      "health": "ok",
+      "model": "cross-encoder/ms-marco-MiniLM-L-6-v2@233902d25c440f23af6f7d6e94d2946bac0bee0a"
+    },
+    "settings": {
+      "NOTEBOOK_RERANK_TIMEOUT_MS": "4000",
+      "NOTEBOOK_RERANK_POOL": "unset",
+      "RERANKER_MODEL": "fp32"
+    }
+  },
+  "cases": {
+    "111ede7e": {
+      "baseline_hit": true,
+      "treatment_hit": true,
+      "baseline_outcome": "off",
+      "treatment_outcome": "ran",
+      "baseline_rerank_calls": 0,
+      "treatment_rerank_calls": 1
+    },
+    "11db8aee": {
+      "baseline_hit": true,
+      "treatment_hit": true,
+      "baseline_outcome": "off",
+      "treatment_outcome": "ran",
+      "baseline_rerank_calls": 0,
+      "treatment_rerank_calls": 1
+    },
+    "19bce686": {
+      "baseline_hit": true,
+      "treatment_hit": true,
+      "baseline_outcome": "off",
+      "treatment_outcome": "ran",
+      "baseline_rerank_calls": 0,
+      "treatment_rerank_calls": 1
+    },
+    "2240f38d": {
+      "baseline_hit": true,
+      "treatment_hit": true,
+      "baseline_outcome": "off",
+      "treatment_outcome": "ran",
+      "baseline_rerank_calls": 0,
+      "treatment_rerank_calls": 1
+    },
+    "25fbe256": {
+      "baseline_hit": true,
+      "treatment_hit": true,
+      "baseline_outcome": "off",
+      "treatment_outcome": "ran",
+      "baseline_rerank_calls": 0,
+      "treatment_rerank_calls": 1
+    },
+    "262d04f7": {
+      "baseline_hit": true,
+      "treatment_hit": true,
+      "baseline_outcome": "off",
+      "treatment_outcome": "ran",
+      "baseline_rerank_calls": 0,
+      "treatment_rerank_calls": 1
+    },
+    "297f8936": {
+      "baseline_hit": true,
+      "treatment_hit": true,
+      "baseline_outcome": "off",
+      "treatment_outcome": "ran",
+      "baseline_rerank_calls": 0,
+      "treatment_rerank_calls": 1
+    },
+    "4ec6f4d1": {
+      "baseline_hit": false,
+      "treatment_hit": false,
+      "baseline_outcome": "off",
+      "treatment_outcome": "ran",
+      "baseline_rerank_calls": 0,
+      "treatment_rerank_calls": 1
+    },
+    "50036a24": {
+      "baseline_hit": true,
+      "treatment_hit": true,
+      "baseline_outcome": "off",
+      "treatment_outcome": "ran",
+      "baseline_rerank_calls": 0,
+      "treatment_rerank_calls": 1
+    },
+    "5bcc0ba0": {
+      "baseline_hit": true,
+      "treatment_hit": true,
+      "baseline_outcome": "off",
+      "treatment_outcome": "ran",
+      "baseline_rerank_calls": 0,
+      "treatment_rerank_calls": 1
+    },
+    "60c38ab4": {
+      "baseline_hit": true,
+      "treatment_hit": true,
+      "baseline_outcome": "off",
+      "treatment_outcome": "ran",
+      "baseline_rerank_calls": 0,
+      "treatment_rerank_calls": 1
+    },
+    "644d0dc0": {
+      "baseline_hit": false,
+      "treatment_hit": false,
+      "baseline_outcome": "off",
+      "treatment_outcome": "skipped_short",
+      "baseline_rerank_calls": 0,
+      "treatment_rerank_calls": 0
+    },
+    "6d072db2": {
+      "baseline_hit": true,
+      "treatment_hit": true,
+      "baseline_outcome": "off",
+      "treatment_outcome": "ran",
+      "baseline_rerank_calls": 0,
+      "treatment_rerank_calls": 1
+    },
+    "6eb70402": {
+      "baseline_hit": false,
+      "treatment_hit": true,
+      "baseline_outcome": "off",
+      "treatment_outcome": "ran",
+      "baseline_rerank_calls": 0,
+      "treatment_rerank_calls": 1
+    },
+    "704b0e24": {
+      "baseline_hit": false,
+      "treatment_hit": false,
+      "baseline_outcome": "off",
+      "treatment_outcome": "ran",
+      "baseline_rerank_calls": 0,
+      "treatment_rerank_calls": 1
+    },
+    "7f46b0fb": {
+      "baseline_hit": false,
+      "treatment_hit": true,
+      "baseline_outcome": "off",
+      "treatment_outcome": "ran",
+      "baseline_rerank_calls": 0,
+      "treatment_rerank_calls": 1
+    },
+    "a23ed7dc": {
+      "baseline_hit": true,
+      "treatment_hit": true,
+      "baseline_outcome": "off",
+      "treatment_outcome": "ran",
+      "baseline_rerank_calls": 0,
+      "treatment_rerank_calls": 1
+    },
+    "a9938143": {
+      "baseline_hit": true,
+      "treatment_hit": true,
+      "baseline_outcome": "off",
+      "treatment_outcome": "ran",
+      "baseline_rerank_calls": 0,
+      "treatment_rerank_calls": 1
+    },
+    "b3cde37e": {
+      "baseline_hit": true,
+      "treatment_hit": false,
+      "baseline_outcome": "off",
+      "treatment_outcome": "ran",
+      "baseline_rerank_calls": 0,
+      "treatment_rerank_calls": 1
+    },
+    "b92d569f": {
+      "baseline_hit": true,
+      "treatment_hit": true,
+      "baseline_outcome": "off",
+      "treatment_outcome": "ran",
+      "baseline_rerank_calls": 0,
+      "treatment_rerank_calls": 1
+    },
+    "bef709ed": {
+      "baseline_hit": true,
+      "treatment_hit": false,
+      "baseline_outcome": "off",
+      "treatment_outcome": "ran",
+      "baseline_rerank_calls": 0,
+      "treatment_rerank_calls": 1
+    },
+    "c51364b4": {
+      "baseline_hit": true,
+      "treatment_hit": false,
+      "baseline_outcome": "off",
+      "treatment_outcome": "ran",
+      "baseline_rerank_calls": 0,
+      "treatment_rerank_calls": 1
+    },
+    "c5d2767a": {
+      "baseline_hit": true,
+      "treatment_hit": true,
+      "baseline_outcome": "off",
+      "treatment_outcome": "ran",
+      "baseline_rerank_calls": 0,
+      "treatment_rerank_calls": 1
+    },
+    "caa66f00": {
+      "baseline_hit": true,
+      "treatment_hit": true,
+      "baseline_outcome": "off",
+      "treatment_outcome": "ran",
+      "baseline_rerank_calls": 0,
+      "treatment_rerank_calls": 1
+    },
+    "cde01b6a": {
+      "baseline_hit": true,
+      "treatment_hit": true,
+      "baseline_outcome": "off",
+      "treatment_outcome": "ran",
+      "baseline_rerank_calls": 0,
+      "treatment_rerank_calls": 1
+    },
+    "ce88a983": {
+      "baseline_hit": true,
+      "treatment_hit": true,
+      "baseline_outcome": "off",
+      "treatment_outcome": "ran",
+      "baseline_rerank_calls": 0,
+      "treatment_rerank_calls": 1
+    },
+    "d915fbec": {
+      "baseline_hit": true,
+      "treatment_hit": true,
+      "baseline_outcome": "off",
+      "treatment_outcome": "ran",
+      "baseline_rerank_calls": 0,
+      "treatment_rerank_calls": 1
+    },
+    "eb5e4cff": {
+      "baseline_hit": false,
+      "treatment_hit": false,
+      "baseline_outcome": "off",
+      "treatment_outcome": "ran",
+      "baseline_rerank_calls": 0,
+      "treatment_rerank_calls": 1
+    },
+    "ed7278fa": {
+      "baseline_hit": true,
+      "treatment_hit": true,
+      "baseline_outcome": "off",
+      "treatment_outcome": "ran",
+      "baseline_rerank_calls": 0,
+      "treatment_rerank_calls": 1
+    },
+    "f3afd471": {
+      "baseline_hit": false,
+      "treatment_hit": false,
+      "baseline_outcome": "off",
+      "treatment_outcome": "ran",
+      "baseline_rerank_calls": 0,
+      "treatment_rerank_calls": 1
+    },
+    "f9623584": {
+      "baseline_hit": true,
+      "treatment_hit": true,
+      "baseline_outcome": "off",
+      "treatment_outcome": "ran",
+      "baseline_rerank_calls": 0,
+      "treatment_rerank_calls": 1
+    }
+  }
+}

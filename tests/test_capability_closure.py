@@ -15,7 +15,9 @@ OFF (#3328).
 
 from __future__ import annotations
 
+import copy
 import datetime as _dt
+import hashlib
 import importlib.util
 import json
 import sys
@@ -337,9 +339,14 @@ def test_ci_gate_needs_are_discoverable():
 # --------------------------------------------------------------------------
 # retrieval experiments: promotion needs a same-revision replay and every loss (#5138)
 # --------------------------------------------------------------------------
-_REV = "c6f15b8d357722308ee2e4fc1ebb65483e679488"
+_REV = "92e6ebc4fa5b90e65023d3872c47183ea6ad08df"
 _RERANK = "notebook_cross_encoder_rerank"
-_ARTIFACT = "docs/evals/retrieval-eval/replays/notebook_cross_encoder_rerank-c6f15b8d3.json"
+_ARTIFACT = "docs/evals/retrieval-eval/replays/notebook_cross_encoder_rerank-92e6ebc4f.json"
+# The first replay (#5138), kept byte-identical as loss history (#5169 r5 F1).
+_OLD_REV = "c6f15b8d357722308ee2e4fc1ebb65483e679488"
+_OLD_ARTIFACT = "docs/evals/retrieval-eval/replays/notebook_cross_encoder_rerank-c6f15b8d3.json"
+# A real descendant of _OLD_REV on main that does not change mira-hub/src.
+_SAME_CODE_REV = "dd2cc10fbb95e150c229cba0ee13d0edf666859c"
 # The losses computed from that committed artifact (baseline hit, treatment miss).
 _LOSSES = ["b3cde37e", "bef709ed", "c51364b4"]
 _DECISION = "https://github.com/Mikecranesync/MIRA/issues/5138"
@@ -349,6 +356,18 @@ _SETTINGS = {
     "NOTEBOOK_RERANK_POOL": "unset",
     "RERANKER_MODEL": "fp32",
 }
+
+
+def _sha(rel: str) -> str:
+    return hashlib.sha256((_ROOT / rel).read_bytes()).hexdigest()
+
+
+def _history(*replays: tuple[str, str], cases=_LOSSES) -> list[dict]:
+    return [
+        {"case": c, "revision": rev, "artifact": art, "artifact_sha256": _sha(art)}
+        for rev, art in replays
+        for c in cases
+    ]
 
 
 def _evidence(**over) -> dict:
@@ -364,6 +383,7 @@ def _evidence(**over) -> dict:
         "case_set": _CASE_SET,
         "treatment_settings": dict(_SETTINGS),
         "losses": [{"case": c, "disposition": "open"} for c in _LOSSES],
+        "loss_history": _history((_OLD_REV, _OLD_ARTIFACT), (_REV, _ARTIFACT)),
     }
     base.update(over)
     return base
@@ -609,20 +629,153 @@ def forge():
         folder.rmdir()
 
 
-def test_a_fix_is_a_newer_replay_in_which_the_case_no_longer_loses(forge):
-    """Control for the rule above: the replay, not the list, retires a loss."""
+_OPEN_REST = [{"case": c, "disposition": "open"} for c in _LOSSES[1:]]
+# Git ancestry and code-diff questions cannot be answered on a shallow clone (Eval
+# Offline); the capability-closure job checks out full history and runs these.
+_FULL_HISTORY = pytest.mark.skipif(
+    not cc.evidence_provenance.history_is_complete(_ROOT),
+    reason="needs full git history (the capability-closure job uses fetch-depth 0)",
+)
+
+
+def _fixed_replay(forge, revision: str) -> str:
+    """The committed replay, moved to `revision`, with the first loss no longer lost."""
+
+    def fix(d):
+        d["revision"] = revision
+        d["cases"][_LOSSES[0]]["treatment_hit"] = True
+
+    return forge(fix)
+
+
+def test_an_edited_replay_at_the_losing_revision_cannot_retire_a_loss(forge):
+    """#5169 r4 F1: flipping a lost case's hit at the losing revision, and dropping it
+    from `losses`, returned no finding."""
 
     def fixed_first(d):
         d["cases"][_LOSSES[0]]["treatment_hit"] = True
 
-    artifact = forge(fixed_first)
-    rest = [_accepted(c) for c in _LOSSES[1:]]
-    assert _promo(_experiment("production", artifact=artifact, losses=rest)) == []
-    still_listed = [_accepted(_LOSSES[0])] + rest
+    cap = _experiment("staging", artifact=forge(fixed_first), losses=_OPEN_REST)
+    assert _says(cap, "is not the replay `loss_history` pins")
+    assert _says(cap, "a replay at the same revision cannot retire it")
+
+
+def test_a_pinned_replay_cannot_be_rewritten(forge):
+    hist = _history((_OLD_REV, _OLD_ARTIFACT), (_REV, _ARTIFACT))
+    hist[0]["artifact_sha256"] = "0" * 64
+    assert _says(_experiment("staging", loss_history=hist), "does not match its pinned sha256")
+    swapped = _history((_OLD_REV, _OLD_ARTIFACT), (_REV, _ARTIFACT))
+    forged = _fixed_replay(forge, _OLD_REV)
+    for e in swapped:
+        if e["revision"] == _OLD_REV:
+            e["artifact"] = forged  # same pin, other file
+    assert _says(_experiment("staging", loss_history=swapped), "does not match its pinned sha256")
+
+
+def test_every_loss_in_the_replay_must_be_in_the_history():
+    hist = [
+        e
+        for e in _history((_OLD_REV, _OLD_ARTIFACT), (_REV, _ARTIFACT))
+        if not (e["revision"] == _REV and e["case"] == _LOSSES[0])
+    ]
     assert _says(
-        _experiment("production", artifact=artifact, losses=still_listed),
+        _experiment("staging", loss_history=hist), f"loses {_LOSSES[0]} at {_REV[:12]}, which"
+    )
+    for missing in (None, []):
+        assert _says(_experiment("staging", loss_history=missing), "must record every loss")
+
+
+def test_a_history_entry_must_be_a_loss_in_its_pinned_replay():
+    hist = _history((_OLD_REV, _OLD_ARTIFACT), (_REV, _ARTIFACT))
+    hist += _history((_REV, _ARTIFACT), cases=["111ede7e"])
+    assert _says(_experiment("staging", loss_history=hist), "which its pinned replay does not show")
+
+
+@_FULL_HISTORY
+def test_a_loss_retires_in_a_complete_replay_at_a_newer_revision_that_changes_hub_code(forge):
+    """Control: lost at c6f15b8d3, gone in a full replay at 92e6ebc4f, which descends
+    from it and changes mira-hub/src."""
+    art = _fixed_replay(forge, _REV)
+    hist = _history((_OLD_REV, _OLD_ARTIFACT)) + _history((_REV, art), cases=_LOSSES[1:])
+    cap = _experiment("staging", artifact=art, losses=_OPEN_REST, loss_history=hist)
+    assert _promo(cap) == []
+    still_listed = [{"case": _LOSSES[0], "disposition": "open"}] + _OPEN_REST
+    assert _says(
+        _experiment("staging", artifact=art, losses=still_listed, loss_history=hist),
         f"listed loss {_LOSSES[0]} is not a loss",
     )
+
+
+@_FULL_HISTORY
+@pytest.mark.parametrize(
+    ("revision", "expect"),
+    [
+        (_SAME_CODE_REV, "does not change mira-hub/src"),
+        ("8a226231b9d2bf4e27ffe0e3fd6411aeabdbfb82", "is not a newer descendant"),
+    ],
+)
+def test_a_loss_retires_only_at_a_newer_revision_with_new_hub_code(forge, revision, expect):
+    art = _fixed_replay(forge, revision)
+    hist = _history((_OLD_REV, _OLD_ARTIFACT)) + _history((revision, art), cases=_LOSSES[1:])
+    cap = _experiment(
+        "staging",
+        artifact=art,
+        losses=_OPEN_REST,
+        loss_history=hist,
+        baseline_revision=revision,
+        treatment_revision=revision,
+    )
+    assert _says(cap, expect)
+
+
+@_FULL_HISTORY
+def test_a_loss_cannot_retire_by_leaving_the_replay(forge):
+    """A newer replay that simply drops the lost case does not show it fixed."""
+
+    def drop(d):
+        d["cases"].pop(_LOSSES[0])
+
+    art = forge(drop)
+    hist = _history((_OLD_REV, _OLD_ARTIFACT)) + _history((_REV, art), cases=_LOSSES[1:])
+    cap = _experiment("staging", artifact=art, losses=_OPEN_REST, loss_history=hist)
+    assert _says(cap, f"recorded loss {_LOSSES[0]} is not a case of the replay")
+
+
+def test_main_loss_history_is_append_only():
+    base = {"capabilities": [_experiment("staging")]}
+    assert cc.check_loss_history_append_only(base, copy.deepcopy(base), _ROOT) == []
+    grown = copy.deepcopy(base)
+    grown["capabilities"][0]["promotion_evidence"]["loss_history"].append({"case": "x"})
+    assert cc.check_loss_history_append_only(base, grown, _ROOT) == []
+    dropped = copy.deepcopy(base)
+    dropped["capabilities"][0]["promotion_evidence"]["loss_history"].pop(0)
+    changed = copy.deepcopy(base)
+    changed["capabilities"][0]["promotion_evidence"]["loss_history"][0]["revision"] = _REV
+    for head in (dropped, changed, {"capabilities": []}):
+        found = cc.check_loss_history_append_only(base, head, _ROOT)
+        assert any("append-only" in f.message for f in found), head
+
+
+def test_an_unreadable_main_registry_fails_with_full_history(monkeypatch):
+    head = {"capabilities": []}
+    monkeypatch.setattr(cc.evidence_provenance, "history_is_complete", lambda root: True)
+    assert any(
+        "cannot read" in f.message for f in cc.check_loss_history_append_only(None, head, _ROOT)
+    )
+    monkeypatch.setattr(cc.evidence_provenance, "history_is_complete", lambda root: False)
+    assert cc.check_loss_history_append_only(None, head, _ROOT) == []
+
+
+def test_main_runs_the_append_only_check(monkeypatch):
+    reg = _registry()
+    base = copy.deepcopy(reg)
+    for c in base["capabilities"]:
+        if c["id"] == _RERANK:
+            c["promotion_evidence"]["loss_history"].append({"case": "gone", "revision": _REV})
+    monkeypatch.setattr(cc, "main_registry", lambda root: base)
+    assert cc.main([]) == 1
+    monkeypatch.setattr(cc, "main_registry", lambda root: reg)
+    assert cc.main([]) == 0
 
 
 def test_a_truncated_replay_cannot_pass(forge):
@@ -808,3 +961,115 @@ def test_acknowledgement_cannot_silence_an_open_production_loss():
     promo = [f for f in findings if f.rule == "retrieval_promotion_evidence"]
     assert promo, "precondition: the open production loss must be reported"
     assert not any(f.acknowledged for f in promo)
+
+
+def test_the_first_replay_alone_no_longer_passes():
+    """#5169 r4 F2: the c6f15b8d3 replay records flags, not a run, and it passed."""
+    cap = _experiment(
+        "staging", artifact=_OLD_ARTIFACT, baseline_revision=_OLD_REV, treatment_revision=_OLD_REV
+    )
+    assert _says(cap, "does not record exactly the env vars")
+    assert _says(cap, "has no rerank outcome")
+
+
+def test_lane_env_vars_come_from_the_lane_module():
+    assert cc.lane_env_reads(_ROOT, "mira-hub/src/capabilities/reranker.ts") == {
+        "NOTEBOOK_RERANK",
+        "NOTEBOOK_RERANK_POOL",
+        "NOTEBOOK_RERANK_TIMEOUT_MS",
+        "RERANKER_URL",
+    }
+
+
+@pytest.mark.parametrize("value", ["unset", "", "0"])
+def test_a_treatment_without_the_reranker_url_fails(forge, value):
+    def drop(d):
+        d["treatment"]["runtime"]["RERANKER_URL"] = value
+
+    assert _says(_experiment("staging", artifact=forge(drop)), "ran without RERANKER_URL")
+
+
+@pytest.mark.parametrize("arm", ["baseline", "treatment"])
+def test_runtime_must_record_every_env_var_the_lane_reads(forge, arm):
+    def drop(d):
+        d[arm]["runtime"].pop("NOTEBOOK_RERANK_POOL")
+
+    assert _says(_experiment("staging", artifact=forge(drop)), f"{arm} runtime")
+
+
+def test_runtime_flag_must_match_the_arm(forge):
+    def off(d):
+        d["treatment"]["runtime"]["NOTEBOOK_RERANK"] = "unset"
+
+    assert _says(
+        _experiment("staging", artifact=forge(off)), "treatment runtime has NOTEBOOK_RERANK"
+    )
+
+
+def test_treatment_endpoint_must_be_healthy(forge):
+    def down(d):
+        d["treatment"]["endpoint"] = {"health": "unreachable"}
+
+    assert _says(_experiment("staging", artifact=forge(down)), "endpoint health")
+
+
+def _ran_case(d) -> dict:
+    return d["cases"]["111ede7e"]
+
+
+def test_a_fallback_case_is_not_a_rerank_run(forge):
+    def fell_back(d):
+        _ran_case(d).update(treatment_outcome="fallback_not_configured", treatment_rerank_calls=0)
+
+    assert _says(_experiment("staging", artifact=forge(fell_back)), "fell back")
+
+
+def test_a_case_without_an_outcome_fails(forge):
+    def drop(d):
+        _ran_case(d).pop("treatment_outcome")
+
+    assert _says(_experiment("staging", artifact=forge(drop)), "has no rerank outcome")
+
+
+def test_ran_needs_a_lane_call(forge):
+    def no_call(d):
+        _ran_case(d)["treatment_rerank_calls"] = 0
+
+    assert _says(_experiment("staging", artifact=forge(no_call)), "with no lane call")
+
+
+def test_a_skipped_case_must_match_the_baseline(forge):
+    def differs(d):
+        d["cases"]["644d0dc0"]["treatment_hit"] = True  # the committed skipped_short case
+
+    assert _says(_experiment("staging", artifact=forge(differs)), "differs from the baseline")
+
+
+@pytest.mark.parametrize(
+    ("field", "value"), [("baseline_outcome", "ran"), ("baseline_rerank_calls", 1)]
+)
+def test_baseline_cases_must_be_off(forge, field, value):
+    def on(d):
+        _ran_case(d)[field] = value
+
+    assert _says(_experiment("staging", artifact=forge(on)), "is not off")
+
+
+def test_a_replay_where_no_case_ran_fails(forge):
+    def skip_all(d):
+        for c in d["cases"].values():
+            c.update(treatment_outcome="skipped_short", treatment_rerank_calls=0)
+            c["treatment_hit"] = c["baseline_hit"]
+
+    assert _says(_experiment("staging", artifact=forge(skip_all)), "no treatment case")
+
+
+def test_a_live_experiment_needs_an_execution_contract(monkeypatch):
+    monkeypatch.delitem(cc.EXECUTION_CONTRACTS, "NOTEBOOK_RERANK")
+    assert _says(_experiment("staging"), "has no execution-evidence contract")
+
+
+def test_the_contract_names_vars_its_module_reads(monkeypatch):
+    contract = dict(cc.EXECUTION_CONTRACTS["NOTEBOOK_RERANK"], requires_set=("RERANKER_TOKEN",))
+    monkeypatch.setitem(cc.EXECUTION_CONTRACTS, "NOTEBOOK_RERANK", contract)
+    assert _says(_experiment("staging"), "does not read")

@@ -958,29 +958,43 @@ capabilities:
       production runs no reranker service.
     acknowledged_rules: []
     promotion_criteria:
-      - "Every loss in promotion_evidence is accepted by the owner with a linked decision, or gone from a newer same-revision replay at the fix revision."
+      - "Every loss in promotion_evidence is accepted by the owner with a linked decision, or gone from a complete replay at a newer revision that changes mira-hub/src (both arms at that one revision), with the losing replay kept in loss_history."
       - "Rerank wait and fallback reason visible on the retrieval span (#5037) on the staging build."
     review_by: "2026-12-15"
     retrieval_experiment: true
     retrieval_flag: NOTEBOOK_RERANK  # the Hub env var this experiment switches (mira-hub/src reads it)
-    # Same-revision replay (#5138): 31 real failing staging turns, read-only
-    # staging data, local fp32 reranker, no model calls, two identical runs,
-    # 0 fallbacks at 4000 ms. Hits are the answer page in the top 6.
+    # Same-revision replay (#5169 r5) at main 92e6ebc4f, the staging build: 31 real
+    # failing staging turns, read-only staging data, local fp32 reranker, no model
+    # calls, two identical runs. Per case: rerank outcome from the retrieval
+    # diagnostics (30 ran, 1 skipped_short, 0 fallbacks) and the /rerank calls seen
+    # in-process; the effective runtime and reranker /health were read inside the
+    # replay process. Hits are the answer page in the top 6.
     promotion_evidence:
-      baseline: "production path (every NOTEBOOK_* retrieval flag off), 24 of 31, top-1 11"
-      treatment: "NOTEBOOK_RERANK=1, timeout 4000 ms, 23 of 31, top-1 17"
-      baseline_revision: c6f15b8d357722308ee2e4fc1ebb65483e679488
-      treatment_revision: c6f15b8d357722308ee2e4fc1ebb65483e679488
+      baseline: "production path (every NOTEBOOK_* retrieval flag off), 24 of 31"
+      treatment: "NOTEBOOK_RERANK=1, timeout 4000 ms, 23 of 31, reranked 30 of 31"
+      baseline_revision: 92e6ebc4fa5b90e65023d3872c47183ea6ad08df
+      treatment_revision: 92e6ebc4fa5b90e65023d3872c47183ea6ad08df
       independent: true
       replayed_by: "BRAVO retrieval acceptance replay"
-      replay: "https://github.com/Mikecranesync/MIRA/issues/5138#issuecomment-6597399064"
-      artifact: docs/evals/retrieval-eval/replays/notebook_cross_encoder_rerank-c6f15b8d3.json
+      replay: "https://github.com/Mikecranesync/MIRA/issues/5138#issuecomment-6602829510"
+      artifact: docs/evals/retrieval-eval/replays/notebook_cross_encoder_rerank-92e6ebc4f.json
       case_set: notebook_failing_turns_5127
       treatment_settings: {NOTEBOOK_RERANK_TIMEOUT_MS: "4000", NOTEBOOK_RERANK_POOL: unset, RERANKER_MODEL: fp32}
       losses:
         - {case: c51364b4, disposition: open}
         - {case: bef709ed, disposition: open}
         - {case: b3cde37e, disposition: open}
+      # Append-only (#5169 r5 F1): every loss any committed replay showed, with the
+      # replay pinned by sha256. Never edit or remove an entry; main's entries must
+      # survive unchanged. A loss leaves `losses` only through a complete replay at a
+      # newer revision that changes mira-hub/src, or an owner-accepted decision.
+      loss_history:
+        - {case: c51364b4, revision: c6f15b8d357722308ee2e4fc1ebb65483e679488, artifact: docs/evals/retrieval-eval/replays/notebook_cross_encoder_rerank-c6f15b8d3.json, artifact_sha256: 74c46177de4664d18918cd5c593830402bdf83b53843641ef24ab2be77358597}
+        - {case: bef709ed, revision: c6f15b8d357722308ee2e4fc1ebb65483e679488, artifact: docs/evals/retrieval-eval/replays/notebook_cross_encoder_rerank-c6f15b8d3.json, artifact_sha256: 74c46177de4664d18918cd5c593830402bdf83b53843641ef24ab2be77358597}
+        - {case: b3cde37e, revision: c6f15b8d357722308ee2e4fc1ebb65483e679488, artifact: docs/evals/retrieval-eval/replays/notebook_cross_encoder_rerank-c6f15b8d3.json, artifact_sha256: 74c46177de4664d18918cd5c593830402bdf83b53843641ef24ab2be77358597}
+        - {case: c51364b4, revision: 92e6ebc4fa5b90e65023d3872c47183ea6ad08df, artifact: docs/evals/retrieval-eval/replays/notebook_cross_encoder_rerank-92e6ebc4f.json, artifact_sha256: 1660929d298625bec51f3efb7cb948c7d11c787e96251d9719854e866d2fb564}
+        - {case: bef709ed, revision: 92e6ebc4fa5b90e65023d3872c47183ea6ad08df, artifact: docs/evals/retrieval-eval/replays/notebook_cross_encoder_rerank-92e6ebc4f.json, artifact_sha256: 1660929d298625bec51f3efb7cb948c7d11c787e96251d9719854e866d2fb564}
+        - {case: b3cde37e, revision: 92e6ebc4fa5b90e65023d3872c47183ea6ad08df, artifact: docs/evals/retrieval-eval/replays/notebook_cross_encoder_rerank-92e6ebc4f.json, artifact_sha256: 1660929d298625bec51f3efb7cb948c7d11c787e96251d9719854e866d2fb564}
 
   - id: guided_troubleshooting
     purpose: >-

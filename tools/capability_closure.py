@@ -32,6 +32,7 @@ import datetime as _dt
 import hashlib
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -421,6 +422,22 @@ _DURABLE_REF_RE = re.compile(
 # issue in `acknowledged_rules` (#5169 F1).
 NON_ACKNOWLEDGEABLE_RULES = {"retrieval_promotion_evidence"}
 
+# What shows a retrieval lane RAN, per `retrieval_flag` (#5169 r4 F2). A flag is not a
+# run: the reranker returns null, and today's order is served, whenever RERANKER_URL is
+# unset or the service fails. Kept here, not in the record, so a record cannot opt out
+# by omission: a live experiment whose flag has no contract fails. The runtime a replay
+# must record is every env var the contract's module reads, derived from the code.
+EXECUTION_CONTRACTS: dict[str, dict] = {
+    "NOTEBOOK_RERANK": {
+        "lane": "rerank",
+        "module": "mira-hub/src/capabilities/reranker.ts",
+        "requires_set": ("RERANKER_URL",),
+        "off": "off",
+        "ran": "ran",
+        "skips": ("skipped_short", "skipped_broad"),  # manual-rag.ts: no call, today's order
+    },
+}
+
 
 def _is_on(value: object) -> bool:
     return str(value).strip().lower() in _ON
@@ -444,7 +461,9 @@ def check_retrieval_promotion_evidence(
     treatment lost, by id. Staging may run with losses `open`; production may
     not. A loss leaves the list only when the owner accepts it with a linked
     decision (the regression is an owner call, never an implementer's), or when
-    a newer replay at a fix revision shows the case no longer loses.
+    a complete replay at a newer revision that changes mira-hub/src shows the
+    case no longer loses; every loss a replay showed stays in the append-only
+    `loss_history`, its replay pinned by sha256 (#5169 r4 F1).
     Thresholds stay in docs/evals/retrieval-eval/release-gates.md; this rule
     only refuses promotion without the evidence those gates are read from.
 
@@ -464,6 +483,10 @@ def check_retrieval_promotion_evidence(
       every retrieval experiment, and the treatment differs from it only in
       this record's own `retrieval_flag`, with the settings the record
       declares; a replay of other configurations cannot pass (#5169 r3 F1).
+
+    - the run: each arm records the effective runtime (every env var the
+      lane module reads), the treatment its endpoint health, and every case
+      its lane outcome and call count; a fallback is not a run (#5169 r4 F2).
 
     The listed losses must then EQUAL the losses computed from the artifact. It
     does not prove that the replay ran: that is human review of the artifact
@@ -515,8 +538,10 @@ def check_retrieval_promotion_evidence(
     case_set, msg = _case_set(root, registry, str(pe.get("case_set") or ""))
     if msg:
         out.append(bad(msg))
-    computed, msgs = _replay_losses(root, pe, cid, base_rev, case_set, arms)
+    flag = str(cap.get("retrieval_flag") or "")
+    computed, msgs = _replay_losses(root, pe, cid, base_rev, case_set, arms, flag)
     out += [bad(m) for m in msgs]
+    out += [bad(m) for m in _loss_history_mismatches(root, pe, cid, base_rev, computed)]
 
     losses = pe.get("losses")
     if not isinstance(losses, list):
@@ -629,6 +654,7 @@ def _replay_losses(
     revision: str,
     case_set: set[str] | None,
     arms: dict | None,
+    flag: str = "",
 ) -> tuple[set[str] | None, list[str]]:
     """Cases the baseline hit and the treatment missed, read from the committed
     replay artifact; or (None, why) when the artifact cannot be used."""
@@ -672,6 +698,7 @@ def _replay_losses(
     if arms is not None:
         for arm in ("baseline", "treatment"):
             msgs += _arm_mismatches(data.get(arm), arm, arms)
+    msgs += _execution_mismatches(root, data, flag)
     losses = set()
     for case, r in cases.items():
         if not isinstance(r, dict) or not all(
@@ -712,6 +739,250 @@ def _arm_mismatches(arm_data: object, arm: str, arms: dict) -> list[str]:
     ):
         msgs.append(f"replay artifact {arm} settings {settings!r} are not {want_settings!r}")
     return msgs
+
+
+def lane_env_reads(root: Path, module: str) -> set[str]:
+    """Environment variables one Hub module reads (the lane's complete runtime)."""
+    try:
+        text = (root / module).read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return set()
+    return {a or b for a, b in _HUB_ENV_READ.findall(text)}
+
+
+def _execution_mismatches(root: Path, data: dict, flag: str) -> list[str]:
+    """Whether the replay shows the lane ran, case by case (#5169 r4 F2)."""
+    contract = EXECUTION_CONTRACTS.get(flag)
+    if contract is None:
+        return [
+            f"`retrieval_flag` {flag!r} has no execution-evidence contract, so no replay shows it ran"
+        ]
+    lane, calls = contract["lane"], f"{contract['lane']}_calls"
+    reads = lane_env_reads(root, contract["module"])
+    if flag not in reads or not set(contract["requires_set"]) <= reads:
+        return [f"the {flag} execution contract names env vars {contract['module']} does not read"]
+    msgs = []
+    for arm, on in (("baseline", False), ("treatment", True)):
+        a = data.get(arm) if isinstance(data.get(arm), dict) else {}
+        rt = a.get("runtime")
+        if not isinstance(rt, dict) or set(rt) != reads:
+            got = sorted(rt) if isinstance(rt, dict) else rt
+            msgs.append(
+                f"replay artifact {arm} runtime {got!r} does not record exactly the env vars "
+                f"{contract['module']} reads {sorted(reads)}"
+            )
+            continue
+        if _is_on(rt[flag]) != on:
+            msgs.append(f"replay artifact {arm} runtime has {flag}={rt[flag]!r}")
+        if not on:
+            continue
+        for var in contract["requires_set"]:
+            if str(rt[var]).strip().lower() in _OFF:
+                msgs.append(f"replay artifact treatment ran without {var}: the lane cannot run")
+        health = (
+            (a.get("endpoint") or {}).get("health") if isinstance(a.get("endpoint"), dict) else None
+        )
+        if health != "ok":
+            msgs.append(f"replay artifact treatment endpoint health is {health!r}, not 'ok'")
+    ran = 0
+    for case, r in sorted((data.get("cases") or {}).items()):
+        if not isinstance(r, dict):
+            continue
+        b, t = r.get("baseline_outcome"), r.get("treatment_outcome")
+        bc, tc = r.get(f"baseline_{calls}"), r.get(f"treatment_{calls}")
+        if b != contract["off"] or bc != 0 or isinstance(bc, bool):
+            msgs.append(f"replay artifact baseline case {case} ({b!r}, {bc!r} calls) is not off")
+        if not isinstance(t, str) or not isinstance(tc, int) or isinstance(tc, bool):
+            msgs.append(
+                f"replay artifact treatment case {case} has no {lane} outcome and call count"
+            )
+        elif t == contract["ran"]:
+            if tc < 1:
+                msgs.append(f"replay artifact treatment case {case} says {t} with no lane call")
+            else:
+                ran += 1
+        elif t in contract["skips"]:
+            if tc != 0 or r.get("treatment_hit") != r.get("baseline_hit"):
+                msgs.append(
+                    f"replay artifact treatment case {case} was {t} but called the lane or "
+                    "differs from the baseline"
+                )
+        elif t.startswith("fallback_"):
+            msgs.append(
+                f"replay artifact treatment case {case} fell back ({t}): a fallback is not a "
+                f"{lane} run, so the replay does not measure the lane"
+            )
+        else:
+            msgs.append(f"replay artifact treatment case {case} has unknown {lane} outcome {t!r}")
+    if not ran:
+        msgs.append(f"no treatment case in the replay artifact ran {lane}")
+    return msgs
+
+
+def _file_sha(root: Path, rel: str) -> str | None:
+    base = root.resolve()
+    path = (base / rel).resolve()
+    if not rel or base not in path.parents or not path.is_file():
+        return None
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _pinned_losses(
+    root: Path, rel: str, cid: str, revision: str
+) -> tuple[set[str], set[str]] | None:
+    """(cases, losses) of a committed replay at `revision`, or None if it is not one."""
+    try:
+        data = json.loads((root / rel).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    cases = data.get("cases")
+    if (
+        data.get("capability") != cid
+        or data.get("revision") != revision
+        or not isinstance(cases, dict)
+    ):
+        return None
+    if not all(
+        isinstance(r, dict) and r.get("baseline_hit") in (True, False) for r in cases.values()
+    ):
+        return None
+    lost = {
+        str(k) for k, r in cases.items() if r["baseline_hit"] and r.get("treatment_hit") is False
+    }
+    return {str(k) for k in cases}, lost
+
+
+def _retirement_problem(root: Path, old: str, new: str) -> str | None:
+    """Why a replay at `new` cannot retire a loss seen at `old`; None when it can.
+    Fails closed: a question git cannot answer here is a reason."""
+    if old == new:
+        return "and a replay at the same revision cannot retire it"
+    try:
+        anc = subprocess.run(
+            ["git", "-C", str(root), "merge-base", "--is-ancestor", old, new],
+            capture_output=True,
+            timeout=30,
+        )
+        if anc.returncode == 1:
+            return "which is not a newer descendant of the losing revision"
+        if anc.returncode != 0:
+            return "and git cannot show it descends from the losing revision"
+        diff = subprocess.run(
+            ["git", "-C", str(root), "diff", "--quiet", old, new, "--", "mira-hub/src"],
+            capture_output=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return "and git cannot answer whether it is a newer revision"
+    if diff.returncode == 0:
+        return "which does not change mira-hub/src"
+    return None if diff.returncode == 1 else "and git cannot compare mira-hub/src"
+
+
+def _loss_history_mismatches(
+    root: Path, pe: dict, cid: str, revision: str, computed: set[str] | None
+) -> list[str]:
+    """A loss is retired by a newer complete replay, never by an edit (#5169 r4 F1)."""
+    hist = pe.get("loss_history")
+    if not isinstance(hist, list) or not hist:
+        return [
+            "`promotion_evidence.loss_history` must record every loss a committed replay showed"
+        ]
+    current = str(pe.get("artifact") or "")
+    msgs, recorded = [], {}
+    for e in hist:
+        keys = ("case", "revision", "artifact", "artifact_sha256")
+        if not isinstance(e, dict) or not all(str(e.get(k) or "").strip() for k in keys):
+            msgs.append(f"loss_history entry {e!r} needs {', '.join(keys)}")
+            continue
+        case, rev, art = str(e["case"]), str(e["revision"]), str(e["artifact"])
+        if _file_sha(root, art) != str(e["artifact_sha256"]):
+            msgs.append(
+                f"loss_history replay {art!r} for {case} is missing or does not match its pinned sha256"
+            )
+            continue
+        pinned = _pinned_losses(root, art, cid, rev)
+        if pinned is None or case not in pinned[1]:
+            msgs.append(
+                f"loss_history records {case} lost at {rev[:12]}, which its pinned replay does not show"
+            )
+            continue
+        if rev == revision and art != current:
+            msgs.append(
+                f"replay artifact {current!r} is not the replay `loss_history` pins at {rev[:12]} ({art!r})"
+            )
+        recorded.setdefault(case, set()).add(rev)
+    if computed is None:
+        return msgs
+    present = (_pinned_losses(root, current, cid, revision) or (set(), set()))[0]
+    for case in sorted(computed):
+        if revision not in recorded.get(case, set()):
+            msgs.append(
+                f"the replay artifact loses {case} at {revision[:12]}, which `loss_history` does not record"
+            )
+    for case, revs in sorted(recorded.items()):
+        if case in computed:
+            continue
+        if case not in present:
+            msgs.append(f"recorded loss {case} is not a case of the replay at {revision[:12]}")
+            continue
+        for rev in sorted(revs):
+            why = _retirement_problem(root, rev, revision)
+            if why:
+                msgs.append(
+                    f"recorded loss {case} at {rev[:12]} is gone from the replay at {revision[:12]}, {why}"
+                )
+    return msgs
+
+
+def main_registry(root: Path) -> dict | None:
+    """The registry as committed on origin/main, or None when it cannot be read here."""
+    try:
+        r = subprocess.run(
+            ["git", "-C", str(root), "show", f"origin/main:{REGISTRY_REL}"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        return (yaml.safe_load(r.stdout) or {}) if r.returncode == 0 else None
+    except (OSError, subprocess.SubprocessError, yaml.YAMLError):
+        return None
+
+
+def check_loss_history_append_only(base: dict | None, head: dict, root: Path) -> list[Finding]:
+    """Every `loss_history` entry on main survives unchanged (#5169 r4 F1): deleting the
+    record of a loss is the same false green as editing its replay. Unreadable main is a
+    finding with full history, and not one on a shallow clone (as commit_is_durable)."""
+    rule = "retrieval_promotion_evidence"
+    if base is None:
+        if evidence_provenance.history_is_complete(root):
+            return [
+                Finding(
+                    "<registry>",
+                    rule,
+                    f"cannot read {REGISTRY_REL} on origin/main to check loss_history",
+                )
+            ]
+        return []
+    heads = {c.get("id"): c for c in head.get("capabilities") or []}
+    out = []
+    for cap in base.get("capabilities") or []:
+        cid = str(cap.get("id"))
+        kept = ((heads.get(cap.get("id")) or {}).get("promotion_evidence") or {}).get(
+            "loss_history"
+        ) or []
+        for e in (cap.get("promotion_evidence") or {}).get("loss_history") or []:
+            if e not in kept:
+                out.append(
+                    Finding(
+                        cid,
+                        rule,
+                        f"loss_history entry {e!r} on main was removed or changed: it is append-only",
+                    )
+                )
+    return out
 
 
 def check_review_not_expired(cap: dict, today: _dt.date) -> list[Finding]:
@@ -817,6 +1088,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     findings = validate(registry, ROOT)
+    findings += check_loss_history_append_only(main_registry(ROOT), registry, ROOT)
     blocking = [f for f in findings if not f.acknowledged]
     acked = [f for f in findings if f.acknowledged]
     if acked:
