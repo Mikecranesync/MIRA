@@ -66,6 +66,7 @@ import { createManualSearchDriver, type ManualSearchDriver } from "./manual-sear
 import { GuidedProcedure } from "./GuidedProcedure";
 import { MachineObservations } from "./MachineObservations";
 import { WorkPacketPanel } from "./WorkPacketPanel";
+import { wantsPacketOpen } from "./work-packet-view";
 import { NOTEBOOK_ACTIONS_STYLE } from "./notebook-actions";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
 import { answerTurnId, citationIndex, contextFor, lifecycleFromStream, livePartsWhileRunning, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus, withSettledFollowups, type SettledFollowups } from "./to-interaction";
@@ -148,6 +149,10 @@ function writeSearch(search: string): void {
 export function HubShellHost() {
   // One capture timestamp per mount (state, not a ref: it is read during render).
   const [capturedAt] = useState(() => new Date().toISOString());
+  // Direct link `?workpacket=open`, read once on arrival: the URL is rewritten to the selected
+  // notebook (writeSearch) before the Work Packet panel mounts, which would drop it.
+  // Holds the linked notebook id, so only that notebook's packet opens.
+  const [packetLink] = useState(() => (wantsPacketOpen(readSearch()) ? new URLSearchParams(readSearch()).get("notebook") : null));
   const [signedOut, setSignedOut] = useState(false);
   const { data: authSession } = useSession();
   const [signingOut, setSigningOut] = useState(false);
@@ -1022,6 +1027,7 @@ export function HubShellHost() {
           ].join("|")}
           notebookId={selection.notebookId}
           technicianName={authSession?.user?.email ?? null}
+          openOnArrival={packetLink !== null && packetLink === selection.notebookId}
         />
       )}
       </div>

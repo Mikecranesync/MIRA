@@ -32,8 +32,12 @@ import type {
   WorkPacketAvailability,
 } from "@/capabilities/work-packet/types";
 import { applyEdit } from "@/capabilities/work-packet/edits";
+import { emptyRecord, parseRecord, type JobRecord } from "@/capabilities/work-packet/job-record";
+import { CompletionBlock, JobNotesSection, JobPhotosSection, MeasurementRecordInput, PacketCoverage, StepRecordControls } from "./JobRecordView";
 import {
   badgeText,
+  quoteChipLabel,
+  technicianEntryNote,
   cautionFieldPath,
   confirmedRevisionsPayload,
   confidencePercent,
@@ -101,6 +105,8 @@ const S: Record<string, CSSProperties> = {
     fontSize: "var(--fl-fs-xs)", cursor: "pointer",
   },
   struck: { textDecoration: "line-through", color: "var(--fl-muted)" },
+  quote: { margin: "6px 0 0 0", padding: "8px 10px", borderLeft: "3px solid var(--fl-line-strong)", background: "var(--fl-line)", fontSize: "var(--fl-fs-sm)" },
+  techNote: { marginTop: 4, paddingLeft: 6, borderLeft: "2px solid var(--fl-line-strong)", fontSize: "var(--fl-fs-xs)", color: "var(--fl-ink)", fontStyle: "italic" },
   stamp: {
     display: "inline-block", border: "2px solid var(--fl-fault)", color: "var(--fl-fault)", borderRadius: "var(--fl-radius-sm, 6px)",
     padding: "4px 10px", fontWeight: 700, fontSize: "var(--fl-fs-sm)", transform: "rotate(-4deg)", marginBottom: 10,
@@ -166,6 +172,28 @@ function saveDraft(notebookId: string, packet: WorkPacket): void {
   }
 }
 
+// The job record (what was actually done) is keyed by packet, not notebook: rebuilding the packet
+// starts a new record, so a performed step can never attach to a different procedure.
+const RECORD_KEY = (packetId: string) => `work-packet-record:${packetId}`;
+
+function loadRecord(packetId: string): JobRecord {
+  try {
+    return parseRecord(window.localStorage.getItem(RECORD_KEY(packetId)), packetId) ?? emptyRecord(packetId);
+  } catch {
+    return emptyRecord(packetId);
+  }
+}
+
+/** False when this device refused the write (storage full or blocked) — the caller says so. */
+function saveRecord(record: JobRecord): boolean {
+  try {
+    window.localStorage.setItem(RECORD_KEY(record.packetId), JSON.stringify(record));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function newId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
   return `wo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -211,25 +239,35 @@ export function FieldRow({
   const [draft, setDraft] = useState(field.value ?? "");
   const [expanded, setExpanded] = useState(false);
   const chip = sourceChipLabel(field.source);
+  const entry = technicianEntryNote(field);
 
   return (
     <div style={S.field} data-testid={`field-${path}`}>
       <span style={badgeStyle(field.label)}>{badgeText(field.label)}</span>
       <span style={field.struck ? S.struck : undefined}>{field.value ?? "(unknown)"}</span>
       {field.basis && <div style={S.muted}>{field.basis}</div>}
+      {/* A technician's change is marked as theirs on screen and on paper (never read as manual text). */}
+      {entry && <div style={S.techNote} data-testid="wp-entry-note">{entry}</div>}
       {chip && (
         <button
           type="button"
           data-no-print
+          data-testid="wp-quote-chip"
           style={S.chip}
+          aria-expanded={onOpenSource ? undefined : expanded}
           onClick={() => (onOpenSource ? onOpenSource(field.source!) : setExpanded((e) => !e))}
         >
-          {chip}
+          {onOpenSource ? chip : quoteChipLabel(field.source)}
         </button>
       )}
       {/* The chip is a button and is hidden on paper; the PDF still says where each line came from. */}
       {chip && <div className="wp-print-only" style={S.muted} data-testid="wp-print-source">Source: {chip}</div>}
-      {chip && !onOpenSource && expanded && <div style={S.muted}>{field.source!.line}</div>}
+      {chip && !onOpenSource && expanded && (
+        <blockquote style={S.quote} data-testid="wp-quote" data-no-print>
+          <div style={S.muted}>Quoted from {chip}. This shows the manual&apos;s text only; it does not open the original page.</div>
+          {field.source!.line}
+        </blockquote>
+      )}
       {editing ? (
         <div data-no-print>
           <input style={S.input} value={draft} onChange={(e) => setDraft(e.target.value)} />
@@ -274,8 +312,11 @@ export function WorkPacketPanel({
   notebookId,
   technicianName,
   onOpenSource,
+  openOnArrival = false,
 }: {
   notebookId: string;
+  /** Open the packet on mount — set by the host for a `?workpacket=open` direct link. */
+  openOnArrival?: boolean;
   /** Recorded as the `by` on every ReviewEntry (task §E step 5). Falls back to a generic label
    *  when the shell has no signed-in name to offer — the edit is still attributed, just not to a
    *  specific person. */
@@ -285,7 +326,7 @@ export function WorkPacketPanel({
   onOpenSource?: (source: SourceRef) => void;
 }) {
   const [avail, setAvail] = useState<WorkPacketAvailability | null>(null);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(openOnArrival);
   const [error, setError] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const openerRef = useRef<HTMLButtonElement>(null);
@@ -316,12 +357,13 @@ export function WorkPacketPanel({
     };
   }, [baseUrl]);
 
+  const availReady = avail !== null; // the dialog only exists once availability has resolved
   useEffect(() => {
     const d = dialogRef.current;
     if (!d) return;
     if (open && !d.open) d.showModal();
     if (!open && d.open) d.close();
-  }, [open]);
+  }, [open, availReady]);
 
   // ── Equipment step state (nameplate photo OR typed manufacturer/model) ───────────────────────
   const [napBusy, setNapBusy] = useState(false);
@@ -509,6 +551,20 @@ export function WorkPacketPanel({
     });
   }, [notebookId, by]);
 
+  // ── Job record (what the technician did) ───────────────────────────────────────────────────────
+  const [record, setRecord] = useState<JobRecord | null>(() => (packet ? loadRecord(packet.packetId) : null));
+  const [recordError, setRecordError] = useState<string | null>(null);
+  // A new packet means a new record (adjusted during render, not in an effect).
+  const packetIdNow = packet?.packetId ?? null;
+  if ((record?.packetId ?? null) !== packetIdNow) {
+    setRecord(packet ? loadRecord(packet.packetId) : null);
+    setRecordError(null);
+  }
+  const onRecord = useCallback((next: JobRecord) => {
+    setRecord(next);
+    setRecordError(saveRecord(next) ? null : "This device did not save that change (storage is full or blocked). It is shown here but will be lost on reload — remove a photo and try again.");
+  }, []);
+
   // ── Export PDF ────────────────────────────────────────────────────────────────────────────────
   const stale = packet && avail ? packetStaleReason(packet, avail) : null;
 
@@ -660,8 +716,13 @@ export function WorkPacketPanel({
                 style={{ ...S.btn, ...S.btnBlock, ...S.primary, marginTop: 12, ...(buildBusy || !revConfirmed ? { opacity: 0.45, cursor: "not-allowed" } : {}) }}
                 disabled={buildBusy || !revConfirmed} onClick={() => void onBuild()}
               >
-                Build draft packet
+                {packet ? "Build a new packet" : "Build draft packet"}
               </button>
+              {packet && (
+                <div style={{ ...S.muted, marginTop: 8 }} data-testid="wp-rebuild-note">
+                  Building again replaces this packet and starts a new, empty work record.
+                </div>
+              )}
               {!revConfirmed && (avail?.documents.length ?? 0) > 0 && (
                 <div style={{ ...S.muted, marginTop: 8 }} data-testid="wp-rev-needed">
                   Confirm the machine and the manual revisions above before building.
@@ -690,6 +751,7 @@ export function WorkPacketPanel({
                 {packet.workOrder.synthetic && <div style={S.stamp} data-testid="wp-synthetic-stamp">SYNTHETIC — not a real job</div>}
                 <PacketHeader packet={packet} />
                 <div style={S.warn} data-testid="wp-disclaimer">{packet.disclaimer}</div>
+                <PacketCoverage packet={packet} />
                 {warnings.length > 0 && (
                   // Every warning is a verifyPacket line check; each such line is already shown below
                   // as Unknown with its reason. On paper only the count prints.
@@ -761,6 +823,7 @@ export function WorkPacketPanel({
                   {stepsWithFigures(packet).map(({ index: i, figures }) => (
                     <div key={i}>
                       <FieldRow path={stepFieldPath(i)} field={packet.steps[i].text} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />
+                      {record && <StepRecordControls index={i} struck={!!packet.steps[i].text.struck} record={record} by={by} onChange={onRecord} />}
                       {figures.map((f, j) => (
                         <figure key={j} style={S.figure} data-testid="wp-figure">
                           {f.image
@@ -784,6 +847,7 @@ export function WorkPacketPanel({
                       <FieldRow path={measurementFieldPath(i, "name")} field={m.name} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />
                       <FieldRow path={measurementFieldPath(i, "value")} field={m.value} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />
                       <FieldRow path={measurementFieldPath(i, "tool")} field={m.tool} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />
+                      {record && <MeasurementRecordInput index={i} record={record} by={by} onChange={onRecord} />}
                     </div>
                   ))}
                 </section>
@@ -791,6 +855,7 @@ export function WorkPacketPanel({
                 {(packet.restoration?.length ?? 0) > 0 && (
                   <section style={S.section} data-testid="wp-restoration">
                     <h3 style={S.sectionTitle}>Return to service</h3>
+                    <div style={S.muted} data-testid="wp-restoration-note">These are the manual&apos;s reassembly and start-up lines. This packet does not authorize return to service — a qualified person decides that on site.</div>
                     {packet.restoration!.map((f, i) => <FieldRow key={i} path={restorationFieldPath(i)} field={f} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />)}
                   </section>
                 )}
@@ -799,6 +864,16 @@ export function WorkPacketPanel({
                   <h3 style={S.sectionTitle}>Exceptions &amp; unknowns</h3>
                   {packet.unknowns.map((f, i) => <FieldRow key={i} path={unknownFieldPath(i)} field={f} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />)}
                 </section>
+
+                {record && (
+                  <section style={S.section} data-testid="wp-job-record">
+                    <h3 style={S.sectionTitle}>Work record</h3>
+                    {recordError && <div role="alert" style={S.fault} data-testid="wp-record-error">{recordError}</div>}
+                    <JobNotesSection record={record} by={by} steps={packet.steps.length} onChange={onRecord} />
+                    <JobPhotosSection record={record} by={by} onChange={onRecord} onError={setRecordError} />
+                    <CompletionBlock packet={packet} record={record} />
+                  </section>
+                )}
 
                 <section style={S.section}>
                   <h3 style={S.sectionTitle}>Sources</h3>
