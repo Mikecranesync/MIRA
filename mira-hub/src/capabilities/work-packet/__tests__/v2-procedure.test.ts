@@ -21,19 +21,19 @@ const FIGS: Record<number, PageFigure[]> = {
   ],
 };
 
-function manual(): DocText {
-  const pages = fixturePages(FIXTURES["manual-85v2.txt"]).map((p) => (FIGS[p.page] ? { ...p, figures: FIGS[p.page] } : p));
+function manual(text = FIXTURES["manual-85v2.txt"]): DocText {
+  const pages = fixturePages(text).map((p) => (FIGS[p.page] ? { ...p, figures: FIGS[p.page] } : p));
   return { docId: "sm", fileId: null, filename: "manual-85v2.pdf", pages, via: "file" };
 }
 
-function build(model: string, description = "Pump leaking at the shaft — reseal it per the manufacturer's procedure."): WorkPacket {
+function build(model: string, description = "Pump leaking at the shaft — reseal it per the manufacturer's procedure.", doc: DocText = manual()): WorkPacket {
   const input: DraftInput = {
     notebookId: "11111111-1111-4111-8111-111111111111",
     packetId: "pk-v2",
     now: "2026-11-02T12:00:00Z",
     identity: { manufacturer: "CAT Pumps", model, catalogNumber: null, serialNumber: null, status: "user_confirmed", confidence: 0.9 },
     workOrder: { id: "WO-V2", title: "Reseal", description, assetTag: null, site: null, synthetic: true },
-    docs: [manual()],
+    docs: [doc],
     hazardFlags: [],
   };
   const r = buildDraftPacket(input);
@@ -169,6 +169,24 @@ describe("D6 — a clear hazard analysis and only the torque values the steps us
     const p = build("8520");
     expect(p.jha?.map((r) => r.hazard.value)).toEqual([p.safety.cautions[0].value]);
     expect(p.safety.cautions.every((c) => !/^(The 85|Hold the head|Do not oil)/.test(c.value ?? ""))).toBe(true);
+  });
+  it("a NOTE the parser could not read stays in Safety as unknown, but is not a hazard row", () => {
+    const text = FIXTURES["manual-85v2.txt"].replace(
+      "NOTE: Hold the head level so the Plungers are not scratched.\n",
+      "NOTE: Hold the head level so the Plungers are not scratched.\nRemoval of Inlet Head\n",
+    );
+    const p = build("8520", undefined, manual(text));
+    expect(p.safety.cautions.some((c) => c.label === "unknown" && /^NOTE on p\.2 .*could not be placed/.test(c.basis))).toBe(true);
+    expect(p.jha?.map((r) => r.hazard.value)).toEqual([p.safety.cautions[0].value]);
+  });
+  it("control: a CAUTION the parser could not read is still a hazard row (unknown)", () => {
+    const text = FIXTURES["manual-85v2.txt"].replace(
+      "After service, open the water supply, start the drive and watch the gauge for leaks.\n",
+      "After service, open the water supply, start the drive and watch the gauge for leaks.\nRemoval of Valve Cap\n",
+    );
+    const p = build("8520", undefined, manual(text));
+    expect(p.safety.cautions.some((c) => c.label === "unknown" && /^CAUTION on p\.2 .*could not be placed/.test(c.basis))).toBe(true);
+    expect(p.jha?.some((r) => r.hazard.label === "unknown" && /^CAUTION/.test(r.hazard.basis))).toBe(true);
   });
   it("torque rows are the ones the included steps tighten, linked to those steps", () => {
     const p = build("8520");

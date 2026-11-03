@@ -233,12 +233,17 @@ describe("selectTopics", () => {
     expect(topics).toContain(topic);
   });
 
-  it("reseal/rebuild/overhaul each select BOTH seals and valves", () => {
-    for (const word of ["full reseal", "complete rebuild", "pump overhaul"]) {
+  it("rebuild/overhaul each select BOTH seals and valves", () => {
+    for (const word of ["complete rebuild", "pump overhaul"]) {
       const topics = new Set(selectTopics(word).map((m) => m.topic));
       expect(topics.has("seals")).toBe(true);
       expect(topics.has("valves")).toBe(true);
     }
+  });
+
+  it("reseal selects seals only — no valve work (V2, owner goal 2026-11-02)", () => {
+    const topics = new Set(selectTopics("full reseal").map((m) => m.topic));
+    expect(topics).toEqual(new Set(["seals"]));
   });
 
   it("returns no matches for text naming no recognized task", () => {

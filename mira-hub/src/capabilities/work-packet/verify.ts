@@ -34,11 +34,24 @@ export function collectFields(packet: WorkPacket): FieldLocation[] {
     out.push({ path: `parts[${i}].qty`, field: p.qty });
   });
   packet.tools.forEach((f, i) => out.push({ path: `tools[${i}]`, field: f }));
-  packet.steps.forEach((s, i) => out.push({ path: `steps[${i}].text`, field: s.text }));
+  packet.steps.forEach((s, i) => {
+    out.push({ path: `steps[${i}].text`, field: s.text });
+    if (s.applicability) out.push({ path: `steps[${i}].applicability`, field: s.applicability });
+    if (s.inclusion) out.push({ path: `steps[${i}].inclusion`, field: s.inclusion });
+    (s.notes ?? []).forEach((n, j) => {
+      out.push({ path: `steps[${i}].notes[${j}].text`, field: n.text });
+      if (n.applicability) out.push({ path: `steps[${i}].notes[${j}].applicability`, field: n.applicability });
+    });
+  });
+  (packet.figures ?? []).forEach((f, i) => {
+    if (f.placement) out.push({ path: `figures[${i}].placement`, field: f.placement });
+  });
   packet.measurements.forEach((m, i) => {
     out.push({ path: `measurements[${i}].name`, field: m.name });
     out.push({ path: `measurements[${i}].value`, field: m.value });
     out.push({ path: `measurements[${i}].tool`, field: m.tool });
+    if (m.link) out.push({ path: `measurements[${i}].link`, field: m.link });
+    if (m.measured) out.push({ path: `measurements[${i}].measured`, field: m.measured });
   });
   (packet.jha ?? []).forEach((r, i) => {
     out.push({ path: `jha[${i}].task`, field: r.task });
@@ -48,6 +61,8 @@ export function collectFields(packet: WorkPacket): FieldLocation[] {
   (packet.qualifications ?? []).forEach((f, i) => out.push({ path: `qualifications[${i}]`, field: f }));
   (packet.restoration ?? []).forEach((f, i) => out.push({ path: `restoration[${i}]`, field: f }));
   packet.unknowns.forEach((f, i) => out.push({ path: `unknowns[${i}]`, field: f }));
+  (packet.blockers ?? []).forEach((f, i) => out.push({ path: `blockers[${i}]`, field: f }));
+  (packet.leftOut ?? []).forEach((f, i) => out.push({ path: `leftOut[${i}]`, field: f }));
   return out;
 }
 
@@ -66,6 +81,9 @@ function tokensNotOnLine(value: string, line: string): string[] {
 const MEASUREMENT_VALUE_PATH = /^measurements\[\d+\]\.value$/;
 const JHA_CONTROLS_PATH = /^jha\[\d+\]\.controls$/;
 const QUALIFICATION_PATH = /^qualifications\[\d+\]$/;
+// V2 judgements the manual does not state — applicability, inclusion, step links, photo placement,
+// a technician's measured reading — are never verified; a blocker stays open until a person settles it.
+const NEVER_VERIFIED_PATH = /^(?:steps\[\d+\]\.(?:applicability|inclusion|notes\[\d+\]\.applicability)|measurements\[\d+\]\.(?:link|measured)|figures\[\d+\]\.placement|blockers\[\d+\])$/;
 
 export function verifyPacket(packet: WorkPacket): string[] {
   const problems: string[] = [];
@@ -103,6 +121,10 @@ export function verifyPacket(packet: WorkPacket): string[] {
     // may type the site's answer (an edit makes it "proposed"); nothing may present one as verified.
     if ((JHA_CONTROLS_PATH.test(path) || QUALIFICATION_PATH.test(path)) && field.label === "verified") {
       problems.push(`${path}: hazard controls and qualifications come from the site, never verified from manufacturer documents`);
+    }
+
+    if (NEVER_VERIFIED_PATH.test(path) && field.label === "verified") {
+      problems.push(`${path}: applicability, inclusion, links, placement, readings and blockers are never verified from manufacturer documents`);
     }
 
     // A measurement's value carries real numbers a technician will torque to — hold it to the
