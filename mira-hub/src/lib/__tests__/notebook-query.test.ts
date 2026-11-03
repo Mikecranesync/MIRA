@@ -369,6 +369,24 @@ describe("buildRetrievalQuery — short follow-up carries the prior subject (#51
     expect(buildRetrievalQuery("and the outputs?", switched)).toBe("and the outputs? hydraulic pressure");
   });
 
+  it("a short acronym names its own subject, so it is a topic switch (#5160)", () => {
+    expect(buildRetrievalQuery("what about the VFD?", wiring)).toBe("what about the VFD?");
+    expect(buildRetrievalQuery("and the HMI?", wiring)).toBe("and the HMI?");
+  });
+
+  it("a bare rating after 'and' is a follow-up, and drops the old rating (#5160)", () => {
+    expect(buildRetrievalQuery("and 120V?", wiring)).toBe("and 120V? Micro820 wire sinking inputs");
+    expect(buildRetrievalQuery("and AC?", wiring)).toBe("and AC? 24V Micro820 wire sinking");
+  });
+
+  it("'ones' is a sibling word, not a plural of 'one' (#5160)", () => {
+    expect(buildRetrievalQuery("the other ones?", wiring)).toBe("the other ones? 24V Micro820 wire sinking");
+  });
+
+  it("control: a model-like token still names its own subject (#5160)", () => {
+    expect(buildRetrievalQuery("and the Micro850?", wiring)).toBe("and the Micro850?");
+  });
+
   it("control: a self-contained question is unchanged", () => {
     const msg = "How do I wire the relay outputs on the Micro820 controller to a 24V DC load?";
     expect(buildRetrievalQuery(msg, wiring)).toBe(msg);
