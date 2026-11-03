@@ -337,6 +337,11 @@ def test_ci_gate_needs_are_discoverable():
 # retrieval experiments: promotion needs a same-revision replay and every loss (#5138)
 # --------------------------------------------------------------------------
 _REV = "c6f15b8d357722308ee2e4fc1ebb65483e679488"
+_RERANK = "notebook_cross_encoder_rerank"
+_ARTIFACT = "docs/evals/retrieval-eval/replays/notebook_cross_encoder_rerank-c6f15b8d3.json"
+# The losses computed from that committed artifact (baseline hit, treatment miss).
+_LOSSES = ["b3cde37e", "bef709ed", "c51364b4"]
+_DECISION = "https://github.com/Mikecranesync/MIRA/issues/5138"
 
 
 def _evidence(**over) -> dict:
@@ -348,7 +353,8 @@ def _evidence(**over) -> dict:
         "independent": True,
         "replayed_by": "independent replay",
         "replay": "https://github.com/Mikecranesync/MIRA/issues/5138#issuecomment-6597399064",
-        "losses": [{"case": "c1", "disposition": "open"}],
+        "artifact": _ARTIFACT,
+        "losses": [{"case": c, "disposition": "open"} for c in _LOSSES],
     }
     base.update(over)
     return base
@@ -359,6 +365,7 @@ def _experiment(env: str = "staging", **evidence_over) -> dict:
     envs[env] = "1"
     state = "production_enabled" if env == "production" else "staging_enabled"
     return _cap(
+        id=_RERANK,
         state=state,
         environments=envs,
         owner="Owner",
@@ -367,12 +374,21 @@ def _experiment(env: str = "staging", **evidence_over) -> dict:
     )
 
 
+def _with_first(first: dict) -> list:
+    """`first` for the first loss; every other loss fixed, so it alone decides."""
+    return [first] + [{"case": c, "disposition": "fixed", "ref": "#1"} for c in _LOSSES[1:]]
+
+
 def _promo(cap: dict) -> list:
     return [
         f
         for f in cc.check_retrieval_promotion_evidence(cap, _ROOT)
         if f.rule == "retrieval_promotion_evidence"
     ]
+
+
+def _says(cap: dict, text: str) -> bool:
+    return any(text in f.message for f in _promo(cap))
 
 
 def test_staging_experiment_with_complete_replay_and_open_losses_passes():
@@ -396,86 +412,149 @@ def test_enabled_experiment_without_replay_fails():
 
 
 def test_replay_at_different_revisions_fails():
-    assert _promo(
-        _experiment("staging", treatment_revision="dd2cc10fbb95e150c229cba0ee13d0edf666859c")
+    assert _says(
+        _experiment("staging", treatment_revision="dd2cc10fbb95e150c229cba0ee13d0edf666859c"),
+        "same revision",
     )
 
 
 def test_replay_at_a_revision_that_is_not_a_commit_fails():
-    """Two equal hex strings are not a replay: the revision must exist (#5169 F2)."""
-    assert _promo(
-        _experiment("staging", baseline_revision="deadbeef0", treatment_revision="deadbeef0")
+    """Two equal hex strings are not a replay: the revision must exist (#5169 r1 F2)."""
+    assert _says(
+        _experiment("staging", baseline_revision="deadbeef0", treatment_revision="deadbeef0"),
+        "is not a commit here",
     )
 
 
 def test_replay_reference_must_be_a_mira_issue_or_pr_link():
-    """Free text is not evidence of a replay (#5169 F2); control is the default fixture."""
-    assert _promo(_experiment("staging", replay="not a link"))
-    assert _promo(_experiment("staging", replay="https://example.invalid/replay"))
+    """The optional discussion link is still not free text (#5169 r1 F2)."""
+    assert _says(_experiment("staging", replay="not a link"), "is not a MIRA issue or PR link")
+    assert _says(
+        _experiment("staging", replay="https://example.invalid/replay"),
+        "is not a MIRA issue or PR link",
+    )
+
+
+def test_an_unrelated_mira_link_is_not_the_evidence():
+    """Control: the link is discussion metadata; the committed artifact is the evidence."""
+    assert (
+        _promo(_experiment("staging", replay="https://github.com/Mikecranesync/MIRA/issues/1"))
+        == []
+    )
+
+
+def test_replay_needs_a_committed_artifact():
+    """A link alone, real or not, is not a replay (#5169 r2 F1)."""
+    assert _says(_experiment("staging", artifact=""), "`promotion_evidence.artifact` is empty")
+    assert _says(
+        _experiment("staging", artifact="docs/evals/retrieval-eval/replays/missing.json"),
+        "is not a file in this repository",
+    )
+    assert _says(
+        _experiment("staging", artifact="../outside.json"), "is not a file in this repository"
+    )
+    # A real file outside the repository is still refused (precondition: it exists).
+    assert Path("/etc/hosts").is_file()
+    assert _says(_experiment("staging", artifact="/etc/hosts"), "is not a file in this repository")
+
+
+def test_replay_artifact_must_match_the_record():
+    lexical = "docs/evals/retrieval-eval/replays/notebook_lexical_idf-dd2cc10fb.json"
+    assert _says(_experiment("staging", artifact=lexical), "is for 'notebook_lexical_idf'")
+    other = "dd2cc10fbb95e150c229cba0ee13d0edf666859c"
+    assert _says(
+        _experiment("staging", baseline_revision=other, treatment_revision=other),
+        "is not the replay revision",
+    )
+
+
+def test_a_loss_left_off_the_list_fails():
+    """The listed losses must equal the artifact's: an omitted loss is caught."""
+    cap = _experiment("staging", losses=[{"case": c, "disposition": "open"} for c in _LOSSES[1:]])
+    assert _says(cap, f"loses {_LOSSES[0]}, which `losses` does not list")
+
+
+def test_a_listed_case_the_artifact_does_not_lose_fails():
+    losses = [{"case": c, "disposition": "open"} for c in _LOSSES + ["6eb70402"]]
+    assert _says(_experiment("staging", losses=losses), "listed loss 6eb70402 is not a loss")
 
 
 def test_replay_not_independent_fails():
-    assert _promo(_experiment("staging", independent=False))
+    assert _says(_experiment("staging", independent=False), "independent")
 
 
 def test_losses_must_be_listed_explicitly():
-    assert _promo(_experiment("staging", losses=None))
+    assert _says(_experiment("staging", losses=None), "must list every lost case")
 
 
 def test_loss_without_case_or_known_disposition_fails():
-    assert _promo(_experiment("staging", losses=[{"case": "c1", "disposition": "waived"}]))
-    assert _promo(_experiment("staging", losses=[{"disposition": "open"}]))
+    waived = [{"case": _LOSSES[0], "disposition": "waived"}] + _with_first({})[1:]
+    assert _says(_experiment("staging", losses=waived), "needs a `case` and a disposition")
+    no_case = [{"disposition": "open"}] + [{"case": c, "disposition": "open"} for c in _LOSSES]
+    assert _says(_experiment("staging", losses=no_case), "needs a `case` and a disposition")
 
 
 def test_production_with_an_open_loss_fails():
-    assert _promo(_experiment("production"))
+    assert _says(_experiment("production"), "still open")
 
 
 def test_production_with_every_loss_dispositioned_passes():
     """Control for the rule above: owner-accepted and fixed losses may ship."""
-    losses = [
-        {
-            "case": "c1",
-            "disposition": "accepted",
-            "decided_by": "Owner",
-            "decision": "https://github.com/Mikecranesync/MIRA/issues/5138",
-        },
-        {"case": "c2", "disposition": "fixed", "ref": "#1"},
-    ]
-    assert _promo(_experiment("production", losses=losses)) == []
+    accepted = {
+        "case": _LOSSES[0],
+        "disposition": "accepted",
+        "decided_by": "Owner",
+        "decision": _DECISION,
+    }
+    assert _promo(_experiment("production", losses=_with_first(accepted))) == []
 
 
 def test_loss_accepted_by_someone_other_than_the_owner_fails():
-    losses = [
-        {
-            "case": "c1",
-            "disposition": "accepted",
-            "decided_by": "Implementer",
-            "decision": "https://github.com/Mikecranesync/MIRA/issues/5138",
-        }
-    ]
-    assert _promo(_experiment("production", losses=losses))
+    accepted = {
+        "case": _LOSSES[0],
+        "disposition": "accepted",
+        "decided_by": "Implementer",
+        "decision": _DECISION,
+    }
+    assert _says(_experiment("production", losses=_with_first(accepted)), "accepted without")
+
+
+def test_ownerless_record_cannot_accept_a_loss():
+    """No owner, no decided_by: None == None must not count as an owner decision (#5169 r2 F2)."""
+    cap = _experiment(
+        "production",
+        losses=_with_first({"case": _LOSSES[0], "disposition": "accepted", "decision": _DECISION}),
+    )
+    cap.update(owner=None, owner_missing="no owner assigned yet")
+    assert _says(cap, "accepted without")
+    named = _experiment(
+        "production",
+        losses=_with_first(
+            {"case": _LOSSES[0], "disposition": "accepted", "decided_by": "", "decision": _DECISION}
+        ),
+    )
+    named["owner"] = ""
+    assert _says(named, "accepted without")
 
 
 def test_loss_accepted_without_a_linked_decision_fails():
-    losses = [{"case": "c1", "disposition": "accepted", "decided_by": "Owner"}]
-    assert _promo(_experiment("production", losses=losses))
+    accepted = {"case": _LOSSES[0], "disposition": "accepted", "decided_by": "Owner"}
+    assert _says(_experiment("production", losses=_with_first(accepted)), "accepted without")
 
 
 def test_loss_accepted_with_a_non_durable_decision_link_fails():
-    losses = [
-        {
-            "case": "c1",
-            "disposition": "accepted",
-            "decided_by": "Owner",
-            "decision": "https://example.invalid/d",
-        }
-    ]
-    assert _promo(_experiment("production", losses=losses))
+    accepted = {
+        "case": _LOSSES[0],
+        "disposition": "accepted",
+        "decided_by": "Owner",
+        "decision": "https://example.invalid/d",
+    }
+    assert _says(_experiment("production", losses=_with_first(accepted)), "accepted without")
 
 
 def test_loss_fixed_without_a_ref_fails():
-    assert _promo(_experiment("production", losses=[{"case": "c1", "disposition": "fixed"}]))
+    fixed = {"case": _LOSSES[0], "disposition": "fixed"}
+    assert _says(_experiment("production", losses=_with_first(fixed)), "marked fixed without")
 
 
 def test_registry_rerank_cannot_reach_production_with_its_open_losses():

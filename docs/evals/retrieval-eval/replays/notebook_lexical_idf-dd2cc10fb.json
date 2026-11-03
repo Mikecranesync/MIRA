@@ -1,0 +1,136 @@
+{
+  "capability": "notebook_lexical_idf",
+  "revision": "dd2cc10fbb95e150c229cba0ee13d0edf666859c",
+  "case_set": "31 frozen failing staging turns from #5127; ids are the hashes used there, question text stays in staging",
+  "hit_rule": "the oracle answer page and its text appear in the top 6 retrieved chunks",
+  "runner": "BRAVO zero-token read-only staging replay (#5138), not the implementer of the treatment",
+  "repeat": "one run per arm; production arm repeated at c6f15b8d3 with 31 of 31 identical page lists",
+  "baseline": "production path (NOTEBOOK_LEXICAL_V2=0, hybrid unset, rerank unset)",
+  "treatment": "NOTEBOOK_LEXICAL_V2=1, otherwise the production path",
+  "cases": {
+    "111ede7e": {
+      "baseline_hit": true,
+      "treatment_hit": false
+    },
+    "11db8aee": {
+      "baseline_hit": true,
+      "treatment_hit": true
+    },
+    "19bce686": {
+      "baseline_hit": true,
+      "treatment_hit": true
+    },
+    "2240f38d": {
+      "baseline_hit": true,
+      "treatment_hit": false
+    },
+    "25fbe256": {
+      "baseline_hit": true,
+      "treatment_hit": true
+    },
+    "262d04f7": {
+      "baseline_hit": true,
+      "treatment_hit": false
+    },
+    "297f8936": {
+      "baseline_hit": true,
+      "treatment_hit": true
+    },
+    "4ec6f4d1": {
+      "baseline_hit": false,
+      "treatment_hit": false
+    },
+    "50036a24": {
+      "baseline_hit": true,
+      "treatment_hit": true
+    },
+    "5bcc0ba0": {
+      "baseline_hit": true,
+      "treatment_hit": true
+    },
+    "60c38ab4": {
+      "baseline_hit": true,
+      "treatment_hit": true
+    },
+    "644d0dc0": {
+      "baseline_hit": false,
+      "treatment_hit": false
+    },
+    "6d072db2": {
+      "baseline_hit": true,
+      "treatment_hit": false
+    },
+    "6eb70402": {
+      "baseline_hit": false,
+      "treatment_hit": false
+    },
+    "704b0e24": {
+      "baseline_hit": false,
+      "treatment_hit": false
+    },
+    "7f46b0fb": {
+      "baseline_hit": false,
+      "treatment_hit": false
+    },
+    "a23ed7dc": {
+      "baseline_hit": true,
+      "treatment_hit": true
+    },
+    "a9938143": {
+      "baseline_hit": true,
+      "treatment_hit": true
+    },
+    "b3cde37e": {
+      "baseline_hit": true,
+      "treatment_hit": false
+    },
+    "b92d569f": {
+      "baseline_hit": true,
+      "treatment_hit": true
+    },
+    "bef709ed": {
+      "baseline_hit": true,
+      "treatment_hit": true
+    },
+    "c51364b4": {
+      "baseline_hit": true,
+      "treatment_hit": true
+    },
+    "c5d2767a": {
+      "baseline_hit": true,
+      "treatment_hit": true
+    },
+    "caa66f00": {
+      "baseline_hit": true,
+      "treatment_hit": false
+    },
+    "cde01b6a": {
+      "baseline_hit": true,
+      "treatment_hit": true
+    },
+    "ce88a983": {
+      "baseline_hit": true,
+      "treatment_hit": true
+    },
+    "d915fbec": {
+      "baseline_hit": true,
+      "treatment_hit": true
+    },
+    "eb5e4cff": {
+      "baseline_hit": false,
+      "treatment_hit": false
+    },
+    "ed7278fa": {
+      "baseline_hit": true,
+      "treatment_hit": true
+    },
+    "f3afd471": {
+      "baseline_hit": false,
+      "treatment_hit": false
+    },
+    "f9623584": {
+      "baseline_hit": true,
+      "treatment_hit": true
+    }
+  }
+}

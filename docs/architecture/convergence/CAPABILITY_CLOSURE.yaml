@@ -784,6 +784,7 @@ capabilities:
       independent: true
       replayed_by: "BRAVO retrieval acceptance replay"
       replay: "https://github.com/Mikecranesync/MIRA/issues/5127#issuecomment-6594301658"
+      artifact: docs/evals/retrieval-eval/replays/notebook_lexical_idf-dd2cc10fb.json
       losses:
         - {case: 2240f38d, disposition: open}
         - {case: caa66f00, disposition: open}
@@ -944,6 +945,7 @@ capabilities:
       independent: true
       replayed_by: "BRAVO retrieval acceptance replay"
       replay: "https://github.com/Mikecranesync/MIRA/issues/5138#issuecomment-6597399064"
+      artifact: docs/evals/retrieval-eval/replays/notebook_cross_encoder_rerank-c6f15b8d3.json
       losses:
         - {case: c51364b4, disposition: open}
         - {case: bef709ed, disposition: open}
