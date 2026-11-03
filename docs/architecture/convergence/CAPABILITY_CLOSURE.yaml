@@ -759,6 +759,25 @@ capabilities:
       - "Refusals: unanswerable questions refuse no worse than with the flag off (2026-10-21 staging: 6/7 vs 7/7 by answer text — not met; #4572)."
       - "Production: owner decision after the staging walk."
     review_by: "2026-11-17"
+    retrieval_experiment: true
+    # Same-revision replay (#5138): 31 real failing staging turns, read-only
+    # staging data, no model calls. Not the 77-question harness the flag was
+    # tuned and pre-registered on. Hits are the answer page in the top 6.
+    promotion_evidence:
+      baseline: "production path (every NOTEBOOK_* retrieval flag off), 24 of 31"
+      treatment: "NOTEBOOK_LEXICAL_V2=1, 18 of 31, no gains"
+      baseline_revision: dd2cc10fbb95e150c229cba0ee13d0edf666859c
+      treatment_revision: dd2cc10fbb95e150c229cba0ee13d0edf666859c
+      independent: true
+      replayed_by: "BRAVO retrieval acceptance replay"
+      replay: "https://github.com/Mikecranesync/MIRA/issues/5127#issuecomment-6594301658"
+      losses:
+        - {case: 2240f38d, disposition: open}
+        - {case: caa66f00, disposition: open}
+        - {case: 111ede7e, disposition: open}
+        - {case: 262d04f7, disposition: open}
+        - {case: 6d072db2, disposition: open}
+        - {case: b3cde37e, disposition: open}
 
   - id: notebook_query_rewrite
     purpose: >-
@@ -811,9 +830,111 @@ capabilities:
       - "Staging: set the flag in factorylm/stg; one notebook walk with a forum-style question shows mira.retrieval.query_rewrite=ran and a cited answer; refusals on unanswerable questions no worse than flag off."
       - "Production: owner decision after the staging walk; spend visible in the OpenAI run-budget log."
     review_by: "2026-12-15"
+    retrieval_experiment: true
     notes: >-
       Any change to QUERY_REWRITE_PROMPT, the model, or the token cap reopens
       the measurement above — the numbers belong to that exact prompt.
+
+  - id: notebook_hybrid_retrieval
+    purpose: >-
+      Add a vector lane (nomic-embed-text via OLLAMA_BASE_URL) to notebook
+      retrieval and fuse it with the lexical candidates by reciprocal rank
+      fusion (#4487).
+    customer_outcome: >-
+      A question worded differently from the manual still reaches the right
+      page when no lexical pass finds it.
+    # The Hub reads NOTEBOOK_HYBRID_RETRIEVAL (TypeScript). feature_flag is omitted
+    # because tools/capability_closure.py discovers flags in Python only.
+    entrypoints:
+      - "mira-hub/src/capabilities/hybrid-retrieval.ts   # embedQueryDetailed, rrfMerge"
+      - "mira-hub/src/lib/manual-rag.ts                  # vector lane inside retrieveNodeChunks"
+    consumers:
+      - "mira-hub/src/app/api/equipment-notebooks/[id]/chat/route.ts   # notebook chat retrieval; trace attr mira.retrieval.vector_lane"
+    environments:
+      dev: unset
+      staging: "0"                          # Doppler factorylm/stg, 1 until 2026-11-03, set 0 on 2026-11-03 (owner decision, #5138); deploy-staging run 41603391175
+      production: unset                     # forwarded by docker-compose.saas.yml (default 0), not set in factorylm/prd
+    state: deployed_disabled
+    reason: >-
+      Turned off in staging 2026-11-03 (owner decision on tracker #5138).
+      Same-revision replay at c6f15b8d3 of 31 real failing staging turns:
+      production path 24 of 31 answer pages in the top 6, with the vector lane
+      19 of 31. Retrieval-acceptance run 41603908501 passed after the change.
+    owner: "Mike Harper"
+    ci_jobs:
+      - mira-hub-unit
+    required_checks: []
+    evidence:
+      - "https://github.com/Mikecranesync/MIRA/issues/5138#issuecomment-6597399064"
+    rollback: >-
+      Set NOTEBOOK_HYBRID_RETRIEVAL=1 in factorylm/stg and redeploy staging
+      mira-hub at the same SHA through deploy-staging.yml.
+    blocker: null
+    acknowledged_rules: []
+    promotion_criteria:
+      - "An independent same-revision replay against the production path with every lost case listed (promotion_evidence), then an owner decision on each loss."
+    review_by: "2026-12-15"
+    retrieval_experiment: true
+
+  - id: notebook_cross_encoder_rerank
+    purpose: >-
+      Reorder the notebook retrieval candidate pool with a cross-encoder
+      (mira-reranker, ms-marco-MiniLM-L-6-v2) before the top results are
+      served; on timeout or error the pre-rerank order is served (CU-RR1).
+    customer_outcome: >-
+      The best page for the question is first more often, so the answer cites
+      it rather than a neighbour.
+    # The Hub reads NOTEBOOK_RERANK (TypeScript). feature_flag is omitted
+    # because tools/capability_closure.py discovers flags in Python only.
+    entrypoints:
+      - "mira-hub/src/capabilities/reranker.ts   # rerankScores, timeout and fallback"
+      - "mira-hub/src/lib/manual-rag.ts          # rerank step inside retrieveNodeChunks"
+    consumers:
+      - "mira-hub/src/app/api/equipment-notebooks/[id]/chat/route.ts   # notebook chat retrieval"
+    environments:
+      dev: unset
+      staging: "1"                          # Doppler factorylm/stg (RERANKER_MODEL=fp32, NOTEBOOK_RERANK_TIMEOUT_MS=4000), read 2026-11-03; forwarded by docker-compose.staging-vps.yml with the mira-reranker service
+      production: unset                     # docker-compose.saas.yml forwards no NOTEBOOK_RERANK and runs no mira-reranker
+    state: staging_enabled
+    reason: >-
+      The only staging-only retrieval switch left after 2026-11-03. Promotion
+      is on HOLD (#5138): the same-revision replay lost three cases the
+      production path answered, gained two, and moved the top-1 count from 11
+      to 17. A fallback serves the production order now that hybrid is off.
+    owner: "Mike Harper"
+    ci_jobs:
+      - mira-hub-unit
+    required_checks: []
+    evidence:
+      - "docs/architecture/convergence/units/CU-RR1.md"
+      - "https://github.com/Mikecranesync/MIRA/issues/5138#issuecomment-6597399064"
+    rollback: >-
+      Set NOTEBOOK_RERANK=0 in factorylm/stg and redeploy staging mira-hub at
+      the same SHA through deploy-staging.yml.
+    blocker: >-
+      Production: three open losses below need an owner decision, and
+      production runs no reranker service.
+    acknowledged_rules: []
+    promotion_criteria:
+      - "Every loss in promotion_evidence is fixed (with a ref) or accepted by the owner with a linked decision."
+      - "Rerank wait and fallback reason visible on the retrieval span (#5037) on the staging build."
+    review_by: "2026-12-15"
+    retrieval_experiment: true
+    # Same-revision replay (#5138): 31 real failing staging turns, read-only
+    # staging data, local fp32 reranker, no model calls, two identical runs,
+    # 0 fallbacks at 4000 ms. Hits are the answer page in the top 6.
+    promotion_evidence:
+      baseline: "production path (every NOTEBOOK_* retrieval flag off), 24 of 31, top-1 11"
+      treatment: "NOTEBOOK_RERANK=1, timeout 4000 ms, 23 of 31, top-1 17"
+      baseline_revision: c6f15b8d357722308ee2e4fc1ebb65483e679488
+      treatment_revision: c6f15b8d357722308ee2e4fc1ebb65483e679488
+      independent: true
+      replayed_by: "BRAVO retrieval acceptance replay"
+      replay: "https://github.com/Mikecranesync/MIRA/issues/5138#issuecomment-6597399064"
+      losses:
+        - {case: c51364b4, disposition: open}
+        - {case: bef709ed, disposition: open}
+        - {case: b3cde37e, disposition: open}
 
   - id: guided_troubleshooting
     purpose: >-

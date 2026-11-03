@@ -331,3 +331,157 @@ def test_ci_gate_needs_are_discoverable():
     gated = cc.ci_gate_needs(_ROOT)
     assert gated, "could not parse ci-gate needs — the required-check rule is inert"
     assert "test-unit" in gated
+
+
+# --------------------------------------------------------------------------
+# retrieval experiments: promotion needs a same-revision replay and every loss (#5138)
+# --------------------------------------------------------------------------
+_REV = "c6f15b8d357722308ee2e4fc1ebb65483e679488"
+
+
+def _evidence(**over) -> dict:
+    base = {
+        "baseline": "production path",
+        "treatment": "flag on",
+        "baseline_revision": _REV,
+        "treatment_revision": _REV,
+        "independent": True,
+        "replayed_by": "independent replay",
+        "replay": "https://example.invalid/replay",
+        "losses": [{"case": "c1", "disposition": "open"}],
+    }
+    base.update(over)
+    return base
+
+
+def _experiment(env: str = "staging", **evidence_over) -> dict:
+    envs = {"dev": "unset", "staging": "unset", "production": "unset"}
+    envs[env] = "1"
+    state = "production_enabled" if env == "production" else "staging_enabled"
+    return _cap(
+        state=state,
+        environments=envs,
+        owner="Owner",
+        retrieval_experiment=True,
+        promotion_evidence=_evidence(**evidence_over),
+    )
+
+
+def _promo(cap: dict) -> list:
+    return [
+        f
+        for f in cc.check_retrieval_promotion_evidence(cap)
+        if f.rule == "retrieval_promotion_evidence"
+    ]
+
+
+def test_staging_experiment_with_complete_replay_and_open_losses_passes():
+    """Control: staging may run while losses are still open."""
+    assert _promo(_experiment("staging")) == []
+
+
+def test_off_or_undeclared_experiment_needs_no_replay():
+    off = _cap(retrieval_experiment=True)
+    assert _promo(off) == []
+    undeclared = _experiment("staging")
+    undeclared.pop("retrieval_experiment")
+    undeclared.pop("promotion_evidence")
+    assert _promo(undeclared) == []
+
+
+def test_enabled_experiment_without_replay_fails():
+    cap = _experiment("staging")
+    cap.pop("promotion_evidence")
+    assert _promo(cap)
+
+
+def test_replay_at_different_revisions_fails():
+    assert _promo(
+        _experiment("staging", treatment_revision="dd2cc10fbb95e150c229cba0ee13d0edf666859c")
+    )
+
+
+def test_replay_not_independent_fails():
+    assert _promo(_experiment("staging", independent=False))
+
+
+def test_losses_must_be_listed_explicitly():
+    assert _promo(_experiment("staging", losses=None))
+
+
+def test_loss_without_case_or_known_disposition_fails():
+    assert _promo(_experiment("staging", losses=[{"case": "c1", "disposition": "waived"}]))
+    assert _promo(_experiment("staging", losses=[{"disposition": "open"}]))
+
+
+def test_production_with_an_open_loss_fails():
+    assert _promo(_experiment("production"))
+
+
+def test_production_with_every_loss_dispositioned_passes():
+    """Control for the rule above: owner-accepted and fixed losses may ship."""
+    losses = [
+        {
+            "case": "c1",
+            "disposition": "accepted",
+            "decided_by": "Owner",
+            "decision": "https://example.invalid/d",
+        },
+        {"case": "c2", "disposition": "fixed", "ref": "#1"},
+    ]
+    assert _promo(_experiment("production", losses=losses)) == []
+
+
+def test_loss_accepted_by_someone_other_than_the_owner_fails():
+    losses = [
+        {
+            "case": "c1",
+            "disposition": "accepted",
+            "decided_by": "Implementer",
+            "decision": "https://example.invalid/d",
+        }
+    ]
+    assert _promo(_experiment("production", losses=losses))
+
+
+def test_loss_accepted_without_a_linked_decision_fails():
+    losses = [{"case": "c1", "disposition": "accepted", "decided_by": "Owner"}]
+    assert _promo(_experiment("production", losses=losses))
+
+
+def test_loss_fixed_without_a_ref_fails():
+    assert _promo(_experiment("production", losses=[{"case": "c1", "disposition": "fixed"}]))
+
+
+def test_registry_rerank_cannot_reach_production_with_its_open_losses():
+    """The live HOLD: setting production on for the reranker must fail validation."""
+    caps = {c["id"]: c for c in _registry()["capabilities"]}
+    rerank = dict(caps["notebook_cross_encoder_rerank"])
+    assert rerank["retrieval_experiment"] is True
+    assert _promo(rerank) == []
+    rerank["environments"] = dict(rerank["environments"], production="1")
+    assert any("still open" in f.message for f in _promo(rerank))
+
+
+def test_registry_retrieval_experiments_are_declared():
+    caps = {c["id"]: c for c in _registry()["capabilities"]}
+    for cid in (
+        "notebook_lexical_idf",
+        "notebook_query_rewrite",
+        "notebook_hybrid_retrieval",
+        "notebook_cross_encoder_rerank",
+    ):
+        assert caps[cid].get("retrieval_experiment") is True, cid
+
+
+def test_validate_runs_the_promotion_rule():
+    """The rule must be wired into validate(), not only callable on its own."""
+    reg = _registry()
+    for c in reg["capabilities"]:
+        if c["id"] == "notebook_cross_encoder_rerank":
+            c["environments"] = dict(c["environments"], production="1")
+    findings = cc.validate(reg, _ROOT)
+    assert any(
+        f.rule == "retrieval_promotion_evidence" and f.cap == "notebook_cross_encoder_rerank"
+        for f in findings
+    )
