@@ -439,8 +439,14 @@ def test_replay_at_different_revisions_fails():
     )
 
 
-def test_replay_at_a_revision_that_is_not_a_commit_fails():
-    """Two equal hex strings are not a replay: the revision must exist (#5169 r1 F2)."""
+def test_replay_at_a_revision_that_is_not_a_commit_fails(monkeypatch):
+    """Two equal hex strings are not a replay: the revision must exist (#5169 r1 F2).
+
+    On a shallow clone (the Eval Offline job) "does this commit exist?" cannot be
+    answered and the helper declines to, so pin full history: asserting the
+    finding without it would assert the environment, not the rule.
+    """
+    monkeypatch.setattr(cc.evidence_provenance, "history_is_complete", lambda root: True)
     assert _says(
         _experiment("staging", baseline_revision="deadbeef0", treatment_revision="deadbeef0"),
         "is not a commit here",
@@ -698,7 +704,7 @@ def test_the_baseline_is_the_registrys_production_state():
     assert _promo(_experiment("staging")) == []
 
 
-def test_case_set_must_be_registered_and_match_its_pin(tmp_path):
+def test_case_set_must_be_registered_and_match_its_pin():
     assert _says(_experiment("staging", case_set="unknown_set"), "is not in `retrieval_case_sets`")
     reg = _registry()
     entry = reg["retrieval_case_sets"][_CASE_SET]
