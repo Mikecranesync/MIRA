@@ -1011,8 +1011,35 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
     }
     if (added.length >= 6) break;
   }
+  if (!added.length && !topicTerms(msg).length) {
+    // #5127 (short follow-ups): "and the outputs?" after "how do I wire the 24V DC sinking inputs
+    // on the Micro820" — the prior question has no parameter ID or drive
+    // vocabulary, so nothing above carried. Reuse the technician's own last
+    // question (never assistant prose): model-like tokens first, then content
+    // words. The small cap keeps the AND-ed search from over-constraining and
+    // drops the prior turn's own trailing noun ("inputs").
+    const lastUser = [...history].reverse().find((t) => t.role === "user")?.content ?? "";
+    const words = lastUser.match(/[A-Za-z0-9][A-Za-z0-9-]*/g) ?? [];
+    const coded = words.filter((w) => /[A-Za-z]/.test(w) && /\d/.test(w));
+    const plain = words.filter((w) => /^[A-Za-z]{4,}$/.test(w) && !CARRY_STOPWORDS.has(w.toLowerCase()));
+    for (const w of [...coded, ...plain]) {
+      const k = w.toLowerCase();
+      if (lower.includes(k) || seen.has(k)) continue;
+      seen.add(k);
+      added.push(w);
+      if (added.length >= 4) break;
+    }
+  }
   return added.length ? `${msg} ${added.join(" ")}` : msg;
 }
+
+const CARRY_STOPWORDS = new Set([
+  "what", "when", "where", "which", "while", "with", "without", "from", "into", "onto", "this", "that",
+  "these", "those", "there", "their", "they", "them", "then", "than", "have", "does", "doing", "should",
+  "would", "could", "about", "after", "before", "also", "just", "only", "same", "like", "need", "want",
+  "tell", "show", "give", "make", "know", "please", "your", "yours", "will", "been", "being", "here",
+  "over", "under", "some", "more", "most", "much", "many", "each", "other", "again", "still",
+]);
 
 /** Deterministic topic hint for the SYSTEM prompt. When the current message is a
  *  referential follow-up, name the thread tokens its pronouns/ellipses resolve
