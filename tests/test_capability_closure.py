@@ -347,7 +347,7 @@ def _evidence(**over) -> dict:
         "treatment_revision": _REV,
         "independent": True,
         "replayed_by": "independent replay",
-        "replay": "https://example.invalid/replay",
+        "replay": "https://github.com/Mikecranesync/MIRA/issues/5138#issuecomment-6597399064",
         "losses": [{"case": "c1", "disposition": "open"}],
     }
     base.update(over)
@@ -370,7 +370,7 @@ def _experiment(env: str = "staging", **evidence_over) -> dict:
 def _promo(cap: dict) -> list:
     return [
         f
-        for f in cc.check_retrieval_promotion_evidence(cap)
+        for f in cc.check_retrieval_promotion_evidence(cap, _ROOT)
         if f.rule == "retrieval_promotion_evidence"
     ]
 
@@ -401,6 +401,19 @@ def test_replay_at_different_revisions_fails():
     )
 
 
+def test_replay_at_a_revision_that_is_not_a_commit_fails():
+    """Two equal hex strings are not a replay: the revision must exist (#5169 F2)."""
+    assert _promo(
+        _experiment("staging", baseline_revision="deadbeef0", treatment_revision="deadbeef0")
+    )
+
+
+def test_replay_reference_must_be_a_mira_issue_or_pr_link():
+    """Free text is not evidence of a replay (#5169 F2); control is the default fixture."""
+    assert _promo(_experiment("staging", replay="not a link"))
+    assert _promo(_experiment("staging", replay="https://example.invalid/replay"))
+
+
 def test_replay_not_independent_fails():
     assert _promo(_experiment("staging", independent=False))
 
@@ -425,7 +438,7 @@ def test_production_with_every_loss_dispositioned_passes():
             "case": "c1",
             "disposition": "accepted",
             "decided_by": "Owner",
-            "decision": "https://example.invalid/d",
+            "decision": "https://github.com/Mikecranesync/MIRA/issues/5138",
         },
         {"case": "c2", "disposition": "fixed", "ref": "#1"},
     ]
@@ -438,7 +451,7 @@ def test_loss_accepted_by_someone_other_than_the_owner_fails():
             "case": "c1",
             "disposition": "accepted",
             "decided_by": "Implementer",
-            "decision": "https://example.invalid/d",
+            "decision": "https://github.com/Mikecranesync/MIRA/issues/5138",
         }
     ]
     assert _promo(_experiment("production", losses=losses))
@@ -446,6 +459,18 @@ def test_loss_accepted_by_someone_other_than_the_owner_fails():
 
 def test_loss_accepted_without_a_linked_decision_fails():
     losses = [{"case": "c1", "disposition": "accepted", "decided_by": "Owner"}]
+    assert _promo(_experiment("production", losses=losses))
+
+
+def test_loss_accepted_with_a_non_durable_decision_link_fails():
+    losses = [
+        {
+            "case": "c1",
+            "disposition": "accepted",
+            "decided_by": "Owner",
+            "decision": "https://example.invalid/d",
+        }
+    ]
     assert _promo(_experiment("production", losses=losses))
 
 
@@ -485,3 +510,13 @@ def test_validate_runs_the_promotion_rule():
         f.rule == "retrieval_promotion_evidence" and f.cap == "notebook_cross_encoder_rerank"
         for f in findings
     )
+
+
+def test_acknowledgement_cannot_silence_an_open_production_loss():
+    """An open regression ships only fixed or owner-accepted, never acknowledged (#5169 F1)."""
+    cap = _experiment("production")
+    cap.update(blocker="tracked in #1", acknowledged_rules=["retrieval_promotion_evidence"])
+    findings = [f for f in cc.validate({"capabilities": [cap]}, _ROOT) if f.cap == cap["id"]]
+    promo = [f for f in findings if f.rule == "retrieval_promotion_evidence"]
+    assert promo, "precondition: the open production loss must be reported"
+    assert not any(f.acknowledged for f in promo)
