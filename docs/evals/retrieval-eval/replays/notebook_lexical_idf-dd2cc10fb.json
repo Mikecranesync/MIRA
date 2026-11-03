@@ -1,12 +1,29 @@
 {
   "capability": "notebook_lexical_idf",
   "revision": "dd2cc10fbb95e150c229cba0ee13d0edf666859c",
-  "case_set": "31 frozen failing staging turns from #5127; ids are the hashes used there, question text stays in staging",
+  "case_set": "notebook_failing_turns_5127",
   "hit_rule": "the oracle answer page and its text appear in the top 6 retrieved chunks",
   "runner": "BRAVO zero-token read-only staging replay (#5138), not the implementer of the treatment",
   "repeat": "one run per arm; production arm repeated at c6f15b8d3 with 31 of 31 identical page lists",
-  "baseline": "production path (NOTEBOOK_LEXICAL_V2=0, hybrid unset, rerank unset)",
-  "treatment": "NOTEBOOK_LEXICAL_V2=1, otherwise the production path",
+  "baseline": {
+    "description": "production path (NOTEBOOK_LEXICAL_V2=0, hybrid unset, rerank unset)",
+    "flags": {
+      "NOTEBOOK_LEXICAL_V2": "unset",
+      "NOTEBOOK_QUERY_REWRITE": "unset",
+      "NOTEBOOK_HYBRID_RETRIEVAL": "unset",
+      "NOTEBOOK_RERANK": "unset"
+    }
+  },
+  "treatment": {
+    "description": "NOTEBOOK_LEXICAL_V2=1, otherwise the production path",
+    "flags": {
+      "NOTEBOOK_LEXICAL_V2": "1",
+      "NOTEBOOK_QUERY_REWRITE": "unset",
+      "NOTEBOOK_HYBRID_RETRIEVAL": "unset",
+      "NOTEBOOK_RERANK": "unset"
+    },
+    "settings": {}
+  },
   "cases": {
     "111ede7e": {
       "baseline_hit": true,

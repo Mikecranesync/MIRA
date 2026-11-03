@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -342,6 +343,12 @@ _ARTIFACT = "docs/evals/retrieval-eval/replays/notebook_cross_encoder_rerank-c6f
 # The losses computed from that committed artifact (baseline hit, treatment miss).
 _LOSSES = ["b3cde37e", "bef709ed", "c51364b4"]
 _DECISION = "https://github.com/Mikecranesync/MIRA/issues/5138"
+_CASE_SET = "notebook_failing_turns_5127"
+_SETTINGS = {
+    "NOTEBOOK_RERANK_TIMEOUT_MS": "4000",
+    "NOTEBOOK_RERANK_POOL": "unset",
+    "RERANKER_MODEL": "fp32",
+}
 
 
 def _evidence(**over) -> dict:
@@ -354,6 +361,8 @@ def _evidence(**over) -> dict:
         "replayed_by": "independent replay",
         "replay": "https://github.com/Mikecranesync/MIRA/issues/5138#issuecomment-6597399064",
         "artifact": _ARTIFACT,
+        "case_set": _CASE_SET,
+        "treatment_settings": dict(_SETTINGS),
         "losses": [{"case": c, "disposition": "open"} for c in _LOSSES],
     }
     base.update(over)
@@ -370,19 +379,31 @@ def _experiment(env: str = "staging", **evidence_over) -> dict:
         environments=envs,
         owner="Owner",
         retrieval_experiment=True,
+        retrieval_flag="NOTEBOOK_RERANK",
         promotion_evidence=_evidence(**evidence_over),
     )
 
 
+def _accepted(case: str) -> dict:
+    return {"case": case, "disposition": "accepted", "decided_by": "Owner", "decision": _DECISION}
+
+
 def _with_first(first: dict) -> list:
-    """`first` for the first loss; every other loss fixed, so it alone decides."""
-    return [first] + [{"case": c, "disposition": "fixed", "ref": "#1"} for c in _LOSSES[1:]]
+    """`first` for the first loss; every other loss owner-accepted, so it alone decides."""
+    return [first] + [_accepted(c) for c in _LOSSES[1:]]
 
 
-def _promo(cap: dict) -> list:
+def _registry_with(cap: dict, registry: dict | None = None) -> dict:
+    """The committed registry with `cap` in place of its record of the same id."""
+    reg = registry if registry is not None else _registry()
+    caps = [c for c in reg["capabilities"] if c.get("id") != cap.get("id")]
+    return dict(reg, capabilities=caps + [cap])
+
+
+def _promo(cap: dict, registry: dict | None = None) -> list:
     return [
         f
-        for f in cc.check_retrieval_promotion_evidence(cap, _ROOT)
+        for f in cc.check_retrieval_promotion_evidence(cap, _ROOT, _registry_with(cap, registry))
         if f.rule == "retrieval_promotion_evidence"
     ]
 
@@ -499,7 +520,7 @@ def test_production_with_an_open_loss_fails():
 
 
 def test_production_with_every_loss_dispositioned_passes():
-    """Control for the rule above: owner-accepted and fixed losses may ship."""
+    """Control for the rule above: owner-accepted losses may ship."""
     accepted = {
         "case": _LOSSES[0],
         "disposition": "accepted",
@@ -552,9 +573,191 @@ def test_loss_accepted_with_a_non_durable_decision_link_fails():
     assert _says(_experiment("production", losses=_with_first(accepted)), "accepted without")
 
 
-def test_loss_fixed_without_a_ref_fails():
-    fixed = {"case": _LOSSES[0], "disposition": "fixed"}
-    assert _says(_experiment("production", losses=_with_first(fixed)), "marked fixed without")
+def test_a_loss_cannot_be_marked_fixed():
+    """`fixed` with any ref is not evidence of a fix (#5169 r3 F2)."""
+    for ref in ("anything", "#1", _DECISION):
+        fixed = {"case": _LOSSES[0], "disposition": "fixed", "ref": ref}
+        assert _says(_experiment("production", losses=_with_first(fixed)), "is marked fixed")
+
+
+@pytest.fixture
+def forge():
+    """Write a modified copy of the committed rerank artifact inside the repo
+    (the rule refuses files outside it) and remove it afterwards."""
+    folder = _ROOT / "tests" / ".forged_replays"
+    made: list[Path] = []
+
+    def _forge(mutate) -> str:
+        data = json.loads((_ROOT / _ARTIFACT).read_text(encoding="utf-8"))
+        mutate(data)
+        folder.mkdir(exist_ok=True)
+        path = folder / f"forged_{len(made)}.json"
+        path.write_text(json.dumps(data), encoding="utf-8")
+        made.append(path)
+        return str(path.relative_to(_ROOT))
+
+    yield _forge
+    for path in made:
+        path.unlink(missing_ok=True)
+    if folder.is_dir() and not any(folder.iterdir()):
+        folder.rmdir()
+
+
+def test_a_fix_is_a_newer_replay_in_which_the_case_no_longer_loses(forge):
+    """Control for the rule above: the replay, not the list, retires a loss."""
+
+    def fixed_first(d):
+        d["cases"][_LOSSES[0]]["treatment_hit"] = True
+
+    artifact = forge(fixed_first)
+    rest = [_accepted(c) for c in _LOSSES[1:]]
+    assert _promo(_experiment("production", artifact=artifact, losses=rest)) == []
+    still_listed = [_accepted(_LOSSES[0])] + rest
+    assert _says(
+        _experiment("production", artifact=artifact, losses=still_listed),
+        f"listed loss {_LOSSES[0]} is not a loss",
+    )
+
+
+def test_a_truncated_replay_cannot_pass(forge):
+    """A proper subset of the case set with `losses: []` was green at r3 (#5169 r3 F1)."""
+    keep = next(c for c in sorted(_registry_case_ids()) if c not in _LOSSES)
+
+    def truncate(d):
+        d["cases"] = {keep: d["cases"][keep]}
+
+    cap = _experiment("production", artifact=forge(truncate), losses=[])
+    assert _says(cap, "is missing cases of its case set")
+
+
+def test_a_replay_with_cases_outside_its_set_fails(forge):
+    def add(d):
+        d["cases"]["0000aaaa"] = {"baseline_hit": False, "treatment_hit": False}
+
+    assert _says(_experiment("staging", artifact=forge(add)), "cases outside its case set")
+
+
+def _registry_case_ids() -> set[str]:
+    entry = _registry()["retrieval_case_sets"][_CASE_SET]
+    return set(json.loads((_ROOT / entry["path"]).read_text(encoding="utf-8"))["cases"])
+
+
+def test_the_committed_artifact_matches_its_case_set_and_derived_arms():
+    """Control for the configuration tests below."""
+    assert _promo(_experiment("staging")) == []
+
+
+@pytest.mark.parametrize(
+    ("arm", "flag", "value", "expect"),
+    [
+        ("baseline", "NOTEBOOK_HYBRID_RETRIEVAL", "1", "must be off"),
+        ("baseline", "NOTEBOOK_RERANK", "1", "must be off"),
+        ("treatment", "NOTEBOOK_LEXICAL_V2", "1", "must be off"),
+        ("treatment", "NOTEBOOK_RERANK", "0", "must be on"),
+        ("treatment", "NOTEBOOK_RERANK", "maybe", "must be on"),
+    ],
+)
+def test_a_replay_of_another_configuration_fails(forge, arm, flag, value, expect):
+    """Wrong baseline or treatment arms cannot stand in for the real ones (#5169 r3 F1)."""
+
+    def change(d):
+        d[arm]["flags"][flag] = value
+
+    assert _says(_experiment("staging", artifact=forge(change)), f"{arm} ran {flag}")
+    assert _says(_experiment("staging", artifact=forge(change)), expect)
+
+
+def test_a_replay_must_declare_every_experiment_flag(forge):
+    def drop(d):
+        d["baseline"]["flags"].pop("NOTEBOOK_QUERY_REWRITE")
+
+    assert _says(_experiment("staging", artifact=forge(drop)), "are not the registered")
+
+
+def test_treatment_settings_must_match_the_record(forge):
+    def faster(d):
+        d["treatment"]["settings"]["NOTEBOOK_RERANK_TIMEOUT_MS"] = "200"
+
+    assert _says(_experiment("staging", artifact=forge(faster)), "treatment settings")
+    other = dict(_SETTINGS, NOTEBOOK_RERANK_TIMEOUT_MS="200")
+    assert _says(_experiment("staging", treatment_settings=other), "treatment settings")
+
+    def baseline_settings(d):
+        d["baseline"]["settings"] = {"NOTEBOOK_RERANK_TIMEOUT_MS": "4000"}
+
+    assert _says(_experiment("staging", artifact=forge(baseline_settings)), "baseline settings")
+
+
+def test_the_baseline_is_the_registrys_production_state():
+    """Were hybrid on in production, a replay with hybrid off is not the production path."""
+    reg = _registry()
+    for c in reg["capabilities"]:
+        if c["id"] == "notebook_hybrid_retrieval":
+            c["environments"] = dict(c["environments"], production="1")
+    assert any("must be on" in f.message for f in _promo(_experiment("staging"), reg))
+    assert _promo(_experiment("staging")) == []
+
+
+def test_case_set_must_be_registered_and_match_its_pin(tmp_path):
+    assert _says(_experiment("staging", case_set="unknown_set"), "is not in `retrieval_case_sets`")
+    reg = _registry()
+    entry = reg["retrieval_case_sets"][_CASE_SET]
+    entry["sha256"] = "0" * 64
+    assert any("pinned sha256" in f.message for f in _promo(_experiment("staging"), reg))
+    reg = _registry()
+    reg["retrieval_case_sets"][_CASE_SET]["count"] = 30
+    assert any("not its count" in f.message for f in _promo(_experiment("staging"), reg))
+
+
+def test_artifact_must_name_the_records_case_set(forge):
+    def rename(d):
+        d["case_set"] = "another_set"
+
+    assert _says(_experiment("staging", artifact=forge(rename)), "is not the record's")
+
+
+def test_retrieval_flag_must_be_one_the_hub_reads():
+    cap = _experiment("staging")
+    cap["retrieval_flag"] = "NOTEBOOK_INVENTED_FLAG"
+    assert _says(cap, "does not read")
+    cap.pop("retrieval_flag")
+    assert _promo(cap)
+
+
+def test_hub_env_reads_sees_dotted_and_bracket_access(tmp_path):
+    src = tmp_path / "mira-hub" / "src" / "lib"
+    src.mkdir(parents=True)
+    (src / "a.ts").write_text('x = process.env.NOTEBOOK_A; y = process.env["NOTEBOOK_B"];')
+    tests = src / "__tests__"
+    tests.mkdir()
+    (tests / "t.ts").write_text("process.env.NOTEBOOK_TEST_ONLY")
+    assert cc.hub_env_reads(tmp_path) == {"NOTEBOOK_A", "NOTEBOOK_B"}
+    assert {"NOTEBOOK_RERANK", "NOTEBOOK_HYBRID_RETRIEVAL"} <= cc.hub_env_reads(_ROOT)
+
+
+def test_validate_runs_the_provenance_check():
+    """Unhooking evidence_provenance.check_registry from validate() must go red.
+
+    Before #5169 this wiring was covered only by the committed-registry test,
+    and only while some record had a provenance finding: replacing the call with
+    a no-op left every suite green.
+    """
+    item = {
+        "path": "tools/evidence_provenance.py",
+        "observed_at": "2026-09-24",
+        "provenance": {
+            "commit_sha": "",
+            "environment": "ci",
+            "observed_at": "2026-09-24",
+            "outcome": "pass",
+            "falsified_by": "Revert the guard and the control must go red.",
+        },
+    }
+    cap = _cap(state="staging_enabled", environments={"staging": "1"}, evidence=[item])
+    reg = {"meta": {"provenance_enforced_from": "2026-09-01"}, "capabilities": [cap]}
+    direct = {f.rule for f in cc.evidence_provenance.check_registry(reg, _ROOT)}
+    assert "provenance_sha_missing" in direct, "precondition: the fixture has the finding"
+    assert "provenance_sha_missing" in {f.rule for f in cc.validate(reg, _ROOT)}
 
 
 def test_registry_rerank_cannot_reach_production_with_its_open_losses():

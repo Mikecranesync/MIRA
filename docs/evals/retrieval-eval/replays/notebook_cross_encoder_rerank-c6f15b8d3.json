@@ -1,12 +1,33 @@
 {
   "capability": "notebook_cross_encoder_rerank",
   "revision": "c6f15b8d357722308ee2e4fc1ebb65483e679488",
-  "case_set": "31 frozen failing staging turns from #5127; ids are the hashes used there, question text stays in staging",
+  "case_set": "notebook_failing_turns_5127",
   "hit_rule": "the oracle answer page and its text appear in the top 6 retrieved chunks",
   "runner": "BRAVO zero-token read-only staging replay (#5138), not the implementer of the treatment",
   "repeat": "two runs per arm, identical hit sets",
-  "baseline": "production path (NOTEBOOK_LEXICAL_V2=0, hybrid unset, rerank unset)",
-  "treatment": "NOTEBOOK_RERANK=1, fp32 reranker, timeout 4000 ms, pool 50, otherwise the production path",
+  "baseline": {
+    "description": "production path (NOTEBOOK_LEXICAL_V2=0, hybrid unset, rerank unset)",
+    "flags": {
+      "NOTEBOOK_LEXICAL_V2": "0",
+      "NOTEBOOK_QUERY_REWRITE": "unset",
+      "NOTEBOOK_HYBRID_RETRIEVAL": "unset",
+      "NOTEBOOK_RERANK": "unset"
+    }
+  },
+  "treatment": {
+    "description": "NOTEBOOK_RERANK=1, fp32 reranker, timeout 4000 ms, pool 50, otherwise the production path",
+    "flags": {
+      "NOTEBOOK_LEXICAL_V2": "0",
+      "NOTEBOOK_QUERY_REWRITE": "unset",
+      "NOTEBOOK_HYBRID_RETRIEVAL": "unset",
+      "NOTEBOOK_RERANK": "1"
+    },
+    "settings": {
+      "NOTEBOOK_RERANK_TIMEOUT_MS": "4000",
+      "NOTEBOOK_RERANK_POOL": "unset",
+      "RERANKER_MODEL": "fp32"
+    }
+  },
   "cases": {
     "111ede7e": {
       "baseline_hit": true,

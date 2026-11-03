@@ -56,6 +56,16 @@ meta:
     treating any `environments:` value as current. The validator checks
     repository-side invariants only.
 
+# Frozen case sets a retrieval replay artifact may be scored on
+# (tools/capability_closure.py check_retrieval_promotion_evidence). The sha256
+# and count pin the file: an artifact's case ids must equal the set exactly, so
+# a truncated replay cannot pass. Changing a set is a visible edit here.
+retrieval_case_sets:
+  notebook_failing_turns_5127:
+    path: docs/evals/retrieval-eval/replays/case-sets/notebook_failing_turns_5127.json
+    sha256: 8f6db87b9e789f9aaab45e7d409086adb7b815997e1992b723008c8bfb9cd6d2
+    count: 31
+
 capabilities:
 
   # =========================================================================
@@ -786,6 +796,7 @@ capabilities:
       - "Production: owner decision after the staging walk."
     review_by: "2026-11-17"
     retrieval_experiment: true
+    retrieval_flag: NOTEBOOK_LEXICAL_V2  # the Hub env var this experiment switches (mira-hub/src reads it)
     # Same-revision replay (#5138): 31 real failing staging turns, read-only
     # staging data, no model calls. Not the 77-question harness the flag was
     # tuned and pre-registered on. Hits are the answer page in the top 6.
@@ -798,6 +809,8 @@ capabilities:
       replayed_by: "BRAVO retrieval acceptance replay"
       replay: "https://github.com/Mikecranesync/MIRA/issues/5127#issuecomment-6594301658"
       artifact: docs/evals/retrieval-eval/replays/notebook_lexical_idf-dd2cc10fb.json
+      case_set: notebook_failing_turns_5127
+      treatment_settings: {}
       losses:
         - {case: 2240f38d, disposition: open}
         - {case: caa66f00, disposition: open}
@@ -858,6 +871,7 @@ capabilities:
       - "Production: owner decision after the staging walk; spend visible in the OpenAI run-budget log."
     review_by: "2026-12-15"
     retrieval_experiment: true
+    retrieval_flag: NOTEBOOK_QUERY_REWRITE  # the Hub env var this experiment switches (mira-hub/src reads it)
     notes: >-
       Any change to QUERY_REWRITE_PROMPT, the model, or the token cap reopens
       the measurement above — the numbers belong to that exact prompt.
@@ -902,6 +916,7 @@ capabilities:
       - "An independent same-revision replay against the production path with every lost case listed (promotion_evidence), then an owner decision on each loss."
     review_by: "2026-12-15"
     retrieval_experiment: true
+    retrieval_flag: NOTEBOOK_HYBRID_RETRIEVAL  # the Hub env var this experiment switches (mira-hub/src reads it)
 
   - id: notebook_cross_encoder_rerank
     purpose: >-
@@ -943,10 +958,11 @@ capabilities:
       production runs no reranker service.
     acknowledged_rules: []
     promotion_criteria:
-      - "Every loss in promotion_evidence is fixed (with a ref) or accepted by the owner with a linked decision."
+      - "Every loss in promotion_evidence is accepted by the owner with a linked decision, or gone from a newer same-revision replay at the fix revision."
       - "Rerank wait and fallback reason visible on the retrieval span (#5037) on the staging build."
     review_by: "2026-12-15"
     retrieval_experiment: true
+    retrieval_flag: NOTEBOOK_RERANK  # the Hub env var this experiment switches (mira-hub/src reads it)
     # Same-revision replay (#5138): 31 real failing staging turns, read-only
     # staging data, local fp32 reranker, no model calls, two identical runs,
     # 0 fallbacks at 4000 ms. Hits are the answer page in the top 6.
@@ -959,6 +975,8 @@ capabilities:
       replayed_by: "BRAVO retrieval acceptance replay"
       replay: "https://github.com/Mikecranesync/MIRA/issues/5138#issuecomment-6597399064"
       artifact: docs/evals/retrieval-eval/replays/notebook_cross_encoder_rerank-c6f15b8d3.json
+      case_set: notebook_failing_turns_5127
+      treatment_settings: {NOTEBOOK_RERANK_TIMEOUT_MS: "4000", NOTEBOOK_RERANK_POOL: unset, RERANKER_MODEL: fp32}
       losses:
         - {case: c51364b4, disposition: open}
         - {case: bef709ed, disposition: open}
