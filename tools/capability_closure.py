@@ -381,6 +381,86 @@ def check_production_has_rollback(cap: dict) -> list[Finding]:
     return out
 
 
+LOSS_DISPOSITIONS = {"open", "accepted", "fixed"}
+
+
+def check_retrieval_promotion_evidence(cap: dict) -> list[Finding]:
+    """A retrieval experiment is not promoted on a net score (#5138).
+
+    LEXICAL_V2 ran in staging for two weeks on a net gain measured on a
+    different build, while it lost six cases the production path answered. A
+    record marked `retrieval_experiment: true` must therefore carry, once it is
+    on in staging or production, a `promotion_evidence` block: an independent
+    replay of the baseline and the treatment at ONE revision, and every case the
+    treatment lost, by id. Staging may run with losses `open`; production may
+    not. A loss is `accepted` only with a decision by the record's owner (the
+    regression is an owner call, never an implementer's), or `fixed` with a ref.
+    Thresholds stay in docs/evals/retrieval-eval/release-gates.md; this rule
+    only refuses promotion without the evidence those gates are read from.
+    """
+    cid = cap.get("id", "<no id>")
+    if cap.get("retrieval_experiment") is not True:
+        return []
+    envs = cap.get("environments") or {}
+    prod = (
+        str(envs.get("production", "")).lower() in _ON or cap.get("state") == "production_enabled"
+    )
+    live = (
+        prod or str(envs.get("staging", "")).lower() in _ON or cap.get("state") == "staging_enabled"
+    )
+    if not live:
+        return []
+
+    def bad(msg: str) -> Finding:
+        return Finding(cid, "retrieval_promotion_evidence", msg)
+
+    pe = cap.get("promotion_evidence")
+    if not isinstance(pe, dict):
+        return [bad("on in staging or production with no `promotion_evidence` replay")]
+    out = []
+    for f in ("baseline", "treatment", "replay", "replayed_by"):
+        if not str(pe.get(f) or "").strip():
+            out.append(bad(f"`promotion_evidence.{f}` is empty"))
+    base_rev, treat_rev = (
+        str(pe.get("baseline_revision") or ""),
+        str(pe.get("treatment_revision") or ""),
+    )
+    if not re.fullmatch(r"[0-9a-f]{9,40}", base_rev) or base_rev != treat_rev:
+        out.append(
+            bad(
+                "baseline and treatment must be replayed at the same revision "
+                f"(baseline_revision {base_rev!r}, treatment_revision {treat_rev!r})"
+            )
+        )
+    if pe.get("independent") is not True:
+        out.append(bad("`promotion_evidence.independent` must be true"))
+    losses = pe.get("losses")
+    if not isinstance(losses, list):
+        return out + [
+            bad("`promotion_evidence.losses` must list every lost case (an empty list if none)")
+        ]
+    for loss in losses:
+        case = str((loss or {}).get("case") or "").strip() if isinstance(loss, dict) else ""
+        disp = loss.get("disposition") if isinstance(loss, dict) else None
+        if not case or disp not in LOSS_DISPOSITIONS:
+            out.append(
+                bad(
+                    f"loss {loss!r} needs a `case` and a disposition in {sorted(LOSS_DISPOSITIONS)}"
+                )
+            )
+            continue
+        if disp == "open" and prod:
+            out.append(bad(f"production with loss {case} still open"))
+        if disp == "accepted" and (
+            loss.get("decided_by") != cap.get("owner")
+            or not str(loss.get("decision") or "").startswith("https://")
+        ):
+            out.append(bad(f"loss {case} accepted without a linked decision by the owner"))
+        if disp == "fixed" and not str(loss.get("ref") or "").strip():
+            out.append(bad(f"loss {case} marked fixed without a `ref`"))
+    return out
+
+
 def check_review_not_expired(cap: dict, today: _dt.date) -> list[Finding]:
     cid = cap.get("id", "<no id>")
     rb = cap.get("review_by")
@@ -424,6 +504,7 @@ def validate(registry: dict, root: Path, today: _dt.date | None = None) -> list[
         findings += check_ci_jobs_exist(cap, jobs, gated, workflow_check_names)
         findings += check_evidence_paths_exist(cap, root)
         findings += check_production_has_rollback(cap)
+        findings += check_retrieval_promotion_evidence(cap)
         findings += check_review_not_expired(cap, today)
 
     # Evidence provenance + observation proof. Kept in a sibling module because
