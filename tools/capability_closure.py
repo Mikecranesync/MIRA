@@ -383,8 +383,20 @@ def check_production_has_rollback(cap: dict) -> list[Finding]:
 
 LOSS_DISPOSITIONS = {"open", "accepted", "fixed"}
 
+# A replay or an owner decision must be a durable record in this repository's
+# GitHub history (an issue or PR, optionally one comment), not free text. Free
+# text let a replay that never happened satisfy the rule (#5169 F2).
+_DURABLE_REF_RE = re.compile(
+    r"https://github\.com/Mikecranesync/MIRA/(?:issues|pull)/\d+(?:#issuecomment-\d+)?"
+)
 
-def check_retrieval_promotion_evidence(cap: dict) -> list[Finding]:
+# Rules a tracked blocker may NOT silence. An open regression in production is
+# cleared by fixing it or by an owner decision on that loss, never by naming an
+# issue in `acknowledged_rules` (#5169 F1).
+NON_ACKNOWLEDGEABLE_RULES = {"retrieval_promotion_evidence"}
+
+
+def check_retrieval_promotion_evidence(cap: dict, root: Path) -> list[Finding]:
     """A retrieval experiment is not promoted on a net score (#5138).
 
     LEXICAL_V2 ran in staging for two weeks on a net gain measured on a
@@ -397,6 +409,11 @@ def check_retrieval_promotion_evidence(cap: dict) -> list[Finding]:
     regression is an owner call, never an implementer's), or `fixed` with a ref.
     Thresholds stay in docs/evals/retrieval-eval/release-gates.md; this rule
     only refuses promotion without the evidence those gates are read from.
+
+    The revision must be a real commit on durable history (main or a tag), and
+    the replay a durable GitHub record, checked with the same helpers as
+    evidence provenance. On a shallow clone those helpers cannot answer, and an
+    unanswerable question is not a finding (see evidence_provenance).
     """
     cid = cap.get("id", "<no id>")
     if cap.get("retrieval_experiment") is not True:
@@ -421,6 +438,9 @@ def check_retrieval_promotion_evidence(cap: dict) -> list[Finding]:
     for f in ("baseline", "treatment", "replay", "replayed_by"):
         if not str(pe.get(f) or "").strip():
             out.append(bad(f"`promotion_evidence.{f}` is empty"))
+    replay = str(pe.get("replay") or "").strip()
+    if replay and not _DURABLE_REF_RE.fullmatch(replay):
+        out.append(bad(f"`promotion_evidence.replay` {replay!r} is not a MIRA issue or PR link"))
     base_rev, treat_rev = (
         str(pe.get("baseline_revision") or ""),
         str(pe.get("treatment_revision") or ""),
@@ -432,6 +452,10 @@ def check_retrieval_promotion_evidence(cap: dict) -> list[Finding]:
                 f"(baseline_revision {base_rev!r}, treatment_revision {treat_rev!r})"
             )
         )
+    elif not evidence_provenance.commit_exists(root, base_rev):
+        out.append(bad(f"replay revision {base_rev!r} is not a commit here"))
+    elif evidence_provenance.commit_is_durable(root, base_rev) is False:
+        out.append(bad(f"replay revision {base_rev[:12]} is not on main or a tag"))
     if pe.get("independent") is not True:
         out.append(bad("`promotion_evidence.independent` must be true"))
     losses = pe.get("losses")
@@ -453,7 +477,7 @@ def check_retrieval_promotion_evidence(cap: dict) -> list[Finding]:
             out.append(bad(f"production with loss {case} still open"))
         if disp == "accepted" and (
             loss.get("decided_by") != cap.get("owner")
-            or not str(loss.get("decision") or "").startswith("https://")
+            or not _DURABLE_REF_RE.fullmatch(str(loss.get("decision") or "").strip())
         ):
             out.append(bad(f"loss {case} accepted without a linked decision by the owner"))
         if disp == "fixed" and not str(loss.get("ref") or "").strip():
@@ -504,7 +528,7 @@ def validate(registry: dict, root: Path, today: _dt.date | None = None) -> list[
         findings += check_ci_jobs_exist(cap, jobs, gated, workflow_check_names)
         findings += check_evidence_paths_exist(cap, root)
         findings += check_production_has_rollback(cap)
-        findings += check_retrieval_promotion_evidence(cap)
+        findings += check_retrieval_promotion_evidence(cap, root)
         findings += check_review_not_expired(cap, today)
 
     # Evidence provenance + observation proof. Kept in a sibling module because
@@ -521,7 +545,7 @@ def validate(registry: dict, root: Path, today: _dt.date | None = None) -> list[
     # silence a future `production_no_rollback` on the same capability.
     ack: dict[str, set[str]] = {c.get("id"): set(c.get("acknowledged_rules") or []) for c in caps}
     for f in findings:
-        if f.rule in ack.get(f.cap, set()):
+        if f.rule in ack.get(f.cap, set()) and f.rule not in NON_ACKNOWLEDGEABLE_RULES:
             f.acknowledged = True
     return findings
 
