@@ -99,11 +99,12 @@ const TOPIC_PATTERNS: readonly TopicPattern[] = [
 /** Every (topic, matched word) pair found in free text — a work order's title + description. */
 export function selectTopics(text: string): TopicMatch[] {
   const out: TopicMatch[] = [];
-  // A clause that rules work out ("no valve service", "do not touch the valves") adds nothing
-  // (Codex EGM F40). Clauses split at sentence ends, semicolons, commas and "but".
+  // What a clause rules out ("no valve service", "without removing the valves") adds nothing
+  // (Codex EGM F40): each clause is cut at its first negation word, keeping the work asked for
+  // before it. Clauses split at sentence ends, semicolons, commas and "but".
   text = text
     .split(/[.;,!?]|\bbut\b/i)
-    .filter((c) => !/\b(?:no|not|don't|never|without|except|excluding)\b/i.test(c))
+    .map((c) => c.split(/\b(?:no|not|don't|never|without|except|excluding)\b/i)[0])
     .join(" . ");
   for (const { re, topics } of TOPIC_PATTERNS) {
     re.lastIndex = 0;

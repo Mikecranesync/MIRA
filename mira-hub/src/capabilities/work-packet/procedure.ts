@@ -38,9 +38,9 @@ const REMOVING_RE = /^REMOVING THE (.+)$/;
 const REINSTALL_VERB_RE = /\b(?:replace|replaces|slip|slide|install|reinstall|reassemble|fit|refit|mount)\b/i;
 const REASSEMBLY_RE = /\breassembl/i;
 /** Steps that only ready the pump for putting a part back ("Rotate crankshaft by hand so …",
- *  "Lubricate the Plungers."). An allow-list: any other first word stops the walk back, so work the
+ *  "Lubricate the Plungers."). An allow-list of the verbs seen in those steps: any other first word stops the walk back, so work the
  *  packet was not asked for is never pulled in as "preparation". */
-const PREP_VERB_RE = /^(?:rotate|turn|lubricate|oil|clean|wipe)\b/i;
+const PREP_VERB_RE = /^(?:rotate|turn|lubricate|oil)\b/i;
 const IN_SEQUENCE_RE = /\bin (?:this|the following) (?:sequence|order)\b/i;
 
 const blockKey = (heading: string, sub: string | null) => `${heading}\u0000${sub ?? ""}`;

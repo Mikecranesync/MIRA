@@ -293,6 +293,11 @@ describe("EGM round 1 — findings reproduced on the fixture", () => {
     expect(w!.value).toBe("Every system needs a pressure-limiting device and a separate relief device on the outlet side. Without them the pump or the hose can burst.");
     expect(p.jha?.some((r) => r.hazard.value === w!.value)).toBe(true);
   });
+  it("F05 control: a bare WARNING with nothing readable under it stays in Safety as unknown", () => {
+    const text = FIXTURES["manual-85v2.txt"].replace("REMOVING THE OUTLET HEAD\n", "WARNING\nREMOVING THE OUTLET HEAD\n");
+    const p = build("8520", undefined, manual(text));
+    expect(p.safety.cautions.some((c) => c.label === "unknown" && /^WARNING on p\.2/.test(c.basis))).toBe(true);
+  });
   it("F14: a note naming a model number the manual does not cover is not settled for this pump", () => {
     const p = build("8520");
     const n = p.steps.flatMap((x) => x.notes ?? []).find((x) => x.text.value === "Models 8520, 8590 take the short Inlet Adapter.");
@@ -304,5 +309,9 @@ describe("EGM round 1 — findings reproduced on the fixture", () => {
     expect(p.scope.map((s) => s.value)).toEqual(["seals"]);
     expect(p.steps.some((s) => s.topic === "valves")).toBe(false);
     expect(build("8520", "Reseal it, do not touch the valves.").scope.map((s) => s.value)).toEqual(["seals"]);
+  });
+  it("F40 control: a negation later in a clause keeps the work asked for before it", () => {
+    expect(build("8520", "Reseal pump without removing the valves.").scope.map((s) => s.value)).toEqual(["seals"]);
+    expect(build("8520", "Replace all seals except the valve seats.").scope.map((s) => s.value)).toEqual(["seals"]);
   });
 });

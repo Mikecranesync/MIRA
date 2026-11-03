@@ -543,7 +543,13 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
         // The source is the exact run of physical lines the text was joined from, so a number that
         // wrapped onto a continuation line is still checkable word-for-word against its source.
         const cautionText = textParts.join(" ").replace(/\s{2,}/g, " ").trim();
-        if (standalone && cautionText.length === 0) continue; // a bare word with nothing under it
+        if (standalone && cautionText.length === 0) {
+          // A bare heading with nothing readable under it: shown in Safety as unknown, never dropped.
+          const cs = { ...src, page: pg.page, line };
+          problems.push(`page ${pg.page}: a ${kind} heading has no text that could be read — not shown as verified`);
+          omittedCautions.push({ kind, source: cs, reason: "no text could be read under this heading — read it in the manual" });
+          continue;
+        }
         const cautionSource = { ...src, page: pg.page, line: lines.slice(i, j).join(" ") };
         const caution: SmCaution = { kind, text: cautionText, source: cautionSource };
         // The block it is printed in, snapshot now: a note belongs to the step before it, and to that
