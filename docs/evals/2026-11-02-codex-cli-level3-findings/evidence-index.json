@@ -1,0 +1,275 @@
+{
+  "reportAuthor": "Codex CLI",
+  "createdAt": "2026-11-03T01:26:21.052048+00:00",
+  "verdict": "NOT YET ACCEPTED",
+  "completeCustomerLanesAtLevel3": [],
+  "taskRoot": "/Users/charlienode/Documents/Codex/2026-11-01/task",
+  "artifact": {
+    "candidate": "fe8c282865992ea2c7c93c841139c01c8e59bb5a",
+    "origin": "/Users/charlienode/Documents/Codex/2026-11-01/task/handover-l3-claude-2026-11-02/wt-history/mira-hub/.next/standalone",
+    "copiedArtifact": "/Users/charlienode/Documents/Codex/2026-11-01/task/level3-answer-successor-evidence/phone-preview/interactive-fe8c28286/mira-hub",
+    "serverSha256": "ece4f0e5f307b825db3f88db5ed7a324350a2c14037735903cb0baf3890d0d25",
+    "buildId": "zU-b87lwMU12Kj2Qz_sxd",
+    "ownerBuildReceipt": "/Users/charlienode/Documents/Codex/2026-11-01/task/handover-l3-claude-2026-11-02/evidence/build-final/loopback-build-process.json",
+    "applicationCodeEdited": false,
+    "purpose": "One immutable interactive localhost preview; no automated provider calls"
+  },
+  "currentPreview": {
+    "candidate": "fe8c282865992ea2c7c93c841139c01c8e59bb5a",
+    "buildId": "zU-b87lwMU12Kj2Qz_sxd",
+    "phoneEntry": "http://127.0.0.1:3917/v3/?notebook=5b4f7724-2c26-4aca-bbcb-35fc761e4585&thread=391366b5-20a2-44fa-81dc-c83cadccb4b0",
+    "runtime": "task-owned standalone 127.0.0.1:3917 / PostgreSQL 55493 / USB reverse3917",
+    "physicalDevice": "Pixel 9a",
+    "phoneControlFinishedAt": "2026-11-03T01:20:30.386633+00:00",
+    "debugForwardRemoved": true,
+    "leaveUSBConnected": true,
+    "newAutomatedProviderRequests": 0,
+    "budget": {
+      "approvedTotalUsd": 0.5,
+      "priorBookedUsd": 0.0352065,
+      "remainingCapUsd": 0.4647935,
+      "humanProviderRequestLimit": 4,
+      "includesSafety": true,
+      "automaticQuestions": 0,
+      "provider": "OpenAI gpt-5.4-mini",
+      "scope": "same GS10 initial answer and observation handover test"
+    },
+    "applicationCodeEdited": false,
+    "implementationOwner": "Claude",
+    "verdict": "NOT YET ACCEPTED",
+    "completeCustomerLanesAtLevel3": [],
+    "knownLimits": [
+      "Full PDF manual-page opening fails; quoted excerpt opens",
+      "No latest-revision actual model call during this preview; two human questions available within shared approved cap",
+      "No completed representative human acceptance",
+      "No live CV-101/Ignition/PLC telemetry or physical garage variant established",
+      "Overall lab health remains 503 missing INGEST_URL; this is not a shared deployment"
+    ]
+  },
+  "sharedReferenceReceipts": [
+    {
+      "baseRefOid": "046572926140e4da3a600d70f631c80f82bda3ee",
+      "headRefOid": "cab91fbbc3037e772e7afae83234c3f7d17107a0",
+      "mergeCommit": {
+        "oid": "af2c7bd78d2888687275d6ac3c6ef405a08cb62b"
+      },
+      "mergedAt": "2026-11-01T22:29:47Z",
+      "number": 5091,
+      "state": "MERGED",
+      "title": "feat(hub): technician observation state, first machine-memory loop (#5088)",
+      "bodySha256": "bc3c8f56524b1dd7d8997934d7c0ac0899641801ea8ae50148840758c817a93a",
+      "checkCounts": {
+        "SUCCESS": 123,
+        "CANCELLED": 3,
+        "FAILURE": 1
+      },
+      "ciGates": [
+        {
+          "name": "CI Gate",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/Mikecranesync/MIRA/actions/runs/41339422736/job/124948950704"
+        },
+        {
+          "name": "CI Gate",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/Mikecranesync/MIRA/actions/runs/41356083200/job/124998515608"
+        }
+      ]
+    },
+    {
+      "baseRefOid": "8f3b56311fd6010a2e2f2d3d3edb806ead8eb0ca",
+      "headRefOid": "809a6877e73dd42385c87b36af27c1663cec8111",
+      "mergeCommit": null,
+      "mergedAt": null,
+      "number": 5094,
+      "state": "OPEN",
+      "title": "docs: map FactoryLM package to urgent customer jobs",
+      "bodySha256": "aed369ef0dd300858b9102ecdfeab67978d8745a804747792cb3eadd2c464f42",
+      "checkCounts": {
+        "SUCCESS": 42,
+        "CANCELLED": 2,
+        "SKIPPED": 8
+      },
+      "ciGates": [
+        {
+          "name": "CI Gate",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/Mikecranesync/MIRA/actions/runs/41335100941/job/124933529532"
+        }
+      ]
+    },
+    {
+      "baseRefOid": "d7bf852a1df406deac578b482ab339843a13d965",
+      "headRefOid": "e4ba51a4879b7c829a7cd171454559030e10926f",
+      "mergeCommit": null,
+      "mergedAt": null,
+      "number": 5086,
+      "state": "OPEN",
+      "title": "docs: November 1 vision benchmark and first-customer Level 3 plan (Mission 001 premise)",
+      "bodySha256": "3207a3a3b19271c08ff606c18c4c19e8491b4ce4f43398bfca65f67ca460b593",
+      "checkCounts": {
+        "SUCCESS": 35,
+        "SKIPPED": 8
+      },
+      "ciGates": [
+        {
+          "name": "CI Gate",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/Mikecranesync/MIRA/actions/runs/41329181480/job/124915998201"
+        }
+      ]
+    },
+    {
+      "baseRefOid": "f853fce30ee93b048441303b3d0b12eeeca6c153",
+      "headRefOid": "7cd06ab9ff49b46d8395e8fcec9967542c4cd1f7",
+      "mergeCommit": {
+        "oid": "c6f15b8d357722308ee2e4fc1ebb65483e679488"
+      },
+      "mergedAt": "2026-11-02T15:39:56Z",
+      "number": 5062,
+      "state": "MERGED",
+      "title": "feat(hub): technician Work Packet \u2014 sourced, editable packet from CAT Pumps manuals with PDF export (#4982)",
+      "bodySha256": "4afdbc09d5d2cea7ca3c1ca3ccf7581c31912d4c1621b0763e0f96bed68d1987",
+      "checkCounts": {
+        "CANCELLED": 5,
+        "SUCCESS": 69,
+        "FAILURE": 1
+      },
+      "ciGates": [
+        {
+          "name": "CI Gate",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/Mikecranesync/MIRA/actions/runs/41403328518/job/125142780534"
+        }
+      ]
+    }
+  ],
+  "evidenceFiles": [
+    {
+      "taskRelativePath": "MIRA-VISION-BENCHMARK-2026-11-01.md",
+      "sha256": "62f4d322f2e6e1fcaa44647a8c7e594afd871106de26955f526479d4ff0037fd",
+      "bytes": 14440
+    },
+    {
+      "taskRelativePath": "docs/superpowers/plans/2026-11-01-first-customer-level-3.md",
+      "sha256": "9d87270a788f5bc043822d9a7a9c51bc68cbf480abe9dc03a468711e29d1e095",
+      "bytes": 30645
+    },
+    {
+      "taskRelativePath": "level3-integration/HANDOFF.md",
+      "sha256": "ba3b25833af352ad24c7c2cba6f8c059b0d9ec278463f15fe97495d31481e81a",
+      "bytes": 18113
+    },
+    {
+      "taskRelativePath": "level3-answer-successor-evidence/phone-preview/FREEZE-REPAIR.json",
+      "sha256": "195510453e8e7f690636a9ab395f17c0f75706ca228886d0680a5e8ee7618f6f",
+      "bytes": 1756
+    },
+    {
+      "taskRelativePath": "level3-answer-successor-evidence/phone-preview/build-repair/loopback-build-process.json",
+      "sha256": "6456ae7795d1c9ca54590b0f331aa5bc89b5c3d8f0ed88bef47e40d6b2eb1a0b",
+      "bytes": 1039
+    },
+    {
+      "taskRelativePath": "level3-answer-successor-evidence/phone-preview/logs/chronology-red.log",
+      "sha256": "4b0c65c5e6560f92be39669879c70f4765e30a456087c40f7db6f9f64f0b2da6",
+      "bytes": 3082
+    },
+    {
+      "taskRelativePath": "level3-answer-successor-evidence/phone-preview/logs/repair-answer-checks.log",
+      "sha256": "e7fb36afe4186aa07763d36fa3d8e12d5c3f09583e3f8534855ba41b4105d564",
+      "bytes": 85902
+    },
+    {
+      "taskRelativePath": "level3-answer-successor-evidence/phone-preview/evidence/real-http-upload.json",
+      "sha256": "49262d315596621aae3909a6c32c953c055f5f2d80ebbc3804c95ccab9c8ca23",
+      "bytes": 410
+    },
+    {
+      "taskRelativePath": "level3-answer-successor-evidence/phone-preview/evidence/pdf-serving.json",
+      "sha256": "7f3e1f417a4a4c8c8ec660cb34bf3a9fecfe815b095a2f6ae63f5d6a43070bdd",
+      "bytes": 1687
+    },
+    {
+      "taskRelativePath": "level3-answer-successor-evidence/phone-preview/evidence/phone-observations.json",
+      "sha256": "b1187be3b0935c7cb60f4f5999181e1fe06a3bfa1426930e57966d27293c11c3",
+      "bytes": 7035
+    },
+    {
+      "taskRelativePath": "level3-answer-successor-evidence/phone-preview/evidence/physical-cold-restart.json",
+      "sha256": "4f4ef7a06b99d905ba342bdbf015548484622e8646729e8a84f86ebdb50a7304",
+      "bytes": 487
+    },
+    {
+      "taskRelativePath": "level3-answer-successor-evidence/phone-preview/evidence/native-keyboard-back-draft.json",
+      "sha256": "92eee91814745b9a3736e6cc42a0f773beda41d201ac70a88d955a1efd7c3446",
+      "bytes": 406
+    },
+    {
+      "taskRelativePath": "level3-answer-successor-evidence/phone-preview/evidence/repaired-initial.json",
+      "sha256": "db3bd88aa8677e4e7472f895c14096ad72e144a9fade8564494196ee7a9dad06",
+      "bytes": 2255
+    },
+    {
+      "taskRelativePath": "level3-answer-successor-evidence/phone-preview/evidence/repaired-handover.json",
+      "sha256": "6930baf1794a40437e40ffb3116afd96d1247d4844ad43e1307177b2ab9b2ada",
+      "bytes": 3728
+    },
+    {
+      "taskRelativePath": "level3-answer-successor-evidence/phone-preview/evidence/interactive-artifact.json",
+      "sha256": "85b9e9f3a2ecf6dec1a1076438c4b9661dbde477978ae2c6a80bdadaca360b86",
+      "bytes": 750
+    },
+    {
+      "taskRelativePath": "level3-answer-successor-evidence/phone-preview/evidence/interactive-phone.json",
+      "sha256": "44d51e1faefeb3118a91b1c09d773fc85f067a73fd53f24ec5d166fef0b9e0d0",
+      "bytes": 3322
+    },
+    {
+      "taskRelativePath": "level3-answer-successor-evidence/phone-preview/evidence/interactive-source.json",
+      "sha256": "2215fc24c56d348cfaa0c8450a8827eec765ddd06747f46f2a848b8d431fa101",
+      "bytes": 2474
+    },
+    {
+      "taskRelativePath": "level3-answer-successor-evidence/phone-preview/evidence/interactive-new-thread.json",
+      "sha256": "899e7331184f9a4160996a74680813ce39140d8fc9986feaf59bd5ee84b13d0e",
+      "bytes": 484
+    },
+    {
+      "taskRelativePath": "handover-l3-claude-2026-11-02/FREEZE-fe8c28286.json",
+      "sha256": "d80f93c7d66c04a6a960bed005e8e0bb8f8c930b85fadf1ad860baea76df19c2",
+      "bytes": 2228
+    },
+    {
+      "taskRelativePath": "handover-l3-claude-2026-11-02/VERDICT.md",
+      "sha256": "f6c3ba258c83631f22cd62baf4ae179004b6d8a24542792707700c47df36fbb5",
+      "bytes": 6693
+    },
+    {
+      "taskRelativePath": "handover-l3-claude-2026-11-02/evidence/build-final/loopback-build-process.json",
+      "sha256": "601c4422d8ea33f474e381f73e172fd4cae36619b0a48f4fa5a74309fce9a64a",
+      "bytes": 1039
+    },
+    {
+      "taskRelativePath": "handover-l3-claude-2026-11-02/logs/full-suite-fe8c28286.log",
+      "sha256": "fabe6858d20f0530b5b49eeff0bbba1a545cde7c63da3142821ed90a9ded258d",
+      "bytes": 911964
+    },
+    {
+      "taskRelativePath": "handover-l3-claude-2026-11-02/gs10/logs/journey-record-pixel7.json",
+      "sha256": "46cac82b2cb2cb5efb22fd60ef98545a23e0cd984eb483b86e4694af0c89f262",
+      "bytes": 1790
+    },
+    {
+      "taskRelativePath": "handover-l3-claude-2026-11-02/gs10/logs/journey-after-restart-pixel7.json",
+      "sha256": "f6bae57b8113e38991c2f5e1bb91fbf591421def733e38bae30b1ad124b3ec04",
+      "bytes": 1632
+    }
+  ],
+  "privacy": "Hashes and explicitly selected safe metadata only. No credentials, raw provider request bodies, customer conversations, device serial or OEM PDF included."
+}
