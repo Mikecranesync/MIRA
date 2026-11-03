@@ -3,6 +3,7 @@
 import ast
 import json
 import re
+import time
 from pathlib import Path
 
 import cv101_relay_poller as p
@@ -283,3 +284,234 @@ def test_uncorrected_host_signing_time_would_be_rejected():
     headers = sign_hmac_headers("tenant-a", b"{}", "k" * 32, now=server_now - 600)
     with pytest.raises(ValueError, match="bad_timestamp"):
         verify_hmac(headers, b"{}", "k" * 32, _now=server_now)
+
+
+# ── F6: sampling is independent of HTTP delivery and SNTP refresh ──────────────
+
+
+class FakeTime:
+    """Deterministic monotonic/wall clock; ``sleep`` advances both."""
+
+    def __init__(self, mono=0.0, wall=1793590925.0):
+        self.mono, self.wall = mono, wall
+
+    def sleep(self, dt):
+        self.mono += dt
+        self.wall += dt
+
+
+class PulsePlc(FakeV4Plc):
+    """DI_05 true only while ``lo <= now < hi`` on the fake clock."""
+
+    def __init__(self, t, lo, hi):
+        super().__init__()
+        self.t, self.lo, self.hi, self.read_times = t, lo, hi, []
+
+    def read_coils(self, offset, count=1, device_id=1):
+        self.read_times.append(round(self.t.mono, 3))
+        self.di05 = self.lo <= self.t.mono < self.hi
+        return super().read_coils(offset, count, device_id)
+
+
+def test_sampler_keeps_cadence_and_queues_both_edges_of_a_sub_second_pulse():
+    """Codex F6 scenario: pulse true over [0.25, 0.75) s. The sampler only queues
+    (never posts), so reads land every POLL_S and both transitions are captured."""
+    t = FakeTime()
+    plc = PulsePlc(t, 0.25, 0.75)
+    outbox = p.Outbox()
+    p.sample_loop(
+        plc,
+        outbox,
+        stop=lambda: t.mono > 1.0,
+        mono=lambda: t.mono,
+        wall=lambda: t.wall,
+        sleep=t.sleep,
+    )
+    assert plc.read_times == [0.0, 0.25, 0.5, 0.75, 1.0]
+    queued = []
+    while True:
+        try:
+            queued.append(outbox.get(timeout=0))
+        except p.queue.Empty:
+            break
+    assert [(s.value, round(s.read_mono, 3), s.change) for s in queued] == [
+        (False, 0.0, False),
+        (True, 0.25, True),
+        (False, 0.75, True),
+    ]
+
+
+def test_sample_loop_never_touches_the_network_or_the_clock_refresh():
+    fn = next(
+        n
+        for n in ast.walk(ast.parse(SRC))
+        if isinstance(n, ast.FunctionDef) and n.name == "sample_loop"
+    )
+    called = {
+        c.func.id if isinstance(c.func, ast.Name) else c.func.attr
+        for c in ast.walk(fn)
+        if isinstance(c, ast.Call) and isinstance(c.func, (ast.Name, ast.Attribute))
+    }
+    assert "read_coil" in called
+    assert not called & {"post", "deliver", "refresh", "sntp_offset", "stamp"}
+
+
+class _OkResp:
+    status_code = 200
+
+    @staticmethod
+    def json():
+        return {"accepted": 1, "rejected": 0}
+
+
+def test_a_slow_post_does_not_stall_sampling_end_to_end():
+    """Real threads: the first POST blocks until the sampler has observed BOTH
+    edges of the pulse. If delivery still blocked sampling this would deadlock
+    until the 5 s guard and the edges would be missing."""
+    import threading
+
+    reads = {"n": 0}
+    script = [False, True, False]  # one pulse, then rest
+
+    class ScriptPlc:
+        def read_coils(self, offset, count=1, device_id=1):
+            if offset != p.DI05_COIL_OFFSET:
+                return _Resp(exc=2)
+            i = reads["n"]
+            reads["n"] += 1
+            return _Resp(bit=script[i] if i < len(script) else False)
+
+    edges_seen = threading.Event()
+    posted, first_post_waited = [], []
+
+    class SlowHttp:
+        def post(self, url, content, headers):
+            if not posted:
+                first_post_waited.append(edges_seen.wait(5))
+            posted.append(json.loads(content)["tags"][0]["value"])
+            return _OkResp()
+
+    outbox = p.Outbox()
+    stop = threading.Event()
+    clock = p.Clock(query=lambda host: None)
+    sender = threading.Thread(
+        target=p.send_loop,
+        args=(outbox, SlowHttp(), clock, "tenant-a", "k" * 32, stop),
+        daemon=True,
+    )
+    sender.start()
+
+    def sampler_stop():
+        if reads["n"] >= 3:
+            edges_seen.set()
+        return reads["n"] >= 6
+
+    p.sample_loop(ScriptPlc(), outbox, stop=sampler_stop, sleep=lambda dt: None)
+    deadline = time.monotonic() + 5
+    while len(posted) < 3 and time.monotonic() < deadline:
+        time.sleep(0.01)
+    stop.set()
+    sender.join(2)
+    assert first_post_waited == [True]  # sampler advanced while POST #1 was in flight
+    assert posted == [False, True, False]  # both transitions delivered, in order
+
+
+def _sample(read_mono, value=True):
+    return p.Sample(
+        value=value, read_wall=1793590925.0, read_mono=read_mono, read_ms=3.0, change=True
+    )
+
+
+def test_expired_sample_is_dropped_never_posted_as_live():
+    """last_seen_at is SERVER receipt time — a stale queued read must not refresh it."""
+
+    class NoHttp:
+        def post(self, *a, **k):
+            raise AssertionError("expired sample must not be posted")
+
+    s = _sample(read_mono=0.0)
+    now = p.MAX_SAMPLE_AGE_S + 0.1
+    assert (
+        p.deliver(
+            s,
+            NoHttp(),
+            p.Clock(query=lambda h: None),
+            "t",
+            "k" * 32,
+            mono=lambda: now,
+            wall=lambda: 1793590925.0 + now,
+        )
+        is True
+    )
+
+
+def test_post_carries_acquisition_time_not_delivery_time():
+    seen = {}
+
+    class Http:
+        def post(self, url, content, headers):
+            seen.update(json.loads(content)["tags"][0])
+            return _OkResp()
+
+    s = _sample(read_mono=10.0)
+    assert (
+        p.deliver(
+            s,
+            Http(),
+            p.Clock(query=lambda h: None),
+            "t",
+            "k" * 32,
+            mono=lambda: 12.5,
+            wall=lambda: 1793590927.5,
+        )
+        is True
+    )
+    assert seen["ts"] == "2026-11-02T03:42:05.000Z"  # read time, not +2.5 s
+    assert seen["metadata"]["delivery_delay_ms"] == 2500.0
+
+
+@pytest.mark.parametrize(
+    "outcome,expected",
+    [
+        (OSError("connection reset"), False),  # transport failure -> retry
+        (503, False),  # relay unavailable -> retry
+        (429, False),  # rate limited -> retry
+        (401, True),  # auth rejection -> retrying cannot help, drop + warn
+        (200, True),
+    ],
+)
+def test_deliver_retries_only_transient_failures(outcome, expected):
+    class Http:
+        def post(self, *a, **k):
+            if isinstance(outcome, Exception):
+                raise outcome
+
+            class R:
+                status_code = outcome
+
+                @staticmethod
+                def json():
+                    return {"accepted": 1 if outcome == 200 else 0}
+
+            return R()
+
+    assert (
+        p.deliver(
+            _sample(read_mono=10.0),
+            Http(),
+            p.Clock(query=lambda h: None),
+            "t",
+            "k" * 32,
+            mono=lambda: 10.5,
+            wall=lambda: 1793590925.5,
+        )
+        is expected
+    )
+
+
+def test_full_outbox_drops_the_oldest_and_counts_it():
+    box = p.Outbox(maxsize=2)
+    for m in (1.0, 2.0, 3.0):
+        box.put(_sample(read_mono=m))
+    assert box.dropped == 1
+    assert [box.get(timeout=0).read_mono for _ in range(2)] == [2.0, 3.0]

@@ -38,9 +38,21 @@ Freshness and safety:
     when the host clock is unsynced (the bench laptop's Windows Time service is
     stopped — measured 45.6 s slow on 2026-11-02). The raw host time, offset and
     clock source ride in metadata so the correction is auditable, never hidden.
-  * on a read/connect failure NOTHING is posted — no last-known value is replayed;
-    the server-side 60 s last_seen_at window turns the signal stale.
-  * posts on change immediately, otherwise a heartbeat every HEARTBEAT_S.
+  * on a read/connect failure NOTHING new is posted — no last-known value is
+    replayed; the server-side 60 s last_seen_at window turns the signal stale.
+  * queues on change immediately, otherwise a heartbeat every HEARTBEAT_S.
+
+Sampling vs delivery (two threads, so a slow POST or SNTP query never blinds the
+sampler to a sub-second pulse — Codex F6):
+  * the sampler thread only FC1-reads DI_05 every POLL_S and puts genuine reads
+    (with their acquisition time) on a bounded Outbox;
+  * the sender thread drains it in order, stamps each reading with its
+    ACQUISITION time, retries only transient failures (transport / 429 / 5xx),
+    and owns the blocking SNTP refresh;
+  * the relay sets last_seen_at to its own receipt time, so a queued reading
+    older than MAX_SAMPLE_AGE_S is dropped with a warning, never posted — a
+    backlog can extend apparent freshness by at most that bound (<< 60 s);
+  * a full Outbox drops its OLDEST reading and counts it (logged, never silent).
 """
 
 from __future__ import annotations
@@ -48,10 +60,13 @@ from __future__ import annotations
 import json
 import logging
 import os
+import queue
 import socket
 import struct
 import sys
+import threading
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -74,6 +89,9 @@ PROPS = Path(
 )
 POLL_S = float(os.getenv("POLL_S", "0.25"))
 HEARTBEAT_S = float(os.getenv("HEARTBEAT_S", "5"))
+MAX_SAMPLE_AGE_S = 10.0  # older queued reads are dropped (relay last_seen_at = receipt)
+OUTBOX_MAX = 256
+RETRY_S = 1.0
 
 SOURCE_SYSTEM = "plc_bridge"
 SOURCE_CONNECTION_ID = "cv101-bench-modbus"
@@ -291,6 +309,138 @@ def post(http: Any, payload: dict[str, Any], tenant: str, key: str, now: float) 
         return r.status_code, {"raw": r.text[:200]}
 
 
+@dataclass(frozen=True)
+class Sample:
+    """One genuine DI_05 read, captured by the sampler thread."""
+
+    value: bool
+    read_wall: float  # host clock at read completion
+    read_mono: float  # monotonic at read completion
+    read_ms: float
+    change: bool
+
+
+class Outbox:
+    """Bounded FIFO between sampler and sender. Never blocks the sampler: when
+    full it drops the OLDEST reading and counts it, so loss is logged, not silent."""
+
+    def __init__(self, maxsize: int = OUTBOX_MAX) -> None:
+        self._q: queue.Queue[Sample] = queue.Queue(maxsize)
+        self.dropped = 0
+
+    def put(self, sample: Sample) -> None:
+        while True:
+            try:
+                self._q.put_nowait(sample)
+                return
+            except queue.Full:
+                try:
+                    self._q.get_nowait()
+                    self.dropped += 1
+                    log.warning("outbox full — dropped oldest reading (total %d)", self.dropped)
+                except queue.Empty:
+                    pass
+
+    def get(self, timeout: float) -> Sample:
+        """Raises queue.Empty after ``timeout`` seconds."""
+        return self._q.get(timeout=timeout)
+
+
+def sample_loop(
+    client: Any,
+    outbox: Outbox,
+    stop: Callable[[], bool] = lambda: False,
+    *,
+    mono: Callable[[], float] = time.monotonic,
+    wall: Callable[[], float] = time.time,
+    sleep: Callable[[float], None] = time.sleep,
+) -> None:
+    """Read DI_05 every POLL_S; queue changes + heartbeats. The Modbus read is the
+    only blocking call here — no HTTP, no SNTP. Raises OSError on a bad read."""
+    last_value: Optional[bool] = None
+    last_emit = float("-inf")  # monotonic
+    while not stop():
+        t0 = mono()
+        value, exc = read_coil(client, DI05_COIL_OFFSET)
+        read_mono, read_wall = mono(), wall()
+        if value is None:
+            raise OSError(f"DI_05 read rejected, modbus exception {exc}")
+        if should_post(value, last_value, last_emit, read_mono):
+            change = last_value is not None and value != last_value
+            outbox.put(Sample(value, read_wall, read_mono, (read_mono - t0) * 1000, change))
+            last_value, last_emit = value, read_mono
+        sleep(max(0.0, POLL_S - (mono() - t0)))
+
+
+def deliver(
+    sample: Sample,
+    http: Any,
+    clock: Clock,
+    tenant: str,
+    key: str,
+    *,
+    mono: Callable[[], float] = time.monotonic,
+    wall: Callable[[], float] = time.time,
+) -> bool:
+    """POST one queued reading. True = done with it (accepted, rejected or
+    expired); False = transient failure, retry the same reading."""
+    age = mono() - sample.read_mono
+    if age > MAX_SAMPLE_AGE_S:
+        log.warning(
+            "dropping DI_05=%s read %.1f s ago — too old to post as live",
+            int(sample.value),
+            age,
+        )
+        return True
+    stamped, clock_meta = clock.stamp(sample.read_wall, sample.read_mono)
+    clock_meta["delivery_delay_ms"] = round(age * 1000, 1)
+    payload = build_payload(sample.value, stamped, sample.read_ms, clock_meta)
+    sign_now, _ = clock.stamp(wall(), mono())
+    try:
+        code, resp = post(http, payload, tenant, key, sign_now)
+    except Exception as e:  # noqa: BLE001 — transport failure: retry until expiry
+        log.warning("post failed (%s) — will retry DI_05=%s", e, int(sample.value))
+        return False
+    ok = code == 200 and resp.get("accepted") == 1
+    (log.info if ok else log.warning)(
+        "post DI_05=%s change=%s delay_ms=%d http=%s accepted=%s rejected=%s",
+        int(sample.value),
+        sample.change,
+        age * 1000,
+        code,
+        resp.get("accepted"),
+        resp.get("rejected"),
+    )
+    return not (code == 429 or code >= 500)
+
+
+def send_loop(
+    outbox: Outbox,
+    http: Any,
+    clock: Clock,
+    tenant: str,
+    key: str,
+    stop: threading.Event,
+) -> None:
+    """Sender thread: drain the Outbox in order. Owns the blocking SNTP refresh."""
+    pending: Optional[Sample] = None
+    while not stop.is_set():
+        try:
+            clock.refresh()
+            if pending is None:
+                try:
+                    pending = outbox.get(timeout=0.5)
+                except queue.Empty:
+                    continue
+            if deliver(pending, http, clock, tenant, key):
+                pending = None
+            else:
+                stop.wait(RETRY_S)
+        except Exception as e:  # noqa: BLE001 — keep the sender alive
+            log.warning("sender error: %s — dropping the in-flight reading", e)
+            pending = None
+
+
 def run() -> None:
     import httpx
     from pymodbus.client import ModbusTcpClient
@@ -311,6 +461,13 @@ def run() -> None:
         SOURCE_CONNECTION_ID,
         TAG_PATH,
     )
+    outbox, stop = Outbox(), threading.Event()
+    threading.Thread(
+        target=send_loop,
+        args=(outbox, http, clock, tenant, key, stop),
+        name="relay-sender",
+        daemon=True,
+    ).start()
     while True:
         client = ModbusTcpClient(PLC_HOST, port=PLC_PORT, timeout=2, retries=0)
         try:
@@ -322,33 +479,9 @@ def run() -> None:
                 time.sleep(60)
                 continue
             log.info("connected; map signature OK (DI_05 = coil 000023, no coil 000100)")
-            last_value: Optional[bool] = None
-            last_post = float("-inf")  # monotonic
-            while True:
-                clock.refresh()
-                t0 = time.monotonic()
-                value, exc = read_coil(client, DI05_COIL_OFFSET)
-                read_mono, read_wall = time.monotonic(), time.time()
-                if value is None:
-                    raise OSError(f"DI_05 read rejected, modbus exception {exc}")
-                if should_post(value, last_value, last_post, read_mono):
-                    stamped, clock_meta = clock.stamp(read_wall, read_mono)
-                    payload = build_payload(value, stamped, (read_mono - t0) * 1000, clock_meta)
-                    sign_now, _ = clock.stamp(time.time(), time.monotonic())
-                    code, resp = post(http, payload, tenant, key, sign_now)
-                    ok = code == 200 and resp.get("accepted") == 1
-                    (log.info if ok else log.warning)(
-                        "post DI_05=%s change=%s http=%s accepted=%s rejected=%s",
-                        int(value),
-                        last_value is not None and value != last_value,
-                        code,
-                        resp.get("accepted"),
-                        resp.get("rejected"),
-                    )
-                    last_value, last_post = value, read_mono
-                time.sleep(max(0.0, POLL_S - (time.monotonic() - t0)))
+            sample_loop(client, outbox)
         except Exception as e:  # noqa: BLE001 — never replay a value; reconnect
-            log.warning("read/post failed: %s — posting nothing, reconnect in 2 s", e)
+            log.warning("read failed: %s — queueing nothing new, reconnect in 2 s", e)
         finally:
             client.close()
         time.sleep(2)
