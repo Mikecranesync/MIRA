@@ -1023,9 +1023,12 @@ export function buildRetrievalQuery(message: string, history: ChatHistoryTurn[],
     const source = [...history].reverse()
       .find((t) => t.role === "user" && !isEllipticalFollowup(t.content))?.content ?? "";
     const { coded, plain } = carryWords(source);
+    // "and 120V?" replaces the old rating; carrying "24V" too would AND two
+    // ratings together and match nothing (#5160).
+    const ownRating = carryWords(msg).coded.some(isRating);
     for (const w of [...coded, ...plain]) {
       const k = w.toLowerCase();
-      if (lower.includes(k) || seen.has(k)) continue;
+      if (lower.includes(k) || seen.has(k) || (ownRating && isRating(w))) continue;
       seen.add(k);
       added.push(w);
       if (added.length >= 4) break;
@@ -1046,14 +1049,26 @@ function carryWords(text: string): { coded: string[]; plain: string[] } {
  *  attribute of a subject named elsewhere ("and the outputs?", "and analog?",
  *  "what's the default?"). A message that brings its own subject noun
  *  ("what about hydraulic pressure?") is a topic switch and carries nothing
- *  (#5159). Messages with a model-like token always name their own subject. */
+ *  (#5159). A model-like token or a short acronym ("the VFD?") names its own
+ *  subject; a bare rating ("and 120V?") is an attribute, not a subject (#5160). */
 function isEllipticalFollowup(text: string): boolean {
   const { coded, plain } = carryWords(text);
-  if (coded.length) return false;
-  return plain.every((w) => FOLLOWUP_SIBLINGS.has(w.toLowerCase().replace(/s$/, "")));
+  if (coded.some((w) => !isRating(w))) return false;
+  const acronyms = text.match(/\b[A-Z]{2,5}\b/g) ?? [];
+  if (acronyms.some((w) => !FOLLOWUP_SIBLINGS.has(w.toLowerCase()))) return false;
+  return plain.every((w) => {
+    const k = w.toLowerCase();
+    return FOLLOWUP_SIBLINGS.has(k) || FOLLOWUP_SIBLINGS.has(k.replace(/s$/, ""));
+  });
+}
+
+/** An electrical rating such as 24V, 120VAC, 4mA or 60Hz. */
+function isRating(w: string): boolean {
+  return /^\d+(\.\d+)?(v|vac|vdc|a|ma|hz|w|kw)$/i.test(w);
 }
 
 const FOLLOWUP_SIBLINGS = new Set([
+  "ac", "dc",
   "input", "output", "analog", "analogue", "digital", "discrete", "relay", "transistor", "sinking",
   "sourcing", "wiring", "wire", "terminal", "channel", "voltage", "current", "rating", "default",
   "maximum", "minimum", "range", "limit", "setting", "value", "unit", "side", "ones", "next",
