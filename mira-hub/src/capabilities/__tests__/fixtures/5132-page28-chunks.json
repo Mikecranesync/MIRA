@@ -1,0 +1,19 @@
+{
+  "_source": "staging notebook turn for #5132: Micro820 user manual 2080-UM001G page 28, the three retrieved chunks verbatim",
+  "question": "how to wire 24v dc sinking sourcing inputs diagram",
+  "answer": "Use the **24V DC sink input wiring example** or **source input wiring example** on p.32; for DC inputs, terminals 0…3 can be wired as either sinking or sourcing, but 4…7 can only be wired as sinking inputs [1][5].  \n\nThe page shows both diagrams: **sink input wiring example** and **source input wiring example** [5].",
+  "chunks": [
+    {
+      "id": "5de134f3-3cd6-49b2-8b58-12233e5eafbc",
+      "content": "28 Rockwell Automation Publication 2080-UM001G-EN-E - March 2026\nChapter 4 Wire Your Controller\nGround the Controller This product is intended to be mounted to a well grounded mounting surface\nsuch as a metal panel. Refer to the Industrial Automation Wiring and Grounding\nGuidelines, publication 1770-4.1, for additional information.\nWiring Diagrams The following illustrations show the wiring diagrams for the Micro800\ncontrollers. For controllers with DC inputs, inputs 0…3 can be wired as either\nsinking or sourcing inputs, however, inputs 4…7 can only be wired as sinking\ninputs."
+    },
+    {
+      "id": "de0e97a4-17a8-4b33-9c26-3ccc7c7399db",
+      "content": "or use on the interposing relay.\n(3) For use on the contactor or starter.\n(4) RC Type not to be used with Triac outputs. Varistor is not recommended for use on the relay outputs.\nRecommended Surge Suppressors\nDevice Coil Voltage Suppressor Catalog Number Type(4)"
+    },
+    {
+      "id": "ef518a3a-066a-4efe-911d-3bac8936a28c",
+      "content": ", inputs 0…3 can be wired as either\nsinking or sourcing inputs, however, inputs 4…7 can only be wired as sinking\ninputs. Sinking and sourcing does not apply to AC inputs.\nBulletin 509 Motor Starter Size 6 12…120V AC 199-FSMA1(2) RC\n12…120V AC 199-GSMA1(3) MOV\nBulletin 700 R/RM Relay AC coil Not Required\n24…48V DC 199-FSMA9 MOV\n50…120V DC 199-FSMA10\n130…250V DC 199-FSMA11\nBulletin 700 Type N, P, PK or PH Relay 6…150V AC/DC 700-N24 RC\n24…48V AC/DC 199-FSMA9 MOV\n50…120V AC/DC 199-FSMA10\n130…250V AC/DC 199-FSMA11\n6…300V DC 199-FSMZ-1 Diode\nMiscellaneous electromagnetic devices\nlimited to 35 sealed VA\n6…150V AC/DC 700-N24 RC\n(1) Catalog numbers for screwless terminals include the string ’CR’ after ’100-’. For example: Cat. No. 100-FSC48 becomes Cat. No. 100-CRFSC48; Cat. No. 100-FSV55\nbecomes 100-CRFSV55; and so on.\n(2) For use on the interposing relay.\n(3) For use on the contactor or starter.\n(4) RC Type not to be used with Triac outputs."
+    }
+  ]
+}

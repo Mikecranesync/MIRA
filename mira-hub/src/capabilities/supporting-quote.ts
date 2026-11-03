@@ -579,6 +579,38 @@ function satisfies(src: Value, claim: Value): boolean {
   return claim.nums.every((c) => src.nums.some((x) => x === c));
 }
 
+/** A single claimed value met only as one endpoint of a source range (rev 4 endpoint
+ *  semantics). That alone is weak proof: "24V DC" is an endpoint of every "24…48V DC" row. */
+function endpointOnly(src: Value, claim: Value): boolean {
+  return claim.nums.length === 1 && src.nums.length > 1;
+}
+
+const CONTEXT_STOPWORDS = new Set([
+  "about", "also", "been", "both", "can", "does", "each", "either", "from", "have", "into", "must", "only",
+  "same", "shall", "should", "than", "that", "their", "them", "then", "there", "they", "this", "use",
+  "used", "when", "where", "which", "will", "with", "your",
+]);
+
+/** Distinct non-numeric words of 4+ letters, minus stopwords, with a plural "s" dropped. */
+function contentWords(s: string): Set<string> {
+  const out = new Set<string>();
+  for (const raw of normalize(s).split(/[^\p{L}]+/u)) {
+    if (raw.length < 4 || CONTEXT_STOPWORDS.has(raw)) continue;
+    out.add(raw.replace(/s$/, ""));
+  }
+  return out;
+}
+
+/** The answer sentence holding a claimed value (#5132): an endpoint match must share one of
+ *  its content words, so the proof window is about the same thing the sentence is. */
+function sentenceAround(answer: string, start: number, end: number): string {
+  let from = 0;
+  for (const m of answer.slice(0, start).matchAll(/[.!?](?=\s)|\n/g)) from = (m.index ?? 0) + 1;
+  const rest = answer.slice(end);
+  const stop = rest.search(/[.!?](\s|$)|\n/);
+  return answer.slice(from, stop === -1 ? answer.length : end + stop + 1);
+}
+
 export type SupportingQuote = {
   /** null ⇒ no claimed value matched: keep the citation's existing quote (today's behavior). */
   quote: string | null;
@@ -598,6 +630,7 @@ export function supportingQuote(
   const markerAt = answer.indexOf(`[${citationId}]`);
   const qterms = normalize(question).split(/[^\p{L}\p{N}.]+/u).filter((t) => t.length >= 3);
   const ids = [...claimIdentifiers(question)];
+  const claimContext = claims.map((c) => [...contentWords(sentenceAround(answer, c.start, c.end))]);
   type Cand = { chunk: number; start: number; covered: number; idHits: number; q: number; prox: number };
   const cands: Cand[] = [];
   const everMatched = new Set<number>();
@@ -613,7 +646,12 @@ export function supportingQuote(
       }
       const end = Math.min(text.length, start + SPAN);
       const inWin = srcVals.filter((x) => x.start >= start && x.end <= end);
-      const covered = claims.map((c, k) => (inWin.some((x) => satisfies(x, c)) ? k : -1)).filter((k) => k >= 0);
+      const winWords = contentWords(text.slice(start, end));
+      const covered = claims
+        .map((c, k) =>
+          inWin.some((x) => satisfies(x, c) && (!endpointOnly(x, c) || claimContext[k].some((w) => winWords.has(w)))) ? k : -1,
+        )
+        .filter((k) => k >= 0);
       if (covered.length === 0) continue; // the window cannot hold the whole value (Codex r6 F12)
       covered.forEach((k) => everMatched.add(k));
       const win = normalize(text.slice(start, end));
