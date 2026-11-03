@@ -37,6 +37,11 @@ export interface ProcedureResult {
 const REMOVING_RE = /^REMOVING THE (.+)$/;
 const REINSTALL_VERB_RE = /\b(?:replace|replaces|slip|slide|install|reinstall|reassemble|fit|refit|mount)\b/i;
 const REASSEMBLY_RE = /\breassembl/i;
+/** Steps that only ready the pump for putting a part back ("Rotate crankshaft by hand so …",
+ *  "Lubricate the Plungers."). An allow-list: any other first word stops the walk back, so work the
+ *  packet was not asked for is never pulled in as "preparation". */
+const PREP_VERB_RE = /^(?:rotate|turn|lubricate|oil|clean|wipe)\b/i;
+const IN_SEQUENCE_RE = /\bin (?:this|the following) (?:sequence|order)\b/i;
 
 const blockKey = (heading: string, sub: string | null) => `${heading}\u0000${sub ?? ""}`;
 const where = (s: { heading: string; subheading: string | null }) => (s.subheading ? `${s.heading} — ${s.subheading}` : s.heading);
@@ -94,6 +99,8 @@ export function buildProcedure(manuals: ManualDoc[], topics: Topic[], model: str
     const byBlock = new Map<string, Map<number | null, PacketStep>>();
     // blocks that are part of this job (any step of theirs is in the packet)
     const jobBlocks = new Set<string>();
+    // block → step numbers this packet leaves out for scope (not for model): their notes go with them
+    const scopeLeftOut = new Map<string, Set<number | null>>();
 
     const toStep = (section: SmSection, step: SmStep, phase: PacketStep["phase"], inclusion?: Field): PacketStep | null => {
       const a = textApplicability(step.text, model, covered);
@@ -115,6 +122,19 @@ export function buildProcedure(manuals: ManualDoc[], topics: Topic[], model: str
       downgrade(ps.text, a);
       if (a.kind === "unresolved") addBlocker(step.text, a, step.source);
       if (inclusion) ps.inclusion = inclusion;
+      if (step.diagram && IN_SEQUENCE_RE.test(step.text)) {
+        // The order is a picture of screw positions; copying its numbers without the layout would
+        // invite a guess, so the note only says where it is.
+        ps.notes!.push({
+          kind: "NOTE",
+          text: {
+            value: `Tightening order: the manual prints it as a diagram right after this step (p.${step.diagram.page} of ${label}). It is not copied into this packet — read it from the manual.`,
+            label: "proposed",
+            source: step.diagram,
+            basis: "the diagram's numbers are screw positions on the part; this packet does not reproduce the layout",
+          },
+        });
+      }
       const k = blockKey(section.heading, section.subheading);
       if (!byBlock.has(k)) byBlock.set(k, new Map());
       if (!byBlock.get(k)!.has(step.n)) byBlock.get(k)!.set(step.n, ps);
@@ -197,9 +217,37 @@ export function buildProcedure(manuals: ManualDoc[], topics: Topic[], model: str
           source: first.source,
           basis: `steps from "${clip(first.text)}" (p.${first.source.page}) to the end of that block; a qualified person confirms the order`,
         };
-        section.steps.slice(0, from).forEach((st) =>
-          leftOut.push({ value: st.text, label: "proposed", source: st.source, basis: `earlier step of "${where(section)}" — part of other work, not of putting the removed parts back; a qualified person confirms it is not needed` }),
-        );
+        // The manual readies the pump just before putting the part back (turn the shaft, oil the
+        // plungers): those steps belong to the reinstall too (Codex EGM F01).
+        let start = from;
+        while (start > 0 && PREP_VERB_RE.test(section.steps[start - 1].text)) start--;
+        const prepInclusion: Field = {
+          value: `readies the pump for putting back what was taken off: the manual's step${from - start > 1 ? "s" : ""} just before step ${first.n ?? "?"} in "${where(section)}"`,
+          label: "proposed",
+          source: section.steps[start].source,
+          basis: `printed right before "${clip(first.text)}" (p.${first.source.page}); a qualified person confirms they are needed`,
+        };
+        const earlier = section.steps.slice(0, start);
+        const k = blockKey(section.heading, section.subheading);
+        if (!scopeLeftOut.has(k)) scopeLeftOut.set(k, new Set());
+        earlier.forEach((st) => {
+          scopeLeftOut.get(k)!.add(st.n);
+          leftOut.push({ value: st.text, label: "proposed", source: st.source, basis: `earlier step of "${where(section)}" — not part of putting the removed parts back; whether it is needed is an open question (see Before you start)` });
+        });
+        if (earlier.length > 0) {
+          const nums = earlier.map((st) => st.n).filter((n): n is number => n !== null);
+          const range = nums.length > 0 ? (nums.length > 1 ? `steps ${nums[0]}–${nums[nums.length - 1]}` : `step ${nums[0]}`) : "earlier steps";
+          blockers.push({
+            value: null,
+            label: "unknown",
+            source: earlier[0].source,
+            basis: `"${where(section)}" (p.${earlier[0].source.page}) has ${range} before the steps that put the removed parts back. This packet leaves them out; the manual does not say whether they are needed when only those parts come off. A qualified person decides before "${clip(first.text)}".`,
+          });
+        }
+        section.steps.slice(start, from).forEach((st) => {
+          const ps = toStep(section, st, "reinstall", prepInclusion);
+          if (ps) reinstall.push(ps);
+        });
         for (const st of section.steps.slice(from)) {
           const ps = toStep(section, st, "reinstall", inclusion);
           if (ps) reinstall.push(ps);
@@ -232,6 +280,11 @@ export function buildProcedure(manuals: ManualDoc[], topics: Topic[], model: str
       // before it in the block, else the next one — the note still applies to this pump.
       const kept = Array.from(blk.entries());
       const after = c.context.afterStep;
+      if (after !== null && scopeLeftOut.get(k)?.has(after)) {
+        // It follows a step this packet leaves out for scope, so it goes with that step (Codex EGM F03).
+        leftOut.push({ value: c.text, label: "proposed", source: c.source, basis: `note after a step this packet leaves out — ${where(c.context)}` });
+        continue;
+      }
       const target =
         after === null
           ? kept[0]?.[1]
@@ -255,6 +308,19 @@ export function buildProcedure(manuals: ManualDoc[], topics: Topic[], model: str
     }
 
     steps.push(...removal, ...service, ...reinstall);
+
+    // Work the manual's check-lists tie to this service ("service the regulator at each seal
+    // servicing"): an open question, never added as steps (Codex EGM F04).
+    for (const cw of manual.companionWork ?? []) {
+      if (!topics.some((t) => t.startsWith(cw.topic))) continue;
+      const quote = cw.source.line.replace(/^[*\s]+/, "");
+      blockers.push({
+        value: null,
+        label: "unknown",
+        source: cw.source,
+        basis: `The manual's check-list says: "${quote}" (p.${cw.source.page}). This packet does not include that work. A qualified person decides whether it is done with this job, and by whom, before work starts.`,
+      });
+    }
   }
 
   for (const s of steps) if (s.notes && s.notes.length === 0) delete s.notes;

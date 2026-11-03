@@ -79,7 +79,7 @@ describe("readinessSummary — any blocker or unknown means 'needs review'; it i
   it("counts blockers, unknowns and pending approval", () => {
     const s = readinessSummary(packet());
     expect(s.status).toBe("needs_review");
-    expect(s.lines.some((l) => /2 open questions/.test(l))).toBe(true);
+    expect(s.lines.some((l) => /5 open questions/.test(l))).toBe(true);
     expect(s.lines.some((l) => /supervisor approval: pending/i.test(l))).toBe(true);
     expect(s.lines.join(" ")).not.toMatch(/safe|ready for service|return(ed)? to service is (approved|authorized)/i);
   });

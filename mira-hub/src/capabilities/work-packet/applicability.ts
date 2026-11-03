@@ -102,10 +102,20 @@ function modelGroups(text: string, covered: readonly string[]): { groups: Group[
     groups.push({ models: current.models, except: EXCEPT_BEFORE_RE.test(text.slice(0, current.first.start)) });
     current = null;
   };
-  for (const t of tokens(text)) {
+  const toks = tokens(text);
+  const covAt = (k: number) => k >= 0 && k < toks.length && cov.has(normalizeModel(toks[k].text));
+  const gap = (a: Token, b: Token) => LIST_GAP_RE.test(text.slice(a.end, b.start));
+  // A model-shaped number (all digits, the length of a covered model) the cover does not list,
+  // in a model list or right after "Model(s)": unknown, never silently skipped (Codex EGM F14).
+  const modelShaped = (n: string) => /^\d+$/.test(n) && covered.some((c) => { const cn = normalizeModel(c); return /^\d+$/.test(cn) && cn.length === n.length; });
+  for (let k = 0; k < toks.length; k++) {
+    const t = toks[k];
     const n = normalizeModel(t.text);
     if (!cov.has(n)) {
       if (/^\d/.test(n) && /[A-Z]$/.test(n) && covered.some((c) => n.startsWith(normalizeModel(c)))) return { groups, variant: t.text };
+      if (modelShaped(n) && ((covAt(k - 1) && gap(toks[k - 1], t)) || (covAt(k + 1) && gap(t, toks[k + 1])) || /\bmodels?\s*$/i.test(text.slice(0, t.start)))) {
+        return { groups, variant: t.text };
+      }
       continue;
     }
     if (current && LIST_GAP_RE.test(text.slice(current.last.end, t.start))) {

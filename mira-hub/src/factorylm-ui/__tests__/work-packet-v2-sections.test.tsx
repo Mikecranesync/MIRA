@@ -32,7 +32,7 @@ describe("V2 packet as a technician reads it", () => {
   it("says it needs review, and why, before anything else", () => {
     const html = renderToStaticMarkup(<ReadinessBlock packet={p} />);
     expect(html).toContain("Needs review before work starts.");
-    expect(html).toContain("2 open questions");
+    expect(html).toContain("5 open questions");
     expect(html).not.toMatch(/safe to|ready for service/i);
   });
   it("lists the open questions, quoting the manual", () => {

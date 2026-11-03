@@ -247,10 +247,22 @@ function matchSubheading(line: string): SubheadingMatch | null {
 // ─────────────────────────────────────────────── cautions
 
 const CAUTION_MARKER_RE = /^(CAUTION|WARNING|NOTE|IMPORTANT):\s*(.*)$/;
+/** A marker printed as its own heading line, its text on the lines below ("WARNING" / "All systems
+ *  require …"; 35FR2Svc p.1). Only CAUTION/WARNING: those are the hazard markers. */
+const STANDALONE_MARKER_RE = /^(CAUTION|WARNING)$/;
+const STANDALONE_MARKER_MAX_LINES = 6;
 
 function isAnyMarkerStart(line: string): boolean {
-  return CAUTION_MARKER_RE.test(line);
+  return CAUTION_MARKER_RE.test(line) || STANDALONE_MARKER_RE.test(line);
 }
+
+/** A line with no lower-case letter — an all-caps company or heading line, not a sentence's wrap. */
+function hasNoLowercase(line: string): boolean {
+  return !/[a-z]/.test(line);
+}
+
+/** "Remember to service the regulator/unloader at each seal servicing" — the service it is tied to. */
+const COMPANION_WORK_RE = /\bservice\b.*\bat (?:each|every) (\w+) servic/i;
 
 // ─────────────────────────────────────────────── torque chart
 
@@ -458,6 +470,7 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
   // Persists across pages like `open`; cleared at every section/subheading/torque/body-end boundary.
   let lastBlock: LastBlock | null = null;
   const startupChecklist: SourceRef[] = [];
+  const companionWork: { topic: string; source: SourceRef }[] = [];
 
   const sorted: PageText[] = [...doc.pages].sort((a, b) => a.page - b.page);
 
@@ -493,20 +506,28 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
           const next = lines[k + 1] ?? "";
           startupChecklist.push({ ...src, page: pg.page, line: STARTUP_SUBTITLE_RE.test(next) ? `${lines[k]} ${next}` : lines[k] });
         }
+        for (let k = i; k < lines.length; k++) {
+          const cw = lines[k].match(COMPANION_WORK_RE);
+          if (cw) companionWork.push({ topic: cw[1].toLowerCase(), source: { ...src, page: pg.page, line: lines[k] } });
+        }
         flushSection(open, sections, problems, omitted);
         open = null;
         lastBlock = null;
         break; // rest of this page is reference material (checklists, PM schedule, bulletin index)
       }
 
-      const marker = line.match(CAUTION_MARKER_RE);
+      const standalone = STANDALONE_MARKER_RE.test(line);
+      const marker = standalone ? ([line, line, ""] as unknown as RegExpMatchArray) : line.match(CAUTION_MARKER_RE);
       if (marker) {
         const kind = marker[1] as SmCaution["kind"];
-        const textParts = [marker[2]];
+        const textParts = standalone ? [] : [marker[2]];
         let j = i + 1;
         while (
           j < lines.length &&
           lines[j].length > 0 &&
+          // A standalone heading's text ends at the first all-caps line (the address block below it)
+          // and is never longer than a few lines.
+          !(standalone && (hasNoLowercase(lines[j]) || isHardFurniture(lines[j]) || textParts.length >= STANDALONE_MARKER_MAX_LINES)) &&
           !isAnyMarkerStart(lines[j]) &&
           !STEP_RE.test(lines[j]) &&
           !SECTION_HEADING_RE.test(lines[j]) &&
@@ -522,6 +543,7 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
         // The source is the exact run of physical lines the text was joined from, so a number that
         // wrapped onto a continuation line is still checkable word-for-word against its source.
         const cautionText = textParts.join(" ").replace(/\s{2,}/g, " ").trim();
+        if (standalone && cautionText.length === 0) continue; // a bare word with nothing under it
         const cautionSource = { ...src, page: pg.page, line: lines.slice(i, j).join(" ") };
         const caution: SmCaution = { kind, text: cautionText, source: cautionSource };
         // The block it is printed in, snapshot now: a note belongs to the step before it, and to that
@@ -531,7 +553,10 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
           caution.context = { heading: open.heading, subheading: open.subheading, topic: open.topic, models: open.models, afterStep: last };
         }
         cautions.push(caution);
-        lastBlock = { kind: "caution", caution, text: cautionText };
+        // A standalone heading that ended at an all-caps line (the address block) is complete: that
+        // line is not its continuation. One cut off by the line cap still fails closed below.
+        const endedAtCaps = standalone && j < lines.length && (hasNoLowercase(lines[j]) || isHardFurniture(lines[j]));
+        lastBlock = endedAtCaps ? null : { kind: "caution", caution, text: cautionText };
         i = j - 1;
         continue;
       }
@@ -597,7 +622,14 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
       // 10–11) — may still be the rest of the block before it, so caption lines are never joined
       // into a step and never skipped either: they fail closed here. Intro prose before a section's
       // first step or caution has no `lastBlock` and stays dropped.
-      if (isHardFurniture(line)) continue;
+      if (isHardFurniture(line)) {
+        // A bare-number diagram right after a step (the tightening order): cite it on that step.
+        if (/^[\d\s]+$/.test(line) && lastBlock?.kind === "step" && open && open.steps.length > 0) {
+          const st = open.steps[open.steps.length - 1];
+          if (!st.diagram) st.diagram = { ...src, page: pg.page, line };
+        }
+        continue;
+      }
       let tainted: string | null = null;
       if (lastBlock?.kind === "step" && open) {
         tainted = `step ${lastBlock.n} (p.${lastBlock.page})`;
@@ -621,5 +653,5 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
   }
   flushSection(open, sections, problems, omitted);
 
-  return { kind: "catpumps_service_manual", modelsCovered, sections, torque, cautions, problems, omitted, omittedCautions, startupChecklist };
+  return { kind: "catpumps_service_manual", modelsCovered, sections, torque, cautions, problems, omitted, omittedCautions, startupChecklist, companionWork };
 }

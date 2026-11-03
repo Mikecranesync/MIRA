@@ -170,6 +170,8 @@ export interface SmStep {
   /** Verbatim step text (wrapped lines joined with single spaces). */
   text: string;
   source: SourceRef;
+  /** A bare-number diagram printed right after the step (a tightening order). Cited, never copied. */
+  diagram?: SourceRef;
 }
 
 export interface SmSection {
@@ -248,6 +250,9 @@ export interface ServiceManual {
   /** Where the manual prints its start-up check-list heading (e.g. "INLET CONDITION CHECK-LIST" /
    *  "Review Before Start-Up"), cited by its exact heading lines. The items themselves are not parsed. */
   startupChecklist?: SourceRef[];
+  /** Reference-page lines that tie other work to a service (e.g. "service the regulator at each seal
+   *  servicing"), with the service named. Cited only: whether that work is done is a person's call. */
+  companionWork?: { topic: string; source: SourceRef }[];
 }
 
 // ─────────────────────────────────────────────── work order, identity, packet
