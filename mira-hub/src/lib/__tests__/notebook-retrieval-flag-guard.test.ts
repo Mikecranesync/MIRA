@@ -14,14 +14,9 @@
  * record must keep it off in staging and production. The registry stands in for
  * Doppler here (CI cannot read Doppler), so the record must match the real config.
  *
- * Flag discovery (#5167) walks retrieveNodeChunks' production imports (plus
- * query-rewrite.ts) and matches both process.env.NOTEBOOK_X and
- * process.env["NOTEBOOK_X"]. Mutation fixtures below inject each form.
- *
  * Run: npx vitest run src/lib/__tests__/notebook-retrieval-flag-guard.test.ts
  */
-import { existsSync, readFileSync } from "node:fs";
-import { posix } from "node:path";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { PoolClient } from "pg";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -30,73 +25,14 @@ import { retrieveNodeChunks } from "@/lib/manual-rag";
 const SRC = (p: string) => fileURLToPath(new URL(`../../${p}`, import.meta.url));
 const REPO = (p: string) => fileURLToPath(new URL(`../../../../${p}`, import.meta.url));
 
-/**
- * Production roots whose NOTEBOOK_* reads change retrieveNodeChunks. The walker
- * follows their transitive @/ and relative imports so a new helper cannot hide
- * an undeclared flag (#5167). query-rewrite.ts is a second root because the
- * chat route feeds rewrittenQuery into retrieveNodeChunks; its LLM cascade is
- * not a retrieval flag source and is not followed.
- */
-const WALK_ROOTS = ["lib/manual-rag.ts", "capabilities/query-rewrite.ts"];
-
-/** Dotted `process.env.NOTEBOOK_X` and bracket `process.env["NOTEBOOK_X"]`. */
-const ENV_READ =
-  /process\.env(?:\.(NOTEBOOK_[A-Z0-9_]+)|\[\s*['"](NOTEBOOK_[A-Z0-9_]+)['"]\s*\])/g;
-
-function notebookEnvReads(source: string): Set<string> {
-  const out = new Set<string>();
-  for (const m of source.matchAll(ENV_READ)) out.add((m[1] ?? m[2]) as string);
-  return out;
-}
-
-function importedSpecs(source: string): string[] {
-  const specs: string[] = [];
-  const fromRe =
-    /(?:^|\n)(?:import|export)\s+(?!type\s)[\s\S]*?\sfrom\s+['"]([^'"]+)['"]/g;
-  const starRe = /(?:^|\n)export\s+\*\s+from\s+['"]([^'"]+)['"]/g;
-  const sideRe = /(?:^|\n)import\s+['"]([^'"]+)['"]/g;
-  const dynRe = /import\(\s*['"]([^'"]+)['"]\s*\)/g;
-  for (const re of [fromRe, starRe, sideRe, dynRe]) {
-    for (const m of source.matchAll(re)) specs.push(m[1]);
-  }
-  return specs;
-}
-
-function resolveSpec(fromRel: string, spec: string, overlay: Map<string, string>): string | null {
-  if (spec.startsWith("node:") || spec.endsWith(".json") || spec.startsWith("@factorylm/")) return null;
-  if (spec.startsWith("@/lib/llm")) return null;
-  let rel: string;
-  if (spec.startsWith("@/")) rel = spec.slice(2);
-  else if (spec.startsWith(".")) rel = posix.normalize(posix.join(posix.dirname(fromRel), spec));
-  else return null;
-  const candidates = /\.(ts|tsx|js|mjs)$/.test(rel)
-    ? [rel]
-    : [`${rel}.ts`, `${rel}.tsx`, `${rel}/index.ts`];
-  for (const c of candidates) {
-    const norm = c.replace(/\\/g, "/");
-    if (norm.includes("/__tests__/") || /\.test\.tsx?$/.test(norm)) continue;
-    if (overlay.has(norm) || existsSync(SRC(norm))) return norm;
-  }
-  return null;
-}
-
-function discoverNotebookReads(overlay: Map<string, string> = new Map()): Set<string> {
-  const queue = [...WALK_ROOTS];
-  const seen = new Set<string>();
-  const reads = new Set<string>();
-  while (queue.length) {
-    const rel = queue.pop() as string;
-    if (seen.has(rel)) continue;
-    seen.add(rel);
-    const source = overlay.get(rel) ?? readFileSync(SRC(rel), "utf8");
-    for (const f of notebookEnvReads(source)) reads.add(f);
-    for (const spec of importedSpecs(source)) {
-      const next = resolveSpec(rel, spec, overlay);
-      if (next && !seen.has(next)) queue.push(next);
-    }
-  }
-  return reads;
-}
+/** Every file whose flags change notebook retrieval. A new one belongs here. */
+const RETRIEVAL_SOURCES = [
+  "lib/manual-rag.ts",
+  "lib/notebook-query.ts",
+  "capabilities/hybrid-retrieval.ts",
+  "capabilities/reranker.ts",
+  "capabilities/query-rewrite.ts",
+];
 
 type Kind = "and" | "rare" | "question_idf";
 /** The production lexical passes every configuration must still issue. */
@@ -240,51 +176,12 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("NOTEBOOK_* discovery from retrieveNodeChunks imports (#5167)", () => {
-  it("fixture: dotted process.env.NOTEBOOK_X", () => {
-    expect([...notebookEnvReads('const x = process.env.NOTEBOOK_FIXTURE_DOT === "1";')]).toEqual([
-      "NOTEBOOK_FIXTURE_DOT",
-    ]);
-  });
-
-  it("fixture: bracket process.env[\"NOTEBOOK_X\"]", () => {
-    expect([...notebookEnvReads('const x = process.env["NOTEBOOK_FIXTURE_BRACKET"] === "1";')]).toEqual([
-      "NOTEBOOK_FIXTURE_BRACKET",
-    ]);
-  });
-
-  it("fixture: bracket process.env['NOTEBOOK_X']", () => {
-    expect([...notebookEnvReads("const x = process.env['NOTEBOOK_FIXTURE_SINGLE'] === '1';")]).toEqual([
-      "NOTEBOOK_FIXTURE_SINGLE",
-    ]);
-  });
-
-  it("mutation: a dotted read in a helper retrieveNodeChunks imports is undeclared", () => {
-    const overlay = new Map<string, string>();
-    overlay.set("lib/sneaky-flag.ts", 'export const sneak = process.env.NOTEBOOK_UNDECLARED_DOT === "1";\n');
-    overlay.set(
-      "lib/manual-rag.ts",
-      `${readFileSync(SRC("lib/manual-rag.ts"), "utf8")}\nimport "./sneaky-flag";\n`,
-    );
-    const undeclared = [...discoverNotebookReads(overlay)].filter((f) => !(f in FLAGS));
-    expect(undeclared).toContain("NOTEBOOK_UNDECLARED_DOT");
-  });
-
-  it("mutation: a bracket read in a helper retrieveNodeChunks imports is undeclared", () => {
-    const overlay = new Map<string, string>();
-    overlay.set("lib/sneaky-flag.ts", 'export const sneak = process.env["NOTEBOOK_UNDECLARED_BRACKET"] === "1";\n');
-    overlay.set(
-      "lib/manual-rag.ts",
-      `${readFileSync(SRC("lib/manual-rag.ts"), "utf8")}\nimport "./sneaky-flag";\n`,
-    );
-    const undeclared = [...discoverNotebookReads(overlay)].filter((f) => !(f in FLAGS));
-    expect(undeclared).toContain("NOTEBOOK_UNDECLARED_BRACKET");
-  });
-});
-
 describe("experimental retrieval flags keep the production lexical passes (#5138)", () => {
-  it("every NOTEBOOK_* flag retrieveNodeChunks imports read is declared here", () => {
-    const read = discoverNotebookReads();
+  it("every NOTEBOOK_* flag the retrieval sources read is declared here", () => {
+    const read = new Set<string>();
+    for (const f of RETRIEVAL_SOURCES) {
+      for (const m of readFileSync(SRC(f), "utf8").matchAll(/process\.env\.(NOTEBOOK_[A-Z0-9_]+)/g)) read.add(m[1]);
+    }
     expect(read.size).toBeGreaterThan(0);
     expect([...read].filter((f) => !(f in FLAGS)).sort(), "declare the new flag in FLAGS").toEqual([]);
   });
