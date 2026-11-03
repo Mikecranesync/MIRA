@@ -2206,8 +2206,13 @@ export async function retrieveNodeChunks(
   // shape and are not reranked. Any reranker failure returns null: today's order stands.
   // #4579: the outcome is recorded on the span (off | ran | skipped_broad | skipped_short |
   // fallback_<reason>), not only logged, so a staging A/B can tell whether rerank ran.
-  // rerank_ms is the service wait (null when no call was made), so a turn near the timeout
-  // is visible before it becomes a fallback.
+  //
+  // Exported contract for `mira.retrieval.rerank_ms` (#5168): a number of milliseconds
+  // waited on a rerank HTTP request. The attribute is ABSENT — not null, not 0, not a
+  // sentinel — when no request was attempted (flag off, skipped_broad, skipped_short, or
+  // NOTEBOOK_RERANK=1 with RERANKER_URL unset → fallback_not_configured). tracing.ts
+  // already drops null; we omit the key so the producer matches the export. The in-process
+  // diagnostics bag still uses null for "no wait" so callers can distinguish unset from 0.
   let modelRanked = hybridRanked;
   let rerankOutcome: string;
   let rerankMs: number | null = null;
@@ -2220,14 +2225,18 @@ export async function retrieveNodeChunks(
   } else {
     const head = hybridRanked.slice(0, rerankPool());
     let fallbackReason: string | undefined;
-    const rerankStart = Date.now();
+    // Start the wait clock only when rerankScores will actually issue an HTTP request.
+    // RERANKER_URL unset/empty returns before fetch (fallback_not_configured) — a 0 ms
+    // reading there would look like a successful instant wait (#5168).
+    const requestAttempted = Boolean(process.env.RERANKER_URL);
+    const rerankStart = requestAttempted ? Date.now() : 0;
     const scores = await rerankScores(opts.rawQuery ?? q, head.map((c) => c.content), {
       log: (reason, detail) => {
         fallbackReason = reason;
         logRerankFallback(reason, detail);
       },
     });
-    rerankMs = Date.now() - rerankStart;
+    if (requestAttempted) rerankMs = Date.now() - rerankStart;
     if (scores) {
       modelRanked = [...orderByScores(head, scores), ...hybridRanked.slice(head.length)];
       rerankOutcome = "ran";
@@ -2244,8 +2253,8 @@ export async function retrieveNodeChunks(
   ].join("+");
   setSpanAttrs({
     "mira.retrieval.rerank": rerankOutcome,
-    "mira.retrieval.rerank_ms": rerankMs,
     "mira.retrieval.search_path": searchPath,
+    ...(rerankMs === null ? {} : { "mira.retrieval.rerank_ms": rerankMs }),
   });
   if (opts.diagnostics) {
     opts.diagnostics.rerank = rerankOutcome;
