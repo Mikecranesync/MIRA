@@ -56,6 +56,7 @@ import {
   type BudgetReservation,
 } from "@/capabilities/openai-run-budget";
 import { withSupportingQuotes } from "@/capabilities/supporting-quote";
+import { pageCitationQuote } from "@/capabilities/page-citation-quote";
 import { citedPagesFor, extractManualSafetyStatement, manualSafetyStatementForCitations } from "@/capabilities/manual-safety-statement";
 import { retrieveSafetyChapterChunks, SAFETY_CHAPTER_DIRECTIVE } from "@/capabilities/manual-safety-chapter";
 import { shadowVerifyCitedTurn } from "@/capabilities/claim-verifier-shadow";
@@ -91,7 +92,6 @@ import {
 import pool from "@/lib/db";
 import type { PoolClient } from "pg";
 import { composeTimeout } from "@/lib/abort-helpers";
-import { relevantQuoteWindow } from "@/lib/quote-window";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import { authorizeGuidedDeadEnd, guidedProcedureEnabled } from "@/capabilities/guided-procedure-store";
@@ -465,6 +465,11 @@ async function buildCitations(
   question: string,
 ): Promise<EvidenceCitation[]> {
   const seen = new Map<string, EvidenceCitation>();
+  const pageContents = new Map<string, string[]>();
+  for (const c of chunks) {
+    const key = `${c.sourceUrl}::${c.sourcePage ?? ""}`;
+    pageContents.set(key, [...(pageContents.get(key) ?? []), c.content]);
+  }
   for (const c of chunks) {
     const key = `${c.sourceUrl}::${c.sourcePage ?? ""}`;
     if (seen.has(key)) continue;
@@ -477,8 +482,9 @@ async function buildCitations(
       // A manufacturer manual's own address, so the reader can open it; only a
       // place a browser can actually go (http/https) is carried.
       ...(/^https?:\/\//i.test(c.sourceUrl ?? "") ? { sourceUrl: c.sourceUrl } : {}),
-      // Claim-centered window (CIT-07 phase 2) — not the chunk head.
-      quote: relevantQuoteWindow(c.content, question),
+      // Claim-centered window (CIT-07 phase 2) — not the chunk head — from the
+      // page chunk that best matches the question, not the first retrieved (#5132).
+      quote: pageCitationQuote(pageContents.get(key) ?? [c.content], question),
     });
   }
   const citations = [...seen.values()];
