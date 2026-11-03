@@ -123,6 +123,7 @@ import {
   withSafetyFlag,
 } from "@/lib/safety-classifier";
 import { RESTART_BANNER, RESTART_DIRECTIVE, isFaultResetAsk } from "@/capabilities/restart-advisory";
+import { withBackupBanner } from "@/capabilities/erase-advisory";
 import { pageFromRetrievedChunks, withPageCitation } from "@/lib/citation-page";
 import {
   ENERGIZED_WORK_TRIGGER,
@@ -4597,6 +4598,11 @@ async function handleChatTurn(
           console.error("[notebook-chat] manual-search re-read failed:", err instanceof Error ? err.message : err);
         }
       }
+      // #5129 — an answer that tells the technician to reset to defaults or
+      // delete a program gets a fixed back-up notice directly above the model's
+      // text. Added before validation so every safety warning and the flag
+      // banner stack above it. Gated lane only: nothing has been released yet.
+      if (gate && served && !refused && answerText) answerText = withBackupBanner(answerText);
       const validation = validateAnswer({
         answerText,
         question: message,

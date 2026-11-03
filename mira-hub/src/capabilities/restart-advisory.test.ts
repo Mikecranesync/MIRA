@@ -15,6 +15,12 @@ import { RESTART_BANNER, RESTART_DIRECTIVE, isFaultResetAsk } from "./restart-ad
 
 describe("isFaultResetAsk — questions that must get restart-safety framing", () => {
   const POSITIVE = [
+    // #5129 — staging turns 2026-10-27/28 that got no restart banner: a drive
+    // fault code instead of the word "fault", and a bare reset after a symptom.
+    "how do i reset the ov",
+    "how do I clear F004",
+    "reset the oC on the GS10",
+    "red led on front and relays dropped out how do i reset",
     // The #4645 staging questions (verbatim where the reviewer gave them).
     "How do I clear a fault on the panel?",
     "How do I acknowledge an alarm?",
@@ -49,6 +55,11 @@ describe("isFaultResetAsk — opposite-direction controls stay unflagged", () =>
     "Restart my laptop",
     "What supply voltage does the TP700 Comfort use?",
     "How do I reset my password after the error message?",
+    // #5129 controls: a reset to defaults is not a fault reset (the answer-side
+    // backup notice covers it), and a parameter number is not a fault code.
+    "how do i reset to factory defaults",
+    "how do I reset P041",
+    "how do I reset the counter",
     "",
   ];
   for (const q of NEGATIVE) it(`does not flag: "${q}"`, () => expect(isFaultResetAsk(q)).toBe(false));
