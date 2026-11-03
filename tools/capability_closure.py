@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as _dt
+import json
 import re
 import sys
 from pathlib import Path
@@ -383,9 +384,9 @@ def check_production_has_rollback(cap: dict) -> list[Finding]:
 
 LOSS_DISPOSITIONS = {"open", "accepted", "fixed"}
 
-# A replay or an owner decision must be a durable record in this repository's
-# GitHub history (an issue or PR, optionally one comment), not free text. Free
-# text let a replay that never happened satisfy the rule (#5169 F2).
+# An owner decision, and the optional replay discussion link, must be a durable
+# record in this repository's GitHub history (an issue or PR, optionally one
+# comment), not free text (#5169 r1 F2).
 _DURABLE_REF_RE = re.compile(
     r"https://github\.com/Mikecranesync/MIRA/(?:issues|pull)/\d+(?:#issuecomment-\d+)?"
 )
@@ -410,10 +411,15 @@ def check_retrieval_promotion_evidence(cap: dict, root: Path) -> list[Finding]:
     Thresholds stay in docs/evals/retrieval-eval/release-gates.md; this rule
     only refuses promotion without the evidence those gates are read from.
 
-    The revision must be a real commit on durable history (main or a tag), and
-    the replay a durable GitHub record, checked with the same helpers as
-    evidence provenance. On a shallow clone those helpers cannot answer, and an
-    unanswerable question is not a finding (see evidence_provenance).
+    The replay is a committed artifact (`promotion_evidence.artifact`, a JSON
+    file in this repository) holding per-case hit booleans for the baseline and
+    the treatment at one revision. The rule enforces three things about it: the
+    artifact's capability and revision match the record, the revision is a real
+    commit on main or a tag (the evidence_provenance helpers; on a shallow clone
+    they cannot answer, and an unanswerable question is not a finding), and the
+    listed losses EQUAL the losses computed from the artifact, so a loss cannot
+    be left off the list. It does not prove that the replay ran: that is human
+    review of the artifact in an R3 diff (#5169 r2 F1).
     """
     cid = cap.get("id", "<no id>")
     if cap.get("retrieval_experiment") is not True:
@@ -435,7 +441,7 @@ def check_retrieval_promotion_evidence(cap: dict, root: Path) -> list[Finding]:
     if not isinstance(pe, dict):
         return [bad("on in staging or production with no `promotion_evidence` replay")]
     out = []
-    for f in ("baseline", "treatment", "replay", "replayed_by"):
+    for f in ("baseline", "treatment", "replayed_by"):
         if not str(pe.get(f) or "").strip():
             out.append(bad(f"`promotion_evidence.{f}` is empty"))
     replay = str(pe.get("replay") or "").strip()
@@ -458,11 +464,20 @@ def check_retrieval_promotion_evidence(cap: dict, root: Path) -> list[Finding]:
         out.append(bad(f"replay revision {base_rev[:12]} is not on main or a tag"))
     if pe.get("independent") is not True:
         out.append(bad("`promotion_evidence.independent` must be true"))
+    computed, msg = _replay_losses(root, str(pe.get("artifact") or ""), cid, base_rev)
+    if msg:
+        out.append(bad(msg))
     losses = pe.get("losses")
     if not isinstance(losses, list):
         return out + [
             bad("`promotion_evidence.losses` must list every lost case (an empty list if none)")
         ]
+    if computed is not None:
+        listed = {str(loss.get("case") or "").strip() for loss in losses if isinstance(loss, dict)}
+        for case in sorted(computed - listed):
+            out.append(bad(f"the replay artifact loses {case}, which `losses` does not list"))
+        for case in sorted(listed - computed - {""}):
+            out.append(bad(f"listed loss {case} is not a loss in the replay artifact"))
     for loss in losses:
         case = str((loss or {}).get("case") or "").strip() if isinstance(loss, dict) else ""
         disp = loss.get("disposition") if isinstance(loss, dict) else None
@@ -475,14 +490,58 @@ def check_retrieval_promotion_evidence(cap: dict, root: Path) -> list[Finding]:
             continue
         if disp == "open" and prod:
             out.append(bad(f"production with loss {case} still open"))
+        owner = str(cap.get("owner") or "").strip()
         if disp == "accepted" and (
-            loss.get("decided_by") != cap.get("owner")
+            not owner
+            or cap.get("owner_missing")
+            or str(loss.get("decided_by") or "").strip() != owner
             or not _DURABLE_REF_RE.fullmatch(str(loss.get("decision") or "").strip())
         ):
             out.append(bad(f"loss {case} accepted without a linked decision by the owner"))
         if disp == "fixed" and not str(loss.get("ref") or "").strip():
             out.append(bad(f"loss {case} marked fixed without a `ref`"))
     return out
+
+
+def _replay_losses(
+    root: Path, artifact: str, cid: str, revision: str
+) -> tuple[set[str] | None, str | None]:
+    """Cases the baseline hit and the treatment missed, read from the committed
+    replay artifact; or (None, why) when the artifact cannot be used."""
+    if not artifact.strip():
+        return None, "`promotion_evidence.artifact` is empty (a committed per-case replay)"
+    base = root.resolve()
+    path = (base / artifact).resolve()
+    if base not in path.parents or not path.is_file():
+        return None, f"replay artifact {artifact!r} is not a file in this repository"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        return None, f"replay artifact {artifact!r} does not parse: {e}"
+    if not isinstance(data, dict):
+        return None, f"replay artifact {artifact!r} is not a JSON object"
+    if data.get("capability") != cid:
+        return None, f"replay artifact {artifact!r} is for {data.get('capability')!r}, not {cid!r}"
+    if data.get("revision") != revision:
+        return None, (
+            f"replay artifact revision {data.get('revision')!r} is not the replay revision "
+            f"{revision!r}"
+        )
+    cases = data.get("cases")
+    if not isinstance(cases, dict) or not cases:
+        return None, f"replay artifact {artifact!r} has no `cases`"
+    losses = set()
+    for case, r in cases.items():
+        if not isinstance(r, dict) or not all(
+            isinstance(r.get(k), bool) for k in ("baseline_hit", "treatment_hit")
+        ):
+            return (
+                None,
+                f"replay artifact case {case!r} needs boolean baseline_hit and treatment_hit",
+            )
+        if r["baseline_hit"] and not r["treatment_hit"]:
+            losses.add(str(case))
+    return losses, None
 
 
 def check_review_not_expired(cap: dict, today: _dt.date) -> list[Finding]:
