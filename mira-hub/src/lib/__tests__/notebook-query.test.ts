@@ -346,6 +346,29 @@ describe("buildRetrievalQuery — short follow-up carries the prior subject (#51
       .toBe("what about that? communications EtherNet/IP EtherNet Modbus");
   });
 
+  it("a second short follow-up still carries the original subject (#5158)", () => {
+    const chain: ChatHistoryTurn[] = [
+      ...wiring,
+      { role: "user", content: "and the outputs?" },
+      { role: "assistant", content: "Outputs 0 to 3 are relay outputs. [2]" },
+    ];
+    expect(buildRetrievalQuery("and analog?", chain)).toBe("and analog? 24V Micro820 wire sinking");
+  });
+
+  it("a short topic switch is not polluted with the previous subject (#5159)", () => {
+    expect(buildRetrievalQuery("what about hydraulic pressure?", wiring)).toBe("what about hydraulic pressure?");
+    expect(buildRetrievalQuery("and the coolant pump?", wiring)).toBe("and the coolant pump?");
+  });
+
+  it("a topic switch becomes the subject later follow-ups carry (#5158/#5159)", () => {
+    const switched: ChatHistoryTurn[] = [
+      ...wiring,
+      { role: "user", content: "what about hydraulic pressure?" },
+      { role: "assistant", content: "The manual does not cover hydraulics." },
+    ];
+    expect(buildRetrievalQuery("and the outputs?", switched)).toBe("and the outputs? hydraulic pressure");
+  });
+
   it("control: a self-contained question is unchanged", () => {
     const msg = "How do I wire the relay outputs on the Micro820 controller to a 24V DC load?";
     expect(buildRetrievalQuery(msg, wiring)).toBe(msg);
