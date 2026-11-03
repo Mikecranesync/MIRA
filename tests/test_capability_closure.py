@@ -767,6 +767,9 @@ def test_an_unreadable_main_registry_fails_with_full_history(monkeypatch):
 
 
 def test_main_runs_the_append_only_check(monkeypatch):
+    """Only the append-only wiring decides the exit code here: validate() is stubbed,
+    so the test does not depend on the committed registry being clean."""
+    monkeypatch.setattr(cc, "validate", lambda registry, root, today=None: [])
     reg = _registry()
     base = copy.deepcopy(reg)
     for c in base["capabilities"]:
