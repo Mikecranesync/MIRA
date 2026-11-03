@@ -47,7 +47,8 @@ const SYNONYMS: ReadonlyArray<readonly [RegExp, readonly string[]]> = [
 /** Patterns for exact tokens that MUST be retrievable verbatim (they name a
  *  specific row). Order matters only for de-dup; all are collected. */
 const EXACT_PATTERNS: ReadonlyArray<RegExp> = [
-  /\b[PpAaBbCcHhLdtUu]\d{2,4}\b/g, // parameter IDs: P042, A410, b001, t067, C123, d012
+  /\b[PpAaBbCcHhLdtUu]\d{2,4}\b(?!\.\d)/g, // parameter IDs: P042, A410, b001, t067, C123, d012
+  /\b[Pp]\d{1,2}\.\d{2}\b/g, // group.index parameter IDs (#5130): P1.02 (GS1), P01.12 (GS10)
   /\bF\d{2,4}\b/gi, // fault codes: F004
   /\b25[AB]-[A-Z0-9]+\b/gi, // PowerFlex catalog numbers
   /\b\d{2,3}-[A-Z]\d{2,}\b/gi, // generic catalog-ish
@@ -296,6 +297,13 @@ export function codeTokenMatcher(tok: string): { sql: string; re: RegExp } {
   };
 }
 
+/** The spellings a dotted ID can be stored under (#5130): some manuals store
+ *  the period as U+FFFD, so "P1.02" is also searched as "P1�02". Explicit
+ *  alternatives, never a wildcard, and the stored text is never rewritten. */
+export function storedSpellings(tok: string): string[] {
+  return tok.includes(".") ? [tok, tok.replace(/\./g, "�")] : [tok];
+}
+
 export function expandIndustrialQuery(query: string): ExpandedQuery {
   const q = query.trim();
   const lower = q.toLowerCase();
@@ -323,6 +331,14 @@ export function expandIndustrialQuery(query: string): ExpandedQuery {
   }
   // Both zero-padding spellings of a parameter or fault ID (see codeSpellings).
   for (const tok of [...exact]) for (const s of codeSpellings(tok)) exact.add(s.toUpperCase());
+  // A group.index ID is printed as P1.02 in one manual and P01.02 in the next.
+  for (const tok of [...exact]) {
+    const dotted = /^P0?(\d)\.(\d{2})$/.exec(tok);
+    if (dotted) {
+      exact.add(`P${dotted[1]}.${dotted[2]}`);
+      exact.add(`P0${dotted[1]}.${dotted[2]}`);
+    }
+  }
   // "terminal 07" / "term 7" → the terminal number as an exact token.
   for (const m of lower.matchAll(/\b(?:terminal|term|digital input|din)\s*#?\s*0*(\d{1,2})\b/g)) {
     exact.add(`0${m[1]}`.slice(-2)); // 7 → "07"
@@ -568,7 +584,7 @@ export function rerankChunks<T extends Rerankable>(
     // ID entirely (keypad-navigation defect) — so damp it there.
     const exactWeight = intent === "procedure" ? 0.5 : 3.0;
     for (const t of exact) {
-      if (t && text.includes(t)) {
+      if (t && storedSpellings(t).some((s) => text.includes(s))) {
         score += exactWeight; // exact ID present verbatim
         exactHit = true;
       }

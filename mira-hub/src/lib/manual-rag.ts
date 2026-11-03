@@ -20,6 +20,7 @@ import {
   diversifyByPage,
   ensureFacetRepresentation,
   COMM_FACETS,
+  storedSpellings,
   type RerankTraceRow,
 } from "@/lib/notebook-query";
 
@@ -1909,7 +1910,7 @@ export async function retrieveNodeChunks(
   // Recall for the question's rare words. Not lexical coverage: the full OR pass
   // below must still run when the AND and synonym passes found nothing.
   if (!lexicalV2) add(await runRetrieval(RARE_TSQUERY, opts.rawQuery?.trim() || expanded.variants[0]));
-  add(await runExactLane(expanded.exactTokens.map((t) => `%${t}%`)));
+  add(await runExactLane(expanded.exactTokens.flatMap(storedSpellings).map((t) => `%${t}%`)));
   // The code the technician JUST named gets its own whole-token pass with its
   // own window BEFORE the combined pass (Codex r8 on #4360): the combined query
   // binds history and current patterns together, orders by page and LIMITs to
