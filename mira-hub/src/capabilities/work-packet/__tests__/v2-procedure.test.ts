@@ -86,7 +86,9 @@ describe("D4 — the complete applicable job sequence, in the manual's order", (
     // Every step is the manual's own line, cited.
     const lines = FIXTURES["manual-85v2.txt"].split("\n");
     for (const s of p.steps) {
-      expect(s.text.label).toBe("verified");
+      // Verified = this exact model; a line that also names other models, or one limited by an
+      // unsettled restriction, is the manual's own words but only Proposed for this pump.
+      expect(s.text.label).toBe(s.applicability ? "proposed" : "verified");
       expect(lines.some((l) => l.endsWith(s.text.value ?? "\u0000"))).toBe(true);
     }
     // No step twice.
@@ -146,8 +148,11 @@ describe("D1 — notes for other models are never shown for this pump", () => {
     const step = p.steps.find((x) => (x.text.value ?? "").startsWith("Press the Guide Cylinder"))!;
     expect(step.applicability?.label).toBe("proposed");
     expect(step.applicability?.value).toContain("8520");
+    expect(step.text.label).toBe("proposed");
     const mixed = p.steps.flatMap((x) => x.notes ?? []).find((n) => (n.text.value ?? "").startsWith("Models 8531, 8535 use a Spacer."))!;
     expect(mixed.applicability?.label).toBe("proposed");
+    expect(mixed.text.label).toBe("proposed");
+    expect(mixed.text.basis).toMatch(/also names other models/);
   });
 });
 
@@ -161,6 +166,8 @@ describe("D5 — restrictions the documents cannot settle become blockers", () =
     expect(blockers.some((b) => b.basis.includes("For some installations"))).toBe(true);
     const step = p.steps.find((x) => (x.text.value ?? "").startsWith("Fit the Spacer Spring."))!;
     expect(step.applicability?.label).toBe("unknown");
+    expect(step.text.label).toBe("proposed");
+    expect(step.text.basis).toMatch(/restriction the documents cannot settle/);
   });
 });
 

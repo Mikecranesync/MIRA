@@ -49,6 +49,17 @@ function applicabilityField(a: Applicability, source: Field["source"]): Field | 
   return undefined;
 }
 
+/** "Verified" means the manual says this for this exact model. A line that also names other models,
+ *  or is limited by a restriction the documents cannot settle, is the manual's own words but only
+ *  Proposed for this pump. */
+function downgrade(text: Field, a: Applicability): void {
+  if (a.kind !== "mixed" && a.kind !== "unresolved") return;
+  text.label = "proposed";
+  text.basis += a.kind === "mixed"
+    ? " — the manual's own line, but it also names other models: use only the part for this pump"
+    : " — the manual's own line, limited by a restriction the documents cannot settle";
+}
+
 export function buildProcedure(manuals: ManualDoc[], topics: Topic[], model: string): ProcedureResult {
   const steps: PacketStep[] = [];
   const leftOut: Field[] = [];
@@ -101,6 +112,7 @@ export function buildProcedure(manuals: ManualDoc[], topics: Topic[], model: str
       };
       const af = applicabilityField(a, step.source);
       if (af) ps.applicability = af;
+      downgrade(ps.text, a);
       if (a.kind === "unresolved") addBlocker(step.text, a, step.source);
       if (inclusion) ps.inclusion = inclusion;
       const k = blockKey(section.heading, section.subheading);
@@ -237,6 +249,7 @@ export function buildProcedure(manuals: ManualDoc[], topics: Topic[], model: str
       const note: StepNote = { kind: c.kind, text: { value: c.text, label: "verified", source: c.source, basis: `${c.kind} — ${label}` } };
       const af = applicabilityField(a, c.source);
       if (af) note.applicability = af;
+      downgrade(note.text, a);
       if (a.kind === "unresolved") addBlocker(c.text, a, c.source);
       target.notes!.push(note);
     }
