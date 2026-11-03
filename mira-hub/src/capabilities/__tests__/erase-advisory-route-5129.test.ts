@@ -129,7 +129,7 @@ afterEach(async () => {
 });
 
 import { RESTART_BANNER } from "@/capabilities/restart-advisory";
-import { BACKUP_BANNER } from "@/capabilities/erase-advisory";
+import { BACKUP_BANNER, FACTORY_NOT_FAULT_BANNER } from "@/capabilities/erase-advisory";
 
 function lastTurn() {
   const calls = domainMock.recordTurn.mock.calls as unknown as unknown[][];
@@ -193,5 +193,33 @@ describe("#5129 — back-up notice on erase answers (route)", () => {
     const { streamed, persisted } = await ask("What does fault F004 indicate?", "F004 indicates DC bus undervoltage [1].");
     expect(streamed).not.toContain(BACKUP_BANNER);
     expect(persisted).not.toContain(BACKUP_BANNER);
+  });
+});
+
+describe("#5131 — factory reset offered for a fault (route)", () => {
+  beforeEach(() => {
+    process.env.NOTEBOOK_ANSWER_GATE = "1";
+  });
+
+  it("a fault-reset question answered with a factory reset carries the notice once, above the back-up notice", async () => {
+    const { streamed, persisted } = await ask(
+      "How do I reset fault F004?",
+      "Set P041 to 1 to reset all parameters to defaults [1].",
+    );
+    for (const text of [streamed, persisted]) {
+      expect(count(text, FACTORY_NOT_FAULT_BANNER)).toBe(1);
+      expect(text.indexOf(FACTORY_NOT_FAULT_BANNER)).toBeGreaterThan(text.indexOf(RESTART_BANNER));
+      expect(text.indexOf(BACKUP_BANNER)).toBeGreaterThan(text.indexOf(FACTORY_NOT_FAULT_BANNER));
+    }
+  });
+
+  it("opposite direction: a factory reset the technician asked for gets no such notice", async () => {
+    const { streamed, persisted } = await ask(
+      "The drive faulted. How do I reset it to factory defaults?",
+      "Set P041 to 1 to reset all parameters to defaults [1].",
+    );
+    expect(streamed).not.toContain(FACTORY_NOT_FAULT_BANNER);
+    expect(persisted).not.toContain(FACTORY_NOT_FAULT_BANNER);
+    expect(streamed).toContain(BACKUP_BANNER);
   });
 });
