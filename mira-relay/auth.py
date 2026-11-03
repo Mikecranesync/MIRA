@@ -83,6 +83,7 @@ def sign_hmac_headers(
     body_bytes: bytes,
     key: str,
     *,
+    now: Optional[float] = None,
     _nonce: Optional[str] = None,
     _now: Optional[float] = None,
 ) -> dict[str, str]:
@@ -92,13 +93,20 @@ def sign_hmac_headers(
     cannot drift. Sign the **exact bytes** you send — post via ``content=`` so the
     HTTP client cannot re-encode the body and invalidate the body hash.
 
+    ``now`` is the signing time in epoch seconds; omit it to use the host clock.
+    A producer whose host clock is known to be wrong (e.g. it measured its
+    offset via SNTP) passes its corrected UTC here so the relay's unchanged
+    ``TIMESTAMP_SKEW_SECONDS`` window is checked against true time.
+
     ``_nonce`` / ``_now`` are test seams only; production callers omit both.
     Never logs or returns the key.
     """
     import uuid
 
     nonce = _nonce or uuid.uuid4().hex
-    timestamp = str(int(_now if _now is not None else time.time()))
+    if now is None:
+        now = _now if _now is not None else time.time()
+    timestamp = str(int(now))
     signature = hmac.new(
         key.encode(),
         _signed_string(tenant_id, nonce, timestamp, body_bytes).encode(),
