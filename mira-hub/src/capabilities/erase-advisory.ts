@@ -65,14 +65,11 @@ export function backupBannerFor(answerText: string): string | null {
   return null;
 }
 
-/** The answer with the back-up notice prepended — below `flagBanner` when the
- *  answer already leads with it. Unchanged when no notice applies. */
-export function withBackupBanner(answerText: string, flagBanner: string | null): string {
-  // No explicit dedupe: the banner itself says "Back up …", so BACKUP_RE keeps
-  // an already-bannered answer silent (pinned by "never adds the notice twice").
-  if (!answerText) return answerText;
-  const lead = flagBanner && answerText.startsWith(flagBanner) ? flagBanner : "";
-  const body = answerText.slice(lead.length).replace(/^\s+/, "");
-  if (!backupBannerFor(body)) return answerText;
-  return lead ? `${lead}\n\n${BACKUP_BANNER}\n\n${body}` : `${BACKUP_BANNER}\n\n${body}`;
+/** The model's answer with the back-up notice prepended; unchanged when no
+ *  notice applies. The route calls it on the raw candidate, before any server
+ *  banner is stacked above. No explicit dedupe: the banner itself says "Back
+ *  up …", so BACKUP_RE keeps an already-bannered answer silent. */
+export function withBackupBanner(answerText: string): string {
+  if (!answerText || !backupBannerFor(answerText)) return answerText;
+  return `${BACKUP_BANNER}\n\n${answerText}`;
 }

@@ -4598,6 +4598,11 @@ async function handleChatTurn(
           console.error("[notebook-chat] manual-search re-read failed:", err instanceof Error ? err.message : err);
         }
       }
+      // #5129 — an answer that tells the technician to reset to defaults or
+      // delete a program gets a fixed back-up notice directly above the model's
+      // text. Added before validation so every safety warning and the flag
+      // banner stack above it. Gated lane only: nothing has been released yet.
+      if (gate && served && !refused && answerText) answerText = withBackupBanner(answerText);
       const validation = validateAnswer({
         answerText,
         question: message,
@@ -4815,14 +4820,6 @@ async function handleChatTurn(
       }
 
       if (flagBanner && served && !refused && !outputRejected && answerText) answerText = `${flagBanner}\n\n${answerText}`;
-
-      // #5129 — an answer that tells the technician to reset to defaults or
-      // delete a program gets a fixed back-up notice, stacked below any flag
-      // banner. Gated lane only: nothing has been released yet, so the notice
-      // lands above the first byte the technician sees.
-      if (gate && served && !refused && !outputRejected && answerText) {
-        answerText = withBackupBanner(answerText, flagBanner);
-      }
 
       // #4068 — owner decision 2026-09-27 ("allow with a warning"): an answer
       // grounded on related-manual pages (the same-family fallback) may relay

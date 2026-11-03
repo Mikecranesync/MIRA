@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import { validateAnswer } from "./answer-validation";
 import { BACKUP_BANNER, backupBannerFor, withBackupBanner } from "./erase-advisory";
+import { ISOLATION_BANNER } from "./isolation-advisory";
 
 // #5129 — answers from staging (Oct 23 – Nov 2) that told the technician to
 // erase settings or a program with no back-up line, plus the shapes that must
@@ -60,21 +62,36 @@ describe("withBackupBanner (#5129)", () => {
   const ERASE = "Set P041 to 1 to reset to defaults.";
 
   it("puts the notice above the answer", () => {
-    expect(withBackupBanner(ERASE, null)).toBe(`${BACKUP_BANNER}\n\n${ERASE}`);
-  });
-
-  it("stacks below a leading flag banner", () => {
-    const flag = "⚠️ **Before you reset or restart.** Find the cause.";
-    const answer = `${flag}\n\n${ERASE}`;
-    expect(withBackupBanner(answer, flag)).toBe(`${flag}\n\n${BACKUP_BANNER}\n\n${ERASE}`);
+    expect(withBackupBanner(ERASE)).toBe(`${BACKUP_BANNER}\n\n${ERASE}`);
   });
 
   it("leaves an answer with no erase step unchanged", () => {
-    expect(withBackupBanner("Press Stop/Reset to clear the fault.", null)).toBe("Press Stop/Reset to clear the fault.");
+    expect(withBackupBanner("Press Stop/Reset to clear the fault.")).toBe("Press Stop/Reset to clear the fault.");
   });
 
   it("never adds the notice twice", () => {
-    const once = withBackupBanner(ERASE, null);
-    expect(withBackupBanner(once, null)).toBe(once);
+    const once = withBackupBanner(ERASE);
+    expect(withBackupBanner(once)).toBe(once);
+  });
+});
+
+describe("back-up notice below the isolation notice (#5129)", () => {
+  it("validateAnswer stacks its lockout notice above the back-up notice", () => {
+    const answer = withBackupBanner(
+      "Replace the input fuse [1]. Then set P041 to 1 to reset all parameters to defaults [1].",
+    );
+    const v = validateAnswer({
+      answerText: answer,
+      question: "The drive will not start, what do I do?",
+      general: false,
+      served: true,
+      refused: false,
+      evidenceSufficient: true,
+      manualSearchRunning: null,
+    });
+    expect(v.ok).toBe(false);
+    const replacement = v.ok ? "" : v.replacement;
+    expect(replacement.startsWith(ISOLATION_BANNER)).toBe(true);
+    expect(replacement.indexOf(BACKUP_BANNER)).toBeGreaterThan(replacement.indexOf(ISOLATION_BANNER));
   });
 });
