@@ -34,6 +34,7 @@ import type {
 import { applyEdit } from "@/capabilities/work-packet/edits";
 import { emptyRecord, parseRecord, type JobRecord } from "@/capabilities/work-packet/job-record";
 import { CompletionBlock, JobNotesSection, JobPhotosSection, MeasurementRecordInput, PacketCoverage, StepRecordControls } from "./JobRecordView";
+import { BlockersSection, JhaTable, LeftOutAppendix, MeasurementsTable, PartsTable, PhasedSteps, ReadinessBlock, type RenderField } from "./WorkPacketV2Sections";
 import {
   badgeText,
   quoteChipLabel,
@@ -42,20 +43,15 @@ import {
   confirmedRevisionsPayload,
   confidencePercent,
   documentsSignature,
-  jhaFieldPath,
-  measurementFieldPath,
   packetForNotebook,
   packetHeaderRows,
   packetStaleReason,
   revisionTickHolds,
-  partFieldPath,
   printTitle,
   qualificationFieldPath,
   restorationFieldPath,
   scopeFieldPath,
   sourceChipLabel,
-  stepFieldPath,
-  stepsWithFigures,
   syntheticDemoWorkOrder,
   toolFieldPath,
   unknownFieldPath,
@@ -100,7 +96,7 @@ const S: Record<string, CSSProperties> = {
   label: { display: "block", marginTop: 10, fontSize: "var(--fl-fs-sm)" },
   field: { borderTop: "1px solid var(--fl-line)", padding: "10px 0" },
   chip: {
-    display: "inline-block", marginTop: 6, padding: "4px 8px", minHeight: 0, border: "1px solid var(--fl-line-strong)",
+    display: "inline-block", marginTop: 6, padding: "4px 8px", minHeight: 44, border: "1px solid var(--fl-line-strong)",
     borderRadius: "var(--fl-radius-sm, 6px)", background: "var(--fl-surface)", color: "var(--fl-muted)",
     fontSize: "var(--fl-fs-xs)", cursor: "pointer",
   },
@@ -129,6 +125,7 @@ function badgeStyle(label: Field["label"]): CSSProperties {
  *  the packet (portal root)"). `[data-no-print]` hides every edit/nav control on paper; nothing
  *  outside `.wp-print-root` is visible on paper. */
 const PRINT_CSS = `
+@page { margin: 14mm 12mm 16mm 12mm; @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 9pt; } }
 @media print {
   body * { visibility: hidden; }
   .wp-print-root, .wp-print-root * { visibility: visible; }
@@ -565,6 +562,10 @@ export function WorkPacketPanel({
     setRecordError(saveRecord(next) ? null : "This device did not save that change (storage is full or blocked). It is shown here but will be lost on reload — remove a photo and try again.");
   }, []);
 
+  const renderField: RenderField = (path, field) => (
+    <FieldRow path={path} field={field} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />
+  );
+
   // ── Export PDF ────────────────────────────────────────────────────────────────────────────────
   const stale = packet && avail ? packetStaleReason(packet, avail) : null;
 
@@ -751,6 +752,7 @@ export function WorkPacketPanel({
                 {packet.workOrder.synthetic && <div style={S.stamp} data-testid="wp-synthetic-stamp">SYNTHETIC — not a real job</div>}
                 <PacketHeader packet={packet} />
                 <div style={S.warn} data-testid="wp-disclaimer">{packet.disclaimer}</div>
+                <ReadinessBlock packet={packet} />
                 <PacketCoverage packet={packet} />
                 {warnings.length > 0 && (
                   // Every warning is a verifyPacket line check; each such line is already shown below
@@ -765,6 +767,7 @@ export function WorkPacketPanel({
                   </details>
                 )}
                 {packet.safety.hazardFlags.map((h, i) => <div key={i} style={{ ...S.warn, marginTop: 8 }} data-testid={`wp-hazard-${i}`}>{h}</div>)}
+                <BlockersSection packet={packet} renderField={renderField} />
 
                 <section style={S.section}>
                   <h3 style={S.sectionTitle}>Scope</h3>
@@ -780,19 +783,7 @@ export function WorkPacketPanel({
                   </div>
                 </section>
 
-                {(packet.jha?.length ?? 0) > 0 && (
-                  <section style={S.section} data-testid="wp-jha">
-                    <h3 style={S.sectionTitle}>Job hazard analysis</h3>
-                    <div style={S.muted}>Hazards are the manufacturer&apos;s cautions. Controls, PPE and isolation are set by your site.</div>
-                    {packet.jha!.map((r, i) => (
-                      <div key={i} style={i > 0 ? S.jhaRow : { marginTop: 8 }}>
-                        <FieldRow path={jhaFieldPath(i, "task")} field={r.task} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />
-                        <FieldRow path={jhaFieldPath(i, "hazard")} field={r.hazard} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />
-                        <FieldRow path={jhaFieldPath(i, "controls")} field={r.controls} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />
-                      </div>
-                    ))}
-                  </section>
-                )}
+                <JhaTable packet={packet} renderField={renderField} />
 
                 {(packet.qualifications?.length ?? 0) > 0 && (
                   <section style={S.section} data-testid="wp-qualifications">
@@ -801,56 +792,22 @@ export function WorkPacketPanel({
                   </section>
                 )}
 
-                <section style={S.section}>
-                  <h3 style={S.sectionTitle}>Parts &amp; kits</h3>
-                  {packet.parts.map((p, i) => (
-                    <div key={i} style={{ marginTop: i > 0 ? 10 : 0 }}>
-                      {p.kit && <div style={S.muted}>{p.kit} kit</div>}
-                      <FieldRow path={partFieldPath(i, "partNumber")} field={p.partNumber} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />
-                      <FieldRow path={partFieldPath(i, "description")} field={p.description} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />
-                      <FieldRow path={partFieldPath(i, "qty")} field={p.qty} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />
-                    </div>
-                  ))}
-                </section>
+                <PartsTable packet={packet} renderField={renderField} />
 
                 <section style={S.section}>
                   <h3 style={S.sectionTitle}>Tools</h3>
                   {packet.tools.map((f, i) => <FieldRow key={i} path={toolFieldPath(i)} field={f} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />)}
                 </section>
 
-                <section style={S.section}>
-                  <h3 style={S.sectionTitle}>Steps</h3>
-                  {stepsWithFigures(packet).map(({ index: i, figures }) => (
-                    <div key={i}>
-                      <FieldRow path={stepFieldPath(i)} field={packet.steps[i].text} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />
-                      {record && <StepRecordControls index={i} struck={!!packet.steps[i].text.struck} record={record} by={by} onChange={onRecord} />}
-                      {figures.map((f, j) => (
-                        <figure key={j} style={S.figure} data-testid="wp-figure">
-                          {f.image
-                            ? // eslint-disable-next-line @next/next/no-img-element -- an inline data: URL photo; next/image cannot optimise it
-                              <img src={f.image} alt={f.caption.join(" — ") || `Manufacturer photo, p.${f.page}`} style={S.figureImg} />
-                            : <div style={S.muted}>Photo could not be read — see the manual.</div>}
-                          <figcaption style={S.muted}>{[...f.caption, `Manufacturer photo, p.${f.page} ${f.filename ?? "document"}`].join(" · ")}</figcaption>
-                        </figure>
-                      ))}
-                    </div>
-                  ))}
-                  {packet.steps.length > 0 && (packet.figures?.length ?? 0) === 0 && (
-                    <div style={{ ...S.muted, marginTop: 8 }}>Photos: open the cited manual page (this document was read as text only).</div>
-                  )}
-                </section>
+                <PhasedSteps
+                  packet={packet} renderField={renderField}
+                  stepExtra={(i) => record && <StepRecordControls index={i} struck={!!packet.steps[i].text.struck} record={record} by={by} onChange={onRecord} />}
+                />
 
-                <section style={S.section}>
-                  <h3 style={S.sectionTitle}>Torque / measurements</h3>
-                  {packet.measurements.map((m, i) => (
-                    <div key={i} style={{ marginTop: i > 0 ? 10 : 0 }}>
-                      <FieldRow path={measurementFieldPath(i, "name")} field={m.name} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />
-                      <FieldRow path={measurementFieldPath(i, "value")} field={m.value} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />
-                      <FieldRow path={measurementFieldPath(i, "tool")} field={m.tool} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />
-                      {record && <MeasurementRecordInput index={i} record={record} by={by} onChange={onRecord} />}
-                    </div>
-                  ))}
-                </section>
+                <MeasurementsTable
+                  packet={packet} record={record} renderField={renderField}
+                  measureInput={(i) => record && <MeasurementRecordInput index={i} record={record} by={by} onChange={onRecord} />}
+                />
 
                 {(packet.restoration?.length ?? 0) > 0 && (
                   <section style={S.section} data-testid="wp-restoration">
@@ -874,6 +831,8 @@ export function WorkPacketPanel({
                     <CompletionBlock packet={packet} record={record} />
                   </section>
                 )}
+
+                <LeftOutAppendix packet={packet} renderField={renderField} />
 
                 <section style={S.section}>
                   <h3 style={S.sectionTitle}>Sources</h3>

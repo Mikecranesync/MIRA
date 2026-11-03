@@ -23,7 +23,6 @@ import type {
   Field,
   Identity,
   JhaRow,
-  ModelScope,
   PacketDocument,
   PacketFigure,
   PacketMeasurement,
