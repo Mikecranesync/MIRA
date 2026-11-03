@@ -304,6 +304,77 @@ describe("buildRetrievalQuery", () => {
   });
 });
 
+describe("buildRetrievalQuery — short follow-up carries the prior subject (#5127 short follow-ups)", () => {
+  // The test-bot thread: the first question names no parameter ID or drive
+  // vocabulary, so salient-token augmentation had nothing to carry and every
+  // short follow-up searched on its own two words.
+  const wiring: ChatHistoryTurn[] = [
+    { role: "user", content: "how do I wire the 24V DC sinking inputs on the Micro820" },
+    { role: "assistant", content: "Inputs 0 to 3 can be wired as sinking or sourcing. [1]" },
+  ];
+
+  for (const msg of ["and the outputs?", "what about outputs?", "outputs?", "and analog?", "same for the relay outputs"]) {
+    it(`"${msg}" keeps the controller and the wiring subject`, () => {
+      const q = buildRetrievalQuery(msg, wiring);
+      expect(q.startsWith(msg)).toBe(true);
+      expect(q).toContain("Micro820");
+      expect(q.toLowerCase()).toContain("wire");
+    });
+  }
+
+  it("adds no stopwords, caps the carry, and never repeats a word the message already has", () => {
+    const flicker: ChatHistoryTurn[] = [
+      { role: "user", content: "what should I check when the Micro820 inputs flicker" },
+      { role: "assistant", content: "Check the input filter setting. [1]" },
+    ];
+    const q = buildRetrievalQuery("and the outputs?", flicker);
+    const added = q.slice("and the outputs?".length).trim().split(/\s+/);
+    expect(added).toEqual(["Micro820", "check", "inputs", "flicker"]);
+    const dup = buildRetrievalQuery("same for the relay outputs", wiring);
+    expect(dup.slice("same for the relay outputs".length).toLowerCase()).not.toContain("outputs");
+    // The cap keeps the prior question's own contrasting noun out of the AND-ed search.
+    expect(dup).toBe("same for the relay outputs 24V Micro820 wire sinking");
+  });
+
+  it("control: salient-token carry still wins when the thread has drive vocabulary", () => {
+    const comms: ChatHistoryTurn[] = [
+      { role: "user", content: "How do I set up communications on this drive?" },
+      { role: "assistant", content: "It supports EtherNet/IP and Modbus RTU. [1]" },
+    ];
+    // Pinned to the pre-#5127 output: the content-word carry must not touch it.
+    expect(buildRetrievalQuery("what about that?", comms))
+      .toBe("what about that? communications EtherNet/IP EtherNet Modbus");
+  });
+
+  it("a second short follow-up still carries the original subject (#5158)", () => {
+    const chain: ChatHistoryTurn[] = [
+      ...wiring,
+      { role: "user", content: "and the outputs?" },
+      { role: "assistant", content: "Outputs 0 to 3 are relay outputs. [2]" },
+    ];
+    expect(buildRetrievalQuery("and analog?", chain)).toBe("and analog? 24V Micro820 wire sinking");
+  });
+
+  it("a short topic switch is not polluted with the previous subject (#5159)", () => {
+    expect(buildRetrievalQuery("what about hydraulic pressure?", wiring)).toBe("what about hydraulic pressure?");
+    expect(buildRetrievalQuery("and the coolant pump?", wiring)).toBe("and the coolant pump?");
+  });
+
+  it("a topic switch becomes the subject later follow-ups carry (#5158/#5159)", () => {
+    const switched: ChatHistoryTurn[] = [
+      ...wiring,
+      { role: "user", content: "what about hydraulic pressure?" },
+      { role: "assistant", content: "The manual does not cover hydraulics." },
+    ];
+    expect(buildRetrievalQuery("and the outputs?", switched)).toBe("and the outputs? hydraulic pressure");
+  });
+
+  it("control: a self-contained question is unchanged", () => {
+    const msg = "How do I wire the relay outputs on the Micro820 controller to a 24V DC load?";
+    expect(buildRetrievalQuery(msg, wiring)).toBe(msg);
+  });
+});
+
 describe("topic-state tracking (battery defects D + A)", () => {
   // The topic-switch battery script: decel thread → Ethernet thread → return.
   const decelThenEthernet: ChatHistoryTurn[] = [
