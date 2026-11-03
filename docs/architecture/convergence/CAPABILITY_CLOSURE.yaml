@@ -741,9 +741,12 @@ capabilities:
       replay of 30 real failing staging turns at main dd2cc10fb (a regression
       set, not a quality benchmark): default path 24/30 answer pages in the top
       6, flag on 18/30 (six losses, no gains). Staging's lexical path now
-      matches production; hybrid retrieval and the cross-encoder rerank remain
-      on in staging, so staging retrieval still differs from production.
-      Earlier history follows.
+      matches production. Hybrid retrieval was also turned off in staging later
+      on 2026-11-03 (same tracker), leaving the cross-encoder rerank as the only
+      staging-only retrieval switch. The flag guard
+      mira-hub/src/lib/__tests__/notebook-retrieval-flag-guard.test.ts fails if
+      this record says "1" in staging or production while the flag still skips
+      production passes. Earlier history follows.
       New in #4513. Gate 1 (77-question local harness, pre-registered in the
       spec) passed: top 6 54->70, McNemar p=0.0009, top 1 31->42, p95 220 ms.
       Gate 2 retrieval half passed (unseen 36->48). Gate 3 staging A/B (2026-10-21,

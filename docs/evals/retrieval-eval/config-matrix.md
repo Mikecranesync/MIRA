@@ -5,9 +5,16 @@ Owner: retrieval evaluation (#4576). Read-only snapshot: Doppler values, compose
 
 > **Update 2026-11-03:** `NOTEBOOK_LEXICAL_V2` is now `0` in `factorylm/stg` (owner decision on
 > #5138; staging hub redeployed at the same build `c6f15b8d3`). Staging lexical retrieval now matches
-> production; `NOTEBOOK_HYBRID_RETRIEVAL` and `NOTEBOOK_RERANK` are still on in staging, so staging
-> retrieval as a whole still differs from production. The table below is the 2026-10-21 snapshot and
-> is left as recorded.
+> production. The table below is the 2026-10-21 snapshot and is left as recorded.
+>
+> **Update 2026-11-03 (later):** `NOTEBOOK_HYBRID_RETRIEVAL` is now `0` in `factorylm/stg` (owner
+> decision on #5138; production unchanged, still unset). Staging hub redeployed at the same build
+> `c6f15b8d3` by deploy-staging run 41603391175 (new deployment generation
+> `2026-11-03T08:31:11.381Z-7e6cd5acb80a`); the follow-on retrieval-acceptance run 41603908501
+> passed. Staging now differs from production only by `NOTEBOOK_RERANK=1` (fp32, 4000 ms timeout).
+> A rerank fallback serves the production lexical order, because with the vector lane off the
+> pre-rerank order is the lexical order. Rollback: set `NOTEBOOK_HYBRID_RETRIEVAL=1` in
+> `factorylm/stg` and redispatch deploy-staging for `mira-hub` at the same SHA.
 
 ## The two builds
 
