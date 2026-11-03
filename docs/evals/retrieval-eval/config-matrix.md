@@ -5,7 +5,9 @@ Owner: retrieval evaluation (#4576). Read-only snapshot: Doppler values, compose
 
 > **Update 2026-11-03:** `NOTEBOOK_LEXICAL_V2` is now `0` in `factorylm/stg` (owner decision on
 > #5138; staging hub redeployed at the same build `c6f15b8d3`). Staging lexical retrieval now matches
-> production. The table below is the 2026-10-21 snapshot and is left as recorded.
+> production; `NOTEBOOK_HYBRID_RETRIEVAL` and `NOTEBOOK_RERANK` are still on in staging, so staging
+> retrieval as a whole still differs from production. The table below is the 2026-10-21 snapshot and
+> is left as recorded.
 
 ## The two builds
 

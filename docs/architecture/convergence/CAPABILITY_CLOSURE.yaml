@@ -738,10 +738,12 @@ capabilities:
       flag-on path keeps its own IDF-sum scorer and skips the rare-term lane,
       per-pass normalisation, cover-word exclusion and IDF-cover rerank that
       #4979 added to the default path (manual-rag.ts, flag-off only). Zero-token
-      replay of 30 real failing staging turns at main dd2cc10fb: default path
-      24/30 answer pages in the top 6, flag on 18/30 (six losses, no gains).
-      Staging now runs production's lexical path, so staging results predict
-      production. Earlier history follows.
+      replay of 30 real failing staging turns at main dd2cc10fb (a regression
+      set, not a quality benchmark): default path 24/30 answer pages in the top
+      6, flag on 18/30 (six losses, no gains). Staging's lexical path now
+      matches production; hybrid retrieval and the cross-encoder rerank remain
+      on in staging, so staging retrieval still differs from production.
+      Earlier history follows.
       New in #4513. Gate 1 (77-question local harness, pre-registered in the
       spec) passed: top 6 54->70, McNemar p=0.0009, top 1 31->42, p95 220 ms.
       Gate 2 retrieval half passed (unseen 36->48). Gate 3 staging A/B (2026-10-21,
