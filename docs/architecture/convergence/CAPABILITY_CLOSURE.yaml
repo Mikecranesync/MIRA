@@ -101,22 +101,24 @@ capabilities:
           letting INCONCLUSIVE count as proof, and removing the commit-existence
           check each turn the suite red, and restoring each turns it green
           again. A linter shown only passing input cannot be told apart from one
-          that returns an empty list. Re-observed 2026-11-03 at 700e1b3fa,
+          that returns an empty list. Re-observed 2026-11-03 at 01f712777,
           because the retrieval promotion-evidence rule (#5138, #5169) changed
           the declared code path tools/capability_closure.py:
           tests/test_evidence_provenance.py 37 pass, and
-          tests/test_capability_closure.py 77 pass with the two committed-registry
+          tests/test_capability_closure.py 105 pass with the two committed-registry
           tests deselected. tools/evidence_provenance.py is unchanged since
           ea20c8376. The wiring is now guarded too:
           test_validate_runs_the_provenance_check calls validate() on a record
           with a provenance finding, and replacing the
           evidence_provenance.check_registry call inside validate() with a no-op
           turns it red (before #5169 both suites stayed green). Durable via tag
-          evidence/evidence_provenance_gate/2026-11-03d (the earlier
-          .../2026-11-03, -03b and -03c tags remain as history); re-anchor on the
+          evidence/evidence_provenance_gate/2026-11-03f (the earlier
+          .../2026-11-03, -03b, -03c and -03d tags remain as history; -03e marks
+          7d4c3236f, observed with one failing test, so it is not the evidence);
+          re-anchor on the
           main squash commit after merge, as #4011 did for #4007.
         provenance:
-          commit_sha: "700e1b3fab6528adf822e8de5312b69da3426b87"
+          commit_sha: "01f71277705f74a6bdca376049e66b65ae089fe0"
           environment: local
           observed_at: "2026-11-03"
           outcome: pass
