@@ -73,3 +73,43 @@ export function withBackupBanner(answerText: string): string {
   if (!answerText || !backupBannerFor(answerText)) return answerText;
   return `${BACKUP_BANNER}\n\n${answerText}`;
 }
+
+// #5131 — a question about clearing a FAULT answered with FACTORY-reset steps
+// (staging TP700, 2026-10-23: "What is the fault reset procedure?" → "select
+// Prepare for Reset to reset the HMI device to factory settings"). Same advisory
+// shape as above; the wording is pending owner sign-off with the back-up banner.
+
+/** Fixed banner shown above a factory reset offered for a fault. No page citation. */
+export const FACTORY_NOT_FAULT_BANNER =
+  "⚠️ **This is a factory reset, not a fault reset.** It wipes the device's settings and is not the step for clearing a fault. Check the fault code and the manual's fault-reset steps first.";
+
+/** The technician asks to reset, clear or acknowledge a fault, error, alarm or trip. */
+const FAULT_RESET_QUESTION =
+  /\b(?:reset|re-set|clear|acknowledge|ack)\w*\b.{0,40}\b(?:fault|error|alarm|trip)s?\b|\b(?:fault|error|alarm|trip)s?\b.{0,30}\b(?:reset|clear)\w*\b|\bfault(?:ed|s)?\b.{0,80}\breset\b/i;
+
+/** The technician asked for the factory reset themselves. */
+const ASKS_FACTORY = /\bfactory\b|\bdefaults?\b|\bprepare\s+for\s+reset\b|\binitiali[sz]e\b/i;
+
+/** A factory reset, as opposed to any other erase. */
+const FACTORY_TARGET =
+  /\b(?:factory\s+(?:reset|defaults?|settings)|(?:reset|restore|return)s?\b(?:\s+[\w-]+){0,3}?\s+(?:to\s+)?(?:the\s+)?(?:factory\s+)?defa\w*lts?|prepare\s+for\s+reset)\b/i;
+
+/** FACTORY_NOT_FAULT_BANNER when a fault-reset question gets factory-reset instructions, else null. */
+export function factoryNotFaultBannerFor(question: string, answerText: string): string | null {
+  const q = question || "";
+  if (!FAULT_RESET_QUESTION.test(q) || ASKS_FACTORY.test(q)) return null;
+  const text = (answerText || "").replace(PROHIBITION, (m) => " ".repeat(m.length));
+  for (const m of text.matchAll(INSTRUCTION_RE)) {
+    const rest = text.slice((m.index ?? 0) + m[0].search(/\S/));
+    const end = rest.search(CLAUSE_END);
+    if (FACTORY_TARGET.test(end > 0 ? rest.slice(0, end) : rest)) return FACTORY_NOT_FAULT_BANNER;
+  }
+  return null;
+}
+
+/** The answer with the factory-vs-fault notice on top (above any back-up notice); once only. */
+export function withFactoryNotFaultBanner(question: string, answerText: string): string {
+  if (!answerText || answerText.startsWith(FACTORY_NOT_FAULT_BANNER)) return answerText;
+  if (!factoryNotFaultBannerFor(question, answerText)) return answerText;
+  return `${FACTORY_NOT_FAULT_BANNER}\n\n${answerText}`;
+}
