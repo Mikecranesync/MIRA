@@ -268,6 +268,7 @@ import { detectPromptLeak, PROMPT_LEAK_REFUSAL } from "@/capabilities/prompt-lea
 import { declineKind, declineText, unidentifiedServiceDecline } from "@/capabilities/decline-next-step";
 import { asksAboutThisEquipment, asksForDocumentedValue } from "@/capabilities/documented-value-question";
 import { progressCancelSignal, reportProgress, wantsProgress, withProgressStream } from "@/capabilities/chat-progress";
+import { correctionRepeatReplacement } from "@/capabilities/correction-turn";
 import {
   closedSemanticClass,
   JUDGE_OUTPUT_TOKENS,
@@ -4568,6 +4569,13 @@ async function handleChatTurn(
       // render as a citation chip in mira-mobile. Strip the markers rather than
       // ship a chip that resolves to no document.
       if (!docGrounded) answerText = answerText.replace(/\s*\[\d+\]/g, "");
+      // #5133: a correction turn ("that's not what I asked") whose draft
+      // repeats the previous answer asks one clarifying question instead. The
+      // replacement carries no [n] marker, so it ships with no citations.
+      if (gate && served && !refused) {
+        const correction = correctionRepeatReplacement(message, answerText, history);
+        if (correction) answerText = correction;
+      }
 
       // B2/B3 (#3790/#3787, PR #3791): pre-display validation on the COMPLETE
       // candidate. Under the gate nothing has been released yet, so a rejected
