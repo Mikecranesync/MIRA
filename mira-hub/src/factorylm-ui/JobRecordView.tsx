@@ -59,10 +59,13 @@ export function PacketCoverage({ packet }: { packet: Pick<WorkPacket, "steps" | 
 }
 
 /** Per-step "performed" record. A struck step cannot be recorded as performed. */
-export function StepRecordControls({ index, struck, record, by, onChange }: {
-  index: number; struck: boolean; record: JobRecord; by: string; onChange: (r: JobRecord) => void;
+export function StepRecordControls({ index, struck, text, record, by, onChange }: {
+  index: number; struck: boolean; text?: string | null; record: JobRecord; by: string; onChange: (r: JobRecord) => void;
 }) {
-  const done = record.steps[index];
+  const ticked = record.steps[index];
+  // A tick given before the step's text was edited is not a record for the new text (Codex EGM F35).
+  const changed = !!ticked && text !== undefined && ticked.text !== undefined && ticked.text !== text;
+  const done = changed ? undefined : ticked;
   if (struck) return <div style={S.muted} data-testid={`wp-step-record-${index}`}>Struck as not applicable — not recorded as performed.</div>;
   return (
     <div style={S.row} data-testid={`wp-step-record-${index}`}>
@@ -74,8 +77,9 @@ export function StepRecordControls({ index, struck, record, by, onChange }: {
       ) : (
         <>
           <span className="wp-print-only" style={S.muted}>☐ Not recorded as performed</span>
+          {changed && <span style={S.muted}>Was recorded as performed by {stamp(ticked!.by, ticked!.at)}, but the step&apos;s text has changed since — record it again if it was done as it reads now.</span>}
           <button type="button" data-no-print data-testid={`wp-step-done-${index}`} style={S.btn}
-            onClick={() => onChange(setStepPerformed(record, index, true, by, new Date().toISOString()))}>
+            onClick={() => onChange(setStepPerformed(record, index, true, by, new Date().toISOString(), text))}>
             Mark step performed
           </button>
         </>

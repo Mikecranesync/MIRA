@@ -68,6 +68,8 @@ function Figure({ f }: { f: PacketFigure }) {
           <img src={f.image} alt={f.caption.join(" — ") || `Manufacturer photo, p.${f.page}`} style={S.figureImg} />
         : <div style={S.muted}>Photo could not be read — see the manual.</div>}
       <figcaption style={S.muted}>{[...f.caption, `Manufacturer photo, p.${f.page} ${f.filename ?? "document"}`].join(" · ")}</figcaption>
+      {/* Where it sits is matched by words, not stated by the manual (Codex EGM F33). */}
+      {f.placement && <div style={S.muted} data-testid="wp-figure-placement">{badgeText(f.placement.label)}: placed next to this step by matching words — check it shows this step.</div>}
     </figure>
   );
 }
@@ -161,6 +163,7 @@ export function PartsTable({ packet, renderField }: { packet: WorkPacket; render
  *  carries its notes, the figure that shows it and the torque value it uses. */
 export function PhasedSteps({ packet, renderField, stepExtra }: { packet: WorkPacket; renderField: RenderField; stepExtra?: (index: number) => ReactNode }) {
   const loose = unplacedFigures(packet);
+  const rows = measurementRows(packet, null);
   return (
     <section style={S.section} data-testid="wp-steps">
       <h3 style={S.title}>Procedure</h3>
@@ -183,11 +186,16 @@ export function PhasedSteps({ packet, renderField, stepExtra }: { packet: WorkPa
                     {step.notes![j].applicability && renderField(`steps[${s.index}].notes[${j}].applicability`, step.notes![j].applicability!)}
                   </div>
                 ))}
-                {s.measurements.map((k) => (
-                  <div key={k} style={S.torque} data-testid="wp-step-torque">
-                    Torque: {packet.measurements[k].name.value ?? "(unknown)"} — {packet.measurements[k].value.value ?? "unknown"} (see the torque table)
-                  </div>
-                ))}
+                {s.measurements.map((k) => {
+                  // The manual's value, and a correction only as a pending one (Codex EGM F06).
+                  const row = rows[k];
+                  const fix = row.correction;
+                  return (
+                    <div key={k} style={S.torque} data-testid="wp-step-torque">
+                      Torque: {row.item} — {row.manual.value ?? "unknown"} (manual){fix ? ` · correction ${fix.value ?? "marked unknown"} by ${fix.by}, ${row.approval.toLowerCase()}` : ""} (see the torque table)
+                    </div>
+                  );
+                })}
                 {s.figures.map((f, j) => <Figure key={j} f={f} />)}
                 {stepExtra?.(s.index)}
               </div>

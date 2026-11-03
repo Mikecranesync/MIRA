@@ -55,6 +55,13 @@ describe("steps are incomplete until the technician records them", () => {
     const html = renderToStaticMarkup(<StepRecordControls index={0} struck={false} record={r} by="a" onChange={noop} />);
     expect(html).toContain("Recorded as performed by tech@x, 2026-11-02 17:00 UTC");
   });
+  it("EGM F35: a tick on a step whose text changed since is not shown as performed", () => {
+    const r = setStepPerformed(emptyRecord("p"), 0, true, "tech@x", T, "Old text");
+    const html = renderToStaticMarkup(<StepRecordControls index={0} struck={false} text="New text" record={r} by="a" onChange={noop} />);
+    expect(html).not.toContain("✓ Recorded as performed");
+    expect(html).toMatch(/text has changed since/);
+    expect(html).toContain("Not recorded as performed");
+  });
   it("a struck step cannot be marked performed", () => {
     const html = renderToStaticMarkup(<StepRecordControls index={1} struck={true} record={emptyRecord("p")} by="a" onChange={noop} />);
     expect(html).not.toContain("Mark step performed");

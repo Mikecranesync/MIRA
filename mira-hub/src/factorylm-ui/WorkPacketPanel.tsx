@@ -160,12 +160,14 @@ function loadDraft(notebookId: string): WorkPacket | null {
     return null;
   }
 }
-function saveDraft(notebookId: string, packet: WorkPacket): void {
+function saveDraft(notebookId: string, packet: WorkPacket): boolean {
   try {
     window.localStorage.setItem(DRAFT_KEY(notebookId), JSON.stringify(packet));
+    return true;
   } catch {
     // localStorage unavailable (private mode, quota, disabled) — the packet still renders from
-    // in-memory state; it just won't survive a reload. Never throw over this.
+    // in-memory state; it just won't survive a reload. Never throw over this; the caller says so.
+    return false;
   }
 }
 
@@ -523,7 +525,7 @@ export function WorkPacketPanel({
       if (liveNotebook.current !== notebookId || data.packet.notebookId !== notebookId) return;
       setPacket(data.packet);
       setWarnings(data.warnings);
-      saveDraft(notebookId, data.packet);
+      if (!saveDraft(notebookId, data.packet)) setError("This device did not save the packet (storage is full or blocked). It is shown here but will be lost on reload.");
     } catch {
       setError("No connection. Nothing was built — try again.");
     } finally {
@@ -537,7 +539,7 @@ export function WorkPacketPanel({
       setEditBusy(true);
       try {
         const next = applyEdit(p, { path, action, value }, by, new Date().toISOString());
-        saveDraft(notebookId, next);
+        if (!saveDraft(notebookId, next)) setError("This device did not save that edit (storage is full or blocked). It is shown here but will be lost on reload.");
         return next;
       } catch (err) {
         setError(err instanceof Error ? err.message : "That edit could not be applied.");
@@ -801,7 +803,7 @@ export function WorkPacketPanel({
 
                 <PhasedSteps
                   packet={packet} renderField={renderField}
-                  stepExtra={(i) => record && <StepRecordControls index={i} struck={!!packet.steps[i].text.struck} record={record} by={by} onChange={onRecord} />}
+                  stepExtra={(i) => record && <StepRecordControls index={i} struck={!!packet.steps[i].text.struck} text={packet.steps[i].text.value} record={record} by={by} onChange={onRecord} />}
                 />
 
                 <MeasurementsTable

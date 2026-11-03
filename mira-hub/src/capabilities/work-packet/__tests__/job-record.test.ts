@@ -14,6 +14,7 @@ import {
   removePhoto,
   setNoteResolved,
   setStepPerformed,
+  stepPerformedHolds,
   type JobRecord,
 } from "../job-record";
 
@@ -132,5 +133,19 @@ describe("a saved record only restores under the packet it was made for", () => 
   it("drops malformed text", () => {
     expect(parseRecord("{not json", "pk-1")).toBeNull();
     expect(parseRecord(JSON.stringify({ packetId: "pk-1" }), "pk-1")).toBeNull();
+  });
+});
+
+describe("EGM F35 — a 'performed' tick is for the instruction as it read when ticked", () => {
+  it("after the step's text is edited, the tick no longer counts and is shown as needing a new tick", () => {
+    const r = setStepPerformed(emptyRecord("pk-1"), 0, true, "tech@x", T, "Remove valve plugs");
+    expect(completionSummary(PACKET, r).performed).toBe(1);
+    const edited = { ...PACKET, steps: [{ ...PACKET.steps[0], text: f("Remove valve plugs and caps", { label: "proposed" }) }, ...PACKET.steps.slice(1)] } as typeof PACKET;
+    expect(stepPerformedHolds(r, edited, 0)).toBe(false);
+    expect(completionSummary(edited, r).performed).toBe(0);
+  });
+  it("control: unchanged text keeps the tick", () => {
+    const r = setStepPerformed(emptyRecord("pk-1"), 0, true, "tech@x", T, "Remove valve plugs");
+    expect(stepPerformedHolds(r, PACKET, 0)).toBe(true);
   });
 });

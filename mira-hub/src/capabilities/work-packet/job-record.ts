@@ -15,6 +15,9 @@ export interface StepRecord {
   performed: true;
   by: string;
   at: string;
+  /** The step's text when it was ticked. If the step is edited later the tick no longer counts
+   *  (Codex EGM F35). Records saved before this field existed have none and keep their tick. */
+  text?: string | null;
 }
 
 export interface MeasurementRecord {
@@ -70,12 +73,20 @@ function checkIndex(i: number): void {
   if (!Number.isInteger(i) || i < 0) throw new Error(`Invalid index: ${i}`);
 }
 
-export function setStepPerformed(r: JobRecord, index: number, performed: boolean, by: string, at: string): JobRecord {
+export function setStepPerformed(r: JobRecord, index: number, performed: boolean, by: string, at: string, text?: string | null): JobRecord {
   checkIndex(index);
   const next = clone(r);
-  if (performed) next.steps[index] = { performed: true, by, at };
+  if (performed) next.steps[index] = text === undefined ? { performed: true, by, at } : { performed: true, by, at, text };
   else delete next.steps[index];
   return next;
+}
+
+/** True when step `index` is recorded as performed for the instruction as it reads now. */
+export function stepPerformedHolds(r: JobRecord, packet: Pick<WorkPacket, "steps">, index: number): boolean {
+  const rec = r.steps[index];
+  if (!rec?.performed) return false;
+  if (rec.text === undefined) return true;
+  return rec.text === (packet.steps[index]?.text.value ?? null);
 }
 
 export function recordMeasurement(r: JobRecord, index: number, value: string, by: string, at: string): JobRecord {
@@ -150,7 +161,7 @@ const REVIEW_LINE = "This is a draft work record, not a return to service. A qua
 
 export function completionSummary(packet: Pick<WorkPacket, "steps" | "measurements">, r: JobRecord): CompletionSummary {
   const live = packet.steps.map((s, i) => ({ i, struck: !!s.text.struck })).filter((s) => !s.struck);
-  const performed = live.filter((s) => r.steps[s.i]?.performed).length;
+  const performed = live.filter((s) => stepPerformedHolds(r, packet, s.i)).length;
   const struck = packet.steps.length - live.length;
   const remaining = live.length - performed;
   const measured = packet.measurements.filter((_, i) => r.measurements[i]).length;

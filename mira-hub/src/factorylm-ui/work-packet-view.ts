@@ -177,9 +177,11 @@ export function revisionTickHolds(tickedFor: string | null, currentSignature: st
  *  of that moment; if a manual was replaced, removed or re-revised since, or the machine was
  *  re-identified, the old packet is not exported as current. Edits are kept on screen. */
 export function packetStaleReason(
-  packet: Pick<WorkPacket, "documents" | "identitySnapshot">,
+  packet: Pick<WorkPacket, "documents" | "identitySnapshot"> & { version?: WorkPacket["version"] },
   avail: Pick<WorkPacketAvailability, "identity" | "documents">,
 ): string | null {
+  // V1 packets show other models' notes as Verified and miss steps; they are rebuilt, not resumed (Codex EGM F34).
+  if (packet.version === 1) return "this packet was built by an older version of this tool that showed other models' notes as Verified and left steps out";
   const sig = (docs: Pick<PacketDocument, "docId" | "revision">[]) =>
     documentsSignature([...docs].sort((a, b) => (a.docId < b.docId ? -1 : a.docId > b.docId ? 1 : 0)));
   if (sig(packet.documents) !== sig(avail.documents)) {

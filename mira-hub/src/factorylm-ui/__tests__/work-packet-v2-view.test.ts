@@ -119,4 +119,21 @@ describe("measurementRows — the manual's value, a correction, approval and the
     expect(measurementRows(p2, rec)[0].manual.value).toBe(printed);
     expect(measurementRows(p2, rec)[0].correction?.value).toBe("100 in-lbs");
   });
+  it("EGM F07: marking the value unknown first still keeps the printed value in the manual column", () => {
+    const p0 = packet();
+    const printed = p0.measurements[0].value.value;
+    const p1 = applyEdit(p0, { path: "measurements[0].value", action: "mark_unknown" }, "tech@x", "2026-11-02T13:00:00Z");
+    const p2 = applyEdit(p1, { path: "measurements[0].value", action: "set", value: "99 in-lbs" }, "tech@y", "2026-11-02T13:10:00Z");
+    const [row] = measurementRows(p2, null);
+    expect(row.manual.value).toBe(printed);
+    expect(row.correction).toEqual({ value: "99 in-lbs", by: "tech@y", at: "2026-11-02T13:10:00Z" });
+  });
+  it("EGM F07: marking unknown after a correction is credited to whoever marked it, not the earlier setter", () => {
+    const p0 = packet();
+    const p1 = applyEdit(p0, { path: "measurements[0].value", action: "set", value: "99 in-lbs" }, "tech@x", "2026-11-02T13:00:00Z");
+    const p2 = applyEdit(p1, { path: "measurements[0].value", action: "mark_unknown" }, "tech@y", "2026-11-02T13:10:00Z");
+    const [row] = measurementRows(p2, null);
+    expect(row.manual.value).toBe(p0.measurements[0].value.value);
+    expect(row.correction).toEqual({ value: null, by: "tech@y", at: "2026-11-02T13:10:00Z" });
+  });
 });

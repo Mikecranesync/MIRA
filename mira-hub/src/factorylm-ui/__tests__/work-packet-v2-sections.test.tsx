@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { FIXTURES, fixturePages } from "@/capabilities/work-packet/__tests__/fixtures";
 import { buildDraftPacket } from "@/capabilities/work-packet/draft";
+import { applyEdit } from "@/capabilities/work-packet/edits";
 import type { DocText, Field, WorkPacket } from "@/capabilities/work-packet/types";
 import { BlockersSection, JhaTable, LeftOutAppendix, MeasurementsTable, PartsTable, PhasedSteps, ReadinessBlock } from "../WorkPacketV2Sections";
 
@@ -86,5 +87,35 @@ describe("phone and paper rules", () => {
   });
   it("the PDF prints 'Page X of Y'", () => {
     expect(src("WorkPacketPanel.tsx")).toContain('content: "Page " counter(page) " of " counter(pages)');
+  });
+});
+
+describe("EGM F06 — the torque beside a step is the manual's value; a correction shows as pending", () => {
+  it("after a correction the step shows the printed value and the correction, not the correction alone", () => {
+    const p0 = packet();
+    const printed = p0.measurements[0].value.value!;
+    const p = applyEdit(p0, { path: "measurements[0].value", action: "set", value: "1300 in-lbs" }, "tech@x", "2026-11-02T13:00:00Z");
+    const html = renderToStaticMarkup(<PhasedSteps packet={p} renderField={render} />);
+    const torque = html.match(/data-testid="wp-step-torque"[^>]*>(.*?)<\/div>/)![1];
+    expect(torque).toContain(printed);
+    expect(torque).toMatch(/correction 1300 in-lbs/);
+    expect(torque).toMatch(/not approved/i);
+  });
+  it("control: untouched, it shows the manual value and no correction", () => {
+    const p = packet();
+    const html = renderToStaticMarkup(<PhasedSteps packet={p} renderField={render} />);
+    const torque = html.match(/data-testid="wp-step-torque"[^>]*>(.*?)<\/div>/)![1];
+    expect(torque).toContain(p.measurements[0].value.value!);
+    expect(torque).not.toMatch(/correction/);
+  });
+});
+
+describe("EGM F33 — a figure placed by matching words says so", () => {
+  it("each placed figure carries its Proposed placement line", () => {
+    const p0 = packet();
+    const p = { ...p0, steps: p0.steps, figures: [{ image: "data:image/png;base64,AAAA", caption: ["Guide Cylinder"], page: 3, filename: "m.pdf", step: 0, placement: { value: "step 1", label: "proposed" as const, source: null, basis: "words" } }] } as unknown as WorkPacket;
+    const html = renderToStaticMarkup(<PhasedSteps packet={p} renderField={render} />);
+    expect(html).toContain('data-testid="wp-figure-placement"');
+    expect(html).toMatch(/placed next to this step by matching words/);
   });
 });

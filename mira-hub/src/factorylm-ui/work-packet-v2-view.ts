@@ -119,7 +119,8 @@ export function measurementRows(packet: Pick<WorkPacket, "measurements" | "appro
   const entries = packet.approval.technicianReview.entries;
   return packet.measurements.map((m, i) => {
     const path = `measurements[${i}].value`;
-    const sets = entries.filter((e: ReviewEntry) => e.path === path && e.action === "set");
+    // Every edit that changes the value — a correction or "mark unknown" (Codex EGM F07).
+    const sets = entries.filter((e: ReviewEntry) => e.path === path && (e.action === "set" || e.action === "mark_unknown"));
     const first = sets[0];
     const last = sets[sets.length - 1];
     const sup = packet.approval.supervisor;

@@ -152,3 +152,23 @@ describe("Codex #5062 round 4", () => {
     expect(src).toContain('<div data-testid="wp-packet" key={packet.packetId}>');
   });
 });
+
+describe("EGM F34 / F10 — old packets and failed saves are never shown as current", () => {
+  const rev = (v: string | null) => ({ value: v, label: (v ? "verified" : "unknown") as Field["label"], source: null, basis: "t" });
+  const docs = [{ docId: "d1", revision: rev("J") }];
+  const avail = { identity: { manufacturer: "CAT Pumps", model: "3520", catalogNumber: null }, documents: docs } as unknown as Parameters<typeof packetStaleReason>[1];
+  const snap = { manufacturer: "CAT Pumps", model: "3520", catalogNumber: null };
+  it("F34: a packet saved by the V1 builder is stale and asks for a rebuild", () => {
+    const v1 = { version: 1, documents: docs, identitySnapshot: snap } as unknown as WorkPacket;
+    expect(packetStaleReason(v1, avail)).toMatch(/older version of this tool/);
+  });
+  it("F34 control: a V2 packet with the same documents and identity is current", () => {
+    const v2 = { version: 2, documents: docs, identitySnapshot: snap } as unknown as WorkPacket;
+    expect(packetStaleReason(v2, avail)).toBeNull();
+  });
+  it("F10: a draft edit that this device could not save is reported, like the job record", () => {
+    const src = readFileSync(join(__dirname, "..", "WorkPacketPanel.tsx"), "utf8");
+    expect(src).toMatch(/if \(!saveDraft\(notebookId, next\)\) setError\(/);
+    expect(src).toMatch(/function saveDraft\([^)]*\): boolean/);
+  });
+});
