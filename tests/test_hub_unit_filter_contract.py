@@ -1,18 +1,22 @@
-"""Guard: the Hub Unit Tests path filter must run the vitest suite whenever the
-safety-phrase SOURCE OF TRUTH changes — not only on ``mira-hub/**`` edits.
+"""Guard: the Hub Unit Tests path filter must run the vitest suite whenever a
+source of truth outside ``mira-hub/**`` changes.
 
 Regression context (#3108): ``mira-hub/src/lib/safety-phrases.ts`` is a
 transcription of ``mira-bots/shared/guardrails.py`` ``SAFETY_KEYWORDS``, and
 ``mira-hub/src/lib/safety-phrases.test.ts`` is a parity guard that fails on any
-drift. But the ``Hub Unit Tests`` job in ``ci.yml`` is path-gated to
-``mira-hub/**`` (``dorny/paths-filter``), so a PR that adds a keyword to
-guardrails.py *without* touching mira-hub never runs the parity test — the
-drift ships silently and only surfaces later on some unrelated hub-touching PR.
-That is exactly how #3108's 8-phrase gap reached main.
+drift. But the ``Hub Unit Tests`` job in ``ci.yml`` is path-gated
+(``dorny/paths-filter``), so a PR that adds a keyword to guardrails.py
+*without* touching mira-hub never runs the parity test — the drift ships
+silently. That is exactly how #3108's 8-phrase gap reached main.
 
-This contract fails loudly if the ``hub`` filter ever stops watching
-guardrails.py, so the source-of-truth file can never again drift the hub copy
-undetected.
+Same class (#5166): ``notebook-retrieval-flag-guard.test.ts`` reads
+``docs/architecture/convergence/CAPABILITY_CLOSURE.yaml`` and fails if
+``notebook_lexical_idf`` is recorded on in staging while it still skips
+production lexical passes. A registry-only PR must still run Hub Unit Tests
+or that guard never fires.
+
+This contract fails loudly if the ``hub`` filter ever stops watching those
+outside sources.
 
 pytest + pyyaml only (matches the Architecture Check CI job's deps).
 """
@@ -30,6 +34,10 @@ _CI = _ROOT / ".github" / "workflows" / "ci.yml"
 # source of truth). Kept as a repo-relative POSIX path — matches the filter glob.
 _GUARDRAILS = "mira-bots/shared/guardrails.py"
 _HUB_GLOB = "mira-hub/**"
+_CAPABILITY_CLOSURE = "docs/architecture/convergence/CAPABILITY_CLOSURE.yaml"
+_FLAG_GUARD = (
+    _ROOT / "mira-hub" / "src" / "lib" / "__tests__" / "notebook-retrieval-flag-guard.test.ts"
+)
 
 
 def _hub_filter_patterns() -> list[str]:
@@ -77,4 +85,34 @@ def test_hub_filter_watches_guardrails_source_of_truth():
         "SAFETY_KEYWORDS source of truth changes. Without it, a keyword added "
         "to guardrails.py drifts the hub copy undetected (#3108). "
         f"Current hub filter: {patterns}"
+    )
+
+
+def test_hub_filter_watches_capability_closure_registry():
+    """A registry-only diff must still run Hub Unit Tests (#5166).
+
+    ``notebook-retrieval-flag-guard.test.ts`` lives under ``mira-hub/**``, so
+    once this path is in the filter the required job actually executes the
+    guard. That guard fails if staging ``notebook_lexical_idf`` is set back
+    to ``1`` while the flag still skips production lexical passes.
+    """
+    patterns = _hub_filter_patterns()
+    assert _CAPABILITY_CLOSURE in patterns, (
+        f"the Hub Unit Tests path filter must include '{_CAPABILITY_CLOSURE}' "
+        "so notebook-retrieval-flag-guard.test.ts runs on a registry-only "
+        "edit. Without it, recording notebook_lexical_idf on in staging "
+        f"skips the guard (#5166). Current hub filter: {patterns}"
+    )
+    assert _FLAG_GUARD.is_file(), (
+        "notebook-retrieval-flag-guard.test.ts must stay under mira-hub/** "
+        "so a hub-filter hit actually runs it."
+    )
+    src = _FLAG_GUARD.read_text(encoding="utf-8")
+    assert "CAPABILITY_CLOSURE.yaml" in src, (
+        "the flag guard no longer reads CAPABILITY_CLOSURE.yaml; the hub "
+        "filter watch would not exercise a registry contract."
+    )
+    assert 'envs.staging' in src and '.not.toBe("1")' in src, (
+        "the flag guard no longer fails when staging is recorded as 1; a "
+        "registry-only PR that turns notebook_lexical_idf on would go green."
     )

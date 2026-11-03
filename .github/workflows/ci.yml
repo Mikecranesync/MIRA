@@ -768,6 +768,13 @@ jobs:
               # class as guardrails.py above. Mirror: Mobile Unit Tests
               # watches the hub-side grammar sources.
               - 'docs/contracts/asset-tag-grammar.json'
+              # notebook-retrieval-flag-guard.test.ts reads this registry and
+              # fails if notebook_lexical_idf is recorded on in staging or
+              # production while it still skips production lexical passes.
+              # A registry-only PR must still run Hub Unit Tests or that
+              # guard never fires (#5166). Enforced by
+              # tests/test_hub_unit_filter_contract.py.
+              - 'docs/architecture/convergence/CAPABILITY_CLOSURE.yaml'
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         if: steps.changes.outputs.hub == 'true'
