@@ -3,6 +3,10 @@
 Owner: retrieval evaluation (#4576). Read-only snapshot: Doppler values, compose passthroughs and
 `/api/health` were read and nothing was changed. **Re-read before relying on it**, because flags move.
 
+> **Update 2026-11-03:** `NOTEBOOK_LEXICAL_V2` is now `0` in `factorylm/stg` (owner decision on
+> #5138; staging hub redeployed at the same build `c6f15b8d3`). Staging lexical retrieval now matches
+> production. The table below is the 2026-10-21 snapshot and is left as recorded.
+
 ## The two builds
 
 | | Staging (`app-staging.factorylm.com`) | Production (`app.factorylm.com`) |
