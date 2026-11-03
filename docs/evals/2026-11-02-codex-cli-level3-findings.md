@@ -17,6 +17,7 @@ This is a findings-only publication by **Codex CLI**. It contains no implementat
 - Verified phone entry, left open in a fresh thread:
   `http://127.0.0.1:3917/v3/?notebook=5b4f7724-2c26-4aca-bbcb-35fc761e4585&thread=391366b5-20a2-44fa-81dc-c83cadccb4b0`
   This URL requires the Pixel to remain USB-connected to Charlie with reverse port 3917. It is not a public URL or shared deployment. Phone control finished after Mike requested a five-minute limit; the temporary debugging forward was removed.
+- Mike subsequently withdrew the phone for personal use. No further phone-dependent actions are being taken. The URL above is the verified USB entry at handoff, **not a claim that it remains reachable after unplugging**; the same private server remains accessible on Charlie.
 - The fresh thread contains no newly generated answer. Historic answers retain their original revisions. No automated provider request was made while bringing up this preview.
 - The overall local health endpoint correctly remains **503**, missing `INGEST_URL`; it reports the exact fe8 revision. The real file path previously used actual in-process PDF ingestion. This thin test environment is not being presented as a fully healthy staging environment.
 

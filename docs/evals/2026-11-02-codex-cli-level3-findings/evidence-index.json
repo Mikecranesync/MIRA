@@ -44,7 +44,8 @@
       "No completed representative human acceptance",
       "No live CV-101/Ignition/PLC telemetry or physical garage variant established",
       "Overall lab health remains 503 missing INGEST_URL; this is not a shared deployment"
-    ]
+    ],
+    "phoneAvailability": "Released to Mike; no further phone-dependent work. USB URL not promised reachable after unplugging."
   },
   "sharedReferenceReceipts": [
     {
