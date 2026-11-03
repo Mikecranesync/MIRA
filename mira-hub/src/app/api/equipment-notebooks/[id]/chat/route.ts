@@ -2435,7 +2435,13 @@ async function handleChatTurn(
   // the decline below must never say "I couldn't find it" when nothing ran.
   let oemRetrievalFailed = false;
   // Filled by retrieveNodeChunks: what the vector lane did this turn (#4548).
-  const retrievalDiagnostics: { vectorLane?: string; rerank?: string; queryRewrite?: string } = {};
+  const retrievalDiagnostics: {
+    vectorLane?: string;
+    rerank?: string;
+    rerankMs?: number | null;
+    searchPath?: string;
+    queryRewrite?: string;
+  } = {};
   const queryRewrite = await queryRewritePromise;
   retrievalDiagnostics.queryRewrite = queryRewrite.status;
   const retrievedChunks: ManualChunk[] = oemRetrieval
@@ -2596,6 +2602,8 @@ async function handleChatTurn(
         "mira.retrieval.prior_visual_observations_considered": priorLookRows.length,
         "mira.retrieval.vector_lane": retrievalDiagnostics.vectorLane ?? null,
         "mira.retrieval.rerank": retrievalDiagnostics.rerank ?? null,
+        "mira.retrieval.rerank_ms": retrievalDiagnostics.rerankMs ?? null,
+        "mira.retrieval.search_path": retrievalDiagnostics.searchPath ?? null,
         "mira.retrieval.query_rewrite": retrievalDiagnostics.queryRewrite ?? null,
         "mira.visual.prior_file_ids": priorLookFileIds,
       },

@@ -41,15 +41,15 @@ export function rerankTimeoutMs(): number {
 
 export type RerankFallback = "not_configured" | "http_error" | "timeout" | "malformed" | "network";
 
-/**
- * Score each passage against the query. Returns one finite score per passage, in input order,
- * or null (with a logged reason) — never throws.
- */
 /** The one log line for a fallback (kept verbatim so existing greps still match). */
 export function logRerankFallback(reason: RerankFallback, detail?: string): void {
   console.warn(`[reranker] reranker_fallback reason=${reason}${detail ? ` ${detail}` : ""}`);
 }
 
+/**
+ * Score each passage against the query. Returns one finite score per passage, in input order,
+ * or null (with a logged reason) — never throws.
+ */
 export async function rerankScores(
   query: string,
   passages: readonly string[],

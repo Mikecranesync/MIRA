@@ -1330,7 +1330,7 @@ export async function retrieveNodeChunks(
      *  failed) so the caller can put it on its own retrieval span: callers
      *  start stage spans without activating them, so setSpanAttrs() on the
      *  active span alone never reached the trace (#4548). */
-    diagnostics?: { vectorLane?: string; rerank?: string };
+    diagnostics?: { vectorLane?: string; rerank?: string; rerankMs?: number | null; searchPath?: string };
   },
 ): Promise<ManualChunk[]> {
   const q = query.trim();
@@ -2206,8 +2206,11 @@ export async function retrieveNodeChunks(
   // shape and are not reranked. Any reranker failure returns null: today's order stands.
   // #4579: the outcome is recorded on the span (off | ran | skipped_broad | skipped_short |
   // fallback_<reason>), not only logged, so a staging A/B can tell whether rerank ran.
+  // rerank_ms is the service wait (null when no call was made), so a turn near the timeout
+  // is visible before it becomes a fallback.
   let modelRanked = hybridRanked;
   let rerankOutcome: string;
+  let rerankMs: number | null = null;
   if (!rerankEnabled()) {
     rerankOutcome = "off";
   } else if (broad.broad) {
@@ -2217,12 +2220,14 @@ export async function retrieveNodeChunks(
   } else {
     const head = hybridRanked.slice(0, rerankPool());
     let fallbackReason: string | undefined;
+    const rerankStart = Date.now();
     const scores = await rerankScores(opts.rawQuery ?? q, head.map((c) => c.content), {
       log: (reason, detail) => {
         fallbackReason = reason;
         logRerankFallback(reason, detail);
       },
     });
+    rerankMs = Date.now() - rerankStart;
     if (scores) {
       modelRanked = [...orderByScores(head, scores), ...hybridRanked.slice(head.length)];
       rerankOutcome = "ran";
@@ -2230,8 +2235,23 @@ export async function retrieveNodeChunks(
       rerankOutcome = `fallback_${fallbackReason ?? "unknown"}`;
     }
   }
-  setSpanAttrs({ "mira.retrieval.rerank": rerankOutcome });
-  if (opts.diagnostics) opts.diagnostics.rerank = rerankOutcome;
+  // The search path whose order was actually served: the lexical mode, then each stage
+  // that changed the order this turn (a skipped or failed stage is absent).
+  const searchPath = [
+    lexicalV2 ? "lexical_v2" : "lexical",
+    ...(vectorKeys && vectorKeys.length > 0 ? ["vector"] : []),
+    ...(rerankOutcome === "ran" ? ["rerank"] : []),
+  ].join("+");
+  setSpanAttrs({
+    "mira.retrieval.rerank": rerankOutcome,
+    "mira.retrieval.rerank_ms": rerankMs,
+    "mira.retrieval.search_path": searchPath,
+  });
+  if (opts.diagnostics) {
+    opts.diagnostics.rerank = rerankOutcome;
+    opts.diagnostics.rerankMs = rerankMs;
+    opts.diagnostics.searchPath = searchPath;
+  }
   const rerankedAll = prioritizeCurrentCodeEvidence(modelRanked, expanded.currentCodeTokens);
   // Facet-guaranteed slots (answer completeness): rerank picks the BEST chunks
   // overall, so one family (e.g. overload) can fill every slot while a planned

@@ -46,7 +46,8 @@ function client(rows: Record<string, unknown>[] = ROWS): PoolClient {
   return { query: vi.fn(async () => ({ rows })) } as unknown as PoolClient;
 }
 
-const ask = (question: string, opts: { diagnostics?: { rerank?: string }; rows?: Record<string, unknown>[] } = {}) =>
+type Diag = { rerank?: string; rerankMs?: number | null; searchPath?: string };
+const ask = (question: string, opts: { diagnostics?: Diag; rows?: Record<string, unknown>[] } = {}) =>
   retrieveNodeChunks(client(opts.rows), "t-1", question, {
     nodeId: "n-1",
     unsPath: null,
@@ -56,7 +57,8 @@ const ask = (question: string, opts: { diagnostics?: { rerank?: string }; rows?:
     ...(opts.diagnostics ? { diagnostics: opts.diagnostics } : {}),
   });
 
-const rerankAttr = () => spanAttrs.map((a) => a["mira.retrieval.rerank"]).filter((v) => v !== undefined);
+const attr = (k: string) => spanAttrs.map((a) => a[k]).filter((v) => v !== undefined);
+const rerankAttr = () => attr("mira.retrieval.rerank");
 const scoresOk = () =>
   vi.fn(async (_url: string, init: RequestInit) => {
     const { passages } = JSON.parse(String(init.body)) as { passages: string[] };
@@ -147,5 +149,54 @@ describe("mira.retrieval.rerank on the retrieval span (#4579)", () => {
     const diagnostics: { rerank?: string } = {};
     await ask(NARROW, { diagnostics });
     expect(diagnostics.rerank).toBe("ran");
+  });
+});
+
+describe("search path and rerank wait on the retrieval span", () => {
+  const timeout = () =>
+    vi.fn(async () => {
+      throw Object.assign(new Error("aborted"), { name: "TimeoutError" });
+    });
+
+  it("names rerank in the path only when its order was served", async () => {
+    vi.stubGlobal("fetch", scoresOk());
+    await ask(NARROW);
+    expect(attr("mira.retrieval.search_path")).toEqual(["lexical+rerank"]);
+    expect(attr("mira.retrieval.rerank_ms")).toHaveLength(1);
+    expect(typeof attr("mira.retrieval.rerank_ms")[0]).toBe("number");
+  });
+
+  it("a timeout serves the plain lexical path, records the wait, and returns the rerank-off order", async () => {
+    vi.stubEnv("NOTEBOOK_RERANK", "0");
+    const off = await ask(NARROW);
+    spanAttrs.length = 0;
+    vi.stubEnv("NOTEBOOK_RERANK", "1");
+    vi.stubGlobal("fetch", timeout());
+    const fellBack = await ask(NARROW);
+    expect(attr("mira.retrieval.search_path")).toEqual(["lexical"]);
+    expect(typeof attr("mira.retrieval.rerank_ms")[0]).toBe("number");
+    expect(fellBack).toEqual(off);
+  });
+
+  it("records no wait when the service is never called", async () => {
+    vi.stubEnv("NOTEBOOK_RERANK", "0");
+    await ask(NARROW);
+    expect(attr("mira.retrieval.rerank_ms")).toEqual([null]);
+    expect(attr("mira.retrieval.search_path")).toEqual(["lexical"]);
+  });
+
+  it("names lexical_v2 when that flag is on", async () => {
+    vi.stubEnv("NOTEBOOK_LEXICAL_V2", "1");
+    vi.stubEnv("NOTEBOOK_RERANK", "0");
+    await ask(NARROW);
+    expect(attr("mira.retrieval.search_path")).toEqual(["lexical_v2"]);
+  });
+
+  it("hands the path and wait back through opts.diagnostics", async () => {
+    vi.stubGlobal("fetch", scoresOk());
+    const diagnostics: Diag = {};
+    await ask(NARROW, { diagnostics });
+    expect(diagnostics.searchPath).toBe("lexical+rerank");
+    expect(typeof diagnostics.rerankMs).toBe("number");
   });
 });
