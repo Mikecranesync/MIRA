@@ -202,6 +202,16 @@ export interface SmCaution {
   kind: "CAUTION" | "WARNING" | "NOTE" | "IMPORTANT";
   text: string;
   source: SourceRef;
+  /** The procedure block the caution is printed inside (V2): section heading/subheading, the block's
+   *  model scope, and the number of the last step printed before it (null = before the first step).
+   *  Absent when the caution sits outside any procedure section. */
+  context?: {
+    heading: string;
+    subheading: string | null;
+    topic: Topic | "other";
+    models: ModelScope;
+    afterStep: number | null;
+  };
 }
 
 /** A procedure section the parser detected but left out (steps garbled in extraction). */
@@ -282,10 +292,30 @@ export interface PacketPart {
   qty: Field;
 }
 
+/** A manufacturer NOTE/CAUTION printed inside a procedure, kept next to the step it follows (V2). */
+export interface StepNote {
+  kind: SmCaution["kind"];
+  text: Field;
+  /** Present when the note names models: "proposed" when it also covers other models (read the part
+   *  for your pump), "unknown" when a date/style/revision/application restriction cannot be settled. */
+  applicability?: Field;
+}
+
 export interface PacketStep {
   section: string;
   topic: Topic | "other";
   text: Field;
+  /** V2 job phase: take apart to reach the work, the requested work, put back together. */
+  phase?: "removal" | "service" | "reinstall";
+  /** The manufacturer's step number within its block. */
+  n?: number | null;
+  /** Subheading of the block the step is printed in (e.g. "Models 8520, 8521, 8527"). */
+  subheading?: string | null;
+  notes?: StepNote[];
+  /** As on StepNote: "proposed" = the line also covers other models; "unknown" = an unsettled restriction. */
+  applicability?: Field;
+  /** Why a removal/reinstall step is in this packet (always "proposed": the manual does not say so). */
+  inclusion?: Field;
 }
 
 export interface PacketMeasurement {
@@ -293,6 +323,12 @@ export interface PacketMeasurement {
   /** e.g. "870 in-lbs / 72.5 ft-lbs / 98 Nm" — verbatim numbers from one torque-chart line. */
   value: Field;
   tool: Field;
+  /** V2: indexes into `steps` of the steps that tighten this item. */
+  steps?: number[];
+  /** Why this row is linked to those steps ("proposed": matched by the item's words). */
+  link?: Field;
+  /** The technician's reading, kept apart from the manufacturer value. Never verified. */
+  measured?: Field;
 }
 
 /** A manufacturer photo from the manual page a section's steps are printed on. */
@@ -304,6 +340,10 @@ export interface PacketFigure {
   page: number;
   image: string | null;
   caption: string[];
+  /** V2: index into `steps` of the step the photo shows; null = shown with its section. */
+  step?: number | null;
+  /** Why the photo sits with that step ("proposed": matched by caption words). */
+  placement?: Field;
 }
 
 /** One row of the job hazard analysis. The hazard is the manufacturer's own caution (verbatim, cited);
@@ -316,7 +356,8 @@ export interface JhaRow {
 }
 
 export interface WorkPacket {
-  version: 1;
+  /** 1 = packets saved before the V2 layout; they still load, verify and export. */
+  version: 1 | 2;
   packetId: string;
   generatedAt: string;
   notebookId: string;
@@ -351,6 +392,12 @@ export interface WorkPacket {
   /** Return-to-service: the manufacturer's start-up checks and ratings, cited; acceptance limits unknown. */
   restoration?: Field[];
   unknowns: Field[];
+  /** V2: things the documents leave open that stop the job until a qualified person settles them —
+   *  each quotes the manual line (label "unknown", value null, basis = the quoted restriction). */
+  blockers?: Field[];
+  /** V2: manual content deliberately not in this packet (other models, steps outside the job,
+   *  torque rows no step uses, figures for other models) — shown in an appendix, never silently dropped. */
+  leftOut?: Field[];
   approval: {
     technicianReview: { state: "draft" | "reviewed"; entries: ReviewEntry[] };
     supervisor: { state: "pending" | "approved"; by: string | null; at: string | null };

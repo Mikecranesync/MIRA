@@ -524,6 +524,12 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
         const cautionText = textParts.join(" ").replace(/\s{2,}/g, " ").trim();
         const cautionSource = { ...src, page: pg.page, line: lines.slice(i, j).join(" ") };
         const caution: SmCaution = { kind, text: cautionText, source: cautionSource };
+        // The block it is printed in, snapshot now: a note belongs to the step before it, and to that
+        // block's model scope (V2 — a note in a 3545/3541 block is not a 3520 note).
+        if (open) {
+          const last = open.steps.length > 0 ? open.steps[open.steps.length - 1].n : null;
+          caution.context = { heading: open.heading, subheading: open.subheading, topic: open.topic, models: open.models, afterStep: last };
+        }
         cautions.push(caution);
         lastBlock = { kind: "caution", caution, text: cautionText };
         i = j - 1;
