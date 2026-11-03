@@ -978,7 +978,7 @@ capabilities:
       treatment_revision: 92e6ebc4fa5b90e65023d3872c47183ea6ad08df
       independent: true
       replayed_by: "BRAVO retrieval acceptance replay"
-      replay: "https://github.com/Mikecranesync/MIRA/issues/5138#issuecomment-6602829510"
+      replay: "https://github.com/Mikecranesync/MIRA/pull/5169#issuecomment-6606290358"
       artifact: docs/evals/retrieval-eval/replays/notebook_cross_encoder_rerank-92e6ebc4f.json
       case_set: notebook_failing_turns_5127
       treatment_settings: {NOTEBOOK_RERANK_TIMEOUT_MS: "4000", NOTEBOOK_RERANK_POOL: unset, RERANKER_MODEL: fp32}
