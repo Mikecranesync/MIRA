@@ -70,6 +70,9 @@ const S: Record<string, CSSProperties> = {
 const SECTION_TITLES: Record<PrintSection["kind"], string> = {
   banner: "",
   safety: "Safety",
+  cautions: "Cautions",
+  checks: "Return-to-service checks",
+  templateNotes: "Template notes",
   bringToJob: "Bring to the job",
   steps: "Steps",
   readings: "Readings",
@@ -96,6 +99,32 @@ function renderSection(section: PrintSection, index: number) {
           <p style={S.row}>{section.text}</p>
         </section>
       );
+    case "cautions":
+      return (
+        <section key={index} style={S.section} data-testid="ls-print-cautions">
+          <div style={S.sectionTitle}>{SECTION_TITLES.cautions}</div>
+          <p style={S.row}>{section.text}</p>
+        </section>
+      );
+    case "checks":
+      return (
+        <section key={index} style={S.section} data-testid="ls-print-checks">
+          <div style={S.sectionTitle}>{SECTION_TITLES.checks}</div>
+          {section.items.map((item, i) => (
+            <p key={i} style={S.row}>
+              <span aria-hidden="true" style={S.box}>☐</span>
+              {item}
+            </p>
+          ))}
+        </section>
+      );
+    case "templateNotes":
+      return (
+        <section key={index} style={S.section} data-testid="ls-print-template-notes">
+          <div style={S.sectionTitle}>{SECTION_TITLES.templateNotes}</div>
+          <p style={S.row}>{section.text}</p>
+        </section>
+      );
     case "bringToJob":
       return (
         <section key={index} style={S.section} data-testid="ls-print-bring-to-job">
@@ -105,6 +134,7 @@ function renderSection(section: PrintSection, index: number) {
               {item.item}
               {item.spec ? ` — ${item.spec}` : ""}
               {item.qty !== null ? ` (qty ${item.qty})` : ""}
+              {item.source ? ` — source: ${item.source}` : ""}
             </p>
           ))}
         </section>
@@ -129,10 +159,13 @@ function renderSection(section: PrintSection, index: number) {
           {section.items.map((reading) => (
             <p key={reading.id} style={S.row}>
               {reading.what}: {reading.current.value} {reading.current.unit}
+              {" — "}
+              {reading.current.by ?? "a technician"}, {new Date(reading.current.at).toLocaleString()}
+              {reading.source ? ` (source: ${reading.source.kind}${reading.source.ref ? ` — ${reading.source.ref}` : ""})` : ""}
               {reading.history.filter((h) => h.superseded).map((h, i) => (
                 <span key={i} style={S.struck}>
                   {" "}
-                  ({h.value} {h.unit})
+                  ({h.value} {h.unit} — {h.by ?? "a technician"}, {new Date(h.at).toLocaleString()})
                 </span>
               ))}
             </p>
@@ -181,6 +214,9 @@ function renderSection(section: PrintSection, index: number) {
           {section.items.map((t) => (
             <p key={t.id} style={S.row}>
               {t.what}: {t.value !== null ? `${t.value} ${t.unit ?? ""}` : "—"} ({t.sourceText})
+              {t.pattern ? ` — pattern: ${t.pattern}` : ""}
+              {t.threadLocker ? ` — thread-locker: ${t.threadLocker}` : ""}
+              {t.tool ? ` — tool: ${t.tool}` : ""}
             </p>
           ))}
         </section>
@@ -198,13 +234,21 @@ function renderSection(section: PrintSection, index: number) {
         </section>
       );
     case "handover":
+      // F05: the technician's words are quoted VERBATIM — never rewritten or
+      // stripped, even if they contain a word MIRA's own wording would never
+      // use — with who wrote it and when attributed alongside.
       return (
         <section key={index} style={S.section} data-testid="ls-print-handover">
           <div style={S.sectionTitle}>{SECTION_TITLES.handover}</div>
-          {section.current && <p style={S.row}>{section.current.text}</p>}
+          {section.current && (
+            <p style={S.row}>
+              &ldquo;{section.current.text}&rdquo; — {section.current.by ?? "a technician"},{" "}
+              {new Date(section.current.at).toLocaleString()}
+            </p>
+          )}
           {section.history.filter((h) => h.eventId !== section.current?.eventId).map((h, i) => (
             <p key={i} style={{ ...S.row, ...S.struck }}>
-              {h.text}
+              &ldquo;{h.text}&rdquo; — {h.by ?? "a technician"}, {new Date(h.at).toLocaleString()}
             </p>
           ))}
         </section>

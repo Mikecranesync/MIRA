@@ -64,6 +64,14 @@ describe("LivingSheetPrint — header + static content", () => {
     expect(reviewedHtml).not.toContain("DRAFT job sheet");
   });
 
+  it("F04: shows the ad-hoc banner (not the DRAFT banner) when templateStatus is null, and shows neither when reviewed", () => {
+    const adHocHtml = renderToStaticMarkup(<LivingSheetPrint view={baseView({ templateStatus: null })} {...OPTS} />);
+    expect(adHocHtml).toContain("Not from a reviewed job sheet");
+    expect(adHocHtml).not.toContain("DRAFT job sheet");
+    const reviewedHtml = renderToStaticMarkup(<LivingSheetPrint view={baseView({ templateStatus: "reviewed" })} {...OPTS} />);
+    expect(reviewedHtml).not.toContain("Not from a reviewed job sheet");
+  });
+
   it("falls back to the lockout-procedure line when isolationPoints is null", () => {
     const html = renderToStaticMarkup(<LivingSheetPrint view={baseView()} {...OPTS} />);
     expect(html).toContain("follow your site");
@@ -171,5 +179,87 @@ describe("LivingSheetPrint — layout + handover (found by the §12 PDF inspecti
     const html = renderToStaticMarkup(<LivingSheetPrint view={view} {...OPTS} />);
     expect(html).toMatch(/☑<\/span>(<!-- -->)?Remove guard TEST/);
     expect(html).toMatch(/☐<\/span>(<!-- -->)?Torque bolts TEST/);
+  });
+});
+
+describe("LivingSheetPrint — F13: procedural template content execution/export was omitting", () => {
+  it("renders cautions, return-to-service checks, template notes, torque pattern/tool/thread-locker, and a bring-list item's source", () => {
+    const view = baseView({
+      template: {
+        ...baseView().template,
+        cautions: "Wheel is heavy; two-person lift",
+        returnToService: ["Jog motor, confirm no abnormal noise"],
+        notes: "Torque sequence must follow the star pattern.",
+        items: [{ id: "i1", kind: "part", item: "Gasket", spec: null, qty: 1, source: "warehouse bin 12", notes: null }],
+        torques: [
+          { id: "t1", what: "Wheel bolts", value: 85, unit: "ft-lb", pattern: "star", threadLocker: "blue 242", tool: "3/4 impact", source: "Manual p.12" },
+        ],
+      },
+    });
+    const html = renderToStaticMarkup(<LivingSheetPrint view={view} {...OPTS} />);
+    expect(html).toContain("Wheel is heavy; two-person lift");
+    expect(html).toContain("Jog motor, confirm no abnormal noise");
+    expect(html).toContain("Torque sequence must follow the star pattern.");
+    expect(html).toContain("star");
+    expect(html).toContain("blue 242");
+    expect(html).toContain("3/4 impact");
+    expect(html).toContain("warehouse bin 12");
+  });
+});
+
+describe("LivingSheetPrint — F14: reading provenance (who/when, and struck values stay visible with their own who/when)", () => {
+  it("prints the current value with who and when, plus the source when the event carries one", () => {
+    const view = baseView({
+      readings: [
+        {
+          id: "r1",
+          what: "Motor current",
+          current: { value: 4.8, unit: "A", by: "Mike", at: "2026-11-03T21:14:00.000Z", eventId: "e2" },
+          history: [
+            { value: 48, unit: "A", by: "Tech One", at: "2026-11-03T20:00:00.000Z", eventId: "e1", superseded: true },
+            { value: 4.8, unit: "A", by: "Mike", at: "2026-11-03T21:14:00.000Z", eventId: "e2", superseded: false },
+          ],
+          source: { kind: "tech", ref: null },
+        },
+      ],
+    });
+    const html = renderToStaticMarkup(<LivingSheetPrint view={view} {...OPTS} />);
+    // Current value, attributed.
+    expect(html).toContain("4.8");
+    expect(html).toContain("Mike");
+    // Struck earlier value stays visible, attributed to its OWN who/when
+    // (not the current value's) — the correction is never hidden.
+    expect(html).toContain("48");
+    expect(html).toContain("Tech One");
+    expect(html).toMatch(/48 A.*Tech One/);
+  });
+
+  it("still prints who/when for a reading with no event-carried source", () => {
+    const view = baseView({
+      readings: [
+        {
+          id: "r1",
+          what: "Discharge pressure",
+          current: { value: 20, unit: "psi", by: "A", at: "2026-11-03T14:00:00.000Z", eventId: "e1" },
+          history: [{ value: 20, unit: "psi", by: "A", at: "2026-11-03T14:00:00.000Z", eventId: "e1", superseded: false }],
+          source: null,
+        },
+      ],
+    });
+    const html = renderToStaticMarkup(<LivingSheetPrint view={view} {...OPTS} />);
+    expect(html).toContain("20");
+    expect(html).toContain("A");
+  });
+});
+
+describe("LivingSheetPrint — F05: handover is quoted verbatim and attributed, never altered", () => {
+  it("prints the technician's own words quoted and attributed, even when they use a word MIRA's own wording never would", () => {
+    const current = { text: "Pump is fixed", by: "Mike", at: "2026-11-03T18:00:00.000Z", eventId: "e1" };
+    const html = renderToStaticMarkup(<LivingSheetPrint view={baseView({ handover: { current, history: [current] } })} {...OPTS} />);
+    // Quoted, not stripped or paraphrased.
+    expect(html).toContain("Pump is fixed");
+    // Attributed: who and when.
+    expect(html).toContain("Mike");
+    expect(html).toMatch(/Pump is fixed[\s\S]*Mike/);
   });
 });

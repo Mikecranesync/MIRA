@@ -6,15 +6,19 @@
  * another session — not touched here) can map over without re-deriving any
  * of this. No DOM, no React, no I/O — same discipline as reduce.ts.
  *
- * Content follows TASK-S5-S6-export-shift-report.md's S5 §Content list:
- * running header (job id, title, machine, change #, printed time), a draft
- * banner, safety text (verbatim or a fallback), a "bring to the job" list,
- * steps (done by/at or an empty box), readings (current + every superseded
- * value, kept and marked — reused directly from reduce.ts, which already
- * computes this), notes/questions, parts, torques (missing source prints
- * "no source — unverified"), photos, handover, and a footer disclaimer with
- * signature lines. `plainText` flattens every visible string so a banned-
- * words test can scan the whole sheet in one assertion.
+ * Content follows TASK-S5-S6-export-shift-report.md's S5 §Content list,
+ * extended per EGM round-1 finding F13 (stored procedural content that was
+ * never printed): running header (job id, title, machine, change #, printed
+ * time), a draft/ad-hoc banner, safety text (verbatim or a fallback),
+ * cautions, return-to-service checks, the template author's own notes, a
+ * "bring to the job" list (with each item's source), steps (done by/at or an
+ * empty box), readings (current + every superseded value, each with who/when
+ * and source — reused directly from reduce.ts, which already computes this),
+ * notes/questions, parts, torques (pattern/thread-locker/tool, and missing
+ * source prints "no source — unverified"), photos, handover (quoted verbatim
+ * with who/when), and a footer disclaimer with signature lines. `plainText`
+ * flattens every visible string so a banned-words test can scan the whole
+ * sheet in one assertion.
  *
  * Interpretation note (see task report "deviations"): `JobSheetBody` has no
  * field literally named "safety" — `isolationPoints` (LOTO/isolation points)
@@ -34,6 +38,11 @@ import type {
 import type { JobSheetItem, JobSheetTorque } from "@/capabilities/living-sheet/types";
 
 const DRAFT_BANNER_TEXT = "DRAFT job sheet — not reviewed";
+/** F04: an ad-hoc job (no template revision, `templateStatus === null`) is
+ *  not reviewed either — it was never reviewed because there was never a
+ *  template to review. It gets its own banner, distinct from DRAFT (a draft
+ *  template revision exists and failed review; ad-hoc never had one). */
+const AD_HOC_BANNER_TEXT = "Not from a reviewed job sheet";
 const SAFETY_FALLBACK = "Not written — follow your site's lockout procedure";
 const FOOTER_DISCLAIMER = "This sheet records what was reported. It does not authorize return to service.";
 const NO_SOURCE_TEXT = "no source — unverified";
@@ -43,6 +52,9 @@ export type PrintTorqueLine = JobSheetTorque & { sourceText: string };
 export type PrintSection =
   | { kind: "banner"; text: string }
   | { kind: "safety"; text: string }
+  | { kind: "cautions"; text: string }
+  | { kind: "checks"; items: string[] }
+  | { kind: "templateNotes"; text: string }
   | { kind: "bringToJob"; items: JobSheetItem[] }
   | { kind: "steps"; items: SheetStepView[] }
   | { kind: "readings"; items: SheetReadingView[] }
@@ -81,9 +93,15 @@ function textOfSection(section: PrintSection): string[] {
   switch (section.kind) {
     case "banner":
     case "safety":
+    case "cautions":
+    case "templateNotes":
       return [section.text];
+    case "checks":
+      return section.items;
     case "bringToJob":
-      return section.items.flatMap((i) => [i.item, i.spec, i.notes].filter((v): v is string => v !== null));
+      return section.items.flatMap((i) =>
+        [i.item, i.spec, i.notes, i.source].filter((v): v is string => v !== null),
+      );
     case "steps":
       return section.items.flatMap((s) => [s.text, s.note].filter((v): v is string => v !== null));
     case "readings":
@@ -115,9 +133,25 @@ export function printModel(view: SheetView, opts: PrintModelOpts): PrintModel {
 
   if (view.templateStatus === "draft") {
     sections.push({ kind: "banner", text: DRAFT_BANNER_TEXT });
+  } else if (view.templateStatus === null) {
+    // F04: no templateRevisionId at all (ad-hoc) is unreviewed too — it just
+    // never had a template to review in the first place.
+    sections.push({ kind: "banner", text: AD_HOC_BANNER_TEXT });
   }
+  // templateStatus === "reviewed": no banner.
 
   sections.push({ kind: "safety", text: view.template.isolationPoints ?? SAFETY_FALLBACK });
+  // F13: cautions, return-to-service checks, and the template author's own
+  // notes are stored on the template but were previously never printed.
+  if (view.template.cautions !== null) {
+    sections.push({ kind: "cautions", text: view.template.cautions });
+  }
+  if (view.template.returnToService.length > 0) {
+    sections.push({ kind: "checks", items: view.template.returnToService });
+  }
+  if (view.template.notes !== null) {
+    sections.push({ kind: "templateNotes", text: view.template.notes });
+  }
   sections.push({ kind: "bringToJob", items: view.template.items });
   sections.push({ kind: "steps", items: view.steps });
   sections.push({ kind: "readings", items: view.readings });

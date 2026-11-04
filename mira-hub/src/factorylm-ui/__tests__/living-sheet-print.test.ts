@@ -85,9 +85,12 @@ describe("printModel — draft banner", () => {
     expect(m.sections.some((s) => s.kind === "banner")).toBe(false);
   });
 
-  it("omits the banner for an ad-hoc job (templateStatus null)", () => {
+  it("F04: shows a distinct 'not from a reviewed job sheet' banner for an ad-hoc job (templateStatus null) — it was never reviewed, it just never had a template to review", () => {
     const m = printModel(baseView({ templateStatus: null }), OPTS);
-    expect(m.sections.some((s) => s.kind === "banner")).toBe(false);
+    const banner = m.sections.find((s) => s.kind === "banner");
+    expect(banner).toMatchObject({ kind: "banner", text: "Not from a reviewed job sheet" });
+    // Distinct from the draft banner's wording.
+    expect(banner).not.toMatchObject({ text: expect.stringContaining("DRAFT") });
   });
 });
 
@@ -102,6 +105,60 @@ describe("printModel — safety", () => {
     const m = printModel(baseView({ template: template({ isolationPoints: null }) }), OPTS);
     const safety = m.sections.find((s) => s.kind === "safety");
     expect(safety).toMatchObject({ text: "Not written — follow your site's lockout procedure" });
+  });
+});
+
+describe("printModel — F13: stored procedural template content that was previously never printed", () => {
+  // Example drawn from the §12 fixture the EGM reviewer inspected.
+  it("prints cautions, return-to-service checks, template notes, torque pattern/tool/thread-locker, and a bring-list item's source", () => {
+    const view = baseView({
+      template: template({
+        cautions: "Wheel is heavy; two-person lift",
+        returnToService: ["Jog motor, confirm no abnormal noise", "Verify guard reinstalled"],
+        notes: "Torque sequence must follow the star pattern — see shop manual p.44.",
+        items: [{ id: "i1", kind: "part", item: "Gasket", spec: null, qty: 1, source: "warehouse bin 12", notes: null }],
+        torques: [
+          { id: "t1", what: "Wheel bolts", value: 85, unit: "ft-lb", pattern: "star", threadLocker: "blue 242", tool: "3/4 impact", source: "Manual p.12" },
+        ],
+      }),
+    });
+    const m = printModel(view, OPTS);
+
+    const cautions = m.sections.find((s) => s.kind === "cautions");
+    expect(cautions).toMatchObject({ kind: "cautions", text: "Wheel is heavy; two-person lift" });
+
+    const checks = m.sections.find((s) => s.kind === "checks");
+    expect(checks).toMatchObject({
+      kind: "checks",
+      items: ["Jog motor, confirm no abnormal noise", "Verify guard reinstalled"],
+    });
+
+    const templateNotes = m.sections.find((s) => s.kind === "templateNotes");
+    expect(templateNotes).toMatchObject({
+      kind: "templateNotes",
+      text: "Torque sequence must follow the star pattern — see shop manual p.44.",
+    });
+
+    const torques = m.sections.find((s) => s.kind === "torques");
+    expect(torques).toMatchObject({ items: [{ pattern: "star", threadLocker: "blue 242", tool: "3/4 impact" }] });
+
+    const bringToJob = m.sections.find((s) => s.kind === "bringToJob");
+    expect(bringToJob).toMatchObject({ items: [{ source: "warehouse bin 12" }] });
+
+    // All of it is reachable through the single plainText surface too.
+    expect(m.plainText).toContain("Wheel is heavy; two-person lift");
+    expect(m.plainText).toContain("Jog motor, confirm no abnormal noise");
+    expect(m.plainText).toContain("star pattern");
+    expect(m.plainText).toContain("star");
+    expect(m.plainText).toContain("blue 242");
+    expect(m.plainText).toContain("warehouse bin 12");
+  });
+
+  it("omits cautions/checks/templateNotes sections entirely when the template has none (no empty section clutter)", () => {
+    const m = printModel(baseView({ template: template({ cautions: null, returnToService: [], notes: null }) }), OPTS);
+    expect(m.sections.some((s) => s.kind === "cautions")).toBe(false);
+    expect(m.sections.some((s) => s.kind === "checks")).toBe(false);
+    expect(m.sections.some((s) => s.kind === "templateNotes")).toBe(false);
   });
 });
 

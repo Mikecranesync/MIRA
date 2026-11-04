@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { LivingSheetShiftReport, ShiftReportBody, defaultShiftWindow } from "../LivingSheetShiftReport";
+import { LivingSheetShiftReport, ShiftReportBody, defaultShiftWindow, formatJobSnapshotLine } from "../LivingSheetShiftReport";
 import type { ShiftReport } from "@/capabilities/living-sheet/shift-report";
 
 function bannedWordRegex(phrase: string): RegExp {
@@ -30,6 +30,7 @@ function baseReport(over: Partial<ShiftReport> = {}): ShiftReport {
     byTechnician: [],
     handover: [],
     counts: { jobsTouched: 0, jobsFinished: 0, jobsOpen: 0 },
+    jobSnapshots: [],
     emptyMessage: null,
     plainText: "",
     ...over,
@@ -76,6 +77,26 @@ describe("ShiftReportBody", () => {
       expect(bannedWordRegex(phrase).test(html)).toBe(false);
     }
   });
+
+  it("F05: a handover's technician words are quoted verbatim and attributed, even using a word MIRA's own wording never would", () => {
+    const report = baseReport({
+      handover: [
+        { notebookId: "nb1", notebookName: "Line 1", jobId: "j1", jobTitle: "Belt swap", machineName: "Conveyor 3", text: "Pump is fixed", by: "Mike", at: "2026-11-03T18:00:00.000Z" },
+      ],
+    });
+    const html = renderToStaticMarkup(<ShiftReportBody report={report} />);
+    expect(html).toContain("Pump is fixed");
+    expect(html).toContain("Mike");
+    expect(html).toMatch(/Pump is fixed[\s\S]*Mike/);
+  });
+});
+
+describe("formatJobSnapshotLine — F20", () => {
+  it("names the job's short id and its event seq", () => {
+    expect(formatJobSnapshotLine({ jobId: "abcdef12-3456-4111-8111-111111111111", jobIdShort: "abcdef12", seq: 5 })).toBe(
+      "Job abcdef12 · seq 5",
+    );
+  });
 });
 
 describe("LivingSheetShiftReport (SSR shape)", () => {
@@ -100,6 +121,12 @@ describe("LivingSheetShiftReport — repeating header", () => {
     const html = renderToStaticMarkup(<LivingSheetShiftReport onClose={() => {}} />);
     expect(html).toMatch(/<thead[^>]*>[\s\S]*shift-report-print-header/);
     expect(html).not.toMatch(/\.ls-shift-print-header\s*\{[^}]*position:\s*fixed/);
+  });
+
+  it("F20: the printed header carries the export time", () => {
+    const html = renderToStaticMarkup(<LivingSheetShiftReport onClose={() => {}} />);
+    expect(html).toContain("shift-report-export-time");
+    expect(html).toContain("Exported");
   });
 });
 

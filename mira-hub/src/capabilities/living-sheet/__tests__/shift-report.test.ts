@@ -265,6 +265,81 @@ describe("shiftReport — needs attention + finished jobs + counts", () => {
   });
 });
 
+describe("shiftReport — F15: summary fields reflect state as of the window's end, not the live log", () => {
+  it("a finish recorded AFTER 'to' does not count the job as finished, and still flags it not_finished", () => {
+    seqCounter = 0;
+    const started = ev(
+      "job_started",
+      { title: "PM — Pump 07", machine: { entityId: "cmms-pump07", name: "Pump 07" }, templateRevisionId: null, template: template({ steps: [] }) },
+      { seq: 1, occurredAt: "2026-11-03T20:00:00.000Z" },
+    );
+    const finishedAfterWindow = ev("job_finished", { summary: null, openItemsAcknowledged: true }, { seq: 2, occurredAt: "2026-11-03T22:00:00.000Z" });
+    const j = job("job-1", [started, finishedAfterWindow]);
+
+    const window = { from: "2026-11-03T19:00:00.000Z", to: "2026-11-03T21:00:00.000Z" }; // ends before the finish
+    const report = shiftReport([j], window);
+
+    expect(report.counts).toEqual({ jobsTouched: 1, jobsFinished: 0, jobsOpen: 1 });
+    expect(report.needsAttention.some((a) => a.reason === "not_finished")).toBe(true);
+    const texts = report.byTechnician.flatMap((g) => g.entries.map((e) => e.text));
+    expect(texts.some((t) => t.includes("finished"))).toBe(false);
+  });
+
+  it("a handover written AFTER 'to' does not appear in the report's handover section", () => {
+    seqCounter = 0;
+    const started = ev(
+      "job_started",
+      { title: "PM — Pump 07", machine: { entityId: "cmms-pump07", name: "Pump 07" }, templateRevisionId: null, template: template() },
+      { seq: 1, occurredAt: "2026-11-03T20:00:00.000Z" },
+    );
+    const handoverAfterWindow = ev("handover_written", { text: "Watch the belt next shift." }, { seq: 2, occurredAt: "2026-11-03T22:00:00.000Z" });
+    const j = job("job-1", [started, handoverAfterWindow]);
+
+    const window = { from: "2026-11-03T19:00:00.000Z", to: "2026-11-03T21:00:00.000Z" };
+    const report = shiftReport([j], window);
+
+    expect(report.handover).toHaveLength(0);
+  });
+
+  it("a wider window end that includes the finish correctly counts it finished, proving the fix is window-end-relative, not a blanket suppression", () => {
+    seqCounter = 0;
+    const started = ev(
+      "job_started",
+      { title: "PM — Pump 07", machine: { entityId: "cmms-pump07", name: "Pump 07" }, templateRevisionId: null, template: template({ steps: [] }) },
+      { seq: 1, occurredAt: "2026-11-03T20:00:00.000Z" },
+    );
+    const finished = ev("job_finished", { summary: null, openItemsAcknowledged: true }, { seq: 2, occurredAt: "2026-11-03T20:30:00.000Z" });
+    const j = job("job-1", [started, finished]);
+
+    const narrowWindow = { from: "2026-11-03T19:00:00.000Z", to: "2026-11-03T20:15:00.000Z" }; // before the finish
+    const wideWindow = { from: "2026-11-03T19:00:00.000Z", to: "2026-11-03T21:00:00.000Z" }; // after the finish
+
+    expect(shiftReport([j], narrowWindow).counts.jobsFinished).toBe(0);
+    expect(shiftReport([j], wideWindow).counts.jobsFinished).toBe(1);
+  });
+});
+
+describe("shiftReport — F20: per-job snapshot (short id + event seq as of the window's end)", () => {
+  it("names each job's short id and its seq as of 'to', ignoring events after it", () => {
+    seqCounter = 0;
+    const started = ev(
+      "job_started",
+      { title: "PM — Pump 07", machine: { entityId: "cmms-pump07", name: "Pump 07" }, templateRevisionId: null, template: template() },
+      { seq: 1, occurredAt: "2026-11-03T20:00:00.000Z" },
+    );
+    const inWindow = ev("step_marked", { stepId: "step-1", done: true, note: null }, { seq: 2, occurredAt: "2026-11-03T20:05:00.000Z" });
+    const afterWindow = ev("step_marked", { stepId: "step-2", done: true, note: null }, { seq: 3, occurredAt: "2026-11-03T22:00:00.000Z" });
+    const j = job("11111111-2222-3333-4444-555555555555", [started, inWindow, afterWindow]);
+
+    const window = { from: "2026-11-03T19:00:00.000Z", to: "2026-11-03T21:00:00.000Z" };
+    const report = shiftReport([j], window);
+
+    expect(report.jobSnapshots).toEqual([
+      { jobId: "11111111-2222-3333-4444-555555555555", jobIdShort: "11111111", seq: 2 },
+    ]);
+  });
+});
+
 describe("shiftReport — empty shift", () => {
   it("returns a clear empty-shift message and zero counts when no jobs were touched", () => {
     const report = shiftReport([], WINDOW_WIDE);

@@ -13,7 +13,19 @@
  * "resolved" (applied to the machine) — never appear; a question is
  * "answered", never "resolved". Corrections render as
  * "<who> corrected <what> <old> → <new> at <local time>" in the given time
- * zone (default `America/New_York`).
+ * zone (default `America/New_York`). A handover's technician words are
+ * never altered, only quoted and attributed (who/when) by the UI.
+ *
+ * F15: `needsAttention`, `counts`, `finished`, and `handover` are computed
+ * from each job's state AS OF `window.to` (`viewAsOfWindowEnd`), not from
+ * `job.view` (the live, current-moment reduction) — a finish or handover
+ * written after the window closed must not retroactively change an earlier
+ * report. `window`-filtered narrative entries (`byTechnician`) were already
+ * correct; only the log-wide summary fields had this defect.
+ *
+ * F20: `jobSnapshots` names each job's short id and its event seq as of
+ * `window.to`, so this report can be matched to the exact state a job-sheet
+ * export (`living-sheet-print.ts`) printed for the same job at the same seq.
  */
 import type {
   SheetEvent,
@@ -28,7 +40,7 @@ import type {
   ReadingRecordedPayload,
   StepMarkedPayload,
 } from "./types";
-import type { SheetView, StoredEvent } from "./reduce";
+import { reduceSheet, type SheetView, type StoredEvent } from "./reduce";
 
 const DEFAULT_TIME_ZONE = "America/New_York";
 
@@ -88,12 +100,21 @@ export type ShiftReportHandoverEntry = {
 
 export type ShiftReportCounts = { jobsTouched: number; jobsFinished: number; jobsOpen: number };
 
+/** F20: identifies exactly which stored state a job's line in this report
+ *  corresponds to — the job short id plus its event seq as of the window's
+ *  end — so the report can be matched to an exact job-sheet export (which
+ *  prints the same seq) rather than "the current state, whenever that is." */
+export type ShiftReportJobSnapshot = { jobId: string; jobIdShort: string; seq: number };
+
 export type ShiftReport = {
   window: ShiftReportWindow;
   needsAttention: ShiftReportAttentionItem[];
   byTechnician: ShiftReportTechnicianGroup[];
   handover: ShiftReportHandoverEntry[];
   counts: ShiftReportCounts;
+  /** One entry per job included in this report, identifying its exact
+   *  snapshot (F20) — see `ShiftReportJobSnapshot`. */
+  jobSnapshots: ShiftReportJobSnapshot[];
   /** Set only when no job had any event in the window. */
   emptyMessage: string | null;
   /** Every visible string, newline-joined — the surface the banned-words
@@ -185,6 +206,26 @@ function narrativeOf(
   }
 }
 
+/**
+ * F15: a shift report for window [from,to] must reflect the job's state AS
+ * OF the window's end, not whatever the log has grown to by the time the
+ * report happens to run — a finish or handover written after `to` must not
+ * retroactively change an earlier report. Re-reduces the job's full log,
+ * filtered to events that occurred at or before `window.to`.
+ *
+ * `job.view` (the caller's full-log reduction) stays the source for fields
+ * that cannot change after `job_started` — `template`, `title`, `machine` —
+ * since `job_started` is always at or before any window end that selected
+ * this job (`listJobsActiveBetween` only returns jobs with >=1 event whose
+ * `occurredAt` is in [from,to] ⊆ (-inf,to]).
+ */
+function viewAsOfWindowEnd(job: ShiftReportJobInput, window: ShiftReportWindow): SheetView {
+  const toMs = Date.parse(window.to);
+  const eventsUpToTo = job.events.filter((e) => Date.parse(e.occurredAt) <= toMs);
+  if (eventsUpToTo.length === 0) return job.view; // defensive; unreachable per the note above
+  return reduceSheet(eventsUpToTo, job.jobId);
+}
+
 function buildEntries(job: ShiftReportJobInput, window: ShiftReportWindow, timeZone: string): ShiftReportEntry[] {
   const stepIndex = new Map<string, number>(job.view.template.steps.map((s, i) => [s.id, i + 1]));
   const readingState = new Map<string, { value: number; unit: string; what: string }>();
@@ -223,6 +264,7 @@ export function shiftReport(
   const allEntries: ShiftReportEntry[] = [];
   const needsAttention: ShiftReportAttentionItem[] = [];
   const handover: ShiftReportHandoverEntry[] = [];
+  const jobSnapshots: ShiftReportJobSnapshot[] = [];
   let jobsFinished = 0;
 
   for (const job of jobs) {
@@ -230,8 +272,12 @@ export function shiftReport(
     allEntries.push(...entries);
     const machineName = job.view.machine.name ?? job.notebookName;
     const lastTouch = entries[entries.length - 1] ?? null;
+    // F15: attention/counts/finished/handover reflect state AS OF the
+    // window's end, never the live log (which may have grown since).
+    const asOf = viewAsOfWindowEnd(job, window);
+    jobSnapshots.push({ jobId: job.jobId, jobIdShort: job.jobId.slice(0, 8), seq: asOf.seq });
 
-    if (job.view.openSteps > 0) {
+    if (asOf.openSteps > 0) {
       needsAttention.push({
         notebookId: job.notebookId,
         notebookName: job.notebookName,
@@ -239,12 +285,12 @@ export function shiftReport(
         jobTitle: job.view.title,
         machineName,
         reason: "open_steps",
-        text: `${job.view.openSteps} step(s) still open`,
+        text: `${asOf.openSteps} step(s) still open`,
         by: lastTouch?.by ?? null,
         at: lastTouch?.at ?? null,
       });
     }
-    if (job.view.openQuestions > 0) {
+    if (asOf.openQuestions > 0) {
       needsAttention.push({
         notebookId: job.notebookId,
         notebookName: job.notebookName,
@@ -252,12 +298,12 @@ export function shiftReport(
         jobTitle: job.view.title,
         machineName,
         reason: "open_questions",
-        text: `${job.view.openQuestions} question(s) still open`,
+        text: `${asOf.openQuestions} question(s) still open`,
         by: lastTouch?.by ?? null,
         at: lastTouch?.at ?? null,
       });
     }
-    if (!job.view.finished) {
+    if (!asOf.finished) {
       needsAttention.push({
         notebookId: job.notebookId,
         notebookName: job.notebookName,
@@ -287,16 +333,16 @@ export function shiftReport(
         });
       }
     }
-    if (job.view.handover.current) {
+    if (asOf.handover.current) {
       handover.push({
         notebookId: job.notebookId,
         notebookName: job.notebookName,
         jobId: job.jobId,
         jobTitle: job.view.title,
         machineName,
-        text: job.view.handover.current.text,
-        by: job.view.handover.current.by,
-        at: job.view.handover.current.at,
+        text: asOf.handover.current.text,
+        by: asOf.handover.current.by,
+        at: asOf.handover.current.at,
       });
     }
   }
@@ -330,5 +376,5 @@ export function shiftReport(
     .filter((s) => s.length > 0)
     .join("\n");
 
-  return { window, needsAttention, byTechnician, handover, counts, emptyMessage, plainText };
+  return { window, needsAttention, byTechnician, handover, counts, jobSnapshots, emptyMessage, plainText };
 }
