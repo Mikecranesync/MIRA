@@ -383,6 +383,8 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
   // batched/deferred, which would let two same-tick calls both read the
   // stale "not yet claimed" value.
   const claimedProposalIdsRef = useRef<Set<string>>(new Set());
+  // A second tap on the confirm dialog's "Mark done" before it closes must not post twice.
+  const confirmInFlightRef = useRef(false);
 
   const [newTitle, setNewTitle] = useState("");
   const [templates, setTemplates] = useState<JobSheetSummary[] | null>(null);
@@ -1167,6 +1169,8 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
                       <button
                         type="button" style={BUTTON_STYLE} data-testid="living-sheet-step-confirm-done"
                         onClick={() => {
+                          if (confirmInFlightRef.current) return;
+                          confirmInFlightRef.current = true;
                           const origin = confirmStep.receiptOrigin;
                           void (async () => {
                             // F07: when this confirm was opened from a chat
@@ -1179,7 +1183,7 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
                               origin?.baseSeq,
                             );
                             if (ok && origin) setHandledProposalIds((prev) => new Set([...prev, origin.proposalId]));
-                          })();
+                          })().finally(() => { confirmInFlightRef.current = false; });
                           setConfirmStep(null);
                         }}
                       >
@@ -1376,13 +1380,8 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
                   Print / save PDF
                 </button>
               </section>
-              {/* R2-17 coordination: LivingSheetPrintProps does not yet
-                  declare `pendingCount` (that prop lands with the print-side
-                  banner, owned by a different EGM2 slice) — adding it here
-                  before LivingSheetPrint.tsx declares it would fail
-                  type-check in THIS file. Wire `pendingCount={badge.queued}`
-                  into this call once LivingSheetPrintProps adds it. */}
-              <LivingSheetPrint view={view} seq={view.seq} printedAt={new Date().toLocaleString()} />
+              {/* R2-17: the printed page itself says how many queued changes it is missing. */}
+              <LivingSheetPrint view={view} seq={view.seq} printedAt={new Date().toLocaleString()} pendingCount={badge.queued} />
 
               {viewError && <p role="alert">{viewError}</p>}
             </div>
