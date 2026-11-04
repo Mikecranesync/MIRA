@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import type { ShiftReport } from "@/capabilities/living-sheet/shift-report";
 import { apiGetShiftReport } from "./living-sheet-client";
+import { PRINT_PORTAL_CLASS, PRINT_PORTAL_CSS, PrintPortal } from "./print-portal";
 
 const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
 
@@ -45,8 +46,8 @@ const BUTTON_STYLE: CSSProperties = {
 const GHOST_BUTTON_STYLE: CSSProperties = { ...BUTTON_STYLE, background: "var(--fl-surface)", color: "var(--fl-text)" };
 
 // Print-isolation technique copied from WorkPacketPanel.tsx (never imported):
-// hide everything on the page except this one root; the root stays
-// display:none on screen and only becomes visible inside @media print.
+// The print copy is portalled to <body> (see print-portal.tsx): every other
+// body child is display:none in print, and the copy is display:none on screen.
 const PRINT_CSS = `
 @page {
   size: portrait;
@@ -54,24 +55,14 @@ const PRINT_CSS = `
   @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 9pt; color: #000; }
 }
 @media print {
-  html, body { height: auto !important; overflow: visible !important; background: #fff !important; }
-  [data-testid="shift-report-layer"] {
-    position: absolute !important; inset: 0 auto auto 0 !important;
-    height: auto !important; max-height: none !important; overflow: visible !important;
-  }
-  body * { visibility: hidden; }
-  .ls-shift-print-root, .ls-shift-print-root * { visibility: visible; }
-  .ls-shift-print-root {
-    position: absolute !important; inset: 0 auto auto 0 !important;
-    width: 100% !important; background: #fff; color: #000; font-size: 11pt;
-  }
-  .ls-shift-print-root [data-no-print] { display: none !important; }
+  .ls-shift-print-root { background: #fff; color: #000; font-size: 11pt; }
   .ls-shift-print-header {
     position: fixed; top: 0; left: 0; right: 0;
     background: #fff; color: #000; border-bottom: 1px solid #000; padding: 4px 0;
   }
+  .ls-shift-print-body { margin-top: 40px; }
 }
-`;
+${PRINT_PORTAL_CSS}`;
 
 /** Pure presentational body — no hooks, so it renders fully under
  *  renderToStaticMarkup for direct testing with a populated fixture. */
@@ -160,7 +151,7 @@ export function LivingSheetShiftReport({ onClose }: LivingSheetShiftReportProps)
   return (
     <section role="dialog" aria-label="Shift report" style={LAYER_STYLE} data-testid="shift-report-layer">
       <style>{PRINT_CSS}</style>
-      <div className="ls-shift-print-root" data-testid="shift-report-print-root">
+      <div>
         <header
           data-no-print
           style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}
@@ -176,14 +167,18 @@ export function LivingSheetShiftReport({ onClose }: LivingSheetShiftReportProps)
           </div>
         </header>
 
-        <div className="ls-shift-print-header" data-testid="shift-report-print-header">
-          Shift report · {new Date(reportWindow.from).toLocaleString()} – {new Date(reportWindow.to).toLocaleString()}
-        </div>
-
-        {loading && <p data-no-print>Loading…</p>}
-        {error && <p role="alert" data-no-print>{error}</p>}
+        {loading && <p>Loading…</p>}
+        {error && <p role="alert">{error}</p>}
         {report && <ShiftReportBody report={report} />}
       </div>
+      <PrintPortal>
+        <div className={`ls-shift-print-root ${PRINT_PORTAL_CLASS}`} data-testid="shift-report-print-root">
+          <div className="ls-shift-print-header" data-testid="shift-report-print-header">
+            Shift report · {new Date(reportWindow.from).toLocaleString()} – {new Date(reportWindow.to).toLocaleString()}
+          </div>
+          <div className="ls-shift-print-body">{report && <ShiftReportBody report={report} />}</div>
+        </div>
+      </PrintPortal>
     </section>
   );
 }

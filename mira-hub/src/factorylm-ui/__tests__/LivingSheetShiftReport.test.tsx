@@ -86,3 +86,11 @@ describe("LivingSheetShiftReport (SSR shape)", () => {
     expect(html).toContain("Close");
   });
 });
+
+describe("LivingSheetShiftReport — print layout (found by the §12 PDF inspection)", () => {
+  it("prints a page-level copy (display:none on every other body child), not a visibility mask over the narrow screen panel", () => {
+    const html = renderToStaticMarkup(<LivingSheetShiftReport onClose={() => {}} />);
+    expect(html).toContain("body > *:not(.fl-print-portal)");
+    expect(html).not.toMatch(/body \* \{ visibility: hidden/);
+  });
+});

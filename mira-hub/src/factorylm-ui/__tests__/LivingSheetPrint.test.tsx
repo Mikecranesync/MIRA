@@ -140,3 +140,19 @@ describe("LivingSheetPrint — banned words", () => {
     }
   });
 });
+
+describe("LivingSheetPrint — layout + handover (found by the §12 PDF inspection)", () => {
+  it("prints the current handover once, and only earlier handovers struck through", () => {
+    const h1 = { text: "First handover note TEST", by: "A", at: "2026-11-03T20:00:00.000Z", eventId: "e1" };
+    const h2 = { text: "Latest handover note TEST", by: "A", at: "2026-11-03T21:00:00.000Z", eventId: "e2" };
+    const html = renderToStaticMarkup(<LivingSheetPrint view={baseView({ handover: { current: h2, history: [h1, h2] } })} {...OPTS} />);
+    expect(html.split("Latest handover note TEST").length - 1).toBe(1);
+    expect(html.split("First handover note TEST").length - 1).toBe(1);
+  });
+  it("isolates the print copy at page level (display:none on every other body child), not visibility", () => {
+    const html = renderToStaticMarkup(<LivingSheetPrint view={baseView()} {...OPTS} />);
+    expect(html).toContain("body > *:not(.fl-print-portal)");
+    expect(html).not.toMatch(/body \* \{ visibility: hidden/);
+    expect(html).toContain("fl-print-portal");
+  });
+});

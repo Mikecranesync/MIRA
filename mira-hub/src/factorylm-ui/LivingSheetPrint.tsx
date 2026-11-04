@@ -26,6 +26,7 @@ import type { CSSProperties } from "react";
 import { printModel, type PrintModel, type PrintSection } from "./living-sheet-print";
 import type { SheetView } from "@/capabilities/living-sheet/reduce";
 import { fileUrl } from "./to-interaction";
+import { PRINT_PORTAL_CLASS, PRINT_PORTAL_CSS, PrintPortal } from "./print-portal";
 
 export type LivingSheetPrintProps = {
   view: SheetView;
@@ -45,27 +46,14 @@ const PRINT_CSS = `
   @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 9pt; color: #000; }
 }
 @media print {
-  html, body { height: auto !important; overflow: visible !important; background: #fff !important; }
-  [data-testid="living-sheet-layer"], [data-testid="shift-report-layer"] {
-    position: absolute !important; inset: 0 auto auto 0 !important;
-    height: auto !important; max-height: none !important; overflow: visible !important;
-  }
-  body * { visibility: hidden; }
-  .ls-print-root, .ls-print-root * { visibility: visible; }
-  .ls-print-root {
-    position: absolute !important; inset: 0 auto auto 0 !important;
-    width: 100% !important; background: #fff; color: #000;
-  }
+  .ls-print-root { background: #fff; color: #000; }
   .ls-print-header {
     position: fixed; top: 0; left: 0; right: 0;
     background: #fff; color: #000; border-bottom: 1px solid #000; padding: 4px 0;
   }
   .ls-print-body { margin-top: 40px; }
 }
-@media screen {
-  .ls-print-root { display: none; }
-}
-`;
+${PRINT_PORTAL_CSS}`;
 
 const S: Record<string, CSSProperties> = {
   root: { background: "#fff", color: "#000", fontFamily: "Georgia, 'Times New Roman', serif", fontSize: "11pt" },
@@ -215,7 +203,7 @@ function renderSection(section: PrintSection, index: number) {
         <section key={index} style={S.section} data-testid="ls-print-handover">
           <div style={S.sectionTitle}>{SECTION_TITLES.handover}</div>
           {section.current && <p style={S.row}>{section.current.text}</p>}
-          {section.history.map((h, i) => (
+          {section.history.filter((h) => h.eventId !== section.current?.eventId).map((h, i) => (
             <p key={i} style={{ ...S.row, ...S.struck }}>
               {h.text}
             </p>
@@ -231,7 +219,8 @@ export function LivingSheetPrint({ view, seq, printedAt, machineName, jobIdShort
   return (
     <>
       <style>{PRINT_CSS}</style>
-      <div className="ls-print-root" style={S.root} data-testid="living-sheet-print-root">
+      <PrintPortal>
+      <div className={`ls-print-root ${PRINT_PORTAL_CLASS}`} style={S.root} data-testid="living-sheet-print-root">
         <div className="ls-print-header" style={S.header} data-testid="living-sheet-print-header">
           {model.header}
         </div>
@@ -247,6 +236,7 @@ export function LivingSheetPrint({ view, seq, printedAt, machineName, jobIdShort
           </div>
         </div>
       </div>
+      </PrintPortal>
     </>
   );
 }
