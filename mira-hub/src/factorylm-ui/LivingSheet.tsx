@@ -654,7 +654,14 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
     if (dropped) {
       const freshSeq = conflict.serverView?.seq ?? dropped.event.baseSeq;
       const retry: SheetEventPost = { ...dropped.event, clientEventId: crypto.randomUUID(), baseSeq: freshSeq };
-      await enqueueSheetEvent(localStorageStore, scopeId, openJobId, retry);
+      const { saved } = await enqueueSheetEvent(localStorageStore, scopeId, openJobId, retry);
+      if (!saved) {
+        // F06 on this path too: the retry never reached storage, so keep the
+        // conflict panel open (the technician's value is still on screen)
+        // rather than clearing it as if it had been saved.
+        if (mounted.current) setBadge((b) => ({ ...b, storageFailed: true }));
+        return;
+      }
     }
     setConflict(null);
     if (conflict.serverView) setView(conflict.serverView);
