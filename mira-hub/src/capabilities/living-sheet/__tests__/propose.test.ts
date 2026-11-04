@@ -679,7 +679,7 @@ describe("Modal/future/intent markers never become a work proposal (R2-08-follow
     ["must torque it to 40 Nm", "must intent, suppresses the reading"],
     ["about to start the pump", "about-to intent"],
     ["will mark the job done", "will intent, suppresses the canned 'You said the job is done' completion note"],
-  ] as const)("%s -> no part_logged/reading_recorded/done-step/canned-completion (%s)", (text) => {
+  ] as const)("%s -> no part_logged/reading_recorded/done-step/canned-completion (%s)", (text, _why) => {
     assertNoWorkProposal(text);
   });
 
