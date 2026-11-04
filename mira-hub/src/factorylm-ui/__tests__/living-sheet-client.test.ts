@@ -7,7 +7,10 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   attemptClientEventId,
+  attemptRequest,
   chosenRevisionOf,
+  clearedFieldValue,
+  countAllSheetQueueEntries,
   drainSheetQueue,
   dropHeadOfSheetQueue,
   enqueueSheetEvent,
@@ -15,14 +18,17 @@ import {
   lowRiskProposalIds,
   parseSheetReceipts,
   purgeSheetQueues,
+  removeFromSheetQueue,
   saveBadge,
   sheetQueueKey,
+  signOutUnsyncedPrompt,
   startJobErrorMessage,
   stepNeedsConfirm,
   stepRequiringConfirmFor,
   type JobSheetRevision,
   type JobSheetSummary,
   type KvStore,
+  type QueuedSheetEvent,
   type SheetEventPost,
   type SheetSubmitOutcome,
 } from "../living-sheet-client";
@@ -48,6 +54,20 @@ function memoryStore(): KvStore {
  *  one layer down inside the real `localStorageStore` adapter. */
 function failingStore(): KvStore {
   const m = new Map<string, string>();
+  return {
+    get: async (k) => (m.has(k) ? m.get(k)! : null),
+    set: async () => false,
+    remove: async (k) => void m.delete(k),
+    keys: async () => Array.from(m.keys()),
+  };
+}
+
+/** R2-20: a store whose `get`/`keys` work against a pre-seeded backing map
+ *  but whose `set` ALWAYS fails — simulates the server having already
+ *  decided an item (ok or rejected) while this phone's storage can no
+ *  longer durably remove it from the queue. */
+function stuckRemovalStore(seed: Record<string, QueuedSheetEvent[]>): KvStore {
+  const m = new Map<string, string>(Object.entries(seed).map(([k, v]) => [k, JSON.stringify(v)]));
   return {
     get: async (k) => (m.has(k) ? m.get(k)! : null),
     set: async () => false,
@@ -171,7 +191,15 @@ describe("drainSheetQueue — existing behavior", () => {
     });
     const result = await drainSheetQueue(store, "t1", "j1", submit);
     expect(seen).toEqual(["a", "b"]);
-    expect(result).toEqual({ sent: 2, droppedRejected: 0, remaining: 0, conflict: false, networkStopped: false });
+    expect(result).toEqual({
+      sent: 2,
+      droppedRejected: 0,
+      rejected: [],
+      remaining: 0,
+      conflict: false,
+      networkStopped: false,
+      drainStuck: false,
+    });
     expect(await loadSheetQueue(store, "t1", "j1")).toEqual([]);
   });
 
@@ -194,7 +222,15 @@ describe("drainSheetQueue — existing behavior", () => {
       ev.clientEventId === "a" ? { status: "rejected", message: "bad payload" } : { status: "ok" },
     );
     const result = await drainSheetQueue(store, "t1", "j1", submit);
-    expect(result).toEqual({ sent: 1, droppedRejected: 1, remaining: 0, conflict: false, networkStopped: false });
+    expect(result).toEqual({
+      sent: 1,
+      droppedRejected: 1,
+      rejected: [{ event: stepEvent("a"), message: "bad payload" }],
+      remaining: 0,
+      conflict: false,
+      networkStopped: false,
+      drainStuck: false,
+    });
   });
 
   it("a thrown network error stops the drain and keeps the item queued", async () => {
@@ -206,6 +242,161 @@ describe("drainSheetQueue — existing behavior", () => {
     const result = await drainSheetQueue(store, "t1", "j1", submit);
     expect(result?.networkStopped).toBe(true);
     expect(result?.remaining).toBe(1);
+  });
+});
+
+describe("removeFromSheetQueue (R2-03) — removal is by id, never by position", () => {
+  it("removes the named entry regardless of where it sits in the queue, leaving the rest intact", async () => {
+    const store = memoryStore();
+    await enqueueSheetEvent(store, "t1", "j1", stepEvent("a"));
+    await enqueueSheetEvent(store, "t1", "j1", stepEvent("b"));
+    await enqueueSheetEvent(store, "t1", "j1", stepEvent("c"));
+    const ok = await removeFromSheetQueue(store, "t1", "j1", "b");
+    expect(ok).toBe(true);
+    expect((await loadSheetQueue(store, "t1", "j1")).map((i) => i.event.clientEventId)).toEqual(["a", "c"]);
+  });
+
+  it("removing an id that isn't present is a no-op that still reports whatever the save returned", async () => {
+    const store = memoryStore();
+    await enqueueSheetEvent(store, "t1", "j1", stepEvent("a"));
+    const ok = await removeFromSheetQueue(store, "t1", "j1", "nope");
+    expect(ok).toBe(true);
+    expect((await loadSheetQueue(store, "t1", "j1")).map((i) => i.event.clientEventId)).toEqual(["a"]);
+  });
+
+  it("reports false when the underlying store write fails (R2-20's building block)", async () => {
+    const store = failingStore();
+    const ok = await removeFromSheetQueue(store, "t1", "j1", "a");
+    expect(ok).toBe(false);
+  });
+});
+
+describe("drainSheetQueue — R2-20: a stuck removal stops the drain instead of looping", () => {
+  it("an 'ok' outcome whose removal can't persist sets drainStuck and stops — submit is called exactly once, never retried in a loop", async () => {
+    const queued: QueuedSheetEvent = { event: stepEvent("a"), queuedAt: "2026-11-03T00:00:00.000Z", attempts: 0 };
+    const store = stuckRemovalStore({ [sheetQueueKey("t1", "j1")]: [queued] });
+    const submit = vi.fn(async (): Promise<SheetSubmitOutcome> => ({ status: "ok" }));
+    const result = await drainSheetQueue(store, "t1", "j1", submit);
+    expect(submit).toHaveBeenCalledTimes(1);
+    expect(result?.sent).toBe(1);
+    expect(result?.drainStuck).toBe(true);
+  });
+
+  it("a definitive rejection whose removal can't persist ALSO sets drainStuck and stops — never resubmits the already-decided item", async () => {
+    const queued: QueuedSheetEvent = { event: stepEvent("a"), queuedAt: "2026-11-03T00:00:00.000Z", attempts: 0 };
+    const store = stuckRemovalStore({ [sheetQueueKey("t1", "j1")]: [queued] });
+    const submit = vi.fn(async (): Promise<SheetSubmitOutcome> => ({ status: "rejected", message: "bad payload" }));
+    const result = await drainSheetQueue(store, "t1", "j1", submit);
+    expect(submit).toHaveBeenCalledTimes(1);
+    expect(result?.droppedRejected).toBe(1);
+    expect(result?.rejected).toEqual([{ event: queued.event, message: "bad payload" }]);
+    expect(result?.drainStuck).toBe(true);
+  });
+
+  it("a healthy store never sets drainStuck", async () => {
+    const store = memoryStore();
+    await enqueueSheetEvent(store, "t1", "j1", stepEvent("a"));
+    const result = await drainSheetQueue(store, "t1", "j1", async () => ({ status: "ok" }));
+    expect(result?.drainStuck).toBe(false);
+  });
+});
+
+describe("saveBadge — R2-20: drainStuck outranks storageFailed/queued but not conflict/saving", () => {
+  it("priority is conflict > saving > drainStuck > storageFailed > queued > saved", () => {
+    expect(saveBadge({ saving: false, queued: 0, conflict: false, drainStuck: true })).toBe(
+      "Can't update this phone's storage — reload the page",
+    );
+    expect(saveBadge({ saving: false, queued: 5, conflict: false, drainStuck: true, storageFailed: true })).toBe(
+      "Can't update this phone's storage — reload the page",
+    );
+    expect(saveBadge({ saving: true, queued: 0, conflict: false, drainStuck: true })).toBe("Saving…");
+    expect(saveBadge({ saving: false, queued: 0, conflict: true, drainStuck: true })).toBe("Conflict – tap to sort out");
+    expect(saveBadge({ saving: false, queued: 0, conflict: false, drainStuck: false })).toBe("Saved");
+  });
+});
+
+describe("countAllSheetQueueEntries (R2-32)", () => {
+  it("is 0 with nothing queued anywhere", async () => {
+    const store = memoryStore();
+    expect(await countAllSheetQueueEntries(store)).toBe(0);
+  });
+
+  it("counts one job's queue", async () => {
+    const store = memoryStore();
+    await enqueueSheetEvent(store, "t1", "j1", stepEvent("a"));
+    await enqueueSheetEvent(store, "t1", "j1", stepEvent("b"));
+    expect(await countAllSheetQueueEntries(store)).toBe(2);
+  });
+
+  it("sums across multiple jobs AND multiple tenants/users", async () => {
+    const store = memoryStore();
+    await enqueueSheetEvent(store, "t1", "j1", stepEvent("a"));
+    await enqueueSheetEvent(store, "t1", "j2", stepEvent("b"));
+    await enqueueSheetEvent(store, "t2", "j1", stepEvent("c"));
+    expect(await countAllSheetQueueEntries(store)).toBe(3);
+  });
+
+  it("ignores unrelated keys", async () => {
+    const store = memoryStore();
+    await enqueueSheetEvent(store, "t1", "j1", stepEvent("a"));
+    await store.set("flm.unrelated.key", JSON.stringify([1, 2, 3]));
+    expect(await countAllSheetQueueEntries(store)).toBe(1);
+  });
+
+  it("tolerates a corrupt queue entry — counts it as 0, never throws", async () => {
+    const store = memoryStore();
+    await enqueueSheetEvent(store, "t1", "j1", stepEvent("a"));
+    await store.set(sheetQueueKey("t1", "j2"), "{not json");
+    await expect(countAllSheetQueueEntries(store)).resolves.toBe(1);
+  });
+});
+
+describe("signOutUnsyncedPrompt (R2-32)", () => {
+  it("is null when there is nothing unsynced — no prompt at all", () => {
+    expect(signOutUnsyncedPrompt(0)).toBeNull();
+  });
+  it("is singular for exactly one change", () => {
+    expect(signOutUnsyncedPrompt(1)).toBe("1 change not yet saved on this phone. Sign out anyway and lose them?");
+  });
+  it("is plural for more than one, including a negative count treated as none", () => {
+    expect(signOutUnsyncedPrompt(2)).toBe("2 changes not yet saved on this phone. Sign out anyway and lose them?");
+    expect(signOutUnsyncedPrompt(-1)).toBeNull();
+  });
+});
+
+describe("clearedFieldValue (R2-02)", () => {
+  it("the reviewer's example: a successful save of the exact submitted text clears the field", () => {
+    expect(clearedFieldValue(true, "torque done", "torque done")).toBe("");
+  });
+  it("a successful save does NOT clear the field if the technician kept typing while it was in flight", () => {
+    expect(clearedFieldValue(true, "torque done", "torque done, recheck tomorrow")).toBe("torque done, recheck tomorrow");
+  });
+  it("a failed save never clears the field, even if nothing changed", () => {
+    expect(clearedFieldValue(false, "torque done", "torque done")).toBe("torque done");
+  });
+  it("a failed save with concurrent edits still keeps exactly what's there", () => {
+    expect(clearedFieldValue(false, "torque done", "something else entirely")).toBe("something else entirely");
+  });
+  it("the field was already cleared by something else before the save resolved — stays empty either way", () => {
+    expect(clearedFieldValue(true, "torque done", "")).toBe("");
+    expect(clearedFieldValue(false, "torque done", "")).toBe("");
+  });
+});
+
+describe("attemptRequest (R2-06/07) — a retry replays the WHOLE frozen request, not just an id", () => {
+  it("mints a fresh request when there is no pending attempt", () => {
+    const build = vi.fn(() => ({ clientEventId: "fresh", occurredAt: "now", baseSeq: 1 }));
+    const req = attemptRequest(null, build);
+    expect(req).toEqual({ clientEventId: "fresh", occurredAt: "now", baseSeq: 1 });
+    expect(build).toHaveBeenCalledTimes(1);
+  });
+
+  it("reuses the exact SAME pending request object on retry — build is never called, so no field (occurredAt, baseSeq, file) can drift", () => {
+    const pending = { clientEventId: "pending", occurredAt: "2026-11-01T00:00:00.000Z", baseSeq: 7 };
+    const build = vi.fn(() => ({ clientEventId: "should-not-be-used", occurredAt: "later", baseSeq: 99 }));
+    const req = attemptRequest(pending, build);
+    expect(req).toBe(pending);
+    expect(build).not.toHaveBeenCalled();
   });
 });
 
@@ -305,6 +496,29 @@ describe("stepNeedsConfirm / stepRequiringConfirmFor (F03)", () => {
 
   it("a step already done never needs confirm again", () => {
     expect(stepNeedsConfirm(step({ done: true }))).toBe(false);
+  });
+});
+
+describe("stepNeedsConfirm (R2-16) — PROPERTY: true iff the step carries a torque reference, regardless of its checkoff kind (and false once done)", () => {
+  function step(over: Partial<SheetStepView> = {}): SheetStepView {
+    return {
+      id: "s-1", text: "x", checkoff: "none", torqueRef: null, source: null,
+      done: false, doneBy: null, doneAt: null, note: null, history: [],
+      ...over,
+    };
+  }
+
+  it.each<[string, Partial<SheetStepView>, boolean]>([
+    ["reviewer's example: checkoff:none with a torqueRef set still needs confirm", { checkoff: "none", torqueRef: "t1" }, true],
+    ["checkoff:photo with a torqueRef set still needs confirm", { checkoff: "photo", torqueRef: "t1" }, true],
+    ["checkoff:torque preserved even with no torqueRef set", { checkoff: "torque", torqueRef: null }, true],
+    ["checkoff:loctite preserved even with no torqueRef set", { checkoff: "loctite", torqueRef: null }, true],
+    ["checkoff:measurement preserved even with no torqueRef set", { checkoff: "measurement", torqueRef: null }, true],
+    ["checkoff:none with torqueRef null never needs confirm", { checkoff: "none", torqueRef: null }, false],
+    ["checkoff:none with torqueRef as an empty/whitespace string never needs confirm", { checkoff: "none", torqueRef: "   " }, false],
+    ["a torque step already done never needs confirm again, even with torqueRef set", { checkoff: "torque", torqueRef: "t1", done: true }, false],
+  ])("%s", (_label, over, expected) => {
+    expect(stepNeedsConfirm(step(over))).toBe(expected);
   });
 });
 

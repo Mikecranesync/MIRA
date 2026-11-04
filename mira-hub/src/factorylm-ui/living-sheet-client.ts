@@ -227,11 +227,18 @@ export async function dropHeadOfSheetQueue(
 
 /** Remove exactly the item with this clientEventId, re-reading first — used
  *  by drainSheetQueue so a save never overwrites an item some OTHER caller
- *  enqueued while this one's `submit` await was in flight. */
-async function removeFromSheetQueue(store: KvStore, scopeId: string, jobId: string, clientEventId: string): Promise<void> {
-  await withQueueLock(scopeId, jobId, async () => {
+ *  enqueued while this one's `submit` await was in flight. Exported (R2-03)
+ *  so a caller that already knows the exact entry to drop (e.g. the conflict
+ *  panel's "Use mine", which must remove the ORIGINAL only after its
+ *  replacement is durably enqueued) can remove it by id rather than
+ *  reaching for `dropHeadOfSheetQueue`, whose "head" may no longer be that
+ *  entry. Returns whether the removal actually persisted (R2-20: a failed
+ *  underlying store write must never look like a successful removal — the
+ *  caller needs to know the item is still really in storage). */
+export async function removeFromSheetQueue(store: KvStore, scopeId: string, jobId: string, clientEventId: string): Promise<boolean> {
+  return withQueueLock(scopeId, jobId, async () => {
     const q = await loadSheetQueue(store, scopeId, jobId);
-    await saveSheetQueue(store, scopeId, jobId, q.filter((i) => i.event.clientEventId !== clientEventId));
+    return saveSheetQueue(store, scopeId, jobId, q.filter((i) => i.event.clientEventId !== clientEventId));
   });
 }
 
@@ -260,6 +267,12 @@ export type SheetDrainResult = {
   sent: number;
   /** Server definitively rejected (4xx validation) — dropped, surfaced, never retried forever. */
   droppedRejected: number;
+  /** R2-04: every item the server definitively rejected this drain, WITH its
+   *  payload and the reason — a rejection must never look like "saved"
+   *  (postEvent checks this list for its own clientEventId), and the
+   *  technician must be able to see what was not accepted and why, not just
+   *  a generic toast that discards the content. */
+  rejected: Array<{ event: SheetEventPost; message: string }>;
   remaining: number;
   /** A 409 conflict stopped the drain; the conflicting item (and everything
    *  behind it) stays queued until the technician resolves it. */
@@ -267,6 +280,13 @@ export type SheetDrainResult = {
   /** A thrown error (network/5xx/401) stopped the drain; nothing behind the
    *  failed item could have done better, so it all stays queued. */
   networkStopped: boolean;
+  /** R2-20: the server already accepted (or definitively rejected) an item,
+   *  but the local queue could not be updated to drop it (the underlying
+   *  store write failed). Resubmitting it again would just replay the same
+   *  already-decided write forever without ever making progress, so the
+   *  drain STOPS instead — the caller must show a distinct "can't update
+   *  this phone's storage" state, never loop. */
+  drainStuck: boolean;
 };
 
 let sheetDrainInFlight = false;
@@ -292,7 +312,7 @@ export async function drainSheetQueue(
   if (sheetDrainInFlight) return null;
   sheetDrainInFlight = true;
   try {
-    const result: SheetDrainResult = { sent: 0, droppedRejected: 0, remaining: 0, conflict: false, networkStopped: false };
+    const result: SheetDrainResult = { sent: 0, droppedRejected: 0, rejected: [], remaining: 0, conflict: false, networkStopped: false, drainStuck: false };
     for (;;) {
       const q = await loadSheetQueue(store, scopeId, jobId);
       if (q.length === 0) break;
@@ -306,15 +326,29 @@ export async function drainSheetQueue(
         break;
       }
       if (outcome.status === "ok") {
-        await removeFromSheetQueue(store, scopeId, jobId, item.event.clientEventId);
+        const removed = await removeFromSheetQueue(store, scopeId, jobId, item.event.clientEventId);
         result.sent++;
+        if (!removed) {
+          // R2-20: the write landed, but we could not durably drop it from
+          // the queue — looping would just resubmit this same already-
+          // accepted item forever (the server's idempotency on
+          // clientEventId prevents a duplicate write, but never terminates
+          // the client's retry). Stop now.
+          result.drainStuck = true;
+          break;
+        }
       } else if (outcome.status === "conflict") {
         await markSheetQueueAttempt(store, scopeId, jobId, item.event.clientEventId, "conflict");
         result.conflict = true;
         break;
       } else {
-        await removeFromSheetQueue(store, scopeId, jobId, item.event.clientEventId);
+        const removed = await removeFromSheetQueue(store, scopeId, jobId, item.event.clientEventId);
         result.droppedRejected++;
+        result.rejected.push({ event: item.event, message: outcome.message });
+        if (!removed) {
+          result.drainStuck = true;
+          break;
+        }
       }
     }
     result.remaining = (await loadSheetQueue(store, scopeId, jobId)).length;
@@ -332,6 +366,33 @@ export async function purgeSheetQueues(store: KvStore): Promise<number> {
   return keys.length;
 }
 
+/** R2-32: total queued entries across EVERY Living Work Sheet queue on this
+ *  device (any job, any tenant/user) — exactly what `purgeSheetQueues` is
+ *  about to discard. Sign-out must ask before losing these, not after.
+ *  Tolerant like `loadSheetQueue`: a corrupt entry counts as 0, never throws. */
+export async function countAllSheetQueueEntries(store: KvStore): Promise<number> {
+  const keys = (await store.keys()).filter((k) => k.startsWith(QUEUE_PREFIX));
+  let total = 0;
+  for (const k of keys) {
+    const raw = await store.get(k);
+    if (!raw) continue;
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (Array.isArray(parsed)) total += parsed.length;
+    } catch {
+      /* corrupt — counts as 0, same tolerance as loadSheetQueue */
+    }
+  }
+  return total;
+}
+
+/** R2-32: the sign-out confirmation text, or null when there is nothing
+ *  unsynced to lose (no prompt at all in that case — unchanged behavior). */
+export function signOutUnsyncedPrompt(pendingCount: number): string | null {
+  if (pendingCount <= 0) return null;
+  return `${pendingCount} change${pendingCount === 1 ? "" : "s"} not yet saved on this phone. Sign out anyway and lose them?`;
+}
+
 // ---------------------------------------------------------------------------
 // Save badge
 // ---------------------------------------------------------------------------
@@ -345,12 +406,19 @@ export type SaveBadgeState = {
    *  the ordinary offline-queued count, both of which imply it would
    *  survive a reload. */
   storageFailed?: boolean;
+  /** R2-20: the server already decided an item (accepted or rejected), but
+   *  the local queue could not be updated to drop it — drain stopped
+   *  rather than loop. Distinct from `storageFailed` (which is about a NEW
+   *  write never reaching storage): this phone's storage can no longer be
+   *  trusted to drain at all, which is worse than any single queued item. */
+  drainStuck?: boolean;
 };
 
-/** Priority: conflict > saving > storageFailed > queued (offline) > saved. */
+/** Priority: conflict > saving > drainStuck > storageFailed > queued (offline) > saved. */
 export function saveBadge(state: SaveBadgeState): string {
   if (state.conflict) return "Conflict – tap to sort out";
   if (state.saving) return "Saving…";
+  if (state.drainStuck) return "Can't update this phone's storage — reload the page";
   if (state.storageFailed) return "Not saved on this phone — keep this screen open";
   if (state.queued > 0) return `Offline – ${state.queued} waiting`;
   return "Saved";
@@ -364,9 +432,17 @@ export function saveBadge(state: SaveBadgeState): string {
  *  the job sheet says (value, pattern, source). Un-ticking never asks. Lives
  *  here (not LivingSheet.tsx) so lowRiskProposalIds — which must exclude
  *  these from bulk accept — and the single-accept path share one
- *  definition; LivingSheet.tsx re-exports it for its existing tests. */
+ *  definition; LivingSheet.tsx re-exports it for its existing tests.
+ *
+ *  R2-16: a step that carries a torque reference (`torqueRef`) needs this
+ *  confirm REGARDLESS of its `checkoff` — validate.ts permits
+ *  `checkoff:"none"` with a torqueRef set, and that combination must still
+ *  require confirmation (the guarantee is "steps that carry a torque",
+ *  not "steps whose checkoff happens to say torque/loctite/measurement"). */
 export function stepNeedsConfirm(step: SheetStepView): boolean {
-  return !step.done && (step.checkoff === "torque" || step.checkoff === "loctite" || step.checkoff === "measurement");
+  if (step.done) return false;
+  const hasTorqueReference = step.torqueRef !== null && step.torqueRef.trim() !== "";
+  return hasTorqueReference || step.checkoff === "torque" || step.checkoff === "loctite" || step.checkoff === "measurement";
 }
 
 /** F03/F07: the step a "mark step N done" proposal/event refers to, but
@@ -610,6 +686,27 @@ export function chosenRevisionOf(sheet: JobSheetSummary): { revision: JobSheetRe
  *  deterministic under test (production passes `crypto.randomUUID`). */
 export function attemptClientEventId(pending: string | null, mintId: () => string): string {
   return pending ?? mintId();
+}
+
+/** R2-06/07: generalizes attemptClientEventId to the WHOLE request, not
+ *  just its id. A server-side idempotency fingerprint across the complete
+ *  payload (id, occurredAt, body) means regenerating even one OTHER field
+ *  on retry — a fresh `occurredAt`, a re-read `baseSeq`, a re-picked file —
+ *  makes a retry of an already-committed-but-lost-response attempt look
+ *  like a NEW, conflicting request even though the id matches. `pending` is
+ *  the frozen request from a prior, not-yet-succeeded attempt (reused
+ *  byte-for-byte); `build` mints a fresh one only when there is none. */
+export function attemptRequest<T>(pending: T | null, build: () => T): T {
+  return pending ?? build();
+}
+
+/** R2-02: whether a form field should clear after its write resolved —
+ *  ONLY when the save actually succeeded AND the field still holds EXACTLY
+ *  what was submitted. If the technician kept typing while the write was
+ *  in flight, their newer text must survive even though the earlier save
+ *  succeeded (clearing it would silently discard what they just typed). */
+export function clearedFieldValue(saveSucceeded: boolean, submittedValue: string, currentValue: string): string {
+  return saveSucceeded && currentValue === submittedValue ? "" : currentValue;
 }
 
 /** Plain words for a start-job refusal, including S4's

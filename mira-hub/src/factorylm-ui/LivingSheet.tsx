@@ -22,7 +22,7 @@
  *    kinds use.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import type { JobSheetBody, JobSheetTorque } from "@/capabilities/living-sheet/types";
+import type { JobSheetBody, JobSheetItem, JobSheetTorque } from "@/capabilities/living-sheet/types";
 import type { SheetProposal } from "@/capabilities/living-sheet/propose";
 import type { SheetReadingView, SheetStepView, SheetView } from "@/capabilities/living-sheet/reduce";
 import type { NotebookSheetReceiptFrame } from "@/lib/notebook-chat-types";
@@ -37,8 +37,9 @@ import {
   apiPostEvent,
   apiStartJob,
   apiUploadPhoto,
-  attemptClientEventId,
+  attemptRequest,
   chosenRevisionOf,
+  clearedFieldValue,
   COMMON_READING_UNITS,
   dropHeadOfSheetQueue,
   drainSheetQueue,
@@ -46,6 +47,7 @@ import {
   loadSheetQueue,
   localStorageStore,
   lowRiskProposalIds,
+  removeFromSheetQueue,
   saveBadge,
   startJobErrorMessage,
   stepNeedsConfirm,
@@ -114,6 +116,33 @@ export function visibleProposals(proposals: readonly SheetProposal[], handled: R
   return proposals.filter((p) => !handled.has(p.proposalId));
 }
 
+/** R2-34: whether accepting `proposalId` should actually proceed (mint a
+ *  write), given the ids already claimed — being processed OR already
+ *  handled — for this receipt frame. Checked and the id claimed in the SAME
+ *  synchronous step at the call site, so a second accept for an
+ *  already-claimed id (double tap, or a duplicate re-render-bound call)
+ *  does nothing instead of minting a second write for one proposal. */
+export function shouldAcceptProposal(proposalId: string, claimed: ReadonlySet<string>): boolean {
+  return !claimed.has(proposalId);
+}
+
+/** R2-05: whether an async response for `respondedJobId` may still be
+ *  applied to the screen. False once the technician has navigated to a
+ *  DIFFERENT job, or closed the sheet entirely, before the response
+ *  arrived — template step ids are shared across jobs, so an unguarded
+ *  late response can look perfectly valid for the wrong job. */
+export function responseStillTargetsSelectedJob(respondedJobId: string, currentlySelectedJobId: string | null): boolean {
+  return respondedJobId === currentlySelectedJobId;
+}
+
+/** R2-17: the on-screen warning while entries are still queued — printing
+ *  now would silently omit them. Null (no banner) once nothing is queued. */
+export function pendingPrintWarning(pendingCount: number): string | null {
+  if (pendingCount <= 0) return null;
+  const plural = pendingCount !== 1;
+  return `${pendingCount} change${plural ? "s" : ""} not yet saved — ${plural ? "they" : "it"} will not appear on the print`;
+}
+
 // ---------------------------------------------------------------------------
 // Styling — shared --fl-* tokens only, tap targets >=48px, base font >=17px
 // ---------------------------------------------------------------------------
@@ -149,7 +178,11 @@ export function conflictValues(event: SheetWriteEvent, serverView: SheetView | n
     case "step_marked": {
       const mine = `Step ${event.payload.done ? "marked done" : "marked not done"}${event.payload.note ? ` — ${event.payload.note}` : ""}`;
       const step = serverView?.steps.find((s) => s.id === event.payload.stepId);
-      const theirs = step ? `Step is ${step.done ? `done (by ${step.doneBy ?? "a technician"})` : "not done"}` : theirsFallback;
+      // R2-19: include the server's own note on the step, not just its
+      // done/not-done state — a step conflict was silently omitting it.
+      const theirs = step
+        ? `Step is ${step.done ? `done (by ${step.doneBy ?? "a technician"})` : "not done"}${step.note ? ` — ${step.note}` : ""}`
+        : theirsFallback;
       return { mine, theirs };
     }
     case "reading_recorded":
@@ -160,13 +193,32 @@ export function conflictValues(event: SheetWriteEvent, serverView: SheetView | n
       return { mine, theirs };
     }
     case "note_added":
+      // A brand-new note has no prior identity on the server to look up —
+      // this is the genuine "nothing specific to show" case, unlike
+      // handover/answer below (R2-19 fixes those; this one legitimately
+      // keeps the sequence-based fallback).
       return { mine: `${event.payload.noteKind === "question" ? "Question" : "Note"}: ${event.payload.text}`, theirs: theirsFallback };
-    case "question_resolved":
-      return { mine: `Answer: ${event.payload.resolution}`, theirs: theirsFallback };
+    case "question_resolved": {
+      // R2-19: show the server's actual current state of THIS question —
+      // already answered (by whom), or still open — never a bare seq.
+      const mine = `Answer: ${event.payload.resolution}`;
+      const question = serverView?.questions.find((q) => q.id === event.payload.noteId);
+      const theirs = question
+        ? question.resolved
+          ? `Already answered: ${question.resolution} (by ${question.resolvedBy ?? "a technician"})`
+          : "Still open — no answer recorded yet"
+        : theirsFallback;
+      return { mine, theirs };
+    }
     case "part_logged":
       return { mine: `${event.payload.item} (${event.payload.action})`, theirs: theirsFallback };
-    case "handover_written":
-      return { mine: event.payload.text, theirs: theirsFallback };
+    case "handover_written": {
+      // R2-19: show the server's actual current handover text, not a seq.
+      const mine = event.payload.text;
+      const current = serverView?.handover.current;
+      const theirs = current ? `${current.text} (by ${current.by ?? "a technician"})` : theirsFallback;
+      return { mine, theirs };
+    }
     case "photo_attached":
       return { mine: "A photo", theirs: theirsFallback };
     case "job_finished":
@@ -224,7 +276,9 @@ const BANNER_STYLE: CSSProperties = {
 // Small presentational pieces (pure props -> JSX, no hooks — easy to SSR-test)
 // ---------------------------------------------------------------------------
 
-function StepRow({ step, onToggle }: { step: SheetStepView; onToggle: (step: SheetStepView) => void }) {
+// Exported (R2-13) so its source/drawing-reference line is directly
+// SSR-testable (renderToStaticMarkup) without rendering the whole panel.
+export function StepRow({ step, onToggle }: { step: SheetStepView; onToggle: (step: SheetStepView) => void }) {
   return (
     <li data-testid={`sheet-step-${step.id}`} style={{ marginBottom: 10, listStyle: "none" }}>
       <label style={{ display: "flex", alignItems: "flex-start", gap: 10, minHeight: 48 }}>
@@ -237,6 +291,13 @@ function StepRow({ step, onToggle }: { step: SheetStepView; onToggle: (step: She
           {step.checkoff !== "none" && (
             <span style={{ color: "var(--fl-muted)", fontSize: "15px" }}> ({step.checkoff})</span>
           )}
+          {/* R2-13: the step's source/drawing reference was omitted from
+              execution entirely — never invented, shown only when present. */}
+          {step.source && (
+            <div style={{ color: "var(--fl-muted)", fontSize: "15px" }} data-testid={`sheet-step-source-${step.id}`}>
+              Source: {step.source}
+            </div>
+          )}
           {step.done && (
             <div style={{ color: "var(--fl-muted)", fontSize: "15px" }}>
               done by {step.doneBy ?? "a technician"} · {new Date(step.doneAt ?? "").toLocaleString()}
@@ -245,6 +306,52 @@ function StepRow({ step, onToggle }: { step: SheetStepView; onToggle: (step: She
         </span>
       </label>
     </li>
+  );
+}
+
+/** R2-13: a "Bring to the job" row, including the item's own annotation
+ *  (`notes` — e.g. a job-sheet-import fixture's "Only if bent"), which
+ *  execution was omitting entirely. Exported for direct SSR testing. */
+export function BringToJobItemRow({ item }: { item: JobSheetItem }) {
+  return (
+    <li>
+      {item.item}
+      {item.spec ? ` — ${item.spec}` : ""}
+      {item.qty ? ` x${item.qty}` : ""}
+      {item.notes && (
+        <div style={{ color: "var(--fl-muted)", fontSize: "15px" }} data-testid={`sheet-item-notes-${item.id}`}>
+          {item.notes}
+        </div>
+      )}
+    </li>
+  );
+}
+
+/** R2-13: the template's return-to-service checks, entirely missing from
+ *  execution. Null (renders nothing) when the template has none. */
+export function ReturnToServiceSection({ checks }: { checks: readonly string[] }) {
+  if (checks.length === 0) return null;
+  return (
+    <section style={SECTION_STYLE} data-testid="living-sheet-return-to-service">
+      <h3 style={{ marginTop: 0 }}>Return-to-service checks</h3>
+      <ul>
+        {checks.map((c, i) => (
+          <li key={i}>{c}</li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** R2-13: the template's own free-text notes, entirely missing from
+ *  execution. Null (renders nothing) when there are none. */
+export function TemplateNotesSection({ text }: { text: string | null }) {
+  if (!text) return null;
+  return (
+    <section style={SECTION_STYLE} data-testid="living-sheet-template-notes">
+      <h3 style={{ marginTop: 0 }}>Template notes</h3>
+      <p>{text}</p>
+    </section>
   );
 }
 
@@ -265,16 +372,37 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
   const [badge, setBadge] = useState<SaveBadgeState>({ saving: false, queued: 0, conflict: false });
   const [conflict, setConflict] = useState<ConflictInfo | null>(null);
   const [lastRejection, setLastRejection] = useState<string | null>(null);
+  // R2-04: every definitively-rejected write this session, with its payload
+  // and reason — a rejection must never just vanish behind "Saved".
+  const [notAccepted, setNotAccepted] = useState<Array<{ event: SheetEventPost; message: string }>>([]);
   const [handledProposalIds, setHandledProposalIds] = useState<ReadonlySet<string>>(new Set());
+  // R2-34: ids claimed SYNCHRONOUSLY at the moment Accept is tapped — before
+  // the async write even starts — so a second call for the same proposal
+  // (double tap, or a duplicate re-render-bound handler call in the same
+  // tick) never mints a second write. A ref, not state: state updates are
+  // batched/deferred, which would let two same-tick calls both read the
+  // stale "not yet claimed" value.
+  const claimedProposalIdsRef = useRef<Set<string>>(new Set());
 
   const [newTitle, setNewTitle] = useState("");
   const [templates, setTemplates] = useState<JobSheetSummary[] | null>(null);
   const [chosenJobSheetId, setChosenJobSheetId] = useState("");
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
-  // F16: one client id per Start attempt, reused across retries until it
+  // R2-06: the WHOLE frozen Start request (id, occurredAt, title, template)
+  // for the current attempt — reused byte-for-byte on retry until it
   // succeeds (cleared) or the technician edits the title (a new attempt).
-  const [startClientEventId, setStartClientEventId] = useState<string | null>(null);
+  // Reusing only the id (the old F16 fix) was not enough: occurredAt was
+  // still regenerated on every retry, which changed the server-side
+  // idempotency fingerprint and made a lost-response retry look like a new,
+  // conflicting request.
+  const [pendingStartRequest, setPendingStartRequest] = useState<{
+    title: string;
+    templateRevisionId: string | null;
+    template: JobSheetBody;
+    clientEventId: string;
+    occurredAt: string;
+  } | null>(null);
 
   const [handoverText, setHandoverText] = useState("");
   const [finishAck, setFinishAck] = useState(false);
@@ -295,8 +423,18 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
   const [partItem, setPartItem] = useState("");
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
-  // F17 (UI): one client id per photo-upload attempt, reused on retry.
-  const [photoClientEventId, setPhotoClientEventId] = useState<string | null>(null);
+  // R2-07: the WHOLE frozen photo-upload attempt (the actual File, its
+  // baseSeq, caption, and client id) — "Retry" replays this exact attempt
+  // rather than forcing a new file-picker interaction, which could change
+  // the bytes, and rather than re-reading the CURRENT view.seq, which may
+  // have advanced since the first attempt and would turn a lost-response
+  // retry into a false conflict.
+  const [pendingPhotoAttempt, setPendingPhotoAttempt] = useState<{
+    file: File;
+    baseSeq: number;
+    clientEventId: string;
+    caption: string | null;
+  } | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [shiftReportOpen, setShiftReportOpen] = useState(false);
 
@@ -308,6 +446,14 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
       mounted.current = false;
     };
   }, []);
+
+  // R2-05: the job actually selected on screen RIGHT NOW, updated
+  // synchronously by openJob/closeJob (never via an effect — an effect
+  // would lag one render behind the very call that needs it). Every async
+  // response checks this before touching view/badge/conflict state, so a
+  // late response for a job the technician has since navigated away from
+  // can never land on the wrong job's screen.
+  const openJobIdRef = useRef<string | null>(null);
 
   // "sent only while a sheet is open" (TASK-S3) must also hold when this
   // notebook's sheet layer goes away entirely (a notebook switch remounts
@@ -331,6 +477,7 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
   const receiptKey = receipt ? `${receipt.jobId}:${receipt.baseSeq}` : null;
   useEffect(() => {
     setHandledProposalIds(new Set());
+    claimedProposalIdsRef.current = new Set();
   }, [receiptKey]);
 
   const scopeId = technicianName ?? notebookId;
@@ -369,23 +516,31 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
   const refreshBadge = useCallback(
     async (jobId: string) => {
       const q = await loadSheetQueue(localStorageStore, scopeId, jobId);
-      if (mounted.current) setBadge((b) => ({ ...b, queued: q.length }));
+      // R2-05: a late read for a job that's no longer selected must not
+      // touch the badge the technician is currently looking at.
+      if (mounted.current && responseStillTargetsSelectedJob(jobId, openJobIdRef.current)) {
+        setBadge((b) => ({ ...b, queued: q.length }));
+      }
     },
     [scopeId],
   );
 
   const loadSheet = useCallback(
     async (jobId: string) => {
+      if (!responseStillTargetsSelectedJob(jobId, openJobIdRef.current)) return;
       setViewError(null);
       try {
         const res = await apiGetJob(notebookId, jobId);
+        if (!responseStillTargetsSelectedJob(jobId, openJobIdRef.current)) return;
         if (!res.ok) {
           if (mounted.current) setViewError("The job sheet could not be loaded.");
           return;
         }
         if (mounted.current) setView(res.body.view ?? null);
       } catch {
-        if (mounted.current) setViewError("No reply from the server.");
+        if (mounted.current && responseStillTargetsSelectedJob(jobId, openJobIdRef.current)) {
+          setViewError("No reply from the server.");
+        }
       }
     },
     [notebookId],
@@ -393,28 +548,41 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
 
   const drain = useCallback(
     async (jobId: string) => {
-      if (mounted.current) setBadge((b) => ({ ...b, saving: true }));
+      const stillSelected = () => responseStillTargetsSelectedJob(jobId, openJobIdRef.current);
+      if (mounted.current && stillSelected()) setBadge((b) => ({ ...b, saving: true }));
       const result = await drainSheetQueue(localStorageStore, scopeId, jobId, async (ev) => {
+        // The submit itself always proceeds, even for a job the technician
+        // has since navigated away from — switching screens must never lose
+        // a queued write. Only the SCREEN-facing state below is job-gated.
         const res = await apiPostEvent(notebookId, jobId, ev);
         if (res.ok) return { status: "ok" as const };
         if (res.status === 409 && res.body.error === "conflict") {
-          if (mounted.current) setConflict({ event: ev, serverView: res.body.view ?? null });
+          if (mounted.current && stillSelected()) setConflict({ event: ev, serverView: res.body.view ?? null });
           return { status: "conflict" as const };
         }
         if (res.status >= 500 || res.status === 401) throw new Error(res.body.error ?? "server_error");
         const message = startJobErrorMessage(res.body.error, res.body.message);
-        if (mounted.current) setLastRejection(message);
         return { status: "rejected" as const, message };
       });
       if (!result) return;
-      if (mounted.current) setBadge({ saving: false, queued: result.remaining, conflict: result.conflict });
-      if (result.sent > 0) await loadSheet(jobId);
+      if (mounted.current && stillSelected()) {
+        setBadge({ saving: false, queued: result.remaining, conflict: result.conflict, drainStuck: result.drainStuck });
+        // R2-04: a non-409 rejection is surfaced with its payload and
+        // reason, never silently discarded behind a generic toast.
+        if (result.rejected.length > 0) {
+          setLastRejection(result.rejected[result.rejected.length - 1]!.message);
+          setNotAccepted((prev) => [...prev, ...result.rejected]);
+        }
+      }
+      if (result.sent > 0 && stillSelected()) await loadSheet(jobId);
+      return result;
     },
     [scopeId, notebookId, loadSheet],
   );
 
   const openJob = useCallback(
     (jobId: string) => {
+      openJobIdRef.current = jobId;
       setOpenJobId(jobId);
       setConflict(null);
       setFinishAck(false);
@@ -426,6 +594,7 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
   );
 
   const closeJob = useCallback(() => {
+    openJobIdRef.current = null;
     setOpenJobId(null);
     setView(null);
     setConflict(null);
@@ -459,15 +628,23 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
       }
       if (mounted.current) setBadge((b) => ({ ...b, storageFailed: false }));
       await refreshBadge(openJobId);
-      await drain(openJobId);
+      const result = await drain(openJobId);
+      // R2-04: a non-409 rejection must never be reported as saved — check
+      // whether THIS specific write (by clientEventId) ended up rejected
+      // during the drain this call just triggered.
+      if (result?.rejected.some((r) => r.event.clientEventId === event.clientEventId)) return false;
       return true;
     },
     [openJobId, view, scopeId, refreshBadge, drain],
   );
 
-  // Drain on reconnect and every 15s while something is queued (spec's sync rule).
+  // Drain on reconnect and every 15s while something is queued (spec's sync
+  // rule). R2-20: once drainStuck is set, this phone's storage can't be
+  // trusted to drain at all — stop retrying automatically (the technician
+  // is told to reload) rather than hammering the server every 15s with a
+  // write it can never durably remove from the queue.
   useEffect(() => {
-    if (!openJobId) return;
+    if (!openJobId || badge.drainStuck) return;
     const onOnline = () => void drain(openJobId);
     window.addEventListener("online", onOnline);
     const interval = window.setInterval(() => {
@@ -477,7 +654,7 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
       window.removeEventListener("online", onOnline);
       window.clearInterval(interval);
     };
-  }, [openJobId, drain, badge.queued]);
+  }, [openJobId, drain, badge.queued, badge.drainStuck]);
 
   const openTemplatePicker = useCallback(async () => {
     const list = await apiListJobSheetTemplates();
@@ -485,16 +662,13 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
   }, []);
 
   const startJob = useCallback(async () => {
-    const title = newTitle.trim();
-    if (!title) return;
-    setStarting(true);
-    setStartError(null);
-    // F16: reuse the pending attempt's client id on retry — minted exactly
-    // once per attempt, never per tap — so a lost response followed by a
-    // retry can never create a second job.
-    const clientEventId = attemptClientEventId(startClientEventId, () => crypto.randomUUID());
-    if (clientEventId !== startClientEventId) setStartClientEventId(clientEventId);
-    try {
+    // R2-06: attemptRequest freezes the WHOLE request on the first attempt
+    // (not just the id) and replays it byte-for-byte on every retry — a
+    // regenerated occurredAt (or a re-picked template) would otherwise
+    // change the server-side idempotency fingerprint and turn a
+    // lost-response retry into a false conflict.
+    const request = attemptRequest(pendingStartRequest, () => {
+      const title = newTitle.trim();
       const chosen = templates?.find((t) => t.jobSheetId === chosenJobSheetId) ?? null;
       const revision = chosen ? chosenRevisionOf(chosen).revision : null;
       const template: JobSheetBody = revision?.body ?? {
@@ -502,29 +676,36 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
         isolationPoints: null, cautions: null, returnToService: [], items: [], torques: [], steps: [],
         author: null, notes: null,
       };
-      const res = await apiStartJob(notebookId, {
+      return {
         title,
         templateRevisionId: revision?.id ?? null,
         template,
-        clientEventId,
+        clientEventId: crypto.randomUUID(),
         occurredAt: new Date().toISOString(),
-      });
+      };
+    });
+    if (!request.title) return;
+    setStarting(true);
+    setStartError(null);
+    if (!pendingStartRequest) setPendingStartRequest(request);
+    try {
+      const res = await apiStartJob(notebookId, request);
       if (!res.ok || !res.body.jobId) {
         setStartError(startJobErrorMessage(res.body.error, res.body.message));
-        return; // keep startClientEventId pending — the next tap retries this SAME attempt
+        return; // keep pendingStartRequest — the next tap retries this SAME attempt
       }
       setNewTitle("");
       setChosenJobSheetId("");
-      setStartClientEventId(null); // attempt succeeded — a future Start is a new attempt
+      setPendingStartRequest(null); // attempt succeeded — a future Start is a new attempt
       await loadJobs();
       openJob(res.body.jobId);
     } catch {
       setStartError("No reply from the server. Retry — it will not create a duplicate.");
-      // keep startClientEventId pending — same reasoning as the rejection branch above
+      // keep pendingStartRequest pending — same reasoning as the rejection branch above
     } finally {
       setStarting(false);
     }
-  }, [newTitle, templates, chosenJobSheetId, notebookId, loadJobs, openJob, startClientEventId]);
+  }, [newTitle, templates, chosenJobSheetId, notebookId, loadJobs, openJob, pendingStartRequest]);
 
   const onToggleStep = useCallback(
     (step: SheetStepView) => {
@@ -540,24 +721,31 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
   // F06: each "add" handler only clears its own form once postEvent reports
   // the write actually reached storage — a swallowed localStorage failure
   // must never look like a successful submit from the technician's seat.
+  // R2-02: every clear below uses `clearedFieldValue`, which only clears
+  // when the save actually succeeded AND the field still holds EXACTLY the
+  // snapshot taken before the (possibly slow) await — if the technician
+  // kept typing while it was in flight, their newer text survives even
+  // though the earlier save succeeded.
   const onAddNote = useCallback(async () => {
-    const text = noteText.trim();
+    const submitted = noteText;
+    const text = submitted.trim();
     if (!text) return;
     const ok = await postEvent("note_added", { noteId: crypto.randomUUID(), text, noteKind: "note" });
-    if (ok) setNoteText("");
+    setNoteText((current) => clearedFieldValue(ok, submitted, current));
   }, [noteText, postEvent]);
 
   const onAddQuestion = useCallback(async () => {
-    const text = questionText.trim();
+    const submitted = questionText;
+    const text = submitted.trim();
     if (!text) return;
     const ok = await postEvent("note_added", { noteId: crypto.randomUUID(), text, noteKind: "question" });
-    if (ok) setQuestionText("");
+    setQuestionText((current) => clearedFieldValue(ok, submitted, current));
   }, [questionText, postEvent]);
 
+  // R2-02: fire-and-forget → an awaited result the child (ResolveQuestion)
+  // uses to decide whether it may clear its own answer text.
   const onResolveQuestion = useCallback(
-    (noteId: string, resolution: string) => {
-      void postEvent("question_resolved", { noteId, resolution });
-    },
+    (noteId: string, resolution: string) => postEvent("question_resolved", { noteId, resolution }),
     [postEvent],
   );
 
@@ -566,14 +754,15 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
     const unit = readingUnit.trim();
     const value = Number(readingValue);
     if (!what || !unit || !Number.isFinite(value)) return;
+    const submittedValue = readingValue;
+    const submittedWhat = readingWhat;
+    const submittedUnit = readingUnit;
     const ok = await postEvent("reading_recorded", {
       readingId: crypto.randomUUID(), what, value, unit, source: { kind: "tech", ref: technicianName },
     });
-    if (ok) {
-      setReadingWhat("");
-      setReadingValue("");
-      setReadingUnit("");
-    }
+    setReadingWhat((current) => clearedFieldValue(ok, submittedWhat, current));
+    setReadingValue((current) => clearedFieldValue(ok, submittedValue, current));
+    setReadingUnit((current) => clearedFieldValue(ok, submittedUnit, current));
   }, [readingWhat, readingValue, readingUnit, technicianName, postEvent]);
 
   // F21: records a reading_corrected event against the SAME readingId — the
@@ -582,22 +771,33 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
   // "direct Correct control" the working sheet was missing.
   const onCorrectReading = useCallback(
     async (readingId: string, unit: string) => {
-      const value = Number(correctionValue);
+      const submitted = correctionValue;
+      const value = Number(submitted);
       if (!Number.isFinite(value)) return;
       const ok = await postEvent("reading_corrected", { readingId, value, unit, reason: null });
-      if (ok) {
-        setCorrectingReadingId(null);
-        setCorrectionValue("");
-      }
+      // React applies the updater synchronously (even though the re-render
+      // is deferred), so `stillUnchanged` reflects the REAL current value
+      // at clear-time, not the stale `correctionValue` this closure captured
+      // back when onCorrectReading was created.
+      let stillUnchanged = false;
+      setCorrectionValue((current) => {
+        stillUnchanged = current === submitted;
+        return clearedFieldValue(ok, submitted, current);
+      });
+      // Only close the correction form if the value wasn't changed out from
+      // under the in-flight save — otherwise leave it open with whatever
+      // the technician has typed since.
+      if (ok && stillUnchanged) setCorrectingReadingId(null);
     },
     [correctionValue, postEvent],
   );
 
   const onAddPart = useCallback(async () => {
-    const item = partItem.trim();
+    const submitted = partItem;
+    const item = submitted.trim();
     if (!item) return;
     const ok = await postEvent("part_logged", { partEntryId: crypto.randomUUID(), item, action: "used", qty: null });
-    if (ok) setPartItem("");
+    setPartItem((current) => clearedFieldValue(ok, submitted, current));
   }, [partItem, postEvent]);
 
   const onSaveHandover = useCallback(() => {
@@ -610,33 +810,53 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
     void postEvent("job_finished", { summary: null, openItemsAcknowledged: finishAck });
   }, [finishAck, postEvent]);
 
-  const onUploadPhoto = useCallback(
-    async (file: File) => {
-      if (!openJobId || !view) return;
+  // R2-07: replays the EXACT frozen attempt (same File bytes, same baseSeq,
+  // same clientEventId) — never re-reads the current view.seq or asks for a
+  // fresh file pick, either of which would change the server-side
+  // idempotency fingerprint and turn a lost-response retry into a false
+  // conflict.
+  const uploadPhotoAttempt = useCallback(
+    async (attempt: { file: File; baseSeq: number; clientEventId: string; caption: string | null }) => {
+      if (!openJobId) return;
       setPhotoBusy(true);
       setPhotoError(null);
-      // F17 (UI): reuse the pending attempt's client id on retry — minted
-      // once per attempt, so a lost successful response followed by a retry
-      // cannot append a duplicate photo.
-      const clientEventId = attemptClientEventId(photoClientEventId, () => crypto.randomUUID());
-      if (clientEventId !== photoClientEventId) setPhotoClientEventId(clientEventId);
       try {
-        const res = await apiUploadPhoto(notebookId, openJobId, file, { clientEventId, baseSeq: view.seq });
+        const res = await apiUploadPhoto(notebookId, openJobId, attempt.file, {
+          clientEventId: attempt.clientEventId,
+          baseSeq: attempt.baseSeq,
+          caption: attempt.caption,
+        });
         if (!res.ok) {
           setPhotoError(startJobErrorMessage(res.body.error, res.body.message));
-          return; // keep photoClientEventId pending for the retry
+          return; // keep pendingPhotoAttempt — Retry replays this EXACT attempt
         }
-        setPhotoClientEventId(null); // attempt succeeded
+        setPendingPhotoAttempt(null); // attempt succeeded
         await loadSheet(openJobId);
       } catch {
         setPhotoError("No reply from the server. Retry — the photo was not saved.");
-        // keep photoClientEventId pending — same reasoning as the rejection branch
+        // keep pendingPhotoAttempt pending — same reasoning as the rejection branch
       } finally {
         setPhotoBusy(false);
       }
     },
-    [openJobId, view, notebookId, loadSheet, photoClientEventId],
+    [openJobId, notebookId, loadSheet],
   );
+
+  // Picking a photo is always a deliberate NEW attempt — fresh id, fresh
+  // baseSeq, fresh bytes. Only onRetryPhoto below replays an existing one.
+  const onUploadPhoto = useCallback(
+    (file: File) => {
+      if (!view) return;
+      const attempt = { file, baseSeq: view.seq, clientEventId: crypto.randomUUID(), caption: null as string | null };
+      setPendingPhotoAttempt(attempt);
+      void uploadPhotoAttempt(attempt);
+    },
+    [view, uploadPhotoAttempt],
+  );
+
+  const onRetryPhoto = useCallback(() => {
+    if (pendingPhotoAttempt) void uploadPhotoAttempt(pendingPhotoAttempt);
+  }, [pendingPhotoAttempt, uploadPhotoAttempt]);
 
   const onKeepTheirs = useCallback(async () => {
     if (!openJobId) return;
@@ -650,19 +870,26 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
 
   const onUseMine = useCallback(async () => {
     if (!openJobId || !conflict) return;
-    const dropped = await dropHeadOfSheetQueue(localStorageStore, scopeId, openJobId);
-    if (dropped) {
-      const freshSeq = conflict.serverView?.seq ?? dropped.event.baseSeq;
-      const retry: SheetEventPost = { ...dropped.event, clientEventId: crypto.randomUUID(), baseSeq: freshSeq };
-      const { saved } = await enqueueSheetEvent(localStorageStore, scopeId, openJobId, retry);
-      if (!saved) {
-        // F06 on this path too: the retry never reached storage, so keep the
-        // conflict panel open (the technician's value is still on screen)
-        // rather than clearing it as if it had been saved.
-        if (mounted.current) setBadge((b) => ({ ...b, storageFailed: true }));
-        return;
-      }
+    // R2-03: build and durably enqueue the REPLACEMENT first, by the
+    // original entry's own clientEventId — never touch the original until
+    // its replacement is confirmed to have actually persisted. Removing
+    // "the head" first (the old approach) could delete the technician's
+    // only durable correction if the replacement then failed to save, and
+    // a second tap after that failure would drop a completely different
+    // queued entry (whatever had since become the new head).
+    const freshSeq = conflict.serverView?.seq ?? conflict.event.baseSeq;
+    const retry: SheetEventPost = { ...conflict.event, clientEventId: crypto.randomUUID(), baseSeq: freshSeq };
+    const { saved } = await enqueueSheetEvent(localStorageStore, scopeId, openJobId, retry);
+    if (!saved) {
+      // F06 on this path too: the replacement never reached storage, so
+      // the original stays exactly where it is and the conflict panel
+      // stays open — nothing is removed.
+      if (mounted.current) setBadge((b) => ({ ...b, storageFailed: true }));
+      return;
     }
+    // Only now remove the ORIGINAL — by its own clientEventId, never "the
+    // head" (which may have moved, or already be a different entry).
+    await removeFromSheetQueue(localStorageStore, scopeId, openJobId, conflict.event.clientEventId);
     setConflict(null);
     if (conflict.serverView) setView(conflict.serverView);
     await drain(openJobId);
@@ -670,6 +897,11 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
 
   const onReceiptAccept = useCallback(
     (proposalId: string, event: SheetWriteEvent, originSeq: number) => {
+      // R2-34: claim the proposal SYNCHRONOUSLY, before the async write
+      // even starts — a second call for the same proposal (double tap, or
+      // a duplicate re-render-bound call in the same tick) must see it as
+      // already claimed and do nothing, rather than minting a second write.
+      if (!shouldAcceptProposal(proposalId, claimedProposalIdsRef.current)) return;
       // F03: a step that still needs the torque/loctite/measurement confirm
       // opens the SAME dialog the checkbox path uses (value + source),
       // instead of posting "done" straight through. F07: the receipt's own
@@ -677,14 +909,21 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
       // straight through below or via the confirm dialog's Mark done — uses
       // the seq the proposal was actually made against, not whatever
       // view.seq has advanced to by the time the technician taps Accept.
+      // (Opening the confirm dialog does not itself claim the proposal —
+      // nothing has been minted yet; the dialog's own "Mark done" claims it.)
       const stepNeedingConfirm = view ? stepRequiringConfirmFor(event, view.steps) : null;
       if (stepNeedingConfirm) {
         setConfirmStep({ step: stepNeedingConfirm, receiptOrigin: { proposalId, baseSeq: originSeq } });
         return;
       }
+      claimedProposalIdsRef.current.add(proposalId);
       void (async () => {
         const ok = await postEvent(event.kind, event.payload, originSeq);
-        if (ok) setHandledProposalIds((prev) => new Set([...prev, proposalId]));
+        if (ok) {
+          setHandledProposalIds((prev) => new Set([...prev, proposalId]));
+        } else {
+          claimedProposalIdsRef.current.delete(proposalId); // failed — a retry tap must work
+        }
       })();
     },
     [postEvent, view],
@@ -817,6 +1056,23 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
                 </p>
               )}
 
+              {notAccepted.length > 0 && (
+                <section style={SECTION_STYLE} data-testid="living-sheet-not-accepted">
+                  <h3 style={{ marginTop: 0 }}>Not accepted</h3>
+                  {notAccepted.map((r, i) => (
+                    <p key={`${r.event.clientEventId}-${i}`} role="alert">
+                      {conflictValues(r.event as SheetWriteEvent, null).mine} — {r.message}{" "}
+                      <button
+                        type="button" style={GHOST_BUTTON_STYLE}
+                        onClick={() => setNotAccepted((prev) => prev.filter((_, idx) => idx !== i))}
+                      >
+                        Dismiss
+                      </button>
+                    </p>
+                  ))}
+                </section>
+              )}
+
               {conflict && (() => {
                 // F22: show BOTH competing values, not just sequence numbers,
                 // before offering "Use mine".
@@ -872,14 +1128,15 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
                 {view.template.cautions && <p>{view.template.cautions}</p>}
               </section>
 
+              <ReturnToServiceSection checks={view.template.returnToService} />
+              <TemplateNotesSection text={view.template.notes} />
+
               {view.template.items.length > 0 && (
                 <section style={SECTION_STYLE} data-testid="living-sheet-bring-to-job">
                   <h3 style={{ marginTop: 0 }}>Bring to the job</h3>
                   <ul>
                     {view.template.items.map((it) => (
-                      <li key={it.id}>
-                        {it.item}{it.spec ? ` — ${it.spec}` : ""}{it.qty ? ` x${it.qty}` : ""}
-                      </li>
+                      <BringToJobItemRow key={it.id} item={it} />
                     ))}
                   </ul>
                 </section>
@@ -1047,7 +1304,22 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
                     </a>
                   ))}
                 </div>
-                {photoError && <p role="alert">{photoError}</p>}
+                {photoError && (
+                  <p role="alert">
+                    {photoError}
+                    {pendingPhotoAttempt && (
+                      <>
+                        {" "}
+                        <button
+                          type="button" style={GHOST_BUTTON_STYLE} onClick={onRetryPhoto} disabled={photoBusy}
+                          data-testid="living-sheet-photo-retry"
+                        >
+                          Retry
+                        </button>
+                      </>
+                    )}
+                  </p>
+                )}
                 <label style={BUTTON_STYLE}>
                   {photoBusy ? "Uploading…" : "Take photo"}
                   <input
@@ -1055,7 +1327,7 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
                     onChange={(e) => {
                       const f = e.target.files?.[0];
                       e.target.value = "";
-                      if (f) void onUploadPhoto(f);
+                      if (f) onUploadPhoto(f);
                     }}
                   />
                 </label>
@@ -1094,6 +1366,9 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
 
               <section style={SECTION_STYLE} data-testid="living-sheet-print-section">
                 <h3 style={{ marginTop: 0 }}>Print</h3>
+                {pendingPrintWarning(badge.queued) && (
+                  <p role="alert" data-testid="living-sheet-print-pending-warning">{pendingPrintWarning(badge.queued)}</p>
+                )}
                 <button
                   type="button" style={GHOST_BUTTON_STYLE} onClick={() => window.print()}
                   data-testid="living-sheet-print-button"
@@ -1101,6 +1376,12 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
                   Print / save PDF
                 </button>
               </section>
+              {/* R2-17 coordination: LivingSheetPrintProps does not yet
+                  declare `pendingCount` (that prop lands with the print-side
+                  banner, owned by a different EGM2 slice) — adding it here
+                  before LivingSheetPrint.tsx declares it would fail
+                  type-check in THIS file. Wire `pendingCount={badge.queued}`
+                  into this call once LivingSheetPrintProps adds it. */}
               <LivingSheetPrint view={view} seq={view.seq} printedAt={new Date().toLocaleString()} />
 
               {viewError && <p role="alert">{viewError}</p>}
@@ -1112,19 +1393,31 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
   );
 }
 
-function ResolveQuestion({ questionId, onResolve }: { questionId: string; onResolve: (id: string, resolution: string) => void }) {
+function ResolveQuestion({ questionId, onResolve }: { questionId: string; onResolve: (id: string, resolution: string) => Promise<boolean> }) {
   const [text, setText] = useState("");
+  const [saving, setSaving] = useState(false);
   return (
     <div>
       <input style={FIELD_STYLE} placeholder="Answer" value={text} onChange={(e) => setText(e.target.value)} />
       <button
-        type="button" style={GHOST_BUTTON_STYLE} disabled={!text.trim()}
+        type="button" style={GHOST_BUTTON_STYLE} disabled={!text.trim() || saving}
         onClick={() => {
-          onResolve(questionId, text.trim());
-          setText("");
+          // R2-02: an answer is cleared ONLY once the save actually
+          // succeeded AND the field still holds exactly what was
+          // submitted — never on tap alone (the old behavior always
+          // cleared immediately, discarding the answer on any failure).
+          const submitted = text;
+          const resolution = submitted.trim();
+          if (!resolution) return;
+          setSaving(true);
+          void (async () => {
+            const ok = await onResolve(questionId, resolution);
+            setSaving(false);
+            setText((current) => clearedFieldValue(ok, submitted, current));
+          })();
         }}
       >
-        Save answer
+        {saving ? "Saving…" : "Save answer"}
       </button>
     </div>
   );
