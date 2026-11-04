@@ -41,6 +41,19 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     const result = await loadJob(ctx.tenantId, id, jobId, atSeq);
     if (result.status === "job_not_found") return NextResponse.json(JOB_NOT_FOUND, { status: 404 });
+    // F30: `loadJob` reduces the PREFIX of events with seq <= atSeq, so an
+    // atSeq past the job's actual last seq silently reduces over every
+    // event there is — result.view.seq then falls short of the requested
+    // atSeq instead of matching it. That mismatch is the only signal that
+    // the requested sequence never happened; naming it in the response
+    // (outer seq:atSeq, inner view.seq: the real one) would mislabel a
+    // view that doesn't exist as a valid snapshot of it.
+    if (atSeq !== undefined && atSeq > result.view.seq) {
+      return NextResponse.json(
+        { error: "sequence_not_found", message: "This job hasn't reached that sequence yet." },
+        { status: 404 },
+      );
+    }
     return atSeq === undefined
       ? NextResponse.json({ view: result.view, seq: result.view.seq })
       : NextResponse.json({ view: result.view, seq: atSeq, snapshot: true });

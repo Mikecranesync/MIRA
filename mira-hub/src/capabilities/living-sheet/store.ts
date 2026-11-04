@@ -270,6 +270,19 @@ function validateTarget(input: ValidatedAppendInput, view: SheetView): { ok: tru
   }
 }
 
+/** `occurredAt` is client-controlled (and therefore stable across a retry)
+ *  for every append kind EXCEPT `photo_attached`: the photos route has no
+ *  client timestamp to carry (it's a multipart upload) and stamps
+ *  `new Date()` fresh on every call — including a same-`clientEventId`
+ *  retry. Fingerprinting on a value the server itself regenerates per
+ *  request would turn an idempotent retry into a `request_id_conflict`
+ *  (F17) even though notebook/job/baseSeq/kind/payload/workOrderId — the
+ *  parts that actually identify a photo attach — are unchanged. */
+function appendFingerprintParts(notebookId: string, jobId: string, input: ValidatedAppendInput): unknown[] {
+  const base = [notebookId, jobId, input.baseSeq, input.kind, input.payload, input.workOrderId];
+  return input.kind === "photo_attached" ? base : [...base, input.occurredAt];
+}
+
 export async function appendEvent(
   tenantId: string,
   notebookId: string,
@@ -277,7 +290,7 @@ export async function appendEvent(
   input: ValidatedAppendInput,
   actor: Actor,
 ): Promise<AppendEventResult> {
-  const fingerprint = fingerprintOf([notebookId, jobId, input.baseSeq, input.kind, input.payload, input.occurredAt, input.workOrderId]);
+  const fingerprint = fingerprintOf(appendFingerprintParts(notebookId, jobId, input));
   return withTenantContext(tenantId, async (c) => {
     // (1) Serialize appends to this one job (same xact-scoped advisory-lock
     // pattern as capabilities/cmms-dispatch/enqueue.ts::lockAggregate, keyed

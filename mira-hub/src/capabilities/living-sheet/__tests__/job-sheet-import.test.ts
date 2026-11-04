@@ -332,6 +332,86 @@ describe("parseJobSheetText — job_card layout", () => {
 });
 
 // ---------------------------------------------------------------------------
+// F25 (egm-review/verdict.md) — quoted multiline cells
+// ---------------------------------------------------------------------------
+
+describe("parseJobSheetText — F25 quoted multiline cells", () => {
+  // CSV per tab: a caution pasted from a cell with a soft-return inside it
+  // arrives quoted, with a literal newline between the quotes. The old
+  // `toRows` split the raw text at every newline BEFORE any quote was ever
+  // seen, so the quoted cell was truncated at "fingers" and its
+  // continuation ("wear gloves...") fell through as an unrecognized row —
+  // silently dropped, never surfacing in `cautions` or anywhere else.
+  const CSV_MULTILINE_CAUTION_TEXT = [
+    "Job ID,LW-03",
+    "Job title,Multiline caution test",
+    "Machine / asset tag,Bike-Stand-4",
+    "Component,Rear derailleur",
+    "Type,adjustment",
+    "Est. hours,0.5",
+    "Crew size,1",
+    "Author,B. Mechanic",
+    "Revision date,2026-02-03",
+    "Isolation / LOTO points,None - hand tools only",
+    'Cautions / hazards,"Chain may pinch fingers\nwear gloves when adjusting"',
+    "BRING TO THE JOB",
+    "Kind,Item,Size / spec / part no.,Qty,Source,Notes",
+    "tool,Phillips screwdriver,#2,1,Shop toolbox,",
+  ].join("\n");
+
+  it("a CSV quoted multiline caution stays ONE cell, newline intact", () => {
+    const preview = parseJobSheetText(CSV_MULTILINE_CAUTION_TEXT, { layout: "job_card" });
+    expect(preview.jobs).toHaveLength(1);
+    const job = preview.jobs[0]!;
+    expect(job.body.cautions).toBe("Chain may pinch fingers\nwear gloves when adjusting");
+  });
+
+  // Control, not a red test for F25: against the pre-fix code this already
+  // passed (the stray continuation row happened to get silently dropped as
+  // unrecognized without disturbing the items section that follows). Kept
+  // to pin that the fix doesn't regress item parsing after a multiline cell.
+  it("control: the next section still parses after a multiline caution (not RED-discriminating — passed pre-fix too)", () => {
+    const preview = parseJobSheetText(CSV_MULTILINE_CAUTION_TEXT, { layout: "job_card" });
+    const job = preview.jobs[0]!;
+    expect(job.body.items).toHaveLength(1);
+    expect(job.body.items[0]!.item).toBe("Phillips screwdriver");
+  });
+
+  // Same shape, tab-delimited: `splitRow`'s TSV branch previously had NO
+  // quote handling at all (only the comma branch did), so a TSV paste got
+  // the newline-truncation bug AND no quote-escape support.
+  const TSV_MULTILINE_CAUTION_TEXT = tsv(
+    ["Job ID", "LW-04"],
+    ["Job title", "Multiline caution TSV test"],
+    ["Machine / asset tag", "Bike-Stand-5"],
+    ["Component", "Rear derailleur"],
+    ["Type", "adjustment"],
+    ["Est. hours", "0.5"],
+    ["Crew size", "1"],
+    ["Author", "B. Mechanic"],
+    ["Revision date", "2026-02-04"],
+    ["Isolation / LOTO points", "None - hand tools only"],
+    ["Cautions / hazards", '"Chain may pinch fingers\nwear gloves when adjusting"'],
+    ["BRING TO THE JOB"],
+    ["Kind", "Item", "Size / spec / part no.", "Qty", "Source", "Notes"],
+    ["tool", "Phillips screwdriver", "#2", "1", "Shop toolbox", ""],
+  );
+
+  it("a TSV quoted multiline caution ALSO stays one cell (TSV previously had no quote parsing at all)", () => {
+    const preview = parseJobSheetText(TSV_MULTILINE_CAUTION_TEXT, { layout: "job_card" });
+    expect(preview.jobs).toHaveLength(1);
+    const job = preview.jobs[0]!;
+    expect(job.body.cautions).toBe("Chain may pinch fingers\nwear gloves when adjusting");
+    expect(job.body.items).toHaveLength(1);
+  });
+
+  it("control: an UNQUOTED cell containing a literal comma-like dash is unaffected (unquoted behavior unchanged)", () => {
+    const preview = parseJobSheetText(JOB_CARD_TEXT, { layout: "job_card" });
+    expect(preview.jobs[0]!.body.cautions).toBe("Chain may pinch fingers");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Validator reuse (TASK-S4 §Files: "reuse JobSheetBody and its validator")
 // ---------------------------------------------------------------------------
 
