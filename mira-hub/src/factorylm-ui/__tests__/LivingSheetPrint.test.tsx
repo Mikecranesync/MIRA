@@ -263,3 +263,18 @@ describe("LivingSheetPrint — F05: handover is quoted verbatim and attributed, 
     expect(html).toMatch(/Pump is fixed[\s\S]*Mike/);
   });
 });
+
+describe("LivingSheetPrint — empty sections say so", () => {
+  it("an empty Open questions section prints 'None recorded', not a bare heading", () => {
+    const html = renderToStaticMarkup(<LivingSheetPrint view={baseView({ questions: [] })} {...OPTS} />);
+    expect(html).toMatch(/data-testid="ls-print-questions"[\s\S]*?None recorded/);
+  });
+});
+
+describe("LivingSheetPrint — photo attribution", () => {
+  it("each photo prints who attached it and when", () => {
+    const view = baseView({ photos: [{ id: "p1", fileId: "file-abc", caption: null, by: "Jess Tech", at: "2026-11-03T10:00:00Z", eventId: "ev1" }] });
+    const html = renderToStaticMarkup(<LivingSheetPrint view={view} {...OPTS} />);
+    expect(html).toMatch(/no caption[^<]*— Jess Tech, /);
+  });
+});
