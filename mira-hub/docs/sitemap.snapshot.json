@@ -2,7 +2,7 @@
   "basePath": "/hub",
   "counts": {
     "pages": 70,
-    "apiRoutes": 203
+    "apiRoutes": 204
   },
   "pages": [
     "/admin",
@@ -175,6 +175,7 @@
     "/api/equipment-notebooks/[id]/sheets",
     "/api/equipment-notebooks/[id]/sheets/[jobId]",
     "/api/equipment-notebooks/[id]/sheets/[jobId]/events",
+    "/api/equipment-notebooks/[id]/sheets/[jobId]/photos",
     "/api/equipment-notebooks/[id]/sources",
     "/api/equipment-notebooks/[id]/sources/[docId]",
     "/api/equipment-notebooks/[id]/sources/[docId]/passage",
