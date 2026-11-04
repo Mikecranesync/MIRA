@@ -25,6 +25,10 @@ separate container (native CPU ≈ 0.4–0.7 s/question on 2 cores at a pool of 
   any failure returns `null` and the caller keeps today's order (a logged reason, never an error to the technician).
 - The hook in `retrieveNodeChunks`: rerank the ordered pool BEFORE `prioritizeCurrentCodeEvidence`, so the code the
   technician named still leads the final cut (#4360). Broad questions are not reranked (their facet guarantee stays).
+- Pinned head (2026-11-04): the cross-encoder never moves the first two lexical results; it reorders only the passages
+  after them (`orderWithPinnedHead`), and with the flag on the notebook question pass keeps 8 passages instead of 6
+  (`notebookQuestionTopK`). A full rerank won and lost about equally because it demoted exact part and fault-code hits;
+  the pinned form beat plain search at every passage count. Evidence: `docs/evals/retrieval-eval/2026-11-04-pinned-rerank-k8.md`.
 
 ## Old implementation
 None replaced. With the flag off the code path is byte-for-byte today's.
