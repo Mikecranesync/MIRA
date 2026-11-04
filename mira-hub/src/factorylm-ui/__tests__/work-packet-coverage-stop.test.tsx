@@ -33,11 +33,12 @@ describe("N1 — the stop is the first thing on screen and on page 1", () => {
     const html = renderToStaticMarkup(<CoverageStop packet={partial} />);
     expect(html).toContain('role="alert"');
     expect(html).toContain("Not the whole job — do not work from this packet alone.");
-    expect(html).toContain("Only 3 of at least 17 steps could be read; this is not the whole job.");
+    expect(html).toContain("Only 3 of at least 14 steps could be read (3 more may apply to this pump); this is not the whole job.");
     expect(html).toContain("SERVICING THE PUMPING SECTION");
     expect(html).toMatch(/not read/);
     expect(html).toContain("SERVICING THE SEALS");
     expect(html).toMatch(/partly read/);
+    expect(html).toContain("SERVICING THE SEALS: partly read (3 read, at least 3 not read); 3 more may apply to this pump");
     expect(html).toContain("Nothing in this packet is marked Verified");
     expect(html).not.toContain("data-no-print");
   });
@@ -50,7 +51,7 @@ describe("N1 — the stop is the first thing on screen and on page 1", () => {
   });
 
   it("leads the readiness summary", () => {
-    expect(readinessSummary(partial).lines[0]).toBe("Only 3 of at least 17 steps could be read; this is not the whole job.");
+    expect(readinessSummary(partial).lines[0]).toBe("Only 3 of at least 14 steps could be read (3 more may apply to this pump); this is not the whole job.");
     expect(readinessSummary(partial).status).toBe("needs_review");
     expect(renderToStaticMarkup(<ReadinessBlock packet={partial} />)).toContain("not the whole job");
     expect(readinessSummary(whole).lines.some((l) => /not the whole job/.test(l))).toBe(false);
