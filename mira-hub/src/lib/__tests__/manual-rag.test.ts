@@ -201,6 +201,7 @@ describe("extractModelNumber (#2178)", () => {
     expect(extractModelNumber("Yaskawa A1000 undervoltage")).toBe("A1000");
     expect(extractModelNumber("Micro820 PLC fault")).toBe("820");
     expect(extractModelNumber("ABB ACS355 ride-through")).toBe("355");
+    expect(extractModelNumber("cat 25B-D010N104 won't reset")).toBe("525");
   });
 
   it("returns null when no model is named (so retrieval scope is unchanged)", () => {

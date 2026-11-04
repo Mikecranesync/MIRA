@@ -7,7 +7,7 @@
  * the single ILIKE token (resolveModelFromObservationText) is unchanged.
  */
 import { describe, expect, it } from "vitest";
-import { modelIdentitiesInText, resolveModelFromObservationText } from "../model-token";
+import { aliasCatalogModelToken, canonicalModelKey, modelIdentitiesInText, resolveModelFromObservationText } from "../model-token";
 
 describe("modelIdentitiesInText — sibling numbers listed after one family word", () => {
   it.each([
@@ -36,5 +36,16 @@ describe("modelIdentitiesInText — sibling numbers listed after one family word
 
   it("the single ILIKE token is untouched: a conjoined title still resolves to its FIRST number, unambiguous", () => {
     expect(resolveModelFromObservationText("PowerFlex 523 and 525 Adjustable Frequency AC Drives")).toEqual({ model: "523", ambiguous: false });
+  });
+});
+
+describe("catalog 25B maps to PowerFlex 525", () => {
+  it("aliases the catalog stem and treats a 25B catalog string as PF525", () => {
+    expect(aliasCatalogModelToken("25B")).toBe("525");
+    expect(aliasCatalogModelToken("525")).toBe("525");
+    expect(resolveModelFromObservationText("cat 25B-D010N104")).toEqual({ model: "525", ambiguous: false });
+    expect(resolveModelFromObservationText("PowerFlex 525 cat 25B-D010N104")).toEqual({ model: "525", ambiguous: false });
+    expect([...modelIdentitiesInText("25B-D010N104")]).toEqual(["PF525"]);
+    expect(canonicalModelKey("25B-D010N104")).toBe("525");
   });
 });
