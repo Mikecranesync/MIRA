@@ -526,7 +526,7 @@ export function HubShellHost() {
     } finally {
       if (abortRef.current === ctrl) { abortRef.current = null; setBusy(false); }
     }
-  }, [selection, loadDetail, loadNotebooks, dropOutgoing, outgoingOwner]);
+  }, [selection, loadDetail, loadNotebooks, dropOutgoing, outgoingOwner, livingSheetJob]);
 
   /**
    * #4019 — attachments ride the turn they were attached to. Upload through the

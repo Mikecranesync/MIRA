@@ -744,7 +744,7 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
                   <div key={q.id} style={{ marginBottom: 8 }}>
                     <p style={{ margin: 0 }}>{q.text}</p>
                     {q.resolved ? (
-                      <p style={{ margin: 0, color: "var(--fl-muted)" }}>Resolved: {q.resolution}</p>
+                      <p style={{ margin: 0, color: "var(--fl-muted)" }}>Answered: {q.resolution}</p>
                     ) : (
                       <ResolveQuestion questionId={q.id} onResolve={onResolveQuestion} />
                     )}
@@ -839,7 +839,7 @@ function ResolveQuestion({ questionId, onResolve }: { questionId: string; onReso
   const [text, setText] = useState("");
   return (
     <div>
-      <input style={FIELD_STYLE} placeholder="Resolution" value={text} onChange={(e) => setText(e.target.value)} />
+      <input style={FIELD_STYLE} placeholder="Answer" value={text} onChange={(e) => setText(e.target.value)} />
       <button
         type="button" style={GHOST_BUTTON_STYLE} disabled={!text.trim()}
         onClick={() => {
@@ -847,7 +847,7 @@ function ResolveQuestion({ questionId, onResolve }: { questionId: string; onReso
           setText("");
         }}
       >
-        Resolve
+        Save answer
       </button>
     </div>
   );
