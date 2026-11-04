@@ -522,7 +522,7 @@ const PARAM_ID_REQUEST =
 // ---------------------------------------------------------------------------
 
 const EMPTY_HISTORY_ASK =
-  /\bmissing\s+fault\s+codes?\b|\bextended\s+(?:fault\s+)?history\b|\b(?:why|how)\b[\s\S]{0,80}\b(?:fault\s+)?(?:history|queue|buffers?|codes?)\b[\s\S]{0,40}\b(?:zero|zeros|blank|empty|missing|cleared)\b|\b(?:fault\s+)?(?:history|queue|buffers?|codes?)\b[\s\S]{0,40}\b(?:all\s+)?(?:zero|zeros|blank|empty|missing|cleared)\b|\b(?:all\s+)?(?:zero|zeros|blank|empty|missing|cleared)\b[\s\S]{0,40}\b(?:fault\s+)?(?:history|queue|buffers?|codes?)\b/i;
+  /\bmissing\s+fault\s+codes?\b|\b(?:why|how)\b[\s\S]{0,80}\b(?:fault\s+)?(?:history|queue|buffers?|codes?)\b[\s\S]{0,40}\b(?:zero|zeros|blank|empty|missing|cleared)\b|\b(?:fault\s+)?(?:history|queue|buffers?|codes?)\b[\s\S]{0,40}\b(?:all\s+)?(?:zero|zeros|blank|empty|missing|cleared)\b|\b(?:all\s+)?(?:zero|zeros|blank|empty|missing|cleared)\b[\s\S]{0,40}\b(?:fault\s+)?(?:history|queue|buffers?|codes?)\b/i;
 
 const HISTORY_DISPLAY_OBJECT =
   /\bfault\s+[1-9]\d?\s+code\b|\b(?:\d+[-\s])?fault\s+history\b|\bfault\s+queue\b|\bfault\s+log\b|\b(?:most\s+recent|older|extended)\s+fault/i;
@@ -530,11 +530,11 @@ const HISTORY_DISPLAY_OBJECT =
 const HISTORY_CONTROL_ACTION =
   /\bfault\s+clear\b|\bclear\s+buffers?\b|\bclears?\s+all\s+fault\s+buffers?\b|\breset\s+(?:the\s+)?(?:fault\s+)?(?:buffers?|queue|history)\b|\bclear\s+(?:the\s+)?(?:fault\s+)?(?:queue|history)\b/i;
 
-/** Write-to-history action: option 2 Clear Buffer / queue reset. Bare
- *  "Fault Clear" also names option 1 (Reset Fault, buffers kept), so it is
- *  a search term, not enough to count as the control row we must keep. */
+/** Write-to-history effect: option 2 actually zeros the queue. Naming
+ *  "Clear Buffer" as a choice next to Reset Fault (the live-fault procedure)
+ *  is a search hit, not the parameter row we must keep. */
 const HISTORY_BUFFER_WRITE =
-  /\bclear\s+buffers?\b|\bclears?\s+all\s+fault\s+buffers?\b|\breset\s+(?:the\s+)?(?:fault\s+)?(?:buffers?|queue|history)\b|\bclear\s+(?:the\s+)?(?:fault\s+)?(?:queue|history)\b/i;
+  /\bclears?\s+all\s+fault\s+buffers?\b|\b(?:fault\s+)?buffers?\s+to\s+0\b|\breset\s+(?:the\s+)?(?:fault\s+)?(?:buffers?|queue|history)\b|\bclear\s+(?:the\s+)?(?:fault\s+)?(?:queue|history)\b/i;
 
 /** True when the ask is why the fault history/queue is empty, zero, missing,
  *  or blank — not a fault-code meaning lookup and not a generic reset how-to. */
@@ -550,8 +550,8 @@ export function isFaultHistoryDisplayChunk(text: string): boolean {
 }
 
 /** The action that writes the same history object the display rows report
- *  (Clear Buffer / queue reset). Naming [Fault Clear] for a live reset is not
- *  that role — those buffers stay. */
+ *  (zeros the queue / buffers). Naming [Fault Clear] or listing option 2
+ *  "Clear Buffer" on a live-reset procedure is not that role. */
 export function isHistoryControlChunk(text: string): boolean {
   return HISTORY_BUFFER_WRITE.test(text);
 }

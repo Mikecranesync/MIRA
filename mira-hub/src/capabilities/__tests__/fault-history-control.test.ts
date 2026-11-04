@@ -22,6 +22,8 @@ const CONTROL_P135 =
   "A551 [Fault Clear] 1 Reset Fault (buffers kept) 2 Clear Buffer (all fault buffers to 0).";
 const RESET_P160 =
   "The cause must be corrected before the fault can be cleared. Press Stop, then set A551 Fault Clear to reset the drive after you verify the condition.";
+const CLEARING_P160 =
+  'After the cause is corrected, clear the fault by one of these methods. Press Stop if P045 [Stop Mode] is set to a value between 0 and 3. Set A551 [Fault Clear] to 1 "Reset Fault" or 2 "Clear Buffer". Cycle drive power.';
 const INDEX_P75 =
   "Modified group P034 Motor NP FLA P035 Motor NP Poles P036 Motor NP RPM(1) 641 Fault 9 Current(1)";
 
@@ -31,6 +33,7 @@ describe("fault-history display → control expansion (#4863)", () => {
     expect(isEmptyHistoryAsk("F604 through F610 are all zero on a drive in service since May 2024. Why is the extended fault history missing?")).toBe(true);
     expect(isEmptyHistoryAsk("What does PowerFlex 525 fault F004 mean?")).toBe(false);
     expect(isEmptyHistoryAsk("how do I clear a fault?")).toBe(false);
+    expect(isEmptyHistoryAsk("How do I read the extended fault history?")).toBe(false);
   });
 
   it("classifies an empty/missing fault-history ask as fault, even with incidental comm words", () => {
@@ -48,6 +51,7 @@ describe("fault-history display → control expansion (#4863)", () => {
     expect(isHistoryControlChunk(HISTORY_P79)).toBe(false);
     expect(isHistoryControlChunk(HISTORY_P144)).toBe(false);
     expect(isHistoryControlChunk(RESET_P160)).toBe(false);
+    expect(isHistoryControlChunk(CLEARING_P160)).toBe(false);
   });
 
   it("derives control queries from the object the display rows named, not a frozen parameter ID", () => {
@@ -80,6 +84,20 @@ describe("fault-history display → control expansion (#4863)", () => {
     expect(out.map((c) => c.id)).toContain("c");
     expect(out.map((c) => c.content).join("\n")).toMatch(/Clear Buffer/);
     expect(out.map((c) => c.id)).not.toContain("r");
+  });
+
+  it("does not treat a Manually Clearing Faults step that names both options as the control row", () => {
+    const display = { content: HISTORY_P144, id: "d" };
+    const clearing = { content: CLEARING_P160, id: "p" };
+    const control = { content: CONTROL_P135, id: "c" };
+    const out = ensureHistoryControlRepresentation(
+      [display, clearing],
+      [display, clearing, control],
+      2,
+    );
+    expect(out.map((c) => c.id)).toContain("c");
+    expect(out.map((c) => c.content).join("\n")).toMatch(/all fault buffers to 0/);
+    expect(out.map((c) => c.id)).not.toContain("p");
   });
 });
 

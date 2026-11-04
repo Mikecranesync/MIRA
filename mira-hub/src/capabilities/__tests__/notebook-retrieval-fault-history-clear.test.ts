@@ -38,6 +38,8 @@ const CONTROL_P135 =
   "A551 [Fault Clear] 1 Reset Fault — buffers are kept. 2 Clear Buffer — resets the active fault and clears all fault buffers to 0.";
 const RESET_P160 =
   "The cause must be corrected before the fault can be cleared. Press Stop, then set A551 Fault Clear to reset the drive after you verify the condition.";
+const CLEARING_P160 =
+  'After the cause is corrected, clear the fault by one of these methods. Press Stop if P045 [Stop Mode] is set to a value between 0 and 3. Set A551 [Fault Clear] to 1 "Reset Fault" or 2 "Clear Buffer". Cycle drive power.';
 const F004_TABLE =
   "F004 Undervoltage. The DC bus voltage fell below the undervoltage trip point. Check incoming AC line.";
 
@@ -66,7 +68,8 @@ const DISPLAY_ROWS = [
   row(75, INDEX_P75, 0.85, ["modifi", "group", "p034", "fault"]),
 ];
 const CONTROL_ROW = row(135, CONTROL_P135, 0.4, ["fault", "clear", "buffer", "a551"]);
-const RESET_ROW = row(160, RESET_P160, 0.55, ["fault", "clear", "reset", "a551"]);
+const RESET_ROW = row(164, RESET_P160, 0.55, ["fault", "clear", "reset", "a551"]);
+const CLEARING_ROW = row(160, CLEARING_P160, 0.7, ["fault", "clear", "buffer", "a551", "stop"]);
 const F004_ROW = row(161, F004_TABLE, 1.0, ["fault", "f004", "undervolt"]);
 
 const isAnd = (sql: string) =>
@@ -103,8 +106,8 @@ const ask = (client: PoolClient, q: string) =>
 
 function corpus(sql: string, params: unknown[]): Row[] {
   if (isAnd(sql)) return DISPLAY_ROWS;
-  if (isOr(sql) && isControlQuery(params)) return [RESET_ROW, CONTROL_ROW];
-  if (isIlike(sql) && isControlIlike(params)) return [RESET_ROW, CONTROL_ROW];
+  if (isOr(sql) && isControlQuery(params)) return [CLEARING_ROW, RESET_ROW, CONTROL_ROW];
+  if (isIlike(sql) && isControlIlike(params)) return [CLEARING_ROW, RESET_ROW, CONTROL_ROW];
   if (isOr(sql) || isIlike(sql)) return DISPLAY_ROWS;
   return [];
 }
@@ -117,9 +120,9 @@ describe("retrieveNodeChunks — empty fault-history ask surfaces A551 Clear Buf
     const pages = out.map((c) => c.sourcePage);
     const texts = out.map((c) => c.content);
     expect(pages).toContain(135);
-    expect(texts.some((t) => /A551/.test(t) && /Clear Buffer/.test(t))).toBe(true);
+    expect(texts.some((t) => /A551/.test(t) && /clears all fault buffers|buffers to 0/.test(t))).toBe(true);
     expect(texts.some((t) => /Fault 1 Code|10-fault history/.test(t))).toBe(true);
-    expect(texts.some((t) => /Press Stop/.test(t) && !/Clear Buffer/.test(t))).toBe(false);
+    expect(texts.some((t) => /Press Stop/.test(t) && !/clears all fault buffers|buffers to 0/.test(t))).toBe(false);
   });
 
   it("control: a fault-meaning ask does not run the history-control expansion", async () => {
@@ -149,9 +152,9 @@ function assertHistoryAndClearBuffer(out: Awaited<ReturnType<typeof ask>>) {
   const pages = out.map((c) => c.sourcePage);
   const texts = out.map((c) => c.content);
   expect(pages).toContain(135);
-  expect(texts.some((t) => /A551/.test(t) && /Clear Buffer/.test(t))).toBe(true);
+  expect(texts.some((t) => /A551/.test(t) && /clears all fault buffers|buffers to 0/.test(t))).toBe(true);
   expect(texts.some((t) => /Fault 1 Code|10-fault history/.test(t))).toBe(true);
-  expect(texts.some((t) => /Press Stop/.test(t) && !/Clear Buffer/.test(t))).toBe(false);
+  expect(texts.some((t) => /Press Stop/.test(t) && !/clears all fault buffers|buffers to 0/.test(t))).toBe(false);
 }
 
 describe("A551 Clear Buffer survives NOTEBOOK_RERANK on and off (#5181)", () => {
@@ -174,7 +177,9 @@ describe("A551 Clear Buffer survives NOTEBOOK_RERANK on and off (#5181)", () => 
       const { passages } = JSON.parse(String(init.body)) as { passages: string[] };
       return new Response(
         JSON.stringify({
-          scores: passages.map((p) => (/Clear Buffer/.test(p) ? -100 : /Press Stop/.test(p) ? 50 : 1)),
+          scores: passages.map((p) =>
+            /clears all fault buffers|buffers to 0/.test(p) ? -100 : /Press Stop/.test(p) ? 50 : 1,
+          ),
         }),
         { status: 200 },
       );
