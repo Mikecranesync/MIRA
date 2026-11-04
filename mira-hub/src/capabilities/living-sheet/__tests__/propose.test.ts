@@ -588,25 +588,31 @@ describe("Questions and negations never become work proposals (R2-08)", () => {
     expect(proposals[0]!.event.kind).toBe("reading_corrected");
   });
 
-  it("'will replace the seal' (modal opener, elliptical intent, no subject) is still a planned part, not a question", () => {
+  it("'will replace the seal' (modal opener, elliptical intent, no subject) is not a question, but is no longer a part either (R2-08-followup)", () => {
     // Regression guard: "will"/"would" are interrogative openers in general,
     // but shop shorthand drops the subject ("[I] will replace the seal").
+    // It was never a question. As of R2-08-followup it is also not a
+    // part_logged — "will replace" is intent, not a completed fact — so it
+    // falls through to a verbatim note instead.
     const proposals = proposeSheetUpdates("will replace the seal", emptyView());
     expect(proposals).toHaveLength(1);
-    expect(proposals[0]!.event.kind).toBe("part_logged");
-    expect((proposals[0]!.event.payload as { action: string }).action).toBe("planned");
+    expect(proposals[0]!.event.kind).toBe("note_added");
+    expect((proposals[0]!.event.payload as { text: string }).text).toBe("will replace the seal");
   });
 });
 
 describe("Parts", () => {
-  it("planned phrasing -> part_logged planned, low", () => {
+  it("R2-08-followup: planned/intent phrasing no longer logs a part — it falls through to a verbatim note", () => {
+    // Previously these four phrases special-cased to part_logged{action:"planned"}.
+    // The coordinator's probe of c5c2578e8 flagged this as the same class of
+    // bug as R2-08 via a different door: a plan is not a completed fact.
+    // INTENT_MARKER_RE now catches all four before PART_RE is ever tried, so
+    // action:"planned" is retired — see the hazard ledger in the task report.
     for (const text of ["will replace the seal", "going to replace the seal", "need to replace the seal", "need a new seal"]) {
       const proposals = proposeSheetUpdates(text, emptyView());
       expect(proposals, text).toHaveLength(1);
-      const payload = proposals[0]!.event.payload as { action: string; item: string };
-      expect(payload.action).toBe("planned");
-      expect(payload.item).toContain("seal");
-      expect(proposals[0]!.risk).toBe("low");
+      expect(proposals[0]!.event.kind, text).toBe("note_added");
+      expect((proposals[0]!.event.payload as { text: string }).text, text).toBe(text);
     }
   });
 
@@ -618,6 +624,88 @@ describe("Parts", () => {
       expect(payload.action).toBe("replaced");
       expect(proposals[0]!.risk).toBe("needs_tap");
     }
+  });
+});
+
+describe("Modal/future/intent markers never become a work proposal (R2-08-followup)", () => {
+  // Coordinator probe of c5c2578e8: the same class of bug as R2-08, found via
+  // a different door. A clause with a modal or future/intent marker anywhere
+  // in it (will, would, should, could, can, may, might, must, shall,
+  // need(s) to, have/has to, going to, gonna, plan(s) to, want(s) to, about
+  // to, tomorrow, later, next shift, to-do) is not a completed past fact, so
+  // it must never produce part_logged, reading_recorded, a done=true
+  // step_marked, or a job-finished note. ONLY a verbatim note_added (text
+  // === the tech's own words, not a generated/canned string — a fabricated
+  // "What unit is 2?" or "You said the job is done..." is just as much a
+  // fact-asserting proposal as the four forbidden kinds) or the existing
+  // handover_written path is allowed.
+  function assertNoWorkProposal(text: string) {
+    const proposals = proposeSheetUpdates(text, emptyView());
+    for (const p of proposals) {
+      if (p.event.kind === "handover_written") continue;
+      if (p.event.kind === "note_added") {
+        expect((p.event.payload as { text: string }).text, text).toBe(text);
+        continue;
+      }
+      if (p.event.kind === "step_marked") {
+        expect((p.event.payload as { done: boolean }).done, text).not.toBe(true);
+        continue;
+      }
+      throw new Error(
+        `${text} -> unexpected kind "${p.event.kind}" (only handover_written, a VERBATIM note_added, or step_marked(done:false) are allowed on an intent/future/modal clause)`,
+      );
+    }
+  }
+
+  it.each([
+    // The 3 bugs named verbatim in the coordinator's probe.
+    ["Will replace the bearing tomorrow", "future marker (tomorrow) + will"],
+    ["Need to replace the seal", "need-to intent"],
+    ["Can torque it to 40 Nm", "can (capability, not a measurement)"],
+    // The 4 "acceptable" cases from the probe — confirms they stay note_added.
+    ["Should replace the seal", "should intent"],
+    ["Could change the filter", "could intent"],
+    ["Did replace the seal", "past-tense 'did' + bare verb 'replace' (no PART_RE match either way)"],
+    ["Is step 1 done", "interrogative opener, not a state change"],
+    // The 6 additional cases required by the coordinator's table.
+    ["gonna swap the filter", "gonna intent"],
+    ["plan to torque to 40 Nm", "plan-to intent, suppresses the reading"],
+    ["need 2 new bearings", "need + digit object intent"],
+    ["should read 4.8 A", "should intent, suppresses the reading"],
+    ["will mark step 2 done", "will intent, suppresses the step_marked(done=true)"],
+    ["next shift: replace seal", "next-shift marker — handover_written is allowed, part_logged is not"],
+    // A few more modal/future markers not explicitly named, same property.
+    ["would replace the bearing", "would intent"],
+    ["must torque it to 40 Nm", "must intent, suppresses the reading"],
+    ["about to start the pump", "about-to intent"],
+    ["will mark the job done", "will intent, suppresses the canned 'You said the job is done' completion note"],
+  ] as const)("%s -> no part_logged/reading_recorded/done-step/canned-completion (%s)", (text) => {
+    assertNoWorkProposal(text);
+  });
+
+  // Keep: these three must still work exactly as before — the property only
+  // blocks clauses that ARE intent/future/modal, not completed-fact ones.
+  it("'Replaced the seal' still logs a part (completed fact, no intent marker)", () => {
+    const proposals = proposeSheetUpdates("Replaced the seal", emptyView());
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0]!.event.kind).toBe("part_logged");
+    expect((proposals[0]!.event.payload as { action: string }).action).toBe("replaced");
+  });
+
+  it("'Have replaced the seal' still logs a part (perfect tense is completed, not an intent marker)", () => {
+    const proposals = proposeSheetUpdates("Have replaced the seal", emptyView());
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0]!.event.kind).toBe("part_logged");
+    expect((proposals[0]!.event.payload as { action: string }).action).toBe("replaced");
+  });
+
+  it("'Motor current 4.8 A' still records a reading (no intent marker)", () => {
+    const proposals = proposeSheetUpdates("Motor current 4.8 A", emptyView());
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0]!.event.kind).toBe("reading_recorded");
+    const payload = proposals[0]!.event.payload as { value: number; unit: string };
+    expect(payload.value).toBe(4.8);
+    expect(payload.unit).toBe("A");
   });
 });
 
