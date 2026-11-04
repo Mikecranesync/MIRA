@@ -22,7 +22,7 @@
  *    kinds use.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import type { JobSheetBody } from "@/capabilities/living-sheet/types";
+import type { JobSheetBody, JobSheetTorque } from "@/capabilities/living-sheet/types";
 import type { SheetProposal } from "@/capabilities/living-sheet/propose";
 import type { SheetStepView, SheetView } from "@/capabilities/living-sheet/reduce";
 import type { NotebookSheetReceiptFrame } from "@/lib/notebook-chat-types";
@@ -109,6 +109,30 @@ export function visibleProposals(proposals: readonly SheetProposal[], handled: R
 // ---------------------------------------------------------------------------
 // Styling — shared --fl-* tokens only, tap targets >=48px, base font >=17px
 // ---------------------------------------------------------------------------
+
+/** Ticking ON a torque, thread-locker or measurement step first shows what
+ *  the job sheet says (value, pattern, source). Un-ticking never asks. */
+export function stepNeedsConfirm(step: SheetStepView): boolean {
+  return !step.done && (step.checkoff === "torque" || step.checkoff === "loctite" || step.checkoff === "measurement");
+}
+
+export type StepConfirmDetail = { what: string; value: string; pattern: string | null; threadLocker: string | null; source: string };
+
+/** The template torque row a step refers to (by `what`, case-insensitive, or
+ *  by id), or null when the step names none. Never invents a value. */
+export function stepConfirmDetail(step: SheetStepView, torques: readonly JobSheetTorque[]): StepConfirmDetail | null {
+  if (!step.torqueRef) return null;
+  const ref = step.torqueRef.trim().toLowerCase();
+  const t = torques.find((x) => x.id === step.torqueRef || x.what.trim().toLowerCase() === ref);
+  if (!t) return null;
+  return {
+    what: t.what,
+    value: t.value === null ? "not written on the job sheet" : `${t.value}${t.unit ? ` ${t.unit}` : ""}`,
+    pattern: t.pattern,
+    threadLocker: t.threadLocker,
+    source: t.source ?? "no source — unverified",
+  };
+}
 
 export const SHEET_PILL_STYLE: CSSProperties = {
   background: "var(--fl-surface)", color: "var(--fl-text)", border: "1px solid var(--fl-line)",
@@ -209,6 +233,7 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
 
   const [handoverText, setHandoverText] = useState("");
   const [finishAck, setFinishAck] = useState(false);
+  const [confirmStep, setConfirmStep] = useState<SheetStepView | null>(null);
   const [noteText, setNoteText] = useState("");
   const [questionText, setQuestionText] = useState("");
   const [readingWhat, setReadingWhat] = useState("");
@@ -426,6 +451,10 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
 
   const onToggleStep = useCallback(
     (step: SheetStepView) => {
+      if (stepNeedsConfirm(step)) {
+        setConfirmStep(step);
+        return;
+      }
       void postEvent("step_marked", { stepId: step.id, done: !step.done, note: null });
     },
     [postEvent],
@@ -724,6 +753,34 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
                     <StepRow key={s.id} step={s} onToggle={onToggleStep} />
                   ))}
                 </ul>
+                {confirmStep && (() => {
+                  const detail = stepConfirmDetail(confirmStep, view.template.torques);
+                  return (
+                    <div role="dialog" aria-label="Check before marking done" style={SECTION_STYLE} data-testid="living-sheet-step-confirm">
+                      <p style={{ marginTop: 0 }}><strong>{confirmStep.text}</strong></p>
+                      {detail ? (
+                        <>
+                          <p style={{ margin: "4px 0" }}>Job sheet says: {detail.what} — {detail.value}</p>
+                          {detail.pattern && <p style={{ margin: "4px 0" }}>Pattern: {detail.pattern}</p>}
+                          {detail.threadLocker && <p style={{ margin: "4px 0" }}>Thread-locker: {detail.threadLocker}</p>}
+                          <p style={{ margin: "4px 0", color: "var(--fl-muted)" }}>Source: {detail.source}</p>
+                        </>
+                      ) : (
+                        <p style={{ margin: "4px 0", color: "var(--fl-muted)" }}>The job sheet has no value written for this step.</p>
+                      )}
+                      <button
+                        type="button" style={BUTTON_STYLE} data-testid="living-sheet-step-confirm-done"
+                        onClick={() => {
+                          void postEvent("step_marked", { stepId: confirmStep.id, done: true, note: null });
+                          setConfirmStep(null);
+                        }}
+                      >
+                        Mark done
+                      </button>{" "}
+                      <button type="button" style={GHOST_BUTTON_STYLE} onClick={() => setConfirmStep(null)}>Cancel</button>
+                    </div>
+                  );
+                })()}
               </section>
 
               <section style={SECTION_STYLE} data-testid="living-sheet-readings">

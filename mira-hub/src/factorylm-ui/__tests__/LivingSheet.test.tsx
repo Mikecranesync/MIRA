@@ -18,6 +18,8 @@ import {
   receiptBannerText,
   shouldShowPill,
   visibleProposals,
+  stepNeedsConfirm,
+  stepConfirmDetail,
 } from "../LivingSheet";
 import type { SheetView } from "@/capabilities/living-sheet/reduce";
 import type { SheetProposal } from "@/capabilities/living-sheet/propose";
@@ -110,5 +112,31 @@ describe("visibleProposals — Accept/Skip must actually remove a proposal from 
   it("filters out any proposalId already accepted or skipped", () => {
     expect(visibleProposals(proposals, new Set(["p1"]))).toEqual([proposals[1]]);
     expect(visibleProposals(proposals, new Set(["p1", "p2"]))).toEqual([]);
+  });
+});
+
+describe("torque / thread-locker / measurement steps confirm before marking done", () => {
+  const torques = [
+    { id: "t1", what: "Bearing cap bolts", value: 85, unit: "ft-lb", pattern: "star pattern", threadLocker: null, tool: "Torque wrench", source: "Shop sheet C3-LW" },
+    { id: "t2", what: "Set screw", value: 12, unit: "ft-lb", pattern: null, threadLocker: "medium", tool: null, source: null },
+  ];
+  const step = (checkoff: "none" | "torque" | "loctite" | "measurement" | "photo", torqueRef: string | null, done = false) =>
+    ({ id: "s", text: "Torque bearing cap bolts", checkoff, torqueRef, source: null, done, doneBy: null, doneAt: null, note: null, history: [] });
+  it("needs a confirm only when ticking ON a torque, loctite or measurement step", () => {
+    expect(stepNeedsConfirm(step("torque", "Bearing cap bolts"))).toBe(true);
+    expect(stepNeedsConfirm(step("loctite", "Set screw"))).toBe(true);
+    expect(stepNeedsConfirm(step("measurement", null))).toBe(true);
+    expect(stepNeedsConfirm(step("none", null))).toBe(false);
+    expect(stepNeedsConfirm(step("torque", "Bearing cap bolts", true))).toBe(false);
+  });
+  it("shows the template torque value and its source, matched by what or id", () => {
+    expect(stepConfirmDetail(step("torque", "Bearing cap bolts"), torques)).toEqual({
+      what: "Bearing cap bolts", value: "85 ft-lb", pattern: "star pattern", threadLocker: null, source: "Shop sheet C3-LW",
+    });
+    expect(stepConfirmDetail(step("loctite", "t2"), torques)?.threadLocker).toBe("medium");
+  });
+  it("an unsourced torque says so plainly; a missing reference returns null", () => {
+    expect(stepConfirmDetail(step("loctite", "Set screw"), torques)?.source).toBe("no source — unverified");
+    expect(stepConfirmDetail(step("measurement", null), torques)).toBeNull();
   });
 });
