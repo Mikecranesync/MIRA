@@ -1,6 +1,6 @@
 # PF525 fault-history Clear Buffer — 2026-11-04 follow-up
 
-Draft PR #5174 rebased onto main (includes #5181 pinned-head rerank). Product change unchanged: A551 Clear Buffer (p.135) stays next to fault-history rows; catalog 25B maps to PowerFlex 525. Hermetic fixture now asserts that survival with NOTEBOOK_RERANK on (cross-encoder scores A551 last) and off. Docker Build Check Trivy install is pinned to v0.76.1 with retries and a SHA-256 check; scans still run. Tests stay under mira-hub/src/capabilities/__tests__. No merge, ready, or deploy.
+Draft PR #5174 rebased onto main (includes #5181 pinned-head rerank). Product change: A551 Clear Buffer (p.135) stays next to fault-history rows; catalog 25B maps to PowerFlex 525. A live-fault Reset procedure that only names Fault Clear is not the control row — the helper keeps the buffer-write chunk. Fixture asserts survival with NOTEBOOK_RERANK on and off. Docker Build Check Trivy is pinned to v0.76.1 with retries and a SHA-256 check. Tests stay under mira-hub/src/capabilities/__tests__. No merge, ready, or deploy.
 
 ---
 

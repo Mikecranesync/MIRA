@@ -20,6 +20,8 @@ const HISTORY_P144 =
   "F604…F610 are the older fault codes in the 10-fault history. Related Parameters: b007…b009.";
 const CONTROL_P135 =
   "A551 [Fault Clear] 1 Reset Fault (buffers kept) 2 Clear Buffer (all fault buffers to 0).";
+const RESET_P160 =
+  "The cause must be corrected before the fault can be cleared. Press Stop, then set A551 Fault Clear to reset the drive after you verify the condition.";
 const INDEX_P75 =
   "Modified group P034 Motor NP FLA P035 Motor NP Poles P036 Motor NP RPM(1) 641 Fault 9 Current(1)";
 
@@ -45,6 +47,7 @@ describe("fault-history display → control expansion (#4863)", () => {
     expect(isHistoryControlChunk(CONTROL_P135)).toBe(true);
     expect(isHistoryControlChunk(HISTORY_P79)).toBe(false);
     expect(isHistoryControlChunk(HISTORY_P144)).toBe(false);
+    expect(isHistoryControlChunk(RESET_P160)).toBe(false);
   });
 
   it("derives control queries from the object the display rows named, not a frozen parameter ID", () => {
@@ -67,6 +70,16 @@ describe("fault-history display → control expansion (#4863)", () => {
   it("does not invent a control chunk the pool does not have", () => {
     const display = { content: HISTORY_P144, id: "d" };
     expect(ensureHistoryControlRepresentation([display], [display], 2)).toEqual([display]);
+  });
+
+  it("does not treat a live-fault Reset procedure as the history-control row", () => {
+    const display = { content: HISTORY_P144, id: "d" };
+    const reset = { content: RESET_P160, id: "r" };
+    const control = { content: CONTROL_P135, id: "c" };
+    const out = ensureHistoryControlRepresentation([display, reset], [display, reset, control], 2);
+    expect(out.map((c) => c.id)).toContain("c");
+    expect(out.map((c) => c.content).join("\n")).toMatch(/Clear Buffer/);
+    expect(out.map((c) => c.id)).not.toContain("r");
   });
 });
 

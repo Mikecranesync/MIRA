@@ -530,6 +530,12 @@ const HISTORY_DISPLAY_OBJECT =
 const HISTORY_CONTROL_ACTION =
   /\bfault\s+clear\b|\bclear\s+buffers?\b|\bclears?\s+all\s+fault\s+buffers?\b|\breset\s+(?:the\s+)?(?:fault\s+)?(?:buffers?|queue|history)\b|\bclear\s+(?:the\s+)?(?:fault\s+)?(?:queue|history)\b/i;
 
+/** Write-to-history action: option 2 Clear Buffer / queue reset. Bare
+ *  "Fault Clear" also names option 1 (Reset Fault, buffers kept), so it is
+ *  a search term, not enough to count as the control row we must keep. */
+const HISTORY_BUFFER_WRITE =
+  /\bclear\s+buffers?\b|\bclears?\s+all\s+fault\s+buffers?\b|\breset\s+(?:the\s+)?(?:fault\s+)?(?:buffers?|queue|history)\b|\bclear\s+(?:the\s+)?(?:fault\s+)?(?:queue|history)\b/i;
+
 /** True when the ask is why the fault history/queue is empty, zero, missing,
  *  or blank — not a fault-code meaning lookup and not a generic reset how-to. */
 export function isEmptyHistoryAsk(query: string): boolean {
@@ -543,10 +549,11 @@ export function isFaultHistoryDisplayChunk(text: string): boolean {
   return HISTORY_DISPLAY_OBJECT.test(text);
 }
 
-/** The action parameter that clears/resets the same history object the display
- *  rows report (enumerated Fault Clear / Clear Buffer / queue reset). */
+/** The action that writes the same history object the display rows report
+ *  (Clear Buffer / queue reset). Naming [Fault Clear] for a live reset is not
+ *  that role — those buffers stay. */
 export function isHistoryControlChunk(text: string): boolean {
-  return HISTORY_CONTROL_ACTION.test(text);
+  return HISTORY_BUFFER_WRITE.test(text);
 }
 
 /** Search phrases for the CONTROL counterpart of display rows already in the
