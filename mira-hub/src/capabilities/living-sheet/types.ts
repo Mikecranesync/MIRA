@@ -132,6 +132,13 @@ export type ReadingCorrectedPayload = {
   value: number;
   unit: string;
   reason: string | null;
+  /** R2-14 (additive — older stored events predate this key, and are read
+   *  as if it were `null`): the correction's OWN source citation. When the
+   *  technician doesn't state one, the corrected reading reports
+   *  technician-reported — it must never keep showing the superseded
+   *  value's citation (e.g. a manual page) beside a number that citation
+   *  never supported. */
+  source?: ReadingSource | null;
 };
 
 export const NOTE_KINDS = ["note", "question"] as const;

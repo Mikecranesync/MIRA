@@ -118,6 +118,53 @@ describe("validateJobSheetBody", () => {
     );
     expect(r.ok).toBe(true);
   });
+
+  // ---------------------------------------------------------------------
+  // R2-16 (egm-review/verdict-r2.md) — a step that carries a torqueRef
+  // must actually need confirmation (checkoff !== "none"), and the ref
+  // must name a torque that exists in THIS body's torques[].
+  // Property: torqueRef != null  =>  (checkoff != "none" AND torqueRef is
+  // a real torques[].id). Table of adversarial variants, not just the
+  // reviewer's single checkoff:"none" example.
+  // ---------------------------------------------------------------------
+  describe("R2-16: a step referencing a torque must need confirmation and name a real torque", () => {
+    it.each<[string, Record<string, unknown>]>([
+      ["checkoff:none with a torqueRef pointing at a real torque", { checkoff: "none", torqueRef: "t1" }],
+      ["checkoff:none with a torqueRef pointing at NO torque at all", { checkoff: "none", torqueRef: "does-not-exist" }],
+      ["checkoff:torque but torqueRef names a torque id from a DIFFERENT template entirely", { checkoff: "torque", torqueRef: "some-other-templates-torque" }],
+      ["checkoff:torque but torqueRef is empty-template-shaped garbage", { checkoff: "torque", torqueRef: "t-typo" }],
+      ["checkoff:loctite (still a confirm kind) with an unknown torqueRef", { checkoff: "loctite", torqueRef: "t9" }],
+      ["checkoff:measurement (still a confirm kind) with an unknown torqueRef", { checkoff: "measurement", torqueRef: "t9" }],
+    ])("rejects: %s", (_label, overrides) => {
+      const r = validateJobSheetBody(
+        validTemplate({
+          torques: [{ id: "t1", what: "Flange bolts", value: 35, unit: "ft-lb", pattern: null, threadLocker: null, tool: null, source: "manual p.12" }],
+          steps: [{ id: "step-1", text: "Torque the flange", source: null, ...overrides }],
+        }),
+      );
+      expect(r.ok).toBe(false);
+    });
+
+    it("control: checkoff:torque with a torqueRef that names a real torque in this body is accepted", () => {
+      const r = validateJobSheetBody(
+        validTemplate({
+          torques: [{ id: "t1", what: "Flange bolts", value: 35, unit: "ft-lb", pattern: null, threadLocker: null, tool: null, source: "manual p.12" }],
+          steps: [{ id: "step-1", text: "Torque the flange", checkoff: "torque", torqueRef: "t1", source: null }],
+        }),
+      );
+      expect(r.ok).toBe(true);
+    });
+
+    it("control: checkoff:none with NO torqueRef at all is accepted (the ordinary non-torque step)", () => {
+      const r = validateJobSheetBody(
+        validTemplate({
+          torques: [{ id: "t1", what: "Flange bolts", value: 35, unit: "ft-lb", pattern: null, threadLocker: null, tool: null, source: "manual p.12" }],
+          steps: [{ id: "step-1", text: "Check seal", checkoff: "none", torqueRef: null, source: null }],
+        }),
+      );
+      expect(r.ok).toBe(true);
+    });
+  });
 });
 
 describe("validateStartJobInput", () => {
@@ -241,5 +288,68 @@ describe("validateAppendEventInput", () => {
     const future = new Date(NOW.getTime() + 6 * 60 * 1000).toISOString();
     const r = validateAppendEventInput(appendBody({ occurredAt: future }), { now: NOW });
     expect(r).toMatchObject({ ok: false, error: "invalid_occurred_at", field: "occurredAt" });
+  });
+
+  // R2-14: reading_corrected may carry its own `source` (support for
+  // reduce.ts no longer inheriting the superseded value's citation).
+  describe("reading_corrected — optional source", () => {
+    it("control: a correction with no `source` key at all is accepted (older/unstated case)", () => {
+      const r = validateAppendEventInput(
+        appendBody({ kind: "reading_corrected", payload: { readingId: READING_ID, value: 4.8, unit: "A", reason: "misread" } }),
+        { now: NOW },
+      );
+      expect(r.ok).toBe(true);
+      if (r.ok) expect((r.value.payload as { source?: unknown }).source).toBeNull();
+    });
+
+    it("control: a correction with source: null is accepted", () => {
+      const r = validateAppendEventInput(
+        appendBody({ kind: "reading_corrected", payload: { readingId: READING_ID, value: 4.8, unit: "A", reason: "misread", source: null } }),
+        { now: NOW },
+      );
+      expect(r.ok).toBe(true);
+    });
+
+    it("control: a correction with a well-formed tech source is accepted and carried through", () => {
+      const r = validateAppendEventInput(
+        appendBody({
+          kind: "reading_corrected",
+          payload: { readingId: READING_ID, value: 4.8, unit: "A", reason: "misread", source: { kind: "tech", ref: null } },
+        }),
+        { now: NOW },
+      );
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.value.payload).toMatchObject({ source: { kind: "tech", ref: null } });
+    });
+
+    it("rejects an unknown source.kind", () => {
+      const r = validateAppendEventInput(
+        appendBody({
+          kind: "reading_corrected",
+          payload: { readingId: READING_ID, value: 4.8, unit: "A", reason: "misread", source: { kind: "guessed", ref: null } },
+        }),
+        { now: NOW },
+      );
+      expect(r).toMatchObject({ ok: false, error: "invalid_source_kind", field: "payload.source.kind" });
+    });
+
+    it("rejects a source that isn't an object", () => {
+      const r = validateAppendEventInput(
+        appendBody({ kind: "reading_corrected", payload: { readingId: READING_ID, value: 4.8, unit: "A", reason: "misread", source: "manual" } }),
+        { now: NOW },
+      );
+      expect(r).toMatchObject({ ok: false, error: "invalid_source", field: "payload.source" });
+    });
+
+    it("rejects an unknown field inside source", () => {
+      const r = validateAppendEventInput(
+        appendBody({
+          kind: "reading_corrected",
+          payload: { readingId: READING_ID, value: 4.8, unit: "A", reason: "misread", source: { kind: "tech", ref: null, extra: "nope" } },
+        }),
+        { now: NOW },
+      );
+      expect(r).toMatchObject({ ok: false, error: "unknown_field", field: "payload.source" });
+    });
   });
 });

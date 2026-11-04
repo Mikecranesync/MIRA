@@ -412,6 +412,176 @@ describe("parseJobSheetText — F25 quoted multiline cells", () => {
 });
 
 // ---------------------------------------------------------------------------
+// R2-12 (egm-review/verdict-r2.md) — quoted mode opens ONLY when the `"` is
+// the FIRST character of a cell (RFC 4180). A quote mid-cell — an inch mark
+// in "Use 1/2" wrench" — is literal text, never a quote-open. Pre-fix, ANY
+// `"` anywhere opened quoted mode, so an inch mark started swallowing every
+// delimiter/newline that followed until the next stray `"` turned up
+// somewhere downstream (or EOF, if none did).
+// ---------------------------------------------------------------------------
+
+describe('parseJobSheetText — R2-12: a quote mid-cell (an inch mark) is literal, never a quote-open', () => {
+  function cardWithCautionValue(value: string): string {
+    return tsv(
+      ["Job ID", "LW-12"],
+      ["Job title", "R2-12 regression"],
+      ["Cautions / hazards", value],
+      ["Isolation / LOTO points", "None — hand tools only"],
+      ["⚠️ BRING TO THE JOB"],
+      ["Kind", "Item", "Size / spec / part no.", "Qty", "Source", "Notes"],
+      ["tool", "Phillips screwdriver", "#2", "1", "Shop toolbox", ""],
+    );
+  }
+
+  it.each<[string, string]>([
+    ["reviewer's example", 'Use 1/2" wrench'],
+    ["quote mid-sentence, more text after", 'Use 1/2" wrench to tighten the collar'],
+    ["quote appears later in a longer sentence", 'Torque to 35 Nm using a 1/2" drive socket'],
+    ["different fraction, trailing clause after the mark", 'Clearance is 3/4" minimum, check twice'],
+    ["TWO stray quotes in one cell (must not pair up as a fake quoted span)", 'Diameter 1/2" or 5/8" — check both ends'],
+    ["quote near the very end of the cell, nothing meaningful after it", 'Panel is 19" rack mount'],
+  ])("%s: %j stays one tab-delimited cell, and every row after it (incl. a new TAB-delimited field and a later section) still parses", (_label, value) => {
+    const preview = parseJobSheetText(cardWithCautionValue(value), { layout: "job_card" });
+    expect(preview.jobs).toHaveLength(1);
+    const body = preview.jobs[0]!.body;
+    // The quote-mid-cell value survives byte-for-byte — never truncated,
+    // never merged with later rows.
+    expect(body.cautions).toBe(value);
+    // The very next TAB-delimited field on a later row was NOT swallowed.
+    expect(body.isolationPoints).toBe("None — hand tools only");
+    // Nor was the entire BRING TO THE JOB section after it.
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0]!.item).toBe("Phillips screwdriver");
+  });
+
+  it("CSV (comma-delimited) variant: the same mid-cell quote is literal, not a quote-open", () => {
+    const text = [
+      "Job ID,LW-13",
+      "Job title,R2-12 CSV regression",
+      'Cautions / hazards,Use 1/2" wrench to tighten',
+      "Isolation / LOTO points,None",
+      "BRING TO THE JOB",
+      "Kind,Item,Size / spec / part no.,Qty,Source,Notes",
+      "tool,Phillips screwdriver,#2,1,Shop toolbox,",
+    ].join("\n");
+    const preview = parseJobSheetText(text, { layout: "job_card" });
+    expect(preview.jobs[0]!.body.cautions).toBe('Use 1/2" wrench to tighten');
+    expect(preview.jobs[0]!.body.isolationPoints).toBe("None");
+    expect(preview.jobs[0]!.body.items).toHaveLength(1);
+  });
+
+  it("control: a GENUINE quoted cell (quote IS the first character) still opens quoted mode", () => {
+    // Regression guard on the fix itself: don't overcorrect into never
+    // opening quoted mode at all.
+    const text = [
+      "Job ID,LW-14",
+      "Job title,R2-12 genuine-quote control",
+      'Cautions / hazards,"Chain may pinch fingers\nwear gloves when adjusting"',
+      "Isolation / LOTO points,None",
+      "BRING TO THE JOB",
+      "Kind,Item,Size / spec / part no.,Qty,Source,Notes",
+      "tool,Phillips screwdriver,#2,1,Shop toolbox,",
+    ].join("\n");
+    const preview = parseJobSheetText(text, { layout: "job_card" });
+    expect(preview.jobs[0]!.body.cautions).toBe("Chain may pinch fingers\nwear gloves when adjusting");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// R2-11 (egm-review/verdict-r2.md) — a row is a section heading ONLY if
+// every cell after the first is empty. Any row with data in another cell is
+// DATA, even when its first cell contains a marker word like "torque". A row
+// consumed by no section/step raises an omission warning — it never just
+// vanishes.
+// ---------------------------------------------------------------------------
+
+describe("parseJobSheetText — R2-11: a heading row is a heading only if the other cells are empty", () => {
+  function minimalHeaderRows(): string[][] {
+    return [
+      ["Job ID", "LW-99"],
+      ["Job title", "R2-11 regression"],
+    ];
+  }
+
+  // Every torque row is [what, value, unit, pattern, threadLocker, tool, source].
+  const REAL_TORQUE = ["Flange nut", "40", "Nm", "", "", "", "Shop manual p.9"];
+
+  function torqueCardText(ambiguousRow: string[]): string {
+    return tsv(
+      ...minimalHeaderRows(),
+      ["Torque & settings"],
+      ["What", "Value", "Unit", "Pattern / sequence", "Thread-locker", "Tool", "Source"],
+      ambiguousRow,
+      REAL_TORQUE,
+      ["Steps"],
+      ["Step #", "Instruction", "Check-off", "Refers to torque row", "Photo / drawing", "Source"],
+      ["1", "Final check", "none", "", "", ""],
+    );
+  }
+
+  it.each<[string, string[]]>([
+    ["torque (reviewer's example)", ["Motor mounting bolt torque", "35", "Nm", "", "", "", "Shop manual p.1"]],
+    ["steps (exact-match label, as a literal item name)", ["Steps", "10", "Nm", "", "", "", ""]],
+    ["notes (exact-match label, as a literal item name)", ["Notes", "5", "Nm", "", "", "", ""]],
+    ["bring to the job (substring)", ["Bring to the job torque bracket", "12", "Nm", "", "", "", ""]],
+    ["return-to-service (hyphenated substring)", ["Return-to-service torque check", "8", "Nm", "", "", "", ""]],
+    ["return to service (space-variant substring)", ["Return to service torque", "6", "Nm", "", "", "", ""]],
+  ])("a %s DATA row with data in other cells is never treated as a heading", (_label, row) => {
+    const preview = parseJobSheetText(torqueCardText(row), { layout: "job_card" });
+    const job = preview.jobs[0]!;
+    // Both the ambiguous row AND the real row after it were consumed as
+    // torque data — the section did not end early and swallow the real
+    // row as a bogus "header" line.
+    expect(job.body.torques).toHaveLength(2);
+    expect(job.body.torques[0]!.what).toBe(row[0]);
+    expect(job.body.torques[0]!.value).toBe(Number(row[1]));
+    expect(job.body.torques[1]!.what).toBe("Flange nut");
+    // The Steps section after it still parsed — nothing ran past it.
+    expect(job.body.steps).toHaveLength(1);
+    // Neither row was silently eaten: no omission warning for either.
+    expect(job.warnings.some((w) => w.includes("Unrecognized row"))).toBe(false);
+  });
+
+  it("control: a genuine heading row (only column A has text) still ends the section", () => {
+    const text = tsv(
+      ...minimalHeaderRows(),
+      ["Torque & settings"],
+      ["What", "Value", "Unit", "Pattern / sequence", "Thread-locker", "Tool", "Source"],
+      REAL_TORQUE,
+      ["Steps"], // genuine heading: only column A has text
+      ["Step #", "Instruction", "Check-off", "Refers to torque row", "Photo / drawing", "Source"],
+      ["1", "Final check", "none", "", "", ""],
+    );
+    const preview = parseJobSheetText(text, { layout: "job_card" });
+    expect(preview.jobs[0]!.body.torques).toHaveLength(1);
+    expect(preview.jobs[0]!.body.steps).toHaveLength(1);
+  });
+});
+
+describe("parseJobSheetText — R2-11: an input row consumed by no section/step produces an omission warning", () => {
+  it("a stray unrecognized row between header fields and the first section warns, by name, and parsing recovers afterward", () => {
+    const text = tsv(
+      ["Job ID", "LW-98"],
+      ["Job title", "R2-11 omission regression"],
+      ["Spreadsheet export note — ignore this line"],
+      ["Torque & settings"],
+      ["What", "Value", "Unit", "Pattern / sequence", "Thread-locker", "Tool", "Source"],
+      ["Flange nut", "40", "Nm", "", "", "", "Shop manual p.9"],
+    );
+    const preview = parseJobSheetText(text, { layout: "job_card" });
+    const job = preview.jobs[0]!;
+    expect(job.warnings.some((w) => w.includes("Unrecognized row") && w.includes("Spreadsheet export note"))).toBe(true);
+    // Recovery: the real section after the stray row still parsed.
+    expect(job.body.torques).toHaveLength(1);
+  });
+
+  it("control: a fully recognized card produces no 'Unrecognized row' warning", () => {
+    const preview = parseJobSheetText(JOB_CARD_TEXT, { layout: "job_card" });
+    expect(preview.jobs[0]!.warnings.some((w) => w.includes("Unrecognized row"))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Validator reuse (TASK-S4 §Files: "reuse JobSheetBody and its validator")
 // ---------------------------------------------------------------------------
 

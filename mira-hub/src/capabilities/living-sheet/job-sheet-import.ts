@@ -88,16 +88,26 @@ function detectDelimiter(text: string): "\t" | "," {
  *  unrecognized row (F25). Quote handling (`""` escapes to one `"`,
  *  trimmed cell text) now applies identically for BOTH delimiters — TSV
  *  previously had none at all. Unquoted behavior is unchanged: a bare cell
- *  is still just trimmed text split on the detected delimiter. */
+ *  is still just trimmed text split on the detected delimiter.
+ *
+ *  R2-12: quoted mode opens ONLY when the `"` is the very first character
+ *  of a cell (RFC 4180) — tracked by `atCellStart`, which is true only
+ *  until the first character (of any kind) of the current cell is seen.
+ *  A quote appearing mid-cell (`Use 1/2" wrench`) is therefore literal
+ *  text, never a quote-open — the prior version opened quoted mode on ANY
+ *  `"` anywhere in the text, so that inch mark started swallowing every
+ *  delimiter/newline/tab that followed until the next stray `"`. */
 function toRows(text: string): string[][] {
   const delimiter = detectDelimiter(text);
   const rows: string[][] = [];
   let row: string[] = [];
   let cur = "";
   let inQuotes = false;
+  let atCellStart = true;
   const pushCell = () => {
     row.push(cur.trim());
     cur = "";
+    atCellStart = true;
   };
   const pushRow = () => {
     pushCell();
@@ -119,8 +129,9 @@ function toRows(text: string): string[][] {
       }
       continue;
     }
-    if (ch === '"') {
+    if (ch === '"' && atCellStart) {
       inQuotes = true;
+      atCellStart = false;
     } else if (ch === delimiter) {
       pushCell();
     } else if (ch === "\r") {
@@ -132,6 +143,7 @@ function toRows(text: string): string[][] {
       pushRow();
     } else {
       cur += ch;
+      atCellStart = false;
     }
   }
   if (cur !== "" || row.length > 0) pushRow();
@@ -516,16 +528,26 @@ function normalizeLabel(s: string): string {
     .toLowerCase();
 }
 
-function isSectionMarker(cell: string): boolean {
-  const n = normalizeLabel(cell);
-  return (
+/** R2-11: a row is a section heading ONLY if every cell after the first is
+ *  empty. A data row that merely MENTIONS a marker word in its first cell
+ *  — "Motor mounting bolt torque" as an item/torque name, "Steps" as the
+ *  literal name of a tool — is still data the instant any other cell holds
+ *  something, and must be consumed by the current section, never treated
+ *  as the start of a new one. The prior version matched on the first cell
+ *  alone, so a data row shaped like a heading silently ended its section
+ *  and swallowed the next real row as if it were that new section's
+ *  column-header line. */
+function isSectionMarker(row: readonly string[]): boolean {
+  const n = normalizeLabel(row[0] ?? "");
+  const looksLikeMarker =
     n.includes("bring to the job") ||
     n.includes("torque") ||
     n === "steps" ||
     n.includes("return-to-service") ||
     n.includes("return to service") ||
-    n === "notes"
-  );
+    n === "notes";
+  if (!looksLikeMarker) return false;
+  return row.slice(1).every((c) => (c ?? "").trim() === "");
 }
 
 function parseJobCard(text: string): ImportPreview {
@@ -599,7 +621,7 @@ function parseJobCard(text: string): ImportPreview {
 
     if (label.includes("bring to the job")) {
       i += 2; // marker row + header row
-      while (i < rows.length && !isSectionMarker(rows[i]![0] ?? "")) {
+      while (i < rows.length && !isSectionMarker(rows[i]!)) {
         const r = rows[i]!;
         itemCounter++;
         const kind = mapEnumWithDefault(r[0], JOB_ITEM_KINDS, "part", "Kind", warnings);
@@ -616,7 +638,7 @@ function parseJobCard(text: string): ImportPreview {
 
     if (label.includes("torque")) {
       i += 2;
-      while (i < rows.length && !isSectionMarker(rows[i]![0] ?? "")) {
+      while (i < rows.length && !isSectionMarker(rows[i]!)) {
         const r = rows[i]!;
         torqueCounter++;
         const what = cellText(r[0], "What", warnings) ?? "";
@@ -647,7 +669,7 @@ function parseJobCard(text: string): ImportPreview {
 
     if (label === "steps") {
       i += 2;
-      while (i < rows.length && !isSectionMarker(rows[i]![0] ?? "")) {
+      while (i < rows.length && !isSectionMarker(rows[i]!)) {
         const r = rows[i]!;
         stepCounter++;
         const numRaw = (r[0] ?? "").trim();
@@ -668,7 +690,7 @@ function parseJobCard(text: string): ImportPreview {
 
     if (label.includes("return-to-service") || label.includes("return to service")) {
       i++; // marker row
-      while (i < rows.length && !isSectionMarker(rows[i]![0] ?? "")) {
+      while (i < rows.length && !isSectionMarker(rows[i]!)) {
         const r = rows[i]!;
         const cell = (r[1] ?? "").trim() !== "" ? r[1] : r[0];
         const v = cellText(cell, "Return-to-service checks", warnings);
@@ -692,7 +714,10 @@ function parseJobCard(text: string): ImportPreview {
       continue;
     }
 
-    // An unrecognized row never throws — it's just skipped.
+    // R2-11: a row matching no known field/section label never throws, but
+    // it must never vanish silently either — every input row lands in a
+    // section, a step, or an omission warning naming it.
+    warnings.push(`Unrecognized row "${row.join(" | ")}" — not imported into any section`);
     i++;
   }
 

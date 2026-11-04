@@ -162,6 +162,99 @@ describe("reduceSheet — reading supersede (48 -> 4.8)", () => {
   });
 });
 
+describe("reduceSheet — R2-14: a correction carries its OWN source, never the superseded value's", () => {
+  const readingId = "22222222-2222-4222-8222-222222222222";
+
+  it("a manual-sourced 48 A corrected with NO stated source becomes technician-reported, not manual", () => {
+    const a = started();
+    const b = ev("reading_recorded", {
+      readingId,
+      what: "motor current",
+      value: 48,
+      unit: "A",
+      source: { kind: "manual", ref: "p.12" },
+    } as ReadingRecordedPayload);
+    const c = ev("reading_corrected", { readingId, value: 4.8, unit: "A", reason: "misread" } as ReadingCorrectedPayload);
+    const view = reduceSheet([a, b, c], JOB_ID);
+
+    const reading = view.readings[0]!;
+    expect(reading.current).toMatchObject({ value: 4.8 });
+    // The TOP-LEVEL (current) source is technician-reported, never the
+    // manual citation the superseded 48 A carried.
+    expect(reading.source).toEqual({ kind: "tech", ref: null });
+    // History preserves BOTH: 48 A still shows its real manual citation;
+    // 4.8 A shows its own (defaulted) technician-reported source. Neither
+    // entry's own source was rewritten by the other.
+    expect(reading.history[0]).toMatchObject({ value: 48, source: { kind: "manual", ref: "p.12" } });
+    expect(reading.history[1]).toMatchObject({ value: 4.8, source: { kind: "tech", ref: null } });
+  });
+
+  it("a correction that DOES state its own source uses that source, not technician-reported", () => {
+    const a = started();
+    const b = ev("reading_recorded", {
+      readingId,
+      what: "motor current",
+      value: 48,
+      unit: "A",
+      source: { kind: "manual", ref: "p.12" },
+    } as ReadingRecordedPayload);
+    const c = ev("reading_corrected", {
+      readingId,
+      value: 50,
+      unit: "A",
+      reason: "re-checked against the nameplate",
+      source: { kind: "manual", ref: "p.13" },
+    } as ReadingCorrectedPayload);
+    const view = reduceSheet([a, b, c], JOB_ID);
+
+    const reading = view.readings[0]!;
+    expect(reading.source).toEqual({ kind: "manual", ref: "p.13" });
+    expect(reading.history[1]).toMatchObject({ value: 50, source: { kind: "manual", ref: "p.13" } });
+  });
+
+  it("a SECOND correction's source becomes current; the first correction's own source is preserved in history, not overwritten", () => {
+    const a = started();
+    const b = ev("reading_recorded", {
+      readingId,
+      what: "motor current",
+      value: 48,
+      unit: "A",
+      source: { kind: "manual", ref: "p.12" },
+    } as ReadingRecordedPayload);
+    const c = ev("reading_corrected", { readingId, value: 4.8, unit: "A", reason: "misread" } as ReadingCorrectedPayload);
+    const d = ev("reading_corrected", {
+      readingId,
+      value: 4.9,
+      unit: "A",
+      reason: "re-measured",
+      source: { kind: "tech", ref: "clamp meter" },
+    } as ReadingCorrectedPayload);
+    const view = reduceSheet([a, b, c, d], JOB_ID);
+
+    const reading = view.readings[0]!;
+    expect(reading.current).toMatchObject({ value: 4.9 });
+    expect(reading.source).toEqual({ kind: "tech", ref: "clamp meter" });
+    expect(reading.history.map((h) => ({ value: h.value, source: h.source, superseded: h.superseded }))).toEqual([
+      { value: 48, source: { kind: "manual", ref: "p.12" }, superseded: true },
+      { value: 4.8, source: { kind: "tech", ref: null }, superseded: true },
+      { value: 4.9, source: { kind: "tech", ref: "clamp meter" }, superseded: false },
+    ]);
+  });
+
+  it("control: an uncorrected reading's source is just what it was recorded with", () => {
+    const a = started();
+    const b = ev("reading_recorded", {
+      readingId,
+      what: "motor current",
+      value: 48,
+      unit: "A",
+      source: { kind: "tech", ref: null },
+    } as ReadingRecordedPayload);
+    const view = reduceSheet([a, b], JOB_ID);
+    expect(view.readings[0]!.source).toEqual({ kind: "tech", ref: null });
+  });
+});
+
 describe("reduceSheet — notes, questions, parts, photos, handover, finish", () => {
   it("note_added with noteKind=note goes to notes; noteKind=question goes to questions and can be resolved", () => {
     const a = started();
