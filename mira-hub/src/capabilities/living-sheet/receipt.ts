@@ -18,6 +18,14 @@ export type SheetReceiptContext = {
   notebookId: string;
   jobId: string;
   techText: string;
+  /** F08: the chat message/turn id (e.g. the route's `clientRequestId` /
+   *  `turnId`), stable across a retry of the SAME turn and distinct across
+   *  two SEPARATE turns. Threaded into `proposeSheetUpdates` so identical
+   *  technician words in two different turns get distinct proposal/payload
+   *  ids instead of colliding in the store's dedup-by-id check. Optional
+   *  only for back-compat with a caller that has not been wired up yet —
+   *  omitting it reproduces the pre-fix collision. */
+  turnId?: string;
 };
 
 const DONE_MARK = "data: [DONE]";
@@ -80,7 +88,7 @@ export async function withSheetReceipt(res: Response, ctx: SheetReceiptContext):
     if (result.status !== "ok") return res;
     const view = result.view;
 
-    const proposals = proposeSheetUpdates(ctx.techText, view);
+    const proposals = proposeSheetUpdates(ctx.techText, view, ctx.turnId);
     const frame: NotebookSheetReceiptFrame = {
       kind: "sheet_receipt",
       jobId: ctx.jobId,
