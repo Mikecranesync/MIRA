@@ -13,7 +13,7 @@
  */
 import { API_BASE } from "@/lib/config";
 import type { EventKind, JobSheetBody } from "@/capabilities/living-sheet/types";
-import type { SheetView } from "@/capabilities/living-sheet/reduce";
+import type { SheetStepView, SheetView } from "@/capabilities/living-sheet/reduce";
 import type { SheetEvent } from "@/capabilities/living-sheet/types";
 import type { SheetProposal } from "@/capabilities/living-sheet/propose";
 import type { NotebookSheetReceiptFrame } from "@/lib/notebook-chat-types";
@@ -27,7 +27,11 @@ import type { ShiftReport, ShiftReportWindow } from "@/capabilities/living-sheet
 
 export interface KvStore {
   get(key: string): Promise<string | null>;
-  set(key: string, value: string): Promise<void>;
+  /** Returns whether the write actually persisted. F06: a swallowed
+   *  `setItem` failure (private window, quota) must never look identical to
+   *  a real save to the caller — the caller needs to know the write was
+   *  lost so it can keep the form contents and refuse to say "Saved". */
+  set(key: string, value: string): Promise<boolean>;
   remove(key: string): Promise<void>;
   keys(): Promise<string[]>;
 }
@@ -44,9 +48,12 @@ export const localStorageStore: KvStore = {
   },
   async set(key, value) {
     try {
-      if (typeof window !== "undefined") window.localStorage.setItem(key, value);
+      if (typeof window === "undefined") return false;
+      window.localStorage.setItem(key, value);
+      return true;
     } catch {
-      /* private window / quota / blocked storage — drop silently */
+      /* private window / quota / blocked storage — the caller must see this */
+      return false;
     }
   },
   async remove(key) {
@@ -120,8 +127,9 @@ export async function loadSheetQueue(store: KvStore, scopeId: string, jobId: str
   }
 }
 
-async function saveSheetQueue(store: KvStore, scopeId: string, jobId: string, q: QueuedSheetEvent[]): Promise<void> {
-  await store.set(sheetQueueKey(scopeId, jobId), JSON.stringify(q));
+/** Returns whether the write actually persisted (see KvStore.set). */
+async function saveSheetQueue(store: KvStore, scopeId: string, jobId: string, q: QueuedSheetEvent[]): Promise<boolean> {
+  return store.set(sheetQueueKey(scopeId, jobId), JSON.stringify(q));
 }
 
 /**
@@ -162,24 +170,35 @@ async function withQueueLock<T>(scopeId: string, jobId: string, fn: () => Promis
   return result;
 }
 
+export type EnqueueSheetEventResult = {
+  queue: QueuedSheetEvent[];
+  /** F06: false means the write never reached storage (e.g. localStorage's
+   *  `setItem` threw — private window, quota). The caller must NOT treat
+   *  this as a normal queued-offline state: the event only exists in this
+   *  in-memory `queue` array, not durably, so it must keep the form
+   *  contents and show a "not saved" state rather than "Saved" or
+   *  "Offline — N waiting" (both imply the write survived a reload). */
+  saved: boolean;
+};
+
 /** FIFO enqueue, deduped on clientEventId (re-queuing the same logical write
- *  is a no-op — the id IS the identity). Returns the resulting queue.
- *  Lock-protected: concurrent enqueues on the same job never clobber each
- *  other's write. */
+ *  is a no-op — the id IS the identity). Lock-protected: concurrent
+ *  enqueues on the same job never clobber each other's write. */
 export async function enqueueSheetEvent(
   store: KvStore,
   scopeId: string,
   jobId: string,
   event: SheetEventPost,
   nowIso?: string,
-): Promise<QueuedSheetEvent[]> {
+): Promise<EnqueueSheetEventResult> {
   return withQueueLock(scopeId, jobId, async () => {
     const q = await loadSheetQueue(store, scopeId, jobId);
-    if (!q.some((item) => item.event.clientEventId === event.clientEventId)) {
-      q.push({ event, queuedAt: nowIso ?? new Date().toISOString(), attempts: 0 });
-      await saveSheetQueue(store, scopeId, jobId, q);
+    if (q.some((item) => item.event.clientEventId === event.clientEventId)) {
+      return { queue: q, saved: true };
     }
-    return q;
+    q.push({ event, queuedAt: nowIso ?? new Date().toISOString(), attempts: 0 });
+    const saved = await saveSheetQueue(store, scopeId, jobId, q);
+    return { queue: q, saved };
   });
 }
 
@@ -317,12 +336,22 @@ export async function purgeSheetQueues(store: KvStore): Promise<number> {
 // Save badge
 // ---------------------------------------------------------------------------
 
-export type SaveBadgeState = { saving: boolean; queued: number; conflict: boolean };
+export type SaveBadgeState = {
+  saving: boolean;
+  queued: number;
+  conflict: boolean;
+  /** F06: a storage write (localStorage.setItem) threw. The entry only
+   *  lives in memory — it must never be reported "Saved" or folded into
+   *  the ordinary offline-queued count, both of which imply it would
+   *  survive a reload. */
+  storageFailed?: boolean;
+};
 
-/** Priority: conflict > saving > queued (offline) > saved. */
+/** Priority: conflict > saving > storageFailed > queued (offline) > saved. */
 export function saveBadge(state: SaveBadgeState): string {
   if (state.conflict) return "Conflict – tap to sort out";
   if (state.saving) return "Saving…";
+  if (state.storageFailed) return "Not saved on this phone — keep this screen open";
   if (state.queued > 0) return `Offline – ${state.queued} waiting`;
   return "Saved";
 }
@@ -331,10 +360,42 @@ export function saveBadge(state: SaveBadgeState): string {
 // Proposal helpers
 // ---------------------------------------------------------------------------
 
+/** Ticking ON a torque, thread-locker or measurement step first shows what
+ *  the job sheet says (value, pattern, source). Un-ticking never asks. Lives
+ *  here (not LivingSheet.tsx) so lowRiskProposalIds — which must exclude
+ *  these from bulk accept — and the single-accept path share one
+ *  definition; LivingSheet.tsx re-exports it for its existing tests. */
+export function stepNeedsConfirm(step: SheetStepView): boolean {
+  return !step.done && (step.checkoff === "torque" || step.checkoff === "loctite" || step.checkoff === "measurement");
+}
+
+/** F03/F07: the step a "mark step N done" proposal/event refers to, but
+ *  ONLY when that step actually needs the torque/loctite/measurement
+ *  confirm dialog — null otherwise (including for every non-step_marked
+ *  kind, and for "mark not done"). Shared by lowRiskProposalIds (bulk
+ *  accept must exclude these — they need their own tap) and the
+ *  single-accept path in LivingSheet.tsx (which opens the confirm dialog
+ *  showing value + source instead of posting directly). */
+export function stepRequiringConfirmFor(
+  event: Pick<SheetProposal["event"], "kind" | "payload">,
+  steps: readonly SheetStepView[],
+): SheetStepView | null {
+  if (event.kind !== "step_marked") return null;
+  const payload = event.payload as { stepId?: unknown; done?: unknown };
+  if (payload.done !== true || typeof payload.stepId !== "string") return null;
+  const step = steps.find((s) => s.id === payload.stepId);
+  return step && stepNeedsConfirm(step) ? step : null;
+}
+
 /** "Accept all low-risk" accepts only risk:"low" — needs_tap always needs an
- *  individual tap, never swept in by the bulk action. */
-export function lowRiskProposalIds(proposals: readonly SheetProposal[]): string[] {
-  return proposals.filter((p) => p.risk === "low").map((p) => p.proposalId);
+ *  individual tap, never swept in by the bulk action. F03: a step that
+ *  needs the torque/loctite/measurement confirm is excluded even when the
+ *  proposer marked it "low" risk — it needs its own tap either way. */
+export function lowRiskProposalIds(proposals: readonly SheetProposal[], steps: readonly SheetStepView[] = []): string[] {
+  return proposals
+    .filter((p) => p.risk === "low")
+    .filter((p) => stepRequiringConfirmFor(p.event, steps) === null)
+    .map((p) => p.proposalId);
 }
 
 // ---------------------------------------------------------------------------
@@ -529,10 +590,26 @@ export async function apiListJobSheetTemplates(): Promise<JobSheetSummary[] | nu
 }
 
 /** Prefer the reviewed revision; fall back to the latest (draft) revision
- *  with a DRAFT badge. Pure — the picker and its tests both call this. */
+ *  with a DRAFT badge. F23: if a NEWER draft exists after the latest
+ *  reviewed revision, show that newer draft (still marked DRAFT) instead
+ *  of silently continuing to show the older reviewed one with no way to
+ *  review the new revision. Pure — the picker and the library both call
+ *  this. */
 export function chosenRevisionOf(sheet: JobSheetSummary): { revision: JobSheetRevision; isDraft: boolean } {
-  if (sheet.latestReviewed) return { revision: sheet.latestReviewed, isDraft: false };
+  if (sheet.latestReviewed && sheet.latest.revision <= sheet.latestReviewed.revision) {
+    return { revision: sheet.latestReviewed, isDraft: false };
+  }
   return { revision: sheet.latest, isDraft: true };
+}
+
+/** F16/F17(UI): one client id per "attempt" (starting a job, uploading a
+ *  photo), reused across a retry until the attempt succeeds — so a lost
+ *  response followed by a retry can never create a second job or a
+ *  duplicate photo. `pending` is whatever the caller is holding in state
+ *  from a prior, not-yet-succeeded attempt; `mintId` is injected so this is
+ *  deterministic under test (production passes `crypto.randomUUID`). */
+export function attemptClientEventId(pending: string | null, mintId: () => string): string {
+  return pending ?? mintId();
 }
 
 /** Plain words for a start-job refusal, including S4's
