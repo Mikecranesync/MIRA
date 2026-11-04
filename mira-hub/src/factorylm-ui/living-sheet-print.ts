@@ -105,7 +105,7 @@ function textOfSection(section: PrintSection): string[] {
     case "photos":
       return section.items.flatMap((p) => (p.caption !== null ? [p.caption] : []));
     case "handover":
-      return [section.current, ...section.history].filter((h): h is SheetHandoverEntry => h !== null).map((h) => h.text);
+      return [section.current, ...section.history.filter((h) => h.eventId !== section.current?.eventId)].filter((h): h is SheetHandoverEntry => h !== null).map((h) => h.text);
   }
 }
 
