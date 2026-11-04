@@ -17,8 +17,17 @@ name: Deploy Atlas CMMS to production
 #
 # Rollback (manual, on the host, if `apply` leaves the stack in a bad state):
 #   docker compose -p factorylm-cmms -f /opt/mira-cmms/docker-compose.prod.yml down   # never add -v — keeps the DB/MinIO volumes
-#   sudo rm -f /etc/nginx/sites-enabled/cmms-factorylm
+#   restore the previous vhost from /etc/nginx/sites-backup/atlas-<stamp>/cmms.factorylm.com
+#     (or, if there was none: sudo rm -f /etc/nginx/sites-enabled/cmms.factorylm.com)
 #   sudo nginx -t && sudo systemctl reload nginx
+#
+# The vhost is a regular file named `cmms.factorylm.com` in sites-enabled — the
+# name both deploy-vps.yml and nginx-sites-enabled-hygiene.yml ALLOW. Backups go
+# to /etc/nginx/sites-backup/, never sites-enabled (every file there is live).
+#
+# Hub/web reach Atlas only after docker-compose.production.yml stops dropping
+# `cmms-ext` and overriding HUB_CMMS_API_URL — a separate change shipped through
+# deploy-vps.yml AFTER this stack (and its network) exists.
 
 on:
   workflow_dispatch:
@@ -115,7 +124,7 @@ jobs:
           MODE="${{ inputs.mode }}"
           RUN="atlas-deploy-${{ github.run_id }}"
           ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
-            ubuntu@40.160.141.61 "bash -s -- '${MODE}' '${RUN}'" << 'ENDSSH'
+            ubuntu@40.160.141.61 "sudo bash -s -- '${MODE}' '${RUN}'" << 'ENDSSH'
           set -euo pipefail
           MODE="$1"
           RUN="$2"
@@ -210,7 +219,7 @@ jobs:
           for f in /etc/nginx/sites-enabled/*; do
             [ -e "$f" ] || continue
             base="$(basename "$f")"
-            [ "$base" = "cmms-factorylm" ] && continue
+            [ "$base" = "cmms.factorylm.com" ] && continue
             if sudo grep -qE 'server_name[^;]*\bcmms\.factorylm\.com\b' "$f" 2>/dev/null; then
               CONFLICT="$CONFLICT $base"
             fi
@@ -218,6 +227,17 @@ jobs:
           if [ -n "$CONFLICT" ]; then
             echo "::error::another nginx site already names cmms.factorylm.com:$CONFLICT"
             exit 1
+          fi
+
+          echo "=== DNS gate (TLS needs cmms.factorylm.com to resolve here) ==="
+          if [ -z "$PUBLIC_IP" ] || [ "$DNS_IP" != "$PUBLIC_IP" ]; then
+            if [ "$MODE" = "apply" ]; then
+              echo "::error::DNS A for cmms.factorylm.com (${DNS_IP:-unresolved}) != this host (${PUBLIC_IP:-unknown}) — refusing apply"
+              exit 1
+            fi
+            echo "::warning::DNS A for cmms.factorylm.com (${DNS_IP:-unresolved}) != this host (${PUBLIC_IP:-unknown}) — apply would refuse"
+          else
+            echo "dns ok"
           fi
 
           if [ "$MODE" = "dry-run" ]; then
@@ -281,7 +301,7 @@ jobs:
           echo "signin http=$SIGNIN_HTTP token_len=${#TOKEN}"
           if [ -z "$TOKEN" ]; then
             echo "no token on signin — attempting signup"
-            SIGNUP_JSON="$(python3 -c "import json, os; print(json.dumps({\"email\": os.environ[\"EMAIL\"], \"password\": os.environ[\"PASSWORD\"], \"firstName\": \"FactoryLM\", \"lastName\": \"Admin\", \"companyName\": \"FactoryLM\"}))")"
+            SIGNUP_JSON="$(python3 -c "import json, os; print(json.dumps({\"email\": os.environ[\"EMAIL\"], \"password\": os.environ[\"PASSWORD\"], \"firstName\": \"FactoryLM\", \"lastName\": \"Admin\", \"companyName\": \"FactoryLM\", \"phone\": \"\"}))")"
           SIGNUP_HTTP="$(curl -s -o /tmp/atlas_signup.json -w "%{http_code}" -X POST http://127.0.0.1:8088/auth/signup -H "Content-Type: application/json" -d "$SIGNUP_JSON")"
             echo "signup http=$SIGNUP_HTTP"
             SIGNIN_HTTP2="$(curl -s -o /tmp/atlas_signin.json -w "%{http_code}" -X POST http://127.0.0.1:8088/auth/signin -H "Content-Type: application/json" -d "$SIGNIN_JSON")"
@@ -297,75 +317,73 @@ jobs:
           '
 
           echo "=== apply: nginx ==="
+          SITE=/etc/nginx/sites-enabled/cmms.factorylm.com
           site_hashes() {
             local f h out=""
             for f in /etc/nginx/sites-enabled/*; do
               [ -e "$f" ] || continue
-              case "$f" in */cmms-factorylm) continue;; esac
-              h="$(sudo sha256sum "$f")" || { echo "::error::cannot hash $f — refusing to proceed without a site snapshot" >&2; return 1; }
+              case "$f" in "$SITE") continue;; esac
+              h="$(sha256sum "$f")" || { echo "::error::cannot hash $f — refusing to proceed without a site snapshot" >&2; return 1; }
               out+="$h"$'\n'
             done
             printf '%s' "$out" | sort
           }
           OTHER_BEFORE="$(site_hashes)" || exit 1
-
-          BACKUP=""
-          if [ -f /etc/nginx/sites-available/cmms-factorylm ]; then
-            BACKUP="/etc/nginx/sites-available/cmms-factorylm.bak.$(date +%s)"
-            sudo cp /etc/nginx/sites-available/cmms-factorylm "$BACKUP"
-          fi
-          sudo install -m 644 "$NGINX_SRC" /etc/nginx/sites-available/cmms-factorylm
-          sudo ln -sfn /etc/nginx/sites-available/cmms-factorylm /etc/nginx/sites-enabled/cmms-factorylm
-
-          if ! sudo nginx -t; then
-            echo "::error::nginx -t failed — rolling back"
-            if [ -n "$BACKUP" ]; then
-              sudo mv "$BACKUP" /etc/nginx/sites-available/cmms-factorylm
-            else
-              sudo rm -f /etc/nginx/sites-enabled/cmms-factorylm /etc/nginx/sites-available/cmms-factorylm
-            fi
-            exit 1
-          fi
-          sudo systemctl reload nginx
-
           check_other_sites() {
             local after
             after="$(site_hashes)" || exit 1
             [ "$OTHER_BEFORE" = "$after" ] || { echo "::error::a non-cmms nginx site changed — STOP"; exit 1; }
           }
+
+          BACKUP_DIR="/etc/nginx/sites-backup/atlas-$(date +%Y%m%d%H%M%S)"
+          install -d -m 755 "$BACKUP_DIR"
+          HAD_OLD=""
+          if [ -e "$SITE" ]; then
+            cp -P "$SITE" "$BACKUP_DIR/cmms.factorylm.com"
+            HAD_OLD=1
+          fi
+          echo "previous vhost backed up: ${HAD_OLD:+$BACKUP_DIR/cmms.factorylm.com}${HAD_OLD:-none}"
+          restore_site() {
+            rm -f "$SITE"
+            [ -z "$HAD_OLD" ] || cp -P "$BACKUP_DIR/cmms.factorylm.com" "$SITE"
+            nginx -t && systemctl reload nginx || true
+          }
+          # Regular file (not a symlink), matching the existing ALLOW-listed name.
+          rm -f "$SITE"
+          install -m 644 "$NGINX_SRC" "$SITE"
+          if ! nginx -t; then
+            echo "::error::nginx -t failed with the new vhost — restoring previous"
+            restore_site
+            exit 1
+          fi
+          systemctl reload nginx
           check_other_sites
 
           echo "=== apply: TLS ==="
-          TLS=""
-          PUBLIC_IP="$(curl -s --max-time 10 https://api.ipify.org || true)"
-          DNS_IP="$(dig +short cmms.factorylm.com A | tail -1)"
-          if [ -n "$PUBLIC_IP" ] && [ "$DNS_IP" = "$PUBLIC_IP" ]; then
-            sudo certbot --nginx --non-interactive --agree-tos --keep-until-expiring \
-              --cert-name cmms-factorylm -d cmms.factorylm.com
-            sudo nginx -t && sudo systemctl reload nginx
-            check_other_sites
-            TLS=1
-          else
-            echo "::warning::DNS A for cmms.factorylm.com (${DNS_IP:-unresolved}) does not match this host's public IP (${PUBLIC_IP:-unknown}) — vhost installed on HTTP only; re-run after DNS lands to get TLS"
+          # certbot reinstalls an existing cert into the fresh vhost (or issues one).
+          if ! certbot --nginx --non-interactive --agree-tos --keep-until-expiring \
+               --cert-name cmms.factorylm.com -d cmms.factorylm.com; then
+            echo "::error::certbot failed — restoring previous vhost"
+            restore_site
+            exit 1
           fi
+          nginx -t && systemctl reload nginx
+          check_other_sites
 
           echo "=== apply: probes ==="
           FAIL=""
-          if [ -n "$TLS" ]; then
-            for u in https://cmms.factorylm.com/ https://cmms.factorylm.com/api/health-check; do
-              code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$u" || true)"
-              echo "$u -> $code"
-              [ "$code" = "200" ] || FAIL="$FAIL $u"
-            done
-          fi
-          if docker inspect mira-hub >/dev/null 2>&1; then
-            if docker exec mira-hub sh -c 'wget -qO- http://cmms-backend:8080/health-check' >/dev/null; then
-              echo "mira-hub -> cmms-backend:8080 OK"
-            else
-              FAIL="$FAIL mira-hub->cmms-backend"
-            fi
+          for u in https://cmms.factorylm.com/ https://cmms.factorylm.com/api/health-check; do
+            code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$u" || true)"
+            echo "$u -> $code"
+            [ "$code" = "200" ] || FAIL="$FAIL $u"
+          done
+          # In-network name check from a throwaway container on the shared network
+          # (Hub itself is detached from it until the production overlay change ships).
+          if docker run --rm --network factorylm-cmms_default curlimages/curl:8.11.1 \
+               -fsS -o /dev/null --max-time 10 http://cmms-backend:8080/health-check; then
+            echo "factorylm-cmms_default -> cmms-backend:8080 OK"
           else
-            echo "::warning::mira-hub container not present — in-network probe skipped"
+            FAIL="$FAIL in-network:cmms-backend"
           fi
           [ -z "$FAIL" ] || { echo "::error::post-deploy probes failed:$FAIL"; exit 1; }
           echo "=== APPLY COMPLETE ==="
