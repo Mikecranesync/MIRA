@@ -27,6 +27,9 @@ import type { SheetProposal } from "@/capabilities/living-sheet/propose";
 import type { SheetStepView, SheetView } from "@/capabilities/living-sheet/reduce";
 import type { NotebookSheetReceiptFrame } from "@/lib/notebook-chat-types";
 import { fileUrl } from "./to-interaction";
+import { LivingSheetPrint } from "./LivingSheetPrint";
+import { LivingSheetShiftReport } from "./LivingSheetShiftReport";
+import { JobSheetsLibrary } from "./JobSheetsLibrary";
 import {
   apiGetJob,
   apiListJobSheetTemplates,
@@ -214,6 +217,8 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
   const [partItem, setPartItem] = useState("");
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [shiftReportOpen, setShiftReportOpen] = useState(false);
 
   // StrictMode-safe (replayed effects must not leave this false permanently — #5091 pattern).
   const mounted = useRef(false);
@@ -567,6 +572,22 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
           {!openJobId && (
             <div data-testid="living-sheet-job-list">
               {jobsError && <p role="alert">{jobsError}</p>}
+              <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                <button
+                  type="button" style={GHOST_BUTTON_STYLE} onClick={() => setLibraryOpen(true)}
+                  data-testid="living-sheet-open-job-sheets"
+                >
+                  Job sheets
+                </button>
+                <button
+                  type="button" style={GHOST_BUTTON_STYLE} onClick={() => setShiftReportOpen(true)}
+                  data-testid="living-sheet-open-shift-report"
+                >
+                  Shift report
+                </button>
+              </div>
+              {libraryOpen && <JobSheetsLibrary onClose={() => setLibraryOpen(false)} />}
+              {shiftReportOpen && <LivingSheetShiftReport onClose={() => setShiftReportOpen(false)} />}
               <ul style={{ listStyle: "none", paddingInlineStart: 0 }}>
                 {(jobs ?? []).map((j) => (
                   <li key={j.jobId} style={{ marginBottom: 8 }}>
@@ -825,6 +846,17 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
                   </>
                 )}
               </section>
+
+              <section style={SECTION_STYLE} data-testid="living-sheet-print-section">
+                <h3 style={{ marginTop: 0 }}>Print</h3>
+                <button
+                  type="button" style={GHOST_BUTTON_STYLE} onClick={() => window.print()}
+                  data-testid="living-sheet-print-button"
+                >
+                  Print / save PDF
+                </button>
+              </section>
+              <LivingSheetPrint view={view} seq={view.seq} printedAt={new Date().toLocaleString()} />
 
               {viewError && <p role="alert">{viewError}</p>}
             </div>

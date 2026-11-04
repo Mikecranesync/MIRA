@@ -29,6 +29,7 @@ function emptyView(over: Partial<SheetView> = {}): SheetView {
     title: "Belt swap",
     machine: { entityId: "e-1", name: "Conveyor 3" },
     templateRevisionId: null,
+    templateStatus: null,
     template: {
       title: "Belt swap", machineLabel: null, component: null, jobType: null, estHours: null,
       crewSize: null, isolationPoints: null, cautions: null, returnToService: [], items: [],

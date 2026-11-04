@@ -17,6 +17,8 @@ import type { SheetView } from "@/capabilities/living-sheet/reduce";
 import type { SheetEvent } from "@/capabilities/living-sheet/types";
 import type { SheetProposal } from "@/capabilities/living-sheet/propose";
 import type { NotebookSheetReceiptFrame } from "@/lib/notebook-chat-types";
+import type { ImportLayout, ImportPreview } from "@/capabilities/living-sheet/job-sheet-import";
+import type { ShiftReport, ShiftReportWindow } from "@/capabilities/living-sheet/shift-report";
 
 // ---------------------------------------------------------------------------
 // KV store (localStorage adapter — never touched at module scope; built
@@ -577,3 +579,64 @@ export const COMMON_READING_UNITS = [
 // Re-exported so EventKind stays reachable from this module without a
 // second import line at call sites that need it.
 export type { EventKind };
+
+// ---------------------------------------------------------------------------
+// Shift report (S6) + job sheet library CRUD (S4 UI slice) — thin fetch
+// wrappers over the already-built /api/living-sheet/shift-report and
+// /api/job-sheets/** routes. Same ApiResult<T> shape as the rest of this
+// file; callers read `.ok`/`.status`/`.body`.
+// ---------------------------------------------------------------------------
+
+/** GET /api/living-sheet/shift-report — defaults server-side to the last 12
+ *  hours when `window` is omitted. */
+export async function apiGetShiftReport(window?: ShiftReportWindow): Promise<ApiResult<{ report: ShiftReport }>> {
+  const qs = window ? `?from=${encodeURIComponent(window.from)}&to=${encodeURIComponent(window.to)}` : "";
+  const res = await fetch(`${API_BASE}/api/living-sheet/shift-report/${qs}`, { credentials: "include" });
+  return asApiResult(res);
+}
+
+/** POST /api/job-sheets/import/preview — parses pasted spreadsheet text.
+ *  Writes nothing; the `ImportPreview` it returns is what the UI shows
+ *  before any "Save as draft". */
+export async function apiPreviewJobSheetImport(
+  text: string,
+  layout?: ImportLayout | "auto",
+): Promise<ApiResult<ImportPreview>> {
+  const res = await fetch(`${API_BASE}/api/job-sheets/import/preview/`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ text, ...(layout ? { layout } : {}) }),
+  });
+  return asApiResult(res);
+}
+
+/** POST /api/job-sheets — create a new job sheet (first revision, draft). */
+export async function apiCreateJobSheet(
+  body: JobSheetBody,
+  clientRequestId: string,
+): Promise<ApiResult<{ jobSheetId: string; revision: JobSheetRevision; replayed?: boolean }>> {
+  const res = await fetch(`${API_BASE}/api/job-sheets/`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ clientRequestId, body }),
+  });
+  return asApiResult(res);
+}
+
+/** POST /api/job-sheets/[id]/review — marks a revision reviewed (writes a
+ *  new revision row; never edits the source one). */
+export async function apiReviewJobSheet(
+  jobSheetId: string,
+  revision: number,
+  clientRequestId: string,
+): Promise<ApiResult<{ revision: JobSheetRevision; replayed?: boolean }>> {
+  const res = await fetch(`${API_BASE}/api/job-sheets/${encodeURIComponent(jobSheetId)}/review/`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ clientRequestId, revision }),
+  });
+  return asApiResult(res);
+}
