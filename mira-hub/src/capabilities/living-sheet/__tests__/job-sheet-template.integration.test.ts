@@ -30,7 +30,15 @@ import { randomUUID as uuid } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { Pool } from "pg";
 
+// R2-23: refuse to touch any database the runner hasn't confirmed is throwaway.
 const { testPool } = vi.hoisted(() => {
+  if (process.env.MIRA_TEST_DB_CONFIRM !== "DISPOSABLE") {
+    throw new Error(
+      "job-sheet-template.integration.test.ts refuses to run: set MIRA_TEST_DB_CONFIRM=DISPOSABLE to confirm " +
+        "TEST_DATABASE_URL points at a throwaway database. This suite applies migration 114 and writes " +
+        "and deletes real rows.",
+    );
+  }
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { Pool: PgPool } = require("pg");
   return { testPool: new PgPool({ connectionString: process.env.TEST_DATABASE_URL, max: 6 }) as Pool };
