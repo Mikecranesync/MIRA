@@ -108,6 +108,12 @@ export type SheetView = {
   title: string;
   machine: { entityId: string; name: string | null };
   templateRevisionId: string | null;
+  /** The template revision's review status as of job start
+   *  (`JobStartedPayload.templateStatus`), or `null` for an ad-hoc job
+   *  (no `templateRevisionId`) or an event recorded before TASK-S4. Added
+   *  for S5 print (`living-sheet-print.ts`'s draft banner) — back-compat:
+   *  additive field, no existing caller reads or asserts on it. */
+  templateStatus: "draft" | "reviewed" | null;
   template: JobSheetBody;
   steps: SheetStepView[];
   readings: SheetReadingView[];
@@ -322,6 +328,7 @@ export function reduceSheet(events: StoredEvent[], jobId: string): SheetView {
     title: started.title,
     machine: started.machine,
     templateRevisionId: started.templateRevisionId,
+    templateStatus: started.templateStatus ?? null,
     template: started.template,
     steps: stepViews,
     readings: [...readings.values()],

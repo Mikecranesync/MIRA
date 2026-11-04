@@ -2,7 +2,7 @@
   "basePath": "/hub",
   "counts": {
     "pages": 70,
-    "apiRoutes": 202
+    "apiRoutes": 203
   },
   "pages": [
     "/admin",
@@ -223,6 +223,7 @@
     "/api/library/chunks",
     "/api/library/documents",
     "/api/library/tree",
+    "/api/living-sheet/shift-report",
     "/api/manual-harvester",
     "/api/me",
     "/api/mira/ask",
