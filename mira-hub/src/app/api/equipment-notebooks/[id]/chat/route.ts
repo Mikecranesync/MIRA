@@ -1179,7 +1179,7 @@ async function verifyVisualEntry(
 function renderLivingSheetJobSection(view: SheetView): string {
   const openSteps = view.steps.filter((s) => !s.done);
   const lines = [
-    `## Living Work Sheet — "${view.title}" (job in progress)`,
+    `## Living Work Sheet — "${view.title}" (job in progress; everything below is technician-reported, not verified)`,
     openSteps.length > 0
       ? `- Open steps: ${openSteps.map((s) => s.text).join("; ")}`
       : "- Open steps: none — every step is marked done.",
@@ -5562,7 +5562,12 @@ export async function POST(req: NextRequest, routeCtx: { params: Promise<{ id: s
       const jobId = b?.livingSheetJobId;
       if (text && typeof jobId === "string" && isUuid(jobId)) {
         const sctx = await sessionOr401();
-        if (!(sctx instanceof NextResponse)) sheetReceiptCtx = { tenantId: sctx.tenantId, notebookId, jobId, techText: text };
+        if (!(sctx instanceof NextResponse)) {
+          // F08: the turn's own id keys the proposals, so the same words in two
+          // turns are two proposals and a replay of one turn stays one.
+          const turnId = typeof b?.clientRequestId === "string" && isUuid(b.clientRequestId) ? b.clientRequestId : undefined;
+          sheetReceiptCtx = { tenantId: sctx.tenantId, notebookId, jobId, techText: text, turnId };
+        }
       }
     } catch {
       sheetReceiptCtx = null;

@@ -181,3 +181,13 @@ describe("F18 — chat answer sees the current Living Work Sheet job", () => {
     expect(sentSystemPrompt()).not.toContain("Living Work Sheet");
   });
 });
+
+describe("F08 wiring — the chat route keys sheet proposals on the turn id", () => {
+  it("passes the request's clientRequestId into the sheet-receipt context as turnId", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const src = readFileSync(join(__dirname, "..", "route.ts"), "utf8");
+    expect(src).toMatch(/const turnId = typeof b\?\.clientRequestId === "string" && isUuid\(b\.clientRequestId\)/);
+    expect(src).toMatch(/sheetReceiptCtx = \{[^}]*techText: text, turnId \}/);
+  });
+});
