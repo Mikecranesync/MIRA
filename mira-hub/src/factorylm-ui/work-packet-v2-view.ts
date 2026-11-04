@@ -140,3 +140,23 @@ export function measurementRows(packet: Pick<WorkPacket, "measurements" | "appro
     };
   });
 }
+
+/** The line every printed page carries (Codex EGM F13): which job, which pump and, for a demo job,
+ *  that it is not real — so a page separated from the rest still says what it belongs to. */
+export function runningHead(packet: Pick<WorkPacket, "workOrder" | "equipment">): string {
+  const pump = [packet.equipment.manufacturer.value, packet.equipment.model.value].filter(Boolean).join(" ") || "pump unknown";
+  const parts = [`Work order ${packet.workOrder.id || "unknown"}`, pump];
+  if (packet.workOrder.synthetic) parts.push("SYNTHETIC — not a real job");
+  return parts.join(" · ");
+}
+
+/** CSS for the page margin, so the running head repeats on every printed page. The text is
+ *  escaped for a CSS string and cannot close the string, the rule or the <style> element. */
+export function pageHeadCss(packet: Pick<WorkPacket, "workOrder" | "equipment">): string {
+  const text = runningHead(packet)
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/</g, "\\3C ");
+  return `@page { @top-left { content: "${text}"; font-size: 9pt; } }`;
+}

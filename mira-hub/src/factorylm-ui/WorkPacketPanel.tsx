@@ -35,6 +35,7 @@ import { applyEdit } from "@/capabilities/work-packet/edits";
 import { emptyRecord, parseRecord, type JobRecord } from "@/capabilities/work-packet/job-record";
 import { CompletionBlock, JobNotesSection, JobPhotosSection, MeasurementRecordInput, PacketCoverage, StepRecordControls } from "./JobRecordView";
 import { BlockersSection, CoverageStop, JhaTable, LeftOutAppendix, MeasurementsTable, PartsTable, PhasedSteps, ReadinessBlock, type RenderField } from "./WorkPacketV2Sections";
+import { pageHeadCss } from "./work-packet-v2-view";
 import {
   badgeText,
   quoteChipLabel,
@@ -745,6 +746,8 @@ export function WorkPacketPanel({
               // Keyed by packet: a rebuilt packet remounts every row, so no row keeps an edit box or
               // draft text from the packet it replaced (Codex #5062 F16).
               <div data-testid="wp-packet" key={packet.packetId}>
+                {/* Job, pump and SYNTHETIC in every printed page's margin (Codex EGM F13). */}
+                <style data-testid="wp-page-head">{pageHeadCss(packet)}</style>
                 {stale && (
                   // Printed too: a stale packet that reaches paper by the browser's own print still says so.
                   <div role="alert" style={{ ...S.fault, marginBottom: 8 }} data-testid="wp-stale">
@@ -830,7 +833,7 @@ export function WorkPacketPanel({
                     <h3 style={S.sectionTitle}>Work record</h3>
                     {recordError && <div role="alert" style={S.fault} data-testid="wp-record-error">{recordError}</div>}
                     <JobNotesSection record={record} by={by} steps={packet.steps.length} onChange={onRecord} />
-                    <JobPhotosSection record={record} by={by} onChange={onRecord} onError={setRecordError} />
+                    <JobPhotosSection record={record} by={by} onChange={onRecord} onError={setRecordError} synthetic={packet.workOrder.synthetic} />
                     <CompletionBlock packet={packet} record={record} />
                   </section>
                 )}

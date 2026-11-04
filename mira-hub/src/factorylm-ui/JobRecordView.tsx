@@ -163,8 +163,10 @@ async function downscale(file: File, maxPx = 1024): Promise<string> {
   return canvas.toDataURL("image/jpeg", 0.7);
 }
 
-export function JobPhotosSection({ record, by, onChange, onError }: {
+export function JobPhotosSection({ record, by, onChange, onError, synthetic = false }: {
   record: JobRecord; by: string; onChange: (r: JobRecord) => void; onError: (msg: string) => void;
+  /** A demo job: its photos are test images and say so where they are shown (Codex EGM F13). */
+  synthetic?: boolean;
 }) {
   const [caption, setCaption] = useState("");
   const onFile = async (e: ChangeEvent<HTMLInputElement>) => {
@@ -181,13 +183,13 @@ export function JobPhotosSection({ record, by, onChange, onError }: {
   };
   return (
     <section style={{ marginTop: 16 }} data-testid="wp-photos">
-      <h3 style={{ margin: "0 0 6px 0", fontSize: "var(--fl-fs)" }}>Job photos (taken on this job)</h3>
+      <h3 style={{ margin: "0 0 6px 0", fontSize: "var(--fl-fs)" }}>{synthetic ? "Test images — synthetic job, not a real job" : "Job photos (taken on this job)"}</h3>
       {record.photos.length === 0 && <div style={S.muted}>None added.</div>}
       {record.photos.map((p) => (
         <figure key={p.id} style={{ margin: "8px 0" }} data-testid="wp-job-photo">
           {/* eslint-disable-next-line @next/next/no-img-element -- an inline data: URL photo; next/image cannot optimise it */}
-          <img src={p.image} alt={p.caption || "Job photo"} style={S.photo} />
-          <figcaption style={S.muted}>{p.caption ? `${p.caption} · ` : ""}Job photo by {stamp(p.by, p.at)}</figcaption>
+          <img src={p.image} alt={p.caption || (synthetic ? "Test image" : "Job photo")} style={S.photo} />
+          <figcaption style={S.muted}>{p.caption ? `${p.caption} · ` : ""}{synthetic ? "Test image" : "Job photo"} by {stamp(p.by, p.at)}</figcaption>
           <button type="button" data-no-print style={{ ...S.btn, marginTop: 4 }} onClick={() => onChange(removePhoto(record, p.id))}>Remove</button>
         </figure>
       ))}
