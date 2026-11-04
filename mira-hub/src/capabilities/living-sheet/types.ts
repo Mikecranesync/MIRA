@@ -104,6 +104,11 @@ export type JobStartedPayload = {
   machine: { entityId: string; name: string | null };
   templateRevisionId: string | null;
   template: JobSheetBody;
+  /** Optional for back-compat with events recorded before TASK-S4. Present
+   *  whenever `templateRevisionId` is non-null: the status
+   *  (`job_sheet_revisions.status`) of the template revision snapshotted
+   *  into `template`, as of the moment this job started. */
+  templateStatus?: "draft" | "reviewed";
 };
 
 export type StepMarkedPayload = {

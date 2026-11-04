@@ -2,7 +2,7 @@
   "basePath": "/hub",
   "counts": {
     "pages": 70,
-    "apiRoutes": 198
+    "apiRoutes": 202
   },
   "pages": [
     "/admin",
@@ -208,6 +208,10 @@
     "/api/integrations/nango/callback",
     "/api/integrations/nango/connect",
     "/api/internal/kg",
+    "/api/job-sheets",
+    "/api/job-sheets/[id]/review",
+    "/api/job-sheets/[id]/revisions",
+    "/api/job-sheets/import/preview",
     "/api/kg/graph",
     "/api/kg/sync",
     "/api/kg/trace",

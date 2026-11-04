@@ -11,7 +11,7 @@
 | Surface | Count |
 |---|---|
 | Pages | **70** (12 dynamic) |
-| API routes | **198** (81 dynamic) |
+| API routes | **202** (83 dynamic) |
 
 ## Pages (70)
 
@@ -88,7 +88,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (198)
+## API routes (202)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -223,6 +223,10 @@
 | `/api/integrations/nango/callback` | static | `api/integrations/nango/callback/route.ts` |
 | `/api/integrations/nango/connect` | static | `api/integrations/nango/connect/route.ts` |
 | `/api/internal/kg` | static | `api/internal/kg/route.ts` |
+| `/api/job-sheets` | static | `api/job-sheets/route.ts` |
+| `/api/job-sheets/[id]/review` | dynamic | `api/job-sheets/[id]/review/route.ts` |
+| `/api/job-sheets/[id]/revisions` | dynamic | `api/job-sheets/[id]/revisions/route.ts` |
+| `/api/job-sheets/import/preview` | static | `api/job-sheets/import/preview/route.ts` |
 | `/api/kg/graph` | static | `api/kg/graph/route.ts` |
 | `/api/kg/sync` | static | `api/kg/sync/route.ts` |
 | `/api/kg/trace` | static | `api/kg/trace/route.ts` |
