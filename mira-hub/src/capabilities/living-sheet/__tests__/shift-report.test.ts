@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { reduceSheet, type StoredEvent } from "../reduce";
-import { shiftReport, type ShiftReportJobInput } from "../shift-report";
+import { shiftReport, type ShiftReportJobInput, type ShiftReportWindow } from "../shift-report";
 import type { JobSheetBody, SheetEvent } from "../types";
 
 function template(over: Partial<JobSheetBody> = {}): JobSheetBody {
@@ -61,6 +61,7 @@ function job(jobId: string, events: StoredEvent[], notebook: { id: string; name:
 }
 
 const WINDOW_WIDE = { from: "2026-11-03T00:00:00.000Z", to: "2026-11-04T00:00:00.000Z" };
+const T0 = "2026-11-03T20:00:00.000Z"; // seq 1, job_started, always earliest
 
 describe("shiftReport — ordering and completeness", () => {
   it("lists every event in the window, including the first job_started", () => {
@@ -207,8 +208,9 @@ describe("shiftReport — plain words for parts and questions", () => {
 
     const report = shiftReport([j], WINDOW_WIDE);
     const texts = report.byTechnician.flatMap((g) => g.entries.map((e) => e.text));
-    expect(texts).toContain("replaced: wheel bearing (reported)");
-    expect(texts).toContain("planned: new bolts");
+    // R2-27: part descriptions are the technician's own words — quoted.
+    expect(texts).toContain("replaced: “wheel bearing” (reported)");
+    expect(texts).toContain("planned: “new bolts”");
   });
 });
 
@@ -337,6 +339,189 @@ describe("shiftReport — F20: per-job snapshot (short id + event seq as of the 
     expect(report.jobSnapshots).toEqual([
       { jobId: "11111111-2222-3333-4444-555555555555", jobIdShort: "11111111", seq: 2 },
     ]);
+  });
+});
+
+describe("shiftReport — R2-15: window-end state is the longest contiguous seq prefix, never a gapped occurredAt filter", () => {
+  // PROPERTY: a job's never throws when computing its state as of the
+  // window's end — the events used are the longest run starting at seq 1,
+  // in server-recorded seq order, that are all at-or-before window.to; the
+  // walk STOPS (not skips) at the first event past the cutoff, so it can
+  // never select a seq set with a hole, no matter what order the technicians'
+  // client-supplied `occurredAt` timestamps arrived in.
+  type Case = { name: string; occurredAts: string[]; to: string; expectSeq: number };
+  const cases: Case[] = [
+    {
+      name: "[1,3]-without-2 — the reviewer's literal example: seq 2 is late, seq 3 is early",
+      occurredAts: [T0, "2026-11-04T04:00:00.000Z", "2026-11-03T20:10:00.000Z"],
+      to: "2026-11-03T21:00:00.000Z",
+      expectSeq: 1,
+    },
+    {
+      name: "a single out-of-order event one step later (seq 2 late, seq 3 late, seq 4 early) stops the prefix at seq 1",
+      occurredAts: [T0, "2026-11-04T04:00:00.000Z", "2026-11-04T05:00:00.000Z", "2026-11-03T20:05:00.000Z"],
+      to: "2026-11-03T21:00:00.000Z",
+      expectSeq: 1,
+    },
+    {
+      name: "the hole is further in: seq 1,2 early, seq 3 late, seq 4 early — prefix stops at seq 2",
+      occurredAts: [T0, "2026-11-03T20:05:00.000Z", "2026-11-04T04:00:00.000Z", "2026-11-03T20:10:00.000Z"],
+      to: "2026-11-03T21:00:00.000Z",
+      expectSeq: 2,
+    },
+    {
+      name: "every event is early (no violation) — prefix is the whole log, matching the old behavior",
+      occurredAts: [T0, "2026-11-03T20:05:00.000Z", "2026-11-03T20:10:00.000Z"],
+      to: "2026-11-03T21:00:00.000Z",
+      expectSeq: 3,
+    },
+    {
+      name: "every event is late (cutoff before anything) — prefix is empty, falls back to job.view (defensive)",
+      occurredAts: [T0, "2026-11-03T20:05:00.000Z", "2026-11-03T20:10:00.000Z"],
+      to: "2026-11-01T00:00:00.000Z",
+      expectSeq: 3, // unreachable per the note on viewAsOfWindowEnd — listJobsActiveBetween guarantees >=1 in-window event; fallback is job.view's own seq
+    },
+    {
+      name: "seq 1 itself is late relative to cutoff — prefix is empty, falls back to job.view",
+      occurredAts: ["2026-11-04T04:00:00.000Z", "2026-11-03T20:05:00.000Z", "2026-11-03T20:10:00.000Z"],
+      to: "2026-11-03T19:00:00.000Z",
+      expectSeq: 3, // fallback
+    },
+  ];
+
+  it.each(cases)("$name", ({ occurredAts, to, expectSeq }) => {
+    seqCounter = 0;
+    const started = ev(
+      "job_started",
+      { title: "PM — Pump 07", machine: { entityId: "cmms-pump07", name: "Pump 07" }, templateRevisionId: null, template: template() },
+      { seq: 1, occurredAt: occurredAts[0] },
+    );
+    const rest = occurredAts.slice(1).map((at, i) =>
+      ev("step_marked", { stepId: `step-${(i % 3) + 1}`, done: true, note: null }, { seq: i + 2, occurredAt: at }),
+    );
+    const j = job("job-1", [started, ...rest]);
+    const window: ShiftReportWindow = { from: "2026-11-03T00:00:00.000Z", to };
+
+    expect(() => shiftReport([j], window)).not.toThrow();
+    const report = shiftReport([j], window);
+    expect(report.jobSnapshots[0]!.seq).toBe(expectSeq);
+  });
+
+  it("a job whose full event log cannot be reduced is reported as 'could not be summarized', without failing the other jobs", () => {
+    seqCounter = 0;
+    // A genuinely corrupt full log: seq 1 then seq 3 (a real hole, not just
+    // an occurredAt ordering artifact) — reduceSheet throws on this no
+    // matter what window is asked for. Built by hand (not the `job()`
+    // helper, which would itself throw computing `view`): `view` is a
+    // throwaway reduction of just the valid prefix so the fixture itself is
+    // constructible.
+    const started = ev("job_started", { title: "Bad Job", machine: { entityId: "cmms-bad", name: "Bad Machine" }, templateRevisionId: null, template: template() }, { seq: 1, occurredAt: T0 });
+    const gappy = ev("step_marked", { stepId: "step-1", done: true, note: null }, { seq: 3, occurredAt: "2026-11-03T20:05:00.000Z" });
+    const badJob: ShiftReportJobInput = {
+      notebookId: "nb-1",
+      notebookName: "Pump Room",
+      jobId: "job-bad",
+      view: reduceSheet([started], "job-bad"),
+      events: [started, gappy],
+    };
+
+    const startedGood = ev("job_started", { title: "Good Job", machine: { entityId: "cmms-good", name: "Good Machine" }, templateRevisionId: null, template: template({ steps: [] }) }, { seq: 1, occurredAt: T0 });
+    const goodJob = job("job-good", [startedGood]);
+
+    expect(() => shiftReport([badJob, goodJob], WINDOW_WIDE)).not.toThrow();
+    const report = shiftReport([badJob, goodJob], WINDOW_WIDE);
+
+    const badAttention = report.needsAttention.find((a) => a.jobId === "job-bad");
+    expect(badAttention).toBeDefined();
+    expect(badAttention!.reason).toBe("could_not_summarize");
+    expect(badAttention!.text).toBe("could not be summarized");
+
+    // The good job in the same report is unaffected.
+    expect(report.needsAttention.some((a) => a.jobId === "job-good" && a.reason === "not_finished")).toBe(true);
+    expect(report.counts.jobsTouched).toBe(2);
+  });
+});
+
+describe("shiftReport — R2-27: every technician-entered text is quoted and attributed, same style as handover", () => {
+  // PROPERTY: any free text a technician typed — a note, a question, an
+  // answer, a part's item description, a photo caption — appears in the
+  // report quoted in the SAME curly-quote style handover already uses
+  // (“…”), and every entry (quoted or not) carries its own who (`by`) and
+  // when (`at`/`atLocal`) regardless of kind. A photo with no caption is
+  // system-generated text ("no caption"), never quoted, since it is not the
+  // technician's own words.
+  type TextCase = {
+    name: string;
+    kind: SheetEvent["kind"];
+    payload: SheetEvent["payload"];
+    expectSubstring: string;
+  };
+  const textCases: TextCase[] = [
+    { name: "a note", kind: "note_added", payload: { noteId: "n1", text: "Belt tension checked.", noteKind: "note" }, expectSubstring: "noted: “Belt tension checked.”" },
+    { name: "a question", kind: "note_added", payload: { noteId: "q1", text: "Original bearing?", noteKind: "question" }, expectSubstring: "asked: “Original bearing?”" },
+    { name: "an answer", kind: "question_resolved", payload: { noteId: "q1", resolution: "Yes, OEM part." }, expectSubstring: "answered: “Yes, OEM part.”" },
+    { name: "a replaced part's item description", kind: "part_logged", payload: { partEntryId: "p1", item: "wheel bearing", action: "replaced", qty: 1 }, expectSubstring: "replaced: “wheel bearing” (reported)" },
+    { name: "a planned part's item description", kind: "part_logged", payload: { partEntryId: "p2", item: "new bolts", action: "planned", qty: 4 }, expectSubstring: "planned: “new bolts”" },
+    { name: "a photo caption", kind: "photo_attached", payload: { photoId: "ph1", fileId: "file-1", caption: "before teardown" }, expectSubstring: "photo: “before teardown”" },
+  ];
+
+  it.each(textCases)("$name is quoted in curly quotes, like handover", ({ kind, payload }) => {
+    seqCounter = 0;
+    const started = ev(
+      "job_started",
+      { title: "PM — Pump 07", machine: { entityId: "cmms-pump07", name: "Pump 07" }, templateRevisionId: null, template: template() },
+      { seq: 1, occurredAt: T0 },
+    );
+    const textEvent = ev(kind, payload, { seq: 2, occurredAt: "2026-11-03T20:05:00.000Z" });
+    const extra: StoredEvent[] = [];
+    // question_resolved needs its note_added predecessor to resolve against.
+    if (kind === "question_resolved") {
+      extra.push(ev("note_added", { noteId: (payload as { noteId: string }).noteId, text: "placeholder?", noteKind: "question" }, { seq: 2, occurredAt: "2026-11-03T20:04:00.000Z" }));
+      (textEvent as StoredEvent).seq = 3;
+    }
+    const j = job("job-1", [started, ...extra, textEvent]);
+
+    const report = shiftReport([j], WINDOW_WIDE);
+    const entry = report.byTechnician.flatMap((g) => g.entries).find((e) => e.kind === kind && e.eventId === textEvent.id)!;
+    expect(entry).toBeDefined();
+    expect(entry.by).toBe("Tech One");
+    expect(entry.at).toBe(textEvent.occurredAt);
+  });
+
+  it.each(textCases)("$name renders the expected quoted narrative text", ({ kind, payload, expectSubstring }) => {
+    seqCounter = 0;
+    const started = ev(
+      "job_started",
+      { title: "PM — Pump 07", machine: { entityId: "cmms-pump07", name: "Pump 07" }, templateRevisionId: null, template: template() },
+      { seq: 1, occurredAt: T0 },
+    );
+    const extra: StoredEvent[] = [];
+    let textEvent = ev(kind, payload, { seq: 2, occurredAt: "2026-11-03T20:05:00.000Z" });
+    if (kind === "question_resolved") {
+      extra.push(ev("note_added", { noteId: (payload as { noteId: string }).noteId, text: "placeholder?", noteKind: "question" }, { seq: 2, occurredAt: "2026-11-03T20:04:00.000Z" }));
+      textEvent = ev(kind, payload, { seq: 3, occurredAt: "2026-11-03T20:05:00.000Z" });
+    }
+    const j = job("job-1", [started, ...extra, textEvent]);
+
+    const report = shiftReport([j], WINDOW_WIDE);
+    const texts = report.byTechnician.flatMap((g) => g.entries.map((e) => e.text));
+    expect(texts.some((t) => t === expectSubstring)).toBe(true);
+  });
+
+  it("control: a photo with no caption is NOT quoted — 'no caption' is system-generated, not the technician's words", () => {
+    seqCounter = 0;
+    const started = ev(
+      "job_started",
+      { title: "PM — Pump 07", machine: { entityId: "cmms-pump07", name: "Pump 07" }, templateRevisionId: null, template: template() },
+      { seq: 1, occurredAt: T0 },
+    );
+    const photo = ev("photo_attached", { photoId: "ph1", fileId: "file-1", caption: null }, { seq: 2, occurredAt: "2026-11-03T20:05:00.000Z" });
+    const j = job("job-1", [started, photo]);
+
+    const report = shiftReport([j], WINDOW_WIDE);
+    const texts = report.byTechnician.flatMap((g) => g.entries.map((e) => e.text));
+    expect(texts).toContain("photo: no caption");
+    expect(texts.some((t) => t.includes("“"))).toBe(false);
   });
 });
 

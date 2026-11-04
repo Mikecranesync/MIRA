@@ -213,10 +213,17 @@ function targetKeyOf(kind: EventKind, payload: Record<string, unknown>): string 
   }
 }
 
-/** Two "step N is done" marks agree, so they never clash; only a contrary mark is a conflict. */
+/** Two "step N is done" marks agree — and are therefore NOT a conflict —
+ *  only if EVERY field matches, not just `done`. R2-18: a stale
+ *  done:true,note:null retry must not silently "agree" with (and thereby
+ *  be allowed to overwrite) a newer done:true,note:"x" — that's an
+ *  overlapping change on the note, even though `done` itself didn't move,
+ *  and must 409 like any other contrary mark. */
 function sameStepMark(input: ValidatedAppendInput, e: StoredEvent): boolean {
   if (input.kind !== "step_marked" || e.kind !== "step_marked") return false;
-  return (input.payload as { done: boolean }).done === (e.payload as { done: boolean }).done;
+  const a = input.payload as { done: boolean; note: string | null };
+  const b = e.payload as { done: boolean; note: string | null };
+  return a.done === b.done && a.note === b.note;
 }
 
 function validateTarget(input: ValidatedAppendInput, view: SheetView): { ok: true } | { ok: false; error: string; field: string } {
@@ -233,6 +240,19 @@ function validateTarget(input: ValidatedAppendInput, view: SheetView): { ok: tru
       const p = input.payload as { noteId: string };
       if (view.notes.some((n) => n.id === p.noteId) || view.questions.some((q) => q.id === p.noteId)) {
         return { ok: false, error: "note_exists", field: "payload.noteId" };
+      }
+      return { ok: true };
+    }
+    // R2-34: a part-entry id is rejected on reuse the SAME way a
+    // reading/note id is — a duplicate id would silently append a second
+    // part entry under the same identity (e.g. a proposal accepted twice,
+    // each minting its own id-bearing event) rather than surfacing as a
+    // bad append. Parts have no "correct this entry" event kind, so unlike
+    // readings there's no legitimate reason to ever reuse one.
+    case "part_logged": {
+      const p = input.payload as { partEntryId: string };
+      if (view.parts.some((pt) => pt.id === p.partEntryId)) {
+        return { ok: false, error: "part_exists", field: "payload.partEntryId" };
       }
       return { ok: true };
     }

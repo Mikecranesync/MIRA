@@ -73,7 +73,15 @@ export type ShiftReportEntry = {
 
 export type ShiftReportTechnicianGroup = { technician: string; entries: ShiftReportEntry[] };
 
-export type ShiftReportAttentionReason = "open_steps" | "open_questions" | "not_finished" | "correction";
+export type ShiftReportAttentionReason =
+  | "open_steps"
+  | "open_questions"
+  | "not_finished"
+  | "correction"
+  // R2-15: this one job's full event log could not be reduced (a corrupt
+  // log — a bug in the writer, not a reducible state; see reduceSheet's own
+  // doc comment). The rest of the tenant's report must still render.
+  | "could_not_summarize";
 
 export type ShiftReportAttentionItem = {
   notebookId: string;
@@ -179,20 +187,24 @@ function narrativeOf(
       return `corrected ${what} ${oldText} → ${formatReading(p.value, p.unit)} at ${localTime(e.occurredAt, timeZone)}`;
     }
     case "note_added": {
+      // R2-27: the technician's own words, quoted verbatim — same curly-
+      // quote style as handover_written below.
       const p = e.payload as NoteAddedPayload;
-      return p.noteKind === "question" ? `asked: ${p.text}` : `noted: ${p.text}`;
+      return p.noteKind === "question" ? `asked: “${p.text}”` : `noted: “${p.text}”`;
     }
     case "question_resolved": {
       const p = e.payload as QuestionResolvedPayload;
-      return `answered: ${p.resolution}`;
+      return `answered: “${p.resolution}”`;
     }
     case "part_logged": {
       const p = e.payload as PartLoggedPayload;
-      return p.action === "planned" ? `planned: ${p.item}` : `${p.action}: ${p.item} (reported)`;
+      return p.action === "planned" ? `planned: “${p.item}”` : `${p.action}: “${p.item}” (reported)`;
     }
     case "photo_attached": {
       const p = e.payload as PhotoAttachedPayload;
-      return `photo: ${p.caption ?? "no caption"}`;
+      // "no caption" is MIRA's own system-generated text, not the
+      // technician's words — never quoted. A real caption is.
+      return p.caption !== null ? `photo: “${p.caption}”` : "photo: no caption";
     }
     case "handover_written": {
       const p = e.payload as HandoverWrittenPayload;
@@ -218,12 +230,29 @@ function narrativeOf(
  * since `job_started` is always at or before any window end that selected
  * this job (`listJobsActiveBetween` only returns jobs with >=1 event whose
  * `occurredAt` is in [from,to] ⊆ (-inf,to]).
+ *
+ * R2-15: `occurredAt` is client-supplied and can arrive out of the server's
+ * own recorded order (`seq`). Filtering the full log by `occurredAt <= to`
+ * alone can therefore select a non-contiguous seq set (e.g. seq 1 and 3 but
+ * not 2, if the technician's device stamped event 2 later than event 3) —
+ * `reduceSheet`'s `sortedBySeq` throws on that, since it indicates a corrupt
+ * log, not a reducible one. The fix: walk the full log in seq order (the
+ * server's own, trustworthy order) and take the LONGEST CONTIGUOUS PREFIX
+ * starting at seq 1, STOPPING — never skipping — at the first event whose
+ * `occurredAt` is after the cutoff. Built this way the selected events are
+ * always an unbroken 1..n run of the (valid) full log, so `reduceSheet` can
+ * never see a gap from this alone.
  */
 function viewAsOfWindowEnd(job: ShiftReportJobInput, window: ShiftReportWindow): SheetView {
   const toMs = Date.parse(window.to);
-  const eventsUpToTo = job.events.filter((e) => Date.parse(e.occurredAt) <= toMs);
-  if (eventsUpToTo.length === 0) return job.view; // defensive; unreachable per the note above
-  return reduceSheet(eventsUpToTo, job.jobId);
+  const sorted = [...job.events].sort((a, b) => a.seq - b.seq);
+  const prefix: StoredEvent[] = [];
+  for (const e of sorted) {
+    if (Date.parse(e.occurredAt) > toMs) break;
+    prefix.push(e);
+  }
+  if (prefix.length === 0) return job.view; // defensive; unreachable per the note above
+  return reduceSheet(prefix, job.jobId);
 }
 
 function buildEntries(job: ShiftReportJobInput, window: ShiftReportWindow, timeZone: string): ShiftReportEntry[] {
@@ -268,13 +297,34 @@ export function shiftReport(
   let jobsFinished = 0;
 
   for (const job of jobs) {
-    const entries = buildEntries(job, window, timeZone);
-    allEntries.push(...entries);
     const machineName = job.view.machine.name ?? job.notebookName;
+    // R2-15: one job's log failing to reduce (a corrupt log — see
+    // viewAsOfWindowEnd's doc comment) must not fail the whole tenant
+    // report. That job is flagged, visibly, and skipped; every other job
+    // in the same report still renders normally.
+    let entries: ShiftReportEntry[];
+    let asOf: SheetView;
+    try {
+      entries = buildEntries(job, window, timeZone);
+      asOf = viewAsOfWindowEnd(job, window);
+    } catch {
+      needsAttention.push({
+        notebookId: job.notebookId,
+        notebookName: job.notebookName,
+        jobId: job.jobId,
+        jobTitle: job.view.title,
+        machineName,
+        reason: "could_not_summarize",
+        text: "could not be summarized",
+        by: null,
+        at: null,
+      });
+      continue;
+    }
+    allEntries.push(...entries);
     const lastTouch = entries[entries.length - 1] ?? null;
     // F15: attention/counts/finished/handover reflect state AS OF the
     // window's end, never the live log (which may have grown since).
-    const asOf = viewAsOfWindowEnd(job, window);
     jobSnapshots.push({ jobId: job.jobId, jobIdShort: job.jobId.slice(0, 8), seq: asOf.seq });
 
     if (asOf.openSteps > 0) {

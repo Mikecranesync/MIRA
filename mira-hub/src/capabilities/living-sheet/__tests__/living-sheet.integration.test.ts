@@ -15,7 +15,18 @@ import { randomUUID as uuid } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { Pool } from "pg";
 
+// R2-23: this suite applies migrations and inserts/deletes real rows against
+// whatever TEST_DATABASE_URL points at. Refuse to even open a connection
+// unless the human running it has explicitly confirmed the target is
+// disposable — loudly, and before any test (or even `beforeAll`) runs.
 const { testPool } = vi.hoisted(() => {
+  if (process.env.MIRA_TEST_DB_CONFIRM !== "DISPOSABLE") {
+    throw new Error(
+      "living-sheet.integration.test.ts refuses to run: set MIRA_TEST_DB_CONFIRM=DISPOSABLE to confirm " +
+        "TEST_DATABASE_URL points at a throwaway database. This suite applies migration 114 and writes " +
+        "and deletes real rows.",
+    );
+  }
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { Pool: PgPool } = require("pg");
   return { testPool: new PgPool({ connectionString: process.env.TEST_DATABASE_URL, max: 6 }) as Pool };
@@ -319,6 +330,48 @@ describe("living sheet — S1 review fixes (7e8f9de7)", () => {
     expect(undo.status).toBe("conflict");
   });
 
+  // R2-18: two step marks "agree" (and therefore never clash) only if
+  // EVERY field matches — done AND note — not `done` alone.
+  it("R2-18: a stale done:true,note:null retry against a newer done:true,note:\"x\" is a conflict, not an agreement", async () => {
+    const tenant = uuid();
+    const nb = await makeNotebook(tenant, `cmms-${uuid()}`, true);
+    const job = created(await startJob(tenant, nb, { entityId: `cmms-${uuid()}`, name: "Pump 07" }, startInput(), ACTOR));
+    const first = appendCreated(
+      await appendEvent(tenant, nb, job.jobId, ev({ kind: "step_marked", payload: { stepId: "step-1", done: true, note: null } }), ACTOR),
+    );
+    appendCreated(
+      await appendEvent(
+        tenant, nb, job.jobId,
+        ev({ baseSeq: first.seq, kind: "step_marked", payload: { stepId: "step-1", done: true, note: "torqued to spec" } }),
+        { userId: "tech-2", label: "Tech Two" },
+      ),
+    );
+    // A stale client replays its ORIGINAL done:true,note:null against the
+    // baseSeq it last saw, before the note was added. `done` matches the
+    // newer event, but `note` does not — that's an overlapping change, not
+    // an agreement.
+    const stale = await appendEvent(
+      tenant, nb, job.jobId,
+      ev({ baseSeq: first.seq, kind: "step_marked", payload: { stepId: "step-1", done: true, note: null } }),
+      ACTOR,
+    );
+    expect(stale.status).toBe("conflict");
+    if (stale.status === "conflict") {
+      // The newer note was never silently overwritten by the stale retry.
+      expect(stale.view.steps.find((s) => s.id === "step-1")!.note).toBe("torqued to spec");
+    }
+  });
+
+  it("control: two identical done:true,note:\"x\" marks (every field matches) still agree and both land", async () => {
+    const tenant = uuid();
+    const nb = await makeNotebook(tenant, `cmms-${uuid()}`, true);
+    const job = created(await startJob(tenant, nb, { entityId: `cmms-${uuid()}`, name: "Pump 07" }, startInput(), ACTOR));
+    const mark = { kind: "step_marked", payload: { stepId: "step-1", done: true, note: "torqued to spec" } };
+    appendCreated(await appendEvent(tenant, nb, job.jobId, ev(mark), ACTOR));
+    const second = await appendEvent(tenant, nb, job.jobId, ev(mark), { userId: "tech-2", label: "Tech Two" });
+    expect(second.status).toBe("created");
+  });
+
   it("recording a reading under an id that already exists is refused", async () => {
     const tenant = uuid();
     const nb = await makeNotebook(tenant, `cmms-${uuid()}`, true);
@@ -328,6 +381,43 @@ describe("living sheet — S1 review fixes (7e8f9de7)", () => {
     appendCreated(await appendEvent(tenant, nb, job.jobId, rec(48, 1), ACTOR));
     const dup = await appendEvent(tenant, nb, job.jobId, rec(4.8, 2), ACTOR);
     expect(dup.status).toBe("invalid_target");
+  });
+
+  // R2-34: a part-entry id is rejected on reuse the SAME way a duplicate
+  // reading/note id already is — never a silently-appended second entry.
+  it("R2-34: logging a part under an id that already exists is refused, same as a duplicate reading/note id", async () => {
+    const tenant = uuid();
+    const nb = await makeNotebook(tenant, `cmms-${uuid()}`, true);
+    const job = created(await startJob(tenant, nb, { entityId: `cmms-${uuid()}`, name: "Pump 07" }, startInput(), ACTOR));
+    const partEntryId = uuid();
+    const log = (action: "planned" | "used", baseSeq: number) =>
+      ev({ baseSeq, kind: "part_logged", payload: { partEntryId, item: "Seal kit", action, qty: 1 } });
+    appendCreated(await appendEvent(tenant, nb, job.jobId, log("planned", 1), ACTOR));
+    const dup = await appendEvent(tenant, nb, job.jobId, log("used", 2), ACTOR);
+    expect(dup.status).toBe("invalid_target");
+    if (dup.status === "invalid_target") expect(dup.error).toBe("part_exists");
+
+    const final = await loadJob(tenant, nb, job.jobId);
+    if (final.status !== "ok") throw new Error(final.status);
+    expect(final.view.parts).toHaveLength(1); // the duplicate never landed
+  });
+
+  it("control: two DIFFERENT part-entry ids both land", async () => {
+    const tenant = uuid();
+    const nb = await makeNotebook(tenant, `cmms-${uuid()}`, true);
+    const job = created(await startJob(tenant, nb, { entityId: `cmms-${uuid()}`, name: "Pump 07" }, startInput(), ACTOR));
+    const first = await appendEvent(
+      tenant, nb, job.jobId,
+      ev({ kind: "part_logged", payload: { partEntryId: uuid(), item: "Seal kit", action: "used", qty: 1 } }),
+      ACTOR,
+    );
+    expect(first.status).toBe("created");
+    const second = await appendEvent(
+      tenant, nb, job.jobId,
+      ev({ baseSeq: appendCreated(first).seq, kind: "part_logged", payload: { partEntryId: uuid(), item: "Bolt set", action: "used", qty: 4 } }),
+      ACTOR,
+    );
+    expect(second.status).toBe("created");
   });
 });
 

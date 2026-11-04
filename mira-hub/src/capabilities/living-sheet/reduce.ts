@@ -61,6 +61,15 @@ export type ReadingHistoryEntry = {
   at: string;
   eventId: string;
   superseded: boolean;
+  /** R2-14: THIS entry's own source citation — a correction's source never
+   *  the value it superseded. Always populated by `reduceSheet` itself
+   *  (`reading_recorded`'s source is required, and an unstated
+   *  `reading_corrected` source defaults to technician-reported — see the
+   *  `reading_corrected` case below), so there is never a REAL history
+   *  entry with no source of its own. Typed optional only for back-compat
+   *  with fixtures elsewhere that construct a `ReadingHistoryEntry` literal
+   *  predating this field; `reduceSheet`'s own output never omits it. */
+  source?: ReadingSource;
 };
 export type ReadingCurrent = { value: number; unit: string; by: string | null; at: string; eventId: string };
 export type SheetReadingView = {
@@ -209,6 +218,7 @@ export function reduceSheet(events: StoredEvent[], jobId: string): SheetView {
           at: e.occurredAt,
           eventId: e.id,
           superseded: false,
+          source: payload.source,
         };
         if (existing) {
           existing.history.push(entry);
@@ -230,6 +240,11 @@ export function reduceSheet(events: StoredEvent[], jobId: string): SheetView {
           warn(e, `unknown_reading:${payload.readingId}`);
           break;
         }
+        // R2-14: a correction carries its OWN source. When the technician
+        // doesn't state one, the corrected reading is technician-reported
+        // — never the superseded value's citation (a manual page that
+        // never supported this new number).
+        const correctionSource: ReadingSource = payload.source ?? { kind: "tech", ref: null };
         reading.history.push({
           value: payload.value,
           unit: payload.unit,
@@ -237,6 +252,7 @@ export function reduceSheet(events: StoredEvent[], jobId: string): SheetView {
           at: e.occurredAt,
           eventId: e.id,
           superseded: false,
+          source: correctionSource,
         });
         break;
       }
@@ -312,10 +328,13 @@ export function reduceSheet(events: StoredEvent[], jobId: string): SheetView {
 
   // Mark every reading's history: the last entry (by event order) is current,
   // every earlier one is superseded. 48 -> 4.8: current is 4.8, both are kept,
-  // 48 is superseded.
+  // 48 is superseded. R2-14: `source` tracks the SAME "last entry wins" rule
+  // as value/unit/by/at — the top-level `source` is the CURRENT entry's own
+  // citation, never whatever source the reading happened to start with.
   for (const reading of readings.values()) {
     const last = reading.history[reading.history.length - 1]!;
     reading.current = { value: last.value, unit: last.unit, by: last.by, at: last.at, eventId: last.eventId };
+    reading.source = last.source ?? null; // `last.source` is always set by this reducer; `?? null` only for the type's back-compat optionality.
     reading.history = reading.history.map((h, i) => ({ ...h, superseded: i !== reading.history.length - 1 }));
   }
 

@@ -33,6 +33,7 @@ import {
   type QuestionResolvedPayload,
   type ReadingCorrectedPayload,
   type ReadingRecordedPayload,
+  type ReadingSource,
   type StepMarkedPayload,
 } from "./types";
 
@@ -143,7 +144,13 @@ function validateTorque(raw: unknown, idx: number): ValidationResult<JobSheetTor
 
 const STEP_KEYS = ["id", "text", "checkoff", "torqueRef", "source"] as const;
 
-function validateStep(raw: unknown, idx: number): ValidationResult<JobSheetStep> {
+/** R2-16: a step that carries a `torqueRef` is, by construction, a step the
+ *  technician must confirm against a real torque spec — so it may never be
+ *  checkoff:"none" (that's the UI's "no confirm needed" state), and the ref
+ *  it carries must name a torque that actually exists in THIS template.
+ *  `torqueIds` is the set of this body's `torques[].id` — validated before
+ *  steps (see `validateJobSheetBody`) so it's available here. */
+function validateStep(raw: unknown, idx: number, torqueIds: ReadonlySet<string>): ValidationResult<JobSheetStep> {
   if (!isPlainObject(raw)) return fail("invalid_step", `steps[${idx}]`);
   if (!noUnknownKeys(raw, STEP_KEYS)) return fail("unknown_field", `steps[${idx}]`);
   if (!isText(raw.id, LABEL_FIELD_MAX)) return fail("invalid_step_id", `steps[${idx}].id`);
@@ -152,6 +159,14 @@ function validateStep(raw: unknown, idx: number): ValidationResult<JobSheetStep>
     return fail("invalid_step_checkoff", `steps[${idx}].checkoff`);
   }
   if (!isNullableText(raw.torqueRef, LABEL_FIELD_MAX)) return fail("invalid_step_torque_ref", `steps[${idx}].torqueRef`);
+  if (raw.torqueRef !== null) {
+    if (raw.checkoff === "none") {
+      return fail("step_torque_ref_requires_checkoff", `steps[${idx}].checkoff`);
+    }
+    if (!torqueIds.has(raw.torqueRef as string)) {
+      return fail("step_torque_ref_unknown", `steps[${idx}].torqueRef`);
+    }
+  }
   if (!isNullableText(raw.source, LABEL_FIELD_MAX)) return fail("invalid_step_source", `steps[${idx}].source`);
   return {
     ok: true,
@@ -222,8 +237,9 @@ export function validateJobSheetBody(raw: unknown): ValidationResult<JobSheetBod
   if (!Array.isArray(raw.steps)) return fail("invalid_steps", "steps");
   const steps: JobSheetStep[] = [];
   const seenStepIds = new Set<string>();
+  const torqueIds = new Set(torques.map((t) => t.id));
   for (let i = 0; i < raw.steps.length; i++) {
-    const r = validateStep(raw.steps[i], i);
+    const r = validateStep(raw.steps[i], i, torqueIds);
     if (!r.ok) return r;
     // F24: each step is individually valid, but the reducer keeps a
     // Map<stepId, step> (reduce.ts) — a duplicate id would silently drop
@@ -356,12 +372,23 @@ function validateReadingRecordedPayload(raw: unknown): ValidationResult<ReadingR
 
 function validateReadingCorrectedPayload(raw: unknown): ValidationResult<ReadingCorrectedPayload> {
   if (!isPlainObject(raw)) return fail("invalid_payload", "payload");
-  if (!noUnknownKeys(raw, ["readingId", "value", "unit", "reason"])) return fail("unknown_field", "payload");
+  if (!noUnknownKeys(raw, ["readingId", "value", "unit", "reason", "source"])) return fail("unknown_field", "payload");
   if (typeof raw.readingId !== "string" || !isUuid(raw.readingId)) return fail("invalid_reading_id", "payload.readingId");
   if (typeof raw.value !== "number" || !Number.isFinite(raw.value)) return fail("invalid_value", "payload.value");
   if (!isText(raw.unit, LABEL_FIELD_MAX)) return fail("unit_required", "payload.unit");
   if (!isNullableText(raw.reason, TEXT_FIELD_MAX)) return fail("invalid_reason", "payload.reason");
-  return { ok: true, value: { readingId: raw.readingId, value: raw.value, unit: raw.unit, reason: raw.reason } };
+  // R2-14: `source` is OPTIONAL (older callers/events omit it entirely) but
+  // when present it must be well-formed — same shape as reading_recorded's
+  // source, never a bare string or an unknown kind.
+  let source: ReadingSource | null = null;
+  if (raw.source !== undefined && raw.source !== null) {
+    if (!isPlainObject(raw.source)) return fail("invalid_source", "payload.source");
+    if (!noUnknownKeys(raw.source, ["kind", "ref"])) return fail("unknown_field", "payload.source");
+    if (raw.source.kind !== "tech" && raw.source.kind !== "manual") return fail("invalid_source_kind", "payload.source.kind");
+    if (!isNullableText(raw.source.ref, LABEL_FIELD_MAX)) return fail("invalid_source_ref", "payload.source.ref");
+    source = { kind: raw.source.kind, ref: raw.source.ref };
+  }
+  return { ok: true, value: { readingId: raw.readingId, value: raw.value, unit: raw.unit, reason: raw.reason, source } };
 }
 
 function validateNoteAddedPayload(raw: unknown): ValidationResult<NoteAddedPayload> {
