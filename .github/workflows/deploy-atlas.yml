@@ -57,11 +57,18 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy-atlas:
+  # No environment: this job holds only GITHUB_TOKEN (contents: read) — never the
+  # production SSH key or Doppler — exactly like deploy-vps.yml's authorize job.
+  authorize:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    environment: production
-    timeout-minutes: 20
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      stg_api_id: ${{ steps.staging-receipt.outputs.stg_api_id }}
+      stg_fe_id: ${{ steps.staging-receipt.outputs.stg_fe_id }}
 
     steps:
       - name: Validate mode input
@@ -207,6 +214,26 @@ jobs:
             --require-capabilities retrieval,capture --require-services mira-hub
           echo "acceptance receipt verified: run ${RUN_URL} (generation = staging run ${STAGING_RUN_ID})" | tee -a "$GITHUB_STEP_SUMMARY"
 
+  deploy-atlas:
+    needs: authorize
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.approved_rc_sha }}
+          persist-credentials: false
+
+      - name: Require HEAD == the authorized candidate
+        env:
+          APPROVED_RC_SHA: ${{ inputs.approved_rc_sha }}
+        run: |
+          set -euo pipefail
+          [ "$(git rev-parse HEAD)" = "$APPROVED_RC_SHA" ] || { echo "::error::HEAD != approved_rc_sha"; exit 1; }
+
       - name: Set up SSH
         env:
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
@@ -251,8 +278,8 @@ jobs:
           set -euo pipefail
           MODE="${{ inputs.mode }}"
           RUN="atlas-deploy-${{ github.run_id }}"
-          STG_API_ID="${{ steps.staging-receipt.outputs.stg_api_id }}"
-          STG_FE_ID="${{ steps.staging-receipt.outputs.stg_fe_id }}"
+          STG_API_ID="${{ needs.authorize.outputs.stg_api_id }}"
+          STG_FE_ID="${{ needs.authorize.outputs.stg_fe_id }}"
           ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
             ubuntu@40.160.141.61 "sudo bash -s -- '${MODE}' '${RUN}' '${STG_API_ID}' '${STG_FE_ID}'" << 'ENDSSH'
           set -euo pipefail
