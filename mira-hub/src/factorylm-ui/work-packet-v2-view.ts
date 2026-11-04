@@ -135,6 +135,8 @@ export interface MeasurementRow {
   measured: { value: string; by: string; at: string } | null;
   /** Step numbers (1-based) that use this value. */
   steps: number[];
+  /** Set when a technician struck the value: it is excluded from the job, not a torque to use. */
+  excluded: { by: string; at: string } | null;
 }
 
 /** One row per torque/measurement value with the manual value, a correction, approval and the
@@ -143,8 +145,9 @@ export function measurementRows(packet: Pick<WorkPacket, "measurements" | "appro
   const entries = packet.approval.technicianReview.entries;
   return packet.measurements.map((m, i) => {
     const path = `measurements[${i}].value`;
-    // Every edit that changes the value — a correction or "mark unknown" (Codex EGM F07).
-    const sets = entries.filter((e: ReviewEntry) => e.path === path && (e.action === "set" || e.action === "mark_unknown"));
+    // Every edit that changes the value — a correction, "mark unknown" or a settle (Codex EGM F07).
+    const sets = entries.filter((e: ReviewEntry) => e.path === path && (e.action === "set" || e.action === "mark_unknown" || e.action === "settle"));
+    const strike = [...entries].reverse().find((e: ReviewEntry) => e.path === path && e.action === "strike");
     const first = sets[0];
     const last = sets[sets.length - 1];
     const sup = packet.approval.supervisor;
@@ -158,6 +161,7 @@ export function measurementRows(packet: Pick<WorkPacket, "measurements" | "appro
       approval: sup.state === "approved" ? `Approved by ${sup.by ?? "(unnamed)"}` : "Not approved — the site decides",
       measured: record?.measurements[i] ?? null,
       steps: (m.steps ?? []).map((s) => s + 1),
+      excluded: m.value.struck ? { by: strike?.by ?? "(unnamed)", at: strike?.at ?? "" } : null,
     };
   });
 }

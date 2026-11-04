@@ -14,6 +14,7 @@
  */
 
 import { modelScopeAdmits } from "./applicability";
+import { removalPart } from "./procedure";
 import type { ManualDoc } from "./procedure";
 import type { CoverageSection, PacketCoverage, PacketStep, SourceRef, Topic } from "./types";
 
@@ -75,7 +76,11 @@ export function computeCoverage(manuals: ManualDoc[], topics: Topic[], model: st
     }
     // (b) requested sections the reader could not read in order
     for (const o of omitted) {
-      if (!forJob(o.topic)) continue;
+      // A "REMOVING THE …" block is part of the job when a packet step works on that part, as the
+      // procedure builder would have included it had it been readable (Codex adversarial review F1).
+      const part = removalPart(o.heading);
+      const needed = part !== null && steps.some((s) => s.section !== o.heading && (s.text.value ?? "").toLowerCase().includes(part));
+      if (!forJob(o.topic) && !needed) continue;
       if (!o.models.unresolved && !modelScopeAdmits(o.models, model)) continue;
       const n = o.stepsSeen ?? 0;
       notRead(o.heading, `${mi}|o|${o.page}|${where(o)}`, n, `"${where(o)}" (p.${o.page}): the text could not be read in order — at least ${n} steps not read`, o.source, true);

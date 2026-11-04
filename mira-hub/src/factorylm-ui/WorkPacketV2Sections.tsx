@@ -219,7 +219,9 @@ export function PhasedSteps({ packet, renderField, stepExtra }: { packet: WorkPa
                   const fix = row.correction;
                   return (
                     <div key={k} style={S.torque} data-testid="wp-step-torque">
-                      Torque: {row.item} — {row.manual.value ?? "unknown"} (manual){fix ? ` · correction ${fix.value ?? "marked unknown"} by ${fix.by}, ${row.approval.toLowerCase()}` : ""} (see the torque table)
+                      {row.excluded
+                        ? `Torque: ${row.item} — EXCLUDED — struck by ${row.excluded.by}. Do not use this value; the site must supply the torque (see the torque table).`
+                        : <>Torque: {row.item} — {row.manual.value ?? "unknown"} (manual){fix ? ` · correction ${fix.value ?? "marked unknown"} by ${fix.by}, ${row.approval.toLowerCase()}` : ""} (see the torque table)</>}
                     </div>
                   );
                 })}
@@ -264,7 +266,7 @@ export function MeasurementsTable({ packet, record, renderField, measureInput }:
                 {r.steps.length > 0 && <div style={S.muted}>Step {r.steps.join(", ")}</div>}
               </td>
               <td style={S.td}>
-                {r.manual.value ?? "(unknown)"}
+                {r.excluded ? <><s>{r.manual.value ?? "(unknown)"}</s><div>EXCLUDED — struck by {r.excluded.by}. Do not use.</div></> : (r.manual.value ?? "(unknown)")}
                 <div style={S.muted}>{r.manual.label ? badgeText(r.manual.label) : "as built"}{sourceChipLabel(packet.measurements[r.index].value.source) ? ` · ${sourceChipLabel(packet.measurements[r.index].value.source)}` : ""}</div>
               </td>
               <td style={S.td}>{r.correction ? <>{r.correction.value ?? "(unknown)"}<div style={S.muted}>by {r.correction.by}, {r.correction.at.slice(0, 16).replace("T", " ")} UTC</div></> : <span style={S.muted}>none</span>}</td>

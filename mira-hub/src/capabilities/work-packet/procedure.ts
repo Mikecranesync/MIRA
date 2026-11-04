@@ -59,6 +59,11 @@ const IN_SEQUENCE_RE = /\bin (?:this|the following) (?:sequence|order)\b/i;
 const blockKey = (heading: string, sub: string | null) => `${heading}\u0000${sub ?? ""}`;
 const where = (s: { heading: string; subheading: string | null }) => (s.subheading ? `${s.heading} — ${s.subheading}` : s.heading);
 const titleWords = (x: string) => x.toLowerCase();
+/** The part a "REMOVING THE …" block takes off, lower-case, or null when the heading is not one. */
+export function removalPart(heading: string): string | null {
+  const m = REMOVING_RE.exec(heading);
+  return m ? titleWords(m[1]) : null;
+}
 
 function applicabilityField(a: Applicability, source: Field["source"]): Field | undefined {
   if (a.kind === "mixed") return { value: a.reason, label: "proposed", source, basis: "this line also covers other models — use only the part for this pump" };
@@ -265,15 +270,18 @@ export function buildProcedure(manuals: ManualDoc[], topics: Topic[], model: str
           const ps = toStep(section, st, "reinstall", inclusion);
           if (ps) reinstall.push(ps);
         }
-      } else {
-        for (const r of removed) {
-          blockers.push({
-            value: null,
-            label: "unknown",
-            source: r.section.steps[0].source,
-            basis: `This packet takes off the ${titleCase(r.x)} ("${r.section.heading}", p.${r.section.page}) but the manual's steps for putting it back were not found. A qualified person must supply them before work starts.`,
-          });
-        }
+      }
+      // Each removed part needs its own put-back step: one found reinstall must not hide that
+      // another part's is missing (Codex adversarial review F3).
+      const putBack = found ? found.section.steps.slice(found.from) : [];
+      for (const r of removed) {
+        if (putBack.some((st) => REINSTALL_VERB_RE.test(st.text) && st.text.toLowerCase().includes(titleWords(r.x)))) continue;
+        blockers.push({
+          value: null,
+          label: "unknown",
+          source: r.section.steps[0].source,
+          basis: `This packet takes off the ${titleCase(r.x)} ("${r.section.heading}", p.${r.section.page}) but the manual's steps for putting it back were not found. A qualified person must supply them before work starts.`,
+        });
       }
     }
 

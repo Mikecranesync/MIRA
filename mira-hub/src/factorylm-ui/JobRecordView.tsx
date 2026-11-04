@@ -9,7 +9,7 @@
  * step stays unperformed until the technician taps it, and the summary never says the equipment
  * is safe, repaired or returned to service.
  */
-import { useState, type CSSProperties, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ChangeEvent } from "react";
 import {
   addNote,
   addPhoto,
@@ -20,6 +20,7 @@ import {
   setNoteResolved,
   setStepPerformed,
   type JobNote,
+  type JobPhoto,
   type JobRecord,
 } from "@/capabilities/work-packet/job-record";
 import type { WorkPacket } from "@/capabilities/work-packet/types";
@@ -163,19 +164,43 @@ async function downscale(file: File, maxPx = 1024): Promise<string> {
   return canvas.toDataURL("image/jpeg", 0.7);
 }
 
+/** Decode a photo, then add it to the record as it is NOW — not as it was when decoding started —
+ *  so work recorded meanwhile is kept (Codex review F5). Null when the packet changed meanwhile. */
+export async function addPhotoWhenDecoded(
+  decode: () => Promise<string>,
+  latest: () => JobRecord | null,
+  packetId: string,
+  makePhoto: (image: string) => JobPhoto,
+): Promise<JobRecord | null> {
+  const image = await decode();
+  const now = latest();
+  if (!now || now.packetId !== packetId) return null;
+  return addPhoto(now, makePhoto(image));
+}
+
 export function JobPhotosSection({ record, by, onChange, onError, synthetic = false }: {
   record: JobRecord; by: string; onChange: (r: JobRecord) => void; onError: (msg: string) => void;
   /** A demo job: its photos are test images and say so where they are shown (Codex EGM F13). */
   synthetic?: boolean;
 }) {
   const [caption, setCaption] = useState("");
+  // The record as last rendered; null once unmounted, so a late photo is dropped, not written.
+  const latest = useRef<JobRecord | null>(record);
+  useEffect(() => {
+    latest.current = record;
+  }, [record]);
+  useEffect(() => () => {
+    latest.current = null;
+  }, []);
   const onFile = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
+    const text = caption.trim();
     try {
-      const image = await downscale(file);
-      onChange(addPhoto(record, { id: noteId(), image, caption: caption.trim(), stepIndex: null, by, at: new Date().toISOString() }));
+      const next = await addPhotoWhenDecoded(() => downscale(file), () => latest.current, record.packetId, (image) => ({ id: noteId(), image, caption: text, stepIndex: null, by, at: new Date().toISOString() }));
+      if (!next) return;
+      onChange(next);
       setCaption("");
     } catch (err) {
       onError(err instanceof Error ? err.message : "That photo could not be added.");
