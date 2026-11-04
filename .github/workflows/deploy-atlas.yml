@@ -8,6 +8,11 @@ name: Deploy Atlas CMMS to production
 # fails because nothing named `cmms-backend` exists on network
 # `factorylm-cmms_default`.
 #
+# Release order (SDLC v1): merge → deploy-staging.yml for that SHA with services
+# including `atlas-api atlas-frontend mira-hub` → retrieval-acceptance.yml runs on
+# it → dispatch this workflow with approved_rc_sha = that SHA. Both modes verify
+# the staging + acceptance receipts before any production credential is used.
+#
 # Human-dispatched only (touches production). `mode=dry-run` (default) runs
 # every read-only check and the compose config render and stops; `mode=apply`
 # additionally installs the files, brings the stack up, waits for health,
@@ -32,6 +37,10 @@ name: Deploy Atlas CMMS to production
 on:
   workflow_dispatch:
     inputs:
+      approved_rc_sha:
+        description: "Merged release candidate SHA whose staging deploy (incl. atlas-api atlas-frontend) and acceptance receipts exist (40 lowercase hex)"
+        required: true
+        type: string
       mode:
         description: "dry-run (read-only checks only) or apply (install + bring up)"
         type: choice
@@ -65,19 +74,138 @@ jobs:
 
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.approved_rc_sha }}
+          fetch-depth: 0
           persist-credentials: false
 
-      - name: Require the exact current main source
+      # SDLC v1 §5.2 / §6.2 / §7.2 — same authorization chain as deploy-vps.yml, run
+      # BEFORE any production credential exists in this job (both modes): the
+      # candidate is a merged commit, the validators come from the trusted base
+      # (github.sha, the tip of main), and staging + acceptance receipts for the
+      # exact candidate must verify. Atlas has no acceptance suite of its own: its
+      # Atlas-specific acceptance is the post-deploy gate below (admin sign-in,
+      # public HTTPS, in-network name); the generation audit is the standard
+      # retrieval+capture receipt bound to the same staging run.
+      - name: Validate the candidate and pin the trusted validators
+        env:
+          APPROVED_RC_SHA: ${{ inputs.approved_rc_sha }}
+          TRUSTED_BASE_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          git fetch --no-tags origin main:refs/remotes/origin/main --depth=1
-          CURRENT_MAIN="$(git rev-parse origin/main)"
-          CHECKED_OUT="$(git rev-parse HEAD)"
-          [[ "$CHECKED_OUT" == "$CURRENT_MAIN" ]] || {
-            echo "::error::Refusing stale production Atlas deploy: checked out $CHECKED_OUT, current main is $CURRENT_MAIN"
+          [[ "$APPROVED_RC_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::approved_rc_sha must be exactly 40 lowercase hex characters"; exit 1; }
+          [[ "$TRUSTED_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::trusted base sha is not a 40-hex commit"; exit 1; }
+          [ "$(git rev-parse HEAD)" = "$APPROVED_RC_SHA" ] || { echo "::error::HEAD != approved_rc_sha"; exit 1; }
+          git fetch --no-tags origin "$TRUSTED_BASE_SHA"
+          if ! git merge-base --is-ancestor "$APPROVED_RC_SHA" "$TRUSTED_BASE_SHA"; then
+            echo "::error::approved_rc_sha $APPROVED_RC_SHA is not reachable from main ($TRUSTED_BASE_SHA) — only merged commits may be authorized (SDLC v1 §5.2)"
             exit 1
-          }
+          fi
+          install -d -m 700 "$RUNNER_TEMP/trusted"
+          for f in tools/staging_receipt.py tools/acceptance_receipt.py; do
+            git show "$TRUSTED_BASE_SHA:$f" > "$RUNNER_TEMP/trusted/$(basename "$f")"
+            [ -s "$RUNNER_TEMP/trusted/$(basename "$f")" ] || { echo "::error::trusted base has no $f"; exit 1; }
+          done
+          echo "trusted base $TRUSTED_BASE_SHA; candidate $APPROVED_RC_SHA is an ancestor" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Require a deployed-staging receipt covering atlas-api + atlas-frontend
+        id: staging-receipt
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPROVED_RC_SHA: ${{ inputs.approved_rc_sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Provenance rules copied from deploy-vps.yml: newest unexpired artifact of the
+          # exact name, produced by a completed, successful workflow_dispatch run of
+          # deploy-staging.yml in this repo; never fall through to an older candidate.
+          STAGING_WORKFLOW_PATH=".github/workflows/deploy-staging.yml"
+          ARTIFACT="$(gh api "/repos/$REPO/actions/artifacts?name=staging-receipt-${APPROVED_RC_SHA}&per_page=50" \
+            --jq '[.artifacts[] | select(.expired == false)] | sort_by(.created_at) | reverse | .[0] // empty')"
+          if [ -z "$ARTIFACT" ]; then
+            echo "::error::No unexpired staging-receipt-${APPROVED_RC_SHA} artifact exists — deploy staging first (services must include atlas-api atlas-frontend mira-hub)."
+            exit 1
+          fi
+          ARTIFACT_ID="$(echo "$ARTIFACT" | jq -r '.id')"
+          STAGING_RUN_ID="$(echo "$ARTIFACT" | jq -r '.workflow_run.id // empty')"
+          [ -n "$STAGING_RUN_ID" ] || { echo "::error::staging receipt artifact ${ARTIFACT_ID} has no workflow_run provenance — STOP."; exit 1; }
+          RUN_JSON="$(gh api "/repos/$REPO/actions/runs/${STAGING_RUN_ID}")"
+          RUN_PATH="$(echo "$RUN_JSON" | jq -r '.path // empty')"
+          RUN_EVENT="$(echo "$RUN_JSON" | jq -r '.event // empty')"
+          RUN_STATUS="$(echo "$RUN_JSON" | jq -r '.status // empty')"
+          RUN_CONCLUSION="$(echo "$RUN_JSON" | jq -r '.conclusion // empty')"
+          RUN_REPO="$(echo "$RUN_JSON" | jq -r '.repository.full_name // empty')"
+          RUN_URL="$(echo "$RUN_JSON" | jq -r '.html_url // empty')"
+          echo "staging receipt artifact ${ARTIFACT_ID} <- run ${STAGING_RUN_ID}: path=${RUN_PATH} event=${RUN_EVENT} status=${RUN_STATUS} conclusion=${RUN_CONCLUSION} repo=${RUN_REPO}"
+          if [ "$RUN_REPO" != "$REPO" ] || [ "$RUN_PATH" != "$STAGING_WORKFLOW_PATH" ] || [ "$RUN_EVENT" != "workflow_dispatch" ] \
+             || [ "$RUN_STATUS" != "completed" ] || [ "$RUN_CONCLUSION" != "success" ]; then
+            echo "::error::staging receipt artifact ${ARTIFACT_ID} was not produced by a completed, successful workflow_dispatch run of ${STAGING_WORKFLOW_PATH} in ${REPO} — STOP."
+            exit 1
+          fi
+          install -d -m 700 "$RUNNER_TEMP/staging-receipt"
+          gh api "/repos/$REPO/actions/artifacts/${ARTIFACT_ID}/zip" > "$RUNNER_TEMP/staging-receipt.zip"
+          unzip -o "$RUNNER_TEMP/staging-receipt.zip" -d "$RUNNER_TEMP/staging-receipt"
+          RECEIPT="$RUNNER_TEMP/staging-receipt/staging-receipt.json"
+          [ -s "$RECEIPT" ] || { echo "::error::artifact ${ARTIFACT_ID} contains no staging-receipt.json — STOP."; exit 1; }
+          # Trusted validator: image identity required for both Atlas services
+          # (runtime identity NOT_APPLICABLE — Atlas reports no git SHA).
+          python3 -I "$RUNNER_TEMP/trusted/staging_receipt.py" verify --receipt "$RECEIPT" \
+            --approved-rc-sha "$APPROVED_RC_SHA" --environment staging --max-age-hours 168 \
+            --expect-run-id "$STAGING_RUN_ID" --expect-run-url "$RUN_URL" \
+            --effective-services atlas-api,atlas-frontend | tee -a "$GITHUB_STEP_SUMMARY"
+          install -m 600 "$RECEIPT" "$RUNNER_TEMP/staging-receipt.json"
+          # The image ids staging ran — production must pull byte-identical images.
+          STG_API_ID="$(jq -r '.running_images["atlas-api"] // empty' "$RECEIPT")"
+          STG_FE_ID="$(jq -r '.running_images["atlas-frontend"] // empty' "$RECEIPT")"
+          [[ "$STG_API_ID" =~ ^sha256:[0-9a-f]{64}$ && "$STG_FE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::staging receipt lacks atlas image ids — STOP."; exit 1; }
+          {
+            echo "staging_run_id=$STAGING_RUN_ID"
+            echo "stg_api_id=$STG_API_ID"
+            echo "stg_fe_id=$STG_FE_ID"
+          } >> "$GITHUB_OUTPUT"
+          echo "staging receipt verified: run ${RUN_URL}"
+
+      - name: Require a generation-matched acceptance receipt
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPROVED_RC_SHA: ${{ inputs.approved_rc_sha }}
+          STAGING_RUN_ID: ${{ steps.staging-receipt.outputs.staging_run_id }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          [[ "$STAGING_RUN_ID" =~ ^[1-9][0-9]*$ ]] || { echo "::error::no verified staging run id to bind the acceptance receipt to"; exit 1; }
+          ACCEPTANCE_WORKFLOW_PATH=".github/workflows/retrieval-acceptance.yml"
+          ARTIFACT="$(gh api "/repos/$REPO/actions/artifacts?name=acceptance-receipt-${APPROVED_RC_SHA}&per_page=50" \
+            --jq '[.artifacts[] | select(.expired == false)] | sort_by(.created_at) | reverse | .[0] // empty')"
+          [ -n "$ARTIFACT" ] || { echo "::error::No unexpired acceptance-receipt-${APPROVED_RC_SHA} artifact exists (SDLC v1 §6.2)."; exit 1; }
+          ARTIFACT_ID="$(echo "$ARTIFACT" | jq -r '.id')"
+          ACCEPTANCE_RUN_ID="$(echo "$ARTIFACT" | jq -r '.workflow_run.id // empty')"
+          [ -n "$ACCEPTANCE_RUN_ID" ] || { echo "::error::acceptance receipt artifact ${ARTIFACT_ID} has no workflow_run provenance — STOP."; exit 1; }
+          RUN_JSON="$(gh api "/repos/$REPO/actions/runs/${ACCEPTANCE_RUN_ID}")"
+          RUN_PATH="$(echo "$RUN_JSON" | jq -r '.path // empty')"
+          RUN_EVENT="$(echo "$RUN_JSON" | jq -r '.event // empty')"
+          RUN_STATUS="$(echo "$RUN_JSON" | jq -r '.status // empty')"
+          RUN_CONCLUSION="$(echo "$RUN_JSON" | jq -r '.conclusion // empty')"
+          RUN_REPO="$(echo "$RUN_JSON" | jq -r '.repository.full_name // empty')"
+          RUN_URL="$(echo "$RUN_JSON" | jq -r '.html_url // empty')"
+          echo "acceptance receipt artifact ${ARTIFACT_ID} <- run ${ACCEPTANCE_RUN_ID}: path=${RUN_PATH} event=${RUN_EVENT} status=${RUN_STATUS} conclusion=${RUN_CONCLUSION} repo=${RUN_REPO}"
+          if [ "$RUN_REPO" != "$REPO" ] || [ "$RUN_PATH" != "$ACCEPTANCE_WORKFLOW_PATH" ] || [ "$RUN_EVENT" != "workflow_run" ] \
+             || [ "$RUN_STATUS" != "completed" ] || [ "$RUN_CONCLUSION" != "success" ]; then
+            echo "::error::acceptance receipt artifact ${ARTIFACT_ID} was not produced by a completed, successful workflow_run-triggered run of ${ACCEPTANCE_WORKFLOW_PATH} in ${REPO} — STOP."
+            exit 1
+          fi
+          install -d -m 700 "$RUNNER_TEMP/acceptance-receipt"
+          gh api "/repos/$REPO/actions/artifacts/${ARTIFACT_ID}/zip" > "$RUNNER_TEMP/acceptance-receipt.zip"
+          unzip -o "$RUNNER_TEMP/acceptance-receipt.zip" -d "$RUNNER_TEMP/acceptance-receipt"
+          [ -s "$RUNNER_TEMP/acceptance-receipt/acceptance-receipt.json" ] || { echo "::error::artifact ${ARTIFACT_ID} contains no acceptance-receipt.json — STOP."; exit 1; }
+          RECEIPT_RUN_ID="$(jq -r '.acceptance_run_id // empty' "$RUNNER_TEMP/acceptance-receipt/acceptance-receipt.json")"
+          [ "$RECEIPT_RUN_ID" = "$ACCEPTANCE_RUN_ID" ] || { echo "::error::acceptance receipt says acceptance_run_id=${RECEIPT_RUN_ID}, artifact came from run ${ACCEPTANCE_RUN_ID} — STOP."; exit 1; }
+          python3 -I "$RUNNER_TEMP/trusted/acceptance_receipt.py" verify \
+            --receipt "$RUNNER_TEMP/acceptance-receipt/acceptance-receipt.json" \
+            --approved-rc-sha "$APPROVED_RC_SHA" --max-age-hours 168 \
+            --expect-staging-run-id "$STAGING_RUN_ID" \
+            --staging-receipt "$RUNNER_TEMP/staging-receipt.json" \
+            --require-capabilities retrieval,capture --require-services mira-hub
+          echo "acceptance receipt verified: run ${RUN_URL} (generation = staging run ${STAGING_RUN_ID})" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Set up SSH
         env:
@@ -123,11 +251,16 @@ jobs:
           set -euo pipefail
           MODE="${{ inputs.mode }}"
           RUN="atlas-deploy-${{ github.run_id }}"
+          STG_API_ID="${{ steps.staging-receipt.outputs.stg_api_id }}"
+          STG_FE_ID="${{ steps.staging-receipt.outputs.stg_fe_id }}"
           ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
-            ubuntu@40.160.141.61 "sudo bash -s -- '${MODE}' '${RUN}'" << 'ENDSSH'
+            ubuntu@40.160.141.61 "sudo bash -s -- '${MODE}' '${RUN}' '${STG_API_ID}' '${STG_FE_ID}'" << 'ENDSSH'
           set -euo pipefail
           MODE="$1"
           RUN="$2"
+          STG_API_ID="$3"
+          STG_FE_ID="$4"
+          [[ "$STG_API_ID" =~ ^sha256:[0-9a-f]{64}$ && "$STG_FE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::verified staging image ids missing"; exit 1; }
           COMPOSE_SRC="/tmp/${RUN}/docker-compose.prod.yml"
           NGINX_SRC="/tmp/${RUN}/nginx-cmms-factorylm.conf"
 
@@ -228,28 +361,6 @@ jobs:
             exit 1
           fi
 
-          echo "=== staging evidence gate (same images healthy in staging on this host) ==="
-          # Production may only run Atlas images that the co-hosted staging stack
-          # (docker-compose.staging-vps.yml, deploy-staging.yml) already runs healthy.
-          STG_FAIL=""
-          for pair in "cmms-backend:stg-atlas-api" "cmms-frontend:stg-atlas-frontend"; do
-            svc="${pair%%:*}"; stg="${pair##*:}"
-            want="$(awk -v s="  ${svc}:" '$0==s{f=1;next} f&&/^  [a-z]/{f=0} f&&$1=="image:"{print $2;exit}' "$COMPOSE_SRC")"
-            have="$(docker inspect "$stg" --format '{{.Config.Image}}' 2>/dev/null || true)"
-            health="$(docker inspect "$stg" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' 2>/dev/null || echo absent)"
-            echo "  $svc wants ${want:-?} | $stg runs ${have:-none} ($health)"
-            if [ -z "$want" ] || [ "$want" != "$have" ] || [ "$health" != "healthy" ]; then
-              STG_FAIL="$STG_FAIL $stg"
-            fi
-          done
-          if [ -n "$STG_FAIL" ]; then
-            if [ "$MODE" = "apply" ]; then
-              echo "::error::staging evidence missing — not running healthy with the identical image:$STG_FAIL (deploy staging first)"
-              exit 1
-            fi
-            echo "::warning::staging evidence missing:$STG_FAIL — apply would refuse"
-          fi
-
           echo "=== DNS gate (TLS needs cmms.factorylm.com to resolve here) ==="
           if [ -z "$PUBLIC_IP" ] || [ "$DNS_IP" != "$PUBLIC_IP" ]; then
             if [ "$MODE" = "apply" ]; then
@@ -284,6 +395,15 @@ jobs:
           echo "wait flags: ${WAIT_FLAGS:-<none: compose too old, falling back to health poll below>}"
           doppler run --project factorylm --config prd -- \
             docker compose -p factorylm-cmms -f /opt/mira-cmms/docker-compose.prod.yml pull
+
+          echo "=== apply: pulled images must equal the ones the verified staging receipt ran ==="
+          for pair in "cmms-backend:${STG_API_ID}" "cmms-frontend:${STG_FE_ID}"; do
+            svc="${pair%%:*}"; want="${pair#*:}"
+            ref="$(awk -v s="  ${svc}:" '$0==s{f=1;next} f&&/^  [a-z]/{f=0} f&&$1=="image:"{print $2;exit}' /opt/mira-cmms/docker-compose.prod.yml)"
+            have="$(docker image inspect --format '{{.Id}}' "$ref" 2>/dev/null || true)"
+            echo "  $svc $ref -> ${have:-missing} (staging ran $want)"
+            [ -n "$ref" ] && [ "$have" = "$want" ] || { echo "::error::$svc image differs from the staging-receipted image — STOP before any container starts"; exit 1; }
+          done
           # shellcheck disable=SC2086
           doppler run --project factorylm --config prd -- \
             docker compose -p factorylm-cmms -f /opt/mira-cmms/docker-compose.prod.yml up -d $WAIT_FLAGS || {
