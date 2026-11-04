@@ -88,6 +88,9 @@ const NEVER_VERIFIED_PATH = /^(?:steps\[\d+\]\.(?:applicability|inclusion|notes\
 export function verifyPacket(packet: WorkPacket): string[] {
   const problems: string[] = [];
 
+  // N1: a packet built from part of the manual's procedure fails its own check, whatever it holds.
+  if (packet.coverage && !packet.coverage.complete) problems.push(`coverage: ${packet.coverage.summary}`);
+
   const all = collectFields(packet);
   const byPath = new Map(all.map((l) => [l.path, l.field]));
 
@@ -100,6 +103,10 @@ export function verifyPacket(packet: WorkPacket): string[] {
       } else if (original.value !== field.value || original.label !== field.label || !!original.struck !== !!field.struck) {
         problems.push(`${path}: differs from its original '${field.copyOf}'`);
       }
+    }
+
+    if (field.label === "verified" && packet.coverage && !packet.coverage.complete) {
+      problems.push(`${path}: verified in a packet that is not the whole job`);
     }
 
     if (field.label === "verified") {

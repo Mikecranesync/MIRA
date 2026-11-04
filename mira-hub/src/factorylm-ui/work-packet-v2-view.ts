@@ -85,18 +85,21 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 
 /** What is still open, in plain words, for the top of the packet. Any open question or unknown
  *  means "needs review". It never says the equipment is safe or may return to service. */
-export function readinessSummary(packet: Pick<WorkPacket, "blockers" | "unknowns" | "safety" | "approval" | "steps">): Readiness {
+export function readinessSummary(packet: Pick<WorkPacket, "blockers" | "unknowns" | "safety" | "approval" | "steps" | "coverage">): Readiness {
   const blockers = (packet.blockers ?? []).filter((b) => !b.struck).length;
   const unknowns = packet.unknowns.filter((u) => !u.struck).length + packet.safety.cautions.filter((c) => c.label === "unknown" && !c.struck).length;
   const struck = packet.steps.filter((s) => s.text.struck).length;
   const lines: string[] = [];
+  // N1: a packet built from part of the manual says so before anything else.
+  const partial = !!packet.coverage && !packet.coverage.complete;
+  if (partial) lines.push(packet.coverage!.summary);
   if (blockers > 0) lines.push(`${plural(blockers, "open question", "open questions")} the documents cannot settle — a qualified person must settle them before work starts (see "Before you start").`);
   if (unknowns > 0) lines.push(`${plural(unknowns, "item is", "items are")} unknown — the documents do not give a value. Nothing has been guessed.`);
   if (struck > 0) lines.push(`${plural(struck, "step was", "steps were")} struck by a technician.`);
   lines.push("Site isolation and lockout: your site must confirm them.");
   const sup = packet.approval.supervisor;
   lines.push(sup.state === "approved" ? `Supervisor approval: approved by ${sup.by ?? "(unnamed)"}.` : "Supervisor approval: pending.");
-  return { status: blockers > 0 || unknowns > 0 ? "needs_review" : "draft", lines };
+  return { status: partial || blockers > 0 || unknowns > 0 ? "needs_review" : "draft", lines };
 }
 
 export interface MeasurementRow {

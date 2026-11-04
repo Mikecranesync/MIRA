@@ -417,10 +417,13 @@ function flushSection(open: OpenSection | null, sections: SmSection[], problems:
       break;
     }
   }
+  // Steps the parser saw before giving up on the block: the highest step number printed (step N
+  // means at least N steps), never fewer than the step lines read. A lower bound, not a count.
+  const stepsSeen = Math.max(open.steps.length, ...nums);
   if (open.incomplete) {
     const where = `${open.heading}${open.subheading ? " — " + open.subheading : ""}`;
     problems.push(`page ${open.page}: "${where}": ${open.incomplete}`);
-    omitted.push({ heading: open.heading, subheading: open.subheading, topic: open.topic, models: open.models, page: open.page, source: open.steps[0].source, reason: open.incomplete });
+    omitted.push({ heading: open.heading, subheading: open.subheading, topic: open.topic, models: open.models, page: open.page, source: open.steps[0].source, reason: open.incomplete, stepsSeen });
     return;
   }
   if (outOfOrder) {
@@ -435,6 +438,7 @@ function flushSection(open: OpenSection | null, sections: SmSection[], problems:
       page: open.page,
       source: open.steps[0].source,
       reason,
+      stepsSeen,
     });
     return;
   }

@@ -37,6 +37,7 @@ const S: Record<string, CSSProperties> = {
   figureImg: { display: "block", maxWidth: "100%", width: 240, height: "auto", border: "1px solid var(--fl-line)", borderRadius: "var(--fl-radius, 6px)" },
   review: { background: "var(--fl-warn-bg)", border: "1px solid var(--fl-warn)", borderRadius: "var(--fl-radius-sm, 6px)", padding: 12, fontSize: "var(--fl-fs-sm)" },
   draft: { background: "var(--fl-surface)", border: "1px solid var(--fl-line-strong)", borderRadius: "var(--fl-radius-sm, 6px)", padding: 12, fontSize: "var(--fl-fs-sm)" },
+  stop: { background: "var(--fl-fault-bg)", border: "2px solid var(--fl-fault)", borderRadius: "var(--fl-radius-sm, 6px)", padding: 12, fontSize: "var(--fl-fs-sm)", marginTop: 0, marginBottom: 8, breakInside: "avoid" },
   blocker: { borderTop: "1px solid var(--fl-line)", paddingTop: 8, marginTop: 8 },
 };
 
@@ -71,6 +72,29 @@ function Figure({ f }: { f: PacketFigure }) {
       {/* Where it sits is matched by words, not stated by the manual (Codex EGM F33). */}
       {f.placement && <div style={S.muted} data-testid="wp-figure-placement">{badgeText(f.placement.label)}: placed next to this step by matching words — check it shows this step.</div>}
     </figure>
+  );
+}
+
+/** N1: a packet built from part of the manual's procedure stops itself — the first thing on screen
+ *  and on page 1 of the PDF. Says how much was read and which parts are missing, in plain words. */
+export function CoverageStop({ packet }: { packet: WorkPacket }) {
+  const c = packet.coverage;
+  if (!c || c.complete) return null;
+  const missing = c.sections.filter((s) => s.status !== "read");
+  return (
+    <section role="alert" style={{ ...S.section, ...S.stop }} data-testid="wp-coverage-stop">
+      <strong>Not the whole job — do not work from this packet alone.</strong>
+      <div style={{ marginTop: 4 }}>{c.summary}</div>
+      <ul style={{ margin: "6px 0 0 0", padding: "0 0 0 18px" }}>
+        {missing.map((s) => (
+          <li key={s.heading}>
+            {s.heading}: {s.status === "partly" ? `partly read (${s.stepsRead} read, at least ${s.stepsNotRead} not read)` : `not read (at least ${s.stepsNotRead} steps)`}
+            {s.source ? ` — starts p.${s.source.page}` : ""}
+          </li>
+        ))}
+      </ul>
+      <div style={{ marginTop: 6 }}>Work from the manual itself for the missing parts. Nothing in this packet is marked Verified until the whole procedure can be read.</div>
+    </section>
   );
 }
 

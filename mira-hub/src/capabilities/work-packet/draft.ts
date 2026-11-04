@@ -40,6 +40,7 @@ import { parseCatPumpsServiceManual } from "./catpumps-service-manual";
 import { collectFields, verifyPacket } from "./verify";
 import { captionApplicability, modelScopeAdmits, modelsMatch } from "./applicability";
 import { buildProcedure } from "./procedure";
+import { computeCoverage } from "./coverage";
 
 /** A caution about starting the pump back up (e.g. "Do not lubricate wicks at initial start-up …"). */
 const STARTUP_RE = /\bstart-?\s?up\b/i;
@@ -354,6 +355,17 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
   const unknowns: Field[] = [...procedure.unknowns];
   const leftOut: Field[] = [...procedure.leftOut];
   const blockers: Field[] = [...procedure.blockers];
+  // N1: a packet built from part of the manual's procedure says so first, before any other blocker.
+  const coverage = computeCoverage(applicableManuals, selectedTopics, scopeKey, procedure.steps);
+  if (coverage && !coverage.complete) {
+    const missing = coverage.sections.filter((c) => c.status !== "read").map((c) => `${c.heading} (${c.status === "partly" ? "partly read" : "not read"})`);
+    blockers.unshift({
+      value: null,
+      label: "unknown",
+      source: coverage.sections.find((c) => c.source)?.source ?? null,
+      basis: `${coverage.summary} Not fully read: ${missing.join("; ")}. Work from the manual itself for the missing parts; a qualified person must supply them before work starts. Nothing in this packet is marked verified.`,
+    });
+  }
 
   // Safety holds the manufacturer's cautions/warnings once each. A NOTE printed inside a procedure
   // is shown beside its step instead (or left out with its other-model block), not repeated here.
@@ -748,11 +760,22 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
     unknowns,
     blockers,
     leftOut,
+    ...(coverage ? { coverage } : {}),
     approval: {
       technicianReview: { state: "draft", entries: [] },
       supervisor: { state: "pending", by: null, at: null },
     },
   };
+
+  // N1: nothing in a packet that is not the whole job is shown as verified — the manual's own words
+  // stay, as proposed, so the technician still sees what was read.
+  if (coverage && !coverage.complete) {
+    for (const { field } of collectFields(packet)) {
+      if (field.label !== "verified") continue;
+      field.label = "proposed";
+      field.basis = `${field.basis} — ${coverage.summary}`;
+    }
+  }
 
   const warnings: string[] = [];
   const problems = verifyPacket(packet);

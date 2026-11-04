@@ -34,7 +34,7 @@ import type {
 import { applyEdit } from "@/capabilities/work-packet/edits";
 import { emptyRecord, parseRecord, type JobRecord } from "@/capabilities/work-packet/job-record";
 import { CompletionBlock, JobNotesSection, JobPhotosSection, MeasurementRecordInput, PacketCoverage, StepRecordControls } from "./JobRecordView";
-import { BlockersSection, JhaTable, LeftOutAppendix, MeasurementsTable, PartsTable, PhasedSteps, ReadinessBlock, type RenderField } from "./WorkPacketV2Sections";
+import { BlockersSection, CoverageStop, JhaTable, LeftOutAppendix, MeasurementsTable, PartsTable, PhasedSteps, ReadinessBlock, type RenderField } from "./WorkPacketV2Sections";
 import {
   badgeText,
   quoteChipLabel,
@@ -752,6 +752,7 @@ export function WorkPacketPanel({
                   </div>
                 )}
                 {packet.workOrder.synthetic && <div style={S.stamp} data-testid="wp-synthetic-stamp">SYNTHETIC — not a real job</div>}
+                <CoverageStop packet={packet} />
                 <PacketHeader packet={packet} />
                 <div style={S.warn} data-testid="wp-disclaimer">{packet.disclaimer}</div>
                 <ReadinessBlock packet={packet} />

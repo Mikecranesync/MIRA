@@ -226,6 +226,9 @@ export interface SmOmittedSection {
   /** First line the parser saw in the section, so the gap cites where to look. */
   source: SourceRef;
   reason: string;
+  /** Step lines the parser saw before leaving the block out — at least this many steps are not read.
+   *  Absent on manuals parsed before coverage existed. */
+  stepsSeen?: number;
 }
 
 /** A caution/warning the parser could not read in full (Codex #5062 F15). */
@@ -360,6 +363,30 @@ export interface JhaRow {
   controls: Field;
 }
 
+/** One procedure heading of the manual that this job touches, and how much of it was read. */
+export interface CoverageSection {
+  heading: string;
+  status: "read" | "partly" | "not_read";
+  stepsRead: number;
+  /** At least this many of its steps are not in the packet. */
+  stepsNotRead: number;
+  /** Plain words: why each unread part was not read. */
+  reasons: string[];
+  /** Where the first unread part starts in the manual, so the technician can look it up. */
+  source: SourceRef | null;
+}
+
+export interface PacketCoverage {
+  complete: boolean;
+  stepsRead: number;
+  stepsTotal: number;
+  /** True when some unread text could not be counted exactly — the total is "at least". */
+  totalIsLowerBound: boolean;
+  /** One sentence shown first on screen and on page 1 of the PDF. */
+  summary: string;
+  sections: CoverageSection[];
+}
+
 export interface WorkPacket {
   /** 1 = packets saved before the V2 layout; they still load, verify and export. */
   version: 1 | 2;
@@ -403,6 +430,10 @@ export interface WorkPacket {
   /** V2: manual content deliberately not in this packet (other models, steps outside the job,
    *  torque rows no step uses, figures for other models) — shown in an appendix, never silently dropped. */
   leftOut?: Field[];
+  /** V2 (finding N1): how much of the manual's procedure for this job the reader could read. When
+   *  `complete` is false the packet blocks itself and nothing in it is shown as verified. Absent on
+   *  packets saved before coverage existed. */
+  coverage?: PacketCoverage;
   approval: {
     technicianReview: { state: "draft" | "reviewed"; entries: ReviewEntry[] };
     supervisor: { state: "pending" | "approved"; by: string | null; at: string | null };
