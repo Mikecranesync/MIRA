@@ -3,11 +3,13 @@
  * readout rows (b007–b009 / F604–F610) and must also retrieve the parameter
  * that writes those buffers (A551 [Fault Clear] option 2 Clear Buffer).
  *
- * The #5030 chunker is not this miss — A551 lives on a different page that
- * never entered the cited set. Related Parameters on the readout rows do not
- * name A551. This fixture fails unless retrieveNodeChunks expands from the
- * DISPLAY role to the CONTROL role and keeps that chunk next to the history
- * rows. Zero tokens; mocked pg client dispatches on SQL shape.
+ * Lives under capabilities/ so the hermetic fixture does not expand the
+ * guarded historical `mira-hub/src/lib/__tests__` bucket. The #5030 chunker
+ * is not this miss — A551 lives on a different page that never entered the
+ * cited set. Related Parameters on the readout rows do not name A551. This
+ * fixture fails unless retrieveNodeChunks expands from the DISPLAY role to
+ * the CONTROL role and keeps that chunk next to the history rows.
+ * Zero tokens; mocked pg client dispatches on SQL shape.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PoolClient } from "pg";
