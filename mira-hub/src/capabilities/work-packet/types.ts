@@ -378,6 +378,8 @@ export interface CoverageSection {
   stepsRead: number;
   /** At least this many of its steps are not in the packet. */
   stepsNotRead: number;
+  /** Steps the manual limits to models this tool cannot make out — they may or may not be this pump's. */
+  stepsMayApply: number;
   /** Plain words: why each unread part was not read. */
   reasons: string[];
   /** Where the first unread part starts in the manual, so the technician can look it up. */
@@ -388,6 +390,8 @@ export interface PacketCoverage {
   complete: boolean;
   stepsRead: number;
   stepsTotal: number;
+  /** Steps that may apply to this pump and are not in `stepsTotal` (see CoverageSection.stepsMayApply). */
+  stepsMayApply: number;
   /** True when some unread text could not be counted exactly — the total is "at least". */
   totalIsLowerBound: boolean;
   /** One sentence shown first on screen and on page 1 of the PDF. */

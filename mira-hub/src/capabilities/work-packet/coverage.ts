@@ -20,6 +20,7 @@ import type { CoverageSection, PacketCoverage, PacketStep, SourceRef, Topic } fr
 interface Part {
   heading: string;
   notRead: number;
+  mayApply: number;
   reasons: string[];
   source: SourceRef | null;
 }
@@ -37,17 +38,20 @@ export function computeCoverage(manuals: ManualDoc[], topics: Topic[], model: st
   const touch = (heading: string): Part => {
     let p = parts.get(heading);
     if (!p) {
-      p = { heading, notRead: 0, reasons: [], source: null };
+      p = { heading, notRead: 0, mayApply: 0, reasons: [], source: null };
       parts.set(heading, p);
       order.push(heading);
     }
     return p;
   };
-  const notRead = (heading: string, key: string, n: number, reason: string, source: SourceRef | null, lower: boolean) => {
+  // `maybe`: the manual limits these steps to models this tool cannot make out, so they may not be
+  // this pump's — they are named apart and kept out of the "at least" total, which must not overstate.
+  const notRead = (heading: string, key: string, n: number, reason: string, source: SourceRef | null, lower: boolean, maybe = false) => {
     if (counted.has(key)) return;
     counted.add(key);
     const p = touch(heading);
-    p.notRead += n;
+    if (maybe) p.mayApply += n;
+    else p.notRead += n;
     p.reasons.push(reason);
     p.source ??= source;
     if (lower) lowerBound = true;
@@ -66,7 +70,7 @@ export function computeCoverage(manuals: ManualDoc[], topics: Topic[], model: st
       if (!forJob(s.topic)) continue;
       touch(s.heading);
       if (s.models.unresolved && s.steps.length > 0) {
-        notRead(s.heading, `${mi}|s|${s.page}|${where(s)}`, s.steps.length, `"${where(s)}" (p.${s.page}): the manual limits these ${s.steps.length} steps to some models and this tool cannot tell whether this pump is one`, s.steps[0].source, false);
+        notRead(s.heading, `${mi}|s|${s.page}|${where(s)}`, s.steps.length, `"${where(s)}" (p.${s.page}): the manual limits these ${s.steps.length} steps to some models and this tool cannot tell whether this pump is one`, s.steps[0].source, false, true);
       }
     }
     // (b) requested sections the reader could not read in order
@@ -87,7 +91,7 @@ export function computeCoverage(manuals: ManualDoc[], topics: Topic[], model: st
       for (const s of manual.sections) {
         if (s.heading !== h || s.steps.length === 0) continue;
         if (!s.models.unresolved && !modelScopeAdmits(s.models, model)) continue;
-        notRead(h, `${mi}|s|${s.page}|${where(s)}`, s.steps.length, `"${where(s)}" (p.${s.page}): ${why}`, s.steps[0].source, false);
+        notRead(h, `${mi}|s|${s.page}|${where(s)}`, s.steps.length, `"${where(s)}" (p.${s.page}): ${why}`, s.steps[0].source, false, s.models.unresolved);
       }
       for (const o of omitted) {
         if (o.heading !== h) continue;
@@ -101,16 +105,21 @@ export function computeCoverage(manuals: ManualDoc[], topics: Topic[], model: st
   const sections: CoverageSection[] = order.map((h) => {
     const p = parts.get(h)!;
     const read = readByHeading.get(h) ?? 0;
-    const status: CoverageSection["status"] = p.notRead === 0 && p.reasons.length === 0 ? "read" : read > 0 ? "partly" : "not_read";
-    return { heading: h, status, stepsRead: read, stepsNotRead: p.notRead, reasons: p.reasons, source: p.source };
+    const status: CoverageSection["status"] = p.reasons.length === 0 ? "read" : read > 0 ? "partly" : "not_read";
+    return { heading: h, status, stepsRead: read, stepsNotRead: p.notRead, stepsMayApply: p.mayApply, reasons: p.reasons, source: p.source };
   });
   const stepsRead = steps.length;
   const stepsTotal = stepsRead + sections.reduce((n, s) => n + s.stepsNotRead, 0);
+  const stepsMayApply = sections.reduce((n, s) => n + s.stepsMayApply, 0);
+  if (stepsMayApply > 0) lowerBound = true;
+  const maybe = stepsMayApply > 0 ? ` (${stepsMayApply} more may apply to this pump)` : "";
   const complete = stepsRead > 0 && sections.every((s) => s.status === "read");
   const summary = complete
     ? `All ${stepsRead} steps the manual prints for this job could be read.`
     : stepsRead === 0
       ? "No steps for this job could be read from the manual; this is not the whole job."
-      : `Only ${stepsRead} of ${lowerBound ? "at least " : ""}${stepsTotal} steps could be read; this is not the whole job.`;
-  return { complete, stepsRead, stepsTotal, totalIsLowerBound: lowerBound, summary, sections };
+      : stepsTotal === stepsRead && stepsMayApply > 0
+        ? `${stepsRead} steps could be read, but ${stepsMayApply} more may apply to this pump and could not be checked; this may not be the whole job.`
+        : `Only ${stepsRead} of ${lowerBound ? "at least " : ""}${stepsTotal} steps could be read${maybe}; this is not the whole job.`;
+  return { complete, stepsRead, stepsTotal, stepsMayApply, totalIsLowerBound: lowerBound, summary, sections };
 }

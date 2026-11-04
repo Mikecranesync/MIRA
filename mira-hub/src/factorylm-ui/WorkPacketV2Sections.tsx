@@ -88,7 +88,7 @@ export function CoverageStop({ packet }: { packet: WorkPacket }) {
       <ul style={{ margin: "6px 0 0 0", padding: "0 0 0 18px" }}>
         {missing.map((s) => (
           <li key={s.heading}>
-            {s.heading}: {s.status === "partly" ? `partly read (${s.stepsRead} read, at least ${s.stepsNotRead} not read)` : `not read (at least ${s.stepsNotRead} steps)`}
+            {s.heading}: {s.status === "partly" ? `partly read (${s.stepsRead} read, at least ${s.stepsNotRead} not read)` : `not read (at least ${s.stepsNotRead} steps)`}{s.stepsMayApply > 0 ? `; ${s.stepsMayApply} more may apply to this pump` : ""}
             {s.source ? ` — starts p.${s.source.page}` : ""}
           </li>
         ))}
