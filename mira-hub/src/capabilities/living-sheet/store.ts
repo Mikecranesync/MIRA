@@ -84,7 +84,8 @@ function fingerprintOf(parts: unknown[]): string {
 export type StartJobResult =
   | { status: "created"; jobId: string; event: StoredEvent; seq: 1; view: SheetView }
   | { status: "existing"; jobId: string; view: SheetView }
-  | { status: "request_id_conflict" };
+  | { status: "request_id_conflict" }
+  | { status: "template_revision_not_found" };
 
 async function loadEventsForJob(c: PoolClient, tenantId: string, jobId: string): Promise<EventRow[]> {
   const res = await c.query<EventRow>(
@@ -101,21 +102,47 @@ export async function startJob(
   input: ValidatedStartJobInput,
   actor: Actor,
 ): Promise<StartJobResult> {
-  const fingerprint = fingerprintOf([
-    notebookId,
-    asset.entityId,
-    input.title,
-    input.templateRevisionId,
-    input.template,
-    input.occurredAt,
-  ]);
   return withTenantContext(tenantId, async (c) => {
+    // A client-sent template body is ignored once templateRevisionId is
+    // given (TASK-S4): the server loads the body from job_sheet_revisions
+    // for THIS tenant and snapshots that instead. The fingerprint is
+    // therefore computed inside this transaction, over the loaded body —
+    // not over whatever the client sent — so a replay with a different
+    // client-sent (but ignored) template still fingerprints identically.
+    let template = input.template;
+    let templateStatus: "draft" | "reviewed" | undefined;
+    if (input.templateRevisionId !== null) {
+      const rev = await c.query<{ body: JobSheetBody; status: "draft" | "reviewed" }>(
+        `SELECT body, status FROM job_sheet_revisions WHERE tenant_id = $1::uuid AND id = $2::uuid`,
+        [tenantId, input.templateRevisionId],
+      );
+      if (rev.rows.length === 0) return { status: "template_revision_not_found" };
+      template = rev.rows[0]!.body;
+      templateStatus = rev.rows[0]!.status;
+    }
+
+    const fingerprint = fingerprintOf([
+      notebookId,
+      asset.entityId,
+      input.title,
+      input.templateRevisionId,
+      template,
+      input.occurredAt,
+    ]);
+
     const jobId = randomUUID();
-    const payload: { title: string; machine: JobMachine; templateRevisionId: string | null; template: JobSheetBody } = {
+    const payload: {
+      title: string;
+      machine: JobMachine;
+      templateRevisionId: string | null;
+      template: JobSheetBody;
+      templateStatus?: "draft" | "reviewed";
+    } = {
       title: input.title,
       machine: { entityId: asset.entityId, name: asset.name },
       templateRevisionId: input.templateRevisionId,
-      template: input.template,
+      template,
+      ...(templateStatus !== undefined ? { templateStatus } : {}),
     };
 
     const inserted = await c.query<EventRow>(

@@ -91,5 +91,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         { error: "request_id_conflict", message: "That request id was already used for a different job." },
         { status: 409 },
       );
+    case "template_revision_not_found":
+      return NextResponse.json({ error: "template_revision_not_found" }, { status: 404 });
   }
 }
