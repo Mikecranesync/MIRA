@@ -226,12 +226,34 @@ const SPEC_RE = /\b(?:should\s+be|spec\s+is|rated)\b/i;
 const HANDOVER_START_RE = /^\s*handover:/i;
 const HANDOVER_CONTAINS_RE = /\bfor\s+next\s+shift\b|\bnext\s+shift\b/i;
 
+// R2-08-followup (coordinator probe of c5c2578e8): a clause is not a
+// completed past fact if it carries a modal or future/intent marker
+// ANYWHERE in the clause — "Will replace the bearing tomorrow" and "Can
+// torque it to 40 Nm" were slipping through as a committed part_logged /
+// reading_recorded because MODAL_OPENER_RE's bare-intent-verb lookahead
+// (needed so "will replace the seal" reads as a statement, not a question)
+// only stopped the opener from becoming a QUESTION — nothing stopped the
+// clause from still being read as a completed, actionable fact. This is a
+// SEPARATE flag: unlike isQuestion/isNegated, it does not care about
+// sentence shape, only about whether the clause asserts something that has
+// actually happened. "need"/"needs" only counts when it's followed by
+// "to"/"a"/"an"/a digit (bare "need" with no object, e.g. "in need", isn't
+// realistic shop phrasing and isn't worth the false-positive risk). "have
+// to"/"has to" is scoped to the literal obligation phrase — bare "have" is
+// deliberately EXCLUDED so "Have replaced the seal" (perfect tense,
+// completed) is never caught by this.
+const INTENT_MARKER_RE =
+  /\b(?:will|would|should|could|can|may|might|must|shall|need(?:s)?\s+(?:to|an?|\d)|have\s+to|has\s+to|going\s+to|gonna|plan(?:s)?\s+to|want(?:s)?\s+to|about\s+to|tomorrow|later|next\s+shift|to-?do)\b/i;
+
 // F10/R2-10: the trigger word may be followed by a named quantity ("I meant
 // motor current 4.8 A") before the number. The qualifier phrase is now its
 // OWN capture group (`nameGroup`) — not just lazily consumed — so the
 // caller can match it EXACTLY against a reading's full label, rather than
 // scoring shared words across the whole clause (R2-10: "fan current" must
 // never match a stored "motor current" just because they share "current").
+// NOTE: Correction is NOT gated by INTENT_MARKER_RE (e.g. "I should
+// correct it to 4.8 A" is untouched by this round) — accepted gap, see the
+// hazard ledger in the task report.
 const CORRECTION_TRIGGERS: { re: RegExp; nameGroup: number | null; oldGroup: number | null; newGroup: number }[] = [
   { re: new RegExp(`\\bi\\s+meant\\s+(?:([a-z][a-z\\s]*?)\\s+)?(${NUM_SRC})`, "i"), nameGroup: 1, oldGroup: null, newGroup: 2 },
   { re: new RegExp(`\\bcorrection\\s+(?:([a-z][a-z\\s]*?)\\s+)?(${NUM_SRC})`, "i"), nameGroup: 1, oldGroup: null, newGroup: 2 },
@@ -245,8 +267,16 @@ const STEP_DONE_PATTERNS: RegExp[] = [
   /\bfinished\s+step\s+(\d+)\b/i,
 ];
 
-const PART_RE = /\b(will replace|going to replace|need to replace|need a new|replaced|swapped|changed out|put in a new)\s+([^.,!?\n]+)/i;
-const PLANNED_PHRASES = new Set(["will replace", "going to replace", "need to replace", "need a new"]);
+// R2-08-followup: the four forward-looking phrases this used to special-case
+// as a "planned" part_logged ("will replace", "going to replace", "need to
+// replace", "need a new") are now ALL caught by INTENT_MARKER_RE before this
+// regex is ever tried — a plan is not a completed fact either, and the
+// coordinator's probe named exactly this ("Need to replace the seal" =>
+// part_logged, WRONG: intent). PART_RE and PartAction's "planned" value are
+// therefore narrowed to reported, completed actions only; nothing in this
+// file emits action:"planned" anymore (PartAction keeps the union member in
+// types.ts in case another caller still produces it).
+const PART_RE = /\b(replaced|swapped|changed out|put in a new)\s+([^.,!?\n]+)/i;
 
 /** Lowercased, whitespace-collapsed label for exact (not fuzzy) comparison. */
 function normalizeLabel(s: string): string {
@@ -315,10 +345,16 @@ function classifyClause(clause: string, view: SheetView): RawProposal[] {
   // proposal costs a tap; a wrong one puts a false fact on the work record).
   const isQuestion = isQuestionClause(trimmed);
   const isNegated = NEGATION_RE.test(trimmed);
+  // R2-08-followup: a modal/future/intent marker anywhere in the clause
+  // means it is not a completed past fact either — same principle, a
+  // different door (not a question, not a negation, just not done yet).
+  // A verbatim note is still allowed; a committed work proposal is not.
+  const hasIntentMarker = INTENT_MARKER_RE.test(trimmed);
 
   // 2. Completion — MIRA never infers job_finished, and never from a
-  // question ("Is the job done?") or a negation ("Not all done") either.
-  if (!isQuestion && !isNegated && COMPLETION_RE.test(trimmed)) {
+  // question ("Is the job done?"), a negation ("Not all done"), or an
+  // intent marker ("Will be all done tomorrow") either.
+  if (!isQuestion && !isNegated && !hasIntentMarker && COMPLETION_RE.test(trimmed)) {
     return [
       {
         event: {
@@ -388,8 +424,9 @@ function classifyClause(clause: string, view: SheetView): RawProposal[] {
   }
   // F09: "Is step 1 done?" / "I have not done step 1" must not become
   // step_marked(done=true) — skip this pattern (falls through to
-  // Question/Fallback below) rather than returning.
-  for (const re of isQuestion || isNegated ? [] : STEP_DONE_PATTERNS) {
+  // Question/Fallback below) rather than returning. R2-08-followup: neither
+  // must "will mark step 2 done" (not done yet, just intended).
+  for (const re of isQuestion || isNegated || hasIntentMarker ? [] : STEP_DONE_PATTERNS) {
     const m = re.exec(trimmed);
     if (!m) continue;
     const n = Number(m[1]);
@@ -410,20 +447,21 @@ function classifyClause(clause: string, view: SheetView): RawProposal[] {
   }
 
   // 6. Parts. F09: a question or negation ("Have we replaced the seal?",
-  // "we have not replaced the seal") never logs a replacement/plan.
+  // "we have not replaced the seal") never logs a replacement. R2-08-
+  // followup: neither does an intent marker ("Need to replace the seal",
+  // "Will replace the bearing tomorrow") — PART_RE itself no longer has a
+  // forward-looking alternative (see its comment above), so this gate is
+  // belt-and-suspenders against any future trigger that reintroduces one.
   {
-    const m = isQuestion || isNegated ? null : PART_RE.exec(trimmed);
+    const m = isQuestion || isNegated || hasIntentMarker ? null : PART_RE.exec(trimmed);
     if (m) {
-      const phrase = m[1].toLowerCase();
       const item = m[2].trim();
-      const planned = PLANNED_PHRASES.has(phrase);
-      const action: PartAction = planned ? "planned" : "replaced";
-      const risk: ProposalRisk = planned ? "low" : "needs_tap";
-      const reason = planned ? `Logs ${item} as a planned replacement.` : `Logs ${item} as replaced — a reported action.`;
+      const action: PartAction = "replaced";
+      const reason = `Logs ${item} as replaced — a reported action.`;
       return [
         {
           event: { kind: "part_logged", payload: { partEntryId: "", item, action, qty: null } },
-          risk,
+          risk: "needs_tap",
           reason: reason.length > 120 ? reason.slice(0, 120) : reason,
           quote: trimmed,
         },
@@ -459,8 +497,13 @@ function classifyClause(clause: string, view: SheetView): RawProposal[] {
   // R2-08: a negated clause never becomes a reading (a question would
   // already have returned above at the Question branch). "didn't torque
   // it" / "no reading yet" must produce nothing here, not a reading and
-  // not even the "what unit" clarifying question.
-  const numbers = isNegated ? [] : findNumbers(trimmed);
+  // not even the "what unit" clarifying question. R2-08-followup: neither
+  // does an intent marker ("Can torque it to 40 Nm", "should read 4.8 A",
+  // "plan to torque to 40 Nm") — a capability or intended future reading is
+  // not a measurement taken now. This also suppresses the "what unit"
+  // clarifying question for these clauses; they fall through to the plain
+  // verbatim Fallback note below instead.
+  const numbers = isNegated || hasIntentMarker ? [] : findNumbers(trimmed);
   if (numbers.length > 0) {
     const readingProposals: RawProposal[] = [];
     for (const n of numbers) {
