@@ -66,6 +66,7 @@ jobs:
     permissions:
       contents: read
       actions: read
+      pull-requests: read
     outputs:
       stg_api_id: ${{ steps.staging-receipt.outputs.stg_api_id }}
       stg_fe_id: ${{ steps.staging-receipt.outputs.stg_fe_id }}
@@ -113,6 +114,59 @@ jobs:
             [ -s "$RUNNER_TEMP/trusted/$(basename "$f")" ] || { echo "::error::trusted base has no $f"; exit 1; }
           done
           echo "trusted base $TRUSTED_BASE_SHA; candidate $APPROVED_RC_SHA is an ancestor" >> "$GITHUB_STEP_SUMMARY"
+
+      # SDLC v1 §7.2, copied verbatim from deploy-vps.yml: the candidate must be the
+      # merge commit of exactly one merged PR into main whose head passed the
+      # Staging Gate — ancestry alone could authorize a superseded intermediate commit.
+      - name: Verify Staging Gate passed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEPLOY_SHA: ${{ inputs.approved_rc_sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          echo "Resolving PR head for merge commit $DEPLOY_SHA"
+          if ! PULLS_JSON=$(gh api "/repos/$REPO/commits/$DEPLOY_SHA/pulls" 2>gh_api_err.txt); then
+            echo "::error::GitHub API lookup failed for $DEPLOY_SHA — transient; re-run this workflow. stderr: $(cat gh_api_err.txt)"
+            exit 1
+          fi
+          # SDLC v1 §7.2: EXACTLY ONE merged PR into main whose merge_commit_sha is
+          # the approved SHA. No first-associated-PR fallback — a commit that merely
+          # appears in some PR's history is not that PR's reviewed head.
+          MATCHES="$(echo "$PULLS_JSON" | jq -c --arg sha "$DEPLOY_SHA" \
+            '[.[] | select(.merge_commit_sha == $sha and .merged_at != null and .base.ref == "main")] | map(.head.sha)')"
+          MATCH_COUNT="$(echo "$MATCHES" | jq 'length')"
+          if [ "$MATCH_COUNT" != "1" ]; then
+            echo "::error::expected exactly one merged PR into main with merge_commit_sha $DEPLOY_SHA, found $MATCH_COUNT ($MATCHES). Direct pushes and ambiguous associations are not authorized for production (SDLC v1 §7.2)."
+            exit 1
+          fi
+          PR_HEAD_SHA="$(echo "$MATCHES" | jq -r '.[0]')"
+          [[ "$PR_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::merged PR head is not a 40-hex commit: $PR_HEAD_SHA"; exit 1; }
+          echo "PR head SHA: $PR_HEAD_SHA"
+          if ! STATUS=$(gh run list \
+            --repo "$REPO" \
+            --workflow "Staging Gate" \
+            --commit "$PR_HEAD_SHA" \
+            --limit 1 \
+            --json status,conclusion \
+            --jq '.[0] | "\(.status):\(.conclusion)"' 2>gh_run_err.txt); then
+            echo "::error::GitHub API run lookup failed for $PR_HEAD_SHA — transient; re-run this workflow. stderr: $(cat gh_run_err.txt)"
+            exit 1
+          fi
+          echo "Most recent Staging Gate run on $PR_HEAD_SHA: $STATUS"
+          case "$STATUS" in
+            completed:success)
+              echo "✓ source authorized by the Staging Gate"
+              ;;
+            ""|"null:null")
+              echo "::error::No Staging Gate run found for PR head $PR_HEAD_SHA."
+              exit 1
+              ;;
+            *)
+              echo "::error::Staging Gate did not pass for PR head $PR_HEAD_SHA (status=$STATUS)."
+              exit 1
+              ;;
+          esac
 
       - name: Require a deployed-staging receipt covering atlas-api + atlas-frontend
         id: staging-receipt
