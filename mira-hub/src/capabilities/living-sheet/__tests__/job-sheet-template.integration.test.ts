@@ -243,6 +243,17 @@ describe("job sheet templates — reviewJobSheet", () => {
     if (sourceStill.status === "ok") expect(sourceStill.revision.status).toBe("draft"); // never mutated
   });
 
+  it("a draft may carry an unsourced torque value, but reviewing it is refused and writes nothing", async () => {
+    const tenant = uuid();
+    const unsourced = body({
+      torques: [{ id: "t1", what: "Bearing cap bolts", value: 85, unit: "ft-lb", pattern: null, threadLocker: null, tool: null, source: null }],
+    });
+    const created = createdC(await createJobSheet(tenant, { clientRequestId: uuid(), body: unsourced }, ACTOR));
+    const result = await reviewJobSheet(tenant, created.jobSheetId, { clientRequestId: uuid(), revision: 1 }, ACTOR);
+    expect(result).toMatchObject({ status: "unsourced_torque", what: "Bearing cap bolts" });
+    expect(await countRevisions(tenant, created.jobSheetId)).toBe(1);
+  });
+
   it("reviewing a nonexistent job sheet returns job_sheet_not_found", async () => {
     const tenant = uuid();
     const result = await reviewJobSheet(tenant, uuid(), { clientRequestId: uuid(), revision: 1 }, ACTOR);

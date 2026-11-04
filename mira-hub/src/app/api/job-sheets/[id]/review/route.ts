@@ -63,5 +63,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json(NOT_FOUND, { status: 404 });
     case "revision_not_found":
       return NextResponse.json({ error: "revision_not_found" }, { status: 404 });
+    case "unsourced_torque":
+      return NextResponse.json(
+        {
+          error: "unsourced_torque",
+          message: `Torque for ${result.what} has no source. Add where the number comes from before marking this reviewed.`,
+        },
+        { status: 422 },
+      );
   }
 }

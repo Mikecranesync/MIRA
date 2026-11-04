@@ -67,11 +67,11 @@ describe("validateJobSheetBody", () => {
     expect(r).toMatchObject({ ok: false, error: "unknown_field" });
   });
 
-  it("rejects a torque with a value but no source (value requires source)", () => {
+  it("accepts a torque with a value but no source in a body (drafts may carry it; it shows as 'no source — unverified' and review refuses it)", () => {
     const r = validateJobSheetBody(
       validTemplate({ torques: [{ id: "t1", what: "Flange bolts", value: 35, unit: "ft-lb", pattern: null, threadLocker: null, tool: null, source: null }] }),
     );
-    expect(r).toMatchObject({ ok: false, error: "torque_value_requires_source", field: "torques[0].source" });
+    expect(r.ok).toBe(true);
   });
 
   it("control: a torque with a null value needs no source", () => {
