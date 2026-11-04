@@ -101,3 +101,30 @@ export function orderByScores<T>(items: readonly T[], scores: readonly number[])
     .sort((a, b) => b.s - a.s || a.i - b.i)
     .map((x) => x.item);
 }
+
+/**
+ * How many of the lexical order's leading passages the reranker never moves. A full rerank won
+ * and lost about equally in the 2026-11-04 replay (it demotes exact part and fault-code hits that
+ * lexical search already ranks first); keeping the top 2 in place beat plain search at every
+ * passage count (docs/evals/retrieval-eval/2026-11-04-pinned-rerank-k8.md).
+ */
+export const RERANK_PINNED_HEAD = 2;
+
+/** The lexical head stays first and in order; only the items after it are sorted by score. */
+export function orderWithPinnedHead<T>(
+  items: readonly T[],
+  scores: readonly number[],
+  pinned: number = RERANK_PINNED_HEAD,
+): T[] {
+  const n = Math.min(Math.max(0, pinned), items.length);
+  return [...items.slice(0, n), ...orderByScores(items.slice(n), scores.slice(n))];
+}
+
+/**
+ * Passages a notebook question keeps: 8 with the rerank lane on, today's 6 with it off, so a
+ * deployment without the flag is unchanged. A rerank fallback on a flag-on turn serves plain
+ * search at 8, which lost no answer against 6 in the same replay.
+ */
+export function notebookQuestionTopK(): number {
+  return rerankEnabled() ? 8 : 6;
+}
