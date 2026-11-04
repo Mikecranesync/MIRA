@@ -12,9 +12,15 @@
  * exists and is already banned-words-clean — this file is the UI only. The
  * UI's OWN static copy (headings, button labels) is separately checked by
  * this file's own test.
+ *
+ * F05: handover notes render the technician's own words quoted verbatim
+ * (never altered or stripped) with who wrote them and when.
+ * F20: the printed/exported copy's header also carries the export time and,
+ * per job, the short id and the event seq as of the window's end
+ * (`report.jobSnapshots`) — so an export can be matched to an exact state.
  */
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
-import type { ShiftReport } from "@/capabilities/living-sheet/shift-report";
+import type { ShiftReport, ShiftReportJobSnapshot } from "@/capabilities/living-sheet/shift-report";
 import { apiGetShiftReport } from "./living-sheet-client";
 import { PRINT_PORTAL_CLASS, PRINT_PORTAL_CSS, PrintPortal } from "./print-portal";
 
@@ -28,6 +34,14 @@ export function defaultShiftWindow(nowIso: string): { from: string; to: string }
   const to = nowIso;
   const from = new Date(Date.parse(nowIso) - TWELVE_HOURS_MS).toISOString();
   return { from, to };
+}
+
+/** Pure: "Job <short id> · seq <seq>" — F20's per-job snapshot line in the
+ *  export header. Exported for direct testing: the full component's print
+ *  header can't be exercised with real fetched `report` data under the
+ *  no-effects SSR harness this file's tests use. */
+export function formatJobSnapshotLine(s: ShiftReportJobSnapshot): string {
+  return `Job ${s.jobIdShort} · seq ${s.seq}`;
 }
 
 const LAYER_STYLE: CSSProperties = {
@@ -101,9 +115,12 @@ export function ShiftReportBody({ report }: { report: ShiftReport }) {
       {report.handover.length > 0 && (
         <section style={SECTION_STYLE} data-testid="shift-report-handover">
           <h3 style={{ marginTop: 0 }}>Handover notes</h3>
+          {/* F05: the technician's own words, quoted verbatim (never altered
+           *  or stripped) and attributed — who wrote it, and when. */}
           {report.handover.map((h, i) => (
             <p key={i}>
-              {h.machineName} ({h.jobTitle}): {h.text}
+              {h.machineName} ({h.jobTitle}): &ldquo;{h.text}&rdquo; — {h.by ?? "a technician"},{" "}
+              {new Date(h.at).toLocaleString()}
             </p>
           ))}
         </section>
@@ -125,6 +142,9 @@ export function LivingSheetShiftReport({ onClose }: LivingSheetShiftReportProps)
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [reportWindow] = useState(() => defaultShiftWindow(new Date().toISOString()));
+  // F20: the moment this report was exported — fixed once per mount so it
+  // does not drift between an on-screen look and the printed/saved PDF.
+  const [exportedAt] = useState(() => new Date().toISOString());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -175,7 +195,18 @@ export function LivingSheetShiftReport({ onClose }: LivingSheetShiftReportProps)
           <table className="ls-shift-print-frame">
             <thead><tr><td>
               <div className="ls-shift-print-header" data-testid="shift-report-print-header">
-                Shift report · {new Date(reportWindow.from).toLocaleString()} – {new Date(reportWindow.to).toLocaleString()}
+                <div>
+                  Shift report · {new Date(reportWindow.from).toLocaleString()} – {new Date(reportWindow.to).toLocaleString()}
+                </div>
+                {/* F20: export time + each job's short id and event seq as of
+                 *  the window's end — ties this export to an exact snapshot,
+                 *  matchable against a job-sheet export at the same seq. */}
+                <div data-testid="shift-report-export-time">Exported {new Date(exportedAt).toLocaleString()}</div>
+                {report && report.jobSnapshots.length > 0 && (
+                  <div data-testid="shift-report-job-snapshots">
+                    {report.jobSnapshots.map(formatJobSnapshotLine).join("   ·   ")}
+                  </div>
+                )}
               </div>
             </td></tr></thead>
             <tbody><tr><td>{report && <ShiftReportBody report={report} />}</td></tr></tbody>
