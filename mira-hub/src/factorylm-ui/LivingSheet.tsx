@@ -24,7 +24,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { JobSheetBody, JobSheetTorque } from "@/capabilities/living-sheet/types";
 import type { SheetProposal } from "@/capabilities/living-sheet/propose";
-import type { SheetStepView, SheetView } from "@/capabilities/living-sheet/reduce";
+import type { SheetReadingView, SheetStepView, SheetView } from "@/capabilities/living-sheet/reduce";
 import type { NotebookSheetReceiptFrame } from "@/lib/notebook-chat-types";
 import { fileUrl } from "./to-interaction";
 import { LivingSheetPrint } from "./LivingSheetPrint";
@@ -37,6 +37,7 @@ import {
   apiPostEvent,
   apiStartJob,
   apiUploadPhoto,
+  attemptClientEventId,
   chosenRevisionOf,
   COMMON_READING_UNITS,
   dropHeadOfSheetQueue,
@@ -47,12 +48,19 @@ import {
   lowRiskProposalIds,
   saveBadge,
   startJobErrorMessage,
+  stepNeedsConfirm,
+  stepRequiringConfirmFor,
   type JobSheetSummary,
   type JobSummaryClient,
   type SaveBadgeState,
   type SheetEventPost,
   type SheetWriteEvent,
 } from "./living-sheet-client";
+
+// Re-exported so existing tests importing stepNeedsConfirm from this module
+// (not living-sheet-client.ts, where the single definition now lives —
+// shared with lowRiskProposalIds/stepRequiringConfirmFor) keep working.
+export { stepNeedsConfirm };
 
 export type LivingSheetProps = {
   notebookId: string;
@@ -110,12 +118,6 @@ export function visibleProposals(proposals: readonly SheetProposal[], handled: R
 // Styling — shared --fl-* tokens only, tap targets >=48px, base font >=17px
 // ---------------------------------------------------------------------------
 
-/** Ticking ON a torque, thread-locker or measurement step first shows what
- *  the job sheet says (value, pattern, source). Un-ticking never asks. */
-export function stepNeedsConfirm(step: SheetStepView): boolean {
-  return !step.done && (step.checkoff === "torque" || step.checkoff === "loctite" || step.checkoff === "measurement");
-}
-
 export type StepConfirmDetail = { what: string; value: string; pattern: string | null; threadLocker: string | null; source: string };
 
 /** The template torque row a step refers to (by `what`, case-insensitive, or
@@ -132,6 +134,46 @@ export function stepConfirmDetail(step: SheetStepView, torques: readonly JobShee
     threadLocker: t.threadLocker,
     source: t.source ?? "no source — unverified",
   };
+}
+
+export type ConflictValues = { mine: string; theirs: string };
+
+/** F22: the conflict panel must show what EACH side actually says, not just
+ *  sequence numbers. "Mine" is the queued-but-unsent local write; "theirs"
+ *  is the same field read back off the server's current view (when the
+ *  event names one we can look up — otherwise a plain "current sheet"
+ *  fallback, never a fabricated value). */
+export function conflictValues(event: SheetWriteEvent, serverView: SheetView | null): ConflictValues {
+  const theirsFallback = serverView ? `current sheet, seq ${serverView.seq}` : "unknown — the sheet could not be loaded";
+  switch (event.kind) {
+    case "step_marked": {
+      const mine = `Step ${event.payload.done ? "marked done" : "marked not done"}${event.payload.note ? ` — ${event.payload.note}` : ""}`;
+      const step = serverView?.steps.find((s) => s.id === event.payload.stepId);
+      const theirs = step ? `Step is ${step.done ? `done (by ${step.doneBy ?? "a technician"})` : "not done"}` : theirsFallback;
+      return { mine, theirs };
+    }
+    case "reading_recorded":
+    case "reading_corrected": {
+      const mine = `${event.payload.value} ${event.payload.unit}`;
+      const reading = serverView?.readings.find((r) => r.id === event.payload.readingId);
+      const theirs = reading ? `${reading.current.value} ${reading.current.unit} (by ${reading.current.by ?? "a technician"})` : theirsFallback;
+      return { mine, theirs };
+    }
+    case "note_added":
+      return { mine: `${event.payload.noteKind === "question" ? "Question" : "Note"}: ${event.payload.text}`, theirs: theirsFallback };
+    case "question_resolved":
+      return { mine: `Answer: ${event.payload.resolution}`, theirs: theirsFallback };
+    case "part_logged":
+      return { mine: `${event.payload.item} (${event.payload.action})`, theirs: theirsFallback };
+    case "handover_written":
+      return { mine: event.payload.text, theirs: theirsFallback };
+    case "photo_attached":
+      return { mine: "A photo", theirs: theirsFallback };
+    case "job_finished":
+      return { mine: "Finish job", theirs: theirsFallback };
+    default:
+      return { mine: "A change", theirs: theirsFallback };
+  }
 }
 
 export const SHEET_PILL_STYLE: CSSProperties = {
@@ -230,18 +272,31 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
   const [chosenJobSheetId, setChosenJobSheetId] = useState("");
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
+  // F16: one client id per Start attempt, reused across retries until it
+  // succeeds (cleared) or the technician edits the title (a new attempt).
+  const [startClientEventId, setStartClientEventId] = useState<string | null>(null);
 
   const [handoverText, setHandoverText] = useState("");
   const [finishAck, setFinishAck] = useState(false);
-  const [confirmStep, setConfirmStep] = useState<SheetStepView | null>(null);
+  // F03: a step confirm can be opened either by ticking the checkbox
+  // directly (receiptOrigin undefined) or by accepting a chat proposal for
+  // a step that needs confirmation (receiptOrigin carries the proposal's id
+  // and the receipt's origin seq — F07 — so "Mark done" posts against the
+  // SAME baseSeq the proposal was made against, and the proposal is only
+  // marked handled once the write actually lands).
+  const [confirmStep, setConfirmStep] = useState<{ step: SheetStepView; receiptOrigin?: { proposalId: string; baseSeq: number } } | null>(null);
   const [noteText, setNoteText] = useState("");
   const [questionText, setQuestionText] = useState("");
   const [readingWhat, setReadingWhat] = useState("");
   const [readingValue, setReadingValue] = useState("");
   const [readingUnit, setReadingUnit] = useState("");
+  const [correctingReadingId, setCorrectingReadingId] = useState<string | null>(null);
+  const [correctionValue, setCorrectionValue] = useState("");
   const [partItem, setPartItem] = useState("");
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
+  // F17 (UI): one client id per photo-upload attempt, reused on retry.
+  const [photoClientEventId, setPhotoClientEventId] = useState<string | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [shiftReportOpen, setShiftReportOpen] = useState(false);
 
@@ -378,19 +433,34 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
   }, [onSheetOpenChange]);
 
   const postEvent = useCallback(
-    async (kind: SheetWriteEvent["kind"], payload: SheetWriteEvent["payload"]) => {
-      if (!openJobId || !view) return;
+    async (kind: SheetWriteEvent["kind"], payload: SheetWriteEvent["payload"], baseSeqOverride?: number): Promise<boolean> => {
+      if (!openJobId || !view) return false;
       const event: SheetEventPost = {
         clientEventId: crypto.randomUUID(),
-        baseSeq: view.seq,
+        // F07: a receipt-accepted write posts against the seq the proposal
+        // was ORIGINALLY made against (baseSeqOverride), not whatever
+        // view.seq has advanced to by the time the technician taps Accept —
+        // otherwise an old proposal can silently supersede a newer value
+        // instead of hitting the normal conflict path.
+        baseSeq: baseSeqOverride ?? view.seq,
         kind,
         payload,
         occurredAt: new Date().toISOString(),
         workOrderId: null,
       };
-      await enqueueSheetEvent(localStorageStore, scopeId, openJobId, event);
+      const { saved } = await enqueueSheetEvent(localStorageStore, scopeId, openJobId, event);
+      if (!saved) {
+        // F06: the write never reached storage (localStorage.setItem threw —
+        // private window, quota). The caller must keep its form contents and
+        // the badge must never read "Saved" or "Offline — N waiting" — both
+        // imply the entry would survive a reload, and this one won't.
+        if (mounted.current) setBadge((b) => ({ ...b, storageFailed: true }));
+        return false;
+      }
+      if (mounted.current) setBadge((b) => ({ ...b, storageFailed: false }));
       await refreshBadge(openJobId);
       await drain(openJobId);
+      return true;
     },
     [openJobId, view, scopeId, refreshBadge, drain],
   );
@@ -419,6 +489,11 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
     if (!title) return;
     setStarting(true);
     setStartError(null);
+    // F16: reuse the pending attempt's client id on retry — minted exactly
+    // once per attempt, never per tap — so a lost response followed by a
+    // retry can never create a second job.
+    const clientEventId = attemptClientEventId(startClientEventId, () => crypto.randomUUID());
+    if (clientEventId !== startClientEventId) setStartClientEventId(clientEventId);
     try {
       const chosen = templates?.find((t) => t.jobSheetId === chosenJobSheetId) ?? null;
       const revision = chosen ? chosenRevisionOf(chosen).revision : null;
@@ -431,28 +506,30 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
         title,
         templateRevisionId: revision?.id ?? null,
         template,
-        clientEventId: crypto.randomUUID(),
+        clientEventId,
         occurredAt: new Date().toISOString(),
       });
       if (!res.ok || !res.body.jobId) {
         setStartError(startJobErrorMessage(res.body.error, res.body.message));
-        return;
+        return; // keep startClientEventId pending — the next tap retries this SAME attempt
       }
       setNewTitle("");
       setChosenJobSheetId("");
+      setStartClientEventId(null); // attempt succeeded — a future Start is a new attempt
       await loadJobs();
       openJob(res.body.jobId);
     } catch {
       setStartError("No reply from the server. Retry — it will not create a duplicate.");
+      // keep startClientEventId pending — same reasoning as the rejection branch above
     } finally {
       setStarting(false);
     }
-  }, [newTitle, templates, chosenJobSheetId, notebookId, loadJobs, openJob]);
+  }, [newTitle, templates, chosenJobSheetId, notebookId, loadJobs, openJob, startClientEventId]);
 
   const onToggleStep = useCallback(
     (step: SheetStepView) => {
       if (stepNeedsConfirm(step)) {
-        setConfirmStep(step);
+        setConfirmStep({ step });
         return;
       }
       void postEvent("step_marked", { stepId: step.id, done: !step.done, note: null });
@@ -460,18 +537,21 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
     [postEvent],
   );
 
-  const onAddNote = useCallback(() => {
+  // F06: each "add" handler only clears its own form once postEvent reports
+  // the write actually reached storage — a swallowed localStorage failure
+  // must never look like a successful submit from the technician's seat.
+  const onAddNote = useCallback(async () => {
     const text = noteText.trim();
     if (!text) return;
-    void postEvent("note_added", { noteId: crypto.randomUUID(), text, noteKind: "note" });
-    setNoteText("");
+    const ok = await postEvent("note_added", { noteId: crypto.randomUUID(), text, noteKind: "note" });
+    if (ok) setNoteText("");
   }, [noteText, postEvent]);
 
-  const onAddQuestion = useCallback(() => {
+  const onAddQuestion = useCallback(async () => {
     const text = questionText.trim();
     if (!text) return;
-    void postEvent("note_added", { noteId: crypto.randomUUID(), text, noteKind: "question" });
-    setQuestionText("");
+    const ok = await postEvent("note_added", { noteId: crypto.randomUUID(), text, noteKind: "question" });
+    if (ok) setQuestionText("");
   }, [questionText, postEvent]);
 
   const onResolveQuestion = useCallback(
@@ -481,24 +561,43 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
     [postEvent],
   );
 
-  const onAddReading = useCallback(() => {
+  const onAddReading = useCallback(async () => {
     const what = readingWhat.trim();
     const unit = readingUnit.trim();
     const value = Number(readingValue);
     if (!what || !unit || !Number.isFinite(value)) return;
-    void postEvent("reading_recorded", {
+    const ok = await postEvent("reading_recorded", {
       readingId: crypto.randomUUID(), what, value, unit, source: { kind: "tech", ref: technicianName },
     });
-    setReadingWhat("");
-    setReadingValue("");
-    setReadingUnit("");
+    if (ok) {
+      setReadingWhat("");
+      setReadingValue("");
+      setReadingUnit("");
+    }
   }, [readingWhat, readingValue, readingUnit, technicianName, postEvent]);
 
-  const onAddPart = useCallback(() => {
+  // F21: records a reading_corrected event against the SAME readingId — the
+  // reduced view already keeps every prior value in that reading's history
+  // (reduce.ts), rendered struck-through with who/when below. This is the
+  // "direct Correct control" the working sheet was missing.
+  const onCorrectReading = useCallback(
+    async (readingId: string, unit: string) => {
+      const value = Number(correctionValue);
+      if (!Number.isFinite(value)) return;
+      const ok = await postEvent("reading_corrected", { readingId, value, unit, reason: null });
+      if (ok) {
+        setCorrectingReadingId(null);
+        setCorrectionValue("");
+      }
+    },
+    [correctionValue, postEvent],
+  );
+
+  const onAddPart = useCallback(async () => {
     const item = partItem.trim();
     if (!item) return;
-    void postEvent("part_logged", { partEntryId: crypto.randomUUID(), item, action: "used", qty: null });
-    setPartItem("");
+    const ok = await postEvent("part_logged", { partEntryId: crypto.randomUUID(), item, action: "used", qty: null });
+    if (ok) setPartItem("");
   }, [partItem, postEvent]);
 
   const onSaveHandover = useCallback(() => {
@@ -516,20 +615,27 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
       if (!openJobId || !view) return;
       setPhotoBusy(true);
       setPhotoError(null);
+      // F17 (UI): reuse the pending attempt's client id on retry — minted
+      // once per attempt, so a lost successful response followed by a retry
+      // cannot append a duplicate photo.
+      const clientEventId = attemptClientEventId(photoClientEventId, () => crypto.randomUUID());
+      if (clientEventId !== photoClientEventId) setPhotoClientEventId(clientEventId);
       try {
-        const res = await apiUploadPhoto(notebookId, openJobId, file, { clientEventId: crypto.randomUUID(), baseSeq: view.seq });
+        const res = await apiUploadPhoto(notebookId, openJobId, file, { clientEventId, baseSeq: view.seq });
         if (!res.ok) {
           setPhotoError(startJobErrorMessage(res.body.error, res.body.message));
-          return;
+          return; // keep photoClientEventId pending for the retry
         }
+        setPhotoClientEventId(null); // attempt succeeded
         await loadSheet(openJobId);
       } catch {
         setPhotoError("No reply from the server. Retry — the photo was not saved.");
+        // keep photoClientEventId pending — same reasoning as the rejection branch
       } finally {
         setPhotoBusy(false);
       }
     },
-    [openJobId, view, notebookId, loadSheet],
+    [openJobId, view, notebookId, loadSheet, photoClientEventId],
   );
 
   const onKeepTheirs = useCallback(async () => {
@@ -556,11 +662,25 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
   }, [openJobId, scopeId, conflict, drain]);
 
   const onReceiptAccept = useCallback(
-    (proposalId: string, event: SheetWriteEvent) => {
-      void postEvent(event.kind, event.payload);
-      setHandledProposalIds((prev) => new Set([...prev, proposalId]));
+    (proposalId: string, event: SheetWriteEvent, originSeq: number) => {
+      // F03: a step that still needs the torque/loctite/measurement confirm
+      // opens the SAME dialog the checkbox path uses (value + source),
+      // instead of posting "done" straight through. F07: the receipt's own
+      // origin seq travels with it, so the eventual post — whether it goes
+      // straight through below or via the confirm dialog's Mark done — uses
+      // the seq the proposal was actually made against, not whatever
+      // view.seq has advanced to by the time the technician taps Accept.
+      const stepNeedingConfirm = view ? stepRequiringConfirmFor(event, view.steps) : null;
+      if (stepNeedingConfirm) {
+        setConfirmStep({ step: stepNeedingConfirm, receiptOrigin: { proposalId, baseSeq: originSeq } });
+        return;
+      }
+      void (async () => {
+        const ok = await postEvent(event.kind, event.payload, originSeq);
+        if (ok) setHandledProposalIds((prev) => new Set([...prev, proposalId]));
+      })();
     },
-    [postEvent],
+    [postEvent, view],
   );
 
   const onReceiptSkip = useCallback((proposalId: string) => {
@@ -575,7 +695,7 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
   // `SheetProposal[]` (propose.ts), which is what hub-host's tee branch fed it.
   const allProposals = (thisReceipt?.proposals ?? []) as unknown as SheetProposal[];
   const proposals = visibleProposals(allProposals, handledProposalIds);
-  const lowRiskIds = lowRiskProposalIds(proposals);
+  const lowRiskIds = lowRiskProposalIds(proposals, view?.steps ?? []);
 
   return (
     <>
@@ -690,15 +810,20 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
                 </p>
               )}
 
-              {conflict && (
-                <section style={{ ...SECTION_STYLE, borderColor: "var(--fl-accent)" }} data-testid="living-sheet-conflict">
-                  <h3 style={{ marginTop: 0 }}>Someone else changed this sheet too</h3>
-                  <p>Theirs: current sheet seq {conflict.serverView?.seq ?? "unknown"}.</p>
-                  <p>Yours: a change still waiting to save.</p>
-                  <button type="button" style={GHOST_BUTTON_STYLE} onClick={onKeepTheirs} data-testid="living-sheet-keep-theirs">Keep theirs</button>
-                  <button type="button" style={BUTTON_STYLE} onClick={onUseMine} data-testid="living-sheet-use-mine">Use mine</button>
-                </section>
-              )}
+              {conflict && (() => {
+                // F22: show BOTH competing values, not just sequence numbers,
+                // before offering "Use mine".
+                const { mine, theirs } = conflictValues(conflict.event as SheetWriteEvent, conflict.serverView);
+                return (
+                  <section style={{ ...SECTION_STYLE, borderColor: "var(--fl-accent)" }} data-testid="living-sheet-conflict">
+                    <h3 style={{ marginTop: 0 }}>Someone else changed this sheet too</h3>
+                    <p data-testid="living-sheet-conflict-theirs">Theirs: {theirs}</p>
+                    <p data-testid="living-sheet-conflict-mine">Yours: {mine}</p>
+                    <button type="button" style={GHOST_BUTTON_STYLE} onClick={onKeepTheirs} data-testid="living-sheet-keep-theirs">Keep theirs</button>
+                    <button type="button" style={BUTTON_STYLE} onClick={onUseMine} data-testid="living-sheet-use-mine">Use mine</button>
+                  </section>
+                );
+              })()}
 
               {proposals.length > 0 && (
                 <section style={SECTION_STYLE} data-testid="living-sheet-receipt-card">
@@ -707,7 +832,12 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
                     <div key={p.proposalId} style={{ marginBottom: 10, borderTop: "1px solid var(--fl-line)", paddingTop: 8 }}>
                       <p style={{ margin: 0 }}>{p.reason}</p>
                       <p style={{ margin: 0, fontStyle: "italic", color: "var(--fl-muted)" }}>&ldquo;{p.quote}&rdquo;</p>
-                      <button type="button" style={BUTTON_STYLE} onClick={() => onReceiptAccept(p.proposalId, p.event as SheetWriteEvent)}>Accept</button>
+                      <button
+                        type="button" style={BUTTON_STYLE}
+                        onClick={() => onReceiptAccept(p.proposalId, p.event as SheetWriteEvent, thisReceipt?.baseSeq ?? view.seq)}
+                      >
+                        Accept
+                      </button>
                       <button type="button" style={GHOST_BUTTON_STYLE} onClick={() => onReceiptSkip(p.proposalId)}>Skip</button>
                     </div>
                   ))}
@@ -716,7 +846,9 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
                       type="button" style={BUTTON_STYLE}
                       onClick={() => {
                         for (const p of proposals) {
-                          if (lowRiskIds.includes(p.proposalId)) onReceiptAccept(p.proposalId, p.event as SheetWriteEvent);
+                          if (lowRiskIds.includes(p.proposalId)) {
+                            onReceiptAccept(p.proposalId, p.event as SheetWriteEvent, thisReceipt?.baseSeq ?? view.seq);
+                          }
                         }
                       }}
                     >
@@ -754,10 +886,10 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
                   ))}
                 </ul>
                 {confirmStep && (() => {
-                  const detail = stepConfirmDetail(confirmStep, view.template.torques);
+                  const detail = stepConfirmDetail(confirmStep.step, view.template.torques);
                   return (
                     <div role="dialog" aria-label="Check before marking done" style={SECTION_STYLE} data-testid="living-sheet-step-confirm">
-                      <p style={{ marginTop: 0 }}><strong>{confirmStep.text}</strong></p>
+                      <p style={{ marginTop: 0 }}><strong>{confirmStep.step.text}</strong></p>
                       {detail ? (
                         <>
                           <p style={{ margin: "4px 0" }}>Job sheet says: {detail.what} — {detail.value}</p>
@@ -771,7 +903,19 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
                       <button
                         type="button" style={BUTTON_STYLE} data-testid="living-sheet-step-confirm-done"
                         onClick={() => {
-                          void postEvent("step_marked", { stepId: confirmStep.id, done: true, note: null });
+                          const origin = confirmStep.receiptOrigin;
+                          void (async () => {
+                            // F07: when this confirm was opened from a chat
+                            // proposal, post against the proposal's origin
+                            // seq, and only mark the proposal handled once
+                            // the write actually lands.
+                            const ok = await postEvent(
+                              "step_marked",
+                              { stepId: confirmStep.step.id, done: true, note: null },
+                              origin?.baseSeq,
+                            );
+                            if (ok && origin) setHandledProposalIds((prev) => new Set([...prev, origin.proposalId]));
+                          })();
                           setConfirmStep(null);
                         }}
                       >
@@ -785,12 +929,49 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
 
               <section style={SECTION_STYLE} data-testid="living-sheet-readings">
                 <h3 style={{ marginTop: 0 }}>Readings</h3>
-                {view.readings.map((r) => (
-                  <div key={r.id} style={{ marginBottom: 8 }}>
+                {view.readings.map((r: SheetReadingView) => (
+                  <div key={r.id} style={{ marginBottom: 8 }} data-testid={`living-sheet-reading-${r.id}`}>
                     <strong>{r.what}: {r.current.value} {r.current.unit}</strong>
                     <div style={{ fontSize: "15px", color: "var(--fl-muted)" }}>
                       by {r.current.by ?? "a technician"} · {new Date(r.current.at).toLocaleString()}
                     </div>
+                    {/* F21: earlier values stay visible, struck through, with
+                        who/when — never silently replaced. */}
+                    {r.history
+                      .filter((h) => h.superseded)
+                      .map((h, i) => (
+                        <div key={i} style={{ fontSize: "15px", color: "var(--fl-muted)" }}>
+                          <s>{h.value} {h.unit}</s> — {h.by ?? "a technician"} · {new Date(h.at).toLocaleString()}
+                        </div>
+                      ))}
+                    {correctingReadingId === r.id ? (
+                      <div style={{ marginTop: 4 }}>
+                        <input
+                          style={FIELD_STYLE} inputMode="decimal" value={correctionValue}
+                          onChange={(e) => setCorrectionValue(e.target.value)}
+                          data-testid={`living-sheet-correct-value-${r.id}`}
+                        />
+                        <button
+                          type="button" style={BUTTON_STYLE} disabled={!correctionValue.trim()}
+                          onClick={() => void onCorrectReading(r.id, r.current.unit)}
+                          data-testid={`living-sheet-correct-save-${r.id}`}
+                        >
+                          Save correction
+                        </button>{" "}
+                        <button type="button" style={GHOST_BUTTON_STYLE} onClick={() => setCorrectingReadingId(null)}>Cancel</button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button" style={GHOST_BUTTON_STYLE}
+                        onClick={() => {
+                          setCorrectingReadingId(r.id);
+                          setCorrectionValue("");
+                        }}
+                        data-testid={`living-sheet-correct-${r.id}`}
+                      >
+                        Correct
+                      </button>
+                    )}
                   </div>
                 ))}
                 <label>

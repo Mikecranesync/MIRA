@@ -6,6 +6,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import {
+  attemptClientEventId,
   chosenRevisionOf,
   drainSheetQueue,
   dropHeadOfSheetQueue,
@@ -17,6 +18,8 @@ import {
   saveBadge,
   sheetQueueKey,
   startJobErrorMessage,
+  stepNeedsConfirm,
+  stepRequiringConfirmFor,
   type JobSheetRevision,
   type JobSheetSummary,
   type KvStore,
@@ -24,13 +27,30 @@ import {
   type SheetSubmitOutcome,
 } from "../living-sheet-client";
 import type { SheetProposal } from "@/capabilities/living-sheet/propose";
+import type { SheetStepView } from "@/capabilities/living-sheet/reduce";
 import type { NotebookSheetReceiptFrame } from "@/lib/notebook-chat-types";
 
 function memoryStore(): KvStore {
   const m = new Map<string, string>();
   return {
     get: async (k) => (m.has(k) ? m.get(k)! : null),
-    set: async (k, v) => void m.set(k, v),
+    set: async (k, v) => {
+      m.set(k, v);
+      return true;
+    },
+    remove: async (k) => void m.delete(k),
+    keys: async () => Array.from(m.keys()),
+  };
+}
+
+/** F06: a store whose `set` always fails — the browser's localStorage
+ *  throwing (private window, quota) is exactly this shape, just swallowed
+ *  one layer down inside the real `localStorageStore` adapter. */
+function failingStore(): KvStore {
+  const m = new Map<string, string>();
+  return {
+    get: async (k) => (m.has(k) ? m.get(k)! : null),
+    set: async () => false,
     remove: async (k) => void m.delete(k),
     keys: async () => Array.from(m.keys()),
   };
@@ -68,6 +88,38 @@ describe("enqueueSheetEvent / loadSheetQueue", () => {
     const store = memoryStore();
     await store.set(sheetQueueKey("t1", "j1"), "{not json");
     await expect(loadSheetQueue(store, "t1", "j1")).resolves.toEqual([]);
+  });
+});
+
+describe("enqueueSheetEvent — storage write failure (F06)", () => {
+  it("reports saved:false when the underlying store write fails, instead of looking identical to a successful queue", async () => {
+    const store = failingStore();
+    const result = await enqueueSheetEvent(store, "t1", "j1", stepEvent("a"));
+    expect(result.saved).toBe(false);
+    // The caller (LivingSheet.tsx) must be told the write never persisted —
+    // a reload would find the queue empty, which is exactly the lost-entry
+    // bug this finding describes.
+    expect(await loadSheetQueue(store, "t1", "j1")).toEqual([]);
+  });
+
+  it("reports saved:true on a normal (working) store", async () => {
+    const store = memoryStore();
+    const result = await enqueueSheetEvent(store, "t1", "j1", stepEvent("a"));
+    expect(result.saved).toBe(true);
+    expect(result.queue.map((i) => i.event.clientEventId)).toEqual(["a"]);
+  });
+});
+
+describe("saveBadge — storage failure never reads as Saved (F06)", () => {
+  it("storageFailed outranks the queued/saved states (but not conflict or saving)", () => {
+    expect(saveBadge({ saving: false, queued: 0, conflict: false, storageFailed: true })).toBe(
+      "Not saved on this phone — keep this screen open",
+    );
+    expect(saveBadge({ saving: false, queued: 3, conflict: false, storageFailed: true })).toBe(
+      "Not saved on this phone — keep this screen open",
+    );
+    expect(saveBadge({ saving: true, queued: 0, conflict: false, storageFailed: true })).toBe("Saving…");
+    expect(saveBadge({ saving: false, queued: 0, conflict: true, storageFailed: true })).toBe("Conflict – tap to sort out");
   });
 });
 
@@ -204,6 +256,70 @@ describe("lowRiskProposalIds", () => {
     ];
     expect(lowRiskProposalIds(proposals)).toEqual(["p1"]);
   });
+
+  it("F03: excludes a low-risk 'step done' proposal when that step needs the torque/loctite/measurement confirm — it still needs its own tap", () => {
+    const steps: SheetStepView[] = [
+      { id: "s-torque", text: "Torque bearing caps", checkoff: "torque", torqueRef: "t1", source: null, done: false, doneBy: null, doneAt: null, note: null, history: [] },
+      { id: "s-plain", text: "Clean the area", checkoff: "none", torqueRef: null, source: null, done: false, doneBy: null, doneAt: null, note: null, history: [] },
+    ];
+    const proposals: SheetProposal[] = [
+      { proposalId: "p-torque", risk: "low", reason: "r", quote: "q", event: { kind: "step_marked", payload: { stepId: "s-torque", done: true, note: null } } },
+      { proposalId: "p-plain", risk: "low", reason: "r", quote: "q", event: { kind: "step_marked", payload: { stepId: "s-plain", done: true, note: null } } },
+    ];
+    expect(lowRiskProposalIds(proposals, steps)).toEqual(["p-plain"]);
+  });
+});
+
+describe("stepNeedsConfirm / stepRequiringConfirmFor (F03)", () => {
+  function step(over: Partial<SheetStepView> = {}): SheetStepView {
+    return {
+      id: "s-1", text: "Torque bearing caps", checkoff: "torque", torqueRef: "t1", source: null,
+      done: false, doneBy: null, doneAt: null, note: null, history: [],
+      ...over,
+    };
+  }
+
+  it("a 'step N done' event/proposal referring to a torque step needs confirm", () => {
+    const steps = [step()];
+    const event = { kind: "step_marked" as const, payload: { stepId: "s-1", done: true, note: null } };
+    expect(stepRequiringConfirmFor(event, steps)).toEqual(steps[0]);
+  });
+
+  it("marking a step NOT done never needs confirm", () => {
+    const steps = [step()];
+    const event = { kind: "step_marked" as const, payload: { stepId: "s-1", done: false, note: null } };
+    expect(stepRequiringConfirmFor(event, steps)).toBeNull();
+  });
+
+  it("a plain (checkoff:none) step never needs confirm", () => {
+    const steps = [step({ checkoff: "none", torqueRef: null })];
+    const event = { kind: "step_marked" as const, payload: { stepId: "s-1", done: true, note: null } };
+    expect(stepRequiringConfirmFor(event, steps)).toBeNull();
+  });
+
+  it("non step_marked events never need confirm", () => {
+    const steps = [step()];
+    const event = { kind: "note_added" as const, payload: { noteId: "n1", text: "x", noteKind: "note" as const } };
+    expect(stepRequiringConfirmFor(event, steps)).toBeNull();
+  });
+
+  it("a step already done never needs confirm again", () => {
+    expect(stepNeedsConfirm(step({ done: true }))).toBe(false);
+  });
+});
+
+describe("attemptClientEventId (F16 start-job retry, F17 photo-upload retry)", () => {
+  it("mints a fresh id when there is no pending attempt", () => {
+    const id = attemptClientEventId(null, () => "fresh-id");
+    expect(id).toBe("fresh-id");
+  });
+
+  it("reuses the pending id instead of minting a new one, so a retry never creates a duplicate", () => {
+    const mint = vi.fn(() => "should-not-be-used");
+    const id = attemptClientEventId("pending-id", mint);
+    expect(id).toBe("pending-id");
+    expect(mint).not.toHaveBeenCalled();
+  });
 });
 
 function revision(over: Partial<JobSheetRevision> = {}): JobSheetRevision {
@@ -247,6 +363,13 @@ describe("chosenRevisionOf", () => {
     const draft = revision();
     const sheet: JobSheetSummary = { jobSheetId: "js-1", latest: draft, latestReviewed: null };
     expect(chosenRevisionOf(sheet)).toEqual({ revision: draft, isDraft: true });
+  });
+
+  it("F23: a newer draft revision after an older reviewed one is shown (as draft), not the stale reviewed revision", () => {
+    const reviewed = revision({ id: "rev-2", revision: 2, status: "reviewed", reviewedBy: "lead", reviewedAt: "2026-11-02T00:00:00.000Z" });
+    const newerDraft = revision({ id: "rev-3", revision: 3, status: "draft" });
+    const sheet: JobSheetSummary = { jobSheetId: "js-1", latest: newerDraft, latestReviewed: reviewed };
+    expect(chosenRevisionOf(sheet)).toEqual({ revision: newerDraft, isDraft: true });
   });
 });
 

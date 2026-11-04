@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { searchJobSheets, draftBadge, previewRows } from "./job-sheet-library-logic";
+import { searchJobSheets, draftBadge, previewRows, torqueDisplayRows } from "./job-sheet-library-logic";
 import type { JobSheetSummary } from "@/capabilities/living-sheet/job-sheet-store";
 import type { ImportPreview } from "@/capabilities/living-sheet/job-sheet-import";
-import type { JobSheetBody } from "@/capabilities/living-sheet/types";
+import type { JobSheetBody, JobSheetTorque } from "@/capabilities/living-sheet/types";
 
 function body(over: Partial<JobSheetBody> = {}): JobSheetBody {
   return {
@@ -86,6 +86,25 @@ describe("draftBadge", () => {
 
   it("a reviewed revision shows no badge", () => {
     expect(draftBadge("reviewed")).toBeNull();
+  });
+});
+
+describe("torqueDisplayRows — F12: the reviewer must see value + source, never invented", () => {
+  function torque(over: Partial<JobSheetTorque> = {}): JobSheetTorque {
+    return { id: "t1", what: "Bearing cap bolts", value: 85, unit: "ft-lb", pattern: "star pattern", threadLocker: null, tool: "Torque wrench", source: "Shop sheet C3-LW", ...over };
+  }
+
+  it("shows the value with its unit and the recorded source", () => {
+    expect(torqueDisplayRows([torque()])).toEqual([
+      { what: "Bearing cap bolts", value: "85 ft-lb", pattern: "star pattern", threadLocker: null, source: "Shop sheet C3-LW" },
+    ]);
+  });
+
+  it("a null value says so plainly instead of being blank", () => {
+    expect(torqueDisplayRows([torque({ value: null, unit: null, source: null })])[0]).toMatchObject({
+      value: "not written on the job sheet",
+      source: "no source — unverified",
+    });
   });
 });
 

@@ -23,7 +23,8 @@ import {
   apiReviewJobSheet,
   chosenRevisionOf,
 } from "./living-sheet-client";
-import { draftBadge, previewRows, searchJobSheets, type PreviewRow } from "./job-sheet-library-logic";
+import { draftBadge, previewRows, searchJobSheets, torqueDisplayRows, type PreviewRow } from "./job-sheet-library-logic";
+import type { JobSheetBody } from "@/capabilities/living-sheet/types";
 
 const IMPORT_HELP =
   'Paste Mike’s spreadsheet as tab-separated text (copy cells straight from Google Sheets or Excel). For the 5-tab layout, put a line "### <Tab name>" before each of the Jobs, Tools & parts, Torque & settings, and Steps tabs. A single Gemini job-card tab pastes as-is.';
@@ -82,6 +83,9 @@ export function JobSheetsLibrary({ onClose, initialMode = "browse" }: JobSheetsL
   const [reviewRequestIds, setReviewRequestIds] = useState<Record<string, string>>({});
   const [reviewBusy, setReviewBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // F12: "Mark reviewed" lives on the recipe-review screen, not the bare
+  // list row — this tracks which sheet's recipe is currently open for review.
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -157,6 +161,7 @@ export function JobSheetsLibrary({ onClose, initialMode = "browse" }: JobSheetsL
           setActionError(res.body.message ?? "Could not mark this job sheet reviewed.");
           return;
         }
+        setReviewingId(null);
         await load();
       } catch {
         setActionError("No reply from the server.");
@@ -234,17 +239,29 @@ export function JobSheetsLibrary({ onClose, initialMode = "browse" }: JobSheetsL
                       Reviewed by {revision.reviewedBy}, {new Date(revision.reviewedAt ?? revision.createdAt).toLocaleDateString()}
                     </div>
                   ) : (
-                    isDraft && (
+                    isDraft &&
+                    (reviewingId === sheet.jobSheetId ? (
+                      <RecipeReview
+                        body={revision.body}
+                        busy={reviewBusy === sheet.jobSheetId}
+                        onMarkReviewed={() => void onMarkReviewed(sheet)}
+                        onCancel={() => setReviewingId(null)}
+                        testIdPrefix={sheet.jobSheetId}
+                      />
+                    ) : (
+                      // F12: this opens the parsed recipe FIRST — safety,
+                      // bring list, steps, torques (value + source), checks
+                      // — "Mark reviewed" lives on that screen, not here, so
+                      // a review can't be recorded without seeing the recipe.
                       <button
                         type="button"
                         style={GHOST_BUTTON_STYLE}
-                        disabled={reviewBusy === sheet.jobSheetId}
-                        onClick={() => void onMarkReviewed(sheet)}
+                        onClick={() => setReviewingId(sheet.jobSheetId)}
                         data-testid={`job-sheets-library-review-${sheet.jobSheetId}`}
                       >
-                        {reviewBusy === sheet.jobSheetId ? "Marking reviewed…" : "Mark reviewed"}
+                        Review
                       </button>
-                    )
+                    ))
                   )}
                 </li>
               );
@@ -298,6 +315,97 @@ export function JobSheetsLibrary({ onClose, initialMode = "browse" }: JobSheetsL
         </div>
       )}
     </section>
+  );
+}
+
+/** F12: the parsed recipe a reviewer must see before Mark reviewed — safety,
+ *  bring list, steps, torques (value + source), checks. No section is
+ *  silently skipped: an empty one says so, it never just disappears. */
+function RecipeReview({
+  body,
+  busy,
+  onMarkReviewed,
+  onCancel,
+  testIdPrefix,
+}: {
+  body: JobSheetBody;
+  busy: boolean;
+  onMarkReviewed: () => void;
+  onCancel: () => void;
+  testIdPrefix: string;
+}) {
+  const torqueRows = torqueDisplayRows(body.torques);
+  return (
+    <div style={{ ...LAYER_STYLE, marginTop: 8 }} data-testid={`job-sheets-library-recipe-${testIdPrefix}`}>
+      <h4 style={{ marginTop: 0 }}>Safety</h4>
+      <p>{body.isolationPoints || "Not written — follow your site's lockout procedure."}</p>
+      {body.cautions && <p>{body.cautions}</p>}
+
+      <h4>Bring to the job</h4>
+      {body.items.length > 0 ? (
+        <ul>
+          {body.items.map((it) => (
+            <li key={it.id}>
+              {it.item}{it.spec ? ` — ${it.spec}` : ""}{it.qty ? ` x${it.qty}` : ""}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p>Nothing listed.</p>
+      )}
+
+      <h4>Steps</h4>
+      {body.steps.length > 0 ? (
+        <ul>
+          {body.steps.map((s) => (
+            <li key={s.id}>
+              {s.text}
+              {s.checkoff !== "none" && <span style={{ color: "var(--fl-muted)" }}> ({s.checkoff})</span>}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p>No steps.</p>
+      )}
+
+      <h4>Torques</h4>
+      {torqueRows.length > 0 ? (
+        <ul>
+          {torqueRows.map((t, i) => (
+            <li key={i}>
+              {t.what} — {t.value}
+              {t.pattern ? `, pattern: ${t.pattern}` : ""}
+              {t.threadLocker ? `, thread-locker: ${t.threadLocker}` : ""}
+              <div style={{ fontSize: "15px", color: "var(--fl-muted)" }}>Source: {t.source}</div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p>No torques.</p>
+      )}
+
+      <h4>Return-to-service checks</h4>
+      {body.returnToService.length > 0 ? (
+        <ul>
+          {body.returnToService.map((c, i) => <li key={i}>{c}</li>)}
+        </ul>
+      ) : (
+        <p>None listed.</p>
+      )}
+
+      <button
+        type="button"
+        style={BUTTON_STYLE}
+        disabled={busy}
+        onClick={onMarkReviewed}
+        data-testid={`job-sheets-library-mark-reviewed-${testIdPrefix}`}
+      >
+        {busy ? "Marking reviewed…" : "Mark reviewed"}
+      </button>{" "}
+      <button type="button" style={GHOST_BUTTON_STYLE} onClick={onCancel}>
+        Cancel
+      </button>
+    </div>
   );
 }
 

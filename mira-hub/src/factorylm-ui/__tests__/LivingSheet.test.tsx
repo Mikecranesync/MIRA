@@ -13,6 +13,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import {
   LivingSheet,
   canFinishJob,
+  conflictValues,
   enabledFromListStatus,
   openItemsSummary,
   receiptBannerText,
@@ -23,6 +24,7 @@ import {
 } from "../LivingSheet";
 import type { SheetView } from "@/capabilities/living-sheet/reduce";
 import type { SheetProposal } from "@/capabilities/living-sheet/propose";
+import type { SheetWriteEvent } from "../living-sheet-client";
 
 function emptyView(over: Partial<SheetView> = {}): SheetView {
   return {
@@ -112,6 +114,50 @@ describe("visibleProposals — Accept/Skip must actually remove a proposal from 
   it("filters out any proposalId already accepted or skipped", () => {
     expect(visibleProposals(proposals, new Set(["p1"]))).toEqual([proposals[1]]);
     expect(visibleProposals(proposals, new Set(["p1", "p2"]))).toEqual([]);
+  });
+});
+
+describe("conflictValues — F22: the conflict panel shows both competing values", () => {
+  it("a conflicting reading_corrected shows mine (the queued value) and theirs (the server's current value), not just seq numbers", () => {
+    const event: SheetWriteEvent = { kind: "reading_corrected", payload: { readingId: "r-1", value: 4.8, unit: "A", reason: null } };
+    const serverView = emptyView({
+      seq: 9,
+      readings: [
+        {
+          id: "r-1", what: "Motor current",
+          current: { value: 48, unit: "A", by: "Jess", at: "2026-11-03T00:00:00.000Z", eventId: "e-1" },
+          history: [],
+        },
+      ],
+    });
+    const { mine, theirs } = conflictValues(event, serverView);
+    expect(mine).toBe("4.8 A");
+    expect(theirs).toBe("48 A (by Jess)");
+  });
+
+  it("a conflicting step_marked shows mine and the server's current done/not-done state", () => {
+    const event: SheetWriteEvent = { kind: "step_marked", payload: { stepId: "s-1", done: true, note: null } };
+    const serverView = emptyView({
+      seq: 5,
+      steps: [{ id: "s-1", text: "x", checkoff: "none", torqueRef: null, source: null, done: true, doneBy: "Mo", doneAt: "2026-11-03T00:00:00.000Z", note: null, history: [] }],
+    });
+    const { mine, theirs } = conflictValues(event, serverView);
+    expect(mine).toBe("Step marked done");
+    expect(theirs).toBe("Step is done (by Mo)");
+  });
+
+  it("falls back to a plain seq-based description when the server view can't resolve the specific field (never fabricates a value)", () => {
+    const event: SheetWriteEvent = { kind: "handover_written", payload: { text: "Belt is loose" } };
+    const serverView = emptyView({ seq: 7 });
+    const { mine, theirs } = conflictValues(event, serverView);
+    expect(mine).toBe("Belt is loose");
+    expect(theirs).toBe("current sheet, seq 7");
+  });
+
+  it("a null serverView (the sheet failed to load) never crashes and says so plainly", () => {
+    const event: SheetWriteEvent = { kind: "part_logged", payload: { partEntryId: "p1", item: "O-ring", action: "used", qty: null } };
+    const { theirs } = conflictValues(event, null);
+    expect(theirs).toBe("unknown — the sheet could not be loaded");
   });
 });
 
