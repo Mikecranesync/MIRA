@@ -474,8 +474,13 @@ jobs:
             WAIT_FLAGS="--wait"
           fi
           echo "wait flags: ${WAIT_FLAGS:-<none: compose too old, falling back to health poll below>}"
+          # quay.io/minio/minio no longer serves anonymous pulls (401, 2026-11-04 run
+          # 41832853758), so cmms-minio is never pulled: it must already be on the host
+          # (the co-hosted staging stack runs the identical tag) — checked below.
           doppler run --project factorylm --config prd -- \
-            docker compose -p factorylm-cmms -f /opt/mira-cmms/docker-compose.prod.yml pull
+            docker compose -p factorylm-cmms -f /opt/mira-cmms/docker-compose.prod.yml pull cmms-db cmms-backend cmms-frontend
+          MINIO_REF="$(awk -v s="  cmms-minio:" '$0==s{f=1;next} f&&/^  [a-z]/{f=0} f&&$1=="image:"{print $2;exit}' /opt/mira-cmms/docker-compose.prod.yml)"
+          docker image inspect "$MINIO_REF" >/dev/null 2>&1 || { echo "::error::$MINIO_REF is not on this host and can no longer be pulled — STOP"; exit 1; }
 
           echo "=== apply: pulled images must equal the ones the verified staging receipt ran ==="
           for pair in "cmms-backend:${STG_API_ID}" "cmms-frontend:${STG_FE_ID}"; do
@@ -487,7 +492,7 @@ jobs:
           done
           # shellcheck disable=SC2086
           doppler run --project factorylm --config prd -- \
-            docker compose -p factorylm-cmms -f /opt/mira-cmms/docker-compose.prod.yml up -d $WAIT_FLAGS || {
+            docker compose -p factorylm-cmms -f /opt/mira-cmms/docker-compose.prod.yml up -d --pull never $WAIT_FLAGS || {
             echo "::error::compose up failed — leaving stack up for diagnosis"
             docker ps -a --filter label=com.docker.compose.project=factorylm-cmms || true
             docker logs --tail 80 cmms-backend || true
