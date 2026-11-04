@@ -101,6 +101,7 @@ import {
   selectionFromSearch,
   sendFailureMessage,
   shellThreadId,
+  withLivingSheetRider,
   type CompatibleStreamResult,
   type HubSelection,
 } from "./hub-host-logic";
@@ -450,8 +451,7 @@ export function HubShellHost() {
       // through every chatBodyFor(...) call site — one enforcement point
       // that can't be forgotten at a future call site, scoped to the turn's
       // own notebook so switching notebooks never sends a stale job id.
-      const openJob = livingSheetJob && livingSheetJob.notebookId === sel.notebookId ? livingSheetJob : null;
-      const outBody = openJob ? { ...body, livingSheetJobId: openJob.jobId } : body;
+      const outBody = withLivingSheetRider(body, sel.notebookId, livingSheetJob);
       const res = await fetch(`${API_BASE}/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/chat/`, {
         // #4687: ask for stage progress; a server without MIRA_CHAT_PROGRESS ignores the header.
         method: "POST", headers: { "Content-Type": "application/json", "x-mira-progress": "1" }, body: JSON.stringify(outBody), signal: ctrl.signal,
@@ -467,7 +467,7 @@ export function HubShellHost() {
       // change (no tee, no extra branch) on every other turn. A stream can
       // be tee'd exactly once; call it once and keep both branches.
       let reader: ReturnType<ReadableStream<Uint8Array>["getReader"]>;
-      if (openJob) {
+      if ("livingSheetJobId" in outBody) {
         const [forChat, forReceipt] = res.body.tee();
         reader = forChat.getReader();
         void parseSheetReceipts(forReceipt, (frame) => setSheetReceipt(frame));
