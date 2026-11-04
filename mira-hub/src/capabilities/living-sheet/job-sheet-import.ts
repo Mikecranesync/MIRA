@@ -248,6 +248,27 @@ function combineSourceAndPhoto(source: string | null, photo: string | null): str
   return source ?? photo;
 }
 
+/** R2-16 regression guard: validate.ts now rejects a step's `torqueRef`
+ *  that doesn't name a real torque id (a generated `torque-N`), but a
+ *  technician fills the sheet's "Refers to" cell with the torque's own
+ *  label ("Flange nut") or its 1-based row number in the Torque & settings
+ *  table — never the generated id, which doesn't exist on the sheet. Left
+ *  unresolved, EVERY import that uses this column would now fail
+ *  `warnIfNotSaveable`'s re-check. Resolve by label (case/space-insensitive)
+ *  first, then by row number; a reference that matches neither is left
+ *  as-is, so it still warns — correctly, since that one IS unresolvable. */
+function resolveTorqueRef(refersTo: string | null, torques: { id: string; what: string }[]): string | null {
+  if (refersTo === null || refersTo.trim() === "") return refersTo;
+  const trimmed = refersTo.trim();
+  const byLabel = torques.find((t) => t.what.trim().toLowerCase() === trimmed.toLowerCase());
+  if (byLabel) return byLabel.id;
+  const asIndex = Number(trimmed);
+  if (Number.isInteger(asIndex) && asIndex >= 1 && asIndex <= torques.length) {
+    return torques[asIndex - 1]!.id;
+  }
+  return refersTo;
+}
+
 /** Reuses the S1 write-path validator (TASK-S4 §Files: "reuse JobSheetBody
  *  and its validator") so the preview can warn about anything that would be
  *  rejected on save — a missing title/item-name/step-text/torque-what (the
@@ -505,7 +526,7 @@ function parseFiveTab(text: string): ImportPreview {
     if (numRaw === "") job.warnings.push("Step # is missing — kept in file order");
     stepBucketByKey.get(key)!.push({
       num: numRaw === "" ? Number.POSITIVE_INFINITY : Number(numRaw),
-      step: { id: `step-${stepCounter}`, text: instruction, checkoff, torqueRef: refersTo, source },
+      step: { id: `step-${stepCounter}`, text: instruction, checkoff, torqueRef: resolveTorqueRef(refersTo, job.body.torques), source },
     });
   }
 
@@ -681,7 +702,7 @@ function parseJobCard(text: string): ImportPreview {
         if (numRaw === "") warnings.push("Step # is missing — kept in file order");
         stepBucket.push({
           num: numRaw === "" ? Number.POSITIVE_INFINITY : Number(numRaw),
-          step: { id: `step-${stepCounter}`, text: instruction, checkoff, torqueRef: refersTo, source },
+          step: { id: `step-${stepCounter}`, text: instruction, checkoff, torqueRef: resolveTorqueRef(refersTo, torques), source },
         });
         i++;
       }
