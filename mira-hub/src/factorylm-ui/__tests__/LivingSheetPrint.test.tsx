@@ -365,3 +365,37 @@ describe("LivingSheetPrint — photo attribution", () => {
     expect(html).toMatch(/no caption[^<]*— Jess Tech, /);
   });
 });
+
+describe("LivingSheetPrint — technician words are curly-quoted verbatim, with who + when", () => {
+  const AT = "2026-11-03T10:00:00Z";
+  const WHEN = new Date(AT).toLocaleString();
+  // Verbatim includes odd spacing/punctuation: print must never tidy it.
+  it.each([
+    ["note", { notes: [{ id: "n1", text: "pump  sounds rough!!", by: "Jess Tech", at: AT, eventId: "e1" }] }, `“pump  sounds rough!!” — Jess Tech, ${WHEN}`],
+    ["question text", { questions: [{ id: "q1", text: "spare in stock?", by: "Jess Tech", at: AT, eventId: "e2", resolved: false, resolution: null, resolvedBy: null, resolvedAt: null }] }, `“spare in stock?” — Jess Tech, ${WHEN}`],
+    ["question answer", { questions: [{ id: "q1", text: "spare in stock?", by: "Jess Tech", at: AT, eventId: "e2", resolved: true, resolution: "yes — bin 4", resolvedBy: "Sam Lead", resolvedAt: AT }] }, `answered: “yes — bin 4” — Sam Lead, ${WHEN}`],
+    ["part description", { parts: [{ id: "p1", item: "belt, the long one", action: "used", qty: 1, by: "Jess Tech", at: AT, eventId: "e3" }] }, `used: “belt, the long one” (qty 1) — Jess Tech, ${WHEN}`],
+    ["photo caption", { photos: [{ id: "ph1", fileId: "f1", caption: "worn pad?", by: "Jess Tech", at: AT, eventId: "e4" }] }, `“worn pad?” — Jess Tech, ${WHEN}`],
+    ["handover", { handover: { current: { text: "left guard off", by: "Jess Tech", at: AT, eventId: "e5" }, history: [] } }, `“left guard off” — Jess Tech, ${WHEN}`],
+  ])("%s prints quoted, verbatim, attributed", (_kind, over, expected) => {
+    const html = renderToStaticMarkup(<LivingSheetPrint view={baseView(over as never)} {...OPTS} />);
+    // renderToStaticMarkup escapes nothing in these strings except quotes/ampersands, none present.
+    expect(html.replace(/<!-- -->/g, "")).toContain(expected);
+  });
+
+  it.each([
+    ["no caption", { photos: [{ id: "ph1", fileId: "f1", caption: null, by: "Jess Tech", at: AT, eventId: "e4" }] }, "no caption"],
+    ["None recorded", { questions: [] }, "None recorded"],
+  ])("system text %s is never quoted", (_kind, over, text) => {
+    const html = renderToStaticMarkup(<LivingSheetPrint view={baseView(over as never)} {...OPTS} />).replace(/<!-- -->/g, "");
+    expect(html).toContain(text);
+    expect(html).not.toContain(`“${text}”`);
+  });
+
+  it("job title stays unquoted", () => {
+    const html = renderToStaticMarkup(<LivingSheetPrint view={baseView()} {...OPTS} />).replace(/<!-- -->/g, "");
+    const title = baseView().title;
+    expect(html).toContain(title);
+    expect(html).not.toContain(`“${title}”`);
+  });
+});
