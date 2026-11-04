@@ -273,9 +273,11 @@ export function buildProcedure(manuals: ManualDoc[], topics: Topic[], model: str
       }
       // Each removed part needs its own put-back step: one found reinstall must not hide that
       // another part's is missing (Codex adversarial review F3).
-      const putBack = found ? found.section.steps.slice(found.from) : [];
+      // Only the put-back steps this packet actually includes count — an instruction kept out as
+      // another model's does not put this pump's part back (round 2).
+      const putBack = reinstall.map((ps) => ps.text.value ?? "");
       for (const r of removed) {
-        if (putBack.some((st) => REINSTALL_VERB_RE.test(st.text) && st.text.toLowerCase().includes(titleWords(r.x)))) continue;
+        if (putBack.some((t) => REINSTALL_VERB_RE.test(t) && t.toLowerCase().includes(titleWords(r.x)))) continue;
         blockers.push({
           value: null,
           label: "unknown",
@@ -288,7 +290,14 @@ export function buildProcedure(manuals: ManualDoc[], topics: Topic[], model: str
     // ---- notes: next to the step they follow ----
     for (const c of manual.cautions) {
       if (!c.context || c.kind !== "NOTE") continue;
-      const k = blockKey(c.context.heading, c.context.subheading);
+      let k = blockKey(c.context.heading, c.context.subheading);
+      // A NOTE printed under the section heading, before its first sub-heading, belongs to the
+      // section's steps: it goes before the first of them in this packet (Codex review F9).
+      if (!jobBlocks.has(k) && c.context.subheading === null && c.context.afterStep === null) {
+        const prefix = blockKey(c.context.heading, null);
+        const first = Array.from(byBlock.keys()).find((j) => jobBlocks.has(j) && j.startsWith(prefix));
+        if (first) k = first;
+      }
       if (!jobBlocks.has(k)) {
         // a note in a block that is in the job's sections but for other models
         const s = manual.sections.find((x) => blockKey(x.heading, x.subheading) === k);

@@ -65,10 +65,17 @@ export function computeCoverage(manuals: ManualDoc[], topics: Topic[], model: st
   manuals.forEach(({ manual }, mi) => {
     const omitted = manual.omitted ?? [];
     const forJob = (t: Topic | "other") => t !== "other" && topics.includes(t);
+    // A "REMOVING THE …" block is part of the job when a packet step works on that part, as the
+    // procedure builder would have included it had it been readable and tied to this model
+    // (Codex adversarial review F1, rounds 1 and 2).
+    const needed = (heading: string) => {
+      const part = removalPart(heading);
+      return part !== null && steps.some((s) => s.section !== heading && (s.text.value ?? "").toLowerCase().includes(part));
+    };
 
     // (a) requested sections the reader kept but cannot tie to this model
     for (const s of manual.sections) {
-      if (!forJob(s.topic)) continue;
+      if (!forJob(s.topic) && !(s.models.unresolved && needed(s.heading))) continue;
       touch(s.heading);
       if (s.models.unresolved && s.steps.length > 0) {
         notRead(s.heading, `${mi}|s|${s.page}|${where(s)}`, s.steps.length, `"${where(s)}" (p.${s.page}): the manual limits these ${s.steps.length} steps to some models and this tool cannot tell whether this pump is one`, s.steps[0].source, false, true);
@@ -76,11 +83,7 @@ export function computeCoverage(manuals: ManualDoc[], topics: Topic[], model: st
     }
     // (b) requested sections the reader could not read in order
     for (const o of omitted) {
-      // A "REMOVING THE …" block is part of the job when a packet step works on that part, as the
-      // procedure builder would have included it had it been readable (Codex adversarial review F1).
-      const part = removalPart(o.heading);
-      const needed = part !== null && steps.some((s) => s.section !== o.heading && (s.text.value ?? "").toLowerCase().includes(part));
-      if (!forJob(o.topic) && !needed) continue;
+      if (!forJob(o.topic) && !needed(o.heading)) continue;
       if (!o.models.unresolved && !modelScopeAdmits(o.models, model)) continue;
       const n = o.stepsSeen ?? 0;
       notRead(o.heading, `${mi}|o|${o.page}|${where(o)}`, n, `"${where(o)}" (p.${o.page}): the text could not be read in order — at least ${n} steps not read`, o.source, true);

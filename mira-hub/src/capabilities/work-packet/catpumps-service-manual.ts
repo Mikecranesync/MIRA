@@ -261,11 +261,17 @@ function hasNoLowercase(line: string): boolean {
   return !/[a-z]/.test(line);
 }
 
-/** An all-caps line under a standalone WARNING that reads as an emphasized instruction, not the address block. */
+/** Whether the all-caps lines starting at `j`, under a standalone WARNING, are an emphasized
+ *  statement that belongs to it ("HIGH PRESSURE FLUID CAN PENETRATE / THE SKIN …"), not the
+ *  address block printed below it: they open with an instruction word, or the run of all-caps
+ *  lines ends a sentence (Codex review F2). */
 const CAPS_INSTRUCTION_START_RE = /^(?:DO NOT|DON'T|NEVER|ALWAYS|STOP|BEFORE|AFTER|KEEP|WEAR|USE|CHECK|MAKE SURE)\b/;
-function isCapsInstruction(line: string, openInstruction: boolean): boolean {
-  if (isHardFurniture(line)) return false;
-  return CAPS_INSTRUCTION_START_RE.test(line) || /[.!]$/.test(line) || openInstruction;
+function capsStatementAt(lines: string[], j: number, maxLines: number): boolean {
+  if (CAPS_INSTRUCTION_START_RE.test(lines[j])) return true;
+  for (let k = j; k < lines.length && k - j < maxLines && lines[k].length > 0 && hasNoLowercase(lines[k]) && !isHardFurniture(lines[k]); k++) {
+    if (/[.!]$/.test(lines[k])) return true;
+  }
+  return false;
 }
 
 /** "Remember to service the regulator/unloader at each seal servicing" — the service it is tied to. */
@@ -541,13 +547,13 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
         // An all-caps instruction ("DO NOT RUN … DEVICE.") is part of the warning, and stays open
         // until a line ends the sentence; only other all-caps lines (the address block) end it.
         let openCaps = false;
-        const capsEnds = (l: string) => hasNoLowercase(l) && !isCapsInstruction(l, openCaps);
+        const capsEnds = (idx: number) => hasNoLowercase(lines[idx]) && !openCaps && !capsStatementAt(lines, idx, STANDALONE_MARKER_MAX_LINES);
         while (
           j < lines.length &&
           lines[j].length > 0 &&
           // A standalone heading's text ends at the first all-caps line that is not an instruction
           // (the address block below it) and is never longer than a few lines.
-          !(standalone && (capsEnds(lines[j]) || isHardFurniture(lines[j]) || textParts.length >= STANDALONE_MARKER_MAX_LINES)) &&
+          !(standalone && (capsEnds(j) || isHardFurniture(lines[j]) || textParts.length >= STANDALONE_MARKER_MAX_LINES)) &&
           !isAnyMarkerStart(lines[j]) &&
           !STEP_RE.test(lines[j]) &&
           !SECTION_HEADING_RE.test(lines[j]) &&
@@ -582,7 +588,7 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
         cautions.push(caution);
         // A standalone heading that ended at an all-caps line (the address block) is complete: that
         // line is not its continuation. One cut off by the line cap still fails closed below.
-        const endedAtCaps = standalone && !openCaps && j < lines.length && (capsEnds(lines[j]) || isHardFurniture(lines[j]));
+        const endedAtCaps = standalone && !openCaps && j < lines.length && (capsEnds(j) || isHardFurniture(lines[j]));
         lastBlock = endedAtCaps ? null : { kind: "caution", caution, text: cautionText };
         i = j - 1;
         continue;
