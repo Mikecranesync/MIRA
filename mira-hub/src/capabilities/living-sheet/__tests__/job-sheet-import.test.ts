@@ -595,6 +595,41 @@ describe("parseJobSheetText — reuses the write-path validator", () => {
     expect(preview.jobs[0]!.body.title).toBe("");
     expect(preview.jobs[0]!.warnings.some((w) => w.includes("can't be saved yet"))).toBe(true);
   });
+
+  // R2-16 REGRESSION GUARD: validate.ts's new real-torque-id check (R2-16)
+  // would otherwise fire on every sheet that fills "Refers to" the only way
+  // a technician actually can — the torque's own label, or its row number
+  // in the Torque & settings table — since neither is the generated
+  // `torque-N` id. PROPERTY: a "Refers to" cell that names a real torque,
+  // by label or by row number, resolves to that torque's real id and never
+  // warns; one that names nothing real still warns (correctly).
+  it.each<[string, string]>([
+    ["the torque's own label, exact case", "Axle nut"],
+    ["the torque's own label, different case/spacing", "  AXLE NUT  "],
+    ["the torque's 1-based row number", "1"],
+  ])("a 'Refers to' value that is %s resolves to the real torque id, no warning", (_label, refersTo) => {
+    const row = [...STEPS_ROW_TORQUE];
+    row[4] = refersTo; // Refers to
+    const text = buildFiveTabText();
+    const resolved = text.replace("LW-01\t2\tTighten axle nut to spec\ttorque\tAxle nut\t(see fig 3)\tShop manual p.12", row.join("\t"));
+    const preview = parseJobSheetText(resolved, { layout: "five_tab" });
+    const job = preview.jobs[0]!;
+    const step = job.body.steps.find((s) => s.text === "Tighten axle nut to spec")!;
+    expect(step.torqueRef).toBe(job.body.torques[0]!.id); // Axle nut is torque row 1 -> "torque-1"
+    expect(job.warnings.some((w) => w.includes("can't be saved yet"))).toBe(false);
+  });
+
+  it("a 'Refers to' value matching no real torque (by label or row number) is left unresolved and still warns", () => {
+    const row = [...STEPS_ROW_TORQUE];
+    row[4] = "Seat post clamp"; // no such torque on this sheet
+    const text = buildFiveTabText();
+    const resolved = text.replace("LW-01\t2\tTighten axle nut to spec\ttorque\tAxle nut\t(see fig 3)\tShop manual p.12", row.join("\t"));
+    const preview = parseJobSheetText(resolved, { layout: "five_tab" });
+    const job = preview.jobs[0]!;
+    const step = job.body.steps.find((s) => s.text === "Tighten axle nut to spec")!;
+    expect(step.torqueRef).toBe("Seat post clamp"); // unresolved, kept verbatim
+    expect(job.warnings.some((w) => w.includes("can't be saved yet") && w.includes("step_torque_ref_unknown"))).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
