@@ -4,7 +4,7 @@
  * output (living-sheet-print.ts, pure, already tested) for print ONLY:
  * portrait, black on white, >=11pt. Hidden on screen (`@media screen`);
  * visible only inside a browser print/PDF pass. A running header is pinned
- * via `position: fixed` inside `@media print`; `@page` adds a "Page N of M"
+ * via a table <thead>, which Chromium repeats on every printed page; `@page` adds a "Page N of M"
  * margin box where the browser's Paged Media support allows it (degrades
  * silently elsewhere — CSS Paged Media is advisory, not required).
  *
@@ -47,11 +47,10 @@ const PRINT_CSS = `
 }
 @media print {
   .ls-print-root { background: #fff; color: #000; }
-  .ls-print-header {
-    position: fixed; top: 0; left: 0; right: 0;
-    background: #fff; color: #000; border-bottom: 1px solid #000; padding: 4px 0;
-  }
-  .ls-print-body { margin-top: 40px; }
+  .ls-print-header { background: #fff; color: #000; border-bottom: 1px solid #000; padding: 4px 0 6px; }
+  .ls-print-frame { width: 100%; border-collapse: collapse; }
+  .ls-print-frame > thead { display: table-header-group; }
+  .ls-print-frame td { padding: 0; vertical-align: top; }
 }
 ${PRINT_PORTAL_CSS}`;
 
@@ -61,7 +60,7 @@ const S: Record<string, CSSProperties> = {
   section: { marginTop: "12pt" },
   sectionTitle: { fontSize: "12pt", fontWeight: 700, borderBottom: "1px solid #000", marginBottom: "4pt" },
   row: { fontSize: "11pt", marginBottom: "2pt" },
-  box: { display: "inline-block", width: "10pt", height: "10pt", border: "1px solid #000", marginInlineEnd: "6pt", verticalAlign: "middle" },
+  box: { display: "inline-block", fontSize: "13pt", lineHeight: 1, marginInlineEnd: "6pt", verticalAlign: "middle" },
   struck: { textDecoration: "line-through", color: "#555" },
   photo: { width: "120pt", height: "120pt", objectFit: "cover", border: "1px solid #000", marginInlineEnd: "8pt" },
   footer: { marginTop: "16pt", fontSize: "11pt" },
@@ -116,7 +115,7 @@ function renderSection(section: PrintSection, index: number) {
           <div style={S.sectionTitle}>{SECTION_TITLES.steps}</div>
           {section.items.map((step) => (
             <p key={step.id} style={S.row}>
-              <span style={S.box} />
+              <span aria-hidden="true" style={S.box}>{step.done ? "☑" : "☐"}</span>
               {step.text}
               {step.done ? ` — done by ${step.doneBy ?? "a technician"}, ${step.doneAt ? new Date(step.doneAt).toLocaleString() : ""}` : " — not done"}
             </p>
@@ -221,9 +220,13 @@ export function LivingSheetPrint({ view, seq, printedAt, machineName, jobIdShort
       <style>{PRINT_CSS}</style>
       <PrintPortal>
       <div className={`ls-print-root ${PRINT_PORTAL_CLASS}`} style={S.root} data-testid="living-sheet-print-root">
+        <table className="ls-print-frame">
+        <thead><tr><td>
         <div className="ls-print-header" style={S.header} data-testid="living-sheet-print-header">
           {model.header}
         </div>
+        </td></tr></thead>
+        <tbody><tr><td>
         <div className="ls-print-body" data-testid="living-sheet-print-body">
           {model.sections.map((section, i) => renderSection(section, i))}
           <div style={S.footer} data-testid="ls-print-footer">
@@ -235,6 +238,8 @@ export function LivingSheetPrint({ view, seq, printedAt, machineName, jobIdShort
             ))}
           </div>
         </div>
+        </td></tr></tbody>
+        </table>
       </div>
       </PrintPortal>
     </>
