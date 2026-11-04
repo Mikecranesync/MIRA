@@ -1,0 +1,372 @@
+name: Deploy Atlas CMMS to production
+
+# Installs/updates the production Atlas CMMS stack (compose project
+# `factorylm-cmms`) on the OVH VPS (ubuntu@40.160.141.61) and its nginx vhost
+# (cmms.factorylm.com). Atlas has not run anywhere reachable since the Sept
+# 2026 DO->OVH move (ATLAS-ON-OVH-PLAN.md) — every prod Atlas caller (Hub
+# /cmms, mira-web provisioning, mira-mcp CMMS tools, OWUI create_work_order)
+# fails because nothing named `cmms-backend` exists on network
+# `factorylm-cmms_default`.
+#
+# Human-dispatched only (touches production). `mode=dry-run` (default) runs
+# every read-only check and the compose config render and stops; `mode=apply`
+# additionally installs the files, brings the stack up, waits for health,
+# provisions the admin account, installs/reloads nginx, and attempts TLS.
+# Modeled on .github/workflows/deploy-nginx-stg.yml (checkout/SSH/site-hash
+# safeguards) and .github/workflows/deploy-vps.yml (feature-detected `--wait`).
+#
+# Rollback (manual, on the host, if `apply` leaves the stack in a bad state):
+#   docker compose -p factorylm-cmms -f /opt/mira-cmms/docker-compose.prod.yml down   # never add -v — keeps the DB/MinIO volumes
+#   sudo rm -f /etc/nginx/sites-enabled/cmms-factorylm
+#   sudo nginx -t && sudo systemctl reload nginx
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry-run (read-only checks only) or apply (install + bring up)"
+        type: choice
+        options:
+          - dry-run
+          - apply
+        default: dry-run
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-atlas
+  cancel-in-progress: false
+
+jobs:
+  deploy-atlas:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 20
+
+    steps:
+      - name: Validate mode input
+        run: |
+          set -euo pipefail
+          case "${{ inputs.mode }}" in
+            dry-run|apply) ;;
+            *) echo "::error::invalid mode '${{ inputs.mode }}'"; exit 1 ;;
+          esac
+
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Require the exact current main source
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main:refs/remotes/origin/main --depth=1
+          CURRENT_MAIN="$(git rev-parse origin/main)"
+          CHECKED_OUT="$(git rev-parse HEAD)"
+          [[ "$CHECKED_OUT" == "$CURRENT_MAIN" ]] || {
+            echo "::error::Refusing stale production Atlas deploy: checked out $CHECKED_OUT, current main is $CURRENT_MAIN"
+            exit 1
+          }
+
+      - name: Set up SSH
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/vps_deploy_key
+          chmod 600 ~/.ssh/vps_deploy_key
+          install -m 600 deployment/known_hosts.factorylm-prod ~/.ssh/known_hosts
+
+      - name: Static checks — loopback-only ports, single hostname
+        run: |
+          set -euo pipefail
+          # No service in the compose file may publish on a non-loopback address.
+          if grep -n '0\.0\.0\.0' mira-cmms/docker-compose.prod.yml; then
+            echo "::error::docker-compose.prod.yml binds a non-loopback (0.0.0.0) port"
+            exit 1
+          fi
+          if grep -nE '^\s*-\s*"[0-9]' mira-cmms/docker-compose.prod.yml | grep -v '127\.0\.0\.1:'; then
+            echo "::error::docker-compose.prod.yml has a published port not bound to 127.0.0.1"
+            exit 1
+          fi
+          # The nginx conf must name exactly one hostname: cmms.factorylm.com.
+          NAMES="$(grep -oE 'server_name[^;]+;' deployment/nginx-cmms-factorylm.conf | sed 's/server_name *//; s/;//' | tr -s ' \t' '\n' | grep -v '^$' | sort -u)"
+          if [ "$NAMES" != "cmms.factorylm.com" ]; then
+            echo "::error::nginx-cmms-factorylm.conf names hostname(s) other than cmms.factorylm.com: $NAMES"
+            exit 1
+          fi
+          echo "static checks OK"
+
+      - name: SCP compose + nginx conf to the host
+        run: |
+          set -euo pipefail
+          RUN="atlas-deploy-${{ github.run_id }}"
+          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+            ubuntu@40.160.141.61 "mkdir -p /tmp/${RUN}"
+          scp -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+            mira-cmms/docker-compose.prod.yml deployment/nginx-cmms-factorylm.conf \
+            "ubuntu@40.160.141.61:/tmp/${RUN}/"
+
+      - name: Remote checks + (conditionally) apply
+        run: |
+          set -euo pipefail
+          MODE="${{ inputs.mode }}"
+          RUN="atlas-deploy-${{ github.run_id }}"
+          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+            ubuntu@40.160.141.61 "bash -s -- '${MODE}' '${RUN}'" << 'ENDSSH'
+          set -euo pipefail
+          MODE="$1"
+          RUN="$2"
+          COMPOSE_SRC="/tmp/${RUN}/docker-compose.prod.yml"
+          NGINX_SRC="/tmp/${RUN}/nginx-cmms-factorylm.conf"
+
+          echo "=== identity & resources ==="
+          whoami
+          if sudo -n true 2>/dev/null; then echo "sudo=ok"; else echo "sudo=NO"; fi
+          free -m
+          df -h /
+          nproc
+          docker stats --no-stream --format 'table {{.Name}}\t{{.MemUsage}}\t{{.CPUPerc}}' || true
+
+          echo "=== factorylm-cmms_default network ==="
+          docker network inspect factorylm-cmms_default --format '{{.Name}} labels={{.Labels}} containers={{len .Containers}}' 2>/dev/null || echo "absent"
+
+          echo "=== listeners on target ports (8088/3100/9000/9001/5433) ==="
+          ss -ltnp 2>/dev/null | grep -E ':(8088|3100|9000|9001|5433)\b' || echo "none"
+
+          echo "=== existing cmms-* containers ==="
+          docker ps -a --filter "name=cmms-" --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}' || true
+
+          echo "=== existing nginx cmms server_name lines ==="
+          sudo nginx -T 2>/dev/null | grep -n 'server_name.*cmms' || echo "none"
+
+          echo "=== DNS vs public IP ==="
+          PUBLIC_IP="$(curl -s --max-time 10 https://api.ipify.org || true)"
+          DNS_IP="$(dig +short cmms.factorylm.com A | tail -1)"
+          echo "public_ip=${PUBLIC_IP:-unknown} dns_a=${DNS_IP:-unresolved}"
+
+          echo "=== letsencrypt dir ==="
+          if [ -d /etc/letsencrypt/live/cmms.factorylm.com ]; then echo "present"; else echo "absent"; fi
+
+          echo "=== staging Atlas probe (read-only, informational) ==="
+          curl -s -o /dev/null -w 'stg /health-check -> %{http_code}\n' --max-time 10 http://127.0.0.1:4088/health-check || true
+          curl -s -o /dev/null -w 'stg /api/health-check -> %{http_code}\n' --max-time 10 http://127.0.0.1:4088/api/health-check || true
+
+          echo "=== render compose config (output withheld — contains secrets) ==="
+          cd /opt/mira
+          if doppler run --project factorylm --config prd -- \
+               docker compose -p factorylm-cmms -f "$COMPOSE_SRC" config -q >/tmp/atlas_config_render.log 2>&1; then
+            echo "compose config OK"
+          else
+            echo "::error::compose config render failed (likely a missing required secret) — see redacted log below"
+            tail -c 500 /tmp/atlas_config_render.log | grep -vi 'password\|secret\|token' || true
+            rm -f /tmp/atlas_config_render.log
+            exit 1
+          fi
+          rm -f /tmp/atlas_config_render.log
+
+          echo "=== doppler secret-name presence check (names only) ==="
+          # Checked inside `doppler run` so only presence is tested; values never leave the subshell.
+          MISSING="$(doppler run --project factorylm --config prd -- sh -c '
+            for n in ATLAS_DB_PASSWORD ATLAS_JWT_SECRET ATLAS_MINIO_PASSWORD ATLAS_API_USER ATLAS_API_PASSWORD; do
+              eval "v=\${$n:-}"; [ -n "$v" ] || printf " %s" "$n"
+            done' 2>/dev/null)" || { echo "::error::doppler run failed for factorylm/prd"; exit 1; }
+          [ -n "$MISSING" ] || echo "  all five Atlas secrets present (names only)"
+          if [ -n "$MISSING" ]; then
+            echo "::error::missing Doppler secret(s) in factorylm/prd:$MISSING"
+            exit 1
+          fi
+
+          echo "=== resource gate ==="
+          AVAIL_MB="$(free -m | awk '/^Mem:/{print $7}')"
+          [ -n "$AVAIL_MB" ] || AVAIL_MB="$(free -m | awk '/^Mem:/{print $4}')"
+          if [ "$AVAIL_MB" -lt 3000 ]; then
+            echo "::error::available memory ${AVAIL_MB}MB < 3000MB required"
+            exit 1
+          fi
+          DISK_FREE_KB="$(df -Pk / | awk 'NR==2{print $4}')"
+          DISK_FREE_GB=$(( DISK_FREE_KB / 1024 / 1024 ))
+          if [ "$DISK_FREE_GB" -lt 10 ]; then
+            echo "::error::free disk ${DISK_FREE_GB}GB < 10GB required"
+            exit 1
+          fi
+          echo "available_mem=${AVAIL_MB}MB free_disk=${DISK_FREE_GB}GB"
+
+          echo "=== port-conflict gate ==="
+          # A held port is fine only when a factorylm-cmms container publishes it (re-run).
+          for p in 8088 3100 9000 9001 5433; do
+            ss -ltn 2>/dev/null | awk '{print $4}' | grep -qE ":${p}\$" || continue
+            OWNER="$(docker ps --filter "publish=${p}" --format '{{.Label "com.docker.compose.project"}}' | sort -u)"
+            if [ "$OWNER" != "factorylm-cmms" ]; then
+              echo "::error::port $p is held by something other than factorylm-cmms (compose project: '${OWNER:-not a container}')"
+              exit 1
+            fi
+          done
+
+          echo "=== nginx-hostname-conflict gate ==="
+          CONFLICT=""
+          for f in /etc/nginx/sites-enabled/*; do
+            [ -e "$f" ] || continue
+            base="$(basename "$f")"
+            [ "$base" = "cmms-factorylm" ] && continue
+            if sudo grep -qE 'server_name[^;]*\bcmms\.factorylm\.com\b' "$f" 2>/dev/null; then
+              CONFLICT="$CONFLICT $base"
+            fi
+          done
+          if [ -n "$CONFLICT" ]; then
+            echo "::error::another nginx site already names cmms.factorylm.com:$CONFLICT"
+            exit 1
+          fi
+
+          if [ "$MODE" = "dry-run" ]; then
+            echo "DRY-RUN OK"
+            exit 0
+          fi
+
+          echo "=== apply: installing compose file to /opt/mira-cmms (never /opt/mira) ==="
+          sudo install -d -m 755 /opt/mira-cmms
+          sudo install -m 644 "$COMPOSE_SRC" /opt/mira-cmms/docker-compose.prod.yml
+
+          echo "=== apply: ensuring factorylm-cmms_default network ==="
+          docker network inspect factorylm-cmms_default >/dev/null 2>&1 || docker network create factorylm-cmms_default
+
+          echo "=== apply: pull + up (feature-detected --wait) ==="
+          cd /opt/mira
+          WAIT_FLAGS=""
+          if docker compose up --help 2>&1 | grep -q -- '--wait-timeout'; then
+            WAIT_FLAGS="--wait --wait-timeout 300"
+          elif docker compose up --help 2>&1 | grep -q -- '--wait'; then
+            WAIT_FLAGS="--wait"
+          fi
+          echo "wait flags: ${WAIT_FLAGS:-<none: compose too old, falling back to health poll below>}"
+          doppler run --project factorylm --config prd -- \
+            docker compose -p factorylm-cmms -f /opt/mira-cmms/docker-compose.prod.yml pull
+          # shellcheck disable=SC2086
+          doppler run --project factorylm --config prd -- \
+            docker compose -p factorylm-cmms -f /opt/mira-cmms/docker-compose.prod.yml up -d $WAIT_FLAGS || {
+            echo "::error::compose up failed — leaving stack up for diagnosis"
+            docker ps -a --filter label=com.docker.compose.project=factorylm-cmms || true
+            docker logs --tail 80 cmms-backend || true
+            exit 1
+          }
+
+          echo "=== apply: health wait (up to 5 min) ==="
+          HEALTHY=""
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8088/health-check >/dev/null 2>&1; then
+              HEALTHY=1
+              break
+            fi
+            sleep 5
+          done
+          if [ -z "$HEALTHY" ]; then
+            echo "::error::cmms-backend did not become healthy within 5 minutes — leaving stack up for diagnosis"
+            docker logs --tail 80 cmms-backend || true
+            exit 1
+          fi
+          echo "cmms-backend healthy"
+
+          echo "=== apply: admin account ==="
+          cd /opt/mira
+          doppler run --project factorylm --config prd -- bash -c '
+          set -euo pipefail
+          EMAIL="${ATLAS_API_USER:?ATLAS_API_USER required}"
+          PASSWORD="${ATLAS_API_PASSWORD:?ATLAS_API_PASSWORD required}"
+          export EMAIL PASSWORD
+          SIGNIN_JSON="$(python3 -c "import json, os; print(json.dumps({\"email\": os.environ[\"EMAIL\"], \"password\": os.environ[\"PASSWORD\"], \"type\": \"CLIENT\"}))")"
+          SIGNIN_HTTP="$(curl -s -o /tmp/atlas_signin.json -w "%{http_code}" -X POST http://127.0.0.1:8088/auth/signin -H "Content-Type: application/json" -d "$SIGNIN_JSON")"
+          TOKEN="$(python3 -c "import json; d=json.load(open(\"/tmp/atlas_signin.json\")); print(d.get(\"accessToken\") or d.get(\"token\") or \"\")" 2>/dev/null || true)"
+          echo "signin http=$SIGNIN_HTTP token_len=${#TOKEN}"
+          if [ -z "$TOKEN" ]; then
+            echo "no token on signin — attempting signup"
+            SIGNUP_JSON="$(python3 -c "import json, os; print(json.dumps({\"email\": os.environ[\"EMAIL\"], \"password\": os.environ[\"PASSWORD\"], \"firstName\": \"FactoryLM\", \"lastName\": \"Admin\", \"companyName\": \"FactoryLM\"}))")"
+          SIGNUP_HTTP="$(curl -s -o /tmp/atlas_signup.json -w "%{http_code}" -X POST http://127.0.0.1:8088/auth/signup -H "Content-Type: application/json" -d "$SIGNUP_JSON")"
+            echo "signup http=$SIGNUP_HTTP"
+            SIGNIN_HTTP2="$(curl -s -o /tmp/atlas_signin.json -w "%{http_code}" -X POST http://127.0.0.1:8088/auth/signin -H "Content-Type: application/json" -d "$SIGNIN_JSON")"
+            TOKEN="$(python3 -c "import json; d=json.load(open(\"/tmp/atlas_signin.json\")); print(d.get(\"accessToken\") or d.get(\"token\") or \"\")" 2>/dev/null || true)"
+            echo "signin(retry) http=$SIGNIN_HTTP2 token_len=${#TOKEN}"
+          fi
+          rm -f /tmp/atlas_signin.json /tmp/atlas_signup.json
+          if [ -z "$TOKEN" ]; then
+            echo "::error::could not obtain an Atlas admin token after signin+signup"
+            exit 1
+          fi
+          echo "admin token acquired (token_len=${#TOKEN})"
+          '
+
+          echo "=== apply: nginx ==="
+          site_hashes() {
+            local f h out=""
+            for f in /etc/nginx/sites-enabled/*; do
+              [ -e "$f" ] || continue
+              case "$f" in */cmms-factorylm) continue;; esac
+              h="$(sudo sha256sum "$f")" || { echo "::error::cannot hash $f — refusing to proceed without a site snapshot" >&2; return 1; }
+              out+="$h"$'\n'
+            done
+            printf '%s' "$out" | sort
+          }
+          OTHER_BEFORE="$(site_hashes)" || exit 1
+
+          BACKUP=""
+          if [ -f /etc/nginx/sites-available/cmms-factorylm ]; then
+            BACKUP="/etc/nginx/sites-available/cmms-factorylm.bak.$(date +%s)"
+            sudo cp /etc/nginx/sites-available/cmms-factorylm "$BACKUP"
+          fi
+          sudo install -m 644 "$NGINX_SRC" /etc/nginx/sites-available/cmms-factorylm
+          sudo ln -sfn /etc/nginx/sites-available/cmms-factorylm /etc/nginx/sites-enabled/cmms-factorylm
+
+          if ! sudo nginx -t; then
+            echo "::error::nginx -t failed — rolling back"
+            if [ -n "$BACKUP" ]; then
+              sudo mv "$BACKUP" /etc/nginx/sites-available/cmms-factorylm
+            else
+              sudo rm -f /etc/nginx/sites-enabled/cmms-factorylm /etc/nginx/sites-available/cmms-factorylm
+            fi
+            exit 1
+          fi
+          sudo systemctl reload nginx
+
+          check_other_sites() {
+            local after
+            after="$(site_hashes)" || exit 1
+            [ "$OTHER_BEFORE" = "$after" ] || { echo "::error::a non-cmms nginx site changed — STOP"; exit 1; }
+          }
+          check_other_sites
+
+          echo "=== apply: TLS ==="
+          TLS=""
+          PUBLIC_IP="$(curl -s --max-time 10 https://api.ipify.org || true)"
+          DNS_IP="$(dig +short cmms.factorylm.com A | tail -1)"
+          if [ -n "$PUBLIC_IP" ] && [ "$DNS_IP" = "$PUBLIC_IP" ]; then
+            sudo certbot --nginx --non-interactive --agree-tos --keep-until-expiring \
+              --cert-name cmms-factorylm -d cmms.factorylm.com
+            sudo nginx -t && sudo systemctl reload nginx
+            check_other_sites
+            TLS=1
+          else
+            echo "::warning::DNS A for cmms.factorylm.com (${DNS_IP:-unresolved}) does not match this host's public IP (${PUBLIC_IP:-unknown}) — vhost installed on HTTP only; re-run after DNS lands to get TLS"
+          fi
+
+          echo "=== apply: probes ==="
+          FAIL=""
+          if [ -n "$TLS" ]; then
+            for u in https://cmms.factorylm.com/ https://cmms.factorylm.com/api/health-check; do
+              code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$u" || true)"
+              echo "$u -> $code"
+              [ "$code" = "200" ] || FAIL="$FAIL $u"
+            done
+          fi
+          if docker inspect mira-hub >/dev/null 2>&1; then
+            if docker exec mira-hub sh -c 'wget -qO- http://cmms-backend:8080/health-check' >/dev/null; then
+              echo "mira-hub -> cmms-backend:8080 OK"
+            else
+              FAIL="$FAIL mira-hub->cmms-backend"
+            fi
+          else
+            echo "::warning::mira-hub container not present — in-network probe skipped"
+          fi
+          [ -z "$FAIL" ] || { echo "::error::post-deploy probes failed:$FAIL"; exit 1; }
+          echo "=== APPLY COMPLETE ==="
+          ENDSSH

@@ -1,0 +1,194 @@
+# Production Atlas CMMS stack for the OVH VPS (ubuntu@40.160.141.61).
+#
+# Compose project `factorylm-cmms`, installed to /opt/mira-cmms (NEVER
+# /opt/mira — that checkout is reserved for the main MIRA stack). Deployed
+# via .github/workflows/deploy-atlas.yml (human-dispatched, dry-run/apply).
+#
+# Service bodies copied from docker-compose.staging-vps.yml lines 44-190 (the
+# validated Atlas service shapes: cmms-db <- atlas-db, cmms-minio <-
+# atlas-minio, cmms-backend <- atlas-api, cmms-frontend <- atlas-frontend),
+# renamed to the cmms-* family and pointed at prod-specific values below.
+#
+# Image pin: same digests as staging. The CMMS outbox (#5024) needs Atlas
+# >= v1.6.0 — bumping either digest is a SEPARATE owner step that must also
+# update contracts/cmms-write-contract.v1.json. Do not bump here.
+#
+# Public URLs are HARDCODED, not read from Doppler: prod Doppler's
+# ATLAS_PUBLIC_MINIO_URL is a BRAVO Tailscale IP that crash-loops cmms-backend
+# at startup (MinioService.init() connects at boot). Changing Doppler needs a
+# separate owner OK (ATLAS-ON-OVH-PLAN.md step 4).
+#
+# Secrets: existing Doppler `prd` names only. ATLAS_DB_PASSWORD,
+# ATLAS_JWT_SECRET, ATLAS_MINIO_PASSWORD are required (${VAR:?missing} so a
+# missing one fails `compose config`); ATLAS_DB_USER / ATLAS_MINIO_USER are
+# optional, defaulted as staging does.
+#
+# Ports: loopback-only (127.0.0.1) — nginx (deployment/nginx-cmms-factorylm.conf)
+# is the only public door.
+#
+# Network: `factorylm-cmms_default`, external (may already exist, unlabeled;
+# the deploy workflow creates it if absent). Prod saas services already join
+# it as external `cmms-ext` (docker-compose.saas.yml), and
+# docker-compose.saas.yml's default Atlas host is `cmms-backend:8080` — this
+# compose names the backend service exactly `cmms-backend` so that resolves
+# unchanged.
+
+name: factorylm-cmms
+
+services:
+  # ─── Atlas CMMS — prod DB + storage ─────────────────────────────────────
+  cmms-db:
+    mem_limit: 1g
+    cpus: 1.5
+    memswap_limit: 1g
+    image: postgres:16-alpine
+    container_name: cmms-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: atlas
+      POSTGRES_USER: ${ATLAS_DB_USER:-atlas}
+      POSTGRES_PASSWORD: ${ATLAS_DB_PASSWORD:?missing}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - cmms-pgdata:/var/lib/postgresql/data
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${ATLAS_DB_USER:-atlas} -d atlas"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  cmms-minio:
+    mem_limit: 512m
+    cpus: 1
+    memswap_limit: 512m
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    container_name: cmms-minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${ATLAS_MINIO_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${ATLAS_MINIO_PASSWORD:?missing}
+    volumes:
+      - cmms-minio:/data
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    networks:
+      - default
+    command: server --address ":9000" --console-address ":9001" /data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  cmms-backend:
+    # outbox (#5024) needs Atlas >= v1.6.0. Bumping this digest is a separate
+    # owner step that must also update contracts/cmms-write-contract.v1.json.
+    image: intelloop/atlas-cmms-backend@sha256:21c42377dd758dbc4a9aa1676e62b01a13cf8822b0ecd3019b274b53c2369b1e
+    container_name: cmms-backend
+    restart: unless-stopped
+    depends_on:
+      cmms-db:
+        condition: service_healthy
+      cmms-minio:
+        condition: service_started
+    extra_hosts:
+      # Linux Docker bridge has no hairpin NAT — cmms-backend's
+      # MinioService.init() connects to PUBLIC_MINIO_ENDPOINT at startup and
+      # crash-loops when that URL points at a non-loopback public IP. Same
+      # pattern as docker-compose.staging-vps.yml:101-107 and prod's existing
+      # mira-cmms/docker-compose.yml (PR #1439).
+      - "host.docker.internal:host-gateway"
+    environment:
+      DB_URL: cmms-db/atlas
+      DB_USER: ${ATLAS_DB_USER:-atlas}
+      DB_PWD: ${ATLAS_DB_PASSWORD:?missing}
+      JWT_SECRET_KEY: ${ATLAS_JWT_SECRET:?missing}
+      SPRING_PROFILES_ACTIVE: ${ATLAS_SPRING_PROFILE:-prod}
+      # Hardcoded — see header. Not sourced from Doppler.
+      PUBLIC_API_URL: https://cmms.factorylm.com/api
+      PUBLIC_FRONT_URL: https://cmms.factorylm.com
+      MINIO_ENDPOINT: http://cmms-minio:9000
+      MINIO_BUCKET: atlas-bucket
+      MINIO_ACCESS_KEY: ${ATLAS_MINIO_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${ATLAS_MINIO_PASSWORD:?missing}
+      STORAGE_TYPE: minio
+      # Hardcoded — see header. In-network name, not host.docker.internal: MinIO
+      # publishes on 127.0.0.1 only, which the bridge gateway cannot reach, so
+      # the host-gateway route would crash-loop MinioService.init(). KNOWN GAP:
+      # browser file uploads will not work until MinIO has a public name.
+      PUBLIC_MINIO_ENDPOINT: http://cmms-minio:9000
+      INVITATION_VIA_EMAIL: "false"
+      ENABLE_EMAIL_NOTIFICATIONS: "false"
+      # Spring @Value placeholders below are required even when email is
+      # disabled — bean wiring happens before the feature flag is read.
+      # Match staging/prod's existing compose so cmms-backend boots cleanly.
+      SMTP_HOST: ${ATLAS_SMTP_HOST:-}
+      SMTP_PORT: ${ATLAS_SMTP_PORT:-587}
+      SMTP_USER: ${ATLAS_SMTP_USER:-}
+      SMTP_PWD: ${ATLAS_SMTP_PWD:-}
+      MAIL_RECIPIENTS: ${ATLAS_MAIL_RECIPIENTS:-}
+      KEYGEN_PRODUCT_TOKEN: ${ATLAS_KEYGEN_TOKEN:-}
+      ENABLE_SSO: "false"
+    ports:
+      - "127.0.0.1:8088:8080"
+    networks:
+      - default
+    mem_limit: 1g
+    cpus: 1.5
+    memswap_limit: 1g
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qS -O /dev/null http://localhost:8080/ 2>&1 | grep -q 'HTTP/'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  cmms-frontend:
+    image: intelloop/atlas-cmms-frontend@sha256:9393849caa8ff980b02cdc0836d3797da78a8a3a4672acff80206de4e11fa8de
+    container_name: cmms-frontend
+    restart: unless-stopped
+    depends_on:
+      cmms-backend:
+        condition: service_healthy
+    environment:
+      # Hardcoded — see header. Not sourced from Doppler.
+      API_URL: https://cmms.factorylm.com/api
+      INVITATION_VIA_EMAIL: "false"
+      CLOUD_VERSION: "false"
+      NODE_ENV: production
+      ENABLE_SSO: "false"
+      GOOGLE_TRACKING_ID: "disabled"
+      GOOGLE_KEY: "disabled"
+      MUI_X_LICENSE: "disabled"
+      OAUTH2_PROVIDER: "none"
+      LOGO_PATHS: "null"
+      CUSTOM_COLORS: "null"
+      BRAND_CONFIG: "null"
+      DEMO_LINK: "none"
+      PADDLE_SECRET_TOKEN: "disabled"
+      PADDLE_ENVIRONMENT: production
+      RECAPTCHA_SITE_KEY: "disabled"
+    ports:
+      - "127.0.0.1:3100:3000"
+    networks:
+      - default
+    mem_limit: 256m
+    memswap_limit: 256m
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qS -O /dev/null http://127.0.0.1:3000/ 2>&1 | grep -q 'HTTP/'"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+networks:
+  default:
+    name: factorylm-cmms_default
+    external: true
+
+volumes:
+  cmms-pgdata:
+  cmms-minio:
