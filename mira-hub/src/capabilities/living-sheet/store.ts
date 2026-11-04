@@ -21,6 +21,7 @@ import { withTenantContext } from "@/lib/tenant-context";
 import { reduceSheet, type SheetView, type StoredEvent } from "./reduce";
 import type { EventKind, JobSheetBody } from "./types";
 import type { ValidatedAppendInput, ValidatedStartJobInput } from "./validate";
+import { enqueueJobFinishedEvent } from "./finish-outbox";
 
 export type Actor = { userId: string | null; label: string | null };
 
@@ -362,7 +363,23 @@ export async function appendEvent(
     }
 
     const newEvent = toStoredEvent(insertRes.rows[0]!);
-    return { status: "created", event: newEvent, seq: newEvent.seq, view: reduceSheet([...events, newEvent], jobId) };
+    const newView = reduceSheet([...events, newEvent], jobId);
+    if (newEvent.kind === "job_finished") {
+      // TASK-S7: one job_finished domain event through the SAME outbox fix
+      // records use (cmms-dispatch/**), in the SAME transaction as this
+      // sheet event — both land or neither does. Only for a NEWLY created
+      // event (never on replay — the "existing" branch above already
+      // returned before reaching here, so this line only runs once per job).
+      await enqueueJobFinishedEvent(c, {
+        tenantId,
+        notebookId,
+        jobId,
+        view: newView,
+        actorUserId: actor.userId,
+        occurredAt: newEvent.occurredAt,
+      });
+    }
+    return { status: "created", event: newEvent, seq: newEvent.seq, view: newView };
   });
 }
 

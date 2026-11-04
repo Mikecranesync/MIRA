@@ -30,17 +30,39 @@
 -- correction is a new event that points at the id it supersedes; a new job
 -- sheet revision is a new row, never an edit of an old one.
 --
+-- TASK-S7 (finish job -> outbox -> Atlas work log): this file ALSO widens
+-- the outbox's `notebook_domain_events_event_type_check` (111's inline CHECK)
+-- to add 'job_finished', so a finished job sheet can enqueue one domain event
+-- through the SAME outbox fix records use (src/capabilities/cmms-dispatch/**)
+-- — no second delivery system. 'observation_recorded' (113's own widening) is
+-- included too, deliberately, so 113 and 114 never narrow each other no
+-- matter which one applies first on a given environment: each does a full
+-- drop-and-re-add of the one shared CHECK, so whichever runs LAST wins, and
+-- only listing every value either migration needs keeps that idempotent.
+--
 -- Rollback (old code never reads these objects). Run the whole block below
 -- as ONE transaction. No other table's CHECK constraint or outbox references
 -- these three, so the drop order only has to respect the in-schema FK
 -- (job_sheet_revisions -> job_sheets): revisions first, then job_sheets,
--- then work_sheet_events. DATA LOSS: this discards every job's event log,
+-- then work_sheet_events. The outbox widening is unwound FIRST, before any
+-- DROP TABLE: `job_finished` events are deleted (nothing else references
+-- them — notebook_domain_events has no FK pointing at work_sheet_events),
+-- then the CHECK is restored to the narrower ('fix_recorded',
+-- 'observation_recorded') 113 left behind. NOTE: if 113's own rollback runs
+-- AFTER this one on the same environment, its CHECK restore
+-- (`('fix_recorded')`) will fail while any 'observation_recorded' row still
+-- exists — same class of ordering tension 113 already documents; not fixed
+-- here, just not worsened. DATA LOSS: this discards every job's event log,
 -- every job sheet template and every template revision. If the history must
 -- be kept, copy all three tables out first.
 -- Executed by living-sheet.integration.test.ts
 -- (documented_rollback_succeeds_after_a_job_started_event_exists).
 -- ROLLBACK-BEGIN
 --   BEGIN;
+--   DELETE FROM notebook_domain_events WHERE event_type = 'job_finished';
+--   ALTER TABLE notebook_domain_events DROP CONSTRAINT IF EXISTS notebook_domain_events_event_type_check;
+--   ALTER TABLE notebook_domain_events ADD CONSTRAINT notebook_domain_events_event_type_check
+--     CHECK (event_type IN ('fix_recorded', 'observation_recorded'));
 --   DROP TABLE IF EXISTS job_sheet_revisions;
 --   DROP TABLE IF EXISTS job_sheets;
 --   DROP TABLE IF EXISTS work_sheet_events;
@@ -142,6 +164,16 @@ CREATE POLICY job_sheet_revisions_tenant_isolation ON job_sheet_revisions
   );
 
 GRANT SELECT, INSERT ON job_sheet_revisions TO factorylm_app;
+
+-- Widen the outbox event vocabulary (111 created the CHECK inline, so its
+-- auto-generated name is notebook_domain_events_event_type_check; 113 widens
+-- it to add 'observation_recorded'). Include BOTH 'observation_recorded' and
+-- 'job_finished' here so 113 and 114 never narrow each other, whichever
+-- lands first on a given environment (see the header note above).
+-- Drop-and-re-add is idempotent: the end state is the same whichever run.
+ALTER TABLE notebook_domain_events DROP CONSTRAINT IF EXISTS notebook_domain_events_event_type_check;
+ALTER TABLE notebook_domain_events ADD CONSTRAINT notebook_domain_events_event_type_check
+  CHECK (event_type IN ('fix_recorded', 'observation_recorded', 'job_finished'));
 
 COMMENT ON TABLE work_sheet_events IS
   'Append-only Living Work Sheet event log (TASK-S1). One job on one confirmed machine; the current sheet is a pure reduce over these events. Never updated, never deleted.';

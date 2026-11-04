@@ -281,14 +281,24 @@ async function planDelivery(row: DeliveryRow): Promise<Plan> {
       }
     }
 
-    const payload = event.payload as { symptom?: unknown; faultCode?: unknown; fix?: unknown };
+    const payload = event.payload as { symptom?: unknown; faultCode?: unknown; fix?: unknown; summary?: unknown };
     const symptom = typeof payload.symptom === "string" ? payload.symptom : "";
     const faultCode = typeof payload.faultCode === "string" ? payload.faultCode : null;
     const fix = typeof payload.fix === "string" ? payload.fix : "";
+    // TASK-S7: a job_finished event's note is already the fully composed,
+    // job-sheet summary (finish-outbox.ts::jobFinishedNote) — use
+    // it verbatim (just stripped of control chars, same as buildNoteText
+    // does). Every other event type keeps buildNoteText exactly as before.
+    // Fallback to buildNoteText if a job_finished payload is ever missing a
+    // string `summary` (defensive — enqueueJobFinishedEvent always sets it).
+    const text =
+      event.event_type === "job_finished" && typeof payload.summary === "string"
+        ? payload.summary.replace(CONTROL_CHARS_RE, "")
+        : buildNoteText(symptom, faultCode, fix);
     const note: WorkLogNote = {
       idempotencyKey: row.dedupe_key,
       marker: markerFor(row.event_id),
-      text: buildNoteText(symptom, faultCode, fix),
+      text,
       attributionLabel: "Technician",
       occurredAt: new Date(event.occurred_at).toISOString(),
       sourceRef: event.subject_ref,
