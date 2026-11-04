@@ -127,6 +127,7 @@ describe("conflictValues — F22: the conflict panel shows both competing values
           id: "r-1", what: "Motor current",
           current: { value: 48, unit: "A", by: "Jess", at: "2026-11-03T00:00:00.000Z", eventId: "e-1" },
           history: [],
+          source: { kind: "tech", ref: null },
         },
       ],
     });
