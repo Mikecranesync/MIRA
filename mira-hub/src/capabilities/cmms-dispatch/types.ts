@@ -28,7 +28,7 @@ export type DomainEventRow = {
   aggregate_key: string;
   /** BIGINT — `pg` returns bigint as a string to avoid precision loss. */
   sequence: string;
-  event_type: "fix_recorded";
+  event_type: "fix_recorded" | "job_finished";
   occurred_at: string;
   recorded_at: string;
   actor_user_id: string | null;
