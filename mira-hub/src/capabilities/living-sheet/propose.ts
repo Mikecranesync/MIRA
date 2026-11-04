@@ -123,12 +123,36 @@ function parseNumberToken(raw: string): number {
   return Number(raw.replace(/,/g, ""));
 }
 
+// R2-09: a raw regex match on its own doesn't reject a number that is a
+// FRAGMENT of a larger non-numeric token ("1/2", "1e3", "1e-3", "4-5",
+// "4..8", "1,20", "v2"). A valid token must be bounded: nothing adjacent
+// that would make it part of something else. The char before the match may
+// never be a letter/digit/"."/","/"/"/"-" (that always means it's glued to
+// a bigger construct). The char after follows the same rule, EXCEPT a
+// letter is allowed when it's the start of a real unit (".8A" must still
+// work) — a letter that doesn't start a recognized unit ("1e3") is a
+// fragment, not a bounded number.
+function isBoundedNumberMatch(clause: string, index: number, end: number): boolean {
+  const before = index > 0 ? clause[index - 1]! : null;
+  if (before && /[A-Za-z0-9.,/-]/.test(before)) return false;
+  const after = end < clause.length ? clause[end]! : null;
+  if (after) {
+    if (/[A-Za-z]/.test(after)) return unitAt(clause, end) !== null;
+    if (/[0-9.,/-]/.test(after)) return false;
+  }
+  return true;
+}
+
 function findNumbers(clause: string): { value: number; index: number; end: number }[] {
   const out: { value: number; index: number; end: number }[] = [];
   let m: RegExpExecArray | null;
   NUMBER_RE.lastIndex = 0;
   while ((m = NUMBER_RE.exec(clause))) {
-    out.push({ value: parseNumberToken(m[0]), index: m.index, end: m.index + m[0].length });
+    const index = m.index;
+    const end = m.index + m[0].length;
+    if (isBoundedNumberMatch(clause, index, end)) {
+      out.push({ value: parseNumberToken(m[0]), index, end });
+    }
   }
   return out;
 }
@@ -167,24 +191,51 @@ type RawProposal = Omit<SheetProposal, "proposalId">;
 
 const LOTO_RE = /\b(?:lockout|lock\s*out|tagout|tagged\s*out|loto|isolat\w*|zero\s*energy|de-?energ\w*)\b/i;
 const COMPLETION_RE = /\b(?:job\s*done|all\s*done|finished\s*the\s*job|job\s*complete|it'?s\s*fixed)\b/i;
+
+// R2-08: "a question" is EITHER a literal "?" / one of the narrow hedging
+// phrases, OR the clause opens with an interrogative word. The modal/aux
+// openers (is/are/.../will/would) are ambiguous with shop shorthand that
+// drops the subject ("will replace the seal" = "[I] will replace..."), so
+// those specifically require a non-numeric subject right after the opener —
+// if the opener is immediately followed by one of the bare action verbs
+// (no subject in between), it's an elliptical statement, not a question.
+// The wh-words (what/which/.../how) don't have that collision and are
+// matched as a bare prefix.
 const QUESTION_RE = /\?|(?:\bnot\s*sure\b|\bneed\s*to\s*check\b|\bdon'?t\s*know\b)/i;
-// F09: a negated completion/replacement is never treated as having happened.
-// Deliberately the narrow set from the spec, not a general negation
-// detector — "don't know" etc. already routes through QUESTION_RE.
-const NEGATION_RE = /\b(?:not|haven'?t|didn'?t|no)\b/i;
+const BARE_INTENT_VERBS = "replace|replaced|swap|swapped|change|changed|put|torque|torqued|correct|check|checked|record|log|mark|undo|finish|finished|start|started";
+const MODAL_OPENER_RE = new RegExp(
+  `^(?:is|are|was|were|did|do|does|have|has|had|can|could|should|will|would)\\b(?!\\s+(?:${BARE_INTENT_VERBS})\\w*\\b)`,
+  "i",
+);
+const WH_OPENER_RE = /^(?:what|which|when|where|who|why|how)\b/i;
+function isQuestionClause(clause: string): boolean {
+  return QUESTION_RE.test(clause) || MODAL_OPENER_RE.test(clause) || WH_OPENER_RE.test(clause);
+}
+
+// R2-08: the full negation vocabulary from the spec. "n't" is matched as a
+// bare suffix so every contraction (isn't/didn't/haven't/wouldn't/...) is
+// caught without enumerating each one. NOTE: "not" is ALSO the grammar for
+// two narrower, deliberate rules below (Correction's "not X, Y" and Step's
+// "step N not done") — those run on their own trigger regex and are never
+// gated by this flag; this flag only gates the branches where a negation
+// word would otherwise be incidental background noise.
+const NEGATION_RE = /\b(?:not|never|no|none|without|nothing)\b|n['’]t\b/i;
 // F10: "should be" / "spec is" / "rated" state a specification, not a
 // measurement — never a reading, never a correction, for the whole clause.
 const SPEC_RE = /\b(?:should\s+be|spec\s+is|rated)\b/i;
 const HANDOVER_START_RE = /^\s*handover:/i;
 const HANDOVER_CONTAINS_RE = /\bfor\s+next\s+shift\b|\bnext\s+shift\b/i;
 
-// F10: the trigger word may be followed by a named quantity ("I meant motor
-// current 4.8 A") before the number — `(?:[a-z][a-z\s]*?\s+)?` optionally,
-// lazily, consumes it so the number group still lands on the real value.
-const CORRECTION_TRIGGERS: { re: RegExp; oldGroup: number | null; newGroup: number }[] = [
-  { re: new RegExp(`\\bi\\s+meant\\s+(?:[a-z][a-z\\s]*?\\s+)?(${NUM_SRC})`, "i"), oldGroup: null, newGroup: 1 },
-  { re: new RegExp(`\\bcorrection\\s+(?:[a-z][a-z\\s]*?\\s+)?(${NUM_SRC})`, "i"), oldGroup: null, newGroup: 1 },
-  { re: new RegExp(`\\bnot\\s+(${NUM_SRC})\\s*,\\s*(${NUM_SRC})`, "i"), oldGroup: 1, newGroup: 2 },
+// F10/R2-10: the trigger word may be followed by a named quantity ("I meant
+// motor current 4.8 A") before the number. The qualifier phrase is now its
+// OWN capture group (`nameGroup`) — not just lazily consumed — so the
+// caller can match it EXACTLY against a reading's full label, rather than
+// scoring shared words across the whole clause (R2-10: "fan current" must
+// never match a stored "motor current" just because they share "current").
+const CORRECTION_TRIGGERS: { re: RegExp; nameGroup: number | null; oldGroup: number | null; newGroup: number }[] = [
+  { re: new RegExp(`\\bi\\s+meant\\s+(?:([a-z][a-z\\s]*?)\\s+)?(${NUM_SRC})`, "i"), nameGroup: 1, oldGroup: null, newGroup: 2 },
+  { re: new RegExp(`\\bcorrection\\s+(?:([a-z][a-z\\s]*?)\\s+)?(${NUM_SRC})`, "i"), nameGroup: 1, oldGroup: null, newGroup: 2 },
+  { re: new RegExp(`\\bnot\\s+(${NUM_SRC})\\s*,\\s*(${NUM_SRC})`, "i"), nameGroup: null, oldGroup: 1, newGroup: 2 },
 ];
 
 const STEP_NOT_DONE_PATTERNS: RegExp[] = [/\bstep\s+(\d+)\s+not\s+done\b/i, /\bundo\s+step\s+(\d+)\b/i];
@@ -197,44 +248,38 @@ const STEP_DONE_PATTERNS: RegExp[] = [
 const PART_RE = /\b(will replace|going to replace|need to replace|need a new|replaced|swapped|changed out|put in a new)\s+([^.,!?\n]+)/i;
 const PLANNED_PHRASES = new Set(["will replace", "going to replace", "need to replace", "need a new"]);
 
-/** F10: picks the reading whose named quantity (e.g. "motor current") is
- *  uniquely best-matched by the clause's words — same scoring discipline as
- *  `deriveWhat`. Returns null (not a guess) when no reading scores above 0
- *  or two readings tie for the top score. */
-function bestQuantityMatch(clause: string, readings: SheetView["readings"]): SheetView["readings"][number] | null {
-  const clauseWords = new Set(wordsOf(clause));
-  let best: { r: SheetView["readings"][number]; score: number } | null = null;
-  let tiedAtBest = 0;
-  for (const r of readings) {
-    const score = wordsOf(r.what).filter((w) => clauseWords.has(w)).length;
-    if (score <= 0) continue;
-    if (!best || score > best.score) {
-      best = { r, score };
-      tiedAtBest = 1;
-    } else if (score === best.score) {
-      tiedAtBest += 1;
-    }
-  }
-  return best && tiedAtBest === 1 ? best.r : null;
+/** Lowercased, whitespace-collapsed label for exact (not fuzzy) comparison. */
+function normalizeLabel(s: string): string {
+  return s.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-/** F10: never guesses. Precedence: (1) a named quantity that uniquely
- *  matches one reading, (2) a stated old value that uniquely matches one
- *  reading's current value (optionally narrowed by unit), (3) the old
- *  unit-or-differs-by-value heuristic, but ONLY when it is unambiguous —
- *  previously this fell back to "most recently updated", which could pick
- *  the wrong reading of the same unit. Any tie or zero match -> null. */
+/** R2-10: never guesses, and a named quantity is matched EXACTLY (every
+ *  qualifier word) — never by shared-word score. Precedence: (1) a named
+ *  quantity was stated -> it must match one reading's full label exactly,
+ *  or the correction is dropped (NEVER falls back to the unit-only pool
+ *  below, even when that pool is unambiguous); (2) no name was given, but a
+ *  stated old value uniquely matches one reading's current value
+ *  (optionally narrowed by unit); (3) no name and no old value: the old
+ *  unit-or-differs-by-value heuristic, but ONLY when unambiguous. Any tie
+ *  or zero match -> null. */
 function findCorrectionTarget(
-  clause: string,
   view: SheetView,
+  namedQuantity: string | null,
   oldValue: number | null,
   unit: string | null,
   newValue: number,
 ): SheetView["readings"][number] | null {
   if (view.readings.length === 0) return null;
 
-  const byQuantity = bestQuantityMatch(clause, view.readings);
-  if (byQuantity) return byQuantity;
+  if (namedQuantity) {
+    const label = normalizeLabel(namedQuantity);
+    const matches = view.readings.filter((r) => normalizeLabel(r.what) === label);
+    // A name was stated: match it exactly or propose nothing. Never fall
+    // back to the sole unit-compatible reading (R2-10) — an unmatched name
+    // is stronger evidence of "wrong reading" than a shared unit is of
+    // "right reading".
+    return matches.length === 1 ? matches[0]! : null;
+  }
 
   if (oldValue !== null) {
     const byOld = view.readings.filter(
@@ -264,8 +309,16 @@ function classifyClause(clause: string, view: SheetView): RawProposal[] {
     ];
   }
 
-  // 2. Completion — MIRA never infers job_finished.
-  if (COMPLETION_RE.test(trimmed)) {
+  // R2-08: computed once, before any fact-asserting branch. A question or a
+  // negation must never produce a step_marked, reading, part_logged, or a
+  // fact-asserting note below — "when in doubt, propose nothing" (a missed
+  // proposal costs a tap; a wrong one puts a false fact on the work record).
+  const isQuestion = isQuestionClause(trimmed);
+  const isNegated = NEGATION_RE.test(trimmed);
+
+  // 2. Completion — MIRA never infers job_finished, and never from a
+  // question ("Is the job done?") or a negation ("Not all done") either.
+  if (!isQuestion && !isNegated && COMPLETION_RE.test(trimmed)) {
     return [
       {
         event: {
@@ -287,20 +340,16 @@ function classifyClause(clause: string, view: SheetView): RawProposal[] {
   // value, not a measurement: never a reading, never a correction (F10).
   if (SPEC_RE.test(trimmed)) return [];
 
-  // F09: computed once — a question or a negation of done/replaced must
-  // never produce a step_marked(done=true) or part_logged(replaced) below.
-  const isQuestion = QUESTION_RE.test(trimmed);
-  const isNegated = NEGATION_RE.test(trimmed);
-
   // 4. Correction — a number near "i meant" / "correction" / "not X, Y".
   for (const trig of CORRECTION_TRIGGERS) {
     const m = trig.re.exec(trimmed);
     if (!m) continue;
     const newValue = parseNumberToken(m[trig.newGroup]!);
     const oldValue = trig.oldGroup != null ? parseNumberToken(m[trig.oldGroup]!) : null;
+    const namedQuantity = trig.nameGroup != null ? m[trig.nameGroup] ?? null : null;
     const unitEnd = m.index + m[0].length;
     const unit = unitAt(trimmed, unitEnd);
-    const target = findCorrectionTarget(trimmed, view, oldValue, unit, newValue);
+    const target = findCorrectionTarget(view, namedQuantity, oldValue, unit, newValue);
     if (!target) return [];
     const finalUnit = unit ?? target.current.unit;
     const reason = `Changes ${target.what} from ${target.current.value} ${target.current.unit} to ${newValue} ${finalUnit} (${target.current.value} ${target.current.unit} stays in history)`;
@@ -318,7 +367,11 @@ function classifyClause(clause: string, view: SheetView): RawProposal[] {
   }
 
   // 5. Step marked — "not done"/"undo" before plain "done" (disjoint patterns, but be explicit).
-  for (const re of STEP_NOT_DONE_PATTERNS) {
+  // R2-08: "Is step 2 not done?" is a question about status, never a state
+  // change — gate by isQuestion only. isNegated is NOT a gate here: "not
+  // done" is this rule's own grammar (same word, different job), and the
+  // existing "step 3 not done" statement test must still fire.
+  for (const re of isQuestion ? [] : STEP_NOT_DONE_PATTERNS) {
     const m = re.exec(trimmed);
     if (!m) continue;
     const n = Number(m[1]);
@@ -403,7 +456,11 @@ function classifyClause(clause: string, view: SheetView): RawProposal[] {
   }
 
   // 9/10. Reading(s), or a number with no recognizable unit.
-  const numbers = findNumbers(trimmed);
+  // R2-08: a negated clause never becomes a reading (a question would
+  // already have returned above at the Question branch). "didn't torque
+  // it" / "no reading yet" must produce nothing here, not a reading and
+  // not even the "what unit" clarifying question.
+  const numbers = isNegated ? [] : findNumbers(trimmed);
   if (numbers.length > 0) {
     const readingProposals: RawProposal[] = [];
     for (const n of numbers) {
@@ -438,7 +495,9 @@ function classifyClause(clause: string, view: SheetView): RawProposal[] {
     ];
   }
 
-  // 11. Fallback.
+  // 11. Fallback. R2-08: a negated clause with no other match still must
+  // not become a fact-asserting note ("didn't torque it" -> nothing).
+  if (isNegated) return [];
   const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
   if (wordCount >= 3) {
     return [
