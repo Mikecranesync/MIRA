@@ -415,6 +415,63 @@ export async function listJobs(tenantId: string, notebookId: string): Promise<Jo
   });
 }
 
+// ---------------------------------------------------------------------------
+// listJobsActiveBetween (S6 — shift report)
+// ---------------------------------------------------------------------------
+
+export type ActiveJob = {
+  notebookId: string;
+  notebookName: string;
+  jobId: string;
+  view: SheetView;
+  events: StoredEvent[];
+};
+
+/** Read-only: every job on this tenant with at least one event whose
+ *  `occurred_at` falls in [fromIso, toIso], across all of the tenant's
+ *  notebooks. Each returned job carries its FULL event log (not just the
+ *  in-window slice) so `shiftReport` (S6) can resolve step numbers and
+ *  correction deltas that may predate the window. Notebook display name
+ *  comes from `equipment_notebooks.display_name` (migration 073). */
+export async function listJobsActiveBetween(tenantId: string, fromIso: string, toIso: string): Promise<ActiveJob[]> {
+  return withTenantContext(tenantId, async (c) => {
+    const touched = await c.query<{ job_id: string; notebook_id: string; notebook_name: string }>(
+      `SELECT DISTINCT e.job_id::text AS job_id, e.notebook_id::text AS notebook_id, n.display_name AS notebook_name
+         FROM work_sheet_events e
+         JOIN equipment_notebooks n ON n.tenant_id = e.tenant_id AND n.id = e.notebook_id
+        WHERE e.tenant_id = $1::uuid AND e.occurred_at >= $2::timestamptz AND e.occurred_at <= $3::timestamptz`,
+      [tenantId, fromIso, toIso],
+    );
+    if (touched.rows.length === 0) return [];
+
+    const jobIds = touched.rows.map((r) => r.job_id);
+    const allRows = await c.query<EventRow>(
+      `SELECT ${EVENT_COLS} FROM work_sheet_events
+        WHERE tenant_id = $1::uuid AND job_id = ANY($2::uuid[])
+        ORDER BY job_id, seq ASC`,
+      [tenantId, jobIds],
+    );
+    const byJob = new Map<string, EventRow[]>();
+    for (const row of allRows.rows) {
+      const arr = byJob.get(row.job_id) ?? [];
+      arr.push(row);
+      byJob.set(row.job_id, arr);
+    }
+
+    return touched.rows.map((t) => {
+      const rows = byJob.get(t.job_id) ?? [];
+      const events = rows.map(toStoredEvent);
+      return {
+        notebookId: t.notebook_id,
+        notebookName: t.notebook_name,
+        jobId: t.job_id,
+        view: reduceSheet(events, t.job_id),
+        events,
+      };
+    });
+  });
+}
+
 export type LoadJobResult = { status: "ok"; view: SheetView } | { status: "job_not_found" };
 
 export async function loadJob(tenantId: string, notebookId: string, jobId: string, atSeq?: number): Promise<LoadJobResult> {
