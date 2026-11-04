@@ -456,8 +456,19 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
         const nbrKey = findNbrStdKey(ki.partsByMaterial);
         const nbrPart = nbrKey !== undefined ? ki.partsByMaterial[nbrKey] : null;
         let partNumber: Field;
-        if (nbrPart) {
-          partNumber = { value: nbrPart, label: "verified", source: ki.source, basis: "kit item list, NBR column" };
+        // The same number in every material column does not depend on the seal material; any other
+        // row does, and this pump's material is unknown, so its NBR number is only Proposed (Codex EGM F09).
+        const sameInEveryMaterial = Object.values(ki.partsByMaterial).every((v) => v === nbrPart);
+        if (nbrPart && sameInEveryMaterial) {
+          partNumber = { value: nbrPart, label: "verified", source: ki.source, basis: "kit item list — the same part in every material column" };
+        } else if (nbrPart) {
+          const others = Object.entries(ki.partsByMaterial).filter(([k]) => k !== nbrKey).map(([k, v]) => `${k} ${v ?? "—"}`).join(", ");
+          partNumber = {
+            value: nbrPart,
+            label: "proposed",
+            source: ki.source,
+            basis: `NBR; material unconfirmed — this part differs by seal material and this pump's seal material is unknown (see Unknowns: seal material). Other materials: ${others || "none listed"}.`,
+          };
         } else {
           partNumber = { value: null, label: "unknown", source: ki.source, basis: "NBR part number not listed for this item on the sheet" };
           unknowns.push({

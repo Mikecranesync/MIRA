@@ -20,6 +20,19 @@ import { modelScopeAdmits, scopedApplicability, textApplicability } from "./appl
 import type { Applicability } from "./applicability";
 import type { DocText, Field, PacketStep, ServiceManual, SmCaution, SmSection, SmStep, StepNote, Topic } from "./types";
 
+// A note printed after a step that warns about doing that very step ("Using the reverse pliers may
+// damage the bore" after "With a reverse pliers, pull out the seal") belongs before it: by the time a
+// technician reads past the step, the damage is done. Cautionary wording plus a shared noun (5+
+// letters) ties the warning to the step; a plain note ("the Spacer may stay in the head") stays after.
+const CAUTIONARY_RE = /\b(?:may\s+damage|damage|caution|careful|avoid|do\s+not|never|injur\w*|scor\w*|support)\b/i;
+const words = (t: string) => new Set((t.toLowerCase().match(/[a-z]{5,}/g) ?? []));
+function warnsAboutStep(kind: SmCaution["kind"], note: string, step: string): boolean {
+  if (kind === "WARNING" || kind === "CAUTION") return true;
+  if (!CAUTIONARY_RE.test(note)) return false;
+  const w = words(step);
+  return Array.from(words(note)).some((x) => w.has(x));
+}
+
 export interface ManualDoc {
   doc: DocText;
   manual: ServiceManual;
@@ -299,7 +312,11 @@ export function buildProcedure(manuals: ManualDoc[], topics: Topic[], model: str
         });
         continue;
       }
-      const note: StepNote = { kind: c.kind, text: { value: c.text, label: "verified", source: c.source, basis: `${c.kind} — ${label}` } };
+      const note: StepNote = {
+        kind: c.kind,
+        text: { value: c.text, label: "verified", source: c.source, basis: `${c.kind} — ${label}` },
+        placement: after === null || warnsAboutStep(c.kind, c.text, target.text.value ?? "") ? "before" : "after",
+      };
       const af = applicabilityField(a, c.source);
       if (af) note.applicability = af;
       downgrade(note.text, a);

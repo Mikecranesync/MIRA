@@ -307,6 +307,10 @@ export interface StepNote {
   /** Present when the note names models: "proposed" when it also covers other models (read the part
    *  for your pump), "unknown" when a date/style/revision/application restriction cannot be settled. */
   applicability?: Field;
+  /** Where the note is shown (Codex EGM F22). "before": it heads its block, or it warns about the
+   *  action this step performs, so the technician reads it before doing the step. "after": it only
+   *  says what may happen once the step is done. */
+  placement?: "before" | "after";
 }
 
 export interface PacketStep {

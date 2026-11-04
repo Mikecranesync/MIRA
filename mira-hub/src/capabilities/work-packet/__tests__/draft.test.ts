@@ -315,7 +315,9 @@ describe("buildDraftPacket — assembly", () => {
     expect(kitNumberRows).toHaveLength(1);
     expect(kitNumberRows[0].partNumber).toMatchObject({ value: "90001", label: "proposed" });
     const item1 = packet.parts.find((p) => p.item === 1);
-    expect(item1?.partNumber).toMatchObject({ value: "90010", label: "verified" });
+    // 90010 (NBR) vs 90011 (FPM): it depends on the seal material, which is unknown (Codex EGM F09).
+    expect(item1?.partNumber).toMatchObject({ value: "90010", label: "proposed" });
+    expect(item1?.partNumber.basis).toMatch(/^NBR; material unconfirmed/);
     const item2 = packet.parts.find((p) => p.item === 2);
     expect(item2?.partNumber).toMatchObject({ value: null, label: "unknown" });
 
@@ -398,6 +400,8 @@ describe("buildDraftPacket — assembly", () => {
     const brokenDs = mockDataSheet();
     // The kit item's NBR part number ("90010") does not actually appear on this (deliberately
     // wrong) source line — buildDraftPacket must catch this via verifyPacket and downgrade it.
+    // The same number in both material columns, so it would be Verified (F09) — but not on its line.
+    brokenDs.kits[0].items[0].partsByMaterial = { "NBR (STD)": "90010", "FPM (.0110)": "90010" };
     brokenDs.kits[0].items[0].source = { docId: "ds1", fileId: null, filename: "9xp1000.pdf", page: 2, line: "1 Seal retainer 1 — —" };
     wireParsers({ ds: brokenDs });
     const result = buildDraftPacket(input());

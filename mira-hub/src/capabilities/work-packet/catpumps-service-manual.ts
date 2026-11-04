@@ -471,6 +471,11 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
   // Scope of the last Disassembly/Reassembly subheading in the open section; a nested model-list
   // header narrows it instead of replacing it.
   let phaseScope: ModelScope = scopeAll();
+  // Notes printed at the top of a phase block that has no steps of its own ("Reassembly of the
+  // Lo-Pressure Seal" whose steps sit under "Models …" blocks): they head every nested block that
+  // follows, so each nested block gets them before its first step (Codex EGM F31).
+  let headingNotes: SmCaution[] = [];
+  let headingNotesPlaced = false;
   // Persists across pages like `open`; cleared at every section/subheading/torque/body-end boundary.
   let lastBlock: LastBlock | null = null;
   const startupChecklist: SourceRef[] = [];
@@ -575,12 +580,22 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
         flushSection(open, sections, problems, omitted);
         open = { heading: line, subheading: null, topic: topicFor(line), models: scopeAll(), page: pg.page, steps: [], firstLines: [], incomplete: null };
         phaseScope = scopeAll();
+        headingNotes = [];
         lastBlock = null;
         continue;
       }
 
       const sub: SubheadingMatch | null = open ? matchSubheading(line) : null;
       if (sub) {
+        if (!sub.nested) headingNotes = [];
+        else if (open!.steps.length === 0 && open!.subheading !== null) {
+          const k = `${open!.heading}\u0000${open!.subheading}`;
+          const leading = cautions.filter((c) => c.context && c.context.afterStep === null && `${c.context.heading}\u0000${c.context.subheading ?? ""}` === k);
+          if (leading.length > 0) {
+            headingNotes = leading;
+            headingNotesPlaced = false;
+          }
+        }
         flushSection(open, sections, problems, omitted);
         if (!sub.scopeKnown) {
           problems.push(
@@ -590,6 +605,16 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
         const sectionModels: ModelScope = sub.nested ? intersectScopes(phaseScope, sub.scope) : sub.scope;
         if (!sub.nested) phaseScope = sub.scope;
         open = { heading: open!.heading, subheading: sub.text, topic: open!.topic, models: sectionModels, page: pg.page, steps: [], firstLines: [], incomplete: null };
+        if (sub.nested) {
+          // The first nested block takes the note itself (the empty block it was printed in is never a
+          // section); each later one gets a copy, so the note heads every block it was printed over.
+          for (const h of headingNotes) {
+            const context = { heading: open.heading, subheading: open.subheading, topic: open.topic, models: open.models, afterStep: null };
+            if (!headingNotesPlaced) h.context = context;
+            else cautions.push({ ...h, context });
+          }
+          headingNotesPlaced = true;
+        }
         lastBlock = null;
         continue;
       }

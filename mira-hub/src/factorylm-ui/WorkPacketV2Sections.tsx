@@ -191,25 +191,28 @@ export function PhasedSteps({ packet, renderField, stepExtra }: { packet: WorkPa
   return (
     <section style={S.section} data-testid="wp-steps">
       <h3 style={S.title}>Procedure</h3>
-      <div style={S.muted}>Do the steps in order. Each step is the manual&apos;s own line, cited. Notes printed after a step in the manual are shown with it.</div>
+      <div style={S.muted}>Do the steps in order. Each step is the manual&apos;s own line, cited. A warning about a step is shown above it, so it is read before the step is done; other notes are shown below their step.</div>
       {phasedSteps(packet).map((g, gi) => (
         <div key={gi} data-testid={`wp-phase-${g.phase ?? "all"}`}>
           {g.phase && <h4 style={S.phase}>{g.title}</h4>}
           {g.inclusion.map((f, k) => <div key={k} style={S.muted}>{badgeText(f.label)}: {f.basis}</div>)}
           {g.steps.map((s) => {
             const step = packet.steps[s.index];
+            const note = (j: number) => (
+              <div key={j} style={S.note} data-testid="wp-step-note">
+                <strong>{(step.notes![j].kind || "NOTE").toUpperCase()}</strong>
+                {renderField(`steps[${s.index}].notes[${j}].text`, step.notes![j].text)}
+                {step.notes![j].applicability && renderField(`steps[${s.index}].notes[${j}].applicability`, step.notes![j].applicability!)}
+              </div>
+            );
+            const before = s.notes.filter((j) => step.notes![j].placement === "before");
             return (
               <div key={s.index} style={S.step} data-testid={`wp-step-${s.number}`}>
+                {before.map(note)}
                 <span style={S.num}>{s.number}.</span>
                 {renderField(`steps[${s.index}].text`, step.text)}
                 {step.applicability && renderField(`steps[${s.index}].applicability`, step.applicability)}
-                {s.notes.map((j) => (
-                  <div key={j} style={S.note} data-testid="wp-step-note">
-                    <strong>{(step.notes![j].kind || "NOTE").toUpperCase()}</strong>
-                    {renderField(`steps[${s.index}].notes[${j}].text`, step.notes![j].text)}
-                    {step.notes![j].applicability && renderField(`steps[${s.index}].notes[${j}].applicability`, step.notes![j].applicability!)}
-                  </div>
-                ))}
+                {s.notes.filter((j) => step.notes![j].placement !== "before").map(note)}
                 {s.measurements.map((k) => {
                   // The manual's value, and a correction only as a pending one (Codex EGM F06).
                   const row = rows[k];
