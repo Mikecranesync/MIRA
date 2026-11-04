@@ -152,6 +152,108 @@ describe("No unit", () => {
   });
 });
 
+// R2-09 (F11 round 2) — PROPERTY: a number token comes from a strict,
+// full-token grammar (optional sign, digits with optional thousands
+// commas, optional single decimal point) and must be BOUNDED — nothing
+// adjacent that would mean it's really a fragment of a larger non-numeric
+// construct ("/", "e"/exponent, another digit, a "-" range, or a letter
+// that isn't the start of a real unit). The round-1 fix only tested two
+// repaired cases (".8", "1,200"); round 2 found the underlying grammar was
+// never actually enforced — a raw regex scan finds digit substrings
+// anywhere, fraction/exponent/range/malformed-group fragments included.
+describe("Number grammar (R2-09)", () => {
+  const UNBOUNDED_CASES: [label: string, text: string][] = [
+    ["fraction", "leak test 1/2 A"],
+    ["exponent, positive", "leak test 1e3 A"],
+    ["exponent, negative", "leak test 1e-3 A"],
+    ["range", "leak test 4-5 A"],
+    ["double decimal point", "leak test 4..8 A"],
+    ["malformed thousands grouping (2 digits after comma)", "leak test 1,20 A"],
+    ["digit glued to a non-unit letter prefix", "leak test v2 A"],
+    ["digit glued to a non-unit letter suffix", "leak test 48xyz A"],
+    ["two numbers glued with no separator", "leak test 48,,2 A"],
+    ["bare exponent marker with no sign", "leak test 2e5 A"],
+    ["fraction with decimal", "leak test 1.5/2 A"],
+    ["range with decimals", "leak test 4.5-5.5 A"],
+  ];
+
+  it.each(UNBOUNDED_CASES)("%s: %j -> no reading_recorded at all (the malformed token is the clause's only number)", (_label, text) => {
+    const proposals = proposeSheetUpdates(text, emptyView());
+    const readings = proposals.filter((p) => p.event.kind === "reading_recorded");
+    expect(readings, text).toHaveLength(0);
+  });
+
+  // The reviewer's exact counterexamples, asserted precisely.
+  it("'1/2 A' never yields a reading of 2 A", () => {
+    const proposals = proposeSheetUpdates("leak test 1/2 A", emptyView());
+    const reading = proposals.find((p) => p.event.kind === "reading_recorded");
+    expect(reading).toBeUndefined();
+  });
+
+  it("'1e3 A' never yields a reading of 3 A", () => {
+    const proposals = proposeSheetUpdates("leak test 1e3 A", emptyView());
+    const reading = proposals.find((p) => p.event.kind === "reading_recorded");
+    expect(reading).toBeUndefined();
+  });
+
+  it("'1e-3 A' never yields a reading of -3 A", () => {
+    const proposals = proposeSheetUpdates("leak test 1e-3 A", emptyView());
+    const reading = proposals.find((p) => p.event.kind === "reading_recorded");
+    expect(reading).toBeUndefined();
+  });
+
+  it("'4-5 A' (a range) never yields a reading of 4 A or -5 A", () => {
+    const proposals = proposeSheetUpdates("leak test 4-5 A", emptyView());
+    const readings = proposals.filter((p) => p.event.kind === "reading_recorded");
+    for (const r of readings) {
+      expect((r.event.payload as ReadingRecordedPayload).value).not.toBe(4);
+      expect((r.event.payload as ReadingRecordedPayload).value).not.toBe(-5);
+    }
+  });
+
+  it("'4..8 A' (double decimal point) never yields a reading of 4 A or 0.8 A", () => {
+    const proposals = proposeSheetUpdates("leak test 4..8 A", emptyView());
+    const readings = proposals.filter((p) => p.event.kind === "reading_recorded");
+    for (const r of readings) {
+      expect((r.event.payload as ReadingRecordedPayload).value).not.toBe(4);
+      expect((r.event.payload as ReadingRecordedPayload).value).not.toBe(0.8);
+    }
+  });
+
+  it("'1,20 A' (malformed thousands grouping) never yields a reading of 1 A or 20 A", () => {
+    const proposals = proposeSheetUpdates("leak test 1,20 A", emptyView());
+    const readings = proposals.filter((p) => p.event.kind === "reading_recorded");
+    for (const r of readings) {
+      expect((r.event.payload as ReadingRecordedPayload).value).not.toBe(1);
+      expect((r.event.payload as ReadingRecordedPayload).value).not.toBe(20);
+    }
+  });
+
+  it("'v2 3 A' never reads the '2' in 'v2' as a value, but the clean '3 A' is still a valid bounded reading", () => {
+    const proposals = proposeSheetUpdates("v2 3 A", emptyView());
+    const readings = proposals.filter((p) => p.event.kind === "reading_recorded");
+    for (const r of readings) {
+      expect((r.event.payload as ReadingRecordedPayload).value).not.toBe(2);
+    }
+    // the clean, well-separated "3 A" is a legitimate bounded number and
+    // must still be read -- a malformed neighbor must not suppress it.
+    expect(readings.some((r) => (r.event.payload as ReadingRecordedPayload).value === 3)).toBe(true);
+  });
+
+  // Regression guards: existing valid grammar must still work.
+  it("regression: '.8 A' / '1,200 A' / '0.8A' still read correctly", () => {
+    expect(
+      (proposeSheetUpdates("leak test .8 A", emptyView())[0]!.event.payload as ReadingRecordedPayload).value,
+    ).toBe(0.8);
+    expect(
+      (proposeSheetUpdates("inrush current 1,200 A", emptyView())[0]!.event.payload as ReadingRecordedPayload).value,
+    ).toBe(1200);
+    expect(
+      (proposeSheetUpdates("leak test 0.8A", emptyView())[0]!.event.payload as ReadingRecordedPayload).value,
+    ).toBe(0.8);
+  });
+});
+
 describe("Correction", () => {
   it("'I meant 4.8' corrects the only reading whose value differs (no quantity/old-value needed when unambiguous)", () => {
     const view = viewWithReading();
@@ -241,6 +343,113 @@ describe("Correction", () => {
   });
 });
 
+// R2-10 (F10 round 2) — PROPERTY: a correction targets a reading ONLY via
+// (a) an EXACT, full quantity label match (every qualifier word — "fan
+// current" is a different label than "motor current", not a fuzzy near
+// match) or (b) a stated old value that uniquely matches. When a name IS
+// given and it does NOT match any reading's full label, the correction is
+// dropped entirely — it must NEVER fall back to the sole unit-compatible
+// reading, even when that fallback would (by coincidence) be unambiguous.
+// Round 1's fix used word-overlap SCORING, which the round-2 reviewer broke
+// by naming a *different* quantity that merely shares one word ("current").
+describe("Correction targets the exact named quantity, never a shared word (R2-10)", () => {
+  function viewWithOneReading() {
+    return reduceSheet(
+      [
+        started(),
+        ev(
+          "reading_recorded",
+          { readingId: "22222222-2222-4222-8222-222222222222", what: "motor current", value: 48, unit: "A", source: { kind: "tech", ref: null } },
+          { occurredAt: T1, recordedAt: T1 },
+        ),
+      ],
+      JOB_ID,
+    );
+  }
+
+  function viewWithTwoNamedReadings() {
+    const base = started();
+    const motor = ev(
+      "reading_recorded",
+      { readingId: "22222222-2222-4222-8222-222222222222", what: "motor current", value: 48, unit: "A", source: { kind: "tech", ref: null } },
+      { occurredAt: T0, recordedAt: T0 },
+    );
+    const brake = ev(
+      "reading_recorded",
+      { readingId: "33333333-3333-4333-8333-333333333333", what: "brake current", value: 30, unit: "A", source: { kind: "tech", ref: null } },
+      { occurredAt: T1, recordedAt: T1 },
+    );
+    return reduceSheet([base, motor, brake], JOB_ID);
+  }
+
+  // The reviewer's exact counterexample: a name that shares one word with
+  // the ONLY stored reading, but is not the same full label.
+  it("'I meant fan current 4.8 A' with only 'motor current' stored -> no correction (shared word 'current' is not enough)", () => {
+    const view = viewWithOneReading();
+    expect(proposeSheetUpdates("I meant fan current 4.8 A", view)).toHaveLength(0);
+  });
+
+  it("'I meant fan current 4.8 A' with 'motor current' + 'brake current' stored -> no correction (matches neither)", () => {
+    const view = viewWithTwoNamedReadings();
+    expect(proposeSheetUpdates("I meant fan current 4.8 A", view)).toHaveLength(0);
+  });
+
+  it("'correction fan current 4.8 A' (the other trigger word) -> no correction either", () => {
+    const view = viewWithOneReading();
+    expect(proposeSheetUpdates("correction fan current 4.8 A", view)).toHaveLength(0);
+  });
+
+  it("a PARTIAL label (missing a qualifier word) does not match -- 'brake' alone is not 'brake current'", () => {
+    const view = viewWithTwoNamedReadings();
+    expect(proposeSheetUpdates("I meant brake 4.8 A", view)).toHaveLength(0);
+  });
+
+  it("an EXTRA qualifier word (more than the stored label) does not match either", () => {
+    const view = viewWithOneReading();
+    expect(proposeSheetUpdates("I meant motor current reading 4.8 A", view)).toHaveLength(0);
+  });
+
+  it("the exact full label still matches, case- and whitespace-insensitively", () => {
+    const view = viewWithOneReading();
+    const proposals = proposeSheetUpdates("I meant   Motor   CURRENT 4.8 A", view);
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0]!.event.kind).toBe("reading_corrected");
+    const payload = proposals[0]!.event.payload as { readingId: string; value: number };
+    expect(payload.readingId).toBe("22222222-2222-4222-8222-222222222222");
+    expect(payload.value).toBe(4.8);
+  });
+
+  it("exact label match still wins even when it is also the sole unit-compatible reading (not a coincidence we reject)", () => {
+    const view = viewWithOneReading();
+    const proposals = proposeSheetUpdates("I meant motor current 4.8 A", view);
+    expect(proposals).toHaveLength(1);
+    expect((proposals[0]!.event.payload as { value: number }).value).toBe(4.8);
+  });
+
+  it("a stated old value (no name given) still disambiguates among two readings of the same unit", () => {
+    const view = viewWithTwoNamedReadings();
+    const proposals = proposeSheetUpdates("not 30, 4.8", view);
+    expect(proposals).toHaveLength(1);
+    expect((proposals[0]!.event.payload as { readingId: string }).readingId).toBe("33333333-3333-4333-8333-333333333333"); // brake current
+  });
+
+  it("an old value that matches BOTH readings (ambiguous) -> propose nothing, never guess", () => {
+    const base = started();
+    const a = ev(
+      "reading_recorded",
+      { readingId: "22222222-2222-4222-8222-222222222222", what: "motor current", value: 48, unit: "A", source: { kind: "tech", ref: null } },
+      { occurredAt: T0, recordedAt: T0 },
+    );
+    const b = ev(
+      "reading_recorded",
+      { readingId: "33333333-3333-4333-8333-333333333333", what: "brake current", value: 48, unit: "A", source: { kind: "tech", ref: null } },
+      { occurredAt: T1, recordedAt: T1 },
+    );
+    const view = reduceSheet([base, a, b], JOB_ID);
+    expect(proposeSheetUpdates("not 48, 4.8", view)).toHaveLength(0);
+  });
+});
+
 describe("Step done", () => {
   it("'done step 3' / 'step 3 done' / 'finished step 3' all mark step index 2 (measurement) done, needs_tap", () => {
     for (const text of ["done step 3", "step 3 done", "finished step 3"]) {
@@ -271,39 +480,121 @@ describe("Step done", () => {
   });
 });
 
-// F09 — questions and negations about completion/replacement must never
-// become an affirmative work proposal (step_marked done=true, or
-// part_logged replaced). A plain question may still become an open
-// question (the proposer already does that for "?"); a negation with no
-// other trigger just falls through to the generic fallback note.
-describe("Questions and negations never become work proposals", () => {
-  it("'Is step 1 done?' -> no step_marked; becomes an open question", () => {
-    const proposals = proposeSheetUpdates("Is step 1 done?", emptyView());
-    for (const p of proposals) expect(p.event.kind).not.toBe("step_marked");
-    expect(proposals).toHaveLength(1);
-    expect(proposals[0]!.event.kind).toBe("note_added");
-    expect((proposals[0]!.event.payload as { noteKind: string }).noteKind).toBe("question");
-  });
+// R2-08 (F09 round 2) — PROPERTY: any clause that is a question
+// (interrogative opener, or contains "?") or contains a negation (not,
+// never, no, none, n't, without, nothing) produces ZERO work proposals of
+// any kind — step_marked, reading_recorded, reading_corrected, part_logged,
+// or a fact-asserting note (the synthetic completion note, or the generic
+// fallback note). A plain question about status may still become an open
+// question (note_added, noteKind "question") — that's the one allowed
+// non-work response; a bare negation with no other trigger gets NOTHING,
+// not even a fallback note, per "when in doubt, propose nothing."
+describe("Questions and negations never become work proposals (R2-08)", () => {
+  type Case = [label: string, text: string, view?: () => ReturnType<typeof emptyView>];
 
-  it("'I have not done step 1' -> no step_marked at all (not even done=false)", () => {
-    const proposals = proposeSheetUpdates("I have not done step 1", emptyView());
-    for (const p of proposals) expect(p.event.kind).not.toBe("step_marked");
-  });
+  // The round-1 fix only covered "?" and a hand-picked negation list; round
+  // 2 found it missed bare interrogative openers (no "?") and most of the
+  // real negation vocabulary. This table is the PROPERTY, not one example.
+  const QUESTION_CASES: Case[] = [
+    ["interrogative opener, no '?'", "Is step 1 done"],
+    ["interrogative opener + aux, no '?'", "Have we replaced the seal"],
+    ["interrogative opener, present-tense verb, no '?'", "did we replace the bearing"],
+    ["wh-opener", "What is wrong with step 2"],
+    ["modal opener + subject", "Should we torque the cover bolts"],
+    ["literal '?'", "Is step 1 done?"],
+    ["literal '?' on parts", "Have we replaced the seal?"],
+    ["negative-step question", "Isn't step 2 done"],
+    ["negative-step question, literal '?'", "step 2 isn't done yet, is it?"],
+  ];
 
-  it("'Have we replaced the seal?' -> no part_logged; becomes an open question", () => {
-    const proposals = proposeSheetUpdates("Have we replaced the seal?", emptyView());
-    for (const p of proposals) expect(p.event.kind).not.toBe("part_logged");
-    expect(proposals).toHaveLength(1);
-    expect(proposals[0]!.event.kind).toBe("note_added");
-    expect((proposals[0]!.event.payload as { noteKind: string }).noteKind).toBe("question");
-  });
+  const NEGATION_CASES: Case[] = [
+    ["negation 'never' + part verb", "We never replaced the seal"],
+    ["negation 'not' inside completion phrase", "Not all done"],
+    ["negation via contraction, statement", "step 2 isn't done"],
+    ["negation via contraction, no step/part trigger", "didn't torque it"],
+    ["negation 'no', no number", "no reading yet"],
+    ["negation 'none'", "none of the bolts were torqued"],
+    ["negation 'without'", "finished without torquing the cover bolts"],
+    ["negation 'nothing'", "nothing was replaced"],
+    ["negation via 'haven't'", "I haven't done step 1"],
+    ["negation via 'wouldn't'", "it wouldn't start"],
+  ];
 
-  it("'did we replace the bearing' -> no part_logged (no work proposal)", () => {
-    const proposals = proposeSheetUpdates("did we replace the bearing", emptyView());
+  it.each(QUESTION_CASES)("question: %s — %j -> no step_marked/part_logged/reading_* and no fact note", (_label, text) => {
+    const proposals = proposeSheetUpdates(text, emptyView());
     for (const p of proposals) {
-      expect(p.event.kind).not.toBe("part_logged");
-      expect(p.event.kind).not.toBe("step_marked");
+      expect(p.event.kind, text).not.toBe("step_marked");
+      expect(p.event.kind, text).not.toBe("part_logged");
+      expect(p.event.kind, text).not.toBe("reading_recorded");
+      expect(p.event.kind, text).not.toBe("reading_corrected");
+      if (p.event.kind === "note_added") {
+        // the ONE allowed response to a question: an open question, never a
+        // note asserting a fact.
+        expect((p.event.payload as { noteKind: string }).noteKind, text).toBe("question");
+      }
     }
+  });
+
+  it.each(NEGATION_CASES)("negation: %s — %j -> zero proposals of any kind", (_label, text) => {
+    const proposals = proposeSheetUpdates(text, emptyView());
+    expect(proposals, text).toHaveLength(0);
+  });
+
+  // The exact reviewer counterexamples, asserted precisely (not just via the
+  // table's generic property check) so a future regression names the exact
+  // broken behavior, not just "some case in the table failed."
+  it("'Is step 1 done' (no '?') -> becomes an open question, not a state change", () => {
+    const proposals = proposeSheetUpdates("Is step 1 done", emptyView());
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0]!.event.kind).toBe("note_added");
+    expect((proposals[0]!.event.payload as { noteKind: string }).noteKind).toBe("question");
+  });
+
+  it("'Have we replaced the seal' (no '?') -> becomes an open question, not part_logged", () => {
+    const proposals = proposeSheetUpdates("Have we replaced the seal", emptyView());
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0]!.event.kind).toBe("note_added");
+    expect((proposals[0]!.event.payload as { noteKind: string }).noteKind).toBe("question");
+  });
+
+  it("'We never replaced the seal' -> no part_logged (not just 'not'/'haven't'/'didn't'/'no')", () => {
+    const proposals = proposeSheetUpdates("We never replaced the seal", emptyView());
+    expect(proposals).toHaveLength(0);
+  });
+
+  it("'Not all done' -> never becomes 'You said the job is done'", () => {
+    const proposals = proposeSheetUpdates("Not all done", emptyView());
+    expect(proposals).toHaveLength(0);
+  });
+
+  it("a negative-step question ('Isn't step 2 done') never becomes a state change", () => {
+    const proposals = proposeSheetUpdates("Isn't step 2 done", emptyView());
+    for (const p of proposals) expect(p.event.kind).not.toBe("step_marked");
+  });
+
+  it("'step 3 not done' (a plain statement, no interrogative opener) still marks done=false", () => {
+    // Regression guard: "not" is ALSO the Step-rule's own grammar. The R2-08
+    // gate must not swallow this legitimate, already-shipped case.
+    const proposals = proposeSheetUpdates("step 3 not done", emptyView());
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0]!.event.kind).toBe("step_marked");
+    expect((proposals[0]!.event.payload as { done: boolean }).done).toBe(false);
+  });
+
+  it("'not 48, 4.8' (a plain statement, no interrogative opener) still corrects via the comma form", () => {
+    // Regression guard: "not" is ALSO the Correction-rule's own grammar.
+    const proposals = proposeSheetUpdates("not 48, 4.8", viewWithReading());
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0]!.event.kind).toBe("reading_corrected");
+  });
+
+  it("'will replace the seal' (modal opener, elliptical intent, no subject) is still a planned part, not a question", () => {
+    // Regression guard: "will"/"would" are interrogative openers in general,
+    // but shop shorthand drops the subject ("[I] will replace the seal").
+    const proposals = proposeSheetUpdates("will replace the seal", emptyView());
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0]!.event.kind).toBe("part_logged");
+    expect((proposals[0]!.event.payload as { action: string }).action).toBe("planned");
   });
 });
 
