@@ -6,7 +6,7 @@ import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } f
 import { MODEL_PATTERNS, modelIdentitiesInText, resolveModelFromObservationText } from "@/capabilities/model-token";
 import { embedQueryDetailed, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
 import { setSpanAttrs } from "@/capabilities/observability/tracing";
-import { logRerankFallback, orderByScores, rerankEnabled, rerankPool, rerankScores } from "@/capabilities/reranker";
+import { logRerankFallback, orderWithPinnedHead, rerankEnabled, rerankPool, rerankScores } from "@/capabilities/reranker";
 import {
   codeTokenMatcher,
   expandIndustrialQuery,
@@ -2229,7 +2229,7 @@ export async function retrieveNodeChunks(
     });
     rerankMs = Date.now() - rerankStart;
     if (scores) {
-      modelRanked = [...orderByScores(head, scores), ...hybridRanked.slice(head.length)];
+      modelRanked = [...orderWithPinnedHead(head, scores), ...hybridRanked.slice(head.length)];
       rerankOutcome = "ran";
     } else {
       rerankOutcome = `fallback_${fallbackReason ?? "unknown"}`;

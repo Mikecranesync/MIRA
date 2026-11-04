@@ -45,6 +45,7 @@ import { getTracer, setSpanAttrs, type SpanAttrs } from "@/capabilities/observab
 import { startTurnRecorder, type TurnRecorder } from "@/capabilities/observability/turn-recorder";
 import type { SafetyOutcome, TurnEvidencePacket } from "@/capabilities/observability/turn-evidence-packet";
 import { citesOnlyUnconfirmedPhotoReadings } from "@/capabilities/photo-source";
+import { notebookQuestionTopK } from "@/capabilities/reranker";
 import type { GenerationAttempt } from "@/capabilities/observability/turn-evidence-packet";
 import { ungroundedUnitClaim } from "@/capabilities/observability/anomalies";
 import { finishedAfterChunk } from "@/capabilities/stream-stop";
@@ -2486,7 +2487,8 @@ async function handleChatTurn(
           retrieveNodeChunks(client, ctx.tenantId, retrievalQuery, {
             nodeId,
             unsPath: null, // notebook nodes are standalone; scope is the doc set
-            topK: 6,
+            // 8 with the rerank lane on (top 2 pinned, the rest reranked), 6 with it off.
+            topK: notebookQuestionTopK(),
             docIds,
             rawQuery: message,
             // The notebook's own machine name is never a fault code in the
