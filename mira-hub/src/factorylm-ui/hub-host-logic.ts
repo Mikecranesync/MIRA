@@ -605,3 +605,13 @@ export function createLatestLoadTracker(): {
   };
 }
 
+
+/** TASK-S3: a chat turn carries `livingSheetJobId` only when a sheet job is
+ *  open on the SAME notebook, so switching notebooks never sends a stale id. */
+export function withLivingSheetRider<B extends object>(
+  body: B,
+  notebookId: string,
+  openJob: { notebookId: string; jobId: string } | null,
+): B | (B & { livingSheetJobId: string }) {
+  return openJob && openJob.notebookId === notebookId ? { ...body, livingSheetJobId: openJob.jobId } : body;
+}
