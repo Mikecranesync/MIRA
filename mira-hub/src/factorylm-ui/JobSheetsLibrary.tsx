@@ -23,7 +23,16 @@ import {
   apiReviewJobSheet,
   chosenRevisionOf,
 } from "./living-sheet-client";
-import { draftBadge, previewRows, searchJobSheets, torqueDisplayRows, type PreviewRow } from "./job-sheet-library-logic";
+import {
+  allRowsSaved,
+  draftBadge,
+  indicesToRetry,
+  previewRows,
+  searchJobSheets,
+  shouldReuseSaveIds,
+  torqueDisplayRows,
+  type PreviewRow,
+} from "./job-sheet-library-logic";
 import type { JobSheetBody } from "@/capabilities/living-sheet/types";
 
 const IMPORT_HELP =
@@ -78,7 +87,15 @@ export function JobSheetsLibrary({ onClose, initialMode = "browse" }: JobSheetsL
   // retry into a duplicate job sheet.
   const [saveRequestIds, setSaveRequestIds] = useState<string[]>([]);
   const [saveResults, setSaveResults] = useState<Record<number, string>>({});
+  // R2-21: tracked separately from `saveResults` (a human-readable message)
+  // so "did THIS row actually succeed" is never inferred from matching a
+  // message string. A row only ever flips false -> true, never back.
+  const [saveSuccess, setSaveSuccess] = useState<Record<number, boolean>>({});
   const [saving, setSaving] = useState(false);
+  // R2-21: the exact pasted text the current saveRequestIds/saveResults
+  // belong to — lets a re-click of "Preview" on the SAME text reuse them
+  // instead of minting fresh ids for a save that may have already landed.
+  const [lastPreviewedText, setLastPreviewedText] = useState<string | null>(null);
   // Same idea for "Mark reviewed": one id per job sheet, reused on retry.
   const [reviewRequestIds, setReviewRequestIds] = useState<Record<string, string>>({});
   const [reviewBusy, setReviewBusy] = useState<string | null>(null);
@@ -109,7 +126,6 @@ export function JobSheetsLibrary({ onClose, initialMode = "browse" }: JobSheetsL
     setPreviewBusy(true);
     setPreviewError(null);
     setPreview(null);
-    setSaveResults({});
     try {
       const res = await apiPreviewJobSheetImport(text);
       if (!res.ok) {
@@ -117,20 +133,35 @@ export function JobSheetsLibrary({ onClose, initialMode = "browse" }: JobSheetsL
         return;
       }
       setPreview(res.body);
-      setSaveRequestIds(res.body.jobs.map(() => crypto.randomUUID()));
+      // R2-21: re-previewing the SAME pasted text (e.g. to recover after a
+      // lost save response) must reuse the existing per-job request ids
+      // and keep the results/successes already recorded — minting fresh
+      // ids here would let a retry create a second job sheet for a save
+      // that actually succeeded server-side. A genuinely different paste
+      // starts clean.
+      if (!shouldReuseSaveIds(lastPreviewedText, text, saveRequestIds.length, res.body.jobs.length)) {
+        setSaveRequestIds(res.body.jobs.map(() => crypto.randomUUID()));
+        setSaveResults({});
+        setSaveSuccess({});
+      }
+      setLastPreviewedText(text);
     } catch {
       setPreviewError("No reply from the server. Try again.");
     } finally {
       setPreviewBusy(false);
     }
-  }, [pasteText]);
+  }, [pasteText, lastPreviewedText, saveRequestIds.length]);
 
   const onSaveAsDraft = useCallback(async () => {
     if (!preview) return;
     setSaving(true);
     setActionError(null);
-    const results: Record<number, string> = {};
-    for (let i = 0; i < preview.jobs.length; i++) {
+    const results: Record<number, string> = { ...saveResults };
+    const successes: Record<number, boolean> = { ...saveSuccess };
+    // R2-21: only rows that have NOT already succeeded retry — a succeeded
+    // row never resubmits, and a failed (or never-attempted) row retries
+    // with its SAME clientRequestId (saveRequestIds is untouched here).
+    for (const i of indicesToRetry(preview.jobs.length, saveSuccess)) {
       const job = preview.jobs[i]!;
       const requestId = saveRequestIds[i] ?? crypto.randomUUID();
       try {
@@ -138,14 +169,17 @@ export function JobSheetsLibrary({ onClose, initialMode = "browse" }: JobSheetsL
         results[i] = res.ok
           ? "Saved as draft."
           : res.body.message ?? `Could not save${res.body.field ? ` — check ${res.body.field}` : ""}.`;
+        successes[i] = res.ok;
       } catch {
         results[i] = "No reply from the server.";
+        successes[i] = false;
       }
     }
     setSaveResults(results);
+    setSaveSuccess(successes);
     setSaving(false);
     await load();
-  }, [preview, saveRequestIds, load]);
+  }, [preview, saveRequestIds, saveResults, saveSuccess, load]);
 
   const onMarkReviewed = useCallback(
     async (sheet: JobSheetSummary) => {
@@ -298,11 +332,14 @@ export function JobSheetsLibrary({ onClose, initialMode = "browse" }: JobSheetsL
                 <button
                   type="button"
                   style={BUTTON_STYLE}
-                  disabled={saving || Object.keys(saveResults).length > 0}
+                  // R2-21: disable only once EVERY row has succeeded — a
+                  // failed row (or one never attempted) keeps this
+                  // actionable so it can be retried with its same id.
+                  disabled={saving || allRowsSaved(preview.jobs.length, saveSuccess)}
                   onClick={onSaveAsDraft}
                   data-testid="job-sheets-library-save-draft"
                 >
-                  {saving ? "Saving…" : "Save as draft"}
+                  {saving ? "Saving…" : allRowsSaved(preview.jobs.length, saveSuccess) ? "Saved" : "Save as draft"}
                 </button>
               )}
               {Object.entries(saveResults).map(([i, msg]) => (
@@ -320,8 +357,13 @@ export function JobSheetsLibrary({ onClose, initialMode = "browse" }: JobSheetsL
 
 /** F12: the parsed recipe a reviewer must see before Mark reviewed — safety,
  *  bring list, steps, torques (value + source), checks. No section is
- *  silently skipped: an empty one says so, it never just disappears. */
-function RecipeReview({
+ *  silently skipped: an empty one says so, it never just disappears.
+ *  R2-13: also item source/annotation, step source/drawing ref, and the
+ *  template author's own notes — the same gaps `living-sheet-print.ts`'s
+ *  F13 fix closed for print. Exported (test-only, same pattern as
+ *  JobSheetsLibrary's `initialMode`): reaching this screen normally needs
+ *  a click `renderToStaticMarkup` never runs. */
+export function RecipeReview({
   body,
   busy,
   onMarkReviewed,
@@ -347,6 +389,10 @@ function RecipeReview({
           {body.items.map((it) => (
             <li key={it.id}>
               {it.item}{it.spec ? ` — ${it.spec}` : ""}{it.qty ? ` x${it.qty}` : ""}
+              {/* R2-13: an item's source and its own annotation ("Only if
+                 bent.") must reach the reviewer, not just the preview table. */}
+              {it.source && <div style={{ fontSize: "15px", color: "var(--fl-muted)" }}>Source: {it.source}</div>}
+              {it.notes && <div style={{ fontSize: "15px", color: "var(--fl-muted)" }}>{it.notes}</div>}
             </li>
           ))}
         </ul>
@@ -361,6 +407,9 @@ function RecipeReview({
             <li key={s.id}>
               {s.text}
               {s.checkoff !== "none" && <span style={{ color: "var(--fl-muted)" }}> ({s.checkoff})</span>}
+              {/* R2-13: a step's source/drawing reference must reach the
+                 reviewer too, not just torques' source. */}
+              {s.source && <div style={{ fontSize: "15px", color: "var(--fl-muted)" }}>Ref: {s.source}</div>}
             </li>
           ))}
         </ul>
@@ -392,6 +441,11 @@ function RecipeReview({
       ) : (
         <p>None listed.</p>
       )}
+
+      {/* R2-13: the template author's own notes must reach the reviewer —
+         they were stored but silently never shown here. */}
+      <h4>Template notes</h4>
+      <p>{body.notes || "None written."}</p>
 
       <button
         type="button"

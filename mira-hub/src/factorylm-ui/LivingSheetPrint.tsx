@@ -34,6 +34,12 @@ export type LivingSheetPrintProps = {
   printedAt: string;
   machineName?: string;
   jobIdShort?: string;
+  /** R2-17: entries queued locally (e.g. offline, or persistence still
+   *  in-flight) that are NOT yet reflected in `view` — the server-derived
+   *  snapshot this component renders. The caller (LivingSheet.tsx) counts
+   *  them; this component only renders the warning. Default 0 keeps every
+   *  existing caller byte-identical. */
+  pendingCount?: number;
 };
 
 const PRINT_CSS = `
@@ -135,6 +141,8 @@ function renderSection(section: PrintSection, index: number) {
               {item.spec ? ` — ${item.spec}` : ""}
               {item.qty !== null ? ` (qty ${item.qty})` : ""}
               {item.source ? ` — source: ${item.source}` : ""}
+              {/* R2-13: a stored item annotation ("Only if bent.") is never dropped on print. */}
+              {item.notes && <span style={{ color: "#555" }}> — {item.notes}</span>}
             </p>
           ))}
         </section>
@@ -147,7 +155,11 @@ function renderSection(section: PrintSection, index: number) {
             <p key={step.id} style={S.row}>
               <span aria-hidden="true" style={S.box}>{step.done ? "☑" : "☐"}</span>
               {step.text}
+              {/* R2-13: the step's source/drawing reference is never dropped on print. */}
+              {step.source ? ` (ref: ${step.source})` : ""}
               {step.done ? ` — done by ${step.doneBy ?? "a technician"}, ${step.doneAt ? new Date(step.doneAt).toLocaleString() : ""}` : " — not done"}
+              {/* R2-13: a note recorded against the step while it was worked is never dropped on print. */}
+              {step.note && <span> — {step.note}</span>}
             </p>
           ))}
         </section>
@@ -259,7 +271,7 @@ function renderSection(section: PrintSection, index: number) {
   }
 }
 
-export function LivingSheetPrint({ view, seq, printedAt, machineName, jobIdShort }: LivingSheetPrintProps) {
+export function LivingSheetPrint({ view, seq, printedAt, machineName, jobIdShort, pendingCount = 0 }: LivingSheetPrintProps) {
   const model: PrintModel = printModel(view, { printedAt, seq, machineName, jobIdShort });
 
   return (
@@ -275,6 +287,18 @@ export function LivingSheetPrint({ view, seq, printedAt, machineName, jobIdShort
         </td></tr></thead>
         <tbody><tr><td>
         <div className="ls-print-body" data-testid="living-sheet-print-body">
+          {/* R2-17: this print renders `view`, a server-derived snapshot — any
+             still-queued local entries are NOT in it. Say so on the page
+             itself (never only on-screen), so a printed/PDF'd sheet is never
+             silently incomplete. */}
+          {pendingCount > 0 && (
+            <p
+              style={{ ...S.row, fontWeight: 700, border: "1px solid #000", padding: "4pt" }}
+              data-testid="ls-print-pending-banner"
+            >
+              {pendingCount} changes made on this phone were not saved yet and are NOT on this print.
+            </p>
+          )}
           {model.sections.map((section, i) => renderSection(section, i))}
           <div style={S.footer} data-testid="ls-print-footer">
             <p style={S.row}>{model.footer.disclaimer}</p>

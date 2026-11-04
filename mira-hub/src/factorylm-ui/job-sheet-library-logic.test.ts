@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { searchJobSheets, draftBadge, previewRows, torqueDisplayRows } from "./job-sheet-library-logic";
+import {
+  searchJobSheets,
+  draftBadge,
+  previewRows,
+  torqueDisplayRows,
+  shouldReuseSaveIds,
+  indicesToRetry,
+  allRowsSaved,
+} from "./job-sheet-library-logic";
 import type { JobSheetSummary } from "@/capabilities/living-sheet/job-sheet-store";
 import type { ImportPreview } from "@/capabilities/living-sheet/job-sheet-import";
 import type { JobSheetBody, JobSheetTorque } from "@/capabilities/living-sheet/types";
@@ -161,5 +169,53 @@ describe("previewRows", () => {
 
   it("an empty preview (no jobs, no refusals) yields an empty row list", () => {
     expect(previewRows({ layout: "job_card", jobs: [], refused: [] })).toEqual([]);
+  });
+});
+
+/**
+ * R2-21 — property: a failed import-save row must be retryable with the
+ * SAME request id, only successful rows become permanently disabled, and
+ * re-previewing the SAME pasted text must never mint fresh ids for rows
+ * whose save may already have succeeded server-side. The reviewer's own
+ * counterexample (disables after ANY result, including failure) is covered
+ * by the `allRowsSaved`/`indicesToRetry` cases below; the `shouldReuseSaveIds`
+ * cases cover the re-preview half of the finding.
+ */
+describe("shouldReuseSaveIds — R2-21: a recovery re-preview must not mint fresh ids", () => {
+  it.each([
+    { label: "first preview ever (no prior text)", last: null, next: "a\tb", existing: 0, jobs: 2, expected: false },
+    { label: "same text, same job count ⇒ reuse", last: "a\tb", next: "a\tb", existing: 2, jobs: 2, expected: true },
+    { label: "same text, but id count no longer matches the new job count ⇒ fresh", last: "a\tb", next: "a\tb", existing: 2, jobs: 3, expected: false },
+    { label: "a genuinely different paste ⇒ fresh, even with the same job count", last: "a\tb", next: "c\td", existing: 2, jobs: 2, expected: false },
+    { label: "whitespace-only difference IS a different string (caller trims before calling) ⇒ fresh", last: "a\tb", next: "a\tb ", existing: 2, jobs: 2, expected: false },
+    { label: "same text but the new preview parsed to zero jobs ⇒ never reuse an empty set", last: "a\tb", next: "a\tb", existing: 0, jobs: 0, expected: false },
+  ])("$label", ({ last, next, existing, jobs, expected }) => {
+    expect(shouldReuseSaveIds(last, next, existing, jobs)).toBe(expected);
+  });
+});
+
+describe("indicesToRetry — R2-21: only non-succeeded rows are retried", () => {
+  const CASES: { label: string; jobCount: number; success: Record<number, boolean>; expected: number[] }[] = [
+    { label: "no attempts yet: every row is retryable", jobCount: 3, success: {}, expected: [0, 1, 2] },
+    { label: "all succeeded: nothing left to retry", jobCount: 3, success: { 0: true, 1: true, 2: true }, expected: [] },
+    { label: "a mix: only the failed/untried rows retry", jobCount: 3, success: { 0: true, 1: false }, expected: [1, 2] },
+    { label: "a single job, failed", jobCount: 1, success: { 0: false }, expected: [0] },
+    { label: "zero jobs: nothing to retry", jobCount: 0, success: {}, expected: [] },
+  ];
+  it.each(CASES)("$label", ({ jobCount, success, expected }) => {
+    expect(indicesToRetry(jobCount, success)).toEqual(expected);
+  });
+});
+
+describe("allRowsSaved — R2-21: disable only once EVERY row has succeeded", () => {
+  const CASES: { label: string; jobCount: number; success: Record<number, boolean>; expected: boolean }[] = [
+    { label: "no attempts yet ⇒ not done (stays actionable, not the bug's 'disable on any result')", jobCount: 2, success: {}, expected: false },
+    { label: "one succeeded, one failed ⇒ not done (the exact reviewer counterexample)", jobCount: 2, success: { 0: true, 1: false }, expected: false },
+    { label: "one succeeded, one never attempted ⇒ not done", jobCount: 2, success: { 0: true }, expected: false },
+    { label: "every row succeeded ⇒ done", jobCount: 2, success: { 0: true, 1: true }, expected: true },
+    { label: "zero jobs ⇒ never 'done' (nothing was ever saved)", jobCount: 0, success: {}, expected: false },
+  ];
+  it.each(CASES)("$label", ({ jobCount, success, expected }) => {
+    expect(allRowsSaved(jobCount, success)).toBe(expected);
   });
 });

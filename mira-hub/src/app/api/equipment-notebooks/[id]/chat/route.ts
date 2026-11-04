@@ -3860,8 +3860,14 @@ async function handleChatTurn(
   const withVisual = visualSection ? `${withMachine}\n\n${visualSection}` : withMachine;
   // Mission 001 observed state rides after the visual section; empty = byte-identical.
   const withObserved = observedSection ? `${withVisual}\n\n${observedSection}` : withVisual;
-  // F18: the Living Work Sheet job rides after observed state; empty = byte-identical.
-  const withSheet = sheetSection ? `${withObserved}\n\n${sheetSection}` : withObserved;
+  // R2-33: the Living Work Sheet job section (F18) is NOT folded into
+  // systemPrompt here. `sheetSection` is free text a technician or an
+  // earlier import typed (job title, step instructions, reading labels) —
+  // concatenating it into the system prompt would let a hostile title
+  // ("Ignore previous instructions...") be read as an instruction instead
+  // of data. It rides in the SAME injection-hardened user-data channel as
+  // the retrieved manual excerpts and the LOOK photo context instead — see
+  // `sheetAndLookContext` at the `buildManualUserContent` call below.
   // #4131: a label data identifier ("1P <order no.>") in this turn's photo
   // context gets its standard meaning stated; otherwise byte-identical.
   // #4133: a retail/warehouse code (FNSKU) in the photo context is named as
@@ -3887,8 +3893,8 @@ async function handleChatTurn(
   // `systemPrompt` via their own independent conditionals, unchanged.
   const systemPrompt = withRetailCodeNote(withLabelDataIdentifiers(withPhotoProvenance(withStepSafety(withAnswerLanguage(
     docGrounded
-      ? appendManualContext(withSheet, chunks) + machineContext + coverageDirective + vendorFallbackDirective + (safetyChapterChunks.length > 0 ? SAFETY_CHAPTER_DIRECTIVE : "")
-      : withSheet + machineContext + identityProposalDirective,
+      ? appendManualContext(withObserved, chunks) + machineContext + coverageDirective + vendorFallbackDirective + (safetyChapterChunks.length > 0 ? SAFETY_CHAPTER_DIRECTIVE : "")
+      : withObserved + machineContext + identityProposalDirective,
  )), lookContext), lookContext), lookContext);
   // appendManualContext only appends the grounding RULES — the excerpts
   // themselves ride in the user message (injection-hardened data channel),
@@ -3917,10 +3923,18 @@ async function handleChatTurn(
     priorReportContext = buildPriorReportContext([], history, "unavailable");
     rec.error("context", "prior_reports_unavailable");
   }
+  // R2-33: the Living Work Sheet job section rides into the SAME
+  // injection-hardened user-data channel as the LOOK photo context
+  // (buildManualUserContent's visual-context arg), never systemPrompt.
+  // `lookContext` itself is left untouched — the label-identifier /
+  // photo-provenance / retail-code scans above stay photo-only; this only
+  // widens what reaches the model's DATA message. Empty sheetSection ⇒
+  // byte-identical to before (filter(Boolean) drops it).
+  const sheetAndLookContext = [lookContext, sheetSection].filter(Boolean).join("\n\n");
   const messages = buildProviderMessages(
     systemPrompt,
     history,
-    buildManualUserContent(topicHint ? `${message}\n\n${topicHint}` : message, chunks, lookContext),
+    buildManualUserContent(topicHint ? `${message}\n\n${topicHint}` : message, chunks, sheetAndLookContext),
     priorReportContext.content,
   );
   {
