@@ -43,9 +43,9 @@ describe("N1 — a packet built from part of the manual stops itself", () => {
   it("counts the steps it read against the steps the manual prints (a lower bound when text was unreadable)", () => {
     expect(p.steps).toHaveLength(3);
     expect(p.coverage!.stepsRead).toBe(3);
-    expect(p.coverage!.stepsTotal).toBe(14);
+    expect(p.coverage!.stepsTotal).toBe(15);
     expect(p.coverage!.totalIsLowerBound).toBe(true);
-    expect(p.coverage!.summary).toBe("Only 3 of at least 14 steps could be read (3 more may apply to this pump); this is not the whole job.");
+    expect(p.coverage!.summary).toBe("Only 3 of at least 15 steps could be read (3 more may apply to this pump); this is not the whole job.");
   });
 
   it("does not count steps limited to other models in the 'at least' total — it names them apart", () => {
@@ -54,7 +54,7 @@ describe("N1 — a packet built from part of the manual stops itself", () => {
     const byHeading = new Map(p.coverage!.sections.map((s) => [s.heading, s]));
     const seals = byHeading.get("SERVICING THE SEALS")!;
     expect(seals.stepsMayApply).toBe(3);
-    expect(seals.stepsNotRead).toBe(3);
+    expect(seals.stepsNotRead).toBe(4); // incl. the "Models 9YP100, 9YP200," block: its only instruction is not a numbered step (round 5 F12)
     expect(p.coverage!.stepsMayApply).toBe(3);
     // control: a section with no model limit keeps every unread step in the definite count
     const pumping = byHeading.get("SERVICING THE PUMPING SECTION")!;
@@ -64,7 +64,7 @@ describe("N1 — a packet built from part of the manual stops itself", () => {
 
   it("puts the plain blocker first", () => {
     expect(p.blockers?.[0]?.label).toBe("unknown");
-    expect(p.blockers?.[0]?.basis).toContain("Only 3 of at least 14 steps could be read (3 more may apply to this pump); this is not the whole job.");
+    expect(p.blockers?.[0]?.basis).toContain("Only 3 of at least 15 steps could be read (3 more may apply to this pump); this is not the whole job.");
   });
 
   it("fails its own self-check", () => {

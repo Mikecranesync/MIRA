@@ -144,3 +144,40 @@ describe("Round 4 — F12: a heading whose steps were all lost is not read", () 
     expect(run(BASE).coverage!.complete).toBe(true);
   });
 });
+
+describe("Round 5 — F12: an empty model block next to a sibling model block is not read", () => {
+  const ZQ = FIXTURES["manual-7zq-notes.txt"];
+  const run7 = (text: string, model: string) => {
+    const r = buildDraftPacket({
+      notebookId: "11111111-1111-4111-8111-111111111111",
+      packetId: "pk-r5",
+      now: "2026-11-04T13:00:00Z",
+      identity: { manufacturer: "CAT Pumps", model, catalogNumber: null, serialNumber: null, status: "user_confirmed", confidence: 0.9 },
+      workOrder: { id: "WO-R5", title: "Reseal", description: "Pump leaking at the shaft — reseal it per the manufacturer's procedure.", assetTag: null, site: null, synthetic: true },
+      docs: [{ docId: "zq", fileId: null, filename: "7zq.pdf", pages: fixturePages(text), via: "file" }],
+      hazardFlags: [],
+    });
+    if (!r.ok) throw new Error(r.message);
+    return r.packet;
+  };
+  const empty = ZQ.replace(
+    "Models 7ZQ10, 7ZQ20\n1. Press the Lip Seal into the Inlet Adapter, spring up.\n2. Press the Inlet Adapter into the head bore.\n",
+    "Models 7ZQ10, 7ZQ20\n",
+  );
+  it("precondition: the model heading stays, its steps are gone, the sibling block follows", () => {
+    expect(empty).not.toBe(ZQ);
+    expect(empty).toContain("Models 7ZQ10, 7ZQ20\nModels 7ZQ30");
+  });
+  it("reports incomplete coverage, names the empty model block, and shows nothing Verified", () => {
+    const p = run7(empty, "7ZQ10");
+    expect(p.coverage!.complete).toBe(false);
+    const seals = p.coverage!.sections.find((s) => s.heading === "SERVICING THE SEALS")!;
+    expect(seals.status).not.toBe("read");
+    expect(seals.reasons.join(" ")).toContain("Models 7ZQ10, 7ZQ20");
+    expect(verifiedSteps(p)).toEqual([]);
+  });
+  it("control: the parent headings over model blocks are still frames, so the base manual is complete", () => {
+    expect(run7(ZQ, "7ZQ10").coverage!.complete).toBe(true);
+    expect(run7(ZQ, "7ZQ30").coverage!.complete).toBe(true);
+  });
+});

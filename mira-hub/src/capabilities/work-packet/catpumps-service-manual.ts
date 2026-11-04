@@ -393,6 +393,8 @@ interface OpenSection {
   incomplete: string | null;
   /** The heading (or sub-heading) line itself, so an empty block can still be cited. */
   headSource: SourceRef;
+  /** true for a nested model/variant block: it is a leaf, never the frame over a later block. */
+  nested?: boolean;
 }
 
 /** The last step or caution emitted, for orphan-text accounting (Codex #5062 F15). Every
@@ -647,7 +649,11 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
             headingNotesPlaced = false;
           }
         }
-        flushSection(open, sections, problems, omitted, false);
+        // An empty block is only a frame when this sub-heading sits BELOW it: the section heading over
+        // its first sub-heading, or a phase over its first nested model block. An empty block followed
+        // by a sibling (model block → model block, phase → phase) lost its steps (Codex review F12, round 5).
+        const frame = open!.subheading === null || (sub.nested === true && !open!.nested);
+        flushSection(open, sections, problems, omitted, !frame);
         if (!sub.scopeKnown) {
           problems.push(
             `page ${pg.page}: subheading "${sub.text}" has a model or hardware-variant restriction that could not be resolved — its steps are left out of packets rather than guessed`,
@@ -655,7 +661,7 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
         }
         const sectionModels: ModelScope = sub.nested ? intersectScopes(phaseScope, sub.scope) : sub.scope;
         if (!sub.nested) phaseScope = sub.scope;
-        open = { heading: open!.heading, subheading: sub.text, topic: open!.topic, models: sectionModels, page: pg.page, steps: [], firstLines: [], incomplete: null, headSource: { ...src, page: pg.page, line } };
+        open = { heading: open!.heading, subheading: sub.text, topic: open!.topic, models: sectionModels, page: pg.page, steps: [], firstLines: [], incomplete: null, headSource: { ...src, page: pg.page, line }, nested: sub.nested === true };
         if (sub.nested) {
           // The first nested block takes the note itself (the empty block it was printed in is never a
           // section); each later one gets a copy, so the note heads every block it was printed over.
