@@ -165,16 +165,15 @@ jobs:
 
           echo "=== render compose config (output withheld — contains secrets) ==="
           cd /opt/mira
-          if doppler run --project factorylm --config prd -- \
-               docker compose -p factorylm-cmms -f "$COMPOSE_SRC" config -q >/tmp/atlas_config_render.log 2>&1; then
+          # Captured in memory; on failure only secret-free error lines are shown.
+          if RENDER_ERR="$(doppler run --project factorylm --config prd -- \
+               docker compose -p factorylm-cmms -f "$COMPOSE_SRC" config -q 2>&1)"; then
             echo "compose config OK"
           else
-            echo "::error::compose config render failed (likely a missing required secret) — see redacted log below"
-            tail -c 500 /tmp/atlas_config_render.log | grep -vi 'password\|secret\|token' || true
-            rm -f /tmp/atlas_config_render.log
+            echo "::error::compose config render failed (likely a missing required secret)"
+            printf '%s\n' "$RENDER_ERR" | tail -c 500 | grep -vi 'password\|secret\|token' || true
             exit 1
           fi
-          rm -f /tmp/atlas_config_render.log
 
           echo "=== doppler secret-name presence check (names only) ==="
           # Checked inside `doppler run` so only presence is tested; values never leave the subshell.
@@ -227,6 +226,28 @@ jobs:
           if [ -n "$CONFLICT" ]; then
             echo "::error::another nginx site already names cmms.factorylm.com:$CONFLICT"
             exit 1
+          fi
+
+          echo "=== staging evidence gate (same images healthy in staging on this host) ==="
+          # Production may only run Atlas images that the co-hosted staging stack
+          # (docker-compose.staging-vps.yml, deploy-staging.yml) already runs healthy.
+          STG_FAIL=""
+          for pair in "cmms-backend:stg-atlas-api" "cmms-frontend:stg-atlas-frontend"; do
+            svc="${pair%%:*}"; stg="${pair##*:}"
+            want="$(awk -v s="  ${svc}:" '$0==s{f=1;next} f&&/^  [a-z]/{f=0} f&&$1=="image:"{print $2;exit}' "$COMPOSE_SRC")"
+            have="$(docker inspect "$stg" --format '{{.Config.Image}}' 2>/dev/null || true)"
+            health="$(docker inspect "$stg" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' 2>/dev/null || echo absent)"
+            echo "  $svc wants ${want:-?} | $stg runs ${have:-none} ($health)"
+            if [ -z "$want" ] || [ "$want" != "$have" ] || [ "$health" != "healthy" ]; then
+              STG_FAIL="$STG_FAIL $stg"
+            fi
+          done
+          if [ -n "$STG_FAIL" ]; then
+            if [ "$MODE" = "apply" ]; then
+              echo "::error::staging evidence missing — not running healthy with the identical image:$STG_FAIL (deploy staging first)"
+              exit 1
+            fi
+            echo "::warning::staging evidence missing:$STG_FAIL — apply would refuse"
           fi
 
           echo "=== DNS gate (TLS needs cmms.factorylm.com to resolve here) ==="
@@ -290,31 +311,42 @@ jobs:
 
           echo "=== apply: admin account ==="
           cd /opt/mira
-          doppler run --project factorylm --config prd -- bash -c '
-          set -euo pipefail
-          EMAIL="${ATLAS_API_USER:?ATLAS_API_USER required}"
-          PASSWORD="${ATLAS_API_PASSWORD:?ATLAS_API_PASSWORD required}"
-          export EMAIL PASSWORD
-          SIGNIN_JSON="$(python3 -c "import json, os; print(json.dumps({\"email\": os.environ[\"EMAIL\"], \"password\": os.environ[\"PASSWORD\"], \"type\": \"CLIENT\"}))")"
-          SIGNIN_HTTP="$(curl -s -o /tmp/atlas_signin.json -w "%{http_code}" -X POST http://127.0.0.1:8088/auth/signin -H "Content-Type: application/json" -d "$SIGNIN_JSON")"
-          TOKEN="$(python3 -c "import json; d=json.load(open(\"/tmp/atlas_signin.json\")); print(d.get(\"accessToken\") or d.get(\"token\") or \"\")" 2>/dev/null || true)"
-          echo "signin http=$SIGNIN_HTTP token_len=${#TOKEN}"
-          if [ -z "$TOKEN" ]; then
-            echo "no token on signin — attempting signup"
-            SIGNUP_JSON="$(python3 -c "import json, os; print(json.dumps({\"email\": os.environ[\"EMAIL\"], \"password\": os.environ[\"PASSWORD\"], \"firstName\": \"FactoryLM\", \"lastName\": \"Admin\", \"companyName\": \"FactoryLM\", \"phone\": \"\"}))")"
-          SIGNUP_HTTP="$(curl -s -o /tmp/atlas_signup.json -w "%{http_code}" -X POST http://127.0.0.1:8088/auth/signup -H "Content-Type: application/json" -d "$SIGNUP_JSON")"
-            echo "signup http=$SIGNUP_HTTP"
-            SIGNIN_HTTP2="$(curl -s -o /tmp/atlas_signin.json -w "%{http_code}" -X POST http://127.0.0.1:8088/auth/signin -H "Content-Type: application/json" -d "$SIGNIN_JSON")"
-            TOKEN="$(python3 -c "import json; d=json.load(open(\"/tmp/atlas_signin.json\")); print(d.get(\"accessToken\") or d.get(\"token\") or \"\")" 2>/dev/null || true)"
-            echo "signin(retry) http=$SIGNIN_HTTP2 token_len=${#TOKEN}"
-          fi
-          rm -f /tmp/atlas_signin.json /tmp/atlas_signup.json
-          if [ -z "$TOKEN" ]; then
-            echo "::error::could not obtain an Atlas admin token after signin+signup"
-            exit 1
-          fi
-          echo "admin token acquired (token_len=${#TOKEN})"
-          '
+          # In memory only: no response or token touches disk; prints HTTP codes + token length.
+          doppler run --project factorylm --config prd -- python3 - <<'PY'
+          import json, os, sys, urllib.error, urllib.request
+          email = os.environ.get("ATLAS_API_USER", "")
+          password = os.environ.get("ATLAS_API_PASSWORD", "")
+          if not email or not password:
+              sys.exit("::error::ATLAS_API_USER/ATLAS_API_PASSWORD required")
+          def post(path, body):
+              req = urllib.request.Request("http://127.0.0.1:8088" + path, data=json.dumps(body).encode(),
+                                           headers={"Content-Type": "application/json"}, method="POST")
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as r:
+                      return r.status, r.read()
+              except urllib.error.HTTPError as e:
+                  return e.code, b""
+              except OSError:
+                  return 0, b""
+          def signin():
+              code, raw = post("/auth/signin", {"email": email, "password": password, "type": "CLIENT"})
+              try:
+                  d = json.loads(raw or b"{}")
+              except ValueError:
+                  d = {}
+              tok = (d.get("accessToken") or d.get("token") or "") if isinstance(d, dict) else ""
+              print(f"signin http={code} token_len={len(tok)}")
+              return tok
+          tok = signin()
+          if not tok:
+              code, _ = post("/auth/signup", {"email": email, "password": password, "firstName": "FactoryLM",
+                                               "lastName": "Admin", "companyName": "FactoryLM", "phone": ""})
+              print(f"signup http={code}")
+              tok = signin()
+          if not tok:
+              sys.exit("::error::could not obtain an Atlas admin token after signin+signup")
+          print(f"admin token acquired (token_len={len(tok)})")
+          PY
 
           echo "=== apply: nginx ==="
           SITE=/etc/nginx/sites-enabled/cmms.factorylm.com
