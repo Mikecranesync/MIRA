@@ -127,6 +127,7 @@ export async function POST(req: Request) {
       name: nameStr ?? null,
       tenantName: nameStr || trimmed,
       attribution: attributionFromRequest(req, body),
+      method: "credentials",
     }).catch((err) => console.error("[api/auth/register] pilot-funnel hook failed:", err));
     return NextResponse.json({ ok: true, userId: result.id, tenantId: result.tenantId }, { status: 201, headers });
   } catch (err) {

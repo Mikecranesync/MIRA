@@ -2,7 +2,7 @@
   "basePath": "/hub",
   "counts": {
     "pages": 70,
-    "apiRoutes": 195
+    "apiRoutes": 196
   },
   "pages": [
     "/admin",
@@ -239,6 +239,7 @@
     "/api/pm/export.ics",
     "/api/proposals",
     "/api/proposals/[id]/decide",
+    "/api/public/posthog-init",
     "/api/public/report",
     "/api/quickstart/ask",
     "/api/quickstart/manufacturers",

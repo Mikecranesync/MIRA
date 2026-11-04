@@ -75,6 +75,15 @@ describe("attributionFromRequest", () => {
     expect(a.hasGclid).toBe(true);
   });
 
+  it("carries first-touch cookie UTMs when Referer is gone (Google OAuth)", () => {
+    const req = new Request("https://app.factorylm.com/api/auth/callback/google", {
+      headers: { cookie: "flm_utm=utm_source=linkedin&utm_campaign=q4" },
+    });
+    const a = attributionFromRequest(req);
+    expect(a.utmSource).toBe("linkedin");
+    expect(a.utmCampaign).toBe("q4");
+  });
+
   it("prefers body fields over Referer when both are present", () => {
     const req = new Request("https://app.factorylm.com/api/auth/register/", {
       headers: { referer: "https://app.factorylm.com/signup?utm_source=referer-value" },
@@ -181,9 +190,10 @@ describe("captureFunnelEvent", () => {
 
   it("never includes email, name, or free text in the serialized payload (PII allowlist)", () => {
     process.env.PLG_POSTHOG_KEY = "phk_test";
-    captureFunnelEvent("pilot_application_submitted", "tenant-1", {
+    captureFunnelEvent("signup_completed", "tenant-1", {
       utm_source: "google",
       has_gclid: true,
+      method: "credentials",
     });
     const [, init] = mockFetch.mock.calls[0];
     const raw = (init as RequestInit).body as string;
@@ -384,11 +394,36 @@ describe("handlePilotApplicationSubmitted", () => {
     await handlePilotApplicationSubmitted(baseInput);
 
     expect(mockPoolQuery).toHaveBeenCalledTimes(1);
-    // one posthog capture + one resend call
-    expect(mockFetch).toHaveBeenCalledTimes(2);
+    // two posthog captures (pilot_application_submitted + signup_completed) + one resend call
+    expect(mockFetch).toHaveBeenCalledTimes(3);
     const urls = mockFetch.mock.calls.map((c) => c[0]);
-    expect(urls).toContain("https://us.i.posthog.com/capture/");
+    expect(urls.filter((u) => u === "https://us.i.posthog.com/capture/")).toHaveLength(2);
     expect(urls).toContain("https://api.resend.com/emails");
+    const captures = mockFetch.mock.calls
+      .filter((c) => c[0] === "https://us.i.posthog.com/capture/")
+      .map((c) => JSON.parse((c[1] as RequestInit).body as string));
+    const events = captures.map((c) => c.event);
+    expect(events).toEqual(expect.arrayContaining(["pilot_application_submitted", "signup_completed"]));
+    const signup = captures.find((c) => c.event === "signup_completed");
+    expect(signup.distinct_id).toBe("tenant-1");
+    expect(signup.properties.method).toBe("credentials");
+    expect(signup.properties.utm_source).toBe("google");
+    expect(JSON.stringify(signup)).not.toContain("tech@acme.com");
+    expect(JSON.stringify(signup)).not.toContain("Jordan");
+  });
+
+  it("tags signup_completed with method=google and still omits PII", async () => {
+    process.env.PLG_POSTHOG_KEY = "phk_test";
+    mockPoolQuery.mockResolvedValueOnce({ rows: [{ id: "row-1" }] });
+
+    await handlePilotApplicationSubmitted({ ...baseInput, method: "google" });
+
+    const signup = mockFetch.mock.calls
+      .map((c) => JSON.parse((c[1] as RequestInit).body as string))
+      .find((c) => c.event === "signup_completed");
+    expect(signup.properties.method).toBe("google");
+    expect(signup.properties.utm_source).toBe("google");
+    expect(JSON.stringify(signup)).not.toContain("@");
   });
 
   it("skips the owner email when approval is not required, but still captures the event", async () => {
@@ -399,8 +434,10 @@ describe("handlePilotApplicationSubmitted", () => {
 
     await handlePilotApplicationSubmitted(baseInput);
 
-    expect(mockFetch).toHaveBeenCalledTimes(1);
-    expect(mockFetch.mock.calls[0][0]).toBe("https://us.i.posthog.com/capture/");
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(mockFetch.mock.calls.every((c) => c[0] === "https://us.i.posthog.com/capture/")).toBe(true);
+    const events = mockFetch.mock.calls.map((c) => JSON.parse((c[1] as RequestInit).body as string).event);
+    expect(events).toEqual(expect.arrayContaining(["pilot_application_submitted", "signup_completed"]));
   });
 
   it("skips the event and the owner email on a genuine duplicate (no-op insert)", async () => {
@@ -422,7 +459,7 @@ describe("handlePilotApplicationSubmitted", () => {
 
     await expect(handlePilotApplicationSubmitted(baseInput)).resolves.toBeUndefined();
 
-    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(mockFetch).toHaveBeenCalledTimes(3);
   });
 
   it("never throws even when everything fails", async () => {
