@@ -20,6 +20,9 @@ afterEach(() => {
   delete process.env.NOTEBOOK_HYBRID_RETRIEVAL;
   delete process.env.NOTEBOOK_QUERY_REWRITE;
   delete process.env.NOTEBOOK_RERANK;
+  delete process.env.RERANKER_URL;
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
 });
 
 type Row = Record<string, unknown>;
@@ -135,5 +138,54 @@ describe("retrieveNodeChunks — empty fault-history ask surfaces A551 Clear Buf
     const out = await ask(client, EMPTY_HISTORY_ASK);
     expect(out.map((c) => c.sourcePage)).not.toContain(135);
     expect(out.some((c) => /Fault 1 Code|10-fault history/.test(c.content))).toBe(true);
+  });
+});
+
+function assertHistoryAndClearBuffer(out: Awaited<ReturnType<typeof ask>>) {
+  const pages = out.map((c) => c.sourcePage);
+  const texts = out.map((c) => c.content);
+  expect(pages).toContain(135);
+  expect(texts.some((t) => /A551/.test(t) && /Clear Buffer/.test(t))).toBe(true);
+  expect(texts.some((t) => /Fault 1 Code|10-fault history/.test(t))).toBe(true);
+}
+
+describe("A551 Clear Buffer survives NOTEBOOK_RERANK on and off (#5181)", () => {
+  it("flag off: the control row is kept and the reranker is never called", async () => {
+    vi.stubEnv("NOTEBOOK_RERANK", "0");
+    vi.stubEnv("NOTEBOOK_HYBRID_RETRIEVAL", "0");
+    const svc = vi.fn();
+    vi.stubGlobal("fetch", svc);
+    const { client } = makeClient(corpus);
+    const out = await ask(client, EMPTY_HISTORY_ASK);
+    expect(svc).not.toHaveBeenCalled();
+    assertHistoryAndClearBuffer(out);
+  });
+
+  it("flag on: the control row is kept even when the cross-encoder scores it last", async () => {
+    vi.stubEnv("NOTEBOOK_RERANK", "1");
+    vi.stubEnv("RERANKER_URL", "http://mira-reranker:8088");
+    vi.stubEnv("NOTEBOOK_HYBRID_RETRIEVAL", "0");
+    const svc = vi.fn(async (_url: string, init: RequestInit) => {
+      const { passages } = JSON.parse(String(init.body)) as { passages: string[] };
+      return new Response(
+        JSON.stringify({ scores: passages.map((p) => (/A551/.test(p) ? -100 : 1)) }),
+        { status: 200 },
+      );
+    });
+    vi.stubGlobal("fetch", svc);
+    const { client } = makeClient(corpus);
+    const diagnostics: { rerank?: string } = {};
+    const out = await retrieveNodeChunks(client, "t-1", EMPTY_HISTORY_ASK, {
+      nodeId: "n-1",
+      unsPath: null,
+      topK: 3,
+      docIds: ["d-520-um001"],
+      rawQuery: EMPTY_HISTORY_ASK,
+      validatedDocScope: true,
+      diagnostics,
+    });
+    expect(svc).toHaveBeenCalled();
+    expect(diagnostics.rerank).toBe("ran");
+    assertHistoryAndClearBuffer(out);
   });
 });

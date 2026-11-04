@@ -1,3 +1,9 @@
+# PF525 fault-history Clear Buffer — 2026-11-04 follow-up
+
+Draft PR #5174 rebased onto main (includes #5181 pinned-head rerank). Product change unchanged: A551 Clear Buffer (p.135) stays next to fault-history rows; catalog 25B maps to PowerFlex 525. Hermetic fixture now asserts that survival with NOTEBOOK_RERANK on (cross-encoder scores A551 last) and off. Docker Build Check Trivy install is pinned to v0.76.1 with retries and a SHA-256 check; scans still run. Tests stay under mira-hub/src/capabilities/__tests__. No merge, ready, or deploy.
+
+---
+
 # PF525 fault-history Clear Buffer — 2026-11-04
 
 Draft PR on `cursor/pf525-fault-history-a551-e315` (#4863 / #5138). Hub `retrieveNodeChunks` now expands from fault-history DISPLAY rows (Fault N Code / 10-fault history) to the CONTROL parameter that writes those buffers (Fault Clear / Clear Buffer) when the ask is empty/zero/missing history. Hermetic fixture fails unless A551 Clear Buffer is retrieved alongside the history rows. No NOTEBOOK_QUERY_REWRITE / hybrid / LEXICAL_V2 flag flips. Catalog `25B` aliases to PowerFlex 525 in model-token. No merge, deploy, labels, or paid Codex.
