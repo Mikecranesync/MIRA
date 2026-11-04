@@ -124,3 +124,23 @@ describe("Round 3 — F10: a block that starts above step 1 is not read whole", 
   });
   it("control: the base manual is complete", () => expect(run(BASE).coverage!.complete).toBe(true));
 });
+
+describe("Round 4 — F12: a heading whose steps were all lost is not read", () => {
+  const empty = BASE.replace(
+    "REMOVING THE OUTLET HEAD\n1. Remove the eight (8) head screws.\n2. Tap the Outlet Head with a soft mallet and work it off the pump.\n",
+    "REMOVING THE OUTLET HEAD\n",
+  );
+  it("precondition: the heading stays and both of its steps are gone", () => {
+    expect(empty).not.toBe(BASE);
+    expect(empty).toContain("REMOVING THE OUTLET HEAD\nREMOVING THE INLET HEAD");
+  });
+  it("reports incomplete coverage, names the empty block, and shows nothing Verified", () => {
+    const p = run(empty);
+    expect(p.coverage!.complete).toBe(false);
+    expect(p.coverage!.sections.find((s) => s.heading === "REMOVING THE OUTLET HEAD")?.status).toBe("not_read");
+    expect(verifiedSteps(p)).toEqual([]);
+  });
+  it("control: a heading whose steps sit under its sub-headings is still read whole", () => {
+    expect(run(BASE).coverage!.complete).toBe(true);
+  });
+});

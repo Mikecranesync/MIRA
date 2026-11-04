@@ -391,6 +391,8 @@ interface OpenSection {
   /** Set when text after one of its steps could not be placed — it may be the rest of that step
    *  (Codex #5062 F15). The section is then omitted and becomes a cited gap. */
   incomplete: string | null;
+  /** The heading (or sub-heading) line itself, so an empty block can still be cited. */
+  headSource: SourceRef;
 }
 
 /** The last step or caution emitted, for orphan-text accounting (Codex #5062 F15). Every
@@ -424,8 +426,20 @@ function isPageFurniture(line: string): boolean {
   return false;
 }
 
-function flushSection(open: OpenSection | null, sections: SmSection[], problems: string[], omitted: SmOmittedSection[]): void {
-  if (!open || open.steps.length === 0) return;
+/** `leaf` is false when the block is closed by one of its own sub-headings: an empty heading
+ *  then only frames the blocks below it. Any other empty block lost every step it printed. */
+function flushSection(open: OpenSection | null, sections: SmSection[], problems: string[], omitted: SmOmittedSection[], leaf = true): void {
+  if (!open) return;
+  if (open.steps.length === 0) {
+    if (!leaf) return;
+    // A procedure heading with no step that could be read is not a finished block: it is counted as
+    // not read (at least one step) rather than silently dropped (Codex review F12, round 4).
+    const where = `${open.heading}${open.subheading ? " — " + open.subheading : ""}`;
+    const reason = "no numbered step could be read under this heading; read this block in the manual";
+    problems.push(`page ${open.page}: "${where}": ${reason}`);
+    omitted.push({ heading: open.heading, subheading: open.subheading, topic: open.topic, models: open.models, page: open.page, source: open.headSource, reason, stepsSeen: 1 });
+    return;
+  }
   const nums = open.steps.map((s) => s.n).filter((n): n is number => n !== null);
   let outOfOrder = false;
   for (let k = 1; k < nums.length; k++) {
@@ -615,7 +629,7 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
 
       if (SECTION_HEADING_RE.test(line) && isAllCapsHeading(line)) {
         flushSection(open, sections, problems, omitted);
-        open = { heading: line, subheading: null, topic: topicFor(line), models: scopeAll(), page: pg.page, steps: [], firstLines: [], incomplete: null };
+        open = { heading: line, subheading: null, topic: topicFor(line), models: scopeAll(), page: pg.page, steps: [], firstLines: [], incomplete: null, headSource: { ...src, page: pg.page, line } };
         phaseScope = scopeAll();
         headingNotes = [];
         lastBlock = null;
@@ -633,7 +647,7 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
             headingNotesPlaced = false;
           }
         }
-        flushSection(open, sections, problems, omitted);
+        flushSection(open, sections, problems, omitted, false);
         if (!sub.scopeKnown) {
           problems.push(
             `page ${pg.page}: subheading "${sub.text}" has a model or hardware-variant restriction that could not be resolved — its steps are left out of packets rather than guessed`,
@@ -641,7 +655,7 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
         }
         const sectionModels: ModelScope = sub.nested ? intersectScopes(phaseScope, sub.scope) : sub.scope;
         if (!sub.nested) phaseScope = sub.scope;
-        open = { heading: open!.heading, subheading: sub.text, topic: open!.topic, models: sectionModels, page: pg.page, steps: [], firstLines: [], incomplete: null };
+        open = { heading: open!.heading, subheading: sub.text, topic: open!.topic, models: sectionModels, page: pg.page, steps: [], firstLines: [], incomplete: null, headSource: { ...src, page: pg.page, line } };
         if (sub.nested) {
           // The first nested block takes the note itself (the empty block it was printed in is never a
           // section); each later one gets a copy, so the note heads every block it was printed over.
