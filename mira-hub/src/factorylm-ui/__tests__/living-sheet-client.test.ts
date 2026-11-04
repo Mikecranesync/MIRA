@@ -71,7 +71,43 @@ describe("enqueueSheetEvent / loadSheetQueue", () => {
   });
 });
 
+describe("enqueueSheetEvent — concurrent calls must not clobber each other", () => {
+  it("three concurrent enqueues on the same job all land (no lost write)", async () => {
+    const store = memoryStore();
+    await Promise.all([
+      enqueueSheetEvent(store, "t1", "j1", stepEvent("a")),
+      enqueueSheetEvent(store, "t1", "j1", stepEvent("b")),
+      enqueueSheetEvent(store, "t1", "j1", stepEvent("c")),
+    ]);
+    const q = await loadSheetQueue(store, "t1", "j1");
+    expect(q.map((i) => i.event.clientEventId).sort()).toEqual(["a", "b", "c"]);
+  });
+});
+
 describe("drainSheetQueue", () => {
+  it("an enqueue that happens WHILE a submit is in flight is not lost by the drain's save (it re-reads before saving, so it goes on to drain the late item too, instead of overwriting it with a stale empty-minus-one snapshot)", async () => {
+    const store = memoryStore();
+    await enqueueSheetEvent(store, "t1", "j1", stepEvent("a"));
+    const seen: string[] = [];
+    const submit = vi.fn(async (ev: SheetEventPost): Promise<SheetSubmitOutcome> => {
+      seen.push(ev.clientEventId);
+      if (ev.clientEventId === "a") {
+        // Something else enqueues DURING this in-flight submit.
+        await enqueueSheetEvent(store, "t1", "j1", stepEvent("late"));
+      }
+      return { status: "ok" };
+    });
+    const result = await drainSheetQueue(store, "t1", "j1", submit);
+    // Nothing lost: both "a" and the concurrently-enqueued "late" were seen
+    // and drained — the OLD code's stale-snapshot save would have reset the
+    // queue to [] after "a" alone, silently dropping "late" forever.
+    expect(seen).toEqual(["a", "late"]);
+    expect(result).toMatchObject({ sent: 2, remaining: 0 });
+    expect(await loadSheetQueue(store, "t1", "j1")).toEqual([]);
+  });
+});
+
+describe("drainSheetQueue — existing behavior", () => {
   it("drains in FIFO order, success removes and continues", async () => {
     const store = memoryStore();
     await enqueueSheetEvent(store, "t1", "j1", stepEvent("a"));
@@ -241,6 +277,38 @@ describe("parseSheetReceipts", () => {
     });
     const seen: NotebookSheetReceiptFrame[] = [];
     await parseSheetReceipts(stream, (f) => seen.push(f));
+    expect(seen).toEqual([receipt]);
+  });
+
+  it("works on a tee'd branch exactly like hub-host's send() feeds it, while the OTHER branch still reads the same bytes untouched", async () => {
+    const receipt: NotebookSheetReceiptFrame = { kind: "sheet_receipt", jobId: "job-1", baseSeq: 3, proposals: [] };
+    const sse =
+      `data: ${JSON.stringify({ kind: "content", content: "hi" })}\n\n` +
+      `data: ${JSON.stringify(receipt)}\n\n` +
+      `data: [DONE]\n\n`;
+    const original = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(sse));
+        controller.close();
+      },
+    });
+    const [forChat, forReceipt] = original.tee();
+
+    // The "chat" branch is read exactly like readNotebookStream would — plain
+    // bytes, unaffected by the receipt parser running on the other branch.
+    const chatReader = forChat.getReader();
+    let chatText = "";
+    const decoder = new TextDecoder();
+    for (;;) {
+      const { done, value } = await chatReader.read();
+      if (done) break;
+      chatText += decoder.decode(value);
+    }
+
+    const seen: NotebookSheetReceiptFrame[] = [];
+    await parseSheetReceipts(forReceipt, (f) => seen.push(f));
+
+    expect(chatText).toBe(sse);
     expect(seen).toEqual([receipt]);
   });
 

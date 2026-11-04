@@ -13,11 +13,14 @@ import { renderToStaticMarkup } from "react-dom/server";
 import {
   LivingSheet,
   canFinishJob,
+  enabledFromListStatus,
   openItemsSummary,
   receiptBannerText,
   shouldShowPill,
+  visibleProposals,
 } from "../LivingSheet";
 import type { SheetView } from "@/capabilities/living-sheet/reduce";
+import type { SheetProposal } from "@/capabilities/living-sheet/propose";
 
 function emptyView(over: Partial<SheetView> = {}): SheetView {
   return {
@@ -82,5 +85,29 @@ describe("LivingSheet (SSR shape)", () => {
       <LivingSheet notebookId="nb-1" technicianName={null} onSheetOpenChange={() => {}} receipt={null} />,
     );
     expect(html).toBe("");
+  });
+});
+
+describe("enabledFromListStatus — the actual 404-disabled gate", () => {
+  it("a 404 from GET /sheets means the capability is off", () => {
+    expect(enabledFromListStatus(404)).toBe(false);
+  });
+  it("any other status means the gate has resolved on (loading/jobs can still show their own error)", () => {
+    expect(enabledFromListStatus(200)).toBe(true);
+    expect(enabledFromListStatus(500)).toBe(true);
+  });
+});
+
+describe("visibleProposals — Accept/Skip must actually remove a proposal from view", () => {
+  const proposals: SheetProposal[] = [
+    { proposalId: "p1", risk: "low", reason: "r1", quote: "q1", event: { kind: "note_added", payload: { noteId: "n1", text: "x", noteKind: "note" } } },
+    { proposalId: "p2", risk: "needs_tap", reason: "r2", quote: "q2", event: { kind: "part_logged", payload: { partEntryId: "pe1", item: "x", action: "used", qty: null } } },
+  ];
+  it("with nothing handled, shows everything", () => {
+    expect(visibleProposals(proposals, new Set())).toEqual(proposals);
+  });
+  it("filters out any proposalId already accepted or skipped", () => {
+    expect(visibleProposals(proposals, new Set(["p1"]))).toEqual([proposals[1]]);
+    expect(visibleProposals(proposals, new Set(["p1", "p2"]))).toEqual([]);
   });
 });

@@ -122,8 +122,48 @@ async function saveSheetQueue(store: KvStore, scopeId: string, jobId: string, q:
   await store.set(sheetQueueKey(scopeId, jobId), JSON.stringify(q));
 }
 
+/**
+ * Every read-modify-write on a queue is serialized per (scopeId, jobId) key
+ * through this in-memory promise chain. Without it, two calls that each
+ * `await loadSheetQueue(...)` before either `saveSheetQueue(...)`s — two
+ * concurrent `enqueueSheetEvent`s (e.g. "Accept all low-risk" firing N posts
+ * in one tick), or an enqueue landing while `drainSheetQueue`'s `submit`
+ * await is in flight — read the same stale snapshot and the last save wins,
+ * silently dropping every write but one. The lock only wraps the read-
+ * modify-write body, never a `fetch` (drain's `submit` call sits OUTSIDE
+ * the locked section — see drainSheetQueue below), so a slow network call
+ * never blocks an unrelated enqueue.
+ */
+const queueLocks = new Map<string, Promise<void>>();
+
+async function withQueueLock<T>(scopeId: string, jobId: string, fn: () => Promise<T>): Promise<T> {
+  const key = sheetQueueKey(scopeId, jobId);
+  const prior = queueLocks.get(key) ?? Promise.resolve();
+  let result!: T;
+  let failure: unknown;
+  let settled!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    settled = resolve;
+  });
+  queueLocks.set(key, gate);
+  await prior.catch(() => {
+    /* a prior failed turn must not wedge the chain for everyone after it */
+  });
+  try {
+    result = await fn();
+  } catch (e) {
+    failure = e;
+  } finally {
+    settled();
+  }
+  if (failure !== undefined) throw failure;
+  return result;
+}
+
 /** FIFO enqueue, deduped on clientEventId (re-queuing the same logical write
- *  is a no-op — the id IS the identity). Returns the resulting queue. */
+ *  is a no-op — the id IS the identity). Returns the resulting queue.
+ *  Lock-protected: concurrent enqueues on the same job never clobber each
+ *  other's write. */
 export async function enqueueSheetEvent(
   store: KvStore,
   scopeId: string,
@@ -131,12 +171,14 @@ export async function enqueueSheetEvent(
   event: SheetEventPost,
   nowIso?: string,
 ): Promise<QueuedSheetEvent[]> {
-  const q = await loadSheetQueue(store, scopeId, jobId);
-  if (!q.some((item) => item.event.clientEventId === event.clientEventId)) {
-    q.push({ event, queuedAt: nowIso ?? new Date().toISOString(), attempts: 0 });
-    await saveSheetQueue(store, scopeId, jobId, q);
-  }
-  return q;
+  return withQueueLock(scopeId, jobId, async () => {
+    const q = await loadSheetQueue(store, scopeId, jobId);
+    if (!q.some((item) => item.event.clientEventId === event.clientEventId)) {
+      q.push({ event, queuedAt: nowIso ?? new Date().toISOString(), attempts: 0 });
+      await saveSheetQueue(store, scopeId, jobId, q);
+    }
+    return q;
+  });
 }
 
 export async function pendingSheetCount(store: KvStore, scopeId: string, jobId: string): Promise<number> {
@@ -147,17 +189,45 @@ export async function pendingSheetCount(store: KvStore, scopeId: string, jobId: 
  *  conflict sheet's "Keep theirs" (discard mine) drops it outright, and
  *  "Use mine" drops it then re-enqueues a fresh correction on the current
  *  seq (both at the call site, not in here — this helper only edits the
- *  queue). Null on an empty queue. */
+ *  queue). Null on an empty queue. Lock-protected like enqueueSheetEvent. */
 export async function dropHeadOfSheetQueue(
   store: KvStore,
   scopeId: string,
   jobId: string,
 ): Promise<QueuedSheetEvent | null> {
-  const q = await loadSheetQueue(store, scopeId, jobId);
-  if (q.length === 0) return null;
-  const head = q.shift()!;
-  await saveSheetQueue(store, scopeId, jobId, q);
-  return head;
+  return withQueueLock(scopeId, jobId, async () => {
+    const q = await loadSheetQueue(store, scopeId, jobId);
+    if (q.length === 0) return null;
+    const head = q.shift()!;
+    await saveSheetQueue(store, scopeId, jobId, q);
+    return head;
+  });
+}
+
+/** Remove exactly the item with this clientEventId, re-reading first — used
+ *  by drainSheetQueue so a save never overwrites an item some OTHER caller
+ *  enqueued while this one's `submit` await was in flight. */
+async function removeFromSheetQueue(store: KvStore, scopeId: string, jobId: string, clientEventId: string): Promise<void> {
+  await withQueueLock(scopeId, jobId, async () => {
+    const q = await loadSheetQueue(store, scopeId, jobId);
+    await saveSheetQueue(store, scopeId, jobId, q.filter((i) => i.event.clientEventId !== clientEventId));
+  });
+}
+
+/** Record an attempt/lastError on exactly this item without touching the
+ *  rest of the (possibly since-grown) queue. */
+async function markSheetQueueAttempt(
+  store: KvStore,
+  scopeId: string,
+  jobId: string,
+  clientEventId: string,
+  lastError: string,
+): Promise<void> {
+  await withQueueLock(scopeId, jobId, async () => {
+    const q = await loadSheetQueue(store, scopeId, jobId);
+    const next = q.map((i) => (i.event.clientEventId === clientEventId ? { ...i, attempts: i.attempts + 1, lastError } : i));
+    await saveSheetQueue(store, scopeId, jobId, next);
+  });
 }
 
 export type SheetSubmitOutcome =
@@ -186,8 +256,11 @@ let sheetDrainInFlight = false;
  * `conflict` keeps the item and STOPS (the technician must resolve it before
  * anything behind it can land); a thrown error (network/5xx/401) keeps the
  * item and STOPS; `rejected` (definitive 4xx validation) drops the item and
- * continues. State is persisted after every item so a crash mid-drain loses
- * nothing. Returns null if a drain is already in flight (one at a time).
+ * continues. The queue is RE-READ at the top of every iteration and every
+ * mutation targets the item's clientEventId (never a stale in-memory array
+ * saved after the `submit` await) — so a write that lands on the same job
+ * while a submit is in flight is never clobbered by this drain's own save.
+ * Returns null if a drain is already in flight (one at a time).
  */
 export async function drainSheetQueue(
   store: KvStore,
@@ -198,37 +271,32 @@ export async function drainSheetQueue(
   if (sheetDrainInFlight) return null;
   sheetDrainInFlight = true;
   try {
-    const q = await loadSheetQueue(store, scopeId, jobId);
     const result: SheetDrainResult = { sent: 0, droppedRejected: 0, remaining: 0, conflict: false, networkStopped: false };
-    while (q.length > 0) {
+    for (;;) {
+      const q = await loadSheetQueue(store, scopeId, jobId);
+      if (q.length === 0) break;
       const item = q[0]!;
       let outcome: SheetSubmitOutcome;
       try {
         outcome = await submit(item.event);
       } catch (e) {
-        item.attempts++;
-        item.lastError = e instanceof Error ? e.message : String(e);
+        await markSheetQueueAttempt(store, scopeId, jobId, item.event.clientEventId, e instanceof Error ? e.message : String(e));
         result.networkStopped = true;
-        await saveSheetQueue(store, scopeId, jobId, q);
         break;
       }
       if (outcome.status === "ok") {
-        q.shift();
+        await removeFromSheetQueue(store, scopeId, jobId, item.event.clientEventId);
         result.sent++;
       } else if (outcome.status === "conflict") {
-        item.attempts++;
-        item.lastError = "conflict";
+        await markSheetQueueAttempt(store, scopeId, jobId, item.event.clientEventId, "conflict");
         result.conflict = true;
-        await saveSheetQueue(store, scopeId, jobId, q);
         break;
       } else {
-        item.lastError = outcome.message;
-        q.shift();
+        await removeFromSheetQueue(store, scopeId, jobId, item.event.clientEventId);
         result.droppedRejected++;
       }
-      await saveSheetQueue(store, scopeId, jobId, q);
     }
-    result.remaining = q.length;
+    result.remaining = (await loadSheetQueue(store, scopeId, jobId)).length;
     return result;
   } finally {
     sheetDrainInFlight = false;

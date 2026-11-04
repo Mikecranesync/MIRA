@@ -1071,7 +1071,7 @@ export function HubShellHost() {
           key={selection.notebookId}
           notebookId={selection.notebookId}
           technicianName={authSession?.user?.email ?? null}
-          onSheetOpenChange={(job) => setLivingSheetJob(job)}
+          onSheetOpenChange={setLivingSheetJob}
           receipt={sheetReceipt}
         />
       )}

@@ -87,6 +87,22 @@ export function receiptBannerText(count: number): string {
   return `${count} suggestion${count === 1 ? "" : "s"} for the job sheet — Review`;
 }
 
+/** The actual 404-disabled gate: GET /sheets returns 404 only when the flag
+ *  is off or the notebook doesn't exist (both mean "hide the whole panel").
+ *  Any other status means the gate has resolved ON — a 500 or a network
+ *  error still shows the pill, with its own error inside the panel, which
+ *  is different from "the capability doesn't exist here". */
+export function enabledFromListStatus(status: number): boolean {
+  return status !== 404;
+}
+
+/** Accept/Skip must make a proposal disappear, or a second tap re-posts it
+ *  with a new clientEventId the server can't dedupe. Filters the receipt's
+ *  proposals down to the ones not yet accepted or skipped. */
+export function visibleProposals(proposals: readonly SheetProposal[], handled: ReadonlySet<string>): SheetProposal[] {
+  return proposals.filter((p) => !handled.has(p.proposalId));
+}
+
 // ---------------------------------------------------------------------------
 // Styling — shared --fl-* tokens only, tap targets >=48px, base font >=17px
 // ---------------------------------------------------------------------------
@@ -179,6 +195,8 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
   const [viewError, setViewError] = useState<string | null>(null);
   const [badge, setBadge] = useState<SaveBadgeState>({ saving: false, queued: 0, conflict: false });
   const [conflict, setConflict] = useState<ConflictInfo | null>(null);
+  const [lastRejection, setLastRejection] = useState<string | null>(null);
+  const [handledProposalIds, setHandledProposalIds] = useState<ReadonlySet<string>>(new Set());
 
   const [newTitle, setNewTitle] = useState("");
   const [templates, setTemplates] = useState<JobSheetSummary[] | null>(null);
@@ -206,13 +224,37 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
     };
   }, []);
 
+  // "sent only while a sheet is open" (TASK-S3) must also hold when this
+  // notebook's sheet layer goes away entirely (a notebook switch remounts
+  // this component under a fresh key) — hub-host must stop threading the
+  // rider for a job that no longer has a live panel. A ref holds the latest
+  // callback so the unmount effect fires exactly once without depending on
+  // a prop that may be a fresh inline function every render.
+  const onSheetOpenChangeRef = useRef(onSheetOpenChange);
+  useEffect(() => {
+    onSheetOpenChangeRef.current = onSheetOpenChange;
+  }, [onSheetOpenChange]);
+  useEffect(
+    () => () => {
+      onSheetOpenChangeRef.current(null);
+    },
+    [],
+  );
+
+  // A fresh receipt (different jobId/baseSeq) starts with nothing handled —
+  // only accept/skip within the CURRENT frame.
+  const receiptKey = receipt ? `${receipt.jobId}:${receipt.baseSeq}` : null;
+  useEffect(() => {
+    setHandledProposalIds(new Set());
+  }, [receiptKey]);
+
   const scopeId = technicianName ?? notebookId;
 
   const loadJobs = useCallback(async () => {
     setJobsError(null);
     try {
       const res = await apiListJobs(notebookId);
-      if (res.status === 404) {
+      if (!enabledFromListStatus(res.status)) {
         if (mounted.current) setEnabled(false);
         return;
       }
@@ -275,7 +317,9 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
           return { status: "conflict" as const };
         }
         if (res.status >= 500 || res.status === 401) throw new Error(res.body.error ?? "server_error");
-        return { status: "rejected" as const, message: startJobErrorMessage(res.body.error, res.body.message) };
+        const message = startJobErrorMessage(res.body.error, res.body.message);
+        if (mounted.current) setLastRejection(message);
+        return { status: "rejected" as const, message };
       });
       if (!result) return;
       if (mounted.current) setBadge({ saving: false, queued: result.remaining, conflict: result.conflict });
@@ -458,9 +502,11 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
     if (!openJobId) return;
     await dropHeadOfSheetQueue(localStorageStore, scopeId, openJobId);
     setConflict(null);
-    await refreshBadge(openJobId);
     if (conflict?.serverView) setView(conflict.serverView);
-  }, [openJobId, scopeId, conflict, refreshBadge]);
+    // Anything queued behind the dropped conflict is still waiting — without
+    // this, those items sit until the 15s tick and the badge stays "conflict".
+    await drain(openJobId);
+  }, [openJobId, scopeId, conflict, drain]);
 
   const onUseMine = useCallback(async () => {
     if (!openJobId || !conflict) return;
@@ -478,12 +524,14 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
   const onReceiptAccept = useCallback(
     (proposalId: string, event: SheetWriteEvent) => {
       void postEvent(event.kind, event.payload);
-      // The accepted proposal is gone once posted; nothing else to do — the
-      // next receipt frame (if any) is a fresh proposal set.
-      void proposalId;
+      setHandledProposalIds((prev) => new Set([...prev, proposalId]));
     },
     [postEvent],
   );
+
+  const onReceiptSkip = useCallback((proposalId: string) => {
+    setHandledProposalIds((prev) => new Set([...prev, proposalId]));
+  }, []);
 
   if (enabled !== true) return null;
 
@@ -491,7 +539,8 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
   // The SSE frame types `proposals` as `unknown[]` (notebook-chat-types.ts has
   // no dependency on the living-sheet capability) — it is really
   // `SheetProposal[]` (propose.ts), which is what hub-host's tee branch fed it.
-  const proposals = (thisReceipt?.proposals ?? []) as unknown as SheetProposal[];
+  const allProposals = (thisReceipt?.proposals ?? []) as unknown as SheetProposal[];
+  const proposals = visibleProposals(allProposals, handledProposalIds);
   const lowRiskIds = lowRiskProposalIds(proposals);
 
   return (
@@ -500,9 +549,9 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
         Job sheet
       </button>
 
-      {!open && thisReceipt && thisReceipt.proposals.length > 0 && (
+      {!open && proposals.length > 0 && (
         <button type="button" style={BANNER_STYLE} data-testid="living-sheet-receipt-banner" onClick={() => setOpen(true)}>
-          {receiptBannerText(thisReceipt.proposals.length)}
+          {receiptBannerText(proposals.length)}
         </button>
       )}
 
@@ -525,7 +574,10 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
                       type="button" style={{ ...GHOST_BUTTON_STYLE, width: "100%", textAlign: "left" }}
                       onClick={() => openJob(j.jobId)} data-testid={`living-sheet-job-${j.jobId}`}
                     >
-                      {j.title} — {j.finished ? "finished" : `open steps ${j.seq}`}
+                      {/* JobSummary has no open-steps count (seq is an event
+                          counter, not a step tally) — this is a known gap,
+                          not fixed here; see the S3 report's hazard ledger. */}
+                      {j.title} — {j.finished ? "finished" : `${j.seq} update${j.seq === 1 ? "" : "s"}`}
                       <div style={{ fontSize: "15px", color: "var(--fl-muted)" }}>
                         started by {j.startedBy ?? "a technician"} · {new Date(j.startedAt).toLocaleString()}
                       </div>
@@ -582,6 +634,12 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
                 <p style={{ fontSize: "15px", color: "var(--fl-muted)" }}>Keep this page open until you have signal again.</p>
               )}
 
+              {lastRejection && (
+                <p role="alert" data-testid="living-sheet-last-rejection">
+                  {lastRejection}
+                </p>
+              )}
+
               {conflict && (
                 <section style={{ ...SECTION_STYLE, borderColor: "var(--fl-accent)" }} data-testid="living-sheet-conflict">
                   <h3 style={{ marginTop: 0 }}>Someone else changed this sheet too</h3>
@@ -592,15 +650,15 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
                 </section>
               )}
 
-              {thisReceipt && thisReceipt.proposals.length > 0 && (
+              {proposals.length > 0 && (
                 <section style={SECTION_STYLE} data-testid="living-sheet-receipt-card">
-                  <h3 style={{ marginTop: 0 }}>MIRA suggests {thisReceipt.proposals.length} change{thisReceipt.proposals.length === 1 ? "" : "s"} to the sheet</h3>
+                  <h3 style={{ marginTop: 0 }}>MIRA suggests {proposals.length} change{proposals.length === 1 ? "" : "s"} to the sheet</h3>
                   {proposals.map((p) => (
                     <div key={p.proposalId} style={{ marginBottom: 10, borderTop: "1px solid var(--fl-line)", paddingTop: 8 }}>
                       <p style={{ margin: 0 }}>{p.reason}</p>
                       <p style={{ margin: 0, fontStyle: "italic", color: "var(--fl-muted)" }}>&ldquo;{p.quote}&rdquo;</p>
                       <button type="button" style={BUTTON_STYLE} onClick={() => onReceiptAccept(p.proposalId, p.event as SheetWriteEvent)}>Accept</button>
-                      <button type="button" style={GHOST_BUTTON_STYLE}>Skip</button>
+                      <button type="button" style={GHOST_BUTTON_STYLE} onClick={() => onReceiptSkip(p.proposalId)}>Skip</button>
                     </div>
                   ))}
                   {lowRiskIds.length > 0 && (
