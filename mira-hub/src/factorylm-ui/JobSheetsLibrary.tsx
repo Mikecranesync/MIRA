@@ -131,7 +131,9 @@ export function JobSheetsLibrary({ onClose, initialMode = "browse" }: JobSheetsL
       const requestId = saveRequestIds[i] ?? crypto.randomUUID();
       try {
         const res = await apiCreateJobSheet(job.body, requestId);
-        results[i] = res.ok ? "Saved as draft." : res.body.message ?? "Could not save.";
+        results[i] = res.ok
+          ? "Saved as draft."
+          : res.body.message ?? `Could not save${res.body.field ? ` — check ${res.body.field}` : ""}.`;
       } catch {
         results[i] = "No reply from the server.";
       }

@@ -122,10 +122,10 @@ function validateTorque(raw: unknown, idx: number): ValidationResult<JobSheetTor
   }
   if (!isNullableText(raw.tool, LABEL_FIELD_MAX)) return fail("invalid_torque_tool", `torques[${idx}].tool`);
   if (!isNullableText(raw.source, LABEL_FIELD_MAX)) return fail("invalid_torque_source", `torques[${idx}].source`);
-  // Rule: any `value` that is not null requires `source` to be non-null.
-  if (raw.value !== null && raw.source === null) {
-    return fail("torque_value_requires_source", `torques[${idx}].source`);
-  }
+  // A torque `value` with no `source` is allowed in a body: a draft imported
+  // from a shop sheet may carry it, and every surface shows it as
+  // "no source — unverified". Marking a revision reviewed refuses it
+  // (job-sheet-store.ts reviewJobSheet → "unsourced_torque").
   return {
     ok: true,
     value: {

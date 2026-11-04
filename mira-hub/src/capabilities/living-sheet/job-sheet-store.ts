@@ -221,7 +221,8 @@ export type ReviewJobSheetResult =
   | { status: "existing"; revision: JobSheetRevision }
   | { status: "request_id_conflict" }
   | { status: "job_sheet_not_found" }
-  | { status: "revision_not_found" };
+  | { status: "revision_not_found" }
+  | { status: "unsourced_torque"; what: string };
 
 export async function reviewJobSheet(
   tenantId: string,
@@ -244,6 +245,9 @@ export async function reviewJobSheet(
     );
     if (source.rows.length === 0) return { status: "revision_not_found" };
     const sourceBody = source.rows[0]!.body;
+    // A reviewed job sheet never carries a torque value nobody can trace.
+    const unsourced = sourceBody.torques.find((t) => t.value !== null && t.source === null);
+    if (unsourced) return { status: "unsourced_torque", what: unsourced.what };
 
     const prior = await c.query<RevisionRow>(
       `SELECT ${REVISION_COLS} FROM job_sheet_revisions WHERE tenant_id = $1::uuid AND client_request_id = $2::uuid`,
