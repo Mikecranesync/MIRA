@@ -264,6 +264,93 @@ describe("LivingSheetPrint — F05: handover is quoted verbatim and attributed, 
   });
 });
 
+describe("LivingSheetPrint — R2-13: item annotations, step source/drawing refs, and step notes", () => {
+  it.each([
+    {
+      label: "an item annotation ('Only if bent.') prints beside the item",
+      items: [{ id: "i1", kind: "part" as const, item: "Bracket", spec: null, qty: 1, source: null, notes: "Only if bent." }],
+      steps: [],
+      needle: "Only if bent.",
+    },
+    {
+      label: "a different item annotation prints beside its own item",
+      items: [{ id: "i1", kind: "part" as const, item: "Seal kit", spec: null, qty: 2, source: "warehouse bin 4", notes: "Confirm size against the old part before ordering." }],
+      steps: [],
+      needle: "Confirm size against the old part before ordering.",
+    },
+    {
+      label: "a step's source/drawing reference prints beside the step",
+      items: [],
+      steps: [{ id: "s1", text: "Torque the flange bolts", checkoff: "torque" as const, torqueRef: null, source: "Drawing E-204 rev C", done: false, doneBy: null, doneAt: null, note: null, history: [] }],
+      needle: "Drawing E-204 rev C",
+    },
+    {
+      label: "a different step's source/drawing reference prints beside its own step",
+      items: [],
+      steps: [{ id: "s1", text: "Replace the guard", checkoff: "none" as const, torqueRef: null, source: "Manual p.44 fig 9", done: false, doneBy: null, doneAt: null, note: null, history: [] }],
+      needle: "Manual p.44 fig 9",
+    },
+    {
+      label: "a note recorded against a done step prints beside the step",
+      items: [],
+      steps: [{ id: "s1", text: "Replace the seal", checkoff: "none" as const, torqueRef: null, source: null, done: true, doneBy: "Mike", doneAt: "2026-11-03T10:00:00.000Z", note: "Old seal was cracked, not just worn.", history: [] }],
+      needle: "Old seal was cracked, not just worn.",
+    },
+  ])("$label", ({ items, steps, needle }) => {
+    const view = baseView({
+      template: { ...baseView().template, items },
+      steps,
+    });
+    const html = renderToStaticMarkup(<LivingSheetPrint view={view} {...OPTS} />);
+    expect(html).toContain(needle);
+  });
+
+  it("every section is populated at once (the EGM fixture) and every piece of content appears exactly once", () => {
+    const view = baseView({
+      template: {
+        ...baseView().template,
+        cautions: "Wheel is heavy; two-person lift",
+        returnToService: ["Jog motor, confirm no abnormal noise"],
+        notes: "Torque sequence must follow the star pattern.",
+        items: [{ id: "i1", kind: "part", item: "Gasket", spec: null, qty: 1, source: "warehouse bin 12", notes: "Only if bent." }],
+        torques: [{ id: "t1", what: "Wheel bolts", value: 85, unit: "ft-lb", pattern: "star", threadLocker: "blue 242", tool: "3/4 impact", source: "Manual p.12" }],
+      },
+      steps: [
+        { id: "s1", text: "Torque the wheel bolts", checkoff: "torque", torqueRef: "t1", source: "Drawing E-204 rev C", done: true, doneBy: "Mike", doneAt: "2026-11-03T10:00:00.000Z", note: "Had to re-seat the gasket first.", history: [] },
+      ],
+    });
+    const html = renderToStaticMarkup(<LivingSheetPrint view={view} {...OPTS} />);
+    for (const needle of [
+      "Wheel is heavy; two-person lift",
+      "Jog motor, confirm no abnormal noise",
+      "Torque sequence must follow the star pattern.",
+      "warehouse bin 12",
+      "Only if bent.",
+      "Drawing E-204 rev C",
+      "Had to re-seat the gasket first.",
+    ]) {
+      expect(html).toContain(needle);
+    }
+  });
+});
+
+describe("LivingSheetPrint — R2-17: unsaved local edits are not silently missing from print", () => {
+  it("pendingCount defaults to 0: no banner, byte-identical to before", () => {
+    const html = renderToStaticMarkup(<LivingSheetPrint view={baseView()} {...OPTS} />);
+    expect(html).not.toContain("were not saved yet");
+  });
+
+  it.each([1, 2, 5])("pendingCount=%i: the printed page carries the exact warning with that count", (pendingCount) => {
+    const html = renderToStaticMarkup(<LivingSheetPrint view={baseView()} {...OPTS} pendingCount={pendingCount} />);
+    expect(html).toContain(`${pendingCount} changes made on this phone were not saved yet and are NOT on this print.`);
+  });
+
+  it("pendingCount=0 explicitly: still no banner (the gate is > 0, not merely 'provided')", () => {
+    const html = renderToStaticMarkup(<LivingSheetPrint view={baseView()} {...OPTS} pendingCount={0} />);
+    expect(html).not.toContain("were not saved yet");
+  });
+});
+
 describe("LivingSheetPrint — empty sections say so", () => {
   it("an empty Open questions section prints 'None recorded', not a bare heading", () => {
     const html = renderToStaticMarkup(<LivingSheetPrint view={baseView({ questions: [] })} {...OPTS} />);
