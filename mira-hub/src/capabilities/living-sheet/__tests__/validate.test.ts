@@ -90,6 +90,34 @@ describe("validateJobSheetBody", () => {
     const r = validateJobSheetBody(validTemplate({ returnToService: [123] }));
     expect(r).toMatchObject({ ok: false, error: "invalid_return_to_service", field: "returnToService" });
   });
+
+  // F24 (egm-review/verdict.md): each step is individually valid, but
+  // reduce.ts's reducer keys steps in a Map<stepId, step> — a duplicate id
+  // silently drops every earlier step sharing it instead of surfacing as a
+  // bad import/write.
+  it("rejects a body with two steps sharing the same id", () => {
+    const r = validateJobSheetBody(
+      validTemplate({
+        steps: [
+          { id: "step-1", text: "Check seal", checkoff: "none", torqueRef: null, source: null },
+          { id: "step-1", text: "Torque bolts", checkoff: "none", torqueRef: null, source: null },
+        ],
+      }),
+    );
+    expect(r).toMatchObject({ ok: false, error: "duplicate_step_id", field: "steps[1].id" });
+  });
+
+  it("control: two steps with DIFFERENT ids are accepted", () => {
+    const r = validateJobSheetBody(
+      validTemplate({
+        steps: [
+          { id: "step-1", text: "Check seal", checkoff: "none", torqueRef: null, source: null },
+          { id: "step-2", text: "Torque bolts", checkoff: "none", torqueRef: null, source: null },
+        ],
+      }),
+    );
+    expect(r.ok).toBe(true);
+  });
 });
 
 describe("validateStartJobInput", () => {

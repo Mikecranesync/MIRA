@@ -289,6 +289,30 @@ describe("living-sheet routes: GET /sheets/[jobId]", () => {
     expect(await res.json()).toEqual({ error: "invalid_at_seq" });
   });
 
+  // F30 (egm-review/verdict.md): `atSeq` past the job's last seq is a
+  // prefix reduce over EVERY event there is — loadJob (mocked here exactly
+  // as the real reducer would resolve it) returns `view.seq: 3` for a
+  // 3-event job no matter how large the requested atSeq is. The route must
+  // not then report the requested-but-nonexistent `100` as the outer `seq`
+  // of a `snapshot: true` response — that names a sequence that never
+  // happened as if it were a real snapshot.
+  it("?atSeq=100 on a 3-event job ⇒ 404 sequence_not_found, never a mislabelled seq:100 snapshot", async () => {
+    store.loadJob.mockResolvedValue({ status: "ok", view: { ...sampleView, seq: 3 } });
+    const res = await GET_JOB(req(`/api/equipment-notebooks/${NB}/sheets/${JOB_ID}?atSeq=100`, "GET"), jobParams);
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.error).toBe("sequence_not_found");
+    expect(body.seq).toBeUndefined();
+    expect(body.snapshot).toBeUndefined();
+  });
+
+  it("control: ?atSeq=N equal to the job's current seq is still a valid snapshot", async () => {
+    store.loadJob.mockResolvedValue({ status: "ok", view: { ...sampleView, seq: 3 } });
+    const res = await GET_JOB(req(`/api/equipment-notebooks/${NB}/sheets/${JOB_ID}?atSeq=3`, "GET"), jobParams);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ seq: 3, snapshot: true });
+  });
+
   it("job not found ⇒ 404 job_not_found", async () => {
     store.loadJob.mockResolvedValue({ status: "job_not_found" });
     const res = await GET_JOB(req(`/api/equipment-notebooks/${NB}/sheets/${JOB_ID}`, "GET"), jobParams);

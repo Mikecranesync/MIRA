@@ -221,9 +221,15 @@ export function validateJobSheetBody(raw: unknown): ValidationResult<JobSheetBod
 
   if (!Array.isArray(raw.steps)) return fail("invalid_steps", "steps");
   const steps: JobSheetStep[] = [];
+  const seenStepIds = new Set<string>();
   for (let i = 0; i < raw.steps.length; i++) {
     const r = validateStep(raw.steps[i], i);
     if (!r.ok) return r;
+    // F24: each step is individually valid, but the reducer keeps a
+    // Map<stepId, step> (reduce.ts) — a duplicate id would silently drop
+    // every earlier step sharing it instead of surfacing as a bad import.
+    if (seenStepIds.has(r.value.id)) return fail("duplicate_step_id", `steps[${i}].id`);
+    seenStepIds.add(r.value.id);
     steps.push(r.value);
   }
 

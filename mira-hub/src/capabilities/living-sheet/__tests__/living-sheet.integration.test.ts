@@ -151,6 +151,61 @@ describe("living sheet — appendEvent idempotency and conflicts", () => {
     expect(await countEvents(tenant, job.jobId)).toBe(2); // job_started + the one step_marked
   });
 
+  // F17 (TASK-EGM-C). The photos route
+  // (app/api/.../sheets/[jobId]/photos/route.ts) has no client-supplied
+  // timestamp to carry — it's a multipart upload — so it stamps
+  // `occurredAt: new Date().toISOString()` fresh on EVERY call, including a
+  // same-clientEventId retry. Simulated here by calling appendEvent twice
+  // with the same photo_attached clientEventId/payload but two DIFFERENT
+  // server-generated occurredAt values, exactly as two separate HTTP POSTs
+  // of the identical multipart retry would produce. Before the fix this
+  // returned request_id_conflict (409) instead of replaying idempotently.
+  it("F17: a photo_attached retry with a different server-stamped occurredAt still replays idempotently (never request_id_conflict)", async () => {
+    const tenant = uuid();
+    const nb = await makeNotebook(tenant, `cmms-${uuid()}`, true);
+    const machine = { entityId: `cmms-${uuid()}`, name: "Pump 07" };
+    const job = created(await startJob(tenant, nb, machine, startInput(), ACTOR));
+    const clientEventId = uuid(); // == payload.photoId, per the route's own doc comment
+
+    const first = appendCreated(
+      await appendEvent(
+        tenant, nb, job.jobId,
+        { clientEventId, baseSeq: 1, kind: "photo_attached", payload: { photoId: clientEventId, fileId: "file-1", caption: "bearing surface" }, occurredAt: new Date().toISOString(), workOrderId: null },
+        ACTOR,
+      ),
+    );
+    // A retry: SAME clientEventId, SAME payload, but a LATER occurredAt —
+    // the server has no way to reproduce its own first timestamp.
+    const second = await appendEvent(
+      tenant, nb, job.jobId,
+      { clientEventId, baseSeq: 1, kind: "photo_attached", payload: { photoId: clientEventId, fileId: "file-1", caption: "bearing surface" }, occurredAt: new Date(Date.now() + 5000).toISOString(), workOrderId: null },
+      ACTOR,
+    );
+
+    expect(second.status).toBe("existing");
+    if (second.status === "existing") expect(second.event.id).toBe(first.event.id);
+    expect(await countEvents(tenant, job.jobId)).toBe(2); // job_started + the one photo_attached, never a duplicate
+  });
+
+  it("control: a step_marked retry with a DIFFERENT occurredAt still conflicts — only photo_attached gets the F17 exemption", async () => {
+    const tenant = uuid();
+    const nb = await makeNotebook(tenant, `cmms-${uuid()}`, true);
+    const machine = { entityId: `cmms-${uuid()}`, name: "Pump 07" };
+    const job = created(await startJob(tenant, nb, machine, startInput(), ACTOR));
+    const clientEventId = uuid();
+    await appendEvent(
+      tenant, nb, job.jobId,
+      { clientEventId, baseSeq: 1, kind: "step_marked", payload: { stepId: "step-1", done: true, note: null }, occurredAt: new Date().toISOString(), workOrderId: null },
+      ACTOR,
+    );
+    const second = await appendEvent(
+      tenant, nb, job.jobId,
+      { clientEventId, baseSeq: 1, kind: "step_marked", payload: { stepId: "step-1", done: true, note: null }, occurredAt: new Date(Date.now() + 5000).toISOString(), workOrderId: null },
+      ACTOR,
+    );
+    expect(second.status).toBe("request_id_conflict");
+  });
+
   it("reusing a clientEventId with a different payload conflicts", async () => {
     const tenant = uuid();
     const nb = await makeNotebook(tenant, `cmms-${uuid()}`, true);

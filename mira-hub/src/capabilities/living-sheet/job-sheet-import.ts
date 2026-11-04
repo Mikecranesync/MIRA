@@ -69,18 +69,46 @@ export type ImportPreview = {
 // Low-level cell helpers
 // ---------------------------------------------------------------------------
 
-function splitRow(line: string): string[] {
-  if (line.includes("\t")) return line.split("\t").map((c) => c.trim());
-  // Simple CSV split with basic double-quote support — fixtures are our own
-  // ASCII text, not a full RFC 4180 parser.
-  const cells: string[] = [];
+/** Decided ONCE for the whole pasted text (a paste or a CSV export is
+ *  consistently one delimiter throughout), never per line — a per-line
+ *  decision cannot survive a quoted cell whose embedded newline splits it
+ *  across what would otherwise look like two "lines" (F25). */
+function detectDelimiter(text: string): "\t" | "," {
+  const firstLine = text.split(/\r\n|\r|\n/).find((l) => l.length > 0) ?? "";
+  return firstLine.includes("\t") ? "\t" : ",";
+}
+
+/** Tokenizes the full pasted text into rows of cells, scanning character by
+ *  character so a double-quoted cell's content — including a literal
+ *  newline — is consumed before any row boundary is decided. The prior
+ *  implementation (`toRows` splitting the raw text at every `\n`, THEN
+ *  handing each resulting line to a per-line `splitRow`) saw row breaks
+ *  before it ever saw quotes: a quoted multiline caution was truncated at
+ *  its first embedded newline and its continuation fell through as an
+ *  unrecognized row (F25). Quote handling (`""` escapes to one `"`,
+ *  trimmed cell text) now applies identically for BOTH delimiters — TSV
+ *  previously had none at all. Unquoted behavior is unchanged: a bare cell
+ *  is still just trimmed text split on the detected delimiter. */
+function toRows(text: string): string[][] {
+  const delimiter = detectDelimiter(text);
+  const rows: string[][] = [];
+  let row: string[] = [];
   let cur = "";
   let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i]!;
+  const pushCell = () => {
+    row.push(cur.trim());
+    cur = "";
+  };
+  const pushRow = () => {
+    pushCell();
+    if (row.some((c) => c !== "")) rows.push(row);
+    row = [];
+  };
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]!;
     if (inQuotes) {
       if (ch === '"') {
-        if (line[i + 1] === '"') {
+        if (text[i + 1] === '"') {
           cur += '"';
           i++;
         } else {
@@ -89,24 +117,25 @@ function splitRow(line: string): string[] {
       } else {
         cur += ch;
       }
-    } else if (ch === '"') {
+      continue;
+    }
+    if (ch === '"') {
       inQuotes = true;
-    } else if (ch === ",") {
-      cells.push(cur.trim());
-      cur = "";
+    } else if (ch === delimiter) {
+      pushCell();
+    } else if (ch === "\r") {
+      // CRLF: swallow the \r, let the following \n end the row. A lone \r
+      // (old-Mac line ending) ends the row itself, matching the original
+      // regex split on /\r\n|\r|\n/.
+      if (text[i + 1] !== "\n") pushRow();
+    } else if (ch === "\n") {
+      pushRow();
     } else {
       cur += ch;
     }
   }
-  cells.push(cur.trim());
-  return cells;
-}
-
-function toRows(text: string): string[][] {
-  return text
-    .split(/\r\n|\r|\n/)
-    .map(splitRow)
-    .filter((cells) => cells.some((c) => c !== ""));
+  if (cur !== "" || row.length > 0) pushRow();
+  return rows;
 }
 
 /** A cell that is ENTIRELY a bracket hint, e.g. "(manual + page)" or
