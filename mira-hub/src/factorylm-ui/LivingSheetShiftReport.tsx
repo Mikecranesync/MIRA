@@ -56,11 +56,10 @@ const PRINT_CSS = `
 }
 @media print {
   .ls-shift-print-root { background: #fff; color: #000; font-size: 11pt; }
-  .ls-shift-print-header {
-    position: fixed; top: 0; left: 0; right: 0;
-    background: #fff; color: #000; border-bottom: 1px solid #000; padding: 4px 0;
-  }
-  .ls-shift-print-body { margin-top: 40px; }
+  .ls-shift-print-header { background: #fff; color: #000; border-bottom: 1px solid #000; padding: 4px 0 6px; }
+  .ls-shift-print-frame { width: 100%; border-collapse: collapse; }
+  .ls-shift-print-frame > thead { display: table-header-group; }
+  .ls-shift-print-frame td { padding: 0; vertical-align: top; }
 }
 ${PRINT_PORTAL_CSS}`;
 
@@ -173,10 +172,14 @@ export function LivingSheetShiftReport({ onClose }: LivingSheetShiftReportProps)
       </div>
       <PrintPortal>
         <div className={`ls-shift-print-root ${PRINT_PORTAL_CLASS}`} data-testid="shift-report-print-root">
-          <div className="ls-shift-print-header" data-testid="shift-report-print-header">
-            Shift report · {new Date(reportWindow.from).toLocaleString()} – {new Date(reportWindow.to).toLocaleString()}
-          </div>
-          <div className="ls-shift-print-body">{report && <ShiftReportBody report={report} />}</div>
+          <table className="ls-shift-print-frame">
+            <thead><tr><td>
+              <div className="ls-shift-print-header" data-testid="shift-report-print-header">
+                Shift report · {new Date(reportWindow.from).toLocaleString()} – {new Date(reportWindow.to).toLocaleString()}
+              </div>
+            </td></tr></thead>
+            <tbody><tr><td>{report && <ShiftReportBody report={report} />}</td></tr></tbody>
+          </table>
         </div>
       </PrintPortal>
     </section>

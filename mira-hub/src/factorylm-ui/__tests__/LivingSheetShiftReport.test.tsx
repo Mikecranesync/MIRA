@@ -94,3 +94,12 @@ describe("LivingSheetShiftReport — print layout (found by the §12 PDF inspect
     expect(html).not.toMatch(/body \* \{ visibility: hidden/);
   });
 });
+
+describe("LivingSheetShiftReport — repeating header", () => {
+  it("repeats the header through a table head, not a fixed box that covers the body", () => {
+    const html = renderToStaticMarkup(<LivingSheetShiftReport onClose={() => {}} />);
+    expect(html).toMatch(/<thead[^>]*>[\s\S]*shift-report-print-header/);
+    expect(html).not.toMatch(/\.ls-shift-print-header\s*\{[^}]*position:\s*fixed/);
+  });
+});
+

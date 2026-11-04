@@ -98,7 +98,7 @@ describe("LivingSheetPrint — header + static content", () => {
   it("ships print CSS with a running header, @page page-count box, and a screen-hidden root", () => {
     const html = renderToStaticMarkup(<LivingSheetPrint view={baseView()} {...OPTS} />);
     expect(html).toContain("@media print");
-    expect(html).toContain("position: fixed");
+    expect(html).toContain("table-header-group");
     expect(html).toMatch(/counter\(page\)/);
     expect(html).toMatch(/counter\(pages\)/);
     expect(html).toContain("@media screen");
@@ -154,5 +154,22 @@ describe("LivingSheetPrint — layout + handover (found by the §12 PDF inspecti
     expect(html).toContain("body > *:not(.fl-print-portal)");
     expect(html).not.toMatch(/body \* \{ visibility: hidden/);
     expect(html).toContain("fl-print-portal");
+  });
+  it("repeats the running header through a table head, not a fixed box that covers the body", () => {
+    const html = renderToStaticMarkup(<LivingSheetPrint view={baseView()} {...OPTS} />);
+    expect(html).toMatch(/<thead[^>]*>[\s\S]*living-sheet-print-header/);
+    expect(html).not.toMatch(/\.ls-print-header\s*\{[^}]*position:\s*fixed/);
+  });
+  it("ticks the box for a done step and leaves it empty for an open one", () => {
+    const step = { text: "", checkoff: "none" as const, torqueRef: null, source: null, note: null, history: [] };
+    const view = baseView({
+      steps: [
+        { ...step, id: "s1", text: "Remove guard TEST", done: true, doneBy: "A", doneAt: "2026-11-03T20:00:00.000Z" },
+        { ...step, id: "s2", text: "Torque bolts TEST", done: false, doneBy: null, doneAt: null },
+      ],
+    });
+    const html = renderToStaticMarkup(<LivingSheetPrint view={view} {...OPTS} />);
+    expect(html).toMatch(/☑<\/span>(<!-- -->)?Remove guard TEST/);
+    expect(html).toMatch(/☐<\/span>(<!-- -->)?Torque bolts TEST/);
   });
 });
