@@ -111,14 +111,24 @@ function unitAt(text: string, pos: number): string | null {
   return null;
 }
 
-const NUMBER_RE = /-?\d+(?:\.\d+)?/g;
+// F11: order matters — a comma-grouped integer ("1,200") before a plain
+// decimal ("4.8") before a leading-dot decimal (".8") before a bare integer,
+// so "1,200" is never split into "1" + "200" and ".8" is never read as "8"
+// (the leading "0." must never be dropped). `parseNumberToken` strips the
+// grouping commas before `Number()` — never truncates digits.
+const NUM_SRC = "-?(?:\\d{1,3}(?:,\\d{3})+(?:\\.\\d+)?|\\d+\\.\\d+|\\.\\d+|\\d+)";
+const NUMBER_RE = new RegExp(NUM_SRC, "g");
+
+function parseNumberToken(raw: string): number {
+  return Number(raw.replace(/,/g, ""));
+}
 
 function findNumbers(clause: string): { value: number; index: number; end: number }[] {
   const out: { value: number; index: number; end: number }[] = [];
   let m: RegExpExecArray | null;
   NUMBER_RE.lastIndex = 0;
   while ((m = NUMBER_RE.exec(clause))) {
-    out.push({ value: Number(m[0]), index: m.index, end: m.index + m[0].length });
+    out.push({ value: parseNumberToken(m[0]), index: m.index, end: m.index + m[0].length });
   }
   return out;
 }
@@ -158,14 +168,23 @@ type RawProposal = Omit<SheetProposal, "proposalId">;
 const LOTO_RE = /\b(?:lockout|lock\s*out|tagout|tagged\s*out|loto|isolat\w*|zero\s*energy|de-?energ\w*)\b/i;
 const COMPLETION_RE = /\b(?:job\s*done|all\s*done|finished\s*the\s*job|job\s*complete|it'?s\s*fixed)\b/i;
 const QUESTION_RE = /\?|(?:\bnot\s*sure\b|\bneed\s*to\s*check\b|\bdon'?t\s*know\b)/i;
+// F09: a negated completion/replacement is never treated as having happened.
+// Deliberately the narrow set from the spec, not a general negation
+// detector — "don't know" etc. already routes through QUESTION_RE.
+const NEGATION_RE = /\b(?:not|haven'?t|didn'?t|no)\b/i;
+// F10: "should be" / "spec is" / "rated" state a specification, not a
+// measurement — never a reading, never a correction, for the whole clause.
+const SPEC_RE = /\b(?:should\s+be|spec\s+is|rated)\b/i;
 const HANDOVER_START_RE = /^\s*handover:/i;
 const HANDOVER_CONTAINS_RE = /\bfor\s+next\s+shift\b|\bnext\s+shift\b/i;
 
-const CORRECTION_PATTERNS: RegExp[] = [
-  /\bi\s+meant\s+(-?\d+(?:\.\d+)?)/i,
-  /\bcorrection\s+(-?\d+(?:\.\d+)?)/i,
-  /\bnot\s+-?\d+(?:\.\d+)?\s*,\s*(-?\d+(?:\.\d+)?)/i,
-  /\bshould\s+be\s+(-?\d+(?:\.\d+)?)/i,
+// F10: the trigger word may be followed by a named quantity ("I meant motor
+// current 4.8 A") before the number — `(?:[a-z][a-z\s]*?\s+)?` optionally,
+// lazily, consumes it so the number group still lands on the real value.
+const CORRECTION_TRIGGERS: { re: RegExp; oldGroup: number | null; newGroup: number }[] = [
+  { re: new RegExp(`\\bi\\s+meant\\s+(?:[a-z][a-z\\s]*?\\s+)?(${NUM_SRC})`, "i"), oldGroup: null, newGroup: 1 },
+  { re: new RegExp(`\\bcorrection\\s+(?:[a-z][a-z\\s]*?\\s+)?(${NUM_SRC})`, "i"), oldGroup: null, newGroup: 1 },
+  { re: new RegExp(`\\bnot\\s+(${NUM_SRC})\\s*,\\s*(${NUM_SRC})`, "i"), oldGroup: 1, newGroup: 2 },
 ];
 
 const STEP_NOT_DONE_PATTERNS: RegExp[] = [/\bstep\s+(\d+)\s+not\s+done\b/i, /\bundo\s+step\s+(\d+)\b/i];
@@ -178,15 +197,55 @@ const STEP_DONE_PATTERNS: RegExp[] = [
 const PART_RE = /\b(will replace|going to replace|need to replace|need a new|replaced|swapped|changed out|put in a new)\s+([^.,!?\n]+)/i;
 const PLANNED_PHRASES = new Set(["will replace", "going to replace", "need to replace", "need a new"]);
 
+/** F10: picks the reading whose named quantity (e.g. "motor current") is
+ *  uniquely best-matched by the clause's words — same scoring discipline as
+ *  `deriveWhat`. Returns null (not a guess) when no reading scores above 0
+ *  or two readings tie for the top score. */
+function bestQuantityMatch(clause: string, readings: SheetView["readings"]): SheetView["readings"][number] | null {
+  const clauseWords = new Set(wordsOf(clause));
+  let best: { r: SheetView["readings"][number]; score: number } | null = null;
+  let tiedAtBest = 0;
+  for (const r of readings) {
+    const score = wordsOf(r.what).filter((w) => clauseWords.has(w)).length;
+    if (score <= 0) continue;
+    if (!best || score > best.score) {
+      best = { r, score };
+      tiedAtBest = 1;
+    } else if (score === best.score) {
+      tiedAtBest += 1;
+    }
+  }
+  return best && tiedAtBest === 1 ? best.r : null;
+}
+
+/** F10: never guesses. Precedence: (1) a named quantity that uniquely
+ *  matches one reading, (2) a stated old value that uniquely matches one
+ *  reading's current value (optionally narrowed by unit), (3) the old
+ *  unit-or-differs-by-value heuristic, but ONLY when it is unambiguous —
+ *  previously this fell back to "most recently updated", which could pick
+ *  the wrong reading of the same unit. Any tie or zero match -> null. */
 function findCorrectionTarget(
+  clause: string,
   view: SheetView,
+  oldValue: number | null,
   unit: string | null,
   newValue: number,
 ): SheetView["readings"][number] | null {
   if (view.readings.length === 0) return null;
+
+  const byQuantity = bestQuantityMatch(clause, view.readings);
+  if (byQuantity) return byQuantity;
+
+  if (oldValue !== null) {
+    const byOld = view.readings.filter(
+      (r) => r.current.value === oldValue && (unit === null || r.current.unit === unit),
+    );
+    if (byOld.length === 1) return byOld[0]!;
+    if (byOld.length > 1) return null; // ambiguous old-value match -- never guess
+  }
+
   const pool = unit ? view.readings.filter((r) => r.current.unit === unit) : view.readings.filter((r) => r.current.value !== newValue);
-  if (pool.length === 0) return null;
-  return pool.reduce((a, b) => (a.current.at >= b.current.at ? a : b));
+  return pool.length === 1 ? pool[0]! : null;
 }
 
 function classifyClause(clause: string, view: SheetView): RawProposal[] {
@@ -224,14 +283,24 @@ function classifyClause(clause: string, view: SheetView): RawProposal[] {
     ];
   }
 
-  // 3. Correction — a number near "i meant" / "correction" / "not X, Y" / "should be".
-  for (const re of CORRECTION_PATTERNS) {
-    const m = re.exec(trimmed);
+  // 3. Specification language — "should be"/"spec is"/"rated" names a spec
+  // value, not a measurement: never a reading, never a correction (F10).
+  if (SPEC_RE.test(trimmed)) return [];
+
+  // F09: computed once — a question or a negation of done/replaced must
+  // never produce a step_marked(done=true) or part_logged(replaced) below.
+  const isQuestion = QUESTION_RE.test(trimmed);
+  const isNegated = NEGATION_RE.test(trimmed);
+
+  // 4. Correction — a number near "i meant" / "correction" / "not X, Y".
+  for (const trig of CORRECTION_TRIGGERS) {
+    const m = trig.re.exec(trimmed);
     if (!m) continue;
-    const newValue = Number(m[1]);
+    const newValue = parseNumberToken(m[trig.newGroup]!);
+    const oldValue = trig.oldGroup != null ? parseNumberToken(m[trig.oldGroup]!) : null;
     const unitEnd = m.index + m[0].length;
     const unit = unitAt(trimmed, unitEnd);
-    const target = findCorrectionTarget(view, unit, newValue);
+    const target = findCorrectionTarget(trimmed, view, oldValue, unit, newValue);
     if (!target) return [];
     const finalUnit = unit ?? target.current.unit;
     const reason = `Changes ${target.what} from ${target.current.value} ${target.current.unit} to ${newValue} ${finalUnit} (${target.current.value} ${target.current.unit} stays in history)`;
@@ -248,7 +317,7 @@ function classifyClause(clause: string, view: SheetView): RawProposal[] {
     ];
   }
 
-  // 4. Step marked — "not done"/"undo" before plain "done" (disjoint patterns, but be explicit).
+  // 5. Step marked — "not done"/"undo" before plain "done" (disjoint patterns, but be explicit).
   for (const re of STEP_NOT_DONE_PATTERNS) {
     const m = re.exec(trimmed);
     if (!m) continue;
@@ -264,7 +333,10 @@ function classifyClause(clause: string, view: SheetView): RawProposal[] {
       },
     ];
   }
-  for (const re of STEP_DONE_PATTERNS) {
+  // F09: "Is step 1 done?" / "I have not done step 1" must not become
+  // step_marked(done=true) — skip this pattern (falls through to
+  // Question/Fallback below) rather than returning.
+  for (const re of isQuestion || isNegated ? [] : STEP_DONE_PATTERNS) {
     const m = re.exec(trimmed);
     if (!m) continue;
     const n = Number(m[1]);
@@ -284,9 +356,10 @@ function classifyClause(clause: string, view: SheetView): RawProposal[] {
     ];
   }
 
-  // 5. Parts.
+  // 6. Parts. F09: a question or negation ("Have we replaced the seal?",
+  // "we have not replaced the seal") never logs a replacement/plan.
   {
-    const m = PART_RE.exec(trimmed);
+    const m = isQuestion || isNegated ? null : PART_RE.exec(trimmed);
     if (m) {
       const phrase = m[1].toLowerCase();
       const item = m[2].trim();
@@ -305,7 +378,7 @@ function classifyClause(clause: string, view: SheetView): RawProposal[] {
     }
   }
 
-  // 6. Handover.
+  // 7. Handover.
   if (HANDOVER_START_RE.test(trimmed) || HANDOVER_CONTAINS_RE.test(trimmed)) {
     return [
       {
@@ -317,8 +390,8 @@ function classifyClause(clause: string, view: SheetView): RawProposal[] {
     ];
   }
 
-  // 7. Question.
-  if (QUESTION_RE.test(trimmed)) {
+  // 8. Question.
+  if (isQuestion) {
     return [
       {
         event: { kind: "note_added", payload: { noteId: "", text: trimmed, noteKind: "question" as NoteKind } },
@@ -329,7 +402,7 @@ function classifyClause(clause: string, view: SheetView): RawProposal[] {
     ];
   }
 
-  // 8/9. Reading(s), or a number with no recognizable unit.
+  // 9/10. Reading(s), or a number with no recognizable unit.
   const numbers = findNumbers(trimmed);
   if (numbers.length > 0) {
     const readingProposals: RawProposal[] = [];
@@ -365,7 +438,7 @@ function classifyClause(clause: string, view: SheetView): RawProposal[] {
     ];
   }
 
-  // 10. Fallback.
+  // 11. Fallback.
   const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
   if (wordCount >= 3) {
     return [
@@ -389,26 +462,39 @@ function splitClauses(text: string): string[] {
 }
 
 /** Stamps a deterministic id, and any payload sub-id this proposal's event
- *  needs, onto a raw classification result — keyed on (jobId, text, index). */
-function stamp(raw: RawProposal, jobId: string, text: string, index: number): SheetProposal {
-  const proposalId = hashHex(["proposal", jobId, text, index]).slice(0, 32);
+ *  needs, onto a raw classification result — keyed on (jobId, text, index,
+ *  turnId). F08: `turnId` (the chat message/turn id, when the caller has
+ *  one) joins the key so the SAME words in two SEPARATE turns hash to two
+ *  distinct ids — the store's dedup-by-id (store.ts) must never collapse a
+ *  later, genuinely new turn into "already exists" and drop it from the
+ *  queue. Replaying the SAME turn (same turnId) is still idempotent: the
+ *  key is unchanged, so the id is unchanged. `turnId` is optional only for
+ *  back-compat with callers that have none yet — omitting it reproduces the
+ *  pre-fix (collision-prone) keying, so every real caller should pass one. */
+function stamp(raw: RawProposal, jobId: string, text: string, index: number, turnId?: string): SheetProposal {
+  const turnKey = turnId ?? null;
+  const proposalId = hashHex(["proposal", jobId, text, index, turnKey]).slice(0, 32);
   const event = raw.event;
   let payload: SheetProposal["event"]["payload"] = event.payload;
   if (event.kind === "reading_recorded") {
-    payload = { ...(event.payload as ReadingRecordedPayload), readingId: uuidFrom(["reading", jobId, text, index]) };
+    payload = { ...(event.payload as ReadingRecordedPayload), readingId: uuidFrom(["reading", jobId, text, index, turnKey]) };
   } else if (event.kind === "note_added") {
-    payload = { ...(event.payload as NoteAddedPayload), noteId: uuidFrom(["note", jobId, text, index]) };
+    payload = { ...(event.payload as NoteAddedPayload), noteId: uuidFrom(["note", jobId, text, index, turnKey]) };
   } else if (event.kind === "part_logged") {
-    payload = { ...(event.payload as PartLoggedPayload), partEntryId: uuidFrom(["part", jobId, text, index]) };
+    payload = { ...(event.payload as PartLoggedPayload), partEntryId: uuidFrom(["part", jobId, text, index, turnKey]) };
   }
   return { proposalId, event: { ...event, payload } as SheetProposal["event"], risk: raw.risk, reason: raw.reason, quote: raw.quote };
 }
 
 /**
- * Pure. Same `techText` + same `view` -> same proposals. Reads only the
- * technician's words (`techText`); never MIRA's answer.
+ * Pure. Same `techText` + same `view` + same `turnId` -> same proposals.
+ * Reads only the technician's words (`techText`); never MIRA's answer.
+ *
+ * `turnId` (F08) is the chat message/turn identity available to the caller
+ * (`withSheetReceipt`'s `SheetReceiptContext.turnId`) — it must be stable
+ * across a retry of the SAME turn and distinct across two SEPARATE turns.
  */
-export function proposeSheetUpdates(techText: string, view: SheetView): SheetProposal[] {
+export function proposeSheetUpdates(techText: string, view: SheetView, turnId?: string): SheetProposal[] {
   const clauses = splitClauses(techText);
   const raw: RawProposal[] = [];
   for (const clause of clauses) {
@@ -416,7 +502,7 @@ export function proposeSheetUpdates(techText: string, view: SheetView): SheetPro
     if (raw.length >= MAX_PROPOSALS) break;
   }
   const capped = raw.slice(0, MAX_PROPOSALS);
-  return capped.map((r, i) => stamp(r, view.jobId, techText, i));
+  return capped.map((r, i) => stamp(r, view.jobId, techText, i, turnId));
 }
 
 // Re-exported for receipt.ts / route tests that need the event-kind shape.

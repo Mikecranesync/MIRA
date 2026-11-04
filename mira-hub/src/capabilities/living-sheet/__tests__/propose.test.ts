@@ -113,6 +113,31 @@ describe("Reading", () => {
       expect(payload.value).toBe(value);
     }
   });
+
+  // F11 — numeric parsing never truncates a number.
+  it("'.8 A' -> 0.8 A, not 8 A (leading-dot decimal is never dropped)", () => {
+    const proposals = proposeSheetUpdates("leak test .8 A", emptyView());
+    const reading = proposals.find((p) => p.event.kind === "reading_recorded");
+    expect(reading).toBeDefined();
+    expect((reading!.event.payload as ReadingRecordedPayload).value).toBe(0.8);
+    expect((reading!.event.payload as ReadingRecordedPayload).unit).toBe("A");
+  });
+
+  it("'1,200 A' -> 1200 A, not the truncated fragment 200 A", () => {
+    const proposals = proposeSheetUpdates("inrush current 1,200 A", emptyView());
+    const reading = proposals.find((p) => p.event.kind === "reading_recorded");
+    expect(reading).toBeDefined();
+    expect((reading!.event.payload as ReadingRecordedPayload).value).toBe(1200);
+    expect((reading!.event.payload as ReadingRecordedPayload).unit).toBe("A");
+  });
+
+  it("'0.8A' (no space) still works", () => {
+    const proposals = proposeSheetUpdates("leak test 0.8A", emptyView());
+    const reading = proposals.find((p) => p.event.kind === "reading_recorded");
+    expect(reading).toBeDefined();
+    expect((reading!.event.payload as ReadingRecordedPayload).value).toBe(0.8);
+    expect((reading!.event.payload as ReadingRecordedPayload).unit).toBe("A");
+  });
 });
 
 describe("No unit", () => {
@@ -128,7 +153,7 @@ describe("No unit", () => {
 });
 
 describe("Correction", () => {
-  it("'I meant 4.8' corrects the most recent reading whose value differs", () => {
+  it("'I meant 4.8' corrects the only reading whose value differs (no quantity/old-value needed when unambiguous)", () => {
     const view = viewWithReading();
     const proposals = proposeSheetUpdates("I meant 4.8", view);
     expect(proposals).toHaveLength(1);
@@ -156,15 +181,63 @@ describe("Correction", () => {
     expect((proposals[0]!.event.payload as { value: number }).value).toBe(4.8);
   });
 
-  it("'should be 4.8 A' corrects by unit", () => {
-    const view = viewWithReading();
-    const proposals = proposeSheetUpdates("should be 4.8 A", view);
-    expect(proposals[0]!.event.kind).toBe("reading_corrected");
-  });
-
   it("no readings -> no correction proposal", () => {
     const proposals = proposeSheetUpdates("I meant 4.8", emptyView());
     expect(proposals).toHaveLength(0);
+  });
+
+  // F10 — "should be X" / "spec is X" / "rated X" states a specification,
+  // not a measurement: no reading, no correction, for the whole clause.
+  it("'should be 4.8 A' is a specification -> no reading, no correction", () => {
+    const view = viewWithReading();
+    expect(proposeSheetUpdates("should be 4.8 A", view)).toHaveLength(0);
+  });
+
+  it("'spec is 5 A' / 'rated 5 A' are specifications -> no proposal", () => {
+    const view = viewWithReading();
+    for (const text of ["spec is 5 A", "rated 5 A"]) {
+      expect(proposeSheetUpdates(text, view), text).toHaveLength(0);
+    }
+  });
+
+  // F10 — targets the reading whose NAMED QUANTITY matches, not just the
+  // most-recently-updated reading sharing a unit.
+  function viewWithTwoAmpReadings() {
+    const base = started();
+    const motor = ev(
+      "reading_recorded",
+      { readingId: "22222222-2222-4222-8222-222222222222", what: "motor current", value: 48, unit: "A", source: { kind: "tech", ref: null } },
+      { occurredAt: T0, recordedAt: T0 },
+    );
+    const brake = ev(
+      "reading_recorded",
+      { readingId: "33333333-3333-4333-8333-333333333333", what: "brake current", value: 30, unit: "A", source: { kind: "tech", ref: null } },
+      { occurredAt: T1, recordedAt: T1 }, // brake is the MORE RECENT of the two -- the old "most recent" heuristic would wrongly pick it
+    );
+    return reduceSheet([base, motor, brake], JOB_ID);
+  }
+
+  it("'I meant motor current 4.8 A' corrects motor current only, not the more-recently-updated brake current", () => {
+    const view = viewWithTwoAmpReadings();
+    const proposals = proposeSheetUpdates("I meant motor current 4.8 A", view);
+    expect(proposals).toHaveLength(1);
+    const payload = proposals[0]!.event.payload as { readingId: string; value: number };
+    expect(payload.readingId).toBe("22222222-2222-4222-8222-222222222222"); // motor current
+    expect(payload.value).toBe(4.8);
+  });
+
+  it("ambiguous target (same unit, no named quantity, no stated old value) -> propose nothing, never guess", () => {
+    const view = viewWithTwoAmpReadings();
+    expect(proposeSheetUpdates("I meant 4.8 A", view)).toHaveLength(0);
+  });
+
+  it("a stated old value disambiguates even without naming the quantity", () => {
+    const view = viewWithTwoAmpReadings();
+    const proposals = proposeSheetUpdates("not 48, 4.8", view);
+    expect(proposals).toHaveLength(1);
+    const payload = proposals[0]!.event.payload as { readingId: string; value: number };
+    expect(payload.readingId).toBe("22222222-2222-4222-8222-222222222222"); // the reading whose OLD value was 48
+    expect(payload.value).toBe(4.8);
   });
 });
 
@@ -194,6 +267,42 @@ describe("Step done", () => {
       const payload = proposals[0]!.event.payload as { done: boolean };
       expect(payload.done).toBe(false);
       expect(proposals[0]!.risk).toBe("needs_tap");
+    }
+  });
+});
+
+// F09 — questions and negations about completion/replacement must never
+// become an affirmative work proposal (step_marked done=true, or
+// part_logged replaced). A plain question may still become an open
+// question (the proposer already does that for "?"); a negation with no
+// other trigger just falls through to the generic fallback note.
+describe("Questions and negations never become work proposals", () => {
+  it("'Is step 1 done?' -> no step_marked; becomes an open question", () => {
+    const proposals = proposeSheetUpdates("Is step 1 done?", emptyView());
+    for (const p of proposals) expect(p.event.kind).not.toBe("step_marked");
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0]!.event.kind).toBe("note_added");
+    expect((proposals[0]!.event.payload as { noteKind: string }).noteKind).toBe("question");
+  });
+
+  it("'I have not done step 1' -> no step_marked at all (not even done=false)", () => {
+    const proposals = proposeSheetUpdates("I have not done step 1", emptyView());
+    for (const p of proposals) expect(p.event.kind).not.toBe("step_marked");
+  });
+
+  it("'Have we replaced the seal?' -> no part_logged; becomes an open question", () => {
+    const proposals = proposeSheetUpdates("Have we replaced the seal?", emptyView());
+    for (const p of proposals) expect(p.event.kind).not.toBe("part_logged");
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0]!.event.kind).toBe("note_added");
+    expect((proposals[0]!.event.payload as { noteKind: string }).noteKind).toBe("question");
+  });
+
+  it("'did we replace the bearing' -> no part_logged (no work proposal)", () => {
+    const proposals = proposeSheetUpdates("did we replace the bearing", emptyView());
+    for (const p of proposals) {
+      expect(p.event.kind).not.toBe("part_logged");
+      expect(p.event.kind).not.toBe("step_marked");
     }
   });
 });
@@ -328,6 +437,26 @@ describe("Determinism", () => {
     const proposals = proposeSheetUpdates("done step 1. replaced the seal.", emptyView());
     expect(proposals.length).toBeGreaterThanOrEqual(2);
     expect(proposals[0]!.proposalId).not.toBe(proposals[1]!.proposalId);
+  });
+
+  // F08 — proposal (and payload sub-) ids include the turn identity, so the
+  // SAME words in two SEPARATE turns produce two DISTINCT proposals, while
+  // replaying the SAME turn stays idempotent.
+  it("same text + same view + same turnId -> same proposal AND payload ids (idempotent replay)", () => {
+    const view = viewWithReading();
+    const a = proposeSheetUpdates("motor current 48 A", view, "turn-1");
+    const b = proposeSheetUpdates("motor current 48 A", view, "turn-1");
+    expect(a).toEqual(b);
+  });
+
+  it("same text + same view, DIFFERENT turnId -> distinct proposal AND readingId", () => {
+    const view = viewWithReading();
+    const a = proposeSheetUpdates("motor current 48 A", view, "turn-1");
+    const b = proposeSheetUpdates("motor current 48 A", view, "turn-2");
+    expect(a[0]!.proposalId).not.toBe(b[0]!.proposalId);
+    const aPayload = a[0]!.event.payload as ReadingRecordedPayload;
+    const bPayload = b[0]!.event.payload as ReadingRecordedPayload;
+    expect(aPayload.readingId).not.toBe(bPayload.readingId);
   });
 });
 

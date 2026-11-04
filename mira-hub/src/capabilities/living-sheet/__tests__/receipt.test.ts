@@ -130,6 +130,16 @@ describe("withSheetReceipt", () => {
     expect(loadJobMock).not.toHaveBeenCalled();
   });
 
+  // F08 — the turn identity on the context must reach the proposer, so a
+  // SEPARATE turn with identical words gets distinct proposal/payload ids.
+  it("passes ctx.turnId through to proposeSheetUpdates", async () => {
+    loadJobMock.mockResolvedValue({ status: "ok", view: SOME_VIEW });
+    proposeSheetUpdatesMock.mockReturnValue([]);
+    const res = new Response(streamOf(["data: [DONE]\n\n"]), { status: 200 });
+    await withSheetReceipt(res, { ...CTX, turnId: "turn-abc-123" });
+    expect(proposeSheetUpdatesMock).toHaveBeenCalledWith(CTX.techText, SOME_VIEW, "turn-abc-123");
+  });
+
   it("preserves status and headers on the wrapped response", async () => {
     loadJobMock.mockResolvedValue({ status: "ok", view: SOME_VIEW });
     proposeSheetUpdatesMock.mockReturnValue([]);
