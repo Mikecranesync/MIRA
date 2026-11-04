@@ -110,6 +110,6 @@ describe("F2 — an all-caps instruction inside a standalone WARNING is kept", (
   it("control: the address block under the warning is still not part of it", () => {
     const w = warning(run(BASE));
     expect(w!.value).not.toMatch(/PUMPS EUROPE|Harbour Road/);
-    expect(w!.label).toBe("verified");
+    expect(w!.label).toBe("proposed"); // round 3: an uncertain end is never Verified
   });
 });

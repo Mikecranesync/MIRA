@@ -380,9 +380,9 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
       })
       .map((c) => ({
         value: c.text,
-        label: "verified" as const,
+        label: c.uncertainEnd ? ("proposed" as const) : ("verified" as const),
         source: c.source,
-        basis: `${c.kind} — ${p.doc.filename ?? p.doc.docId}`,
+        basis: `${c.kind} — ${p.doc.filename ?? p.doc.docId}${c.uncertainEnd ? ` — ${c.uncertainEnd}` : ""}`,
       })),
   );
   // A caution the parser could not read in full is listed in Safety as unknown, never dropped.

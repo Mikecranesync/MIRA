@@ -266,10 +266,14 @@ function hasNoLowercase(line: string): boolean {
  *  address block printed below it: they open with an instruction word, or the run of all-caps
  *  lines ends a sentence (Codex review F2). */
 const CAPS_INSTRUCTION_START_RE = /^(?:DO NOT|DON'T|NEVER|ALWAYS|STOP|BEFORE|AFTER|KEEP|WEAR|USE|CHECK|MAKE SURE)\b/;
+const COMPANY_SUFFIX_END_RE = /\b(?:LTD|INC|CO|CORP|LLC|GMBH|S\.\s?A|N\.\s?V|B\.\s?V|S\.\s?R\.\s?L|A\.\s?G)\.$/;
 function capsStatementAt(lines: string[], j: number, maxLines: number): boolean {
   if (CAPS_INSTRUCTION_START_RE.test(lines[j])) return true;
   for (let k = j; k < lines.length && k - j < maxLines && lines[k].length > 0 && hasNoLowercase(lines[k]) && !isHardFurniture(lines[k]); k++) {
-    if (/[.!]$/.test(lines[k])) return true;
+    // "CAT PUMPS (U.K.) LTD." — a company suffix's full stop does not end a sentence.
+    if (/[.!]$/.test(lines[k]) && !COMPANY_SUFFIX_END_RE.test(lines[k])) return true;
+    // "HIGH PRESSURE FLUID CAN PENETRATE / the skin and cause …": the sentence runs on in lower case.
+    if (k + 1 < lines.length && /^[a-z]/.test(lines[k + 1])) return true;
   }
   return false;
 }
@@ -455,6 +459,16 @@ function flushSection(open: OpenSection | null, sections: SmSection[], problems:
     });
     return;
   }
+  // A block whose first printed step is not 1 lost its opening steps in extraction: it is not the
+  // whole block, so it is left out and counted as not read (Codex review F10). stepsSeen covers
+  // the missing numbers: a block starting at step 2 had at least 2 steps.
+  if (nums.length > 0 && nums[0] !== 1) {
+    const where = `${open.heading}${open.subheading ? " — " + open.subheading : ""}`;
+    const reason = `the first step read is step ${nums[0]} — steps 1–${nums[0] - 1} could not be read; steps omitted rather than shown in part`;
+    problems.push(`page ${open.page}: "${where}": ${reason}`);
+    omitted.push({ heading: open.heading, subheading: open.subheading, topic: open.topic, models: open.models, page: open.page, source: open.steps[0].source, reason, stepsSeen });
+    return;
+  }
   sections.push({
     heading: open.heading,
     subheading: open.subheading,
@@ -589,6 +603,11 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
         // A standalone heading that ended at an all-caps line (the address block) is complete: that
         // line is not its continuation. One cut off by the line cap still fails closed below.
         const endedAtCaps = standalone && !openCaps && j < lines.length && (capsEnds(j) || isHardFurniture(lines[j]));
+        // The capitals line below may be the address block or more of the warning; this tool cannot
+        // tell, so the warning is shown but not as Verified (Codex review F2, round 3).
+        if (endedAtCaps && !isHardFurniture(lines[j])) {
+          caution.uncertainEnd = `the line right below it ("${lines[j].slice(0, 50)}", p.${pg.page}) is in capitals and may be part of it — read the end of this ${kind} in the manual`;
+        }
         lastBlock = endedAtCaps ? null : { kind: "caution", caution, text: cautionText };
         i = j - 1;
         continue;

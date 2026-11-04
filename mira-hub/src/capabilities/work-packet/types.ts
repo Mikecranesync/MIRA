@@ -208,6 +208,9 @@ export interface SmCaution {
   kind: "CAUTION" | "WARNING" | "NOTE" | "IMPORTANT";
   text: string;
   source: SourceRef;
+  /** Set when the text ended at an all-capitals line this tool cannot tell apart from the page's
+   *  address block: the caution is shown, but not as Verified (Codex review F2, round 3). */
+  uncertainEnd?: string;
   /** The procedure block the caution is printed inside (V2): section heading/subheading, the block's
    *  model scope, and the number of the last step printed before it (null = before the first step).
    *  Absent when the caution sits outside any procedure section. */

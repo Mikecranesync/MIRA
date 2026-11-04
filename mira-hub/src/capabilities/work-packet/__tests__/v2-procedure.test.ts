@@ -191,7 +191,7 @@ describe("D6 — a clear hazard analysis and only the torque values the steps us
     );
     const p = build("8520", undefined, manual(text));
     expect(p.safety.cautions.some((c) => c.label === "unknown" && /^NOTE on p\.2 .*could not be placed/.test(c.basis))).toBe(true);
-    expect(p.jha?.every((r) => r.hazard.label === "verified" && /^(Before any service|Every system needs)/.test(r.hazard.value ?? ""))).toBe(true);
+    expect(p.jha?.every((r) => r.hazard.label !== "unknown" && /^(Before any service|Every system needs)/.test(r.hazard.value ?? ""))).toBe(true);
     expect(p.jha?.length).toBe(2);
   });
   it("control: a CAUTION the parser could not read is still a hazard row (unknown)", () => {
@@ -285,11 +285,14 @@ describe("EGM round 1 — findings reproduced on the fixture", () => {
     expect(p.scope.map((s) => s.value)).toEqual(["seals"]);
     expect(texts(p).some((t) => /limiter/i.test(t))).toBe(false);
   });
-  it("F05: a standalone WARNING heading is read, kept Verified, and is a hazard row", () => {
+  // Codex review round 3 (F2): the capitals line below this WARNING may be the address block or more
+  // of the warning, so it is shown in full as far as read, but Proposed with the reason, not Verified.
+  it("F05: a standalone WARNING heading is read, shown (not Verified: its end is uncertain), and is a hazard row", () => {
     const p = build("8520");
     const w = p.safety.cautions.find((c) => (c.value ?? "").startsWith("Every system needs a pressure-limiting device"));
     expect(w).toBeDefined();
-    expect(w!.label).toBe("verified");
+    expect(w!.label).toBe("proposed");
+    expect(w!.basis).toMatch(/85V PUMPS EUROPE BV.*may be part of it/);
     expect(w!.value).toBe("Every system needs a pressure-limiting device and a separate relief device on the outlet side. Without them the pump or the hose can burst.");
     expect(p.jha?.some((r) => r.hazard.value === w!.value)).toBe(true);
   });

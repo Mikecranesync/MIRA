@@ -80,3 +80,47 @@ describe("F9 — a NOTE before a section's first sub-heading is kept", () => {
     expect(JSON.stringify(run(BASE))).not.toContain(TEXT);
   });
 });
+
+describe("Round 3 — F2: a WARNING whose end cannot be told apart is never shown Verified", () => {
+  const warning = (p: WorkPacket) => p.safety.cautions.find((c) => (c.value ?? "").startsWith("Every system needs a pressure-limiting device"));
+  const unpunct = BASE.replace("Without them the pump or the hose can burst.", "HIGH PRESSURE FLUID CAN PENETRATE\nTHE SKIN AND CAUSE SERIOUS INJURY");
+  const mixed = BASE.replace("Without them the pump or the hose can burst.", "HIGH PRESSURE FLUID CAN PENETRATE\nthe skin and cause serious injury.");
+  it("precondition: both variants are in the fixture", () => {
+    expect(unpunct).not.toBe(BASE);
+    expect(mixed).not.toBe(BASE);
+  });
+  it("an unpunctuated capitals hazard: the warning is shown but not Verified, with the reason", () => {
+    const w = warning(run(unpunct))!;
+    expect(w.label).not.toBe("verified");
+    expect(w.basis).toMatch(/HIGH PRESSURE FLUID CAN PENETRATE.*may be part of it/);
+  });
+  it("a capitals opening that runs on in lower case is kept whole", () => {
+    expect(warning(run(mixed))!.value).toContain("HIGH PRESSURE FLUID CAN PENETRATE the skin and cause serious injury.");
+  });
+  it("a company line ending in a suffix ('… LTD.') is not read as a capitals sentence: the warning is kept", () => {
+    const ltd = BASE.replace("85V PUMPS EUROPE BV", "85V PUMPS (U.K.) LTD.");
+    expect(ltd).not.toBe(BASE);
+    const w = warning(run(ltd));
+    expect(w).toBeDefined();
+    expect(w!.value).toContain("Without them the pump or the hose can burst.");
+    expect(w!.value).not.toMatch(/LTD|Harbour Road/);
+    expect(w!.label).toBe("proposed");
+  });
+  it("control: a warning that ends at the page break stays Verified", () => {
+    const plain = BASE.replace("85V PUMPS EUROPE BV\nHarbour Road 12, Rotterdam\n", "");
+    expect(plain).not.toBe(BASE);
+    expect(warning(run(plain))!.label).toBe("verified");
+  });
+});
+
+describe("Round 3 — F10: a block that starts above step 1 is not read whole", () => {
+  const noFirst = BASE.replace("REMOVING THE OUTLET HEAD\n1. Remove the eight (8) head screws.\n", "REMOVING THE OUTLET HEAD\n");
+  it("precondition: step 1 of the outlet removal is gone", () => expect(noFirst).not.toBe(BASE));
+  it("reports incomplete coverage, names the block, and shows nothing Verified", () => {
+    const p = run(noFirst);
+    expect(p.coverage!.complete).toBe(false);
+    expect(p.coverage!.sections.find((s) => s.heading === "REMOVING THE OUTLET HEAD")?.status).not.toBe("read");
+    expect(verifiedSteps(p)).toEqual([]);
+  });
+  it("control: the base manual is complete", () => expect(run(BASE).coverage!.complete).toBe(true));
+});
