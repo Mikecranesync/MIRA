@@ -96,6 +96,9 @@ import { relevantQuoteWindow } from "@/lib/quote-window";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import { authorizeGuidedDeadEnd, guidedProcedureEnabled } from "@/capabilities/guided-procedure-store";
+import { isUuid } from "@/capabilities/fix-records";
+import { livingSheetEnabled } from "@/capabilities/living-sheet/flag";
+import { withSheetReceipt, type SheetReceiptContext } from "@/capabilities/living-sheet/receipt";
 import {
   abandonNotebookTurnRequest,
   claimNotebookTurnRequest,
@@ -5485,6 +5488,24 @@ export async function POST(req: NextRequest, routeCtx: { params: Promise<{ id: s
   // from every assertion while leaving the tenant index unreliable. The arrival
   // row has no tenant because at arrival there is no tenant.
   const arrival = recordArrival({ ...ingress });
+  // TASK-S2 — $0 deterministic sheet-receipt. Read defensively off a CLONE
+  // (handleChatTurn below still does the real `req.json()`); any failure here
+  // just means no receipt frame, never a broken turn. Session is re-derived
+  // independently (never a body-supplied tenant).
+  let sheetReceiptCtx: SheetReceiptContext | null = null;
+  if (livingSheetEnabled() && notebookId) {
+    try {
+      const b = await req.clone().json();
+      const text = typeof b?.message === "string" ? b.message.trim() : "";
+      const jobId = b?.livingSheetJobId;
+      if (text && typeof jobId === "string" && isUuid(jobId)) {
+        const sctx = await sessionOr401();
+        if (!(sctx instanceof NextResponse)) sheetReceiptCtx = { tenantId: sctx.tenantId, notebookId, jobId, techText: text };
+      }
+    } catch {
+      sheetReceiptCtx = null;
+    }
+  }
   if (wantsProgress(req)) {
     // #4687: headers go out now; the turn runs behind the open stream. The
     // accounting below runs when the turn actually finishes, with its real
@@ -5494,7 +5515,7 @@ export async function POST(req: NextRequest, routeCtx: { params: Promise<{ id: s
       try {
         const inner = await handleChatTurn(req, routeCtx, ingress);
         innerStatus = inner.status;
-        return inner;
+        return sheetReceiptCtx ? await withSheetReceipt(inner, sheetReceiptCtx) : inner;
       } catch (err) {
         ingress.closeOnUnhandled?.("error");
         throw err;
@@ -5511,7 +5532,7 @@ export async function POST(req: NextRequest, routeCtx: { params: Promise<{ id: s
   try {
     const res = await handleChatTurn(req, routeCtx, ingress);
     status = res.status;
-    return res;
+    return sheetReceiptCtx ? await withSheetReceipt(res, sheetReceiptCtx) : res;
   } catch (err) {
     // A throw that escaped every `endRoot` would leave the start record open
     // until the reconciler swept it — reported as `abandoned` when it was in
