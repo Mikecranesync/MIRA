@@ -84,7 +84,8 @@ describe("readinessSummary — any blocker or unknown means 'needs review'; it i
     expect(s.lines.join(" ")).not.toMatch(/safe|ready for service|return(ed)? to service is (approved|authorized)/i);
   });
   it("control: even with nothing open it stays a draft until a supervisor approves", () => {
-    const p = { ...packet(), blockers: [], unknowns: [], safety: { ...packet().safety, cautions: packet().safety.cautions.filter((c) => c.label !== "unknown") } };
+    // Qualifications and return-to-service acceptance limits are open items too (Codex EGM F18).
+    const p = { ...packet(), blockers: [], unknowns: [], qualifications: [], restoration: [], safety: { ...packet().safety, cautions: packet().safety.cautions.filter((c) => c.label !== "unknown") } };
     const s = readinessSummary(p);
     expect(s.status).toBe("draft");
     expect(s.lines.some((l) => /supervisor approval: pending/i.test(l))).toBe(true);

@@ -99,8 +99,8 @@ export function CoverageStop({ packet }: { packet: WorkPacket }) {
 }
 
 /** What is still open, before anything else. Never says the equipment is safe or ready for service. */
-export function ReadinessBlock({ packet }: { packet: WorkPacket }) {
-  const r = readinessSummary(packet);
+export function ReadinessBlock({ packet, record }: { packet: WorkPacket; record?: JobRecord | null }) {
+  const r = readinessSummary(packet, record);
   return (
     <section style={{ ...S.section, ...(r.status === "needs_review" ? S.review : S.draft) }} data-testid="wp-readiness">
       <strong>{r.status === "needs_review" ? "Needs review before work starts." : "Draft — not approved for field use."}</strong>

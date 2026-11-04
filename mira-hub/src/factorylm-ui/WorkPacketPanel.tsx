@@ -231,12 +231,17 @@ export function FieldRow({
 }: {
   path: string;
   field: Field;
-  onEdit: (path: string, action: EditAction, value?: string) => void;
+  onEdit: (path: string, action: EditAction, value?: string, source?: string) => void;
   onOpenSource?: (source: SourceRef) => void;
   busy: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(field.value ?? "");
+  // Settle (Codex EGM F17): the answer to an open item and where it came from — both required.
+  const [settling, setSettling] = useState(false);
+  const [answer, setAnswer] = useState("");
+  const [from, setFrom] = useState("");
+  const canSettle = field.label === "unknown" && !field.struck;
   const [expanded, setExpanded] = useState(false);
   const chip = sourceChipLabel(field.source);
   const entry = technicianEntryNote(field);
@@ -268,7 +273,14 @@ export function FieldRow({
           {field.source!.line}
         </blockquote>
       )}
-      {editing ? (
+      {settling ? (
+        <div data-no-print data-testid="wp-settle-form">
+          <input aria-label="Answer" style={S.input} value={answer} onChange={(e) => setAnswer(e.target.value)} placeholder="Answer" />
+          <input aria-label="Where the answer came from" style={S.input} value={from} onChange={(e) => setFrom(e.target.value)} placeholder="Where it came from (nameplate, site procedure, person)" />
+          <button type="button" style={{ ...S.btn, ...S.primary }} disabled={busy || !answer.trim() || !from.trim()} onClick={() => { onEdit(path, "settle", answer, from); setSettling(false); }}>Save as settled</button>
+          <button type="button" style={S.btn} onClick={() => setSettling(false)}>Cancel</button>
+        </div>
+      ) : editing ? (
         <div data-no-print>
           <input style={S.input} value={draft} onChange={(e) => setDraft(e.target.value)} />
           <button type="button" style={{ ...S.btn, ...S.primary }} disabled={busy} onClick={() => { onEdit(path, "set", draft); setEditing(false); }}>Save</button>
@@ -280,6 +292,7 @@ export function FieldRow({
           <button type="button" style={S.btn} disabled={busy} onClick={() => onEdit(path, "confirm")}>Confirm</button>
           <button type="button" style={S.btn} disabled={busy} onClick={() => onEdit(path, "strike")}>Strike</button>
           <button type="button" style={S.btn} disabled={busy} onClick={() => onEdit(path, "mark_unknown")}>Mark unknown</button>
+          {canSettle && <button type="button" style={S.btn} disabled={busy} data-testid="wp-settle" onClick={() => { setAnswer(""); setFrom(""); setSettling(true); }}>Settle</button>}
         </div>
       )}
     </div>
@@ -534,12 +547,12 @@ export function WorkPacketPanel({
     }
   }, [baseUrl, notebookId, wo, synthetic, revConfirmed, avail]);
 
-  const onEditField = useCallback((path: string, action: EditAction, value?: string) => {
+  const onEditField = useCallback((path: string, action: EditAction, value?: string, source?: string) => {
     setPacket((p) => {
       if (!p) return p;
       setEditBusy(true);
       try {
-        const next = applyEdit(p, { path, action, value }, by, new Date().toISOString());
+        const next = applyEdit(p, { path, action, value, source }, by, new Date().toISOString());
         if (!saveDraft(notebookId, next)) setError("This device did not save that edit (storage is full or blocked). It is shown here but will be lost on reload.");
         return next;
       } catch (err) {
@@ -758,7 +771,7 @@ export function WorkPacketPanel({
                 <CoverageStop packet={packet} />
                 <PacketHeader packet={packet} />
                 <div style={S.warn} data-testid="wp-disclaimer">{packet.disclaimer}</div>
-                <ReadinessBlock packet={packet} />
+                <ReadinessBlock packet={packet} record={record} />
                 <PacketCoverage packet={packet} />
                 {warnings.length > 0 && (
                   // Every warning is a verifyPacket line check; each such line is already shown below

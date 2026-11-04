@@ -56,7 +56,9 @@ export interface SourceRef {
   line: string;
 }
 
-export type EditAction = "set" | "confirm" | "strike" | "mark_unknown";
+/** "settle": a technician answers a question the documents leave open, naming where the answer came
+ *  from (Codex EGM F17). The answer is Proposed, never Verified. */
+export type EditAction = "set" | "confirm" | "strike" | "mark_unknown" | "settle";
 
 export interface ReviewEntry {
   path: string;
@@ -65,6 +67,8 @@ export interface ReviewEntry {
   at: string;
   previous: unknown;
   next: unknown;
+  /** "settle" only: where the answer came from (a nameplate, a site procedure, a named person). */
+  source?: string;
 }
 
 export interface Field {
@@ -477,6 +481,8 @@ export interface PacketEdit {
   path: string;
   action: EditAction;
   value?: string;
+  /** Required for "settle". */
+  source?: string;
 }
 
 /** GET /api/equipment-notebooks/[id]/work-packet response. */

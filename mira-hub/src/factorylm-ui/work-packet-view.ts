@@ -250,6 +250,7 @@ export function technicianEntryNote(field: Pick<Field, "review">): string | null
     case "strike": return `Struck by ${r.by}, ${when} UTC`;
     case "mark_unknown": return `Marked unknown by ${r.by}, ${when} UTC`;
     case "confirm": return `Line reviewed by ${r.by}, ${when} UTC`;
+    case "settle": return `Settled by ${r.by}, ${when} UTC — source: ${r.source ?? "not given"}. Proposed, not verified.`;
   }
 }
 
