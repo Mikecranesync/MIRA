@@ -190,7 +190,7 @@ function renderSection(section: PrintSection, index: number) {
           <div style={S.sectionTitle}>{SECTION_TITLES.notes}</div>
           {section.items.map((note) => (
             <p key={note.id} style={S.row}>
-              {note.text}
+              &ldquo;{note.text}&rdquo; — {note.by ?? "a technician"}, {new Date(note.at).toLocaleString()}
             </p>
           ))}
         </section>
@@ -202,8 +202,16 @@ function renderSection(section: PrintSection, index: number) {
           {section.items.length === 0 && <p style={S.row}>None recorded</p>}
           {section.items.map((q) => (
             <p key={q.id} style={S.row}>
-              {q.text}
-              {q.resolution ? ` — answered: ${q.resolution}` : " — open"}
+              &ldquo;{q.text}&rdquo; — {q.by ?? "a technician"}, {new Date(q.at).toLocaleString()}
+              {q.resolution !== null ? (
+                <>
+                  {" "}
+                  — answered: &ldquo;{q.resolution}&rdquo; — {q.resolvedBy ?? "a technician"},{" "}
+                  {q.resolvedAt ? new Date(q.resolvedAt).toLocaleString() : "time unknown"}
+                </>
+              ) : (
+                " — open"
+              )}
             </p>
           ))}
         </section>
@@ -214,8 +222,9 @@ function renderSection(section: PrintSection, index: number) {
           <div style={S.sectionTitle}>{SECTION_TITLES.parts}</div>
           {section.items.map((part) => (
             <p key={part.id} style={S.row}>
-              {part.item} — {part.action}
-              {part.qty !== null ? ` (qty ${part.qty})` : ""}
+              {part.action}: &ldquo;{part.item}&rdquo;
+              {part.qty !== null ? ` (qty ${part.qty})` : ""} — {part.by ?? "a technician"},{" "}
+              {new Date(part.at).toLocaleString()}
             </p>
           ))}
         </section>
@@ -242,7 +251,7 @@ function renderSection(section: PrintSection, index: number) {
             <div key={photo.id} style={{ marginBottom: "6pt" }}>
               <img src={fileUrl(photo.fileId)} alt={photo.caption ?? "job photo"} style={S.photo} />
               <div style={S.row}>
-                {photo.caption ?? "no caption"} — {photo.by ?? "a technician"}, {new Date(photo.at).toLocaleString()}
+                {photo.caption !== null ? <>&ldquo;{photo.caption}&rdquo;</> : "no caption"} — {photo.by ?? "a technician"}, {new Date(photo.at).toLocaleString()}
               </div>
             </div>
           ))}
