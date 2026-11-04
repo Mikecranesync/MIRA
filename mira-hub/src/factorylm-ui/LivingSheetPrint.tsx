@@ -187,6 +187,7 @@ function renderSection(section: PrintSection, index: number) {
       return (
         <section key={index} style={S.section} data-testid="ls-print-questions">
           <div style={S.sectionTitle}>{SECTION_TITLES.questions}</div>
+          {section.items.length === 0 && <p style={S.row}>None recorded</p>}
           {section.items.map((q) => (
             <p key={q.id} style={S.row}>
               {q.text}
@@ -228,7 +229,9 @@ function renderSection(section: PrintSection, index: number) {
           {section.items.map((photo) => (
             <div key={photo.id} style={{ marginBottom: "6pt" }}>
               <img src={fileUrl(photo.fileId)} alt={photo.caption ?? "job photo"} style={S.photo} />
-              <div style={S.row}>{photo.caption ?? "no caption"}</div>
+              <div style={S.row}>
+                {photo.caption ?? "no caption"} — {photo.by ?? "a technician"}, {new Date(photo.at).toLocaleString()}
+              </div>
             </div>
           ))}
         </section>

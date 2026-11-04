@@ -196,7 +196,7 @@ function narrativeOf(
     }
     case "handover_written": {
       const p = e.payload as HandoverWrittenPayload;
-      return `handover: ${p.text}`;
+      return `handover: “${p.text}”`; // the technician's words, quoted verbatim
     }
     case "job_finished": {
       const p = e.payload as JobFinishedPayload;

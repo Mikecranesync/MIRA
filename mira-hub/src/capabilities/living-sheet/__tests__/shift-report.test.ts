@@ -395,3 +395,18 @@ describe("shiftReport — banned words (machine-facing text)", () => {
     expect("repaired successfully").toMatch(bannedWordRegex("repaired successfully"));
   });
 });
+
+describe("shiftReport — handover in the timeline is quoted, never paraphrased", () => {
+  it("the technician's handover text appears in quotes, verbatim", () => {
+    seqCounter = 0;
+    const started = ev(
+      "job_started",
+      { title: "PM — Pump 07", machine: { entityId: "cmms-pump07", name: "Pump 07" }, templateRevisionId: null, template: template() },
+      { seq: 1, occurredAt: "2026-11-03T20:00:00.000Z" },
+    );
+    const handover = ev("handover_written", { text: "Pump is fixed." }, { seq: 2, occurredAt: "2026-11-03T20:05:00.000Z" });
+    const report = shiftReport([job("job-1", [started, handover])], WINDOW_WIDE);
+    const texts = report.byTechnician.flatMap((g) => g.entries.map((e) => e.text));
+    expect(texts).toContain("handover: “Pump is fixed.”");
+  });
+});
