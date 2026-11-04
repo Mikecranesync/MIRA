@@ -1444,8 +1444,39 @@ jobs:
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
       - name: Install Trivy
+        # Pin + retry: the previous `curl …/install.sh | sh` asked GitHub for
+        # latest, then failed with curl exit 6 (host resolve) before any image
+        # scan ran. A verified tarball keeps the same `trivy image` steps.
         run: |
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          set -euo pipefail
+          TRIVY_VERSION="0.76.1"
+          ARCHIVE="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          EXPECTED_SHA256="c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0"
+          URL="https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/${ARCHIVE}"
+          tmp="$(mktemp)"
+          trap 'rm -f "$tmp"' EXIT
+          attempt=1
+          while true; do
+            if curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors --connect-timeout 20 \
+                -o "$tmp" "$URL"; then
+              got="$(sha256sum "$tmp" | awk '{print $1}')"
+              if [ "$got" = "$EXPECTED_SHA256" ]; then
+                break
+              fi
+              echo "Trivy checksum mismatch on attempt ${attempt}: got ${got}"
+            else
+              echo "Trivy download attempt ${attempt} failed"
+            fi
+            if [ "$attempt" -ge 4 ]; then
+              echo "::error::Failed to download a verified Trivy v${TRIVY_VERSION} after ${attempt} attempts"
+              exit 1
+            fi
+            attempt=$((attempt + 1))
+            sleep $((attempt * 4))
+          done
+          tar -xzf "$tmp" -C /usr/local/bin trivy
+          chmod +x /usr/local/bin/trivy
+          trivy --version
 
       - name: Build mira-ingest
         # Build context is the repo root (`.`) to match docker-compose.saas.yml —
