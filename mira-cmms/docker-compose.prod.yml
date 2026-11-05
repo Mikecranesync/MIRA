@@ -85,9 +85,11 @@ services:
       retries: 5
 
   cmms-backend:
-    # outbox (#5024) needs Atlas >= v1.6.0. Bumping this digest is a separate
-    # owner step that must also update contracts/cmms-write-contract.v1.json.
-    image: intelloop/atlas-cmms-backend@sha256:21c42377dd758dbc4a9aa1676e62b01a13cf8822b0ecd3019b274b53c2369b1e
+    # Upstream v1.8.0 (index digest; #5188, owner-approved 2026-11-05). v1.6.0+ adds
+    # CommentController for the outbox (#5024); v1.8.0 also signs MinIO URLs on the
+    # internal endpoint. Compat proof: .planning evidence for #5188 (data migrates,
+    # comments + marker search work, pg_dump restore onto the old pin works).
+    image: intelloop/atlas-cmms-backend@sha256:a112fa5831f9827c92ad7d436cff8ff7bc18116be1aab3ab09639793774e49a2
     container_name: cmms-backend
     restart: unless-stopped
     depends_on:
@@ -148,7 +150,7 @@ services:
       start_period: 30s
 
   cmms-frontend:
-    image: intelloop/atlas-cmms-frontend@sha256:9393849caa8ff980b02cdc0836d3797da78a8a3a4672acff80206de4e11fa8de
+    image: intelloop/atlas-cmms-frontend@sha256:57e01b75dcf83ab645c47b37ccdf88dd9929e26950bd1d099f24ea8a986e7d3d
     container_name: cmms-frontend
     restart: unless-stopped
     depends_on:
@@ -157,6 +159,9 @@ services:
     environment:
       # Hardcoded — see header. Not sourced from Doppler.
       API_URL: https://cmms.factorylm.com/api
+      # v1.8.0's runtime-env entrypoint refuses to start without these two.
+      HOME_URL: https://cmms.factorylm.com
+      LDAP_ENABLED: "false"
       INVITATION_VIA_EMAIL: "false"
       CLOUD_VERSION: "false"
       NODE_ENV: production

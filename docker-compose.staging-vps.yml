@@ -90,7 +90,7 @@ services:
       retries: 5
 
   atlas-api:
-    image: intelloop/atlas-cmms-backend@sha256:21c42377dd758dbc4a9aa1676e62b01a13cf8822b0ecd3019b274b53c2369b1e
+    image: intelloop/atlas-cmms-backend@sha256:a112fa5831f9827c92ad7d436cff8ff7bc18116be1aab3ab09639793774e49a2
     container_name: stg-atlas-api
     restart: unless-stopped
     depends_on:
@@ -149,7 +149,7 @@ services:
     # Pre-built image from Docker Hub. Prod's mira-cmms/docker-compose.yml uses a
     # local build context that only resolves on Bravo — won't build on the VPS.
     # Using the published image avoids that.
-    image: intelloop/atlas-cmms-frontend@sha256:9393849caa8ff980b02cdc0836d3797da78a8a3a4672acff80206de4e11fa8de
+    image: intelloop/atlas-cmms-frontend@sha256:57e01b75dcf83ab645c47b37ccdf88dd9929e26950bd1d099f24ea8a986e7d3d
     container_name: stg-atlas-frontend
     restart: unless-stopped
     depends_on:
@@ -157,6 +157,9 @@ services:
         condition: service_healthy
     environment:
       API_URL: ${ATLAS_PUBLIC_API_URL:-http://127.0.0.1:4088}
+      # v1.8.0's runtime-env entrypoint refuses to start without these two (#5188).
+      HOME_URL: ${ATLAS_PUBLIC_FRONT_URL:-http://127.0.0.1:4100}
+      LDAP_ENABLED: "false"
       INVITATION_VIA_EMAIL: "false"
       CLOUD_VERSION: "false"
       NODE_ENV: production

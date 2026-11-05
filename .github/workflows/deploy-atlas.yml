@@ -22,6 +22,12 @@ name: Deploy Atlas CMMS to production
 #
 # Rollback (manual, on the host, if `apply` leaves the stack in a bad state):
 #   docker compose -p factorylm-cmms -f /opt/mira-cmms/docker-compose.prod.yml down   # never add -v — keeps the DB/MinIO volumes
+# Version rollback (an image bump migrated the schema forward; #5188): every apply
+# over existing data first writes /opt/mira-cmms/backups/<stamp>/ (previous compose
+# file + pg_dump). To return to that version, as root on the host:
+#   sudo bash /opt/mira-cmms/atlas-version-rollback.sh <stamp>
+# (deployment/atlas-version-rollback.sh, installed by apply). It validates the backup
+# BEFORE dropping anything and starts the app only after the restore is verified.
 #   restore the previous vhost from /etc/nginx/sites-backup/atlas-<stamp>/cmms.factorylm.com
 #     (or, if there was none: sudo rm -f /etc/nginx/sites-enabled/cmms.factorylm.com)
 #   sudo nginx -t && sudo systemctl reload nginx
@@ -324,7 +330,7 @@ jobs:
           ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
             ubuntu@40.160.141.61 "mkdir -p /tmp/${RUN}"
           scp -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
-            mira-cmms/docker-compose.prod.yml deployment/nginx-cmms-factorylm.conf \
+            mira-cmms/docker-compose.prod.yml deployment/nginx-cmms-factorylm.conf deployment/atlas-version-rollback.sh \
             "ubuntu@40.160.141.61:/tmp/${RUN}/"
 
       - name: Remote checks + (conditionally) apply
@@ -458,9 +464,47 @@ jobs:
             exit 0
           fi
 
+          echo "=== apply: backup before any change (previous compose file + pg_dump) ==="
+          # A version bump migrates the Atlas schema forward; the dump is the only way
+          # back (#5188). Fail closed: existing data without a verified backup = no change.
+          # "Existing" = a cmms-db container in ANY state or a retained data volume —
+          # not only a running container (a stopped or removed container keeps its data).
+          DB_VOL="factorylm-cmms_cmms-pgdata"
+          HAS_CTR=0; HAS_VOL=0
+          docker ps -a --format '{{.Names}}' | grep -qx cmms-db && HAS_CTR=1
+          docker volume inspect "$DB_VOL" >/dev/null 2>&1 && HAS_VOL=1
+          if [ "$HAS_CTR" = 1 ] || [ "$HAS_VOL" = 1 ]; then
+            if ! docker ps --format '{{.Names}}' | grep -qx cmms-db; then
+              # Start ONLY the database, from the compose file that is installed now
+              # (the version that owns the data), so nothing migrates before the dump.
+              [ -f /opt/mira-cmms/docker-compose.prod.yml ] || { echo "::error::existing Atlas data (container=$HAS_CTR volume=$HAS_VOL) but no installed compose file to start it — refusing apply"; exit 1; }
+              (cd /opt/mira && doppler run --project factorylm --config prd -- \
+                docker compose -p factorylm-cmms -f /opt/mira-cmms/docker-compose.prod.yml up -d --no-deps --pull never cmms-db)
+            fi
+            for _ in $(seq 1 30); do
+              docker exec cmms-db sh -c 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"' >/dev/null 2>&1 && break
+              sleep 2
+            done
+            docker exec cmms-db sh -c 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"' >/dev/null || { echo "::error::cmms-db did not become ready for the backup — STOP"; exit 1; }
+            STAMP="$(date -u +%Y%m%dT%H%M%SZ)-run${RUN}"
+            BK="/opt/mira-cmms/backups/${STAMP}"
+            install -d -m 700 "$BK"
+            if [ -f /opt/mira-cmms/docker-compose.prod.yml ]; then
+              install -m 600 /opt/mira-cmms/docker-compose.prod.yml "$BK/docker-compose.prod.yml"
+            fi
+            docker exec cmms-db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --no-owner' | gzip -c > "$BK/atlas.sql.gz"
+            gzip -t "$BK/atlas.sql.gz" || { echo "::error::backup is not a valid gzip — STOP"; exit 1; }
+            TABLES="$(gunzip -c "$BK/atlas.sql.gz" | grep -c '^CREATE TABLE' || true)"
+            [ "${TABLES:-0}" -gt 0 ] || { echo "::error::backup has no tables — STOP before any change"; exit 1; }
+            echo "backup: $BK ($(du -h "$BK/atlas.sql.gz" | cut -f1), ${TABLES} tables)"
+          else
+            echo "no cmms-db container and no ${DB_VOL} volume — first install, nothing to back up"
+          fi
+
           echo "=== apply: installing compose file to /opt/mira-cmms (never /opt/mira) ==="
           sudo install -d -m 755 /opt/mira-cmms
           sudo install -m 644 "$COMPOSE_SRC" /opt/mira-cmms/docker-compose.prod.yml
+          sudo install -m 750 "/tmp/${RUN}/atlas-version-rollback.sh" /opt/mira-cmms/atlas-version-rollback.sh
 
           echo "=== apply: ensuring factorylm-cmms_default network ==="
           docker network inspect factorylm-cmms_default >/dev/null 2>&1 || docker network create factorylm-cmms_default
