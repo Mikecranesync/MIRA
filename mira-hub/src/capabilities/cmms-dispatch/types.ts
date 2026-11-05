@@ -28,7 +28,7 @@ export type DomainEventRow = {
   aggregate_key: string;
   /** BIGINT — `pg` returns bigint as a string to avoid precision loss. */
   sequence: string;
-  event_type: "fix_recorded" | "job_finished";
+  event_type: "fix_recorded" | "job_finished" | "work_order_requested";
   occurred_at: string;
   recorded_at: string;
   actor_user_id: string | null;
@@ -49,7 +49,7 @@ export type DeliveryRow = {
   aggregate_key: string;
   destination: "cmms";
   connection_key: string;
-  operation: "append_work_log";
+  operation: "append_work_log" | "create_work_order";
   dedupe_key: string;
   state: DeliveryState;
   attempts: number;
@@ -77,18 +77,30 @@ export type FixRecordedPolicy = {
   internalTest?: boolean;
 };
 
+/** Policy for the `work_order_requested` -> `create_work_order` delivery
+ *  (TASK-OUTBOX-CREATE-WO). Deliberately its OWN switch, not folded into
+ *  `fixRecorded` — creating a NEW order is a materially different action
+ *  from appending a note to an existing one, and defaults OFF like every
+ *  other write gate here. */
+export type WorkOrderRequestedPolicy = { enabled: boolean };
+
 /** Parsed shape of `tenant_cmms_config.write_policy`. `{}` on the row means
  *  "never dispatch" — see `parseWritePolicy` below for how that default is
  *  produced. */
 export type WritePolicy = {
   version: 1;
   fixRecorded: FixRecordedPolicy;
+  workOrderRequested: WorkOrderRequestedPolicy;
 };
 
 /** The permanently-disabled default — returned for `{}`, for `null`, and for
  *  any shape `parseWritePolicy` cannot trust. A malformed policy must never
  *  silently enable a CMMS write. */
-const DISABLED_POLICY: WritePolicy = { version: 1, fixRecorded: { enabled: false } };
+const DISABLED_POLICY: WritePolicy = {
+  version: 1,
+  fixRecorded: { enabled: false },
+  workOrderRequested: { enabled: false },
+};
 
 /**
  * Parse `tenant_cmms_config.write_policy` (raw JSONB) into a `WritePolicy`.
@@ -100,6 +112,16 @@ const DISABLED_POLICY: WritePolicy = { version: 1, fixRecorded: { enabled: false
  * Input is snake_case (as stored: `fix_recorded`, `internal_test`); output is
  * the camelCase `WritePolicy` the rest of this capability reads.
  */
+/** `work_order_requested.enabled` — anything other than a literal `true`
+ *  (missing key, wrong type, malformed block) is disabled. Same fail-closed
+ *  posture as `fix_recorded`: a write gate's default is always "don't
+ *  dispatch", never a guessed enablement. */
+function parseWorkOrderRequested(raw: unknown): WorkOrderRequestedPolicy {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return { enabled: false };
+  const obj = raw as Record<string, unknown>;
+  return { enabled: obj.enabled === true };
+}
+
 export function parseWritePolicy(raw: unknown): WritePolicy {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return DISABLED_POLICY;
   const obj = raw as Record<string, unknown>;
@@ -108,13 +130,19 @@ export function parseWritePolicy(raw: unknown): WritePolicy {
   // another operation did not authorize an append_work_log export.
   if (obj.version !== undefined && obj.version !== 1) return DISABLED_POLICY;
 
+  // Parsed once, from the already-validated top-level object, and reused by
+  // every return point below that keeps the rest of this object's trust
+  // level (i.e. every path EXCEPT the early malformed-input returns above,
+  // which correctly disable everything).
+  const workOrderRequested = parseWorkOrderRequested(obj.work_order_requested);
+
   const fr = obj.fix_recorded;
   if (fr === null || typeof fr !== "object" || Array.isArray(fr)) return DISABLED_POLICY;
   const frObj = fr as Record<string, unknown>;
   if (frObj.operation !== undefined && frObj.operation !== "append_work_log") return DISABLED_POLICY;
 
   if (frObj.enabled !== true) {
-    return { version: 1, fixRecorded: { enabled: false } };
+    return { version: 1, fixRecorded: { enabled: false }, workOrderRequested };
   }
 
   const rawTarget = frObj.target;
@@ -144,6 +172,7 @@ export function parseWritePolicy(raw: unknown): WritePolicy {
       target,
       ...(internalTest ? { internalTest: true } : {}),
     },
+    workOrderRequested,
   };
 }
 
@@ -166,4 +195,11 @@ export function aggregateKeyFor(notebookId: string): string {
  *  no-op (ON CONFLICT DO NOTHING) instead of a second event. */
 export function subjectRefForFix(fixRecordId: string): string {
   return `asset_fix_records:${fixRecordId}`;
+}
+
+/** `notebook_domain_events.subject_ref` for a `work_order_requested` event —
+ *  one per job sheet (TASK-OUTBOX-CREATE-WO), so a double tap or a retried
+ *  POST enqueues nothing new (ON CONFLICT DO NOTHING finds this one instead). */
+export function subjectRefForWorkOrderRequested(jobId: string): string {
+  return `work_sheet_jobs:work_order:${jobId}`;
 }
