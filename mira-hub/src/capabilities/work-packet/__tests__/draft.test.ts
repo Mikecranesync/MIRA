@@ -249,6 +249,26 @@ describe("selectTopics", () => {
   it("returns no matches for text naming no recognized task", () => {
     expect(selectTopics("General equipment check, nothing specific.")).toEqual([]);
   });
+
+  it("a negation in the title never runs on into the description (Codex #5173 F11, #5176)", () => {
+    const topics = new Set(selectTopics("Pump not building pressure", "Reseal the leaking seals per the manufacturer procedure").map((m) => m.topic));
+    expect(topics).toEqual(new Set(["seals"]));
+  });
+
+  it("control: a negated topic in either part still adds nothing", () => {
+    expect(new Set(selectTopics("Reseal pump", "Seals only, no valve service").map((m) => m.topic))).toEqual(new Set(["seals"]));
+    expect(new Set(selectTopics("Reseal, not the valves", "Replace the packing").map((m) => m.topic))).toEqual(new Set(["seals"]));
+  });
+});
+
+describe("buildDraftPacket — title negation (Codex #5173 F11, #5176)", () => {
+  it("builds a seal packet when the title is a negated symptom and the description asks for a reseal", () => {
+    wireParsers();
+    const result = buildDraftPacket(
+      input({ workOrder: { ...WORK_ORDER, title: "Pump not building pressure", description: "Reseal the leaking seals per the manufacturer procedure." } }),
+    );
+    expect(result.ok).toBe(true);
+  });
 });
 
 // ─────────────────────────────────────────────── refusals

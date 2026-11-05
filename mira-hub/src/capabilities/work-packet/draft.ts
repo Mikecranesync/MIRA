@@ -97,14 +97,19 @@ const TOPIC_PATTERNS: readonly TopicPattern[] = [
   { re: /lubricat/gi, topics: ["lubrication"] },
 ];
 
-/** Every (topic, matched word) pair found in free text — a work order's title + description. */
-export function selectTopics(text: string): TopicMatch[] {
+/**
+ * Every (topic, matched word) pair found in free text — a work order's title and description, passed
+ * as separate parts so a negation in one never runs on into the other (Codex #5173 F11: a title
+ * "Pump not building pressure" glued to "Reseal the leaking seals" lost the reseal).
+ */
+export function selectTopics(...parts: string[]): TopicMatch[] {
   const out: TopicMatch[] = [];
   // What a clause rules out ("no valve service", "without removing the valves") adds nothing
   // (Codex EGM F40): each clause is cut at its first negation word, keeping the work asked for
-  // before it. Clauses split at sentence ends, semicolons, commas and "but".
-  text = text
-    .split(/[.;,!?]|\bbut\b/i)
+  // before it. Clauses split at part boundaries, sentence ends, semicolons, commas and "but".
+  const text = parts
+    .join("\n")
+    .split(/[\n.;,!?]|\bbut\b/i)
     .map((c) => c.split(/\b(?:no|not|don't|never|without|except|excluding)\b/i)[0])
     .join(" . ");
   for (const { re, topics } of TOPIC_PATTERNS) {
@@ -309,7 +314,7 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
   }
   const scopeKey = matchedKeys[0] ?? modelKey ?? "";
 
-  const matches = selectTopics(`${workOrder.title} ${workOrder.description}`);
+  const matches = selectTopics(workOrder.title, workOrder.description);
   const selectedTopics = Array.from(new Set(matches.map((m) => m.topic)));
   if (selectedTopics.length === 0) {
     return refuse(

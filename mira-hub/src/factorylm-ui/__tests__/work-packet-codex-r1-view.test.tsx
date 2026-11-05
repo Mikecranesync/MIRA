@@ -11,7 +11,7 @@ import { FIXTURES, fixturePages } from "@/capabilities/work-packet/__tests__/fix
 import { buildDraftPacket } from "@/capabilities/work-packet/draft";
 import { applyEdit } from "@/capabilities/work-packet/edits";
 import type { Field, WorkPacket } from "@/capabilities/work-packet/types";
-import { MeasurementsTable, PhasedSteps } from "../WorkPacketV2Sections";
+import { JhaTable, MeasurementsTable, PhasedSteps } from "../WorkPacketV2Sections";
 import { measurementRows } from "../work-packet-v2-view";
 
 const render = (path: string, field: Field) => <div data-path={path}>{field.value ?? "(unknown)"}</div>;
@@ -75,5 +75,30 @@ describe("F7 — a settle is attributed to whoever settled it", () => {
 
   it("control: a mark-unknown alone is attributed to its author", () => {
     expect(measurementRows(marked, null)[0].correction?.by).toBe("T");
+  });
+});
+
+describe("F13 (#5177) — a struck hazard control is shown as excluded in the hazard table", () => {
+  const base = packet();
+  const set = applyEdit(base, { path: "jha[0].controls", action: "set", value: "Fictional isolation step Z-1" }, "Tech A", "2026-11-04T12:05:00Z");
+  const struck = applyEdit(set, { path: "jha[0].controls", action: "strike" }, "Tech B", "2026-11-04T12:06:00Z");
+  const rowHtml = (p: WorkPacket) => {
+    const html = renderToStaticMarkup(<JhaTable packet={p} renderField={render} />);
+    return html.slice(html.indexOf('data-testid="wp-jha-row-0"'), html.indexOf("</tr>", html.indexOf('data-testid="wp-jha-row-0"')));
+  };
+
+  it("precondition: the packet has a hazard row and the control was set then struck", () => {
+    expect((base.jha ?? []).length).toBeGreaterThan(0);
+    expect(struck.jha![0].controls.struck).toBe(true);
+  });
+  it("the table row (printed, outside the screen-only fold) crosses it out and says do not use", () => {
+    const row = rowHtml(struck);
+    expect(row).toMatch(/<s>Fictional isolation step Z-1<\/s>/);
+    expect(row).toMatch(/EXCLUDED — struck by Tech B\. Do not use\./);
+  });
+  it("control: a set, unstruck control prints as the site control", () => {
+    const row = rowHtml(set);
+    expect(row).toContain("Fictional isolation step Z-1");
+    expect(row).not.toMatch(/EXCLUDED|<s>/);
   });
 });

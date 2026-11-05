@@ -73,11 +73,36 @@ interface Token {
   end: number;
 }
 
-function tokens(text: string): Token[] {
-  const out: Token[] = [];
+/** Digit/letter pattern of a model: "7ZQ10" → "9AA99". */
+const shapeOf = (n: string) => n.replace(/\d/g, "9").replace(/[A-Z]/g, "A");
+
+/**
+ * Alphanumeric tokens, with a model split by dashes or spaces ("7-ZQ10", "7 ZQ10") joined back into
+ * one token when the joined form is a covered model, or when it is dash-joined and has the shape of
+ * a covered model (an unlisted "7-ZQ50" → one token, judged unknown later) (Codex #5173 F6).
+ */
+function tokens(text: string, covered: readonly string[] = []): Token[] {
+  const raw: Token[] = [];
   const re = /[0-9A-Za-z]+/g;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(text))) out.push({ text: m[0], start: m.index, end: m.index + m[0].length });
+  while ((m = re.exec(text))) raw.push({ text: m[0], start: m.index, end: m.index + m[0].length });
+  const cov = new Set(covered.map(normalizeModel));
+  const shapes = new Set(Array.from(cov).filter((c) => /\d/.test(c) && /[A-Z]/.test(c)).map(shapeOf));
+  const out: Token[] = [];
+  for (let k = 0; k < raw.length; k++) {
+    let best = k;
+    let joined = normalizeModel(raw[k].text);
+    let dashOnly = true;
+    for (let j = k + 1; j < raw.length && j <= k + 3; j++) {
+      const sep = text.slice(raw[j - 1].end, raw[j].start);
+      if (!/^[\s-]+$/.test(sep)) break;
+      dashOnly = dashOnly && sep === "-";
+      joined += normalizeModel(raw[j].text);
+      if (cov.has(joined) || (dashOnly && /\d/.test(joined) && /[A-Z]/.test(joined) && shapes.has(shapeOf(joined)))) best = j;
+    }
+    out.push({ text: text.slice(raw[k].start, raw[best].end), start: raw[k].start, end: raw[best].end });
+    k = best;
+  }
   return out;
 }
 
@@ -102,12 +127,13 @@ function modelGroups(text: string, covered: readonly string[]): { groups: Group[
     groups.push({ models: current.models, except: EXCEPT_BEFORE_RE.test(text.slice(0, current.first.start)) });
     current = null;
   };
-  const toks = tokens(text);
+  const toks = tokens(text, covered);
   const covAt = (k: number) => k >= 0 && k < toks.length && cov.has(normalizeModel(toks[k].text));
   const gap = (a: Token, b: Token) => LIST_GAP_RE.test(text.slice(a.end, b.start));
-  // A model-shaped number (all digits, the length of a covered model) the cover does not list,
-  // in a model list or right after "Model(s)": unknown, never silently skipped (Codex EGM F14).
-  const modelShaped = (n: string) => /^\d+$/.test(n) && covered.some((c) => { const cn = normalizeModel(c); return /^\d+$/.test(cn) && cn.length === n.length; });
+  // A model-shaped token (the digit/letter pattern of a covered model, with a digit) the cover does
+  // not list, in a model list or right after "Model(s)": unknown, never silently skipped (Codex EGM
+  // F14; letters added for "7-ZQ50" next to a covered "7ZQ10", Codex #5173 F6).
+  const modelShaped = (n: string) => /\d/.test(n) && covered.some((c) => shapeOf(normalizeModel(c)) === shapeOf(n));
   for (let k = 0; k < toks.length; k++) {
     const t = toks[k];
     const n = normalizeModel(t.text);
@@ -172,7 +198,7 @@ const CAPTION_LIST_WORD_RE = /^(?:all|models?|except|and|or|only)$/i;
 export function captionApplicability(caption: readonly string[], model: string, covered: readonly string[]): Applicability {
   const cov = new Set(covered.map(normalizeModel));
   for (const line of caption) {
-    const toks = tokens(line);
+    const toks = tokens(line, covered);
     const modelToks = toks.filter((t) => /\d/.test(t.text));
     const isList = modelToks.length > 0 && toks.every((t) => /\d/.test(t.text) || CAPTION_LIST_WORD_RE.test(t.text));
     if (!isList) continue;

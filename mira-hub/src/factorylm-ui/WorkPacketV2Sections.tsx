@@ -127,6 +127,10 @@ export function BlockersSection({ packet, renderField }: { packet: WorkPacket; r
 export function JhaTable({ packet, renderField }: { packet: WorkPacket; renderField: RenderField }) {
   const rows = packet.jha ?? [];
   if (rows.length === 0) return null;
+  const entries = packet.approval.technicianReview.entries;
+  // A struck control is excluded, on screen and on paper — never printed as an active control
+  // (Codex #5173 F13; same as a struck torque value, F4).
+  const struckBy = (i: number) => [...entries].reverse().find((e) => e.path === `jha[${i}].controls` && e.action === "strike")?.by ?? "(unnamed)";
   return (
     <section style={S.section} data-testid="wp-jha">
       <h3 style={S.title}>Job hazard analysis</h3>
@@ -139,7 +143,11 @@ export function JhaTable({ packet, renderField }: { packet: WorkPacket; renderFi
               <td style={S.td}>{i + 1}</td>
               <td style={S.td}><Cell field={r.hazard} /></td>
               <td style={S.td}><Cell field={r.task} /></td>
-              <td style={S.td}>{r.controls.value ?? <span style={S.muted}>Set by your site</span>}</td>
+              <td style={S.td}>
+                {r.controls.struck
+                  ? <><s>{r.controls.value ?? "(unknown)"}</s><div>EXCLUDED — struck by {struckBy(i)}. Do not use.</div></>
+                  : (r.controls.value ?? <span style={S.muted}>Set by your site</span>)}
+              </td>
             </tr>
           ))}
         </tbody>

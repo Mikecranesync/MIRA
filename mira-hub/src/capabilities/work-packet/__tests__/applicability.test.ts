@@ -97,3 +97,31 @@ describe("figure captions", () => {
     expect(captionApplicability(["Plunger Layout"], "8520", COVERED).kind).toBe("applies");
   });
 });
+
+describe("dashed and spaced model spellings (Codex #5173 F6, #5175)", () => {
+  const ZQ = ["7ZQ10", "7ZQ30"];
+  const zq = (text: string, model = "7ZQ30") => textApplicability(text, model, ZQ).kind;
+  it("a note naming another covered model with a dash or space never applies to this pump", () => {
+    expect(zq("On Model 7-ZQ10 use the long seal.")).toBe("other_models");
+    expect(zq("On Model 7 ZQ10 use the long seal.")).toBe("other_models");
+    expect(zq("On Model 7-ZQ-10 use the long seal.")).toBe("other_models");
+  });
+  it("control: the same dashed spelling of this pump applies", () => {
+    expect(zq("On Model 7-ZQ30 use the long seal.")).toBe("applies");
+    expect(zq("Models 7-ZQ10 and 7 ZQ30 use the long seal.")).toBe("applies");
+  });
+  it("a dashed model the cover does not list is unresolved, not unrestricted", () => {
+    expect(zq("On Model 7-ZQ50 use the long seal.")).toBe("unresolved");
+    expect(zq("Models 7-ZQ10, 7ZQ50 use the long seal.")).toBe("unresolved");
+  });
+  it("captions with dashed or spaced spellings of another covered model are left out", () => {
+    expect(captionApplicability(["7-ZQ10", "Seal Layout"], "7ZQ30", ZQ).kind).toBe("other_models");
+    expect(captionApplicability(["Model 7 ZQ10", "Seal Layout"], "7ZQ30", ZQ).kind).toBe("other_models");
+    expect(captionApplicability(["7-ZQ30", "Seal Layout"], "7ZQ30", ZQ).kind).toBe("applies");
+    expect(captionApplicability(["7-ZQ50", "Seal Layout"], "7ZQ30", ZQ).kind).not.toBe("applies");
+  });
+  it("control: numbers and ranges that are not models stay as they were", () => {
+    expect(kind("Torque the 10-24 screws in two passes.")).toBe("applies");
+    expect(kind("Use 2 - 3 drops of oil on each plunger.")).toBe("applies");
+  });
+});
