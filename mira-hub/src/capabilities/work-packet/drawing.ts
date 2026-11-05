@@ -375,6 +375,12 @@ export function calloutRefPrefix(ref: string): string {
   return line("CALLOUT", ref) + " |";
 }
 
+/** The exact canonical source line for one connection hardware row. Used as the citation needle,
+ *  so two rows sharing an article number each cite their own line (Codex #5204 r4 F3). */
+export function rowSourceLine(row: DrawingConnectionRow): string {
+  return line("ROW", encN(row.name), encN(row.type), encN(row.pos), encN(row.qty), encN(row.spec), encN(row.strength), encN(row.artNo));
+}
+
 /** The exact canonical source line for one drawing-wide note. */
 export function noteSourceLine(note: string): string {
   return line("NOTE", note);
@@ -400,7 +406,7 @@ export function renderDrawingSourceText(t: DrawingTranscription): string {
       lines.push(line("CONNECTION", c.id, encN(c.classText)));
       for (const row of c.rows) {
         lines.push(
-          line("ROW", encN(row.name), encN(row.type), encN(row.pos), encN(row.qty), encN(row.spec), encN(row.strength), encN(row.artNo)),
+          rowSourceLine(row),
         );
       }
     }
@@ -629,9 +635,9 @@ const CONNECTION_CELLS: readonly ConnectionCell[] = ["name", "type", "pos", "qty
  *  (a reviewed photo when any reviewed photo printed it), or a conflict listing every legible
  *  reading, or `null` when no photo printed a legible value (missing or "[?]"). */
 export type ReconciledCell =
-  | { kind: "value"; value: string; photo: DrawingSheetPhoto }
+  | { kind: "value"; value: string; photo: DrawingSheetPhoto; row: DrawingConnectionRow }
   | { kind: "conflict"; readings: { value: string; docId: string }[] }
-  | { kind: "illegible"; raw: string; photo: DrawingSheetPhoto }
+  | { kind: "illegible"; raw: string; photo: DrawingSheetPhoto; row: DrawingConnectionRow }
   | null;
 
 export interface ReconciledRow {
@@ -689,6 +695,15 @@ export function reconcileConnectionRows(
   const parent = entries.map((_, k) => k);
   const find = (k: number): number => (parent[k] === k ? k : (parent[k] = find(parent[k])));
   const photosOf = new Map<number, Set<string>>(entries.map((e, k) => [k, new Set([e.photo.docId])]));
+  // Printed row names per group. Two groups with different names are two rows even on different
+  // photos; a shared article/position between them makes the photos unmatchable, so both are
+  // ambiguous rather than merged into one undercounted part (Codex #5204 r4 F1).
+  const namesOf = new Map<number, Set<string>>(
+    entries.map((e, k) => {
+      const n = identityOf(e.row.name);
+      return [k, new Set(n ? [n] : [])];
+    }),
+  );
   const ambiguousRoots = new Set<number>();
   const owners = new Map<string, number[]>();
   entries.forEach((e, k) => {
@@ -703,9 +718,16 @@ export function reconcileConnectionRows(
         const pa = photosOf.get(a)!;
         const pb = photosOf.get(b)!;
         const overlap = Array.from(pa).some((d) => pb.has(d));
-        if (!overlap) {
+        const na = namesOf.get(a)!;
+        const nb = namesOf.get(b)!;
+        const namesDiffer = na.size > 0 && nb.size > 0 && !Array.from(na).some((n) => nb.has(n));
+        if (!overlap && namesDiffer) {
+          ambiguousRoots.add(a);
+          ambiguousRoots.add(b);
+        } else if (!overlap) {
           parent[a] = b;
           pa.forEach((d) => pb.add(d));
+          na.forEach((n) => nb.add(n));
           if (ambiguousRoots.has(a)) ambiguousRoots.add(b);
         } else if (!named && entries[other].photo.docId !== e.photo.docId) {
           ambiguousRoots.add(a);
@@ -736,10 +758,10 @@ export function reconcileConnectionRows(
         if (distinct.length > 1) {
           cells[cell] = { kind: "conflict", readings: legible.map((e) => ({ value: e.row[cell] as string, docId: e.photo.docId })) };
         } else if (legible.length > 0) {
-          cells[cell] = { kind: "value", value: legible[0].row[cell] as string, photo: legible[0].photo };
+          cells[cell] = { kind: "value", value: legible[0].row[cell] as string, photo: legible[0].photo, row: legible[0].row };
         } else {
           const ill = list.find((e) => e.row[cell] !== null);
-          cells[cell] = ill ? { kind: "illegible", raw: ill.row[cell] as string, photo: ill.photo } : null;
+          cells[cell] = ill ? { kind: "illegible", raw: ill.row[cell] as string, photo: ill.photo, row: ill.row } : null;
         }
       }
       out.push({

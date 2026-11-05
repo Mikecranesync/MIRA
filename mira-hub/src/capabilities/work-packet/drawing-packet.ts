@@ -52,7 +52,7 @@ import type {
   DrawingSheetPhoto,
   ReconciledCell,
 } from "./drawing";
-import { calloutRefPrefix, calloutSourceLine, drawingIdKey, noteSourceLine, reconcileConnectionRows } from "./drawing";
+import { calloutRefPrefix, calloutSourceLine, drawingIdKey, noteSourceLine, reconcileConnectionRows, rowSourceLine } from "./drawing";
 
 const DISCLAIMER =
   "DRAFT prepared from an engineering drawing photographed on site. It is not an approved " +
@@ -170,11 +170,6 @@ function compositeCellField(
   return photoField(photo, docs, compose(parts as string[]), needle, basisWhenVerified);
 }
 
-/** The most distinctive token on a connection row's line, used to locate that exact line: prefer
- *  the Art. No. (unique per row in practice), else the printed pos, else the hardware type. */
-function rowNeedle(row: DrawingConnectionRow): string {
-  return row.artNo ?? row.pos ?? row.type ?? "";
-}
 
 function drawingRevisionField(photo: DrawingSheetPhoto, docs: readonly DocText[]): Field {
   const d = photo.t.drawing;
@@ -220,11 +215,12 @@ function conflictField(cell: string, readings: { value: string; docId: string }[
   };
 }
 
-function reconciledCellField(c: ReconciledCell, cellName: string, docs: readonly DocText[], needle: string, basis: string): Field {
+/** Each cell cites the exact row line it was read from, never a token another row shares (r4 F3). */
+function reconciledCellField(c: ReconciledCell, cellName: string, docs: readonly DocText[], basis: string): Field {
   if (c === null) return { value: null, label: "unknown", source: null, basis: "not in this photo" };
   if (c.kind === "conflict") return conflictField(cellName, c.readings);
-  if (c.kind === "illegible") return cellField(c.photo, docs, c.raw, needle, basis);
-  return photoField(c.photo, docs, c.value, needle, basis);
+  if (c.kind === "illegible") return cellField(c.photo, docs, c.raw, rowSourceLine(c.row), basis);
+  return photoField(c.photo, docs, c.value, rowSourceLine(c.row), basis);
 }
 
 function buildParts(
@@ -233,7 +229,7 @@ function buildParts(
   bom: readonly { row: DrawingBomRow }[],
 ): PacketPart[] {
   return reconcileConnectionRows(sightings).map((r) => {
-    const needle = rowNeedle(r.anchor.row);
+    const needle = rowSourceLine(r.anchor.row);
     const art = r.cells.artNo && r.cells.artNo.kind === "value" ? r.cells.artNo.value : null;
     const match = art ? bom.find((b) => b.row.artNo === art) : undefined;
     const item = match && match.row.pos && /^\d+$/.test(match.row.pos.trim()) ? Number(match.row.pos.trim()) : null;
@@ -243,12 +239,12 @@ function buildParts(
     if (descConflict && descConflict.kind === "conflict") {
       description = conflictField("hardware description", descConflict.readings);
     } else if (descCells.every((c) => c !== null && c.kind === "value")) {
-      const vals = descCells as { kind: "value"; value: string; photo: DrawingSheetPhoto }[];
+      const vals = descCells as { kind: "value"; value: string; photo: DrawingSheetPhoto; row: DrawingConnectionRow }[];
       // Cite from one photo only when every contributing cell came from it; otherwise the composed
       // value has no single source line and stays proposed.
       const one = vals.every((v) => v.photo.docId === vals[0].photo.docId) ? vals[0].photo : null;
       description = one
-        ? photoField(one, docs, vals.map((v) => v.value).join(" ").trim(), needle, "connection hardware row")
+        ? photoField(one, docs, vals.map((v) => v.value).join(" ").trim(), rowSourceLine(vals[0].row), "connection hardware row")
         : { value: vals.map((v) => v.value).join(" ").trim(), label: "proposed", source: null, basis: "composed from cells on more than one photo; check it against the drawing" };
     } else {
       description = compositeCellField(
@@ -263,11 +259,11 @@ function buildParts(
     return {
       kit: null,
       item,
-      partNumber: reconciledCellField(r.cells.artNo, "Art. No.", docs, needle, "connection hardware row, Art. No. column"),
+      partNumber: reconciledCellField(r.cells.artNo, "Art. No.", docs, "connection hardware row, Art. No. column"),
       description,
       qty: r.ambiguous
         ? { value: null, label: "unknown", source: null, basis: "the photos' hardware rows could not be matched one-to-one here — count it on the drawing" }
-        : reconciledCellField(r.cells.qty, "Qty", docs, needle, "connection hardware row, Qty column"),
+        : reconciledCellField(r.cells.qty, "Qty", docs, "connection hardware row, Qty column"),
     };
   });
 }
@@ -289,6 +285,7 @@ function buildMeasurements(
   connectionId: string,
   docs: readonly DocText[],
   fastenerNames: readonly string[],
+  unnamedFasteners = 0,
 ): { measurements: PacketMeasurement[]; gaps: string[] } {
   const byRef = new Map<string, { callout: DrawingCallout; photo: DrawingSheetPhoto }[]>();
   for (const c of sheet.callouts) {
@@ -315,7 +312,16 @@ function buildMeasurements(
     });
     gaps.push(`No torque is printed for ${ref} on the attached photos — confirm it from the drawing.`);
   }
-  if (byRef.size === 0 && uncovered.length === 0) {
+  if (!connectionWide && unnamedFasteners > 0) {
+    const basis = `${unnamedFasteners} fastener row(s) on connection ${connectionId} have no readable name, so no torque callout can be matched to them`;
+    measurements.push({
+      name: { value: `${connectionId} unnamed fastener tightening torque`, label: "proposed", source: null, basis },
+      value: unknownTorque(basis),
+      tool: SITE_TOOL_FIELD,
+    });
+    gaps.push(`A fastener row on ${connectionId} has no readable name, so its torque cannot be matched to a callout — confirm the torque from the drawing.`);
+  }
+  if (byRef.size === 0 && uncovered.length === 0 && unnamedFasteners === 0) {
     const basis = `no torque callout for connection ${connectionId} on the attached photos`;
     measurements.push({
       name: { value: `${connectionId} tightening torque`, label: "proposed", source: null, basis },
@@ -552,7 +558,16 @@ export function buildConnectionPacket(input: ConnectionPacketInput): DraftResult
       ),
     ),
   );
-  const { measurements, gaps: torqueGaps } = buildMeasurements(sheet, connectionId, docs, fastenerNames);
+  // Rows with no readable name that may be torqued fasteners (bolt/screw/stud, or a type that cannot
+  // be read): their callout cannot be matched by name, so only a connection-wide callout covers them
+  // (Codex #5204 r4 F2). Washers and nuts are tightened through their bolt.
+  const unnamedFasteners = reconcileConnectionRows(sightings).filter((row) => {
+    const named = row.cells.name && row.cells.name.kind === "value" && row.cells.name.value.trim() !== "";
+    if (named) return false;
+    const type = row.cells.type && row.cells.type.kind === "value" ? row.cells.type.value : null;
+    return type === null || /\b(?:bolt|screw|stud)s?\b/i.test(type);
+  }).length;
+  const { measurements, gaps: torqueGaps } = buildMeasurements(sheet, connectionId, docs, fastenerNames, unnamedFasteners);
   const { cautions, gaps: noteGaps } = buildNoteCautions(sheet, connectionId, docs);
   const isKnown = (m: PacketMeasurement) => m.value.value !== null && m.value.label !== "unknown";
   // "Tighten to the torque below" only when EVERY torque the connection needs is stated.
