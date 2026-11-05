@@ -13,8 +13,9 @@ const sql = {
   114: readFileSync(path.join(dir, "migrations/114_living_work_sheet.sql"), "utf8"),
 };
 const kinds = ["fix_recorded", "observation_recorded", "job_finished", "work_order_requested"];
-for (const order of [[113,114], [114,113]] as const) for (const populated of [false,true]) {
-  it(`${order.join(" then ")} / ${populated ? "populated" : "empty"}: preserves rows and both sheet operations`, async () => {
+for (const order of [[113,114], [114,113]] as const) for (const population of ["empty", "legacy-fix", "deployed-sheet"] as const) {
+  const populated = population === "deployed-sheet";
+  it(`${order.join(" then ")} / ${population}: preserves rows and both sheet operations`, async () => {
     const c = new Client({connectionString:url}), schema = `compat_${uuid().replaceAll("-", "")}`;
     const tenant = uuid(), notebook = uuid();
     await c.connect();
@@ -32,6 +33,8 @@ for (const order of [[113,114], [114,113]] as const) for (const populated of [fa
          occurred_at,information_status,correlation_id,policy_version,subject_ref)
          VALUES($1,$2,$3,$4,$5,now(),'technician_reported',$6,'compat',$7) RETURNING event_id`,
         [tenant,notebook,schema,seq,kind,uuid(),`compat:${seq}`]);
+      // Fresh upgrades with existing111data must not be confused with a114replay.
+      if (population === "legacy-fix") await insert("fix_recorded",1);
       if (populated) {
         // A previously deployed 114 already holds sheet rows before sibling migration replay.
         await c.query(sql[114]);
