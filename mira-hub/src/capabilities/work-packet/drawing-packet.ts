@@ -171,11 +171,17 @@ function compositeCellField(
 }
 
 
+/** Hardware types that are never torqued on their own (English and German): washers and nuts. */
+const NOT_TORQUED_RE = /\b(?:washers?|nuts?)\b|scheibe|mutter/i;
+
 function drawingRevisionField(photo: DrawingSheetPhoto, docs: readonly DocText[]): Field {
   const d = photo.t.drawing;
   if (!d) return { value: null, label: "unknown", source: null, basis: "this photo is not a drawing" };
   if (d.revision === null) {
     return { value: null, label: "unknown", source: null, basis: "the drawing's revision is not in this photo" };
+  }
+  if (d.revision.includes("[?]")) {
+    return { value: null, label: "unknown", source: null, basis: `the drawing's revision is not readable on this photo ('${d.revision}')` };
   }
   // "<documentNo> | <revision>" is the exact substring the DOCUMENT line's render carries, and is
   // specific enough (unlike the bare revision letter) to locate that one line, not an unrelated one.
@@ -551,22 +557,18 @@ export function buildConnectionPacket(input: ConnectionPacketInput): DraftResult
   const connectionId = connection.id;
 
   const parts = buildParts(sightings, docs, sheet.bom);
-  const fastenerNames = Array.from(
-    new Set(
-      reconcileConnectionRows(sightings).flatMap((row) =>
-        row.cells.name && row.cells.name.kind === "value" && row.cells.name.value.trim() ? [row.cells.name.value.trim()] : [],
-      ),
-    ),
-  );
-  // Rows with no readable name that may be torqued fasteners (bolt/screw/stud, or a type that cannot
-  // be read): their callout cannot be matched by name, so only a connection-wide callout covers them
-  // (Codex #5204 r4 F2). Washers and nuts are tightened through their bolt.
-  const unnamedFasteners = reconcileConnectionRows(sightings).filter((row) => {
-    const named = row.cells.name && row.cells.name.kind === "value" && row.cells.name.value.trim() !== "";
-    if (named) return false;
+  // Which rows need a torque of their own: every row EXCEPT positively identified washers and nuts
+  // (tightened through their bolt). An unrecognised or unreadable type — "Schraube", "[?]" — counts,
+  // and named and unnamed rows use the same rule (Codex #5204 r4 F2, r5 F1/F2).
+  const rows = reconcileConnectionRows(sightings);
+  const needsTorque = (row: (typeof rows)[number]) => {
     const type = row.cells.type && row.cells.type.kind === "value" ? row.cells.type.value : null;
-    return type === null || /\b(?:bolt|screw|stud)s?\b/i.test(type);
-  }).length;
+    return type === null || !NOT_TORQUED_RE.test(type);
+  };
+  const nameOf = (row: (typeof rows)[number]) =>
+    row.cells.name && row.cells.name.kind === "value" && row.cells.name.value.trim() !== "" ? row.cells.name.value.trim() : null;
+  const fastenerNames = Array.from(new Set(rows.filter(needsTorque).flatMap((row) => (nameOf(row) ? [nameOf(row)!] : []))));
+  const unnamedFasteners = rows.filter((row) => needsTorque(row) && nameOf(row) === null).length;
   const { measurements, gaps: torqueGaps } = buildMeasurements(sheet, connectionId, docs, fastenerNames, unnamedFasteners);
   const { cautions, gaps: noteGaps } = buildNoteCautions(sheet, connectionId, docs);
   const isKnown = (m: PacketMeasurement) => m.value.value !== null && m.value.label !== "unknown";
@@ -612,6 +614,15 @@ export function buildConnectionPacket(input: ConnectionPacketInput): DraftResult
       revision: drawingRevisionField(p, docs),
     };
   });
+  // No photo shows a readable revision: which revision this packet comes from is not established (r5 F3).
+  if (documents.length > 0 && documents.every((d) => d.revision?.label === "unknown")) {
+    blockers.push({
+      value: null,
+      label: "unknown",
+      source: null,
+      basis: "The drawing revision cannot be read on any attached photo — confirm the revision on the drawing before work starts.",
+    });
+  }
 
   const equipment = {
     manufacturer: fieldFromIdentity(identity.manufacturer, "confirmed equipment identity"),
