@@ -416,7 +416,13 @@ jobs:
           echo "=== Built image identities ==="
           BUILT_IDS="$(mktemp)"
           for svc in "${TARGET_LIST[@]}"; do
-            img="$(doppler run --project factorylm --config stg -- docker compose -p "$PROJECT" -f "$COMPOSE_FILE" config --images "$svc" | head -1)"
+            # `config --images <svc>` also lists the images of <svc>'s dependencies, so its
+            # first line can belong to another service (atlas-frontend resolved to the
+            # minio image in run 41950955387). Read this service's own image instead.
+            img="$(doppler run --project factorylm --config stg -- docker compose -p "$PROJECT" -f "$COMPOSE_FILE" config --format json \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"][sys.argv[1]].get("image",""))' "$svc")"
+            # A built service has no image key; Compose names it <project>-<service>.
+            [ -n "$img" ] || img="${PROJECT}-${svc}"
             [ -n "$img" ] || { echo "::error::compose reports no image for ${svc} — failing closed."; exit 1; }
             id="$(docker image inspect --format '{{.Id}}' "$img")"
             [ -n "$id" ] || { echo "::error::no built image id for ${svc} (${img}) — failing closed."; exit 1; }
