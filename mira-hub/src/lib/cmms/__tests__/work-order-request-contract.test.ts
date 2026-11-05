@@ -47,12 +47,12 @@ class FakeAtlasWorkOrderApi implements AtlasWorkOrderApi {
     if (this.pendingCreateFailure === "throw5xx") {
       this.pendingCreateFailure = null;
       const { AtlasHttpError } = await import("@/lib/atlas/client");
-      throw new AtlasHttpError(503, "atlas down");
+      throw new AtlasHttpError(503, "atlas down", "/work-orders");
     }
     if (this.pendingCreateFailure === "throw4xx") {
       this.pendingCreateFailure = null;
       const { AtlasHttpError } = await import("@/lib/atlas/client");
-      throw new AtlasHttpError(422, "bad request");
+      throw new AtlasHttpError(422, "bad request", "/work-orders");
     }
     const order: FakeWorkOrder = { id: this.nextId++, description: payload.description };
     this.orders.push(order);

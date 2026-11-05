@@ -7,13 +7,17 @@
  * add a file" — same constraint `contracts/cmms-write-contract.v1.json`
  * already documents for `attach_evidence`). So the created order's
  * DESCRIPTION is the only place the job's content can land where Atlas
- * read-back can see it. This function renders the whole thing: the marker
- * (so read-back is a substring match, same discipline as
- * `write-contract.ts::renderWorkLogText`), title + asset, every step's
- * done/not-done state with who/when, every reading's current value with who
- * (a superseded value is explicitly labelled, never shown as current), the
- * open-items summary, and photo/source references as display strings only
- * (Hub `fileId`s — never a URL, never a secret).
+ * read-back can see it. This function renders the BODY only (title + asset,
+ * every step's done/not-done state with who/when, every reading's current
+ * value with who — a superseded value is explicitly labelled, never shown
+ * as current — the open-items summary, and photo/source references as
+ * display strings only, Hub `fileId`s — never a URL, never a secret). The
+ * idempotency MARKER is deliberately NOT embedded here: exactly like
+ * `WorkLogNote.text` / `write-contract.ts::renderWorkLogText`, the marker is
+ * prepended by the write provider (`WorkOrderRequest.marker` +
+ * `WorkOrderRequest.description`), so this function's output becomes the
+ * `description` field of a `WorkOrderRequest` — never the final Atlas
+ * description string.
  *
  * WORDING RULE (same as `finish-outbox.ts`): never say "fixed", "safe",
  * "repaired", or "resolved" about the ASSET. Technician-typed text (job
@@ -101,13 +105,13 @@ function photoLines(view: SheetView): string[] {
   return lines;
 }
 
-/** Pure: same (view, marker) in, same description string out. Never says
- *  the asset is repaired, safe, or resolved. */
-export function buildWorkOrderDescription(view: SheetView, marker: string): string {
+/** Pure: same view in, same description-body string out. Never says the
+ *  asset is repaired, safe, or resolved. Does NOT include the idempotency
+ *  marker — see the file header. */
+export function buildWorkOrderDescription(view: SheetView): string {
   const assetName = view.machine.name ?? "unlinked asset";
   const lines: string[] = [];
 
-  lines.push(marker);
   lines.push(`Work order requested from job sheet "${view.title}" — asset: ${assetName}.`);
   lines.push("");
 
