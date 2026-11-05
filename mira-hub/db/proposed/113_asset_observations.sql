@@ -29,6 +29,8 @@
 -- the table alone leaves them behind and the narrowed CHECK fails (#5093).
 -- DATA LOSS: this discards all technician observations and their events. If the
 -- history must be kept, copy asset_observations and those events out first.
+-- #5218: preserve Living Sheet rows and its published vocabulary on rollback;
+-- removing observations must not remove another capability's event types.
 -- Executed by observations.integration.test.ts
 -- (documented_rollback_succeeds_after_an_observation_event_exists).
 -- ROLLBACK-BEGIN
@@ -36,7 +38,7 @@
 --   DELETE FROM notebook_domain_events WHERE event_type = 'observation_recorded';
 --   DROP TABLE IF EXISTS asset_observations;
 --   ALTER TABLE notebook_domain_events DROP CONSTRAINT IF EXISTS notebook_domain_events_event_type_check;
---   ALTER TABLE notebook_domain_events ADD CONSTRAINT notebook_domain_events_event_type_check CHECK (event_type IN ('fix_recorded'));
+--   ALTER TABLE notebook_domain_events ADD CONSTRAINT notebook_domain_events_event_type_check CHECK (event_type IN ('fix_recorded', 'job_finished', 'work_order_requested'));
 --   COMMIT;
 -- ROLLBACK-END
 

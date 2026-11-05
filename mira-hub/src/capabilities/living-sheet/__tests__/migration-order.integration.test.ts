@@ -35,11 +35,27 @@ for (const order of [[113,114], [114,113]] as const) for (const populated of [fa
       if (populated) {
         // A previously deployed 114 already holds sheet rows before sibling migration replay.
         await c.query(sql[114]);
-        for (const [i,k] of kinds.entries()) await insert(k,i+1);
+        for (const [i,k] of kinds.entries()) {
+          const event = await insert(k,i+1);
+          if (k === "job_finished" || k === "work_order_requested") await c.query(
+            `INSERT INTO notebook_event_deliveries(tenant_id,event_id,aggregate_key,destination,connection_key,operation,dedupe_key)
+             VALUES($1,$2,$3,'cmms','atlas',$4,$5)`,
+            [tenant,event.rows[0].event_id,schema,k === "job_finished" ? "append_work_log" : "create_work_order",`existing:${i}`]);
+        }
+        const job = uuid();
+        for (const [i,kind] of ["job_started","job_finished"].entries()) await c.query(
+          `INSERT INTO work_sheet_events(tenant_id,notebook_id,job_id,seq,kind,payload,client_event_id,request_fingerprint,occurred_at)
+           VALUES($1,$2,$3,$4,$5,$6,$7,'existing-fixture',now())`,
+          [tenant,notebook,job,i+1,kind,{note:"Original technician evidence"},uuid()]);
       }
-      const before = (await c.query("SELECT * FROM notebook_domain_events ORDER BY sequence")).rows;
+      const snapshot = async () => ({
+        domain:(await c.query("SELECT * FROM notebook_domain_events ORDER BY sequence")).rows,
+        delivery:(await c.query("SELECT * FROM notebook_event_deliveries ORDER BY dedupe_key")).rows,
+        sheet:populated ? (await c.query("SELECT * FROM work_sheet_events ORDER BY seq")).rows : [],
+      });
+      const before = await snapshot();
       for (const n of order) await c.query(sql[n]);
-      expect((await c.query("SELECT * FROM notebook_domain_events ORDER BY sequence")).rows).toEqual(before);
+      expect(await snapshot()).toEqual(before);
       await c.query("SELECT set_config('app.tenant_id',$1,false),set_config('app.current_tenant_id',$1,false)",[tenant]);
       await c.query("SET ROLE factorylm_app");
       for (const [i,k] of kinds.entries()) {
@@ -49,11 +65,21 @@ for (const order of [[113,114], [114,113]] as const) for (const populated of [fa
            VALUES($1,$2,$3,'cmms','atlas',$4,$5)`,
           [tenant,event.rows[0].event_id,schema,k === "job_finished" ? "append_work_log" : "create_work_order",`compat:${i}`]);
       }
-      expect((await c.query("SELECT count(*)::int AS n FROM notebook_domain_events")).rows[0].n).toBe(before.length+4);
-      expect((await c.query("SELECT count(*)::int AS n FROM notebook_event_deliveries")).rows[0].n).toBe(2);
+      expect((await c.query("SELECT count(*)::int AS n FROM notebook_domain_events")).rows[0].n).toBe(before.domain.length+4);
+      expect((await c.query("SELECT count(*)::int AS n FROM notebook_event_deliveries")).rows[0].n).toBe(before.delivery.length+2);
       await expect(insert("invented_type",99)).rejects.toMatchObject({code:"23514"});
       await c.query("SELECT set_config('app.tenant_id',$1,false),set_config('app.current_tenant_id',$1,false)",[uuid()]);
       expect((await c.query("SELECT count(*)::int AS n FROM notebook_domain_events")).rows[0].n).toBe(0);
+      await c.query("RESET ROLE");
+      const saved = await snapshot();
+      const rollback = sql[113].match(/^-- ROLLBACK-BEGIN\n([\s\S]*?)^-- ROLLBACK-END$/m);
+      expect(rollback).not.toBeNull();
+      await c.query(rollback![1].split("\n").map(line => line.replace(/^--   ?/, "")).join("\n"));
+      expect(await snapshot()).toEqual({...saved,domain:saved.domain.filter(row => row.event_type !== "observation_recorded")});
+      await c.query("SELECT set_config('app.tenant_id',$1,false),set_config('app.current_tenant_id',$1,false)",[tenant]);
+      await c.query("SET ROLE factorylm_app");
+      await insert("job_finished",90); await insert("work_order_requested",91);
+      await expect(insert("observation_recorded",92)).rejects.toMatchObject({code:"23514"});
     } finally {
       await c.query("ROLLBACK"); await c.query("RESET ROLE"); await c.query("RESET search_path");
       await c.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`); await c.end();
