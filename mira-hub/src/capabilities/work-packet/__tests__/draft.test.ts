@@ -263,15 +263,42 @@ describe("selectTopics", () => {
 
 describe("selectTopics — a negation covers only the work it rules out (Codex #5173 F11 residual)", () => {
   const topicsOf = (...parts: string[]) => new Set(selectTopics(...parts).map((m) => m.topic));
-  it("a task asked for later in the same clause is kept", () => {
-    expect(topicsOf("Pump not building pressure reseal it")).toEqual(new Set(["seals"]));
+  it("a task asked for later in the same clause is kept — no verb list (any verb works)", () => {
     expect(topicsOf("Replace the seals not the valves check the plungers")).toEqual(new Set(["seals", "plungers"]));
+    expect(topicsOf("Not the valves swap plungers")).toEqual(new Set(["plungers"]));
+    expect(topicsOf("Not the valves rig up new plungers")).toEqual(new Set(["plungers"]));
+  });
+  it("a negation covers a joined list, not the rest of the clause", () => {
+    expect(topicsOf("Reseal and don't touch the valves or plungers")).toEqual(new Set(["seals"]));
+    expect(topicsOf("Reseal without the valves and the plungers")).toEqual(new Set(["seals"]));
+    expect(topicsOf("No valves and replace the plungers")).toEqual(new Set(["plungers"]));
+  });
+  it("known limit: a symptom negation with no task word, then a task in the same unpunctuated clause, rules the task out (refused, never short)", () => {
+    expect(topicsOf("Pump not building pressure reseal it")).toEqual(new Set());
+    expect(topicsOf("Valves not holding fit new seals")).toEqual(new Set(["valves"]));
   });
   it("control: the work right after the negation is still ruled out", () => {
     expect(topicsOf("Reseal and don't replace the valves")).toEqual(new Set(["seals"]));
     expect(topicsOf("Reseal and don't inspect or replace the valves")).toEqual(new Set(["seals"]));
     expect(topicsOf("Reseal, no valve service")).toEqual(new Set(["seals"]));
     expect(topicsOf("Reseal without removing the valves")).toEqual(new Set(["seals"]));
+  });
+});
+
+describe("buildDraftPacket — a ruled-out topic is never silent (#5176 limit)", () => {
+  it("a topic the work order rules out shows as an open question naming the clause", () => {
+    wireParsers();
+    const result = buildDraftPacket(input({ workOrder: { ...WORK_ORDER, title: "Pump leaking", description: "Reseal the pump, no valve service." } }));
+    if (!result.ok) throw new Error(result.message);
+    const note = (result.packet.blockers ?? []).find((b) => /Left out valves work/.test(b.basis));
+    expect(note?.basis).toMatch(/no valve service/);
+    expect(note?.label).toBe("unknown");
+  });
+  it("control: a topic asked for elsewhere gets no left-out note", () => {
+    wireParsers();
+    const result = buildDraftPacket(input({ workOrder: { ...WORK_ORDER, title: "Rebuild pump", description: "Rebuild, except the valve seats are new." } }));
+    if (!result.ok) throw new Error(result.message);
+    expect((result.packet.blockers ?? []).some((b) => /Left out/.test(b.basis))).toBe(false);
   });
 });
 

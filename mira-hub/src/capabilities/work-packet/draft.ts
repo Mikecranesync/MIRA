@@ -97,21 +97,70 @@ const TOPIC_PATTERNS: readonly TopicPattern[] = [
   { re: /lubricat/gi, topics: ["lubrication"] },
 ];
 
-const NEGATION_RE = /\b(?:no|not|don't|never|without|except|excluding)\b/i;
-const TASK_WORD_RE = /^(?:reseal|rebuild|overhaul|replace|repack|re-pack|install|inspect|check|service|swap|renew|repair|change|lubricate)$/i;
+const NEGATION_RE = /\b(?:no|not|don't|never|without|except|excluding)\b/gi;
+// Between two task mentions of one ruled-out list: only joiners ("the valves or seals", "valves and the seats").
+const LIST_JOIN_RE = /^[\s/&]*(?:(?:and|or|nor)\b[\s/&]*)?(?:(?:the|a|an|any)\s+)?$/i;
 
-/** One clause with what it rules out removed (see `selectTopics`). */
-function dropNegated(clause: string): string {
-  let kept = "";
-  let rest = clause;
-  for (let m = NEGATION_RE.exec(rest); m; m = NEGATION_RE.exec(rest)) {
-    kept += rest.slice(0, m.index) + " ";
-    const words = rest.slice(m.index + m[0].length).split(/\s+/).filter(Boolean);
-    const resume = words.findIndex((w, k) => k > 0 && TASK_WORD_RE.test(w) && !/^(?:and|or|nor)$/i.test(words[k - 1]));
-    if (resume < 0) return kept;
-    rest = words.slice(resume).join(" ");
+interface Mention {
+  start: number;
+  end: number;
+  topics: Topic[];
+  matched: string;
+}
+
+/**
+ * The task mentions in one clause that a negation does not rule out. A negation covers the first
+ * task mention after it and the mentions chained to that one by joiners only ("don't inspect or
+ * replace the valves or seats"); anything else in the clause still counts ("not the valves, check
+ * the plungers", "valves not sealing fit new seals"). Structural, no verb list (Codex #5173 F11).
+ * Known limit: a negated symptom with no task word, then a task with no punctuation between
+ * ("Valves not holding fit new seals"), rules the task out. It is never silent: the packet lists
+ * it as an open question (`ruledOutTopics`), or is refused when nothing is left. Title and
+ * description are separate parts, so the usual shape is unaffected.
+ */
+function splitMentions(clause: string): { kept: Mention[]; ruledOut: Mention[] } {
+  const mentions: Mention[] = [];
+  for (const { re, topics } of TOPIC_PATTERNS) {
+    re.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(clause)) !== null) {
+      // The span runs to the end of its word ("valve" in "valves") so joiners are read cleanly.
+      let end = m.index + m[0].length;
+      while (end < clause.length && /[A-Za-z]/.test(clause[end])) end++;
+      mentions.push({ start: m.index, end, topics, matched: m[0] });
+      if (m[0].length === 0) re.lastIndex += 1;
+    }
   }
-  return kept + rest;
+  // One mention group per overlapping span ("oil seal" is both the oil-seal and the seal pattern).
+  const groups: Mention[][] = [];
+  for (const m of [...mentions].sort((a, b) => a.start - b.start)) {
+    const last = groups[groups.length - 1];
+    if (last && m.start < Math.max(...last.map((x) => x.end))) last.push(m);
+    else groups.push([m]);
+  }
+  const span = (g: Mention[]) => ({ start: Math.min(...g.map((x) => x.start)), end: Math.max(...g.map((x) => x.end)) });
+  const negated = new Set<number>();
+  NEGATION_RE.lastIndex = 0;
+  let n: RegExpExecArray | null;
+  while ((n = NEGATION_RE.exec(clause)) !== null) {
+    let k = groups.findIndex((g) => span(g).start >= n!.index + n![0].length);
+    if (k < 0) continue;
+    negated.add(k);
+    while (k + 1 < groups.length && LIST_JOIN_RE.test(clause.slice(span(groups[k]).end, span(groups[k + 1]).start))) negated.add(++k);
+  }
+  return { kept: groups.filter((_, k) => !negated.has(k)).flat(), ruledOut: groups.filter((_, k) => negated.has(k)).flat() };
+}
+
+const clausesOf = (parts: string[]) => parts.join("\n").split(/[\n.;,!?]|\bbut\b/i);
+
+/** Topics the work order rules out ("not the valves"), with the clause that does — shown to the
+ *  technician as an open question when nothing else asks for that topic, never dropped silently. */
+export function ruledOutTopics(...parts: string[]): { topic: Topic; clause: string }[] {
+  const out: { topic: Topic; clause: string }[] = [];
+  for (const clause of clausesOf(parts)) {
+    for (const m of splitMentions(clause).ruledOut) for (const topic of m.topics) out.push({ topic, clause: clause.trim() });
+  }
+  return out;
 }
 
 /**
@@ -122,23 +171,10 @@ function dropNegated(clause: string): string {
 export function selectTopics(...parts: string[]): TopicMatch[] {
   const out: TopicMatch[] = [];
   // What a clause rules out ("no valve service", "without removing the valves") adds nothing
-  // (Codex EGM F40). Clauses split at part boundaries, sentence ends, semicolons, commas and "but";
-  // within a clause the words after a negation are dropped up to the next task word that starts new
-  // work ("Pump not building pressure reseal it" keeps the reseal, Codex #5173 F11). A task word
-  // straight after the negation, or after "and"/"or"/"nor", is the work being ruled out
-  // ("don't replace the valves", "don't inspect or replace the valves").
-  const text = parts
-    .join("\n")
-    .split(/[\n.;,!?]|\bbut\b/i)
-    .map(dropNegated)
-    .join(" . ");
-  for (const { re, topics } of TOPIC_PATTERNS) {
-    re.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(text)) !== null) {
-      for (const topic of topics) out.push({ topic, matched: m[0] });
-      if (m[0].length === 0) re.lastIndex += 1;
-    }
+  // (Codex EGM F40); see `splitMentions`. Clauses split at part boundaries, sentence ends,
+  // semicolons, commas and "but".
+  for (const clause of clausesOf(parts)) {
+    for (const m of splitMentions(clause).kept) for (const topic of m.topics) out.push({ topic, matched: m.matched });
   }
   return out;
 }
@@ -391,6 +427,19 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
       basis: `${coverage.summary} Not fully read: ${missing.join("; ")}. Work from the manual itself for the missing parts; a qualified person must supply them before work starts. Nothing in this packet is marked verified.`,
     });
   }
+
+  // A topic the work order rules out, and nothing else asks for, is an open question — the packet
+  // leaves it out but says so, so a misread negation is never a silently short packet (#5176).
+  const ruledOut = new Map<Topic, string>();
+  for (const r of ruledOutTopics(workOrder.title, workOrder.description)) if (!selectedTopics.includes(r.topic) && !ruledOut.has(r.topic)) ruledOut.set(r.topic, r.clause);
+  ruledOut.forEach((clause, topic) => {
+    blockers.push({
+      value: null,
+      label: "unknown",
+      source: null,
+      basis: `Left out ${topic} work because the work order says "${clause}". If ${topic} work is needed, add it to the work order and draft again.`,
+    });
+  });
 
   // Safety holds the manufacturer's cautions/warnings once each. A NOTE printed inside a procedure
   // is shown beside its step instead (or left out with its other-model block), not repeated here.
