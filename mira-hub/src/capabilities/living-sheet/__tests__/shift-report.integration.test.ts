@@ -42,7 +42,7 @@ import { appendEvent, listJobsActiveBetween, startJob, type StartJobResult } fro
 import { shiftReport } from "../shift-report";
 import type { JobSheetBody } from "../types";
 
-const MIGRATION = path.resolve(__dirname, "../../../../db/proposed/114_living_work_sheet.sql");
+const MIGRATION = path.resolve(__dirname, "../../../../db/migrations/114_living_work_sheet.sql");
 
 async function makeNotebook(tenantId: string, entityId: string | null, displayName: string): Promise<string> {
   const res = await testPool.query<{ id: string }>(

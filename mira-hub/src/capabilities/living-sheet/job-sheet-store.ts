@@ -3,7 +3,7 @@
  * `job_sheet_revisions` (TASK-S4). Append-only-with-revisions, NOT
  * event-sourced like store.ts's `work_sheet_events`: a "review" is a new
  * revision row that copies an existing revision's body with
- * status='reviewed' — the source row is never edited (db/proposed/114 grants
+ * status='reviewed' — the source row is never edited (db/migrations/114 grants
  * SELECT, INSERT only; there is no UPDATE grant).
  *
  * Idempotency follows the same shape as store.ts (`appendEvent`), adapted to

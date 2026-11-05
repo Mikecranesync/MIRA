@@ -49,7 +49,7 @@ import { withTenantContext } from "@/lib/tenant-context";
 import { enqueueWorkOrderRequestedEvent } from "../request-work-order-outbox";
 import { deliveryStatusForWorkOrderRequest, subjectRefForWorkOrderRequested } from "@/capabilities/cmms-dispatch";
 
-const MIGRATION = path.resolve(__dirname, "../../../../db/proposed/114_living_work_sheet.sql");
+const MIGRATION = path.resolve(__dirname, "../../../../db/migrations/114_living_work_sheet.sql");
 
 async function makeNotebook(tenantId: string, entityId: string | null, confirmed: boolean): Promise<string> {
   const res = await testPool.query<{ id: string }>(

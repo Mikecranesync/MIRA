@@ -8,7 +8,7 @@
  *
  * Flag `NOTEBOOK_LIVING_SHEET` off ⇒ 404. See
  * capabilities/living-sheet/store.ts for the write and
- * db/proposed/114_living_work_sheet.sql for the schema.
+ * db/migrations/114_living_work_sheet.sql for the schema.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
