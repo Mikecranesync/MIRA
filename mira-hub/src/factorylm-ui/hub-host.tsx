@@ -18,7 +18,7 @@
  * "General" project when the workspace has none; New chat and New project are
  * always available. `/feed` remains the default landing until Gate 6.
  */
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import { useSession } from "next-auth/react";
 import { signOutToLogin } from "@/components/layout/sign-out-action";
 import { HubAccountFooter } from "./HubAccountFooter";
@@ -102,6 +102,7 @@ import {
   sendFailureMessage,
   shellThreadId,
   withLivingSheetRider,
+  tabTitleFor,
   type CompatibleStreamResult,
   type HubSelection,
 } from "./hub-host-logic";
@@ -110,6 +111,8 @@ type Detail = {
   notebook: EquipmentNotebook;
   sources: NotebookSource[];
   turns: (PersistedTurn & { createdAt?: string })[];
+  // The authorized detail route includes more summaries than the capped list.
+  threads?: HubNotebook["threads"];
   // T2 (#4189 F6): the notebook's CURRENT manual-search status, computed
   // fresh by the GET route on every read (`currentManualSearchStatus`) —
   // absent/null on a server that predates it, or when nothing is running.
@@ -177,6 +180,19 @@ export function HubShellHost() {
   // The technician's message from the moment Send is tapped (outgoing-turn.ts).
   const [outgoing, setOutgoing] = useState<Outgoing | null>(null);
   const [busy, setBusy] = useState(false);
+  // Use the current selection, not a previous notebook's still-loading detail.
+  // Thread names distinguish two conversations in the same project (#4753).
+  const titleNotebook = !signedOut && selection ? notebooks?.find((nb) => nb.id === selection.notebookId) : undefined;
+  const titleProjectName = !signedOut && selection
+    ? titleNotebook?.displayName ?? (detail?.notebook.id === selection.notebookId ? detail.notebook.displayName : null)
+    : null;
+  const titleThreadName = titleNotebook?.threads?.find((thread) => thread.id === selection?.threadId)?.title
+    ?? (!signedOut && selection && detail?.notebook.id === selection.notebookId
+      ? detail.threads?.find((thread) => thread.id === selection.threadId)?.title
+      : undefined);
+  useLayoutEffect(() => {
+    document.title = tabTitleFor(titleProjectName, busy, titleThreadName);
+  }, [titleProjectName, titleThreadName, busy]);
   const [failedBody, setFailedBody] = useState<{ body: ReturnType<typeof chatBodyFor>; question: string } | null>(null);
   // TASK-S3: the Living Work Sheet job open for ANY notebook (LivingSheet is
   // mounted per-notebook, but this state belongs to the host, not the panel,
