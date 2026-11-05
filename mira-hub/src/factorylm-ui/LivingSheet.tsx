@@ -51,6 +51,8 @@ import {
   localStorageStore,
   lowRiskProposalIds,
   photoAttemptBelongsTo,
+  stepConfirmBelongsTo,
+  type StepConfirm,
   removeFromSheetQueue,
   saveBadge,
   startJobErrorMessage,
@@ -437,7 +439,7 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
   // and the receipt's origin seq — F07 — so "Mark done" posts against the
   // SAME baseSeq the proposal was made against, and the proposal is only
   // marked handled once the write actually lands).
-  const [confirmStep, setConfirmStep] = useState<{ step: SheetStepView; receiptOrigin?: { proposalId: string; baseSeq: number } } | null>(null);
+  const [confirmStep, setConfirmStep] = useState<StepConfirm | null>(null);
   const [noteText, setNoteText] = useState("");
   const [questionText, setQuestionText] = useState("");
   const [readingWhat, setReadingWhat] = useState("");
@@ -646,6 +648,7 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
       setWorkOrderError(null);
       setPendingPhotoAttempt((a) => (photoAttemptBelongsTo(a, notebookId, jobId) ? a : null));
       setPhotoError(null);
+      setConfirmStep(null);
       onSheetOpenChange({ notebookId, jobId });
       void loadSheet(jobId);
       void refreshBadge(jobId);
@@ -659,6 +662,7 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
     setOpenJobId(null);
     setView(null);
     setConflict(null);
+    setConfirmStep(null);
     onSheetOpenChange(null);
   }, [onSheetOpenChange]);
 
@@ -775,13 +779,34 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
   const onToggleStep = useCallback(
     (step: SheetStepView) => {
       if (stepNeedsConfirm(step)) {
-        setConfirmStep({ step });
+        const jobId = openJobIdRef.current;
+        if (jobId) setConfirmStep({ notebookId, jobId, step });
         return;
       }
       void postEvent("step_marked", { stepId: step.id, done: !step.done, note: null });
     },
-    [postEvent],
+    [notebookId, postEvent],
   );
+
+  const onConfirmMarkDone = useCallback(() => {
+    if (confirmInFlightRef.current || !confirmStep) return;
+    // Codex r2 F8: the dialog only posts to the job it was opened on; a
+    // stale one (the technician switched jobs) is dropped, never sent.
+    if (!stepConfirmBelongsTo(confirmStep, notebookId, openJobIdRef.current)) {
+      setConfirmStep(null);
+      return;
+    }
+    confirmInFlightRef.current = true;
+    const { step, receiptOrigin: origin } = confirmStep;
+    void (async () => {
+      // F07: when this confirm was opened from a chat proposal, post against
+      // the proposal's origin seq, and only mark the proposal handled once
+      // the write actually lands.
+      const ok = await postEvent("step_marked", { stepId: step.id, done: true, note: null }, origin?.baseSeq);
+      if (ok && origin) setHandledProposalIds((prev) => new Set([...prev, origin.proposalId]));
+    })().finally(() => { confirmInFlightRef.current = false; });
+    setConfirmStep(null);
+  }, [confirmStep, notebookId, postEvent]);
 
   // F06: each "add" handler only clears its own form once postEvent reports
   // the write actually reached storage — a swallowed localStorage failure
@@ -989,7 +1014,10 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
       // nothing has been minted yet; the dialog's own "Mark done" claims it.)
       const stepNeedingConfirm = view ? stepRequiringConfirmFor(event, view.steps) : null;
       if (stepNeedingConfirm) {
-        setConfirmStep({ step: stepNeedingConfirm, receiptOrigin: { proposalId, baseSeq: originSeq } });
+        const jobId = openJobIdRef.current;
+        if (jobId) {
+          setConfirmStep({ notebookId, jobId, step: stepNeedingConfirm, receiptOrigin: { proposalId, baseSeq: originSeq } });
+        }
         return;
       }
       claimedProposalIdsRef.current.add(proposalId);
@@ -1002,7 +1030,7 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
         }
       })();
     },
-    [postEvent, view],
+    [notebookId, postEvent, view],
   );
 
   const onReceiptSkip = useCallback((proposalId: string) => {
@@ -1225,7 +1253,7 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
                     <StepRow key={s.id} step={s} onToggle={onToggleStep} />
                   ))}
                 </ul>
-                {confirmStep && (() => {
+                {confirmStep && stepConfirmBelongsTo(confirmStep, notebookId, openJobId) && (() => {
                   const detail = stepConfirmDetail(confirmStep.step, view.template.torques);
                   return (
                     <div role="dialog" aria-label="Check before marking done" style={SECTION_STYLE} data-testid="living-sheet-step-confirm">
@@ -1242,24 +1270,7 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
                       )}
                       <button
                         type="button" style={BUTTON_STYLE} data-testid="living-sheet-step-confirm-done"
-                        onClick={() => {
-                          if (confirmInFlightRef.current) return;
-                          confirmInFlightRef.current = true;
-                          const origin = confirmStep.receiptOrigin;
-                          void (async () => {
-                            // F07: when this confirm was opened from a chat
-                            // proposal, post against the proposal's origin
-                            // seq, and only mark the proposal handled once
-                            // the write actually lands.
-                            const ok = await postEvent(
-                              "step_marked",
-                              { stepId: confirmStep.step.id, done: true, note: null },
-                              origin?.baseSeq,
-                            );
-                            if (ok && origin) setHandledProposalIds((prev) => new Set([...prev, origin.proposalId]));
-                          })().finally(() => { confirmInFlightRef.current = false; });
-                          setConfirmStep(null);
-                        }}
+                        onClick={onConfirmMarkDone}
                       >
                         Mark done
                       </button>{" "}

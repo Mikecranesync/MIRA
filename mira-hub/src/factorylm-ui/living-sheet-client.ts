@@ -895,12 +895,32 @@ export function photoAttemptBelongsTo(
   return attempt !== null && openJobId !== null && attempt.notebookId === notebookId && attempt.jobId === openJobId;
 }
 
-/** The server answered and refused the request outright (a 4xx other than
- *  408 timeout / 429 rate limit), so nothing was created: the next tap may
- *  build a fresh attempt from the technician's current inputs instead of
- *  resending the rejected one (Codex #5207 F6). A 5xx, 408, 429 or no reply
- *  might have created it, so those keep the frozen attempt for an exact
- *  replay. */
+/** A "check before marking done" dialog, bound to the job it was opened on.
+ *  Step ids repeat across jobs built from the same job sheet, so the dialog
+ *  must never post its step to whatever job happens to be open later. */
+export type StepConfirm = {
+  notebookId: string;
+  jobId: string;
+  step: SheetStepView;
+  receiptOrigin?: { proposalId: string; baseSeq: number };
+};
+
+export function stepConfirmBelongsTo(
+  confirm: Pick<StepConfirm, "notebookId" | "jobId"> | null,
+  notebookId: string,
+  openJobId: string | null,
+): boolean {
+  return photoAttemptBelongsTo(confirm, notebookId, openJobId);
+}
+
+/** The server answered and refused the request outright, so nothing was
+ *  created: the next tap may build a fresh attempt from the technician's
+ *  current inputs instead of resending the rejected one (Codex #5207 F6).
+ *  Excluded, so the frozen attempt is kept for an exact replay: 408 / 429 /
+ *  5xx / no reply (it may have been created), and 409 — on the start route
+ *  that is either "machine not confirmed" (the same request succeeds once it
+ *  is) or "this request id already exists with a different body", where a
+ *  fresh id could create a duplicate job. */
 export function isDefinitiveRejection(status: number): boolean {
-  return status >= 400 && status < 500 && status !== 408 && status !== 429;
+  return status >= 400 && status < 500 && status !== 408 && status !== 409 && status !== 429;
 }

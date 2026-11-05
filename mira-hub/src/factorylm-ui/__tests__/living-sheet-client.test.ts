@@ -33,6 +33,7 @@ import {
   type SheetSubmitOutcome,
   workOrderStatusText,
   photoAttemptBelongsTo,
+  stepConfirmBelongsTo,
   isDefinitiveRejection,
 } from "../living-sheet-client";
 import type { SheetProposal } from "@/capabilities/living-sheet/propose";
@@ -703,9 +704,32 @@ describe("photoAttemptBelongsTo — a photo retry stays on the job it was taken 
 
 describe("isDefinitiveRejection — when a refused start may be rebuilt (Codex #5207 F6)", () => {
   it("a 4xx refusal is definitive", () => {
-    for (const s of [400, 403, 404, 409, 422]) expect(isDefinitiveRejection(s)).toBe(true);
+    for (const s of [400, 401, 403, 404, 422]) expect(isDefinitiveRejection(s)).toBe(true);
   });
   it("a timeout, rate limit or server error is not — the exact attempt is kept for replay", () => {
-    for (const s of [408, 429, 500, 502, 503, 504]) expect(isDefinitiveRejection(s)).toBe(false);
+    for (const s of [408, 409, 429, 500, 502, 503, 504]) expect(isDefinitiveRejection(s)).toBe(false);
+  });
+});
+
+describe("stepConfirmBelongsTo — Mark done posts only to the job the dialog was opened on (Codex #5207 r2 F8)", () => {
+  // Two jobs built from the same job sheet share step ids, so the step id
+  // alone cannot tell them apart — the dialog's own job binding must.
+  const step = { id: "s-torque", text: "Torque the coupling bolts", done: false } as SheetStepView;
+  const confirm = { notebookId: "nb-1", jobId: "job-a", step };
+
+  it("the dialog opened on job A may post while job A is still open", () => {
+    expect(stepConfirmBelongsTo(confirm, "nb-1", "job-a")).toBe(true);
+  });
+  it("after switching to job B (same step id) the dialog must not post to B", () => {
+    expect(stepConfirmBelongsTo(confirm, "nb-1", "job-b")).toBe(false);
+  });
+  it("after the sheet is closed nothing is posted", () => {
+    expect(stepConfirmBelongsTo(confirm, "nb-1", null)).toBe(false);
+  });
+  it("a different notebook with the same job id is not the same job", () => {
+    expect(stepConfirmBelongsTo(confirm, "nb-2", "job-a")).toBe(false);
+  });
+  it("no open dialog never posts", () => {
+    expect(stepConfirmBelongsTo(null, "nb-1", "job-a")).toBe(false);
   });
 });

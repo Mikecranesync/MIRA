@@ -845,3 +845,36 @@ describe("Frame contract", () => {
     expect(proposals[0]!.quote).toContain("48");
   });
 });
+
+describe("Correction values must be complete number tokens (Codex #5207 r2 F9)", () => {
+  // A prefix of a fraction, exponent, range, doubled dot or bad comma group
+  // is not the value the technician said. Propose nothing rather than write
+  // a wrong number into the record.
+  const fragments = ["1/2", "1e3", "4..8", "4-5", "1,20"];
+  const corrected = (text: string) =>
+    proposeSheetUpdates(text, viewWithReading()).filter((p) => p.event.kind === "reading_corrected");
+
+  for (const frag of fragments) {
+    it(`'I meant ${frag} A' proposes no correction`, () => {
+      expect(corrected(`I meant ${frag} A`)).toHaveLength(0);
+    });
+    it(`'correction ${frag} A' proposes no correction`, () => {
+      expect(corrected(`correction ${frag} A`)).toHaveLength(0);
+    });
+    it(`'not 48, ${frag}' proposes no correction`, () => {
+      expect(corrected(`not 48, ${frag}`)).toHaveLength(0);
+    });
+  }
+
+  it("the old value of 'not X, Y' must be complete too: 'not 4,5 A' (decimal comma) and 'not 1,20 A, 4.8' propose nothing", () => {
+    expect(corrected("not 4,5 A")).toHaveLength(0);
+    expect(corrected("not 1,20 A, 4.8")).toHaveLength(0);
+  });
+
+  it("controls: well-formed values in every trigger still correct", () => {
+    for (const text of ["I meant 4.8 A", "correction 4.8 A", "not 48, 4.8", "I meant .8 A", "correction 1,200 A"]) {
+      const out = corrected(text);
+      expect(out, text).toHaveLength(1);
+    }
+  });
+});

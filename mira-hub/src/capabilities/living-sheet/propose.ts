@@ -143,6 +143,20 @@ function isBoundedNumberMatch(clause: string, index: number, end: number): boole
   return true;
 }
 
+// Codex #5207 r2 F9: a correction's values pass the same full-token test as
+// findNumbers. `start` is where the raw token sits in the clause. In the
+// "not X, Y" form the old value is followed by the separating comma, so that
+// comma is not a fragment — unless a digit follows it ("4,5" may be a decimal
+// comma), which stays rejected.
+function boundedValueAt(clause: string, start: number, raw: string, commaMaySeparate: boolean): number | null {
+  const end = start + raw.length;
+  const separated = commaMaySeparate && clause[end] === "," && !/[0-9]/.test(clause[end + 1] ?? "");
+  const bounded = separated
+    ? isBoundedNumberMatch(clause.slice(0, end), start, end)
+    : isBoundedNumberMatch(clause, start, end);
+  return bounded ? parseNumberToken(raw) : null;
+}
+
 function findNumbers(clause: string): { value: number; index: number; end: number }[] {
   const out: { value: number; index: number; end: number }[] = [];
   let m: RegExpExecArray | null;
@@ -380,8 +394,17 @@ function classifyClause(clause: string, view: SheetView): RawProposal[] {
   for (const trig of CORRECTION_TRIGGERS) {
     const m = trig.re.exec(trimmed);
     if (!m) continue;
-    const newValue = parseNumberToken(m[trig.newGroup]!);
-    const oldValue = trig.oldGroup != null ? parseNumberToken(m[trig.oldGroup]!) : null;
+    // Every trigger ends with its new-value group; the old value (the
+    // "not X, Y" form only) sits right after the leading "not ".
+    const rawNew = m[trig.newGroup]!;
+    const newValue = boundedValueAt(trimmed, m.index + m[0].length - rawNew.length, rawNew, false);
+    if (newValue === null) return [];
+    let oldValue: number | null = null;
+    if (trig.oldGroup != null) {
+      const rawOld = m[trig.oldGroup]!;
+      oldValue = boundedValueAt(trimmed, m.index + /^\S+\s+/.exec(m[0])![0].length, rawOld, true);
+      if (oldValue === null) return [];
+    }
     const namedQuantity = trig.nameGroup != null ? m[trig.nameGroup] ?? null : null;
     const unitEnd = m.index + m[0].length;
     const unit = unitAt(trimmed, unitEnd);
