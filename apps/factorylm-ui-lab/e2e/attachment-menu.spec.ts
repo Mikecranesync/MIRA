@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 
 for (const renderer of ["classic", "assistant"] as const) {
   for (const [viewport, width, height] of [["portrait", 390, 844], ["landscape", 844, 390], ["desktop", 1280, 900]] as const) {
-    test(renderer + " attachment availability and copy, " + viewport + " (#4631 #4683)", async ({ page }) => {
+    test(renderer + " attachment availability and copy, " + viewport + " (#4631 #4683)", async ({ page, browser }) => {
       await page.setViewportSize({ width, height });
       const external: string[] = [], errors: string[] = [];
       page.on("request", request => { if (!request.url().startsWith("http://127.0.0.1:")) external.push(request.url()); });
@@ -33,7 +33,7 @@ for (const renderer of ["classic", "assistant"] as const) {
         expect(describedBy).toBeTruthy();
         await expect(menu.locator('[id="' + describedBy + '"]')).toHaveText("Requires the mobile app");
         await button.scrollIntoViewIfNeeded();
-        await expect(button).toBeInViewport();
+        await expect(button).toBeInViewport({ ratio: 1 });
         expect((await button.boundingBox())?.height).toBeGreaterThanOrEqual(44);
       }
       const styles = await menu.evaluate(element => {
@@ -55,7 +55,7 @@ for (const renderer of ["classic", "assistant"] as const) {
       await expect(draft).toHaveValue("Keep this draft while I inspect Attach.");
       expect(external).toEqual([]);
       expect(errors).toEqual([]);
-      writeFileSync(test.info().outputPath("attach-record.json"), JSON.stringify({ renderer, viewport, width, height, attachBox, glyphBox, styles, external, errors, providerCalls: 0 }, null, 2));
+      writeFileSync(test.info().outputPath("attach-record.json"), JSON.stringify({ renderer, viewport, width, height, browser: browser.version(), attachBox, glyphBox, styles, external, errors, providerCalls: 0 }, null, 2));
     });
   }
 }
