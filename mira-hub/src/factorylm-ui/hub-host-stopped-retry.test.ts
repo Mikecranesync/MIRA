@@ -21,11 +21,13 @@ describe("hub-host arms Retry after a retained user abort", () => {
     const send = sendBody();
     const retained = send.indexOf("const retained = retainedStreamInterruption(err);");
     const arm = send.indexOf("if (shouldArmRetryAfterInterruption(retained)) {");
-    const keep = send.indexOf("setFailedBody({ body, question });", arm);
+    const endRetained = send.indexOf("return;", arm);
     expect(retained).toBeGreaterThan(-1);
     expect(arm).toBeGreaterThan(retained);
-    expect(keep).toBeGreaterThan(arm);
-    expect(send.slice(arm, keep + 40)).toMatch(/setFailedBody\(\{ body, question \}\)/);
+    expect(endRetained).toBeGreaterThan(arm);
+    const block = send.slice(retained, endRetained);
+    expect(block.match(/setFailedBody\(\{ body, question \}\)/g)).toEqual(["setFailedBody({ body, question })"]);
+    expect(block).toMatch(/if \(shouldArmRetryAfterInterruption\(retained\)\) \{\s*setFailedBody\(\{ body, question \}\);/);
   });
 
   it("does not show a send-error banner on a user abort", () => {

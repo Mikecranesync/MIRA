@@ -40,6 +40,12 @@ afterEach(() => {
 const STOPPED = {
   q: "what does fault F004 mean",
   a: { answer: "partial", citations: [], status: "stopped" as const },
+  requestId: "req-stopped-1",
+};
+const PRIOR_ANSWERED = {
+  q: "what is a VFD",
+  a: { answer: "A variable-frequency drive.", citations: [], status: "answered" as const },
+  requestId: "req-answered-1",
 };
 
 describe("stopped live turn Retry", () => {
@@ -67,6 +73,33 @@ describe("stopped live turn Retry", () => {
     expect(onSend).toHaveBeenCalledWith("what does fault F004 mean");
     const questionsAfter = mocks.state?.thread.turns.filter((turn) => turn.role === "user").length ?? 0;
     expect(questionsAfter).toBe(0);
+    expect(mocks.state?.thread.turns.some((turn) => turn.lifecycle === "stopped")).toBe(false);
+  });
+
+  it("keeps the superseded stop hidden after an earlier live row is dropped", async () => {
+    const onSend = vi.fn();
+    const props = {
+      turns: [] as const,
+      pending: null,
+      busy: false,
+      canStop: false,
+      canRetry: false,
+      chatError: null,
+      handlers: { onSend, onStop: () => {}, onCitation: () => {} },
+      meta: { notebookId: "nb-1", threadId: "notebook-nb-1:thread-legacy", title: "Machine", identityConfirmed: true },
+    };
+    const view = render(<UnifiedChat {...props} liveTurns={[PRIOR_ANSWERED, STOPPED]} />);
+    const questionsBefore = mocks.state?.thread.turns.filter((turn) => turn.role === "user").map((turn) =>
+      turn.parts.flatMap((part) => part.type === "text" ? [part.text] : []),
+    ).flat() ?? [];
+    expect(questionsBefore).toEqual(["what is a VFD", "what does fault F004 mean"]);
+    await act(async () => {
+      mocks.hooks!.onRetry!("live-stopped-a");
+    });
+    expect(onSend).toHaveBeenCalledWith("what does fault F004 mean");
+    expect(mocks.state?.thread.turns.filter((turn) => turn.role === "user")).toHaveLength(1);
+    view.rerender(<UnifiedChat {...props} liveTurns={[STOPPED]} />);
+    expect(mocks.state?.thread.turns.filter((turn) => turn.role === "user")).toHaveLength(0);
     expect(mocks.state?.thread.turns.some((turn) => turn.lifecycle === "stopped")).toBe(false);
   });
 
