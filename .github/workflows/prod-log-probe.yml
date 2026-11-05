@@ -17,6 +17,9 @@
 #   - A failed read fails the run with a fixed message; an empty result says
 #     "read OK: no lines" so the two can never be confused.
 #   - The backup probe lists file names and sizes only, never contents.
+#   - The Atlas error probe returns only exception class names and Atlas
+#     (com.grash) stack-frame locations, never exception message text, which
+#     can quote stored records.
 #
 # Nothing on the host is changed. Rollback: delete this file.
 name: Production log probe (read-only)
@@ -31,6 +34,7 @@ on:
           - hub-cmms-stats
           - hub-cmms-dispatch
           - atlas-backups
+          - atlas-api-errors
         default: hub-cmms-stats
 
 permissions:
@@ -53,7 +57,7 @@ jobs:
         run: |
           set -euo pipefail
           case "$PROBE" in
-            hub-cmms-stats|hub-cmms-dispatch|atlas-backups) ;;
+            hub-cmms-stats|hub-cmms-dispatch|atlas-backups|atlas-api-errors) ;;
             *) echo "::error::invalid probe '$PROBE'"; exit 1 ;;
           esac
 
@@ -110,6 +114,20 @@ jobs:
               fi
               if [ -f /opt/mira-cmms/docker-compose.prod.yml ]; then echo "installed compose present"; else echo "installed compose MISSING"; fi
               if [ -f /opt/mira-cmms/atlas-version-rollback.sh ]; then echo "rollback script present"; else echo "rollback script MISSING"; fi
+              ;;
+            atlas-api-errors)
+              # #5205: Atlas answers some Hub searches with 500. Only the
+              # exception class names and com.grash frame locations are kept
+              # (grep -o drops everything else on the line), in log order with
+              # repeat counts — never the message text.
+              if ! all="$(docker logs --since 6h cmms-backend 2>&1)"; then
+                echo "PROBE FAILED: could not read the cmms-backend container log"
+                exit 3
+              fi
+              hits="$(printf '%s\n' "$all" \
+                | grep -oE '[A-Za-z_$][A-Za-z0-9_$]*(\.[A-Za-z_$][A-Za-z0-9_$]*)+(Exception|Error)\b|at com\.grash\.[A-Za-z0-9_.$]+\([A-Za-z0-9_]+\.java:[0-9]+\)' \
+                | uniq -c | tail -n 80 || true)"
+              if [ -z "$hits" ]; then echo "read OK: no exception lines in the last 6h"; else printf '%s\n' "$hits"; fi
               ;;
           esac
           ENDSSH
