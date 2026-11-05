@@ -17,6 +17,10 @@
 #   - A failed read fails the run with a fixed message; an empty result says
 #     "read OK: no lines" so the two can never be confused.
 #   - The backup probe lists file names and sizes only, never contents.
+#   - The Atlas error probe returns only exception class names (from anchored
+#     header lines) and Atlas (com.grash) stack-frame locations, never
+#     exception message text, which can quote stored records. The filter is
+#     tested end to end by tests/beta/test_prod_log_probe_atlas_filter.py.
 #
 # Nothing on the host is changed. Rollback: delete this file.
 name: Production log probe (read-only)
@@ -31,6 +35,7 @@ on:
           - hub-cmms-stats
           - hub-cmms-dispatch
           - atlas-backups
+          - atlas-api-errors
         default: hub-cmms-stats
 
 permissions:
@@ -53,7 +58,7 @@ jobs:
         run: |
           set -euo pipefail
           case "$PROBE" in
-            hub-cmms-stats|hub-cmms-dispatch|atlas-backups) ;;
+            hub-cmms-stats|hub-cmms-dispatch|atlas-backups|atlas-api-errors) ;;
             *) echo "::error::invalid probe '$PROBE'"; exit 1 ;;
           esac
 
@@ -110,6 +115,23 @@ jobs:
               fi
               if [ -f /opt/mira-cmms/docker-compose.prod.yml ]; then echo "installed compose present"; else echo "installed compose MISSING"; fi
               if [ -f /opt/mira-cmms/atlas-version-rollback.sh ]; then echo "rollback script present"; else echo "rollback script MISSING"; fi
+              ;;
+            atlas-api-errors)
+              # #5205: Atlas answers some Hub searches with 500. Only two
+              # anchored line shapes are kept, and from each only the
+              # structural token: an exception header at the start of a line
+              # (optionally "Caused by: ") whose class sits under a known
+              # package root, and an Atlas (com.grash) stack frame. Message
+              # text is never searched, so nothing class-shaped inside a
+              # message can surface. Repeat-counted, last 80 lines.
+              if ! all="$(docker logs --since 6h cmms-backend 2>&1)"; then
+                echo "PROBE FAILED: could not read the cmms-backend container log"
+                exit 3
+              fi
+              # BEGIN atlas-exception-filter
+              hits="$(printf '%s\n' "$all" | sed -nE -e 's/^(Caused by: )?((java|javax|jakarta|org|com|io|net)(\.[a-z][a-z0-9_]*)+\.[A-Z][A-Za-z0-9_$]*(Exception|Error))(: .*)?$/\2/p' -e 's/^[[:space:]]+(at com\.grash\.[A-Za-z0-9_.$]+\([A-Za-z0-9_]+\.java:[0-9]+\))[[:space:]]*$/\1/p' | uniq -c | tail -n 80 || true)"
+              # END atlas-exception-filter
+              if [ -z "$hits" ]; then echo "read OK: no exception lines in the last 6h"; else printf '%s\n' "$hits"; fi
               ;;
           esac
           ENDSSH
