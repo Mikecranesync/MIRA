@@ -178,11 +178,16 @@ export function HubShellHost() {
   // The technician's message from the moment Send is tapped (outgoing-turn.ts).
   const [outgoing, setOutgoing] = useState<Outgoing | null>(null);
   const [busy, setBusy] = useState(false);
-  // Layout effect (not a plain effect): commits before the browser paints, so
-  // switching between already-open notebooks never flashes the prior title.
+  // Use the current selection, not a previous notebook's still-loading detail.
+  // Thread names distinguish two conversations in the same project (#4753).
+  const titleNotebook = !signedOut && selection ? notebooks?.find((nb) => nb.id === selection.notebookId) : undefined;
+  const titleProjectName = !signedOut && selection
+    ? titleNotebook?.displayName ?? (detail?.notebook.id === selection.notebookId ? detail.notebook.displayName : null)
+    : null;
+  const titleThreadName = titleNotebook?.threads?.find((thread) => thread.id === selection?.threadId)?.title;
   useLayoutEffect(() => {
-    document.title = tabTitleFor(detail?.notebook.displayName, busy);
-  }, [detail, busy]);
+    document.title = tabTitleFor(titleProjectName, busy, titleThreadName);
+  }, [titleProjectName, titleThreadName, busy]);
   const [failedBody, setFailedBody] = useState<{ body: ReturnType<typeof chatBodyFor>; question: string } | null>(null);
   // TASK-S3: the Living Work Sheet job open for ANY notebook (LivingSheet is
   // mounted per-notebook, but this state belongs to the host, not the panel,

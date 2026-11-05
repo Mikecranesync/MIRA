@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
 import type { HubNotebook } from "./notebook-tree";
@@ -393,9 +392,16 @@ describe("tabTitleFor - #4753 two open projects must have different tab titles",
   it("never shows the busy marker on the home screen (control)", () => {
     expect(tabTitleFor(null, true)).toBe("FactoryLM Hub");
   });
-  it("is wired to document.title in hub-host.tsx, keyed on the open notebook and busy state", () => {
-    const host = readFileSync(new URL("./hub-host.tsx", import.meta.url), "utf8");
-    expect(host).toContain("document.title = tabTitleFor(detail?.notebook.displayName, busy);");
+  it("distinguishes conversations inside the same project", () => {
+    expect(tabTitleFor("Conveyor CV-101", false, "Belt tracking")).toBe(`Belt tracking — Conveyor CV-101 ${MIDDOT} FactoryLM Hub`);
+    expect(tabTitleFor("Conveyor CV-101", false, "Motor vibration")).toBe(`Motor vibration — Conveyor CV-101 ${MIDDOT} FactoryLM Hub`);
+  });
+  it("trims the thread title and falls back to the project for a new conversation", () => {
+    expect(tabTitleFor("Conveyor CV-101", true, "  Motor vibration  ")).toBe(`${DOT} Motor vibration — Conveyor CV-101 ${MIDDOT} FactoryLM Hub`);
+    expect(tabTitleFor("Conveyor CV-101", false, "  ")).toBe(`Conveyor CV-101 ${MIDDOT} FactoryLM Hub`);
+  });
+  it("does not retain a prior conversation's name on home", () => {
+    expect(tabTitleFor(null, false, "Motor vibration")).toBe("FactoryLM Hub");
   });
 });
 
