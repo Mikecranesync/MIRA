@@ -238,7 +238,9 @@ for (const [label, width, height] of [["portrait", 390, 844], ["landscape", 844,
     const secondThread = "55555555-5555-4555-8555-555555555552";
     const thread = (id: string, title: string) => ({ id, notebookId: NB, title, createdAt: "2026-11-05T00:00:00Z", updatedAt: "2026-11-05T00:00:00Z", turnCount: 1, sharedLegacy: false });
     const list = structuredClone(oracle.list);
-    list.notebooks[0].threads = [thread(firstThread, "Seal inspection"), thread(secondThread, "Motor vibration")];
+    // The list API caps summaries at20, detail at50: a deep link may only be named in detail.
+    const detailThreads = [thread(firstThread, "Seal inspection"), thread(secondThread, "Motor vibration")];
+    list.notebooks[0].threads = [detailThreads[1]];
     list.notebooks.push({ ...list.notebooks[0], id: secondNotebook, displayName: "Control conveyor", threads: [] });
     const checks: { name: string; title: string }[] = [];
     let releaseChat!: () => void;
@@ -254,6 +256,9 @@ for (const [label, width, height] of [["portrait", 390, 844], ["landscape", 844,
         const pathname = new URL(route.request().url()).pathname.replace(/^\/hub/, "").replace(/\/$/, "");
         const json = (body: unknown) => ({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
         if (pathname === "/api/equipment-notebooks" && route.request().method() === "GET") return route.fulfill(json(list));
+        if (pathname === `/api/equipment-notebooks/${NB}` && route.request().method() === "GET") {
+          return route.fulfill(json({ ...oracle.detailEmpty, threads: detailThreads }));
+        }
         if (pathname === `/api/equipment-notebooks/${secondNotebook}`) {
           await heldDetail;
           return route.fulfill(json({ ...oracle.detailEmpty, notebook: { ...oracle.detailEmpty.notebook, id: secondNotebook, displayName: "Control conveyor" } }));
