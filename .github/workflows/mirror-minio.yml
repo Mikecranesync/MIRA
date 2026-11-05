@@ -88,7 +88,9 @@ jobs:
           INSPECT="$(ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
             ubuntu@40.160.141.61 "sudo docker image inspect --format '${FP_FORMAT}' '${SOURCE_REF}'")" \
             || { echo "::error::host has no copy of ${SOURCE_REF} — STOP"; exit 1; }
-          HOST_FP="$(printf '%s' "$INSPECT" | sha256sum | cut -d' ' -f1)"
+          # Re-add the newline that $(...) stripped, so these bytes equal the direct
+          # `docker image inspect | sha256sum` pipelines used at every other hop.
+          HOST_FP="$(printf '%s\n' "$INSPECT" | sha256sum | cut -d' ' -f1)"
           HOST_ID="$(ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
             ubuntu@40.160.141.61 "sudo docker image inspect --format '{{.Id}}' '${SOURCE_REF}'")"
           echo "host image id: $HOST_ID"
