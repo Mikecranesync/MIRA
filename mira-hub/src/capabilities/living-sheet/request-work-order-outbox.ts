@@ -47,8 +47,10 @@ import {
 
 /** Hub-native default priority for a technician-requested work order — same
  *  literal `work-orders/route.ts` falls back to for an unspecified priority.
- *  The dispatcher converts to Atlas's uppercase enum (`priorityHubToAtlas`)
- *  at write time; this payload stays Hub-shaped. */
+ *  The Atlas write provider converts Hub-shaped priority to Atlas's
+ *  uppercase enum (`priorityHubToAtlas`, same mapper `lib/atlas/sync.ts`
+ *  uses) at write time, same as every other Hub->Atlas write — this payload
+ *  stays Hub-shaped, never provider-specific. */
 const DEFAULT_PRIORITY = "medium";
 
 export type EnqueueWorkOrderRequestedInput = {

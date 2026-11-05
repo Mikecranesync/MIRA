@@ -38,12 +38,17 @@ class FakeAtlasWorkOrderApi implements AtlasWorkOrderApi {
   private readonly orders: FakeWorkOrder[] = [];
   private nextId = 1;
   private pendingCreateFailure: "throw5xx" | "throw4xx" | null = null;
+  /** The `priority` string Atlas actually received on the last create call —
+   *  lets a test confirm Hub-shaped priority ("medium") reaches Atlas
+   *  already converted to its uppercase enum, never passed through raw. */
+  lastPriority: string | null = null;
 
   failNextCreate(kind: "throw5xx" | "throw4xx"): void {
     this.pendingCreateFailure = kind;
   }
 
   async createWorkOrder(payload: { title: string; description: string; priority: string }): Promise<{ id: number }> {
+    this.lastPriority = payload.priority;
     if (this.pendingCreateFailure === "throw5xx") {
       this.pendingCreateFailure = null;
       const { AtlasHttpError } = await import("@/lib/atlas/client");
@@ -184,6 +189,20 @@ describe("createWorkOrder — atlas-specific error mapping", () => {
     const provider = new AtlasWriteProvider(fakeComments, { workOrders: fakeWorkOrders });
     const result = await provider.createWorkOrder(makeRequest("evt-4xx"));
     expect(result.kind).not.toBe("outcome_unknown");
+  });
+
+  it("Hub-shaped priority (lowercase) reaches Atlas already converted to its uppercase enum", async () => {
+    const fakeComments = {
+      countComments: async () => ({ count: 0 }),
+      createComment: async () => {
+        throw new Error("not used");
+      },
+      searchComments: async () => [],
+    };
+    const fakeWorkOrders = new FakeAtlasWorkOrderApi();
+    const provider = new AtlasWriteProvider(fakeComments, { workOrders: fakeWorkOrders });
+    await provider.createWorkOrder(makeRequest("evt-priority", { priority: "medium" }));
+    expect(fakeWorkOrders.lastPriority).toBe("MEDIUM");
   });
 
   it("without a workOrders API, createWorkOrder reports unsupported — never throws", async () => {

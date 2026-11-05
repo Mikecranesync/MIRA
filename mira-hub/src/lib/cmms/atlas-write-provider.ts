@@ -11,7 +11,7 @@
 // latter also returns synthetic system-generated history rows (system=true)
 // that are filtered out before looking for our idempotency marker.
 
-import { AtlasAuthError, AtlasHttpError, type AtlasComment } from "@/lib/atlas/client";
+import { AtlasAuthError, AtlasHttpError, priorityHubToAtlas, type AtlasComment } from "@/lib/atlas/client";
 
 import {
   type CmmsCapability,
@@ -257,7 +257,10 @@ export class AtlasWriteProvider implements CmmsWriteProvider {
       created = await this.workOrders.createWorkOrder({
         title: req.title,
         description,
-        priority: req.priority,
+        // Hub-shaped priority ("medium") -> Atlas's uppercase enum, same
+        // mapper `lib/atlas/sync.ts`'s forward push uses (idempotent on an
+        // already-uppercase value like "MEDIUM").
+        priority: priorityHubToAtlas(req.priority),
         ...(req.externalAssetId ? { asset: { id: Number(req.externalAssetId) } } : {}),
       });
     } catch (err) {
