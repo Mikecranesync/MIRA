@@ -22,6 +22,8 @@ import { reduceSheet, type SheetView, type StoredEvent } from "./reduce";
 import type { EventKind, JobSheetBody } from "./types";
 import type { ValidatedAppendInput, ValidatedStartJobInput } from "./validate";
 import { enqueueJobFinishedEvent } from "./finish-outbox";
+import { enqueueWorkOrderRequestedEvent } from "./request-work-order-outbox";
+import type { EnqueueResult } from "@/capabilities/cmms-dispatch";
 
 export type Actor = { userId: string | null; label: string | null };
 
@@ -413,6 +415,43 @@ export async function appendEvent(
       });
     }
     return { status: "created", event: newEvent, seq: newEvent.seq, view: newView };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// requestWorkOrder
+// ---------------------------------------------------------------------------
+
+export type RequestWorkOrderResult = { status: "enqueued"; result: EnqueueResult } | { status: "job_not_found" };
+
+/**
+ * Technician-confirmed "create an Atlas work order for this sheet". One
+ * `work_order_requested` event per job through the cmms-dispatch outbox
+ * (`request-work-order-outbox.ts`); a double tap or retried POST returns the
+ * first event and its delivery, never a second order. Runs under the same
+ * per-job advisory lock as `appendEvent`, so the description snapshot is
+ * taken from a sheet no concurrent append is half-way through changing.
+ */
+export async function requestWorkOrder(
+  tenantId: string,
+  notebookId: string,
+  jobId: string,
+  actor: Actor,
+): Promise<RequestWorkOrderResult> {
+  return withTenantContext(tenantId, async (c) => {
+    await c.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [`${tenantId}:${jobId}`]);
+    const rows = await loadEventsForJob(c, tenantId, jobId);
+    if (rows.length === 0 || rows[0]!.notebook_id !== notebookId) return { status: "job_not_found" };
+    const view = reduceSheet(rows.map(toStoredEvent), jobId);
+    const result = await enqueueWorkOrderRequestedEvent(c, {
+      tenantId,
+      notebookId,
+      jobId,
+      view,
+      actorUserId: actor.userId,
+      occurredAt: new Date().toISOString(),
+    });
+    return { status: "enqueued", result };
   });
 }
 

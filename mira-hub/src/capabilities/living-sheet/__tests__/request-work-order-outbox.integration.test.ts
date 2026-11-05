@@ -42,12 +42,12 @@ const { testPool } = vi.hoisted(() => {
 });
 vi.mock("@/lib/db", () => ({ default: testPool }));
 
-import { startJob, type StartJobResult } from "../store";
+import { requestWorkOrder, startJob, type StartJobResult } from "../store";
 import type { JobSheetBody } from "../types";
 import { reduceSheet, type StoredEvent } from "../reduce";
 import { withTenantContext } from "@/lib/tenant-context";
 import { enqueueWorkOrderRequestedEvent } from "../request-work-order-outbox";
-import { subjectRefForWorkOrderRequested } from "@/capabilities/cmms-dispatch";
+import { deliveryStatusForWorkOrderRequest, subjectRefForWorkOrderRequested } from "@/capabilities/cmms-dispatch";
 
 const MIGRATION = path.resolve(__dirname, "../../../../db/proposed/114_living_work_sheet.sql");
 
@@ -314,5 +314,44 @@ describe("request-work-order-outbox — tenant isolation", () => {
       c.query(`SELECT 1 FROM notebook_domain_events WHERE subject_ref = $1`, [subjectRef]),
     );
     expect(crossTenant.rows.length).toBe(0);
+  });
+});
+
+describe("requestWorkOrder (route entry point) — scoping", () => {
+  it("creates once for the right tenant + notebook; a second call replays the same event; status reads it back", async () => {
+    const tenant = uuid();
+    const entityId = `cmms-${uuid()}`;
+    const nb = await makeNotebook(tenant, entityId, true);
+    const job = created(await startJob(tenant, nb, { entityId, name: "Pump 07" }, startInput(), ACTOR));
+    await setCmmsConfig(tenant, { writePolicy: workOrderRequestedEnabledPolicy() });
+
+    const first = await requestWorkOrder(tenant, nb, job.jobId, ACTOR);
+    const second = await requestWorkOrder(tenant, nb, job.jobId, ACTOR);
+    if (first.status !== "enqueued" || second.status !== "enqueued") throw new Error("expected enqueued");
+    expect(first.result.replayed).toBe(false);
+    expect(second.result.replayed).toBe(true);
+    expect(second.result.eventId).toBe(first.result.eventId);
+    expect(await countDomainEvents(tenant, subjectRefForWorkOrderRequested(job.jobId))).toBe(1);
+
+    const status = await deliveryStatusForWorkOrderRequest(tenant, job.jobId);
+    expect(status).toMatchObject({ eventId: first.result.eventId, state: "queued", externalRef: null });
+  });
+
+  it("wrong tenant or wrong notebook → job_not_found and nothing enqueued", async () => {
+    const tenantA = uuid();
+    const tenantB = uuid();
+    const entityId = `cmms-${uuid()}`;
+    const nbA = await makeNotebook(tenantA, entityId, true);
+    const nbOther = await makeNotebook(tenantA, `cmms-${uuid()}`, true);
+    const job = created(await startJob(tenantA, nbA, { entityId, name: "Pump 07" }, startInput(), ACTOR));
+    await setCmmsConfig(tenantA, { writePolicy: workOrderRequestedEnabledPolicy() });
+    await setCmmsConfig(tenantB, { writePolicy: workOrderRequestedEnabledPolicy() });
+
+    expect(await requestWorkOrder(tenantB, nbA, job.jobId, ACTOR)).toEqual({ status: "job_not_found" });
+    expect(await requestWorkOrder(tenantA, nbOther, job.jobId, ACTOR)).toEqual({ status: "job_not_found" });
+    const subjectRef = subjectRefForWorkOrderRequested(job.jobId);
+    expect(await countDomainEvents(tenantA, subjectRef)).toBe(0);
+    expect(await countDomainEvents(tenantB, subjectRef)).toBe(0);
+    expect(await deliveryStatusForWorkOrderRequest(tenantB, job.jobId)).toBeNull();
   });
 });

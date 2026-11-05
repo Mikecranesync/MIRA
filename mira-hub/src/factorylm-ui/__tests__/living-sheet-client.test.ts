@@ -31,6 +31,7 @@ import {
   type QueuedSheetEvent,
   type SheetEventPost,
   type SheetSubmitOutcome,
+  workOrderStatusText,
 } from "../living-sheet-client";
 import type { SheetProposal } from "@/capabilities/living-sheet/propose";
 import type { SheetStepView } from "@/capabilities/living-sheet/reduce";
@@ -659,5 +660,24 @@ describe("parseSheetReceipts", () => {
     const seen: NotebookSheetReceiptFrame[] = [];
     await expect(parseSheetReceipts(stream, (f) => seen.push(f))).resolves.toBeUndefined();
     expect(seen).toEqual([]);
+  });
+});
+
+describe("workOrderStatusText", () => {
+  const base = { eventId: "e", requestedAt: "t0", externalRef: null, attempts: 0, updatedAt: "t1" };
+  it("only says 'created' after the CMMS read the order back", () => {
+    for (const state of ["queued", "leased", "accepted_pending_verification", "retryable_failure", "outcome_unknown"]) {
+      expect(workOrderStatusText({ ...base, state })).not.toMatch(/created in the CMMS/);
+    }
+    expect(workOrderStatusText({ ...base, state: "verified_by_readback", externalRef: "812" })).toBe(
+      "Work order #812 created in the CMMS.",
+    );
+  });
+  it("policy-off and unknown failures are explicit, never silent", () => {
+    expect(workOrderStatusText({ ...base, state: "saved" })).toMatch(/turned off/);
+    expect(workOrderStatusText({ ...base, state: "blocked_policy" })).toMatch(/turned off/);
+    expect(workOrderStatusText({ ...base, state: "permission_denied" })).toMatch(/refused/);
+    expect(workOrderStatusText({ ...base, state: "permanent_failure" })).toMatch(/Could not create/);
+    expect(workOrderStatusText({ ...base, state: "outcome_unknown" })).toMatch(/not create a second order/);
   });
 });

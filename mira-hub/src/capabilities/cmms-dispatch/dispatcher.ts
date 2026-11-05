@@ -405,8 +405,17 @@ async function planCreateWorkOrder(tc: PoolClient, row: DeliveryRow, event: Doma
       `SELECT atlas_id FROM cmms_equipment WHERE tenant_id::text = $1::text AND id::text = $2`,
       [row.tenant_id, event.equipment_entity_id],
     );
-    externalAssetId = eqRes.rows[0]?.atlas_id ?? null;
-    source = externalAssetId ? "cmms_equipment" : "unlinked";
+    const atlasId = eqRes.rows[0]?.atlas_id ?? null;
+    // Atlas asset ids are positive integers; the provider sends Number(id).
+    // A malformed mapping must never become `asset: { id: NaN }` (or link
+    // some other asset) — create the order unlinked and say why.
+    if (atlasId !== null && /^[1-9][0-9]*$/.test(atlasId)) {
+      externalAssetId = atlasId;
+      source = "cmms_equipment";
+    } else {
+      externalAssetId = null;
+      source = atlasId === null ? "unlinked" : "unlinked_invalid_atlas_id";
+    }
   } else {
     externalAssetId = null;
     source = "unlinked";
