@@ -15,7 +15,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { expect, test, type Browser } from "@playwright/test";
-import { addSessionCookie, DOC, FILE, installRoutes, oracle, type Scenario } from "./harness";
+import { addSessionCookie, DOC, FILE, NB, installRoutes, oracle, type Scenario } from "./harness";
 import { extractTurn, UI, type Surface, type TurnRecord } from "./surfaces";
 import { REQUEST_ALLOWLIST } from "./allowlist";
 
@@ -223,5 +223,91 @@ test("settle: follow-ups survive the post-turn refetch (clone, #4454)", () => {
 for (const sc of SCENARIOS) {
   test(`live ≡ hydrated: ${sc} (AC6)`, () => {
     for (const s of SURFACES) expect.soft(runs[s][sc].hydrated, s).toEqual(runs[s][sc].live);
+  });
+}
+
+
+// #4753: exercise the actual Next-mounted host, not only its pure title helper.
+// Existing fidelity fixtures supply API data; no model or shared DB is used.
+for (const [label, width, height] of [["portrait", 390, 844], ["landscape", 844, 390], ["desktop", 1280, 900]] as const) {
+  test(`tab identity: project, thread, reload and busy state (${label}, #4753)`, async ({ browser, baseURL }, info) => {
+    if (!baseURL) throw new Error("Fidelity baseURL required");
+    const context = await browser.newContext({ baseURL, viewport: { width, height }, serviceWorkers: "block" });
+    const secondNotebook = "22222222-2222-4222-8222-222222222223";
+    const firstThread = "55555555-5555-4555-8555-555555555551";
+    const secondThread = "55555555-5555-4555-8555-555555555552";
+    const thread = (id: string, title: string) => ({ id, notebookId: NB, title, createdAt: "2026-11-05T00:00:00Z", updatedAt: "2026-11-05T00:00:00Z", turnCount: 1, sharedLegacy: false });
+    const list = structuredClone(oracle.list);
+    list.notebooks[0].threads = [thread(firstThread, "Seal inspection"), thread(secondThread, "Motor vibration")];
+    list.notebooks.push({ ...list.notebooks[0], id: secondNotebook, displayName: "Control conveyor", threads: [] });
+    const checks: { name: string; title: string }[] = [];
+    let releaseChat!: () => void;
+    const heldChat = new Promise<void>((resolve) => { releaseChat = resolve; });
+    let releaseDetail!: () => void;
+    const heldDetail = new Promise<void>((resolve) => { releaseDetail = resolve; });
+    try {
+      await addSessionCookie(context, baseURL);
+      const page = await context.newPage();
+      await installRoutes(page, "G");
+      let chatCalls = 0;
+      await page.route("**/api/**", async (route) => {
+        const pathname = new URL(route.request().url()).pathname.replace(/^\/hub/, "").replace(/\/$/, "");
+        const json = (body: unknown) => ({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+        if (pathname === "/api/equipment-notebooks" && route.request().method() === "GET") return route.fulfill(json(list));
+        if (pathname === `/api/equipment-notebooks/${secondNotebook}`) {
+          await heldDetail;
+          return route.fulfill(json({ ...oracle.detailEmpty, notebook: { ...oracle.detailEmpty.notebook, id: secondNotebook, displayName: "Control conveyor" } }));
+        }
+        if (pathname === `/api/equipment-notebooks/${NB}/chat`) {
+          chatCalls += 1;
+          await heldChat;
+          return route.fulfill({ status: 200, contentType: "text/event-stream", body: oracle.G.sse });
+        }
+        return route.fallback();
+      });
+      const title = async (name: string, expected: string) => {
+        await expect(page).toHaveTitle(expected);
+        checks.push({ name, title: await page.title() });
+      };
+      const navigate = async () => {
+        const open = page.getByRole("button", { name: "Open navigation", exact: true });
+        if (await open.isVisible()) await open.click();
+      };
+      await page.goto("/hub/v3/");
+      await UI.clone.composer(page).waitFor();
+      await title("home", "FactoryLM Hub");
+      const url = `/hub/v3/?notebook=${NB}&thread=${firstThread}`;
+      await page.goto(url);
+      await title("named thread", "Seal inspection — GS10 — Line 3 conveyor · FactoryLM Hub");
+      await page.reload();
+      await title("reload", "Seal inspection — GS10 — Line 3 conveyor · FactoryLM Hub");
+      await navigate();
+      await page.getByRole("button", { name: "Motor vibration", exact: true }).click();
+      await title("same-project thread switch", "Motor vibration — GS10 — Line 3 conveyor · FactoryLM Hub");
+      await navigate();
+      await page.getByRole("button", { name: "Control conveyor", exact: true }).click();
+      // The old notebook's detail is still present: it must not name this tab.
+      await title("project switch before detail returns", "Control conveyor · FactoryLM Hub");
+      releaseDetail();
+      await page.goto(url);
+      await title("return to named thread", "Seal inspection — GS10 — Line 3 conveyor · FactoryLM Hub");
+      const sent = page.waitForRequest((r) => new URL(r.url()).pathname.replace(/\/$/, "") === `/hub/api/equipment-notebooks/${NB}/chat` && r.method() === "POST");
+      await UI.clone.composer(page).fill("UI-only simulated question");
+      await UI.clone.composer(page).press("Enter");
+      await sent;
+      await title("busy", "● Seal inspection — GS10 — Line 3 conveyor · FactoryLM Hub");
+      releaseChat();
+      await title("settled", "Seal inspection — GS10 — Line 3 conveyor · FactoryLM Hub");
+      await page.goto("/hub/v3/");
+      await UI.clone.composer(page).waitFor();
+      await title("home clears previous identity", "FactoryLM Hub");
+      expect(chatCalls).toBe(1);
+      writeFileSync(info.outputPath("tab-title-record.json"), JSON.stringify({ label, width, height, checks, fixtureChatCalls: chatCalls, providerCalls: 0 }, null, 2));
+      await page.screenshot({ path: info.outputPath("tab-title-home.png") });
+    } finally {
+      releaseChat();
+      releaseDetail();
+      await context.close();
+    }
   });
 }
