@@ -1833,6 +1833,7 @@ jobs:
           node node_modules/vitest/vitest.mjs run \
             --config vitest.integration.config.ts \
             src/capabilities/living-sheet/__tests__/request-work-order-outbox.integration.test.ts \
+            src/capabilities/living-sheet/__tests__/migration-order.integration.test.ts \
             2>&1 | tee /tmp/wo-request.out
           sed -E 's/\x1b\[[0-9;]*[A-Za-z]//g' /tmp/wo-request.out > /tmp/wo-request.plain
           if grep -qiE "no test files found" /tmp/wo-request.plain; then
@@ -1845,6 +1846,8 @@ jobs:
             echo "::error::could not confirm a positive passing test count"; exit 1; }
           grep -qE "✓ src/capabilities/living-sheet/__tests__/request-work-order-outbox\.integration\.test\.ts" /tmp/wo-request.plain || {
             echo "::error::work-order request outbox suite did not run and pass"; exit 1; }
+          grep -qE "✓ src/capabilities/living-sheet/__tests__/migration-order\.integration\.test\.ts" /tmp/wo-request.plain || {
+            echo "::error::migration-order suite did not run and pass"; exit 1; }
 
   manual-search-quota-pg:
     name: Manual-search quota caps (disposable Postgres, migration 103)

@@ -99,10 +99,12 @@ GRANT SELECT, INSERT ON asset_observations TO factorylm_app;
 
 -- Widen the outbox event vocabulary (111 created the CHECK inline, so its
 -- auto-generated name is notebook_domain_events_event_type_check).
--- Drop-and-re-add is idempotent: the end state is the same whichever run.
+-- #5218: keep every published 114 event type when this still-proposed
+-- migration is promoted or replayed after Living Sheet rows already exist.
+-- Canonical applied 114 remains immutable; neither sibling may narrow the list.
 ALTER TABLE notebook_domain_events DROP CONSTRAINT IF EXISTS notebook_domain_events_event_type_check;
 ALTER TABLE notebook_domain_events ADD CONSTRAINT notebook_domain_events_event_type_check
-  CHECK (event_type IN ('fix_recorded', 'observation_recorded'));
+  CHECK (event_type IN ('fix_recorded', 'observation_recorded', 'job_finished', 'work_order_requested'));
 
 COMMENT ON TABLE asset_observations IS
   'Append-only technician observations on a confirmed machine (Mission 001). Human-reported evidence: never a machine measurement, never root cause, health or safe-to-operate.';
