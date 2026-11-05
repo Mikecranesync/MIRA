@@ -111,6 +111,8 @@ type Detail = {
   notebook: EquipmentNotebook;
   sources: NotebookSource[];
   turns: (PersistedTurn & { createdAt?: string })[];
+  // The authorized detail route includes more summaries than the capped list.
+  threads?: HubNotebook["threads"];
   // T2 (#4189 F6): the notebook's CURRENT manual-search status, computed
   // fresh by the GET route on every read (`currentManualSearchStatus`) —
   // absent/null on a server that predates it, or when nothing is running.
@@ -184,7 +186,10 @@ export function HubShellHost() {
   const titleProjectName = !signedOut && selection
     ? titleNotebook?.displayName ?? (detail?.notebook.id === selection.notebookId ? detail.notebook.displayName : null)
     : null;
-  const titleThreadName = titleNotebook?.threads?.find((thread) => thread.id === selection?.threadId)?.title;
+  const titleThreadName = titleNotebook?.threads?.find((thread) => thread.id === selection?.threadId)?.title
+    ?? (!signedOut && selection && detail?.notebook.id === selection.notebookId
+      ? detail.threads?.find((thread) => thread.id === selection.threadId)?.title
+      : undefined);
   useLayoutEffect(() => {
     document.title = tabTitleFor(titleProjectName, busy, titleThreadName);
   }, [titleProjectName, titleThreadName, busy]);
