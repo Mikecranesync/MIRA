@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
+import { atlasAccountKey, runInAtlasAccountLane } from "@/lib/atlas/client";
 
 export const dynamic = "force-dynamic";
 
@@ -46,15 +47,19 @@ async function getToken(): Promise<{ token: string | null; reason?: string }> {
   }
 }
 
-async function atlasPost(path: string, payload: Record<string, unknown>, token: string): Promise<unknown> {
-  const res = await fetch(`${atlasBase()}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(10_000),
+// One request at a time per Atlas account: Atlas v1.8.0 fails concurrent
+// searches for the same user (#5205; see runInAtlasAccountLane).
+function atlasPost(path: string, payload: Record<string, unknown>, token: string): Promise<unknown> {
+  return runInAtlasAccountLane(atlasAccountKey(atlasBase(), process.env.ATLAS_API_USER ?? ""), async () => {
+    const res = await fetch(`${atlasBase()}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) throw new Error(`Atlas ${path} → ${res.status}`);
+    return res.json();
   });
-  if (!res.ok) throw new Error(`Atlas ${path} → ${res.status}`);
-  return res.json();
 }
 
 function countFromResponse(data: unknown): number {
