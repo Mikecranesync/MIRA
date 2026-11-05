@@ -1,6 +1,6 @@
 # Pilot migration compatibility — 2026-11-05
 
-Owner: Codex CLI, CHARLIE. Source proof revision: 3d061373a24084c5a181e3e878113cdfc1ab86d0; base main3020e45be78b54fb422b362144e58d00e123d8bc. Tracks #5218. This is local engineering proof; shared promotion and human acceptance remain separate.
+Owner: Codex CLI, CHARLIE. Source proof revision: 4b22223ce0c44ae652fcb9b59e3bb21666114714; base main3020e45be78b54fb422b362144e58d00e123d8bc. Tracks #5218. This is local engineering proof; shared promotion and human acceptance remain separate.
 
 ## Reproduced and repaired
 
@@ -11,10 +11,10 @@ Reusing a populated disposable DB exposed the corresponding rollback failure. Th
 ## Exact local verification
 
 - PostgreSQL18.6, task-owned127.0.0.1:55437, database mira_pilot_compat; explicit DISPOSABLE confirmation. Standard setup-integration-db.mjs bootstrap plus095/096/097/098/111/112.
-- migration-order.integration.test.ts: four actual execution cases,113→114 and114→113, each empty and populated. Populated fixtures contain domain events, worksheet events and CMMS deliveries. Canonical SQL is executed; only prerequisite parent FK targets are fixtures.
+- migration-order.integration.test.ts: six actual execution cases: each order on a fresh empty111schema, a fresh111schema with an existing fix event, and a deployed114schema with existing sheet/domain/delivery records. The first cheap review identified the missing fresh-populated path; that gap is now explicitly covered. Populated fixtures contain domain events, worksheet events and CMMS deliveries. Canonical SQL is executed; only prerequisite parent FK targets are fixtures.
 - Each case preserves original rows, writes all four event kinds through factorylm_app, admits append_work_log/create_work_order, rejects invented types, enforces tenant RLS and executes the documented observation rollback while preserving other capabilities' evidence and continued writes.
-- Full related real-PG run:9files,130tests pass. The suite log records each executed file and its count.
-- Red-first logs retained. Post-commit forward mutation fails3cases; rollback mutation fails4. Restored bytes and130tests pass. ESLint/actionlint pass. Existing CI outbox job now executes this file and requires its own passing-file receipt; skips and failed suites remain failures.
+- Full related real-PG run:9files,132tests pass. The suite log records each executed file and its count.
+- Red-first logs retained. Post-commit forward mutation fails4cases; rollback mutation fails6. Restored bytes and130tests pass. ESLint/actionlint pass. Existing CI outbox job now executes this file and requires its own passing-file receipt; skips and failed suites remain failures.
 - Hub version2.54.2; package-lock root metadata is synchronized from its stale2.36.0. Dependency versions and build settings are unchanged.
 
 ## Read-only shared-state classification
