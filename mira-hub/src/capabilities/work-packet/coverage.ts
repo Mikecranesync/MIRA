@@ -110,6 +110,11 @@ export function computeCoverage(manuals: ManualDoc[], topics: Topic[], model: st
     }
   });
 
+  // (d) requested topics no manual has any section for: the job asks for them, so a packet without
+  // them is not the whole job (Codex #5173 r6 F15).
+  const missing = topics.filter((t) => !manuals.some(({ manual }) => manual.sections.some((s) => s.topic === t) || (manual.omitted ?? []).some((o) => o.topic === t)));
+  for (const t of missing) notRead(`No section for ${t}`, `missing|${t}`, 0, `the job asks for ${t}, but the manual has no section for ${t}`, null, true);
+
   const sections: CoverageSection[] = order.map((h) => {
     const p = parts.get(h)!;
     const read = readByHeading.get(h) ?? 0;
@@ -124,7 +129,9 @@ export function computeCoverage(manuals: ManualDoc[], topics: Topic[], model: st
   const complete = stepsRead > 0 && sections.every((s) => s.status === "read");
   const summary = complete
     ? `All ${stepsRead} steps the manual prints for this job could be read.`
-    : stepsRead === 0
+    : missing.length > 0 && stepsTotal === stepsRead && stepsMayApply === 0
+      ? `${stepsRead} steps could be read, but the manual has no section for ${missing.join(" or ")}; this is not the whole job.`
+      : stepsRead === 0
       ? "No steps for this job could be read from the manual; this is not the whole job."
       : stepsTotal === stepsRead && stepsMayApply > 0
         ? `${stepsRead} steps could be read, but ${stepsMayApply} more may apply to this pump and could not be checked; this may not be the whole job.`

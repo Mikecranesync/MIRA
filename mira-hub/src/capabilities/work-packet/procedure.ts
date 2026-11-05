@@ -16,7 +16,7 @@
  * "read your part" note; date/style/revision/application restrictions become blockers.
  */
 
-import { modelScopeAdmits, scopedApplicability, textApplicability } from "./applicability";
+import { leadModels, modelScopeAdmits, normalizeModel, scopedApplicability, textApplicability } from "./applicability";
 import type { Applicability } from "./applicability";
 import type { DocText, Field, PacketStep, ServiceManual, SmCaution, SmSection, SmStep, StepNote, Topic } from "./types";
 
@@ -179,7 +179,7 @@ export function buildProcedure(manuals: ManualDoc[], topics: Topic[], model: str
         continue;
       }
       for (const step of section.steps) {
-        if (stepNamesOtherModelsLead(step.text, model)) {
+        if (stepNamesOtherModelsLead(step.text, model, covered)) {
           leftOut.push({ value: step.text, label: "proposed", source: step.source, basis: `step for other models — ${where(section)}` });
           continue;
         }
@@ -363,13 +363,9 @@ export function buildProcedure(manuals: ManualDoc[], topics: Topic[], model: str
 
 // A step inside a general section can still be limited to one model by its own wording
 // ("On the model 7CP6170 remove …") — also for models the cover does not list.
-const STEP_MODEL_RE = /^On (?:the )?models? ([A-Z0-9][A-Z0-9-]*(?:\s*(?:,|and|&)\s*[A-Z0-9][A-Z0-9-]*)*)\s/i;
-function stepNamesOtherModelsLead(text: string, model: string): boolean {
-  const m = STEP_MODEL_RE.exec(text);
-  if (!m) return false;
-  const named = m[1].split(/\s*(?:,|and|&)\s*/i).filter((t) => /\d/.test(t));
-  const norm = (s: string) => s.toUpperCase().replace(/[\s-]+/g, "");
-  return named.length > 0 && !named.some((t) => norm(t) === norm(model));
+function stepNamesOtherModelsLead(text: string, model: string, covered: readonly string[]): boolean {
+  const named = leadModels(text, covered);
+  return !!named && named.length > 0 && !named.includes(normalizeModel(model));
 }
 
 function clip(s: string | null): string {

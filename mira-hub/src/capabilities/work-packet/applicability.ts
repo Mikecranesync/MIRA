@@ -78,9 +78,10 @@ const shapeOf = (n: string) => n.replace(/\d/g, "9").replace(/[A-Z]/g, "A");
 
 /**
  * Alphanumeric tokens, with a model split by dashes or spaces ("7-ZQ10", "7 ZQ10") joined back into
- * one token when the joined form is a covered model, or when it is dash-joined and has the shape of
- * a covered model (an unlisted "7-ZQ50" or "35-99" → one token, judged unknown later only in a
- * model list or after "Model(s)", so "10-24 screws" stays a screw size) (Codex #5173 F6).
+ * one token when the joined form is a covered model, or when it is dash-joined (or follows "Model(s)")
+ * and has the shape of a covered model (an unlisted "7-ZQ50", "35-99" or "Model 7 ZQ50" → one token,
+ * judged unknown later only in a model list or after "Model(s)", so "10-24 screws" stays a screw
+ * size) (Codex #5173 F6, r6 F6).
  */
 function tokens(text: string, covered: readonly string[] = []): Token[] {
   const raw: Token[] = [];
@@ -94,12 +95,14 @@ function tokens(text: string, covered: readonly string[] = []): Token[] {
     let best = k;
     let joined = normalizeModel(raw[k].text);
     let dashOnly = true;
+    // Right after "Model(s)" a space-split code is a model too ("Model 7 ZQ50"), Codex #5173 r6 F6.
+    const afterMarker = /\bmodels?\s*$/i.test(text.slice(0, raw[k].start));
     for (let j = k + 1; j < raw.length && j <= k + 3; j++) {
       const sep = text.slice(raw[j - 1].end, raw[j].start);
       if (!/^[\s-]+$/.test(sep)) break;
       dashOnly = dashOnly && sep === "-";
       joined += normalizeModel(raw[j].text);
-      if (cov.has(joined) || (dashOnly && /\d/.test(joined) && shapes.has(shapeOf(joined)))) best = j;
+      if (cov.has(joined) || ((dashOnly || afterMarker) && /\d/.test(joined) && shapes.has(shapeOf(joined)))) best = j;
     }
     out.push({ text: text.slice(raw[k].start, raw[best].end), start: raw[k].start, end: raw[best].end });
     k = best;
@@ -108,6 +111,29 @@ function tokens(text: string, covered: readonly string[] = []): Token[] {
 }
 
 const LIST_GAP_RE = /^[\s,()&/]*(?:(?:and|or)[\s,()&/]*)?$/i;
+
+const LEAD_RE = /^On (?:the )?models? /i;
+
+/**
+ * Models a step's own lead names ("On Model 7 ZQ30 lift out …" → ["7ZQ30"]), read with the same
+ * tokens as every other applicability check so a space-split model is one model (Codex #5173 r6
+ * F14). Null when the step has no such lead.
+ */
+export function leadModels(text: string, covered: readonly string[]): string[] | null {
+  const m = LEAD_RE.exec(text);
+  if (!m) return null;
+  const out: string[] = [];
+  let prev: Token | null = null;
+  for (const t of tokens(text, covered)) {
+    if (t.start < m[0].length) continue;
+    if (/^(?:and|or)$/i.test(t.text)) continue;
+    if (prev && !LIST_GAP_RE.test(text.slice(prev.end, t.start))) break;
+    if (!/\d/.test(t.text)) break;
+    out.push(normalizeModel(t.text));
+    prev = t;
+  }
+  return out;
+}
 const EXCEPT_BEFORE_RE = /\bexcept\s*(?:for\s*)?(?:the\s*)?(?:models?\s*)?$/i;
 
 interface Group {
