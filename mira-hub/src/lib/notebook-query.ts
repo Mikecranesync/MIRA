@@ -523,8 +523,15 @@ const PARAM_ID_REQUEST =
 
 const HISTORY_ASK_OBJECT =
   String.raw`(?:fault\s+(?:history|queue|buffers?|codes?))`;
+/** Observed empty-state on the history object (HMI all-zero / blank).
+ *  "missing" / "cleared" / "empty" stay bound to a why/how ask so a firmware
+ *  or reboot narrative is not treated as an empty-history diagnostic. */
+const HISTORY_ZERO_STATE = String.raw`(?:all\s+)?(?:zero|zeros|blank)`;
 const EMPTY_HISTORY_ASK = new RegExp(
-  String.raw`\bmissing\s+fault\s+codes?\b|\b(?:why|how)\b[\s\S]{0,80}\b${HISTORY_ASK_OBJECT}\b[\s\S]{0,40}\b(?:zero|zeros|blank|empty|missing|cleared)\b|\b${HISTORY_ASK_OBJECT}\b[\s\S]{0,40}\b(?:all\s+)?(?:zero|zeros|blank|empty|missing|cleared)\b|\b(?:all\s+)?(?:zero|zeros|blank|empty|missing|cleared)\b[\s\S]{0,40}\b${HISTORY_ASK_OBJECT}\b`,
+  String.raw`\bmissing\s+fault\s+codes?\b|` +
+    String.raw`\b(?:why|how)\b[\s\S]{0,80}\b${HISTORY_ASK_OBJECT}\b[\s\S]{0,40}\b(?:${HISTORY_ZERO_STATE}|empty|missing|cleared)\b|` +
+    String.raw`\b${HISTORY_ASK_OBJECT}\b[\s\S]{0,40}\b${HISTORY_ZERO_STATE}\b|` +
+    String.raw`\b${HISTORY_ZERO_STATE}\b[\s\S]{0,40}\b${HISTORY_ASK_OBJECT}\b`,
   "i",
 );
 
@@ -592,48 +599,30 @@ export function historyControlQueries(displayTexts: readonly string[]): string[]
   return [...new Set(queries)].slice(0, 5);
 }
 
-/** Keep a history readout and a write-to-history control chunk in the
- *  selected slice. Displaces the lowest-ranked non-display, non-control
- *  chunk so topK stays bounded. No-op when the pool lacks that role
- *  (never invents). Restores a readout when rerank left only procedures. */
+/** Keep one history readout and one write-to-history control in the
+ *  selected slice, then fill remaining slots from `selected` in rank
+ *  order. Reserves the missing role from `pool` when needed (never
+ *  invents). Caps at `limit` so a broad-facet slice cannot grow past topK.
+ *  Surplus control-role hits can be dropped so a readout still fits. */
 export function ensureHistoryControlRepresentation<T extends { content: string }>(
   selected: T[],
   pool: T[],
   limit: number,
 ): T[] {
-  const out = [...selected];
-  const isRole = (text: string) =>
-    isFaultHistoryDisplayChunk(text) || isHistoryControlChunk(text);
-  const dropNonRole = (): boolean => {
-    if (out.length < limit) return true;
-    for (let i = out.length - 1; i >= 0; i--) {
-      if (!isRole(out[i].content)) {
-        out.splice(i, 1);
-        return true;
-      }
-    }
-    const displayCount = out.filter((c) => isFaultHistoryDisplayChunk(c.content)).length;
-    if (displayCount > 1) {
-      for (let i = out.length - 1; i >= 0; i--) {
-        if (isFaultHistoryDisplayChunk(out[i].content)) {
-          out.splice(i, 1);
-          return true;
-        }
-      }
-    }
-    return false;
-  };
-  const insert = (chunk: T | undefined) => {
-    if (!chunk || out.includes(chunk)) return;
-    if (out.length >= limit && !dropNonRole()) return;
+  const display =
+    selected.find((c) => isFaultHistoryDisplayChunk(c.content)) ??
+    pool.find((c) => isFaultHistoryDisplayChunk(c.content));
+  const control =
+    selected.find((c) => isHistoryControlChunk(c.content)) ??
+    pool.find((c) => isHistoryControlChunk(c.content));
+  const out: T[] = [];
+  const take = (chunk: T | undefined) => {
+    if (!chunk || out.includes(chunk) || out.length >= limit) return;
     out.push(chunk);
   };
-  if (!out.some((c) => isFaultHistoryDisplayChunk(c.content))) {
-    insert(pool.find((c) => isFaultHistoryDisplayChunk(c.content)));
-  }
-  if (!out.some((c) => isHistoryControlChunk(c.content))) {
-    insert(pool.find((c) => isHistoryControlChunk(c.content)));
-  }
+  take(display);
+  take(control);
+  for (const chunk of selected) take(chunk);
   return out;
 }
 

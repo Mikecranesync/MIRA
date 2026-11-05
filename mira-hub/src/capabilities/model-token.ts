@@ -35,13 +35,14 @@ export const MODEL_PATTERNS: RegExp[] = [
   /\b(sinamics\s*v\s*20)\b/i, //        SINAMICS V20
   /\b(v20)\b/i, //                        V20 (drive family)
   /\b(comfort)\b/i, //                    Comfort panel family
-  /\b(25b)(?:-[a-z0-9]+)*\b/i, //         25B / 25B-D010N104 → PowerFlex 525 catalog
+  /\b(25b-[a-z0-9]+)\b/i, //              25B-D010N104 → PowerFlex 525 (not a bare 25B)
 ];
 
 /** Catalog-family prefixes that name a model the digit patterns already know.
- *  25B is the PowerFlex 525 catalog stem (25A=523, 25C=527 — only 25B is wired). */
+ *  25B-* is the PowerFlex 525 catalog form (25A=523, 25C=527 — only 25B is wired).
+ *  A bare "25B" token is not a model. */
 export function aliasCatalogModelToken(token: string): string {
-  return token === "25B" ? "525" : token;
+  return /^25B-/i.test(token) ? "525" : token;
 }
 
 /** Resolve model tokens within ONE observation, refusing to pick between

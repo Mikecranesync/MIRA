@@ -41,8 +41,10 @@ describe("modelIdentitiesInText — sibling numbers listed after one family word
 
 describe("catalog 25B maps to PowerFlex 525", () => {
   it("aliases the catalog stem and treats a 25B catalog string as PF525", () => {
-    expect(aliasCatalogModelToken("25B")).toBe("525");
+    expect(aliasCatalogModelToken("25B")).toBe("25B");
+    expect(aliasCatalogModelToken("25B-D010N104")).toBe("525");
     expect(aliasCatalogModelToken("525")).toBe("525");
+    expect(resolveModelFromObservationText("just 25B")).toEqual({ model: null, ambiguous: false });
     expect(resolveModelFromObservationText("cat 25B-D010N104")).toEqual({ model: "525", ambiguous: false });
     expect(resolveModelFromObservationText("PowerFlex 525 cat 25B-D010N104")).toEqual({ model: "525", ambiguous: false });
     expect([...modelIdentitiesInText("25B-D010N104")]).toEqual(["PF525"]);

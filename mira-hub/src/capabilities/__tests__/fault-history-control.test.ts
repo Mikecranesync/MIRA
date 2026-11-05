@@ -20,6 +20,10 @@ const HISTORY_P144 =
   "F604…F610 are the older fault codes in the 10-fault history. Related Parameters: b007…b009.";
 const CONTROL_P135 =
   "A551 [Fault Clear] 1 Reset Fault (buffers kept) 2 Clear Buffer (all fault buffers to 0).";
+const CONTROL_REV2 =
+  "Revision B: use Clear History to clear the fault queue.";
+const CONTROL_REV3 =
+  "Reset the fault buffers from the HIM after a parameter download.";
 const RESET_P160 =
   "The cause must be corrected before the fault can be cleared. Press Stop, then set A551 Fault Clear to reset the drive after you verify the condition.";
 const CLEARING_P160 =
@@ -40,6 +44,9 @@ describe("fault-history display → control expansion (#4863)", () => {
     expect(isEmptyHistoryAsk("How do I read the extended fault history?")).toBe(false);
     expect(isEmptyHistoryAsk("empty applications (no code) on EtherNet/IP")).toBe(false);
     expect(isEmptyHistoryAsk("Why is the EtherNet/IP implicit message buffer empty?")).toBe(false);
+    expect(isEmptyHistoryAsk("fault history missing after firmware update")).toBe(false);
+    expect(isEmptyHistoryAsk("empty buffer after reboot")).toBe(false);
+    expect(isEmptyHistoryAsk("empty fault buffer after reboot")).toBe(false);
   });
 
   it("classifies an empty/missing fault-history ask as fault, even with incidental comm words", () => {
@@ -56,6 +63,8 @@ describe("fault-history display → control expansion (#4863)", () => {
     expect(isFaultHistoryDisplayChunk(INDEX_FAULT1)).toBe(false);
     expect(isFaultHistoryDisplayChunk(STEP1_P160)).toBe(false);
     expect(isHistoryControlChunk(CONTROL_P135)).toBe(true);
+    expect(isHistoryControlChunk(CONTROL_REV2)).toBe(true);
+    expect(isHistoryControlChunk(CONTROL_REV3)).toBe(true);
     expect(isHistoryControlChunk(HISTORY_P79)).toBe(false);
     expect(isHistoryControlChunk(HISTORY_P144)).toBe(false);
     expect(isHistoryControlChunk(RESET_P160)).toBe(false);
@@ -137,6 +146,28 @@ describe("fault-history display → control expansion (#4863)", () => {
     expect(out.map((c) => c.id)).toContain("c");
   });
 
+  it("restores a readout when three control-role hits fill the slice (Codex F1)", () => {
+    const display = { content: HISTORY_P144, id: "d" };
+    const c1 = { content: CONTROL_P135, id: "c1" };
+    const c2 = { content: CONTROL_REV2, id: "c2" };
+    const c3 = { content: CONTROL_REV3, id: "c3" };
+    const out = ensureHistoryControlRepresentation([c1, c2, c3], [c1, c2, c3, display], 3);
+    expect(out).toHaveLength(3);
+    expect(out.map((c) => c.id)).toContain("d");
+    expect(out.some((c) => isHistoryControlChunk(c.content))).toBe(true);
+  });
+
+  it("caps the slice at topK when the selected set is already over-limit", () => {
+    const display = { content: HISTORY_P144, id: "d" };
+    const control = { content: CONTROL_P135, id: "c" };
+    const extras = [1, 2, 3, 4, 5].map((n) => ({ content: `other ${n}`, id: `e${n}` }));
+    const selected = [display, ...extras, control];
+    const out = ensureHistoryControlRepresentation(selected, selected, 3);
+    expect(out).toHaveLength(3);
+    expect(out.map((c) => c.id)).toContain("d");
+    expect(out.map((c) => c.id)).toContain("c");
+  });
+
   it("does not treat a Manually Clearing Faults step that names both options as the control row", () => {
     const display = { content: HISTORY_P144, id: "d" };
     const clearing = { content: CLEARING_P160, id: "p" };
@@ -155,5 +186,9 @@ describe("fault-history display → control expansion (#4863)", () => {
 describe("extractModelNumber — catalog 25B", () => {
   it("maps a 25B catalog string to the PowerFlex 525 token", () => {
     expect(extractModelNumber("cat 25B-D010N104 won't reset")).toBe("525");
+  });
+
+  it("does not treat a bare 25B stem as a PowerFlex 525", () => {
+    expect(extractModelNumber("the 25B won't reset")).toBeNull();
   });
 });

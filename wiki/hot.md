@@ -1,6 +1,6 @@
 # PF525 fault-history Clear Buffer — 2026-11-04 follow-up
 
-Draft PR #5174 rebased onto current main (a8b260343, includes 25a12482f). Product change: A551 Clear Buffer (p.135) stays next to fault-history rows; catalog 25B maps to PowerFlex 525. A parameter-index “Fault 1 Code” cell is not a readout — the helper keeps the history-table row. No Codex from this session. No merge, ready, or deploy.
+Draft PR #5174. Codex F1: surplus control-role hits can no longer crowd out the history readout; the helper reserves one display + one control and caps at topK. Empty-history asks no longer match firmware/reboot narratives. Bare 25B is not a PowerFlex 525 — only 25B-* catalog form. No Codex from this session. No merge, ready, or deploy.
 
 ---
 

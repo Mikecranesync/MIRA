@@ -38,6 +38,10 @@ const INDEX_FAULT1 =
   "Fault 1 Code | 007 | Fault 9 Freq(1) | 639 | MOP Freq | 427";
 const CONTROL_P135 =
   "A551 [Fault Clear] 1 Reset Fault — buffers are kept. 2 Clear Buffer — resets the active fault and clears all fault buffers to 0.";
+const CONTROL_REV2 =
+  "Revision B: use Clear History to clear the fault queue.";
+const CONTROL_REV3 =
+  "Reset the fault buffers from the HIM after a parameter download.";
 const RESET_P160 =
   "The cause must be corrected before the fault can be cleared. Press Stop, then set A551 Fault Clear to reset the drive after you verify the condition.";
 const CLEARING_P160 =
@@ -74,6 +78,8 @@ const DISPLAY_ROWS = [
 const STEP1_ROW = row(160, STEP1_P160, 0.95, ["fault", "code", "b007"]);
 const INDEX_FAULT1_ROW = row(75, INDEX_FAULT1, 0.98, ["fault", "code"]);
 const CONTROL_ROW = row(135, CONTROL_P135, 0.4, ["fault", "clear", "buffer", "a551"]);
+const CONTROL_REV2_ROW = row(200, CONTROL_REV2, 0.88, ["fault", "clear", "queue"]);
+const CONTROL_REV3_ROW = row(201, CONTROL_REV3, 0.86, ["fault", "reset", "buffer"]);
 const RESET_ROW = row(164, RESET_P160, 0.55, ["fault", "clear", "reset", "a551"]);
 const CLEARING_ROW = row(160, CLEARING_P160, 0.7, ["fault", "clear", "buffer", "a551", "stop"]);
 const F004_ROW = row(161, F004_TABLE, 1.0, ["fault", "f004", "undervolt"]);
@@ -134,6 +140,28 @@ describe("retrieveNodeChunks — empty fault-history ask surfaces A551 Clear Buf
     const { client } = makeClient(corpus);
     const out = await ask(client, "PowerFlex 525: missing fault codes");
     assertHistoryAndClearBuffer(out);
+  });
+
+  it("keeps a readout when three control revisions rank ahead of the history table", async () => {
+    const { client } = makeClient((sql, params) => {
+      if (isAnd(sql)) return DISPLAY_ROWS;
+      if (isOr(sql) && isControlQuery(params)) {
+        return [CONTROL_REV2_ROW, CONTROL_REV3_ROW, CONTROL_ROW];
+      }
+      if (isIlike(sql) && isControlIlike(params)) {
+        return [CONTROL_REV2_ROW, CONTROL_REV3_ROW, CONTROL_ROW];
+      }
+      if (isOr(sql) || isIlike(sql)) return DISPLAY_ROWS;
+      return [];
+    });
+    const out = await ask(client, EMPTY_HISTORY_ASK);
+    const texts = out.map((c) => c.content);
+    expect(texts.some((t) => /10-fault history|is the most recent fault|older fault codes/.test(t))).toBe(true);
+    expect(
+      texts.some((t) =>
+        /clears all fault buffers|buffers to 0|clear the fault queue|Reset the fault buffers/.test(t),
+      ),
+    ).toBe(true);
   });
 
   it("control: a fault-meaning ask does not run the history-control expansion", async () => {
