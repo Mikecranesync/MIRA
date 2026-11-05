@@ -56,7 +56,7 @@ function resolveField(packet: WorkPacket, path: string): Field {
   return cur;
 }
 
-const KNOWN_ACTIONS: readonly EditAction[] = ["set", "confirm", "strike", "mark_unknown"];
+const KNOWN_ACTIONS: readonly EditAction[] = ["set", "confirm", "strike", "mark_unknown", "settle"];
 
 function cloneDeep<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
@@ -102,9 +102,18 @@ export function applyEdit(packet: WorkPacket, edit: PacketEdit, by: string, at: 
       field.value = null;
       field.label = "unknown";
       break;
+    case "settle":
+      // Blank means unknown: a settle with no answer or no source would clear an open item on nothing.
+      if (!edit.value?.trim()) throw new Error(`Settling '${edit.path}' needs the answer.`);
+      if (!edit.source?.trim()) throw new Error(`Settling '${edit.path}' needs the source of the answer.`);
+      nextValue = edit.value.trim();
+      field.value = nextValue;
+      field.label = "proposed";
+      break;
   }
 
   const entry: ReviewEntry = { path, action: edit.action, by, at, previous, next: nextValue };
+  if (edit.action === "settle") entry.source = edit.source!.trim();
   field.review = entry;
   syncCopies(next, path, field);
 

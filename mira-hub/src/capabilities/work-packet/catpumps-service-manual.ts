@@ -247,10 +247,39 @@ function matchSubheading(line: string): SubheadingMatch | null {
 // ─────────────────────────────────────────────── cautions
 
 const CAUTION_MARKER_RE = /^(CAUTION|WARNING|NOTE|IMPORTANT):\s*(.*)$/;
+/** A marker printed as its own heading line, its text on the lines below ("WARNING" / "All systems
+ *  require …"; 35FR2Svc p.1). Only CAUTION/WARNING: those are the hazard markers. */
+const STANDALONE_MARKER_RE = /^(CAUTION|WARNING)$/;
+const STANDALONE_MARKER_MAX_LINES = 6;
 
 function isAnyMarkerStart(line: string): boolean {
-  return CAUTION_MARKER_RE.test(line);
+  return CAUTION_MARKER_RE.test(line) || STANDALONE_MARKER_RE.test(line);
 }
+
+/** A line with no lower-case letter — an all-caps company or heading line, not a sentence's wrap. */
+function hasNoLowercase(line: string): boolean {
+  return !/[a-z]/.test(line);
+}
+
+/** Whether the all-caps lines starting at `j`, under a standalone WARNING, are an emphasized
+ *  statement that belongs to it ("HIGH PRESSURE FLUID CAN PENETRATE / THE SKIN …"), not the
+ *  address block printed below it: they open with an instruction word, or the run of all-caps
+ *  lines ends a sentence (Codex review F2). */
+const CAPS_INSTRUCTION_START_RE = /^(?:DO NOT|DON'T|NEVER|ALWAYS|STOP|BEFORE|AFTER|KEEP|WEAR|USE|CHECK|MAKE SURE)\b/;
+const COMPANY_SUFFIX_END_RE = /\b(?:LTD|INC|CO|CORP|LLC|GMBH|S\.\s?A|N\.\s?V|B\.\s?V|S\.\s?R\.\s?L|A\.\s?G)\.$/;
+function capsStatementAt(lines: string[], j: number, maxLines: number): boolean {
+  if (CAPS_INSTRUCTION_START_RE.test(lines[j])) return true;
+  for (let k = j; k < lines.length && k - j < maxLines && lines[k].length > 0 && hasNoLowercase(lines[k]) && !isHardFurniture(lines[k]); k++) {
+    // "CAT PUMPS (U.K.) LTD." — a company suffix's full stop does not end a sentence.
+    if (/[.!]$/.test(lines[k]) && !COMPANY_SUFFIX_END_RE.test(lines[k])) return true;
+    // "HIGH PRESSURE FLUID CAN PENETRATE / the skin and cause …": the sentence runs on in lower case.
+    if (k + 1 < lines.length && /^[a-z]/.test(lines[k + 1])) return true;
+  }
+  return false;
+}
+
+/** "Remember to service the regulator/unloader at each seal servicing" — the service it is tied to. */
+const COMPANION_WORK_RE = /\bservice\b.*\bat (?:each|every) (\w+) servic/i;
 
 // ─────────────────────────────────────────────── torque chart
 
@@ -362,6 +391,10 @@ interface OpenSection {
   /** Set when text after one of its steps could not be placed — it may be the rest of that step
    *  (Codex #5062 F15). The section is then omitted and becomes a cited gap. */
   incomplete: string | null;
+  /** The heading (or sub-heading) line itself, so an empty block can still be cited. */
+  headSource: SourceRef;
+  /** true for a nested model/variant block: it is a leaf, never the frame over a later block. */
+  nested?: boolean;
 }
 
 /** The last step or caution emitted, for orphan-text accounting (Codex #5062 F15). Every
@@ -395,8 +428,20 @@ function isPageFurniture(line: string): boolean {
   return false;
 }
 
-function flushSection(open: OpenSection | null, sections: SmSection[], problems: string[], omitted: SmOmittedSection[]): void {
-  if (!open || open.steps.length === 0) return;
+/** `leaf` is false when the block is closed by one of its own sub-headings: an empty heading
+ *  then only frames the blocks below it. Any other empty block lost every step it printed. */
+function flushSection(open: OpenSection | null, sections: SmSection[], problems: string[], omitted: SmOmittedSection[], leaf = true): void {
+  if (!open) return;
+  if (open.steps.length === 0) {
+    if (!leaf) return;
+    // A procedure heading with no step that could be read is not a finished block: it is counted as
+    // not read (at least one step) rather than silently dropped (Codex review F12, round 4).
+    const where = `${open.heading}${open.subheading ? " — " + open.subheading : ""}`;
+    const reason = "no numbered step could be read under this heading; read this block in the manual";
+    problems.push(`page ${open.page}: "${where}": ${reason}`);
+    omitted.push({ heading: open.heading, subheading: open.subheading, topic: open.topic, models: open.models, page: open.page, source: open.headSource, reason, stepsSeen: 1 });
+    return;
+  }
   const nums = open.steps.map((s) => s.n).filter((n): n is number => n !== null);
   let outOfOrder = false;
   for (let k = 1; k < nums.length; k++) {
@@ -405,10 +450,13 @@ function flushSection(open: OpenSection | null, sections: SmSection[], problems:
       break;
     }
   }
+  // Steps the parser saw before giving up on the block: the highest step number printed (step N
+  // means at least N steps), never fewer than the step lines read. A lower bound, not a count.
+  const stepsSeen = Math.max(open.steps.length, ...nums);
   if (open.incomplete) {
     const where = `${open.heading}${open.subheading ? " — " + open.subheading : ""}`;
     problems.push(`page ${open.page}: "${where}": ${open.incomplete}`);
-    omitted.push({ heading: open.heading, subheading: open.subheading, topic: open.topic, models: open.models, page: open.page, source: open.steps[0].source, reason: open.incomplete });
+    omitted.push({ heading: open.heading, subheading: open.subheading, topic: open.topic, models: open.models, page: open.page, source: open.steps[0].source, reason: open.incomplete, stepsSeen });
     return;
   }
   if (outOfOrder) {
@@ -423,7 +471,18 @@ function flushSection(open: OpenSection | null, sections: SmSection[], problems:
       page: open.page,
       source: open.steps[0].source,
       reason,
+      stepsSeen,
     });
+    return;
+  }
+  // A block whose first printed step is not 1 lost its opening steps in extraction: it is not the
+  // whole block, so it is left out and counted as not read (Codex review F10). stepsSeen covers
+  // the missing numbers: a block starting at step 2 had at least 2 steps.
+  if (nums.length > 0 && nums[0] !== 1) {
+    const where = `${open.heading}${open.subheading ? " — " + open.subheading : ""}`;
+    const reason = `the first step read is step ${nums[0]} — steps 1–${nums[0] - 1} could not be read; steps omitted rather than shown in part`;
+    problems.push(`page ${open.page}: "${where}": ${reason}`);
+    omitted.push({ heading: open.heading, subheading: open.subheading, topic: open.topic, models: open.models, page: open.page, source: open.steps[0].source, reason, stepsSeen });
     return;
   }
   sections.push({
@@ -455,9 +514,15 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
   // Scope of the last Disassembly/Reassembly subheading in the open section; a nested model-list
   // header narrows it instead of replacing it.
   let phaseScope: ModelScope = scopeAll();
+  // Notes printed at the top of a phase block that has no steps of its own ("Reassembly of the
+  // Lo-Pressure Seal" whose steps sit under "Models …" blocks): they head every nested block that
+  // follows, so each nested block gets them before its first step (Codex EGM F31).
+  let headingNotes: SmCaution[] = [];
+  let headingNotesPlaced = false;
   // Persists across pages like `open`; cleared at every section/subheading/torque/body-end boundary.
   let lastBlock: LastBlock | null = null;
   const startupChecklist: SourceRef[] = [];
+  const companionWork: { topic: string; source: SourceRef }[] = [];
 
   const sorted: PageText[] = [...doc.pages].sort((a, b) => a.page - b.page);
 
@@ -493,20 +558,32 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
           const next = lines[k + 1] ?? "";
           startupChecklist.push({ ...src, page: pg.page, line: STARTUP_SUBTITLE_RE.test(next) ? `${lines[k]} ${next}` : lines[k] });
         }
+        for (let k = i; k < lines.length; k++) {
+          const cw = lines[k].match(COMPANION_WORK_RE);
+          if (cw) companionWork.push({ topic: cw[1].toLowerCase(), source: { ...src, page: pg.page, line: lines[k] } });
+        }
         flushSection(open, sections, problems, omitted);
         open = null;
         lastBlock = null;
         break; // rest of this page is reference material (checklists, PM schedule, bulletin index)
       }
 
-      const marker = line.match(CAUTION_MARKER_RE);
+      const standalone = STANDALONE_MARKER_RE.test(line);
+      const marker = standalone ? ([line, line, ""] as unknown as RegExpMatchArray) : line.match(CAUTION_MARKER_RE);
       if (marker) {
         const kind = marker[1] as SmCaution["kind"];
-        const textParts = [marker[2]];
+        const textParts = standalone ? [] : [marker[2]];
         let j = i + 1;
+        // An all-caps instruction ("DO NOT RUN … DEVICE.") is part of the warning, and stays open
+        // until a line ends the sentence; only other all-caps lines (the address block) end it.
+        let openCaps = false;
+        const capsEnds = (idx: number) => hasNoLowercase(lines[idx]) && !openCaps && !capsStatementAt(lines, idx, STANDALONE_MARKER_MAX_LINES);
         while (
           j < lines.length &&
           lines[j].length > 0 &&
+          // A standalone heading's text ends at the first all-caps line that is not an instruction
+          // (the address block below it) and is never longer than a few lines.
+          !(standalone && (capsEnds(j) || isHardFurniture(lines[j]) || textParts.length >= STANDALONE_MARKER_MAX_LINES)) &&
           !isAnyMarkerStart(lines[j]) &&
           !STEP_RE.test(lines[j]) &&
           !SECTION_HEADING_RE.test(lines[j]) &&
@@ -516,31 +593,67 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
           !figure.has(lines[j]) &&
           !isInterleavedFurniture(textParts.join(" "), lines[j])
         ) {
+          if (standalone) openCaps = hasNoLowercase(lines[j]) && !/[.!]$/.test(lines[j]);
           textParts.push(lines[j]);
           j++;
         }
         // The source is the exact run of physical lines the text was joined from, so a number that
         // wrapped onto a continuation line is still checkable word-for-word against its source.
         const cautionText = textParts.join(" ").replace(/\s{2,}/g, " ").trim();
+        if (standalone && cautionText.length === 0) {
+          // A bare heading with nothing readable under it: shown in Safety as unknown, never dropped.
+          const cs = { ...src, page: pg.page, line };
+          problems.push(`page ${pg.page}: a ${kind} heading has no text that could be read — not shown as verified`);
+          omittedCautions.push({ kind, source: cs, reason: "no text could be read under this heading — read it in the manual" });
+          continue;
+        }
         const cautionSource = { ...src, page: pg.page, line: lines.slice(i, j).join(" ") };
         const caution: SmCaution = { kind, text: cautionText, source: cautionSource };
+        // The block it is printed in, snapshot now: a note belongs to the step before it, and to that
+        // block's model scope (V2 — a note in a 3545/3541 block is not a 3520 note).
+        if (open) {
+          const last = open.steps.length > 0 ? open.steps[open.steps.length - 1].n : null;
+          caution.context = { heading: open.heading, subheading: open.subheading, topic: open.topic, models: open.models, afterStep: last };
+        }
         cautions.push(caution);
-        lastBlock = { kind: "caution", caution, text: cautionText };
+        // A standalone heading that ended at an all-caps line (the address block) is complete: that
+        // line is not its continuation. One cut off by the line cap still fails closed below.
+        const endedAtCaps = standalone && !openCaps && j < lines.length && (capsEnds(j) || isHardFurniture(lines[j]));
+        // The capitals line below may be the address block or more of the warning; this tool cannot
+        // tell, so the warning is shown but not as Verified (Codex review F2, round 3).
+        if (endedAtCaps && !isHardFurniture(lines[j])) {
+          caution.uncertainEnd = `the line right below it ("${lines[j].slice(0, 50)}", p.${pg.page}) is in capitals and may be part of it — read the end of this ${kind} in the manual`;
+        }
+        lastBlock = endedAtCaps ? null : { kind: "caution", caution, text: cautionText };
         i = j - 1;
         continue;
       }
 
       if (SECTION_HEADING_RE.test(line) && isAllCapsHeading(line)) {
         flushSection(open, sections, problems, omitted);
-        open = { heading: line, subheading: null, topic: topicFor(line), models: scopeAll(), page: pg.page, steps: [], firstLines: [], incomplete: null };
+        open = { heading: line, subheading: null, topic: topicFor(line), models: scopeAll(), page: pg.page, steps: [], firstLines: [], incomplete: null, headSource: { ...src, page: pg.page, line } };
         phaseScope = scopeAll();
+        headingNotes = [];
         lastBlock = null;
         continue;
       }
 
       const sub: SubheadingMatch | null = open ? matchSubheading(line) : null;
       if (sub) {
-        flushSection(open, sections, problems, omitted);
+        if (!sub.nested) headingNotes = [];
+        else if (open!.steps.length === 0 && open!.subheading !== null) {
+          const k = `${open!.heading}\u0000${open!.subheading}`;
+          const leading = cautions.filter((c) => c.context && c.context.afterStep === null && `${c.context.heading}\u0000${c.context.subheading ?? ""}` === k);
+          if (leading.length > 0) {
+            headingNotes = leading;
+            headingNotesPlaced = false;
+          }
+        }
+        // An empty block is only a frame when this sub-heading sits BELOW it: the section heading over
+        // its first sub-heading, or a phase over its first nested model block. An empty block followed
+        // by a sibling (model block → model block, phase → phase) lost its steps (Codex review F12, round 5).
+        const frame = open!.subheading === null || (sub.nested === true && !open!.nested);
+        flushSection(open, sections, problems, omitted, !frame);
         if (!sub.scopeKnown) {
           problems.push(
             `page ${pg.page}: subheading "${sub.text}" has a model or hardware-variant restriction that could not be resolved — its steps are left out of packets rather than guessed`,
@@ -548,7 +661,17 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
         }
         const sectionModels: ModelScope = sub.nested ? intersectScopes(phaseScope, sub.scope) : sub.scope;
         if (!sub.nested) phaseScope = sub.scope;
-        open = { heading: open!.heading, subheading: sub.text, topic: open!.topic, models: sectionModels, page: pg.page, steps: [], firstLines: [], incomplete: null };
+        open = { heading: open!.heading, subheading: sub.text, topic: open!.topic, models: sectionModels, page: pg.page, steps: [], firstLines: [], incomplete: null, headSource: { ...src, page: pg.page, line }, nested: sub.nested === true };
+        if (sub.nested) {
+          // The first nested block takes the note itself (the empty block it was printed in is never a
+          // section); each later one gets a copy, so the note heads every block it was printed over.
+          for (const h of headingNotes) {
+            const context = { heading: open.heading, subheading: open.subheading, topic: open.topic, models: open.models, afterStep: null };
+            if (!headingNotesPlaced) h.context = context;
+            else cautions.push({ ...h, context });
+          }
+          headingNotesPlaced = true;
+        }
         lastBlock = null;
         continue;
       }
@@ -591,7 +714,14 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
       // 10–11) — may still be the rest of the block before it, so caption lines are never joined
       // into a step and never skipped either: they fail closed here. Intro prose before a section's
       // first step or caution has no `lastBlock` and stays dropped.
-      if (isHardFurniture(line)) continue;
+      if (isHardFurniture(line)) {
+        // A bare-number diagram right after a step (the tightening order): cite it on that step.
+        if (/^[\d\s]+$/.test(line) && lastBlock?.kind === "step" && open && open.steps.length > 0) {
+          const st = open.steps[open.steps.length - 1];
+          if (!st.diagram) st.diagram = { ...src, page: pg.page, line };
+        }
+        continue;
+      }
       let tainted: string | null = null;
       if (lastBlock?.kind === "step" && open) {
         tainted = `step ${lastBlock.n} (p.${lastBlock.page})`;
@@ -615,5 +745,5 @@ export function parseCatPumpsServiceManual(doc: DocText, onOrphan?: (o: OrphanLi
   }
   flushSection(open, sections, problems, omitted);
 
-  return { kind: "catpumps_service_manual", modelsCovered, sections, torque, cautions, problems, omitted, omittedCautions, startupChecklist };
+  return { kind: "catpumps_service_manual", modelsCovered, sections, torque, cautions, problems, omitted, omittedCautions, startupChecklist, companionWork };
 }
