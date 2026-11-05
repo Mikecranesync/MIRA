@@ -195,6 +195,7 @@ describe("partsFromStream", () => {
     expect(parts.map((part) => part.type)).toEqual(["safety_notice", "text", "error"]);
     expect(parts[0]).toMatchObject({ type: "safety_notice", notice: { severity: "stop", trigger: "smoke coming" } });
     expect(parts.some((part) => part.type === "source" || part.type === "evidence_basis" || part.type === "visual_observation")).toBe(false);
+    expect(parts.find((part) => part.type === "error")).toMatchObject({ error: { code: "stopped", retryable: false } });
   });
 
   it("provider failure with no text yields only the error part", () => {
@@ -335,7 +336,7 @@ describe("turnsFromPersisted — hydration mirrors the classic web notebook", ()
     expect(a.lifecycle).toBe("stopped");
     expect(a.parts).toEqual([
       { type: "text", text: "Verify the Mod" },
-      { type: "error", error: { code: "stopped", message: "Stopped before the answer completed.", retryable: true } },
+      { type: "error", error: { code: "stopped", message: "Stopped before the answer completed.", retryable: false } },
     ]);
   });
 

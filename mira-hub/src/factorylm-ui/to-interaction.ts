@@ -394,7 +394,10 @@ export function partsFromStream(result: StatusAwareStreamResult, opts: { stopped
   }
 
   if (stopped) {
-    parts.push({ type: "error", error: { code: "stopped", message: "Stopped before the answer completed.", retryable: true } });
+    // A user abort is retryable. A terminal Safety STOP that already arrived
+    // on the same stream is not — Retry would re-issue the refused request.
+    const retryable = !(result.safetyNotice && isTerminalSafetyNotice(result.safetyNotice));
+    parts.push({ type: "error", error: { code: "stopped", message: "Stopped before the answer completed.", retryable } });
   } else if (truncated) {
     parts.push({
       type: "error",
@@ -518,7 +521,9 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
     const manualStatement = (row.evidence as readonly unknown[]).find(isManualSafetyStatementEntry);
     if (manualStatement) parts.push(manualSafetyStatementPart(manualStatement));
   } else if (stopped) {
-    parts.push({ type: "error", error: { code: "stopped", message: "Stopped before the answer completed.", retryable: true } });
+    // Persisted stopped rows have no session body to replay after reload
+    // (#4846). Live Retry is armed on the in-session live turn + failedBody.
+    parts.push({ type: "error", error: { code: "stopped", message: "Stopped before the answer completed.", retryable: false } });
   } else {
     // #4374: the persisted provider-exhaustion reason shows the same copy the
     // live turn did. Never retryable: the host's Retry replays the same

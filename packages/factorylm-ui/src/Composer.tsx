@@ -387,6 +387,9 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
           aria-label="Stop"
           onClick={() => {
             if (Date.now() < stopIgnoreUntilRef.current) return;
+            // Stop ends this answer; it must not flush a queued follow-up.
+            queuedRef.current = false;
+            setQueued(false);
             hooks.onStop?.();
           }}
         ><span aria-hidden="true">■</span><span className="fl-composer__label">Stop</span></button>

@@ -345,6 +345,10 @@ export interface UnifiedChatHandlers
   readonly onCreateProject?: () => void;
 }
 
+function stoppedLiveKey(question: string, index: number): string {
+  return `${index}:${question}`;
+}
+
 function initialState(messages: ReturnType<typeof threadMessages>, meta: UnifiedNotebookMeta, host?: UnifiedShellHost): ShellState {
   const fixture = liveFixture(messages, meta);
   const created = createShellState(
@@ -427,11 +431,22 @@ function UnifiedChatForNotebook({
   // then the question shows as this screen's own pending turn; the host's
   // pending turn takes over as soon as it exists.
   const [composingQuestion, setComposingQuestion] = useState<string | null>(null);
+  // Retry of a user-aborted live turn cannot use NotebookScreen's replay
+  // (failedSend stays unset). A fresh onSend would append a second Q. Hide
+  // the superseded stopped exchange so the question is not painted twice.
+  const [supersededStoppedKeys, setSupersededStoppedKeys] = useState<ReadonlySet<string>>(() => new Set());
+  const visibleLiveTurns = useMemo(() => {
+    if (supersededStoppedKeys.size === 0) return liveTurns;
+    return liveTurns.filter((turn, index) => {
+      if (turn.a.status !== "stopped") return true;
+      return !supersededStoppedKeys.has(stoppedLiveKey(turn.q, index));
+    });
+  }, [liveTurns, supersededStoppedKeys]);
   const shownPending = useMemo(
     () => pending ?? (composingQuestion !== null ? { q: composingQuestion, a: COMPOSING_TURN } : null),
     [pending, composingQuestion],
   );
-  const messages = useMemo(() => threadMessages(turns, liveTurns, shownPending), [turns, liveTurns, shownPending]);
+  const messages = useMemo(() => threadMessages(turns, visibleLiveTurns, shownPending), [turns, visibleLiveTurns, shownPending]);
   const citations = useMemo(() => citationIndex(messages), [messages]);
   const [state, dispatch] = useReducer(shellReducer, undefined, () => initialState(messages, fullMeta, host));
   // Whether the shell's send-error banner is still up, as of the last render.
@@ -1016,12 +1031,16 @@ function UnifiedChatForNotebook({
     ...(meta.notebookId ? { onKeepPhoto, onReviewPhoto, onRefreshPhotoScope: async () => await refreshPromotedScope() === true, isPhotoKept: (fileId: string) => keptPhotoIds.has(fileId) } : {}),
     ...(canStop ? { onStop: handlers.onStop } : {}),
     // A user-aborted live turn does not arm NotebookScreen's failedSend, so
-    // canRetry stays false. Re-send that question so the shared Retry on a
-    // stopped bubble still does something (unguarded host; #4924).
-    ...(!canRetry && liveTurns.at(-1)?.a.status === "stopped" && liveTurns.at(-1)?.q.trim()
+    // canRetry stays false. Re-send that question and hide the superseded
+    // stopped exchange so the Q is not painted twice (unguarded host; #4924).
+    // A terminal Safety STOP on the same turn is not replayed.
+    ...(!canRetry && liveTurns.at(-1)?.a.status === "stopped" && liveTurns.at(-1)?.q.trim() && liveTurns.at(-1)?.a.safetyTrigger === undefined
       ? { onRetry: () => {
-          const question = liveTurns.at(-1)?.q.trim();
-          if (question) handlers.onSend(question);
+          const last = liveTurns.at(-1);
+          const question = last?.q.trim();
+          if (!last || last.a.status !== "stopped" || !question || last.a.safetyTrigger !== undefined) return;
+          setSupersededStoppedKeys((current) => new Set(current).add(stoppedLiveKey(last.q, liveTurns.length - 1)));
+          handlers.onSend(question);
         } }
       : {}),
     // The host retry re-sends the rendered turn as plain text. That is right for
