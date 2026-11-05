@@ -12,6 +12,7 @@
 // that are filtered out before looking for our idempotency marker.
 
 import { AtlasAuthError, AtlasHttpError, priorityHubToAtlas, type AtlasComment } from "@/lib/atlas/client";
+import { isQuotaError } from "@/lib/atlas/sync";
 
 import {
   type CmmsCapability,
@@ -22,6 +23,7 @@ import {
   type WorkLogNote,
   type WorkOrderRequest,
   type WorkOrderTarget,
+  CMMS_LICENCE_LIMIT,
   countMarker,
   renderWorkLogText,
 } from "./write-contract";
@@ -459,6 +461,14 @@ export class AtlasWriteProvider implements CmmsWriteProvider {
    * only ever reconciles it by read-back.
    */
   private mapCreateError(err: unknown): CmmsWriteResult {
+    // Atlas's free edition refuses a create once the company holds 30
+    // incomplete work orders (403 "Free Limit of 30 incomplete work orders
+    // reached"). It is a refusal before acting, like any other 4xx, but the
+    // cause is capacity, not access: name it so the technician and admin are
+    // told the real reason, and so a re-tap can re-queue it once room frees.
+    if (isQuotaError(err)) {
+      return { kind: "permission_denied", reason: CMMS_LICENCE_LIMIT, receipt: { status: err.status } };
+    }
     if (err instanceof AtlasAuthError) return this.mapWriteError(err);
     if (err instanceof AtlasHttpError && err.status >= 400 && err.status < 500 && err.status !== 408) {
       return this.mapWriteError(err);

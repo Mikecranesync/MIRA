@@ -12,7 +12,7 @@
  * type is `DeliveryState | "saved"` rather than just `DeliveryState`.
  */
 import { withTenantContext } from "@/lib/tenant-context";
-import type { DeliveryState } from "@/lib/cmms/write-contract";
+import { CMMS_LICENCE_LIMIT, type DeliveryState } from "@/lib/cmms/write-contract";
 import { subjectRefForFix, subjectRefForWorkOrderRequested } from "./types";
 
 export type FixRecordDeliveryStatus = {
@@ -84,14 +84,18 @@ export type WorkOrderRequestStatus = {
   externalRef: string | null;
   attempts: number;
   updatedAt: string;
+  /** Set only when the CMMS refused the create because its licence caps open
+   *  work orders. The one `last_error` value exposed, as a fixed code. */
+  blockedBy: typeof CMMS_LICENCE_LIMIT | null;
 };
 
 /**
  * Delivery status of a job sheet's technician-confirmed work-order request
  * (`work_order_requested` / `create_work_order`), or null when none was
  * requested. Same RLS read path and `"saved"` meaning as
- * `deliveryStatusForFixRecords`. `last_error` is deliberately not returned:
- * the state alone tells the technician what happened and what to do next.
+ * `deliveryStatusForFixRecords`. Raw `last_error` is deliberately not returned;
+ * only the licence-limit refusal is surfaced, as the fixed code `blockedBy`,
+ * because there the state alone would send the admin to the wrong fix.
  */
 export async function deliveryStatusForWorkOrderRequest(
   tenantId: string,
@@ -105,13 +109,14 @@ export async function deliveryStatusForWorkOrderRequest(
       external_ref: string | null;
       attempts: number | null;
       updated_at: string | null;
+      last_error: string | null;
     }>(
       `SELECT e.event_id::text AS event_id,
               e.recorded_at::text AS recorded_at,
-              d.state, d.external_ref, d.attempts, d.updated_at::text AS updated_at
+              d.state, d.external_ref, d.attempts, d.updated_at::text AS updated_at, d.last_error
          FROM notebook_domain_events e
          LEFT JOIN LATERAL (
-           SELECT state, external_ref, attempts, updated_at
+           SELECT state, external_ref, attempts, updated_at, last_error
              FROM notebook_event_deliveries
             WHERE event_id = e.event_id
             ORDER BY created_at DESC
@@ -131,6 +136,8 @@ export async function deliveryStatusForWorkOrderRequest(
       externalRef: row.external_ref,
       attempts: row.attempts ?? 0,
       updatedAt: row.updated_at ?? row.recorded_at,
+      blockedBy:
+        row.state === "permission_denied" && row.last_error === CMMS_LICENCE_LIMIT ? CMMS_LICENCE_LIMIT : null,
     };
   });
 }

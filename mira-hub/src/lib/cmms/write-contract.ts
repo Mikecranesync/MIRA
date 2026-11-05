@@ -225,3 +225,9 @@ export function backoffDelayMs(attempts: number, rand: () => number = Math.rando
   const factor = 0.5 + 0.5 * Math.min(1, Math.max(0, rand()));
   return Math.round(exp * factor);
 }
+
+/** Reason (and `last_error`) of a create the CMMS refused because its licence
+ *  caps open work orders — Atlas free edition: 30 incomplete per company. A
+ *  `permission_denied` with this reason is a capacity refusal, not an access
+ *  one, and is the only refusal a technician re-tap may re-queue. */
+export const CMMS_LICENCE_LIMIT = "cmms_licence_limit";

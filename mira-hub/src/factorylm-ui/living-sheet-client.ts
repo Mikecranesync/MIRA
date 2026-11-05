@@ -638,7 +638,14 @@ export type WorkOrderRequestClient = {
   externalRef: string | null;
   attempts: number;
   updatedAt: string;
+  /** "cmms_licence_limit" when the CMMS refused because its licence caps open work orders. */
+  blockedBy?: string | null;
 };
+
+/** A refusal a technician can fix by asking again once an admin frees room. */
+export function workOrderRetryable(request: WorkOrderRequestClient): boolean {
+  return request.state === "permission_denied" && request.blockedBy === "cmms_licence_limit";
+}
 
 export async function apiGetWorkOrderRequest(
   notebookId: string,
@@ -680,6 +687,9 @@ export function workOrderStatusText(request: WorkOrderRequestClient): string {
     case "outcome_unknown":
       return "Not confirmed yet — the CMMS did not answer. It will retry automatically; it will not create a second order.";
     case "permission_denied":
+      if (workOrderRetryable(request)) {
+        return "Not created — the CMMS is at its limit of open work orders for its licence. Ask your admin to close finished orders or add a licence, then try again. Trying again will not create a second order.";
+      }
       return "The CMMS refused this request (permission). Ask your admin to check the CMMS connection.";
     case "blocked_policy":
     case "saved":

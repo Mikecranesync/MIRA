@@ -66,6 +66,7 @@ import {
   type SheetWriteEvent,
   type WorkOrderRequestClient,
   workOrderStatusText,
+  workOrderRetryable,
 } from "./living-sheet-client";
 
 // Re-exported so existing tests importing stepNeedsConfirm from this module
@@ -1454,6 +1455,14 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
                 {workOrder ? (
                   <>
                     <p data-testid="living-sheet-work-order-status">{workOrderStatusText(workOrder)}</p>
+                    {workOrderRetryable(workOrder) && (
+                      <button
+                        type="button" style={BUTTON_STYLE} disabled={workOrderBusy}
+                        onClick={() => void onRequestWorkOrder()} data-testid="living-sheet-work-order-retry"
+                      >
+                        Try again
+                      </button>
+                    )}
                     <button
                       type="button" style={GHOST_BUTTON_STYLE}
                       onClick={() => { if (openJobId) void refreshWorkOrder(openJobId); }}
