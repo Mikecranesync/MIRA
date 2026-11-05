@@ -285,10 +285,12 @@ for (const [label, width, height] of [["portrait", 390, 844], ["landscape", 844,
       await page.getByRole("region", { name: "Projects", exact: true }).getByRole("button", { name: "Motor vibration", exact: true }).click();
       await title("same-project thread switch", "Motor vibration — GS10 — Line 3 conveyor · FactoryLM Hub");
       await navigate();
-      await page.getByRole("button", { name: "Control conveyor", exact: true }).click();
+      await page.locator(`button[data-project-id="project-${secondNotebook}"]`).click();
       // The old notebook's detail is still present: it must not name this tab.
       await title("project switch before detail returns", "Control conveyor · FactoryLM Hub");
+      const detailReturned = page.waitForResponse((r) => new URL(r.url()).pathname.replace(/\/$/, "") === `/hub/api/equipment-notebooks/${secondNotebook}`);
       releaseDetail();
+      await detailReturned;
       await page.goto(url);
       await title("return to named thread", "Seal inspection — GS10 — Line 3 conveyor · FactoryLM Hub");
       const sent = page.waitForRequest((r) => new URL(r.url()).pathname.replace(/\/$/, "") === `/hub/api/equipment-notebooks/${NB}/chat` && r.method() === "POST");
