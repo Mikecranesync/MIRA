@@ -133,6 +133,23 @@ function tableRowStarts(clean: string): number[] {
 }
 
 /**
+ * Postgres UTF8 rejects U+0000 (SQLSTATE 22021). unpdf emits it for glyphs
+ * whose ToUnicode entry is <0000> — both staging SMC-3 uploads of
+ * smc3-150-in065.pdf failed with `invalid byte sequence for encoding "UTF8":
+ * 0x00` and the generic "Couldn't process this file" (#4923). A NUL is a
+ * spacer glyph, so it becomes a word break, not a glued word. Used on chunk
+ * content, extracted page text, and metadata strings before any INSERT.
+ */
+export function stripNulBytes(text: string): string {
+  return text.replace(/\u0000/g, " ");
+}
+
+function postgresSafeText(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  return stripNulBytes(value);
+}
+
+/**
  * Split text into ~CHUNK_CHARS windows with overlap, preferring to end on a
  * paragraph or sentence boundary. On a code-keyed table page it ends a window
  * just before a row instead, so a fault code stays in one chunk with its
@@ -144,7 +161,7 @@ export function chunkText(
   size = CHUNK_CHARS,
   overlap = CHUNK_OVERLAP,
 ): string[] {
-  const clean = text
+  const clean = stripNulBytes(text)
     .replace(/\r\n/g, "\n")
     .replace(/[ \t]+\n/g, "\n")
     .trim();
@@ -430,7 +447,11 @@ async function writeChunkRowsForNode(
    *  with `pages`), recorded as `metadata.page_label` (#4508). Absent = none. */
   pageLabels?: ReadonlyArray<string | null> | null,
 ): Promise<number> {
-  const { tenantId, uploadId, nodeId, unsPath, filename } = opts;
+  const { tenantId, uploadId, nodeId } = opts;
+  // Sanitize every string that can reach a TEXT/JSONB param. Postgres UTF8
+  // rejects 0x00 in any of them, not just chunk content (#4923).
+  const filename = stripNulBytes(opts.filename);
+  const unsPath = postgresSafeText(opts.unsPath);
 
   // Unique per attachment so same-named files on different nodes never false-dedup
   // against the partial UNIQUE (tenant_id, source_url, metadata->>'chunk_index').
@@ -462,7 +483,7 @@ async function writeChunkRowsForNode(
       for (const r of batch) {
         params.push(
           randomUUID(),
-          r.content,
+          stripNulBytes(r.content),
           r.page,
           JSON.stringify({
             filename,
@@ -471,7 +492,7 @@ async function writeChunkRowsForNode(
             chunk_index: r.idx,
             source: "hub_node_attachment",
             ...(r.repair ? { text_repair: r.repair } : {}),
-            ...(r.label ? { page_label: r.label } : {}),
+            ...(r.label ? { page_label: stripNulBytes(r.label) } : {}),
           }),
         );
       }
@@ -626,7 +647,7 @@ export async function writePdfChunksForNode(opts: {
   try {
     const pdf = await getDocumentProxy(new Uint8Array(buffer));
     const { text } = await extractText(pdf, { mergePages: false });
-    const pages: string[] = Array.isArray(text) ? text : [text];
+    const pages: string[] = (Array.isArray(text) ? text : [text]).map(stripNulBytes);
     const repairs = await repairGarbledPages(pages, rest);
     const labels = await printedPageLabels(
       { getPageLabels: () => readPageLabelsBounded(buffer, rest.filename) },
@@ -679,7 +700,7 @@ export async function printedPageLabels(
       continue;
     }
     if (l.length > MAX_PAGE_LABEL_BYTES * 4) return oversized(filename);
-    const t = l.trim();
+    const t = stripNulBytes(l).trim();
     const bytes = Buffer.byteLength(t, "utf8");
     total += bytes;
     if (bytes > MAX_PAGE_LABEL_BYTES || total > MAX_PAGE_LABELS_TOTAL_BYTES) return oversized(filename);
@@ -709,8 +730,8 @@ export async function writeTextChunksForNode(opts: {
   buffer: Buffer | Uint8Array;
 }): Promise<number> {
   const { buffer, ...rest } = opts;
-  const text = new TextDecoder("utf-8", { fatal: false }).decode(
-    new Uint8Array(buffer),
+  const text = stripNulBytes(
+    new TextDecoder("utf-8", { fatal: false }).decode(new Uint8Array(buffer)),
   );
   return writeChunkRowsForNode([text], rest);
 }
