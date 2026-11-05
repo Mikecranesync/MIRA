@@ -19,10 +19,10 @@ vi.mock("@/capabilities/photo-source", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/capabilities/photo-source")>()),
   materializeDerivedTextDoc: vi.fn(),
 }));
-vi.mock("../../../route", () => ({ workPacketEnabled: vi.fn() }));
+vi.mock("@/app/api/equipment-notebooks/[id]/work-packet/route", () => ({ workPacketEnabled: vi.fn() }));
 
-import { PUT } from "../route";
-import { workPacketEnabled } from "../../../route";
+import { PUT } from "@/app/api/equipment-notebooks/[id]/work-packet/drawing-photos/[docId]/route";
+import { workPacketEnabled } from "@/app/api/equipment-notebooks/[id]/work-packet/route";
 import { sessionOr401 } from "@/lib/session";
 import {
   getNotebook,
