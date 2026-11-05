@@ -2,6 +2,7 @@
 // A user-aborted live turn does not arm NotebookScreen's failedSend, so
 // canRetry stays false. UnifiedChat must still pass onRetry so the shared
 // stopped bubble can re-send the question (#4924).
+// Lives under src/unified/__tests__ (unguarded adapter), not src/screens/__tests__.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render } from "@testing-library/react";
 import type { HostHooks } from "@factorylm/ui";
@@ -24,7 +25,7 @@ vi.mock("@factorylm/ui", async (original) => ({
   },
 }));
 
-import { UnifiedChat } from "../UnifiedChat";
+import { UnifiedChat } from "../../screens/UnifiedChat";
 
 afterEach(() => {
   cleanup();

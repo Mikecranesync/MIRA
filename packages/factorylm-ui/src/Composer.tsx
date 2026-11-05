@@ -88,7 +88,6 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
   const fieldRef = useRef<HTMLTextAreaElement>(null);
   const draftAtMount = useRef(state.draft);
   const stopIgnoreUntilRef = useRef(0);
-  const sendingLockRef = useRef(false);
   const queuedRef = useRef(false);
   const [queued, setQueued] = useState(false);
   const wasBusyRef = useRef(Boolean(hooks?.busy));
@@ -178,14 +177,14 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
     // chips -- the technician's next question vanished unsent (#4443). Keep
     // both until the answer finishes, the same as the disabled button.
     // #4798: an explicit send while busy queues one follow-up instead of
-    // dropping it. A double-activate before `busy` flips is the #4924 lock.
+    // dropping it. #4924 ignores Stop for a short window after this send.
     if (hooks?.busy) {
       if (!canSend) return;
       queuedRef.current = true;
       setQueued(true);
       return;
     }
-    if (!canSend || sendingLockRef.current) return;
+    if (!canSend) return;
     if (hooks?.onSend) {
       try {
         const sent = visiblePending;
@@ -204,7 +203,6 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
         dispatch({ type: "set-send-error", error: null });
         queuedRef.current = false;
         setQueued(false);
-        sendingLockRef.current = true;
         stopIgnoreUntilRef.current = Date.now() + STOP_ARM_DELAY_MS;
       } catch (error) {
         // Preserve the question in the composer and show a plain-language error
@@ -229,7 +227,6 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
 
   useEffect(() => {
     const nowBusy = Boolean(hooks?.busy);
-    if (!nowBusy) sendingLockRef.current = false;
     if (wasBusyRef.current && !nowBusy && queuedRef.current) {
       queuedRef.current = false;
       setQueued(false);

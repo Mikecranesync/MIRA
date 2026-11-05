@@ -66,6 +66,19 @@ describe("#4924 — a second click right after Send does not hit Stop", () => {
     expect(calls).toEqual(["send:what does fault F004 mean", "stop"]);
   });
 
+  it("a second question after Send is not blocked once the draft has cleared", () => {
+    const calls: string[] = [];
+    const hooks = { onSend: (text: string) => { calls.push(`send:${text}`); } };
+    const view = render({ surface: "hub", fixture: "grounded-answer", hooks });
+    const { form, textarea } = composer(view);
+    view.type(textarea, "first question");
+    view.submit(form);
+    expect(calls).toEqual(["send:first question"]);
+    view.type(textarea, "second question");
+    view.submit(form);
+    expect(calls).toEqual(["send:first question", "send:second question"]);
+  });
+
   it("honors Stop immediately when the composer mounted already busy (no local Send)", () => {
     const calls: string[] = [];
     const view = render({
