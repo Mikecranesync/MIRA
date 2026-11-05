@@ -5,7 +5,7 @@ export { FactoryLMShell, type FactoryLMShellProps, type ConversationSurface, BAC
 export { focusableWithin, trapTab, useFocusReturn } from "./focus";
 export { Inspector } from "./Inspector";
 export { Overlay, type LayerName, type OverlayProps } from "./Overlay";
-export { PartRenderer, type PartRendererProps, type HostHooks, assertNever, describeContext, lifecycleLabel, machineName } from "./parts";
+export { PartRenderer, type PartRendererProps, type HostHooks, assertNever, describeContext, latestInterruptedTurnId, lifecycleLabel, machineName } from "./parts";
 export { ProjectTree } from "./ProjectTree";
 export { Sidebar } from "./Sidebar";
 export { SourceViewer, type SourceViewerProps } from "./SourceViewer";

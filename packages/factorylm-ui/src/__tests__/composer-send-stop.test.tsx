@@ -141,6 +141,30 @@ describe("#4798 — a draft typed while MIRA is answering is not dropped", () =>
     expect(hint(view)).toBeNull();
   });
 
+  it("Stop cancels a queued follow-up instead of sending it when busy falls", async () => {
+    const calls: string[] = [];
+    const hooks = {
+      busy: true,
+      onSend: (text: string) => calls.push(`send:${text}`),
+      onStop: () => calls.push("stop"),
+    };
+    const view = render({ surface: "hub", fixture: "grounded-answer", hooks });
+    const { textarea } = composer(view);
+    view.type(textarea, "send this after");
+    enter(textarea);
+    await view.flush();
+    expect(hint(view)?.dataset.queued).toBe("true");
+
+    view.click(view.buttonNamed("Stop") ?? new Error("Stop is required") as never);
+    expect(calls).toEqual(["stop"]);
+    hooks.busy = false;
+    view.dispatch({ type: "set-theme", theme: "dark" });
+    await view.flush();
+    expect(calls).toEqual(["stop"]);
+    expect(view.outputs().draft).toBe("send this after");
+    expect(hint(view)).toBeNull();
+  });
+
   it("does not show a hint while busy if the box is empty", () => {
     const view = render({
       surface: "mobile",
