@@ -53,10 +53,13 @@ const EXACT_PATTERNS: ReadonlyArray<RegExp> = [
   /\b\d{2,3}-[A-Z]\d{2,}\b/gi, // generic catalog-ish
   // #5127 — Rockwell catalog numbers whose prefix carries a letter or whose
   // body has more segments: PowerFlex 4 "22A-B4P5N104", Micro820
-  // "2080-LC20-20QWB". The body starts with a letter and holds two digits, and
-  // every later segment mixes letters and digits, so "120-240V", "380-480VAC"
-  // and "2026-10-31" stay ordinary text.
-  /\b\d{2,4}[A-Z]?-[A-Z](?=(?:[A-Z0-9]*\d){2})[A-Z0-9]{3,}(?:-(?=[A-Z0-9]*[A-Z])(?=[A-Z0-9]*\d)[A-Z0-9]{2,})*\b/gi,
+  // "2080-LC20-20QWB", Micro810 "2080-LC10-12-AWA", publication
+  // "22B-UM001J-EN-E". The first body segment starts with a letter and holds
+  // two digits; later segments may be numeric-only or letter-only. (?!-)
+  // refuses a prefix when another hyphenated segment follows, so a partial
+  // "2080-LC10" is not extracted from "2080-LC10-12-AWA". Voltage ranges
+  // ("120-240V", "380-480VAC") and dates stay ordinary text.
+  /\b\d{2,4}[A-Z]?-[A-Z](?=(?:[A-Z0-9]*\d){2})[A-Z0-9]{3,}(?:-[A-Z0-9]+)*(?!-)\b/gi,
 ];
 
 export type ExpandedQuery = {

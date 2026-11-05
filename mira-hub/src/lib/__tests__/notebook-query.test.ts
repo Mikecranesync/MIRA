@@ -74,6 +74,21 @@ describe("expandIndustrialQuery", () => {
     expect(expandIndustrialQuery("rated 380-480VAC input").exactTokens).toEqual([]);
   });
 
+  // Codex F1 on #5139 — later segments may be numeric-only ("-12") or
+  // letter-only ("-AWA", "-EN", "-E"). The match must consume the whole
+  // hyphenated token; a leftover hyphen fails rather than emit a prefix.
+  it("extracts a multi-segment catalog number intact and not its prefix", () => {
+    const awa = expandIndustrialQuery("wiring for 2080-LC10-12-AWA").exactTokens;
+    expect(awa).toContain("2080-LC10-12-AWA");
+    expect(awa).not.toContain("2080-LC10");
+    const qwb = expandIndustrialQuery("wiring for the 2080-LC10-12-QWB").exactTokens;
+    expect(qwb).toContain("2080-LC10-12-QWB");
+    expect(qwb).not.toContain("2080-LC10");
+    const pub = expandIndustrialQuery("see 22B-UM001J-EN-E").exactTokens;
+    expect(pub).toContain("22B-UM001J-EN-E");
+    expect(pub).not.toContain("22B-UM001J");
+  });
+
   it("extracts a terminal number as a zero-padded exact token", () => {
     expect(expandIndustrialQuery("Which terminal sets second speed? terminal 7").exactTokens).toContain("07");
     expect(expandIndustrialQuery("what is terminal 07").exactTokens).toContain("07");
@@ -213,6 +228,16 @@ describe("rerankChunks", () => {
     const a = mk("alpha content", 0.9);
     const b = mk("beta content", 0.3);
     expect(rerankChunks(e, [b, a])).toEqual([a, b]);
+  });
+
+  // Codex F1 on #5139 — a shared family prefix as an exact token would
+  // give both LC10 variants the +3 dominance bonus, so ts_rank would keep
+  // the unasked variant first. The full catalog number must be the token.
+  it("ranks the asked LC10 variant above another LC10 variant", () => {
+    const e = expandIndustrialQuery("wiring for 2080-LC10-12-AWA");
+    const asked = mk("DC Inputs 2080-LC10-12-AWA wiring and COM0 terminals", 0.1, 10);
+    const other = mk("DC Inputs 2080-LC10-12-QWB 24V version wiring", 0.9, 11);
+    expect(rerankChunks(e, [other, asked])[0]).toBe(asked);
   });
 });
 
