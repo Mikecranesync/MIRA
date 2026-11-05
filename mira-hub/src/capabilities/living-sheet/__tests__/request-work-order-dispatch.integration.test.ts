@@ -242,6 +242,30 @@ describe("request-work-order-dispatch — basic delivery", () => {
     await testPool.query(
       `INSERT INTO cmms_equipment (id, tenant_id, equipment_number, slug, path, atlas_id)
        VALUES ($1::uuid, $2::uuid, $3, $3, $3, $4)`,
+      [entityId, tenantId, `pump-07-${entityId}`, "42"],
+    );
+    await enqueueOne(tenantId, nb, entityId);
+
+    const mock = new MockCmmsWriteProvider({ providerId: "atlas" });
+    const stats = await runDispatchTick({ providerFor: () => mock, tenantAllowlist: new Set([tenantId]) });
+
+    expect(stats.verified).toBe(1);
+    expect(mock.orders()[0]!.externalAssetId).toBe("42");
+  });
+
+  it("a malformed atlas_id never reaches Atlas as an asset id — the order is created unlinked", async () => {
+    const tenantId = uuid();
+    const entityId = uuid();
+    const nb = await makeNotebook(tenantId, entityId, true);
+    await setCmmsConfig(tenantId, { writePolicy: workOrderRequestedEnabledPolicy() });
+    await testPool.query(
+      `INSERT INTO tenants (id, slug, name, status) VALUES ($1::uuid, $2, 'dispatch itest', 'active')
+       ON CONFLICT (id) DO NOTHING`,
+      [tenantId, `dispatch-itest-${tenantId}`],
+    );
+    await testPool.query(
+      `INSERT INTO cmms_equipment (id, tenant_id, equipment_number, slug, path, atlas_id)
+       VALUES ($1::uuid, $2::uuid, $3, $3, $3, $4)`,
       [entityId, tenantId, `pump-07-${entityId}`, "atlas-asset-42"],
     );
     await enqueueOne(tenantId, nb, entityId);
@@ -250,7 +274,8 @@ describe("request-work-order-dispatch — basic delivery", () => {
     const stats = await runDispatchTick({ providerFor: () => mock, tenantAllowlist: new Set([tenantId]) });
 
     expect(stats.verified).toBe(1);
-    expect(mock.orders()[0]!.externalAssetId).toBe("atlas-asset-42");
+    expect(mock.orders()).toHaveLength(1);
+    expect(mock.orders()[0]!.externalAssetId).toBeNull();
   });
 
   it("double tap: two enqueue calls for the same job still deliver exactly one Atlas order", async () => {

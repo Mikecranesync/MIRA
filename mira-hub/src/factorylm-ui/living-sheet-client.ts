@@ -629,6 +629,66 @@ export async function apiUploadPhoto(
   return asApiResult(res);
 }
 
+/** GET .../work-order — the job's technician-confirmed CMMS work-order
+ *  request, as `deliveryStatusForWorkOrderRequest` reports it. */
+export type WorkOrderRequestClient = {
+  eventId: string;
+  requestedAt: string;
+  state: string;
+  externalRef: string | null;
+  attempts: number;
+  updatedAt: string;
+};
+
+export async function apiGetWorkOrderRequest(
+  notebookId: string,
+  jobId: string,
+): Promise<ApiResult<{ request: WorkOrderRequestClient | null }>> {
+  const res = await fetch(`${sheetsBase(notebookId)}${encodeURIComponent(jobId)}/work-order/`, { credentials: "include" });
+  return asApiResult(res);
+}
+
+/** POST .../work-order — only ever called from the explicit "Yes, create it"
+ *  confirmation. Safe to retry: the server returns the first request. */
+export async function apiRequestWorkOrder(
+  notebookId: string,
+  jobId: string,
+): Promise<ApiResult<{ eventId: string; replayed: boolean; delivery: { deliveryId: string | null; state?: string; reason?: string } }>> {
+  const res = await fetch(`${sheetsBase(notebookId)}${encodeURIComponent(jobId)}/work-order/`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ confirm: true }),
+  });
+  return asApiResult(res);
+}
+
+/** Plain-language status of a work-order request. Never claims the order
+ *  exists until the CMMS read it back (`verified_by_readback`). */
+export function workOrderStatusText(request: WorkOrderRequestClient): string {
+  switch (request.state) {
+    case "verified_by_readback":
+      return request.externalRef
+        ? `Work order #${request.externalRef} created in the CMMS.`
+        : "Work order created in the CMMS.";
+    case "queued":
+    case "leased":
+      return "Requested — waiting to be sent to the CMMS.";
+    case "accepted_pending_verification":
+      return "Sent — waiting for the CMMS to confirm the work order exists.";
+    case "retryable_failure":
+    case "outcome_unknown":
+      return "Not confirmed yet — the CMMS did not answer. It will retry automatically; it will not create a second order.";
+    case "permission_denied":
+      return "The CMMS refused this request (permission). Ask your admin to check the CMMS connection.";
+    case "blocked_policy":
+    case "saved":
+      return "Saved on this sheet only — sending work orders to the CMMS is turned off for this site.";
+    default:
+      return "Could not create the work order in the CMMS. Ask your admin to check it.";
+  }
+}
+
 export type JobSheetRevision = {
   id: string;
   jobSheetId: string;

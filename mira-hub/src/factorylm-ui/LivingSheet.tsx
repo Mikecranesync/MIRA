@@ -32,9 +32,11 @@ import { LivingSheetShiftReport } from "./LivingSheetShiftReport";
 import { JobSheetsLibrary } from "./JobSheetsLibrary";
 import {
   apiGetJob,
+  apiGetWorkOrderRequest,
   apiListJobSheetTemplates,
   apiListJobs,
   apiPostEvent,
+  apiRequestWorkOrder,
   apiStartJob,
   apiUploadPhoto,
   attemptRequest,
@@ -57,6 +59,8 @@ import {
   type SaveBadgeState,
   type SheetEventPost,
   type SheetWriteEvent,
+  type WorkOrderRequestClient,
+  workOrderStatusText,
 } from "./living-sheet-client";
 
 // Re-exported so existing tests importing stepNeedsConfirm from this module
@@ -419,6 +423,11 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
 
   const [handoverText, setHandoverText] = useState("");
   const [finishAck, setFinishAck] = useState(false);
+  // Explicit, technician-confirmed CMMS work-order request (never automatic).
+  const [workOrder, setWorkOrder] = useState<WorkOrderRequestClient | null>(null);
+  const [workOrderConfirm, setWorkOrderConfirm] = useState(false);
+  const [workOrderBusy, setWorkOrderBusy] = useState(false);
+  const [workOrderError, setWorkOrderError] = useState<string | null>(null);
   // F03: a step confirm can be opened either by ticking the checkbox
   // directly (receiptOrigin undefined) or by accepting a chat proposal for
   // a step that needs confirmation (receiptOrigin carries the proposal's id
@@ -593,17 +602,54 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
     [scopeId, notebookId, loadSheet],
   );
 
+  const refreshWorkOrder = useCallback(
+    async (jobId: string) => {
+      try {
+        const r = await apiGetWorkOrderRequest(notebookId, jobId);
+        if (openJobIdRef.current !== jobId) return;
+        if (r.ok) setWorkOrder(r.body.request);
+      } catch {
+        /* offline — keep the last known status */
+      }
+    },
+    [notebookId],
+  );
+
+  const onRequestWorkOrder = useCallback(async () => {
+    const jobId = openJobIdRef.current;
+    if (!jobId) return;
+    setWorkOrderBusy(true);
+    setWorkOrderError(null);
+    try {
+      const r = await apiRequestWorkOrder(notebookId, jobId);
+      if (!r.ok) {
+        setWorkOrderError(r.body.message ?? "Could not request the work order. Try again.");
+        return;
+      }
+      setWorkOrderConfirm(false);
+      await refreshWorkOrder(jobId);
+    } catch {
+      setWorkOrderError("Not sent — no connection. Try again when you are back online; it will not create a second order.");
+    } finally {
+      setWorkOrderBusy(false);
+    }
+  }, [notebookId, refreshWorkOrder]);
+
   const openJob = useCallback(
     (jobId: string) => {
       openJobIdRef.current = jobId;
       setOpenJobId(jobId);
       setConflict(null);
       setFinishAck(false);
+      setWorkOrder(null);
+      setWorkOrderConfirm(false);
+      setWorkOrderError(null);
       onSheetOpenChange({ notebookId, jobId });
       void loadSheet(jobId);
       void refreshBadge(jobId);
+      void refreshWorkOrder(jobId);
     },
-    [notebookId, onSheetOpenChange, loadSheet, refreshBadge],
+    [notebookId, onSheetOpenChange, loadSheet, refreshBadge, refreshWorkOrder],
   );
 
   const closeJob = useCallback(() => {
@@ -1373,6 +1419,45 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
                     </button>
                   </>
                 )}
+              </section>
+
+              <section style={SECTION_STYLE} data-testid="living-sheet-work-order">
+                <h3 style={{ marginTop: 0 }}>Work order in the CMMS</h3>
+                {workOrder ? (
+                  <>
+                    <p data-testid="living-sheet-work-order-status">{workOrderStatusText(workOrder)}</p>
+                    <button
+                      type="button" style={GHOST_BUTTON_STYLE}
+                      onClick={() => { if (openJobId) void refreshWorkOrder(openJobId); }}
+                    >
+                      Refresh status
+                    </button>
+                  </>
+                ) : workOrderConfirm ? (
+                  <>
+                    <p>
+                      This creates one work order in the CMMS with this sheet&apos;s steps, readings, open items and sources.
+                      It does not mark the machine repaired, healthy or safe.
+                    </p>
+                    <button
+                      type="button" style={BUTTON_STYLE} disabled={workOrderBusy}
+                      onClick={() => void onRequestWorkOrder()} data-testid="living-sheet-work-order-confirm"
+                    >
+                      Yes, create it
+                    </button>
+                    <button type="button" style={GHOST_BUTTON_STYLE} disabled={workOrderBusy} onClick={() => setWorkOrderConfirm(false)}>
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button" style={GHOST_BUTTON_STYLE}
+                    onClick={() => setWorkOrderConfirm(true)} data-testid="living-sheet-work-order-button"
+                  >
+                    Create work order…
+                  </button>
+                )}
+                {workOrderError && <p role="alert">{workOrderError}</p>}
               </section>
 
               <section style={SECTION_STYLE} data-testid="living-sheet-print-section">
