@@ -1,4 +1,4 @@
-> **Current refresh:** see [November 4, 2026 — current capability and customer-readiness worksheet](#november-4-2026--current-capability-and-customer-readiness-worksheet). The original November 1 baseline below is preserved; the implementation plan's proposed Level 3 criteria are unchanged.
+> **Current assessment:** see [November 5, 2026 — readiness reevaluation](#november-5-2026--readiness-reevaluation). The November 1 and November 4 snapshots are historical; the implementation plan's proposed Level 3 criteria are unchanged.
 
 **FactoryLM/MIRA: benchmark against the 2126 vision**
 
@@ -260,4 +260,121 @@ This addition uses source files, PRs, issues and receipts already recorded in th
 [E13]: https://github.com/Mikecranesync/MIRA/blob/809a6877e73dd42385c87b36af27c1663cec8111/docs/product/first-customer-package/CUSTOMER-VALUE-ACCEPTANCE.md
 [E13a]: https://github.com/Mikecranesync/MIRA/blob/1f40a8a82f632ce017fba2f32fb5d47923634279/docs/market/hair-on-fire-demand-map.md
 [E14]: https://github.com/Mikecranesync/MIRA/issues/5134#issuecomment-6592219503
+
+
+## November 5, 2026 — readiness reevaluation
+
+**Current judgment: connected maintenance work has advanced; a complete Level 3 customer journey remains unverified.** Work Packet V2, its applicability follow-ups, and the Living Work Sheet are now merged. A fictional staging job has completed the CMMS chain: confirmed request → one order → finish note → completion → independent read-back. C8 therefore advances from **1 to 2 for this bounded CMMS path**. C1–C5 and C7 stay at 2, C6 stays at 1 for complete verified-outcome learning, and C9 stays U. No capability is promoted to Level 3 by this review.
+
+This replaces the November 4 section as the current assessment; both earlier snapshots remain historical. The original maturity definitions, eight pain categories, eleven mandatory journey steps and proposed acceptance thresholds are unchanged. Missing acceptance does not imply missing implementation. Technical staging acceptance, representative human acceptance and production readiness are separate findings.
+
+### Evidence scope and runtime identity
+
+Evidence cutoff: November 5, 2026, 23:15 UTC. The review inspected public repository source, PR/review records, issue updates and existing Actions logs; it did not run a product evaluation or use private customer/CRM data. Core source was inspected at 01a27e9fc11160a81050f3d47965390b9bf4af55; the final main recheck is [3020e45be78b54fb422b362144e58d00e123d8bc][N5-main]. That one-commit advance merges attachment clarity #5228, with no change to the inspected core/schema/workflow files. The worksheet branch before this update is 33ed90ba6df0267b1ee05a76995b32173ad3d171.
+
+| Surface | Exact inspected evidence | What it establishes / limit |
+|---|---|---|
+| Source main | 3020e45be (core audit at 01a27e9fc); Work Packet V2 merged as 258a4f318; Living Work Sheet as 82b06cbea; applicability follow-ups as 5c41389a9 | Implementation exists on main. A merge alone is not deployed or accepted behavior. [N5-main][N5-v2][N5-sheet][N5-applicability] |
+| Last recorded production Hub deployment | [Run 41966843847][N5-prod], job 127046706796; approved/runtime SHA 489088d4cc0f8d16c02036df891752120a0250da; v3.443.1; deployed 2026-11-05 04:23:21Z; built/running Hub image sha256:20f396afb514464601eeaf2bd84f925184d8906a2974c63a2bffaacb4dbf1fbd | Production has advanced since the November 4 chart. This is a deployment receipt, not a fresh live-health read or complete product acceptance. Later main migrations/configuration do not transfer to this deployment. |
+| Last recorded staging Hub deployment | [Run 41979537225][N5-stg], job 127086263753; approved/runtime SHA 5b903995dd90b3febe2fc77bee59c7324f6036d7; v3.444.4; built 06:19:17Z, deployed 06:23:17Z; built/running Hub image sha256:576a6849de02af26761404a444b6e26e3fac2d4165ae01f77db542d407b84920 | Includes the newer work and quota-error handling. Physical-client/APK/OTA and representative human acceptance are not supplied by this receipt. |
+| Later staging worker deployment | [Run 42010063169][N5-worker], job 127186567719; fd98befc73d8e98fd91f17affb07c02f6d46de2f; v3.444.5; deployed 10:24:39Z; mira-cmms-sync image sha256:4752de14fa3fe2d8496f2be94762d9a57499944caf68fff11cb6809edf43de0f | Worker only: no Hub runtime is recorded in this receipt. Do not call fd98befc the tested Hub revision. Background sync was turned off for the bounded staging recovery. [N5-recovery] |
+| Independent staging destination check | [Run 42126595397][N5-readback], job 127592265594, 23:03:52Z; controller main 01a27e9fc; order 1602 COMPLETE, identity true, one create marker, source-job reference true, complete two-page duplicate scan, one finish marker, PASS | Directly inspected log supports one completed fictional staging lifecycle. Earlier separate verify/complete/verify runs and Hub delivery evidence are linked in the [acceptance receipt][N5-atlas-acceptance]. This is not production, phone or human acceptance. |
+| Schema and flags | [#5217][N5-migration] promotes 114 and staging-only default-off passthrough. Main still keeps [113 proposed][N5-113]; [registry][N5-registry] records observation state disabled/unset. [#5226][N5-drift] and [#5227][N5-prod-drift] report shared ledger drift; [run 42125228760][N5-dryrun], job 127587587167, is explicitly staging **dry-run**, with apply/post-apply verification skipped. | A green dry-run does not repair drift. [#5218][N5-compat] tracks 113 narrowing 114's outbox types; a newly claimed repair is not merged proof. Establish actual schema and ledger separately, preserve applied 114, then use the authorized migration path. |
+
+Image generation, service, schema, flags, client and source matter together. Historical same-SHA rerank failures are retained below as historical evidence; this review neither transfers them to these new images nor treats new deployment receipts as clearing them.
+
+### Current capability chart
+
+Owners below identify existing workstreams, not new assignments. Where no individual is established, that remains an ownership gap for Mike to resolve. All next actions are proposed validation/repair work; this documentation update performs none of the runtime actions.
+
+| ID / capability | November 4 → November 5 | New evidence and practical limit | Missing proof → smallest next action / existing owner |
+|---|---|---|---|
+| C1. Know the physical machine | 2 → **2** | Catalog-number retrieval repair #5139 is now merged at head 9d51d12b48194fd9dd1b8237c18abb38e271fadf. V2 applicability handling is stronger. These do not prove the full camera/model/variant/revision path. [N5-catalog][N5-applicability] | One exact candidate must keep confirmed identity through source, packet, state and handover, and reject conflicts; identity/source workstream. |
+| C2. Maintain trustworthy engineering knowledge | 2 → **2** | V2 and follow-ups close #5175–#5177 and #5200–#5202, including struck hazard controls, negation and unknown-model coverage. #5208 has exact-head GREEN at d003cbc29ccced641277f9a24e6313e140cb989b. Corpus ingestion and safety scope still need qualification; #5038 remains draft. [N5-v2][N5-applicability][N5-ingest] | Qualify one supported manual/revision, preserving instructions, prerequisites, tables and exclusions on screen and paper; ingestion + Work Packet/safety workstreams. |
+| C3. Explain/recommend from evidence | 2 → **2** | #5139 is merged; [#5142](https://github.com/Mikecranesync/MIRA/pull/5142), [#5143](https://github.com/Mikecranesync/MIRA/pull/5143), [#5145](https://github.com/Mikecranesync/MIRA/pull/5145), [#5153](https://github.com/Mikecranesync/MIRA/pull/5153), [#5156](https://github.com/Mikecranesync/MIRA/pull/5156) and [#5161](https://github.com/Mikecranesync/MIRA/pull/5161) remain draft/unmerged at the heads recorded November 4. #5038 has moved to 881671ae73042a7cc8e95476060fa92fb7b09d50, still draft. No inspected new matched-image 30-case representative acceptance replaces the earlier limited results. [N5-catalog][N5-ingest] | Run current candidate through useful-answer/full-source/applicability/safety gates, including the known failures; retrieval/source/safety workstreams. Passing narrow CI rubrics does not substitute for this. |
+| C4. Build/use machine state from technician inputs | 2 → **2 infrastructure; offered cycle U** | Living Sheet durable job events/context are new shared infrastructure. Mission 001's asset-observation projection is still separately disabled in the registry, with proposed 113 and compatibility issue #5218. A job event or CMMS completion is not proof of the observation → UNS/state → later answer path. [N5-sheet][N5-registry][N5-compat] | Finish the compatible 113 repair and establish actual schema, then authorized staging adoption and A→restart→B/state/answer trace; Mission 001/integration workstream, Mike for named owner/adoption authority. |
+| C5. Prepare/guide useful work | 2 → **2, stronger merged/staging foundation** | V2 final head 135e09f645fa8dc3ab214c15a8abd917472e69f2 was independently reviewed: zero BLOCKER/HIGH, three MEDIUM, subsequently fixed by #5208. Living Sheet adds steps, readings/units, parts, photos, notes and handover. Its PR reports 110 real-Postgres integration tests; final independent review has zero HIGH and two MEDIUM follow-ups. Direct Work Packet→Living Sheet procedure import remains follow-up. [N5-v2-review][N5-applicability][N5-sheet][N5-sheet-review] | Physical phone edit/save/reopen/source/PDF proof at the current revision, followed by a qualified technician completing the supported task; Work Packet + Living Sheet/device workstreams. Earlier 46/46 Pixel proof belongs to older V2 source, not this offered candidate. |
+| C6. Remember verified outcomes/improve next job | 1 → **1 complete learning cycle** | Shared sheet records, attributed corrections and handover now exist; staging finish-note read-back is verified. This is stronger recording infrastructure. Main fix-record shape and open #5089 still do not establish automatic later answer reuse of a verified outcome. Finishing an Atlas order does not establish machine restoration. [N5-sheet][N5-readback][N5-fix][N5-reuse] | Record measured before/after or explicit qualified attestation, unsuccessful/uncertain outcomes, and demonstrate appropriate reuse by technician B on a later job; history/state + pilot workstreams. |
+| C7. Stay usable beside the machine | 2 → **2** | #4936 home Attach closed with bounded staging browser evidence. November 5 closeout records no physical Pixel for that repair phase. Since that closeout, [#5228][N5-attach] attachment clarity has merged as 3020e45be from head 85a35ddd226be5dfc442df1bcc10c88bf3ebd4ef; its current-head review records PASS. This is source progress, not newer deployed/physical acceptance. New sheet PR explicitly has no Pixel/real-technician run. [N5-closeout][N5-sheet] | Full offered journey on an actual phone, including source page, keyboard/Back, photos, offline recovery and no lost work; shared-UI/device + pilot workstreams. |
+| C8. Coordinate actions under permission | 1 → **2 for confirmed CMMS request/finish** | Source confirmation, idempotent outbox and destination read-back now connect to real staging Atlas. Independent check sees exactly one order/finish marker and persisted completion. Production stats recovered per #5205, while this write lifecycle is staging-only. Broader action types remain unverified individually. [N5-atlas-acceptance][N5-readback][N5-cmms-repair] | Current phone/two-technician acceptance, permission/tenant/retry/failure controls, and resolution of #5209 scan ceiling, #5210 permanent-failure recovery, #5216 process collision and #5223 sync/capacity policy; CMMS/Living Sheet workstream, Mike for policy. No OT write/return-to-service authority follows. |
+| C9. Demonstrate customer demand | U → **U** | Reviewed new evidence remains fictional/local/automated; #5223 still calls out human acceptance. No completed representative pilot receipt or repeat-job/benefit result was established in this review. This is an evidence gap, not a finding of no demand. [N5-atlas-acceptance][E12] | Observe representative completion, corrections, all-in benefit and voluntary later use; pilot owner, Mike for participants/scope. |
+
+### Eight customer pains: current crosswalk
+
+Original work tags remain planning tags, not maturity scores. These rows update relief evidence without changing the [original acceptance overlay][E13].
+
+| Pain / original tag | Capability / journey | November 5 disposition → next proof / existing owner |
+|---|---|---|
+| P1. Cited answers from OUR manuals at the machine / FINISH | C1–C3/C7; J3–J6 | Stronger merged catalog/applicability work; complete applicable answer plus full source on the offered phone remains unaccepted → qualify one manual/task and exact generation; identity/retrieval/source owners. [N5-catalog][N5-applicability] |
+| P2. Junior/night shift as capable as retiring senior / FINISH | C2–C7/C9; J3–J10 | Packet/sheet support has advanced; no novice-versus-baseline result → observed supported task with mentor rescue recorded, preserving qualifications and authority; pilot/mentor owner. [N5-sheet][N5-atlas-acceptance] |
+| P3. Cut recovery time during unplanned downtime / REUSE | C3/C5/C7/C9; J5–J9 | Completed staging software chain is not measured repair time/MTTR → measure all waiting, retries and corrections against comparable manual-only work; pilot owner. |
+| P4. Useful branching troubleshooting / FINISH | C2/C3/C5; J5/J6/J8 | Phased procedures and open questions improve work preparation; an accepted changing-input OEM branch is still missing → demonstrate branch conditions and safe fallback on the current build; guided-work/safety owner. [N5-v2][N5-applicability] |
+| P5. Nameplate photo → right manual → ask / FINISH | C1–C3/C7; J3–J5 | Retrieval repair does not certify camera-to-answer behavior; unavailable mobile actions now have merged clarity repairs, without new deployed/physical proof → test the complete offered capture route; identity/device owner. [N5-catalog][N5-closeout] |
+| P6. Works without ripping out or depending on CMMS / REUSE | C3/C5–C8; J1–J11 | Optional CMMS path is now technically stronger. Standalone value must still work with that connector off → run the supported journey with CMMS off, with honest unavailable-action copy; integration/pilot owner. [N5-sheet] |
+| P7. Record fix once; next shift gets guided workflow / CONNECT | C4/C6/C7; J7/J9–J11 | Shared sheets/finish notes advance capture, not verified-fix learning or second-technician acceptance → A records evidence/result, B recovers it after restart and receives appropriate guidance; history/state/pilot owner. [N5-sheet][N5-reuse] |
+| P8. Answers when cell service drops / BUILD | C6/C7; J2/J4/J11 | Offline sheet queue exists, but open #5212 can lose a rejected queued note after navigation; #5033 reload-safe fix remains draft. Full offline manuals/Q&A are still separately unverified → persist/recover rejected writes, prove reconnect/reload exactly once; mobile/recovery owner. [N5-offline][E9b] |
+
+### Eleven mandatory journey steps: current disposition
+
+No row below is certified as a complete representative offered-build pass. Local/staging partial proof is credited where present; mandatory J7/J9/J10 cannot be replaced by a successful CMMS order.
+
+| Journey | Capability / pain | Current evidence, remaining proof → next action / existing owner |
+|---|---|---|
+| J1. Offer/access/approval/crew invite | C9; P6 | Main still says 7-day trial; planned 30-day pilot/versioned consent remains unreconciled and #4930 draft → align approved offer, consent, seats and access on the candidate; intake owner + Mike. [N5-signup][E11a] |
+| J2. Sign in/HOME/Project/thread | C7; P6/P8 | #4936 staging browser proof is bounded; project continuity policy and physical same-thread/cold-restart proof remain → verify web/native continuity without rescue; shared-UI/device owner. [N5-closeout] |
+| J3. Identify machine/component | C1; P1/P5 | #5139 merged and V2 applicability strengthened → prove exact machine/variant/manual through the whole job, including mismatch/tenant controls; identity owner. [N5-catalog][N5-applicability] |
+| J4. Add manual/photo evidence | C1/C2/C7; P1/P5/P8 | Sheet photo/event infrastructure exists; #5038 ingest repair still draft, camera acceptance absent → known passage searchable/openable, capture/cancel/failure/retry honest; ingestion/device owners. [N5-sheet][N5-ingest] |
+| J5. Ask/open source | C3/C7; P1–P5 | New images deployed; no inspected matching representative source-opening result → answer plus full correct supporting source at exact generation; retrieval/source owner. |
+| J6. Safety information | C2/C3; P1–P4 | [Struck JHA controls repaired within V2][N5-jha]; safety-answer drafts still unmerged → verify complete OEM conditions, exclusions and safety controls live/reloaded/on paper; safety owner. [N5-v2] |
+| J7. Observation→machine state | C4; P2/P7 | 113 proposed/flag disabled, #5218 compatibility repair newly claimed → repair, authorize adoption, then confirm→durable event/state→later answer with original symptom/conflicts; state/integration owner. [N5-registry][N5-compat] |
+| J8. Prepare/edit/save Work Packet | C5; P1–P4/P6 | V2/follow-ups and Living Sheet merged; procedure import still follow-up → current phone edit/reopen/PDF/source and supported-task acceptance; packet/sheet/device owners. [N5-v2][N5-applicability][N5-sheet] |
+| J9. Record work/verify result | C6; P2/P3/P6/P7 | Staging finish note and CMMS completion read back; actual verified maintenance outcome not established → before/after or qualified attestation, including failed/unverified work; outcome/pilot owner. [N5-readback][N5-fix] |
+| J10. Later return/technician B | C4/C6/C7; P2/P6/P7 | Shared handover structures exist; no inspected real two-technician result → restart, B recovers facts/edits/open questions without private-thread leakage and uses the result appropriately; history/state/pilot owner. [N5-atlas-acceptance] |
+| J11. Retry/recover/sign out/pilot end | C6–C9; P6/P7/P8 | Quota retry uses same delivery; one real recovery read back. Offline rejection loss, 500-order scan ceiling, permanent-failure recovery and consent/expiry proof remain → targeted failure/reload/sign-out tests and current phone acceptance; mobile/CMMS/access owners. [N5-quota][N5-offline][N5-scan][N5-permanent] |
+
+### What blocks the next readiness increase
+
+1. **Protect captured work and establish shared state.** Existing Living Sheet/state owners address #5212 and the 113/114 compatibility/adoption gap. Preserve rejected payloads across navigation/reload; prove one observation changes only justified asset state and informs later recall. The new staging dry-run is planning evidence, not an applied migration.
+2. **Freeze one supported end-to-end candidate.** Existing integration/device owners identify Hub image, schema/ledger, flags, client/APK/OTA, manual/model/revision and task. Reproduce source-opening, packet/PDF, permissions, restart and A→B handover on the real phone. Keep CMMS optional; if included, retain independent destination read-back and isolate sync/capacity policy. #5216 and #5223 remain scoped operational limitations, not solved by the one successful staging job.
+3. **Run representative acceptance and measure benefit.** Pilot owner/Mike select representative technicians and qualified scope. Retain the original **proposed**, not newly approved, bars: at least 30 distinct cases, 90% supporting citations, 80% useful grounded answers, 4/5 technicians without rescue, 3/5 with measured benefit, zero critical safety/identity/tenant/privacy/state-integrity failures, and no unresolved BLOCKER/HIGH on the offered path. Do not average away a failed mandatory journey step. Level 4's repeat use remains a separate proposed gate.
+
+No measured productivity, reduced downtime, novice equivalence, planner replacement, customer demand, safe machine restoration or complete offline reasoning is inferred from merges, test counts or an Atlas order. Qualified people retain work and return-to-service authority.
+
+### Documentation verification boundary
+
+This addition uses evidence already present in this public repository. The November 1 baseline, November 4 snapshot and original Level 3 plan/criteria are retained. Only the benchmark and this PR's description are updated; the unrelated local North Star branch is not involved. Current automatic-review/evaluation/deploy workflow scopes were inspected before publication: documentation paths exclude automatic model review/DeepEval, staging cloud evaluation is scope-gated off, and deployment requires a separate manual dispatch. Documentation CI may run; it is not product acceptance. No product code, flag, database, issue state, release or review request is changed by this assessment.
+
+[N5-main]: https://github.com/Mikecranesync/MIRA/commit/3020e45be78b54fb422b362144e58d00e123d8bc
+[N5-prod]: https://github.com/Mikecranesync/MIRA/actions/runs/41966843847
+[N5-stg]: https://github.com/Mikecranesync/MIRA/actions/runs/41979537225
+[N5-worker]: https://github.com/Mikecranesync/MIRA/actions/runs/42010063169
+[N5-readback]: https://github.com/Mikecranesync/MIRA/actions/runs/42126595397
+[N5-atlas-acceptance]: https://github.com/Mikecranesync/MIRA/issues/5223#issuecomment-6659904675
+[N5-recovery]: https://github.com/Mikecranesync/MIRA/issues/5223#issuecomment-6655663001
+[N5-v2]: https://github.com/Mikecranesync/MIRA/pull/5173
+[N5-v2-review]: https://github.com/Mikecranesync/MIRA/pull/5173#issuecomment-6647431344
+[N5-applicability]: https://github.com/Mikecranesync/MIRA/pull/5208#issuecomment-6648596693
+[N5-sheet]: https://github.com/Mikecranesync/MIRA/pull/5207
+[N5-sheet-review]: https://github.com/Mikecranesync/MIRA/pull/5207#issuecomment-6648838573
+[N5-migration]: https://github.com/Mikecranesync/MIRA/pull/5217
+[N5-113]: https://github.com/Mikecranesync/MIRA/blob/01a27e9fc11160a81050f3d47965390b9bf4af55/mira-hub/db/proposed/113_asset_observations.sql
+[N5-registry]: https://github.com/Mikecranesync/MIRA/blob/01a27e9fc11160a81050f3d47965390b9bf4af55/docs/architecture/convergence/CAPABILITY_CLOSURE.yaml
+[N5-compat]: https://github.com/Mikecranesync/MIRA/issues/5218#issuecomment-6671867555
+[N5-drift]: https://github.com/Mikecranesync/MIRA/issues/5226
+[N5-dryrun]: https://github.com/Mikecranesync/MIRA/actions/runs/42125228760
+[N5-catalog]: https://github.com/Mikecranesync/MIRA/pull/5139
+[N5-ingest]: https://github.com/Mikecranesync/MIRA/pull/5038
+[N5-fix]: https://github.com/Mikecranesync/MIRA/blob/01a27e9fc11160a81050f3d47965390b9bf4af55/mira-hub/src/capabilities/fix-records.ts
+[N5-reuse]: https://github.com/Mikecranesync/MIRA/issues/5089
+[N5-closeout]: https://github.com/Mikecranesync/MIRA/blob/9f78377800910732153a4d0509480b0df9cc1ed6/docs/evals/2026-11-05-codex-cli-closeout.md
+[N5-cmms-repair]: https://github.com/Mikecranesync/MIRA/issues/5205#issuecomment-6649637516
+[N5-offline]: https://github.com/Mikecranesync/MIRA/issues/5212
+[N5-scan]: https://github.com/Mikecranesync/MIRA/issues/5209
+[N5-permanent]: https://github.com/Mikecranesync/MIRA/issues/5210
+[N5-quota]: https://github.com/Mikecranesync/MIRA/pull/5222
+[N5-signup]: https://github.com/Mikecranesync/MIRA/blob/01a27e9fc11160a81050f3d47965390b9bf4af55/mira-hub/src/app/signup/page.tsx
+[N5-prod-drift]: https://github.com/Mikecranesync/MIRA/issues/5227
+[N5-jha]: https://github.com/Mikecranesync/MIRA/blob/01a27e9fc11160a81050f3d47965390b9bf4af55/mira-hub/src/factorylm-ui/WorkPacketV2Sections.tsx
+[N5-attach]: https://github.com/Mikecranesync/MIRA/pull/5228
+[N5-attach-review]: https://github.com/Mikecranesync/MIRA/pull/5228#issuecomment-6671825575
 
