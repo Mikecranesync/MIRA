@@ -97,3 +97,25 @@ describe("#5202 — a step led by a model the cover does not list is never silen
     expect((p.leftOut ?? []).some((f) => /lift out the Spacer/i.test(f.value ?? "") && /other models/.test(f.basis))).toBe(true);
   });
 });
+
+describe("#5208 r1 F1 — an unlisted lead of ANY shape is never verified", () => {
+  const SEALS_JOB = "Pump leaking at the shaft — reseal it per the manufacturer's procedure.";
+  for (const lead of ["7ZQ500", "ABC123"]) {
+    const text = BASE.replace("2. Lift out the Spacer.", `2. On Model ${lead} lift out the Spacer.`);
+    it(`precondition: the ${lead} line was inserted`, () => {
+      expect(text).toContain(`2. On Model ${lead} lift out the Spacer.`);
+    });
+    it(`a step led by ${lead} adds a blocker naming it and is not verified`, () => {
+      const p = run7(text, "7ZQ30", SEALS_JOB);
+      expect((p.blockers ?? []).some((b) => b.basis.includes(lead))).toBe(true);
+      expect(p.steps.some((s) => /lift out the Spacer/i.test(s.text.value ?? "") && s.text.label === "verified")).toBe(false);
+      // Coverage counts steps read, and this one is read (kept, downgraded to proposed, with a blocker), as for "7 ZQ50".
+      expect(p.steps.some((s) => /lift out the Spacer/i.test(s.text.value ?? "") && s.text.label === "proposed")).toBe(true);
+    });
+  }
+  it("control: a step led by the confirmed model (7ZQ30) stays verified", () => {
+    const text = BASE.replace("2. Lift out the Spacer.", "2. On Model 7ZQ30 lift out the Spacer.");
+    const p = run7(text, "7ZQ30", SEALS_JOB);
+    expect(p.steps.some((s) => /lift out the Spacer/i.test(s.text.value ?? "") && s.text.label === "verified")).toBe(true);
+  });
+});

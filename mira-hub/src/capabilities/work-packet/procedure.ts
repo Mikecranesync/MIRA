@@ -121,7 +121,11 @@ export function buildProcedure(manuals: ManualDoc[], topics: Topic[], model: str
     const scopeLeftOut = new Map<string, Set<number | null>>();
 
     const toStep = (section: SmSection, step: SmStep, phase: PacketStep["phase"], inclusion?: Field): PacketStep | null => {
-      const a = textApplicability(step.text, model, covered);
+      const unlisted = unlistedLeadModel(step.text, model, covered);
+      // A lead model the cover does not list is unresolved whatever its shape (#5208 r1 F1).
+      const a: Applicability = unlisted
+        ? { kind: "unresolved", reason: `the step is led by model ${unlisted}, which the manual's cover does not list`, phrase: unlisted }
+        : textApplicability(step.text, model, covered);
       if (a.kind === "other_models") {
         leftOut.push({ value: step.text, label: "proposed", source: step.source, basis: `step for other models (${a.reason}) — ${where(section)}` });
         return null;
@@ -369,6 +373,14 @@ function stepNamesOtherModelsLead(text: string, model: string, covered: readonly
   // falls through to the unresolved path and a blocker instead of being dropped (#5202).
   const cov = new Set(covered.map(normalizeModel));
   return !!named && named.length > 0 && !named.includes(normalizeModel(model)) && named.every((n) => cov.has(n));
+}
+
+/** The first model a step's lead names that the cover does not list, when the lead does not name this pump. */
+function unlistedLeadModel(text: string, model: string, covered: readonly string[]): string | null {
+  const named = leadModels(text, covered);
+  if (!named || named.includes(normalizeModel(model))) return null;
+  const cov = new Set(covered.map(normalizeModel));
+  return named.find((n) => !cov.has(n)) ?? null;
 }
 
 function clip(s: string | null): string {
