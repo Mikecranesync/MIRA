@@ -8,8 +8,14 @@
  * double-tap/replay no-op, the policy gate, and tenant isolation. Cases that
  * require the dispatcher to actually branch on `operation = 'create_work_order'`
  * (retry-after-retryable-failure, timeout-after-accepted, lease-expiry
- * restart, wrong-tenant via the API route) live in
- * dispatcher.integration.test.ts once that branch exists.
+ * restart) live in a SIBLING file under `living-sheet/__tests__/` —
+ * `request-work-order-dispatch.integration.test.ts` — never in
+ * `cmms-dispatch/__tests__/dispatcher.integration.test.ts`. Reason (same as
+ * finish-outbox.integration.test.ts's header): only `living-sheet/__tests__/`
+ * applies migration 114's widened CHECK constraints in `beforeAll`, and
+ * `cmms-dispatch/__tests__/` sorts BEFORE `living-sheet/__tests__/` under
+ * `--no-file-parallelism` — a `create_work_order` INSERT from that file would
+ * hit a fresh disposable DB before 114 ever ran.
  *
  * Run (disposable DB only):
  *   MIRA_TEST_DB_CONFIRM=DISPOSABLE TEST_DATABASE_URL=postgres://postgres@127.0.0.1:55433/<db> \
