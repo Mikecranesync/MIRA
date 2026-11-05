@@ -26,6 +26,13 @@ const rule = (css: string, selector: string) => {
 };
 
 describe("colour = state, accent = action", () => {
+  it("Stop is a fault-state outline, not the filled Send accent", () => {
+    const body = rule(conversation, ".fl-composer__send--stop");
+    expect(body).toMatch(/--fl-workspace-fault-ink/);
+    expect(body).toMatch(/--fl-workspace-fault-line/);
+    expect(body).not.toMatch(/--fl-workspace-accent/);
+  });
+
   it("the authorized-evidence pill wears the ok state tokens, not the accent", () => {
     const body = rule(conversation, ".fl-pill--primary");
     expect(body).toMatch(/--fl-workspace-ok-line/);

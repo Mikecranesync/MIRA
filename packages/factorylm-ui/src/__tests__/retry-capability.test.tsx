@@ -3,8 +3,8 @@
  *
  * The Retry affordance must reflect a capability the HOST actually provides.
  *
- * `parts.tsx` renders the Retry button on `error.retryable && turn.lifecycle
- * === "failed"` alone — it never consults whether a host hook exists. The
+ * `parts.tsx` renders the Retry button on `error.retryable && (turn.lifecycle
+ * === "failed" || turn.lifecycle === "stopped")` — it never consults whether a host hook exists. The
  * mobile host only passes `onRetry` when `canRetry` (`UnifiedChat.tsx:116`),
  * and `canRetry = Boolean(failedSend) && !busy` (`NotebookScreen.tsx:709/730`)
  * is SESSION state that is null after a reload.

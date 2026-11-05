@@ -1015,6 +1015,15 @@ function UnifiedChatForNotebook({
       : {}),
     ...(meta.notebookId ? { onKeepPhoto, onReviewPhoto, onRefreshPhotoScope: async () => await refreshPromotedScope() === true, isPhotoKept: (fileId: string) => keptPhotoIds.has(fileId) } : {}),
     ...(canStop ? { onStop: handlers.onStop } : {}),
+    // A user-aborted live turn does not arm NotebookScreen's failedSend, so
+    // canRetry stays false. Re-send that question so the shared Retry on a
+    // stopped bubble still does something (unguarded host; #4924).
+    ...(!canRetry && liveTurns.at(-1)?.a.status === "stopped" && liveTurns.at(-1)?.q.trim()
+      ? { onRetry: () => {
+          const question = liveTurns.at(-1)?.q.trim();
+          if (question) handlers.onSend(question);
+        } }
+      : {}),
     // The host retry re-sends the rendered turn as plain text. That is right for
     // a text turn and WRONG for one whose attachment never uploaded: it would
     // ask the photo question with no photo — the outcome `compose` refuses on

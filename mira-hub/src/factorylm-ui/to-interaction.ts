@@ -400,7 +400,7 @@ export function partsFromStream(
   }
 
   if (stopped) {
-    parts.push({ type: "error", error: { code: "stopped", message: "Stopped before the answer completed.", retryable: false } });
+    parts.push({ type: "error", error: { code: "stopped", message: "Stopped before the answer completed.", retryable: true } });
   } else if (truncated) {
     parts.push({
       type: "error",
@@ -528,7 +528,7 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
     const manualStatement = (row.evidence as readonly unknown[]).find(isManualSafetyStatementEntry);
     if (manualStatement) parts.push(manualSafetyStatementPart(manualStatement));
   } else if (stopped) {
-    parts.push({ type: "error", error: { code: "stopped", message: "Stopped before the answer completed.", retryable: false } });
+    parts.push({ type: "error", error: { code: "stopped", message: "Stopped before the answer completed.", retryable: true } });
   } else {
     // #4374: the persisted provider-exhaustion reason shows the same copy the
     // live turn did. Never retryable: the host's Retry replays the same
