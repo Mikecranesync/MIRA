@@ -522,7 +522,7 @@ const PARAM_ID_REQUEST =
 // ---------------------------------------------------------------------------
 
 const HISTORY_ASK_OBJECT =
-  String.raw`(?:fault\s+(?:history|queue|buffers?|codes?)|(?:fault\s+)?(?:history|queue|buffers?))`;
+  String.raw`(?:fault\s+(?:history|queue|buffers?|codes?))`;
 const EMPTY_HISTORY_ASK = new RegExp(
   String.raw`\bmissing\s+fault\s+codes?\b|\b(?:why|how)\b[\s\S]{0,80}\b${HISTORY_ASK_OBJECT}\b[\s\S]{0,40}\b(?:zero|zeros|blank|empty|missing|cleared)\b|\b${HISTORY_ASK_OBJECT}\b[\s\S]{0,40}\b(?:all\s+)?(?:zero|zeros|blank|empty|missing|cleared)\b|\b(?:all\s+)?(?:zero|zeros|blank|empty|missing|cleared)\b[\s\S]{0,40}\b${HISTORY_ASK_OBJECT}\b`,
   "i",
@@ -530,6 +530,11 @@ const EMPTY_HISTORY_ASK = new RegExp(
 
 const HISTORY_DISPLAY_OBJECT =
   /\bfault\s+[1-9]\d?\s+code\b|\b(?:\d+[-\s])?fault\s+history\b|\bfault\s+queue\b|\bfault\s+log\b|\b(?:most\s+recent|older|extended)\s+fault/i;
+
+/** A view/access instruction that names Fault 1 Code is not the readout
+ *  table (b007 is… / F604…F610 / 10-fault history). */
+const HISTORY_VIEW_INSTRUCTION =
+  /\b(?:access|navigate\s+to)\b[\s\S]{0,80}\bfault\s+[1-9]\d?\s+code\b|\bto\s+view\s+(?:the\s+)?(?:most\s+recent\s+)?fault/i;
 
 const HISTORY_CONTROL_ACTION =
   /\bfault\s+clear\b|\bclear\s+buffers?\b|\bclears?\s+all\s+fault\s+buffers?\b|\breset\s+(?:the\s+)?(?:fault\s+)?(?:buffers?|queue|history)\b|\bclear\s+(?:the\s+)?(?:fault\s+)?(?:queue|history)\b/i;
@@ -549,7 +554,7 @@ export function isEmptyHistoryAsk(query: string): boolean {
 /** A readout row: it reports stored fault codes / history / queue. The control
  *  parameter that writes those buffers is a different role (see below). */
 export function isFaultHistoryDisplayChunk(text: string): boolean {
-  if (HISTORY_CONTROL_ACTION.test(text)) return false;
+  if (HISTORY_CONTROL_ACTION.test(text) || HISTORY_VIEW_INSTRUCTION.test(text)) return false;
   return HISTORY_DISPLAY_OBJECT.test(text);
 }
 

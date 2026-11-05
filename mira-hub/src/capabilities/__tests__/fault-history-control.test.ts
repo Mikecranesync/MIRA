@@ -24,6 +24,8 @@ const RESET_P160 =
   "The cause must be corrected before the fault can be cleared. Press Stop, then set A551 Fault Clear to reset the drive after you verify the condition.";
 const CLEARING_P160 =
   'After the cause is corrected, clear the fault by one of these methods. Press Stop if P045 [Stop Mode] is set to a value between 0 and 3. Set A551 [Fault Clear] to 1 "Reset Fault" or 2 "Clear Buffer". Cycle drive power.';
+const STEP1_P160 =
+  "Access b007 [Fault 1 Code] to view the most recent fault information.";
 const INDEX_P75 =
   "Modified group P034 Motor NP FLA P035 Motor NP Poles P036 Motor NP RPM(1) 641 Fault 9 Current(1)";
 
@@ -35,6 +37,7 @@ describe("fault-history display → control expansion (#4863)", () => {
     expect(isEmptyHistoryAsk("how do I clear a fault?")).toBe(false);
     expect(isEmptyHistoryAsk("How do I read the extended fault history?")).toBe(false);
     expect(isEmptyHistoryAsk("empty applications (no code) on EtherNet/IP")).toBe(false);
+    expect(isEmptyHistoryAsk("Why is the EtherNet/IP implicit message buffer empty?")).toBe(false);
   });
 
   it("classifies an empty/missing fault-history ask as fault, even with incidental comm words", () => {
@@ -48,6 +51,7 @@ describe("fault-history display → control expansion (#4863)", () => {
     expect(isFaultHistoryDisplayChunk(HISTORY_P144)).toBe(true);
     expect(isFaultHistoryDisplayChunk(CONTROL_P135)).toBe(false);
     expect(isFaultHistoryDisplayChunk(INDEX_P75)).toBe(false);
+    expect(isFaultHistoryDisplayChunk(STEP1_P160)).toBe(false);
     expect(isHistoryControlChunk(CONTROL_P135)).toBe(true);
     expect(isHistoryControlChunk(HISTORY_P79)).toBe(false);
     expect(isHistoryControlChunk(HISTORY_P144)).toBe(false);
@@ -85,6 +89,20 @@ describe("fault-history display → control expansion (#4863)", () => {
     expect(out.map((c) => c.id)).toContain("c");
     expect(out.map((c) => c.content).join("\n")).toMatch(/Clear Buffer/);
     expect(out.map((c) => c.id)).not.toContain("r");
+  });
+
+  it("does not treat an Access-b007 view step as the history readout", () => {
+    const step1 = { content: STEP1_P160, id: "s" };
+    const display = { content: HISTORY_P144, id: "d" };
+    const control = { content: CONTROL_P135, id: "c" };
+    const out = ensureHistoryControlRepresentation(
+      [step1, control],
+      [step1, control, display],
+      2,
+    );
+    expect(out.map((c) => c.id)).toContain("d");
+    expect(out.map((c) => c.id)).toContain("c");
+    expect(out.map((c) => c.id)).not.toContain("s");
   });
 
   it("restores a readout row when rerank left only procedures and the control", () => {

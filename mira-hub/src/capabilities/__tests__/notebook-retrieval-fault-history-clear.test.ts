@@ -40,6 +40,8 @@ const RESET_P160 =
   "The cause must be corrected before the fault can be cleared. Press Stop, then set A551 Fault Clear to reset the drive after you verify the condition.";
 const CLEARING_P160 =
   'After the cause is corrected, clear the fault by one of these methods. Press Stop if P045 [Stop Mode] is set to a value between 0 and 3. Set A551 [Fault Clear] to 1 "Reset Fault" or 2 "Clear Buffer". Cycle drive power.';
+const STEP1_P160 =
+  "Access b007 [Fault 1 Code] to view the most recent fault information.";
 const F004_TABLE =
   "F004 Undervoltage. The DC bus voltage fell below the undervoltage trip point. Check incoming AC line.";
 
@@ -67,6 +69,7 @@ const DISPLAY_ROWS = [
   row(79, HISTORY_P79, 0.9, ["fault", "code", "b007", "b008", "b009"]),
   row(75, INDEX_P75, 0.85, ["modifi", "group", "p034", "fault"]),
 ];
+const STEP1_ROW = row(160, STEP1_P160, 0.95, ["fault", "code", "b007"]);
 const CONTROL_ROW = row(135, CONTROL_P135, 0.4, ["fault", "clear", "buffer", "a551"]);
 const RESET_ROW = row(164, RESET_P160, 0.55, ["fault", "clear", "reset", "a551"]);
 const CLEARING_ROW = row(160, CLEARING_P160, 0.7, ["fault", "clear", "buffer", "a551", "stop"]);
@@ -105,10 +108,10 @@ const ask = (client: PoolClient, q: string) =>
   });
 
 function corpus(sql: string, params: unknown[]): Row[] {
-  if (isAnd(sql)) return DISPLAY_ROWS;
+  if (isAnd(sql)) return [STEP1_ROW, ...DISPLAY_ROWS];
   if (isOr(sql) && isControlQuery(params)) return [CLEARING_ROW, RESET_ROW, CONTROL_ROW];
   if (isIlike(sql) && isControlIlike(params)) return [CLEARING_ROW, RESET_ROW, CONTROL_ROW];
-  if (isOr(sql) || isIlike(sql)) return DISPLAY_ROWS;
+  if (isOr(sql) || isIlike(sql)) return [STEP1_ROW, ...DISPLAY_ROWS];
   return [];
 }
 
@@ -121,7 +124,7 @@ describe("retrieveNodeChunks — empty fault-history ask surfaces A551 Clear Buf
     const texts = out.map((c) => c.content);
     expect(pages).toContain(135);
     expect(texts.some((t) => /A551/.test(t) && /clears all fault buffers|buffers to 0/.test(t))).toBe(true);
-    expect(texts.some((t) => /Fault 1 Code|10-fault history/.test(t))).toBe(true);
+    expect(texts.some((t) => /10-fault history|is the most recent fault|older fault codes/.test(t))).toBe(true);
   });
 
   it("a short missing-fault-codes ask still cites a readout and the buffer-write row", async () => {
@@ -158,7 +161,7 @@ function assertHistoryAndClearBuffer(out: Awaited<ReturnType<typeof ask>>) {
   const texts = out.map((c) => c.content);
   expect(pages).toContain(135);
   expect(texts.some((t) => /A551/.test(t) && /clears all fault buffers|buffers to 0/.test(t))).toBe(true);
-  expect(texts.some((t) => /Fault 1 Code|10-fault history/.test(t))).toBe(true);
+  expect(texts.some((t) => /10-fault history|is the most recent fault|older fault codes/.test(t))).toBe(true);
 }
 
 describe("A551 Clear Buffer survives NOTEBOOK_RERANK on and off (#5181)", () => {
