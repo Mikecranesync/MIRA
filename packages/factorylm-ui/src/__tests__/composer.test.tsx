@@ -30,6 +30,26 @@ describe("attachment menu copy and availability", () => {
       expect(view.container.querySelector(".fl-attachment-menu__title")?.textContent).toBe("Attach");
       expect(view.buttonNamed("Scan QR code")?.disabled).toBe(true);
     });
+    it(conversationSurface + ": preserves native Camera and QR adapter actions without browser-only reasons", async () => {
+      const adapter = fakeAdapter({ scannedMachineId: "machine-drive-b" });
+      const view = render({ surface: "mobile", fixture: "machine-ask", conversationSurface, adapter });
+      const add = view.buttonNamed("Add attachment")!;
+      view.click(add);
+      const camera = view.buttonNamed("Camera")!;
+      expect(camera.disabled).toBe(false);
+      expect(camera.getAttribute("aria-describedby")).toBeNull();
+      expect(view.container.textContent).not.toContain("Requires the mobile app");
+      view.click(camera);
+      await view.flush();
+      view.click(add);
+      const scan = view.buttonNamed("Scan QR code")!;
+      expect(scan.disabled).toBe(false);
+      expect(scan.getAttribute("aria-describedby")).toBeNull();
+      view.click(scan);
+      await view.flush();
+      expect(adapter.calls).toEqual(["attachCamera", "scanMachine"]);
+      expect(view.activeContext().machineId).toBe("machine-drive-b");
+    });
     it(conversationSurface + ": exposes a visible reason without running unavailable adapters", () => {
       const adapter = fakeAdapter();
       const view = render({ surface: "web", fixture: "machine-ask", conversationSurface, adapter });
@@ -128,10 +148,10 @@ describe("universal composer", () => {
     }
 
     expect(web.buttonNamed("Camera")?.disabled).toBe(true);
-    expect(web.buttonNamed("Camera")?.title).toMatch(/device/i);
-    expect(web.buttonNamed("Scan machine")?.disabled).toBe(true);
+    expect(web.buttonNamed("Camera")?.title).toMatch(/mobile app/i);
+    expect(web.buttonNamed("Scan QR code")?.disabled).toBe(true);
     expect(mobile.buttonNamed("Camera")?.disabled).toBe(false);
-    expect(mobile.buttonNamed("Scan machine")?.disabled).toBe(false);
+    expect(mobile.buttonNamed("Scan QR code")?.disabled).toBe(false);
   });
 
   it("scans a machine through the adapter and selects it only through the reducer", async () => {
@@ -140,8 +160,8 @@ describe("universal composer", () => {
     const add = view.buttonNamed("Add attachment");
     if (!add) throw new Error("Add attachment is required");
     view.click(add);
-    const scan = view.buttonNamed("Scan machine");
-    if (!scan) throw new Error("Scan machine is required on a native device");
+    const scan = view.buttonNamed("Scan QR code");
+    if (!scan) throw new Error("Scan QR code is required on a native device");
 
     expect(view.activeContext().machineId).toBe("machine-drive-a");
     view.click(scan);
@@ -167,7 +187,7 @@ describe("universal composer", () => {
     expect(before?.dataset.contextMismatch).toBe("false");
 
     view.click(add);
-    view.click(view.buttonNamed("Scan machine") ?? new Error("Scan machine is required") as never);
+    view.click(view.buttonNamed("Scan QR code") ?? new Error("Scan QR code is required") as never);
     await view.flush();
     expect(view.activeContext().machineId).toBe("machine-drive-b");
     const after = view.container.querySelector<HTMLElement>('[aria-label="Pending attachments"] li');
@@ -227,8 +247,8 @@ describe("universal composer", () => {
     expect(view.container.querySelector('[aria-label="Pending attachments"]')).toBeNull();
 
     view.click(add);
-    const scan = view.buttonNamed("Scan machine");
-    if (!scan) throw new Error("Scan machine is required");
+    const scan = view.buttonNamed("Scan QR code");
+    if (!scan) throw new Error("Scan QR code is required");
     expect(scan.disabled).toBe(false);
     view.click(scan);
     await view.flush();
@@ -249,7 +269,7 @@ describe("universal composer", () => {
     expect(add.getAttribute("aria-busy")).toBe("true");
     view.click(add);
     expect(view.buttonNamed("Photo")?.disabled).toBe(true);
-    expect(view.buttonNamed("Scan machine")?.disabled).toBe(true);
+    expect(view.buttonNamed("Scan QR code")?.disabled).toBe(true);
     if (!resolvePhoto) throw new Error("photo picker must be pending");
     (resolvePhoto as (value: null) => void)(null);
     await view.flush();

@@ -110,7 +110,7 @@ describe("public surface — gated capabilities convert, never vanish", () => {
     expect(view.buttonNamed("Try with your equipment")).not.toBeNull();
     // The real capability buttons must not be reachable anonymously: a visitor's
     // own file is private tenant data, and a scan fabricates a machine context.
-    for (const label of ["Photo", "File", "Camera", "Scan machine"]) {
+    for (const label of ["Photo", "File", "Camera", "Scan QR code"]) {
       expect(view.buttonNamed(label)).toBeNull();
     }
   });
