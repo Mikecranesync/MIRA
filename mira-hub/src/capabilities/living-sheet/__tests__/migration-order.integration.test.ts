@@ -89,3 +89,30 @@ for (const order of [[113,114], [114,113]] as const) for (const population of ["
     }
   });
 }
+
+it("113-only rollback restores111vocabulary even if another schema has a114table", async () => {
+  const c = new Client({connectionString:url}), schema = `compat_${uuid().replaceAll("-", "")}`, sibling = `other_${uuid().replaceAll("-", "")}`;
+  await c.connect();
+  try {
+    await c.query(`CREATE SCHEMA ${schema}`);
+    await c.query(`CREATE SCHEMA ${sibling}`);
+    await c.query(`CREATE TABLE ${sibling}.work_sheet_events(id uuid)`);
+    await c.query(`SET search_path TO ${schema}, ${sibling}, public`);
+    await c.query("CREATE TABLE equipment_notebooks(id uuid PRIMARY KEY)");
+    await c.query("CREATE TABLE tenant_cmms_config(tenant_id text PRIMARY KEY)");
+    await c.query(sql[111]); await c.query(sql[113]);
+    const rollback = sql[113].match(/^-- ROLLBACK-BEGIN\n([\s\S]*?)^-- ROLLBACK-END$/m)!;
+    await c.query(rollback[1].split("\n").map(line => line.replace(/^--   ?/, "")).join("\n"));
+    const insert = (kind:string) => c.query(
+      `INSERT INTO notebook_domain_events(tenant_id,notebook_id,aggregate_key,sequence,event_type,
+       occurred_at,information_status,correlation_id,policy_version,subject_ref)
+       VALUES($1,$2,$3,1,$4,now(),'technician_reported',$5,'compat',$6)`,
+      [uuid(),uuid(),kind,kind,uuid(),uuid()]);
+    await insert("fix_recorded");
+    for (const kind of kinds.filter(k => k !== "fix_recorded")) await expect(insert(kind)).rejects.toMatchObject({code:"23514"});
+  } finally {
+    await c.query("ROLLBACK"); await c.query("RESET search_path");
+    await c.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+    await c.query(`DROP SCHEMA IF EXISTS ${sibling} CASCADE`); await c.end();
+  }
+});

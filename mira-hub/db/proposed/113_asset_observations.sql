@@ -31,6 +31,8 @@
 -- history must be kept, copy asset_observations and those events out first.
 -- #5218: preserve Living Sheet rows and its published vocabulary on rollback;
 -- removing observations must not remove another capability's event types.
+-- Without114's table in the outbox schema, restore111's original fix-only CHECK.
+-- Inspect actual schema rather than the ledger: staging114ran before recording.
 -- Executed by observations.integration.test.ts
 -- (documented_rollback_succeeds_after_an_observation_event_exists).
 -- ROLLBACK-BEGIN
@@ -38,7 +40,15 @@
 --   DELETE FROM notebook_domain_events WHERE event_type = 'observation_recorded';
 --   DROP TABLE IF EXISTS asset_observations;
 --   ALTER TABLE notebook_domain_events DROP CONSTRAINT IF EXISTS notebook_domain_events_event_type_check;
---   ALTER TABLE notebook_domain_events ADD CONSTRAINT notebook_domain_events_event_type_check CHECK (event_type IN ('fix_recorded', 'job_finished', 'work_order_requested'));
+--   DO $$
+--   BEGIN
+--     IF EXISTS (SELECT 1 FROM pg_class s JOIN pg_class e ON e.relnamespace = s.relnamespace
+--                WHERE e.oid = 'notebook_domain_events'::regclass AND s.relname = 'work_sheet_events' AND s.relkind IN ('r', 'p')) THEN
+--       ALTER TABLE notebook_domain_events ADD CONSTRAINT notebook_domain_events_event_type_check CHECK (event_type IN ('fix_recorded', 'job_finished', 'work_order_requested'));
+--     ELSE
+--       ALTER TABLE notebook_domain_events ADD CONSTRAINT notebook_domain_events_event_type_check CHECK (event_type IN ('fix_recorded'));
+--     END IF;
+--   END $$;
 --   COMMIT;
 -- ROLLBACK-END
 
