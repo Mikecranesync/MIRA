@@ -22,6 +22,33 @@ function composer(view: HarnessView): { form: HTMLFormElement; textarea: HTMLTex
   return { form, textarea };
 }
 
+describe("attachment menu copy and availability", () => {
+  for (const conversationSurface of ["classic", "assistant"] as const) {
+    it(conversationSurface + ": names Attach consistently and identifies the QR action", () => {
+      const view = render({ surface: "web", fixture: "machine-ask", conversationSurface });
+      view.click(view.buttonNamed("Add attachment")!);
+      expect(view.container.querySelector(".fl-attachment-menu__title")?.textContent).toBe("Attach");
+      expect(view.buttonNamed("Scan QR code")?.disabled).toBe(true);
+    });
+    it(conversationSurface + ": exposes a visible reason without running unavailable adapters", () => {
+      const adapter = fakeAdapter();
+      const view = render({ surface: "web", fixture: "machine-ask", conversationSurface, adapter });
+      view.click(view.buttonNamed("Add attachment")!);
+      const camera = view.buttonNamed("Camera")!;
+      const description = camera.getAttribute("aria-describedby");
+      expect(description).toBeTruthy();
+      const reason = description ? document.getElementById(description) : null;
+      expect(reason?.textContent).toBe("Requires the mobile app");
+      expect(view.container.contains(reason)).toBe(true);
+      expect(reason?.hidden).toBe(false);
+      expect(view.buttonNamed("Photo")?.disabled).toBe(false);
+      expect(view.buttonNamed("File")?.disabled).toBe(false);
+      view.click(camera);
+      expect(adapter.calls).toEqual([]);
+    });
+  }
+});
+
 describe("universal composer", () => {
   for (const surface of ["public", "web", "mobile", "hub"] as const) {
     it(`renders the same labelled controls in ${surface}`, () => {
