@@ -32,6 +32,7 @@
  * `renderWorkLogText` — see `work-order-description.ts`'s file header.
  */
 import type { PoolClient } from "pg";
+import { CMMS_LICENCE_LIMIT } from "@/lib/cmms/write-contract";
 import type { SheetView } from "./reduce";
 import { buildWorkOrderDescription } from "./work-order-description";
 import {
@@ -148,12 +149,28 @@ export async function enqueueWorkOrderRequestedEvent(
     // On replay, the event's existing delivery (if any) is authoritative —
     // this is the double-tap / retry case: one event, one delivery, one
     // eventual create, no matter how many times the technician taps.
-    const existingDelivery = await c.query<{ delivery_id: string }>(
-      `SELECT delivery_id::text AS delivery_id FROM notebook_event_deliveries
+    const existingDelivery = await c.query<{ delivery_id: string; state: string; last_error: string | null }>(
+      `SELECT delivery_id::text AS delivery_id, state, last_error FROM notebook_event_deliveries
         WHERE event_id = $1::uuid ORDER BY created_at LIMIT 1`,
       [eventRow.event_id],
     );
     if (existingDelivery.rows.length > 0) {
+      const prior = existingDelivery.rows[0]!;
+      // The one recovery a re-tap performs: a create the CMMS refused for its
+      // licence cap on open orders (a 4xx before acting, so nothing exists)
+      // goes back to `queued` (if the cap still holds, the next tick is refused
+      // again: one attempt per tap). Same delivery,
+      // same dedupe key, and the provider's read-back-before-create still
+      // runs, so this can never yield a second order. Every other state —
+      // including an access refusal — stays exactly as it was.
+      if (prior.state === "permission_denied" && prior.last_error === CMMS_LICENCE_LIMIT) {
+        await c.query(
+          `UPDATE notebook_event_deliveries
+              SET state = 'queued', next_attempt_at = now(), updated_at = now()
+            WHERE delivery_id = $1::uuid AND state = 'permission_denied' AND last_error = $2`,
+          [prior.delivery_id, CMMS_LICENCE_LIMIT],
+        );
+      }
       return {
         eventId: eventRow.event_id,
         sequence: Number(eventRow.sequence),

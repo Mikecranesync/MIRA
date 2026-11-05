@@ -337,6 +337,49 @@ describe("requestWorkOrder (route entry point) — scoping", () => {
     expect(status).toMatchObject({ eventId: first.result.eventId, state: "queued", externalRef: null });
   });
 
+  it.each([
+    // [last_error the dispatcher wrote, blockedBy shown while refused, state after a re-tap]
+    ["cmms_licence_limit", "cmms_licence_limit", "queued"],
+    ["permission_denied", null, "permission_denied"],
+  ] as const)(
+    "a re-tap after a refusal (%s): licence limit re-queues the same delivery, an access refusal stays refused",
+    async (lastError, refusedBlockedBy, expectedState) => {
+      const tenant = uuid();
+      const entityId = `cmms-${uuid()}`;
+      const nb = await makeNotebook(tenant, entityId, true);
+      const job = created(await startJob(tenant, nb, { entityId, name: "Pump 07" }, startInput(), ACTOR));
+      await setCmmsConfig(tenant, { writePolicy: workOrderRequestedEnabledPolicy() });
+      const first = await requestWorkOrder(tenant, nb, job.jobId, ACTOR);
+      if (first.status !== "enqueued") throw new Error("expected enqueued");
+
+      // What the dispatcher writes when Atlas refuses the create.
+      await testPool.query(
+        `UPDATE notebook_event_deliveries
+            SET state = 'permission_denied', last_error = $2, attempts = 1, next_attempt_at = now() + interval '1 day'
+          WHERE event_id = $1::uuid`,
+        [first.result.eventId, lastError],
+      );
+      const refused = await deliveryStatusForWorkOrderRequest(tenant, job.jobId);
+      expect(refused).toMatchObject({ state: "permission_denied", blockedBy: refusedBlockedBy });
+
+      const retap = await requestWorkOrder(tenant, nb, job.jobId, ACTOR);
+      if (retap.status !== "enqueued") throw new Error("expected enqueued");
+      expect(retap.result.replayed).toBe(true);
+      expect(retap.result.eventId).toBe(first.result.eventId);
+
+      const subject = subjectRefForWorkOrderRequested(job.jobId);
+      expect(await countDomainEvents(tenant, subject)).toBe(1);
+      expect(await countDeliveries(tenant, subject)).toBe(1);
+      const after = await deliveryStatusForWorkOrderRequest(tenant, job.jobId);
+      expect(after).toMatchObject({ state: expectedState, blockedBy: null });
+      const due = await testPool.query<{ due: boolean }>(
+        `SELECT next_attempt_at <= now() AS due FROM notebook_event_deliveries WHERE event_id = $1::uuid`,
+        [first.result.eventId],
+      );
+      expect(due.rows[0]!.due).toBe(expectedState === "queued");
+    },
+  );
+
   it("wrong tenant or wrong notebook → job_not_found and nothing enqueued", async () => {
     const tenantA = uuid();
     const tenantB = uuid();

@@ -32,6 +32,7 @@ import {
   type SheetEventPost,
   type SheetSubmitOutcome,
   workOrderStatusText,
+  workOrderRetryable,
   photoAttemptBelongsTo,
   stepConfirmBelongsTo,
   isDefinitiveRejection,
@@ -682,6 +683,18 @@ describe("workOrderStatusText", () => {
     expect(workOrderStatusText({ ...base, state: "permission_denied" })).toMatch(/refused/);
     expect(workOrderStatusText({ ...base, state: "permanent_failure" })).toMatch(/Could not create/);
     expect(workOrderStatusText({ ...base, state: "outcome_unknown" })).toMatch(/not create a second order/);
+  });
+  it("a licence-limit refusal names the real cause and is the only refusal offered a retry", () => {
+    const limit = { ...base, state: "permission_denied", blockedBy: "cmms_licence_limit" };
+    expect(workOrderStatusText(limit)).toMatch(/limit of open work orders/);
+    expect(workOrderStatusText(limit)).not.toMatch(/\(permission\)/);
+    expect(workOrderRetryable(limit)).toBe(true);
+    // Controls: an access refusal keeps its message and gets no retry; the
+    // code alone on another state is not a refusal.
+    const access = { ...base, state: "permission_denied", blockedBy: null };
+    expect(workOrderStatusText(access)).toMatch(/\(permission\)/);
+    expect(workOrderRetryable(access)).toBe(false);
+    expect(workOrderRetryable({ ...base, state: "queued", blockedBy: "cmms_licence_limit" })).toBe(false);
   });
 });
 

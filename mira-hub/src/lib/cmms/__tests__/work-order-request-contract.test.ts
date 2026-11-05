@@ -37,13 +37,13 @@ interface FakeWorkOrder {
 class FakeAtlasWorkOrderApi implements AtlasWorkOrderApi {
   private readonly orders: FakeWorkOrder[] = [];
   private nextId = 1;
-  private pendingCreateFailure: "throw5xx" | "throw4xx" | null = null;
+  private pendingCreateFailure: "throw5xx" | "throw4xx" | "throwFreeLimit" | "throw403" | null = null;
   /** The `priority` string Atlas actually received on the last create call —
    *  lets a test confirm Hub-shaped priority ("medium") reaches Atlas
    *  already converted to its uppercase enum, never passed through raw. */
   lastPriority: string | null = null;
 
-  failNextCreate(kind: "throw5xx" | "throw4xx"): void {
+  failNextCreate(kind: "throw5xx" | "throw4xx" | "throwFreeLimit" | "throw403"): void {
     this.pendingCreateFailure = kind;
   }
 
@@ -53,6 +53,21 @@ class FakeAtlasWorkOrderApi implements AtlasWorkOrderApi {
       this.pendingCreateFailure = null;
       const { AtlasHttpError } = await import("@/lib/atlas/client");
       throw new AtlasHttpError(503, "atlas down", "/work-orders");
+    }
+    if (this.pendingCreateFailure === "throwFreeLimit") {
+      this.pendingCreateFailure = null;
+      const { AtlasHttpError } = await import("@/lib/atlas/client");
+      // Atlas v1.8.0 WorkOrderService.checkUsageBasedLimit, verbatim shape.
+      throw new AtlasHttpError(
+        403,
+        '{"message":"You need a license to add a new work order. Free Limit of 30 incomplete work orders reached"}',
+        "/work-orders",
+      );
+    }
+    if (this.pendingCreateFailure === "throw403") {
+      this.pendingCreateFailure = null;
+      const { AtlasHttpError } = await import("@/lib/atlas/client");
+      throw new AtlasHttpError(403, '{"message":"Access denied"}', "/work-orders");
     }
     if (this.pendingCreateFailure === "throw4xx") {
       this.pendingCreateFailure = null;
@@ -203,6 +218,31 @@ describe("createWorkOrder — atlas-specific error mapping", () => {
     const provider = new AtlasWriteProvider(fakeComments, { workOrders: fakeWorkOrders });
     await provider.createWorkOrder(makeRequest("evt-priority", { priority: "medium" }));
     expect(fakeWorkOrders.lastPriority).toBe("MEDIUM");
+  });
+
+  it.each([
+    ["throwFreeLimit", "cmms_licence_limit"],
+    ["throw403", "permission_denied"],
+  ] as const)("a 403 on create (%s) is a refusal before acting, reason %s, and creates nothing", async (failure, reason) => {
+    const fakeComments = {
+      countComments: async () => ({ count: 0 }),
+      createComment: async () => {
+        throw new Error("not used");
+      },
+      searchComments: async () => [],
+    };
+    const fakeWorkOrders = new FakeAtlasWorkOrderApi();
+    fakeWorkOrders.failNextCreate(failure);
+    const provider = new AtlasWriteProvider(fakeComments, { workOrders: fakeWorkOrders });
+    const result = await provider.createWorkOrder(makeRequest(`evt-${failure}`));
+    expect(result.kind).toBe("permission_denied");
+    if (result.kind === "permission_denied") expect(result.reason).toBe(reason);
+    expect(fakeWorkOrders.count()).toBe(0);
+
+    // Once room is freed the same request creates exactly one order.
+    const retry = await provider.createWorkOrder(makeRequest(`evt-${failure}`));
+    expect(retry.kind).toBe("verified_by_readback");
+    expect(fakeWorkOrders.count()).toBe(1);
   });
 
   it("without a workOrders API, createWorkOrder reports unsupported — never throws", async () => {

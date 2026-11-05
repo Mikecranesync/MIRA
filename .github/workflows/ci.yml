@@ -1744,6 +1744,8 @@ jobs:
               - 'mira-hub/src/capabilities/fix-records.ts'
               - 'mira-hub/src/lib/cmms/**'
               - 'mira-hub/src/lib/atlas/**'
+              - 'mira-hub/src/capabilities/living-sheet/**'
+              - 'mira-hub/db/migrations/114_living_work_sheet.sql'
               - 'mira-hub/src/app/api/equipment-notebooks/[id]/fixes/**'
               - 'mira-hub/db/proposed/113_asset_observations.sql'
               - 'mira-hub/src/capabilities/observations/**'
@@ -1815,6 +1817,27 @@ jobs:
             echo "::error::could not confirm a positive passing test count"; exit 1; }
           grep -qE "✓ src/capabilities/observations/__tests__/observations\.integration\.test\.ts" /tmp/observations.plain || {
             echo "::error::observation integration suite did not run and pass"; exit 1; }
+
+      - name: Work-order request outbox suite (must RUN, not skip)
+        if: steps.changes.outputs.outbox == 'true'
+        working-directory: mira-hub
+        run: |
+          set -euo pipefail
+          node node_modules/vitest/vitest.mjs run \
+            --config vitest.integration.config.ts \
+            src/capabilities/living-sheet/__tests__/request-work-order-outbox.integration.test.ts \
+            2>&1 | tee /tmp/wo-request.out
+          sed -E 's/\x1b\[[0-9;]*[A-Za-z]//g' /tmp/wo-request.out > /tmp/wo-request.plain
+          if grep -qiE "no test files found" /tmp/wo-request.plain; then
+            echo "::error::no test file matched — the gate proved nothing"; exit 1
+          fi
+          if grep -qE "Tests +[0-9]+ skipped" /tmp/wo-request.plain; then
+            echo "::error::work-order request suite SKIPPED (TEST_DATABASE_URL unset?) — the gate proved nothing"; exit 1
+          fi
+          grep -qE "Tests +[1-9][0-9]* passed" /tmp/wo-request.plain || {
+            echo "::error::could not confirm a positive passing test count"; exit 1; }
+          grep -qE "✓ src/capabilities/living-sheet/__tests__/request-work-order-outbox\.integration\.test\.ts" /tmp/wo-request.plain || {
+            echo "::error::work-order request outbox suite did not run and pass"; exit 1; }
 
   manual-search-quota-pg:
     name: Manual-search quota caps (disposable Postgres, migration 103)
