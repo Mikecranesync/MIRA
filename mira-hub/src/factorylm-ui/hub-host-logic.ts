@@ -81,6 +81,13 @@ export function retainedStreamInterruption(
   return stopped || result.safetyNotice ? { result, stopped } : null;
 }
 
+/** Replay is for a user abort or a failed send — not a terminal Safety STOP. */
+export function shouldArmRetryAfterInterruption(
+  retained: { result: Pick<CompatibleStreamResult, "safetyNotice"> },
+): boolean {
+  return !hasTerminalSafetyStop(retained.result.safetyNotice ? [retained.result.safetyNotice] : []);
+}
+
 /**
  * Opening a notebook without naming a thread (a sidebar project click, a
  * `?notebook=` link) starts a fresh chat, minted exactly as New chat mints one.

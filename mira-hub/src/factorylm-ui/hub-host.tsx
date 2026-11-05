@@ -98,6 +98,7 @@ import {
   openThreadAction,
   retainedStreamInterruption,
   searchForSelection,
+  shouldArmRetryAfterInterruption,
   selectionFromSearch,
   sendFailureMessage,
   shellThreadId,
@@ -510,9 +511,15 @@ export function HubShellHost() {
             ? { ...cur, content: retained.result.content, stopped: retained.stopped, result: retained.result }
             : cur,
         );
+        // Stopped and failed interruptions both keep the body so Retry can
+        // replay the same question (#4924). A terminal Safety STOP does not —
+        // Retry would re-issue the refused request. A user abort is not a
+        // send-error banner — the stopped bubble already says what happened.
+        if (shouldArmRetryAfterInterruption(retained)) {
+          setFailedBody({ body, question });
+        }
         if (!retained.stopped) {
           const message = sendFailureMessage(err);
-          setFailedBody({ body, question });
           dispatch({ type: "set-send-error", error: message });
         }
         return;

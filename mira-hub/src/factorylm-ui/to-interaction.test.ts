@@ -183,7 +183,7 @@ describe("partsFromStream", () => {
   it("a stopped turn is a stop, not an answer, even if the wire said answered", () => {
     const parts = partsFromStream(stream(), { stopped: true, ...LIVE });
     expect(parts.map((p) => p.type)).toEqual(["text", "error"]);
-    expect(parts[1]).toMatchObject({ error: { code: "stopped", retryable: false } });
+    expect(parts[1]).toMatchObject({ error: { code: "stopped", retryable: true } });
     expect(lifecycleFromStream(stream(), { stopped: true })).toBe("stopped");
   });
 
@@ -195,6 +195,7 @@ describe("partsFromStream", () => {
     expect(parts.map((part) => part.type)).toEqual(["safety_notice", "text", "error"]);
     expect(parts[0]).toMatchObject({ type: "safety_notice", notice: { severity: "stop", trigger: "smoke coming" } });
     expect(parts.some((part) => part.type === "source" || part.type === "evidence_basis" || part.type === "visual_observation")).toBe(false);
+    expect(parts.find((part) => part.type === "error")).toMatchObject({ error: { code: "stopped", retryable: false } });
   });
 
   it("provider failure with no text yields only the error part", () => {

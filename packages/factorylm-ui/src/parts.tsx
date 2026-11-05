@@ -162,6 +162,15 @@ export interface PartRendererProps {
   readonly hooks?: HostHooks;
 }
 
+/** Hosts replay one session body. Only the latest interrupted turn may offer Retry. */
+export function latestInterruptedTurnId(turns: readonly InteractionTurn[]): string | null {
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    const candidate = turns[index];
+    if (candidate.lifecycle === "failed" || candidate.lifecycle === "stopped") return candidate.id;
+  }
+  return null;
+}
+
 export function assertNever(value: never): never {
   throw new Error(`Unhandled interaction part: ${JSON.stringify(value)}`);
 }
@@ -727,9 +736,13 @@ export function PartRenderer({ part, turn, state, dispatch, adapter, hooks }: Pa
     case "error": {
       const { error } = part;
       const onRetry = hooks?.onRetry;
+      // Hosts replay a single session body (`failedBody` / `failedSend`).
+      // Offering Retry on every historical interrupted turn would re-send
+      // the latest failure, not the bubble that was clicked.
+      const latestInterrupted = latestInterruptedTurnId(state.thread.turns);
       return <div className="fl-part fl-error" role="alert" data-part-type="error" data-error-code={error.code}>
         <p>{error.message}</p>
-        {error.retryable && turn.lifecycle === "failed" && typeof onRetry === "function" ? <button
+        {error.retryable && (turn.lifecycle === "failed" || turn.lifecycle === "stopped") && typeof onRetry === "function" && turn.id === latestInterrupted ? <button
           type="button"
           disabled={Boolean(hooks?.busy)}
           onClick={() => onRetry(turn.id)}

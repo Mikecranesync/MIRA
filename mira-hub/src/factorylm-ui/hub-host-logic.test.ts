@@ -27,6 +27,7 @@ import {
   openNotebookSelection,
   retainedStreamInterruption,
   searchForSelection,
+  shouldArmRetryAfterInterruption,
   selectionFromSearch,
   shellThreadId,
   stoppedStreamResult,
@@ -110,6 +111,22 @@ describe("stoppedStreamResult", () => {
 
   it("does not retain an ordinary non-abort failure with no safety determination", () => {
     expect(retainedStreamInterruption(Object.assign(new TypeError("network reset"), { partial: "maybe" }))).toBeNull();
+  });
+
+  it("arms Retry after a user abort, but not after a terminal Safety STOP", () => {
+    const abort = retainedStreamInterruption(Object.assign(new Error("Aborted"), { name: "AbortError", partial: "Verify the" }));
+    expect(abort).not.toBeNull();
+    expect(shouldArmRetryAfterInterruption(abort!)).toBe(true);
+
+    const safety = retainedStreamInterruption(
+      Object.assign(new Error("Aborted"), {
+        name: "AbortError",
+        partial: "SAFETY STOP",
+        safetyNotice: { kind: "safety_notice", trigger: "bypass the interlock" },
+      }),
+    );
+    expect(safety).not.toBeNull();
+    expect(shouldArmRetryAfterInterruption(safety!)).toBe(false);
   });
 });
 
