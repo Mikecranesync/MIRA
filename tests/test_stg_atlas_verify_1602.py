@@ -167,6 +167,24 @@ def test_missing_job_ref_or_finish_note_fails():
     assert out.returncode == 4 and "finish_marker=0" in out.stdout
 
 
+def test_system_history_rows_are_not_finish_notes():
+    # A synthetic history row carrying the marker is not the delivered note.
+    state = _state()
+    state["comments"][1602] = [{"content": f"{FINISH} finished", "system": True}]
+    out, calls = _run(state, mode="complete")
+    assert out.returncode == 4 and "finish_marker=0" in out.stdout
+    assert _writes(calls) == []
+    # Control: one real note plus a matching system row passes.
+    state = _state()
+    state["comments"][1602].append({"content": f"{FINISH} echo", "system": True})
+    out, _ = _run(state)
+    assert out.returncode == 0 and "finish_marker=1" in out.stdout
+    # Two real matching notes are still a duplicate.
+    state = _state()
+    state["comments"][1602].append({"content": f"{FINISH} again"})
+    assert _run(state)[0].returncode == 4
+
+
 def test_complete_closes_only_1602_and_reads_back():
     state = _state()
     out, calls = _run(state, mode="complete")

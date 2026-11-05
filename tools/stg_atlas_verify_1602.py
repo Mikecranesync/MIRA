@@ -109,7 +109,13 @@ def _check(token: str) -> tuple[bool, str]:
 
     code, comments = _call("POST", f"/comments/search/{ORDER_ID}", {}, token)
     comments = comments if isinstance(comments, list) else []
-    finish_n = sum(_count(c.get("content"), FINISH_MARKER) for c in comments if isinstance(c, dict))
+    # Atlas mixes synthetic history rows (system=true) into this list; only a
+    # technician note counts, as in mira-hub's AtlasWriteProvider.findByMarker.
+    finish_n = sum(
+        _count(c.get("content"), FINISH_MARKER)
+        for c in comments
+        if isinstance(c, dict) and not c.get("system") and isinstance(c.get("content"), str)
+    )
     print(f"comments http={code} total={len(comments)} finish_marker={finish_n}")
     ok = ok and code == 200 and finish_n == 1
     return ok, status
