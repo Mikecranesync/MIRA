@@ -42,7 +42,7 @@ import { runDispatchTick } from "@/capabilities/cmms-dispatch/dispatcher";
 import { enqueueWorkOrderRequestedEvent } from "../request-work-order-outbox";
 import { subjectRefForWorkOrderRequested } from "@/capabilities/cmms-dispatch";
 import { reduceSheet, type StoredEvent } from "../reduce";
-import { startJob, type StartJobResult } from "../store";
+import { appendEvent, startJob, type StartJobResult } from "../store";
 import type { JobSheetBody } from "../types";
 
 const MIGRATION = path.resolve(__dirname, "../../../../db/proposed/114_living_work_sheet.sql");
@@ -428,5 +428,87 @@ describe("request-work-order-dispatch — policy disabled between enqueue and di
     const stats = await runDispatchTick({ providerFor: () => mock, tenantAllowlist: new Set([tenantId]) });
     expect(stats.blocked).toBe(1);
     expect(mock.creates).toBe(0);
+  });
+});
+
+describe("request-work-order-dispatch — the finish note lands on the order this job created", () => {
+  const POLICY_WO = "policy-wo-999";
+  function bothPolicies() {
+    return {
+      version: 1,
+      work_order_requested: { enabled: true },
+      fix_recorded: { enabled: true, operation: "append_work_log", target: { kind: "work_order", externalWorkOrderId: POLICY_WO } },
+    };
+  }
+  async function finish(tenantId: string, nb: string, jobId: string) {
+    const r = await appendEvent(
+      tenantId,
+      nb,
+      jobId,
+      {
+        clientEventId: uuid(),
+        baseSeq: 1,
+        kind: "job_finished",
+        payload: { summary: null, openItemsAcknowledged: true },
+        occurredAt: new Date().toISOString(),
+        workOrderId: null,
+      },
+      ACTOR,
+    );
+    if (r.status !== "created") throw new Error(`expected created, got ${r.status}`);
+  }
+
+  it("created order → the job_finished note is appended to it, not to the policy target", async () => {
+    const tenantId = uuid();
+    const entityId = uuid();
+    const nb = await makeNotebook(tenantId, entityId, true);
+    await setCmmsConfig(tenantId, { writePolicy: bothPolicies() });
+    const { jobId } = await enqueueOne(tenantId, nb, entityId);
+
+    const mock = new MockCmmsWriteProvider({ providerId: "atlas" });
+    await runDispatchTick({ providerFor: () => mock, tenantAllowlist: new Set([tenantId]) });
+    const orderId = mock.orders()[0]!.id;
+
+    await finish(tenantId, nb, jobId);
+    await runDispatchTick({ providerFor: () => mock, tenantAllowlist: new Set([tenantId]) });
+
+    expect(mock.orders()).toHaveLength(1);
+    expect(mock.records(orderId).length).toBe(1);
+    expect(mock.records(POLICY_WO).length).toBe(0);
+  });
+
+  it("create still in flight → the finish note waits, never lands on the policy target, then lands on the created order", async () => {
+    const tenantId = uuid();
+    const entityId = uuid();
+    const nb = await makeNotebook(tenantId, entityId, true);
+    await setCmmsConfig(tenantId, { writePolicy: bothPolicies() });
+    const { jobId } = await enqueueOne(tenantId, nb, entityId);
+    await finish(tenantId, nb, jobId);
+
+    const mock = new MockCmmsWriteProvider({ providerId: "atlas" });
+    mock.failNextCreate("retryable_failure");
+    await runDispatchTick({ providerFor: () => mock, tenantAllowlist: new Set([tenantId]) });
+
+    const finishState = async () =>
+      (
+        await testPool.query<{ state: string }>(
+          `SELECT d.state FROM notebook_event_deliveries d
+             JOIN notebook_domain_events e ON e.event_id = d.event_id
+            WHERE e.tenant_id = $1::uuid AND e.event_type = 'job_finished'`,
+          [tenantId],
+        )
+      ).rows[0]!.state;
+    expect(["queued", "retryable_failure"]).toContain(await finishState());
+    expect(mock.records(POLICY_WO).length).toBe(0);
+
+    // Next ticks: the create succeeds, then the finish note follows it.
+    for (let i = 0; i < 3; i++) {
+      await testPool.query(`UPDATE notebook_event_deliveries SET next_attempt_at = now() WHERE tenant_id = $1::uuid`, [tenantId]);
+      await runDispatchTick({ providerFor: () => mock, tenantAllowlist: new Set([tenantId]) });
+    }
+    expect(mock.orders()).toHaveLength(1);
+    expect(mock.records(mock.orders()[0]!.id).length).toBe(1);
+    expect(mock.records(POLICY_WO).length).toBe(0);
+    expect(await finishState()).toBe("verified_by_readback");
   });
 });

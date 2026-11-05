@@ -67,7 +67,7 @@ import {
 } from "@/lib/cmms/write-contract";
 import { loadTenantWritePolicy } from "./policy";
 import { resolveWorkOrderTarget } from "./target";
-import type { DeliveryRow, DomainEventRow } from "./types";
+import { subjectRefForWorkOrderRequested, type DeliveryRow, type DomainEventRow } from "./types";
 
 export type DispatchDeps = {
   /** Resolve a `notebook_event_deliveries.connection_key` (the tenant's CMMS
@@ -322,6 +322,28 @@ async function planDelivery(row: DeliveryRow): Promise<Plan> {
       targetSource = pinned.source;
       alreadyPinned = true;
     } else {
+      // A finished job whose technician asked for a CMMS work order writes
+      // its finish note to THAT order — never to whatever the policy target
+      // would pick — so the sheet and its order stay one record.
+      const requested = await requestedWorkOrderForJob(tc, row, event);
+      if (requested.kind === "pending") {
+        return { kind: "outcome", outcome: { state: "retryable_failure", reason: "requested_work_order_pending" } };
+      }
+      if (requested.kind === "created") {
+        target = { providerId: row.connection_key, externalWorkOrderId: requested.externalWorkOrderId };
+        targetSource = "job_requested_work_order";
+        const payload = event.payload as { summary?: unknown };
+        const text = typeof payload.summary === "string" ? payload.summary.replace(CONTROL_CHARS_RE, "") : "";
+        const note: WorkLogNote = {
+          idempotencyKey: row.dedupe_key,
+          marker: markerFor(row.event_id),
+          text,
+          attributionLabel: "Technician",
+          occurredAt: new Date(event.occurred_at).toISOString(),
+          sourceRef: event.subject_ref,
+        };
+        return { kind: "deliver", target, targetSource, alreadyPinned, note };
+      }
       const targetRes = await resolveWorkOrderTarget(tc, {
         tenantId: row.tenant_id,
         provider: config.provider,
@@ -368,6 +390,38 @@ async function planDelivery(row: DeliveryRow): Promise<Plan> {
     };
     return { kind: "deliver", target, targetSource, alreadyPinned, note };
   });
+}
+
+/** States in which a `create_work_order` delivery may still produce an
+ *  order; a finish note waits for them rather than landing elsewhere. */
+const CREATE_IN_FLIGHT = new Set(["queued", "leased", "accepted_pending_verification", "retryable_failure", "outcome_unknown"]);
+
+type RequestedWorkOrder = { kind: "none" } | { kind: "pending" } | { kind: "created"; externalWorkOrderId: string };
+
+/** The work order this job's `work_order_requested` delivery created on the
+ *  SAME connection, if any. Only `job_finished` events consult it. */
+async function requestedWorkOrderForJob(tc: PoolClient, row: DeliveryRow, event: DomainEventRow): Promise<RequestedWorkOrder> {
+  if (event.event_type !== "job_finished") return { kind: "none" };
+  const jobId = (event.payload as { jobId?: unknown }).jobId;
+  if (typeof jobId !== "string") return { kind: "none" };
+  const res = await tc.query<{ state: string; external_ref: string | null }>(
+    `SELECT d.state, d.external_ref
+       FROM notebook_domain_events e
+       JOIN notebook_event_deliveries d ON d.event_id = e.event_id
+      WHERE e.tenant_id = $1::uuid
+        AND e.event_type = 'work_order_requested'
+        AND e.subject_ref = $2
+        AND d.operation = 'create_work_order'
+        AND d.connection_key = $3
+      ORDER BY d.created_at DESC
+      LIMIT 1`,
+    [row.tenant_id, subjectRefForWorkOrderRequested(jobId), row.connection_key],
+  );
+  const d = res.rows[0];
+  if (!d) return { kind: "none" };
+  if (d.state === "verified_by_readback" && d.external_ref) return { kind: "created", externalWorkOrderId: d.external_ref };
+  if (CREATE_IN_FLIGHT.has(d.state)) return { kind: "pending" };
+  return { kind: "none" };
 }
 
 /**
