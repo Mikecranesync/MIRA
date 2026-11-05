@@ -50,4 +50,24 @@ describe("/api/cmms/stats", () => {
     expect(body.assets.total).toBe(2);
     expect(body.pms.total).toBe(2);
   });
+
+  it("stops at the first failed search instead of leaving the rest queued", async () => {
+    const searches: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url.endsWith("/auth/signin")) {
+          return new Response(JSON.stringify({ accessToken: "tok" }), { status: 200 });
+        }
+        searches.push(url);
+        return new Response("down", { status: 500 });
+      }),
+    );
+    const { GET } = await import("../route");
+    const res = await GET();
+    expect(res.status).toBe(502);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(searches).toHaveLength(1);
+  });
 });

@@ -86,13 +86,17 @@ export async function GET() {
   }
 
   try {
-    const [openData, inProgressData, completeData, assetsData, pmsData] = await Promise.all([
-      atlasPost("/work-orders/search", { pageSize: 1, pageNum: 0, status: "OPEN" }, token),
-      atlasPost("/work-orders/search", { pageSize: 1, pageNum: 0, status: "IN_PROGRESS" }, token),
-      atlasPost("/work-orders/search", { pageSize: 1, pageNum: 0, status: "COMPLETE" }, token),
-      atlasPost("/assets/search", { pageSize: 1, pageNum: 0 }, token),
-      atlasPost("/preventive-maintenances/search", { pageSize: 1, pageNum: 0 }, token),
-    ]);
+    // Sequential, stopping at the first failure, so a failed batch leaves
+    // nothing queued behind it on the account lane.
+    const openData = await atlasPost("/work-orders/search", { pageSize: 1, pageNum: 0, status: "OPEN" }, token);
+    const inProgressData = await atlasPost(
+      "/work-orders/search",
+      { pageSize: 1, pageNum: 0, status: "IN_PROGRESS" },
+      token,
+    );
+    const completeData = await atlasPost("/work-orders/search", { pageSize: 1, pageNum: 0, status: "COMPLETE" }, token);
+    const assetsData = await atlasPost("/assets/search", { pageSize: 1, pageNum: 0 }, token);
+    const pmsData = await atlasPost("/preventive-maintenances/search", { pageSize: 1, pageNum: 0 }, token);
 
     return NextResponse.json({
       workOrders: {
