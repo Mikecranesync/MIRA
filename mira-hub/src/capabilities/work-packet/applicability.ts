@@ -97,12 +97,22 @@ function tokens(text: string, covered: readonly string[] = []): Token[] {
     let dashOnly = true;
     // Right after "Model(s)" a space-split code is a model too ("Model 7 ZQ50"), Codex #5173 r6 F6.
     const afterMarker = /\bmodels?\s*$/i.test(text.slice(0, raw[k].start));
+    // …and so is the next entry of a model list ("Models 7ZQ30, 7 ZQ50"), Codex #5173 F6 (#5200).
+    let p = out.length - 1;
+    if (p >= 0 && /^(?:and|or)$/i.test(out[p].text)) p--;
+    const prev = p >= 0 ? out[p] : null;
+    const prevKey = prev ? normalizeModel(prev.text) : "";
+    const inList =
+      prev !== null &&
+      /\d/.test(prevKey) &&
+      (cov.has(prevKey) || shapes.has(shapeOf(prevKey))) &&
+      LIST_GAP_RE.test(text.slice(prev.end, raw[k].start));
     for (let j = k + 1; j < raw.length && j <= k + 3; j++) {
       const sep = text.slice(raw[j - 1].end, raw[j].start);
       if (!/^[\s-]+$/.test(sep)) break;
       dashOnly = dashOnly && sep === "-";
       joined += normalizeModel(raw[j].text);
-      if (cov.has(joined) || ((dashOnly || afterMarker) && /\d/.test(joined) && shapes.has(shapeOf(joined)))) best = j;
+      if (cov.has(joined) || ((dashOnly || afterMarker || inList) && /\d/.test(joined) && shapes.has(shapeOf(joined)))) best = j;
     }
     out.push({ text: text.slice(raw[k].start, raw[best].end), start: raw[k].start, end: raw[best].end });
     k = best;
@@ -156,6 +166,10 @@ function modelGroups(text: string, covered: readonly string[]): { groups: Group[
   };
   const toks = tokens(text, covered);
   const covAt = (k: number) => k >= 0 && k < toks.length && cov.has(normalizeModel(toks[k].text));
+  // The neighbouring list entry, stepping over one "and"/"or" ("7ZQ30 and 7 ZQ50", #5200).
+  const conj = (k: number) => k >= 0 && k < toks.length && /^(?:and|or)$/i.test(toks[k].text);
+  const before = (k: number) => (conj(k - 1) ? k - 2 : k - 1);
+  const after = (k: number) => (conj(k + 1) ? k + 2 : k + 1);
   const gap = (a: Token, b: Token) => LIST_GAP_RE.test(text.slice(a.end, b.start));
   // A model-shaped token (the digit/letter pattern of a covered model, with a digit) the cover does
   // not list, in a model list or right after "Model(s)": unknown, never silently skipped (Codex EGM
@@ -166,7 +180,7 @@ function modelGroups(text: string, covered: readonly string[]): { groups: Group[
     const n = normalizeModel(t.text);
     if (!cov.has(n)) {
       if (/^\d/.test(n) && /[A-Z]$/.test(n) && covered.some((c) => n.startsWith(normalizeModel(c)))) return { groups, variant: t.text };
-      if (modelShaped(n) && ((covAt(k - 1) && gap(toks[k - 1], t)) || (covAt(k + 1) && gap(t, toks[k + 1])) || /\bmodels?\s*$/i.test(text.slice(0, t.start)))) {
+      if (modelShaped(n) && ((covAt(before(k)) && gap(toks[before(k)], t)) || (covAt(after(k)) && gap(t, toks[after(k)])) || /\bmodels?\s*$/i.test(text.slice(0, t.start)))) {
         return { groups, variant: t.text };
       }
       continue;

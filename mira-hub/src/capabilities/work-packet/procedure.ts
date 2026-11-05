@@ -365,7 +365,10 @@ export function buildProcedure(manuals: ManualDoc[], topics: Topic[], model: str
 // ("On the model 7CP6170 remove …") — also for models the cover does not list.
 function stepNamesOtherModelsLead(text: string, model: string, covered: readonly string[]): boolean {
   const named = leadModels(text, covered);
-  return !!named && named.length > 0 && !named.includes(normalizeModel(model));
+  // Only models the cover lists are definitely other pumps; an unlisted lead ("On Model 7 ZQ50 …")
+  // falls through to the unresolved path and a blocker instead of being dropped (#5202).
+  const cov = new Set(covered.map(normalizeModel));
+  return !!named && named.length > 0 && !named.includes(normalizeModel(model)) && named.every((n) => cov.has(n));
 }
 
 function clip(s: string | null): string {
