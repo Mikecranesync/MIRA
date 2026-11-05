@@ -874,3 +874,33 @@ export async function apiReviewJobSheet(
   });
   return asApiResult(res);
 }
+
+/** One frozen photo-upload attempt, bound to the notebook + job it was
+ *  taken for. Retry replays it byte-for-byte, and only on that same job. */
+export type PhotoAttempt = {
+  notebookId: string;
+  jobId: string;
+  file: File;
+  baseSeq: number;
+  clientEventId: string;
+  caption: string | null;
+};
+
+/** Whether a pending attempt may be retried from the sheet now on screen. */
+export function photoAttemptBelongsTo(
+  attempt: Pick<PhotoAttempt, "notebookId" | "jobId"> | null,
+  notebookId: string,
+  openJobId: string | null,
+): boolean {
+  return attempt !== null && openJobId !== null && attempt.notebookId === notebookId && attempt.jobId === openJobId;
+}
+
+/** The server answered and refused the request outright (a 4xx other than
+ *  408 timeout / 429 rate limit), so nothing was created: the next tap may
+ *  build a fresh attempt from the technician's current inputs instead of
+ *  resending the rejected one (Codex #5207 F6). A 5xx, 408, 429 or no reply
+ *  might have created it, so those keep the frozen attempt for an exact
+ *  replay. */
+export function isDefinitiveRejection(status: number): boolean {
+  return status >= 400 && status < 500 && status !== 408 && status !== 429;
+}

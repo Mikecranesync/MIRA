@@ -50,7 +50,7 @@ export interface AtlasWorkOrderApi {
   searchWorkOrders(payload: {
     pageSize?: number;
     pageNum?: number;
-  }): Promise<{ content: Array<{ id: number; description?: string }> }>;
+  }): Promise<{ content?: Array<{ id: number; description?: string }> }>;
 }
 
 export interface AtlasWriteProviderOptions {
@@ -74,6 +74,16 @@ const WORK_ORDER_SEARCH_PAGE_SIZE = 25;
 const WORK_ORDER_SEARCH_PAGE_CAP = 20;
 
 export const CAPABILITY_TTL_MS = 10 * 60_000;
+
+/** The worker's composition: one Atlas client serves both the comment path
+ *  and the work-order path. Building the provider from a single client means
+ *  the create path cannot be left unwired by a caller (Codex #5207 F1). */
+export function atlasWriteProviderFromClient(
+  client: AtlasCommentApi & AtlasWorkOrderApi,
+  opts: Omit<AtlasWriteProviderOptions, "workOrders"> = {},
+): AtlasWriteProvider {
+  return new AtlasWriteProvider(client, { ...opts, workOrders: client });
+}
 
 const PROBE = "GET /comments/count/{id}";
 
@@ -235,8 +245,15 @@ export class AtlasWriteProvider implements CmmsWriteProvider {
       return { kind: "unsupported", reason: "atlas_work_order_create_not_wired", receipt: {} };
     }
 
-    // Idempotency before any write: a matching order already exists.
-    const existing = await this.findWorkOrderByMarker(req.marker);
+    // Idempotency before any write: a matching order already exists. A
+    // failed lookup happened before any create, so it maps like the
+    // work-log path's (never `outcome_unknown`).
+    let existing: Awaited<ReturnType<AtlasWriteProvider["findWorkOrderByMarker"]>>;
+    try {
+      existing = await this.findWorkOrderByMarker(req.marker);
+    } catch (err) {
+      return this.mapPreCreateLookupError(err);
+    }
     if (existing.status === "cap_exhausted") {
       return { kind: "retryable_failure", reason: "readback_scan_cap_exhausted", receipt: {} };
     }

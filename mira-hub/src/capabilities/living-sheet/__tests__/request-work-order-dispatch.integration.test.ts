@@ -128,6 +128,11 @@ async function enqueueOne(
   notebookId: string,
   entityId: string,
 ): Promise<{ jobId: string; deliveryId: string }> {
+  const jobId = await startOne(tenantId, notebookId, entityId);
+  return { jobId, deliveryId: await enqueueFor(tenantId, notebookId, entityId, jobId) };
+}
+
+async function startOne(tenantId: string, notebookId: string, entityId: string): Promise<string> {
   const job = created(
     await startJob(
       tenantId,
@@ -143,12 +148,16 @@ async function enqueueOne(
       ACTOR,
     ),
   );
-  const view = await jobView(job.jobId, entityId, "Pump 07");
+  return job.jobId;
+}
+
+async function enqueueFor(tenantId: string, notebookId: string, entityId: string, jobId: string): Promise<string> {
+  const view = await jobView(jobId, entityId, "Pump 07");
   const result = await withTenantContext(tenantId, (c) =>
     enqueueWorkOrderRequestedEvent(c, {
       tenantId,
       notebookId,
-      jobId: job.jobId,
+      jobId,
       view,
       actorUserId: ACTOR.userId,
       occurredAt: new Date().toISOString(),
@@ -157,7 +166,7 @@ async function enqueueOne(
   if (result.delivery.deliveryId === null) {
     throw new Error(`expected a delivery id, got reason=${result.delivery.reason}`);
   }
-  return { jobId: job.jobId, deliveryId: result.delivery.deliveryId };
+  return result.delivery.deliveryId;
 }
 
 beforeAll(async () => {
@@ -510,5 +519,58 @@ describe("request-work-order-dispatch — the finish note lands on the order thi
     expect(mock.records(mock.orders()[0]!.id).length).toBe(1);
     expect(mock.records(POLICY_WO).length).toBe(0);
     expect(await finishState()).toBe("verified_by_readback");
+  });
+
+  const deliveryOf = async (tenantId: string, eventType: string) =>
+    (
+      await testPool.query<{ state: string; last_error: string | null }>(
+        `SELECT d.state, d.last_error FROM notebook_event_deliveries d
+           JOIN notebook_domain_events e ON e.event_id = d.event_id
+          WHERE e.tenant_id = $1::uuid AND e.event_type = $2`,
+        [tenantId, eventType],
+      )
+    ).rows[0]!;
+
+  it("create failed for good → the finish note is held visibly, never written to the policy target (Codex #5207 F4)", async () => {
+    const tenantId = uuid();
+    const entityId = uuid();
+    const nb = await makeNotebook(tenantId, entityId, true);
+    await setCmmsConfig(tenantId, { writePolicy: bothPolicies() });
+    const { jobId } = await enqueueOne(tenantId, nb, entityId);
+    const mock = new MockCmmsWriteProvider({ providerId: "atlas" });
+    mock.failNextCreate("permanent_failure");
+    await runDispatchTick({ providerFor: () => mock, tenantAllowlist: new Set([tenantId]) });
+    expect((await deliveryOf(tenantId, "work_order_requested")).state).toBe("permanent_failure");
+
+    await finish(tenantId, nb, jobId);
+    await runDispatchTick({ providerFor: () => mock, tenantAllowlist: new Set([tenantId]) });
+
+    const fin = await deliveryOf(tenantId, "job_finished");
+    expect(fin.state).toBe("blocked_policy");
+    expect(fin.last_error).toContain("requested_work_order_not_created:permanent_failure");
+    expect(mock.orders()).toHaveLength(0);
+    expect(mock.records(POLICY_WO).length).toBe(0);
+  });
+
+  it("order requested AFTER the finish → both deliver; neither waits on the other (Codex #5207 F7)", async () => {
+    const tenantId = uuid();
+    const entityId = uuid();
+    const nb = await makeNotebook(tenantId, entityId, true);
+    await setCmmsConfig(tenantId, { writePolicy: bothPolicies() });
+    const jobId = await startOne(tenantId, nb, entityId);
+    await finish(tenantId, nb, jobId);
+    await enqueueFor(tenantId, nb, entityId, jobId);
+
+    const mock = new MockCmmsWriteProvider({ providerId: "atlas" });
+    for (let i = 0; i < 3; i++) {
+      await testPool.query(`UPDATE notebook_event_deliveries SET next_attempt_at = now() WHERE tenant_id = $1::uuid`, [tenantId]);
+      await runDispatchTick({ providerFor: () => mock, tenantAllowlist: new Set([tenantId]) });
+    }
+    expect((await deliveryOf(tenantId, "job_finished")).state).toBe("verified_by_readback");
+    expect((await deliveryOf(tenantId, "work_order_requested")).state).toBe("verified_by_readback");
+    expect(mock.orders()).toHaveLength(1);
+    // The order carries the finished sheet in its own description; the
+    // finish note follows the tenant's policy as it did before this change.
+    expect(mock.records(POLICY_WO).length).toBe(1);
   });
 });

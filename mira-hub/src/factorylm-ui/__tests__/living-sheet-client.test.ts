@@ -32,6 +32,8 @@ import {
   type SheetEventPost,
   type SheetSubmitOutcome,
   workOrderStatusText,
+  photoAttemptBelongsTo,
+  isDefinitiveRejection,
 } from "../living-sheet-client";
 import type { SheetProposal } from "@/capabilities/living-sheet/propose";
 import type { SheetStepView } from "@/capabilities/living-sheet/reduce";
@@ -679,5 +681,31 @@ describe("workOrderStatusText", () => {
     expect(workOrderStatusText({ ...base, state: "permission_denied" })).toMatch(/refused/);
     expect(workOrderStatusText({ ...base, state: "permanent_failure" })).toMatch(/Could not create/);
     expect(workOrderStatusText({ ...base, state: "outcome_unknown" })).toMatch(/not create a second order/);
+  });
+});
+
+describe("photoAttemptBelongsTo — a photo retry stays on the job it was taken for (Codex #5207 F5)", () => {
+  const a = { notebookId: "nb-1", jobId: "job-a" };
+  it("the same notebook and job may retry", () => {
+    expect(photoAttemptBelongsTo(a, "nb-1", "job-a")).toBe(true);
+  });
+  it("another job on the same notebook may not", () => {
+    expect(photoAttemptBelongsTo(a, "nb-1", "job-b")).toBe(false);
+  });
+  it("another notebook may not, even with the same job id", () => {
+    expect(photoAttemptBelongsTo(a, "nb-2", "job-a")).toBe(false);
+  });
+  it("no job open, or no attempt, may not", () => {
+    expect(photoAttemptBelongsTo(a, "nb-1", null)).toBe(false);
+    expect(photoAttemptBelongsTo(null, "nb-1", "job-a")).toBe(false);
+  });
+});
+
+describe("isDefinitiveRejection — when a refused start may be rebuilt (Codex #5207 F6)", () => {
+  it("a 4xx refusal is definitive", () => {
+    for (const s of [400, 403, 404, 409, 422]) expect(isDefinitiveRejection(s)).toBe(true);
+  });
+  it("a timeout, rate limit or server error is not — the exact attempt is kept for replay", () => {
+    for (const s of [408, 429, 500, 502, 503, 504]) expect(isDefinitiveRejection(s)).toBe(false);
   });
 });

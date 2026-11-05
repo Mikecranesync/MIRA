@@ -329,6 +329,14 @@ async function planDelivery(row: DeliveryRow): Promise<Plan> {
       if (requested.kind === "pending") {
         return { kind: "outcome", outcome: { state: "retryable_failure", reason: "requested_work_order_pending" } };
       }
+      if (requested.kind === "failed") {
+        // The technician asked for THIS job's order and it was not created:
+        // hold the note visibly rather than writing it to some other order.
+        return {
+          kind: "outcome",
+          outcome: { state: "blocked_policy", reason: `requested_work_order_not_created:${requested.state}` },
+        };
+      }
       if (requested.kind === "created") {
         target = { providerId: row.connection_key, externalWorkOrderId: requested.externalWorkOrderId };
         targetSource = "job_requested_work_order";
@@ -396,10 +404,18 @@ async function planDelivery(row: DeliveryRow): Promise<Plan> {
  *  order; a finish note waits for them rather than landing elsewhere. */
 const CREATE_IN_FLIGHT = new Set(["queued", "leased", "accepted_pending_verification", "retryable_failure", "outcome_unknown"]);
 
-type RequestedWorkOrder = { kind: "none" } | { kind: "pending" } | { kind: "created"; externalWorkOrderId: string };
+type RequestedWorkOrder =
+  | { kind: "none" }
+  | { kind: "pending" }
+  | { kind: "failed"; state: string }
+  | { kind: "created"; externalWorkOrderId: string };
 
 /** The work order this job's `work_order_requested` delivery created on the
- *  SAME connection, if any. Only `job_finished` events consult it. */
+ *  SAME connection, if any. Only `job_finished` events consult it, and only
+ *  a request made BEFORE the finish (lower aggregate sequence): the
+ *  dispatcher holds later events behind earlier ones, so waiting on a later
+ *  request would deadlock both. A request made after the finish carries the
+ *  finished sheet in its own description, so the note takes the policy path. */
 async function requestedWorkOrderForJob(tc: PoolClient, row: DeliveryRow, event: DomainEventRow): Promise<RequestedWorkOrder> {
   if (event.event_type !== "job_finished") return { kind: "none" };
   const jobId = (event.payload as { jobId?: unknown }).jobId;
@@ -411,17 +427,19 @@ async function requestedWorkOrderForJob(tc: PoolClient, row: DeliveryRow, event:
       WHERE e.tenant_id = $1::uuid
         AND e.event_type = 'work_order_requested'
         AND e.subject_ref = $2
+        AND e.aggregate_key = $4
+        AND e.sequence < $5::bigint
         AND d.operation = 'create_work_order'
         AND d.connection_key = $3
       ORDER BY d.created_at DESC
       LIMIT 1`,
-    [row.tenant_id, subjectRefForWorkOrderRequested(jobId), row.connection_key],
+    [row.tenant_id, subjectRefForWorkOrderRequested(jobId), row.connection_key, event.aggregate_key, event.sequence],
   );
   const d = res.rows[0];
   if (!d) return { kind: "none" };
   if (d.state === "verified_by_readback" && d.external_ref) return { kind: "created", externalWorkOrderId: d.external_ref };
   if (CREATE_IN_FLIGHT.has(d.state)) return { kind: "pending" };
-  return { kind: "none" };
+  return { kind: "failed", state: d.state };
 }
 
 /**

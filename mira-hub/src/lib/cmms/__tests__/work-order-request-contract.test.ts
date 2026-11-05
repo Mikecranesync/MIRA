@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { AtlasWriteProvider, type AtlasWorkOrderApi } from "../atlas-write-provider";
+import { AtlasWriteProvider, atlasWriteProviderFromClient, type AtlasWorkOrderApi } from "../atlas-write-provider";
 import { MockCmmsWriteProvider } from "../mock-write-provider";
 import { type CmmsWriteProvider, type WorkOrderRequest, markerFor } from "../write-contract";
 
@@ -218,5 +218,49 @@ describe("createWorkOrder — atlas-specific error mapping", () => {
     expect(result.kind).toBe("unsupported");
     const readBack = await provider.readBackWorkOrder(markerFor("evt-unwired"));
     expect(readBack.kind).toBe("unsupported");
+  });
+});
+
+describe("createWorkOrder — composition and pre-create lookup (Codex #5207 F1/F2)", () => {
+  function combinedClient(searchError?: Error) {
+    const wo = new FakeAtlasWorkOrderApi();
+    return {
+      wo,
+      client: {
+        countComments: async () => ({ count: 0 }),
+        createComment: async () => {
+          throw new Error("not used");
+        },
+        searchComments: async () => [],
+        createWorkOrder: (p: { title: string; description: string; priority: string }) => wo.createWorkOrder(p),
+        searchWorkOrders: async (p: { pageSize?: number; pageNum?: number }) => {
+          if (searchError) throw searchError;
+          return wo.searchWorkOrders(p);
+        },
+      },
+    };
+  }
+
+  it("a provider built from one client has the create path wired", async () => {
+    const { client, wo } = combinedClient();
+    const provider = atlasWriteProviderFromClient(client);
+    const result = await provider.createWorkOrder(makeRequest("evt-compose"));
+    expect(result.kind).not.toBe("unsupported");
+    expect(wo.count()).toBe(1);
+  });
+
+  it("a pre-create lookup network error is retryable, never outcome_unknown, and creates nothing", async () => {
+    const { client, wo } = combinedClient(new Error("ECONNRESET"));
+    const result = await atlasWriteProviderFromClient(client).createWorkOrder(makeRequest("evt-lookup-net"));
+    expect(result.kind).toBe("retryable_failure");
+    expect(wo.count()).toBe(0);
+  });
+
+  it("a pre-create lookup 403 is permission_denied, not outcome_unknown", async () => {
+    const { AtlasHttpError } = await import("@/lib/atlas/client");
+    const { client, wo } = combinedClient(new AtlasHttpError(403, "forbidden", "/work-orders/search"));
+    const result = await atlasWriteProviderFromClient(client).createWorkOrder(makeRequest("evt-lookup-403"));
+    expect(result.kind).toBe("permission_denied");
+    expect(wo.count()).toBe(0);
   });
 });

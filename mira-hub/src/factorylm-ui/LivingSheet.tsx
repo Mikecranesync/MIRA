@@ -46,9 +46,11 @@ import {
   dropHeadOfSheetQueue,
   drainSheetQueue,
   enqueueSheetEvent,
+  isDefinitiveRejection,
   loadSheetQueue,
   localStorageStore,
   lowRiskProposalIds,
+  photoAttemptBelongsTo,
   removeFromSheetQueue,
   saveBadge,
   startJobErrorMessage,
@@ -56,6 +58,7 @@ import {
   stepRequiringConfirmFor,
   type JobSheetSummary,
   type JobSummaryClient,
+  type PhotoAttempt,
   type SaveBadgeState,
   type SheetEventPost,
   type SheetWriteEvent,
@@ -451,12 +454,9 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
   // the bytes, and rather than re-reading the CURRENT view.seq, which may
   // have advanced since the first attempt and would turn a lost-response
   // retry into a false conflict.
-  const [pendingPhotoAttempt, setPendingPhotoAttempt] = useState<{
-    file: File;
-    baseSeq: number;
-    clientEventId: string;
-    caption: string | null;
-  } | null>(null);
+  // Bound to the notebook + job it was taken for (Codex #5207 F5): a Retry
+  // after switching jobs must never post this photo to the other job.
+  const [pendingPhotoAttempt, setPendingPhotoAttempt] = useState<PhotoAttempt | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [shiftReportOpen, setShiftReportOpen] = useState(false);
 
@@ -644,6 +644,8 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
       setWorkOrder(null);
       setWorkOrderConfirm(false);
       setWorkOrderError(null);
+      setPendingPhotoAttempt((a) => (photoAttemptBelongsTo(a, notebookId, jobId) ? a : null));
+      setPhotoError(null);
       onSheetOpenChange({ notebookId, jobId });
       void loadSheet(jobId);
       void refreshBadge(jobId);
@@ -751,7 +753,11 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
       const res = await apiStartJob(notebookId, request);
       if (!res.ok || !res.body.jobId) {
         setStartError(startJobErrorMessage(res.body.error, res.body.message));
-        return; // keep pendingStartRequest — the next tap retries this SAME attempt
+        // A definitive refusal created nothing: the next tap starts a fresh
+        // attempt from the current inputs. Anything else keeps this SAME
+        // attempt so a retry cannot create a duplicate.
+        if (isDefinitiveRejection(res.status)) setPendingStartRequest(null);
+        return;
       }
       setNewTitle("");
       setChosenJobSheetId("");
@@ -875,47 +881,58 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
   // idempotency fingerprint and turn a lost-response retry into a false
   // conflict.
   const uploadPhotoAttempt = useCallback(
-    async (attempt: { file: File; baseSeq: number; clientEventId: string; caption: string | null }) => {
-      if (!openJobId) return;
+    async (attempt: PhotoAttempt) => {
+      if (!photoAttemptBelongsTo(attempt, notebookId, openJobIdRef.current)) return;
       setPhotoBusy(true);
       setPhotoError(null);
+      const stillSelected = () => openJobIdRef.current === attempt.jobId;
       try {
-        const res = await apiUploadPhoto(notebookId, openJobId, attempt.file, {
+        const res = await apiUploadPhoto(attempt.notebookId, attempt.jobId, attempt.file, {
           clientEventId: attempt.clientEventId,
           baseSeq: attempt.baseSeq,
           caption: attempt.caption,
         });
         if (!res.ok) {
-          setPhotoError(startJobErrorMessage(res.body.error, res.body.message));
+          if (stillSelected()) setPhotoError(startJobErrorMessage(res.body.error, res.body.message));
           return; // keep pendingPhotoAttempt — Retry replays this EXACT attempt
         }
-        setPendingPhotoAttempt(null); // attempt succeeded
-        await loadSheet(openJobId);
+        setPendingPhotoAttempt((a) => (a?.clientEventId === attempt.clientEventId ? null : a)); // attempt succeeded
+        if (stillSelected()) await loadSheet(attempt.jobId);
       } catch {
-        setPhotoError("No reply from the server. Retry — the photo was not saved.");
+        if (stillSelected()) setPhotoError("No reply from the server. Retry — the photo was not saved.");
         // keep pendingPhotoAttempt pending — same reasoning as the rejection branch
       } finally {
         setPhotoBusy(false);
       }
     },
-    [openJobId, notebookId, loadSheet],
+    [notebookId, loadSheet],
   );
 
   // Picking a photo is always a deliberate NEW attempt — fresh id, fresh
   // baseSeq, fresh bytes. Only onRetryPhoto below replays an existing one.
   const onUploadPhoto = useCallback(
     (file: File) => {
-      if (!view) return;
-      const attempt = { file, baseSeq: view.seq, clientEventId: crypto.randomUUID(), caption: null as string | null };
+      const jobId = openJobIdRef.current;
+      if (!view || !jobId) return;
+      const attempt: PhotoAttempt = {
+        notebookId,
+        jobId,
+        file,
+        baseSeq: view.seq,
+        clientEventId: crypto.randomUUID(),
+        caption: null,
+      };
       setPendingPhotoAttempt(attempt);
       void uploadPhotoAttempt(attempt);
     },
-    [view, uploadPhotoAttempt],
+    [view, notebookId, uploadPhotoAttempt],
   );
 
   const onRetryPhoto = useCallback(() => {
-    if (pendingPhotoAttempt) void uploadPhotoAttempt(pendingPhotoAttempt);
-  }, [pendingPhotoAttempt, uploadPhotoAttempt]);
+    if (photoAttemptBelongsTo(pendingPhotoAttempt, notebookId, openJobIdRef.current)) {
+      void uploadPhotoAttempt(pendingPhotoAttempt!);
+    }
+  }, [pendingPhotoAttempt, notebookId, uploadPhotoAttempt]);
 
   const onKeepTheirs = useCallback(async () => {
     if (!openJobId) return;
@@ -1364,7 +1381,7 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
                 {photoError && (
                   <p role="alert">
                     {photoError}
-                    {pendingPhotoAttempt && (
+                    {photoAttemptBelongsTo(pendingPhotoAttempt, notebookId, openJobId) && (
                       <>
                         {" "}
                         <button
