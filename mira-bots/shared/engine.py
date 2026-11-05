@@ -1532,6 +1532,8 @@ class Supervisor:
         """
         ctx = state.get("context") or {}
         sc = ctx.get("session_context") or {}
+        # #3713: PROCEED consent belongs to the diagnostic being reset.
+        ctx.pop("proceed_consent", None)
 
         if sc:
             ctx["session_context"] = {
@@ -3086,6 +3088,10 @@ class Supervisor:
             ctx_p = state.get("context") or {}
             ctx_p.pop("awaiting_proceed", None)
             ctx_p.pop("pending_uns_confirm", None)
+            # #3713: durable consent for a best-estimate answer on this session.
+            # The next diagnosis turn reads it in rag_worker instead of re-asking
+            # for the manufacturer on an out-of-KB asset.
+            ctx_p["proceed_consent"] = True
             state["context"] = ctx_p
             # Advance state once (counts as a diagnostic turn) so q_rounds
             # increments and the Q-trap can fire if near threshold.
