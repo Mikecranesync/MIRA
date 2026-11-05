@@ -217,6 +217,67 @@ describe("loadNotebookDocTexts", () => {
     expect(tenantQuery).not.toHaveBeenCalled();
   });
 
+  // 2026-11-04, drawing connection packet Worker Task 2: `origin` is additive — every source above
+  // this point has `originFileId: null` (the `source()` factory default) and asserts an exact
+  // `toEqual` with no `origin` key, proving the field is absent-by-default rather than merely
+  // undefined-and-ignored.
+  it("sets DocText.origin.fileId from originFileId when the source derives from a photo", async () => {
+    const PHOTO_FILE_ID = "ffffffff-1111-2222-3333-444444444444";
+    listSourcesMock.mockResolvedValue([
+      source({ fileId: null, originFileId: PHOTO_FILE_ID, matchEvidence: { drawing_transcription: { reviewed: false } } }),
+    ]);
+    poolQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("equipment_notebook_sources")) return { rows: [{ "1": 1 }] };
+      return { rows: [{ source_page: 1, content: "KIND | drawing", chunk_index: 0 }] };
+    });
+
+    const docs = await loadNotebookDocTexts(TENANT_ID, NOTEBOOK_ID);
+    expect(docs[0].origin).toEqual({ fileId: PHOTO_FILE_ID, drawing: { reviewed: false } });
+  });
+
+  it("carries reviewed:true through once the technician's review has run", async () => {
+    const PHOTO_FILE_ID = "ffffffff-1111-2222-3333-444444444444";
+    listSourcesMock.mockResolvedValue([
+      source({
+        fileId: null,
+        originFileId: PHOTO_FILE_ID,
+        matchEvidence: { drawing_transcription: { reviewed: true, by: "x@y", at: "2026-11-04T00:00:00Z" } },
+      }),
+    ]);
+    poolQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("equipment_notebook_sources")) return { rows: [{ "1": 1 }] };
+      return { rows: [{ source_page: 1, content: "KIND | drawing", chunk_index: 0 }] };
+    });
+
+    const docs = await loadNotebookDocTexts(TENANT_ID, NOTEBOOK_ID);
+    expect(docs[0].origin).toEqual({ fileId: PHOTO_FILE_ID, drawing: { reviewed: true } });
+  });
+
+  it("omits origin entirely when originFileId is null (every existing non-photo source)", async () => {
+    listSourcesMock.mockResolvedValue([source({ fileId: null, originFileId: null })]);
+    poolQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("equipment_notebook_sources")) return { rows: [{ "1": 1 }] };
+      return { rows: [{ source_page: 1, content: "chunk-only doc text", chunk_index: 0 }] };
+    });
+
+    const docs = await loadNotebookDocTexts(TENANT_ID, NOTEBOOK_ID);
+    expect(docs[0]).not.toHaveProperty("origin");
+  });
+
+  it("omits origin.drawing when match_evidence carries no drawing_transcription key", async () => {
+    const PHOTO_FILE_ID = "ffffffff-1111-2222-3333-444444444444";
+    listSourcesMock.mockResolvedValue([
+      source({ fileId: null, originFileId: PHOTO_FILE_ID, matchEvidence: { kept_from_observation: "obs-1" } }),
+    ]);
+    poolQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("equipment_notebook_sources")) return { rows: [{ "1": 1 }] };
+      return { rows: [{ source_page: 1, content: "nameplate text", chunk_index: 0 }] };
+    });
+
+    const docs = await loadNotebookDocTexts(TENANT_ID, NOTEBOOK_ID);
+    expect(docs[0].origin).toEqual({ fileId: PHOTO_FILE_ID });
+  });
+
   it("IDOR guard: a doc_id not attached to this notebook/tenant yields no pages", async () => {
     listSourcesMock.mockResolvedValue([source({ fileId: null })]);
     poolQuery.mockImplementation(async (sql: string) => {

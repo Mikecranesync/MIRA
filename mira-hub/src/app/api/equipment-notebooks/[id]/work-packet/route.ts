@@ -48,6 +48,8 @@ import { parseCatPumpsServiceManual } from "@/capabilities/work-packet/catpumps-
 import { buildDraftPacket } from "@/capabilities/work-packet/draft";
 import { isSupportedManufacturer, manufacturerRefusalMessage } from "@/capabilities/work-packet/manufacturer";
 import { documentRevision } from "@/capabilities/work-packet/revision";
+import { mergeDrawingPhotos, parseDrawingSourceText, type DrawingSheetPhoto } from "@/capabilities/work-packet/drawing";
+import { buildConnectionPacket } from "@/capabilities/work-packet/drawing-packet";
 import type {
   DataSheet,
   DocText,
@@ -69,8 +71,10 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 type Params = { params: Promise<{ id: string }> };
 
-/** Default OFF — mirrors `guidedProcedureEnabled()` in `guided-procedure-store.ts`. */
-function workPacketEnabled(env: Record<string, string | undefined> = process.env): boolean {
+/** Default OFF — mirrors `guidedProcedureEnabled()` in `guided-procedure-store.ts`.
+ *  Exported (2026-11-04, drawing connection packet Worker Task 2) so the sibling
+ *  `drawing-photos` routes share the exact same flag check — no second flag. */
+export function workPacketEnabled(env: Record<string, string | undefined> = process.env): boolean {
   return (env.NOTEBOOK_WORK_PACKET ?? "").trim() === "1";
 }
 
@@ -177,6 +181,90 @@ function availabilityBlocking(
   return null;
 }
 
+// ── Connection packet (drawing connection packet, Worker Task 2, 2026-11-04) ──
+// A notebook whose sources include at least one photographed engineering
+// drawing (kept via the `drawing-photos` routes) can additionally ask for a
+// CONNECTION packet — the same `DraftResult` contract, built by Task 1's pure
+// `buildConnectionPacket` — instead of (or alongside) the CAT Pumps draft
+// above. Triggered ONLY by an explicit `?connection=`/body `connection` ref
+// AND the presence of at least one drawing-kind source; otherwise this
+// returns `null` and the existing GET/POST logic below runs byte-identical to
+// before this change, so every pre-existing CAT-flow behaviour is preserved.
+
+/** The first line of `fullText` whose leading " | "-delimited token is exactly "KIND", to end of
+ *  text — i.e. the canonical `renderDrawingSourceText` block, regardless of what header a
+ *  materializer (`buildPhotoSourceText`, the drawing-photos PUT review) prepended in front of it.
+ *  `null` when no such line exists (plain prose, or a non-drawing document). */
+function extractCanonicalDrawingText(fullText: string): string | null {
+  const lines = fullText.split("\n");
+  const idx = lines.findIndex((l) => l.trim().split(" | ")[0]?.trim() === "KIND");
+  if (idx === -1) return null;
+  return lines.slice(idx).join("\n");
+}
+
+/** Rebuilds `DrawingSheetPhoto[]` from every attached doc that carries `origin` (set by
+ *  `document-text.ts::loadNotebookDocTexts` from `equipment_notebook_sources.origin_file_id` +
+ *  `match_evidence.drawing_transcription`) and whose text parses as a drawing transcription.
+ *  `fileId` is `doc.origin.fileId` — the ORIGINAL photo, never the materialized text doc's own
+ *  `fileId` (which is null; see `DocText.origin`'s doc comment). A doc with no `origin`, or whose
+ *  text does not parse (a non-drawing kept photo, or a corrupted doc), is silently skipped here —
+ *  `mergeDrawingPhotos` additionally skips any parsed `kind !== "drawing"` photo on its own. */
+function drawingSheetPhotosFromDocs(docs: readonly DocText[]): DrawingSheetPhoto[] {
+  const photos: DrawingSheetPhoto[] = [];
+  for (const doc of docs) {
+    if (!doc.origin) continue;
+    const fullText = doc.pages.map((p) => p.text).join("\n");
+    const canonical = extractCanonicalDrawingText(fullText);
+    if (canonical === null) continue;
+    const t = parseDrawingSourceText(canonical);
+    if (!t) continue;
+    photos.push({ docId: doc.docId, fileId: doc.origin.fileId, reviewed: doc.origin.drawing?.reviewed ?? false, t });
+  }
+  return photos;
+}
+
+/** `connection` from the query string (GET and POST) or, POST only, the JSON body. Reads the query
+ *  string via `new URL(req.url)` rather than `req.nextUrl` — identical on a real `NextRequest` in
+ *  production, but also works against a plain `Request` (every route test in this family
+ *  constructs its fixtures with the bare `Request` constructor, not `NextRequest`). */
+function connectionRefFrom(req: NextRequest, body?: unknown): string | null {
+  const q = new URL(req.url).searchParams.get("connection");
+  if (q && q.trim()) return q.trim();
+  if (body && typeof body === "object" && !Array.isArray(body)) {
+    const c = (body as Record<string, unknown>).connection;
+    if (typeof c === "string" && c.trim()) return c.trim();
+  }
+  return null;
+}
+
+/** Returns a `DraftResult` when the caller asked for a connection packet AND the notebook has at
+ *  least one drawing-kind source; `null` otherwise, letting the caller's existing logic run
+ *  unchanged (no `connection` ref given, or no drawing sources attached yet — the ordinary
+ *  CAT-flow refusal path reports that case, not this one). */
+function buildConnectionPacketIfPresent(opts: {
+  req: NextRequest;
+  body: unknown;
+  notebookId: string;
+  identity: Identity;
+  docs: DocText[];
+  workOrder: WorkOrderInput;
+}): DraftResult | null {
+  const connectionRef = connectionRefFrom(opts.req, opts.body);
+  if (!connectionRef) return null;
+  const sheets = mergeDrawingPhotos(drawingSheetPhotosFromDocs(opts.docs));
+  if (sheets.length === 0) return null;
+  return buildConnectionPacket({
+    notebookId: opts.notebookId,
+    packetId: randomUUID(),
+    now: new Date().toISOString(),
+    identity: opts.identity,
+    workOrder: opts.workOrder,
+    sheets,
+    connectionRef,
+    docs: opts.docs,
+  });
+}
+
 const MAX_WO_ID = 200;
 const MAX_WO_TITLE = 300;
 const MAX_WO_DESCRIPTION = 4000;
@@ -242,7 +330,7 @@ function parseWorkOrder(body: unknown): WorkOrderParse {
   };
 }
 
-export async function GET(_req: NextRequest, { params }: Params) {
+export async function GET(req: NextRequest, { params }: Params) {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
   if (!workPacketEnabled()) return NextResponse.json({ error: "not_enabled" }, { status: 404 });
@@ -255,6 +343,29 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
     const identity = identityOf(notebook);
     const docs = await loadNotebookDocTexts(ctx.tenantId, id);
+
+    // Connection packet (drawing-photo sources) — GET has no work-order, so a
+    // synthetic placeholder stands in; `buildConnectionPacket` stamps
+    // `synthetic: true` through to the packet same as any other synthetic WO.
+    const connectionResult = buildConnectionPacketIfPresent({
+      req,
+      body: undefined,
+      notebookId: id,
+      identity,
+      docs,
+      workOrder: {
+        id: `connection-${Date.now()}`,
+        title: "Connection packet preview",
+        description: "",
+        assetTag: null,
+        site: null,
+        synthetic: true,
+      },
+    });
+    if (connectionResult) {
+      return NextResponse.json(connectionResult, { status: connectionResult.ok ? 200 : 422 });
+    }
+
     const classified = classifyAll(docs);
     const body: WorkPacketAvailability = {
       enabled: true,
@@ -303,6 +414,19 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     const identity = identityOf(notebook);
     const docs = await loadNotebookDocTexts(ctx.tenantId, id);
+
+    const connectionResult = buildConnectionPacketIfPresent({
+      req,
+      body: rawBody,
+      notebookId: id,
+      identity,
+      docs,
+      workOrder,
+    });
+    if (connectionResult) {
+      return NextResponse.json(connectionResult, { status: connectionResult.ok ? 200 : 422 });
+    }
+
     const input: DraftInput = {
       notebookId: id,
       packetId: randomUUID(),

@@ -39,6 +39,13 @@ import { parseCatPumpsServiceManual } from "@/capabilities/work-packet/catpumps-
 import { buildDraftPacket } from "@/capabilities/work-packet/draft";
 import { energizedHardStopEnabled } from "@/capabilities/energized-work-stop";
 import { SAFETY_STOP, isEnergizedWorkAsk, notebookSafetyTrigger } from "@/lib/safety-classifier";
+// drawing.ts / drawing-packet.ts are deliberately NOT mocked below — they are pure (no DB/IO),
+// already covered by their own test files (drawing.test.ts, drawing-packet.test.ts), and this
+// suite exercises the ROUTE's wiring into them (the `?connection=`/body `connection` branch),
+// exactly like it exercises the CAT-flow wiring into the (mocked) parsers above.
+import { renderDrawingSourceText, type DrawingTranscription } from "@/capabilities/work-packet/drawing";
+import { PHOTOS } from "@/capabilities/work-packet/__tests__/fixtures/drawing-example";
+import type { DocText } from "@/capabilities/work-packet/types";
 
 const NOTEBOOK_ID = "11111111-2222-3333-4444-555555555555";
 const TENANT_ID = "tenant-aaaa";
@@ -398,5 +405,149 @@ describe("POST /work-packet", () => {
     const { getNotebook: gn } = await import("@/lib/equipment-notebooks");
     expect(Object.keys(await import("@/lib/equipment-notebooks"))).toEqual(["getNotebook"]);
     expect(gn).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── Connection packet (?connection=/body connection — drawing connection packet, Worker Task 2) ──
+// Builds a notebook's DocText[] the way `document-text.ts::loadNotebookDocTexts` would for a
+// drawing-photos-derived source: `origin.fileId` is the ORIGINAL photo (never this doc's own
+// `fileId`, which is null for a materialized text doc), and the page text is exactly the canonical
+// LINE text `renderDrawingSourceText` produces (matches `drawing-packet.test.ts`'s own `docFor`).
+function drawingDoc(photo: { docId: string; fileId: string | null; reviewed: boolean; t: DrawingTranscription }): DocText {
+  return {
+    docId: photo.docId,
+    fileId: null,
+    filename: `${photo.reviewed ? "Technician-reviewed" : "Unconfirmed"} drawing reading (${photo.docId}).txt`,
+    via: "chunks",
+    pages: [{ page: 1, text: renderDrawingSourceText(photo.t) }],
+    ...(photo.fileId ? { origin: { fileId: photo.fileId, drawing: { reviewed: photo.reviewed } } } : {}),
+  };
+}
+
+const DRAWING_DOCS: DocText[] = PHOTOS.map((p) => drawingDoc(p));
+const makeGetWithConnection = (connection: string, id = NOTEBOOK_ID) =>
+  new Request(`https://hub.test/api/equipment-notebooks/${id}/work-packet?connection=${encodeURIComponent(connection)}`) as never;
+function makePostWithConnection(body: Record<string, unknown>, id = NOTEBOOK_ID) {
+  return new Request(`https://hub.test/api/equipment-notebooks/${id}/work-packet`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  }) as never;
+}
+
+describe("GET /work-packet?connection=... (drawing connection packet)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.NOTEBOOK_WORK_PACKET = "1";
+    (sessionOr401 as ReturnType<typeof vi.fn>).mockResolvedValue(session);
+    (getNotebook as ReturnType<typeof vi.fn>).mockResolvedValue(notebook());
+  });
+
+  it("without drawing sources, falls through unchanged to the ordinary availability refusal", async () => {
+    (loadNotebookDocTexts as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    const res = await GET(makeGetWithConnection("C3"), makeParams(NOTEBOOK_ID));
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.enabled).toBe(true);
+    expect(body.blocking?.reason).toBe("no_documents");
+  });
+
+  it("builds and returns the connection packet when a drawing source carries the requested connection", async () => {
+    (loadNotebookDocTexts as ReturnType<typeof vi.fn>).mockResolvedValue(DRAWING_DOCS);
+    const res = await GET(makeGetWithConnection("C3"), makeParams(NOTEBOOK_ID));
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.packet.measurements[0].name.value).toBe("C3-B1 tightening torque");
+    expect(buildDraftPacket).not.toHaveBeenCalled();
+  });
+
+  it("refuses model_not_in_documents (via buildConnectionPacket) for a connection ref on no sheet", async () => {
+    (loadNotebookDocTexts as ReturnType<typeof vi.fn>).mockResolvedValue(DRAWING_DOCS);
+    const res = await GET(makeGetWithConnection("C99"), makeParams(NOTEBOOK_ID));
+    const body = await res.json();
+    expect(res.status).toBe(422);
+    expect(body).toMatchObject({ ok: false, reason: "model_not_in_documents" });
+  });
+
+  it("without a connection param, every pre-existing CAT-flow GET assertion is unaffected", async () => {
+    (loadNotebookDocTexts as ReturnType<typeof vi.fn>).mockResolvedValue(DRAWING_DOCS);
+    (parseCatPumpsDataSheet as ReturnType<typeof vi.fn>).mockReturnValue(null);
+    (parseCatPumpsServiceManual as ReturnType<typeof vi.fn>).mockReturnValue(null);
+    const res = await GET(makeGet(), makeParams(NOTEBOOK_ID));
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.enabled).toBe(true);
+    // CAT Pumps classification runs over the drawing docs too (neither parser recognizes
+    // them) — this is the pre-existing "unsupported_documents" shape, proving the ordinary
+    // path ran byte-identically rather than short-circuiting.
+    expect(body.blocking?.reason).toBe("unsupported_documents");
+  });
+});
+
+describe("POST /work-packet { connection } (drawing connection packet)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.NOTEBOOK_WORK_PACKET = "1";
+    (sessionOr401 as ReturnType<typeof vi.fn>).mockResolvedValue(session);
+    (getNotebook as ReturnType<typeof vi.fn>).mockResolvedValue(notebook());
+    (energizedHardStopEnabled as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    (isEnergizedWorkAsk as ReturnType<typeof vi.fn>).mockReturnValue(false);
+    (notebookSafetyTrigger as ReturnType<typeof vi.fn>).mockReturnValue(null);
+  });
+
+  it("body { workOrder, connection } builds the connection packet, reusing the real work order text", async () => {
+    (loadNotebookDocTexts as ReturnType<typeof vi.fn>).mockResolvedValue(DRAWING_DOCS);
+    const res = await POST(makePostWithConnection({ workOrder: baseWorkOrder, connection: "C4" }), makeParams(NOTEBOOK_ID));
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.packet.workOrder.id).toBe(baseWorkOrder.id);
+    expect(buildDraftPacket).not.toHaveBeenCalled();
+  });
+
+  it("a query-string ?connection= also works on POST (body carries no connection field)", async () => {
+    (loadNotebookDocTexts as ReturnType<typeof vi.fn>).mockResolvedValue(DRAWING_DOCS);
+    const req = new Request(
+      `https://hub.test/api/equipment-notebooks/${NOTEBOOK_ID}/work-packet?connection=C3`,
+      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ workOrder: baseWorkOrder }) },
+    ) as never;
+    const res = await POST(req, makeParams(NOTEBOOK_ID));
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.packet.measurements[0].name.value).toBe("C3-B1 tightening torque");
+    expect(buildDraftPacket).not.toHaveBeenCalled();
+  });
+
+  it("still runs the safety gates before building a connection packet", async () => {
+    (loadNotebookDocTexts as ReturnType<typeof vi.fn>).mockResolvedValue(DRAWING_DOCS);
+    (isEnergizedWorkAsk as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    const res = await POST(makePostWithConnection({ workOrder: baseWorkOrder, connection: "C3" }), makeParams(NOTEBOOK_ID));
+    const body = await res.json();
+    expect(res.status).toBe(422);
+    expect(body).toEqual({ ok: false, reason: "safety_stop", message: SAFETY_STOP });
+  });
+
+  it("without drawing sources, { connection } falls through unchanged to the ordinary CAT flow", async () => {
+    (loadNotebookDocTexts as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (buildDraftPacket as ReturnType<typeof vi.fn>).mockReturnValue({ ok: false, reason: "no_documents", message: "none" });
+    const res = await POST(makePostWithConnection({ workOrder: baseWorkOrder, connection: "C3" }), makeParams(NOTEBOOK_ID));
+    const body = await res.json();
+    expect(res.status).toBe(422);
+    expect(body.reason).toBe("no_documents");
+    expect(buildDraftPacket).toHaveBeenCalledTimes(1);
+  });
+
+  it("a non-drawing photo fixture (kind:equipment) never contributes a sheet", async () => {
+    const nonDrawingOnly = DRAWING_DOCS.filter((d) => d.docId === "photo-d");
+    expect(nonDrawingOnly).toHaveLength(1);
+    (loadNotebookDocTexts as ReturnType<typeof vi.fn>).mockResolvedValue(nonDrawingOnly);
+    (buildDraftPacket as ReturnType<typeof vi.fn>).mockReturnValue({ ok: false, reason: "no_documents", message: "none" });
+    const res = await POST(makePostWithConnection({ workOrder: baseWorkOrder, connection: "C3" }), makeParams(NOTEBOOK_ID));
+    expect(res.status).toBe(422);
+    // Fell all the way through to the ordinary CAT flow's buildDraftPacket — connection
+    // packet logic found zero drawing sheets and returned null, exactly as documented.
+    expect(buildDraftPacket).toHaveBeenCalledTimes(1);
   });
 });

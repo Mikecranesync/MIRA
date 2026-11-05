@@ -244,7 +244,25 @@ export async function loadNotebookDocTexts(tenantId: string, notebookId: string)
       pages = await chunkDocPages(tenantId, notebookId, s.docId);
       via = "chunks";
     }
-    out.push({ docId: s.docId, fileId: s.fileId, filename: s.filename, pages, via });
+    out.push({
+      docId: s.docId,
+      fileId: s.fileId,
+      filename: s.filename,
+      pages,
+      via,
+      ...(s.originFileId ? { origin: { fileId: s.originFileId, ...drawingOriginOf(s.matchEvidence) } } : {}),
+    });
   }
   return out;
+}
+
+/** `DocText.origin.drawing` from a source's `match_evidence.drawing_transcription` (set by the
+ *  drawing-photos routes). Anything else in `match_evidence` (nameplate confirm's evidence shape,
+ *  etc.) is a different producer and is left alone — this only ever reads the one key it owns. */
+function drawingOriginOf(matchEvidence: unknown): { drawing?: { reviewed: boolean } } {
+  if (!matchEvidence || typeof matchEvidence !== "object") return {};
+  const dt = (matchEvidence as Record<string, unknown>).drawing_transcription;
+  if (!dt || typeof dt !== "object") return {};
+  const reviewed = (dt as Record<string, unknown>).reviewed;
+  return typeof reviewed === "boolean" ? { drawing: { reviewed } } : {};
 }
