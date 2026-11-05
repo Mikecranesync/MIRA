@@ -1,0 +1,146 @@
+# Mirror the pinned Atlas MinIO image into a private GHCR package (#5184).
+#
+# quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z can no longer be pulled anonymously
+# anywhere; the only copy is the OVH host's image cache. This workflow copies that
+# exact image (verified by image id) to ghcr.io/<owner>/atlas-minio and proves it can
+# come back.
+#
+#   mode=mirror          host `docker save` -> runner -> push to GHCR -> pull back by
+#                        digest -> image id must equal the host's at every hop.
+#   mode=verify-restore  pull from GHCR -> load onto the host under the GHCR name only
+#                        -> its id must equal the host's quay copy -> untag. The running
+#                        MinIO image and container are never touched.
+#
+# The package stays private. GHCR credentials exist only on the runner (GITHUB_TOKEN);
+# nothing is written to the host except a temporary tag that is removed again.
+# Rollback: delete the workflow file; the GHCR package can be deleted from the
+# repository's Packages page. Nothing on the host changes in either mode.
+name: Mirror Atlas MinIO image
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "mirror (host -> GHCR) or verify-restore (GHCR -> host, id check, untag)"
+        type: choice
+        options:
+          - mirror
+          - verify-restore
+        default: mirror
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mirror-minio
+  cancel-in-progress: false
+
+env:
+  SOURCE_REF: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+  MIRROR_TAG: RELEASE.2025-04-22T22-12-26Z
+
+jobs:
+  mirror:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Validate mode input
+        env:
+          MODE: ${{ inputs.mode }}
+        run: |
+          set -euo pipefail
+          case "$MODE" in
+            mirror|verify-restore) ;;
+            *) echo "::error::invalid mode '$MODE'"; exit 1 ;;
+          esac
+
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up SSH
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/vps_deploy_key
+          chmod 600 ~/.ssh/vps_deploy_key
+          install -m 600 deployment/known_hosts.factorylm-prod ~/.ssh/known_hosts
+
+      - name: Log in to GHCR (runner only)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Read the host's image id
+        id: host
+        run: |
+          set -euo pipefail
+          HOST_ID="$(ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+            ubuntu@40.160.141.61 "sudo docker image inspect --format '{{.Id}}' '${SOURCE_REF}'")"
+          [[ "$HOST_ID" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::host has no copy of ${SOURCE_REF} (got '${HOST_ID}') — STOP"; exit 1; }
+          echo "host image id: $HOST_ID"
+          echo "id=$HOST_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Mirror host -> GHCR
+        if: inputs.mode == 'mirror'
+        env:
+          HOST_ID: ${{ steps.host.outputs.id }}
+        run: |
+          set -euo pipefail
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          DEST="ghcr.io/${OWNER}/atlas-minio:${MIRROR_TAG}"
+          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+            ubuntu@40.160.141.61 "sudo docker save '${SOURCE_REF}'" | docker load
+          LOADED="$(docker image inspect --format '{{.Id}}' "$SOURCE_REF")"
+          [ "$LOADED" = "$HOST_ID" ] || { echo "::error::loaded id $LOADED != host id $HOST_ID"; exit 1; }
+          docker tag "$SOURCE_REF" "$DEST"
+          docker push "$DEST"
+          DIGEST_REF="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$DEST" | grep "^ghcr.io/${OWNER}/atlas-minio@sha256:" | head -1)"
+          [ -n "$DIGEST_REF" ] || { echo "::error::no GHCR digest after push"; exit 1; }
+          docker rmi "$DEST" "$SOURCE_REF" >/dev/null
+          docker pull -q "$DIGEST_REF"
+          PULLED="$(docker image inspect --format '{{.Id}}' "$DIGEST_REF")"
+          [ "$PULLED" = "$HOST_ID" ] || { echo "::error::pulled id $PULLED != host id $HOST_ID"; exit 1; }
+          {
+            echo "### MinIO mirrored"
+            echo "- source: \`${SOURCE_REF}\` (host image id \`${HOST_ID}\`)"
+            echo "- mirror: \`${DIGEST_REF}\`"
+            echo "- pulled back by digest, image id matches the host's"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify restore GHCR -> host (temporary tag only)
+        if: inputs.mode == 'verify-restore'
+        env:
+          HOST_ID: ${{ steps.host.outputs.id }}
+        run: |
+          set -euo pipefail
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          SRC="ghcr.io/${OWNER}/atlas-minio:${MIRROR_TAG}"
+          docker pull -q "$SRC"
+          GH_ID="$(docker image inspect --format '{{.Id}}' "$SRC")"
+          [ "$GH_ID" = "$HOST_ID" ] || { echo "::error::GHCR id $GH_ID != host id $HOST_ID — mirror does not match, nothing loaded"; exit 1; }
+          # The tar carries only the GHCR name, so loading it adds that tag and never
+          # retags or replaces the quay.io image the running container uses.
+          docker save "$SRC" | ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+            ubuntu@40.160.141.61 "sudo docker load"
+          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+            ubuntu@40.160.141.61 "sudo bash -s -- '${SRC}' '${SOURCE_REF}' '${HOST_ID}'" << 'ENDSSH'
+          set -euo pipefail
+          SRC="$1"; SOURCE_REF="$2"; HOST_ID="$3"
+          RESTORED="$(docker image inspect --format '{{.Id}}' "$SRC")"
+          STILL="$(docker image inspect --format '{{.Id}}' "$SOURCE_REF")"
+          docker rmi "$SRC" >/dev/null
+          [ "$RESTORED" = "$HOST_ID" ] || { echo "::error::restored id $RESTORED != $HOST_ID"; exit 1; }
+          [ "$STILL" = "$HOST_ID" ] || { echo "::error::quay copy changed: $STILL"; exit 1; }
+          docker image inspect --format '{{.Id}}' "$SOURCE_REF" >/dev/null
+          echo "RESTORE OK: GHCR copy loads on the host with id $RESTORED; quay copy unchanged; temporary tag removed"
+          ENDSSH
+          {
+            echo "### MinIO restore verified"
+            echo "- \`${SRC}\` loaded on the host with image id \`${HOST_ID}\` (matches the running copy)"
+            echo "- temporary GHCR tag removed; \`${SOURCE_REF}\` untouched"
+          } >> "$GITHUB_STEP_SUMMARY"
