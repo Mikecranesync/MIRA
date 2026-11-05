@@ -71,10 +71,10 @@
     }
   },
   "atlasSupportAtDeployedDigest": {
-    "backendImage": "intelloop/atlas-cmms-backend@sha256:21c42377dd758dbc4a9aa1676e62b01a13cf8822b0ecd3019b274b53c2369b1e",
-    "upstream": "github.com/Grashjs/cmms, build pushed 2026-03-27 (post-v1.5.0, pre-v1.5.1)",
-    "append_work_log": "unsupported — CommentController first appears upstream 2026-04-08 (v1.6.0); WorkOrderPatchDTO has no feedback field; PATCH /tasks/work-order/{id} replaces the whole task list",
-    "attach_evidence": "unknown — POST /files/upload exists but is gated by a license entitlement check",
-    "read_work_log": "unsupported at this digest; implemented for v1.6.0+ via POST /comments/search/{workOrderId}"
+    "backendImage": "intelloop/atlas-cmms-backend@sha256:a112fa5831f9827c92ad7d436cff8ff7bc18116be1aab3ab09639793774e49a2",
+    "upstream": "github.com/Grashjs/cmms v1.8.0 (index digest; pinned for #5188 on 2026-11-05)",
+    "append_work_log": "implemented — CommentController (v1.6.0+); create + read-back proven against v1.8.0 locally",
+    "attach_evidence": "unsupported — POST /files/upload requires the FILE_ATTACHMENTS license entitlement (Keygen); 403 'You need a license to add a file' without one",
+    "read_work_log": "implemented via POST /comments/search/{workOrderId}"
   }
 }
