@@ -36,6 +36,7 @@ on:
           - hub-cmms-dispatch
           - atlas-backups
           - atlas-api-errors
+          - stg-atlas-signin
         default: hub-cmms-stats
 
 permissions:
@@ -58,7 +59,7 @@ jobs:
         run: |
           set -euo pipefail
           case "$PROBE" in
-            hub-cmms-stats|hub-cmms-dispatch|atlas-backups|atlas-api-errors) ;;
+            hub-cmms-stats|hub-cmms-dispatch|atlas-backups|atlas-api-errors|stg-atlas-signin) ;;
             *) echo "::error::invalid probe '$PROBE'"; exit 1 ;;
           esac
 
@@ -99,6 +100,17 @@ jobs:
               | tail -n 60 || true)"
             if [ -z "$hits" ]; then echo "read OK: no lines tagged $2 in the last 6h"; else printf '%s\n' "$hits"; fi
           }
+          atlas_exceptions() {  # container: exception class names + com.grash frames only
+            local all hits
+            if ! all="$(docker logs --since 6h "$1" 2>&1)"; then
+              echo "PROBE FAILED: could not read the $1 container log"
+              exit 3
+            fi
+            # BEGIN atlas-exception-filter
+            hits="$(printf '%s\n' "$all" | sed -nE -e 's/^(Caused by: )?((java|javax|jakarta|org|com|io|net)(\.[a-z][a-z0-9_]*)+\.[A-Z][A-Za-z0-9_$]*(Exception|Error))(: .*)?$/\2/p' -e 's/^[[:space:]]+(at com\.grash\.[A-Za-z0-9_.$]+\([A-Za-z0-9_]+\.java:[0-9]+\))[[:space:]]*$/\1/p' | uniq -c | tail -n 80 || true)"
+            # END atlas-exception-filter
+            if [ -z "$hits" ]; then echo "read OK: no exception lines in the last 6h"; else printf '%s\n' "$hits"; fi
+          }
           case "$1" in
             hub-cmms-stats)    tagged mira-hub '[api/cmms/stats]' ;;
             hub-cmms-dispatch) tagged mira-hub '[cmms-dispatch]' ;;
@@ -124,14 +136,24 @@ jobs:
               # package root, and an Atlas (com.grash) stack frame. Message
               # text is never searched, so nothing class-shaped inside a
               # message can surface. Repeat-counted, last 80 lines.
-              if ! all="$(docker logs --since 6h cmms-backend 2>&1)"; then
-                echo "PROBE FAILED: could not read the cmms-backend container log"
-                exit 3
-              fi
-              # BEGIN atlas-exception-filter
-              hits="$(printf '%s\n' "$all" | sed -nE -e 's/^(Caused by: )?((java|javax|jakarta|org|com|io|net)(\.[a-z][a-z0-9_]*)+\.[A-Z][A-Za-z0-9_$]*(Exception|Error))(: .*)?$/\2/p' -e 's/^[[:space:]]+(at com\.grash\.[A-Za-z0-9_.$]+\([A-Za-z0-9_]+\.java:[0-9]+\))[[:space:]]*$/\1/p' | uniq -c | tail -n 80 || true)"
-              # END atlas-exception-filter
-              if [ -z "$hits" ]; then echo "read OK: no exception lines in the last 6h"; else printf '%s\n' "$hits"; fi
+              atlas_exceptions cmms-backend
+              ;;
+            stg-atlas-signin)
+              # #5205 staging half: the staging Hub's Atlas sign-in gets 403,
+              # which Atlas returns for an unknown user, a wrong password, a
+              # disabled user or a wrong role type alike. Report only
+              # container state and row COUNTS from the staging Atlas DB
+              # (never an email, name or hash), plus exception class names
+              # from the staging Atlas log, using the same anchored filter.
+              for c in stg-atlas-api stg-atlas-db; do
+                st="$(docker inspect -f '{{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} started={{.State.StartedAt}}' "$c" 2>/dev/null)" \
+                  || { echo "PROBE FAILED: container $c not found"; exit 3; }
+                echo "$c: $st"
+              done
+              counts="$(docker exec stg-atlas-db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA -F " " -c "select count(*), count(*) filter (where enabled), count(*) filter (where not enabled) from own_user"' 2>/dev/null)" \
+                || { echo "PROBE FAILED: could not count staging Atlas users"; exit 3; }
+              echo "own_user total enabled disabled: $counts"
+              atlas_exceptions stg-atlas-api
               ;;
           esac
           ENDSSH
