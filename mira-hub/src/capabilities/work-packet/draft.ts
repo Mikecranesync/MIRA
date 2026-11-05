@@ -38,7 +38,7 @@ import { isSupportedManufacturer, manufacturerRefusalMessage } from "./manufactu
 import { parseCatPumpsDataSheet, sheetModelFor } from "./catpumps-datasheet";
 import { parseCatPumpsServiceManual } from "./catpumps-service-manual";
 import { collectFields, verifyPacket } from "./verify";
-import { captionApplicability, modelScopeAdmits, modelsMatch } from "./applicability";
+import { captionApplicability, modelScopeAdmits, modelsMatch, otherModelsNamed } from "./applicability";
 import { buildProcedure } from "./procedure";
 import { computeCoverage } from "./coverage";
 
@@ -440,6 +440,19 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
       basis: `Left out ${topic} work because the work order says "${clause}". If ${topic} work is needed, add it to the work order and draft again.`,
     });
   });
+
+  // A work order that names another pump is an open question, never silently drafted for the
+  // confirmed one (hazard 35): the technician checks which pump the job is for.
+  const knownModels = [...manuals.flatMap((p) => p.manual.modelsCovered), ...dataSheets.flatMap((p) => p.dataSheet.models), ...identityKeys(identity)];
+  const named = otherModelsNamed(`${workOrder.title}\n${workOrder.description}`, knownModels, identityKeys(identity));
+  if (named.length > 0) {
+    blockers.push({
+      value: null,
+      label: "unknown",
+      source: null,
+      basis: `The work order names ${named.join(", ")}, but the confirmed pump is ${scopeKey}. Check which pump this job is for; if the work order is wrong, correct it and draft again.`,
+    });
+  }
 
   // Safety holds the manufacturer's cautions/warnings once each. A NOTE printed inside a procedure
   // is shown beside its step instead (or left out with its other-model block), not repeated here.

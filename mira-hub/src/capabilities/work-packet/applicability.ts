@@ -193,6 +193,27 @@ export function scopedApplicability(text: string, scope: ModelScope | null, mode
   return textApplicability(text, model, covered);
 }
 
+/**
+ * Models a work order names that are not the confirmed pump (hazard 35): any model an attached
+ * document lists, plus any 3+ character code with a digit right after "pump(s)" or "model(s)" ("The
+ * CAT Pumps 3520 is leaking"), whatever its shape. A number followed by a unit ("pump 1500 rpm")
+ * or not after those words ("2000 PSI") is never read as a model.
+ */
+const UNIT_AFTER_RE = /^\s*(?:psi|rpm|gpm|bar|lpm|l\/m|hp|kw|v|vac|vdc|a|hz|nm|mm|in|ft|°|%|hrs?|hours)\b/i;
+
+export function otherModelsNamed(text: string, known: readonly string[], confirmed: readonly string[]): string[] {
+  const cov = new Set(known.map(normalizeModel));
+  const out: string[] = [];
+  for (const t of tokens(text, known)) {
+    const n = normalizeModel(t.text);
+    if (confirmed.some((c) => modelsMatch(c, n)) || out.some((o) => modelsMatch(o, n))) continue;
+    const afterPumpWord = /\b(?:pumps?|models?)\s*$/i.test(text.slice(0, t.start));
+    const unitAfter = UNIT_AFTER_RE.test(text.slice(t.end));
+    if (cov.has(n) || (afterPumpWord && !unitAfter && n.length >= 3 && /\d/.test(n))) out.push(t.text);
+  }
+  return out;
+}
+
 const CAPTION_LIST_WORD_RE = /^(?:all|models?|except|and|or|only)$/i;
 
 /** Applicability of a figure from its caption lines. A caption model the cover does not list is unresolved. */
