@@ -9,7 +9,8 @@
     "record_reading",
     "transition_work_order",
     "read_work_log",
-    "list_changes"
+    "list_changes",
+    "create_work_order"
   ],
   "support": ["implemented", "unsupported", "unknown"],
   "writeResultKinds": [
@@ -60,6 +61,31 @@
         "sourceRef": { "type": "string", "description": "'<table>:<id>' audit reference, never a URL" }
       }
     },
+    "WorkOrderRequest": {
+      "type": "object",
+      "required": [
+        "idempotencyKey",
+        "marker",
+        "title",
+        "description",
+        "priority",
+        "externalAssetId",
+        "attributionLabel",
+        "occurredAt",
+        "sourceRef"
+      ],
+      "properties": {
+        "idempotencyKey": { "type": "string" },
+        "marker": { "type": "string", "pattern": "^\\[MIRA:[0-9a-f-]{36}\\]$" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "priority": { "type": "string" },
+        "externalAssetId": { "type": ["string", "null"] },
+        "attributionLabel": { "type": "string" },
+        "occurredAt": { "type": "string", "format": "date-time" },
+        "sourceRef": { "type": "string", "description": "'<table>:<id>' audit reference, never a URL" }
+      }
+    },
     "Capability": {
       "type": "object",
       "required": ["support"],
@@ -75,6 +101,7 @@
     "upstream": "github.com/Grashjs/cmms v1.8.0 (index digest; pinned for #5188 on 2026-11-05)",
     "append_work_log": "implemented — CommentController (v1.6.0+); create + read-back proven against v1.8.0 locally",
     "attach_evidence": "unsupported — POST /files/upload requires the FILE_ATTACHMENTS license entitlement (Keygen); 403 'You need a license to add a file' without one",
-    "read_work_log": "implemented via POST /comments/search/{workOrderId}"
+    "read_work_log": "implemented via POST /comments/search/{workOrderId}",
+    "create_work_order": "implemented — POST /work-orders; read-back by marker via POST /work-orders/search (endpoint answers 200 on prod v1.8.0; marker read-back against a live Atlas is proven only by staging acceptance)"
   }
 }

@@ -96,6 +96,11 @@ import { relevantQuoteWindow } from "@/lib/quote-window";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import { authorizeGuidedDeadEnd, guidedProcedureEnabled } from "@/capabilities/guided-procedure-store";
+import { isUuid } from "@/capabilities/fix-records";
+import { livingSheetEnabled } from "@/capabilities/living-sheet/flag";
+import { withSheetReceipt, type SheetReceiptContext } from "@/capabilities/living-sheet/receipt";
+import { loadJob } from "@/capabilities/living-sheet/store";
+import type { SheetView } from "@/capabilities/living-sheet/reduce";
 import {
   abandonNotebookTurnRequest,
   claimNotebookTurnRequest,
@@ -1165,6 +1170,30 @@ async function verifyVisualEntry(
   }
 }
 
+/** F18 — plain-words projection of a Living Work Sheet job's current view
+ *  for the system prompt: title, open steps, and current readings with who
+ *  recorded them and when. Mirrors the shape (not the renderer) of
+ *  `renderObservedStateSection`/`renderVisualEvidenceSection` — a short,
+ *  deterministic block, no model call. Empty steps/readings degrade
+ *  gracefully (an open job with no readings yet still states "none"). */
+function renderLivingSheetJobSection(view: SheetView): string {
+  const openSteps = view.steps.filter((s) => !s.done);
+  const lines = [
+    `## Living Work Sheet — "${view.title}" (job in progress; everything below is technician-reported, not verified)`,
+    openSteps.length > 0
+      ? `- Open steps: ${openSteps.map((s) => s.text).join("; ")}`
+      : "- Open steps: none — every step is marked done.",
+  ];
+  if (view.readings.length > 0) {
+    lines.push(
+      `- Current readings: ${view.readings
+        .map((r) => `${r.what} = ${r.current.value} ${r.current.unit} (recorded by ${r.current.by ?? "unknown"} at ${r.current.at})`)
+        .join("; ")}`,
+    );
+  }
+  return lines.join("\n");
+}
+
 async function handleChatTurn(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -1199,6 +1228,12 @@ async function handleChatTurn(
      *  read; the server checks it against this tenant and notebook, and that the procedure still applies
      *  to the machine as it is now (authorizeGuidedDeadEnd, #4602). */
     guidedEscalation?: { sessionId?: unknown };
+    /** F18: the open Living Work Sheet job, so the answer itself (not just
+     *  the post-hoc sheet_receipt frame — withSheetReceipt below) can see
+     *  direct sheet edits and reopened-job state. Only the id is read; the
+     *  server re-derives the job's current view itself (loadJob, scoped to
+     *  THIS notebook). */
+    livingSheetJobId?: unknown;
   };
   try {
     body = await req.json();
@@ -1245,6 +1280,10 @@ async function handleChatTurn(
   if (body.threadId != null && !threadId) {
     return NextResponse.json({ error: "invalid_thread_id" }, { status: 400 });
   }
+  // F18: never a 4xx on a malformed/foreign id — same "claim is dropped
+  // silently" discipline as visualClaimFileId above. Validity (does this
+  // job belong to this tenant+notebook) is re-checked by loadJob itself.
+  const livingSheetJobId = typeof body.livingSheetJobId === "string" && isUuid(body.livingSheetJobId) ? body.livingSheetJobId : null;
   const clientRequestId = body.clientRequestId == null
     ? null
     : typeof body.clientRequestId === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.clientRequestId)
@@ -3624,6 +3663,30 @@ async function handleChatTurn(
     }
   }
 
+  // F18: the open Living Work Sheet job's CURRENT state (title, open steps,
+  // current readings with who/when) at the SAME seam as observed state
+  // above — not only wrapped around the already-generated answer the way
+  // withSheetReceipt (receipt.ts) does at the end of this route, which
+  // loads the same job but AFTER the model has already answered without
+  // seeing it. Flag or jobId absent ⇒ nothing is loaded, prompt is
+  // byte-identical. Scoped by notebookId (loadJob's own scope, same as
+  // every other sheet read) — no asset-confirmation requirement, matching
+  // every other living-sheet read route. Own try/catch: a missing table or
+  // unknown job answers without this section, never a broken turn.
+  let sheetSection = "";
+  if (livingSheetEnabled() && livingSheetJobId) {
+    try {
+      const sheet = await loadJob(ctx.tenantId, notebookId, livingSheetJobId);
+      if (sheet.status === "ok") sheetSection = renderLivingSheetJobSection(sheet.view);
+    } catch (err) {
+      console.error(
+        `[notebook-chat] living sheet job load failed code=${(err as { code?: string }).code ?? "?"} ` +
+          "(continuing without it):",
+        err,
+      );
+    }
+  }
+
   // #3788 — the LOOK observation for the photo attached THIS turn. Keyed ONLY on
   // the SERVER-VERIFIED file id (`visualEntry.fileId`, already checked by
   // `photoLinkedToTarget` in verifyVisualEntry), so a client string can never
@@ -3797,6 +3860,14 @@ async function handleChatTurn(
   const withVisual = visualSection ? `${withMachine}\n\n${visualSection}` : withMachine;
   // Mission 001 observed state rides after the visual section; empty = byte-identical.
   const withObserved = observedSection ? `${withVisual}\n\n${observedSection}` : withVisual;
+  // R2-33: the Living Work Sheet job section (F18) is NOT folded into
+  // systemPrompt here. `sheetSection` is free text a technician or an
+  // earlier import typed (job title, step instructions, reading labels) —
+  // concatenating it into the system prompt would let a hostile title
+  // ("Ignore previous instructions...") be read as an instruction instead
+  // of data. It rides in the SAME injection-hardened user-data channel as
+  // the retrieved manual excerpts and the LOOK photo context instead — see
+  // `sheetAndLookContext` at the `buildManualUserContent` call below.
   // #4131: a label data identifier ("1P <order no.>") in this turn's photo
   // context gets its standard meaning stated; otherwise byte-identical.
   // #4133: a retail/warehouse code (FNSKU) in the photo context is named as
@@ -3852,10 +3923,18 @@ async function handleChatTurn(
     priorReportContext = buildPriorReportContext([], history, "unavailable");
     rec.error("context", "prior_reports_unavailable");
   }
+  // R2-33: the Living Work Sheet job section rides into the SAME
+  // injection-hardened user-data channel as the LOOK photo context
+  // (buildManualUserContent's visual-context arg), never systemPrompt.
+  // `lookContext` itself is left untouched — the label-identifier /
+  // photo-provenance / retail-code scans above stay photo-only; this only
+  // widens what reaches the model's DATA message. Empty sheetSection ⇒
+  // byte-identical to before (filter(Boolean) drops it).
+  const sheetAndLookContext = [lookContext, sheetSection].filter(Boolean).join("\n\n");
   const messages = buildProviderMessages(
     systemPrompt,
     history,
-    buildManualUserContent(topicHint ? `${message}\n\n${topicHint}` : message, chunks, lookContext),
+    buildManualUserContent(topicHint ? `${message}\n\n${topicHint}` : message, chunks, sheetAndLookContext),
     priorReportContext.content,
   );
   {
@@ -5485,6 +5564,29 @@ export async function POST(req: NextRequest, routeCtx: { params: Promise<{ id: s
   // from every assertion while leaving the tenant index unreliable. The arrival
   // row has no tenant because at arrival there is no tenant.
   const arrival = recordArrival({ ...ingress });
+  // TASK-S2 — $0 deterministic sheet-receipt. Read defensively off a CLONE
+  // (handleChatTurn below still does the real `req.json()`); any failure here
+  // just means no receipt frame, never a broken turn. Session is re-derived
+  // independently (never a body-supplied tenant).
+  let sheetReceiptCtx: SheetReceiptContext | null = null;
+  if (livingSheetEnabled() && notebookId) {
+    try {
+      const b = await req.clone().json();
+      const text = typeof b?.message === "string" ? b.message.trim() : "";
+      const jobId = b?.livingSheetJobId;
+      if (text && typeof jobId === "string" && isUuid(jobId)) {
+        const sctx = await sessionOr401();
+        if (!(sctx instanceof NextResponse)) {
+          // F08: the turn's own id keys the proposals, so the same words in two
+          // turns are two proposals and a replay of one turn stays one.
+          const turnId = typeof b?.clientRequestId === "string" && isUuid(b.clientRequestId) ? b.clientRequestId : undefined;
+          sheetReceiptCtx = { tenantId: sctx.tenantId, notebookId, jobId, techText: text, turnId };
+        }
+      }
+    } catch {
+      sheetReceiptCtx = null;
+    }
+  }
   if (wantsProgress(req)) {
     // #4687: headers go out now; the turn runs behind the open stream. The
     // accounting below runs when the turn actually finishes, with its real
@@ -5494,7 +5596,7 @@ export async function POST(req: NextRequest, routeCtx: { params: Promise<{ id: s
       try {
         const inner = await handleChatTurn(req, routeCtx, ingress);
         innerStatus = inner.status;
-        return inner;
+        return sheetReceiptCtx ? await withSheetReceipt(inner, sheetReceiptCtx) : inner;
       } catch (err) {
         ingress.closeOnUnhandled?.("error");
         throw err;
@@ -5511,7 +5613,7 @@ export async function POST(req: NextRequest, routeCtx: { params: Promise<{ id: s
   try {
     const res = await handleChatTurn(req, routeCtx, ingress);
     status = res.status;
-    return res;
+    return sheetReceiptCtx ? await withSheetReceipt(res, sheetReceiptCtx) : res;
   } catch (err) {
     // A throw that escaped every `endRoot` would leave the start record open
     // until the reconciler swept it — reported as `abandoned` when it was in

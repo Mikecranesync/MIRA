@@ -48,6 +48,7 @@
  * A single bad delivery must never stop the batch: every per-row step after
  * the claim is isolated so an unexpected throw degrades that ONE row.
  */
+import type { PoolClient } from "pg";
 import pool from "@/lib/db";
 import { withTenantContext } from "@/lib/tenant-context";
 import {
@@ -61,11 +62,12 @@ import {
   type CmmsWriteResult,
   type DeliveryState,
   type WorkLogNote,
+  type WorkOrderRequest,
   type WorkOrderTarget,
 } from "@/lib/cmms/write-contract";
 import { loadTenantWritePolicy } from "./policy";
 import { resolveWorkOrderTarget } from "./target";
-import type { DeliveryRow, DomainEventRow } from "./types";
+import { subjectRefForWorkOrderRequested, type DeliveryRow, type DomainEventRow } from "./types";
 
 export type DispatchDeps = {
   /** Resolve a `notebook_event_deliveries.connection_key` (the tenant's CMMS
@@ -163,6 +165,36 @@ export function pinnedTargetOf(row: Pick<DeliveryRow, "receipt">): PinnedTarget 
   };
 }
 
+/** Sibling of `PINNED_TARGET_KEY` for a `create_work_order` delivery
+ *  (TASK-OUTBOX-CREATE-WO). A create has no `externalWorkOrderId` to pin
+ *  before the write — the only mutable-between-attempts fact is which Atlas
+ *  ASSET (if any) the order should link to, resolved from
+ *  `cmms_equipment.atlas_id` at PLAN time. Pinning it (even when `null` —
+ *  "no Atlas asset linked") means a retry never re-resolves and risks a
+ *  different answer than the attempt that may already have reached Atlas. */
+export const PINNED_REQUEST_KEY = "pinned_request";
+
+export type PinnedRequest = {
+  providerId: string;
+  externalAssetId: string | null;
+  source: string;
+  pinnedAt: string;
+};
+
+export function pinnedRequestOf(row: Pick<DeliveryRow, "receipt">): PinnedRequest | null {
+  const raw = row.receipt?.[PINNED_REQUEST_KEY];
+  if (typeof raw !== "object" || raw === null) return null;
+  const t = raw as Record<string, unknown>;
+  if (typeof t.providerId !== "string") return null;
+  if (t.externalAssetId !== null && typeof t.externalAssetId !== "string") return null;
+  return {
+    providerId: t.providerId,
+    externalAssetId: t.externalAssetId,
+    source: typeof t.source === "string" ? t.source : "unknown",
+    pinnedAt: typeof t.pinnedAt === "string" ? t.pinnedAt : "",
+  };
+}
+
 type Outcome = {
   state: DeliveryState;
   reason?: string | null;
@@ -171,7 +203,12 @@ type Outcome = {
 };
 
 type DeliverPlan = { kind: "deliver"; target: WorkOrderTarget; targetSource: string; alreadyPinned: boolean; note: WorkLogNote };
-type Plan = { kind: "outcome"; outcome: Outcome } | DeliverPlan;
+/** TASK-OUTBOX-CREATE-WO: plan for a `create_work_order` delivery. `source`
+ *  describes how `request.externalAssetId` was decided (`"cmms_equipment"` |
+ *  `"unlinked"` | the pinned attempt's own source on replay) — same role
+ *  `DeliverPlan.targetSource` plays for an append. */
+type CreatePlan = { kind: "create"; request: WorkOrderRequest; source: string; alreadyPinned: boolean };
+type Plan = { kind: "outcome"; outcome: Outcome } | DeliverPlan | CreatePlan;
 
 /** A claimed row plus the state it was in BEFORE this claim (the CLAIM query
  *  captures it from the locked subquery — `RETURNING d.*` alone would only
@@ -197,7 +234,7 @@ function isAcknowledged(row: ClaimedRow): boolean {
 function isPossiblySent(row: ClaimedRow): boolean {
   if (isAcknowledged(row)) return true;
   if (row.prior_state === "outcome_unknown") return true;
-  return row.reclaimed && pinnedTargetOf(row) !== null;
+  return row.reclaimed && (pinnedTargetOf(row) !== null || pinnedRequestOf(row) !== null);
 }
 
 /** The adapter, the target and the queued connection must all name the same
@@ -207,6 +244,17 @@ function providerMismatch(row: ClaimedRow, plan: DeliverPlan, provider: CmmsWrit
   return {
     state: "blocked_policy",
     reason: `provider_mismatch:adapter=${provider.providerId},target=${plan.target.providerId},connection=${row.connection_key}`,
+  };
+}
+
+/** Sibling of `providerMismatch` for a `create_work_order` delivery — a
+ *  `WorkOrderRequest` carries no `providerId` of its own (there is no
+ *  existing target to name one), so the only check is adapter vs connection. */
+function createProviderMismatch(row: ClaimedRow, provider: CmmsWriteProvider): Outcome | null {
+  if (provider.providerId === row.connection_key) return null;
+  return {
+    state: "blocked_policy",
+    reason: `provider_mismatch:adapter=${provider.providerId},connection=${row.connection_key}`,
   };
 }
 
@@ -229,9 +277,20 @@ async function planDelivery(row: DeliveryRow): Promise<Plan> {
     const config = await loadTenantWritePolicy(tc, row.tenant_id);
     if (!config) return { kind: "outcome", outcome: { state: "blocked_policy", reason: "no_connection" } };
     if (!config.enabled) return { kind: "outcome", outcome: { state: "blocked_policy", reason: "connection_disabled" } };
-    if (!config.policy.fixRecorded.enabled) {
+
+    // TASK-OUTBOX-CREATE-WO: `create_work_order` is gated on its OWN policy
+    // switch (`workOrderRequested.enabled`), never `fixRecorded.enabled` —
+    // creating a new order is a materially different action from appending a
+    // note to an existing one (same reasoning as the enqueue-side gate in
+    // request-work-order-outbox.ts).
+    if (row.operation === "create_work_order") {
+      if (!config.policy.workOrderRequested.enabled) {
+        return { kind: "outcome", outcome: { state: "blocked_policy", reason: "policy_disabled" } };
+      }
+    } else if (!config.policy.fixRecorded.enabled) {
       return { kind: "outcome", outcome: { state: "blocked_policy", reason: "policy_disabled" } };
     }
+
     // PROVIDER IDENTITY (Codex round 2, F1): the delivery was accepted for
     // `connection_key`. If the tenant has since switched providers, the
     // current config would resolve a target that belongs to the NEW vendor
@@ -242,6 +301,10 @@ async function planDelivery(row: DeliveryRow): Promise<Plan> {
         kind: "outcome",
         outcome: { state: "blocked_policy", reason: `provider_changed:${row.connection_key}->${config.provider}` },
       };
+    }
+
+    if (row.operation === "create_work_order") {
+      return planCreateWorkOrder(tc, row, event);
     }
 
     let target: WorkOrderTarget;
@@ -259,6 +322,36 @@ async function planDelivery(row: DeliveryRow): Promise<Plan> {
       targetSource = pinned.source;
       alreadyPinned = true;
     } else {
+      // A finished job whose technician asked for a CMMS work order writes
+      // its finish note to THAT order — never to whatever the policy target
+      // would pick — so the sheet and its order stay one record.
+      const requested = await requestedWorkOrderForJob(tc, row, event);
+      if (requested.kind === "pending") {
+        return { kind: "outcome", outcome: { state: "retryable_failure", reason: "requested_work_order_pending" } };
+      }
+      if (requested.kind === "failed") {
+        // The technician asked for THIS job's order and it was not created:
+        // hold the note visibly rather than writing it to some other order.
+        return {
+          kind: "outcome",
+          outcome: { state: "blocked_policy", reason: `requested_work_order_not_created:${requested.state}` },
+        };
+      }
+      if (requested.kind === "created") {
+        target = { providerId: row.connection_key, externalWorkOrderId: requested.externalWorkOrderId };
+        targetSource = "job_requested_work_order";
+        const payload = event.payload as { summary?: unknown };
+        const text = typeof payload.summary === "string" ? payload.summary.replace(CONTROL_CHARS_RE, "") : "";
+        const note: WorkLogNote = {
+          idempotencyKey: row.dedupe_key,
+          marker: markerFor(row.event_id),
+          text,
+          attributionLabel: "Technician",
+          occurredAt: new Date(event.occurred_at).toISOString(),
+          sourceRef: event.subject_ref,
+        };
+        return { kind: "deliver", target, targetSource, alreadyPinned, note };
+      }
       const targetRes = await resolveWorkOrderTarget(tc, {
         tenantId: row.tenant_id,
         provider: config.provider,
@@ -281,20 +374,142 @@ async function planDelivery(row: DeliveryRow): Promise<Plan> {
       }
     }
 
-    const payload = event.payload as { symptom?: unknown; faultCode?: unknown; fix?: unknown };
+    const payload = event.payload as { symptom?: unknown; faultCode?: unknown; fix?: unknown; summary?: unknown };
     const symptom = typeof payload.symptom === "string" ? payload.symptom : "";
     const faultCode = typeof payload.faultCode === "string" ? payload.faultCode : null;
     const fix = typeof payload.fix === "string" ? payload.fix : "";
+    // TASK-S7: a job_finished event's note is already the fully composed,
+    // job-sheet summary (finish-outbox.ts::jobFinishedNote) — use
+    // it verbatim (just stripped of control chars, same as buildNoteText
+    // does). Every other event type keeps buildNoteText exactly as before.
+    // Fallback to buildNoteText if a job_finished payload is ever missing a
+    // string `summary` (defensive — enqueueJobFinishedEvent always sets it).
+    const text =
+      event.event_type === "job_finished" && typeof payload.summary === "string"
+        ? payload.summary.replace(CONTROL_CHARS_RE, "")
+        : buildNoteText(symptom, faultCode, fix);
     const note: WorkLogNote = {
       idempotencyKey: row.dedupe_key,
       marker: markerFor(row.event_id),
-      text: buildNoteText(symptom, faultCode, fix),
+      text,
       attributionLabel: "Technician",
       occurredAt: new Date(event.occurred_at).toISOString(),
       sourceRef: event.subject_ref,
     };
     return { kind: "deliver", target, targetSource, alreadyPinned, note };
   });
+}
+
+/** States in which a `create_work_order` delivery may still produce an
+ *  order; a finish note waits for them rather than landing elsewhere. */
+const CREATE_IN_FLIGHT = new Set(["queued", "leased", "accepted_pending_verification", "retryable_failure", "outcome_unknown"]);
+
+type RequestedWorkOrder =
+  | { kind: "none" }
+  | { kind: "pending" }
+  | { kind: "failed"; state: string }
+  | { kind: "created"; externalWorkOrderId: string };
+
+/** The work order this job's `work_order_requested` delivery created on the
+ *  SAME connection, if any. Only `job_finished` events consult it, and only
+ *  a request made BEFORE the finish (lower aggregate sequence): the
+ *  dispatcher holds later events behind earlier ones, so waiting on a later
+ *  request would deadlock both. A request made after the finish carries the
+ *  finished sheet in its own description, so the note takes the policy path. */
+async function requestedWorkOrderForJob(tc: PoolClient, row: DeliveryRow, event: DomainEventRow): Promise<RequestedWorkOrder> {
+  if (event.event_type !== "job_finished") return { kind: "none" };
+  const jobId = (event.payload as { jobId?: unknown }).jobId;
+  if (typeof jobId !== "string") return { kind: "none" };
+  const res = await tc.query<{ state: string; external_ref: string | null }>(
+    `SELECT d.state, d.external_ref
+       FROM notebook_domain_events e
+       JOIN notebook_event_deliveries d ON d.event_id = e.event_id
+      WHERE e.tenant_id = $1::uuid
+        AND e.event_type = 'work_order_requested'
+        AND e.subject_ref = $2
+        AND e.aggregate_key = $4
+        AND e.sequence < $5::bigint
+        AND d.operation = 'create_work_order'
+        AND d.connection_key = $3
+      ORDER BY d.created_at DESC
+      LIMIT 1`,
+    [row.tenant_id, subjectRefForWorkOrderRequested(jobId), row.connection_key, event.aggregate_key, event.sequence],
+  );
+  const d = res.rows[0];
+  if (!d) return { kind: "none" };
+  if (d.state === "verified_by_readback" && d.external_ref) return { kind: "created", externalWorkOrderId: d.external_ref };
+  if (CREATE_IN_FLIGHT.has(d.state)) return { kind: "pending" };
+  return { kind: "failed", state: d.state };
+}
+
+/**
+ * TASK-OUTBOX-CREATE-WO: PLAN for a `create_work_order` delivery. The only
+ * fact that can change between attempts is which Atlas asset (if any) the
+ * order should link to — resolved from `cmms_equipment.atlas_id` (TEXT
+ * family, same convention `target.ts`'s own query uses) — so that is the one
+ * thing pinned (`PINNED_REQUEST_KEY`) on the first attempt and reused
+ * verbatim afterwards. `null` is a valid pinned answer ("no Atlas asset
+ * linked"), never re-resolved on retry.
+ */
+async function planCreateWorkOrder(tc: PoolClient, row: DeliveryRow, event: DomainEventRow): Promise<Plan> {
+  let externalAssetId: string | null;
+  let source: string;
+  let alreadyPinned = false;
+  const pinned = pinnedRequestOf(row);
+  if (pinned) {
+    if (pinned.providerId !== row.connection_key) {
+      return {
+        kind: "outcome",
+        outcome: { state: "blocked_policy", reason: `pinned_provider_mismatch:${pinned.providerId}` },
+      };
+    }
+    externalAssetId = pinned.externalAssetId;
+    source = pinned.source;
+    alreadyPinned = true;
+  } else if (event.equipment_entity_id) {
+    // `::text` on BOTH sides: production `cmms_equipment.tenant_id` is TEXT
+    // (008_tenant_cmms_config.sql), but tenancy is mid-migration to
+    // UUID-only (.claude/rules/mira-hub-migrations.md) and the shared
+    // integration-test fixture (db/integration-fixtures/000_base_cmms_rls.sql)
+    // deliberately keeps it UUID. Casting the column too makes the query
+    // correct against either shape instead of assuming one.
+    const eqRes = await tc.query<{ atlas_id: string | null }>(
+      `SELECT atlas_id FROM cmms_equipment WHERE tenant_id::text = $1::text AND id::text = $2`,
+      [row.tenant_id, event.equipment_entity_id],
+    );
+    const atlasId = eqRes.rows[0]?.atlas_id ?? null;
+    // Atlas asset ids are positive integers; the provider sends Number(id).
+    // A malformed mapping must never become `asset: { id: NaN }` (or link
+    // some other asset) — create the order unlinked and say why.
+    if (atlasId !== null && /^[1-9][0-9]*$/.test(atlasId)) {
+      externalAssetId = atlasId;
+      source = "cmms_equipment";
+    } else {
+      externalAssetId = null;
+      source = atlasId === null ? "unlinked" : "unlinked_invalid_atlas_id";
+    }
+  } else {
+    externalAssetId = null;
+    source = "unlinked";
+  }
+
+  const payload = event.payload as { title?: unknown; description?: unknown; priority?: unknown };
+  const title = typeof payload.title === "string" ? payload.title : "Work order request";
+  const description = typeof payload.description === "string" ? payload.description : "";
+  const priority = typeof payload.priority === "string" ? payload.priority : "medium";
+
+  const request: WorkOrderRequest = {
+    idempotencyKey: row.dedupe_key,
+    marker: markerFor(row.event_id),
+    title,
+    description,
+    priority,
+    externalAssetId,
+    attributionLabel: "Technician",
+    occurredAt: new Date(event.occurred_at).toISOString(),
+    sourceRef: event.subject_ref,
+  };
+  return { kind: "create", request, source, alreadyPinned };
 }
 
 /**
@@ -304,17 +519,26 @@ async function planDelivery(row: DeliveryRow): Promise<Plan> {
  * a long batch cannot run past its window mid-row. Zero rows = the lease was
  * reclaimed (or expired) — the caller must not write.
  */
-async function pinAndRenewLease(row: ClaimedRow, plan: DeliverPlan, leaseMs: number, now: Date): Promise<boolean> {
+async function pinAndRenewLease(row: ClaimedRow, plan: DeliverPlan | CreatePlan, leaseMs: number, now: Date): Promise<boolean> {
   const patch: Record<string, unknown> = plan.alreadyPinned
     ? {}
-    : {
-        [PINNED_TARGET_KEY]: {
-          providerId: plan.target.providerId,
-          externalWorkOrderId: plan.target.externalWorkOrderId,
-          source: plan.targetSource,
-          pinnedAt: now.toISOString(),
-        } satisfies PinnedTarget,
-      };
+    : plan.kind === "deliver"
+      ? {
+          [PINNED_TARGET_KEY]: {
+            providerId: plan.target.providerId,
+            externalWorkOrderId: plan.target.externalWorkOrderId,
+            source: plan.targetSource,
+            pinnedAt: now.toISOString(),
+          } satisfies PinnedTarget,
+        }
+      : {
+          [PINNED_REQUEST_KEY]: {
+            providerId: row.connection_key,
+            externalAssetId: plan.request.externalAssetId,
+            source: plan.source,
+            pinnedAt: now.toISOString(),
+          } satisfies PinnedRequest,
+        };
   const res = await pool.query(
     `UPDATE notebook_event_deliveries
         SET receipt = receipt || $1::jsonb,
@@ -331,25 +555,38 @@ async function pinAndRenewLease(row: ClaimedRow, plan: DeliverPlan, leaseMs: num
 }
 
 /** WRITE: the provider call, outside every database transaction. */
-async function writeDelivery(row: ClaimedRow, plan: DeliverPlan, deps: DispatchDeps, maxAttempts: number): Promise<Outcome> {
+async function writeDelivery(row: ClaimedRow, plan: DeliverPlan | CreatePlan, deps: DispatchDeps, maxAttempts: number): Promise<Outcome> {
   const provider = deps.providerFor(row.connection_key);
   if (!provider) {
     return { state: "unsupported", reason: "provider_not_available" };
   }
-  const mismatch = providerMismatch(row, plan, provider);
-  if (mismatch) return mismatch;
   let result: CmmsWriteResult;
-  try {
-    result = await provider.appendWorkLog(plan.target, plan.note);
-  } catch (err) {
-    // A throw is a poison signal, not an honest outcome — escalate to
-    // quarantine once retries are exhausted. Below that it is ambiguous, not
-    // retryable: the adapter was already invoked, so the write may have
-    // landed, and only read-back may move the row from here (Codex round 4).
-    if (row.attempts >= maxAttempts) {
-      return { state: "quarantined", reason: `poison: ${errMessage(err)}` };
+  if (plan.kind === "create") {
+    const mismatch = createProviderMismatch(row, provider);
+    if (mismatch) return mismatch;
+    try {
+      result = await provider.createWorkOrder(plan.request);
+    } catch (err) {
+      if (row.attempts >= maxAttempts) {
+        return { state: "quarantined", reason: `poison: ${errMessage(err)}` };
+      }
+      return { state: "outcome_unknown", reason: `throw: ${errMessage(err)}` };
     }
-    return { state: "outcome_unknown", reason: `throw: ${errMessage(err)}` };
+  } else {
+    const mismatch = providerMismatch(row, plan, provider);
+    if (mismatch) return mismatch;
+    try {
+      result = await provider.appendWorkLog(plan.target, plan.note);
+    } catch (err) {
+      // A throw is a poison signal, not an honest outcome — escalate to
+      // quarantine once retries are exhausted. Below that it is ambiguous, not
+      // retryable: the adapter was already invoked, so the write may have
+      // landed, and only read-back may move the row from here (Codex round 4).
+      if (row.attempts >= maxAttempts) {
+        return { state: "quarantined", reason: `poison: ${errMessage(err)}` };
+      }
+      return { state: "outcome_unknown", reason: `throw: ${errMessage(err)}` };
+    }
   }
   const state = deliveryStateFor(result);
   const reason = "reason" in result ? result.reason : undefined;
@@ -367,17 +604,30 @@ async function writeDelivery(row: ClaimedRow, plan: DeliverPlan, deps: DispatchD
  * (the `external_ref` is kept by FINALIZE's COALESCE), `outcome_unknown` when
  * it did not — until the attempt budget quarantines it for a human.
  */
-async function reconcileDelivery(row: ClaimedRow, plan: DeliverPlan, deps: DispatchDeps, maxAttempts: number): Promise<Outcome> {
+async function reconcileDelivery(
+  row: ClaimedRow,
+  plan: DeliverPlan | CreatePlan,
+  deps: DispatchDeps,
+  maxAttempts: number,
+): Promise<Outcome> {
   const pending: DeliveryState = isAcknowledged(row) ? "accepted_pending_verification" : "outcome_unknown";
   const provider = deps.providerFor(row.connection_key);
   if (!provider) {
     return { state: pending, reason: "provider_not_available" };
   }
-  const mismatch = providerMismatch(row, plan, provider);
-  if (mismatch) return mismatch;
+  if (plan.kind === "create") {
+    const mismatch = createProviderMismatch(row, provider);
+    if (mismatch) return mismatch;
+  } else {
+    const mismatch = providerMismatch(row, plan, provider);
+    if (mismatch) return mismatch;
+  }
   let readBack: CmmsReadBackResult;
   try {
-    readBack = await provider.readBackWorkLog(plan.target, plan.note.marker);
+    readBack =
+      plan.kind === "create"
+        ? await provider.readBackWorkOrder(markerFor(row.event_id))
+        : await provider.readBackWorkLog(plan.target, plan.note.marker);
   } catch (err) {
     if (row.attempts >= maxAttempts) {
       return { state: "quarantined", reason: `poison: ${errMessage(err)}` };

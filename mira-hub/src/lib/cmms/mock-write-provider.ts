@@ -12,6 +12,7 @@ import {
   type CmmsWriteProvider,
   type CmmsWriteResult,
   type WorkLogNote,
+  type WorkOrderRequest,
   type WorkOrderTarget,
   countMarker,
   renderWorkLogText,
@@ -30,9 +31,19 @@ export interface MockRecord {
   createdAt: string;
 }
 
+export interface MockWorkOrder {
+  id: string;
+  title: string;
+  description: string;
+  externalAssetId: string | null;
+  createdAt: string;
+}
+
 export interface MockCmmsWriteProviderOptions {
   /** Default true. When false, append/read-work-log report `unsupported`. */
   supportsWorkLog?: boolean;
+  /** Default true. When false, createWorkOrder/readBackWorkOrder report `unsupported`. */
+  supportsCreateWorkOrder?: boolean;
   /** The provider slug this mock stands in for (default "mock"). The
    *  dispatcher refuses an adapter whose id differs from the delivery's
    *  `connection_key`, so a test wiring a mock to an "atlas" connection
@@ -41,7 +52,7 @@ export interface MockCmmsWriteProviderOptions {
 }
 
 export interface MockCall {
-  op: "appendWorkLog" | "readBackWorkLog";
+  op: "appendWorkLog" | "readBackWorkLog" | "createWorkOrder" | "readBackWorkOrder";
   woId: string;
   marker: string;
 }
@@ -50,19 +61,37 @@ export class MockCmmsWriteProvider implements CmmsWriteProvider {
   readonly providerId: string;
 
   private readonly supportsWorkLog: boolean;
+  private readonly supportsCreateWorkOrder: boolean;
   private readonly recordsByWorkOrder = new Map<string, MockRecord[]>();
+  private readonly workOrdersByMarker = new Map<string, MockWorkOrder>();
   private readonly callLog: MockCall[] = [];
   private nextFailure: MockFailureKind | null = null;
+  private nextCreateFailure: MockFailureKind | null = null;
   private nextId = 1;
+  private nextWoId = 1;
+  /** Number of times `createWorkOrder` actually created a NEW order (not a
+   *  marker-idempotent hit). Tests assert exactly-one-create. */
+  creates = 0;
 
   constructor(options: MockCmmsWriteProviderOptions = {}) {
     this.supportsWorkLog = options.supportsWorkLog ?? true;
+    this.supportsCreateWorkOrder = options.supportsCreateWorkOrder ?? true;
     this.providerId = options.providerId ?? "mock";
   }
 
   /** Inject exactly one failure on the next `appendWorkLog` call. */
   failNext(kind: MockFailureKind): void {
     this.nextFailure = kind;
+  }
+
+  /** Inject exactly one failure on the next `createWorkOrder` call. */
+  failNextCreate(kind: MockFailureKind): void {
+    this.nextCreateFailure = kind;
+  }
+
+  /** All work orders created so far (inspection for tests). */
+  orders(): MockWorkOrder[] {
+    return Array.from(this.workOrdersByMarker.values());
   }
 
   /** Live reference to a work order's stored records — tests may seed fixtures by pushing onto it. */
@@ -84,6 +113,9 @@ export class MockCmmsWriteProvider implements CmmsWriteProvider {
     const workLog: CmmsCapability = this.supportsWorkLog
       ? { support: "implemented" }
       : { support: "unsupported", reason: "mock_disabled" };
+    const createWo: CmmsCapability = this.supportsCreateWorkOrder
+      ? { support: "implemented" }
+      : { support: "unsupported", reason: "mock_disabled" };
 
     return {
       append_work_log: workLog,
@@ -92,6 +124,7 @@ export class MockCmmsWriteProvider implements CmmsWriteProvider {
       record_reading: { support: "unsupported", reason: "not_implemented" },
       transition_work_order: { support: "unsupported", reason: "not_implemented" },
       list_changes: { support: "unsupported", reason: "not_implemented" },
+      create_work_order: createWo,
     };
   }
 
@@ -172,5 +205,71 @@ export class MockCmmsWriteProvider implements CmmsWriteProvider {
     };
     this.records(woId).push(record);
     return record;
+  }
+
+  // -------------------------------------------------------------------------
+  // createWorkOrder / readBackWorkOrder
+  // -------------------------------------------------------------------------
+
+  async createWorkOrder(req: WorkOrderRequest): Promise<CmmsWriteResult> {
+    this.callLog.push({ op: "createWorkOrder", woId: "", marker: req.marker });
+
+    if (!this.supportsCreateWorkOrder) {
+      return { kind: "unsupported", reason: "mock_disabled", receipt: {} };
+    }
+
+    // Idempotent on marker: a matching order already exists — never create a
+    // second one.
+    const existing = this.workOrdersByMarker.get(req.marker);
+    if (existing) {
+      return { kind: "verified_by_readback", externalRef: existing.id, receipt: { id: existing.id } };
+    }
+
+    const failure = this.nextCreateFailure;
+    this.nextCreateFailure = null;
+
+    if (failure === "throw") {
+      throw new Error("mock_injected_throw");
+    }
+    if (failure === "retryable_failure") {
+      return { kind: "retryable_failure", reason: "mock_injected_retryable_failure", receipt: {} };
+    }
+    if (failure === "permission_denied") {
+      return { kind: "permission_denied", reason: "mock_injected_permission_denied", receipt: {} };
+    }
+    if (failure === "permanent_failure") {
+      return { kind: "permanent_failure", reason: "mock_injected_permanent_failure", receipt: {} };
+    }
+
+    const order: MockWorkOrder = {
+      id: `mock-wo-${this.nextWoId++}`,
+      title: req.title,
+      description: `${req.marker} ${req.description}`,
+      externalAssetId: req.externalAssetId,
+      createdAt: req.occurredAt,
+    };
+    this.workOrdersByMarker.set(req.marker, order);
+    this.creates++;
+
+    if (failure === "lost_response") {
+      // The order IS created (the "send" landed) but this call reports the
+      // outcome as unknown — the next createWorkOrder with the same marker
+      // must find it by read-back rather than creating a second one.
+      return { kind: "outcome_unknown", reason: "mock_injected_lost_response", receipt: {} };
+    }
+
+    return { kind: "verified_by_readback", externalRef: order.id, receipt: { id: order.id } };
+  }
+
+  async readBackWorkOrder(marker: string): Promise<CmmsReadBackResult> {
+    this.callLog.push({ op: "readBackWorkOrder", woId: "", marker });
+
+    if (!this.supportsCreateWorkOrder) {
+      return { kind: "unsupported", reason: "mock_disabled", receipt: {} };
+    }
+
+    const existing = this.workOrdersByMarker.get(marker);
+    if (!existing) return { kind: "not_found", receipt: {} };
+    return { kind: "found", externalRef: existing.id, count: 1, receipt: { id: existing.id } };
   }
 }

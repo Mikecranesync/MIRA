@@ -354,12 +354,22 @@ export function chatBodyFor(
   docIds: readonly string[],
   history: ReturnType<typeof historyRows>,
   sel: HubSelection,
-  rider?: { visualEvidence?: { fileId: string; capturedAt: string }; guidedEscalation?: { sessionId: string } },
+  rider?: {
+    visualEvidence?: { fileId: string; capturedAt: string };
+    guidedEscalation?: { sessionId: string };
+    /** TASK-S3: the open Living Work Sheet job, read by the chat route as
+     *  the literal field `livingSheetJobId` (chat/route.ts) to decide
+     *  whether to run the $0 proposer and tee a sheet_receipt frame. Sent
+     *  only while a sheet is open for THIS notebook — never a stale job id
+     *  left over from a different notebook. */
+    livingSheetJobId?: string;
+  },
 ): ChatBody & {
   threadId: string | null;
   mode?: "general";
   visualEvidence?: { fileId: string; capturedAt: string };
   guidedEscalation?: { sessionId: string };
+  livingSheetJobId?: string;
 } {
   const base = buildChatBody(question, [...docIds], history);
   const visual = rider?.visualEvidence;
@@ -373,6 +383,7 @@ export function chatBodyFor(
     ...(docIds.length === 0 ? { mode: "general" as const } : {}),
     ...(visual ? { visualEvidence: visual } : {}),
     ...(rider?.guidedEscalation ? { guidedEscalation: rider.guidedEscalation } : {}),
+    ...(rider?.livingSheetJobId ? { livingSheetJobId: rider.livingSheetJobId } : {}),
   };
 }
 
@@ -594,3 +605,13 @@ export function createLatestLoadTracker(): {
   };
 }
 
+
+/** TASK-S3: a chat turn carries `livingSheetJobId` only when a sheet job is
+ *  open on the SAME notebook, so switching notebooks never sends a stale id. */
+export function withLivingSheetRider<B extends object>(
+  body: B,
+  notebookId: string,
+  openJob: { notebookId: string; jobId: string } | null,
+): B | (B & { livingSheetJobId: string }) {
+  return openJob && openJob.notebookId === notebookId ? { ...body, livingSheetJobId: openJob.jobId } : body;
+}
