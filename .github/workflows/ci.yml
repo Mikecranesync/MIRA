@@ -1846,7 +1846,8 @@ jobs:
             echo "::error::could not confirm a positive passing test count"; exit 1; }
           grep -qE "✓ src/capabilities/living-sheet/__tests__/request-work-order-outbox\.integration\.test\.ts" /tmp/wo-request.plain || {
             echo "::error::work-order request outbox suite did not run and pass"; exit 1; }
-          grep -qE "✓ src/capabilities/living-sheet/__tests__/migration-order\.integration\.test\.ts" /tmp/wo-request.plain || {
+          # Six order/population cases plus the113-only rollback: a partial skip must fail.
+          grep -qE "✓ src/capabilities/living-sheet/__tests__/migration-order\.integration\.test\.ts \(7 tests\)" /tmp/wo-request.plain || {
             echo "::error::migration-order suite did not run and pass"; exit 1; }
 
   manual-search-quota-pg:

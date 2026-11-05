@@ -34,3 +34,5 @@ Physical Pixel9a Chrome156 opened actual staging. Its signed-in account is outsi
 Private reproducible receipts: /Users/charlienode/Documents/Codex/2026-11-05/task/codex-pilot-journey-20261105T225657Z-5a2295. Staging approval plan and shortest human checklist are retained there. No customer content or authentication material is published here.
 
 The final rollback guard was independently mutated always-true and always-false: the corresponding negative and preservation tests fail. Guarded source restored byte-for-byte and the133test suite passes. No shared rollback was run.
+
+CI receipt hardening: an actual filtered run (1passed/6skipped) was accepted by the former filename-only pattern and is rejected by the required seven-test file receipt. Partial execution is not counted as acceptance. Existing pipefail/positive-count/error guards remain.
