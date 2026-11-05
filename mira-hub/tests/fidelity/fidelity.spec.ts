@@ -282,7 +282,7 @@ for (const [label, width, height] of [["portrait", 390, 844], ["landscape", 844,
       await page.reload();
       await title("reload", "Seal inspection — GS10 — Line 3 conveyor · FactoryLM Hub");
       await navigate();
-      await page.getByRole("button", { name: "Motor vibration", exact: true }).click();
+      await page.getByRole("region", { name: "Projects", exact: true }).getByRole("button", { name: "Motor vibration", exact: true }).click();
       await title("same-project thread switch", "Motor vibration — GS10 — Line 3 conveyor · FactoryLM Hub");
       await navigate();
       await page.getByRole("button", { name: "Control conveyor", exact: true }).click();
