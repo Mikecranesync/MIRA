@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { CameraIcon, CloseIcon, DocumentIcon, GalleryIcon, QRIcon } from "./icons";
 
 export interface AttachmentMenuProps {
@@ -20,10 +21,12 @@ export interface AttachmentMenuProps {
  * sheet on the mobile profile, an anchored popover on the web profile.
  */
 export function AttachmentMenu({ native, busy, onPhoto, onFile, onCamera, onScan, onClose }: AttachmentMenuProps) {
+  const cameraHelp = useId();
+  const scanHelp = useId();
   return <div className="fl-attachment-menu" role="dialog" aria-modal="true" aria-label="Attachment menu">
     <span className="fl-attachment-menu__handle" aria-hidden="true" />
     <div className="fl-attachment-menu__head">
-      <p className="fl-attachment-menu__title">Add to message</p>
+      <p className="fl-attachment-menu__title">Attach</p>
       <button type="button" className="fl-attachment-menu__close" aria-label="Close attachment menu" onClick={onClose}><CloseIcon /></button>
     </div>
     <div className="fl-attachment-menu__items">
@@ -37,19 +40,23 @@ export function AttachmentMenu({ native, busy, onPhoto, onFile, onCamera, onScan
         type="button"
         className="fl-attachment-menu__item"
         disabled={!native || busy}
-        title={native ? "Capture a photo with the device camera" : "Camera requires a native device"}
+        aria-label="Camera"
+        aria-describedby={!native ? cameraHelp : undefined}
+        title={native ? "Capture a photo with the device camera" : "Camera requires the mobile app"}
         onClick={onCamera}
       >
-        <CameraIcon className="fl-attachment-menu__icon" /><span>Camera</span>
+        <CameraIcon className="fl-attachment-menu__icon" /><span className="fl-attachment-menu__copy"><span>Camera</span>{!native && <span id={cameraHelp} className="fl-attachment-menu__reason">Requires the mobile app</span>}</span>
       </button>
       <button
         type="button"
         className="fl-attachment-menu__item"
         disabled={!native || busy}
-        title={native ? "Scan a machine QR code" : "Scanning requires a native device"}
+        aria-label="Scan QR code"
+        aria-describedby={!native ? scanHelp : undefined}
+        title={native ? "Scan a FactoryLM equipment QR code" : "QR scanning requires the mobile app"}
         onClick={onScan}
       >
-        <QRIcon className="fl-attachment-menu__icon" /><span>Scan machine</span>
+        <QRIcon className="fl-attachment-menu__icon" /><span className="fl-attachment-menu__copy"><span>Scan QR code</span>{!native && <span id={scanHelp} className="fl-attachment-menu__reason">Requires the mobile app</span>}</span>
       </button>
     </div>
   </div>;

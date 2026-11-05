@@ -211,6 +211,7 @@
 .fl-composer__send { flex: 0 0 auto; inline-size: auto; min-block-size: max(2.75rem, 44px); min-inline-size: max(2.75rem, 44px); padding-inline: var(--fl-workspace-space-2); border-radius: var(--fl-workspace-radius) !important; background: var(--fl-workspace-bg); text-align: center; }
 .fl-composer__machine { font-size: var(--fl-workspace-fs-xs); }
 .fl-composer__icon svg { inline-size: 1.25rem; block-size: 1.25rem; }
+.fl-composer__icon .fl-composer__attach-glyph { inline-size: var(--fl-workspace-space-6); block-size: var(--fl-workspace-space-6); flex: 0 0 auto; }
 .fl-composer__icon:disabled { color: var(--fl-workspace-off-ink); }
 .fl-composer__send { background: var(--fl-workspace-accent); color: var(--fl-workspace-surface); }
 .fl-composer__send:disabled { background: var(--fl-workspace-off-tint); color: var(--fl-workspace-off-ink); }
@@ -236,7 +237,9 @@
 .fl-attachment-menu__close svg { inline-size: 1.25rem; block-size: 1.25rem; }
 .fl-attachment-menu__handle { display: none; }
 .fl-attachment-menu__item { display: flex; align-items: center; justify-content: flex-start; gap: var(--fl-workspace-space-3); min-block-size: max(3.25rem, 52px); padding-inline: var(--fl-workspace-space-3); border-radius: var(--fl-workspace-radius); text-align: start; font-size: var(--fl-workspace-fs-body); }
-.fl-attachment-menu__item:disabled { color: var(--fl-workspace-off-ink); }
+.fl-attachment-menu__item:disabled { color: var(--fl-workspace-muted); background: var(--fl-workspace-off-tint); border-color: var(--fl-workspace-off-line); border-style: dashed; cursor: not-allowed; }
+.fl-attachment-menu__copy { display: flex; flex-direction: column; align-items: flex-start; gap: var(--fl-workspace-space-1); min-inline-size: 0; }
+.fl-attachment-menu__reason { color: var(--fl-workspace-ink); font-size: var(--fl-workspace-fs-sm); }
 .fl-attachment-menu__icon { inline-size: 1.5rem; block-size: 1.5rem; flex: 0 0 auto; }
 /* Web profile: an anchored popover above the composer's "+" control. */
 .fl-attachment-menu { position: absolute; inset-inline-start: var(--fl-workspace-space-4); inset-block-end: calc(100% - var(--fl-workspace-space-1)); inline-size: min(20rem, calc(100% - 2 * var(--fl-workspace-space-4))); }

@@ -548,7 +548,7 @@ describe("UnifiedChat", () => {
     render(<UnifiedChat turns={[]} liveTurns={[]} pending={null} busy={false} canStop={false} canRetry={false} chatError={null} handlers={h} meta={META} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
-    fireEvent.click(screen.getByRole("button", { name: "Scan machine" }));
+    fireEvent.click(screen.getByRole("button", { name: "Scan QR code" }));
 
     await waitFor(() => expect(h.onScanMachine).toHaveBeenCalledTimes(1));
   });
