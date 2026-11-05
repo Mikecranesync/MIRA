@@ -652,8 +652,13 @@ export async function attachSource(
     /** Replace an origin only while this exact technician review remains current. */
     reviewedPhoto?: { observationId: string; threadId: string };
     candidatePhoto?: { observationId: string; threadId: string };
+    /** Publish this doc as the origin's one visible source, replacing exactly this doc_id: under the
+     *  notebook lock, it must still be a visible source of the same origin, or nothing is written
+     *  and the result is `stale_source`. Every other visible source of the origin is superseded in
+     *  the same transaction (the drawing review — Codex #5204 F3). */
+    replacesCurrent?: string;
   } = {},
-): Promise<{ ok: boolean; error?: string; docId?: string; alreadyAttached?: boolean }> {
+): Promise<{ ok: boolean; error?: string; docId?: string; alreadyAttached?: boolean; supersededDocIds?: string[] }> {
   // hub_uploads: raw pool + explicit tenant predicate (TEXT column vs UUID session).
   const doc = await pool.query(
     `SELECT id FROM hub_uploads WHERE tenant_id = $1 AND id = $2::uuid LIMIT 1`,
@@ -679,6 +684,17 @@ export async function attachSource(
         [tenantId, notebookId, opts.originFileId],
       );
       if (existing.rows.length) return { ok: true, docId: String(existing.rows[0].doc_id), alreadyAttached: true };
+    }
+    if (opts.replacesCurrent !== undefined) {
+      if (!opts.originFileId || opts.reviewedPhoto || opts.candidatePhoto || opts.reuseVisibleOrigin)
+        return { ok: false, error: "stale_source" };
+      const cur = await c.query(
+        `SELECT 1 FROM equipment_notebook_sources
+          WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND doc_id = $3::uuid
+            AND origin_file_id = $4::uuid AND superseded_at IS NULL AND match_state <> 'rejected'`,
+        [tenantId, notebookId, opts.replacesCurrent, opts.originFileId],
+      );
+      if (!cur.rows.length) return { ok: false, error: "stale_source" };
     }
     const photoReading = opts.reviewedPhoto ?? opts.candidatePhoto;
     if (photoReading) {
@@ -728,10 +744,17 @@ export async function attachSource(
       originFileId: opts.originFileId ?? null,
       matchEvidence: opts.matchEvidence,
     });
-    if ((opts.reuseVisibleOrigin || opts.reviewedPhoto) && opts.originFileId) {
+    if ((opts.reuseVisibleOrigin || opts.reviewedPhoto || opts.replacesCurrent !== undefined) && opts.originFileId) {
       await c.query(`UPDATE equipment_notebook_sources SET superseded_at = NULL
         WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND doc_id = $3::uuid`,
       [tenantId, notebookId, docId]);
+    }
+    if (opts.replacesCurrent !== undefined) {
+      const sup = await c.query(`UPDATE equipment_notebook_sources SET superseded_at = now()
+        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND origin_file_id = $3::uuid
+          AND doc_id <> $4::uuid AND superseded_at IS NULL
+        RETURNING doc_id::text AS doc_id`, [tenantId, notebookId, opts.originFileId, docId]);
+      return { ok: true, docId, alreadyAttached: false, supersededDocIds: sup.rows.map((r) => String(r.doc_id)) };
     }
     if (opts.reviewedPhoto) {
       await c.query(`UPDATE equipment_notebook_sources SET superseded_at = now()
@@ -848,10 +871,10 @@ export async function findVisibleOriginSource(
   tenantId: string,
   notebookId: string,
   originFileId: string,
-): Promise<{ docId: string; matchEvidence: unknown } | null> {
+): Promise<{ docId: string; matchEvidence: unknown; matchState?: MatchState } | null> {
   return withTenantContext(tenantId, async (c) => {
     const res = await c.query(
-      `SELECT doc_id::text AS doc_id, match_evidence
+      `SELECT doc_id::text AS doc_id, match_evidence, match_state
          FROM equipment_notebook_sources
         WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
           AND origin_file_id = $3::uuid
@@ -864,6 +887,7 @@ export async function findVisibleOriginSource(
     return {
       docId: String(res.rows[0].doc_id),
       matchEvidence: res.rows[0].match_evidence ?? null,
+      matchState: res.rows[0].match_state as MatchState,
     };
   });
 }

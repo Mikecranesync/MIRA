@@ -42,13 +42,18 @@ import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
 import { getNotebook, type EquipmentNotebook } from "@/lib/equipment-notebooks";
-import { loadNotebookDocTexts } from "@/capabilities/work-packet/document-text";
+import { loadNotebookDocTexts, withoutDrawingCandidates } from "@/capabilities/work-packet/document-text";
 import { parseCatPumpsDataSheet, sheetModelFor } from "@/capabilities/work-packet/catpumps-datasheet";
 import { parseCatPumpsServiceManual } from "@/capabilities/work-packet/catpumps-service-manual";
 import { buildDraftPacket } from "@/capabilities/work-packet/draft";
 import { isSupportedManufacturer, manufacturerRefusalMessage } from "@/capabilities/work-packet/manufacturer";
 import { documentRevision } from "@/capabilities/work-packet/revision";
-import { mergeDrawingPhotos, parseDrawingSourceText, type DrawingSheetPhoto } from "@/capabilities/work-packet/drawing";
+import {
+  extractCanonicalDrawingText,
+  mergeDrawingPhotos,
+  parseDrawingSourceText,
+  type DrawingSheetPhoto,
+} from "@/capabilities/work-packet/drawing";
 import { buildConnectionPacket } from "@/capabilities/work-packet/drawing-packet";
 import type {
   DataSheet,
@@ -191,16 +196,6 @@ function availabilityBlocking(
 // returns `null` and the existing GET/POST logic below runs byte-identical to
 // before this change, so every pre-existing CAT-flow behaviour is preserved.
 
-/** The first line of `fullText` whose leading " | "-delimited token is exactly "KIND", to end of
- *  text — i.e. the canonical `renderDrawingSourceText` block, regardless of what header a
- *  materializer (`buildPhotoSourceText`, the drawing-photos PUT review) prepended in front of it.
- *  `null` when no such line exists (plain prose, or a non-drawing document). */
-function extractCanonicalDrawingText(fullText: string): string | null {
-  const lines = fullText.split("\n");
-  const idx = lines.findIndex((l) => l.trim().split(" | ")[0]?.trim() === "KIND");
-  if (idx === -1) return null;
-  return lines.slice(idx).join("\n");
-}
 
 /** Rebuilds `DrawingSheetPhoto[]` from every attached doc that carries `origin` (set by
  *  `document-text.ts::loadNotebookDocTexts` from `equipment_notebook_sources.origin_file_id` +
@@ -228,10 +223,15 @@ function drawingSheetPhotosFromDocs(docs: readonly DocText[]): DrawingSheetPhoto
  *  production, but also works against a plain `Request` (every route test in this family
  *  constructs its fixtures with the bare `Request` constructor, not `NextRequest`). */
 function connectionRefFrom(req: NextRequest, body?: unknown): string | null {
-  const q = new URL(req.url).searchParams.get("connection");
+  return paramFrom(req, body, "connection");
+}
+
+/** A string parameter from the query string or, POST only, the JSON body. */
+function paramFrom(req: NextRequest, body: unknown, name: string): string | null {
+  const q = new URL(req.url).searchParams.get(name);
   if (q && q.trim()) return q.trim();
   if (body && typeof body === "object" && !Array.isArray(body)) {
-    const c = (body as Record<string, unknown>).connection;
+    const c = (body as Record<string, unknown>)[name];
     if (typeof c === "string" && c.trim()) return c.trim();
   }
   return null;
@@ -248,6 +248,8 @@ function buildConnectionPacketIfPresent(opts: {
   identity: Identity;
   docs: DocText[];
   workOrder: WorkOrderInput;
+  /** The route's already-classified work-order hazard flags (Codex #5204 F5). */
+  hazardFlags?: readonly string[];
 }): DraftResult | null {
   const connectionRef = connectionRefFrom(opts.req, opts.body);
   if (!connectionRef) return null;
@@ -261,7 +263,10 @@ function buildConnectionPacketIfPresent(opts: {
     workOrder: opts.workOrder,
     sheets,
     connectionRef,
+    // Which drawing, when the connection id is on more than one (Codex #5204 F2).
+    drawing: paramFrom(opts.req, opts.body, "drawing"),
     docs: opts.docs,
+    hazardFlags: opts.hazardFlags ?? [],
   });
 }
 
@@ -342,7 +347,11 @@ export async function GET(req: NextRequest, { params }: Params) {
     if (!notebook) return NextResponse.json({ error: "notebook_not_found" }, { status: 404 });
 
     const identity = identityOf(notebook);
-    const docs = await loadNotebookDocTexts(ctx.tenantId, id);
+    // A connection request also admits unreviewed drawing candidates (values stay Proposed —
+    // Codex #5204 F6); every other path sees only the notebook's enabled sources.
+    const loaded = await loadNotebookDocTexts(ctx.tenantId, id, {
+      includeDrawingCandidates: connectionRefFrom(req) !== null,
+    });
 
     // Connection packet (drawing-photo sources) — GET has no work-order, so a
     // synthetic placeholder stands in; `buildConnectionPacket` stamps
@@ -352,7 +361,7 @@ export async function GET(req: NextRequest, { params }: Params) {
       body: undefined,
       notebookId: id,
       identity,
-      docs,
+      docs: loaded,
       workOrder: {
         id: `connection-${Date.now()}`,
         title: "Connection packet preview",
@@ -366,6 +375,7 @@ export async function GET(req: NextRequest, { params }: Params) {
       return NextResponse.json(connectionResult, { status: connectionResult.ok ? 200 : 422 });
     }
 
+    const docs = withoutDrawingCandidates(loaded);
     const classified = classifyAll(docs);
     const body: WorkPacketAvailability = {
       enabled: true,
@@ -413,19 +423,23 @@ export async function POST(req: NextRequest, { params }: Params) {
     if (trigger) hazardFlags.push(hazardBanner(trigger));
 
     const identity = identityOf(notebook);
-    const docs = await loadNotebookDocTexts(ctx.tenantId, id);
+    const loaded = await loadNotebookDocTexts(ctx.tenantId, id, {
+      includeDrawingCandidates: connectionRefFrom(req, rawBody) !== null,
+    });
 
     const connectionResult = buildConnectionPacketIfPresent({
       req,
       body: rawBody,
       notebookId: id,
       identity,
-      docs,
+      docs: loaded,
       workOrder,
+      hazardFlags,
     });
     if (connectionResult) {
       return NextResponse.json(connectionResult, { status: connectionResult.ok ? 200 : 422 });
     }
+    const docs = withoutDrawingCandidates(loaded);
 
     const input: DraftInput = {
       notebookId: id,

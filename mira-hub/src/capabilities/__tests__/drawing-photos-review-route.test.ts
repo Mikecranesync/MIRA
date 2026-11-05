@@ -13,7 +13,6 @@ vi.mock("@/lib/equipment-notebooks", async (importOriginal) => ({
   getSourceResolution: vi.fn(),
   markNameplateDocVerified: vi.fn(),
   attachSource: vi.fn(),
-  supersedePriorOriginSources: vi.fn(),
 }));
 vi.mock("@/capabilities/photo-source", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/capabilities/photo-source")>()),
@@ -29,7 +28,6 @@ import {
   getSourceResolution,
   markNameplateDocVerified,
   attachSource,
-  supersedePriorOriginSources,
 } from "@/lib/equipment-notebooks";
 import { materializeDerivedTextDoc } from "@/capabilities/photo-source";
 import { PHOTO_A } from "@/capabilities/work-packet/__tests__/fixtures/drawing-example";
@@ -68,8 +66,7 @@ beforeEach(() => {
   });
   vi.mocked(materializeDerivedTextDoc).mockResolvedValue({ docId: NEW_DOC_ID, chunkCount: 5 });
   vi.mocked(markNameplateDocVerified).mockResolvedValue(5);
-  vi.mocked(attachSource).mockResolvedValue({ ok: true, docId: NEW_DOC_ID });
-  vi.mocked(supersedePriorOriginSources).mockResolvedValue([DOC_ID]);
+  vi.mocked(attachSource).mockResolvedValue({ ok: true, docId: NEW_DOC_ID, supersededDocIds: [DOC_ID] });
 });
 
 describe("flag + auth + tenancy", () => {
@@ -157,7 +154,15 @@ describe("the corrected text must parse (validate before materialize)", () => {
     expect(body.error).toBe("text_unparseable");
     expect(materializeDerivedTextDoc).not.toHaveBeenCalled();
     expect(attachSource).not.toHaveBeenCalled();
-    expect(supersedePriorOriginSources).not.toHaveBeenCalled();
+  });
+
+  it("422s a row with more cells than the format allows, rather than shifting columns (Codex #5204 F4)", async () => {
+    const res = await PUT(
+      makeReq({ text: "KIND | drawing\nCONNECTION | C9 | A | extra-cell" }),
+      makeParams(NOTEBOOK_ID, DOC_ID),
+    );
+    expect(res.status).toBe(422);
+    expect(attachSource).not.toHaveBeenCalled();
   });
 
   it("422s text with an unrecognized LINE tag", async () => {
@@ -200,21 +205,31 @@ describe("a valid review materializes, verifies, attaches and supersedes", () =>
         matchEvidence: expect.objectContaining({
           drawing_transcription: expect.objectContaining({ reviewed: true, by: "x@y" }),
         }),
+        // Publish + supersede happen in ONE attachSource transaction, conditioned on DOC_ID.
+        replacesCurrent: DOC_ID,
       }),
     );
-    expect(supersedePriorOriginSources).toHaveBeenCalledWith(TENANT_ID, NOTEBOOK_ID, FILE_ID, NEW_DOC_ID);
 
     // Server-written review attribution — never taken from the request body.
     const markOrder = vi.mocked(markNameplateDocVerified).mock.invocationCallOrder[0];
-    const supersedeOrder = vi.mocked(supersedePriorOriginSources).mock.invocationCallOrder[0];
-    expect(markOrder).toBeLessThan(supersedeOrder);
+    const attachOrder = vi.mocked(attachSource).mock.invocationCallOrder[0];
+    expect(markOrder).toBeLessThan(attachOrder);
+  });
+
+  it("409s when the reviewed reading stopped being current before publication (Codex #5204 F3)", async () => {
+    // A concurrent review published first: attachSource's in-transaction check finds DOC_ID
+    // superseded and writes nothing.
+    vi.mocked(attachSource).mockResolvedValue({ ok: false, error: "stale_source" });
+    const res = await PUT(makeReq({ text: CORRECTED_TEXT }), makeParams(NOTEBOOK_ID, DOC_ID));
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe("source_superseded");
   });
 
   it("503s when materialization is already in progress, without superseding anything", async () => {
     vi.mocked(materializeDerivedTextDoc).mockResolvedValue({ docId: null, chunkCount: 0 });
     const res = await PUT(makeReq({ text: CORRECTED_TEXT }), makeParams(NOTEBOOK_ID, DOC_ID));
     expect(res.status).toBe(503);
-    expect(supersedePriorOriginSources).not.toHaveBeenCalled();
+    expect(attachSource).not.toHaveBeenCalled();
     expect(markNameplateDocVerified).not.toHaveBeenCalled();
   });
 
@@ -222,6 +237,6 @@ describe("a valid review materializes, verifies, attaches and supersedes", () =>
     vi.mocked(attachSource).mockResolvedValue({ ok: false, error: "doc_not_found" });
     const res = await PUT(makeReq({ text: CORRECTED_TEXT }), makeParams(NOTEBOOK_ID, DOC_ID));
     expect(res.status).toBe(503);
-    expect(supersedePriorOriginSources).not.toHaveBeenCalled();
+    expect((await res.json()).supersededDocIds).toBeUndefined();
   });
 });

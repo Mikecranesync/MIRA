@@ -16,7 +16,9 @@ vi.mock("@/lib/equipment-notebooks", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/equipment-notebooks")>()),
   getNotebook: vi.fn(),
   attachSource: vi.fn(),
+  findVisibleOriginSource: vi.fn(),
 }));
+vi.mock("@/capabilities/work-packet/document-text", () => ({ loadDocCanonicalDrawingText: vi.fn() }));
 vi.mock("@/lib/workspace-files", () => ({
   parkOrReuseFile: vi.fn(),
   attachFileToTargets: vi.fn(),
@@ -37,7 +39,9 @@ vi.mock("@/app/api/equipment-notebooks/[id]/work-packet/route", () => ({ workPac
 import { POST } from "@/app/api/equipment-notebooks/[id]/work-packet/drawing-photos/route";
 import { workPacketEnabled } from "@/app/api/equipment-notebooks/[id]/work-packet/route";
 import { sessionOr401 } from "@/lib/session";
-import { getNotebook, attachSource } from "@/lib/equipment-notebooks";
+import { getNotebook, attachSource, findVisibleOriginSource } from "@/lib/equipment-notebooks";
+import { loadDocCanonicalDrawingText } from "@/capabilities/work-packet/document-text";
+import { DRAWING_TRANSCRIPTION_PRODUCER } from "@/capabilities/work-packet/drawing-prompt";
 import { parkOrReuseFile, attachFileToTargets } from "@/lib/workspace-files";
 import { isRecognizerConfigured } from "@/lib/nameplate";
 import { openAiVisionSelectable } from "@/capabilities/openai-run-budget";
@@ -211,9 +215,76 @@ describe("a parsed drawing transcription is kept as an unconfirmed candidate sou
         matchState: "candidate",
         sourceRole: "drawing",
         originFileId: FILE_ID,
-        matchEvidence: { drawing_transcription: { reviewed: false } },
+        matchEvidence: {
+          drawing_transcription: {
+            reviewed: false,
+            producer: DRAWING_TRANSCRIPTION_PRODUCER,
+            photo_sha256: "photo-sha256",
+          },
+        },
       }),
     );
+  });
+});
+
+describe("recall before recompute — a retried photo never pays for vision twice (Codex #5204 F7)", () => {
+  const stored = (evidence: unknown, matchState: "candidate" | "user_confirmed" | "rejected" = "candidate") =>
+    vi.mocked(findVisibleOriginSource).mockResolvedValue({ docId: DOC_ID, matchEvidence: evidence, matchState });
+
+  it("returns the stored transcription of the same photo with no vision call and no new source", async () => {
+    vi.mocked(parkOrReuseFile).mockResolvedValue({ fileId: FILE_ID, reused: true, uploadId: null });
+    stored({ drawing_transcription: { reviewed: false, producer: DRAWING_TRANSCRIPTION_PRODUCER } });
+    vi.mocked(loadDocCanonicalDrawingText).mockResolvedValue(renderDrawingSourceText(PHOTO_A));
+    // Model off: recall must still work.
+    vi.mocked(isRecognizerConfigured).mockReturnValue(false);
+
+    const res = await POST(makeReq(), makeParams(NOTEBOOK_ID));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({ fileId: FILE_ID, docId: DOC_ID, reviewed: false, recalled: true });
+    expect(body.sourceText).toBe(renderDrawingSourceText(PHOTO_A));
+    expect(togetherVisionCall).not.toHaveBeenCalled();
+    expect(materializeDerivedTextDoc).not.toHaveBeenCalled();
+    expect(attachSource).not.toHaveBeenCalled();
+  });
+
+  it("recalls a technician-reviewed reading whatever producer made the original", async () => {
+    stored({ drawing_transcription: { reviewed: true, by: "x@y" } }, "user_confirmed");
+    vi.mocked(loadDocCanonicalDrawingText).mockResolvedValue(renderDrawingSourceText(PHOTO_A));
+    const body = await (await POST(makeReq(), makeParams(NOTEBOOK_ID))).json();
+    expect(body).toMatchObject({ docId: DOC_ID, reviewed: true, recalled: true });
+    expect(togetherVisionCall).not.toHaveBeenCalled();
+  });
+
+  it("transcribes again when the stored reading came from an older producer", async () => {
+    stored({ drawing_transcription: { reviewed: false } });
+    armVision(PHOTO_A);
+    const body = await (await POST(makeReq(), makeParams(NOTEBOOK_ID))).json();
+    expect(body.recalled).toBe(false);
+    expect(togetherVisionCall).toHaveBeenCalledTimes(1);
+  });
+
+  it("never hands back a rejected transcription", async () => {
+    stored({ drawing_transcription: { reviewed: false, producer: DRAWING_TRANSCRIPTION_PRODUCER } }, "rejected");
+    armVision(PHOTO_A);
+    const body = await (await POST(makeReq(), makeParams(NOTEBOOK_ID))).json();
+    expect(body.recalled).toBe(false);
+    expect(togetherVisionCall).toHaveBeenCalledTimes(1);
+  });
+
+  it("?retranscribe=1 is the explicit, visible way to pay for a fresh reading", async () => {
+    stored({ drawing_transcription: { reviewed: false, producer: DRAWING_TRANSCRIPTION_PRODUCER } });
+    armVision(PHOTO_A);
+    const fd = new FormData();
+    fd.append("image", new File([new Uint8Array(JPEG_MAGIC).buffer], "drawing.jpg", { type: "image/jpeg" }));
+    const req = new Request(
+      `https://hub.test/api/equipment-notebooks/${NOTEBOOK_ID}/work-packet/drawing-photos?retranscribe=1`,
+      { method: "POST", body: fd },
+    ) as never;
+    const body = await (await POST(req, makeParams(NOTEBOOK_ID))).json();
+    expect(body).toMatchObject({ recalled: false, retranscribed: true });
+    expect(findVisibleOriginSource).not.toHaveBeenCalled();
+    expect(togetherVisionCall).toHaveBeenCalledTimes(1);
   });
 });
 

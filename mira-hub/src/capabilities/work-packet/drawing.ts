@@ -284,10 +284,62 @@ export function parseDrawingTranscription(json: unknown): DrawingTranscription |
 // ---------------------------------------------------------------------------
 
 const SEP = " | ";
-/** Splits a trimmed line back into fields. A regex (not a literal " | " split) so a technician's
- *  editor trimming trailing whitespace off a line (e.g. a trailing empty field) still round-trips —
- *  only the "|" itself is significant, any surrounding spaces are not. */
-const SEP_RE = /\s*\|\s*/;
+
+/** Escapes one field so it can never be read back as a delimiter or a line break: "\\" → "\\\\",
+ *  "|" → "\\|", newline → "\\n", carriage return → "\\r". (Codex #5204 F4: an unescaped "|" inside
+ *  a cell shifted every later column.) */
+function escField(v: string): string {
+  return v.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\n/g, "\\n").replace(/\r/g, "\\r");
+}
+
+/** Splits a trimmed line into fields on UNESCAPED "|" only, trims the spaces around each field
+ *  (so a technician's editor trimming trailing whitespace still round-trips), then unescapes.
+ *  Returns null on a dangling or unknown escape — malformed text is refused, never guessed. */
+function splitFields(trimmed: string): string[] | null {
+  // Pass 1: cut on unescaped "|", keeping escapes, and trim each raw segment (padding only — an
+  // escaped newline or space is still escaped here, so it survives).
+  const raw: string[] = [];
+  let cur = "";
+  for (let i = 0; i < trimmed.length; i++) {
+    const ch = trimmed[i];
+    if (ch === "\\") {
+      if (i + 1 >= trimmed.length) return null;
+      cur += ch + trimmed[i + 1];
+      i++;
+    } else if (ch === "|") {
+      raw.push(cur.trim());
+      cur = "";
+    } else {
+      cur += ch;
+    }
+  }
+  raw.push(cur.trim());
+  // Pass 2: unescape. An unknown escape is malformed text — refused, never guessed.
+  const out: string[] = [];
+  for (const seg of raw) {
+    let v = "";
+    for (let i = 0; i < seg.length; i++) {
+      const ch = seg[i];
+      if (ch !== "\\") { v += ch; continue; }
+      const nx = seg[i + 1];
+      if (nx === "\\" || nx === "|") v += nx;
+      else if (nx === "n") v += "\n";
+      else if (nx === "r") v += "\r";
+      else return null;
+      i++;
+    }
+    out.push(v);
+  }
+  return out;
+}
+
+/** Most fields a tag's line may carry (tag included). A line with MORE is refused: extra fields
+ *  mean a value was split, and silently dropping them would corrupt the row. Fewer is allowed — a
+ *  missing trailing field means "not in this photo". CALLOUT carries any number of notes. */
+const MAX_FIELDS: Record<string, number> = {
+  KIND: 2, DOCUMENT: 4, FILENAME: 2, TITLE: 2, TITLE_EN: 2, RIDE: 2, APPLICATION: 2, VIEW: 2,
+  REV: 4, CONNECTION: 3, ROW: 8, NOTE: 2, BOMROW: 8, OTHER: 2, UNREADABLE: 2,
+};
 
 /** Reserved marker for an explicit `null` on a nullable field — a control character no real photo
  *  transcription will ever contain, so it cannot collide with a real value, and it is distinct from
@@ -308,7 +360,7 @@ function decN(tok: string | undefined): string | null {
 }
 
 function line(...fields: string[]): string {
-  return fields.join(SEP);
+  return fields.map(escField).join(SEP);
 }
 
 /** Renders a `DrawingTranscription` as the canonical notebook source text: one tag line per table
@@ -373,8 +425,11 @@ export function parseDrawingSourceText(text: string): DrawingTranscription | nul
   for (const rawLine of text.split("\n")) {
     const trimmed = rawLine.trim();
     if (trimmed === "") continue;
-    const tokens = trimmed.split(SEP_RE);
+    const tokens = splitFields(trimmed);
+    if (!tokens) return null;
     const tag = tokens[0];
+    const max = MAX_FIELDS[tag];
+    if (max !== undefined && tokens.length > max) return null;
     switch (tag) {
       case "KIND":
         if (!isString(tokens[1]) || !KNOWN_KINDS.has(tokens[1])) return null;
@@ -522,7 +577,9 @@ export type DrawingFindingKind =
   | "unreadable"
   | "not_cross_checked"
   | "revision_touches_torque"
-  | "document_unidentified";
+  | "document_unidentified"
+  | "hardware_conflict"
+  | "connection_ambiguous";
 
 export interface DrawingFinding {
   kind: DrawingFindingKind;
@@ -546,6 +603,75 @@ export interface DrawingSheet {
   bom: { row: DrawingBomRow; photo: DrawingSheetPhoto }[];
   revisionHistory: { row: DrawingRevisionRow; photo: DrawingSheetPhoto }[];
   findings: DrawingFinding[];
+}
+
+// ---------------------------------------------------------------------------
+// Connection-row reconciliation across photos (Codex #5204 F1)
+// ---------------------------------------------------------------------------
+
+export type ConnectionCell = "name" | "type" | "pos" | "qty" | "spec" | "strength" | "artNo";
+const CONNECTION_CELLS: readonly ConnectionCell[] = ["name", "type", "pos", "qty", "spec", "strength", "artNo"];
+
+/** One cell of a reconciled hardware row: the agreed legible value and the photo it is cited from
+ *  (a reviewed photo when any reviewed photo printed it), or a conflict listing every legible
+ *  reading, or `null` when no photo printed a legible value (missing or "[?]"). */
+export type ReconciledCell =
+  | { kind: "value"; value: string; photo: DrawingSheetPhoto }
+  | { kind: "conflict"; readings: { value: string; docId: string }[] }
+  | { kind: "illegible"; raw: string; photo: DrawingSheetPhoto }
+  | null;
+
+export interface ReconciledRow {
+  key: string;
+  cells: Record<ConnectionCell, ReconciledCell>;
+  /** The sighting whose row anchors citations for this row (first in the deterministic order). */
+  anchor: { row: DrawingConnectionRow; photo: DrawingSheetPhoto };
+}
+
+function rowKeyOf(row: DrawingConnectionRow): string {
+  const pos = (row.pos ?? "").trim();
+  if (/^\d+$/.test(pos)) return `pos:${pos}`;
+  if (row.artNo && !row.artNo.includes("[?]")) return `art:${row.artNo.trim()}`;
+  return `name:${(row.name ?? "").trim().toLowerCase()}|${(row.type ?? "").trim().toLowerCase()}`;
+}
+
+/** Reconciles every sighting of ONE connection (same id, same sheet) into one row list. Order is
+ *  deterministic — reviewed photos first, then by docId — so the result never depends on the order
+ *  photos were attached. Rows present on only some photos are kept (partial photos complement each
+ *  other); a cell whose legible readings disagree is a conflict, never "the first one wins". */
+export function reconcileConnectionRows(
+  sightings: readonly { connection: DrawingConnectionBlock; photo: DrawingSheetPhoto }[],
+): ReconciledRow[] {
+  const ordered = [...sightings].sort((a, b) =>
+    a.photo.reviewed === b.photo.reviewed ? a.photo.docId.localeCompare(b.photo.docId) : a.photo.reviewed ? -1 : 1,
+  );
+  const byKey = new Map<string, { row: DrawingConnectionRow; photo: DrawingSheetPhoto }[]>();
+  for (const s of ordered) {
+    for (const row of s.connection.rows) {
+      const key = rowKeyOf(row);
+      const list = byKey.get(key) ?? [];
+      list.push({ row, photo: s.photo });
+      byKey.set(key, list);
+    }
+  }
+  const out: ReconciledRow[] = [];
+  byKey.forEach((list, key) => {
+    const cells = {} as Record<ConnectionCell, ReconciledCell>;
+    for (const cell of CONNECTION_CELLS) {
+      const legible = list.filter((e) => e.row[cell] !== null && !(e.row[cell] as string).includes("[?]"));
+      const distinct = Array.from(new Set(legible.map((e) => (e.row[cell] as string).trim())));
+      if (distinct.length > 1) {
+        cells[cell] = { kind: "conflict", readings: legible.map((e) => ({ value: e.row[cell] as string, docId: e.photo.docId })) };
+      } else if (legible.length > 0) {
+        cells[cell] = { kind: "value", value: legible[0].row[cell] as string, photo: legible[0].photo };
+      } else {
+        const ill = list.find((e) => e.row[cell] !== null);
+        cells[cell] = ill ? { kind: "illegible", raw: ill.row[cell] as string, photo: ill.photo } : null;
+      }
+    }
+    out.push({ key, cells, anchor: list[0] });
+  });
+  return out;
 }
 
 function groupKeyFor(t: DrawingTranscription): string | null {
@@ -712,6 +838,31 @@ function buildSheet(documentKey: string | null, photos: DrawingSheetPhoto[]): Dr
     });
   }
 
+  // hardware_conflict: two photos of the same connection print a different value in the same
+  // hardware cell (Codex #5204 F1). Each conflicting cell is named with every reading.
+  {
+    const byId = new Map<string, { connection: DrawingConnectionBlock; photo: DrawingSheetPhoto }[]>();
+    for (const c of connections) {
+      const list = byId.get(c.connection.id) ?? [];
+      list.push(c);
+      byId.set(c.connection.id, list);
+    }
+    byId.forEach((sightings, id) => {
+      if (sightings.length < 2) return;
+      for (const r of reconcileConnectionRows(sightings)) {
+        for (const [cell, v] of Object.entries(r.cells)) {
+          if (!v || v.kind !== "conflict") continue;
+          findings.push({
+            kind: "hardware_conflict",
+            connection: id,
+            message: `Connection ${id} row '${r.anchor.row.name || r.anchor.row.type || "row"}' ${cell} is printed differently across photos: ${v.readings.map((x) => `'${x.value}' (photo ${x.docId})`).join(" vs ")}.`,
+            photos: Array.from(new Set(v.readings.map((x) => x.docId))),
+          });
+        }
+      }
+    });
+  }
+
   // not_cross_checked: no bill of materials attached at all for this document.
   if (bom.length === 0) {
     findings.push({
@@ -756,4 +907,15 @@ export function mergeDrawingPhotos(photos: readonly DrawingSheetPhoto[]): Drawin
   groups.forEach((groupPhotos, key) => sheets.push(buildSheet(key, groupPhotos)));
   for (const photo of ungrouped) sheets.push(buildSheet(null, [photo]));
   return sheets;
+}
+
+/** The first line of `fullText` whose leading " | "-delimited token is exactly "KIND", to end of
+ *  text — i.e. the canonical `renderDrawingSourceText` block, regardless of what header a
+ *  materializer (`buildPhotoSourceText`, the drawing-photos PUT review) prepended in front of it.
+ *  `null` when no such line exists (plain prose, or a non-drawing document). */
+export function extractCanonicalDrawingText(fullText: string): string | null {
+  const lines = fullText.split("\n");
+  const idx = lines.findIndex((l) => l.trim().split(" | ")[0]?.trim() === "KIND");
+  if (idx === -1) return null;
+  return lines.slice(idx).join("\n");
 }

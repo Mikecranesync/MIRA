@@ -13,7 +13,11 @@ import { NextResponse } from "next/server";
 
 vi.mock("@/lib/session", () => ({ sessionOr401: vi.fn() }));
 vi.mock("@/lib/equipment-notebooks", () => ({ getNotebook: vi.fn() }));
-vi.mock("@/capabilities/work-packet/document-text", () => ({ loadNotebookDocTexts: vi.fn() }));
+vi.mock("@/capabilities/work-packet/document-text", () => ({
+  loadNotebookDocTexts: vi.fn(),
+  // Pure filter — kept real (a plain function, so resetAllMocks cannot blank it).
+  withoutDrawingCandidates: (docs: { drawingCandidate?: true }[]) => docs.filter((d) => d.drawingCandidate !== true),
+}));
 vi.mock("@/capabilities/work-packet/catpumps-datasheet", () => ({
   parseCatPumpsDataSheet: vi.fn(),
   sheetModelFor: vi.fn(),

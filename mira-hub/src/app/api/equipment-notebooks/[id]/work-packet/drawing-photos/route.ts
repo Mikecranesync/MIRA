@@ -38,7 +38,8 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
-import { attachSource, getNotebook } from "@/lib/equipment-notebooks";
+import { attachSource, findVisibleOriginSource, getNotebook } from "@/lib/equipment-notebooks";
+import { loadDocCanonicalDrawingText } from "@/capabilities/work-packet/document-text";
 import { parkOrReuseFile, attachFileToTargets, sha256Hex } from "@/lib/workspace-files";
 import { isRecognizerConfigured } from "@/lib/nameplate";
 import { openAiVisionSelectable } from "@/capabilities/openai-run-budget";
@@ -49,7 +50,11 @@ import {
   parseDrawingTranscription,
   renderDrawingSourceText,
 } from "@/capabilities/work-packet/drawing";
-import { DRAWING_TRANSCRIPTION_MAX_TOKENS, DRAWING_TRANSCRIPTION_PROMPT } from "@/capabilities/work-packet/drawing-prompt";
+import {
+  DRAWING_TRANSCRIPTION_MAX_TOKENS,
+  DRAWING_TRANSCRIPTION_PRODUCER,
+  DRAWING_TRANSCRIPTION_PROMPT,
+} from "@/capabilities/work-packet/drawing-prompt";
 import { buildPhotoSourceText, materializeDerivedTextDoc } from "@/capabilities/photo-source";
 import { workPacketEnabled } from "../route";
 
@@ -125,6 +130,32 @@ export async function POST(req: NextRequest, { params }: Params) {
     ? { linkId: attached.links[0]?.linkId ?? null, notebookId }
     : { linkId: null, notebookId };
   const retained = { fileId: parked.fileId, attachment };
+  const photoSha256 = sha256Hex(buffer);
+
+  // ── RECALL BEFORE RECOMPUTE (Codex #5204 F7). The same photo bytes park to the same file, so a
+  // retry finds the transcription it already produced and returns it: no second vision call, no
+  // second source row. Works with the model off. `?retranscribe=1` is the explicit, visible way to
+  // pay for a fresh reading; a rejected transcription is never handed back.
+  const retranscribe = new URL(req.url).searchParams.get("retranscribe") === "1";
+  if (!retranscribe) {
+    const prior = await findVisibleOriginSource(ctx.tenantId, notebookId, parked.fileId);
+    const priorDt = drawingTranscriptionEvidence(prior?.matchEvidence);
+    if (
+      prior &&
+      prior.matchState !== "rejected" &&
+      priorDt &&
+      (priorDt.reviewed === true || priorDt.producer === DRAWING_TRANSCRIPTION_PRODUCER)
+    ) {
+      const sourceText = await loadDocCanonicalDrawingText(ctx.tenantId, notebookId, prior.docId);
+      return NextResponse.json({
+        ...retained,
+        docId: prior.docId,
+        reviewed: priorDt.reviewed === true,
+        recalled: true,
+        sourceText,
+      });
+    }
+  }
 
   if (!isRecognizerConfigured()) {
     return NextResponse.json(
@@ -158,7 +189,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     const docText = buildPhotoSourceText({
       machineName: notebook.displayName,
       fileId: parked.fileId,
-      photoSha256: sha256Hex(buffer),
+      photoSha256,
       capturedAt,
       observation: sourceText,
       reviewed: false,
@@ -189,7 +220,9 @@ export async function POST(req: NextRequest, { params }: Params) {
       sourceRole: "drawing",
       addedBy: ctx.userId ?? null,
       originFileId: parked.fileId,
-      matchEvidence: { drawing_transcription: { reviewed: false } },
+      matchEvidence: {
+        drawing_transcription: { reviewed: false, producer: DRAWING_TRANSCRIPTION_PRODUCER, photo_sha256: photoSha256 },
+      },
     });
     if (!att.ok) {
       return NextResponse.json(
@@ -209,6 +242,8 @@ export async function POST(req: NextRequest, { params }: Params) {
       docId: att.docId ?? materialized.docId,
       kind: transcription.kind,
       reviewed: false,
+      recalled: false,
+      ...(retranscribe ? { retranscribed: true } : {}),
       sourceText,
     });
   } catch (err) {
@@ -224,4 +259,11 @@ export async function POST(req: NextRequest, { params }: Params) {
       { status: 502 },
     );
   }
+}
+
+/** `match_evidence.drawing_transcription` as written by this route and the review PUT, or null. */
+function drawingTranscriptionEvidence(matchEvidence: unknown): { reviewed?: unknown; producer?: unknown } | null {
+  if (!matchEvidence || typeof matchEvidence !== "object") return null;
+  const dt = (matchEvidence as Record<string, unknown>).drawing_transcription;
+  return dt && typeof dt === "object" ? (dt as { reviewed?: unknown; producer?: unknown }) : null;
 }

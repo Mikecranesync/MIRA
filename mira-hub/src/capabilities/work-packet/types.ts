@@ -50,6 +50,10 @@ export interface DocText {
    *  additive: every existing `DocText` literal/construction site is unaffected. Consumed by
    *  `work-packet/route.ts`'s `drawingSheetPhotosFromDocs` to rebuild `DrawingSheetPhoto[]`. */
   origin?: { fileId: string; drawing?: { reviewed: boolean } };
+  /** Set only by `loadNotebookDocTexts({ includeDrawingCandidates: true })` on a disabled,
+   *  unreviewed drawing candidate it admitted for the connection path. Any other consumer must drop
+   *  these (`withoutDrawingCandidates`) — they are not part of the notebook's enabled sources. */
+  drawingCandidate?: true;
 }
 
 /** Exactly where a value was read: `line` is the trimmed source line it came from. */
@@ -474,7 +478,10 @@ export type DraftRefusal =
   | "model_not_in_documents"
   | "no_task_matched"
   /** The technician did not confirm every attached document revision, or a revision changed since. */
-  | "revision_not_confirmed";
+  | "revision_not_confirmed"
+  /** A drawing connection id (e.g. "C3") is on more than one attached drawing and the request did
+   *  not say which drawing — answering would risk the wrong assembly's hardware and torque. */
+  | "connection_ambiguous";
 
 export type DraftResult =
   | { ok: true; packet: WorkPacket; warnings: string[] }

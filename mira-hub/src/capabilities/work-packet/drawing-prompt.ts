@@ -11,6 +11,12 @@
 /** Output budget: a full connection table plus a parts list does not fit in the LOOK route's cap. */
 export const DRAWING_TRANSCRIPTION_MAX_TOKENS = 4000;
 
+/** Producer identity stored on every transcription source (`match_evidence.drawing_transcription.producer`).
+ *  The upload route recalls an existing transcription of the same photo only when it came from this
+ *  producer, so bump it whenever the prompt or the parser changes what a transcription means. A test
+ *  pins the prompt's digest to this value. */
+export const DRAWING_TRANSCRIPTION_PRODUCER = "drawing-transcription/v1";
+
 export const DRAWING_TRANSCRIPTION_PROMPT = `You are transcribing ONE photograph a maintenance technician took. Return JSON only.
 First classify the photo: "kind" is one of "drawing" (an engineering drawing or its title block, parts list or connection table, on paper or a screen), "nameplate", "equipment" (the machine itself), "reading" (a gauge, display or measurement), "job_sheet" (a work order, job card or checklist, including a maintenance-system screen), "manual_page", "other".
 Then copy what is printed. COPY, do not interpret:

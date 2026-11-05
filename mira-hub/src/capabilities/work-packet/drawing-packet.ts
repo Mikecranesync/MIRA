@@ -50,7 +50,9 @@ import type {
   DrawingConnectionRow,
   DrawingSheet,
   DrawingSheetPhoto,
+  ReconciledCell,
 } from "./drawing";
+import { reconcileConnectionRows } from "./drawing";
 
 const DISCLAIMER =
   "DRAFT prepared from an engineering drawing photographed on site. It is not an approved " +
@@ -67,7 +69,13 @@ export interface ConnectionPacketInput {
   /** "C7" (the whole connection) or "C7-B1" (one of its rows) — either form drafts a packet for
    *  the whole connection's hardware. */
   connectionRef: string;
+  /** Which drawing the connection is on: the document number (any punctuation; compared by its
+   *  digits, the same key photos are grouped by). Required only when the connection id appears on
+   *  more than one attached drawing (Codex #5204 F2). */
+  drawing?: string | null;
   docs: readonly DocText[];
+  /** Hazard flags the route already classified for this work order (Codex #5204 F5). */
+  hazardFlags?: readonly string[];
 }
 
 /** The connection id a ref names: "C7" from either "C7" or "C7-B1". */
@@ -180,39 +188,84 @@ function drawingRevisionField(photo: DrawingSheetPhoto, docs: readonly DocText[]
   return photoField(photo, docs, d.revision, needle, "drawing title block revision");
 }
 
-interface LocatedConnection {
-  sheet: DrawingSheet;
-  connection: DrawingConnectionBlock;
-  photo: DrawingSheetPhoto;
-}
+type FindResult =
+  | { ok: true; sheet: DrawingSheet; sightings: { connection: DrawingConnectionBlock; photo: DrawingSheetPhoto }[] }
+  | { ok: false; reason: "missing" | "ambiguous" | "drawing_not_found"; candidates: (string | null)[] };
 
-function findConnection(sheets: readonly DrawingSheet[], connectionRef: string): LocatedConnection | null {
+/** Finds the ONE sheet carrying this connection id. More than one drawing carrying it is
+ *  ambiguous unless `drawing` names one (Codex #5204 F2); source order never picks the winner. */
+function findConnection(sheets: readonly DrawingSheet[], connectionRef: string, drawing: string | null | undefined): FindResult {
   const id = connectionIdOf(connectionRef);
-  for (const sheet of sheets) {
-    const hit = sheet.connections.find((c) => c.connection.id === id);
-    if (hit) return { sheet, connection: hit.connection, photo: hit.photo };
+  const owners = sheets.filter((sh) => sh.connections.some((c) => c.connection.id === id));
+  const wanted = drawing ? drawing.replace(/\D/g, "") : "";
+  let pick: DrawingSheet[] = owners;
+  if (wanted) {
+    pick = owners.filter((sh) => sh.documentKey === wanted);
+    if (pick.length === 0) {
+      return { ok: false, reason: owners.length === 0 ? "missing" : "drawing_not_found", candidates: owners.map((o) => o.documentKey) };
+    }
   }
-  return null;
+  if (pick.length === 0) return { ok: false, reason: "missing", candidates: [] };
+  if (pick.length > 1) return { ok: false, reason: "ambiguous", candidates: pick.map((o) => o.documentKey) };
+  const sheet = pick[0];
+  return { ok: true, sheet, sightings: sheet.connections.filter((c) => c.connection.id === id) };
 }
 
-function buildParts(connection: DrawingConnectionBlock, photo: DrawingSheetPhoto, docs: readonly DocText[], bom: readonly { row: DrawingBomRow }[]): PacketPart[] {
-  return connection.rows.map((row) => {
-    const needle = rowNeedle(row);
-    const match = row.artNo ? bom.find((b) => b.row.artNo === row.artNo) : undefined;
+function conflictField(cell: string, readings: { value: string; docId: string }[]): Field {
+  return {
+    value: null,
+    label: "unknown",
+    source: null,
+    basis: `${cell} is printed differently across photos: ${readings.map((r) => `'${r.value}' (photo ${r.docId})`).join(" vs ")} — check the drawing`,
+  };
+}
+
+function reconciledCellField(c: ReconciledCell, cellName: string, docs: readonly DocText[], needle: string, basis: string): Field {
+  if (c === null) return { value: null, label: "unknown", source: null, basis: "not in this photo" };
+  if (c.kind === "conflict") return conflictField(cellName, c.readings);
+  if (c.kind === "illegible") return cellField(c.photo, docs, c.raw, needle, basis);
+  return photoField(c.photo, docs, c.value, needle, basis);
+}
+
+function buildParts(
+  sightings: readonly { connection: DrawingConnectionBlock; photo: DrawingSheetPhoto }[],
+  docs: readonly DocText[],
+  bom: readonly { row: DrawingBomRow }[],
+): PacketPart[] {
+  return reconcileConnectionRows(sightings).map((r) => {
+    const needle = rowNeedle(r.anchor.row);
+    const art = r.cells.artNo && r.cells.artNo.kind === "value" ? r.cells.artNo.value : null;
+    const match = art ? bom.find((b) => b.row.artNo === art) : undefined;
     const item = match && match.row.pos && /^\d+$/.test(match.row.pos.trim()) ? Number(match.row.pos.trim()) : null;
-    return {
-      kit: null,
-      item,
-      partNumber: cellField(photo, docs, row.artNo, needle, "connection hardware row, Art. No. column"),
-      description: compositeCellField(
-        photo,
+    const descCells = [r.cells.type, r.cells.spec, r.cells.strength];
+    const descConflict = descCells.find((c) => c !== null && c.kind === "conflict");
+    let description: Field;
+    if (descConflict && descConflict.kind === "conflict") {
+      description = conflictField("hardware description", descConflict.readings);
+    } else if (descCells.every((c) => c !== null && c.kind === "value")) {
+      const vals = descCells as { kind: "value"; value: string; photo: DrawingSheetPhoto }[];
+      // Cite from one photo only when every contributing cell came from it; otherwise the composed
+      // value has no single source line and stays proposed.
+      const one = vals.every((v) => v.photo.docId === vals[0].photo.docId) ? vals[0].photo : null;
+      description = one
+        ? photoField(one, docs, vals.map((v) => v.value).join(" ").trim(), needle, "connection hardware row")
+        : { value: vals.map((v) => v.value).join(" ").trim(), label: "proposed", source: null, basis: "composed from cells on more than one photo; check it against the drawing" };
+    } else {
+      description = compositeCellField(
+        r.anchor.photo,
         docs,
-        [row.type, row.spec, row.strength],
+        [r.anchor.row.type, r.anchor.row.spec, r.anchor.row.strength],
         (parts) => parts.join(" ").trim(),
         needle,
         "connection hardware row",
-      ),
-      qty: cellField(photo, docs, row.qty, needle, "connection hardware row, Qty column"),
+      );
+    }
+    return {
+      kit: null,
+      item,
+      partNumber: reconciledCellField(r.cells.artNo, "Art. No.", docs, needle, "connection hardware row, Art. No. column"),
+      description,
+      qty: reconciledCellField(r.cells.qty, "Qty", docs, needle, "connection hardware row, Qty column"),
     };
   });
 }
@@ -363,17 +416,30 @@ export function buildConnectionPacket(input: ConnectionPacketInput): DraftResult
     return refuse("no_documents", "No attached photo could be read as an engineering drawing, so a connection packet cannot be drafted.");
   }
 
-  const located = findConnection(sheets, connectionRef);
-  if (!located) {
+  const located = findConnection(sheets, connectionRef, input.drawing);
+  if (!located.ok) {
+    if (located.reason === "ambiguous") {
+      return refuse(
+        "connection_ambiguous",
+        `Connection "${connectionRef}" is on more than one attached drawing (${located.candidates.map((c) => c ?? "unnumbered").join(", ")}). Say which drawing number before drafting, so the hardware and torque come from the right assembly.`,
+      );
+    }
+    if (located.reason === "drawing_not_found") {
+      return refuse(
+        "model_not_in_documents",
+        `Connection "${connectionRef}" is not on drawing "${input.drawing}". It is on: ${located.candidates.map((c) => c ?? "unnumbered").join(", ")}.`,
+      );
+    }
     return refuse(
       "model_not_in_documents",
       `Connection "${connectionRef}" does not appear on any attached drawing photo, so a job packet cannot be drafted for it.`,
     );
   }
-  const { sheet, connection, photo } = located;
+  const { sheet, sightings } = located;
+  const connection = sightings[0].connection;
   const connectionId = connection.id;
 
-  const parts = buildParts(connection, photo, docs, sheet.bom);
+  const parts = buildParts(sightings, docs, sheet.bom);
   const measurements = buildMeasurements(sheet, connectionId, docs);
 
   const noteSighting = sheet.callouts.find((c) => connectionIdOf(c.callout.ref) === connectionId && c.callout.notes.length > 0);
@@ -428,7 +494,7 @@ export function buildConnectionPacket(input: ConnectionPacketInput): DraftResult
     cautions: [] as Field[],
     // Always unknown: the site owns isolation and lockout (HARD RULE).
     siteIsolation: { value: null, label: "unknown" as const, source: null, basis: "the site owns isolation and lockout" },
-    hazardFlags: [] as string[],
+    hazardFlags: [...(input.hazardFlags ?? [])],
   };
 
   const packet: WorkPacket = {

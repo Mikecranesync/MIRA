@@ -22,9 +22,10 @@
  *    never by client-supplied text), marks its chunks verified (`markNameplateDocVerified` — the
  *    same promotion `photo-source.ts::keepPhotoAsSource` performs for a reviewed `/look` reading),
  *    and attaches it with `matchState:"user_confirmed"`.
- * 4. SUPERSEDES the old doc (and any other prior reading of the same photo) via the existing
- *    helper `supersedePriorOriginSources` (`@/lib/equipment-notebooks`) — found by grounding this
- *    task's "disable/reject the superseded source" requirement against the codebase; no raw SQL.
+ * 4. Publishes it and SUPERSEDES the old doc (and any other prior reading of the same photo) in the
+ *    SAME transaction, under the notebook lock, and only while `docId` is still the visible reading
+ *    (`attachSource({ replacesCurrent })`). Two concurrent reviews of one reading cannot both
+ *    publish and hide each other: the second gets 409 (Codex #5204 F3).
  *    Superseded rows are hidden, never deleted (citation-origin resolution + audit survive).
  *
  * Only a server-recorded review (this route) makes a drawing reading "technician-reviewed" — a
@@ -34,7 +35,8 @@
  *
  * Response (200): { docId, originFileId, reviewed:true, sourceText, supersededDocIds }
  * Response (422): { error, message } — unparseable corrected text; nothing changed.
- * Response (409): { error: "source_superseded" } — `docId` is no longer the visible reading.
+ * Response (409): { error: "source_superseded" } — `docId` is no longer the visible reading (checked
+ *   up front, and again atomically at publication).
  */
 import { NextRequest, NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
@@ -43,7 +45,6 @@ import {
   getNotebook,
   getSourceResolution,
   markNameplateDocVerified,
-  supersedePriorOriginSources,
 } from "@/lib/equipment-notebooks";
 import { parseDrawingSourceText, renderDrawingSourceText } from "@/capabilities/work-packet/drawing";
 import { buildPhotoSourceText, materializeDerivedTextDoc } from "@/capabilities/photo-source";
@@ -136,7 +137,16 @@ export async function PUT(req: NextRequest, { params }: Params) {
     matchEvidence: {
       drawing_transcription: { reviewed: true, by: reviewedBy, at: new Date().toISOString() },
     },
+    // Publish + supersede in one transaction, only while the reviewed doc is still current: a
+    // concurrent or slower review gets 409 instead of hiding the other one (Codex #5204 F3).
+    replacesCurrent: docId,
   });
+  if (!att.ok && att.error === "stale_source") {
+    return NextResponse.json(
+      { error: "source_superseded", message: "This reading changed while you were reviewing it. Reload the notebook's sources." },
+      { status: 409 },
+    );
+  }
   if (!att.ok) {
     return NextResponse.json(
       { error: `attach_source_failed:${att.error}`, message: "The reviewed text could not be saved as a source." },
@@ -144,8 +154,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
     );
   }
   const newDocId = att.docId ?? materialized.docId;
-
-  const supersededDocIds = await supersedePriorOriginSources(ctx.tenantId, notebookId, resolution.originFileId, newDocId);
+  const supersededDocIds = att.supersededDocIds ?? [];
 
   return NextResponse.json({
     docId: newDocId,
