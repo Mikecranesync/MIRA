@@ -1,6 +1,6 @@
 # PF525 fault-history Clear Buffer — 2026-11-04 follow-up
 
-Draft PR #5174 rebased onto main (includes #5181 pinned-head rerank). Product change: A551 Clear Buffer (p.135) stays next to fault-history rows; catalog 25B maps to PowerFlex 525. The keep-helper restores a history-table readout (not an Access-b007 view step) and a write-to-history effect row (buffers to 0). Fixture asserts survival with NOTEBOOK_RERANK on and off, including the short “missing fault codes” ask. Docker Build Check Trivy is pinned to v0.76.1 with retries and a SHA-256 check. Tests stay under mira-hub/src/capabilities/__tests__. No merge, ready, or deploy.
+Draft PR #5174 rebased onto current main (a8b260343, includes 25a12482f). Product change: A551 Clear Buffer (p.135) stays next to fault-history rows; catalog 25B maps to PowerFlex 525. A parameter-index “Fault 1 Code” cell is not a readout — the helper keeps the history-table row. No Codex from this session. No merge, ready, or deploy.
 
 ---
 

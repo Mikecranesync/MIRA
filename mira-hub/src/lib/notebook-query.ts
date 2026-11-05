@@ -531,6 +531,11 @@ const EMPTY_HISTORY_ASK = new RegExp(
 const HISTORY_DISPLAY_OBJECT =
   /\bfault\s+[1-9]\d?\s+code\b|\b(?:\d+[-\s])?fault\s+history\b|\bfault\s+queue\b|\bfault\s+log\b|\b(?:most\s+recent|older|extended)\s+fault/i;
 
+/** The readout *reports* stored codes / the history table. A parameter-index
+ *  cell that only lists "Fault 1 Code" next to a number is not that row. */
+const HISTORY_DISPLAY_REPORT =
+  /\b(?:is|are)\s+the\s+(?:most\s+recent|older|next)\b|\b10-fault\s+history\b|\bolder\s+fault\s+codes?\b|\brelated parameters\b|\bfault\s+queue\b|\bfault\s+log\b/i;
+
 /** A view/access instruction that names Fault 1 Code is not the readout
  *  table (b007 is… / F604…F610 / 10-fault history). */
 const HISTORY_VIEW_INSTRUCTION =
@@ -555,7 +560,8 @@ export function isEmptyHistoryAsk(query: string): boolean {
  *  parameter that writes those buffers is a different role (see below). */
 export function isFaultHistoryDisplayChunk(text: string): boolean {
   if (HISTORY_CONTROL_ACTION.test(text) || HISTORY_VIEW_INSTRUCTION.test(text)) return false;
-  return HISTORY_DISPLAY_OBJECT.test(text);
+  if (!HISTORY_DISPLAY_OBJECT.test(text)) return false;
+  return HISTORY_DISPLAY_REPORT.test(text);
 }
 
 /** The action that writes the same history object the display rows report

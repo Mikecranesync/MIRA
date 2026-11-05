@@ -28,6 +28,8 @@ const STEP1_P160 =
   "Access b007 [Fault 1 Code] to view the most recent fault information.";
 const INDEX_P75 =
   "Modified group P034 Motor NP FLA P035 Motor NP Poles P036 Motor NP RPM(1) 641 Fault 9 Current(1)";
+const INDEX_FAULT1 =
+  "Fault 1 Code | 007 | Fault 9 Freq(1) | 639 | MOP Freq | 427";
 
 describe("fault-history display → control expansion (#4863)", () => {
   it("recognises the empty-history ask and not a fault-meaning lookup", () => {
@@ -51,6 +53,7 @@ describe("fault-history display → control expansion (#4863)", () => {
     expect(isFaultHistoryDisplayChunk(HISTORY_P144)).toBe(true);
     expect(isFaultHistoryDisplayChunk(CONTROL_P135)).toBe(false);
     expect(isFaultHistoryDisplayChunk(INDEX_P75)).toBe(false);
+    expect(isFaultHistoryDisplayChunk(INDEX_FAULT1)).toBe(false);
     expect(isFaultHistoryDisplayChunk(STEP1_P160)).toBe(false);
     expect(isHistoryControlChunk(CONTROL_P135)).toBe(true);
     expect(isHistoryControlChunk(HISTORY_P79)).toBe(false);
@@ -89,6 +92,21 @@ describe("fault-history display → control expansion (#4863)", () => {
     expect(out.map((c) => c.id)).toContain("c");
     expect(out.map((c) => c.content).join("\n")).toMatch(/Clear Buffer/);
     expect(out.map((c) => c.id)).not.toContain("r");
+  });
+
+  it("does not treat a parameter-index Fault 1 Code cell as the history readout", () => {
+    const index = { content: INDEX_FAULT1, id: "i" };
+    const display = { content: HISTORY_P144, id: "d" };
+    const control = { content: CONTROL_P135, id: "c" };
+    expect(isFaultHistoryDisplayChunk(INDEX_FAULT1)).toBe(false);
+    const out = ensureHistoryControlRepresentation(
+      [index, control],
+      [index, control, display],
+      2,
+    );
+    expect(out.map((c) => c.id)).toContain("d");
+    expect(out.map((c) => c.id)).toContain("c");
+    expect(out.map((c) => c.id)).not.toContain("i");
   });
 
   it("does not treat an Access-b007 view step as the history readout", () => {

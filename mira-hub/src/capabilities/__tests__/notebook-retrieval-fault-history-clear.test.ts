@@ -34,6 +34,8 @@ const HISTORY_P144 =
   "F604…F610 are the older fault codes in the 10-fault history. Related Parameters: b007…b009.";
 const INDEX_P75 =
   "Modified group P034 Motor NP FLA P035 Motor NP Poles P036 Motor NP RPM(1) 641 Fault 9 Current(1)";
+const INDEX_FAULT1 =
+  "Fault 1 Code | 007 | Fault 9 Freq(1) | 639 | MOP Freq | 427";
 const CONTROL_P135 =
   "A551 [Fault Clear] 1 Reset Fault — buffers are kept. 2 Clear Buffer — resets the active fault and clears all fault buffers to 0.";
 const RESET_P160 =
@@ -70,6 +72,7 @@ const DISPLAY_ROWS = [
   row(75, INDEX_P75, 0.85, ["modifi", "group", "p034", "fault"]),
 ];
 const STEP1_ROW = row(160, STEP1_P160, 0.95, ["fault", "code", "b007"]);
+const INDEX_FAULT1_ROW = row(75, INDEX_FAULT1, 0.98, ["fault", "code"]);
 const CONTROL_ROW = row(135, CONTROL_P135, 0.4, ["fault", "clear", "buffer", "a551"]);
 const RESET_ROW = row(164, RESET_P160, 0.55, ["fault", "clear", "reset", "a551"]);
 const CLEARING_ROW = row(160, CLEARING_P160, 0.7, ["fault", "clear", "buffer", "a551", "stop"]);
@@ -108,10 +111,10 @@ const ask = (client: PoolClient, q: string) =>
   });
 
 function corpus(sql: string, params: unknown[]): Row[] {
-  if (isAnd(sql)) return [STEP1_ROW, ...DISPLAY_ROWS];
+  if (isAnd(sql)) return [INDEX_FAULT1_ROW, STEP1_ROW, ...DISPLAY_ROWS];
   if (isOr(sql) && isControlQuery(params)) return [CLEARING_ROW, RESET_ROW, CONTROL_ROW];
   if (isIlike(sql) && isControlIlike(params)) return [CLEARING_ROW, RESET_ROW, CONTROL_ROW];
-  if (isOr(sql) || isIlike(sql)) return [STEP1_ROW, ...DISPLAY_ROWS];
+  if (isOr(sql) || isIlike(sql)) return [INDEX_FAULT1_ROW, STEP1_ROW, ...DISPLAY_ROWS];
   return [];
 }
 
