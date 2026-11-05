@@ -34,6 +34,7 @@ describe("fault-history display → control expansion (#4863)", () => {
     expect(isEmptyHistoryAsk("What does PowerFlex 525 fault F004 mean?")).toBe(false);
     expect(isEmptyHistoryAsk("how do I clear a fault?")).toBe(false);
     expect(isEmptyHistoryAsk("How do I read the extended fault history?")).toBe(false);
+    expect(isEmptyHistoryAsk("empty applications (no code) on EtherNet/IP")).toBe(false);
   });
 
   it("classifies an empty/missing fault-history ask as fault, even with incidental comm words", () => {
@@ -84,6 +85,20 @@ describe("fault-history display → control expansion (#4863)", () => {
     expect(out.map((c) => c.id)).toContain("c");
     expect(out.map((c) => c.content).join("\n")).toMatch(/Clear Buffer/);
     expect(out.map((c) => c.id)).not.toContain("r");
+  });
+
+  it("restores a readout row when rerank left only procedures and the control", () => {
+    const display = { content: HISTORY_P144, id: "d" };
+    const clearing = { content: CLEARING_P160, id: "p" };
+    const reset = { content: RESET_P160, id: "r" };
+    const control = { content: CONTROL_P135, id: "c" };
+    const out = ensureHistoryControlRepresentation(
+      [clearing, reset, control],
+      [clearing, reset, control, display],
+      3,
+    );
+    expect(out.map((c) => c.id)).toContain("d");
+    expect(out.map((c) => c.id)).toContain("c");
   });
 
   it("does not treat a Manually Clearing Faults step that names both options as the control row", () => {

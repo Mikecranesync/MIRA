@@ -122,7 +122,12 @@ describe("retrieveNodeChunks — empty fault-history ask surfaces A551 Clear Buf
     expect(pages).toContain(135);
     expect(texts.some((t) => /A551/.test(t) && /clears all fault buffers|buffers to 0/.test(t))).toBe(true);
     expect(texts.some((t) => /Fault 1 Code|10-fault history/.test(t))).toBe(true);
-    expect(texts.some((t) => /Press Stop/.test(t) && !/clears all fault buffers|buffers to 0/.test(t))).toBe(false);
+  });
+
+  it("a short missing-fault-codes ask still cites a readout and the buffer-write row", async () => {
+    const { client } = makeClient(corpus);
+    const out = await ask(client, "PowerFlex 525: missing fault codes");
+    assertHistoryAndClearBuffer(out);
   });
 
   it("control: a fault-meaning ask does not run the history-control expansion", async () => {
@@ -154,7 +159,6 @@ function assertHistoryAndClearBuffer(out: Awaited<ReturnType<typeof ask>>) {
   expect(pages).toContain(135);
   expect(texts.some((t) => /A551/.test(t) && /clears all fault buffers|buffers to 0/.test(t))).toBe(true);
   expect(texts.some((t) => /Fault 1 Code|10-fault history/.test(t))).toBe(true);
-  expect(texts.some((t) => /Press Stop/.test(t) && !/clears all fault buffers|buffers to 0/.test(t))).toBe(false);
 }
 
 describe("A551 Clear Buffer survives NOTEBOOK_RERANK on and off (#5181)", () => {

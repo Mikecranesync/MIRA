@@ -521,8 +521,12 @@ const PARAM_ID_REQUEST =
 // existing industrial "fault clear" vocabulary.
 // ---------------------------------------------------------------------------
 
-const EMPTY_HISTORY_ASK =
-  /\bmissing\s+fault\s+codes?\b|\b(?:why|how)\b[\s\S]{0,80}\b(?:fault\s+)?(?:history|queue|buffers?|codes?)\b[\s\S]{0,40}\b(?:zero|zeros|blank|empty|missing|cleared)\b|\b(?:fault\s+)?(?:history|queue|buffers?|codes?)\b[\s\S]{0,40}\b(?:all\s+)?(?:zero|zeros|blank|empty|missing|cleared)\b|\b(?:all\s+)?(?:zero|zeros|blank|empty|missing|cleared)\b[\s\S]{0,40}\b(?:fault\s+)?(?:history|queue|buffers?|codes?)\b/i;
+const HISTORY_ASK_OBJECT =
+  String.raw`(?:fault\s+(?:history|queue|buffers?|codes?)|(?:fault\s+)?(?:history|queue|buffers?))`;
+const EMPTY_HISTORY_ASK = new RegExp(
+  String.raw`\bmissing\s+fault\s+codes?\b|\b(?:why|how)\b[\s\S]{0,80}\b${HISTORY_ASK_OBJECT}\b[\s\S]{0,40}\b(?:zero|zeros|blank|empty|missing|cleared)\b|\b${HISTORY_ASK_OBJECT}\b[\s\S]{0,40}\b(?:all\s+)?(?:zero|zeros|blank|empty|missing|cleared)\b|\b(?:all\s+)?(?:zero|zeros|blank|empty|missing|cleared)\b[\s\S]{0,40}\b${HISTORY_ASK_OBJECT}\b`,
+  "i",
+);
 
 const HISTORY_DISPLAY_OBJECT =
   /\bfault\s+[1-9]\d?\s+code\b|\b(?:\d+[-\s])?fault\s+history\b|\bfault\s+queue\b|\bfault\s+log\b|\b(?:most\s+recent|older|extended)\s+fault/i;
@@ -577,36 +581,48 @@ export function historyControlQueries(displayTexts: readonly string[]): string[]
   return [...new Set(queries)].slice(0, 5);
 }
 
-/** Keep a control chunk in the selected slice when the ask is empty-history
- *  and the slice already cites a display row. Displaces the lowest-ranked
- *  non-display, non-control chunk so topK stays bounded. No-op when the pool
- *  has no control chunk (never invents). */
+/** Keep a history readout and a write-to-history control chunk in the
+ *  selected slice. Displaces the lowest-ranked non-display, non-control
+ *  chunk so topK stays bounded. No-op when the pool lacks that role
+ *  (never invents). Restores a readout when rerank left only procedures. */
 export function ensureHistoryControlRepresentation<T extends { content: string }>(
   selected: T[],
   pool: T[],
   limit: number,
 ): T[] {
-  if (selected.some((c) => isHistoryControlChunk(c.content))) return selected;
-  if (!selected.some((c) => isFaultHistoryDisplayChunk(c.content))) return selected;
-  const control = pool.find((c) => isHistoryControlChunk(c.content));
-  if (!control || selected.includes(control)) return selected;
   const out = [...selected];
-  if (out.length >= limit) {
-    let dropAt = -1;
+  const isRole = (text: string) =>
+    isFaultHistoryDisplayChunk(text) || isHistoryControlChunk(text);
+  const dropNonRole = (): boolean => {
+    if (out.length < limit) return true;
     for (let i = out.length - 1; i >= 0; i--) {
-      const text = out[i].content;
-      if (!isFaultHistoryDisplayChunk(text) && !isHistoryControlChunk(text)) {
-        dropAt = i;
-        break;
+      if (!isRole(out[i].content)) {
+        out.splice(i, 1);
+        return true;
       }
     }
-    if (dropAt < 0) {
-      const displayCount = out.filter((c) => isFaultHistoryDisplayChunk(c.content)).length;
-      dropAt = displayCount > 1 ? out.length - 1 : -1;
+    const displayCount = out.filter((c) => isFaultHistoryDisplayChunk(c.content)).length;
+    if (displayCount > 1) {
+      for (let i = out.length - 1; i >= 0; i--) {
+        if (isFaultHistoryDisplayChunk(out[i].content)) {
+          out.splice(i, 1);
+          return true;
+        }
+      }
     }
-    if (dropAt >= 0) out.splice(dropAt, 1);
+    return false;
+  };
+  const insert = (chunk: T | undefined) => {
+    if (!chunk || out.includes(chunk)) return;
+    if (out.length >= limit && !dropNonRole()) return;
+    out.push(chunk);
+  };
+  if (!out.some((c) => isFaultHistoryDisplayChunk(c.content))) {
+    insert(pool.find((c) => isFaultHistoryDisplayChunk(c.content)));
   }
-  out.push(control);
+  if (!out.some((c) => isHistoryControlChunk(c.content))) {
+    insert(pool.find((c) => isHistoryControlChunk(c.content)));
+  }
   return out;
 }
 
