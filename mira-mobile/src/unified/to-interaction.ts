@@ -214,7 +214,7 @@ export function toInteractionPart(part: MessagePart): InteractionPart {
       return {
         type: "error",
         error: part.reason === "stopped"
-          ? { code: "stopped", message: "Stopped before the answer completed.", retryable: false }
+          ? { code: "stopped", message: "Stopped before the answer completed.", retryable: true }
           : { code: "provider_failure", message: "The answer could not be completed.", retryable: true },
       };
     case "followups":

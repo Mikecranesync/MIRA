@@ -183,7 +183,7 @@ describe("partsFromStream", () => {
   it("a stopped turn is a stop, not an answer, even if the wire said answered", () => {
     const parts = partsFromStream(stream(), { stopped: true, ...LIVE });
     expect(parts.map((p) => p.type)).toEqual(["text", "error"]);
-    expect(parts[1]).toMatchObject({ error: { code: "stopped", retryable: false } });
+    expect(parts[1]).toMatchObject({ error: { code: "stopped", retryable: true } });
     expect(lifecycleFromStream(stream(), { stopped: true })).toBe("stopped");
   });
 
@@ -335,7 +335,7 @@ describe("turnsFromPersisted — hydration mirrors the classic web notebook", ()
     expect(a.lifecycle).toBe("stopped");
     expect(a.parts).toEqual([
       { type: "text", text: "Verify the Mod" },
-      { type: "error", error: { code: "stopped", message: "Stopped before the answer completed.", retryable: false } },
+      { type: "error", error: { code: "stopped", message: "Stopped before the answer completed.", retryable: true } },
     ]);
   });
 

@@ -148,8 +148,8 @@ describe("toInteractionPart", () => {
     });
   });
 
-  it("marks a stopped answer as not retryable and a workspace file as a workspace source", () => {
-    expect(toInteractionPart({ type: "error", reason: "stopped" })).toMatchObject({ error: { code: "stopped", retryable: false } });
+  it("marks a stopped answer as retryable and a workspace file as a workspace source", () => {
+    expect(toInteractionPart({ type: "error", reason: "stopped" })).toMatchObject({ error: { code: "stopped", retryable: true } });
     expect(sourceFor({ ...CITATION, page: null, fileId: "file-9" })).toMatchObject({ kind: "workspace_file", locator: "Check the supply." });
   });
 

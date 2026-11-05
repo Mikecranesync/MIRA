@@ -479,9 +479,12 @@ export function HubShellHost() {
             ? { ...cur, content: retained.result.content, stopped: retained.stopped, result: retained.result }
             : cur,
         );
+        // Stopped and failed interruptions both keep the body so Retry can
+        // replay the same question (#4924). A user abort is not a send-error
+        // banner — the stopped bubble already says what happened.
+        setFailedBody({ body, question });
         if (!retained.stopped) {
           const message = sendFailureMessage(err);
-          setFailedBody({ body, question });
           dispatch({ type: "set-send-error", error: message });
         }
         return;

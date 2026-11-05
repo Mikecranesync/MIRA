@@ -1,4 +1,4 @@
-export { Composer, type ComposerProps, type ComposerKeyEvent, composerKeyAction } from "./Composer";
+export { Composer, type ComposerProps, type ComposerKeyEvent, composerKeyAction, STOP_ARM_DELAY_MS } from "./Composer";
 export { Conversation, ConversationBar, RunCard, type ConversationProps, breadcrumb } from "./Conversation";
 export { DemoNotice, type DemoNoticeProps } from "./DemoNotice";
 export { FactoryLMShell, type FactoryLMShellProps, type ConversationSurface, BACK_EVENT, NAVIGATION_LAYER_QUERY, closeLayerAction, topLayer } from "./FactoryLMShell";
