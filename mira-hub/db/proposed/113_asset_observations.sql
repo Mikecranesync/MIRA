@@ -29,6 +29,10 @@
 -- the table alone leaves them behind and the narrowed CHECK fails (#5093).
 -- DATA LOSS: this discards all technician observations and their events. If the
 -- history must be kept, copy asset_observations and those events out first.
+-- #5218: preserve Living Sheet rows and its published vocabulary on rollback;
+-- removing observations must not remove another capability's event types.
+-- Without114's table in the outbox schema, restore111's original fix-only CHECK.
+-- Inspect actual schema rather than the ledger: staging114ran before recording.
 -- Executed by observations.integration.test.ts
 -- (documented_rollback_succeeds_after_an_observation_event_exists).
 -- ROLLBACK-BEGIN
@@ -36,7 +40,15 @@
 --   DELETE FROM notebook_domain_events WHERE event_type = 'observation_recorded';
 --   DROP TABLE IF EXISTS asset_observations;
 --   ALTER TABLE notebook_domain_events DROP CONSTRAINT IF EXISTS notebook_domain_events_event_type_check;
---   ALTER TABLE notebook_domain_events ADD CONSTRAINT notebook_domain_events_event_type_check CHECK (event_type IN ('fix_recorded'));
+--   DO $$
+--   BEGIN
+--     IF EXISTS (SELECT 1 FROM pg_class s JOIN pg_class e ON e.relnamespace = s.relnamespace
+--                WHERE e.oid = 'notebook_domain_events'::regclass AND s.relname = 'work_sheet_events' AND s.relkind IN ('r', 'p')) THEN
+--       ALTER TABLE notebook_domain_events ADD CONSTRAINT notebook_domain_events_event_type_check CHECK (event_type IN ('fix_recorded', 'job_finished', 'work_order_requested'));
+--     ELSE
+--       ALTER TABLE notebook_domain_events ADD CONSTRAINT notebook_domain_events_event_type_check CHECK (event_type IN ('fix_recorded'));
+--     END IF;
+--   END $$;
 --   COMMIT;
 -- ROLLBACK-END
 
@@ -99,10 +111,12 @@ GRANT SELECT, INSERT ON asset_observations TO factorylm_app;
 
 -- Widen the outbox event vocabulary (111 created the CHECK inline, so its
 -- auto-generated name is notebook_domain_events_event_type_check).
--- Drop-and-re-add is idempotent: the end state is the same whichever run.
+-- #5218: keep every published 114 event type when this still-proposed
+-- migration is promoted or replayed after Living Sheet rows already exist.
+-- Canonical applied 114 remains immutable; neither sibling may narrow the list.
 ALTER TABLE notebook_domain_events DROP CONSTRAINT IF EXISTS notebook_domain_events_event_type_check;
 ALTER TABLE notebook_domain_events ADD CONSTRAINT notebook_domain_events_event_type_check
-  CHECK (event_type IN ('fix_recorded', 'observation_recorded'));
+  CHECK (event_type IN ('fix_recorded', 'observation_recorded', 'job_finished', 'work_order_requested'));
 
 COMMENT ON TABLE asset_observations IS
   'Append-only technician observations on a confirmed machine (Mission 001). Human-reported evidence: never a machine measurement, never root cause, health or safe-to-operate.';
