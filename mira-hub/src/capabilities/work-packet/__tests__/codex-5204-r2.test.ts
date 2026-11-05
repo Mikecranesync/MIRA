@@ -157,7 +157,8 @@ describe("r2 F5 — a torque the packet cannot state is an open question, never 
   it.each([
     ["a bare-unit torque", [{ ref: "C3-B1", torque: "95 Nm", notes: [] }], /95 Nm/],
     ["a callout without a torque", [{ ref: "C3-B1", torque: null, notes: [] }], /prints no torque/],
-    ["no callout at all", [], /No torque callout for connection C3/],
+    // r3 F2: the gap now names the uncovered fastener row itself.
+    ["no callout at all", [], /No torque is printed for C3-B1/],
   ])("%s", (_label, callouts, blockerRe) => {
     const packet = ok(build([reviewed("p1", withCallouts(callouts))]));
     expect(packet.measurements.length).toBeGreaterThan(0);

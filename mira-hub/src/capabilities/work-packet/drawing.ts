@@ -363,6 +363,23 @@ function line(...fields: string[]): string {
   return fields.map(escField).join(SEP);
 }
 
+/** The exact canonical source line `renderDrawingSourceText` writes for one callout — the citation
+ *  needle for a value read from it, so a lookup can never land on a CONNECTION header that merely
+ *  contains the same id (Codex #5204 r3 F4). */
+export function calloutSourceLine(co: DrawingCallout): string {
+  return line("CALLOUT", co.ref, encN(co.torque), ...co.notes);
+}
+
+/** The start of every callout line for exactly `ref` ("CALLOUT | C3 |" never matches "C3-B1"). */
+export function calloutRefPrefix(ref: string): string {
+  return line("CALLOUT", ref) + " |";
+}
+
+/** The exact canonical source line for one drawing-wide note. */
+export function noteSourceLine(note: string): string {
+  return line("NOTE", note);
+}
+
 /** Renders a `DrawingTranscription` as the canonical notebook source text: one tag line per table
  *  row / header field. This is what gets stored as the photo's kept source and what a technician
  *  corrects; `drawing-packet.ts` cites exact lines out of it. */
@@ -620,7 +637,7 @@ export type ReconciledCell =
 export interface ReconciledRow {
   key: string;
   cells: Record<ConnectionCell, ReconciledCell>;
-  /** Two rows from one photo landed in this group: the photos cannot be matched row-for-row. */
+  /** The photos could not be matched row-for-row around this row; its quantity is withheld. */
   ambiguous: boolean;
   /** The sighting whose row anchors citations for this row (first in the deterministic order). */
   anchor: { row: DrawingConnectionRow; photo: DrawingSheetPhoto };
@@ -652,8 +669,8 @@ function rowTokens(row: DrawingConnectionRow): string[] {
  *  photos were attached. Rows on different photos are the same row when they share ANY identity
  *  token (name+type, position, or article number), so a disagreement in one identity cell is a
  *  conflict, not two parts (Codex #5204 r2 F1). Rows present on only some photos are kept (partial
- *  photos complement each other). A matched group holding two rows from the same photo cannot be
- *  told apart and is marked `ambiguous`. A cell whose legible readings disagree is a conflict,
+ *  photos complement each other). A group never holds two rows from one photo; when that blocks an
+ *  unnamed row's only match, the group is marked `ambiguous`. A cell whose legible readings disagree is a conflict,
  *  never "the first one wins". */
 export function reconcileConnectionRows(
   sightings: readonly { connection: DrawingConnectionBlock; photo: DrawingSheetPhoto }[],
@@ -664,15 +681,39 @@ export function reconcileConnectionRows(
   const entries: { row: DrawingConnectionRow; photo: DrawingSheetPhoto }[] = [];
   for (const s of ordered) for (const row of s.connection.rows) entries.push({ row, photo: s.photo });
 
-  // Union-find over entries: rows on different photos sharing an identity token are one row.
+  // Union-find over entries: rows on different photos sharing an identity token are one row — but
+  // a group may hold at most ONE row per photo. Two rows printed together on one photo are two rows
+  // (B1 and B2 can share an article number), so a token that would join them is not used to merge
+  // (Codex #5204 r3 F1). When an unnamed row's only usable token is refused that way, the photos
+  // cannot be matched row-for-row and both groups are marked ambiguous.
   const parent = entries.map((_, k) => k);
   const find = (k: number): number => (parent[k] === k ? k : (parent[k] = find(parent[k])));
-  const ownerOfToken = new Map<string, number>();
+  const photosOf = new Map<number, Set<string>>(entries.map((e, k) => [k, new Set([e.photo.docId])]));
+  const ambiguousRoots = new Set<number>();
+  const owners = new Map<string, number[]>();
   entries.forEach((e, k) => {
-    for (const tok of rowTokens(e.row)) {
-      const other = ownerOfToken.get(tok);
-      if (other === undefined) ownerOfToken.set(tok, k);
-      else if (entries[other].photo.docId !== e.photo.docId) parent[find(k)] = find(other);
+    const tokens = rowTokens(e.row);
+    const named = tokens.some((t) => t.startsWith("name:"));
+    for (const tok of tokens) {
+      const prior = owners.get(tok) ?? [];
+      for (const other of prior) {
+        const a = find(k);
+        const b = find(other);
+        if (a === b) continue;
+        const pa = photosOf.get(a)!;
+        const pb = photosOf.get(b)!;
+        const overlap = Array.from(pa).some((d) => pb.has(d));
+        if (!overlap) {
+          parent[a] = b;
+          pa.forEach((d) => pb.add(d));
+          if (ambiguousRoots.has(a)) ambiguousRoots.add(b);
+        } else if (!named && entries[other].photo.docId !== e.photo.docId) {
+          ambiguousRoots.add(a);
+          ambiguousRoots.add(b);
+        }
+      }
+      prior.push(k);
+      owners.set(tok, prior);
     }
   });
   const groups = new Map<number, { row: DrawingConnectionRow; photo: DrawingSheetPhoto }[]>();
@@ -701,12 +742,11 @@ export function reconcileConnectionRows(
           cells[cell] = ill ? { kind: "illegible", raw: ill.row[cell] as string, photo: ill.photo } : null;
         }
       }
-      const perPhoto = new Set(list.map((e) => e.photo.docId));
       out.push({
         key: rowTokens(list[0].row)[0] ?? `row:${root}`,
         cells,
         anchor: list[0],
-        ambiguous: perPhoto.size < list.length,
+        ambiguous: Array.from(ambiguousRoots).some((a) => find(a) === root),
       });
     });
   return out;
