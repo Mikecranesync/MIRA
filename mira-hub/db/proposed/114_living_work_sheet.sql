@@ -40,6 +40,14 @@
 -- drop-and-re-add of the one shared CHECK, so whichever runs LAST wins, and
 -- only listing every value either migration needs keeps that idempotent.
 --
+-- TASK-OUTBOX-CREATE-WO: this file ALSO widens the event_type CHECK a second
+-- time to add 'work_order_requested' (one per technician-confirmed "request
+-- an Atlas work order" action on a job sheet) and widens the delivery
+-- `notebook_event_deliveries_operation_check` (111's inline CHECK, currently
+-- `operation IN ('append_work_log')`) to add 'create_work_order' — the
+-- SAME outbox dispatcher (cmms-dispatch/dispatcher.ts) branches on
+-- `operation` rather than a second worker or table.
+--
 -- Rollback (old code never reads these objects). Run the whole block below
 -- as ONE transaction. No other table's CHECK constraint or outbox references
 -- these three, so the drop order only has to respect the in-schema FK
@@ -59,7 +67,12 @@
 -- (documented_rollback_succeeds_after_a_job_started_event_exists).
 -- ROLLBACK-BEGIN
 --   BEGIN;
+--   DELETE FROM notebook_event_deliveries WHERE operation = 'create_work_order';
+--   DELETE FROM notebook_domain_events WHERE event_type = 'work_order_requested';
 --   DELETE FROM notebook_domain_events WHERE event_type = 'job_finished';
+--   ALTER TABLE notebook_event_deliveries DROP CONSTRAINT IF EXISTS notebook_event_deliveries_operation_check;
+--   ALTER TABLE notebook_event_deliveries ADD CONSTRAINT notebook_event_deliveries_operation_check
+--     CHECK (operation IN ('append_work_log'));
 --   ALTER TABLE notebook_domain_events DROP CONSTRAINT IF EXISTS notebook_domain_events_event_type_check;
 --   ALTER TABLE notebook_domain_events ADD CONSTRAINT notebook_domain_events_event_type_check
 --     CHECK (event_type IN ('fix_recorded', 'observation_recorded'));
@@ -167,13 +180,23 @@ GRANT SELECT, INSERT ON job_sheet_revisions TO factorylm_app;
 
 -- Widen the outbox event vocabulary (111 created the CHECK inline, so its
 -- auto-generated name is notebook_domain_events_event_type_check; 113 widens
--- it to add 'observation_recorded'). Include BOTH 'observation_recorded' and
--- 'job_finished' here so 113 and 114 never narrow each other, whichever
--- lands first on a given environment (see the header note above).
--- Drop-and-re-add is idempotent: the end state is the same whichever run.
+-- it to add 'observation_recorded'). Include 'observation_recorded',
+-- 'job_finished' AND 'work_order_requested' here so 113 and 114 never narrow
+-- each other, whichever lands first on a given environment (see the header
+-- note above). Drop-and-re-add is idempotent: the end state is the same
+-- whichever run.
 ALTER TABLE notebook_domain_events DROP CONSTRAINT IF EXISTS notebook_domain_events_event_type_check;
 ALTER TABLE notebook_domain_events ADD CONSTRAINT notebook_domain_events_event_type_check
-  CHECK (event_type IN ('fix_recorded', 'observation_recorded', 'job_finished'));
+  CHECK (event_type IN ('fix_recorded', 'observation_recorded', 'job_finished', 'work_order_requested'));
+
+-- Widen the delivery operation vocabulary (111's inline CHECK, auto-named
+-- notebook_event_deliveries_operation_check) to add 'create_work_order' —
+-- TASK-OUTBOX-CREATE-WO. 111 is the only migration that has ever touched
+-- this CHECK, so there is no sibling-migration ordering tension here (unlike
+-- the event_type CHECK above).
+ALTER TABLE notebook_event_deliveries DROP CONSTRAINT IF EXISTS notebook_event_deliveries_operation_check;
+ALTER TABLE notebook_event_deliveries ADD CONSTRAINT notebook_event_deliveries_operation_check
+  CHECK (operation IN ('append_work_log', 'create_work_order'));
 
 COMMENT ON TABLE work_sheet_events IS
   'Append-only Living Work Sheet event log (TASK-S1). One job on one confirmed machine; the current sheet is a pure reduce over these events. Never updated, never deleted.';
