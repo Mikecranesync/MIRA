@@ -136,10 +136,18 @@ export function parseWritePolicy(raw: unknown): WritePolicy {
   // which correctly disable everything).
   const workOrderRequested = parseWorkOrderRequested(obj.work_order_requested);
 
+  // `fix_recorded` missing/malformed degrades ONLY fixRecorded to disabled —
+  // workOrderRequested was already independently validated above and must
+  // survive this branch, or a tenant could never enable work-order creation
+  // without ALSO configuring a (now-unused) fix_recorded target.
   const fr = obj.fix_recorded;
-  if (fr === null || typeof fr !== "object" || Array.isArray(fr)) return DISABLED_POLICY;
+  if (fr === null || typeof fr !== "object" || Array.isArray(fr)) {
+    return { version: 1, fixRecorded: { enabled: false }, workOrderRequested };
+  }
   const frObj = fr as Record<string, unknown>;
-  if (frObj.operation !== undefined && frObj.operation !== "append_work_log") return DISABLED_POLICY;
+  if (frObj.operation !== undefined && frObj.operation !== "append_work_log") {
+    return { version: 1, fixRecorded: { enabled: false }, workOrderRequested };
+  }
 
   if (frObj.enabled !== true) {
     return { version: 1, fixRecorded: { enabled: false }, workOrderRequested };
@@ -147,19 +155,21 @@ export function parseWritePolicy(raw: unknown): WritePolicy {
 
   const rawTarget = frObj.target;
   if (rawTarget === null || typeof rawTarget !== "object" || Array.isArray(rawTarget)) {
-    return DISABLED_POLICY;
+    return { version: 1, fixRecorded: { enabled: false }, workOrderRequested };
   }
   const t = rawTarget as Record<string, unknown>;
 
   let target: WorkOrderPolicyTarget;
   if (t.kind === "work_order") {
     const extId = t.externalWorkOrderId;
-    if (typeof extId !== "string" || extId.trim().length === 0) return DISABLED_POLICY;
+    if (typeof extId !== "string" || extId.trim().length === 0) {
+      return { version: 1, fixRecorded: { enabled: false }, workOrderRequested };
+    }
     target = { kind: "work_order", externalWorkOrderId: extId };
   } else if (t.kind === "asset_linked_work_order") {
     target = { kind: "asset_linked_work_order" };
   } else {
-    return DISABLED_POLICY;
+    return { version: 1, fixRecorded: { enabled: false }, workOrderRequested };
   }
 
   const internalTest = frObj.internal_test === true;

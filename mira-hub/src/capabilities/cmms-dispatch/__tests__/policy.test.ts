@@ -175,6 +175,28 @@ describe("parseWritePolicy", () => {
       expect(parsed.fixRecorded.enabled).toBe(false);
       expect(parsed.workOrderRequested.enabled).toBe(true);
     });
+
+    it("survives when fix_recorded is entirely absent — a tenant need not configure a fix_recorded target at all", () => {
+      const raw = { version: 1, work_order_requested: { enabled: true } };
+      expect(parseWritePolicy(raw)).toEqual({
+        version: 1,
+        fixRecorded: { enabled: false },
+        workOrderRequested: { enabled: true },
+      });
+    });
+
+    it("survives when fix_recorded is malformed (not an object)", () => {
+      const raw = { fix_recorded: "nope", work_order_requested: { enabled: true } };
+      expect(parseWritePolicy(raw).workOrderRequested).toEqual({ enabled: true });
+    });
+
+    it("survives when fix_recorded.enabled is true but its target is malformed", () => {
+      const raw = {
+        fix_recorded: { enabled: true, target: { kind: "bogus" } },
+        work_order_requested: { enabled: true },
+      };
+      expect(parseWritePolicy(raw).workOrderRequested).toEqual({ enabled: true });
+    });
   });
 });
 
