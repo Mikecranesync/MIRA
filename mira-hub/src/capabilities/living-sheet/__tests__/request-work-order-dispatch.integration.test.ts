@@ -45,7 +45,7 @@ import { reduceSheet, type StoredEvent } from "../reduce";
 import { appendEvent, startJob, type StartJobResult } from "../store";
 import type { JobSheetBody } from "../types";
 
-const MIGRATION = path.resolve(__dirname, "../../../../db/proposed/114_living_work_sheet.sql");
+const MIGRATION = path.resolve(__dirname, "../../../../db/migrations/114_living_work_sheet.sql");
 
 function workOrderRequestedEnabledPolicy() {
   return { version: 1, work_order_requested: { enabled: true } };

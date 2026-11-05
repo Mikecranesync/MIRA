@@ -47,7 +47,7 @@ import { runDispatchTick, type DispatchDeps } from "@/capabilities/cmms-dispatch
 import { enqueueFixRecordedEvent } from "@/capabilities/cmms-dispatch/enqueue";
 import { subjectRefForJobFinished } from "../finish-outbox";
 
-const MIGRATION = path.resolve(__dirname, "../../../../db/proposed/114_living_work_sheet.sql");
+const MIGRATION = path.resolve(__dirname, "../../../../db/migrations/114_living_work_sheet.sql");
 
 async function makeNotebook(tenantId: string, entityId: string | null, confirmed: boolean): Promise<string> {
   const res = await testPool.query<{ id: string }>(

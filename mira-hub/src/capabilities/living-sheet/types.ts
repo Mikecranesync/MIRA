@@ -1,7 +1,7 @@
 /**
  * Living Work Sheet — shared types for the append-only event log.
  *
- * Schema: db/proposed/114_living_work_sheet.sql (proposed, not db/migrations).
+ * Schema: db/migrations/114_living_work_sheet.sql (proposed, not db/migrations).
  * One job on one confirmed machine. Every change is an event; the current
  * sheet is a pure reduce over those events (reduce.ts). A correction
  * supersedes and never deletes. Ticks never carry over from a template —

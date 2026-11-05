@@ -1,7 +1,7 @@
 /**
  * POST /api/job-sheets/[id]/revisions — add a new DRAFT revision to an
  *      existing job sheet template. Never edits a prior revision row
- *      (db/proposed/114 grants SELECT, INSERT only on job_sheet_revisions).
+ *      (db/migrations/114 grants SELECT, INSERT only on job_sheet_revisions).
  *
  * Flag `NOTEBOOK_LIVING_SHEET` off ⇒ 404.
  */

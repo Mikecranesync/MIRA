@@ -2,7 +2,7 @@
  * Validation for the Living Work Sheet's two write surfaces: starting a job
  * (which snapshots a `JobSheetBody` into the `job_started` event) and
  * appending an event to an already-started job. Mirrors the DB CHECKs in
- * db/proposed/114_living_work_sheet.sql so a rejected body never reaches
+ * db/migrations/114_living_work_sheet.sql so a rejected body never reaches
  * Postgres — same discipline as capabilities/observations/validate.ts.
  */
 import { isUuid } from "@/capabilities/fix-records";

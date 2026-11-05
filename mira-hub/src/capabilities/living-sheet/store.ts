@@ -1,7 +1,7 @@
 /**
  * Living Work Sheet — the event-log writer and readers.
  *
- * Schema: db/proposed/114_living_work_sheet.sql (append-only, RLS UUID
+ * Schema: db/migrations/114_living_work_sheet.sql (append-only, RLS UUID
  * family). Same shape as capabilities/observations/store.ts: every write is
  * one `withTenantContext` transaction, idempotency keyed on
  * (tenant, notebook, client_event_id) with a request fingerprint, and the

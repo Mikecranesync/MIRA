@@ -58,7 +58,7 @@ import {
 import { startJob, type StartJobResult } from "../store";
 import type { JobSheetBody } from "../types";
 
-const MIGRATION = path.resolve(__dirname, "../../../../db/proposed/114_living_work_sheet.sql");
+const MIGRATION = path.resolve(__dirname, "../../../../db/migrations/114_living_work_sheet.sql");
 
 const ACTOR = { userId: "tech-1", label: "Tech One" };
 
