@@ -41,12 +41,19 @@ const S: Record<string, CSSProperties> = {
   blocker: { borderTop: "1px solid var(--fl-line)", paddingTop: 8, marginTop: 8 },
 };
 
-/** A value with its badge and page, for a table cell (screen and paper). */
-function Cell({ field }: { field: Field }) {
+/** Who struck the field at `path` (latest strike in the review log; a copy's strike is logged on its original). */
+function struckBy(packet: Pick<WorkPacket, "approval">, path: string): string {
+  return [...packet.approval.technicianReview.entries].reverse().find((e) => e.path === path && e.action === "strike")?.by ?? "(unnamed)";
+}
+
+/** A value with its badge and page, for a table cell (screen and paper). A struck value says it is
+ *  excluded, in the table itself — not only crossed out (Codex #5173 F13). */
+function Cell({ field, packet, path }: { field: Field; packet: Pick<WorkPacket, "approval">; path: string }) {
   const chip = sourceChipLabel(field.source);
   return (
     <>
       <span style={field.struck ? { textDecoration: "line-through", color: "var(--fl-muted)" } : undefined}>{field.value ?? "(unknown)"}</span>
+      {field.struck && <div>EXCLUDED — struck by {struckBy(packet, field.copyOf ?? path)}. Do not use.</div>}
       <div style={S.muted}>{badgeText(field.label)}{chip ? ` · ${chip}` : ""}</div>
     </>
   );
@@ -127,10 +134,6 @@ export function BlockersSection({ packet, renderField }: { packet: WorkPacket; r
 export function JhaTable({ packet, renderField }: { packet: WorkPacket; renderField: RenderField }) {
   const rows = packet.jha ?? [];
   if (rows.length === 0) return null;
-  const entries = packet.approval.technicianReview.entries;
-  // A struck control is excluded, on screen and on paper — never printed as an active control
-  // (Codex #5173 F13; same as a struck torque value, F4).
-  const struckBy = (i: number) => [...entries].reverse().find((e) => e.path === `jha[${i}].controls` && e.action === "strike")?.by ?? "(unnamed)";
   return (
     <section style={S.section} data-testid="wp-jha">
       <h3 style={S.title}>Job hazard analysis</h3>
@@ -141,11 +144,12 @@ export function JhaTable({ packet, renderField }: { packet: WorkPacket; renderFi
           {rows.map((r, i) => (
             <tr key={i} data-testid={`wp-jha-row-${i}`}>
               <td style={S.td}>{i + 1}</td>
-              <td style={S.td}><Cell field={r.hazard} /></td>
-              <td style={S.td}><Cell field={r.task} /></td>
+              <td style={S.td}><Cell field={r.hazard} packet={packet} path={`jha[${i}].hazard`} /></td>
+              <td style={S.td}><Cell field={r.task} packet={packet} path={`jha[${i}].task`} /></td>
               <td style={S.td}>
+                {/* A struck control is excluded, on screen and on paper (Codex #5173 F13; as struck torque, F4). */}
                 {r.controls.struck
-                  ? <><s>{r.controls.value ?? "(unknown)"}</s><div>EXCLUDED — struck by {struckBy(i)}. Do not use.</div></>
+                  ? <><s>{r.controls.value ?? "(unknown)"}</s><div>EXCLUDED — struck by {struckBy(packet, `jha[${i}].controls`)}. Do not use.</div></>
                   : (r.controls.value ?? <span style={S.muted}>Set by your site</span>)}
               </td>
             </tr>
@@ -172,9 +176,9 @@ export function PartsTable({ packet, renderField }: { packet: WorkPacket; render
         <tbody>
           {packet.parts.map((p, i) => (
             <tr key={i} data-testid={`wp-part-row-${i}`}>
-              <td style={S.td}><Cell field={p.partNumber} /></td>
-              <td style={S.td}><Cell field={p.description} /></td>
-              <td style={S.td}><Cell field={p.qty} /></td>
+              <td style={S.td}><Cell field={p.partNumber} packet={packet} path={`parts[${i}].partNumber`} /></td>
+              <td style={S.td}><Cell field={p.description} packet={packet} path={`parts[${i}].description`} /></td>
+              <td style={S.td}><Cell field={p.qty} packet={packet} path={`parts[${i}].qty`} /></td>
               <td style={S.td}>{p.kit ?? ""}</td>
             </tr>
           ))}

@@ -125,3 +125,19 @@ describe("dashed and spaced model spellings (Codex #5173 F6, #5175)", () => {
     expect(kind("Use 2 - 3 drops of oil on each plunger.")).toBe("applies");
   });
 });
+
+describe("dashed spellings in all-digit model families (Codex #5173 F6 residual)", () => {
+  it("an unlisted dashed model after 'Model' is unresolved, not unrestricted", () => {
+    expect(kind("On Model 35-99 use the long seal.")).toBe("unresolved");
+    expect(kind("Models 8520, 85-99 use the long seal.")).toBe("unresolved");
+  });
+  it("a dashed spelling of another covered model never applies to this pump", () => {
+    expect(kind("On Model 85-45 use the long seal.")).toBe("other_models");
+    expect(kind("On Model 85-20 use the long seal.")).toBe("applies");
+  });
+  it("control: screw sizes, ranges and step numbers are not models", () => {
+    expect(kind("Torque the 10-24 screws in two passes.")).toBe("applies");
+    expect(kind("Repeat steps 12-15 for each plunger.")).toBe("applies");
+    expect(kind("Use 2 - 3 drops of oil on each plunger.")).toBe("applies");
+  });
+});

@@ -97,6 +97,23 @@ const TOPIC_PATTERNS: readonly TopicPattern[] = [
   { re: /lubricat/gi, topics: ["lubrication"] },
 ];
 
+const NEGATION_RE = /\b(?:no|not|don't|never|without|except|excluding)\b/i;
+const TASK_WORD_RE = /^(?:reseal|rebuild|overhaul|replace|repack|re-pack|install|inspect|check|service|swap|renew|repair|change|lubricate)$/i;
+
+/** One clause with what it rules out removed (see `selectTopics`). */
+function dropNegated(clause: string): string {
+  let kept = "";
+  let rest = clause;
+  for (let m = NEGATION_RE.exec(rest); m; m = NEGATION_RE.exec(rest)) {
+    kept += rest.slice(0, m.index) + " ";
+    const words = rest.slice(m.index + m[0].length).split(/\s+/).filter(Boolean);
+    const resume = words.findIndex((w, k) => k > 0 && TASK_WORD_RE.test(w) && !/^(?:and|or|nor)$/i.test(words[k - 1]));
+    if (resume < 0) return kept;
+    rest = words.slice(resume).join(" ");
+  }
+  return kept + rest;
+}
+
 /**
  * Every (topic, matched word) pair found in free text — a work order's title and description, passed
  * as separate parts so a negation in one never runs on into the other (Codex #5173 F11: a title
@@ -105,12 +122,15 @@ const TOPIC_PATTERNS: readonly TopicPattern[] = [
 export function selectTopics(...parts: string[]): TopicMatch[] {
   const out: TopicMatch[] = [];
   // What a clause rules out ("no valve service", "without removing the valves") adds nothing
-  // (Codex EGM F40): each clause is cut at its first negation word, keeping the work asked for
-  // before it. Clauses split at part boundaries, sentence ends, semicolons, commas and "but".
+  // (Codex EGM F40). Clauses split at part boundaries, sentence ends, semicolons, commas and "but";
+  // within a clause the words after a negation are dropped up to the next task word that starts new
+  // work ("Pump not building pressure reseal it" keeps the reseal, Codex #5173 F11). A task word
+  // straight after the negation, or after "and"/"or"/"nor", is the work being ruled out
+  // ("don't replace the valves", "don't inspect or replace the valves").
   const text = parts
     .join("\n")
     .split(/[\n.;,!?]|\bbut\b/i)
-    .map((c) => c.split(/\b(?:no|not|don't|never|without|except|excluding)\b/i)[0])
+    .map(dropNegated)
     .join(" . ");
   for (const { re, topics } of TOPIC_PATTERNS) {
     re.lastIndex = 0;

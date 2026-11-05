@@ -11,7 +11,7 @@ import { FIXTURES, fixturePages } from "@/capabilities/work-packet/__tests__/fix
 import { buildDraftPacket } from "@/capabilities/work-packet/draft";
 import { applyEdit } from "@/capabilities/work-packet/edits";
 import type { Field, WorkPacket } from "@/capabilities/work-packet/types";
-import { JhaTable, MeasurementsTable, PhasedSteps } from "../WorkPacketV2Sections";
+import { JhaTable, MeasurementsTable, PartsTable, PhasedSteps } from "../WorkPacketV2Sections";
 import { measurementRows } from "../work-packet-v2-view";
 
 const render = (path: string, field: Field) => <div data-path={path}>{field.value ?? "(unknown)"}</div>;
@@ -100,5 +100,34 @@ describe("F13 (#5177) — a struck hazard control is shown as excluded in the ha
     const row = rowHtml(set);
     expect(row).toContain("Fictional isolation step Z-1");
     expect(row).not.toMatch(/EXCLUDED|<s>/);
+  });
+});
+
+describe("F13 residual — struck hazard, where and parts cells say EXCLUDED in the table", () => {
+  const base = packet();
+  const rowOf = (html: string, id: string) => html.slice(html.indexOf(`data-testid="${id}"`), html.indexOf("</tr>", html.indexOf(`data-testid="${id}"`)));
+
+  it("a struck hazard (a copy of a caution) names who struck it, in the printed row", () => {
+    const struck = applyEdit(base, { path: "jha[0].hazard", action: "strike" }, "Tech C", "2026-11-04T12:07:00Z");
+    expect(struck.jha![0].hazard.struck).toBe(true);
+    const row = rowOf(renderToStaticMarkup(<JhaTable packet={struck} renderField={render} />), "wp-jha-row-0");
+    expect(row).toMatch(/EXCLUDED — struck by Tech C\. Do not use\./);
+  });
+  it("a struck 'where' cell says EXCLUDED", () => {
+    const struck = applyEdit(base, { path: "jha[0].task", action: "strike" }, "Tech D", "2026-11-04T12:08:00Z");
+    const row = rowOf(renderToStaticMarkup(<JhaTable packet={struck} renderField={render} />), "wp-jha-row-0");
+    expect(row).toMatch(/EXCLUDED — struck by Tech D\. Do not use\./);
+  });
+  it("a struck part number says EXCLUDED", () => {
+    // The manual-only fixture has no parts list: add one invented part.
+    const f = (value: string): Field => ({ value, label: "verified", source: null, basis: "fictional test part" });
+    const withPart: WorkPacket = { ...base, parts: [{ kit: "seal", item: 1, partNumber: f("99001"), description: f("Fictional seal"), qty: f("3") }] };
+    const struck = applyEdit(withPart, { path: "parts[0].partNumber", action: "strike" }, "Tech E", "2026-11-04T12:09:00Z");
+    const row = rowOf(renderToStaticMarkup(<PartsTable packet={struck} renderField={render} />), "wp-part-row-0");
+    expect(row).toMatch(/EXCLUDED — struck by Tech E\. Do not use\./);
+  });
+  it("control: unstruck rows carry no EXCLUDED text", () => {
+    expect(renderToStaticMarkup(<JhaTable packet={base} renderField={render} />)).not.toMatch(/EXCLUDED/);
+    expect(renderToStaticMarkup(<PartsTable packet={base} renderField={render} />)).not.toMatch(/EXCLUDED/);
   });
 });

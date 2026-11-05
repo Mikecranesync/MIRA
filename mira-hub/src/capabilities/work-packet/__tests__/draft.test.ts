@@ -261,6 +261,20 @@ describe("selectTopics", () => {
   });
 });
 
+describe("selectTopics — a negation covers only the work it rules out (Codex #5173 F11 residual)", () => {
+  const topicsOf = (...parts: string[]) => new Set(selectTopics(...parts).map((m) => m.topic));
+  it("a task asked for later in the same clause is kept", () => {
+    expect(topicsOf("Pump not building pressure reseal it")).toEqual(new Set(["seals"]));
+    expect(topicsOf("Replace the seals not the valves check the plungers")).toEqual(new Set(["seals", "plungers"]));
+  });
+  it("control: the work right after the negation is still ruled out", () => {
+    expect(topicsOf("Reseal and don't replace the valves")).toEqual(new Set(["seals"]));
+    expect(topicsOf("Reseal and don't inspect or replace the valves")).toEqual(new Set(["seals"]));
+    expect(topicsOf("Reseal, no valve service")).toEqual(new Set(["seals"]));
+    expect(topicsOf("Reseal without removing the valves")).toEqual(new Set(["seals"]));
+  });
+});
+
 describe("buildDraftPacket — title negation (Codex #5173 F11, #5176)", () => {
   it("builds a seal packet when the title is a negated symptom and the description asks for a reseal", () => {
     wireParsers();
