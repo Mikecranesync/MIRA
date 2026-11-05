@@ -28,6 +28,7 @@ import {
   visibleProposals,
   stepNeedsConfirm,
   stepConfirmDetail,
+  SupersededReadingLine,
 } from "../LivingSheet";
 import type { JobSheetItem } from "@/capabilities/living-sheet/types";
 import type { SheetStepView, SheetView } from "@/capabilities/living-sheet/reduce";
@@ -404,5 +405,16 @@ describe("R2-13 combined — a fixture with every execution-side section populat
     expect(html).toContain("Isolate upstream valve before starting.");
     expect(html).toContain("Only if bent.");
     expect(html).toContain("Drawing C3-LW, sheet 2");
+  });
+});
+
+describe("SupersededReadingLine — a replaced value on screen says so in words", () => {
+  it("renders 'Replaced — not used' with the struck value and its own who", () => {
+    const html = renderToStaticMarkup(
+      <SupersededReadingLine entry={{ value: 48, unit: "A", by: "Tech One", at: "2026-11-03T20:00:00.000Z", eventId: "e1", superseded: true }} />,
+    );
+    expect(html).toContain("Replaced — not used");
+    expect(html).toMatch(/<s>48 A<\/s>/);
+    expect(html).toContain("Tech One");
   });
 });

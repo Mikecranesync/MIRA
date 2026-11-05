@@ -175,9 +175,10 @@ function renderSection(section: PrintSection, index: number) {
               {reading.current.by ?? "a technician"}, {new Date(reading.current.at).toLocaleString()}
               {reading.source ? ` (source: ${reading.source.kind}${reading.source.ref ? ` — ${reading.source.ref}` : ""})` : ""}
               {reading.history.filter((h) => h.superseded).map((h, i) => (
-                <span key={i} style={S.struck}>
+                <span key={i}>
                   {" "}
-                  ({h.value} {h.unit} — {h.by ?? "a technician"}, {new Date(h.at).toLocaleString()})
+                  (Replaced — not used:{" "}
+                  <span style={S.struck}>{h.value} {h.unit}</span> — {h.by ?? "a technician"}, {new Date(h.at).toLocaleString()})
                 </span>
               ))}
             </p>
@@ -271,8 +272,9 @@ function renderSection(section: PrintSection, index: number) {
             </p>
           )}
           {section.history.filter((h) => h.eventId !== section.current?.eventId).map((h, i) => (
-            <p key={i} style={{ ...S.row, ...S.struck }}>
-              &ldquo;{h.text}&rdquo; — {h.by ?? "a technician"}, {new Date(h.at).toLocaleString()}
+            <p key={i} style={S.row}>
+              Replaced — not used: <span style={S.struck}>&ldquo;{h.text}&rdquo;</span> — {h.by ?? "a technician"},{" "}
+              {new Date(h.at).toLocaleString()}
             </p>
           ))}
         </section>

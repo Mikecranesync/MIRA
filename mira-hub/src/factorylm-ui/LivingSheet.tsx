@@ -278,6 +278,17 @@ const BANNER_STYLE: CSSProperties = {
 
 // Exported (R2-13) so its source/drawing-reference line is directly
 // SSR-testable (renderToStaticMarkup) without rendering the whole panel.
+/** A replaced reading stays visible but is excluded in words, not only by
+ *  strike-through (which screen readers and B/W copies can lose). */
+export function SupersededReadingLine({ entry }: { entry: SheetReadingView["history"][number] }) {
+  return (
+    <div style={{ fontSize: "15px", color: "var(--fl-muted)" }}>
+      Replaced — not used: <s>{entry.value} {entry.unit}</s> — {entry.by ?? "a technician"} ·{" "}
+      {new Date(entry.at).toLocaleString()}
+    </div>
+  );
+}
+
 export function StepRow({ step, onToggle }: { step: SheetStepView; onToggle: (step: SheetStepView) => void }) {
   return (
     <li data-testid={`sheet-step-${step.id}`} style={{ marginBottom: 10, listStyle: "none" }}>
@@ -1207,11 +1218,7 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
                         who/when — never silently replaced. */}
                     {r.history
                       .filter((h) => h.superseded)
-                      .map((h, i) => (
-                        <div key={i} style={{ fontSize: "15px", color: "var(--fl-muted)" }}>
-                          <s>{h.value} {h.unit}</s> — {h.by ?? "a technician"} · {new Date(h.at).toLocaleString()}
-                        </div>
-                      ))}
+                      .map((h, i) => <SupersededReadingLine key={i} entry={h} />)}
                     {correctingReadingId === r.id ? (
                       <div style={{ marginTop: 4 }}>
                         <input

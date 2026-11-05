@@ -399,3 +399,32 @@ describe("LivingSheetPrint — technician words are curly-quoted verbatim, with 
     expect(html).not.toContain(`“${title}”`);
   });
 });
+
+describe("LivingSheetPrint — replaced values are excluded in words, not only by strike-through", () => {
+  it("labels a superseded reading 'Replaced — not used' so a B/W copy cannot read it as current", () => {
+    const view = baseView({
+      readings: [
+        {
+          id: "r1",
+          what: "Motor current",
+          current: { value: 4.8, unit: "A", by: "Mike", at: "2026-11-03T21:14:00.000Z", eventId: "e2" },
+          history: [
+            { value: 48, unit: "A", by: "Tech One", at: "2026-11-03T20:00:00.000Z", eventId: "e1", superseded: true },
+            { value: 4.8, unit: "A", by: "Mike", at: "2026-11-03T21:14:00.000Z", eventId: "e2", superseded: false },
+          ],
+          source: null,
+        },
+      ],
+    });
+    const html = renderToStaticMarkup(<LivingSheetPrint view={view} {...OPTS} />).replace(/<[^>]+>/g, "");
+    expect(html).toMatch(/Replaced — not used: 48 A — Tech One/);
+    expect(html).not.toMatch(/Replaced — not used: 4\.8 A/);
+  });
+  it("labels an earlier handover 'Replaced — not used'", () => {
+    const h1 = { text: "Old note", by: "A", at: "2026-11-03T20:00:00.000Z", eventId: "e1" };
+    const h2 = { text: "New note", by: "B", at: "2026-11-03T21:00:00.000Z", eventId: "e2" };
+    const html = renderToStaticMarkup(<LivingSheetPrint view={baseView({ handover: { current: h2, history: [h1, h2] } })} {...OPTS} />).replace(/<[^>]+>/g, "");
+    expect(html).toMatch(/Replaced — not used: &ldquo;Old note|Replaced — not used: “Old note/);
+    expect(html).not.toMatch(/Replaced — not used: (&ldquo;|“)New note/);
+  });
+});
