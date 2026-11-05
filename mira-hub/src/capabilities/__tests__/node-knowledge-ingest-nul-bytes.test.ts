@@ -37,7 +37,12 @@ vi.mock("@/lib/tenant-context", () => ({
       fn({
         query: async (sql: string, params: unknown[]) => {
           for (const p of params) {
-            if (typeof p === "string" && p.includes("\u0000")) {
+            // Literal U+0000 in TEXT, or `\u0000` after JSON.stringify — both
+            // fail real Postgres UTF8/JSONB (22021).
+            if (
+              typeof p === "string" &&
+              (p.includes("\u0000") || p.includes("\\u0000"))
+            ) {
               throw Object.assign(new Error('invalid byte sequence for encoding "UTF8": 0x00'), {
                 code: "22021",
               });

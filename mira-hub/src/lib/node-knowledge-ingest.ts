@@ -149,6 +149,11 @@ function postgresSafeText(value: string | null | undefined): string | null {
   return stripNulBytes(value);
 }
 
+/** JSONB also rejects `\u0000` after stringify escapes it. Walk every string. */
+function postgresSafeJson(value: unknown): string {
+  return JSON.stringify(value, (_k, v) => (typeof v === "string" ? stripNulBytes(v) : v));
+}
+
 /**
  * Split text into ~CHUNK_CHARS windows with overlap, preferring to end on a
  * paragraph or sentence boundary. On a code-keyed table page it ends a window
@@ -485,14 +490,14 @@ async function writeChunkRowsForNode(
           randomUUID(),
           stripNulBytes(r.content),
           r.page,
-          JSON.stringify({
+          postgresSafeJson({
             filename,
             uns_path: unsPath,
             node_id: nodeId,
             chunk_index: r.idx,
             source: "hub_node_attachment",
             ...(r.repair ? { text_repair: r.repair } : {}),
-            ...(r.label ? { page_label: stripNulBytes(r.label) } : {}),
+            ...(r.label ? { page_label: r.label } : {}),
           }),
         );
       }
@@ -758,8 +763,11 @@ export async function ingestTextToNode(opts: {
   buffer: Buffer;
   contentSha256?: string | null;
 }): Promise<NodeIngestResult> {
-  const { tenantId, nodeId, unsPath, filename, mimeType, sizeBytes, buffer } =
-    opts;
+  const tenantId = opts.tenantId;
+  const nodeId = opts.nodeId;
+  const filename = stripNulBytes(opts.filename);
+  const unsPath = postgresSafeText(opts.unsPath);
+  const { mimeType, sizeBytes, buffer } = opts;
 
   const upload = await createUpload({
     tenantId,
@@ -851,8 +859,11 @@ export async function ingestPdfToNode(opts: {
   /** sha256 hex of the bytes — persisted for content dedup (ARPK 1b). */
   contentSha256?: string | null;
 }): Promise<NodeIngestResult> {
-  const { tenantId, nodeId, unsPath, filename, mimeType, sizeBytes, buffer } =
-    opts;
+  const tenantId = opts.tenantId;
+  const nodeId = opts.nodeId;
+  const filename = stripNulBytes(opts.filename);
+  const unsPath = postgresSafeText(opts.unsPath);
+  const { mimeType, sizeBytes, buffer } = opts;
 
   const upload = await createUpload({
     tenantId,
