@@ -9,7 +9,8 @@
     "record_reading",
     "transition_work_order",
     "read_work_log",
-    "list_changes"
+    "list_changes",
+    "create_work_order"
   ],
   "support": ["implemented", "unsupported", "unknown"],
   "writeResultKinds": [
@@ -60,6 +61,31 @@
         "sourceRef": { "type": "string", "description": "'<table>:<id>' audit reference, never a URL" }
       }
     },
+    "WorkOrderRequest": {
+      "type": "object",
+      "required": [
+        "idempotencyKey",
+        "marker",
+        "title",
+        "description",
+        "priority",
+        "externalAssetId",
+        "attributionLabel",
+        "occurredAt",
+        "sourceRef"
+      ],
+      "properties": {
+        "idempotencyKey": { "type": "string" },
+        "marker": { "type": "string", "pattern": "^\\[MIRA:[0-9a-f-]{36}\\]$" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "priority": { "type": "string" },
+        "externalAssetId": { "type": ["string", "null"] },
+        "attributionLabel": { "type": "string" },
+        "occurredAt": { "type": "string", "format": "date-time" },
+        "sourceRef": { "type": "string", "description": "'<table>:<id>' audit reference, never a URL" }
+      }
+    },
     "Capability": {
       "type": "object",
       "required": ["support"],
@@ -75,6 +101,7 @@
     "upstream": "github.com/Grashjs/cmms, build pushed 2026-03-27 (post-v1.5.0, pre-v1.5.1)",
     "append_work_log": "unsupported — CommentController first appears upstream 2026-04-08 (v1.6.0); WorkOrderPatchDTO has no feedback field; PATCH /tasks/work-order/{id} replaces the whole task list",
     "attach_evidence": "unknown — POST /files/upload exists but is gated by a license entitlement check",
-    "read_work_log": "unsupported at this digest; implemented for v1.6.0+ via POST /comments/search/{workOrderId}"
+    "read_work_log": "unsupported at this digest; implemented for v1.6.0+ via POST /comments/search/{workOrderId}",
+    "create_work_order": "implemented — POST /work-orders exists at this digest; search-filter support for read-back (POST /work-orders/search) on a real Atlas is unconfirmed, see WorkOrderRequest read-back notes in atlas-write-provider.ts"
   }
 }
