@@ -279,9 +279,11 @@ export interface UnifiedShellHost {
 
 const COMPOSING_TURN: ChatTurn = { answer: "", citations: [], status: "" };
 
+export type UnifiedLiveTurn = { q: string; a: ChatTurn; requestId?: string };
+
 export interface UnifiedChatProps {
   readonly turns: NotebookServerTurn[];
-  readonly liveTurns: { q: string; a: ChatTurn }[];
+  readonly liveTurns: UnifiedLiveTurn[];
   readonly pending: { q: string; a: ChatTurn } | null;
   readonly busy: boolean;
   readonly canStop: boolean;
@@ -345,8 +347,11 @@ export interface UnifiedChatHandlers
   readonly onCreateProject?: () => void;
 }
 
-function stoppedLiveKey(question: string, index: number): string {
-  return `${index}:${question}`;
+function stoppedLiveKey(turn: UnifiedLiveTurn): string {
+  // Never index: dropPersistedLiveTurns shifts earlier rows and would un-hide
+  // a superseded stop. Prefer the minted request id; fall back to Q + partial.
+  if (turn.requestId) return `id:${turn.requestId}`;
+  return `fp:${turn.q}\0${turn.a.answer}`;
 }
 
 function initialState(messages: ReturnType<typeof threadMessages>, meta: UnifiedNotebookMeta, host?: UnifiedShellHost): ShellState {
@@ -437,9 +442,9 @@ function UnifiedChatForNotebook({
   const [supersededStoppedKeys, setSupersededStoppedKeys] = useState<ReadonlySet<string>>(() => new Set());
   const visibleLiveTurns = useMemo(() => {
     if (supersededStoppedKeys.size === 0) return liveTurns;
-    return liveTurns.filter((turn, index) => {
+    return liveTurns.filter((turn) => {
       if (turn.a.status !== "stopped") return true;
-      return !supersededStoppedKeys.has(stoppedLiveKey(turn.q, index));
+      return !supersededStoppedKeys.has(stoppedLiveKey(turn));
     });
   }, [liveTurns, supersededStoppedKeys]);
   const shownPending = useMemo(
@@ -1039,7 +1044,13 @@ function UnifiedChatForNotebook({
           const last = liveTurns.at(-1);
           const question = last?.q.trim();
           if (!last || last.a.status !== "stopped" || !question || last.a.safetyTrigger !== undefined) return;
-          setSupersededStoppedKeys((current) => new Set(current).add(stoppedLiveKey(last.q, liveTurns.length - 1)));
+          setSupersededStoppedKeys((current) => new Set(current).add(stoppedLiveKey(last)));
+          // Same honesty as the canRetry path: a photo turn still holding
+          // bytes must ride compose. A text abort has no FailedSend body.
+          if (attachments.hasRetained() || attachments.hasCarried()) {
+            onSend(question, [], { retry: true });
+            return;
+          }
           handlers.onSend(question);
         } }
       : {}),
