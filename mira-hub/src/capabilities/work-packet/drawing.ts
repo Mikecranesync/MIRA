@@ -553,10 +553,6 @@ export function docRevFromFilename(name: string): { docNoDigits: string; rev: st
   return { docNoDigits: m[1], rev: m[2].toUpperCase(), sheet: m[3] };
 }
 
-function digitsOf(s: string): string {
-  return s.replace(/[^0-9]/g, "");
-}
-
 // ---------------------------------------------------------------------------
 // mergeDrawingPhotos — groups photos of the same document, finds cross-checks
 // ---------------------------------------------------------------------------
@@ -624,60 +620,109 @@ export type ReconciledCell =
 export interface ReconciledRow {
   key: string;
   cells: Record<ConnectionCell, ReconciledCell>;
+  /** Two rows from one photo landed in this group: the photos cannot be matched row-for-row. */
+  ambiguous: boolean;
   /** The sighting whose row anchors citations for this row (first in the deterministic order). */
   anchor: { row: DrawingConnectionRow; photo: DrawingSheetPhoto };
 }
 
-function rowKeyOf(row: DrawingConnectionRow): string {
-  const pos = (row.pos ?? "").trim();
-  if (/^\d+$/.test(pos)) return `pos:${pos}`;
-  if (row.artNo && !row.artNo.includes("[?]")) return `art:${row.artNo.trim()}`;
-  return `name:${(row.name ?? "").trim().toLowerCase()}|${(row.type ?? "").trim().toLowerCase()}`;
+/** A cell value usable as row identity: legible (no `[?]`) and non-empty, normalized for comparison. */
+function identityOf(v: string | null): string | null {
+  if (v === null) return null;
+  const t = v.trim().toLowerCase();
+  return t && !t.includes("[?]") ? t : null;
+}
+
+/** The identity tokens one row offers for matching against rows on OTHER photos of the same
+ *  connection: its row name with its type (e.g. "B1|bolt"), its position, its article number.
+ *  Any one shared token joins two rows; none of them is trusted alone to keep rows apart. */
+function rowTokens(row: DrawingConnectionRow): string[] {
+  const out: string[] = [];
+  const name = identityOf(row.name);
+  if (name) out.push(`name:${name}|${identityOf(row.type) ?? ""}`);
+  const pos = identityOf(row.pos);
+  if (pos) out.push(`pos:${pos}`);
+  const art = identityOf(row.artNo);
+  if (art) out.push(`art:${art}`);
+  return out;
 }
 
 /** Reconciles every sighting of ONE connection (same id, same sheet) into one row list. Order is
  *  deterministic — reviewed photos first, then by docId — so the result never depends on the order
- *  photos were attached. Rows present on only some photos are kept (partial photos complement each
- *  other); a cell whose legible readings disagree is a conflict, never "the first one wins". */
+ *  photos were attached. Rows on different photos are the same row when they share ANY identity
+ *  token (name+type, position, or article number), so a disagreement in one identity cell is a
+ *  conflict, not two parts (Codex #5204 r2 F1). Rows present on only some photos are kept (partial
+ *  photos complement each other). A matched group holding two rows from the same photo cannot be
+ *  told apart and is marked `ambiguous`. A cell whose legible readings disagree is a conflict,
+ *  never "the first one wins". */
 export function reconcileConnectionRows(
   sightings: readonly { connection: DrawingConnectionBlock; photo: DrawingSheetPhoto }[],
 ): ReconciledRow[] {
   const ordered = [...sightings].sort((a, b) =>
     a.photo.reviewed === b.photo.reviewed ? a.photo.docId.localeCompare(b.photo.docId) : a.photo.reviewed ? -1 : 1,
   );
-  const byKey = new Map<string, { row: DrawingConnectionRow; photo: DrawingSheetPhoto }[]>();
-  for (const s of ordered) {
-    for (const row of s.connection.rows) {
-      const key = rowKeyOf(row);
-      const list = byKey.get(key) ?? [];
-      list.push({ row, photo: s.photo });
-      byKey.set(key, list);
+  const entries: { row: DrawingConnectionRow; photo: DrawingSheetPhoto }[] = [];
+  for (const s of ordered) for (const row of s.connection.rows) entries.push({ row, photo: s.photo });
+
+  // Union-find over entries: rows on different photos sharing an identity token are one row.
+  const parent = entries.map((_, k) => k);
+  const find = (k: number): number => (parent[k] === k ? k : (parent[k] = find(parent[k])));
+  const ownerOfToken = new Map<string, number>();
+  entries.forEach((e, k) => {
+    for (const tok of rowTokens(e.row)) {
+      const other = ownerOfToken.get(tok);
+      if (other === undefined) ownerOfToken.set(tok, k);
+      else if (entries[other].photo.docId !== e.photo.docId) parent[find(k)] = find(other);
     }
-  }
-  const out: ReconciledRow[] = [];
-  byKey.forEach((list, key) => {
-    const cells = {} as Record<ConnectionCell, ReconciledCell>;
-    for (const cell of CONNECTION_CELLS) {
-      const legible = list.filter((e) => e.row[cell] !== null && !(e.row[cell] as string).includes("[?]"));
-      const distinct = Array.from(new Set(legible.map((e) => (e.row[cell] as string).trim())));
-      if (distinct.length > 1) {
-        cells[cell] = { kind: "conflict", readings: legible.map((e) => ({ value: e.row[cell] as string, docId: e.photo.docId })) };
-      } else if (legible.length > 0) {
-        cells[cell] = { kind: "value", value: legible[0].row[cell] as string, photo: legible[0].photo };
-      } else {
-        const ill = list.find((e) => e.row[cell] !== null);
-        cells[cell] = ill ? { kind: "illegible", raw: ill.row[cell] as string, photo: ill.photo } : null;
-      }
-    }
-    out.push({ key, cells, anchor: list[0] });
   });
+  const groups = new Map<number, { row: DrawingConnectionRow; photo: DrawingSheetPhoto }[]>();
+  entries.forEach((e, k) => {
+    const root = find(k);
+    const list = groups.get(root) ?? [];
+    list.push(e);
+    groups.set(root, list);
+  });
+
+  const out: ReconciledRow[] = [];
+  Array.from(groups.keys())
+    .sort((a, b) => a - b)
+    .forEach((root) => {
+      const list = groups.get(root)!;
+      const cells = {} as Record<ConnectionCell, ReconciledCell>;
+      for (const cell of CONNECTION_CELLS) {
+        const legible = list.filter((e) => e.row[cell] !== null && !(e.row[cell] as string).includes("[?]"));
+        const distinct = Array.from(new Set(legible.map((e) => (e.row[cell] as string).trim())));
+        if (distinct.length > 1) {
+          cells[cell] = { kind: "conflict", readings: legible.map((e) => ({ value: e.row[cell] as string, docId: e.photo.docId })) };
+        } else if (legible.length > 0) {
+          cells[cell] = { kind: "value", value: legible[0].row[cell] as string, photo: legible[0].photo };
+        } else {
+          const ill = list.find((e) => e.row[cell] !== null);
+          cells[cell] = ill ? { kind: "illegible", raw: ill.row[cell] as string, photo: ill.photo } : null;
+        }
+      }
+      const perPhoto = new Set(list.map((e) => e.photo.docId));
+      out.push({
+        key: rowTokens(list[0].row)[0] ?? `row:${root}`,
+        cells,
+        anchor: list[0],
+        ambiguous: perPhoto.size < list.length,
+      });
+    });
   return out;
+}
+
+/** A drawing number reduced to its letters and digits, upper-cased: "ABC-100" → "ABC100",
+ *  "90001-10000-" → "9000110000". Letters are kept so ABC-100 and DEF-100 stay two drawings
+ *  (Codex #5204 r2 F2). Shared by sheet grouping and the packet's `drawing` selector. */
+export function drawingIdKey(s: string): string {
+  return s.toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
 function groupKeyFor(t: DrawingTranscription): string | null {
   const d = t.drawing;
   if (!d) return null;
-  const fromDoc = d.documentNo ? digitsOf(d.documentNo) : "";
+  const fromDoc = d.documentNo ? drawingIdKey(d.documentNo) : "";
   if (fromDoc) return fromDoc;
   const fromName = d.filenameShown ? docRevFromFilename(d.filenameShown) : null;
   if (fromName) return fromName.docNoDigits;
@@ -850,6 +895,14 @@ function buildSheet(documentKey: string | null, photos: DrawingSheetPhoto[]): Dr
     byId.forEach((sightings, id) => {
       if (sightings.length < 2) return;
       for (const r of reconcileConnectionRows(sightings)) {
+        if (r.ambiguous) {
+          findings.push({
+            kind: "hardware_conflict",
+            connection: id,
+            message: `Connection ${id} has rows that cannot be matched one-to-one across photos (around row '${r.anchor.row.name || r.anchor.row.type || "row"}') — check the hardware table against the drawing.`,
+            photos: Array.from(new Set(sightings.map((x) => x.photo.docId))),
+          });
+        }
         for (const [cell, v] of Object.entries(r.cells)) {
           if (!v || v.kind !== "conflict") continue;
           findings.push({

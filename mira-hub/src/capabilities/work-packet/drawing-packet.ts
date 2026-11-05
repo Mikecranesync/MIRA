@@ -52,7 +52,7 @@ import type {
   DrawingSheetPhoto,
   ReconciledCell,
 } from "./drawing";
-import { reconcileConnectionRows } from "./drawing";
+import { drawingIdKey, reconcileConnectionRows } from "./drawing";
 
 const DISCLAIMER =
   "DRAFT prepared from an engineering drawing photographed on site. It is not an approved " +
@@ -197,7 +197,7 @@ type FindResult =
 function findConnection(sheets: readonly DrawingSheet[], connectionRef: string, drawing: string | null | undefined): FindResult {
   const id = connectionIdOf(connectionRef);
   const owners = sheets.filter((sh) => sh.connections.some((c) => c.connection.id === id));
-  const wanted = drawing ? drawing.replace(/\D/g, "") : "";
+  const wanted = drawing ? drawingIdKey(drawing) : "";
   let pick: DrawingSheet[] = owners;
   if (wanted) {
     pick = owners.filter((sh) => sh.documentKey === wanted);
@@ -278,7 +278,15 @@ function parseTorque(raw: string): { marked: boolean; value: string } | null {
 
 const SITE_TOOL_FIELD: Field = { value: null, label: "unknown", source: null, basis: "tool is a site item — the drawing does not specify the wrench" };
 
-function buildMeasurements(sheet: DrawingSheet, connectionId: string, docs: readonly DocText[]): PacketMeasurement[] {
+/** The connection's torque measurements, plus a blocker message for every torque the packet cannot
+ *  state (Codex #5204 r2 F5): no callout at all, a callout with no torque printed, or a torque not
+ *  in the `Ma=` form. Each of those still yields an unknown measurement, so the packet never looks
+ *  complete while the torque is missing. */
+function buildMeasurements(
+  sheet: DrawingSheet,
+  connectionId: string,
+  docs: readonly DocText[],
+): { measurements: PacketMeasurement[]; gaps: string[] } {
   const byRef = new Map<string, { callout: DrawingCallout; photo: DrawingSheetPhoto }[]>();
   for (const c of sheet.callouts) {
     if (connectionIdOf(c.callout.ref) !== connectionId) continue;
@@ -288,12 +296,29 @@ function buildMeasurements(sheet: DrawingSheet, connectionId: string, docs: read
   }
 
   const measurements: PacketMeasurement[] = [];
+  const gaps: string[] = [];
+  const unknownTorque = (basis: string): Field => ({ value: null, label: "unknown", source: null, basis });
+  if (byRef.size === 0) {
+    const basis = `no torque callout for connection ${connectionId} on the attached photos`;
+    measurements.push({
+      name: { value: `${connectionId} tightening torque`, label: "proposed", source: null, basis },
+      value: unknownTorque(basis),
+      tool: SITE_TOOL_FIELD,
+    });
+    gaps.push(`No torque callout for connection ${connectionId} was found on the attached photos — confirm the torque from the drawing.`);
+  }
   byRef.forEach((sightings, ref) => {
-    const distinctTorque = Array.from(new Set(sightings.map((s) => s.callout.torque ?? "")));
-    if (distinctTorque.length === 1 && distinctTorque[0] === "") return; // no torque text at all for this ref
-
     const primary = sightings.find((s) => s.photo.reviewed) ?? sightings[0];
     const nameField = photoField(primary.photo, docs, `${ref} tightening torque`, ref, "callout reference label");
+    // A photo that shows the callout without its torque says nothing about the torque; only printed
+    // torques are compared.
+    const printedTorque = sightings.filter((s) => s.callout.torque !== null && s.callout.torque.trim() !== "");
+    const distinctTorque = Array.from(new Set(printedTorque.map((s) => s.callout.torque!.trim())));
+    if (distinctTorque.length === 0) {
+      measurements.push({ name: nameField, value: unknownTorque(`callout ${ref} prints no torque on the attached photos`), tool: SITE_TOOL_FIELD });
+      gaps.push(`Callout ${ref} prints no torque on the attached photos — confirm the torque from the drawing.`);
+      return;
+    }
 
     if (distinctTorque.length > 1) {
       // torque_conflict: the drawing's own callouts disagree — never guess a side, null it (HARD RULE).
@@ -303,16 +328,24 @@ function buildMeasurements(sheet: DrawingSheet, connectionId: string, docs: read
           value: null,
           label: "unknown",
           source: null,
-          basis: `the drawing's callouts print more than one torque for ${ref}: ${sightings.map((s) => `'${s.callout.torque}'`).join(" vs ")} — not used as a measurement`,
+          basis: `the drawing's callouts print more than one torque for ${ref}: ${printedTorque.map((s) => `'${s.callout.torque}'`).join(" vs ")} — not used as a measurement`,
         },
         tool: SITE_TOOL_FIELD,
       });
       return;
     }
 
-    const raw = sightings[0].callout.torque!;
+    const raw = distinctTorque[0];
     const parsed = parseTorque(raw);
-    if (!parsed) return;
+    if (!parsed) {
+      measurements.push({
+        name: nameField,
+        value: unknownTorque(`printed as '${raw}', not in the 'Ma=' form this reader states as a tightening torque — check the drawing`),
+        tool: SITE_TOOL_FIELD,
+      });
+      gaps.push(`Callout ${ref} prints '${raw}', which is not in the 'Ma=' torque form — confirm what it means from the drawing.`);
+      return;
+    }
 
     if (parsed.marked) {
       // Ma* (asterisk): the printed value is kept, but its meaning is not on the drawing — label
@@ -328,15 +361,44 @@ function buildMeasurements(sheet: DrawingSheet, connectionId: string, docs: read
 
     measurements.push({
       name: nameField,
-      value: cellField(primary.photo, docs, parsed.value, ref, "callout torque"),
+      value: cellField((printedTorque.find((s) => s.photo.reviewed) ?? printedTorque[0]).photo, docs, parsed.value, ref, "callout torque"),
       tool: SITE_TOOL_FIELD,
     });
   });
 
-  return measurements;
+  return { measurements, gaps };
 }
 
-function buildSteps(connection: DrawingConnectionBlock, lockerNote: string | null): { steps: PacketStep[]; tightenIndex: number } {
+/** Every note the drawing prints for this connection's callouts, and every drawing-wide note on the
+ *  sheet, each kept word for word and cited to the photo it was read from (reviewed photos first).
+ *  Nothing is inferred from a note's wording — "Do not lubricate" stays exactly that — and no note
+ *  is dropped because another came first (Codex #5204 r2 F4). Identical wording is listed once. */
+function buildNoteCautions(sheet: DrawingSheet, connectionId: string, docs: readonly DocText[]): Field[] {
+  const order = (a: DrawingSheetPhoto, b: DrawingSheetPhoto) =>
+    a.reviewed === b.reviewed ? a.docId.localeCompare(b.docId) : a.reviewed ? -1 : 1;
+  const seen = new Set<string>();
+  const out: Field[] = [];
+  const add = (note: string, photo: DrawingSheetPhoto, basis: string) => {
+    const text = note.trim();
+    const key = text.toLowerCase();
+    if (!text || seen.has(key)) return;
+    seen.add(key);
+    out.push(photoField(photo, docs, text, text, basis));
+  };
+  const callouts = sheet.callouts
+    .filter((c) => connectionIdOf(c.callout.ref) === connectionId)
+    .sort((a, b) => order(a.photo, b.photo) || a.callout.ref.localeCompare(b.callout.ref));
+  for (const c of callouts) for (const n of c.callout.notes) add(n, c.photo, `note printed at callout ${c.callout.ref}`);
+  for (const photo of [...sheet.photos].sort(order)) {
+    for (const n of photo.t.drawing?.notes ?? []) add(n, photo, "note printed on the drawing");
+  }
+  return out;
+}
+
+function buildSteps(
+  connection: DrawingConnectionBlock,
+  opts: { hasNotes: boolean; torqueKnown: boolean },
+): { steps: PacketStep[]; tightenIndex: number } {
   const section = `Connection ${connection.id}`;
   const mk = (text: string, phase: NonNullable<PacketStep["phase"]>, basis: string): PacketStep => ({
     section,
@@ -361,29 +423,35 @@ function buildSteps(connection: DrawingConnectionBlock, lockerNote: string | nul
       "standard bolted-connection job order; a drawing has no step sequence",
     ),
   );
-  const artNos = connection.rows.map((r) => r.artNo).filter((v): v is string => !!v);
+  // Never repeat article numbers here: the Parts section carries them with their conflicts and
+  // citations, and a raw copy could re-state a number the Parts section rejected (Codex #5204 r2 F3).
   steps.push(
     mk(
-      `Replace with the listed hardware (Art. No. ${artNos.length > 0 ? artNos.join(", ") : "— see Parts"}).`,
+      "Replace with the hardware listed under Parts.",
       "service",
       "standard bolted-connection job order; a drawing has no step sequence",
     ),
   );
-  if (lockerNote) {
-    steps.push({
-      section,
-      topic: "other",
-      phase: "service",
-      text: {
-        value: `Apply the thread locker/lubricant the drawing names: "${lockerNote}".`,
-        label: "proposed",
-        source: null,
-        basis: "quoted from the connection's callout note; a drawing has no step sequence",
-      },
-    });
+  if (opts.hasNotes) {
+    // The notes themselves are listed, cited and unreworded under Cautions (Codex #5204 r2 F4).
+    steps.push(
+      mk(
+        "Read and follow the drawing notes listed under Cautions before tightening.",
+        "service",
+        "the drawing prints notes for this connection; their wording is kept under Cautions",
+      ),
+    );
   }
   const tightenIndex = steps.length;
-  steps.push(mk("Tighten to the torque below.", "service", "standard bolted-connection job order; a drawing has no step sequence"));
+  steps.push(
+    mk(
+      opts.torqueKnown
+        ? "Tighten to the torque below."
+        : "Tighten to the drawing's torque. This packet cannot state it from these photos (see Measurements): confirm it from the drawing first.",
+      "service",
+      "standard bolted-connection job order; a drawing has no step sequence",
+    ),
+  );
   steps.push(
     mk(
       "Apply a new torque stripe across the fastener and mating part per your site's torque-stripe practice.",
@@ -440,11 +508,11 @@ export function buildConnectionPacket(input: ConnectionPacketInput): DraftResult
   const connectionId = connection.id;
 
   const parts = buildParts(sightings, docs, sheet.bom);
-  const measurements = buildMeasurements(sheet, connectionId, docs);
+  const { measurements, gaps: torqueGaps } = buildMeasurements(sheet, connectionId, docs);
+  const cautions = buildNoteCautions(sheet, connectionId, docs);
+  const torqueKnown = measurements.some((m) => m.value.value !== null && m.value.label !== "unknown");
 
-  const noteSighting = sheet.callouts.find((c) => connectionIdOf(c.callout.ref) === connectionId && c.callout.notes.length > 0);
-  const lockerNote = noteSighting ? noteSighting.callout.notes[0] : null;
-  const { steps, tightenIndex } = buildSteps(connection, lockerNote);
+  const { steps, tightenIndex } = buildSteps(connection, { hasNotes: cautions.length > 0, torqueKnown });
   for (const m of measurements) {
     m.steps = [tightenIndex];
     m.link = {
@@ -460,6 +528,7 @@ export function buildConnectionPacket(input: ConnectionPacketInput): DraftResult
     if (f.connection !== undefined && f.connection !== connectionId) continue;
     blockers.push({ value: null, label: "unknown", source: null, basis: f.message });
   }
+  for (const g of torqueGaps) blockers.push({ value: null, label: "unknown", source: null, basis: g });
 
   const scope: Field[] = [
     {
@@ -491,7 +560,7 @@ export function buildConnectionPacket(input: ConnectionPacketInput): DraftResult
   };
 
   const safety = {
-    cautions: [] as Field[],
+    cautions,
     // Always unknown: the site owns isolation and lockout (HARD RULE).
     siteIsolation: { value: null, label: "unknown" as const, source: null, basis: "the site owns isolation and lockout" },
     hazardFlags: [...(input.hazardFlags ?? [])],

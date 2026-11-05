@@ -81,8 +81,15 @@ describe("buildConnectionPacket", () => {
     // tighten, torque-stripe, record.
     expect(packet.steps).toHaveLength(7);
     expect(packet.steps.every((s) => s.text.label === "proposed")).toBe(true);
-    expect(packet.steps[3].text.value).toContain("Secure with Demo-Lock 2");
-    expect(packet.steps[4].text.value).toBe("Tighten to the torque below.");
+    // The callout note is kept word for word under Cautions, cited to the reviewed photo; the step
+    // only points there and never rewords it (Codex #5204 r2 F4).
+    expect(packet.steps[3].text.value).toBe("Read and follow the drawing notes listed under Cautions before tightening.");
+    expect(packet.safety.cautions).toEqual([expect.objectContaining({ value: "Secure with Demo-Lock 2", label: "verified" })]);
+    // Photo A prints Ma=95 Nm and photo C an illegible Ma=9[?] Nm: the torque is a conflict, so the
+    // tightening step must not point at a torque the packet does not state (Codex #5204 r2 F5).
+    expect(packet.steps[4].text.value).toBe(
+      "Tighten to the drawing's torque. This packet cannot state it from these photos (see Measurements): confirm it from the drawing first.",
+    );
 
     // blockers: revision_conflict + 3×pos_offset + unreadable + torque_conflict + revision_touches_torque
     expect(packet.blockers).toHaveLength(7);
@@ -115,7 +122,7 @@ describe("buildConnectionPacket", () => {
     expect(packet.measurements[0].value.value).toBe("6 Nm");
     expect(packet.measurements[0].value.basis).toContain("asterisk");
 
-    // No callout note on C4-B1 → no "apply the thread locker" step → 6 fixed steps, not 7.
+    // No callout note on C4-B1 → no "read the drawing notes" step → 6 fixed steps, not 7.
     expect(packet.steps).toHaveLength(6);
     expect(packet.steps.some((s) => (s.text.value ?? "").toLowerCase().includes("thread locker"))).toBe(false);
 
