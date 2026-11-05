@@ -9,8 +9,6 @@
  *
  * Run: npx vitest run src/capabilities/__tests__/node-knowledge-ingest-nul-bytes.test.ts
  */
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { chunkText, stripNulBytes } from "@/lib/node-knowledge-ingest";
 
@@ -52,7 +50,9 @@ vi.mock("@/lib/tenant-context", () => ({
   ),
 }));
 
-const FIXTURE = fileURLToPath(new URL("./fixtures/nul-embedded.txt", import.meta.url));
+/** 40-byte text fixture with an embedded NUL (Postgres 22021). Kept inline so
+ *  the file is `.ts` — a sibling `.txt` under capabilities/ is guarded. */
+const NUL_FIXTURE = Buffer.from("Page four: fault table F005\u0000OverVoltage\n", "utf8");
 
 function insertedRows(): Array<{ content: string; meta: Record<string, unknown> }> {
   const rows: Array<{ content: string; meta: Record<string, unknown> }> = [];
@@ -89,8 +89,7 @@ describe("#4923 NUL bytes never reach Postgres", () => {
 
   it("writeTextChunksForNode indexes a fixture with an embedded NUL", async () => {
     const { writeTextChunksForNode } = await import("@/lib/node-knowledge-ingest");
-    const buffer = readFileSync(FIXTURE);
-    expect(buffer.includes(0x00)).toBe(true);
+    expect(NUL_FIXTURE.includes(0x00)).toBe(true);
 
     const count = await writeTextChunksForNode({
       tenantId: "tenant-a",
@@ -98,7 +97,7 @@ describe("#4923 NUL bytes never reach Postgres", () => {
       nodeId: "node-4923",
       unsPath: "inbox\u0000line",
       filename: "smc3\u0000in065.txt",
-      buffer,
+      buffer: NUL_FIXTURE,
     });
     expect(count).toBeGreaterThan(0);
     const rows = insertedRows();
