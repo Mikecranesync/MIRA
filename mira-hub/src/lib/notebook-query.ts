@@ -508,9 +508,127 @@ const SPEC_TOPIC =
 const PARAM_ID_REQUEST =
   /\bwhich parameter\b|\bwhat(?:'s| is)?\s+the\b[^.?!]{0,60}\bparameter\b(?![^.?!]{0,30}\bset to\b)/i;
 
+// ---------------------------------------------------------------------------
+// Fault-history DISPLAY → CONTROL expansion (#4863 / AR-2026-11-03)
+//
+// A history/queue/buffer *readout* (Fault N Code, "10-fault history") and the
+// parameter that *writes* those buffers (Fault Clear / Clear Buffer) live on
+// different pages and do not list each other under Related Parameters. When
+// the technician asks why the history is empty/zero/missing, lexical ranking
+// stops at the readout rows. The expansion is role-based, not a phrase list:
+// display chunks already in the pool name the object; the second pass searches
+// for the action that operates on that same object (clear/reset), using the
+// existing industrial "fault clear" vocabulary.
+// ---------------------------------------------------------------------------
+
+const HISTORY_ASK_OBJECT =
+  String.raw`(?:fault\s+(?:history|queue|buffers?|codes?))`;
+/** Observed empty-state on the history object (HMI all-zero / blank).
+ *  "missing" / "cleared" / "empty" stay bound to a why/how ask so a firmware
+ *  or reboot narrative is not treated as an empty-history diagnostic. */
+const HISTORY_ZERO_STATE = String.raw`(?:all\s+)?(?:zero|zeros|blank)`;
+const EMPTY_HISTORY_ASK = new RegExp(
+  String.raw`\bmissing\s+fault\s+codes?\b|` +
+    String.raw`\b(?:why|how)\b[\s\S]{0,80}\b${HISTORY_ASK_OBJECT}\b[\s\S]{0,40}\b(?:${HISTORY_ZERO_STATE}|empty|missing|cleared)\b|` +
+    String.raw`\b${HISTORY_ASK_OBJECT}\b[\s\S]{0,40}\b${HISTORY_ZERO_STATE}\b|` +
+    String.raw`\b${HISTORY_ZERO_STATE}\b[\s\S]{0,40}\b${HISTORY_ASK_OBJECT}\b`,
+  "i",
+);
+
+const HISTORY_DISPLAY_OBJECT =
+  /\bfault\s+[1-9]\d?\s+code\b|\b(?:\d+[-\s])?fault\s+history\b|\bfault\s+queue\b|\bfault\s+log\b|\b(?:most\s+recent|older|extended)\s+fault/i;
+
+/** The readout *reports* stored codes / the history table. A parameter-index
+ *  cell that only lists "Fault 1 Code" next to a number is not that row. */
+const HISTORY_DISPLAY_REPORT =
+  /\b(?:is|are)\s+the\s+(?:most\s+recent|older|next)\b|\b10-fault\s+history\b|\bolder\s+fault\s+codes?\b|\brelated parameters\b|\bfault\s+queue\b|\bfault\s+log\b/i;
+
+/** A view/access instruction that names Fault 1 Code is not the readout
+ *  table (b007 is… / F604…F610 / 10-fault history). */
+const HISTORY_VIEW_INSTRUCTION =
+  /\b(?:access|navigate\s+to)\b[\s\S]{0,80}\bfault\s+[1-9]\d?\s+code\b|\bto\s+view\s+(?:the\s+)?(?:most\s+recent\s+)?fault/i;
+
+const HISTORY_CONTROL_ACTION =
+  /\bfault\s+clear\b|\bclear\s+buffers?\b|\bclears?\s+all\s+fault\s+buffers?\b|\breset\s+(?:the\s+)?(?:fault\s+)?(?:buffers?|queue|history)\b|\bclear\s+(?:the\s+)?(?:fault\s+)?(?:queue|history)\b/i;
+
+/** Write-to-history effect: option 2 actually zeros the queue. Naming
+ *  "Clear Buffer" as a choice next to Reset Fault (the live-fault procedure)
+ *  is a search hit, not the parameter row we must keep. */
+const HISTORY_BUFFER_WRITE =
+  /\bclears?\s+all\s+fault\s+buffers?\b|\b(?:fault\s+)?buffers?\s+to\s+0\b|\breset\s+(?:the\s+)?(?:fault\s+)?(?:buffers?|queue|history)\b|\bclear\s+(?:the\s+)?(?:fault\s+)?(?:queue|history)\b/i;
+
+/** True when the ask is why the fault history/queue is empty, zero, missing,
+ *  or blank — not a fault-code meaning lookup and not a generic reset how-to. */
+export function isEmptyHistoryAsk(query: string): boolean {
+  return EMPTY_HISTORY_ASK.test(query.trim());
+}
+
+/** A readout row: it reports stored fault codes / history / queue. The control
+ *  parameter that writes those buffers is a different role (see below). */
+export function isFaultHistoryDisplayChunk(text: string): boolean {
+  if (HISTORY_CONTROL_ACTION.test(text) || HISTORY_VIEW_INSTRUCTION.test(text)) return false;
+  if (!HISTORY_DISPLAY_OBJECT.test(text)) return false;
+  return HISTORY_DISPLAY_REPORT.test(text);
+}
+
+/** The action that writes the same history object the display rows report
+ *  (zeros the queue / buffers). Naming [Fault Clear] or listing option 2
+ *  "Clear Buffer" on a live-reset procedure is not that role. */
+export function isHistoryControlChunk(text: string): boolean {
+  return HISTORY_BUFFER_WRITE.test(text);
+}
+
+/** Search phrases for the CONTROL counterpart of display rows already in the
+ *  pool. Object names come from those rows (history / queue / buffer); the
+ *  action is the existing clear/reset family — never a frozen parameter ID. */
+export function historyControlQueries(displayTexts: readonly string[]): string[] {
+  const objects = new Set<string>();
+  const joined = displayTexts.join("\n");
+  if (/\bhistory\b/i.test(joined)) objects.add("history");
+  if (/\bqueue\b/i.test(joined)) objects.add("queue");
+  if (/\bbuffers?\b/i.test(joined)) objects.add("buffer");
+  if (/\bfault\s+[1-9]\d?\s+code\b/i.test(joined) || /\bfault\s+codes?\b/i.test(joined)) {
+    objects.add("history");
+  }
+  if (objects.size === 0) objects.add("history");
+  const queries = ["fault clear"];
+  for (const obj of objects) {
+    queries.push(`clear ${obj}`);
+    queries.push(`reset ${obj}`);
+  }
+  return [...new Set(queries)].slice(0, 5);
+}
+
+/** Keep one history readout and one write-to-history control in the
+ *  selected slice, then fill remaining slots from `selected` in rank
+ *  order. Reserves the missing role from `pool` when needed (never
+ *  invents). Caps at `limit` so a broad-facet slice cannot grow past topK.
+ *  Surplus control-role hits can be dropped so a readout still fits. */
+export function ensureHistoryControlRepresentation<T extends { content: string }>(
+  selected: T[],
+  pool: T[],
+  limit: number,
+): T[] {
+  const display =
+    selected.find((c) => isFaultHistoryDisplayChunk(c.content)) ??
+    pool.find((c) => isFaultHistoryDisplayChunk(c.content));
+  const control =
+    selected.find((c) => isHistoryControlChunk(c.content)) ??
+    pool.find((c) => isHistoryControlChunk(c.content));
+  const out: T[] = [];
+  const take = (chunk: T | undefined) => {
+    if (!chunk || out.includes(chunk) || out.length >= limit) return;
+    out.push(chunk);
+  };
+  take(display);
+  take(control);
+  for (const chunk of selected) take(chunk);
+  return out;
+}
+
 export function classifyIntent(query: string): Intent {
   const q = query.trim();
-  if (FAULT_ACTION.test(q)) return "fault";
+  if (FAULT_ACTION.test(q) || isEmptyHistoryAsk(q)) return "fault";
   if (COMM_TOPIC.test(q)) return "comm";
   if (PROCEDURE_LEAD.test(q)) return "procedure";
   if (PARAM_ID_REQUEST.test(q)) return "param_lookup";

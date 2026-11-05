@@ -35,7 +35,15 @@ export const MODEL_PATTERNS: RegExp[] = [
   /\b(sinamics\s*v\s*20)\b/i, //        SINAMICS V20
   /\b(v20)\b/i, //                        V20 (drive family)
   /\b(comfort)\b/i, //                    Comfort panel family
+  /\b(25b-[a-z0-9]+)\b/i, //              25B-D010N104 → PowerFlex 525 (not a bare 25B)
 ];
+
+/** Catalog-family prefixes that name a model the digit patterns already know.
+ *  25B-* is the PowerFlex 525 catalog form (25A=523, 25C=527 — only 25B is wired).
+ *  A bare "25B" token is not a model. */
+export function aliasCatalogModelToken(token: string): string {
+  return /^25B-/i.test(token) ? "525" : token;
+}
 
 /** Resolve model tokens within ONE observation, refusing to pick between
  * different specific models. Comfort is a family hint; a TP/KTP panel and its
@@ -46,7 +54,7 @@ export function resolveModelFromObservationText(text: string): { model: string |
     for (const match of text.matchAll(new RegExp(pattern.source, "gi"))) {
       let token = (match[1] ?? match[0]).replace(/\s+/g, "").toUpperCase();
       if (token === "SINAMICSV20") token = "V20";
-      found.add(token);
+      found.add(aliasCatalogModelToken(token));
     }
   }
   if (found.size > 1 && [...found].some((token) => /^(?:K?TP\d|6AV)/.test(token))) {
@@ -87,6 +95,7 @@ const FAMILY_KEYS: readonly string[] = [
   "V20", // sinamics v20 (aliased below)
   "V20", // v20 (capture already includes the letters — label unused)
   "COMFORT", // comfort (capture already includes the letters — label unused)
+  "PF", // 25B catalog stem → PowerFlex 525
 ];
 
 // The digit-only families whose siblings get listed after one family word.
@@ -117,7 +126,7 @@ export function modelIdentitiesInText(text: string): Set<string> {
   MODEL_PATTERNS.forEach((pattern, i) => {
     const family = FAMILY_KEYS[i];
     for (const match of text.matchAll(new RegExp(pattern.source, "gi"))) {
-      const captured = (match[1] ?? match[0]).replace(/\s+/g, "").toUpperCase();
+      const captured = aliasCatalogModelToken((match[1] ?? match[0]).replace(/\s+/g, "").toUpperCase());
       if (captured === "SINAMICSV20") {
         identities.add("V20");
       } else if (/^\d+$/.test(captured)) {
