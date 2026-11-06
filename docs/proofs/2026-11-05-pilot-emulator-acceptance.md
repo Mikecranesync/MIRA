@@ -2,6 +2,8 @@
 
 **Full pilot verdict: NOT YET ACCEPTED.** The staging Android-emulator capture → Living Sheet → Atlas → finish → independent handover path passed the scoped checks below. Physical Pixel/camera and two-real-technician acceptance have not run. This is not production readiness or full Level 3/customer acceptance.
 
+**Later physical-device result:** [Pixel acceptance](2026-11-05-pilot-pixel-acceptance.md) found a cold-restart notebook-selection failure. Physical capture/Atlas1653 passed; full acceptance remains blocked. The emulator evidence below remains unchanged.
+
 ## Candidate and environment
 
 - Owner of this verification and migration repair: Codex CLI. Atlas recovery/runtime owner: existing Charlie session `vvmfyb3m`; no competing writer or worker was started.
