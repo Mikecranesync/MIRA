@@ -13,7 +13,8 @@
 
 import type { PoolClient } from "pg";
 import pool from "@/lib/db";
-import { withTenantContext } from "@/lib/tenant-context";
+import { withTenantContext, withUploadRowTenantContext } from "@/lib/tenant-context";
+import { resolveDuplicateDocAliases } from "@/lib/uploads";
 import { deriveReadiness, type Readiness } from "@/lib/document-readiness";
 import { insertWithUniqueFallback } from "@/lib/pg-unique-retry";
 
@@ -633,113 +634,155 @@ export async function unbindNotebookAsset(
   });
 }
 
+export type AttachSourceOpts = {
+  matchState?: MatchState;
+  sourceRole?: string | null;
+  addedBy?: string | null;
+  /** Canonical workspace file this doc was DERIVED from (084) — e.g. the
+   *  nameplate photograph behind the materialized nameplate text. */
+  originFileId?: string | null;
+  /** Audit metadata (085) — e.g. { confirm_client_key } from the confirm
+   *  route's idempotency contract. Set-if-provided in the upsert. */
+  matchEvidence?: unknown;
+  /** Keep is idempotent by origin, even when concurrent readings differ. */
+  reuseVisibleOrigin?: boolean;
+  /** Replace an origin only while this exact technician review remains current. */
+  reviewedPhoto?: { observationId: string; threadId: string };
+  candidatePhoto?: { observationId: string; threadId: string };
+};
+
+/**
+ * Attach a document WITHOUT holding its upload row. Its only remaining caller is
+ * nameplate confirm, and that route also re-attaches an already-ingested upload
+ * (its `already_ingested` branch), so a concurrent upload delete CAN race this
+ * attach and leave a dangling source (Codex review of #4091 at cb0741f6e, F7 —
+ * an earlier version of this comment wrongly said the caller only attaches what
+ * it created). Moving that route to attachSourceHeld needs its lifecycle-guarded
+ * unit tests updated by a human commit; until then this race is a known residual.
+ * Every other attach uses attachSourceHeld.
+ */
 export async function attachSource(
   tenantId: string,
   notebookId: string,
   docId: string,
-  opts: {
-    matchState?: MatchState;
-    sourceRole?: string | null;
-    addedBy?: string | null;
-    /** Canonical workspace file this doc was DERIVED from (084) — e.g. the
-     *  nameplate photograph behind the materialized nameplate text. */
-    originFileId?: string | null;
-    /** Audit metadata (085) — e.g. { confirm_client_key } from the confirm
-     *  route's idempotency contract. Set-if-provided in the upsert. */
-    matchEvidence?: unknown;
-    /** Keep is idempotent by origin, even when concurrent readings differ. */
-    reuseVisibleOrigin?: boolean;
-    /** Replace an origin only while this exact technician review remains current. */
-    reviewedPhoto?: { observationId: string; threadId: string };
-    candidatePhoto?: { observationId: string; threadId: string };
-  } = {},
+  opts: AttachSourceOpts = {},
 ): Promise<{ ok: boolean; error?: string; docId?: string; alreadyAttached?: boolean }> {
   // hub_uploads: raw pool + explicit tenant predicate (TEXT column vs UUID session).
+  // IDOR guard from main: ownership is checked before any notebook write.
   const doc = await pool.query(
     `SELECT id FROM hub_uploads WHERE tenant_id = $1 AND id = $2::uuid LIMIT 1`,
     [tenantId, docId],
   );
   if (doc.rows.length === 0) return { ok: false, error: "doc_not_found" };
+  return withTenantContext(tenantId, (c) => attachSourceTx(c, tenantId, notebookId, docId, opts));
+}
 
-  return withTenantContext(tenantId, async (c) => {
-    const nb = await c.query(
-      `SELECT id FROM equipment_notebooks WHERE tenant_id = $1::uuid AND id = $2::uuid${opts.originFileId ? " FOR UPDATE" : ""}`,
-      [tenantId, notebookId],
+/**
+ * attachSource for a document the CALLER did not just create (Codex review of
+ * #4091 at 1082ad199, F7): validates the upload and writes the membership
+ * while HOLDING the upload row — FOR SHARE on the owner pool, then the tenant
+ * role (withUploadRowTenantContext; the upload delete's lock order). A delete
+ * that ran first leaves nothing to hold, so this reports doc_not_found and
+ * writes nothing; a delete that comes second waits, then removes the
+ * membership with the document. attachSource's separate, unlocked existence
+ * check could pass, lose to a delete, and still write a dangling source.
+ */
+export async function attachSourceHeld(
+  tenantId: string,
+  notebookId: string,
+  docId: string,
+  opts: AttachSourceOpts = {},
+): Promise<{ ok: boolean; error?: string; docId?: string; alreadyAttached?: boolean }> {
+  const held = await withUploadRowTenantContext(tenantId, docId, undefined, (c) =>
+    attachSourceTx(c, tenantId, notebookId, docId, opts),
+  );
+  return held.held ? held.result : { ok: false, error: "doc_not_found" };
+}
+
+async function attachSourceTx(
+  c: PoolClient,
+  tenantId: string,
+  notebookId: string,
+  docId: string,
+  opts: AttachSourceOpts,
+): Promise<{ ok: boolean; error?: string; docId?: string; alreadyAttached?: boolean }> {
+  const nb = await c.query(
+    `SELECT id FROM equipment_notebooks WHERE tenant_id = $1::uuid AND id = $2::uuid${opts.originFileId ? " FOR UPDATE" : ""}`,
+    [tenantId, notebookId],
+  );
+  if (nb.rows.length === 0) return { ok: false, error: "notebook_not_found" };
+  // All origin attachments use this parent lock, including nameplates. The
+  // Keep check and insert share one transaction, so two Keep requests cannot
+  // create separate visible readings and then supersede each other.
+  if (opts.reuseVisibleOrigin && opts.originFileId) {
+    const existing = await c.query(
+      `SELECT doc_id::text AS doc_id FROM equipment_notebook_sources
+        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
+          AND origin_file_id = $3::uuid AND superseded_at IS NULL
+        ORDER BY created_at DESC, doc_id DESC LIMIT 1`,
+      [tenantId, notebookId, opts.originFileId],
     );
-    if (nb.rows.length === 0) return { ok: false, error: "notebook_not_found" };
-    // All origin attachments use this parent lock, including nameplates. The
-    // Keep check and insert share one transaction, so two Keep requests cannot
-    // create separate visible readings and then supersede each other.
-    if (opts.reuseVisibleOrigin && opts.originFileId) {
-      const existing = await c.query(
-        `SELECT doc_id::text AS doc_id FROM equipment_notebook_sources
-          WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
-            AND origin_file_id = $3::uuid AND superseded_at IS NULL
-          ORDER BY created_at DESC, doc_id DESC LIMIT 1`,
-        [tenantId, notebookId, opts.originFileId],
-      );
-      if (existing.rows.length) return { ok: true, docId: String(existing.rows[0].doc_id), alreadyAttached: true };
-    }
-    const photoReading = opts.reviewedPhoto ?? opts.candidatePhoto;
-    if (photoReading) {
-      if (!opts.originFileId || !opts.addedBy || (opts.reviewedPhoto && opts.reuseVisibleOrigin))
-        return { ok: false, error: "photo_review_conflict" };
-      // Lock the observation through publication. A subsequent correction must
-      // wait, and a correction already committed makes this attachment stale.
-      const current = await c.query(
-        `SELECT o.observation_id FROM observation o
-          WHERE o.observation_id = $1::uuid AND o.tenant_id = $2
-            AND (($7::boolean AND o.extractor = 'technician' AND o.review_state = 'corrected'
-              AND o.metadata->>'field' = 'photo_reading')
-              OR (NOT $7::boolean AND o.extractor = 'inspection_vision' AND o.review_state = 'unreviewed'))
-            AND o.evidence_state NOT IN ('REJECTED', 'SUPERSEDED') AND o.superseded_by IS NULL
-            AND o.metadata->>'publication_superseded_by' IS NULL
-            -- A new model reading cannot publish over a committed review whose
-            -- materialization is still pending, even in a different conversation.
-            AND ($7::boolean OR NOT EXISTS (
-              SELECT 1 FROM observation r
-                JOIN visual_session rs ON rs.session_id=r.session_id AND rs.tenant_id=$2
-                JOIN evidence_item re ON re.evidence_id=r.evidence_id AND re.tenant_id=$2
-               WHERE r.tenant_id=$2 AND rs.metadata->>'notebook_id'=$4
-                 AND re.capture_meta->>'file_id'=$6 AND r.extractor='technician'
-                 AND r.review_state='corrected' AND r.metadata->>'field'='photo_reading'
-                 AND r.metadata->>'publication_superseded_by' IS NULL
-                 AND r.superseded_by IS NULL AND r.evidence_state NOT IN ('REJECTED','SUPERSEDED')))
-            AND EXISTS (SELECT 1 FROM visual_session vs WHERE vs.session_id = o.session_id
-              AND vs.tenant_id = $2 AND vs.created_by = $3
-              AND vs.metadata->>'notebook_id' = $4 AND vs.metadata->>'thread_id' = $5)
-            AND EXISTS (SELECT 1 FROM evidence_item e WHERE e.evidence_id = o.evidence_id
-              AND e.tenant_id = $2 AND e.capture_meta->>'file_id' = $6)
-            AND EXISTS (SELECT 1 FROM workspace_file_links l WHERE l.tenant_id = $2::uuid
-              AND l.file_id = $6::uuid AND l.target_id = $4::uuid
-              AND l.target_type = 'equipment_notebook' AND l.role = 'photo')
-          FOR UPDATE OF o`,
-        [photoReading.observationId, tenantId, opts.addedBy, notebookId, photoReading.threadId, opts.originFileId, !!opts.reviewedPhoto],
-      );
-      if (!current.rows.length) return { ok: false, error: "photo_review_conflict" };
-    }
-    await upsertNotebookSourceTx(c, {
-      tenantId,
-      notebookId,
-      docId,
-      matchState: opts.matchState ?? "user_confirmed",
-      sourceRole: opts.sourceRole ?? null,
-      addedBy: opts.addedBy ?? null,
-      originFileId: opts.originFileId ?? null,
-      matchEvidence: opts.matchEvidence,
-    });
-    if ((opts.reuseVisibleOrigin || opts.reviewedPhoto) && opts.originFileId) {
-      await c.query(`UPDATE equipment_notebook_sources SET superseded_at = NULL
-        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND doc_id = $3::uuid`,
-      [tenantId, notebookId, docId]);
-    }
-    if (opts.reviewedPhoto) {
-      await c.query(`UPDATE equipment_notebook_sources SET superseded_at = now()
-        WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND origin_file_id = $3::uuid
-          AND doc_id <> $4::uuid AND superseded_at IS NULL`, [tenantId, notebookId, opts.originFileId, docId]);
-    }
-    return opts.reuseVisibleOrigin || opts.reviewedPhoto ? { ok: true, docId, alreadyAttached: false } : { ok: true };
+    if (existing.rows.length) return { ok: true, docId: String(existing.rows[0].doc_id), alreadyAttached: true };
+  }
+  const photoReading = opts.reviewedPhoto ?? opts.candidatePhoto;
+  if (photoReading) {
+    if (!opts.originFileId || !opts.addedBy || (opts.reviewedPhoto && opts.reuseVisibleOrigin))
+      return { ok: false, error: "photo_review_conflict" };
+    // Lock the observation through publication. A subsequent correction must
+    // wait, and a correction already committed makes this attachment stale.
+    const current = await c.query(
+      `SELECT o.observation_id FROM observation o
+        WHERE o.observation_id = $1::uuid AND o.tenant_id = $2
+          AND (($7::boolean AND o.extractor = 'technician' AND o.review_state = 'corrected'
+            AND o.metadata->>'field' = 'photo_reading')
+            OR (NOT $7::boolean AND o.extractor = 'inspection_vision' AND o.review_state = 'unreviewed'))
+          AND o.evidence_state NOT IN ('REJECTED', 'SUPERSEDED') AND o.superseded_by IS NULL
+          AND o.metadata->>'publication_superseded_by' IS NULL
+          -- A new model reading cannot publish over a committed review whose
+          -- materialization is still pending, even in a different conversation.
+          AND ($7::boolean OR NOT EXISTS (
+            SELECT 1 FROM observation r
+              JOIN visual_session rs ON rs.session_id=r.session_id AND rs.tenant_id=$2
+              JOIN evidence_item re ON re.evidence_id=r.evidence_id AND re.tenant_id=$2
+             WHERE r.tenant_id=$2 AND rs.metadata->>'notebook_id'=$4
+               AND re.capture_meta->>'file_id'=$6 AND r.extractor='technician'
+               AND r.review_state='corrected' AND r.metadata->>'field'='photo_reading'
+               AND r.metadata->>'publication_superseded_by' IS NULL
+               AND r.superseded_by IS NULL AND r.evidence_state NOT IN ('REJECTED','SUPERSEDED')))
+          AND EXISTS (SELECT 1 FROM visual_session vs WHERE vs.session_id = o.session_id
+            AND vs.tenant_id = $2 AND vs.created_by = $3
+            AND vs.metadata->>'notebook_id' = $4 AND vs.metadata->>'thread_id' = $5)
+          AND EXISTS (SELECT 1 FROM evidence_item e WHERE e.evidence_id = o.evidence_id
+            AND e.tenant_id = $2 AND e.capture_meta->>'file_id' = $6)
+          AND EXISTS (SELECT 1 FROM workspace_file_links l WHERE l.tenant_id = $2::uuid
+            AND l.file_id = $6::uuid AND l.target_id = $4::uuid
+            AND l.target_type = 'equipment_notebook' AND l.role = 'photo')
+        FOR UPDATE OF o`,
+      [photoReading.observationId, tenantId, opts.addedBy, notebookId, photoReading.threadId, opts.originFileId, !!opts.reviewedPhoto],
+    );
+    if (!current.rows.length) return { ok: false, error: "photo_review_conflict" };
+  }
+  await upsertNotebookSourceTx(c, {
+    tenantId,
+    notebookId,
+    docId,
+    matchState: opts.matchState ?? "user_confirmed",
+    sourceRole: opts.sourceRole ?? null,
+    addedBy: opts.addedBy ?? null,
+    originFileId: opts.originFileId ?? null,
+    matchEvidence: opts.matchEvidence,
   });
+  if ((opts.reuseVisibleOrigin || opts.reviewedPhoto) && opts.originFileId) {
+    await c.query(`UPDATE equipment_notebook_sources SET superseded_at = NULL
+      WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND doc_id = $3::uuid`,
+    [tenantId, notebookId, docId]);
+  }
+  if (opts.reviewedPhoto) {
+    await c.query(`UPDATE equipment_notebook_sources SET superseded_at = now()
+      WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND origin_file_id = $3::uuid
+        AND doc_id <> $4::uuid AND superseded_at IS NULL`, [tenantId, notebookId, opts.originFileId, docId]);
+  }
+  return opts.reuseVisibleOrigin || opts.reviewedPhoto ? { ok: true, docId, alreadyAttached: false } : { ok: true };
 }
 
 /**
@@ -1166,7 +1209,11 @@ export async function listSources(
     return res.rows as Record<string, unknown>[];
   });
   if (memb.length === 0) return [];
-  const ids = memb.map((m) => String(m.doc_id));
+  // Codex review of #4091 at 1082ad199, F6: a "duplicate of" upload owns no
+  // chunks; its readiness counts its original's (one hop, tenant-validated).
+  const memberIds = memb.map((m) => String(m.doc_id));
+  const aliases = await resolveDuplicateDocAliases(tenantId, memberIds);
+  const ids = [...new Set([...memberIds, ...aliases.values()])];
   // Doc metadata: hub_uploads on the raw pool (no RLS there); parked-file id for
   // the viewer comes from namespace_direct_uploads keyed by upload_id.
   const docs = await pool.query(
@@ -1209,7 +1256,11 @@ export async function listSources(
 
   return memb.map((m) => {
     const d = byId.get(String(m.doc_id));
-    const c = chunksById.get(String(m.doc_id)) ?? { n: 0, emb: 0, anchored: 0 };
+    // F6: a duplicate's chunks and parked bytes are its original's.
+    const original = byId.get(aliases.get(String(m.doc_id)) ?? "");
+    const c = chunksById.get(String(m.doc_id)) ??
+      chunksById.get(aliases.get(String(m.doc_id)) ?? "") ?? { n: 0, emb: 0, anchored: 0 };
+    const fileId = ((d?.file_id ?? original?.file_id) as string | null | undefined) ?? null;
     const status = d ? ((d.status as string) ?? null) : null;
     const readiness = deriveReadiness({
       // An upload row exists at all => the bytes were durably accepted.
@@ -1222,7 +1273,7 @@ export async function listSources(
       chunkCount: c.n,
       hasPageAnchors: c.anchored > 0,
       scopeValidated: true, // membership was proven by the query above
-      originalResolvable: Boolean(d?.file_id),
+      originalResolvable: Boolean(fileId),
       embeddedChunkCount: c.emb,
     });
     return {
@@ -1233,7 +1284,7 @@ export async function listSources(
       matchState: m.match_state as MatchState,
       sourceRole: (m.source_role as string) ?? null,
       pages: null,
-      fileId: d ? ((d.file_id as string) ?? null) : null,
+      fileId: d ? fileId : null,
       originFileId: (m.origin_file_id as string) ?? null,
       matchEvidence: m.match_evidence ?? null,
       readiness,

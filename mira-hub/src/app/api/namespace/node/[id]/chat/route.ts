@@ -36,6 +36,7 @@ import { flagDirectiveFor, hazardBanner, matchSafetyStop, safetyFlagHeaders, wit
 import { withAnswerLanguage } from "@/capabilities/answer-language";
 import { withStepSafety } from "@/capabilities/answer-shape";
 import { linkedDocIdsForNode } from "@/lib/workspace-files";
+import { resolveDuplicateDocAliases } from "@/lib/uploads";
 import { canonicalProviders, requestDialectFields } from "@/lib/inference/canonical-cascade";
 import { boundInputTokens, reserveOpenAiAttempt } from "@/capabilities/openai-run-budget";
 import type { CanonicalProvider } from "@/lib/inference/canonical-cascade";
@@ -307,6 +308,12 @@ export async function POST(
   // are admitted: to retrieval, to the ask post-filter, and to the final
   // approved-context count below. Unlinked drafts are not.
   const admittedDocIds = new Set(docId ? [docId, ...linkedDocIds] : linkedDocIds);
+  // Review of #4091 (Codex @ 1082ad199, F6): a "duplicate of" upload owns no
+  // chunks, so its filename is read from its original's, and retrieval follows
+  // the same aliases (relabelling to the opened id). Resolved HERE, before the
+  // tenant transaction below takes a connection — never inside it (F8).
+  const docAliases = await resolveDuplicateDocAliases(ctx.tenantId, docId ? [docId, ...linkedDocIds] : linkedDocIds);
+  const docChunkOwner = docId ? (docAliases.get(docId) ?? docId) : null;
   let nodeRow: { name: string; uns_path: string | null } | null = null;
   let docFilename: string | null = null;
   let docMissing = false;
@@ -334,7 +341,7 @@ export async function POST(
              FROM knowledge_entries
             WHERE tenant_id = $1 AND doc_id = $2::uuid AND ingest_route = 'v2'
             LIMIT 1`,
-          [ctx.tenantId, docId],
+          [ctx.tenantId, docChunkOwner],
         );
         filename = (docRes.rows[0]?.filename as string | undefined) ?? null;
         if (!filename) return { row, chunks: [] as ManualChunk[], filename: null, missing: true };
@@ -347,6 +354,7 @@ export async function POST(
         nodeId: id,
         unsPath: row.uns_path,
         ...(docId ? { docId, approvedSourceDocIds: [docId] } : {}),
+        docAliases,
       });
       let allChunks = chunks;
       if (linkedDocIds.length > 0) {
@@ -359,6 +367,7 @@ export async function POST(
           // approval gate. Without this, prod retrieval kept only
           // `verified = true` rows and every linked private upload vanished.
           approvedSourceDocIds: linkedDocIds,
+          docAliases,
         });
         allChunks = mergeChunks(chunks, linkedChunks);
       }
