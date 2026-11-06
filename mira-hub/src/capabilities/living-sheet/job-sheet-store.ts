@@ -18,15 +18,11 @@
  * recursively on both sides before hashing/comparing, which makes the
  * comparison independent of key order on either side of the round trip.
  *
- * Concurrency: one `pg_advisory_xact_lock(hashtextextended($1,0))` per
- * write, same primitive as store.ts's `appendEvent`. The lock key is the
- * SHARED RESOURCE under contention, not the request id: `createJobSheet`
- * contends only on its own `client_request_id` (a brand-new `job_sheets` row
- * can never collide with another request's row), but `reviseJobSheet` and
- * `reviewJobSheet` both allocate the next `revision` number for one
- * `job_sheet_id` — two different technicians revising/reviewing the SAME
- * sheet with two different `client_request_id`s must still serialize against
- * each other, so those two lock on `${tenantId}:${jobSheetId}`.
+ * Concurrency: all writes first serialize their tenant/request UUID in a
+ * distinct `request` namespace. Revisions/reviews then lock the shared
+ * `${tenantId}:${jobSheetId}` resource, also used by closeout. This prevents
+ * cross-operation request collisions and allocates sequential revisions for
+ * different requests without crossed request/resource UUID deadlocks.
  */
 import { randomUUID } from "node:crypto";
 import { withTenantContext } from "@/lib/tenant-context";
@@ -119,7 +115,7 @@ export async function createJobSheet(
     // Only one shared resource is at risk here — a replay of this exact
     // client_request_id — so the lock is keyed on the request id, not a
     // job_sheet_id (none exists yet).
-    await c.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [`${tenantId}:${input.clientRequestId}`]);
+    await c.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [`${tenantId}:request:${input.clientRequestId}`]);
 
     const prior = await c.query<RevisionRow>(
       `SELECT ${REVISION_COLS} FROM job_sheet_revisions WHERE tenant_id = $1::uuid AND client_request_id = $2::uuid`,
@@ -174,6 +170,7 @@ export async function reviseJobSheet(
   return withTenantContext(tenantId, async (c) => {
     // Resource under contention is the job sheet's revision sequence —
     // every revise/review of this jobSheetId shares this lock key.
+    await c.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [`${tenantId}:request:${input.clientRequestId}`]);
     await c.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [`${tenantId}:${jobSheetId}`]);
 
     const sheetExists = await c.query(`SELECT 1 FROM job_sheets WHERE tenant_id = $1::uuid AND id = $2::uuid`, [
@@ -181,6 +178,9 @@ export async function reviseJobSheet(
       jobSheetId,
     ]);
     if (sheetExists.rows.length === 0) return { status: "job_sheet_not_found" };
+
+    const structured = await c.query(`SELECT 1 FROM job_sheet_revisions WHERE tenant_id=$1::uuid AND job_sheet_id=$2::uuid AND body ? 'instruction' LIMIT 1`, [tenantId, jobSheetId]);
+    if (structured.rows.length) return { status: "invalid_body", error: "structured_review_required" };
 
     const prior = await c.query<RevisionRow>(
       `SELECT ${REVISION_COLS} FROM job_sheet_revisions WHERE tenant_id = $1::uuid AND client_request_id = $2::uuid`,
@@ -222,6 +222,7 @@ export type ReviewJobSheetResult =
   | { status: "request_id_conflict" }
   | { status: "job_sheet_not_found" }
   | { status: "revision_not_found" }
+  | { status: "structured_review_required" }
   | { status: "unsourced_torque"; what: string };
 
 export async function reviewJobSheet(
@@ -231,6 +232,7 @@ export async function reviewJobSheet(
   actor: Actor,
 ): Promise<ReviewJobSheetResult> {
   return withTenantContext(tenantId, async (c) => {
+    await c.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [`${tenantId}:request:${input.clientRequestId}`]);
     await c.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [`${tenantId}:${jobSheetId}`]);
 
     const sheetExists = await c.query(`SELECT 1 FROM job_sheets WHERE tenant_id = $1::uuid AND id = $2::uuid`, [
@@ -245,6 +247,7 @@ export async function reviewJobSheet(
     );
     if (source.rows.length === 0) return { status: "revision_not_found" };
     const sourceBody = source.rows[0]!.body;
+    if (sourceBody.instruction !== undefined) return { status: "structured_review_required" };
     // A reviewed job sheet never carries a torque value nobody can trace.
     const unsourced = sourceBody.torques.find((t) => t.value !== null && t.source === null);
     if (unsourced) return { status: "unsourced_torque", what: unsourced.what };

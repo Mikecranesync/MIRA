@@ -30,6 +30,7 @@ import { fileUrl } from "./to-interaction";
 import { LivingSheetPrint } from "./LivingSheetPrint";
 import { LivingSheetShiftReport } from "./LivingSheetShiftReport";
 import { JobSheetsLibrary } from "./JobSheetsLibrary";
+import { LivingInstructionControls, PacketIntakeButton } from "./LivingInstructionControls";
 import {
   apiGetJob,
   apiGetWorkOrderRequest,
@@ -462,6 +463,7 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
   const [pendingPhotoAttempt, setPendingPhotoAttempt] = useState<PhotoAttempt | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [shiftReportOpen, setShiftReportOpen] = useState(false);
+  const [guidePrintMode, setGuidePrintMode] = useState(false);
 
   // StrictMode-safe (replayed effects must not leave this false permanently — #5091 pattern).
   const mounted = useRef(false);
@@ -1071,6 +1073,7 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
 
           {!openJobId && (
             <div data-testid="living-sheet-job-list">
+              <PacketIntakeButton key={notebookId} notebookId={notebookId} scopeId={scopeId} onImported={openJob} />
               {jobsError && <p role="alert">{jobsError}</p>}
               <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
                 <button
@@ -1144,6 +1147,7 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
 
           {openJobId && view && (
             <div data-testid="living-sheet-sheet">
+              <LivingInstructionControls key={`${notebookId}:${view.jobId}:${view.seq}`} notebookId={notebookId} scopeId={scopeId} view={view} pendingCount={badge.queued} onPrintMode={setGuidePrintMode} />
               <div style={{ marginBottom: 12 }}>
                 <span style={BADGE_STYLE} data-testid="living-sheet-badge">{saveBadge(badge)}</span>
                 {" "}
@@ -1510,7 +1514,7 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
                 </button>
               </section>
               {/* R2-17: the printed page itself says how many queued changes it is missing. */}
-              <LivingSheetPrint view={view} seq={view.seq} printedAt={new Date().toLocaleString()} pendingCount={badge.queued} />
+              {!guidePrintMode && <LivingSheetPrint view={view} seq={view.seq} printedAt={new Date().toLocaleString()} pendingCount={badge.queued} />}
 
               {viewError && <p role="alert">{viewError}</p>}
             </div>

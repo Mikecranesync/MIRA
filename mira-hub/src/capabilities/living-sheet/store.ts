@@ -88,6 +88,8 @@ export type StartJobResult =
   | { status: "created"; jobId: string; event: StoredEvent; seq: 1; view: SheetView }
   | { status: "existing"; jobId: string; view: SheetView }
   | { status: "request_id_conflict" }
+  | { status: "invalid_template" }
+  | { status: "template_asset_mismatch" }
   | { status: "template_revision_not_found" };
 
 async function loadEventsForJob(c: PoolClient, tenantId: string, jobId: string): Promise<EventRow[]> {
@@ -105,6 +107,9 @@ export async function startJob(
   input: ValidatedStartJobInput,
   actor: Actor,
 ): Promise<StartJobResult> {
+  // Direct capability callers get the same boundary as the HTTP validator.
+  // Authentic structured evidence is loaded only by server revision ID.
+  if (input.template.instruction !== undefined) return { status: "invalid_template" };
   return withTenantContext(tenantId, async (c) => {
     // A client-sent template body is ignored once templateRevisionId is
     // given (TASK-S4): the server loads the body from job_sheet_revisions
@@ -122,6 +127,20 @@ export async function startJob(
       if (rev.rows.length === 0) return { status: "template_revision_not_found" };
       template = rev.rows[0]!.body;
       templateStatus = rev.rows[0]!.status;
+      const metadata = template.instruction;
+      if (metadata) {
+        // These draft candidates are scoped to their source notebook/machine.
+        // Cross-asset reuse requires the later structured acceptance slice.
+        const identity = await c.query<{ manufacturer: string | null; model: string | null; catalog_number: string | null; identity_status: string }>(
+          `SELECT manufacturer,model,catalog_number,identity_status FROM equipment_notebooks WHERE tenant_id=$1::uuid AND id=$2::uuid FOR SHARE`, [tenantId, notebookId]);
+        const n = identity.rows[0];
+        const norm = (v: string | null) => (v ?? "").trim().toLowerCase();
+        if (metadata.imported.notebookId !== notebookId || metadata.imported.asset.entityId !== asset.entityId || !n ||
+          !["user_confirmed", "verified"].includes(n.identity_status) ||
+          norm(metadata.imported.identity.manufacturer) !== norm(n.manufacturer) || norm(metadata.imported.identity.model) !== norm(n.model) ||
+          norm(metadata.imported.identity.catalogNumber) !== norm(n.catalog_number) ||
+          norm(metadata.packet.equipment.manufacturer.value) !== norm(n.manufacturer) || norm(metadata.packet.equipment.model.value) !== norm(n.model)) return { status: "template_asset_mismatch" };
+      }
     }
 
     const fingerprint = fingerprintOf([
@@ -176,6 +195,12 @@ export async function startJob(
     const priorEvents = (await loadEventsForJob(c, tenantId, priorRow.job_id)).map(toStoredEvent);
     return { status: "existing", jobId: priorRow.job_id, view: reduceSheet(priorEvents, priorRow.job_id) };
   });
+}
+
+/** Internal transaction reader shared by intake and closeout. */
+export async function jobEventsInTransaction(c: PoolClient, tenantId: string, notebookId: string, jobId: string): Promise<StoredEvent[]> {
+  const rows = await loadEventsForJob(c, tenantId, jobId);
+  return rows[0]?.notebook_id === notebookId ? rows.map(toStoredEvent) : [];
 }
 
 // ---------------------------------------------------------------------------

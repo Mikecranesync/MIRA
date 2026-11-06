@@ -69,6 +69,8 @@ export type JobSheetStep = {
  *  `value` that is not null requires `source` to be non-null (enforced on
  *  `torques` — the only sub-shape here that carries a `value`). */
 export type JobSheetBody = {
+  /** Server-owned structured evidence; never accepted by generic body writes. */
+  instruction?: import("./instruction-metadata").InstructionMetadata;
   title: string;
   machineLabel: string | null;
   component: string | null;

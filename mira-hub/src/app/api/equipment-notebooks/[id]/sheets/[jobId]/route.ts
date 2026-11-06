@@ -17,6 +17,8 @@ import { isUuid } from "@/capabilities/fix-records";
 import { livingSheetEnabled } from "@/capabilities/living-sheet/flag";
 import { loadJob, livingSheetStorageUnavailable } from "@/capabilities/living-sheet/store";
 import { instructionRecord } from "@/capabilities/living-sheet/instruction-record";
+import { instructionRecordV2 } from "@/capabilities/living-sheet/instruction-record-v2";
+import { latestCloseout } from "@/capabilities/living-sheet/intake-closeout-store";
 
 const DISABLED = { error: "living_sheet_disabled" };
 const NOT_FOUND = { error: "notebook_not_found" };
@@ -34,7 +36,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!notebook) return NextResponse.json(NOT_FOUND, { status: 404 });
 
   const format = req.nextUrl.searchParams.get("format");
-  if (format !== null && format !== "instruction-record") {
+  if (format !== null && format !== "instruction-record" && format !== "instruction-record-v2") {
     return NextResponse.json({ error: "invalid_format" }, { status: 400 });
   }
 
@@ -61,6 +63,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         { error: "sequence_not_found", message: "This job hasn't reached that sequence yet." },
         { status: 404 },
       );
+    }
+    if (format === "instruction-record-v2") {
+      return NextResponse.json(instructionRecordV2(id, result.view, await latestCloseout(ctx.tenantId, id, jobId, result.view.seq)));
     }
     if (format === "instruction-record") {
       return NextResponse.json(instructionRecord(id, result.view));

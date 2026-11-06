@@ -56,9 +56,9 @@ export function instructionRecord(notebookId: string, view: SheetView): Instruct
     ],
     steps: snapshot.template.steps.map(s => ({ id: s.id, text: s.text, state: "proposed", sources: citation(s.source), verification: verification() })),
     review: { technicianCloseout: "not_recorded", reusableAcceptance: "not_recorded", safetyClearance: "not_granted" },
-    gaps: ["historical_uns_path_not_recorded", "legacy_citations_unstructured",
+    gaps: [...(snapshot.template.instruction ? [] : ["historical_uns_path_not_recorded", "work_packet_import_not_connected"]), "legacy_citations_unstructured",
       "per_fact_and_step_review_not_recorded", "technician_closeout_review_not_recorded",
-      "reusable_acceptance_not_recorded", "work_packet_import_not_connected"],
+      "reusable_acceptance_not_recorded"],
     snapshot,
   };
 }

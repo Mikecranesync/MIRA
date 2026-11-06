@@ -577,13 +577,27 @@ export async function apiStartJob(
   notebookId: string,
   body: { title: string; templateRevisionId: string | null; template: JobSheetBody; clientEventId: string; occurredAt: string },
 ): Promise<ApiResult<{ jobId: string; view: SheetView; seq?: number; replayed?: boolean }>> {
+  // Structured evidence is loaded by server revision ID. Never echo it into
+  // the generic template-body write boundary, which intentionally rejects it.
+  const template = { ...body.template };
+  if (body.templateRevisionId) delete template.instruction;
   const res = await fetch(sheetsBase(notebookId), {
     method: "POST",
     credentials: "include",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...body, template }),
   });
   return asApiResult(res);
+}
+
+export async function apiIntakePacket(notebookId: string, input: import("@/capabilities/living-sheet/packet-intake").PacketIntakeInput): Promise<ApiResult<{ jobId: string; view: SheetView }>> {
+  return asApiResult(await fetch(`${sheetsBase(notebookId)}intake/`, { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify(input) }));
+}
+export async function apiInstructionRecord(notebookId: string, jobId: string): Promise<ApiResult<import("@/capabilities/living-sheet/instruction-record-v2").InstructionRecordV2>> {
+  return asApiResult(await fetch(`${sheetsBase(notebookId)}${encodeURIComponent(jobId)}/?format=instruction-record-v2`, { credentials: "include", cache: "no-store" }));
+}
+export async function apiCloseout(notebookId: string, jobId: string, input: import("@/capabilities/living-sheet/packet-intake").CloseoutInput): Promise<ApiResult<{ candidate: import("@/capabilities/living-sheet/intake-closeout-store").CloseoutCandidate }>> {
+  return asApiResult(await fetch(`${sheetsBase(notebookId)}${encodeURIComponent(jobId)}/closeout/`, { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify(input) }));
 }
 
 export async function apiGetJob(

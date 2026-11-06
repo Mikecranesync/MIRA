@@ -40,6 +40,8 @@ const store = vi.hoisted(() => ({
   }),
 }));
 vi.mock("@/capabilities/living-sheet/store", () => store);
+const qcStore = vi.hoisted(() => ({ latestCloseout: vi.fn(async () => null) }));
+vi.mock("@/capabilities/living-sheet/intake-closeout-store", () => qcStore);
 
 import { GET as GET_LIST, POST as POST_START } from "../../../app/api/equipment-notebooks/[id]/sheets/route";
 import { GET as GET_JOB } from "../../../app/api/equipment-notebooks/[id]/sheets/[jobId]/route";
@@ -266,6 +268,13 @@ describe("living-sheet routes: GET /sheets", () => {
 });
 
 describe("living-sheet routes: GET /sheets/[jobId]", () => {
+  it("exports explicit v2 with the same snapshot and scoped QC lookup", async () => {
+    const res = await GET_JOB(req(`/api/equipment-notebooks/${NB}/sheets/${JOB_ID}?format=instruction-record-v2&atSeq=1`, "GET"), jobParams);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ schemaVersion: 2, snapshot: sampleView, closeout: null, capture: { privacy: "private", exactConversationLinkage: "unknown" }, review: { technicianCloseout: "not_recorded", reusableAcceptance: "not_recorded" } });
+    expect(qcStore.latestCloseout).toHaveBeenCalledWith(TENANT, NB, JOB_ID, 1);
+    expect(store.appendEvent).not.toHaveBeenCalled();
+  });
   it("exports an opt-in versioned record from the same tenant-scoped historical snapshot", async () => {
     const res = await GET_JOB(req(`/api/equipment-notebooks/${NB}/sheets/${JOB_ID}?format=instruction-record&atSeq=1`, "GET"), jobParams);
     expect(res.status).toBe(200);
