@@ -1,0 +1,73 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://github.com/Mikecranesync/MIRA/docs/evals/imib/case.schema.json",
+ "title": "IMIB case v0.1",
+ "description": "One Industrial Maintenance Intelligence Benchmark case. A thin wrapper: the source set file stays byte-identical and is referenced by sha256.",
+ "type": "object",
+ "required": ["case_id", "schema_version", "capability", "question", "expected", "provenance", "review", "split"],
+ "additionalProperties": false,
+ "properties": {
+  "case_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"},
+  "schema_version": {"const": "0.1"},
+  "capability": {
+   "description": "Exactly one construct per case. Scores are never pooled across capabilities.",
+   "enum": ["page_retrieval", "grounded_answer", "technical_interpretation", "multi_step_diagnosis", "safety_gate", "safety_answer", "refusal", "visual_evidence", "technician_outcome"]
+  },
+  "question": {"type": "string", "minLength": 3},
+  "category": {"type": "string", "description": "lookup | technician_wording | multi_device | unanswerable | hazard | procedure | control | definitional | answer_level | sanity | forum"},
+  "documents": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "required": ["key"],
+    "additionalProperties": false,
+    "properties": {
+     "key": {"type": "string"},
+     "sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+     "location": {"type": "string", "description": "Where the PDF lives. Private manuals are referenced, never copied into the repo."}
+    }
+   }
+  },
+  "expected": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "pages": {"type": "array", "items": {"type": "integer", "minimum": 1}, "description": "1-based physical PDF pages, each of which on its own answers the question. Empty = unanswerable from the documents."},
+    "evidence_quotes": {"type": "array", "items": {"type": "object", "required": ["page", "quote"], "properties": {"page": {"type": "integer"}, "quote": {"type": "string"}}}},
+    "acceptable_answers": {"type": "array", "items": {"type": "string"}},
+    "gate": {"enum": ["protect", "none", "answer_level"], "description": "safety_gate cases only"},
+    "critical_safety_conditions": {"type": "array", "items": {"type": "string"}, "description": "Any violated condition fails the case outright; never averaged away."}
+   }
+  },
+  "safety_critical": {"type": "boolean"},
+  "ambiguity_notes": {"type": "string"},
+  "provenance": {
+   "type": "object",
+   "required": ["source_set", "source_file", "source_sha256"],
+   "additionalProperties": false,
+   "properties": {
+    "source_set": {"type": "string"},
+    "source_file": {"type": "string"},
+    "source_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "url": {"type": "string"},
+    "author_of_question": {"enum": ["real_person_forum", "real_technician", "ai_generated", "ai_authored", "engineer_authored"]},
+    "label_author": {"type": "string"},
+    "frozen_commit": {"type": "string"}
+   }
+  },
+  "review": {
+   "type": "object",
+   "required": ["status"],
+   "additionalProperties": false,
+   "properties": {
+    "status": {
+     "enum": ["unverified", "ai_authored_unreviewed", "ai_labeled_quote_verified", "ai_ai_agreed", "expert_reviewed", "expert_adjudicated", "field_validated"],
+     "description": "Only expert_reviewed and above count as ground truth. Everything below is labelled as such in every report."
+    },
+    "reviewers": {"type": "array", "items": {"type": "string"}},
+    "agreement": {"type": "string"}
+   }
+  },
+  "split": {"enum": ["dev", "test", "sealed_holdout"], "description": "sealed_holdout cases are never shown to a tuning session; see SPEC.md § Holdout."}
+ }
+}

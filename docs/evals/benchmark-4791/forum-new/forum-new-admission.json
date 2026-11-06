@@ -1,0 +1,312 @@
+[
+ {
+  "id": "fn-pf40-1",
+  "admitted": true,
+  "reasons": [],
+  "max_t4_similarity": 0.206
+ },
+ {
+  "id": "fn-pf40-2",
+  "admitted": true,
+  "reasons": [],
+  "max_t4_similarity": 0.457
+ },
+ {
+  "id": "fn-pf40-3",
+  "admitted": true,
+  "reasons": [],
+  "max_t4_similarity": 0.137
+ },
+ {
+  "id": "fn-pf40-4",
+  "admitted": true,
+  "reasons": [],
+  "max_t4_similarity": 0.146
+ },
+ {
+  "id": "fn-pf40-5",
+  "admitted": true,
+  "reasons": [],
+  "max_t4_similarity": 0.284
+ },
+ {
+  "id": "fn-pf40-6",
+  "admitted": true,
+  "reasons": [],
+  "max_t4_similarity": 0.125
+ },
+ {
+  "id": "fn-pf4m-1",
+  "admitted": true,
+  "reasons": [],
+  "max_t4_similarity": 0.06
+ },
+ {
+  "id": "fn-pf4m-2",
+  "admitted": true,
+  "reasons": [],
+  "max_t4_similarity": 0.265
+ },
+ {
+  "id": "fn-pf4m-3",
+  "admitted": true,
+  "reasons": [],
+  "max_t4_similarity": 0.235
+ },
+ {
+  "id": "fn-pf4m-4",
+  "admitted": true,
+  "reasons": [],
+  "max_t4_similarity": 0.087
+ },
+ {
+  "id": "fn-micro820-1",
+  "admitted": true,
+  "reasons": [],
+  "max_t4_similarity": 0.193
+ },
+ {
+  "id": "fn-micro820-2",
+  "admitted": true,
+  "reasons": [],
+  "max_t4_similarity": 0.108
+ },
+ {
+  "id": "fn-micro820-3",
+  "admitted": true,
+  "reasons": [],
+  "max_t4_similarity": 0.21
+ },
+ {
+  "id": "fn-micro820-4",
+  "admitted": true,
+  "reasons": [],
+  "max_t4_similarity": 0.26
+ },
+ {
+  "id": "fn-micro820-5",
+  "admitted": true,
+  "reasons": [],
+  "max_t4_similarity": 0.143
+ },
+ {
+  "id": "fn-ml1100-1",
+  "admitted": true,
+  "reasons": [],
+  "max_t4_similarity": 0.139
+ },
+ {
+  "id": "fn-ml1100-2",
+  "admitted": true,
+  "reasons": [],
+  "max_t4_similarity": 0.158
+ },
+ {
+  "id": "fn-ml1100-3",
+  "admitted": true,
+  "reasons": [],
+  "max_t4_similarity": 0.219
+ },
+ {
+  "id": "fn-ml1100-4",
+  "admitted": true,
+  "reasons": [],
+  "max_t4_similarity": 0.403
+ },
+ {
+  "id": "fn-ml1100-5",
+  "admitted": true,
+  "reasons": [],
+  "max_t4_similarity": 0.238
+ },
+ {
+  "id": "fn-ml1100-6",
+  "admitted": true,
+  "reasons": [],
+  "max_t4_similarity": 0.268
+ },
+ {
+  "id": "fn-e3plus-1",
+  "admitted": true,
+  "reasons": [],
+  "max_t4_similarity": 0.303
+ },
+ {
+  "id": "fn-e3plus-2",
+  "admitted": true,
+  "reasons": [],
+  "max_t4_similarity": 0.156
+ },
+ {
+  "id": "fn-e3plus-3",
+  "admitted": true,
+  "reasons": [],
+  "max_t4_similarity": 0.195
+ },
+ {
+  "id": "fn-e3plus-4",
+  "admitted": true,
+  "reasons": [],
+  "max_t4_similarity": 0.108
+ },
+ {
+  "id": "fn-lxm32a-1",
+  "admitted": true,
+  "reasons": [],
+  "max_t4_similarity": 0.144
+ },
+ {
+  "id": "fn-m172-1",
+  "admitted": true,
+  "reasons": [],
+  "max_t4_similarity": 0.255
+ },
+ {
+  "id": "fn-premium-1",
+  "admitted": true,
+  "reasons": [],
+  "max_t4_similarity": 0.133
+ },
+ {
+  "id": "fn-x80-1",
+  "admitted": true,
+  "reasons": [],
+  "max_t4_similarity": 0.261
+ },
+ {
+  "id": "fn-micro810-1",
+  "admitted": true,
+  "reasons": [],
+  "max_t4_similarity": 0.367
+ },
+ {
+  "id": "fn-micro810-2",
+  "admitted": true,
+  "reasons": [],
+  "max_t4_similarity": 0.274
+ },
+ {
+  "id": "fn-pf40-7",
+  "admitted": false,
+  "reasons": [
+   "quote not on p.94"
+  ],
+  "max_t4_similarity": 0.253
+ },
+ {
+  "id": "fn-ml1100-7",
+  "admitted": false,
+  "reasons": [
+   "quote not on p.161"
+  ],
+  "max_t4_similarity": 0.372
+ },
+ {
+  "id": "fn-ml1100-8",
+  "admitted": true,
+  "reasons": [],
+  "max_t4_similarity": 0.297
+ },
+ {
+  "id": "fn-smcflex-1",
+  "admitted": true,
+  "reasons": [],
+  "max_t4_similarity": 0.269
+ },
+ {
+  "id": "fn-micro820-6",
+  "admitted": false,
+  "reasons": [
+   "duplicate url",
+   "quote not on p.11"
+  ],
+  "max_t4_similarity": 0.276
+ },
+ {
+  "id": "fn-gs10-1",
+  "admitted": false,
+  "reasons": [
+   "quote not on p.15"
+  ],
+  "max_t4_similarity": 0.273
+ },
+ {
+  "id": "fn-se-m172-2",
+  "admitted": true,
+  "reasons": [],
+  "max_t4_similarity": 0.337
+ },
+ {
+  "id": "fn-acs355-1",
+  "admitted": false,
+  "reasons": [
+   "reviewed drop: accepted page 1 backed only by the quote 'ACS355' (title page); no page answering F0018 was labelled",
+   "evidence quote shorter than 20 chars"
+  ],
+  "max_t4_similarity": 0.309
+ },
+ {
+  "id": "fn-micro810-3",
+  "admitted": false,
+  "reasons": [
+   "evidence quote shorter than 20 chars",
+   "quote not on p.35"
+  ],
+  "max_t4_similarity": 0.33
+ },
+ {
+  "id": "fn-pf40-8",
+  "admitted": false,
+  "reasons": [
+   "quote not on p.53"
+  ],
+  "max_t4_similarity": 0.335
+ },
+ {
+  "id": "fn-gs4-2",
+  "admitted": false,
+  "reasons": [
+   "url is a document, not a forum thread",
+   "reviewed drop: URL is the GS4 manual PDF; the 'question' was written by the collector, not asked by a person",
+   "quote not on p.6"
+  ],
+  "max_t4_similarity": 0.371
+ },
+ {
+  "id": "fn-pf4m-3",
+  "admitted": false,
+  "reasons": [
+   "quote not on p.54"
+  ],
+  "max_t4_similarity": 0.324
+ },
+ {
+  "id": "fn-pf4m-4",
+  "admitted": false,
+  "reasons": [
+   "quote not on p.54",
+   "quote not on p.55"
+  ],
+  "max_t4_similarity": 0.303
+ },
+ {
+  "id": "fn-smc50-1",
+  "admitted": false,
+  "reasons": [
+   "url is a document, not a forum thread",
+   "reviewed drop: URL is a Rockwell support attachment; the question is collector-written",
+   "evidence quote shorter than 20 chars"
+  ],
+  "max_t4_similarity": 0.352
+ },
+ {
+  "id": "fn-ml1100-9",
+  "admitted": false,
+  "reasons": [
+   "duplicate url",
+   "reviewed drop: thread is about a MicroLogix 1400 + 1763-NC01; the collector rewrote it as a MicroLogix 1100 question",
+   "evidence quote shorter than 20 chars"
+  ],
+  "max_t4_similarity": 0.368
+ }
+]
