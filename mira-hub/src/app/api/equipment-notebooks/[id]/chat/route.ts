@@ -2573,7 +2573,7 @@ async function handleChatTurn(
   if (notebookRetrieval && !oemRetrieval && retrievedChunks.length > 0) {
     try {
       safetyChapterChunks = await withTenantContext(ctx.tenantId, (client) =>
-        retrieveSafetyChapterChunks(client, ctx.tenantId, retrievedChunks, { approvedSourceDocIds: docIds }),
+        retrieveSafetyChapterChunks(client, ctx.tenantId, retrievedChunks, { approvedSourceDocIds: docIds, docAliases }),
       );
     } catch (err) {
       console.warn("[notebook-chat] safety-chapter read failed (retrieved chunks only):", err instanceof Error ? err.message : err);
@@ -4949,7 +4949,7 @@ async function handleChatTurn(
       if (citedPages.length > 0) {
         try {
           citedPageChunks = await withTenantContext(ctx.tenantId, (c) =>
-            retrieveCitedPageChunks(c, ctx.tenantId, citedPages, { approvedSourceDocIds: docIds, keep: (t) => extractManualSafetyStatement(t) !== null }),
+            retrieveCitedPageChunks(c, ctx.tenantId, citedPages, { approvedSourceDocIds: docIds, docAliases, keep: (t) => extractManualSafetyStatement(t) !== null }),
           );
         } catch (err) {
           console.warn("[notebook-chat] cited-page read failed (notice from retrieved chunks only):", err instanceof Error ? err.message : err);

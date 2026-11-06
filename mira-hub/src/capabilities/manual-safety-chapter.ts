@@ -334,19 +334,24 @@ export async function retrieveSafetyChapterChunks(
   client: Pick<PoolClient, "query">,
   tenantId: string,
   chunks: readonly ManualChunk[],
-  opts: { approvedSourceDocIds?: string[] } = {},
+  opts: { approvedSourceDocIds?: string[]; docAliases?: ReadonlyMap<string, string> } = {},
 ): Promise<ManualChunk[]> {
+  const storedId = (id: string) => opts.docAliases?.get(id) ?? id;
   const docs = retrievedDocs(chunks);
   if (docs.length === 0) return [];
-  const starts = await chapterStarts(client, tenantId, docs, chunks, opts.approvedSourceDocIds ?? []);
-  const pages = docs.flatMap((d) => {
+  // Read the admitted alias's stored owner; keep templates on the selected alias for citations.
+  const storedDocs = docs.map(d => ({ ...d, docId: storedId(d.docId) }));
+  const storedChunks = chunks.map(c => c.docId ? { ...c, docId: storedId(c.docId) } : c);
+  const approved = (opts.approvedSourceDocIds ?? []).map(storedId);
+  const starts = await chapterStarts(client, tenantId, storedDocs, storedChunks, approved);
+  const pages = storedDocs.flatMap((d) => {
     const first = starts.get(d.docId);
     return first === undefined
       ? []
       : Array.from({ length: SAFETY_CHAPTER_SPAN }, (_, i) => ({ docId: d.docId, sourceUrl: d.sourceUrl, page: first.pdfPage + i }));
   });
   if (pages.length === 0) return [];
-  const rows = await readChapterRows(client, tenantId, pages, opts.approvedSourceDocIds ?? []);
+  const rows = await readChapterRows(client, tenantId, pages, approved);
   // Warning runs per page (a statement chunk and its continuations); dedupe per document, so two
   // manuals with the same boilerplate warning each keep their own citable copy.
   const keyOf = (sourceUrl: string, content: string) => `${sourceUrl}\u0000${content}`;
@@ -370,7 +375,7 @@ export async function retrieveSafetyChapterChunks(
   // Retrieval order across documents, page order within each. sourcePage stays the PDF page (rereads
   // and citation keys use it); pageLabel is the manual's printed page (Codex #5056 r4 F8).
   return docs.flatMap((d) => {
-    const offset = starts.get(d.docId)?.offset ?? 0;
+    const offset = starts.get(storedId(d.docId))?.offset ?? 0;
     return withinBudget(perDoc.get(d.sourceUrl)!).map((r) => ({
         ...d.template,
         content: r.content,

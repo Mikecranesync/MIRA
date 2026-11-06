@@ -2510,17 +2510,18 @@ export async function retrieveCitedPageChunks(
   client: Pick<PoolClient, "query">,
   tenantId: string,
   pages: readonly CitedPageRef[],
-  opts: { approvedSourceDocIds?: string[]; keep?: (content: string) => boolean; now?: () => number } = {},
+  opts: { approvedSourceDocIds?: string[]; keep?: (content: string) => boolean; now?: () => number; docAliases?: ReadonlyMap<string, string> } = {},
 ): Promise<Array<{ content: string; sourceUrl: string; sourcePage: number }>> {
   if (pages.length === 0) return [];
+  const storedId = (id: string) => opts.docAliases?.get(id) ?? id;
   const base: unknown[] = [
     tenantId,
-    pages.map((p) => p.docId),
+    pages.map((p) => storedId(p.docId)),
     pages.map((p) => p.sourceUrl),
     pages.map((p) => p.page),
     CANDIDATE_PATTERN,
   ];
-  const approved = (opts.approvedSourceDocIds ?? []).filter(Boolean);
+  const approved = (opts.approvedSourceDocIds ?? []).filter(Boolean).map(storedId);
   const admitApproved = approved.length > 0 && approvalGateEnabled();
   if (admitApproved) base.push(approved);
   const now = opts.now ?? Date.now;
