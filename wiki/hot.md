@@ -1,3 +1,7 @@
+# November 6 — Codex CLI digest repairs
+
+PDF #5038, upload #4091 and pilot #4960 have isolated current-main continuations with local proof. No successor review, merge or deployment is claimed. See `docs/proofs/2026-11-06-pilot-current-main-proof.md` and the task evidence folder for exact heads and approval dependencies. Keep the conveyor stopped; garage-owner and fresh-reader acceptance remains open.
+
 # Honest landing Codex round 2 — 2026-10-29
 
 Draft PR #4570 (`cursor/honest-landing-capabilities-ded8`). Codex round 2 on `c08384e0` (ISSUES_FOUND, 4 P2) fixed on the same draft: Drive Commander `/drive-commander/powerflex-525` drops `$197/yr` and checkout, CTA is Talk to Mike / free 30-day pilot; blog articles no longer claim auto work-order creation, a free CMMS tier, or "in seconds"; `provenText()` no longer falls back when a claim is unproven; honest-claims is recursive over public HTML, renders every real blog post plus Drive Commander and marketing renderers, uses semantic bans (auto+CMMS/work order, any `$`, timing promises), and has mutation + notebook-cited-answer flip tests. No merge, deploy, labels, ready, or Codex. mira-web full suite at new tip: 598 pass / 18 fail (21 fail on `origin/main`; the 18 remaining are pre-existing Neon/cookie/admin/DC-Pro).

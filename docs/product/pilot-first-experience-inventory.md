@@ -58,3 +58,7 @@ Rollback: revert this draft's commits. No schema or data changes; this would als
 119 focused Hub tests pass, including public-sample safety/answer route controls; 8 web tests pass. The 4 offer tests fail against base pages; the 4 new email/PrintSense checks fail against their base implementations. Forty browser assertions pass across phone and desktop fixtures. Changed Hub files pass ESLint. Whole-Hub `tsc --noEmit --incremental false` remains nonzero with byte-identical diagnostics on the unchanged base and candidate after a locked dependency install; none concern changed files. This is not a clean whole-repository build.
 
 Screenshots and command logs are saved under the task workspace `evidence/pilot-first-experience/`; the committed browser harness regenerates them. Visually inspected signup, pending, sample-answer and continuation layouts.
+
+## November 6 current-main continuation
+
+The October receipt above is historical. Current-main reconciliation, the legacy-offer conflicts, canonical `/pilot` redirect and current local proof are recorded in [the November 6 proof](../proofs/2026-11-06-pilot-current-main-proof.md). Original #4960, consent #4930, Terms #5126 and physical acceptance remain distinct release gates.
