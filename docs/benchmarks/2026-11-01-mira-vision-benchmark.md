@@ -1,6 +1,6 @@
 > **Current assessment:** see [November 5, 2026 — readiness reevaluation](#november-5-2026--readiness-reevaluation). The November 1 and November 4 snapshots are historical; the implementation plan's proposed Level 3 criteria are unchanged.
 
-> **Level 3 gap report:** [The remaining path to MIRA Level 3](2026-11-05-level-3-gap-closure-report.md) maps every capability, customer pain and journey step to closure work, exit checks and evidence.
+> **P0 — Level 3 closure goal:** [The remaining path to MIRA Level 3](2026-11-05-level-3-gap-closure-report.md) maps every capability, customer pain and journey step to closure work, exit checks and evidence.
 
 **FactoryLM/MIRA: benchmark against the 2126 vision**
 

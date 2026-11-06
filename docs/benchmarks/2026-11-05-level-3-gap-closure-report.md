@@ -1,4 +1,6 @@
-# The remaining path to MIRA Level 3
+# P0: The remaining path to MIRA Level 3
+
+**Priority: P0 — complete the first-customer Level 3 maintenance learning cycle.** Mike set this as the delivery priority. Close the nine capability gaps through the twelve work items below, covering all eight customer pains and eleven mandatory journey steps. P0 sets execution priority; the evidence snapshots, capability maturity levels, proposed acceptance thresholds and required approval boundaries remain unchanged.
 
 ## Executive summary
 
