@@ -1,8 +1,8 @@
 # Supported QC fields — local verification
 
-Status: LOCAL ONLY / PARTIAL. Product commits7613a8cd7452e66fa60f263c99ea11c4ba43c405
+Status: PARTIAL; GitHub publication authorized, exact-head review pending. Product commits7613a8cd7452e66fa60f263c99ea11c4ba43c405
 and6e77205a8db3f62144b9f0fb8da05809e1ca6687, based on frozen draft5236 at
-8a54f29a73507da80eee98bfcb6534f332617a24. No remote branch/PR/claim publication,
+8a54f29a73507da80eee98bfcb6534f332617a24. No remote branch/PR publication,
 authoritative independent review, CI, merge, staging, deployment or human
 acceptance of this follow-up has occurred.
 
@@ -75,7 +75,10 @@ alternate route was used to bypass the rejections. Exact proposed notes and
 reasons are retained in task-root claim-publication-approval.md.
 
 The original product goal remains authorized; local work was prepared in this
-session's already-owned guide files. Publication-specific permission is pending.
+session's already-owned guide files. Mike's subsequent Asset Memory mission
+explicitly authorized the GitHub work. Scoped ACTIVE claim6677663412 was posted
+on #5237 and reread without a competing writer. The denied operations were not
+bypassed; materially new explicit permission resolved the publication block.
 Old5236 head/body and its CONVERGED review remain frozen, with F3 tracked by5237.
 The latest parent-directed follow-up is not an additional round on that PR.
 

@@ -12,12 +12,13 @@ at8a54f29a73507da80eee98bfcb6534f332617a24 and its converged review is not reope
 Branch: codex/living-guide-qc-field-completeness. R0 is the local branch
 rollback/living-guide-qc-field-completeness-r0 at that exact SHA.
 
-Automatic approval review rejected both the parent claim-release publication
-and a new ACTIVE claim on #5237 as organizational commitments without specific
-publication authorization. Neither comment executed. No new branch/PR/claim
-will be published to bypass those decisions; local preparation remains within
-the authorized product task and existing owned files. Publication/authoritative
-review is pending that approval. The parent tracker claim remains ACTIVE.
+Automatic approval review previously rejected the parent claim-release and a
+new ACTIVE claim on #5237 as organizational commitments without specific
+publication authorization. Neither denied comment executed. Mike subsequently
+explicitly approved GitHub work in the Asset Memory mission. The scoped #5237
+claim was posted as comment6677663412 and reread without a competing claim.
+Publication and exact-head review now proceed through the established workflow.
+The parent tracker reservation is released only after the actual handoff.
 
 Fresh #5237 issue/open-PR and owner-summary checks found no competing writer.
 Peer-owned Work Packet/drawing/Stardust/core/mobile files and existing holds
@@ -314,4 +315,5 @@ The captured-UNS versus finish-outbox NULL-path gap remains unchanged. Dedicated
 reusable acceptance, exact conversation/exposure capture and representative
 human acceptance are still unfinished. The graph/context findings add no merge,
 deployment, migration or safety-clearance claim and do not resolve the specific
-claim-publication approval block.
+former claim-publication approval block. Mike's subsequent explicit GitHub
+authorization resolves that block; the existing integration/release gates remain.
