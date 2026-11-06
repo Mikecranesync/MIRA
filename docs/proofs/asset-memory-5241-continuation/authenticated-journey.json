@@ -63,5 +63,10 @@
     "job": 404
   },
   "result": "BLOCKED_missing_component_manual_guide_chat_and_Atlas_link_lineage",
-  "rawInputsPublished": false
+  "rawInputsPublished": false,
+  "candidateEnrichedIsolation": {
+    "authenticatedOtherTenant": 404,
+    "anonymous": 401,
+    "authenticatedIsolationTenantId": "00000000-0000-0000-0000-000000000199"
+  }
 }

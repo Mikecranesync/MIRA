@@ -53,7 +53,7 @@ regression fixtures. No paid answer was requested.
 | Review saved work/guide/chat | Saved history and the candidate memory UI open. This legacy job has no imported repair guide; this viewer has0 saved chat turns/threads in the notebook. No complete illustrated/answer history is claimed. |
 | Follow evidence link | PASS for exact saved-record link on `/hub`:200, same snapshot and selector. Root deployment is covered by regression. |
 | Follow verified Atlas work order | BLOCKED: request status reports `verified_by_readback`, externalRef1652. None of160 inspected Hub work orders maps to atlas_id1652. This is delivery-status evidence, not a verified provider deep link or provider asset FK. No URL was guessed from a display name, environment default or numeric ID. |
-| Tenant/auth isolation | PASS on actual staging: anonymous asset read401; authenticated tenant199 gets404 for tenant99 asset, notebook and job. Candidate route-level negative regressions also pass. |
+| Tenant/auth isolation | PASS on actual staging: anonymous asset read401; authenticated tenant199 gets404 for tenant99 asset, notebook and job. The actual candidate enriched-v2 endpoint also returns404 for tenant199 and401 anonymously; route-level negative regressions pass. |
 | Restart/persistence | PASS for session and persisted snapshot/selector/source through a real candidate process restart; exact job can be reopened. Automatic selected-job reopening is false, explicitly retained as a navigation limitation, not evidence loss or physical-device proof. |
 
 The historical captured UNS stays unknown. The graph's current knowledge-base

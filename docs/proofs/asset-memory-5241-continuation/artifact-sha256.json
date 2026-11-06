@@ -1,5 +1,5 @@
 {
-  "authenticated-journey.json": "0d30446a491520846b9c37acbe186d5cdb62e04b8bacadadd5412ff6a715d393",
+  "authenticated-journey.json": "bf55f01d61dce95651865d4120b5f8fe4364470b891c761f0976ff3496091c29",
   "authenticated-read.mjs": "8b2b82f49f1c5484bb95becbbf1a4c546a0dd0b46edbe46d2119ecea6f86a0d3",
   "candidate-after-restart-desktop.png": "d926d576a6e2dd7af07cee3d444ce1b5d2ce218d9abdef5aff0f11b31301f285",
   "candidate-desktop.png": "22e37998cb13f522306e0e69331170de3f91bc64c588dff5b063d9e456b290ba",
@@ -11,5 +11,5 @@
   "performance.json": "b3184ad0cf81b07d59530fb31be7123a8d011036598ad0f1d7f66918eb920f42",
   "restart-receipt.json": "b262469919ba3c70769bdd88af0f52214a8ba9cfdb8fad8de1dd636439209cb1",
   "typecheck.txt": "1183f05bfa9611f78df9870ecacf249465c2c8cebf7a25817922755be8648ff3",
-  "verification.md": "70ee8f2de207da9f095982f0d2386abbdb14e4f94990aea9ff222f8822249e61"
+  "verification.md": "fb246706be29f41be86500b20e67bf29466bcab4ac8b1ff383ee4608f45a603e"
 }
