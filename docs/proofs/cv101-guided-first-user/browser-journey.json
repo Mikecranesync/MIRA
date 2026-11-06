@@ -1,0 +1,134 @@
+{
+  "capturedAt": "2026-11-06T13:14:08.329Z",
+  "kind": "Synthetic component browser verification; not authentication or live proof",
+  "receipts": [
+    {
+      "workflow": 1,
+      "scope": "synthetic practice",
+      "status": "PASS",
+      "ms": 379,
+      "result": "DEMO-CV101 selected; live remains BLOCKED"
+    },
+    {
+      "workflow": 2,
+      "scope": "historical references / synthetic practice",
+      "status": "PASS",
+      "ms": 1540,
+      "result": "Four records acknowledged; existing SourceViewer opened; current physical topology remains unverified"
+    },
+    {
+      "workflow": 3,
+      "scope": "synthetic sample replay",
+      "status": "PASS",
+      "checkedAt": "2026-11-06T12:14:35.399Z",
+      "liveFreshness": "FAIL remains unchanged"
+    },
+    {
+      "workflow": 4,
+      "scope": "prepared answer + existing SourceViewer",
+      "status": "PASS",
+      "ms": 1820,
+      "originalReference": "2080-IN009 page6",
+      "liveAnswer": "BLOCKED; no model call"
+    },
+    {
+      "workflow": 5,
+      "scope": "synthetic documentation inspection only",
+      "status": "PASS",
+      "ms": 1298,
+      "result": "Existing Work Packet controls; five Living Sheet events; finish retains open issue; saved locally only"
+    },
+    {
+      "workflow": 6,
+      "scope": "actual browser reload of synthetic same-viewer local record",
+      "status": "PASS",
+      "jobId": "demo-cv101-adb03ff7-7de6-4ff5-8184-400f5d0e2519",
+      "sameJob": true,
+      "ms": 1165,
+      "result": "Asset Memory practice recall\n\nRetrieved a synthetic documentation review, finished by Demo technician at 2026-11-06T12:15:33.931Z.\n\nSynthetic documentation review completed in this browser. Physical machine state, current connections and reusable acceptance remain unknown.\n\nSynthetic exercise: the live feed is unavailable; physical condition remains unverified. — Demo technician, 2026-11-06T12:15:33.666Z\n\nSame browser / same viewer scope · job demo-cv101-adb03ff7-7de6-4ff5-8184-400f5d0e2519 · change #5. No server or second-technician proof.\n\nOriginal historical/source inventory\nJOB demo-cv1 · Synthetic CV-101 documentation review · Synthetic CV-101 learning model · Snapshot at change #5 · Printed 2026-11-06T12:15:33.931Z\n\n\n\nNot from a reviewed job sheet\n\nSafety\n\nNo physical work is authorized by this practice record.\n\nCautions\n\nSYNTHETIC PRACTICE ONLY — no physical work, equipment comman"
+    },
+    {
+      "viewport": "412x915",
+      "workflow": 3,
+      "actionMs": 818,
+      "result": "PASS practice; live FAIL unchanged"
+    },
+    {
+      "viewport": "412x915",
+      "workflow": 4,
+      "actionMs": 21701,
+      "result": "PASS prepared reference navigation only"
+    },
+    {
+      "viewport": "412x915",
+      "workflow": 5,
+      "actionMs": 10922,
+      "result": "Practice job demo-cv101-05643205-ef89-4810-80a6-82d7be247445: finished, 5 events. Saved only in this browser for this viewer. Physical work and closeout approval are not recorded."
+    },
+    {
+      "viewport": "412x915",
+      "workflow": 6,
+      "actionMs": 2832,
+      "before": "Retrieved demo-cv101-05643205-ef89-4810-80a6-82d7be247445, change #5, from this browser's saved practice record. This is not server persistence or a new authenticated technician session.",
+      "after": "Retrieved demo-cv101-05643205-ef89-4810-80a6-82d7be247445, change #5, from this browser's saved practice record. This is not server persistence or a new authenticated technician session.",
+      "same": true
+    }
+  ],
+  "reloadReceipt": {
+    "workflow": 6,
+    "scope": "actual browser reload of synthetic same-viewer local record",
+    "status": "PASS",
+    "jobId": "demo-cv101-adb03ff7-7de6-4ff5-8184-400f5d0e2519",
+    "sameJob": true,
+    "ms": 1165,
+    "result": "Asset Memory practice recall\n\nRetrieved a synthetic documentation review, finished by Demo technician at 2026-11-06T12:15:33.931Z.\n\nSynthetic documentation review completed in this browser. Physical machine state, current connections and reusable acceptance remain unknown.\n\nSynthetic exercise: the live feed is unavailable; physical condition remains unverified. — Demo technician, 2026-11-06T12:15:33.666Z\n\nSame browser / same viewer scope · job demo-cv101-adb03ff7-7de6-4ff5-8184-400f5d0e2519 · change #5. No server or second-technician proof.\n\nOriginal historical/source inventory\nJOB demo-cv1 · Synthetic CV-101 documentation review · Synthetic CV-101 learning model · Snapshot at change #5 · Printed 2026-11-06T12:15:33.931Z\n\n\n\nNot from a reviewed job sheet\n\nSafety\n\nNo physical work is authorized by this practice record.\n\nCautions\n\nSYNTHETIC PRACTICE ONLY — no physical work, equipment comman"
+  },
+  "mobileMetrics": {
+    "banner": {
+      "bottom": 134,
+      "height": 133,
+      "left": 13,
+      "right": 399,
+      "top": 1,
+      "width": 386,
+      "x": 13,
+      "y": 1
+    },
+    "dialogWidth": 412,
+    "pageWidth": 412,
+    "viewport": {
+      "height": 915,
+      "width": 412
+    }
+  },
+  "negative": {
+    "deniedWrite": "Practice could not be saved in this browser. The visible draft is in memory only; reload/recall is not proven. Allow local storage or use another browser, then retry.",
+    "deniedRead": "Browser storage is unavailable. No saved job was loaded; real jobs and live acceptance are unchanged.",
+    "corruptRead": "The saved practice record is unreadable or belongs to another viewer. It was not used as evidence. Start a new practice inspection to continue.",
+    "otherViewer": "No saved practice job was found for this viewer in this browser. Complete and save workflow 5 first."
+  },
+  "focus": {
+    "focusedSource": "Close",
+    "escapeKeptOuterDialog": true,
+    "focusReturn": "Open supporting manual citation",
+    "launcherFocus": "CV-101 walkthrough"
+  },
+  "logs": [
+    {
+      "level": "error",
+      "message": "ReferenceError: process is not defined\n    at src/lib/config.ts (http://127.0.0.1:55821/browser.js:13897:7)\n    at __init (http://127.0.0.1:55821/browser.js:10:58)\n    at src/factorylm-ui/to-interaction.ts (http://127.0.0.1:55821/browser.js:14062:7)\n    at __init (http://127.0.0.1:55821/browser.js:10:58)\n    at src/factorylm-ui/LivingSheetPrint.tsx (http://127.0.0.1:55821/browser.js:14331:7)\n    at __init (http://127.0.0.1:55821/browser.js:10:58)\n    at src/factorylm-ui/CV101PracticeInspection.tsx (http://127.0.0.1:55821/browser.js:14771:7)\n    at __init (http://127.0.0.1:55821/browser.js:10:58)\n    at src/factorylm-ui/CV101Walkthrough.tsx (http://127.0.0.1:55821/browser.js:15179:7)\n    at __init (http://127.0.0.1:55821/browser.js:10:58)",
+      "timestamp": "2026-11-06T12:11:10.355Z",
+      "url": "http://127.0.0.1:55821/browser.js"
+    }
+  ],
+  "screenshotMethod": "CUA CDP Page.captureScreenshot; surface capture replaces wrapper-stale desktop canvas",
+  "finalCaptureAt": "2026-11-06T13:16:34.192Z",
+  "finalSessionLogs": [],
+  "logsNote": "One early harness process reference error at12:11 was corrected before successful flows. Retained above; no error/warn after final navigation cutoff12:13.",
+  "offline": {
+    "scope": "Already loaded synthetic component with network offline; no reload or external source fetched",
+    "actual": "Retrieved demo-cv101-05643205-ef89-4810-80a6-82d7be247445, change #5, from this browser's saved practice record. This is not server persistence or a new authenticated technician session.",
+    "status": "PASS local recall only",
+    "restoredOnline": true
+  }
+}

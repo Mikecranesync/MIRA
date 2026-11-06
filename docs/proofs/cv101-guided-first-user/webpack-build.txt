@@ -1,0 +1,37 @@
+
+> mira-hub@2.59.0 build
+> next build --webpack
+
+▲ Next.js 16.4.1 (webpack)
+✓ Running next.config.ts took 104ms
+- Experiments (use with caution):
+  ✓ externalDir
+  · proxyClientMaxBodySize: "55mb"
+  ⨯ useTypeScriptCli
+
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+
+  To migrate automatically, run:
+  npx @next/codemod@canary middleware-to-proxy .
+
+  Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+  Creating an optimized production build ...
+<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: ENOSPC: no space left on device, write
+Failed to compile.
+
+./node_modules/@assistant-ui/core/dist/react/runtimes/cloud/AssistantCloudThreadHistoryAdapter.js
+Module not found: Can't resolve 'assistant-cloud/ai-sdk'
+
+https://nextjs.org/docs/messages/module-not-found
+
+Import trace for requested module:
+./node_modules/@assistant-ui/core/dist/react/index.js
+./node_modules/@assistant-ui/react/dist/index.js
+../packages/factorylm-ui/src/assistant/AssistantThread.tsx
+../packages/factorylm-ui/src/FactoryLMShell.tsx
+../packages/factorylm-ui/src/index.ts
+./src/factorylm-ui/hub-host.tsx
+./src/app/v3/page.tsx
+
+
+> Build failed because of webpack errors

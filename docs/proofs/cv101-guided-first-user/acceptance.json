@@ -1,0 +1,82 @@
+{
+  "baseline": "211e5c78ecdc6cf538e7509206a3397167f74d5e",
+  "practice": {
+    "workflows": [
+      {
+        "workflow": 1,
+        "status": "PASS",
+        "evidence": "workflow-1-desktop.jpg",
+        "phone": "workflow-1-mobile.jpg"
+      },
+      {
+        "workflow": 2,
+        "status": "PASS",
+        "evidence": "workflow-2-desktop.jpg",
+        "phone": "workflow-2-mobile.jpg"
+      },
+      {
+        "workflow": 3,
+        "status": "PASS",
+        "evidence": "workflow-3-desktop.jpg",
+        "phone": "workflow-3-mobile.jpg"
+      },
+      {
+        "workflow": 4,
+        "status": "PASS",
+        "evidence": "workflow-4-desktop.jpg",
+        "phone": "workflow-4-mobile.jpg"
+      },
+      {
+        "workflow": 5,
+        "status": "PASS",
+        "evidence": "workflow-5-desktop.jpg",
+        "phone": "workflow-5-mobile.jpg"
+      },
+      {
+        "workflow": 6,
+        "status": "PASS",
+        "evidence": "workflow-6-desktop.jpg",
+        "phone": "workflow-6-mobile.jpg"
+      }
+    ],
+    "scope": "synthetic component UI; local same-viewer browser storage only"
+  },
+  "live": {
+    "status": "BLOCKED",
+    "workflows": [
+      "BLOCKED",
+      "BLOCKED",
+      "FAIL",
+      "BLOCKED",
+      "BLOCKED",
+      "BLOCKED"
+    ],
+    "asOf": "2026-11-06T10:32:00.318324Z",
+    "newLiveTestsRun": false
+  },
+  "notTested": [
+    "owner authentication",
+    "current per-tag telemetry",
+    "physical operation",
+    "MIRA inference/retrieval",
+    "server restart",
+    "real multi-tenant authorization journey",
+    "Atlas continuity",
+    "browser/hardware Back"
+  ],
+  "automated": {
+    "fullUnitPassed": 13160,
+    "fullUnitSkipped": 53,
+    "filesPassed": 595,
+    "filesSkipped": 4,
+    "focusedPassed": 25,
+    "lintErrors": 0,
+    "lintExistingWarnings": 1,
+    "typecheck": "159 unchanged existing diagnostics",
+    "build": "not verified locally; see logs"
+  },
+  "mergeReady": false,
+  "deployed": false,
+  "humanAccepted": false,
+  "externalDialogCloseContract": "PASS after RED\u2192GREEN; actual device Back NOT TESTED"
+}

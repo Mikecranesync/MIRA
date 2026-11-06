@@ -1,0 +1,245 @@
+[
+  {
+    "file": "case-study-desktop.jpg",
+    "dimensions": [
+      1440,
+      900
+    ],
+    "sha256": "f0e2dfccac48e078c634ec26f3b4b2a7e518428676a0ae3a651b8b7c6d4a2db4",
+    "scope": "synthetic component browser proof"
+  },
+  {
+    "file": "case-study-mobile.jpg",
+    "dimensions": [
+      412,
+      915
+    ],
+    "sha256": "46970e17b5427e03220865e3058e523ede27cc426086de301f938d19c48b8c80",
+    "scope": "synthetic component browser proof"
+  },
+  {
+    "file": "live-evidence-desktop.jpg",
+    "dimensions": [
+      1440,
+      900
+    ],
+    "sha256": "a289536743395d8badc7236abfc80319ff7812ec386af29b5a207b2405001287",
+    "scope": "synthetic component browser proof"
+  },
+  {
+    "file": "offline-local-recall-desktop.jpg",
+    "dimensions": [
+      1440,
+      900
+    ],
+    "sha256": "fb94f42ca7bb2a062a85b1483fc198c22058432266f3ed2982ce1848aa60b1a3",
+    "scope": "synthetic component browser proof"
+  },
+  {
+    "file": "original-manual-desktop.jpg",
+    "dimensions": [
+      1280,
+      720
+    ],
+    "sha256": "98fb4d5b156f0083b1ea6e3438259459bca12af236972c8b15f484b7520de3bb",
+    "scope": "original public OEM document navigation"
+  },
+  {
+    "file": "storage-corrupt.jpg",
+    "dimensions": [
+      1280,
+      720
+    ],
+    "sha256": "61fb9c45f431905deec20a66e0f3071748737066f890e5cb8e056fbc60921f68",
+    "scope": "synthetic component browser proof"
+  },
+  {
+    "file": "storage-denied.jpg",
+    "dimensions": [
+      1280,
+      720
+    ],
+    "sha256": "41ac9bc0ae36fa5448df572296c1bba85d15614897fcd022bea1e270204ff9cd",
+    "scope": "synthetic component browser proof"
+  },
+  {
+    "file": "viewer-isolation.jpg",
+    "dimensions": [
+      1280,
+      720
+    ],
+    "sha256": "8704a11bca89fb829cb03f8f65a06e040cb1edffe56efe11be00b4694b8f7664",
+    "scope": "synthetic component browser proof"
+  },
+  {
+    "file": "workflow-1-desktop.jpg",
+    "dimensions": [
+      1440,
+      900
+    ],
+    "sha256": "1e427c63767044cb95b03b09ba0747b06f414cbe090dffcc707a84e863f8b595",
+    "scope": "synthetic component browser proof"
+  },
+  {
+    "file": "workflow-1-mobile.jpg",
+    "dimensions": [
+      412,
+      915
+    ],
+    "sha256": "d22afe4fe025bcda18f69cc068ac0c3e18baa5cec43ab13b042ade82d38f839c",
+    "scope": "synthetic component browser proof"
+  },
+  {
+    "file": "workflow-2-desktop.jpg",
+    "dimensions": [
+      1440,
+      900
+    ],
+    "sha256": "2ce094be816d2f7b3b772594643545c344fe28f6f9424e33ce7adbfcf18e31cf",
+    "scope": "synthetic component browser proof"
+  },
+  {
+    "file": "workflow-2-mobile.jpg",
+    "dimensions": [
+      412,
+      915
+    ],
+    "sha256": "b0332a336d05e273cfde08fb17174335bdeede4fc30f1bcb327857d8d0d3d371",
+    "scope": "synthetic component browser proof"
+  },
+  {
+    "file": "workflow-2-source-desktop.jpg",
+    "dimensions": [
+      1440,
+      900
+    ],
+    "sha256": "d8c0f96788be2e6686200f1768437ea230816b3aa88bb25b07d2b50743f24123",
+    "scope": "synthetic component browser proof"
+  },
+  {
+    "file": "workflow-2-source-mobile.jpg",
+    "dimensions": [
+      412,
+      915
+    ],
+    "sha256": "06167e6fb5155fcc7581f917c23437889fd20d0309cb3768ac9aca801109e146",
+    "scope": "synthetic component browser proof"
+  },
+  {
+    "file": "workflow-3-desktop.jpg",
+    "dimensions": [
+      1440,
+      900
+    ],
+    "sha256": "d8cfd83830a623dfee7b609de8e6715a5b3a01ee3063a2565b41cc5a64f67cd6",
+    "scope": "synthetic component browser proof"
+  },
+  {
+    "file": "workflow-3-mobile.jpg",
+    "dimensions": [
+      412,
+      915
+    ],
+    "sha256": "12198a6ad8f477467a0aef980614b629fcb6c182a1d950c14c0b018a4e3447d6",
+    "scope": "synthetic component browser proof"
+  },
+  {
+    "file": "workflow-4-desktop.jpg",
+    "dimensions": [
+      1440,
+      900
+    ],
+    "sha256": "729f2960885e1f2f6834c5f93a473ff8315a437287018d78d53ba01f41a032ea",
+    "scope": "synthetic component browser proof"
+  },
+  {
+    "file": "workflow-4-mobile.jpg",
+    "dimensions": [
+      412,
+      915
+    ],
+    "sha256": "d5f60230096f7b4317095b368a56949009fcec5714eace3d44660d8a5fde2be5",
+    "scope": "synthetic component browser proof"
+  },
+  {
+    "file": "workflow-4-source-desktop.jpg",
+    "dimensions": [
+      1440,
+      900
+    ],
+    "sha256": "129dbf2edae6d6deaccc4982a9050546ebb13fc183727b0a576fe8cd9f9deb9b",
+    "scope": "synthetic component browser proof"
+  },
+  {
+    "file": "workflow-4-source-mobile.jpg",
+    "dimensions": [
+      412,
+      915
+    ],
+    "sha256": "d96b0022796d568d397a78ad5a1ee6c9eaea9abc8b8c6932b6e10e0da9e8ed35",
+    "scope": "synthetic component browser proof"
+  },
+  {
+    "file": "workflow-5-desktop.jpg",
+    "dimensions": [
+      1440,
+      900
+    ],
+    "sha256": "0ed9d65f7c0f8f98b39d80222d5868c79064a3555698cb98b99f5a4dd150ac42",
+    "scope": "synthetic component browser proof"
+  },
+  {
+    "file": "workflow-5-mobile.jpg",
+    "dimensions": [
+      412,
+      915
+    ],
+    "sha256": "473ad805bfaff42161581c38d7936aafb6808c5ce6f85c59c14e4f599160ffae",
+    "scope": "synthetic component browser proof"
+  },
+  {
+    "file": "workflow-6-desktop.jpg",
+    "dimensions": [
+      1440,
+      900
+    ],
+    "sha256": "cad0b522308d3b8611e9373b626ac8e3fff1d71476e56a21113027ff8806c339",
+    "scope": "synthetic component browser proof"
+  },
+  {
+    "file": "workflow-6-mobile.jpg",
+    "dimensions": [
+      412,
+      915
+    ],
+    "sha256": "59ae3b70b37e042602037f5dd9dcd2de67676d1a36baeb71b4b1f76f4d4a5f71",
+    "scope": "synthetic component browser proof"
+  },
+  {
+    "file": "workflow-6-reload-desktop.jpg",
+    "dimensions": [
+      1440,
+      900
+    ],
+    "sha256": "cad0b522308d3b8611e9373b626ac8e3fff1d71476e56a21113027ff8806c339",
+    "scope": "synthetic component browser proof"
+  },
+  {
+    "file": "workflow-6-reload-mobile.jpg",
+    "dimensions": [
+      412,
+      915
+    ],
+    "sha256": "a18cb6aa4eed467b0fdd396ee0452a4c4e739f766a2c5d4616b66f0eb76b9a22",
+    "scope": "synthetic component browser proof"
+  },
+  {
+    "file": "nested-source-back-desktop.jpg",
+    "dimensions": [
+      1440,
+      900
+    ],
+    "sha256": "6958c8646ef4d840d6a8569e0822b08bbc4776cbd073f2a2ba099756a06ebddf",
+    "scope": "synthetic component external direct-close contract"
+  }
+]
