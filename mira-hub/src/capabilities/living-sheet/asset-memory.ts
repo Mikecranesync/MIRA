@@ -1,6 +1,7 @@
 /** Server-only read adapter. Browser consumers import TYPES only. Existing v2
  * remains complete; this additional manifest is bounded, dated evidence data. */
 import { createHash } from "node:crypto";
+import { API_BASE } from "@/lib/config";
 import { getNotebook, resolveBoundAsset, validateChatSources, type ResolvedAsset } from "@/lib/equipment-notebooks";
 import { maintenanceContext } from "@/lib/knowledge-graph/traversal";
 import { observationStateEnabled } from "@/capabilities/observations/flag";
@@ -93,6 +94,22 @@ export function projectAssetMemory(record: InstructionRecordV2, selector: AssetM
   for (const p of view.parts) add(`part:${p.id}`, "performed_part", { ...p, userId: null });
   for (const p of view.photos) add(`photo:${p.id}`, "photo_reference", { fileId: p.fileId, caption: p.caption, byLabel: p.by, at: p.at, eventId: p.eventId, userId: null });
   if (view.handover.current) add("handover", "handover", { ...view.handover.current, userId: null });
+  const imported = metadata?.originalRecord;
+  if (imported) {
+    const provenance = { origin: "imported_report", packetId: imported.packetId,
+      importedByUserId: metadata.imported.userId, importedAt: metadata.imported.at,
+      userId: null, currentJobExecution: "not_inherited" };
+    for (const [index, step] of Object.entries(imported.steps)) add(`imported:step:${index}`, "imported_execution", {
+      ...provenance, packetIndex: Number(index), performed: step.performed, by: step.by, at: step.at, text: step.text ?? null });
+    for (const [index, reading] of Object.entries(imported.measurements)) add(`imported:measurement:${index}`, "imported_reading", {
+      ...provenance, packetIndex: Number(index), value: reading.value, by: reading.by, at: reading.at });
+    for (const note of imported.notes) add(`imported:note:${note.id}`, "imported_note", {
+      ...provenance, id: note.id, kind: note.kind, text: note.text, stepIndex: note.stepIndex,
+      by: note.by, at: note.at, resolved: note.resolved === true, resolvedBy: note.resolvedBy ?? null, resolvedAt: note.resolvedAt ?? null });
+    for (const photo of imported.photos) add(`imported:photo:${photo.id}`, "imported_photo_reference", {
+      ...provenance, id: photo.id, caption: photo.caption, stepIndex: photo.stepIndex,
+      by: photo.by, at: photo.at, image: "retained_in_full_record_only" });
+  }
   const originalFields = new Map(metadata ? qcTargets(metadata.originalPacket).map(({ path, field }) => [path, field]) : []);
   if (metadata) for (const { path, field } of qcTargets(metadata.packet)) {
     const history = fieldGuideHistory(metadata.packet, path);
@@ -114,7 +131,7 @@ export function projectAssetMemory(record: InstructionRecordV2, selector: AssetM
   const bounded = facts.filter(f => { const c = categories[f.category]; if (c.included >= 40) return false; c.included++; return true; }).map(f => ({ ...f, data: compact(f.data) as Record<string, unknown> }));
   const projection: AssetMemoryProjection = { kind: "asset_memory", adapterVersion: ADAPTER, selector, contentHash: "sha256:" + "0".repeat(64),
     capture: { startedAt: overlay.startedAt, finishedAt: overlay.finishedAt },
-    source: { label: "Authenticated saved Living Sheet record", href: `/api/equipment-notebooks/${encodeURIComponent(record.lineage.notebookId)}/sheets/${encodeURIComponent(view.jobId)}/?format=instruction-record-v2&assetMemory=1&memorySelector=${encodeURIComponent(JSON.stringify(selector))}` },
+    source: { label: "Authenticated saved Living Sheet record", href: `${API_BASE}/api/equipment-notebooks/${encodeURIComponent(record.lineage.notebookId)}/sheets/${encodeURIComponent(view.jobId)}/?format=instruction-record-v2&assetMemory=1&memorySelector=${encodeURIComponent(JSON.stringify(selector))}` },
     historical: { notebookId: record.lineage.notebookId, jobId: view.jobId, asset: { entityId: view.machine.entityId, name: compact(view.machine.name) as string | null,
       capturedUnsPath: record.sourceEvidence?.imported.asset.entityId === view.machine.entityId && (record.sourceEvidence.imported.asset.unsPath.length <= 512) ? record.sourceEvidence.imported.asset.unsPath : null }, finished: view.finished !== null },
     current: { binding: overlay.binding, ...overlay.statuses }, facts: bounded,

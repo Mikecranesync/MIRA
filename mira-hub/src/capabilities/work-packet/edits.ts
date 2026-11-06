@@ -75,10 +75,21 @@ function syncCopies(packet: WorkPacket, path: string, original: Field): void {
 }
 
 export function applyEdit(packet: WorkPacket, edit: PacketEdit, by: string, at: string): WorkPacket {
+  return applyEdits(packet, [edit], by, at);
+}
+
+/** Apply an ordered batch atomically to one private clone. Uses the same field,
+ * copy and provenance rules as a single edit; input is untouched on failure. */
+export function applyEdits(packet: WorkPacket, edits: readonly PacketEdit[], by: string, at: string): WorkPacket {
+  const next = cloneDeep(packet);
+  for (const edit of edits) applyEditInPlace(next, edit, by, at);
+  return next;
+}
+
+function applyEditInPlace(next: WorkPacket, edit: PacketEdit, by: string, at: string): void {
   if (!KNOWN_ACTIONS.includes(edit.action)) {
     throw new Error(`Unknown edit action: '${edit.action}' at '${edit.path}'`);
   }
-  const next = cloneDeep(packet);
   // A caution repeated in another section is a copy: the edit lands on the original (F18).
   const target = resolveField(next, edit.path);
   const path = target.copyOf ?? edit.path;
@@ -122,5 +133,4 @@ export function applyEdit(packet: WorkPacket, edit: PacketEdit, by: string, at: 
   // #4999: ANY edit — including a bare confirm — invalidates a standing supervisor approval.
   next.approval.supervisor = { state: "pending", by: null, at: null };
 
-  return next;
 }

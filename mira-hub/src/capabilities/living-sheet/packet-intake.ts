@@ -4,7 +4,7 @@ import { isUuid } from "@/capabilities/fix-records";
 import type { WorkPacket, PacketEdit } from "@/capabilities/work-packet/types";
 import type { JobRecord } from "@/capabilities/work-packet/job-record";
 import { collectFields } from "@/capabilities/work-packet/verify";
-import { applyEdit } from "@/capabilities/work-packet/edits";
+import { applyEdits } from "@/capabilities/work-packet/edits";
 import type { JobSheetBody } from "./types";
 import type { ValidationResult } from "./validate";
 import { qcTargets } from "./instruction-fields";
@@ -137,12 +137,11 @@ export function validateCloseout(raw: unknown): ValidationResult<CloseoutInput> 
 export function applyCloseoutDecisions(packet: WorkPacket, decisions: PacketEdit[], userId: string, at: string): WorkPacket {
   const required = new Set(qcTargets(packet).map(f => f.path));
   if (decisions.length !== required.size || decisions.some(d => !required.delete(d.path))) throw new Error("incomplete_or_duplicate_decisions");
-  let next = structuredClone(packet);
+  const next = applyEdits(packet, decisions, userId, at);
   // Keep every prior value/source transition. Confirm appends current QC without
   // turning a historical correction into the original manual value. Authority
   // comes from the server receipt; historical approval flags are reset.
-  next.approval.technicianReview.state = "draft";
+  next.approval.technicianReview.state = decisions.length ? "reviewed" : "draft";
   next.approval.supervisor = { state: "pending", by: null, at: null };
-  for (const decision of decisions) next = applyEdit(next, decision, userId, at);
   return next;
 }

@@ -122,6 +122,10 @@ function MemoryFact({ fact }: { fact: AssetMemoryFact }) {
     case "photo_reference": return <li>Saved photo reference: {words(d.caption, "caption not recorded")} · {words(d.byLabel)} at {words(d.at)}. Image ownership and review are not established.</li>;
     case "handover": return <li>Handover: {words(d.text ?? d.summary)} · {words(d.by)} at {words(d.at)}</li>;
     case "qc": return <li>Technician QC: {words(d.scope)} · user {words(d.userId)} at {words(d.at)}. Draft only; reusable acceptance is not recorded.</li>;
+    case "imported_execution": return <li>Imported work report: {words(d.text, "step text not captured")} · reported performed by {words(d.by)} at {words(d.at)}. This does not mark the current job performed.</li>;
+    case "imported_reading": return <li>Imported measured value: {words(d.value)} · reported by {words(d.by)} at {words(d.at)}. Separate from source specifications.</li>;
+    case "imported_note": return <li>Imported {words(d.kind)}: {words(d.text)} · {d.resolved ? `reported resolved by ${words(d.resolvedBy)} at ${words(d.resolvedAt)}` : "unresolved"} · reported by {words(d.by)} at {words(d.at)}</li>;
+    case "imported_photo_reference": return <li>Imported photo reference: {words(d.caption, "caption not recorded")} · reported by {words(d.by)} at {words(d.at)}. Image retained in the full record.</li>;
     case "graph_reference": return <li>{words(d.relation).replaceAll("_", " ")}: {words(d.name)} ({words(d.entityType).replaceAll("_", " ")}) · graph updated {words(d.updatedAt)}. {d.currentUnsPath ? `Dated graph address: ${words(d.currentUnsPath)}. ` : ""}Principal graph reference; edge review/version and installed component instance linkage are unknown.</li>;
     case "observations": {
       const cur = fieldsOf(d.current); const conflicts = Array.isArray(d.conflicting) ? d.conflicting : [];

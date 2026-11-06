@@ -39,6 +39,45 @@ beforeEach(() => {
   mocks.graph.mockResolvedValue(null); mocks.rows.mockResolvedValue([]); mocks.observations.mockReturnValue(false); mocks.admission.mockResolvedValue({ ok: true, docIds: [], nodeId: "node" }); mocks.workOrder.mockResolvedValue(null);
 });
 describe("bounded asset memory exact selection", () => {
+  it("keeps imported work, measurements and unresolved reports separate from this job in chat and both guide copies", async () => {
+    const c = candidate();
+    const imported = { version: 1, packetId: c.body.instruction.originalPacket.packetId,
+      steps: { 0: { performed: true, text: "Imported label inspection", by: "Imported performer", at: "2026-11-01T01:00:00Z" } },
+      measurements: { 0: { value: "Imported 29 demo units", by: "Imported measurer", at: "2026-11-01T01:01:00Z" } },
+      notes: [{ id: "open-issue", kind: "issue", text: "Imported leak remains unresolved", stepIndex: 0, by: "Imported reporter", at: "2026-11-01T01:02:00Z" }],
+      photos: [{ id: "inspection-photo", image: "data:image/png;base64,PRIVATE_IMAGE_BYTES", caption: "Imported inspection image", stepIndex: 0, by: "Imported photographer", at: "2026-11-01T01:03:00Z" }] };
+    Object.assign(c.body.instruction, { originalRecord: imported });
+    mocks.latest.mockResolvedValue(c);
+    const sourceMetadata = structuredClone(c.body.instruction);
+    delete (sourceMetadata as { closeout?: unknown }).closeout;
+    const sourceView = { ...view, template: { ...view.template, instruction: sourceMetadata } };
+    c.body.instruction.closeout.snapshotId = instructionRecord(nb, sourceView).snapshotId;
+    mocks.job.mockResolvedValue({ status: "ok", view: sourceView });
+    const a = await loadAssetMemory(tenant, nb, job); expect(a.status).toBe("ok"); if (a.status !== "ok") return;
+    const facts = a.record.assetMemory.facts;
+    expect(facts.find(f => f.category === "imported_execution")?.data).toMatchObject({ origin: "imported_report", performed: true, text: "Imported label inspection", by: "Imported performer", at: "2026-11-01T01:00:00Z", currentJobExecution: "not_inherited", userId: null });
+    expect(facts.find(f => f.category === "imported_reading")?.data).toMatchObject({ value: "Imported 29 demo units", by: "Imported measurer", origin: "imported_report" });
+    expect(facts.find(f => f.category === "imported_note")?.data).toMatchObject({ kind: "issue", text: "Imported leak remains unresolved", resolved: false, by: "Imported reporter" });
+    expect(facts.find(f => f.category === "imported_photo_reference")?.data).toMatchObject({ id: "inspection-photo", caption: "Imported inspection image" });
+    expect(JSON.stringify(a.record.assetMemory)).not.toContain("PRIVATE_IMAGE_BYTES");
+    const html = renderToStaticMarkup(createElement(LivingInstructionGuide, { record: a.record }));
+    const summaries = [...html.matchAll(/data-testid="asset-memory-summary"[\s\S]*?(?=<details)/g)].map(m => m[0]); expect(summaries).toHaveLength(2);
+    for (const copy of summaries) for (const text of ["Imported label inspection", "Imported performer", "Imported 29 demo units", "Imported leak remains unresolved", "unresolved", "Imported inspection image"]) expect(copy).toContain(text);
+  });
+  it("counts omitted imported reports while retaining the full imported record", async () => {
+    const c = candidate();
+    Object.assign(c.body.instruction, { originalRecord: { version: 1, packetId: c.body.instruction.originalPacket.packetId, steps: {}, measurements: {}, photos: [],
+      notes: Array.from({ length: 80 }, (_, i) => ({ id: `imported-${i}`, kind: "issue", text: "界".repeat(500), stepIndex: null, by: "Imported reporter", at: "2026-11-01" })) } });
+    mocks.latest.mockResolvedValue(c);
+    const a = await loadAssetMemory(tenant, nb, job); expect(a.status).toBe("ok"); if (a.status !== "ok") return;
+    const p = a.record.assetMemory;
+    expect(p.coverage.categories.imported_note.available).toBe(80);
+    expect(p.coverage.categories.imported_note.included).toBeLessThan(80);
+    expect(p.coverage.omitted).toBeGreaterThan(0);
+    expect(p.coverage.stringsClipped).toBeGreaterThan(0);
+    expect(Buffer.byteLength(JSON.stringify(p), "utf8")).toBeLessThanOrEqual(ASSET_MEMORY_MAX_BYTES);
+    expect(a.record.closeout!.body.instruction!.originalRecord!.notes).toHaveLength(80);
+  });
   it("selects latest only initially, pins an exact revision, and retains explicit source-only null", async () => {
     const first = await loadAssetMemory(tenant, nb, job);
     expect(first.status).toBe("ok"); if (first.status !== "ok") return;
