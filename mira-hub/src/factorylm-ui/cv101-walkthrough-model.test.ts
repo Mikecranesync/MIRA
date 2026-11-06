@@ -1,0 +1,70 @@
+import { describe, expect, it } from "vitest";
+import { addNote, setStepPerformed } from "@/capabilities/work-packet/job-record";
+import { CV101_WORKFLOWS, DEMO_PACKET_ID, finishPractice, newPractice, parsePractice, practicePacket, practiceStatus, practiceView, storageKey, updatePracticeRecord } from "./cv101-walkthrough-model";
+
+const AT = "2026-11-06T12:00:00.000Z";
+const make = () => newPractice("viewer-a", AT, "demo-cv101-job-1");
+function ready() {
+  let p = make();
+  const packet = practicePacket();
+  for (let i = 0; i < packet.steps.length; i++) p = updatePracticeRecord(p, setStepPerformed(p.record, i, true, "Demo technician", AT, packet.steps[i].text.value), AT);
+  return updatePracticeRecord(p, addNote(p.record, { id: "demo-note-1", kind: "issue", text: "Synthetic note: physical state remains unknown.", stepIndex: null, by: "Demo technician", at: AT }), AT);
+}
+describe("CV-101 practice proof boundary", () => {
+  it("begins without inherited work, real identity or a provider work order", () => {
+    const p = make(), v = practiceView(p);
+    expect(p.record.packetId).toBe(DEMO_PACKET_ID);
+    expect(v.machine.entityId).toBe("DEMO-CV101");
+    expect(v.steps.every(s => !s.done)).toBe(true);
+    expect(v.finished).toBeNull();
+    expect(p.events.every(e => e.workOrderId === null)).toBe(true);
+    expect(practicePacket().workOrder.synthetic).toBe(true);
+  });
+  it("retains ordered checkoff and correction history through existing reducer", () => {
+    let p = ready();
+    p = updatePracticeRecord(p, setStepPerformed(p.record, 0, false, "Demo technician", AT), AT);
+    const v = practiceView(p);
+    expect(v.steps[0].history.map(h => h.done)).toEqual([true, false]);
+    expect(v.steps[0].done).toBe(false);
+    expect(v.questions[0].text).toContain("physical state remains unknown");
+    expect(v.openQuestions).toBe(1);
+  });
+  it("refuses finish without explicit steps and notes; finish retry is idempotent", () => {
+    expect(() => finishPractice(make(), AT)).toThrow(/steps.*note/i);
+    const p = finishPractice(ready(), AT);
+    expect(practiceView(p).finished?.summary).toContain("Synthetic");
+    expect(finishPractice(p, AT)).toBe(p);
+    expect(() => updatePracticeRecord(p, p.record, AT)).toThrow(/finished/i);
+    expect(practiceView(p).openQuestions).toBe(1);
+  });
+  it("replays the same completed demo in the same viewer scope", () => {
+    const p = finishPractice(ready(), AT);
+    expect(parsePractice(JSON.stringify(p), "viewer-a")).toEqual(p);
+    expect(practiceView(parsePractice(JSON.stringify(p), "viewer-a")!)).toEqual(practiceView(p));
+    expect(parsePractice(JSON.stringify(p), "viewer-b")).toBeNull();
+    expect(storageKey("viewer-a")).not.toBe(storageKey("viewer-b"));
+  });
+  it.each(["{bad", "{}", "null", "x".repeat(120001)])("rejects corrupt or oversized saved data", raw => {
+    expect(parsePractice(raw, "viewer-a")).toBeNull();
+  });
+  it("rejects mismatched identity, event gaps, invalid payloads and unsupported versions", () => {
+    const p = ready();
+    for (const mutate of [
+      (x: typeof p) => { x.version = 99 as 1; },
+      (x: typeof p) => { x.record.packetId = "real-packet"; },
+      (x: typeof p) => { x.events[1].seq = 10; },
+      (x: typeof p) => { x.events[0].payload = { ...x.events[0].payload, machine: { entityId: "real-asset", name: "CV-101" } } as typeof x.events[0]["payload"]; },
+      (x: typeof p) => { x.events[1].payload = null as unknown as typeof x.events[1]["payload"]; },
+    ]) {
+      const x = structuredClone(p); mutate(x);
+      expect(parsePractice(JSON.stringify(x), "viewer-a")).toBeNull();
+    }
+  });
+  it("never advances pinned live acceptance when practice is completed", () => {
+    const original = CV101_WORKFLOWS.map(w => w.live.status);
+    expect(practiceStatus(4, make())).toBe("BLOCKED");
+    expect(practiceStatus(4, finishPractice(ready(), AT))).toBe("PASS");
+    expect(CV101_WORKFLOWS.map(w => w.live.status)).toEqual(original);
+    expect(original).toEqual(["BLOCKED", "BLOCKED", "FAIL", "BLOCKED", "BLOCKED", "BLOCKED"]);
+  });
+});
