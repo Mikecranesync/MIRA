@@ -17,7 +17,7 @@
 - **Reads every item.** The query pages through all ~1,940 cards, never just the first 100.
 - **Cached.** It refetches at most every 5 minutes (`MC_CACHE_SECONDS`). A first load takes about 25 seconds; cached loads are instant.
 - **Read-only.** One GraphQL *query*, no mutations, no model calls. `POST` returns 405.
-- **Safe rendering.** All card text is HTML-escaped. Links are limited to `https://github.com/`.
+- **Safe rendering.** All card text is HTML-escaped. Card links are limited to `https://github.com/` (see "GTM plan link" below for the one other configured link).
 - **Send stays disabled** until the dispatcher, permissions and delivery receipts in the proposal are built, approved and verified.
 - **Loopback only.** It binds `127.0.0.1` by default (`::1` and `localhost` are also accepted) and refuses any other address unless `MC_ALLOW_NONLOOPBACK=1` is set.
 - **Not frameable.** The page forbids other sites from embedding it (`frame-ancestors 'none'`, `X-Frame-Options: DENY`).
@@ -30,13 +30,24 @@ GITHUB_TOKEN="$(gh auth token)" python3 tools/mission-control/server.py   # http
 
 Health check: `GET /healthz` returns `{"items": N, "ok": true}`.
 
-**Tests:** `pytest tests/test_mission_control.py` (18 tests on synthetic fixtures). Each protected behaviour was mutation-checked, and every break failed its named test:
+**Tests:** `pytest tests/test_mission_control.py` (28 tests on synthetic fixtures, as of #4982). Each protected behaviour was mutation-checked, and every break failed its named test:
 - escaping
 - pagination
 - case-insensitive status
 - the loopback guard
 - the disabled Send button
 - not mutating the shared cached snapshot
+- the `MC_PLAN_URL` header link (set/unset/rejected) and that it never widens the GitHub-only card-link guard
+
+### Optional: GTM plan link (`MC_PLAN_URL`, #4982)
+
+Set `MC_PLAN_URL` to a `https://claude.ai/artifact/...` URL to show a "View GTM plan" header
+link (anything else — `http://`, a different host, a path with `..` — stays hidden; it never
+touches `_link()`'s GitHub-only card guard). Set it in the LaunchAgent plist's
+`EnvironmentVariables`, or add an `export` to `tools/mission-control/charlie/run.sh` — both are
+regenerated from the repo by the "Install or upgrade" steps above, so a hand-edit to the
+already-deployed copy on CHARLIE is silently wiped on the next upgrade. Redeploy via those
+install steps; that redeploy is **not done in this PR**.
 
 ## Where it runs (deployed 2026-10-24)
 

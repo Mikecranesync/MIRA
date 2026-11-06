@@ -30,6 +30,8 @@
   .totals { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 12px 0 0; padding: 0; list-style: none;
             color: var(--muted); font-variant-numeric: tabular-nums; }
   .totals b { color: var(--ink); }
+  .plan { color: var(--fl-accent); font-size: var(--fl-fs-sm); text-decoration: none; }
+  .plan:hover, .plan:focus-visible { text-decoration: underline; }
   .notice { margin: 16px 0 0; padding: 10px 12px; border: 1px solid var(--line); border-left: 3px solid var(--warn);
             border-radius: var(--fl-radius); background: var(--surface); }
   .error { margin: 12px 0 0; color: var(--fault); }
@@ -62,6 +64,7 @@
 <div class="wrap">
   <header>
     <h1>Mission Control</h1>
+    $plan_link
     <span class="asof">Board data as of $snapshot_time &middot; refreshes at most every 5 minutes &middot; read-only</span>
   </header>
   <ul class="totals" aria-label="Cards by status"><li><b>$total</b> cards on Project #4</li>$status_list</ul>
