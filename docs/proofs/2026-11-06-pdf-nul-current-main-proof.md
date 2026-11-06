@@ -4,7 +4,7 @@ Local repair verified; no successor review, CI execution, deployment or customer
 
 - Baseline: main `090c8e15bfcbd85f0091103cf5a6f5fc6b221056`.
 - Existing PR #5038 source preserved as ancestor: `881671ae73042a7cc8e95476060fa92fb7b09d50`.
-- Tested current-main integration: `f23b6bca190271e3e40a88e915d6441fe5732843`, Hub package 2.54.4. The accompanying documentation commit does not change application or test source.
+- Tested current-main integration: `f23b6bca190271e3e40a88e915d6441fe5732843`, Hub package 2.54.4. Successor documentation and security-allowlist commits do not change application or test source.
 - Codex CLI owns the bounded continuation, preserving the original branch, other worktrees and historical review. The old GREEN at 061a335a does not cover this successor.
 
 ## Actual source and regression
@@ -30,8 +30,11 @@ The standard disposable schema needs canonical migrations 003 (the writer's dedu
 | Full Hub unit suite | 583 files / 13,036 passed; 53 existing opt-in DB cases skipped across 4 files | pdf-full-unit-complete.log |
 | Root-path Hub production build | PASS without provider credentials | pdf-build-receipt.json |
 | Changed TypeScript lint / actionlint / commit hooks | PASS | pdf-lint.log and commit output |
+| Knowledge-entry read guard | PASS, 213 read sites classified | pdf-security-read-guard.log |
 
 One initial full unit run omitted an existing safety-measure fixture because of sparse checkout. The tracked fixture was hydrated; no application change was made for that harness failure. The final complete suite is green. Initial new-test fixture setup failures were corrected by using existing required tenant fields and canonical index/grant migrations; none was a deployed application failure.
+
+The read guard required four exact, hash-bound entries for the new disposable fixture queries. They cover generated fixture cleanup, private-source inspection and the deliberate cross-tenant RLS probe. No application query or global test exemption was added.
 
 ## Release dependencies
 
