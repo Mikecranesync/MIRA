@@ -1436,3 +1436,30 @@ approved:
       FROM knowledge_entries
           WHERE tenant_id = $1
             AND ingest_route = 'v2'
+
+  # Disposable real-Postgres integration fixture reads; no application exemption.
+  mira-hub/tests/integration/upload-attempt-races.integration.test.ts:30:
+    approved_classification: TENANT-ONLY
+    query_sha256: 8bac33c50d36e8b9afa902c0fd1081273724a73a5d3c2ce4f04c78f1333d0036
+    reason: Disposable opt-in Postgres race fixture, generated tenant and document UUIDs only. These private-only fixture counts/readbacks
+      and cleanup are tenant-scoped and verify cancellation, stale-attempt rejection, isolation and exact retries. Public OEM
+      corpus is outside this test; no application read site or global test exemption is added.
+    query_snippet: await pool.query("DELETE FROM knowledge_entries WHERE tenant_id=$1", [tenant]); await pool.query("DELETE
+      FROM hub_uploads WHERE tenant_id=$1", [tenant]);
+  mira-hub/tests/integration/upload-attempt-races.integration.test.ts:60:
+    approved_classification: TENANT-ONLY
+    query_sha256: 4c6ebe85856ec584e75b401d8ecb6e7023d8a677b7abe8fb676d644f89b2a04d
+    reason: Disposable opt-in Postgres race fixture, generated tenant and document UUIDs only. These private-only fixture counts/readbacks
+      and cleanup are tenant-scoped and verify cancellation, stale-attempt rejection, isolation and exact retries. Public OEM
+      corpus is outside this test; no application read site or global test exemption is added.
+    query_snippet: const { rows } = await pool.query("SELECT count(*)::int AS n FROM knowledge_entries WHERE doc_id=$1 AND tenant_id=$2",
+      [upload.id, tenant]); expect(rows[0].n).toBe(0);
+  mira-hub/tests/integration/upload-attempt-races.integration.test.ts:67:
+    approved_classification: TENANT-ONLY
+    query_sha256: c1a337cb97bd4e1f59aeda4e4fd7d8539a468b2c89f360bc8c8f9cee2927a173
+    reason: Disposable opt-in Postgres race fixture, generated tenant and document UUIDs only. These private-only fixture counts/readbacks
+      and cleanup are tenant-scoped and verify cancellation, stale-attempt rejection, isolation and exact retries. Public OEM
+      corpus is outside this test; no application read site or global test exemption is added.
+    query_snippet: 'const { rows } = await pool.query("SELECT tenant_id::text, content, is_private FROM knowledge_entries WHERE
+      doc_id=$1 AND tenant_id=$2", [upload.id, tenant]); expect(rows).toEqual([{ tenant_id: tenant, content: "Private source
+      evidence.", is_private: true }]);'
