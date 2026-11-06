@@ -2,7 +2,7 @@
 import type { Field, PacketFigure, WorkPacket } from "@/capabilities/work-packet/types";
 import type { InstructionRecordV2 } from "@/capabilities/living-sheet/instruction-record-v2";
 import { correctionOrigin, effectiveInstruction, fieldGuideHistory, guidePacket } from "@/capabilities/living-sheet/instruction-fields";
-import { BlockersSection, CoverageStop, JhaTable, LeftOutAppendix, PartsTable } from "./WorkPacketV2Sections";
+import { BlockersSection, CoverageStop, LeftOutAppendix } from "./WorkPacketV2Sections";
 import { LivingGuideMeasurementFields, LivingGuideMeasurements } from "./LivingGuideMeasurements";
 import { phasedSteps } from "./work-packet-v2-view";
 import type { RenderField } from "./WorkPacketV2Sections";
@@ -65,11 +65,20 @@ function GuideSteps({ packet, view, renderField, candidateView }: { packet: Work
       {group.steps.map(s => {
         const step = packet.steps[s.index];
         const execution = view.steps.find(v => v.id === `packet-step-${s.index}`);
+        // Rich steps must flow across pages instead of being pushed wholesale
+        // and split anyway. The text budget is conservative and excludes image
+        // bytes; only the short heading/action introduction stays together.
+        const detailSize = JSON.stringify([step, s.figures.map(f => [f.caption, f.placement])]).length;
+        const detailed = s.measurements.length > 0 || s.figures.length > 1 || detailSize > 1800;
+        const longAction = JSON.stringify(step.text).length > 1200;
         const note = (i: number) => <aside key={i} style={{ borderLeft: "3px solid var(--fl-warn, #777)", paddingLeft: 12 }}><strong>{step.notes![i].kind}</strong>{renderField(`steps[${s.index}].notes[${i}].text`, step.notes![i].text)}{step.notes![i].applicability && renderField(`steps[${s.index}].notes[${i}].applicability`, step.notes![i].applicability!)}</aside>;
-        return <div key={s.index} data-testid={`wp-step-${s.number}`} style={{ borderTop: "1px solid var(--fl-line, #ccc)", paddingTop: 8, marginTop: 12, breakInside: "avoid" }}>
+        return <div key={s.index} data-testid={`wp-step-${s.number}`} style={{ borderTop: "1px solid var(--fl-line, #ccc)", paddingTop: 8, marginTop: 12, breakInside: detailed ? "auto" : "avoid" }}>
           {s.notes.filter(i => step.notes![i].placement === "before").map(note)}
-          <h4>Step {s.number}{step.n !== undefined && step.n !== null ? ` · Source step ${step.n}` : ""}</h4><p>{step.section}{step.subheading ? ` · ${step.subheading}` : ""}</p>
-          {renderField(`steps[${s.index}].text`, step.text)}{step.applicability && renderField(`steps[${s.index}].applicability`, step.applicability)}
+          <div style={{ breakInside: longAction ? "auto" : "avoid" }}>
+            <h4>Step {s.number}{step.n !== undefined && step.n !== null ? ` · Source step ${step.n}` : ""}</h4><p style={{ breakAfter: "avoid" }}>{step.section}{step.subheading ? ` · ${step.subheading}` : ""}</p>
+            {renderField(`steps[${s.index}].text`, step.text)}
+          </div>
+          {step.applicability && renderField(`steps[${s.index}].applicability`, step.applicability)}
           {step.inclusion && <><strong className="guide-field-label">Why this step is included (draft)</strong>{renderField(`steps[${s.index}].inclusion`, step.inclusion)}</>}
           {s.notes.filter(i => step.notes![i].placement !== "before").map(note)}
           {s.measurements.map(i => <LivingGuideMeasurementFields key={i} index={i} measurement={packet.measurements[i]} renderField={renderField} />)}
@@ -131,6 +140,12 @@ export function LivingInstructionGuideContent({ record }: { record: InstructionR
     {original.version === 1 && <p><strong>Legacy packet version 1: known procedure/other-model coverage limitations. Rebuild and check the original manual before use.</strong></p>}
     <p data-no-print>Packet source matches, names, times, revision claims and figures below are imported evidence. They do not establish attached-document ownership or human approval. New execution marks come only from this saved job.</p>
     <p className="guide-print-only">Source matches, revision claims and images are imported evidence; they do not establish human approval. Execution marks below belong to this saved job.</p>
+    <section><h2>Proposed packet identity claims</h2>
+      <p>These imported or technician-entered claims do not change the captured identity or address. They do not confirm a different asset or establish CMMS delivery.</p>
+      <strong className="guide-field-label">Manufacturer claim</strong>{renderField("equipment.manufacturer", packet.equipment.manufacturer)}
+      <strong className="guide-field-label">Model claim</strong>{renderField("equipment.model", packet.equipment.model)}
+      <strong className="guide-field-label">Serial claim</strong>{renderField("equipment.serial", packet.equipment.serial)}
+    </section>
     <section data-no-print><h2>Job and assignment as imported</h2><dl>{packetHeaderRows(original).map(row => <div key={row.label}><dt>{row.label}</dt><dd>{row.value}</dd></div>)}</dl>
       {original.workOrder.synthetic && <p>Synthetic work-order input.</p>}</section>
     <CoverageStop packet={packet} />
@@ -139,8 +154,21 @@ export function LivingInstructionGuideContent({ record }: { record: InstructionR
     {fields("Safety notices", packet.safety.cautions, "safety.cautions")}
     {packet.safety.hazardFlags.length > 0 && <p>Imported hazard flags: {packet.safety.hazardFlags.join(", ")}</p>}
     <section><h3>Site isolation and lockout</h3>{renderField("safety.siteIsolation", packet.safety.siteIsolation)}</section>
-    {(packet.jha?.length ?? 0) > 0 && <JhaTable packet={packet} renderField={renderField} />}
-    {packet.parts.length > 0 && <PartsTable packet={packet} renderField={renderField} />}
+    {(packet.jha?.length ?? 0) > 0 && <section><h3>Job hazard analysis (draft)</h3>
+      <p>Site controls and isolation require site decisions. These proposed or imported claims do not grant safety clearance.</p>
+      {packet.jha!.map((row, i) => <article key={i} data-testid={`wp-jha-row-${i}`}><h4>Hazard row {i + 1}</h4>
+        <strong className="guide-field-label">Task / context</strong>{renderField(`jha[${i}].task`, row.task)}
+        <strong className="guide-field-label">Hazard claim</strong>{renderField(`jha[${i}].hazard`, row.hazard)}
+        <strong className="guide-field-label">Proposed site controls</strong>{renderField(`jha[${i}].controls`, row.controls)}
+      </article>)}
+    </section>}
+    {packet.parts.length > 0 && <section><h3>Parts &amp; kits</h3>
+      {packet.parts.map((part, i) => <article key={i} data-testid={`wp-part-row-${i}`}><h4>Part row {i + 1}{part.kit ? ` · ${part.kit} kit` : ""}</h4>
+        <strong className="guide-field-label">Part number</strong>{renderField(`parts[${i}].partNumber`, part.partNumber)}
+        <strong className="guide-field-label">Description</strong>{renderField(`parts[${i}].description`, part.description)}
+        <strong className="guide-field-label">Quantity</strong>{renderField(`parts[${i}].qty`, part.qty)}
+      </article>)}
+    </section>}
     {fields("Tools", packet.tools, "tools")}
     <GuideSteps packet={packet} view={view} renderField={renderField} candidateView={record.closeout !== null} />
     {packet.measurements.length > 0 && <LivingGuideMeasurements metadata={effective} jobId={view.jobId} renderField={renderField} />}

@@ -138,3 +138,62 @@ resolved. Final artifact/hash evidence is parent-owned and will be attached
 separately. The fixture is exposed synthetic engineering evidence, not a task
 benchmark result or human verification. Remote publication remains blocked by
 the stated automatic approval review; no denied operation was retried.
+
+## Final supported-Field audit
+
+Root's exact-head renderer reproduction found three further missing effective
+equipment Fields. Red-first tests in `/tmp/guide-identity-audit-red.txt` also
+confirmed that the protected Parts/JHA tables put their complete Field/correction
+provenance in screen-only folds. The print values were present, but their own
+correction sources were not operationally visible.
+
+The Guide now shows manufacturer/model/serial as **Proposed packet identity
+claims**, with the shared Field renderer's sources, corrections, unknowns and
+exclusions. That section explicitly does not change captured identity/address,
+confirm a different asset or establish delivery. Server-captured identity/UNS
+metadata remains unchanged. This is presentation of a claim, not accepted asset
+identification.
+
+Parts and hazard-analysis rows now use bounded full-width groups in the Guide,
+with the same Field renderer in both views. This retains every effective value,
+source and decision while avoiding the protected components' screen-only folds.
+Hazard/source statements remain proposed/imported claims; controls still require
+site decisions and no safety clearance is granted. Protected components were
+not edited.
+
+The exhaustive fixture populates **40 canonical QC targets**, covering equipment,
+scope, cautions/isolation, parts, tools, steps/applicability/inclusion/notes,
+figures, measurement fields, JHA, qualifications, restoration, unknowns, blockers,
+left-out content and document revisions. Every target receives a unique settled
+value and correction source. Tests strip screen-only folds and all later QC/audit
+summaries, then require both markers in each operational guide copy after settled,
+repeated all-confirm and fresh inherited QC. Separate identity tests preserve
+captured metadata and cover unknown/excluded proposed claims. Existing source
+value/correction and execution-history regressions remain in the verification
+set. Hub remains 2.57.0 for this same unpublished follow-up slice.
+
+Final audit verification: `/tmp/guide-identity-audit-red.txt` reports seven
+new failing cases before the fix, including the enumerated equipment value/source
+and Parts/JHA correction-source gaps. The corresponding final focused run is
+**34 passed** (`/tmp/guide-identity-audit-final-focused.txt`), including 15
+completeness cases, 10 prior guide cases and 9 intake/content cases. The complete
+Hub suite is **13,085 passed / 53 skipped**, with 588 passing files
+(`/tmp/guide-identity-audit-full-unit.txt`). Scoped lint has zero errors/warnings
+(`/tmp/guide-identity-audit-lint.txt`); typecheck output is byte-identical to the
+159-line baseline (`/tmp/guide-identity-audit-typecheck.txt`). This follow-up
+changes only the owned Guide, its completeness tests and this ledger. Parent
+owns updated actual screen/print/PDF proof and any publication approval.
+
+The final print-only refinement allows measurement-rich, multi-image or long
+steps to fragment instead of pushing a too-large block to a later page. A small
+heading/context/action introduction stays together; an unusually long action
+may itself flow. Ordinary short steps retain break avoidance. The source-text
+budget excludes image bytes and does not impose a page count or change guide
+content. The parent confirmed the large mid-page gap was removed and inspected
+all five pages of the resulting verbose synthetic engineering proof, plus a
+412 px viewport. Its independent browser fixture found all 31 tested values
+and correction sources CSS-visible in both screen and print. The final guide
+renderer tests pass 25 cases (`/tmp/guide-identity-print-focused.txt`); scoped
+lint is clean and the final typecheck remains the exact baseline
+(`/tmp/guide-identity-audit-typecheck-final.txt`). Publication remains pending
+the separate, specific permission for the blocked claim comments.

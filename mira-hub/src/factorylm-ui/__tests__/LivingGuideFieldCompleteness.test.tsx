@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { LivingInstructionGuide } from "../LivingInstructionGuide";
 import { packetFixture, field } from "@/capabilities/living-sheet/__tests__/packet-fixture";
-import { applyCloseoutDecisions, packetBody, qcTargets } from "@/capabilities/living-sheet/packet-intake";
+import { applyCloseoutDecisions, packetBody, qcTargets, validatePacketIntake } from "@/capabilities/living-sheet/packet-intake";
 import { instructionRecordV2 } from "@/capabilities/living-sheet/instruction-record-v2";
 import type { InstructionMetadata } from "@/capabilities/living-sheet/instruction-metadata";
 import type { PacketEdit } from "@/capabilities/work-packet/types";
@@ -66,7 +66,72 @@ function elements(html: string, marker: string): string[] {
   return result;
 }
 
+/** Print-operational content only: ignore hidden folds and the later QC/audit
+ * summary, so a serialized decision cannot stand in for a visible guide Field. */
+function operationalCopies(html: string) {
+  return elements(html, 'data-testid="living-instruction-guide"').map(copy => {
+    let visible = copy.replace(/<style[^>]*>[\s\S]*?<\/style>/g, "");
+    for (const hidden of elements(visible, "data-no-print")) visible = visible.replace(hidden, "");
+    const audit = visible.indexOf("<h2>Performing technician closeout QC</h2>");
+    return audit < 0 ? visible : visible.slice(0, visible.lastIndexOf("<section", audit));
+  });
+}
+
+function completePacket() {
+  const p = sourcePacket();
+  p.equipment = { ...p.equipment, manufacturer: cited("Example", "manufacturer"), model: cited("M1", "model"), serial: cited(null, "serial") };
+  p.parts = [{ kit: null, item: 1, partNumber: cited("Synthetic part", "part-number"), description: cited("Synthetic part description", "part-description"), qty: cited("1", "part-qty") }];
+  p.jha = [{ task: cited("Synthetic task", "jha-task"), hazard: cited("Synthetic hazard", "jha-hazard"), controls: cited(null, "jha-controls") }];
+  p.qualifications = [cited(null, "qualification")]; p.restoration = [cited(null, "restoration")];
+  p.blockers = [cited(null, "blocker")]; p.leftOut = [cited(null, "left-out")];
+  p.documents = [{ docId: "synthetic-doc", fileId: null, filename: "Synthetic.pdf", role: "other", modelFoundOn: [1], via: "chunks", revision: cited(null, "revision") }];
+  p.steps[0].applicability = cited(null, "step-applicability");
+  p.steps[0].notes![0].applicability = cited(null, "note-applicability");
+  p.measurements[1].steps = [];
+  return p;
+}
+
 describe("supported guide QC fields remain operationally visible", () => {
+  it.each(["settled", "repeated", "inherited"] as const)("shows effective identity claims without replacing captured identity after %s QC", stage => {
+    const changes: Record<string, PacketEdit> = {};
+    for (const name of ["manufacturer", "model", "serial"]) changes[`equipment.${name}`] = { path: `equipment.${name}`, action: "settle", value: `Proposed identity ${name}`, source: `Identity correction source ${name}` };
+    const record = guideRecord(stage, changes, completePacket()); const captured = structuredClone(record.sourceEvidence!.imported);
+    const html = renderToStaticMarkup(<LivingInstructionGuide record={record} />);
+    for (const copy of operationalCopies(html)) {
+      expect(copy).toContain("Proposed packet identity claims");
+      for (const name of ["manufacturer", "model", "serial"]) {
+        const fieldBlock = elements(copy, `data-guide-field="equipment.${name}"`); expect(fieldBlock).toHaveLength(1);
+        expect(fieldBlock[0]).toContain(`Proposed identity ${name}`); expect(fieldBlock[0]).toContain(`Identity correction source ${name}`);
+      }
+      expect(copy).toContain("synthetic/site/fixture"); expect(copy).toContain("Example M1");
+      expect(copy).toContain("do not change the captured identity or address");
+    }
+    expect(record.sourceEvidence!.imported).toEqual(captured);
+  });
+  it.each(["settled", "repeated", "inherited"] as const)("renders every supported QC target's effective value and correction source operationally after %s QC", stage => {
+    const packet = completePacket();
+    expect(validatePacketIntake({ clientRequestId: "11111111-1111-4111-8111-111111111111", packet, record: null }, "notebook-test").ok).toBe(true);
+    const targets = qcTargets(packet); expect(targets).toHaveLength(40);
+    const overrides: Record<string, PacketEdit> = {};
+    for (const { path } of targets) overrides[path] = { path, action: "settle", value: `Effective value for ${path}`, source: `Effective correction source for ${path}` };
+    const record = guideRecord(stage, overrides, packet);
+    const copies = operationalCopies(renderToStaticMarkup(<LivingInstructionGuide record={record} />)); expect(copies).toHaveLength(2);
+    for (const copy of copies) {
+      const missing = targets.flatMap(({ path }) => [
+        ...(!copy.includes(`Effective value for ${path}`) ? [`${path}: effective value`] : []),
+        ...(!copy.includes(`Effective correction source for ${path}`) ? [`${path}: correction source`] : []),
+      ]);
+      expect(missing).toEqual([]);
+    }
+  });
+  it("shows unknown/excluded effective identity claims alongside their own provenance", () => {
+    const record = guideRecord("repeated", { "equipment.model": { path: "equipment.model", action: "mark_unknown" }, "equipment.serial": { path: "equipment.serial", action: "strike" } }, completePacket());
+    for (const copy of operationalCopies(renderToStaticMarkup(<LivingInstructionGuide record={record} />))) {
+      expect(elements(copy, 'data-guide-field="equipment.model"')[0]).toContain("Unknown — no answer recorded");
+      const serial = elements(copy, 'data-guide-field="equipment.serial"')[0];
+      expect(serial).toContain("EXCLUDED. Do not use."); expect(serial).toContain("exclusion"); expect(serial).toContain("reported by performer");
+    }
+  });
   it.each(["settled", "repeated", "inherited"] as const)("shows values and sources beside the exact steps/figures after %s QC", stage => {
     const record = guideRecord(stage); const before = structuredClone(record.snapshot);
     const html = renderToStaticMarkup(<LivingInstructionGuide record={record} />);
