@@ -375,6 +375,17 @@ describe("handlePilotApplicationSubmitted", () => {
     },
   };
 
+  it.each(["betagate-1793524261387@factorylm.com", "strangerwalk-2026-10-31t13-45-10-950z@factorylm.com"])(
+    "excludes %s from applicant storage, telemetry and Resend even with keys set", async (email) => {
+      process.env.PLG_POSTHOG_KEY = "phk_test";
+      process.env.RESEND_API_KEY = "re_test";
+      process.env.MIRA_PILOT_APPROVAL_REQUIRED = "1";
+      await handlePilotApplicationSubmitted({ ...baseInput, email });
+      expect(mockPoolQuery).not.toHaveBeenCalled();
+      expect(mockFetch).not.toHaveBeenCalled();
+    },
+  );
+
   it("inserts, captures the event, and emails the owner when approval is required", async () => {
     process.env.PLG_POSTHOG_KEY = "phk_test";
     process.env.RESEND_API_KEY = "re_test";

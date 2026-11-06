@@ -1,3 +1,4 @@
+import { isAutomatedSignup } from "@/capabilities/automated-signup";
 import pool from "@/lib/db";
 import { ensureDataSchema } from "@/lib/data-schema";
 import { PILOT_WINDOW_DAYS } from "@/lib/config";
@@ -192,6 +193,7 @@ const SYSTEM_ACCOUNT_NAME_PATTERNS: RegExp[] = [
 ];
 
 export function isSystemAccount(user: { email: string; name: string | null }): boolean {
+  if (isAutomatedSignup(user.email)) return true;
   if (SYSTEM_ACCOUNT_EMAIL_PATTERNS.some((re) => re.test(user.email ?? ""))) return true;
   const name = user.name ?? "";
   return name !== "" && SYSTEM_ACCOUNT_NAME_PATTERNS.some((re) => re.test(name));
