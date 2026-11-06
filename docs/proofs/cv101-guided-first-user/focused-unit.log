@@ -2,13 +2,13 @@ Final test output excerpt; full local log retained in the task workspace.
 
  RUN  v3.2.4 /Users/charlienode/Documents/Codex/2026-11-05/task-3/MIRA/mira-hub
 
- ✓ src/factorylm-ui/cv101-walkthrough-model.test.ts (13 tests) 5ms
+ ✓ src/factorylm-ui/cv101-walkthrough-model.test.ts (16 tests) 6ms
  ✓ src/factorylm-ui/HubAccountFooter.test.tsx (4 tests) 5ms
  ✓ src/factorylm-ui/LivingSheetPrint.preview.test.tsx (1 test) 5ms
- ✓ src/factorylm-ui/CV101Walkthrough.test.tsx (4 tests) 11ms
+ ✓ src/factorylm-ui/CV101Walkthrough.test.tsx (4 tests) 10ms
 
  Test Files  4 passed (4)
-      Tests  22 passed (22)
-   Start at  08:16:19
-   Duration  461ms (transform 206ms, setup 0ms, collect 407ms, tests 26ms, environment 0ms, prepare 195ms)
+      Tests  25 passed (25)
+   Start at  08:29:56
+   Duration  378ms (transform 175ms, setup 0ms, collect 364ms, tests 26ms, environment 0ms, prepare 128ms)
 
