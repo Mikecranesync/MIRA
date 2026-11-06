@@ -36,15 +36,15 @@ export function TrialBanner() {
         <Zap className="w-3.5 h-3.5 flex-shrink-0" style={{ color: urgent ? "#FCD34D" : "#60A5FA" }} />
         <span style={{ color: urgent ? "#FDE68A" : "#BFDBFE" }}>
           {days === 0
-            ? "Your free trial has ended."
-            : `Free trial: ${days} day${days === 1 ? "" : "s"} remaining`}
+            ? "Your free pilot has ended."
+            : `Free pilot: ${days} day${days === 1 ? "" : "s"} remaining`}
         </span>
         <Link
           href="/upgrade"
           className="ml-2 px-3 rounded text-xs font-semibold inline-flex items-center"
           style={{ backgroundColor: urgent ? "#F59E0B" : "#2563EB", color: "#fff", minHeight: 44 }}
         >
-          Upgrade
+          Discuss continuation
         </Link>
       </div>
       <button

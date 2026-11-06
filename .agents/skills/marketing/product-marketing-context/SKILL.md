@@ -4,6 +4,10 @@ description: "When the user wants to create or update their product marketing co
 metadata:
   version: 1.1.0
 ---
+## Current offer override (2026-10-29)
+
+Read `docs/product/current-pilot-offer.md` before drafting acquisition copy. Use the five free, scoped 30-day pilots, manual approval and separate paid continuation. Older pricing/trial examples are historical, not the active offer. Native Meta/Google lead forms plus Hub signup remain the application route. Do not launch campaigns or revive held terms.
+
 
 # Product Marketing Context
 

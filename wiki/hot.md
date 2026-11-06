@@ -1,3 +1,7 @@
+# November 6 — Codex CLI digest repairs
+
+PDF #5038, upload #4091 and pilot #4960 have isolated current-main continuations with local proof. No successor review, merge or deployment is claimed. See `docs/proofs/2026-11-06-pilot-current-main-proof.md` and the task evidence folder for exact heads and approval dependencies. Keep the conveyor stopped; garage-owner and fresh-reader acceptance remains open.
+
 # Honest landing Codex round 2 — 2026-10-29
 
 Draft PR #4570 (`cursor/honest-landing-capabilities-ded8`). Codex round 2 on `c08384e0` (ISSUES_FOUND, 4 P2) fixed on the same draft: Drive Commander `/drive-commander/powerflex-525` drops `$197/yr` and checkout, CTA is Talk to Mike / free 30-day pilot; blog articles no longer claim auto work-order creation, a free CMMS tier, or "in seconds"; `provenText()` no longer falls back when a claim is unproven; honest-claims is recursive over public HTML, renders every real blog post plus Drive Commander and marketing renderers, uses semantic bans (auto+CMMS/work order, any `$`, timing promises), and has mutation + notebook-cited-answer flip tests. No merge, deploy, labels, ready, or Codex. mira-web full suite at new tip: 598 pass / 18 fail (21 fail on `origin/main`; the 18 remaining are pre-existing Neon/cookie/admin/DC-Pro).
@@ -11,6 +15,10 @@ Draft PR #4570 (`cursor/honest-landing-capabilities-ded8`). Mike approved all fi
 ---
 
 # Conversation follow repair — 2026-10-24
+
+## Customer journey draft — 2026-10-29
+
+Isolated `fix/unified-pilot-first-experience`: [current offer](../docs/product/current-pilot-offer.md) and [source inventory / verification boundaries](../docs/product/pilot-first-experience-inventory.md). Public copy remains #4570, namespace UI #4932, consent #4930, held terms #4845. No deployed customer success is claimed. Existing operational handoffs below are preserved.
 
 PR #4703 / #4680 incorporates merged runner fix #4700 without force-push. Follow now re-arms from an accepted Composer send, not changing message IDs, preserving scroll-away through live-to-persisted replacement. Focused regression red: 6 failures; green: 38 tests; shared suite: 440 pass; TypeScript/build pass. Exact-head review, CI and same-release deployed behavior remain gates. Watcher continuation and proof: `~/.factorylm/issue-repair-watch/queue.json`; worktree `conversation-continuity`. Foreman send/persistence and Notebook Prover answer ownership unchanged.
 

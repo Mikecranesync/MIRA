@@ -1,5 +1,7 @@
 # MIRA — Maintenance Intelligence & Response Assistant
 
+> **Current customer acquisition offer (2026-10-29):** [Five free, scoped 30-day MIRA pilots](docs/product/current-pilot-offer.md), manually approved before onboarding. Paid continuation and paid consulting are separate. This supersedes older trial/pricing acquisition guidance below, not historical contracts or release gates.
+
 > **⚠️ PRODUCT FRAMING UPDATE (2026-07-11):** This README describes the infrastructure layer. The **first
 > sellable product is Drive Commander**, a read-only VFD troubleshooting tool (issue #2577, PR #2504,
 > ADR-0025). The generic "AI-powered maintenance diagnostics" framing below is foundational but no

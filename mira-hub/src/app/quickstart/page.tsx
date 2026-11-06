@@ -9,6 +9,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Factory, Send, Loader2, ChevronRight, BookOpen } from "lucide-react";
+import { AnswerMarkdown } from "@/components/equipment/notebook-markdown";
 import { API_BASE } from "@/lib/config";
 
 type Manufacturer = { name: string; count: number };
@@ -89,15 +90,15 @@ export default function QuickstartPage() {
           className="text-3xl md:text-4xl font-bold tracking-tight mb-3"
           style={{ color: "white" }}
         >
-          Ask MIRA — get a grounded answer in 60 seconds.
+          Explore a public MIRA sample
         </h1>
         <p
           className="text-base md:text-lg leading-relaxed mb-8"
           style={{ color: "#94A3B8" }}
         >
-          Pick a manufacturer and describe a fault or symptom. MIRA cites the
-          OEM manual chunk it pulled the answer from — no fabrication. No
-          signup needed to try.
+          Ask a question about the shared OEM library. This public sample is not your
+          private workspace and does not use your company manuals. Do not enter confidential
+          information. Check the sources before relying on an answer.
         </p>
 
         <form onSubmit={onAsk} className="space-y-4 mb-8" data-testid="quickstart-form">
@@ -209,10 +210,10 @@ export default function QuickstartPage() {
             data-testid="quickstart-answer"
           >
             <div
-              className="text-sm leading-relaxed whitespace-pre-wrap"
+              className="text-sm leading-relaxed"
               style={{ color: "#E2E8F0" }}
             >
-              {result.answer}
+              <AnswerMarkdown content={result.answer} citations={[]} />
             </div>
 
             {result.citations.length > 0 && (
@@ -257,7 +258,7 @@ export default function QuickstartPage() {
                             {c.title}
                           </a>
                         ) : (
-                          c.title
+                          <>{c.title} <span>(source link unavailable in this sample)</span></>
                         )}
                         {c.page != null && (
                           <span style={{ color: "#64748B" }}> · p.{c.page}</span>
@@ -295,8 +296,9 @@ export default function QuickstartPage() {
                 Want MIRA on your own equipment?
               </h2>
               <p className="text-sm leading-relaxed mb-3" style={{ color: "#CBD5E1" }}>
-                Sign up to upload your own manuals, build your namespace, and
-                save every answer to your asset history.
+                Apply for one of five free, scoped 30-day pilots. Manual approval comes
+                before onboarding and uploading your own manuals. Waiting uses no pilot days;
+                paid continuation is agreed separately.
               </p>
               <Link
                 href="/signup"
@@ -304,7 +306,7 @@ export default function QuickstartPage() {
                 style={{ backgroundColor: "#2563EB", color: "white" }}
                 data-testid="quickstart-signup-cta"
               >
-                Try MIRA Free
+                Apply for a free pilot
                 <ChevronRight className="w-4 h-4" />
               </Link>
             </div>
@@ -317,8 +319,8 @@ export default function QuickstartPage() {
           className="max-w-3xl mx-auto px-5 text-xs text-center"
           style={{ color: "#475569" }}
         >
-          MIRA grounds every answer in OEM manuals — no fabrication. If we
-          can&apos;t cite a source, we say so.
+          Sample answers can be incomplete or wrong. Verify the cited manual and your
+          site procedures. A sample response does not establish readiness for your equipment.
         </div>
       </footer>
     </div>

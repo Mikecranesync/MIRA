@@ -1,80 +1,42 @@
 "use client";
 
-// Tier names + prices MUST match the canonical pricing surface at
-// https://factorylm.com/pricing (served from `mira-web/public/pricing.html`).
-// `/pricing` is the source of truth — when these diverge, edit this file.
-// Issue #1461 fixed the divergence on 2026-05-20.
-//
-// Known gap (separate followup): the Operating Layer card here says $499/mo
-// per plant, but the only Stripe `STRIPE_PRICE_ID` configured today is the
-// $97/mo beta plan. `/buy` will charge the $97 amount until Stripe products
-// for Assessment / Operating Layer are wired up. Track in #1461 followup.
-
-import { Factory, ClipboardCheck, FlaskConical, Workflow, Check, LogOut } from "lucide-react";
+// The free pilot is not a checkout or an automatic subscription.
+import { Factory, ClipboardCheck, FlaskConical, Check, LogOut } from "lucide-react";
 import { signOut } from "next-auth/react";
 
 const PLANS = [
   {
-    id: "assessment",
-    tier: "1. Assessment",
-    name: "Assessment",
-    price: "$500",
-    period: "one-time",
-    description: "We walk your floor. Score your Maintenance AI Readiness. Deliver a written gap report + namespace blueprint.",
-    highlight: "Start here",
+    id: "continuation",
+    tier: "Your MIRA pilot",
+    price: "Let’s review",
+    period: "the next step",
+    description: "Review your scoped pilot with us. Any paid continuation requires a separate agreement; this page does not charge you or renew your pilot.",
+    highlight: "Pilot follow-up",
     color: "#2563EB",
-    cta: "Book your assessment",
-    ctaHref: "https://factorylm.com/buy?from=hub-upgrade&plan=assessment",
-    icon: ClipboardCheck,
-    features: [
-      "Onsite or remote (1 day)",
-      "Asset inventory walkthrough",
-      "Document & manual audit",
-      "PLC tag & CMMS hygiene review",
-      "Written report with prioritized roadmap",
-      "No software demo, no upsell",
-    ],
-  },
-  {
-    id: "pilot",
-    tier: "2. Pilot",
-    name: "Pilot",
-    price: "$2–5K",
-    period: "/mo · 3-mo min",
-    description: "We structure one line: nameplates, manuals, PLC tags, PMs, fault history. MIRA goes live on that scope.",
-    highlight: null,
-    color: "#0891B2",
-    cta: "Talk to Mike",
-    ctaHref: "mailto:mike@factorylm.com?subject=FactoryLM%20Pilot%20inquiry%20(from%20hub%20upgrade)",
+    cta: "Discuss paid continuation",
+    ctaHref: "mailto:mike@factorylm.com?subject=MIRA%20pilot%20continuation",
     icon: FlaskConical,
     features: [
-      "Hands-on namespace structuring",
-      "OEM manual indexing",
-      "PLC tag ↔ asset reconciliation",
-      "MIRA deployed on the pilot line",
-      "Before/after namespace report",
-      "Direct line to Mike + the team",
+      "Review the equipment and manual scope tested",
+      "Review answer accuracy, sources, and safety acceptance",
+      "Agree any future scope and pricing before continuing",
     ],
   },
   {
-    id: "operating",
-    tier: "3. Operating Layer",
-    name: "Operating Layer",
-    price: "$499",
-    period: "/mo per plant",
-    description: "MIRA in production on a structured namespace. Telegram + web + CMMS write-back. Quarterly namespace audits.",
+    id: "consulting",
+    tier: "Separate paid service",
+    price: "Consulting",
+    period: "& assessment",
+    description: "Need hands-on help assessing or organizing maintenance information? Discuss a separate consulting engagement. It is not a prerequisite for applying to the free pilot.",
     highlight: null,
-    color: "#7C3AED",
-    cta: "Subscribe",
-    ctaHref: "https://factorylm.com/buy?from=hub-upgrade&plan=operating",
-    icon: Workflow,
+    color: "#0891B2",
+    cta: "Ask about consulting",
+    ctaHref: "mailto:mike@factorylm.com?subject=FactoryLM%20paid%20consulting%20and%20assessment",
+    icon: ClipboardCheck,
     features: [
-      "Unlimited MIRA queries, whole team",
-      "Cited OEM answers + fault history",
-      "CMMS write-back (MaintainX, Limble, UpKeep, Atlas)",
-      "Continuous structuring as assets come online",
-      "Quarterly namespace quality audit",
-      "14-day money-back guarantee",
+      "Discuss your assessment or implementation needs",
+      "Agree scope, deliverables, and fees separately",
+      "An inquiry is not a purchase or an activation",
     ],
   },
 ];
@@ -93,13 +55,13 @@ export default function UpgradePage() {
           >
             <Factory className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-white mb-3">Your trial has ended</h1>
+          <h1 className="text-3xl font-bold text-white mb-3">Review your next step</h1>
           <p className="text-slate-400 text-base max-w-xl mx-auto">
-            Three ways to work with us. Most plants start with the $500 Assessment — it&apos;s the easiest yes you&apos;ll make this quarter.
+            The free 30-day pilot and paid consulting are separate offers. Paid continuation is agreed with you separately.
           </p>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-6 mb-8">
+        <div className="grid md:grid-cols-2 gap-6 mb-8">
           {PLANS.map(plan => {
             const Icon = plan.icon;
             return (
@@ -156,7 +118,7 @@ export default function UpgradePage() {
           <p className="text-slate-500 text-sm mb-3">
             Questions? <a href="mailto:mike@factorylm.com" className="text-blue-400 hover:text-blue-300">Contact us</a>
             {" · "}
-            <a href="https://factorylm.com/pricing" className="text-blue-400 hover:text-blue-300">See full pricing</a>
+            <a href="https://factorylm.com/pricing" className="text-blue-400 hover:text-blue-300">Pilot information</a>
           </p>
           <button
             onClick={() => signOut({ callbackUrl: "/login" })}

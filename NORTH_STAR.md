@@ -1,5 +1,7 @@
 # FactoryLM / MIRA — North Star
 
+> **Commercial update — 2026-10-29:** The current first experience is [five free, scoped 30-day pilots](docs/product/current-pilot-offer.md), manually approved. Older self-service, assessment-first and paid-pilot ladder descriptions below are historical strategy, not the current offer. Consulting remains separate.
+
 > **Canonical strategy. Updated 2026-07-18.** This document states the infrastructure wedge — the
 > context layer and grounded agent. The **first product wedge** (Phase 1) is **Drive Commander**, a
 > read-only VFD troubleshooting tool, per issue #2577, PR #2504, and ADR-0025. This NORTH_STAR is
