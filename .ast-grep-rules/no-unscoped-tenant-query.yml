@@ -8,9 +8,9 @@ language: Python
 severity: warning
 message: |
   Query on a tenant-scoped table (mira_users, identity_links, tenant_invites,
-  conversation_state, feedback_log, api_usage, asset_qr_tags) — verify it
+  conversation_state, conversation_state_v2, feedback_log, api_usage, asset_qr_tags) — verify it
   filters on tenant_id, or wrap it in TenantScopedSession.
 rule:
   any:
     - pattern: text($_)
-      regex: '\b(mira_users|identity_links|tenant_invites|conversation_state|feedback_log|api_usage|asset_qr_tags)\b'
+      regex: '\b(mira_users|identity_links|tenant_invites|conversation_state(?:_v2)?|feedback_log|api_usage|asset_qr_tags)\b'

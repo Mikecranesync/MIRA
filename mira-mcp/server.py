@@ -71,7 +71,12 @@ mcp = FastMCP("mira-mcp")
 
 
 def _ensure_schema():
-    """Create required tables if they don't exist. Idempotent."""
+    """Create required tables if they don't exist. Idempotent.
+
+    conversation_state_v2 is the Slice 1 (#4844) store. The legacy
+    conversation_state table is not dropped or rebuilt — old services
+    keep writing it until they are redeployed.
+    """
     db = sqlite3.connect(DB_PATH)
     db.execute("PRAGMA journal_mode=WAL")
     db.executescript("""
@@ -106,8 +111,9 @@ def _ensure_schema():
             category TEXT NOT NULL DEFAULT 'general',
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
-        CREATE TABLE IF NOT EXISTS conversation_state (
-            chat_id TEXT PRIMARY KEY,
+        CREATE TABLE IF NOT EXISTS conversation_state_v2 (
+            tenant_id TEXT NOT NULL,
+            chat_id TEXT NOT NULL,
             state TEXT NOT NULL DEFAULT 'IDLE',
             context TEXT NOT NULL DEFAULT '{}',
             asset_identified TEXT,
@@ -116,7 +122,8 @@ def _ensure_schema():
             final_state TEXT,
             voice_enabled INTEGER NOT NULL DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (tenant_id, chat_id)
         );
     """)
     db.close()

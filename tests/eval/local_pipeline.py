@@ -181,22 +181,26 @@ class LocalPipeline:
     # ── FSM helpers ───────────────────────────────────────────────────────────
 
     def fsm_state(self, chat_id: str) -> str:
-        """Read current FSM state from local SQLite.  Falls back to UNKNOWN."""
+        """Read current FSM state from conversation_state_v2 (unscoped)."""
         try:
-            conn = sqlite3.connect(self.db_path)
-            row = conn.execute(
-                "SELECT state FROM conversation_state WHERE chat_id = ?",
-                (chat_id,),
-            ).fetchone()
-            conn.close()
-            return row[0] if row else "IDLE"
+            from shared.session_manager import (
+                UNSCOPED_CONVERSATION_TENANT,
+                load_state,
+            )
+
+            state = load_state(
+                self.db_path, chat_id, tenant_id=UNSCOPED_CONVERSATION_TENANT
+            )
+            return state.get("state") or "IDLE"
         except Exception as exc:  # noqa: BLE001
             logger.warning("fsm_state read failed: %s", exc)
             return "UNKNOWN"
 
     def reset(self, chat_id: str) -> None:
         """Reset a session to IDLE state."""
-        self._engine.reset(chat_id)
+        from shared.session_manager import UNSCOPED_CONVERSATION_TENANT
+
+        self._engine.reset(chat_id, tenant_id=UNSCOPED_CONVERSATION_TENANT)
 
     def last_kb_status(self) -> dict:
         """Return KB coverage status from the most recent RAG call.

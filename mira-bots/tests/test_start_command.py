@@ -114,6 +114,7 @@ async def test_start_with_asset_deeplink_greets_with_context(monkeypatch, engine
         uns_path="enterprise.plant1.utilities.compressor_1",
     )
     monkeypatch.setattr(mod, "_lookup_asset_by_tag", lambda tag, telegram_user_id: fake_asset)
+    monkeypatch.setattr(mod, "_trusted_tenant_for_telegram_user", lambda telegram_user_id: "t_acme")
 
     diag_engine = MagicMock()
     diag_engine._load_state = MagicMock(return_value={})
@@ -150,6 +151,7 @@ async def test_start_with_asset_deeplink_unknown_tag_is_graceful(monkeypatch, en
     import start_command as mod
 
     monkeypatch.setattr(mod, "_lookup_asset_by_tag", lambda tag, telegram_user_id: None)
+    monkeypatch.setattr(mod, "_trusted_tenant_for_telegram_user", lambda telegram_user_id: "t_acme")
     diag_engine = MagicMock()
 
     update, context = _mock("555", ["asset_DOES-NOT-EXIST"])

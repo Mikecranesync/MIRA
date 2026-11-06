@@ -45,7 +45,6 @@ import json
 import logging
 import os
 import re
-import sqlite3
 import subprocess
 import sys
 import time
@@ -58,6 +57,12 @@ import yaml
 # Resolve repo root (script lives at tests/eval/run_eval.py)
 REPO_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
+sys.path.insert(0, str(REPO_ROOT / "mira-bots"))
+
+from shared.session_manager import (  # noqa: E402
+    UNSCOPED_CONVERSATION_TENANT,
+    load_state,
+)
 
 from tests.eval.grader import ScenarioGrade, grade_scenario  # noqa: E402
 from tests.eval.judge import DIMENSIONS, Judge, JudgeResult  # noqa: E402
@@ -157,14 +162,10 @@ def _read_fsm_state(chat_id: str) -> str:
     if not db_path.exists():
         return "UNKNOWN"
     try:
-        conn = sqlite3.connect(str(db_path))
-        conn.row_factory = sqlite3.Row
-        row = conn.execute(
-            "SELECT state FROM conversation_state WHERE chat_id = ?",
-            (chat_id,),
-        ).fetchone()
-        conn.close()
-        return row["state"] if row else "IDLE"
+        state = load_state(
+            str(db_path), chat_id, tenant_id=UNSCOPED_CONVERSATION_TENANT
+        )
+        return state.get("state") or "IDLE"
     except Exception as e:
         logger.warning("FSM DB read failed for %s: %s", chat_id, e)
         return "UNKNOWN"
