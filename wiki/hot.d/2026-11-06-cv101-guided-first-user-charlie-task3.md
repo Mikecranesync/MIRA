@@ -16,7 +16,7 @@ unresolved note after actual reload. Denied/corrupt storage, different viewer,
 offline local recall and focus/Escape checked. Original Rockwell PDF page6 opened.
 Live CV101 remains BLOCKED; dated stale baseline FAIL unchanged. No new live tests.
 
-Full Hub13,157PASS/53existingSKIP,595filesPASS/4SKIP. Focused22PASS.
+Full Hub13,160PASS/53existingSKIP,595filesPASS/4SKIP. Focused25PASS.
 Lint0errors/1existingwarning; typecheck159unchanged existingdiagnostics.
 Default Next build blocked by worker-port environment; alternate webpack hit
 unchanged optional assistant-cloud peer resolution. No config/dependency bypass.
@@ -27,3 +27,9 @@ require recheck after separately authorized integration. No merges/deploys.
 Human dependency: owner login/binding, identified existing reader/fresh per-tag
 source/quality/acquisition baseline, current component/manual reconciliation.
 No commands, starts, configuration changes or Atlas writes authorized.
+
+Fresh review found2Important: corrupt resolution metadata and source-level Back.
+One correction pass:3 new model tests RED→GREEN16/16; actual direct-dialog-close
+browser contract RED→GREEN, same finished job retained, second Back closes guide.
+No shared-shell edits. Actual device Back remains untested. CodeGraph refreshed
+via existing sync + healthy20-caller canary, subsequent preflightREADY.

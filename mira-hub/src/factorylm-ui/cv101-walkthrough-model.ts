@@ -111,6 +111,10 @@ export function parsePractice(raw: string | null, viewerScope: string): Practice
     if (!r || !plain(r.steps) || !plain(r.measurements) || Object.keys(r.measurements).length || r.photos.length || r.notes.length > 12) return null;
     if (Object.entries(r.steps).some(([i, s]) => !["0", "1"].includes(i) || !plain(s) || s.performed !== true || s.by !== DEMO_ACTOR || !time(s.at) || s.text !== practicePacket().steps[Number(i)].text.value)) return null;
     if (r.notes.some(n => !plain(n) || !text(n.id, 100) || !["finding", "issue"].includes(n.kind) || !text(n.text) || n.by !== DEMO_ACTOR || !time(n.at) || ![null, 0, 1].includes(n.stepIndex))) return null;
+    if (new Set(r.notes.map(n => n.id)).size !== r.notes.length || r.notes.some(n =>
+      (n.resolved !== undefined && typeof n.resolved !== "boolean") ||
+      (n.resolved ? n.kind !== "issue" || n.resolvedBy !== DEMO_ACTOR || !time(n.resolvedAt)
+        : n.resolvedBy !== undefined || n.resolvedAt !== undefined))) return null;
     const l = p.lesson;
     if (!plain(l) || [l.discovered, l.manual, l.telemetry, l.question, l.citation, l.recalled].some(v => typeof v !== "boolean") || !Array.isArray(l.components) || l.components.length > 4 || new Set(l.components).size !== l.components.length || l.components.some(id => !CV101_COMPONENTS.some(c => c.id === id))) return null;
     for (const [i, e] of p.events.entries()) {
@@ -129,7 +133,13 @@ export function parsePractice(raw: string | null, viewerScope: string): Practice
     }
     const v = practiceView(p);
     if (v.warnings.length || v.steps.some((s, i) => s.done !== Boolean(r.steps[i])) || v.notes.length + v.questions.length !== r.notes.length) return null;
-    if (r.notes.some(n => ![...v.notes, ...v.questions].some(s => s.id === n.id && s.text === n.text))) return null;
+    if (r.notes.some(n => {
+      const q = v.questions.find(s => s.id === n.id);
+      const s = n.kind === "issue" ? q : v.notes.find(s => s.id === n.id);
+      if (!s || s.text !== n.text || s.by !== n.by || s.at !== n.at) return true;
+      return n.kind === "issue" && (!q || q.resolved !== Boolean(n.resolved) ||
+        q.resolvedBy !== (n.resolvedBy ?? null) || q.resolvedAt !== (n.resolvedAt ?? null));
+    })) return null;
     if (v.finished && (v.openSteps || !r.notes.length)) return null;
     return p;
   } catch { return null; }

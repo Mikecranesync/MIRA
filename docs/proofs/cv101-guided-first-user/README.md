@@ -72,7 +72,7 @@ No historical claim has been refreshed into a current-condition claim.
 | Corrupt saved envelope | Refused as evidence; FAIL, no completed recall. | PASS negative case: [screenshot](storage-corrupt.jpg). |
 | Different synthetic viewer | Could not retrieve viewer A's job. | PASS local scoping: [screenshot](viewer-isolation.jpg). This is not a server tenant-isolation proof. |
 | Already-loaded component offline | Same local practice record retrieved; network restored afterward. | PASS local only: [screenshot](offline-local-recall-desktop.jpg). No cold offline load or original-source availability claimed. |
-| Source focus/Escape | Initial Close focus; Escape closes source but retains outer dialog; focus returns to citation opener; closing walkthrough returns to footer launcher. | PASS desktop, actual DOM/focus receipt. Browser Back/hardware Back: NOT TESTED. |
+| Source focus/Escape | Initial Close focus; Escape closes source but retains outer dialog; focus returns to citation opener; closing walkthrough returns to footer launcher. | PASS desktop, actual DOM/focus receipt. External `dialog.close()` contract (the shell Back path) reproduced RED then GREEN; first close returns to citation, second closes guide and retains the same job. [Receipt](review-fix-browser.json), [screenshot](nested-source-back-desktop.jpg). Actual browser/hardware Back: NOT TESTED. |
 | Responsive layout | Page/dialog width 412 px at 412×915; page 1440 px/dialog 1160 px at 1440×900. Sticky practice banner and Close remain visible. | PASS inspected screenshots/DOM metrics; no horizontal page overflow. |
 | Network scope | Observed requests only loopback GET page/CSS/JS. | [Request audit](browser-requests.json), not truncated. Separate explicitly opened OEM tab excluded. No equipment/provider/Atlas requests. |
 
@@ -112,7 +112,7 @@ Every proof screenshot is also archived under `docs/promo-screenshots/`.
 ## Automated verification and limits
 
 - [Full Hub run](full-unit.log): **595 files passed / 4 existing skips;
-  13,157 tests passed / 53 existing skips**. Final focused run: 22 passed.
+  13,160 tests passed / 53 existing skips**. Final focused run: 25 passed.
 - [Scoped lint](lint.txt): zero errors; one unchanged `<img>` warning in
   LivingSheetPrint. No added dependency or framework.
 - [Typecheck](typecheck.txt): **not green**; 159 existing diagnostics,
@@ -149,3 +149,23 @@ Every proof screenshot is also archived under `docs/promo-screenshots/`.
 The next acceptance test is owner-authenticated discovery plus a proven fresh
 read-only baseline. The walkthrough is useful today as explicitly labelled
 practice; the real six-workflow end-to-end journey remains blocked.
+
+## Independent review correction pass
+
+Fresh whole-branch review of211e5c78e..70e6d4aaf found two Important issues.
+Both were reproduced before correction, then fixed in one pass:
+
+- Resolution fields must be well typed and agree with the replayed note kind,
+  actor, time and resolution. Three new regression cases failed first, then
+  all16model cases passed, including a legitimate resolved-issue round trip.
+- The native dialog consumes the shell-style direct close at the nested source
+  before closing the whole guide. The component harness uses Alt+Left solely
+  to reproduce the existing shell's `dialog.close()` contract, not to simulate
+  a device Back implementation. Before: guide closed. After: source closes,
+  outer guide stays open, citation regains focus and the same completed job
+  remains; the second direct close returns to the launcher.
+
+Parent behavior, live authentication/equipment/server/tenant proof, full build
+and actual hardware Back remain outside this fresh review's verified scope.
+The final independent exact-head/body PR review is recorded on GitHub; these
+local fixes alone do not constitute that attestation.

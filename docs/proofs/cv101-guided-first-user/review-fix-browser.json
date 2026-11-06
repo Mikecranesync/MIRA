@@ -1,0 +1,19 @@
+{
+  "scope": "Synthetic component external dialog.close contract; Alt+Left test harness shortcut, not actual device/browser Back",
+  "red": {
+    "outerVisible": false,
+    "focus": "CV-101 walkthrough"
+  },
+  "green": {
+    "outerVisible": true,
+    "sourceVisible": false,
+    "focus": "Open supporting manual citation"
+  },
+  "beforeBack": "Retrieved demo-cv101-05643205-ef89-4810-80a6-82d7be247445, change #5, from this browser's saved practice record. This is not server persistence or a new authenticated technician session.",
+  "afterBack": "Retrieved demo-cv101-05643205-ef89-4810-80a6-82d7be247445, change #5, from this browser's saved practice record. This is not server persistence or a new authenticated technician session.",
+  "same": true,
+  "secondBack": {
+    "outerVisible": false,
+    "focus": "CV-101 walkthrough"
+  }
+}

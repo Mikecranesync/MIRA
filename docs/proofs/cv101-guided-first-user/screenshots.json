@@ -232,5 +232,14 @@
     ],
     "sha256": "a18cb6aa4eed467b0fdd396ee0452a4c4e739f766a2c5d4616b66f0eb76b9a22",
     "scope": "synthetic component browser proof"
+  },
+  {
+    "file": "nested-source-back-desktop.jpg",
+    "dimensions": [
+      1440,
+      900
+    ],
+    "sha256": "6958c8646ef4d840d6a8569e0822b08bbc4776cbd073f2a2ba099756a06ebddf",
+    "scope": "synthetic component external direct-close contract"
   }
 ]

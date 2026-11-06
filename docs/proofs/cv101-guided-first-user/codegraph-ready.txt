@@ -1,0 +1,23 @@
+## CodeGraph preflight
+
+- **Branch / HEAD:** `codex/cv101-guided-first-user` @ `70e6d4aaf`
+- **CodeGraph CLI:** 0.9.5 · **npx:** ok · **MCP server:** wired
+- **Index:** present — nodes 80,176, edges 207,728, db mtime `2026-11-06T08:24:17`
+- **Sync marker:** ✓ last hook sync at HEAD @ 2026-11-06T08:25:37 (canary: healthy)
+- **Canary:** ✓ healthy — 20 callers of resolve_uns_path
+
+### Task context — "CV101 practice saved record validation and nested-source dialog close"
+Entry points / relevant locations from `codegraph context`:
+```
+NodeChat.tsx:108
+NodeChat.tsx:19
+page.tsx:14
+page.tsx:22
+```
+
+### Known blind spots — do NOT trust CodeGraph alone here
+- **Class instantiation** (`ClassName()`): not a caller edge. `callers <Class>` / `impact <Class>` miss instantiation sites → cross-check `grep -rn 'ClassName('`. (upstream colbymchenry/codegraph#774)
+- **Import-alias calls** (`from m import f as _f` → `_f()`): `callers f` returns 0 → grep the alias.
+- **Same-name symbols:** `callers/callees/trace` aggregate across all defs ("aggregated across N") — can't scope to one; grep the specific file.
+
+> **VERDICT: READY — CodeGraph is fresh and healthy. Proceed; honor the blind spots above.**

@@ -31,4 +31,9 @@ requests = json.loads((HERE / "browser-requests.json").read_text())
 assert not requests["truncated"] and not requests["hasMore"]
 assert all(r["method"] == "GET" and r["url"].startswith("http://127.0.0.1:55821/") for r in requests["requests"])
 assert not journey["finalSessionLogs"]
+back = json.loads((HERE / "review-fix-browser.json").read_text())
+assert back["red"]["outerVisible"] is False
+assert back["green"]["outerVisible"] is True and back["green"]["sourceVisible"] is False
+assert back["green"]["focus"] == "Open supporting manual citation"
+assert back["same"] and back["secondBack"]["outerVisible"] is False
 print(f"Evidence integrity PASS: {len(manifest)} screenshot hashes/archives; six desktop/mobile workflows; reload, negative cases and separate live blockers. Not live proof.")

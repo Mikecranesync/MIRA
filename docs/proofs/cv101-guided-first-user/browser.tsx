@@ -1,5 +1,5 @@
 /** Test harness for the actual product shell/footer/walkthrough. Not a second product app. */
-import React, { useReducer, useState } from "react";
+import React, { useEffect, useReducer, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { createShellState, getFixture, PROFILES, shellReducer } from "@factorylm/interaction";
 import { Sidebar } from "@factorylm/ui/Sidebar";
@@ -11,6 +11,16 @@ import "../../../packages/factorylm-ui/src/shell.css";
 import "../../../packages/factorylm-ui/src/conversation.css";
 
 function Preview() {
+  // Test the existing shell's external dialog.close() contract without mocking
+  // a product API or importing its unrelated optional chat runtime.
+  useEffect(() => {
+    const back = (event: KeyboardEvent) => {
+      if (!event.altKey || event.key !== "ArrowLeft") return;
+      event.preventDefault(); document.querySelector<HTMLDialogElement>("dialog[open]")?.close();
+    };
+    document.addEventListener("keydown", back);
+    return () => document.removeEventListener("keydown", back);
+  }, []);
   const [state, dispatch] = useReducer(shellReducer, undefined, () => createShellState(getFixture("general-ask"), PROFILES.hub));
   const params = new URLSearchParams(window.location.search), mode = params.get("storage");
   const viewer = params.get("viewer") === "B" ? "cv101-practice-b@example.invalid" : "cv101-practice@example.invalid";

@@ -147,5 +147,11 @@ export function CV101Walkthrough({ viewerScope, onClose, storage }: { viewerScop
   const dialog = useRef<HTMLDialogElement>(null);
   const closeSource = useRef<(() => boolean) | null>(null);
   useEffect(() => { const d = dialog.current; d?.showModal(); return () => { if (d?.open) d.close(); }; }, []);
-  return <dialog ref={dialog} className="cv101-dialog" aria-label="CV-101 first-user walkthrough" onCancel={event => { if (closeSource.current?.()) event.preventDefault(); }} onClose={onClose}><CV101WalkthroughContent key={viewerScope} viewerScope={viewerScope} onClose={onClose} storage={storage} onSourceChange={callback => { closeSource.current = callback; }} /></dialog>;
+  return <dialog ref={dialog} className="cv101-dialog" aria-label="CV-101 first-user walkthrough" onCancel={event => { if (closeSource.current?.()) event.preventDefault(); }} onClose={() => {
+    // Shell Back closes the native dialog directly, bypassing cancel. Consume
+    // that close at the nested source layer before releasing this walkthrough.
+    const d = dialog.current;
+    if (d && !d.open && closeSource.current?.()) { d.showModal(); return; }
+    onClose();
+  }}><CV101WalkthroughContent key={viewerScope} viewerScope={viewerScope} onClose={onClose} storage={storage} onSourceChange={callback => { closeSource.current = callback; }} /></dialog>;
 }

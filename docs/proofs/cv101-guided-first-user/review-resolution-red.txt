@@ -1,0 +1,22 @@
+    "version": 1,
+  },
+  "version": 1,
+  "viewerScope": "viewer-a",
+}
+
+ ❯ src/factorylm-ui/cv101-walkthrough-model.test.ts:112:64
+    110|     expect(practiceView(resolved).openQuestions).toBe(0);
+    111|     const corrupt = structuredClone(resolved); corrupt.record.notes[0]…
+    112|     expect(parsePractice(JSON.stringify(corrupt), "viewer-a")).toBeNul…
+       |                                                                ^
+    113|   });
+    114| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 13 passed (16)
+   Start at  08:26:07
+   Duration  345ms (transform 40ms, setup 0ms, collect 38ms, tests 11ms, environment 0ms, prepare 38ms)
+

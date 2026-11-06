@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addNote, setStepPerformed } from "@/capabilities/work-packet/job-record";
+import { addNote, setNoteResolved, setStepPerformed } from "@/capabilities/work-packet/job-record";
 import { CV101_WORKFLOWS, DEMO_PACKET_ID, finishPractice, newPractice, parsePractice, persistPractice, readPractice, practicePacket, practiceStatus, practiceView, storageKey, updatePracticeRecord } from "./cv101-walkthrough-model";
 
 const AT = "2026-11-06T12:00:00.000Z";
@@ -90,5 +90,25 @@ describe("CV-101 practice proof boundary", () => {
     last.seq = 2; last.id = `${untouched.jobId}-2`;
     untouched.events.push(last);
     expect(parsePractice(JSON.stringify(untouched), "viewer-a")).toBeNull();
+  });
+  it("rejects malformed resolution metadata before it reaches record rendering", () => {
+    for (const patch of [{ resolved: "yes" }, { resolvedAt: { corrupt: true } }, { resolvedBy: 42 }, { resolved: true, resolvedBy: "Demo technician" }]) {
+      const p = ready(); Object.assign(p.record.notes[0], patch);
+      expect(parsePractice(JSON.stringify(p), "viewer-a")).toBeNull();
+    }
+  });
+  it("requires saved note kind, chronology and resolution to agree with replay", () => {
+    for (const patch of [{ resolved: true, resolvedBy: "Demo technician", resolvedAt: AT }, { kind: "finding" }, { at: "2026-11-06T12:01:00.000Z" }]) {
+      const p = ready(); Object.assign(p.record.notes[0], patch);
+      expect(parsePractice(JSON.stringify(p), "viewer-a")).toBeNull();
+    }
+  });
+  it("round-trips a legitimate issue resolution with the same reviewer/time and zero open questions", () => {
+    const p = ready(), at = "2026-11-06T12:01:00.000Z";
+    const resolved = updatePracticeRecord(p, setNoteResolved(p.record, "demo-note-1", true, "Demo technician", at), at);
+    expect(parsePractice(JSON.stringify(resolved), "viewer-a")).toEqual(resolved);
+    expect(practiceView(resolved).openQuestions).toBe(0);
+    const corrupt = structuredClone(resolved); corrupt.record.notes[0].resolvedAt = AT;
+    expect(parsePractice(JSON.stringify(corrupt), "viewer-a")).toBeNull();
   });
 });
