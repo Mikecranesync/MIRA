@@ -197,3 +197,121 @@ renderer tests pass 25 cases (`/tmp/guide-identity-print-focused.txt`); scoped
 lint is clean and the final typecheck remains the exact baseline
 (`/tmp/guide-identity-audit-typecheck-final.txt`). Publication remains pending
 the separate, specific permission for the blocked claim comments.
+
+## Context-layer compatibility assessment — 2026-11-06
+
+This is a local, source-verified assessment and proposed next-slice boundary,
+not an implemented context API or another review round on converged #5236.
+Product source remains6e77205a8; the guide proof is recorded at8276388bf.
+Mike's subsequent direction is to reuse the existing Postgres graph, confirmed
+asset binding, observations and saved Living Sheet. No new graph database,
+parallel writable knowledge store, external source write or automatic graph
+promotion is needed or authorized by this assessment.
+
+### Verified reuse points and concrete gaps
+
+- `mira-hub/src/lib/knowledge-graph/asset-bridge.ts` distinguishes the domain
+  asset key (`cmms_equipment.id` / `kg_entities.entity_id`) from the graph node
+  UUID and current UNS path. Names and paths must not be used to reidentify an
+  old job. The saved sheet's `machine.entityId` remains its historical anchor.
+- `mira-hub/src/lib/knowledge-graph/traversal.ts:418` already supplies
+  `maintenanceContext`. Its principal equipment/relationship queries explicitly
+  require verified rows. It is a live, bounded summary: fault windows use
+  `now()`, list limits omit material, some orderings lack stable tie-breakers,
+  and the result drops relationship IDs and approval/source provenance. It
+  cannot by itself certify an exact historical replay or exhaustive context.
+- Its `flagPmMismatches` helper in `plan-vs-actual.ts:87` performs tenant-scoped
+  SELECTs but has no explicit approval-state predicate for fault/PM inputs.
+  The wrapper sets tenant RLS context, not a verified-only retrieval setting.
+  Do not treat every nested summary as approved evidence merely because the
+  outer queries use that filter. This is source inspection, not a demonstrated
+  production disclosure. No graph policy or helper was changed here.
+- `mira-hub/src/lib/knowledge-graph/graph-view.ts` is a display adapter: missing
+  confidence/state defaults to1/verified, and edge IDs are absent. A future
+  authority-bearing context adapter must use explicit admission state from
+  canonical rows, preserving unknown when unavailable; display defaults cannot
+  supply approval or reviewer identity.
+- `mira-hub/src/capabilities/observations/project.ts` already projects bounded
+  technician reports deterministically with observation IDs, author, observed
+  and recorded times, uncertainty and supersession. `turn-context.ts` persists
+  a state-version/observation-ID frame with served answers so an idempotent turn
+  does not recompute that frame. Reuse that pattern. Current projection reads
+  are not an arbitrary historical `asOf` query, and the observation frame alone
+  is not a frozen copy of all graph/document inputs.
+- `mira-hub/src/app/api/equipment-notebooks/[id]/sheets/[jobId]/route.ts` loads
+  the tenant/notebook/job and optional event prefix without rebinding historical
+  identity. The v1/v2 export retains that snapshot. However, the notebook chat
+  at `chat/route.ts:3677` can load a selected historical job without comparing
+  its saved asset with the current notebook binding. A mixed-asset prompt is
+  therefore a seam to guard, not a runtime wrong-answer claim proven here.
+- `instruction-record-v2.ts` preserves structured source evidence and a separate
+  closeout candidate. A job sequence/hash does not identify which later QC
+  candidate was selected: several candidates may refer to the same finished
+  execution sequence. Exact candidate identity must accompany replay.
+- Notebook turns already have viewer-specific access rules. Shared asset/job
+  visibility must not broaden access to private conversation text or images.
+  Exact Q/A and benchmark exposure remain explicit v2 gaps.
+
+### Proposed bounded read-only view
+
+Keep the current v1/v2 exports backward compatible. Before implementing a new
+versioned context representation, agree its adapter/owner boundary. The smallest
+useful view has one saved job and one asset, with these independent sections:
+
+1. **Historical job anchor:** authorized tenant scope, notebook/job IDs, event
+   sequence, snapshot hash, source template revision and exact QC candidate ID
+   (or explicitly none). Retain the captured asset key and captured UNS if known.
+   Keep the present notebook binding as a separate comparison. A mismatch must
+   segregate or omit the current overlay, never rewrite the old job identity.
+2. **Bounded input manifest:** adapter/projector version, capture time, each
+   source's stable identity/version/hash, query time window, deterministic
+   ordering, explicit limits and truncation/unavailable flags. Retain the
+   admitted input values in an existing authorized snapshot/evidence envelope
+   if exact replay is promised. A future live reread with the same IDs is not
+   proof of the original values or approval state. No event-sequence timestamp
+   should be presented as graph-wide historical time.
+3. **Typed evidence links:** preserve graph node and relationship IDs separately
+   from domain asset keys; source document/revision/page/figure identities when
+   actually available; stable saved step IDs and packet source-slot mapping;
+   observation IDs and supersession; job events and candidate/decision IDs.
+   Legacy citation strings or array positions must remain labelled as such,
+   without invented OEM document identity. Preserve captured citation content
+   and revision as well as a link that may later change.
+4. **Independent state and time:** source-line match, technician observation,
+   graph admission, performing-technician closeout and later reusable acceptance
+   are different assertions. Keep actor, observed/recorded/reviewed times and
+   supporting sources per assertion, with unknown where absent. A confidence
+   score or verified graph edge supplies neither procedure approval nor safety
+   clearance. Observations must not become OEM specifications.
+5. **Permission and replay boundary:** resolve access before fetching private
+   source content; preserve tenant and viewer isolation on replay. A stored
+   manifest must not act as a route around source permissions. Retain the exact
+   served answer's evidence frame instead of silently replacing it with today's
+   graph, latest observations or latest QC candidate.
+
+Acceptance cases for that later slice include notebook A-to-B rebinding while
+the old job remains on A; repeated reads and tied input order; missing source or
+review metadata; changed live graph/document values; excluded/corrected/repeated
+QC candidates at one finished sequence; superseded/contested observations;
+truncation; permission revocation and cross-tenant/private-turn denial. It must
+produce no graph promotion, source write, execution reopen or duplicate finish
+outbox event. Existing tests of unbound historical reads and deterministic
+instruction export are useful foundations, not proof of this full view.
+
+### Coordination and current handoff
+
+Local broker inventory was re-read; Charlie drawing/torque remains parked on
+#5204 and the Atlas CMMS staging owner reports recovery complete with sync OFF.
+The latter is an existing CMMS adapter, not Flow Timebase Atlas. A bounded
+read-only findings message was delivered to both existing owners on2026-11-06
+(broker returned ok). No owner acknowledgement or file handoff is inferred.
+The observations capability registry still has no promotion owner recorded.
+No peer-controlled graph/chat/observation file was edited.
+
+#5237 screen/print effective-value, exclusion and correction-source coverage is
+fixed locally with the receipts above; publication/review is still pending.
+The captured-UNS versus finish-outbox NULL-path gap remains unchanged. Dedicated
+reusable acceptance, exact conversation/exposure capture and representative
+human acceptance are still unfinished. The graph/context findings add no merge,
+deployment, migration or safety-clearance claim and do not resolve the specific
+claim-publication approval block.
