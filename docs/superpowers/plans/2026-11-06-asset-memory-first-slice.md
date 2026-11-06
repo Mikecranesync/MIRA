@@ -128,3 +128,27 @@ may model missing components/sources but do not establish those links live.
 The new view does not promise full historical graph/document versions, automatic
 answer-to-guide discovery, every imported citation's immutable bytes, later
 reusable acceptance, device restart recovery or physical/human acceptance.
+
+## Independent builder check disposition
+
+Fresh read-only check at55212dbb4 found the eight-file boundary implementable;
+no new human architectural decision is needed. Admission remains unchanged as
+stated above. Apply these concrete constraints:
+
+- Candidate hash covers canonical revision body. Validate captured asset as
+  well as revision/job/notebook/sequence/source snapshot. Explicit null retains
+  imported prior-job provenance but never selects a current QC candidate.
+- Legacy A-to-B protection also covers the post-hoc receipt/proposal wrapper;
+  matching-or-unbound scope applies to both legacy prompt and receipt. This is
+  the narrow exception to retaining ordinary unpinned behavior. Pinned completed
+  replay bypasses current loading and the receipt wrapper entirely.
+- Build the projection once after completed-turn replay and before translation
+  or provider work. Persist that exact JSON for served answers. Content hash
+  covers values, admission, adapter version, limits and omissions; only capture
+  clock fields are excluded. Final UTF-8 size includes omission metadata.
+- Controls uses a request-generation key for notebook/job/sequence, not merely
+  an alive flag. Sequence changes or pending execution invalidate the selector;
+  stale completions/cleanup cannot clear or overwrite a newer selection.
+- Freeze outgoing decorated body and notebook target once. Retry bypasses rider
+  decoration and cannot substitute today's job/selector or a different target.
+  UI changes during a failed send must not mutate its original request.
