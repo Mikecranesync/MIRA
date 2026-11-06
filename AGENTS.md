@@ -1,9 +1,10 @@
 # MIRA — Build State
 
-**Version:** v3.4.0 | **Updated:** 2026-04-17
-**One-liner:** AI-powered industrial maintenance diagnostic platform
-**Inference:** `INFERENCE_BACKEND=cloud` → Gemini → Groq → Cerebras → Codex (cascade) | `local` → Open WebUI → qwen2.5vl:7b
-**Chat path (VPS):** User phone → Open WebUI → mira-pipeline (:9099) → GSDEngine → Anthropic API
+**Version:** derived from the latest `v*` tag (no `/VERSION` file since #3064; every merge auto-tags `vX.Y.Z` + a rollback checkpoint — `docs/versioning.md`)
+**One-liner:** FactoryLM = the maintenance-context layer that makes messy factory data trustworthy for AI (on any UNS); MIRA = the grounded agent that proves it by diagnosing with citations. **Canonical wedge → `NORTH_STAR.md`** (lead with context, not copilot; adapters retained).
+**Inference:** `INFERENCE_BACKEND=cloud` → OpenAI (`gpt-5.4-mini`, leads since 2026-10-11) → OpenRouter (backup tier since 2026-10-14, key-gated, no Claude models) → Groq → Together (cascade; Cerebras archived 2026-09-29, no Anthropic — removed PR #610) | `local` → Open WebUI → qwen2.5vl:7b
+**Chat path (VPS):** User phone → Open WebUI → mira-pipeline (:9099) → Supervisor (shared/engine.py) → cascade providers
+**Authority:** this file mirrors root `CLAUDE.md` for Codex and other agents; where they differ, `CLAUDE.md` wins.
 
 ---
 
@@ -15,8 +16,8 @@
 ## Hard Constraints (PRD §4)
 
 1. **Licenses:** Apache 2.0 or MIT ONLY.
-2. **No cloud except:** Anthropic Codex API + NeonDB (Doppler-managed secrets), plus the narrow governed Together exception in `docs/zta/together-governed-cloud-exception.md` for the FactoryLM AI paid-training workstream only. Also: identity-only Serper manual discovery (manufacturer slug + part/model token + optional catalog number; never chat text, notebook content, serials or PII), capped and authenticated, per `docs/adr/0036-hub-nameplate-vision-and-discovery-egress.md` § "Accepted Serper scope" (owner decision D1, 2026-09-30).
-3. **No:** LangChain, TensorFlow, n8n, or any framework that abstracts the Codex API call.
+2. **No cloud except:** the inference cascade above (no Anthropic in the diagnostic cascade — removed PR #610) + NeonDB (Doppler-managed secrets), plus the narrow governed Together exception in `docs/zta/together-governed-cloud-exception.md` for the FactoryLM AI paid-training workstream only. Also: identity-only Serper manual discovery (manufacturer slug + part/model token + optional catalog number; never chat text, notebook content, serials or PII), capped and authenticated, per `docs/adr/0036-hub-nameplate-vision-and-discovery-egress.md` § "Accepted Serper scope" (owner decision D1, 2026-09-30).
+3. **No:** LangChain, TensorFlow, n8n, or any framework that abstracts the LLM call.
 4. **Secrets:** All via Doppler (`factorylm/prd`). Never in `.env` files committed to git.
 5. **Containers:** One per service. `restart: unless-stopped` + healthcheck. Pinned image versions.
 6. **Commits:** Conventional format (`feat/fix/security/docs/refactor/test/chore/BREAKING`).
