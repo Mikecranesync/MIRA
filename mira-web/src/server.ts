@@ -890,7 +890,7 @@ app.post("/api/register", async (c) => {
 //
 // Owner decision (#4881): the Hub signup flow is the pilot application; ads
 // use Meta/Google's native lead-gen forms, not a website-to-React
-// integration. So there is no `/pilot` presentation route here. This JSON
+// integration. `/pilot` redirects to that Hub flow rather than presenting another form. This JSON
 // API is the intake behind that decision: it stores (and notifies on) a
 // pilot request regardless of where it originated — a lead-form export or
 // import, or any future first-party form — tagged by `lead_source`.
@@ -2119,6 +2119,8 @@ app.get("/api/connect/status", requireActive, async (c) => {
 // PLG_HUB_URL keeps a staging web on the staging hub (#3930); prod default unchanged.
 app.get("/login", (c) => c.redirect(hubUrl("/login"), 301));
 app.get("/signup", (c) => c.redirect(hubUrl("/signup"), 301));
+// Existing pilot links enter the canonical Hub application; no second intake form.
+app.get("/pilot", (c) => c.redirect(hubUrl("/signup"), 302));
 
 // ---------------------------------------------------------------------------
 // 404 — custom page with home link (CRA-109)

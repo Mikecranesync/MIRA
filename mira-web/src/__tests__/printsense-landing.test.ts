@@ -67,8 +67,8 @@ test("2026-07-17 rebuild: showcase structure with honest claims, no slop markers
 test("paid print consulting is separate from the free MIRA application", async () => {
   const html = await (await printsensePage.request("/printsense")).text();
   expect(html).toContain("Separate paid print-package consulting");
-  expect(html).toContain("five free, scoped 30-day MIRA pilots");
-  expect(html).toContain('href="https://app.factorylm.com/signup/"');
+  expect(html).toContain("application review is separate from consulting");
+  expect(html).toContain('href="/pilot"');
   expect(html).not.toContain("Managed package pilot (paid)");
   const response = await printsensePage.request("/printsense/interest", { method: "POST", body: new URLSearchParams({ email: "fixture@example.invalid", pilot: "on" }) });
   expect(await response.text()).toContain("not pilot approval or product access");
