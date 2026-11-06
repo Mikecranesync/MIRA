@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { addNote, setStepPerformed } from "@/capabilities/work-packet/job-record";
-import { CV101_WORKFLOWS, DEMO_PACKET_ID, finishPractice, newPractice, parsePractice, practicePacket, practiceStatus, practiceView, storageKey, updatePracticeRecord } from "./cv101-walkthrough-model";
+import { CV101_WORKFLOWS, DEMO_PACKET_ID, finishPractice, newPractice, parsePractice, persistPractice, readPractice, practicePacket, practiceStatus, practiceView, storageKey, updatePracticeRecord } from "./cv101-walkthrough-model";
 
 const AT = "2026-11-06T12:00:00.000Z";
 const make = () => newPractice("viewer-a", AT, "demo-cv101-job-1");
@@ -66,5 +66,29 @@ describe("CV-101 practice proof boundary", () => {
     expect(practiceStatus(4, finishPractice(ready(), AT))).toBe("PASS");
     expect(CV101_WORKFLOWS.map(w => w.live.status)).toEqual(original);
     expect(original).toEqual(["BLOCKED", "BLOCKED", "FAIL", "BLOCKED", "BLOCKED", "BLOCKED"]);
+  });
+  it("reports unavailable persistence instead of claiming a saved job", () => {
+    const denied = () => { throw new Error("SecurityError"); };
+    expect(persistPractice(denied, ready()).status).toBe("unavailable");
+    expect(readPractice(denied, "viewer-a").status).toBe("unavailable");
+    const quota = () => ({ getItem: () => null, setItem: () => { throw new Error("QuotaExceededError"); } });
+    expect(persistPractice(quota, ready()).status).toBe("unavailable");
+  });
+  it("distinguishes a missing record, corruption and a different viewer", () => {
+    const values = new Map<string, string>();
+    const storage = () => ({ getItem: (k: string) => values.get(k) ?? null, setItem: (k: string, v: string) => { values.set(k, v); } });
+    expect(readPractice(storage, "viewer-a").status).toBe("missing");
+    expect(persistPractice(storage, finishPractice(ready(), AT)).status).toBe("saved");
+    expect(readPractice(storage, "viewer-a").status).toBe("ready");
+    expect(readPractice(storage, "viewer-b").status).toBe("missing");
+    values.set(storageKey("viewer-a"), "{corrupt");
+    expect(readPractice(storage, "viewer-a").status).toBe("invalid");
+  });
+  it("does not accept a fabricated finished event without explicit work", () => {
+    const finished = finishPractice(ready(), AT), untouched = make();
+    const last = structuredClone(finished.events.at(-1)!);
+    last.seq = 2; last.id = `${untouched.jobId}-2`;
+    untouched.events.push(last);
+    expect(parsePractice(JSON.stringify(untouched), "viewer-a")).toBeNull();
   });
 });

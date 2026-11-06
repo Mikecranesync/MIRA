@@ -40,6 +40,8 @@ export type LivingSheetPrintProps = {
    *  them; this component only renders the warning. Default 0 keeps every
    *  existing caller byte-identical. */
   pendingCount?: number;
+  /** Read-only inline preview: never enters or controls the body's print portal. */
+  preview?: boolean;
 };
 
 const PRINT_CSS = `
@@ -282,14 +284,11 @@ function renderSection(section: PrintSection, index: number) {
   }
 }
 
-export function LivingSheetPrint({ view, seq, printedAt, machineName, jobIdShort, pendingCount = 0 }: LivingSheetPrintProps) {
+export function LivingSheetPrint({ view, seq, printedAt, machineName, jobIdShort, pendingCount = 0, preview = false }: LivingSheetPrintProps) {
   const model: PrintModel = printModel(view, { printedAt, seq, machineName, jobIdShort });
 
-  return (
-    <>
-      <style>{PRINT_CSS}</style>
-      <PrintPortal>
-      <div className={`ls-print-root ${PRINT_PORTAL_CLASS}`} style={S.root} data-testid="living-sheet-print-root">
+  const content = (
+      <div className={`ls-print-root${preview ? "" : ` ${PRINT_PORTAL_CLASS}`}`} style={S.root} data-testid="living-sheet-print-root">
         <table className="ls-print-frame">
         <thead><tr><td>
         <div className="ls-print-header" style={S.header} data-testid="living-sheet-print-header">
@@ -323,7 +322,6 @@ export function LivingSheetPrint({ view, seq, printedAt, machineName, jobIdShort
         </td></tr></tbody>
         </table>
       </div>
-      </PrintPortal>
-    </>
   );
+  return preview ? content : <><style>{PRINT_CSS}</style><PrintPortal>{content}</PrintPortal></>;
 }

@@ -12,6 +12,9 @@ const html = (email: string | null, signingOut = false) =>
   renderToStaticMarkup(<HubAccountFooter email={email} signingOut={signingOut} onSignOut={() => {}} />);
 
 describe("HubAccountFooter", () => {
+  it("offers the guided CV-101 walkthrough in the existing navigation footer", () => {
+    expect(html("tech@example.com")).toContain("CV-101 walkthrough");
+  });
   it("names the signed-in account and offers an enabled Sign out", () => {
     const out = html("tech@example.com");
     expect(out).toContain("tech@example.com");

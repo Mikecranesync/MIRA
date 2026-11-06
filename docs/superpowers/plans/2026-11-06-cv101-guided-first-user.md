@@ -67,17 +67,17 @@ renders six workflow panels and case study/live-evidence views. Reuse
 `SourceViewer` for OEM reference, existing Work Packet controls and
 `LivingSheetPrint` for the synthetic inspection and recall.
 
-- [ ] Add rendering tests asserting all six instructions, expected/actual/
+- [x] Add rendering tests asserting all six instructions, expected/actual/
   evidence/status labels, persistent demo disclaimer, unchanged real blockers
   and no false live/provider/acceptance labels.
-- [ ] Build accessible native dialog, numbered navigation, previous/next,
+- [x] Build accessible native dialog, numbered navigation, previous/next,
   responsive visual relationship diagram and source/status cards with tokens.
-- [ ] Wire practice selection→component/source exploration→sample replay→
+- [x] Wire practice selection→component/source exploration→sample replay→
   prepared citation→inspection/checkoffs/notes/finish→reload/recall.
-- [ ] Handle denied/quota storage and viewer-scope changes visibly; do not
+- [x] Handle denied/quota storage and viewer-scope changes visibly; do not
   advance a saved/recall result on failure. Keep source close inside dialog.
-- [ ] Mount from existing footer without touching shared-core or host owners.
-- [ ] Run focused and adjacent footer/record/reducer/print regressions and
+- [x] Mount from existing footer without touching shared-core or host owners.
+- [x] Run focused and adjacent footer/record/reducer/print regressions and
   scoped lint/type checks. Update meaningful Hub minor metadata per doctrine.
 
 ### Task 3: browser proof and reviewable dependent draft

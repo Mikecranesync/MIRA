@@ -10,6 +10,8 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@factorylm/interaction": path.resolve(__dirname, "../packages/factorylm-interaction/src/index.ts"),
+      "@factorylm/ui": path.resolve(__dirname, "../packages/factorylm-ui/src"),
     },
   },
 });

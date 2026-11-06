@@ -28,7 +28,7 @@ export const CV101_COMPONENTS = [
 
 type Workflow = { title: string; instructions: readonly string[]; expected: string; evidence: string; live: { status: WalkthroughStatus; actual: string } };
 export const CV101_WORKFLOWS: readonly Workflow[] = [
-  { title: "Sign in and discover CV-101", instructions: ["In the real product, sign in with your existing account; open navigation, then Machines or your confirmed project.", "For practice, select the local CV-101 example below. This does not sign in or select a real tenant's asset."], expected: "Identify one asset without joining machines by display name.", evidence: CV101_EVIDENCE.acceptance, live: { status: "BLOCKED", actual: "The garage cloud asset/KG bridge was confirmed. Owner sign-in and exact notebook association were not established; another tenant also has a CV-101." } },
+  { title: "Sign in and discover CV-101", instructions: ["In the real product, sign in with your existing account; open navigation → Projects → the owner-confirmed CV-101 project and its machine link. If that association is unknown, stop rather than create or rebind an asset.", "For practice, select the local CV-101 example below. This does not sign in or select a real tenant's asset."], expected: "Identify one asset without joining machines by display name.", evidence: CV101_EVIDENCE.acceptance, live: { status: "BLOCKED", actual: "The garage cloud asset/KG bridge was confirmed. Owner sign-in and exact notebook association were not established; another tenant also has a CV-101." } },
   { title: "Inspect components and manuals", instructions: ["Open each component card and read its source and unknowns.", "Follow the PLC OEM reference and compare the documented topology with the relationship diagram. Dashed links are historical or unverified current relationships."], expected: "Understand PLC, drive, motor and photoeye relationships, applicable references and unresolved identity.", evidence: CV101_EVIDENCE.inventory, live: { status: "BLOCKED", actual: "Historical photographs, transcriptions and code exist. Current physical relationships, exact unit identities and original manual attachments were not verified." } },
   { title: "Read telemetry with its source and time", instructions: ["Read the dated production receipt before viewing any example values.", "Replay the synthetic DI05 samples. Compare source observation, acquisition and receipt time; never infer present motion or photoeye polarity."], expected: "Distinguish historical cloud history, synthetic samples and an actual fresh equipment reading.", evidence: CV101_EVIDENCE.receipt, live: { status: "FAIL", actual: "Fresh-baseline check failed: newest bridge observation was over 12 hours old at inspection. Reader identity/access, per-tag quality and current readings remain unestablished." } },
   { title: "Ask a question and open its citation", instructions: ["Play the prepared technical question; this is a teaching example, not a generated MIRA answer.", "Open its citation in the existing source viewer, then follow the original OEM document. For a real answer, use the confirmed project's composer only after owner/source checks pass."], expected: "A claim has an identifiable manual reference and the original source is reachable.", evidence: CV101_EVIDENCE.inventory, live: { status: "BLOCKED", actual: "No authenticated CV-101 question/served answer or asset-attached original manual citation was proven. A reference link is not a retrieval or ingestion receipt." } },
@@ -133,4 +133,23 @@ export function parsePractice(raw: string | null, viewerScope: string): Practice
     if (v.finished && (v.openSteps || !r.notes.length)) return null;
     return p;
   } catch { return null; }
+}
+
+export type PracticeStorage = Pick<Storage, "getItem" | "setItem">;
+export type PracticeStorageProvider = () => PracticeStorage;
+export function persistPractice(storage: PracticeStorageProvider, p: Practice): { status: "saved" | "invalid" | "unavailable" } {
+  try {
+    const raw = JSON.stringify(p);
+    if (!parsePractice(raw, p.viewerScope)) return { status: "invalid" };
+    storage().setItem(storageKey(p.viewerScope), raw);
+    return { status: "saved" };
+  } catch { return { status: "unavailable" }; }
+}
+export function readPractice(storage: PracticeStorageProvider, viewer: string): { status: "ready"; practice: Practice } | { status: "missing" | "invalid" | "unavailable" } {
+  try {
+    const raw = storage().getItem(storageKey(viewer));
+    if (raw === null) return { status: "missing" };
+    const p = parsePractice(raw, viewer);
+    return p ? { status: "ready", practice: p } : { status: "invalid" };
+  } catch { return { status: "unavailable" }; }
 }
