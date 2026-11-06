@@ -334,7 +334,7 @@ export async function sendInboxReceiptEmail(
  *   "always"   — send to all tenants at day N
  *   "not_paid" — only send if tenant tier is still 'pending'
  */
-export const DRIP_SCHEDULE = [
+const LEGACY_DRIP_SCHEDULE = [
   {
     day: 1,
     templateName: "beta-loom-1",
@@ -378,3 +378,9 @@ export const DRIP_SCHEDULE = [
     condition: "not_paid",
   },
 ] as const;
+
+// Historical paid-beta sequence retained for audit only. It promised payment
+// and unsupported capabilities on fixed signup days. The approved free pilot
+// has manual approval and separately agreed continuation, so do not schedule
+// these messages or infer eligibility from the legacy plg_tenants table.
+export const DRIP_SCHEDULE: readonly (typeof LEGACY_DRIP_SCHEDULE)[number][] = [];

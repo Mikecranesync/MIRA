@@ -4,6 +4,10 @@ description: "When the user wants to create or update their product marketing co
 metadata:
   version: 1.1.0
 ---
+## Current acquisition offer
+
+Use `docs/product/current-pilot-offer.md`: five free, scoped 30-day pilots, manual approval before onboarding and separately agreed paid continuation. Native lead forms and Hub signup remain the application route. Older pricing examples are historical. Do not launch campaigns or revive held terms.
+
 
 # Product Marketing Context
 

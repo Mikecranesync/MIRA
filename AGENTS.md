@@ -1,5 +1,7 @@
 # MIRA — Build State
 
+> **Current customer acquisition offer (2026-10-29):** [Five free, scoped 30-day MIRA pilots](docs/product/current-pilot-offer.md), manually approved before onboarding. Paid continuation and paid consulting are separate. This supersedes older trial/pricing acquisition guidance below, not historical contracts or release gates.
+
 **Version:** v3.4.0 | **Updated:** 2026-04-17
 **One-liner:** AI-powered industrial maintenance diagnostic platform
 **Inference:** `INFERENCE_BACKEND=cloud` → Gemini → Groq → Cerebras → Codex (cascade) | `local` → Open WebUI → qwen2.5vl:7b

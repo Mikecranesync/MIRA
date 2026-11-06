@@ -64,8 +64,7 @@ printsensePage.post("/printsense/interest", async (c) => {
     event: wantsPilot ? "package_request_submitted" : "interest_submitted",
   });
   return c.html(renderPrintsenseLanding(undefined,
-    `<p class="ps-msg ps-msg-ok">Thanks — we'll reach out within one
-     business day. Fastest path: talk to Mike.</p>`));
+    `<p class="ps-msg ps-msg-ok">Thanks — your interest has been recorded. This is not pilot approval or product access. <a href="https://app.factorylm.com/signup/">Apply for a free MIRA pilot</a>, or contact Mike about a separate paid engagement.</p>`));
 });
 
 // Inline SVG micro-icons (stroke:currentColor) — never emoji.
@@ -337,13 +336,12 @@ advanced_reasoning_unavailable</div></div>
 
 ${message}
 <section class="ps-block" id="pilot">
-  <h2>Managed package pilot</h2>
-  <div class="ps-card"><p>Send the complete print package; we return searchable, cited
-  troubleshooting knowledge for the whole machine &mdash; reviewed, confidential.
-  Talk to Mike for fit; this page does not publish amounts.</p>
+  <h2>Separate paid print-package consulting</h2>
+  <div class="ps-card"><p>Discuss your print-package needs with us before sharing files. Scope, deliverables and fees are agreed separately. This consulting inquiry is not the free MIRA pilot.
+  <a href="https://app.factorylm.com/signup/">Apply for one of five free, scoped 30-day MIRA pilots</a> &mdash; manual approval before onboarding; waiting uses no pilot days.</p>
   <form method="post" action="/printsense/interest" class="ps-form">
     <label>Work email <input type="email" name="email" required></label>
-    <label><input type="checkbox" name="pilot"> I want the complete-package pilot</label>
+    <label><input type="checkbox" name="pilot"> I want to discuss paid print-package consulting</label>
     <button class="ps-cta" type="submit">Contact me</button>
   </form></div>
 </section>

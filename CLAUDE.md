@@ -1,5 +1,7 @@
 # MIRA — Build State
 
+> **Current customer acquisition offer (2026-10-29):** [Five free, scoped 30-day MIRA pilots](docs/product/current-pilot-offer.md), manually approved before onboarding. Paid continuation and paid consulting are separate. This supersedes older trial/pricing acquisition guidance below, not historical contracts or release gates.
+
 **Version:** derived from the latest `v*` tag (no `/VERSION` file since #3064; every merge auto-tags `vX.Y.Z` + a rollback checkpoint — `docs/versioning.md`)
 **One-liner:** FactoryLM = the maintenance-context layer that makes messy factory data trustworthy for AI (on any UNS); MIRA = the grounded agent that proves it by diagnosing with citations. **Canonical wedge → `NORTH_STAR.md`** (lead with context, not copilot; adapters retained).
 **Inference:** `INFERENCE_BACKEND=cloud` → OpenAI (`gpt-5.4-mini`, leads since 2026-10-11) → OpenRouter (backup tier since 2026-10-14, key-gated, no Claude models) (live cascade = OpenAI + OpenRouter only; Groq + Together DEPRECATED, Cerebras archived 2026-09-29, no Anthropic — removed PR #610) | `local` → Open WebUI → qwen2.5vl:7b
