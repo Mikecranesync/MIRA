@@ -1622,7 +1622,7 @@ jobs:
       # 070 retypes tenant_id, 090 adds the packet, 091 the lifecycle columns +
       # the (attempt_id, lifecycle) unique index, 092 the append-only grants,
       # 093 the independent turn_ingress counter, 094 the lifecycle invariant.
-      MIRA_INTEGRATION_EXTRA_MIGRATIONS: "032_decision_traces.sql,055_decision_trace_confidence_and_feedback.sql,070_decision_traces_tenant_text.sql,071_decision_traces_context_manifest.sql,080_decision_traces_provider_usage.sql,090_decision_traces_turn_packet.sql,091_decision_traces_turn_lifecycle.sql,092_decision_traces_lifecycle_append_only.sql,093_turn_ingress.sql,094_decision_traces_lifecycle_invariant.sql"
+      MIRA_INTEGRATION_EXTRA_MIGRATIONS: "003_kb_hardening.sql,049_grant_app_knowledge_entries_insert.sql,032_decision_traces.sql,055_decision_trace_confidence_and_feedback.sql,070_decision_traces_tenant_text.sql,071_decision_traces_context_manifest.sql,080_decision_traces_provider_usage.sql,090_decision_traces_turn_packet.sql,091_decision_traces_turn_lifecycle.sql,092_decision_traces_lifecycle_append_only.sql,093_turn_ingress.sql,094_decision_traces_lifecycle_invariant.sql"
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
@@ -1644,6 +1644,11 @@ jobs:
               # #4597 LEXICAL_V2 determinism regression: the retrieval SQL and its test.
               - 'mira-hub/src/lib/manual-rag.ts'
               - 'mira-hub/tests/integration/lexical-v2-determinism.integration.test.ts'
+              - 'mira-hub/src/lib/node-knowledge-ingest.ts'
+              - 'mira-hub/tests/integration/pdf-nul-ingest.integration.test.ts'
+              - 'mira-hub/tests/integration/fixtures/nul-glyph-4p-multilingual.pdf'
+              - 'mira-hub/db/migrations/003_kb_hardening.sql'
+              - 'mira-hub/db/migrations/049_grant_app_knowledge_entries_insert.sql'
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         if: steps.changes.outputs.lifecycle == 'true'
@@ -1700,6 +1705,20 @@ jobs:
           # cannot show that the determinism file itself ran. Require its own line.
           grep -qE "✓ tests/integration/lexical-v2-determinism\.integration\.test\.ts" /tmp/reconciliation.plain || {
             echo "::error::lexical-v2-determinism suite did not run and pass"; exit 1; }
+
+      - name: PDF NUL ingest (real parser and Postgres; must run every case)
+        if: steps.changes.outputs.lifecycle == 'true'
+        working-directory: mira-hub
+        run: |
+          set -euo pipefail
+          node node_modules/vitest/vitest.mjs run \
+            --config vitest.integration.config.ts \
+            tests/integration/pdf-nul-ingest.integration.test.ts \
+            2>&1 | tee /tmp/pdf-nul.out
+          sed -E 's/\x1b\[[0-9;]*[A-Za-z]//g' /tmp/pdf-nul.out > /tmp/pdf-nul.plain
+          grep -qE "pdf-nul-ingest\.integration\.test\.ts \(2 tests\)" /tmp/pdf-nul.plain || {
+            echo "::error::both real-parser/Postgres NUL cases must execute and pass"; exit 1; }
+
 
   notebook-event-outbox-pg:
     name: Notebook event outbox + CMMS dispatcher (disposable Postgres, migration 111)
