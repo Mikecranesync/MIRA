@@ -1,0 +1,16 @@
+
+ RUN  v3.2.4 /Users/charlienode/Documents/Codex/2026-11-05/task-3/MIRA/mira-hub
+
+ ✓ src/capabilities/work-packet/__tests__/edits.test.ts (10 tests) 3ms
+ ✓ src/capabilities/living-sheet/__tests__/packet-intake.test.ts (9 tests) 7ms
+ ✓ src/capabilities/living-sheet/__tests__/asset-memory-links.test.ts (2 tests) 128ms
+ ✓ src/capabilities/living-sheet/__tests__/asset-memory.test.ts (14 tests) 48ms
+stdout | src/capabilities/living-sheet/__tests__/closeout-batch.test.ts > large illustrated-packet closeout > clones the full packet once, preserving sequential decisions, copies and original input
+{"fixture":"fictional-6.3MB","targets":420,"elapsedMs":6.201750000000004,"fullPacketSerializations":1}
+
+ ✓ src/capabilities/living-sheet/__tests__/closeout-batch.test.ts (2 tests) 197ms
+
+ Test Files  5 passed (5)
+      Tests  37 passed (37)
+   Start at  02:46:32
+   Duration  506ms (transform 231ms, setup 0ms, collect 465ms, tests 382ms, environment 0ms, prepare 173ms)

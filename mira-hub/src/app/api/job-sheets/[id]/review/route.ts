@@ -50,6 +50,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   switch (result.status) {
+    case "structured_review_required":
+      return NextResponse.json({ error: "structured_review_required", message: "Technician closeout QC is separate from reusable acceptance. A dedicated structured acceptance review is required." }, { status: 409 });
     case "created":
       return NextResponse.json({ revision: result.revision }, { status: 201 });
     case "existing":

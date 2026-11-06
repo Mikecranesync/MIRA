@@ -1,0 +1,217 @@
+{
+  "kind": "actual_controls_component_journey",
+  "classification": "fictional_development_exposed_fixture",
+  "io": "mocked fetch only; actual Controls, Guide, scoping/generation and frozen-body helpers",
+  "checks": 9,
+  "race": "late first-job response cannot replace selected second job",
+  "pending": "pending execution clears selection and hides print/QC until reload",
+  "retry": "exact decorated body and original target reused without redecorating",
+  "errors": [],
+  "selected": {
+    "notebookId": "22222222-2222-4222-8222-222222222222",
+    "jobId": "33333333-3333-4333-8333-333333333334",
+    "selector": {
+      "seq": 6,
+      "snapshotId": "sha256:a4f42bdc154e24f4df108d754e8e6ceb50c5214918b6b2c13ef9e365dc314bdf",
+      "candidate": {
+        "id": "55555555-5555-4555-8555-555555555553",
+        "revision": 3,
+        "hash": "sha256:60b4037045a3437ca4ef8b4dac7e5aa4020ec3221cff7918479ec69e248ed3aa"
+      }
+    }
+  },
+  "requests": [
+    {
+      "url": "/hub/api/equipment-notebooks/22222222-2222-4222-8222-222222222222/sheets/33333333-3333-4333-8333-333333333333/?format=instruction-record-v2&assetMemory=1",
+      "at": 37.59999996423721
+    },
+    {
+      "url": "/hub/api/equipment-notebooks/22222222-2222-4222-8222-222222222222/sheets/33333333-3333-4333-8333-333333333334/?format=instruction-record-v2&assetMemory=1",
+      "at": 82.69999998807907
+    },
+    {
+      "url": "/hub/api/equipment-notebooks/22222222-2222-4222-8222-222222222222/sheets/33333333-3333-4333-8333-333333333334/?format=instruction-record-v2&assetMemory=1",
+      "at": 523.5999999642372
+    },
+    {
+      "url": "/hub/api/equipment-notebooks/22222222-2222-4222-8222-222222222222/sheets/33333333-3333-4333-8333-333333333334/?format=instruction-record-v2&assetMemory=1",
+      "at": 783.7999999523163
+    }
+  ],
+  "events": [
+    {
+      "next": null,
+      "scope": {
+        "notebookId": "22222222-2222-4222-8222-222222222222",
+        "jobId": "33333333-3333-4333-8333-333333333333",
+        "seq": 6
+      },
+      "at": 34.299999952316284
+    },
+    {
+      "next": null,
+      "scope": {
+        "notebookId": "22222222-2222-4222-8222-222222222222",
+        "jobId": "33333333-3333-4333-8333-333333333333",
+        "seq": 6
+      },
+      "at": 37.5
+    },
+    {
+      "next": null,
+      "scope": {
+        "notebookId": "22222222-2222-4222-8222-222222222222",
+        "jobId": "33333333-3333-4333-8333-333333333333",
+        "seq": 6
+      },
+      "at": 82.59999996423721
+    },
+    {
+      "next": null,
+      "scope": {
+        "notebookId": "22222222-2222-4222-8222-222222222222",
+        "jobId": "33333333-3333-4333-8333-333333333334",
+        "seq": 6
+      },
+      "at": 82.59999996423721
+    },
+    {
+      "next": null,
+      "scope": {
+        "notebookId": "22222222-2222-4222-8222-222222222222",
+        "jobId": "33333333-3333-4333-8333-333333333334",
+        "seq": 6
+      },
+      "at": 82.69999998807907
+    },
+    {
+      "next": {
+        "notebookId": "22222222-2222-4222-8222-222222222222",
+        "jobId": "33333333-3333-4333-8333-333333333334",
+        "selector": {
+          "seq": 6,
+          "snapshotId": "sha256:a4f42bdc154e24f4df108d754e8e6ceb50c5214918b6b2c13ef9e365dc314bdf",
+          "candidate": {
+            "id": "55555555-5555-4555-8555-555555555553",
+            "revision": 3,
+            "hash": "sha256:60b4037045a3437ca4ef8b4dac7e5aa4020ec3221cff7918479ec69e248ed3aa"
+          }
+        }
+      },
+      "scope": {
+        "notebookId": "22222222-2222-4222-8222-222222222222",
+        "jobId": "33333333-3333-4333-8333-333333333334",
+        "seq": 6
+      },
+      "at": 106.79999995231628
+    },
+    {
+      "next": null,
+      "scope": {
+        "notebookId": "22222222-2222-4222-8222-222222222222",
+        "jobId": "33333333-3333-4333-8333-333333333334",
+        "seq": 6
+      },
+      "at": 523.5
+    },
+    {
+      "next": {
+        "notebookId": "22222222-2222-4222-8222-222222222222",
+        "jobId": "33333333-3333-4333-8333-333333333334",
+        "selector": {
+          "seq": 6,
+          "snapshotId": "sha256:a4f42bdc154e24f4df108d754e8e6ceb50c5214918b6b2c13ef9e365dc314bdf",
+          "candidate": {
+            "id": "55555555-5555-4555-8555-555555555553",
+            "revision": 3,
+            "hash": "sha256:60b4037045a3437ca4ef8b4dac7e5aa4020ec3221cff7918479ec69e248ed3aa"
+          }
+        }
+      },
+      "scope": {
+        "notebookId": "22222222-2222-4222-8222-222222222222",
+        "jobId": "33333333-3333-4333-8333-333333333334",
+        "seq": 6
+      },
+      "at": 542.2999999523163
+    },
+    {
+      "next": null,
+      "scope": {
+        "notebookId": "22222222-2222-4222-8222-222222222222",
+        "jobId": "33333333-3333-4333-8333-333333333334",
+        "seq": 6
+      },
+      "at": 766.0999999642372
+    },
+    {
+      "next": null,
+      "scope": {
+        "notebookId": "22222222-2222-4222-8222-222222222222",
+        "jobId": "33333333-3333-4333-8333-333333333334",
+        "seq": 6
+      },
+      "at": 766.0999999642372
+    },
+    {
+      "next": null,
+      "scope": {
+        "notebookId": "22222222-2222-4222-8222-222222222222",
+        "jobId": "33333333-3333-4333-8333-333333333334",
+        "seq": 6
+      },
+      "at": 766.3999999761581
+    },
+    {
+      "next": null,
+      "scope": {
+        "notebookId": "22222222-2222-4222-8222-222222222222",
+        "jobId": "33333333-3333-4333-8333-333333333334",
+        "seq": 6
+      },
+      "at": 782.7999999523163
+    },
+    {
+      "next": null,
+      "scope": {
+        "notebookId": "22222222-2222-4222-8222-222222222222",
+        "jobId": "33333333-3333-4333-8333-333333333334",
+        "seq": 6
+      },
+      "at": 782.7999999523163
+    },
+    {
+      "next": null,
+      "scope": {
+        "notebookId": "22222222-2222-4222-8222-222222222222",
+        "jobId": "33333333-3333-4333-8333-333333333334",
+        "seq": 6
+      },
+      "at": 783.7999999523163
+    },
+    {
+      "next": {
+        "notebookId": "22222222-2222-4222-8222-222222222222",
+        "jobId": "33333333-3333-4333-8333-333333333334",
+        "selector": {
+          "seq": 6,
+          "snapshotId": "sha256:a4f42bdc154e24f4df108d754e8e6ceb50c5214918b6b2c13ef9e365dc314bdf",
+          "candidate": {
+            "id": "55555555-5555-4555-8555-555555555553",
+            "revision": 3,
+            "hash": "sha256:60b4037045a3437ca4ef8b4dac7e5aa4020ec3221cff7918479ec69e248ed3aa"
+          }
+        }
+      },
+      "scope": {
+        "notebookId": "22222222-2222-4222-8222-222222222222",
+        "jobId": "33333333-3333-4333-8333-333333333334",
+        "seq": 6
+      },
+      "at": 808.1999999880791
+    }
+  ],
+  "viewport": 412,
+  "scrollWidth": 412,
+  "productSourceSha": "ba1d58a71769de81f7a53959617c3c0fb5d99a27"
+}

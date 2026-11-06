@@ -1,0 +1,8 @@
+Full local log SHA-256: f2581d4fba0d69a531f04ddf08ce19903c0a5673a9762835311830575f978b1a
+
+ ✓ src/lib/i3x/namespaces.test.ts (1 test) 1ms
+
+ Test Files  590 passed | 4 skipped (594)
+      Tests  13132 passed | 53 skipped (13185)
+   Start at  01:34:08
+   Duration  24.03s (transform 8.53s, setup 0ms, collect 52.04s, tests 37.59s, environment 61ms, prepare 26.54s)

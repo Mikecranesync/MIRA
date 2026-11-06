@@ -1,0 +1,18 @@
+{
+  "classification": "synthetic_intake_accepted_6_300_000_byte_opaque_evidence_fixture",
+  "qcTargets": 420,
+  "before": {
+    "elapsedMs": 2081.490375,
+    "fullPacketSerializations": 420
+  },
+  "afterFocused": {
+    "elapsedMs": 6.20175,
+    "fullPacketSerializations": 1
+  },
+  "afterFullSuite": {
+    "elapsedMs": 6.846708,
+    "fullPacketSerializations": 1
+  },
+  "measure": "pure applyCloseoutDecisions only; same host, separate runs; excludes database and HTTP",
+  "deterministicRegression": "one full serialization; sequential semantic equality, copy/history provenance, unchanged original; later failure leaves input unchanged"
+}

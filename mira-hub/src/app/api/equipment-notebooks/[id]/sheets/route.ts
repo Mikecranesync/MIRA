@@ -82,6 +82,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   switch (result.status) {
+    case "template_asset_mismatch":
+      return NextResponse.json({ error: "template_asset_mismatch", message: "This draft guide belongs to another notebook or machine identity. Structured acceptance is required before wider reuse." }, { status: 409 });
+    case "invalid_template":
+      return NextResponse.json({ error: "server_owned_instruction_metadata" }, { status: 400 });
     case "created":
       return NextResponse.json({ jobId: result.jobId, event: result.event, seq: result.seq, view: result.view }, { status: 201 });
     case "existing":

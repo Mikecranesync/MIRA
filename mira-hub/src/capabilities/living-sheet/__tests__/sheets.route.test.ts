@@ -40,7 +40,11 @@ const store = vi.hoisted(() => ({
   }),
 }));
 vi.mock("@/capabilities/living-sheet/store", () => store);
+const qcStore = vi.hoisted(() => ({ latestCloseout: vi.fn(async () => null) }));
+vi.mock("@/capabilities/living-sheet/intake-closeout-store", () => qcStore);
 
+const assetMemory = vi.hoisted(() => ({ load: vi.fn() }));
+vi.mock("@/capabilities/living-sheet/asset-memory", () => ({ loadAssetMemory: assetMemory.load }));
 import { GET as GET_LIST, POST as POST_START } from "../../../app/api/equipment-notebooks/[id]/sheets/route";
 import { GET as GET_JOB } from "../../../app/api/equipment-notebooks/[id]/sheets/[jobId]/route";
 import { POST as POST_EVENT } from "../../../app/api/equipment-notebooks/[id]/sheets/[jobId]/events/route";
@@ -266,6 +270,41 @@ describe("living-sheet routes: GET /sheets", () => {
 });
 
 describe("living-sheet routes: GET /sheets/[jobId]", () => {
+  it("exports explicit v2 with the same snapshot and scoped QC lookup", async () => {
+    const res = await GET_JOB(req(`/api/equipment-notebooks/${NB}/sheets/${JOB_ID}?format=instruction-record-v2&atSeq=1`, "GET"), jobParams);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ schemaVersion: 2, snapshot: sampleView, closeout: null, capture: { privacy: "private", exactConversationLinkage: "unknown" }, review: { technicianCloseout: "not_recorded", reusableAcceptance: "not_recorded" } });
+    expect(qcStore.latestCloseout).toHaveBeenCalledWith(TENANT, NB, JOB_ID, 1);
+    expect(store.appendEvent).not.toHaveBeenCalled();
+  });
+  it("exports an opt-in versioned record from the same tenant-scoped historical snapshot", async () => {
+    const res = await GET_JOB(req(`/api/equipment-notebooks/${NB}/sheets/${JOB_ID}?format=instruction-record&atSeq=1`, "GET"), jobParams);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ schemaVersion: 1, status: "draft", lineage: { notebookId: NB, jobId: JOB_ID, seq: 1 }, snapshot: sampleView });
+    expect(store.loadJob).toHaveBeenCalledWith(TENANT, NB, JOB_ID, 1);
+    expect(store.appendEvent).not.toHaveBeenCalled();
+  });
+
+  it("rejects unsupported export versions without loading a job", async () => {
+    const res = await GET_JOB(req(`/api/equipment-notebooks/${NB}/sheets/${JOB_ID}?format=instruction-record-v99`, "GET"), jobParams);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_format" });
+    expect(store.loadJob).not.toHaveBeenCalled();
+  });
+
+  it.each(["flag", "foreign_notebook", "missing_job", "future_seq", "missing_table"])("instruction export preserves the %s gate", async (gate) => {
+    if (gate === "flag") process.env.NOTEBOOK_LIVING_SHEET = "0";
+    if (gate === "foreign_notebook") nb.getNotebook.mockResolvedValue(null);
+    if (gate === "missing_job") store.loadJob.mockResolvedValue({ status: "job_not_found" });
+    if (gate === "missing_table") store.loadJob.mockRejectedValue(Object.assign(new Error("missing"), { code: "42P01" }));
+    const suffix = gate === "future_seq" ? "&atSeq=100" : "";
+    const res = await GET_JOB(req(`/api/equipment-notebooks/${NB}/sheets/${JOB_ID}?format=instruction-record${suffix}`, "GET"), jobParams);
+    expect(res.status).toBe(gate === "missing_table" ? 503 : 404);
+    expect((await res.json()).schemaVersion).toBeUndefined();
+    expect(store.appendEvent).not.toHaveBeenCalled();
+    if (gate === "flag" || gate === "foreign_notebook") expect(store.loadJob).not.toHaveBeenCalled();
+  });
+
   it("returns {view, seq} at the job's current seq by default", async () => {
     const res = await GET_JOB(req(`/api/equipment-notebooks/${NB}/sheets/${JOB_ID}`, "GET"), jobParams);
     expect(res.status).toBe(200);
@@ -387,5 +426,26 @@ describe("living-sheet routes: POST /sheets/[jobId]/events", () => {
     expect(res.status).toBe(409);
     const body = await res.json();
     expect(body).toMatchObject({ error: "conflict", seq: 5 });
+  });
+});
+
+describe("opt-in enriched v2 read", () => {
+  it("passes the exact candidate selector to the shared tenant-scoped reader", async () => {
+    const selector = { seq: 1, snapshotId: `sha256:${"a".repeat(64)}`, candidate: null };
+    assetMemory.load.mockResolvedValueOnce({ status: "ok", record: { schemaVersion: 2, assetMemory: { selector }, fullHistoricalSentinel: "retained" } });
+    const response = await GET_JOB(req(`/sheets/${JOB_ID}/?format=instruction-record-v2&assetMemory=1&memorySelector=${encodeURIComponent(JSON.stringify(selector))}`, "GET"), jobParams);
+    expect(response.status).toBe(200); expect(await response.json()).toMatchObject({ fullHistoricalSentinel: "retained", assetMemory: { selector } });
+    expect(assetMemory.load).toHaveBeenCalledWith(TENANT, NB, JOB_ID, { selector, atSeq: undefined, authorizedNotebookId: NB });
+    expect(store.loadJob).not.toHaveBeenCalled();
+  });
+  it("rejects malformed and oversized pins, wrong format, and reader conflicts", async () => {
+    for (const query of ["format=instruction-record&assetMemory=1", "format=instruction-record-v2&assetMemory=1&memorySelector=%7B", `format=instruction-record-v2&assetMemory=1&memorySelector=${"x".repeat(2050)}`]) expect((await GET_JOB(req(`/sheets/${JOB_ID}/?${query}`, "GET"), jobParams)).status).toBe(400);
+    expect(assetMemory.load).not.toHaveBeenCalled();
+    assetMemory.load.mockResolvedValueOnce({ status: "candidate_conflict" });
+    expect((await GET_JOB(req(`/sheets/${JOB_ID}/?format=instruction-record-v2&assetMemory=1`, "GET"), jobParams)).status).toBe(409);
+  });
+  it("keeps ordinary and original v2 reads free of optional overlay loading", async () => {
+    for (const query of ["", "?format=instruction-record", "?format=instruction-record-v2"]) expect((await GET_JOB(req(`/sheets/${JOB_ID}/${query}`, "GET"), jobParams)).status).toBe(200);
+    expect(assetMemory.load).not.toHaveBeenCalled();
   });
 });

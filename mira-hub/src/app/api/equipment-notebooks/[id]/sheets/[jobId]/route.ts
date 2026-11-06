@@ -3,7 +3,9 @@
  *     job's current reduced sheet. `?atSeq=N` reduces only events with
  *     seq <= N and returns `{ view, seq: N, snapshot: true }` instead — the
  *     same reduce, over a prefix of the same log (reduce.ts is pure, so this
- *     is deterministic). Read-only: no asset-confirmation check (TASK-S1
+ *     is deterministic). `?format=instruction-record` exports v1 JSON of
+ *     that same snapshot, with explicit unreviewed provenance and gaps.
+ *     Read-only: no asset-confirmation check (TASK-S1
  *     §Routes — reads are allowed even on an unconfirmed/unbound notebook).
  *
  * Flag `NOTEBOOK_LIVING_SHEET` off ⇒ 404.
@@ -14,6 +16,10 @@ import { getNotebook } from "@/lib/equipment-notebooks";
 import { isUuid } from "@/capabilities/fix-records";
 import { livingSheetEnabled } from "@/capabilities/living-sheet/flag";
 import { loadJob, livingSheetStorageUnavailable } from "@/capabilities/living-sheet/store";
+import { instructionRecord } from "@/capabilities/living-sheet/instruction-record";
+import { instructionRecordV2 } from "@/capabilities/living-sheet/instruction-record-v2";
+import { latestCloseout } from "@/capabilities/living-sheet/intake-closeout-store";
+import { loadAssetMemory } from "@/capabilities/living-sheet/asset-memory";
 
 const DISABLED = { error: "living_sheet_disabled" };
 const NOT_FOUND = { error: "notebook_not_found" };
@@ -30,6 +36,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const notebook = await getNotebook(ctx.tenantId, id);
   if (!notebook) return NextResponse.json(NOT_FOUND, { status: 404 });
 
+  const format = req.nextUrl.searchParams.get("format");
+  if (format !== null && format !== "instruction-record" && format !== "instruction-record-v2") {
+    return NextResponse.json({ error: "invalid_format" }, { status: 400 });
+  }
+
   const atSeqRaw = req.nextUrl.searchParams.get("atSeq");
   let atSeq: number | undefined;
   if (atSeqRaw !== null) {
@@ -39,6 +50,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 
   try {
+    if (req.nextUrl.searchParams.get("assetMemory") === "1") {
+      if (format !== "instruction-record-v2") return NextResponse.json({ error: "invalid_format" }, { status: 400 });
+      const raw = req.nextUrl.searchParams.get("memorySelector");
+      let selector: unknown;
+      try { if (raw !== null) { if (raw.length > 2048) throw new Error("oversize"); selector = JSON.parse(raw); } }
+      catch { return NextResponse.json({ error: "invalid_selector" }, { status: 400 }); }
+      const memory = await loadAssetMemory(ctx.tenantId, id, jobId, { selector, atSeq, authorizedNotebookId: id });
+      if (memory.status !== "ok") return NextResponse.json({ error: memory.status }, { status: memory.status.endsWith("not_found") ? 404 : memory.status === "invalid_selector" ? 400 : 409 });
+      return NextResponse.json(memory.record);
+    }
     const result = await loadJob(ctx.tenantId, id, jobId, atSeq);
     if (result.status === "job_not_found") return NextResponse.json(JOB_NOT_FOUND, { status: 404 });
     // F30: `loadJob` reduces the PREFIX of events with seq <= atSeq, so an
@@ -53,6 +74,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         { error: "sequence_not_found", message: "This job hasn't reached that sequence yet." },
         { status: 404 },
       );
+    }
+    if (format === "instruction-record-v2") {
+      return NextResponse.json(instructionRecordV2(id, result.view, await latestCloseout(ctx.tenantId, id, jobId, result.view.seq)));
+    }
+    if (format === "instruction-record") {
+      return NextResponse.json(instructionRecord(id, result.view));
     }
     return atSeq === undefined
       ? NextResponse.json({ view: result.view, seq: result.view.seq })

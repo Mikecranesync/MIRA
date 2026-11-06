@@ -3,6 +3,11 @@
 > Canonical layered domain map. Agents reference this to understand module boundaries.
 > Update when adding new services or changing dependency directions.
 
+The [Asset Memory North Star](NORTH_STAR_ASSET_MEMORY.md) defines the connected,
+replayable maintenance-history outcome and its source-of-truth rules. Its
+[capability inventory](discovery/2026-11-06-asset-memory-inventory.md) separates
+existing implementations and receipts from remaining integration work.
+
 ## Domain Layers
 
 Each MIRA module falls into one of four layers. Dependencies flow **downward only**.

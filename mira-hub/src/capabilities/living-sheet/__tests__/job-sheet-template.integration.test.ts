@@ -55,7 +55,14 @@ import {
   type ReviseJobSheetResult,
   type ReviewJobSheetResult,
 } from "../job-sheet-store";
-import { startJob, type StartJobResult } from "../store";
+import { startJob, appendEvent, loadJob, type StartJobResult } from "../store";
+import { intakePacket, recordCloseout, latestCloseout } from "../intake-closeout-store";
+import { instructionRecord } from "../instruction-record";
+import { instructionRecordV2 } from "../instruction-record-v2";
+import { qcTargets } from "../packet-intake";
+import { packetFixture, field, correctedMeasurementPacket } from "./packet-fixture";
+import { guidePacket } from "../instruction-fields";
+import { measurementRows } from "@/factorylm-ui/work-packet-v2-view";
 import type { JobSheetBody } from "../types";
 
 const MIGRATION = path.resolve(__dirname, "../../../../db/migrations/114_living_work_sheet.sql");
@@ -126,6 +133,181 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await testPool.end();
+});
+
+describe("packet intake and authenticated closeout — real PostgreSQL", () => {
+  async function imported(withCorrection = false) {
+    const tenant = uuid(); const notebook = await makeNotebook(tenant);
+    const n = await testPool.query(`UPDATE equipment_notebooks SET manufacturer='Example', model='M1', identity_status='user_confirmed' WHERE id=$1::uuid RETURNING equipment_entity_id`, [notebook]);
+    const asset = { entityId: n.rows[0].equipment_entity_id, name: "Fixture", unsPath: "example/site/fixture" };
+    const packet = withCorrection ? correctedMeasurementPacket(notebook) : packetFixture(notebook);
+    packet.steps[0].text.source = { docId: "manual", fileId: null, filename: "synthetic.pdf", page: 1, line: "Read the fixture label" };
+    packet.documents.push({ docId: "manual", fileId: null, filename: "synthetic.pdf", role: "service_manual", modelFoundOn: [1], via: "file", revision: field(null) });
+    packet.approval.supervisor = { state: "approved", by: "untrusted imported name", at: "2026-10-01" };
+    const record = { version: 1 as const, packetId: packet.packetId, steps: { 0: { performed: true as const, by: "imported name", at: "2026-10-01", text: "Old text" } }, measurements: {}, notes: [], photos: [] };
+    const input = { clientRequestId: uuid(), packet, record };
+    const first = await intakePacket(tenant, notebook, asset, input, ACTOR);
+    if (first.status !== "created") throw new Error(JSON.stringify(first));
+    return { tenant, notebook, asset, input, first };
+  }
+  async function finished(withCorrection = false) {
+    const data = await imported(withCorrection);
+    const r = await appendEvent(data.tenant, data.notebook, data.first.jobId, { clientEventId: uuid(), baseSeq: 1, kind: "job_finished", payload: { summary: "Fictional test work", openItemsAcknowledged: true }, occurredAt: new Date().toISOString(), workOrderId: null }, ACTOR);
+    if (r.status !== "created") throw new Error(JSON.stringify(r));
+    const qc = { clientRequestId: uuid(), seq: r.view.seq, snapshotId: instructionRecord(data.notebook, r.view).snapshotId, baseCandidateId: null,
+      decisions: qcTargets(data.input.packet).map(f => ({ path: f.path, action: "confirm" as const })) };
+    return { ...data, view: r.view, qc };
+  }
+  it("survives reload and concurrent retries without importing local ticks or approval", async () => {
+    const d = await imported();
+    const results = await Promise.all(Array.from({ length: 4 }, () => intakePacket(d.tenant, d.notebook, d.asset, d.input, ACTOR)));
+    expect(results.every(r => r.status === "existing")).toBe(true);
+    const loaded = await loadJob(d.tenant, d.notebook, d.first.jobId);
+    expect(loaded.status).toBe("ok");
+    if (loaded.status !== "ok") return;
+    expect(loaded.view.steps[0].done).toBe(false);
+    expect(loaded.view.templateStatus).toBeNull();
+    expect(loaded.view.template.instruction).toMatchObject({ originalPacket: d.input.packet, originalRecord: d.input.record,
+      imported: { userId: ACTOR.userId, asset: d.asset, identity: { manufacturer: "Example", model: "M1" } } });
+    expect(await intakePacket(d.tenant, d.notebook, d.asset, { ...d.input, packet: { ...d.input.packet, disclaimer: "changed" } }, ACTOR)).toEqual({ status: "request_id_conflict" });
+    expect(await intakePacket(d.tenant, d.notebook, d.asset, d.input, { ...ACTOR, userId: "other" })).toEqual({ status: "request_id_conflict" });
+  });
+  it("retains imported torque/correction source across all-confirm QC and a fresh inherited job", async () => {
+    const d = await finished(true);
+    const result = await recordCloseout(d.tenant, d.notebook, d.first.jobId, d.qc, ACTOR);
+    if (result.status !== "created") throw new Error(JSON.stringify(result));
+    const assertLineage = (packet: typeof d.input.packet, current = "50 demo units") => {
+      expect(measurementRows(guidePacket(packet), null)[0]).toMatchObject({ manual: { value: "30 demo units" }, correction: { value: current }, approval: "Not approved — the site decides" });
+      expect(packet.approval.technicianReview.entries.some(e => e.source === "Synthetic correction source")).toBe(true);
+    };
+    assertLineage(result.candidate.body.instruction!.packet);
+    const updated = await recordCloseout(d.tenant, d.notebook, d.first.jobId, { ...d.qc, clientRequestId: uuid(), baseCandidateId: result.candidate.id,
+      decisions: d.qc.decisions.map(x => x.path === "measurements[0].value" ? { path: x.path, action: "settle" as const, value: "70 demo units", source: "Synthetic server correction source" } : x) }, ACTOR);
+    if (updated.status !== "created") throw new Error(JSON.stringify(updated));
+    assertLineage(updated.candidate.body.instruction!.packet, "70 demo units");
+    const fresh = startedC(await startJob(d.tenant, d.notebook, d.asset, { title: "Fresh fixture execution", templateRevisionId: updated.candidate.id, template: body(), clientEventId: uuid(), occurredAt: new Date().toISOString() }, ACTOR));
+    const finish = await appendEvent(d.tenant, d.notebook, fresh.jobId, { clientEventId: uuid(), baseSeq: 1, kind: "job_finished", payload: { summary: null, openItemsAcknowledged: true }, occurredAt: new Date().toISOString(), workOrderId: null }, ACTOR);
+    if (finish.status !== "created") throw new Error(JSON.stringify(finish));
+    const inheritedQC = await recordCloseout(d.tenant, d.notebook, fresh.jobId, { clientRequestId: uuid(), seq: finish.seq, snapshotId: instructionRecord(d.notebook, finish.view).snapshotId, baseCandidateId: null,
+      decisions: qcTargets(fresh.view.template.instruction!.packet).map(({ path }) => ({ path, action: "confirm" })) }, ACTOR);
+    if (inheritedQC.status !== "created") throw new Error(JSON.stringify(inheritedQC));
+    assertLineage(inheritedQC.candidate.body.instruction!.packet, "70 demo units");
+    expect(inheritedQC.candidate.body.instruction!.packet.approval.technicianReview.entries.some(e => e.source === "Synthetic server correction source")).toBe(true);
+    expect(fresh.view.steps.every(s => !s.done)).toBe(true);
+    expect(instructionRecordV2(d.notebook, fresh.view, null).review.technicianCloseout).toBe("not_recorded");
+  });
+  it("reviews the current candidate without reverting its correction to the source snapshot", async () => {
+    const d = await finished(true);
+    const corrected = await recordCloseout(d.tenant, d.notebook, d.first.jobId, { ...d.qc, decisions: d.qc.decisions.map(x => x.path === "measurements[0].value" ? { path: x.path, action: "settle" as const, value: "60 demo units", source: "Second synthetic source" } : x) }, ACTOR);
+    if (corrected.status !== "created") throw new Error(JSON.stringify(corrected));
+    const againInput = { ...d.qc, clientRequestId: uuid(), baseCandidateId: corrected.candidate.id };
+    const again = await recordCloseout(d.tenant, d.notebook, d.first.jobId, againInput, ACTOR);
+    if (again.status !== "created") throw new Error(JSON.stringify(again));
+    expect(again.candidate.body.instruction!.packet.measurements[0].value.value).toBe("60 demo units");
+    expect(again.candidate.body.instruction!.packet.approval.technicianReview.entries.some(e => e.source === "Second synthetic source")).toBe(true);
+    expect(again.candidate.body.instruction!.closeout).toMatchObject({ baseCandidateId: corrected.candidate.id, seq: d.view.seq, snapshotId: d.qc.snapshotId });
+    expect(await recordCloseout(d.tenant, d.notebook, d.first.jobId, { ...againInput, clientRequestId: uuid() }, ACTOR)).toEqual({ status: "candidate_conflict" });
+    expect(await recordCloseout(d.tenant, d.notebook, d.first.jobId, d.qc, ACTOR)).toEqual({ status: "request_id_conflict" });
+    const replay = await recordCloseout(d.tenant, d.notebook, d.first.jobId, againInput, ACTOR);
+    expect(replay.status).toBe("existing");
+    if (replay.status === "existing") expect(replay.candidate.id).toBe(again.candidate.id);
+    const competing = await Promise.all([1, 2].map(() => recordCloseout(d.tenant, d.notebook, d.first.jobId, { ...d.qc, clientRequestId: uuid(), baseCandidateId: again.candidate.id }, ACTOR)));
+    expect(competing.map(r => r.status).sort()).toEqual(["candidate_conflict", "created"]);
+    const olderReplay = await recordCloseout(d.tenant, d.notebook, d.first.jobId, againInput, ACTOR);
+    expect(olderReplay.status).toBe("existing");
+    if (olderReplay.status === "existing") expect(olderReplay.candidate.id).toBe(again.candidate.id);
+    expect(await countRevisions(d.tenant, d.first.jobId)).toBe(3);
+    expect(await loadJob(d.tenant, d.notebook, d.first.jobId)).toEqual({ status: "ok", view: d.view });
+  });
+  it("refuses foreign tenant/notebook, unconfirmed identity and changed asset", async () => {
+    const d = await imported();
+    expect(await intakePacket(uuid(), d.notebook, d.asset, { ...d.input, clientRequestId: uuid() }, ACTOR)).toEqual({ status: "job_not_found" });
+    expect(await intakePacket(d.tenant, uuid(), d.asset, d.input, ACTOR)).toEqual({ status: "invalid_input" });
+    expect(await intakePacket(d.tenant, d.notebook, { ...d.asset, entityId: "foreign" }, { ...d.input, clientRequestId: uuid() }, ACTOR)).toEqual({ status: "asset_changed" });
+    expect(await intakePacket(d.tenant, d.notebook, d.asset, { ...d.input, clientRequestId: uuid(), packet: { ...d.input.packet, equipment: { ...d.input.packet.equipment, model: field("Wrong model") } } }, ACTOR)).toEqual({ status: "identity_mismatch" });
+    await testPool.query(`UPDATE equipment_notebooks SET identity_status='candidate' WHERE id=$1::uuid`, [d.notebook]);
+    expect(await intakePacket(d.tenant, d.notebook, d.asset, { ...d.input, clientRequestId: uuid() }, ACTOR)).toEqual({ status: "identity_mismatch" });
+  });
+  it("requires finish, authenticated finishing identity and exact sequence/hash", async () => {
+    const d = await imported();
+    const qc = { clientRequestId: uuid(), seq: 1, snapshotId: instructionRecord(d.notebook, d.first.view).snapshotId, baseCandidateId: null, decisions: [] };
+    expect(await recordCloseout(d.tenant, d.notebook, d.first.jobId, qc, ACTOR)).toEqual({ status: "job_not_finished" });
+    const f = await finished();
+    expect(await recordCloseout(f.tenant, f.notebook, f.first.jobId, f.qc, { userId: null, label: ACTOR.label })).toEqual({ status: "unauthenticated" });
+    expect(await recordCloseout(f.tenant, f.notebook, f.first.jobId, f.qc, { userId: "forged", label: ACTOR.label })).toEqual({ status: "wrong_technician" });
+    expect(await recordCloseout(f.tenant, uuid(), f.first.jobId, f.qc, ACTOR)).toEqual({ status: "job_not_found" });
+    expect(await recordCloseout(uuid(), f.notebook, f.first.jobId, f.qc, ACTOR)).toEqual({ status: "job_not_found" });
+    expect(await recordCloseout(f.tenant, f.notebook, f.first.jobId, { ...f.qc, seq: 1 }, ACTOR)).toEqual({ status: "snapshot_conflict" });
+    expect(await recordCloseout(f.tenant, f.notebook, f.first.jobId, { ...f.qc, snapshotId: `sha256:${"0".repeat(64)}` }, ACTOR)).toEqual({ status: "snapshot_conflict" });
+    expect(await recordCloseout(f.tenant, f.notebook, f.first.jobId, { ...f.qc, decisions: f.qc.decisions.slice(1) }, ACTOR)).toEqual({ status: "invalid_decisions" });
+  });
+  it("appends one draft for concurrent identical QC, retains corrections and leaves finish/outbox untouched", async () => {
+    const d = await finished();
+    const qc = { ...d.qc, decisions: d.qc.decisions.map(x => x.path === "steps[0].text" ? { path: x.path, action: "settle" as const, value: "Read the corrected label", source: "Technician observation at closeout" } : x) };
+    const before = await testPool.query(`SELECT count(*)::int AS n FROM notebook_domain_events WHERE tenant_id=$1::uuid AND notebook_id=$2::uuid`, [d.tenant, d.notebook]);
+    const results = await Promise.all(Array.from({ length: 4 }, () => recordCloseout(d.tenant, d.notebook, d.first.jobId, qc, ACTOR)));
+    expect(results.map(r => r.status).sort()).toEqual(["created", "existing", "existing", "existing"]);
+    const candidate = await latestCloseout(d.tenant, d.notebook, d.first.jobId, d.view.seq);
+    expect(candidate?.status).toBe("draft");
+    expect(candidate?.body.instruction?.packet.steps[0].text).toMatchObject({ value: "Read the corrected label", source: d.input.packet.steps[0].text.source, review: { previous: "Read the fixture label", by: ACTOR.userId } });
+    expect(candidate?.body.instruction?.originalPacket).toEqual(d.input.packet);
+    expect(candidate?.body.instruction?.closeout).toMatchObject({ notebookId: d.notebook, jobId: d.first.jobId, seq: d.view.seq, snapshotId: d.qc.snapshotId });
+    expect(candidate?.body.instruction?.closeout).not.toHaveProperty("sourceSnapshot");
+    expect(await countRevisions(d.tenant, d.first.jobId)).toBe(1);
+    expect(await latestCloseout(d.tenant, d.notebook, d.first.jobId, 1)).toBeNull();
+    expect((await loadJob(d.tenant, d.notebook, d.first.jobId))).toEqual({ status: "ok", view: d.view });
+    const after = await testPool.query(`SELECT count(*)::int AS n FROM notebook_domain_events WHERE tenant_id=$1::uuid AND notebook_id=$2::uuid`, [d.tenant, d.notebook]);
+    expect(after.rows).toEqual(before.rows);
+    expect(await reviewJobSheet(d.tenant, d.first.jobId, { clientRequestId: uuid(), revision: 1 }, ACTOR)).toEqual({ status: "structured_review_required" });
+    expect(await recordCloseout(d.tenant, d.notebook, d.first.jobId, { ...qc, decisions: d.qc.decisions }, ACTOR)).toEqual({ status: "request_id_conflict" });
+    const v2 = instructionRecordV2(d.notebook, d.view, candidate);
+    expect(v2.review).toMatchObject({ technicianCloseout: "recorded", reusableAcceptance: "not_recorded" });
+    expect(v2.capture).toMatchObject({ privacy: "private", benchmarkExposure: "unknown" });
+  });
+  it("rejects stale concurrent QC, appends the next explicit candidate and starts fresh execution without forging metadata", async () => {
+    const d = await finished();
+    const results = await Promise.all([recordCloseout(d.tenant, d.notebook, d.first.jobId, d.qc, ACTOR), recordCloseout(d.tenant, d.notebook, d.first.jobId, { ...d.qc, clientRequestId: uuid() }, ACTOR)]);
+    expect(results.map(r => r.status).sort()).toEqual(["candidate_conflict", "created"]);
+    const first = (await latestCloseout(d.tenant, d.notebook, d.first.jobId, d.view.seq))!;
+    const next = await recordCloseout(d.tenant, d.notebook, d.first.jobId, { ...d.qc, clientRequestId: uuid(), baseCandidateId: first.id }, ACTOR);
+    expect(next.status).toBe("created");
+    expect(await countRevisions(d.tenant, d.first.jobId)).toBe(2);
+    const candidate = (await latestCloseout(d.tenant, d.notebook, d.first.jobId, d.view.seq))!;
+    const start = { title: "New execution", templateRevisionId: candidate.id, template: body(), clientEventId: uuid(), occurredAt: new Date().toISOString() };
+    const fresh = startedC(await startJob(d.tenant, d.notebook, d.asset, start, ACTOR));
+    expect(fresh.view.template.instruction).toEqual(candidate.body.instruction);
+    expect(fresh.view.steps.every(s => !s.done)).toBe(true);
+    expect(fresh.view.finished).toBeNull();
+    expect(await startJob(d.tenant, d.notebook, d.asset, { ...start, template: candidate.body, templateRevisionId: null }, ACTOR)).toEqual({ status: "invalid_template" });
+    expect(await createJobSheet(d.tenant, { clientRequestId: uuid(), body: candidate.body }, ACTOR)).toMatchObject({ status: "invalid_body", error: "unknown_field" });
+    expect(await reviseJobSheet(d.tenant, d.first.jobId, { clientRequestId: uuid(), body: candidate.body }, ACTOR)).toMatchObject({ status: "invalid_body", error: "unknown_field" });
+    expect(await reviseJobSheet(d.tenant, d.first.jobId, { clientRequestId: uuid(), body: body() }, ACTOR)).toMatchObject({ status: "invalid_body", error: "structured_review_required" });
+    const freshQC = instructionRecordV2(d.notebook, fresh.view, null);
+    expect(freshQC.review.technicianCloseout).toBe("not_recorded");
+    expect(freshQC.sourceEvidence?.closeout?.jobId).toBe(d.first.jobId);
+    expect(await startJob(d.tenant, d.notebook, { ...d.asset, entityId: "other-machine" }, { ...start, clientEventId: uuid() }, ACTOR)).toEqual({ status: "template_asset_mismatch" });
+    await testPool.query(`UPDATE equipment_notebooks SET model='Changed model' WHERE id=$1::uuid`, [d.notebook]);
+    expect(await startJob(d.tenant, d.notebook, d.asset, { ...start, clientEventId: uuid() }, ACTOR)).toEqual({ status: "template_asset_mismatch" });
+  });
+  it("returns a conflict for a concurrent QC/generic revision request-key collision", async () => {
+    const d = await finished();
+    const sheet = createdC(await createJobSheet(d.tenant, { clientRequestId: uuid(), body: body() }, ACTOR));
+    const results = await Promise.all([
+      recordCloseout(d.tenant, d.notebook, d.first.jobId, d.qc, ACTOR),
+      reviseJobSheet(d.tenant, sheet.jobSheetId, { clientRequestId: d.qc.clientRequestId, body: body({ title: "Unrelated draft" }) }, ACTOR),
+    ]);
+    expect(results.map(r => r.status).sort()).toEqual(["created", "request_id_conflict"]);
+  });
+  it("does not deadlock when request UUIDs cross job-sheet resource UUIDs", async () => {
+    const tenant = uuid();
+    const a = createdC(await createJobSheet(tenant, { clientRequestId: uuid(), body: body() }, ACTOR));
+    const b = createdC(await createJobSheet(tenant, { clientRequestId: uuid(), body: body() }, ACTOR));
+    const results = await Promise.all([
+      reviseJobSheet(tenant, a.jobSheetId, { clientRequestId: b.jobSheetId, body: body({ title: "A" }) }, ACTOR),
+      reviseJobSheet(tenant, b.jobSheetId, { clientRequestId: a.jobSheetId, body: body({ title: "B" }) }, ACTOR),
+    ]);
+    expect(results.map(r => r.status)).toEqual(["created", "created"]);
+  });
 });
 
 describe("job sheet templates — createJobSheet idempotency", () => {

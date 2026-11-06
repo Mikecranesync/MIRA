@@ -1,0 +1,32 @@
+Candidate source at execution:300685118582f14e5bef3c049939e5baf8fc3780
+No product code changed during this CV-101 acceptance audit.
+Offline regression evidence, not a physical or live-service acceptance run.
+
+Command1:
+python3 -m pytest -q tests/test_cv101_live_gate.py tests/test_cv101_relay_route_contract.py tests/test_cv101_ingest_e2e.py tests/test_cv101_relay_ingest_e2e.py tests/test_dogfood_cv101_identity_seed.py tests/test_gs10_seed_facts.py
+Captured stdout:
+................................ss...................                    [100%]
+51 passed, 2 skipped in0.49s
+Skip source: test_cv101_relay_route_contract.py rendered-config checks;
+docker compose not available. Static route-contract checks still ran.
+
+Command2:
+PYTHONPATH=plc/live-plc-bridge python3 -m pytest -q -rs plc/live-plc-bridge/tests/test_cv101_relay_poller.py tests/ignition/test_gateway_live_snapshot.py tests/ignition/test_tag_collector.py
+Captured stdout:
+........................................................................ [74%]
+.........................                                                [100%]
+97 passed in0.84s
+
+The two commands cover disjoint tests:148 passed /2 skipped.
+The additional ingest-only diagnostic rerun passed6 tests in0.17s;
+these are included in Command1 and are not counted twice.
+
+Gate tests include real-historical replay fixture rejection and synthetic live,
+SimLab exclusion, scope/freshness/quality/identity controls. Reader tests use
+fake PLC/transport objects and assert no write calls; collector tests use
+fixtures. ASGI tests run in process with an in-memory store. None opens the
+actual PLC, manipulates the physical rig, or proves current parameter mapping.
+
+Actual service evidence is separate: endpoints.json and the sanitized
+db-inspect-cv101.txt. db-inspect run42202828348 is cancelled after its existing
+5-minute timeout; it is not a green complete acceptance workflow.

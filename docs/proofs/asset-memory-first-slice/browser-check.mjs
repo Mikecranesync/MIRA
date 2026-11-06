@@ -1,0 +1,33 @@
+import {createRequire} from 'node:module';import fs from 'node:fs';import assert from 'node:assert/strict';
+import {fileURLToPath} from 'node:url';import path from 'node:path';
+const here=path.dirname(fileURLToPath(import.meta.url)),repo=path.resolve(here,'../../..'),out=path.resolve(process.argv[2]??'/tmp/mira-asset-memory-proof'),hub=path.join(repo,'mira-hub');
+fs.mkdirSync(out,{recursive:true});
+const require=createRequire(hub+'/package.json');
+await require('esbuild').build({entryPoints:[path.join(here,'browser.tsx')],outfile:out+'/browser.js',bundle:true,platform:'browser',absWorkingDir:hub,tsconfig:hub+'/tsconfig.json',jsx:'automatic',nodePaths:[hub+'/node_modules'],plugins:[{name:'proof-records',setup(b){b.onResolve({filter:/^asset-memory-proof-records$/},()=>({path:path.join(out,'browser-records.json')}))}}],define:{'process.env.NODE_ENV':'"production"','process.env.NEXT_PUBLIC_API_BASE':'"/hub"','process.env.OAUTH_BASE_PATH':'""','process.env.NEXT_PUBLIC_MAX_UPLOAD_MB':'"50"'}});
+const script=fs.readFileSync(out+'/browser.js','utf8');
+fs.writeFileSync(out+'/browser.html','<!doctype html><html><head><meta charset="utf-8"><style>body{margin:10px;font:17px Arial;--fl-text:#111;--fl-surface:#fff;--fl-line:#ccc;--fl-muted:#444}button{min-height:48px;margin:4px}*{box-sizing:border-box}</style></head><body><div id="root"></div><script>'+script.replaceAll('</script>','<\/script>')+'</script></body></html>');
+const{chromium}=require('playwright'),browser=await chromium.launch({headless:true});
+const records=JSON.parse(fs.readFileSync(out+'/browser-records.json','utf8'));
+try{
+const page=await browser.newPage({viewport:{width:412,height:915}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
+await page.goto('file://'+out+'/browser.html');
+await page.waitForFunction(()=>window.__requests?.length>0);
+await page.getByRole('button',{name:'Switch to second job'}).click();
+await page.waitForFunction(id=>window.__selected?.jobId===id,records.B.snapshot.jobId);
+await page.waitForFunction(ids=>ids.every(id=>window.__responses.some(url=>url.includes(id))),[records.A.snapshot.jobId,records.B.snapshot.jobId]);
+let selected=await page.evaluate(()=>window.__selected);assert.equal(selected.jobId,records.B.snapshot.jobId);
+await page.getByRole('button',{name:'Reopen illustrated repair guide'}).click();
+await page.getByRole('heading',{name:'SECOND SYNTHETIC JOB',exact:true}).waitFor();
+assert.equal(await page.getByRole('heading',{name:records.A.closeout.body.instruction.packet.workOrder.title,exact:true}).count(),0);
+const frozen=await page.evaluate(()=>window.__freeze());assert.equal(frozen.same,true);assert.equal(frozen.body.livingSheetJobId,records.B.snapshot.jobId);assert.deepEqual(frozen.body.livingSheetSelector,records.B.assetMemory.selector);assert.equal(frozen.target.notebookId,records.B.lineage.notebookId);
+await page.screenshot({path:out+'/controls-412.png',fullPage:true});
+await page.getByRole('button',{name:'Queue job update'}).click();
+await page.waitForFunction(()=>window.__selected===null);assert.equal(await page.getByRole('heading',{name:'SECOND SYNTHETIC JOB',exact:true}).count(),0);
+assert.equal(await page.getByRole('button',{name:'Reopen illustrated repair guide'}).isDisabled(),true);
+await page.getByRole('button',{name:'Save job update'}).click();
+await page.waitForFunction(id=>window.__selected?.jobId===id,records.B.snapshot.jobId);
+const result=await page.evaluate(()=>({selected:window.__selected,requests:window.__requests,events:window.__events,viewport:innerWidth,scrollWidth:document.documentElement.scrollWidth}));
+assert.equal(result.scrollWidth,412);assert.deepEqual(errors,[]);
+const receipt={kind:'actual_controls_component_journey',classification:'fictional_development_exposed_fixture',io:'mocked fetch only; actual Controls, Guide, scoping/generation and frozen-body helpers',checks:9,race:'late first-job response cannot replace selected second job',pending:'pending execution clears selection and hides print/QC until reload',retry:'exact decorated body and original target reused without redecorating',errors,...result};
+fs.writeFileSync(out+'/browser-receipt.json',JSON.stringify(receipt,null,2));console.log(JSON.stringify({checks:9,scrollWidth:result.scrollWidth,errors,selectedJob:result.selected.jobId}));
+}finally{await browser.close()}

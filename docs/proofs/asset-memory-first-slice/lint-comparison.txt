@@ -1,0 +1,1 @@
+PASS: unchanged existing lint diagnostics in LivingSheet, hub-host and chat route (7 errors, 6 warnings). All other changed product/tests lint clean. Baseline and current JSON logs retained in /tmp/asset-memory-lint-*.json.

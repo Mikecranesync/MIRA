@@ -97,6 +97,7 @@ import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
 import { authorizeGuidedDeadEnd, guidedProcedureEnabled } from "@/capabilities/guided-procedure-store";
 import { isUuid } from "@/capabilities/fix-records";
+import { loadAssetMemory, legacySheetAssetMatches, validateAssetMemorySelector, type AssetMemoryProjection } from "@/capabilities/living-sheet/asset-memory";
 import { livingSheetEnabled } from "@/capabilities/living-sheet/flag";
 import { withSheetReceipt, type SheetReceiptContext } from "@/capabilities/living-sheet/receipt";
 import { loadJob } from "@/capabilities/living-sheet/store";
@@ -1179,7 +1180,7 @@ async function verifyVisualEntry(
 function renderLivingSheetJobSection(view: SheetView): string {
   const openSteps = view.steps.filter((s) => !s.done);
   const lines = [
-    `## Living Work Sheet — "${view.title}" (job in progress; everything below is technician-reported, not verified)`,
+    `## Living Work Sheet — "${view.title}" (${view.finished ? "job finish recorded" : "job in progress"}; everything below is technician-reported, not verified)`,
     openSteps.length > 0
       ? `- Open steps: ${openSteps.map((s) => s.text).join("; ")}`
       : "- Open steps: none — every step is marked done.",
@@ -1234,6 +1235,7 @@ async function handleChatTurn(
      *  server re-derives the job's current view itself (loadJob, scoped to
      *  THIS notebook). */
     livingSheetJobId?: unknown;
+    livingSheetSelector?: unknown;
   };
   try {
     body = await req.json();
@@ -1685,6 +1687,16 @@ async function handleChatTurn(
     }
   };
 
+  // Cheap optional-selector validation follows completed replay. A possible
+  // terminal energized-work ask must first reach the canonical safety decision;
+  // optional job metadata cannot replace that stop or bypass notebook ownership.
+  const memoryPin = body.livingSheetSelector === undefined ? undefined : validateAssetMemorySelector(body.livingSheetSelector);
+  const invalidMemoryPin = memoryPin && (!livingSheetEnabled() || !livingSheetJobId || !memoryPin.ok || Buffer.byteLength(JSON.stringify(body.livingSheetSelector), "utf8") > 2048);
+  if (invalidMemoryPin && !energizedAskEarly) {
+    await abandonRequestClaim(); endRoot();
+    return NextResponse.json({ error: "invalid_selector" }, { status: 400 });
+  }
+
   // PRD §27: no sources selected is an explicit, honest state — not a silent
   // fall-through to the global corpus.
   const validated = await releaseClaimOnFailure(() =>
@@ -2013,6 +2025,29 @@ async function handleChatTurn(
   // than a real `addSpanLink`). See the cross-lane report for the follow-up.
   if (visualEntry) setSpanAttrs({ "mira.visual.file_id": visualEntry.fileId }, rootSpan);
 
+  // A pin is materialized ONCE after completed-request replay and before any
+  // translation/provider work. Canonical terminal safety serves without reading
+  // optional memory at all; ordinary pins retain the same admission boundary.
+  let assetMemoryProjection: AssetMemoryProjection | null = null;
+  if (invalidMemoryPin && !energizedWorkAsk) {
+    await abandonRequestClaim(); endRoot();
+    return NextResponse.json({ error: "invalid_selector" }, { status: 400 });
+  }
+  if (!energizedWorkAsk && memoryPin?.ok && livingSheetJobId) {
+    try {
+      const memory = await loadAssetMemory(ctx.tenantId, notebookId, livingSheetJobId, { selector: memoryPin.value, forChat: true, authorizedNotebookId: notebookId });
+      if (memory.status !== "ok") {
+        await abandonRequestClaim(); endRoot();
+        return NextResponse.json({ error: memory.status }, { status: memory.status === "invalid_selector" ? 400 : memory.status.endsWith("not_found") ? 404 : 409 });
+      }
+      assetMemoryProjection = memory.record.assetMemory;
+    } catch {
+      await abandonRequestClaim(); endRoot();
+      return NextResponse.json({ error: "asset_memory_unavailable" }, { status: 503 });
+    }
+  }
+
+
   // A claimed photo is allowed past the early zero-source branch only so its
   // server record can be checked. If it is unverified/healthy and this is not a
   // general turn, preserve the original explicit no-sources refusal.
@@ -2030,6 +2065,13 @@ async function handleChatTurn(
   const boundAsset: ResolvedAsset = await releaseClaimOnFailure(() =>
     resolveBoundAsset(ctx.tenantId, notebookId),
   );
+  // The ordinary chat context resolves identity independently. A rebind since
+  // pinned materialization must refuse, never mix job A with current asset B.
+  if (assetMemoryProjection && (boundAsset.state !== "resolved" || !boundAsset.confirmedAt || boundAsset.entityId !== assetMemoryProjection.historical.asset.entityId)) {
+    await abandonRequestClaim(); endRoot();
+    return NextResponse.json({ error: "asset_mismatch" }, { status: 409 });
+  }
+
   rec.stage("identity", {
     ran: true,
     state: boundAsset.state === "resolved" ? "verified" : "unknown",
@@ -3674,10 +3716,12 @@ async function handleChatTurn(
   // every other living-sheet read route. Own try/catch: a missing table or
   // unknown job answers without this section, never a broken turn.
   let sheetSection = "";
-  if (livingSheetEnabled() && livingSheetJobId) {
+  if (assetMemoryProjection) {
+    sheetSection = JSON.stringify(assetMemoryProjection);
+  } else if (livingSheetEnabled() && livingSheetJobId) {
     try {
       const sheet = await loadJob(ctx.tenantId, notebookId, livingSheetJobId);
-      if (sheet.status === "ok") sheetSection = renderLivingSheetJobSection(sheet.view);
+      if (sheet.status === "ok" && legacySheetAssetMatches(sheet.view, boundAsset)) sheetSection = renderLivingSheetJobSection(sheet.view);
     } catch (err) {
       console.error(
         `[notebook-chat] living sheet job load failed code=${(err as { code?: string }).code ?? "?"} ` +
@@ -5282,7 +5326,7 @@ async function handleChatTurn(
                   ...(visualEntry ? [visualEntry] : []),
                   ...proposalEntries,
                 ]
-              : [...hazardEntries, ...(manualSafetyEntry ? [manualSafetyEntry] : []), ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries, ...proposalEntries, ...(observedPersistEntry ? [observedPersistEntry] : []), ...(weakEntry ? [weakEntry] : [])]
+              : [...hazardEntries, ...(manualSafetyEntry ? [manualSafetyEntry] : []), ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries, ...proposalEntries, ...(observedPersistEntry ? [observedPersistEntry] : []), ...(assetMemoryProjection && !refused && !outputRejected ? [{ kind: "asset_memory", projection: assetMemoryProjection }] : []), ...(weakEntry ? [weakEntry] : [])]
             // Not served: the technician's own photo still stays on their saved
             // question (#4289 F4); hydration shows no observation on a failed answer.
             : [...hazardEntries, ...emittedCitations, ...disputeEntries, ...proposalEntries, ...(visualEntry ? [visualEntry] : []), ...providerFailureEntries],
@@ -5534,6 +5578,16 @@ async function handleChatTurn(
  *  counter that exists to notice it. */
 const INGRESS_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+async function withScopedLegacySheetReceipt(response: Response, ctx: SheetReceiptContext): Promise<Response> {
+  if (!response.ok) return response;
+  try {
+    const bound = await resolveBoundAsset(ctx.tenantId, ctx.notebookId);
+    if (bound.state === "unbound") return withSheetReceipt(response, ctx);
+    const sheet = await loadJob(ctx.tenantId, ctx.notebookId, ctx.jobId);
+    return sheet.status === "ok" && legacySheetAssetMatches(sheet.view, bound) ? withSheetReceipt(response, ctx) : response;
+  } catch { return response; }
+}
+
 export async function POST(req: NextRequest, routeCtx: { params: Promise<{ id: string }> }) {
   const attemptId = crypto.randomUUID();
   let notebookId: string | null = null;
@@ -5574,7 +5628,7 @@ export async function POST(req: NextRequest, routeCtx: { params: Promise<{ id: s
       const b = await req.clone().json();
       const text = typeof b?.message === "string" ? b.message.trim() : "";
       const jobId = b?.livingSheetJobId;
-      if (text && typeof jobId === "string" && isUuid(jobId)) {
+      if (b?.livingSheetSelector === undefined && text && typeof jobId === "string" && isUuid(jobId)) {
         const sctx = await sessionOr401();
         if (!(sctx instanceof NextResponse)) {
           // F08: the turn's own id keys the proposals, so the same words in two
@@ -5596,7 +5650,7 @@ export async function POST(req: NextRequest, routeCtx: { params: Promise<{ id: s
       try {
         const inner = await handleChatTurn(req, routeCtx, ingress);
         innerStatus = inner.status;
-        return sheetReceiptCtx ? await withSheetReceipt(inner, sheetReceiptCtx) : inner;
+        return sheetReceiptCtx ? await withScopedLegacySheetReceipt(inner, sheetReceiptCtx) : inner;
       } catch (err) {
         ingress.closeOnUnhandled?.("error");
         throw err;
@@ -5613,7 +5667,7 @@ export async function POST(req: NextRequest, routeCtx: { params: Promise<{ id: s
   try {
     const res = await handleChatTurn(req, routeCtx, ingress);
     status = res.status;
-    return sheetReceiptCtx ? await withSheetReceipt(res, sheetReceiptCtx) : res;
+    return sheetReceiptCtx ? await withScopedLegacySheetReceipt(res, sheetReceiptCtx) : res;
   } catch (err) {
     // A throw that escaped every `endRoot` would leave the start record open
     // until the reconciler swept it — reported as `abandoned` when it was in

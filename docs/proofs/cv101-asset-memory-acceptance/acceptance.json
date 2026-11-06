@@ -1,0 +1,103 @@
+{
+  "classification": "actual cloud/repository/access evidence; incomplete real-equipment acceptance",
+  "candidateSha": "300685118582f14e5bef3c049939e5baf8fc3780",
+  "mainAndDeployedStagingSha": "090c8e15bfcbd85f0091103cf5a6f5fc6b221056",
+  "deployedProductionSha": "489088d4cc0f8d16c02036df891752120a0250da",
+  "productionChanged": false,
+  "asset": {
+    "id": "64a24de7-2809-4c35-b4fe-202be80393d6",
+    "tenantId": "e88bd0e8-8a84-4e30-9803-c0dc6efb07fe",
+    "equipmentNumber": "CV-101",
+    "label": "Discharge Conveyor",
+    "unsPath": "enterprise.home_garage.conveyor_lab.conveyor_1",
+    "kgBridgeApprovalState": "verified",
+    "entityIdIsCmmsUuid": true,
+    "currentPhysicalIdentityVerified": false,
+    "confirmedNotebookRowsAcrossCv101NamedAssets": 1,
+    "garageNotebookIdentityVerified": false,
+    "notebookSourceCountInReturnedRow": 3,
+    "sourceContentsVerified": false
+  },
+  "inspection": {
+    "url": "https://github.com/Mikecranesync/MIRA/actions/runs/42202828348",
+    "conclusion": "cancelled",
+    "reason": "maximum execution time5m0s exceeded",
+    "serverNow": "2026-11-06T10:32:00.318324Z",
+    "completedTelemetrySections": [
+      "A",
+      "B"
+    ],
+    "incompleteTelemetrySections": [
+      "C",
+      "D",
+      "E",
+      "F",
+      "G",
+      "H"
+    ],
+    "privateFullLogSha256": "fab8a8f82d9cd84e835a33580412e99ad5b82c8fb8784e87a1b3dc38e4460232",
+    "sourceGroupQueryMsApprox": 55200,
+    "groupScope": "all rows ingested during prior24h grouped by source system/connection; not tenant-qualified"
+  },
+  "sourceGroups": [
+    {
+      "sourceSystem": "plc_bridge",
+      "sourceConnectionId": "cv101-bench-modbus",
+      "rows24h": 721,
+      "distinctObservedTimestamps": 721,
+      "observedSpan": "01:00:07.291",
+      "ingestSpan": "01:00:00.188897",
+      "newestObservedAt": "2026-11-05T22:25:02.165Z",
+      "newestIngestedAt": "2026-11-05T22:25:02.706139Z",
+      "observationAgeAtQuery": "12:06:58.207763",
+      "classification": "persisted historical source group; stale now; physical correlation unproven",
+      "tenantTagQualityAndValueVerifiedByThisQuery": false
+    },
+    {
+      "sourceSystem": "ignition",
+      "sourceConnectionId": "cv101-bench-gw",
+      "rows24h": 72,
+      "distinctObservedTimestamps": 2,
+      "observedSpan": "00:00:02",
+      "ingestSpan": "09:21:51.267258",
+      "newestObservedAt": "2026-11-04T01:45:41Z",
+      "newestIngestedAt": "2026-11-05T22:58:57.993116Z",
+      "observationAgeAtQuery": "2days08:46:19.372763",
+      "classification": "historical source observations and receipts; not current state; grouped probe cannot establish replay mechanism"
+    }
+  ],
+  "dedicatedLiveGate": {
+    "state": "disabled_manually",
+    "dispatchStatus": 422,
+    "message": "Cannot trigger a workflow_dispatch on a disabled workflow.",
+    "executed": false,
+    "enabledByThisAudit": false
+  },
+  "ownerAuthenticatedJourney": false,
+  "anonymousAssetContextDocumentsAndMemory": [
+    401,
+    401,
+    401
+  ],
+  "physicalOperation": false,
+  "newObservationWritten": false,
+  "atlasOrderCreatedOrModified": false,
+  "scenarioStatus": {
+    "A": "BLOCKED",
+    "B_freshBaseline": "FAIL",
+    "B_answerComparison": "BLOCKED",
+    "C": "NOT TESTED",
+    "D": "BLOCKED",
+    "E": "BLOCKED",
+    "F": "BLOCKED"
+  },
+  "independentCompleteChainReview": "NOT TESTED: chain incomplete",
+  "softwareRegressions": {
+    "passed": 148,
+    "skipped": 2,
+    "skipReason": "docker compose not available for rendered-config checks",
+    "physicalProof": false
+  },
+  "mergeReady": false,
+  "nextDependency": "existing garage-owner session and fresh accessible existing reader; operator confirmation only after baseline"
+}
