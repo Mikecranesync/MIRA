@@ -1649,6 +1649,10 @@ jobs:
               - 'mira-hub/tests/integration/fixtures/nul-glyph-4p-multilingual.pdf'
               - 'mira-hub/db/migrations/003_kb_hardening.sql'
               - 'mira-hub/db/migrations/049_grant_app_knowledge_entries_insert.sql'
+              - 'mira-hub/src/lib/uploads.ts'
+              - 'mira-hub/src/lib/tenant-context.ts'
+              - 'mira-hub/src/lib/node-knowledge-ingest.ts'
+              - 'mira-hub/tests/integration/upload-attempt-races.integration.test.ts'
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         if: steps.changes.outputs.lifecycle == 'true'
@@ -1718,6 +1722,21 @@ jobs:
           sed -E 's/\x1b\[[0-9;]*[A-Za-z]//g' /tmp/pdf-nul.out > /tmp/pdf-nul.plain
           grep -qE "pdf-nul-ingest\.integration\.test\.ts \(2 tests\)" /tmp/pdf-nul.plain || {
             echo "::error::both real-parser/Postgres NUL cases must execute and pass"; exit 1; }
+      - name: Upload attempt races (real Postgres; must execute both cases)
+        if: steps.changes.outputs.lifecycle == 'true'
+        working-directory: mira-hub
+        env:
+          MIRA_INTEGRATION_EXTRA_MIGRATIONS: "003_kb_hardening.sql,049_grant_app_knowledge_entries_insert.sql,099_hub_uploads_attempt_id.sql"
+        run: |
+          set -euo pipefail
+          node scripts/setup-integration-db.mjs
+          node node_modules/vitest/vitest.mjs run \
+            --config vitest.integration.config.ts \
+            tests/integration/upload-attempt-races.integration.test.ts \
+            2>&1 | tee /tmp/upload-races.out
+          sed -E 's/\x1b\[[0-9;]*[A-Za-z]//g' /tmp/upload-races.out > /tmp/upload-races.plain
+          grep -qE "upload-attempt-races\.integration\.test\.ts \(2 tests\)" /tmp/upload-races.plain || {
+            echo "::error::both upload-attempt race cases must execute and pass"; exit 1; }
 
 
   notebook-event-outbox-pg:

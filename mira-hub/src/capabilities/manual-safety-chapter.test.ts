@@ -667,3 +667,18 @@ describe("retrieveSafetyChapterChunks", () => {
     expect(SAFETY_CHAPTER_DIRECTIVE).toMatch(/no physical work/);
   });
 });
+
+
+describe("duplicate upload aliases retain the admitted manual's safety chapter", () => {
+  it("reads the original document but returns the selected alias in citation chunks", async () => {
+    process.env[GATE] = "true";
+    const alias = "dddddddd-0000-4000-8000-00000000000d";
+    const client = fakeClient(CORPUS);
+    const out = await retrieveSafetyChapterChunks(client, "tenant", [chunk(P372, 372, alias)], {
+      approvedSourceDocIds: [alias], docAliases: new Map([[alias, DOC]]),
+    });
+    expect(out.some(c => c.content === P18)).toBe(true);
+    expect(out.every(c => c.docId === alias)).toBe(true);
+    expect(client.calls.every(c => !JSON.stringify(c.params).includes(alias))).toBe(true);
+  });
+});

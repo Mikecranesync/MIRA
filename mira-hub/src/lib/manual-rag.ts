@@ -1,6 +1,6 @@
-import type { PoolClient } from "pg";
 import { citationPageLabel } from "@/lib/citation-page";
 import type { IdentityStatus } from "@/lib/equipment-notebooks";
+import type { PoolClient } from "pg";
 import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
 import { MODEL_PATTERNS, modelIdentitiesInText, resolveModelFromObservationText } from "@/capabilities/model-token";
@@ -1274,7 +1274,7 @@ async function runBm25Query(
  * Caller MUST run this inside `withTenantContext` so RLS scopes kg_entities and
  * knowledge_entries to the current tenant.
  */
-export async function retrieveNodeChunks(
+async function retrieveScopedNodeChunks(
   client: PoolClient,
   tenantId: string,
   query: string,
@@ -2510,17 +2510,18 @@ export async function retrieveCitedPageChunks(
   client: Pick<PoolClient, "query">,
   tenantId: string,
   pages: readonly CitedPageRef[],
-  opts: { approvedSourceDocIds?: string[]; keep?: (content: string) => boolean; now?: () => number } = {},
+  opts: { approvedSourceDocIds?: string[]; keep?: (content: string) => boolean; now?: () => number; docAliases?: ReadonlyMap<string, string> } = {},
 ): Promise<Array<{ content: string; sourceUrl: string; sourcePage: number }>> {
   if (pages.length === 0) return [];
+  const storedId = (id: string) => opts.docAliases?.get(id) ?? id;
   const base: unknown[] = [
     tenantId,
-    pages.map((p) => p.docId),
+    pages.map((p) => storedId(p.docId)),
     pages.map((p) => p.sourceUrl),
     pages.map((p) => p.page),
     CANDIDATE_PATTERN,
   ];
-  const approved = (opts.approvedSourceDocIds ?? []).filter(Boolean);
+  const approved = (opts.approvedSourceDocIds ?? []).filter(Boolean).map(storedId);
   const admitApproved = approved.length > 0 && approvalGateEnabled();
   if (admitApproved) base.push(approved);
   const now = opts.now ?? Date.now;
@@ -2566,4 +2567,57 @@ export async function retrieveCitedPageChunks(
     cursor = last;
   }
   return out;
+}
+
+type NodeChunkOpts = Parameters<typeof retrieveScopedNodeChunks>[3] & {
+  /** duplicate upload id -> its original (resolveDuplicateDocAliases), resolved
+   *  by the CALLER before it took the connection passed here. */
+  docAliases?: ReadonlyMap<string, string>;
+};
+
+/**
+ * Retrieve a node's chunks, following duplicate uploads to their original
+ * (Codex review of #4091 at 1082ad199, F6; owner decision 2026-10-05 "alias at
+ * read"). An upload recorded "duplicate of <original>" owns no chunks, so a doc
+ * scope naming it would retrieve nothing. With `docAliases`, each requested id
+ * is resolved to the chunk owner before the scoped read, and the owner's
+ * chunks come back labelled with the id the caller asked for — so citations,
+ * the approval/admission sets and source snapshots all keep seeing the
+ * requested scope. When the original is itself in scope its chunks keep its
+ * own id (counted once).
+ *
+ * This never looks the aliases up itself (Codex review of #4091 at cb0741f6e,
+ * F8): the caller already holds `client`, and a second pool connection taken
+ * here starves the 5-connection pool under concurrent chats. Callers resolve
+ * before they open their transaction and pass the map in.
+ */
+export async function retrieveNodeChunks(
+  client: PoolClient,
+  tenantId: string,
+  query: string,
+  opts: NodeChunkOpts,
+): Promise<ManualChunk[]> {
+  const { docAliases, ...scope } = opts;
+  if (!docAliases || docAliases.size === 0) return retrieveScopedNodeChunks(client, tenantId, query, scope);
+
+  const requested = scope.docIds ?? (scope.docId ? [scope.docId] : []);
+  const owner = (id: string) => docAliases.get(id) ?? id;
+  const inScope = new Set(requested);
+  const labelFor = new Map<string, string>();
+  for (const id of requested) {
+    const original = docAliases.get(id);
+    if (original && !inScope.has(original) && !labelFor.has(original)) labelFor.set(original, id);
+  }
+  const chunks = await retrieveScopedNodeChunks(client, tenantId, query, {
+    ...scope,
+    docId: scope.docId ? owner(scope.docId) : scope.docId,
+    docIds: scope.docIds ? [...new Set(scope.docIds.map(owner))] : scope.docIds,
+    approvedSourceDocIds: scope.approvedSourceDocIds
+      ? [...new Set(scope.approvedSourceDocIds.map(owner))]
+      : scope.approvedSourceDocIds,
+  });
+  return chunks.map((c) => {
+    const label = c.docId ? labelFor.get(c.docId) : undefined;
+    return label ? { ...c, docId: label } : c;
+  });
 }

@@ -25,6 +25,16 @@ vi.mock("@/lib/tenant-context", () => ({
     tenantCtxCalls.push(tenantId);
     return fn(scriptedClient);
   },
+  // Migration 099: link + source sync hold the upload row; here it always exists.
+  withUploadRowTenantContext: async (
+    tenantId: string,
+    _uploadId: string,
+    _attemptId: unknown,
+    fn: (c: PoolClient) => Promise<unknown>,
+  ) => {
+    tenantCtxCalls.push(tenantId);
+    return { held: true, result: await fn(scriptedClient) };
+  },
 }));
 
 import {

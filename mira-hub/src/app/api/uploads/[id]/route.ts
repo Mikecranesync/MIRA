@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-import { getUpload, getUploadCounts, updateUploadStatus, deleteUpload } from "@/lib/uploads";
+import { cancelUpload, getUpload, getUploadCounts, deleteUploadAndKnowledge } from "@/lib/uploads";
 import { sessionOr401 } from "@/lib/session";
 import { makeUploadLogger } from "@/lib/upload-log";
 import { composeTimeout, isAbortError } from "@/lib/abort-helpers";
@@ -70,9 +70,39 @@ export async function DELETE(
   const log = makeUploadLogger({ requestId, uploadId: id, tenantId: ctx.tenantId });
 
   if (!TERMINAL.includes(row.status)) {
-    await updateUploadStatus(id, ctx.tenantId, "cancelled", "user cancelled");
+    // Cancel REVOKES the running attempt and removes what it already wrote, in
+    // one transaction that waits for a chunk insert in progress (migration 099).
+    const cancelled = await cancelUpload(id, ctx.tenantId, "user cancelled");
+    if (!cancelled) {
+      // It finished (or was requeued) between our read and the cancel.
+      const current = await getUpload(id, ctx.tenantId);
+      return NextResponse.json(
+        { error: "upload_state_changed", currentStatus: current?.status ?? "deleted" },
+        { status: 409, headers: { "X-Request-Id": requestId } },
+      );
+    }
     log.log("cancelled", { previousStatus: row.status });
     return NextResponse.json({ ok: true, action: "cancelled" }, { headers: { "X-Request-Id": requestId } });
+  }
+
+  // Chunks first, in one transaction with the row: a delete that left the
+  // chunks behind kept the manual citable after the technician removed it.
+  const outcome = await deleteUploadAndKnowledge(id, ctx.tenantId);
+  if (outcome === "in_progress") {
+    // A retry or re-pick requeued it after we read its status.
+    return NextResponse.json(
+      { error: "upload_in_progress", hint: "The import restarted; cancel it first." },
+      { status: 409, headers: { "X-Request-Id": requestId } },
+    );
+  }
+  if (outcome === "not_found") {
+    return NextResponse.json({ error: "not_found" }, { status: 404, headers: { "X-Request-Id": requestId } });
+  }
+  if (outcome === "retained") {
+    return NextResponse.json(
+      { error: "verified_document_retained", hint: "Un-verify the document before deleting it." },
+      { status: 409, headers: { "X-Request-Id": requestId } },
+    );
   }
 
   if (row.status === "parsed" && row.kbFileId) {
@@ -83,7 +113,6 @@ export async function DELETE(
     }
   }
 
-  await deleteUpload(id, ctx.tenantId);
   log.log("deleted", { previousStatus: row.status });
   return NextResponse.json({ ok: true, action: "deleted" }, { headers: { "X-Request-Id": requestId } });
 }

@@ -148,3 +148,17 @@ describe("cited-page read: keyset batches, no total-row cap (#4509 Codex r4 F1)"
     expect(query.mock.calls.filter(([q]) => !/SET LOCAL/.test(q)).length).toBeLessThan(10);
   });
 });
+
+
+describe("cited-page notice follows the already-admitted upload alias", () => {
+  it("maps both the exact page document and approval set to its stored owner", async () => {
+    vi.stubEnv("MIRA_ENFORCE_APPROVED_RETRIEVAL", "true");
+    const alias = "dddddddd-0000-4000-8000-00000000000d";
+    const { client, query } = fakeClient();
+    await retrieveCitedPageChunks(client, TENANT, [{ ...page, docId: alias }], {
+      approvedSourceDocIds: [alias], docAliases: new Map([[alias, DOC]]),
+    });
+    const [, params] = query.mock.calls[query.mock.calls.length - 1];
+    expect(params).toEqual([TENANT, [DOC], [page.sourceUrl], [page.page], CANDIDATE_PATTERN, [DOC]]);
+  });
+});

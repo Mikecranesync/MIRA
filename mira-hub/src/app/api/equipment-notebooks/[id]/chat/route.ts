@@ -60,6 +60,7 @@ import { withSupportingQuotes } from "@/capabilities/supporting-quote";
 import { citedPagesFor, extractManualSafetyStatement, manualSafetyStatementForCitations } from "@/capabilities/manual-safety-statement";
 import { retrieveSafetyChapterChunks, SAFETY_CHAPTER_DIRECTIVE } from "@/capabilities/manual-safety-chapter";
 import { shadowVerifyCitedTurn } from "@/capabilities/claim-verifier-shadow";
+import { resolveDuplicateDocAliases } from "@/lib/uploads";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
 import { isWeakEvidence, WEAK_EVIDENCE_LABEL, WEAK_EVIDENCE_RULE } from "@/capabilities/observability/jev-weak-evidence";
 import {
@@ -2484,6 +2485,12 @@ async function handleChatTurn(
   } = {};
   const queryRewrite = await queryRewritePromise;
   retrievalDiagnostics.queryRewrite = queryRewrite.status;
+
+  // Review of #4091 (Codex @ 1082ad199/cb0741f6e, F6/F8): a "duplicate of"
+  // source owns no chunks; retrieval follows it to its original. Resolved
+  // before the tenant transaction takes a connection, never inside it.
+  const docAliases =
+    notebookRetrieval && docIds.length > 0 ? await resolveDuplicateDocAliases(ctx.tenantId, docIds) : undefined;
   const retrievedChunks: ManualChunk[] = oemRetrieval
     ? await (async () => {
         // Raw pool on purpose (hybrid corpus law — see manual-rag.ts header):
@@ -2553,6 +2560,7 @@ async function handleChatTurn(
             // The manual-vocabulary restatement of the message (query-rewrite.ts);
             // undefined when the flag is off or the rewrite failed.
             rewrittenQuery: queryRewrite.rewritten ?? undefined,
+            docAliases,
           }),
         ),
       );
@@ -2565,7 +2573,7 @@ async function handleChatTurn(
   if (notebookRetrieval && !oemRetrieval && retrievedChunks.length > 0) {
     try {
       safetyChapterChunks = await withTenantContext(ctx.tenantId, (client) =>
-        retrieveSafetyChapterChunks(client, ctx.tenantId, retrievedChunks, { approvedSourceDocIds: docIds }),
+        retrieveSafetyChapterChunks(client, ctx.tenantId, retrievedChunks, { approvedSourceDocIds: docIds, ...(docAliases?.size ? { docAliases } : {}) }),
       );
     } catch (err) {
       console.warn("[notebook-chat] safety-chapter read failed (retrieved chunks only):", err instanceof Error ? err.message : err);
@@ -4941,7 +4949,7 @@ async function handleChatTurn(
       if (citedPages.length > 0) {
         try {
           citedPageChunks = await withTenantContext(ctx.tenantId, (c) =>
-            retrieveCitedPageChunks(c, ctx.tenantId, citedPages, { approvedSourceDocIds: docIds, keep: (t) => extractManualSafetyStatement(t) !== null }),
+            retrieveCitedPageChunks(c, ctx.tenantId, citedPages, { approvedSourceDocIds: docIds, ...(docAliases?.size ? { docAliases } : {}), keep: (t) => extractManualSafetyStatement(t) !== null }),
           );
         } catch (err) {
           console.warn("[notebook-chat] cited-page read failed (notice from retrieved chunks only):", err instanceof Error ? err.message : err);
