@@ -1,0 +1,34 @@
+{
+  "kind": "redacted_qa_snapshot_projection_receipt",
+  "classification": "historical_exposed_synthetic_qa_partial_evidence",
+  "sourceFixtureSha256": "3b996ab51580feb087c1612479d59281c52a02dd300fc9d62c4a497d5d942fc0",
+  "jobId": "04bce10d-1acc-4a21-b5ba-fa06d3d14b05",
+  "notebookId": "d36d1927-d466-4cb4-8cad-3ce8394c3201",
+  "machine": {
+    "entityId": "PUMP-01",
+    "name": "Goulds 3196 Cooling Water Pump",
+    "capturedUnsPath": null
+  },
+  "seq": 6,
+  "checks": 13,
+  "historicalCoreStableAcrossRebinding": true,
+  "safety": "not_established",
+  "reusableAcceptance": "not_recorded",
+  "derivedRedactedSnapshotId": "sha256:a6fe7f87953791e0b6d70bf3884cb5a2981ca8992d8bcb323322828d8b7b6e8f",
+  "originalProductSnapshotHash": "not_available",
+  "fullEventReplay": false,
+  "componentManualLinks": "not_recorded",
+  "currentUpstreamReads": 0,
+  "localPrivateInputOnly": true,
+  "limitations": [
+    "Historical UNS unknown; no path derived from name, tag or seed.",
+    "Atlas create source=unlinked, externalAssetId=null.",
+    "Independent correctMachine is description-match-only, not an Atlas asset FK check.",
+    "Atlas1652 was OPEN; current status not queried.",
+    "Job finish/readback are not human acceptance or equipment safety clearance.",
+    "Exposed fictional QA evidence is not a clean benchmark or fresh live journey.",
+    "No component/manual/source-page associations present or invented.",
+    "Canonical export lacks event clocks/actor-label/work-order metadata; retained view does not restore a full event replay."
+  ],
+  "productSourceSha": "ba1d58a71769de81f7a53959617c3c0fb5d99a27"
+}

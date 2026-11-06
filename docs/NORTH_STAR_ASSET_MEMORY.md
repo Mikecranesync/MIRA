@@ -1,12 +1,23 @@
 # FactoryLM Asset Memory North Star
 
-Status: product direction and acceptance contract, 2026-11-06. Implementation
-status is tracked separately in the [capability inventory](discovery/2026-11-06-asset-memory-inventory.md)
+**Version:** 1.0 — Proposed
+
+**Date:** November 6, 2026
+
+**Status:** Strategic direction; implementation and acceptance pending
+
+Implementation status is tracked separately in the
+[capability inventory](discovery/2026-11-06-asset-memory-inventory.md)
 and [mission #5238](https://github.com/Mikecranesync/MIRA/issues/5238).
 This extends the maintenance-context wedge in [NORTH_STAR.md](../NORTH_STAR.md);
 it does not replace the commercial strategy or existing safety/release doctrine.
 
 ## The result a technician needs
+
+Give every industrial machine a trustworthy, continuously growing maintenance
+memory. FactoryLM connects the evidence scattered across equipment, technicians,
+documents, maintenance systems and operational data. MIRA makes it understandable
+and useful for the technician working on this specific machine.
 
 A technician asks MIRA about one specific machine: what happened, what work was
 actually done, which evidence supports it, and what remains unknown. MIRA can
@@ -16,6 +27,19 @@ repair guide present the same saved facts and review decisions.
 FactoryLM connects records owned by existing systems. MIRA explains the evidence;
 it does not become a new CMMS, historian, asset registry or source of physical
 safety authority. One machine with a trustworthy history is the first proof.
+
+## The five foundations
+
+| Foundation | Product responsibility |
+|---|---|
+| Asset identity | Stable machine identity connects components, manuals, tags, faults, work orders and observations despite renaming or replacement. |
+| Living Sheet | Primary capture interface for work as it happens, including observations, photographs, actions, completion claims, corrections and reviews. |
+| Meaning layer | Existing equipment graph connects authoritative systems with sourced, dated relationships and explicit validity/review information. |
+| Evidence-based intelligence | MIRA reconstructs the record while distinguishing source evidence, technician reports/corrections, approved instructions, hypotheses and unknowns. |
+| Human and machine outputs | The same evidence supports chat, sheet, illustrated guide, handover, CMMS references, history analysis and read-only interfaces. |
+
+The Living Sheet captures, the existing graph relates, and MIRA reasons. Atlas,
+manuals and industrial connectors retain authority for their own records.
 
 ## One connected record, several outputs
 
@@ -66,6 +90,12 @@ job/instruction contract. The existing Python `materialized_evidence` contract
 provides producer/hash/lineage semantics; it remains canonical for its producers.
 Integration should adapt existing representations, not create another writable
 registry or event store. A universal cross-runtime contract is not claimed today.
+
+Standards compatibility supports adoption: ISA-95, UNS and CESMII i3X inform the
+semantic model without requiring every customer to implement a complete UNS
+before using MIRA. Preserve the machine's existing confirmed key and an unknown
+UNS address when that is all the evidence establishes. This product direction
+does not waive identity confirmation or existing industrial read-only controls.
 
 ## Provenance and time are part of every fact
 
@@ -155,6 +185,52 @@ mandatory item keeps the slice partial; no readiness percentage substitutes.
 
 Representative device/job validation and actual human acceptance are separate
 from local unit, integration, browser/PDF and CI evidence.
+
+## Initial demonstration and priorities
+
+Use one existing confirmed test asset with verified source connections; CV-101
+is a candidate only if those connections are established. The audited PUMP-01
+job is a useful historical control with explicit missing component/manual/UNS
+and provider-asset links; those gaps are not filled from display names or seeds.
+
+The demonstration selects the asset, opens its job, records an observation,
+links a component and supporting manual, records inspection and a correction,
+associates the appropriate Atlas work order, preserves the historical state,
+asks MIRA to reconstruct it, displays evidence/unresolved questions, and produces
+the consistent illustrated record. Reported work and independently verified
+completion must remain distinct throughout.
+
+| Priority | Capability | Direction |
+|---|---|---|
+| P0 | Living Sheet corrections and provenance | Finish existing work. |
+| P0 | Asset-to-job identity | Connect existing systems. |
+| P0 | Historical event replay | Reuse and validate. |
+| P1 | Atlas and manual source links | Complete the bounded integration. |
+| P1 | Evidence-backed MIRA answers | Prove the end-to-end journey. |
+| P1 | Consistent illustrated guide | Verify screen and PDF. |
+| Later | Fleet-wide graph intelligence | Defer until one machine is proven. |
+
+## Product North Star metric
+
+Primary measure: the percentage of evaluated real maintenance-history questions
+for which MIRA gives a correct, source-supported, asset-specific answer without
+unsupported material claims. Record the number and composition of evaluated
+questions, applicable source state, independent expected answers, reviewers and
+benchmark exposure. Do not substitute synthetic developer tests for this rate.
+
+Report asset/job resolution, original source-link validity, historical replay,
+correction/review-state accuracy, chat/sheet/PDF consistency, technician task
+completion/usefulness and safety/authorization violations alongside it. Report
+answer coverage and appropriate abstention separately so refusing answerable
+questions cannot make the primary rate appear successful. Establish targets
+from a representative baseline; no numeric target is invented here.
+
+Once one machine is proven, extend carefully to lines and facilities: knowledge
+transfer, evidence-backed handover, repeated-failure analysis, component/repair
+history, reviewed procedure improvement and cross-system maintenance context.
+Advanced diagnostics, recommendations and prediction require their own evidence
+and validation. The guiding question remains: what happened, what did we do,
+how do we know, and what should we check next?
 
 ## Current delivery boundary
 

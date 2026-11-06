@@ -1,0 +1,42 @@
+{
+  "kind": "asset_memory_read_only_pg_receipt",
+  "classification": "retained_disposable_synthetic_test_data",
+  "database": "task-owned PostgreSQL18.6 on127.0.0.1:55783/living_intake_qc",
+  "schemaMigrationApplied": false,
+  "dataWritten": false,
+  "readOnlyEnforced": "on",
+  "checks": 9,
+  "latestCandidate": {
+    "id": "593350aa-3a9a-4109-973a-8292d10933e4",
+    "revision": 2
+  },
+  "pinnedCandidate": {
+    "id": "18310589-c3de-49ea-8940-8cf4ff6f617a",
+    "revision": 1
+  },
+  "sourceOnly": true,
+  "negativeStatuses": {
+    "otherTenant": "job_not_found",
+    "wrongNotebook": "job_not_found",
+    "wrongHash": "candidate_conflict",
+    "wrongSnapshot": "snapshot_conflict",
+    "newChatWithoutBinding": "asset_mismatch"
+  },
+  "countsBefore": {
+    "events": 180,
+    "revisions": 216,
+    "outbox": 42
+  },
+  "countsAfter": {
+    "events": 180,
+    "revisions": 216,
+    "outbox": 42
+  },
+  "snapshotId": "sha256:697a9d90581fd4e2d52365f2683c3c30fdc5f94ed09287a9e35c9088a74ade39",
+  "limitations": [
+    "trusted internal notebook authorization supplied to isolate read orchestration; existing notebook getter normally touches access metadata",
+    "no graph rows/live observations/manual pages/provider network calls in this local fixture",
+    "not an authenticated browser journey or human acceptance"
+  ],
+  "productSourceSha": "ba1d58a71769de81f7a53959617c3c0fb5d99a27"
+}

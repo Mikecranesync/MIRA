@@ -1,0 +1,29 @@
+## CodeGraph preflight
+
+- **Branch / HEAD:** `codex/asset-memory-first-slice` @ `ba1d58a71`
+- **CodeGraph CLI:** 0.9.5 · **npx:** ok · **MCP server:** wired
+- **Index:** present — nodes 80,027, edges 207,513, db mtime `2026-11-06T01:45:46`
+- **Sync marker:** none yet (hooks not run on this checkout, or first run)
+- **Canary:** ✓ healthy — 20 callers of resolve_uns_path
+
+### Task context — "Asset Memory exact saved job candidate graph observation provenance Guide chat"
+Entry points / relevant locations from `codegraph context`:
+```
+case.py:218
+case.py:62
+csv_tags.py:58
+csv_tags.py:78
+ir.py:49
+provenance.py:35
+provenance.py:41
+provenance.py:80
+test_potd_pr6.py:230
+test_send_runtime.py:82
+```
+
+### Known blind spots — do NOT trust CodeGraph alone here
+- **Class instantiation** (`ClassName()`): not a caller edge. `callers <Class>` / `impact <Class>` miss instantiation sites → cross-check `grep -rn 'ClassName('`. (upstream colbymchenry/codegraph#774)
+- **Import-alias calls** (`from m import f as _f` → `_f()`): `callers f` returns 0 → grep the alias.
+- **Same-name symbols:** `callers/callees/trace` aggregate across all defs ("aggregated across N") — can't scope to one; grep the specific file.
+
+> **VERDICT: READY — CodeGraph is fresh and healthy. Proceed; honor the blind spots above.**

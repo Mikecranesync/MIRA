@@ -69,54 +69,59 @@ them. Documentation/proof work remains coordinator-owned.
 
 ## Steps and acceptance checks
 
-- [ ] Read/claim exact integration hunks and post-claim collision check. Source
+- [x] Read/claim exact integration hunks and post-claim collision check. Source
   and connector audits are complete; owner delivery is not a file handoff.
-- [ ] Red-first exact selector tests: same job seq/hash, candidates A then B;
+- [x] Red-first exact selector tests: same job seq/hash, candidates A then B;
   selected A stays A, explicit null stays source, initial latest is B. Existing
   `getJobSheetRevision` plus metadata validation provides exact selection; do not
   add a candidate store. Check tenant/notebook/job/revision/hash/source sequence.
-- [ ] Loader first proves notebook/job scope, sequence equality and existing
+- [x] Loader first proves notebook/job scope, sequence equality and existing
   snapshot hash. Captured machine/UNS is immutable. Resolve current notebook
   binding separately. New pinned chat requires confirmed same asset; historical
   preview remains readable after rebinding. Legacy selected-job context must
   not contaminate a different currently bound asset.
-- [ ] Reuse `maintenanceContext(...,{includeSimilar:false,maxWorkOrders:...})`
+- [x] Reuse `maintenanceContext(...,{includeSimilar:false,maxWorkOrders:...})`
   for the saved machine key. Check returned equipment/children tenant and
   identity. Project verified principal equipment/hierarchy/components/manual/WO
   references only; exclude PM mismatches, similar assets, arbitrary properties
   and recommendations. State missing edge/reviewer/version metadata explicitly.
-- [ ] Reuse observation flag, bounded `listProjectionRows`, pure projector and
+- [x] Reuse observation flag, bounded `listProjectionRows`, pure projector and
   summary, including contributor IDs/author/both clocks/contest/uncertainty.
   Disabled, empty, unavailable and limited are distinct. Never load private chat
   as shared asset memory or select raw observation reports.
-- [ ] Graph and imported manual references stay references/claims. Existing
+- [x] Graph and imported manual references stay references/claims. Existing
   `validateChatSources` must separately admit any bounded explicit document set.
   No chunk retrieval/re-ingest or generic approval. Reuse work-order request
   status after job scope; do not equate saved/queued/delivered with repair,
   completion, asset FK or UNS propagation.
-- [ ] Bound added prompt/manifest to24KiB UTF-8 with count/string limits and
+- [x] Bound added prompt/manifest to24KiB UTF-8 with count/string limits and
   explicit omission/coverage metadata. Preserve the complete existing record.
   The bounded history summary is not presented as a complete procedure. Hash
   facts separately from capture interval; changed values change content hash.
-- [ ] Exercise original/corrected/excluded fields, done versus planned work,
+- [x] Exercise original/corrected/excluded fields, done versus planned work,
   original source links and unresolved questions in the shared projection and
   both human views. Keep observations/OEM claims/QC/acceptance/safety separate.
-- [ ] Exercise Controls→Sheet→host send selection, job/notebook switches,
+- [x] Exercise Controls→Sheet→host send selection, job/notebook switches,
   out-of-order loads, later QC, retry after UI changes and pending execution.
   Do not attach a stale selector or silently reload latest on retry.
-- [ ] Exercise served-turn manifest and idempotent replay before current reads;
+- [x] Exercise served-turn manifest and idempotent replay before current reads;
   no new provider/current-read/receipt/proposal on completed identical replay.
   New rebinding request, wrong scope/pin and permission failures spend no provider
   call. Error/stopped/safety-only answers do not claim unseen context.
-- [ ] Run focused unit/route/render tests, full Hub suite, scoped lint/typecheck,
+- [x] Run focused unit/route/render tests, full Hub suite, scoped lint/typecheck,
   sitemap/diff and CodeGraph sync/preflight. Compare typecheck with the exact
   known baseline. Do not introduce or apply a migration. Use existing synthetic
   fixtures/local test infrastructure; no shared industrial/CMMS writes.
-- [ ] Render actual component screen/print at412px and inspect every PDF page
+- [x] Render actual component screen/print at412px and inspect every PDF page
   when visible output changes. Evidence is fictional/development-exposed, not
   workplace material, clean holdout or human acceptance.
-- [ ] Fresh pre-push overlap check; draft PR against preserved guide branch;
-  finalize body, required CI and trusted-base read-only adversarial review.
+- [ ] Fresh pre-push overlap check; one main-based integration draft for this
+  coherent journey. Preserve old reviewed branches/bodies and link their exact
+  evidence; close owned superseded drafts #5235/#5236/#5239 only when the
+  replacement exists, in the same handoff. The trusted Lifecycle Guard requires
+  a main base; it will not authorize the stacked drafts. The integration gets
+  full fresh main-base review/CI, with no inherited approval or gate waiver.
+  Finalize body, required CI and trusted-base read-only adversarial review.
   Converged ends that PR's loop under existing SDLC. Record exact revisions,
   tests, omissions, rollback and promotion gates; no unauthorized merge/deploy.
 

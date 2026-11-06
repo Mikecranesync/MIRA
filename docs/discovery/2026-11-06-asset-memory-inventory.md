@@ -77,6 +77,26 @@ does not authorize employer data, shared writes or another Atlas order.
 
 ## Gap disposition
 
+Existing overlap does not justify another store. The audit found several
+representations that consumers must reconcile explicitly:
+
+- CMMS equipment IDs, KG UUID/entity keys, notebook bindings and Atlas external
+  asset IDs are separate identity spaces. Existing bridges cover some paths;
+  the QA receipt's unlinked provider asset proves they are not universally joined.
+- Asset context reads `installed_component_instances`, while KG maintenance
+  context reads `has_component` relationships. This first view must identify its
+  source and must not silently treat those records as the same component.
+  A complete bridge between them was not established by this audit.
+- Browser-local Work Packet/JobRecord and server-backed Living Sheet coexist.
+  Draft #5236 provides explicit lossless intake; it does not make old local data
+  durable without that user action. No second import/parser is needed.
+- Telemetry Machine Memory and technician/job history cover different evidence.
+  Reuse both; neither should overwrite the other's meaning or name-space.
+- Python materialized-evidence, Hub citations, observed-state frames and saved
+  instruction records each retain useful provenance. Their cross-runtime
+  convergence is incomplete; this slice adapts existing records and preserves
+  original shapes rather than declaring a new universal schema.
+
 | Disposition | Work | First acceptance check |
 |---|---|---|
 | Reuse | Identity/binding, PG graph, event reducer/revisions, observation projection, document admission, turn evidence and CMMS status | No new store/schema/registry; source IDs survive the adapter. |
@@ -91,9 +111,11 @@ does not authorize employer data, shared writes or another Atlas order.
 
 Audit agents ran39 focused Hub source/privacy/citation tests,94 Python evidence
 contract/compiler tests (Python3.12),51 Sparkplug and79 generic connector tests.
-An8-test Atlas-verifier helper attempt was blocked before logic by sandbox local
-socket binding; that is not eight application regressions or a passing receipt.
-The parent will bind implementation validation to its own final source revision.
+An8-test Atlas-verifier helper attempt was initially blocked before logic by
+sandbox local socket binding. One reviewed local-socket escalation then passed
+all8 tests against ephemeral loopback stubs; no real Atlas/shared service was
+reached. This is helper verification, not a new live delivery receipt.
+The integration product source is `ba1d58a71769de81f7a53959617c3c0fb5d99a27`: 13,132 Hub tests passed/53 existing skipped,9 read-only PG checks,13 redacted QA projection checks and9 actual-component mocked-I/O journey checks passed. See the [first-slice verification](../proofs/asset-memory-first-slice/verification.md) for exact limits and inspected fictional screen/PDF evidence. This is local evidence; no merge, deployment or human acceptance is inferred.
 
 The guide follow-up separately has13,085 passed/53 existing skips and actual
 screen/print/PDF proof; see [guide verification](../proofs/living-guide-qc-field-completeness/verification.md).
