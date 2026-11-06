@@ -1850,6 +1850,29 @@ jobs:
           grep -qE "✓ src/capabilities/living-sheet/__tests__/migration-order\.integration\.test\.ts \(7 tests\)" /tmp/wo-request.plain || {
             echo "::error::migration-order suite did not run and pass"; exit 1; }
 
+      # Intake and technician closeout reuse append-only template revisions.
+      # Run after the existing114 suites to avoid concurrent DDL on one DB.
+      - name: Living Sheet templates and closeout QC (must RUN, not skip)
+        if: steps.changes.outputs.outbox == 'true'
+        working-directory: mira-hub
+        run: |
+          set -euo pipefail
+          node node_modules/vitest/vitest.mjs run \
+            --config vitest.integration.config.ts --no-file-parallelism \
+            src/capabilities/living-sheet/__tests__/job-sheet-template.integration.test.ts \
+            2>&1 | tee /tmp/sheet-template.out
+          sed -E 's/\x1b\[[0-9;]*[A-Za-z]//g' /tmp/sheet-template.out > /tmp/sheet-template.plain
+          if grep -qiE "no test files found" /tmp/sheet-template.plain; then
+            echo "::error::no template/QC test file matched"; exit 1
+          fi
+          if grep -qE "Tests +[0-9]+ skipped" /tmp/sheet-template.plain; then
+            echo "::error::template/QC suite skipped tests"; exit 1
+          fi
+          grep -qE "Tests +[1-9][0-9]* passed" /tmp/sheet-template.plain || {
+            echo "::error::no positive template/QC passing count"; exit 1; }
+          grep -qE "✓ src/capabilities/living-sheet/__tests__/job-sheet-template\.integration\.test\.ts \([1-9][0-9]* tests\)" /tmp/sheet-template.plain || {
+            echo "::error::template/QC file did not run and pass"; exit 1; }
+
   manual-search-quota-pg:
     name: Manual-search quota caps (disposable Postgres, migration 103)
     runs-on: ubuntu-latest
