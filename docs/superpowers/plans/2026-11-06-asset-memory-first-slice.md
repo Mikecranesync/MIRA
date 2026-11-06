@@ -25,6 +25,12 @@ overlay. A persisted answer retains the actual bounded overlay in existing
 viewer-owned turn `evidence[]`. This is not historical replay of every upstream
 store or automatic promotion into approved knowledge.
 
+The existing chat admission and evidence-sufficiency gates do not count Living
+Sheet records as approved OEM evidence. Preserve those gates. This slice augments
+an existing admitted-document/general chat journey; it does not establish a
+standalone job-only answer path. Test the representative answer through the
+existing admitted path and record job-only readiness as a remaining gap.
+
 Selector: `{seq, snapshotId, candidate: null | {id, revision, hash}}`.
 Omission on initial preview selects latest once; the response returns an
 explicit selector. Explicit null means source-only forever. Wrong/missing pins
