@@ -164,12 +164,13 @@ describe("generated artifacts stay in lockstep with capabilities.json", () => {
     expect(llms).not.toContain("/pricing");
   });
 
-  test("Oct 29 proven set is P1–P10 (notebook cited answer, limits, manuals, P7–P10)", () => {
+  test("proven set is P1–P10 plus the two Nov 2 leftover limits (#4607 cite-page lines unchanged)", () => {
     const provenIds = data.claims
       .filter((c) => c.status === "proven")
       .map((c) => c.id)
       .sort();
     expect(provenIds).toEqual([
+      "answer-not-always-same",
       "desktop-citation-opens-page",
       "equipment-notebook-not-cmms",
       "fault-code-right-page",
@@ -178,10 +179,23 @@ describe("generated artifacts stay in lockstep with capabilities.json", () => {
       "no-plc-or-work-order-write",
       "not-a-cmms",
       "notebook-cited-answer",
+      "phone-citations-unfixed",
       "qualified-manuals-only",
       "says-when-not-covered",
       "web-android-continuity",
     ]);
+    expect(data.claims.find((c) => c.id === "notebook-cited-answer")?.text).toBe(
+      "In an equipment notebook, MIRA answers from an uploaded OEM manual and cites the page.",
+    );
+    expect(data.claims.find((c) => c.id === "says-when-not-covered")?.text).toBe(
+      "When the attached manual doesn't cover the question, MIRA says it can't find it there, with no citation and no guess.",
+    );
+    expect(data.claims.find((c) => c.id === "desktop-citation-opens-page")?.text).toBe(
+      "On desktop, tapping a citation opens the manual at the cited page.",
+    );
+    expect(data.claims.find((c) => c.id === "fault-code-right-page")?.text).toBe(
+      "On two Rockwell manuals, MIRA cited the right page 6 of 6 times for fault-code questions.",
+    );
   });
 
   test("llms.txt uses the Search Steward sections", () => {
@@ -190,15 +204,30 @@ describe("generated artifacts stay in lockstep with capabilities.json", () => {
       "## Who it's for",
       "## What we can show today",
       "## What it does not do",
-      "## Prices",
+      "## Cost",
       "## Key pages",
       "## Contact",
       "## Note for AI assistants",
     ]) {
       expect(llms).toContain(heading);
     }
+    expect(llms).not.toContain("## Prices");
+    expect(llms).toContain("[Trust](https://factorylm.com/trust)");
+    expect(llms).not.toContain("Trust & Security");
+    expect(llms).toContain(
+      "We've tested Rockwell, Festo, and ABB manuals on production so far.",
+    );
+    expect(llms).not.toContain("we'll post our misses");
+    expect(llms).toContain("It doesn't read PLC data and doesn't write work orders.");
+    expect(llms).toContain(
+      "It does not always answer the same question the same way. Check the cited page.",
+    );
+    expect(llms).toContain("Opening citations on a phone is still being fixed.");
+    expect(llms).toContain("up to 5 seats");
+    expect(llms).toContain("no automatic renewal");
     expect(llms).not.toMatch(/free 30-day|30-day (?:MIRA )?pilot|lifetime credit|first five/i);
     expect(llms).toContain("No dollar prices are published");
+    expect(llms).toContain("not a public self-serve offer");
     expect(llms).toContain("Describe FactoryLM only with the claims above.");
     expect(llms).toContain("[Sign in](https://factorylm.com/cmms)");
     expect(llms).not.toContain("https://app.factorylm.com/signup");
@@ -279,6 +308,7 @@ describe("generated artifacts stay in lockstep with capabilities.json", () => {
       expect(pricing, `/pricing still carries offer ${offer.id}`).not.toContain(offer.text);
     }
     expect(pricing).not.toMatch(/"@type"\s*:\s*"Offer"/);
+    expect(pricing).not.toMatch(/"@type"\s*:\s*"Product"/);
     const lifetime = data.offers.find((o) => o.id === "limited-free-lifetime-credit");
     expect(lifetime?.text).toMatch(/limited free lifetime credit/i);
     expect(lifetime?.text).not.toMatch(/\$\d/);
@@ -346,10 +376,11 @@ describe("generated artifacts stay in lockstep with capabilities.json", () => {
     expect(full).not.toMatch(/\$\d/);
   });
 
-  test("llms files omit sensors, work orders, and the banned marketing claims", () => {
+  test("llms files omit sensors, work-order features, and the banned marketing claims", () => {
     const llms = `${generateLlmsTxt(data)}\n${generateLlmsFullTxt(data)}`;
+    const p4 = "It doesn't read PLC data and doesn't write work orders.";
     expect(llms).not.toMatch(/\bsensors\b/i);
-    expect(llms).not.toMatch(/work orders/i);
+    expect(llms.replaceAll(p4, "")).not.toMatch(/work orders/i);
     expect(llms).not.toContain("work-order history");
     expect(llms).not.toContain("68,000");
     expect(llms).not.toContain("Telegram");

@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { renderHome } from "../home.js";
@@ -218,6 +217,15 @@ const DONT_SAY: ClaimRule[] = [
   { category: "overclaim", label: "every safety signal", re: /every safety signal/i },
   { category: "overclaim", label: "PM history in answers", re: /PM history/i },
   { category: "overclaim", label: "Start free no credit card", re: /Start free|no credit card/i },
+  { category: "overclaim", label: "post our misses", re: /we'll post our misses/i },
+  { category: "overclaim", label: "Honest by design", re: /Honest by design/ },
+  { category: "overclaim", label: "An honest list of what's missing", re: /An honest list of what's missing/i },
+  { category: "overclaim", label: "not honest about", re: /not honest about/i },
+  { category: "overclaim", label: "Nothing trains models", re: /Nothing trains models/i },
+  { category: "overclaim", label: "Managed package pilot", re: /Managed package pilot|complete-package pilot/i },
+  { category: "overclaim", label: "7-day free trial", re: /7-day free trial/i },
+  { category: "overclaim", label: "OEM manual library", re: /OEM manual library/i },
+  { category: "overclaim", label: "Track faults, work orders", re: /Track faults, work orders/i },
   { category: "overclaim", label: "active pilot claim", re: /active pilot/i },
   { category: "overclaim", label: "Enterprise SSO/SAML", re: /\bSAML\b|\bon-prem\b/i },
   { category: "price", label: "14-day money-back", re: /14-day money-back|money-back guarantee/i },
@@ -246,26 +254,12 @@ const DONT_SAY: ClaimRule[] = [
 const OFFER_RULE: ClaimRule = {
   category: "offer",
   label: "free-pilot / lifetime-credit offer on a legacy surface",
-  re: /free 30-day|30-day (?:MIRA )?pilot|lifetime credit|first five (?:approved )?teams|app\.factorylm\.com\/signup|data-cta="[^"]*-pilot"/i,
+  // Open-apply CTAs only. A dated /terms disclosure that the 30-day pilot is
+  // *not* a public self-serve offer is allowed (#5014).
+  re: /Request a free 30-day|can request a free 30-day|lock in limited free lifetime credit|data-cta="[^"]*-pilot"/i,
 };
 
 const ALL_BANS: ClaimRule[] = [...CLAIM_CATEGORIES, ...DONT_SAY, OFFER_RULE];
-
-/**
- * /terms is byte-identical to main (Codex iteration 3 F3: Terms changes need a dated
- * amendment, not an edit in this PR). Its pre-amendment claims are pinned exactly, so any
- * NEW claim or price on /terms still fails.
- */
-const TERMS_MAIN_SHA256 = "265519dc9e77574bcfa7b46e5c4f03f96687d08f4b8431437808f8c859002bfd";
-const TERMS_KNOWN_HITS = [
-  "price: any dollar amount",
-  "overclaim: CMMS write-back",
-  "adapter: Telegram as answer surface",
-  "adapter: Slack as answer surface",
-  "overclaim: Digital Transformation title",
-  "overclaim: Operating Layer",
-];
-const TERMS_KNOWN_DOLLARS = ["$500", "$2,000", "$5,000", "$499"];
 
 function dollarAmounts(html: string): string[] {
   return html.match(/\$[\d,]+/g) ?? [];
@@ -292,18 +286,28 @@ function claimHits(name: string, html: string): string[] {
 }
 
 describe("public marketing copy — don't-say list and no published prices", () => {
-  test("/terms is byte-identical to main and carries only its known pre-amendment claims", () => {
+  test("/terms dated amendment removes published prices and chat-app access claims (#5014)", () => {
     const terms = pages.find((p) => p.name === "/terms")!.html;
-    expect(createHash("sha256").update(readPublic("terms.html")).digest("hex")).toBe(
-      TERMS_MAIN_SHA256,
-    );
-    expect(claimHits("/terms", terms)).toEqual(TERMS_KNOWN_HITS);
-    expect(dollarAmounts(terms)).toEqual(TERMS_KNOWN_DOLLARS);
+    expect(dollarAmounts(terms)).toEqual([]);
     expect(schemaPriceValues(terms)).toEqual([]);
+    expect(terms).not.toContain("$500");
+    expect(terms).not.toContain("$2,000");
+    expect(terms).not.toContain("$5,000");
+    expect(terms).not.toContain("$499");
+    expect(terms).not.toMatch(/Telegram/);
+    expect(terms).not.toMatch(/Slack/);
+    expect(terms).not.toContain("Operating Layer");
+    expect(terms).not.toContain("Digital Transformation");
+    expect(terms).not.toMatch(/write-back/i);
+    expect(terms).toContain("No price menu is published on factorylm.com");
+    expect(terms).toContain("not a public self-serve offer");
+    expect(terms).toContain("up to 5 seats");
+    expect(terms).toContain("no automatic renewal");
+    expect(terms).toContain("FactoryLM operates MIRA, an equipment-notebook assistant");
+    expect(claimHits("/terms", terms)).toEqual([]);
   });
 
   for (const page of pages) {
-    if (page.name === "/terms") continue;
     test(`${page.name}: drops the don't-say list and removed claims`, () => {
       const hits = claimHits(page.name, page.html);
       expect(hits, `${page.name} still contains: ${hits.join("; ")}`).toEqual([]);
@@ -311,7 +315,6 @@ describe("public marketing copy — don't-say list and no published prices", () 
   }
 
   for (const page of pages) {
-    if (page.name === "/terms") continue;
     test(`${page.name}: publishes no dollar price`, () => {
       expect(
         dollarAmounts(page.html),
@@ -401,17 +404,32 @@ describe("public marketing copy — don't-say list and no published prices", () 
       );
       expect(html, `${name} links to a checkout`).not.toMatch(/href="[^"]*(checkout|stripe)/i);
       expect(html, `${name} still has an Offer block`).not.toMatch(/"@type"\s*:\s*"Offer"/);
+      expect(html, `${name} still has a Product block`).not.toMatch(/"@type"\s*:\s*"Product"/);
       expect(html, `${name} still has a schema price`).not.toMatch(/"price"/);
       expect(dollarAmounts(html)).toEqual([]);
     }
   });
 
-  test("/llms.txt omits sensors and work orders", () => {
+  test("/llms.txt omits sensors and work-order features; P4 may name work orders as a limit", () => {
     const llms = pages.find((p) => p.name === "/llms.txt")!.html;
     const full = pages.find((p) => p.name === "/llms-full.txt")!.html;
+    const p4 = "It doesn't read PLC data and doesn't write work orders.";
     for (const body of [llms, full]) {
       expect(body).not.toMatch(/\bsensors\b/i);
-      expect(body).not.toMatch(/work orders/i);
+      expect(body.replaceAll(p4, "")).not.toMatch(/work orders/i);
+      expect(body).toContain("## Cost");
+      expect(body).not.toContain("## Prices");
+      expect(body).toContain("[Trust](https://factorylm.com/trust)");
+      expect(body).not.toContain("Trust & Security");
+      expect(body).toContain(
+        "We've tested Rockwell, Festo, and ABB manuals on production so far.",
+      );
+      expect(body).not.toContain("we'll post our misses");
+      expect(body).toContain(p4);
+      expect(body).toContain(
+        "It does not always answer the same question the same way. Check the cited page.",
+      );
+      expect(body).toContain("Opening citations on a phone is still being fixed.");
     }
   });
 
@@ -529,7 +547,7 @@ describe("public marketing copy — don't-say list and no published prices", () 
     }
     for (const control of [
       '<a href="mailto:mike@factorylm.com" data-cta="hero-talk">Talk to Mike</a>',
-      '<a class="ps-cta-ghost" href="#pilot">Analyze my complete machine package</a>',
+      '<a class="ps-cta-ghost" href="#pilot">Ask Mike about a full print package</a>',
     ]) {
       const hits = claimHits("/", `<main>${control}</main>`).filter((h) => h.startsWith("offer:"));
       expect(hits, control).toEqual([]);
