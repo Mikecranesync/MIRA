@@ -1,0 +1,39 @@
+[
+ {
+  "id": "b2-s71200-memcard",
+  "model": "s71200",
+  "thread": "thrd_c414284f354ad3e7e67a6179467ca50b",
+  "http": 200,
+  "ms": 12825,
+  "status": "answered",
+  "label": "Grounded in this notebook's sources.",
+  "cites": [
+   {
+    "id": "5",
+    "page": 114
+   }
+  ],
+  "answer": "The manual says the CPU must be in STOP before you insert the program card, and then you must power-cycle the CPU to evaluate the memory card [5]. If the card is inserted while the CPU is in RUN, the CPU switches to STOP and the MAINT LED flashes to show the card needs to be evaluated [5].\n\nI don’t see any excerpt saying the PLC needs a separate setup or configuration first; the loaded documentation only covers the card-insert and power-cycle behavior [5]."
+ },
+ {
+  "id": "b2-s71200-scada",
+  "model": "s71200",
+  "thread": "thrd_5cb1a7d5b9f3e10d92fddd7a244f03ca",
+  "http": 200,
+  "ms": 7969,
+  "status": "insufficient_evidence",
+  "cites": [],
+  "answer": ""
+ },
+ {
+  "id": "b2-acs355-a5001",
+  "model": "acs355",
+  "thread": "thrd_d4b0b3121da8eb296999cb40775b6aa3",
+  "http": 200,
+  "ms": 15676,
+  "status": "insufficient_evidence",
+  "label": "General guidance — not grounded in this machine's documents.",
+  "cites": [],
+  "answer": "I can’t verify fault A5001 or its fix from the loaded excerpts; they do not include that code or any control panel connection troubleshooting, so I need the exact fault text from the drive display or the relevant manual page to help."
+ }
+]

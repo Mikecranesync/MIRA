@@ -1,0 +1,1 @@
+Hi all, I have a powerflex 525 where there is no voltage coming out to the motor. The drive was reset to factory defaults with stop and saftey jumpers in place for testing purposes. The drive fan comes on and the control panel shows the hz ramp up but there is no voltage at the u v w terminals. No faults displayed Would anyone know what could be wrong? Thanks   Like Reply

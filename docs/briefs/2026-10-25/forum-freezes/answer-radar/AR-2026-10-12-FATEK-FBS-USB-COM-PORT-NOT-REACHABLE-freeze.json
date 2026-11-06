@@ -1,0 +1,20 @@
+{
+  "freeze_id": "AR-2026-10-12-FATEK-FBS-USB-COM-PORT-NOT-REACHABLE",
+  "source": "PLCTalk",
+  "thread_id": "150122",
+  "url": "https://www.plctalk.net/forums/threads/issue-communicating-with-fatek-fbs-through-the-usb-port.150122/",
+  "op_author": "ruimoreira999",
+  "op_posted_utc": "2026-10-10T17:58:46Z",
+  "op_posted_local_et": "2026-10-10T13:58:46-04:00",
+  "age_hours": 44.16,
+  "reply_count_unread": 1,
+  "title": "Issue communicating with fatek FBs through the USB port",
+  "op_body_verbatim": "I have some fatek fbs plcs and one of them gives me a com error when I try to connect it to winprollader.\n\nEverytime I connect the cable between the usb port in my computer (any pof them) and the usb port in the plc the autocheck tool finds the correct door (with the profilic driver) but claims that com port is not reachable and probably being used by other program . I But if use the same computer, same cable, all same in another plc I get the comunication running and winprollader is able to connect and upload.\n\nA odd thing is that in the device manager the new com port appears with an error when connecting to the non-communicating plc while it appears completely functional when connecting to the plc that communicates.\n\nAny hint?\n\nI have a cbe module that I can put in this plc is that is possible to connect winprollader through the cbe module (but I don0t know how).",
+  "technician_version": "Field tech has several Fatek FBs-series PLCs. One of them will not connect to WinProladder over the PLC's USB port. Every time the USB cable is plugged from the laptop (any USB port) into that PLC's USB port, WinProladder's auto-check finds the correct COM port (Prolific driver) but reports the COM port is not reachable / probably in use by another program. Same laptop, same cable, same settings on a different FBs PLC connects and uploads fine. On the bad PLC only, the new COM port shows up in Windows Device Manager with an error; on the good PLC it shows fully functional. Tech also has a CBE (Ethernet communication) module that could be fitted to this PLC and wants to know if WinProladder can connect through it instead, and how. Need: why this one FBs PLC's USB port enumerates with a Device Manager error / COM not reachable, how to restore USB programming comms, and how to connect WinProladder via the CBE module as a fallback.",
+  "oem": "Fatek",
+  "model": "FBs-series PLC (exact CPU model not stated) + CBE communication module; WinProladder software; Prolific USB-serial driver",
+  "fault_symptom": "One FBs PLC USB programming port: COM port enumerates with error in Device Manager and WinProladder reports COM port not reachable/in use; same PC+cable works on another FBs PLC",
+  "scan_date": "2026-10-12",
+  "scan_timezone": "America/New_York",
+  "notes": "Frozen OP-only before reading community replies; 1 reply exists unread (last activity 2026-10-11T12:13:58-04:00 per listing). Replies not used for research; answer not researched. Exact FBs CPU part number not given in OP; 'CBE' module named by OP only (likely FBs-CBE Ethernet board, not verified). Selected over fresher-but-weaker candidates (see candidate-scan.md). Scan at 2026-10-12 ~10:05-10:10 ET (14:05-14:10Z)."
+}

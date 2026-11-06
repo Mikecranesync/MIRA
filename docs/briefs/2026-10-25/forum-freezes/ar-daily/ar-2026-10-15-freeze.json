@@ -1,0 +1,20 @@
+{
+  "freeze_id": "AR-2026-10-15-SIEMENS-MTP700-UNIFIED-BASIC-S7-1214C-HMI-CANNOT-WRITE",
+  "source": "PLCTalk",
+  "thread_id": "150135",
+  "url": "https://www.plctalk.net/threads/150135/",
+  "title": "MTP700 unifi basic HMI Cannot Write Commands to Siemens S7-1200 PLC",
+  "op_author": "Mohamed$",
+  "op_posted_utc": "2026-10-14T22:40:15Z",
+  "op_posted_local_et": "2026-10-14T18:40:15-04:00",
+  "age_hours": 15.0,
+  "reply_count_unread": 0,
+  "op_body_verbatim": "Hello everyone,\n\nI am facing a problem with an MTP700 HMI connected to a Siemens S7-1200 PLC.\n\nI have configured the communication, PLC tags, and HMI buttons in TIA Portal. However, when I press a button on the HMI to activate a PLC output, nothing happens.\n\nI have previously worked successfully with an S7-1200 PLC and a KTP700 Basic PN HMI. I also remember that my MTP700 and S7-1200 setup worked correctly before, so I am struggling to identify the cause.\n\nAs shown in Figures 1 and 2, all settings appear to be correct, and both the PLC and HMI programs were downloaded successfully without any errors. However, the problem persists, and the HMI still does not respond to commands. I would appreciate any suggestions or advice to help identify the cause of this issue.\n\nI would appreciate any suggestions regarding possible communication settings, PLC security parameters, HMI write permissions, or compatibility issues.\n\nMy configuration:\n\nPLC: Siemens S7-1200, CPU model: [1214 DC/DC/DC]\nHMI: MTP700,  Unifi basic \nTIA Portal version: V19\nHas anyone experienced a similar problem or found a solution?\n\nThank you for your help.",
+  "technician_version": "Siemens SIMATIC MTP700 Unified Basic HMI connected to an S7-1200 CPU 1214C DC/DC/DC, engineered in TIA Portal V19. Connection, PLC tags and HMI buttons are configured and both PLC and HMI downloads complete with no errors, but pressing an HMI button meant to switch a PLC output does nothing. The same person has had S7-1200 + KTP700 Basic PN work fine, and this same MTP700 + S7-1200 pair worked before. Asking what to check: communication settings, PLC security/access parameters, HMI write permissions, or compatibility.",
+  "oem": "Siemens",
+  "model": "SIMATIC MTP700 Unified Basic HMI; S7-1200 CPU 1214C DC/DC/DC; TIA Portal V19",
+  "fault_symptom": "HMI button presses do not write to PLC / output never activates; downloads succeed without errors; setup previously worked",
+  "scan_date": "2026-10-15",
+  "scan_timezone": "America/New_York",
+  "notes": "Frozen OP-only before any community replies (0 replies at scan). OP references Figures 1 and 2 (images not captured). Answer not researched; no MIRA/FactoryLM calls. Third Siemens HMI freeze this cycle (Oct 7 TP1200 Comfort, Oct 9 S7-1212C HMI ####)."
+}

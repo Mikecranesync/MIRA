@@ -1,0 +1,20 @@
+{
+  "freeze_id": "AR-2026-10-13-GE-9030-IC752DPA062A-HMI-TOUCH-DEAD",
+  "source": "PLCTalk",
+  "thread_id": "150128",
+  "url": "https://www.plctalk.net/threads/150128/",
+  "title": "IC752DPA062A HMI touch screen non-functional",
+  "op_author": "technolog",
+  "op_posted_utc": "2026-10-12T20:53:07Z",
+  "op_posted_local_et": "2026-10-12T16:53:07-04:00",
+  "age_hours": 16.9,
+  "reply_count_unread": 1,
+  "op_body_verbatim": "We have a machine controlled by a GE Fanuc 90-30 PLC with CPU 350 processor & Motion Mate DSM302, talking to an IC752DPA062A HMI.\n\nWhen connected to the PLC, the HMI displays the machine application screens (it only shows an HMI splash screen when disconnected), but the touch is non-functional. We have another identical machine with the same components (we're a used machinery merchant). When we try the other HMI, we get exactly the same thing.\n\nWe've tried plugging in a keyboard to the KYBD mini DIN connector, and it gives us the ability to change screens, but no way (that we can figure out) to \"click\"/actuate the on-screen controls.\n\nNow obviously, we could have two bad touch panels, but I thought it might be worth a shot posting on here to see if we were missing something.\n\nThanks in advance for any input.",
+  "technician_version": "Machine runs a GE Fanuc Series 90-30 PLC (CPU 350) with a Motion Mate DSM302 motion module, talking to a GE Fanuc IC752DPA062A operator HMI. Connected to the PLC, the HMI shows the machine application screens (only a splash screen when disconnected), but the touchscreen does nothing. A second identical machine/HMI shows exactly the same behavior when swapped. A keyboard on the HMI's KYBD mini-DIN port can change screens, but the tech can't find a way to actuate on-screen buttons from it. Need: why touch input is dead on both identical IC752DPA062A panels (hardware failure vs. setting/calibration/configuration/enable), how to restore touch, and how to operate on-screen controls via keyboard as a workaround.",
+  "oem": "GE Fanuc (now Emerson)",
+  "model": "IC752DPA062A HMI; Series 90-30 CPU 350 (IC693CPU350); Motion Mate DSM302",
+  "fault_symptom": "HMI displays application screens but touchscreen non-functional; same on second identical panel; keyboard can change screens but not actuate controls",
+  "scan_date": "2026-10-13",
+  "scan_timezone": "America/New_York",
+  "notes": "Frozen OP-only before reading community replies; 1 reply exists unread. Answer not researched; no MIRA/FactoryLM calls. Scan ~09:46-09:50 ET (13:46-13:50Z). IC693CPU350 part number inferred from 'CPU 350' wording, not stated by OP."
+}

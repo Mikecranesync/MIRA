@@ -1,0 +1,20 @@
+{
+  "freeze_id": "AR-2026-10-16-KEYENCE-GL-R-LIGHT-CURTAIN-TRANSMITTER-FAULT-RANDOM-STOPS",
+  "source": "PLCTalk",
+  "thread_id": "150138",
+  "url": "https://www.plctalk.net/threads/150138/",
+  "title": "Keyence GL-R light curtains",
+  "op_author": "Bfloyd25",
+  "op_posted_utc": "2026-10-15T13:48:40Z",
+  "op_posted_local_et": "2026-10-15T09:48:40-04:00",
+  "age_hours": 23.8,
+  "reply_count_unread": 12,
+  "op_body_verbatim": "Little off the beaten path of PLCs, but hoping there is an automation and controls guy out there that has had or heard of this issue before. We recently installed 22 sets of Keyence's GL-R light curtains on existing machines. That said, 2 of the machines interrupt randomly stopping the automated process casing an abundance of down time. I have monitored the beam axis multiple times and seen no failure. It gives me the error code for a transmitter fault, which could be caused by external noise or a bad curtain according to Keyence. I changed the curtains out (despite them being 4 days old) the first time we seen this, and it got better for a day or two and started acting up again. We came up with a few theories.\n\n1.) The 110VAC circuits are creating a change in the electromagnetic field when contacts open or close due to the mini arc flash that occurs during this transfer of energy. We tested this by adding inline snubbers to a few of the nearby 110VAC circuits. No change.\n\n2.) Insulation on a 110VAC wire that was making a loop had worn down not blocking the wavelengths the wire was emitting. We re-routed the wires in a way that they were no longer making a loop. No change.\n\n3.) 110VAC circuit wire touching the wires of the Light curtain cable in the same wire track were causing noise similar to the looped wire theory, so we also rerouted them to where they were unable to make contact. No Change.\n\nIf anyone has by chance seen this please let me know what you did to help it or if you had to go another route. Thanks!",
+  "technician_version": "Keyence GL-R safety light curtains retrofitted on 22 existing machines. Two of the machines randomly trip, stopping the automatic cycle and causing a lot of downtime. The curtain reports a transmitter fault error code; beam-axis monitoring shows no failure. Keyence says the transmitter fault can come from external noise or a bad curtain. Curtains (4 days old) were swapped once; it improved for a day or two, then came back. Already tried with no change: inline snubbers on nearby 110 VAC circuits, rerouting a looped 110 VAC wire with worn insulation, and separating 110 VAC conductors from the light-curtain cable in the shared wire track. What else causes intermittent GL-R transmitter faults on only some machines, and how do I fix it?",
+  "oem": "Keyence",
+  "model": "GL-R series safety light curtain (exact GL-R model/length not stated)",
+  "fault_symptom": "Random nuisance trips / process stops on 2 of 22 machines; transmitter fault error code; beam axis OK; persisted after curtain swap; noise mitigations (snubbers, rerouting, separation) no change",
+  "scan_date": "2026-10-16",
+  "scan_timezone": "America/New_York",
+  "notes": "Frozen OP-only; 12 community replies exist but were NOT read. Answer not researched; no MIRA/FactoryLM calls. Exact error code number and GL-R model not given by OP. First Keyence and first safety-light-curtain freeze; new OEM need-class (safety sensor, not PLC/HMI)."
+}

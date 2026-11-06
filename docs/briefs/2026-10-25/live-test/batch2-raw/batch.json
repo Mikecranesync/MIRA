@@ -1,0 +1,17 @@
+[
+ [
+  "b2-s71200-memcard",
+  "s71200",
+  "I have a product that uses a Siemens Simatic s7-1200 PLC. My company did not write the PLC program, but we have the program on an SD card. We usually are working on existing products that are sent to us for repair, and our procedure is to install the SD card, power on the PLC and it loads the program from the card. Once the light blinking is done, the program is loaded and away we go. We are now building the product from scratch, so the PLC has never been powered on before. We tried the same procedure to load the program from the memory card, but didn't have any luck. Does the PLC need to be setup or configured first, before you can load the program from the memory card? If anyone has any helpful articles or youtube videos, I would appreciate it. I have been looking, but haven't found anything yet. \u00a0 Like Reply"
+ ],
+ [
+  "b2-s71200-scada",
+  "s71200",
+  "For a project using the PLC 1214 and HMI TP700 Comfort, we now want to connect it to SCADA. Can I connect it through the HMI, or do I need to purchase a CP1243-1 for this? \u00a0 Like Reply"
+ ],
+ [
+  "b2-acs355-a5001",
+  "acs355",
+  "I have tried to connect abb acs355 with com cable with pinout on this site posted but after many tries i get a fault code on drive a5001 and i have learned in manual that this is control pannel connection problem how can i solve this problem help me pls \u00a0 Like Reply"
+ ]
+]

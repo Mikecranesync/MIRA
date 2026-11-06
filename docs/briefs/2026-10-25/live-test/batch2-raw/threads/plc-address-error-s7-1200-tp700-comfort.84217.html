@@ -1,0 +1,2341 @@
+<!DOCTYPE html>
+<html id="XF" lang="en-US" dir="LTR"
+	data-app="public"
+	data-template="thread_view"
+	data-container-key="node-2"
+	data-content-key="thread-84217"
+	data-logged-in="false"
+	data-cookie-prefix="plctalk_"
+	data-csrf="1792949464,f89c9e7e788910449eef351f1780c75a"
+	class="XenBase ForumStyleDefault logged-out has-no-js template-thread_view"
+	>
+<head>
+	<meta charset="utf-8" />
+	<meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+	<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+
+	
+	
+	
+
+	<title>PLC address error (S7-1200 - TP700 Comfort) | PLCtalk - Interactive Q &amp; A</title>
+
+	
+		
+		<meta name="description" content="Hello all.
+
+I&#039;m working with a S7-1200 CPU, a TP700 comfort panel and 4 drives that are all connected through profinet. 
+I&#039;ve started my project yesterday..." />
+		<meta property="og:description" content="Hello all.
+
+I&#039;m working with a S7-1200 CPU, a TP700 comfort panel and 4 drives that are all connected through profinet. 
+I&#039;ve started my project yesterday and have already made a few functions that are displayed on the panel. I&#039;m using about 25 tags so far. But all of a sudden yesterday the..." />
+		<meta property="twitter:description" content="Hello all.
+
+I&#039;m working with a S7-1200 CPU, a TP700 comfort panel and 4 drives that are all connected through profinet. 
+I&#039;ve started my project yesterday and have already made a few functions..." />
+	
+	
+		<meta property="og:url" content="https://www.plctalk.net/forums/threads/plc-address-error-s7-1200-tp700-comfort.84217/" />
+	
+		<link rel="canonical" href="https://www.plctalk.net/forums/threads/plc-address-error-s7-1200-tp700-comfort.84217/" />
+	
+
+	
+		
+	
+	
+	<meta property="og:site_name" content="PLCtalk - Interactive Q &amp; A" />
+
+
+	
+	
+		
+	
+	
+	<meta property="og:type" content="website" />
+
+
+	
+	
+		
+	
+	
+	
+		<meta property="og:title" content="PLC address error (S7-1200 - TP700 Comfort)" />
+		<meta property="twitter:title" content="PLC address error (S7-1200 - TP700 Comfort)" />
+	
+
+
+	
+	
+	
+	
+		
+	
+	
+	
+		<meta property="og:image" content="https://plctalk.net/images/site/og_default.png" />
+		<meta property="twitter:image" content="https://plctalk.net/images/site/og_default.png" />
+		<meta property="twitter:card" content="summary" />
+	
+
+
+	
+ 
+	<meta property="og:image" content="https://www.plctalk.net/images/site/og_default.png" />
+    <meta property="thumbnail" content="https://www.plctalk.net/images/site/og_default.png" />
+	
+	
+		<meta name="theme-color" content="#1a1f36" />
+	
+	
+	
+
+	
+	
+
+	
+
+
+	<link rel="preload" href="/forums/styles/fonts/fa/fa-solid-900.woff2?_v=5.15.3" as="font" type="font/woff2" crossorigin="anonymous" />
+
+
+
+<link rel="preload" href="/forums/styles/fonts/fa/fa-brands-400.woff2?_v=5.15.3" as="font" type="font/woff2" crossorigin="anonymous" />
+
+	<link rel="stylesheet" href="/forums/css.php?css=public%3Anormalize.css%2Cpublic%3Afa.css%2Cpublic%3Acore.less%2Cpublic%3Aapp.less&amp;s=3&amp;l=1&amp;d=1789054234&amp;k=b8928e03e4ad0cdbbc8c554157a1ea6e16df4d51" />
+
+	<link rel="stylesheet" href="/forums/css.php?css=public%3ACMTV_Math.less%2Cpublic%3Abb_code.less%2Cpublic%3Acxf_thread_snippet.less%2Cpublic%3Amessage.less%2Cpublic%3Astructured_list.less%2Cpublic%3Aextra.less&amp;s=3&amp;l=1&amp;d=1789054234&amp;k=11d377e487ec22e575e0bf055dc72b849136037d" />
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css" crossorigin="anonymous">
+
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.js" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/contrib/auto-render.min.js" crossorigin="anonymous"></script>
+
+	
+		<script src="/forums/js/xf/preamble.min.js?_v=4e2b3c7e"></script>
+	
+
+
+	<link rel="icon" href="https://www.plctalk.net/favicon.ico">
+	
+	
+		<link rel="apple-touch-icon" href="https://plctalk.net/images/site/og_default.png" />
+	
+	
+	
+<link rel="preconnect" href="https://cdnjs.cloudflare.com" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://securepubads.g.doubleclick.net" />
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=PT+Serif:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
+
+  <!-- JQuery UI Used for Slider -->
+  <link rel="stylesheet" href="/css/jquery-ui.min.css">
+
+
+<link href="/latest-css" rel="stylesheet" type="text/css" media="screen">
+
+  <!-- Category -->
+  <script type="text/javascript">
+    var ad_categories = ["plcs","troubleshooting","forum"];
+  </script>
+
+  <!-- Tracking -->
+  <link rel="stylesheet" type="text/css" href="//cdnjs.cloudflare.com/ajax/libs/cookieconsent2/3.0.3/cookieconsent.min.css" />
+	
+	
+</head>
+<body class="design2025" data-template="thread_view">
+
+<div class="p-pageWrapper" id="top">
+<div class="p-pageWrapper--helper"></div>
+
+	
+<div class="xb-page-wrapper xb-canvas-menuActive">
+	
+	
+		
+	<div class="xb-page-wrapper--helper"></div>
+				
+
+<div class="xb-content-wrapper">
+	<div class="navigation-helper">
+		
+	</div>
+	
+	
+	
+
+<div id="scrollMenu" class="transition-fast z-30 w-full shadow-md bg-main no-print relative">
+    <div id="overlay" class="hidden fixed top-0 left-0 w-full h-full opacity-50 bg-black z-50"></div>
+    <!-- logo, search, log in -->
+    <div class="w-full bg-white">
+        <div class="lg:container mx-auto flex justify-between lg:justify-normal gap-6 lg:gap-0 clearfix h-12 px-4 xl:pr-5">
+            <button id="menuToggle" aria-label="Menu" data-menu="#mainMenu" data-direction="right" class="toggle-menu lg:hidden text-main hover:text-sub focus:outline-none flex items-center">
+                <!-- Generated by IcoMoon.io -->
+                <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="currentColor" class="w-5">
+                    <path d="M0 108.8h1024v220.8h-1024v-220.8zM0 403.2h1024v220.8h-1024v-220.8zM0 694.4h1024v220.8h-1024v-220.8z"></path>
+                </svg>
+            </button>
+
+            <div class="flex items-center flex-1 lg:flex-none lg:w-auto justify-center lg:justify-normal px-2 lg:px-0 lg:pl-4 py-3">
+                <a class="w-auto inline-block ml-9 lg:ml-0" href="https://www.plctalk.net"><img src="/images/site/plctalk-logo.svg" alt="PLCtalk.net" /></a>
+            </div>
+
+            <div class="w-auto lg:flex-1 flex flex-wrap lg:relative justify-end gap-3 lg:pr-4 xl:pr-0">
+                <button id="searchToggle" aria-label="Search" class="flex justify-between items-center bg-transparent text-main hover:text-sub focus:outline-none">
+                    <!-- Generated by IcoMoon.io -->
+                    <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="currentColor" class="w-5 lg:w-4.5">
+                        <path d="M380.8 646.4c144 0 262.4-118.4 262.4-262.4s-118.4-262.4-262.4-262.4-262.4 118.4-262.4 262.4 118.4 262.4 262.4 262.4zM732.8 646.4l291.2 291.2-86.4 86.4-291.2-291.2v-48l-16-16c-67.2 57.6-153.6 89.6-246.4 89.6-214.4 3.2-384-166.4-384-377.6s169.6-380.8 380.8-380.8 377.6 169.6 377.6 380.8c0 92.8-32 182.4-89.6 246.4l16 16h48z"></path>
+                    </svg>
+                </button>
+
+                <div id="userMenu" class="fixed top-12 sm:top-0 pb-12 md:pb-0 z-50 lg:z-10 w-full sm:w-5/6 md:w-1/2 lg:w-auto h-full -right-1000 transition-fast lg:transition-none lg:h-auto lg:static px-5 lg:px-0 bg-white lg:bg-transparent">
+                    <ul class="flex lg:inline-flex flex-wrap lg:h-full items-center clearfix lg:gap-3">
+                        
+                            <!-- not logged in -->
+                            <li class="w-full lg:w-auto lg:flex lg:flex-col justify-center h-full relative">
+                                <a class="ga-link bg-main border border-main lg:flex items-center hidden text-xs text-white hover:shadow hover:text-white uppercase font-bold tracking-wider px-6 h-7.5" href="https://www.plctalk.net/forums/login/?redirect=https://www.plctalk.net/forums/threads/plc-address-error-s7-1200-tp700-comfort.84217/" data-category="login" data-action="login (header desktop)" data-label="https://www.plctalk.net/forums/login/?redirect=https://www.plctalk.net/forums/threads/plc-address-error-s7-1200-tp700-comfort.84217/">Log In</a>
+                            </li>
+                            <li class="w-full lg:w-auto lg:flex lg:flex-col justify-center h-full relative">
+                                <a class="bg-sub lg:flex items-center hidden text-xs text-white hover:text-white hover:shadow uppercase font-bold tracking-wider px-6 h-7.5" href="https://www.plctalk.net/forums/register/">Join</a>
+                                <div class="grid flex-col gap-4 lg:hidden static w-full bg-white py-5">
+                                    <div class="flex items-start justify-between">
+                                        <p class="uppercase text-xl font-semibold">Join the Community</p>
+                                        <a class="justify-self-end text-main hover:text-sub menu-close" href="#">
+                                            <!-- Generated by IcoMoon.io -->
+                                            <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="currentColor" class="w-5.5">
+                                                <path d="M512 451.669l211.2-211.2 60.331 60.331-211.2 211.2 211.2 211.2-60.331 60.331-211.2-211.2-211.2 211.2-60.331-60.331 211.2-211.2-211.2-211.2 60.331-60.331z"></path>
+                                            </svg>
+                                        </a>
+                                    </div>
+                                    <hr class="w-full bg-main-200 h-px">
+                                    
+                                    <div class="w-full flex flex-col gap-2 my-2">
+                                        <a class="w-full tracking-wider bg-sub px-6 py-2 text-white text-center text-sm uppercase font-bold" href="https://www.plctalk.net/forums/register/">Register</a>
+                                        <a class="w-full tracking-wider bg-main px-6 py-2 text-white text-center text-sm uppercase font-bold" href="https://www.plctalk.net/forums/login/?redirect=https://www.plctalk.net/forums/threads/plc-address-error-s7-1200-tp700-comfort.84217/" data-category="login" data-action="login (header desktop)" data-label="https://www.plctalk.net/forums/login/?redirect=https://www.plctalk.net/forums/threads/plc-address-error-s7-1200-tp700-comfort.84217/">Log In</a>
+                                    </div>
+                                    
+                                </div>
+                            </li>
+                            <li class="w-full flex flex-col lg:hidden gap-3.5 pb-12">
+                                <hr class="w-full bg-main-200 h-px my-1">
+                                <p class="uppercase text-base font-semibold">SIGN UP FOR OUR NEWSLETTER</p>
+                                <form action="/forums/register" method="GET" class="flex w-full">
+                                    <input type="text" name="email" class="text-black placeholder:text-main text-xs bg-white border border-neutral-300 w-full focus:ring-0 focus:border-black h-10 p-3" placeholder="Enter your email address" aria-label="Enter you email address" aria-describedby="basic-addon1">
+                                    <button type="submit" class="flex items-center bg-black text-white uppercase font-bold text-sm py-3 px-4 h-10">Register</button>
+                                </form>
+                            </li>
+                            <!-- ./not logged in -->
+                        
+                    </ul>
+                </div>
+            </div>
+
+            <button data-menu="#userMenu" data-direction="right" class="toggle-menu lg:hidden text-main hover:text-sub focus:outline-none flex items-center">
+                <!-- Generated by IcoMoon.io -->
+                <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="currentColor" class="w-5">
+                    <path d="M908.8 0h-793.6c0 0 0 0 0 0-64 0-112 51.2-115.2 115.2v0 793.6c0 64 51.2 115.2 115.2 115.2 0 0 0 0 0 0h793.6c60.8 0 112-51.2 115.2-115.2v-793.6c-3.2-64-51.2-115.2-115.2-115.2zM342.4 342.4c3.2-92.8 76.8-169.6 169.6-169.6s166.4 76.8 169.6 169.6v0c-3.2 92.8-76.8 169.6-169.6 169.6s-169.6-76.8-169.6-169.6v0zM851.2 854.4h-681.6v-54.4c0-115.2 227.2-176 342.4-176s342.4 60.8 342.4 176v54.4z"></path>
+                </svg>
+            </button>
+        </div>
+    </div>
+    <!-- ./logo, search, log in -->
+
+    <!-- main nav with dropdown -->
+    <div id="mainMenu" class="fixed top-12 sm:top-0 z-50 w-full sm:w-5/6 md:w-1/2 h-full bg-white lg:bg-main transition-fast lg:transition-none lg:w-full lg:left-0 lg:h-auto lg:static -right-1000 p-5 pb-12 md:pb-5 lg:p-0">
+        <nav class="lg:container lg:mx-auto xl:pr-5">
+            <!-- Menu (mobile) -->
+            <div class="block lg:hidden static w-full bg-white pb-4">
+                <div class="flex items-start justify-between mb-4">
+                    <p class="uppercase text-xl font-semibold">Main Menu</p>
+                    <a class="justify-self-end text-main hover:text-sub menu-close" aria-label="Close Menu" href="#">
+                        <!-- Generated by IcoMoon.io -->
+                        <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="currentColor" class="w-5.5">
+                            <path d="M512 451.669l211.2-211.2 60.331 60.331-211.2 211.2 211.2 211.2-60.331 60.331-211.2-211.2-211.2 211.2-60.331-60.331 211.2-211.2-211.2-211.2 60.331-60.331z"></path>
+                        </svg>
+                    </a>
+                </div>
+                <hr class="w-20 border-sub border-b-2">
+            </div>
+            <!-- ./Menu (mobile) -->
+            <ul class="lg:relative flex flex-col lg:flex-row gap-4 lg:gap-0 clearfix" itemscope="" itemtype="http://www.schema.org/SiteNavigationElement">
+                <!-- Home -->
+                <li id="home" class="flex flex-wrap lg:hidden">
+                    <a class="text-base tracking-[0.64px] uppercase w-full text-main hover:font-bold lg:group-hover:bg-white hover:bg-white hover:text-sub font-medium" title="Home" href="/">Home</a>
+                </li>
+                <!-- ./Home -->
+                <!-- Explore -->
+                <li class="flex flex-wrap lg:static lg:inline-block group hover-bold-width">
+                    <a class="dropdown-tab text-base tracking-[0.64px] lg:px-4 uppercase w-full text-main lg:text-white lg:text-md lg:leading-5 lg:flex lg:py-2 lg:justify-center lg:group-hover:font-bold lg:group-hover:bg-white lg:group-hover:text-main hover:font-bold lg:hover:bg-white hover:text-sub lg:hover:text-main lg:text-center font-medium" href="#" title="Explore">Explore</a>
+                    <div class="ml-0 lg:-ml-4 hidden lg:absolute lg:left-0 lg:z-20 w-full lg:w-[800px] lg:dropdown-shadow">
+                        <div class="w-full lg:w-auto flex flex-1 flex-wrap lg:overflow-hidden order-1 bg-main-100 lg:bg-white gap-y-3.5 lg:gap-y-0 py-4 lg:py-0">
+                            <div class="w-full lg:w-2/3 flex flex-col gap-2.5 lg:py-4 lg:px-8 lg:border-r border-[#D1D5DB]">
+                                <span class="flex items-center gap-1 uppercase text-base font-normal lg:font-medium tracking-wider text-main text-left explore-btn cursor-pointer lg:cursor-auto hover:text-sub hover:font-semibold lg:hover:font-medium lg:hover:text-main">
+                                    <!-- Generated by IcoMoon.io -->
+                                    <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="currentColor" class="w-8 -mx-2.5 block lg:hidden">
+                                        <path d="M597.333 512l-170.667 170.667v-341.333z"></path>
+                                    </svg>
+                                    Categories
+                                </span>
+                                <hr class="hidden lg:block w-20 border-sub border-b-2">
+                                <ul class="hidden lg:grid grid-cols-2 gap-4 lg:gap-y-1.5 pl-6 lg:pl-0 lg:leading-none text-base">
+                                    <li class="w-full ellipsis" itemprop="name"><a itemprop="url" class="lg:text-xs inline-block w-full ellipsis" href="/latest/plcs-and-ipcs/">PLCs and IPCs</a></li>
+                                    <li class="w-full ellipsis" itemprop="name"><a itemprop="url" class="lg:text-xs inline-block w-full ellipsis" href="/latest/comm-and-networking/">Comm and Networking</a></li>
+                                    <li class="w-full ellipsis" itemprop="name"><a itemprop="url" class="lg:text-xs inline-block w-full ellipsis" href="/latest/hmi-and-scada/">HMI and SCADA</a></li>
+                                    <li class="w-full ellipsis" itemprop="name"><a itemprop="url" class="lg:text-xs inline-block w-full ellipsis" href="/latest/motion-and-motor-control/">Motion and Motor Control</a></li>
+									<li class="w-full ellipsis" itemprop="name"><a itemprop="url" class="lg:text-xs inline-block w-full ellipsis" href="/latest/peripheral-hardware/">Peripheral Hardware</a></li>
+                                    <li class="w-full ellipsis" itemprop="name"><a itemprop="url" class="lg:text-xs inline-block w-full ellipsis" href="/latest/programming-and-software/">Programming and Software</a></li>
+                                    <li class="w-full ellipsis" itemprop="name"><a itemprop="url" class="lg:text-xs inline-block w-full ellipsis" href="/latest/troubleshooting/">Troubleshooting</a></li>
+                                </ul>
+                                <a class="hidden lg:inline-flex text-xs underline items-center text-sub" href="/latest/">View all <img loading="lazy" src="/images/site/svg/arrow-forward.svg" class="ml-px pl-px"></a>
+                            </div>
+                            <div class="w-full lg:w-1/3 flex flex-col order-2 lg:bg-main lg:py-4 lg:pr-8 lg:pl-5 text-main lg:text-white gap-2.5">
+                                <span class="flex items-center gap-1 uppercase text-base font-normal lg:font-medium tracking-wider text-left explore-btn cursor-pointer lg:cursor-auto hover:text-sub hover:font-semibold lg:hover:font-medium lg:hover:text-white">
+                                    <!-- Generated by IcoMoon.io -->
+                                    <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="currentColor" class="w-8 -mx-2.5 block lg:hidden">
+                                        <path d="M597.333 512l-170.667 170.667v-341.333z"></path>
+                                    </svg>
+                                    Content
+                                </span>
+                                <hr class="hidden lg:block w-20 border-sub border-b-2">
+                                <ul class="hidden lg:flex flex-wrap justify-between text-left gap-y-4 lg:gap-y-1.5 pl-6 lg:pl-0 lg:leading-none text-base">
+                                    <li class="w-full ellipsis" itemprop="name"><a itemprop="url" class="lg:text-xs lg:text-white inline-block w-full ellipsis" href="/news/">News</a></li>
+									<li class="w-full ellipsis" itemprop="name"><a itemprop="url" class="lg:text-xs lg:text-white inline-block w-full ellipsis" href="/expert-insights/">Expert Insights</a></li>
+                                    <li class="w-full ellipsis" itemprop="name"><a itemprop="url" class="lg:text-xs lg:text-white inline-block w-full ellipsis" href="/technical-articles/">Technical Articles</a></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </li>
+                <!-- ./Explore -->
+                <!-- Articles -->
+                <li id="articles" class="flex flex-wrap lg:static lg:inline-block hover-bold-width">
+                    <a class="dropdown-tab text-base tracking-[0.64px] uppercase w-full text-main lg:text-white lg:text-md lg:leading-5 lg:flex lg:px-4 lg:py-2 lg:justify-center hover:font-bold lg:hover:bg-white hover:text-sub lg:hover:text-main lg:text-center font-medium" href="/latest/" title="Articles">Articles</a>
+                    <div class="lg:flex-wrap lg:absolute lg:left-0 lg:z-20 bg-neutral-100 lg:bg-white w-full lg:dropdown-shadow hidden flex">
+                        <div class="relative w-full overflow-hidden">
+                            <ul class="py-4 lg:pb-7.5 w-full lg:w-[20.30%] h-full lg:h-auto flex flex-col gap-y-3.5 lg:gap-y-1.5 bg-neutral-100 font-light lg:font-medium text-base normal-case">
+                                <!-- Latest -->
+                                <li itemprop="name" class="sub-menu default">
+                                    <a itemprop="url" class="block pr-2.5 pl-4 xl:pl-7.5 lg:hover:bg-white" href="/latest/">Latest</a>
+                                </li>
+                                <!-- ./Latest -->
+                                <!-- News -->
+                                <li itemprop="name" class="sub-menu">
+                                    <a itemprop="url" class="block pr-2.5 pl-4 xl:pl-7.5 lg:hover:bg-white" href="/news/">News</a>
+                                </li>
+                                <!-- ./News -->
+                                <!-- Expert Insights -->
+                                <li itemprop="name" class="sub-menu">
+                                    <a itemprop="url" class="block pr-2.5 pl-4 xl:pl-7.5 lg:hover:bg-white" href="/expert-insights/">Expert Insights</a>
+                                </li>
+                                <!-- ./Expert Insights -->
+                                <!-- Technical Article -->
+                                <li itemprop="name" class="sub-menu">
+                                    <a itemprop="url" class="block pr-2.5 pl-4 xl:pl-7.5 lg:hover:bg-white" href="/technical-articles/">Technical Articles</a>
+                                </li>
+                                <!-- ./Technical Article -->
+                            </ul>
+                        </div>
+                    </div>
+                </li>
+                <!-- ./Articles -->
+                <!-- Forums -->
+                <li id="forums" class="flex flex-wrap lg:static lg:inline-block hover-bold-width">
+                    <a class="text-base tracking-[0.64px] uppercase w-full text-main lg:text-white lg:text-md lg:leading-5 lg:flex lg:px-4 lg:py-2 lg:justify-center hover:font-bold lg:group-hover:bg-white lg:hover:bg-white hover:text-sub lg:hover:text-main lg:text-center font-medium" href="/forums/" title="Forums">Forums</a>
+                    
+                </li>
+                <!-- ./Forums -->
+				<!-- Education -->
+                <li id="education" class="flex flex-wrap lg:static lg:inline-block hover-bold-width">
+                    <a class="dropdown-tab text-base tracking-[0.64px] uppercase w-full text-main lg:text-white lg:text-md lg:leading-5 lg:flex lg:px-4 lg:py-2 lg:justify-center hover:font-bold lg:hover:bg-white hover:text-sub lg:hover:text-main lg:text-center font-medium" href="/textbook/" title="Articles">Education</a>
+                    <div class="lg:flex-wrap lg:absolute lg:left-0 lg:z-20 bg-neutral-100 lg:bg-white w-full lg:dropdown-shadow hidden flex">
+                        <div class="relative w-full overflow-hidden">
+                            <ul class="py-4 lg:pb-7.5 w-full lg:w-[20.30%] h-full lg:h-auto flex flex-col gap-y-3.5 lg:gap-y-1.5 bg-neutral-100 font-light lg:font-medium text-base normal-case">
+                                <!-- Textbook -->
+                                <li itemprop="name" class="sub-menu default">
+                                    <a itemprop="url" class="block pr-2.5 pl-4 xl:pl-7.5 lg:hover:bg-white" href="/textbook/">Textbook</a>
+                                </li>
+                                <!-- ./Textbook -->                                
+                                <!-- Technical Article -->
+                                <li itemprop="name" class="sub-menu">
+                                    <a itemprop="url" class="block pr-2.5 pl-4 xl:pl-7.5 lg:hover:bg-white" href="/technical-articles/">Technical Articles</a>
+                                </li>
+                                <!-- ./Technical Article -->
+                            </ul>
+                        </div>
+                    </div>
+                </li>
+                <!-- ./Education -->
+				
+                <!-- Contact Us -->
+                <li id="contact" class="flex flex-wrap lg:hidden">
+                    <a class="text-base tracking-[0.64px] uppercase w-full text-main hover:font-bold hover:bg-white hover:text-sub font-medium" title="Contact Us" href="/contact-us">Contact Us</a>
+                </li>
+                <!-- ./Contact Us -->
+            </ul>
+            <div class="flex flex-col lg:hidden border-y border-main-200 my-6 py-5 gap-3">
+                
+                    <a class="w-full tracking-wider bg-sub px-6 py-2 text-white text-center text-sm uppercase font-bold" href="https://www.plctalk.net/forums/register/">Register</a>
+                    <a class="w-full tracking-wider bg-main px-6 py-2 text-white text-center text-sm uppercase font-bold" href="https://www.plctalk.net/forums/login/?redirect=https://www.plctalk.net/forums/threads/plc-address-error-s7-1200-tp700-comfort.84217/" data-category="login" data-action="login (header desktop)" data-label="https://www.plctalk.net/forums/login/?redirect=https://www.plctalk.net/forums/threads/plc-address-error-s7-1200-tp700-comfort.84217/">Log In</a>
+                
+            </div>
+        
+        </nav>
+    </div>
+    <!-- ./main nav with dropdown -->
+
+    <!-- search dropdown -->
+    <div class="w-full bg-white">
+        <form action="/search" method="GET" id="searchForm" class="border-t border-sub-200 w-full hidden items-center justify-center" style="display: none;">
+            <div class="flex items-center justify-center mx-auto">
+                <input type="text" name="q" id="q" class="ga-search block text-center w-auto !bg-white text-main text-2xl leading-[18px] p-3 ring-0 ring-transparent focus:outline-none focus:ring-transparent focus:ring-0 border-0" placeholder="Search..." aria-label="Search..." style="width: 24px;">
+                <!-- Generated by IcoMoon.io -->
+                <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="currentColor" class="text-sub w-4.5">
+                    <path d="M380.8 646.4c144 0 262.4-118.4 262.4-262.4s-118.4-262.4-262.4-262.4-262.4 118.4-262.4 262.4 118.4 262.4 262.4 262.4zM732.8 646.4l291.2 291.2-86.4 86.4-291.2-291.2v-48l-16-16c-67.2 57.6-153.6 89.6-246.4 89.6-214.4 3.2-384-166.4-384-377.6s169.6-380.8 380.8-380.8 377.6 169.6 377.6 380.8c0 92.8-32 182.4-89.6 246.4l16 16h48z"></path>
+                </svg>
+            </div>
+            <span id="searchTextSpan" class="invisible whitespace-pre text-2xl h-0 absolute inline-flex">Search...</span>
+        </form>
+    </div>
+    <!-- ./search dropdown -->
+</div>
+	
+	
+		
+		<div id="contentHeader" class="block bg-white shadow w-full fixed -top-[160px] left-0 z-10 mb-0">
+			<div class="max-w-7xl mx-auto bg-white flex justify-between md:py-0.5">
+				<button id="menuToggle" data-menu="#mainMenu" data-direction="right" class="toggle-menu lg:hidden text-main hover:text-sub pl-4 focus:outline-none flex items-center md:hidden">
+					<svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="currentColor" class="w-5">
+						<path d="M0 108.8h1024v220.8h-1024v-220.8zM0 403.2h1024v220.8h-1024v-220.8zM0 694.4h1024v220.8h-1024v-220.8z"></path>
+					</svg>
+				</button>
+				<div class="w-auto flex-none py-2.5 px-4 md:pl-4 md:pr-0 lg:p-4 lg:w-45 h-12 md:min-h-16 flex items-center">
+					<a href="https://www.plctalk.net?utm_source=forum" class="ml-9 md:ml-0 mb-0">
+						<img src="/forums/styles/plctalknew/xenforo/plctalk-logo.svg" alt="PLCtalk"  width="120" />
+					</a>
+				</div>
+
+				<div class="hidden md:flex w-auto flex-1 flex-grow float-left px-4">
+					<div id="contentTitle" class="w-full flex flex-col justify-center items-center text-center">
+						<span class="text-main-700 font-light lg:font-normal text-10px lg:text-xs lg:leading-[18px] uppercase lg:mb-1 tracking-[1.8px]">
+							PLC Questions and Answers
+						</span>
+						<h2 class="text-xs lg:text-sm font-semibold lg:font-bold">
+							PLC address error (S7-1200 - TP700 Comfort)
+						</h2>
+					</div>
+					
+				</div>
+
+				<ul class="flex items-center justify-end md:w-auto float-right text-xs lg:w-45 gap-4 lg:gap-8 pr-4">
+					
+			<!--<li class="inline-block float-left mr-4 py-2 customBookmark">
+			
+				<a href="/forums/login/?redirect=https://www.plctalk.net/forums/threads/plc-address-error-s7-1200-tp700-comfort.84217/" title="Bookmark Thread" data-xf-click="overlay" data-follow-redirects="on" class="bookmarkLink bookmarkLink--highlightable"></a>
+			
+
+
+	
+
+			</li>-->
+			<li class="inline-block float-left py-2 customBookmark">
+								<a href="/forums/threads/plc-address-error-s7-1200-tp700-comfort.84217/post-569892"
+									data-xf-init="share-tooltip" data-href="/forums/posts/569892/share"
+									rel="nofollow"
+								   class="group font-bold text-black hover:text-sub flex items-center">
+									<span class="text-black group-hover:text-sub text-xl mr-2.5"><i class="fa--xf fas fa-share-alt" aria-hidden="true"></i></span>
+								</a>
+			</li>
+		
+
+					<li class="inline-block float-left py-2">
+						<a class="group font-bold text-main hover:text-sub flex items-center" title="Reply" href="/forums/login/?redirect=https://www.plctalk.net/forums/threads/plc-address-error-s7-1200-tp700-comfort.84217/" data-xf-click="overlay" data-follow-redirects="on" rel="nofollow">
+							<svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="currentColor" class="w-5">
+								<path d="M819.2 307.2v-102.4h-614.4v102.4h614.4zM614.4 614.4v-102.4h-409.6v102.4h409.6zM204.8 358.4v102.4h614.4v-102.4h-614.4zM921.6 0c57.6 0 102.4 44.8 102.4 102.4v614.4c0 54.4-44.8 102.4-102.4 102.4h-716.8l-204.8 204.8v-921.6c0-57.6 44.8-102.4 102.4-102.4 0 0 819.2 0 819.2 0z"></path>
+							</svg>
+						</a>
+					</li>
+				</ul>
+			</div>
+		</div>
+	
+
+	
+<div class="p-body">
+	<div class="p-body-inner">
+		
+		
+		
+	
+		<div class="p-breadcrumbs--parent">
+		<ul class="p-breadcrumbs"
+			itemscope itemtype="https://schema.org/BreadcrumbList">
+		
+			
+			
+			
+				
+				
+	<li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+		<a href="https://www.plctalk.net" itemprop="item">
+			<span itemprop="name">Home</span>
+		</a>
+		<i class="icon-caret-right text-9px mx-2"></i>
+		<meta itemprop="position" content="1" />
+	</li>
+
+			
+
+			
+				
+				
+	<li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+		<a href="/forums/" itemprop="item">
+			<span itemprop="name">Forums</span>
+		</a>
+		<i class="icon-caret-right text-9px mx-2"></i>
+		<meta itemprop="position" content="2" />
+	</li>
+
+			
+			
+				
+				
+	<li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+		<a href="/forums/#q-a.1" itemprop="item">
+			<span itemprop="name">Q &amp; A</span>
+		</a>
+		<i class="icon-caret-right text-9px mx-2"></i>
+		<meta itemprop="position" content="3" />
+	</li>
+
+			
+				
+				
+	<li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+		<a href="/forums/forums/plc-questions-and-answers.2/" itemprop="item">
+			<span itemprop="name">PLC Questions and Answers</span>
+		</a>
+		<i class="icon-caret-right text-9px mx-2"></i>
+		<meta itemprop="position" content="4" />
+	</li>
+
+			
+
+		
+		</ul>
+		
+		</div>
+	
+
+		
+
+		<div class="p-body-main p-body-main--withSidebar  xb-sidebar-default">
+			
+			
+			<div class="p-body-content">
+				
+				
+		
+		<!--XF:EXTRA_OUTPUT-->
+
+		
+
+		
+
+		
+	<noscript class="js-jsWarning"><div class="blockMessage blockMessage--important blockMessage--iconic u-noJsOnly">JavaScript is disabled. For a better experience, please enable JavaScript in your browser before proceeding.</div></noscript>
+
+		
+	<div class="blockMessage blockMessage--important blockMessage--iconic js-browserWarning" style="display: none">You are using an out of date browser. It  may not display this or other websites correctly.<br />You should upgrade or use an <a href="https://www.google.com/chrome/" target="_blank" rel="noopener">alternative browser</a>.</div>
+
+
+		<div class="listing-headerWrapper">
+		
+			<div class="listing-header w-full bg-white p-3 pt-5 md:p-4 lg:p-8 flex flex-col gap-4 relative">
+			
+				
+					<div class="p-title ">
+					
+						
+							
+								<h1 class="w-full font-bold text-xl tracking-[-0.4px] lg:tracking-[-0.84px] lg:text-[42px] lg:leading-[49px] text-center lg:text-left">PLC address error (S7-1200 - TP700 Comfort)</h1>
+							
+						
+										
+					
+					</div>
+				
+
+				
+					<div class="p-description lg:flex-1 ellipsis text-sm lg:text-base text-center lg:text-left md:px-0">
+	<ul class="listInline listInline--bullet flex items-center justify-center lg:justify-normal">
+		<li>
+			<i class="fa--xf fas fa-user" aria-hidden="true" title="Thread starter"></i>
+			<span class="u-srOnly">Thread starter</span>
+
+			<a href="/forums/members/noname.4271/" class="username  u-concealed" dir="auto" data-user-id="4271" data-xf-init="member-tooltip">NoName</a>
+		</li>
+		<li>
+			<i class="fa--xf fas fa-clock" aria-hidden="true" title="Start date"></i>
+			<span class="u-srOnly">Start date</span>
+
+			<a href="/forums/threads/plc-address-error-s7-1200-tp700-comfort.84217/" class="u-concealed"><time  class="u-dt" dir="auto" datetime="2013-12-15T02:56:37-0500" data-time="1387094197" data-date-string="Dec 15, 2013" data-time-string="2:56 AM" title="Dec 15, 2013 at 2:56 AM">Dec 15, 2013</time></a>
+		</li>
+		
+	</ul>
+</div>
+				
+				
+			</div>
+			<div class="listing-header listing-header--headerLinks">
+			<div class="hScroller" data-xf-init="h-scroller">
+				<div class="hScroller-scroll p-body-headerNav">
+					<div class="w-full flex items-center lg:justify-normal justify-center text-xs lg:text-sm xl:text-base gap-4 xl:gap-8 bg-white uppercase">
+
+						
+							
+	
+	<a href="/forums/search/?type=post" class="block pt-4 pb-3.5 lg:pb-3.5 xl:pt-6 xl:pb-5.5 border-b-4 border-transparent hover:border-sub hover:text-sub hover:font-bold">Search Forums</a>
+	
+	<a href="/forums/whats-new/posts/" class="block pt-4 pb-3.5 lg:pb-3.5 xl:pt-6 xl:pb-5.5 border-b-4 border-transparent hover:border-sub hover:text-sub hover:font-bold">New Posts</a>
+
+						
+
+					</div>
+				</div>
+			</div>
+			</div>
+				
+			</div>
+				
+				
+					
+				
+								
+				
+				<div class="p-body-pageContent">
+
+
+
+
+
+
+
+
+
+
+
+	
+	
+
+
+
+
+
+	
+	
+	
+		
+	
+	
+	
+
+
+	
+	
+	
+		
+	
+	
+	
+
+
+	
+	
+		
+	
+	
+	
+
+
+	
+	
+
+
+
+
+
+
+
+
+
+
+	
+
+	
+		
+	
+
+
+
+
+
+
+
+	
+
+
+
+
+
+
+	
+
+		
+		<div id='div-gpt-ad-1430160961981-0' class="w-full flex justify-center">
+		    <script type='text/javascript'>
+		        googletag.cmd.push(function() {googletag.display('div-gpt-ad-1430160961981-0');});
+		    </script>
+		</div>
+
+	
+
+
+
+<div class="block block--messages" data-xf-init="" data-type="post" data-href="/forums/inline-mod/">
+
+	
+	
+
+
+	<div class="block-outer"></div>
+
+	<div class="block-outer js-threadStatusField"></div>
+
+	<div class="block-container lbContainer"
+		data-xf-init="lightbox select-to-quote"
+		data-message-selector=".js-post"
+		data-lb-id="thread-84217"
+		data-lb-universal="0">
+
+		<div class="block-body js-replyNewMessageContainer">
+			
+				
+					
+	
+	
+
+		
+		
+		
+
+
+	<article class="mt-3 message message--post js-post js-inlineModContainer  "
+		data-author="NoName"
+		data-content="post-569892"
+		id="js-post-569892">
+
+		<span class="u-anchorTarget" id="post-569892"></span>
+
+		
+		
+		<div class="message-inner">
+			<div class="message-cell message-cell--user">
+		<div class="message-avatar ">
+			<div class="message-avatar-wrapper">
+					<a href="/forums/members/noname.4271/" class="avatar avatar--m avatar--default avatar--default--dynamic" data-user-id="4271" data-xf-init="member-tooltip" style="background-color: #2985a3; color: #051114">
+			<span class="avatar-u4271-m" role="img" aria-label="NoName">N</span> 
+		</a>
+				
+			</div>
+		</div>
+				<div class="message-customHeader">
+					
+	<h4 class="message-name"></h4>
+					
+				<span class="threadStarter">Thread Starter</span>
+			
+				
+
+	<section itemscope itemtype="https://schema.org/Person" class="message-user">
+		<div class="message-userDetails">
+			<h4 class="message-name"><a href="/forums/members/noname.4271/" class="username " dir="auto" data-user-id="4271" data-xf-init="member-tooltip"><span itemprop="name">NoName</span></a></h4>
+						
+			<div class="userDetails-stats">
+					
+			</div>
+				
+		</div>
+		
+			
+			
+		
+		<span class="message-userArrow"></span>
+	</section>
+
+					
+					<header class="message-attribution message-attribution--split">
+						<div class="message-attribution-main">
+							<a href="/forums/threads/plc-address-error-s7-1200-tp700-comfort.84217/post-569892" class="u-concealed"
+								rel="nofollow">
+								<time  class="u-dt" dir="auto" datetime="2013-12-15T02:56:37-0500" data-time="1387094197" data-date-string="Dec 15, 2013" data-time-string="2:56 AM" title="Dec 15, 2013 at 2:56 AM">Dec 15, 2013</time>
+							</a>
+						</div>
+
+						<ul class="message-attribution-opposite message-attribution-opposite--list">
+							
+							
+							
+							
+
+							
+								<li>
+									<a href="/forums/threads/plc-address-error-s7-1200-tp700-comfort.84217/post-569892" rel="nofollow" class="message-postNumber">
+										#1
+									</a>
+								</li>
+							
+						</ul>
+					</header>
+
+				
+					</div>
+			</div>
+			<div class="message-cell message-cell--main">
+				<div class="message-main js-quickEditTarget">
+
+					<div class="message-content js-messageContent">
+
+						
+						
+						
+
+						<div class="message-userContent lbContainer js-lbContainer "
+							data-lb-id="post-569892"
+							data-lb-caption-desc="NoName &middot; Dec 15, 2013 at 2:56 AM">
+
+							
+								
+
+	
+
+							
+
+							<article class="message-body js-selectToQuote">
+								
+								<div class="bbWrapper">Hello all.<br />
+<br />
+I&#039;m working with a S7-1200 CPU, a TP700 comfort panel and 4 drives that are all connected through profinet. <br />
+I&#039;ve started my project yesterday and have already made a few functions that are displayed on the panel. I&#039;m using about 25 tags so far. But all of a sudden yesterday the panel started showing error messages for some tags.<br />
+<br />
+TagName: PLC address error<br />
+Every time I add something in the Step7 logic a new tag gets this error message. <br />
+Has any one experienced a similar problem ? I&#039;m going nuts because I can&#039;t work on, I&#039;m stuck at this point now.<br />
+<br />
+So far I have tried making a completely new project but it&#039;s the same problem.<br />
+<br />
+Any help would be greatly appreciated.<br />
+<br />
+Thanks in advanced.<br />
+Best regards.</div>
+								<div class="js-selectToQuoteEnd">&nbsp;</div>
+								
+							</article>
+
+							
+								
+
+	
+
+							
+
+							
+						</div>
+
+						
+
+						
+	
+
+					</div>
+
+					<footer class="message-footer">
+						<div class="reactionsBar js-reactionsList ">
+							
+						</div>
+						
+						
+							<div class="message-actionBar actionBar">
+								
+									
+										<div class="actionBar-set actionBar-set--external">
+				
+										
+											
+
+											
+											
+												<a href="/forums/login/?redirect=https://www.plctalk.net/forums/threads/plc-address-error-s7-1200-tp700-comfort.84217/" data-xf-click="overlay" data-follow-redirects="on" class="reaction reaction--small actionBar-action actionBar-action--reaction reaction--imageHidden reaction--1" ><i aria-hidden="true"></i><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" class="reaction-sprite js-reaction" alt="Like" title="Like"> <span class="reaction-text js-reactionText"><bdi>Like</bdi></span></a>
+												<a href="/forums/login/?redirect=https://www.plctalk.net/forums/threads/plc-address-error-s7-1200-tp700-comfort.84217/" data-xf-click="overlay" data-follow-redirects="on" class="actionBar-action actionBar-action--reply" title="Reply, quoting this message">Reply</a>
+												
+										
+										</div>
+									
+
+									
+
+								
+							</div>
+						
+
+						<div class="js-historyTarget message-historyTarget toggleTarget" data-href="trigger-href"></div>
+					</footer>
+				</div>
+			</div>
+			
+		</div>
+	</article>
+
+	
+
+				
+				
+					
+					<!-- Mobile Interstitial Ad Unit -->
+					<div class="md:hidden w-full">
+						<div class="mobile-container w-full hidden pb-4">
+							<div class="bg-black-800 px-2 w-full font-arial">
+								<span class="uppercase text-white text-sm ">Scroll to continue with content</span>
+							</div>
+							<div class="w-full h-screen flex justify-center">
+								<div class="block relative w-full">
+									<div class="absolute top-0 left-0 clip-rect w-full h-full overflow-hidden" style="z-index:1;">
+										<div class="fixed flex justify-center py-4 TranslateZ-0 top-0 left-0 right-0 bottom-0 bg-ctl-grey-lightest">
+											<div class="flex flex-col justify-center h-full">
+												<!-- /62616433/aac_interstitial_mobile_ad -->
+												<div id='div-gpt-ad-1574089611610-0' style='width: 320px; height: 480px;'>
+
+												</div>
+											</div>
+										</div>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+					<!-- ./Mobile Interstitial Ad Unit -->
+					
+				
+			
+				
+					
+	
+	
+
+		
+		
+		
+
+
+	<article class="mt-3 message message--post js-post js-inlineModContainer  "
+		data-author="JRW"
+		data-content="post-569922"
+		id="js-post-569922">
+
+		<span class="u-anchorTarget" id="post-569922"></span>
+
+		
+		
+		<div class="message-inner">
+			<div class="message-cell message-cell--user">
+		<div class="message-avatar ">
+			<div class="message-avatar-wrapper">
+					<a href="/forums/members/jrw.467/" class="avatar avatar--m" data-user-id="467" data-xf-init="member-tooltip">
+			<img src="/forums/data/avatars/m/0/467.jpg?1261857432"  alt="JRW" class="avatar-u467-m" width="96" height="96" loading="lazy" itemprop="image" /> 
+		</a>
+				
+			</div>
+		</div>
+				<div class="message-customHeader">
+					
+	<h4 class="message-name"></h4>
+					
+				
+
+	<section itemscope itemtype="https://schema.org/Person" class="message-user">
+		<div class="message-userDetails">
+			<h4 class="message-name"><a href="/forums/members/jrw.467/" class="username " dir="auto" data-user-id="467" data-xf-init="member-tooltip"><span itemprop="name">JRW</span></a></h4>
+						
+			<div class="userDetails-stats">
+					
+			</div>
+				
+		</div>
+		
+			
+			
+		
+		<span class="message-userArrow"></span>
+	</section>
+
+					
+					<header class="message-attribution message-attribution--split">
+						<div class="message-attribution-main">
+							<a href="/forums/threads/plc-address-error-s7-1200-tp700-comfort.84217/post-569922" class="u-concealed"
+								rel="nofollow">
+								<time  class="u-dt" dir="auto" datetime="2013-12-15T10:06:00-0500" data-time="1387119960" data-date-string="Dec 15, 2013" data-time-string="10:06 AM" title="Dec 15, 2013 at 10:06 AM">Dec 15, 2013</time>
+							</a>
+						</div>
+
+						<ul class="message-attribution-opposite message-attribution-opposite--list">
+							
+							
+							
+							
+
+							
+								<li>
+									<a href="/forums/threads/plc-address-error-s7-1200-tp700-comfort.84217/post-569922" rel="nofollow" class="message-postNumber">
+										#2
+									</a>
+								</li>
+							
+						</ul>
+					</header>
+
+				
+					</div>
+			</div>
+			<div class="message-cell message-cell--main">
+				<div class="message-main js-quickEditTarget">
+
+					<div class="message-content js-messageContent">
+
+						
+						
+						
+
+						<div class="message-userContent lbContainer js-lbContainer "
+							data-lb-id="post-569922"
+							data-lb-caption-desc="JRW &middot; Dec 15, 2013 at 10:06 AM">
+
+							
+
+							<article class="message-body js-selectToQuote">
+								
+								<div class="bbWrapper">You said &quot;some tags&quot;- so others work fine?<br />
+If so- then you might need to download datablocks etc.. to plc<br />
+ <br />
+If nothing works, then check HMI connection under &quot;connections&quot;<br />
+also go to &quot;online access&quot;<br />
+Is HMI and PLC IP there?</div>
+								<div class="js-selectToQuoteEnd">&nbsp;</div>
+								
+							</article>
+
+							
+
+							
+						</div>
+
+						
+
+						
+	
+
+					</div>
+
+					<footer class="message-footer">
+						<div class="reactionsBar js-reactionsList ">
+							
+						</div>
+						
+						
+							<div class="message-actionBar actionBar">
+								
+									
+										<div class="actionBar-set actionBar-set--external">
+				
+										
+											
+
+											
+											
+												<a href="/forums/login/?redirect=https://www.plctalk.net/forums/threads/plc-address-error-s7-1200-tp700-comfort.84217/" data-xf-click="overlay" data-follow-redirects="on" class="reaction reaction--small actionBar-action actionBar-action--reaction reaction--imageHidden reaction--1" ><i aria-hidden="true"></i><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" class="reaction-sprite js-reaction" alt="Like" title="Like"> <span class="reaction-text js-reactionText"><bdi>Like</bdi></span></a>
+												<a href="/forums/login/?redirect=https://www.plctalk.net/forums/threads/plc-address-error-s7-1200-tp700-comfort.84217/" data-xf-click="overlay" data-follow-redirects="on" class="actionBar-action actionBar-action--reply" title="Reply, quoting this message">Reply</a>
+												
+										
+										</div>
+									
+
+									
+
+								
+							</div>
+						
+
+						<div class="js-historyTarget message-historyTarget toggleTarget" data-href="trigger-href"></div>
+					</footer>
+				</div>
+			</div>
+			
+		</div>
+	</article>
+
+	
+
+				
+				
+			
+				
+					
+	
+	
+
+		
+		
+		
+
+
+	<article class="mt-3 message message--post js-post js-inlineModContainer  "
+		data-author="NoName"
+		data-content="post-569976"
+		id="js-post-569976">
+
+		<span class="u-anchorTarget" id="post-569976"></span>
+
+		
+		
+		<div class="message-inner">
+			<div class="message-cell message-cell--user">
+		<div class="message-avatar ">
+			<div class="message-avatar-wrapper">
+					<a href="/forums/members/noname.4271/" class="avatar avatar--m avatar--default avatar--default--dynamic" data-user-id="4271" data-xf-init="member-tooltip" style="background-color: #2985a3; color: #051114">
+			<span class="avatar-u4271-m" role="img" aria-label="NoName">N</span> 
+		</a>
+				
+			</div>
+		</div>
+				<div class="message-customHeader">
+					
+	<h4 class="message-name"></h4>
+					
+				<span class="threadStarter">Thread Starter</span>
+			
+				
+
+	<section itemscope itemtype="https://schema.org/Person" class="message-user">
+		<div class="message-userDetails">
+			<h4 class="message-name"><a href="/forums/members/noname.4271/" class="username " dir="auto" data-user-id="4271" data-xf-init="member-tooltip"><span itemprop="name">NoName</span></a></h4>
+						
+			<div class="userDetails-stats">
+					
+			</div>
+				
+		</div>
+		
+			
+			
+		
+		<span class="message-userArrow"></span>
+	</section>
+
+					
+					<header class="message-attribution message-attribution--split">
+						<div class="message-attribution-main">
+							<a href="/forums/threads/plc-address-error-s7-1200-tp700-comfort.84217/post-569976" class="u-concealed"
+								rel="nofollow">
+								<time  class="u-dt" dir="auto" datetime="2013-12-16T00:55:01-0500" data-time="1387173301" data-date-string="Dec 16, 2013" data-time-string="12:55 AM" title="Dec 16, 2013 at 12:55 AM">Dec 16, 2013</time>
+							</a>
+						</div>
+
+						<ul class="message-attribution-opposite message-attribution-opposite--list">
+							
+							
+							
+							
+
+							
+								<li>
+									<a href="/forums/threads/plc-address-error-s7-1200-tp700-comfort.84217/post-569976" rel="nofollow" class="message-postNumber">
+										#3
+									</a>
+								</li>
+							
+						</ul>
+					</header>
+
+				
+					</div>
+			</div>
+			<div class="message-cell message-cell--main">
+				<div class="message-main js-quickEditTarget">
+
+					<div class="message-content js-messageContent">
+
+						
+						
+						
+
+						<div class="message-userContent lbContainer js-lbContainer "
+							data-lb-id="post-569976"
+							data-lb-caption-desc="NoName &middot; Dec 16, 2013 at 12:55 AM">
+
+							
+
+							<article class="message-body js-selectToQuote">
+								
+								<div class="bbWrapper"><blockquote data-attributes="member: 467" data-quote="JRW" data-source="post: 569922"
+	class="bbCodeBlock bbCodeBlock--expandable bbCodeBlock--quote js-expandWatch">
+	
+		<div class="bbCodeBlock-title">
+			
+				<a href="/forums/goto/post?id=569922"
+					class="bbCodeBlock-sourceJump"
+					rel="nofollow"
+					data-xf-click="attribution"
+					data-content-selector="#post-569922">JRW said:</a>
+			
+		</div>
+	
+	<div class="bbCodeBlock-content">
+		
+		<div class="bbCodeBlock-expandContent js-expandContent ">
+			You said &quot;some tags&quot;- so others work fine?<br />
+If so- then you might need to download datablocks etc.. to plc<br />
+ <br />
+If nothing works, then check HMI connection under &quot;connections&quot;<br />
+also go to &quot;online access&quot;<br />
+Is HMI and PLC IP there?
+		</div>
+		<div class="bbCodeBlock-expandLink js-expandLink"><a role="button" tabindex="0">Click to expand...</a></div>
+	</div>
+</blockquote><br />
+I have rebuilt and downloaded countless times to the PLC, because I also thought that it has to be something that changed there and so the OP doesn&#039;t connect to the tag. It&#039;s strange that it also doesn&#039;t find some some peripheral inputs that can&#039;t change. <br />
+So far I&#039;ve solved this by changing the tag properties. I&#039;ve switched from the symbolic access to direct access. But this can&#039;t be the solution to change tags over and over again.<br />
+<br />
+Best regards.</div>
+								<div class="js-selectToQuoteEnd">&nbsp;</div>
+								
+							</article>
+
+							
+
+							
+						</div>
+
+						
+
+						
+	
+
+					</div>
+
+					<footer class="message-footer">
+						<div class="reactionsBar js-reactionsList ">
+							
+						</div>
+						
+						
+							<div class="message-actionBar actionBar">
+								
+									
+										<div class="actionBar-set actionBar-set--external">
+				
+										
+											
+
+											
+											
+												<a href="/forums/login/?redirect=https://www.plctalk.net/forums/threads/plc-address-error-s7-1200-tp700-comfort.84217/" data-xf-click="overlay" data-follow-redirects="on" class="reaction reaction--small actionBar-action actionBar-action--reaction reaction--imageHidden reaction--1" ><i aria-hidden="true"></i><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" class="reaction-sprite js-reaction" alt="Like" title="Like"> <span class="reaction-text js-reactionText"><bdi>Like</bdi></span></a>
+												<a href="/forums/login/?redirect=https://www.plctalk.net/forums/threads/plc-address-error-s7-1200-tp700-comfort.84217/" data-xf-click="overlay" data-follow-redirects="on" class="actionBar-action actionBar-action--reply" title="Reply, quoting this message">Reply</a>
+												
+										
+										</div>
+									
+
+									
+
+								
+							</div>
+						
+
+						<div class="js-historyTarget message-historyTarget toggleTarget" data-href="trigger-href"></div>
+					</footer>
+				</div>
+			</div>
+			
+		</div>
+	</article>
+
+	
+
+				
+				
+			
+		</div>
+	</div>
+
+	
+		<div class="block-outer block-outer--after">
+			
+				
+				
+				
+					<div class="block-outer-opposite pt-2 pb-4">
+						
+							<a href="/forums/login/" class="button--link button" data-xf-click="overlay" data-follow-redirects="on"><span class="button-text">
+								You must log in or register to reply here.
+							</span></a>
+						
+					</div>
+				
+			
+		</div>
+	
+
+	
+	
+
+</div>
+
+
+
+
+
+	
+	<div class="block" >
+		<div class="block-container">
+			
+			
+				<h3 class="block-header">Similar Topics</h3>
+				<div class="block-body">
+					<div class="structItemContainer">
+						
+							
+
+	
+	
+	<div class="structItem structItem--thread js-inlineModContainer js-threadListItem-149552 threadListItemIcon-default hover:shadow-md" data-author="bdauliya">
+	
+		
+
+		
+		
+		
+		<div class="structItem-cell structItem-cell--icon">
+			<div class="structItem-iconContainer">
+				<a href="/forums/members/bdauliya.230568/" class="avatar avatar--m avatar--default avatar--default--dynamic" data-user-id="230568" data-xf-init="member-tooltip" style="background-color: #d65c7a; color: #661a2d">
+			<span class="avatar-u230568-m" role="img" aria-label="bdauliya">B</span> 
+		</a>
+				
+			</div>
+		</div>
+		
+		<div class="structItem-cell structItem-cell--main" data-xf-init="touch-proxy">
+			
+
+			<div class="structItem-title">
+				
+				
+				<a href="/forums/threads/can-i-change-the-ab-safety-plcs-ip-address-from-rslinx.149552/" class="" data-tp-primary="on" data-xf-init="" data-preview-url="">Can I change the AB safety PLC&#039;s IP address from RSlinx?</a>
+			</div>
+
+			
+	
+	
+
+
+
+	
+	
+		
+			
+			
+		<div class="cxf-ts contentRow-snippet">
+			
+				I know safety PLC has safety signature but can I manually change the IP address from the RSlinx Module Configuration?
+							
+		</div>
+	
+
+<div class="structItem-minor">
+				
+
+				
+					<ul class="structItem-parts">
+						<li><a href="/forums/members/bdauliya.230568/" class="username " dir="auto" data-user-id="230568" data-xf-init="member-tooltip">bdauliya</a></li>
+						<li class="structItem-startDate"><a href="/forums/threads/can-i-change-the-ab-safety-plcs-ip-address-from-rslinx.149552/" rel="nofollow"><time  class="u-dt" dir="auto" datetime="2026-06-22T12:45:46-0400" data-time="1782146746" data-date-string="Jun 22, 2026" data-time-string="12:45 PM" title="Jun 22, 2026 at 12:45 PM">Jun 22, 2026</time></a></li>
+						
+							<li><a href="/forums/forums/plc-questions-and-answers.2/">PLC Questions and Answers</a></li>
+						
+						
+					</ul>
+					<div class="structItem-minor structItem-lastPost">
+							
+								Last message by 
+								<div class="structItem-minor">
+									
+										<a href="/forums/members/mickey.3291/" class="username " dir="auto" data-user-id="3291" data-xf-init="member-tooltip">Mickey</a>
+									
+								</div>
+								<a href="/forums/threads/can-i-change-the-ab-safety-plcs-ip-address-from-rslinx.149552/latest" rel="nofollow"><time  class="structItem-latestDate u-dt" dir="auto" datetime="2026-06-22T14:02:20-0400" data-time="1782151340" data-date-string="Jun 22, 2026" data-time-string="2:02 PM" title="Jun 22, 2026 at 2:02 PM">Jun 22, 2026</time></a>
+							
+					</div>
+
+					
+				
+			</div>
+		</div>
+		<div class="structItem-cell structItem-cell--meta" title="First message reaction score: 0">
+			<div class="structItem-cell--metaInner">
+				<dl class="pairs pairs--justified">
+					<dt>1</dt>
+					<dd>Replies</dd>
+				</dl>
+				<dl class="pairs pairs--justified structItem-minor">
+					<dt>253</dt>
+					<dd>Views</dd>
+				</dl>
+			</div>
+		</div>
+	</div>
+
+						
+							
+
+	
+	
+	<div class="structItem structItem--thread js-inlineModContainer js-threadListItem-148948 threadListItemIcon-default hover:shadow-md" data-author="RiyasMohamed">
+	
+		
+
+		
+		
+		
+		<div class="structItem-cell structItem-cell--icon">
+			<div class="structItem-iconContainer">
+				<a href="/forums/members/riyasmohamed.291295/" class="avatar avatar--m avatar--default avatar--default--dynamic" data-user-id="291295" data-xf-init="member-tooltip" style="background-color: #996699; color: #2e1f2e">
+			<span class="avatar-u291295-m" role="img" aria-label="RiyasMohamed">R</span> 
+		</a>
+				
+			</div>
+		</div>
+		
+		<div class="structItem-cell structItem-cell--main" data-xf-init="touch-proxy">
+			
+
+			<div class="structItem-title">
+				
+				
+				<a href="/forums/threads/beckhoff-ek1100-plc-ip-address.148948/" class="" data-tp-primary="on" data-xf-init="" data-preview-url="">beckhoff ek1100 plc ip address</a>
+			</div>
+
+			
+	
+	
+
+
+
+	
+	
+		
+			
+			
+		<div class="cxf-ts contentRow-snippet">
+			
+				beckhoff ek1100 plc ip address how to find
+							
+		</div>
+	
+
+<div class="structItem-minor">
+				
+
+				
+					<ul class="structItem-parts">
+						<li><a href="/forums/members/riyasmohamed.291295/" class="username " dir="auto" data-user-id="291295" data-xf-init="member-tooltip">RiyasMohamed</a></li>
+						<li class="structItem-startDate"><a href="/forums/threads/beckhoff-ek1100-plc-ip-address.148948/" rel="nofollow"><time  class="u-dt" dir="auto" datetime="2026-03-17T03:57:43-0400" data-time="1773734263" data-date-string="Mar 17, 2026" data-time-string="3:57 AM" title="Mar 17, 2026 at 3:57 AM">Mar 17, 2026</time></a></li>
+						
+							<li><a href="/forums/forums/plc-questions-and-answers.2/">PLC Questions and Answers</a></li>
+						
+						
+					</ul>
+					<div class="structItem-minor structItem-lastPost">
+							
+								Last message by 
+								<div class="structItem-minor">
+									
+										<a href="/forums/members/ladderlogic.3520/" class="username " dir="auto" data-user-id="3520" data-xf-init="member-tooltip">LadderLogic</a>
+									
+								</div>
+								<a href="/forums/threads/beckhoff-ek1100-plc-ip-address.148948/latest" rel="nofollow"><time  class="structItem-latestDate u-dt" dir="auto" datetime="2026-03-17T08:13:31-0400" data-time="1773749611" data-date-string="Mar 17, 2026" data-time-string="8:13 AM" title="Mar 17, 2026 at 8:13 AM">Mar 17, 2026</time></a>
+							
+					</div>
+
+					
+				
+			</div>
+		</div>
+		<div class="structItem-cell structItem-cell--meta" title="First message reaction score: 0">
+			<div class="structItem-cell--metaInner">
+				<dl class="pairs pairs--justified">
+					<dt>1</dt>
+					<dd>Replies</dd>
+				</dl>
+				<dl class="pairs pairs--justified structItem-minor">
+					<dt>406</dt>
+					<dd>Views</dd>
+				</dl>
+			</div>
+		</div>
+	</div>
+
+						
+							
+
+	
+	
+	<div class="structItem structItem--thread js-inlineModContainer js-threadListItem-146973 threadListItemIcon-default hover:shadow-md" data-author="graycode19">
+	
+		
+
+		
+		
+		
+		<div class="structItem-cell structItem-cell--icon">
+			<div class="structItem-iconContainer">
+				<a href="/forums/members/graycode19.291001/" class="avatar avatar--m avatar--default avatar--default--dynamic" data-user-id="291001" data-xf-init="member-tooltip" style="background-color: #85e0c2; color: #248f6b">
+			<span class="avatar-u291001-m" role="img" aria-label="graycode19">G</span> 
+		</a>
+				
+			</div>
+		</div>
+		
+		<div class="structItem-cell structItem-cell--main" data-xf-init="touch-proxy">
+			
+
+			<div class="structItem-title">
+				
+				
+				<a href="/forums/threads/emerson-plc-ip-address.146973/" class="" data-tp-primary="on" data-xf-init="" data-preview-url="">emerson plc ip address</a>
+			</div>
+
+			
+	
+	
+
+
+
+	
+	
+		
+			
+			
+		<div class="cxf-ts contentRow-snippet">
+			
+				Hello everyone,
+
+
+I’m new to using Emerson PAC Machine Edition (v9.8) and working with an RX3i PLC (model CPE302). The controller was previously...
+							
+		</div>
+	
+
+<div class="structItem-minor">
+				
+
+				
+					<ul class="structItem-parts">
+						<li><a href="/forums/members/graycode19.291001/" class="username " dir="auto" data-user-id="291001" data-xf-init="member-tooltip">graycode19</a></li>
+						<li class="structItem-startDate"><a href="/forums/threads/emerson-plc-ip-address.146973/" rel="nofollow"><time  class="u-dt" dir="auto" datetime="2025-07-16T16:40:52-0400" data-time="1752698452" data-date-string="Jul 16, 2025" data-time-string="4:40 PM" title="Jul 16, 2025 at 4:40 PM">Jul 16, 2025</time></a></li>
+						
+							<li><a href="/forums/forums/plc-questions-and-answers.2/">PLC Questions and Answers</a></li>
+						
+						
+					</ul>
+					<div class="structItem-minor structItem-lastPost">
+							
+								Last message by 
+								<div class="structItem-minor">
+									
+										<a href="/forums/members/tdoa.237256/" class="username " dir="auto" data-user-id="237256" data-xf-init="member-tooltip">tdoa</a>
+									
+								</div>
+								<a href="/forums/threads/emerson-plc-ip-address.146973/latest" rel="nofollow"><time  class="structItem-latestDate u-dt" dir="auto" datetime="2025-07-18T07:18:44-0400" data-time="1752837524" data-date-string="Jul 18, 2025" data-time-string="7:18 AM" title="Jul 18, 2025 at 7:18 AM">Jul 18, 2025</time></a>
+							
+					</div>
+
+					
+				
+			</div>
+		</div>
+		<div class="structItem-cell structItem-cell--meta" title="First message reaction score: 0">
+			<div class="structItem-cell--metaInner">
+				<dl class="pairs pairs--justified">
+					<dt>9</dt>
+					<dd>Replies</dd>
+				</dl>
+				<dl class="pairs pairs--justified structItem-minor">
+					<dt>1,396</dt>
+					<dd>Views</dd>
+				</dl>
+			</div>
+		</div>
+	</div>
+
+						
+							
+
+	
+	
+	<div class="structItem structItem--thread js-inlineModContainer js-threadListItem-145022 threadListItemIcon-default hover:shadow-md" data-author="raphaelprados">
+	
+		
+
+		
+		
+		
+		<div class="structItem-cell structItem-cell--icon">
+			<div class="structItem-iconContainer">
+				<a href="/forums/members/raphaelprados.282124/" class="avatar avatar--m avatar--default avatar--default--dynamic" data-user-id="282124" data-xf-init="member-tooltip" style="background-color: #3366cc; color: #c2d1f0">
+			<span class="avatar-u282124-m" role="img" aria-label="raphaelprados">R</span> 
+		</a>
+				
+			</div>
+		</div>
+		
+		<div class="structItem-cell structItem-cell--main" data-xf-init="touch-proxy">
+			
+
+			<div class="structItem-title">
+				
+				
+				<a href="/forums/threads/this-isnt-a-valid-plc-address-or-plc-is-busy-or-media-is-off.145022/" class="" data-tp-primary="on" data-xf-init="" data-preview-url="">&quot;This isn&#039;t a valid PLC Address, or PLC is busy, or media is off&quot;</a>
+			</div>
+
+			
+	
+	
+
+
+
+	
+	
+		
+			
+			
+		<div class="cxf-ts contentRow-snippet">
+			
+				I&#039;m trying to connect to a M340 Schneider PLC, but I get this message every time. I checked the Event Viewer and the USB connection to the PLC...
+							
+		</div>
+	
+
+<div class="structItem-minor">
+				
+
+				
+					<ul class="structItem-parts">
+						<li><a href="/forums/members/raphaelprados.282124/" class="username " dir="auto" data-user-id="282124" data-xf-init="member-tooltip">raphaelprados</a></li>
+						<li class="structItem-startDate"><a href="/forums/threads/this-isnt-a-valid-plc-address-or-plc-is-busy-or-media-is-off.145022/" rel="nofollow"><time  class="u-dt" dir="auto" datetime="2025-02-20T11:57:38-0500" data-time="1740070658" data-date-string="Feb 20, 2025" data-time-string="11:57 AM" title="Feb 20, 2025 at 11:57 AM">Feb 20, 2025</time></a></li>
+						
+							<li><a href="/forums/forums/plc-questions-and-answers.2/">PLC Questions and Answers</a></li>
+						
+						
+					</ul>
+					<div class="structItem-minor structItem-lastPost">
+							
+								Last message by 
+								<div class="structItem-minor">
+									
+										<a href="/forums/members/modiconguy.231397/" class="username " dir="auto" data-user-id="231397" data-xf-init="member-tooltip">modiconguy</a>
+									
+								</div>
+								<a href="/forums/threads/this-isnt-a-valid-plc-address-or-plc-is-busy-or-media-is-off.145022/latest" rel="nofollow"><time  class="structItem-latestDate u-dt" dir="auto" datetime="2025-02-20T14:48:42-0500" data-time="1740080922" data-date-string="Feb 20, 2025" data-time-string="2:48 PM" title="Feb 20, 2025 at 2:48 PM">Feb 20, 2025</time></a>
+							
+					</div>
+
+					
+				
+			</div>
+		</div>
+		<div class="structItem-cell structItem-cell--meta" title="First message reaction score: 0">
+			<div class="structItem-cell--metaInner">
+				<dl class="pairs pairs--justified">
+					<dt>2</dt>
+					<dd>Replies</dd>
+				</dl>
+				<dl class="pairs pairs--justified structItem-minor">
+					<dt>2,143</dt>
+					<dd>Views</dd>
+				</dl>
+			</div>
+		</div>
+	</div>
+
+						
+							
+
+	
+	
+	<div class="structItem structItem--thread js-inlineModContainer js-threadListItem-144093 threadListItemIcon-default hover:shadow-md" data-author="dshaffst">
+	
+		
+
+		
+		
+		
+		<div class="structItem-cell structItem-cell--icon">
+			<div class="structItem-iconContainer">
+				<a href="/forums/members/dshaffst.270356/" class="avatar avatar--m avatar--default avatar--default--dynamic" data-user-id="270356" data-xf-init="member-tooltip" style="background-color: #a32947; color: #e699ac">
+			<span class="avatar-u270356-m" role="img" aria-label="dshaffst">D</span> 
+		</a>
+				
+			</div>
+		</div>
+		
+		<div class="structItem-cell structItem-cell--main" data-xf-init="touch-proxy">
+			
+
+			<div class="structItem-title">
+				
+				
+				<a href="/forums/threads/omron-plc-trying-to-get-online-with-an-unknown-ip-address.144093/" class="" data-tp-primary="on" data-xf-init="" data-preview-url="">Omron PLC - Trying to get online with an unknown IP address</a>
+			</div>
+
+			
+	
+	
+
+
+
+	
+	
+		
+			
+			
+		<div class="cxf-ts contentRow-snippet">
+			
+				I&#039;ve been following some steps to try to connect to this Omron PLC (Ethernet only) with an unknown IP address.  
+
+
+
+I&#039;ve been trying to use the...
+							
+		</div>
+	
+
+<div class="structItem-minor">
+				
+
+				
+					<ul class="structItem-parts">
+						<li><a href="/forums/members/dshaffst.270356/" class="username " dir="auto" data-user-id="270356" data-xf-init="member-tooltip">dshaffst</a></li>
+						<li class="structItem-startDate"><a href="/forums/threads/omron-plc-trying-to-get-online-with-an-unknown-ip-address.144093/" rel="nofollow"><time  class="u-dt" dir="auto" datetime="2024-12-17T12:52:03-0500" data-time="1734457923" data-date-string="Dec 17, 2024" data-time-string="12:52 PM" title="Dec 17, 2024 at 12:52 PM">Dec 17, 2024</time></a></li>
+						
+							<li><a href="/forums/forums/plc-questions-and-answers.2/">PLC Questions and Answers</a></li>
+						
+						
+					</ul>
+					<div class="structItem-minor structItem-lastPost">
+							
+								Last message by 
+								<div class="structItem-minor">
+									
+										<a href="/forums/members/tarik1978.66340/" class="username " dir="auto" data-user-id="66340" data-xf-init="member-tooltip">tarik1978</a>
+									
+								</div>
+								<a href="/forums/threads/omron-plc-trying-to-get-online-with-an-unknown-ip-address.144093/latest" rel="nofollow"><time  class="structItem-latestDate u-dt" dir="auto" datetime="2024-12-21T11:56:18-0500" data-time="1734800178" data-date-string="Dec 21, 2024" data-time-string="11:56 AM" title="Dec 21, 2024 at 11:56 AM">Dec 21, 2024</time></a>
+							
+					</div>
+
+					
+				
+			</div>
+		</div>
+		<div class="structItem-cell structItem-cell--meta" title="First message reaction score: 0">
+			<div class="structItem-cell--metaInner">
+				<dl class="pairs pairs--justified">
+					<dt>6</dt>
+					<dd>Replies</dd>
+				</dl>
+				<dl class="pairs pairs--justified structItem-minor">
+					<dt>2,735</dt>
+					<dd>Views</dd>
+				</dl>
+			</div>
+		</div>
+	</div>
+
+						
+					</div>
+				</div>
+			
+		</div>
+	</div>
+
+
+
+
+
+
+
+</div>
+				
+			</div>
+			
+				<div class="p-sidebarWrapper">
+					
+				<div class="p-body-sidebar">
+					<div class="p-sidebar-inner sticky-container transition-fast">
+					
+					
+					
+					
+						<div class="block transition-fast flex justify-center">
+<!-- ad unit #1 -->
+<div id='div-gpt-ad-1429623690593-0'>
+
+</div>
+<!-- ./ad unit #1 -->
+</div>
+					
+					
+					</div>
+					</div>
+				</div>
+			
+			
+		</div>			
+				
+	
+				
+	</div>
+</div>
+
+</div> <!-- closing xb-content-wrapper -->
+	
+	
+	
+	
+<footer class="footer bg-gradient-to-r from-main to-sub-600 border-t-[5px] border-sub-600">
+    <div class="container mx-auto xl:px-0 lg:px-4 block">
+        <div class="w-full flex flex-wrap clearfix pt-7.5">
+            <div class="w-full md:w-1/2 lg:w-1/3 flex pb-5 flex-col gap-7 oder-1">
+                <img class="w-[267px] hidden md:block" src="/images/site/plctalk-logo-white.svg" alt="PLCtalk.net" />
+                <div class="text-md w-full xl:w-4/5 hidden md:grid grid-cols-2 gap-4">
+                    <a class="border-l-3 border-sub pl-3 flex items-center text-white tracking-[0.9px]" href="/about-us/">
+                        More About Us
+                    </a>
+                    <a class="border-l-3 border-sub pl-3 flex items-center text-white tracking-[0.9px]" href="https://sparkwire.com/">
+                        Advertise
+                    </a>
+                    <a class="border-l-3 border-sub pl-3 flex items-center text-white tracking-[0.9px]" href="/create-with-us/" data-category="create-with-us" data-action="create-with-us">
+                        Create With Us
+                    </a>
+                    <a class="border-l-3 border-sub pl-3 flex items-center text-white tracking-[0.9px]" href="/contact-us/">
+                        Contact Us
+                    </a>
+                </div>
+                <div class="flex flex-col w-full gap-4 clearfix">
+                    <h6 class="md:border-l-3 border-sub md:pl-3 text-white font-semibold md:font-bold text-sm text-center md:text-left uppercase md:leading-6">
+                        Connect With Us
+                    </h6>
+                    <ul class="w-full flex gap-5 items-center justify-center md:justify-start mb-5 md:mb-0">
+                        <li>
+                            <a class="ga-link text-neutral-300" href="https://www.facebook.com/profile.php?id=61575145831496" aria-label="Facebook" target="_blank" rel="noopener" data-category="social-media-button" data-action="facebook-footer" data-label="https://www.plctalk.net">
+                                <svg viewBox="0 0 13 24" fill="currentColor" class="h-6" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M7.53927 24V12H12.0629V8.99999H7.53927V5.99999C7.82964 4.82964 8.16146 3.98609 10.555 4.5H12.0629V0C11.6862 0.111234 10.3857 0 9.04714 0C5.72201 0 3.56955 1.99306 3.01571 6.00001V9.00002H0V12H3.01571V24L7.53927 24Z" fill="currentColor"></path>
+                                </svg>
+                            </a>
+                        </li>
+                        <li>
+                            <a class="ga-link text-neutral-300" href="https://x.com/plctalk" aria-label="X" target="_blank" rel="noopener" data-category="social-media-button" data-action="twitter-footer" data-label="https://www.plctalk.net">
+                                <svg viewBox="0 0 27 24" fill="currentColor" class="h-5.5" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M22 0L13.9213 7.69867L8 0H0L9.78534 13.1187L0 24H4.04533L11.6747 15.584L17.864 24H26L15.792 10.1787L26.0427 0H22ZM19.164 21.4973L4.53867 2.376H6.94267L21.404 21.496L19.164 21.4973Z" fill="currentColor"></path>
+                                </svg>
+                            </a>
+                        </li>
+                        <li>
+                            <a class="ga-link text-neutral-300" href="https://www.linkedin.com/company/plc-talk/" aria-label="LinkedIn" target="_blank" rel="noopener" data-category="social-media-button" data-action="linkedin-footer" data-label="https://www.plctalk.net">
+                                <svg viewBox="0 0 24 24" fill="currentColor" class="h-6" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M21.3333 0C22.0406 0 22.7189 0.280951 23.219 0.781048C23.719 1.28115 24 1.95942 24 2.66667V21.3333C24 22.0406 23.719 22.7189 23.219 23.219C22.7189 23.719 22.0406 24 21.3333 24H2.66667C1.95942 24 1.28115 23.719 0.781048 23.219C0.280951 22.7189 0 22.0406 0 21.3333V2.66667C0 1.95942 0.280951 1.28115 0.781048 0.781048C1.28115 0.280951 1.95942 0 2.66667 0H21.3333ZM20.6667 20.6667V13.6C20.6667 12.4472 20.2087 11.3416 19.3936 10.5264C18.5784 9.71128 17.4728 9.25333 16.32 9.25333C15.1867 9.25333 13.8667 9.94667 13.2267 10.9867V9.50667H9.50667V20.6667H13.2267V14.0933C13.2267 13.0667 14.0533 12.2267 15.08 12.2267C15.5751 12.2267 16.0499 12.4233 16.3999 12.7734C16.75 13.1235 16.9467 13.5983 16.9467 14.0933V20.6667H20.6667ZM5.17333 7.41333C5.76742 7.41333 6.33717 7.17733 6.75725 6.75725C7.17733 6.33717 7.41333 5.76742 7.41333 5.17333C7.41333 3.93333 6.41333 2.92 5.17333 2.92C4.57571 2.92 4.00257 3.1574 3.57999 3.57999C3.1574 4.00257 2.92 4.57571 2.92 5.17333C2.92 6.41333 3.93333 7.41333 5.17333 7.41333ZM7.02667 20.6667V9.50667H3.33333V20.6667H7.02667Z" fill="currentColor"></path>
+                                </svg>
+                            </a>
+                        </li>
+                    </ul>
+                    <div class="flex md:hidden flex-col gap-3.5 mx-auto text-white text-center font-semibold">
+                        <h6 class="text-sm text-center uppercase">Help &amp; Support</h6>
+                        <p class="text-xs w-64 sm:w-auto ">Our team is here to help you with any questions or concerns.</p>
+                        <a href="/contact-us/" class="w-64 mx-auto font-bold text-sm tracking-[0.56px] uppercase bg-sub p-2 text-white hover:text-white active:text-white hover:shadow-md">Contact Us</a>
+                    </div>
+                </div>
+                <div class="hidden lg:flex w-full flex-col gap-4">
+                    <h6 class="border-l-3 border-sub pl-3 text-white font-bold text-sm uppercase leading-6">
+                        SIGN UP FOR OUR NEWSLETTER
+                    </h6>
+                    <form action="https://www.plctalk.net/forums/register" method="GET" class="flex w-full md:w-4/5">
+                        <input type="text" name="email" class="p-4 !text-neutral-900 placeholder:!text-neutral-500 text-[13px] !bg-white !border-transparent w-[188px] focus:ring-0 focus:!border-black" placeholder="Enter your email address" aria-label="Enter you email address" aria-describedby="basic-addon1">
+                        <button type="submit" class="ga-link w-auto bg-sub text-white px-5 py-4 text-[13px] uppercase font-bold" data-category="register" data-action="email" data-label="https://www.plctalk.net/forums/register">
+                            Register
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="w-full lg:w-2/3 hidden md:flex flex-wrap order-last lg:order-2 mt-5 lg:mt-0 pb-5">
+                <ul class="w-full flex justify-between">
+                    <li class="w-2/3">
+                        <h6 class="text-white font-bold text-md uppercase mb-3">
+                            Categories
+                        </h6>
+                        <ul class="w-full grid grid-cols-2 gap-1 text-[13px] leading-extraloose">
+                            <li><a class="text-neutral-300" href="/latest/plcs-and-ipcs/">PLCs and IPCs</a></li>
+                            <li><a class="text-neutral-300" href="/latest/comm-and-networking/">Comm and Networking</a></li>
+                            <li><a class="text-neutral-300" href="/latest/hmi-and-scada/">HMI and SCADA</a></li>
+                            <li><a class="text-neutral-300" href="/latest/motion-and-motor-control/">Motion and Motor Control</a></li>
+							<li><a class="text-neutral-300" href="/latest/peripheral-hardware/">Peripheral Hardware</a></li>
+                            <li><a class="text-neutral-300" href="/latest/programming-and-software/">Programming and Software</a></li>
+                            <li><a class="text-neutral-300" href="/latest/troubleshooting/">Troubleshooting</a></li>
+                        </ul>
+                    </li>
+                    <li class="w-auto">
+                        <h6 class="text-white font-bold text-lg uppercase mb-3">
+                            Content
+                        </h6>
+                        <ul class="w-full flex flex-col gap-1 text-[13px] leading-extraloose">
+                            <li><a class="text-neutral-300" href="/news/">News</a></li>
+							<li><a class="text-neutral-300" href="/expert-insights/">Expert Insights</a></li>
+                            <li><a class="text-neutral-300" href="/technical-articles/">Technical Articles</a></li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="w-full md:w-1/2 lg:w-full flex flex-col gap-7 order-2 lg:order-3">
+                <div class="hidden md:flex lg:hidden w-full flex-col gap-4">
+                    <h6 class="border-l-3 border-sub md:pl-3 text-white font-bold text-sm uppercase leading-6">
+                        SIGN UP FOR OUR NEWSLETTER
+                    </h6>
+                    <form action="/forums/register" method="GET" class="flex w-full">
+                        <input type="text" name="email" class="p-4 !text-neutral-900 placeholder:!text-neutral-500 text-[13px] !bg-white !border-transparent w-[188px] focus:ring-0 focus:!border-black" placeholder="Enter your email address" aria-label="Enter you email address" aria-describedby="basic-addon1">
+                        <button type="submit" class="ga-link w-auto bg-black text-white px-5 py-4 text-[13px] uppercase font-bold" data-category="register" data-action="email" data-label="https://www.plctalk.net/forums/register">
+                            Register
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="w-full bg-black lg:bg-main xl:px-0 lg:px-4">
+        <div class="container mx-auto">
+            <div class="flex flex-wrap py-3.5 md:py-2.5 items-center text-xs">
+                <div class="w-full md:flex-1 text-white text-center md:text-left order-2 md:order-1">
+                    <a href="https://www.sparkwire.com/" class="text-white" target="_blank">© SparkWire, LLC</a>. All rights reserved
+                </div>
+                <div class="mx-auto md:mx-0 md:w-auto flex items-center whitespace-no-wrap order-1 md:order-2 mb-2 md:mb-0">
+                    <a class="text-white" href="/privacy-policy/">Privacy Policy</a>
+                    <span class="text-white mx-1">·</span>
+                    <a class="text-white" href="/user-agreement/">User Agreement</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</footer>
+
+</div> <!-- closing p-pageWrapper -->
+	
+		
+</div> <!-- closing xb-pageWrapper -->
+	
+<div class="u-bottomFixer js-bottomFixTarget">
+	
+	
+</div>
+
+
+	<div class="u-scrollButtons js-scrollButtons" data-trigger-type="up">
+		<a href="#top" class="button--scroll button" data-xf-click="scroll-to"><span class="button-text"><i class="fa--xf fas fa-arrow-up" aria-hidden="true"></i><span class="u-srOnly">Top</span></span></a>
+		
+	</div>
+
+
+
+	<script src="/forums/js/vendor/jquery/jquery-3.5.1.min.js?_v=4e2b3c7e"></script>
+	<script src="/forums/js/vendor/vendor-compiled.js?_v=4e2b3c7e"></script>
+	<script src="/forums/js/xf/core-compiled.js?_v=4e2b3c7e"></script>
+	
+<script>
+	const CMTV_MATH_RENDER_OPTIONS =
+	{
+		"delimiters":
+		[
+			{left: "[imath]", right: "[/imath]", display: false},
+			{left: "[math]",  right: "[/math]", display: true}
+		].concat([
+	{ "left": "$$", "right": "$$", "display": true },
+	
+	{ "left": "\\[", "right": "\\]", "display": true },
+	{ "left": "\\(", "right": "\\)", "display": false }
+]),
+
+		"ignoredClasses": [].concat([
+	"fr-wrapper", 	// Froala editor
+	"username"		// Username
+]),
+
+		"macros": {
+	// Parameterless example (short version to write limit for sequences, where n goes to infinity)
+	//"\\limn":   "\\lim\\limits_{n\\to\\infty}",
+	
+	// Macros with one parameter example (floor of the number)
+	//"\\floor":  "\\left\\lfloor #1 \\right\\rfloor",
+}
+	};
+	
+	(function ($, document)
+	{
+		$(document).on('xf:reinit', function (e)
+		{
+			renderMathInElement(document.body, CMTV_MATH_RENDER_OPTIONS);
+		});
+	})
+	(jQuery, document);
+</script>
+	<script>
+		jQuery.extend(true, XF.config, {
+			// 
+			userId: 0,
+			enablePush: false,
+			pushAppServerKey: '',
+			url: {
+				fullBase: 'https://www.plctalk.net/forums/',
+				basePath: '/forums/',
+				css: '/forums/css.php?css=__SENTINEL__&s=3&l=1&d=1789054234',
+				keepAlive: '/forums/login/keep-alive'
+			},
+			cookie: {
+				path: '/',
+				domain: '.plctalk.net',
+				prefix: 'plctalk_',
+				secure: true,
+				consentMode: 'disabled',
+				consented: ["optional"]
+			},
+			cacheKey: 'e648a9bced6a58308ec75a1984e09479',
+			csrf: '1792949464,f89c9e7e788910449eef351f1780c75a',
+			js: {},
+			css: {"public:CMTV_Math.less":true,"public:bb_code.less":true,"public:cxf_thread_snippet.less":true,"public:message.less":true,"public:structured_list.less":true,"public:extra.less":true},
+			time: {
+				now: 1792949464,
+				today: 1792900800,
+				todayDow: 0,
+				tomorrow: 1792987200,
+				yesterday: 1792814400,
+				week: 1792382400
+			},
+			borderSizeFeature: '4px',
+			fontAwesomeWeight: 's',
+			enableRtnProtect: true,
+			
+			enableFormSubmitSticky: true,
+			uploadMaxFilesize: 52428800,
+			allowedVideoExtensions: ["m4v","mov","mp4","mp4v","mpeg","mpg","ogv","webm"],
+			allowedAudioExtensions: ["mp3","opus","ogg","wav"],
+			shortcodeToEmoji: true,
+			visitorCounts: {
+				conversations_unread: '0',
+				alerts_unviewed: '0',
+				total_unread: '0',
+				title_count: true,
+				icon_indicator: true
+			},
+			jsState: {},
+			publicMetadataLogoUrl: 'https://plctalk.net/images/site/og_default.png',
+			publicPushBadgeUrl: 'https://www.plctalk.net/forums/styles/default/xenforo/bell.png'
+		});
+
+		jQuery.extend(XF.phrases, {
+			// 
+			date_x_at_time_y: "{date} at {time}",
+			day_x_at_time_y:  "{day} at {time}",
+			yesterday_at_x:   "Yesterday at {time}",
+			x_minutes_ago:    "{minutes} minutes ago",
+			one_minute_ago:   "1 minute ago",
+			a_moment_ago:     "A moment ago",
+			today_at_x:       "Today at {time}",
+			in_a_moment:      "In a moment",
+			in_a_minute:      "In a minute",
+			in_x_minutes:     "In {minutes} minutes",
+			later_today_at_x: "Later today at {time}",
+			tomorrow_at_x:    "Tomorrow at {time}",
+
+			day0: "Sunday",
+			day1: "Monday",
+			day2: "Tuesday",
+			day3: "Wednesday",
+			day4: "Thursday",
+			day5: "Friday",
+			day6: "Saturday",
+
+			dayShort0: "Sun",
+			dayShort1: "Mon",
+			dayShort2: "Tue",
+			dayShort3: "Wed",
+			dayShort4: "Thu",
+			dayShort5: "Fri",
+			dayShort6: "Sat",
+
+			month0: "January",
+			month1: "February",
+			month2: "March",
+			month3: "April",
+			month4: "May",
+			month5: "June",
+			month6: "July",
+			month7: "August",
+			month8: "September",
+			month9: "October",
+			month10: "November",
+			month11: "December",
+
+			active_user_changed_reload_page: "The active user has changed. Reload the page for the latest version.",
+			server_did_not_respond_in_time_try_again: "The server did not respond in time. Please try again.",
+			oops_we_ran_into_some_problems: "Oops! We ran into some problems.",
+			oops_we_ran_into_some_problems_more_details_console: "Oops! We ran into some problems. Please try again later. More error details may be in the browser console.",
+			file_too_large_to_upload: "The file is too large to be uploaded.",
+			uploaded_file_is_too_large_for_server_to_process: "The uploaded file is too large for the server to process.",
+			files_being_uploaded_are_you_sure: "Files are still being uploaded. Are you sure you want to submit this form?",
+			attach: "Attach files",
+			rich_text_box: "Rich text box",
+			close: "Close",
+			link_copied_to_clipboard: "Link copied to clipboard.",
+			text_copied_to_clipboard: "Text copied to clipboard.",
+			loading: "Loading…",
+			you_have_exceeded_maximum_number_of_selectable_items: "You have exceeded the maximum number of selectable items.",
+
+			processing: "Processing",
+			'processing...': "Processing…",
+
+			showing_x_of_y_items: "Showing {count} of {total} items",
+			showing_all_items: "Showing all items",
+			no_items_to_display: "No items to display",
+
+			number_button_up: "Increase",
+			number_button_down: "Decrease",
+
+			push_enable_notification_title: "Push notifications enabled successfully at PLCtalk - Interactive Q & A",
+			push_enable_notification_body: "Thank you for enabling push notifications!",
+
+			pull_down_to_refresh: "Pull down to refresh",
+			release_to_refresh: "Release to refresh",
+			refreshing: "Refreshing…"
+		});
+	</script>
+
+	<form style="display:none" hidden="hidden">
+		<input type="text" name="_xfClientLoadTime" value="" id="_xfClientLoadTime" title="_xfClientLoadTime" tabindex="-1" />
+	</form>
+
+	
+
+
+
+
+
+
+
+<!-- Required JS -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-cookie/1.4.1/jquery.cookie.min.js"></script>
+
+<!--  JavaScript -->
+
+<script async src="https://securepubads.g.doubleclick.net/tag/js/gpt.js"></script>
+
+<script type="module" src="/latest-js/ad"></script>
+	
+
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sticky-kit/1.1.3/sticky-kit.min.js" integrity="sha256-c4Rlo1ZozqTPE2RLuvbusY3+SU1pQaJC0TjuhygMipw=" crossorigin="anonymous"></script>
+
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.matchHeight/0.7.2/jquery.matchHeight-min.js" integrity="sha256-+oeQRyZyY2StGafEsvKyDuEGNzJWAbWqiO2L/ctxF6c=" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jStorage/0.4.12/jstorage.min.js" integrity="sha256-JpV4IWnt/w4RQKkIQd0NORsrqy7mnydQFD0iQjKEc/Y=" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/malihu-custom-scrollbar-plugin/3.1.5/jquery.mCustomScrollbar.concat.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.hoverintent/1.10.0/jquery.hoverIntent.min.js" integrity="sha256-rsusDYnTpKDiboGp6W+t4oB9VOdybAuz3F/JalS7P5Y=" crossorigin="anonymous"></script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-modal/0.9.1/jquery.modal.min.js" crossorigin="anonymous"></script>
+<script src="/js/jquery-ui.min.js"></script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/howler/2.1.3/howler.min.js" integrity="sha256-/Q4ZPy6sMbk627wHxuaWSIXS1y7D2KnMhsm/+od7ptE=" crossorigin="anonymous"></script>
+
+
+<script type="module" src="/latest-js/app"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jstimezonedetect/1.0.7/jstz.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cookieconsent2/3.0.3/cookieconsent.min.js"></script>
+
+
+<script type="module" src="/latest-js/view"></script>
+
+<script src="/js/open-window.js"></script>
+
+	
+	<script>
+	window.contentCore = {
+	  ...window.contentCore,
+	  site_id: "plctalk",
+	  personalization_allowed: true
+	};
+	</script>
+	<script src="https://content.plctalk.net/content.js" async></script>	
+
+	
+	
+	
+
+
+
+	<script type="text/template" id="xfReactTooltipTemplate">
+		<div class="tooltip-content-inner">
+			<div class="reactTooltip">
+				
+					<a href="#" class="reaction reaction--1" data-reaction-id="1"><i aria-hidden="true"></i><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" class="reaction-sprite js-reaction" alt="Like" title="Like" data-xf-init="tooltip" data-extra-class="tooltip--basic tooltip--noninteractive" /></a>
+				
+					<a href="#" class="reaction reaction--2" data-reaction-id="2"><i aria-hidden="true"></i><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" class="reaction-sprite js-reaction" alt="Love" title="Love" data-xf-init="tooltip" data-extra-class="tooltip--basic tooltip--noninteractive" /></a>
+				
+					<a href="#" class="reaction reaction--3" data-reaction-id="3"><i aria-hidden="true"></i><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" class="reaction-sprite js-reaction" alt="Haha" title="Haha" data-xf-init="tooltip" data-extra-class="tooltip--basic tooltip--noninteractive" /></a>
+				
+					<a href="#" class="reaction reaction--4" data-reaction-id="4"><i aria-hidden="true"></i><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" class="reaction-sprite js-reaction" alt="Wow" title="Wow" data-xf-init="tooltip" data-extra-class="tooltip--basic tooltip--noninteractive" /></a>
+				
+					<a href="#" class="reaction reaction--5" data-reaction-id="5"><i aria-hidden="true"></i><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" class="reaction-sprite js-reaction" alt="Sad" title="Sad" data-xf-init="tooltip" data-extra-class="tooltip--basic tooltip--noninteractive" /></a>
+				
+					<a href="#" class="reaction reaction--6" data-reaction-id="6"><i aria-hidden="true"></i><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" class="reaction-sprite js-reaction" alt="Angry" title="Angry" data-xf-init="tooltip" data-extra-class="tooltip--basic tooltip--noninteractive" /></a>
+				
+			</div>
+		</div>
+	</script>
+
+
+
+
+	
+		
+	
+	
+		<script type="application/ld+json">
+		{
+			"@context": "https://schema.org",
+			"@type": "DiscussionForumPosting",
+			"@id": "https:\/\/www.plctalk.net\/forums\/threads\/plc-address-error-s7-1200-tp700-comfort.84217\/",
+			"headline": "PLC address error (S7-1200 - TP700 Comfort)",
+			"articleBody": "Hello all.\n\nI'm working with a S7-1200 CPU, a TP700 comfort panel and 4 drives that are all connected through profinet. \nI've started my project yesterday and have already made a few functions that are displayed on the panel. I'm using about 25 tags so far. But all of a sudden yesterday the panel started showing error messages for some tags.\n\nTagName: PLC address error\nEvery time I add something in the Step7 logic a new tag gets this error message. \nHas any one experienced a similar problem ? I'm going nuts because I can't work on, I'm stuck at this point now.\n\nSo far I have tried making a completely new project but it's the same problem.\n\nAny help would be greatly appreciated.\n\nThanks in advanced.\nBest regards.",
+			"articleSection": "PLC Questions and Answers",
+			"author": {
+				"@type": "Person",
+				"name": "NoName"
+			},
+			"datePublished": "2013-12-15T02:56:37-05:00",
+			"dateModified": "2013-12-16T00:55:01-05:00",
+			"image": "https:\/\/plctalk.net\/images\/site\/og_default.png",
+			"interactionStatistic": {
+				"@type": "InteractionCounter",
+				"interactionType": "https://schema.org/ReplyAction",
+				"userInteractionCount": 2
+			},
+			"publisher": {
+				"@type": "Organization",
+				"name": "PLCtalk - Interactive Q & A",
+				"logo": {
+					"@type": "ImageObject",
+					"url": "https:\/\/plctalk.net\/images\/site\/og_default.png"
+				}
+			},
+			"mainEntityOfPage": {
+				"@type": "WebPage",
+				"@id": "https://www.plctalk.net/forums"
+			}
+		}
+		</script>
+	
+
+
+<!-- XenBase Version: 2.1.10 -->
+<!-- Style Version:  -->
+
+<!-- Ads -->
+	
+
+
+	<div id='div-gpt-ad-1430235245447-0' class="wallpaperadpixel">
+    </div>
+
+	<!-- Welcome Ad Modal -->
+<div id="my_popup" class="hidden fixed h-full top-0 left-0 bottom-0 right-0 bg-[#000]/70 z-[999] text-white py-12 px-20">
+    <div class="w-full 2xl:container">
+        <div class="flex flex-wrap mb-12 px-4">
+            <div class="w-full lg:my-3 lg:px-3 lg:w-1/2">
+                <img src="/images/site/plctalk-logo-white.svg" alt="PLCtalk.net" class="w-60">
+            </div>
+            <div class="w-full uppercase lg:my-3 lg:px-3 lg:w-1/2 text-right my_popup_close continue-site font-vollkorn text-3xl font-bold cursor-pointer hover:text-sub">
+                Continue to site
+            </div>
+        </div>
+        <div class="flex">
+            <div class="hidden xl:inline-block w-auto text-4xl text-white">
+                <div class="uppercase font-bold leading-none font-martel text-6xl mb-7 px-16">
+                    <span class="block text-left whitespace-nowrap">QUOTE OF</span>
+                    <span class="block text-right whitespace-nowrap">THE DAY</span>
+                </div>
+                <div class="leading-tight mb-3 text-left flex pr-20">
+                    <div class="text-8xl">“</div>
+                    <div class="pt-4 text-3xl"><span id="welcomequote"></span><span>”</span></div>
+                </div>
+                <div class="italic font-open-sans text-5xl text-right pr-20"> - <span id="welcomeauthor"></span></div>
+            </div>
+            <div class="w-full xl:mw-1/2 flex items-center justify-center">
+                <div id='div-gpt-ad-1430160889889-0' class="w-[640px]" tabindex="0"></div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- End of Welcome Ad Modal -->
+
+	
+	
+	<div id='div-gpt-ad-1441294234226-0'>
+  	</div>
+	
+	
+
+
+<script>window.__CF$cv$params={r:'a502f3e7ecf67561',t:'MTc5Mjk0OTQ2NA==',u:'01a1741daff671d7bead3f54dfd3da47',ut:'.xnB1Q5TUSQo_i1zI.Euv92dyyq3..UOLRuWaa1lWQU-1792949465-1.2.1.1-PapvjiPuoFVYOUVOFeiInav_f1VKHWJYNI3eZayjMsNb50ZIQrDw0RYKRayU1rgGmghq.KeAemT5GnQXrRG7ylEp1eKdKHaOnLNngyBfqKE',i:60};(function(){if(!document.body)return;var s=document.createElement('script');s.src='/cdn-cgi/challenge-platform/scripts/precursor/main.js';document.head.appendChild(s);})();</script></body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	

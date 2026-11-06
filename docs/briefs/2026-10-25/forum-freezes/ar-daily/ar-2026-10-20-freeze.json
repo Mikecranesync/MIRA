@@ -1,0 +1,20 @@
+{
+  "freeze_id": "AR-2026-10-20-MITSUBISHI-A2AS-COMM-CARD-NO-CONNECT-RD-FLASH-SD-DARK",
+  "source": "PLCTalk",
+  "thread_id": "150162",
+  "url": "https://www.plctalk.net/forums/threads/mitsubishi-a-series-communication-problem.150162/",
+  "title": "Mitsubishi A series communication problem",
+  "op_author": "hdaniel1171",
+  "op_posted_local_et": "2026-10-20T04:26:59-04:00",
+  "op_posted_utc": "2026-10-20T08:26:59Z",
+  "age_hours_at_freeze": 5.2,
+  "reply_count_unread": 6,
+  "op_body_verbatim": "Hello Guys, I need help communicating to a Mitsubishi A2AS through the communication card, but cannot seem to connect the RD led on the communication card flashes, the SD does not flash and I get nothing on the computer no communication messages or communication failure message.",
+  "technician_version": "Mitsubishi MELSEC A-series A2AS CPU. Trying to connect a PC to the PLC through its serial communication card (computer-link module). On the comm card the RD (receive) LED flashes but the SD (send) LED never flashes, and the PC software shows nothing at all: no data and no communication-failure message. What should I check to get the A2AS answering through the comm card?",
+  "oem": "Mitsubishi Electric (MELSEC A series)",
+  "model": "A2AS CPU + communication card (card model not stated)",
+  "fault_symptom": "PC cannot connect; comm card RD LED flashes, SD LED stays dark; no response and no comm-failure message on PC",
+  "scan_date": "2026-10-20",
+  "scan_timezone": "America/New_York",
+  "notes": "Frozen OP-only via browser (PLCTalk behind Cloudflare). 6 replies exist, NOT read. Answer not researched; no MIRA/FactoryLM calls. Comm card model, software (GX Developer/MX Component?), cable, and station/protocol settings not stated. First Mitsubishi A-series/legacy serial-comm freeze. Not safety-critical."
+}

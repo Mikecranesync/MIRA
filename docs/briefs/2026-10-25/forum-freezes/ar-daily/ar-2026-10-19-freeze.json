@@ -1,0 +1,20 @@
+{
+  "freeze_id": "AR-2026-10-19-ROCKWELL-KINETIX-6000-2094-AC09-M02-S-SERIES-A-TO-C-SWAP-PCB-FUSE-BLOWN",
+  "source": "PLCTalk",
+  "thread_id": "150157",
+  "url": "https://www.plctalk.net/threads/150157/",
+  "title": "Allen Bradley Kinetix 6000",
+  "op_author": "That Guy Byorgue",
+  "op_posted_utc": "2026-10-19T02:12:06Z",
+  "op_posted_local_et": "2026-10-18T22:12:06-04:00",
+  "age_hours_at_freeze": 11.5,
+  "reply_count_unread": 1,
+  "op_body_verbatim": "Hi everyone,\n\nI'm troubleshooting an Allen-Bradley Kinetix 6000 Integrated Axis Module at our plant.\n\nExisting unit:\n\n\nCatalog number: 2094-AC09-M02-S\nSeries: A\nReplacement unit:\n\n\nCatalog number: 2094-AC09-M02-S\nSeries: C\nThe catalog number is exactly the same; the only difference is the series revision.\n\nWhen we install the Series C unit, it does not operate. On one occasion, the internal fuse soldered directly to the amplifier PCB blew.\n\nI'd like to know:\n\n\nHas anyone successfully replaced a Series A unit with Series C using the same catalog number?\nAre there any hardware revision or firmware compatibility issues we should consider?\nCould a defective replacement unit or another internal fault explain the blown PCB fuse?\nAre there any known issues with this particular model?\nWe have stopped powering up the replacement because of the blown fuse.\n\nAny advice or experience would be greatly appreciated. Thank you!\n\n\nDaniel from Philippines",
+  "technician_version": "Allen-Bradley Kinetix 6000 Integrated Axis Module, catalog 2094-AC09-M02-S. The original Series A unit is being replaced with a Series C unit of the same catalog number. With the Series C installed the drive does not operate, and on one power-up the fuse soldered onto the amplifier PCB blew. Replacement is now de-energized. Is a Series A to Series C swap of the same catalog number supported, are there hardware-revision or firmware compatibility issues to check, could a defective replacement or another fault (bus/power rail, wiring) explain the blown PCB fuse, and are there known issues with this module?",
+  "oem": "Rockwell Automation / Allen-Bradley",
+  "model": "Kinetix 6000 2094-AC09-M02-S Integrated Axis Module (IAM), Series A -> Series C",
+  "fault_symptom": "Replacement Series C IAM does not operate; internal PCB-soldered fuse blew once; unit now kept de-energized",
+  "scan_date": "2026-10-19",
+  "scan_timezone": "America/New_York",
+  "notes": "Frozen OP-only via browser (PLCTalk now behind Cloudflare JS challenge; curl 403). 1 community reply exists, NOT read. Answer not researched; no MIRA/FactoryLM calls. No fault code / status LED given by OP; Logix/firmware revision not stated. First Kinetix/servo-drive freeze; safety-adjacent (de-energized, blown fuse, high-voltage DC bus)."
+}

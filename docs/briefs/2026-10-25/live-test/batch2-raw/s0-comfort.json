@@ -1,0 +1,61 @@
+{
+  "label": "s0-comfort",
+  "notebookId": "b66b1236-c412-4900-be79-d8f22c5e82e6",
+  "docId": "abdc71c7-f60c-47b7-8dc3-d4bd8cd52f4f",
+  "question": "How do I recalibrate the touch screen on a TP700 Comfort panel?",
+  "requestBody": {
+    "message": "How do I recalibrate the touch screen on a TP700 Comfort panel?",
+    "sourceDocIds": [
+      "abdc71c7-f60c-47b7-8dc3-d4bd8cd52f4f"
+    ],
+    "threadId": "thrd_7d1b819220890ea072248d0828b3bd20"
+  },
+  "httpStatus": 200,
+  "headers": {
+    "cache-control": "no-cache, no-transform",
+    "connection": "keep-alive",
+    "content-security-policy": "default-src 'self'; script-src 'self' 'nonce-YWMxYjg4OTMtNzY3Ny00NzkxLWI0ZDItOWExMDFhMzgwMjQy' https://accounts.google.com https://apis.google.com https://js.stripe.com https://www.dropbox.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://js.stripe.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://accounts.google.com https://api.hubapi.com https://api.stripe.com https://js.stripe.com https://www.dropbox.com; frame-src 'self' https://accounts.google.com https://js.stripe.com https://hooks.stripe.com https://mikecranesync.github.io https://www.dropbox.com; frame-ancestors 'self'",
+    "content-type": "text/event-stream",
+    "date": "Sun, 25 Oct 2026 17:33:06 GMT",
+    "referrer-policy": "same-origin",
+    "server": "nginx/1.24.0 (Ubuntu)",
+    "strict-transport-security": "max-age=63072000; includeSubDomains; preload",
+    "transfer-encoding": "chunked",
+    "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "x-mira-trace-id": "f40e3e4a72b5a8cdb90da67fccf3020e"
+  },
+  "ttftMs": null,
+  "totalMs": 8160,
+  "kinds": [
+    "trace",
+    "sources",
+    "status",
+    "[DONE]"
+  ],
+  "answer": "",
+  "frames": [
+    {
+      "kind": "trace",
+      "traceId": "f40e3e4a72b5a8cdb90da67fccf3020e",
+      "turnId": "ec7baff3-9ae6-48f7-b91d-599640d7c73e"
+    },
+    {
+      "kind": "sources",
+      "citations": [],
+      "sourceSnapshot": [
+        "abdc71c7-f60c-47b7-8dc3-d4bd8cd52f4f"
+      ]
+    },
+    {
+      "kind": "status",
+      "status": "insufficient_evidence",
+      "message": "I couldn't find support for that in this notebook's manuals. Add the manual for the equipment you're asking about, or the page that covers it, and ask again."
+    },
+    {
+      "kind": "[DONE]"
+    }
+  ],
+  "startedAt": "2026-10-25T17:32:58.047Z"
+}

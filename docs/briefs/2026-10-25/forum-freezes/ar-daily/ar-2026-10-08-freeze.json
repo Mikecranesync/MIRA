@@ -1,0 +1,20 @@
+{
+  "freeze_id": "AR-2026-10-08-GE-RX3I-IC200EBI001-PRODUCED-EGD-NO-OUTPUT",
+  "source": "PLCTalk",
+  "thread_id": "150111",
+  "url": "https://www.plctalk.net/forums/threads/produced-exchanges-pac-rx3i-to-a-niu-ic200ebi001.150111/",
+  "op_author": "CPA",
+  "op_posted_utc": "2026-10-08T07:56:45Z",
+  "op_posted_local_et": "2026-10-08T03:56:45-04:00",
+  "age_hours": 5.9,
+  "reply_count_unread": 1,
+  "title": "Produced exchanges PAC RX3i to a NIU IC200EBI001",
+  "op_body_verbatim": "Hi everyone,\nPlease i apreciate your help\n\nI have a Versamax NIU IC200EBI001 to communicate using EGD to a PAC rx3i. The slots are as follows:\n1. Digital output 8CH IC200MDL730\n2. Digital input 16CH IC200MDL640\n3. Analog input 8CH IC200ALG240\n4. Analog input 8CH IC200ALG240\n5. Analog output 8CH IC200ALG326\n\nThe consumed exchanges in PAC rx3i from the NIU (IC200EBI001) are ok, i can read all inputs analog and digital, but produced exchange to the NIU is not working, is not possible to operate the outputs. (i have only added to the ladder logic the digital outputs registers and i am forcing to 1, but is not taking the change in the digital output module)\nThe status produced exchange is 1, but outputs no change of state.\nI tested the hardware, if i configure the hardware IC200MDL730 for example in the digital outuputs to start in 1, once i download to NIU target, the outputs activate de channels i configured to start in 1 on this module. So i think communications and output module works but i dont know what i am doing bad and may be the problem is on the producer configuration.\nThe producer ID exchange are the same in booth PAC rx3i and the NIU\nThe ip address is ok, i produce to de correct IP address and in the NIU i consume from correct IP address.\nI dont know if the problem is about length and addressing in produced exchange on PAC rx3i\nI created de variables for produced exchanges follows:\n-Symbolic address to the digital output module i created type bool and length 8\n-Symbolic address to the analog output module i created type INT and length 8\n\nPlease Help",
+  "technician_version": "Field tech has an Emerson/GE PACSystems RX3i talking EGD to a VersaMax Ethernet NIU IC200EBI001. NIU I/O: DO IC200MDL730, DI IC200MDL640, AI IC200ALG240 (x2), AO IC200ALG326. Consumed exchanges work (RX3i reads all NIU inputs). Produced exchange from RX3i to NIU does not drive outputs—forcing digital-output registers in ladder does not change the DO module; produced-exchange status reads 1. Hardware check: configuring IC200MDL730 power-up defaults to 1 and downloading to the NIU does energize those channels, so the DO module and basic NIU path look OK. Exchange IDs and IPs match on both ends. Suspect produced-exchange length/addressing/variable mapping on the RX3i producer (bool length 8 for DO, INT length 8 for AO).",
+  "oem": "GE/Emerson PACSystems (VersaMax)",
+  "model": "PAC RX3i + IC200EBI001 (IC200MDL730 / IC200MDL640 / IC200ALG240 / IC200ALG326)",
+  "fault_symptom": "EGD produced exchange status=1 but NIU digital/analog outputs do not change",
+  "scan_date": "2026-10-08",
+  "scan_timezone": "America/New_York",
+  "notes": "Frozen OP-only before reading community replies; 1 reply exists unread. Replies not used for research."
+}

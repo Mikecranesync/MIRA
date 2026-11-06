@@ -1,0 +1,61 @@
+{
+  "label": "b2-s71200-scada",
+  "notebookId": "c872fc29-8066-4ca8-bd06-3772bfbc354d",
+  "docId": "67d09e1e-862a-4b7c-aa82-eb64df83f875",
+  "question": "For a project using the PLC 1214 and HMI TP700 Comfort, we now want to connect it to SCADA. Can I connect it through the HMI, or do I need to purchase a CP1243-1 for this?   Like Reply",
+  "requestBody": {
+    "message": "For a project using the PLC 1214 and HMI TP700 Comfort, we now want to connect it to SCADA. Can I connect it through the HMI, or do I need to purchase a CP1243-1 for this?   Like Reply",
+    "sourceDocIds": [
+      "67d09e1e-862a-4b7c-aa82-eb64df83f875"
+    ],
+    "threadId": "thrd_5cb1a7d5b9f3e10d92fddd7a244f03ca"
+  },
+  "httpStatus": 200,
+  "headers": {
+    "cache-control": "no-cache, no-transform",
+    "connection": "keep-alive",
+    "content-security-policy": "default-src 'self'; script-src 'self' 'nonce-NTBiZDllNDYtYjY4NS00NTQ4LTkwMzctMGUzMTVhYzczOGIx' https://accounts.google.com https://apis.google.com https://js.stripe.com https://www.dropbox.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://js.stripe.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://accounts.google.com https://api.hubapi.com https://api.stripe.com https://js.stripe.com https://www.dropbox.com; frame-src 'self' https://accounts.google.com https://js.stripe.com https://hooks.stripe.com https://mikecranesync.github.io https://www.dropbox.com; frame-ancestors 'self'",
+    "content-type": "text/event-stream",
+    "date": "Sun, 25 Oct 2026 17:33:45 GMT",
+    "referrer-policy": "same-origin",
+    "server": "nginx/1.24.0 (Ubuntu)",
+    "strict-transport-security": "max-age=63072000; includeSubDomains; preload",
+    "transfer-encoding": "chunked",
+    "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "x-mira-trace-id": "ac54ba1492d50ff527f362323e841b17"
+  },
+  "ttftMs": null,
+  "totalMs": 7969,
+  "kinds": [
+    "trace",
+    "sources",
+    "status",
+    "[DONE]"
+  ],
+  "answer": "",
+  "frames": [
+    {
+      "kind": "trace",
+      "traceId": "ac54ba1492d50ff527f362323e841b17",
+      "turnId": "f23b1097-ffab-45e0-8dc7-22b310716c0c"
+    },
+    {
+      "kind": "sources",
+      "citations": [],
+      "sourceSnapshot": [
+        "67d09e1e-862a-4b7c-aa82-eb64df83f875"
+      ]
+    },
+    {
+      "kind": "status",
+      "status": "insufficient_evidence",
+      "message": "I couldn't find support for that in this notebook's manuals. Add the manual for the equipment you're asking about, or the page that covers it, and ask again."
+    },
+    {
+      "kind": "[DONE]"
+    }
+  ],
+  "startedAt": "2026-10-25T17:33:37.284Z"
+}

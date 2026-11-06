@@ -1,0 +1,20 @@
+{
+  "freeze_id": "AR-2026-10-09-SIEMENS-S7-1212C-HMI-HASH-VALUES",
+  "source": "PLCTalk",
+  "thread_id": "150120",
+  "url": "https://www.plctalk.net/forums/threads/siemens-s7-1212c-tia-portal-on-hmi-appears-instead-of-real-values.150120/",
+  "op_author": "Mas01",
+  "op_posted_utc": "2026-10-09T10:51:17Z",
+  "op_posted_local_et": "2026-10-09T06:51:17-04:00",
+  "age_hours": 3.16,
+  "reply_count_unread": 9,
+  "title": "Siemens S7-1212C/TIA Portal: On HMI, #### appears instead of real values...",
+  "op_body_verbatim": "Hi All\n\nIt's been a while since I posted on here - mainly because the PLC that I delivered to a customer site a few years ago has been behaving itself (no news is good news, I guess...). Basically, the PLC system uses laser sensors to measure the perimeter of a machined part, it then compares it to \"the ideal artefact\" and decides whether the machined part is within tolerance and acceptable for installation.\n\nHowever, I got an email from the customer the other day. He told me that my PLC measurement rig \"went off for calibration, and when it came back, all the editable fields where you normally tap the screen to enter a value, they all now show ####.\"\n\nNormally, these values are retained between PLC power down/up, without problem.\n\nAttached are some pictures.\n\nNOTE: The oval redaction in the photos is what I did, for confidentiality.\n\nAny ideas what might be causing this? \n\nMy initial thought was that the PLC had been depowered for a long period of time and had lost the stored values (I've asked the customer how long the PLC was unplugged for when it was sent for calibration, but not got a reply yet).\n\nI never saw this problem when I was developing the code, so any suggestions are welcome.\n\nHappy to answer any questions you might have.\n\nCheers\n\nMas\n\n[image]",
+  "technician_version": "Field tech supports a customer Siemens S7-1212C (TIA Portal) measurement rig that uses laser sensors to check machined-part perimeter against an ideal artifact. After the rig went out for calibration and returned, all editable HMI fields that are normally tapped to enter values now show #### instead of the real numbers. Those values normally retain across PLC power-down/power-up. Suspect prolonged depower during calibration may have lost stored/retentive values, but duration unplugged is unconfirmed. Need cause of HMI #### on the editable entry fields after calibration return.",
+  "oem": "Siemens",
+  "model": "S7-1212C (TIA Portal) + HMI (panel model not named in OP)",
+  "fault_symptom": "HMI editable fields show #### instead of real values after calibration return; values normally retentive across power cycle",
+  "scan_date": "2026-10-09",
+  "scan_timezone": "America/New_York",
+  "notes": "Frozen OP-only before reading community replies; 9 replies exist unread. Replies not used for research. HMI panel model not stated in OP text (images redacted)."
+}
