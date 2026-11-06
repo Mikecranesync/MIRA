@@ -11,9 +11,12 @@ export function LivingGuideMeasurements({ metadata, jobId }: { metadata: Instruc
   const originalRows = measurementRows(guidePacket(metadata.originalPacket), null);
   const editKey = (entry: import("@/capabilities/work-packet/types").ReviewEntry) =>
     JSON.stringify([entry.path, entry.action, entry.by, entry.at, entry.previous, entry.next, entry.source]);
-  return <section><h2>Torque / measurements</h2>
-    <p style={{ breakAfter: "avoid" }}>Original values and correction sources are preserved claims. Current technician QC is recorded separately; reusable acceptance is not recorded.</p>
+  return <section>
     <table style={{ width: "100%", tableLayout: "fixed", borderCollapse: "collapse" }}>
+      <caption style={{ captionSide: "top", textAlign: "left", breakInside: "avoid", breakAfter: "avoid" }}>
+        <h2>Torque / measurements</h2>
+        <p>Original values and correction sources are preserved claims. Current technician QC is recorded separately; reusable acceptance is not recorded.</p>
+      </caption>
       <thead><tr><th>Item</th><th>Original source value (imported claim)</th><th>Correction lineage</th><th>Review</th></tr></thead>
       <tbody>{rows.map(row => {
         const value = metadata.originalPacket.measurements[row.index]?.value;
