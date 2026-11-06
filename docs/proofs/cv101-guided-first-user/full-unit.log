@@ -1,0 +1,14 @@
+Final test output excerpt; full local log retained in the task workspace.
+
+ ✓ src/factorylm-ui/v3-viewport.test.ts (2 tests) 3ms
+ ✓ src/lib/cmms/__tests__/atlas-provider.test.ts (1 test) 3ms
+ ✓ src/lib/i3x/object-types.test.ts (1 test) 4ms
+ ✓ src/app/api/namespace/node/route.test.ts (2 tests) 1ms
+ ✓ src/factorylm-ui/LivingSheetPrint.preview.test.tsx (1 test) 12ms
+ ✓ src/lib/i3x/namespaces.test.ts (1 test) 1ms
+
+ Test Files  595 passed | 4 skipped (599)
+      Tests  13157 passed | 53 skipped (13210)
+   Start at  08:05:27
+   Duration  39.31s (transform 13.13s, setup 0ms, collect 94.20s, tests 58.74s, environment 179ms, prepare 45.84s)
+
