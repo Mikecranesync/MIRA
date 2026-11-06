@@ -19,6 +19,48 @@ import type { SheetProposal } from "@/capabilities/living-sheet/propose";
 import type { NotebookSheetReceiptFrame } from "@/lib/notebook-chat-types";
 import type { ImportLayout, ImportPreview } from "@/capabilities/living-sheet/job-sheet-import";
 import type { ShiftReport, ShiftReportWindow } from "@/capabilities/living-sheet/shift-report";
+import type { AssetMemoryRecord, AssetMemorySelection, AssetMemorySelector } from "@/capabilities/living-sheet/asset-memory";
+export type { AssetMemoryRecord, AssetMemorySelection, AssetMemorySelector };
+
+/** One frozen decorated payload and target per send attempt. A retained retry
+ * uses the original serialization and never reruns today's sheet rider. */
+export function createFrozenSheetSend<T extends object>() {
+  const requests = new WeakMap<object, { body: T; target: { notebookId: string; threadId: string }; serialized: string }>();
+  return (body: T, target: { notebookId: string; threadId: string } | null, decorate: () => T) => {
+    const previous = requests.get(body); if (previous) return previous;
+    if (!target) return null;
+    const serialized = JSON.stringify(decorate());
+    const frozen = JSON.parse(serialized) as T;
+    const request = { body: frozen, target: { ...target }, serialized };
+    requests.set(frozen, request); return request;
+  };
+}
+
+export function withAssetMemorySelector<T extends object>(body: T, notebookId: string, selection: { notebookId: string; jobId: string; selector?: AssetMemorySelector } | null): T & { livingSheetSelector?: AssetMemorySelector } {
+  if (!selection?.selector || selection.notebookId !== notebookId) return body;
+  return { ...body, livingSheetSelector: structuredClone(selection.selector) };
+}
+
+export type AssetMemoryScope = { notebookId: string; jobId?: string; seq?: number };
+export function scopedAssetMemorySelection(current: AssetMemorySelection | null, next: AssetMemorySelection | null, scope: AssetMemoryScope | undefined, activeNotebookId: string | undefined): AssetMemorySelection | null {
+  if (next) {
+    if (next.notebookId !== activeNotebookId || current?.notebookId === next.notebookId && current.jobId === next.jobId && current.selector.seq > next.selector.seq) return current;
+    return next;
+  }
+  if (scope && (current?.notebookId !== scope.notebookId || scope.jobId && current.jobId !== scope.jobId || scope.seq !== undefined && current.selector.seq > scope.seq)) return current;
+  return null;
+}
+
+/** Generation ownership prevents old loads/cleanups from replacing or clearing
+ * a newer job/sequence selection. Pending execution invalidates its generation. */
+export function createAssetMemoryLoadGate() {
+  let generation = 0; let active = "";
+  return {
+    begin(key: string) { active = key; return ++generation; },
+    current(key: string, token: number) { return active === key && generation === token; },
+    invalidate(key: string, token: number) { if (active !== key || generation !== token) return false; generation++; active = ""; return true; },
+  };
+}
 
 // ---------------------------------------------------------------------------
 // KV store (localStorage adapter — never touched at module scope; built
@@ -595,6 +637,10 @@ export async function apiIntakePacket(notebookId: string, input: import("@/capab
 }
 export async function apiInstructionRecord(notebookId: string, jobId: string): Promise<ApiResult<import("@/capabilities/living-sheet/instruction-record-v2").InstructionRecordV2>> {
   return asApiResult(await fetch(`${sheetsBase(notebookId)}${encodeURIComponent(jobId)}/?format=instruction-record-v2`, { credentials: "include", cache: "no-store" }));
+}
+export async function apiAssetMemoryRecord(notebookId: string, jobId: string, selector?: AssetMemorySelector): Promise<ApiResult<AssetMemoryRecord>> {
+  const pin = selector ? `&memorySelector=${encodeURIComponent(JSON.stringify(selector))}` : "";
+  return asApiResult(await fetch(`${sheetsBase(notebookId)}${encodeURIComponent(jobId)}/?format=instruction-record-v2&assetMemory=1${pin}`, { credentials: "include", cache: "no-store" }));
 }
 export async function apiCloseout(notebookId: string, jobId: string, input: import("@/capabilities/living-sheet/packet-intake").CloseoutInput): Promise<ApiResult<{ candidate: import("@/capabilities/living-sheet/intake-closeout-store").CloseoutCandidate }>> {
   return asApiResult(await fetch(`${sheetsBase(notebookId)}${encodeURIComponent(jobId)}/closeout/`, { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify(input) }));

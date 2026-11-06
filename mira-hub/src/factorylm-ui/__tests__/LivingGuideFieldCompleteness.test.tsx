@@ -92,6 +92,19 @@ function completePacket() {
 }
 
 describe("supported guide QC fields remain operationally visible", () => {
+  it.each(["settled", "repeated", "inherited"] as const)("retains an unlinked settled then excluded value provenance after %s", stage => {
+    const p = completePacket(); const path = "measurements[1].value";
+    p.measurements[1].value = cited("Original unlinked A", "original-A");
+    p.approval.technicianReview.entries.push({ path, action: "settle", previous: "Original unlinked A", next: "Settled unlinked B", source: "Synthetic A to B source", by: "Imported technician", at: "2026-11-05T01:00:00Z" });
+    p.measurements[1].value.value = "Settled unlinked B";
+    const record = guideRecord(stage, { [path]: { path, action: "strike" } }, p);
+    for (const copy of operationalCopies(renderToStaticMarkup(<LivingInstructionGuide record={record} />))) {
+      const blocks = elements(copy, `data-guide-field="${path}"`); expect(blocks).toHaveLength(1);
+      expect(blocks[0]).toContain("EXCLUDED"); expect(blocks[0]).toContain("performer"); expect(blocks[0]).toContain("2026-11-06T01:00:00Z");
+      expect(blocks[0]).toContain("Synthetic A to B source"); expect(blocks[0]).toContain("Original unlinked A");
+    }
+  });
+
   it.each(["settled", "repeated", "inherited"] as const)("shows effective identity claims without replacing captured identity after %s QC", stage => {
     const changes: Record<string, PacketEdit> = {};
     for (const name of ["manufacturer", "model", "serial"]) changes[`equipment.${name}`] = { path: `equipment.${name}`, action: "settle", value: `Proposed identity ${name}`, source: `Identity correction source ${name}` };

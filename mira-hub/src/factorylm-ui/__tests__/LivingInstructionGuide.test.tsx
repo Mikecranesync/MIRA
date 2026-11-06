@@ -21,6 +21,13 @@ export function guideFixture() {
 }
 
 describe("saved illustrated instruction guide", () => {
+  it("lets a single illustrated step fragment while keeping its heading/action and figure together", () => {
+    const html = renderToStaticMarkup(<LivingInstructionGuideContent record={guideFixture()} />);
+    expect(html).toMatch(/data-testid="wp-step-1"[^>]*break-inside:auto/);
+    expect(html).toMatch(/data-guide-figure="0"[^>]*break-inside:avoid/);
+    expect(html).toContain('break-inside:avoid"><h4>Step 1');
+  });
+
   it.each(["import", "all-confirm QC", "fresh inherited job"])("keeps value lineage and correction authority separate on screen and print after %s", stage => {
     const record = guideFixture(); const packet = correctedMeasurementPacket("notebook-test");
     record.sourceEvidence!.packet = packet; record.sourceEvidence!.originalPacket = packet;

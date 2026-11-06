@@ -30,6 +30,7 @@ import { fileUrl } from "./to-interaction";
 import { LivingSheetPrint } from "./LivingSheetPrint";
 import { LivingSheetShiftReport } from "./LivingSheetShiftReport";
 import { JobSheetsLibrary } from "./JobSheetsLibrary";
+import type { AssetMemorySelection } from "./living-sheet-client";
 import { LivingInstructionControls, PacketIntakeButton } from "./LivingInstructionControls";
 import {
   apiGetJob,
@@ -81,7 +82,7 @@ export type LivingSheetProps = {
   /** Fires whenever the open job changes (including to null on close), so
    *  hub-host can thread `livingSheetJobId` into chatBodyFor's rider while
    *  — and only while — this notebook's sheet is open. */
-  onSheetOpenChange: (job: { notebookId: string; jobId: string } | null) => void;
+  onSheetOpenChange: (job: AssetMemorySelection | null, scope?: { notebookId: string; jobId?: string; seq?: number }) => void;
   /** The latest sheet_receipt frame hub-host's tee'd stream parser saw, for
    *  ANY open job on ANY notebook — this component filters to its own. */
   receipt: NotebookSheetReceiptFrame | null;
@@ -491,12 +492,12 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
   const onSheetOpenChangeRef = useRef(onSheetOpenChange);
   useEffect(() => {
     onSheetOpenChangeRef.current = onSheetOpenChange;
-  }, [onSheetOpenChange]);
+  }, [onSheetOpenChange, notebookId]);
   useEffect(
     () => () => {
-      onSheetOpenChangeRef.current(null);
+      onSheetOpenChangeRef.current(null, { notebookId });
     },
-    [],
+    [notebookId],
   );
 
   // A fresh receipt (different jobId/baseSeq) starts with nothing handled —
@@ -644,6 +645,8 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
     (jobId: string) => {
       openJobIdRef.current = jobId;
       setOpenJobId(jobId);
+      setView(null);
+      setGuidePrintMode(false);
       setConflict(null);
       setFinishAck(false);
       setWorkOrder(null);
@@ -652,7 +655,7 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
       setPendingPhotoAttempt((a) => (photoAttemptBelongsTo(a, notebookId, jobId) ? a : null));
       setPhotoError(null);
       setConfirmStep(null);
-      onSheetOpenChange({ notebookId, jobId });
+      onSheetOpenChange(null, { notebookId });
       void loadSheet(jobId);
       void refreshBadge(jobId);
       void refreshWorkOrder(jobId);
@@ -666,8 +669,8 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
     setView(null);
     setConflict(null);
     setConfirmStep(null);
-    onSheetOpenChange(null);
-  }, [onSheetOpenChange]);
+    onSheetOpenChange(null, { notebookId });
+  }, [onSheetOpenChange, notebookId]);
 
   const postEvent = useCallback(
     async (kind: SheetWriteEvent["kind"], payload: SheetWriteEvent["payload"], baseSeqOverride?: number): Promise<boolean> => {
@@ -1147,7 +1150,7 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
 
           {openJobId && view && (
             <div data-testid="living-sheet-sheet">
-              <LivingInstructionControls key={`${notebookId}:${view.jobId}:${view.seq}`} notebookId={notebookId} scopeId={scopeId} view={view} pendingCount={badge.queued} onPrintMode={setGuidePrintMode} />
+              <LivingInstructionControls key={`${notebookId}:${view.jobId}`} notebookId={notebookId} scopeId={scopeId} view={view} pendingCount={badge.queued} onPrintMode={setGuidePrintMode} onSelection={(selected, scope) => { if (scope.notebookId === notebookId && scope.jobId === openJobIdRef.current) onSheetOpenChange(selected, scope); }} />
               <div style={{ marginBottom: 12 }}>
                 <span style={BADGE_STYLE} data-testid="living-sheet-badge">{saveBadge(badge)}</span>
                 {" "}

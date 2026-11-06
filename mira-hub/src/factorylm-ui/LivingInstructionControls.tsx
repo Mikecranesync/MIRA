@@ -1,11 +1,11 @@
 "use client";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { SheetView } from "@/capabilities/living-sheet/reduce";
 import type { InstructionRecordV2 } from "@/capabilities/living-sheet/instruction-record-v2";
 import type { CloseoutInput } from "@/capabilities/living-sheet/packet-intake";
 import type { PacketEdit } from "@/capabilities/work-packet/types";
 import { effectiveInstruction, fieldValueChanges, qcTargets } from "@/capabilities/living-sheet/instruction-fields";
-import { apiIntakePacket, apiCloseout, apiInstructionRecord, localStorageStore } from "./living-sheet-client";
+import { apiIntakePacket, apiCloseout, apiAssetMemoryRecord, createAssetMemoryLoadGate, localStorageStore, type AssetMemoryRecord, type AssetMemorySelection } from "./living-sheet-client";
 import { instructionRequestId, localInstructionInput } from "./living-instruction-client";
 import { LivingInstructionGuide } from "./LivingInstructionGuide";
 
@@ -68,25 +68,49 @@ export function CloseoutQCForm({ record, scopeId, onSaved }: { record: Instructi
   </section>;
 }
 
-export function LivingInstructionControls({ notebookId, scopeId, view, pendingCount, onPrintMode }: { notebookId: string; scopeId: string; view: SheetView; pendingCount: number; onPrintMode: (active: boolean) => void }) {
-  const [record, setRecord] = useState<InstructionRecordV2 | null>(null); const [open, setOpen] = useState(false);
+export function LivingInstructionControls({ notebookId, scopeId, view, pendingCount, onPrintMode, onSelection }: { notebookId: string; scopeId: string; view: SheetView; pendingCount: number; onPrintMode: (active: boolean) => void; onSelection: (selection: AssetMemorySelection | null, scope: { notebookId: string; jobId: string; seq: number }) => void }) {
+  const [record, setRecord] = useState<AssetMemoryRecord | null>(null); const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [qcOpen, setQcOpen] = useState(false);
-  const alive = useRef(true);
-  useEffect(() => { alive.current = true; return () => { alive.current = false; onPrintMode(false); }; }, [onPrintMode]);
-  const load = async () => {
-    const response = await apiInstructionRecord(notebookId, view.jobId);
+  const alive = useRef(true); const callbacks = useRef({ onSelection, onPrintMode });
+  useLayoutEffect(() => { callbacks.current = { onSelection, onPrintMode }; }, [onSelection, onPrintMode]);
+  const gate = useMemo(() => createAssetMemoryLoadGate(), []);
+  const key = `${notebookId}:${view.jobId}:${view.seq}:${pendingCount > 0 ? "pending" : "saved"}`;
+  const active = useRef({ key: "", token: 0 });
+  // Layout synchronization invalidates the committed previous scope before
+  // another event or asynchronous completion can publish its selection.
+  useLayoutEffect(() => {
+    active.current = { key, token: gate.begin(key) };
+    callbacks.current.onSelection(null, { notebookId, jobId: view.jobId, seq: view.seq });
+    return () => {
+      if (active.current.key === key && gate.invalidate(key, active.current.token)) callbacks.current.onSelection(null, { notebookId, jobId: view.jobId, seq: view.seq });
+    };
+  }, [gate, key, notebookId, view.jobId, view.seq]);
+  const load = useCallback(async () => {
+    if (active.current.key !== key) return;
+    const scope = { notebookId, jobId: view.jobId, seq: view.seq };
+    const token = gate.begin(key); active.current = { key, token };
+    callbacks.current.onSelection(null, scope);
+    if (pendingCount > 0) return;
+    const response = await apiAssetMemoryRecord(notebookId, view.jobId);
+    if (!alive.current || !gate.current(key, token)) return;
     if (!response.ok) throw new Error("The saved guide could not be reopened. Retry when connected.");
-    if (response.body.snapshot.seq !== view.seq) throw new Error("The job changed. Reopen the job before reviewing this guide.");
-    if (alive.current) { setRecord(response.body); setQcOpen(false); }
-  };
-  if (!view.template.instruction) return null;
+    if (response.body.snapshot.seq !== view.seq || response.body.snapshot.jobId !== view.jobId) throw new Error("The job changed. Reopen the job before reviewing this guide.");
+    setRecord(response.body); setQcOpen(false);
+    callbacks.current.onSelection({ notebookId, jobId: view.jobId, selector: response.body.assetMemory.selector }, scope);
+  }, [gate, key, notebookId, view.jobId, view.seq, pendingCount]);
+  useEffect(() => {
+    alive.current = true;
+    void Promise.resolve().then(load).catch(e => { if (alive.current && active.current.key === key) setError((e as Error).message); });
+  }, [load, key]);
+  useEffect(() => () => { alive.current = false; callbacks.current.onPrintMode(false); }, []);
+  const visibleRecord = record?.snapshot.seq === view.seq && record.snapshot.jobId === view.jobId && pendingCount === 0 ? record : null;
   return <section data-testid="living-instruction-controls">
-    <button type="button" style={button} disabled={busy} onClick={async () => { setBusy(true); setError(null); try { await load(); if (alive.current) { setOpen(true); onPrintMode(true); } } catch (e) { if (alive.current) setError((e as Error).message); } finally { if (alive.current) setBusy(false); } }}>Reopen illustrated repair guide</button>
+    <button type="button" style={button} disabled={busy || pendingCount > 0} onClick={async () => { setBusy(true); setError(null); try { await load(); if (alive.current) { setOpen(true); onPrintMode(true); } } catch (e) { if (alive.current) setError((e as Error).message); } finally { if (alive.current) setBusy(false); } }}>{view.template.instruction ? "Reopen illustrated repair guide" : "Open saved job memory"}</button>
     {error && <p role="alert">{error}</p>}
-    {open && record && <><div data-no-print><button type="button" style={button} disabled={pendingCount > 0} onClick={() => window.print()}>Print / save guide as PDF</button><button type="button" style={button} onClick={() => { setOpen(false); setQcOpen(false); onPrintMode(false); }}>Close guide</button>
+    {open && visibleRecord && <><div data-no-print><button type="button" style={button} disabled={pendingCount > 0} onClick={() => window.print()}>Print / save guide as PDF</button><button type="button" style={button} onClick={() => { setOpen(false); setQcOpen(false); onPrintMode(false); }}>Close guide</button>
       {pendingCount > 0 && <p>Save pending job updates before printing or closeout QC.</p>}
-      {view.finished && <button type="button" style={button} disabled={pendingCount > 0} onClick={() => setQcOpen(v => !v)}>Record closeout QC</button>}
-      {record.closeout && <p>Saved technician QC candidate revision {record.closeout.revision}. Reusable acceptance not recorded.</p>}
-    </div><LivingInstructionGuide record={record} />{qcOpen && pendingCount === 0 && <CloseoutQCForm key={`${record.snapshotId}:${record.closeout?.id ?? "source"}`} record={record} scopeId={scopeId} onSaved={load} />}</>}
+      {view.finished && view.template.instruction && <button type="button" style={button} disabled={pendingCount > 0} onClick={() => setQcOpen(v => !v)}>Record closeout QC</button>}
+      {visibleRecord.closeout && <p>Saved technician QC candidate revision {visibleRecord.closeout.revision}. Reusable acceptance not recorded.</p>}
+    </div><LivingInstructionGuide record={visibleRecord} />{qcOpen && pendingCount === 0 && <CloseoutQCForm key={`${visibleRecord.snapshotId}:${visibleRecord.closeout?.id ?? "source"}`} record={visibleRecord} scopeId={scopeId} onSaved={load} />}</>}
   </section>;
 }

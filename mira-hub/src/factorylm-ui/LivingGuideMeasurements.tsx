@@ -65,7 +65,7 @@ export function LivingGuideMeasurements({ metadata, jobId, renderField }: { meta
           </td>
           <td>{row.excluded ? "EXCLUDED — do not use this value." : "Draft — reusable acceptance not recorded."}</td>
         </tr>{row.steps.length === 0 && <tr data-testid={`wp-measure-details-${row.index}`}><td colSpan={4}>
-          <LivingGuideMeasurementFields index={row.index} measurement={packet.measurements[row.index]} renderField={renderField} includeName={false} includeValue={false} />
+          <LivingGuideMeasurementFields index={row.index} measurement={packet.measurements[row.index]} renderField={renderField} includeName={false} />
         </td></tr>}</Fragment>;
       })}</tbody>
     </table>

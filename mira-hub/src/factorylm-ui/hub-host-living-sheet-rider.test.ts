@@ -23,7 +23,10 @@ describe("withLivingSheetRider", () => {
 
 describe("hub-host send()", () => {
   it("routes the chat body through withLivingSheetRider", () => {
-    expect(host).toMatch(/withLivingSheetRider\(body, sel\.notebookId, livingSheetJob\)/);
+    expect(host).toContain("const prepared = frozenSheetSend(body, sel");
+    expect(host).toContain("body = prepared.body; sel = prepared.target;");
+    expect(host).toContain("body: prepared.serialized");
+    expect(host).toMatch(/withLivingSheetRider\(body, sel!\.notebookId, livingSheetJob\)/);
   });
   it("lists livingSheetJob in send's useCallback deps (stale-closure guard)", () => {
     const sendStart = host.indexOf("const send = useCallback(");

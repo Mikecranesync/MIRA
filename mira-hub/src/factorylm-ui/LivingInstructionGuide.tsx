@@ -1,5 +1,6 @@
 "use client";
 import type { Field, PacketFigure, WorkPacket } from "@/capabilities/work-packet/types";
+import type { AssetMemoryProjection, AssetMemoryFact } from "@/capabilities/living-sheet/asset-memory";
 import type { InstructionRecordV2 } from "@/capabilities/living-sheet/instruction-record-v2";
 import { correctionOrigin, effectiveInstruction, fieldGuideHistory, guidePacket } from "@/capabilities/living-sheet/instruction-fields";
 import { BlockersSection, CoverageStop, LeftOutAppendix } from "./WorkPacketV2Sections";
@@ -69,7 +70,7 @@ function GuideSteps({ packet, view, renderField, candidateView }: { packet: Work
         // and split anyway. The text budget is conservative and excludes image
         // bytes; only the short heading/action introduction stays together.
         const detailSize = JSON.stringify([step, s.figures.map(f => [f.caption, f.placement])]).length;
-        const detailed = s.measurements.length > 0 || s.figures.length > 1 || detailSize > 1800;
+        const detailed = s.measurements.length > 0 || s.figures.length > 0 || detailSize > 1800;
         const longAction = JSON.stringify(step.text).length > 1200;
         const note = (i: number) => <aside key={i} style={{ borderLeft: "3px solid var(--fl-warn, #777)", paddingLeft: 12 }}><strong>{step.notes![i].kind}</strong>{renderField(`steps[${s.index}].notes[${i}].text`, step.notes![i].text)}{step.notes![i].applicability && renderField(`steps[${s.index}].notes[${i}].applicability`, step.notes![i].applicability!)}</aside>;
         return <div key={s.index} data-testid={`wp-step-${s.number}`} style={{ borderTop: "1px solid var(--fl-line, #ccc)", paddingTop: 8, marginTop: 12, breakInside: detailed ? "auto" : "avoid" }}>
@@ -94,10 +95,65 @@ function GuideSteps({ packet, view, renderField, candidateView }: { packet: Work
   </section>;
 }
 
+type GuideRecord = InstructionRecordV2 & { assetMemory?: AssetMemoryProjection };
+const words = (v: unknown, fallback = "unknown"): string => typeof v === "string" || typeof v === "number" || typeof v === "boolean" ? String(v) : fallback;
+const fieldsOf = (v: unknown): Record<string, unknown> => v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {};
+function ReadingSourceClaim({ source }: { source: unknown }) {
+  const s = fieldsOf(source);
+  return <span>Reported source: {s.kind === "manual" ? "manual citation claim" : s.kind === "tech" ? "technician observation" : "unknown"}{s.ref ? ` · ${words(s.ref)}` : " · reference unknown"}</span>;
+}
+/** Human summaries of the SAME server manifest. Operational packet provenance
+ * stays beside its fields; opaque identifiers remain in the audit fold. */
+function MemoryFact({ fact }: { fact: AssetMemoryFact }) {
+  const d = fact.data;
+  switch (fact.category) {
+    case "job": { const finished = fieldsOf(d.finished); return d.finished ? <li>Job finish recorded by {words(finished.by)} at {words(finished.at)} · {words(finished.summary, "summary unknown")}.</li> : <li>Job finish is not recorded in this snapshot.</li>; }
+    case "execution": return <li>{d.done ? "Recorded performed" : "Not marked performed"}: {words(d.originalText)} · {words(d.byLabel)} · {words(d.at)}. Revised candidate instructions do not inherit this completion.</li>;
+    case "reading": {
+      const r = fieldsOf(d.current); const history = Array.isArray(d.history) ? d.history : [];
+      return <li>Reported {words(d.what)}: {words(r.value)} {words(r.unit, "")} · {words(r.by)} at {words(r.at)}. Technician report, separate from a source specification. <ReadingSourceClaim source={d.source} />
+        {history.length > 0 && <ul>{history.map((entry, i) => { const h = fieldsOf(entry); return <li key={i}>{words(h.value)} {words(h.unit, "")} · {h.superseded ? "superseded report" : "current report"} · {words(h.by)} at {words(h.at)} · <ReadingSourceClaim source={h.source} /></li>; })}</ul>}
+        {Number(d.historyOmitted) > 0 && <p>{words(d.historyOmitted)} intermediate reading reports omitted from this bounded summary.</p>}
+      </li>;
+    }
+    case "note": return <li>Job note: {words(d.text)} · {words(d.by)} at {words(d.at)}</li>;
+    case "question": return <li>Job question: {words(d.text ?? d.question)} · {d.resolved ? `resolved: ${words(d.resolution)} by ${words(d.resolvedBy)} at ${words(d.resolvedAt)}` : "unresolved"} · {words(d.by)} at {words(d.at)}</li>;
+    case "performed_part": return <li>Reported part: {words(d.item)} · action {words(d.action)} · quantity {words(d.qty)} · {words(d.by)} at {words(d.at)}</li>;
+    case "photo_reference": return <li>Saved photo reference: {words(d.caption, "caption not recorded")} · {words(d.byLabel)} at {words(d.at)}. Image ownership and review are not established.</li>;
+    case "handover": return <li>Handover: {words(d.text ?? d.summary)} · {words(d.by)} at {words(d.at)}</li>;
+    case "qc": return <li>Technician QC: {words(d.scope)} · user {words(d.userId)} at {words(d.at)}. Draft only; reusable acceptance is not recorded.</li>;
+    case "graph_reference": return <li>{words(d.relation).replaceAll("_", " ")}: {words(d.name)} ({words(d.entityType).replaceAll("_", " ")}) · graph updated {words(d.updatedAt)}. {d.currentUnsPath ? `Dated graph address: ${words(d.currentUnsPath)}. ` : ""}Principal graph reference; edge review/version and installed component instance linkage are unknown.</li>;
+    case "observations": {
+      const cur = fieldsOf(d.current); const conflicts = Array.isArray(d.conflicting) ? d.conflicting : [];
+      return <li>Reported {words(d.factKey).replaceAll("_", " ")}: <strong>{d.contested ? "CONTESTED technician reports" : words(d.state).replaceAll("_", " ")}</strong>. Latest report: {words(cur.factValue)} · reported by {words(cur.author)} · observed {words(cur.observedAt)} · recorded {words(cur.recordedAt)} · uncertainty {words(cur.uncertainty)} · self-reported verification method: {words(cur.verificationMethod)}.
+        {conflicts.length > 0 && <ul>{conflicts.map((c, i) => { const x = fieldsOf(c); return <li key={i}>Conflicting report: {words(x.factValue)} · {words(x.author)} · observed {words(x.observedAt)} · recorded {words(x.recordedAt)} · uncertainty {words(x.uncertainty)} · self-reported verification method: {words(x.verificationMethod)}</li>; })}</ul>}
+      </li>;
+    }
+    case "documents": { const requested = Array.isArray(d.requested) ? d.requested.length : 0; const admitted = Array.isArray(d.admitted) ? d.admitted.length : 0; const remaps = Object.keys(fieldsOf(d.remapped)).length; return <li>Current document admission: {words(d.admission).replaceAll("_", " ")} · {requested} requested, {admitted} admitted{remaps ? `, ${remaps} remapped` : ""}. Admission does not rewrite historical citations; source-byte hashes and revision equivalence remain unknown.</li>; }
+    case "workOrder": { const r = fieldsOf(d.request); return <li>{d.request ? `Living Sheet work-order create request: ${words(r.state)} · requested ${words(r.requestedAt)} · updated ${words(r.updatedAt)}${r.externalRef ? ` · external reference ${words(r.externalRef)}` : ""}.` : "No Living Sheet work-order request recorded."} This reader does not establish other work orders, provider asset linkage, UNS delivery, repair or work-order completion.</li>; }
+    default: return null;
+  }
+}
+function AssetMemorySummary({ memory }: { memory?: AssetMemoryProjection }) {
+  if (!memory) return null;
+  const history = memory.facts.filter(f => f.period === "historical" && f.category !== "instruction_claim");
+  const current = memory.facts.filter(f => f.period === "current" && f.category !== "graph_coverage");
+  return <section data-testid="asset-memory-summary"><h2>Asset memory for this saved record</h2>
+    <p>Historical job snapshot, change {memory.selector.seq}{memory.selector.candidate ? `, draft guide revision ${memory.selector.candidate.revision}` : ", source guide only"} · {memory.historical.finished ? "job finish recorded" : "job not recorded finished"}. Captured asset: {memory.historical.asset.name ?? memory.historical.asset.entityId}. {memory.historical.asset.capturedUnsPath && <>Captured UNS address: {memory.historical.asset.capturedUnsPath}.</>}</p>
+    <p>Current context read {memory.capture.startedAt} to {memory.capture.finishedAt}. Binding: {memory.current.binding.replaceAll("_", " ")}. This dated overlay is separate from the historical job; it does not establish OEM approval, safety clearance or reusable acceptance.</p>
+    {history.length > 0 && <><h3>Historical work and closeout</h3><ul>{history.map(f => <MemoryFact key={f.id} fact={f} />)}</ul></>}
+    <h3>Dated current context</h3><p>Graph: {memory.current.graph}; observations: {memory.current.observations}; documents: {memory.current.documents}; Living Sheet create request: {memory.current.workOrder}.</p>
+    <ul>{current.map(f => <MemoryFact key={f.id} fact={f} />)}</ul>
+    <p>Bounded summary: {memory.coverage.included} of {memory.coverage.available} reader facts included; {memory.coverage.omitted} omitted, {memory.coverage.stringsClipped} strings shortened, {memory.coverage.detailsOmitted} nested details omitted. Graph producer limits and upstream omissions may be unknown. Complete historical evidence remains in the saved record.</p>
+    <p><a href={memory.source.href}>{memory.source.label}</a> · change {memory.selector.seq}{memory.selector.candidate ? ` · draft revision ${memory.selector.candidate.revision}` : " · source-only"}</p>
+    <details data-no-print><summary>Record reference and coverage audit</summary><p>Notebook {memory.historical.notebookId} · job {memory.historical.jobId}<br />Snapshot {memory.selector.snapshotId}<br />Candidate {memory.selector.candidate?.id ?? "explicit source-only"} · body hash {memory.selector.candidate?.hash ?? "not applicable"}<br />Projection {memory.contentHash}</p><ul>{memory.gaps.map(g => <li key={g}>{g.replaceAll("_", " ")}</li>)}</ul></details>
+  </section>;
+}
+
 /** Pure props-to-guide renderer, shared by saved screen preview and browser PDF. */
-export function LivingInstructionGuideContent({ record }: { record: InstructionRecordV2 }) {
+export function LivingInstructionGuideContent({ record }: { record: GuideRecord }) {
   const metadata = record.sourceEvidence;
-  if (!metadata) return <p>This job has no imported repair guide.</p>;
+  if (!metadata) return <article className="living-guide" data-testid="living-instruction-guide"><style>{GUIDE_PRINT_CSS}</style><AssetMemorySummary memory={record.assetMemory} /><p>This job has no imported repair guide.</p></article>;
   const effective = effectiveInstruction(record)!;
   const original = effective.originalPacket;
   const packet = guidePacket(effective.packet);
@@ -148,6 +204,7 @@ export function LivingInstructionGuideContent({ record }: { record: InstructionR
     </section>
     <section data-no-print><h2>Job and assignment as imported</h2><dl>{packetHeaderRows(original).map(row => <div key={row.label}><dt>{row.label}</dt><dd>{row.value}</dd></div>)}</dl>
       {original.workOrder.synthetic && <p>Synthetic work-order input.</p>}</section>
+    <AssetMemorySummary memory={record.assetMemory} />
     <CoverageStop packet={packet} />
     <BlockersSection packet={packet} renderField={renderField} />
     {fields("Scope", packet.scope, "scope")}
@@ -209,6 +266,6 @@ export function LivingInstructionGuideContent({ record }: { record: InstructionR
   </article>;
 }
 
-export function LivingInstructionGuide({ record }: { record: InstructionRecordV2 }) {
+export function LivingInstructionGuide({ record }: { record: GuideRecord }) {
   return <><LivingInstructionGuideContent record={record} /><PrintPortal><div className={`${PRINT_PORTAL_CLASS} living-guide-print`}><style>{PRINT_PORTAL_CSS}</style><LivingInstructionGuideContent record={record} /></div></PrintPortal></>;
 }

@@ -39,7 +39,8 @@ const nbMock = vi.hoisted(() => ({
   validateChatSources: vi.fn(async () => ({ ok: false, error: "no_sources_selected" })),
   getNotebook: vi.fn(),
   resolveBoundAsset: vi.fn(async () => ({ state: "unbound" as const })),
-  recordTurn: vi.fn(async () => undefined),
+  recordTurn: vi.fn<(...args: unknown[]) => Promise<undefined>>(async () => undefined),
+  claimNotebookTurnRequest: vi.fn(), abandonNotebookTurnRequest: vi.fn(async () => undefined),
   listSources: vi.fn(async () => [] as { filename: string | null }[]),
   originFileIdsByDoc: vi.fn(async () => new Map<string, string>()),
 }));
@@ -84,7 +85,14 @@ vi.mock("@/capabilities/living-sheet/store", () => storeMock);
 // this suite is purely about what reaches the ANSWER, so make it a passthrough.
 vi.mock("@/capabilities/living-sheet/receipt", () => ({ withSheetReceipt: vi.fn(async (res: Response) => res) }));
 
+const memoryMock = vi.hoisted(() => ({ load: vi.fn() }));
+vi.mock("@/capabilities/living-sheet/asset-memory", async importOriginal => ({ ...await importOriginal<object>(), loadAssetMemory: memoryMock.load }));
+import { withSheetReceipt } from "@/capabilities/living-sheet/receipt";
+const languageWork = vi.hoisted(() => ({ translate: vi.fn(async () => null), rewrite: vi.fn(async () => null) }));
+vi.mock("@/capabilities/translate-for-search", () => ({ translateForSearch: languageWork.translate }));
+vi.mock("@/capabilities/query-rewrite", () => ({ rewriteForManualSearch: languageWork.rewrite }));
 import { POST } from "../route";
+import { notebookSafetyTrigger, ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
 
 function providerStream(text: string) {
   const enc = new TextEncoder();
@@ -152,6 +160,8 @@ const ORIGINAL_FLAG = process.env.NOTEBOOK_LIVING_SHEET;
 beforeEach(() => {
   process.env.NOTEBOOK_SEMANTIC_CHECK = "0";
   vi.clearAllMocks();
+  memoryMock.load.mockReset();
+  nbMock.claimNotebookTurnRequest.mockResolvedValue({ status: "claimed", claimToken: "claim" });
   process.env.NEON_DATABASE_URL = "postgres://test";
   process.env.GROQ_API_KEY = "k";
   delete process.env.NOTEBOOK_LIVING_SHEET;
@@ -288,4 +298,110 @@ describe("F08 wiring — the chat route keys sheet proposals on the turn id", ()
     expect(src).toMatch(/const turnId = typeof b\?\.clientRequestId === "string" && isUuid\(b\.clientRequestId\)/);
     expect(src).toMatch(/sheetReceiptCtx = \{[^}]*techText: text, turnId \}/);
   });
+});
+
+const PIN = { seq: 4, snapshotId: `sha256:${"a".repeat(64)}`, candidate: null };
+const MANIFEST = { kind: "asset_memory", adapterVersion: "asset-memory-1", selector: PIN, contentHash: `sha256:${"b".repeat(64)}`, historical: { asset: { entityId: "cmms-pump07" } }, facts: [{ id: "original-step", period: "historical", category: "execution", data: { originalText: "Fictional source memory sentinel", done: true } }] };
+describe("pinned Asset Memory lifecycle", () => {
+  it("loads once before provider work, uses data channel and persists the same served manifest without mutable receipt", async () => {
+    process.env.NOTEBOOK_LIVING_SHEET = "1";
+    memoryMock.load.mockResolvedValue({ status: "ok", record: { assetMemory: MANIFEST } });
+    nbMock.resolveBoundAsset.mockResolvedValue({ state: "resolved", entityId: "cmms-pump07", confirmedAt: "2026-11-06" } as never);
+    const res = await POST(req({ message: "what is recorded on this job?", mode: "general", livingSheetJobId: JOB_ID, livingSheetSelector: PIN }), params);
+    expect(res.status).toBe(200); const stream = await res.text();
+    expect(memoryMock.load).toHaveBeenCalledTimes(1); expect(storeMock.loadJob).not.toHaveBeenCalled(); expect(withSheetReceipt).not.toHaveBeenCalled();
+    expect(sentUserContent()).toContain("Fictional source memory sentinel"); expect(sentSystemPrompt()).not.toContain("Fictional source memory sentinel");
+    expect((nbMock.recordTurn.mock.calls.at(-1)?.[2] as { evidence: unknown[] }).evidence).toContainEqual({ kind: "asset_memory", projection: MANIFEST });
+    expect(stream).not.toContain('"assetMemory"');
+  });
+  it.each(["invalid_selector", "snapshot_conflict", "candidate_conflict", "asset_mismatch", "throw"])("releases the request claim and never calls a provider on %s", async failure => {
+    process.env.NOTEBOOK_LIVING_SHEET = "1";
+    if (failure === "throw") memoryMock.load.mockRejectedValueOnce(new Error("unavailable")); else memoryMock.load.mockResolvedValueOnce({ status: failure });
+    const res = await POST(req({ message: "what is recorded on this job?", mode: "general", clientRequestId: "44444444-4444-4444-8444-444444444444", livingSheetJobId: JOB_ID, livingSheetSelector: PIN }), params);
+    expect(res.status).toBe(failure === "throw" ? 503 : failure === "invalid_selector" ? 400 : 409);
+    expect(nbMock.abandonNotebookTurnRequest).toHaveBeenCalledTimes(1); expect(fetch).not.toHaveBeenCalled(); expect(languageWork.translate).not.toHaveBeenCalled(); expect(languageWork.rewrite).not.toHaveBeenCalled(); expect(withSheetReceipt).not.toHaveBeenCalled();
+  });
+  it("replays original answer with its stored private manifest unchanged before any current reads, loader or receipt", async () => {
+    process.env.NOTEBOOK_LIVING_SHEET = "1";
+    nbMock.claimNotebookTurnRequest.mockResolvedValueOnce({ status: "replay", turn: { answerStatus: "answered", answerText: "Original immutable answer", basis: "general_reasoning", evidence: [{ kind: "asset_memory", projection: MANIFEST }], enabledSourceDocIds: [] } });
+    const res = await POST(req({ message: "what is recorded on this job?", mode: "general", clientRequestId: "44444444-4444-4444-8444-444444444444", livingSheetJobId: JOB_ID, livingSheetSelector: PIN }), params);
+    expect(res.headers.get("X-Idempotent-Replay")).toBe("true"); const stream = await res.text();
+    expect(stream).toContain("Original immutable answer"); expect(stream).not.toContain("Fictional source memory sentinel");
+    expect(memoryMock.load).not.toHaveBeenCalled(); expect(nbMock.validateChatSources).not.toHaveBeenCalled(); expect(nbMock.resolveBoundAsset).not.toHaveBeenCalled(); expect(storeMock.loadJob).not.toHaveBeenCalled(); expect(withSheetReceipt).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
+  });
+  it("suppresses legacy mismatched-asset prompt and receipt while retaining unbound compatibility", async () => {
+    process.env.NOTEBOOK_LIVING_SHEET = "1";
+    nbMock.resolveBoundAsset.mockResolvedValue({ state: "resolved", entityId: "different-pump", confirmedAt: "2026-11-06" } as never);
+    const res = await POST(req({ message: "what is recorded on this job?", mode: "general", livingSheetJobId: JOB_ID }), params); await res.text();
+    expect(sentUserContent()).not.toContain("Check seal"); expect(withSheetReceipt).not.toHaveBeenCalled();
+  });
+  it.each([{ seq: 1 }, { ...PIN, extra: "forged" }, { ...PIN, candidate: { id: "not-a-uuid" } }])("rejects malformed pin before source/translation reads and releases claim", async malformed => {
+    process.env.NOTEBOOK_LIVING_SHEET = "1";
+    const res = await POST(req({ message: "¿Qué trabajo está registrado?", mode: "general", clientRequestId: "44444444-4444-4444-8444-444444444444", livingSheetJobId: JOB_ID, livingSheetSelector: malformed }), params);
+    expect(res.status).toBe(400); expect(nbMock.abandonNotebookTurnRequest).toHaveBeenCalledTimes(1); expect(nbMock.validateChatSources).not.toHaveBeenCalled(); expect(memoryMock.load).not.toHaveBeenCalled(); expect(languageWork.translate).not.toHaveBeenCalled(); expect(languageWork.rewrite).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
+  });
+  it("does not turn job evidence into OEM/source readiness or bypass notebook membership", async () => {
+    process.env.NOTEBOOK_LIVING_SHEET = "1";
+    const body = { message: "what is recorded on this job?", livingSheetJobId: JOB_ID, livingSheetSelector: PIN, clientRequestId: "44444444-4444-4444-8444-444444444444" };
+    const denied = await POST(req(body), params); expect(denied.status).toBe(422); expect(memoryMock.load).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
+    nbMock.getNotebook.mockResolvedValueOnce(null); const foreign = await POST(req({ ...body, mode: "general" }), params); expect(foreign.status).toBe(404); expect(memoryMock.load).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled(); expect(nbMock.abandonNotebookTurnRequest).toHaveBeenCalledTimes(2);
+  });
+  it("does not attach the manifest to failed provider or scope-only refusal records", async () => {
+    process.env.NOTEBOOK_LIVING_SHEET = "1"; memoryMock.load.mockResolvedValue({ status: "ok", record: { assetMemory: MANIFEST } });
+    nbMock.resolveBoundAsset.mockResolvedValue({ state: "resolved", entityId: "cmms-pump07", confirmedAt: "2026-11-06" } as never);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("offline", { status: 503 })));
+    const failed = await POST(req({ message: "what is recorded on this job?", mode: "general", livingSheetJobId: JOB_ID, livingSheetSelector: PIN }), params); await failed.text();
+    const saved = nbMock.recordTurn.mock.calls.map(c => c[2] as { evidence: { kind: string }[] }); expect(saved.length).toBeGreaterThan(0); expect(saved.flatMap(s => s.evidence).some(e => e.kind === "asset_memory")).toBe(false);
+  });
+
+  it.each([{ state: "resolved", entityId: "OTHER-ASSET", confirmedAt: "2026-11-06" }, { state: "unbound" }, { state: "resolved", entityId: "cmms-pump07", confirmedAt: null }])("refuses a binding changed after manifest materialization before provider/translation", async later => {
+    process.env.NOTEBOOK_LIVING_SHEET = "1";
+    nbMock.resolveBoundAsset.mockResolvedValueOnce({ state: "resolved", entityId: "cmms-pump07", confirmedAt: "2026-11-06" } as never).mockResolvedValueOnce(later as never);
+    memoryMock.load.mockImplementationOnce(async () => { const first = await nbMock.resolveBoundAsset(); expect(first).toMatchObject({ entityId: "cmms-pump07" }); return { status: "ok", record: { assetMemory: MANIFEST } }; });
+    const response = await POST(req({ message: "¿Qué trabajo está registrado?", mode: "general", livingSheetJobId: JOB_ID, livingSheetSelector: PIN, clientRequestId: "44444444-4444-4444-8444-444444444444" }), params);
+    expect(response.status).toBe(409); expect(await response.json()).toMatchObject({ error: "asset_mismatch" });
+    expect(nbMock.resolveBoundAsset).toHaveBeenCalledTimes(2); expect(nbMock.abandonNotebookTurnRequest).toHaveBeenCalledTimes(1); expect(languageWork.translate).not.toHaveBeenCalled(); expect(languageWork.rewrite).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled(); expect(withSheetReceipt).not.toHaveBeenCalled(); expect(nbMock.recordTurn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { label: "malformed optional selector", selector: { seq: 1 }, failure: "invalid_selector" },
+    { label: "valid selector for another asset", selector: PIN, failure: "asset_mismatch" },
+    { label: "stale snapshot selector", selector: PIN, failure: "snapshot_conflict" },
+    { label: "missing candidate revision", selector: PIN, failure: "candidate_conflict" },
+  ])("canonical terminal energized-work stop wins over $label after notebook ownership", async ({ selector, failure }) => {
+    process.env.NOTEBOOK_LIVING_SHEET = "1"; delete process.env.NOTEBOOK_ENERGIZED_HARD_STOP;
+    memoryMock.load.mockResolvedValueOnce({ status: failure });
+    const res = await POST(req({ message: "How do I pull the RFI jumper with it powered?", sourceDocIds: [], livingSheetJobId: JOB_ID, livingSheetSelector: selector, clientRequestId: "44444444-4444-4444-8444-444444444444" }), params);
+    expect(res.status).toBe(200); const stream = await res.text();
+    const frames = stream.split("\n").filter(line => line.startsWith("data: {")).map(line => JSON.parse(line.slice(6)) as Record<string, unknown>);
+    expect(frames).toContainEqual({ kind: "safety", trigger: "energized-work" });
+    expect(frames.filter(f => f.kind === "content").map(f => f.content).join("")).toContain("SAFETY STOP");
+    expect(nbMock.getNotebook).toHaveBeenCalledWith(TENANT, NB); expect(memoryMock.load).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled(); expect(withSheetReceipt).not.toHaveBeenCalled();
+    const saved = nbMock.recordTurn.mock.calls.map(c => c[2] as { evidence: { kind: string }[]; claimToken: string });
+    expect(saved).toHaveLength(1); expect(saved[0].claimToken).toBe("claim"); expect(saved[0].evidence.some(e => e.kind === "safety_stop")).toBe(true); expect(saved[0].evidence.some(e => e.kind === "asset_memory")).toBe(false);
+  });
+  it("still refuses an unauthorized notebook before safety persistence with a malformed optional pin", async () => {
+    process.env.NOTEBOOK_LIVING_SHEET = "1"; delete process.env.NOTEBOOK_ENERGIZED_HARD_STOP;
+    nbMock.getNotebook.mockResolvedValueOnce(null);
+    const res = await POST(req({ message: "How do I pull the RFI jumper with it powered?", sourceDocIds: [], livingSheetJobId: JOB_ID, livingSheetSelector: { seq: 1 }, clientRequestId: "44444444-4444-4444-8444-444444444444" }), params);
+    expect(res.status).toBe(404); expect(nbMock.abandonNotebookTurnRequest).toHaveBeenCalledTimes(1); expect(memoryMock.load).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled(); expect(nbMock.recordTurn).not.toHaveBeenCalled();
+  });
+
+  it("preserves the existing hard-stop kill switch rather than inventing a terminal exemption", async () => {
+    process.env.NOTEBOOK_LIVING_SHEET = "1"; process.env.NOTEBOOK_ENERGIZED_HARD_STOP = "0";
+    memoryMock.load.mockResolvedValueOnce({ status: "asset_mismatch" });
+    try {
+      const res = await POST(req({ message: "How do I pull the RFI jumper with it powered?", mode: "general", sourceDocIds: [], livingSheetJobId: JOB_ID, livingSheetSelector: PIN }), params);
+      expect(res.status).toBe(409); expect(memoryMock.load).toHaveBeenCalledTimes(1); expect(fetch).not.toHaveBeenCalled(); expect(nbMock.recordTurn).not.toHaveBeenCalled();
+    } finally { delete process.env.NOTEBOOK_ENERGIZED_HARD_STOP; }
+  });
+  it("keeps the canonical high-voltage meter directive distinct from a terminal stop", async () => {
+    process.env.NOTEBOOK_LIVING_SHEET = "1";
+    const message = "clampmeter on the 480V feeder while it's running";
+    expect(notebookSafetyTrigger(message)).toBe(ENERGIZED_ELECTRICAL_HAZARD);
+    memoryMock.load.mockResolvedValueOnce({ status: "asset_mismatch" });
+    const res = await POST(req({ message, sourceDocIds: [], livingSheetJobId: JOB_ID, livingSheetSelector: PIN }), params);
+    expect(res.status).toBe(409); expect(memoryMock.load).toHaveBeenCalledTimes(1); expect(fetch).not.toHaveBeenCalled(); expect(nbMock.recordTurn).not.toHaveBeenCalled();
+  });
+
 });

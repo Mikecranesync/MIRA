@@ -106,6 +106,8 @@ import {
   type HubSelection,
 } from "./hub-host-logic";
 
+import { createFrozenSheetSend, withAssetMemorySelector, scopedAssetMemorySelection, type AssetMemorySelection } from "./living-sheet-client";
+
 type Detail = {
   notebook: EquipmentNotebook;
   sources: NotebookSource[];
@@ -183,7 +185,7 @@ export function HubShellHost() {
   // so send() can read it without a prop round-trip). `livingSheetJobId`
   // rides the next chat turn only while `job.notebookId` matches the turn's
   // own notebook — switching notebooks never leaks a stale job id.
-  const [livingSheetJob, setLivingSheetJob] = useState<{ notebookId: string; jobId: string } | null>(null);
+  const [livingSheetJob, setLivingSheetJob] = useState<AssetMemorySelection | null>(null);
   const [sheetReceipt, setSheetReceipt] = useState<NotebookSheetReceiptFrame | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   // The upload half of an attached send (#4019 round 2 F2): Stop and thread
@@ -432,8 +434,11 @@ export function HubShellHost() {
   const dropOutgoing = outgoingOwner.drop;
 
   // --- the send path: the canonical notebook-chat route, streamed ---
+  const frozenSheetSend = useMemo(() => createFrozenSheetSend<ReturnType<typeof chatBodyFor>>(), []);
   const send = useCallback(async (body: ReturnType<typeof chatBodyFor>, question: string, sel: HubSelection | null = selection) => {
-    if (!sel) return;
+    const prepared = frozenSheetSend(body, sel, () => withAssetMemorySelector(withLivingSheetRider(body, sel!.notebookId, livingSheetJob), sel!.notebookId, livingSheetJob));
+    if (!prepared) return;
+    body = prepared.body; sel = prepared.target;
     abortRef.current?.abort();
     const ctrl = new AbortController();
     abortRef.current = ctrl;
@@ -451,10 +456,10 @@ export function HubShellHost() {
       // through every chatBodyFor(...) call site — one enforcement point
       // that can't be forgotten at a future call site, scoped to the turn's
       // own notebook so switching notebooks never sends a stale job id.
-      const outBody = withLivingSheetRider(body, sel.notebookId, livingSheetJob);
+      const outBody = body;
       const res = await fetch(`${API_BASE}/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/chat/`, {
         // #4687: ask for stage progress; a server without MIRA_CHAT_PROGRESS ignores the header.
-        method: "POST", headers: { "Content-Type": "application/json", "x-mira-progress": "1" }, body: JSON.stringify(outBody), signal: ctrl.signal,
+        method: "POST", headers: { "Content-Type": "application/json", "x-mira-progress": "1" }, body: prepared.serialized, signal: ctrl.signal,
       });
       if (res.status === 401) { setSignedOut(true); return; }
       if (!res.ok || !res.body) {
@@ -526,7 +531,7 @@ export function HubShellHost() {
     } finally {
       if (abortRef.current === ctrl) { abortRef.current = null; setBusy(false); }
     }
-  }, [selection, loadDetail, loadNotebooks, dropOutgoing, outgoingOwner, livingSheetJob]);
+  }, [selection, loadDetail, loadNotebooks, dropOutgoing, outgoingOwner, livingSheetJob, frozenSheetSend]);
 
   /**
    * #4019 — attachments ride the turn they were attached to. Upload through the
@@ -1075,7 +1080,7 @@ export function HubShellHost() {
           key={selection.notebookId}
           notebookId={selection.notebookId}
           technicianName={authSession?.user?.email ?? null}
-          onSheetOpenChange={setLivingSheetJob}
+          onSheetOpenChange={(next, scope) => setLivingSheetJob(current => scopedAssetMemorySelection(current, next, scope, selectionRef.current?.notebookId))}
           receipt={sheetReceipt}
         />
       )}
