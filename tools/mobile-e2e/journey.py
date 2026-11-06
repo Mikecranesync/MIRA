@@ -51,7 +51,9 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 
-PKG = "com.factorylm.mira"
+# Same switch as device.py: MIRA_PKG=com.factorylm.mira.staging targets the staging
+# flavour (#3938) instead of the production app (#4455).
+PKG = os.environ.get("MIRA_PKG", "com.factorylm.mira")
 DEVICE_TMP = "/sdcard/Download"
 UI_XML = "/sdcard/window_dump.xml"
 
@@ -469,12 +471,24 @@ def pick_device(adb: str, allow_physical: bool) -> str:
     )
 
 
-def install(dev: Device, apk: Path) -> None:
+def install(dev: Device, apk: Path, *, reinstall_physical: bool = False) -> None:
     log("install", f"{apk.name}")
     # A signature mismatch (debug vs release) makes -r fail with
     # INSTALL_FAILED_UPDATE_INCOMPATIBLE. Uninstall first: a fresh install is also the
     # more honest starting state, since it re-exercises the permission grant.
-    dev._run(["uninstall", PKG])
+    # On a REAL phone that uninstall signs the owner out of a real account (#4455), so
+    # it needs its own explicit opt-in on top of --allow-physical. A phone without the
+    # app has nothing to lose: install it, still without an uninstall. If `pm path`
+    # were wrong, a plain install replaces in place (same cert keeps the login) or
+    # fails on a cert mismatch -- neither path signs anyone out.
+    if not dev.serial.startswith("emulator-") and not reinstall_physical:
+        if "package:" in dev.shell("pm", "path", PKG):
+            raise Fail(
+                f"refusing to uninstall {PKG} on physical device {dev.serial}: it signs the "
+                "owner out of a real account. Pass --reinstall-physical if that is intended."
+            )
+    else:
+        dev._run(["uninstall", PKG])
     r = dev._run(["install", str(apk)])
     if "Success" not in (r.stdout or "") + (r.stderr or ""):
         raise Fail(f"install failed: {r.stdout} {r.stderr}")
@@ -700,6 +714,11 @@ def main() -> int:
         "ADB", str(Path.home() / "AppData/Local/Android/Sdk/platform-tools/adb.exe")))
     ap.add_argument("--allow-physical", action="store_true")
     ap.add_argument(
+        "--reinstall-physical",
+        action="store_true",
+        help="On a physical device, also allow the uninstall-then-install (signs the owner out).",
+    )
+    ap.add_argument(
         "--stop-after",
         choices=["signin", "notebook", "upload", "ask", "citation", "nameplate"],
         default="nameplate",
@@ -729,7 +748,7 @@ def main() -> int:
         log("device", serial)
         dev = Device(args.adb, serial, args.outdir)
 
-        install(dev, args.apk)
+        install(dev, args.apk, reinstall_physical=args.reinstall_physical)
         launch(dev)
         sign_in(dev, email, password)
         if wanted("notebook"):
