@@ -1,0 +1,829 @@
+#!/usr/bin/env python3
+"""PR completion controller: drive one PR to an evidence-backed GREEN, BLOCKED
+or NEEDS_APPROVAL verdict using only the existing gates (docs/pr-completion-workflow.md).
+
+    git show "origin/main:tools/pr_completion.py" > /tmp/prc.py
+    python3 -I /tmp/prc.py PR [--mode review|full] [--max-cycles N] [--no-followups]
+
+Each cycle re-derives every gate from primary sources at the exact PR head and
+body: check runs and statuses for that SHA, the base-blob lifecycle guard, and
+the owner-authored review ledger parsed by the base-blob ledger script. A
+status comment this tool posts is output only and is never read back.
+
+It never merges, deploys, migrates, edits flags or protections, or dispatches
+any workflow except the lifecycle guard. Reviews and fixes go through the
+trusted entrypoint loaded from the PR's captured base object.
+"""
+
+from __future__ import annotations
+
+import argparse
+import fnmatch
+import hashlib
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import time
+
+GUARD_CHECK = "Legacy UI Lifecycle Guard"
+GUARD_REVIEW_ITEM = "review:exact-head and exact-body Codex GREEN"
+MAX_ROUNDS = 3  # durable Codex budget per PR (docs/adversarial-review-workflow.md)
+PAID_WORKFLOWS = (".github/workflows/beta-gate.yml",)  # pull_request runs that spend money
+NEEDS_AUTH = (  # SDLC v1 section 2.1 R3 list; checked before LOW_RISK, so it wins over docs/tests
+    "*/db/migrations/*",
+    ".github/*",
+    "docker-compose*",
+    "deployment/*",
+    "*nginx*",
+    "*Dockerfile*",
+    "*doppler*",
+    "*.env*",
+    "*secret*",
+    "*credential*",
+    "CODEOWNERS",
+    "CLAUDE.md",
+    "AGENTS.md",
+    ".claude/*",
+    ".githooks/*",
+    "tools/hooks/*",
+    "*/install/*",
+    "scripts/adversarial-review*",
+    "tools/ui_surface_lifecycle_guard.py",
+    "tools/pr_completion.py",
+    "tools/gate7_review.py",
+    "tools/ci/*",
+    "tools/capability_closure.py",
+    "tools/release_train.py",
+    "tools/staging_receipt.py",
+    "tools/migration_drift.py",
+    "tools/qa/retrieval_acceptance.py",
+    "docs/contracts/contract-index.yaml",
+    ".ast-grep-rules/*",
+    "sgconfig.yml",
+    "scripts/kg_write_guard_allowlist.txt",
+    "docs/architecture/convergence/*.yaml",
+    "pytest.ini",
+    "pyproject.toml",
+    "conftest.py",
+    "tests/test_*guard*",
+    "tests/test_adversarial_review*",
+    "tests/test_pr_completion.py",
+    "tests/test_capability_closure*",
+    "docs/adversarial-review-workflow.md",
+    "docs/environments.md",
+    "docs/versioning.md",
+    "docs/runbooks/*",
+    "docs/architecture/mira-sdlc-v1.md",
+    "guardrails.py",
+    "*session*.ts",
+    "*session*.tsx",
+    "*session*.py",
+    "*nextauth*",
+    "*judge*",
+    "*fieldbus*",
+    "*sparkplug*",
+    "*opcua*",
+    "*ethernet_ip*",
+    "tools/*receipt*",
+    "*_guard.py",
+    "*-guard.*",
+    "test_*guard*.py",
+    "*guard*.test.ts",
+    "*middleware*",
+    "*auth*",
+    "*ignition*",
+    "*tenant*",
+    "*rls*",
+    "*RLS*",
+    "*knowledge_entries*",
+    "*knowledge-entries*",
+    "*private*",
+    "*answer-validation*",
+    "*answer_validation*",
+    "*hazard*",
+    "*ota-*",
+    "*ota_*",
+    "*/ota/*",
+    "*native-fingerprint*",
+    "mira-mobile/android/*",
+    "mira-mobile/ios/*",
+    "*capacitor.config*",
+)
+# R3 families that are defined by what the code does, not where it lives (tenant filters,
+# RLS, private ingest, safety keywords). A changed line naming one promotes the PR to R3.
+R3_DIFF_TOKENS = (
+    "knowledge_entries",
+    "is_private",
+    "tenant_id",
+    "tenantId",
+    "withTenantContext",
+    "TenantScopedSession",
+    "ROW LEVEL SECURITY",
+    "CREATE POLICY",
+    "SAFETY_KEYWORDS",
+    "answer_validation",
+    "answerValidation",
+)
+HUMAN_SAFETY = ("*plc*", "*PLC*", "*modbus*", "*ladder*", "*interlock*", "*lockout*", "*safety*")
+LOW_RISK = (
+    "docs/*",
+    "*.md",
+    "tests/*",
+    "*/__tests__/*",
+    "*.test.ts",
+    "*.test.tsx",
+    "*_test.py",
+    "test_*.py",
+    "*.png",
+    "*/factorylm-ui/*",
+)
+REVIEW_RE = re.compile(
+    r"^\[CODEX-ADVERSARIAL-REVIEW\]\r?\n\r?\n```\r?\nreviewed_sha: ([0-9a-f]{40})\r?\n"
+    r"reviewed_body_sha256: ([0-9a-f]{64})\r?\nbase_sha: [^\r\n]+\r?\nstatus: (GREEN|ISSUES_FOUND)\r?\n"
+    r"review_iteration: [0-9]+\r?\n(?:post_cap_human_authorized: true\r?\n)?"
+    r"(?:run_id: [0-9a-f]{32}\r?\nreservation_comment_id: [1-9][0-9]*\r?\n)?\r?\n"
+    r"BLOCKER: ([0-9]+)\r?\nHIGH: ([0-9]+)\r?\nMEDIUM: ([0-9]+)\r?\nLOW: ([0-9]+)\r?\n"
+)
+FOLLOWUPS_RE = re.compile(
+    r"^\[REVIEW-FOLLOWUPS\]\r?\n\r?\n```\r?\nreviewed_sha: ([0-9a-f]{40})\r?\n"
+    r"reviewed_body_sha256: ([0-9a-f]{64})\r?\nissues:((?: #[0-9]+)+)\r?\n```"
+)
+FINDING_RE = re.compile(r"^### (F[0-9]+) · MEDIUM · (.+)$", re.M)
+MAX_PR_FILES = 3000  # the REST files endpoint stops listing here; beyond it the diff is unknown
+
+
+class Blocked(Exception):
+    """A gate cannot be decided; the run ends BLOCKED with this reason."""
+
+
+def run(argv, *, stdin=None, check=True, timeout=600):
+    try:
+        p = subprocess.run(argv, input=stdin, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise Blocked(f"tooling: {' '.join(argv[:3])} did not complete: {e}") from None
+    if check and p.returncode != 0:
+        raise Blocked(
+            f"tooling: {' '.join(argv[:3])} failed rc={p.returncode}: {p.stderr.strip()[:200]}"
+        )
+    return p
+
+
+def gh(*args, stdin=None):
+    """Every GitHub call passes this allowlist; anything else is a bug, not a request."""
+    a = list(args)
+    writes = ("-X", "--method", "-f", "-F", "--field", "--raw-field", "--input")
+    ok = (
+        a[:2] in (["pr", "view"], ["pr", "comment"], ["issue", "create"])
+        or (
+            len(a) == 7
+            and a[:6] == ["workflow", "run", "ui-lifecycle-guard.yml", "--ref", "main", "-f"]
+            and re.fullmatch(r"pr_number=[0-9]+", a[6])
+        )
+        or (a[:1] == ["api"] and not any(x.startswith(writes) for x in a[1:]))
+    )
+    if not ok or "merge" in a:
+        raise Blocked(f"refused non-allowlisted GitHub call: gh {' '.join(a[:3])}")
+    return run(["gh", *a], stdin=stdin).stdout
+
+
+def concat_json(raw):
+    """gh --paginate emits one JSON array per page back to back; decode them in sequence
+    (a textual join would rewrite `][` inside string values such as diffs)."""
+    out, i, dec = [], 0, json.JSONDecoder()
+    while True:
+        while i < len(raw) and raw[i].isspace():
+            i += 1
+        if i == len(raw):
+            return out
+        page, i = dec.raw_decode(raw, i)
+        if not isinstance(page, list):
+            raise Blocked("tooling: paginated GitHub response is not a list of pages")
+        out += page
+
+
+def match_any(path, pats):
+    return any(
+        fnmatch.fnmatch(path, p) or fnmatch.fnmatch(path.rsplit("/", 1)[-1], p) for p in pats
+    )
+
+
+def risk_tier(files, patches=None):
+    """human_safety > needs_authorization > backend > low (policy in the workflow doc).
+
+    `patches` maps each changed file to its unified diff, or None when GitHub sent none
+    (binary or too large). A non-low file whose diff cannot be read, or whose changed lines
+    name an R3 token, needs authorization: the diff can only raise the tier, never lower it."""
+    if any(match_any(f, HUMAN_SAFETY) for f in files):
+        return "human_safety", sorted(f for f in files if match_any(f, HUMAN_SAFETY))
+    hits = sorted(f for f in files if match_any(f, NEEDS_AUTH))
+    for f in sorted(files):
+        if patches is None or f in hits or match_any(f, LOW_RISK):
+            continue
+        patch = patches.get(f)
+        if patch is None:
+            hits.append(f"{f} (diff not inspectable)")
+            continue
+        changed = [ln[1:] for ln in patch.splitlines() if ln[:1] in "+-"]
+        token = next((t for t in R3_DIFF_TOKENS if any(t in ln for ln in changed)), None)
+        if token:
+            hits.append(f"{f} (changes {token})")
+    if hits:
+        return "needs_authorization", hits
+    if all(match_any(f, LOW_RISK) for f in files):
+        return "low", []
+    return "backend", []
+
+
+def paid_paths(base, files):
+    """Files that make a pull_request push fire a paid workflow, from the base YAML.
+
+    Fails closed: an unreadable or unparsable workflow, or a pull_request trigger without a
+    path filter, counts every changed file as paid."""
+    hits = []
+    for wf in PAID_WORKFLOWS:
+        p = run(["git", "show", f"{base}:{wf}"], check=False)
+        if p.returncode != 0:
+            continue  # the workflow does not exist at this base
+        try:
+            import yaml
+
+            doc = yaml.safe_load(p.stdout) or {}
+            on = doc.get("on", doc.get(True)) or {}
+            pr = on.get("pull_request", None) if isinstance(on, dict) else None
+            if pr is None and not (isinstance(on, (list, str)) and "pull_request" in on):
+                continue
+            globs = (pr or {}).get("paths")
+            if not isinstance(globs, list):
+                return sorted(files)
+        except Exception:  # noqa: BLE001 - any parse failure is treated as paid
+            return sorted(files)
+        hits += [
+            f for f in files if any(fnmatch.fnmatch(f, str(g).replace("**", "*")) for g in globs)
+        ]
+    return sorted(set(hits))
+
+
+def has_paid_workflow(base):
+    return any(
+        run(["git", "show", f"{base}:{wf}"], check=False).returncode == 0 for wf in PAID_WORKFLOWS
+    )
+
+
+def guard_marks(snap):
+    """Newest lifecycle-guard check-run id and commit-status id at the exact head."""
+    runs = json.loads(
+        gh("api", f"repos/{{owner}}/{{repo}}/commits/{snap['head']}/check-runs?per_page=100")
+    )
+    statuses = concat_json(
+        gh("api", f"repos/{{owner}}/{{repo}}/commits/{snap['head']}/statuses?per_page=100")
+    )
+    return (
+        max([c["id"] for c in runs.get("check_runs", []) if c["name"] == GUARD_CHECK] + [0]),
+        max([x["id"] for x in statuses if x.get("context") == GUARD_CHECK] + [0]),
+    )
+
+
+def dispatch_guard(pr, snap, timeout_s, poll_s):
+    """Dispatch the guard, then wait until a guard run or status newer than any seen before
+    the dispatch exists, so the next cycle never judges the previous run's result."""
+    before = guard_marks(snap)
+    gh("workflow", "run", "ui-lifecycle-guard.yml", "--ref", "main", "-f", f"pr_number={pr}")
+    deadline = time.monotonic() + timeout_s
+    while True:
+        now = guard_marks(snap)
+        if now[0] > before[0] or now[1] > before[1]:
+            return
+        if time.monotonic() > deadline:
+            raise Blocked(f"dispatched lifecycle guard never reported within {timeout_s}s")
+        time.sleep(poll_s)
+
+
+def snapshot(pr):
+    for _ in range(4):  # GitHub computes mergeability lazily; the first read may be UNKNOWN
+        j = json.loads(
+            gh(
+                "pr",
+                "view",
+                str(pr),
+                "--json",
+                "state,isDraft,headRefOid,baseRefOid,baseRefName,body,changedFiles,"
+                "mergeable,mergeStateStatus,reviewDecision",
+            )
+        )
+        if j.get("mergeable") != "UNKNOWN":
+            break
+        time.sleep(5)
+    body = j.get("body") or ""
+    if j["state"] != "OPEN" or not re.fullmatch(r"[0-9a-f]{40}", j["headRefOid"] or ""):
+        raise Blocked(f"PR is {j['state']} or has no exact head")
+    # `pr view --json files` truncates at 100 and drops rename origins, so the risk tier reads
+    # the paginated REST list. A rename counts both sides: moving a guarded file out is guarded.
+    listed = concat_json(
+        gh("api", f"repos/{{owner}}/{{repo}}/pulls/{pr}/files?per_page=100", "--paginate")
+    )
+    if len(listed) != j.get("changedFiles") or len(listed) >= MAX_PR_FILES:
+        raise Blocked(
+            f"tooling: listed {len(listed)} changed files for changedFiles={j.get('changedFiles')}; "
+            "refusing a partial file list"
+        )
+    files = {f["filename"] for f in listed} | {
+        f["previous_filename"] for f in listed if f.get("previous_filename")
+    }
+    patches = {f["filename"]: f.get("patch") for f in listed}
+    patches.update(
+        {f["previous_filename"]: f.get("patch") for f in listed if f.get("previous_filename")}
+    )
+    return {
+        "head": j["headRefOid"],
+        "base": j["baseRefOid"],
+        "base_ref": j["baseRefName"],
+        "draft": j["isDraft"],
+        "mergeable": j.get("mergeable"),
+        "merge_state": j.get("mergeStateStatus"),
+        "review_decision": j.get("reviewDecision"),
+        "body": body,
+        "files": sorted(files),
+        "patches": patches,
+        "body_sha256": hashlib.sha256(body.encode()).hexdigest(),
+    }
+
+
+def ci_state(snap, required, timeout_s, poll_s):
+    """Wait until every check at the exact head is terminal; return (failed, missing_required)."""
+    deadline = time.monotonic() + timeout_s
+    while True:
+        runs = json.loads(
+            gh("api", f"repos/{{owner}}/{{repo}}/commits/{snap['head']}/check-runs?per_page=100")
+        )
+        if runs.get("total_count", 0) > len(runs.get("check_runs", [])):
+            raise Blocked("tooling: more than 100 check runs; refusing a partial CI read")
+        run_latest = {}
+        for c in sorted(runs["check_runs"], key=lambda c: c["id"]):
+            run_latest[c["name"]] = (c["status"], c["conclusion"])
+        latest = dict(run_latest)
+        for s in reversed(
+            concat_json(
+                gh("api", f"repos/{{owner}}/{{repo}}/commits/{snap['head']}/statuses?per_page=100")
+            )
+        ):
+            status = (
+                "completed" if s["state"] != "pending" else "pending",
+                {"success": "success", "pending": None}.get(s["state"], "failure"),
+            )
+            run_result = run_latest.get(s["context"])
+            # A same-named status never hides a failed or pending check run, except the
+            # lifecycle guard, whose dispatched status is the documented exact-head verdict.
+            if run_result and s["context"] != GUARD_CHECK and run_result[1] != "success":
+                continue
+            latest[s["context"]] = status
+        pending = [n for n, (st, _) in latest.items() if st != "completed"]
+        if not pending:
+            failed = sorted(
+                n for n, (_, c) in latest.items() if c not in ("success", "neutral", "skipped")
+            )
+            missing = sorted(r for r in required if latest.get(r, (None, None))[1] != "success")
+            return failed, missing, latest
+        if time.monotonic() > deadline:
+            raise Blocked(f"CI still pending after {timeout_s}s: {', '.join(sorted(pending)[:5])}")
+        time.sleep(poll_s)
+
+
+def guard_missing(snap):
+    """Run the base-blob lifecycle guard on the exact body; return its Missing items (None = pass)."""
+    with tempfile.TemporaryDirectory() as d:
+        for name, blob in (
+            ("g.py", "tools/ui_surface_lifecycle_guard.py"),
+            ("reg.yaml", "docs/architecture/convergence/REGISTRY.yaml"),
+        ):
+            with open(os.path.join(d, name), "w") as fh:
+                fh.write(run(["git", "show", f"{snap['base']}:{blob}"]).stdout)
+        with open(os.path.join(d, "body.md"), "w") as fh:
+            fh.write(snap["body"])
+        p = run(
+            [
+                sys.executable,
+                "-I",
+                f"{d}/g.py",
+                "--base",
+                snap["base"],
+                "--head",
+                snap["head"],
+                "--pr-body-file",
+                f"{d}/body.md",
+                "--registry",
+                f"{d}/reg.yaml",
+            ],
+            check=False,
+        )
+    if p.returncode == 0:
+        return None
+    m = re.search(r"Missing: (.*)", p.stdout + p.stderr)
+    if not m:
+        raise Blocked(f"lifecycle guard failed without a Missing list (rc={p.returncode})")
+    return [x.strip() for x in m.group(1).split(",") if x.strip()]
+
+
+def ledger(pr, snap, viewer):
+    """Budget and exact-snapshot verdict from owner-authored comments only."""
+    raw = gh("api", f"repos/{{owner}}/{{repo}}/issues/{pr}/comments", "--paginate")
+    with tempfile.TemporaryDirectory() as d:
+        comments, script = os.path.join(d, "comments.json"), os.path.join(d, "ledger.mjs")
+        with open(comments, "w") as fh:
+            fh.write(raw)
+        with open(script, "w") as fh:
+            fh.write(
+                run(["git", "show", f"{snap['base']}:scripts/adversarial-review-ledger.mjs"]).stdout
+            )
+        led = json.loads(
+            run(
+                [
+                    "node",
+                    script,
+                    comments,
+                    viewer,
+                    "--sha",
+                    snap["head"],
+                    "--body-sha256",
+                    snap["body_sha256"],
+                ]
+            ).stdout
+        )
+    owned = [
+        x
+        for x in concat_json(raw)
+        if (x.get("user") or {}).get("login") == viewer
+        and (x.get("user") or {}).get("type") == "User"
+        and isinstance(x.get("id"), int)
+    ]
+    verdict = followups = None
+    for x in sorted(owned, key=lambda x: x["id"]):
+        m = REVIEW_RE.match(x["body"])
+        if m and m.group(1) == snap["head"] and m.group(2) == snap["body_sha256"]:
+            verdict = {
+                "status": m.group(3),
+                "blocker": int(m.group(4)),
+                "high": int(m.group(5)),
+                "medium": int(m.group(6)),
+                "low": int(m.group(7)),
+                "comment_id": x["id"],
+                "created_at": x.get("created_at"),
+                "body": x["body"],
+            }
+            followups = None
+        f = FOLLOWUPS_RE.match(x["body"])
+        if f and verdict and f.group(1) == snap["head"] and f.group(2) == snap["body_sha256"]:
+            followups = {"comment_id": x["id"], "issues": f.group(3).split()}
+    if led.get("already") != 1 or led.get("prior_status") not in ("GREEN", "ISSUES_FOUND"):
+        verdict = followups = None  # the ledger script is the authority on exact-snapshot status
+    elif verdict is None or verdict["status"] != led["prior_status"]:
+        raise Blocked("ledger script and review envelope disagree for this exact snapshot")
+    return led["consumed"], verdict, followups
+
+
+def decide(snap, ci, guard, review, budget_used, tier):
+    """Pure gate decision. Returns (status, reasons, next_action); action None means final."""
+    failed, missing, latest = ci
+    reasons = []
+    review_item_only = guard is not None and set(guard) == {GUARD_REVIEW_ITEM}
+    if guard is not None and not review_item_only:
+        return "BLOCKED", [f"lifecycle guard missing: {', '.join(guard)}"], None
+    other = [n for n in failed if not (n == GUARD_CHECK and review_item_only)]
+    if other:
+        return "BLOCKED", [f"CI failed at {snap['head'][:12]}: {', '.join(other)}"], None
+    if missing:
+        return (
+            "BLOCKED",
+            [f"required check not green at {snap['head'][:12]}: {', '.join(missing)}"],
+            None,
+        )
+    verdict, followups = review
+    if verdict is None:
+        if budget_used >= MAX_ROUNDS:
+            return (
+                "BLOCKED",
+                [
+                    f"Codex budget exhausted ({budget_used}/{MAX_ROUNDS}); "
+                    "only a human-authorized review-only pass remains"
+                ],
+                None,
+            )
+        return "BLOCKED", ["no exact-head, exact-body Codex verdict yet"], "review"
+    if verdict["blocker"] or verdict["high"]:
+        return (
+            "BLOCKED",
+            [
+                f"Codex found {verdict['blocker']} BLOCKER / {verdict['high']} HIGH at this "
+                f"snapshot (comment {verdict['comment_id']}); fix and push a new head"
+            ],
+            "fix",
+        )
+    if verdict["status"] == "ISSUES_FOUND":
+        # The guard wants one issue per MEDIUM, and one when only LOWs remain.
+        if not followups or len(followups["issues"]) < max(verdict["medium"], 1):
+            return (
+                "BLOCKED",
+                [
+                    f"CONVERGED with {verdict['medium']} MEDIUM / {verdict['low']} LOW; "
+                    "follow-ups not filed"
+                ],
+                "followups",
+            )
+        reasons.append(f"CONVERGED; MEDIUMs accepted as follow-ups {' '.join(followups['issues'])}")
+    if guard is not None and latest.get(GUARD_CHECK, (None, None))[1] != "success":
+        return "BLOCKED", ["lifecycle guard has no success status at this exact head"], "guard"
+    # GitHub's own merge preconditions; a PR GitHub would refuse is never reported ready.
+    blockers = []
+    if snap.get("draft"):
+        blockers.append("PR is a draft")
+    if snap.get("mergeable") != "MERGEABLE":
+        blockers.append(f"mergeable={snap.get('mergeable')}")
+    if snap.get("merge_state") in ("BEHIND", "DIRTY", "UNKNOWN", None):
+        blockers.append(f"mergeStateStatus={snap.get('merge_state')}")
+    if snap.get("review_decision") == "CHANGES_REQUESTED":
+        blockers.append("changes requested")
+    if blockers:
+        return "BLOCKED", reasons + ["not mergeable as-is: " + ", ".join(blockers)], None
+    if tier[0] in ("needs_authorization", "human_safety"):
+        who = (
+            "a separate human safety authorization"
+            if tier[0] == "human_safety"
+            else "explicit owner approval"
+        )
+        return (
+            "NEEDS_APPROVAL",
+            reasons + [f"{tier[0]} paths need {who}: {', '.join(tier[1][:8])}"],
+            None,
+        )
+    note = "activation stays separately gated" if tier[0] == "backend" else "low-risk paths"
+    return (
+        "GREEN",
+        reasons + [f"all gates pass at exact head ({note}); merge remains the owner's"],
+        None,
+    )
+
+
+def loop_supports_converged(base):
+    text = run(["git", "show", f"{base}:scripts/adversarial-review-loop.sh"]).stdout
+    return bool(re.search(r"^\s*exit 5\s*$", text, re.M)) and "CONVERGED" in text
+
+
+def run_review(pr, snap, full, rounds_left):
+    """One action through the trusted entrypoint loaded from the captured base object.
+
+    Full mode runs up to two loop cycles: review, remediate a BLOCKER/HIGH, review the new head.
+    The loop breaks before remediation once its cycle count reaches --max-iter, so --max-iter 1
+    could never remediate. With one round left it only reviews."""
+    entry = run(["git", "show", f"{snap['base']}:scripts/adversarial-review-trusted.sh"]).stdout
+    args = ["--max-iter", str(min(2, rounds_left))] if full else ["--review-only"]
+    p = run(["bash", "-s", "--", str(pr), *args], stdin=entry, check=False, timeout=5400)
+    sys.stderr.write(p.stdout[-2000:] + p.stderr[-2000:])
+    if p.returncode not in (0, 1, 5):
+        raise Blocked(f"review tooling failed (rc={p.returncode}); not a verdict")
+
+
+def file_followups(pr, snap, verdict, viewer):
+    """One issue per MEDIUM (one aggregate issue when only LOWs remain), then the record.
+
+    Idempotent across reruns: each issue body carries a marker bound to the PR, head, body
+    digest and finding, and an existing owner issue with that marker is reused, not refiled."""
+    found = FINDING_RE.findall(verdict["body"])
+    if len(found) != verdict["medium"]:
+        raise Blocked(
+            f"review lists {len(found)} MEDIUM headings for {verdict['medium']} MEDIUM; file by hand"
+        )
+    if not found:
+        found = [("LOW", f"{verdict['low']} LOW findings from the Codex review")]
+    query = f"repos/{{owner}}/{{repo}}/issues?state=all&creator={viewer}&per_page=100"
+    if verdict.get("created_at"):
+        query += f"&since={verdict['created_at']}"  # an issue filed later was updated later
+    existing = {}
+    for x in concat_json(gh("api", query, "--paginate")):
+        if "pull_request" in x or (x.get("user") or {}).get("login") != viewer:
+            continue
+        for m in re.finditer(r"^pr-completion-followup: .+$", x.get("body") or "", re.M):
+            existing.setdefault(m.group(0), x["number"])
+    nums = []
+    for fid, title in found:
+        marker = (
+            f"pr-completion-followup: pr={pr} sha={snap['head']} "
+            f"body={snap['body_sha256']} finding={fid}"
+        )
+        if marker in existing:
+            nums.append(f"#{existing[marker]}")
+            continue
+        severity = "LOW" if fid == "LOW" else "MEDIUM"
+        body = (
+            f"Follow-up from the Codex review of PR #{pr} at {snap['head']} "
+            f"(comment {verdict['comment_id']}), finding {fid}, {severity}. Accepted under the "
+            "CONVERGED rule (docs/architecture/mira-sdlc-v1.md section 4.3); the finding text is "
+            f"in that comment.\n\n{marker}\n"
+        )
+        url = gh(
+            "issue", "create", "--title", f"{title[:200]} (#{pr} {fid})", "--body", body
+        ).strip()
+        nums.append("#" + url.rsplit("/", 1)[-1])
+    gh(
+        "pr",
+        "comment",
+        str(pr),
+        "--body",
+        "[REVIEW-FOLLOWUPS]\n\n```\n"
+        f"reviewed_sha: {snap['head']}\n"
+        f"reviewed_body_sha256: {snap['body_sha256']}\nissues: {' '.join(nums)}\n```\n",
+    )
+    return nums
+
+
+def acquire_lock(pr):
+    """One controller per PR on this machine; the review ledger arbitrates across machines."""
+    common = run(["git", "rev-parse", "--git-common-dir"]).stdout.strip()
+    path = os.path.join(os.path.abspath(common), f"pr-completion-{pr}.lock")
+    try:
+        os.mkdir(path)
+    except FileExistsError:
+        try:
+            pid = int(open(os.path.join(path, "pid")).read())
+        except (OSError, ValueError):
+            # No readable pid yet: the owner may still be starting. Never call that stale.
+            raise Blocked(f"controller lock {path} has no pid yet; check it by hand") from None
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            raise Blocked(
+                f"stale controller lock {path} (pid {pid} is gone); remove it by hand"
+            ) from None
+        except PermissionError:
+            pass  # the process exists under another user
+        raise Blocked(f"another controller owns PR #{pr} ({path}, pid {pid})")
+    try:
+        with open(os.path.join(path, "pid"), "w") as fh:
+            fh.write(str(os.getpid()))
+    except OSError as e:
+        os.rmdir(path)
+        raise Blocked(f"could not record the controller lock pid: {e}") from None
+    return path
+
+
+def report(result, out_dir):
+    lines = [
+        f"[PR-COMPLETION-STATUS] {result['status']}",
+        "",
+        "```",
+        *(
+            f"{k}: {result[k]}"
+            for k in ("pr", "head", "base", "body_sha256", "tier", "codex_rounds_used")
+        ),
+        "```",
+        "",
+        *(f"- {r}" for r in result["reasons"]),
+        *(f"- action: {a}" for a in result["actions"]),
+        "",
+        "Output only: this record is never read back as evidence.",
+    ]
+    text = "\n".join(lines) + "\n"
+    os.makedirs(out_dir, exist_ok=True)
+    stem = os.path.join(out_dir, f"pr-{result['pr']}-{(result['head'] or 'none')[:12]}")
+    json.dump(result, open(stem + ".json", "w"), indent=2)
+    open(stem + ".md", "w").write(text)
+    return text
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("pr", type=int)
+    ap.add_argument(
+        "--mode",
+        choices=("review", "full"),
+        default="review",
+        help="full lets the trusted loop remediate BLOCKER/HIGH (needs base loop CONVERGED stop)",
+    )
+    ap.add_argument("--max-cycles", type=int, default=4)
+    ap.add_argument(
+        "--no-followups", action="store_true", help="report CONVERGED instead of filing issues"
+    )
+    ap.add_argument(
+        "--allow-paid-push",
+        action="store_true",
+        help="permit full mode when a remediation push would fire a paid workflow",
+    )
+    ap.add_argument("--ci-timeout", type=int, default=3600)
+    ap.add_argument("--poll", type=int, default=60)
+    ap.add_argument("--read-only", action="store_true", help="evaluate and report; take no action")
+    ap.add_argument("--post-status", action="store_true")
+    ap.add_argument("--out", default=".pr-completion")
+    a = ap.parse_args(argv)
+    result = {
+        "pr": a.pr,
+        "head": None,
+        "base": None,
+        "body_sha256": None,
+        "tier": None,
+        "codex_rounds_used": None,
+        "status": "BLOCKED",
+        "reasons": [],
+        "actions": [],
+    }
+    lock = None
+    try:
+        lock = acquire_lock(a.pr)
+        viewer = json.loads(gh("api", "user"))["login"]
+        expected = None
+        for _ in range(max(1, a.max_cycles)):
+            snap = snapshot(a.pr)
+            if expected and snap["head"] != expected:
+                raise Blocked(
+                    f"head moved to {snap['head'][:12]} without this controller; competing writer"
+                )
+            prot = json.loads(
+                gh("api", f"repos/{{owner}}/{{repo}}/branches/{snap['base_ref']}/protection")
+            )
+            required = (prot.get("required_status_checks") or {}).get("contexts") or []
+            tier = risk_tier(snap["files"], snap["patches"])
+            ci = ci_state(snap, required, a.ci_timeout, a.poll)
+            guard = guard_missing(snap)
+            # The base guard runs without review comments, so it passes only when the diff
+            # touches no guarded legacy or control path; any Missing list means it does (R3).
+            if guard is not None and tier[0] in ("backend", "low"):
+                tier = ("needs_authorization", ["paths under the Legacy UI Lifecycle Guard"])
+            result.update(
+                head=snap["head"], base=snap["base"], body_sha256=snap["body_sha256"], tier=tier[0]
+            )
+            used, verdict, followups = ledger(a.pr, snap, viewer)
+            result["codex_rounds_used"] = used
+            status, reasons, action = decide(snap, ci, guard, (verdict, followups), used, tier)
+            result.update(status=status, reasons=reasons)
+            expected = snap["head"]
+            if action is None or a.read_only or (action == "fix" and a.mode != "full"):
+                break
+            if action == "followups" and a.no_followups:
+                break
+            result["actions"].append(f"{action} at {snap['head'][:12]}")
+            if action == "review":
+                full = a.mode == "full" and loop_supports_converged(snap["base"])
+                if a.mode == "full" and not full:
+                    result["actions"].append(
+                        "full mode unavailable: base loop lacks the CONVERGED stop"
+                    )
+                # Remediation can add files the current diff does not touch, so full mode needs
+                # the flag whenever the base has a paid pull_request workflow at all.
+                paid = paid_paths(snap["base"], snap["files"])
+                if full and not a.allow_paid_push and (paid or has_paid_workflow(snap["base"])):
+                    what = ", ".join(paid[:5]) or "paths a remediation might add"
+                    raise Blocked(
+                        f"full mode could push into paid workflow paths ({what}); "
+                        "pass --allow-paid-push to accept that spend"
+                    )
+                run_review(a.pr, snap, full, MAX_ROUNDS - used)
+                expected = None if full else snap["head"]
+            elif action == "fix":
+                raise Blocked(
+                    "the verdict already exists for this snapshot; the trusted loop cannot "
+                    "remediate a deduplicated verdict, so a human or Claude session must fix it"
+                )
+            elif action == "followups":
+                result["actions"].append(
+                    "filed " + " ".join(file_followups(a.pr, snap, verdict, viewer))
+                )
+                if guard is not None:
+                    dispatch_guard(a.pr, snap, a.ci_timeout, a.poll)
+            elif action == "guard":
+                dispatch_guard(a.pr, snap, a.ci_timeout, a.poll)
+        else:
+            result["status"] = "BLOCKED"
+            result["reasons"].append(f"cycle limit {a.max_cycles} reached before a final verdict")
+        final = snapshot(a.pr)
+        if (final["head"], final["base"], final["body_sha256"]) != (
+            result["head"],
+            result["base"],
+            result["body_sha256"],
+        ):
+            result.update(
+                status="BLOCKED",
+                reasons=["PR head or body changed after evaluation; evidence is stale"],
+            )
+    except Blocked as e:
+        result.update(status="BLOCKED", reasons=result["reasons"] + [str(e)])
+    except (ValueError, KeyError, TypeError, OSError) as e:  # malformed tool output
+        result.update(
+            status="BLOCKED",
+            reasons=result["reasons"] + [f"tooling: unexpected {type(e).__name__}: {e}"],
+        )
+    finally:
+        if lock:
+            os.unlink(os.path.join(lock, "pid"))
+            os.rmdir(lock)
+    text = report(result, a.out)
+    sys.stdout.write(text + "\n")
+    if a.post_status and result["head"]:
+        try:
+            gh("pr", "comment", str(a.pr), "--body", text)
+        except Blocked as e:
+            sys.stderr.write(f"status comment not posted: {e}\n")
+    return {"GREEN": 0, "NEEDS_APPROVAL": 3}.get(result["status"], 1)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

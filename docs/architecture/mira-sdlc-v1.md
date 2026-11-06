@@ -286,8 +286,8 @@ transitions. No agent may self-award a PASS on work it authored.
   charter §3; a comment, never a body edit, which voids the verdict), dispatch a fresh guard run
   (`gh workflow run ui-lifecycle-guard.yml --ref main -f pr_number=<N>`), and hand the merge to Mike. The
   Lifecycle Guard accepts CONVERGED plus that record. A BLOCKER or HIGH is never CONVERGED; it is fixed and
-  re-reviewed. The full review loop does not yet stop on CONVERGED by itself (#4524), so run `--review-only`
-  passes; never start a remediation round on a CONVERGED verdict.
+  re-reviewed. The full review loop stops on CONVERGED by itself (exit 5, #4524); never start a remediation
+  round on a CONVERGED verdict. `tools/pr_completion.py` runs this end to end (`docs/pr-completion-workflow.md`).
 - **Required (D1):** every **R3** change; every PR touching a guarded path (the lifecycle guard
   demands the body-bound GREEN regardless of class). **R2:** when Mike names it or a cheap-lane finding is
   disputed. R0/R1: not required.
