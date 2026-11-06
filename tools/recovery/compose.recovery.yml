@@ -1,0 +1,68 @@
+# Minimum recovery overlay for incident #3800 — layer it ON TOP of the
+# canonical production compose; it never replaces it:
+#
+#   docker compose -f docker-compose.saas.yml \
+#                  -f tools/recovery/compose.recovery.yml \
+#                  up -d --no-deps mira-hub
+#
+# Only `mira-hub` is started. Everything the technician surface needs for
+# login, chat, projects/threads, uploads, retrieval, citations and document
+# access lives in the Hub + Neon + the LLM cascade + the (optional) embedder:
+#
+#   login            NextAuth (credentials/magic-link/Google)   -> Neon
+#   chat             /api/hub/ask, /api/equipment-notebooks/*/chat -> cascade + manual-rag
+#   projects/threads equipment_notebooks / _turns / _sources    -> Neon
+#   uploads          /api/namespace/node/*/files, notebook sources -> Neon BYTEA (originals)
+#   retrieval        knowledge_entries BM25 (+ vector when OLLAMA_BASE_URL reachable)
+#   citations/files  /api/files/*, /api/equipment-notebooks/*/sources/*  -> Neon
+#
+# Everything else in docker-compose.saas.yml (bots, Foreman, Nango, workers,
+# mira-web, pipeline, mcp, ingest, ask, tika, relay) is NOT started. The
+# `disabled://recovery` URLs below make the Hub's optional integrations fail
+# closed and fast instead of hanging on DNS for a container that is not there
+# (same mechanism docker-compose.staging-vps.yml uses).
+#
+# Test mode vs cutover:
+#   RECOVERY_PUBLIC_URL   http://localhost:3101 (private test) | https://app.factorylm.com (cutover)
+#   RESEND_API_KEY        empty in test mode => magic-link/team emails are NOT sent
+#   Doppler config        factorylm/stg for tests (Neon STAGING branch, safe to write)
+#                         factorylm/prd only at cutover (Neon production)
+services:
+  mira-hub:
+    # Overridable so a private test can run beside an existing dev `mira-hub`.
+    container_name: ${RECOVERY_HUB_CONTAINER:-mira-hub}
+    ports: !override
+      - "${RECOVERY_HUB_BIND:-127.0.0.1:3101}:3000"
+    environment:
+      NEXT_PUBLIC_APP_URL: ${RECOVERY_PUBLIC_URL:-http://localhost:3101}
+      NEXTAUTH_URL: ${RECOVERY_PUBLIC_URL:-http://localhost:3101}/api/auth
+      NEXTAUTH_URL_INTERNAL: http://127.0.0.1:3000/api/auth
+      NEXT_PUBLIC_PIPELINE_API_URL: ${RECOVERY_PUBLIC_URL:-http://localhost:3101}
+      AUTH_TRUST_HOST: "true"
+      # Optional integrations whose containers are not part of the minimum set.
+      INGEST_URL: disabled://recovery
+      OPENWEBUI_BASE_URL: disabled://recovery
+      OPENWEBUI_API_KEY: ""
+      NANGO_SERVER_URL: disabled://recovery
+      MIRA_ASK_URL: http://mira-ask-not-started.invalid:8011
+      HUB_CMMS_API_URL: http://cmms-not-started.invalid:8080
+      # Embedder: keep the production contract (nomic-embed-text, 768-d) by
+      # pointing at the same Bravo Ollama over Tailscale. Unset => BM25-only.
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
+      # Emails off unless RECOVERY_ALLOW_EMAIL=1 is set explicitly at cutover.
+      RESEND_API_KEY: ${RECOVERY_RESEND_API_KEY:-}
+      # Upload retry buffers go to a named volume (no /opt/mira perms dance).
+      UPLOAD_BUFFER_DIR: /app/.upload-buffers
+    volumes: !override
+      - mira-hub-upload-buffers:/app/.upload-buffers
+    # Atlas CMMS (external network `factorylm-cmms_default`) is not part of the
+    # minimum set — drop the external attachment so compose does not demand it.
+    networks: !override
+      - mira-net
+    deploy:
+      resources:
+        limits:
+          memory: ${RECOVERY_HUB_MEM:-1g}
+
+volumes:
+  mira-hub-upload-buffers:
