@@ -20,6 +20,7 @@ import { listSources } from "@/lib/equipment-notebooks";
 import { acquireIngestSlot } from "@/lib/node-knowledge-ingest";
 import { figureLinesForPage, figuresForPage, imageBoxesFromOps, type LayoutItem } from "./pdf-figure-lines";
 import { decodedImageToPng, type DecodedImage } from "./pdf-image-png";
+import { extractCanonicalDrawingText } from "./drawing";
 import type { DocText, PageFigure, PageText } from "./types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -218,9 +219,17 @@ async function chunkDocPages(tenantId: string, notebookId: string, docId: string
  * fails on it) falls back to its chunk text rather than dropping the document
  * — a notebook's draft should degrade, never silently lose a source.
  */
-export async function loadNotebookDocTexts(tenantId: string, notebookId: string): Promise<DocText[]> {
+export async function loadNotebookDocTexts(
+  tenantId: string,
+  notebookId: string,
+  opts: { includeDrawingCandidates?: boolean } = {},
+): Promise<DocText[]> {
   const sources = await listSources(tenantId, notebookId);
-  const usable = sources.filter((s) => s.enabledByDefault && s.matchState !== "rejected");
+  const usable = sources.filter(
+    (s) =>
+      s.matchState !== "rejected" &&
+      (s.enabledByDefault || (opts.includeDrawingCandidates === true && isUnreviewedDrawingCandidate(s))),
+  );
 
   const out: DocText[] = [];
   for (const s of usable) {
@@ -244,7 +253,56 @@ export async function loadNotebookDocTexts(tenantId: string, notebookId: string)
       pages = await chunkDocPages(tenantId, notebookId, s.docId);
       via = "chunks";
     }
-    out.push({ docId: s.docId, fileId: s.fileId, filename: s.filename, pages, via });
+    out.push({
+      docId: s.docId,
+      fileId: s.fileId,
+      filename: s.filename,
+      pages,
+      via,
+      ...(s.originFileId ? { origin: { fileId: s.originFileId, ...drawingOriginOf(s.matchEvidence) } } : {}),
+      ...(!s.enabledByDefault ? { drawingCandidate: true as const } : {}),
+    });
   }
   return out;
+}
+
+/** The canonical drawing transcription block of one attached source (its materialized chunk text),
+ *  or null when the doc is not attached here or carries no transcription. Used by the upload route
+ *  to hand back an already-stored transcription instead of paying for vision again. */
+export async function loadDocCanonicalDrawingText(
+  tenantId: string,
+  notebookId: string,
+  docId: string,
+): Promise<string | null> {
+  const pages = await chunkDocPages(tenantId, notebookId, docId);
+  return extractCanonicalDrawingText(pages.map((p) => p.text).join("\n"));
+}
+
+/** The notebook's enabled sources only — drops anything `includeDrawingCandidates` admitted. */
+export function withoutDrawingCandidates(docs: readonly DocText[]): DocText[] {
+  return docs.filter((d) => d.drawingCandidate !== true);
+}
+
+/** A drawing-photo transcription still awaiting review: attached as a disabled `candidate` by the
+ *  upload route. Only the connection-packet path opts into these (`includeDrawingCandidates`), and
+ *  `photoField` can only ever label their values Proposed — chat and the CAT packet never see them.
+ *  A rejected row is excluded by the caller's filter before this is consulted. */
+function isUnreviewedDrawingCandidate(s: { sourceRole: string | null; matchState: string; originFileId: string | null; matchEvidence: unknown }): boolean {
+  return (
+    s.sourceRole === "drawing" &&
+    s.matchState === "candidate" &&
+    s.originFileId !== null &&
+    drawingOriginOf(s.matchEvidence).drawing?.reviewed === false
+  );
+}
+
+/** `DocText.origin.drawing` from a source's `match_evidence.drawing_transcription` (set by the
+ *  drawing-photos routes). Anything else in `match_evidence` (nameplate confirm's evidence shape,
+ *  etc.) is a different producer and is left alone — this only ever reads the one key it owns. */
+function drawingOriginOf(matchEvidence: unknown): { drawing?: { reviewed: boolean } } {
+  if (!matchEvidence || typeof matchEvidence !== "object") return {};
+  const dt = (matchEvidence as Record<string, unknown>).drawing_transcription;
+  if (!dt || typeof dt !== "object") return {};
+  const reviewed = (dt as Record<string, unknown>).reviewed;
+  return typeof reviewed === "boolean" ? { drawing: { reviewed } } : {};
 }

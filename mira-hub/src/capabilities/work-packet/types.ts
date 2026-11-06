@@ -43,6 +43,17 @@ export interface DocText {
   filename: string | null;
   pages: PageText[];
   via: "file" | "chunks";
+  /** 2026-11-04 (drawing connection packet, Worker Task 2) — set only when this doc derives from a
+   *  photographed engineering drawing: `equipment_notebook_sources.origin_file_id` (the ORIGINAL
+   *  photo, never this doc's own `fileId` — the materialized transcription text has no parked file
+   *  of its own) plus whatever `match_evidence.drawing_transcription` recorded. Optional and
+   *  additive: every existing `DocText` literal/construction site is unaffected. Consumed by
+   *  `work-packet/route.ts`'s `drawingSheetPhotosFromDocs` to rebuild `DrawingSheetPhoto[]`. */
+  origin?: { fileId: string; drawing?: { reviewed: boolean } };
+  /** Set only by `loadNotebookDocTexts({ includeDrawingCandidates: true })` on a disabled,
+   *  unreviewed drawing candidate it admitted for the connection path. Any other consumer must drop
+   *  these (`withoutDrawingCandidates`) — they are not part of the notebook's enabled sources. */
+  drawingCandidate?: true;
 }
 
 /** Exactly where a value was read: `line` is the trimmed source line it came from. */
@@ -467,7 +478,10 @@ export type DraftRefusal =
   | "model_not_in_documents"
   | "no_task_matched"
   /** The technician did not confirm every attached document revision, or a revision changed since. */
-  | "revision_not_confirmed";
+  | "revision_not_confirmed"
+  /** A drawing connection id (e.g. "C3") is on more than one attached drawing and the request did
+   *  not say which drawing — answering would risk the wrong assembly's hardware and torque. */
+  | "connection_ambiguous";
 
 export type DraftResult =
   | { ok: true; packet: WorkPacket; warnings: string[] }
