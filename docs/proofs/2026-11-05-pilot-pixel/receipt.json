@@ -1,0 +1,117 @@
+{
+  "fullVerdict": "NOT YET ACCEPTED",
+  "physicalRestart": "FAIL",
+  "runtime": {
+    "sha": "090c8e15bfcbd85f0091103cf5a6f5fc6b221056",
+    "builtAt": "2026-11-05T23:57:57Z",
+    "version": "3.444.8"
+  },
+  "serial": "55081JEBF07026",
+  "chrome": "156.0.8078.79",
+  "nativeApkTested": false,
+  "jobId": "0ea9256a-5989-45e7-bba8-19dc81f2c564",
+  "notebookId": "d36d1927-d466-4cb4-8cad-3ce8394c3201",
+  "atlasOrder": 1653,
+  "atlasStatus": "OPEN",
+  "events": [
+    {
+      "id": "697d8d26-c13a-4f1b-956c-c6d5ca8c84c3",
+      "seq": 1,
+      "kind": "job_started",
+      "clientEventId": "a6f6b756-b0dd-4ce6-98e0-ed32c19f9139"
+    },
+    {
+      "id": "a68a0b83-20d6-4172-b89d-f51ebba2fc45",
+      "seq": 2,
+      "kind": "note_added",
+      "clientEventId": "b63196b0-b17f-4762-b779-e5cc04a34b2d"
+    },
+    {
+      "id": "4530c208-7135-4057-adb3-c275523b5d53",
+      "seq": 3,
+      "kind": "handover_written",
+      "clientEventId": "ea5c083d-2cf3-420b-8212-11b637cdc5e9"
+    },
+    {
+      "id": "f053961c-5fae-49e0-babb-20eed1ec39a5",
+      "seq": 4,
+      "kind": "photo_attached",
+      "clientEventId": "fbb1edcd-8f29-49c6-8b07-279c11c63c8a"
+    },
+    {
+      "id": "8c406816-8779-4884-b0a8-966c7ba675bd",
+      "seq": 5,
+      "kind": "job_finished",
+      "clientEventId": "94311cb6-2117-4605-aca5-17ec8acedd44"
+    }
+  ],
+  "deliveries": [
+    {
+      "event_id": "b8fb8a47-44ae-421e-a6e6-9bbb420cb685",
+      "event_type": "work_order_requested",
+      "state": "verified_by_readback",
+      "attempts": 1,
+      "external_ref": "1653",
+      "updated_at": "2026-11-06T01:02:08.183Z"
+    },
+    {
+      "event_id": "96cda333-dcab-4bda-b6e7-41953669b4ed",
+      "event_type": "job_finished",
+      "state": "verified_by_readback",
+      "attempts": 1,
+      "external_ref": "3",
+      "updated_at": "2026-11-06T01:03:09.607Z"
+    }
+  ],
+  "camera": {
+    "nativeCaptureAndUpload": true,
+    "usableEquipmentImage": false,
+    "reason": "dark/covered preview"
+  },
+  "restartFailure": {
+    "qaActor": true,
+    "qaTenant": true,
+    "notebookHttp": 200,
+    "notebookId": "d36d1927-d466-4cb4-8cad-3ce8394c3201",
+    "hasJobSheetButton": false,
+    "url": "https://app-staging.factorylm.com/v3/?notebook=d36d1927-d466-4cb4-8cad-3ce8394c3201&thread=1451abea-da56-4d77-beee-2d90e3e1c942"
+  },
+  "manualRecovery": {
+    "manualProjectReselectionRecovered": true,
+    "url": "https://app-staging.factorylm.com/v3/?notebook=d36d1927-d466-4cb4-8cad-3ce8394c3201&thread=5110e257-da27-48ca-8f40-642197bb3ecd"
+  },
+  "secondAccountOnPixel": "not completed",
+  "keyboardBack": "unverified",
+  "realHumanParticipants": 0,
+  "originalSessionRestored": {
+    "cookiesRestored": true,
+    "originalNonQaIdentityRestored": true,
+    "originalNonQaTenantRestored": true,
+    "status": 200,
+    "at": "2026-11-06T01:07:24.381Z"
+  },
+  "phoneReleased": {
+    "at": "2026-11-06T01:08:10.443022+00:00",
+    "beforeDeadline": true,
+    "originalSessionRestored": true,
+    "ownForwardRemoved": 9339,
+    "leaveAwakeEnabled": true,
+    "temporaryCredentialsRemoved": true,
+    "phoneActionsComplete": true
+  },
+  "power": {
+    "mWakefulness": [
+      "Awake",
+      "1"
+    ],
+    "mStayOn": [
+      "true"
+    ],
+    "mIsPowered": [
+      "true",
+      "true"
+    ],
+    "stayOnSetting": "15",
+    "at": "2026-11-06T01:07:33.830327+00:00"
+  }
+}
