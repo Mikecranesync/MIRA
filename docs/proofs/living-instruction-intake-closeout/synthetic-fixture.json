@@ -6,7 +6,7 @@
     "kind": "living_instruction_record",
     "schemaVersion": 2,
     "status": "draft",
-    "snapshotId": "sha256:5bcd93d6da350d236b1620d51f966054f217b6f9cef167b1faffb8f1c654d2e2",
+    "snapshotId": "sha256:0e9e2e77e368a9100c8ccd6bc185617838c565d15b327d931228beff6aea68a4",
     "lineage": {
       "notebookId": "synthetic-notebook",
       "jobId": "synthetic-job",
@@ -123,6 +123,22 @@
             },
             "documents": [
               {
+                "docId": "synthetic",
+                "fileId": null,
+                "filename": "Synthetic.pdf",
+                "role": "other",
+                "modelFoundOn": [
+                  1
+                ],
+                "via": "file",
+                "revision": {
+                  "value": "DEMO-1",
+                  "label": "proposed",
+                  "source": null,
+                  "basis": "Fictional test fixture"
+                }
+              },
+              {
                 "docId": "synthetic-source",
                 "fileId": null,
                 "filename": "Fictional fixture notes",
@@ -173,7 +189,46 @@
                 "basis": "Fictional test fixture"
               }
             ],
-            "measurements": [],
+            "measurements": [
+              {
+                "name": {
+                  "value": "Fictional fixture torque",
+                  "label": "proposed",
+                  "source": null,
+                  "basis": "Fictional test fixture"
+                },
+                "value": {
+                  "value": "50 demo units",
+                  "label": "proposed",
+                  "source": {
+                    "docId": "synthetic",
+                    "fileId": null,
+                    "filename": "Synthetic.pdf",
+                    "page": 1,
+                    "line": "Fictional fixture torque: 30 demo units"
+                  },
+                  "basis": "Fictional test fixture",
+                  "review": {
+                    "path": "measurements[0].value",
+                    "action": "settle",
+                    "by": "Imported technician claim",
+                    "at": "2026-11-01T00:00:00Z",
+                    "previous": "30 demo units",
+                    "next": "50 demo units",
+                    "source": "Synthetic correction source"
+                  }
+                },
+                "tool": {
+                  "value": null,
+                  "label": "unknown",
+                  "source": null,
+                  "basis": "Fictional test fixture"
+                },
+                "steps": [
+                  0
+                ]
+              }
+            ],
             "steps": [
               {
                 "section": "Inspection",
@@ -236,13 +291,23 @@
             ],
             "approval": {
               "technicianReview": {
-                "state": "draft",
-                "entries": []
+                "state": "reviewed",
+                "entries": [
+                  {
+                    "path": "measurements[0].value",
+                    "action": "settle",
+                    "by": "Imported technician claim",
+                    "at": "2026-11-01T00:00:00Z",
+                    "previous": "30 demo units",
+                    "next": "50 demo units",
+                    "source": "Synthetic correction source"
+                  }
+                ]
               },
               "supervisor": {
-                "state": "pending",
-                "by": null,
-                "at": null
+                "state": "approved",
+                "by": "Imported approval claim",
+                "at": "2026-11-01"
               }
             },
             "figures": [
@@ -302,6 +367,22 @@
             },
             "documents": [
               {
+                "docId": "synthetic",
+                "fileId": null,
+                "filename": "Synthetic.pdf",
+                "role": "other",
+                "modelFoundOn": [
+                  1
+                ],
+                "via": "file",
+                "revision": {
+                  "value": "DEMO-1",
+                  "label": "proposed",
+                  "source": null,
+                  "basis": "Fictional test fixture"
+                }
+              },
+              {
                 "docId": "synthetic-source",
                 "fileId": null,
                 "filename": "Fictional fixture notes",
@@ -352,7 +433,46 @@
                 "basis": "Fictional test fixture"
               }
             ],
-            "measurements": [],
+            "measurements": [
+              {
+                "name": {
+                  "value": "Fictional fixture torque",
+                  "label": "proposed",
+                  "source": null,
+                  "basis": "Fictional test fixture"
+                },
+                "value": {
+                  "value": "50 demo units",
+                  "label": "proposed",
+                  "source": {
+                    "docId": "synthetic",
+                    "fileId": null,
+                    "filename": "Synthetic.pdf",
+                    "page": 1,
+                    "line": "Fictional fixture torque: 30 demo units"
+                  },
+                  "basis": "Fictional test fixture",
+                  "review": {
+                    "path": "measurements[0].value",
+                    "action": "settle",
+                    "by": "Imported technician claim",
+                    "at": "2026-11-01T00:00:00Z",
+                    "previous": "30 demo units",
+                    "next": "50 demo units",
+                    "source": "Synthetic correction source"
+                  }
+                },
+                "tool": {
+                  "value": null,
+                  "label": "unknown",
+                  "source": null,
+                  "basis": "Fictional test fixture"
+                },
+                "steps": [
+                  0
+                ]
+              }
+            ],
             "steps": [
               {
                 "section": "Inspection",
@@ -415,13 +535,23 @@
             ],
             "approval": {
               "technicianReview": {
-                "state": "draft",
-                "entries": []
+                "state": "reviewed",
+                "entries": [
+                  {
+                    "path": "measurements[0].value",
+                    "action": "settle",
+                    "by": "Imported technician claim",
+                    "at": "2026-11-01T00:00:00Z",
+                    "previous": "30 demo units",
+                    "next": "50 demo units",
+                    "source": "Synthetic correction source"
+                  }
+                ]
               },
               "supervisor": {
-                "state": "pending",
-                "by": null,
-                "at": null
+                "state": "approved",
+                "by": "Imported approval claim",
+                "at": "2026-11-01"
               }
             },
             "figures": [
@@ -568,6 +698,22 @@
         },
         "documents": [
           {
+            "docId": "synthetic",
+            "fileId": null,
+            "filename": "Synthetic.pdf",
+            "role": "other",
+            "modelFoundOn": [
+              1
+            ],
+            "via": "file",
+            "revision": {
+              "value": "DEMO-1",
+              "label": "proposed",
+              "source": null,
+              "basis": "Fictional test fixture"
+            }
+          },
+          {
             "docId": "synthetic-source",
             "fileId": null,
             "filename": "Fictional fixture notes",
@@ -618,7 +764,46 @@
             "basis": "Fictional test fixture"
           }
         ],
-        "measurements": [],
+        "measurements": [
+          {
+            "name": {
+              "value": "Fictional fixture torque",
+              "label": "proposed",
+              "source": null,
+              "basis": "Fictional test fixture"
+            },
+            "value": {
+              "value": "50 demo units",
+              "label": "proposed",
+              "source": {
+                "docId": "synthetic",
+                "fileId": null,
+                "filename": "Synthetic.pdf",
+                "page": 1,
+                "line": "Fictional fixture torque: 30 demo units"
+              },
+              "basis": "Fictional test fixture",
+              "review": {
+                "path": "measurements[0].value",
+                "action": "settle",
+                "by": "Imported technician claim",
+                "at": "2026-11-01T00:00:00Z",
+                "previous": "30 demo units",
+                "next": "50 demo units",
+                "source": "Synthetic correction source"
+              }
+            },
+            "tool": {
+              "value": null,
+              "label": "unknown",
+              "source": null,
+              "basis": "Fictional test fixture"
+            },
+            "steps": [
+              0
+            ]
+          }
+        ],
         "steps": [
           {
             "section": "Inspection",
@@ -681,13 +866,23 @@
         ],
         "approval": {
           "technicianReview": {
-            "state": "draft",
-            "entries": []
+            "state": "reviewed",
+            "entries": [
+              {
+                "path": "measurements[0].value",
+                "action": "settle",
+                "by": "Imported technician claim",
+                "at": "2026-11-01T00:00:00Z",
+                "previous": "30 demo units",
+                "next": "50 demo units",
+                "source": "Synthetic correction source"
+              }
+            ]
           },
           "supervisor": {
-            "state": "pending",
-            "by": null,
-            "at": null
+            "state": "approved",
+            "by": "Imported approval claim",
+            "at": "2026-11-01"
           }
         },
         "figures": [
@@ -747,6 +942,22 @@
         },
         "documents": [
           {
+            "docId": "synthetic",
+            "fileId": null,
+            "filename": "Synthetic.pdf",
+            "role": "other",
+            "modelFoundOn": [
+              1
+            ],
+            "via": "file",
+            "revision": {
+              "value": "DEMO-1",
+              "label": "proposed",
+              "source": null,
+              "basis": "Fictional test fixture"
+            }
+          },
+          {
             "docId": "synthetic-source",
             "fileId": null,
             "filename": "Fictional fixture notes",
@@ -797,7 +1008,46 @@
             "basis": "Fictional test fixture"
           }
         ],
-        "measurements": [],
+        "measurements": [
+          {
+            "name": {
+              "value": "Fictional fixture torque",
+              "label": "proposed",
+              "source": null,
+              "basis": "Fictional test fixture"
+            },
+            "value": {
+              "value": "50 demo units",
+              "label": "proposed",
+              "source": {
+                "docId": "synthetic",
+                "fileId": null,
+                "filename": "Synthetic.pdf",
+                "page": 1,
+                "line": "Fictional fixture torque: 30 demo units"
+              },
+              "basis": "Fictional test fixture",
+              "review": {
+                "path": "measurements[0].value",
+                "action": "settle",
+                "by": "Imported technician claim",
+                "at": "2026-11-01T00:00:00Z",
+                "previous": "30 demo units",
+                "next": "50 demo units",
+                "source": "Synthetic correction source"
+              }
+            },
+            "tool": {
+              "value": null,
+              "label": "unknown",
+              "source": null,
+              "basis": "Fictional test fixture"
+            },
+            "steps": [
+              0
+            ]
+          }
+        ],
         "steps": [
           {
             "section": "Inspection",
@@ -860,13 +1110,23 @@
         ],
         "approval": {
           "technicianReview": {
-            "state": "draft",
-            "entries": []
+            "state": "reviewed",
+            "entries": [
+              {
+                "path": "measurements[0].value",
+                "action": "settle",
+                "by": "Imported technician claim",
+                "at": "2026-11-01T00:00:00Z",
+                "previous": "30 demo units",
+                "next": "50 demo units",
+                "source": "Synthetic correction source"
+              }
+            ]
           },
           "supervisor": {
-            "state": "pending",
-            "by": null,
-            "at": null
+            "state": "approved",
+            "by": "Imported approval claim",
+            "at": "2026-11-01"
           }
         },
         "figures": [
