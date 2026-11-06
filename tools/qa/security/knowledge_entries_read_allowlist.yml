@@ -1436,3 +1436,36 @@ approved:
       FROM knowledge_entries
           WHERE tenant_id = $1
             AND ingest_route = 'v2'
+
+  # Disposable real-Postgres integration fixture reads; no application exemption.
+  mira-hub/tests/integration/pdf-nul-ingest.integration.test.ts:30:
+    approved_classification: TENANT-ONLY
+    query_sha256: 48c0d23a291b00e26591048478632628854a0e7cc5b8d52cf0ba00116a48ab0a
+    reason: Disposable opt-in Postgres fixture, generated tenant/document UUIDs only. This test intentionally reads its private
+      source and measures RLS across tenant contexts; a hybrid/public filter would change the property under test. Cleanup deletes
+      only its generated fixture tenant. No application read site or global test exemption is added.
+    query_snippet: await pool.query("DELETE FROM knowledge_entries WHERE tenant_id=$1", [tenant]); await pool.query("DELETE
+      FROM tenants WHERE id=ANY($1::uuid[])", [[tenant, otherTenant]]);
+  mira-hub/tests/integration/pdf-nul-ingest.integration.test.ts:45:
+    approved_classification: UNFILTERED
+    query_sha256: 7e486c1e038a007f69c120b459db8e7c50f94a761027d50a1d3619dda7f0f64f
+    reason: Disposable opt-in Postgres fixture, generated tenant/document UUIDs only. This test intentionally reads its private
+      source and measures RLS across tenant contexts; a hybrid/public filter would change the property under test. Cleanup deletes
+      only its generated fixture tenant. No application read site or global test exemption is added.
+    query_snippet: '"SELECT content, page_start, page_end, metadata, is_private FROM knowledge_entries WHERE doc_id=$1", [uploadId])).rows);
+      expect(rows).toHaveLength(count);'
+  mira-hub/tests/integration/pdf-nul-ingest.integration.test.ts:57:
+    approved_classification: UNFILTERED
+    query_sha256: 6106907c04b0f586834af8f8903da0cbc4cf0d1cb1aa0c534af81ed3723dd252
+    reason: Disposable opt-in Postgres fixture, generated tenant/document UUIDs only. This test intentionally reads its private
+      source and measures RLS across tenant contexts; a hybrid/public filter would change the property under test. Cleanup deletes
+      only its generated fixture tenant. No application read site or global test exemption is added.
+    query_snippet: '"SELECT id FROM knowledge_entries WHERE doc_id=$1", [uploadId])).rows); expect(foreign).toEqual([]);'
+  mira-hub/tests/integration/pdf-nul-ingest.integration.test.ts:66:
+    approved_classification: UNFILTERED
+    query_sha256: 7e9057162e845be1199a4fda07b21dbeefdcd7919782578c9e3c5d0ed0ea4c1b
+    reason: Disposable opt-in Postgres fixture, generated tenant/document UUIDs only. This test intentionally reads its private
+      source and measures RLS across tenant contexts; a hybrid/public filter would change the property under test. Cleanup deletes
+      only its generated fixture tenant. No application read site or global test exemption is added.
+    query_snippet: const { rows } = await pool.query("SELECT content, metadata, is_private FROM knowledge_entries WHERE doc_id=$1",
+      [uploadId]); expect(rows).toHaveLength(1);
