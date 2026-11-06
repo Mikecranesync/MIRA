@@ -3453,12 +3453,21 @@ async function handleChatTurn(
   // A flagged hazard turn is never swallowed by this abstain (owner decision
   // 2026-09-27): with no documents it takes the general lane, so the tech gets
   // the hazard banner and an answer instead of "couldn't find that".
-  if (chunks.length === 0 && ((!general && !sheetSection) || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText) && !groundedMachineEntry && !safetyTrigger) {
-    // Gate G — abstain honestly, persist the turn, never call the provider.
+  if (chunks.length === 0 && (!general || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText) && !groundedMachineEntry && !safetyTrigger) {
+    // Gate G never calls the provider. A selected saved record can still be
+    // returned literally as history; it cannot supply an OEM specification or
+    // override any explicit equipment/manual/part decline.
+    const savedJobReply = Boolean(sheetSection) && !missingModelManual && !noEvidenceForMachine && !unidentifiedServiceText && !photoPartLookup && !photoPartCompatibilityText;
+    const gateAnswerStatus: "answered" | "insufficient_evidence" = savedJobReply ? "answered" : "insufficient_evidence";
+    const gateReason = savedJobReply ? "saved_job_record_without_documentation"
+      : oemRetrievalFailed && (missingModelManual || noEvidenceForMachine) ? "identity_bound_retrieval_failed" : unidentifiedServiceText ? "unidentified_service_decline" : missingModelManual ? "identity_bound_no_manual" : noEvidenceForMachine ? "identity_bound_no_evidence" : "gate_g_no_evidence";
     // #4015: "couldn't find that in the documentation I have", not "I don't have
     // the manual" — a zero-hit scoped search does not prove the manual is absent
     // (staging holds 11 GS10 rows; a carrier-frequency query still hit none).
-    const abstainAnswerText = oemRetrievalFailed && (missingModelManual || noEvidenceForMachine)
+    const abstainAnswerText = savedJobReply
+      ? "No matching documentation excerpts were found for this question. The selected saved job record below is historical, technician-reported data, not work instructions or verified maintenance. It does not establish an OEM specification or permission to operate.\n\n" +
+        sheetSection.replaceAll("\r\n", "\n").replaceAll("\r", "\n").split("\n").map((line) => `    ${line}`).join("\n")
+      : oemRetrievalFailed && (missingModelManual || noEvidenceForMachine)
       ? `I couldn't reach the manual library just now, so I won't guess at an answer for your ${(missingModelManual ?? noEvidenceForMachine)!}. Please try again in a moment.`
       : unidentifiedServiceText
       ? unidentifiedServiceText
@@ -3485,18 +3494,18 @@ async function handleChatTurn(
         ? "I couldn't find support for that in this notebook's manuals. Add the manual for the equipment you're asking about, or the page that covers it, and ask again."
         : null;
     const gateAnswerGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
-    lifecycleOutcome = "abstained";
+    lifecycleOutcome = savedJobReply ? "answered" : "abstained";
     rec.stage("answer_gate", {
       invoked: true,
-      decision: "insufficient_evidence",
-      reason: oemRetrievalFailed && (missingModelManual || noEvidenceForMachine) ? "identity_bound_retrieval_failed" : unidentifiedServiceText ? "unidentified_service_decline" : missingModelManual ? "identity_bound_no_manual" : noEvidenceForMachine ? "identity_bound_no_evidence" : "gate_g_no_evidence",
+      decision: gateAnswerStatus,
+      reason: gateReason,
       answer_chars: abstainAnswerText?.length ?? 0,
       refusal_phrase_matched: false,
       evidence_phrase_matched: false,
       safety_classification: "none",
-      evidence_sufficient: false,
+      evidence_sufficient: savedJobReply,
       ungrounded_unit_claim: false,
-      // Fixed abstain text, no generated answer to judge (spec: every served turn records one).
+      // Fixed abstain or literal saved history, no generated answer to judge.
       safety_outcome: {
         layer: "none", outcome: "allow",
         flagged: Boolean(safetyTrigger) || electricalHazardDirective || energizedAskEarly || hazardEntries.length > 0,
@@ -3506,8 +3515,8 @@ async function handleChatTurn(
     setSpanAttrs(
       {
         "mira.answer_gate.invoked": true,
-        "mira.answer_gate.decision": "insufficient_evidence",
-        "mira.answer_gate.reason": oemRetrievalFailed && (missingModelManual || noEvidenceForMachine) ? "identity_bound_retrieval_failed" : unidentifiedServiceText ? "unidentified_service_decline" : missingModelManual ? "identity_bound_no_manual" : noEvidenceForMachine ? "identity_bound_no_evidence" : "gate_g_no_evidence",
+        "mira.answer_gate.decision": gateAnswerStatus,
+        "mira.answer_gate.reason": gateReason,
         "mira.answer_gate.answer_chars": abstainAnswerText?.length ?? 0,
       },
       gateAnswerGateSpan,
@@ -3521,7 +3530,7 @@ async function handleChatTurn(
       clientRequestId,
       claimToken: requestClaimToken,
       question: message,
-      answerStatus: "insufficient_evidence",
+      answerStatus: gateAnswerStatus,
       answerText: abstainAnswerText,
       enabledSourceDocIds: docIds,
       // #3788: the verified photo is part of the record of this refusal, so a
@@ -3539,6 +3548,7 @@ async function handleChatTurn(
         ...proposalEntries,
       ],
       model: null,
+      basis: savedJobReply ? "workspace_evidence" : null,
       // An abstain about a specific machine is still a record about that
       // machine — omitting the snapshot here would make "what has MIRA been
       // asked about this conveyor" silently under-count refusals.
@@ -3574,7 +3584,10 @@ async function handleChatTurn(
           citations: [],
           sourceSnapshot: docIds,
         };
-        const status: NotebookStatusFrame = {
+        const status: NotebookStatusFrame = savedJobReply ? {
+          kind: "status",
+          status: "answered",
+        } : {
           kind: "status",
           status: "insufficient_evidence",
           message: abstainAnswerText ?? "I couldn't find that in the selected sources.",
@@ -3588,6 +3601,17 @@ async function handleChatTurn(
         // this turn", which is exactly what the persisted `evidence[]` says.
         if (visualEntry) {
           controller.enqueue(enc.encode(sse(visualEvidenceMarker(visualEntry))));
+        }
+        if (savedJobReply) {
+          const evidence: NotebookBasisEvidenceFrame = {
+            kind: "evidence",
+            basis: "workspace_evidence",
+            label: "Selected saved job record — historical, technician-reported data; no matching documentation.",
+          };
+          controller.enqueue(enc.encode(sse(evidence)));
+          for (const piece of chunkForRelease(abstainAnswerText!)) {
+            controller.enqueue(enc.encode(sse({ kind: "content", content: piece })));
+          }
         }
         controller.enqueue(enc.encode(sse(status)));
         // Codex r1 F1 (#4172, HIGH) — emitted whatever the answer status

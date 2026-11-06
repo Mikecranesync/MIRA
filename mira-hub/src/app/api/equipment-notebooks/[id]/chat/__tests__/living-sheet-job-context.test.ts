@@ -385,32 +385,34 @@ describe("#5251 — recall the saved job without promoting it to verified mainte
       ragMock.retrieveNodeChunks.mockResolvedValue([]);
     });
 
-    it("can answer from the selected saved job even when the selected manual contributes no matching excerpts", async () => {
+    it.each([
+      { label: "saved history recall", question: "Summarize the latest saved job note and current handover." },
+      { label: "unsupported OEM torque", question: "What torque does the fictional manufacturer specify in N·m for these flange bolts?" },
+    ])("$label: deterministically returns saved-record facts without a provider or an invented manual specification", async ({ question }) => {
       storeMock.loadJob.mockResolvedValue({ status: "ok", view: RFI_VIEW });
-      const actualRag = await vi.importActual<typeof import("@/lib/manual-rag")>("@/lib/manual-rag");
-      // Use real framing without leaking an unconsumed mockImplementationOnce
-      // into another test if the current early abstain still wins.
-      ragMock.buildManualUserContent.mockImplementation(actualRag.buildManualUserContent);
-      vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream("Carlos recorded document review only in the saved job."), { status: 200 })));
-      try {
-        const res = await POST(req({ message: "Summarize the latest saved job note and current handover.", sourceDocIds: [docId], livingSheetJobId: JOB_ID }), params);
-        expect(res.status).toBe(200);
-        const stream = await res.text();
-        expect(fetch).toHaveBeenCalledTimes(1);
-        expect(storeMock.loadJob).toHaveBeenCalledWith(TENANT, NB, JOB_ID);
-        expect(sentSystemPrompt()).toContain("SAVED JOB HISTORY");
-        expect(sentSystemPrompt()).not.toContain(RFI_NOTE.text);
-        const user = sentUserContent();
-        expect(user).toContain("SYSTEM-PROVIDED REFERENCE CONTEXT");
-        expect(user).toContain(RFI_NOTE.text);
-        expect(user).toContain(RFI_HANDOVER.text);
-        expect(stream).toContain('"basis":"workspace_evidence"');
-        expect(stream).toContain('"citations":[]');
-        expect(stream).not.toContain('"status":"insufficient_evidence"');
-        expect(nbMock.recordTurn).toHaveBeenCalledWith(TENANT, NB, expect.objectContaining({ basis: "workspace_evidence", answerStatus: "answered" }));
-      } finally {
-        ragMock.buildManualUserContent.mockImplementation((q, _chunks, extra) => extra ? `${extra}\n\n${q}` : q);
+      vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream("UNSUPPORTED_PROVIDER_TORQUE: 42 N·m."), { status: 200 })));
+      const res = await POST(req({ message: question, sourceDocIds: [docId], livingSheetJobId: JOB_ID }), params);
+      expect(res.status).toBe(200);
+      const stream = await res.text();
+      expect(fetch).not.toHaveBeenCalled();
+      expect(storeMock.loadJob).toHaveBeenCalledWith(TENANT, NB, JOB_ID);
+      const frames = stream.split("\n")
+        .filter((line) => line.startsWith("data: ") && line !== "data: [DONE]")
+        .map((line) => JSON.parse(line.slice(6)) as { kind: string; content?: string });
+      const answer = frames.filter((frame) => frame.kind === "content").map((frame) => frame.content ?? "").join("");
+      for (const fact of [RFI_NOTE.text, RFI_NOTE.by, RFI_NOTE.at, RFI_HANDOVER.text, RFI_HANDOVER.by, RFI_HANDOVER.at]) {
+        expect(answer).toContain(fact);
       }
+      expect(answer).toContain("technician-reported");
+      expect(answer).toMatch(/(?:no matching|couldn't find|could not find|not found).{0,80}(?:documentation|manual|excerpts)|(?:documentation|manual).{0,80}(?:no matching|not found)/i);
+      expect(answer).not.toContain("UNSUPPORTED_PROVIDER_TORQUE");
+      expect(answer).not.toMatch(/\b\d+(?:\.\d+)?\s*(?:N[· .]?m|lb[· .-]?(?:ft|in))\b/i);
+      expect(stream).toContain('"basis":"workspace_evidence"');
+      expect(stream).toContain('"citations":[]');
+      expect(stream).toContain('"status":"answered"');
+      expect(nbMock.recordTurn).toHaveBeenCalledWith(TENANT, NB, expect.objectContaining({
+        basis: "workspace_evidence", answerStatus: "answered", answerText: answer, model: null,
+      }));
     });
 
     it("still abstains without a provider call when neither matching manual excerpts nor a selected job are available", async () => {
