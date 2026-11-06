@@ -4,14 +4,14 @@ import type { SheetView } from "@/capabilities/living-sheet/reduce";
 import type { InstructionRecordV2 } from "@/capabilities/living-sheet/instruction-record-v2";
 import type { CloseoutInput } from "@/capabilities/living-sheet/packet-intake";
 import type { PacketEdit } from "@/capabilities/work-packet/types";
-import { qcTargets } from "@/capabilities/living-sheet/instruction-fields";
+import { effectiveInstruction, fieldValueChanges, qcTargets } from "@/capabilities/living-sheet/instruction-fields";
 import { apiIntakePacket, apiCloseout, apiInstructionRecord, localStorageStore } from "./living-sheet-client";
 import { instructionRequestId, localInstructionInput } from "./living-instruction-client";
 import { LivingInstructionGuide } from "./LivingInstructionGuide";
 
 const button: CSSProperties = { minHeight: 48, padding: "10px 14px", margin: "6px 6px 6px 0", fontSize: 17, color: "var(--fl-text)", background: "var(--fl-surface)", border: "1px solid var(--fl-line)", borderRadius: 8 };
 const inputStyle: CSSProperties = { display: "block", boxSizing: "border-box", minHeight: 48, width: "100%", fontSize: 17, margin: "6px 0", padding: 8, color: "var(--fl-text)", background: "var(--fl-surface)", border: "1px solid var(--fl-line)" };
-const errorText = (error: string | undefined) => ({ identity_mismatch: "The packet does not match this notebook’s confirmed identity.", snapshot_conflict: "The saved job changed. Reopen the guide and review its current snapshot.", wrong_technician: "Only the authenticated technician who finished this job can save closeout QC.", request_id_conflict: "This request ID belongs to different content or another technician. Reopen the saved job to inspect its history." }[error ?? ""] ?? `Could not save: ${error ?? "connection interrupted"}. Retry the same request.`);
+const errorText = (error: string | undefined) => ({ identity_mismatch: "The packet does not match this notebook’s confirmed identity.", snapshot_conflict: "The saved job changed. Reopen the guide and review its current snapshot.", candidate_conflict: "A newer guide candidate was saved. Reopen the guide and review that exact revision before submitting QC.", candidate_content_limit: "The guide and its preserved history exceed the revision size limit. Earlier evidence is still saved; this QC was not recorded.", wrong_technician: "Only the authenticated technician who finished this job can save closeout QC.", request_id_conflict: "This request ID belongs to different content or another technician. Reopen the saved job to inspect its history." }[error ?? ""] ?? `Could not save: ${error ?? "connection interrupted"}. Retry the same request.`);
 
 export function PacketIntakeButton({ notebookId, scopeId, onImported }: { notebookId: string; scopeId: string; onImported: (jobId: string) => void }) {
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null);
@@ -34,7 +34,7 @@ export function PacketIntakeButton({ notebookId, scopeId, onImported }: { notebo
 }
 
 export function CloseoutQCForm({ record, scopeId, onSaved }: { record: InstructionRecordV2; scopeId: string; onSaved: () => Promise<void> }) {
-  const packet = record.sourceEvidence!.packet;
+  const packet = effectiveInstruction(record)!.packet;
   const targets = qcTargets(packet);
   const [decisions, setDecisions] = useState<Record<string, Partial<PacketEdit>>>({});
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null);
@@ -42,8 +42,10 @@ export function CloseoutQCForm({ record, scopeId, onSaved }: { record: Instructi
   const set = (path: string, value: Partial<PacketEdit>) => { pending.current = null; setDecisions(prev => ({ ...prev, [path]: { ...prev[path], ...value, path } })); };
   const complete = targets.every(({ path }) => decisions[path]?.action && (decisions[path].action !== "settle" || (decisions[path].value?.trim() && decisions[path].source?.trim())));
   return <section data-no-print data-testid="closeout-qc"><h2>Performing technician closeout QC</h2><p>Make an explicit decision for every field and step. Unknowns may stay unknown. Corrections need their own source. This creates a DRAFT candidate; reusable acceptance remains separate.</p>
+    <p>Reviewing {record.closeout ? `candidate revision ${record.closeout.revision}` : "the saved source-job guide"}.</p>
     {targets.map(({ path, field }) => <fieldset key={path} disabled={busy} style={{ minWidth: 0, marginBottom: 12 }}><legend>{path}</legend><p>{field.value ?? "Unknown"}</p>
       {field.source && <blockquote>Imported source: {field.source.line}</blockquote>}
+      {fieldValueChanges(packet, path).map(({ entry, index }) => <p key={index}>Preserved correction provenance: {String(entry.previous ?? "unknown")} → {String(entry.next ?? "unknown")} · source {entry.source ?? "not recorded"} · reported by {entry.by} at {entry.at}. This history does not grant current QC authority.</p>)}
       <label>Decision<select style={inputStyle} value={decisions[path]?.action ?? ""} onChange={e => set(path, { action: e.target.value as PacketEdit["action"], value: undefined, source: undefined })}>
         <option value="">Choose a decision</option><option value="confirm">Checked as written (unknown stays unknown)</option><option value="settle">Correct or supply an answer</option><option value="mark_unknown">Keep or mark unknown</option><option value="strike">Exclude from the guide</option>
       </select></label>
@@ -54,7 +56,7 @@ export function CloseoutQCForm({ record, scopeId, onSaved }: { record: Instructi
       if (inFlight.current) return; inFlight.current = true; setBusy(true); setError(null);
       try {
         if (!pending.current) {
-          const content = { seq: record.snapshot.seq, snapshotId: record.snapshotId, decisions: targets.map(({ path }) => decisions[path] as PacketEdit) };
+          const content = { seq: record.snapshot.seq, snapshotId: record.snapshotId, baseCandidateId: record.closeout?.id ?? null, decisions: targets.map(({ path }) => decisions[path] as PacketEdit) };
           pending.current = { ...content, clientRequestId: await instructionRequestId(`closeout:${scopeId}:${record.snapshot.jobId}`, content) };
         }
         const response = await apiCloseout(record.lineage.notebookId, record.snapshot.jobId, pending.current);
@@ -85,6 +87,6 @@ export function LivingInstructionControls({ notebookId, scopeId, view, pendingCo
       {pendingCount > 0 && <p>Save pending job updates before printing or closeout QC.</p>}
       {view.finished && <button type="button" style={button} disabled={pendingCount > 0} onClick={() => setQcOpen(v => !v)}>Record closeout QC</button>}
       {record.closeout && <p>Saved technician QC candidate revision {record.closeout.revision}. Reusable acceptance not recorded.</p>}
-    </div><LivingInstructionGuide record={record} />{qcOpen && pendingCount === 0 && <CloseoutQCForm key={record.snapshotId} record={record} scopeId={scopeId} onSaved={load} />}</>}
+    </div><LivingInstructionGuide record={record} />{qcOpen && pendingCount === 0 && <CloseoutQCForm key={`${record.snapshotId}:${record.closeout?.id ?? "source"}`} record={record} scopeId={scopeId} onSaved={load} />}</>}
   </section>;
 }

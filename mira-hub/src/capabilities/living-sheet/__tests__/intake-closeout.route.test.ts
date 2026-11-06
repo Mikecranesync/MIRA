@@ -33,9 +33,10 @@ describe("packet intake/QC HTTP boundary", () => {
     expect(mocks.intake).not.toHaveBeenCalled();
   });
   it("maps exact-snapshot and finishing-user refusals and refuses client reviewer fields", async () => {
-    const raw = { clientRequestId: jobId, seq: 2, snapshotId: `sha256:${"a".repeat(64)}`, decisions: [] };
+    const raw = { clientRequestId: jobId, seq: 2, snapshotId: `sha256:${"a".repeat(64)}`, baseCandidateId: null, decisions: [] };
     mocks.closeout.mockResolvedValueOnce({ status: "wrong_technician" }); expect((await closeout(request(raw), params)).status).toBe(403);
     mocks.closeout.mockResolvedValueOnce({ status: "snapshot_conflict" }); expect((await closeout(request(raw), params)).status).toBe(409);
+    mocks.closeout.mockResolvedValueOnce({ status: "candidate_conflict" }); expect((await closeout(request({ ...raw, baseCandidateId: id }), params)).status).toBe(409);
     expect((await closeout(request({ ...raw, userId: "forged" }), params)).status).toBe(400);
     expect(mocks.closeout).toHaveBeenCalledWith("tenant", id, jobId, raw, { userId: "server-user", label: "server@email" });
   });

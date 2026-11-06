@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { packetFixture, field } from "./packet-fixture";
+import { packetFixture, field, correctedMeasurementPacket } from "./packet-fixture";
+import { guidePacket } from "../instruction-fields";
+import { measurementRows } from "@/factorylm-ui/work-packet-v2-view";
 import { validatePacketIntake, packetBody, qcTargets, applyCloseoutDecisions, validateCloseout } from "../packet-intake";
 import { validateJobSheetBody } from "../validate";
 import { reduceSheet } from "../reduce";
@@ -7,6 +9,18 @@ const nb = "11111111-1111-4111-8111-111111111111";
 const id = "22222222-2222-4222-8222-222222222222";
 const input = () => ({ clientRequestId: id, packet: packetFixture(nb), record: null });
 describe("bounded packet intake and closeout content", () => {
+  it("retains manual/correction value lineage through imported display and repeated all-confirm QC", () => {
+    const imported = correctedMeasurementPacket(nb);
+    let packet = imported;
+    for (const stage of ["import", "first QC", "inherited QC"]) {
+      if (stage !== "import") packet = applyCloseoutDecisions(packet, qcTargets(packet).map(({ path }) => ({ path, action: "confirm" })), "server-user", "2026-11-06T00:00:00Z");
+      const projection = guidePacket(packet);
+      expect(measurementRows(projection, null)[0], stage).toMatchObject({ manual: { value: "30 demo units" }, correction: { value: "50 demo units" }, approval: "Not approved — the site decides" });
+      expect(projection.approval.technicianReview.entries.some(e => e.source === "Synthetic correction source"), stage).toBe(true);
+      expect(projection.approval.supervisor.state, stage).toBe("pending");
+    }
+    expect(imported.approval.supervisor.state).toBe("approved");
+  });
   it("preserves complete opaque additions, revisions and imported approval without granting authority", () => {
     const raw = input();
     Object.assign(raw.packet, { futureEvidence: { original: ["retained"] } });
@@ -50,7 +64,12 @@ describe("bounded packet intake and closeout content", () => {
   it("includes document revisions and rejects forged review fields/ambiguous corrections", () => {
     const p = packetFixture(nb); p.documents.push({ docId: "d", fileId: null, filename: "synthetic.pdf", role: "service_manual", modelFoundOn: [1], via: "file", revision: field(null) });
     expect(qcTargets(p).some(f => f.path === "documents[0].revision")).toBe(true);
-    const base = { clientRequestId: id, seq: 2, snapshotId: `sha256:${"a".repeat(64)}`, decisions: [] };
+    const base = { clientRequestId: id, seq: 2, snapshotId: `sha256:${"a".repeat(64)}`, baseCandidateId: null, decisions: [] };
+    expect(validateCloseout(base).ok).toBe(true);
+    const missingBase: Record<string, unknown> = { ...base };
+    delete missingBase.baseCandidateId;
+    expect(validateCloseout(missingBase).ok).toBe(false);
+    expect(validateCloseout({ ...base, baseCandidateId: "not-a-uuid" }).ok).toBe(false);
     expect(validateCloseout({ ...base, userId: "forged" }).ok).toBe(false);
     expect(validateCloseout({ ...base, decisions: [{ path: "steps[0].text", action: "settle", value: "Changed", source: "" }] }).ok).toBe(false);
     expect(validateCloseout({ ...base, decisions: [{ path: "steps[0].text", action: "confirm", value: "Changed" }] }).ok).toBe(false);

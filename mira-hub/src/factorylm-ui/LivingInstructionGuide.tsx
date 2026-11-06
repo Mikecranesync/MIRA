@@ -1,8 +1,9 @@
 "use client";
 import type { Field, PacketFigure, WorkPacket } from "@/capabilities/work-packet/types";
 import type { InstructionRecordV2 } from "@/capabilities/living-sheet/instruction-record-v2";
-import { guidePacket } from "@/capabilities/living-sheet/instruction-fields";
-import { BlockersSection, CoverageStop, JhaTable, LeftOutAppendix, MeasurementsTable, PartsTable } from "./WorkPacketV2Sections";
+import { correctionOrigin, effectiveInstruction, fieldValueChanges, guidePacket } from "@/capabilities/living-sheet/instruction-fields";
+import { BlockersSection, CoverageStop, JhaTable, LeftOutAppendix, PartsTable } from "./WorkPacketV2Sections";
+import { LivingGuideMeasurements } from "./LivingGuideMeasurements";
 import { phasedSteps, unplacedFigures } from "./work-packet-v2-view";
 import type { RenderField } from "./WorkPacketV2Sections";
 import type { SheetView } from "@/capabilities/living-sheet/reduce";
@@ -13,6 +14,7 @@ export const GUIDE_PRINT_CSS = `
 .living-guide { overflow-wrap: anywhere; line-height: 1.45; font-size: 17px; color: var(--fl-text, #171717); background: var(--fl-surface, #fff); }
 .living-guide section { margin-top: 16px; } .living-guide blockquote { margin: 6px 0 12px 12px; }
 .living-guide th, .living-guide td { overflow-wrap: anywhere; }
+.living-guide th, .living-guide td { text-align: left; vertical-align: top; padding: 6px; border-bottom: 1px solid var(--fl-line, #ccc); }
 .living-guide img { max-width: 100%; height: auto; }
 .living-guide .guide-print-only { display: none; }
 @media print {
@@ -29,7 +31,10 @@ export const GUIDE_PRINT_CSS = `
 
 function ImportedFigure({ figure }: { figure: PacketFigure }) {
   return <figure style={{ breakInside: "avoid", margin: "12px 0" }}>
-    {figure.image ? <>{/* eslint-disable-next-line @next/next/no-img-element -- validated inline imported evidence */}<img src={figure.image} alt={figure.caption.join(" — ") || "Imported source image"} width={240} /></> : <p>Image could not be read — consult the original source.</p>}
+    {figure.image ? <>
+      {/* eslint-disable-next-line @next/next/no-img-element -- validated inline imported evidence */}
+      <img src={figure.image} alt={figure.caption.join(" — ") || "Imported source image"} width={240} />
+    </> : <p>Image could not be read — consult the original source.</p>}
     <figcaption>{figure.caption.join(" · ")} · Imported source image, p. {figure.page}, {figure.filename ?? figure.docId}</figcaption>
     {figure.placement && <p>Draft image placement: {figure.placement.basis}</p>}
   </figure>;
@@ -38,7 +43,7 @@ function ImportedFigure({ figure }: { figure: PacketFigure }) {
 /** Reuse the packet's exact phase/number/note/figure placement helpers. The
  * bounded adapter gives imported images neutral provenance: the legacy Figure
  * component hardcodes manufacturer attribution, which intake cannot establish. */
-function GuideSteps({ packet, view, renderField }: { packet: WorkPacket; view: SheetView; renderField: RenderField }) {
+function GuideSteps({ packet, view, renderField, candidateView }: { packet: WorkPacket; view: SheetView; renderField: RenderField; candidateView: boolean }) {
   return <section><h2>Numbered procedure</h2><p>Read warnings before each step. Check source applicability and unresolved questions before doing the work.</p>
     {phasedSteps(packet).map((group, gi) => <div key={gi}>{group.phase && <h3>{group.title}</h3>}{group.inclusion.map((f, i) => <p key={i}>{f.basis}</p>)}
       {group.steps.map(s => {
@@ -52,7 +57,9 @@ function GuideSteps({ packet, view, renderField }: { packet: WorkPacket; view: S
           {s.notes.filter(i => step.notes![i].placement !== "before").map(note)}
           {s.measurements.map(i => <p key={i}>Measurement/specification: {packet.measurements[i].name.value ?? "unknown"} — see the sourced measurement table below.</p>)}
           {s.figures.map((figure, i) => <ImportedFigure key={i} figure={figure} />)}
-          <p>Current job execution: {execution ? execution.done ? `recorded performed by ${execution.doneBy ?? "unknown"} at ${execution.doneAt}` : "not marked performed" : "excluded from execution"}{execution?.note ? ` · ${execution.note}` : ""}</p>
+          {candidateView ? <><p>Revised instruction: not marked performed. Candidate guide revisions do not inherit source-job execution marks.</p>
+            {execution && <p>Original execution evidence: “{execution.text}” · source job {view.jobId.slice(0, 8)}, change {view.seq} · {execution.done ? `reported performed by ${execution.doneBy ?? "unknown"} at ${execution.doneAt}` : "not marked performed"}{execution.note ? ` · ${execution.note}` : ""}</p>}</> :
+            <p>Current job execution: {execution ? execution.done ? `recorded performed by ${execution.doneBy ?? "unknown"} at ${execution.doneAt}` : "not marked performed" : "excluded from execution"}{execution?.note ? ` · ${execution.note}` : ""}</p>}
         </div>;
       })}
     </div>)}
@@ -65,19 +72,23 @@ function GuideSteps({ packet, view, renderField }: { packet: WorkPacket; view: S
 export function LivingInstructionGuideContent({ record }: { record: InstructionRecordV2 }) {
   const metadata = record.sourceEvidence;
   if (!metadata) return <p>This job has no imported repair guide.</p>;
-  const effective = record.closeout?.body.instruction ?? metadata;
+  const effective = effectiveInstruction(record)!;
   const original = effective.originalPacket;
-  const packet = guidePacket(effective.packet, !!effective.closeout);
+  const packet = guidePacket(effective.packet);
   const qc = record.closeout?.body.instruction?.closeout;
   const imported = effective.originalRecord;
   const view = record.snapshot;
-  const renderField = (path: string, f: Field) => <div key={path} style={{ margin: "6px 0" }}>
+  const renderField = (path: string, f: Field) => {
+    const changes = fieldValueChanges(packet, f.copyOf ?? path);
+    const change = changes[changes.length - 1];
+    return <div key={path} style={{ margin: "6px 0" }}>
     <span style={f.struck ? { textDecoration: "line-through" } : undefined}>{f.value ?? "Unknown — no answer recorded"}</span>
     {f.struck && <strong> — EXCLUDED. Do not use.</strong>}
     <div style={{ fontSize: "0.88em" }}>{f.label === "unknown" ? "Unknown" : "Draft statement"} · {f.basis}</div>
-    {f.review && f.review.action !== "confirm" && <p>Technician QC {f.review.action === "settle" ? "correction" : f.review.action}: previous value {String(f.review.previous ?? "unknown")} · user {f.review.by} at {f.review.at}{f.review.source ? ` · correction source: ${f.review.source}` : ""}</p>}
+    {change && <p>{correctionOrigin(effective, change.index, view.jobId)}: previous value {String(change.entry.previous ?? "unknown")} · reported by {change.entry.by} at {change.entry.at}{change.entry.source ? ` · correction source: ${change.entry.source}` : " · correction source not recorded"}</p>}
     {f.source && <blockquote>Original imported citation: {f.source.filename ?? f.source.docId}, p. {f.source.page}<br />“{f.source.line}”</blockquote>}
   </div>;
+  };
   const fields = (title: string, values: Field[], prefix: string) => values.length > 0 && <section><h3>{title}</h3>{values.map((f, i) => renderField(`${prefix}[${i}]`, f))}</section>;
   return <article className="living-guide" data-testid="living-instruction-guide">
     <style>{GUIDE_PRINT_CSS}</style>
@@ -108,8 +119,8 @@ export function LivingInstructionGuideContent({ record }: { record: InstructionR
     {(packet.jha?.length ?? 0) > 0 && <JhaTable packet={packet} renderField={renderField} />}
     {packet.parts.length > 0 && <PartsTable packet={packet} renderField={renderField} />}
     {fields("Tools", packet.tools, "tools")}
-    <GuideSteps packet={packet} view={view} renderField={renderField} />
-    {packet.measurements.length > 0 && <MeasurementsTable packet={packet} record={null} renderField={renderField} />}
+    <GuideSteps packet={packet} view={view} renderField={renderField} candidateView={record.closeout !== null} />
+    {packet.measurements.length > 0 && <LivingGuideMeasurements metadata={effective} jobId={view.jobId} />}
     {fields("Qualifications", packet.qualifications ?? [], "qualifications")}
     {fields("Return-to-service questions", packet.restoration ?? [], "restoration")}
     {fields("Unknowns", packet.unknowns, "unknowns")}
@@ -129,7 +140,11 @@ export function LivingInstructionGuideContent({ record }: { record: InstructionR
       {Object.entries(imported.steps).map(([i, s]) => <p key={i}>Packet step {Number(i) + 1}: reported performed by {s.by} at {s.at}; recorded text {s.text ?? "not captured"}</p>)}
       {Object.entries(imported.measurements).map(([i, m]) => <p key={i}>Measurement {Number(i) + 1}: {m.value}, reported by {m.by} at {m.at}</p>)}
       {imported.notes.map((n, i) => <p key={i}>{n.kind}: {n.text}; step {n.stepIndex === null ? "job" : n.stepIndex + 1}; reported by {n.by} at {n.at}{n.resolved ? ` · reported resolved by ${n.resolvedBy ?? "unknown"} at ${n.resolvedAt ?? "unknown"}` : ""}</p>)}
-      {imported.photos.map((p, i) => <figure key={i}>{/* eslint-disable-next-line @next/next/no-img-element -- validated inline evidence */}<img src={p.image} alt={p.caption || "Imported work photo"} width={240} /><figcaption>{p.caption} · reported by {p.by} at {p.at} · step {p.stepIndex === null ? "job" : p.stepIndex + 1}</figcaption></figure>)}
+      {imported.photos.map((p, i) => <figure key={i}>
+        {/* eslint-disable-next-line @next/next/no-img-element -- validated inline evidence */}
+        <img src={p.image} alt={p.caption || "Imported work photo"} width={240} />
+        <figcaption>{p.caption} · reported by {p.by} at {p.at} · step {p.stepIndex === null ? "job" : p.stepIndex + 1}</figcaption>
+      </figure>)}
     </section>}
     {(view.readings.length + view.notes.length + view.questions.length + view.parts.length + view.photos.length + view.handover.history.length > 0 || view.finished) && <section><h2>Saved job updates</h2>
       {view.readings.map(r => <div key={r.id}><h3>{r.what}</h3>{r.history.map((h, i) => <p key={i}>{h.superseded ? "Superseded: " : "Current: "}{h.value} {h.unit} · {h.by ?? "unknown"} · {h.at} · source {h.source?.ref ?? "technician-reported"}</p>)}</div>)}

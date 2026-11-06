@@ -120,15 +120,40 @@ reuse awaits acceptance. Generic revision of a structured candidate series is
 also refused, preventing accidental removal of its review boundary.
 
 Implemented closeout contract: `POST /sheets/:jobId/closeout/` accepts
-`{clientRequestId, seq, snapshotId, decisions}`. Only the authenticated user ID
+`{clientRequestId, seq, snapshotId, baseCandidateId, decisions}`. Only the authenticated user ID
 on the finishing event may save it. Decisions exhaust canonical Fields/steps,
 including document revisions (the legacy collector omits these). Copies follow
 their canonical field. Confirm preserves unknowns; corrections use `settle` and
-require a separate source; exclusion and mark-unknown remain explicit. Each
-candidate is independently derived from the exact immutable source-job snapshot,
-not from another candidate's unsaved edits. New QC is an append-only draft
+require a separate source; exclusion and mark-unknown remain explicit. The immutable
+job sequence/hash and the effective guide revision are separate scopes.
+`baseCandidateId: null` reviews the source-job guide only when no current-job
+candidate exists. Otherwise it must name the exact latest candidate revision,
+checked under the same job transaction lock. The new candidate derives from
+that exact saved guide, preserving its corrections. Stale candidate reviews
+return `candidate_conflict`; exact request replays still return their original
+candidate even after newer revisions exist. New QC is an append-only draft
 revision in one candidate series per source job. Current-job QC is distinct from
 source-job QC lineage and never reopens execution or emits finish/outbox events.
+
+Review remediation ruling (F1, 2026-11-06): packet edit history is value/source
+provenance, not current review authority. Preserve imported and prior guide
+edits when projecting the saved guide and when appending closeout decisions.
+Confirm appends authenticated QC; it must not erase a prior correction's source
+or turn its value into an original source value. A neutral bounded measurement
+adapter reuses the existing pure value-lineage helper, shows original source
+claims/citations/basis separately from each sourced correction, and labels
+imported versus preserved/source-job/current QC provenance. Packet supervisor
+flags remain pending in the display projection; reusable acceptance is absent.
+Older draft rows with cleared packet history can still display the retained
+original packet provenance; a missing transition is explicitly unresolved,
+never reconstructed as a fabricated correction source. Accumulated guide
+history is bounded; oversize candidates fail without deleting prior evidence.
+
+Execution ruling: candidate guide steps show original source-snapshot execution
+history with the original instruction text. Candidate revision instructions do
+not inherit completion marks, including when only notes, applicability or linked
+measurement content changes. No job events or real execution history are reset
+or rewritten. Fresh jobs from saved revisions continue to start with clear marks.
 
 Ruling: retain source notebook/job/sequence/hash references rather than embedding
 the complete source view inside candidate metadata. Immutable event rows retain

@@ -12,7 +12,7 @@ export { qcTargets } from "./instruction-fields";
 
 export const INTAKE_BYTES_MAX = 8 * 1024 * 1024;
 export type PacketIntakeInput = { clientRequestId: string; packet: WorkPacket; record: JobRecord | null };
-export type CloseoutInput = { clientRequestId: string; seq: number; snapshotId: string; decisions: PacketEdit[] };
+export type CloseoutInput = { clientRequestId: string; seq: number; snapshotId: string; baseCandidateId: string | null; decisions: PacketEdit[] };
 type Check = (v: unknown) => boolean;
 const obj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const text: Check = v => typeof v === "string" && v.length <= 16000;
@@ -121,8 +121,9 @@ export function packetBody(packet: WorkPacket): JobSheetBody {
 }
 
 export function validateCloseout(raw: unknown): ValidationResult<CloseoutInput> {
-  if (!boundedJson(raw) || !obj(raw) || Object.keys(raw).some(k => !["clientRequestId", "seq", "snapshotId", "decisions"].includes(k)) ||
+  if (!boundedJson(raw) || !obj(raw) || Object.keys(raw).some(k => !["clientRequestId", "seq", "snapshotId", "baseCandidateId", "decisions"].includes(k)) ||
     typeof raw.clientRequestId !== "string" || !isUuid(raw.clientRequestId) || !integer(raw.seq) || Number(raw.seq) < 1 ||
+    !(raw.baseCandidateId === null || typeof raw.baseCandidateId === "string" && isUuid(raw.baseCandidateId)) ||
     typeof raw.snapshotId !== "string" || !/^sha256:[a-f0-9]{64}$/.test(raw.snapshotId) || !Array.isArray(raw.decisions) || raw.decisions.length > 500) return { ok: false, error: "invalid_closeout" };
   for (const d of raw.decisions) {
     if (!obj(d) || Object.keys(d).some(k => !["path", "action", "value", "source"].includes(k)) || typeof d.path !== "string" ||
@@ -137,9 +138,11 @@ export function applyCloseoutDecisions(packet: WorkPacket, decisions: PacketEdit
   const required = new Set(qcTargets(packet).map(f => f.path));
   if (decisions.length !== required.size || decisions.some(d => !required.delete(d.path))) throw new Error("incomplete_or_duplicate_decisions");
   let next = structuredClone(packet);
-  // Imported names/times remain only in originalPacket. These edits are server QC,
-  // with no supervisor approval and no implication that work was performed.
-  next.approval = { technicianReview: { state: "draft", entries: [] }, supervisor: { state: "pending", by: null, at: null } };
+  // Keep every prior value/source transition. Confirm appends current QC without
+  // turning a historical correction into the original manual value. Authority
+  // comes from the server receipt; historical approval flags are reset.
+  next.approval.technicianReview.state = "draft";
+  next.approval.supervisor = { state: "pending", by: null, at: null };
   for (const decision of decisions) next = applyEdit(next, decision, userId, at);
   return next;
 }

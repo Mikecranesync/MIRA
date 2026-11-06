@@ -4,7 +4,7 @@ import { withTenantContext } from "@/lib/tenant-context";
 import { jobEventsInTransaction, type Actor } from "./store";
 import { reduceSheet, type SheetView } from "./reduce";
 import { instructionRecord } from "./instruction-record";
-import { applyCloseoutDecisions, packetBody, validatePacketIntake, validateCloseout, type PacketIntakeInput, type CloseoutInput } from "./packet-intake";
+import { applyCloseoutDecisions, boundedJson, packetBody, validatePacketIntake, validateCloseout, type PacketIntakeInput, type CloseoutInput } from "./packet-intake";
 import type { ConfirmedAsset } from "@/capabilities/observations/gate";
 import type { JobSheetBody } from "./types";
 
@@ -12,7 +12,7 @@ export function contentHash(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value, (_key, v) => v && typeof v === "object" && !Array.isArray(v)
     ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) : v)).digest("hex");
 }
-type Failure = { status: "invalid_input" | "unauthenticated" | "request_id_conflict" | "identity_mismatch" | "asset_changed" | "job_not_found" | "job_not_finished" | "wrong_technician" | "snapshot_conflict" | "not_packet_job" | "invalid_decisions" };
+type Failure = { status: "invalid_input" | "unauthenticated" | "request_id_conflict" | "identity_mismatch" | "asset_changed" | "job_not_found" | "job_not_finished" | "wrong_technician" | "snapshot_conflict" | "candidate_conflict" | "candidate_content_limit" | "not_packet_job" | "invalid_decisions" };
 export type IntakeResult = Failure | { status: "created" | "existing"; jobId: string; view: SheetView };
 export type CloseoutCandidate = { id: string; jobSheetId: string; revision: number; status: "draft"; body: JobSheetBody };
 export type CloseoutResult = Failure | { status: "created" | "existing"; candidate: CloseoutCandidate };
@@ -86,16 +86,24 @@ export async function recordCloseout(tenantId: string, notebookId: string, jobId
     if (prior.rows[0]) return prior.rows[0].body.instruction?.closeout?.requestFingerprint === fingerprint
       ? { status: "existing", candidate: candidate(prior.rows[0]) } : { status: "request_id_conflict" };
     if (view.seq !== input.seq || instructionRecord(notebookId, view).snapshotId !== input.snapshotId) return { status: "snapshot_conflict" };
-    const metadata = view.template.instruction;
+    const latest = await latestCloseoutInTransaction(c, tenantId, notebookId, jobId, view.seq);
+    // Immutable job sequence/hash and append-only guide revision are separate
+    // scopes. A concurrent QC cannot silently review or revert another guide.
+    if (input.baseCandidateId !== (latest?.id ?? null)) return { status: "candidate_conflict" };
+    const metadata = latest?.body.instruction ?? view.template.instruction;
     if (!metadata) return { status: "not_packet_job" };
     const at = new Date().toISOString();
     let packet;
     try { packet = applyCloseoutDecisions(metadata.packet, input.decisions, actor.userId!, at); }
     catch { return { status: "invalid_decisions" }; }
+    // Never satisfy a size limit by erasing prior provenance. Existing revisions
+    // remain readable if accumulated history exceeds the bounded guide budget.
+    if (!boundedJson(packet)) return { status: "candidate_content_limit" };
     const body = packetBody(packet);
     // The immutable source job is addressable by notebook/job/seq/hash. Embedding
     // its full view here would recursively copy earlier candidates on reuse.
-    body.instruction = { ...metadata, packet, closeout: { userId: actor.userId!, at, notebookId, jobId, seq: view.seq, snapshotId: input.snapshotId, decisions: input.decisions, requestFingerprint: fingerprint } };
+    body.instruction = { ...metadata, packet, closeout: { userId: actor.userId!, at, notebookId, jobId, seq: view.seq, snapshotId: input.snapshotId,
+      baseCandidateId: input.baseCandidateId, historyStart: metadata.packet.approval.technicianReview.entries.length, decisions: input.decisions, requestFingerprint: fingerprint } };
     // One append-only candidate series for this source job. The shared job lock
     // serializes different QC requests, generic revisions and finish appends.
     await c.query(`INSERT INTO job_sheets (id,tenant_id,created_by) VALUES ($1::uuid,$2::uuid,$3) ON CONFLICT (id) DO NOTHING`, [jobId, tenantId, actor.userId]);
@@ -108,9 +116,11 @@ export async function recordCloseout(tenantId: string, notebookId: string, jobId
 }
 
 export async function latestCloseout(tenantId: string, notebookId: string, jobId: string, atSeq: number): Promise<CloseoutCandidate | null> {
-  return withTenantContext(tenantId, async c => {
-    const result = await c.query<CandidateRow>(`SELECT id::text,job_sheet_id::text,revision,body FROM job_sheet_revisions WHERE tenant_id=$1::uuid AND job_sheet_id=$2::uuid
+  return withTenantContext(tenantId, c => latestCloseoutInTransaction(c, tenantId, notebookId, jobId, atSeq));
+}
+
+async function latestCloseoutInTransaction(c: import("pg").PoolClient, tenantId: string, notebookId: string, jobId: string, atSeq: number): Promise<CloseoutCandidate | null> {
+  const result = await c.query<CandidateRow>(`SELECT id::text,job_sheet_id::text,revision,body FROM job_sheet_revisions WHERE tenant_id=$1::uuid AND job_sheet_id=$2::uuid
       AND body->'instruction'->'closeout'->>'notebookId'=$3 AND (body->'instruction'->'closeout'->>'seq')::int <= $4 ORDER BY revision DESC LIMIT 1`, [tenantId, jobId, notebookId, atSeq]);
-    return result.rows[0] ? candidate(result.rows[0]) : null;
-  });
+  return result.rows[0] ? candidate(result.rows[0]) : null;
 }

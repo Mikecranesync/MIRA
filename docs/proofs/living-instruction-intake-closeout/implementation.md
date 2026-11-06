@@ -37,6 +37,39 @@ The old print root is unmounted while the guide is selected, and print CSS also
 suppresses legacy sheet/packet roots. Unit tests verify the exact pure guide
 renderer, provenance wording and initially unselected QC decisions.
 
+## Review remediation
+
+Official review F1 was reproduced before editing: three unit regressions failed
+for lost 30 → 50 synthetic source-value lineage, screen/print output and a QC
+form displaying an older guide than the current candidate. Two real-PostgreSQL
+regressions failed while the existing 28 tests passed: all-confirm QC erased
+the imported correction source, and a second QC reverted a saved 60-unit
+correction to the source job's 50-unit value. A separate screen/print test
+reproduced execution completion leaking onto revised instructions.
+
+The fix preserves packet value/edit provenance while resetting approval flags.
+The guide displays an original source claim and each sourced correction in
+separate columns, with explicit historical versus current QC provenance. Screen
+and print tests cover initial import, all-confirm QC and a fresh inherited job;
+the original packet also supplies provenance for older draft rows whose packet
+history was cleared. Unrecoverable transitions remain explicitly unresolved.
+Inherited source-job QC never becomes current-job QC or reusable acceptance.
+
+QC now requires `baseCandidateId` alongside the immutable source sequence/hash.
+It reviews the same effective candidate shown by the guide, checks that revision
+under the existing job lock, preserves prior corrections, and rejects stale
+candidate submissions. Idempotent replay returns the original candidate before
+checking candidate freshness. Candidate steps show source execution history with
+the original instruction, and never carry its completion onto revised content.
+
+Parent's remediation PostgreSQL run passes **57 / zero skipped**: 30 template/QC,
+19 job-log and 8 finish/outbox tests. It includes concurrent stale candidate
+rejection, replay against an older base, repeated QC without correction loss,
+and a fresh inherited server correction with its source retained. Parent owns
+the updated full-suite/typecheck and final synthetic PDF/viewport receipt in
+`verification.md`. Protected packet/V2 components, CI and parent proof files
+were not changed by this remediation.
+
 ## Remaining gates and limits
 
 Dedicated structured reusable acceptance is intentionally absent. Legacy review

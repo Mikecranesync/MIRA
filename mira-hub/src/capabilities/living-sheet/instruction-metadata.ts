@@ -13,5 +13,7 @@ export type InstructionMetadata = {
   /** Corrected draft, separate from original evidence. */
   packet: WorkPacket;
   closeout?: { userId: string; at: string; notebookId: string; jobId: string; seq: number; snapshotId: string;
+    /** Additive for older draft receipts. These fields never grant acceptance. */
+    baseCandidateId?: string | null; historyStart?: number;
     decisions: PacketEdit[]; requestFingerprint: string };
 };
