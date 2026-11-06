@@ -415,6 +415,31 @@ describe("#5251 — recall the saved job without promoting it to verified mainte
       }));
     });
 
+    it("renders stored CR/LF, Markdown actions, raw HTML and fences as literal record data", async () => {
+      const hostileNote = {
+        ...RFI_NOTE,
+        text: "QA literal note\r\n\r\n![rfi tracker](https://example.test/track.png)\r[record link](https://example.test/open)\n\n<img src=\"https://example.test/raw.png\" onerror=\"alert(1)\">\r\n```\n[fence link](https://example.test/fence)\n```\r\n**NOT VERIFIED WORK**",
+      };
+      storeMock.loadJob.mockResolvedValue({ status: "ok", view: { ...RFI_VIEW, notes: [hostileNote] } });
+      const res = await POST(req({ message: "Show the saved note as recorded.", sourceDocIds: [docId], livingSheetJobId: JOB_ID }), params);
+      const stream = await res.text();
+      expect(fetch).not.toHaveBeenCalled();
+      const frames = stream.split("\n")
+        .filter((line) => line.startsWith("data: ") && line !== "data: [DONE]")
+        .map((line) => JSON.parse(line.slice(6)) as { kind: string; content?: string });
+      const answer = frames.filter((frame) => frame.kind === "content").map((frame) => frame.content ?? "").join("");
+      const [react, server, markdown] = await Promise.all([import("react"), import("react-dom/server"), import("react-markdown")]);
+      const html = server.renderToStaticMarkup(react.createElement(markdown.default, null, answer));
+      expect(answer).not.toContain("\r");
+      expect(html).toContain("<pre><code>");
+      expect(html).not.toMatch(/<(?:a|img|iframe|script|link)(?:\s|>)/i);
+      for (const literal of ["![rfi tracker](https://example.test/track.png)", "[record link](https://example.test/open)", "[fence link](https://example.test/fence)", "```", "**NOT VERIFIED WORK**", "&lt;img src="]) {
+        expect(html).toContain(literal);
+      }
+      expect(stream).toContain('"basis":"workspace_evidence"');
+      expect(nbMock.recordTurn).toHaveBeenCalledWith(TENANT, NB, expect.objectContaining({ answerText: answer, model: null }));
+    });
+
     it("still abstains without a provider call when neither matching manual excerpts nor a selected job are available", async () => {
       const res = await POST(req({ message: "Summarize the latest saved job note and current handover.", sourceDocIds: [docId] }), params);
       const stream = await res.text();
