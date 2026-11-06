@@ -1,10 +1,10 @@
 "use client";
 import type { Field, PacketFigure, WorkPacket } from "@/capabilities/work-packet/types";
 import type { InstructionRecordV2 } from "@/capabilities/living-sheet/instruction-record-v2";
-import { correctionOrigin, effectiveInstruction, fieldValueChanges, guidePacket } from "@/capabilities/living-sheet/instruction-fields";
+import { correctionOrigin, effectiveInstruction, fieldGuideHistory, guidePacket } from "@/capabilities/living-sheet/instruction-fields";
 import { BlockersSection, CoverageStop, JhaTable, LeftOutAppendix, PartsTable } from "./WorkPacketV2Sections";
-import { LivingGuideMeasurements } from "./LivingGuideMeasurements";
-import { phasedSteps, unplacedFigures } from "./work-packet-v2-view";
+import { LivingGuideMeasurementFields, LivingGuideMeasurements } from "./LivingGuideMeasurements";
+import { phasedSteps } from "./work-packet-v2-view";
 import type { RenderField } from "./WorkPacketV2Sections";
 import type { SheetView } from "@/capabilities/living-sheet/reduce";
 import { packetHeaderRows } from "./work-packet-view";
@@ -25,18 +25,19 @@ export const GUIDE_PRINT_CSS = `
   .living-guide .guide-print-only { display: block; }
   .living-guide thead { display: table-header-group; }
   .living-guide h2, .living-guide h3, .living-guide h4 { break-after: avoid; }
+  .living-guide .guide-field-label { display: block; break-after: avoid; }
   .living-guide figure { break-inside: avoid; }
 }
 `;
 
-function ImportedFigure({ figure }: { figure: PacketFigure }) {
-  return <figure style={{ breakInside: "avoid", margin: "12px 0" }}>
+function ImportedFigure({ figure, sourceIndex, renderField }: { figure: PacketFigure; sourceIndex: number; renderField: RenderField }) {
+  return <figure data-guide-figure={sourceIndex} style={{ breakInside: "avoid", margin: "12px 0" }}>
     {figure.image ? <>
       {/* eslint-disable-next-line @next/next/no-img-element -- validated inline imported evidence */}
       <img src={figure.image} alt={figure.caption.join(" — ") || "Imported source image"} width={240} />
     </> : <p>Image could not be read — consult the original source.</p>}
     <figcaption>{figure.caption.join(" · ")} · Imported source image, p. {figure.page}, {figure.filename ?? figure.docId}</figcaption>
-    {figure.placement && <p>Draft image placement: {figure.placement.basis}</p>}
+    {figure.placement && <><strong className="guide-field-label">Image placement (draft)</strong>{renderField(`figures[${sourceIndex}].placement`, figure.placement)}</>}
   </figure>;
 }
 
@@ -44,8 +45,23 @@ function ImportedFigure({ figure }: { figure: PacketFigure }) {
  * bounded adapter gives imported images neutral provenance: the legacy Figure
  * component hardcodes manufacturer attribution, which intake cannot establish. */
 function GuideSteps({ packet, view, renderField, candidateView }: { packet: WorkPacket; view: SheetView; renderField: RenderField; candidateView: boolean }) {
+  // Give each source array slot a distinct object before using the existing
+  // placement helpers. Equal captions/values, or repeated input references,
+  // must never collapse different figure decision paths.
+  const figureIndices = new Map<PacketFigure, number>();
+  const arranged = { ...packet, figures: (packet.figures ?? []).map((figure, index) => {
+    const copy = { ...figure }; figureIndices.set(copy, index); return copy;
+  }) };
+  const renderFigure = (figure: PacketFigure) => {
+    const sourceIndex = figureIndices.get(figure)!;
+    return <ImportedFigure key={sourceIndex} figure={figure} sourceIndex={sourceIndex} renderField={renderField} />;
+  };
+  const groups = phasedSteps(arranged);
+  const placed = new Set(groups.flatMap(group => group.steps.flatMap(step => step.figures)));
+  // Preserve unmatched legacy sections too; source positions are never guessed.
+  const loose = arranged.figures.filter(figure => !placed.has(figure));
   return <section><h2>Numbered procedure</h2><p>Read warnings before each step. Check source applicability and unresolved questions before doing the work.</p>
-    {phasedSteps(packet).map((group, gi) => <div key={gi}>{group.phase && <h3>{group.title}</h3>}{group.inclusion.map((f, i) => <p key={i}>{f.basis}</p>)}
+    {groups.map((group, gi) => <div key={gi}>{group.phase && <h3>{group.title}</h3>}
       {group.steps.map(s => {
         const step = packet.steps[s.index];
         const execution = view.steps.find(v => v.id === `packet-step-${s.index}`);
@@ -54,16 +70,17 @@ function GuideSteps({ packet, view, renderField, candidateView }: { packet: Work
           {s.notes.filter(i => step.notes![i].placement === "before").map(note)}
           <h4>Step {s.number}{step.n !== undefined && step.n !== null ? ` · Source step ${step.n}` : ""}</h4><p>{step.section}{step.subheading ? ` · ${step.subheading}` : ""}</p>
           {renderField(`steps[${s.index}].text`, step.text)}{step.applicability && renderField(`steps[${s.index}].applicability`, step.applicability)}
+          {step.inclusion && <><strong className="guide-field-label">Why this step is included (draft)</strong>{renderField(`steps[${s.index}].inclusion`, step.inclusion)}</>}
           {s.notes.filter(i => step.notes![i].placement !== "before").map(note)}
-          {s.measurements.map(i => <p key={i}>Measurement/specification: {packet.measurements[i].name.value ?? "unknown"} — see the sourced measurement table below.</p>)}
-          {s.figures.map((figure, i) => <ImportedFigure key={i} figure={figure} />)}
+          {s.measurements.map(i => <LivingGuideMeasurementFields key={i} index={i} measurement={packet.measurements[i]} renderField={renderField} />)}
+          {s.figures.map(renderFigure)}
           {candidateView ? <><p>Revised instruction: not marked performed. Candidate guide revisions do not inherit source-job execution marks.</p>
             {execution && <p>Original execution evidence: “{execution.text}” · source job {view.jobId.slice(0, 8)}, change {view.seq} · {execution.done ? `reported performed by ${execution.doneBy ?? "unknown"} at ${execution.doneAt}` : "not marked performed"}{execution.note ? ` · ${execution.note}` : ""}</p>}</> :
             <p>Current job execution: {execution ? execution.done ? `recorded performed by ${execution.doneBy ?? "unknown"} at ${execution.doneAt}` : "not marked performed" : "excluded from execution"}{execution?.note ? ` · ${execution.note}` : ""}</p>}
         </div>;
       })}
     </div>)}
-    {unplacedFigures(packet).length > 0 && <section><h3>Source images not matched to one step</h3>{unplacedFigures(packet).map((figure, i) => <ImportedFigure key={i} figure={figure} />)}</section>}
+    {loose.length > 0 && <section><h3>Source images not matched to one step</h3>{loose.map(renderFigure)}</section>}
     {packet.steps.length > 0 && (packet.figures?.length ?? 0) === 0 && <p>No images were captured in this packet. Consult the cited original source.</p>}
   </section>;
 }
@@ -79,13 +96,18 @@ export function LivingInstructionGuideContent({ record }: { record: InstructionR
   const imported = effective.originalRecord;
   const view = record.snapshot;
   const renderField = (path: string, f: Field) => {
-    const changes = fieldValueChanges(packet, f.copyOf ?? path);
-    const change = changes[changes.length - 1];
-    return <div key={path} style={{ margin: "6px 0" }}>
+    const changes = fieldGuideHistory(packet, f.copyOf ?? path);
+    const latestValue = [...changes].reverse().find(change => change.entry.action !== "strike");
+    const latestExclusion = f.struck ? [...changes].reverse().find(change => change.entry.action === "strike") : undefined;
+    const visibleHistory = changes.filter(change => change === latestValue || change === latestExclusion);
+    return <div key={path} data-guide-field={path} style={{ margin: "6px 0" }}>
     <span style={f.struck ? { textDecoration: "line-through" } : undefined}>{f.value ?? "Unknown — no answer recorded"}</span>
     {f.struck && <strong> — EXCLUDED. Do not use.</strong>}
     <div style={{ fontSize: "0.88em" }}>{f.label === "unknown" ? "Unknown" : "Draft statement"} · {f.basis}</div>
-    {change && <p>{correctionOrigin(effective, change.index, view.jobId)}: previous value {String(change.entry.previous ?? "unknown")} · reported by {change.entry.by} at {change.entry.at}{change.entry.source ? ` · correction source: ${change.entry.source}` : " · correction source not recorded"}</p>}
+    {visibleHistory.map(change => {
+      const excluded = change.entry.action === "strike";
+      return <p key={change.index}>{correctionOrigin(effective, change.index, view.jobId).replace("correction", excluded ? "exclusion" : "correction")}: {excluded ? "retained" : "previous"} value {String(change.entry.previous ?? "unknown")} · reported by {change.entry.by} at {change.entry.at}{change.entry.source ? ` · ${excluded ? "decision" : "correction"} source: ${change.entry.source}` : excluded ? "" : " · correction source not recorded"}</p>;
+    })}
     {f.source && <blockquote>Original imported citation: {f.source.filename ?? f.source.docId}, p. {f.source.page}<br />“{f.source.line}”</blockquote>}
   </div>;
   };
@@ -97,14 +119,15 @@ export function LivingInstructionGuideContent({ record }: { record: InstructionR
     <p>{original.disclaimer}</p>
     <p>Job {view.jobId.slice(0, 8)} · Change {view.seq}{record.closeout ? ` · Candidate revision ${record.closeout.revision}` : ""}</p>
     <p data-no-print>Full job {view.jobId} · Notebook {record.lineage.notebookId}<br />Snapshot {record.snapshotId}</p>
-    <p data-no-print>Server-captured machine: {metadata.imported.asset.name} · {metadata.imported.asset.entityId}<br />UNS: {metadata.imported.asset.unsPath}<br />
+    <p data-no-print>Server-captured machine: {metadata.imported.asset.name} · {metadata.imported.asset.entityId}<br />Captured UNS address: {metadata.imported.asset.unsPath}<br />
       Identity: {metadata.imported.identity.manufacturer ?? "unknown"} / {metadata.imported.identity.model ?? "unknown"} · Serial {metadata.imported.identity.serialNumber ?? "unknown"}<br />
       Imported by user {metadata.imported.userId} at {metadata.imported.at}</p>
     <div className="guide-print-only"><p><strong>Machine:</strong> {metadata.imported.asset.name} · {metadata.imported.identity.manufacturer ?? "unknown"} {metadata.imported.identity.model ?? "unknown"} · Serial {metadata.imported.identity.serialNumber ?? "unknown"}<br />
-      <strong>UNS:</strong> {metadata.imported.asset.unsPath}<br />
+      <strong>Captured UNS address:</strong> {metadata.imported.asset.unsPath}<br />
       <strong>Work order:</strong> {original.workOrder.id} · Asset {original.workOrder.assetTag ?? "unknown"} · Site {original.workOrder.site ?? "unknown"}<br />
       <strong>Assignment:</strong> {original.workOrder.description}</p><p>Private draft. Share workplace data and images only with the data owner’s permission.{original.workOrder.synthetic ? " Synthetic work-order input." : ""}</p></div>
     <p data-no-print>Private work material. Benchmark exposure and exact question/answer linkage are unknown. This guide does not grant permission to publish workplace data or images.</p>
+    <p>CMMS delivery is not established by this guide.</p>
     {original.version === 1 && <p><strong>Legacy packet version 1: known procedure/other-model coverage limitations. Rebuild and check the original manual before use.</strong></p>}
     <p data-no-print>Packet source matches, names, times, revision claims and figures below are imported evidence. They do not establish attached-document ownership or human approval. New execution marks come only from this saved job.</p>
     <p className="guide-print-only">Source matches, revision claims and images are imported evidence; they do not establish human approval. Execution marks below belong to this saved job.</p>
@@ -120,7 +143,7 @@ export function LivingInstructionGuideContent({ record }: { record: InstructionR
     {packet.parts.length > 0 && <PartsTable packet={packet} renderField={renderField} />}
     {fields("Tools", packet.tools, "tools")}
     <GuideSteps packet={packet} view={view} renderField={renderField} candidateView={record.closeout !== null} />
-    {packet.measurements.length > 0 && <LivingGuideMeasurements metadata={effective} jobId={view.jobId} />}
+    {packet.measurements.length > 0 && <LivingGuideMeasurements metadata={effective} jobId={view.jobId} renderField={renderField} />}
     {fields("Qualifications", packet.qualifications ?? [], "qualifications")}
     {fields("Return-to-service questions", packet.restoration ?? [], "restoration")}
     {fields("Unknowns", packet.unknowns, "unknowns")}

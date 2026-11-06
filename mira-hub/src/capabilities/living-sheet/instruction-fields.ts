@@ -24,9 +24,13 @@ export function effectiveInstruction(record: Pick<InstructionRecordV2, "sourceEv
   return record.closeout?.body.instruction ?? record.sourceEvidence;
 }
 
-export function fieldValueChanges(packet: WorkPacket, path: string) {
+export function fieldGuideHistory(packet: WorkPacket, path: string) {
   return packet.approval.technicianReview.entries.flatMap((entry, index) =>
-    entry.path === path && ["set", "settle", "mark_unknown"].includes(entry.action) ? [{ entry, index }] : []);
+    entry.path === path && ["set", "settle", "mark_unknown", "strike"].includes(entry.action) ? [{ entry, index }] : []);
+}
+
+export function fieldValueChanges(packet: WorkPacket, path: string) {
+  return fieldGuideHistory(packet, path).filter(({ entry }) => entry.action !== "strike");
 }
 
 export function correctionOrigin(metadata: InstructionMetadata, index: number, currentJobId: string): string {
