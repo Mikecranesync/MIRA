@@ -26,7 +26,9 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 
-const HUB = (process.env.HUB_URL ?? "https://app.factorylm.com").replace(/\/$/, "");
+// HUB_URL may be the origin or the /hub-prefixed base the other e2e workflows pass;
+// normalise to the origin so the login URL is built once, correctly.
+const HUB = (process.env.HUB_URL ?? "https://app.factorylm.com").replace(/\/$/, "").replace(/\/hub$/, "");
 const WEB = (process.env.WEB_URL ?? "https://factorylm.com").replace(/\/$/, "");
 
 /** Every `--fl-*` custom property declared in any readable stylesheet on the page. */
