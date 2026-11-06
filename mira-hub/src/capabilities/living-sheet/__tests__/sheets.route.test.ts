@@ -266,6 +266,34 @@ describe("living-sheet routes: GET /sheets", () => {
 });
 
 describe("living-sheet routes: GET /sheets/[jobId]", () => {
+  it("exports an opt-in versioned record from the same tenant-scoped historical snapshot", async () => {
+    const res = await GET_JOB(req(`/api/equipment-notebooks/${NB}/sheets/${JOB_ID}?format=instruction-record&atSeq=1`, "GET"), jobParams);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ schemaVersion: 1, status: "draft", lineage: { notebookId: NB, jobId: JOB_ID, seq: 1 }, snapshot: sampleView });
+    expect(store.loadJob).toHaveBeenCalledWith(TENANT, NB, JOB_ID, 1);
+    expect(store.appendEvent).not.toHaveBeenCalled();
+  });
+
+  it("rejects unsupported export versions without loading a job", async () => {
+    const res = await GET_JOB(req(`/api/equipment-notebooks/${NB}/sheets/${JOB_ID}?format=instruction-record-v99`, "GET"), jobParams);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_format" });
+    expect(store.loadJob).not.toHaveBeenCalled();
+  });
+
+  it.each(["flag", "foreign_notebook", "missing_job", "future_seq", "missing_table"])("instruction export preserves the %s gate", async (gate) => {
+    if (gate === "flag") process.env.NOTEBOOK_LIVING_SHEET = "0";
+    if (gate === "foreign_notebook") nb.getNotebook.mockResolvedValue(null);
+    if (gate === "missing_job") store.loadJob.mockResolvedValue({ status: "job_not_found" });
+    if (gate === "missing_table") store.loadJob.mockRejectedValue(Object.assign(new Error("missing"), { code: "42P01" }));
+    const suffix = gate === "future_seq" ? "&atSeq=100" : "";
+    const res = await GET_JOB(req(`/api/equipment-notebooks/${NB}/sheets/${JOB_ID}?format=instruction-record${suffix}`, "GET"), jobParams);
+    expect(res.status).toBe(gate === "missing_table" ? 503 : 404);
+    expect((await res.json()).schemaVersion).toBeUndefined();
+    expect(store.appendEvent).not.toHaveBeenCalled();
+    if (gate === "flag" || gate === "foreign_notebook") expect(store.loadJob).not.toHaveBeenCalled();
+  });
+
   it("returns {view, seq} at the job's current seq by default", async () => {
     const res = await GET_JOB(req(`/api/equipment-notebooks/${NB}/sheets/${JOB_ID}`, "GET"), jobParams);
     expect(res.status).toBe(200);

@@ -3,7 +3,9 @@
  *     job's current reduced sheet. `?atSeq=N` reduces only events with
  *     seq <= N and returns `{ view, seq: N, snapshot: true }` instead — the
  *     same reduce, over a prefix of the same log (reduce.ts is pure, so this
- *     is deterministic). Read-only: no asset-confirmation check (TASK-S1
+ *     is deterministic). `?format=instruction-record` exports v1 JSON of
+ *     that same snapshot, with explicit unreviewed provenance and gaps.
+ *     Read-only: no asset-confirmation check (TASK-S1
  *     §Routes — reads are allowed even on an unconfirmed/unbound notebook).
  *
  * Flag `NOTEBOOK_LIVING_SHEET` off ⇒ 404.
@@ -14,6 +16,7 @@ import { getNotebook } from "@/lib/equipment-notebooks";
 import { isUuid } from "@/capabilities/fix-records";
 import { livingSheetEnabled } from "@/capabilities/living-sheet/flag";
 import { loadJob, livingSheetStorageUnavailable } from "@/capabilities/living-sheet/store";
+import { instructionRecord } from "@/capabilities/living-sheet/instruction-record";
 
 const DISABLED = { error: "living_sheet_disabled" };
 const NOT_FOUND = { error: "notebook_not_found" };
@@ -29,6 +32,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!isUuid(jobId)) return NextResponse.json(JOB_NOT_FOUND, { status: 404 });
   const notebook = await getNotebook(ctx.tenantId, id);
   if (!notebook) return NextResponse.json(NOT_FOUND, { status: 404 });
+
+  const format = req.nextUrl.searchParams.get("format");
+  if (format !== null && format !== "instruction-record") {
+    return NextResponse.json({ error: "invalid_format" }, { status: 400 });
+  }
 
   const atSeqRaw = req.nextUrl.searchParams.get("atSeq");
   let atSeq: number | undefined;
@@ -53,6 +61,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         { error: "sequence_not_found", message: "This job hasn't reached that sequence yet." },
         { status: 404 },
       );
+    }
+    if (format === "instruction-record") {
+      return NextResponse.json(instructionRecord(id, result.view));
     }
     return atSeq === undefined
       ? NextResponse.json({ view: result.view, seq: result.view.seq })
