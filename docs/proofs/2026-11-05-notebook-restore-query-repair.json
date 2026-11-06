@@ -1,0 +1,121 @@
+{
+  "mutation": {
+    "sourceRevision": "cc9feca5f1f879466920b21f1634945702ab9b96",
+    "mutation": "restore old per-notebook route from 090c8e15",
+    "exit": 1,
+    "expectedFailureFound": true,
+    "restoredExactSource": true
+  },
+  "localCiSkipControls": [
+    {
+      "case": "full",
+      "exit": 0
+    },
+    {
+      "case": "partial",
+      "exit": 1
+    },
+    {
+      "case": "skip",
+      "exit": 1
+    }
+  ],
+  "unit": {
+    "sourceRevision": "cc9feca5f1f879466920b21f1634945702ab9b96",
+    "endRevision": "cc9feca5f1f879466920b21f1634945702ab9b96",
+    "exit": 0,
+    "command": "npm test -- --maxWorkers=2",
+    "note": "Hydrated tracked cross-module fixtures missing from sparse checkout; application source unchanged."
+  },
+  "build": {
+    "sourceRevision": "cc9feca5f1f879466920b21f1634945702ab9b96",
+    "endRevision": "cc9feca5f1f879466920b21f1634945702ab9b96",
+    "exit": 0,
+    "seconds": 17.3,
+    "command": "NEXT_PUBLIC_BASE_PATH= NEXT_PUBLIC_API_BASE= NEXT_TELEMETRY_DISABLED=1 npm run build",
+    "scope": "local production build, root-path API configuration matching staging, provider credentials removed; no deployment"
+  },
+  "readOnlyStagingFunctions": {
+    "scope": "local candidate functions against staging data; server-enforced read-only; not a staging deployment or physical phone test",
+    "sourceRevision": "cc9feca5f1f879466920b21f1634945702ab9b96",
+    "sourceLibraryBlob": "8ba5c28a4649c05cbdc9171e1432b681da3e00af",
+    "readOnly": "on",
+    "results": [
+      {
+        "id": 1,
+        "ms": 326,
+        "notebooks": 71,
+        "threadCount": 11,
+        "fixtureListed": true
+      },
+      {
+        "id": 2,
+        "ms": 637,
+        "notebooks": 71,
+        "threadCount": 11,
+        "fixtureListed": true
+      },
+      {
+        "id": 3,
+        "ms": 639,
+        "notebooks": 71,
+        "threadCount": 11,
+        "fixtureListed": true
+      }
+    ]
+  },
+  "deployedBaselineThreeTabs": {
+    "results": [
+      {
+        "id": 1,
+        "opened": true,
+        "ms": 12180,
+        "requests": [
+          {
+            "status": 200,
+            "ms": 9813
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "opened": false,
+        "ms": 45766,
+        "requests": [
+          {
+            "status": 500,
+            "ms": 10428
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "opened": false,
+        "ms": 45742,
+        "requests": [
+          {
+            "status": 500,
+            "ms": 10442
+          }
+        ]
+      }
+    ],
+    "scope": "three bounded read-only staging browser tabs; no provider or entity writes"
+  },
+  "localBrowserServer": {
+    "scope": "task-owned localhost Hub; server-enforced read-only staging DB; no provider credentials or deployment",
+    "readOnly": "on",
+    "sourceRevision": "cc9feca5f1f879466920b21f1634945702ab9b96",
+    "origin": "http://127.0.0.1:3218",
+    "localLivingSheetFlag": true
+  },
+  "scope": "local repair proof; no successor staging deployment or physical acceptance",
+  "testedRevision": "cc9feca5f1f879466920b21f1634945702ab9b96",
+  "originalPrHead": "c0483baac0c2f5f9aeec5afb0a2a585ad53dfd8b",
+  "sourceBlobs": {
+    "mira-hub/src/lib/equipment-notebooks.ts": "8ba5c28a4649c05cbdc9171e1432b681da3e00af",
+    "mira-hub/src/app/api/equipment-notebooks/route.ts": "28ecde544d1fcbc82da9af4239a6790fa5f4c671",
+    ".github/workflows/ci.yml": "202f74d815e2fd30d9f4cc978da562657176b7c0",
+    "mira-hub/tests/integration/notebook-restore-query-budget.integration.test.ts": "9528e77f1fd095faf8f908a75b01ec335c887e1e"
+  }
+}
