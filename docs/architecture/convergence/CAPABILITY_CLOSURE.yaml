@@ -56,6 +56,16 @@ meta:
     treating any `environments:` value as current. The validator checks
     repository-side invariants only.
 
+# Frozen case sets a retrieval replay artifact may be scored on
+# (tools/capability_closure.py check_retrieval_promotion_evidence). The sha256
+# and count pin the file: an artifact's case ids must equal the set exactly, so
+# a truncated replay cannot pass. Changing a set is a visible edit here.
+retrieval_case_sets:
+  notebook_failing_turns_5127:
+    path: docs/evals/retrieval-eval/replays/case-sets/notebook_failing_turns_5127.json
+    sha256: 8f6db87b9e789f9aaab45e7d409086adb7b815997e1992b723008c8bfb9cd6d2
+    count: 31
+
 capabilities:
 
   # =========================================================================
@@ -82,7 +92,7 @@ capabilities:
       - capability-closure
     evidence:
       - path: tests/test_evidence_provenance.py
-        observed_at: "2026-09-26"
+        observed_at: "2026-11-03"
         note: >-
           37 provenance rule tests (re-observed 2026-09-26 at #4007's squash
           commit on main, so no deletable tag is load-bearing; the tags
@@ -91,11 +101,26 @@ capabilities:
           letting INCONCLUSIVE count as proof, and removing the commit-existence
           check each turn the suite red, and restoring each turns it green
           again. A linter shown only passing input cannot be told apart from one
-          that returns an empty list.
+          that returns an empty list. Re-observed 2026-11-03 at 01f712777,
+          because the retrieval promotion-evidence rule (#5138, #5169) changed
+          the declared code path tools/capability_closure.py:
+          tests/test_evidence_provenance.py 37 pass, and
+          tests/test_capability_closure.py 105 pass with the two committed-registry
+          tests deselected. tools/evidence_provenance.py is unchanged since
+          ea20c8376. The wiring is now guarded too:
+          test_validate_runs_the_provenance_check calls validate() on a record
+          with a provenance finding, and replacing the
+          evidence_provenance.check_registry call inside validate() with a no-op
+          turns it red (before #5169 both suites stayed green). Durable via tag
+          evidence/evidence_provenance_gate/2026-11-03f (the earlier
+          .../2026-11-03, -03b, -03c and -03d tags remain as history; -03e marks
+          7d4c3236f, observed with one failing test, so it is not the evidence);
+          re-anchor on the
+          main squash commit after merge, as #4011 did for #4007.
         provenance:
-          commit_sha: "ea20c8376aca36ecd991ee19c8968459b3d3ad3f"
+          commit_sha: "01f71277705f74a6bdca376049e66b65ae089fe0"
           environment: local
-          observed_at: "2026-09-26"
+          observed_at: "2026-11-03"
           outcome: pass
           observation:
             mechanism: >-
@@ -772,6 +797,29 @@ capabilities:
       - "Refusals: unanswerable questions refuse no worse than with the flag off (2026-10-21 staging: 6/7 vs 7/7 by answer text — not met; #4572)."
       - "Production: owner decision after the staging walk."
     review_by: "2026-11-17"
+    retrieval_experiment: true
+    retrieval_flag: NOTEBOOK_LEXICAL_V2  # the Hub env var this experiment switches (mira-hub/src reads it)
+    # Same-revision replay (#5138): 31 real failing staging turns, read-only
+    # staging data, no model calls. Not the 77-question harness the flag was
+    # tuned and pre-registered on. Hits are the answer page in the top 6.
+    promotion_evidence:
+      baseline: "production path (every NOTEBOOK_* retrieval flag off), 24 of 31"
+      treatment: "NOTEBOOK_LEXICAL_V2=1, 18 of 31, no gains"
+      baseline_revision: dd2cc10fbb95e150c229cba0ee13d0edf666859c
+      treatment_revision: dd2cc10fbb95e150c229cba0ee13d0edf666859c
+      independent: true
+      replayed_by: "BRAVO retrieval acceptance replay"
+      replay: "https://github.com/Mikecranesync/MIRA/issues/5127#issuecomment-6594301658"
+      artifact: docs/evals/retrieval-eval/replays/notebook_lexical_idf-dd2cc10fb.json
+      case_set: notebook_failing_turns_5127
+      treatment_settings: {}
+      losses:
+        - {case: 2240f38d, disposition: open}
+        - {case: caa66f00, disposition: open}
+        - {case: 111ede7e, disposition: open}
+        - {case: 262d04f7, disposition: open}
+        - {case: 6d072db2, disposition: open}
+        - {case: b3cde37e, disposition: open}
 
   - id: notebook_query_rewrite
     purpose: >-
@@ -824,9 +872,131 @@ capabilities:
       - "Staging: set the flag in factorylm/stg; one notebook walk with a forum-style question shows mira.retrieval.query_rewrite=ran and a cited answer; refusals on unanswerable questions no worse than flag off."
       - "Production: owner decision after the staging walk; spend visible in the OpenAI run-budget log."
     review_by: "2026-12-15"
+    retrieval_experiment: true
+    retrieval_flag: NOTEBOOK_QUERY_REWRITE  # the Hub env var this experiment switches (mira-hub/src reads it)
     notes: >-
       Any change to QUERY_REWRITE_PROMPT, the model, or the token cap reopens
       the measurement above — the numbers belong to that exact prompt.
+
+  - id: notebook_hybrid_retrieval
+    purpose: >-
+      Add a vector lane (nomic-embed-text via OLLAMA_BASE_URL) to notebook
+      retrieval and fuse it with the lexical candidates by reciprocal rank
+      fusion (#4487).
+    customer_outcome: >-
+      A question worded differently from the manual still reaches the right
+      page when no lexical pass finds it.
+    # The Hub reads NOTEBOOK_HYBRID_RETRIEVAL (TypeScript). feature_flag is omitted
+    # because tools/capability_closure.py discovers flags in Python only.
+    entrypoints:
+      - "mira-hub/src/capabilities/hybrid-retrieval.ts   # embedQueryDetailed, rrfMerge"
+      - "mira-hub/src/lib/manual-rag.ts                  # vector lane inside retrieveNodeChunks"
+    consumers:
+      - "mira-hub/src/app/api/equipment-notebooks/[id]/chat/route.ts   # notebook chat retrieval; trace attr mira.retrieval.vector_lane"
+    environments:
+      dev: unset
+      staging: "0"                          # Doppler factorylm/stg, 1 until 2026-11-03, set 0 on 2026-11-03 (owner decision, #5138); deploy-staging run 41603391175
+      production: unset                     # forwarded by docker-compose.saas.yml (default 0), not set in factorylm/prd
+    state: deployed_disabled
+    reason: >-
+      Turned off in staging 2026-11-03 (owner decision on tracker #5138).
+      Same-revision replay at c6f15b8d3 of 31 real failing staging turns:
+      production path 24 of 31 answer pages in the top 6, with the vector lane
+      19 of 31. Retrieval-acceptance run 41603908501 passed after the change.
+    owner: "Mike Harper"
+    ci_jobs:
+      - mira-hub-unit
+    required_checks: []
+    evidence:
+      - "https://github.com/Mikecranesync/MIRA/issues/5138#issuecomment-6597399064"
+    rollback: >-
+      Set NOTEBOOK_HYBRID_RETRIEVAL=1 in factorylm/stg and redeploy staging
+      mira-hub at the same SHA through deploy-staging.yml.
+    blocker: null
+    acknowledged_rules: []
+    promotion_criteria:
+      - "An independent same-revision replay against the production path with every lost case listed (promotion_evidence), then an owner decision on each loss."
+    review_by: "2026-12-15"
+    retrieval_experiment: true
+    retrieval_flag: NOTEBOOK_HYBRID_RETRIEVAL  # the Hub env var this experiment switches (mira-hub/src reads it)
+
+  - id: notebook_cross_encoder_rerank
+    purpose: >-
+      Reorder the notebook retrieval candidate pool with a cross-encoder
+      (mira-reranker, ms-marco-MiniLM-L-6-v2) before the top results are
+      served; on timeout or error the pre-rerank order is served (CU-RR1).
+    customer_outcome: >-
+      The best page for the question is first more often, so the answer cites
+      it rather than a neighbour.
+    # The Hub reads NOTEBOOK_RERANK (TypeScript). feature_flag is omitted
+    # because tools/capability_closure.py discovers flags in Python only.
+    entrypoints:
+      - "mira-hub/src/capabilities/reranker.ts   # rerankScores, timeout and fallback"
+      - "mira-hub/src/lib/manual-rag.ts          # rerank step inside retrieveNodeChunks"
+    consumers:
+      - "mira-hub/src/app/api/equipment-notebooks/[id]/chat/route.ts   # notebook chat retrieval"
+    environments:
+      dev: unset
+      staging: "1"                          # Doppler factorylm/stg (RERANKER_MODEL=fp32, NOTEBOOK_RERANK_TIMEOUT_MS=4000), read 2026-11-03; forwarded by docker-compose.staging-vps.yml with the mira-reranker service
+      production: unset                     # docker-compose.saas.yml forwards no NOTEBOOK_RERANK and runs no mira-reranker
+    state: staging_enabled
+    reason: >-
+      The only staging-only retrieval switch left after 2026-11-03. Promotion
+      is on HOLD (#5138): the same-revision replay lost three cases the
+      production path answered, gained two, and moved the top-1 count from 11
+      to 17. A fallback serves the production order now that hybrid is off.
+    owner: "Mike Harper"
+    ci_jobs:
+      - mira-hub-unit
+    required_checks: []
+    evidence:
+      - "docs/architecture/convergence/units/CU-RR1.md"
+      - "https://github.com/Mikecranesync/MIRA/issues/5138#issuecomment-6597399064"
+    rollback: >-
+      Set NOTEBOOK_RERANK=0 in factorylm/stg and redeploy staging mira-hub at
+      the same SHA through deploy-staging.yml.
+    blocker: >-
+      Production: three open losses below need an owner decision, and
+      production runs no reranker service.
+    acknowledged_rules: []
+    promotion_criteria:
+      - "Every loss in promotion_evidence is accepted by the owner with a linked decision, or gone from a complete replay at a newer revision that changes mira-hub/src (both arms at that one revision), with the losing replay kept in loss_history."
+      - "Rerank wait and fallback reason visible on the retrieval span (#5037) on the staging build."
+    review_by: "2026-12-15"
+    retrieval_experiment: true
+    retrieval_flag: NOTEBOOK_RERANK  # the Hub env var this experiment switches (mira-hub/src reads it)
+    # Same-revision replay (#5169 r5) at main 92e6ebc4f, the staging build: 31 real
+    # failing staging turns, read-only staging data, local fp32 reranker, no model
+    # calls, two identical runs. Per case: rerank outcome from the retrieval
+    # diagnostics (30 ran, 1 skipped_short, 0 fallbacks) and the /rerank calls seen
+    # in-process; the effective runtime and reranker /health were read inside the
+    # replay process. Hits are the answer page in the top 6.
+    promotion_evidence:
+      baseline: "production path (every NOTEBOOK_* retrieval flag off), 24 of 31"
+      treatment: "NOTEBOOK_RERANK=1, timeout 4000 ms, 23 of 31, reranked 30 of 31"
+      baseline_revision: 92e6ebc4fa5b90e65023d3872c47183ea6ad08df
+      treatment_revision: 92e6ebc4fa5b90e65023d3872c47183ea6ad08df
+      independent: true
+      replayed_by: "BRAVO retrieval acceptance replay"
+      replay: "https://github.com/Mikecranesync/MIRA/pull/5169#issuecomment-6606290358"
+      artifact: docs/evals/retrieval-eval/replays/notebook_cross_encoder_rerank-92e6ebc4f.json
+      case_set: notebook_failing_turns_5127
+      treatment_settings: {NOTEBOOK_RERANK_TIMEOUT_MS: "4000", NOTEBOOK_RERANK_POOL: unset, RERANKER_MODEL: fp32}
+      losses:
+        - {case: c51364b4, disposition: open}
+        - {case: bef709ed, disposition: open}
+        - {case: b3cde37e, disposition: open}
+      # Append-only (#5169 r5 F1): every loss any committed replay showed, with the
+      # replay pinned by sha256. Never edit or remove an entry; main's entries must
+      # survive unchanged. A loss leaves `losses` only through a complete replay at a
+      # newer revision that changes mira-hub/src, or an owner-accepted decision.
+      loss_history:
+        - {case: c51364b4, revision: c6f15b8d357722308ee2e4fc1ebb65483e679488, artifact: docs/evals/retrieval-eval/replays/notebook_cross_encoder_rerank-c6f15b8d3.json, artifact_sha256: 74c46177de4664d18918cd5c593830402bdf83b53843641ef24ab2be77358597}
+        - {case: bef709ed, revision: c6f15b8d357722308ee2e4fc1ebb65483e679488, artifact: docs/evals/retrieval-eval/replays/notebook_cross_encoder_rerank-c6f15b8d3.json, artifact_sha256: 74c46177de4664d18918cd5c593830402bdf83b53843641ef24ab2be77358597}
+        - {case: b3cde37e, revision: c6f15b8d357722308ee2e4fc1ebb65483e679488, artifact: docs/evals/retrieval-eval/replays/notebook_cross_encoder_rerank-c6f15b8d3.json, artifact_sha256: 74c46177de4664d18918cd5c593830402bdf83b53843641ef24ab2be77358597}
+        - {case: c51364b4, revision: 92e6ebc4fa5b90e65023d3872c47183ea6ad08df, artifact: docs/evals/retrieval-eval/replays/notebook_cross_encoder_rerank-92e6ebc4f.json, artifact_sha256: 1660929d298625bec51f3efb7cb948c7d11c787e96251d9719854e866d2fb564}
+        - {case: bef709ed, revision: 92e6ebc4fa5b90e65023d3872c47183ea6ad08df, artifact: docs/evals/retrieval-eval/replays/notebook_cross_encoder_rerank-92e6ebc4f.json, artifact_sha256: 1660929d298625bec51f3efb7cb948c7d11c787e96251d9719854e866d2fb564}
+        - {case: b3cde37e, revision: 92e6ebc4fa5b90e65023d3872c47183ea6ad08df, artifact: docs/evals/retrieval-eval/replays/notebook_cross_encoder_rerank-92e6ebc4f.json, artifact_sha256: 1660929d298625bec51f3efb7cb948c7d11c787e96251d9719854e866d2fb564}
 
   - id: guided_troubleshooting
     purpose: >-
