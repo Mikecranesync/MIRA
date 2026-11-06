@@ -1,0 +1,398 @@
+{
+  "base": "https://app-staging.factorylm.com",
+  "gitSha": "db5e49097e928bd4eee2856fa3bb6296cddd3663",
+  "version": "3.417.9",
+  "checks": 34,
+  "failed": 0,
+  "cleanup_problems": [],
+  "results": [
+    {
+      "name": "A reads own notebook",
+      "actor": "A",
+      "method": "GET",
+      "path": "/api/equipment-notebooks/{nbA}/",
+      "expect": "allow",
+      "http": 200,
+      "leaked": [
+        "SENTINEL",
+        "A-id",
+        "A-id",
+        "A-id",
+        "A-id",
+        "A-id"
+      ],
+      "pdf": false,
+      "pass": true
+    },
+    {
+      "name": "A reads own cited passage",
+      "actor": "A",
+      "method": "GET",
+      "path": "/api/equipment-notebooks/{nbA}/sources/{docA}/passage/?page=1",
+      "expect": "allow",
+      "http": 200,
+      "leaked": [
+        "SENTINEL"
+      ],
+      "pdf": false,
+      "pass": true
+    },
+    {
+      "name": "A opens own PDF",
+      "actor": "A",
+      "method": "GET",
+      "path": "/api/namespace/files/{fileA}/",
+      "expect": "allow",
+      "http": 200,
+      "leaked": [],
+      "pdf": true,
+      "pass": true
+    },
+    {
+      "name": "B reads A notebook",
+      "actor": "B",
+      "method": "GET",
+      "path": "/api/equipment-notebooks/{nbA}/",
+      "expect": "refuse",
+      "http": 404,
+      "leaked": [],
+      "pdf": false,
+      "pass": true
+    },
+    {
+      "name": "B reads A thread",
+      "actor": "B",
+      "method": "GET",
+      "path": "/api/equipment-notebooks/{nbA}/?threadId={threadA}",
+      "expect": "refuse",
+      "http": 404,
+      "leaked": [],
+      "pdf": false,
+      "pass": true
+    },
+    {
+      "name": "B reads A cited passage",
+      "actor": "B",
+      "method": "GET",
+      "path": "/api/equipment-notebooks/{nbA}/sources/{docA}/passage/?page=1",
+      "expect": "refuse",
+      "http": 404,
+      "leaked": [],
+      "pdf": false,
+      "pass": true
+    },
+    {
+      "name": "B reads A source row",
+      "actor": "B",
+      "method": "GET",
+      "path": "/api/equipment-notebooks/{nbA}/sources/{docA}/",
+      "expect": "refuse",
+      "http": 404,
+      "leaked": [],
+      "pdf": false,
+      "pass": true
+    },
+    {
+      "name": "B opens A PDF bytes",
+      "actor": "B",
+      "method": "GET",
+      "path": "/api/namespace/files/{fileA}/",
+      "expect": "refuse",
+      "http": 404,
+      "leaked": [],
+      "pdf": false,
+      "pass": true
+    },
+    {
+      "name": "B reads A file record",
+      "actor": "B",
+      "method": "GET",
+      "path": "/api/files/{fileA}/",
+      "expect": "refuse",
+      "http": 404,
+      "leaked": [],
+      "pdf": false,
+      "pass": true
+    },
+    {
+      "name": "B reads A upload",
+      "actor": "B",
+      "method": "GET",
+      "path": "/api/uploads/{docA}/",
+      "expect": "refuse",
+      "http": 404,
+      "leaked": [],
+      "pdf": false,
+      "pass": true
+    },
+    {
+      "name": "B reads A node",
+      "actor": "B",
+      "method": "GET",
+      "path": "/api/namespace/node/{nodeA}/",
+      "expect": "refuse",
+      "http": 404,
+      "leaked": [],
+      "pdf": false,
+      "pass": true
+    },
+    {
+      "name": "B reads A node files",
+      "actor": "B",
+      "method": "GET",
+      "path": "/api/namespace/node/{nodeA}/files/",
+      "expect": "refuse",
+      "http": 404,
+      "leaked": [],
+      "pdf": false,
+      "pass": true
+    },
+    {
+      "name": "B reads A turn diagnostics",
+      "actor": "B",
+      "method": "GET",
+      "path": "/api/equipment-notebooks/{nbA}/turns/diagnostics/",
+      "expect": "refuse",
+      "http": 404,
+      "leaked": [],
+      "pdf": false,
+      "pass": true
+    },
+    {
+      "name": "B chats in A notebook",
+      "actor": "B",
+      "method": "POST",
+      "path": "/api/equipment-notebooks/{nbA}/chat/",
+      "expect": "refuse",
+      "http": 404,
+      "leaked": [],
+      "pdf": false,
+      "pass": true
+    },
+    {
+      "name": "A chats on own node (control)",
+      "actor": "A",
+      "method": "POST",
+      "path": "/api/namespace/node/{nodeA}/chat/",
+      "expect": "allow",
+      "http": 200,
+      "leaked": [
+        "A-id"
+      ],
+      "pdf": false,
+      "pass": true
+    },
+    {
+      "name": "B chats on A node",
+      "actor": "B",
+      "method": "POST",
+      "path": "/api/namespace/node/{nodeA}/chat/",
+      "expect": "refuse",
+      "http": 404,
+      "leaked": [],
+      "pdf": false,
+      "pass": true
+    },
+    {
+      "name": "B attaches A doc to own notebook",
+      "actor": "B",
+      "method": "POST",
+      "path": "/api/equipment-notebooks/278546c5-eb24-450d-9ee6-84045a470285/sources/",
+      "expect": "refuse",
+      "http": 404,
+      "leaked": [],
+      "pdf": false,
+      "pass": true
+    },
+    {
+      "name": "B asks own notebook citing A doc",
+      "actor": "B",
+      "method": "POST",
+      "path": "/api/equipment-notebooks/278546c5-eb24-450d-9ee6-84045a470285/chat/",
+      "expect": "no-leak",
+      "http": 403,
+      "leaked": [],
+      "pdf": false,
+      "pass": true
+    },
+    {
+      "name": "B uploads into A node",
+      "actor": "B",
+      "method": "POST",
+      "path": "/api/namespace/node/{nodeA}/files/",
+      "expect": "refuse",
+      "http": 404,
+      "leaked": [],
+      "pdf": false,
+      "pass": true
+    },
+    {
+      "name": "B list /api/equipment-notebooks/",
+      "actor": "B",
+      "method": "GET",
+      "path": "/api/equipment-notebooks/",
+      "expect": "no-leak",
+      "http": 200,
+      "leaked": [],
+      "pdf": false,
+      "pass": true
+    },
+    {
+      "name": "B list /api/conversations/",
+      "actor": "B",
+      "method": "GET",
+      "path": "/api/conversations/",
+      "expect": "no-leak",
+      "http": 200,
+      "leaked": [],
+      "pdf": false,
+      "pass": true
+    },
+    {
+      "name": "B list /api/documents/?limit=200",
+      "actor": "B",
+      "method": "GET",
+      "path": "/api/documents/?limit=200",
+      "expect": "no-leak",
+      "http": 200,
+      "leaked": [],
+      "pdf": false,
+      "pass": true
+    },
+    {
+      "name": "B list /api/namespace/tree/",
+      "actor": "B",
+      "method": "GET",
+      "path": "/api/namespace/tree/",
+      "expect": "no-leak",
+      "http": 200,
+      "leaked": [],
+      "pdf": false,
+      "pass": true
+    },
+    {
+      "name": "B list /api/uploads/",
+      "actor": "B",
+      "method": "GET",
+      "path": "/api/uploads/",
+      "expect": "no-leak",
+      "http": 200,
+      "leaked": [],
+      "pdf": false,
+      "pass": true
+    },
+    {
+      "name": "anon reads A notebook",
+      "actor": "anon",
+      "method": "GET",
+      "path": "/api/equipment-notebooks/{nbA}/",
+      "expect": "refuse",
+      "http": 401,
+      "leaked": [],
+      "pdf": false,
+      "pass": true
+    },
+    {
+      "name": "anon opens A PDF",
+      "actor": "anon",
+      "method": "GET",
+      "path": "/api/namespace/files/{fileA}/",
+      "expect": "refuse",
+      "http": 401,
+      "leaked": [],
+      "pdf": false,
+      "pass": true
+    },
+    {
+      "name": "anon reads A passage",
+      "actor": "anon",
+      "method": "GET",
+      "path": "/api/equipment-notebooks/{nbA}/sources/{docA}/passage/?page=1",
+      "expect": "refuse",
+      "http": 401,
+      "leaked": [],
+      "pdf": false,
+      "pass": true
+    },
+    {
+      "name": "B deletes A notebook",
+      "actor": "B",
+      "method": "DELETE",
+      "path": "/api/equipment-notebooks/{nbA}/",
+      "expect": "refuse",
+      "http": 404,
+      "leaked": [],
+      "pdf": false,
+      "pass": true
+    },
+    {
+      "name": "B deletes A upload",
+      "actor": "B",
+      "method": "DELETE",
+      "path": "/api/uploads/{docA}/",
+      "expect": "refuse",
+      "http": 404,
+      "leaked": [],
+      "pdf": false,
+      "pass": true
+    },
+    {
+      "name": "B deletes A file",
+      "actor": "B",
+      "method": "DELETE",
+      "path": "/api/namespace/files/{fileA}/",
+      "expect": "refuse",
+      "http": 404,
+      "leaked": [],
+      "pdf": false,
+      "pass": true
+    },
+    {
+      "name": "B deletes A node",
+      "actor": "B",
+      "method": "DELETE",
+      "path": "/api/namespace/node/{nodeA}/",
+      "expect": "refuse",
+      "http": 404,
+      "leaked": [],
+      "pdf": false,
+      "pass": true
+    },
+    {
+      "name": "A notebook intact after B deletes",
+      "actor": "A",
+      "method": "GET",
+      "path": "/api/equipment-notebooks/{nbA}/",
+      "expect": "allow",
+      "http": 200,
+      "leaked": [
+        "SENTINEL",
+        "A-id",
+        "A-id",
+        "A-id",
+        "A-id",
+        "A-id"
+      ],
+      "pdf": false,
+      "pass": true
+    },
+    {
+      "name": "A PDF intact after B deletes",
+      "actor": "A",
+      "method": "GET",
+      "path": "/api/namespace/files/{fileA}/",
+      "expect": "allow",
+      "http": 200,
+      "leaked": [],
+      "pdf": true,
+      "pass": true
+    },
+    {
+      "name": "A still gets cited answer after B attacks",
+      "actor": "A",
+      "pass": true,
+      "http": 200
+    }
+  ],
+  "verdict": "PASS"
+}
