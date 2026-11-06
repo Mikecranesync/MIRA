@@ -144,3 +144,25 @@ PUMP-01 has no component/manual association, imported guide or viewer chat histo
 and its Atlas1652 delivery reference has no matching canonical Hub work-order row.
 See [continuation proof](../proofs/asset-memory-5241-continuation/verification.md).
 This is blocked end-to-end acceptance, not a deployment or MERGE READY claim.
+
+## CV-101 real-equipment acceptance supersedes the QA acceptance case
+
+Mike selected his home conveyor as the required real case. The
+[CV-101 evidence pack](../proofs/cv101-asset-memory-acceptance/README.md) records
+the actual November6 production identity/telemetry inspection, endpoint timings,
+source-backed inventory/tag-map contradictions, missing original manuals,
+independent audit corrections and staged operator procedure. The existing
+garage asset/KG bridge is present. A notebook row across the two CV-101-name
+assets has three sources but lacks tenant/asset/notebook IDs in the probe;
+its garage association remains unverified. Historical persisted DI05-source
+observations are over12h old; no current physical baseline or owner-authenticated
+journey was established. The packet explicitly separates grouped-source evidence
+from per-tag/tenant/quality proof and report-by-exception from pathological replay.
+
+This replaces PUMP-01 as the requested field-acceptance target, while preserving
+its actual synthetic-QA receipts. No new graph/seed/registry, pipeline, source
+mutation, production change, control command, merge or deployment occurred.
+The next dependency is existing garage-owner sign-in and an accessible fresh
+existing reader. A physical transition requires Mike's later explicit confirmation
+after those prerequisites pass. The real A–F journey remains BLOCKED/NOT TESTED
+as individually recorded; it is not MERGE READY.

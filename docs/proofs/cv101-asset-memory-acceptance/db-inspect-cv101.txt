@@ -1,0 +1,51 @@
+Read-only production evidence, run42202828348, main090c8e15.
+Sanitized extract: CV-101 identity and completed telemetry A/B output only.
+Full log remains private; unrelated records and echoed SQL excluded.
+Job annotations: maximum execution time5m0s exceeded; operation canceled.
+Telemetry C-H incomplete. Source grouping lacks tenant/tag/quality columns.
+CMMS UUID scoreboard result:
+2026-11-06T10:31:59.3452900Z  64a24de7-2809-4c35-b4fe-202be80393d6 | e88bd0e8-8a84-4e30-9803-c0dc6efb07fe | CV-101           | (no name col)
+
+2026-11-06T10:28:12.9057494Z === CV-101 asset row (cmms_equipment) ===
+2026-11-06T10:28:12.9604362Z               tenant_id               | equipment_number |       label        |                                           uns_path                                           | qr_bound
+2026-11-06T10:28:12.9605875Z --------------------------------------+------------------+--------------------+----------------------------------------------------------------------------------------------+----------
+2026-11-06T10:28:12.9607957Z  e88bd0e8-8a84-4e30-9803-c0dc6efb07fe | CV-101           | Discharge Conveyor | enterprise.home_garage.conveyor_lab.conveyor_1                                               | t
+2026-11-06T10:28:12.9609900Z  8334fb9d-7ffb-4ea6-8617-5c90b2b57ebe | CV-101           | Discharge Conveyor | enterprise.8334fb9d_7ffb_4ea6_8617_5c90b2b57ebe.site.garage.area.unassigned.equipment.cv_101 | t
+2026-11-06T10:28:12.9611121Z (2 rows)
+2026-11-06T10:28:12.9611292Z
+2026-11-06T10:28:12.9611308Z
+2026-11-06T10:28:12.9611476Z === CV-101 knowledge-graph bridge row ===
+2026-11-06T10:28:12.9612497Z approval_state MUST be verified and uns_path NOT NULL, or every
+2026-11-06T10:28:12.9613239Z KG-grounded surface resolves to nothing (chat/route.ts, traversal.ts).
+2026-11-06T10:28:13.0389690Z               tenant_id               |      kg_label      | approval_state |                    uns_path                    | alias_key | derived_key | entity_id_is_the_uuid
+2026-11-06T10:28:13.0390852Z --------------------------------------+--------------------+----------------+------------------------------------------------+-----------+-------------+-----------------------
+2026-11-06T10:28:13.0392074Z  e88bd0e8-8a84-4e30-9803-c0dc6efb07fe | Discharge Conveyor | verified       | enterprise.home_garage.conveyor_lab.conveyor_1 | CV-101    | cv_101      | t
+2026-11-06T10:28:13.0392907Z (1 row)
+2026-11-06T10:28:13.0393042Z
+2026-11-06T10:28:13.0393049Z
+2026-11-06T10:28:13.0393166Z === notebooks bound to CV-101 (081) ===
+2026-11-06T10:28:13.1045239Z           display_name          | asset_selected_via | confirmed | sources
+2026-11-06T10:28:13.1045976Z --------------------------------+--------------------+-----------+---------
+2026-11-06T10:28:13.1046561Z  Sensor v0 overnight 2026-08-28 | manual_entry       | t         |       3
+2026-11-06T10:28:13.1047018Z (1 row)
+2026-11-06T10:28:13.1047154Z
+
+2026-11-06T10:32:00.2913940Z === A. server clock (all ages below are relative to this) ===
+2026-11-06T10:32:00.3456300Z           server_now
+2026-11-06T10:32:00.3456884Z -------------------------------
+2026-11-06T10:32:00.3457207Z  2026-11-06 10:32:00.318324+00
+2026-11-06T10:32:00.3457618Z (1 row)
+2026-11-06T10:32:00.3457925Z
+2026-11-06T10:32:00.3457937Z
+2026-11-06T10:32:00.3458462Z === B. THE VERDICT TABLE: replay signature per source, last 24h of INGESTS ===
+2026-11-06T10:32:00.3459451Z live_ratio = distinct observed timestamps / rows. ~1.0 = live, ~0.0 = replay.
+2026-11-06T10:32:00.3460416Z observed_span collapsing to 00:00:00 while ingest_span ~24h IS the replay signature.
+2026-11-06T10:32:55.5419385Z  source_system | source_connection_id | rows_24h | distinct_observed_ts | live_ratio | observed_span |   ingest_span   |      newest_observed       |  newest_observed_age   |         newest_ingest         | newest_ingest_age
+2026-11-06T10:32:55.5421530Z ---------------+----------------------+----------+----------------------+------------+---------------+-----------------+----------------------------+------------------------+-------------------------------+-------------------
+2026-11-06T10:32:55.5423231Z  plc_bridge    | cv101-bench-modbus   |      721 |                  721 |     1.0000 | 01:00:07.291  | 01:00:00.188897 | 2026-11-05 22:25:02.165+00 | 12:06:58.207763        | 2026-11-05 22:25:02.706139+00 | 12:06:57.666624
+2026-11-06T10:32:55.5424644Z  ignition      | cv101-bench-gw       |       72 |                    2 |     0.0278 | 00:00:02      | 09:21:51.267258 | 2026-11-04 01:45:41+00     | 2 days 08:46:19.372763 | 2026-11-05 22:58:57.993116+00 | 11:33:02.379647
+2026-11-06T10:32:55.5425426Z (2 rows)
+2026-11-06T10:32:55.5425553Z
+2026-11-06T10:32:55.5425559Z
+2026-11-06T10:32:55.5425770Z === C. is ANYTHING arriving right now? (ingest recency buckets) ===
+2026-11-06T10:32:55.8397965Z ##[error]The operation was canceled.

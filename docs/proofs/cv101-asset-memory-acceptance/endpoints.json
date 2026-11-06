@@ -1,0 +1,58 @@
+[
+  {
+    "url": "http://100.72.2.99:8766/health",
+    "captureAt": "2026-11-06T10:24:04.171304+00:00",
+    "error": "URLError",
+    "detail": "<urlopen error [Errno 61] Connection refused>",
+    "elapsedMs": 11
+  },
+  {
+    "url": "http://100.72.2.99:8766/trends/summary?window=30",
+    "captureAt": "2026-11-06T10:24:04.182426+00:00",
+    "error": "URLError",
+    "detail": "<urlopen error [Errno 61] Connection refused>",
+    "elapsedMs": 5
+  },
+  {
+    "url": "https://app.factorylm.com/api/version/",
+    "captureAt": "2026-11-06T10:24:04.187356+00:00",
+    "status": 200,
+    "body": "{\"service\":\"mira-hub\",\"version\":\"3.443.1\",\"gitSha\":\"489088d4cc0f8d16c02036df891752120a0250da\",\"builtAt\":\"2026-11-05T04:20:52Z\",\"ts\":1793960644654}",
+    "elapsedMs": 512
+  },
+  {
+    "url": "https://app-staging.factorylm.com/api/version/",
+    "captureAt": "2026-11-06T10:24:04.699775+00:00",
+    "status": 200,
+    "body": "{\"service\":\"mira-hub\",\"version\":\"3.444.8\",\"gitSha\":\"090c8e15bfcbd85f0091103cf5a6f5fc6b221056\",\"builtAt\":\"2026-11-05T23:57:57Z\",\"ts\":1793960645224}",
+    "elapsedMs": 574
+  },
+  {
+    "url": "https://api.factorylm.com/health",
+    "captureAt": "2026-11-06T10:24:05.274191+00:00",
+    "error": "URLError",
+    "detail": "<urlopen error [Errno 8] nodename nor servname provided, or not known>",
+    "elapsedMs": 68
+  },
+  {
+    "url": "https://app.factorylm.com/api/assets/64a24de7-2809-4c35-b4fe-202be80393d6/context/",
+    "captureAt": "2026-11-06T10:41:24.969615+00:00",
+    "authentication": "none",
+    "status": 401,
+    "elapsedMs": 480
+  },
+  {
+    "url": "https://app.factorylm.com/api/assets/64a24de7-2809-4c35-b4fe-202be80393d6/documents/",
+    "captureAt": "2026-11-06T10:41:25.449889+00:00",
+    "authentication": "none",
+    "status": 401,
+    "elapsedMs": 514
+  },
+  {
+    "url": "https://app.factorylm.com/api/assets/64a24de7-2809-4c35-b4fe-202be80393d6/machine-memory/",
+    "captureAt": "2026-11-06T10:41:25.964369+00:00",
+    "authentication": "none",
+    "status": 401,
+    "elapsedMs": 531
+  }
+]
