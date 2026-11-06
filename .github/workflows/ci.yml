@@ -1722,7 +1722,7 @@ jobs:
           sed -E 's/\x1b\[[0-9;]*[A-Za-z]//g' /tmp/pdf-nul.out > /tmp/pdf-nul.plain
           grep -qE "pdf-nul-ingest\.integration\.test\.ts \(2 tests\)" /tmp/pdf-nul.plain || {
             echo "::error::both real-parser/Postgres NUL cases must execute and pass"; exit 1; }
-      - name: Upload attempt races (real Postgres; must execute both cases)
+      - name: Upload attempt races (real Postgres; must execute all three cases)
         if: steps.changes.outputs.lifecycle == 'true'
         working-directory: mira-hub
         env:
@@ -1735,8 +1735,8 @@ jobs:
             tests/integration/upload-attempt-races.integration.test.ts \
             2>&1 | tee /tmp/upload-races.out
           sed -E 's/\x1b\[[0-9;]*[A-Za-z]//g' /tmp/upload-races.out > /tmp/upload-races.plain
-          grep -qE "upload-attempt-races\.integration\.test\.ts \(2 tests\)" /tmp/upload-races.plain || {
-            echo "::error::both upload-attempt race cases must execute and pass"; exit 1; }
+          grep -qE "upload-attempt-races\.integration\.test\.ts \(3 tests\)" /tmp/upload-races.plain || {
+            echo "::error::all three upload-attempt cases must execute and pass"; exit 1; }
 
 
   notebook-event-outbox-pg:

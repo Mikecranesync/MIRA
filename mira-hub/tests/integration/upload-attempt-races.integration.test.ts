@@ -1,6 +1,7 @@
 /** #4091: actual row locking, cancellation, stale-writer rejection and tenant isolation.
  * Disposable schema: defaults plus canonical migrations 003, 049 and 099. */
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 const RUN = Boolean(process.env.TEST_DATABASE_URL) && process.env.MIRA_TEST_DB_CONFIRM === "DISPOSABLE";
 const { pool } = await vi.hoisted(async () => {
@@ -10,7 +11,7 @@ const { pool } = await vi.hoisted(async () => {
 vi.mock("@/lib/db", () => ({ default: pool }));
 import { withUploadRowTenantContext } from "@/lib/tenant-context";
 import { cancelUpload, UploadAttemptRevokedError } from "@/lib/uploads";
-import { writeTextChunksForNode } from "@/lib/node-knowledge-ingest";
+import { writePdfChunksForNode, writeTextChunksForNode } from "@/lib/node-knowledge-ingest";
 const tenant = randomUUID(), other = randomUUID(), nodeId = randomUUID();
 let upload: { id: string; attempt: string };
 const write = (tenantId = tenant) => writeTextChunksForNode({ tenantId, uploadId: upload.id,
@@ -59,6 +60,25 @@ describe.skipIf(!RUN)("upload attempt races (real Postgres)", () => {
     await expect(write()).rejects.toBeInstanceOf(UploadAttemptRevokedError);
     const { rows } = await pool.query("SELECT count(*)::int AS n FROM knowledge_entries WHERE doc_id=$1 AND tenant_id=$2", [upload.id, tenant]);
     expect(rows[0].n).toBe(0);
+  });
+  it("sanitizes a real PDF under the current attempt, deduplicates retry, and cannot resurrect it after cancellation", async () => {
+    const buffer = readFileSync(new URL("./fixtures/nul-glyph-4p-multilingual.pdf", import.meta.url));
+    const opts = { tenantId: tenant, uploadId: upload.id, nodeId, attemptId: upload.attempt,
+      filename: "fenced\u0000manual.pdf", unsPath: "inbox\u0000manual", buffer };
+    const count = await writePdfChunksForNode(opts);
+    expect(count).toBeGreaterThan(0);
+    expect(await writePdfChunksForNode(opts)).toBe(count);
+    const { rows } = await pool.query("SELECT content, page_start, metadata, is_private FROM knowledge_entries WHERE doc_id=$1 AND tenant_id=$2", [upload.id, tenant]);
+    expect(rows).toHaveLength(count);
+    expect(rows.some(r => r.page_start === 4)).toBe(true);
+    for (const row of rows) {
+      expect(row.content).not.toContain("\u0000");
+      expect(row.metadata.filename).toBe("fenced manual.pdf");
+      expect(row.metadata.uns_path).toBe("inbox manual");
+      expect(row.is_private).toBe(true);
+    }
+    expect(await cancelUpload(upload.id, tenant, "fixture cancellation")).toBe(true);
+    await expect(writePdfChunksForNode(opts)).rejects.toBeInstanceOf(UploadAttemptRevokedError);
   });
   it("a different tenant cannot write; the current tenant and attempt can persist the source", async () => {
     await expect(write(other)).rejects.toBeInstanceOf(UploadAttemptRevokedError);
