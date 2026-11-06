@@ -244,8 +244,8 @@ describe("#5251 — recall the saved job without promoting it to verified mainte
     expect(system).toContain("SAVED JOB HISTORY");
     const policy = system.slice(system.indexOf("SAVED JOB HISTORY"));
     expect(policy).toMatch(/technician.reported/i);
-    expect(policy).toMatch(/(?:do not|never).{0,100}(?:manual|document).{0,100}(?:job|record)/is);
-    expect(policy).toMatch(/(?:not|never).{0,100}(?:verified physical work|airworthiness approval)/is);
+    expect(policy).toMatch(/(?:do not|never)[\s\S]{0,100}(?:manual|document)[\s\S]{0,100}(?:job|record)/i);
+    expect(policy).toMatch(/(?:not|never)[\s\S]{0,100}(?:verified physical work|airworthiness approval)/i);
     expect(system).not.toContain(RFI_NOTE.text);
     expect(system).not.toContain(RFI_HANDOVER.text);
   });
