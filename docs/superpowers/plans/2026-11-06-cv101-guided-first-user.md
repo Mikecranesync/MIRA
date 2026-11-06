@@ -85,15 +85,15 @@ renders six workflow panels and case study/live-evidence views. Reuse
 **Files:** Own `docs/proofs/cv101-guided-first-user/**`, promo screenshots and
 `wiki/hot.d/2026-11-06-cv101-guided-first-user-charlie-task3.md`.
 
-- [ ] Use the existing product component in the existing test/preview patterns;
+- [x] Use the existing product component in the existing test/preview patterns;
   never create a separate demo product or bypass authentication.
-- [ ] Execute every practice step, open source viewer/original reference,
+- [x] Execute every practice step, open source viewer/original reference,
   record a note/checkoffs, finish, reload and retrieve the same demo job.
-- [ ] Capture actual desktop1440×900/mobile412×915 screenshots of all six
+- [x] Capture actual desktop1440×900/mobile412×915 screenshots of all six
   workflows, actual results/statuses, browser errors/requests and timings.
-- [ ] Verify no service mutation, reader/LLM/Atlas request or horizontal
+- [x] Verify no service mutation, reader/LLM/Atlas request or horizontal
   overflow. Exercise offline/denied storage, corrupt reload and viewer change.
-- [ ] Save reproducible acceptance checklist/evidence, mark all real
+- [x] Save reproducible acceptance checklist/evidence, mark all real
   authentication/reader/freshness/job/recall/Atlas gaps explicitly.
 - [ ] Recheck ownership/remote state; open one dependent draft against the
   preserved5241 branch; run independent exact-base/head/body delta review and

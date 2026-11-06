@@ -1,0 +1,55 @@
+{
+  "classification": "Component preview only. Excludes explicit OEM document navigation in a separate tab.",
+  "requests": [
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:55821/"
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:55821/browser.css"
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:55821/browser.js"
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:55821/"
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:55821/browser.css"
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:55821/browser.js"
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:55821/"
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:55821/browser.css"
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:55821/browser.js"
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:55821/"
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:55821/browser.css"
+    },
+    {
+      "method": "GET",
+      "url": "http://127.0.0.1:55821/browser.js"
+    }
+  ],
+  "truncated": false,
+  "hasMore": false
+}
