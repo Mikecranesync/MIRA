@@ -1644,6 +1644,10 @@ jobs:
               # #4597 LEXICAL_V2 determinism regression: the retrieval SQL and its test.
               - 'mira-hub/src/lib/manual-rag.ts'
               - 'mira-hub/tests/integration/lexical-v2-determinism.integration.test.ts'
+              - 'mira-hub/src/lib/uploads.ts'
+              - 'mira-hub/src/lib/tenant-context.ts'
+              - 'mira-hub/src/lib/node-knowledge-ingest.ts'
+              - 'mira-hub/tests/integration/upload-attempt-races.integration.test.ts'
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         if: steps.changes.outputs.lifecycle == 'true'
@@ -1700,6 +1704,23 @@ jobs:
           # cannot show that the determinism file itself ran. Require its own line.
           grep -qE "✓ tests/integration/lexical-v2-determinism\.integration\.test\.ts" /tmp/reconciliation.plain || {
             echo "::error::lexical-v2-determinism suite did not run and pass"; exit 1; }
+
+      - name: Upload attempt races (real Postgres; must execute both cases)
+        if: steps.changes.outputs.lifecycle == 'true'
+        working-directory: mira-hub
+        env:
+          MIRA_INTEGRATION_EXTRA_MIGRATIONS: "003_kb_hardening.sql,049_grant_app_knowledge_entries_insert.sql,099_hub_uploads_attempt_id.sql"
+        run: |
+          set -euo pipefail
+          node scripts/setup-integration-db.mjs
+          node node_modules/vitest/vitest.mjs run \
+            --config vitest.integration.config.ts \
+            tests/integration/upload-attempt-races.integration.test.ts \
+            2>&1 | tee /tmp/upload-races.out
+          sed -E 's/\x1b\[[0-9;]*[A-Za-z]//g' /tmp/upload-races.out > /tmp/upload-races.plain
+          grep -qE "upload-attempt-races\.integration\.test\.ts \(2 tests\)" /tmp/upload-races.plain || {
+            echo "::error::both upload-attempt race cases must execute and pass"; exit 1; }
+
 
   notebook-event-outbox-pg:
     name: Notebook event outbox + CMMS dispatcher (disposable Postgres, migration 111)
