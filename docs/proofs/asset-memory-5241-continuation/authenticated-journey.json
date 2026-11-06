@@ -1,0 +1,67 @@
+{
+  "productSourceSha": "3fd4d1b6ac628342e72ec25a6456d03c4353a9d8",
+  "classification": "live_integration_using_existing_synthetic_QA_data_not_field_acceptance",
+  "runtime": "task-owned production-mode Next build on loopback; existing staging Postgres",
+  "deployedStagingSha": "090c8e15bfcbd85f0091103cf5a6f5fc6b221056",
+  "tenantId": "00000000-0000-0000-0000-000000000099",
+  "asset": {
+    "id": "00000000-0000-0000-0000-000000001005",
+    "name": "PUMP-01",
+    "asset_tag": "PUMP-01",
+    "manufacturer": "Goulds",
+    "model": "3196 LTX",
+    "uns_path": null
+  },
+  "notebookId": "d36d1927-d466-4cb4-8cad-3ce8394c3201",
+  "jobId": "04bce10d-1acc-4a21-b5ba-fa06d3d14b05",
+  "binding": "same_confirmed_asset",
+  "snapshotId": "sha256:02d6a23eab60ab42d794628c85573732ee21f7947a2963bb986ed7f17595901f",
+  "selector": {
+    "seq": 6,
+    "snapshotId": "sha256:02d6a23eab60ab42d794628c85573732ee21f7947a2963bb986ed7f17595901f",
+    "candidate": null
+  },
+  "snapshotSequence": 6,
+  "components": 0,
+  "attachedManuals": 0,
+  "suggestedManuals": 0,
+  "notebookSources": 0,
+  "viewerChatTurns": 0,
+  "hasImportedGuide": false,
+  "workOrderRequest": {
+    "eventId": "2a9fe6a8-6df4-483d-9849-cbf73811fd7b",
+    "requestedAt": "2026-11-06 00:16:51.876119+00",
+    "state": "verified_by_readback",
+    "externalRef": "1652",
+    "attempts": 1,
+    "updatedAt": "2026-11-06 00:17:39.613935+00",
+    "blockedBy": null
+  },
+  "atlas1652CanonicalMatches": 0,
+  "workOrdersInspected": 160,
+  "sourceLinkClick": {
+    "sourceLink": "http://127.0.0.1:55784/hub/api/equipment-notebooks/d36d1927-d466-4cb4-8cad-3ce8394c3201/sheets/04bce10d-1acc-4a21-b5ba-fa06d3d14b05/?format=instruction-record-v2&assetMemory=1&memorySelector=%7B%22seq%22%3A6%2C%22snapshotId%22%3A%22sha256%3A02d6a23eab60ab42d794628c85573732ee21f7947a2963bb986ed7f17595901f%22%2C%22candidate%22%3Anull%7D",
+    "status": 200,
+    "snapshotSame": true,
+    "selectorSame": true
+  },
+  "browserErrors": [],
+  "paidProviderCalls": 0,
+  "sourceDataWrites": false,
+  "runtimeMetadataWrites": "normal notebook last-opened metadata; normal existing auth-schema checks",
+  "timingsMs": {
+    "/api/equipment-notebooks/d36d1927-d466-4cb4-8cad-3ce8394c3201/": 2286,
+    "/api/equipment-notebooks/d36d1927-d466-4cb4-8cad-3ce8394c3201/sheets/04bce10d-1acc-4a21-b5ba-fa06d3d14b05/?format=instruction-record-v2&assetMemory=1": 1867,
+    "/api/assets/00000000-0000-0000-0000-000000001005/context/": 409,
+    "/api/assets/00000000-0000-0000-0000-000000001005/documents/": 534
+  },
+  "anonymousAssetStatus": 401,
+  "otherTenant": {
+    "authenticatedTenantId": "00000000-0000-0000-0000-000000000199",
+    "asset": 404,
+    "notebook": 404,
+    "job": 404
+  },
+  "result": "BLOCKED_missing_component_manual_guide_chat_and_Atlas_link_lineage",
+  "rawInputsPublished": false
+}

@@ -1,0 +1,15 @@
+{
+  "authenticated-journey.json": "0d30446a491520846b9c37acbe186d5cdb62e04b8bacadadd5412ff6a715d393",
+  "authenticated-read.mjs": "8b2b82f49f1c5484bb95becbbf1a4c546a0dd0b46edbe46d2119ecea6f86a0d3",
+  "candidate-after-restart-desktop.png": "d926d576a6e2dd7af07cee3d444ce1b5d2ce218d9abdef5aff0f11b31301f285",
+  "candidate-desktop.png": "22e37998cb13f522306e0e69331170de3f91bc64c588dff5b063d9e456b290ba",
+  "candidate-mobile.png": "c192418edf4d9ab11c845f8980a4502481a0bdd12101b3c8161e0ec2319a508f",
+  "candidate-source-link-mobile.png": "96543aaa2e4b759b9d295019db30b8786aff2d76d6ea8ae21b876284299708c0",
+  "codegraph-preflight.txt": "b1a80e0003f78a8c2390f86c34ad2c0be1c2c85d3d81d88427bdb54d6de589ad",
+  "focused-tests.txt": "bc05d43912f83f7c8543a5cc6e59201b67cfaad2d0ff2638ff27addc3895e21f",
+  "full-unit-summary.txt": "6a4e51563440c145838123f4aa5c35d3f6cbe9dee89c7e07463a9738d47d9739",
+  "performance.json": "b3184ad0cf81b07d59530fb31be7123a8d011036598ad0f1d7f66918eb920f42",
+  "restart-receipt.json": "b262469919ba3c70769bdd88af0f52214a8ba9cfdb8fad8de1dd636439209cb1",
+  "typecheck.txt": "1183f05bfa9611f78df9870ecacf249465c2c8cebf7a25817922755be8648ff3",
+  "verification.md": "70ee8f2de207da9f095982f0d2386abbdb14e4f94990aea9ff222f8822249e61"
+}

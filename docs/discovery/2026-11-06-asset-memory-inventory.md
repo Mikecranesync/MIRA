@@ -132,3 +132,15 @@ and #3882/#3626 unified UI/restart owners. Charlie/runtime owners were contacted
 through the local broker; delivery does not imply a handoff. The new slice stays
 in claimed read adapters, existing job/guide seams and unclaimed docs. No source
 owner or deployment state is invented where the registry leaves it unknown.
+
+## #5241 continuation
+
+The explicitly requested continuation fixes imported work in the chat projection,
+batch closeout performance and configured source links at product source
+`3fd4d1b6ac628342e72ec25a6456d03c4353a9d8`. A real authenticated loopback candidate
+using staging QA data verifies identity, source-link navigation, cross-tenant
+denials and saved-record/session persistence. It also verifies the remaining gap:
+PUMP-01 has no component/manual association, imported guide or viewer chat history,
+and its Atlas1652 delivery reference has no matching canonical Hub work-order row.
+See [continuation proof](../proofs/asset-memory-5241-continuation/verification.md).
+This is blocked end-to-end acceptance, not a deployment or MERGE READY claim.

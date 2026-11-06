@@ -1,0 +1,14 @@
+{
+  "kind": "authenticated_candidate_restart",
+  "productSourceSha": "3fd4d1b6ac628342e72ec25a6456d03c4353a9d8",
+  "io": "real candidate Next build and existing staging Postgres; synthetic QA data; no mocked responses or paid-provider calls",
+  "authenticatedSameUser": true,
+  "recordStatus": 200,
+  "snapshotId": "sha256:02d6a23eab60ab42d794628c85573732ee21f7947a2963bb986ed7f17595901f",
+  "selectorSame": true,
+  "snapshotSame": true,
+  "originalSourceSame": true,
+  "jobAutoResumed": false,
+  "manualReopenPassed": true,
+  "browserErrors": []
+}
