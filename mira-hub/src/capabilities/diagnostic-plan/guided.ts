@@ -39,9 +39,14 @@ export interface NotebookManual {
   sha256: string | null;
 }
 
+/**
+ * Steps are offered only against the exact manual revision they were compiled from. Without that
+ * manual attached they are refused, never offered with a caveat: the technician is sent to the
+ * manual or to a qualified person instead (Air Force RFI A02/A03, Level 3 G04).
+ */
 export type Applicability =
-  | { applies: true; revision: "exact" | "not_attached"; notice: string }
-  | { applies: false; reason: "different_equipment" | "different_revision"; message: string };
+  | { applies: true; revision: "exact"; notice: string }
+  | { applies: false; reason: "different_equipment" | "different_revision" | "manual_not_attached"; message: string };
 
 /**
  * Is this procedure valid for this machine and its manual? The revision check compares the
@@ -71,15 +76,19 @@ export function checkApplicability(
     };
   }
   return {
-    applies: true,
-    revision: "not_attached",
-    notice: `Steps from ${src.publication} (${src.revisionDate}). That manual is not attached to this notebook, so confirm your controller's documentation matches.`,
+    applies: false,
+    reason: "manual_not_attached",
+    message: `These steps were compiled from ${src.publication} (${src.revisionDate}), and that manual is not attached to this notebook, so they are not offered. ${QUALIFIED_PERSON}`,
   };
 }
 
+/** Where a refused technician goes: the manual itself, or a person qualified to work without it. */
+export const QUALIFIED_PERSON =
+  "Attach that manual to this notebook, or have a qualified person confirm the procedure from your controller's documentation before you work on it.";
+
 export function proceduresFor(identity: EquipmentIdentity, manuals: readonly NotebookManual[]) {
   return MANUFACTURER_PROCEDURES.map((proc) => ({ proc, applicability: checkApplicability(proc, identity, manuals) })).filter(
-    (p) => p.applicability.applies || p.applicability.reason === "different_revision",
+    (p) => p.applicability.applies || p.applicability.reason !== "different_equipment",
   );
 }
 
@@ -319,6 +328,21 @@ export function supersededView(template: WorkflowTemplate, run: RunRecord, saved
     endReason: `This procedure was updated (version ${savedVersion || "unknown"} to ${template.version ?? ""}) after this session started. Start again to follow the current steps.`,
     history: replay.history,
     source: { ...replay.source, version: savedVersion },
+  };
+}
+
+/**
+ * A session saved before not-attached steps were refused (revision "not_attached") is never
+ * continued: its steps were followed without the manual they came from. It is shown as ended, with
+ * its history, so the panel offers Start again against the attached manual.
+ */
+export function unverifiedRevisionView(template: WorkflowTemplate, run: RunRecord): SessionView {
+  const replay = viewSession(template, run);
+  return {
+    status: "stopped",
+    endReason: `This session was started without ${replay.source.publication} attached, so it is not continued. Start again to follow the steps against the attached manual.`,
+    history: replay.history,
+    source: replay.source,
   };
 }
 

@@ -10,7 +10,7 @@ import { API_BASE } from "@/lib/config";
 import type { SessionView } from "@/capabilities/diagnostic-plan/guided";
 
 type Applicability =
-  | { applies: true; revision: "exact" | "not_attached"; notice: string }
+  | { applies: true; revision: "exact"; notice: string }
   | { applies: false; reason: string; message: string };
 type SessionPayload = { sessionId: string; recordCount: number; revision: string; view: SessionView; askMira: string | null } | null;
 type Procedure = { templateId: string; title: string; applicability: Applicability; session: SessionPayload };
