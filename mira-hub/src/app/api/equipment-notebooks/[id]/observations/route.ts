@@ -3,7 +3,9 @@
  *      state and one page of its history (`?cursor=<id>&limit=<n>`, at most
  *      HISTORY_PAGE_MAX). `?observation=<id>` also returns that one row (the panel's
  *      save readback). `?conflicts=<factKey>&conflictCursor=<id>` also returns one page
- *      of that fact's opposing reports past the ones the state lists (#5106). Asset-scoped:
+ *      of that fact's opposing reports past the ones the state lists (#5106); a continuation
+ *      also sends `conflictDigest=<fact.contributorDigest>` and is refused (409 state_changed)
+ *      unless the page comes from exactly that contest (Codex #5104 r2 F4). Asset-scoped:
  *      any notebook of this tenant bound to the same confirmed machine returns the same answer.
  * POST /api/equipment-notebooks/[id]/observations — record a technician-confirmed
  *      observation (append-only; a correction supersedes an earlier row).
@@ -69,6 +71,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (conflictCursor !== null && (conflicts === null || !isUuid(conflictCursor))) {
     return NextResponse.json({ error: "invalid_conflict_cursor" }, { status: 400 });
   }
+  const conflictDigest = q.get("conflictDigest");
+  if (
+    (conflictDigest !== null && (conflicts === null || !/^[0-9a-f]{64}$/.test(conflictDigest))) ||
+    (conflictCursor !== null && conflictDigest === null)
+  ) {
+    return NextResponse.json({ error: "invalid_conflict_digest" }, { status: 400 });
+  }
 
   try {
     const entityId = asset.asset.entityId;
@@ -77,8 +86,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const page = await listObservationHistory(ctx.tenantId, entityId, { cursor, limit: pageLimit(q.get("limit")) });
     if (page.status === "invalid_cursor") return NextResponse.json({ error: "invalid_cursor" }, { status: 400 });
     const conflictPage = conflicts
-      ? await listConflictPage(ctx.tenantId, entityId, conflicts as FactKey, { cursor: conflictCursor, limit: pageLimit(q.get("limit")) })
+      ? await listConflictPage(ctx.tenantId, entityId, conflicts as FactKey, {
+          cursor: conflictCursor,
+          limit: pageLimit(q.get("limit")),
+          ...(conflictDigest === null ? {} : { expectDigest: conflictDigest }),
+        })
       : null;
+    if (conflictPage?.status === "state_changed") {
+      return NextResponse.json(
+        { error: "state_changed", message: "The reports on this machine changed. Reload them." },
+        { status: 409 },
+      );
+    }
     if (conflictPage?.status === "invalid_cursor") return NextResponse.json({ error: "invalid_conflict_cursor" }, { status: 400 });
     return NextResponse.json({
       equipmentEntityId: entityId,
@@ -86,7 +105,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       history: page.rows,
       nextCursor: page.nextCursor,
       ...(conflictPage?.status === "ok"
-        ? { conflicts: { factKey: conflicts, rows: conflictPage.rows, nextCursor: conflictPage.nextCursor } }
+        ? {
+            conflicts: {
+              factKey: conflicts,
+              contributorDigest: conflictPage.contributorDigest,
+              rows: conflictPage.rows,
+              nextCursor: conflictPage.nextCursor,
+            },
+          }
         : {}),
       ...(observationId ? { observation: await getObservationForAsset(ctx.tenantId, entityId, observationId) } : {}),
     });

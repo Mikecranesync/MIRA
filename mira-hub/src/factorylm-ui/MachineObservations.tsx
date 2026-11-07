@@ -144,20 +144,24 @@ export function MachineObservations({ notebookId }: { notebookId: string }) {
     return view;
   }, [notebookId]);
 
-  // The next page of one contested fact's opposing reports, after the last one shown. A
-  // refused cursor means the state moved: reread it rather than mixing two states.
+  // The next page of one contested fact's opposing reports, after the last one shown. The
+  // request names the contest it continues (the fact's contributorDigest) and the server
+  // pages only that contest; a refusal means the state moved: reread it rather than mixing
+  // two states (Codex #5104 r2 F4).
   const loadMore = useCallback(async (fact: FactState) => {
     const prior = more[fact.factKey];
     const cursor = prior ? prior.cursor : fact.conflictsNextCursor;
     if (!cursor) return;
     setMore((m) => ({ ...m, [fact.factKey]: { entries: prior?.entries ?? [], cursor, loading: true, error: null } }));
     try {
-      const qs = `?conflicts=${encodeURIComponent(fact.factKey)}&conflictCursor=${encodeURIComponent(cursor)}&limit=50`;
+      const qs = `?conflicts=${encodeURIComponent(fact.factKey)}&conflictCursor=${encodeURIComponent(cursor)}` +
+        `&conflictDigest=${encodeURIComponent(fact.contributorDigest)}&limit=50`;
       const res = await fetch(`${base(notebookId)}${qs}`, { credentials: "include", headers: { accept: "application/json" } });
-      if (res.status === 400) { await readBack(); return; }
+      if (res.status === 400 || res.status === 409) { await readBack(); return; }
       if (!res.ok) throw new Error(`conflicts ${res.status}`);
       const view = (await res.json()) as ObservedStateView;
       if (!mounted.current || !view.conflicts) return;
+      if (view.conflicts.contributorDigest !== fact.contributorDigest) { await readBack(); return; }
       if (view.state.stateVersion !== state?.state.stateVersion) { setState(view); setMore({}); return; }
       const page = view.conflicts;
       setMore((m) => ({

@@ -726,7 +726,47 @@ describe("observation reads are bounded (real Postgres)", () => {
     expect((await listConflictPage(tenant, entity, "vibration", { cursor: expected[0]!, limit: 7 })).status).toBe("invalid_cursor");
     // The last row is a valid cursor with an empty page after it.
     const last = await listConflictPage(tenant, entity, "seal_leak", { cursor: expected.at(-1)!, limit: 7 });
-    expect(last).toEqual({ status: "ok", rows: [], nextCursor: null });
+    expect(last).toEqual({ status: "ok", rows: [], nextCursor: null, contributorDigest: bounded.facts[0]!.contributorDigest });
+  });
+
+  // Codex #5104 r2 F4: the continuation is bound to the contest the reader holds. The
+  // digest is computed in the page's own statement, so a report recorded between reading
+  // the state and paging its conflicts is refused, never mixed into the first page.
+  it("conflict_page_is_refused_when_the_contest_changed_after_the_state_was_read", async () => {
+    const tenant = uuid();
+    const entity = `cmms-${uuid()}`;
+    const nb = await makeNotebook(tenant, entity, true);
+    await bulkSeed(tenant, nb, entity, CONFLICTS_SHOWN + 10, "absent", "now() - interval '30 minutes' - g.i * interval '1 second'");
+    await seed(tenant, nb, entity, [{ factValue: "present", observedAt: new Date(Date.now() - 2 * MIN).toISOString() }]);
+
+    const read = await boundedState(tenant, entity, new Date());
+    const fact = read.facts[0]!;
+    expect(fact.contested).toBe(true);
+    expect(fact.conflictsNextCursor).not.toBeNull();
+
+    // Control: same contest, the page comes back with the digest the reader holds.
+    const same = await listConflictPage(tenant, entity, "seal_leak", {
+      cursor: fact.conflictsNextCursor, limit: 100, expectDigest: fact.contributorDigest,
+    });
+    if (same.status !== "ok") throw new Error(same.status);
+    expect(same.contributorDigest).toBe(fact.contributorDigest);
+    expect(same.rows.length).toBe(fact.conflictTotal - fact.conflicting.length);
+
+    // Another technician reports an opposing reading in between.
+    await bulkSeed(tenant, nb, entity, 1, "absent", "now() - interval '10 minutes'");
+    const stale = await listConflictPage(tenant, entity, "seal_leak", {
+      cursor: fact.conflictsNextCursor, limit: 100, expectDigest: fact.contributorDigest,
+    });
+    expect(stale).toEqual({ status: "state_changed" });
+
+    // Rereading the state gives the digest the new contest is paged under.
+    const reread = (await boundedState(tenant, entity, new Date())).facts[0]!;
+    expect(reread.contributorDigest).not.toBe(fact.contributorDigest);
+    const fresh = await listConflictPage(tenant, entity, "seal_leak", {
+      cursor: reread.conflictsNextCursor, limit: 100, expectDigest: reread.contributorDigest,
+    });
+    if (fresh.status !== "ok") throw new Error(fresh.status);
+    expect(fresh.rows.length).toBe(reread.conflictTotal - reread.conflicting.length);
   });
 
   // The contest window and the repair boundary are compared at millisecond precision, as

@@ -361,4 +361,58 @@ describe.skipIf(!RUN)("Mission 001 browser proof (real panel, real routes, real 
       await browser.close();
     }
   }, 90_000);
+
+  // Codex #5104 r2 F4: another technician reports while the panel shows page one. "Show
+  // more" names the contest it continues; the server refuses a different one, and the
+  // panel rereads the state instead of appending reports from a contest it never showed.
+  it("Show more after another report rereads the state and never appends a page from a different contest", async () => {
+    const { chromium } = await import("playwright");
+    const browser = await chromium.launch();
+    const PUMP_10 = `pump-10-${uuid().slice(0, 8)}`;
+    await seedAsset(TENANT, PUMP_10, "Pump-10", "enterprise.lake_wales.utilities.pump_10");
+    const nb = await seedNotebook(TENANT, PUMP_10);
+    const insert = (n: number, value: string, obs: string) => testPool.query(
+      `INSERT INTO asset_observations (tenant_id, notebook_id, equipment_entity_id, fact_key, fact_value, raw_report,
+         observed_at, recorded_by, verification_method, client_request_id, request_fingerprint, projector_version)
+       SELECT $1::uuid, $2::uuid, $3, 'seal_leak', $4, 'raw', ${obs}, 'tech-' || (g.i % 5), 'self_reported',
+              gen_random_uuid(), 'bulk', 'fixture'
+         FROM generate_series(1, $5::int) AS g(i)`,
+      [TENANT, nb, PUMP_10, value, n],
+    );
+    await insert(30, "absent", "now() - interval '40 minutes' + g.i * interval '10 seconds'");
+    await insert(1, "present", "now() - interval '5 minutes'");
+    const prior = notebookId;
+    notebookId = nb;
+    try {
+      who.tenantId = TENANT;
+      who.userId = "tech-e";
+      const ctx = await browser.newContext({ viewport: { width: 412, height: 915 }, timezoneId: "America/New_York" });
+      const page = await ctx.newPage();
+      const continuations: number[] = [];
+      page.on("response", (r) => { if (r.url().includes("conflictCursor=")) continuations.push(r.status()); });
+      await page.goto(base);
+      await page.getByTestId("machine-state-pill").click();
+      const fact = page.getByTestId("observed-fact-seal_leak");
+      await fact.waitFor();
+      expect(await page.getByTestId("observed-fact-seal_leak-count").innerText()).toMatch(/Showing 20 of 31 reports/);
+
+      // Another technician's opposing report lands before Show more.
+      await insert(1, "absent", "now() - interval '20 minutes'");
+      await page.getByTestId("observed-fact-seal_leak-more").click();
+      await expect.poll(() => page.getByTestId("observed-fact-seal_leak-count").innerText()).toMatch(/Showing 20 of 32 reports/);
+      expect(continuations).toEqual([409]);
+      expect(await fact.locator("div").filter({ hasText: /reported by/ }).count()).toBe(20);
+      expect(await page.getByText("More reports could not be loaded.").count()).toBe(0);
+
+      // From the reread state, Show more pages the current contest to the end.
+      await page.getByTestId("observed-fact-seal_leak-more").click();
+      await page.getByTestId("observed-fact-seal_leak-count").waitFor({ state: "detached" });
+      expect(await fact.locator("div").filter({ hasText: /reported by/ }).count()).toBe(32);
+      expect(continuations).toEqual([409, 200]);
+      await ctx.close();
+    } finally {
+      notebookId = prior;
+      await browser.close();
+    }
+  }, 90_000);
 });

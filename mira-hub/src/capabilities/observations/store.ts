@@ -408,23 +408,28 @@ export async function listProjectionRows(tenantId: string, equipmentEntityId: st
 }
 
 export type ConflictPage =
-  | { status: "ok"; rows: FactEntry[]; nextCursor: string | null }
-  | { status: "invalid_cursor" };
+  | { status: "ok"; rows: FactEntry[]; nextCursor: string | null; contributorDigest: string | null }
+  | { status: "invalid_cursor" }
+  | { status: "state_changed" };
 
 /**
  * The reports opposing one fact's current report, in the projector's order, one bounded
  * page at a time (#5106): the continuation of a state's `conflicting` list. The cursor is
  * the id of the last report already seen and must still be in that contest; anything else
  * is `invalid_cursor` (the state changed: reread it), never a silent restart.
+ * `expectDigest` is the fact's contributorDigest from the state the reader holds. The
+ * digest is computed in the SAME statement as the page, so a page is returned only from
+ * that exact contest; a different one is `state_changed` (Codex #5104 r2 F4).
  */
 export async function listConflictPage(
   tenantId: string,
   equipmentEntityId: string,
   factKey: FactKey,
-  opts: { cursor: string | null; limit: number },
+  opts: { cursor: string | null; limit: number; expectDigest?: string },
 ): Promise<ConflictPage> {
   const limit = Math.min(Math.max(1, Math.floor(opts.limit)), HISTORY_PAGE_MAX);
   return withTenantContext(tenantId, async (c) => {
+    // One row always comes back (the digest), with the page rows LEFT JOINed onto it.
     const res = await c.query(
       `WITH ${CONTEST_CTES},
        page AS (
@@ -433,29 +438,41 @@ export async function listConflictPage(
                 date_trunc('milliseconds', o.recorded_at) AS t_rec
            FROM contest x JOIN asset_observations o ON o.id = x.id
        ),
-       anchor AS (SELECT * FROM page WHERE id = $5::uuid)
-       SELECT ${PROJECTION_COLS}, (SELECT count(*) FROM anchor)::int AS cursor_found
-         FROM page o
-        WHERE $5::uuid IS NULL OR EXISTS (
-                SELECT 1 FROM anchor a
-                 WHERE o.t_obs < a.t_obs
-                    OR (o.t_obs = a.t_obs AND (o.t_rec < a.t_rec OR (o.t_rec = a.t_rec AND o.id > a.id))))
-        ORDER BY ${PROJECTOR_ORDER("o")}
-        LIMIT $6::int`,
+       anchor AS (SELECT * FROM page WHERE id = $5::uuid),
+       dig AS (
+         SELECT encode(sha256(convert_to((
+                  SELECT string_agg(i.id, ',' ORDER BY i.id COLLATE "C")
+                    FROM (SELECT x.id::text AS id FROM contest x UNION ALL SELECT c.cur_id::text FROM cur c) i
+                ), 'UTF8')), 'hex') AS contributor_digest,
+                (SELECT count(*) FROM anchor)::int AS cursor_found
+       ),
+       rows AS (
+         SELECT ${PROJECTION_COLS}, row_number() OVER (ORDER BY ${PROJECTOR_ORDER("o")}) AS rn
+           FROM page o
+          WHERE $5::uuid IS NULL OR EXISTS (
+                  SELECT 1 FROM anchor a
+                   WHERE o.t_obs < a.t_obs
+                      OR (o.t_obs = a.t_obs AND (o.t_rec < a.t_rec OR (o.t_rec = a.t_rec AND o.id > a.id))))
+          ORDER BY ${PROJECTOR_ORDER("o")}
+          LIMIT $6::int
+       )
+       SELECT d.contributor_digest, d.cursor_found, r.*
+         FROM dig d LEFT JOIN rows r ON true
+        ORDER BY r.rn`,
       [tenantId, equipmentEntityId, [factKey], CONTEST_WINDOW_MS / 1000, opts.cursor, limit + 1],
     );
-    if (opts.cursor) {
-      // An empty page cannot tell "past the end" from "no such cursor": ask once more.
-      const found = res.rows.length > 0
-        ? Number((res.rows[0] as Record<string, unknown>).cursor_found) > 0
-        : (await c.query(
-            `WITH ${CONTEST_CTES} SELECT 1 FROM contest WHERE id = $5::uuid`,
-            [tenantId, equipmentEntityId, [factKey], CONTEST_WINDOW_MS / 1000, opts.cursor],
-          )).rows.length > 0;
-      if (!found) return { status: "invalid_cursor" };
-    }
-    const rows = res.rows.slice(0, limit).map((r) => entryOf(toProjectionRow(r as Record<string, unknown>)));
-    return { status: "ok", rows, nextCursor: res.rows.length > limit ? rows[rows.length - 1]!.observationId : null };
+    const head = res.rows[0] as Record<string, unknown>;
+    const digest = (head.contributor_digest as string | null) ?? null;
+    if (opts.expectDigest !== undefined && digest !== opts.expectDigest) return { status: "state_changed" };
+    if (opts.cursor && Number(head.cursor_found) === 0) return { status: "invalid_cursor" };
+    const found = res.rows.filter((r) => (r as Record<string, unknown>).id !== null);
+    const rows = found.slice(0, limit).map((r) => entryOf(toProjectionRow(r as Record<string, unknown>)));
+    return {
+      status: "ok",
+      rows,
+      nextCursor: found.length > limit ? rows[rows.length - 1]!.observationId : null,
+      contributorDigest: digest,
+    };
   });
 }
 

@@ -16,7 +16,7 @@ export type ObservedStateView = {
   nextCursor: string | null;
   observation?: HistoryRow | null;
   /** Present when asked for with ?conflicts=<factKey>: one page of that fact's opposing reports. */
-  conflicts?: { factKey: string; rows: FactEntry[]; nextCursor: string | null };
+  conflicts?: { factKey: string; contributorDigest: string | null; rows: FactEntry[]; nextCursor: string | null };
 };
 export type { FactEntry, FactState };
 

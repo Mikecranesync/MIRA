@@ -242,14 +242,15 @@ describe("observation routes: conflict continuation", () => {
   const get = (qs = "") => GET_OBS(req(`/api/equipment-notebooks/${NB}/observations/${qs}`, "GET"), params);
   const CURSOR = "55555555-5555-4555-8555-555555555555";
   const entry = { observationId: CURSOR, factValue: "absent", source: "technician", author: "tech-2", observedAt: "2026-06-15T09:00:00.000Z", recordedAt: "2026-06-15T09:01:00.000Z", verificationMethod: "self_reported", uncertainty: "unverified" };
+  const DIGEST = "a".repeat(64);
 
   it("returns one page for the named fact with its own cursor, clamped like history", async () => {
     store.listObservationHistory.mockResolvedValue({ status: "ok", rows: [], nextCursor: null });
-    store.listConflictPage.mockResolvedValue({ status: "ok", rows: [entry], nextCursor: CURSOR });
-    const res = await get(`?conflicts=seal_leak&conflictCursor=${CURSOR}&limit=5000`);
+    store.listConflictPage.mockResolvedValue({ status: "ok", rows: [entry], nextCursor: CURSOR, contributorDigest: DIGEST });
+    const res = await get(`?conflicts=seal_leak&conflictCursor=${CURSOR}&conflictDigest=${DIGEST}&limit=5000`);
     expect(res.status).toBe(200);
-    expect(store.listConflictPage).toHaveBeenCalledWith(TENANT, ENTITY, "seal_leak", { cursor: CURSOR, limit: 100 });
-    expect((await res.json()).conflicts).toEqual({ factKey: "seal_leak", rows: [entry], nextCursor: CURSOR });
+    expect(store.listConflictPage).toHaveBeenCalledWith(TENANT, ENTITY, "seal_leak", { cursor: CURSOR, limit: 100, expectDigest: DIGEST });
+    expect((await res.json()).conflicts).toEqual({ factKey: "seal_leak", contributorDigest: DIGEST, rows: [entry], nextCursor: CURSOR });
   });
 
   it("does not page conflicts unless asked", async () => {
@@ -266,8 +267,34 @@ describe("observation routes: conflict continuation", () => {
     expect((await get("?conflicts=seal_leak&conflictCursor=nope")).status).toBe(400);
     expect(store.listConflictPage).not.toHaveBeenCalled();
     store.listConflictPage.mockResolvedValue({ status: "invalid_cursor" });
-    const res = await get(`?conflicts=seal_leak&conflictCursor=${CURSOR}`);
+    const res = await get(`?conflicts=seal_leak&conflictCursor=${CURSOR}&conflictDigest=${DIGEST}`);
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "invalid_conflict_cursor" });
+  });
+
+  // Codex #5104 r2 F4: a continuation names the contest it continues, so a page from a
+  // different contest is never appended to the one the technician is reading.
+  it("refuses a continuation that does not name its contest, or names a malformed one", async () => {
+    store.listObservationHistory.mockResolvedValue({ status: "ok", rows: [], nextCursor: null });
+    for (const qs of [
+      `?conflicts=seal_leak&conflictCursor=${CURSOR}`,
+      `?conflicts=seal_leak&conflictCursor=${CURSOR}&conflictDigest=nothex`,
+      `?conflictDigest=${DIGEST}`,
+    ]) {
+      const res = await get(qs);
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "invalid_conflict_digest" });
+    }
+    expect(store.listConflictPage).not.toHaveBeenCalled();
+  });
+
+  it("a contest that changed since the state was read is 409 state_changed, with no rows", async () => {
+    store.listObservationHistory.mockResolvedValue({ status: "ok", rows: [], nextCursor: null });
+    store.listConflictPage.mockResolvedValue({ status: "state_changed" });
+    const res = await get(`?conflicts=seal_leak&conflictCursor=${CURSOR}&conflictDigest=${DIGEST}`);
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toBe("state_changed");
+    expect(body).not.toHaveProperty("conflicts");
   });
 });
