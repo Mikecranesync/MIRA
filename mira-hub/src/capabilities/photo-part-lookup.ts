@@ -136,8 +136,19 @@ function splitFields(t: string): { open: string; secret: string[] } {
   for (const label of [SERIAL_LABEL, ASSET_LABEL]) {
     for (const m of t.matchAll(new RegExp(label.source, "gi"))) {
       const from = m.index ?? 0;
-      const stop = t.slice(from).search(/[\r\n,;)\]]/);
-      const to = stop < 0 ? t.length : from + stop;
+      // #5268 Codex r7: a label with no value yet ("Asset tag:" at a line's
+      // end, "S/N: ABC") owns the next field too, until a code with a digit
+      // has appeared after it — a wrapped value never reads as a new field.
+      let to = from + m[0].length;
+      for (;;) {
+        const stop = t.slice(to).search(/[\r\n,;)\]]/);
+        const end = stop < 0 ? t.length : to + stop;
+        if (end >= t.length || /\d/.test(t.slice(from + m[0].length, end))) {
+          to = end;
+          break;
+        }
+        to = end + 1;
+      }
       secret.push(t.slice(from, to));
       for (let i = from; i < to; i++) masked[i] = " ";
     }

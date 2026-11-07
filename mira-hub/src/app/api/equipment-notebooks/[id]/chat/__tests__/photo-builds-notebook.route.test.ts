@@ -239,6 +239,9 @@ describe("a nameplate photo starts the manual search on the same turn", () => {
     ["a spaced P/N word inside an asset value", "SMC Asset tag: PN 12345678", "Find the manual for this"],
     ["a spaced P/N word inside a serial value", "SMC S/N: PN 12345678", "Find the manual for this"],
     ["a P/N word after another token in an asset value", "SMC Asset tag: ABC PN 12345678", "Find the manual for this"],
+    ["an asset value wrapped to the next line", "SMC Asset tag:\nPN 12345678", "Find the manual for this"],
+    ["a serial value wrapped to the next line", "SMC S/N:\nPN 12345678", "Find the manual for this"],
+    ["a wrapped asset value after another token", "SMC Asset tag: ABC\nPN 12345678", "Find the manual for this"],
   ])("%s → no search, no proposal of it", async (_name, plate, message) => {
     visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
       observationId: "obs", sessionId: "session", text: plate, obsKind: "look", trust: "candidate", fileId: PHOTO, hazards: [],

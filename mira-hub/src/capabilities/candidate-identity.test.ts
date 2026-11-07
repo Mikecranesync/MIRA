@@ -255,6 +255,16 @@ describe("isSafeCandidateSearchIdentity", () => {
         expect(isSafeCandidateSearchIdentity(photo, typed, "PN12345678", "SMC")).toBe(false);
       }
     });
+    it.each(["SMC Asset tag:\nPN 12345678", "SMC S/N:\nPN 12345678", "SMC Asset tag: ABC\nPN 12345678", "SMC Asset tag:\n\nPN 12345678", "SMC S/N:, P/N 12345678"])(
+      "r7: a private value wrapped past its label's field (%j) never searches",
+      (photo) => {
+        expect(labelledPartCodes(photo)).toEqual([]);
+        expect(extractCandidateIdentity(photo, "Find the manual for this")?.part ?? null).not.toBe("12345678");
+        for (const typed of ["Find the manual for this", "Find the manual for SMC 12345678"]) {
+          expect(isSafeCandidateSearchIdentity(photo, typed, "12345678", "SMC")).toBe(false);
+        }
+      },
+    );
     it("r6 control: a labelled part on its own line beside a private field still searches", () => {
       expect(isSafeCandidateSearchIdentity("SMC Asset tag: PN 12345678\nMODEL: SY3120-5LZD", "Find the manual for this", "SY3120-5LZD", "SMC")).toBe(true);
     });
