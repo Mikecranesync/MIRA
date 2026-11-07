@@ -32,8 +32,11 @@ export interface KvStore {
    *  a real save to the caller — the caller needs to know the write was
    *  lost so it can keep the form contents and refuse to say "Saved". */
   set(key: string, value: string): Promise<boolean>;
-  remove(key: string): Promise<void>;
-  keys(): Promise<string[]>;
+  /** Returns whether the key is verifiably gone. Codex #5276: a removal that
+   *  failed, or that could not be checked, must never look like a deletion. */
+  remove(key: string): Promise<boolean>;
+  /** null = storage could not be listed (blocked access), never "empty". */
+  keys(): Promise<string[] | null>;
 }
 
 /** The one production adapter. Every access is try/catch'd: a private
@@ -58,9 +61,12 @@ export const localStorageStore: KvStore = {
   },
   async remove(key) {
     try {
-      if (typeof window !== "undefined") window.localStorage.removeItem(key);
+      if (typeof window === "undefined") return false;
+      window.localStorage.removeItem(key);
+      return window.localStorage.getItem(key) === null;
     } catch {
-      /* ignore */
+      /* blocked storage: the key may still be on the phone */
+      return false;
     }
   },
   async keys() {
@@ -73,7 +79,8 @@ export const localStorageStore: KvStore = {
       }
       return out;
     } catch {
-      return [];
+      /* blocked storage: unknown, not empty */
+      return null;
     }
   },
 };
@@ -458,12 +465,17 @@ export async function dismissRejectedSheetEvent(
   return withKeyLock(key, async () => {
     try {
       const list = await readRejectedList(store, key);
+      if (!list.some((r) => r.event.clientEventId === clientEventId)) {
+        // Never delete blind. A readable list without this entry means it is
+        // not on the phone; an empty read is only trusted if the key is gone.
+        if (list.length > 0) return true;
+        const keys = await store.keys();
+        return keys !== null && !keys.includes(key);
+      }
       const next = list.filter((r) => r.event.clientEventId !== clientEventId);
       if (next.length === 0) {
-        // The production adapter swallows a removeItem failure, so read back:
-        // the row may only go once the text is really gone from the phone.
-        await store.remove(key);
-        return (await store.get(key)) === null;
+        // The row may only go once the text is verifiably gone from the phone.
+        return await store.remove(key);
       }
       return await store.set(key, JSON.stringify(next));
     } catch {
@@ -499,17 +511,17 @@ function isLocalSheetKey(k: string): boolean {
 }
 
 /** Sign-out hygiene: remove every Living Work Sheet queue and kept rejection
- *  (all jobs, all tenants/users on this device). Each removal is read back,
- *  because the production adapter swallows a removeItem failure: `remaining`
- *  counts keys that are still on the phone, so sign-out never claims a purge
- *  that did not happen. */
-export async function purgeSheetQueues(store: KvStore): Promise<{ purged: number; remaining: number }> {
-  const keys = (await store.keys()).filter(isLocalSheetKey);
+ *  (all jobs, all tenants/users on this device). `remaining` counts keys not
+ *  verifiably removed, or is null when storage could not be listed at all, so
+ *  sign-out never claims a purge that did not happen. */
+export async function purgeSheetQueues(store: KvStore): Promise<{ purged: number; remaining: number | null }> {
+  const all = await store.keys();
+  if (all === null) return { purged: 0, remaining: null };
+  const keys = all.filter(isLocalSheetKey);
   let remaining = 0;
   for (const k of keys) {
     try {
-      await store.remove(k);
-      if ((await store.get(k)) !== null) remaining++;
+      if (!(await store.remove(k))) remaining++;
     } catch {
       remaining++;
     }
@@ -517,9 +529,12 @@ export async function purgeSheetQueues(store: KvStore): Promise<{ purged: number
   return { purged: keys.length - remaining, remaining };
 }
 
-/** #5212: the sign-out text when the purge could not clear everything, or
- *  null when nothing is left behind. */
-export function signOutPurgeFailedPrompt(remaining: number): string | null {
+/** #5212: the sign-out text when the purge could not clear everything (null
+ *  `remaining` = storage could not be checked), or null when nothing is left. */
+export function signOutPurgeFailedPrompt(remaining: number | null): string | null {
+  if (remaining === null) {
+    return "Could not check this phone for saved sheet items, so some may still be here. Sign out anyway?";
+  }
   if (remaining <= 0) return null;
   return `Could not clear ${remaining} saved sheet item${remaining === 1 ? "" : "s"} from this phone. Sign out anyway and leave ${remaining === 1 ? "it" : "them"} here?`;
 }
@@ -547,7 +562,8 @@ export async function clearSheetDataForSignOut(
  *  losing these, not after.
  *  Tolerant like `loadSheetQueue`: a corrupt entry counts as 0, never throws. */
 export async function countAllSheetQueueEntries(store: KvStore): Promise<number> {
-  const keys = (await store.keys()).filter(isLocalSheetKey);
+  // Unlistable storage counts as 0 here; the purge then reports it as unknown.
+  const keys = ((await store.keys()) ?? []).filter(isLocalSheetKey);
   let total = 0;
   for (const k of keys) {
     const raw = await store.get(k);

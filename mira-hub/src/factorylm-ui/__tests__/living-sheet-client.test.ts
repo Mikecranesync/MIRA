@@ -4,7 +4,7 @@
  * is "node", no jsdom). An injected in-memory KvStore stands in for
  * localStorage so these tests never touch the real browser storage API.
  */
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   attemptClientEventId,
   attemptRequest,
@@ -44,6 +44,7 @@ import {
   rejectedSheetKey,
   rejectedNoteText,
   recoveredFieldValue,
+  localStorageStore,
 } from "../living-sheet-client";
 import type { SheetProposal } from "@/capabilities/living-sheet/propose";
 import type { SheetStepView } from "@/capabilities/living-sheet/reduce";
@@ -57,7 +58,10 @@ function memoryStore(): KvStore {
       m.set(k, v);
       return true;
     },
-    remove: async (k) => void m.delete(k),
+    remove: async (k) => {
+      m.delete(k);
+      return true;
+    },
     keys: async () => Array.from(m.keys()),
   };
 }
@@ -70,7 +74,10 @@ function failingStore(): KvStore {
   return {
     get: async (k) => (m.has(k) ? m.get(k)! : null),
     set: async () => false,
-    remove: async (k) => void m.delete(k),
+    remove: async (k) => {
+      m.delete(k);
+      return true;
+    },
     keys: async () => Array.from(m.keys()),
   };
 }
@@ -84,7 +91,10 @@ function stuckRemovalStore(seed: Record<string, QueuedSheetEvent[]>): KvStore {
   return {
     get: async (k) => (m.has(k) ? m.get(k)! : null),
     set: async () => false,
-    remove: async (k) => void m.delete(k),
+    remove: async (k) => {
+      m.delete(k);
+      return true;
+    },
     keys: async () => Array.from(m.keys()),
   };
 }
@@ -781,7 +791,10 @@ function failingPrefixStore(prefix: string, seed: Record<string, string> = {}): 
       m.set(k, v);
       return true;
     },
-    remove: async (k) => void m.delete(k),
+    remove: async (k) => {
+      m.delete(k);
+      return true;
+    },
     keys: async () => Array.from(m.keys()),
   };
 }
@@ -791,7 +804,7 @@ describe("#5212 — a definitively rejected offline note (existing API only)", (
     const store = memoryStore();
     await enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "Replaced belt, check tension later"));
     await drainSheetQueue(store, "t1", "jobA", async () => ({ status: "rejected", message: "job_finished" }), "nb-1");
-    const everything = await Promise.all((await store.keys()).map((k) => store.get(k)));
+    const everything = await Promise.all((await store.keys())!.map((k) => store.get(k)));
     expect(everything.join("\n")).toContain("Replaced belt, check tension later");
   });
 });
@@ -886,7 +899,7 @@ describe("#5212 — rejected offline note survives navigation and reload", () =>
     await purgeSheetQueues(store);
     expect(await countAllSheetQueueEntries(store)).toBe(0);
     expect(await loadRejectedSheetEvents(store, "t1", "nb-1", "jobA")).toEqual([]);
-    const left = await Promise.all((await store.keys()).map((k) => store.get(k)));
+    const left = await Promise.all((await store.keys())!.map((k) => store.get(k)));
     expect(left.join("\n")).not.toContain("rejected words");
   });
 
@@ -927,7 +940,7 @@ describe("#5212 — rejected offline note survives navigation and reload", () =>
       remove: async () => {
         throw new Error("denied");
       },
-      keys: async () => [],
+      keys: async () => null, // unavailable storage cannot be listed
     };
     await expect(loadRejectedSheetEvents(broken, "t1", "nb-1", "jobA")).resolves.toEqual([]);
     await expect(dismissRejectedSheetEvent(broken, "t1", "nb-1", "jobA", "n-1")).resolves.toBe(false);
@@ -952,6 +965,7 @@ describe("#5212 — rejected offline note survives navigation and reload", () =>
       },
       remove: async (k) => {
         if (!k.startsWith(stickyPrefix)) m.delete(k);
+        return !m.has(k);
       },
       keys: async () => Array.from(m.keys()),
     };
@@ -1040,5 +1054,119 @@ describe("#5212 — rejected offline note survives navigation and reload", () =>
     expect(rejectedNoteText(noteEvent("n-1", "hello"))).toEqual({ kind: "note", text: "hello" });
     expect(rejectedNoteText(stepEvent("s-1"))).toBeNull();
     expect(rejectedNoteText(noteEvent("n-2", "   "))).toBeNull();
+  });
+});
+
+// Codex #5276 round 2: the production adapter must never turn blocked storage
+// into "gone" or "empty". This fake keeps its data when blocked, exactly like
+// a browser whose site-data access is denied after the note was written.
+describe("#5212 production adapter under blocked storage", () => {
+  function fakeLocalStorage() {
+    const m = new Map<string, string>();
+    const gate = { blocked: false, dropRemoves: false };
+    const check = () => {
+      if (gate.blocked) throw new DOMException("denied", "SecurityError");
+    };
+    const ls = {
+      getItem: (k: string) => (check(), m.has(k) ? m.get(k)! : null),
+      setItem: (k: string, v: string) => (check(), void m.set(k, v)),
+      removeItem: (k: string) => {
+        check();
+        if (!gate.dropRemoves) m.delete(k);
+      },
+      key: (i: number) => (check(), Array.from(m.keys())[i] ?? null),
+      get length() {
+        check();
+        return m.size;
+      },
+    };
+    vi.stubGlobal("window", { localStorage: ls });
+    return { m, gate };
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  async function seedRejected(): Promise<void> {
+    await enqueueSheetEvent(localStorageStore, "t1", "jobA", noteEvent("n-1", "technician words"));
+    await drainSheetQueue(localStorageStore, "t1", "jobA", async () => ({ status: "rejected", message: "job_finished" }), "nb-1");
+    expect(await loadRejectedSheetEvents(localStorageStore, "t1", "nb-1", "jobA")).toHaveLength(1);
+  }
+
+  it("blocked storage: Dismiss reports failure and the note stays on the phone", async () => {
+    const { m, gate } = fakeLocalStorage();
+    await seedRejected();
+    gate.blocked = true;
+    expect(await dismissRejectedSheetEvent(localStorageStore, "t1", "nb-1", "jobA", "n-1")).toBe(false);
+    expect(Array.from(m.values()).join("\n")).toContain("technician words");
+  });
+
+  it("blocked storage: sign-out warns that the phone could not be checked, and Cancel stops it", async () => {
+    const { m, gate } = fakeLocalStorage();
+    await seedRejected();
+    gate.blocked = true;
+    const asked: string[] = [];
+    const proceed = await clearSheetDataForSignOut(localStorageStore, (msg) => (asked.push(msg), false));
+    expect(proceed).toBe(false);
+    expect(asked).toEqual([signOutPurgeFailedPrompt(null)]);
+    expect(signOutPurgeFailedPrompt(null)).toBe(
+      "Could not check this phone for saved sheet items, so some may still be here. Sign out anyway?",
+    );
+    expect(Array.from(m.values()).join("\n")).toContain("technician words");
+  });
+
+  it("a removal the browser ignores without an error is not reported as removed", async () => {
+    const { gate } = fakeLocalStorage();
+    await seedRejected();
+    gate.dropRemoves = true;
+    expect(await dismissRejectedSheetEvent(localStorageStore, "t1", "nb-1", "jobA", "n-1")).toBe(false);
+    expect(await purgeSheetQueues(localStorageStore)).toEqual({ purged: 0, remaining: 2 });
+  });
+
+  it("a failed read never makes Dismiss delete the other kept notes for the job", async () => {
+    const { m } = fakeLocalStorage();
+    await enqueueSheetEvent(localStorageStore, "t1", "jobA", noteEvent("n-1", "first words"));
+    await enqueueSheetEvent(localStorageStore, "t1", "jobA", noteEvent("n-2", "second words"));
+    await drainSheetQueue(localStorageStore, "t1", "jobA", async () => ({ status: "rejected", message: "job_finished" }), "nb-1");
+    expect(await loadRejectedSheetEvents(localStorageStore, "t1", "nb-1", "jobA")).toHaveLength(2);
+    const ls = (globalThis as unknown as { window: { localStorage: { getItem: (k: string) => string | null } } }).window.localStorage;
+    ls.getItem = () => {
+      throw new DOMException("denied", "SecurityError");
+    };
+    expect(await dismissRejectedSheetEvent(localStorageStore, "t1", "nb-1", "jobA", "n-1")).toBe(false);
+    const stored = Array.from(m.values()).join("\n");
+    expect(stored).toContain("first words");
+    expect(stored).toContain("second words");
+  });
+
+  it("a removal that throws is reported as not removed by Dismiss and the purge", async () => {
+    const { m } = fakeLocalStorage();
+    await seedRejected();
+    const ls = (globalThis as unknown as { window: { localStorage: { removeItem: (k: string) => void } } }).window.localStorage;
+    ls.removeItem = () => {
+      throw new DOMException("denied", "SecurityError");
+    };
+    expect(await dismissRejectedSheetEvent(localStorageStore, "t1", "nb-1", "jobA", "n-1")).toBe(false);
+    expect(await purgeSheetQueues(localStorageStore)).toEqual({ purged: 0, remaining: 2 });
+    expect(Array.from(m.values()).join("\n")).toContain("technician words");
+  });
+
+  it("dismissing a row that is not in a readable list leaves storage alone and succeeds (control)", async () => {
+    const { m } = fakeLocalStorage();
+    await seedRejected();
+    expect(await dismissRejectedSheetEvent(localStorageStore, "t1", "nb-1", "jobA", "not-stored")).toBe(true);
+    expect(Array.from(m.values()).join("\n")).toContain("technician words");
+  });
+
+  it("working storage: Dismiss clears the note and sign-out purges with only the unsynced prompt (control)", async () => {
+    const { m } = fakeLocalStorage();
+    await seedRejected();
+    expect(await dismissRejectedSheetEvent(localStorageStore, "t1", "nb-1", "jobA", "n-1")).toBe(true);
+    await seedRejected();
+    const asked: string[] = [];
+    expect(await clearSheetDataForSignOut(localStorageStore, (msg) => (asked.push(msg), true))).toBe(true);
+    expect(asked).toHaveLength(1);
+    expect(Array.from(m.values()).join("\n")).not.toContain("technician words");
   });
 });
