@@ -133,6 +133,7 @@
      and chips. Scoped to the shell so desktop keeps the base scale. Absolute px,
      never rem: hosts set different root sizes (the Hub's is 14px). */
   .fl-shell { grid-template-columns: minmax(0, 1fr); --fl-workspace-fs-body: 16px; --fl-workspace-fs-sm: 14px; --fl-workspace-fs-xs: 13px; }
+  .fl-shell__search input { font-size: var(--fl-workspace-fs-body); }
   .fl-shell__header { padding: var(--fl-workspace-space-2) var(--fl-workspace-space-3); }
   .fl-shell__sidebar {
     position: fixed;
