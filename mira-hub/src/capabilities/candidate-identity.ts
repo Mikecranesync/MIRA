@@ -25,6 +25,7 @@ import {
   labelledPartCodes,
   mentionsAssetLabel,
   mentionsSerialLabel,
+  partLabelAfterPrivateLabel,
   partCodes,
   privateIdentifierKeys,
   serialCodes,
@@ -182,6 +183,7 @@ export function isSafeCandidateSearchIdentity(photoText: string, typed: string, 
   // turn with no private label anywhere is unaffected.
   const privateLabel = texts.some((t) => mentionsSerialLabel(t) || mentionsAssetLabel(t));
   if (privateLabel && !labelledPartCodes(photoText).some((c) => identifierKey(c) === keyNorm)) return false;
+  if (texts.some(partLabelAfterPrivateLabel)) return false;
   const codes = new Set(texts.flatMap((t) => partCodes(t).map((c) => c.toUpperCase())));
   if (codes.size !== 1 || !codes.has(key)) return false;
   const proposed = new Set(makerGroups(manufacturer).keys());

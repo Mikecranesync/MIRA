@@ -151,7 +151,9 @@ describe("#4150 Codex r2 — fail closed on serials and on non-requests", () => 
   });
 
   it("F1: with a serial present, only an explicitly labelled part number is accepted", () => {
-    expect(unambiguousPartNumber("Serial number is AB-1234567\nP/N Ni8U-S12-AP6")).toBe("Ni8U-S12-AP6");
+    expect(unambiguousPartNumber("P/N Ni8U-S12-AP6\nSerial number is AB-1234567")).toBe("Ni8U-S12-AP6");
+    // #5268 Codex r8: nothing printed after a serial label is ever a part.
+    expect(unambiguousPartNumber("Serial number is AB-1234567\nP/N Ni8U-S12-AP6")).toBeNull();
     // #5268 Codex r6: a full stop never ends a private field — the rest of the line stays private.
     expect(unambiguousPartNumber("Serial number is AB-1234567. P/N Ni8U-S12-AP6")).toBeNull();
     expect(unambiguousPartNumber("Serial number is AB-1234567. Ni8U-S12-AP6")).toBeNull();
@@ -496,7 +498,8 @@ describe("#4150 review r4 F1 — any serial label disables unlabelled extraction
   );
 
   it("control: an explicitly labelled part number next to a suffix serial is still proposed", () => {
-    expect(unambiguousPartNumber("S/N AB-1234567\nP/N 6ES7214-1AG40-0XB0")).toBe("6ES7214-1AG40-0XB0");
+    expect(unambiguousPartNumber("P/N 6ES7214-1AG40-0XB0\nAB-1234567 S/N")).toBe("6ES7214-1AG40-0XB0");
+    expect(unambiguousPartNumber("S/N AB-1234567\nP/N 6ES7214-1AG40-0XB0")).toBeNull();
     // #5268 Codex r7 known limit: a label with no value after it owns the next field
     // (a wrapped value), so a part right after a suffix serial label is not searched.
     expect(unambiguousPartNumber("AB-1234567 S/N\nP/N 6ES7214-1AG40-0XB0")).toBeNull();
@@ -646,7 +649,7 @@ describe("asset-tag labels", () => {
   });
   it("an explicitly labelled part survives beside an asset tag, and the tag itself is never the part", () => {
     expect(unambiguousPartNumber("SMC P/N: SY3120-5LZD Asset tag: VALVE-1234")).toBe("SY3120-5LZD");
-    expect(unambiguousPartNumber("Asset tag: VALVE-1234\nP/N: SY3120-5LZD")).toBe("SY3120-5LZD");
+    expect(unambiguousPartNumber("Asset tag: VALVE-1234\nP/N: SY3120-5LZD")).toBeNull();
     // #5268 Codex r6 known limit: on the SAME line after a private label, nothing is a part (fail closed).
     expect(unambiguousPartNumber("Asset tag: VALVE-1234 P/N: SY3120-5LZD")).toBeNull();
   });

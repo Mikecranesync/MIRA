@@ -122,38 +122,33 @@ export function serialCodes(photoText: string): string[] {
 export const identifierKey = (code: string) => code.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
 /**
- * The text's private fields and what is left once they are blanked (#5268
- * Codex r6). A private field starts at a serial/asset label and runs to the
- * next hard delimiter — line break, comma, semicolon or closing bracket — so
- * nothing after the label on that line is ever read as a part, and every code
- * in it is a private key. One reader for both, so they cannot disagree about
- * where a private value ends. A full stop never ends a field: "S/N NO. PN
- * 12345678" stays private to the end of its line.
+ * The text before its first serial/asset label, and everything from that
+ * label on (#5268 Codex r8). Nothing printed after a private label is ever
+ * read as a part, and every code there is a private key — no guess about
+ * where a private value ends (brackets, wrapped lines, label words inside
+ * the value all defeated one), so nothing for a reader to disagree on.
  */
 function splitFields(t: string): { open: string; secret: string[] } {
-  const masked = [...t];
-  const secret: string[] = [];
-  for (const label of [SERIAL_LABEL, ASSET_LABEL]) {
-    for (const m of t.matchAll(new RegExp(label.source, "gi"))) {
-      const from = m.index ?? 0;
-      // #5268 Codex r7: a label with no value yet ("Asset tag:" at a line's
-      // end, "S/N: ABC") owns the next field too, until a code with a digit
-      // has appeared after it — a wrapped value never reads as a new field.
-      let to = from + m[0].length;
-      for (;;) {
-        const stop = t.slice(to).search(/[\r\n,;)\]]/);
-        const end = stop < 0 ? t.length : to + stop;
-        if (end >= t.length || /\d/.test(t.slice(from + m[0].length, end))) {
-          to = end;
-          break;
-        }
-        to = end + 1;
-      }
-      secret.push(t.slice(from, to));
-      for (let i = from; i < to; i++) masked[i] = " ";
-    }
-  }
-  return { open: masked.join(""), secret };
+  const starts = [SERIAL_LABEL, ASSET_LABEL]
+    .map((label) => t.search(new RegExp(label.source, "i")))
+    .filter((i) => i >= 0);
+  if (!starts.length) return { open: t, secret: [] };
+  const from = Math.min(...starts);
+  return { open: t.slice(0, from), secret: [t.slice(from)] };
+}
+
+/** A genuine part label is followed by a separator (":", "#" or a space)
+ *  before its value — "PN12345678" is one token, not a label and a value. */
+const GENUINE_PART_LABEL = new RegExp(PART_LABEL.source.replace(String.raw`\s*[:#]?\s*(`, String.raw`(?:\s*[:#]\s*|\s+)(`), "gi");
+
+/**
+ * Does a part label appear after the text's first serial/asset label (#5268
+ * Codex r8)? Such a code is never searched, so it cannot tell us which
+ * machine this is either — a plate with one, beside a part before the
+ * label, is ambiguous and must not search at all.
+ */
+export function partLabelAfterPrivateLabel(text: string): boolean {
+  return splitFields(normalize(text)).secret.some((seg) => new RegExp(GENUINE_PART_LABEL.source, "i").test(seg));
 }
 
 /**
@@ -226,9 +221,6 @@ export function privateIdentifierKeys(text: string): Set<string> {
  */
 export function labelledPartCodes(text: string): string[] {
   const t = normalize(text);
-  // A genuine part label is followed by a separator (":", "#" or a space)
-  // before its value — "PN12345678" is one token, not a label and a value.
-  const GENUINE_PART_LABEL = new RegExp(PART_LABEL.source.replace(String.raw`\s*[:#]?\s*(`, String.raw`(?:\s*[:#]\s*|\s+)(`), "gi");
   const serials = new Set(serialCodes(text));
   const privateKeys = [...privateIdentifierKeys(text)];
   // #5268 Codex r6: a part label counts only outside a private field — the

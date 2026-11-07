@@ -265,8 +265,22 @@ describe("isSafeCandidateSearchIdentity", () => {
         }
       },
     );
-    it("r6 control: a labelled part on its own line beside a private field still searches", () => {
-      expect(isSafeCandidateSearchIdentity("SMC Asset tag: PN 12345678\nMODEL: SY3120-5LZD", "Find the manual for this", "SY3120-5LZD", "SMC")).toBe(true);
+    // #5268 Codex r8 invariant: no tail after a private label ever adds a part.
+    const R8_PREFIXES = ["SMC MODEL: SY3120-5LZD Asset tag", "SMC Asset tag", "SMC S/N", "SMC Serial No.", "SMC Inv. No."];
+    const R8_TAILS = [" (1): PN 12345678", " [1]: PN 12345678", " (1234):\nPN 12345678", ":\nPN 12345678", ", P/N 12345678", ": ABC\n\nTYPE 12345678", " #7; CAT. NO. 12345678", ": 12345678\nMODEL 12345678"];
+    it.each(R8_PREFIXES.flatMap((p) => R8_TAILS.map((t) => p + t)))("r8: %j never adds 12345678 as a part or a search", (photo) => {
+      const prefix = photo.slice(0, photo.search(/Asset tag|S\/N|Serial|Inv\./));
+      // Monotone: the tail may only remove codes, never add one.
+      for (const c of labelledPartCodes(photo)) expect(labelledPartCodes(prefix)).toContain(c);
+      expect(labelledPartCodes(photo).join(" ")).not.toContain("12345678");
+      for (const typed of ["Find the manual for this", "Find the manual for SMC 12345678"]) {
+        expect(isSafeCandidateSearchIdentity(photo, typed, "12345678", "SMC")).toBe(false);
+      }
+    });
+    it("r6/r8 control: a labelled part printed before a private label still searches", () => {
+      expect(isSafeCandidateSearchIdentity("SMC MODEL: SY3120-5LZD\nAsset tag: 00123456", "Find the manual for this", "SY3120-5LZD", "SMC")).toBe(true);
+      // #5268 Codex r8: a part printed AFTER a private label is never searched.
+      expect(isSafeCandidateSearchIdentity("SMC Asset tag: PN 12345678\nMODEL: SY3120-5LZD", "Find the manual for this", "SY3120-5LZD", "SMC")).toBe(false);
     });
     it("r5: a label glued to its value is one token, not a label (SMC PN12345678 beside a serial)", () => {
       expect(isSafeCandidateSearchIdentity("SMC PN12345678 S/N: XC-99887766", "Find the manual for this", "12345678", "SMC")).toBe(false);
