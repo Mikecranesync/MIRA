@@ -47,7 +47,9 @@ import {
   localStorageStore,
   releaseSheetSignOutBarrier,
   SIGN_OUT_STILL_SENDING_PROMPT,
+  SIGN_OUT_OTHER_TABS_PROMPT,
 } from "../living-sheet-client";
+import { validateAppendEventInput } from "@/capabilities/living-sheet/validate";
 import type { SheetProposal } from "@/capabilities/living-sheet/propose";
 import type { SheetStepView } from "@/capabilities/living-sheet/reduce";
 import type { NotebookSheetReceiptFrame } from "@/lib/notebook-chat-types";
@@ -1115,9 +1117,14 @@ describe("#5212 production adapter under blocked storage", () => {
     await seedRejected();
     gate.blocked = true;
     const asked: string[] = [];
-    const proceed = await clearSheetDataForSignOut(localStorageStore, (msg) => (asked.push(msg), false));
+    // Blocked storage also refuses the sign-out marker (Codex #5276 r6), so
+    // that warning comes first; accepting it reaches the could-not-check one.
+    const proceed = await clearSheetDataForSignOut(
+      localStorageStore,
+      (msg) => (asked.push(msg), msg === SIGN_OUT_OTHER_TABS_PROMPT),
+    );
     expect(proceed).toBe(false);
-    expect(asked).toEqual([signOutPurgeFailedPrompt(null)]);
+    expect(asked).toEqual([SIGN_OUT_OTHER_TABS_PROMPT, signOutPurgeFailedPrompt(null)]);
     expect(signOutPurgeFailedPrompt(null)).toBe(
       "Could not check this phone for saved sheet items, so some may still be here. Sign out anyway?",
     );
@@ -1426,6 +1433,117 @@ describe("#5212 sign-out across tabs", () => {
     expect(sheetText(m)).toBe("");
   });
 
+  it("a full phone that refuses the marker: sign-out retries after the purge frees space, and the late rejection stays out", async () => {
+    const { store: base, m } = sharedStore();
+    let full = false;
+    const store: KvStore = {
+      ...base,
+      set: async (k, v) => (full ? false : base.set(k, v)),
+      remove: async (k) => ((full = false), base.remove(k)),
+    };
+    const tabA = await openTab();
+    const tabB = await openTab();
+    await tabA.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "tab A words"));
+    let release = (): void => {};
+    const gate = new Promise<void>((r) => (release = r));
+    let hitResolve = (): void => {};
+    const hit = new Promise<void>((r) => (hitResolve = r));
+    const drain = tabA.drainSheetQueue(store, "t1", "jobA", async () => {
+      hitResolve();
+      await gate;
+      return { status: "rejected", message: "job_finished" };
+    }, "nb-1");
+    await hit;
+    full = true; // the marker write is refused; the purge's removal frees space
+    const asked: string[] = [];
+    expect(await tabB.clearSheetDataForSignOut(store, (msg) => (asked.push(msg), true))).toBe(true);
+    expect(m.has("flm.sheetsignout.v1")).toBe(true);
+    expect(asked).not.toContain(SIGN_OUT_OTHER_TABS_PROMPT);
+    release();
+    await drain;
+    expect(sheetText(m)).not.toContain("tab A words");
+  });
+
+  it("a note another tab saves after the first purge, before the marker lands, is swept too", async () => {
+    const { store: base, m } = sharedStore();
+    const tabA = await openTab();
+    const tabB = await openTab();
+    let full = false;
+    const store: KvStore = {
+      ...base,
+      set: async (k, v) => (full ? false : base.set(k, v)),
+      remove: async (k) => {
+        const freed = full;
+        full = false;
+        const ok = await base.remove(k);
+        // Storage just freed up: tab A saves before sign-out retries its marker.
+        if (freed) await tabA.enqueueSheetEvent(store, "t1", "jobB", noteEvent("n-2", "slipped in"));
+        return ok;
+      },
+    };
+    await tabA.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "queued"));
+    full = true;
+    expect(await tabB.clearSheetDataForSignOut(store, () => true)).toBe(true);
+    expect(m.has("flm.sheetsignout.v1")).toBe(true);
+    expect(sheetText(m)).toBe("");
+  });
+
+  it("a marker that never saves: sign-out says other tabs are not blocked, and Cancel keeps the technician signed in", async () => {
+    const { store: base, m } = sharedStore();
+    const store: KvStore = { ...base, set: async (k, v) => (k === "flm.sheetsignout.v1" ? false : base.set(k, v)) };
+    const tabB = await openTab();
+    const asked: string[] = [];
+    expect(await tabB.clearSheetDataForSignOut(store, (msg) => (asked.push(msg), false))).toBe(false);
+    expect(asked).toEqual([SIGN_OUT_OTHER_TABS_PROMPT]);
+    expect(SIGN_OUT_OTHER_TABS_PROMPT).toBe(
+      "This phone could not stop other open FactoryLM tabs from saving sheet items, so one may be saved here again after you sign out. Close other FactoryLM tabs first. Sign out anyway?",
+    );
+    expect(m.has("flm.sheetsignout.v1")).toBe(false);
+    expect(await tabB.clearSheetDataForSignOut(store, () => true)).toBe(true); // OK signs out
+  });
+
+  it("a write that checked the marker just before sign-out recorded it is ordered by the cross-tab lock, so the purge still removes it", async () => {
+    let tail: Promise<unknown> = Promise.resolve();
+    const request = (_name: string, fn: () => Promise<unknown>) => {
+      const run = tail.then(fn);
+      tail = run.catch(() => undefined);
+      return run;
+    };
+    vi.stubGlobal("navigator", { locks: { request } });
+    try {
+      const { store: base, m } = sharedStore();
+      let release = (): void => {};
+      const gate = new Promise<void>((r) => (release = r));
+      let hitResolve = (): void => {};
+      const hit = new Promise<void>((r) => (hitResolve = r));
+      let firstMarkerRead = true;
+      const store: KvStore = {
+        ...base,
+        get: async (k) => {
+          const v = await base.get(k); // the value as of the read, before any wait
+          if (k === "flm.sheetsignout.v1" && firstMarkerRead) {
+            firstMarkerRead = false;
+            hitResolve();
+            await gate;
+          }
+          return v;
+        },
+      };
+      const tabA = await openTab();
+      const tabB = await openTab();
+      const write = tabA.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "racing words"));
+      await hit; // tab A read "no marker" and is about to write
+      const signOut = tabB.clearSheetDataForSignOut(store, () => true);
+      await new Promise((r) => setTimeout(r, 5));
+      release();
+      await write;
+      expect(await signOut).toBe(true);
+      expect(sheetText(m)).not.toContain("racing words");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("a tab opened after the sign-out can save (control)", async () => {
     const { store, m } = sharedStore();
     const tabB = await openTab();
@@ -1473,6 +1591,65 @@ describe("#5212 malformed stored records", () => {
     ];
     await store.set(sheetQueueKey("t1", "jobA"), JSON.stringify(queued));
     expect((await loadSheetQueue(store, "t1", "jobA")).map((q) => q.event.clientEventId)).toEqual(["q-ok"]);
+  });
+
+  // Codex #5276 r6: one well-formed payload per event kind the client can write.
+  const VALID_PAYLOADS: Record<string, Record<string, unknown>> = {
+    step_marked: { stepId: "s1", done: true, note: null },
+    reading_recorded: { readingId: "00000000-0000-4000-9000-000000000001", what: "Motor amps", value: 4.2, unit: "A", source: { kind: "tech", ref: null } },
+    reading_corrected: { readingId: "00000000-0000-4000-9000-000000000001", value: 4.4, unit: "A", reason: null, source: { kind: "manual", ref: "p12" } },
+    note_added: { noteId: "00000000-0000-4000-9000-000000000002", text: "words", noteKind: "note" },
+    question_resolved: { noteId: "00000000-0000-4000-9000-000000000002", resolution: "answered" },
+    part_logged: { partEntryId: "00000000-0000-4000-9000-000000000003", item: "belt", action: "replaced", qty: 1 },
+    photo_attached: { photoId: "00000000-0000-4000-9000-000000000004", fileId: "00000000-0000-4000-9000-000000000005", caption: null },
+    handover_written: { text: "handover words" },
+    job_finished: { summary: null, openItemsAcknowledged: true },
+  };
+  const storedEvent = (i: number, kind: string, payload: unknown) => ({
+    clientEventId: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+    baseSeq: 1,
+    kind,
+    payload,
+    occurredAt: "2026-11-07T00:00:00.000Z",
+    workOrderId: null,
+  });
+  async function keptAfterLoad(events: unknown[]): Promise<string[]> {
+    const store = memoryStore();
+    const records = events.map((event) => ({ event, message: "job_finished", rejectedAt: "2026-11-07T00:00:00.000Z" }));
+    await store.set(rejectedSheetKey("t1", "nb-1", "jobA"), JSON.stringify(records));
+    const queued = events.map((event) => ({ event, queuedAt: "2026-11-07T00:00:00.000Z", attempts: 0 }));
+    await store.set(sheetQueueKey("t1", "jobA"), JSON.stringify(queued));
+    const rejected = (await loadRejectedSheetEvents(store, "t1", "nb-1", "jobA")).map((r) => r.event.clientEventId);
+    expect((await loadSheetQueue(store, "t1", "jobA")).map((q) => q.event.clientEventId)).toEqual(rejected);
+    return rejected;
+  }
+
+  it("a well-formed stored event of every kind is kept (control: the server accepts each one too)", async () => {
+    const events = Object.entries(VALID_PAYLOADS).map(([kind, payload], i) => storedEvent(i, kind, payload));
+    const olderCorrection = { ...VALID_PAYLOADS.reading_corrected }; // recorded before R2-14 added `source`
+    delete olderCorrection.source;
+    events.push(storedEvent(events.length, "reading_corrected", olderCorrection));
+    for (const e of events) expect(validateAppendEventInput(e, { now: new Date("2026-11-08T00:00:00Z") }).ok).toBe(true);
+    expect(await keptAfterLoad(events)).toEqual(events.map((e) => e.clientEventId));
+  });
+
+  it("a stored event with any wrongly typed payload field, or an unknown kind, is dropped on load", async () => {
+    const bad: unknown[] = [];
+    let i = 0;
+    for (const [kind, payload] of Object.entries(VALID_PAYLOADS)) {
+      for (const field of Object.keys(payload)) {
+        bad.push(storedEvent(i++, kind, { ...payload, [field]: { not: "renderable" } }));
+        // reading_corrected.source is optional (older events lack it), so only its wrong type is bad.
+        const optional = kind === "reading_corrected" && field === "source";
+        if (payload[field] !== null && !optional) bad.push(storedEvent(i++, kind, { ...payload, [field]: undefined }));
+      }
+    }
+    bad.push(storedEvent(i++, "job_started", { title: "x" }));
+    bad.push(storedEvent(i++, "toString", {}));
+    bad.push(storedEvent(i++, "note_added", { ...VALID_PAYLOADS.note_added, noteKind: "shout" }));
+    bad.push(storedEvent(i++, "part_logged", { ...VALID_PAYLOADS.part_logged, action: "stolen" }));
+    expect(bad.length).toBeGreaterThan(40);
+    expect(await keptAfterLoad(bad)).toEqual([]);
   });
 });
 

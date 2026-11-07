@@ -13,6 +13,7 @@
  */
 import { API_BASE } from "@/lib/config";
 import type { EventKind, JobSheetBody } from "@/capabilities/living-sheet/types";
+import { NOTE_KINDS, PART_ACTIONS, type ReadingSource } from "@/capabilities/living-sheet/types";
 import type { SheetStepView, SheetView } from "@/capabilities/living-sheet/reduce";
 import type { SheetEvent } from "@/capabilities/living-sheet/types";
 import type { SheetProposal } from "@/capabilities/living-sheet/propose";
@@ -118,12 +119,42 @@ export function sheetQueueKey(scopeId: string, jobId: string): string {
   return `${QUEUE_PREFIX}${scopeId}.${jobId}`;
 }
 
-/** Codex #5276 r5: a stored event the panel can render without throwing —
- *  the conflict and Not-accepted views read `payload` fields directly. */
+/** Codex #5276 r5/r6: a stored event the panel can render without throwing —
+ *  the conflict and Not-accepted views read `payload` fields directly, so
+ *  every field must have the type the event kind declares (types.ts). */
+type FieldCheck = (v: unknown) => boolean;
+const str: FieldCheck = (v) => typeof v === "string";
+const strOrNull: FieldCheck = (v) => v === null || typeof v === "string";
+const num: FieldCheck = (v) => typeof v === "number" && Number.isFinite(v);
+const numOrNull: FieldCheck = (v) => v === null || num(v);
+const bool: FieldCheck = (v) => typeof v === "boolean";
+const oneOf =
+  (allowed: readonly string[]): FieldCheck =>
+  (v) => typeof v === "string" && allowed.includes(v);
+const source: FieldCheck = (v) =>
+  typeof v === "object" && v !== null && oneOf(["tech", "manual"])((v as ReadingSource).kind) && strOrNull((v as ReadingSource).ref);
+const optionalSource: FieldCheck = (v) => v === undefined || v === null || source(v);
+
+const STORED_PAYLOAD_FIELDS: Record<SheetEventPost["kind"], Record<string, FieldCheck>> = {
+  step_marked: { stepId: str, done: bool, note: strOrNull },
+  reading_recorded: { readingId: str, what: str, value: num, unit: str, source },
+  reading_corrected: { readingId: str, value: num, unit: str, reason: strOrNull, source: optionalSource },
+  note_added: { noteId: str, text: str, noteKind: oneOf(NOTE_KINDS) },
+  question_resolved: { noteId: str, resolution: str },
+  part_logged: { partEntryId: str, item: str, action: oneOf(PART_ACTIONS), qty: numOrNull },
+  photo_attached: { photoId: str, fileId: str, caption: strOrNull },
+  handover_written: { text: str },
+  job_finished: { summary: strOrNull, openItemsAcknowledged: bool },
+};
+
 function isStoredSheetEvent(e: unknown): e is SheetEventPost {
   if (typeof e !== "object" || e === null) return false;
   const ev = e as Partial<SheetEventPost>;
-  return typeof ev.clientEventId === "string" && typeof ev.kind === "string" && typeof ev.payload === "object" && ev.payload !== null;
+  if (typeof ev.clientEventId !== "string" || typeof ev.kind !== "string") return false;
+  const fields = Object.hasOwn(STORED_PAYLOAD_FIELDS, ev.kind) ? STORED_PAYLOAD_FIELDS[ev.kind] : undefined;
+  if (!fields || typeof ev.payload !== "object" || ev.payload === null) return false;
+  const payload = ev.payload as Record<string, unknown>;
+  return Object.entries(fields).every(([field, check]) => check(payload[field]));
 }
 
 function parseSheetQueue(raw: string | null): QueuedSheetEvent[] {
@@ -189,9 +220,28 @@ const TAB_LOADED_AT = Date.now();
 /** Every Living Sheet write goes through here. A tab loaded before the latest
  *  sign-out writes nothing, so a late reply cannot restore purged text. */
 async function sheetSet(store: KvStore, key: string, value: string): Promise<boolean> {
-  const marker = Number(await tolerantGet(store, SIGN_OUT_MARKER_KEY));
-  if (Number.isFinite(marker) && marker >= TAB_LOADED_AT) return false;
-  return store.set(key, value);
+  return withSheetWriteLock(async () => {
+    const marker = Number(await tolerantGet(store, SIGN_OUT_MARKER_KEY));
+    if (Number.isFinite(marker) && marker >= TAB_LOADED_AT) return false;
+    return store.set(key, value);
+  });
+}
+
+/** Codex #5276 r6: the browser's cross-tab lock (Web Locks) orders each
+ *  check-then-write against the sign-out marker, so no write that missed the
+ *  marker can land after the purge that follows it. Without Web Locks (tests,
+ *  very old browsers) the write runs unlocked, as before. */
+const SHEET_WRITE_LOCK = "flm.sheetwrite.v1";
+function withSheetWriteLock<T>(fn: () => Promise<T>): Promise<T> {
+  const locks = (globalThis as { navigator?: { locks?: LockManager } }).navigator?.locks;
+  return locks ? (locks.request(SHEET_WRITE_LOCK, fn) as Promise<T>) : fn();
+}
+
+/** Codex #5276 r6: the marker counts only once it reads back. */
+function installSignOutMarker(store: KvStore, value: string): Promise<boolean> {
+  return withSheetWriteLock(
+    async () => (await store.set(SIGN_OUT_MARKER_KEY, value)) && (await tolerantGet(store, SIGN_OUT_MARKER_KEY)) === value,
+  );
 }
 
 /**
@@ -640,7 +690,8 @@ export async function clearSheetDataForSignOut(
   sheetSignOutBarrier = true;
   // Codex #5276 r5: other tabs stop writing too. Cancel restores what was there.
   const priorMarker = await tolerantGet(store, SIGN_OUT_MARKER_KEY);
-  await store.set(SIGN_OUT_MARKER_KEY, String(Date.now()));
+  const markerValue = String(Date.now());
+  let markerInstalled = await installSignOutMarker(store, markerValue);
   const cancel = async (): Promise<false> => {
     sheetSignOutBarrier = false;
     if (priorMarker === null) await store.remove(SIGN_OUT_MARKER_KEY);
@@ -657,12 +708,23 @@ export async function clearSheetDataForSignOut(
   // queue holds the only copy of that note until the server answers, so
   // Cancel must leave storage untouched.
   if (!drained && !confirm(SIGN_OUT_STILL_SENDING_PROMPT)) return cancel();
-  const { remaining } = await purgeSheetQueues(store);
+  let { remaining } = await purgeSheetQueues(store);
+  if (!markerInstalled) {
+    // Codex #5276 r6: a full phone can refuse the marker. The purge freed
+    // space, so try again, then sweep whatever another tab saved meanwhile.
+    markerInstalled = await installSignOutMarker(store, markerValue);
+    if (markerInstalled) ({ remaining } = await purgeSheetQueues(store));
+  }
+  if (!markerInstalled && !confirm(SIGN_OUT_OTHER_TABS_PROMPT)) return cancel();
   const leftBehind = signOutPurgeFailedPrompt(remaining);
   // A signed-out page keeps the barrier; Cancel keeps the technician working.
   if (leftBehind && !confirm(leftBehind)) return cancel();
   return true;
 }
+
+/** Sign-out could not record its marker, so other open tabs are not blocked. */
+export const SIGN_OUT_OTHER_TABS_PROMPT =
+  "This phone could not stop other open FactoryLM tabs from saving sheet items, so one may be saved here again after you sign out. Close other FactoryLM tabs first. Sign out anyway?";
 
 /** Sign-out could not wait out a replay that is still talking to the server. */
 export const SIGN_OUT_STILL_SENDING_PROMPT =
