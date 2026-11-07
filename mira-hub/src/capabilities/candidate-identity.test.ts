@@ -194,11 +194,13 @@ describe("isSafeCandidateSearchIdentity", () => {
       expect(isSafeCandidateSearchIdentity("Siemens MODEL: TP1200", typed, "TP1200", "Siemens")).toBe(false);
     }
     // #5268 Codex r10: the same private designation printed on the photo
-    for (const photo of ["Siemens MODEL: TP1200\nTP 1200 (asset tag)", "Siemens MODEL: TP1200\nTP 1200 (S/N)", "Siemens MODEL: TP1200\nSiemens TP 1200 tag"]) {
+    for (const photo of ["Siemens MODEL: TP1200\nTP 1200 (asset tag)", "Siemens MODEL: TP1200\nTP 1200 (S/N)", "Siemens MODEL: TP1200\nSiemens TP 1200 tag", "Siemens MODEL: TP1200\nTP 1200\n(asset tag)", "Siemens MODEL: TP1200\nTP 1200\n(S/N)", "Siemens MODEL: TP1200\r\nTP 1200\r\n(asset tag)", "Siemens MODEL: TP1200\nT P 12 00 (asset tag)"]) {
       expect(isSafeCandidateSearchIdentity(photo, "Find the manual for this", "TP1200", "Siemens")).toBe(false);
       const c = extractCandidateIdentity(photo, "Find the manual for this");
       if (c?.part && c.manufacturer) expect(isSafeCandidateSearchIdentity(photo, "Find the manual for this", c.part, c.manufacturer)).toBe(false);
     }
+    // r11 control: a distinct private value beside a public model still searches
+    expect(isSafeCandidateSearchIdentity("Siemens MODEL: TP1200\n00123456\n(asset tag)", "Find the manual for this", "TP1200", "Siemens")).toBe(true);
     // control: the same photo with a plain request still searches
     expect(isSafeCandidateSearchIdentity("Siemens MODEL: TP1200", "Find the manual for this", "TP1200", "Siemens")).toBe(true);
   });

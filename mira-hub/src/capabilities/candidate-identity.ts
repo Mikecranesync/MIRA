@@ -28,6 +28,7 @@ import {
   partLabelAfterPrivateLabel,
   partCodes,
   privateIdentifierKeys,
+  privateSuffixTails,
   serialCodes,
   unambiguousPartNumber,
 } from "./photo-part-lookup";
@@ -176,6 +177,9 @@ export function isSafeCandidateSearchIdentity(photoText: string, typed: string, 
   const keyNorm = identifierKey(key);
   // r5: nor any FRAGMENT of one ("Asset tag: PN12345678" → 12345678).
   if (texts.some((t) => [...privateIdentifierKeys(t)].some((k) => k.includes(keyNorm)))) return false;
+  // r11: nor the value a bare suffix label marks, of any spacing or wrapping
+  // ("TP 1200\n(asset tag)", "T P 12 00 (S/N)").
+  if (texts.some((t) => privateSuffixTails(t).some((tail) => tail.endsWith(keyNorm)))) return false;
   // #5268 Codex r4 — the structural wall. Once EITHER text carries a serial or
   // asset label, eligibility comes only from the PHOTO's own part label
   // (P/N, MODEL, …). Typed text then grants nothing, so no spelling, spacing

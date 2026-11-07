@@ -152,13 +152,24 @@ export function partLabelAfterPrivateLabel(text: string): boolean {
 }
 
 /**
+ * The joined text (`identifierKey`) ending at each bare serial/asset suffix
+ * label (#5268 Codex r11). A candidate that is a suffix of one is the value
+ * the label marks, however it was spaced or wrapped.
+ */
+export function privateSuffixTails(text: string): string[] {
+  const tails: string[] = [];
+  privateIdentifierKeys(text, tails);
+  return tails;
+}
+
+/**
  * Every value the text marks as private (ADR-0036: never sent to search) —
  * serial values (`serialCodes`) and the value after an asset-tag /
  * customer-identifier label — as `identifierKey`s (#5268 Codex F1). A value
  * split by spaces ("S/N: TP 1200") also yields each joined run ("TP1200",
  * "TP1200X…"), so retyping it without the spaces does not launder it.
  */
-export function privateIdentifierKeys(text: string): Set<string> {
+export function privateIdentifierKeys(text: string, tails: string[] = []): Set<string> {
   const t = normalize(text);
   const keys = new Set<string>(serialCodes(text).map(identifierKey));
   const labelledParts = new Set([...t.matchAll(PART_LABEL)].map((m) => trimCode(m[1]).toUpperCase()));
@@ -184,9 +195,16 @@ export function privateIdentifierKeys(text: string): Set<string> {
       // never vouches for the code before the label.
       const before = t.slice(Math.max(0, (m.index ?? 0) - 48), m.index ?? 0);
       const prior = before.match(/([A-Z0-9][A-Z0-9./-]{3,})[^A-Za-z0-9]+$/i);
+      const ownValue = LOCAL_VALUE.test(t.slice((m.index ?? 0) + m[0].length, (m.index ?? 0) + m[0].length + 48));
+      // #5268 Codex r11: the label marks whatever ends right before it, of any
+      // extent — wrapped lines, OCR-split tokens ("T P 12 00"), any spacing.
+      // Record the joined text ending at the label; a candidate it ends with
+      // is private (`privateSuffixTails`).
+      if (!(ownValue && prior && labelledParts.has(trimCode(prior[1]).toUpperCase()))) {
+        tails.push(identifierKey(t.slice(Math.max(0, (m.index ?? 0) - 200), m.index ?? 0)));
+      }
       if (prior) {
         const priorCode = trimCode(prior[1]).toUpperCase();
-        const ownValue = LOCAL_VALUE.test(t.slice((m.index ?? 0) + m[0].length, (m.index ?? 0) + m[0].length + 48));
         if (!(ownValue && labelledParts.has(priorCode))) {
           keys.add(identifierKey(priorCode));
           // #5268 Codex r10: a spaced value before a suffix label ("TP 1200
