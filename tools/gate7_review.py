@@ -1298,6 +1298,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     # text above (redacting first would blind the triggers to real IPs/serials).
     try:
         title, body, diff = redact(title), redact(body), redact(diff)
+        redacted_diff = diff
     except RuntimeError as e:
         # Exit 2, not 1. Round 3's medium finding was right that this was a contract
         # violation: exit 1 means "fix your invocation", but a missing canonical
@@ -1364,7 +1365,9 @@ def main(argv: Optional[list[str]] = None) -> int:
                 )
                 return 1
             try:
-                prior_source = _paid_adjudication_source(a.pr, prior_report, head_sha, diff)
+                prior_source = _paid_adjudication_source(
+                    a.pr, prior_report, head_sha, redacted_diff
+                )
             except (subprocess.CalledProcessError, OSError, ValueError, TypeError, KeyError) as e:
                 print(
                     f"Gate 7: REFUSED — prior review provenance unavailable: {e}", file=sys.stderr
@@ -1553,8 +1556,8 @@ def main(argv: Optional[list[str]] = None) -> int:
                 _, _, _, live_diff, fetched_head = fetch_pr(a.pr)
                 prior_still_current = (
                     fetched_head == head_sha
-                    and redact(live_diff) == diff
-                    and _paid_adjudication_source(a.pr, prior_report, head_sha, diff)
+                    and redact(live_diff) == redacted_diff
+                    and _paid_adjudication_source(a.pr, prior_report, head_sha, redacted_diff)
                     == prior_source
                 )
             except (
