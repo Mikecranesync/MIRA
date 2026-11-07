@@ -48,6 +48,7 @@ vi.mock("@/lib/equipment-notebooks", () => nbMock);
 
 const ragMock = vi.hoisted(() => ({
   retrieveNodeChunks: vi.fn(async () => [] as unknown[]),
+  retrieveManualChunks: vi.fn(async () => [] as unknown[]),
   appendManualContext: vi.fn((p: string, _chunks: ManualChunk[]) => p),
   // R2-33: the real buildManualUserContent folds its 3rd (visual/data-context)
   // arg in ABOVE the user question — this mock mirrors that shape so a test
@@ -61,7 +62,7 @@ vi.mock("@/lib/manual-rag", () => ragMock);
 vi.mock("@/lib/tenant-context", () => ({
   withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) => fn({ query: vi.fn(async () => ({ rows: [] })) })),
 }));
-vi.mock("@/lib/db", () => ({ default: { query: vi.fn(async () => ({ rows: [] })) } }));
+vi.mock("@/lib/db", () => ({ default: { query: vi.fn(async () => ({ rows: [] })), connect: vi.fn(async () => ({ query: vi.fn(async () => ({ rows: [] })), release: vi.fn() })) } }));
 vi.mock("@/lib/inference/persist-usage", () => ({ persistTurnUsage: vi.fn(async () => undefined) }));
 
 // Legacy (seam-off) cascade so the raw provider body carries `messages`.
@@ -168,22 +169,27 @@ const RFI_VIEW = {
 };
 
 const ORIGINAL_FLAG = process.env.NOTEBOOK_LIVING_SHEET;
+const ORIGINAL_ANSWER_GATE = process.env.NOTEBOOK_ANSWER_GATE;
 beforeEach(() => {
   process.env.NOTEBOOK_SEMANTIC_CHECK = "0";
   vi.clearAllMocks();
   process.env.NEON_DATABASE_URL = "postgres://test";
   process.env.GROQ_API_KEY = "k";
   delete process.env.NOTEBOOK_LIVING_SHEET;
+  delete process.env.NOTEBOOK_ANSWER_GATE;
   nbMock.getNotebook.mockResolvedValue({ id: NB, displayName: "Pump 07" });
   nbMock.resolveBoundAsset.mockResolvedValue({ state: "unbound" });
   nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
   ragMock.retrieveNodeChunks.mockResolvedValue([]);
+  ragMock.retrieveManualChunks.mockResolvedValue([]);
   storeMock.loadJob.mockResolvedValue({ status: "ok", view: SHEET_VIEW });
   vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream("Finish the open step."), { status: 200 })));
 });
 afterEach(() => {
   if (ORIGINAL_FLAG === undefined) delete process.env.NOTEBOOK_LIVING_SHEET;
   else process.env.NOTEBOOK_LIVING_SHEET = ORIGINAL_FLAG;
+  if (ORIGINAL_ANSWER_GATE === undefined) delete process.env.NOTEBOOK_ANSWER_GATE;
+  else process.env.NOTEBOOK_ANSWER_GATE = ORIGINAL_ANSWER_GATE;
 });
 
 describe("F18 — chat answer sees the current Living Work Sheet job", () => {
@@ -336,7 +342,7 @@ describe("#5251 — recall the saved job without promoting it to verified mainte
     expect(nbMock.recordTurn).toHaveBeenCalledWith(TENANT, NB, expect.objectContaining({ basis: "workspace_evidence" }));
   });
 
-  it("keeps saved history available in document-grounded mode while a supported manual claim retains its own citation", async () => {
+  it("keeps ordinary cited-document provenance despite saved-job context while preserving real framing", async () => {
     process.env.NOTEBOOK_LIVING_SHEET = "1";
     const docId = "55555555-5555-4555-8555-555555555555";
     const chunk: ManualChunk = {
@@ -371,9 +377,9 @@ describe("#5251 — recall the saved job without promoting it to verified mainte
     expect(user).toContain(RFI_NOTE.text);
     expect(user).toContain(RFI_HANDOVER.text);
     expect(stream).toContain('"citationId":"1"');
-    expect(stream).toContain('"basis":"workspace_evidence"');
+    expect(stream).toContain('"basis":"oem_documentation"');
     expect(nbMock.recordTurn).toHaveBeenCalledWith(TENANT, NB, expect.objectContaining({
-      basis: "workspace_evidence", evidence: expect.arrayContaining([expect.objectContaining({ docId, page: 2 })]),
+      basis: "oem_documentation", evidence: expect.arrayContaining([expect.objectContaining({ docId, page: 2 })]),
     }));
   });
 
@@ -558,6 +564,224 @@ describe("R2-33 — job context is untrusted free text; it must never reach syst
     expect(sys).not.toContain(phrase);
     const user = sentUserContent();
     expect(user).toContain(phrase);
+  });
+});
+
+describe("selected notebook-document history control", () => {
+  const selector = "MIRA_SELECTED_JOB_HISTORY";
+  const docId = "55555555-5555-4555-8555-555555555555";
+  const storedNote = { ...RFI_NOTE, text: `${RFI_NOTE.text} [1]` };
+  const chunk: ManualChunk = {
+    docId, title: "TM 1-1520-238-BD", manufacturer: "", modelNumber: "", rank: 1,
+    sourceUrl: "https://example.test/public/tm-1-1520-238-bd.pdf", sourcePage: 2,
+    content: "This manual is not to be used to maintain aircraft in peacetime.",
+  };
+  beforeEach(async () => {
+    process.env.NOTEBOOK_LIVING_SHEET = "1";
+    process.env.NOTEBOOK_ANSWER_GATE = "1";
+    nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [docId], nodeId: "n1" });
+    ragMock.retrieveNodeChunks.mockResolvedValue([chunk]);
+    storeMock.loadJob.mockResolvedValue({ status: "ok", view: { ...RFI_VIEW, notes: [storedNote] } });
+    const actualRag = await vi.importActual<typeof import("@/lib/manual-rag")>("@/lib/manual-rag");
+    ragMock.appendManualContext.mockImplementationOnce(actualRag.appendManualContext);
+    ragMock.buildManualUserContent.mockImplementationOnce(actualRag.buildManualUserContent);
+  });
+
+  it("returns scoped saved facts for an exact selector with selected notebook documents and no document citations", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(selector), { status: 200 })));
+    const res = await POST(req({ message: "Summarize the latest saved note and handover.", sourceDocIds: [docId], livingSheetJobId: JOB_ID }), params);
+    const stream = await res.text();
+    expect(ragMock.retrieveNodeChunks).toHaveBeenCalledTimes(1);
+    expect(ragMock.retrieveManualChunks).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const frames = stream.split("\n").filter((line) => line.startsWith("data: ") && line !== "data: [DONE]")
+      .map((line) => JSON.parse(line.slice(6)) as { kind: string; content?: string; citations?: unknown[] });
+    const answer = frames.filter((frame) => frame.kind === "content").map((frame) => frame.content ?? "").join("");
+    for (const fact of [storedNote.text, storedNote.by, storedNote.at, RFI_HANDOVER.text, RFI_HANDOVER.by, RFI_HANDOVER.at]) expect(answer).toContain(fact);
+    expect(answer).not.toContain(selector);
+    expect(frames.find((frame) => frame.kind === "sources")).toMatchObject({ citations: [] });
+    expect(stream).toContain('"status":"answered"');
+    expect(stream).toContain('"basis":"workspace_evidence"');
+    expect(sentSystemPrompt().indexOf(selector)).toBeGreaterThan(sentSystemPrompt().indexOf("## Documentation Rules"));
+    expect(sentSystemPrompt()).not.toContain(storedNote.text);
+    expect(nbMock.recordTurn).toHaveBeenCalledWith(TENANT, NB, expect.objectContaining({ answerText: answer, answerStatus: "answered", basis: "workspace_evidence", evidence: [] }));
+  });
+
+  it("withholds a mixed selector and supported notebook-document citation even though the OEM citation floor is inactive", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(`${selector}\nThe manual is not for peacetime maintenance [1].`), { status: 200 })));
+    const res = await POST(req({ message: "Summarize the saved note and document restriction.", sourceDocIds: [docId], livingSheetJobId: JOB_ID }), params);
+    const stream = await res.text();
+    expect(ragMock.retrieveNodeChunks).toHaveBeenCalledTimes(1);
+    expect(ragMock.retrieveManualChunks).not.toHaveBeenCalled();
+    expect(stream).not.toContain(selector);
+    expect(stream).not.toContain("The manual is not for peacetime maintenance");
+    expect(stream).toContain('"citations":[]');
+    expect(stream).toContain('"status":"insufficient_evidence"');
+    expect(nbMock.recordTurn).toHaveBeenCalledWith(TENANT, NB, expect.objectContaining({ answerStatus: "insufficient_evidence", evidence: [], answerText: expect.not.stringContaining(selector) }));
+  });
+
+  it.each([`${selector.slice(0, -3)} [1]`, `${selector.toLowerCase()} [1]`])("withholds malformed reserved control with a valid notebook citation: %s", async (reply) => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(reply), { status: 200 })));
+    const res = await POST(req({ message: "Summarize the latest saved note and handover.", sourceDocIds: [docId], livingSheetJobId: JOB_ID }), params);
+    const stream = await res.text();
+    expect(ragMock.retrieveNodeChunks).toHaveBeenCalledTimes(1);
+    expect(ragMock.retrieveManualChunks).not.toHaveBeenCalled();
+    expect(stream.toUpperCase()).not.toContain("MIRA_SELECTED_JOB_");
+    expect(stream).toContain('"citations":[]');
+    expect(stream).toContain('"status":"insufficient_evidence"');
+    expect(nbMock.recordTurn).toHaveBeenCalledWith(TENANT, NB, expect.objectContaining({
+      answerStatus: "insufficient_evidence", evidence: [], answerText: expect.not.stringMatching(/mira_selected_job_/i),
+    }));
+  });
+});
+
+describe("#5254 — selected saved history on the buffered OEM general path", () => {
+  const selector = "MIRA_SELECTED_JOB_HISTORY";
+  const question = "Summarize the latest saved note and handover for this selected job.";
+  const oemChunk: ManualChunk = {
+    title: "PowerFlex 40 manual", manufacturer: "Allen-Bradley", modelNumber: "PowerFlex 40",
+    sourceUrl: "https://example.test/powerflex-40.pdf", sourcePage: 4, rank: 1,
+    content: "F5 is an overvoltage fault. The manual describes the DC bus and deceleration settings.",
+  };
+  const storedNote = {
+    ...RFI_NOTE,
+    text: "RFIMEM-20261106-A: **document review only** [1]. I couldn't find a revision identifier. [Saved detail](https://example.test/record)",
+  };
+  beforeEach(async () => {
+    process.env.NOTEBOOK_LIVING_SHEET = "1";
+    process.env.NOTEBOOK_ANSWER_GATE = "1";
+    nbMock.getNotebook.mockResolvedValue({ id: NB, displayName: "PowerFlex 40", manufacturer: "Allen-Bradley", model: "PowerFlex 40" });
+    ragMock.retrieveManualChunks.mockResolvedValue([oemChunk]);
+    storeMock.loadJob.mockResolvedValue({ status: "ok", view: { ...RFI_VIEW, notes: [storedNote] } });
+    const actualRag = await vi.importActual<typeof import("@/lib/manual-rag")>("@/lib/manual-rag");
+    ragMock.appendManualContext.mockImplementation(actualRag.appendManualContext);
+    ragMock.buildManualUserContent.mockImplementation(actualRag.buildManualUserContent);
+  });
+  afterEach(() => {
+    ragMock.appendManualContext.mockImplementation((p) => p);
+    ragMock.buildManualUserContent.mockImplementation((q, _chunks, extra) => extra ? `${extra}\n\n${q}` : q);
+  });
+
+  it("replaces an exact whole selector with scoped literal history, zero document citations, and actual provider/model accounting", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(` \n${selector}\n `), { status: 200 })));
+    const res = await POST(req({ message: question, mode: "general", sourceDocIds: [], livingSheetJobId: JOB_ID }), params);
+    expect(res.status).toBe(200);
+    const stream = await res.text();
+    expect(ragMock.retrieveManualChunks).toHaveBeenCalledWith(expect.anything(), TENANT, expect.any(String), expect.objectContaining({ manufacturer: "Allen-Bradley", model: "PowerFlex 40" }));
+    expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const frames = stream.split("\n").filter((line) => line.startsWith("data: ") && line !== "data: [DONE]")
+      .map((line) => JSON.parse(line.slice(6)) as { kind: string; content?: string; citations?: unknown[] });
+    const answer = frames.filter((frame) => frame.kind === "content").map((frame) => frame.content ?? "").join("");
+    for (const fact of [storedNote.text, storedNote.by, storedNote.at, RFI_HANDOVER.text, RFI_HANDOVER.by, RFI_HANDOVER.at]) expect(answer).toContain(fact);
+    expect(answer).not.toContain(selector);
+    expect(answer).toContain("technician-reported");
+    expect(frames.find((frame) => frame.kind === "sources")).toMatchObject({ citations: [] });
+    expect(stream).toContain('"status":"answered"');
+    expect(stream).toContain('"basis":"workspace_evidence"');
+    const system = sentSystemPrompt();
+    expect(system.indexOf(selector)).toBeGreaterThan(system.indexOf("## Documentation Rules"));
+    expect(system).not.toContain(storedNote.text);
+    const providerBody = JSON.parse(String((vi.mocked(fetch).mock.calls[0]![1] as RequestInit).body));
+    expect(nbMock.recordTurn).toHaveBeenCalledWith(TENANT, NB, expect.objectContaining({ answerText: answer, answerStatus: "answered", basis: "workspace_evidence", model: `Groq:${providerBody.model}`, evidence: [] }));
+    const { persistTurnUsage } = await import("@/lib/inference/persist-usage");
+    await vi.waitFor(() => expect(persistTurnUsage).toHaveBeenCalledWith(expect.objectContaining({ question, answerText: answer, citationsPresent: false }), expect.objectContaining({ provider: "Groq", model: providerBody.model, status: "ok", routeReason: "legacy_cascade", inputTokens: null, outputTokens: null }), expect.anything()));
+    const [react, server, markdown] = await Promise.all([import("react"), import("react-dom/server"), import("react-markdown")]);
+    const html = server.renderToStaticMarkup(react.createElement(markdown.default, null, answer));
+    expect(html).toContain("<pre><code>");
+    expect(html).toContain("**document review only** [1]");
+    expect(html).not.toMatch(/<(?:a|img)(?:\s|>)/i);
+  });
+
+  it("preserves documentation provenance for an ordinary supported cited OEM answer despite a selected job", async () => {
+    const reply = "F5 is an overvoltage fault [1].";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(reply), { status: 200 })));
+    const res = await POST(req({ message: "What condition does the drive manual describe?", mode: "general", livingSheetJobId: JOB_ID }), params);
+    const stream = await res.text();
+    expect(ragMock.retrieveManualChunks).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(stream).toContain(reply);
+    expect(stream).toContain('"citationId":"1"');
+    expect(stream).toContain('"status":"answered"');
+    expect(stream).toContain('"basis":"oem_documentation"');
+    expect(stream).not.toContain('"basis":"workspace_evidence"');
+    expect(nbMock.recordTurn).toHaveBeenCalledWith(TENANT, NB, expect.objectContaining({
+      answerText: reply, answerStatus: "answered", basis: "oem_documentation",
+      evidence: expect.arrayContaining([expect.objectContaining({ citationId: "1", sourceUrl: oemChunk.sourceUrl, page: 4 })]),
+    }));
+  });
+
+  it("still rejects an ordinary uncited OEM specification with the same selected job", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream("The flange-bolt tightening torque is 37 N·m for this drive."), { status: 200 })));
+    const res = await POST(req({ message: "What torque does this drive require?", mode: "general", livingSheetJobId: JOB_ID }), params);
+    const stream = await res.text();
+    expect(ragMock.retrieveManualChunks).toHaveBeenCalledTimes(1);
+    expect(stream).toContain('"status":"insufficient_evidence"');
+    expect(stream).not.toContain("37 N·m");
+    expect(nbMock.recordTurn).toHaveBeenCalledWith(TENANT, NB, expect.objectContaining({ answerStatus: "insufficient_evidence" }));
+  });
+
+  it.each([`${selector}\nThe torque is 37 N·m.`, `${selector} [1]`, `${selector}\nThe torque is 37 N·m [1].`])("withholds a mixed selector response rather than selecting or shipping it: %s", async (reply) => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(reply), { status: 200 })));
+    const res = await POST(req({ message: question, mode: "general", livingSheetJobId: JOB_ID }), params);
+    const stream = await res.text();
+    expect(ragMock.retrieveManualChunks).toHaveBeenCalledTimes(1);
+    expect(stream).not.toContain(selector);
+    expect(stream).not.toContain("37 N·m");
+    expect(stream).toContain('"citations":[]');
+    expect(stream).toContain('"status":"insufficient_evidence"');
+    expect(nbMock.recordTurn).toHaveBeenCalledWith(TENANT, NB, expect.objectContaining({ answerStatus: "insufficient_evidence", evidence: [], answerText: expect.not.stringContaining(selector) }));
+  });
+
+  it("does not interpret a partial selector as a saved-record read", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(selector.slice(0, -3)), { status: 200 })));
+    const res = await POST(req({ message: question, mode: "general", livingSheetJobId: JOB_ID }), params);
+    const stream = await res.text();
+    expect(ragMock.retrieveManualChunks).toHaveBeenCalledTimes(1);
+    expect(stream).not.toContain(storedNote.text);
+    expect(stream).not.toContain(RFI_HANDOVER.text);
+    expect(stream).toContain('"status":"insufficient_evidence"');
+  });
+
+  it.each(["no selected job", "unknown job", "living-sheet flag off", "empty job"])("does not offer or select history for %s", async (scenario) => {
+    if (scenario === "unknown job") storeMock.loadJob.mockResolvedValue({ status: "job_not_found" });
+    if (scenario === "living-sheet flag off") delete process.env.NOTEBOOK_LIVING_SHEET;
+    if (scenario === "empty job") storeMock.loadJob.mockResolvedValue({ status: "ok", view: { ...RFI_VIEW, seq: 1, templateStatus: null, notes: [], handover: { current: null, history: [] } } });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(selector), { status: 200 })));
+    const res = await POST(req({ message: question, mode: "general", ...(scenario === "no selected job" ? {} : { livingSheetJobId: JOB_ID }) }), params);
+    const stream = await res.text();
+    expect(ragMock.retrieveManualChunks).toHaveBeenCalledTimes(1);
+    expect(sentSystemPrompt()).not.toContain(selector);
+    expect(stream).not.toContain(selector);
+    expect(stream).not.toContain(storedNote.text);
+    expect(stream).toContain('"status":"insufficient_evidence"');
+    expect(stream).not.toContain('"basis":"workspace_evidence"');
+  });
+
+  it("keeps gate-off legacy streaming and offers no selector", async () => {
+    process.env.NOTEBOOK_ANSWER_GATE = "0";
+    const reply = "Ordinary legacy explanation without citations.";
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(reply), { status: 200 })));
+    const res = await POST(req({ message: question, mode: "general", livingSheetJobId: JOB_ID }), params);
+    const stream = await res.text();
+    expect(ragMock.retrieveManualChunks).toHaveBeenCalledTimes(1);
+    expect(sentSystemPrompt()).not.toContain(selector);
+    expect(stream).toContain(reply);
+    expect(nbMock.recordTurn).toHaveBeenCalledWith(TENANT, NB, expect.objectContaining({ answerText: reply }));
+  });
+});
+
+describe("empty selected-job evidence boundary", () => {
+  it("keeps a valid metadata-only job at insufficient evidence with null basis and no provider when manual hits are empty", async () => {
+    process.env.NOTEBOOK_LIVING_SHEET = "1";
+    nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: ["55555555-5555-4555-8555-555555555555"], nodeId: "n1" });
+    storeMock.loadJob.mockResolvedValue({ status: "ok", view: { ...RFI_VIEW, seq: 1, templateStatus: null, notes: [], handover: { current: null, history: [] } } });
+    const res = await POST(req({ message: "What history is recorded?", livingSheetJobId: JOB_ID }), params);
+    const stream = await res.text();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(stream).toContain('"status":"insufficient_evidence"');
+    expect(stream).not.toContain('"basis":"workspace_evidence"');
+    expect(nbMock.recordTurn).toHaveBeenCalledWith(TENANT, NB, expect.objectContaining({ answerStatus: "insufficient_evidence", basis: null, model: null }));
   });
 });
 
