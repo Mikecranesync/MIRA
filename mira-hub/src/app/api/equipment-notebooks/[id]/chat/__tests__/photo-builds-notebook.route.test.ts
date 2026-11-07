@@ -229,6 +229,8 @@ describe("a nameplate photo starts the manual search on the same turn", () => {
     ["a serial retyped without its dash", "SMC S/N: AB-1234567", "Find the manual for SMC MODEL: AB1234567"],
     ["a bracketed suffix asset tag typed back as MODEL", "SMC 12345678 (asset tag)", "Find the manual for SMC MODEL: 12345678"],
     ["a suffix asset tag typed back as MODEL", "SMC 12345678 tag", "Find the manual for SMC MODEL: 12345678"],
+    ["a bracketed suffix asset tag before a rating", "SMC 12345678 (asset tag), 24VDC", "Find the manual for SMC MODEL: 12345678"],
+    ["a suffix asset tag with a rating on the next line", "SMC 12345678 tag\n24VDC", "Find the manual for SMC MODEL: 12345678"],
   ])("%s → no search, no proposal of it", async (_name, plate, message) => {
     visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
       observationId: "obs", sessionId: "session", text: plate, obsKind: "look", trust: "candidate", fileId: PHOTO, hazards: [],

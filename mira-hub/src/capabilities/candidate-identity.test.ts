@@ -207,7 +207,7 @@ describe("isSafeCandidateSearchIdentity", () => {
   it("refuses a spaced serial retyped joined under a MODEL label", () => {
     expect(isSafeCandidateSearchIdentity("Siemens S/N: TP 1200", "Find the manual for Siemens MODEL: TP1200", "TP1200", "Siemens")).toBe(false);
   });
-  it.each([["SMC 12345678 (asset tag)"], ["SMC 12345678 tag"]])(
+  it.each([["SMC 12345678 (asset tag)"], ["SMC 12345678 tag"], ["SMC 12345678 (asset tag), 24VDC"], ["SMC 12345678 tag\n24VDC"]])(
     "refuses a suffix-labelled asset tag (%s) typed back under a MODEL label (#5268 Codex r2 F1)",
     (photo) => {
       expect(isSafeCandidateSearchIdentity(photo, "Find the manual for SMC MODEL: 12345678", "12345678", "SMC")).toBe(false);
