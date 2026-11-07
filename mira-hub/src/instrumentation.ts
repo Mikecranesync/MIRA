@@ -9,8 +9,8 @@
  */
 export async function register(): Promise<void> {
   if (process.env.NEXT_RUNTIME === "nodejs") {
-    // #5265: under MIRA_PROFILE=edge the Hub refuses to start with a cloud
-    // credential set or an outbound endpoint off the device. A thrown hook leaves Next listening and
+    // #5265: under MIRA_PROFILE=edge the Hub refuses to start with a listed
+    // cloud credential set or a listed endpoint off loopback. A thrown hook leaves Next listening and
     // answering 500 to everything; exit instead so the operator sees a stopped
     // service and the reason, not a half-up one.
     const { assertEdgeStartupGuard } = await import("./lib/inference/edge-profile");

@@ -2,17 +2,21 @@
  * #5265 — the EDGE profile (`MIRA_PROFILE=edge`): the same Hub on one device.
  * Notebook answers are the retrieved manual passages, verbatim, with no answer
  * model (capabilities/edge-passages.ts). This module is the startup guard: the
- * process refuses to start while a cloud credential is set, or while an
- * outbound endpoint a Hub lane would call resolves off the device.
+ * process refuses to start while a LISTED cloud credential is set, or while a
+ * LISTED endpoint variable's effective URL names a non-loopback host.
  *
- * It is a startup guard, not proof of confinement: the network-blocked run with
- * a traffic monitor (plan W5) is what shows nothing leaves the device.
+ * It checks configuration only. It does not cover destinations that arrive per
+ * request or from stored data: the OpenWebUI and Telegram connect routes, the
+ * Dropbox/Google external-download upload path, stored Google bindings, and
+ * Command Center gateway probes. It does no DNS resolution or redirect
+ * checking. Closing those (#5265, W1) and the network-blocked run with a
+ * traffic monitor (plan W5) are what show nothing leaves the device.
  *
  * Field evidence: factorylm PR #237, docs/air-force-rfi/w0-tablet-spike.md
  * (Galaxy Tab S9 FE, 2026-11-07).
  */
 
-/** Cloud credentials a Hub lane reads (AI providers, evidence judge, web search, email, analytics, chat). Non-empty = refuse. */
+/** Cloud credentials a Hub lane reads (AI providers, evidence judge, web search, email, analytics, chat, CRM lead capture, Google sign-in). Non-empty = refuse. */
 const CLOUD_CREDENTIALS = [
   "GROQ_API_KEY",
   "CEREBRAS_API_KEY",
@@ -28,6 +32,9 @@ const CLOUD_CREDENTIALS = [
   "SLACK_BOT_TOKEN",
   "TELEGRAM_BOT_TOKEN",
   "FACTORYLMDIAGNOSE_TELEGRAM_BOT_TOKEN",
+  "HUBSPOT_API_KEY",
+  "GOOGLE_CLIENT_SECRET",
+  "HUB_AUTH_GOOGLE_CLIENT_SECRET",
 ] as const;
 
 /**
@@ -74,8 +81,8 @@ function offDevice(value: string): boolean {
 }
 
 /**
- * Throws when the edge profile is on and a cloud credential is set or an
- * outbound endpoint resolves off the device. Names the variables, never their
+ * Throws when the edge profile is on and a listed credential is set or a
+ * listed endpoint's effective URL is not loopback. Names the variables, never their
  * values or hosts. A no-op when the profile is off.
  */
 export function assertEdgeStartupGuard(): void {

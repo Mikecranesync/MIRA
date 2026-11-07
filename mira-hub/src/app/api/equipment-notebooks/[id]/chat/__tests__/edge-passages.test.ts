@@ -77,6 +77,7 @@ const seamMock = vi.hoisted(() => ({
   canonicalSeamEnabled: vi.fn(() => true),
   canonicalProviders: vi.fn(() => [{ name: "groq", url: "https://x/y", key: "k", model: "m" }]),
   buildRequestBody: vi.fn(() => ({})),
+  requestDialectFields: vi.fn(() => ({})),
   maxOutputTokens: vi.fn(() => 1000),
   routeReasonFor: vi.fn(() => "ok"),
   exhaustedUsage: vi.fn(() => ({ status: "error" })),
@@ -272,24 +273,50 @@ describe("#5265 edge profile — the manual speaks", () => {
   });
 
   // The device runs with the semantic check at its default (on) and no
-  // provider to judge with: a flagged turn cannot be verified, so it gets the
-  // controlled fallback, never the passages unjudged; an unflagged turn is served.
-  it("device default (semantic check on, no provider): a flagged turn gets the controlled fallback, calls no model", async () => {
-    delete process.env.NOTEBOOK_SEMANTIC_CHECK;
-    const out = await frames(await POST(req({ message: "there is smoke from the drive panel, what do I check", sourceDocIds: [DOC_A] }), params));
-    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
-    const content = contentOf(out);
-    expect(content).toContain(SEMANTIC_UNVERIFIED_FALLBACK);
-    expect(content).not.toContain(HOWTO_CHUNK.content);
-  });
+  // provider at all (no credentials): a flagged turn cannot be verified, so it
+  // gets the controlled fallback, never the passages unjudged; an unflagged
+  // turn is served.
+  describe("device default: semantic check on, no provider configured", () => {
+    beforeEach(() => {
+      delete process.env.NOTEBOOK_SEMANTIC_CHECK;
+      seamMock.canonicalProviders.mockReturnValue([]);
+    });
+    afterEach(() => {
+      seamMock.canonicalProviders.mockReturnValue([{ name: "groq", url: "https://x/y", key: "k", model: "m" }]);
+    });
 
-  it("device default (semantic check on, no provider): an unflagged how-to is still served as passages", async () => {
-    delete process.env.NOTEBOOK_SEMANTIC_CHECK;
-    const out = await frames(await POST(req({ message: ASK, sourceDocIds: [DOC_A] }), params));
-    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
-    const content = contentOf(out);
-    expect(content.startsWith(EDGE_PASSAGES_LEAD)).toBe(true);
-    expect(content).toContain(HOWTO_CHUNK.content);
+    it("a flagged turn gets the controlled fallback, live and persisted, and calls no model", async () => {
+      const out = await frames(await POST(req({ message: "there is smoke from the drive panel, what do I check", sourceDocIds: [DOC_A] }), params));
+      expect(seamMock.canonicalProviders).toHaveBeenCalled();
+      expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+      expect(out).toContainEqual({ kind: "safety", trigger: "unsafe-answer:semantic-unverified" });
+      const content = contentOf(out);
+      expect(content).toBe(SEMANTIC_UNVERIFIED_FALLBACK);
+      expect(out.find((f) => f.kind === "sources")?.citations).toEqual([]);
+      const persisted = (vi.mocked(nbMock.recordTurn).mock.calls[0] as unknown as unknown[])[2] as {
+        answerText: string;
+        basis: unknown;
+        evidence: { kind: string; trigger?: string }[];
+      };
+      expect(persisted.answerText).toBe(SEMANTIC_UNVERIFIED_FALLBACK);
+      expect(persisted.basis).toBeNull();
+      expect(persisted.evidence).toEqual(
+        expect.arrayContaining([
+          { kind: "safety_notice", trigger: "unsafe-answer:semantic-unverified" },
+          { kind: "safety_stop", trigger: "unsafe-answer:semantic-unverified" },
+        ]),
+      );
+      expect(persisted.evidence.some((e) => "citationId" in e)).toBe(false);
+    });
+
+    it("an unflagged how-to is still served as passages, and calls no model", async () => {
+      const out = await frames(await POST(req({ message: ASK, sourceDocIds: [DOC_A] }), params));
+      expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+      expect(out.some((f) => f.kind === "safety")).toBe(false);
+      const content = contentOf(out);
+      expect(content.startsWith(EDGE_PASSAGES_LEAD)).toBe(true);
+      expect(content).toContain(HOWTO_CHUNK.content);
+    });
   });
 
   it("control: with the profile off the same turn goes to the model", async () => {
