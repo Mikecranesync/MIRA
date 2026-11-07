@@ -222,6 +222,21 @@ describe("a nameplate photo starts the manual search on the same turn", () => {
     expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
   });
 
+  // #5268 Codex F1: a private value from the photo typed back under a MODEL
+  // label (or with its punctuation dropped) never starts a search.
+  it.each([
+    ["an asset tag typed back as MODEL", "SMC Asset tag: 12345678", "Find the manual for SMC MODEL: 12345678"],
+    ["a serial retyped without its dash", "SMC S/N: AB-1234567", "Find the manual for SMC MODEL: AB1234567"],
+  ])("%s → no search, no proposal of it", async (_name, plate, message) => {
+    visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+      observationId: "obs", sessionId: "session", text: plate, obsKind: "look", trust: "candidate", fileId: PHOTO, hazards: [],
+    });
+    const f = await frames(await POST(req({ message, mode: "general", visualEvidence: { fileId: PHOTO } }), params));
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    const proposal = JSON.stringify(f.find((x) => x.kind === "identity_proposal") ?? null);
+    expect(proposal).not.toMatch(/12345678|AB-?1234567/);
+  });
+
   it("control: the one kill switch off → nothing starts", async () => {
     acqMock.acquisitionEnabled.mockReturnValue(false);
     await (await plateTurn()).text();

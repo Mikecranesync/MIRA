@@ -20,7 +20,7 @@
  */
 import { oemMakerTable } from "@/lib/manual-discovery";
 import { namesOnlyThisMachine } from "./identity-proposal";
-import { partCodes, serialCodes, unambiguousPartNumber } from "./photo-part-lookup";
+import { identifierKey, partCodes, privateIdentifierKeys, serialCodes, unambiguousPartNumber } from "./photo-part-lookup";
 
 export type CandidateIdentity = { manufacturer: string | null; part: string };
 
@@ -160,6 +160,11 @@ export function isSafeCandidateSearchIdentity(photoText: string, typed: string, 
   // text carries it unlabelled — the technician typing the photo's serial back
   // does not launder it (#4172 Codex post-cap F6, ADR-0036).
   if (texts.some((t) => serialCodes(t).includes(key))) return false;
+  // #5268 Codex F1: nor may a serial or asset-tag value from either text come
+  // back under another label ("MODEL: 12345678") or with its punctuation or
+  // spaces changed (AB-1234567 → AB1234567, "TP 1200" → TP1200).
+  const keyNorm = identifierKey(key);
+  if (texts.some((t) => privateIdentifierKeys(t).has(keyNorm))) return false;
   const codes = new Set(texts.flatMap((t) => partCodes(t).map((c) => c.toUpperCase())));
   if (codes.size !== 1 || !codes.has(key)) return false;
   const proposed = new Set(makerGroups(manufacturer).keys());
