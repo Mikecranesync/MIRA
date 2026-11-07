@@ -1342,6 +1342,28 @@ def test_paid_adjudication_redacts_both_inputs_without_truncating_complete_diff(
     assert "TAIL_EVIDENCE" in prompt and g7.redact(diff) in prompt
 
 
+def test_paid_adjudication_stable_raw_diff_redacts_identically_at_post_time(tmp_path, monkeypatch):
+    from cheap_review_check import parse_envelope
+
+    diff = (
+        "diff --git a/docs/a.md b/docs/a.md\n--- a/docs/a.md\n+++ b/docs/a.md\n"
+        '@@ -0,0 +1 @@\n+host=192.168.1.123 PASSWORD="abcdefghijklmno("\n'
+    )
+    state = _paid_adjudication_case(tmp_path, monkeypatch, diff=diff)
+    redacted = g7.redact(diff)
+    assert redacted != diff and "192.168.1.123" not in redacted
+    assert "abcdefghijklmno(" not in redacted
+    assert g7.main(state["args"]) == 0
+    assert len(state["paid"]) == 1 and not state["free"]
+    prompt = state["paid"][0][0]
+    assert redacted in prompt
+    assert "192.168.1.123" not in prompt and "abcdefghijklmno(" not in prompt
+    assert len(state["posted"]) == 1
+    envelope = parse_envelope(state["posted"][0])
+    assert envelope and envelope["verdict"] == "PASS" and envelope["scope"] == "full"
+    assert envelope["head"] == state["head"] == "c" * 40
+
+
 def test_free_local_adjudication_remains_free_without_provenance_or_post(tmp_path, monkeypatch):
     state = _paid_adjudication_case(tmp_path, monkeypatch)
     args = state["args"][: state["args"].index("--paid")] + ["-o", str(tmp_path / "free.md")]
