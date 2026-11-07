@@ -173,14 +173,8 @@ import {
   type TurnUsage,
 } from "@/lib/inference/canonical-cascade";
 import { notebookCascade } from "@/lib/inference/legacy-cascade";
-import {
-  EDGE_ATTEMPT_TIMEOUT_MS,
-  EDGE_PASSAGES_LABEL,
-  edgeProfileEnabled,
-  edgeRequestOverrides,
-  renderEdgePassages,
-  selectEdgePassages,
-} from "@/lib/inference/edge-profile";
+import { EDGE_ATTEMPT_TIMEOUT_MS, edgeProfileEnabled, edgeRequestOverrides } from "@/lib/inference/edge-profile";
+import { EDGE_PASSAGES_LABEL, renderEdgePassages, selectEdgePassages } from "@/capabilities/edge-passages";
 import { persistTurnUsage } from "@/lib/inference/persist-usage";
 import {
   logProvidersExhausted,
@@ -3627,9 +3621,25 @@ async function handleChatTurn(
   // win; this only replaces the model-written answer.
   if (edgeProfileEnabled()) {
     const passages = selectEdgePassages(chunks, citations, message);
-    const edgeText = renderEdgePassages(passages);
     const edgeCitations = passages.map((p) => p.citation);
     const answered = passages.length > 0;
+    // #4508 contract: the manual's own safety statement on a cited page, read
+    // from the whole page (not just the quoted window), the same way the
+    // generated path does — and shown in the answer text, which here is all
+    // the technician reads.
+    let edgePageChunks: Awaited<ReturnType<typeof retrieveCitedPageChunks>> = [];
+    const edgeCitedPages = citedPagesFor(edgeCitations, chunks);
+    if (edgeCitedPages.length > 0) {
+      try {
+        edgePageChunks = await withTenantContext(ctx.tenantId, (c) =>
+          retrieveCitedPageChunks(c, ctx.tenantId, edgeCitedPages, { approvedSourceDocIds: docIds, keep: (t) => extractManualSafetyStatement(t) !== null }),
+        );
+      } catch (err) {
+        console.warn("[notebook-chat] edge cited-page read failed (notice from retrieved chunks only):", err instanceof Error ? err.message : err);
+      }
+    }
+    const edgeSafetyEntry = manualSafetyStatementForCitations(edgeCitations, chunks, edgePageChunks);
+    const edgeText = renderEdgePassages(passages, edgeSafetyEntry);
     lifecycleOutcome = answered ? "answered" : "abstained";
     rec.stage("answer_gate", {
       invoked: true,
@@ -3659,9 +3669,12 @@ async function handleChatTurn(
       answerText: edgeText,
       enabledSourceDocIds: docIds,
       evidence: [
-        ...disputeEntries,
+        ...hazardEntries,
         ...(safetyTrigger ? [{ kind: "safety_notice", trigger: safetyTrigger } satisfies SafetyNoticeEntry] : []),
+        ...(edgeSafetyEntry ? [edgeSafetyEntry] : []),
         ...edgeCitations,
+        ...(visualEntry ? [visualEntry] : []),
+        ...disputeEntries,
       ],
       model: null,
       basis: answered ? "oem_documentation" : null,
@@ -3701,7 +3714,12 @@ async function handleChatTurn(
         controller.enqueue(enc.encode(sse(sources)));
         if (answered) {
           const evidence: NotebookBasisEvidenceFrame = { kind: "evidence", basis: "oem_documentation", label: EDGE_PASSAGES_LABEL };
+          if (visualEntry) evidence.visualEvidence = visualEntry;
+          if (hazardEntries.length > 0) evidence.hazardEntries = hazardEntries;
+          if (identityDisputed) evidence.identityDisputed = true;
           controller.enqueue(enc.encode(sse(evidence)));
+        } else if (visualEntry) {
+          controller.enqueue(enc.encode(sse(visualEvidenceMarker(visualEntry))));
         }
         const status: NotebookStatusFrame = { kind: "status", status: answered ? "answered" : "insufficient_evidence" };
         controller.enqueue(enc.encode(sse(status)));

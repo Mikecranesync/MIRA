@@ -56,6 +56,7 @@ const ragMock = vi.hoisted(() => ({
   appendManualContext: vi.fn((p: string) => p),
   buildManualUserContent: vi.fn((q: string) => q),
   neutralizeReferenceText: vi.fn((t: string) => t),
+  retrieveCitedPageChunks: vi.fn(async () => [] as unknown[]),
 }));
 vi.mock("@/lib/manual-rag", () => ragMock);
 
@@ -133,6 +134,7 @@ beforeEach(() => {
   nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: "node-1" });
   nbMock.getNotebook.mockResolvedValue({ id: NB, displayName: "Aircraft weight and balance", manufacturer: "FAA", model: "FAA-H-8083-1B" });
   ragMock.retrieveNodeChunks.mockResolvedValue([INDEX_CHUNK, HOWTO_CHUNK]);
+  ragMock.retrieveCitedPageChunks.mockResolvedValue([]);
   filesMock.photoLinkedToTarget.mockResolvedValue(null);
   providerAnswers("Use the equipment list.");
   vi.spyOn(console, "warn").mockImplementation(() => undefined);
@@ -184,6 +186,44 @@ describe("#5265 edge profile — the manual speaks", () => {
     expect((out.find((f) => f.kind === "sources") as { citations: unknown[] }).citations).toEqual([]);
     const persisted = (vi.mocked(nbMock.recordTurn).mock.calls[0] as unknown as unknown[])[2] as { answerStatus: string };
     expect(persisted.answerStatus).toBe("insufficient_evidence");
+  });
+
+  it("keeps the manual's warning that sits in a sibling chunk of the cited page: in the text and persisted", async () => {
+    // The warning is NOT in the retrieved chunk (so not in any quoted window); only
+    // the rest-of-page read returns it — Codex #5266 F2.
+    ragMock.retrieveCitedPageChunks.mockResolvedValue([
+      { content: "WARNING: Personal injury may result if the aircraft is jacked on an unlevel surface.", sourceUrl: HOWTO_CHUNK.sourceUrl, sourcePage: 43 },
+    ]);
+    const out = await frames(await POST(req({ message: ASK, sourceDocIds: [DOC_A] }), params));
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    expect(ragMock.retrieveCitedPageChunks).toHaveBeenCalled();
+    const content = contentOf(out);
+    expect(content).toContain('WARNING (page 43): "Personal injury may result if the aircraft is jacked on an unlevel surface."');
+    expect(content.indexOf("WARNING")).toBeLessThan(content.indexOf(HOWTO_CHUNK.content));
+    const persisted = (vi.mocked(nbMock.recordTurn).mock.calls[0] as unknown as unknown[])[2] as {
+      evidence: Array<Record<string, unknown>>;
+    };
+    const entry = persisted.evidence.find((e) => e.kind === "manual_safety_statement");
+    expect(entry).toMatchObject({ marker: "WARNING", page: 43, sourceDocId: DOC_A });
+    expect(persisted.evidence.some((e) => e.kind === "safety_notice")).toBe(false);
+  });
+
+  it.each([
+    ["usable passage", () => [INDEX_CHUNK, HOWTO_CHUNK]],
+    ["index page only", () => [INDEX_CHUNK]],
+  ])("a verified photo stays on the turn (%s) — live and persisted", async (_label, retrieved) => {
+    const PHOTO = "44444444-4444-4444-8444-444444444444";
+    filesMock.photoLinkedToTarget.mockResolvedValue({ fileId: PHOTO, capturedAt: "2026-11-07T12:00:00.000Z" });
+    ragMock.retrieveNodeChunks.mockResolvedValue(retrieved());
+    const out = await frames(
+      await POST(req({ message: ASK, sourceDocIds: [DOC_A], visualEvidence: { fileId: PHOTO, capturedAt: "ignored" } }), params),
+    );
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    expect(JSON.stringify(out.filter((f) => f.kind === "evidence"))).toContain(PHOTO);
+    const persisted = (vi.mocked(nbMock.recordTurn).mock.calls[0] as unknown as unknown[])[2] as {
+      evidence: Array<Record<string, unknown>>;
+    };
+    expect(JSON.stringify(persisted.evidence)).toContain(PHOTO);
   });
 
   it("control: with the profile off the same turn goes to the model", async () => {
