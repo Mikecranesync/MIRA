@@ -13,6 +13,7 @@
  */
 import { API_BASE } from "@/lib/config";
 import type { EventKind, JobSheetBody } from "@/capabilities/living-sheet/types";
+import { NOTE_KINDS, PART_ACTIONS, type ReadingSource } from "@/capabilities/living-sheet/types";
 import type { SheetStepView, SheetView } from "@/capabilities/living-sheet/reduce";
 import type { SheetEvent } from "@/capabilities/living-sheet/types";
 import type { SheetProposal } from "@/capabilities/living-sheet/propose";
@@ -32,8 +33,11 @@ export interface KvStore {
    *  a real save to the caller — the caller needs to know the write was
    *  lost so it can keep the form contents and refuse to say "Saved". */
   set(key: string, value: string): Promise<boolean>;
-  remove(key: string): Promise<void>;
-  keys(): Promise<string[]>;
+  /** Returns whether the key is verifiably gone. Codex #5276: a removal that
+   *  failed, or that could not be checked, must never look like a deletion. */
+  remove(key: string): Promise<boolean>;
+  /** null = storage could not be listed (blocked access), never "empty". */
+  keys(): Promise<string[] | null>;
 }
 
 /** The one production adapter. Every access is try/catch'd: a private
@@ -58,9 +62,12 @@ export const localStorageStore: KvStore = {
   },
   async remove(key) {
     try {
-      if (typeof window !== "undefined") window.localStorage.removeItem(key);
+      if (typeof window === "undefined") return false;
+      window.localStorage.removeItem(key);
+      return window.localStorage.getItem(key) === null;
     } catch {
-      /* ignore */
+      /* blocked storage: the key may still be on the phone */
+      return false;
     }
   },
   async keys() {
@@ -73,7 +80,8 @@ export const localStorageStore: KvStore = {
       }
       return out;
     } catch {
-      return [];
+      /* blocked storage: unknown, not empty */
+      return null;
     }
   },
 };
@@ -111,25 +119,200 @@ export function sheetQueueKey(scopeId: string, jobId: string): string {
   return `${QUEUE_PREFIX}${scopeId}.${jobId}`;
 }
 
-/** Tolerant load: corrupt/absent state is an empty queue, never a crash. */
-export async function loadSheetQueue(store: KvStore, scopeId: string, jobId: string): Promise<QueuedSheetEvent[]> {
+/** Codex #5276 r5/r6: a stored event the panel can render without throwing —
+ *  the conflict and Not-accepted views read `payload` fields directly, so
+ *  every field must have the type the event kind declares (types.ts). */
+type FieldCheck = (v: unknown) => boolean;
+const str: FieldCheck = (v) => typeof v === "string";
+const strOrNull: FieldCheck = (v) => v === null || typeof v === "string";
+const num: FieldCheck = (v) => typeof v === "number" && Number.isFinite(v);
+const numOrNull: FieldCheck = (v) => v === null || num(v);
+const bool: FieldCheck = (v) => typeof v === "boolean";
+const oneOf =
+  (allowed: readonly string[]): FieldCheck =>
+  (v) => typeof v === "string" && allowed.includes(v);
+const source: FieldCheck = (v) =>
+  typeof v === "object" && v !== null && oneOf(["tech", "manual"])((v as ReadingSource).kind) && strOrNull((v as ReadingSource).ref);
+const optionalSource: FieldCheck = (v) => v === undefined || v === null || source(v);
+
+const STORED_PAYLOAD_FIELDS: Record<SheetEventPost["kind"], Record<string, FieldCheck>> = {
+  step_marked: { stepId: str, done: bool, note: strOrNull },
+  reading_recorded: { readingId: str, what: str, value: num, unit: str, source },
+  reading_corrected: { readingId: str, value: num, unit: str, reason: strOrNull, source: optionalSource },
+  note_added: { noteId: str, text: str, noteKind: oneOf(NOTE_KINDS) },
+  question_resolved: { noteId: str, resolution: str },
+  part_logged: { partEntryId: str, item: str, action: oneOf(PART_ACTIONS), qty: numOrNull },
+  photo_attached: { photoId: str, fileId: str, caption: strOrNull },
+  handover_written: { text: str },
+  job_finished: { summary: strOrNull, openItemsAcknowledged: bool },
+};
+
+function isStoredSheetEvent(e: unknown): e is SheetEventPost {
+  if (typeof e !== "object" || e === null) return false;
+  const ev = e as Partial<SheetEventPost>;
+  if (typeof ev.clientEventId !== "string" || typeof ev.kind !== "string") return false;
+  const fields = Object.hasOwn(STORED_PAYLOAD_FIELDS, ev.kind) ? STORED_PAYLOAD_FIELDS[ev.kind] : undefined;
+  if (!fields || typeof ev.payload !== "object" || ev.payload === null) return false;
+  const payload = ev.payload as Record<string, unknown>;
+  return Object.entries(fields).every(([field, check]) => check(payload[field]));
+}
+
+function parseSheetQueue(raw: string | null): QueuedSheetEvent[] {
   try {
-    const raw = await store.get(sheetQueueKey(scopeId, jobId));
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(
-      (q): q is QueuedSheetEvent =>
-        typeof q === "object" && q !== null && typeof (q as QueuedSheetEvent).event?.clientEventId === "string",
+      (q): q is QueuedSheetEvent => typeof q === "object" && q !== null && isStoredSheetEvent((q as QueuedSheetEvent).event),
     );
   } catch {
     return [];
   }
 }
 
+async function tolerantGet(store: KvStore, key: string): Promise<string | null> {
+  try {
+    return await store.get(key);
+  } catch {
+    return null;
+  }
+}
+
+/** Codex #5276: the read in front of an overwrite or delete. `get` stays
+ *  tolerant for read-only loads, so an empty read here is trusted only when
+ *  storage lists the key as absent; otherwise this returns null (unreadable)
+ *  and the caller must not write, so a failed read can never wipe what is
+ *  stored. */
+async function readBeforeWrite(store: KvStore, key: string): Promise<{ raw: string | null } | null> {
+  const raw = await tolerantGet(store, key);
+  if (raw !== null) return { raw };
+  try {
+    const keys = await store.keys();
+    return keys !== null && !keys.includes(key) ? { raw: null } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Tolerant load: corrupt/absent state is an empty queue, never a crash. */
+export async function loadSheetQueue(store: KvStore, scopeId: string, jobId: string): Promise<QueuedSheetEvent[]> {
+  return parseSheetQueue(await tolerantGet(store, sheetQueueKey(scopeId, jobId)));
+}
+
+/** The queue as read before a write; null when it could not be read. */
+async function loadSheetQueueForWrite(store: KvStore, scopeId: string, jobId: string): Promise<QueuedSheetEvent[] | null> {
+  const read = await readBeforeWrite(store, sheetQueueKey(scopeId, jobId));
+  return read && parseSheetQueue(read.raw);
+}
+
 /** Returns whether the write actually persisted (see KvStore.set). */
 async function saveSheetQueue(store: KvStore, scopeId: string, jobId: string, q: QueuedSheetEvent[]): Promise<boolean> {
-  return store.set(sheetQueueKey(scopeId, jobId), JSON.stringify(q));
+  return sheetSet(store, sheetQueueKey(scopeId, jobId), JSON.stringify(q));
+}
+
+/** Codex #5276 r5: sign-out in ANY tab writes this (outside the sheet
+ *  prefixes, so the purge keeps it). Tabs share device storage but not
+ *  module state, so this is the cross-tab half of the sign-out barrier. */
+export const SIGN_OUT_MARKER_KEY = "flm.sheetsignout.v1";
+/** Codex #5276 r11: how many sign-outs had finished when this page loaded,
+ *  read synchronously from device storage as the module loads. A sign-out that
+ *  finishes later ended this tab's session. A count, not a clock time, so a tab
+ *  opened in the same millisecond as a finish is still ordered exactly. */
+const TAB_LOADED_GEN = loadedSignOutGeneration();
+function loadedSignOutGeneration(): number {
+  try {
+    const ls = typeof window === "undefined" ? undefined : window.localStorage;
+    return ls ? parseSignOutMarker(ls.getItem(SIGN_OUT_MARKER_KEY)).gen : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** Every Living Sheet write goes through here. A tab loaded before the latest
+ *  sign-out writes nothing, so a late reply cannot restore purged text, and no
+ *  tab writes while a sign-out is in progress anywhere. */
+async function sheetSet(store: KvStore, key: string, value: string): Promise<boolean> {
+  return withSheetWriteLock(async () => {
+    // Codex #5276 r12 audit: a marker that cannot be read blocks the write,
+    // never lets it through as "no sign-out".
+    const marker = await readBeforeWrite(store, SIGN_OUT_MARKER_KEY);
+    if (marker === null || signOutBlocksWrites(parseSignOutMarker(marker.raw))) return false;
+    return store.set(key, value);
+  });
+}
+
+/** Codex #5276 r9/r11: the marker records how many sign-outs have finished
+ *  (`gen`) and the in-progress ones (`pending`, one unique id each). Ownership
+ *  is the id, never a clock value, so two sign-outs in the same millisecond
+ *  never share it, and Cancel only ever removes its own id. Stored as a plain
+ *  number when nothing is pending. */
+type SignOutMarker = { gen: number; pending: Record<string, number> };
+
+/** An in-progress sign-out left behind by a closed or crashed tab stops
+ *  blocking writes after this long. */
+export const SIGN_OUT_PENDING_MAX_MS = 10 * 60 * 1000;
+
+function parseSignOutMarker(raw: string | null): SignOutMarker {
+  const empty: SignOutMarker = { gen: 0, pending: {} };
+  const count = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0);
+  if (raw === null || raw.trim() === "") return empty;
+  if (Number.isFinite(Number(raw))) return { gen: count(Number(raw)), pending: {} };
+  try {
+    const parsed = JSON.parse(raw) as { gen?: unknown; pending?: unknown };
+    if (typeof parsed !== "object" || parsed === null) return empty;
+    const pending: Record<string, number> = {};
+    if (typeof parsed.pending === "object" && parsed.pending !== null) {
+      for (const [id, at] of Object.entries(parsed.pending)) if (typeof at === "number" && Number.isFinite(at)) pending[id] = at;
+    }
+    return { gen: count(parsed.gen), pending };
+  } catch {
+    return empty;
+  }
+}
+
+function serializeSignOutMarker(m: SignOutMarker): string | null {
+  if (Object.keys(m.pending).length > 0) return JSON.stringify(m);
+  return m.gen === 0 ? null : String(m.gen);
+}
+
+function signOutBlocksWrites(m: SignOutMarker, now = Date.now()): boolean {
+  if (m.gen > TAB_LOADED_GEN) return true;
+  return Object.values(m.pending).some((at) => now - at < SIGN_OUT_PENDING_MAX_MS);
+}
+
+/** Codex #5276 r6: the browser's cross-tab lock (Web Locks) orders each
+ *  check-then-write against the sign-out marker, so no write that missed the
+ *  marker can land after the purge that follows it. Without Web Locks (tests,
+ *  very old browsers) the write runs unlocked, as before. */
+const SHEET_WRITE_LOCK = "flm.sheetwrite.v1";
+function withSheetWriteLock<T>(fn: () => Promise<T>): Promise<T> {
+  const locks = (globalThis as { navigator?: { locks?: LockManager } }).navigator?.locks;
+  return locks ? (locks.request(SHEET_WRITE_LOCK, fn) as Promise<T>) : fn();
+}
+
+/** Read-modify-write of the marker under the cross-tab write lock. It counts
+ *  only once the stored marker reads back with `holds` true (Codex #5276 r6). */
+function updateSignOutMarker(
+  store: KvStore,
+  change: (m: SignOutMarker) => void,
+  holds: (m: SignOutMarker) => boolean,
+): Promise<boolean> {
+  return withSheetWriteLock(async () => {
+    // A failed read never stands in for "no marker": rewriting from it could
+    // lower the count or drop another tab's in-progress sign-out.
+    const current = await readBeforeWrite(store, SIGN_OUT_MARKER_KEY);
+    if (current === null) return false;
+    const m = parseSignOutMarker(current.raw);
+    change(m);
+    const next = serializeSignOutMarker(m);
+    const written = next === null ? await store.remove(SIGN_OUT_MARKER_KEY) : await store.set(SIGN_OUT_MARKER_KEY, next);
+    return written && holds(parseSignOutMarker(await tolerantGet(store, SIGN_OUT_MARKER_KEY)));
+  });
+}
+
+function newSignOutId(): string {
+  const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+  return c?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 /**
@@ -147,7 +330,12 @@ async function saveSheetQueue(store: KvStore, scopeId: string, jobId: string, q:
 const queueLocks = new Map<string, Promise<void>>();
 
 async function withQueueLock<T>(scopeId: string, jobId: string, fn: () => Promise<T>): Promise<T> {
-  const key = sheetQueueKey(scopeId, jobId);
+  return withKeyLock(sheetQueueKey(scopeId, jobId), fn);
+}
+
+/** The same serialization, keyed by any storage key (the rejected store
+ *  #5212 uses its own key, so it needs the lock without a queue key). */
+async function withKeyLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const prior = queueLocks.get(key) ?? Promise.resolve();
   let result!: T;
   let failure: unknown;
@@ -160,7 +348,7 @@ async function withQueueLock<T>(scopeId: string, jobId: string, fn: () => Promis
     /* a prior failed turn must not wedge the chain for everyone after it */
   });
   try {
-    result = await fn();
+    result = await withCrossTabKeyLock(key, fn);
   } catch (e) {
     failure = e;
   } finally {
@@ -168,6 +356,19 @@ async function withQueueLock<T>(scopeId: string, jobId: string, fn: () => Promis
   }
   if (failure !== undefined) throw failure;
   return result;
+}
+
+/** Codex #5276 r7: the chain above is per tab, but every tab shares device
+ *  storage, so the whole read-modify-write on a key also holds the browser's
+ *  cross-tab lock for that key. Otherwise a Dismiss in one tab can act on a
+ *  stale list and delete a rejection another tab just recorded. Lock order is
+ *  always this key lock, then SHEET_WRITE_LOCK inside sheetSet; sign-out takes
+ *  only SHEET_WRITE_LOCK, so the two can never wait on each other in a cycle.
+ *  Without Web Locks (tests, browsers older than Chrome 69 / Safari 15.4 /
+ *  Firefox 96) the per-tab chain is all there is, as before. */
+function withCrossTabKeyLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const locks = (globalThis as { navigator?: { locks?: LockManager } }).navigator?.locks;
+  return locks ? (locks.request(`flm.sheetkey.v1:${key}`, fn) as Promise<T>) : fn();
 }
 
 export type EnqueueSheetEventResult = {
@@ -192,7 +393,8 @@ export async function enqueueSheetEvent(
   nowIso?: string,
 ): Promise<EnqueueSheetEventResult> {
   return withQueueLock(scopeId, jobId, async () => {
-    const q = await loadSheetQueue(store, scopeId, jobId);
+    const q = await loadSheetQueueForWrite(store, scopeId, jobId);
+    if (q === null) return { queue: [], saved: false };
     if (q.some((item) => item.event.clientEventId === event.clientEventId)) {
       return { queue: q, saved: true };
     }
@@ -237,7 +439,8 @@ export async function dropHeadOfSheetQueue(
  *  caller needs to know the item is still really in storage). */
 export async function removeFromSheetQueue(store: KvStore, scopeId: string, jobId: string, clientEventId: string): Promise<boolean> {
   return withQueueLock(scopeId, jobId, async () => {
-    const q = await loadSheetQueue(store, scopeId, jobId);
+    const q = await loadSheetQueueForWrite(store, scopeId, jobId);
+    if (q === null) return false;
     return saveSheetQueue(store, scopeId, jobId, q.filter((i) => i.event.clientEventId !== clientEventId));
   });
 }
@@ -252,7 +455,8 @@ async function markSheetQueueAttempt(
   lastError: string,
 ): Promise<void> {
   await withQueueLock(scopeId, jobId, async () => {
-    const q = await loadSheetQueue(store, scopeId, jobId);
+    const q = await loadSheetQueueForWrite(store, scopeId, jobId);
+    if (q === null) return;
     const next = q.map((i) => (i.event.clientEventId === clientEventId ? { ...i, attempts: i.attempts + 1, lastError } : i));
     await saveSheetQueue(store, scopeId, jobId, next);
   });
@@ -290,6 +494,21 @@ export type SheetDrainResult = {
 };
 
 let sheetDrainInFlight = false;
+/** Resolves when the in-flight drain (if any) has finished. */
+let sheetDrainSettled: Promise<void> = Promise.resolve();
+/** Codex #5276 r3: set while sign-out clears the phone, so no new replay
+ *  starts (writes are refused by SIGN_OUT_MARKER_KEY, in every tab). */
+let sheetSignOutBarrier = false;
+
+/** Lift the sign-out barrier. Cancel is handled inside clearSheetDataForSignOut;
+ *  a completed sign-out keeps the barrier because the page is leaving, and a
+ *  reload starts with it lifted. Exported for test isolation. */
+export function releaseSheetSignOutBarrier(): void {
+  sheetSignOutBarrier = false;
+}
+
+/** How long sign-out waits for a replay already talking to the server. */
+const SIGN_OUT_DRAIN_WAIT_MS = 5000;
 
 /**
  * FIFO drain. Per item: submit → `ok` removes it and continues (a replayed
@@ -308,9 +527,12 @@ export async function drainSheetQueue(
   scopeId: string,
   jobId: string,
   submit: (event: SheetEventPost) => Promise<SheetSubmitOutcome>,
+  notebookId = "",
 ): Promise<SheetDrainResult | null> {
-  if (sheetDrainInFlight) return null;
+  if (sheetDrainInFlight || sheetSignOutBarrier) return null;
   sheetDrainInFlight = true;
+  let settle = (): void => {};
+  sheetDrainSettled = new Promise<void>((r) => (settle = r));
   try {
     const result: SheetDrainResult = { sent: 0, droppedRejected: 0, rejected: [], remaining: 0, conflict: false, networkStopped: false, drainStuck: false };
     for (;;) {
@@ -342,9 +564,21 @@ export async function drainSheetQueue(
         result.conflict = true;
         break;
       } else {
-        const removed = await removeFromSheetQueue(store, scopeId, jobId, item.event.clientEventId);
+        // #5212: persist the rejection BEFORE the queue entry is dropped. The
+        // rejected note is the only copy of the technician's words; if the
+        // record cannot be written, the entry stays queued and the drain stops.
+        const persisted = await recordRejectedSheetEvent(store, scopeId, notebookId, jobId, {
+          event: item.event,
+          message: outcome.message,
+          rejectedAt: new Date().toISOString(),
+        });
         result.droppedRejected++;
         result.rejected.push({ event: item.event, message: outcome.message });
+        if (!persisted) {
+          result.drainStuck = true;
+          break;
+        }
+        const removed = await removeFromSheetQueue(store, scopeId, jobId, item.event.clientEventId);
         if (!removed) {
           result.drainStuck = true;
           break;
@@ -355,23 +589,284 @@ export async function drainSheetQueue(
     return result;
   } finally {
     sheetDrainInFlight = false;
+    settle();
   }
 }
 
-/** Sign-out hygiene: remove every Living Work Sheet queue (all jobs, all
- *  tenants/users on this device). Returns how many keys were purged. */
-export async function purgeSheetQueues(store: KvStore): Promise<number> {
-  const keys = (await store.keys()).filter((k) => k.startsWith(QUEUE_PREFIX));
-  for (const k of keys) await store.remove(k);
-  return keys.length;
+// ---------------------------------------------------------------------------
+// Rejected store (#5212). A definitively rejected write (e.g. `job_finished`)
+// is the only copy of the technician's words, so it is kept per
+// scope (tenant/user) + notebook + job until the technician dismisses it.
+// It survives navigation and reload, but not sign-out: like a pending queue it
+// is local-only work, so the sign-out prompt counts it and the purge removes it.
+// ---------------------------------------------------------------------------
+
+const REJECTED_PREFIX = "flm.sheetrej.v1.";
+
+export type RejectedSheetEvent = {
+  event: SheetEventPost;
+  message: string;
+  rejectedAt: string;
+};
+
+export function rejectedSheetKey(scopeId: string, notebookId: string, jobId: string): string {
+  return `${REJECTED_PREFIX}${scopeId}.${notebookId}.${jobId}`;
 }
 
+async function readRejectedList(store: KvStore, key: string): Promise<RejectedSheetEvent[]> {
+  return parseRejectedList(await tolerantGet(store, key));
+}
+
+/** The kept rejections as read before a write; null when they could not be read. */
+async function readRejectedListForWrite(store: KvStore, key: string): Promise<RejectedSheetEvent[] | null> {
+  const read = await readBeforeWrite(store, key);
+  return read && parseRejectedList(read.raw);
+}
+
+function parseRejectedList(raw: string | null): RejectedSheetEvent[] {
+  try {
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (r): r is RejectedSheetEvent =>
+        typeof r === "object" &&
+        r !== null &&
+        isStoredSheetEvent((r as RejectedSheetEvent).event) &&
+        typeof (r as RejectedSheetEvent).message === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+
+/** Tolerant load: corrupt or unavailable storage is an empty list, never a throw. */
+export async function loadRejectedSheetEvents(
+  store: KvStore,
+  scopeId: string,
+  notebookId: string,
+  jobId: string,
+): Promise<RejectedSheetEvent[]> {
+  return readRejectedList(store, rejectedSheetKey(scopeId, notebookId, jobId));
+}
+
+/** Persist one rejection. Deduped on clientEventId: a replay or retry of the
+ *  same write never creates a second entry. Returns whether it is durable. */
+export async function recordRejectedSheetEvent(
+  store: KvStore,
+  scopeId: string,
+  notebookId: string,
+  jobId: string,
+  entry: RejectedSheetEvent,
+): Promise<boolean> {
+  const key = rejectedSheetKey(scopeId, notebookId, jobId);
+  return withKeyLock(key, async () => {
+    try {
+      const list = await readRejectedListForWrite(store, key);
+      if (list === null) return false;
+      if (list.some((r) => r.event.clientEventId === entry.event.clientEventId)) return true;
+      list.push(entry);
+      return await sheetSet(store, key, JSON.stringify(list));
+    } catch {
+      return false;
+    }
+  });
+}
+
+/** Dismiss: remove one rejected entry by its clientEventId. */
+export async function dismissRejectedSheetEvent(
+  store: KvStore,
+  scopeId: string,
+  notebookId: string,
+  jobId: string,
+  clientEventId: string,
+): Promise<boolean> {
+  const key = rejectedSheetKey(scopeId, notebookId, jobId);
+  return withKeyLock(key, async () => {
+    try {
+      const list = await readRejectedListForWrite(store, key);
+      // Never delete blind: an unreadable list keeps the row; a readable one
+      // without this entry means it is not on the phone.
+      if (list === null) return false;
+      if (!list.some((r) => r.event.clientEventId === clientEventId)) return true;
+      const next = list.filter((r) => r.event.clientEventId !== clientEventId);
+      if (next.length === 0) {
+        // The row may only go once the text is verifiably gone from the phone.
+        return await store.remove(key);
+      }
+      return await sheetSet(store, key, JSON.stringify(next));
+    } catch {
+      return false;
+    }
+  });
+}
+
+/** Union of two lists keyed by clientEventId; `first` wins on duplicates. */
+export function mergeRejectedSheetEvents<T extends { event: SheetEventPost }>(first: T[], second: T[]): T[] {
+  const seen = new Set(first.map((r) => r.event.clientEventId));
+  return [...first, ...second.filter((r) => !seen.has(r.event.clientEventId))];
+}
+
+/** Recover: the note/question text of a rejected write, or null for kinds
+ *  that carry no free text (the screen offers Dismiss only for those). */
+export function rejectedNoteText(event: SheetEventPost): { kind: "note" | "question"; text: string } | null {
+  if (event.kind !== "note_added") return null;
+  const payload = event.payload as { text?: unknown; noteKind?: unknown };
+  if (typeof payload.text !== "string" || payload.text.trim() === "") return null;
+  return { kind: payload.noteKind === "question" ? "question" : "note", text: payload.text };
+}
+
+/** Put recovered text back into an input without overwriting a draft the
+ *  technician is already typing. */
+export function recoveredFieldValue(current: string, text: string): string {
+  return current.trim() === "" ? text : `${current} ${text}`;
+}
+
+/** Local-only Living Work Sheet keys: pending queues and kept rejections (#5212). */
+function isLocalSheetKey(k: string): boolean {
+  return k.startsWith(QUEUE_PREFIX) || k.startsWith(REJECTED_PREFIX);
+}
+
+/** Sign-out hygiene: remove every Living Work Sheet queue and kept rejection
+ *  (all jobs, all tenants/users on this device). `remaining` counts keys not
+ *  verifiably removed, or is null when storage could not be listed at all, so
+ *  sign-out never claims a purge that did not happen. */
+export async function purgeSheetQueues(store: KvStore): Promise<{ purged: number; remaining: number | null }> {
+  const all = await store.keys();
+  if (all === null) return { purged: 0, remaining: null };
+  const keys = all.filter(isLocalSheetKey);
+  let remaining = 0;
+  for (const k of keys) {
+    try {
+      if (!(await store.remove(k))) remaining++;
+    } catch {
+      remaining++;
+    }
+  }
+  return { purged: keys.length - remaining, remaining };
+}
+
+/** #5212: the sign-out text when the purge could not clear everything (null
+ *  `remaining` = storage could not be checked), or null when nothing is left. */
+export function signOutPurgeFailedPrompt(remaining: number | null): string | null {
+  if (remaining === null) {
+    return "Could not check this phone for saved sheet items, so some may still be here. Sign out anyway?";
+  }
+  if (remaining <= 0) return null;
+  return `Could not clear ${remaining} saved sheet item${remaining === 1 ? "" : "s"} from this phone. Sign out anyway and leave ${remaining === 1 ? "it" : "them"} here?`;
+}
+
+/** The sheet half of sign-out. R2-32: ask before discarding anything unsynced
+ *  (Cancel keeps it, no purge). #5212: a purge that left sheet text on the
+ *  phone says so, and Cancel then keeps the technician signed in. Returns
+ *  whether sign-out should go ahead; `onPurgeStart` fires only if it purges. */
+export async function clearSheetDataForSignOut(
+  store: KvStore,
+  confirm: (message: string) => boolean,
+  onPurgeStart?: () => void,
+  drainWaitMs = SIGN_OUT_DRAIN_WAIT_MS,
+): Promise<boolean> {
+  // Codex #5276 r3: stop new replays and enqueues, then let a replay already
+  // talking to the server finish, so its result cannot land after the purge.
+  sheetSignOutBarrier = true;
+  // Codex #5276 r5/r9: every tab stops writing BEFORE the count, so the
+  // warning covers everything the purge will remove. Cancel removes only this
+  // sign-out's own id; a finished sign-out from another tab stays in force.
+  const id = newSignOutId();
+  // Codex #5276 r10: the in-progress entry is a lease stamped with its last
+  // renewal. A question left open past SIGN_OUT_PENDING_MAX_MS lets other tabs
+  // write again (window.confirm freezes this tab, so nothing can renew it
+  // meanwhile), so sign-out renews and starts over from the count.
+  let leaseAt = 0;
+  const begin = async () => {
+    const at = Date.now();
+    const ok = await updateSignOutMarker(store, (m) => void (m.pending[id] = at), (m) => m.pending[id] === at);
+    if (ok) leaseAt = at;
+    return ok;
+  };
+  const lapsed = () => Date.now() - leaseAt >= SIGN_OUT_PENDING_MAX_MS;
+  let markerInstalled = await begin();
+  const cancel = async (): Promise<false> => {
+    sheetSignOutBarrier = false;
+    await updateSignOutMarker(store, (m) => void delete m.pending[id], (m) => !(id in m.pending));
+    return false;
+  };
+  for (;;) {
+    const prompt = signOutUnsyncedPrompt(await countAllSheetQueueEntries(store));
+    if (prompt && !confirm(prompt)) return cancel();
+    onPurgeStart?.();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const drained = await Promise.race([
+      sheetDrainSettled.then(() => true),
+      new Promise<boolean>((r) => (timer = setTimeout(() => r(false), drainWaitMs))),
+    ]);
+    clearTimeout(timer);
+    // Codex #5276 r4: ask BEFORE purging when a replay is still sending. The
+    // queue holds the only copy of that note until the server answers, so
+    // Cancel must leave storage untouched.
+    if (!drained && !confirm(SIGN_OUT_STILL_SENDING_PROMPT)) return cancel();
+    if (markerInstalled && lapsed()) {
+      markerInstalled = await begin();
+      continue; // the warning may be out of date: count and ask again
+    }
+    let { remaining } = await purgeSheetQueues(store);
+    if (!markerInstalled) {
+      // Codex #5276 r6: a full phone can refuse the marker. The purge freed
+      // space, so try again, then sweep whatever another tab saved meanwhile.
+      markerInstalled = await begin();
+      if (markerInstalled) ({ remaining } = await purgeSheetQueues(store));
+    }
+    if (!markerInstalled && !confirm(SIGN_OUT_OTHER_TABS_PROMPT)) return cancel();
+    const leftBehind = signOutPurgeFailedPrompt(remaining);
+    // A signed-out page keeps the barrier; Cancel keeps the technician working.
+    if (leftBehind && !confirm(leftBehind)) return cancel();
+    if (!(markerInstalled && lapsed())) break;
+    markerInstalled = await begin(); // another tab may have saved after the purge
+  }
+  // Done: raise the finished count under the lock, so every tab loaded before
+  // now (including one opened mid-sign-out, Codex #5276 r10) stays blocked.
+  // The count only goes up, so an older finish cannot undo a newer one.
+  let finishedGen = 0;
+  let priorGen = 0;
+  const finished = await updateSignOutMarker(
+    store,
+    (m) => {
+      delete m.pending[id];
+      priorGen = m.gen;
+      finishedGen = m.gen + 1;
+      m.gen = finishedGen;
+    },
+    (m) => m.gen >= finishedGen && !(id in m.pending),
+  );
+  if (markerInstalled && !finished && !confirm(SIGN_OUT_OTHER_TABS_PROMPT)) {
+    // Codex #5276 r12: the finish may have been saved without reading back.
+    // Cancel takes back this sign-out's own count, but only while it is still
+    // the stored one: counts rise one at a time under the lock, so that value
+    // is this sign-out's alone, and a later sign-out's count is never lowered.
+    if (finishedGen > 0) {
+      await updateSignOutMarker(store, (m) => void (m.gen === finishedGen && (m.gen = priorGen)), (m) => m.gen !== finishedGen);
+    }
+    return cancel();
+  }
+  return true;
+}
+
+/** Sign-out could not record its marker, so other open tabs are not blocked. */
+export const SIGN_OUT_OTHER_TABS_PROMPT =
+  "This phone could not stop other open FactoryLM tabs from saving sheet items, so one may be saved here again after you sign out. Close other FactoryLM tabs first. Sign out anyway?";
+
+/** Sign-out could not wait out a replay that is still talking to the server. */
+export const SIGN_OUT_STILL_SENDING_PROMPT =
+  "A sheet item is still being sent and may not reach the server. Signing out removes it from this phone. Sign out anyway?";
+
 /** R2-32: total queued entries across EVERY Living Work Sheet queue on this
- *  device (any job, any tenant/user) — exactly what `purgeSheetQueues` is
- *  about to discard. Sign-out must ask before losing these, not after.
+ *  device (any job, any tenant/user), plus kept rejections (#5212) — exactly
+ *  what `purgeSheetQueues` is about to discard. Sign-out must ask before
+ *  losing these, not after.
  *  Tolerant like `loadSheetQueue`: a corrupt entry counts as 0, never throws. */
 export async function countAllSheetQueueEntries(store: KvStore): Promise<number> {
-  const keys = (await store.keys()).filter((k) => k.startsWith(QUEUE_PREFIX));
+  // Unlistable storage counts as 0 here; the purge then reports it as unknown.
+  const keys = ((await store.keys()) ?? []).filter(isLocalSheetKey);
   let total = 0;
   for (const k of keys) {
     const raw = await store.get(k);
