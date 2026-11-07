@@ -237,6 +237,7 @@ export async function enqueueSheetEvent(
   nowIso?: string,
 ): Promise<EnqueueSheetEventResult> {
   return withQueueLock(scopeId, jobId, async () => {
+    if (sheetSignOutBarrier) return { queue: [], saved: false };
     const q = await loadSheetQueueForWrite(store, scopeId, jobId);
     if (q === null) return { queue: [], saved: false };
     if (q.some((item) => item.event.clientEventId === event.clientEventId)) {
@@ -338,6 +339,20 @@ export type SheetDrainResult = {
 };
 
 let sheetDrainInFlight = false;
+/** Resolves when the in-flight drain (if any) has finished. */
+let sheetDrainSettled: Promise<void> = Promise.resolve();
+/** Codex #5276 r3: set while sign-out clears the phone. No new drain or
+ *  enqueue may start, so nothing is written back after the purge. */
+let sheetSignOutBarrier = false;
+
+/** Lift the sign-out barrier when sign-out did not leave the page (Cancel is
+ *  handled inside clearSheetDataForSignOut; this covers a failed navigation). */
+export function releaseSheetSignOutBarrier(): void {
+  sheetSignOutBarrier = false;
+}
+
+/** How long sign-out waits for a replay already talking to the server. */
+const SIGN_OUT_DRAIN_WAIT_MS = 5000;
 
 /**
  * FIFO drain. Per item: submit → `ok` removes it and continues (a replayed
@@ -358,8 +373,10 @@ export async function drainSheetQueue(
   submit: (event: SheetEventPost) => Promise<SheetSubmitOutcome>,
   notebookId = "",
 ): Promise<SheetDrainResult | null> {
-  if (sheetDrainInFlight) return null;
+  if (sheetDrainInFlight || sheetSignOutBarrier) return null;
   sheetDrainInFlight = true;
+  let settle = (): void => {};
+  sheetDrainSettled = new Promise<void>((r) => (settle = r));
   try {
     const result: SheetDrainResult = { sent: 0, droppedRejected: 0, rejected: [], remaining: 0, conflict: false, networkStopped: false, drainStuck: false };
     for (;;) {
@@ -416,6 +433,7 @@ export async function drainSheetQueue(
     return result;
   } finally {
     sheetDrainInFlight = false;
+    settle();
   }
 }
 
@@ -590,14 +608,31 @@ export async function clearSheetDataForSignOut(
   store: KvStore,
   confirm: (message: string) => boolean,
   onPurgeStart?: () => void,
+  drainWaitMs = SIGN_OUT_DRAIN_WAIT_MS,
 ): Promise<boolean> {
   const prompt = signOutUnsyncedPrompt(await countAllSheetQueueEntries(store));
   if (prompt && !confirm(prompt)) return false;
   onPurgeStart?.();
+  // Codex #5276 r3: stop new replays and enqueues, then let a replay already
+  // talking to the server finish, so its result cannot land after the purge.
+  sheetSignOutBarrier = true;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const drained = await Promise.race([
+    sheetDrainSettled.then(() => true),
+    new Promise<boolean>((r) => (timer = setTimeout(() => r(false), drainWaitMs))),
+  ]);
+  clearTimeout(timer);
   const { remaining } = await purgeSheetQueues(store);
-  const leftBehind = signOutPurgeFailedPrompt(remaining);
-  return !leftBehind || confirm(leftBehind);
+  const leftBehind = drained ? signOutPurgeFailedPrompt(remaining) : SIGN_OUT_STILL_SENDING_PROMPT;
+  const proceed = !leftBehind || confirm(leftBehind);
+  // A signed-out page keeps the barrier; Cancel keeps the technician working.
+  if (!proceed) sheetSignOutBarrier = false;
+  return proceed;
 }
+
+/** Sign-out could not wait out a replay that is still talking to the server. */
+export const SIGN_OUT_STILL_SENDING_PROMPT =
+  "A sheet item is still being sent and may be saved on this phone after you sign out. Sign out anyway?";
 
 /** R2-32: total queued entries across EVERY Living Work Sheet queue on this
  *  device (any job, any tenant/user), plus kept rejections (#5212) — exactly
