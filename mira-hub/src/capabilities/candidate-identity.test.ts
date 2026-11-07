@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { extractCandidateIdentity, isSafeCandidateSearchIdentity, makerFromText, wantsManualDocumentation } from "./candidate-identity";
+import { labelledPartCodes } from "./photo-part-lookup";
 
 // Manual-First PRD R1 (#4160 S5): a candidate (manufacturer, part) read from a
 // LOOK observation or typed text WITHOUT consulting the corpus. Makers come
@@ -242,6 +243,20 @@ describe("isSafeCandidateSearchIdentity", () => {
     ])("r5: a label word inside the private value (%s) never yields a searchable fragment", (photo) => {
       expect(isSafeCandidateSearchIdentity(photo, "Find the manual for this", "12345678", "SMC")).toBe(false);
       expect(isSafeCandidateSearchIdentity(photo, "Find the manual for SMC MODEL: 12345678", "12345678", "SMC")).toBe(false);
+    });
+    // #5268 Codex r6 invariant: nothing on the line after a serial/asset label is
+    // ever a labelled part, whatever words or spacing sit inside the value.
+    const R6_LABELS = ["S/N:", "S/N", "Serial No.", "S/N NO.", "Asset tag:", "Asset tag", "Inv. No."];
+    const R6_VALUES = ["PN 12345678", "P/N 12345678", "P/N: 12345678", "ABC PN 12345678", "TYPE 12345678", "MODEL 12345678", "CAT. NO. 12345678", "PN12345678"];
+    it.each(R6_LABELS.flatMap((l) => R6_VALUES.map((v) => `SMC ${l} ${v}`)))("r6: %s yields no part and no search", (photo) => {
+      expect(labelledPartCodes(photo)).toEqual([]);
+      for (const typed of ["Find the manual for this", "Find the manual for SMC 12345678", "Find the manual for SMC PN12345678"]) {
+        expect(isSafeCandidateSearchIdentity(photo, typed, "12345678", "SMC")).toBe(false);
+        expect(isSafeCandidateSearchIdentity(photo, typed, "PN12345678", "SMC")).toBe(false);
+      }
+    });
+    it("r6 control: a labelled part on its own line beside a private field still searches", () => {
+      expect(isSafeCandidateSearchIdentity("SMC Asset tag: PN 12345678\nMODEL: SY3120-5LZD", "Find the manual for this", "SY3120-5LZD", "SMC")).toBe(true);
     });
     it("r5: a label glued to its value is one token, not a label (SMC PN12345678 beside a serial)", () => {
       expect(isSafeCandidateSearchIdentity("SMC PN12345678 S/N: XC-99887766", "Find the manual for this", "12345678", "SMC")).toBe(false);

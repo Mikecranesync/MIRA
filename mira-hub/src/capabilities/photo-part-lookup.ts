@@ -122,6 +122,30 @@ export function serialCodes(photoText: string): string[] {
 export const identifierKey = (code: string) => code.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
 /**
+ * The text's private fields and what is left once they are blanked (#5268
+ * Codex r6). A private field starts at a serial/asset label and runs to the
+ * next hard delimiter — line break, comma, semicolon or closing bracket — so
+ * nothing after the label on that line is ever read as a part, and every code
+ * in it is a private key. One reader for both, so they cannot disagree about
+ * where a private value ends. A full stop never ends a field: "S/N NO. PN
+ * 12345678" stays private to the end of its line.
+ */
+function splitFields(t: string): { open: string; secret: string[] } {
+  const masked = [...t];
+  const secret: string[] = [];
+  for (const label of [SERIAL_LABEL, ASSET_LABEL]) {
+    for (const m of t.matchAll(new RegExp(label.source, "gi"))) {
+      const from = m.index ?? 0;
+      const stop = t.slice(from).search(/[\r\n,;)\]]/);
+      const to = stop < 0 ? t.length : from + stop;
+      secret.push(t.slice(from, to));
+      for (let i = from; i < to; i++) masked[i] = " ";
+    }
+  }
+  return { open: masked.join(""), secret };
+}
+
+/**
  * Every value the text marks as private (ADR-0036: never sent to search) —
  * serial values (`serialCodes`) and the value after an asset-tag /
  * customer-identifier label — as `identifierKey`s (#5268 Codex F1). A value
@@ -167,6 +191,18 @@ export function privateIdentifierKeys(text: string): Set<string> {
       }
     }
   }
+  // #5268 Codex r6: every code in a private field, and each joined run of
+  // neighbouring tokens ("PN 12345678" -> "12345678", "PN12345678").
+  for (const seg of splitFields(t).secret) {
+    const tokens = seg.match(/[A-Z0-9][A-Z0-9./-]*/gi) ?? [];
+    for (let i = 0; i < tokens.length; i++) {
+      let joined = "";
+      for (let j = i; j < Math.min(tokens.length, i + 4); j++) {
+        joined += identifierKey(tokens[j]);
+        if (joined.length >= 4 && /\d/.test(joined)) keys.add(joined);
+      }
+    }
+  }
   return keys;
 }
 
@@ -179,27 +215,14 @@ export function privateIdentifierKeys(text: string): Set<string> {
  */
 export function labelledPartCodes(text: string): string[] {
   const t = normalize(text);
-  // #5268 Codex r5: a private field owns its value. Blank every serial/asset
-  // label and the value in its field ("Asset tag: PN12345678") so a label
-  // word INSIDE that value can never read as a part label.
-  const masked = [...t];
-  const FIELD_VALUE = new RegExp(
-    String.raw`^[^A-Za-z0-9\r\n,;)]*(?:(?:${ID_WORD})(?![a-z])[^A-Za-z0-9\r\n,;)]*)*(?:is\b)?[ \t]*(?:(?!(?:P\/?N|part|cat(?:alog(?:ue)?)?|model|mod|type|1P)(?![A-Za-z0-9]))[A-Z0-9][A-Z0-9./-]*(?:[ \t]+(?=[A-Z0-9-]*\d)[A-Z0-9][A-Z0-9-]*){0,2})?`,
-    "i",
-  );
-  for (const label of [SERIAL_LABEL, ASSET_LABEL]) {
-    for (const m of t.matchAll(new RegExp(label.source, "gi"))) {
-      const from = m.index ?? 0;
-      const tail = t.slice(from + m[0].length).match(FIELD_VALUE)?.[0] ?? "";
-      for (let i = from; i < from + m[0].length + tail.length && i < masked.length; i++) masked[i] = " ";
-    }
-  }
   // A genuine part label is followed by a separator (":", "#" or a space)
   // before its value — "PN12345678" is one token, not a label and a value.
   const GENUINE_PART_LABEL = new RegExp(PART_LABEL.source.replace(String.raw`\s*[:#]?\s*(`, String.raw`(?:\s*[:#]\s*|\s+)(`), "gi");
   const serials = new Set(serialCodes(text));
   const privateKeys = [...privateIdentifierKeys(text)];
-  const codes = [...masked.join("").matchAll(GENUINE_PART_LABEL)].map((m) => trimCode(m[1]).toUpperCase());
+  // #5268 Codex r6: a part label counts only outside a private field — the
+  // same fields privateIdentifierKeys() treats as private (splitFields).
+  const codes = [...splitFields(t).open.matchAll(GENUINE_PART_LABEL)].map((m) => trimCode(m[1]).toUpperCase());
   return [...new Set(codes.filter((c) => !serials.has(c) && !privateKeys.some((k) => k.includes(identifierKey(c)))))];
 }
 

@@ -151,7 +151,9 @@ describe("#4150 Codex r2 — fail closed on serials and on non-requests", () => 
   });
 
   it("F1: with a serial present, only an explicitly labelled part number is accepted", () => {
-    expect(unambiguousPartNumber("Serial number is AB-1234567. P/N Ni8U-S12-AP6")).toBe("Ni8U-S12-AP6");
+    expect(unambiguousPartNumber("Serial number is AB-1234567\nP/N Ni8U-S12-AP6")).toBe("Ni8U-S12-AP6");
+    // #5268 Codex r6: a full stop never ends a private field — the rest of the line stays private.
+    expect(unambiguousPartNumber("Serial number is AB-1234567. P/N Ni8U-S12-AP6")).toBeNull();
     expect(unambiguousPartNumber("Serial number is AB-1234567. Ni8U-S12-AP6")).toBeNull();
   });
 
@@ -494,7 +496,8 @@ describe("#4150 review r4 F1 — any serial label disables unlabelled extraction
   );
 
   it("control: an explicitly labelled part number next to a suffix serial is still proposed", () => {
-    expect(unambiguousPartNumber("AB-1234567 S/N. P/N 6ES7214-1AG40-0XB0")).toBe("6ES7214-1AG40-0XB0");
+    expect(unambiguousPartNumber("AB-1234567 S/N\nP/N 6ES7214-1AG40-0XB0")).toBe("6ES7214-1AG40-0XB0");
+    expect(unambiguousPartNumber("AB-1234567 S/N, P/N 6ES7214-1AG40-0XB0")).toBe("6ES7214-1AG40-0XB0");
   });
 });
 
@@ -641,7 +644,9 @@ describe("asset-tag labels", () => {
   });
   it("an explicitly labelled part survives beside an asset tag, and the tag itself is never the part", () => {
     expect(unambiguousPartNumber("SMC P/N: SY3120-5LZD Asset tag: VALVE-1234")).toBe("SY3120-5LZD");
-    expect(unambiguousPartNumber("Asset tag: VALVE-1234 P/N: SY3120-5LZD")).toBe("SY3120-5LZD");
+    expect(unambiguousPartNumber("Asset tag: VALVE-1234\nP/N: SY3120-5LZD")).toBe("SY3120-5LZD");
+    // #5268 Codex r6 known limit: on the SAME line after a private label, nothing is a part (fail closed).
+    expect(unambiguousPartNumber("Asset tag: VALVE-1234 P/N: SY3120-5LZD")).toBeNull();
   });
   it.each(["tag the valve SY3120-5LZD", "the line stopped on SY3120-5LZD", "unit cooler SY3120-5LZD", "site visit for SY3120-5LZD", "SMC SY3120-5LZD assets list", "tagged for SY3120-5LZD", "SY3120-5LZD tagline", "inverter drive SY3120-5LZD", "invalid reading on SY3120-5LZD"])(
     "control: %s is ordinary prose",
