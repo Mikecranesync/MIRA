@@ -118,14 +118,21 @@ export function sheetQueueKey(scopeId: string, jobId: string): string {
   return `${QUEUE_PREFIX}${scopeId}.${jobId}`;
 }
 
+/** Codex #5276 r5: a stored event the panel can render without throwing —
+ *  the conflict and Not-accepted views read `payload` fields directly. */
+function isStoredSheetEvent(e: unknown): e is SheetEventPost {
+  if (typeof e !== "object" || e === null) return false;
+  const ev = e as Partial<SheetEventPost>;
+  return typeof ev.clientEventId === "string" && typeof ev.kind === "string" && typeof ev.payload === "object" && ev.payload !== null;
+}
+
 function parseSheetQueue(raw: string | null): QueuedSheetEvent[] {
   try {
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(
-      (q): q is QueuedSheetEvent =>
-        typeof q === "object" && q !== null && typeof (q as QueuedSheetEvent).event?.clientEventId === "string",
+      (q): q is QueuedSheetEvent => typeof q === "object" && q !== null && isStoredSheetEvent((q as QueuedSheetEvent).event),
     );
   } catch {
     return [];
@@ -169,7 +176,22 @@ async function loadSheetQueueForWrite(store: KvStore, scopeId: string, jobId: st
 
 /** Returns whether the write actually persisted (see KvStore.set). */
 async function saveSheetQueue(store: KvStore, scopeId: string, jobId: string, q: QueuedSheetEvent[]): Promise<boolean> {
-  return store.set(sheetQueueKey(scopeId, jobId), JSON.stringify(q));
+  return sheetSet(store, sheetQueueKey(scopeId, jobId), JSON.stringify(q));
+}
+
+/** Codex #5276 r5: sign-out in ANY tab writes this (outside the sheet
+ *  prefixes, so the purge keeps it). Tabs share device storage but not
+ *  module state, so this is the cross-tab half of the sign-out barrier. */
+export const SIGN_OUT_MARKER_KEY = "flm.sheetsignout.v1";
+/** When this page loaded: a sign-out recorded after it ended this tab's session. */
+const TAB_LOADED_AT = Date.now();
+
+/** Every Living Sheet write goes through here. A tab loaded before the latest
+ *  sign-out writes nothing, so a late reply cannot restore purged text. */
+async function sheetSet(store: KvStore, key: string, value: string): Promise<boolean> {
+  const marker = Number(await tolerantGet(store, SIGN_OUT_MARKER_KEY));
+  if (Number.isFinite(marker) && marker >= TAB_LOADED_AT) return false;
+  return store.set(key, value);
 }
 
 /**
@@ -237,7 +259,6 @@ export async function enqueueSheetEvent(
   nowIso?: string,
 ): Promise<EnqueueSheetEventResult> {
   return withQueueLock(scopeId, jobId, async () => {
-    if (sheetSignOutBarrier) return { queue: [], saved: false };
     const q = await loadSheetQueueForWrite(store, scopeId, jobId);
     if (q === null) return { queue: [], saved: false };
     if (q.some((item) => item.event.clientEventId === event.clientEventId)) {
@@ -341,8 +362,8 @@ export type SheetDrainResult = {
 let sheetDrainInFlight = false;
 /** Resolves when the in-flight drain (if any) has finished. */
 let sheetDrainSettled: Promise<void> = Promise.resolve();
-/** Codex #5276 r3: set while sign-out clears the phone. No new drain or
- *  enqueue may start, so nothing is written back after the purge. */
+/** Codex #5276 r3: set while sign-out clears the phone, so no new replay
+ *  starts (writes are refused by SIGN_OUT_MARKER_KEY, in every tab). */
 let sheetSignOutBarrier = false;
 
 /** Lift the sign-out barrier. Cancel is handled inside clearSheetDataForSignOut;
@@ -477,7 +498,7 @@ function parseRejectedList(raw: string | null): RejectedSheetEvent[] {
       (r): r is RejectedSheetEvent =>
         typeof r === "object" &&
         r !== null &&
-        typeof (r as RejectedSheetEvent).event?.clientEventId === "string" &&
+        isStoredSheetEvent((r as RejectedSheetEvent).event) &&
         typeof (r as RejectedSheetEvent).message === "string",
     );
   } catch {
@@ -511,7 +532,7 @@ export async function recordRejectedSheetEvent(
       if (list === null) return false;
       if (list.some((r) => r.event.clientEventId === entry.event.clientEventId)) return true;
       list.push(entry);
-      return await store.set(key, JSON.stringify(list));
+      return await sheetSet(store, key, JSON.stringify(list));
     } catch {
       return false;
     }
@@ -539,7 +560,7 @@ export async function dismissRejectedSheetEvent(
         // The row may only go once the text is verifiably gone from the phone.
         return await store.remove(key);
       }
-      return await store.set(key, JSON.stringify(next));
+      return await sheetSet(store, key, JSON.stringify(next));
     } catch {
       return false;
     }
@@ -617,6 +638,15 @@ export async function clearSheetDataForSignOut(
   // Codex #5276 r3: stop new replays and enqueues, then let a replay already
   // talking to the server finish, so its result cannot land after the purge.
   sheetSignOutBarrier = true;
+  // Codex #5276 r5: other tabs stop writing too. Cancel restores what was there.
+  const priorMarker = await tolerantGet(store, SIGN_OUT_MARKER_KEY);
+  await store.set(SIGN_OUT_MARKER_KEY, String(Date.now()));
+  const cancel = async (): Promise<false> => {
+    sheetSignOutBarrier = false;
+    if (priorMarker === null) await store.remove(SIGN_OUT_MARKER_KEY);
+    else await store.set(SIGN_OUT_MARKER_KEY, priorMarker);
+    return false;
+  };
   let timer: ReturnType<typeof setTimeout> | undefined;
   const drained = await Promise.race([
     sheetDrainSettled.then(() => true),
@@ -626,21 +656,17 @@ export async function clearSheetDataForSignOut(
   // Codex #5276 r4: ask BEFORE purging when a replay is still sending. The
   // queue holds the only copy of that note until the server answers, so
   // Cancel must leave storage untouched.
-  if (!drained && !confirm(SIGN_OUT_STILL_SENDING_PROMPT)) {
-    sheetSignOutBarrier = false;
-    return false;
-  }
+  if (!drained && !confirm(SIGN_OUT_STILL_SENDING_PROMPT)) return cancel();
   const { remaining } = await purgeSheetQueues(store);
   const leftBehind = signOutPurgeFailedPrompt(remaining);
-  const proceed = !leftBehind || confirm(leftBehind);
   // A signed-out page keeps the barrier; Cancel keeps the technician working.
-  if (!proceed) sheetSignOutBarrier = false;
-  return proceed;
+  if (leftBehind && !confirm(leftBehind)) return cancel();
+  return true;
 }
 
 /** Sign-out could not wait out a replay that is still talking to the server. */
 export const SIGN_OUT_STILL_SENDING_PROMPT =
-  "A sheet item is still being sent and may be saved on this phone after you sign out. Sign out anyway?";
+  "A sheet item is still being sent and may not reach the server. Signing out removes it from this phone. Sign out anyway?";
 
 /** R2-32: total queued entries across EVERY Living Work Sheet queue on this
  *  device (any job, any tenant/user), plus kept rejections (#5212) — exactly

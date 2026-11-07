@@ -1324,6 +1324,8 @@ describe("#5212 sign-out vs an in-flight replay", () => {
     held.release();
     await drain;
     expect((await enqueueSheetEvent(store, "t1", "jobB", noteEvent("n-2", "after cancel"))).saved).toBe(true);
+    // Cancel lifted the sign-out block: a replay can start again.
+    expect(await drainSheetQueue(store, "t1", "jobB", async () => ({ status: "ok" }), "nb-1")).not.toBeNull();
   });
 
   // Codex #5276 round 4: Cancel on the "still being sent" warning must not
@@ -1372,3 +1374,105 @@ describe("#5212 sign-out vs an in-flight replay", () => {
     await drain;
   });
 });
+
+// Codex #5276 round 5: tabs share device storage but not module state. Each
+// tab is a fresh import of the client module over the same store.
+describe("#5212 sign-out across tabs", () => {
+  type Client = typeof import("../living-sheet-client");
+  async function openTab(): Promise<Client> {
+    vi.resetModules();
+    const mod = await import("../living-sheet-client");
+    await new Promise((r) => setTimeout(r, 2)); // this tab loaded strictly before anything that follows
+    return mod;
+  }
+  function sharedStore(): { store: KvStore; m: Map<string, string> } {
+    const m = new Map<string, string>();
+    return {
+      m,
+      store: {
+        get: async (k) => (m.has(k) ? m.get(k)! : null),
+        set: async (k, v) => (m.set(k, v), true),
+        remove: async (k) => (m.delete(k), true),
+        keys: async () => Array.from(m.keys()),
+      },
+    };
+  }
+  const sheetText = (m: Map<string, string>) =>
+    Array.from(m.entries())
+      .filter(([k]) => k.startsWith("flm.sheetq") || k.startsWith("flm.sheetrej"))
+      .map(([, v]) => v)
+      .join("\n");
+
+  it("a rejection that lands in another tab after sign-out is not written back", async () => {
+    const { store, m } = sharedStore();
+    const tabA = await openTab();
+    const tabB = await openTab();
+    await tabA.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "tab A words"));
+    let release = (): void => {};
+    const gate = new Promise<void>((r) => (release = r));
+    let hitResolve = (): void => {};
+    const hit = new Promise<void>((r) => (hitResolve = r));
+    const drain = tabA.drainSheetQueue(store, "t1", "jobA", async () => {
+      hitResolve();
+      await gate;
+      return { status: "rejected", message: "job_finished" };
+    }, "nb-1");
+    await hit;
+    expect(await tabB.clearSheetDataForSignOut(store, () => true)).toBe(true);
+    release();
+    await drain;
+    expect(sheetText(m)).not.toContain("tab A words");
+    expect((await tabA.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-2", "after sign-out"))).saved).toBe(false);
+    expect(sheetText(m)).toBe("");
+  });
+
+  it("a tab opened after the sign-out can save (control)", async () => {
+    const { store, m } = sharedStore();
+    const tabB = await openTab();
+    expect(await tabB.clearSheetDataForSignOut(store, () => true)).toBe(true);
+    await new Promise((r) => setTimeout(r, 2));
+    const fresh = await openTab();
+    expect((await fresh.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "new session"))).saved).toBe(true);
+    expect(sheetText(m)).toContain("new session");
+  });
+
+  it("Cancel puts the earlier sign-out marker back, so other tabs can save again", async () => {
+    const { store, m } = sharedStore();
+    m.set("flm.sheetsignout.v1", "1");
+    const tabA = await openTab();
+    const tabB = await openTab();
+    await tabA.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "pending"));
+    expect(await tabB.clearSheetDataForSignOut(store, () => false)).toBe(false); // Cancel on the unsynced prompt: nothing changes
+    expect(m.get("flm.sheetsignout.v1")).toBe("1");
+    m.set("flm.sheetrej.v1.x", "keep"); // a key the purge cannot remove keeps the left-behind prompt up
+    const sticky: KvStore = { ...store, remove: async (k) => (k === "flm.sheetrej.v1.x" ? false : (m.delete(k), true)) };
+    const asked: string[] = [];
+    expect(await tabB.clearSheetDataForSignOut(sticky, (msg) => (asked.push(msg), asked.length === 1))).toBe(false);
+    expect(m.get("flm.sheetsignout.v1")).toBe("1");
+    expect((await tabA.enqueueSheetEvent(store, "t1", "jobB", noteEvent("n-2", "after cancel"))).saved).toBe(true);
+  });
+});
+
+// Codex #5276 round 5 LOW: valid JSON with a malformed event must load as
+// nothing, never reach the panel's renderers.
+describe("#5212 malformed stored records", () => {
+  it("rejection and queue records without a renderable event are dropped on load", async () => {
+    const store = memoryStore();
+    const good = { event: noteEvent("n-ok", "fine"), message: "job_finished", rejectedAt: "2026-11-07T00:00:00.000Z" };
+    const bad = [
+      { event: { clientEventId: "no-payload", kind: "note_added" }, message: "job_finished" },
+      { event: { clientEventId: "null-payload", kind: "note_added", payload: null }, message: "job_finished" },
+      { event: { clientEventId: "no-kind", payload: { text: "x" } }, message: "job_finished" },
+      { event: noteEvent("bad-message", "x"), message: 42 },
+    ];
+    await store.set(rejectedSheetKey("t1", "nb-1", "jobA"), JSON.stringify([...bad, good]));
+    expect((await loadRejectedSheetEvents(store, "t1", "nb-1", "jobA")).map((r) => r.event.clientEventId)).toEqual(["n-ok"]);
+    const queued = [
+      { event: { clientEventId: "q-no-payload", kind: "note_added" }, queuedAt: "2026-11-07T00:00:00.000Z", attempts: 0 },
+      { event: noteEvent("q-ok", "fine"), queuedAt: "2026-11-07T00:00:00.000Z", attempts: 0 },
+    ];
+    await store.set(sheetQueueKey("t1", "jobA"), JSON.stringify(queued));
+    expect((await loadSheetQueue(store, "t1", "jobA")).map((q) => q.event.clientEventId)).toEqual(["q-ok"]);
+  });
+});
+
