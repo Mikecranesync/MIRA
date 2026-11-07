@@ -20,7 +20,16 @@
  */
 import { oemMakerTable } from "@/lib/manual-discovery";
 import { namesOnlyThisMachine } from "./identity-proposal";
-import { identifierKey, partCodes, privateIdentifierKeys, serialCodes, unambiguousPartNumber } from "./photo-part-lookup";
+import {
+  identifierKey,
+  labelledPartCodes,
+  mentionsAssetLabel,
+  mentionsSerialLabel,
+  partCodes,
+  privateIdentifierKeys,
+  serialCodes,
+  unambiguousPartNumber,
+} from "./photo-part-lookup";
 
 export type CandidateIdentity = { manufacturer: string | null; part: string };
 
@@ -165,6 +174,13 @@ export function isSafeCandidateSearchIdentity(photoText: string, typed: string, 
   // spaces changed (AB-1234567 → AB1234567, "TP 1200" → TP1200).
   const keyNorm = identifierKey(key);
   if (texts.some((t) => privateIdentifierKeys(t).has(keyNorm))) return false;
+  // #5268 Codex r4 — the structural wall. Once EITHER text carries a serial or
+  // asset label, eligibility comes only from the PHOTO's own part label
+  // (P/N, MODEL, …). Typed text then grants nothing, so no spelling, spacing
+  // or relabelling of a private value typed back can make it searchable. A
+  // turn with no private label anywhere is unaffected.
+  const privateLabel = texts.some((t) => mentionsSerialLabel(t) || mentionsAssetLabel(t));
+  if (privateLabel && !labelledPartCodes(photoText).some((c) => identifierKey(c) === keyNorm)) return false;
   const codes = new Set(texts.flatMap((t) => partCodes(t).map((c) => c.toUpperCase())));
   if (codes.size !== 1 || !codes.has(key)) return false;
   const proposed = new Set(makerGroups(manufacturer).keys());

@@ -231,6 +231,8 @@ describe("a nameplate photo starts the manual search on the same turn", () => {
     ["a suffix asset tag typed back as MODEL", "SMC 12345678 tag", "Find the manual for SMC MODEL: 12345678"],
     ["a bracketed suffix asset tag before a rating", "SMC 12345678 (asset tag), 24VDC", "Find the manual for SMC MODEL: 12345678"],
     ["a suffix asset tag with a rating on the next line", "SMC 12345678 tag\n24VDC", "Find the manual for SMC MODEL: 12345678"],
+    ["a spaced value before a bracketed asset tag", "Siemens TP 1200 (asset tag)", "Find the manual for Siemens MODEL: TP1200"],
+    ["a spaced value before a bracketed serial label", "Siemens TP 1200 (S/N)", "Find the manual for Siemens MODEL: TP1200"],
   ])("%s → no search, no proposal of it", async (_name, plate, message) => {
     visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
       observationId: "obs", sessionId: "session", text: plate, obsKind: "look", trust: "candidate", fileId: PHOTO, hazards: [],
@@ -238,7 +240,7 @@ describe("a nameplate photo starts the manual search on the same turn", () => {
     const f = await frames(await POST(req({ message, mode: "general", visualEvidence: { fileId: PHOTO } }), params));
     expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
     const proposal = JSON.stringify(f.find((x) => x.kind === "identity_proposal") ?? null);
-    expect(proposal).not.toMatch(/12345678|AB-?1234567/);
+    expect(proposal).not.toMatch(/12345678|AB-?1234567|TP ?1200/);
   });
 
   // #5268 Codex r2 F2: the photo search completed and enabled its manual, then

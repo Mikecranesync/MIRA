@@ -166,6 +166,19 @@ export function privateIdentifierKeys(text: string): Set<string> {
   return keys;
 }
 
+/**
+ * The codes this text EXPLICITLY labels as the part (P/N, MODEL, TYPE, CAT…),
+ * upper-cased, never one it also marks as a serial (#5268 Codex r4). Once a
+ * serial or asset label appears anywhere in a turn, only these — read from
+ * the PHOTO — may leave as a search, so retyping a private value under
+ * another label in the typed text can never make it eligible.
+ */
+export function labelledPartCodes(text: string): string[] {
+  const serials = new Set(serialCodes(text));
+  const codes = [...normalize(text).matchAll(PART_LABEL)].map((m) => trimCode(m[1]).toUpperCase());
+  return [...new Set(codes.filter((c) => !serials.has(c)))];
+}
+
 export function unambiguousPartNumber(photoText: string): string | null {
   const codes = partCodes(photoText);
   return codes.length === 1 ? codes[0] : null;
