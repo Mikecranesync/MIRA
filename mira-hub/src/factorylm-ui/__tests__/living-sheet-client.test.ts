@@ -1325,4 +1325,50 @@ describe("#5212 sign-out vs an in-flight replay", () => {
     await drain;
     expect((await enqueueSheetEvent(store, "t1", "jobB", noteEvent("n-2", "after cancel"))).saved).toBe(true);
   });
+
+  // Codex #5276 round 4: Cancel on the "still being sent" warning must not
+  // have deleted the only copy of that note.
+  for (const outcome of ["network error", "conflict"] as const) {
+    it(`Cancel on the still-sending warning keeps the note queued (${outcome})`, async () => {
+      const { store } = mapStore();
+      await enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "unanswered words"));
+      let release = (): void => {};
+      const gate = new Promise<void>((r) => (release = r));
+      let hitResolve = (): void => {};
+      const hit = new Promise<void>((r) => (hitResolve = r));
+      const drain = drainSheetQueue(store, "t1", "jobA", async (): Promise<SheetSubmitOutcome> => {
+        hitResolve();
+        await gate;
+        if (outcome === "conflict") return { status: "conflict" };
+        throw new Error("offline");
+      }, "nb-1");
+      await hit;
+      const asked: string[] = [];
+      const proceed = await clearSheetDataForSignOut(store, (msg) => (asked.push(msg), asked.length === 1), undefined, 20);
+      expect(proceed).toBe(false);
+      expect(asked).toEqual([signOutUnsyncedPrompt(1), SIGN_OUT_STILL_SENDING_PROMPT]);
+      release();
+      await drain;
+      expect((await loadSheetQueue(store, "t1", "jobA")).map((i) => i.event.clientEventId)).toEqual(["n-1"]);
+    });
+  }
+
+  it("accepting the still-sending warning clears the phone (control)", async () => {
+    const { store, m } = mapStore();
+    await enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "accepted words"));
+    let release = (): void => {};
+    const gate = new Promise<void>((r) => (release = r));
+    let hitResolve = (): void => {};
+    const hit = new Promise<void>((r) => (hitResolve = r));
+    const drain = drainSheetQueue(store, "t1", "jobA", async (): Promise<SheetSubmitOutcome> => {
+      hitResolve();
+      await gate;
+      throw new Error("offline");
+    }, "nb-1");
+    await hit;
+    expect(await clearSheetDataForSignOut(store, () => true, undefined, 20)).toBe(true);
+    expect(sheetKeys(m)).toEqual([]);
+    release();
+    await drain;
+  });
 });
