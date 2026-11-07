@@ -1,3 +1,8 @@
+---
+paths:
+  - "mira-hub/db/migrations/**"
+---
+
 # mira-hub DB Migrations
 
 Rules for authoring / reviewing `mira-hub/db/migrations/*.sql`. These encode the

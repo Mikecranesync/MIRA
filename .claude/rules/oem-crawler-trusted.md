@@ -1,3 +1,8 @@
+---
+paths:
+  - "mira-crawler/**"
+---
+
 # OEM Crawler Content Is Trusted By Source
 
 Content crawled from a **curated OEM source in `mira-crawler/sources.yaml`** is

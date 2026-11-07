@@ -1,3 +1,10 @@
+---
+paths:
+  - "mira-mobile/**"
+  - "mira-hub/src/**"
+  - "mira-web/src/**"
+---
+
 # Commodity Before Custom (mobile/web infrastructure)
 
 MIRA owns industrial intelligence — evidence grounding, citations, provenance, technician

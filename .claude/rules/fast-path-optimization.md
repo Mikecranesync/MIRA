@@ -1,3 +1,8 @@
+---
+paths:
+  - "mira-bots/**"
+---
+
 # Supervisor Fast-Path Optimization Pattern
 
 **Fast-path vs fork — when a feature is a lightweight answer path inside a bot adapter.**
