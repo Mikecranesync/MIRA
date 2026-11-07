@@ -43,11 +43,16 @@ import {
   chosenRevisionOf,
   clearedFieldValue,
   COMMON_READING_UNITS,
+  dismissRejectedSheetEvent,
   dropHeadOfSheetQueue,
   drainSheetQueue,
   enqueueSheetEvent,
   isDefinitiveRejection,
+  loadRejectedSheetEvents,
   loadSheetQueue,
+  mergeRejectedSheetEvents,
+  recoveredFieldValue,
+  rejectedNoteText,
   localStorageStore,
   lowRiskProposalIds,
   photoAttemptBelongsTo,
@@ -382,6 +387,43 @@ export function TemplateNotesSection({ text }: { text: string | null }) {
 
 type ConflictInfo = { event: SheetEventPost; serverView: SheetView | null };
 
+/** #5212: rejected writes kept until the technician dismisses them. Text
+ *  notes and questions can be recovered into their field; other kinds are
+ *  dismiss-only. */
+function NotAcceptedSection({
+  rows,
+  error,
+  onDismiss,
+  onRecover,
+}: {
+  rows: Array<{ event: SheetEventPost; message: string }>;
+  error: string | null;
+  onDismiss: (clientEventId: string) => void;
+  onRecover: (event: SheetEventPost) => void;
+}) {
+  if (rows.length === 0 && !error) return null;
+  return (
+    <section style={SECTION_STYLE} data-testid="living-sheet-not-accepted">
+      <h3 style={{ marginTop: 0 }}>Not accepted</h3>
+      <p style={{ fontSize: "15px", color: "var(--fl-muted)" }}>Kept on this phone until you dismiss it.</p>
+      {error && <p role="alert">{error}</p>}
+      {rows.map((r) => (
+        <p key={r.event.clientEventId} role="alert">
+          {conflictValues(r.event as SheetWriteEvent, null).mine} — {r.message}{" "}
+          {rejectedNoteText(r.event) !== null && (
+            <button type="button" style={GHOST_BUTTON_STYLE} onClick={() => onRecover(r.event)}>
+              Recover
+            </button>
+          )}{" "}
+          <button type="button" style={GHOST_BUTTON_STYLE} onClick={() => onDismiss(r.event.clientEventId)}>
+            Dismiss
+          </button>
+        </p>
+      ))}
+    </section>
+  );
+}
+
 export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, receipt }: LivingSheetProps) {
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [open, setOpen] = useState(false);
@@ -396,6 +438,8 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
   // R2-04: every definitively-rejected write this session, with its payload
   // and reason — a rejection must never just vanish behind "Saved".
   const [notAccepted, setNotAccepted] = useState<Array<{ event: SheetEventPost; message: string }>>([]);
+  // #5212: a dismiss whose storage write failed keeps its row and says so.
+  const [rejectionError, setRejectionError] = useState<string | null>(null);
   const [handledProposalIds, setHandledProposalIds] = useState<ReadonlySet<string>>(new Set());
   // R2-34: ids claimed SYNCHRONOUSLY at the moment Accept is tapped — before
   // the async write even starts — so a second call for the same proposal
@@ -588,7 +632,7 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
         if (res.status >= 500 || res.status === 401) throw new Error(res.body.error ?? "server_error");
         const message = startJobErrorMessage(res.body.error, res.body.message);
         return { status: "rejected" as const, message };
-      });
+      }, notebookId);
       if (!result) return;
       if (mounted.current && stillSelected()) {
         setBadge({ saving: false, queued: result.remaining, conflict: result.conflict, drainStuck: result.drainStuck });
@@ -596,7 +640,12 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
         // reason, never silently discarded behind a generic toast.
         if (result.rejected.length > 0) {
           setLastRejection(result.rejected[result.rejected.length - 1]!.message);
-          setNotAccepted((prev) => [...prev, ...result.rejected]);
+          // #5212: the stored list is the source of truth; the fresh results
+          // are merged in so a storage failure still shows what was refused.
+          const stored = await loadRejectedSheetEvents(localStorageStore, scopeId, notebookId, jobId);
+          if (mounted.current && stillSelected()) {
+            setNotAccepted((prev) => mergeRejectedSheetEvents(stored, [...result.rejected, ...prev]));
+          }
         }
       }
       if (result.sent > 0 && stillSelected()) await loadSheet(jobId);
@@ -654,8 +703,17 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
       void loadSheet(jobId);
       void refreshBadge(jobId);
       void refreshWorkOrder(jobId);
+      // #5212: rejections persist per job until dismissed; show this job's only.
+      setNotAccepted([]);
+      setLastRejection(null);
+      setRejectionError(null);
+      void loadRejectedSheetEvents(localStorageStore, scopeId, notebookId, jobId).then((list) => {
+        if (mounted.current && responseStillTargetsSelectedJob(jobId, openJobIdRef.current)) {
+          setNotAccepted((prev) => mergeRejectedSheetEvents(list, prev));
+        }
+      });
     },
-    [notebookId, onSheetOpenChange, loadSheet, refreshBadge, refreshWorkOrder],
+    [notebookId, scopeId, onSheetOpenChange, loadSheet, refreshBadge, refreshWorkOrder],
   );
 
   const closeJob = useCallback(() => {
@@ -664,8 +722,38 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
     setView(null);
     setConflict(null);
     setConfirmStep(null);
+    // Navigation gates the screen only: the stored rejections stay put.
+    setNotAccepted([]);
+    setLastRejection(null);
+    setRejectionError(null);
     onSheetOpenChange(null);
   }, [onSheetOpenChange]);
+
+  // #5212: dismiss removes the stored record; the row goes only once storage agrees.
+  const onDismissRejected = useCallback(
+    async (clientEventId: string) => {
+      const jobId = openJobIdRef.current;
+      if (!jobId) return;
+      const ok = await dismissRejectedSheetEvent(localStorageStore, scopeId, notebookId, jobId, clientEventId);
+      if (!mounted.current || !responseStillTargetsSelectedJob(jobId, openJobIdRef.current)) return;
+      if (!ok) {
+        setRejectionError("Could not clear this from the phone. Try again.");
+        return;
+      }
+      setRejectionError(null);
+      setNotAccepted((prev) => prev.filter((r) => r.event.clientEventId !== clientEventId));
+    },
+    [scopeId, notebookId],
+  );
+
+  // #5212: recover puts the text back into the matching field. The record is
+  // kept until Dismiss, so an unposted note is never lost by tapping Recover.
+  const onRecoverRejected = useCallback((event: SheetEventPost) => {
+    const recovered = rejectedNoteText(event);
+    if (!recovered) return;
+    if (recovered.kind === "question") setQuestionText((cur) => recoveredFieldValue(cur, recovered.text));
+    else setNoteText((cur) => recoveredFieldValue(cur, recovered.text));
+  }, []);
 
   const postEvent = useCallback(
     async (kind: SheetWriteEvent["kind"], payload: SheetWriteEvent["payload"], baseSeqOverride?: number): Promise<boolean> => {
@@ -1142,6 +1230,15 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
             </div>
           )}
 
+          {openJobId && !view && (
+            <NotAcceptedSection
+              rows={notAccepted}
+              error={rejectionError}
+              onDismiss={onDismissRejected}
+              onRecover={onRecoverRejected}
+            />
+          )}
+
           {openJobId && view && (
             <div data-testid="living-sheet-sheet">
               <div style={{ marginBottom: 12 }}>
@@ -1161,22 +1258,12 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
                 </p>
               )}
 
-              {notAccepted.length > 0 && (
-                <section style={SECTION_STYLE} data-testid="living-sheet-not-accepted">
-                  <h3 style={{ marginTop: 0 }}>Not accepted</h3>
-                  {notAccepted.map((r, i) => (
-                    <p key={`${r.event.clientEventId}-${i}`} role="alert">
-                      {conflictValues(r.event as SheetWriteEvent, null).mine} — {r.message}{" "}
-                      <button
-                        type="button" style={GHOST_BUTTON_STYLE}
-                        onClick={() => setNotAccepted((prev) => prev.filter((_, idx) => idx !== i))}
-                      >
-                        Dismiss
-                      </button>
-                    </p>
-                  ))}
-                </section>
-              )}
+              <NotAcceptedSection
+                rows={notAccepted}
+                error={rejectionError}
+                onDismiss={onDismissRejected}
+                onRecover={onRecoverRejected}
+              />
 
               {conflict && (() => {
                 // F22: show BOTH competing values, not just sequence numbers,

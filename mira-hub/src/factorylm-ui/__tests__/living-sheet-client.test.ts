@@ -36,6 +36,12 @@ import {
   photoAttemptBelongsTo,
   stepConfirmBelongsTo,
   isDefinitiveRejection,
+  loadRejectedSheetEvents,
+  dismissRejectedSheetEvent,
+  recordRejectedSheetEvent,
+  rejectedSheetKey,
+  rejectedNoteText,
+  recoveredFieldValue,
 } from "../living-sheet-client";
 import type { SheetProposal } from "@/capabilities/living-sheet/propose";
 import type { SheetStepView } from "@/capabilities/living-sheet/reduce";
@@ -744,5 +750,184 @@ describe("stepConfirmBelongsTo — Mark done posts only to the job the dialog wa
   });
   it("no open dialog never posts", () => {
     expect(stepConfirmBelongsTo(null, "nb-1", "job-a")).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #5212: a definitively rejected offline note must survive navigation, reload
+// and sign-out, and stay scoped to its author, notebook and job.
+// ---------------------------------------------------------------------------
+
+function noteEvent(clientEventId: string, text: string): SheetEventPost {
+  return {
+    clientEventId,
+    baseSeq: 1,
+    kind: "note_added",
+    payload: { noteId: `note-${clientEventId}`, text, noteKind: "note" },
+    occurredAt: "2026-11-07T00:00:00.000Z",
+    workOrderId: null,
+  } as unknown as SheetEventPost;
+}
+
+/** Fails `set` only for keys starting with `prefix` (the rejected store), so
+ *  the queue itself stays writable and only the rejection record is at risk. */
+function failingPrefixStore(prefix: string, seed: Record<string, string> = {}): KvStore {
+  const m = new Map<string, string>(Object.entries(seed));
+  return {
+    get: async (k) => (m.has(k) ? m.get(k)! : null),
+    set: async (k, v) => {
+      if (k.startsWith(prefix)) return false;
+      m.set(k, v);
+      return true;
+    },
+    remove: async (k) => void m.delete(k),
+    keys: async () => Array.from(m.keys()),
+  };
+}
+
+describe("#5212 — a definitively rejected offline note (existing API only)", () => {
+  it("the note text is still in device storage after the drain resolves a job_finished rejection", async () => {
+    const store = memoryStore();
+    await enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "Replaced belt, check tension later"));
+    await drainSheetQueue(store, "t1", "jobA", async () => ({ status: "rejected", message: "job_finished" }), "nb-1");
+    const everything = await Promise.all((await store.keys()).map((k) => store.get(k)));
+    expect(everything.join("\n")).toContain("Replaced belt, check tension later");
+  });
+});
+
+describe("#5212 — rejected offline note survives navigation and reload", () => {
+  it("queue on job A, replay in flight, technician moves to job B, server rejects job_finished; reopen A after a simulated reload and both the note text and the rejection are there", async () => {
+    const store = memoryStore();
+    await enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "Replaced belt, check tension later"));
+
+    // Replay is in flight for job A.
+    let resolveSubmit!: (o: SheetSubmitOutcome) => void;
+    const inFlight = new Promise<SheetSubmitOutcome>((r) => (resolveSubmit = r));
+    const drain = drainSheetQueue(store, "t1", "jobA", () => inFlight, "nb-1");
+
+    // Technician navigates to job B meanwhile; unrelated work on B is queued.
+    await enqueueSheetEvent(store, "t1", "jobB", noteEvent("b-1", "Unrelated note on B"));
+
+    // Server now definitively rejects A's write.
+    resolveSubmit({ status: "rejected", message: "job_finished" });
+    await drain;
+
+    // Simulated reload: fresh module state (locks, drain guard), same storage.
+    vi.resetModules();
+    const fresh = await import("../living-sheet-client");
+
+    const listA = await fresh.loadRejectedSheetEvents(store, "t1", "nb-1", "jobA");
+    expect(listA.map((r) => r.event.clientEventId)).toEqual(["n-1"]);
+    expect(listA[0]!.message).toBe("job_finished");
+    expect(rejectedNoteText(listA[0]!.event)).toEqual({ kind: "note", text: "Replaced belt, check tension later" });
+    expect(await fresh.loadSheetQueue(store, "t1", "jobA")).toEqual([]);
+
+    // Job B shows none of job A's rejection.
+    expect(await fresh.loadRejectedSheetEvents(store, "t1", "nb-1", "jobB")).toEqual([]);
+  });
+
+  it("dismiss removes only the named rejection and leaves the others", async () => {
+    const store = memoryStore();
+    await enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "first"));
+    await enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-2", "second"));
+    await drainSheetQueue(store, "t1", "jobA", async () => ({ status: "rejected", message: "job_finished" }), "nb-1");
+    expect(await loadRejectedSheetEvents(store, "t1", "nb-1", "jobA")).toHaveLength(2);
+    expect(await dismissRejectedSheetEvent(store, "t1", "nb-1", "jobA", "n-1")).toBe(true);
+    const left = await loadRejectedSheetEvents(store, "t1", "nb-1", "jobA");
+    expect(left.map((r) => r.event.clientEventId)).toEqual(["n-2"]);
+    expect(await dismissRejectedSheetEvent(store, "t1", "nb-1", "jobA", "n-2")).toBe(true);
+    expect(await loadRejectedSheetEvents(store, "t1", "nb-1", "jobA")).toEqual([]);
+  });
+
+  it("recover exposes the text to put back in the field, and never overwrites a draft already being typed", async () => {
+    const store = memoryStore();
+    await enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "Replaced belt"));
+    await drainSheetQueue(store, "t1", "jobA", async () => ({ status: "rejected", message: "job_finished" }), "nb-1");
+    const [rec] = await loadRejectedSheetEvents(store, "t1", "nb-1", "jobA");
+    expect(rejectedNoteText(rec!.event)?.text).toBe("Replaced belt");
+    expect(recoveredFieldValue("", "Replaced belt")).toBe("Replaced belt");
+    expect(recoveredFieldValue("   ", "Replaced belt")).toBe("Replaced belt");
+    expect(recoveredFieldValue("half typed", "Replaced belt")).toBe("half typed Replaced belt");
+    // Recover does not delete the record: it stays until the technician dismisses it.
+    expect(await loadRejectedSheetEvents(store, "t1", "nb-1", "jobA")).toHaveLength(1);
+  });
+
+  it("a different tenant/user on the same device, or a different notebook, never sees the rejection", async () => {
+    const store = memoryStore();
+    await enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "private note"));
+    await drainSheetQueue(store, "t1", "jobA", async () => ({ status: "rejected", message: "job_finished" }), "nb-1");
+    expect(await loadRejectedSheetEvents(store, "t2", "nb-1", "jobA")).toEqual([]);
+    expect(await loadRejectedSheetEvents(store, "t1", "nb-2", "jobA")).toEqual([]);
+    expect(await loadRejectedSheetEvents(store, "t1", "nb-1", "jobA")).toHaveLength(1);
+  });
+
+  it("a retry of the same write (same clientEventId) creates exactly one rejected entry", async () => {
+    const store = memoryStore();
+    const rejected = async (): Promise<SheetSubmitOutcome> => ({ status: "rejected", message: "job_finished" });
+    await enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "once"));
+    await drainSheetQueue(store, "t1", "jobA", rejected, "nb-1");
+    // Crash-replay: the same logical write is queued again under the same id.
+    await enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "once"));
+    await drainSheetQueue(store, "t1", "jobA", rejected, "nb-1");
+    expect(await loadRejectedSheetEvents(store, "t1", "nb-1", "jobA")).toHaveLength(1);
+  });
+
+  it("sign-out purge clears pending queues but keeps the rejected record, and the unsynced count ignores it", async () => {
+    const store = memoryStore();
+    await enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "keep me"));
+    await drainSheetQueue(store, "t1", "jobA", async () => ({ status: "rejected", message: "job_finished" }), "nb-1");
+    await enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-2", "still pending"));
+    expect(await countAllSheetQueueEntries(store)).toBe(1);
+    await purgeSheetQueues(store);
+    expect(await countAllSheetQueueEntries(store)).toBe(0);
+    expect(await loadRejectedSheetEvents(store, "t1", "nb-1", "jobA")).toHaveLength(1);
+  });
+
+  it("corrupt rejected storage loads as empty and never throws", async () => {
+    const store = memoryStore();
+    await store.set(rejectedSheetKey("t1", "nb-1", "jobA"), "{not json");
+    await expect(loadRejectedSheetEvents(store, "t1", "nb-1", "jobA")).resolves.toEqual([]);
+  });
+
+  it("if the rejection cannot be persisted, the queued item is kept and the drain stops (drainStuck), never dropped", async () => {
+    const seeded = memoryStore();
+    await enqueueSheetEvent(seeded, "t1", "jobA", noteEvent("n-1", "must not vanish"));
+    const seedRaw = (await seeded.get(sheetQueueKey("t1", "jobA")))!;
+    const store = failingPrefixStore("flm.sheetrej.v1.", { [sheetQueueKey("t1", "jobA")]: seedRaw });
+    const submit = vi.fn(async (): Promise<SheetSubmitOutcome> => ({ status: "rejected", message: "job_finished" }));
+    const result = await drainSheetQueue(store, "t1", "jobA", submit, "nb-1");
+    expect(submit).toHaveBeenCalledTimes(1);
+    expect(result?.drainStuck).toBe(true);
+    expect((await loadSheetQueue(store, "t1", "jobA")).map((i) => i.event.clientEventId)).toEqual(["n-1"]);
+  });
+
+  it("unavailable storage: loading and dismissing never throw", async () => {
+    const broken: KvStore = {
+      get: async () => {
+        throw new Error("denied");
+      },
+      set: async () => {
+        throw new Error("denied");
+      },
+      remove: async () => {
+        throw new Error("denied");
+      },
+      keys: async () => [],
+    };
+    await expect(loadRejectedSheetEvents(broken, "t1", "nb-1", "jobA")).resolves.toEqual([]);
+    await expect(dismissRejectedSheetEvent(broken, "t1", "nb-1", "jobA", "n-1")).resolves.toBe(false);
+    await expect(
+      recordRejectedSheetEvent(broken, "t1", "nb-1", "jobA", {
+        event: noteEvent("n-1", "x"),
+        message: "job_finished",
+        rejectedAt: "2026-11-07T00:00:00.000Z",
+      }),
+    ).resolves.toBe(false);
+  });
+
+  it("only note and question kinds carry recoverable text", () => {
+    expect(rejectedNoteText(noteEvent("n-1", "hello"))).toEqual({ kind: "note", text: "hello" });
+    expect(rejectedNoteText(stepEvent("s-1"))).toBeNull();
+    expect(rejectedNoteText(noteEvent("n-2", "   "))).toBeNull();
   });
 });
