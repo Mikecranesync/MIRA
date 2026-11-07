@@ -176,23 +176,6 @@ export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, on
     // underneath — never navigates away from an open photo.
     const openDialog = () => document.querySelector<HTMLDialogElement>("dialog[open]");
     const onKeyDown = (event: KeyboardEvent) => {
-      // Initial conversation scrolling can move the browser's sequential Tab
-      // starting point. Restore the first stop only on an explicit first Tab,
-      // and only when this shell supplies the document's first visible control.
-      if (event.key === "Tab" && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey &&
-          !event.defaultPrevented && !routedInitialTab.current && document.activeElement === document.body &&
-          !openDialog() && !document.querySelector('.fl-overlay[data-active="true"][data-modal="true"]')) {
-        const skip = shellRoot.current?.querySelector<HTMLButtonElement>(".fl-shell__skip");
-        const first = focusableWithin(document.body).find((control) =>
-          control.getClientRects().length > 0 && getComputedStyle(control).visibility === "visible" &&
-          !control.closest("[hidden], [inert]"));
-        if (skip && !skip.disabled && first === skip) {
-          routedInitialTab.current = true;
-          event.preventDefault();
-          skip.focus({ preventScroll: true });
-        }
-        return;
-      }
       if (event.key !== "Escape" || event.defaultPrevented || openDialog()) return;
       event.preventDefault();
       closeTopRef.current();
@@ -209,6 +192,30 @@ export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, on
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener(BACK_EVENT, onBack);
     };
+  }, []);
+
+  useEffect(() => {
+    const onInitialTab = (event: KeyboardEvent) => {
+      // Initial conversation scrolling can move the browser's sequential Tab
+      // starting point. Restore the first stop only on an explicit first Tab,
+      // and only when this shell supplies the document's first visible control.
+      if (event.key === "Tab" && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey &&
+          !event.defaultPrevented && !routedInitialTab.current && document.activeElement === document.body &&
+          !document.querySelector("dialog[open]") && !document.querySelector('.fl-overlay[data-active="true"][data-modal="true"]')) {
+        const skip = shellRoot.current?.querySelector<HTMLButtonElement>(".fl-shell__skip");
+        const first = focusableWithin(document.body).find((control) =>
+          control.getClientRects().length > 0 && getComputedStyle(control).visibility === "visible" &&
+          !control.closest("[hidden], [inert]"));
+        if (skip && !skip.disabled && first === skip) {
+          routedInitialTab.current = true;
+          event.preventDefault();
+          skip.focus({ preventScroll: true });
+        }
+        return;
+      }
+    };
+    document.addEventListener("keydown", onInitialTab);
+    return () => document.removeEventListener("keydown", onInitialTab);
   }, []);
 
   return <div
