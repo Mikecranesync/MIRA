@@ -661,3 +661,44 @@ describe("asset-tag labels", () => {
     },
   );
 });
+
+describe("#5268 Codex r14 F1: a value the plate marks private is never a confirm-chip candidate", () => {
+  it.each([
+    "SMC MODEL: TP1200 (customer asset tag)",
+    "SMC MODEL: TP1200 (internal asset tag)",
+    "SMC MODEL: TP1200 (customer S/N)",
+    "SMC MODEL: TP1200 (customer asset tag) 24VDC",
+    "SMC MODEL: TP1200 asset tag",
+  ])("%s", (plate) => {
+    expect(unambiguousPartNumber(plate)).toBeNull();
+  });
+  it.each([
+    ["SMC MODEL: TP1200 S/N: 00998877", "TP1200"],
+    ["SMC MODEL: TP1200\nS/N: 00998877", "TP1200"],
+    ["SMC MODEL: TP1200 asset tag 4471", "TP1200"],
+  ])("control: a label with its own value leaves the model public (%s)", (plate, model) => {
+    expect(unambiguousPartNumber(plate)).toBe(model);
+  });
+
+  it("a confirmation of a persisted offer for the private value never searches", () => {
+    const pending = [{ kind: "part_search_proposal", candidate: "TP1200", manufacturer: "SMC", originTurnId: "t1" }];
+    const d = partSearchDecision({
+      message: partSearchConfirmation("TP1200"),
+      candidate: unambiguousPartNumber("SMC MODEL: TP1200 (customer asset tag)"),
+      manufacturer: "SMC",
+      previousEvidence: pending,
+      previousTurnId: "t1",
+    });
+    expect(d.action).toBe("mismatch");
+    // Control: the same persisted offer on a plate where TP1200 is public does search.
+    expect(
+      partSearchDecision({
+        message: partSearchConfirmation("TP1200"),
+        candidate: unambiguousPartNumber("SMC MODEL: TP1200 S/N: 00998877"),
+        manufacturer: "SMC",
+        previousEvidence: pending,
+        previousTurnId: "t1",
+      }).action,
+    ).toBe("search");
+  });
+});

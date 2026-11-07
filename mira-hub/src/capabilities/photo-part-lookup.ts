@@ -271,7 +271,40 @@ export function labelledPartCodes(text: string): string[] {
 
 export function unambiguousPartNumber(photoText: string): string | null {
   const codes = partCodes(photoText);
-  return codes.length === 1 ? codes[0] : null;
+  if (codes.length !== 1) return null;
+  // #5268 Codex r14: the confirm-first chip searches this value too, and a
+  // confirmation never overrides a private designation (ADR-0036) — a value the
+  // text marks private ("TP1200 (customer asset tag)") is never offered.
+  const key = identifierKey(codes[0]);
+  if ([...privateIdentifierKeys(photoText)].some((k) => k.includes(key))) return null;
+  if (privateSuffixTails(photoText).some((tail) => tail.includes(key))) return null;
+  if (labelledPrivateBySuffix(photoText, codes[0])) return null;
+  return codes[0];
+}
+
+const DIGIT_TOKEN = /(?=[A-Z0-9./-]*\d)[A-Z0-9][A-Z0-9./-]*/i;
+/**
+ * A serial or asset label later on the code's own line that carries no value of
+ * its own ("MODEL: TP1200 (customer asset tag)") designates that code itself,
+ * provided no other digit-bearing value sits between them. A label with its own
+ * value ("MODEL: TP1200 S/N: 00998877") names that value, not the code.
+ */
+function labelledPrivateBySuffix(photoText: string, code: string): boolean {
+  const text = normalize(photoText);
+  const escaped = code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  for (const m of text.matchAll(new RegExp(`(?<![A-Z0-9])${escaped}(?![A-Z0-9])`, "gi"))) {
+    const rest = text.slice((m.index ?? 0) + m[0].length).split(/[\r\n]/)[0];
+    for (const label of [SERIAL_LABEL, ASSET_LABEL]) {
+      for (const l of rest.matchAll(new RegExp(label.source, "gi"))) {
+        const at = l.index ?? 0;
+        if (DIGIT_TOKEN.test(rest.slice(0, at))) continue;
+        // Its own value follows it directly; a closing bracket ends the label first.
+        const after = rest.slice(at + l[0].length).replace(new RegExp(`^(?:[^A-Za-z0-9)\\]]*${ID_WORD}(?![a-z]))*`, "i"), "");
+        if (!new RegExp(`^[^A-Za-z0-9)\\]]*${DIGIT_TOKEN.source}`, "i").test(after)) return true;
+      }
+    }
+  }
+  return false;
 }
 
 /**

@@ -207,6 +207,29 @@ describe("a nameplate photo starts the manual search on the same turn", () => {
     }
   });
 
+  it.each(["SMC MODEL: TP1200 (customer asset tag)", "SMC MODEL: TP1200 (internal asset tag)", "SMC MODEL: TP1200 (customer S/N)", "SMC MODEL: TP1200\nTP 1200\n(asset tag)"])(
+    "#5268 Codex r14: a model the plate marks private is never offered on the confirm chip either (%s)",
+    async (plate) => {
+      visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "obs", sessionId: "session", text: plate, obsKind: "look", trust: "candidate", fileId: PHOTO, hazards: [],
+      });
+      const f = await frames(await POST(req({ message: "Find the manual for this", mode: "general", visualEvidence: { fileId: PHOTO } }), params));
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+      for (const frame of f) expect(JSON.stringify(frame)).not.toMatch(/Search the web for[^"]*\\?"TP1200/);
+      const followups = f.find((x) => x.kind === "followups") as { suggestions?: string[] } | undefined;
+      expect(followups?.suggestions ?? []).not.toContainEqual(expect.stringMatching(/TP1200/));
+    },
+  );
+  it("r14 control: a public model beside a distinct serial is still offered on the confirm chip", async () => {
+    visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+      observationId: "obs", sessionId: "session", text: "SMC MODEL: TP1200\nS/N: 00998877", obsKind: "look", trust: "candidate", fileId: PHOTO, hazards: [],
+    });
+    const f = await frames(await POST(req({ message: "Find the manual for this", mode: "general", visualEvidence: { fileId: PHOTO } }), params));
+    const followups = f.find((x) => x.kind === "followups") as { suggestions?: string[] } | undefined;
+    expect(followups?.suggestions).toContain('Search the web for "TP1200"');
+    expect(JSON.stringify(f)).not.toContain("00998877");
+  });
+
   it("a library maker with NO citable pages for this model still searches — the full plate model, not the truncated family", async () => {
     ragMock.corpusManufacturers.mockResolvedValue(["AutomationDirect"]);
     ragMock.manufacturerFromObservationText.mockReturnValue("AutomationDirect");
