@@ -1,0 +1,1094 @@
+[
+  {
+    "renderer": "assistant",
+    "kind": "desktop",
+    "viewportWidth": 1920,
+    "viewportHeight": 1080,
+    "rootSize": 14,
+    "geometry": {
+      "menu": {
+        "x": 750,
+        "y": 705.5,
+        "width": 314,
+        "height": 278,
+        "top": 705.5,
+        "right": 1064,
+        "bottom": 983.5,
+        "left": 750
+      },
+      "attach": {
+        "x": 759,
+        "y": 1011,
+        "width": 85.03125,
+        "height": 44,
+        "top": 1011,
+        "right": 844.03125,
+        "bottom": 1055,
+        "left": 759
+      },
+      "composer": {
+        "x": 252,
+        "y": 978.5,
+        "width": 1668,
+        "height": 101.5,
+        "top": 978.5,
+        "right": 1920,
+        "bottom": 1080,
+        "left": 252
+      },
+      "row": {
+        "x": 750,
+        "y": 991.5,
+        "width": 672,
+        "height": 72.5,
+        "top": 991.5,
+        "right": 1422,
+        "bottom": 1064,
+        "left": 750
+      },
+      "header": {
+        "x": 767,
+        "y": 722.5,
+        "width": 280,
+        "height": 44,
+        "top": 722.5,
+        "right": 1047,
+        "bottom": 766.5,
+        "left": 767
+      },
+      "close": {
+        "x": 1003,
+        "y": 722.5,
+        "width": 44,
+        "height": 44,
+        "top": 722.5,
+        "right": 1047,
+        "bottom": 766.5,
+        "left": 1003
+      },
+      "menuPosition": "absolute",
+      "menuInsets": {
+        "inlineStart": "498px",
+        "inlineEnd": "856px",
+        "left": "498px",
+        "right": "856px"
+      },
+      "composerTransform": "none",
+      "bodyTransform": "none",
+      "htmlTransform": "none",
+      "containingBlock": "fl-composer",
+      "composerPaddingStart": "498px",
+      "composerPaddingEnd": "498px",
+      "contentEdge": 750,
+      "rowInset": 9,
+      "rootFontSize": "14px",
+      "bodyFontSize": "14px"
+    },
+    "pendingRemoveTarget": {
+      "x": 1378,
+      "y": 935.5,
+      "width": 44,
+      "height": 44
+    }
+  },
+  {
+    "renderer": "assistant",
+    "kind": "landscape",
+    "viewportWidth": 844,
+    "viewportHeight": 390,
+    "rootSize": 16,
+    "geometry": {
+      "menu": {
+        "x": 304,
+        "y": 10,
+        "width": 354,
+        "height": 278,
+        "top": 10,
+        "right": 658,
+        "bottom": 288,
+        "left": 304
+      },
+      "attach": {
+        "x": 313,
+        "y": 321,
+        "width": 85.03125,
+        "height": 44,
+        "top": 321,
+        "right": 398.03125,
+        "bottom": 365,
+        "left": 313
+      },
+      "composer": {
+        "x": 288,
+        "y": 283,
+        "width": 556,
+        "height": 107,
+        "top": 283,
+        "right": 844,
+        "bottom": 390,
+        "left": 288
+      },
+      "row": {
+        "x": 304,
+        "y": 296,
+        "width": 524,
+        "height": 78,
+        "top": 296,
+        "right": 828,
+        "bottom": 374,
+        "left": 304
+      },
+      "header": {
+        "x": 321,
+        "y": 27,
+        "width": 320,
+        "height": 44,
+        "top": 27,
+        "right": 641,
+        "bottom": 71,
+        "left": 321
+      },
+      "close": {
+        "x": 597,
+        "y": 27,
+        "width": 44,
+        "height": 44,
+        "top": 27,
+        "right": 641,
+        "bottom": 71,
+        "left": 597
+      },
+      "menuPosition": "absolute",
+      "menuInsets": {
+        "inlineStart": "16px",
+        "inlineEnd": "186px",
+        "left": "16px",
+        "right": "186px"
+      },
+      "composerTransform": "none",
+      "bodyTransform": "none",
+      "htmlTransform": "none",
+      "containingBlock": "fl-composer",
+      "composerPaddingStart": "16px",
+      "composerPaddingEnd": "16px",
+      "contentEdge": 304,
+      "rowInset": 9,
+      "rootFontSize": "16px",
+      "bodyFontSize": "16px"
+    }
+  },
+  {
+    "renderer": "assistant",
+    "kind": "desktop",
+    "viewportWidth": 1920,
+    "viewportHeight": 1080,
+    "rootSize": 16,
+    "geometry": {
+      "menu": {
+        "x": 720,
+        "y": 700,
+        "width": 354,
+        "height": 278,
+        "top": 700,
+        "right": 1074,
+        "bottom": 978,
+        "left": 720
+      },
+      "attach": {
+        "x": 729,
+        "y": 1011,
+        "width": 85.03125,
+        "height": 44,
+        "top": 1011,
+        "right": 814.03125,
+        "bottom": 1055,
+        "left": 729
+      },
+      "composer": {
+        "x": 288,
+        "y": 973,
+        "width": 1632,
+        "height": 107,
+        "top": 973,
+        "right": 1920,
+        "bottom": 1080,
+        "left": 288
+      },
+      "row": {
+        "x": 720,
+        "y": 986,
+        "width": 768,
+        "height": 78,
+        "top": 986,
+        "right": 1488,
+        "bottom": 1064,
+        "left": 720
+      },
+      "header": {
+        "x": 737,
+        "y": 717,
+        "width": 320,
+        "height": 44,
+        "top": 717,
+        "right": 1057,
+        "bottom": 761,
+        "left": 737
+      },
+      "close": {
+        "x": 1013,
+        "y": 717,
+        "width": 44,
+        "height": 44,
+        "top": 717,
+        "right": 1057,
+        "bottom": 761,
+        "left": 1013
+      },
+      "menuPosition": "absolute",
+      "menuInsets": {
+        "inlineStart": "432px",
+        "inlineEnd": "846px",
+        "left": "432px",
+        "right": "846px"
+      },
+      "composerTransform": "none",
+      "bodyTransform": "none",
+      "htmlTransform": "none",
+      "containingBlock": "fl-composer",
+      "composerPaddingStart": "432px",
+      "composerPaddingEnd": "432px",
+      "contentEdge": 720,
+      "rowInset": 9,
+      "rootFontSize": "16px",
+      "bodyFontSize": "16px"
+    },
+    "pendingRemoveTarget": {
+      "x": 1444,
+      "y": 927,
+      "width": 44,
+      "height": 44
+    }
+  },
+  {
+    "renderer": "assistant",
+    "kind": "desktop",
+    "viewportWidth": 1280,
+    "viewportHeight": 900,
+    "rootSize": 14,
+    "geometry": {
+      "menu": {
+        "x": 430,
+        "y": 525.5,
+        "width": 314,
+        "height": 278,
+        "top": 525.5,
+        "right": 744,
+        "bottom": 803.5,
+        "left": 430
+      },
+      "attach": {
+        "x": 439,
+        "y": 831,
+        "width": 85.03125,
+        "height": 44,
+        "top": 831,
+        "right": 524.03125,
+        "bottom": 875,
+        "left": 439
+      },
+      "composer": {
+        "x": 252,
+        "y": 798.5,
+        "width": 1028,
+        "height": 101.5,
+        "top": 798.5,
+        "right": 1280,
+        "bottom": 900,
+        "left": 252
+      },
+      "row": {
+        "x": 430,
+        "y": 811.5,
+        "width": 672,
+        "height": 72.5,
+        "top": 811.5,
+        "right": 1102,
+        "bottom": 884,
+        "left": 430
+      },
+      "header": {
+        "x": 447,
+        "y": 542.5,
+        "width": 280,
+        "height": 44,
+        "top": 542.5,
+        "right": 727,
+        "bottom": 586.5,
+        "left": 447
+      },
+      "close": {
+        "x": 683,
+        "y": 542.5,
+        "width": 44,
+        "height": 44,
+        "top": 542.5,
+        "right": 727,
+        "bottom": 586.5,
+        "left": 683
+      },
+      "menuPosition": "absolute",
+      "menuInsets": {
+        "inlineStart": "178px",
+        "inlineEnd": "536px",
+        "left": "178px",
+        "right": "536px"
+      },
+      "composerTransform": "none",
+      "bodyTransform": "none",
+      "htmlTransform": "none",
+      "containingBlock": "fl-composer",
+      "composerPaddingStart": "178px",
+      "composerPaddingEnd": "178px",
+      "contentEdge": 430,
+      "rowInset": 9,
+      "rootFontSize": "14px",
+      "bodyFontSize": "14px"
+    },
+    "pendingRemoveTarget": {
+      "x": 1058,
+      "y": 755.5,
+      "width": 44,
+      "height": 44
+    }
+  },
+  {
+    "renderer": "assistant",
+    "kind": "desktop",
+    "viewportWidth": 1280,
+    "viewportHeight": 900,
+    "rootSize": 16,
+    "geometry": {
+      "menu": {
+        "x": 400,
+        "y": 520,
+        "width": 354,
+        "height": 278,
+        "top": 520,
+        "right": 754,
+        "bottom": 798,
+        "left": 400
+      },
+      "attach": {
+        "x": 409,
+        "y": 831,
+        "width": 85.03125,
+        "height": 44,
+        "top": 831,
+        "right": 494.03125,
+        "bottom": 875,
+        "left": 409
+      },
+      "composer": {
+        "x": 288,
+        "y": 793,
+        "width": 992,
+        "height": 107,
+        "top": 793,
+        "right": 1280,
+        "bottom": 900,
+        "left": 288
+      },
+      "row": {
+        "x": 400,
+        "y": 806,
+        "width": 768,
+        "height": 78,
+        "top": 806,
+        "right": 1168,
+        "bottom": 884,
+        "left": 400
+      },
+      "header": {
+        "x": 417,
+        "y": 537,
+        "width": 320,
+        "height": 44,
+        "top": 537,
+        "right": 737,
+        "bottom": 581,
+        "left": 417
+      },
+      "close": {
+        "x": 693,
+        "y": 537,
+        "width": 44,
+        "height": 44,
+        "top": 537,
+        "right": 737,
+        "bottom": 581,
+        "left": 693
+      },
+      "menuPosition": "absolute",
+      "menuInsets": {
+        "inlineStart": "112px",
+        "inlineEnd": "526px",
+        "left": "112px",
+        "right": "526px"
+      },
+      "composerTransform": "none",
+      "bodyTransform": "none",
+      "htmlTransform": "none",
+      "containingBlock": "fl-composer",
+      "composerPaddingStart": "112px",
+      "composerPaddingEnd": "112px",
+      "contentEdge": 400,
+      "rowInset": 9,
+      "rootFontSize": "16px",
+      "bodyFontSize": "16px"
+    },
+    "pendingRemoveTarget": {
+      "x": 1124,
+      "y": 747,
+      "width": 44,
+      "height": 44
+    }
+  },
+  {
+    "renderer": "assistant",
+    "kind": "portrait",
+    "viewportWidth": 390,
+    "viewportHeight": 844,
+    "rootSize": 16,
+    "geometry": {
+      "menu": {
+        "x": 16,
+        "y": 551,
+        "width": 374,
+        "height": 293,
+        "top": 551,
+        "right": 390,
+        "bottom": 844,
+        "left": 16
+      },
+      "attach": {
+        "x": 21,
+        "y": 775,
+        "width": 90.625,
+        "height": 44,
+        "top": 775,
+        "right": 111.625,
+        "bottom": 819,
+        "left": 21
+      },
+      "composer": {
+        "x": 0,
+        "y": 727,
+        "width": 390,
+        "height": 117,
+        "top": 727,
+        "right": 390,
+        "bottom": 844,
+        "left": 0
+      },
+      "row": {
+        "x": 12,
+        "y": 740,
+        "width": 366,
+        "height": 88,
+        "top": 740,
+        "right": 378,
+        "bottom": 828,
+        "left": 12
+      },
+      "header": {
+        "x": 32,
+        "y": 584,
+        "width": 342,
+        "height": 44,
+        "top": 584,
+        "right": 374,
+        "bottom": 628,
+        "left": 32
+      },
+      "close": {
+        "x": 330,
+        "y": 584,
+        "width": 44,
+        "height": 44,
+        "top": 584,
+        "right": 374,
+        "bottom": 628,
+        "left": 330
+      },
+      "menuPosition": "fixed",
+      "menuInsets": {
+        "inlineStart": "16px",
+        "inlineEnd": "0px",
+        "left": "16px",
+        "right": "0px"
+      },
+      "composerTransform": "none",
+      "bodyTransform": "none",
+      "htmlTransform": "none",
+      "containingBlock": null,
+      "composerPaddingStart": "12px",
+      "composerPaddingEnd": "12px",
+      "contentEdge": 12,
+      "rowInset": 9,
+      "rootFontSize": "16px",
+      "bodyFontSize": "16px"
+    },
+    "pendingRemoveTarget": {
+      "x": 334,
+      "y": 681,
+      "width": 44,
+      "height": 44
+    }
+  },
+  {
+    "renderer": "classic",
+    "kind": "landscape",
+    "viewportWidth": 844,
+    "viewportHeight": 390,
+    "rootSize": 16,
+    "geometry": {
+      "menu": {
+        "x": 304,
+        "y": 10,
+        "width": 354,
+        "height": 278,
+        "top": 10,
+        "right": 658,
+        "bottom": 288,
+        "left": 304
+      },
+      "attach": {
+        "x": 313,
+        "y": 321,
+        "width": 85.03125,
+        "height": 44,
+        "top": 321,
+        "right": 398.03125,
+        "bottom": 365,
+        "left": 313
+      },
+      "composer": {
+        "x": 288,
+        "y": 283,
+        "width": 556,
+        "height": 107,
+        "top": 283,
+        "right": 844,
+        "bottom": 390,
+        "left": 288
+      },
+      "row": {
+        "x": 304,
+        "y": 296,
+        "width": 524,
+        "height": 78,
+        "top": 296,
+        "right": 828,
+        "bottom": 374,
+        "left": 304
+      },
+      "header": {
+        "x": 321,
+        "y": 27,
+        "width": 320,
+        "height": 44,
+        "top": 27,
+        "right": 641,
+        "bottom": 71,
+        "left": 321
+      },
+      "close": {
+        "x": 597,
+        "y": 27,
+        "width": 44,
+        "height": 44,
+        "top": 27,
+        "right": 641,
+        "bottom": 71,
+        "left": 597
+      },
+      "menuPosition": "absolute",
+      "menuInsets": {
+        "inlineStart": "16px",
+        "inlineEnd": "186px",
+        "left": "16px",
+        "right": "186px"
+      },
+      "composerTransform": "none",
+      "bodyTransform": "none",
+      "htmlTransform": "none",
+      "containingBlock": "fl-composer",
+      "composerPaddingStart": "16px",
+      "composerPaddingEnd": "16px",
+      "contentEdge": 304,
+      "rowInset": 9,
+      "rootFontSize": "16px",
+      "bodyFontSize": "16px"
+    }
+  },
+  {
+    "renderer": "classic",
+    "kind": "desktop",
+    "viewportWidth": 1920,
+    "viewportHeight": 1080,
+    "rootSize": 16,
+    "geometry": {
+      "menu": {
+        "x": 720,
+        "y": 700,
+        "width": 354,
+        "height": 278,
+        "top": 700,
+        "right": 1074,
+        "bottom": 978,
+        "left": 720
+      },
+      "attach": {
+        "x": 729,
+        "y": 1011,
+        "width": 85.03125,
+        "height": 44,
+        "top": 1011,
+        "right": 814.03125,
+        "bottom": 1055,
+        "left": 729
+      },
+      "composer": {
+        "x": 288,
+        "y": 973,
+        "width": 1632,
+        "height": 107,
+        "top": 973,
+        "right": 1920,
+        "bottom": 1080,
+        "left": 288
+      },
+      "row": {
+        "x": 720,
+        "y": 986,
+        "width": 768,
+        "height": 78,
+        "top": 986,
+        "right": 1488,
+        "bottom": 1064,
+        "left": 720
+      },
+      "header": {
+        "x": 737,
+        "y": 717,
+        "width": 320,
+        "height": 44,
+        "top": 717,
+        "right": 1057,
+        "bottom": 761,
+        "left": 737
+      },
+      "close": {
+        "x": 1013,
+        "y": 717,
+        "width": 44,
+        "height": 44,
+        "top": 717,
+        "right": 1057,
+        "bottom": 761,
+        "left": 1013
+      },
+      "menuPosition": "absolute",
+      "menuInsets": {
+        "inlineStart": "432px",
+        "inlineEnd": "846px",
+        "left": "432px",
+        "right": "846px"
+      },
+      "composerTransform": "none",
+      "bodyTransform": "none",
+      "htmlTransform": "none",
+      "containingBlock": "fl-composer",
+      "composerPaddingStart": "432px",
+      "composerPaddingEnd": "432px",
+      "contentEdge": 720,
+      "rowInset": 9,
+      "rootFontSize": "16px",
+      "bodyFontSize": "16px"
+    },
+    "pendingRemoveTarget": {
+      "x": 1444,
+      "y": 927,
+      "width": 44,
+      "height": 44
+    }
+  },
+  {
+    "renderer": "classic",
+    "kind": "portrait",
+    "viewportWidth": 390,
+    "viewportHeight": 844,
+    "rootSize": 16,
+    "geometry": {
+      "menu": {
+        "x": 16,
+        "y": 551,
+        "width": 374,
+        "height": 293,
+        "top": 551,
+        "right": 390,
+        "bottom": 844,
+        "left": 16
+      },
+      "attach": {
+        "x": 21,
+        "y": 775,
+        "width": 90.625,
+        "height": 44,
+        "top": 775,
+        "right": 111.625,
+        "bottom": 819,
+        "left": 21
+      },
+      "composer": {
+        "x": 0,
+        "y": 727,
+        "width": 390,
+        "height": 117,
+        "top": 727,
+        "right": 390,
+        "bottom": 844,
+        "left": 0
+      },
+      "row": {
+        "x": 12,
+        "y": 740,
+        "width": 366,
+        "height": 88,
+        "top": 740,
+        "right": 378,
+        "bottom": 828,
+        "left": 12
+      },
+      "header": {
+        "x": 32,
+        "y": 584,
+        "width": 342,
+        "height": 44,
+        "top": 584,
+        "right": 374,
+        "bottom": 628,
+        "left": 32
+      },
+      "close": {
+        "x": 330,
+        "y": 584,
+        "width": 44,
+        "height": 44,
+        "top": 584,
+        "right": 374,
+        "bottom": 628,
+        "left": 330
+      },
+      "menuPosition": "fixed",
+      "menuInsets": {
+        "inlineStart": "16px",
+        "inlineEnd": "0px",
+        "left": "16px",
+        "right": "0px"
+      },
+      "composerTransform": "none",
+      "bodyTransform": "none",
+      "htmlTransform": "none",
+      "containingBlock": null,
+      "composerPaddingStart": "12px",
+      "composerPaddingEnd": "12px",
+      "contentEdge": 12,
+      "rowInset": 9,
+      "rootFontSize": "16px",
+      "bodyFontSize": "16px"
+    },
+    "pendingRemoveTarget": {
+      "x": 334,
+      "y": 681,
+      "width": 44,
+      "height": 44
+    }
+  },
+  {
+    "renderer": "classic",
+    "kind": "desktop",
+    "viewportWidth": 1920,
+    "viewportHeight": 1080,
+    "rootSize": 14,
+    "geometry": {
+      "menu": {
+        "x": 750,
+        "y": 705.5,
+        "width": 314,
+        "height": 278,
+        "top": 705.5,
+        "right": 1064,
+        "bottom": 983.5,
+        "left": 750
+      },
+      "attach": {
+        "x": 759,
+        "y": 1011,
+        "width": 85.03125,
+        "height": 44,
+        "top": 1011,
+        "right": 844.03125,
+        "bottom": 1055,
+        "left": 759
+      },
+      "composer": {
+        "x": 252,
+        "y": 978.5,
+        "width": 1668,
+        "height": 101.5,
+        "top": 978.5,
+        "right": 1920,
+        "bottom": 1080,
+        "left": 252
+      },
+      "row": {
+        "x": 750,
+        "y": 991.5,
+        "width": 672,
+        "height": 72.5,
+        "top": 991.5,
+        "right": 1422,
+        "bottom": 1064,
+        "left": 750
+      },
+      "header": {
+        "x": 767,
+        "y": 722.5,
+        "width": 280,
+        "height": 44,
+        "top": 722.5,
+        "right": 1047,
+        "bottom": 766.5,
+        "left": 767
+      },
+      "close": {
+        "x": 1003,
+        "y": 722.5,
+        "width": 44,
+        "height": 44,
+        "top": 722.5,
+        "right": 1047,
+        "bottom": 766.5,
+        "left": 1003
+      },
+      "menuPosition": "absolute",
+      "menuInsets": {
+        "inlineStart": "498px",
+        "inlineEnd": "856px",
+        "left": "498px",
+        "right": "856px"
+      },
+      "composerTransform": "none",
+      "bodyTransform": "none",
+      "htmlTransform": "none",
+      "containingBlock": "fl-composer",
+      "composerPaddingStart": "498px",
+      "composerPaddingEnd": "498px",
+      "contentEdge": 750,
+      "rowInset": 9,
+      "rootFontSize": "14px",
+      "bodyFontSize": "14px"
+    },
+    "pendingRemoveTarget": {
+      "x": 1378,
+      "y": 935.5,
+      "width": 44,
+      "height": 44
+    }
+  },
+  {
+    "renderer": "classic",
+    "kind": "desktop",
+    "viewportWidth": 1280,
+    "viewportHeight": 900,
+    "rootSize": 14,
+    "geometry": {
+      "menu": {
+        "x": 430,
+        "y": 525.5,
+        "width": 314,
+        "height": 278,
+        "top": 525.5,
+        "right": 744,
+        "bottom": 803.5,
+        "left": 430
+      },
+      "attach": {
+        "x": 439,
+        "y": 831,
+        "width": 85.03125,
+        "height": 44,
+        "top": 831,
+        "right": 524.03125,
+        "bottom": 875,
+        "left": 439
+      },
+      "composer": {
+        "x": 252,
+        "y": 798.5,
+        "width": 1028,
+        "height": 101.5,
+        "top": 798.5,
+        "right": 1280,
+        "bottom": 900,
+        "left": 252
+      },
+      "row": {
+        "x": 430,
+        "y": 811.5,
+        "width": 672,
+        "height": 72.5,
+        "top": 811.5,
+        "right": 1102,
+        "bottom": 884,
+        "left": 430
+      },
+      "header": {
+        "x": 447,
+        "y": 542.5,
+        "width": 280,
+        "height": 44,
+        "top": 542.5,
+        "right": 727,
+        "bottom": 586.5,
+        "left": 447
+      },
+      "close": {
+        "x": 683,
+        "y": 542.5,
+        "width": 44,
+        "height": 44,
+        "top": 542.5,
+        "right": 727,
+        "bottom": 586.5,
+        "left": 683
+      },
+      "menuPosition": "absolute",
+      "menuInsets": {
+        "inlineStart": "178px",
+        "inlineEnd": "536px",
+        "left": "178px",
+        "right": "536px"
+      },
+      "composerTransform": "none",
+      "bodyTransform": "none",
+      "htmlTransform": "none",
+      "containingBlock": "fl-composer",
+      "composerPaddingStart": "178px",
+      "composerPaddingEnd": "178px",
+      "contentEdge": 430,
+      "rowInset": 9,
+      "rootFontSize": "14px",
+      "bodyFontSize": "14px"
+    },
+    "pendingRemoveTarget": {
+      "x": 1058,
+      "y": 755.5,
+      "width": 44,
+      "height": 44
+    }
+  },
+  {
+    "renderer": "classic",
+    "kind": "desktop",
+    "viewportWidth": 1280,
+    "viewportHeight": 900,
+    "rootSize": 16,
+    "geometry": {
+      "menu": {
+        "x": 400,
+        "y": 520,
+        "width": 354,
+        "height": 278,
+        "top": 520,
+        "right": 754,
+        "bottom": 798,
+        "left": 400
+      },
+      "attach": {
+        "x": 409,
+        "y": 831,
+        "width": 85.03125,
+        "height": 44,
+        "top": 831,
+        "right": 494.03125,
+        "bottom": 875,
+        "left": 409
+      },
+      "composer": {
+        "x": 288,
+        "y": 793,
+        "width": 992,
+        "height": 107,
+        "top": 793,
+        "right": 1280,
+        "bottom": 900,
+        "left": 288
+      },
+      "row": {
+        "x": 400,
+        "y": 806,
+        "width": 768,
+        "height": 78,
+        "top": 806,
+        "right": 1168,
+        "bottom": 884,
+        "left": 400
+      },
+      "header": {
+        "x": 417,
+        "y": 537,
+        "width": 320,
+        "height": 44,
+        "top": 537,
+        "right": 737,
+        "bottom": 581,
+        "left": 417
+      },
+      "close": {
+        "x": 693,
+        "y": 537,
+        "width": 44,
+        "height": 44,
+        "top": 537,
+        "right": 737,
+        "bottom": 581,
+        "left": 693
+      },
+      "menuPosition": "absolute",
+      "menuInsets": {
+        "inlineStart": "112px",
+        "inlineEnd": "526px",
+        "left": "112px",
+        "right": "526px"
+      },
+      "composerTransform": "none",
+      "bodyTransform": "none",
+      "htmlTransform": "none",
+      "containingBlock": "fl-composer",
+      "composerPaddingStart": "112px",
+      "composerPaddingEnd": "112px",
+      "contentEdge": 400,
+      "rowInset": 9,
+      "rootFontSize": "16px",
+      "bodyFontSize": "16px"
+    },
+    "pendingRemoveTarget": {
+      "x": 1124,
+      "y": 747,
+      "width": 44,
+      "height": 44
+    }
+  }
+]
