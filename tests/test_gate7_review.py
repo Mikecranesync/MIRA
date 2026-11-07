@@ -315,7 +315,7 @@ def test_security_brief_requires_use_site_evidence_not_quoted_hostile_text_alone
         r"(?:quoted|literal|fixture|data).*(?:alone|by itself).*(?:not|insufficient)", policy, re.I
     )
     assert re.search(
-        r"(?:concrete|evidence).*(?:use.site|trust.boundary|dataflow)|(?:use.site|trust.boundary|dataflow).*(?:concrete|evidence)",
+        r"(?:concrete|evidence).*(?:use[ -]site|trust[ -]boundary|dataflow)|(?:use[ -]site|trust[ -]boundary|dataflow).*(?:concrete|evidence)",
         policy,
         re.I,
     )
@@ -333,7 +333,7 @@ def test_security_brief_keeps_review_manipulation_and_real_promotion_reportable(
     assert "**high**-severity" in policy and "report it and continue reviewing" in policy
     assert re.search(r"(?:steer|redirect|manipulat|ignore this brief)", policy, re.I)
     assert re.search(
-        r"(?:reviewer|verdict).*(?:even without|does not require|not depend on).*(?:application|use.site|execution)",
+        r"(?:reviewer|verdict).*(?:even without|does not require|not depend on).*(?:application|use[ -]site|execution)",
         policy,
         re.I,
     )
