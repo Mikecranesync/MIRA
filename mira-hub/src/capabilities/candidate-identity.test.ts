@@ -219,6 +219,49 @@ describe("isSafeCandidateSearchIdentity", () => {
   it("control: a distinct labelled MODEL beside a serial still searches", () => {
     expect(isSafeCandidateSearchIdentity("AutomationDirect MODEL: GS11N-20P2 S/N: 2309AB1234", "Find the manual for this", "GS11N-20P2", "AutomationDirect")).toBe(true);
   });
+  // #5268 Codex r1–r4: one table for the whole "private value typed back"
+  // class. Every private shape on the photo × every way of typing it back is
+  // refused; a part the PHOTO labels still searches beside each label.
+  describe("#5268 — a private value on the photo never becomes searchable by typing it back", () => {
+    const PRIVATE_PHOTOS: [string, string, string][] = [
+      // [shape, photo text, the private value's compact form]
+      ["prefix asset", "SMC Asset tag: 12345678", "12345678"],
+      ["prefix serial", "SMC S/N: AB-1234567", "AB1234567"],
+      ["spaced prefix serial", "Siemens S/N: TP 1200", "TP1200"],
+      ["bracketed suffix asset", "SMC 12345678 (asset tag)", "12345678"],
+      ["suffix asset", "SMC 12345678 tag", "12345678"],
+      ["suffix asset + comma rating", "SMC 12345678 (asset tag), 24VDC", "12345678"],
+      ["suffix asset + newline rating", "SMC 12345678 tag\n24VDC", "12345678"],
+      ["spaced bracketed suffix asset", "Siemens TP 1200 (asset tag)", "TP1200"],
+      ["spaced bracketed suffix serial", "Siemens TP 1200 (S/N)", "TP1200"],
+    ];
+    const typedForms = (v: string, maker: string) => [
+      `Find the manual for ${maker} MODEL: ${v}`,
+      `Find the manual for ${maker} P/N: ${v}`,
+      `Find the manual for ${maker} ${v}`,
+    ];
+    for (const [shape, photo, value] of PRIVATE_PHOTOS) {
+      const maker = photo.split(" ")[0];
+      it.each(typedForms(value, maker))(`${shape}: refused when typed back as %s`, (typed) => {
+        expect(isSafeCandidateSearchIdentity(photo, typed, value, maker)).toBe(false);
+      });
+    }
+    it.each([
+      ["AutomationDirect MODEL: GS11N-20P2 S/N: 2309AB1234", "GS11N-20P2", "AutomationDirect"],
+      ["Siemens P/N: 6ES7214-1AG40-0XB0 S/N: XC-99887766", "6ES7214-1AG40-0XB0", "Siemens"],
+      ["SMC P/N: SY3120-5LZD (asset tag 00123456)", "SY3120-5LZD", "SMC"],
+      ["AutomationDirect MODEL: GS11N-20P2\nSERIAL NO: 7A3K9Q2026X11", "GS11N-20P2", "AutomationDirect"],
+    ])("control: the photo's labelled part beside a private label still searches (%s)", (photo, part, maker) => {
+      expect(isSafeCandidateSearchIdentity(photo, "Find the manual for this", part, maker)).toBe(true);
+    });
+    it("fail-closed: a serial on the photo and NO part label there → a typed MODEL does not auto-search", () => {
+      expect(isSafeCandidateSearchIdentity("Siemens S/N: XC-99887766", "Find the manual for Siemens MODEL: 6ES7214-1AG40-0XB0", "6ES7214-1AG40-0XB0", "Siemens")).toBe(false);
+    });
+    it("control: no private label anywhere → a typed part still searches (rule inactive)", () => {
+      expect(isSafeCandidateSearchIdentity("", "Find the manual for the SMC SS5Y3-DUW01302", "SS5Y3-DUW01302", "SMC")).toBe(true);
+    });
+  });
+
   it("control: the single serial-safe code, in the photo or the typed text, is accepted", () => {
     expect(isSafeCandidateSearchIdentity("Siemens P/N: 6ES7214-1AG40-0XB0", "Find the manual for this", "6ES7214-1AG40-0XB0", "Siemens")).toBe(true);
     expect(isSafeCandidateSearchIdentity("", "Find the manual for the SMC SS5Y3-DUW01302", "SS5Y3-DUW01302", "SMC")).toBe(true);
