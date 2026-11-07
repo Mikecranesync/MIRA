@@ -9,7 +9,7 @@ import { relevantQuoteWindow } from "@/lib/quote-window";
 /**
  * "AI finds, manual speaks." On the tablet the notebook answer IS the matching
  * manual passages, word for word with page — no model-written text. Measured
- * 2026-11-07 (w0-tablet-spike.md): the full grounded prompt (3,438 tokens) took
+ * 2026-11-07 (W0 tablet spike): the full grounded prompt (3,438 tokens) took
  * 53 s on the 1.5B model and came back with no [n] markers, so every answer was
  * labelled ungrounded; on a short prompt it still wrote no markers and got the
  * how-to wrong. Retrieval already ran in Postgres, so the passages cost nothing.

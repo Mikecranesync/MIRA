@@ -12,8 +12,7 @@
  * checking. Closing those (#5265, W1) and the network-blocked run with a
  * traffic monitor (plan W5) are what show nothing leaves the device.
  *
- * Field evidence: factorylm PR #237, docs/air-force-rfi/w0-tablet-spike.md
- * (Galaxy Tab S9 FE, 2026-11-07).
+ * Field evidence: W0 tablet spike (Galaxy Tab S9 FE, 2026-11-07), private planning repo.
  */
 
 /** Cloud credentials a Hub lane reads (AI providers, evidence judge, web search, email, analytics, chat, CRM lead capture, Google sign-in). Non-empty = refuse. */

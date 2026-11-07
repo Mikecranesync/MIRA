@@ -1,7 +1,7 @@
 /**
  * #5265 edge profile — "AI finds, manual speaks". On the sealed tablet the
  * notebook answer is the retrieved manual passages, verbatim with page, and no
- * model runs (w0-tablet-spike.md, 2026-11-07: the model-written path took 53 s
+ * model runs (W0 tablet spike, 2026-11-07: the model-written path took 53 s
  * on the 1.5B and came back uncited).
  *
  * Run: npx vitest run "src/app/api/equipment-notebooks/[id]/chat/__tests__/edge-passages.test.ts"
