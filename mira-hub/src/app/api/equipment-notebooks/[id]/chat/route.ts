@@ -4692,7 +4692,7 @@ async function handleChatTurn(
       // stripper cannot turn "selector [1]" into an apparently exact selector.
       // No provider factual text survives a canonical history selection.
       const canonicalJobHistory = served && canSelectSavedJobHistory && providerAnswerText.trim() === jobHistorySelector;
-      const invalidJobHistorySelection = served && gate && docGrounded && !canonicalJobHistory && providerAnswerText.toUpperCase().includes(jobHistorySelector.slice(0, jobHistorySelector.lastIndexOf("_") + 1));
+      const invalidJobHistorySelection = served && gate && docGrounded && !canonicalJobHistory && providerAnswerText.toUpperCase().includes(jobHistorySelector.slice(0, jobHistorySelector.lastIndexOf("_")));
       let answerText = canonicalJobHistory
         ? "The selected saved job record below is historical, technician-reported data, not work instructions or verified maintenance. It does not establish an OEM specification, airworthiness approval or permission to operate.\n\n" + literalSheetSection
         : invalidJobHistorySelection

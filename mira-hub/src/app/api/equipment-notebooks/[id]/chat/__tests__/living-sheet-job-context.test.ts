@@ -620,17 +620,17 @@ describe("selected notebook-document history control", () => {
     expect(nbMock.recordTurn).toHaveBeenCalledWith(TENANT, NB, expect.objectContaining({ answerStatus: "insufficient_evidence", evidence: [], answerText: expect.not.stringContaining(selector) }));
   });
 
-  it.each([`${selector.slice(0, -3)} [1]`, `${selector.toLowerCase()} [1]`])("withholds malformed reserved control with a valid notebook citation: %s", async (reply) => {
+  it.each([`${selector.slice(0, -3)} [1]`, `${selector.toLowerCase()} [1]`, "MIRA_SELECTED_JOB [1]", "MIRA_SELECTED_JOB"])("withholds malformed reserved control on the notebook-document path: %s", async (reply) => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream(reply), { status: 200 })));
     const res = await POST(req({ message: "Summarize the latest saved note and handover.", sourceDocIds: [docId], livingSheetJobId: JOB_ID }), params);
     const stream = await res.text();
     expect(ragMock.retrieveNodeChunks).toHaveBeenCalledTimes(1);
     expect(ragMock.retrieveManualChunks).not.toHaveBeenCalled();
-    expect(stream.toUpperCase()).not.toContain("MIRA_SELECTED_JOB_");
+    expect(stream.toUpperCase()).not.toContain("MIRA_SELECTED_JOB");
     expect(stream).toContain('"citations":[]');
     expect(stream).toContain('"status":"insufficient_evidence"');
     expect(nbMock.recordTurn).toHaveBeenCalledWith(TENANT, NB, expect.objectContaining({
-      answerStatus: "insufficient_evidence", evidence: [], answerText: expect.not.stringMatching(/mira_selected_job_/i),
+      answerStatus: "insufficient_evidence", evidence: [], answerText: expect.not.stringMatching(/mira_selected_job/i),
     }));
   });
 });
