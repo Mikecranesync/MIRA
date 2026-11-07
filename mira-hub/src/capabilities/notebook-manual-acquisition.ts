@@ -945,6 +945,7 @@ export function acquisitionDeclineText(
   key: string | null,
   label: string,
   basis: "confirmed" | "candidate" = "confirmed",
+  opts: { sourceOff?: boolean } = {},
 ): string | null {
   if (!rec || !key || rec.key !== key) return null;
   if (rec.source_removed) {
@@ -958,7 +959,13 @@ export function acquisitionDeclineText(
       case "running":
         return `I read the ${label} off your photo and I'm looking for the official ${label} manual now. When I find it, it'll be added to this notebook's Sources and turned on — ask again and I'll answer from it and show you the page.`;
       case "complete":
-        return `I found the official ${label} manual from your photo and added it to this notebook's Sources, switched on. Ask again and I'll answer from it and show you the page.`;
+        // #5268 Codex F2: "complete" is history, not the source's state now.
+        // A caller that KNOWS the source is off says so; otherwise the copy
+        // claims only what happened (found and added), never "switched on".
+        if (opts.sourceOff) {
+          return `I found the official ${label} manual from your photo and added it to this notebook's Sources, but it's turned off there now, so I can't answer from it. Turn it back on in Sources and ask again — I'll answer from it and show you the page.`;
+        }
+        return `I found the official ${label} manual from your photo and added it to this notebook's Sources. Ask again and I'll answer from it and show you the page.`;
       // candidate_review (Codex post-cap 4 F9 / 13 F13 / 14 F13): the manual's
       // text did NOT verify this model, so the shared copy below gives the one
       // real next step: check it in Sources, or the URL and the upload
@@ -1133,7 +1140,9 @@ export async function currentManualSearchStatus(
   const reconciled = await reconcileAcquisition(tenantId, notebookId, rec);
   if (!reconciled) return null;
   const running = reconciled.state === "running";
-  const message = running ? null : acquisitionDeclineText(reconciled, key, `${manufacturer} ${model}`, basis);
+  // Reaching here means no applicable source is enabled right now (the ready /
+  // preparing branches above returned), so a "complete" record's manual is off.
+  const message = running ? null : acquisitionDeclineText(reconciled, key, `${manufacturer} ${model}`, basis, { sourceOff: true });
   const manualUrl = !running && !reconciled.attached_indexed && !reconciled.source_removed
     ? acquisitionManualUrl(reconciled) : null;
   return { manufacturer, model, running, ...(message ? { message } : {}), ...(manualUrl ? { manualUrl } : {}), ...(startedAt ? { startedAt } : {}) };

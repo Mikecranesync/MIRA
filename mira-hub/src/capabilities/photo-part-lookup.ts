@@ -114,6 +114,37 @@ export function serialCodes(photoText: string): string[] {
   return [...serials];
 }
 
+/** Upper-case alphanumerics only, so "AB-1234567", "AB1234567" and "TP 1200" vs "TP1200" compare equal. */
+export const identifierKey = (code: string) => code.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+/**
+ * Every value the text marks as private (ADR-0036: never sent to search) —
+ * serial values (`serialCodes`) and the value after an asset-tag /
+ * customer-identifier label — as `identifierKey`s (#5268 Codex F1). A value
+ * split by spaces ("S/N: TP 1200") also yields each joined run ("TP1200",
+ * "TP1200X…"), so retyping it without the spaces does not launder it.
+ */
+export function privateIdentifierKeys(text: string): Set<string> {
+  const t = normalize(text);
+  const keys = new Set<string>(serialCodes(text).map(identifierKey));
+  const VALUE_AFTER = new RegExp(
+    String.raw`^[^A-Za-z0-9]*(?:(?:${ID_WORD})(?![a-z])[^A-Za-z0-9]*)*(?:is\b)?\s*([A-Z0-9][A-Z0-9./-]*(?:[ \t]+[A-Z0-9][A-Z0-9./-]*){0,2})`,
+    "i",
+  );
+  for (const label of [SERIAL_LABEL, ASSET_LABEL]) {
+    for (const m of t.matchAll(new RegExp(label.source, "gi"))) {
+      const value = t.slice((m.index ?? 0) + m[0].length, (m.index ?? 0) + m[0].length + 48).match(VALUE_AFTER)?.[1];
+      if (!value) continue;
+      let joined = "";
+      for (const chunk of value.split(/[ \t]+/)) {
+        joined += identifierKey(chunk);
+        if (joined.length >= 4) keys.add(joined);
+      }
+    }
+  }
+  return keys;
+}
+
 export function unambiguousPartNumber(photoText: string): string | null {
   const codes = partCodes(photoText);
   return codes.length === 1 ? codes[0] : null;

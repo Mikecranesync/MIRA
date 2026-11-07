@@ -1141,6 +1141,44 @@ describe("currentManualSearchStatus — recomputed fresh, never a stale snapshot
       expect(r?.message).not.toMatch(/couldn't confirm/i);
     });
 
+    // #5268 Codex F2: a photo search that COMPLETED and enabled its manual,
+    // then the technician turned that source off — "complete" is history, so
+    // the status must not say the manual is switched on.
+    describe("#5268 F2 — a completed photo search whose source is now off", () => {
+      const unconfirmed = { identityStatus: "unconfirmed", manufacturer: null, model: null, catalogNumber: null };
+      const proposed = { manufacturer: "SMC", model: "SS5Y3-DUW01302" };
+      const completeRec = {
+        key: candidateKey, state: "complete", started_at: "2026-01-01T00:00:00Z", finished_at: "2026-01-01T00:01:00Z",
+        candidate_host: "www.smcworld.com", match_state: "verified", oem_request_url: null, attached_indexed: true,
+      };
+      const photoSource = (enabledByDefault: boolean) => ({
+        docId: "d1", enabledByDefault, matchState: "verified", sourceRole: "manual", readiness: { canChat: true },
+        matchEvidence: { autoAcquisitionKey: candidateKey, sourceLabel: "from_photo" },
+      });
+
+      it("disabled source → says it is turned off and how to use it, never 'switched on'", async () => {
+        db.readRow = completeRec;
+        const r = await currentManualSearchStatus("t", "nb", unconfirmed, proposed, [photoSource(false)] as never, { env: ON });
+        expect(r?.running).toBe(false);
+        expect(r?.message).toMatch(/turned off there now/);
+        expect(r?.message).toMatch(/Turn it back on in Sources/);
+        expect(r?.message).not.toMatch(/switched on/i);
+      });
+
+      it("control: re-enabled source → the ready message comes back", async () => {
+        db.readRow = completeRec;
+        const r = await currentManualSearchStatus("t", "nb", unconfirmed, proposed, [photoSource(true)] as never, { env: ON });
+        expect(r?.message).toMatch(/ready/i);
+        expect(r?.message).not.toMatch(/turned off/i);
+      });
+
+      it("the chat-turn copy (source state unknown) claims only found + added, never 'switched on'", () => {
+        const text = acquisitionDeclineText(completeRec as never, candidateKey, "SMC SS5Y3-DUW01302", "candidate");
+        expect(text).toMatch(/added it to this notebook's Sources/);
+        expect(text).not.toMatch(/switched on|turned off/i);
+      });
+    });
+
     it("falls back to the historical decline copy when NO applicable source was ever attached", async () => {
       db.readRow = candidateReviewRec;
       const r = await currentManualSearchStatus("t", "nb", confirmedIdentity, null, [], { env: ON });
