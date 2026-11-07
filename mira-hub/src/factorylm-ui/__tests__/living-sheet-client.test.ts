@@ -21,6 +21,8 @@ import {
   removeFromSheetQueue,
   saveBadge,
   sheetQueueKey,
+  signOutPurgeFailedPrompt,
+  clearSheetDataForSignOut,
   signOutUnsyncedPrompt,
   startJobErrorMessage,
   stepNeedsConfirm,
@@ -434,8 +436,7 @@ describe("purgeSheetQueues", () => {
     await enqueueSheetEvent(store, "t1", "j1", stepEvent("a"));
     await enqueueSheetEvent(store, "t1", "j2", stepEvent("b"));
     await store.set("flm.unrelated.key", "keep me");
-    const removed = await purgeSheetQueues(store);
-    expect(removed).toBe(2);
+    expect(await purgeSheetQueues(store)).toEqual({ purged: 2, remaining: 0 });
     expect(await loadSheetQueue(store, "t1", "j1")).toEqual([]);
     expect(await store.get("flm.unrelated.key")).toBe("keep me");
   });
@@ -937,6 +938,102 @@ describe("#5212 — rejected offline note survives navigation and reload", () =>
         rejectedAt: "2026-11-07T00:00:00.000Z",
       }),
     ).resolves.toBe(false);
+  });
+
+  // Codex #5276 F1: the production adapter swallows a removeItem failure, so
+  // a remove that resolves but leaves the key must never count as removed.
+  function stickyRemoveStore(stickyPrefix: string): KvStore {
+    const m = new Map<string, string>();
+    return {
+      get: async (k) => (m.has(k) ? m.get(k)! : null),
+      set: async (k, v) => {
+        m.set(k, v);
+        return true;
+      },
+      remove: async (k) => {
+        if (!k.startsWith(stickyPrefix)) m.delete(k);
+      },
+      keys: async () => Array.from(m.keys()),
+    };
+  }
+
+  it("dismiss reports failure when a silently failed remove leaves the last rejection on the phone", async () => {
+    const store = stickyRemoveStore("flm.sheetrej.v1.");
+    await enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "still here"));
+    await drainSheetQueue(store, "t1", "jobA", async () => ({ status: "rejected", message: "job_finished" }), "nb-1");
+    expect(await loadRejectedSheetEvents(store, "t1", "nb-1", "jobA")).toHaveLength(1);
+    expect(await dismissRejectedSheetEvent(store, "t1", "nb-1", "jobA", "n-1")).toBe(false);
+    expect(await loadRejectedSheetEvents(store, "t1", "nb-1", "jobA")).toHaveLength(1);
+  });
+
+  it("dismiss of the last rejection succeeds when the remove really happens (control)", async () => {
+    const store = memoryStore();
+    await enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "gone"));
+    await drainSheetQueue(store, "t1", "jobA", async () => ({ status: "rejected", message: "job_finished" }), "nb-1");
+    expect(await dismissRejectedSheetEvent(store, "t1", "nb-1", "jobA", "n-1")).toBe(true);
+    expect(await loadRejectedSheetEvents(store, "t1", "nb-1", "jobA")).toEqual([]);
+  });
+
+  it("purge reports keys a silently failed remove left behind, and a throwing remove", async () => {
+    const store = stickyRemoveStore("flm.sheetrej.v1.");
+    await enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "rejected words"));
+    await drainSheetQueue(store, "t1", "jobA", async () => ({ status: "rejected", message: "job_finished" }), "nb-1");
+    await enqueueSheetEvent(store, "t1", "jobB", noteEvent("n-2", "pending"));
+    const { remaining } = await purgeSheetQueues(store);
+    expect(remaining).toBe(1);
+    expect(await loadSheetQueue(store, "t1", "jobB")).toEqual([]);
+    expect(await loadRejectedSheetEvents(store, "t1", "nb-1", "jobA")).toHaveLength(1);
+
+    const throwing = memoryStore();
+    await enqueueSheetEvent(throwing, "t1", "jobA", noteEvent("n-3", "x"));
+    throwing.remove = async () => {
+      throw new Error("denied");
+    };
+    expect(await purgeSheetQueues(throwing)).toEqual({ purged: 0, remaining: 1 });
+  });
+
+  it("sign-out warns only when the purge left sheet items on the phone", () => {
+    expect(signOutPurgeFailedPrompt(0)).toBeNull();
+    expect(signOutPurgeFailedPrompt(1)).toBe(
+      "Could not clear 1 saved sheet item from this phone. Sign out anyway and leave it here?",
+    );
+    expect(signOutPurgeFailedPrompt(3)).toBe(
+      "Could not clear 3 saved sheet items from this phone. Sign out anyway and leave them here?",
+    );
+  });
+
+  it("sign-out stops when the purge left sheet text and the technician cancels", async () => {
+    const store = stickyRemoveStore("flm.sheetrej.v1.");
+    await enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "rejected words"));
+    await drainSheetQueue(store, "t1", "jobA", async () => ({ status: "rejected", message: "job_finished" }), "nb-1");
+    const asked: string[] = [];
+    const confirm = (m: string) => {
+      asked.push(m);
+      return asked.length === 1; // OK to discard unsynced, then Cancel on "could not clear"
+    };
+    const purging = vi.fn();
+    expect(await clearSheetDataForSignOut(store, confirm, purging)).toBe(false);
+    expect(purging).toHaveBeenCalledTimes(1);
+    expect(asked).toHaveLength(2);
+    expect(asked[1]).toBe(signOutPurgeFailedPrompt(1));
+  });
+
+  it("sign-out goes ahead with no second prompt when the purge cleared everything (control)", async () => {
+    const store = memoryStore();
+    await enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "pending"));
+    const asked: string[] = [];
+    expect(await clearSheetDataForSignOut(store, (m) => (asked.push(m), true))).toBe(true);
+    expect(asked).toHaveLength(1);
+    expect(await countAllSheetQueueEntries(store)).toBe(0);
+  });
+
+  it("sign-out Cancel on the unsynced prompt keeps everything and never purges", async () => {
+    const store = memoryStore();
+    await enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "pending"));
+    const purging = vi.fn();
+    expect(await clearSheetDataForSignOut(store, () => false, purging)).toBe(false);
+    expect(purging).not.toHaveBeenCalled();
+    expect(await countAllSheetQueueEntries(store)).toBe(1);
   });
 
   it("only note and question kinds carry recoverable text", () => {

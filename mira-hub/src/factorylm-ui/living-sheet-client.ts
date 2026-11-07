@@ -460,8 +460,10 @@ export async function dismissRejectedSheetEvent(
       const list = await readRejectedList(store, key);
       const next = list.filter((r) => r.event.clientEventId !== clientEventId);
       if (next.length === 0) {
+        // The production adapter swallows a removeItem failure, so read back:
+        // the row may only go once the text is really gone from the phone.
         await store.remove(key);
-        return true;
+        return (await store.get(key)) === null;
       }
       return await store.set(key, JSON.stringify(next));
     } catch {
@@ -497,11 +499,46 @@ function isLocalSheetKey(k: string): boolean {
 }
 
 /** Sign-out hygiene: remove every Living Work Sheet queue and kept rejection
- *  (all jobs, all tenants/users on this device). Returns how many keys were purged. */
-export async function purgeSheetQueues(store: KvStore): Promise<number> {
+ *  (all jobs, all tenants/users on this device). Each removal is read back,
+ *  because the production adapter swallows a removeItem failure: `remaining`
+ *  counts keys that are still on the phone, so sign-out never claims a purge
+ *  that did not happen. */
+export async function purgeSheetQueues(store: KvStore): Promise<{ purged: number; remaining: number }> {
   const keys = (await store.keys()).filter(isLocalSheetKey);
-  for (const k of keys) await store.remove(k);
-  return keys.length;
+  let remaining = 0;
+  for (const k of keys) {
+    try {
+      await store.remove(k);
+      if ((await store.get(k)) !== null) remaining++;
+    } catch {
+      remaining++;
+    }
+  }
+  return { purged: keys.length - remaining, remaining };
+}
+
+/** #5212: the sign-out text when the purge could not clear everything, or
+ *  null when nothing is left behind. */
+export function signOutPurgeFailedPrompt(remaining: number): string | null {
+  if (remaining <= 0) return null;
+  return `Could not clear ${remaining} saved sheet item${remaining === 1 ? "" : "s"} from this phone. Sign out anyway and leave ${remaining === 1 ? "it" : "them"} here?`;
+}
+
+/** The sheet half of sign-out. R2-32: ask before discarding anything unsynced
+ *  (Cancel keeps it, no purge). #5212: a purge that left sheet text on the
+ *  phone says so, and Cancel then keeps the technician signed in. Returns
+ *  whether sign-out should go ahead; `onPurgeStart` fires only if it purges. */
+export async function clearSheetDataForSignOut(
+  store: KvStore,
+  confirm: (message: string) => boolean,
+  onPurgeStart?: () => void,
+): Promise<boolean> {
+  const prompt = signOutUnsyncedPrompt(await countAllSheetQueueEntries(store));
+  if (prompt && !confirm(prompt)) return false;
+  onPurgeStart?.();
+  const { remaining } = await purgeSheetQueues(store);
+  const leftBehind = signOutPurgeFailedPrompt(remaining);
+  return !leftBehind || confirm(leftBehind);
 }
 
 /** R2-32: total queued entries across EVERY Living Work Sheet queue on this

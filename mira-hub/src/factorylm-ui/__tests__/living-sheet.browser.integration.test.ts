@@ -29,6 +29,7 @@ const NB = uuid();
 const JOB_A = uuid();
 const JOB_B = uuid();
 const NOTE = `rejected-note-${uuid().slice(0, 8)}`;
+const NOTE_B = "Belt tension checked on B while A replays";
 const REJECT_RE = new RegExp(`/sheets/${JOB_A}/events/$`);
 
 let server: http.Server;
@@ -244,6 +245,28 @@ describe.skipIf(!RUN)("#5212 Living Sheet rejected note browser proof (real comp
       await openJob(page, JOB_B);
       expect(await page.getByText("Belt check B").count(), "b: job B title rendered").toBeGreaterThan(0);
 
+      await page.waitForTimeout(500);
+      expect(await page.getByTestId("living-sheet-badge").innerText(), "b: job B does not inherit A's Saving…").not.toBe("Saving…");
+
+      // b2. Codex #5276 F2: a note on B while A's replay holds the device-wide
+      // drain. B's own replay cannot start, so B must not show "Saving…".
+      await page.getByLabel("Note", { exact: true }).fill(NOTE_B);
+      await page.getByRole("button", { name: "Add note" }).click();
+      await eventually(
+        "b2: B's note is queued on the phone",
+        () => page.evaluate((jobId) => {
+          let n = 0;
+          for (let i = 0; i < window.localStorage.length; i++) {
+            const k = window.localStorage.key(i);
+            if (k && k.startsWith("flm.sheetq") && k.endsWith(jobId)) n += (JSON.parse(window.localStorage.getItem(k) ?? "[]") as unknown[]).length;
+          }
+          return n;
+        }, JOB_B),
+        1,
+      );
+      await page.waitForTimeout(500);
+      expect(await page.getByTestId("living-sheet-badge").innerText(), "b2: job B is not stuck on Saving… behind A's replay").not.toBe("Saving…");
+
       // c. release the rejection; job B must show no Not accepted section.
       release();
       await eventually("c: rejection persisted under A's key", () => rejectedCount(page), 1);
@@ -251,6 +274,8 @@ describe.skipIf(!RUN)("#5212 Living Sheet rejected note browser proof (real comp
       await page.waitForTimeout(500);
       expect(await page.getByTestId("living-sheet-not-accepted").count(), "c: job B shows no Not accepted section").toBe(0);
       expect(await page.getByTestId("living-sheet-last-rejection").count(), "c: job B shows no last-rejection line").toBe(0);
+      // Codex #5276 F2: A's replay ending off screen must not leave B on "Saving…".
+      expect(await page.getByText("Saving…").count(), "c: job B is not stuck on Saving…").toBe(0);
 
       // d. reopen A: the original text and the rejection are both shown.
       await backToJobs(page);
@@ -259,6 +284,8 @@ describe.skipIf(!RUN)("#5212 Living Sheet rejected note browser proof (real comp
       await section.waitFor();
       expect(await section.innerText(), "d: Not accepted shows the unique note text").toContain(NOTE);
       expect(await section.innerText(), "d: Not accepted shows the rejection message").toContain(REJECT_MESSAGE);
+      await page.waitForTimeout(500);
+      expect(await page.getByText("Saving…").count(), "d: reopened A is not stuck on Saving…").toBe(0);
       await shotBoth(page, "not-accepted-reopened");
 
       // e. reload, reopen A: still shown.
