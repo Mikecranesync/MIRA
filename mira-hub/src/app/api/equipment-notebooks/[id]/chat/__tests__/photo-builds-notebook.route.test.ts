@@ -207,7 +207,7 @@ describe("a nameplate photo starts the manual search on the same turn", () => {
     }
   });
 
-  it.each(["SMC MODEL: TP1200 (customer asset tag)", "SMC MODEL: TP1200 (internal asset tag)", "SMC MODEL: TP1200 (customer S/N)", "SMC MODEL: TP1200\nTP 1200\n(asset tag)"])(
+  it.each(["SMC MODEL: TP1200 (customer asset tag)", "SMC MODEL: TP1200 (internal asset tag)", "SMC MODEL: TP1200 (customer S/N)", "SMC MODEL: TP1200\n(customer asset tag)", "SMC MODEL: TP1200\r\n(internal asset tag)", "SMC MODEL: TP1200\n(customer S/N)", "SMC MODEL: TP1200\nTP 1200\n(asset tag)"])(
     "#5268 Codex r14: a model the plate marks private is never offered on the confirm chip either (%s)",
     async (plate) => {
       visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({

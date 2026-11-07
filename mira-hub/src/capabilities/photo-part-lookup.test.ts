@@ -669,6 +669,10 @@ describe("#5268 Codex r14 F1: a value the plate marks private is never a confirm
     "SMC MODEL: TP1200 (customer S/N)",
     "SMC MODEL: TP1200 (customer asset tag) 24VDC",
     "SMC MODEL: TP1200 asset tag",
+    "SMC MODEL: TP1200\n(customer asset tag)",
+    "SMC MODEL: TP1200\r\n(internal asset tag)",
+    "SMC MODEL: TP1200\n\n(customer S/N)",
+    "SMC MODEL: TP1200 \n  (asset tag)",
   ])("%s", (plate) => {
     expect(unambiguousPartNumber(plate)).toBeNull();
   });
@@ -676,6 +680,9 @@ describe("#5268 Codex r14 F1: a value the plate marks private is never a confirm
     ["SMC MODEL: TP1200 S/N: 00998877", "TP1200"],
     ["SMC MODEL: TP1200\nS/N: 00998877", "TP1200"],
     ["SMC MODEL: TP1200 asset tag 4471", "TP1200"],
+    ["SMC MODEL: TP1200\r\nS/N: 00998877", "TP1200"],
+    ["SMC MODEL: TP1200\n(asset tag 4471)", "TP1200"],
+    ["SMC MODEL: TP1200 24VDC\n(asset tag)", "TP1200"],
   ])("control: a label with its own value leaves the model public (%s)", (plate, model) => {
     expect(unambiguousPartNumber(plate)).toBe(model);
   });

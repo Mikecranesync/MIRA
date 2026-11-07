@@ -293,14 +293,18 @@ function labelledPrivateBySuffix(photoText: string, code: string): boolean {
   const text = normalize(photoText);
   const escaped = code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   for (const m of text.matchAll(new RegExp(`(?<![A-Z0-9])${escaped}(?![A-Z0-9])`, "gi"))) {
-    const rest = text.slice((m.index ?? 0) + m[0].length).split(/[\r\n]/)[0];
+    // The rest of the code's own line; when nothing but separators follows the
+    // code, a wrapped annotation on the next non-blank line belongs to it too.
+    const lines = text.slice((m.index ?? 0) + m[0].length).split(/\r\n|\r|\n/);
+    let rest = lines[0];
+    if (!/[A-Za-z0-9]/.test(rest)) rest += " " + (lines.slice(1).find((l) => /[A-Za-z0-9]/.test(l)) ?? "");
     for (const label of [SERIAL_LABEL, ASSET_LABEL]) {
       for (const l of rest.matchAll(new RegExp(label.source, "gi"))) {
         const at = l.index ?? 0;
         if (DIGIT_TOKEN.test(rest.slice(0, at))) continue;
         // Its own value follows it directly; a closing bracket ends the label first.
         const after = rest.slice(at + l[0].length).replace(new RegExp(`^(?:[^A-Za-z0-9)\\]]*${ID_WORD}(?![a-z]))*`, "i"), "");
-        if (!new RegExp(`^[^A-Za-z0-9)\\]]*${DIGIT_TOKEN.source}`, "i").test(after)) return true;
+        if (!new RegExp(`^[^A-Za-z0-9)\\]]*(?:is\\b[^A-Za-z0-9)\\]]*)?${DIGIT_TOKEN.source}`, "i").test(after)) return true;
       }
     }
   }
