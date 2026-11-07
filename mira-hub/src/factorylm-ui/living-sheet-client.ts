@@ -233,7 +233,10 @@ function loadedSignOutGeneration(): number {
  *  tab writes while a sign-out is in progress anywhere. */
 async function sheetSet(store: KvStore, key: string, value: string): Promise<boolean> {
   return withSheetWriteLock(async () => {
-    if (signOutBlocksWrites(parseSignOutMarker(await tolerantGet(store, SIGN_OUT_MARKER_KEY)))) return false;
+    // Codex #5276 r12 audit: a marker that cannot be read blocks the write,
+    // never lets it through as "no sign-out".
+    const marker = await readBeforeWrite(store, SIGN_OUT_MARKER_KEY);
+    if (marker === null || signOutBlocksWrites(parseSignOutMarker(marker.raw))) return false;
     return store.set(key, value);
   });
 }
@@ -295,7 +298,11 @@ function updateSignOutMarker(
   holds: (m: SignOutMarker) => boolean,
 ): Promise<boolean> {
   return withSheetWriteLock(async () => {
-    const m = parseSignOutMarker(await tolerantGet(store, SIGN_OUT_MARKER_KEY));
+    // A failed read never stands in for "no marker": rewriting from it could
+    // lower the count or drop another tab's in-progress sign-out.
+    const current = await readBeforeWrite(store, SIGN_OUT_MARKER_KEY);
+    if (current === null) return false;
+    const m = parseSignOutMarker(current.raw);
     change(m);
     const next = serializeSignOutMarker(m);
     const written = next === null ? await store.remove(SIGN_OUT_MARKER_KEY) : await store.set(SIGN_OUT_MARKER_KEY, next);
@@ -820,16 +827,27 @@ export async function clearSheetDataForSignOut(
   // now (including one opened mid-sign-out, Codex #5276 r10) stays blocked.
   // The count only goes up, so an older finish cannot undo a newer one.
   let finishedGen = 0;
+  let priorGen = 0;
   const finished = await updateSignOutMarker(
     store,
     (m) => {
       delete m.pending[id];
+      priorGen = m.gen;
       finishedGen = m.gen + 1;
       m.gen = finishedGen;
     },
     (m) => m.gen >= finishedGen && !(id in m.pending),
   );
-  if (markerInstalled && !finished && !confirm(SIGN_OUT_OTHER_TABS_PROMPT)) return cancel();
+  if (markerInstalled && !finished && !confirm(SIGN_OUT_OTHER_TABS_PROMPT)) {
+    // Codex #5276 r12: the finish may have been saved without reading back.
+    // Cancel takes back this sign-out's own count, but only while it is still
+    // the stored one: counts rise one at a time under the lock, so that value
+    // is this sign-out's alone, and a later sign-out's count is never lowered.
+    if (finishedGen > 0) {
+      await updateSignOutMarker(store, (m) => void (m.gen === finishedGen && (m.gen = priorGen)), (m) => m.gen !== finishedGen);
+    }
+    return cancel();
+  }
   return true;
 }
 

@@ -1510,6 +1510,9 @@ describe("#5212 sign-out across tabs", () => {
     fakeWebLocks();
     try {
       const { store: base, m } = sharedStore();
+      // A readable earlier count, so the write's marker check is one plain read
+      // and only the cross-tab lock can order it before the purge.
+      m.set("flm.sheetsignout.v1", "3");
       let release = (): void => {};
       const gate = new Promise<void>((r) => (release = r));
       let hitResolve = (): void => {};
@@ -1530,7 +1533,7 @@ describe("#5212 sign-out across tabs", () => {
       const tabA = await openTab();
       const tabB = await openTab();
       const write = tabA.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "racing words"));
-      await hit; // tab A read "no marker" and is about to write
+      await hit; // tab A read "no sign-out since I opened" and is about to write
       const signOut = tabB.clearSheetDataForSignOut(store, () => true);
       await new Promise((r) => setTimeout(r, 5));
       release();
@@ -1738,6 +1741,9 @@ describe("#5212 sign-out across tabs", () => {
     fakeWebLocks();
     try {
       const { store: base, m } = sharedStore();
+      // A readable earlier count: the marker check never needs to list storage,
+      // so the first listing is always the count, whatever order sign-out runs in.
+      m.set("flm.sheetsignout.v1", "3");
       let release = (): void => {};
       const gate = new Promise<void>((r) => (release = r));
       let hitResolve = (): void => {};
@@ -1915,6 +1921,88 @@ describe("#5212 sign-out across tabs", () => {
     const asked: string[] = [];
     expect(await tab.clearSheetDataForSignOut(store, (msg) => (asked.push(msg), false))).toBe(false);
     expect(asked).toEqual([SIGN_OUT_OTHER_TABS_PROMPT]);
+  });
+
+  /** A store whose finish write (a plain count) is saved, but whose next read
+   *  of the marker fails, so the finish cannot be verified. Later reads work. */
+  function finishSavedButUnverified(base: KvStore): KvStore {
+    let failNextMarkerRead = false;
+    return {
+      ...base,
+      set: async (k, v) => {
+        const ok = await base.set(k, v);
+        if (k === "flm.sheetsignout.v1" && !v.includes("pending")) failNextMarkerRead = true;
+        return ok;
+      },
+      get: async (k) => {
+        if (k === "flm.sheetsignout.v1" && failNextMarkerRead) {
+          failNextMarkerRead = false;
+          return null;
+        }
+        return base.get(k);
+      },
+    };
+  }
+
+  it("Cancel after a finish that saved but did not read back takes its count back, so every tab can save", async () => {
+    const { store: base, m } = sharedStore();
+    const store = finishSavedButUnverified(base);
+    const tabA = await openTab();
+    const tabB = await openTab();
+    const asked: string[] = [];
+    expect(await tabA.clearSheetDataForSignOut(store, (msg) => (asked.push(msg), false))).toBe(false);
+    expect(asked).toEqual([SIGN_OUT_OTHER_TABS_PROMPT]);
+    expect(m.has("flm.sheetsignout.v1")).toBe(false); // the count is back where it was
+    expect((await tabA.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "still signed in"))).saved).toBe(true);
+    expect((await tabB.enqueueSheetEvent(store, "t1", "jobB", noteEvent("n-2", "other tab"))).saved).toBe(true);
+  });
+
+  it("that Cancel never lowers a count another sign-out raised meanwhile (control)", async () => {
+    const { store: base, m } = sharedStore();
+    const store = finishSavedButUnverified(base);
+    const tabA = await openTab();
+    const tabB = await openTab();
+    const signedOut = await tabA.clearSheetDataForSignOut(store, () => {
+      m.set("flm.sheetsignout.v1", "2"); // another tab finished its sign-out while the question was open
+      return false;
+    });
+    expect(signedOut).toBe(false);
+    expect(m.get("flm.sheetsignout.v1")).toBe("2");
+    expect((await tabB.enqueueSheetEvent(store, "t1", "jobB", noteEvent("n-2", "after the other sign-out"))).saved).toBe(false);
+  });
+
+  it("a sign-out marker that cannot be read blocks every sheet write", async () => {
+    const { store: base, m } = sharedStore();
+    const tab = await openTab();
+    let unreadable = true;
+    const store: KvStore = {
+      ...base,
+      get: async (k) => {
+        if (k === "flm.sheetsignout.v1" && unreadable) throw new Error("blocked");
+        return base.get(k);
+      },
+    };
+    m.set("flm.sheetsignout.v1", JSON.stringify({ gen: 0, pending: { live: Date.now() } }));
+    expect((await tab.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "during sign-out"))).saved).toBe(false);
+    m.delete("flm.sheetsignout.v1");
+    unreadable = false;
+    expect((await tab.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-2", "readable again"))).saved).toBe(true); // control
+    expect(sheetText(m)).not.toContain("during sign-out");
+  });
+
+  it("a sign-out marker that cannot be read is never rewritten from an empty read", async () => {
+    const { store: base, m } = sharedStore();
+    m.set("flm.sheetsignout.v1", "5");
+    const tab = await openTab();
+    const store: KvStore = {
+      ...base,
+      get: async (k) => {
+        if (k === "flm.sheetsignout.v1") throw new Error("blocked");
+        return base.get(k);
+      },
+    };
+    expect(await tab.clearSheetDataForSignOut(store, (msg) => msg !== SIGN_OUT_OTHER_TABS_PROMPT)).toBe(false);
+    expect(m.get("flm.sheetsignout.v1")).toBe("5");
   });
 
   it("each finished sign-out raises the stored count by one and never lowers it", async () => {
