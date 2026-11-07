@@ -277,7 +277,7 @@ async function withKeyLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
     /* a prior failed turn must not wedge the chain for everyone after it */
   });
   try {
-    result = await fn();
+    result = await withCrossTabKeyLock(key, fn);
   } catch (e) {
     failure = e;
   } finally {
@@ -285,6 +285,19 @@ async function withKeyLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
   }
   if (failure !== undefined) throw failure;
   return result;
+}
+
+/** Codex #5276 r7: the chain above is per tab, but every tab shares device
+ *  storage, so the whole read-modify-write on a key also holds the browser's
+ *  cross-tab lock for that key. Otherwise a Dismiss in one tab can act on a
+ *  stale list and delete a rejection another tab just recorded. Lock order is
+ *  always this key lock, then SHEET_WRITE_LOCK inside sheetSet; sign-out takes
+ *  only SHEET_WRITE_LOCK, so the two can never wait on each other in a cycle.
+ *  Without Web Locks (tests, browsers older than Chrome 69 / Safari 15.4 /
+ *  Firefox 96) the per-tab chain is all there is, as before. */
+function withCrossTabKeyLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const locks = (globalThis as { navigator?: { locks?: LockManager } }).navigator?.locks;
+  return locks ? (locks.request(`flm.sheetkey.v1:${key}`, fn) as Promise<T>) : fn();
 }
 
 export type EnqueueSheetEventResult = {

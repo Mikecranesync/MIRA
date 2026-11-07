@@ -1503,13 +1503,7 @@ describe("#5212 sign-out across tabs", () => {
   });
 
   it("a write that checked the marker just before sign-out recorded it is ordered by the cross-tab lock, so the purge still removes it", async () => {
-    let tail: Promise<unknown> = Promise.resolve();
-    const request = (_name: string, fn: () => Promise<unknown>) => {
-      const run = tail.then(fn);
-      tail = run.catch(() => undefined);
-      return run;
-    };
-    vi.stubGlobal("navigator", { locks: { request } });
+    fakeWebLocks();
     try {
       const { store: base, m } = sharedStore();
       let release = (): void => {};
@@ -1543,6 +1537,61 @@ describe("#5212 sign-out across tabs", () => {
       vi.unstubAllGlobals();
     }
   });
+
+  /** A per-name lock manager standing in for the browser's Web Locks. */
+  function fakeWebLocks() {
+    const tails = new Map<string, Promise<unknown>>();
+    const request = (name: string, fn: () => Promise<unknown>) => {
+      const run = (tails.get(name) ?? Promise.resolve()).then(fn);
+      tails.set(name, run.catch(() => undefined));
+      return run;
+    };
+    vi.stubGlobal("navigator", { locks: { request } });
+  }
+
+  for (const first of ["dismiss", "record"] as const) {
+    it(`Dismiss in one tab and a new rejection in another never lose or resurrect a note (${first} reads first)`, async () => {
+      fakeWebLocks();
+      try {
+        const { store: base, m } = sharedStore();
+        const tabA = await openTab();
+        const tabB = await openTab();
+        const key = rejectedSheetKey("t1", "nb-1", "jobA");
+        const rejected = (id: string, text: string) => ({ event: noteEvent(id, text), message: "job_finished", rejectedAt: "2026-11-07T00:00:00.000Z" });
+        expect(await tabA.recordRejectedSheetEvent(base, "t1", "nb-1", "jobA", rejected("n-old", "old words"))).toBe(true);
+        let release = (): void => {};
+        const gate = new Promise<void>((r) => (release = r));
+        let hitResolve = (): void => {};
+        const hit = new Promise<void>((r) => (hitResolve = r));
+        let armed = true;
+        const store: KvStore = {
+          ...base,
+          get: async (k) => {
+            const v = await base.get(k); // the list as of this read
+            if (k === key && armed) {
+              armed = false;
+              hitResolve();
+              await gate; // hold the first tab between its read and its write
+            }
+            return v;
+          },
+        };
+        const dismiss = () => tabA.dismissRejectedSheetEvent(store, "t1", "nb-1", "jobA", "n-old");
+        const record = () => tabB.recordRejectedSheetEvent(store, "t1", "nb-1", "jobA", rejected("n-new", "new words"));
+        const one = first === "dismiss" ? dismiss() : record();
+        await hit;
+        const two = first === "dismiss" ? record() : dismiss();
+        await new Promise((r) => setTimeout(r, 5));
+        release();
+        expect(await Promise.all([one, two])).toEqual([true, true]);
+        const ids = (await tabA.loadRejectedSheetEvents(base, "t1", "nb-1", "jobA")).map((r) => r.event.clientEventId);
+        expect(ids).toEqual(["n-new"]);
+        expect(m.get(key)).toContain("new words");
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+  }
 
   it("a tab opened after the sign-out can save (control)", async () => {
     const { store, m } = sharedStore();
