@@ -345,8 +345,9 @@ let sheetDrainSettled: Promise<void> = Promise.resolve();
  *  enqueue may start, so nothing is written back after the purge. */
 let sheetSignOutBarrier = false;
 
-/** Lift the sign-out barrier when sign-out did not leave the page (Cancel is
- *  handled inside clearSheetDataForSignOut; this covers a failed navigation). */
+/** Lift the sign-out barrier. Cancel is handled inside clearSheetDataForSignOut;
+ *  a completed sign-out keeps the barrier because the page is leaving, and a
+ *  reload starts with it lifted. Exported for test isolation. */
 export function releaseSheetSignOutBarrier(): void {
   sheetSignOutBarrier = false;
 }
