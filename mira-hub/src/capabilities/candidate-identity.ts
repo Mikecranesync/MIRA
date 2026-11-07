@@ -20,7 +20,7 @@
  */
 import { oemMakerTable } from "@/lib/manual-discovery";
 import { namesOnlyThisMachine } from "./identity-proposal";
-import { mentionsAssetLabel, mentionsSerialLabel, partCodes, unambiguousPartNumber } from "./photo-part-lookup";
+import { partCodes, serialCodes, unambiguousPartNumber } from "./photo-part-lookup";
 
 export type CandidateIdentity = { manufacturer: string | null; part: string };
 
@@ -138,11 +138,14 @@ export function wantsManualDocumentation(message: string): boolean {
  * gate every candidate-basis proposal and acquisition passes. Strict by owner
  * decision after six review rounds — all must hold, else no automatic search
  * (a confirmed identity still searches through the existing confirmed path):
- *  - no serial label and no asset-tag / customer-identifier label in EITHER
- *    text (ADR-0036: no serial or asset-tag egress, under any normalisation);
  *  - the serial-safe part codes across BOTH texts are exactly `part` — so the
- *    identity came from the serial-safe reader, and two codes are ambiguity,
- *    never absence;
+ *    identity came from the serial-safe reader (which never yields a code
+ *    under a serial or asset-tag label, ADR-0036), and two codes are
+ *    ambiguity, never absence. A serial label on the plate is the normal
+ *    case, not a refusal (owner decision 2026-11-07): every real nameplate
+ *    carries one, and the labelled model beside it is still the part — but a
+ *    code EITHER text marks as a serial is refused outright, even typed back
+ *    unlabelled in the other (`serialCodes`, Codex post-cap F6);
  *  - the photo and typed text TOGETHER name no other machine
  *    (proposeIdentityFromText's multi-machine rejection);
  *  - neither text names a maker other than `manufacturer` (aliases of one maker
@@ -153,10 +156,10 @@ export function isSafeCandidateSearchIdentity(photoText: string, typed: string, 
   const key = part.trim().toUpperCase();
   if (!key) return false;
   const texts = [photoText, typed].filter(Boolean);
-  if (texts.some(mentionsSerialLabel)) return false;
-  // A customer-assigned identifier anywhere (asset tag, unit id, …) is the
-  // same fail-closed signal as a serial label (ADR-0036; Codex post-cap 14 F14).
-  if (texts.some(mentionsAssetLabel)) return false;
+  // A code either text marks as a serial never leaves, even when the OTHER
+  // text carries it unlabelled — the technician typing the photo's serial back
+  // does not launder it (#4172 Codex post-cap F6, ADR-0036).
+  if (texts.some((t) => serialCodes(t).includes(key))) return false;
   const codes = new Set(texts.flatMap((t) => partCodes(t).map((c) => c.toUpperCase())));
   if (codes.size !== 1 || !codes.has(key)) return false;
   const proposed = new Set(makerGroups(manufacturer).keys());

@@ -147,9 +147,16 @@ describe("isSafeCandidateSearchIdentity", () => {
   it("rejects a value beside an unparsed serial label unless it is the labelled part", () => {
     expect(isSafeCandidateSearchIdentity("AB-1234567 serial number", "", "AB-1234567", "Siemens")).toBe(false);
   });
-  it("strict: any serial label in either text means no automatic search, even beside a labelled part", () => {
-    expect(isSafeCandidateSearchIdentity("Siemens P/N: 6ES7214-1AG40-0XB0 S/N: XC-99887766", "Find the manual for this", "6ES7214-1AG40-0XB0", "Siemens")).toBe(false);
-    // Codex post-cap 3 F6: a normalised serial typed back ("TP 700" -> TP700).
+  // Owner decision 2026-11-07: every real nameplate carries a serial, so a
+  // serial label beside the labelled part no longer blocks the part's search.
+  // Only the part leaves; the serial value itself is still refused.
+  it("a serial label beside a labelled part: the part searches, the serial never does", () => {
+    const plate = "Siemens P/N: 6ES7214-1AG40-0XB0 S/N: XC-99887766";
+    expect(isSafeCandidateSearchIdentity(plate, "Find the manual for this", "6ES7214-1AG40-0XB0", "Siemens")).toBe(true);
+    expect(isSafeCandidateSearchIdentity(plate, "Find the manual for this", "XC-99887766", "Siemens")).toBe(false);
+    expect(isSafeCandidateSearchIdentity(plate, "Find the manual for Siemens XC-99887766", "XC-99887766", "Siemens")).toBe(false);
+  });
+  it("Codex post-cap 3 F6: a normalised serial typed back (\"TP 700\" -> TP700) is still refused", () => {
     expect(isSafeCandidateSearchIdentity("S/N: TP 700", "Find the manual for Siemens TP700", "TP700", "Siemens")).toBe(false);
   });
   it("strict: an identity the serial-safe reader did not produce never auto-searches", () => {
@@ -172,10 +179,22 @@ describe("isSafeCandidateSearchIdentity", () => {
     expect(isSafeCandidateSearchIdentity("SMC Ser. No. AB-1234567", "Find the manual for this", "AB-1234567", "SMC")).toBe(false);
     expect(isSafeCandidateSearchIdentity("SMC SER: AB-1234567", "Find the manual for this", "AB-1234567", "SMC")).toBe(false);
   });
-  it("rejects any turn whose photo or typed text carries an asset-tag label (Codex post-cap 14 F14)", () => {
+  it("never searches a value under an asset-tag label (Codex post-cap 14 F14)", () => {
     expect(isSafeCandidateSearchIdentity("SMC Asset tag: VALVE-1234", "Find the manual for this", "VALVE-1234", "SMC")).toBe(false);
+    expect(isSafeCandidateSearchIdentity("SMC P/N: SY3120-5LZD Asset tag: VALVE-1234", "Find the manual for this", "VALVE-1234", "SMC")).toBe(false);
+    expect(isSafeCandidateSearchIdentity("SMC P/N: SY3120-5LZD", "asset id AB-1234567, find the manual", "AB-1234567", "SMC")).toBe(false);
+  });
+  // The asset label no longer blocks the turn by itself (owner decision
+  // 2026-11-07), and the reader never yields an asset-labelled value, so only
+  // the labelled part can leave.
+  it("a typed asset id beside the photo's labelled part: only the part searches", () => {
+    expect(isSafeCandidateSearchIdentity("SMC P/N: SY3120-5LZD", "asset id AB-1234567, find the manual", "SY3120-5LZD", "SMC")).toBe(true);
+  });
+  // Known limit, fail-closed: an asset tag value shaped like a model
+  // ("VALVE-1234") reads as a second machine, so this plate does not
+  // auto-search. The technician can still confirm the identity.
+  it("an asset tag shaped like a model on the plate still blocks the automatic search", () => {
     expect(isSafeCandidateSearchIdentity("SMC P/N: SY3120-5LZD Asset tag: VALVE-1234", "Find the manual for this", "SY3120-5LZD", "SMC")).toBe(false);
-    expect(isSafeCandidateSearchIdentity("SMC P/N: SY3120-5LZD", "asset id AB-1234567, find the manual", "SY3120-5LZD", "SMC")).toBe(false);
   });
   it("control: the single serial-safe code, in the photo or the typed text, is accepted", () => {
     expect(isSafeCandidateSearchIdentity("Siemens P/N: 6ES7214-1AG40-0XB0", "Find the manual for this", "6ES7214-1AG40-0XB0", "Siemens")).toBe(true);

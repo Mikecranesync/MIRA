@@ -378,8 +378,10 @@ async function acquireInner(
   // PDF from a host we independently attribute to this manufacturer. It proves
   // NOTHING about whether this is the right document, so an unvalidated
   // candidate can never auto-enable — a human confirms it. See the
-  // applicability block below.
-  const requiresUserConfirmation = probeUnvalidated || input.basis === "candidate";
+  // applicability block below. A photo-basis search ("candidate") is NOT a
+  // review hold by itself (owner decision 2026-11-07): the manual's own text
+  // decides, exactly as for a confirmed identity.
+  const requiresUserConfirmation = probeUnvalidated;
 
   const downloadStartedAt = Date.now();
   const download = await safeSpan("manual_acquisition.download", {}, async () => {

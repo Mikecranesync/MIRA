@@ -71,7 +71,6 @@ import {
 import {
   acquisitionEnabled,
   acquisitionKey,
-  candidateAcquisitionEnabled,
   acquisitionDeclineText,
   acquisitionManualUrl,
   readAcquisition,
@@ -2385,63 +2384,11 @@ async function handleChatTurn(
     }
   })();
   const oemModel = oemIdentity.model;
-  // #4095 (owner decisions 2026-09-28/29) — "propose, then confirm". A general
-  // turn in an UNBOUND notebook that names a library manufacturer and a model
-  // gets an identity_proposal frame. It never binds, never scopes retrieval on
-  // this turn (retrieval above is already decided), and the answer is told the
-  // machine is unconfirmed so it cannot state that machine's specs or service
-  // procedures. Fail-open: any error means no proposal.
-  // Codex r1 F2 (#4172, MEDIUM): this IIFE's OWN `oemManufacturer !== null`
-  // bail covers only the RC1 fallback (a maker the corpus does NOT recognise
-  // at all). A corpus-RECOGNISED maker (oemManufacturer set, e.g. Siemens)
-  // with zero applicable chunks still needs a proposal + candidate
-  // acquisition — handled by the separate, narrower reassignment below, once
-  // `chunks` is known, so a maker OEM retrieval actually grounds is never
-  // second-guessed by a redundant "unconfirmed machine" proposal.
-  let identityProposal: IdentityProposal | null = await (async () => {
-    if (!general || notebookRetrieval || oemManufacturer !== null) return null;
-    // Only a notebook with NO identity at all: not bound to an asset, and loaded
-    // (fail closed when it could not be read) — Codex #4120 F3.
-    if (!nb || boundAsset.state !== "unbound") return null;
-    if (nb.manufacturer?.trim() || nb.model?.trim()) return null;
-    let fromCorpus: IdentityProposal | null = null;
-    let client: PoolClient | null = null;
-    try {
-      client = await pool.connect();
-      fromCorpus = proposeIdentityFromText(message, await corpusManufacturers(client));
-    } catch (err) {
-      console.error("[notebook-chat] identity proposal skipped:", err instanceof Error ? err.message : err);
-    } finally {
-      try {
-        client?.release();
-      } catch {
-        /* already released */
-      }
-    }
-    if (fromCorpus) return fromCorpus;
-    // RC1 fix (#4160 S6): proposeIdentityFromText only recognises a maker that
-    // already has corpus rows (corpusManufacturers) — a maker with none (the
-    // SMC valve trace that started Manual-First) could never be proposed.
-    // Fall back to the corpus-INDEPENDENT candidate reader (#4150's label
-    // parser, candidate-identity.ts), over the SAME photo observation
-    // (photoTextForOem — notebookRetrieval is false here, so it is the real
-    // text) and this turn's typed message. Still only a candidate: never
-    // binds, never writes a notebook identity column, never scopes retrieval.
-    // Codex r2 F4 / F13 (#4172): only when the candidate takeover can actually
-    // run (both flags; #4175). Otherwise the turn stays exactly as before S6
-    // (the explicit, confirm-first photo search below keeps the turn).
-    if (!candidateAcquisitionEnabled(ctx.tenantId)) return null;
-    try {
-      const candidate = extractCandidateIdentity(photoTextForOem, message);
-      // #4172 Codex r3/post-cap: the ONE candidate validator (serials and
-      // ambiguity across photo AND typed text) — see isSafeCandidateSearchIdentity.
-      if (!candidate?.manufacturer || !isSafeCandidateSearchIdentity(photoTextForOem, message, candidate.part, candidate.manufacturer)) return null;
-      return { manufacturer: candidate.manufacturer, model: candidate.part };
-    } catch (err) {
-      console.error("[notebook-chat] candidate identity proposal skipped:", err instanceof Error ? err.message : err);
-      return null;
-    }
-  })();
+  // The identity proposal (#4095 "propose, then confirm") is decided ONCE, below,
+  // after retrieval — owner decision 2026-11-07 (one identity-from-evidence
+  // path replaced the three proposal paths). Nothing between here and there
+  // reads it.
+  let identityProposal: IdentityProposal | null = null;
   const oemEquipmentType = oemModel
     ? inferEquipmentType({ modelNumber: oemModel.value, title: oemModel.value })
     : null;
@@ -2657,46 +2604,67 @@ async function handleChatTurn(
     endTimed(retrievalSpan, "retrieval");
   }
 
-  // Codex r1 F2 (#4172, MEDIUM) — a corpus-RECOGNISED maker (oemManufacturer
-  // set from the photo) whose OEM retrieval found ZERO applicable chunks
-  // still qualifies for the SAME "propose, then confirm" + candidate
-  // acquisition as the RC1 fallback above. Only when chunks ARE found does
-  // OEM retrieval actually ground the turn — a redundant proposal there would
-  // contradict the cited answer the technician is about to receive, so this
-  // never fires then (no duplicate discovery). `oemManufacturer.source` can
-  // only be "photo" here: "notebook" would mean `nb.manufacturer` is set,
-  // which the RC1 IIFE's own unbound-identity guard already excludes.
+  // #4095 (owner decisions 2026-09-28/29) + owner decision 2026-11-07 — the ONE
+  // identity-from-evidence decision ("propose, then search"). A general turn in
+  // an UNBOUND notebook with no identity at all, once retrieval has found
+  // NOTHING to ground it, reads the machine from the evidence:
+  //  1. the technician's typed text (the corpus reader — a maker the library
+  //     already knows), when no library maker was read off the photo;
+  //  2. else the nameplate photo, through the corpus-INDEPENDENT, serial-safe
+  //     label reader (RC1, #4160 S6: a maker with no corpus rows — the SMC
+  //     valve trace — can still be proposed). The ONE candidate validator
+  //     (serials and ambiguity across photo AND typed text) decides what may
+  //     leave; the OEM retrieval model parser never does (#4172: it truncates
+  //     a model family or normalises a serial), and a library maker keeps the
+  //     library's spelling.
+  // A library maker whose OEM retrieval actually found chunks grounds the turn
+  // and is never second-guessed by a proposal (Codex r1 F2, #4172). The
+  // proposal never binds, never writes a notebook identity column, never
+  // scopes retrieval; it keys the automatic manual search below. Fail-open:
+  // any error means no proposal.
   if (
-    !identityProposal &&
     general &&
     !notebookRetrieval &&
+    // Only a notebook with NO identity at all: not bound to an asset, and loaded
+    // (fail closed when it could not be read) — Codex #4120 F3.
     nb &&
     boundAsset.state === "unbound" &&
     !(nb.manufacturer?.trim() || nb.model?.trim()) &&
-    oemManufacturer !== null &&
-    chunks.length === 0 &&
-    candidateAcquisitionEnabled(ctx.tenantId)
+    chunks.length === 0
   ) {
-    // Codex r2 F2 (#4172): the OEM model parser knows a finite set of model
-    // families, so a valid part it does not recognise (oemModel null) falls back
-    // to the corpus-independent label reader — but only when that reader names
-    // the SAME maker, which keeps its ambiguity and serial exclusions intact.
-    const candidate = extractCandidateIdentity(photoTextForOem, message);
-    const candidatePart =
-      candidate?.manufacturer && candidate.manufacturer.toLowerCase() === oemManufacturer.name.toLowerCase()
-        ? candidate.part
-        : null;
-    // #4172 (owner decision after Codex post-cap 2): the search identity comes
-    // ONLY from the serial-safe label reader. The OEM retrieval parser may
-    // normalise a serial ("TP 700" → TP700) or pick a second machine, so it never
-    // chooses what leaves; if it names a DIFFERENT model, nothing is searched.
-    const model =
-      candidatePart &&
-      (!oemModel || oemModel.value.toUpperCase() === candidatePart.toUpperCase()) &&
-      isSafeCandidateSearchIdentity(photoTextForOem, message, candidatePart, oemManufacturer.name)
-        ? candidatePart
-        : null;
-    if (model) identityProposal = { manufacturer: oemManufacturer.name, model };
+    if (oemManufacturer === null) {
+      let client: PoolClient | null = null;
+      try {
+        client = await pool.connect();
+        identityProposal = proposeIdentityFromText(message, await corpusManufacturers(client));
+      } catch (err) {
+        console.error("[notebook-chat] identity proposal skipped:", err instanceof Error ? err.message : err);
+      } finally {
+        try {
+          client?.release();
+        } catch {
+          /* already released */
+        }
+      }
+    }
+    // The one kill switch (MIRA_NOTEBOOK_MANUAL_ACQUISITION=0) switches the
+    // label reader off together with the search it feeds, so "0" is a true
+    // rollback: the turn reads exactly as it did before the photo built the
+    // notebook — the typed corpus proposal above (#4095) and the explicit
+    // confirm-first search chip (#4171), nothing read off the plate.
+    if (!identityProposal && acquisitionEnabled(ctx.tenantId)) {
+      try {
+        // The label reader takes the photo first and the typed text second, so
+        // a maker + part typed with no photo at all still proposes (RC1).
+        const candidate = extractCandidateIdentity(photoTextForOem, message);
+        const manufacturer = oemManufacturer?.name ?? candidate?.manufacturer ?? null;
+        if (candidate && manufacturer && isSafeCandidateSearchIdentity(photoTextForOem, message, candidate.part, manufacturer)) {
+          identityProposal = { manufacturer, model: candidate.part };
+        }
+      } catch (err) {
+        console.error("[notebook-chat] candidate identity proposal skipped:", err instanceof Error ? err.message : err);
+      }
+    }
   }
   // Codex #4120 F4 — persisted with the turn so an idempotent retry and the
   // history reload deliver the same proposal the live stream did. Computed
@@ -2776,12 +2744,12 @@ async function handleChatTurn(
   // Codex r2 F1/F4 (#4172): "owns the turn" is decided ONCE, from the FINAL
   // candidate identity (photo and typed text together) and the exact trigger
   // the acquisition block below runs on — never from the photo's maker alone.
-  // When automatic acquisition is off, or this turn would not start it, the
-  // explicit confirm-first search keeps the turn (pre-S6 behaviour).
+  // When the automatic search is switched off (the one kill switch), or this
+  // turn would not start it, the explicit confirm-first search keeps the turn.
   const candidateAcquisitionOwnsTurn =
     identityProposal !== null &&
     Boolean(nb) &&
-    candidateAcquisitionEnabled(ctx.tenantId) &&
+    acquisitionEnabled(ctx.tenantId) &&
     acquisitionKey({
       identityStatus: "user_confirmed",
       manufacturer: identityProposal.manufacturer,
