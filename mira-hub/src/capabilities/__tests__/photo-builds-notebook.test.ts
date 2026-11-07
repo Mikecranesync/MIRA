@@ -89,10 +89,15 @@ describe("the maker comes from the OEM maker table, not the library", () => {
 });
 
 describe("serial-safe egress: the plate's model may leave, its serial may not, and the serial never blocks", () => {
-  it("the labelled model with a serial on the same plate is a safe search identity", () => {
+  // #5268 owner decision 2026-11-07 (Codex r13): a plate that prints a serial
+  // never starts the automatic search; the technician confirms it instead.
+  it("the labelled model with a serial on the same plate does not auto-search; without the serial it does", () => {
     expect(namesOnlyThisMachine(PLATE, MODEL)).toBe(true);
-    expect(isSafeCandidateSearchIdentity(PLATE, "", MODEL, "AUTOMATIONDIRECT")).toBe(true);
-    expect(isSafeCandidateSearchIdentity(PLATE, "how do I reset a fault on it?", MODEL, "AUTOMATIONDIRECT")).toBe(true);
+    expect(isSafeCandidateSearchIdentity(PLATE, "", MODEL, "AUTOMATIONDIRECT")).toBe(false);
+    expect(isSafeCandidateSearchIdentity(PLATE, "how do I reset a fault on it?", MODEL, "AUTOMATIONDIRECT")).toBe(false);
+    const noSerial = PLATE.split("\n").filter((l) => !l.includes(SERIAL)).join("\n");
+    expect(noSerial).not.toContain(SERIAL);
+    expect(isSafeCandidateSearchIdentity(noSerial, "", MODEL, "AUTOMATIONDIRECT")).toBe(true);
   });
 
   it("control: the serial itself is never a safe identity", () => {

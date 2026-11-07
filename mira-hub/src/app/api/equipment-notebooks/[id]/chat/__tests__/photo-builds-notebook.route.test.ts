@@ -102,13 +102,16 @@ import { POST } from "../route";
 
 const SERIAL = "7A3K9Q2026X11";
 const MODEL = "GS11N-20P2";
+// #5268 owner decision 2026-11-07: a plate that prints a serial or asset tag
+// never searches by itself, so the automatic-search tests use the same plate
+// without its serial line; SERIAL_PLATE pins the confirm-first path.
 const PLATE = [
   "AutomationDirect.com",
   `MODEL: ${MODEL}`,
   "INPUT: 1PH 200-240V 50/60Hz 8.4A",
   "OUTPUT: 3PH 0-240V 2.2A 0.5kW/0.5HP",
-  `SERIAL NO: ${SERIAL}`,
 ].join("\n");
+const SERIAL_PLATE = `${PLATE}\nSERIAL NO: ${SERIAL}`;
 const QUESTION = "What is this drive and how do I clear a fault on it?";
 
 function providerStream(text: string) {
@@ -188,11 +191,15 @@ describe("a nameplate photo starts the manual search on the same turn", () => {
     expect(followups?.suggestions ?? []).not.toContainEqual(expect.stringMatching(/Search the web for/));
   });
 
-  it("the serial never leaves: not in the search identity, not in any proposal or chip", async () => {
-    const f = await frames(await plateTurn());
-    const started = JSON.stringify(acqMock.startManualAcquisition.mock.calls[0]?.[0] ?? null);
-    expect(started).toContain(MODEL);
-    expect(started).not.toContain(SERIAL);
+  it("a plate that prints a serial does not search by itself, and the serial never leaves", async () => {
+    visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+      observationId: "obs", sessionId: "session", text: SERIAL_PLATE, obsKind: "look", trust: "candidate", fileId: PHOTO, hazards: [],
+    });
+    const f = await frames(await POST(req({ message: "Find the manual for this drive", mode: "general", visualEvidence: { fileId: PHOTO } }), params));
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    // The technician confirms instead: one chip names the exact model, never the serial.
+    const followups = f.find((x) => x.kind === "followups") as { suggestions?: string[] } | undefined;
+    expect(followups?.suggestions).toContain(`Search the web for "${MODEL}"`);
     for (const frame of f) {
       if (frame.kind === "identity_proposal" || frame.kind === "manual_search_status" || frame.kind === "followups") {
         expect(JSON.stringify(frame)).not.toContain(SERIAL);

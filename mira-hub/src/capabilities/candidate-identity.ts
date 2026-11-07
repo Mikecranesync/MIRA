@@ -22,7 +22,6 @@ import { oemMakerTable } from "@/lib/manual-discovery";
 import { namesOnlyThisMachine } from "./identity-proposal";
 import {
   identifierKey,
-  labelledPartCodes,
   mentionsAssetLabel,
   mentionsSerialLabel,
   partLabelAfterPrivateLabel,
@@ -185,8 +184,11 @@ export function isSafeCandidateSearchIdentity(photoText: string, typed: string, 
   // (P/N, MODEL, …). Typed text then grants nothing, so no spelling, spacing
   // or relabelling of a private value typed back can make it searchable. A
   // turn with no private label anywhere is unaffected.
-  const privateLabel = texts.some((t) => mentionsSerialLabel(t) || mentionsAssetLabel(t));
-  if (privateLabel && !labelledPartCodes(photoText).some((c) => identifierKey(c) === keyNorm)) return false;
+  // #5268 Codex r13 — owner decision 2026-11-07: a plate or message that shows
+  // a serial or asset-tag label never starts the automatic search. Twelve
+  // rounds each found a new way to word a private value beside the model;
+  // the technician confirms the identity instead.
+  if (texts.some((t) => mentionsSerialLabel(t) || mentionsAssetLabel(t))) return false;
   if (texts.some(partLabelAfterPrivateLabel)) return false;
   // #5268 Codex r9: the technician's own words naming a serial or asset tag
   // ("TP 1200 (asset tag)") turn the automatic search off — typed text can
