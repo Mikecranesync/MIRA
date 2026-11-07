@@ -815,6 +815,8 @@ def _paid_adjudication_source(number: int, prior_report: str, head_sha: str, dif
     if not trusted or trusted[-1][1]["scope"] != "full":
         raise ValueError("the latest trusted same-head review must be full scope")
     comment_id, envelope, comment = trusted[-1]
+    if envelope["verdict"] not in {"PASS", "BLOCK"}:
+        raise ValueError("the original review must have a completed PASS or BLOCK verdict")
     state = head_state(comments, owner, head_sha)
     if state is None or state[2]["id"] != comment_id or state[1]["run_id"] != envelope["run_id"]:
         raise ValueError("the canonical review window does not bind this prior")

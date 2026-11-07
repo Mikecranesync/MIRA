@@ -1069,6 +1069,49 @@ def _paid_adjudication_case(tmp_path, monkeypatch, *, diff=None, ruling=None, us
     return state
 
 
+@pytest.mark.parametrize("completed", [False, True], ids=["unknown-prior", "pass-medium-prior"])
+def test_paid_adjudication_requires_completed_authentic_prior(tmp_path, monkeypatch, completed):
+    from cheap_review_check import parse_envelope
+
+    state = _paid_adjudication_case(tmp_path, monkeypatch)
+    prior_path = tmp_path / "prior.md"
+    old = prior_path.read_text()
+    raw = (
+        ("## VERDICT\nPASS\n\n" if completed else "") + "## FINDINGS\n"
+        "- **[severity: medium] Unsafe default** — docs/a.md lacks a bound\n"
+        "- **[severity: medium] Ambiguous status** — docs/a.md status is unclear\n"
+    )
+    findings = parse_findings(raw)
+    verdict = verdict_of(raw, findings)
+    assert verdict == ("PASS" if completed else "UNKNOWN")
+    assert all(f.severity == "medium" for f in findings)
+    prior = render(
+        Review(verdict, findings, "openai (gpt-5.4-mini, single-shot)", raw, []),
+        7,
+        "high",
+        [],
+        [
+            *g7.receipts_block("c" * 40, None, [], g7.redact(state["diff"]), "high"),
+            next(line for line in old.splitlines() if line.startswith("- lane:")),
+        ],
+    )
+    prior_path.write_text(prior)
+    comment = state["comments"][0]
+    comment["body"] = (
+        comment["body"].replace(old, prior).replace("\nverdict: BLOCK\n", f"\nverdict: {verdict}\n")
+    )
+    assert parse_envelope(comment["body"])["verdict"] == verdict
+    rc = g7.main(state["args"])
+    if completed:
+        assert rc == 0 and len(state["paid"]) == 1 and not state["free"]
+        assert len(state["posted"]) == 1
+        assert parse_envelope(state["posted"][0])["verdict"] == "PASS"
+    else:
+        assert rc != 0
+        assert not state["paid"] and not state["free"] and not state["posted"]
+        assert not (tmp_path / "costs.jsonl").exists()
+
+
 @pytest.mark.parametrize("paths", [[], ["--paths", "docs/"]])
 def test_paid_adjudication_uses_one_bounded_paid_call_and_posts_real_pass(
     tmp_path, monkeypatch, paths
