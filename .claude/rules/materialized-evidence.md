@@ -1,11 +1,3 @@
----
-paths:
-  - "printsense/**"
-  - "materialized_evidence/**"
-  - "mira-crawler/**"
-  - "mira-bots/**"
----
-
 # Materialized Evidence & Recall-First Architecture
 
 The permanent rule for expensive industrial data work:

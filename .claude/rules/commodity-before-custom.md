@@ -3,6 +3,8 @@ paths:
   - "mira-mobile/**"
   - "mira-hub/src/**"
   - "mira-web/src/**"
+  - "packages/factorylm-*/**"
+  - "apps/factorylm-ui-lab/**"
 ---
 
 # Commodity Before Custom (mobile/web infrastructure)
