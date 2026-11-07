@@ -73,6 +73,7 @@ import {
   acquisitionKey,
   acquisitionDeclineText,
   acquisitionManualUrl,
+  applicableEnabledSource,
   readAcquisition,
   reconcileAcquisition,
   startManualAcquisition,
@@ -2293,6 +2294,9 @@ async function handleChatTurn(
     general || nodeId === null
       ? Promise.resolve({ rewritten: null, status: "off", provider: null, durationMs: 0 })
       : rewriteForManualSearch(message);
+  // A failed source read is UNKNOWN state, never "no sources" (#5268: the
+  // photo-manual status must not claim a source is off because a read failed).
+  let sourcesLoaded = true;
   const [nb, srcs] = await Promise.all([
     (async () => {
       try {
@@ -2305,7 +2309,8 @@ async function handleChatTurn(
       try {
         return await listSources(ctx.tenantId, notebookId);
       } catch {
-        return [] as { filename: string | null }[];
+        sourcesLoaded = false;
+        return [] as Awaited<ReturnType<typeof listSources>>;
       }
     })(),
   ]);
@@ -3118,11 +3123,24 @@ async function handleChatTurn(
             manualSearchKey = candidateKey;
           }
           candidateManualUrl = !cAcq.attached_indexed && !cAcq.source_removed ? acquisitionManualUrl(cAcq) : null;
+          // #5268 Codex F2: a completed photo search's manual may have been
+          // turned off since — judge that from the source's CURRENT state with
+          // the same matcher the notebook status uses, never the history.
+          const candidateSourceOff =
+            cAcq.state === "complete" &&
+            sourcesLoaded &&
+            !applicableEnabledSource(srcs, {
+              identityStatus: "user_confirmed",
+              manufacturer: identityProposal.manufacturer,
+              model: identityProposal.model,
+              catalogNumber: "",
+            });
           candidateAcquisitionText = acquisitionDeclineText(
             cAcq,
             candidateKey,
             `${identityProposal.manufacturer} ${identityProposal.model}`,
             "candidate",
+            { sourceOff: candidateSourceOff },
           );
           // Codex round 5 F15 (#4195): `cAcq.started_at` above is EITHER the
           // DB's own value (the initial `readAcquisition`/`reconcileAcquisition`

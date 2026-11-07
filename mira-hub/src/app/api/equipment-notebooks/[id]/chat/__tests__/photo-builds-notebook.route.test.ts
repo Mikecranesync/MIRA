@@ -227,6 +227,8 @@ describe("a nameplate photo starts the manual search on the same turn", () => {
   it.each([
     ["an asset tag typed back as MODEL", "SMC Asset tag: 12345678", "Find the manual for SMC MODEL: 12345678"],
     ["a serial retyped without its dash", "SMC S/N: AB-1234567", "Find the manual for SMC MODEL: AB1234567"],
+    ["a bracketed suffix asset tag typed back as MODEL", "SMC 12345678 (asset tag)", "Find the manual for SMC MODEL: 12345678"],
+    ["a suffix asset tag typed back as MODEL", "SMC 12345678 tag", "Find the manual for SMC MODEL: 12345678"],
   ])("%s → no search, no proposal of it", async (_name, plate, message) => {
     visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
       observationId: "obs", sessionId: "session", text: plate, obsKind: "look", trust: "candidate", fileId: PHOTO, hazards: [],
@@ -235,6 +237,58 @@ describe("a nameplate photo starts the manual search on the same turn", () => {
     expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
     const proposal = JSON.stringify(f.find((x) => x.kind === "identity_proposal") ?? null);
     expect(proposal).not.toMatch(/12345678|AB-?1234567/);
+  });
+
+  // #5268 Codex r2 F2: the photo search completed and enabled its manual, then
+  // the technician turned that source off. The chat status must say so, not
+  // promise that asking again will answer from it.
+  describe("a completed photo search whose manual is now turned off", () => {
+    const completeRec = async () => {
+      const { acquisitionKey } = await vi.importActual<typeof import("@/capabilities/notebook-manual-acquisition")>(
+        "@/capabilities/notebook-manual-acquisition",
+      );
+      const key = acquisitionKey({ identityStatus: "user_confirmed", manufacturer: "AUTOMATIONDIRECT", model: MODEL, catalogNumber: "" })!;
+      return {
+        key,
+        source: (enabledByDefault: boolean) => ({
+          docId: "d-photo", filename: "gs10.pdf", enabledByDefault, matchState: "verified", sourceRole: "manual",
+          readiness: { canChat: true }, matchEvidence: { autoAcquisitionKey: key, sourceLabel: "from_photo" },
+        }),
+        rec: {
+          key, state: "complete", started_at: "2026-11-07T00:00:00Z", finished_at: "2026-11-07T00:01:00Z",
+          candidate_host: "www.automationdirect.com", match_state: "verified", oem_request_url: null, attached_indexed: true,
+        },
+      };
+    };
+    const statusMessage = (f: Record<string, unknown>[]) =>
+      String((f.find((x) => x.kind === "manual_search_status") as { message?: string } | undefined)?.message ?? "");
+
+    it("source off → the status says it is turned off and to turn it back on", async () => {
+      const c = await completeRec();
+      acqMock.readAcquisition.mockResolvedValue(c.rec);
+      nbMock.listSources.mockResolvedValue([c.source(false)] as never);
+      const msg = statusMessage(await frames(await plateTurn()));
+      expect(msg).toMatch(/turned off there now/);
+      expect(msg).toMatch(/Turn it back on in Sources/);
+    });
+
+    it("a failed source read is unknown → never claims the manual is turned off", async () => {
+      const c = await completeRec();
+      acqMock.readAcquisition.mockResolvedValue(c.rec);
+      nbMock.listSources.mockRejectedValue(new Error("db down"));
+      const msg = statusMessage(await frames(await plateTurn()));
+      expect(msg).toMatch(/added it to this notebook's Sources/);
+      expect(msg).not.toMatch(/turned off/);
+    });
+
+    it("control: source on → no 'turned off' claim", async () => {
+      const c = await completeRec();
+      acqMock.readAcquisition.mockResolvedValue(c.rec);
+      nbMock.listSources.mockResolvedValue([c.source(true)] as never);
+      const msg = statusMessage(await frames(await plateTurn()));
+      expect(msg).toMatch(/added it to this notebook's Sources/);
+      expect(msg).not.toMatch(/turned off/);
+    });
   });
 
   it("control: the one kill switch off → nothing starts", async () => {

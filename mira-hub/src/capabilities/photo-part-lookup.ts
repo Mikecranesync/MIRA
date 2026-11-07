@@ -128,12 +128,19 @@ export function privateIdentifierKeys(text: string): Set<string> {
   const t = normalize(text);
   const keys = new Set<string>(serialCodes(text).map(identifierKey));
   const VALUE_AFTER = new RegExp(
-    String.raw`^[^A-Za-z0-9]*(?:(?:${ID_WORD})(?![a-z])[^A-Za-z0-9]*)*(?:is\b)?\s*([A-Z0-9][A-Z0-9./-]*(?:[ \t]+[A-Z0-9][A-Z0-9./-]*){0,2})`,
+    String.raw`^[^A-Za-z0-9]*(?:(?:${ID_WORD})(?![a-z])[^A-Za-z0-9]*)*(?:is\b)?\s*((?=[A-Z0-9./ \t-]*\d)[A-Z0-9][A-Z0-9./-]*(?:[ \t]+[A-Z0-9][A-Z0-9./-]*){0,2})`,
     "i",
   );
   for (const label of [SERIAL_LABEL, ASSET_LABEL]) {
     for (const m of t.matchAll(new RegExp(label.source, "gi"))) {
       const value = t.slice((m.index ?? 0) + m[0].length, (m.index ?? 0) + m[0].length + 48).match(VALUE_AFTER)?.[1];
+      // A suffix label marks the code just before it — "12345678 (asset tag)",
+      // "12345678 tag" (#5268 Codex r2 F1) — only when NO value follows the
+      // label, so "P/N: X S/N: Y" or "X (asset tag Y)" never marks the part X
+      // as private.
+      const before = t.slice(Math.max(0, (m.index ?? 0) - 48), m.index ?? 0);
+      const prior = value ? null : before.match(/([A-Z0-9][A-Z0-9./-]{3,})[^A-Za-z0-9]+$/i);
+      if (prior) keys.add(identifierKey(trimCode(prior[1])));
       if (!value) continue;
       let joined = "";
       for (const chunk of value.split(/[ \t]+/)) {
