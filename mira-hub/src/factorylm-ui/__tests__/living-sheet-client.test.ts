@@ -754,8 +754,8 @@ describe("stepConfirmBelongsTo — Mark done posts only to the job the dialog wa
 });
 
 // ---------------------------------------------------------------------------
-// #5212: a definitively rejected offline note must survive navigation, reload
-// and sign-out, and stay scoped to its author, notebook and job.
+// #5212: a definitively rejected offline note must survive navigation and
+// reload, stay scoped to its author, notebook and job, and leave with sign-out.
 // ---------------------------------------------------------------------------
 
 function noteEvent(clientEventId: string, text: string): SheetEventPost {
@@ -872,15 +872,29 @@ describe("#5212 — rejected offline note survives navigation and reload", () =>
     expect(await loadRejectedSheetEvents(store, "t1", "nb-1", "jobA")).toHaveLength(1);
   });
 
-  it("sign-out purge clears pending queues but keeps the rejected record, and the unsynced count ignores it", async () => {
+  it("sign-out counts a kept rejection as unsaved and the purge removes it with the pending queue", async () => {
     const store = memoryStore();
-    await enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "keep me"));
+    await enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "rejected words"));
     await drainSheetQueue(store, "t1", "jobA", async () => ({ status: "rejected", message: "job_finished" }), "nb-1");
-    await enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-2", "still pending"));
+    expect(await loadRejectedSheetEvents(store, "t1", "nb-1", "jobA")).toHaveLength(1);
+    expect(await loadSheetQueue(store, "t1", "jobA")).toEqual([]);
+    // Only the rejection is left: the prompt must still warn about it.
     expect(await countAllSheetQueueEntries(store)).toBe(1);
+    await enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-2", "still pending"));
+    expect(await countAllSheetQueueEntries(store)).toBe(2);
     await purgeSheetQueues(store);
     expect(await countAllSheetQueueEntries(store)).toBe(0);
-    expect(await loadRejectedSheetEvents(store, "t1", "nb-1", "jobA")).toHaveLength(1);
+    expect(await loadRejectedSheetEvents(store, "t1", "nb-1", "jobA")).toEqual([]);
+    const left = await Promise.all((await store.keys()).map((k) => store.get(k)));
+    expect(left.join("\n")).not.toContain("rejected words");
+  });
+
+  it("sign-out purge leaves unrelated device storage alone", async () => {
+    const store = memoryStore();
+    await store.set("flm.other.v1.x", "keep");
+    await enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "gone"));
+    await purgeSheetQueues(store);
+    expect(await store.get("flm.other.v1.x")).toBe("keep");
   });
 
   it("corrupt rejected storage loads as empty and never throws", async () => {

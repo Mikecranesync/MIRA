@@ -380,9 +380,8 @@ export async function drainSheetQueue(
 // Rejected store (#5212). A definitively rejected write (e.g. `job_finished`)
 // is the only copy of the technician's words, so it is kept per
 // scope (tenant/user) + notebook + job until the technician dismisses it.
-// Deliberately a separate prefix from the queue: sign-out's purge and the
-// unsynced-count prompt only ever touch pending work, and rejected records
-// survive sign-out (still scoped, so another user on the device never sees them).
+// It survives navigation and reload, but not sign-out: like a pending queue it
+// is local-only work, so the sign-out prompt counts it and the purge removes it.
 // ---------------------------------------------------------------------------
 
 const REJECTED_PREFIX = "flm.sheetrej.v1.";
@@ -492,20 +491,26 @@ export function recoveredFieldValue(current: string, text: string): string {
   return current.trim() === "" ? text : `${current} ${text}`;
 }
 
-/** Sign-out hygiene: remove every Living Work Sheet queue (all jobs, all
- *  tenants/users on this device). Returns how many keys were purged. */
+/** Local-only Living Work Sheet keys: pending queues and kept rejections (#5212). */
+function isLocalSheetKey(k: string): boolean {
+  return k.startsWith(QUEUE_PREFIX) || k.startsWith(REJECTED_PREFIX);
+}
+
+/** Sign-out hygiene: remove every Living Work Sheet queue and kept rejection
+ *  (all jobs, all tenants/users on this device). Returns how many keys were purged. */
 export async function purgeSheetQueues(store: KvStore): Promise<number> {
-  const keys = (await store.keys()).filter((k) => k.startsWith(QUEUE_PREFIX));
+  const keys = (await store.keys()).filter(isLocalSheetKey);
   for (const k of keys) await store.remove(k);
   return keys.length;
 }
 
 /** R2-32: total queued entries across EVERY Living Work Sheet queue on this
- *  device (any job, any tenant/user) — exactly what `purgeSheetQueues` is
- *  about to discard. Sign-out must ask before losing these, not after.
+ *  device (any job, any tenant/user), plus kept rejections (#5212) — exactly
+ *  what `purgeSheetQueues` is about to discard. Sign-out must ask before
+ *  losing these, not after.
  *  Tolerant like `loadSheetQueue`: a corrupt entry counts as 0, never throws. */
 export async function countAllSheetQueueEntries(store: KvStore): Promise<number> {
-  const keys = (await store.keys()).filter((k) => k.startsWith(QUEUE_PREFIX));
+  const keys = (await store.keys()).filter(isLocalSheetKey);
   let total = 0;
   for (const k of keys) {
     const raw = await store.get(k);
