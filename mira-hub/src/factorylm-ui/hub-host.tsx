@@ -90,6 +90,7 @@ import {
   hubHostReducer,
   initialHubShellState,
   landingSelection,
+  loadNotebookListWithRetry,
   latestRequestGate,
   loadingThread,
   metaFor,
@@ -221,7 +222,10 @@ export function HubShellHost() {
   // --- data: notebooks (projects/threads), then the selected notebook's detail ---
   const loadNotebooks = useCallback(async () => {
     const token = notebookGate.begin();
-    const { status, data } = await getJson<{ notebooks: HubNotebook[] }>("/api/equipment-notebooks/");
+    const { status, data } = await loadNotebookListWithRetry(
+      () => getJson<{ notebooks: HubNotebook[] }>("/api/equipment-notebooks/"),
+      { isCurrent: () => notebookGate.isCurrent(token) },
+    );
     if (!notebookGate.isCurrent(token)) return;
     if (status === 401) { setSignedOut(true); return; }
     if (!data) return;

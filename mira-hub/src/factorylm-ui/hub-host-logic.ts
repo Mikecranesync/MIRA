@@ -98,6 +98,36 @@ export function openNotebookSelection(nb: Pick<HubNotebook, "id">, mint: () => s
  * the ChatGPT-first lock's L0 is a composer home that answers immediately.
  * `openNotebookSelection` is the deep-link / project-click entry.
  */
+/**
+ * #3882: the URL's notebook/thread is restored only from the notebook list, so
+ * one failed list request on a cold restart used to strand the technician on
+ * HOME with no Job Sheet. Wait this long before each retry; 401 is never
+ * retried (signed out is an answer), and a superseded load stops early.
+ */
+export const NOTEBOOK_LIST_RETRY_DELAYS_MS: readonly number[] = [1000, 3000];
+export async function loadNotebookListWithRetry<T>(
+  get: () => Promise<{ status: number; data: T | null }>,
+  opts: { sleep?: (ms: number) => Promise<void>; warn?: (msg: string) => void; isCurrent?: () => boolean } = {},
+): Promise<{ status: number; data: T | null }> {
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const warn = opts.warn ?? ((msg: string) => console.warn(msg));
+  const isCurrent = opts.isCurrent ?? (() => true);
+  let last: { status: number; data: T | null } = { status: 0, data: null };
+  for (let attempt = 0; ; attempt++) {
+    try {
+      last = await get();
+      if (last.data || last.status === 401) return last;
+      warn(`[hub-host] notebook list failed: HTTP ${last.status} (attempt ${attempt + 1})`);
+    } catch (err) {
+      last = { status: 0, data: null };
+      warn(`[hub-host] notebook list failed: ${err instanceof Error ? err.message : String(err)} (attempt ${attempt + 1})`);
+    }
+    const delay = NOTEBOOK_LIST_RETRY_DELAYS_MS[attempt];
+    if (delay === undefined || !isCurrent()) return last;
+    await sleep(delay);
+    if (!isCurrent()) return last;
+  }
+}
 export function landingSelection(notebooks: readonly HubNotebook[]): HubSelection | null {
   void notebooks; // HOME regardless of how many projects exist
   return null;
