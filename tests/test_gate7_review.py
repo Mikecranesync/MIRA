@@ -1227,8 +1227,67 @@ def test_paid_adjudication_refuses_unbound_or_incomplete_evidence_before_spend(
     assert not (tmp_path / "costs.jsonl").exists()
 
 
+@pytest.mark.parametrize("historical_change", ["typo", "high_content", "deleted"])
+def test_paid_adjudication_superseded_review_changes_preserve_current_window(
+    tmp_path, monkeypatch, historical_change
+):
+    from cheap_review_check import head_state, parse_envelope
+
+    state = _paid_adjudication_case(tmp_path, monkeypatch)
+    selected = state["comments"][0]
+    older = {
+        **selected,
+        "id": selected["id"] - 1,
+        "created_at": "2026-11-07T02:00:00Z",
+        "updated_at": "2026-11-07T02:00:00Z",
+        "body": selected["body"].replace("a" * 32, "b" * 32),
+    }
+    state["comments"].insert(0, older)
+    before = head_state(state["comments"], "Mikecranesync", state["head"])
+    assert before and before[2]["id"] == selected["id"]
+    identity = before[0], dict(before[1]), before[2]["id"]
+    selected_body = selected["body"]
+
+    def historical_edit():
+        if historical_change == "deleted":
+            state["comments"] = [selected]
+        else:
+            older["updated_at"] = "2026-11-07T04:00:00Z"
+            if historical_change == "typo":
+                older["body"] += "\nHistorical typo corrected.\n"
+            else:
+                older["body"] = older["body"].replace(
+                    "[severity: medium] Ambiguous status", "[severity: high] New hostile behavior"
+                )
+        after = head_state(state["comments"], "Mikecranesync", state["head"])
+        assert after and (after[0], after[1], after[2]["id"]) == identity
+        assert selected["body"] == selected_body
+
+    state["after_paid"] = historical_edit
+    assert g7.main(state["args"]) == 0
+    assert len(state["paid"]) == 1 and not state["free"]
+    rows = [json.loads(line) for line in (tmp_path / "costs.jsonl").read_text().splitlines()]
+    assert len(rows) == 1 and rows[0]["cost_usd"] > 0
+    assert len(state["posted"]) == 1
+    body = state["posted"][0]
+    envelope = parse_envelope(body)
+    assert envelope and envelope["verdict"] == "PASS" and envelope["scope"] == "full"
+    posted = {**selected, "id": selected["id"] + 1, "body": body}
+    assert head_state([*state["comments"], posted], "Mikecranesync", state["head"])[0] == "success"
+
+
 @pytest.mark.parametrize(
-    "race", ["new_high", "new_scoped_pass", "edited", "deleted", "read_failed", "head", "diff"]
+    "race",
+    [
+        "new_high",
+        "new_scoped_pass",
+        "edited",
+        "timestamp",
+        "deleted",
+        "read_failed",
+        "head",
+        "diff",
+    ],
 )
 def test_paid_adjudication_rechecks_prior_snapshot_after_spend_and_cannot_certify_race(
     tmp_path, monkeypatch, race
@@ -1248,6 +1307,8 @@ def test_paid_adjudication_rechecks_prior_snapshot_after_spend_and_cannot_certif
             state["comments"].append({**comment, "id": 6701448568, "body": body})
         elif race == "edited":
             comment["body"] += "\nEdited finding evidence\n"
+        elif race == "timestamp":
+            comment["updated_at"] = "2026-11-07T04:00:00Z"
         elif race == "deleted":
             state["comments"] = []
         elif race == "read_failed":

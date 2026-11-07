@@ -874,6 +874,7 @@ def _paid_adjudication_source(number: int, prior_report: str, head_sha: str, dif
         "comment_id": comment_id,
         "run_id": envelope["run_id"],
         "payload_sha256": hashlib.sha256(supplied.encode("utf-8")).hexdigest(),
+        # The canonical active window begins at this newest full-scope source.
         "reviews": tuple(
             (
                 ident,
@@ -881,6 +882,7 @@ def _paid_adjudication_source(number: int, prior_report: str, head_sha: str, dif
                 item.get("updated_at"),
             )
             for ident, _, item in trusted
+            if ident >= comment_id
         ),
     }
 
