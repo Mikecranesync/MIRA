@@ -214,8 +214,19 @@ async function saveSheetQueue(store: KvStore, scopeId: string, jobId: string, q:
  *  prefixes, so the purge keeps it). Tabs share device storage but not
  *  module state, so this is the cross-tab half of the sign-out barrier. */
 export const SIGN_OUT_MARKER_KEY = "flm.sheetsignout.v1";
-/** When this page loaded: a sign-out recorded after it ended this tab's session. */
-const TAB_LOADED_AT = Date.now();
+/** Codex #5276 r11: how many sign-outs had finished when this page loaded,
+ *  read synchronously from device storage as the module loads. A sign-out that
+ *  finishes later ended this tab's session. A count, not a clock time, so a tab
+ *  opened in the same millisecond as a finish is still ordered exactly. */
+const TAB_LOADED_GEN = loadedSignOutGeneration();
+function loadedSignOutGeneration(): number {
+  try {
+    const ls = typeof window === "undefined" ? undefined : window.localStorage;
+    return ls ? parseSignOutMarker(ls.getItem(SIGN_OUT_MARKER_KEY)).gen : 0;
+  } catch {
+    return 0;
+  }
+}
 
 /** Every Living Sheet write goes through here. A tab loaded before the latest
  *  sign-out writes nothing, so a late reply cannot restore purged text, and no
@@ -227,30 +238,30 @@ async function sheetSet(store: KvStore, key: string, value: string): Promise<boo
   });
 }
 
-/** Codex #5276 r9: the marker records finished sign-outs (`done`, the latest
- *  time) and in-progress ones (`pending`, one unique id each). Ownership is the
- *  id, never a clock value, so two sign-outs in the same millisecond never
- *  share it, and Cancel only ever removes its own id. Stored as a plain time
- *  string when nothing is pending (the original format). */
-type SignOutMarker = { done: number | null; pending: Record<string, number> };
+/** Codex #5276 r9/r11: the marker records how many sign-outs have finished
+ *  (`gen`) and the in-progress ones (`pending`, one unique id each). Ownership
+ *  is the id, never a clock value, so two sign-outs in the same millisecond
+ *  never share it, and Cancel only ever removes its own id. Stored as a plain
+ *  number when nothing is pending. */
+type SignOutMarker = { gen: number; pending: Record<string, number> };
 
 /** An in-progress sign-out left behind by a closed or crashed tab stops
  *  blocking writes after this long. */
 export const SIGN_OUT_PENDING_MAX_MS = 10 * 60 * 1000;
 
 function parseSignOutMarker(raw: string | null): SignOutMarker {
-  const empty: SignOutMarker = { done: null, pending: {} };
+  const empty: SignOutMarker = { gen: 0, pending: {} };
+  const count = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0);
   if (raw === null || raw.trim() === "") return empty;
-  if (Number.isFinite(Number(raw))) return { done: Number(raw), pending: {} };
+  if (Number.isFinite(Number(raw))) return { gen: count(Number(raw)), pending: {} };
   try {
-    const parsed = JSON.parse(raw) as { done?: unknown; pending?: unknown };
+    const parsed = JSON.parse(raw) as { gen?: unknown; pending?: unknown };
     if (typeof parsed !== "object" || parsed === null) return empty;
     const pending: Record<string, number> = {};
     if (typeof parsed.pending === "object" && parsed.pending !== null) {
       for (const [id, at] of Object.entries(parsed.pending)) if (typeof at === "number" && Number.isFinite(at)) pending[id] = at;
     }
-    const done = typeof parsed.done === "number" && Number.isFinite(parsed.done) ? parsed.done : null;
-    return { done, pending };
+    return { gen: count(parsed.gen), pending };
   } catch {
     return empty;
   }
@@ -258,11 +269,11 @@ function parseSignOutMarker(raw: string | null): SignOutMarker {
 
 function serializeSignOutMarker(m: SignOutMarker): string | null {
   if (Object.keys(m.pending).length > 0) return JSON.stringify(m);
-  return m.done === null ? null : String(m.done);
+  return m.gen === 0 ? null : String(m.gen);
 }
 
 function signOutBlocksWrites(m: SignOutMarker, now = Date.now()): boolean {
-  if (m.done !== null && m.done >= TAB_LOADED_AT) return true;
+  if (m.gen > TAB_LOADED_GEN) return true;
   return Object.values(m.pending).some((at) => now - at < SIGN_OUT_PENDING_MAX_MS);
 }
 
@@ -805,18 +816,18 @@ export async function clearSheetDataForSignOut(
     if (!(markerInstalled && lapsed())) break;
     markerInstalled = await begin(); // another tab may have saved after the purge
   }
-  // Done: the finish time is taken under the lock, so every tab loaded before
-  // it (including one opened mid-sign-out, Codex #5276 r10) stays blocked. It
-  // never moves backwards, so an older finish cannot undo a newer one.
-  let finishedAt = 0;
+  // Done: raise the finished count under the lock, so every tab loaded before
+  // now (including one opened mid-sign-out, Codex #5276 r10) stays blocked.
+  // The count only goes up, so an older finish cannot undo a newer one.
+  let finishedGen = 0;
   const finished = await updateSignOutMarker(
     store,
     (m) => {
-      finishedAt = Date.now();
       delete m.pending[id];
-      m.done = Math.max(m.done ?? finishedAt, finishedAt);
+      finishedGen = m.gen + 1;
+      m.gen = finishedGen;
     },
-    (m) => m.done !== null && m.done >= finishedAt && !(id in m.pending),
+    (m) => m.gen >= finishedGen && !(id in m.pending),
   );
   if (markerInstalled && !finished && !confirm(SIGN_OUT_OTHER_TABS_PROMPT)) return cancel();
   return true;

@@ -1393,8 +1393,11 @@ describe("#5212 sign-out across tabs", () => {
     await new Promise((r) => setTimeout(r, 2)); // this tab loaded strictly before anything that follows
     return mod;
   }
+  afterEach(() => vi.unstubAllGlobals());
   function sharedStore(): { store: KvStore; m: Map<string, string> } {
     const m = new Map<string, string>();
+    // A tab reads the sign-out count from device storage as it loads: point that at this store.
+    vi.stubGlobal("window", { localStorage: { getItem: (k: string) => m.get(k) ?? null } });
     return {
       m,
       store: {
@@ -1914,13 +1917,46 @@ describe("#5212 sign-out across tabs", () => {
     expect(asked).toEqual([SIGN_OUT_OTHER_TABS_PROMPT]);
   });
 
-  it("the sign-out marker never moves backwards over a newer one", async () => {
+  it("each finished sign-out raises the stored count by one and never lowers it", async () => {
     const { store, m } = sharedStore();
-    const newer = String(Date.now() + 60_000);
-    m.set("flm.sheetsignout.v1", newer);
+    m.set("flm.sheetsignout.v1", "5");
     const tab = await openTab();
     expect(await tab.clearSheetDataForSignOut(store, () => true)).toBe(true);
-    expect(m.get("flm.sheetsignout.v1")).toBe(newer);
+    expect(m.get("flm.sheetsignout.v1")).toBe("6");
+  });
+
+  it("in one frozen millisecond: a tab opened after the finish can save, a tab opened before it cannot", async () => {
+    const { store, m } = sharedStore();
+    const now = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 1000); // every clock read is the same instant
+    try {
+      const tabA = await openTab();
+      const before = await openTab();
+      expect(await tabA.clearSheetDataForSignOut(store, () => true)).toBe(true);
+      const after = await openTab();
+      expect((await after.enqueueSheetEvent(store, "t1", "jobB", noteEvent("n-2", "new session"))).saved).toBe(true);
+      expect((await before.enqueueSheetEvent(store, "t1", "jobC", noteEvent("n-3", "old session"))).saved).toBe(false);
+    } finally {
+      now.mockRestore();
+    }
+    expect(sheetText(m)).toContain("new session");
+    expect(sheetText(m)).not.toContain("old session");
+  });
+
+  it("in one frozen millisecond: a tab opened during a sign-out stays blocked after it finishes", async () => {
+    const { store, m } = sharedStore();
+    const now = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 1000);
+    try {
+      const tabA = await openTab();
+      const a = await signOutWaitingOnReplay(tabA, store, () => true, 1000);
+      const opened = await openTab(); // loaded mid-sign-out, same millisecond as the finish
+      a.releaseA();
+      await a.drain;
+      expect(await a.signOut).toBe(true);
+      expect((await opened.enqueueSheetEvent(store, "t1", "jobD", noteEvent("n-4", "mid sign-out"))).saved).toBe(false);
+    } finally {
+      now.mockRestore();
+    }
+    expect(sheetText(m)).toBe("");
   });
 
   it("a tab opened after the sign-out can save (control)", async () => {
