@@ -173,7 +173,8 @@ export function isSafeCandidateSearchIdentity(photoText: string, typed: string, 
   // back under another label ("MODEL: 12345678") or with its punctuation or
   // spaces changed (AB-1234567 → AB1234567, "TP 1200" → TP1200).
   const keyNorm = identifierKey(key);
-  if (texts.some((t) => privateIdentifierKeys(t).has(keyNorm))) return false;
+  // r5: nor any FRAGMENT of one ("Asset tag: PN12345678" → 12345678).
+  if (texts.some((t) => [...privateIdentifierKeys(t)].some((k) => k.includes(keyNorm)))) return false;
   // #5268 Codex r4 — the structural wall. Once EITHER text carries a serial or
   // asset label, eligibility comes only from the PHOTO's own part label
   // (P/N, MODEL, …). Typed text then grants nothing, so no spelling, spacing
