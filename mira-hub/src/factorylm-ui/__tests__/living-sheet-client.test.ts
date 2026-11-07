@@ -1152,6 +1152,68 @@ describe("#5212 production adapter under blocked storage", () => {
     expect(Array.from(m.values()).join("\n")).toContain("technician words");
   });
 
+  function blockReads(): void {
+    const ls = (globalThis as unknown as { window: { localStorage: { getItem: (k: string) => string | null } } }).window.localStorage;
+    ls.getItem = () => {
+      throw new DOMException("denied", "SecurityError");
+    };
+  }
+
+  it("a failed read never lets recording a rejection overwrite the kept notes", async () => {
+    const { m } = fakeLocalStorage();
+    await enqueueSheetEvent(localStorageStore, "t1", "jobA", noteEvent("n-1", "first words"));
+    await enqueueSheetEvent(localStorageStore, "t1", "jobA", noteEvent("n-2", "second words"));
+    await drainSheetQueue(localStorageStore, "t1", "jobA", async () => ({ status: "rejected", message: "job_finished" }), "nb-1");
+    blockReads();
+    const ok = await recordRejectedSheetEvent(localStorageStore, "t1", "nb-1", "jobA", {
+      event: noteEvent("n-3", "third words"),
+      message: "job_finished",
+      rejectedAt: "2026-11-07T00:00:00.000Z",
+    });
+    expect(ok).toBe(false);
+    const stored = m.get(rejectedSheetKey("t1", "nb-1", "jobA"))!;
+    expect(stored).toContain("first words");
+    expect(stored).toContain("second words");
+  });
+
+  it("a failed read never lets the queue writers overwrite queued notes", async () => {
+    const { m } = fakeLocalStorage();
+    await enqueueSheetEvent(localStorageStore, "t1", "jobA", noteEvent("n-1", "queued words"));
+    blockReads();
+    expect((await enqueueSheetEvent(localStorageStore, "t1", "jobA", noteEvent("n-2", "more words"))).saved).toBe(false);
+    expect(await removeFromSheetQueue(localStorageStore, "t1", "jobA", "n-9")).toBe(false);
+    expect(await dropHeadOfSheetQueue(localStorageStore, "t1", "jobA")).toBeNull();
+    expect(m.get(sheetQueueKey("t1", "jobA"))).toContain("queued words");
+  });
+
+  it("an empty read on a key storage lists as absent is trusted, so a first write still works (control)", async () => {
+    const { m } = fakeLocalStorage();
+    await seedRejected();
+    expect((await enqueueSheetEvent(localStorageStore, "t1", "jobB", noteEvent("n-5", "fresh"))).saved).toBe(true);
+    expect(m.get(sheetQueueKey("t1", "jobB"))).toContain("fresh");
+  });
+
+  it("a read that fails mid-drain never lets the attempt counter wipe the queue", async () => {
+    const m = new Map<string, string>();
+    let reads = 0;
+    const store: KvStore = {
+      get: async (k) => {
+        reads++;
+        if (reads > 1) throw new Error("denied");
+        return m.has(k) ? m.get(k)! : null;
+      },
+      set: async (k, v) => (m.set(k, v), true),
+      remove: async (k) => (m.delete(k), true),
+      keys: async () => Array.from(m.keys()),
+    };
+    m.set(sheetQueueKey("t1", "jobA"), JSON.stringify([{ event: noteEvent("n-1", "kept words"), queuedAt: "2026-11-07T00:00:00.000Z", attempts: 0 }]));
+    const result = await drainSheetQueue(store, "t1", "jobA", async () => {
+      throw new Error("offline");
+    });
+    expect(result?.networkStopped).toBe(true);
+    expect(m.get(sheetQueueKey("t1", "jobA"))).toContain("kept words");
+  });
+
   it("dismissing a row that is not in a readable list leaves storage alone and succeeds (control)", async () => {
     const { m } = fakeLocalStorage();
     await seedRejected();
