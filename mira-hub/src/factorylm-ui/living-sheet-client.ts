@@ -755,47 +755,68 @@ export async function clearSheetDataForSignOut(
   // warning covers everything the purge will remove. Cancel removes only this
   // sign-out's own id; a finished sign-out from another tab stays in force.
   const id = newSignOutId();
-  const startedAt = Date.now();
-  const begin = () => updateSignOutMarker(store, (m) => void (m.pending[id] = startedAt), (m) => m.pending[id] === startedAt);
+  // Codex #5276 r10: the in-progress entry is a lease stamped with its last
+  // renewal. A question left open past SIGN_OUT_PENDING_MAX_MS lets other tabs
+  // write again (window.confirm freezes this tab, so nothing can renew it
+  // meanwhile), so sign-out renews and starts over from the count.
+  let leaseAt = 0;
+  const begin = async () => {
+    const at = Date.now();
+    const ok = await updateSignOutMarker(store, (m) => void (m.pending[id] = at), (m) => m.pending[id] === at);
+    if (ok) leaseAt = at;
+    return ok;
+  };
+  const lapsed = () => Date.now() - leaseAt >= SIGN_OUT_PENDING_MAX_MS;
   let markerInstalled = await begin();
   const cancel = async (): Promise<false> => {
     sheetSignOutBarrier = false;
     await updateSignOutMarker(store, (m) => void delete m.pending[id], (m) => !(id in m.pending));
     return false;
   };
-  const prompt = signOutUnsyncedPrompt(await countAllSheetQueueEntries(store));
-  if (prompt && !confirm(prompt)) return cancel();
-  onPurgeStart?.();
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const drained = await Promise.race([
-    sheetDrainSettled.then(() => true),
-    new Promise<boolean>((r) => (timer = setTimeout(() => r(false), drainWaitMs))),
-  ]);
-  clearTimeout(timer);
-  // Codex #5276 r4: ask BEFORE purging when a replay is still sending. The
-  // queue holds the only copy of that note until the server answers, so
-  // Cancel must leave storage untouched.
-  if (!drained && !confirm(SIGN_OUT_STILL_SENDING_PROMPT)) return cancel();
-  let { remaining } = await purgeSheetQueues(store);
-  if (!markerInstalled) {
-    // Codex #5276 r6: a full phone can refuse the marker. The purge freed
-    // space, so try again, then sweep whatever another tab saved meanwhile.
-    markerInstalled = await begin();
-    if (markerInstalled) ({ remaining } = await purgeSheetQueues(store));
+  for (;;) {
+    const prompt = signOutUnsyncedPrompt(await countAllSheetQueueEntries(store));
+    if (prompt && !confirm(prompt)) return cancel();
+    onPurgeStart?.();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const drained = await Promise.race([
+      sheetDrainSettled.then(() => true),
+      new Promise<boolean>((r) => (timer = setTimeout(() => r(false), drainWaitMs))),
+    ]);
+    clearTimeout(timer);
+    // Codex #5276 r4: ask BEFORE purging when a replay is still sending. The
+    // queue holds the only copy of that note until the server answers, so
+    // Cancel must leave storage untouched.
+    if (!drained && !confirm(SIGN_OUT_STILL_SENDING_PROMPT)) return cancel();
+    if (markerInstalled && lapsed()) {
+      markerInstalled = await begin();
+      continue; // the warning may be out of date: count and ask again
+    }
+    let { remaining } = await purgeSheetQueues(store);
+    if (!markerInstalled) {
+      // Codex #5276 r6: a full phone can refuse the marker. The purge freed
+      // space, so try again, then sweep whatever another tab saved meanwhile.
+      markerInstalled = await begin();
+      if (markerInstalled) ({ remaining } = await purgeSheetQueues(store));
+    }
+    if (!markerInstalled && !confirm(SIGN_OUT_OTHER_TABS_PROMPT)) return cancel();
+    const leftBehind = signOutPurgeFailedPrompt(remaining);
+    // A signed-out page keeps the barrier; Cancel keeps the technician working.
+    if (leftBehind && !confirm(leftBehind)) return cancel();
+    if (!(markerInstalled && lapsed())) break;
+    markerInstalled = await begin(); // another tab may have saved after the purge
   }
-  if (!markerInstalled && !confirm(SIGN_OUT_OTHER_TABS_PROMPT)) return cancel();
-  const leftBehind = signOutPurgeFailedPrompt(remaining);
-  // A signed-out page keeps the barrier; Cancel keeps the technician working.
-  if (leftBehind && !confirm(leftBehind)) return cancel();
-  // Done: tabs loaded before now stay blocked for good. The time never moves
-  // backwards, so an older finish cannot undo a newer one.
+  // Done: the finish time is taken under the lock, so every tab loaded before
+  // it (including one opened mid-sign-out, Codex #5276 r10) stays blocked. It
+  // never moves backwards, so an older finish cannot undo a newer one.
+  let finishedAt = 0;
   const finished = await updateSignOutMarker(
     store,
     (m) => {
+      finishedAt = Date.now();
       delete m.pending[id];
-      m.done = Math.max(m.done ?? startedAt, startedAt);
+      m.done = Math.max(m.done ?? finishedAt, finishedAt);
     },
-    (m) => m.done !== null && m.done >= startedAt && !(id in m.pending),
+    (m) => m.done !== null && m.done >= finishedAt && !(id in m.pending),
   );
   if (markerInstalled && !finished && !confirm(SIGN_OUT_OTHER_TABS_PROMPT)) return cancel();
   return true;

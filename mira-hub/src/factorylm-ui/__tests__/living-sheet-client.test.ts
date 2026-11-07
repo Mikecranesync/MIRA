@@ -1799,6 +1799,89 @@ describe("#5212 sign-out across tabs", () => {
     expect((await opened.enqueueSheetEvent(store, "t1", "jobD", noteEvent("n-5", "after cancel"))).saved).toBe(true);
   });
 
+  it("a page opened while another tab's sign-out is in progress stays blocked after that sign-out finishes", async () => {
+    const { store, m } = sharedStore();
+    const tabA = await openTab();
+    const a = await signOutWaitingOnReplay(tabA, store, () => true, 1000);
+    await new Promise((r) => setTimeout(r, 2)); // a later millisecond than A's start
+    const opened = await openTab(); // loaded after A's sign-out began
+    expect((await opened.enqueueSheetEvent(store, "t1", "jobD", noteEvent("n-4", "mid sign-out"))).saved).toBe(false);
+    a.releaseA();
+    await a.drain;
+    expect(await a.signOut).toBe(true);
+    expect((await opened.enqueueSheetEvent(store, "t1", "jobD", noteEvent("n-5", "after sign-out"))).saved).toBe(false);
+    expect(sheetText(m)).toBe("");
+    await new Promise((r) => setTimeout(r, 2));
+    const fresh = await openTab(); // a new session after the finish (control)
+    expect((await fresh.enqueueSheetEvent(store, "t1", "jobE", noteEvent("n-6", "new session"))).saved).toBe(true);
+  });
+
+  it("a sign-out question left open past the time limit counts and asks again before clearing", async () => {
+    const { store, m } = sharedStore();
+    const tabA = await openTab();
+    const tabB = await openTab();
+    const asked: string[] = [];
+    let unsyncedAnswers = 0;
+    let markerDuringSecondWarning: string | undefined;
+    const a = await signOutWaitingOnReplay(
+      tabA,
+      store,
+      (msg) => {
+        asked.push(msg);
+        if (!msg.includes("not yet saved")) return true;
+        if (++unsyncedAnswers === 1) return true; // OK the first warning
+        markerDuringSecondWarning = m.get("flm.sheetsignout.v1");
+        return false; // Cancel the second
+      },
+      1000,
+    );
+    const later = Date.now() + SIGN_OUT_PENDING_MAX_MS + 1000;
+    const now = vi.spyOn(Date, "now").mockReturnValue(later); // the question stayed open past the limit
+    try {
+      const late = await tabB.enqueueSheetEvent(store, "t1", "jobB", noteEvent("n-2", "typed after the limit"));
+      expect(late.saved).toBe(true); // precondition: the lapsed block let tab B save
+      a.releaseA();
+      await a.drain;
+      expect(await a.signOut).toBe(false);
+    } finally {
+      now.mockRestore();
+    }
+    expect(asked.filter((msg) => msg.includes("not yet saved"))).toHaveLength(2);
+    // While the second warning is open the block is renewed, so other tabs are held again.
+    expect(Object.values(JSON.parse(markerDuringSecondWarning ?? "{}").pending ?? {})).toEqual([later]);
+    expect(sheetText(m)).toContain("typed after the limit");
+  });
+
+  it("a question after the purge left open past the time limit sweeps and asks again before finishing", async () => {
+    const { store: base, m } = sharedStore();
+    const store: KvStore = { ...base, remove: async (k) => (k.includes("jobS") ? false : base.remove(k)) };
+    const tabA = await openTab();
+    const tabB = await openTab();
+    await tabA.enqueueSheetEvent(store, "t1", "jobS", noteEvent("n-1", "stuck words"));
+    await tabB.enqueueSheetEvent(store, "t1", "jobB", noteEvent("n-2", "typed during the question"));
+    const [lateKey, lateValue] = [...m.entries()].find(([k]) => k.includes("jobB"))!;
+    m.delete(lateKey);
+    const asked: string[] = [];
+    let now: ReturnType<typeof vi.spyOn> | undefined;
+    try {
+      const signedOut = await tabA.clearSheetDataForSignOut(store, (msg) => {
+        asked.push(msg);
+        if (msg.startsWith("Could not clear")) {
+          // The question stays open past the limit, and tab B saves meanwhile.
+          now = vi.spyOn(Date, "now").mockReturnValue(Date.now() + SIGN_OUT_PENDING_MAX_MS + 1000);
+          m.set(lateKey, lateValue);
+          return true;
+        }
+        return asked.filter((x) => x.includes("not yet saved")).length === 1; // OK the first warning, Cancel a second
+      });
+      expect(signedOut).toBe(false);
+    } finally {
+      now?.mockRestore();
+    }
+    expect(asked.filter((msg) => msg.includes("not yet saved"))).toHaveLength(2);
+    expect(sheetText(m)).toContain("typed during the question");
+  });
+
   it("an in-progress sign-out left by a closed tab stops blocking after the time limit (control)", async () => {
     const { store, m } = sharedStore();
     const stale = Date.now() - SIGN_OUT_PENDING_MAX_MS - 1000;
