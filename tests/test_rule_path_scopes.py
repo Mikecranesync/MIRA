@@ -42,13 +42,27 @@ SCOPED = {
         ],
         ["mira-bots/shared/engine.py"],
     ),
-    "ui-style.md": (["packages/factorylm-theme/src/tokens.css"], ["mira-relay/tag_ingest.py"]),
+    "ui-style.md": (
+        [
+            "packages/factorylm-theme/src/tokens.css",
+            "docs/design/factorylm-tokens.css",
+            "docs/design/factorylm-style.md",
+        ],
+        ["mira-relay/tag_ingest.py"],
+    ),
     "mira-hub-migrations.md": (
         ["mira-hub/db/migrations/066_migration_ledger_content_sha.sql"],
         ["mira-hub/src/lib/db.ts"],
     ),
     "fast-path-optimization.md": (["mira-bots/shared/engine.py"], ["mira-hub/src/lib/db.ts"]),
-    "oem-crawler-trusted.md": (["mira-crawler/ingest/store.py"], ["mira-bots/shared/engine.py"]),
+    "oem-crawler-trusted.md": (
+        [
+            "mira-crawler/ingest/store.py",
+            "tools/seeds/backfill_verified_corpus.sql",
+            "tools/seeds/oem-model-number-backfill-4141.sql",
+        ],
+        ["mira-bots/shared/engine.py"],
+    ),
     "one-pipeline-ingest.md": (
         ["mira-relay/ingest_contract.py", "simlab/publishers.py"],
         ["mira-bots/shared/engine.py"],

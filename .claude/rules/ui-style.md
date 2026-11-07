@@ -7,6 +7,7 @@ paths:
   - "apps/**"
   - "ignition/**"
   - "**/gui/**"
+  - "docs/design/**"
 ---
 
 # FactoryLM UI Style (the law for any front end)
