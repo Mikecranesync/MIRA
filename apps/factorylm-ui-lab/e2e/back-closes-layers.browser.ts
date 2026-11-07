@@ -59,7 +59,11 @@ try {
       const label = `${thread} ${width}x${height}`;
       try {
         await sourcePage.goto(`${base}/v3?document=1&surface=hub&thread=${thread}`);
-        if (width < 768) await sourcePage.getByRole("button", { name: "Close navigation" }).click();
+        if (width < 768) {
+          await sourcePage.getByRole("button", { name: "Close navigation" }).click();
+          await sourcePage.waitForFunction(() =>
+            document.querySelector<HTMLElement>(".fl-shell__sidebar")!.getBoundingClientRect().right <= 0);
+        }
         await sourcePage.locator('button[data-part-type="source"]').first().click();
         const viewer = sourcePage.getByRole("dialog", { name: "Source viewer" });
         const link = viewer.getByRole("link", { name: "Open document in a new tab", exact: true });
