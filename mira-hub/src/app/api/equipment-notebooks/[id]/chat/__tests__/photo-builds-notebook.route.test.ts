@@ -252,6 +252,8 @@ describe("a nameplate photo starts the manual search on the same turn", () => {
     ["the plate's asset tag label wraps onto its own line", "Siemens MODEL: TP1200\nTP 1200\n(asset tag)", "Find the manual for this"],
     ["the plate's serial label wraps, with CRLF line ends", "Siemens MODEL: TP1200\r\nTP 1200\r\n(S/N)", "Find the manual for this"],
     ["OCR splits the plate's private value into short tokens", "Siemens MODEL: TP1200\nT P 12 00 (asset tag)", "Find the manual for this"],
+    ["a qualifier sits between the plate's private value and its label", "Siemens MODEL: TP1200\nTP 1200 (customer asset tag)", "Find the manual for this"],
+    ["a qualified serial label follows the plate's model", "Siemens MODEL: TP1200\nTP 1200 (customer S/N)", "Find the manual for this"],
   ])("%s → no search, no proposal of it", async (_name, plate, message) => {
     visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
       observationId: "obs", sessionId: "session", text: plate, obsKind: "look", trust: "candidate", fileId: PHOTO, hazards: [],

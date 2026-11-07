@@ -152,9 +152,9 @@ export function partLabelAfterPrivateLabel(text: string): boolean {
 }
 
 /**
- * The joined text (`identifierKey`) ending at each bare serial/asset suffix
- * label (#5268 Codex r11). A candidate that is a suffix of one is the value
- * the label marks, however it was spaced or wrapped.
+ * The joined text (`identifierKey`) between the last labelled part and each
+ * bare serial/asset suffix label (#5268 Codex r11/r12). A candidate found in
+ * one is marked private, however it was spaced, wrapped or qualified.
  */
 export function privateSuffixTails(text: string): string[] {
   const tails: string[] = [];
@@ -196,12 +196,19 @@ export function privateIdentifierKeys(text: string, tails: string[] = []): Set<s
       const before = t.slice(Math.max(0, (m.index ?? 0) - 48), m.index ?? 0);
       const prior = before.match(/([A-Z0-9][A-Z0-9./-]{3,})[^A-Za-z0-9]+$/i);
       const ownValue = LOCAL_VALUE.test(t.slice((m.index ?? 0) + m[0].length, (m.index ?? 0) + m[0].length + 48));
-      // #5268 Codex r11: the label marks whatever ends right before it, of any
-      // extent — wrapped lines, OCR-split tokens ("T P 12 00"), any spacing.
-      // Record the joined text ending at the label; a candidate it ends with
-      // is private (`privateSuffixTails`).
+      // #5268 Codex r11/r12: the label marks what comes before it, of any
+      // extent — wrapped lines, OCR-split tokens ("T P 12 00"), qualifiers
+      // ("customer asset tag"). Record the joined text from the end of the last
+      // labelled part (P/N, MODEL, …) up to the label; a candidate found
+      // anywhere in it is private (`privateSuffixTails`).
       if (!(ownValue && prior && labelledParts.has(trimCode(prior[1]).toUpperCase()))) {
-        tails.push(identifierKey(t.slice(Math.max(0, (m.index ?? 0) - 200), m.index ?? 0)));
+        const at = m.index ?? 0;
+        let from = Math.max(0, at - 200);
+        for (const p of t.matchAll(new RegExp(GENUINE_PART_LABEL.source, "gi"))) {
+          const end = (p.index ?? 0) + p[0].length;
+          if (end <= at) from = Math.max(from, end);
+        }
+        tails.push(identifierKey(t.slice(from, at)));
       }
       if (prior) {
         const priorCode = trimCode(prior[1]).toUpperCase();
