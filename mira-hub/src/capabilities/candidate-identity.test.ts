@@ -188,8 +188,13 @@ describe("isSafeCandidateSearchIdentity", () => {
   // The asset label no longer blocks the turn by itself (owner decision
   // 2026-11-07), and the reader never yields an asset-labelled value, so only
   // the labelled part can leave.
-  it("a typed asset id beside the photo's labelled part: only the part searches", () => {
-    expect(isSafeCandidateSearchIdentity("SMC P/N: SY3120-5LZD", "asset id AB-1234567, find the manual", "SY3120-5LZD", "SMC")).toBe(true);
+  it("a typed serial or asset label turns the automatic search off (#5268 Codex r9)", () => {
+    expect(isSafeCandidateSearchIdentity("SMC P/N: SY3120-5LZD", "asset id AB-1234567, find the manual", "SY3120-5LZD", "SMC")).toBe(false);
+    for (const typed of ["Find the manual for this. TP 1200 (asset tag)", "Find the manual for this. TP 1200 (S/N)", "Find the manual for this, serial TP 1200"]) {
+      expect(isSafeCandidateSearchIdentity("Siemens MODEL: TP1200", typed, "TP1200", "Siemens")).toBe(false);
+    }
+    // control: the same photo with a plain request still searches
+    expect(isSafeCandidateSearchIdentity("Siemens MODEL: TP1200", "Find the manual for this", "TP1200", "Siemens")).toBe(true);
   });
   // Known limit, fail-closed: an asset tag value shaped like a model
   // ("VALVE-1234") reads as a second machine, so this plate does not

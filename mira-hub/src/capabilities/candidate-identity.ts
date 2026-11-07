@@ -184,6 +184,10 @@ export function isSafeCandidateSearchIdentity(photoText: string, typed: string, 
   const privateLabel = texts.some((t) => mentionsSerialLabel(t) || mentionsAssetLabel(t));
   if (privateLabel && !labelledPartCodes(photoText).some((c) => identifierKey(c) === keyNorm)) return false;
   if (texts.some(partLabelAfterPrivateLabel)) return false;
+  // #5268 Codex r9: the technician's own words naming a serial or asset tag
+  // ("TP 1200 (asset tag)") turn the automatic search off — typed text can
+  // mark a value private but never vouch for one.
+  if (mentionsSerialLabel(typed) || mentionsAssetLabel(typed)) return false;
   const codes = new Set(texts.flatMap((t) => partCodes(t).map((c) => c.toUpperCase())));
   if (codes.size !== 1 || !codes.has(key)) return false;
   const proposed = new Set(makerGroups(manufacturer).keys());
