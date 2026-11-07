@@ -207,6 +207,15 @@ describe("isSafeCandidateSearchIdentity", () => {
   it("refuses a spaced serial retyped joined under a MODEL label", () => {
     expect(isSafeCandidateSearchIdentity("Siemens S/N: TP 1200", "Find the manual for Siemens MODEL: TP1200", "TP1200", "Siemens")).toBe(false);
   });
+  it.each([["SMC 12345678 (asset tag)"], ["SMC 12345678 tag"]])(
+    "refuses a suffix-labelled asset tag (%s) typed back under a MODEL label (#5268 Codex r2 F1)",
+    (photo) => {
+      expect(isSafeCandidateSearchIdentity(photo, "Find the manual for SMC MODEL: 12345678", "12345678", "SMC")).toBe(false);
+    },
+  );
+  it("control: a labelled part beside a bracketed asset tag with its own value stays eligible", () => {
+    expect(isSafeCandidateSearchIdentity("SMC P/N: SY3120-5LZD (asset tag 00123456)", "Find the manual for this", "SY3120-5LZD", "SMC")).toBe(true);
+  });
   it("control: a distinct labelled MODEL beside a serial still searches", () => {
     expect(isSafeCandidateSearchIdentity("AutomationDirect MODEL: GS11N-20P2 S/N: 2309AB1234", "Find the manual for this", "GS11N-20P2", "AutomationDirect")).toBe(true);
   });
