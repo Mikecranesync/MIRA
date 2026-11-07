@@ -9,6 +9,18 @@
  */
 export async function register(): Promise<void> {
   if (process.env.NEXT_RUNTIME === "nodejs") {
+    // #5265: a sealed edge device refuses to start with a cloud key present or
+    // a non-loopback model URL. A thrown hook leaves Next listening and
+    // answering 500 to everything; exit instead so the operator sees a stopped
+    // service and the reason, not a half-up one.
+    const { assertEdgeSealed } = await import("./lib/inference/edge-profile");
+    try {
+      assertEdgeSealed();
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+
     const { shutdownTelemetry } = await import("./instrumentation.node");
     // Flush any queued spans before the container is killed on redeploy.
     process.once("SIGTERM", () => {

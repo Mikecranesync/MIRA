@@ -9,6 +9,7 @@
  * is default-on.
  */
 import { canonicalProviders, canonicalSeamEnabled, type CanonicalProvider } from "./canonical-cascade";
+import { edgeProfileEnabled, edgeProviders } from "./edge-profile";
 
 export function legacyProviders(): CanonicalProvider[] {
   return [
@@ -37,10 +38,19 @@ export function legacyProviders(): CanonicalProvider[] {
 
 /**
  * The providers the notebook route can actually dispatch this turn: the list
- * its seam flag selects, minus every entry its serving loop skips
+ * `notebookCascade()` selects, minus every entry its serving loop skips
  * (`if (!provider.key) continue`). The one resolver the runtime identity reads.
  */
 export function effectiveNotebookProviders(): CanonicalProvider[] {
-  const list = canonicalSeamEnabled() ? canonicalProviders() : legacyProviders();
-  return list.filter((p) => Boolean(p.key));
+  return notebookCascade().filter((p) => Boolean(p.key));
+}
+
+/**
+ * The cascade the notebook route dispatches, before the keyless skip: the
+ * edge profile's single local provider (#5265), else the list the seam flag
+ * selects. The route and the runtime identity both read this one function.
+ */
+export function notebookCascade(): CanonicalProvider[] {
+  if (edgeProfileEnabled()) return edgeProviders();
+  return canonicalSeamEnabled() ? canonicalProviders() : legacyProviders();
 }

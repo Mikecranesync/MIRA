@@ -36,7 +36,8 @@
  * canonical seam (@/lib/inference/canonical-cascade), which is the single
  * definition of the cascade and matches Hard Constraint #2 (Groq → Cerebras →
  * Together). The legacy list still contains Gemini; that divergence is exactly
- * what the seam removes (P0004 map §10 Q4).
+ * what the seam removes (P0004 map §10 Q4). `notebookCascade()` picks between
+ * them, and under MIRA_PROFILE=edge (#5265) returns one local provider instead.
  */
 import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
@@ -162,7 +163,6 @@ import { translateForSearch } from "@/capabilities/translate-for-search";
 import { rewriteForManualSearch, type QueryRewrite } from "@/capabilities/query-rewrite";
 import {
   buildRequestBody,
-  canonicalProviders,
   canonicalSeamEnabled,
   exhaustedUsage,
   logTurnUsage,
@@ -172,7 +172,8 @@ import {
   usageFromRaw,
   type TurnUsage,
 } from "@/lib/inference/canonical-cascade";
-import { legacyProviders } from "@/lib/inference/legacy-cascade";
+import { notebookCascade } from "@/lib/inference/legacy-cascade";
+import { EDGE_ATTEMPT_TIMEOUT_MS, edgeProfileEnabled, edgeRequestOverrides } from "@/lib/inference/edge-profile";
 import { persistTurnUsage } from "@/lib/inference/persist-usage";
 import {
   logProvidersExhausted,
@@ -4088,7 +4089,9 @@ async function handleChatTurn(
 
       // ONE cascade definition per turn. Flag off => byte-identical legacy list.
       const seam = canonicalSeamEnabled();
-      const cascadeProviders = seam ? canonicalProviders() : legacyProviders();
+      // #5265: the edge profile answers from one local provider, sampling pinned.
+      const edge = edgeProfileEnabled();
+      const cascadeProviders = notebookCascade();
       const outputCap = maxOutputTokens();
       const attempted: string[] = [];
       // D6 — every failed attempt, in order, with the HTTP status when there
@@ -4205,7 +4208,7 @@ async function handleChatTurn(
             // budget for the visible answer; see the gpt-oss Groq migration
             // trap) plus the larger broad cap.
             body: JSON.stringify(
-              seam
+              seam && !edge
                 ? buildRequestBody(
                     provider as never,
                     messages,
@@ -4220,12 +4223,13 @@ async function handleChatTurn(
                     ...(provider.name === "Groq"
                       ? { reasoning_effort: process.env.GROQ_REASONING_EFFORT ?? "low" }
                       : {}),
+                    ...(edge ? edgeRequestOverrides() : {}),
                   },
             ),
             // The client-stop signal is composed with the timeout so a stop
             // during the connect phase aborts the upstream request instead
             // of waiting on the provider to answer first.
-            signal: composeTimeout(clientAbort.signal, 30_000),
+            signal: composeTimeout(clientAbort.signal, edge ? EDGE_ATTEMPT_TIMEOUT_MS : 30_000),
           });
           if (!res.ok || !res.body) {
             // Record the attempt BEFORE continuing: an HTTP-level rejection is

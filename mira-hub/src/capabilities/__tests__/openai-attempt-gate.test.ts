@@ -221,7 +221,8 @@ describe("option 1 — a judge whose room was held with the answer's", () => {
 // ── default-deny: every Hub provider fetch is gated ─────────────────────────
 
 /** A file reaches a provider if it fetches AND names a provider source. */
-const REACHES_PROVIDER = /\bcanonicalProviders\(\)|api\.openai\.com|\bopenAiVisionProvider\(/;
+// `notebookCascade()` (#5265) is how the notebook route reaches the cascade.
+const REACHES_PROVIDER = /\bcanonicalProviders\(\)|\bnotebookCascade\(\)|api\.openai\.com|\bopenAiVisionProvider\(/;
 const FETCHES = /\bawait fetch\(|\bfetch\(/;
 const GATED = /\breserveOpenAiAttempt\(|openAiRunBudget\(\)\.reserve\(/;
 /** Defines the provider list itself; it never fetches. */
