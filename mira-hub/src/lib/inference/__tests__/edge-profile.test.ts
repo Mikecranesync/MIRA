@@ -1,13 +1,12 @@
-// #5265 — MIRA_PROFILE=edge: the notebook chat answers from ONE local,
-// loopback-only provider, and the profile refuses to start while any cloud
-// provider key is present (a sealed device must not be one env var away
-// from sending a technician's question off the tablet).
+// #5265 — MIRA_PROFILE=edge startup guard: refuse to start while any cloud
+// credential is set, or while an outbound endpoint resolves off the device —
+// checked by EFFECTIVE value, so a built-in cloud default counts.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { assertEdgeSealed, edgeProfileEnabled, edgeProviders, edgeRequestOverrides } from "../edge-profile";
+import { assertEdgeStartupGuard, edgeProfileEnabled } from "../edge-profile";
 import { effectiveNotebookProviders } from "../legacy-cascade";
 
-const CLOUD_KEYS = [
+const CREDENTIALS = [
   "GROQ_API_KEY",
   "CEREBRAS_API_KEY",
   "GEMINI_API_KEY",
@@ -17,14 +16,40 @@ const CLOUD_KEYS = [
   "ANTHROPIC_API_KEY",
   "JEV_API_KEY",
   "EXA_API_KEY",
+  "RESEND_API_KEY",
+  "PLG_POSTHOG_KEY",
+  "SLACK_BOT_TOKEN",
+  "TELEGRAM_BOT_TOKEN",
+  "FACTORYLMDIAGNOSE_TELEGRAM_BOT_TOKEN",
 ];
+// Off when unset or "".
+const OPTIONAL_ENDPOINTS = [
+  "NEON_DATABASE_URL",
+  "OLLAMA_BASE_URL",
+  "INGEST_URL",
+  "RERANKER_URL",
+  "PIPELINE_URL",
+  "OPENWEBUI_BASE_URL",
+  "OTEL_EXPORTER_OTLP_ENDPOINT",
+  "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+];
+// The code falls back to a cloud/service address when unset.
+const DEFAULTED_ENDPOINTS = ["MIRA_ASK_URL", "HUB_CMMS_API_URL", "NANGO_SERVER_URL", "OTA_ORIGIN"];
+const ALL = [...CREDENTIALS, ...OPTIONAL_ENDPOINTS, ...DEFAULTED_ENDPOINTS, "MIRA_PROFILE", "MIRA_CANONICAL_SEAM"];
 const saved = { ...process.env };
+
+/** A device env that passes: every defaulted endpoint pointed at loopback or turned off. */
+function sealedDevice(): void {
+  process.env.MIRA_PROFILE = "edge";
+  process.env.MIRA_ASK_URL = "";
+  process.env.HUB_CMMS_API_URL = "";
+  process.env.NANGO_SERVER_URL = "";
+  process.env.OTA_ORIGIN = "http://127.0.0.1:1";
+}
 
 beforeEach(() => {
   process.env = { ...saved };
-  for (const k of [...CLOUD_KEYS, "MIRA_PROFILE", "MIRA_EDGE_LLM_URL", "MIRA_EDGE_LLM_MODEL", "MIRA_CANONICAL_SEAM"]) {
-    delete process.env[k];
-  }
+  for (const k of ALL) delete process.env[k];
 });
 afterEach(() => {
   process.env = { ...saved };
@@ -40,77 +65,68 @@ describe("edgeProfileEnabled", () => {
   });
 });
 
-describe("edgeProviders", () => {
-  it("is one local provider with a non-empty key so dispatch does not skip it", () => {
-    expect(edgeProviders()).toEqual([
-      { name: "Local", url: "http://127.0.0.1:8080/v1/chat/completions", key: "local", model: "local" },
-    ]);
-  });
-
-  it("honours MIRA_EDGE_LLM_URL and MIRA_EDGE_LLM_MODEL", () => {
-    process.env.MIRA_EDGE_LLM_URL = "http://localhost:9000/v1/chat/completions";
-    process.env.MIRA_EDGE_LLM_MODEL = "qwen2.5-1.5b-instruct-q4_0";
-    expect(edgeProviders()[0]).toMatchObject({
-      url: "http://localhost:9000/v1/chat/completions",
-      model: "qwen2.5-1.5b-instruct-q4_0",
-    });
-  });
-});
-
-describe("effectiveNotebookProviders under the edge profile", () => {
-  it("reports the local provider, never a cloud one, even when cloud keys exist", () => {
-    process.env.MIRA_PROFILE = "edge";
-    process.env.GROQ_API_KEY = "gsk-a";
-    expect(effectiveNotebookProviders().map((p) => p.name)).toEqual(["Local"]);
-  });
-
-  it("is unchanged when the profile is off", () => {
-    process.env.GROQ_API_KEY = "gsk-a";
-    expect(effectiveNotebookProviders().map((p) => p.name)).toEqual(["Groq"]);
-  });
-});
-
-describe("edgeRequestOverrides", () => {
-  it("pins sampling so a repeated question gets a repeatable answer", () => {
-    expect(edgeRequestOverrides()).toEqual({ temperature: 0, seed: 0 });
-  });
-});
-
-describe("assertEdgeSealed", () => {
+describe("assertEdgeStartupGuard", () => {
   it("does nothing when the profile is off", () => {
     process.env.GROQ_API_KEY = "gsk-a";
-    expect(() => assertEdgeSealed()).not.toThrow();
+    process.env.INGEST_URL = "https://app.factorylm.com/ingest";
+    expect(() => assertEdgeStartupGuard()).not.toThrow();
   });
 
-  it("passes with the profile on, no cloud keys and a loopback URL", () => {
-    process.env.MIRA_PROFILE = "edge";
-    expect(() => assertEdgeSealed()).not.toThrow();
-    process.env.MIRA_EDGE_LLM_URL = "http://localhost:8080/v1/chat/completions";
-    expect(() => assertEdgeSealed()).not.toThrow();
+  it("passes on a sealed device, and no answer provider is dispatchable there", () => {
+    sealedDevice();
+    expect(() => assertEdgeStartupGuard()).not.toThrow();
+    expect(effectiveNotebookProviders().filter((p) => p.key)).toEqual([]);
   });
 
-  it.each(CLOUD_KEYS)("refuses while %s is set", (key) => {
-    process.env.MIRA_PROFILE = "edge";
+  it.each(CREDENTIALS)("refuses while %s is set", (key) => {
+    sealedDevice();
     process.env[key] = "secret-value";
-    expect(() => assertEdgeSealed()).toThrow(key);
+    expect(() => assertEdgeStartupGuard()).toThrow(key);
   });
 
-  it("ignores a cloud key that is set but empty", () => {
-    process.env.MIRA_PROFILE = "edge";
+  it("ignores a credential that is set but empty", () => {
+    sealedDevice();
     process.env.GROQ_API_KEY = "";
-    expect(() => assertEdgeSealed()).not.toThrow();
+    expect(() => assertEdgeStartupGuard()).not.toThrow();
   });
 
-  it("refuses a local model URL that leaves the device", () => {
-    process.env.MIRA_PROFILE = "edge";
-    process.env.MIRA_EDGE_LLM_URL = "http://192.168.4.103:8080/v1/chat/completions";
-    expect(() => assertEdgeSealed()).toThrow("MIRA_EDGE_LLM_URL");
+  it.each(DEFAULTED_ENDPOINTS)("refuses while %s is unset (its default leaves the device)", (name) => {
+    sealedDevice();
+    delete process.env[name];
+    expect(() => assertEdgeStartupGuard()).toThrow(name);
   });
 
-  it("never echoes a key's value in the refusal", () => {
-    process.env.MIRA_PROFILE = "edge";
+  it("refuses OTA_ORIGIN set to \"\" (the code still falls back to the release host)", () => {
+    sealedDevice();
+    process.env.OTA_ORIGIN = "";
+    expect(() => assertEdgeStartupGuard()).toThrow("OTA_ORIGIN");
+  });
+
+  it.each([...OPTIONAL_ENDPOINTS, ...DEFAULTED_ENDPOINTS])("refuses %s pointed off the device", (name) => {
+    sealedDevice();
+    process.env[name] = "http://192.168.4.103:8080/x";
+    expect(() => assertEdgeStartupGuard()).toThrow(name);
+  });
+
+  it.each(["http://127.0.0.1:5433/x", "http://localhost:9000", "http://[::1]:8080"])("accepts loopback %s", (url) => {
+    sealedDevice();
+    process.env.INGEST_URL = url;
+    process.env.MIRA_ASK_URL = url;
+    expect(() => assertEdgeStartupGuard()).not.toThrow();
+  });
+
+  it("refuses an endpoint it cannot parse", () => {
+    sealedDevice();
+    process.env.RERANKER_URL = "not a url";
+    expect(() => assertEdgeStartupGuard()).toThrow("RERANKER_URL");
+  });
+
+  it("never echoes a credential's value or an endpoint's host", () => {
+    sealedDevice();
     process.env.OPENAI_API_KEY = "sk-do-not-print";
-    expect(() => assertEdgeSealed()).toThrow(expect.objectContaining({ message: expect.not.stringContaining("sk-do-not-print") }));
+    expect(() => assertEdgeStartupGuard()).toThrow(expect.objectContaining({ message: expect.not.stringContaining("sk-do-not-print") }));
+    delete process.env.OPENAI_API_KEY;
+    process.env.INGEST_URL = "https://secret-host.example/ingest";
+    expect(() => assertEdgeStartupGuard()).toThrow(expect.objectContaining({ message: expect.not.stringContaining("secret-host") }));
   });
 });
-

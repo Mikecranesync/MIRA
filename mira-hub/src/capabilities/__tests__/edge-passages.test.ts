@@ -5,11 +5,11 @@ import {
   EDGE_NO_PASSAGE_TEXT,
   EDGE_PASSAGE_LIMIT,
   EDGE_PASSAGES_LEAD,
-  isNavigationChunk,
   renderEdgePassages,
   selectEdgePassages,
 } from "../edge-passages";
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
+import { isNavigationChunk } from "@/lib/notebook-query";
 
 // Real chunks from FAA-H-8083-1B on the tablet (2026-11-07): the glossary entry,
 // the index page that out-ranked the how-to, and the chapter 3 introduction.
@@ -30,8 +30,8 @@ const cite = (citationId: string, page: number): EvidenceCitation => ({
 });
 const Q = "How do I find the empty weight center of gravity of an airplane?";
 
-describe("isNavigationChunk", () => {
-  it("flags a table-of-contents/index chunk and keeps prose", () => {
+describe("isNavigationChunk (shared, lib/notebook-query) on the tablet's real chunks", () => {
+  it("flags the index page and keeps the glossary and chapter prose", () => {
     expect(isNavigationChunk(INDEX_PAGE)).toBe(true);
     expect(isNavigationChunk(GLOSSARY)).toBe(false);
     expect(isNavigationChunk(CHAPTER_3)).toBe(false);

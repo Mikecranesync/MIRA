@@ -4,6 +4,7 @@
  */
 import type { TurnUsage } from "@/lib/inference/canonical-cascade";
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
+import { isNavigationChunk } from "@/lib/notebook-query";
 import { relevantQuoteWindow } from "@/lib/quote-window";
 /**
  * "AI finds, manual speaks." On the tablet the notebook answer IS the matching
@@ -21,11 +22,6 @@ export const EDGE_NO_PASSAGE_TEXT =
   "I couldn't find support for that in this notebook's manuals. Try the manual's own wording, or refer it to a qualified person.";
 
 export type EdgePassage = { citation: EvidenceCitation; text: string };
-
-/** Table-of-contents / index chunk: dotted leader lines, a list of page numbers, no instruction. */
-export function isNavigationChunk(text: string): boolean {
-  return (text.match(/\.{6,}/g) ?? []).length >= 3;
-}
 
 /**
  * Pair each retrieved chunk with the citation buildCitations gave it (same

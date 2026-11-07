@@ -1,18 +1,19 @@
 /**
- * #5265 — the EDGE profile (`MIRA_PROFILE=edge`): the same Hub, sealed on one
- * device. The notebook chat answers from a single local OpenAI-compatible
- * server (llama.cpp `llama-server`, Ollama) on loopback instead of the cloud
- * cascade, and the process refuses to start while any cloud provider key is
- * present — a sealed tablet must not be one env var away from sending a
- * technician's question off the device.
+ * #5265 — the EDGE profile (`MIRA_PROFILE=edge`): the same Hub on one device.
+ * Notebook answers are the retrieved manual passages, verbatim, with no answer
+ * model (capabilities/edge-passages.ts). This module is the startup guard: the
+ * process refuses to start while a cloud credential is set, or while an
+ * outbound endpoint a Hub lane would call resolves off the device.
  *
- * Field evidence for the defaults: factorylm PR #237,
- * docs/air-force-rfi/w0-tablet-spike.md (Galaxy Tab S9 FE, 2026-11-07).
+ * It is a startup guard, not proof of confinement: the network-blocked run with
+ * a traffic monitor (plan W5) is what shows nothing leaves the device.
+ *
+ * Field evidence: factorylm PR #237, docs/air-force-rfi/w0-tablet-spike.md
+ * (Galaxy Tab S9 FE, 2026-11-07).
  */
-import type { CanonicalProvider } from "./canonical-cascade";
 
-/** Every cloud AI or web-search key a Hub lane reads (incl. the Jev evidence judge). Present + non-empty = not sealed. */
-const CLOUD_PROVIDER_KEYS = [
+/** Cloud credentials a Hub lane reads (AI providers, evidence judge, web search, email, analytics, chat). Non-empty = refuse. */
+const CLOUD_CREDENTIALS = [
   "GROQ_API_KEY",
   "CEREBRAS_API_KEY",
   "GEMINI_API_KEY",
@@ -22,59 +23,74 @@ const CLOUD_PROVIDER_KEYS = [
   "ANTHROPIC_API_KEY",
   "JEV_API_KEY",
   "EXA_API_KEY",
+  "RESEND_API_KEY",
+  "PLG_POSTHOG_KEY",
+  "SLACK_BOT_TOKEN",
+  "TELEGRAM_BOT_TOKEN",
+  "FACTORYLMDIAGNOSE_TELEGRAM_BOT_TOKEN",
 ] as const;
 
-const DEFAULT_EDGE_LLM_URL = "http://127.0.0.1:8080/v1/chat/completions";
-const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
-
 /**
- * On-device generation is slower than a hosted API: a 1.5B model on the
- * tablet's CPU reads ~60 tok/s, so a full retrieval prompt can take tens of
- * seconds. The cloud cascade's 30 s per-attempt timeout would cut it off.
+ * Outbound endpoints a Hub lane may call, with the address the code falls back
+ * to. The EFFECTIVE value is checked, so a cloud default counts.
+ *  - `fallback: null` — unset or "" turns the lane off.
+ *  - `emptyUsesFallback` — the code reads it with `||`, so "" still means the
+ *    default; only a loopback address passes.
  */
-export const EDGE_ATTEMPT_TIMEOUT_MS = 180_000;
+const OUTBOUND_ENDPOINTS: Record<string, { fallback: string | null; emptyUsesFallback?: boolean }> = {
+  NEON_DATABASE_URL: { fallback: null },
+  OLLAMA_BASE_URL: { fallback: null },
+  INGEST_URL: { fallback: null },
+  RERANKER_URL: { fallback: null },
+  PIPELINE_URL: { fallback: null },
+  OPENWEBUI_BASE_URL: { fallback: null },
+  OTEL_EXPORTER_OTLP_ENDPOINT: { fallback: null },
+  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: { fallback: null },
+  MIRA_ASK_URL: { fallback: "http://mira-ask:8011" },
+  HUB_CMMS_API_URL: { fallback: "https://cmms.factorylm.com" },
+  NANGO_SERVER_URL: { fallback: "http://nango-server:3003" },
+  OTA_ORIGIN: { fallback: "https://updates.factorylm.com", emptyUsesFallback: true },
+};
+
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
 export function edgeProfileEnabled(): boolean {
   return process.env.MIRA_PROFILE === "edge";
 }
 
-function edgeLlmUrl(): string {
-  return process.env.MIRA_EDGE_LLM_URL || DEFAULT_EDGE_LLM_URL;
+function effectiveValue(name: string): string | null {
+  const { fallback, emptyUsesFallback } = OUTBOUND_ENDPOINTS[name];
+  const raw = process.env[name];
+  if (raw === undefined || (raw === "" && emptyUsesFallback)) return fallback;
+  return raw;
 }
 
-/**
- * The single provider the notebook chat dispatches under the edge profile.
- * `key` is a placeholder: the dispatch loop skips keyless providers, and a
- * local server ignores the bearer header.
- */
-export function edgeProviders(): CanonicalProvider[] {
-  return [{ name: "Local", url: edgeLlmUrl(), key: "local", model: process.env.MIRA_EDGE_LLM_MODEL || "local" }];
-}
-
-/** Sampling pinned so the same question, corpus and model give a repeatable answer. */
-export function edgeRequestOverrides(): { temperature: number; seed: number } {
-  return { temperature: 0, seed: 0 };
-}
-
-/**
- * Throws when the edge profile is on but the process is not sealed: a cloud
- * provider key is set, or the local model URL is not loopback. Names the
- * offending variable, never its value. A no-op when the profile is off.
- */
-export function assertEdgeSealed(): void {
-  if (!edgeProfileEnabled()) return;
-  const present = CLOUD_PROVIDER_KEYS.filter((k) => Boolean(process.env[k]));
-  if (present.length > 0) {
-    throw new Error(`MIRA_PROFILE=edge refuses to start: cloud provider key(s) set: ${present.join(", ")}`);
-  }
-  let host: string;
+function offDevice(value: string): boolean {
   try {
-    host = new URL(edgeLlmUrl()).hostname;
+    return !LOOPBACK_HOSTS.has(new URL(value).hostname);
   } catch {
-    throw new Error("MIRA_PROFILE=edge refuses to start: MIRA_EDGE_LLM_URL is not a valid URL");
-  }
-  if (!LOOPBACK_HOSTS.has(host)) {
-    throw new Error(`MIRA_PROFILE=edge refuses to start: MIRA_EDGE_LLM_URL must be loopback, got host ${host}`);
+    return true; // unparseable: cannot show it stays on the device
   }
 }
 
+/**
+ * Throws when the edge profile is on and a cloud credential is set or an
+ * outbound endpoint resolves off the device. Names the variables, never their
+ * values or hosts. A no-op when the profile is off.
+ */
+export function assertEdgeStartupGuard(): void {
+  if (!edgeProfileEnabled()) return;
+  const credentials = CLOUD_CREDENTIALS.filter((k) => Boolean(process.env[k]));
+  if (credentials.length > 0) {
+    throw new Error(`MIRA_PROFILE=edge refuses to start: cloud credential(s) set: ${credentials.join(", ")}`);
+  }
+  const endpoints = Object.keys(OUTBOUND_ENDPOINTS).filter((name) => {
+    const value = effectiveValue(name);
+    return Boolean(value) && offDevice(value as string);
+  });
+  if (endpoints.length > 0) {
+    throw new Error(
+      `MIRA_PROFILE=edge refuses to start: endpoint(s) not on this device (use a loopback address, or "" where the lane can be off): ${endpoints.join(", ")}`,
+    );
+  }
+}

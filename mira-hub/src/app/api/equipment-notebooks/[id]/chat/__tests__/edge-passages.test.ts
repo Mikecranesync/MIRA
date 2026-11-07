@@ -90,6 +90,7 @@ vi.mock("@/lib/inference/canonical-cascade", () => seamMock);
 import { POST } from "../route";
 import { EDGE_PASSAGES_LEAD } from "@/capabilities/edge-passages";
 import { RESTART_BANNER } from "@/capabilities/restart-advisory";
+import { SEMANTIC_UNVERIFIED_FALLBACK } from "@/capabilities/answer-safety-check";
 
 function req(body: unknown) {
   return new NextRequest("http://test/api/equipment-notebooks/x/chat", {
@@ -267,6 +268,27 @@ describe("#5265 edge profile — the manual speaks", () => {
     const content = contentOf(out);
     expect(content.startsWith(RESTART_BANNER)).toBe(true);
     expect(content.split(RESTART_BANNER).length - 1).toBe(1);
+    expect(content).toContain(HOWTO_CHUNK.content);
+  });
+
+  // The device runs with the semantic check at its default (on) and no
+  // provider to judge with: a flagged turn cannot be verified, so it gets the
+  // controlled fallback, never the passages unjudged; an unflagged turn is served.
+  it("device default (semantic check on, no provider): a flagged turn gets the controlled fallback, calls no model", async () => {
+    delete process.env.NOTEBOOK_SEMANTIC_CHECK;
+    const out = await frames(await POST(req({ message: "there is smoke from the drive panel, what do I check", sourceDocIds: [DOC_A] }), params));
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    const content = contentOf(out);
+    expect(content).toContain(SEMANTIC_UNVERIFIED_FALLBACK);
+    expect(content).not.toContain(HOWTO_CHUNK.content);
+  });
+
+  it("device default (semantic check on, no provider): an unflagged how-to is still served as passages", async () => {
+    delete process.env.NOTEBOOK_SEMANTIC_CHECK;
+    const out = await frames(await POST(req({ message: ASK, sourceDocIds: [DOC_A] }), params));
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    const content = contentOf(out);
+    expect(content.startsWith(EDGE_PASSAGES_LEAD)).toBe(true);
     expect(content).toContain(HOWTO_CHUNK.content);
   });
 
