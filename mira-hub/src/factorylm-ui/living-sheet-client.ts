@@ -118,10 +118,8 @@ export function sheetQueueKey(scopeId: string, jobId: string): string {
   return `${QUEUE_PREFIX}${scopeId}.${jobId}`;
 }
 
-/** Tolerant load: corrupt/absent state is an empty queue, never a crash. */
-export async function loadSheetQueue(store: KvStore, scopeId: string, jobId: string): Promise<QueuedSheetEvent[]> {
+function parseSheetQueue(raw: string | null): QueuedSheetEvent[] {
   try {
-    const raw = await store.get(sheetQueueKey(scopeId, jobId));
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
@@ -132,6 +130,41 @@ export async function loadSheetQueue(store: KvStore, scopeId: string, jobId: str
   } catch {
     return [];
   }
+}
+
+async function tolerantGet(store: KvStore, key: string): Promise<string | null> {
+  try {
+    return await store.get(key);
+  } catch {
+    return null;
+  }
+}
+
+/** Codex #5276: the read in front of an overwrite or delete. `get` stays
+ *  tolerant for read-only loads, so an empty read here is trusted only when
+ *  storage lists the key as absent; otherwise this returns null (unreadable)
+ *  and the caller must not write, so a failed read can never wipe what is
+ *  stored. */
+async function readBeforeWrite(store: KvStore, key: string): Promise<{ raw: string | null } | null> {
+  const raw = await tolerantGet(store, key);
+  if (raw !== null) return { raw };
+  try {
+    const keys = await store.keys();
+    return keys !== null && !keys.includes(key) ? { raw: null } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Tolerant load: corrupt/absent state is an empty queue, never a crash. */
+export async function loadSheetQueue(store: KvStore, scopeId: string, jobId: string): Promise<QueuedSheetEvent[]> {
+  return parseSheetQueue(await tolerantGet(store, sheetQueueKey(scopeId, jobId)));
+}
+
+/** The queue as read before a write; null when it could not be read. */
+async function loadSheetQueueForWrite(store: KvStore, scopeId: string, jobId: string): Promise<QueuedSheetEvent[] | null> {
+  const read = await readBeforeWrite(store, sheetQueueKey(scopeId, jobId));
+  return read && parseSheetQueue(read.raw);
 }
 
 /** Returns whether the write actually persisted (see KvStore.set). */
@@ -204,7 +237,8 @@ export async function enqueueSheetEvent(
   nowIso?: string,
 ): Promise<EnqueueSheetEventResult> {
   return withQueueLock(scopeId, jobId, async () => {
-    const q = await loadSheetQueue(store, scopeId, jobId);
+    const q = await loadSheetQueueForWrite(store, scopeId, jobId);
+    if (q === null) return { queue: [], saved: false };
     if (q.some((item) => item.event.clientEventId === event.clientEventId)) {
       return { queue: q, saved: true };
     }
@@ -249,7 +283,8 @@ export async function dropHeadOfSheetQueue(
  *  caller needs to know the item is still really in storage). */
 export async function removeFromSheetQueue(store: KvStore, scopeId: string, jobId: string, clientEventId: string): Promise<boolean> {
   return withQueueLock(scopeId, jobId, async () => {
-    const q = await loadSheetQueue(store, scopeId, jobId);
+    const q = await loadSheetQueueForWrite(store, scopeId, jobId);
+    if (q === null) return false;
     return saveSheetQueue(store, scopeId, jobId, q.filter((i) => i.event.clientEventId !== clientEventId));
   });
 }
@@ -264,7 +299,8 @@ async function markSheetQueueAttempt(
   lastError: string,
 ): Promise<void> {
   await withQueueLock(scopeId, jobId, async () => {
-    const q = await loadSheetQueue(store, scopeId, jobId);
+    const q = await loadSheetQueueForWrite(store, scopeId, jobId);
+    if (q === null) return;
     const next = q.map((i) => (i.event.clientEventId === clientEventId ? { ...i, attempts: i.attempts + 1, lastError } : i));
     await saveSheetQueue(store, scopeId, jobId, next);
   });
@@ -404,8 +440,17 @@ export function rejectedSheetKey(scopeId: string, notebookId: string, jobId: str
 }
 
 async function readRejectedList(store: KvStore, key: string): Promise<RejectedSheetEvent[]> {
+  return parseRejectedList(await tolerantGet(store, key));
+}
+
+/** The kept rejections as read before a write; null when they could not be read. */
+async function readRejectedListForWrite(store: KvStore, key: string): Promise<RejectedSheetEvent[] | null> {
+  const read = await readBeforeWrite(store, key);
+  return read && parseRejectedList(read.raw);
+}
+
+function parseRejectedList(raw: string | null): RejectedSheetEvent[] {
   try {
-    const raw = await store.get(key);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
@@ -443,7 +488,8 @@ export async function recordRejectedSheetEvent(
   const key = rejectedSheetKey(scopeId, notebookId, jobId);
   return withKeyLock(key, async () => {
     try {
-      const list = await readRejectedList(store, key);
+      const list = await readRejectedListForWrite(store, key);
+      if (list === null) return false;
       if (list.some((r) => r.event.clientEventId === entry.event.clientEventId)) return true;
       list.push(entry);
       return await store.set(key, JSON.stringify(list));
@@ -464,14 +510,11 @@ export async function dismissRejectedSheetEvent(
   const key = rejectedSheetKey(scopeId, notebookId, jobId);
   return withKeyLock(key, async () => {
     try {
-      const list = await readRejectedList(store, key);
-      if (!list.some((r) => r.event.clientEventId === clientEventId)) {
-        // Never delete blind. A readable list without this entry means it is
-        // not on the phone; an empty read is only trusted if the key is gone.
-        if (list.length > 0) return true;
-        const keys = await store.keys();
-        return keys !== null && !keys.includes(key);
-      }
+      const list = await readRejectedListForWrite(store, key);
+      // Never delete blind: an unreadable list keeps the row; a readable one
+      // without this entry means it is not on the phone.
+      if (list === null) return false;
+      if (!list.some((r) => r.event.clientEventId === clientEventId)) return true;
       const next = list.filter((r) => r.event.clientEventId !== clientEventId);
       if (next.length === 0) {
         // The row may only go once the text is verifiably gone from the phone.
