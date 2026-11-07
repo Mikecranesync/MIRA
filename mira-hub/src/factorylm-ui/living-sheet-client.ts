@@ -147,7 +147,12 @@ async function saveSheetQueue(store: KvStore, scopeId: string, jobId: string, q:
 const queueLocks = new Map<string, Promise<void>>();
 
 async function withQueueLock<T>(scopeId: string, jobId: string, fn: () => Promise<T>): Promise<T> {
-  const key = sheetQueueKey(scopeId, jobId);
+  return withKeyLock(sheetQueueKey(scopeId, jobId), fn);
+}
+
+/** The same serialization, keyed by any storage key (the rejected store
+ *  #5212 uses its own key, so it needs the lock without a queue key). */
+async function withKeyLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const prior = queueLocks.get(key) ?? Promise.resolve();
   let result!: T;
   let failure: unknown;
@@ -308,6 +313,7 @@ export async function drainSheetQueue(
   scopeId: string,
   jobId: string,
   submit: (event: SheetEventPost) => Promise<SheetSubmitOutcome>,
+  notebookId = "",
 ): Promise<SheetDrainResult | null> {
   if (sheetDrainInFlight) return null;
   sheetDrainInFlight = true;
@@ -342,9 +348,21 @@ export async function drainSheetQueue(
         result.conflict = true;
         break;
       } else {
-        const removed = await removeFromSheetQueue(store, scopeId, jobId, item.event.clientEventId);
+        // #5212: persist the rejection BEFORE the queue entry is dropped. The
+        // rejected note is the only copy of the technician's words; if the
+        // record cannot be written, the entry stays queued and the drain stops.
+        const persisted = await recordRejectedSheetEvent(store, scopeId, notebookId, jobId, {
+          event: item.event,
+          message: outcome.message,
+          rejectedAt: new Date().toISOString(),
+        });
         result.droppedRejected++;
         result.rejected.push({ event: item.event, message: outcome.message });
+        if (!persisted) {
+          result.drainStuck = true;
+          break;
+        }
+        const removed = await removeFromSheetQueue(store, scopeId, jobId, item.event.clientEventId);
         if (!removed) {
           result.drainStuck = true;
           break;
@@ -356,6 +374,122 @@ export async function drainSheetQueue(
   } finally {
     sheetDrainInFlight = false;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Rejected store (#5212). A definitively rejected write (e.g. `job_finished`)
+// is the only copy of the technician's words, so it is kept per
+// scope (tenant/user) + notebook + job until the technician dismisses it.
+// Deliberately a separate prefix from the queue: sign-out's purge and the
+// unsynced-count prompt only ever touch pending work, and rejected records
+// survive sign-out (still scoped, so another user on the device never sees them).
+// ---------------------------------------------------------------------------
+
+const REJECTED_PREFIX = "flm.sheetrej.v1.";
+
+export type RejectedSheetEvent = {
+  event: SheetEventPost;
+  message: string;
+  rejectedAt: string;
+};
+
+export function rejectedSheetKey(scopeId: string, notebookId: string, jobId: string): string {
+  return `${REJECTED_PREFIX}${scopeId}.${notebookId}.${jobId}`;
+}
+
+async function readRejectedList(store: KvStore, key: string): Promise<RejectedSheetEvent[]> {
+  try {
+    const raw = await store.get(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (r): r is RejectedSheetEvent =>
+        typeof r === "object" &&
+        r !== null &&
+        typeof (r as RejectedSheetEvent).event?.clientEventId === "string" &&
+        typeof (r as RejectedSheetEvent).message === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+
+/** Tolerant load: corrupt or unavailable storage is an empty list, never a throw. */
+export async function loadRejectedSheetEvents(
+  store: KvStore,
+  scopeId: string,
+  notebookId: string,
+  jobId: string,
+): Promise<RejectedSheetEvent[]> {
+  return readRejectedList(store, rejectedSheetKey(scopeId, notebookId, jobId));
+}
+
+/** Persist one rejection. Deduped on clientEventId: a replay or retry of the
+ *  same write never creates a second entry. Returns whether it is durable. */
+export async function recordRejectedSheetEvent(
+  store: KvStore,
+  scopeId: string,
+  notebookId: string,
+  jobId: string,
+  entry: RejectedSheetEvent,
+): Promise<boolean> {
+  const key = rejectedSheetKey(scopeId, notebookId, jobId);
+  return withKeyLock(key, async () => {
+    try {
+      const list = await readRejectedList(store, key);
+      if (list.some((r) => r.event.clientEventId === entry.event.clientEventId)) return true;
+      list.push(entry);
+      return await store.set(key, JSON.stringify(list));
+    } catch {
+      return false;
+    }
+  });
+}
+
+/** Dismiss: remove one rejected entry by its clientEventId. */
+export async function dismissRejectedSheetEvent(
+  store: KvStore,
+  scopeId: string,
+  notebookId: string,
+  jobId: string,
+  clientEventId: string,
+): Promise<boolean> {
+  const key = rejectedSheetKey(scopeId, notebookId, jobId);
+  return withKeyLock(key, async () => {
+    try {
+      const list = await readRejectedList(store, key);
+      const next = list.filter((r) => r.event.clientEventId !== clientEventId);
+      if (next.length === 0) {
+        await store.remove(key);
+        return true;
+      }
+      return await store.set(key, JSON.stringify(next));
+    } catch {
+      return false;
+    }
+  });
+}
+
+/** Union of two lists keyed by clientEventId; `first` wins on duplicates. */
+export function mergeRejectedSheetEvents<T extends { event: SheetEventPost }>(first: T[], second: T[]): T[] {
+  const seen = new Set(first.map((r) => r.event.clientEventId));
+  return [...first, ...second.filter((r) => !seen.has(r.event.clientEventId))];
+}
+
+/** Recover: the note/question text of a rejected write, or null for kinds
+ *  that carry no free text (the screen offers Dismiss only for those). */
+export function rejectedNoteText(event: SheetEventPost): { kind: "note" | "question"; text: string } | null {
+  if (event.kind !== "note_added") return null;
+  const payload = event.payload as { text?: unknown; noteKind?: unknown };
+  if (typeof payload.text !== "string" || payload.text.trim() === "") return null;
+  return { kind: payload.noteKind === "question" ? "question" : "note", text: payload.text };
+}
+
+/** Put recovered text back into an input without overwriting a draft the
+ *  technician is already typing. */
+export function recoveredFieldValue(current: string, text: string): string {
+  return current.trim() === "" ? text : `${current} ${text}`;
 }
 
 /** Sign-out hygiene: remove every Living Work Sheet queue (all jobs, all
