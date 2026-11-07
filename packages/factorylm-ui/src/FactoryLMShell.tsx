@@ -4,6 +4,7 @@ import { AssistantThread } from "./assistant/AssistantThread";
 import { Composer } from "./Composer";
 import { Conversation } from "./Conversation";
 import { DemoNotice } from "./DemoNotice";
+import { focusableWithin } from "./focus";
 import { Inspector } from "./Inspector";
 import { Overlay, type LayerName } from "./Overlay";
 import type { HostHooks } from "./parts";
@@ -126,6 +127,8 @@ export function closeLayerAction(layer: LayerName): ShellAction {
 }
 
 export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, onSelectProject, navigationFooter, conversationSurface = "classic" }: FactoryLMShellProps) {
+  const shellRoot = useRef<HTMLDivElement>(null);
+  const routedInitialTab = useRef(false);
   // Only an accepted composer send re-arms scrolling. Message IDs can change
   // when a live answer is persisted or older history is refreshed.
   const [sendRevision, setSendRevision] = useState(0);
@@ -191,7 +194,32 @@ export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, on
     };
   }, []);
 
+  useEffect(() => {
+    const onInitialTab = (event: KeyboardEvent) => {
+      // Initial conversation scrolling can move the browser's sequential Tab
+      // starting point. Restore the first stop only on an explicit first Tab,
+      // and only when this shell supplies the document's first visible control.
+      if (event.key === "Tab" && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey &&
+          !event.defaultPrevented && !routedInitialTab.current && document.activeElement === document.body &&
+          !document.querySelector("dialog[open]") && !document.querySelector('.fl-overlay[data-active="true"][data-modal="true"]')) {
+        const skip = shellRoot.current?.querySelector<HTMLButtonElement>(".fl-shell__skip");
+        const first = focusableWithin(document.body).find((control) =>
+          control.getClientRects().length > 0 && getComputedStyle(control).visibility === "visible" &&
+          !control.closest("[hidden], [inert]"));
+        if (skip && !skip.disabled && first === skip) {
+          routedInitialTab.current = true;
+          event.preventDefault();
+          skip.focus({ preventScroll: true });
+        }
+        return;
+      }
+    };
+    document.addEventListener("keydown", onInitialTab);
+    return () => document.removeEventListener("keydown", onInitialTab);
+  }, []);
+
   return <div
+    ref={shellRoot}
     className="fl-shell"
     data-surface={state.profile.kind}
     data-theme={state.theme}
@@ -200,6 +228,15 @@ export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, on
     data-top-layer={top ?? ""}
     data-conversation-surface={conversationSurface}
   >
+    <button
+      type="button"
+      className="fl-shell__skip"
+      disabled={scrimLayer !== null}
+      onClick={() => {
+        if (document.querySelector("dialog[open]")) return;
+        shellRoot.current?.querySelector<HTMLTextAreaElement>(".fl-composer textarea")?.focus({ preventScroll: true });
+      }}
+    >Skip to chat</button>
     {scrimLayer ? <div className="fl-scrim" data-layer={scrimLayer} aria-hidden="true" onClick={closeTop} /> : null}
     <Overlay layer="navigation" active={state.navigationVisible} modal={layered} trapsTab={top === "navigation"}>
       <Sidebar state={state} dispatch={dispatch} onOpenItem={onOpenItem} onSelectProject={onSelectProject} footer={navigationFooter} inert={layered && !state.navigationVisible} hooks={hooks} />

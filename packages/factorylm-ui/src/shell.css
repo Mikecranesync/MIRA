@@ -58,6 +58,25 @@
   text-align: start;
 }
 
+/* The keyboard bypass is first in DOM order and stays outside the grid flow. */
+.fl-shell .fl-shell__skip {
+  position: fixed;
+  inset-block-start: var(--fl-workspace-space-2);
+  inset-inline-start: var(--fl-workspace-space-2);
+  z-index: 6;
+  clip-path: inset(50%);
+  overflow: hidden;
+  white-space: nowrap;
+}
+.fl-shell .fl-shell__skip:focus {
+  clip-path: none;
+  padding-inline: var(--fl-workspace-space-3);
+  background: var(--fl-workspace-surface);
+  color: var(--fl-workspace-accent-ink);
+  border-color: var(--fl-workspace-line);
+  box-shadow: var(--fl-workspace-shadow-pop);
+}
+
 .fl-shell button:not(:disabled) { cursor: pointer; }
 .fl-shell button:focus-visible { outline: 2px solid var(--fl-workspace-accent); outline-offset: 2px; }
 /* The one current row is styled whether it is a button (host opener) or an inert <li>. */
