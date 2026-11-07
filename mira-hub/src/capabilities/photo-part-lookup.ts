@@ -187,7 +187,22 @@ export function privateIdentifierKeys(text: string): Set<string> {
       if (prior) {
         const priorCode = trimCode(prior[1]).toUpperCase();
         const ownValue = LOCAL_VALUE.test(t.slice((m.index ?? 0) + m[0].length, (m.index ?? 0) + m[0].length + 48));
-        if (!(ownValue && labelledParts.has(priorCode))) keys.add(identifierKey(priorCode));
+        if (!(ownValue && labelledParts.has(priorCode))) {
+          keys.add(identifierKey(priorCode));
+          // #5268 Codex r10: a spaced value before a suffix label ("TP 1200
+          // (asset tag)") is private as a whole — every joined run of the
+          // tokens before the label on its line. Only for a value with a digit:
+          // the inner "tag" of "asset tag" sees "ASSET" as its prior code.
+          const line = before.slice(before.search(/[^\r\n]*$/));
+          // A run stops at a labelled part: "P/N: X Y SER." marks Y, not "XY".
+          const tokens = (line.match(/[A-Z0-9][A-Z0-9./-]*/gi) ?? []).slice(-3);
+          let joined = "";
+          for (let i = tokens.length - 1; /\d/.test(priorCode) && i >= 0; i--) {
+            if (labelledParts.has(trimCode(tokens[i]).toUpperCase())) break;
+            joined = identifierKey(tokens[i]) + joined;
+            if (joined.length >= 4 && /\d/.test(joined)) keys.add(joined);
+          }
+        }
       }
       if (!value) continue;
       let joined = "";

@@ -193,6 +193,12 @@ describe("isSafeCandidateSearchIdentity", () => {
     for (const typed of ["Find the manual for this. TP 1200 (asset tag)", "Find the manual for this. TP 1200 (S/N)", "Find the manual for this, serial TP 1200"]) {
       expect(isSafeCandidateSearchIdentity("Siemens MODEL: TP1200", typed, "TP1200", "Siemens")).toBe(false);
     }
+    // #5268 Codex r10: the same private designation printed on the photo
+    for (const photo of ["Siemens MODEL: TP1200\nTP 1200 (asset tag)", "Siemens MODEL: TP1200\nTP 1200 (S/N)", "Siemens MODEL: TP1200\nSiemens TP 1200 tag"]) {
+      expect(isSafeCandidateSearchIdentity(photo, "Find the manual for this", "TP1200", "Siemens")).toBe(false);
+      const c = extractCandidateIdentity(photo, "Find the manual for this");
+      if (c?.part && c.manufacturer) expect(isSafeCandidateSearchIdentity(photo, "Find the manual for this", c.part, c.manufacturer)).toBe(false);
+    }
     // control: the same photo with a plain request still searches
     expect(isSafeCandidateSearchIdentity("Siemens MODEL: TP1200", "Find the manual for this", "TP1200", "Siemens")).toBe(true);
   });
