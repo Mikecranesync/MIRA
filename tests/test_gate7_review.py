@@ -332,6 +332,11 @@ def test_security_brief_keeps_review_manipulation_and_real_promotion_reportable(
     policy = " ".join(trusted.split("SECURITY:", 1)[1].split("REDACTION:", 1)[0].split())
     assert "**high**-severity" in policy and "report it and continue reviewing" in policy
     assert re.search(r"(?:steer|redirect|manipulat|ignore this brief)", policy, re.I)
+    assert re.search(
+        r"(?:reviewer|verdict).*(?:even without|does not require|not depend on).*(?:application|use.site|execution)",
+        policy,
+        re.I,
+    )
     assert re.search(r"promot.*(?:trusted|instruction|execution)", policy, re.I)
     assert re.search(
         r"(?:not|never|no).*(?:exempt|exemption).*(?:test|fixture|path|label)", policy, re.I
