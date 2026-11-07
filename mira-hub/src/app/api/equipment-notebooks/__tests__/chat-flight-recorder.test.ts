@@ -1505,6 +1505,26 @@ describe("retrieval routing is decided by evidence context, not by general mode 
     expect(packetOf().retrieval.zero_result_reason).toBe("no_matches");
   });
 
+  it("2l-edge. #5265 (Codex #5266 F6): under MIRA_PROFILE=edge the related-manual warning still leads the verbatim passages", async () => {
+    process.env.MIRA_PROFILE = "edge";
+    try {
+      domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Allen-Bradley", model: "SLC 5/03" }) as never);
+      ragMock.retrieveManualChunks.mockResolvedValueOnce([{ ...oemChunk(), retrievalScope: "vendor_fallback" }] as never);
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+      const fr = await frames(await POST(chatReq({ message: "why did it stop communicating after the swap", mode: "general" }), params));
+      expect(fetchMock).not.toHaveBeenCalled();
+      const shown = fr.filter((f) => f.kind === "content").map((f) => String(f.content)).join("");
+      expect(shown.startsWith("⚠️ No page of the Allen-Bradley SLC 5/03 manual matched this question")).toBe(true);
+      expect(shown).toContain("confirm them in your SLC 5/03 manual before you act");
+      expect(shown).toContain("word for word");
+      const rec = (domainMock.recordTurn.mock.calls[0] as unknown[])[2] as { answerText: string };
+      expect(rec.answerText).toContain("The closest match is a related manual");
+    } finally {
+      delete process.env.MIRA_PROFILE;
+    }
+  });
+
   it("2l. #4068 owner decision ('allow with a warning'): related-manual answers carry a fixed server-written warning", async () => {
     domainMock.getNotebook.mockResolvedValue(nb({ manufacturer: "Allen-Bradley", model: "SLC 5/03" }) as never);
     ragMock.retrieveManualChunks.mockResolvedValueOnce([{ ...oemChunk(), retrievalScope: "vendor_fallback" }] as never);
