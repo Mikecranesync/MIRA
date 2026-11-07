@@ -237,11 +237,28 @@ function withSheetWriteLock<T>(fn: () => Promise<T>): Promise<T> {
   return locks ? (locks.request(SHEET_WRITE_LOCK, fn) as Promise<T>) : fn();
 }
 
-/** Codex #5276 r6: the marker counts only once it reads back. */
-function installSignOutMarker(store: KvStore, value: string): Promise<boolean> {
-  return withSheetWriteLock(
-    async () => (await store.set(SIGN_OUT_MARKER_KEY, value)) && (await tolerantGet(store, SIGN_OUT_MARKER_KEY)) === value,
-  );
+/** Codex #5276 r6: the marker counts only once it reads back. r8: it never
+ *  moves backwards (a newer sign-out's marker already blocks everything this
+ *  one would), and `replaced` is the value this call overwrote, read under the
+ *  same lock, so Cancel can put back exactly that. `replaced` is undefined
+ *  when nothing was written. */
+function installSignOutMarker(store: KvStore, value: string): Promise<{ installed: boolean; replaced?: string | null }> {
+  return withSheetWriteLock(async () => {
+    const current = await tolerantGet(store, SIGN_OUT_MARKER_KEY);
+    if (current !== null && Number(current) >= Number(value)) return { installed: true };
+    if (!(await store.set(SIGN_OUT_MARKER_KEY, value))) return { installed: false };
+    return { installed: (await tolerantGet(store, SIGN_OUT_MARKER_KEY)) === value, replaced: current };
+  });
+}
+
+/** Codex #5276 r8: Cancel undoes only its own marker. If another tab has
+ *  since signed out, its newer marker stays. */
+function restoreSignOutMarker(store: KvStore, value: string, replaced: string | null | undefined): Promise<void> {
+  return withSheetWriteLock(async () => {
+    if (replaced === undefined || (await tolerantGet(store, SIGN_OUT_MARKER_KEY)) !== value) return;
+    if (replaced === null) await store.remove(SIGN_OUT_MARKER_KEY);
+    else await store.set(SIGN_OUT_MARKER_KEY, replaced);
+  });
 }
 
 /**
@@ -702,13 +719,13 @@ export async function clearSheetDataForSignOut(
   // talking to the server finish, so its result cannot land after the purge.
   sheetSignOutBarrier = true;
   // Codex #5276 r5: other tabs stop writing too. Cancel restores what was there.
-  const priorMarker = await tolerantGet(store, SIGN_OUT_MARKER_KEY);
   const markerValue = String(Date.now());
-  let markerInstalled = await installSignOutMarker(store, markerValue);
+  let marker = await installSignOutMarker(store, markerValue);
+  let markerInstalled = marker.installed;
+  let replacedMarker = marker.replaced;
   const cancel = async (): Promise<false> => {
     sheetSignOutBarrier = false;
-    if (priorMarker === null) await store.remove(SIGN_OUT_MARKER_KEY);
-    else await store.set(SIGN_OUT_MARKER_KEY, priorMarker);
+    await restoreSignOutMarker(store, markerValue, replacedMarker);
     return false;
   };
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -725,7 +742,9 @@ export async function clearSheetDataForSignOut(
   if (!markerInstalled) {
     // Codex #5276 r6: a full phone can refuse the marker. The purge freed
     // space, so try again, then sweep whatever another tab saved meanwhile.
-    markerInstalled = await installSignOutMarker(store, markerValue);
+    marker = await installSignOutMarker(store, markerValue);
+    markerInstalled = marker.installed;
+    if (marker.replaced !== undefined) replacedMarker = marker.replaced;
     if (markerInstalled) ({ remaining } = await purgeSheetQueues(store));
   }
   if (!markerInstalled && !confirm(SIGN_OUT_OTHER_TABS_PROMPT)) return cancel();

@@ -1593,6 +1593,105 @@ describe("#5212 sign-out across tabs", () => {
     });
   }
 
+  it("Cancel of one sign-out leaves another tab's newer, completed sign-out in force", async () => {
+    fakeWebLocks();
+    try {
+      const { store, m } = sharedStore();
+      const tabA = await openTab();
+      const tabB = await openTab();
+      const tabC = await openTab();
+      // Tab A has a replay in flight, so its sign-out waits on it and then asks.
+      await tabA.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "tab A words"));
+      let releaseA = (): void => {};
+      const gateA = new Promise<void>((r) => (releaseA = r));
+      let hitA = (): void => {};
+      const inFlightA = new Promise<void>((r) => (hitA = r));
+      const drainA = tabA.drainSheetQueue(store, "t1", "jobA", async () => {
+        hitA();
+        await gateA;
+        return { status: "rejected", message: "job_finished" }; // a late rejection, after both sign-outs
+      }, "nb-1");
+      await inFlightA;
+      const signOutA = tabA.clearSheetDataForSignOut(store, (msg) => msg !== SIGN_OUT_STILL_SENDING_PROMPT, undefined, 40);
+      await new Promise((r) => setTimeout(r, 5)); // A has recorded its marker and is waiting
+      const markerA = m.get("flm.sheetsignout.v1");
+      expect(markerA).toBeDefined();
+      expect(await tabB.clearSheetDataForSignOut(store, () => true)).toBe(true); // B signs out completely
+      const markerB = m.get("flm.sheetsignout.v1");
+      expect(Number(markerB)).toBeGreaterThan(Number(markerA));
+      expect(await signOutA).toBe(false); // A's technician pressed Cancel on the still-sending question
+      expect(m.get("flm.sheetsignout.v1")).toBe(markerB);
+      releaseA();
+      await drainA;
+      expect((await tabC.enqueueSheetEvent(store, "t1", "jobC", noteEvent("n-3", "late words"))).saved).toBe(false);
+      expect(sheetText(m)).not.toContain("late words");
+      expect(sheetText(m)).not.toContain("tab A words");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("a sign-out that starts while another tab's Cancel is restoring the marker keeps its own marker", async () => {
+    fakeWebLocks();
+    try {
+      const { store: base, m } = sharedStore();
+      m.set("flm.sheetrej.v1.x", "keep"); // a key the purge cannot remove, so tab A is asked and cancels
+      let holdNextMarkerRead = false;
+      let release = (): void => {};
+      const gate = new Promise<void>((r) => (release = r));
+      let hitResolve = (): void => {};
+      const hit = new Promise<void>((r) => (hitResolve = r));
+      const store: KvStore = {
+        ...base,
+        remove: async (k) => (k === "flm.sheetrej.v1.x" ? false : base.remove(k)),
+        get: async (k) => {
+          const v = await base.get(k);
+          if (k === "flm.sheetsignout.v1" && holdNextMarkerRead) {
+            holdNextMarkerRead = false;
+            hitResolve();
+            await gate; // tab A's Cancel has read its own marker and is about to undo it
+          }
+          return v;
+        },
+      };
+      const tabA = await openTab();
+      const tabB = await openTab();
+      const signOutA = tabA.clearSheetDataForSignOut(store, (msg) => {
+        if (msg !== signOutPurgeFailedPrompt(1)) return true;
+        holdNextMarkerRead = true;
+        return false;
+      });
+      await hit;
+      await new Promise((r) => setTimeout(r, 2));
+      const signOutB = tabB.clearSheetDataForSignOut(store, () => true);
+      await new Promise((r) => setTimeout(r, 5));
+      release();
+      expect(await signOutA).toBe(false);
+      expect(await signOutB).toBe(true);
+      expect(m.has("flm.sheetsignout.v1")).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("a marker the store reports saved but that does not read back counts as not saved", async () => {
+    const { store: base } = sharedStore();
+    const store: KvStore = { ...base, set: async (k, v) => (k === "flm.sheetsignout.v1" ? true : base.set(k, v)) };
+    const tab = await openTab();
+    const asked: string[] = [];
+    expect(await tab.clearSheetDataForSignOut(store, (msg) => (asked.push(msg), false))).toBe(false);
+    expect(asked).toEqual([SIGN_OUT_OTHER_TABS_PROMPT]);
+  });
+
+  it("the sign-out marker never moves backwards over a newer one", async () => {
+    const { store, m } = sharedStore();
+    const newer = String(Date.now() + 60_000);
+    m.set("flm.sheetsignout.v1", newer);
+    const tab = await openTab();
+    expect(await tab.clearSheetDataForSignOut(store, () => true)).toBe(true);
+    expect(m.get("flm.sheetsignout.v1")).toBe(newer);
+  });
+
   it("a tab opened after the sign-out can save (control)", async () => {
     const { store, m } = sharedStore();
     const tabB = await openTab();
