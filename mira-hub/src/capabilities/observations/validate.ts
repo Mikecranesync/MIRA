@@ -1,6 +1,6 @@
 /**
  * Validation for a POST body recording an observation. Mirrors the DB CHECKs
- * in db/proposed/113_asset_observations.sql so a rejected body never reaches
+ * in db/migrations/113_asset_observations.sql so a rejected body never reaches
  * Postgres. The body must be complete except for the field under test; the
  * order below is the order a client sees errors in.
  */
