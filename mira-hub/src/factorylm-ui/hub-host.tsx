@@ -68,7 +68,7 @@ import { MachineObservations } from "./MachineObservations";
 import { WorkPacketPanel } from "./WorkPacketPanel";
 import { wantsPacketOpen } from "./work-packet-view";
 import { LivingSheet } from "./LivingSheet";
-import { countAllSheetQueueEntries, localStorageStore, parseSheetReceipts, purgeSheetQueues, signOutUnsyncedPrompt } from "./living-sheet-client";
+import { clearSheetDataForSignOut, localStorageStore, parseSheetReceipts } from "./living-sheet-client";
 import { NOTEBOOK_ACTIONS_STYLE } from "./notebook-actions";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
 import { answerTurnId, citationIndex, contextFor, lifecycleFromStream, livePartsWhileRunning, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus, withSettledFollowups, type SettledFollowups } from "./to-interaction";
@@ -1011,13 +1011,14 @@ export function HubShellHost() {
               // the session that created them. R2-32: but they must not be
               // silently discarded either — ask first when anything is
               // unsynced; Cancel keeps them (no purge, no navigation). No
-              // unsynced entries => no prompt, same as before.
+              // unsynced entries => no prompt, same as before. #5212: a purge
+              // that left sheet text on the phone says so first.
               void (async () => {
-                const pending = await countAllSheetQueueEntries(localStorageStore);
-                const prompt = signOutUnsyncedPrompt(pending);
-                if (prompt && !window.confirm(prompt)) return;
-                setSigningOut(true);
-                await purgeSheetQueues(localStorageStore);
+                const proceed = await clearSheetDataForSignOut(localStorageStore, (m) => window.confirm(m), () => setSigningOut(true));
+                if (!proceed) {
+                  setSigningOut(false);
+                  return;
+                }
                 signOutToLogin();
               })();
             }}

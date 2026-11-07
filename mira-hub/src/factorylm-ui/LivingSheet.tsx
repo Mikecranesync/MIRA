@@ -523,6 +523,8 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
   // late response for a job the technician has since navigated away from
   // can never land on the wrong job's screen.
   const openJobIdRef = useRef<string | null>(null);
+  // The job whose queue replay is in flight (one drain at a time, device-wide).
+  const drainingJobRef = useRef<string | null>(null);
 
   // "sent only while a sheet is open" (TASK-S3) must also hold when this
   // notebook's sheet layer goes away entirely (a notebook switch remounts
@@ -619,21 +621,35 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
     async (jobId: string) => {
       const stillSelected = () => responseStillTargetsSelectedJob(jobId, openJobIdRef.current);
       if (mounted.current && stillSelected()) setBadge((b) => ({ ...b, saving: true }));
-      const result = await drainSheetQueue(localStorageStore, scopeId, jobId, async (ev) => {
-        // The submit itself always proceeds, even for a job the technician
-        // has since navigated away from — switching screens must never lose
-        // a queued write. Only the SCREEN-facing state below is job-gated.
-        const res = await apiPostEvent(notebookId, jobId, ev);
-        if (res.ok) return { status: "ok" as const };
-        if (res.status === 409 && res.body.error === "conflict") {
-          if (mounted.current && stillSelected()) setConflict({ event: ev, serverView: res.body.view ?? null });
-          return { status: "conflict" as const };
-        }
-        if (res.status >= 500 || res.status === 401) throw new Error(res.body.error ?? "server_error");
-        const message = startJobErrorMessage(res.body.error, res.body.message);
-        return { status: "rejected" as const, message };
-      }, notebookId);
-      if (!result) return;
+      // Codex #5276 F2: remember whose replay is running, so a job opened
+      // mid-replay shows "Saving…" only when the replay is its own.
+      const priorDrainJob = drainingJobRef.current;
+      drainingJobRef.current = jobId;
+      let result: Awaited<ReturnType<typeof drainSheetQueue>> | undefined;
+      try {
+        result = await drainSheetQueue(localStorageStore, scopeId, jobId, async (ev) => {
+          // The submit itself always proceeds, even for a job the technician
+          // has since navigated away from — switching screens must never lose
+          // a queued write. Only the SCREEN-facing state below is job-gated.
+          const res = await apiPostEvent(notebookId, jobId, ev);
+          if (res.ok) return { status: "ok" as const };
+          if (res.status === 409 && res.body.error === "conflict") {
+            if (mounted.current && stillSelected()) setConflict({ event: ev, serverView: res.body.view ?? null });
+            return { status: "conflict" as const };
+          }
+          if (res.status >= 500 || res.status === 401) throw new Error(res.body.error ?? "server_error");
+          const message = startJobErrorMessage(res.body.error, res.body.message);
+          return { status: "rejected" as const, message };
+        }, notebookId);
+      } finally {
+        // null = another replay was already running and this one never
+        // started; anything else (a result or a throw) means this one ended.
+        if (drainingJobRef.current === jobId) drainingJobRef.current = result === null ? priorDrainJob : null;
+      }
+      if (!result) {
+        if (mounted.current && stillSelected()) setBadge((b) => ({ ...b, saving: drainingJobRef.current === jobId }));
+        return;
+      }
       if (mounted.current && stillSelected()) {
         setBadge({ saving: false, queued: result.remaining, conflict: result.conflict, drainStuck: result.drainStuck });
         // R2-04: a non-409 rejection is surfaced with its payload and
@@ -700,6 +716,9 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
       setPhotoError(null);
       setConfirmStep(null);
       onSheetOpenChange({ notebookId, jobId });
+      // Codex #5276 F2: the badge belongs to the job on screen. Another job's
+      // replay finishing off screen must never leave this one on "Saving…".
+      setBadge({ saving: drainingJobRef.current === jobId, queued: 0, conflict: false });
       void loadSheet(jobId);
       void refreshBadge(jobId);
       void refreshWorkOrder(jobId);
