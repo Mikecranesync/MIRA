@@ -82,8 +82,6 @@ vi.mock("@/lib/inference/canonical-cascade", () => seamMock);
 // (notebook-manual-acquisition.test.ts, migration-104 integration test).
 const acqMock = vi.hoisted(() => ({
   acquisitionEnabled: vi.fn(() => true),
-  // #4175: follows the base flag unless a test pins it, as the real one requires both.
-  candidateAcquisitionEnabled: vi.fn((): boolean => acqMock.acquisitionEnabled()),
   startManualAcquisition: vi.fn(async () => true),
   readAcquisition: vi.fn(async () => null as unknown),
   reconcileAcquisition: vi.fn(async (_t: string, _n: string, rec: unknown) => rec),
@@ -93,7 +91,6 @@ vi.mock("@/capabilities/notebook-manual-acquisition", async (importOriginal) => 
   return {
     ...actual,
     acquisitionEnabled: acqMock.acquisitionEnabled,
-    candidateAcquisitionEnabled: acqMock.candidateAcquisitionEnabled,
     startManualAcquisition: acqMock.startManualAcquisition,
     readAcquisition: acqMock.readAcquisition,
     reconcileAcquisition: acqMock.reconcileAcquisition,
@@ -150,7 +147,6 @@ beforeEach(() => {
   ragMock.retrieveNodeChunks.mockResolvedValue([]);
   ragMock.corpusManufacturers.mockResolvedValue([]); // RC1: the corpus does not know this maker
   acqMock.acquisitionEnabled.mockReturnValue(true);
-  acqMock.candidateAcquisitionEnabled.mockImplementation(() => acqMock.acquisitionEnabled());
   acqMock.startManualAcquisition.mockResolvedValue(true);
   acqMock.readAcquisition.mockResolvedValue(null);
   acqMock.reconcileAcquisition.mockImplementation(async (_t: string, _n: string, rec: unknown) => rec);
@@ -270,7 +266,8 @@ describe("#4160 S6 R2 — candidate-basis background acquisition triggers from t
     const call = vi.mocked(global.fetch).mock.calls.at(-1)!;
     const sentBody = JSON.parse((call[1] as RequestInit).body as string);
     const systemMsg = (sentBody.messages as { role: string; content: string }[]).find((m) => m.role === "system");
-    expect(systemMsg?.content).toMatch(/saved to this notebook's Sources/);
+    expect(systemMsg?.content).toMatch(/UNCONFIRMED MACHINE/);
+    expect(systemMsg?.content).toMatch(/added to this notebook's Sources and turned on/);
     expect(systemMsg?.content).not.toMatch(/Use its manuals|confirmed as that machine/);
     expect(systemMsg?.content).toMatch(/looking for the official SMC SS5Y3-DUW01302 manual/);
   });
@@ -358,19 +355,6 @@ describe("#4160 S6 — an ambiguous identity is never resurrected by the fallbac
   });
 });
 
-// #4172 F13 / #4175: the candidate takeover flag, off, is exactly pre-S6 even
-// with the base acquisition flag on.
-describe("#4175 — candidate takeover gated behind MIRA_NOTEBOOK_CANDIDATE_ACQUISITION", () => {
-  it("base flag on, candidate flag off → no RC1 proposal, no candidate search", async () => {
-    acqMock.acquisitionEnabled.mockReturnValue(true);
-    acqMock.candidateAcquisitionEnabled.mockReturnValue(false);
-    const res = await POST(req({ message: SMC_MESSAGE, mode: "general" }), params);
-    const f = await frames(res);
-    expect(f.find((x) => x.kind === "identity_proposal")).toBeUndefined();
-    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
-  });
-});
-
 // #4160 gate NO-GO: "Typed maker+model doesn't trigger the search" (Banner).
 describe("#4160 gate — a typed dictionary-word maker + part starts the candidate search", () => {
   it("'I need the manual for a Banner Q4XTBLAF300-Q8' starts a candidate search for BANNER", async () => {
@@ -422,10 +406,10 @@ describe("#4160 gate — no 'fetch it yourself' advice while the search runs", (
     expect(acqMock.startManualAcquisition).toHaveBeenCalled();
     expect(text).not.toContain("manufacturer's support");
     expect(text).toContain("I'm already searching for the official manual");
-    // Codex #4183 F1: a CANDIDATE manual lands turned off pending review, so
-    // the fallback must say to check it and turn it on before asking again.
-    expect(text).toContain("turned off until you check it");
-    expect(text).toContain("turn it on there");
+    // A manual found from the photo is verified before it lands, so it lands
+    // turned on; the fallback must not tell the technician to switch it on.
+    expect(text).toContain("turned on");
+    expect(text).not.toContain("turned off");
   });
 
   it("#4718: the search is refused by the cap while the answer is generated → no 'already searching' claim", async () => {

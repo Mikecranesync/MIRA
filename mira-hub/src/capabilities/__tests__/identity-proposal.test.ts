@@ -101,12 +101,14 @@ describe("unconfirmedMachineDirective", () => {
       expect(unconfirmedMachineDirective(p, undefined)).toBe(base);
     });
 
-    it("when present, is appended as a verbatim-relay instruction, after the base directive", () => {
+    it("when present, replaces the 'once they confirm' line with a verbatim relay of the search status (the photo named the machine)", () => {
       const status = "I'm looking for the official SMC SS5Y3-DUW01302 manual now.";
       const d = unconfirmedMachineDirective(p, status);
-      expect(d.startsWith(unconfirmedMachineDirective(p))).toBe(true);
+      expect(d).toMatch(/UNCONFIRMED MACHINE/);
+      expect(d).toMatch(/Do NOT state its ratings/);
       expect(d).toContain(status);
       expect(d).toMatch(/in your own words/i);
+      expect(d).not.toMatch(/once they confirm/);
     });
   });
 });

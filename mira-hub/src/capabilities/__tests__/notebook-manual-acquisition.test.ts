@@ -4,7 +4,6 @@
  * Run: npx vitest run src/capabilities/__tests__/notebook-manual-acquisition.test.ts
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { candidateAcquisitionEnabled } from "../notebook-manual-acquisition";
 
 const db = vi.hoisted(() => ({
   queries: [] as { sql: string; params: unknown[] }[],
@@ -94,43 +93,32 @@ describe("acquisitionKey — only a technician-confirmed, searchable identity", 
   });
 });
 
-describe("acquisitionEnabled — off unless explicitly '1'", () => {
-  it.each([[{}, false], [{ MIRA_NOTEBOOK_MANUAL_ACQUISITION: "0" }, false], [{ MIRA_NOTEBOOK_MANUAL_ACQUISITION: "true" }, false], [ON, true]])(
-    "%j → %s",
-    (env, want) => expect(acquisitionEnabled("t", env as Record<string, string>)).toBe(want),
-  );
+describe("acquisitionEnabled — on unless explicitly '0' (owner decision 2026-11-07)", () => {
+  it("{} (unset) is on", () => expect(acquisitionEnabled("t", {})).toBe(true));
+  it("'1' is on", () => expect(acquisitionEnabled("t", { MIRA_NOTEBOOK_MANUAL_ACQUISITION: "1" })).toBe(true));
+  it("'true' is on", () => expect(acquisitionEnabled("t", { MIRA_NOTEBOOK_MANUAL_ACQUISITION: "true" })).toBe(true));
+  it("'false' is ON (deliberate — only the exact '0' turns anything off, matching the other safety levers)", () =>
+    expect(acquisitionEnabled("t", { MIRA_NOTEBOOK_MANUAL_ACQUISITION: "false" })).toBe(true));
+  it("'' (empty string) is on", () => expect(acquisitionEnabled("t", { MIRA_NOTEBOOK_MANUAL_ACQUISITION: "" })).toBe(true));
+  it("'00' is on", () => expect(acquisitionEnabled("t", { MIRA_NOTEBOOK_MANUAL_ACQUISITION: "00" })).toBe(true));
+  it("'0' is off", () => expect(acquisitionEnabled("t", { MIRA_NOTEBOOK_MANUAL_ACQUISITION: "0" })).toBe(false));
+  it("' 0 ' (padded) is off — trimmed before comparison", () => expect(acquisitionEnabled("t", { MIRA_NOTEBOOK_MANUAL_ACQUISITION: " 0 " })).toBe(false));
 });
 
-// Production turns on for one customer first: a tenant allowlist narrows the switch.
-describe("acquisitionEnabled — MIRA_NOTEBOOK_MANUAL_ACQUISITION_TENANTS", () => {
-  const A = "11111111-1111-4111-8111-111111111111";
-  const B = "22222222-2222-4222-8222-222222222222";
-  const LIST = { ...ON, MIRA_NOTEBOOK_MANUAL_ACQUISITION_TENANTS: ` ${A.toUpperCase()} , ` };
-  it("a listed tenant is on (case/whitespace-insensitive)", () => expect(acquisitionEnabled(A, LIST)).toBe(true));
-  it("an unlisted tenant is off", () => expect(acquisitionEnabled(B, LIST)).toBe(false));
-  it("no tenant is off when a list is set", () => {
-    expect(acquisitionEnabled(null, LIST)).toBe(false);
-    expect(acquisitionEnabled("", LIST)).toBe(false);
+// The former tenant allowlist (MIRA_NOTEBOOK_MANUAL_ACQUISITION_TENANTS) and the
+// separate candidate-takeover flag (MIRA_NOTEBOOK_CANDIDATE_ACQUISITION /
+// candidateAcquisitionEnabled) are gone — the tenant argument is accepted but
+// entirely ignored (owner decision 2026-11-07).
+describe("acquisitionEnabled — the tenant argument changes nothing", () => {
+  it("any tenant, no tenant, or an empty tenant are equally on", () => {
+    expect(acquisitionEnabled("any-tenant", {})).toBe(true);
+    expect(acquisitionEnabled("other-tenant", {})).toBe(true);
+    expect(acquisitionEnabled(null, {})).toBe(true);
+    expect(acquisitionEnabled("", {})).toBe(true);
   });
-  it("unset or blank list keeps the switch server-wide (control)", () => {
-    expect(acquisitionEnabled(B, ON)).toBe(true);
-    expect(acquisitionEnabled(B, { ...ON, MIRA_NOTEBOOK_MANUAL_ACQUISITION_TENANTS: " , " })).toBe(true);
-  });
-  it("the list never turns on a switch that is off", () => {
-    expect(acquisitionEnabled(A, { MIRA_NOTEBOOK_MANUAL_ACQUISITION_TENANTS: A })).toBe(false);
-  });
-  it("candidate takeover follows the same list", () => {
-    const both = { ...LIST, MIRA_NOTEBOOK_CANDIDATE_ACQUISITION: "1" };
-    expect(candidateAcquisitionEnabled(A, both)).toBe(true);
-    expect(candidateAcquisitionEnabled(B, both)).toBe(false);
-  });
-  it("start / run / status gate on the INPUT's tenant", async () => {
-    const acquire = vi.fn();
-    const onlyA = { ...ON, MIRA_NOTEBOOK_MANUAL_ACQUISITION_TENANTS: A };
-    expect(await startManualAcquisition({ ...input, tenantId: B }, { acquire, env: onlyA })).toBe(false);
-    expect(await runManualAcquisition({ ...input, tenantId: B } as ManualAcquisitionInput, { acquire, env: onlyA })).toEqual({ started: false, outcome: null });
-    expect(await currentManualSearchStatus(B, "nb", confirmed, null, [], { env: onlyA })).toBeNull();
-    expect(acquire).not.toHaveBeenCalled();
+  it("a MIRA_NOTEBOOK_MANUAL_ACQUISITION_TENANTS value is simply ignored", () => {
+    const A = "11111111-1111-4111-8111-111111111111";
+    expect(acquisitionEnabled(A, { ...ON, MIRA_NOTEBOOK_MANUAL_ACQUISITION_TENANTS: "some-other-tenant" })).toBe(true);
   });
 });
 
@@ -199,7 +187,7 @@ describe("startManualAcquisition", () => {
 
   it("does nothing when disabled or the identity is not confirmed — and never touches the database", async () => {
     const acquire = vi.fn();
-    expect(await startManualAcquisition(input, { acquire, env: {} })).toBe(false);
+    expect(await startManualAcquisition(input, { acquire, env: { MIRA_NOTEBOOK_MANUAL_ACQUISITION: "0" } })).toBe(false);
     expect(await startManualAcquisition({ ...input, identity: { ...confirmed, identityStatus: "candidate" } }, { acquire, env: ON })).toBe(false);
     expect(acquire).not.toHaveBeenCalled();
     expect(db.queries).toHaveLength(0);
@@ -455,7 +443,7 @@ describe("Codex #4118 r3 F5 / r15 F19 — fencedAttach", () => {
   });
 });
 
-describe("#4160 S6 — fencedWriter basis='candidate' never enables before confirmation", () => {
+describe("#4160 S6 — fencedWriter basis='candidate' promotes on a verified applicability verdict", () => {
   it("defaults 'confirmed' is BYTE-IDENTICAL: the ownership SQL still names identity_status = 'user_confirmed' unconditionally for that branch", async () => {
     const { fencedWriter } = await import("../notebook-manual-acquisition");
     await fencedWriter("K", "g1")("t", "nb", "doc", { matchState: "verified", enabledByDefault: true, matchEvidence: {} });
@@ -464,9 +452,9 @@ describe("#4160 S6 — fencedWriter basis='candidate' never enables before confi
     expect(lock.params).toEqual(["t", "nb", "K", "g1", "confirmed"]);
   });
 
-  it("NOT yet confirmed: forces match_state='candidate', enabled_by_default=false even though the verdict says verified+enabled", async () => {
+  it("candidateApplicability='verified' promotes immediately, independent of notebook confirmation state: keeps the verdict's own matchState/enabledByDefault and stamps sourceLabel='from_photo'", async () => {
     const { fencedWriter } = await import("../notebook-manual-acquisition");
-    db.confirmedSameKey = false;
+    db.confirmedSameKey = false; // irrelevant to the decision — fencedWriter never reads this field
     const res = await fencedWriter("K", "g1", "candidate")("t", "nb", "doc", {
       matchState: "verified",
       enabledByDefault: true,
@@ -474,34 +462,38 @@ describe("#4160 S6 — fencedWriter basis='candidate' never enables before confi
     });
     expect(res).toEqual({ matchState: "verified", enabledByDefault: true }); // db.updatedSource (what the mock reports persisted)
     const write = db.queries.at(-1)!;
-    // The WRITE statement itself must have asked for candidate/false, not the
-    // verdict's verified/true — this is the actual guard; db.updatedSource
-    // above is just the mock's canned "what got persisted" response.
-    expect(write.params[3]).toBe("candidate");
-    expect(write.params[4]).toBe(false);
-    expect(JSON.parse(write.params[5] as string)).toMatchObject({ autoAcquisitionKey: "K", candidateApplicability: "verified" });
-  });
-
-  it("already confirmed to the SAME key (the common race) + candidateApplicability='verified': promotes, same as a confirmed-basis write", async () => {
-    const { fencedWriter } = await import("../notebook-manual-acquisition");
-    db.confirmedSameKey = true;
-    await fencedWriter("K", "g1", "candidate")("t", "nb", "doc", {
-      matchState: "verified",
-      enabledByDefault: true,
-      matchEvidence: { candidateApplicability: "verified" },
-    });
-    const write = db.queries.at(-1)!;
+    // The WRITE statement itself asks for verified/true — promotion rides
+    // solely on candidateApplicability, not on notebook confirmation state.
     expect(write.params[3]).toBe("verified");
     expect(write.params[4]).toBe(true);
+    expect(JSON.parse(write.params[5] as string)).toMatchObject({
+      autoAcquisitionKey: "K",
+      candidateApplicability: "verified",
+      sourceLabel: "from_photo",
+    });
   });
 
-  it("already confirmed to the SAME key but candidateApplicability='candidate' (unproven): still never enables", async () => {
+  it("control: candidateApplicability='candidate' (unproven) still forces candidate/disabled — the photo's own manual read must prove itself, confirmation state aside", async () => {
     const { fencedWriter } = await import("../notebook-manual-acquisition");
-    db.confirmedSameKey = true;
+    db.confirmedSameKey = true; // still irrelevant — the next test proves it with the field unset too
     await fencedWriter("K", "g1", "candidate")("t", "nb", "doc", {
       matchState: "candidate",
       enabledByDefault: false,
       matchEvidence: { candidateApplicability: "candidate" },
+    });
+    const write = db.queries.at(-1)!;
+    expect(write.params[3]).toBe("candidate");
+    expect(write.params[4]).toBe(false);
+    expect(JSON.parse(write.params[5] as string)).toMatchObject({ autoAcquisitionKey: "K", sourceLabel: "from_photo" });
+  });
+
+  it("control: candidateApplicability absent (no evidence it's the right machine) still forces candidate/disabled", async () => {
+    const { fencedWriter } = await import("../notebook-manual-acquisition");
+    db.confirmedSameKey = false;
+    await fencedWriter("K", "g1", "candidate")("t", "nb", "doc", {
+      matchState: "verified",
+      enabledByDefault: true,
+      matchEvidence: {},
     });
     const write = db.queries.at(-1)!;
     expect(write.params[3]).toBe("candidate");
@@ -590,7 +582,7 @@ describe("#4160 S6 — startManualAcquisition basis='candidate' threading", () =
 
   it("the flag off ⇒ nothing starts, for candidate basis too", async () => {
     const acquire = vi.fn();
-    expect(await startManualAcquisition(candidateInput, { acquire, env: {} })).toBe(false);
+    expect(await startManualAcquisition(candidateInput, { acquire, env: { MIRA_NOTEBOOK_MANUAL_ACQUISITION: "0" } })).toBe(false);
     expect(acquire).not.toHaveBeenCalled();
   });
 });
@@ -612,13 +604,14 @@ describe("#4160 S6 — acquisitionDeclineText basis='candidate' copy", () => {
   // technician has on the acquired manual is turning it on in Sources (Hub
   // notebook page, classic mobile notebook screen), so the copy points there
   // and promises nothing about confirmation.
-  it("'running' says the search is on and that the manual lands in Sources, turned off, to check — no button, no confirmation promise", () => {
+  it("'running' says the search is on and that the manual lands in Sources, turned on — no button, no confirmation promise", () => {
     const t = acquisitionDeclineText(rec("running"), "K", "SMC SS5Y3-DUW01302", "candidate")!;
+    expect(t).toMatch(/I read the SMC SS5Y3-DUW01302 off your photo/);
     expect(t).toMatch(/looking for the official SMC SS5Y3-DUW01302 manual now/);
-    expect(t).toMatch(/Sources/);
-    expect(t).toMatch(/turn it on/);
+    expect(t).toMatch(/added to this notebook's Sources and turned on/);
     expect(t).not.toMatch(/Use its manuals|Tap|tap |confirmed as that machine|once you do/);
     expect(t).not.toMatch(/ask again in a minute/);
+    expect(t).not.toMatch(/turned off/);
   });
 
   // Codex post-cap 4 F9 (#4172): only promise "confirm and I'll answer from it"
@@ -897,16 +890,9 @@ describe("Codex #4118 r14 F18/F19 — attach gate: database errors retry, remova
   });
 });
 
-// #4172 F13 / #4175: candidate takeover has its own flag, and needs the base one.
-describe("candidateAcquisitionEnabled", () => {
-  it("is on only when BOTH flags are exactly '1'", () => {
-    expect(candidateAcquisitionEnabled("t", { MIRA_NOTEBOOK_MANUAL_ACQUISITION: "1", MIRA_NOTEBOOK_CANDIDATE_ACQUISITION: "1" })).toBe(true);
-    expect(candidateAcquisitionEnabled("t", { MIRA_NOTEBOOK_MANUAL_ACQUISITION: "1" })).toBe(false);
-    expect(candidateAcquisitionEnabled("t", { MIRA_NOTEBOOK_CANDIDATE_ACQUISITION: "1" })).toBe(false);
-    expect(candidateAcquisitionEnabled("t", { MIRA_NOTEBOOK_MANUAL_ACQUISITION: "1", MIRA_NOTEBOOK_CANDIDATE_ACQUISITION: "true" })).toBe(false);
-    expect(candidateAcquisitionEnabled("t", {})).toBe(false);
-  });
-});
+// candidateAcquisitionEnabled and MIRA_NOTEBOOK_CANDIDATE_ACQUISITION are gone
+// (owner decision 2026-11-07) — the base acquisitionEnabled switch covers the
+// candidate-basis search too. See "acquisitionEnabled" describes above.
 
 // #4160 S7 (owner decision 2026-10-01 §2): acquisition owns recovery server-side.
 // A confirm-time search runs INLINE under the same lifecycle (claim → acquire →
@@ -968,7 +954,7 @@ describe("runManualAcquisition — the inline, recorded search", () => {
   });
   it("the flag off ⇒ not started, nothing queried", async () => {
     const acquire = acquireMock(async () => ({ status: "complete", payload: {} }));
-    const r = await runManualAcquisition(runInput, { acquire, env: {} });
+    const r = await runManualAcquisition(runInput, { acquire, env: { MIRA_NOTEBOOK_MANUAL_ACQUISITION: "0" } });
     expect(r.started).toBe(false);
     expect(acquire).not.toHaveBeenCalled();
     expect(db.queries.length).toBe(0);
@@ -1084,7 +1070,7 @@ describe("currentManualSearchStatus — recomputed fresh, never a stale snapshot
 
   it("returns null when acquisition is disabled", async () => {
     db.readRow = { key: confirmedKey, state: "running", started_at: null, finished_at: null, candidate_host: null, match_state: null, oem_request_url: null };
-    const r = await currentManualSearchStatus("t", "nb", confirmedIdentity, null, [], { env: {} });
+    const r = await currentManualSearchStatus("t", "nb", confirmedIdentity, null, [], { env: { MIRA_NOTEBOOK_MANUAL_ACQUISITION: "0" } });
     expect(r).toBeNull();
   });
 

@@ -47,7 +47,13 @@ const ASSET_LABEL = new RegExp(
   "gi",
 );
 
-const PART_LABEL = /\b(?:P\/?N|part\s*(?:no\.?|number)|catalog(?:ue)?\s*(?:no\.?|number)|1P)\s*[:#]?\s*([A-Z0-9][A-Z0-9./-]{5,})/gi;
+// The labels a nameplate prints its part under. MODEL / MOD. / TYPE / CAT. are
+// how a drive, motor or sensor plate names the one code that identifies the
+// product (owner decision 2026-11-07: the plate builds the notebook), so they
+// count exactly like P/N. The value must carry a digit: "model number please"
+// and "which type is it" are prose, never a code.
+const PART_LABEL =
+  /\b(?:P\/?N|part\s*(?:no\.?|number)|catalog(?:ue)?\s*(?:no\.?|number)|cat\.?(?:\s*(?:no\.?|number))?|model(?:\s*(?:no\.?|number))?|mod\.?|type|1P)\s*[:#]?\s*((?=[A-Z0-9./-]*\d)[A-Z0-9][A-Z0-9./-]{5,})/gi;
 /** A trailing "." / "-" / "/" is sentence punctuation, not part of the code (#4150 F4). */
 const trimCode = (code: string) => code.replace(/[./-]+$/, "");
 /** Quotes are label punctuation, never identifier characters (#4150 F1/F4); invisible
@@ -62,22 +68,7 @@ const normalize = (t: string) => t.replace(/[\u00ad\u200b-\u200d\u2060\ufeff]/g,
  */
 export function partCodes(photoText: string): string[] {
   const text = normalize(photoText);
-  // A serial number must never be sent to web search (ADR-0036). Fail closed
-  // (#4150 r2 F1): every code-shaped token within reach of a serial label is a
-  // serial, whatever the separator ("S/N = …", "Serial number is …", "(…)").
-  const serials = new Set<string>();
-  for (const m of text.matchAll(SERIAL_LABEL)) {
-    const after = text.slice((m.index ?? 0) + m[0].length, (m.index ?? 0) + m[0].length + 40);
-    // The value directly after the label ("S/N = X", "Serial number is X", "(X)").
-    const code = after.match(/^[^A-Za-z0-9]*(?:is\b)?\s*([A-Z0-9][A-Z0-9./-]{3,})/i);
-    if (code) serials.add(trimCode(code[1]).toUpperCase());
-    // A suffix label marks the code just before it: "AB-1234567 (S/N)" — or,
-    // when NO value follows the label, a bare "AB-1234567 SER." (never when a
-    // value does follow: "SY3120-5LZD Serial AB-1234567" keeps its model).
-    const before = text.slice(Math.max(0, (m.index ?? 0) - 40), m.index ?? 0);
-    const prior = before.match(/([A-Z0-9][A-Z0-9./-]{3,})\s*[(\[]\s*$/i) ?? (code ? null : before.match(/([A-Z0-9][A-Z0-9./-]{3,})[^A-Za-z0-9]+$/i));
-    if (prior) serials.add(trimCode(prior[1]).toUpperCase());
-  }
+  const serials = new Set(serialCodes(photoText));
   const labelled = [...text.matchAll(PART_LABEL)].map((m) => trimCode(m[1]));
   // Any serial label on the photo means only an explicitly labelled part number
   // is safe, even when the serial's value could not be parsed ("AB-1234567 S/N",
@@ -95,6 +86,32 @@ export function partCodes(photoText: string): string[] {
     .filter((code) => !/^X00[A-Z0-9]{7}$/i.test(code))
     .filter((code) => !/^\d+(?:\.\d+)?(?:\s*(?:-|to|\/)\s*\d+(?:\.\d+)?)?\s*(?:VAC|VDC|V|A|HZ|KHZ|W|KW|KVA|MA)$/i.test(code));
   return [...new Map(found.map((code) => [code.toUpperCase(), code])).values()];
+}
+
+/**
+ * Every code the text marks as a serial number, upper-cased (ADR-0036). A
+ * serial number must never be sent to web search. Fail closed (#4150 r2 F1):
+ * every code-shaped token within reach of a serial label is a serial, whatever
+ * the separator ("S/N = …", "Serial number is …", "(…)"). Exported so the ONE
+ * candidate validator can refuse a serial the photo excluded when the
+ * technician types it back (#4172 Codex post-cap F6).
+ */
+export function serialCodes(photoText: string): string[] {
+  const text = normalize(photoText);
+  const serials = new Set<string>();
+  for (const m of text.matchAll(SERIAL_LABEL)) {
+    const after = text.slice((m.index ?? 0) + m[0].length, (m.index ?? 0) + m[0].length + 40);
+    // The value directly after the label ("S/N = X", "Serial number is X", "(X)").
+    const code = after.match(/^[^A-Za-z0-9]*(?:is\b)?\s*([A-Z0-9][A-Z0-9./-]{3,})/i);
+    if (code) serials.add(trimCode(code[1]).toUpperCase());
+    // A suffix label marks the code just before it: "AB-1234567 (S/N)" — or,
+    // when NO value follows the label, a bare "AB-1234567 SER." (never when a
+    // value does follow: "SY3120-5LZD Serial AB-1234567" keeps its model).
+    const before = text.slice(Math.max(0, (m.index ?? 0) - 40), m.index ?? 0);
+    const prior = before.match(/([A-Z0-9][A-Z0-9./-]{3,})\s*[(\[]\s*$/i) ?? (code ? null : before.match(/([A-Z0-9][A-Z0-9./-]{3,})[^A-Za-z0-9]+$/i));
+    if (prior) serials.add(trimCode(prior[1]).toUpperCase());
+  }
+  return [...serials];
 }
 
 export function unambiguousPartNumber(photoText: string): string | null {

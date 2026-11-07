@@ -106,7 +106,6 @@ vi.mock("@/capabilities/notebook-manual-acquisition", async () => {
   return {
     ...actual,
     acquisitionEnabled: vi.fn(() => false),
-    candidateAcquisitionEnabled: vi.fn(() => false),
     readAcquisition: vi.fn(async () => null as unknown),
     reconcileAcquisition: vi.fn(async (_t: string, _n: string, r: unknown) => r),
     startManualAcquisition: vi.fn(async () => false),

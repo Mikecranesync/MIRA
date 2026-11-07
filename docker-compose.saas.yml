@@ -955,15 +955,21 @@ services:
       - ASK_API_KEY=${ASK_API_KEY:-}
       # Sent as X-Mira-Key to /manual-discovery/search only (#4160 S2).
       - MANUAL_DISCOVERY_API_KEY=${MANUAL_DISCOVERY_API_KEY:-}
-      # #4406: background manual search for a technician-confirmed identity, plus the
-      # manual harvester (/api/manual-harvester) that shares this switch. Off unless
-      # set in Doppler prd; same shape as docker-compose.staging-vps.yml.
-      - MIRA_NOTEBOOK_MANUAL_ACQUISITION=${MIRA_NOTEBOOK_MANUAL_ACQUISITION:-0}
-      # Comma-separated tenant UUIDs that the switch above applies to. Blank = every
-      # tenant, so set this BEFORE turning the switch on in prd.
-      - MIRA_NOTEBOOK_MANUAL_ACQUISITION_TENANTS=${MIRA_NOTEBOOK_MANUAL_ACQUISITION_TENANTS:-}
-      # #4160 S6 candidate takeover: off until a client can confirm a candidate identity.
-      - MIRA_NOTEBOOK_CANDIDATE_ACQUISITION=${MIRA_NOTEBOOK_CANDIDATE_ACQUISITION:-0}
+      # The ONE kill switch for the automatic official-manual search (confirmed
+      # identity, nameplate photo, and /api/manual-harvester alike). ON by default
+      # (owner decision 2026-11-07: the photo builds the notebook); set exactly 0
+      # in Doppler prd to stop it. The tenant allowlist and the separate
+      # candidate flag are gone. Same shape as docker-compose.staging-vps.yml.
+      - MIRA_NOTEBOOK_MANUAL_ACQUISITION=${MIRA_NOTEBOOK_MANUAL_ACQUISITION:-1}
+      # Emergency rollback levers for the notebook chat's safety layers. Each is ON
+      # by default in code; forwarding them here is what lets a Doppler 0 actually
+      # reach the container (#3328: a flag the compose file does not pass through
+      # cannot be pulled in an emergency). Never set 0 outside an incident.
+      - NOTEBOOK_ANSWER_GATE=${NOTEBOOK_ANSWER_GATE:-1}
+      - NOTEBOOK_ENERGIZED_HARD_STOP=${NOTEBOOK_ENERGIZED_HARD_STOP:-1}
+      - NOTEBOOK_SEMANTIC_CHECK=${NOTEBOOK_SEMANTIC_CHECK:-1}
+      - NODE_DOC_PROPOSALS=${NODE_DOC_PROPOSALS:-1}
+      - NODE_EMBED_ON_WRITE=${NODE_EMBED_ON_WRITE:-1}
       # Nameplate crop-then-recognize (src/lib/nameplate/detect.ts): ONE shared
       # switch with the mira-ask endpoint above — the hub only calls
       # /nameplate/detect when this is "1", so a single Doppler flip turns the

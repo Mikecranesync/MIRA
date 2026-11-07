@@ -100,41 +100,20 @@ export interface ConfirmedIdentity {
 }
 
 /**
- * Off unless explicitly enabled — eval harnesses create confirmed notebooks too.
- *
- * MIRA_NOTEBOOK_MANUAL_ACQUISITION_TENANTS (comma-separated tenant UUIDs) narrows
- * the switch to those tenants — how production is turned on for one customer
- * first. Unset or blank keeps the switch server-wide (staging today). Set the
- * list BEFORE flipping the main switch on a server that should stay narrow.
- * The tenant is required so every gate site states whose request it is.
+ * The ONE kill switch for the automatic official-manual search — ON unless
+ * MIRA_NOTEBOOK_MANUAL_ACQUISITION is exactly "0" (owner decision 2026-11-07:
+ * the photo builds the notebook, and a technician must never have to find the
+ * switch before it works). It covers the confirmed-identity search, the
+ * photo-basis search and the `/api/manual-harvester` route alike; the former
+ * tenant allowlist and the separate MIRA_NOTEBOOK_CANDIDATE_ACQUISITION flag
+ * are gone. The tenant stays on the signature so every gate site still states
+ * whose request it is.
  */
 export function acquisitionEnabled(
-  tenantId: string | null | undefined,
+  _tenantId: string | null | undefined,
   env: Record<string, string | undefined> = process.env,
 ): boolean {
-  if ((env.MIRA_NOTEBOOK_MANUAL_ACQUISITION ?? "").trim() !== "1") return false;
-  const allow = (env.MIRA_NOTEBOOK_MANUAL_ACQUISITION_TENANTS ?? "")
-    .split(",")
-    .map((t) => t.trim().toLowerCase())
-    .filter(Boolean);
-  if (allow.length === 0) return true;
-  const t = (tenantId ?? "").trim().toLowerCase();
-  return t !== "" && allow.includes(t);
-}
-
-/**
- * #4160 S6 candidate takeover (the RC1 identity proposal from a label read,
- * the candidate-basis background search, and the replacement of #4171's
- * explicit search chip) — gated behind its OWN flag until a client can
- * confirm a candidate identity (#4175; Codex #4172 F13). Requires the base
- * flag too. Off (the default everywhere): the chat behaves exactly as before
- * S6. Only the exact value "1" enables it.
- */
-export function candidateAcquisitionEnabled(
-  tenantId: string | null | undefined,
-  env: Record<string, string | undefined> = process.env,
-): boolean {
-  return acquisitionEnabled(tenantId, env) && (env.MIRA_NOTEBOOK_CANDIDATE_ACQUISITION ?? "").trim() === "1";
+  return (env.MIRA_NOTEBOOK_MANUAL_ACQUISITION ?? "1").trim() !== "0";
 }
 
 function clean(v: string | null | undefined): string {
@@ -441,16 +420,16 @@ const NOTEBOOK_KEY_SQL = `upper(regexp_replace(coalesce(n.manufacturer, ''), '[^
  * `identity_status = 'user_confirmed'` — the notebook may be wholly unbound —
  * but if it IS confirmed, it must be confirmed to THIS exact key (a
  * different confirmed identity is not this search's owner, same as
- * "confirmed" basis). A candidate-basis write never enables a source UNLESS,
- * at this exact instant, the notebook turns out to already be confirmed to
- * the matching key (the common race: the technician confirms the identity
- * before the search finishes) — then it promotes using the REAL applicability
- * verdict this write carries (`candidateApplicability`, stamped by
- * manual-acquisition.ts), exactly as a "confirmed" write would. Otherwise it
- * is forced to match_state='candidate', enabled_by_default=false regardless
- * of what `patch` asked for (acquireManualForIdentity already forces
- * promote=false for candidate basis, so this is normally a no-op override —
- * it is the fence of record, not a formality).
+ * "confirmed" basis). A candidate-basis write enables the source exactly when
+ * the manual's OWN text verified the model (`candidateApplicability`
+ * "verified", stamped by manual-acquisition.ts) — owner decision 2026-11-07:
+ * the photo built the notebook, so the manual the photo found answers
+ * without a confirm step. It is labelled `sourceLabel: "from_photo"` so the
+ * Sources list can say where it came from; "wrong machine" is the existing
+ * source reject (PATCH matchState "rejected"), and confirming a DIFFERENT
+ * identity later revokes it (migration 101). Any other verdict is forced to
+ * match_state='candidate', enabled_by_default=false regardless of what
+ * `patch` asked for — the fence of record, not a formality.
  */
 export function fencedWriter(key: string, gen: string, basis: "confirmed" | "candidate" = "confirmed"): SourceStateWriter {
   return async (tenantId, notebookId, docId, patch) => {
@@ -480,8 +459,12 @@ export function fencedWriter(key: string, gen: string, basis: "confirmed" | "can
         );
         const row0 = owner.rows[0];
         if (!row0) return current();
-        const evidence: Record<string, unknown> = { ...patch.matchEvidence, autoAcquisitionKey: key };
-        const promoteNow = basis === "candidate" && row0.confirmed_same_key === true && evidence.candidateApplicability === "verified";
+        const evidence: Record<string, unknown> = {
+          ...patch.matchEvidence,
+          autoAcquisitionKey: key,
+          ...(basis === "candidate" ? { sourceLabel: "from_photo" } : {}),
+        };
+        const promoteNow = basis === "candidate" && evidence.candidateApplicability === "verified";
         const matchState = basis === "confirmed" ? patch.matchState : promoteNow ? "verified" : "candidate";
         const enabledByDefault = basis === "confirmed" ? patch.enabledByDefault : promoteNow;
         const written = await c.query<{ match_state: string; enabled_by_default: boolean }>(
@@ -968,18 +951,18 @@ export function acquisitionDeclineText(
     return `I found a manual for the ${label} earlier, but it's no longer in this notebook's Sources, so I can't answer from it. If you need it, add it back or upload the manual, and ask again — I'll answer from it and show you the page.`;
   }
   if (basis === "candidate") {
+    // Photo basis (owner decision 2026-11-07): the plate named the machine, so
+    // the copy says so and never sends the technician to a switch — a manual
+    // whose text verifies the model lands ON (fencedWriter above).
     switch (rec.state) {
       case "running":
-        return `I'm looking for the official ${label} manual now. When I find it, it'll be saved to this notebook's Sources, turned off until you check it — turn it on there if it's right and ask again, and I'll answer from it and show you the page.`;
-      // candidate_review (Codex post-cap 4 F9 / 13 F13 / 14 F13): never a
-      // promise about confirmation — no shipping client can confirm an
-      // EXISTING notebook's identity (#4095 / #3626). The shared copy below
-      // gives the one real next step: check it in Sources and turn it on, or
-      // the URL and the upload instruction. `promotes_on_confirm` stays on the
-      // record so a client that ships confirmation later can use it.
-      // "complete" (Codex post-cap 6 F11): a cached complete record can outlive a
-      // later revocation, and confirming never re-enables a revoked source, so
-      // the shared copy below (pointing at Sources) is used instead of a promise.
+        return `I read the ${label} off your photo and I'm looking for the official ${label} manual now. When I find it, it'll be added to this notebook's Sources and turned on — ask again and I'll answer from it and show you the page.`;
+      case "complete":
+        return `I found the official ${label} manual from your photo and added it to this notebook's Sources, switched on. Ask again and I'll answer from it and show you the page.`;
+      // candidate_review (Codex post-cap 4 F9 / 13 F13 / 14 F13): the manual's
+      // text did NOT verify this model, so the shared copy below gives the one
+      // real next step: check it in Sources, or the URL and the upload
+      // instruction. Never a promise about confirmation.
       default:
         break;
     }
