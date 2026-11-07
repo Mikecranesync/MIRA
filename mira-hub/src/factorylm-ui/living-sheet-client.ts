@@ -622,8 +622,15 @@ export async function clearSheetDataForSignOut(
     new Promise<boolean>((r) => (timer = setTimeout(() => r(false), drainWaitMs))),
   ]);
   clearTimeout(timer);
+  // Codex #5276 r4: ask BEFORE purging when a replay is still sending. The
+  // queue holds the only copy of that note until the server answers, so
+  // Cancel must leave storage untouched.
+  if (!drained && !confirm(SIGN_OUT_STILL_SENDING_PROMPT)) {
+    sheetSignOutBarrier = false;
+    return false;
+  }
   const { remaining } = await purgeSheetQueues(store);
-  const leftBehind = drained ? signOutPurgeFailedPrompt(remaining) : SIGN_OUT_STILL_SENDING_PROMPT;
+  const leftBehind = signOutPurgeFailedPrompt(remaining);
   const proceed = !leftBehind || confirm(leftBehind);
   // A signed-out page keeps the barrier; Cancel keeps the technician working.
   if (!proceed) sheetSignOutBarrier = false;
