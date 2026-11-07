@@ -69,7 +69,11 @@ const normalize = (t: string) => t.replace(/[\u00ad\u200b-\u200d\u2060\ufeff]/g,
 export function partCodes(photoText: string): string[] {
   const text = normalize(photoText);
   const serials = new Set(serialCodes(photoText));
-  const labelled = [...text.matchAll(PART_LABEL)].map((m) => trimCode(m[1]));
+  // #5268 Codex r5: only GENUINE part labels outside a private field count
+  // ("Asset tag: PN12345678" labels nothing) — the same reader the candidate
+  // gate trusts, so extraction and the gate cannot disagree.
+  const genuine = new Set(labelledPartCodes(photoText));
+  const labelled = [...text.matchAll(PART_LABEL)].map((m) => trimCode(m[1])).filter((c) => genuine.has(c.toUpperCase()));
   // Any serial label on the photo means only an explicitly labelled part number
   // is safe, even when the serial's value could not be parsed ("AB-1234567 S/N",
   // "AB-1234567 serial number") — #4150 review r4 F1. A customer-assigned
@@ -135,7 +139,7 @@ export function privateIdentifierKeys(text: string): Set<string> {
     "i",
   );
   const VALUE_AFTER = new RegExp(
-    String.raw`^[^A-Za-z0-9]*(?:(?:${ID_WORD})(?![a-z])[^A-Za-z0-9]*)*(?:is\b)?\s*((?=[A-Z0-9./ \t-]*\d)[A-Z0-9][A-Z0-9./-]*(?:[ \t]+[A-Z0-9][A-Z0-9./-]*){0,2})`,
+    String.raw`^[^A-Za-z0-9]*(?:(?:${ID_WORD})(?![a-z])[^A-Za-z0-9]*)*(?:is\b)?\s*((?!(?:P\/?N|part|cat(?:alog(?:ue)?)?|model|mod|type|1P)(?![A-Za-z0-9]))(?=[A-Z0-9./ \t-]*\d)[A-Z0-9][A-Z0-9./-]*(?:[ \t]+(?=[A-Z0-9-]*\d)[A-Z0-9][A-Z0-9-]*){0,2})`,
     "i",
   );
   for (const label of [SERIAL_LABEL, ASSET_LABEL]) {
@@ -174,9 +178,29 @@ export function privateIdentifierKeys(text: string): Set<string> {
  * another label in the typed text can never make it eligible.
  */
 export function labelledPartCodes(text: string): string[] {
+  const t = normalize(text);
+  // #5268 Codex r5: a private field owns its value. Blank every serial/asset
+  // label and the value in its field ("Asset tag: PN12345678") so a label
+  // word INSIDE that value can never read as a part label.
+  const masked = [...t];
+  const FIELD_VALUE = new RegExp(
+    String.raw`^[^A-Za-z0-9\r\n,;)]*(?:(?:${ID_WORD})(?![a-z])[^A-Za-z0-9\r\n,;)]*)*(?:is\b)?[ \t]*(?:(?!(?:P\/?N|part|cat(?:alog(?:ue)?)?|model|mod|type|1P)(?![A-Za-z0-9]))[A-Z0-9][A-Z0-9./-]*(?:[ \t]+(?=[A-Z0-9-]*\d)[A-Z0-9][A-Z0-9-]*){0,2})?`,
+    "i",
+  );
+  for (const label of [SERIAL_LABEL, ASSET_LABEL]) {
+    for (const m of t.matchAll(new RegExp(label.source, "gi"))) {
+      const from = m.index ?? 0;
+      const tail = t.slice(from + m[0].length).match(FIELD_VALUE)?.[0] ?? "";
+      for (let i = from; i < from + m[0].length + tail.length && i < masked.length; i++) masked[i] = " ";
+    }
+  }
+  // A genuine part label is followed by a separator (":", "#" or a space)
+  // before its value — "PN12345678" is one token, not a label and a value.
+  const GENUINE_PART_LABEL = new RegExp(PART_LABEL.source.replace(String.raw`\s*[:#]?\s*(`, String.raw`(?:\s*[:#]\s*|\s+)(`), "gi");
   const serials = new Set(serialCodes(text));
-  const codes = [...normalize(text).matchAll(PART_LABEL)].map((m) => trimCode(m[1]).toUpperCase());
-  return [...new Set(codes.filter((c) => !serials.has(c)))];
+  const privateKeys = [...privateIdentifierKeys(text)];
+  const codes = [...masked.join("").matchAll(GENUINE_PART_LABEL)].map((m) => trimCode(m[1]).toUpperCase());
+  return [...new Set(codes.filter((c) => !serials.has(c) && !privateKeys.some((k) => k.includes(identifierKey(c)))))];
 }
 
 export function unambiguousPartNumber(photoText: string): string | null {

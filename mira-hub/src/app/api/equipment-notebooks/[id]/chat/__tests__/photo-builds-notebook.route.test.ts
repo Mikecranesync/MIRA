@@ -233,6 +233,9 @@ describe("a nameplate photo starts the manual search on the same turn", () => {
     ["a suffix asset tag with a rating on the next line", "SMC 12345678 tag\n24VDC", "Find the manual for SMC MODEL: 12345678"],
     ["a spaced value before a bracketed asset tag", "Siemens TP 1200 (asset tag)", "Find the manual for Siemens MODEL: TP1200"],
     ["a spaced value before a bracketed serial label", "Siemens TP 1200 (S/N)", "Find the manual for Siemens MODEL: TP1200"],
+    ["a P/N-looking asset value", "SMC Asset tag: PN12345678", "Find the manual for this"],
+    ["a P/N-looking serial value", "SMC S/N: PN12345678", "Find the manual for this"],
+    ["a TYPE-looking asset value", "SMC Asset tag: TYPE12345678", "Find the manual for this"],
   ])("%s → no search, no proposal of it", async (_name, plate, message) => {
     visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
       observationId: "obs", sessionId: "session", text: plate, obsKind: "look", trust: "candidate", fileId: PHOTO, hazards: [],

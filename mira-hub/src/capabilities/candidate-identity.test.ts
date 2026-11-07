@@ -235,6 +235,17 @@ describe("isSafeCandidateSearchIdentity", () => {
       ["spaced bracketed suffix asset", "Siemens TP 1200 (asset tag)", "TP1200"],
       ["spaced bracketed suffix serial", "Siemens TP 1200 (S/N)", "TP1200"],
     ];
+    // r5: a part-label word INSIDE a private value never makes a fragment of
+    // it the photo's labelled part.
+    it.each([
+      ["SMC Asset tag: PN12345678"], ["SMC S/N: PN12345678"], ["SMC Asset tag: TYPE12345678"], ["SMC Asset tag: CAT12345678"],
+    ])("r5: a label word inside the private value (%s) never yields a searchable fragment", (photo) => {
+      expect(isSafeCandidateSearchIdentity(photo, "Find the manual for this", "12345678", "SMC")).toBe(false);
+      expect(isSafeCandidateSearchIdentity(photo, "Find the manual for SMC MODEL: 12345678", "12345678", "SMC")).toBe(false);
+    });
+    it("r5: a label glued to its value is one token, not a label (SMC PN12345678 beside a serial)", () => {
+      expect(isSafeCandidateSearchIdentity("SMC PN12345678 S/N: XC-99887766", "Find the manual for this", "12345678", "SMC")).toBe(false);
+    });
     const typedForms = (v: string, maker: string) => [
       `Find the manual for ${maker} MODEL: ${v}`,
       `Find the manual for ${maker} P/N: ${v}`,
@@ -251,6 +262,7 @@ describe("isSafeCandidateSearchIdentity", () => {
       ["Siemens P/N: 6ES7214-1AG40-0XB0 S/N: XC-99887766", "6ES7214-1AG40-0XB0", "Siemens"],
       ["SMC P/N: SY3120-5LZD (asset tag 00123456)", "SY3120-5LZD", "SMC"],
       ["AutomationDirect MODEL: GS11N-20P2\nSERIAL NO: 7A3K9Q2026X11", "GS11N-20P2", "AutomationDirect"],
+      ["SMC MODEL SY3120-5LZD, Asset tag: PN12345678", "SY3120-5LZD", "SMC"],
     ])("control: the photo's labelled part beside a private label still searches (%s)", (photo, part, maker) => {
       expect(isSafeCandidateSearchIdentity(photo, "Find the manual for this", part, maker)).toBe(true);
     });
