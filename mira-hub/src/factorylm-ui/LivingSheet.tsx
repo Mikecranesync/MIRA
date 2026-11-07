@@ -405,7 +405,7 @@ function NotAcceptedSection({
   return (
     <section style={SECTION_STYLE} data-testid="living-sheet-not-accepted">
       <h3 style={{ marginTop: 0 }}>Not accepted</h3>
-      <p style={{ fontSize: "15px", color: "var(--fl-muted)" }}>Kept on this phone until you dismiss it.</p>
+      <p style={{ fontSize: "15px", color: "var(--fl-muted)" }}>Kept on this phone until you dismiss it or sign out.</p>
       {error && <p role="alert">{error}</p>}
       {rows.map((r) => (
         <p key={r.event.clientEventId} role="alert">
