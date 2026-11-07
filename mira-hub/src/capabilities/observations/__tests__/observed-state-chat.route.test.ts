@@ -191,6 +191,31 @@ describe("observed state in the chat prompt", () => {
     expect(replayed).toEqual(liveObserved);
   });
 
+  // Codex #5104 r2 F5: a turn persisted before #5106 has no contributorCount. Its replay
+  // must still carry the stored provenance exactly, without inventing a total.
+  it("replay of a pre-#5106 entry (no contributorCount) re-sends it as stored", async () => {
+    const clientRequestId = "9c1e8b6f-4d20-4b3c-8d5e-6f7a8b9c0d1e";
+    const legacy = { kind: "observed_state", stateVersion: "sv-legacy-1", observationIds: [OBS_ID] };
+    const counted = { kind: "observed_state", stateVersion: "sv-new-1", observationIds: [OBS_ID], contributorCount: 3 };
+    storeFor({ [PUMP07]: [] });
+    const replayOf = async (entry: object) => {
+      nbMock.claimNotebookTurnRequest.mockResolvedValueOnce({
+        status: "replay",
+        turn: { id: "turn-1", question: QUESTION, answerStatus: "answered", answerText: "Check the seal faces first.",
+          enabledSourceDocIds: ["d1"], evidence: [entry], model: "m", basis: "oem_documentation" },
+      });
+      const res = await POST(req({ message: QUESTION, clientRequestId }), params);
+      expect(res.headers.get("X-Idempotent-Replay")).toBe("true");
+      return ((await frames(res)).find((f) => f.kind === "evidence") as Record<string, unknown> | undefined)?.observedState;
+    };
+
+    const legacyFrame = await replayOf(legacy);
+    expect(legacyFrame).toEqual({ stateVersion: "sv-legacy-1", observationIds: [OBS_ID] });
+    expect(legacyFrame).not.toHaveProperty("contributorCount");
+
+    expect(await replayOf(counted)).toEqual({ stateVersion: "sv-new-1", observationIds: [OBS_ID], contributorCount: 3 });
+  });
+
   it("a notebook bound to a different asset gets no observed section", async () => {
     nbMock.resolveBoundAsset.mockResolvedValue(boundTo(PUMP_B));
     const res = await POST(req({ message: QUESTION }), params);

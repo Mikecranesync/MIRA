@@ -10,8 +10,9 @@ import { deriveObservedState } from "./project";
 import { renderObservedStateSection } from "./context";
 
 /** stateVersion covers every contributor; observationIds are the ones the prompt listed
- *  (bounded, #5106); contributorCount says how many exist in all. */
-export type ObservedStateFrame = { stateVersion: string; observationIds: string[]; contributorCount: number };
+ *  (bounded, #5106); contributorCount says how many exist in all. Turns persisted before
+ *  #5106 carry no count, and a replay of one sends none rather than inventing a total. */
+export type ObservedStateFrame = { stateVersion: string; observationIds: string[]; contributorCount?: number };
 
 export type ObservedTurnContext = {
   section: string;
@@ -47,9 +48,13 @@ export function observedStateEntry(frame: ObservedTurnContext["frame"]): Observe
     : null;
 }
 
-/** The frame a replay re-sends, exactly as persisted. */
+/** The frame a replay re-sends, exactly as persisted (a pre-#5106 entry has no count). */
 export function observedStateFrameOf(entry: ObservedStateEntry): ObservedStateFrame {
-  return { stateVersion: entry.stateVersion, observationIds: entry.observationIds, contributorCount: entry.contributorCount };
+  return {
+    stateVersion: entry.stateVersion,
+    observationIds: entry.observationIds,
+    ...(entry.contributorCount === undefined ? {} : { contributorCount: entry.contributorCount }),
+  };
 }
 
 export function isObservedStateEntry(entry: unknown): entry is ObservedStateEntry {
@@ -60,6 +65,6 @@ export function isObservedStateEntry(entry: unknown): entry is ObservedStateEntr
     typeof e.stateVersion === "string" &&
     Array.isArray(e.observationIds) &&
     e.observationIds.every((id) => typeof id === "string") &&
-    Number.isInteger(e.contributorCount)
+    (e.contributorCount === undefined || Number.isInteger(e.contributorCount))
   );
 }
