@@ -775,6 +775,114 @@ def receipts_block(
     ]
 
 
+def _paid_adjudication_source(number: int, prior_report: str, head_sha: str, diff: str) -> dict:
+    """Bind a complete original review to the live owner/head evidence window.
+
+    Return an immutable-value snapshot for the post-time comparison. A local
+    report, an adjudication chain, or a newer scoped review cannot certify a PR.
+    """
+    from cheap_review_check import _is_owner_user, head_state, parse_envelope
+
+    if not re.fullmatch(r"[0-9a-f]{40}", head_sha) or current_head(number) != head_sha:
+        raise ValueError("the prior head is no longer current")
+    repo = _gh_json(["repo", "view", "--json", "nameWithOwner,owner"])
+    if not isinstance(repo, dict) or not isinstance(repo.get("owner"), dict):
+        raise ValueError("malformed repository identity")
+    owner = (repo.get("owner") or {}).get("login")
+    slug = repo.get("nameWithOwner")
+    if not isinstance(owner, str) or not isinstance(slug, str) or not slug.startswith(owner + "/"):
+        raise ValueError("cannot establish the repository owner")
+    pages = _gh_json(["api", f"repos/{slug}/issues/{number}/comments", "--paginate", "--slurp"])
+    if not isinstance(pages, list) or any(not isinstance(page, list) for page in pages):
+        raise ValueError("incomplete or malformed paginated review comments")
+    comments = [comment for page in pages for comment in page]
+    if any(not isinstance(comment, dict) for comment in comments):
+        raise ValueError("malformed review comment")
+    trusted = []
+    for comment in comments:
+        user = comment.get("user") or {}
+        if not isinstance(user, dict):
+            raise ValueError("malformed comment author")
+        envelope = parse_envelope(comment.get("body"))
+        if (
+            isinstance(comment.get("id"), int)
+            and _is_owner_user(user.get("login"), user.get("type"), owner)
+            and envelope is not None
+            and envelope["head"] == head_sha
+        ):
+            trusted.append((comment["id"], envelope, comment))
+    trusted.sort(key=lambda item: item[0])
+    if not trusted or trusted[-1][1]["scope"] != "full":
+        raise ValueError("the latest trusted same-head review must be full scope")
+    comment_id, envelope, comment = trusted[-1]
+    state = head_state(comments, owner, head_sha)
+    if state is None or state[2]["id"] != comment_id or state[1]["run_id"] != envelope["run_id"]:
+        raise ValueError("the canonical review window does not bind this prior")
+    # Only transport CRLF and trailing newline normalization is allowed. The
+    # canonical producer separates its envelope and complete report by one blank.
+    body = comment["body"].replace("\r\n", "\n")
+    parts = body.split("\n```\n", 2)
+    if len(parts) != 3 or not parts[2].startswith("\n"):
+        raise ValueError("the canonical source has no complete report payload")
+    payload = parts[2][1:].rstrip("\n")
+    supplied = prior_report.replace("\r\n", "\n").rstrip("\n")
+    if supplied != payload:
+        raise ValueError("the supplied prior differs from its live canonical report")
+    if not supplied.startswith(f"# Gate 7 adversarial review — PR #{number}\n"):
+        raise ValueError("the prior is not an original review of this PR")
+    sections = supplied.split("\n## Run receipts\n")
+    if len(sections) != 2 or "\n## Findings\n" not in sections[1]:
+        raise ValueError("missing or ambiguous canonical receipt section")
+    receipt = sections[1].split("\n## Findings\n", 1)[0]
+    verdicts = re.findall(r"^\*\*Verdict:\*\* ([A-Z]+) ·", sections[0], re.MULTILINE)
+    if verdicts != [envelope["verdict"]]:
+        raise ValueError("the envelope and original report verdict differ")
+    digest = hashlib.sha256(diff.encode("utf-8")).hexdigest()
+    required = [
+        rf"^- head: `{re.escape(head_sha)}`$",
+        r"^- excluded by scope \(0\): none$",
+        rf"^- reviewed-diff sha256 \(sent bytes\): `{digest}`$",
+        rf"^- full scoped-diff sha256 \(pre-cap\): `{digest}`$",
+    ]
+    fields = (
+        "- head:",
+        "- excluded by scope",
+        "- reviewed-diff sha256",
+        "- full scoped-diff sha256",
+    )
+    if any(
+        sum(line.startswith(field) for line in receipt.splitlines()) != 1 for field in fields
+    ) or any(len(re.findall(pattern, receipt, re.MULTILINE)) != 1 for pattern in required):
+        raise ValueError("prior head, scope or complete-diff receipt does not match")
+    counts = re.findall(
+        r"^- diff chars sent/total: ([\d,]+)/([\d,]+) \(cap ([\d,]+)\)$",
+        receipt,
+        re.MULTILINE,
+    )
+    if len(counts) != 1:
+        raise ValueError("missing or ambiguous prior diff coverage")
+    sent, total, cap = (int(value.replace(",", "")) for value in counts[0])
+    runs = re.findall(r" · run `([0-9a-f]{32})`$", receipt, re.MULTILINE)
+    if sent != total or total != len(diff) or cap < total or runs != [envelope["run_id"]]:
+        raise ValueError("prior is truncated or has a different run identity")
+    if current_head(number) != head_sha:
+        raise ValueError("the head moved while reading prior provenance")
+    return {
+        "repo": slug,
+        "comment_id": comment_id,
+        "run_id": envelope["run_id"],
+        "payload_sha256": hashlib.sha256(supplied.encode("utf-8")).hexdigest(),
+        "reviews": tuple(
+            (
+                ident,
+                hashlib.sha256(item["body"].encode("utf-8")).hexdigest(),
+                item.get("updated_at"),
+            )
+            for ident, _, item in trusted
+        ),
+    }
+
+
 def call_cascade(
     prompt: str, max_tokens: int = 3000, reasoning_effort: Optional[str] = "high"
 ) -> tuple[Optional[str], str, list[str]]:
@@ -1208,6 +1316,27 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
     receipts = receipts_block(head_sha, a.paths, excluded, diff, "high")
 
+    if a.paid and len(diff) > MAX_DIFF_CHARS:
+        # Neither paid mode may certify a silently truncated diff.
+        sizes: dict[str, int] = {}
+        cur = ""
+        for line in diff.splitlines(keepends=True):
+            if line.startswith("+++ b/"):
+                cur = line[6:].strip()
+            sizes[cur] = sizes.get(cur, 0) + len(line)
+        top = sorted(sizes.items(), key=lambda kv: -kv[1])[:5]
+        print(
+            f"Gate 7: REFUSED — {len(diff):,} diff chars exceed the {MAX_DIFF_CHARS:,} cap and the "
+            "paid lane never truncates. Split with --paths (one PASS per scope) or raise "
+            "--diff-cap. Heaviest files: "
+            + ", ".join(f"{p or '(header)'} ({n:,})" for p, n in top),
+            file=sys.stderr,
+        )
+        return 4
+
+    prior: list[Finding] = []
+    prior_report = ""
+    prior_source = None
     if a.adjudicate:
         try:
             with open(a.adjudicate, encoding="utf-8", errors="replace") as fh:
@@ -1225,98 +1354,51 @@ def main(argv: Optional[list[str]] = None) -> int:
                 file=sys.stderr,
             )
             return 1
-        text, provider, attempts = call_cascade(
-            build_adjudication_prompt(prior_report, redact(rebuttal), diff, prior),
-            max_tokens=24000,
-        )
-        if text is None:
-            print("Gate 7: ENTIRE CASCADE FAILED — no adjudication produced.", file=sys.stderr)
-            for at in attempts:
-                print(f"  · {at}", file=sys.stderr)
-            return 2
-        rulings = parse_rulings(text)
-        verdict = adjudication_verdict(rulings, prior)
-        severity = {fid: f for fid, f in finding_ids(prior)}
-        lines = [
-            f"# Gate 7 adjudication — PR #{a.pr}",
-            "",
-            f"**Verdict:** {verdict} · **Effort:** {level} · **Adjudicator:** {provider or 'none'}",
-            f"**Prior findings:** {len(prior)} · **Rulings:** {len(rulings)} "
-            f"(sustained: {sum(1 for r, _ in rulings if r == 'SUSTAINED')})",
-            "",
-            "> Verdict is computed structurally: rulings must be an exact bijection onto the",
-            "> prior findings by stable id; severity comes from the parsed prior report, never",
-            "> the adjudicator; any SUSTAINED high ⇒ BLOCK; any duplicate/unknown/missing/extra",
-            "> id ⇒ UNKNOWN. Both phases are preserved intact as evidence.",
-            "",
-            *receipts,
-            "",
-            "## Prior findings (structural ids)",
-            "",
-            *[f"- {fid} [{f.severity}] {f.title}" for fid, f in finding_ids(prior)],
-            "",
-            "## Rulings",
-            "",
-        ]
-        if rulings:
-            lines += [
-                f"- **[{r}] {fid}** [{severity[fid].severity if fid in severity else '?'}] "
-                f"{severity[fid].title if fid in severity else '(unknown id)'}"
-                for r, fid in rulings
-            ]
-        else:
-            lines.append("_No structured rulings parsed — see the raw output below._")
-        lines += ["", "## Raw adjudication", "", text, "", "## Cascade attempts", ""]
-        lines += [f"- `{at}`" for at in attempts]
-        report = "\n".join(lines) + "\n"
-        if a.out:
-            with open(a.out, "w", encoding="utf-8") as fh:
-                fh.write(report)
-            print(f"Gate 7 adjudication: {verdict} — written to {a.out}", file=sys.stderr)
-        else:
-            sys.stdout.write(report)
-        return 0
-
-    # gpt-oss reasoning burns out of the same completion budget as the report,
-    # AND scales with input length — a 26k-char diff at High effort consumed a
-    # 12k budget entirely as hidden reasoning (empty message, HTTP 200). Size
-    # for the reasoning, not the visible report.
-    settled = ""
-    if a.settled:
+        if a.paid:
+            if excluded or len(prior_report) > 12000 or len(rebuttal) > 12000:
+                print(
+                    "Gate 7: REFUSED — paid adjudication requires complete, untruncated full-scope inputs.",
+                    file=sys.stderr,
+                )
+                return 1
+            try:
+                prior_source = _paid_adjudication_source(a.pr, prior_report, head_sha, diff)
+            except (subprocess.CalledProcessError, OSError, ValueError, TypeError, KeyError) as e:
+                print(
+                    f"Gate 7: REFUSED — prior review provenance unavailable: {e}", file=sys.stderr
+                )
+                return 1
         try:
-            settled = settled_block([Path(f).read_text(encoding="utf-8") for f in a.settled])
-        except OSError as e:
-            print(f"error: could not read --settled report: {e}", file=sys.stderr)
-            return 1
-    kind = pr_kind(paths)
-    if settled:
-        print(
-            f"Gate 7: {len(a.settled)} prior round(s) supplied as settled context.", file=sys.stderr
-        )
-    if kind != "code":
-        print(
-            f"Gate 7: PR classified as {kind} — briefing the reviewer accordingly.", file=sys.stderr
-        )
-
-    if a.paid and len(diff) > MAX_DIFF_CHARS:
-        # The cutoff guard: the paid lane never reviews a fragment. Refuse,
-        # name the heaviest files, and point at --paths; nothing is sent.
-        sizes: dict[str, int] = {}
-        cur = ""
-        for line in diff.splitlines(keepends=True):
-            if line.startswith("+++ b/"):
-                cur = line[6:].strip()
-            sizes[cur] = sizes.get(cur, 0) + len(line)
-        top = sorted(sizes.items(), key=lambda kv: -kv[1])[:5]
-        print(
-            f"Gate 7: REFUSED — {len(diff):,} diff chars exceed the {MAX_DIFF_CHARS:,} cap and the "
-            "paid lane never truncates. Split with --paths (one PASS per scope) or raise "
-            "--diff-cap. Heaviest files: "
-            + ", ".join(f"{p or '(header)'} ({n:,})" for p, n in top),
-            file=sys.stderr,
-        )
-        return 4
-    prompt = build_prompt(title, body, diff, level, reasons, settled=settled, kind=kind)
+            prompt = build_adjudication_prompt(
+                prior_report, rebuttal if a.paid else redact(rebuttal), diff, prior
+            )
+            # Finding titles also appear outside the prior-data fence. Sanitize
+            # the entire actual outbound prompt, then budget that exact prompt.
+            if a.paid:
+                prompt = redact(prompt)
+        except RuntimeError as e:
+            print(f"Gate 7: no adjudication produced: {e}", file=sys.stderr)
+            return 2
+    else:
+        settled = ""
+        if a.settled:
+            try:
+                settled = settled_block([Path(f).read_text(encoding="utf-8") for f in a.settled])
+            except OSError as e:
+                print(f"error: could not read --settled report: {e}", file=sys.stderr)
+                return 1
+        kind = pr_kind(paths)
+        if settled:
+            print(
+                f"Gate 7: {len(a.settled)} prior round(s) supplied as settled context.",
+                file=sys.stderr,
+            )
+        if kind != "code":
+            print(
+                f"Gate 7: PR classified as {kind} — briefing the reviewer accordingly.",
+                file=sys.stderr,
+            )
+        prompt = build_prompt(title, body, diff, level, reasons, settled=settled, kind=kind)
     usage: dict = {}
     model = ""
     if a.paid:
@@ -1339,7 +1421,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         text, provider, attempts, usage = call_paid(prompt, model)
     else:
         text, provider, attempts = call_cascade(
-            prompt, max_tokens=32000 if level == "xhigh" else 24000
+            prompt, max_tokens=32000 if level == "xhigh" and not a.adjudicate else 24000
         )
     run_id = uuid.uuid4().hex
     launched = bool(model) and not (attempts and attempts[0].startswith("openai: skipped"))
@@ -1383,8 +1465,15 @@ def main(argv: Optional[list[str]] = None) -> int:
         print("Fall back to a substitute panel and RECORD THE DEVIATION.", file=sys.stderr)
         return 2
 
-    findings = parse_findings(text)
-    review = Review(verdict_of(text, findings), findings, provider, text, attempts)
+    rulings = parse_rulings(text) if a.adjudicate else []
+    findings = prior if a.adjudicate else parse_findings(text)
+    review = Review(
+        adjudication_verdict(rulings, prior) if a.adjudicate else verdict_of(text, findings),
+        findings,
+        provider,
+        text,
+        attempts,
+    )
     if a.paid:
         row = paid_row(review.verdict)
         cost = row["cost_usd"]
@@ -1397,12 +1486,55 @@ def main(argv: Optional[list[str]] = None) -> int:
         ]
         _ledger_safely(record_paid_run, a.ledger or default_ledger(), row)
         print(f"Gate 7: paid lane cost ${cost:.4f} ({model})", file=sys.stderr)
-    report = render(review, a.pr, level, reasons, receipts)
+    if a.adjudicate:
+        severity = {fid: finding for fid, finding in finding_ids(prior)}
+        lines = [
+            f"# Gate 7 adjudication — PR #{a.pr}",
+            "",
+            f"**Verdict:** {review.verdict} · **Effort:** {level} · **Adjudicator:** {provider or 'none'}",
+            f"**Prior findings:** {len(prior)} · **Rulings:** {len(rulings)} "
+            f"(sustained: {sum(1 for ruling, _ in rulings if ruling == 'SUSTAINED')})",
+            "",
+            "> Verdict is computed structurally: rulings must be an exact bijection onto the",
+            "> prior findings by stable id; severity comes from the parsed prior report, never",
+            "> the adjudicator; any SUSTAINED high ⇒ BLOCK; any duplicate/unknown/missing/extra",
+            "> id ⇒ UNKNOWN. Both phases are preserved intact as evidence.",
+            "",
+            *receipts,
+        ]
+        if prior_source is not None:
+            lines += [
+                f"- prior source: comment {prior_source['comment_id']} · run `{prior_source['run_id']}` · payload sha256 `{prior_source['payload_sha256']}`",
+                "",
+                "## Prior review (redacted)",
+                "",
+                redact(prior_report),
+            ]
+        lines += ["", "## Prior findings (structural ids)", ""]
+        lines += [
+            f"- {fid} [{finding.severity}] {redact(finding.title) if a.paid else finding.title}"
+            for fid, finding in finding_ids(prior)
+        ]
+        lines += ["", "## Rulings", ""]
+        if rulings:
+            lines += [
+                f"- **[{ruling}] {fid}** [{severity[fid].severity if fid in severity else '?'}] "
+                f"{(redact(severity[fid].title) if a.paid else severity[fid].title) if fid in severity else '(unknown id)'}"
+                for ruling, fid in rulings
+            ]
+        else:
+            lines.append("_No structured rulings parsed — see the raw output below._")
+        lines += ["", "## Raw adjudication", "", text, "", "## Cascade attempts", ""]
+        lines += [f"- `{attempt}`" for attempt in attempts]
+        report = "\n".join(lines) + "\n"
+    else:
+        report = render(review, a.pr, level, reasons, receipts)
 
     if a.out:
         with open(a.out, "w", encoding="utf-8") as fh:
             fh.write(report)
-        print(f"Gate 7: {review.verdict} — written to {a.out}", file=sys.stderr)
+        label = "Gate 7 adjudication" if a.adjudicate else "Gate 7"
+        print(f"{label}: {review.verdict} — written to {a.out}", file=sys.stderr)
     else:
         sys.stdout.write(report)
     if a.post:
@@ -1413,7 +1545,26 @@ def main(argv: Optional[list[str]] = None) -> int:
         # the reviewed verdict is kept on its own line so nothing is lost. A
         # failed re-read is also STALE — never assume the head held.
         live_head = current_head(a.pr)
-        if live_head == head_sha:
+        prior_still_current = True
+        if prior_source is not None:
+            try:
+                _, _, _, live_diff, fetched_head = fetch_pr(a.pr)
+                prior_still_current = (
+                    fetched_head == head_sha
+                    and redact(live_diff) == diff
+                    and _paid_adjudication_source(a.pr, prior_report, head_sha, diff)
+                    == prior_source
+                )
+            except (
+                subprocess.CalledProcessError,
+                OSError,
+                ValueError,
+                TypeError,
+                KeyError,
+                RuntimeError,
+            ):
+                prior_still_current = False
+        if live_head == head_sha and prior_still_current:
             verdict_line = f"verdict: {review.verdict}\n"
         else:
             verdict_line = (
@@ -1421,7 +1572,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 f"current_head: {live_head or 'unknown (re-read failed)'}\n"
             )
             print(
-                f"Gate 7: head moved during review ({head_sha[:12]} -> "
+                f"Gate 7: head moved or prior review changed during review ({head_sha[:12]} -> "
                 f"{(live_head or 'unknown')[:12]}); posting verdict: STALE",
                 file=sys.stderr,
             )
