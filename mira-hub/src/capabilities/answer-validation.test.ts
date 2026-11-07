@@ -792,7 +792,8 @@ describe("#4098: exact-rating match facts and fallback copy", () => {
         expect(running.replacement).toContain("I'm already searching for the official manual");
         expect(running.replacement).toContain("If this is about a fault or a stopped machine");
       }
-      // Codex #4183 F1: a candidate search adds the turn-it-on step.
+      // Codex #4183 F1: a candidate (photo-basis) search says the manual
+      // lands turned ON — never send them to a switch (owner decision 2026-11-07).
       const candidate = validateAnswer({
         answerText,
         question,
@@ -804,10 +805,11 @@ describe("#4098: exact-rating match facts and fallback copy", () => {
       });
       expect(candidate.ok).toBe(false);
       if (!candidate.ok) {
-        expect(candidate.replacement).toContain("turned off until you check it");
+        expect(candidate.replacement).toContain("for the equipment in your photo");
+        expect(candidate.replacement).toContain("turned on");
         expect(candidate.replacement).not.toContain("manufacturer's support");
       }
-      if (!running.ok) expect(running.replacement).not.toContain("turned off until you check it");
+      if (!running.ok) expect(running.replacement).not.toContain("turned on");
       // control: the same answer with no search running keeps the original advice
       const idle = validateAnswer({
         answerText,
@@ -862,8 +864,8 @@ describe("#4185/#4186: a false capability-denial claim while MIRA's own search i
     expect(v.ok).toBe(false);
     if (!v.ok) {
       expect(v.kind).toBe("unsupported_specificity");
-      expect(v.replacement).toContain("I'm already searching for the official manual");
-      expect(v.replacement).toContain("turned off until you check it");
+      expect(v.replacement).toContain("I'm already searching for the official manual for the equipment in your photo");
+      expect(v.replacement).toContain("turned on");
       expect(v.replacement).not.toContain("contact");
     }
   });
