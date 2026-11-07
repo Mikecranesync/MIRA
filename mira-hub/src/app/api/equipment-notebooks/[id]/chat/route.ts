@@ -173,7 +173,14 @@ import {
   type TurnUsage,
 } from "@/lib/inference/canonical-cascade";
 import { notebookCascade } from "@/lib/inference/legacy-cascade";
-import { EDGE_ATTEMPT_TIMEOUT_MS, edgeProfileEnabled, edgeRequestOverrides } from "@/lib/inference/edge-profile";
+import {
+  EDGE_ATTEMPT_TIMEOUT_MS,
+  EDGE_PASSAGES_LABEL,
+  edgeProfileEnabled,
+  edgeRequestOverrides,
+  renderEdgePassages,
+  selectEdgePassages,
+} from "@/lib/inference/edge-profile";
 import { persistTurnUsage } from "@/lib/inference/persist-usage";
 import {
   logProvidersExhausted,
@@ -3614,6 +3621,105 @@ async function handleChatTurn(
       );
     }
   }
+  // #5265 edge profile — "AI finds, manual speaks": on the sealed device the
+  // answer is the retrieved passages themselves, verbatim with page, and no
+  // model runs. The energized-work stop and the no-evidence abstain above still
+  // win; this only replaces the model-written answer.
+  if (edgeProfileEnabled()) {
+    const passages = selectEdgePassages(chunks, citations, message);
+    const edgeText = renderEdgePassages(passages);
+    const edgeCitations = passages.map((p) => p.citation);
+    const answered = passages.length > 0;
+    lifecycleOutcome = answered ? "answered" : "abstained";
+    rec.stage("answer_gate", {
+      invoked: true,
+      decision: answered ? "answered" : "insufficient_evidence",
+      reason: answered ? "edge_verbatim_passages" : "edge_no_passage",
+      answer_chars: edgeText.length,
+      refusal_phrase_matched: false,
+      evidence_phrase_matched: false,
+      safety_classification: "none",
+      evidence_sufficient: answered,
+      ungrounded_unit_claim: false,
+      // Fixed text built from the manual, no generated answer to judge.
+      safety_outcome: {
+        layer: "none", outcome: "allow",
+        flagged: Boolean(safetyTrigger) || electricalHazardDirective || hazardEntries.length > 0,
+        violation: null, semantic_verdict: "not_run",
+      },
+    });
+    const edgePersistSpan = startStage("turn.persist");
+    const edgeTurnRowId = await releaseClaimOnFailure(() => recordTurn(ctx.tenantId, notebookId, {
+      ownerUserId: ctx.userId,
+      threadId,
+      clientRequestId,
+      claimToken: requestClaimToken,
+      question: message,
+      answerStatus: answered ? "answered" : "insufficient_evidence",
+      answerText: edgeText,
+      enabledSourceDocIds: docIds,
+      evidence: [
+        ...disputeEntries,
+        ...(safetyTrigger ? [{ kind: "safety_notice", trigger: safetyTrigger } satisfies SafetyNoticeEntry] : []),
+        ...edgeCitations,
+      ],
+      model: null,
+      basis: answered ? "oem_documentation" : null,
+      ...assetSnapshot,
+    }));
+    const edgeUsage: TurnUsage = {
+      provider: null,
+      model: null,
+      routeReason: "legacy_cascade",
+      inputTokens: null,
+      cachedInputTokens: null,
+      outputTokens: null,
+      costUsdEstimate: null,
+      status: "empty",
+      attempted: [],
+    };
+    await finishAndPersist(edgeTurnRowId, edgeUsage, {
+      answerText: edgeText,
+      citationsPresent: answered,
+      latencyMs: null,
+    });
+    setSpanAttrs({ "mira.persist.outcome": "ok", "mira.turn.row_id": edgeTurnRowId }, edgePersistSpan);
+    endTimed(edgePersistSpan, "persist");
+    endRoot();
+    const edgeStream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        if (rootTraceId) {
+          const traceFrame: NotebookTraceFrame = { kind: "trace", traceId: rootTraceId, turnId };
+          controller.enqueue(enc.encode(sse(traceFrame)));
+        }
+        if (identityDisputed) controller.enqueue(enc.encode(sse(IDENTITY_DISPUTE_FRAME)));
+        if (safetyTrigger) controller.enqueue(enc.encode(sse({ kind: "safety", trigger: safetyTrigger } as NotebookSafetyFrame)));
+        for (const piece of chunkForRelease(edgeText)) {
+          controller.enqueue(enc.encode(sse({ kind: "content", content: piece })));
+        }
+        const sources: NotebookSourcesFrame = { kind: "sources", citations: edgeCitations, sourceSnapshot: docIds };
+        controller.enqueue(enc.encode(sse(sources)));
+        if (answered) {
+          const evidence: NotebookBasisEvidenceFrame = { kind: "evidence", basis: "oem_documentation", label: EDGE_PASSAGES_LABEL };
+          controller.enqueue(enc.encode(sse(evidence)));
+        }
+        const status: NotebookStatusFrame = { kind: "status", status: answered ? "answered" : "insufficient_evidence" };
+        controller.enqueue(enc.encode(sse(status)));
+        controller.enqueue(enc.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+    return new Response(edgeStream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        "X-Accel-Buffering": "no",
+        ...safetyFlagHeaders(safetyTrigger),
+        ...(rootTraceId ? { "x-mira-trace-id": rootTraceId } : {}),
+      },
+    });
+  }
+
   const machineSection = machinePacket
     ? renderMachineEvidenceSection(machinePacket, sanitizeMachineMemoryField)
     : "";
