@@ -45,10 +45,18 @@ import {
   rejectedNoteText,
   recoveredFieldValue,
   localStorageStore,
+  releaseSheetSignOutBarrier,
+  SIGN_OUT_STILL_SENDING_PROMPT,
 } from "../living-sheet-client";
 import type { SheetProposal } from "@/capabilities/living-sheet/propose";
 import type { SheetStepView } from "@/capabilities/living-sheet/reduce";
 import type { NotebookSheetReceiptFrame } from "@/lib/notebook-chat-types";
+
+// A completed sign-out keeps the device-wide barrier (the page is leaving);
+// tests share the module, so lift it between tests.
+afterEach(() => {
+  releaseSheetSignOutBarrier();
+});
 
 function memoryStore(): KvStore {
   const m = new Map<string, string>();
@@ -1230,5 +1238,91 @@ describe("#5212 production adapter under blocked storage", () => {
     expect(await clearSheetDataForSignOut(localStorageStore, (msg) => (asked.push(msg), true))).toBe(true);
     expect(asked).toHaveLength(1);
     expect(Array.from(m.values()).join("\n")).not.toContain("technician words");
+  });
+});
+
+// Codex #5276 round 3: sign-out must not race a replay already talking to the
+// server, or a late rejection writes the technician's words back after the purge.
+describe("#5212 sign-out vs an in-flight replay", () => {
+  function sheetKeys(m: Map<string, string>): string[] {
+    return Array.from(m.keys()).filter((k) => k.startsWith("flm.sheetq") || k.startsWith("flm.sheetrej"));
+  }
+  function mapStore(): { store: KvStore; m: Map<string, string> } {
+    const m = new Map<string, string>();
+    const store: KvStore = {
+      get: async (k) => (m.has(k) ? m.get(k)! : null),
+      set: async (k, v) => (m.set(k, v), true),
+      remove: async (k) => (m.delete(k), true),
+      keys: async () => Array.from(m.keys()),
+    };
+    return { store, m };
+  }
+  function heldRejection(): { submit: () => Promise<SheetSubmitOutcome>; release: () => void; hit: Promise<void> } {
+    let release = (): void => {};
+    let hitResolve = (): void => {};
+    const hit = new Promise<void>((r) => (hitResolve = r));
+    const gate = new Promise<void>((r) => (release = r));
+    const submit = async (): Promise<SheetSubmitOutcome> => {
+      hitResolve();
+      await gate;
+      return { status: "rejected", message: "job_finished" };
+    };
+    return { submit, release, hit };
+  }
+
+  it("a rejection that arrives during sign-out is not left on the phone", async () => {
+    const { store, m } = mapStore();
+    await enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "private technician words"));
+    const held = heldRejection();
+    const drain = drainSheetQueue(store, "t1", "jobA", held.submit, "nb-1");
+    await held.hit;
+    const asked: string[] = [];
+    const signOut = clearSheetDataForSignOut(store, (msg) => (asked.push(msg), true));
+    await new Promise((r) => setTimeout(r, 20));
+    held.release();
+    expect(await signOut).toBe(true);
+    await drain;
+    expect(asked).not.toContain(SIGN_OUT_STILL_SENDING_PROMPT);
+    expect(sheetKeys(m)).toEqual([]);
+    expect(Array.from(m.values()).join("\n")).not.toContain("private technician words");
+  });
+
+  it("while sign-out is clearing, a new note is refused rather than written after the purge", async () => {
+    const { store, m } = mapStore();
+    await enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "first"));
+    const held = heldRejection();
+    const drain = drainSheetQueue(store, "t1", "jobA", held.submit, "nb-1");
+    await held.hit;
+    const signOut = clearSheetDataForSignOut(store, () => true);
+    await new Promise((r) => setTimeout(r, 20));
+    expect((await enqueueSheetEvent(store, "t1", "jobB", noteEvent("n-2", "late words"))).saved).toBe(false);
+    held.release();
+    expect(await signOut).toBe(true);
+    await drain;
+    expect(sheetKeys(m)).toEqual([]);
+  });
+
+  it("after sign-out no new replay starts", async () => {
+    const { store, m } = mapStore();
+    expect(await clearSheetDataForSignOut(store, () => true)).toBe(true);
+    m.set(sheetQueueKey("t1", "jobA"), JSON.stringify([{ event: noteEvent("n-1", "x"), queuedAt: "2026-11-07T00:00:00.000Z", attempts: 0 }]));
+    const submit = vi.fn(async (): Promise<SheetSubmitOutcome> => ({ status: "ok" }));
+    expect(await drainSheetQueue(store, "t1", "jobA", submit, "nb-1")).toBeNull();
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it("a replay that does not finish in time is named, and Cancel lets work continue", async () => {
+    const { store } = mapStore();
+    await enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "slow words"));
+    const held = heldRejection();
+    const drain = drainSheetQueue(store, "t1", "jobA", held.submit, "nb-1");
+    await held.hit;
+    const asked: string[] = [];
+    const proceed = await clearSheetDataForSignOut(store, (msg) => (asked.push(msg), asked.length === 1), undefined, 20);
+    expect(proceed).toBe(false);
+    expect(asked[asked.length - 1]).toBe(SIGN_OUT_STILL_SENDING_PROMPT);
+    held.release();
+    await drain;
+    expect((await enqueueSheetEvent(store, "t1", "jobB", noteEvent("n-2", "after cancel"))).saved).toBe(true);
   });
 });
