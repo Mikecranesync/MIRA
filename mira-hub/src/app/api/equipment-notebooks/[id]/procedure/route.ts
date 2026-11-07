@@ -25,6 +25,7 @@ import {
   proceduresFor,
   viewSession,
   supersededView,
+  unverifiedRevisionView,
 } from "@/capabilities/diagnostic-plan/guided";
 import {
   appendRecord,
@@ -49,7 +50,11 @@ function sessionPayload(session: GuidedSession | null) {
   const proc = MANUFACTURER_PROCEDURES.find((p) => p.template.id === session.templateId);
   if (!proc) return null;
   const superseded = session.templateVersion !== (proc.template.version ?? "");
-  const view = superseded ? supersededView(proc.template, session.run, session.templateVersion) : viewSession(proc.template, session.run);
+  const view = superseded
+    ? supersededView(proc.template, session.run, session.templateVersion)
+    : session.revision !== "exact"
+      ? unverifiedRevisionView(proc.template, session.run)
+      : viewSession(proc.template, session.run);
   return {
     sessionId: session.id,
     recordCount: session.run.records.length,
@@ -127,7 +132,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       templateId: template.id,
       templateVersion: template.version ?? "",
       sourceSha256: template.source?.fileSha256 ?? "",
-      revision: offered.applicability.applies ? offered.applicability.revision : ("not_attached" as const),
+      revision: offered.applicability.revision,
       startedBy: ctx.userId ?? null,
     };
     if (body.op === "restart") {
@@ -152,6 +157,14 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (latest.templateVersion !== (template.version ?? "")) {
     return NextResponse.json(
       { error: "procedure_version_changed", message: "This procedure was updated. Start again.", session: sessionPayload(latest) },
+      { status: 409 },
+    );
+  }
+
+  // A session started without the exact manual attached is never continued, even once it is attached.
+  if (latest.revision !== "exact") {
+    return NextResponse.json(
+      { error: "manual_not_verified", message: "This session was started without the manual attached. Start again.", session: sessionPayload(latest) },
       { status: 409 },
     );
   }

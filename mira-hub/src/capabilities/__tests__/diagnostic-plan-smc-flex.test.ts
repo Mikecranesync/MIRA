@@ -9,9 +9,12 @@ import { validateTemplate } from "../diagnostic-plan/validate";
 import {
   buildRecord,
   checkApplicability,
+  currentGuidance,
   escalationQuestion,
   evaluateMeasurement,
   MANUFACTURER_PROCEDURES,
+  proceduresFor,
+  QUALIFIED_PERSON,
   viewSession,
   type StepInput,
 } from "../diagnostic-plan/guided";
@@ -132,6 +135,28 @@ describe("never invents a branch", () => {
   });
 });
 
+describe("the manual's words reach the technician unchanged, with their page", () => {
+  it("every step shown on a path through the procedure quotes the template byte for byte", () => {
+    const path = [ACK, choice("fault_displayed", "yes"), choice("t44", "shorted_scr"), isolated, ohms(12000, 5000, 8000)];
+    for (let i = 0; i <= path.length; i++) {
+      const { run, error } = play(path.slice(0, i));
+      expect(error).toBeUndefined();
+      const v = viewSession(T, run);
+      if (!v.step) continue;
+      const src = T.steps.find((st) => st.id === v.step!.id)!;
+      if (src.prompt) expect(v.step.prompt).toBe(src.prompt);
+      expect(v.step.safetyWording).toBe(src.safetyWording);
+      expect(v.step.cite).toEqual({ publication: T.source!.publication, page: src.cite!.page, ref: src.cite!.ref });
+      for (const o of v.step.options ?? []) expect(o.label).toBe(src.options![o.key].label);
+    }
+  });
+  it("the manual's causes and solutions for a failed SCR test are its own rows, not a summary", () => {
+    const { run } = play([ACK, choice("fault_displayed", "yes"), choice("t44", "shorted_scr"), isolated, ohms(12000, 5000, 8000)]);
+    const scr = T.steps.find((st) => st.id === "scr_test")!;
+    expect(currentGuidance(T, run)).toEqual(scr.measure!.failGuidance);
+  });
+});
+
 describe("safety", () => {
   it("the first step is the p.103 safety notices, quoted", () => {
     const v = viewSession(T, { templateId: T.id, records: [] });
@@ -204,10 +229,20 @@ describe("revision check", () => {
       reason: "different_revision",
     });
   });
-  it("no manual attached → applies with a notice naming the compiled revision", () => {
+  it("no manual attached → refused, naming the compiled revision and the qualified-person hand-off", () => {
     const a = checkApplicability(PROC, id, []);
-    expect(a).toMatchObject({ applies: true, revision: "not_attached" });
-    expect(a.applies && a.notice).toContain("150-UM008J-EN-P");
+    expect(a).toMatchObject({ applies: false, reason: "manual_not_attached" });
+    expect(!a.applies && a.message).toContain("150-UM008J-EN-P");
+    expect(!a.applies && a.message).toContain(QUALIFIED_PERSON);
+  });
+  it("the exact manual among other files → applies; other files alone → refused", () => {
+    const other = { filename: "wiring-photo.pdf", sha256: "f".repeat(64) };
+    expect(checkApplicability(PROC, id, [other, { filename: "x.pdf", sha256: SHA }])).toMatchObject({ applies: true, revision: "exact" });
+    expect(checkApplicability(PROC, id, [other])).toMatchObject({ applies: false, reason: "manual_not_attached" });
+  });
+  it("refused procedures are still listed so the panel can say why; other equipment is not listed", () => {
+    expect(proceduresFor(id, []).map((p) => p.applicability)).toMatchObject([{ applies: false, reason: "manual_not_attached" }]);
+    expect(proceduresFor({ manufacturer: "Allen-Bradley", model: "PowerFlex 525" }, [])).toEqual([]);
   });
   it("a PowerFlex 525 is not an SMC Flex", () => {
     expect(checkApplicability(PROC, { manufacturer: "Allen-Bradley", model: "PowerFlex 525" }, [])).toMatchObject({
@@ -216,7 +251,10 @@ describe("revision check", () => {
     });
   });
   it("catalog number 150-F… matches even without the model name", () => {
-    expect(checkApplicability(PROC, { manufacturer: "Rockwell Automation", catalogNumber: "150-F201NBD" }, [])).toMatchObject({ applies: true });
+    const byCatalog = { manufacturer: "Rockwell Automation", catalogNumber: "150-F201NBD" };
+    expect(checkApplicability(PROC, byCatalog, [{ filename: "150-um008_-en-p.pdf", sha256: SHA }])).toMatchObject({ applies: true });
+    // Without the manual it is refused for the manual, not for the machine: the catalog number still matched.
+    expect(checkApplicability(PROC, byCatalog, [])).toMatchObject({ applies: false, reason: "manual_not_attached" });
   });
 });
 
