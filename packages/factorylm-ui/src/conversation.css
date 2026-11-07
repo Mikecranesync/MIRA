@@ -264,6 +264,7 @@
   .fl-chip { font-size: var(--fl-workspace-fs-xs); min-block-size: 2rem; padding-inline: var(--fl-workspace-space-2); }
   .fl-turn[data-role="user"] .fl-part--text { max-inline-size: 90%; }
   .fl-composer { padding-inline: var(--fl-workspace-space-3); }
+  .fl-composer__row textarea { font-size: var(--fl-workspace-fs-body); }
   .fl-composer__machine { max-inline-size: 6.5rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .fl-source-viewer { inset-inline: 0; inset-block-start: auto; inline-size: auto; max-block-size: 80dvh; border-inline-start: 0; border-block-start: 1px solid var(--fl-workspace-line); }
 }
