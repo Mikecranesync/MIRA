@@ -174,7 +174,7 @@ import {
 } from "@/lib/inference/canonical-cascade";
 import { notebookCascade } from "@/lib/inference/legacy-cascade";
 import { EDGE_ATTEMPT_TIMEOUT_MS, edgeProfileEnabled, edgeRequestOverrides } from "@/lib/inference/edge-profile";
-import { renderEdgePassages, selectEdgePassages } from "@/capabilities/edge-passages";
+import { edgePassagesUsage, renderEdgePassages, selectEdgePassages } from "@/capabilities/edge-passages";
 import { persistTurnUsage } from "@/lib/inference/persist-usage";
 import {
   logProvidersExhausted,
@@ -4180,6 +4180,9 @@ async function handleChatTurn(
           controller.enqueue(enc.encode(sse({ kind: "content", content: edgeAnswerText } as NotebookContentFrame)));
         }
         served = true;
+        // One usage record for both seam settings (Codex #5266 F7): the seam
+        // block emits/logs turnUsage, the legacy ledger reads pendingUsage.
+        turnUsage = pendingUsage = edgePassagesUsage();
       }
       cascade: for (const provider of edgeAnswerText !== null ? [] : cascadeProviders) {
         if (!provider.key) continue;

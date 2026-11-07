@@ -2,6 +2,7 @@
  * #5265 edge profile — the passage answer capability. Selection and wording of
  * the on-device notebook answer, kept out of the route and out of src/lib.
  */
+import type { TurnUsage } from "@/lib/inference/canonical-cascade";
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
 import { relevantQuoteWindow } from "@/lib/quote-window";
 /**
@@ -76,4 +77,27 @@ export function renderEdgePassages(passages: EdgePassage[], warning: EdgeWarning
     ? [EDGE_PASSAGES_LEAD, `${warning.marker}${warning.page != null ? ` (page ${warning.page})` : ""}: "${warning.statement}"`]
     : [EDGE_PASSAGES_LEAD];
   return [...head, ...blocks].join("\n\n");
+}
+
+/** Route reason recorded for a turn served from verbatim passages. */
+export const EDGE_PASSAGES_ROUTE_REASON = "edge_verbatim_passages";
+
+/**
+ * Usage for a passage-served turn: no provider was called, so provider, model,
+ * tokens and cost are null and the call status is "empty" (the stop path's
+ * precedent) — never the "error / no_provider_configured" of an exhausted
+ * cascade, and the same record whether the canonical seam is on or off.
+ */
+export function edgePassagesUsage(): TurnUsage {
+  return {
+    provider: null,
+    model: null,
+    routeReason: EDGE_PASSAGES_ROUTE_REASON,
+    inputTokens: null,
+    cachedInputTokens: null,
+    outputTokens: null,
+    costUsdEstimate: null,
+    status: "empty",
+    attempted: [],
+  };
 }
