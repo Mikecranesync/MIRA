@@ -48,6 +48,7 @@ import {
   releaseSheetSignOutBarrier,
   SIGN_OUT_STILL_SENDING_PROMPT,
   SIGN_OUT_OTHER_TABS_PROMPT,
+  SIGN_OUT_PENDING_MAX_MS,
 } from "../living-sheet-client";
 import { validateAppendEventInput } from "@/capabilities/living-sheet/validate";
 import type { SheetProposal } from "@/capabilities/living-sheet/propose";
@@ -1614,13 +1615,11 @@ describe("#5212 sign-out across tabs", () => {
       await inFlightA;
       const signOutA = tabA.clearSheetDataForSignOut(store, (msg) => msg !== SIGN_OUT_STILL_SENDING_PROMPT, undefined, 40);
       await new Promise((r) => setTimeout(r, 5)); // A has recorded its marker and is waiting
-      const markerA = m.get("flm.sheetsignout.v1");
-      expect(markerA).toBeDefined();
+      expect(m.get("flm.sheetsignout.v1")).toContain("pending"); // A's sign-out is in progress
       expect(await tabB.clearSheetDataForSignOut(store, () => true)).toBe(true); // B signs out completely
-      const markerB = m.get("flm.sheetsignout.v1");
-      expect(Number(markerB)).toBeGreaterThan(Number(markerA));
       expect(await signOutA).toBe(false); // A's technician pressed Cancel on the still-sending question
-      expect(m.get("flm.sheetsignout.v1")).toBe(markerB);
+      // B's finished sign-out is what remains: a plain time, nothing pending.
+      expect(Number.isFinite(Number(m.get("flm.sheetsignout.v1")))).toBe(true);
       releaseA();
       await drainA;
       expect((await tabC.enqueueSheetEvent(store, "t1", "jobC", noteEvent("n-3", "late words"))).saved).toBe(false);
@@ -1677,6 +1676,155 @@ describe("#5212 sign-out across tabs", () => {
   it("a marker the store reports saved but that does not read back counts as not saved", async () => {
     const { store: base } = sharedStore();
     const store: KvStore = { ...base, set: async (k, v) => (k === "flm.sheetsignout.v1" ? true : base.set(k, v)) };
+    const tab = await openTab();
+    const asked: string[] = [];
+    expect(await tab.clearSheetDataForSignOut(store, (msg) => (asked.push(msg), false))).toBe(false);
+    expect(asked).toEqual([SIGN_OUT_OTHER_TABS_PROMPT]);
+  });
+
+  /** A replay held in flight (the server answers job_finished when released). */
+  async function replayInFlight(tab: Client, store: KvStore, job: string) {
+    await tab.enqueueSheetEvent(store, "t1", job, noteEvent(`n-${job}`, `${job} words`));
+    let releaseA = (): void => {};
+    const gateA = new Promise<void>((r) => (releaseA = r));
+    let hitA = (): void => {};
+    const inFlight = new Promise<void>((r) => (hitA = r));
+    const drain = tab.drainSheetQueue(store, "t1", job, async () => {
+      hitA();
+      await gateA;
+      return { status: "rejected", message: "job_finished" };
+    }, "nb-1");
+    await inFlight;
+    return { drain, releaseA };
+  }
+
+  /** Tab A starts a sign-out that waits on its own in-flight replay; call
+   *  `releaseA` to let that replay answer (a late job_finished rejection). */
+  async function signOutWaitingOnReplay(tab: Client, store: KvStore, confirm: (msg: string) => boolean, waitMs = 40, job = "jobA") {
+    const replay = await replayInFlight(tab, store, job);
+    const signOut = tab.clearSheetDataForSignOut(store, confirm, undefined, waitMs);
+    await new Promise((r) => setTimeout(r, 5));
+    return { signOut, ...replay };
+  }
+
+  it("two sign-outs in the same millisecond: Cancel of one leaves the other's finished sign-out in force", async () => {
+    fakeWebLocks();
+    try {
+      const { store, m } = sharedStore();
+      const tabA = await openTab();
+      const tabB = await openTab();
+      const tabC = await openTab();
+      const now = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 1000); // every clock read is the same instant
+      try {
+        const a = await signOutWaitingOnReplay(tabA, store, (msg) => msg !== SIGN_OUT_STILL_SENDING_PROMPT);
+        expect(await tabB.clearSheetDataForSignOut(store, () => true)).toBe(true);
+        expect(await a.signOut).toBe(false); // Cancel in A
+        a.releaseA();
+        await a.drain;
+      } finally {
+        now.mockRestore();
+      }
+      expect((await tabC.enqueueSheetEvent(store, "t1", "jobC", noteEvent("n-3", "late words"))).saved).toBe(false);
+      expect(sheetText(m)).toBe("");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("a note another tab tries to queue while sign-out is counting is refused, never purged unwarned", async () => {
+    fakeWebLocks();
+    try {
+      const { store: base, m } = sharedStore();
+      let release = (): void => {};
+      const gate = new Promise<void>((r) => (release = r));
+      let hitResolve = (): void => {};
+      const hit = new Promise<void>((r) => (hitResolve = r));
+      let firstKeys = true;
+      const store: KvStore = {
+        ...base,
+        keys: async () => {
+          const snapshot = await base.keys(); // the count's view of the phone
+          if (firstKeys) {
+            firstKeys = false;
+            hitResolve();
+            await gate;
+          }
+          return snapshot;
+        },
+      };
+      const tabA = await openTab();
+      const tabB = await openTab();
+      const asked: string[] = [];
+      const signOut = tabA.clearSheetDataForSignOut(store, (msg) => (asked.push(msg), true));
+      await hit; // the count has looked at an empty phone
+      const late = await tabB.enqueueSheetEvent(base, "t1", "jobB", noteEvent("n-2", "typed during sign-out"));
+      release();
+      expect(await signOut).toBe(true);
+      // Either the technician was warned about it or tab B was told it did not save; here it is refused.
+      expect(late.saved).toBe(false);
+      expect(asked).toEqual([]);
+      expect(sheetText(m)).toBe("");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("Cancel of one in-progress sign-out leaves another in-progress sign-out blocking every tab", async () => {
+    const { store } = sharedStore();
+    const tabA = await openTab();
+    const tabB = await openTab();
+    const replayA = await replayInFlight(tabA, store, "jobA");
+    const replayB = await replayInFlight(tabB, store, "jobB");
+    const a = { signOut: tabA.clearSheetDataForSignOut(store, (msg) => msg !== SIGN_OUT_STILL_SENDING_PROMPT, undefined, 40), ...replayA };
+    const b = { signOut: tabB.clearSheetDataForSignOut(store, () => true, undefined, 400), ...replayB };
+    await new Promise((r) => setTimeout(r, 5));
+    const opened = await openTab(); // loaded after both sign-outs began
+    expect(await a.signOut).toBe(false); // A cancels while B is still in progress
+    expect((await opened.enqueueSheetEvent(store, "t1", "jobD", noteEvent("n-4", "during B"))).saved).toBe(false);
+    a.releaseA();
+    b.releaseA();
+    await Promise.all([a.drain, b.drain]);
+    expect(await b.signOut).toBe(true);
+  });
+
+  it("a page opened while another tab's sign-out is in progress cannot save until it ends (Cancel)", async () => {
+    const { store } = sharedStore();
+    const tabA = await openTab();
+    const a = await signOutWaitingOnReplay(tabA, store, (msg) => msg !== SIGN_OUT_STILL_SENDING_PROMPT);
+    const opened = await openTab(); // loaded after A's sign-out began
+    expect((await opened.enqueueSheetEvent(store, "t1", "jobD", noteEvent("n-4", "mid sign-out"))).saved).toBe(false);
+    expect(await a.signOut).toBe(false); // A cancels
+    a.releaseA();
+    await a.drain;
+    expect((await opened.enqueueSheetEvent(store, "t1", "jobD", noteEvent("n-5", "after cancel"))).saved).toBe(true);
+  });
+
+  it("an in-progress sign-out left by a closed tab stops blocking after the time limit (control)", async () => {
+    const { store, m } = sharedStore();
+    const stale = Date.now() - SIGN_OUT_PENDING_MAX_MS - 1000;
+    m.set("flm.sheetsignout.v1", JSON.stringify({ done: null, pending: { gone: stale } }));
+    const tab = await openTab();
+    expect((await tab.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "saved"))).saved).toBe(true);
+    const fresh = Date.now() - 1000;
+    m.set("flm.sheetsignout.v1", JSON.stringify({ done: null, pending: { live: fresh } }));
+    expect((await tab.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-2", "blocked"))).saved).toBe(false);
+  });
+
+  it("Cancel on the first unsaved-items question lets every tab save again", async () => {
+    const { store, m } = sharedStore();
+    const tabA = await openTab();
+    const tabB = await openTab();
+    await tabA.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "pending"));
+    expect(await tabA.clearSheetDataForSignOut(store, () => false)).toBe(false);
+    expect(m.has("flm.sheetsignout.v1")).toBe(false);
+    expect((await tabB.enqueueSheetEvent(store, "t1", "jobB", noteEvent("n-2", "still works"))).saved).toBe(true);
+    expect(sheetText(m)).toContain("pending");
+  });
+
+  it("a sign-out that cannot record its finish asks before going ahead", async () => {
+    const { store: base } = sharedStore();
+    let markerWrites = 0;
+    const store: KvStore = { ...base, set: async (k, v) => (k === "flm.sheetsignout.v1" && ++markerWrites > 1 ? false : base.set(k, v)) };
     const tab = await openTab();
     const asked: string[] = [];
     expect(await tab.clearSheetDataForSignOut(store, (msg) => (asked.push(msg), false))).toBe(false);

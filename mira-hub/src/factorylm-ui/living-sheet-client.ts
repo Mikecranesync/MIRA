@@ -218,13 +218,52 @@ export const SIGN_OUT_MARKER_KEY = "flm.sheetsignout.v1";
 const TAB_LOADED_AT = Date.now();
 
 /** Every Living Sheet write goes through here. A tab loaded before the latest
- *  sign-out writes nothing, so a late reply cannot restore purged text. */
+ *  sign-out writes nothing, so a late reply cannot restore purged text, and no
+ *  tab writes while a sign-out is in progress anywhere. */
 async function sheetSet(store: KvStore, key: string, value: string): Promise<boolean> {
   return withSheetWriteLock(async () => {
-    const marker = Number(await tolerantGet(store, SIGN_OUT_MARKER_KEY));
-    if (Number.isFinite(marker) && marker >= TAB_LOADED_AT) return false;
+    if (signOutBlocksWrites(parseSignOutMarker(await tolerantGet(store, SIGN_OUT_MARKER_KEY)))) return false;
     return store.set(key, value);
   });
+}
+
+/** Codex #5276 r9: the marker records finished sign-outs (`done`, the latest
+ *  time) and in-progress ones (`pending`, one unique id each). Ownership is the
+ *  id, never a clock value, so two sign-outs in the same millisecond never
+ *  share it, and Cancel only ever removes its own id. Stored as a plain time
+ *  string when nothing is pending (the original format). */
+type SignOutMarker = { done: number | null; pending: Record<string, number> };
+
+/** An in-progress sign-out left behind by a closed or crashed tab stops
+ *  blocking writes after this long. */
+export const SIGN_OUT_PENDING_MAX_MS = 10 * 60 * 1000;
+
+function parseSignOutMarker(raw: string | null): SignOutMarker {
+  const empty: SignOutMarker = { done: null, pending: {} };
+  if (raw === null || raw.trim() === "") return empty;
+  if (Number.isFinite(Number(raw))) return { done: Number(raw), pending: {} };
+  try {
+    const parsed = JSON.parse(raw) as { done?: unknown; pending?: unknown };
+    if (typeof parsed !== "object" || parsed === null) return empty;
+    const pending: Record<string, number> = {};
+    if (typeof parsed.pending === "object" && parsed.pending !== null) {
+      for (const [id, at] of Object.entries(parsed.pending)) if (typeof at === "number" && Number.isFinite(at)) pending[id] = at;
+    }
+    const done = typeof parsed.done === "number" && Number.isFinite(parsed.done) ? parsed.done : null;
+    return { done, pending };
+  } catch {
+    return empty;
+  }
+}
+
+function serializeSignOutMarker(m: SignOutMarker): string | null {
+  if (Object.keys(m.pending).length > 0) return JSON.stringify(m);
+  return m.done === null ? null : String(m.done);
+}
+
+function signOutBlocksWrites(m: SignOutMarker, now = Date.now()): boolean {
+  if (m.done !== null && m.done >= TAB_LOADED_AT) return true;
+  return Object.values(m.pending).some((at) => now - at < SIGN_OUT_PENDING_MAX_MS);
 }
 
 /** Codex #5276 r6: the browser's cross-tab lock (Web Locks) orders each
@@ -237,28 +276,25 @@ function withSheetWriteLock<T>(fn: () => Promise<T>): Promise<T> {
   return locks ? (locks.request(SHEET_WRITE_LOCK, fn) as Promise<T>) : fn();
 }
 
-/** Codex #5276 r6: the marker counts only once it reads back. r8: it never
- *  moves backwards (a newer sign-out's marker already blocks everything this
- *  one would), and `replaced` is the value this call overwrote, read under the
- *  same lock, so Cancel can put back exactly that. `replaced` is undefined
- *  when nothing was written. */
-function installSignOutMarker(store: KvStore, value: string): Promise<{ installed: boolean; replaced?: string | null }> {
+/** Read-modify-write of the marker under the cross-tab write lock. It counts
+ *  only once the stored marker reads back with `holds` true (Codex #5276 r6). */
+function updateSignOutMarker(
+  store: KvStore,
+  change: (m: SignOutMarker) => void,
+  holds: (m: SignOutMarker) => boolean,
+): Promise<boolean> {
   return withSheetWriteLock(async () => {
-    const current = await tolerantGet(store, SIGN_OUT_MARKER_KEY);
-    if (current !== null && Number(current) >= Number(value)) return { installed: true };
-    if (!(await store.set(SIGN_OUT_MARKER_KEY, value))) return { installed: false };
-    return { installed: (await tolerantGet(store, SIGN_OUT_MARKER_KEY)) === value, replaced: current };
+    const m = parseSignOutMarker(await tolerantGet(store, SIGN_OUT_MARKER_KEY));
+    change(m);
+    const next = serializeSignOutMarker(m);
+    const written = next === null ? await store.remove(SIGN_OUT_MARKER_KEY) : await store.set(SIGN_OUT_MARKER_KEY, next);
+    return written && holds(parseSignOutMarker(await tolerantGet(store, SIGN_OUT_MARKER_KEY)));
   });
 }
 
-/** Codex #5276 r8: Cancel undoes only its own marker. If another tab has
- *  since signed out, its newer marker stays. */
-function restoreSignOutMarker(store: KvStore, value: string, replaced: string | null | undefined): Promise<void> {
-  return withSheetWriteLock(async () => {
-    if (replaced === undefined || (await tolerantGet(store, SIGN_OUT_MARKER_KEY)) !== value) return;
-    if (replaced === null) await store.remove(SIGN_OUT_MARKER_KEY);
-    else await store.set(SIGN_OUT_MARKER_KEY, replaced);
-  });
+function newSignOutId(): string {
+  const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+  return c?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 /**
@@ -712,22 +748,24 @@ export async function clearSheetDataForSignOut(
   onPurgeStart?: () => void,
   drainWaitMs = SIGN_OUT_DRAIN_WAIT_MS,
 ): Promise<boolean> {
-  const prompt = signOutUnsyncedPrompt(await countAllSheetQueueEntries(store));
-  if (prompt && !confirm(prompt)) return false;
-  onPurgeStart?.();
   // Codex #5276 r3: stop new replays and enqueues, then let a replay already
   // talking to the server finish, so its result cannot land after the purge.
   sheetSignOutBarrier = true;
-  // Codex #5276 r5: other tabs stop writing too. Cancel restores what was there.
-  const markerValue = String(Date.now());
-  let marker = await installSignOutMarker(store, markerValue);
-  let markerInstalled = marker.installed;
-  let replacedMarker = marker.replaced;
+  // Codex #5276 r5/r9: every tab stops writing BEFORE the count, so the
+  // warning covers everything the purge will remove. Cancel removes only this
+  // sign-out's own id; a finished sign-out from another tab stays in force.
+  const id = newSignOutId();
+  const startedAt = Date.now();
+  const begin = () => updateSignOutMarker(store, (m) => void (m.pending[id] = startedAt), (m) => m.pending[id] === startedAt);
+  let markerInstalled = await begin();
   const cancel = async (): Promise<false> => {
     sheetSignOutBarrier = false;
-    await restoreSignOutMarker(store, markerValue, replacedMarker);
+    await updateSignOutMarker(store, (m) => void delete m.pending[id], (m) => !(id in m.pending));
     return false;
   };
+  const prompt = signOutUnsyncedPrompt(await countAllSheetQueueEntries(store));
+  if (prompt && !confirm(prompt)) return cancel();
+  onPurgeStart?.();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const drained = await Promise.race([
     sheetDrainSettled.then(() => true),
@@ -742,15 +780,24 @@ export async function clearSheetDataForSignOut(
   if (!markerInstalled) {
     // Codex #5276 r6: a full phone can refuse the marker. The purge freed
     // space, so try again, then sweep whatever another tab saved meanwhile.
-    marker = await installSignOutMarker(store, markerValue);
-    markerInstalled = marker.installed;
-    if (marker.replaced !== undefined) replacedMarker = marker.replaced;
+    markerInstalled = await begin();
     if (markerInstalled) ({ remaining } = await purgeSheetQueues(store));
   }
   if (!markerInstalled && !confirm(SIGN_OUT_OTHER_TABS_PROMPT)) return cancel();
   const leftBehind = signOutPurgeFailedPrompt(remaining);
   // A signed-out page keeps the barrier; Cancel keeps the technician working.
   if (leftBehind && !confirm(leftBehind)) return cancel();
+  // Done: tabs loaded before now stay blocked for good. The time never moves
+  // backwards, so an older finish cannot undo a newer one.
+  const finished = await updateSignOutMarker(
+    store,
+    (m) => {
+      delete m.pending[id];
+      m.done = Math.max(m.done ?? startedAt, startedAt);
+    },
+    (m) => m.done !== null && m.done >= startedAt && !(id in m.pending),
+  );
+  if (markerInstalled && !finished && !confirm(SIGN_OUT_OTHER_TABS_PROMPT)) return cancel();
   return true;
 }
 
