@@ -88,6 +88,8 @@ const seamMock = vi.hoisted(() => ({
 vi.mock("@/lib/inference/canonical-cascade", () => seamMock);
 
 import { POST } from "../route";
+import { EDGE_PASSAGES_LEAD } from "@/capabilities/edge-passages";
+import { RESTART_BANNER } from "@/capabilities/restart-advisory";
 
 function req(body: unknown) {
   return new NextRequest("http://test/api/equipment-notebooks/x/chat", {
@@ -143,6 +145,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env.MIRA_PROFILE;
+  delete process.env.NOTEBOOK_ANSWER_GATE;
 });
 
 describe("#5265 edge profile — the manual speaks", () => {
@@ -162,8 +165,8 @@ describe("#5265 edge profile — the manual speaks", () => {
     expect(sources.citations.map((c) => c.page)).toEqual([43]);
     expect(content).toContain(`[${sources.citations[0].citationId}]`);
 
-    const evidence = out.find((f) => f.kind === "evidence") as { basis: string; label: string };
-    expect(evidence.label).toMatch(/word for word/);
+    expect(content.startsWith(EDGE_PASSAGES_LEAD)).toBe(true);
+    expect((out.find((f) => f.kind === "evidence") as { basis: string }).basis).toBe("oem_documentation");
     expect((out.find((f) => f.kind === "status") as { status: string }).status).toBe("answered");
 
     expect(nbMock.recordTurn).toHaveBeenCalledTimes(1);
@@ -224,6 +227,47 @@ describe("#5265 edge profile — the manual speaks", () => {
       evidence: Array<Record<string, unknown>>;
     };
     expect(JSON.stringify(persisted.evidence)).toContain(PHOTO);
+  });
+
+  // Codex #5266 round 2 (F5): the passage text is served through the SAME
+  // finalization as a generated answer, so its safety layers still apply.
+  it("a fault-reset ask still gets the restart banner ahead of the passages (live and persisted)", async () => {
+    const out = await frames(await POST(req({ message: "It tripped on overcurrent, how do I restart it?", sourceDocIds: [DOC_A] }), params));
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    const content = contentOf(out);
+    expect(content.startsWith(RESTART_BANNER)).toBe(true);
+    expect(content).toContain(HOWTO_CHUNK.content);
+    const persisted = (vi.mocked(nbMock.recordTurn).mock.calls[0] as unknown as unknown[])[2] as { answerText: string };
+    expect(persisted.answerText.startsWith(RESTART_BANNER)).toBe(true);
+  });
+
+  it("an active smoke report still gets the hazard banner ahead of the passages", async () => {
+    const out = await frames(await POST(req({ message: "there is smoke from the drive panel, what do I check", sourceDocIds: [DOC_A] }), params));
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    const content = contentOf(out);
+    expect(content.startsWith("⚠️")).toBe(true);
+    const persisted = (vi.mocked(nbMock.recordTurn).mock.calls[0] as unknown as unknown[])[2] as { answerText: string };
+    expect(persisted.answerText.startsWith("⚠️")).toBe(true);
+  });
+
+  it("a retrieved passage saying lockout is not required gets the output validator's safety flag ahead of it", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([{ ...HOWTO_CHUNK, content: "Lockout is not required for this adjustment. Turn the trim screw a quarter turn." }]);
+    const out = await frames(await POST(req({ message: "How do I adjust the trim?", sourceDocIds: [DOC_A] }), params));
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    const content = contentOf(out);
+    expect(content.startsWith("⚠️ **Safety flag on a step below:**")).toBe(true);
+    const persisted = (vi.mocked(nbMock.recordTurn).mock.calls[0] as unknown as unknown[])[2] as { answerText: string };
+    expect(persisted.answerText.startsWith("⚠️ **Safety flag on a step below:**")).toBe(true);
+  });
+
+  it("answer gate off (live streaming): the restart banner is streamed once, ahead of the passages", async () => {
+    process.env.NOTEBOOK_ANSWER_GATE = "0";
+    const out = await frames(await POST(req({ message: "It tripped on overcurrent, how do I restart it?", sourceDocIds: [DOC_A] }), params));
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    const content = contentOf(out);
+    expect(content.startsWith(RESTART_BANNER)).toBe(true);
+    expect(content.split(RESTART_BANNER).length - 1).toBe(1);
+    expect(content).toContain(HOWTO_CHUNK.content);
   });
 
   it("control: with the profile off the same turn goes to the model", async () => {

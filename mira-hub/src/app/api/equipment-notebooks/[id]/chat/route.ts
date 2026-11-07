@@ -174,7 +174,7 @@ import {
 } from "@/lib/inference/canonical-cascade";
 import { notebookCascade } from "@/lib/inference/legacy-cascade";
 import { EDGE_ATTEMPT_TIMEOUT_MS, edgeProfileEnabled, edgeRequestOverrides } from "@/lib/inference/edge-profile";
-import { EDGE_PASSAGES_LABEL, renderEdgePassages, selectEdgePassages } from "@/capabilities/edge-passages";
+import { renderEdgePassages, selectEdgePassages } from "@/capabilities/edge-passages";
 import { persistTurnUsage } from "@/lib/inference/persist-usage";
 import {
   logProvidersExhausted,
@@ -3616,17 +3616,19 @@ async function handleChatTurn(
     }
   }
   // #5265 edge profile — "AI finds, manual speaks": on the sealed device the
-  // answer is the retrieved passages themselves, verbatim with page, and no
-  // model runs. The energized-work stop and the no-evidence abstain above still
-  // win; this only replaces the model-written answer.
+  // served answer is the retrieved passages themselves, verbatim with page, and
+  // no model runs. The text is computed here and fed to the dispatch below in
+  // place of a provider's output, so every existing finalization step (output
+  // validation, hazard/restart banners, related-manual warning, citation
+  // filtering, cited-page safety statement, persistence) applies unchanged. The
+  // energized-work stop and the no-evidence abstain above still win.
+  let edgeAnswerText: string | null = null;
   if (edgeProfileEnabled()) {
     const passages = selectEdgePassages(chunks, citations, message);
     const edgeCitations = passages.map((p) => p.citation);
-    const answered = passages.length > 0;
-    // #4508 contract: the manual's own safety statement on a cited page, read
-    // from the whole page (not just the quoted window), the same way the
-    // generated path does — and shown in the answer text, which here is all
-    // the technician reads.
+    // The manual's own safety statement on a cited page, read from the whole page
+    // (#4508) and printed in the text, which here is all the technician reads.
+    // The final path reads the cited pages again for the persisted entry.
     let edgePageChunks: Awaited<ReturnType<typeof retrieveCitedPageChunks>> = [];
     const edgeCitedPages = citedPagesFor(edgeCitations, chunks);
     if (edgeCitedPages.length > 0) {
@@ -3638,104 +3640,7 @@ async function handleChatTurn(
         console.warn("[notebook-chat] edge cited-page read failed (notice from retrieved chunks only):", err instanceof Error ? err.message : err);
       }
     }
-    const edgeSafetyEntry = manualSafetyStatementForCitations(edgeCitations, chunks, edgePageChunks);
-    const edgeText = renderEdgePassages(passages, edgeSafetyEntry);
-    lifecycleOutcome = answered ? "answered" : "abstained";
-    rec.stage("answer_gate", {
-      invoked: true,
-      decision: answered ? "answered" : "insufficient_evidence",
-      reason: answered ? "edge_verbatim_passages" : "edge_no_passage",
-      answer_chars: edgeText.length,
-      refusal_phrase_matched: false,
-      evidence_phrase_matched: false,
-      safety_classification: "none",
-      evidence_sufficient: answered,
-      ungrounded_unit_claim: false,
-      // Fixed text built from the manual, no generated answer to judge.
-      safety_outcome: {
-        layer: "none", outcome: "allow",
-        flagged: Boolean(safetyTrigger) || electricalHazardDirective || hazardEntries.length > 0,
-        violation: null, semantic_verdict: "not_run",
-      },
-    });
-    const edgePersistSpan = startStage("turn.persist");
-    const edgeTurnRowId = await releaseClaimOnFailure(() => recordTurn(ctx.tenantId, notebookId, {
-      ownerUserId: ctx.userId,
-      threadId,
-      clientRequestId,
-      claimToken: requestClaimToken,
-      question: message,
-      answerStatus: answered ? "answered" : "insufficient_evidence",
-      answerText: edgeText,
-      enabledSourceDocIds: docIds,
-      evidence: [
-        ...hazardEntries,
-        ...(safetyTrigger ? [{ kind: "safety_notice", trigger: safetyTrigger } satisfies SafetyNoticeEntry] : []),
-        ...(edgeSafetyEntry ? [edgeSafetyEntry] : []),
-        ...edgeCitations,
-        ...(visualEntry ? [visualEntry] : []),
-        ...disputeEntries,
-      ],
-      model: null,
-      basis: answered ? "oem_documentation" : null,
-      ...assetSnapshot,
-    }));
-    const edgeUsage: TurnUsage = {
-      provider: null,
-      model: null,
-      routeReason: "legacy_cascade",
-      inputTokens: null,
-      cachedInputTokens: null,
-      outputTokens: null,
-      costUsdEstimate: null,
-      status: "empty",
-      attempted: [],
-    };
-    await finishAndPersist(edgeTurnRowId, edgeUsage, {
-      answerText: edgeText,
-      citationsPresent: answered,
-      latencyMs: null,
-    });
-    setSpanAttrs({ "mira.persist.outcome": "ok", "mira.turn.row_id": edgeTurnRowId }, edgePersistSpan);
-    endTimed(edgePersistSpan, "persist");
-    endRoot();
-    const edgeStream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        if (rootTraceId) {
-          const traceFrame: NotebookTraceFrame = { kind: "trace", traceId: rootTraceId, turnId };
-          controller.enqueue(enc.encode(sse(traceFrame)));
-        }
-        if (identityDisputed) controller.enqueue(enc.encode(sse(IDENTITY_DISPUTE_FRAME)));
-        if (safetyTrigger) controller.enqueue(enc.encode(sse({ kind: "safety", trigger: safetyTrigger } as NotebookSafetyFrame)));
-        for (const piece of chunkForRelease(edgeText)) {
-          controller.enqueue(enc.encode(sse({ kind: "content", content: piece })));
-        }
-        const sources: NotebookSourcesFrame = { kind: "sources", citations: edgeCitations, sourceSnapshot: docIds };
-        controller.enqueue(enc.encode(sse(sources)));
-        if (answered) {
-          const evidence: NotebookBasisEvidenceFrame = { kind: "evidence", basis: "oem_documentation", label: EDGE_PASSAGES_LABEL };
-          if (visualEntry) evidence.visualEvidence = visualEntry;
-          if (hazardEntries.length > 0) evidence.hazardEntries = hazardEntries;
-          if (identityDisputed) evidence.identityDisputed = true;
-          controller.enqueue(enc.encode(sse(evidence)));
-        } else if (visualEntry) {
-          controller.enqueue(enc.encode(sse(visualEvidenceMarker(visualEntry))));
-        }
-        const status: NotebookStatusFrame = { kind: "status", status: answered ? "answered" : "insufficient_evidence" };
-        controller.enqueue(enc.encode(sse(status)));
-        controller.enqueue(enc.encode("data: [DONE]\n\n"));
-        controller.close();
-      },
-    });
-    return new Response(edgeStream, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache, no-transform",
-        "X-Accel-Buffering": "no",
-        ...safetyFlagHeaders(safetyTrigger),
-        ...(rootTraceId ? { "x-mira-trace-id": rootTraceId } : {}),
-      },
-    });
+    edgeAnswerText = renderEdgePassages(passages, manualSafetyStatementForCitations(edgeCitations, chunks, edgePageChunks));
   }
 
   const machineSection = machinePacket
@@ -4258,7 +4163,25 @@ async function handleChatTurn(
       const judgeWillRun = gate && semanticCheckEnabled();
       // #4372: the judge also reads this turn's retrieved sources, so they size the room too.
       const judgeInputBound = judgeWillRun ? judgeHoldInputBound(message, requestCap, chunks.map((c) => c.content)) : 0;
-      cascade: for (const provider of cascadeProviders) {
+      // #5265 edge profile: the verbatim passage text stands in for a provider's
+      // output — no provider is dispatched, no hold is taken (holds are per
+      // attempt, inside the loop), and the turn is served with model null.
+      if (edgeAnswerText !== null) {
+        responseBuffer.push(edgeAnswerText);
+        if (!gate) {
+          if (restartAdvisory && flagBanner && !restartBannerStreamed) {
+            restartBannerStreamed = true;
+            controller.enqueue(enc.encode(sse({ kind: "content", content: `${flagBanner}\n\n` } as NotebookContentFrame)));
+          }
+          if (relatedManualWarning && !relatedWarningStreamed) {
+            relatedWarningStreamed = true;
+            controller.enqueue(enc.encode(sse({ kind: "content", content: `${relatedManualWarning}\n\n` } as NotebookContentFrame)));
+          }
+          controller.enqueue(enc.encode(sse({ kind: "content", content: edgeAnswerText } as NotebookContentFrame)));
+        }
+        served = true;
+      }
+      cascade: for (const provider of edgeAnswerText !== null ? [] : cascadeProviders) {
         if (!provider.key) continue;
         // STRM-2: a stopped turn must never open a second provider stream.
         // The catch block below breaks on abort, but the two NON-throwing

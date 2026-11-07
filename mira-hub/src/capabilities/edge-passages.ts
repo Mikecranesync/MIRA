@@ -15,9 +15,9 @@ import { relevantQuoteWindow } from "@/lib/quote-window";
 export const EDGE_PASSAGE_LIMIT = 3;
 export const EDGE_PASSAGE_CHARS = 600;
 export const EDGE_PASSAGES_LEAD = "Matching passages from this notebook's manuals, word for word. Open the page and read it in full before acting.";
+// Opens with the Gate-G abstain sentence so the answer gate reads it as a refusal.
 export const EDGE_NO_PASSAGE_TEXT =
-  "No passage in this notebook's manuals matches that question. Try the manual's own wording, or refer it to a qualified person.";
-export const EDGE_PASSAGES_LABEL = "Passages from this notebook's sources, shown word for word — no AI summary.";
+  "I couldn't find support for that in this notebook's manuals. Try the manual's own wording, or refer it to a qualified person.";
 
 export type EdgePassage = { citation: EvidenceCitation; text: string };
 
