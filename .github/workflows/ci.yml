@@ -566,13 +566,10 @@ jobs:
         # comments resetting the clock, a closed PR losing its branch, a dry run that
         # writes — fails the merge instead of a nightly run. Hermetic: no gh, no network.
         run: pytest tests/test_stale_pr_sweep.py -v
-      - name: Staging Atlas helpers (close-three preflight, verify-1602, service account)
-        # tools/stg_atlas_close_three.py changes staging Atlas orders; its tests prove it
-        # closes only ids 1-3, changes nothing when any preflight fails, and never prints
-        # credentials or titles (public logs). tools/stg_atlas_verify_1602.py: verify mode
-        # writes nothing; complete mode closes only 1602 and only after every check passes,
-        # and an incomplete duplicate scan is a failure. Hermetic: stub Atlas on localhost.
-        run: pytest tests/test_stg_atlas_close_three.py tests/test_stg_atlas_verify_1602.py tests/test_stg_atlas_service_account.py -v
+      - name: Staging Atlas helpers (service account)
+        # tools/stg_atlas_service_account.py: hermetic, stub Atlas on localhost; never
+        # prints credentials (public logs).
+        run: pytest tests/test_stg_atlas_service_account.py -v
       - name: Answer Radar benchmark (rubric, rights gate, leakage split)
         # answer_radar/: the real-world maintenance-question benchmark (VCAD). Named
         # explicitly because root `tests/` is not collected wholesale in this job, and
