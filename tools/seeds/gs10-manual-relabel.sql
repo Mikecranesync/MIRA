@@ -15,7 +15,7 @@
 -- rows); prior values are kept off-repo for rollback.
 BEGIN;
 UPDATE knowledge_entries
-   SET manufacturer = 'AutomationDirect', model_number = 'GS10', updated_at = now()
+   SET manufacturer = 'AutomationDirect', model_number = 'GS10'
  WHERE tenant_id = '78917b56-f85f-43bb-9a08-1bb98a6cd6c3'
    AND is_private = false
    AND verified = true
