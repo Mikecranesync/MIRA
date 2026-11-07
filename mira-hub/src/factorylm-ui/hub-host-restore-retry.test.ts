@@ -21,7 +21,7 @@ function harness(results: Array<{ status: number; data: List | null } | Error>) 
     if (next instanceof Error) throw next;
     return next;
   });
-  const sleep = vi.fn(async (_ms: number) => {});
+  const sleep = vi.fn(async (ms: number) => { void ms; });
   const warn = vi.fn();
   return { get, sleep, warn };
 }
