@@ -892,7 +892,23 @@ jobs:
             cid="$(doppler run --project factorylm --config prd -- docker compose -f docker-compose.saas.yml -f docker-compose.production.yml ps -q "$svc")"
             [ -n "$cid" ] || { echo "::error::no running container for ${svc} after the swap — failing closed."; exit 1; }
             running="$(docker inspect --format '{{.Image}}' "$cid")"
+            # Digest-pinned pulled images report the container's image as the pinned
+            # manifest digest while `docker image inspect <ref>` (the built side)
+            # reports the image id. Resolve the container's image through the same
+            # `docker image inspect` so both sides use one namespace (#5187; same fix
+            # as deploy-staging.yml in #5183). A locally built image resolves to
+            # itself; unresolvable stays a mismatch (fail closed).
             built="$(grep "^${svc}=" "$BUILT_IDS" | cut -d= -f2-)"
+            if [ -n "$running" ] && [ "$running" != "$built" ]; then
+              resolved="$(docker image inspect --format '{{.Id}}' "$running" 2>/dev/null || true)"
+              if [ -n "$resolved" ] && [ "$resolved" = "$built" ]; then
+                running="$resolved"
+              elif [[ "$running" =~ ^sha256:[0-9a-f]{64}$ ]] \
+                && docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$built" 2>/dev/null | grep -qE "@${running}\$"; then
+                # The container's manifest digest is one of the built image's own repo digests.
+                running="$built"
+              fi
+            fi
             if [ -z "$running" ] || [ "$running" != "$built" ]; then
               echo "::error::built/running image mismatch for ${svc}: built=${built} running=${running} — STOP. Rollback anchor: ${PRIOR_TAG:-<none>} @ ${PRIOR_SHA}"
               exit 1

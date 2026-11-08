@@ -49,7 +49,7 @@ import {
 } from "@factorylm/ui";
 import { API_BASE, MAX_UPLOAD_MB } from "@/lib/config";
 import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebooks";
-import type { EvidenceCitation } from "@/lib/notebook-chat-types";
+import type { EvidenceCitation, NotebookSheetReceiptFrame } from "@/lib/notebook-chat-types";
 import {
   isAbortError,
   NotebookHttpError,
@@ -66,6 +66,9 @@ import { createManualSearchDriver, type ManualSearchDriver } from "./manual-sear
 import { GuidedProcedure } from "./GuidedProcedure";
 import { MachineObservations } from "./MachineObservations";
 import { WorkPacketPanel } from "./WorkPacketPanel";
+import { wantsPacketOpen } from "./work-packet-view";
+import { LivingSheet } from "./LivingSheet";
+import { clearSheetDataForSignOut, localStorageStore, parseSheetReceipts } from "./living-sheet-client";
 import { NOTEBOOK_ACTIONS_STYLE } from "./notebook-actions";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
 import { answerTurnId, citationIndex, contextFor, lifecycleFromStream, livePartsWhileRunning, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus, withSettledFollowups, type SettledFollowups } from "./to-interaction";
@@ -87,6 +90,7 @@ import {
   hubHostReducer,
   initialHubShellState,
   landingSelection,
+  loadNotebookListWithRetry,
   latestRequestGate,
   loadingThread,
   metaFor,
@@ -98,6 +102,7 @@ import {
   selectionFromSearch,
   sendFailureMessage,
   shellThreadId,
+  withLivingSheetRider,
   type CompatibleStreamResult,
   type HubSelection,
 } from "./hub-host-logic";
@@ -148,6 +153,10 @@ function writeSearch(search: string): void {
 export function HubShellHost() {
   // One capture timestamp per mount (state, not a ref: it is read during render).
   const [capturedAt] = useState(() => new Date().toISOString());
+  // Direct link `?workpacket=open`, read once on arrival: the URL is rewritten to the selected
+  // notebook (writeSearch) before the Work Packet panel mounts, which would drop it.
+  // Holds the linked notebook id, so only that notebook's packet opens.
+  const [packetLink] = useState(() => (wantsPacketOpen(readSearch()) ? new URLSearchParams(readSearch()).get("notebook") : null));
   const [signedOut, setSignedOut] = useState(false);
   const { data: authSession } = useSession();
   const [signingOut, setSigningOut] = useState(false);
@@ -170,6 +179,13 @@ export function HubShellHost() {
   const [outgoing, setOutgoing] = useState<Outgoing | null>(null);
   const [busy, setBusy] = useState(false);
   const [failedBody, setFailedBody] = useState<{ body: ReturnType<typeof chatBodyFor>; question: string } | null>(null);
+  // TASK-S3: the Living Work Sheet job open for ANY notebook (LivingSheet is
+  // mounted per-notebook, but this state belongs to the host, not the panel,
+  // so send() can read it without a prop round-trip). `livingSheetJobId`
+  // rides the next chat turn only while `job.notebookId` matches the turn's
+  // own notebook — switching notebooks never leaks a stale job id.
+  const [livingSheetJob, setLivingSheetJob] = useState<{ notebookId: string; jobId: string } | null>(null);
+  const [sheetReceipt, setSheetReceipt] = useState<NotebookSheetReceiptFrame | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   // The upload half of an attached send (#4019 round 2 F2): Stop and thread
   // changes abort it too, so a slow upload can never post afterwards.
@@ -206,7 +222,10 @@ export function HubShellHost() {
   // --- data: notebooks (projects/threads), then the selected notebook's detail ---
   const loadNotebooks = useCallback(async () => {
     const token = notebookGate.begin();
-    const { status, data } = await getJson<{ notebooks: HubNotebook[] }>("/api/equipment-notebooks/");
+    const { status, data } = await loadNotebookListWithRetry(
+      () => getJson<{ notebooks: HubNotebook[] }>("/api/equipment-notebooks/"),
+      { isCurrent: () => notebookGate.isCurrent(token) },
+    );
     if (!notebookGate.isCurrent(token)) return;
     if (status === 401) { setSignedOut(true); return; }
     if (!data) return;
@@ -432,9 +451,14 @@ export function HubShellHost() {
     setLive({ id, question, content: "", citations: [], result: null, stopped: false, startedAt: new Date().toISOString(), outgoingId });
     setBusy(true);
     try {
+      // TASK-S3: the rider is applied here, centrally, rather than threaded
+      // through every chatBodyFor(...) call site — one enforcement point
+      // that can't be forgotten at a future call site, scoped to the turn's
+      // own notebook so switching notebooks never sends a stale job id.
+      const outBody = withLivingSheetRider(body, sel.notebookId, livingSheetJob);
       const res = await fetch(`${API_BASE}/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/chat/`, {
         // #4687: ask for stage progress; a server without MIRA_CHAT_PROGRESS ignores the header.
-        method: "POST", headers: { "Content-Type": "application/json", "x-mira-progress": "1" }, body: JSON.stringify(body), signal: ctrl.signal,
+        method: "POST", headers: { "Content-Type": "application/json", "x-mira-progress": "1" }, body: JSON.stringify(outBody), signal: ctrl.signal,
       });
       if (res.status === 401) { setSignedOut(true); return; }
       if (!res.ok || !res.body) {
@@ -443,7 +467,18 @@ export function HubShellHost() {
         try { code = String(((await res.json()) as { error?: unknown }).error ?? ""); } catch { /* no JSON body */ }
         throw new Error(errorMessageFor(code, res.status));
       }
-      const result = await readNotebookStream(res.body.getReader(), (content, cits) => {
+      // Only tee while a sheet is open for this notebook — zero behavior
+      // change (no tee, no extra branch) on every other turn. A stream can
+      // be tee'd exactly once; call it once and keep both branches.
+      let reader: ReturnType<ReadableStream<Uint8Array>["getReader"]>;
+      if ("livingSheetJobId" in outBody) {
+        const [forChat, forReceipt] = res.body.tee();
+        reader = forChat.getReader();
+        void parseSheetReceipts(forReceipt, (frame) => setSheetReceipt(frame));
+      } else {
+        reader = res.body.getReader();
+      }
+      const result = await readNotebookStream(reader, (content, cits) => {
         setLive((cur) => (cur && cur.id === id ? { ...cur, content, citations: cits } : cur));
       }, null, {
         onProgress: (stage) => setLive((cur) => (cur && cur.id === id ? { ...cur, progress: stage } : cur)),
@@ -495,7 +530,7 @@ export function HubShellHost() {
     } finally {
       if (abortRef.current === ctrl) { abortRef.current = null; setBusy(false); }
     }
-  }, [selection, loadDetail, loadNotebooks, dropOutgoing, outgoingOwner]);
+  }, [selection, loadDetail, loadNotebooks, dropOutgoing, outgoingOwner, livingSheetJob]);
 
   /**
    * #4019 — attachments ride the turn they were attached to. Upload through the
@@ -972,8 +1007,20 @@ export function HubShellHost() {
             email={authSession?.user?.email}
             signingOut={signingOut}
             onSignOut={() => {
-              setSigningOut(true);
-              signOutToLogin();
+              // TASK-S3: local-only Living Work Sheet queues must not outlive
+              // the session that created them. R2-32: but they must not be
+              // silently discarded either — ask first when anything is
+              // unsynced; Cancel keeps them (no purge, no navigation). No
+              // unsynced entries => no prompt, same as before. #5212: a purge
+              // that left sheet text on the phone says so first.
+              void (async () => {
+                const proceed = await clearSheetDataForSignOut(localStorageStore, (m) => window.confirm(m), () => setSigningOut(true));
+                if (!proceed) {
+                  setSigningOut(false);
+                  return;
+                }
+                signOutToLogin();
+              })();
             }}
           />
         }
@@ -1022,6 +1069,19 @@ export function HubShellHost() {
           ].join("|")}
           notebookId={selection.notebookId}
           technicianName={authSession?.user?.email ?? null}
+          openOnArrival={packetLink !== null && packetLink === selection.notebookId}
+        />
+      )}
+      {/* TASK-S3: the phone Living Work Sheet; renders nothing on 404. Same
+          remount rule as WorkPacketPanel above — a notebook switch starts it
+          fresh, so it never shows another machine's job list or open job. */}
+      {selection && (
+        <LivingSheet
+          key={selection.notebookId}
+          notebookId={selection.notebookId}
+          technicianName={authSession?.user?.email ?? null}
+          onSheetOpenChange={setLivingSheetJob}
+          receipt={sheetReceipt}
         />
       )}
       </div>

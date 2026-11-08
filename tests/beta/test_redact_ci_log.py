@@ -8,7 +8,9 @@ import subprocess
 
 import pytest
 
-SCRIPT = pathlib.Path(__file__).resolve().parents[2] / "tools" / "qa" / "redact_ci_log.sh"
+SCRIPT = (
+    pathlib.Path(__file__).resolve().parents[2] / "tools" / "qa" / "redact_ci_log.sh"
+)
 
 
 def _bash() -> str | None:
@@ -68,3 +70,42 @@ def test_redacts_every_credential_shape_and_keeps_evidence():
     # non-secret evidence survives
     assert "9ae14764-fdab-4167-ba79-2659c5fcc200" in out and "137 newton meters" in out
     assert "postgres://neondb_owner:[redacted]@ep-x.neon.tech" in out
+
+
+# prod-log-probe.yml publishes redacted container log lines to public Actions logs.
+PROBE_SAMPLE = "\n".join(
+    [
+        'Error: signin failed password: "first second third" for user',
+        "Authorization: bearer opaque-production-credential",
+        "authorization: basic dXNlcjpwYXNz",
+        "upstream said token='single quoted value' then secret=PLAINSECRET9",
+        "jwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4eHh4eCJ9.c2lnbmF0dXJlMTIz end",  # gitleaks:allow (fake fixture)
+        "doppler: dp.st.stg.HUNTER6token",
+        "kept: [api/cmms/stats] Error: Atlas /assets/search returned 403",
+    ]
+)
+
+
+@pytest.mark.skipif(BASH is None, reason="bash not available")
+def test_redacts_quoted_spaced_lowercase_and_jwt_shapes():
+    out = subprocess.run(
+        [BASH, str(SCRIPT)],
+        input=PROBE_SAMPLE,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    for secret in (
+        "first",
+        "second",
+        "third",
+        "opaque-production-credential",
+        "dXNlcjpwYXNz",
+        "single quoted value",
+        "PLAINSECRET9",
+        "eyJhbGciOiJIUzI1NiJ9",
+        "c2lnbmF0dXJlMTIz",
+        "HUNTER6",
+    ):
+        assert secret not in out, f"{secret} leaked:\n{out}"
+    assert "[api/cmms/stats] Error: Atlas /assets/search returned 403" in out

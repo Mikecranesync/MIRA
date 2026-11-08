@@ -522,15 +522,18 @@ describe("manual import: candidate until the document proves itself", () => {
       { content: "Allen-Bradley PowerFlex 525, catalog 25B-D010N104", page: 12 },
     ]);
 
-  // #4160 S6 — basis="candidate": acquireManualForIdentity forces promote=false
-  // (extending requiresUserConfirmation, not duplicating it) even when the
-  // document's own text proves the identity, and stamps the REAL verdict
-  // separately as candidateApplicability so the fenced writer (and, after
-  // confirmation, migration 104) can still find it. R8: the judge may only
-  // ever reject — it never upgrades a 'candidate' verdict to 'verified' just
-  // because this is a candidate-basis search.
-  describe("#4160 S6 — basis='candidate' never promotes from this function", () => {
-    it("the document text proves the identity (catalog_number_exact), but the write is forced to candidate/disabled — the REAL verdict rides as candidateApplicability", async () => {
+  // #4160 S6 — basis="candidate": acquireManualForIdentity itself no longer
+  // forces the write to candidate/disabled (owner decision 2026-11-07,
+  // `requiresUserConfirmation = probeUnvalidated` only — basis is no longer
+  // part of that gate). When the document's own text proves the identity on
+  // a VALIDATED discovery, the verdict's own verified/true passes through to
+  // the write, same as basis='confirmed'. The real verdict is ALSO stamped
+  // separately as candidateApplicability, for the fenced writer (and, after
+  // confirmation, migration 104) to key off of — the one thing that still
+  // forces candidate/disabled for an UNVALIDATED (probeUnvalidated) download,
+  // covered by the Codex r1 F3 describe below.
+  describe("#4160 S6 — basis='candidate' no longer forces the write on this function", () => {
+    it("the document text proves the identity (catalog_number_exact) on a validated discovery: the verdict's own verified/true passes through, and candidateApplicability still rides for the fenced writer", async () => {
       vi.mocked(discoverManual).mockResolvedValue(importableDiscoveryTyped());
       vi.mocked(safeDownloadPdf).mockResolvedValue(pdfDownload());
       provingText();
@@ -538,15 +541,15 @@ describe("manual import: candidate until the document proves itself", () => {
       const out = await acquireManualForIdentity({ ...acquireInput, basis: "candidate", writeSourceState });
       expect(writeSourceState).toHaveBeenCalledTimes(1);
       const patch = (writeSourceState.mock.calls[0] as unknown[])[3] as Record<string, unknown>;
-      // Forced, not the verdict's own verified/true:
-      expect(patch.matchState).toBe("candidate");
-      expect(patch.enabledByDefault).toBe(false);
-      // But the real verdict is NOT lost — it rides separately for the fenced
-      // writer / migration 104 to act on once the technician confirms:
+      // The verdict's own verified/true, same as basis='confirmed' would get:
+      expect(patch.matchState).toBe("verified");
+      expect(patch.enabledByDefault).toBe(true);
+      // The real verdict rides separately for the fenced writer / migration 104
+      // to act on once the technician confirms:
       expect((patch.matchEvidence as Record<string, unknown>).candidateApplicability).toBe("verified");
       expect((patch.matchEvidence as Record<string, unknown>).decisionMethod).toBe("catalog_number_exact");
       // The outcome reflects what the (stubbed) writer actually persisted —
-      // never "complete" from a candidate-basis search this function ran.
+      // this test's writer always returns a disabled candidate.
       expect(out.status).toBe("candidate_review");
     });
 
@@ -1732,8 +1735,9 @@ describe("#4160 S7 — confirm-time acquisition is recorded for server-side reco
   };
   const withFlag = async (on: boolean, run: () => Promise<void>) => {
     const prev = process.env.MIRA_NOTEBOOK_MANUAL_ACQUISITION;
-    if (on) process.env.MIRA_NOTEBOOK_MANUAL_ACQUISITION = "1";
-    else delete process.env.MIRA_NOTEBOOK_MANUAL_ACQUISITION;
+    // Owner decision 2026-11-07: unset is ON now, so "off" must set the exact
+    // kill-switch value "0" rather than deleting the var.
+    process.env.MIRA_NOTEBOOK_MANUAL_ACQUISITION = on ? "1" : "0";
     try {
       await run();
     } finally {

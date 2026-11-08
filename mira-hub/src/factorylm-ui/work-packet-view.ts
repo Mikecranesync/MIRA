@@ -5,7 +5,7 @@
  * a value, so it is tested without a browser or a server. `WorkPacketPanel.tsx` wires these to
  * fetch, component state, and rendering; it never duplicates the logic that lives here.
  */
-import type { Label, PacketDocument, PacketFigure, SourceRef, WorkOrderInput, WorkPacket, WorkPacketAvailability } from "@/capabilities/work-packet/types";
+import type { Field, Label, PacketDocument, PacketFigure, SourceRef, WorkOrderInput, WorkPacket, WorkPacketAvailability } from "@/capabilities/work-packet/types";
 
 // ───────────────────────────────────────────── label → badge text
 
@@ -177,9 +177,11 @@ export function revisionTickHolds(tickedFor: string | null, currentSignature: st
  *  of that moment; if a manual was replaced, removed or re-revised since, or the machine was
  *  re-identified, the old packet is not exported as current. Edits are kept on screen. */
 export function packetStaleReason(
-  packet: Pick<WorkPacket, "documents" | "identitySnapshot">,
+  packet: Pick<WorkPacket, "documents" | "identitySnapshot"> & { version?: WorkPacket["version"] },
   avail: Pick<WorkPacketAvailability, "identity" | "documents">,
 ): string | null {
+  // V1 packets show other models' notes as Verified and miss steps; they are rebuilt, not resumed (Codex EGM F34).
+  if (packet.version === 1) return "this packet was built by an older version of this tool that showed other models' notes as Verified and left steps out";
   const sig = (docs: Pick<PacketDocument, "docId" | "revision">[]) =>
     documentsSignature([...docs].sort((a, b) => (a.docId < b.docId ? -1 : a.docId > b.docId ? 1 : 0)));
   if (sig(packet.documents) !== sig(avail.documents)) {
@@ -219,4 +221,40 @@ export function packetHeaderRows(packet: Pick<WorkPacket, "workOrder" | "equipme
     { label: "Serial", value: eq.serial.value ?? "(unknown)" },
   ];
   return rows;
+}
+
+// ───────────────────────────────── field-journey wording (quote chip, legend, technician entries)
+
+/** The button that reveals a field's supporting quote. It says "quote" because it shows the quoted
+ *  manual line in place — it does not open the original PDF page. */
+export function quoteChipLabel(source: SourceRef | null): string | null {
+  const ref = sourceChipLabel(source);
+  return ref ? `Show quote · ${ref}` : null;
+}
+
+/** What each badge means, shown once at the top of the packet and printed with it. */
+export const LABEL_LEGEND: { label: Label; meaning: string }[] = [
+  { label: "verified", meaning: "the attached manufacturer document says this for this exact model (page cited). It is not an approval for field use." },
+  { label: "proposed", meaning: "suggested from the work order, or entered by a technician. Check it." },
+  { label: "unknown", meaning: "the documents do not support a value for this model. Nothing is guessed." },
+];
+
+/** Who changed a field and how — so a technician's entry is never mistaken for manual text.
+ *  Null when the field is exactly as the packet was built. */
+export function technicianEntryNote(field: Pick<Field, "review">): string | null {
+  const r = field.review;
+  if (!r) return null;
+  const when = r.at.slice(0, 16).replace("T", " ");
+  switch (r.action) {
+    case "set": return `Technician entry by ${r.by}, ${when} UTC — not from the manual`;
+    case "strike": return `Struck by ${r.by}, ${when} UTC`;
+    case "mark_unknown": return `Marked unknown by ${r.by}, ${when} UTC`;
+    case "confirm": return `Line reviewed by ${r.by}, ${when} UTC`;
+    case "settle": return `Settled by ${r.by}, ${when} UTC — source: ${r.source ?? "not given"}. Proposed, not verified.`;
+  }
+}
+
+/** A direct link such as `/v3/?notebook=<id>&workpacket=open` opens the packet straight away. */
+export function wantsPacketOpen(search: string): boolean {
+  return new URLSearchParams(search).get("workpacket") === "open";
 }

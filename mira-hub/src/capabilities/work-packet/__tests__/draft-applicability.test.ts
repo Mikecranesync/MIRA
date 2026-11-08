@@ -455,3 +455,34 @@ describe("F15 — text after a step or caution that cannot be placed turns that 
     expect(noPlaceGap(packet)).toBe(false);
   });
 });
+
+describe("a work order that names a different model than the confirmed pump is flagged (hazard 35)", () => {
+  const otherModel = (p: DraftPacket) => (p.blockers ?? []).filter((b) => b.label === "unknown" && /work order names/.test(b.basis ?? ""));
+
+  it("a model the attached manual lists, but not the confirmed one, is a blocker", () => {
+    const packet = build("8520", [docFromText(M35, "manual-35style.txt", "sm")], "Reseal the 8527: valve service");
+    const flagged = otherModel(packet);
+    expect(flagged).toHaveLength(1);
+    expect(flagged[0].value).toBeNull();
+    expect(flagged[0].basis).toContain("8527");
+    expect(flagged[0].basis).toContain("8520");
+  });
+
+  it("a model-shaped number right after 'pump' is a blocker even when no document lists it", () => {
+    const packet = build("8520", [docFromText(M35, "manual-35style.txt", "sm")], "The CAT Pumps 3520 is leaking: valve service");
+    expect(otherModel(packet).map((b) => b.basis).join(" ")).toContain("3520");
+  });
+
+  it("a model of a different shape right after 'pump' is a blocker (real 5CP6120 run with a 3520 work order)", () => {
+    const packet = build("8520", [docFromText(M35, "manual-35style.txt", "sm")], "The CAT Pumps 5CP6120 is leaking: valve service");
+    expect(otherModel(packet).map((b) => b.basis).join(" ")).toContain("5CP6120");
+  });
+
+  it("control: a pressure right after 'pump' is not a model", () => {
+    expect(otherModel(build("8520", [docFromText(M35, "manual-35style.txt", "sm")], "Pump 8520 runs at 2000 PSI; pump 1500 rpm: valve service"))).toHaveLength(0);
+  });
+
+  it("control: naming the confirmed model, or a pressure, raises nothing", () => {
+    expect(otherModel(build("8520", [docFromText(M35, "manual-35style.txt", "sm")], "Valve service on the 8520 at 2000 PSI"))).toHaveLength(0);
+  });
+});

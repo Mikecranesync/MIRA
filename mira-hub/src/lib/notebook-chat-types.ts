@@ -459,7 +459,8 @@ export type NotebookChatFrame =
   | NotebookUsageFrame
   | NotebookEvidenceFrame
   | NotebookFollowupsFrame
-  | NotebookTraceFrame;
+  | NotebookTraceFrame
+  | NotebookSheetReceiptFrame;
 
 /** Deterministic follow-up suggestions (notebook-followups.ts) — emitted after
  *  `status` on answered turns only; each string is a complete question the
@@ -477,6 +478,23 @@ export type NotebookFollowupsFrame = { kind: "followups"; suggestions: string[] 
  */
 export type NotebookTraceFrame = { kind: "trace"; traceId: string | null; turnId: string };
 
+/**
+ * Living Work Sheet $0 proposer receipt (TASK-S2). Inserted by
+ * capabilities/living-sheet/receipt.ts immediately before the first
+ * `data: [DONE]`, only when the flag is on and the turn named a job.
+ * `proposals` is `SheetProposal[]` from capabilities/living-sheet/propose —
+ * referenced as `unknown[]` here so this leaf type has no dependency on a
+ * capability module. Additive: existing clients ignore unknown kinds.
+ * Always sent with `proposals: []` when the proposer found nothing, so the
+ * client can tell "ran, found nothing" from "didn't run".
+ */
+export type NotebookSheetReceiptFrame = {
+  kind: "sheet_receipt";
+  jobId: string;
+  baseSeq: number;
+  proposals: unknown[];
+};
+
 const FRAME_KINDS = new Set([
   "sources",
   "content",
@@ -488,6 +506,7 @@ const FRAME_KINDS = new Set([
   "trace",
   "progress",
   "http_error",
+  "sheet_receipt",
 ]);
 
 export function parseFrame(data: string): NotebookChatFrame | null {

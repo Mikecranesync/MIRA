@@ -46,10 +46,10 @@ jobs:
           else
             echo "::error::merged compose config is invalid"; exit 1
           fi
-      - name: Hub overlay proves localhost bind + mira-net only (no cmms-ext)
+      - name: Hub overlay proves localhost bind + mira-net and cmms-ext (Atlas) only
         run: |
           docker compose -f docker-compose.saas.yml -f docker-compose.production.yml config > merged.yml
-          python3 -c "import yaml; h=yaml.safe_load(open('merged.yml'))['services']['mira-hub']; p=str(h.get('ports')); n=list(h.get('networks') or []); assert '127.0.0.1:3101' in p, 'hub not localhost-bound: '+p; assert n==['mira-net'], 'hub networks != [mira-net]: '+str(n); print('hub bind OK', p, '| networks OK', n)"
+          python3 -c "import yaml; h=yaml.safe_load(open('merged.yml'))['services']['mira-hub']; p=str(h.get('ports')); n=list(h.get('networks') or []); assert '127.0.0.1:3101' in p, 'hub not localhost-bound: '+p; assert sorted(n)==['cmms-ext','mira-net'], 'hub networks != [mira-net, cmms-ext]: '+str(n); print('hub bind OK', p, '| networks OK', n)"
       - name: mira-ask publishes no host port (mira-net only)
         run: |
           docker compose -f docker-compose.saas.yml -f docker-compose.production.yml config > merged.yml

@@ -30,6 +30,35 @@ const TOKEN_TTL_MS = 23 * 60 * 60 * 1000;
 const DEFAULT_TIMEOUT_MS = 10_000;
 const SEARCH_TIMEOUT_MS = 15_000;
 
+// Atlas v1.8.0 cannot serve two requests for the same account at once (#5205).
+// It hands every request the same cached, detached user object and lazily
+// loads its `superAccountRelations` on each search; concurrent loads race and
+// fail with NullPointerException / IllegalStateException / Hibernate
+// LazyInitializationException (WorkOrderService.java:551,
+// PreventiveMaintenanceController.java:70). Sequential calls never fail, warm
+// or cold. So every request for one Atlas account waits for the previous one.
+// This only orders requests inside one Node process; another process using the
+// same account can still collide.
+const accountLanes = new Map<string, Promise<void>>();
+
+export function atlasAccountKey(baseUrl: string, user: string): string {
+  return `${baseUrl.replace(/\/$/, "")}\n${user}`;
+}
+
+export function runInAtlasAccountLane<T>(key: string, task: () => Promise<T>): Promise<T> {
+  const previous = accountLanes.get(key) ?? Promise.resolve();
+  const run = previous.then(task);
+  const settled = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  accountLanes.set(key, settled);
+  void settled.then(() => {
+    if (accountLanes.get(key) === settled) accountLanes.delete(key);
+  });
+  return run;
+}
+
 export interface AtlasClientOptions {
   /** Full base URL including any /api prefix the gateway requires. */
   baseUrl?: string;
@@ -169,27 +198,29 @@ export class AtlasClient {
     if (!token) {
       throw new AtlasAuthError("Atlas not configured (ATLAS_API_USER/PASSWORD missing)");
     }
-    const res = await fetch(`${this.baseUrl}${path}`, {
-      method,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(timeoutMs),
+    return runInAtlasAccountLane(atlasAccountKey(this.baseUrl, this.user), async () => {
+      const res = await fetch(`${this.baseUrl}${path}`, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (res.status === 401 || res.status === 403) {
+        // Token may have expired earlier than expected; drop cache so the next
+        // worker tick re-authenticates rather than spinning on stale credentials.
+        this.invalidateToken();
+      }
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new AtlasHttpError(res.status, text, path);
+      }
+      // Some Atlas DELETE/PATCH endpoints return 204 No Content; handle gracefully.
+      if (res.status === 204) return {} as T;
+      return (await res.json()) as T;
     });
-    if (res.status === 401 || res.status === 403) {
-      // Token may have expired earlier than expected; drop cache so the next
-      // worker tick re-authenticates rather than spinning on stale credentials.
-      this.invalidateToken();
-    }
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new AtlasHttpError(res.status, text, path);
-    }
-    // Some Atlas DELETE/PATCH endpoints return 204 No Content; handle gracefully.
-    if (res.status === 204) return {} as T;
-    return (await res.json()) as T;
   }
 
   // ── Work orders ─────────────────────────────────────────────────────────────

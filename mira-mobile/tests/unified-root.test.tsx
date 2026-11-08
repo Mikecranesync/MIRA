@@ -335,7 +335,7 @@ describe("UnifiedRoot", () => {
 
     await waitFor(() => screen.getByTestId("unified-home"));
     fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Scan machine" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Scan QR code" }));
 
     const nb = await waitFor(() => screen.getByTestId("nb"));
     expect(nb.getAttribute("data-id")).toBe("nb-a");
@@ -1124,7 +1124,7 @@ describe("UnifiedRoot", () => {
     await waitFor(() => screen.getByTestId("unified-home"));
 
     fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
-    fireEvent.click(screen.getByRole("button", { name: "Scan machine" }));
+    fireEvent.click(screen.getByRole("button", { name: "Scan QR code" }));
 
     expect(await waitFor(() => screen.getByTestId("unified-create-project"))).toBeTruthy();
   });

@@ -1,0 +1,118 @@
+/** #5218: real migration SQL, isolated schemas and disposable Postgres only. */
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { randomUUID as uuid } from "node:crypto";
+import { Client } from "pg";
+import { expect, it } from "vitest";
+const url = process.env.TEST_DATABASE_URL;
+if (process.env.MIRA_TEST_DB_CONFIRM !== "DISPOSABLE" || !url || !["127.0.0.1", "localhost"].includes(new URL(url).hostname)) throw Error("Confirmed disposable loopback DB required");
+const dir = path.resolve(__dirname, "../../../../db");
+const sql = {
+  111: readFileSync(path.join(dir, "migrations/111_notebook_domain_events_outbox.sql"), "utf8"),
+  113: readFileSync(path.join(dir, "migrations/113_asset_observations.sql"), "utf8"),
+  114: readFileSync(path.join(dir, "migrations/114_living_work_sheet.sql"), "utf8"),
+};
+const kinds = ["fix_recorded", "observation_recorded", "job_finished", "work_order_requested"];
+for (const order of [[113,114], [114,113]] as const) for (const population of ["empty", "legacy-fix", "deployed-sheet"] as const) {
+  const populated = population === "deployed-sheet";
+  it(`${order.join(" then ")} / ${population}: preserves rows and both sheet operations`, async () => {
+    const c = new Client({connectionString:url}), schema = `compat_${uuid().replaceAll("-", "")}`;
+    const tenant = uuid(), notebook = uuid();
+    await c.connect();
+    try {
+      await c.query(`CREATE SCHEMA ${schema}`);
+      await c.query(`SET search_path TO ${schema}, public`);
+      await c.query(`GRANT USAGE ON SCHEMA ${schema} TO factorylm_app`);
+      // Only prerequisite FK targets are fixtures; all tested checks/tables use canonical SQL.
+      await c.query("CREATE TABLE equipment_notebooks(id uuid PRIMARY KEY)");
+      await c.query("CREATE TABLE tenant_cmms_config(tenant_id text PRIMARY KEY)");
+      await c.query("INSERT INTO equipment_notebooks VALUES($1)",[notebook]);
+      await c.query(sql[111]);
+      const insert = (kind:string,seq:number) => c.query(
+        `INSERT INTO notebook_domain_events(tenant_id,notebook_id,aggregate_key,sequence,event_type,
+         occurred_at,information_status,correlation_id,policy_version,subject_ref)
+         VALUES($1,$2,$3,$4,$5,now(),'technician_reported',$6,'compat',$7) RETURNING event_id`,
+        [tenant,notebook,schema,seq,kind,uuid(),`compat:${seq}`]);
+      // Fresh upgrades with existing111data must not be confused with a114replay.
+      if (population === "legacy-fix") await insert("fix_recorded",1);
+      if (populated) {
+        // A previously deployed 114 already holds sheet rows before sibling migration replay.
+        await c.query(sql[114]);
+        for (const [i,k] of kinds.entries()) {
+          const event = await insert(k,i+1);
+          if (k === "job_finished" || k === "work_order_requested") await c.query(
+            `INSERT INTO notebook_event_deliveries(tenant_id,event_id,aggregate_key,destination,connection_key,operation,dedupe_key)
+             VALUES($1,$2,$3,'cmms','atlas',$4,$5)`,
+            [tenant,event.rows[0].event_id,schema,k === "job_finished" ? "append_work_log" : "create_work_order",`existing:${i}`]);
+        }
+        const job = uuid();
+        for (const [i,kind] of ["job_started","job_finished"].entries()) await c.query(
+          `INSERT INTO work_sheet_events(tenant_id,notebook_id,job_id,seq,kind,payload,client_event_id,request_fingerprint,occurred_at)
+           VALUES($1,$2,$3,$4,$5,$6,$7,'existing-fixture',now())`,
+          [tenant,notebook,job,i+1,kind,{note:"Original technician evidence"},uuid()]);
+      }
+      const snapshot = async () => ({
+        domain:(await c.query("SELECT * FROM notebook_domain_events ORDER BY sequence")).rows,
+        delivery:(await c.query("SELECT * FROM notebook_event_deliveries ORDER BY dedupe_key")).rows,
+        sheet:populated ? (await c.query("SELECT * FROM work_sheet_events ORDER BY seq")).rows : [],
+      });
+      const before = await snapshot();
+      for (const n of order) await c.query(sql[n]);
+      expect(await snapshot()).toEqual(before);
+      await c.query("SELECT set_config('app.tenant_id',$1,false),set_config('app.current_tenant_id',$1,false)",[tenant]);
+      await c.query("SET ROLE factorylm_app");
+      for (const [i,k] of kinds.entries()) {
+        const event = await insert(k,i+10);
+        if (k === "job_finished" || k === "work_order_requested") await c.query(
+          `INSERT INTO notebook_event_deliveries(tenant_id,event_id,aggregate_key,destination,connection_key,operation,dedupe_key)
+           VALUES($1,$2,$3,'cmms','atlas',$4,$5)`,
+          [tenant,event.rows[0].event_id,schema,k === "job_finished" ? "append_work_log" : "create_work_order",`compat:${i}`]);
+      }
+      expect((await c.query("SELECT count(*)::int AS n FROM notebook_domain_events")).rows[0].n).toBe(before.domain.length+4);
+      expect((await c.query("SELECT count(*)::int AS n FROM notebook_event_deliveries")).rows[0].n).toBe(before.delivery.length+2);
+      await expect(insert("invented_type",99)).rejects.toMatchObject({code:"23514"});
+      await c.query("SELECT set_config('app.tenant_id',$1,false),set_config('app.current_tenant_id',$1,false)",[uuid()]);
+      expect((await c.query("SELECT count(*)::int AS n FROM notebook_domain_events")).rows[0].n).toBe(0);
+      await c.query("RESET ROLE");
+      const saved = await snapshot();
+      const rollback = sql[113].match(/^-- ROLLBACK-BEGIN\n([\s\S]*?)^-- ROLLBACK-END$/m);
+      expect(rollback).not.toBeNull();
+      await c.query(rollback![1].split("\n").map(line => line.replace(/^--   ?/, "")).join("\n"));
+      expect(await snapshot()).toEqual({...saved,domain:saved.domain.filter(row => row.event_type !== "observation_recorded")});
+      await c.query("SELECT set_config('app.tenant_id',$1,false),set_config('app.current_tenant_id',$1,false)",[tenant]);
+      await c.query("SET ROLE factorylm_app");
+      await insert("job_finished",90); await insert("work_order_requested",91);
+      await expect(insert("observation_recorded",92)).rejects.toMatchObject({code:"23514"});
+    } finally {
+      await c.query("ROLLBACK"); await c.query("RESET ROLE"); await c.query("RESET search_path");
+      await c.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`); await c.end();
+    }
+  });
+}
+
+it("113-only rollback restores111vocabulary even if another schema has a114table", async () => {
+  const c = new Client({connectionString:url}), schema = `compat_${uuid().replaceAll("-", "")}`, sibling = `other_${uuid().replaceAll("-", "")}`;
+  await c.connect();
+  try {
+    await c.query(`CREATE SCHEMA ${schema}`);
+    await c.query(`CREATE SCHEMA ${sibling}`);
+    await c.query(`CREATE TABLE ${sibling}.work_sheet_events(id uuid)`);
+    await c.query(`SET search_path TO ${schema}, ${sibling}, public`);
+    await c.query("CREATE TABLE equipment_notebooks(id uuid PRIMARY KEY)");
+    await c.query("CREATE TABLE tenant_cmms_config(tenant_id text PRIMARY KEY)");
+    await c.query(sql[111]); await c.query(sql[113]);
+    const rollback = sql[113].match(/^-- ROLLBACK-BEGIN\n([\s\S]*?)^-- ROLLBACK-END$/m)!;
+    await c.query(rollback[1].split("\n").map(line => line.replace(/^--   ?/, "")).join("\n"));
+    const insert = (kind:string) => c.query(
+      `INSERT INTO notebook_domain_events(tenant_id,notebook_id,aggregate_key,sequence,event_type,
+       occurred_at,information_status,correlation_id,policy_version,subject_ref)
+       VALUES($1,$2,$3,1,$4,now(),'technician_reported',$5,'compat',$6)`,
+      [uuid(),uuid(),kind,kind,uuid(),uuid()]);
+    await insert("fix_recorded");
+    for (const kind of kinds.filter(k => k !== "fix_recorded")) await expect(insert(kind)).rejects.toMatchObject({code:"23514"});
+  } finally {
+    await c.query("ROLLBACK"); await c.query("RESET search_path");
+    await c.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+    await c.query(`DROP SCHEMA IF EXISTS ${sibling} CASCADE`); await c.end();
+  }
+});

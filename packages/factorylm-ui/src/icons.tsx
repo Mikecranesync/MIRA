@@ -95,3 +95,7 @@ export function ThumbUpIcon(props: IconProps) {
 export function ThumbDownIcon(props: IconProps) {
   return <svg aria-hidden="true" viewBox="0 0 16 16" focusable="false" {...props}><path d="M5.5 2v7l3 5a1.5 1.5 0 0 0 1.5-1.5V10h3a1.5 1.5 0 0 0 1.45-1.9l-1.2-4.5A1.5 1.5 0 0 0 11.8 2z" {...STROKE} /><path d="M5.5 9H3a.5.5 0 0 1-.5-.5v-6A.5.5 0 0 1 3 2h2.5" {...STROKE} /></svg>;
 }
+
+export function PlusIcon(props: IconProps) {
+  return <svg aria-hidden="true" viewBox="0 0 16 16" focusable="false" {...props}><path d="M8 2v12M2 8h12" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" /></svg>;
+}

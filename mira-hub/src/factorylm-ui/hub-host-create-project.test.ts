@@ -3,7 +3,7 @@
 import { readFileSync } from "node:fs";
 import ts from "typescript";
 import { describe, expect, it, vi } from "vitest";
-import { latestRequestGate } from "./hub-host-logic";
+import { latestRequestGate, loadNotebookListWithRetry } from "./hub-host-logic";
 const source = readFileSync(new URL("./hub-host.tsx", import.meta.url), "utf8");
 const parsed = ts.createSourceFile("hub-host.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 function callback(name: string, deps: Record<string, unknown>) {
@@ -59,7 +59,7 @@ describe("project creation does not wait for sidebar refresh", () => {
     const env = setup(() => fresh.promise);
     const load = callback("loadNotebooks", { ...env.deps, getJson: () => stale.promise,
       selectionRef: { current: { notebookId: "existing", threadId: "thread-1" } },
-      syncThread: vi.fn(), setSelection: vi.fn(), readSearch: () => "", selectionFromSearch: vi.fn(), landingSelection: vi.fn(), writeSearch: vi.fn(), searchForSelection: vi.fn() });
+      syncThread: vi.fn(), setSelection: vi.fn(), readSearch: () => "", selectionFromSearch: vi.fn(), landingSelection: vi.fn(), writeSearch: vi.fn(), searchForSelection: vi.fn() , loadNotebookListWithRetry });
     const old = load();
     const creating = env.create({ displayName: "Conveyor 4" });
     for (let i = 0; i < 10; i++) await Promise.resolve();
@@ -93,7 +93,7 @@ describe("project creation does not wait for sidebar refresh", () => {
       getJson:async()=>({status:200,data:{notebooks:[]}}),setSignedOut:noop,setNotebooks:noop,
       selectionRef,syncThread:noop,setSelection,readSearch:()=>"?notebook=old",
       selectionFromSearch:()=>({notebookId:"old",threadId:"old-thread"}),landingSelection:noop,
-      writeSearch:noop,searchForSelection:()=>""});
+      writeSearch:noop,searchForSelection:()=>"",loadNotebookListWithRetry});
     await load();
     expect(setSelection).toHaveBeenLastCalledWith(chosen);
   });

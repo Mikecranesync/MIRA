@@ -98,6 +98,36 @@ export function openNotebookSelection(nb: Pick<HubNotebook, "id">, mint: () => s
  * the ChatGPT-first lock's L0 is a composer home that answers immediately.
  * `openNotebookSelection` is the deep-link / project-click entry.
  */
+/**
+ * #3882: the URL's notebook/thread is restored only from the notebook list, so
+ * one failed list request on a cold restart used to strand the technician on
+ * HOME with no Job Sheet. Wait this long before each retry; 401 is never
+ * retried (signed out is an answer), and a superseded load stops early.
+ */
+export const NOTEBOOK_LIST_RETRY_DELAYS_MS: readonly number[] = [1000, 3000];
+export async function loadNotebookListWithRetry<T>(
+  get: () => Promise<{ status: number; data: T | null }>,
+  opts: { sleep?: (ms: number) => Promise<void>; warn?: (msg: string) => void; isCurrent?: () => boolean } = {},
+): Promise<{ status: number; data: T | null }> {
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const warn = opts.warn ?? ((msg: string) => console.warn(msg));
+  const isCurrent = opts.isCurrent ?? (() => true);
+  let last: { status: number; data: T | null } = { status: 0, data: null };
+  for (let attempt = 0; ; attempt++) {
+    try {
+      last = await get();
+      if (last.data || last.status === 401) return last;
+      warn(`[hub-host] notebook list failed: HTTP ${last.status} (attempt ${attempt + 1})`);
+    } catch (err) {
+      last = { status: 0, data: null };
+      warn(`[hub-host] notebook list failed: ${err instanceof Error ? err.message : String(err)} (attempt ${attempt + 1})`);
+    }
+    const delay = NOTEBOOK_LIST_RETRY_DELAYS_MS[attempt];
+    if (delay === undefined || !isCurrent()) return last;
+    await sleep(delay);
+    if (!isCurrent()) return last;
+  }
+}
 export function landingSelection(notebooks: readonly HubNotebook[]): HubSelection | null {
   void notebooks; // HOME regardless of how many projects exist
   return null;
@@ -354,12 +384,22 @@ export function chatBodyFor(
   docIds: readonly string[],
   history: ReturnType<typeof historyRows>,
   sel: HubSelection,
-  rider?: { visualEvidence?: { fileId: string; capturedAt: string }; guidedEscalation?: { sessionId: string } },
+  rider?: {
+    visualEvidence?: { fileId: string; capturedAt: string };
+    guidedEscalation?: { sessionId: string };
+    /** TASK-S3: the open Living Work Sheet job, read by the chat route as
+     *  the literal field `livingSheetJobId` (chat/route.ts) to decide
+     *  whether to run the $0 proposer and tee a sheet_receipt frame. Sent
+     *  only while a sheet is open for THIS notebook — never a stale job id
+     *  left over from a different notebook. */
+    livingSheetJobId?: string;
+  },
 ): ChatBody & {
   threadId: string | null;
   mode?: "general";
   visualEvidence?: { fileId: string; capturedAt: string };
   guidedEscalation?: { sessionId: string };
+  livingSheetJobId?: string;
 } {
   const base = buildChatBody(question, [...docIds], history);
   const visual = rider?.visualEvidence;
@@ -373,6 +413,7 @@ export function chatBodyFor(
     ...(docIds.length === 0 ? { mode: "general" as const } : {}),
     ...(visual ? { visualEvidence: visual } : {}),
     ...(rider?.guidedEscalation ? { guidedEscalation: rider.guidedEscalation } : {}),
+    ...(rider?.livingSheetJobId ? { livingSheetJobId: rider.livingSheetJobId } : {}),
   };
 }
 
@@ -594,3 +635,13 @@ export function createLatestLoadTracker(): {
   };
 }
 
+
+/** TASK-S3: a chat turn carries `livingSheetJobId` only when a sheet job is
+ *  open on the SAME notebook, so switching notebooks never sends a stale id. */
+export function withLivingSheetRider<B extends object>(
+  body: B,
+  notebookId: string,
+  openJob: { notebookId: string; jobId: string } | null,
+): B | (B & { livingSheetJobId: string }) {
+  return openJob && openJob.notebookId === notebookId ? { ...body, livingSheetJobId: openJob.jobId } : body;
+}
