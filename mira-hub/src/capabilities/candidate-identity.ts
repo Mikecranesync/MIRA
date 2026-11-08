@@ -20,7 +20,17 @@
  */
 import { oemMakerTable } from "@/lib/manual-discovery";
 import { namesOnlyThisMachine } from "./identity-proposal";
-import { mentionsAssetLabel, mentionsSerialLabel, partCodes, unambiguousPartNumber } from "./photo-part-lookup";
+import {
+  identifierKey,
+  mentionsAssetLabel,
+  mentionsSerialLabel,
+  partLabelAfterPrivateLabel,
+  partCodes,
+  privateIdentifierKeys,
+  privateSuffixTails,
+  serialCodes,
+  unambiguousPartNumber,
+} from "./photo-part-lookup";
 
 export type CandidateIdentity = { manufacturer: string | null; part: string };
 
@@ -138,11 +148,14 @@ export function wantsManualDocumentation(message: string): boolean {
  * gate every candidate-basis proposal and acquisition passes. Strict by owner
  * decision after six review rounds — all must hold, else no automatic search
  * (a confirmed identity still searches through the existing confirmed path):
- *  - no serial label and no asset-tag / customer-identifier label in EITHER
- *    text (ADR-0036: no serial or asset-tag egress, under any normalisation);
  *  - the serial-safe part codes across BOTH texts are exactly `part` — so the
- *    identity came from the serial-safe reader, and two codes are ambiguity,
- *    never absence;
+ *    identity came from the serial-safe reader (which never yields a code
+ *    under a serial or asset-tag label, ADR-0036), and two codes are
+ *    ambiguity, never absence. A serial label on the plate is the normal
+ *    case, not a refusal (owner decision 2026-11-07): every real nameplate
+ *    carries one, and the labelled model beside it is still the part — but a
+ *    code EITHER text marks as a serial is refused outright, even typed back
+ *    unlabelled in the other (`serialCodes`, Codex post-cap F6);
  *  - the photo and typed text TOGETHER name no other machine
  *    (proposeIdentityFromText's multi-machine rejection);
  *  - neither text names a maker other than `manufacturer` (aliases of one maker
@@ -153,10 +166,34 @@ export function isSafeCandidateSearchIdentity(photoText: string, typed: string, 
   const key = part.trim().toUpperCase();
   if (!key) return false;
   const texts = [photoText, typed].filter(Boolean);
-  if (texts.some(mentionsSerialLabel)) return false;
-  // A customer-assigned identifier anywhere (asset tag, unit id, …) is the
-  // same fail-closed signal as a serial label (ADR-0036; Codex post-cap 14 F14).
-  if (texts.some(mentionsAssetLabel)) return false;
+  // A code either text marks as a serial never leaves, even when the OTHER
+  // text carries it unlabelled — the technician typing the photo's serial back
+  // does not launder it (#4172 Codex post-cap F6, ADR-0036).
+  if (texts.some((t) => serialCodes(t).includes(key))) return false;
+  // #5268 Codex F1: nor may a serial or asset-tag value from either text come
+  // back under another label ("MODEL: 12345678") or with its punctuation or
+  // spaces changed (AB-1234567 → AB1234567, "TP 1200" → TP1200).
+  const keyNorm = identifierKey(key);
+  // r5: nor any FRAGMENT of one ("Asset tag: PN12345678" → 12345678).
+  if (texts.some((t) => [...privateIdentifierKeys(t)].some((k) => k.includes(keyNorm)))) return false;
+  // r11/r12: nor a value a bare suffix label marks, of any spacing, wrapping
+  // or qualifier ("TP 1200\n(asset tag)", "T P 12 00 (customer S/N)").
+  if (texts.some((t) => privateSuffixTails(t).some((tail) => tail.includes(keyNorm)))) return false;
+  // #5268 Codex r4 — the structural wall. Once EITHER text carries a serial or
+  // asset label, eligibility comes only from the PHOTO's own part label
+  // (P/N, MODEL, …). Typed text then grants nothing, so no spelling, spacing
+  // or relabelling of a private value typed back can make it searchable. A
+  // turn with no private label anywhere is unaffected.
+  // #5268 Codex r13 — owner decision 2026-11-07: a plate or message that shows
+  // a serial or asset-tag label never starts the automatic search. Twelve
+  // rounds each found a new way to word a private value beside the model;
+  // the technician confirms the identity instead.
+  if (texts.some((t) => mentionsSerialLabel(t) || mentionsAssetLabel(t))) return false;
+  if (texts.some(partLabelAfterPrivateLabel)) return false;
+  // #5268 Codex r9: the technician's own words naming a serial or asset tag
+  // ("TP 1200 (asset tag)") turn the automatic search off — typed text can
+  // mark a value private but never vouch for one.
+  if (mentionsSerialLabel(typed) || mentionsAssetLabel(typed)) return false;
   const codes = new Set(texts.flatMap((t) => partCodes(t).map((c) => c.toUpperCase())));
   if (codes.size !== 1 || !codes.has(key)) return false;
   const proposed = new Set(makerGroups(manufacturer).keys());

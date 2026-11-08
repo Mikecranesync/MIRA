@@ -11,7 +11,7 @@
 | Surface | Count |
 |---|---|
 | Pages | **70** (12 dynamic) |
-| API routes | **195** (78 dynamic) |
+| API routes | **205** (85 dynamic) |
 
 ## Pages (70)
 
@@ -88,7 +88,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (195)
+## API routes (205)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -187,6 +187,11 @@
 | `/api/equipment-notebooks/[id]/observations/preview` | dynamic | `api/equipment-notebooks/[id]/observations/preview/route.ts` |
 | `/api/equipment-notebooks/[id]/photos/[fileId]/source` | dynamic | `api/equipment-notebooks/[id]/photos/[fileId]/source/route.ts` |
 | `/api/equipment-notebooks/[id]/procedure` | dynamic | `api/equipment-notebooks/[id]/procedure/route.ts` |
+| `/api/equipment-notebooks/[id]/sheets` | dynamic | `api/equipment-notebooks/[id]/sheets/route.ts` |
+| `/api/equipment-notebooks/[id]/sheets/[jobId]` | dynamic | `api/equipment-notebooks/[id]/sheets/[jobId]/route.ts` |
+| `/api/equipment-notebooks/[id]/sheets/[jobId]/events` | dynamic | `api/equipment-notebooks/[id]/sheets/[jobId]/events/route.ts` |
+| `/api/equipment-notebooks/[id]/sheets/[jobId]/photos` | dynamic | `api/equipment-notebooks/[id]/sheets/[jobId]/photos/route.ts` |
+| `/api/equipment-notebooks/[id]/sheets/[jobId]/work-order` | dynamic | `api/equipment-notebooks/[id]/sheets/[jobId]/work-order/route.ts` |
 | `/api/equipment-notebooks/[id]/sources` | dynamic | `api/equipment-notebooks/[id]/sources/route.ts` |
 | `/api/equipment-notebooks/[id]/sources/[docId]` | dynamic | `api/equipment-notebooks/[id]/sources/[docId]/route.ts` |
 | `/api/equipment-notebooks/[id]/sources/[docId]/passage` | dynamic | `api/equipment-notebooks/[id]/sources/[docId]/passage/route.ts` |
@@ -220,6 +225,10 @@
 | `/api/integrations/nango/callback` | static | `api/integrations/nango/callback/route.ts` |
 | `/api/integrations/nango/connect` | static | `api/integrations/nango/connect/route.ts` |
 | `/api/internal/kg` | static | `api/internal/kg/route.ts` |
+| `/api/job-sheets` | static | `api/job-sheets/route.ts` |
+| `/api/job-sheets/[id]/review` | dynamic | `api/job-sheets/[id]/review/route.ts` |
+| `/api/job-sheets/[id]/revisions` | dynamic | `api/job-sheets/[id]/revisions/route.ts` |
+| `/api/job-sheets/import/preview` | static | `api/job-sheets/import/preview/route.ts` |
 | `/api/kg/graph` | static | `api/kg/graph/route.ts` |
 | `/api/kg/sync` | static | `api/kg/sync/route.ts` |
 | `/api/kg/trace` | static | `api/kg/trace/route.ts` |
@@ -231,6 +240,7 @@
 | `/api/library/chunks` | static | `api/library/chunks/route.ts` |
 | `/api/library/documents` | static | `api/library/documents/route.ts` |
 | `/api/library/tree` | static | `api/library/tree/route.ts` |
+| `/api/living-sheet/shift-report` | static | `api/living-sheet/shift-report/route.ts` |
 | `/api/manual-harvester` | static | `api/manual-harvester/route.ts` |
 | `/api/me` | static | `api/me/route.ts` |
 | `/api/mira/ask` | static | `api/mira/ask/route.ts` |

@@ -7,14 +7,17 @@
 #   docker compose -f docker-compose.saas.yml -f docker-compose.production.yml \
 #     up -d --no-deps mira-hub mira-web
 #
-# Scope: `mira-hub` + `mira-web` + `mira-ask` + `mira-relay` are overridden. Both run localhost-only on
-# mira-net; external cmms-ext network is dropped (Atlas/CMMS not yet restored).
+# Scope: `mira-hub` + `mira-web` + `mira-ask` + `mira-relay` are overridden. Hub and web run
+# localhost-only on mira-net plus the external cmms-ext network (Atlas CMMS, restored
+# 2026-11-04 by .github/workflows/deploy-atlas.yml as compose project `factorylm-cmms`;
+# backend reachable as cmms-backend:8080). Deploy Atlas first: an absent cmms-ext
+# network makes `compose up` refuse to start.
 #
 # `mira-ask` was restored 2026-09-27 for manual discovery (nameplate →
 # official OEM manual); it is reachable on mira-net only.
 #
 # Deferred services (pipeline, ingest, mcp, cmms-sync, telegram/slack bots,
-# nango, redis, tika, foreman, Atlas/CMMS) are NOT started, and the Hub's
+# nango, redis, tika, foreman) are NOT started, and the Hub's
 # references to them are failed-closed below so it never hangs on a container
 # that is not deployed. Each is re-enabled in its own later change by removing
 # the corresponding line here and adding the service to the deploy target list.
@@ -28,11 +31,11 @@ services:
     ports: !override
       - "127.0.0.1:3101:3000"
 
-    # Drop the external `cmms-ext` network the base SaaS attaches. Atlas/CMMS is
-    # not restored; an absent external network makes `compose up` refuse to
-    # start. mira-net is the only network the minimal Hub needs.
+    # mira-net plus the external `cmms-ext` network (factorylm-cmms_default), where
+    # the Hub reaches Atlas as cmms-backend:8080 (base HUB_CMMS_API_URL default).
     networks: !override
       - mira-net
+      - cmms-ext
 
     environment:
       # Behind nginx/TLS: NextAuth must trust the proxy's forwarded host.
@@ -49,7 +52,6 @@ services:
       OPENWEBUI_BASE_URL: disabled://recovery
       OPENWEBUI_API_KEY: ""
       NANGO_SERVER_URL: disabled://recovery
-      HUB_CMMS_API_URL: http://cmms-not-started.invalid:8080
       # OLLAMA_BASE_URL: the base compose sets this to the colocated mira-ollama
       # service (internal network, no tailnet). NOT overridden here — the shared
       # Doppler value names Bravo's tailnet address, which this host cannot reach.
@@ -67,11 +69,11 @@ services:
     memswap_limit: ${MIRA_HUB_MEM:-2g}
 
   mira-web:
-    # Drop the external `cmms-ext` network (Atlas/CMMS is not restored yet; the
-    # absent network would prevent `compose up` from starting). mira-net is the
-    # only network mira-web needs in the minimal model.
+    # mira-net plus the external `cmms-ext` network: mira-web provisions Atlas
+    # users at ATLAS_API_URL (base default http://cmms-backend:8080).
     networks: !override
       - mira-net
+      - cmms-ext
 
   mira-ask:
     # Restored 2026-09-27 so the Hub's manual discovery (nameplate confirm →

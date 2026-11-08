@@ -56,7 +56,9 @@ export interface SourceRef {
   line: string;
 }
 
-export type EditAction = "set" | "confirm" | "strike" | "mark_unknown";
+/** "settle": a technician answers a question the documents leave open, naming where the answer came
+ *  from (Codex EGM F17). The answer is Proposed, never Verified. */
+export type EditAction = "set" | "confirm" | "strike" | "mark_unknown" | "settle";
 
 export interface ReviewEntry {
   path: string;
@@ -65,6 +67,8 @@ export interface ReviewEntry {
   at: string;
   previous: unknown;
   next: unknown;
+  /** "settle" only: where the answer came from (a nameplate, a site procedure, a named person). */
+  source?: string;
 }
 
 export interface Field {
@@ -170,6 +174,8 @@ export interface SmStep {
   /** Verbatim step text (wrapped lines joined with single spaces). */
   text: string;
   source: SourceRef;
+  /** A bare-number diagram printed right after the step (a tightening order). Cited, never copied. */
+  diagram?: SourceRef;
 }
 
 export interface SmSection {
@@ -202,6 +208,19 @@ export interface SmCaution {
   kind: "CAUTION" | "WARNING" | "NOTE" | "IMPORTANT";
   text: string;
   source: SourceRef;
+  /** Set when the text ended at an all-capitals line this tool cannot tell apart from the page's
+   *  address block: the caution is shown, but not as Verified (Codex review F2, round 3). */
+  uncertainEnd?: string;
+  /** The procedure block the caution is printed inside (V2): section heading/subheading, the block's
+   *  model scope, and the number of the last step printed before it (null = before the first step).
+   *  Absent when the caution sits outside any procedure section. */
+  context?: {
+    heading: string;
+    subheading: string | null;
+    topic: Topic | "other";
+    models: ModelScope;
+    afterStep: number | null;
+  };
 }
 
 /** A procedure section the parser detected but left out (steps garbled in extraction). */
@@ -214,6 +233,9 @@ export interface SmOmittedSection {
   /** First line the parser saw in the section, so the gap cites where to look. */
   source: SourceRef;
   reason: string;
+  /** Step lines the parser saw before leaving the block out — at least this many steps are not read.
+   *  Absent on manuals parsed before coverage existed. */
+  stepsSeen?: number;
 }
 
 /** A caution/warning the parser could not read in full (Codex #5062 F15). */
@@ -238,6 +260,9 @@ export interface ServiceManual {
   /** Where the manual prints its start-up check-list heading (e.g. "INLET CONDITION CHECK-LIST" /
    *  "Review Before Start-Up"), cited by its exact heading lines. The items themselves are not parsed. */
   startupChecklist?: SourceRef[];
+  /** Reference-page lines that tie other work to a service (e.g. "service the regulator at each seal
+   *  servicing"), with the service named. Cited only: whether that work is done is a person's call. */
+  companionWork?: { topic: string; source: SourceRef }[];
 }
 
 // ─────────────────────────────────────────────── work order, identity, packet
@@ -282,10 +307,34 @@ export interface PacketPart {
   qty: Field;
 }
 
+/** A manufacturer NOTE/CAUTION printed inside a procedure, kept next to the step it follows (V2). */
+export interface StepNote {
+  kind: SmCaution["kind"];
+  text: Field;
+  /** Present when the note names models: "proposed" when it also covers other models (read the part
+   *  for your pump), "unknown" when a date/style/revision/application restriction cannot be settled. */
+  applicability?: Field;
+  /** Where the note is shown (Codex EGM F22). "before": it heads its block, or it warns about the
+   *  action this step performs, so the technician reads it before doing the step. "after": it only
+   *  says what may happen once the step is done. */
+  placement?: "before" | "after";
+}
+
 export interface PacketStep {
   section: string;
   topic: Topic | "other";
   text: Field;
+  /** V2 job phase: take apart to reach the work, the requested work, put back together. */
+  phase?: "removal" | "service" | "reinstall";
+  /** The manufacturer's step number within its block. */
+  n?: number | null;
+  /** Subheading of the block the step is printed in (e.g. "Models 8520, 8521, 8527"). */
+  subheading?: string | null;
+  notes?: StepNote[];
+  /** As on StepNote: "proposed" = the line also covers other models; "unknown" = an unsettled restriction. */
+  applicability?: Field;
+  /** Why a removal/reinstall step is in this packet (always "proposed": the manual does not say so). */
+  inclusion?: Field;
 }
 
 export interface PacketMeasurement {
@@ -293,6 +342,12 @@ export interface PacketMeasurement {
   /** e.g. "870 in-lbs / 72.5 ft-lbs / 98 Nm" — verbatim numbers from one torque-chart line. */
   value: Field;
   tool: Field;
+  /** V2: indexes into `steps` of the steps that tighten this item. */
+  steps?: number[];
+  /** Why this row is linked to those steps ("proposed": matched by the item's words). */
+  link?: Field;
+  /** The technician's reading, kept apart from the manufacturer value. Never verified. */
+  measured?: Field;
 }
 
 /** A manufacturer photo from the manual page a section's steps are printed on. */
@@ -304,6 +359,10 @@ export interface PacketFigure {
   page: number;
   image: string | null;
   caption: string[];
+  /** V2: index into `steps` of the step the photo shows; null = shown with its section. */
+  step?: number | null;
+  /** Why the photo sits with that step ("proposed": matched by caption words). */
+  placement?: Field;
 }
 
 /** One row of the job hazard analysis. The hazard is the manufacturer's own caution (verbatim, cited);
@@ -315,8 +374,37 @@ export interface JhaRow {
   controls: Field;
 }
 
+/** One procedure heading of the manual that this job touches, and how much of it was read. */
+export interface CoverageSection {
+  heading: string;
+  status: "read" | "partly" | "not_read";
+  stepsRead: number;
+  /** At least this many of its steps are not in the packet. */
+  stepsNotRead: number;
+  /** Steps the manual limits to models this tool cannot make out — they may or may not be this pump's. */
+  stepsMayApply: number;
+  /** Plain words: why each unread part was not read. */
+  reasons: string[];
+  /** Where the first unread part starts in the manual, so the technician can look it up. */
+  source: SourceRef | null;
+}
+
+export interface PacketCoverage {
+  complete: boolean;
+  stepsRead: number;
+  stepsTotal: number;
+  /** Steps that may apply to this pump and are not in `stepsTotal` (see CoverageSection.stepsMayApply). */
+  stepsMayApply: number;
+  /** True when some unread text could not be counted exactly — the total is "at least". */
+  totalIsLowerBound: boolean;
+  /** One sentence shown first on screen and on page 1 of the PDF. */
+  summary: string;
+  sections: CoverageSection[];
+}
+
 export interface WorkPacket {
-  version: 1;
+  /** 1 = packets saved before the V2 layout; they still load, verify and export. */
+  version: 1 | 2;
   packetId: string;
   generatedAt: string;
   notebookId: string;
@@ -351,6 +439,16 @@ export interface WorkPacket {
   /** Return-to-service: the manufacturer's start-up checks and ratings, cited; acceptance limits unknown. */
   restoration?: Field[];
   unknowns: Field[];
+  /** V2: things the documents leave open that stop the job until a qualified person settles them —
+   *  each quotes the manual line (label "unknown", value null, basis = the quoted restriction). */
+  blockers?: Field[];
+  /** V2: manual content deliberately not in this packet (other models, steps outside the job,
+   *  torque rows no step uses, figures for other models) — shown in an appendix, never silently dropped. */
+  leftOut?: Field[];
+  /** V2 (finding N1): how much of the manual's procedure for this job the reader could read. When
+   *  `complete` is false the packet blocks itself and nothing in it is shown as verified. Absent on
+   *  packets saved before coverage existed. */
+  coverage?: PacketCoverage;
   approval: {
     technicianReview: { state: "draft" | "reviewed"; entries: ReviewEntry[] };
     supervisor: { state: "pending" | "approved"; by: string | null; at: string | null };
@@ -390,6 +488,8 @@ export interface PacketEdit {
   path: string;
   action: EditAction;
   value?: string;
+  /** Required for "settle". */
+  source?: string;
 }
 
 /** GET /api/equipment-notebooks/[id]/work-packet response. */

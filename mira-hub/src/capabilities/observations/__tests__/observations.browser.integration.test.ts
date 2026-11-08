@@ -37,7 +37,7 @@ import { POST as previewRoute } from "@/app/api/equipment-notebooks/[id]/observa
 import { loadObservedStateForTurn } from "../turn-context";
 
 const HUB = path.resolve(__dirname, "../../../..");
-const MIGRATION = path.join(HUB, "db/proposed/113_asset_observations.sql");
+const MIGRATION = path.join(HUB, "db/migrations/113_asset_observations.sql");
 const SHOTS = process.env.MIRA_PROOF_SHOTS ?? path.resolve(HUB, "../docs/promo-screenshots");
 const TENANT = uuid();
 const OTHER_TENANT = uuid();
@@ -314,4 +314,105 @@ describe.skipIf(!RUN)("Mission 001 browser proof (real panel, real routes, real 
       await browser.close();
     }
   }, 60_000);
+  // #5106: a contested fact with more reports than the panel lists says how many exist and
+  // pages the rest on request, in the projector's order, with no raw report text.
+  it("a contested fact shows K of N reports and pages the rest with Show more", async () => {
+    const { chromium } = await import("playwright");
+    const browser = await chromium.launch();
+    const PUMP_09 = `pump-09-${uuid().slice(0, 8)}`;
+    await seedAsset(TENANT, PUMP_09, "Pump-09", "enterprise.lake_wales.utilities.pump_09");
+    const nb = await seedNotebook(TENANT, PUMP_09);
+    // Fixture rows (owner pool): 45 "no leak" reports, then one leak report.
+    await testPool.query(
+      `INSERT INTO asset_observations (tenant_id, notebook_id, equipment_entity_id, fact_key, fact_value, raw_report,
+         observed_at, recorded_by, verification_method, client_request_id, request_fingerprint, projector_version)
+       SELECT $1::uuid, $2::uuid, $3, 'seal_leak', CASE WHEN g.i = 0 THEN 'present' ELSE 'absent' END, 'secret raw words',
+              now() - interval '40 minutes' + CASE WHEN g.i = 0 THEN interval '35 minutes' ELSE g.i * interval '10 seconds' END,
+              'tech-' || (g.i % 5), 'self_reported', gen_random_uuid(), 'bulk', 'fixture'
+         FROM generate_series(0, 45) AS g(i)`,
+      [TENANT, nb, PUMP_09],
+    );
+    const prior = notebookId;
+    notebookId = nb;
+    try {
+      who.tenantId = TENANT;
+      who.userId = "tech-d";
+      for (const [label, viewport] of [["mobile", { width: 412, height: 915 }], ["desktop", { width: 1440, height: 900 }]] as const) {
+        const ctx = await browser.newContext({ viewport, timezoneId: "America/New_York" });
+        const page = await ctx.newPage();
+        await page.goto(base);
+        await page.getByTestId("machine-state-pill").click();
+        const fact = page.getByTestId("observed-fact-seal_leak");
+        await fact.waitFor();
+        expect(await fact.getAttribute("data-state")).toBe("contested");
+        expect(await page.getByTestId("observed-fact-seal_leak-count").innerText()).toMatch(/Showing 20 of 46 reports/);
+        expect(await fact.locator("div").filter({ hasText: /reported by/ }).count()).toBe(20);
+        await page.screenshot({ path: path.join(SHOTS, `2026-11-01_machine-state-08-contested-20-of-46_${label}.png`), fullPage: true });
+
+        await page.getByTestId("observed-fact-seal_leak-more").click();
+        await page.getByTestId("observed-fact-seal_leak-count").waitFor({ state: "detached" });
+        expect(await fact.locator("div").filter({ hasText: /reported by/ }).count()).toBe(46);
+        expect(await fact.innerText()).not.toMatch(/secret raw words/);
+        await page.screenshot({ path: path.join(SHOTS, `2026-11-01_machine-state-09-contested-all-46_${label}.png`), fullPage: true });
+        await ctx.close();
+      }
+    } finally {
+      notebookId = prior;
+      await browser.close();
+    }
+  }, 90_000);
+
+  // Codex #5104 r2 F4: another technician reports while the panel shows page one. "Show
+  // more" names the contest it continues; the server refuses a different one, and the
+  // panel rereads the state instead of appending reports from a contest it never showed.
+  it("Show more after another report rereads the state and never appends a page from a different contest", async () => {
+    const { chromium } = await import("playwright");
+    const browser = await chromium.launch();
+    const PUMP_10 = `pump-10-${uuid().slice(0, 8)}`;
+    await seedAsset(TENANT, PUMP_10, "Pump-10", "enterprise.lake_wales.utilities.pump_10");
+    const nb = await seedNotebook(TENANT, PUMP_10);
+    const insert = (n: number, value: string, obs: string) => testPool.query(
+      `INSERT INTO asset_observations (tenant_id, notebook_id, equipment_entity_id, fact_key, fact_value, raw_report,
+         observed_at, recorded_by, verification_method, client_request_id, request_fingerprint, projector_version)
+       SELECT $1::uuid, $2::uuid, $3, 'seal_leak', $4, 'raw', ${obs}, 'tech-' || (g.i % 5), 'self_reported',
+              gen_random_uuid(), 'bulk', 'fixture'
+         FROM generate_series(1, $5::int) AS g(i)`,
+      [TENANT, nb, PUMP_10, value, n],
+    );
+    await insert(30, "absent", "now() - interval '40 minutes' + g.i * interval '10 seconds'");
+    await insert(1, "present", "now() - interval '5 minutes'");
+    const prior = notebookId;
+    notebookId = nb;
+    try {
+      who.tenantId = TENANT;
+      who.userId = "tech-e";
+      const ctx = await browser.newContext({ viewport: { width: 412, height: 915 }, timezoneId: "America/New_York" });
+      const page = await ctx.newPage();
+      const continuations: number[] = [];
+      page.on("response", (r) => { if (r.url().includes("conflictCursor=")) continuations.push(r.status()); });
+      await page.goto(base);
+      await page.getByTestId("machine-state-pill").click();
+      const fact = page.getByTestId("observed-fact-seal_leak");
+      await fact.waitFor();
+      expect(await page.getByTestId("observed-fact-seal_leak-count").innerText()).toMatch(/Showing 20 of 31 reports/);
+
+      // Another technician's opposing report lands before Show more.
+      await insert(1, "absent", "now() - interval '20 minutes'");
+      await page.getByTestId("observed-fact-seal_leak-more").click();
+      await expect.poll(() => page.getByTestId("observed-fact-seal_leak-count").innerText()).toMatch(/Showing 20 of 32 reports/);
+      expect(continuations).toEqual([409]);
+      expect(await fact.locator("div").filter({ hasText: /reported by/ }).count()).toBe(20);
+      expect(await page.getByText("More reports could not be loaded.").count()).toBe(0);
+
+      // From the reread state, Show more pages the current contest to the end.
+      await page.getByTestId("observed-fact-seal_leak-more").click();
+      await page.getByTestId("observed-fact-seal_leak-count").waitFor({ state: "detached" });
+      expect(await fact.locator("div").filter({ hasText: /reported by/ }).count()).toBe(32);
+      expect(continuations).toEqual([409, 200]);
+      await ctx.close();
+    } finally {
+      notebookId = prior;
+      await browser.close();
+    }
+  }, 90_000);
 });

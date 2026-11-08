@@ -233,16 +233,82 @@ describe("selectTopics", () => {
     expect(topics).toContain(topic);
   });
 
-  it("reseal/rebuild/overhaul each select BOTH seals and valves", () => {
-    for (const word of ["full reseal", "complete rebuild", "pump overhaul"]) {
+  it("rebuild/overhaul each select BOTH seals and valves", () => {
+    for (const word of ["complete rebuild", "pump overhaul"]) {
       const topics = new Set(selectTopics(word).map((m) => m.topic));
       expect(topics.has("seals")).toBe(true);
       expect(topics.has("valves")).toBe(true);
     }
   });
 
+  it("reseal selects seals only — no valve work (V2, owner goal 2026-11-02)", () => {
+    const topics = new Set(selectTopics("full reseal").map((m) => m.topic));
+    expect(topics).toEqual(new Set(["seals"]));
+  });
+
   it("returns no matches for text naming no recognized task", () => {
     expect(selectTopics("General equipment check, nothing specific.")).toEqual([]);
+  });
+
+  it("a negation in the title never runs on into the description (Codex #5173 F11, #5176)", () => {
+    const topics = new Set(selectTopics("Pump not building pressure", "Reseal the leaking seals per the manufacturer procedure").map((m) => m.topic));
+    expect(topics).toEqual(new Set(["seals"]));
+  });
+
+  it("control: a negated topic in either part still adds nothing", () => {
+    expect(new Set(selectTopics("Reseal pump", "Seals only, no valve service").map((m) => m.topic))).toEqual(new Set(["seals"]));
+    expect(new Set(selectTopics("Reseal, not the valves", "Replace the packing").map((m) => m.topic))).toEqual(new Set(["seals"]));
+  });
+});
+
+describe("selectTopics — a negation covers only the work it rules out (Codex #5173 F11 residual)", () => {
+  const topicsOf = (...parts: string[]) => new Set(selectTopics(...parts).map((m) => m.topic));
+  it("a task asked for later in the same clause is kept — no verb list (any verb works)", () => {
+    expect(topicsOf("Replace the seals not the valves check the plungers")).toEqual(new Set(["seals", "plungers"]));
+    expect(topicsOf("Not the valves swap plungers")).toEqual(new Set(["plungers"]));
+    expect(topicsOf("Not the valves rig up new plungers")).toEqual(new Set(["plungers"]));
+  });
+  it("a negation covers a joined list, not the rest of the clause", () => {
+    expect(topicsOf("Reseal and don't touch the valves or plungers")).toEqual(new Set(["seals"]));
+    expect(topicsOf("Reseal without the valves and the plungers")).toEqual(new Set(["seals"]));
+    expect(topicsOf("No valves and replace the plungers")).toEqual(new Set(["plungers"]));
+  });
+  it("known limit: a symptom negation with no task word, then a task in the same unpunctuated clause, rules the task out (refused, never short)", () => {
+    expect(topicsOf("Pump not building pressure reseal it")).toEqual(new Set());
+    expect(topicsOf("Valves not holding fit new seals")).toEqual(new Set(["valves"]));
+  });
+  it("control: the work right after the negation is still ruled out", () => {
+    expect(topicsOf("Reseal and don't replace the valves")).toEqual(new Set(["seals"]));
+    expect(topicsOf("Reseal and don't inspect or replace the valves")).toEqual(new Set(["seals"]));
+    expect(topicsOf("Reseal, no valve service")).toEqual(new Set(["seals"]));
+    expect(topicsOf("Reseal without removing the valves")).toEqual(new Set(["seals"]));
+  });
+});
+
+describe("buildDraftPacket — a ruled-out topic is never silent (#5176 limit)", () => {
+  it("a topic the work order rules out shows as an open question naming the clause", () => {
+    wireParsers();
+    const result = buildDraftPacket(input({ workOrder: { ...WORK_ORDER, title: "Pump leaking", description: "Reseal the pump, no valve service." } }));
+    if (!result.ok) throw new Error(result.message);
+    const note = (result.packet.blockers ?? []).find((b) => /Left out valves work/.test(b.basis));
+    expect(note?.basis).toMatch(/no valve service/);
+    expect(note?.label).toBe("unknown");
+  });
+  it("control: a topic asked for elsewhere gets no left-out note", () => {
+    wireParsers();
+    const result = buildDraftPacket(input({ workOrder: { ...WORK_ORDER, title: "Rebuild pump", description: "Rebuild, except the valve seats are new." } }));
+    if (!result.ok) throw new Error(result.message);
+    expect((result.packet.blockers ?? []).some((b) => /Left out/.test(b.basis))).toBe(false);
+  });
+});
+
+describe("buildDraftPacket — title negation (Codex #5173 F11, #5176)", () => {
+  it("builds a seal packet when the title is a negated symptom and the description asks for a reseal", () => {
+    wireParsers();
+    const result = buildDraftPacket(
+      input({ workOrder: { ...WORK_ORDER, title: "Pump not building pressure", description: "Reseal the leaking seals per the manufacturer procedure." } }),
+    );
+    expect(result.ok).toBe(true);
   });
 });
 
@@ -310,7 +376,9 @@ describe("buildDraftPacket — assembly", () => {
     expect(kitNumberRows).toHaveLength(1);
     expect(kitNumberRows[0].partNumber).toMatchObject({ value: "90001", label: "proposed" });
     const item1 = packet.parts.find((p) => p.item === 1);
-    expect(item1?.partNumber).toMatchObject({ value: "90010", label: "verified" });
+    // 90010 (NBR) vs 90011 (FPM): it depends on the seal material, which is unknown (Codex EGM F09).
+    expect(item1?.partNumber).toMatchObject({ value: "90010", label: "proposed" });
+    expect(item1?.partNumber.basis).toMatch(/^NBR; material unconfirmed/);
     const item2 = packet.parts.find((p) => p.item === 2);
     expect(item2?.partNumber).toMatchObject({ value: null, label: "unknown" });
 
@@ -393,6 +461,8 @@ describe("buildDraftPacket — assembly", () => {
     const brokenDs = mockDataSheet();
     // The kit item's NBR part number ("90010") does not actually appear on this (deliberately
     // wrong) source line — buildDraftPacket must catch this via verifyPacket and downgrade it.
+    // The same number in both material columns, so it would be Verified (F09) — but not on its line.
+    brokenDs.kits[0].items[0].partsByMaterial = { "NBR (STD)": "90010", "FPM (.0110)": "90010" };
     brokenDs.kits[0].items[0].source = { docId: "ds1", fileId: null, filename: "9xp1000.pdf", page: 2, line: "1 Seal retainer 1 — —" };
     wireParsers({ ds: brokenDs });
     const result = buildDraftPacket(input());

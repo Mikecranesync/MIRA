@@ -121,6 +121,61 @@ describe("gating", () => {
     expect(res.status).toBe(409);
     expect(runs).toHaveLength(0);
   });
+  it("control: the exact manual attached is offered and starts", async () => {
+    const body = await (await get()).json();
+    expect(body.procedures[0].applicability).toMatchObject({ applies: true, revision: "exact" });
+    expect((await post({ templateId: T.id, op: "start" })).status).toBe(201);
+    expect(runs).toHaveLength(1);
+  });
+  it("no manual attached: shown as refused with the qualified-person hand-off, and no op can start a session", async () => {
+    fileSha = null;
+    vi.mocked(listSources).mockResolvedValue([]);
+    const body = await (await get()).json();
+    expect(body.procedures).toHaveLength(1);
+    expect(body.procedures[0].applicability).toMatchObject({ applies: false, reason: "manual_not_attached" });
+    expect(body.procedures[0].applicability.message).toContain("150-UM008J-EN-P");
+    expect(body.procedures[0].applicability.message).toMatch(/qualified person/);
+    expect(body.procedures[0].session).toBeNull();
+    for (const op of ["start", "restart"]) {
+      const res = await post({ templateId: T.id, op });
+      expect(res.status).toBe(409);
+      expect((await res.json()).error).toBe("not_applicable");
+    }
+    expect(runs).toHaveLength(0);
+  });
+  it("an unrelated attached file is not the manual: still refused", async () => {
+    fileSha = "f".repeat(64);
+    vi.mocked(listSources).mockResolvedValue([{ filename: "wiring-photo.pdf", fileId: FILE } as never]);
+    const body = await (await get()).json();
+    expect(body.procedures[0].applicability).toMatchObject({ applies: false, reason: "manual_not_attached" });
+    expect((await post({ templateId: T.id, op: "start" })).status).toBe(409);
+    expect(runs).toHaveLength(0);
+  });
+});
+
+describe("a session saved before not-attached steps were refused", () => {
+  it("a running not_attached session is shown ended with its history, refuses answers, and restarts against the attached manual", async () => {
+    await post({ templateId: T.id, op: "start" });
+    expect((await answer({ kind: "acknowledge", stepId: "hazards", acknowledged: true })).status).toBe(200);
+    runs[0].revision = "not_attached";
+
+    const shown = (await (await get()).json()).procedures[0].session;
+    expect(shown.revision).toBe("not_attached");
+    expect(shown.view.status).toBe("stopped");
+    expect(shown.view.endReason).toMatch(/without 150-UM008J-EN-P attached/);
+    expect(shown.view.history).toHaveLength(1);
+
+    const refused = await answer({ kind: "choice", stepId: "fault_displayed", choice: "yes" });
+    expect(refused.status).toBe(409);
+    expect((await refused.json()).error).toBe("manual_not_verified");
+    expect(runs[0].records).toHaveLength(1);
+
+    const restarted = await post({ templateId: T.id, op: "restart" });
+    expect(restarted.status).toBe(201);
+    expect(cur().revision).toBe("exact");
+    expect((await restarted.json()).session.view.status).toBe("active");
+    expect((await answer({ kind: "acknowledge", stepId: "hazards", acknowledged: true })).status).toBe(200);
+  });
 });
 
 describe("a session", () => {

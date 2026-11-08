@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { sessionOr401 } from "@/lib/session";
+import { atlasAccountKey, runInAtlasAccountLane } from "@/lib/atlas/client";
 
 export const dynamic = "force-dynamic";
 
@@ -46,15 +47,19 @@ async function getToken(): Promise<{ token: string | null; reason?: string }> {
   }
 }
 
-async function atlasPost(path: string, payload: Record<string, unknown>, token: string): Promise<unknown> {
-  const res = await fetch(`${atlasBase()}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(10_000),
+// One request at a time per Atlas account: Atlas v1.8.0 fails concurrent
+// searches for the same user (#5205; see runInAtlasAccountLane).
+function atlasPost(path: string, payload: Record<string, unknown>, token: string): Promise<unknown> {
+  return runInAtlasAccountLane(atlasAccountKey(atlasBase(), process.env.ATLAS_API_USER ?? ""), async () => {
+    const res = await fetch(`${atlasBase()}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) throw new Error(`Atlas ${path} → ${res.status}`);
+    return res.json();
   });
-  if (!res.ok) throw new Error(`Atlas ${path} → ${res.status}`);
-  return res.json();
 }
 
 function countFromResponse(data: unknown): number {
@@ -81,13 +86,17 @@ export async function GET() {
   }
 
   try {
-    const [openData, inProgressData, completeData, assetsData, pmsData] = await Promise.all([
-      atlasPost("/work-orders/search", { pageSize: 1, pageNum: 0, status: "OPEN" }, token),
-      atlasPost("/work-orders/search", { pageSize: 1, pageNum: 0, status: "IN_PROGRESS" }, token),
-      atlasPost("/work-orders/search", { pageSize: 1, pageNum: 0, status: "COMPLETE" }, token),
-      atlasPost("/assets/search", { pageSize: 1, pageNum: 0 }, token),
-      atlasPost("/preventive-maintenances/search", { pageSize: 1, pageNum: 0 }, token),
-    ]);
+    // Sequential, stopping at the first failure, so a failed batch leaves
+    // nothing queued behind it on the account lane.
+    const openData = await atlasPost("/work-orders/search", { pageSize: 1, pageNum: 0, status: "OPEN" }, token);
+    const inProgressData = await atlasPost(
+      "/work-orders/search",
+      { pageSize: 1, pageNum: 0, status: "IN_PROGRESS" },
+      token,
+    );
+    const completeData = await atlasPost("/work-orders/search", { pageSize: 1, pageNum: 0, status: "COMPLETE" }, token);
+    const assetsData = await atlasPost("/assets/search", { pageSize: 1, pageNum: 0 }, token);
+    const pmsData = await atlasPost("/preventive-maintenances/search", { pageSize: 1, pageNum: 0 }, token);
 
     return NextResponse.json({
       workOrders: {

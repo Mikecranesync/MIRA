@@ -9,33 +9,34 @@ import { dispatchEnabled, dispatchTenantAllowlist } from "../policy";
 
 describe("parseWritePolicy", () => {
   it("defaults to disabled for null", () => {
-    expect(parseWritePolicy(null)).toEqual({ version: 1, fixRecorded: { enabled: false } });
+    expect(parseWritePolicy(null)).toEqual({ version: 1, fixRecorded: { enabled: false }, workOrderRequested: { enabled: false } });
   });
 
   it("defaults to disabled for undefined", () => {
-    expect(parseWritePolicy(undefined)).toEqual({ version: 1, fixRecorded: { enabled: false } });
+    expect(parseWritePolicy(undefined)).toEqual({ version: 1, fixRecorded: { enabled: false }, workOrderRequested: { enabled: false } });
   });
 
   it("defaults to disabled for {} (the DB column default)", () => {
-    expect(parseWritePolicy({})).toEqual({ version: 1, fixRecorded: { enabled: false } });
+    expect(parseWritePolicy({})).toEqual({ version: 1, fixRecorded: { enabled: false }, workOrderRequested: { enabled: false } });
   });
 
   it.each([42, "nope", true, []])("defaults to disabled for a non-object (%j)", (raw) => {
-    expect(parseWritePolicy(raw)).toEqual({ version: 1, fixRecorded: { enabled: false } });
+    expect(parseWritePolicy(raw)).toEqual({ version: 1, fixRecorded: { enabled: false }, workOrderRequested: { enabled: false } });
   });
 
   it("defaults to disabled when fix_recorded is missing", () => {
-    expect(parseWritePolicy({ version: 1 })).toEqual({ version: 1, fixRecorded: { enabled: false } });
+    expect(parseWritePolicy({ version: 1 })).toEqual({ version: 1, fixRecorded: { enabled: false }, workOrderRequested: { enabled: false } });
   });
 
   it("defaults to disabled when fix_recorded is not an object", () => {
-    expect(parseWritePolicy({ fix_recorded: "yes" })).toEqual({ version: 1, fixRecorded: { enabled: false } });
+    expect(parseWritePolicy({ fix_recorded: "yes" })).toEqual({ version: 1, fixRecorded: { enabled: false }, workOrderRequested: { enabled: false } });
   });
 
   it("reports disabled when fix_recorded.enabled is explicitly false", () => {
     expect(parseWritePolicy({ fix_recorded: { enabled: false } })).toEqual({
       version: 1,
       fixRecorded: { enabled: false },
+      workOrderRequested: { enabled: false },
     });
   });
 
@@ -43,6 +44,7 @@ describe("parseWritePolicy", () => {
     expect(parseWritePolicy({ fix_recorded: { enabled: "true" } })).toEqual({
       version: 1,
       fixRecorded: { enabled: false },
+      workOrderRequested: { enabled: false },
     });
   });
 
@@ -50,34 +52,35 @@ describe("parseWritePolicy", () => {
     expect(parseWritePolicy({ fix_recorded: { enabled: true } })).toEqual({
       version: 1,
       fixRecorded: { enabled: false },
+      workOrderRequested: { enabled: false },
     });
   });
 
   it("falls back to disabled when target.kind is unrecognized", () => {
     const raw = { fix_recorded: { enabled: true, target: { kind: "bogus" } } };
-    expect(parseWritePolicy(raw)).toEqual({ version: 1, fixRecorded: { enabled: false } });
+    expect(parseWritePolicy(raw)).toEqual({ version: 1, fixRecorded: { enabled: false }, workOrderRequested: { enabled: false } });
   });
 
   it("falls back to disabled when target.kind is 'work_order' but externalWorkOrderId is missing", () => {
     const raw = { fix_recorded: { enabled: true, target: { kind: "work_order" } } };
-    expect(parseWritePolicy(raw)).toEqual({ version: 1, fixRecorded: { enabled: false } });
+    expect(parseWritePolicy(raw)).toEqual({ version: 1, fixRecorded: { enabled: false }, workOrderRequested: { enabled: false } });
   });
 
   it("falls back to disabled when externalWorkOrderId is an empty/whitespace string", () => {
     const raw = { fix_recorded: { enabled: true, target: { kind: "work_order", externalWorkOrderId: "   " } } };
-    expect(parseWritePolicy(raw)).toEqual({ version: 1, fixRecorded: { enabled: false } });
+    expect(parseWritePolicy(raw)).toEqual({ version: 1, fixRecorded: { enabled: false }, workOrderRequested: { enabled: false } });
   });
 
   it("falls back to disabled when externalWorkOrderId is not a string", () => {
     const raw = { fix_recorded: { enabled: true, target: { kind: "work_order", externalWorkOrderId: 123 } } };
-    expect(parseWritePolicy(raw)).toEqual({ version: 1, fixRecorded: { enabled: false } });
+    expect(parseWritePolicy(raw)).toEqual({ version: 1, fixRecorded: { enabled: false }, workOrderRequested: { enabled: false } });
   });
 
   // Codex round 3, F10: explicit incompatible values fail closed; omission keeps the default.
   it.each([99, 0, 2, "1", null])("fails closed when version is explicitly %j (not the literal number 1)", (version) => {
     expect(
       parseWritePolicy({ version, fix_recorded: { enabled: true, target: { kind: "work_order", externalWorkOrderId: "7" } } }),
-    ).toEqual({ version: 1, fixRecorded: { enabled: false } });
+    ).toEqual({ version: 1, fixRecorded: { enabled: false }, workOrderRequested: { enabled: false } });
   });
 
   it.each(["attach_evidence", "transition_work_order", "record_reading", "", null, 42])(
@@ -85,12 +88,12 @@ describe("parseWritePolicy", () => {
     (operation) => {
       expect(
         parseWritePolicy({ version: 1, fix_recorded: { enabled: true, operation, target: { kind: "work_order", externalWorkOrderId: "7" } } }),
-      ).toEqual({ version: 1, fixRecorded: { enabled: false } });
+      ).toEqual({ version: 1, fixRecorded: { enabled: false }, workOrderRequested: { enabled: false } });
     },
   );
 
   it("still parses when version and operation are omitted (defaults), and when they are the supported values", () => {
-    const expected = { version: 1, fixRecorded: { enabled: true, operation: "append_work_log", target: { kind: "work_order", externalWorkOrderId: "7" } } };
+    const expected = { version: 1, fixRecorded: { enabled: true, operation: "append_work_log", target: { kind: "work_order", externalWorkOrderId: "7" } }, workOrderRequested: { enabled: false } };
     expect(parseWritePolicy({ fix_recorded: { enabled: true, target: { kind: "work_order", externalWorkOrderId: "7" } } })).toEqual(expected);
     expect(
       parseWritePolicy({ version: 1, fix_recorded: { enabled: true, operation: "append_work_log", target: { kind: "work_order", externalWorkOrderId: "7" } } }),
@@ -102,6 +105,7 @@ describe("parseWritePolicy", () => {
     expect(parseWritePolicy(raw)).toEqual({
       version: 1,
       fixRecorded: { enabled: true, operation: "append_work_log", target: { kind: "work_order", externalWorkOrderId: "123" } },
+      workOrderRequested: { enabled: false },
     });
   });
 
@@ -110,6 +114,7 @@ describe("parseWritePolicy", () => {
     expect(parseWritePolicy(raw)).toEqual({
       version: 1,
       fixRecorded: { enabled: true, operation: "append_work_log", target: { kind: "asset_linked_work_order" } },
+      workOrderRequested: { enabled: false },
     });
   });
 
@@ -132,6 +137,66 @@ describe("parseWritePolicy", () => {
       fix_recorded: { enabled: true, target: { kind: "asset_linked_work_order" }, internal_test: "yes" },
     };
     expect(parseWritePolicy(raw).fixRecorded.internalTest).toBeUndefined();
+  });
+
+  describe("workOrderRequested", () => {
+    it("defaults to disabled when work_order_requested is absent", () => {
+      const raw = { fix_recorded: { enabled: true, target: { kind: "asset_linked_work_order" } } };
+      expect(parseWritePolicy(raw).workOrderRequested).toEqual({ enabled: false });
+    });
+
+    it("parses enabled:true", () => {
+      const raw = {
+        fix_recorded: { enabled: true, target: { kind: "asset_linked_work_order" } },
+        work_order_requested: { enabled: true },
+      };
+      expect(parseWritePolicy(raw).workOrderRequested).toEqual({ enabled: true });
+    });
+
+    it("defaults to disabled when enabled is truthy but not literally true", () => {
+      const raw = {
+        fix_recorded: { enabled: true, target: { kind: "asset_linked_work_order" } },
+        work_order_requested: { enabled: "true" },
+      };
+      expect(parseWritePolicy(raw).workOrderRequested).toEqual({ enabled: false });
+    });
+
+    it("defaults to disabled when work_order_requested is malformed (not an object)", () => {
+      const raw = {
+        fix_recorded: { enabled: true, target: { kind: "asset_linked_work_order" } },
+        work_order_requested: "yes",
+      };
+      expect(parseWritePolicy(raw).workOrderRequested).toEqual({ enabled: false });
+    });
+
+    it("is independent of fixRecorded.enabled — a tenant can enable creation without append_work_log", () => {
+      const raw = { fix_recorded: { enabled: false }, work_order_requested: { enabled: true } };
+      const parsed = parseWritePolicy(raw);
+      expect(parsed.fixRecorded.enabled).toBe(false);
+      expect(parsed.workOrderRequested.enabled).toBe(true);
+    });
+
+    it("survives when fix_recorded is entirely absent — a tenant need not configure a fix_recorded target at all", () => {
+      const raw = { version: 1, work_order_requested: { enabled: true } };
+      expect(parseWritePolicy(raw)).toEqual({
+        version: 1,
+        fixRecorded: { enabled: false },
+        workOrderRequested: { enabled: true },
+      });
+    });
+
+    it("survives when fix_recorded is malformed (not an object)", () => {
+      const raw = { fix_recorded: "nope", work_order_requested: { enabled: true } };
+      expect(parseWritePolicy(raw).workOrderRequested).toEqual({ enabled: true });
+    });
+
+    it("survives when fix_recorded.enabled is true but its target is malformed", () => {
+      const raw = {
+        fix_recorded: { enabled: true, target: { kind: "bogus" } },
+        work_order_requested: { enabled: true },
+      };
+      expect(parseWritePolicy(raw).workOrderRequested).toEqual({ enabled: true });
+    });
   });
 });
 

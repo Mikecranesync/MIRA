@@ -670,9 +670,12 @@ describe.skipIf(!URL_)("cmms-dispatch (real Postgres)", () => {
         record_reading: { support: "unsupported" },
         transition_work_order: { support: "unsupported" },
         list_changes: { support: "unsupported" },
+        create_work_order: { support: "unsupported" },
       }),
       appendWorkLog: async () => ({ kind: "outcome_unknown", reason: "always_ambiguous", receipt: {} }),
       readBackWorkLog: async () => ({ kind: "not_found", receipt: {} }),
+      createWorkOrder: async () => ({ kind: "unsupported", reason: "not_implemented_in_fixture", receipt: {} }),
+      readBackWorkOrder: async () => ({ kind: "not_found", receipt: {} }),
     };
     const tenantA = uuid();
     const nbA = await makeNotebook(tenantA);

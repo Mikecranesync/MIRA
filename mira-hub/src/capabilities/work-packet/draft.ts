@@ -23,7 +23,6 @@ import type {
   Field,
   Identity,
   JhaRow,
-  ModelScope,
   PacketDocument,
   PacketFigure,
   PacketMeasurement,
@@ -39,9 +38,24 @@ import { isSupportedManufacturer, manufacturerRefusalMessage } from "./manufactu
 import { parseCatPumpsDataSheet, sheetModelFor } from "./catpumps-datasheet";
 import { parseCatPumpsServiceManual } from "./catpumps-service-manual";
 import { collectFields, verifyPacket } from "./verify";
+import { captionApplicability, modelScopeAdmits, modelsMatch, otherModelsNamed } from "./applicability";
+import { buildProcedure } from "./procedure";
+import { computeCoverage } from "./coverage";
 
 /** A caution about starting the pump back up (e.g. "Do not lubricate wicks at initial start-up …"). */
 const STARTUP_RE = /\bstart-?\s?up\b/i;
+/** A caution that says what to do once service is done ("After servicing is completed, …"). */
+const AFTER_SERVICE_RE = /\bafter servic(?:e|ing)\b/i;
+
+const WORD_STOP = new Set(["the", "and", "of", "a", "an", "to", "from", "with", "in", "on", "for", "or", "by", "at", "per", "each", "all", "model", "models", "only", "into", "over", "back", "this", "that"]);
+/** Caption words that say what kind of picture it is, not what it shows. */
+const FIGURE_STOP = new Set(["removal", "arrangement", "assembly", "layout", "design", "view", "installation"]);
+/** Lower-case content words, plural "s" folded ("Screws" → "screw"), for matching items/captions to steps. */
+function significantWords(text: string): string[] {
+  return (text.toLowerCase().match(/[a-z]+/g) ?? [])
+    .filter((w) => w.length > 1 && !WORD_STOP.has(w))
+    .map((w) => (w.length > 3 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w));
+}
 
 const DISCLAIMER =
   "DRAFT prepared from the manufacturer documents attached to this notebook. It is not an " +
@@ -61,10 +75,10 @@ interface TopicPattern {
 }
 
 // Order doesn't affect the result — every pattern is tried and all matches are collected — but
-// the combination words (reseal/rebuild/overhaul) are listed first for readability since they
-// expand to two topics at once.
+// the combination words are listed first for readability. A reseal is seal work only (V2: V1 also
+// pulled in valve work and a valve kit); rebuild/overhaul still mean seals and valves.
 const TOPIC_PATTERNS: readonly TopicPattern[] = [
-  { re: /reseal/gi, topics: ["seals", "valves"] },
+  { re: /reseal/gi, topics: ["seals"] },
   { re: /rebuild/gi, topics: ["seals", "valves"] },
   { re: /overhaul/gi, topics: ["seals", "valves"] },
   { re: /v-packing/gi, topics: ["seals"] },
@@ -83,49 +97,89 @@ const TOPIC_PATTERNS: readonly TopicPattern[] = [
   { re: /lubricat/gi, topics: ["lubrication"] },
 ];
 
-/** Every (topic, matched word) pair found in free text — a work order's title + description. */
-export function selectTopics(text: string): TopicMatch[] {
-  const out: TopicMatch[] = [];
+const NEGATION_RE = /\b(?:no|not|don't|never|without|except|excluding)\b/gi;
+// Between two task mentions of one ruled-out list: only joiners ("the valves or seals", "valves and the seats").
+const LIST_JOIN_RE = /^[\s/&]*(?:(?:and|or|nor)\b[\s/&]*)?(?:(?:the|a|an|any)\s+)?$/i;
+
+interface Mention {
+  start: number;
+  end: number;
+  topics: Topic[];
+  matched: string;
+}
+
+/**
+ * The task mentions in one clause that a negation does not rule out. A negation covers the first
+ * task mention after it and the mentions chained to that one by joiners only ("don't inspect or
+ * replace the valves or seats"); anything else in the clause still counts ("not the valves, check
+ * the plungers", "valves not sealing fit new seals"). Structural, no verb list (Codex #5173 F11).
+ * Known limit: a negated symptom with no task word, then a task with no punctuation between
+ * ("Valves not holding fit new seals"), rules the task out. It is never silent: the packet lists
+ * it as an open question (`ruledOutTopics`), or is refused when nothing is left. Title and
+ * description are separate parts, so the usual shape is unaffected.
+ */
+function splitMentions(clause: string): { kept: Mention[]; ruledOut: Mention[] } {
+  const mentions: Mention[] = [];
   for (const { re, topics } of TOPIC_PATTERNS) {
     re.lastIndex = 0;
     let m: RegExpExecArray | null;
-    while ((m = re.exec(text)) !== null) {
-      for (const topic of topics) out.push({ topic, matched: m[0] });
+    while ((m = re.exec(clause)) !== null) {
+      // The span runs to the end of its word ("valve" in "valves") so joiners are read cleanly.
+      let end = m.index + m[0].length;
+      while (end < clause.length && /[A-Za-z]/.test(clause[end])) end++;
+      mentions.push({ start: m.index, end, topics, matched: m[0] });
       if (m[0].length === 0) re.lastIndex += 1;
     }
+  }
+  // One mention group per overlapping span ("oil seal" is both the oil-seal and the seal pattern).
+  const groups: Mention[][] = [];
+  for (const m of [...mentions].sort((a, b) => a.start - b.start)) {
+    const last = groups[groups.length - 1];
+    if (last && m.start < Math.max(...last.map((x) => x.end))) last.push(m);
+    else groups.push([m]);
+  }
+  const span = (g: Mention[]) => ({ start: Math.min(...g.map((x) => x.start)), end: Math.max(...g.map((x) => x.end)) });
+  const negated = new Set<number>();
+  NEGATION_RE.lastIndex = 0;
+  let n: RegExpExecArray | null;
+  while ((n = NEGATION_RE.exec(clause)) !== null) {
+    let k = groups.findIndex((g) => span(g).start >= n!.index + n![0].length);
+    if (k < 0) continue;
+    negated.add(k);
+    while (k + 1 < groups.length && LIST_JOIN_RE.test(clause.slice(span(groups[k]).end, span(groups[k + 1]).start))) negated.add(++k);
+  }
+  return { kept: groups.filter((_, k) => !negated.has(k)).flat(), ruledOut: groups.filter((_, k) => negated.has(k)).flat() };
+}
+
+const clausesOf = (parts: string[]) => parts.join("\n").split(/[\n.;,!?]|\bbut\b/i);
+
+/** Topics the work order rules out ("not the valves"), with the clause that does — shown to the
+ *  technician as an open question when nothing else asks for that topic, never dropped silently. */
+export function ruledOutTopics(...parts: string[]): { topic: Topic; clause: string }[] {
+  const out: { topic: Topic; clause: string }[] = [];
+  for (const clause of clausesOf(parts)) {
+    for (const m of splitMentions(clause).ruledOut) for (const topic of m.topics) out.push({ topic, clause: clause.trim() });
   }
   return out;
 }
 
-// ─────────────────────────────────────────────── model matching helpers
-
-/** Case/space/dash-insensitive exact match — no prefix matching (mirrors `sheetModelFor`). */
-function normalizeModel(s: string): string {
-  return s.toUpperCase().replace(/[\s-]+/g, "");
+/**
+ * Every (topic, matched word) pair found in free text — a work order's title and description, passed
+ * as separate parts so a negation in one never runs on into the other (Codex #5173 F11: a title
+ * "Pump not building pressure" glued to "Reseal the leaking seals" lost the reseal).
+ */
+export function selectTopics(...parts: string[]): TopicMatch[] {
+  const out: TopicMatch[] = [];
+  // What a clause rules out ("no valve service", "without removing the valves") adds nothing
+  // (Codex EGM F40); see `splitMentions`. Clauses split at part boundaries, sentence ends,
+  // semicolons, commas and "but".
+  for (const clause of clausesOf(parts)) {
+    for (const m of splitMentions(clause).kept) for (const topic of m.topics) out.push({ topic, matched: m.matched });
+  }
+  return out;
 }
 
-function modelsMatch(a: string, b: string): boolean {
-  return normalizeModel(a) === normalizeModel(b);
-}
-
-function modelScopeAdmits(scope: ModelScope, model: string): boolean {
-  if (scope.unresolved) return false;
-  if (!model) return scope.include.length === 0;
-  if (scope.exclude.some((m) => modelsMatch(m, model))) return false;
-  if (scope.include.length > 0) return scope.include.some((m) => modelsMatch(m, model));
-  return true;
-}
-
-// A step inside a general section can still be limited to one model by its own wording
-// ("On the model 7CP6170 remove …"). Such a step is shown only for a pump it names.
-const STEP_MODEL_RE = /^On (?:the )?models? ([A-Z0-9][A-Z0-9-]*(?:\s*(?:,|and|&)\s*[A-Z0-9][A-Z0-9-]*)*)\s/i;
-
-function stepNamesOtherModels(text: string, model: string): boolean {
-  const m = STEP_MODEL_RE.exec(text);
-  if (!m) return false;
-  const named = m[1].split(/\s*(?:,|and|&)\s*/i).filter((t) => /\d/.test(t));
-  return named.length > 0 && !named.some((t) => modelsMatch(t, model));
-}
+// Model matching helpers (`modelsMatch`, `modelScopeAdmits`) live in ./applicability.ts.
 
 // ─────────────────────────────────────────────── verbatim-line search (for citations + modelFoundOn)
 
@@ -316,7 +370,7 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
   }
   const scopeKey = matchedKeys[0] ?? modelKey ?? "";
 
-  const matches = selectTopics(`${workOrder.title} ${workOrder.description}`);
+  const matches = selectTopics(workOrder.title, workOrder.description);
   const selectedTopics = Array.from(new Set(matches.map((m) => m.topic)));
   if (selectedTopics.length === 0) {
     return refuse(
@@ -357,17 +411,73 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
   });
 
   // ---- safety ----
+  // ---- procedure (V2): removal → requested work → reinstall, notes beside their steps ----
+  const procedure = buildProcedure(applicableManuals, selectedTopics, scopeKey);
+  const unknowns: Field[] = [...procedure.unknowns];
+  const leftOut: Field[] = [...procedure.leftOut];
+  const blockers: Field[] = [...procedure.blockers];
+  // N1: a packet built from part of the manual's procedure says so first, before any other blocker.
+  const coverage = computeCoverage(applicableManuals, selectedTopics, scopeKey, procedure.steps);
+  if (coverage && !coverage.complete) {
+    const missing = coverage.sections.filter((c) => c.status !== "read").map((c) => `${c.heading} (${c.status === "partly" ? "partly read" : "not read"})`);
+    blockers.unshift({
+      value: null,
+      label: "unknown",
+      source: coverage.sections.find((c) => c.source)?.source ?? null,
+      basis: `${coverage.summary} Not fully read: ${missing.join("; ")}. Work from the manual itself for the missing parts; a qualified person must supply them before work starts. Nothing in this packet is marked verified.`,
+    });
+  }
+
+  // A topic the work order rules out, and nothing else asks for, is an open question — the packet
+  // leaves it out but says so, so a misread negation is never a silently short packet (#5176).
+  const ruledOut = new Map<Topic, string>();
+  for (const r of ruledOutTopics(workOrder.title, workOrder.description)) if (!selectedTopics.includes(r.topic) && !ruledOut.has(r.topic)) ruledOut.set(r.topic, r.clause);
+  ruledOut.forEach((clause, topic) => {
+    blockers.push({
+      value: null,
+      label: "unknown",
+      source: null,
+      basis: `Left out ${topic} work because the work order says "${clause}". If ${topic} work is needed, add it to the work order and draft again.`,
+    });
+  });
+
+  // A work order that names another pump is an open question, never silently drafted for the
+  // confirmed one (hazard 35): the technician checks which pump the job is for.
+  const knownModels = [...manuals.flatMap((p) => p.manual.modelsCovered), ...dataSheets.flatMap((p) => p.dataSheet.models), ...identityKeys(identity)];
+  const named = otherModelsNamed(`${workOrder.title}\n${workOrder.description}`, knownModels, identityKeys(identity));
+  if (named.length > 0) {
+    blockers.push({
+      value: null,
+      label: "unknown",
+      source: null,
+      basis: `The work order names ${named.join(", ")}, but the confirmed pump is ${scopeKey}. Check which pump this job is for; if the work order is wrong, correct it and draft again.`,
+    });
+  }
+
+  // Safety holds the manufacturer's cautions/warnings once each. A NOTE printed inside a procedure
+  // is shown beside its step instead (or left out with its other-model block), not repeated here.
+  const seenCaution = new Set<string>();
   const cautions: Field[] = applicableManuals.flatMap((p) =>
-    p.manual.cautions.map((c) => ({
-      value: c.text,
-      label: "verified" as const,
-      source: c.source,
-      basis: `${c.kind} — ${p.doc.filename ?? p.doc.docId}`,
-    })),
+    p.manual.cautions
+      .filter((c) => !procedure.placed.has(c) && !(c.kind === "NOTE" && c.context))
+      .filter((c) => {
+        if (seenCaution.has(c.text)) return false;
+        seenCaution.add(c.text);
+        return true;
+      })
+      .map((c) => ({
+        value: c.text,
+        label: c.uncertainEnd ? ("proposed" as const) : ("verified" as const),
+        source: c.source,
+        basis: `${c.kind} — ${p.doc.filename ?? p.doc.docId}${c.uncertainEnd ? ` — ${c.uncertainEnd}` : ""}`,
+      })),
   );
   // A caution the parser could not read in full is listed in Safety as unknown, never dropped.
+  // An unreadable NOTE is listed here but is not a hazard row in the JHA (a NOTE is not a hazard).
+  const unreadNotes = new Set<number>();
   for (const p of applicableManuals) {
     for (const c of p.manual.omittedCautions ?? []) {
+      if (c.kind === "NOTE") unreadNotes.add(cautions.length);
       cautions.push({
         value: null,
         label: "unknown",
@@ -380,7 +490,6 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
 
   // ---- parts & kits ----
   const parts: PacketPart[] = [];
-  const unknowns: Field[] = [];
   const wantSeals = selectedTopics.includes("seals");
   const wantValves = selectedTopics.includes("valves");
 
@@ -434,8 +543,19 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
         const nbrKey = findNbrStdKey(ki.partsByMaterial);
         const nbrPart = nbrKey !== undefined ? ki.partsByMaterial[nbrKey] : null;
         let partNumber: Field;
-        if (nbrPart) {
-          partNumber = { value: nbrPart, label: "verified", source: ki.source, basis: "kit item list, NBR column" };
+        // The same number in every material column does not depend on the seal material; any other
+        // row does, and this pump's material is unknown, so its NBR number is only Proposed (Codex EGM F09).
+        const sameInEveryMaterial = Object.values(ki.partsByMaterial).every((v) => v === nbrPart);
+        if (nbrPart && sameInEveryMaterial) {
+          partNumber = { value: nbrPart, label: "verified", source: ki.source, basis: "kit item list — the same part in every material column" };
+        } else if (nbrPart) {
+          const others = Object.entries(ki.partsByMaterial).filter(([k]) => k !== nbrKey).map(([k, v]) => `${k} ${v ?? "—"}`).join(", ");
+          partNumber = {
+            value: nbrPart,
+            label: "proposed",
+            source: ki.source,
+            basis: `NBR; material unconfirmed — this part differs by seal material and this pump's seal material is unknown (see Unknowns: seal material). Other materials: ${others || "none listed"}.`,
+          };
         } else {
           partNumber = { value: null, label: "unknown", source: ki.source, basis: "NBR part number not listed for this item on the sheet" };
           unknowns.push({
@@ -456,37 +576,8 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
     }
   }
 
-  // ---- steps ----
-  const steps: PacketStep[] = [];
-  for (const p of applicableManuals) {
-    for (const section of p.manual.sections) {
-      if (section.topic === "other") continue;
-      if (!selectedTopics.includes(section.topic)) continue;
-      if (section.models.unresolved && section.steps.length > 0) {
-        unknowns.push({
-          value: null,
-          label: "unknown",
-          source: section.steps[0].source,
-          basis: `${section.heading} — ${section.subheading ?? "section"}: the manual limits these steps to some models or hardware variants and this tool cannot tell whether this pump is one. Steps left out; use the manual directly for this part.`,
-        });
-        continue;
-      }
-      if (!modelScopeAdmits(section.models, scopeKey)) continue;
-      for (const step of section.steps) {
-        if (stepNamesOtherModels(step.text, scopeKey)) continue;
-        steps.push({
-          section: section.heading,
-          topic: section.topic,
-          text: {
-            value: step.text,
-            label: "verified",
-            source: step.source,
-            basis: section.subheading ? `${section.heading} — ${section.subheading}` : section.heading,
-          },
-        });
-      }
-    }
-  }
+  // ---- steps ---- (built above by ./procedure.ts)
+  const steps: PacketStep[] = procedure.steps;
 
   // Sections the parser detected but had to leave out (Codex #5062 F12): the packet says which
   // work is missing instead of quietly showing only the part that survived extraction.
@@ -522,6 +613,23 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
   }
   const reportedConflict = new Set<string>();
   const emittedItem = new Set<string>();
+  // V2: a torque row is shown when a step in this packet tightens it — the step says "torque" and it
+  // (or the step just before it, in the same block) names every word of the item. The link is a
+  // proposal. Only when no step mentions torque at all does the V1 topic rule decide.
+  const anyTorqueStep = steps.some((st) => /\btorque\b/i.test(st.text.value ?? ""));
+  const linkedSteps = (item: string): number[] => {
+    const want = significantWords(item);
+    if (want.length === 0) return [];
+    const out: number[] = [];
+    steps.forEach((st, i) => {
+      if (!/\btorque\b/i.test(st.text.value ?? "")) return;
+      const prev = steps[i - 1];
+      const sameBlock = prev && prev.section === st.section && prev.subheading === st.subheading;
+      const have = new Set([...significantWords(st.text.value ?? ""), ...(sameBlock ? significantWords(prev.text.value ?? "") : [])]);
+      if (want.every((w) => have.has(w))) out.push(i);
+    });
+    return out;
+  };
   {
     for (const row of effective) {
       const conflictKey = torqueKey(row.item);
@@ -537,11 +645,19 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
         }
         continue;
       }
-      const relevant = selectedTopics.some((t) => {
-        const re = TOPIC_TORQUE_RE[t];
-        return re ? re.test(row.item) : false;
-      });
-      if (!relevant) continue;
+      const linked = anyTorqueStep ? linkedSteps(row.item) : [];
+      const relevant = anyTorqueStep
+        ? linked.length > 0
+        : selectedTopics.some((t) => {
+            const re = TOPIC_TORQUE_RE[t];
+            return re ? re.test(row.item) : false;
+          });
+      if (!relevant) {
+        if (anyTorqueStep && !emittedItem.has(torqueKey(row.item)) && !leftOut.some((f) => f.value === row.item)) {
+          leftOut.push({ value: row.item, label: "proposed", source: row.source, basis: "torque chart row that no step in this packet tightens" });
+        }
+        continue;
+      }
       if (!row.consistent) {
         unknowns.push({
           value: null,
@@ -556,13 +672,23 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
       const valueParts = [row.inLbs ? `${row.inLbs} in-lbs` : null, row.ftLbs ? `${row.ftLbs} ft-lbs` : null, row.nm ? `${row.nm} Nm` : null].filter(
         (v): v is string => v !== null,
       );
-      measurements.push({
+      const m: PacketMeasurement = {
         name: { value: row.item, label: "verified", source: row.source, basis: "torque chart" },
         value: { value: valueParts.join(" / "), label: "verified", source: row.source, basis: "torque chart" },
         tool: row.tool
           ? { value: row.tool, label: "verified", source: row.source, basis: "torque chart tool column" }
           : { value: null, label: "unknown", source: null, basis: "tool not listed on this torque row" },
-      });
+      };
+      if (linked.length > 0) {
+        m.steps = linked;
+        m.link = {
+          value: `used at ${linked.map((i) => `step ${i + 1}`).join(", ")} of this packet`,
+          label: "proposed",
+          source: steps[linked[0]].text.source,
+          basis: `the step says to torque and names the ${row.item}`,
+        };
+      }
+      measurements.push(m);
       if (row.tool && !torqueTools.has(row.tool)) {
         torqueTools.set(row.tool, { value: row.tool, label: "verified", source: row.source, basis: "torque chart tool column" });
       }
@@ -601,9 +727,10 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
     tools.push({ value: "Torque wrench", label: "proposed", source: null, basis: "torque values specified" });
   }
 
-  // ---- figures: the manufacturer's photos on the pages the selected steps are printed on ----
-  // Only a kept original PDF has them (document-text.ts). A photo is attached to the first selected
-  // section printed on its page; a page's photos are attached once.
+  // ---- figures: the manufacturer's photos on the pages the packet's steps are printed on ----
+  // Only a kept original PDF has them (document-text.ts). V2: a photo whose caption lists other
+  // models (or a model the cover does not list) is left out; a kept photo sits with the step on its
+  // page that shares the most caption words (a proposal), otherwise with that page's first section.
   const figures: PacketFigure[] = [];
   const figurePages = new Set<string>();
   for (const step of steps) {
@@ -612,10 +739,34 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
     const key = `${src.docId}#${src.page}`;
     if (figurePages.has(key)) continue;
     figurePages.add(key);
-    const doc = applicableManuals.find((p) => p.doc.docId === src.docId)?.doc;
-    const page = doc?.pages.find((pg) => pg.page === src.page);
+    const owner = applicableManuals.find((p) => p.doc.docId === src.docId);
+    const page = owner?.doc.pages.find((pg) => pg.page === src.page);
     for (const f of page?.figures ?? []) {
-      figures.push({ section: step.section, docId: src.docId, filename: src.filename, page: src.page, image: f.image, caption: f.caption });
+      const captionText = f.caption.filter((c) => c.trim().length > 0).join(" | ");
+      const a = captionApplicability(f.caption, scopeKey, owner?.manual.modelsCovered ?? []);
+      if (a.kind === "other_models" || a.kind === "unresolved") {
+        leftOut.push({
+          value: captionText || "(photo without caption)",
+          label: "proposed",
+          source: { docId: src.docId, fileId: src.fileId, filename: src.filename, page: src.page, line: f.caption.join(" ") },
+          basis: a.kind === "other_models" ? `figure on p.${src.page} for other models (${a.reason})` : `figure on p.${src.page}: ${a.reason} — left out rather than guessed`,
+        });
+        continue;
+      }
+      const want = new Set(f.caption.flatMap((c) => significantWords(c)).filter((w) => !FIGURE_STOP.has(w)));
+      let best = -1;
+      let bestShared: string[] = [];
+      steps.forEach((st, i) => {
+        if (st.text.source?.docId !== src.docId || st.text.source?.page !== src.page) return;
+        const shared = Array.from(new Set(significantWords(st.text.value ?? ""))).filter((w) => want.has(w));
+        if (shared.length >= 2 && shared.length > bestShared.length) {
+          best = i;
+          bestShared = shared;
+        }
+      });
+      const fig: PacketFigure = { section: best >= 0 ? steps[best].section : step.section, docId: src.docId, filename: src.filename, page: src.page, image: f.image, caption: f.caption, step: best >= 0 ? best : null };
+      if (best >= 0) fig.placement = { value: `shown with step ${best + 1}`, label: "proposed", source: steps[best].text.source, basis: `caption and step share: ${bestShared.join(", ")}` };
+      figures.push(fig);
     }
   }
 
@@ -624,11 +775,11 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
   // PPE, isolation, permits — are the site's decision: always unknown, never generated.
   const siteControls = (): Field => ({ value: null, label: "unknown", source: null, basis: "controls, PPE and isolation — the site defines them" });
   const jha: JhaRow[] = [
-    ...cautions.map((c, i) => ({
+    ...cautions.flatMap((c, i) => (unreadNotes.has(i) ? [] : [{
       task: { value: c.source ? `Manual p.${c.source.page}` : "Manual", label: "proposed" as const, source: c.source, basis: "where the manual prints this caution" },
       hazard: { ...c, copyOf: `safety.cautions[${i}]` },
       controls: siteControls(),
-    })),
+    }])),
     ...hazardFlags.map((flag) => ({
       task: { value: workOrder.title || workOrder.id, label: "proposed" as const, source: null, basis: "the work order" },
       hazard: { value: flag, label: "proposed" as const, source: null, basis: "raised by the Hub's safety classifier on the work-order text" },
@@ -650,8 +801,15 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
     }
   }
   cautions.forEach((c, i) => {
-    if (c.label === "verified" && STARTUP_RE.test(c.value ?? "")) restoration.push({ ...c, basis: `${c.basis} — start-up`, copyOf: `safety.cautions[${i}]` });
+    if (c.label !== "verified") return;
+    if (STARTUP_RE.test(c.value ?? "")) restoration.push({ ...c, basis: `${c.basis} — start-up`, copyOf: `safety.cautions[${i}]` });
+    else if (AFTER_SERVICE_RE.test(c.value ?? "")) restoration.push({ ...c, basis: `${c.basis} — after service`, copyOf: `safety.cautions[${i}]` });
   });
+  steps.forEach((st, i) =>
+    (st.notes ?? []).forEach((n, j) => {
+      if (n.text.label === "verified" && STARTUP_RE.test(n.text.value ?? "")) restoration.push({ ...n.text, basis: `${n.text.basis} — start-up`, copyOf: `steps[${i}].notes[${j}].text` });
+    }),
+  );
   for (const key of ["crankcase_capacity", "pressure", "flow", "rpm"]) {
     const basis = key === "crankcase_capacity" ? "data sheet: fill the crankcase to this capacity before start-up" : "data sheet rating — do not exceed during the run test";
     const spec = resolveSpec(applicableDataSheets, key, basis, identityKeys(identity));
@@ -678,7 +836,7 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
   }
 
   const packet: WorkPacket = {
-    version: 1,
+    version: 2,
     packetId: input.packetId,
     generatedAt: input.now,
     notebookId: input.notebookId,
@@ -698,11 +856,24 @@ export function buildDraftPacket(input: DraftInput): DraftResult {
     qualifications,
     restoration,
     unknowns,
+    blockers,
+    leftOut,
+    ...(coverage ? { coverage } : {}),
     approval: {
       technicianReview: { state: "draft", entries: [] },
       supervisor: { state: "pending", by: null, at: null },
     },
   };
+
+  // N1: nothing in a packet that is not the whole job is shown as verified — the manual's own words
+  // stay, as proposed, so the technician still sees what was read.
+  if (coverage && !coverage.complete) {
+    for (const { field } of collectFields(packet)) {
+      if (field.label !== "verified") continue;
+      field.label = "proposed";
+      field.basis = `${field.basis} — ${coverage.summary}`;
+    }
+  }
 
   const warnings: string[] = [];
   const problems = verifyPacket(packet);
