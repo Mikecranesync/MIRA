@@ -808,10 +808,15 @@ export async function deleteOrphanNodeIngest(
   try {
     // Commit intent before destructive work. A later DELETE/transaction error
     // must not roll back the only durable record that cleanup is still owed.
+    // Preserve the original explanation and do not re-wrap an existing marker.
     if (uploadId !== null) {
       await pool.query(
-        `UPDATE hub_uploads u SET status_detail = $3
+        `UPDATE hub_uploads u
+            SET status_detail = $3 || chr(10) || COALESCE(to_jsonb(u.status_detail)::text, 'null')
           WHERE u.tenant_id = $1 AND u.id = $2::uuid
+            AND (u.status_detail IS NULL OR (
+              u.status_detail <> $3 AND u.status_detail NOT LIKE $3 || chr(10) || '%'
+            ))
             AND EXISTS (
               SELECT 1 FROM namespace_direct_uploads f
                WHERE f.tenant_id = $1::uuid AND f.id = $4::uuid
@@ -825,7 +830,8 @@ export async function deleteOrphanNodeIngest(
     // committed pointer itself or persists before a subsequent drain.
     if (uploadId === null) {
       const pending = await pool.query(
-        `SELECT 1 FROM hub_uploads WHERE tenant_id = $1 AND status_detail = $2 LIMIT 1`,
+        `SELECT 1 FROM hub_uploads WHERE tenant_id = $1
+          AND (status_detail = $2 OR status_detail LIKE $2 || chr(10) || '%') LIMIT 1`,
         [tenantId, pendingDetail],
       );
       if (pending.rows.length === 0) return;
@@ -851,7 +857,8 @@ export async function deleteOrphanNodeIngest(
       }
       const pending = await client.query<{ id: string }>(
         `SELECT id::text FROM hub_uploads
-          WHERE tenant_id = $1 AND status_detail = $2
+          WHERE tenant_id = $1
+            AND (status_detail = $2 OR status_detail LIKE $2 || chr(10) || '%')
             AND ($3::uuid IS NULL OR id <> $3::uuid)`,
         [tenantId, pendingDetail, file.upload_id],
       );
@@ -866,10 +873,15 @@ export async function deleteOrphanNodeIngest(
           losers,
         ]);
       }
-      // Adoption wins: consume its cleanup marker without deleting its chunks.
+      // Adoption wins: restore its previous explanation (JSON preserves null,
+      // empty strings, quotes and newlines) without deleting its chunks.
       await client.query(
-        `UPDATE hub_uploads SET status_detail = NULL
-          WHERE tenant_id = $1 AND id = $2::uuid AND status_detail = $3`,
+        `UPDATE hub_uploads SET status_detail = CASE
+            WHEN status_detail = $3 THEN NULL
+            ELSE substring(status_detail FROM length($3) + 2)::jsonb #>> '{}'
+          END
+          WHERE tenant_id = $1 AND id = $2::uuid
+            AND (status_detail = $3 OR status_detail LIKE $3 || chr(10) || '%')`,
         [tenantId, file.upload_id, pendingDetail],
       );
       await client.query("COMMIT");

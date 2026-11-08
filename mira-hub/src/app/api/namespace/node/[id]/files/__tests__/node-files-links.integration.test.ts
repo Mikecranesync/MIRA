@@ -62,7 +62,7 @@ vi.mock("@/lib/node-knowledge-ingest", async (importOriginal) => {
 import { GET, POST } from "../route";
 import { POST as uploadFile } from "@/app/api/files/route";
 import { ingestPdfToNode, deleteOrphanNodeIngest } from "@/lib/node-knowledge-ingest";
-import { createUpload, updateUploadStatus, findDuplicateUpload } from "@/lib/uploads";
+import { createUpload, updateUploadStatus, findDuplicateUpload, getUpload } from "@/lib/uploads";
 import { parkOrReuseFile, claimIngest, linkFileToUpload, releaseIngestClaim } from "@/lib/workspace-files";
 import { sessionOr401 } from "@/lib/session";
 
@@ -377,6 +377,20 @@ describe("POST — recover a parsed document after finalization failed (#5318)",
     expect((await listFiles(nodeA)).names).toEqual(["deferred.pdf"]);
     const chunks = await testPool.query("SELECT doc_id::text FROM knowledge_entries WHERE tenant_id = $1::uuid", [TENANT]);
     expect(chunks.rows).toEqual(winnerId === late.id ? [{ doc_id: late.id }] : []);
+  });
+
+  it.each([null, "3 pages indexed", "", 'A "quoted" status\nwith a second line'])("preserves an adopted document's previous status explanation: %j", async (detail) => {
+    const parked = await parkOrReuseFile({ tenantId: TENANT, nodeId: nodeA, filename: "detail.pdf", mimeType: "application/pdf", sizeBytes: bytes.length, buffer: bytes });
+    const upload = await createUpload({ tenantId: TENANT, provider: "local", filename: "detail.pdf", initialStatus: "parsed", kgEntityId: nodeA, ingestRoute: "v2" });
+    await updateUploadStatus(upload.id, TENANT, "parsed", detail);
+    const claim = await claimIngest(TENANT, parked.fileId);
+    if (!claim.claimed) throw new Error("fixture claim unavailable");
+    await deleteOrphanNodeIngest(TENANT, upload.id, parked.fileId);
+    expect((await getUpload(upload.id, TENANT))?.statusDetail).toBe("Finishing file processing.");
+    await deleteOrphanNodeIngest(TENANT, upload.id, parked.fileId); // repeated recovery is idempotent
+    expect(await linkFileToUpload(TENANT, parked.fileId, upload.id, claim.claimToken)).toBe(true);
+    expect((await getUpload(upload.id, TENANT))?.statusDetail).toBe(detail);
+    expect((await testPool.query("SELECT status_detail FROM hub_uploads WHERE id = $1", [upload.id])).rows[0].status_detail).toBe(detail);
   });
 
   it("keeps cleanup intent durable after a database failure and drains it on supported reuse", async () => {

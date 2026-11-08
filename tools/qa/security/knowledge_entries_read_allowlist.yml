@@ -617,10 +617,10 @@ approved:
       `SELECT id::text, content FROM knowledge_entries
                   WHERE tenant_id = $1 AND source_url = $2
                     AND source_type = 'node_attachment' AND embedding IS NULL
-  "mira-hub/src/lib/node-knowledge-ingest.ts:861":
+  "mira-hub/src/lib/node-knowledge-ingest.ts:868":
     approved_classification: TENANT-ONLY
-    query_sha256: "dc1380efa082ad787e1d631d4aa12ab5785cd38fba3d2e055609049895a69df6"
-    reason: "Canonical orphan maintenance, not a hybrid corpus read. The heuristic context starts at the canonical-file SELECT and includes DELETE of only this tenant and the explicitly selected losing doc IDs. A transaction locks the actual tenant/file row and protects any active claim or adopted document. Adding public/OEM visibility to this destructive operation would be incorrect."
+    query_sha256: "7e7c5c42082b5901512f14c03f9a77409b0b3c2d81ca83c911ac1d82886dfed1"
+    reason: "Canonical orphan maintenance, not a hybrid corpus read. The heuristic context starts at the canonical-file SELECT and includes DELETE of only this tenant and the explicitly selected losing doc IDs. A transaction locks the actual tenant/file row and protects any active claim or adopted document. Adding public/OEM visibility to this destructive operation would be incorrect. Deferred status text is preserved/restored; all read/delete predicates and the file lock stay tenant-scoped."
     query_snippet: |
       FROM namespace_direct_uploads
                 WHERE tenant_id = $1::uuid AND id = $2::uuid
@@ -638,7 +638,8 @@ approved:
             }
             const pending = await client.query<{ id: string }>(
               `SELECT id::text FROM hub_uploads
-                WHERE tenant_id = $1 AND status_detail = $2
+                WHERE tenant_id = $1
+                  AND (status_detail = $2 OR status_detail LIKE $2 || chr(10) || '%')
                   AND ($3::uuid IS NULL OR id <> $3::uuid)`,
               [tenantId, pendingDetail, file.upload_id],
             );
@@ -689,7 +690,7 @@ approved:
       const chunks = await testPool.query("SELECT doc_id::text FROM knowledge_entries WHERE tenant_id = $1::uuid", [TENANT]);
           expect(chunks.rows).toEqual(winnerId === late.id ? [{ doc_id: late.id }] : []);
 
-  "mira-hub/src/app/api/namespace/node/[id]/files/__tests__/node-files-links.integration.test.ts:444":
+  "mira-hub/src/app/api/namespace/node/[id]/files/__tests__/node-files-links.integration.test.ts:457":
     approved_classification: TENANT-ONLY
     query_sha256: "fd5f8eb8bd9ea0e2ff827932249d76a4623d19b59eda79ed3962770be4005429"
     reason: "Disposable-database assertion that only the committed winning fixture doc ID remains for this synthetic tenant. No returned content and no shared corpus read; the synthetic database is separately confirmed and stopped after testing."
