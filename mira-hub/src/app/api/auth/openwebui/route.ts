@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { upsertBinding } from "@/lib/bindings";
 import { sessionOr401 } from "@/lib/session";
+import { edgeProfileEnabled } from "@/lib/inference/edge-profile";
+import { edgeOfflineFeatureBody } from "@/lib/inference/edge-egress";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +15,8 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest) {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
+  // #5265: no remote probe or token check on the offline device.
+  if (edgeProfileEnabled()) return NextResponse.json(edgeOfflineFeatureBody("Connecting Open WebUI"), { status: 403 });
   const { url, apiKey } = await req.json();
 
   if (!url || typeof url !== "string") {
