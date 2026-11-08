@@ -21,7 +21,7 @@
  *    instead of joining the queue/drain/badge system the other nine event
  *    kinds use.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { JobSheetBody, JobSheetItem, JobSheetTorque } from "@/capabilities/living-sheet/types";
 import type { SheetProposal } from "@/capabilities/living-sheet/propose";
 import type { SheetReadingView, SheetStepView, SheetView } from "@/capabilities/living-sheet/reduce";
@@ -30,6 +30,7 @@ import { fileUrl } from "./to-interaction";
 import { LivingSheetPrint } from "./LivingSheetPrint";
 import { LivingSheetShiftReport } from "./LivingSheetShiftReport";
 import { JobSheetsLibrary } from "./JobSheetsLibrary";
+import { NotebookMachineBinding } from "./NotebookMachineBinding";
 import {
   apiGetJob,
   apiGetWorkOrderRequest,
@@ -456,6 +457,9 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
   const [chosenJobSheetId, setChosenJobSheetId] = useState("");
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
+  const [machineRequiredFor, setMachineRequiredFor] = useState<string | null>(null);
+  const currentNotebookId = useRef(notebookId);
+  useLayoutEffect(() => { currentNotebookId.current = notebookId; }, [notebookId]);
   // R2-06: the WHOLE frozen Start request (id, occurredAt, title, template)
   // for the current attempt — reused byte-for-byte on retry until it
   // succeeds (cleared) or the technician edits the title (a new attempt).
@@ -860,11 +864,13 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
     if (!request.title) return;
     setStarting(true);
     setStartError(null);
+    setMachineRequiredFor(null);
     if (!pendingStartRequest) setPendingStartRequest(request);
     try {
       const res = await apiStartJob(notebookId, request);
       if (!res.ok || !res.body.jobId) {
         setStartError(startJobErrorMessage(res.body.error, res.body.message));
+        if (res.body.error === "asset_not_bound" || res.body.error === "asset_not_confirmed") setMachineRequiredFor(notebookId);
         // A definitive refusal created nothing: the next tap starts a fresh
         // attempt from the current inputs. Anything else keeps this SAME
         // attempt so a retry cannot create a duplicate.
@@ -1242,7 +1248,12 @@ export function LivingSheet({ notebookId, technicianName, onSheetOpenChange, rec
                   </label>
                 ) : null}
                 {startError && <p role="alert">{startError}</p>}
-                <button type="button" style={BUTTON_STYLE} disabled={!newTitle.trim() || starting} onClick={startJob} data-testid="living-sheet-start">
+                {machineRequiredFor === notebookId && <NotebookMachineBinding key={notebookId} notebookId={notebookId} buttonStyle={GHOST_BUTTON_STYLE} fieldStyle={FIELD_STYLE} onConfirmed={(confirmedId) => {
+                  if (currentNotebookId.current !== confirmedId) return;
+                  setMachineRequiredFor(null);
+                  setStartError(null);
+                }} />}
+                <button type="button" style={BUTTON_STYLE} disabled={!newTitle.trim() || starting || machineRequiredFor === notebookId} onClick={startJob} data-testid="living-sheet-start">
                   {starting ? "Starting…" : "Start a job"}
                 </button>
               </section>
