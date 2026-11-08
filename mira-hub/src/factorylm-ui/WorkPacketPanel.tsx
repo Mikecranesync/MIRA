@@ -208,6 +208,7 @@ const REFUSAL_LABEL: Record<DraftRefusal, string> = {
   model_not_in_documents: "Model not in documents",
   no_task_matched: "No matching task",
   revision_not_confirmed: "Revisions not confirmed",
+  connection_ambiguous: "Which drawing?",
 };
 
 type WOFields = { id: string; title: string; description: string; assetTag: string; site: string };
