@@ -68,16 +68,13 @@ describe("project creation does not wait for sidebar refresh", () => {
     try { expect(env.read()).toContainEqual(env.created); }
     finally { fresh.resolve([]); await creating; }
   });
-  it("selects the created project from the real New project handler before refresh completes", async () => {
-    const list = deferred<unknown>();
-    const env = setup(() => list.promise);
-    const select = vi.fn();
-    const handler = callback("onCreateProject", { window: { prompt: () => "Conveyor 4" },
-      createNotebook: env.create, select, newThreadId: () => "new-thread", dispatch: vi.fn() });
+  it("New project opens the setup sheet and makes no network call (#4632)", () => {
+    const open = vi.fn();
+    const fetchSpy = vi.fn();
+    const handler = callback("onCreateProject", { setNewProjectOpen: open, fetch: fetchSpy });
     handler();
-    for (let i = 0; i < 10; i++) await Promise.resolve();
-    try { expect(select).toHaveBeenCalledWith({notebookId:"created-project",threadId:"new-thread"}); }
-    finally { list.resolve([]); }
+    expect(open).toHaveBeenCalledWith(true);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
   it("list hydration cannot restore an old URL after an explicit project selection", async () => {
     const selectionRef = {current:null};
