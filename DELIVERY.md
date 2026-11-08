@@ -18,8 +18,8 @@ Live acceptance and agent updates: [#5232](https://github.com/Mikecranesync/MIRA
    or consulting engagement under Mike's approved offer. Track actual agreements and
    payment receipts separately from software progress. Do not invent a price or date.
 5. **Evidence-backed demonstrations and responses:** describe demonstrated capability,
-   prototype, planned work and gaps separately. Commercial, Air Force and production
-   acceptance remain distinct.
+   prototype, planned work and gaps separately. Commercial, government-bid and
+   production acceptance remain distinct.
 
 This plan restates the current delivery mission. It does not replace strategy,
 architecture, existing work claims, G01–G12/W0–W5 definitions or release governance.
@@ -37,10 +37,10 @@ still required. An unverified deadline is a planning constraint, not proof of co
 |---|---|---|---|
 | Nov 7, 2026 — historical target | First Dollar | Mike | Agent reports target missed; verify current commercial state. Preserve the miss; Mike sets any replacement date and offer. |
 | Nov 16, 2026, 11:59 PM ET | I-Corps report; reported 5–10 interviews | Mike; CHARLIE Codex tracks | Read assignment; verify interview count and requirements; retain report and submission receipt without publishing private interview data. |
-| Nov 17, 2026, 7:00 AM ET | Air Force organizer questions | Mike; CHARLIE Codex tracks | Read original RFI FA558726R1000 and attachments; prepare questions on hardware, data access/storage, offline evaluation, security, clearance and telemetry; retain authorized submission receipt. |
+| Nov 17, 2026, 7:00 AM ET | Government RFI questions | Mike; CHARLIE Codex tracks | Work from the original solicitation and the private bid plan in the factorylm repository; retain the authorized submission receipt there. |
 | Nov 24, 2026 — internal target | Evidence-backed tablet demonstration | CHARLIE Codex + CHARLIE Claude | One identified build, reviewed composition, physical workflow receipts and explicit gaps. This is not an external procurement deadline. |
-| Dec 1, 2026, 7:00 AM ET | Air Force RFI response | Mike; CHARLIE Codex tracks | Verify deadline and reported eight-page limit excluding cover against original documents; requirements-to-evidence matrix, final response and authorized submission receipt. |
-| Dec 2, 2026–Jan 6, 2027 — reported window | Navy opportunity decision | Mike | Verify official opportunity and dates before committing work. |
+| Dec 1, 2026, 7:00 AM ET | Government RFI response | Mike; CHARLIE Codex tracks | Verify deadline and page limit against the original documents; requirements-to-evidence matrix, response and submission receipt live in the private factorylm repository. |
+| Dec 2, 2026–Jan 6, 2027 — reported window | Second government opportunity decision | Mike | Verify the official opportunity and dates before committing work; details stay private. |
 | Feb 9–12, 2027 — historical strategy date | ProveIt demonstration | Mike | NORTH_STAR records Dallas showcase goal; verify official dates and participation before travel or external commitments. |
 
 CHARLIE Codex tracks document owners and missing decisions; it does not abandon
@@ -55,10 +55,13 @@ On one frozen candidate, through the real device interface:
 Fresh supported sign-in → New Project → choose and confirm CV-101 → select/attach an
 approved applicable manual → truthful indexing/search readiness → ask the original
 unhinted GS11N-20P2 acceleration question → correct P01.12 evidence and warnings →
-open the exact cited source page → save job, photo and note → restart → recover
-context and reviewed status → reuse eligible saved evidence in a fresh conversation.
+open the exact cited source page in the device's own browser → save job, photo and
+note → restart → recover context and reviewed status → reuse eligible saved
+evidence in a fresh conversation.
 Include the controlling illustrated-guide and second-technician acceptance steps.
 
+Answers must carry the cited page's own cautions, and machine-binding and review labels
+must match the stored record. A photo counts only when it is attached to the job.
 Validate model/revision/tenant negatives, immediate-danger stops, grounded fault
 responses, sign-out behavior, pending-upload recovery and large-manual stability.
 Test repeated/concurrent/cancelled work under the existing memory limit; preserve
@@ -68,8 +71,10 @@ page numbers against the exact manual hash/revision.
 For the offline offer: separately prove fresh supported local authentication,
 the physical browser journey, cold restart/reboot recovery and monitored isolation.
 Record network windows, detector positive controls, timer/restoration behavior and
-cleanup. A reused session, matching online answers, failed ping or free-memory
-snapshot alone does not establish correctness, no-egress or long-duration stability.
+cleanup. After a reboot the services must come back without manual commands, and the
+sign-in screen must lead with the path that works offline. A reused session, matching
+online answers, failed ping or free-memory snapshot alone does not establish
+correctness, no-egress or long-duration stability.
 Do not claim 180-day acceptance from a short run.
 
 Freeze SHA, included changes, configuration, source hashes, runtime generation and
@@ -147,6 +152,9 @@ read/acknowledge it; a merged file cannot force already-running agents to reload
 Do not require a new source commit/PR for each status update.
 
 ## Change and authority boundaries
+
+This repository is public. Solicitation numbers, bid strategy, clearance, pricing and
+interview data stay in the private factorylm repository; link by path, do not copy.
 
 Keep this file focused on goals, deadlines, owners and communication. Store volatile
 engineering status in #5232; change this plan through a reviewed PR when scope,
