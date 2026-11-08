@@ -1,3 +1,15 @@
+# PF525 fault-history Clear Buffer — 2026-11-04 follow-up
+
+Draft PR #5174. Codex F1: surplus control-role hits can no longer crowd out the history readout; the helper reserves one display + one control and caps at topK. Empty-history asks no longer match firmware/reboot narratives. Bare 25B is not a PowerFlex 525 — only 25B-* catalog form. No Codex from this session. No merge, ready, or deploy.
+
+---
+
+# PF525 fault-history Clear Buffer — 2026-11-04
+
+Draft PR on `cursor/pf525-fault-history-a551-e315` (#4863 / #5138). Hub `retrieveNodeChunks` now expands from fault-history DISPLAY rows (Fault N Code / 10-fault history) to the CONTROL parameter that writes those buffers (Fault Clear / Clear Buffer) when the ask is empty/zero/missing history. Hermetic fixture fails unless A551 Clear Buffer is retrieved alongside the history rows. No NOTEBOOK_QUERY_REWRITE / hybrid / LEXICAL_V2 flag flips. Catalog `25B` aliases to PowerFlex 525 in model-token. No merge, deploy, labels, or paid Codex.
+
+---
+
 # Honest landing Codex round 2 — 2026-10-29
 
 Draft PR #4570 (`cursor/honest-landing-capabilities-ded8`). Codex round 2 on `c08384e0` (ISSUES_FOUND, 4 P2) fixed on the same draft: Drive Commander `/drive-commander/powerflex-525` drops `$197/yr` and checkout, CTA is Talk to Mike / free 30-day pilot; blog articles no longer claim auto work-order creation, a free CMMS tier, or "in seconds"; `provenText()` no longer falls back when a claim is unproven; honest-claims is recursive over public HTML, renders every real blog post plus Drive Commander and marketing renderers, uses semantic bans (auto+CMMS/work order, any `$`, timing promises), and has mutation + notebook-cited-answer flip tests. No merge, deploy, labels, ready, or Codex. mira-web full suite at new tip: 598 pass / 18 fail (21 fail on `origin/main`; the 18 remaining are pre-existing Neon/cookie/admin/DC-Pro).

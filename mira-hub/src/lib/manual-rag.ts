@@ -3,7 +3,7 @@ import { citationPageLabel } from "@/lib/citation-page";
 import type { IdentityStatus } from "@/lib/equipment-notebooks";
 import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
-import { MODEL_PATTERNS, modelIdentitiesInText, resolveModelFromObservationText } from "@/capabilities/model-token";
+import { aliasCatalogModelToken, MODEL_PATTERNS, modelIdentitiesInText, resolveModelFromObservationText } from "@/capabilities/model-token";
 import { embedQueryDetailed, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
 import { setSpanAttrs } from "@/capabilities/observability/tracing";
 import { logRerankFallback, orderWithPinnedHead, rerankEnabled, rerankPool, rerankScores } from "@/capabilities/reranker";
@@ -19,6 +19,10 @@ import {
   classifyIntent,
   diversifyByPage,
   ensureFacetRepresentation,
+  ensureHistoryControlRepresentation,
+  historyControlQueries,
+  isEmptyHistoryAsk,
+  isFaultHistoryDisplayChunk,
   COMM_FACETS,
   type RerankTraceRow,
 } from "@/lib/notebook-query";
@@ -557,7 +561,7 @@ export function extractFaultCodes(query: string): string[] {
 export function extractModelNumber(query: string): string | null {
   for (const re of MODEL_PATTERNS) {
     const m = query.match(re);
-    if (m) return (m[1] ?? m[0]).replace(/\s+/g, "").toUpperCase();
+    if (m) return aliasCatalogModelToken((m[1] ?? m[0]).replace(/\s+/g, "").toUpperCase());
   }
   return null;
 }
@@ -1954,6 +1958,23 @@ export async function retrieveNodeChunks(
   // rows do not count as lexical coverage (see lexicalRows).
   if (lexicalRows === 0 && opts.includeQueryRecall !== true) await addLexical(OR_TSQUERY, expanded.variants[0]);
 
+  // Display → control expansion: an empty/zero/missing history ask that already
+  // retrieved the readout rows (Fault N Code, 10-fault history) still misses the
+  // parameter that writes those buffers — those rows' Related Parameters do not
+  // name it. Fan the same tenant/node/doc lanes across the action counterpart
+  // of the object the display rows already named. No new stack; no flag.
+  const emptyHistoryAsk = isEmptyHistoryAsk(opts.rawQuery ?? q);
+  if (emptyHistoryAsk) {
+    const displayTexts = pool
+      .map((r) => String(r.content ?? ""))
+      .filter((text) => isFaultHistoryDisplayChunk(text));
+    if (displayTexts.length > 0) {
+      const controlQueries = historyControlQueries(displayTexts);
+      for (const cq of controlQueries) add(await runRetrieval(OR_TSQUERY, cq));
+      add(await runExactLane(controlQueries.map((t) => `%${t}%`)));
+    }
+  }
+
   // 2026-10-17 prod-test item 4 — the VECTOR lane, behind NOTEBOOK_HYBRID_RETRIEVAL
   // (default off). node ingest already stores a nomic-embed-text vector on every
   // v2 chunk; until now notebook chat never read it. One cosine pass over the
@@ -2257,13 +2278,16 @@ export async function retrieveNodeChunks(
   // overall, so one family (e.g. overload) can fill every slot while a planned
   // facet (overcurrent) sits uncovered in the pool. Every facet with pool
   // evidence gets representation; facets with none stay an explicit gap.
-  const reranked = broad.broad
+  const sliced = broad.broad
     ? ensureFacetRepresentation(
         diversifyByPage(rerankedAll, 2, Math.max(topK * 2, 12)),
         rerankedAll,
         broad.facets,
       )
     : rerankedAll.slice(0, topK);
+  const reranked = emptyHistoryAsk
+    ? ensureHistoryControlRepresentation(sliced, rerankedAll, topK)
+    : sliced;
 
   if (trace) {
     // Observability (env-gated): the full ranked candidate set with per-chunk
