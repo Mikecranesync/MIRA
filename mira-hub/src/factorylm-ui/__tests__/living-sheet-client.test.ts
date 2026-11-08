@@ -2072,6 +2072,68 @@ describe("#5212 sign-out across tabs", () => {
     expect(m.get("flm.sheetsignout.v1")).toBe("1");
     expect((await tabA.enqueueSheetEvent(store, "t1", "jobB", noteEvent("n-2", "after cancel"))).saved).toBe(true);
   });
+
+  // #5292: a marker that reads back as something this client never writes
+  // blocks every write and is never read as "no sign-out".
+  const MALFORMED_MARKERS = [
+    "{", "false", "true", "null", "[1]", "1e400", "-1", "2.5",
+    '{"gen":"5"}', '{"gen":-1}', '{"gen":1.5}', '{"gen":null}',
+    '{"pending":[1]}', '{"pending":null}', '{"pending":{"other-tab":"soon"}}',
+  ];
+  it.each(MALFORMED_MARKERS)("#5292: a stored marker %s blocks a valid note and is left as it was", async (raw) => {
+    const { store, m } = sharedStore();
+    m.set("flm.sheetsignout.v1", raw);
+    const tab = await openTab();
+    expect((await tab.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "while corrupt"))).saved).toBe(false);
+    expect(m.get("flm.sheetsignout.v1")).toBe(raw);
+    expect(sheetText(m)).toBe("");
+  });
+
+  it.each([
+    ["absent", null],
+    ["a legacy count", "5"],
+    ["a structured marker with no live sign-out", '{"gen":5,"pending":{}}'],
+    ["an older structured marker without a count", JSON.stringify({ done: null, pending: { gone: Date.now() - 2 * SIGN_OUT_PENDING_MAX_MS } })],
+  ])("#5292 control: %s lets a tab loaded after it save", async (_label, raw) => {
+    const { store, m } = sharedStore();
+    if (raw !== null) m.set("flm.sheetsignout.v1", raw);
+    const tab = await openTab();
+    expect((await tab.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "normal note"))).saved).toBe(true);
+    expect(sheetText(m)).toContain("normal note");
+  });
+
+  it("#5292: Cancel leaves a corrupt marker in place and never warns that other tabs can still save", async () => {
+    const { store, m } = sharedStore();
+    const tab = await openTab();
+    expect((await tab.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "unsynced"))).saved).toBe(true);
+    m.set("flm.sheetsignout.v1", "{");
+    const asked: string[] = [];
+    expect(await tab.clearSheetDataForSignOut(store, (msg) => (asked.push(msg), false))).toBe(false);
+    expect(m.get("flm.sheetsignout.v1")).toBe("{");
+    expect(asked).not.toContain(SIGN_OUT_OTHER_TABS_PROMPT);
+    expect(asked).toHaveLength(1); // only the unsynced-work question
+  });
+
+  it("#5292: a finished sign-out repairs a corrupt marker above every count a tab could hold", async () => {
+    const { store, m } = sharedStore();
+    m.set("flm.sheetsignout.v1", "7");
+    const loadedAt7 = await openTab();
+    m.set("flm.sheetsignout.v1", "{");
+    const loadedWhileCorrupt = await openTab();
+    const signer = await openTab();
+    const asked: string[] = [];
+    expect(await signer.clearSheetDataForSignOut(store, (msg) => (asked.push(msg), true))).toBe(true);
+    expect(asked).not.toContain(SIGN_OUT_OTHER_TABS_PROMPT);
+    const repaired = Number(m.get("flm.sheetsignout.v1"));
+    expect(Number.isSafeInteger(repaired) && repaired > 7).toBe(true);
+    expect((await loadedAt7.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "old session A"))).saved).toBe(false);
+    expect((await loadedWhileCorrupt.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-2", "old session B"))).saved).toBe(false);
+    await new Promise((r) => setTimeout(r, 2));
+    const fresh = await openTab();
+    expect((await fresh.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-3", "new session"))).saved).toBe(true);
+    expect(sheetText(m)).toContain("new session");
+    expect(sheetText(m)).not.toContain("old session");
+  });
 });
 
 // Codex #5276 round 5 LOW: valid JSON with a malformed event must load as
