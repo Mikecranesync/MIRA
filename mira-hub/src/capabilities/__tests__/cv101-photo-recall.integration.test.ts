@@ -125,6 +125,7 @@ describe("CV101 fresh-conversation photo recall over actual SQL", () => {
     const same = "Saved photo reading: motor nameplate ratings are proposed, not measured values.";
     await seed(CONTROLLER,1,same,0,true);
     await seed(MOTOR,1,same,0,true);
+    await client.query("UPDATE knowledge_entries SET source_url='https://test.invalid/shared-original.pdf' WHERE doc_id=ANY($1::uuid[])",[[CONTROLLER,MOTOR]]);
     const {hits} = await retrieve("saved photo motor nameplate ratings",[CONTROLLER,MOTOR]);
     expect(hits.map(h=>h.docId).sort()).toEqual([CONTROLLER,MOTOR].sort());
     expect(hits.every(h=>h.content===same)).toBe(true);
