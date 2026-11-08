@@ -84,6 +84,18 @@ export type PendingCheck = {
 export const ATTACH_FAILED = "Couldn't be added as a source. Try again.";
 
 /**
+ * #5325: the host's sources plus documents this panel attached itself. The host
+ * refreshes its sources without being awaited, so a check right after an attach
+ * would otherwise read the old list and offer the just-attached manual again.
+ */
+export function knownSources(host: readonly SourceRef[], attachedDocIds: Iterable<string>): SourceRef[] {
+  const have = new Set(host.map((s) => s.docId));
+  const extra: SourceRef[] = [];
+  for (const docId of attachedDocIds) if (!have.has(docId)) { have.add(docId); extra.push({ docId, fileId: null }); }
+  return [...host, ...extra];
+}
+
+/**
  * One read of the project's files; attaches each readable file in `approved`.
  * `stale()` true (the project closed or changed) stops before any write.
  */
