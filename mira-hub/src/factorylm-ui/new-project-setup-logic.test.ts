@@ -1,0 +1,384 @@
+/** #4632 New project setup: pure logic, write plan and controller. Fake fetch only; no DOM. */
+import { describe, expect, it, vi } from "vitest";
+import {
+  applicabilityLine,
+  createNewProjectSetup,
+  findExistingProject,
+  linkedDocsFrom,
+  machinesFromTree,
+  readinessView,
+  resultRows,
+  runCommit,
+  STILL_PROCESSING,
+  watchReadiness,
+  workspaceDocsFrom,
+  type SetupDeps,
+} from "./new-project-setup-logic";
+import type { HubNotebook } from "./notebook-tree";
+import type { Machine } from "./ScopePicker";
+
+type Call = { method: string; path: string; body?: unknown; form?: boolean };
+type Reply = { status: number; body: Record<string, unknown> };
+
+/** Routes by "METHOD path" prefix. Unknown routes fail the test loudly. */
+function harness(routes: Record<string, Reply | ((call: Call) => Reply)>) {
+  const calls: Call[] = [];
+  const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const path = String(input).replace(/^\/?/, "/").replace(/^\/\//, "/");
+    const method = (init?.method ?? "GET").toUpperCase();
+    const isForm = init?.body instanceof FormData;
+    const body = !isForm && typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+    const call: Call = { method, path, body, form: isForm || undefined };
+    calls.push(call);
+    const key = Object.keys(routes).find((k) => {
+      const [m, p] = k.split(" ");
+      return m === method && path.startsWith(p!);
+    });
+    if (!key) throw new Error(`unexpected request ${method} ${path}`);
+    const route = routes[key]!;
+    const reply = typeof route === "function" ? route(call) : route;
+    return { status: reply.status, ok: reply.status >= 200 && reply.status < 300, json: async () => reply.body } as Response;
+  });
+  return { calls, fetch: fetchFn as unknown as typeof fetch };
+}
+
+const nonGet = (calls: Call[]) => calls.filter((c) => c.method !== "GET");
+const machine: Machine = { id: "node-cv101", name: "Discharge Conveyor", tag: "CV-101", unsPath: "enterprise.a.b.cv101", manufacturer: null, model: null, location: "Line 4" };
+const deps = (fetchImpl: typeof globalThis.fetch, extra: Partial<SetupDeps> = {}): SetupDeps => ({
+  fetch: fetchImpl,
+  apiBase: "",
+  createNotebook: async () => "nb-general",
+  sleep: async () => {},
+  ...extra,
+});
+const noSleep = { intervalMs: 0, max: 3 };
+
+describe("readiness mapping", () => {
+  it("maps every ReadinessState; ready only for the four askable states", () => {
+    const ready = ["chat_ready_basic", "enhancing", "chat_ready_enhanced", "enhancement_degraded"];
+    for (const s of ready) expect(readinessView({ state: s }).tone).toBe("ready");
+    expect(readinessView({ state: "stored" }).label).toBe("Processing");
+    expect(readinessView({ state: "uploading" }).label).toBe("Uploading");
+  });
+  it("fails closed: failed and needs_ocr are Needs attention, never Ready", () => {
+    expect(readinessView({ state: "failed" })).toEqual({ tone: "attention", label: "Needs attention" });
+    expect(readinessView({ state: "needs_ocr" })).toEqual({ tone: "attention", label: "Needs attention" });
+  });
+  it("unknown, null, missing or malformed states are Needs attention", () => {
+    for (const bad of [null, undefined, "chat_ready_basic", 42, {}, { state: "bogus" }, { state: 7 }, { state: null }]) {
+      expect(readinessView(bad).label).toBe("Needs attention");
+    }
+  });
+});
+
+describe("applicability line", () => {
+  it("maps each match state to its own sentence", () => {
+    expect(applicabilityLine("verified")).toBe("Verified for this machine");
+    expect(applicabilityLine("user_confirmed")).toBe("Added by you, not verified for this model");
+    expect(applicabilityLine("candidate")).toBe("Suggested, not approved");
+    expect(applicabilityLine("rejected")).toBe("Rejected, not used");
+  });
+  it("unknown or missing state reads as unknown, never as verified", () => {
+    expect(applicabilityLine("unknown")).toBe("Applicability unknown");
+    expect(applicabilityLine(undefined)).toBe("Applicability unknown");
+    expect(applicabilityLine("verified ")).toBe("Applicability unknown");
+  });
+});
+
+describe("duplicate pre-check", () => {
+  const nb = (id: string, entityId: string | null): HubNotebook =>
+    ({ id, displayName: `Project ${id}`, asset: entityId ? { entityId, name: null, assetTag: null, selectedVia: "asset_picker", confirmedBy: null, confirmedAt: null } : null }) as unknown as HubNotebook;
+  it("finds the notebook already bound to the machine", () => {
+    expect(findExistingProject("node-cv101", [nb("a", "other"), nb("b", "node-cv101")])?.id).toBe("b");
+  });
+  it("control: a machine with no bound notebook is not a duplicate", () => {
+    expect(findExistingProject("node-cv101", [nb("a", "other"), nb("c", null)])).toBeNull();
+    expect(findExistingProject("node-cv101", [])).toBeNull();
+  });
+});
+
+describe("machine list from the namespace tree", () => {
+  it("keeps asset and equipment nodes with their parent chain as location", () => {
+    const tree = { nodes: [{ id: "s", name: "Plant", kind: "site", children: [
+      { id: "l", name: "Line 4", kind: "line", children: [{ id: "m", name: "CV-101", kind: "asset", unsPath: "enterprise.p.l4.cv101", children: [] }] },
+      { id: "x", name: "Area", kind: "area", children: [] },
+    ] }] };
+    const result = machinesFromTree(tree);
+    expect(result.machines).toHaveLength(1);
+    expect(result.machines[0]).toMatchObject({ id: "m", name: "CV-101", location: "Plant / Line 4", unsPath: "enterprise.p.l4.cv101" });
+  });
+  it("throws on a payload it cannot read rather than showing an empty list", () => {
+    expect(() => machinesFromTree({ nodes: [{ name: 5, kind: "asset" }] })).toThrow("machine_list_unreadable");
+    expect(() => machinesFromTree({})).toThrow("machine_list_unreadable");
+  });
+});
+
+describe("document rows", () => {
+  it("an upload-source row's id is its docId; an indexed direct row resolves through the workspace list", () => {
+    const workspace = workspaceDocsFrom({ files: [{ id: "file-9", filename: "cv.pdf", uploadId: "up-9" }] });
+    const rows = linkedDocsFrom({ files: [
+      { id: "up-1", filename: "legacy.pdf", source: "upload", indexed: true },
+      { id: "file-9", filename: "cv.pdf", source: "direct", indexed: true },
+      { id: "file-7", filename: "scan.pdf", source: "direct", indexed: false },
+    ] }, workspace);
+    expect(rows[0]).toMatchObject({ docId: "up-1", reason: null });
+    expect(rows[1]).toMatchObject({ docId: "up-9", reason: null });
+    expect(rows[2]).toMatchObject({ docId: null, reason: "Not searchable yet" });
+  });
+  it("an indexed direct row with no workspace match is disabled, never given a guessed id", () => {
+    const rows = linkedDocsFrom({ files: [{ id: "file-3", filename: "x.pdf", source: "direct", indexed: true }] }, []);
+    expect(rows[0]!.docId).toBeNull();
+    expect(rows[0]!.reason).toMatch(/Workspace documents/);
+  });
+  it("workspace files without an uploadId have no docId", () => {
+    expect(workspaceDocsFrom({ files: [{ id: "f", filename: "a.pdf", uploadId: null }] })[0]!.docId).toBeNull();
+  });
+});
+
+describe("write plan (runCommit)", () => {
+  it("General: exactly one POST to /api/equipment-notebooks/ and no asset PUT", async () => {
+    const h = harness({ "POST /api/equipment-notebooks/": { status: 201, body: { notebook: { id: "nb-1" } } } });
+    const createNotebook = vi.fn(async (body: { displayName: string }) => {
+      await h.fetch("/api/equipment-notebooks/", { method: "POST", body: JSON.stringify(body) });
+      return "nb-1";
+    });
+    const outcome = await runCommit({ selected: { kind: "general" }, name: "Shift line", docs: [], pdfs: [] }, deps(h.fetch, { createNotebook }));
+    expect(outcome.kind).toBe("created");
+    expect(createNotebook).toHaveBeenCalledWith({ displayName: "Shift line", identitySourceType: "user" });
+    expect(h.calls.map((c) => `${c.method} ${c.path}`)).toEqual(["POST /api/equipment-notebooks/"]);
+  });
+
+  it("machine: POST assets, PUT asset, GET verify, then one sources POST per selected doc, in order", async () => {
+    const confirmed = "2026-11-08T10:00:00.000Z";
+    const h = harness({
+      "POST /api/assets/": { status: 201, body: { ok: true, created: true, notebook: { id: "nb-m", nodeId: "node-nb", displayName: "CV-101" } } },
+      "PUT /api/equipment-notebooks/nb-m/asset/": { status: 200, body: { ok: true, notebook: { asset: { entityId: "ent-1" } } } },
+      "GET /api/equipment-notebooks/nb-m/": { status: 200, body: { notebook: { asset: { entityId: "ent-1", confirmedAt: confirmed } } } },
+      "POST /api/equipment-notebooks/nb-m/sources/": { status: 201, body: { ok: true } },
+    });
+    const outcome = await runCommit({ selected: { kind: "machine", machine }, name: "", docs: [{ docId: "d1", filename: "a.pdf" }, { docId: "d2", filename: "b.pdf" }], pdfs: [] }, deps(h.fetch));
+    expect(outcome.kind).toBe("created");
+    expect(h.calls.map((c) => `${c.method} ${c.path}`)).toEqual([
+      "POST /api/assets/node-cv101/notebook/",
+      "PUT /api/equipment-notebooks/nb-m/asset/",
+      "GET /api/equipment-notebooks/nb-m/",
+      "POST /api/equipment-notebooks/nb-m/sources/",
+      "POST /api/equipment-notebooks/nb-m/sources/",
+    ]);
+    expect(h.calls[0]!.body).toEqual({ selectedVia: "asset_picker", displayName: "Discharge Conveyor" });
+    expect(h.calls[1]!.body).toEqual({ assetRef: "node-cv101", selectedVia: "asset_picker" });
+    expect(h.calls[3]!.body).toEqual({ docId: "d1", sourceRole: "manual" });
+    if (outcome.kind === "created") expect(outcome.confirmed).toBe(true);
+  });
+
+  it("created:false stops after the first call: refusal, no PUT, no sources", async () => {
+    const h = harness({ "POST /api/assets/": { status: 200, body: { ok: true, created: false, notebook: { id: "nb-old", nodeId: "n", displayName: "Old CV-101" } } } });
+    const outcome = await runCommit({ selected: { kind: "machine", machine }, name: "", docs: [{ docId: "d1", filename: "a.pdf" }], pdfs: [] }, deps(h.fetch));
+    expect(outcome).toMatchObject({ kind: "refused", notebookId: "nb-old" });
+    expect(h.calls).toHaveLength(1);
+  });
+
+  it("asset_already_bound on the confirm PUT refuses with the bound notebook and no further writes", async () => {
+    const h = harness({
+      "POST /api/assets/": { status: 201, body: { ok: true, created: true, notebook: { id: "nb-m", nodeId: "n", displayName: "CV" } } },
+      "PUT /api/equipment-notebooks/nb-m/asset/": { status: 409, body: { error: "taken", code: "asset_already_bound", boundNotebookId: "nb-other" } },
+    });
+    const outcome = await runCommit({ selected: { kind: "machine", machine }, name: "", docs: [{ docId: "d1", filename: "a.pdf" }], pdfs: [] }, deps(h.fetch));
+    expect(outcome).toMatchObject({ kind: "refused", notebookId: "nb-other" });
+    expect(nonGet(h.calls).map((c) => c.path)).toEqual(["/api/assets/node-cv101/notebook/", "/api/equipment-notebooks/nb-m/asset/"]);
+  });
+
+  it("an unconfirmed machine still opens the project, with the not-confirmed note", async () => {
+    const h = harness({
+      "POST /api/assets/": { status: 201, body: { ok: true, created: true, notebook: { id: "nb-m", nodeId: "n", displayName: "CV" } } },
+      "PUT /api/equipment-notebooks/nb-m/asset/": { status: 500, body: { error: "boom" } },
+    });
+    const outcome = await runCommit({ selected: { kind: "machine", machine }, name: "", docs: [], pdfs: [] }, deps(h.fetch));
+    expect(outcome.kind).toBe("created");
+    if (outcome.kind === "created") {
+      expect(outcome.confirmed).toBe(false);
+      expect(outcome.notes[0]).toMatch(/not confirmed yet/);
+    }
+  });
+
+  it("an upload that comes back indexed:false is a Needs attention row, and nothing is attached for it", async () => {
+    const h = harness({
+      "POST /api/assets/": { status: 201, body: { ok: true, created: true, notebook: { id: "nb-m", nodeId: "node-nb", displayName: "CV" } } },
+      "PUT /api/equipment-notebooks/nb-m/asset/": { status: 200, body: { ok: true, notebook: { asset: { entityId: "e" } } } },
+      "GET /api/equipment-notebooks/nb-m/": { status: 200, body: { notebook: { asset: { entityId: "e", confirmedAt: "2026-11-08T10:00:00Z" } } } },
+      "POST /api/namespace/node/node-nb/files/": { status: 201, body: { ok: true, indexed: false, warning: "scanned", fileId: "f" } },
+    });
+    const pdf = new File(["%PDF"], "scan.pdf", { type: "application/pdf" });
+    const outcome = await runCommit({ selected: { kind: "machine", machine }, name: "", docs: [], pdfs: [pdf] }, deps(h.fetch));
+    expect(outcome.kind).toBe("created");
+    if (outcome.kind !== "created") return;
+    expect(outcome.docs).toHaveLength(1);
+    expect(outcome.docs[0]!.notIndexed).toBe(true);
+    expect(h.calls.some((c) => c.path.includes("/sources/"))).toBe(false);
+    const rows = resultRows(outcome.docs, [], false);
+    expect(rows[0]!.readiness.label).toBe("Needs attention");
+    expect(rows[0]!.readiness.tone).not.toBe("ready");
+  });
+
+  it("an upload that returns 202 indexing:true (no uploadId) is also Needs attention", async () => {
+    const h = harness({
+      "POST /api/equipment-notebooks/": { status: 201, body: { notebook: { id: "nb-g", nodeId: "node-g" } } },
+      "GET /api/equipment-notebooks/nb-g/": { status: 200, body: { notebook: { nodeId: "node-g" } } },
+      "POST /api/namespace/node/node-g/files/": { status: 202, body: { ok: true, indexed: false, indexing: true, fileId: "f" } },
+    });
+    const pdf = new File(["%PDF"], "m.pdf", { type: "application/pdf" });
+    const outcome = await runCommit({ selected: { kind: "general" }, name: "G", docs: [], pdfs: [pdf] }, deps(h.fetch, { createNotebook: async () => "nb-g" }));
+    expect(outcome.kind === "created" && outcome.docs[0]!.notIndexed).toBe(true);
+  });
+});
+
+describe("readiness watch", () => {
+  it("stops as soon as every watched document has left uploading and stored", async () => {
+    let n = 0;
+    const h = harness({ "GET /api/equipment-notebooks/nb/": () => { n++; return { status: 200, body: { sources: [{ docId: "d1", readiness: { state: n < 2 ? "stored" : "chat_ready_basic" }, matchState: "user_confirmed" }] } }; } });
+    const r = await watchReadiness("nb", ["d1"], deps(h.fetch), noSleep);
+    expect(r.capped).toBe(false);
+    expect(h.calls).toHaveLength(2);
+  });
+  it("after the cap the item stays processing and the row says so", async () => {
+    const h = harness({ "GET /api/equipment-notebooks/nb/": { status: 200, body: { sources: [{ docId: "d1", readiness: { state: "stored" }, matchState: "user_confirmed" }] } } });
+    const r = await watchReadiness("nb", ["d1"], deps(h.fetch), noSleep);
+    expect(r.capped).toBe(true);
+    expect(h.calls).toHaveLength(3);
+    const rows = resultRows([{ key: "d1", filename: "a.pdf", docId: "d1", attachFailed: false, notIndexed: false, message: null }], r.sources, true);
+    expect(rows[0]!.readiness.label).toBe("Processing");
+    expect(rows[0]!.note).toBe(STILL_PROCESSING);
+  });
+  it("a failed index is shown as Needs attention with its applicability on its own line", () => {
+    const rows = resultRows(
+      [{ key: "d1", filename: "a.pdf", docId: "d1", attachFailed: false, notIndexed: false, message: null }],
+      [{ docId: "d1", filename: "a.pdf", readiness: { state: "failed" }, matchState: "verified" }],
+      false,
+    );
+    expect(rows[0]!.readiness.label).toBe("Needs attention");
+    expect(rows[0]!.applicability).toBe("Verified for this machine");
+  });
+});
+
+describe("controller", () => {
+  const notebooks: HubNotebook[] = [];
+  const treeReply = { status: 200, body: { nodes: [{ id: "node-cv101", name: "Discharge Conveyor", kind: "asset", unsPath: "enterprise.a.cv101", children: [] }] } };
+  const wsReply = { status: 200, body: { files: [{ id: "f1", filename: "manual.pdf", uploadId: "up-1" }, { id: "f2", filename: "scan.pdf", uploadId: null }] } };
+  const linkedReply = { status: 200, body: { files: [{ id: "up-1", filename: "manual.pdf", source: "upload", indexed: true }] } };
+
+  it("cancel and back before the commit click make zero non-GET requests", async () => {
+    const h = harness({ "GET /api/namespace/tree/": treeReply, "GET /api/files/": wsReply, "GET /api/namespace/node/": linkedReply, "POST ": { status: 500, body: {} }, "PUT ": { status: 500, body: {} } });
+    const c = createNewProjectSetup({ ...deps(h.fetch), getNotebooks: () => notebooks });
+    await c.start();
+    await c.choose({ kind: "machine", machine });
+    await c.next();
+    c.back();
+    expect(c.cancel()).toBe(true);
+    expect(nonGet(h.calls)).toEqual([]);
+  });
+
+  it("control: committing does issue writes", async () => {
+    const h = harness({
+      "GET /api/namespace/tree/": treeReply,
+      "GET /api/files/": wsReply,
+      "GET /api/namespace/node/": linkedReply,
+      "POST /api/assets/": { status: 201, body: { ok: true, created: true, notebook: { id: "nb-m", nodeId: "n", displayName: "CV" } } },
+      "PUT /api/equipment-notebooks/nb-m/asset/": { status: 200, body: { ok: true, notebook: { asset: { entityId: "e" } } } },
+      "GET /api/equipment-notebooks/nb-m/": { status: 200, body: { notebook: { asset: { entityId: "e", confirmedAt: "2026-11-08T10:00:00Z" } }, sources: [{ docId: "up-1", readiness: { state: "chat_ready_basic" }, matchState: "user_confirmed" }] } },
+      "POST /api/equipment-notebooks/nb-m/sources/": { status: 201, body: { ok: true } },
+    });
+    const c = createNewProjectSetup({ ...deps(h.fetch), getNotebooks: () => notebooks });
+    await c.start();
+    await c.choose({ kind: "machine", machine });
+    await c.next();
+    await c.commit();
+    expect(nonGet(h.calls).length).toBeGreaterThan(0);
+    const s = c.getState();
+    expect(s.done).toBe(true);
+    expect(s.rows[0]).toMatchObject({ key: "up-1", applicability: "Added by you, not verified for this model" });
+    expect(c.openProjectId()).toBe("nb-m");
+  });
+
+  it("a machine with an existing project is refused before any write; Next and Commit do nothing", async () => {
+    const h = harness({ "GET /api/namespace/tree/": treeReply, "GET /api/files/": wsReply, "POST ": { status: 500, body: {} }, "PUT ": { status: 500, body: {} } });
+    const existing = [{ id: "nb-existing", displayName: "CV-101 line", asset: { entityId: "node-cv101" } } as unknown as HubNotebook];
+    const c = createNewProjectSetup({ ...deps(h.fetch), getNotebooks: () => existing });
+    await c.start();
+    await c.choose({ kind: "machine", machine });
+    expect(c.getState().duplicate).toEqual({ notebookId: "nb-existing", name: "CV-101 line" });
+    await c.next();
+    expect(c.getState().step).toBe(1);
+    await c.commit();
+    expect(nonGet(h.calls)).toEqual([]);
+    expect(c.openProjectId()).toBe("nb-existing");
+  });
+
+  it("General needs a name before Next", async () => {
+    const h = harness({ "GET /api/files/": wsReply });
+    const c = createNewProjectSetup({ ...deps(h.fetch), getNotebooks: () => notebooks });
+    await c.choose({ kind: "general" });
+    await c.next();
+    expect(c.getState().step).toBe(1);
+    expect(c.getState().error).toMatch(/Name/);
+    c.setName("Shift line");
+    await c.next();
+    expect(c.getState().step).toBe(2);
+  });
+
+  it("PDF intake refuses non-PDFs and files over the limit, without writing", () => {
+    const h = harness({});
+    const c = createNewProjectSetup({ ...deps(h.fetch), getNotebooks: () => notebooks, maxPdfBytes: 10 });
+    c.addPdfs([new File(["x"], "photo.png", { type: "image/png" }), new File(["%PDF-1.4 long enough"], "big.pdf", { type: "application/pdf" }), new File(["%PDF"], "ok.pdf", { type: "application/pdf" })]);
+    const s = c.getState();
+    expect(s.pdfs.map((f) => f.name)).toEqual(["ok.pdf"]);
+    expect(s.pdfError).toMatch(/over the/);
+  });
+
+  it("a rejected commit keeps the technician in place with the message and no notebook", async () => {
+    const h = harness({
+      "GET /api/namespace/tree/": treeReply,
+      "GET /api/files/": wsReply,
+      "GET /api/namespace/node/": linkedReply,
+      "POST /api/assets/": { status: 422, body: { error: "That asset hasn't been approved yet.", code: "asset_not_verified" } },
+    });
+    const c = createNewProjectSetup({ ...deps(h.fetch), getNotebooks: () => notebooks });
+    await c.start();
+    await c.choose({ kind: "machine", machine });
+    await c.next();
+    await c.commit();
+    expect(c.getState().error).toBe("That asset hasn't been approved yet.");
+    expect(c.getState().done).toBe(false);
+    expect(c.openProjectId()).toBeNull();
+  });
+});
+
+describe("slow indexing does not lock the sheet", () => {
+  it("unlocks after the first readiness read while a document is still processing, and stops polling on close", async () => {
+    let polls = 0;
+    let releaseSleep: () => void = () => {};
+    const h = harness({
+      "POST /api/equipment-notebooks/nb-general/sources/": { status: 201, body: { ok: true } },
+      "GET /api/equipment-notebooks/nb-general/": () => { polls++; return { status: 200, body: { sources: [{ docId: "up-1", readiness: { state: "stored" }, matchState: "user_confirmed" }] } }; },
+      "GET /api/files/": { status: 200, body: { files: [{ id: "f1", filename: "manual.pdf", uploadId: "up-1" }] } },
+    });
+    const c = createNewProjectSetup({
+      ...deps(h.fetch, { sleep: () => new Promise<void>((r) => { releaseSleep = r; }) }),
+      getNotebooks: () => [],
+    });
+    await c.choose({ kind: "general" });
+    c.setName("Bench test");
+    await c.next();
+    c.toggleDoc("up-1");
+    const committing = c.commit();
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+    const s = c.getState();
+    expect(polls).toBe(1);
+    expect(s.committing).toBe(false);
+    expect(s.done).toBe(true);
+    expect(s.rows[0]?.readiness.label).toBe("Processing");
+    expect(c.cancel()).toBe(true);
+    releaseSleep();
+    await committing;
+    expect(polls).toBe(1);
+  });
+});
