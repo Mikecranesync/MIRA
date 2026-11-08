@@ -758,6 +758,7 @@ jobs:
         with:
           filters: |
             hub:
+              - 'package.json'
               - 'mira-hub/**'
               # guardrails.py is the SOURCE OF TRUTH for the hub safety-phrase
               # parity guard (mira-hub/src/lib/safety-phrases.test.ts). Editing
@@ -870,6 +871,8 @@ jobs:
         with:
           filters: |
             mobile:
+              - 'package.json'
+              - '.github/workflows/ci.yml'
               - 'mira-mobile/**'
               - 'packages/factorylm-*/**'
               - 'docs/contracts/asset-tag-grammar.json'
@@ -909,6 +912,8 @@ jobs:
         with:
           filters: |
             web:
+              - 'package.json'
+              - '.github/workflows/ci.yml'
               - 'mira-web/**'
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -1685,6 +1690,7 @@ jobs:
         with:
           filters: |
             lifecycle:
+              - 'package.json'
               - 'mira-hub/db/migrations/09*.sql'
               - 'mira-hub/db/migrations/032_decision_traces.sql'
               - 'mira-hub/src/capabilities/observability/**'
@@ -1804,6 +1810,7 @@ jobs:
         with:
           filters: |
             outbox:
+              - 'package.json'
               - 'mira-hub/db/migrations/11[12]_notebook_domain_events_*.sql'
               - 'mira-hub/db/migrations/09[5-8]_asset_fix_records*.sql'
               - 'mira-hub/db/integration-fixtures/**'

@@ -46,6 +46,20 @@ def test_package_manager_is_an_exact_bun_release() -> None:
     assert re.fullmatch(r"bun@\d+\.\d+\.\d+", manager)
 
 
+@pytest.mark.parametrize("job", JOBS)
+def test_toolchain_inputs_trigger_their_consumers(job: str) -> None:
+    workflow = yaml.safe_load(WORKFLOW.read_text())
+    filters = [
+        yaml.safe_load(step["with"]["filters"])
+        for step in workflow["jobs"][job]["steps"]
+        if str(step.get("uses", "")).startswith("dorny/paths-filter@")
+    ]
+    assert len(filters) == 1
+    patterns = [pattern for group in filters[0].values() for pattern in group]
+    assert "package.json" in patterns
+    assert ".github/workflows/ci.yml" in patterns
+
+
 @pytest.mark.parametrize(
     "inputs",
     [
