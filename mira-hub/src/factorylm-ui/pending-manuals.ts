@@ -12,14 +12,20 @@
  * idempotent upsert), only for files the technician approved at Create project
  * in this session, and always to the project the file belongs to.
  */
-import { call, type HttpResult, type SetupDeps } from "./new-project-setup-logic";
+import { call, messageOf, type HttpResult, type SetupDeps } from "./new-project-setup-logic";
 
 export type PendingManual = {
   fileId: string;
   filename: string;
-  /** The indexed document id once readable; null while still being read. */
+  /** The indexed document id once readable; null otherwise. */
   docId: string | null;
-  state: "reading" | "readable";
+  /**
+   * reading: the server confirms an ingest of this file is running now.
+   * readable: it has a document and can become a source.
+   * unread (#5316): no document and no ingest running, so it is not being read
+   * (a failed or abandoned ingest). It needs Upload again, never a wait.
+   */
+  state: "reading" | "readable" | "unread";
 };
 
 type SourceRef = { docId: string; fileId: string | null };
@@ -52,14 +58,16 @@ export function filedManuals(body: unknown, sources: readonly SourceRef[]): File
 /**
  * The document behind a filed PDF, from the existing file lookup
  * (GET /api/files/{fileId} → file.uploadId, the same contract the setup sheet
- * follows). "gone": the file no longer exists. "unknown": the read failed.
+ * follows), and whether the server holds a live ingest on it (file.ingesting,
+ * #5316). "gone": the file no longer exists. "unknown": the read failed.
  */
-async function documentOf(fileId: string, deps: SetupDeps): Promise<string | null | "gone" | "unknown"> {
+async function documentOf(fileId: string, deps: SetupDeps): Promise<{ docId: string | null; ingesting: boolean } | "gone" | "unknown"> {
   const res = await call(deps, "GET", `/api/files/${encodeURIComponent(fileId)}`);
   if (res.status === 404) return "gone";
   if (!res.ok) return "unknown";
-  const uploadId = (res.body.file as { uploadId?: unknown } | undefined)?.uploadId;
-  return typeof uploadId === "string" && uploadId ? uploadId : null;
+  const file = (res.body.file ?? {}) as { uploadId?: unknown; ingesting?: unknown };
+  const docId = typeof file.uploadId === "string" && file.uploadId ? file.uploadId : null;
+  return { docId, ingesting: file.ingesting === true };
 }
 
 export type PendingCheck = {
@@ -91,15 +99,17 @@ export async function checkPendingManuals(
   const sourceDocs = new Set(input.sources.map((s) => s.docId));
   const pending: PendingManual[] = [];
   for (const f of filed) {
-    let docId: string | null = null;
-    if (f.indexed) {
-      const doc = await documentOf(f.fileId, deps);
-      if (stale()) return none;
-      if (doc === "gone") continue;
-      if (doc !== "unknown") docId = doc;
-    }
-    if (docId && sourceDocs.has(docId)) continue;
-    pending.push({ fileId: f.fileId, filename: f.filename, docId, state: docId ? "readable" : "reading" });
+    // Every filed PDF is looked up: the list's `indexed` flag cannot say whether
+    // reading is underway, and an unproven "still being read" is the #5316 lie.
+    const doc = await documentOf(f.fileId, deps);
+    if (stale()) return none;
+    if (doc === "gone") continue;
+    // A failed lookup proves nothing either way: report the check failed (the
+    // panel offers Check again) rather than guess reading.
+    if (doc === "unknown") return none;
+    if (doc.docId && sourceDocs.has(doc.docId)) continue;
+    const state = doc.docId ? "readable" : doc.ingesting ? "reading" : "unread";
+    pending.push({ fileId: f.fileId, filename: f.filename, docId: doc.docId, state });
   }
   const filenames = Object.fromEntries(pending.map((p) => [p.fileId, p.filename]));
   const attached: string[] = [];
@@ -118,6 +128,40 @@ export async function checkPendingManuals(
 export async function addPendingManual(notebookId: string, docId: string, deps: SetupDeps): Promise<{ ok: boolean; message: string | null }> {
   const att = await attach(notebookId, docId, deps);
   return att.ok ? { ok: true, message: null } : { ok: false, message: attachMessage(att) };
+}
+
+export type ReuploadOutcome =
+  | { kind: "attached"; docId: string }
+  | { kind: "reading" }
+  | { kind: "unread"; message: string }
+  | { kind: "failed"; message: string };
+
+export const REUPLOAD_FAILED = "Couldn't upload this file. Try again.";
+export const NOT_READ = "This file couldn't be read. Try another copy of the PDF.";
+
+/**
+ * #5316 Upload again (a technician tap with the PDF picked again): re-send it
+ * through the same node upload the setup sheet uses, to this project's own node.
+ * A returned document (fresh, or the existing one for identical bytes) is
+ * attached to this project once; a 202 is being read now; anything else is
+ * reported, never shown as reading.
+ */
+export async function reuploadPendingManual(
+  input: { notebookId: string; nodeId: string; file: File },
+  deps: SetupDeps,
+): Promise<ReuploadOutcome> {
+  const form = new FormData();
+  form.append("file", input.file);
+  const up = await call(deps, "POST", `/api/namespace/node/${encodeURIComponent(input.nodeId)}/files/`, { form });
+  if (!up.ok) return { kind: "failed", message: messageOf(up, REUPLOAD_FAILED) };
+  if (up.status === 202 && up.body.indexing === true) return { kind: "reading" };
+  const docId = up.body.uploadId;
+  if (up.body.indexed === true && typeof docId === "string" && docId) {
+    const att = await attach(input.notebookId, docId, deps);
+    return att.ok ? { kind: "attached", docId } : { kind: "failed", message: attachMessage(att) };
+  }
+  const warning = up.body.warning;
+  return { kind: "unread", message: typeof warning === "string" && warning ? warning : NOT_READ };
 }
 
 /** The existing sources door; the server upserts, so a repeat never duplicates the source. */

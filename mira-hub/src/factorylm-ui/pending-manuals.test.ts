@@ -1,7 +1,7 @@
 /** #5302: a manual still being read when the setup sheet closes is not abandoned. Fake fetch only; no DOM. */
 import { describe, expect, it, vi } from "vitest";
 import { createNewProjectSetup, type SetupDeps } from "./new-project-setup-logic";
-import { checkPendingManuals, filedManuals } from "./pending-manuals";
+import { checkPendingManuals, filedManuals, reuploadPendingManual } from "./pending-manuals";
 
 type Call = { method: string; path: string; body?: unknown };
 type Reply = { status: number; body: Record<string, unknown> };
@@ -26,7 +26,8 @@ const deps = (f: typeof fetch): SetupDeps => ({ fetch: f, apiBase: "", createNot
 // The real GET /api/namespace/node/{id}/files/ direct-row shape (route.ts strips upload_id).
 const pdf = (patch: Record<string, unknown>) => ({ id: "f-202", filename: "manual.pdf", mime_type: "application/pdf", size_bytes: 1024, source: "direct", created_at: "2026-11-08T10:00:05.000Z", verified: false, indexed: false, ...patch });
 // The real GET /api/files/{fileId} shape: the document id is file.uploadId.
-const fileLookup = (id: string, uploadId: string | null): Reply => ({ status: 200, body: { file: { id, uploadId }, links: [] } });
+// `ingesting` is true only while the server holds a fresh ingest claim on the file (#5316).
+const fileLookup = (id: string, uploadId: string | null, ingesting = false): Reply => ({ status: 200, body: { file: { id, uploadId, ingesting }, links: [] } });
 const attaches = (calls: Call[]) => calls.filter((c) => c.method === "POST" && c.path.includes("/sources/"));
 
 describe("#5302 setup hands a still-reading manual to the project", () => {
@@ -100,7 +101,7 @@ describe("#5302 following a pending manual after the sheet closed", () => {
     let reads = 0;
     const h = harness({
       [NODE]: () => { reads++; return { status: 200, body: { files: [pdf({ indexed: reads >= 2 })] } }; },
-      "GET /api/files/f-202": fileLookup("f-202", "up-late"),
+      "GET /api/files/f-202": () => (reads >= 2 ? fileLookup("f-202", "up-late") : fileLookup("f-202", null, true)),
       [SRC]: { status: 201, body: { ok: true } },
     });
     const first = await checkPendingManuals(input(["f-202"]), deps(h.fetch));
@@ -112,11 +113,32 @@ describe("#5302 following a pending manual after the sheet closed", () => {
     expect(attaches(h.calls)).toEqual([{ method: "POST", path: "/api/equipment-notebooks/nb-g/sources/", body: { docId: "up-late", sourceRole: "manual" } }]);
   });
 
-  it("indexed but not yet linked: the file lookup says uploadId null, so it stays reading and nothing is written", async () => {
-    const h = harness({ [NODE]: { status: 200, body: { files: [pdf({ indexed: true })] } }, "GET /api/files/f-202": fileLookup("f-202", null) });
+  it("indexed but not yet linked while the server still holds the ingest: reading, nothing written", async () => {
+    const h = harness({ [NODE]: { status: 200, body: { files: [pdf({ indexed: true })] } }, "GET /api/files/f-202": fileLookup("f-202", null, true) });
     const r = await checkPendingManuals(input(["f-202"]), deps(h.fetch));
     expect(r.pending).toEqual([{ fileId: "f-202", filename: "manual.pdf", docId: null, state: "reading" }]);
     expect(attaches(h.calls)).toHaveLength(0);
+  });
+
+  it("#5316: a 201 indexed:false upload (no ingest running) is not described as being read", async () => {
+    const h = harness({ [NODE]: { status: 200, body: { files: [pdf({ indexed: false })] } }, "GET /api/files/f-202": fileLookup("f-202", null, false) });
+    const r = await checkPendingManuals(input(["f-202"]), deps(h.fetch));
+    expect(r.pending).toEqual([{ fileId: "f-202", filename: "manual.pdf", docId: null, state: "unread" }]);
+    expect(attaches(h.calls)).toHaveLength(0);
+  });
+
+  it("#5316: a 202 ingest that fails later turns from reading to unread once the server releases it", async () => {
+    let ingesting = true;
+    const h = harness({ [NODE]: { status: 200, body: { files: [pdf({})] } }, "GET /api/files/f-202": () => fileLookup("f-202", null, ingesting) });
+    expect((await checkPendingManuals(input(["f-202"]), deps(h.fetch))).pending[0]?.state).toBe("reading");
+    ingesting = false; // the route's catch branch released the claim
+    expect((await checkPendingManuals(input(["f-202"]), deps(h.fetch))).pending[0]?.state).toBe("unread");
+    expect(attaches(h.calls)).toHaveLength(0);
+  });
+
+  it("#5316: the device case (stored row says indexed, lookup has no document and no ingest) reads as unread", async () => {
+    const h = harness({ [NODE]: { status: 200, body: { files: [pdf({ indexed: true })] } }, "GET /api/files/f-202": fileLookup("f-202", null) });
+    expect((await checkPendingManuals(input(["f-202"]), deps(h.fetch))).pending[0]?.state).toBe("unread");
   });
 
   it("reused older file (F2): approved this session, stored before the project, attached once indexing finishes", async () => {
@@ -147,12 +169,12 @@ describe("#5302 following a pending manual after the sheet closed", () => {
     expect(attaches(h.calls)).toHaveLength(0);
   });
 
-  it("a file deleted since (lookup 404) is dropped; a failed lookup keeps it reading", async () => {
+  it("a file deleted since (lookup 404) is dropped; a failed lookup reports the check failed, never reading", async () => {
     const gone = harness({ [NODE]: { status: 200, body: { files: [pdf({ indexed: true })] } }, "GET /api/files/f-202": { status: 404, body: { error: "not_found" } } });
     expect((await checkPendingManuals(input(["f-202"]), deps(gone.fetch))).pending).toEqual([]);
     const busy = harness({ [NODE]: { status: 200, body: { files: [pdf({ indexed: true })] } }, "GET /api/files/f-202": { status: 503, body: {} } });
     const r = await checkPendingManuals(input(["f-202"]), deps(busy.fetch));
-    expect(r).toMatchObject({ ok: true, pending: [{ state: "reading", docId: null }] });
+    expect(r).toMatchObject({ ok: false, pending: [] });
     expect(attaches(busy.calls)).toHaveLength(0);
   });
 
@@ -239,5 +261,44 @@ describe("#5302 following a pending manual after the sheet closed", () => {
     expect(r).toMatchObject({ ok: true, attached: ["f-202"] });
     expect(r.filenames).toEqual({ "f-202": "manual.pdf" });
     expect(attaches(h.calls)).toHaveLength(1);
+  });
+});
+
+describe("#5316 Upload again: the technician's recovery for a manual that was not read", () => {
+  const UP = "POST /api/namespace/node/node-g/files/";
+  const SRC = "POST /api/equipment-notebooks/nb-g/sources/";
+  const file = () => new File(["%PDF"], "manual.pdf", { type: "application/pdf" });
+  const run = (f: typeof fetch) => reuploadPendingManual({ notebookId: "nb-g", nodeId: "node-g", file: file() }, deps(f));
+
+  it("re-sends the PDF to the project's own node and attaches the returned document once", async () => {
+    const h = harness({ [UP]: { status: 200, body: { ok: true, indexed: true, duplicate: true, uploadId: "up-orphan" } }, [SRC]: { status: 201, body: { ok: true } } });
+    expect(await run(h.fetch)).toEqual({ kind: "attached", docId: "up-orphan" });
+    expect(h.calls.filter((c) => c.method === "POST").map((c) => c.path)).toEqual(["/api/namespace/node/node-g/files/", "/api/equipment-notebooks/nb-g/sources/"]);
+    expect(attaches(h.calls)).toEqual([{ method: "POST", path: "/api/equipment-notebooks/nb-g/sources/", body: { docId: "up-orphan", sourceRole: "manual" } }]);
+  });
+
+  it("a 202 means the server is reading it now: reading, no source write", async () => {
+    const h = harness({ [UP]: { status: 202, body: { ok: true, indexed: false, indexing: true, fileId: "f-202" } } });
+    expect(await run(h.fetch)).toEqual({ kind: "reading" });
+    expect(attaches(h.calls)).toHaveLength(0);
+  });
+
+  it("read again but failed again: unread with the server's reason, no source write", async () => {
+    const h = harness({ [UP]: { status: 201, body: { ok: true, indexed: false, warning: "This PDF has no readable text.", fileId: "f-202" } } });
+    expect(await run(h.fetch)).toEqual({ kind: "unread", message: "This PDF has no readable text." });
+    expect(attaches(h.calls)).toHaveLength(0);
+  });
+
+  it("an upload refused or offline is a failure with a reason; nothing else is written", async () => {
+    const refused = harness({ [UP]: { status: 401, body: {} } });
+    expect(await run(refused.fetch)).toEqual({ kind: "failed", message: "Sign in again to continue." });
+    const offline = harness({ [UP]: () => { throw new TypeError("Failed to fetch"); } });
+    expect(await run(offline.fetch)).toEqual({ kind: "failed", message: "Couldn't upload this file. Try again." });
+    expect(attaches(offline.calls)).toHaveLength(0);
+  });
+
+  it("read, but the source attach is refused: failed, with the attach reason", async () => {
+    const h = harness({ [UP]: { status: 201, body: { ok: true, indexed: true, uploadId: "up-1", fileId: "f-202" } }, [SRC]: { status: 503, body: {} } });
+    expect(await run(h.fetch)).toEqual({ kind: "failed", message: "Couldn't be added as a source. Try again." });
   });
 });

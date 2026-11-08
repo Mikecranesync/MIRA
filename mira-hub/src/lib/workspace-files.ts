@@ -123,6 +123,13 @@ export interface WorkspaceFile {
   capability: FileCapability;
   /** True when the file has a parsed, citable document (docId = uploadId). */
   indexed: boolean;
+  /**
+   * #5316: true only while a live (non-stale) ingest claim is held on the file,
+   * i.e. it is being read right now. False with indexed false means nothing is
+   * reading it (a failed or abandoned ingest), so no client may say "reading".
+   * Always set by rowToFile; optional only so hand-built test fixtures stay valid.
+   */
+  ingesting?: boolean;
   linkCount: number;
 }
 
@@ -135,12 +142,18 @@ interface FileRow {
   upload_id: string | null;
   verified: boolean;
   created_at: string;
+  ingesting: boolean;
   link_count: string;
 }
+
+/** A claim older than this is a crashed worker's (claimIngest takes it over). */
+const INGEST_CLAIM_STALE_MINUTES = 10;
 
 const FILE_COLS = `
   f.id::text AS id, f.filename, f.mime_type, f.size_bytes::text AS size_bytes,
   f.content_sha256, f.upload_id::text AS upload_id, f.verified, f.created_at,
+  (f.upload_id IS NULL AND f.ingest_claim_token IS NOT NULL
+    AND f.ingest_claimed_at >= now() - interval '${INGEST_CLAIM_STALE_MINUTES} minutes') AS ingesting,
   (SELECT COUNT(*) FROM workspace_file_links l
     WHERE l.tenant_id = f.tenant_id AND l.file_id = f.id)::text AS link_count`;
 
@@ -156,6 +169,7 @@ function rowToFile(r: FileRow): WorkspaceFile {
     createdAt: r.created_at,
     capability: fileCapability(r.mime_type, r.filename),
     indexed: r.upload_id !== null,
+    ingesting: r.ingesting === true,
     linkCount: Number(r.link_count ?? 0),
   };
 }
@@ -307,7 +321,6 @@ export async function linkFileToUpload(
 // The claim is a test-and-set on the row: winners ingest and release via
 // linkFileToUpload; losers report an explicit "ingest_in_progress" partial.
 
-const INGEST_CLAIM_STALE_MINUTES = 10;
 
 export type IngestClaim =
   | { claimed: true; claimToken: string }
