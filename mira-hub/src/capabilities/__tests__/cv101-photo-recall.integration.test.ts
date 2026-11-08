@@ -130,16 +130,16 @@ describe("CV101 fresh-conversation photo recall over actual SQL", () => {
     expect(hits.every(h=>h.content===same)).toBe(true);
   });
 
-  it("keeps different qualifiers and warnings even when passage prefixes match", async () => {
+  it.each([1,2])("keeps different qualifiers and warnings when prefixes match (second page=%s)", async (page) => {
     await client.query("DELETE FROM knowledge_entries WHERE doc_id=$1",[CONTROLLER]);
     const prefix = "Motor photo nameplate documentation, reviewed text and ratings only. ";
     const a = prefix + "230 V rating; WARNING: isolate power before inspection.";
     const b = prefix + "460 V rating; WARNING: stored energy may remain.";
     await seed(CONTROLLER,1,a,0,true);
-    await seed(CONTROLLER,2,b,1,true);
+    await seed(CONTROLLER,page,b,1,true);
     const {hits} = await retrieve("motor photo nameplate ratings",[CONTROLLER]);
     expect(hits.map(h=>h.content)).toEqual(expect.arrayContaining([a,b]));
-    expect(hits.map(h=>h.sourcePage).sort()).toEqual([1,2]);
+    expect(hits.map(h=>h.sourcePage).sort()).toEqual([1,page]);
   });
 
   it("does not admit an unapproved private reading", async () => {

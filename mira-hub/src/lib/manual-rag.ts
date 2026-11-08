@@ -1814,7 +1814,8 @@ export async function retrieveNodeChunks(
 
   // Collect a pooled candidate set across: original AND (precision), each
   // expanded variant OR (manufacturer-vocabulary recall), and the exact-token
-  // lane. De-dupe by (doc_id, page, content prefix) so a chunk counts once.
+  // lane. Exact copies in one source consume one context slot, not one per
+  // repeated page. Full text keeps differing qualifiers/warnings distinct.
   const pool: Record<string, unknown>[] = [];
   const seen = new Set<string>();
   // A notebook is a document boundary, not proof that every attached manual
@@ -1830,7 +1831,7 @@ export async function retrieveNodeChunks(
     ? modelIdentitiesInText(opts.rawQuery ?? q)
     : null;
   const keyOf = (r: Record<string, unknown>) =>
-    `${r.doc_id}|${r.page_start ?? r.source_page}|${String(r.content ?? "").slice(0, 60)}`;
+    JSON.stringify([r.doc_id, r.source_url, String(r.content ?? "")]);
   // Admission is ONE predicate for every lane — lexical, exact-token and (item
   // 4) vector — so a chunk the vector lane finds is held to exactly the same
   // model-applicability rule as one BM25 found.
@@ -2122,7 +2123,8 @@ export async function retrieveNodeChunks(
       `WITH qlex AS (
           SELECT DISTINCT unnest(tsvector_to_array(to_tsvector('english', $2))) AS lex
         ), scope AS (
-          SELECT id, tsvector_to_array(content_tsv) AS lexemes
+          SELECT id, doc_id, COALESCE(page_start, source_page) AS page,
+            tsvector_to_array(content_tsv) AS lexemes
             FROM knowledge_entries
             WHERE tenant_id = $1
               AND ingest_route = 'v2'
@@ -2132,7 +2134,8 @@ export async function retrieveNodeChunks(
         ), n AS (
           SELECT count(*)::float8 AS n FROM scope
         ), heading AS (
-          SELECT DISTINCT ON (doc_id) left(content, 2000) AS content
+          SELECT DISTINCT ON (doc_id) doc_id, COALESCE(page_start, source_page) AS page,
+            left(content, 2000) AS content
             FROM knowledge_entries
             WHERE tenant_id = $1
               AND ingest_route = 'v2'
@@ -2142,6 +2145,7 @@ export async function retrieveNodeChunks(
             ORDER BY doc_id, page_start NULLS LAST, source_page NULLS LAST, (metadata->>'chunk_index')::int NULLS LAST, id
         ), hlex AS (
           SELECT DISTINCT unnest(tsvector_to_array(to_tsvector('english', content))) AS lex FROM heading
+          WHERE EXISTS (SELECT 1 FROM scope s WHERE s.doc_id = heading.doc_id AND s.page > heading.page)
         ), df AS (
           SELECT q.lex, count(s.id)::float8 AS df, (q.lex IN (SELECT lex FROM hlex)) AS names_document
             FROM qlex q LEFT JOIN scope s ON q.lex = ANY(s.lexemes) GROUP BY q.lex
@@ -2154,7 +2158,9 @@ export async function retrieveNodeChunks(
     // body (the brand sits on the cover and the back page) and so would
     // outweigh the topic words. forum-new fn-pf40-2 ("check fault history in
     // Allen Bradley powerflex 40") led with the cover pages until the heading
-    // lexemes were left out. Only when at least one topic lexeme remains.
+    // lexemes were left out. A cover requires a later in-scope page: the only
+    // page of a photo reading is its evidence, not a cover naming a document.
+    // Only when at least one topic lexeme remains.
     const rows = res.rows as Array<Record<string, unknown>>;
     const topical = rows.filter((r) => r.names_document !== true);
     for (const r of topical.length > 0 ? topical : rows) {
