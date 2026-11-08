@@ -1,3 +1,15 @@
+---
+paths:
+  - "mira-hub/**"
+  - "mira-web/**"
+  - "mira-mobile/**"
+  - "packages/**"
+  - "apps/**"
+  - "ignition/**"
+  - "**/gui/**"
+  - "docs/design/**"
+---
+
 # FactoryLM UI Style (the law for any front end)
 
 One look across every product. Source of truth: `docs/design/factorylm-tokens.css` (tokens) +
