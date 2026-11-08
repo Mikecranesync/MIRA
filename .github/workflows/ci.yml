@@ -772,6 +772,14 @@ jobs:
               # class as guardrails.py above. Mirror: Mobile Unit Tests
               # watches the hub-side grammar sources.
               - 'docs/contracts/asset-tag-grammar.json'
+              # notebook-retrieval-flag-guard.test.ts reads this registry and
+              # fails if notebook_lexical_idf is recorded on in staging or
+              # production while it still skips production lexical passes.
+              # A registry-only PR must still run Hub Unit Tests or that
+              # guard never fires (#5166). Enforced by
+              # tests/test_hub_unit_filter_contract.py.
+              - 'docs/architecture/convergence/CAPABILITY_CLOSURE.yaml'
+              - '.github/workflows/ci.yml'
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         if: steps.changes.outputs.hub == 'true'
@@ -791,6 +799,51 @@ jobs:
         if: steps.changes.outputs.hub == 'true'
         working-directory: mira-hub
         run: bun run test
+
+      - name: Prove retrieval flag guard rejects enabled bypasses
+        # Execute the assertions; source-text fragments cannot prove they run.
+        # Both temporary registry mutations are restored byte-for-byte.
+        if: steps.changes.outputs.hub == 'true'
+        working-directory: mira-hub
+        run: |
+          bun - <<'BUN'
+          import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+          import { tmpdir } from "node:os";
+          import { join, resolve } from "node:path";
+          import { spawnSync } from "node:child_process";
+
+          const registry = resolve("../docs/architecture/convergence/CAPABILITY_CLOSURE.yaml");
+          const original = readFileSync(registry);
+          const scratch = mkdtempSync(join(tmpdir(), "mira-flag-guard-"));
+          try {
+            for (const environment of ["staging", "production"]) {
+              const document = Bun.YAML.parse(original.toString("utf8"));
+              const capability = document.capabilities.find((entry) => entry.id === "notebook_lexical_idf");
+              if (!capability?.environments) throw new Error("Retrieval bypass capability is missing");
+              capability.environments[environment] = "1";
+              writeFileSync(registry, Bun.YAML.stringify(document, null, 2));
+              const reportPath = join(scratch, `${environment}.json`);
+              const result = spawnSync(resolve("node_modules/.bin/vitest"), [
+                "run", "src/lib/__tests__/notebook-retrieval-flag-guard.test.ts",
+                "--reporter=json", `--outputFile=${reportPath}`,
+              ], { encoding: "utf8", timeout: 60000, env: { ...process.env, NO_COLOR: "1" } });
+              if (result.error) throw result.error;
+              const report = JSON.parse(readFileSync(reportPath, "utf8"));
+              const failures = report.testResults.flatMap((file) => file.assertionResults)
+                .filter((test) => test.status === "failed");
+              const expected = `AssertionError: notebook_lexical_idf must stay off in ${environment} while it bypasses production passes:`;
+              if (result.status !== 1 || report.numFailedTests !== 1 || failures.length !== 1
+                || !failures[0].fullName.includes("NOTEBOOK_LEXICAL_V2 on:")
+                || !failures[0].failureMessages.some((message) => message.startsWith(expected))) {
+                throw new Error(`Retrieval guard did not reject the enabled ${environment} bypass for the expected reason`);
+              }
+              console.log(`Verified actual retrieval guard rejects ${environment}=1`);
+            }
+          } finally {
+            writeFileSync(registry, original);
+            rmSync(scratch, { recursive: true, force: true });
+          }
+          BUN
 
   mobile-unit-tests:
     name: Mobile Unit Tests
