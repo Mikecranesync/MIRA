@@ -131,7 +131,8 @@ export async function addPendingManual(notebookId: string, docId: string, deps: 
 }
 
 export type ReuploadOutcome =
-  | { kind: "attached"; docId: string }
+  /** filename: the PDF the technician picked, which may differ from the pending row. */
+  | { kind: "attached"; docId: string; filename: string }
   | { kind: "reading" }
   | { kind: "unread"; message: string }
   | { kind: "failed"; message: string };
@@ -158,7 +159,7 @@ export async function reuploadPendingManual(
   const docId = up.body.uploadId;
   if (up.body.indexed === true && typeof docId === "string" && docId) {
     const att = await attach(input.notebookId, docId, deps);
-    return att.ok ? { kind: "attached", docId } : { kind: "failed", message: attachMessage(att) };
+    return att.ok ? { kind: "attached", docId, filename: input.file.name } : { kind: "failed", message: attachMessage(att) };
   }
   const warning = up.body.warning;
   return { kind: "unread", message: typeof warning === "string" && warning ? warning : NOT_READ };
