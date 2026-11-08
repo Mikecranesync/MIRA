@@ -127,9 +127,10 @@ work. Do not create a fifth implementation of an existing repair.
   does not replace claims, review records, incident history or required session closeout.
 - Preserve prior material transitions in a brief history or linked receipts when editing.
   Never overwrite another lane's comment or a review/approval ledger.
-- Include the #5232 status-comment link and affected goal in each delivery PR description.
-  Report review/CI against its exact snapshot. Do not edit a frozen reviewed PR body
-  merely to update status; put the new status in the linked owner comment.
+- For a new or unreviewed delivery PR, include the #5232 status-comment link and affected
+  goal in its description. For a frozen reviewed PR, put that link in a separate
+  coordination comment instead. Report review/CI against its exact snapshot; adoption
+  and routine status updates must not change a reviewed body or require another review.
 - Flag an approaching or missed deadline with deliverable, owner, blocker and decision
   needed. Request only genuinely missing decisions/permissions; continue independent work.
 
