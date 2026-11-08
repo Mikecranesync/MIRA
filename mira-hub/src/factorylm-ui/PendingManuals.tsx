@@ -14,7 +14,6 @@ import { addPendingManual, checkPendingManuals, type PendingManual } from "./pen
 type Props = {
   notebookId: string;
   nodeId: string;
-  createdAt: string;
   sources: ReadonlyArray<{ docId: string; fileId: string | null }>;
   approved: ReadonlySet<string>;
   /** A file became a source; the host re-reads the project. */
@@ -31,7 +30,7 @@ const deps: SetupDeps = {
 const box = { maxWidth: "min(360px, calc(100vw - 24px))", boxSizing: "border-box", padding: "8px 12px", boxShadow: "var(--fl-shadow)", border: "1px solid var(--fl-line)", borderRadius: "var(--fl-radius)", background: "var(--fl-surface)", color: "var(--fl-ink)", fontSize: "var(--fl-fs)" } as const;
 const btn = { marginLeft: 8, padding: "2px 10px", border: "1px solid var(--fl-line)", borderRadius: "var(--fl-radius)", background: "var(--fl-surface)", color: "var(--fl-accent)", cursor: "pointer" } as const;
 
-export function PendingManuals({ notebookId, nodeId, createdAt, sources, approved, onAttached }: Props) {
+export function PendingManuals({ notebookId, nodeId, sources, approved, onAttached }: Props) {
   const [pending, setPending] = useState<PendingManual[]>([]);
   const [failed, setFailed] = useState<Record<string, string>>({});
   const [added, setAdded] = useState<string[]>([]);
@@ -46,7 +45,7 @@ export function PendingManuals({ notebookId, nodeId, createdAt, sources, approve
     void (async () => {
       setStatus("checking");
       for (let poll = 1; poll <= POLL_MAX && alive; poll++) {
-        const r = await checkPendingManuals({ notebookId, nodeId, createdAt, sources: latest.current.sources, approved: latest.current.approved }, deps, () => !alive);
+        const r = await checkPendingManuals({ notebookId, nodeId, sources: latest.current.sources, approved: latest.current.approved }, deps, () => !alive);
         if (!alive) return;
         if (!r.ok) { setStatus("error"); return; }
         for (const [id, name] of Object.entries(r.filenames)) names.current.set(id, name);
@@ -62,7 +61,7 @@ export function PendingManuals({ notebookId, nodeId, createdAt, sources, approve
       if (alive) setStatus("capped");
     })();
     return () => { alive = false; };
-  }, [notebookId, nodeId, createdAt, run]);
+  }, [notebookId, nodeId, run]);
 
   const add = useCallback(async (p: PendingManual) => {
     if (!p.docId) return;

@@ -1090,7 +1090,6 @@ export function HubShellHost() {
           key={`pending-manuals|${selection.notebookId}`}
           notebookId={selection.notebookId}
           nodeId={detail.notebook.nodeId}
-          createdAt={detail.notebook.createdAt}
           sources={detail.sources}
           approved={approvedManuals}
           onAttached={(fileIds) => {
