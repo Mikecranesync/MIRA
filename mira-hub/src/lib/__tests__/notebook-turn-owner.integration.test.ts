@@ -86,8 +86,9 @@ run("equipment_notebook_turns.owner_user_id (integration)", () => {
   afterAll(async () => {
     try {
       if (fixtureVerified) {
-        await q(`DELETE FROM equipment_notebook_turns WHERE tenant_id IN ($1::uuid, $2::uuid)`, [TENANT_A, TENANT_B]);
-        await q(`DELETE FROM equipment_notebooks WHERE tenant_id IN ($1::uuid, $2::uuid)`, [TENANT_A, TENANT_B]);
+        const ownedNotebookIds = [nbA, nbB].filter(Boolean);
+        await q(`DELETE FROM equipment_notebook_turns WHERE notebook_id = ANY($1::uuid[]) AND tenant_id IN ($2::uuid, $3::uuid)`, [ownedNotebookIds, TENANT_A, TENANT_B]);
+        await q(`DELETE FROM equipment_notebooks WHERE id = ANY($1::uuid[]) AND tenant_id IN ($2::uuid, $3::uuid)`, [ownedNotebookIds, TENANT_A, TENANT_B]);
       }
     } finally {
       await pool.end();

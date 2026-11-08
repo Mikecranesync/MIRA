@@ -304,6 +304,14 @@ describe("turnsFromPersisted — hydration mirrors the classic web notebook", ()
     expect(a.context).toMatchObject({ machineId: "asset-uuid-OLD", machineIdentity: "unconfirmed", evidenceAuthorization: "not_authorized" });
   });
 
+  it.each(["Machine-CV101", "AAAAAAAA-0000-4000-8000-00000000000A"])("compares the opaque equipment key %s exactly, like the database", (key) => {
+    const exact = { ...meta, asset: { id: key, name: "CV-101" } };
+    const [, same] = turnsFromPersisted(row({ equipmentEntityId: key }), exact);
+    expect(same.context).toMatchObject({ machineId: key, machineIdentity: "confirmed", evidenceAuthorization: "authorized" });
+    const [, different] = turnsFromPersisted(row({ equipmentEntityId: key.toLowerCase() }), exact);
+    expect(different.context).toMatchObject({ machineId: key.toLowerCase(), machineIdentity: "unconfirmed", evidenceAuthorization: "not_authorized" });
+  });
+
   it("a snapshot alone never confirms an unconfirmed notebook identity", () => {
     const [, a] = turnsFromPersisted(row({ equipmentEntityId: "asset-uuid-1" }), { ...meta, identityConfirmed: false });
     expect(a.context).toMatchObject({ machineId: "asset-uuid-1", machineIdentity: "unconfirmed", evidenceAuthorization: "not_authorized" });

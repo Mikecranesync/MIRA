@@ -447,6 +447,8 @@ export function persistedMeta(
 ): HubNotebookMeta {
   const servedAssetId = recordedEquipmentEntityId ?? machineEvidence[0]?.assetId ?? null;
   if (!servedAssetId) return { ...meta, asset: null, identityConfirmed: false };
+  // Migration 081 stores opaque TEXT keys, resolved with exact SQL equality.
+  // UUID-looking keys are not a license to merge differently cased identities.
   const current = meta.asset && meta.asset.id === servedAssetId ? meta.asset : null;
   return {
     ...meta,
