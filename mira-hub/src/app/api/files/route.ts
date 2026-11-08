@@ -322,7 +322,7 @@ export async function POST(req: Request) {
           // Claim stolen mid-ingest — our doc is orphaned; remove its duplicate
           // chunk set (best-effort) and report indexing so the client
           // re-fetches the winner's result rather than a duplicate.
-          await deleteOrphanNodeIngest(ctx.tenantId, uploadId);
+          await deleteOrphanNodeIngest(ctx.tenantId, uploadId, park.fileId);
           return NextResponse.json(
             { ok: true, indexed: false, fileId: park.fileId, indexing: true },
             { status: 202 },

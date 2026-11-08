@@ -115,7 +115,11 @@ function rowToUpload(r: Record<string, unknown>): Upload {
     sizeBytes: r.size_bytes != null ? Number(r.size_bytes) : null,
     externalCreatedAt: toIsoStringOrNull(r.external_created_at as Date | string | null),
     status: r.status as UploadStatus,
-    statusDetail: (r.status_detail as string | null) ?? null,
+    // Deferred cleanup carries an internal canonical-file marker in storage.
+    // The upload API exposes a technician-readable explanation, not that key.
+    statusDetail: typeof r.status_detail === "string" && r.status_detail.startsWith("pending orphan cleanup for file ")
+      ? "Finishing file processing."
+      : (r.status_detail as string | null) ?? null,
     kbFileId: (r.kb_file_id as string | null) ?? null,
     kbChunkCount: r.kb_chunk_count != null ? Number(r.kb_chunk_count) : null,
     assetTag: (r.asset_tag as string | null) ?? null,

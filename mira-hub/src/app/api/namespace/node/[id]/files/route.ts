@@ -283,32 +283,6 @@ export async function POST(
       return NextResponse.json({ error: "node not found" }, { status: 404 });
     }
 
-    // ARPK 1b — content dedup. An exact re-upload of already-indexed bytes to
-    // this node returns the EXISTING document instead of chunking a second
-    // copy (the 158x-ingest class). Best-effort: a dedup-lookup failure must
-    // never block an upload.
-    const contentSha256 = createHash("sha256").update(buffer).digest("hex");
-    if (isPdf) {
-      try {
-        const dup = await findDuplicateUpload(ctx.tenantId, contentSha256, id);
-        if (dup) {
-          return NextResponse.json(
-            {
-              ok: true,
-              indexed: true,
-              duplicate: true,
-              uploadId: dup.id,
-              chunkCount: dup.kbChunkCount,
-              file: { filename: file.name, size_bytes: file.size },
-            },
-            { status: 200 },
-          );
-        }
-      } catch (err) {
-        console.warn("[api/namespace/node/:id/files POST] dedup lookup skipped", err);
-      }
-    }
-
     // Filing cabinet: park the original bytes FIRST, for every upload — through
     // the canonical Files service (075), which resolves identical bytes to the
     // EXISTING canonical file instead of parking a second blob. The document is
@@ -380,24 +354,44 @@ export async function POST(
         );
       }
       try {
+        // #5318: a completed document can outlive a failed final file link.
+        // Read AFTER acquiring the claim: another worker may have completed
+        // indexing while this request was parking. Reconcile the same scoped
+        // document instead of returning early or creating another chunk set.
+        let duplicateUpload: Awaited<ReturnType<typeof findDuplicateUpload>> = null;
+        const contentSha256 = createHash("sha256").update(buffer).digest("hex");
+        if (isPdf) {
+          try {
+            duplicateUpload = await findDuplicateUpload(ctx.tenantId, contentSha256, id);
+          } catch (err) {
+            console.warn("[api/namespace/node/:id/files POST] dedup lookup skipped", err);
+            // This retained file may already have an index. Preserve its bytes
+            // for retry; a failed read cannot justify creating another index.
+            // First-time uploads retain their best-effort fallback.
+            if (park.reused) throw err;
+          }
+        }
         const ingest = isPdf ? ingestPdfToNode : ingestTextToNode;
-        const { uploadId, chunkCount } = await ingest({
-          tenantId: ctx.tenantId,
-          nodeId: id,
-          unsPath: node.uns_path,
-          filename: file.name,
-          mimeType: mimeRaw,
-          sizeBytes: file.size,
-          buffer,
-          contentSha256,
-        });
+        const { uploadId, chunkCount } = duplicateUpload
+          ? { uploadId: duplicateUpload.id, chunkCount: duplicateUpload.kbChunkCount }
+          : await ingest({
+              tenantId: ctx.tenantId,
+              nodeId: id,
+              unsPath: node.uns_path,
+              filename: file.name,
+              mimeType: mimeRaw,
+              sizeBytes: file.size,
+              buffer,
+              contentSha256,
+            });
         // Link the parked original to its indexed upload so the panel shows ONE
         // row per document (downloadable AND citable) and the tree doesn't
         // double-count it. Token-fenced against stale-window takeover.
         const won = await linkFileToUpload(ctx.tenantId, directId, uploadId, claim.claimToken);
         if (!won) {
-          // Fence lost → duplicate chunk set; remove it (best-effort).
-          await deleteOrphanNodeIngest(ctx.tenantId, uploadId);
+          // Only this request's new chunk set is ours to remove. A reused
+          // completed document may already serve another supported consumer.
+          if (!duplicateUpload) await deleteOrphanNodeIngest(ctx.tenantId, uploadId, directId);
           return NextResponse.json(
             { ok: true, indexed: false, indexing: true, fileId: directId },
             { status: 202 },
@@ -407,6 +401,7 @@ export async function POST(
           {
             ok: true,
             indexed: true,
+            ...(duplicateUpload ? { duplicate: true } : {}),
             uploadId,
             chunkCount,
             fileId: directId,
@@ -417,7 +412,7 @@ export async function POST(
               capability: fileCapability(mimeRaw, file.name),
             },
           },
-          { status: 201 },
+          { status: duplicateUpload ? 200 : 201 },
         );
       } catch (err) {
         await releaseIngestClaim(ctx.tenantId, directId, claim.claimToken).catch(() => {});

@@ -787,31 +787,109 @@ export async function ingestTextToNode(opts: {
 }
 
 /**
- * Best-effort removal of an ORPHANED node ingest — an upload whose token-fenced
- * finalize LOST the claim (stolen mid-ingest after the stale window): its
- * chunks duplicate the winner's and must not stay retrievable, which is the
- * exact duplicate-corpus bug the ingestion claim exists to prevent.
+ * Reconcile a losing ingest, or drain deferred losers when uploadId is null.
+ * Every caller supplies the actual canonical file identity: derived OCR/text
+ * bytes need not have the same hash as the parked original (review F4).
  *
- * Raw owner pool, explicit tenant + doc predicates: factorylm_app has no
- * DELETE grant on knowledge_entries (migrations 011/049 grant SELECT/INSERT
- * only), and the scope here is one tenant's one upload. Never throws — losing
- * the race is benign and a cleanup failure must not fail the request; a leaked
- * orphan is logged and stays invisible to notebook chat (no source row points
- * at it).
+ * The canonical row lock serializes cleanup with claim/finalize. While a claim
+ * is active, persist intent in status_detail instead of deleting a document
+ * the claimant may adopt. Finalization/release/reuse drain that durable intent
+ * after the claimant finishes (review F5). Keep the adopted document intact.
+ *
+ * Raw owner pool as before (factorylm_app cannot DELETE knowledge_entries),
+ * with explicit tenant predicates on every read/write and one transaction.
  */
 export async function deleteOrphanNodeIngest(
   tenantId: string,
-  uploadId: string,
+  uploadId: string | null,
+  fileId: string,
 ): Promise<void> {
+  const pendingDetail = `pending orphan cleanup for file ${fileId}`;
   try {
-    await pool.query(
-      `DELETE FROM knowledge_entries WHERE tenant_id = $1::uuid AND doc_id = $2::uuid`,
-      [tenantId, uploadId],
-    );
-    await pool.query(`DELETE FROM hub_uploads WHERE tenant_id = $1 AND id = $2::uuid`, [
-      tenantId,
-      uploadId,
-    ]);
+    // Commit intent before destructive work. A later DELETE/transaction error
+    // must not roll back the only durable record that cleanup is still owed.
+    // Preserve the original explanation and do not re-wrap an existing marker.
+    if (uploadId !== null) {
+      await pool.query(
+        `UPDATE hub_uploads u
+            SET status_detail = $3 || chr(10) || COALESCE(to_jsonb(u.status_detail)::text, 'null')
+          WHERE u.tenant_id = $1 AND u.id = $2::uuid
+            AND (u.status_detail IS NULL
+              OR u.status_detail NOT LIKE 'pending orphan cleanup for file %')
+            AND EXISTS (
+              SELECT 1 FROM namespace_direct_uploads f
+               WHERE f.tenant_id = $1::uuid AND f.id = $4::uuid
+                 AND f.upload_id IS DISTINCT FROM u.id
+            )`,
+        [tenantId, uploadId, pendingDetail, fileId],
+      );
+    }
+    // Most finalizations have no deferred loser. Avoid acquiring a file lock
+    // or extra transaction in that common case. A later loser either sees the
+    // committed pointer itself or persists before a subsequent drain.
+    if (uploadId === null) {
+      const pending = await pool.query(
+        `SELECT 1 FROM hub_uploads WHERE tenant_id = $1
+          AND (status_detail = $2 OR status_detail LIKE $2 || chr(10) || '%') LIMIT 1`,
+        [tenantId, pendingDetail],
+      );
+      if (pending.rows.length === 0) return;
+    }
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const canonical = await client.query<{ upload_id: string | null; ingest_claim_token: string | null }>(
+        `SELECT upload_id::text, ingest_claim_token::text
+           FROM namespace_direct_uploads
+          WHERE tenant_id = $1::uuid AND id = $2::uuid
+          FOR UPDATE`,
+        [tenantId, fileId],
+      );
+      const file = canonical.rows[0];
+      if (!file) {
+        await client.query("COMMIT");
+        return;
+      }
+      if (file.ingest_claim_token !== null) {
+        await client.query("COMMIT");
+        return;
+      }
+      const pending = await client.query<{ id: string }>(
+        `SELECT id::text FROM hub_uploads
+          WHERE tenant_id = $1
+            AND (status_detail = $2 OR status_detail LIKE $2 || chr(10) || '%')
+            AND ($3::uuid IS NULL OR id <> $3::uuid)`,
+        [tenantId, pendingDetail, file.upload_id],
+      );
+      const losers = pending.rows.map((row) => row.id);
+      if (losers.length > 0) {
+        await client.query(
+          `DELETE FROM knowledge_entries WHERE tenant_id = $1::uuid AND doc_id = ANY($2::uuid[])`,
+          [tenantId, losers],
+        );
+        await client.query(`DELETE FROM hub_uploads WHERE tenant_id = $1 AND id = ANY($2::uuid[])`, [
+          tenantId,
+          losers,
+        ]);
+      }
+      // Adoption wins: restore its previous explanation (JSON preserves null,
+      // empty strings, quotes and newlines) without deleting its chunks.
+      await client.query(
+        `UPDATE hub_uploads SET status_detail = CASE
+            WHEN status_detail = $3 THEN NULL
+            ELSE substring(status_detail FROM length($3) + 2)::jsonb #>> '{}'
+          END
+          WHERE tenant_id = $1 AND id = $2::uuid
+            AND (status_detail = $3 OR status_detail LIKE $3 || chr(10) || '%')`,
+        [tenantId, file.upload_id, pendingDetail],
+      );
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
   } catch (err) {
     console.warn(
       `[node-ingest] orphan cleanup failed upload=${uploadId}: ${(err as Error).message}`,

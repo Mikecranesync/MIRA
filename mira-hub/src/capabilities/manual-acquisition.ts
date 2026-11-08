@@ -551,7 +551,7 @@ async function acquireInner(
         : await linkFileToUpload(ctx.tenantId, manualParked.fileId, ing.uploadId);
       manualDocId = won ? ing.uploadId : null;
       // Fence lost → our doc duplicates the winner's chunk set; remove it.
-      if (!won) await deleteOrphanNodeIngest(ctx.tenantId, ing.uploadId);
+      if (!won) await deleteOrphanNodeIngest(ctx.tenantId, ing.uploadId, manualParked.fileId);
     } catch (err) {
       if (manualClaimToken) {
         await releaseIngestClaim(ctx.tenantId, manualParked.fileId, manualClaimToken).catch(() => {});

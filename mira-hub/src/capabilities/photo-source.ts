@@ -83,7 +83,7 @@ export async function materializeDerivedTextDoc(opts: {
     // claim. A lost fence means our chunk set duplicates the winner's.
     const won = await linkFileToUpload(opts.tenantId, parked.fileId, ingested.uploadId, claim.claimToken);
     if (!won) {
-      await deleteOrphanNodeIngest(opts.tenantId, ingested.uploadId);
+      await deleteOrphanNodeIngest(opts.tenantId, ingested.uploadId, parked.fileId);
       return { docId: null, chunkCount: 0 };
     }
     return { docId: ingested.uploadId, chunkCount: ingested.chunkCount };

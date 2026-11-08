@@ -43,7 +43,7 @@ vi.mock("@/lib/workspace-files", async (importOriginal) => {
 import { GET, POST } from "../route";
 import { sessionOr401 } from "@/lib/session";
 import { withTenantContext } from "@/lib/tenant-context";
-import { ingestPdfToNode, ingestTextToNode } from "@/lib/node-knowledge-ingest";
+import { ingestPdfToNode, ingestTextToNode, deleteOrphanNodeIngest } from "@/lib/node-knowledge-ingest";
 import { findDuplicateUpload } from "@/lib/uploads";
 import { parkOrReuseFile, linkFileToUpload, attachFileToTargets, claimIngest, releaseIngestClaim } from "@/lib/workspace-files";
 import pool from "@/lib/db";
@@ -371,7 +371,8 @@ describe("POST /api/namespace/node/[id]/files — originals are parked, never lo
 
   it("returns the existing document on a same-node re-upload without re-chunking (ARPK 1b)", async () => {
     vi.mocked(sessionOr401).mockResolvedValue(goodSession);
-    // node lookup only — no park, no ingest for a duplicate.
+    // A completed document may have lost its final file link (#5318).
+    // Canonical parking is idempotent and must reconcile that missing link.
     vi.mocked(withTenantContext).mockResolvedValueOnce({
       id: VALID_UUID,
       uns_path: "enterprise.site",
@@ -391,11 +392,127 @@ describe("POST /api/namespace/node/[id]/files — originals are parked, never lo
       duplicate: true,
       uploadId: "up-original",
       chunkCount: 42,
+      fileId: "direct-parked-default",
     });
     expect(ingestPdfToNode).not.toHaveBeenCalled();
-    // No second parked copy either — the original upload already parked it.
     expect(withTenantContext).toHaveBeenCalledTimes(1);
-    expect(parkOrReuseFile).not.toHaveBeenCalled();
+    expect(parkOrReuseFile).toHaveBeenCalledTimes(1);
+    expect(linkFileToUpload).toHaveBeenCalledWith(TENANT_ID, "direct-parked-default", "up-original", "tok-1");
+  });
+
+  it("reconciles the retained file on a supported retry after post-ingest connection timeout, without re-ingesting", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession);
+    vi.mocked(withTenantContext).mockResolvedValue({ id: VALID_UUID, uns_path: "enterprise.site" });
+    vi.mocked(parkOrReuseFile)
+      .mockResolvedValueOnce({ fileId: "kept-file", reused: false, uploadId: null })
+      .mockResolvedValueOnce({ fileId: "kept-file", reused: true, uploadId: null });
+    vi.mocked(claimIngest)
+      .mockResolvedValueOnce({ claimed: true, claimToken: "first-token" })
+      .mockResolvedValueOnce({ claimed: true, claimToken: "retry-token" });
+    vi.mocked(findDuplicateUpload)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: "completed-upload", kbChunkCount: 42 } as never);
+    vi.mocked(ingestPdfToNode).mockResolvedValue({ uploadId: "completed-upload", chunkCount: 42 });
+    vi.mocked(linkFileToUpload)
+      .mockRejectedValueOnce(new Error("timeout exceeded when trying to connect"))
+      .mockResolvedValueOnce(true);
+
+    const first = await POST(makePostReq("manual.pdf", "application/pdf"), makeParams(VALID_UUID));
+    expect(first.status).toBe(201);
+    expect(await first.json()).toMatchObject({ indexed: false, fileId: "kept-file", warning: expect.any(String) });
+    expect(releaseIngestClaim).toHaveBeenCalledWith(TENANT_ID, "kept-file", "first-token");
+
+    const retry = await POST(makePostReq("manual.pdf", "application/pdf"), makeParams(VALID_UUID));
+    expect(retry.status).toBe(200);
+    expect(await retry.json()).toMatchObject({ indexed: true, duplicate: true, uploadId: "completed-upload", fileId: "kept-file" });
+    expect(ingestPdfToNode).toHaveBeenCalledTimes(1);
+    expect(linkFileToUpload).toHaveBeenLastCalledWith(TENANT_ID, "kept-file", "completed-upload", "retry-token");
+    expect(findDuplicateUpload).toHaveBeenLastCalledWith(TENANT_ID, "039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81", VALID_UUID);
+    expect(deleteOrphanNodeIngest).not.toHaveBeenCalled();
+  });
+
+  it("checks for a completed document after acquiring the claim, including one published while this request was parking", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession);
+    vi.mocked(withTenantContext).mockResolvedValue({ id: VALID_UUID, uns_path: "enterprise.site" });
+    vi.mocked(parkOrReuseFile).mockResolvedValue({ fileId: "kept-file", reused: true, uploadId: null });
+    vi.mocked(claimIngest).mockImplementationOnce(async () => {
+      vi.mocked(findDuplicateUpload).mockResolvedValue({ id: "just-completed", kbChunkCount: 42 } as never);
+      return { claimed: true, claimToken: "retry-token" };
+    });
+    vi.mocked(ingestPdfToNode).mockResolvedValue({ uploadId: "must-not-create", chunkCount: 42 });
+
+    const res = await POST(makePostReq("manual.pdf", "application/pdf"), makeParams(VALID_UUID));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ indexed: true, uploadId: "just-completed", fileId: "kept-file" });
+    expect(ingestPdfToNode).not.toHaveBeenCalled();
+    expect(linkFileToUpload).toHaveBeenCalledWith(TENANT_ID, "kept-file", "just-completed", "retry-token");
+  });
+
+  it("does not delete a reused completed document when the finalization claim was lost", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession);
+    vi.mocked(withTenantContext).mockResolvedValue({ id: VALID_UUID, uns_path: "enterprise.site" });
+    vi.mocked(parkOrReuseFile).mockResolvedValue({ fileId: "kept-file", reused: true, uploadId: null });
+    vi.mocked(findDuplicateUpload).mockResolvedValue({ id: "existing-upload", kbChunkCount: 42 } as never);
+    vi.mocked(linkFileToUpload).mockResolvedValue(false);
+
+    const res = await POST(makePostReq("manual.pdf", "application/pdf"), makeParams(VALID_UUID));
+    expect(res.status).toBe(202);
+    expect(await res.json()).toMatchObject({ indexed: false, indexing: true, fileId: "kept-file" });
+    expect(ingestPdfToNode).not.toHaveBeenCalled();
+    expect(deleteOrphanNodeIngest).not.toHaveBeenCalled();
+  });
+
+  it("still removes this request's new orphan when a fresh ingest loses finalization", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession);
+    vi.mocked(withTenantContext).mockResolvedValue({ id: VALID_UUID, uns_path: "enterprise.site" });
+    vi.mocked(ingestPdfToNode).mockResolvedValue({ uploadId: "new-losing-upload", chunkCount: 12 });
+    vi.mocked(linkFileToUpload).mockResolvedValue(false);
+
+    const res = await POST(makePostReq("manual.pdf", "application/pdf"), makeParams(VALID_UUID));
+    expect(res.status).toBe(202);
+    expect(await res.json()).toMatchObject({ indexed: false, indexing: true });
+    expect(deleteOrphanNodeIngest).toHaveBeenCalledWith(TENANT_ID, "new-losing-upload", "direct-parked-default");
+  });
+
+  it("does not create another index when an unlinked reused file's duplicate lookup is unavailable", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession);
+    vi.mocked(withTenantContext).mockResolvedValue({ id: VALID_UUID, uns_path: "enterprise.site" });
+    vi.mocked(parkOrReuseFile).mockResolvedValue({ fileId: "kept-file", reused: true, uploadId: null });
+    vi.mocked(findDuplicateUpload).mockRejectedValue(new Error("timeout exceeded when trying to connect"));
+    vi.mocked(ingestPdfToNode).mockResolvedValue({ uploadId: "must-not-create", chunkCount: 42 });
+
+    const res = await POST(makePostReq("manual.pdf", "application/pdf"), makeParams(VALID_UUID));
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({ indexed: false, fileId: "kept-file", warning: expect.any(String) });
+    expect(ingestPdfToNode).not.toHaveBeenCalled();
+    expect(linkFileToUpload).not.toHaveBeenCalled();
+    expect(releaseIngestClaim).toHaveBeenCalledWith(TENANT_ID, "kept-file", "tok-1");
+  });
+
+  it("preserves first-time upload fallback if the optional dedup lookup fails", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession);
+    vi.mocked(withTenantContext).mockResolvedValue({ id: VALID_UUID, uns_path: "enterprise.site" });
+    vi.mocked(findDuplicateUpload).mockRejectedValue(new Error("lookup unavailable"));
+    vi.mocked(ingestPdfToNode).mockResolvedValue({ uploadId: "fresh-upload", chunkCount: 12 });
+
+    const res = await POST(makePostReq("manual.pdf", "application/pdf"), makeParams(VALID_UUID));
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({ indexed: true, uploadId: "fresh-upload", fileId: "direct-parked-default" });
+    expect(ingestPdfToNode).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not bypass an active claim merely because the same bytes have a parsed document", async () => {
+    vi.mocked(sessionOr401).mockResolvedValue(goodSession);
+    vi.mocked(withTenantContext).mockResolvedValue({ id: VALID_UUID, uns_path: "enterprise.site" });
+    vi.mocked(parkOrReuseFile).mockResolvedValue({ fileId: "kept-file", reused: true, uploadId: null });
+    vi.mocked(findDuplicateUpload).mockResolvedValue({ id: "existing-upload", kbChunkCount: 42 } as never);
+    vi.mocked(claimIngest).mockResolvedValue({ claimed: false, reason: "ingest_in_progress", uploadId: null });
+
+    const res = await POST(makePostReq("manual.pdf", "application/pdf"), makeParams(VALID_UUID));
+    expect(res.status).toBe(202);
+    expect(await res.json()).toMatchObject({ indexed: false, indexing: true, fileId: "kept-file" });
+    expect(ingestPdfToNode).not.toHaveBeenCalled();
+    expect(linkFileToUpload).not.toHaveBeenCalled();
   });
 
   it("parks non-PDF files without touching the ingest pipeline", async () => {

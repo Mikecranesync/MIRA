@@ -202,7 +202,7 @@ describe("materializeDerivedTextDoc", () => {
   it("deletes its own chunk set when it loses the claim fence", async () => {
     vi.mocked(linkFileToUpload).mockResolvedValueOnce(false);
     expect(await materializeDerivedTextDoc(args)).toEqual({ docId: null, chunkCount: 0 });
-    expect(deleteOrphanNodeIngest).toHaveBeenCalledWith(TENANT, "doc-1");
+    expect(deleteOrphanNodeIngest).toHaveBeenCalledWith(TENANT, "doc-1", "text-file-1");
   });
 });
 

@@ -16,7 +16,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const queryMock = vi.fn();
 vi.mock("@/lib/db", () => ({ default: { query: (...a: unknown[]) => queryMock(...a) } }));
 
-import { createUpload, findDuplicateUpload } from "../uploads";
+import { createUpload, findDuplicateUpload, getUpload } from "../uploads";
 
 const SHA = "a".repeat(64);
 const NODE = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
@@ -102,5 +102,19 @@ describe("findDuplicateUpload", () => {
   it("returns null when nothing matches", async () => {
     const dup = await findDuplicateUpload("t-1", SHA, NODE);
     expect(dup).toBeNull();
+  });
+});
+
+
+describe("upload status explanation", () => {
+  it.each([
+    [`pending orphan cleanup for file ${NODE}`, "Finishing file processing."],
+    ["3 pages indexed", "3 pages indexed"],
+  ])("returns a technician-readable explanation for %s", async (stored, expected) => {
+    queryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("information_schema.columns")) return { rows: [{ "?column?": 1 }] };
+      return { rows: [{ ...uploadRow, status_detail: stored }] };
+    });
+    expect((await getUpload(uploadRow.id, "t-1"))?.statusDetail).toBe(expected);
   });
 });
