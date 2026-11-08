@@ -303,9 +303,13 @@ for (const vp of VIEWPORTS) {
         if (!route.request().url().includes("/node/node-of-nb-general/")) return route.fulfill(json({ files: [] }));
         state.listReads++;
         const read = state.listReads >= state.readsUntilIndexed;
-        return route.fulfill(json({ files: [{ id: "f-late", filename: "Pump manual.pdf", mime_type: "application/pdf", size_bytes: 20, source: "direct", created_at: "2026-11-08T12:00:05.000Z", verified: false, indexed: read, upload_id: read ? "up-late" : null }] }));
+        return route.fulfill(json({ files: [{ id: "f-late", filename: "Pump manual.pdf", mime_type: "application/pdf", size_bytes: 20, source: "direct", created_at: "2026-11-08T12:00:05.000Z", verified: false, indexed: read }] }));
       });
-      await page.route(/\/api\/files\/f-late\/?$/, (route) => route.fulfill(json({ file: { id: "f-late", uploadId: null, indexed: false }, links: [] })));
+      // Like the server: the node list carries no document id; the file lookup does, once read.
+      await page.route(/\/api\/files\/f-late\/?$/, (route) => {
+        const read = state.listReads >= state.readsUntilIndexed;
+        return route.fulfill(json({ file: { id: "f-late", filename: "Pump manual.pdf", uploadId: read ? "up-late" : null, indexed: read }, links: [] }));
+      });
       await page.route(/\/api\/equipment-notebooks\/nb-general\/sources\/?$/, (route) => { state.attached = true; return route.fulfill(json({ ok: true }, 201)); });
       await page.route(/\/api\/equipment-notebooks\/nb-general\/(\?.*)?$/, (route) => route.fulfill(json({
         notebook: notebook("nb-general", "Bench notes (synthetic)", null),

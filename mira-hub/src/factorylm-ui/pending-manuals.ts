@@ -7,6 +7,7 @@
  * joined to the project's sources), so it survives a closed sheet, a reload and
  * another device, and it needs no client-side record.
  *
+ * Document ids come from GET /api/files/{fileId} (the node list omits them).
  * Writes: only `POST /api/equipment-notebooks/{id}/sources/` (the existing,
  * idempotent upsert), only for files the technician approved at Create project
  * in this session, and always to the project the file belongs to.
@@ -23,28 +24,42 @@ export type PendingManual = {
 
 type SourceRef = { docId: string; fileId: string | null };
 
+/** A PDF filed on the project's node that is not a source by file id; its document is not yet known. */
+export type FiledManual = { fileId: string; filename: string; indexed: boolean };
+
 /**
- * PDFs parked directly on the project's node, saved since the project was
- * created, that are not one of its sources (by file id or document id).
+ * PDFs filed on the project's node (the node file list is the durable filing
+ * record: the node itself or a workspace_file_links row) that are not one of
+ * its sources by file id. Eligibility is filing, never the stored file's age:
+ * identical bytes reuse an older stored file (parkOrReuseFile). The list does
+ * not carry the document id; `indexed` only says one exists.
  */
-export function pendingManuals(body: unknown, sources: readonly SourceRef[], createdAt: string): PendingManual[] {
+export function filedManuals(body: unknown, sources: readonly SourceRef[]): FiledManual[] {
   const files = (body as { files?: unknown } | null)?.files;
   if (!Array.isArray(files)) return [];
-  const since = Date.parse(createdAt);
   const sourceFiles = new Set(sources.map((s) => s.fileId).filter((id): id is string => !!id));
-  const sourceDocs = new Set(sources.map((s) => s.docId));
-  const out: PendingManual[] = [];
+  const out: FiledManual[] = [];
   for (const raw of files) {
     const f = (raw ?? {}) as Record<string, unknown>;
     if (typeof f.id !== "string" || !f.id || f.source !== "direct" || f.mime_type !== "application/pdf") continue;
-    const at = typeof f.created_at === "string" ? Date.parse(f.created_at) : NaN;
-    if (!Number.isFinite(since) || !Number.isFinite(at) || at < since) continue;
-    const docId = typeof f.upload_id === "string" && f.upload_id ? f.upload_id : null;
-    if (sourceFiles.has(f.id) || (docId && sourceDocs.has(docId))) continue;
+    if (sourceFiles.has(f.id)) continue;
     const filename = typeof f.filename === "string" && f.filename ? f.filename : "Document";
-    out.push({ fileId: f.id, filename, docId, state: docId ? "readable" : "reading" });
+    out.push({ fileId: f.id, filename, indexed: f.indexed === true });
   }
   return out;
+}
+
+/**
+ * The document behind a filed PDF, from the existing file lookup
+ * (GET /api/files/{fileId} → file.uploadId, the same contract the setup sheet
+ * follows). "gone": the file no longer exists. "unknown": the read failed.
+ */
+async function documentOf(fileId: string, deps: SetupDeps): Promise<string | null | "gone" | "unknown"> {
+  const res = await call(deps, "GET", `/api/files/${encodeURIComponent(fileId)}`);
+  if (res.status === 404) return "gone";
+  if (!res.ok) return "unknown";
+  const uploadId = (res.body.file as { uploadId?: unknown } | undefined)?.uploadId;
+  return typeof uploadId === "string" && uploadId ? uploadId : null;
 }
 
 export type PendingCheck = {
@@ -65,14 +80,27 @@ export const ATTACH_FAILED = "Couldn't be added as a source. Try again.";
  * `stale()` true (the project closed or changed) stops before any write.
  */
 export async function checkPendingManuals(
-  input: { notebookId: string; nodeId: string; createdAt: string; sources: readonly SourceRef[]; approved: ReadonlySet<string> },
+  input: { notebookId: string; nodeId: string; sources: readonly SourceRef[]; approved: ReadonlySet<string> },
   deps: SetupDeps,
   stale: () => boolean = () => false,
 ): Promise<PendingCheck> {
   const none: PendingCheck = { ok: false, pending: [], attached: [], failed: [], filenames: {} };
   const res = await call(deps, "GET", `/api/namespace/node/${encodeURIComponent(input.nodeId)}/files/`);
   if (!res.ok || stale()) return none;
-  const pending = pendingManuals(res.body, input.sources, input.createdAt);
+  const filed = filedManuals(res.body, input.sources);
+  const sourceDocs = new Set(input.sources.map((s) => s.docId));
+  const pending: PendingManual[] = [];
+  for (const f of filed) {
+    let docId: string | null = null;
+    if (f.indexed) {
+      const doc = await documentOf(f.fileId, deps);
+      if (stale()) return none;
+      if (doc === "gone") continue;
+      if (doc !== "unknown") docId = doc;
+    }
+    if (docId && sourceDocs.has(docId)) continue;
+    pending.push({ fileId: f.fileId, filename: f.filename, docId, state: docId ? "readable" : "reading" });
+  }
   const filenames = Object.fromEntries(pending.map((p) => [p.fileId, p.filename]));
   const attached: string[] = [];
   const failed: PendingCheck["failed"] = [];
