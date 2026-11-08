@@ -146,6 +146,16 @@ run("equipment_notebook_turns.owner_user_id (integration)", () => {
     expect(await listTurns(TENANT_B, nbA, 50, { viewerUserId: USER_A })).toEqual([]);
   });
 
+  it("retains telemetry fallback for a persisted empty equipment snapshot", async () => {
+    const machineId = "machine-empty-snapshot-integration";
+    const packet = { kind: "machine_evidence", assetId: machineId, anchorAt: new Date().toISOString(), pre: 30, post: 30, rowCount: 2, freshness: "unknown" } as const;
+    await recordTurn(TENANT_A, nbA, { question: "empty snapshot with telemetry", answerStatus: "answered", answerText: "Historical answer", enabledSourceDocIds: [], evidence: [packet], model: null, ownerUserId: USER_A, equipmentEntityId: "" });
+    const saved = (await listTurns(TENANT_A, nbA, 50, { viewerUserId: USER_A })).find((t) => t.question === "empty snapshot with telemetry")!;
+    expect(saved.equipmentEntityId).toBe("");
+    const meta: HubNotebookMeta = { notebookId: nbA, title: "CV-101", tenantId: TENANT_A, capturedAt: packet.anchorAt, asset: { id: machineId, name: "CV-101" }, identityConfirmed: true };
+    expect(turnsFromPersisted(saved as Parameters<typeof turnsFromPersisted>[0], meta)[1].context).toMatchObject({ machineId, machineIdentity: "confirmed", evidenceAuthorization: "authorized" });
+  });
+
   it("a turn cannot be written into another tenant's notebook", async () => {
     await expect(
       recordTurn(TENANT_A, nbB, {

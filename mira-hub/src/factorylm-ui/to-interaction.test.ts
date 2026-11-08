@@ -317,6 +317,13 @@ describe("turnsFromPersisted — hydration mirrors the classic web notebook", ()
     expect(a.context).toMatchObject({ machineId: "asset-uuid-1", machineIdentity: "unconfirmed", evidenceAuthorization: "not_authorized" });
   });
 
+  it("an empty recorded key retains the legacy telemetry identity fallback", () => {
+    const [, a] = turnsFromPersisted(row({ equipmentEntityId: "", evidence: [citation, {
+      kind: "machine_evidence", assetId: "asset-uuid-1", anchorAt: AT, pre: 30, post: 30, rowCount: 2, freshness: "unknown",
+    }] }), meta);
+    expect(a.context).toMatchObject({ machineId: "asset-uuid-1", machineIdentity: "confirmed", evidenceAuthorization: "authorized" });
+  });
+
   it("an unbound recorded turn is not backfilled from the current notebook", () => {
     const [, a] = turnsFromPersisted(row({ equipmentEntityId: null }), meta);
     expect(a.context.machineId).toBeUndefined();
