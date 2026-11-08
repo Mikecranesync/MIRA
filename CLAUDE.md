@@ -7,6 +7,10 @@
 
 ---
 
+## Shared delivery coordination — required for every agent
+
+At session start/resume, read [DELIVERY.md](DELIVERY.md) for goals, ET deadlines and lane ownership, then refresh your existing owner status in [#5232](https://github.com/Mikecranesync/MIRA/issues/5232). Record the plan revision you read; update at material changes, handoff and session end, and link that comment from delivery PRs. Follow the plan's evidence and same-lane ownership rules. This adds no merge/deploy/spend authority or replacement for existing claims/reviews.
+
 ## North Star
 - **🧭 CANONICAL WEDGE — `NORTH_STAR.md` (2026-06-22).** FactoryLM = the maintenance-context layer (makes messy data trustworthy for AI on *any* UNS); MIRA = the grounded agent that proves it by diagnosing with citations. **Lead with the context platform, never the copilot.** Adapters (Slack/Telegram/Ignition/QR/web) are retained consumption surfaces — each renders the *same approved-context answer*. The competitive map + the **ProveIt! 2027 demo runbook** (`docs/plans/2026-06-22-proveit-2027-demo-runbook.md`) live there. Supersedes the older "Slack-first copilot" / "digital-transformation-firm" framings.
 - **🚦 BETA GATE — A stranger can upload their own equipment manual and get a cited answer without Mike manually fixing anything.** The release gate for the "Path to Beta Testers" phase. **Status (2026-09-07): MET on the retrieval path; NOT MET on the product surface.** (Was "MET / PASSING on deploy truth" from 2026-06-17.) The backend half is real and still holds — the upload→retrieval gap is **closed** (#1592 folder=brain + #1863 blind-upload Inbox node + #1911 `is_private=true` + #2100 embed-on-write; un-xfailed in #2077). `tests/beta/beta_ready_upload_retrieval_citation.py` is now a **real assertion**, CI-enforced by `.github/workflows/beta-gate.yml` against a stranger provisioned on staging Neon. **But a green CI run is not the gate.** Observed on the live product 2026-09-07: there is no composer on the home screen to ask anything, and the first message sent returns `Chat unavailable (412)` in a permanent banner with no retry; on mobile, cold launch drops into the last thread and `New chat` is disabled. So a stranger cannot reach a cited answer through the interface. The test proves the retrieval path returns rows and says nothing about whether a human can reach that answer — we were measuring the pipe and reporting it as the product. **The gate is met again only when the stranger walk passes on a real device** (`docs/prd/2026-09-07-factorylm-ui-ux-v1.md` §2; evidence `wiki/reviews/2026-09-07-app.factorylm.com-ux-recon-off-base.md` and `docs/audits/2026-09-07-mobile-recon-companion.md`). Don't reintroduce the gap: per-tenant uploads land in `knowledge_entries` (`is_private=true`) and are citable on the Hub NodeChat path — `/api/uploads/folder` (Open WebUI KB only) is **not** a citable door. Keep it green; see `docs/plans/2026-06-07-path-to-beta.md` and `.claude/rules/knowledge-entries-tenant-scoping.md`.
@@ -354,10 +358,6 @@ Before running `rm -rf`, `git reset --hard`, `git clean -f[d]`, or any other com
 ## Security
 
 Credentials and passwords come from environment variables (Doppler-managed, `factorylm/{dev,stg,prd}`) — never hardcoded in scripts, including one-off `tools/`/`plc/` ops scripts and seed/migration scripts. Enforced by `.ast-grep-rules/hardcoded-secret.yml` (every PR, `code-review.yml`) and `gitleaks protect --staged` (pre-commit). See `.claude/rules/security-boundaries.md`.
-
-## Shared delivery coordination — required for every agent
-
-Read [DELIVERY.md](DELIVERY.md) at session start/resume for north stars, end goals, ET deadlines and lane ownership. Maintain your concise owner status in [#5232](https://github.com/Mikecranesync/MIRA/issues/5232) at material changes, handoff and session end; link it from delivery PRs. Follow the template and evidence rules there. This adds no merge/deploy/spend authority and does not replace existing work claims or review records.
 
 ## CLAUDE.md Maintenance
 

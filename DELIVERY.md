@@ -33,6 +33,10 @@ All deadlines below use America/New_York (ET). November dates and requirements w
 provided in Mike's November 8 handoff; primary assignment/solicitation verification is
 still required. An unverified deadline is a planning constraint, not proof of compliance.
 
+For each external commitment, link the primary assignment/solicitation and record its
+original timezone plus the ET conversion in the owner update. Until verified, label it
+HANDOFF-REPORTED. Surface conflicts to Mike; do not silently change a date or scope.
+
 | Date | Deliverable | Accountable owner | Required proof / next action |
 |---|---|---|---|
 | Nov 7, 2026 — historical target | First Dollar | Mike | Agent reports target missed; verify current commercial state. Preserve the miss; Mike sets any replacement date and offer. |
@@ -105,6 +109,13 @@ work. Do not create a fifth implementation of an existing repair.
 - Maintain one short, owner-managed status comment per lane in #5232, using the template
   below. Update it at start/resume, material proof/blocker/ownership changes, handoff
   and session end. Avoid unchanged heartbeat comments.
+- Reuse the lane's existing comment and verify its designated owner before editing.
+  A successor records the session/claim handoff there; another active session does not
+  overwrite it or create a competing lane summary. Specialist sessions pass updates
+  through the designated lane owner while retaining their own implementation claims.
+- Acknowledge the exact `DELIVERY.md` commit or blob permalink in that lane comment.
+  Label a pre-merge acknowledgment PROPOSED; do not claim merged adoption or acknowledge
+  another lane. CHARLIE Codex links missing acknowledgments as pending in the summary.
 - Keep detailed evidence on the implementation PR/issue and link it. A status comment
   does not replace claims, review records, incident history or required session closeout.
 - Preserve prior material transitions in a brief history or linked receipts when editing.
@@ -121,6 +132,7 @@ mark it UNPUBLISHED, and publish/reconcile when access returns. Never imply peer
 ```text
 [DELIVERY-UPDATE: CHARLIE-CODEX | CHARLIE-CLAUDE | BRAVO-CODEX | BRAVO-CLAUDE]
 Updated: <ISO-8601 UTC>; session: <id>; claim: <link>
+Plan read: <DELIVERY.md commit/blob link>; acknowledgment: PROPOSED | MERGED
 Goal / slice: <goal and issue>; branch / SHA: <exact>
 State: ACTIVE | BLOCKED | HANDOFF | COMPLETE
 Evidence: VERIFIED | REPORTED | NOT TESTED — <scope and receipt link>
@@ -131,8 +143,8 @@ Blocked by / needs: <owner + specific action, or none>
 Decision for Mike: <specific decision, or none>
 ```
 
-Choose one lane marker, state, evidence label and stage per update; use extra short lines
-when evidence spans stages. COMPLETE means the owned slice's acceptance is proven, not
+Choose one lane marker, state, evidence label, stage and acknowledgment status per
+update; use extra short lines when evidence spans stages. COMPLETE means the owned slice's acceptance is proven, not
 that the entire product is accepted. FAIL is a valid test verdict; record it explicitly.
 
 CHARLIE Codex maintains the existing combined acceptance summary in #5232, linking the
