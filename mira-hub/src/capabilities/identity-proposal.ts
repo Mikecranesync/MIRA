@@ -58,9 +58,16 @@ const GENERIC_DEVICE_WORDS = new Set(["PLC", "VFD", "HMI", "CPU", "DRIVE", "PANE
 /**
  * Interface, protocol, rating and standard tokens that look model-shaped but
  * name no machine ("RS-485", "DH-485", "IP65", "24VDC", "M12", "IEC61131").
+ * A nameplate's rating line is covered in full (owner decision 2026-11-07,
+ * the photo builds the notebook): a range with its unit ("200-240V"), a
+ * dual-frequency pair ("50/60Hz"), a kW/HP pair ("0.5kW/0.5HP") and a phase
+ * count ("1PH", "3PH") are ratings, never a second machine.
  */
-const NON_MACHINE_TOKEN_RE =
-  /^(?:\d+(?:\.\d+)?(?:-|to)\d+(?:\.\d+)?\s*(?:MA|V|VDC|VAC|A|HZ|KHZ|PSI|BAR|MM|RPM|%|°?C|°?F)?|RS-?\d{3}|DH-?\d{3}|DH\+|IEC-?\d+|ISO-?\d+|EN-?\d+|IP\d{2}|NEMA-?\d+[A-Z]?|UL-?\d+|CAT-?\d[A-Z]?|M\d{1,2}|\d+(?:\.\d+)?(?:V|VAC|VDC|A|MA|HZ|KHZ|KW|W|HP|MM|BAR|PSI|RPM|MS|S)|\d+(?:ST|ND|RD|TH))$/i;
+const RATING_UNIT = String.raw`(?:MA|V|VDC|VAC|A|HZ|KHZ|KW|W|HP|PSI|BAR|MM|RPM|MS|S|%|°?C|°?F)`;
+const NON_MACHINE_TOKEN_RE = new RegExp(
+  String.raw`^(?:\d+(?:\.\d+)?(?:-|to)\d+(?:\.\d+)?\s*${RATING_UNIT}?|\d+(?:\.\d+)?/\d+(?:\.\d+)?${RATING_UNIT}|\d+(?:\.\d+)?${RATING_UNIT}/\d+(?:\.\d+)?${RATING_UNIT}|\d{1,2}PH|RS-?\d{3}|DH-?\d{3}|DH\+|IEC-?\d+|ISO-?\d+|EN-?\d+|IP\d{2}|NEMA-?\d+[A-Z]?|UL-?\d+|CAT-?\d[A-Z]?|M\d{1,2}|\d+(?:\.\d+)?${RATING_UNIT}|\d+(?:\.\d+)?(?:ST|ND|RD|TH))$`,
+  "i",
+);
 
 /**
  * A unit written as its own word after a number ("DC 24 V", "AC 230 volts"):
@@ -488,5 +495,12 @@ export function unconfirmedMachineDirective(p: IdentityProposal, acquisitionStat
     `service procedure as fact. Answer only what is true in general, and say that once they confirm the ${name} you ` +
     `will look up its manual and show them the page.`;
   if (!acquisitionStatus) return base;
-  return `${base} MIRA is already searching for its manual in the background — tell the technician, in your own words, this: "${acquisitionStatus}"`;
+  // A search is already running or finished for this exact identity (read off
+  // the nameplate photo — owner decision 2026-11-07): nothing to confirm, so
+  // the "once they confirm" line is replaced by the search's own status.
+  return (
+    `\n\nUNCONFIRMED MACHINE — the ${name} was read off the technician's photo. None of its manuals are loaded yet. ` +
+    `Do NOT state its ratings, specifications, settings, part numbers, wiring, fault meanings, or any reset, firmware or ` +
+    `service procedure as fact. Answer only what is true in general, and tell the technician, in your own words, this: "${acquisitionStatus}"`
+  );
 }

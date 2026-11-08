@@ -478,12 +478,18 @@ services:
       - MIRA_TRACE_VIEWER_URL_TEMPLATE=${MIRA_TRACE_VIEWER_URL_TEMPLATE:-}
       # Shadow-mode Jev evidence-sufficiency judgment (recorded, never consulted). Off unless set in Doppler stg.
       - MIRA_JEV_SHADOW=${MIRA_JEV_SHADOW:-0}
-      # #4075: a technician-confirmed identity starts a background search for the
-      # official manual (discover -> download -> ingest -> applicability). Off
-      # unless set in Doppler stg; needs migration 100. Staging only for now.
-      - MIRA_NOTEBOOK_MANUAL_ACQUISITION=${MIRA_NOTEBOOK_MANUAL_ACQUISITION:-0}
-      # #4160 S6 candidate takeover (#4175): off until a client can confirm a candidate identity.
-      - MIRA_NOTEBOOK_CANDIDATE_ACQUISITION=${MIRA_NOTEBOOK_CANDIDATE_ACQUISITION:-0}
+      # #4075: the automatic official-manual search (discover -> download ->
+      # ingest -> applicability) for a confirmed identity OR a nameplate photo.
+      # The ONE kill switch, ON by default (owner decision 2026-11-07); set
+      # exactly 0 in Doppler stg to stop it. Needs migration 100.
+      - MIRA_NOTEBOOK_MANUAL_ACQUISITION=${MIRA_NOTEBOOK_MANUAL_ACQUISITION:-1}
+      # Emergency rollback levers for the notebook chat's safety layers (ON by
+      # default in code; forwarded so a Doppler 0 reaches the container).
+      - NOTEBOOK_ANSWER_GATE=${NOTEBOOK_ANSWER_GATE:-1}
+      - NOTEBOOK_ENERGIZED_HARD_STOP=${NOTEBOOK_ENERGIZED_HARD_STOP:-1}
+      - NOTEBOOK_SEMANTIC_CHECK=${NOTEBOOK_SEMANTIC_CHECK:-1}
+      - NODE_DOC_PROPOSALS=${NODE_DOC_PROPOSALS:-1}
+      - NODE_EMBED_ON_WRITE=${NODE_EMBED_ON_WRITE:-1}
       # The 12-question decision fabric. A SEPARATE flag from the shadow above
       # on purpose: this payload also carries the delivered answer and the photo
       # observations, so enabling the smaller export must not turn on the larger
