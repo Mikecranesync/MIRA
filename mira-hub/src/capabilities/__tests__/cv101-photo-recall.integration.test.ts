@@ -103,7 +103,7 @@ describe("CV101 fresh-conversation photo recall over actual SQL", () => {
   });
 
   it("a one-page manual does not declare all its factual text to be a cover", async () => {
-    await client.query("DELETE FROM knowledge_entries WHERE doc_id=$1 AND source_page=10",[COVER_CONTROL]);
+    await client.query("DELETE FROM knowledge_entries WHERE doc_id=$1 AND source_page=10 AND tenant_id = $2 AND is_private = true",[COVER_CONTROL,TENANT]);
     const {idfRows} = await retrieve("check fault history in Allen Bradley PowerFlex 40",[COVER_CONTROL]);
     expect(idfRows.find(r=>r.lex==="powerflex")?.names_document).toBe(false);
   });
@@ -117,22 +117,22 @@ describe("CV101 fresh-conversation photo recall over actual SQL", () => {
   it("identical copies within a document do not exhaust the result slots or delete indexed pages", async () => {
     const {hits} = await retrieve("components saved project",[MANUAL]);
     expect(new Set(hits.map(h=>h.content)).size).toBe(hits.length);
-    expect(Number((await client.query("SELECT count(*) AS n FROM knowledge_entries WHERE doc_id=$1",[MANUAL])).rows[0].n)).toBe(11);
+    expect(Number((await client.query("SELECT count(*) AS n FROM knowledge_entries WHERE doc_id=$1 AND tenant_id = $2 AND is_private = true",[MANUAL,TENANT])).rows[0].n)).toBe(11);
   });
 
   it("identical text in different selected documents keeps each source identity", async () => {
-    await client.query("DELETE FROM knowledge_entries WHERE doc_id=ANY($1::uuid[])",[[CONTROLLER,MOTOR]]);
+    await client.query("DELETE FROM knowledge_entries WHERE doc_id=ANY($1::uuid[]) AND tenant_id = $2 AND is_private = true",[[CONTROLLER,MOTOR],TENANT]);
     const same = "Saved photo reading: motor nameplate ratings are proposed, not measured values.";
     await seed(CONTROLLER,1,same,0,true);
     await seed(MOTOR,1,same,0,true);
-    await client.query("UPDATE knowledge_entries SET source_url='https://test.invalid/shared-original.pdf' WHERE doc_id=ANY($1::uuid[])",[[CONTROLLER,MOTOR]]);
+    await client.query("UPDATE knowledge_entries SET source_url='https://test.invalid/shared-original.pdf' WHERE doc_id=ANY($1::uuid[]) AND tenant_id = $2 AND is_private = true",[[CONTROLLER,MOTOR],TENANT]);
     const {hits} = await retrieve("saved photo motor nameplate ratings",[CONTROLLER,MOTOR]);
     expect(hits.map(h=>h.docId).sort()).toEqual([CONTROLLER,MOTOR].sort());
     expect(hits.every(h=>h.content===same)).toBe(true);
   });
 
   it.each([1,2])("keeps different qualifiers and warnings when prefixes match (second page=%s)", async (page) => {
-    await client.query("DELETE FROM knowledge_entries WHERE doc_id=$1",[CONTROLLER]);
+    await client.query("DELETE FROM knowledge_entries WHERE doc_id=$1 AND tenant_id = $2 AND is_private = true",[CONTROLLER,TENANT]);
     const prefix = "Motor photo nameplate documentation, reviewed text and ratings only. ";
     const a = prefix + "230 V rating; WARNING: isolate power before inspection.";
     const b = prefix + "460 V rating; WARNING: stored energy may remain.";
