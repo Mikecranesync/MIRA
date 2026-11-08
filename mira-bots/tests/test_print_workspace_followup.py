@@ -18,7 +18,7 @@ import asyncio
 import io
 import os
 import sys
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "dummy-token-for-testing")
 os.environ.setdefault("OPENWEBUI_BASE_URL", "http://localhost:8080")
@@ -414,7 +414,8 @@ async def test_new_command_clears_print_workspace(wired):
     assert print_workspace.get_workspace("999") is not None
 
     update = _update()
-    await bot.new_command(update, MagicMock())
+    with patch.object(bot, "_trusted_telegram_tenant", return_value="t-ws"):
+        await bot.new_command(update, MagicMock())
 
     assert print_workspace.get_workspace("999") is None
 
@@ -425,6 +426,7 @@ async def test_reset_command_clears_print_workspace(wired):
     assert print_workspace.get_workspace("999") is not None
 
     update = _update()
-    await bot.reset_command(update, MagicMock())
+    with patch.object(bot, "_trusted_telegram_tenant", return_value="t-ws"):
+        await bot.reset_command(update, MagicMock())
 
     assert print_workspace.get_workspace("999") is None
