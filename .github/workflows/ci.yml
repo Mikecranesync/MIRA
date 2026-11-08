@@ -784,7 +784,7 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         if: steps.changes.outputs.hub == 'true'
         with:
-          bun-version: latest
+          bun-version-file: package.json
 
       - name: Install mira-hub dependencies
         if: steps.changes.outputs.hub == 'true'
@@ -879,7 +879,7 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         if: steps.changes.outputs.mobile == 'true'
         with:
-          bun-version: latest
+          bun-version-file: package.json
 
       - name: Install mira-mobile dependencies
         if: steps.changes.outputs.mobile == 'true'
@@ -914,7 +914,7 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         if: steps.web.outputs.web == 'true'
         with:
-          bun-version: latest
+          bun-version-file: package.json
 
       - name: Install mira-web dependencies
         if: steps.web.outputs.web == 'true'
@@ -985,6 +985,9 @@ jobs:
         # Check CI job's deps") but the step was never added, so the contract
         # guarding the hub filter's guardrails.py watch never executed in CI.
         run: pytest tests/test_hub_unit_filter_contract.py -q
+
+      - name: Check declared Bun toolchain
+        run: pytest tests/test_ci_bun_toolchain.py -q
 
       - name: Check env-var drift (docker-compose.saas.yml vs docs/env-vars.md + .env.template)
         # Stdlib-only static check (docs/known-issues.md) -- no extra deps needed.
@@ -1702,7 +1705,7 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         if: steps.changes.outputs.lifecycle == 'true'
         with:
-          bun-version: latest
+          bun-version-file: package.json
 
       - name: Install mira-hub dependencies
         if: steps.changes.outputs.lifecycle == 'true'
@@ -1822,7 +1825,7 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         if: steps.changes.outputs.outbox == 'true'
         with:
-          bun-version: latest
+          bun-version-file: package.json
 
       - name: Install mira-hub dependencies
         if: steps.changes.outputs.outbox == 'true'
