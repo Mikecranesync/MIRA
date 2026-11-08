@@ -14,6 +14,14 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 const SRC = (p: string) => fileURLToPath(new URL(`../../${p}`, import.meta.url));
+const config = ts.getParsedCommandLineOfConfigFile(SRC("../tsconfig.json"), undefined, {
+  ...ts.sys,
+  onUnRecoverableConfigFileDiagnostic: (diagnostic) => {
+    throw new Error(ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"));
+  },
+});
+if (!config || config.errors.length) throw new Error("Cannot load Hub compiler configuration");
+const COMPILER_OPTIONS = config.options;
 
 /**
  * Production roots whose NOTEBOOK_* reads change retrieveNodeChunks. The walker
@@ -25,7 +33,7 @@ const SRC = (p: string) => fileURLToPath(new URL(`../../${p}`, import.meta.url))
 const WALK_ROOTS = ["lib/manual-rag.ts", "capabilities/query-rewrite.ts"];
 
 const parse = (source: string, filename = "source.ts") => ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true);
-const FLAG_NAME = /^NOTEBOOK_[A-Z0-9_]+$/;
+const isNotebookFlag = (name: string) => name.startsWith("NOTEBOOK_");
 
 function notebookEnvReads(source: string, filename?: string): Set<string> {
   const out = new Set<string>();
@@ -37,7 +45,7 @@ function notebookEnvReads(source: string, filename?: string): Set<string> {
         const name = ts.isPropertyAccessExpression(node) ? node.name.text
           : node.argumentExpression && ts.isStringLiteralLike(node.argumentExpression)
             ? node.argumentExpression.text : undefined;
-        if (name && FLAG_NAME.test(name)) out.add(name);
+        if (name && isNotebookFlag(name)) out.add(name);
       }
     }
     ts.forEachChild(node, visit);
@@ -75,21 +83,29 @@ function importedSpecs(source: string, filename?: string): string[] {
 }
 
 function resolveSpec(fromRel: string, spec: string, overlay: Map<string, string>): string | null {
-  if ((!spec.startsWith("@/") && !spec.startsWith(".")) || spec.endsWith(".json")) return null;
+  if (spec.startsWith("node:") || spec.endsWith(".json")) return null;
   const fromSourceRoot = (file: string) => relative(SRC(""), file).replace(/\\/g, "/");
   // Omitting directoryExists lets virtual fixture directories resolve via fileExists.
   const host: ts.ModuleResolutionHost = {
     fileExists: (file) => overlay.has(fromSourceRoot(file)) || ts.sys.fileExists(file),
     readFile: (file) => overlay.get(fromSourceRoot(file)) ?? ts.sys.readFile(file),
   };
-  const resolved = ts.resolveModuleName(spec, SRC(fromRel), {
-    moduleResolution: ts.ModuleResolutionKind.Bundler,
-    baseUrl: SRC(""),
-    paths: { "@/*": ["*"] },
-  }, host).resolvedModule;
-  if (!resolved) throw new Error(`Unresolved production import ${spec} in ${fromRel}`);
+  const resolved = ts.resolveModuleName(spec, SRC(fromRel), COMPILER_OPTIONS, host).resolvedModule;
+  if (!resolved) {
+    const alias = Object.keys(COMPILER_OPTIONS.paths ?? {}).some((pattern) => {
+      const [prefix, suffix] = pattern.split("*");
+      return suffix === undefined ? spec === prefix
+        : spec.startsWith(prefix) && spec.endsWith(suffix) && spec.length >= prefix.length + suffix.length;
+    });
+    if (spec.startsWith(".") || spec.startsWith("@/") || alias) {
+      throw new Error(`Unresolved production import ${spec} in ${fromRel}`);
+    }
+    return null;
+  }
   const rel = fromSourceRoot(resolved.resolvedFileName);
-  if (rel.startsWith("../") || isAbsolute(rel)) throw new Error(`Import escapes source tree: ${spec}`);
+  if (resolved.isExternalLibraryImport || rel.split("/").includes("node_modules")) return null;
+  const repoRel = relative(SRC("../.."), resolved.resolvedFileName).replace(/\\/g, "/");
+  if (repoRel.startsWith("../") || isAbsolute(repoRel)) throw new Error(`Import escapes repository: ${spec}`);
   if (rel.includes("/__tests__/") || /\.(?:test|d)\.tsx?$/.test(rel)) return null;
   return rel;
 }
@@ -122,7 +138,7 @@ function declaredFlags(source = readFileSync(SRC("lib/__tests__/notebook-retriev
   const names = initializer.properties.map((property) => {
     if (!ts.isPropertyAssignment(property)
       || (!ts.isIdentifier(property.name) && !ts.isStringLiteralLike(property.name))
-      || !FLAG_NAME.test(property.name.text)) throw new Error("FLAGS keys must be static NOTEBOOK_* names");
+      || !isNotebookFlag(property.name.text)) throw new Error("FLAGS keys must be static NOTEBOOK_* names");
     return property.name.text;
   });
   expect(names.length, "FLAGS keys").toBeGreaterThan(0);
@@ -159,6 +175,11 @@ describe("NOTEBOOK_* discovery from retrieveNodeChunks imports (#5167)", () => {
   it("recognizes bracket reads with legal intervening comments", () => {
     expect([...notebookEnvReads('process.env[ /* rollout */ "NOTEBOOK_COMMENTED_BRACKET" ];')])
       .toEqual(["NOTEBOOK_COMMENTED_BRACKET"]);
+  });
+
+  it("does not silently drop lowercase or quoted NOTEBOOK_* suffixes", () => {
+    expect([...notebookEnvReads('process.env.NOTEBOOK_debug; process.env["NOTEBOOK_flag-name"];')])
+      .toEqual(["NOTEBOOK_debug", "NOTEBOOK_flag-name"]);
   });
 
   it.each([
@@ -198,6 +219,17 @@ describe("NOTEBOOK_* discovery from retrieveNodeChunks imports (#5167)", () => {
     expect([...discoverNotebookReads(overlay)]).toContain("NOTEBOOK_TSX_MUTATION");
   });
 
+  it.each([
+    ["@factorylm/ui/flag-fixture", "../../packages/factorylm-ui/src/flag-fixture.ts"],
+    ["@factorylm/interaction", "../../packages/factorylm-interaction/src/index.ts"],
+  ])("uses the actual project alias configuration: %s", (specifier, target) => {
+    const overlay = new Map<string, string>([
+      ["lib/manual-rag.ts", `import "${specifier}";`],
+      [target, 'export const sneak = process.env.NOTEBOOK_ALIAS_MUTATION;'],
+    ]);
+    expect([...discoverNotebookReads(overlay)]).toContain("NOTEBOOK_ALIAS_MUTATION");
+  });
+
   it.each(WALK_ROOTS)("does not exempt a helper merely because it is under lib/llm: %s", (root) => {
     const overlay = new Map<string, string>([
       ["lib/manual-rag.ts", ""],
@@ -224,6 +256,11 @@ describe("NOTEBOOK_* discovery from retrieveNodeChunks imports (#5167)", () => {
 
   it("fails closed when a local production import cannot be resolved", () => {
     const overlay = new Map([["lib/manual-rag.ts", 'import "./fixture-does-not-exist";']]);
+    expect(() => discoverNotebookReads(overlay)).toThrow("Unresolved production import");
+  });
+
+  it("fails closed for an unresolved configured project alias", () => {
+    const overlay = new Map([["lib/manual-rag.ts", 'import "@factorylm/ui/fixture-does-not-exist";']]);
     expect(() => discoverNotebookReads(overlay)).toThrow("Unresolved production import");
   });
 
