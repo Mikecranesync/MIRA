@@ -2072,6 +2072,179 @@ describe("#5212 sign-out across tabs", () => {
     expect(m.get("flm.sheetsignout.v1")).toBe("1");
     expect((await tabA.enqueueSheetEvent(store, "t1", "jobB", noteEvent("n-2", "after cancel"))).saved).toBe(true);
   });
+
+  // #5292: a marker that reads back as something this client never writes
+  // blocks every write and is never read as "no sign-out".
+  const MALFORMED_MARKERS = [
+    "{", "false", "true", "null", "[1]", "1e400", "-1", "2.5",
+    '{"gen":"5"}', '{"gen":-1}', '{"gen":1.5}', '{"gen":null}',
+    '{"pending":[1]}', '{"pending":null}', '{"pending":{"other-tab":"soon"}}',
+    '{"gen":5,"epoch":5}', '{"gen":5,"epoch":""}', '{"gen":5,"epoch":null}',
+  ];
+  it.each(MALFORMED_MARKERS)("#5292: a stored marker %s blocks a valid note and is left as it was", async (raw) => {
+    const { store, m } = sharedStore();
+    m.set("flm.sheetsignout.v1", raw);
+    const tab = await openTab();
+    expect((await tab.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "while corrupt"))).saved).toBe(false);
+    expect(m.get("flm.sheetsignout.v1")).toBe(raw);
+    expect(sheetText(m)).toBe("");
+  });
+
+  it.each([
+    ["absent", null],
+    ["a legacy count", "5"],
+    ["a structured marker with no live sign-out", '{"gen":5,"pending":{}}'],
+    ["a repaired marker with an epoch", '{"gen":5,"pending":{},"epoch":"e-1"}'],
+    ["an older structured marker without a count", JSON.stringify({ done: null, pending: { gone: Date.now() - 2 * SIGN_OUT_PENDING_MAX_MS } })],
+  ])("#5292 control: %s lets a tab loaded after it save", async (_label, raw) => {
+    const { store, m } = sharedStore();
+    if (raw !== null) m.set("flm.sheetsignout.v1", raw);
+    const tab = await openTab();
+    expect((await tab.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "normal note"))).saved).toBe(true);
+    expect(sheetText(m)).toContain("normal note");
+  });
+
+  // Codex #5297 r1: starting a sign-out now repairs the marker so its own
+  // barrier is recorded; Cancel leaves the repaired marker, never the old one.
+  it("#5292: Cancel after a corrupt marker keeps every earlier tab blocked and never warns that other tabs can still save", async () => {
+    const { store, m } = sharedStore();
+    const tab = await openTab();
+    expect((await tab.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "unsynced"))).saved).toBe(true);
+    m.set("flm.sheetsignout.v1", "{");
+    const loadedWhileCorrupt = await openTab();
+    const asked: string[] = [];
+    expect(await tab.clearSheetDataForSignOut(store, (msg) => (asked.push(msg), false))).toBe(false);
+    expect(asked).not.toContain(SIGN_OUT_OTHER_TABS_PROMPT);
+    expect(asked).toHaveLength(1); // only the unsynced-work question
+    expect(sheetText(m)).toContain("unsynced");
+    expect((await tab.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-2", "earlier tab"))).saved).toBe(false);
+    expect((await loadedWhileCorrupt.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-3", "corrupt-time tab"))).saved).toBe(false);
+    const fresh = await openTab();
+    expect((await fresh.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-4", "fresh tab"))).saved).toBe(true);
+  });
+
+  it("#5292: a tab opened while the marker was corrupt stays blocked even if something else later clears it", async () => {
+    const { store, m } = sharedStore();
+    m.set("flm.sheetsignout.v1", "{");
+    const loadedWhileCorrupt = await openTab();
+    m.delete("flm.sheetsignout.v1"); // e.g. an older page or a storage cleanup, not this client's repair
+    expect((await loadedWhileCorrupt.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "missed sign-outs"))).saved).toBe(false);
+    const fresh = await openTab();
+    expect((await fresh.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-2", "fresh tab"))).saved).toBe(true);
+    expect(sheetText(m)).not.toContain("missed sign-outs");
+  });
+
+  it("#5292: a finished sign-out repairs a corrupt marker so every tab loaded before it stays blocked", async () => {
+    const { store, m } = sharedStore();
+    m.set("flm.sheetsignout.v1", "7");
+    const loadedAt7 = await openTab();
+    m.set("flm.sheetsignout.v1", "{");
+    const loadedWhileCorrupt = await openTab();
+    const signer = await openTab();
+    const asked: string[] = [];
+    expect(await signer.clearSheetDataForSignOut(store, (msg) => (asked.push(msg), true))).toBe(true);
+    expect(asked).not.toContain(SIGN_OUT_OTHER_TABS_PROMPT);
+    const repaired = JSON.parse(m.get("flm.sheetsignout.v1") ?? "null") as { gen: number; epoch: string };
+    expect(typeof repaired.epoch === "string" && repaired.epoch.length > 0).toBe(true);
+    expect(Number.isSafeInteger(repaired.gen) && repaired.gen > 7).toBe(true);
+    expect((await loadedAt7.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "old session A"))).saved).toBe(false);
+    expect((await loadedWhileCorrupt.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-2", "old session B"))).saved).toBe(false);
+    await new Promise((r) => setTimeout(r, 2));
+    const fresh = await openTab();
+    expect((await fresh.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-3", "new session"))).saved).toBe(true);
+    expect(sheetText(m)).toContain("new session");
+    expect(sheetText(m)).not.toContain("old session");
+  });
+
+  /** A store over `base` whose first `keys()` (the sign-out count) returns its
+   *  snapshot only after `release()`: the sign-out is paused after counting. */
+  function pausedAfterCount(base: KvStore) {
+    let release = (): void => {};
+    const gate = new Promise<void>((r) => (release = r));
+    let counted = (): void => {};
+    const atCount = new Promise<void>((r) => (counted = r));
+    let first = true;
+    const store: KvStore = {
+      ...base,
+      keys: async () => {
+        const snapshot = await base.keys();
+        if (first) {
+          first = false;
+          counted();
+          await gate;
+        }
+        return snapshot;
+      },
+    };
+    return { store, atCount, release };
+  }
+
+  it("Codex #5297 r1 F1: a second sign-out's repair never lets a new tab save while the first is still signing out", async () => {
+    fakeWebLocks();
+    const { store, m } = sharedStore();
+    m.set("flm.sheetsignout.v1", "{");
+    const tabA = await openTab();
+    const tabB = await openTab();
+    const paused = pausedAfterCount(store);
+    const asked: string[] = [];
+    const signOutA = tabA.clearSheetDataForSignOut(paused.store, (msg) => (asked.push(msg), true));
+    await paused.atCount;
+    expect(await tabB.clearSheetDataForSignOut(store, () => true)).toBe(true);
+    await new Promise((r) => setTimeout(r, 2));
+    const tabC = await openTab();
+    const saved = (await tabC.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-c", "tab C words"))).saved;
+    paused.release();
+    await signOutA;
+    // Either C could not save while A was signing out, or A asked before deleting it.
+    expect(saved === false || asked.some((q) => q.includes("1"))).toBe(true);
+    expect(saved).toBe(false);
+  });
+
+  it("Codex #5297 r1 F1: a sign-out whose own barrier was lost counts and asks again before purging", async () => {
+    fakeWebLocks();
+    const { store, m } = sharedStore();
+    m.set("flm.sheetsignout.v1", "3"); // present, so the first keys() call is B's count
+    const tabB = await openTab();
+    const paused = pausedAfterCount(store);
+    const asked: string[] = [];
+    const signOutB = tabB.clearSheetDataForSignOut(paused.store, (msg) => (asked.push(msg), false));
+    await paused.atCount; // B's barrier is in the marker and nothing was unsynced
+    m.set("flm.sheetsignout.v1", "{"); // the marker is damaged, losing B's barrier
+    m.set(sheetQueueKey("t9", "jobZ"), JSON.stringify([{ event: noteEvent("n-z", "seed"), queuedAt: "2026-11-08T00:00:00.000Z", attempts: 0 }]));
+    const tabA = await openTab(); // A has something to ask about, so it can cancel
+    expect(await tabA.clearSheetDataForSignOut(store, () => false)).toBe(false); // A repairs, then cancels
+    await new Promise((r) => setTimeout(r, 2));
+    const tabC = await openTab();
+    expect((await tabC.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-c", "tab C words"))).saved).toBe(true);
+    paused.release();
+    expect(await signOutB).toBe(false); // B counted C's note again and the technician kept it
+    expect(asked).toHaveLength(1);
+    expect(sheetText(m)).toContain("tab C words");
+  });
+
+  for (const clock of ["moved back a minute", "frozen in one millisecond"] as const) {
+    it(`Codex #5297 r1 F2: a second repair still ends a session loaded after the first (clock ${clock})`, async () => {
+      const { store, m } = sharedStore();
+      const t0 = Date.now();
+      const now = vi.spyOn(Date, "now").mockReturnValue(t0);
+      try {
+        m.set("flm.sheetsignout.v1", "{");
+        const signer = await openTab();
+        expect(await signer.clearSheetDataForSignOut(store, () => true)).toBe(true);
+        const loadedAfterFirst = await openTab();
+        m.set("flm.sheetsignout.v1", "{");
+        if (clock === "moved back a minute") now.mockReturnValue(t0 - 60_000);
+        const signer2 = await openTab();
+        expect(await signer2.clearSheetDataForSignOut(store, () => true)).toBe(true);
+        expect((await loadedAfterFirst.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-1", "old session"))).saved).toBe(false);
+        const fresh = await openTab();
+        expect((await fresh.enqueueSheetEvent(store, "t1", "jobA", noteEvent("n-2", "new session"))).saved).toBe(true);
+        expect(sheetText(m)).not.toContain("old session");
+      } finally {
+        now.mockRestore();
+      }
+    });
+  }
 });
 
 // Codex #5276 round 5 LOW: valid JSON with a malformed event must load as
