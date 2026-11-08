@@ -932,6 +932,7 @@ jobs:
           src/lib/__tests__/hub-handoff.test.ts
           src/capabilities/marketing-claims/capabilities.test.ts
           src/views/__tests__/honest-claims.test.ts
+          src/capabilities/posthog-init-route.test.ts
 
   architecture-check:
     name: Architecture Check
