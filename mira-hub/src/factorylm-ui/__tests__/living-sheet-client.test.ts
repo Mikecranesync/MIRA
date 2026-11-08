@@ -2080,6 +2080,9 @@ describe("#5212 sign-out across tabs", () => {
     '{"gen":"5"}', '{"gen":-1}', '{"gen":1.5}', '{"gen":null}',
     '{"pending":[1]}', '{"pending":null}', '{"pending":{"other-tab":"soon"}}',
     '{"gen":5,"epoch":5}', '{"gen":5,"epoch":""}', '{"gen":5,"epoch":null}',
+    // #5308: an object with no count is not a marker this client writes.
+    '{"epoch":"e-1","pending":{}}', '{"pending":{}}', "{}",
+    '{"done":"5","pending":{}}', '{"done":-1,"pending":{}}',
   ];
   it.each(MALFORMED_MARKERS)("#5292: a stored marker %s blocks a valid note and is left as it was", async (raw) => {
     const { store, m } = sharedStore();

@@ -270,7 +270,11 @@ function parseSignOutMarker(raw: string | null): SignOutMarker | null {
     return null;
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
-  const { gen, pending, epoch } = parsed as { gen?: unknown; pending?: unknown; epoch?: unknown };
+  const { gen, pending, epoch, done } = parsed as { gen?: unknown; pending?: unknown; epoch?: unknown; done?: unknown };
+  // #5308: this client always writes a count. An object without one is corrupt,
+  // except the older `{ done, pending }` shape a tab from before the count may
+  // still write during rollout; its `done` must itself be empty or a count.
+  if (gen === undefined && !("done" in parsed && (done === null || isCount(done)))) return null;
   if (gen !== undefined && !isCount(gen)) return null;
   if (epoch !== undefined && (typeof epoch !== "string" || epoch === "")) return null;
   if (pending !== undefined && (typeof pending !== "object" || pending === null || Array.isArray(pending))) return null;
