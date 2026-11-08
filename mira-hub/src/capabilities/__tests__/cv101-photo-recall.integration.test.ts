@@ -114,6 +114,34 @@ describe("CV101 fresh-conversation photo recall over actual SQL", () => {
     expect(hits.every(h=>!h.content.includes("OTHER ASSET"))).toBe(true);
   });
 
+  it("identical copies within a document do not exhaust the result slots or delete indexed pages", async () => {
+    const {hits} = await retrieve("components saved project",[MANUAL]);
+    expect(new Set(hits.map(h=>h.content)).size).toBe(hits.length);
+    expect(Number((await client.query("SELECT count(*) AS n FROM knowledge_entries WHERE doc_id=$1",[MANUAL])).rows[0].n)).toBe(11);
+  });
+
+  it("identical text in different selected documents keeps each source identity", async () => {
+    await client.query("DELETE FROM knowledge_entries WHERE doc_id=ANY($1::uuid[])",[[CONTROLLER,MOTOR]]);
+    const same = "Saved photo reading: motor nameplate ratings are proposed, not measured values.";
+    await seed(CONTROLLER,1,same,0,true);
+    await seed(MOTOR,1,same,0,true);
+    const {hits} = await retrieve("saved photo motor nameplate ratings",[CONTROLLER,MOTOR]);
+    expect(hits.map(h=>h.docId).sort()).toEqual([CONTROLLER,MOTOR].sort());
+    expect(hits.every(h=>h.content===same)).toBe(true);
+  });
+
+  it("keeps different qualifiers and warnings even when passage prefixes match", async () => {
+    await client.query("DELETE FROM knowledge_entries WHERE doc_id=$1",[CONTROLLER]);
+    const prefix = "Motor photo nameplate documentation, reviewed text and ratings only. ";
+    const a = prefix + "230 V rating; WARNING: isolate power before inspection.";
+    const b = prefix + "460 V rating; WARNING: stored energy may remain.";
+    await seed(CONTROLLER,1,a,0,true);
+    await seed(CONTROLLER,2,b,1,true);
+    const {hits} = await retrieve("motor photo nameplate ratings",[CONTROLLER]);
+    expect(hits.map(h=>h.content)).toEqual(expect.arrayContaining([a,b]));
+    expect(hits.map(h=>h.sourcePage).sort()).toEqual([1,2]);
+  });
+
   it("does not admit an unapproved private reading", async () => {
     expect((await retrieve(QUESTION,[UNREVIEWED],[MANUAL])).hits).toEqual([]);
   });
