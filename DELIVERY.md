@@ -88,7 +88,7 @@ not claims about current merge, review or deployment status.
 | CHARLIE Codex | Integration, release composition, Pixel acceptance, combined evidence and deadline tracking | #5232; coordinate all lanes and preserve rollback |
 | CHARLIE Claude | Offline runtime, passage usefulness, safety, source-page UI, packaging and Samsung acceptance | #5265/#5266; existing #5300–#5306 slices as applicable |
 | BRAVO Codex | Retrieval/applicability, saved-evidence recall/photo work and bounded memory repair after handoff | #5285/#5294, #5289, existing photo/recall candidates |
-| BRAVO Claude | Dependable project setup, pending manual recovery and sign-out follow-up | #5295/#5302, #5297/#5308 |
+| BRAVO Claude | Dependable project setup, pending manual recovery and sign-out follow-up | #5295/#5302 (draft #5312, current-main integration), #5297/#5308 (draft #5311) |
 
 The #5204 owner retains overlapping loader/route hunks until explicit handoff.
 CHARLIE Codex coordinates the boundary; a blocked lane continues authorized independent
