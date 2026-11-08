@@ -355,6 +355,10 @@ Before running `rm -rf`, `git reset --hard`, `git clean -f[d]`, or any other com
 
 Credentials and passwords come from environment variables (Doppler-managed, `factorylm/{dev,stg,prd}`) — never hardcoded in scripts, including one-off `tools/`/`plc/` ops scripts and seed/migration scripts. Enforced by `.ast-grep-rules/hardcoded-secret.yml` (every PR, `code-review.yml`) and `gitleaks protect --staged` (pre-commit). See `.claude/rules/security-boundaries.md`.
 
+## Shared delivery coordination — required for every agent
+
+Read [DELIVERY.md](DELIVERY.md) at session start/resume for north stars, end goals, ET deadlines and lane ownership. Maintain your concise owner status in [#5232](https://github.com/Mikecranesync/MIRA/issues/5232) at material changes, handoff and session end; link it from delivery PRs. Follow the template and evidence rules there. This adds no merge/deploy/spend authority and does not replace existing work claims or review records.
+
 ## CLAUDE.md Maintenance
 
 This file targets **~120 lines** (map, not encyclopedia). Agent compliance drops past ~150.

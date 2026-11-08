@@ -145,6 +145,10 @@ To restore an archived module: `git checkout archive/<branch> -- <module-dir>` t
 - **Idle PRs are swept** (`docs/architecture/mira-sdlc-v1.md` §1.5): 14 days with no commit, comment or review → `stale` notice; 7 more idle days → closed (branch kept, `gh pr reopen` restores). Label `keep` only for owner-preserved work.
 - Scheduled reports go to one rolling branch/PR per producer, never one PR per run (`tools/eval_fixer_fragment.py --publish` is the reference).
 
+## Shared delivery coordination — required for every agent
+
+Read [DELIVERY.md](DELIVERY.md) at session start/resume for north stars, end goals, ET deadlines and lane ownership. Maintain your concise owner status in [#5232](https://github.com/Mikecranesync/MIRA/issues/5232) at material changes, handoff and session end; link it from delivery PRs. Follow the template and evidence rules there. This adds no merge/deploy/spend authority and does not replace existing work claims or review records.
+
 ## AGENTS.md Maintenance
 
 This file targets **~120 lines** (map, not encyclopedia). Agent compliance drops past ~150.
