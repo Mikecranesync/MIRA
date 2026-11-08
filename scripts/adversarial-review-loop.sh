@@ -19,7 +19,8 @@
 # remediation does not exist.
 #
 # Exit codes: 0 GREEN · 1 stopped with unresolved findings (escalated) ·
-# 2 tooling failure. A tooling failure is NEVER a GREEN gate.
+# 2 tooling failure · 5 CONVERGED (fresh full-mode verdict with 0 BLOCKER and
+# 0 HIGH: stopped before remediation, #4524). Neither 2 nor 5 is a GREEN gate.
 #
 # Env overrides: CLAUDE_BIN (default claude; point at a stub to test plumbing),
 # CLAUDE_EXTRA_ARGS, plus everything adversarial-review.sh honors.
@@ -237,7 +238,7 @@ while [ "$CYCLE" -lt "$MAX_ITER" ]; do
     if(j.kind==="deduplicated") {
       if(j.run_id!==null || j.reservation_comment_id!==null
         || j.review_artifact!==null || j.review_artifact_sha256!==null) process.exit(1);
-      process.stdout.write(`${j.kind} ${j.status} ${j.head_sha} ${j.body_sha256} - 0 ${j.mode} -\n`);
+      process.stdout.write(`${j.kind} ${j.status} ${j.head_sha} ${j.body_sha256} - 0 ${j.mode} - - -\n`);
       process.exit(0);
     }
     if(!/^[0-9a-f]{32}$/.test(j.run_id)
@@ -272,7 +273,7 @@ while [ "$CYCLE" -lt "$MAX_ITER" ]; do
       fs.writeFileSync(promptFile,prompt,{encoding:"utf8",mode:0o600,flag:"wx"});
       fs.chmodSync(promptFile,0o600);
     }
-    process.stdout.write(`${j.kind} ${j.status} ${j.head_sha} ${j.body_sha256} ${j.run_id} ${j.reservation_comment_id} ${j.mode} ${artifactKey}\n`);
+    process.stdout.write(`${j.kind} ${j.status} ${j.head_sha} ${j.body_sha256} ${j.run_id} ${j.reservation_comment_id} ${j.mode} ${artifactKey} ${match[6]} ${match[7]}\n`);
   ' "$RESULT_FILE" "$OUT_DIR" "$PR_NUMBER" "$PRE_SHA" "$LOOP_MODE" \
     "$ARTIFACT_TOKEN" "$ROOT/scripts/adversarial-review-remediation-prompt.md" "$CYCLE" "$RC" "$REMEDIATION_ROOT")"
   RESULT_READ_RC=$?
@@ -282,7 +283,7 @@ while [ "$CYCLE" -lt "$MAX_ITER" ]; do
     exit 2
   fi
   read -r RESULT_KIND RESULT_STATUS REVIEWED_SHA REVIEWED_BODY_SHA256 RUN_ID \
-    RESERVATION_ID RES_MODE ARTIFACT_KEY <<< "$RESULT_FIELDS"
+    RESERVATION_ID RES_MODE ARTIFACT_KEY RESULT_BLOCKER RESULT_HIGH <<< "$RESULT_FIELDS"
   if [ "$RESULT_KIND" = "fresh_review" ]; then
     REM_PROMPT="$OUT_DIR/remediation-$PR_NUMBER-$ARTIFACT_KEY.md"
   fi
@@ -324,6 +325,22 @@ while [ "$CYCLE" -lt "$MAX_ITER" ]; do
   if [ "$RESULT_KIND" = "deduplicated" ] && [ "$RESULT_STATUS" = "ISSUES_FOUND" ]; then
     escalate "deduplicated ISSUES_FOUND has no trusted local review artifact — refusing privileged remediation"
     exit 1
+  fi
+
+  # CONVERGED (owner decision 2026-10-18, #4524): a validated exact-snapshot
+  # verdict with zero BLOCKER and zero HIGH ends the loop. Remediating MEDIUMs
+  # mints a new head with new surface, and the next round finds new MEDIUMs.
+  # The counts come only from the validated rendered review parsed above.
+  if [ "$REVIEW_ONLY" -eq 0 ] && [ "$RESULT_KIND" = "fresh_review" ]; then
+    if ! [[ "$RESULT_BLOCKER" =~ ^[0-9]+$ && "$RESULT_HIGH" =~ ^[0-9]+$ ]]; then
+      escalate "validated review carried unreadable BLOCKER/HIGH counts — refusing privileged remediation"
+      exit 2
+    fi
+    if [ "$RESULT_BLOCKER" -eq 0 ] && [ "$RESULT_HIGH" -eq 0 ]; then
+      escalate "CONVERGED: 0 BLOCKER and 0 HIGH at exact snapshot ${REVIEWED_SHA:0:12}/$REVIEWED_BODY_SHA256 — no remediation and no further review pass; file each MEDIUM as a follow-up issue, post [REVIEW-FOLLOWUPS], dispatch the lifecycle guard, and hand the merge to the owner"
+      echo "CONVERGED (PR #$PR_NUMBER @ ${REVIEWED_SHA:0:12})"
+      exit 5
+    fi
   fi
 
   if [ "$REVIEW_ONLY" -eq 1 ]; then
