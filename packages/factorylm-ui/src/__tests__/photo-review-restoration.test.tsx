@@ -89,6 +89,61 @@ describe("cold photo-review restoration", () => {
     expect(view.status()).toContain("Technician-reviewed reading");
   });
 
+  it.each(["editor-first", "restoration-first", "no-host-change"])("keeps an active editor usable during host discovery: %s", async (order) => {
+    let kept = false;
+    let writes = 0;
+    const pending: ((value: Reading) => void)[] = [];
+    const view = mount({
+      isPhotoKept: () => kept,
+      onKeepPhoto: async () => { writes++; },
+      onReviewPhoto: () => new Promise((resolve) => { pending.push(resolve); }),
+    });
+    expect(pending).toHaveLength(0);
+    view.click("Keep on this machine");
+    expect(pending).toHaveLength(1);
+    if (order !== "no-host-change") {
+      kept = true;
+      view.render();
+      expect(pending).toHaveLength(2);
+      if (order === "restoration-first") await act(async () => { pending[1](reading(true)); });
+    }
+    await act(async () => { pending[0](reading(false)); });
+    if (order === "editor-first") await act(async () => { pending[1](reading(true)); });
+    expect(view.container.querySelector<HTMLTextAreaElement>("textarea")?.value).toBe(reading(false).text);
+    expect(view.container.querySelector<HTMLInputElement>('input[type="checkbox"]')?.checked).toBe(false);
+    const buttons = Array.from(view.container.querySelectorAll("button"));
+    expect(buttons.find((button) => button.textContent === "Cancel review")?.disabled).toBe(false);
+    expect(buttons.find((button) => button.textContent === "Save reviewed reading")?.disabled).toBe(true);
+    expect(writes).toBe(0);
+  });
+
+  it("a restoration started during saving cannot downgrade the completed review", async () => {
+    let kept = false;
+    let reads = 0;
+    let writes = 0;
+    let finishSave!: () => void;
+    let finishRestoration!: (value: Reading) => void;
+    const view = mount({
+      isPhotoKept: () => kept,
+      onReviewPhoto: () => ++reads === 1 ? Promise.resolve(reading(false))
+        : new Promise((resolve) => { finishRestoration = resolve; }),
+      onKeepPhoto: () => { writes++; return new Promise<void>((resolve) => { finishSave = resolve; }); },
+    });
+    view.click("Keep on this machine");
+    await settle();
+    act(() => view.container.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
+    view.click("Save reviewed reading");
+    kept = true;
+    view.render();
+    expect(reads).toBe(2);
+    await act(async () => { finishSave(); });
+    expect(view.status()).toContain("Technician-reviewed reading");
+    await act(async () => { finishRestoration(reading(false)); });
+    expect(view.status()).toContain("Technician-reviewed reading");
+    expect(view.status()).not.toContain("still unconfirmed");
+    expect(writes).toBe(1);
+  });
+
   it("opening an unreviewed reading still requires acknowledgement and does not save", async () => {
     let writes = 0;
     const view = mount({ isPhotoKept: () => true, onKeepPhoto: async () => { writes++; }, onReviewPhoto: async () => reading(false) });

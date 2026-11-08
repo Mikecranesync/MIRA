@@ -445,6 +445,7 @@ function VisualObservationPart({
     keptByHost ? readPhoto ? "loading" : "unavailable" : "unconfirmed",
   );
   const reviewGeneration = useRef(0);
+  const reviewRequestGeneration = useRef(0);
   const [acknowledged, setAcknowledged] = useState(false);
   const failedReview = useRef<{ observationId: string; text: string } | null>(null);
   const [recoveryMessage, setRecoveryMessage] = useState<string | null>(null);
@@ -470,17 +471,25 @@ function VisualObservationPart({
   }, [keptByHost, observation.fileId, readPhoto]);
   const beginReview = () => {
     if (!hooks?.onReviewPhoto || state === "busy") return;
-    const generation = ++reviewGeneration.current;
+    // Host discovery may start a background restoration while this request is
+    // active. It can invalidate saved status, never the editor's completion.
+    const generation = ++reviewRequestGeneration.current;
+    ++reviewGeneration.current;
     setState("busy");
     hooks.onReviewPhoto(observation.fileId).then((reading) => {
-      if (generation !== reviewGeneration.current) return;
+      if (generation !== reviewRequestGeneration.current) return;
+      ++reviewGeneration.current;
       failedReview.current = null;
       setRecoveryMessage(null);
       setSavedReviewStatus(reading.reviewed === true ? "reviewed" : "unconfirmed");
       setReview({ observationId: reading.observationId, text: reading.text });
       setAcknowledged(false);
       setState("idle");
-    }, () => setState("failed"));
+    }, () => {
+      if (generation !== reviewRequestGeneration.current) return;
+      ++reviewGeneration.current;
+      setState("failed");
+    });
   };
   // The host learns about sources after mount (the notebook reloads), so follow
   // it; never step back from a keep this card made itself.
@@ -516,6 +525,8 @@ function VisualObservationPart({
       failedReview.current = review;
       setRecoveryMessage(null);
       const result = await hooks.onKeepPhoto(observation.fileId, review ? { ...review, confirmed: true } : undefined);
+      // Supersede status reads that started while this save was in flight.
+      ++reviewGeneration.current;
       failedReview.current = null;
       setSavedReviewStatus(review ? "reviewed" : "unconfirmed");
       setState(result === "refresh_pending" ? "refresh_pending" : "kept");
