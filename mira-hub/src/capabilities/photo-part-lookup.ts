@@ -47,7 +47,13 @@ const ASSET_LABEL = new RegExp(
   "gi",
 );
 
-const PART_LABEL = /\b(?:P\/?N|part\s*(?:no\.?|number)|catalog(?:ue)?\s*(?:no\.?|number)|1P)\s*[:#]?\s*([A-Z0-9][A-Z0-9./-]{5,})/gi;
+// The labels a nameplate prints its part under. MODEL / MOD. / TYPE / CAT. are
+// how a drive, motor or sensor plate names the one code that identifies the
+// product (owner decision 2026-11-07: the plate builds the notebook), so they
+// count exactly like P/N. The value must carry a digit: "model number please"
+// and "which type is it" are prose, never a code.
+const PART_LABEL =
+  /\b(?:P\/?N|part\s*(?:no\.?|number)|catalog(?:ue)?\s*(?:no\.?|number)|cat\.?(?:\s*(?:no\.?|number))?|model(?:\s*(?:no\.?|number))?|mod\.?|type|1P)\s*[:#]?\s*((?=[A-Z0-9./-]*\d)[A-Z0-9][A-Z0-9./-]{5,})/gi;
 /** A trailing "." / "-" / "/" is sentence punctuation, not part of the code (#4150 F4). */
 const trimCode = (code: string) => code.replace(/[./-]+$/, "");
 /** Quotes are label punctuation, never identifier characters (#4150 F1/F4); invisible
@@ -62,23 +68,12 @@ const normalize = (t: string) => t.replace(/[\u00ad\u200b-\u200d\u2060\ufeff]/g,
  */
 export function partCodes(photoText: string): string[] {
   const text = normalize(photoText);
-  // A serial number must never be sent to web search (ADR-0036). Fail closed
-  // (#4150 r2 F1): every code-shaped token within reach of a serial label is a
-  // serial, whatever the separator ("S/N = …", "Serial number is …", "(…)").
-  const serials = new Set<string>();
-  for (const m of text.matchAll(SERIAL_LABEL)) {
-    const after = text.slice((m.index ?? 0) + m[0].length, (m.index ?? 0) + m[0].length + 40);
-    // The value directly after the label ("S/N = X", "Serial number is X", "(X)").
-    const code = after.match(/^[^A-Za-z0-9]*(?:is\b)?\s*([A-Z0-9][A-Z0-9./-]{3,})/i);
-    if (code) serials.add(trimCode(code[1]).toUpperCase());
-    // A suffix label marks the code just before it: "AB-1234567 (S/N)" — or,
-    // when NO value follows the label, a bare "AB-1234567 SER." (never when a
-    // value does follow: "SY3120-5LZD Serial AB-1234567" keeps its model).
-    const before = text.slice(Math.max(0, (m.index ?? 0) - 40), m.index ?? 0);
-    const prior = before.match(/([A-Z0-9][A-Z0-9./-]{3,})\s*[(\[]\s*$/i) ?? (code ? null : before.match(/([A-Z0-9][A-Z0-9./-]{3,})[^A-Za-z0-9]+$/i));
-    if (prior) serials.add(trimCode(prior[1]).toUpperCase());
-  }
-  const labelled = [...text.matchAll(PART_LABEL)].map((m) => trimCode(m[1]));
+  const serials = new Set(serialCodes(photoText));
+  // #5268 Codex r5: only GENUINE part labels outside a private field count
+  // ("Asset tag: PN12345678" labels nothing) — the same reader the candidate
+  // gate trusts, so extraction and the gate cannot disagree.
+  const genuine = new Set(labelledPartCodes(photoText));
+  const labelled = [...text.matchAll(PART_LABEL)].map((m) => trimCode(m[1])).filter((c) => genuine.has(c.toUpperCase()));
   // Any serial label on the photo means only an explicitly labelled part number
   // is safe, even when the serial's value could not be parsed ("AB-1234567 S/N",
   // "AB-1234567 serial number") — #4150 review r4 F1. A customer-assigned
@@ -97,9 +92,262 @@ export function partCodes(photoText: string): string[] {
   return [...new Map(found.map((code) => [code.toUpperCase(), code])).values()];
 }
 
+/**
+ * Every code the text marks as a serial number, upper-cased (ADR-0036). A
+ * serial number must never be sent to web search. Fail closed (#4150 r2 F1):
+ * every code-shaped token within reach of a serial label is a serial, whatever
+ * the separator ("S/N = …", "Serial number is …", "(…)"). Exported so the ONE
+ * candidate validator can refuse a serial the photo excluded when the
+ * technician types it back (#4172 Codex post-cap F6).
+ */
+export function serialCodes(photoText: string): string[] {
+  const text = normalize(photoText);
+  const serials = new Set<string>();
+  for (const m of text.matchAll(SERIAL_LABEL)) {
+    const after = text.slice((m.index ?? 0) + m[0].length, (m.index ?? 0) + m[0].length + 40);
+    // The value directly after the label ("S/N = X", "Serial number is X", "(X)").
+    const code = after.match(/^[^A-Za-z0-9]*(?:is\b)?\s*([A-Z0-9][A-Z0-9./-]{3,})/i);
+    if (code) serials.add(trimCode(code[1]).toUpperCase());
+    // A suffix label marks the code just before it: "AB-1234567 (S/N)" — or,
+    // when NO value follows the label, a bare "AB-1234567 SER." (never when a
+    // value does follow: "SY3120-5LZD Serial AB-1234567" keeps its model).
+    const before = text.slice(Math.max(0, (m.index ?? 0) - 40), m.index ?? 0);
+    const prior = before.match(/([A-Z0-9][A-Z0-9./-]{3,})\s*[(\[]\s*$/i) ?? (code ? null : before.match(/([A-Z0-9][A-Z0-9./-]{3,})[^A-Za-z0-9]+$/i));
+    if (prior) serials.add(trimCode(prior[1]).toUpperCase());
+  }
+  return [...serials];
+}
+
+/** Upper-case alphanumerics only, so "AB-1234567", "AB1234567" and "TP 1200" vs "TP1200" compare equal. */
+export const identifierKey = (code: string) => code.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+/**
+ * The text before its first serial/asset label, and everything from that
+ * label on (#5268 Codex r8). Nothing printed after a private label is ever
+ * read as a part, and every code there is a private key — no guess about
+ * where a private value ends (brackets, wrapped lines, label words inside
+ * the value all defeated one), so nothing for a reader to disagree on.
+ */
+function splitFields(t: string): { open: string; secret: string[] } {
+  const starts = [SERIAL_LABEL, ASSET_LABEL]
+    .map((label) => t.search(new RegExp(label.source, "i")))
+    .filter((i) => i >= 0);
+  if (!starts.length) return { open: t, secret: [] };
+  const from = Math.min(...starts);
+  return { open: t.slice(0, from), secret: [t.slice(from)] };
+}
+
+/** A genuine part label is followed by a separator (":", "#" or a space)
+ *  before its value — "PN12345678" is one token, not a label and a value. */
+const GENUINE_PART_LABEL = new RegExp(PART_LABEL.source.replace(String.raw`\s*[:#]?\s*(`, String.raw`(?:\s*[:#]\s*|\s+)(`), "gi");
+
+/**
+ * Does a part label appear after the text's first serial/asset label (#5268
+ * Codex r8)? Such a code is never searched, so it cannot tell us which
+ * machine this is either — a plate with one, beside a part before the
+ * label, is ambiguous and must not search at all.
+ */
+export function partLabelAfterPrivateLabel(text: string): boolean {
+  return splitFields(normalize(text)).secret.some((seg) => new RegExp(GENUINE_PART_LABEL.source, "i").test(seg));
+}
+
+/**
+ * The joined text (`identifierKey`) between the last labelled part and each
+ * bare serial/asset suffix label (#5268 Codex r11/r12). A candidate found in
+ * one is marked private, however it was spaced, wrapped or qualified.
+ */
+export function privateSuffixTails(text: string): string[] {
+  const tails: string[] = [];
+  privateIdentifierKeys(text, tails);
+  return tails;
+}
+
+/**
+ * Every value the text marks as private (ADR-0036: never sent to search) —
+ * serial values (`serialCodes`) and the value after an asset-tag /
+ * customer-identifier label — as `identifierKey`s (#5268 Codex F1). A value
+ * split by spaces ("S/N: TP 1200") also yields each joined run ("TP1200",
+ * "TP1200X…"), so retyping it without the spaces does not launder it.
+ */
+export function privateIdentifierKeys(text: string, tails: string[] = []): Set<string> {
+  const t = normalize(text);
+  const keys = new Set<string>(serialCodes(text).map(identifierKey));
+  const labelledParts = new Set([...t.matchAll(PART_LABEL)].map((m) => trimCode(m[1]).toUpperCase()));
+  // The label's own value in the SAME field: only spaces and ":#=-" between
+  // (after any id word), never a bracket, comma, semicolon or line break.
+  const LOCAL_VALUE = new RegExp(
+    String.raw`^[ \t]*(?:(?:${ID_WORD})(?![a-z])[ \t:#=.-]*)*(?:is\b)?[ \t:#=-]*(?=[A-Z0-9./-]*\d)[A-Z0-9][A-Z0-9./-]{3,}`,
+    "i",
+  );
+  const VALUE_AFTER = new RegExp(
+    String.raw`^[^A-Za-z0-9]*(?:(?:${ID_WORD})(?![a-z])[^A-Za-z0-9]*)*(?:is\b)?\s*((?!(?:P\/?N|part|cat(?:alog(?:ue)?)?|model|mod|type|1P)(?![A-Za-z0-9]))(?=[A-Z0-9./ \t-]*\d)[A-Z0-9][A-Z0-9./-]*(?:[ \t]+(?=[A-Z0-9-]*\d)[A-Z0-9][A-Z0-9-]*){0,2})`,
+    "i",
+  );
+  for (const label of [SERIAL_LABEL, ASSET_LABEL]) {
+    for (const m of t.matchAll(new RegExp(label.source, "gi"))) {
+      const value = t.slice((m.index ?? 0) + m[0].length, (m.index ?? 0) + m[0].length + 48).match(VALUE_AFTER)?.[1];
+      // A suffix label marks the code just before it — "12345678 (asset tag)",
+      // "12345678 tag, 24VDC" (#5268 Codex r2/r3 F1). Fail closed: the code
+      // right before a serial/asset label is private UNLESS it is an
+      // explicitly labelled part (P/N, MODEL, …) AND this label carries its
+      // own value in the same field ("P/N: X S/N: Y", "P/N: X (asset tag Y)").
+      // A value past a bracket, comma or line break is another field and
+      // never vouches for the code before the label.
+      const before = t.slice(Math.max(0, (m.index ?? 0) - 48), m.index ?? 0);
+      const prior = before.match(/([A-Z0-9][A-Z0-9./-]{3,})[^A-Za-z0-9]+$/i);
+      const ownValue = LOCAL_VALUE.test(t.slice((m.index ?? 0) + m[0].length, (m.index ?? 0) + m[0].length + 48));
+      // #5268 Codex r11/r12: the label marks what comes before it, of any
+      // extent — wrapped lines, OCR-split tokens ("T P 12 00"), qualifiers
+      // ("customer asset tag"). Record the joined text from the end of the last
+      // labelled part (P/N, MODEL, …) up to the label; a candidate found
+      // anywhere in it is private (`privateSuffixTails`).
+      if (!(ownValue && prior && labelledParts.has(trimCode(prior[1]).toUpperCase()))) {
+        const at = m.index ?? 0;
+        let from = Math.max(0, at - 200);
+        for (const p of t.matchAll(new RegExp(GENUINE_PART_LABEL.source, "gi"))) {
+          const end = (p.index ?? 0) + p[0].length;
+          if (end <= at) from = Math.max(from, end);
+        }
+        tails.push(identifierKey(t.slice(from, at)));
+      }
+      if (prior) {
+        const priorCode = trimCode(prior[1]).toUpperCase();
+        if (!(ownValue && labelledParts.has(priorCode))) {
+          keys.add(identifierKey(priorCode));
+          // #5268 Codex r10: a spaced value before a suffix label ("TP 1200
+          // (asset tag)") is private as a whole — every joined run of the
+          // tokens before the label on its line. Only for a value with a digit:
+          // the inner "tag" of "asset tag" sees "ASSET" as its prior code.
+          const line = before.slice(before.search(/[^\r\n]*$/));
+          // A run stops at a labelled part: "P/N: X Y SER." marks Y, not "XY".
+          const tokens = (line.match(/[A-Z0-9][A-Z0-9./-]*/gi) ?? []).slice(-3);
+          let joined = "";
+          for (let i = tokens.length - 1; /\d/.test(priorCode) && i >= 0; i--) {
+            if (labelledParts.has(trimCode(tokens[i]).toUpperCase())) break;
+            joined = identifierKey(tokens[i]) + joined;
+            if (joined.length >= 4 && /\d/.test(joined)) keys.add(joined);
+          }
+        }
+      }
+      if (!value) continue;
+      let joined = "";
+      for (const chunk of value.split(/[ \t]+/)) {
+        joined += identifierKey(chunk);
+        if (joined.length >= 4) keys.add(joined);
+      }
+    }
+  }
+  // #5268 Codex r6: every code in a private field, and each joined run of
+  // neighbouring tokens ("PN 12345678" -> "12345678", "PN12345678").
+  for (const seg of splitFields(t).secret) {
+    const tokens = seg.match(/[A-Z0-9][A-Z0-9./-]*/gi) ?? [];
+    for (let i = 0; i < tokens.length; i++) {
+      let joined = "";
+      for (let j = i; j < Math.min(tokens.length, i + 4); j++) {
+        joined += identifierKey(tokens[j]);
+        if (joined.length >= 4 && /\d/.test(joined)) keys.add(joined);
+      }
+    }
+  }
+  return keys;
+}
+
+/**
+ * The codes this text EXPLICITLY labels as the part (P/N, MODEL, TYPE, CAT…),
+ * upper-cased, never one it also marks as a serial (#5268 Codex r4). Once a
+ * serial or asset label appears anywhere in a turn, only these — read from
+ * the PHOTO — may leave as a search, so retyping a private value under
+ * another label in the typed text can never make it eligible.
+ */
+export function labelledPartCodes(text: string): string[] {
+  const t = normalize(text);
+  const serials = new Set(serialCodes(text));
+  const privateKeys = [...privateIdentifierKeys(text)];
+  // #5268 Codex r6: a part label counts only outside a private field — the
+  // same fields privateIdentifierKeys() treats as private (splitFields).
+  const codes = [...splitFields(t).open.matchAll(GENUINE_PART_LABEL)].map((m) => trimCode(m[1]).toUpperCase());
+  return [...new Set(codes.filter((c) => !serials.has(c) && !privateKeys.some((k) => k.includes(identifierKey(c)))))];
+}
+
 export function unambiguousPartNumber(photoText: string): string | null {
   const codes = partCodes(photoText);
-  return codes.length === 1 ? codes[0] : null;
+  if (codes.length !== 1) return null;
+  // #5268 Codex r14: the confirm-first chip searches this value too, and a
+  // confirmation never overrides a private designation (ADR-0036) — a value the
+  // text marks private ("TP1200 (customer asset tag)") is never offered.
+  const key = identifierKey(codes[0]);
+  if ([...privateIdentifierKeys(photoText)].some((k) => k.includes(key))) return null;
+  if (privateSuffixTails(photoText).some((tail) => tail.includes(key))) return null;
+  if (labelledPrivateBySuffix(photoText, codes[0])) return null;
+  // #5268 Codex r16 (owner decision 2026-11-07, fail safe): a serial or asset
+  // label ANYWHERE on the plate with no value of its own cannot say which code
+  // it marks, however the annotation wraps — so the plate offers no code at all.
+  if (danglingPrivateLabel(photoText)) return null;
+  return codes[0];
+}
+
+/**
+ * Does the text carry a serial or asset label with no value of its own — a
+ * digit-bearing code straight after it in the same field ("S/N: 00998877",
+ * "asset tag 4471") or right before it on its line ("AB-1234567 S/N")?
+ * "(customer\nasset tag)", "24VDC\n(asset tag)" and a label
+ * whose value sits on another line are dangling. A value needs four letters or
+ * digits, and one before the label never counts from inside an open bracket:
+ * "(customer #1 asset tag)" qualifies the code before it, so it is dangling
+ * too (#5268 Codex r17, fail closed). Read over the whole text.
+ */
+export function danglingPrivateLabel(text: string): boolean {
+  const t = normalize(text);
+  const OWN_VALUE = new RegExp(
+    String.raw`^[ \t]*(?:(?:${ID_WORD})(?![a-z])[ \t:#=.-]*)*(?:is\b)?[ \t:#=.-]*(${DIGIT_TOKEN.source})`,
+    "i",
+  );
+  // A suffix label owns the code straight before it on its own line
+  // ("AB-1234567 S/N", "12345678 (asset tag)") — never one past a word or a
+  // line break ("TP1200 (customer\nasset tag)", "24VDC\n(asset tag)").
+  const OWN_PRIOR = new RegExp(String.raw`(?:^|[^A-Za-z0-9])(${DIGIT_TOKEN.source})[ \t]*[(\[,:-]?[ \t]*$`, "i");
+  const isValue = (v: string | undefined) => (v ?? "").replace(/[^A-Za-z0-9]/g, "").length >= 4;
+  const openBracket = (s: string) => (s.match(/[(\[]/g) ?? []).length > (s.match(/[)\]]/g) ?? []).length;
+  for (const label of [SERIAL_LABEL, ASSET_LABEL]) {
+    for (const m of t.matchAll(new RegExp(label.source, "gi"))) {
+      const at = m.index ?? 0;
+      const line = t.slice(0, at).split(/\r\n|\r|\n/).pop() ?? "";
+      const after = OWN_VALUE.exec(t.slice(at + m[0].length));
+      const prior = OWN_PRIOR.exec(line);
+      const ownsPrior = prior !== null && isValue(prior[1]) && !openBracket(line.slice(0, prior.index));
+      if (!(after && isValue(after[1])) && !ownsPrior) return true;
+    }
+  }
+  return false;
+}
+
+const DIGIT_TOKEN = /(?=[A-Z0-9./-]*\d)[A-Z0-9][A-Z0-9./-]*/i;
+/**
+ * A serial or asset label later on the code's own line that carries no value of
+ * its own ("MODEL: TP1200 (customer asset tag)") designates that code itself,
+ * provided no other digit-bearing value sits between them. A label with its own
+ * value ("MODEL: TP1200 S/N: 00998877") names that value, not the code.
+ */
+function labelledPrivateBySuffix(photoText: string, code: string): boolean {
+  const text = normalize(photoText);
+  const escaped = code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  for (const m of text.matchAll(new RegExp(`(?<![A-Z0-9])${escaped}(?![A-Z0-9])`, "gi"))) {
+    // The rest of the code's own line; when nothing but separators follows the
+    // code, a wrapped annotation on the next non-blank line belongs to it too.
+    const lines = text.slice((m.index ?? 0) + m[0].length).split(/\r\n|\r|\n/);
+    let rest = lines[0];
+    if (!/[A-Za-z0-9]/.test(rest)) rest += " " + (lines.slice(1).find((l) => /[A-Za-z0-9]/.test(l)) ?? "");
+    for (const label of [SERIAL_LABEL, ASSET_LABEL]) {
+      for (const l of rest.matchAll(new RegExp(label.source, "gi"))) {
+        const at = l.index ?? 0;
+        if (DIGIT_TOKEN.test(rest.slice(0, at))) continue;
+        // Its own value follows it directly; a closing bracket ends the label first.
+        const after = rest.slice(at + l[0].length).replace(new RegExp(`^(?:[^A-Za-z0-9)\\]]*${ID_WORD}(?![a-z]))*`, "i"), "");
+        if (!new RegExp(`^[^A-Za-z0-9)\\]]*(?:is\\b[^A-Za-z0-9)\\]]*)?${DIGIT_TOKEN.source}`, "i").test(after)) return true;
+      }
+    }
+  }
+  return false;
 }
 
 /**

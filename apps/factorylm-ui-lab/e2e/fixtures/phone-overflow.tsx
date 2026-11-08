@@ -12,6 +12,12 @@ import { fakeAdapter } from "../../../../packages/factorylm-ui/src/__tests__/har
 const URL_TOKEN = "https://support.industry.siemens.com/cs/attachments/109485603/hmi_comfort_panels_outdoor_operating_instructions_s_es-ES.pdf";
 const base = getFixture("grounded-answer");
 const params = new URLSearchParams(location.search);
+// Opt in to the Hub's real host inheritance without changing the #5068 fixture.
+if (params.get("surface") === "hub") {
+  const hostFont = params.get("hostFont") === "14" ? "14px" : "16px";
+  document.documentElement.style.fontSize = hostFont;
+  document.body.style.fontSize = hostFont;
+}
 const template = base.thread.turns[0];
 const turns = [
   { ...template, id: "q", role: "user" as const, parts: [{ type: "text" as const, text: "what supply voltage does the TP700 Comfort need" }] },
@@ -22,7 +28,7 @@ const turns = [
   ] },
 ];
 function App() {
-  const [state, dispatch] = useReducer(shellReducer, createShellState({ ...base, thread: { ...base.thread, turns } }, PROFILES.mobile));
+  const [state, dispatch] = useReducer(shellReducer, createShellState({ ...base, thread: { ...base.thread, turns } }, params.get("surface") === "hub" ? PROFILES.hub : PROFILES.mobile));
   return <FactoryLMShell state={state} dispatch={dispatch} adapter={fakeAdapter()} conversationSurface={params.get("renderer") === "assistant" ? "assistant" : "classic"} />;
 }
 createRoot(document.getElementById("root")!).render(<App />);

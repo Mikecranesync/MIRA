@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { extractCandidateIdentity, isSafeCandidateSearchIdentity, makerFromText, wantsManualDocumentation } from "./candidate-identity";
+import { labelledPartCodes } from "./photo-part-lookup";
 
 // Manual-First PRD R1 (#4160 S5): a candidate (manufacturer, part) read from a
 // LOOK observation or typed text WITHOUT consulting the corpus. Makers come
@@ -147,9 +148,16 @@ describe("isSafeCandidateSearchIdentity", () => {
   it("rejects a value beside an unparsed serial label unless it is the labelled part", () => {
     expect(isSafeCandidateSearchIdentity("AB-1234567 serial number", "", "AB-1234567", "Siemens")).toBe(false);
   });
-  it("strict: any serial label in either text means no automatic search, even beside a labelled part", () => {
-    expect(isSafeCandidateSearchIdentity("Siemens P/N: 6ES7214-1AG40-0XB0 S/N: XC-99887766", "Find the manual for this", "6ES7214-1AG40-0XB0", "Siemens")).toBe(false);
-    // Codex post-cap 3 F6: a normalised serial typed back ("TP 700" -> TP700).
+  // #5268 owner decision 2026-11-07 (Codex r13): a plate that prints a serial
+  // or asset label never starts the automatic search, not even for its
+  // labelled part; the technician confirms the search instead.
+  it("a serial label beside a labelled part: neither the part nor the serial auto-searches", () => {
+    const plate = "Siemens P/N: 6ES7214-1AG40-0XB0 S/N: XC-99887766";
+    expect(isSafeCandidateSearchIdentity(plate, "Find the manual for this", "6ES7214-1AG40-0XB0", "Siemens")).toBe(false);
+    expect(isSafeCandidateSearchIdentity(plate, "Find the manual for this", "XC-99887766", "Siemens")).toBe(false);
+    expect(isSafeCandidateSearchIdentity(plate, "Find the manual for Siemens XC-99887766", "XC-99887766", "Siemens")).toBe(false);
+  });
+  it("Codex post-cap 3 F6: a normalised serial typed back (\"TP 700\" -> TP700) is still refused", () => {
     expect(isSafeCandidateSearchIdentity("S/N: TP 700", "Find the manual for Siemens TP700", "TP700", "Siemens")).toBe(false);
   });
   it("strict: an identity the serial-safe reader did not produce never auto-searches", () => {
@@ -172,11 +180,156 @@ describe("isSafeCandidateSearchIdentity", () => {
     expect(isSafeCandidateSearchIdentity("SMC Ser. No. AB-1234567", "Find the manual for this", "AB-1234567", "SMC")).toBe(false);
     expect(isSafeCandidateSearchIdentity("SMC SER: AB-1234567", "Find the manual for this", "AB-1234567", "SMC")).toBe(false);
   });
-  it("rejects any turn whose photo or typed text carries an asset-tag label (Codex post-cap 14 F14)", () => {
+  it("never searches a value under an asset-tag label (Codex post-cap 14 F14)", () => {
     expect(isSafeCandidateSearchIdentity("SMC Asset tag: VALVE-1234", "Find the manual for this", "VALVE-1234", "SMC")).toBe(false);
-    expect(isSafeCandidateSearchIdentity("SMC P/N: SY3120-5LZD Asset tag: VALVE-1234", "Find the manual for this", "SY3120-5LZD", "SMC")).toBe(false);
-    expect(isSafeCandidateSearchIdentity("SMC P/N: SY3120-5LZD", "asset id AB-1234567, find the manual", "SY3120-5LZD", "SMC")).toBe(false);
+    expect(isSafeCandidateSearchIdentity("SMC P/N: SY3120-5LZD Asset tag: VALVE-1234", "Find the manual for this", "VALVE-1234", "SMC")).toBe(false);
+    expect(isSafeCandidateSearchIdentity("SMC P/N: SY3120-5LZD", "asset id AB-1234567, find the manual", "AB-1234567", "SMC")).toBe(false);
   });
+  // The asset label no longer blocks the turn by itself (owner decision
+  // 2026-11-07), and the reader never yields an asset-labelled value, so only
+  // the labelled part can leave.
+  it("a typed serial or asset label turns the automatic search off (#5268 Codex r9)", () => {
+    expect(isSafeCandidateSearchIdentity("SMC P/N: SY3120-5LZD", "asset id AB-1234567, find the manual", "SY3120-5LZD", "SMC")).toBe(false);
+    for (const typed of ["Find the manual for this. TP 1200 (asset tag)", "Find the manual for this. TP 1200 (S/N)", "Find the manual for this, serial TP 1200"]) {
+      expect(isSafeCandidateSearchIdentity("Siemens MODEL: TP1200", typed, "TP1200", "Siemens")).toBe(false);
+    }
+    // #5268 Codex r10: the same private designation printed on the photo
+    for (const photo of ["Siemens MODEL: TP1200\nTP 1200 (asset tag)", "Siemens MODEL: TP1200\nTP 1200 (S/N)", "Siemens MODEL: TP1200\nSiemens TP 1200 tag", "Siemens MODEL: TP1200\nTP 1200\n(asset tag)", "Siemens MODEL: TP1200\nTP 1200\n(S/N)", "Siemens MODEL: TP1200\r\nTP 1200\r\n(asset tag)", "Siemens MODEL: TP1200\nT P 12 00 (asset tag)", "Siemens MODEL: TP1200\nTP 1200 (customer asset tag)", "Siemens MODEL: TP1200\nTP 1200 (internal asset tag)", "Siemens MODEL: TP1200\nTP 1200 (customer S/N)", "Siemens MODEL: TP1200\nTP 1200 plant asset tag"]) {
+      expect(isSafeCandidateSearchIdentity(photo, "Find the manual for this", "TP1200", "Siemens")).toBe(false);
+      const c = extractCandidateIdentity(photo, "Find the manual for this");
+      if (c?.part && c.manufacturer) expect(isSafeCandidateSearchIdentity(photo, "Find the manual for this", c.part, c.manufacturer)).toBe(false);
+    }
+    // r13: even a distinct private value beside the model turns auto-search off
+    expect(isSafeCandidateSearchIdentity("Siemens MODEL: TP1200\n00123456\n(asset tag)", "Find the manual for this", "TP1200", "Siemens")).toBe(false);
+    expect(isSafeCandidateSearchIdentity("Siemens MODEL: TP1200 (customer asset tag)", "Find the manual for this", "TP1200", "Siemens")).toBe(false);
+    // control: the same photo with a plain request still searches
+    expect(isSafeCandidateSearchIdentity("Siemens MODEL: TP1200", "Find the manual for this", "TP1200", "Siemens")).toBe(true);
+  });
+  // Known limit, fail-closed: an asset tag value shaped like a model
+  // ("VALVE-1234") reads as a second machine, so this plate does not
+  // auto-search. The technician can still confirm the identity.
+  it("an asset tag shaped like a model on the plate still blocks the automatic search", () => {
+    expect(isSafeCandidateSearchIdentity("SMC P/N: SY3120-5LZD Asset tag: VALVE-1234", "Find the manual for this", "SY3120-5LZD", "SMC")).toBe(false);
+  });
+  // #5268 Codex F1: a private value must not come back under a MODEL label or
+  // with its punctuation/spacing changed.
+  it("refuses a photo asset tag typed back under a MODEL label", () => {
+    expect(isSafeCandidateSearchIdentity("SMC Asset tag: 12345678", "Find the manual for SMC MODEL: 12345678", "12345678", "SMC")).toBe(false);
+  });
+  it("refuses a photo serial retyped without its punctuation under a MODEL label", () => {
+    expect(isSafeCandidateSearchIdentity("SMC S/N: AB-1234567", "Find the manual for SMC MODEL: AB1234567", "AB1234567", "SMC")).toBe(false);
+  });
+  it("refuses a spaced serial retyped joined under a MODEL label", () => {
+    expect(isSafeCandidateSearchIdentity("Siemens S/N: TP 1200", "Find the manual for Siemens MODEL: TP1200", "TP1200", "Siemens")).toBe(false);
+  });
+  it.each([["SMC 12345678 (asset tag)"], ["SMC 12345678 tag"], ["SMC 12345678 (asset tag), 24VDC"], ["SMC 12345678 tag\n24VDC"]])(
+    "refuses a suffix-labelled asset tag (%s) typed back under a MODEL label (#5268 Codex r2 F1)",
+    (photo) => {
+      expect(isSafeCandidateSearchIdentity(photo, "Find the manual for SMC MODEL: 12345678", "12345678", "SMC")).toBe(false);
+    },
+  );
+  it("r13: a labelled part beside a bracketed asset tag does not auto-search", () => {
+    expect(isSafeCandidateSearchIdentity("SMC P/N: SY3120-5LZD (asset tag 00123456)", "Find the manual for this", "SY3120-5LZD", "SMC")).toBe(false);
+  });
+  it("r13: a labelled MODEL beside a serial does not auto-search; the same plate without it does", () => {
+    expect(isSafeCandidateSearchIdentity("AutomationDirect MODEL: GS11N-20P2 S/N: 2309AB1234", "Find the manual for this", "GS11N-20P2", "AutomationDirect")).toBe(false);
+    expect(isSafeCandidateSearchIdentity("AutomationDirect MODEL: GS11N-20P2", "Find the manual for this", "GS11N-20P2", "AutomationDirect")).toBe(true);
+  });
+  // #5268 Codex r1–r4: one table for the whole "private value typed back"
+  // class. Every private shape on the photo × every way of typing it back is
+  // refused; a part the PHOTO labels still searches beside each label.
+  describe("#5268 — a private value on the photo never becomes searchable by typing it back", () => {
+    const PRIVATE_PHOTOS: [string, string, string][] = [
+      // [shape, photo text, the private value's compact form]
+      ["prefix asset", "SMC Asset tag: 12345678", "12345678"],
+      ["prefix serial", "SMC S/N: AB-1234567", "AB1234567"],
+      ["spaced prefix serial", "Siemens S/N: TP 1200", "TP1200"],
+      ["bracketed suffix asset", "SMC 12345678 (asset tag)", "12345678"],
+      ["suffix asset", "SMC 12345678 tag", "12345678"],
+      ["suffix asset + comma rating", "SMC 12345678 (asset tag), 24VDC", "12345678"],
+      ["suffix asset + newline rating", "SMC 12345678 tag\n24VDC", "12345678"],
+      ["spaced bracketed suffix asset", "Siemens TP 1200 (asset tag)", "TP1200"],
+      ["spaced bracketed suffix serial", "Siemens TP 1200 (S/N)", "TP1200"],
+    ];
+    // r5: a part-label word INSIDE a private value never makes a fragment of
+    // it the photo's labelled part.
+    it.each([
+      ["SMC Asset tag: PN12345678"], ["SMC S/N: PN12345678"], ["SMC Asset tag: TYPE12345678"], ["SMC Asset tag: CAT12345678"],
+    ])("r5: a label word inside the private value (%s) never yields a searchable fragment", (photo) => {
+      expect(isSafeCandidateSearchIdentity(photo, "Find the manual for this", "12345678", "SMC")).toBe(false);
+      expect(isSafeCandidateSearchIdentity(photo, "Find the manual for SMC MODEL: 12345678", "12345678", "SMC")).toBe(false);
+    });
+    // #5268 Codex r6 invariant: nothing on the line after a serial/asset label is
+    // ever a labelled part, whatever words or spacing sit inside the value.
+    const R6_LABELS = ["S/N:", "S/N", "Serial No.", "S/N NO.", "Asset tag:", "Asset tag", "Inv. No."];
+    const R6_VALUES = ["PN 12345678", "P/N 12345678", "P/N: 12345678", "ABC PN 12345678", "TYPE 12345678", "MODEL 12345678", "CAT. NO. 12345678", "PN12345678"];
+    it.each(R6_LABELS.flatMap((l) => R6_VALUES.map((v) => `SMC ${l} ${v}`)))("r6: %s yields no part and no search", (photo) => {
+      expect(labelledPartCodes(photo)).toEqual([]);
+      for (const typed of ["Find the manual for this", "Find the manual for SMC 12345678", "Find the manual for SMC PN12345678"]) {
+        expect(isSafeCandidateSearchIdentity(photo, typed, "12345678", "SMC")).toBe(false);
+        expect(isSafeCandidateSearchIdentity(photo, typed, "PN12345678", "SMC")).toBe(false);
+      }
+    });
+    it.each(["SMC Asset tag:\nPN 12345678", "SMC S/N:\nPN 12345678", "SMC Asset tag: ABC\nPN 12345678", "SMC Asset tag:\n\nPN 12345678", "SMC S/N:, P/N 12345678"])(
+      "r7: a private value wrapped past its label's field (%j) never searches",
+      (photo) => {
+        expect(labelledPartCodes(photo)).toEqual([]);
+        expect(extractCandidateIdentity(photo, "Find the manual for this")?.part ?? null).not.toBe("12345678");
+        for (const typed of ["Find the manual for this", "Find the manual for SMC 12345678"]) {
+          expect(isSafeCandidateSearchIdentity(photo, typed, "12345678", "SMC")).toBe(false);
+        }
+      },
+    );
+    // #5268 Codex r8 invariant: no tail after a private label ever adds a part.
+    const R8_PREFIXES = ["SMC MODEL: SY3120-5LZD Asset tag", "SMC Asset tag", "SMC S/N", "SMC Serial No.", "SMC Inv. No."];
+    const R8_TAILS = [" (1): PN 12345678", " [1]: PN 12345678", " (1234):\nPN 12345678", ":\nPN 12345678", ", P/N 12345678", ": ABC\n\nTYPE 12345678", " #7; CAT. NO. 12345678", ": 12345678\nMODEL 12345678"];
+    it.each(R8_PREFIXES.flatMap((p) => R8_TAILS.map((t) => p + t)))("r8: %j never adds 12345678 as a part or a search", (photo) => {
+      const prefix = photo.slice(0, photo.search(/Asset tag|S\/N|Serial|Inv\./));
+      // Monotone: the tail may only remove codes, never add one.
+      for (const c of labelledPartCodes(photo)) expect(labelledPartCodes(prefix)).toContain(c);
+      expect(labelledPartCodes(photo).join(" ")).not.toContain("12345678");
+      for (const typed of ["Find the manual for this", "Find the manual for SMC 12345678"]) {
+        expect(isSafeCandidateSearchIdentity(photo, typed, "12345678", "SMC")).toBe(false);
+      }
+    });
+    it("r13: a labelled part printed before a private label does not auto-search either", () => {
+      expect(isSafeCandidateSearchIdentity("SMC MODEL: SY3120-5LZD\nAsset tag: 00123456", "Find the manual for this", "SY3120-5LZD", "SMC")).toBe(false);
+      // #5268 Codex r8: a part printed AFTER a private label is never searched.
+      expect(isSafeCandidateSearchIdentity("SMC Asset tag: PN 12345678\nMODEL: SY3120-5LZD", "Find the manual for this", "SY3120-5LZD", "SMC")).toBe(false);
+    });
+    it("r5: a label glued to its value is one token, not a label (SMC PN12345678 beside a serial)", () => {
+      expect(isSafeCandidateSearchIdentity("SMC PN12345678 S/N: XC-99887766", "Find the manual for this", "12345678", "SMC")).toBe(false);
+    });
+    const typedForms = (v: string, maker: string) => [
+      `Find the manual for ${maker} MODEL: ${v}`,
+      `Find the manual for ${maker} P/N: ${v}`,
+      `Find the manual for ${maker} ${v}`,
+    ];
+    for (const [shape, photo, value] of PRIVATE_PHOTOS) {
+      const maker = photo.split(" ")[0];
+      it.each(typedForms(value, maker))(`${shape}: refused when typed back as %s`, (typed) => {
+        expect(isSafeCandidateSearchIdentity(photo, typed, value, maker)).toBe(false);
+      });
+    }
+    it.each([
+      ["AutomationDirect MODEL: GS11N-20P2 S/N: 2309AB1234", "GS11N-20P2", "AutomationDirect"],
+      ["Siemens P/N: 6ES7214-1AG40-0XB0 S/N: XC-99887766", "6ES7214-1AG40-0XB0", "Siemens"],
+      ["SMC P/N: SY3120-5LZD (asset tag 00123456)", "SY3120-5LZD", "SMC"],
+      ["AutomationDirect MODEL: GS11N-20P2\nSERIAL NO: 7A3K9Q2026X11", "GS11N-20P2", "AutomationDirect"],
+      ["SMC MODEL SY3120-5LZD, Asset tag: PN12345678", "SY3120-5LZD", "SMC"],
+    ])("r13: the photo's labelled part beside a private label does not auto-search (%s)", (photo, part, maker) => {
+      expect(isSafeCandidateSearchIdentity(photo, "Find the manual for this", part, maker)).toBe(false);
+      // control: the same plate with the private label removed searches
+      expect(isSafeCandidateSearchIdentity(photo.split(/\s(?=S\/N|SERIAL|\(asset|Asset)/)[0], "Find the manual for this", part, maker)).toBe(true);
+    });
+    it("fail-closed: a serial on the photo and NO part label there → a typed MODEL does not auto-search", () => {
+      expect(isSafeCandidateSearchIdentity("Siemens S/N: XC-99887766", "Find the manual for Siemens MODEL: 6ES7214-1AG40-0XB0", "6ES7214-1AG40-0XB0", "Siemens")).toBe(false);
+    });
+    it("control: no private label anywhere → a typed part still searches (rule inactive)", () => {
+      expect(isSafeCandidateSearchIdentity("", "Find the manual for the SMC SS5Y3-DUW01302", "SS5Y3-DUW01302", "SMC")).toBe(true);
+    });
+  });
+
   it("control: the single serial-safe code, in the photo or the typed text, is accepted", () => {
     expect(isSafeCandidateSearchIdentity("Siemens P/N: 6ES7214-1AG40-0XB0", "Find the manual for this", "6ES7214-1AG40-0XB0", "Siemens")).toBe(true);
     expect(isSafeCandidateSearchIdentity("", "Find the manual for the SMC SS5Y3-DUW01302", "SS5Y3-DUW01302", "SMC")).toBe(true);

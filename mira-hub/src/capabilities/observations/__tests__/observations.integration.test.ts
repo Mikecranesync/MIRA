@@ -25,13 +25,15 @@ vi.mock("@/lib/db", () => ({ default: testPool }));
 import {
   getObservationForAsset,
   HISTORY_PAGE_MAX,
+  listConflictPage,
   insertObservation,
   listObservationHistory,
   listProjectionRows,
+  PROJECTION_ROWS_PER_VALUE,
   type HistoryRecord,
   type InsertObservationResult,
 } from "../store";
-import { deriveObservedState } from "../project";
+import { CONFLICTS_SHOWN, deriveObservedState } from "../project";
 import { loadObservedStateForTurn } from "../turn-context";
 import type { ValidatedObservationInput } from "../validate";
 import { enqueueFixRecordedEvent } from "@/capabilities/cmms-dispatch/enqueue";
@@ -86,6 +88,12 @@ async function allRows(tenantId: string, entityId: string): Promise<HistoryRecor
     if (!page.nextCursor) return out;
     cursor = page.nextCursor;
   }
+}
+
+/** The state the app serves: the bounded SQL read plus its exact contest counts. */
+async function boundedState(tenantId: string, entityId: string, now: Date) {
+  const { rows, contests } = await listProjectionRows(tenantId, entityId);
+  return deriveObservedState(rows, { now, contests });
 }
 
 function created(r: InsertObservationResult): Extract<InsertObservationResult, { status: "created" }> {
@@ -431,12 +439,12 @@ describe("observation reads are bounded (real Postgres)", () => {
 
     const now = new Date();
     const projection = await listProjectionRows(tenant, entity);
-    expect(projection.length).toBeLessThanOrEqual(5);
-    expect(projection.map((r) => r.id)).toEqual(expect.arrayContaining([leak, repair]));
-    for (const r of projection) expect(Object.keys(r)).not.toContain("rawReport");
+    expect(projection.rows.length).toBeLessThanOrEqual(5);
+    expect(projection.rows.map((r) => r.id)).toEqual(expect.arrayContaining([leak, repair]));
+    for (const r of projection.rows) expect(Object.keys(r)).not.toContain("rawReport");
 
     const full = deriveObservedState(await allRows(tenant, entity), { now });
-    const bounded = deriveObservedState(projection, { now });
+    const bounded = deriveObservedState(projection.rows, { now, contests: projection.contests });
     expect(bounded.facts).toEqual(full.facts);
     expect(bounded.stateVersion).toBe(full.stateVersion);
     expect(bounded.facts[0]!.state).toBe("repair_reported");
@@ -446,6 +454,434 @@ describe("observation reads are bounded (real Postgres)", () => {
     expect(results.length).toBeGreaterThan(0);
     for (const res of results) expect(res.fields).not.toContain("raw_report");
     expect(Math.max(...results.map((r) => r.rowCount))).toBeLessThanOrEqual(5);
+  });
+
+  // #5099 (Codex #5091 r4 F1): every active opposing report in the window contributes,
+  // so the per-value bound must never drop one of them.
+  for (const [currentValue, opposingValue] of [["absent", "present"], ["present", "absent"]] as const) {
+    it(`projection_keeps_every_opposing_report_beyond_the_per_value_bound_${currentValue}`, async () => {
+      const tenant = uuid();
+      const entity = `cmms-${uuid()}`;
+      const nb = await makeNotebook(tenant, entity, true);
+      const opposing = await seed(tenant, nb, entity, Array.from({ length: PROJECTION_ROWS_PER_VALUE + 1 }, (_, i) => ({
+        factValue: opposingValue,
+        observedAt: new Date(Date.now() - (50 - i) * MIN).toISOString(),
+      })));
+      const [current] = await seed(tenant, nb, entity, [{ factValue: currentValue, observedAt: new Date(Date.now() - 2 * MIN).toISOString() }]);
+
+      const now = new Date();
+      const full = deriveObservedState(await allRows(tenant, entity), { now });
+      const bounded = await boundedState(tenant, entity, now);
+      // Every opposing report is counted; the list is bounded and says where it continues.
+      expect(full.facts[0]!.conflictTotal).toBe(PROJECTION_ROWS_PER_VALUE + 2);
+      expect(full.facts[0]!.conflicting).toHaveLength(CONFLICTS_SHOWN);
+      expect(bounded.facts).toEqual(full.facts);
+      expect(bounded.stateVersion).toBe(full.stateVersion);
+      expect(bounded.contributorCount).toBe(PROJECTION_ROWS_PER_VALUE + 2);
+      expect(bounded.facts[0]!.conflictsNextCursor).toBe(bounded.facts[0]!.conflicting.at(-1)!.observationId);
+      expect(bounded.facts[0]!.current.observationId).toBe(current);
+
+      // The listed reports plus the continuation pages are exactly the contest, once each.
+      const listed = bounded.facts[0]!.conflicting.slice(1).map((e) => e.observationId);
+      const rest = await listConflictPage(tenant, entity, "seal_leak", { cursor: bounded.facts[0]!.conflictsNextCursor, limit: 100 });
+      if (rest.status !== "ok") throw new Error(rest.status);
+      expect(rest.nextCursor).toBeNull();
+      expect([...listed, ...rest.rows.map((e) => e.observationId)].sort()).toEqual([...opposing].sort());
+
+      const turn = await loadObservedStateForTurn(tenant, entity, now);
+      expect(turn.frame?.stateVersion).toBe(full.stateVersion);
+      expect(turn.frame?.contributorCount).toBe(PROJECTION_ROWS_PER_VALUE + 2);
+      expect(turn.frame?.observationIds).toEqual(bounded.shownObservationIds);
+      expect(turn.frame?.observationIds).toHaveLength(CONFLICTS_SHOWN);
+      const lines = turn.section.split("\n");
+      expect(lines.filter((l) => l.startsWith("  - seal_leak="))).toHaveLength(CONFLICTS_SHOWN);
+      expect(lines).toContain("  - 2 more conflicting reports are not listed here; they are unresolved, not dismissed.");
+    });
+  }
+
+  // Two technicians type the same "observed at" with opposite values. The store must pick
+  // the projector's current report (newestFirst: recorded ms, then id) or it uncaps the
+  // wrong value. Both values exceed the bound, so any wrong pick drops a contributor.
+  for (const tieCase of ["recorded_a_second_apart", "recorded_same_instant", "recorded_same_millisecond"] as const) {
+    it(`projection_picks_the_projectors_current_report_on_an_observed_time_tie_${tieCase}`, async () => {
+      const tenant = uuid();
+      const entity = `cmms-${uuid()}`;
+      const nb = await makeNotebook(tenant, entity, true);
+      for (const factValue of ["present", "absent"] as const) {
+        await seed(tenant, nb, entity, Array.from({ length: PROJECTION_ROWS_PER_VALUE + 1 }, (_, i) => ({
+          factValue,
+          observedAt: new Date(Date.now() - (45 - i) * MIN - (factValue === "absent" ? 1000 : 0)).toISOString(),
+        })));
+      }
+      const tie = new Date(Date.now() - 5 * MIN).toISOString();
+      const [presentId] = await seed(tenant, nb, entity, [{ factValue: "present", observedAt: tie }]);
+      const [absentId] = await seed(tenant, nb, entity, [{ factValue: "absent", observedAt: tie }]);
+      const [lo, hi] = [presentId!, absentId!].sort();
+      // Fixture timestamps only (the app role cannot UPDATE; this pool is the owner).
+      // One base instant for both rows: now() per statement can cross a millisecond.
+      const { rows: [{ base: baseAt }] } = await testPool.query<{ base: string }>(
+        "SELECT date_trunc('milliseconds', now())::text AS base",
+      );
+      const setRecorded = (id: string, expr: string) =>
+        testPool.query(`UPDATE asset_observations SET recorded_at = ${expr} WHERE id = $1::uuid`, [id, baseAt]);
+      const base = "$2::timestamptz";
+      if (tieCase === "recorded_a_second_apart") {
+        await setRecorded(presentId!, `${base} - interval '1 second'`);
+        await setRecorded(absentId!, base);
+      } else if (tieCase === "recorded_same_instant") {
+        await setRecorded(presentId!, base);
+        await setRecorded(absentId!, base);
+      } else {
+        // Same millisecond to the projector; the larger id is later in microseconds.
+        await setRecorded(lo!, `${base} + interval '100 microseconds'`);
+        await setRecorded(hi!, `${base} + interval '600 microseconds'`);
+      }
+
+      const now = new Date();
+      const full = deriveObservedState(await allRows(tenant, entity), { now });
+      const expectedCurrent = tieCase === "recorded_a_second_apart" ? absentId : lo;
+      expect(full.facts[0]!.current.observationId).toBe(expectedCurrent);
+      expect(full.facts[0]!.conflictTotal).toBe(PROJECTION_ROWS_PER_VALUE + 3);
+      const bounded = await boundedState(tenant, entity, now);
+      expect(bounded.facts).toEqual(full.facts);
+      expect(bounded.stateVersion).toBe(full.stateVersion);
+    });
+  }
+
+  // #5105 (Codex #5104 r1 F1): more than the per-value bound of same-value reports, tied to
+  // the millisecond. The projector picks the lowest id; the capped read must keep that row.
+  it("projection_keeps_the_projectors_current_report_among_millisecond_tied_same_value_reports", async () => {
+    const tenant = uuid();
+    const entity = `cmms-${uuid()}`;
+    const nb = await makeNotebook(tenant, entity, true);
+    const tie = new Date(Date.now() - 5 * MIN).toISOString();
+    const ids = await seed(tenant, nb, entity, Array.from({ length: PROJECTION_ROWS_PER_VALUE + 1 }, () => ({ observedAt: tie })));
+    const [opposingId] = await seed(tenant, nb, entity, [{ factValue: "absent", observedAt: new Date(Date.now() - 10 * MIN).toISOString() }]);
+    // Fixture timestamps only: one millisecond, the lowest id gets the smallest microseconds,
+    // so a full-precision "newest recorded first" order ranks the projector's pick last.
+    const { rows: [{ base: baseAt }] } = await testPool.query<{ base: string }>(
+      "SELECT date_trunc('milliseconds', now())::text AS base",
+    );
+    const sorted = [...ids].sort();
+    for (const [rank, id] of sorted.entries()) {
+      await testPool.query(
+        `UPDATE asset_observations SET recorded_at = $2::timestamptz + make_interval(secs => $3::double precision) WHERE id = $1::uuid`,
+        [id, baseAt, (rank * 10) / 1e6],
+      );
+    }
+
+    const now = new Date();
+    const full = deriveObservedState(await allRows(tenant, entity), { now });
+    expect(full.facts[0]!.current.observationId).toBe(sorted[0]);
+    expect(full.facts[0]!.contested).toBe(true);
+    const bounded = await boundedState(tenant, entity, now);
+    expect(bounded.facts[0]!.current.observationId).toBe(sorted[0]);
+    expect(bounded.facts).toEqual(full.facts);
+    expect(bounded.stateVersion).toBe(full.stateVersion);
+    expect(opposingId).toEqual(expect.any(String));
+  });
+
+  it("projection_does_not_read_opposing_reports_from_before_the_newest_repair", async () => {
+    const tenant = uuid();
+    const entity = `cmms-${uuid()}`;
+    const nb = await makeNotebook(tenant, entity, true);
+    // 30 "no leak" reports, a repair, then a new leak — all inside one hour. The old
+    // reports describe the machine before the work, so they neither contest nor get read.
+    await seed(tenant, nb, entity, Array.from({ length: 30 }, (_, i) => ({
+      factValue: "absent",
+      observedAt: new Date(Date.now() - (55 - i / 2) * MIN).toISOString(),
+    })));
+    await seed(tenant, nb, entity, [
+      { factValue: "repaired", observedAt: new Date(Date.now() - 20 * MIN).toISOString() },
+      { factValue: "present", observedAt: new Date(Date.now() - 5 * MIN).toISOString() },
+    ]);
+
+    const now = new Date();
+    const projection = await listProjectionRows(tenant, entity);
+    expect(projection.rows.length).toBeLessThanOrEqual(PROJECTION_ROWS_PER_VALUE + 2);
+    const full = deriveObservedState(await allRows(tenant, entity), { now });
+    expect(full.facts[0]!.state).toBe("leak_reported");
+    const bounded = deriveObservedState(projection.rows, { now, contests: projection.contests });
+    expect(bounded.facts).toEqual(full.facts);
+    expect(bounded.stateVersion).toBe(full.stateVersion);
+  });
+
+  it("projection_still_bounds_reports_that_do_not_oppose_the_current_one", async () => {
+    const tenant = uuid();
+    const entity = `cmms-${uuid()}`;
+    const nb = await makeNotebook(tenant, entity, true);
+    // 30 agreeing leaks and 30 repairs before a final leak: none opposes the current report.
+    await seed(tenant, nb, entity, Array.from({ length: 60 }, (_, i) => ({
+      factValue: i % 2 === 0 ? "present" : "repaired",
+      observedAt: new Date(Date.now() - (58 - i / 2) * MIN).toISOString(),
+    })));
+    await seed(tenant, nb, entity, [{ observedAt: new Date(Date.now() - MIN / 4).toISOString() }]);
+
+    const now = new Date();
+    const projection = await listProjectionRows(tenant, entity);
+    expect(projection.rows.length).toBeLessThanOrEqual(2 * PROJECTION_ROWS_PER_VALUE);
+    const full = deriveObservedState(await allRows(tenant, entity), { now });
+    const bounded = deriveObservedState(projection.rows, { now, contests: projection.contests });
+    expect(bounded.facts).toEqual(full.facts);
+    expect(bounded.stateVersion).toBe(full.stateVersion);
+  });
+
+  /** Owner-pool bulk seed (fixtures only): `n` reports of one value, observed `obsExpr(i)`. */
+  async function bulkSeed(tenant: string, nb: string, entity: string, n: number, factValue: string, obsExpr: string) {
+    await testPool.query(
+      `INSERT INTO asset_observations (tenant_id, notebook_id, equipment_entity_id, fact_key, fact_value, raw_report,
+         observed_at, recorded_by, verification_method, client_request_id, request_fingerprint, projector_version)
+       SELECT $1::uuid, $2::uuid, $3, 'seal_leak', $4, 'bulk', ${obsExpr}, 'tech-bulk', 'self_reported',
+              gen_random_uuid(), 'bulk', 'fixture'
+         FROM generate_series(1, $5::int) AS g(i)`,
+      [tenant, nb, entity, factValue, n],
+    );
+  }
+
+  // #5106 (Codex #5104 r1 F2): an adversarial burst. The state, its exact count and its
+  // stateVersion equal the full projection, while every consumer gets a bounded payload.
+  it("burst_of_ten_thousand_opposing_reports_is_counted_exactly_and_served_bounded", async () => {
+    const tenant = uuid();
+    const entity = `cmms-${uuid()}`;
+    const nb = await makeNotebook(tenant, entity, true);
+    const BURST = 10_000;
+    await bulkSeed(tenant, nb, entity, BURST, "absent", "now() - interval '50 minutes' + g.i * interval '1 millisecond'");
+    const [current] = await seed(tenant, nb, entity, [{ factValue: "present", observedAt: new Date(Date.now() - 2 * MIN).toISOString() }]);
+
+    const now = new Date();
+    const { value: turn, results } = await capturingResults(() => loadObservedStateForTurn(tenant, entity, now));
+    const BOUND = 3 * PROJECTION_ROWS_PER_VALUE; // fact values × per-value bound, for the one fact
+    expect(Math.max(...results.map((r) => r.rowCount))).toBeLessThanOrEqual(BOUND);
+    for (const res of results) expect(res.fields).not.toContain("raw_report");
+
+    const bounded = await boundedState(tenant, entity, now);
+    const fact = bounded.facts[0]!;
+    expect(fact.current.observationId).toBe(current);
+    expect(fact.conflictTotal).toBe(BURST + 1);
+    expect(bounded.contributorCount).toBe(BURST + 1);
+    expect(fact.conflicting).toHaveLength(CONFLICTS_SHOWN);
+
+    const full = deriveObservedState(await allRows(tenant, entity), { now });
+    expect(bounded.facts).toEqual(full.facts);
+    expect(bounded.stateVersion).toBe(full.stateVersion);
+
+    // Documented hard bounds on what leaves the server.
+    expect(JSON.stringify(bounded.facts).length).toBeLessThan(16_384); // GET state payload
+    expect(turn.frame?.observationIds).toHaveLength(CONFLICTS_SHOWN); // persisted evidence frame
+    expect(turn.frame?.contributorCount).toBe(BURST + 1);
+    expect(turn.frame?.stateVersion).toBe(full.stateVersion);
+    expect(turn.section.split("\n").length).toBeLessThanOrEqual(CONFLICTS_SHOWN + 4); // prompt section
+    expect(turn.section).toContain(`${BURST + 1 - CONFLICTS_SHOWN} more conflicting reports are not listed here`);
+
+    // One more hidden opposing report moves the version even though no listed row changes.
+    await bulkSeed(tenant, nb, entity, 1, "absent", "now() - interval '55 minutes'");
+    const after = await boundedState(tenant, entity, new Date());
+    expect(after.facts[0]!.conflicting).toEqual(fact.conflicting);
+    expect(after.facts[0]!.conflictTotal).toBe(BURST + 2);
+    expect(after.stateVersion).not.toBe(bounded.stateVersion);
+  }, 120_000);
+
+  it("conflict_pages_follow_the_projector_order_through_millisecond_ties_and_refuse_bad_cursors", async () => {
+    const tenant = uuid();
+    const entity = `cmms-${uuid()}`;
+    const nb = await makeNotebook(tenant, entity, true);
+    // 45 opposing reports in 3 observed milliseconds; recorded times inside one millisecond.
+    await bulkSeed(tenant, nb, entity, 45, "absent", "date_trunc('milliseconds', now()) - interval '30 minutes' + (g.i % 3) * interval '1 millisecond'");
+    await testPool.query(
+      `UPDATE asset_observations SET recorded_at = date_trunc('milliseconds', now()) + (random() * 900)::int * interval '1 microsecond'
+        WHERE equipment_entity_id = $1`,
+      [entity],
+    );
+    const [current] = await seed(tenant, nb, entity, [{ factValue: "present", observedAt: new Date(Date.now() - 2 * MIN).toISOString() }]);
+    await seed(tenant, nb, entity, [{ factValue: "repaired", observedAt: new Date(Date.now() - 90 * MIN).toISOString() }]);
+
+    const now = new Date();
+    const full = deriveObservedState(await allRows(tenant, entity), { now });
+    const expected = full.history.filter((r) => r.factValue === "absent").map((r) => r.id); // projector order
+    expect(expected).toHaveLength(45);
+
+    const paged: string[] = [];
+    let cursor: string | null = null;
+    for (let i = 0; i < 20; i++) {
+      const page = await listConflictPage(tenant, entity, "seal_leak", { cursor, limit: 7 });
+      if (page.status !== "ok") throw new Error(page.status);
+      expect(page.rows.length).toBeLessThanOrEqual(7);
+      for (const e of page.rows) expect(Object.keys(e)).not.toContain("rawReport");
+      paged.push(...page.rows.map((e) => e.observationId));
+      if (!page.nextCursor) break;
+      cursor = page.nextCursor;
+    }
+    expect(paged).toEqual(expected);
+
+    // The state's own continuation lines up with the pages.
+    const bounded = await boundedState(tenant, entity, now);
+    const cont = await listConflictPage(tenant, entity, "seal_leak", { cursor: bounded.facts[0]!.conflictsNextCursor, limit: 100 });
+    if (cont.status !== "ok") throw new Error(cont.status);
+    expect([...bounded.facts[0]!.conflicting.slice(1).map((e) => e.observationId), ...cont.rows.map((e) => e.observationId)]).toEqual(expected);
+
+    // A cursor outside the contest is refused, never a restart: unknown id, the current
+    // report itself, and a report on another fact.
+    expect((await listConflictPage(tenant, entity, "seal_leak", { cursor: uuid(), limit: 7 })).status).toBe("invalid_cursor");
+    expect((await listConflictPage(tenant, entity, "seal_leak", { cursor: current!, limit: 7 })).status).toBe("invalid_cursor");
+    expect((await listConflictPage(tenant, entity, "vibration", { cursor: expected[0]!, limit: 7 })).status).toBe("invalid_cursor");
+    // The last row is a valid cursor with an empty page after it.
+    const last = await listConflictPage(tenant, entity, "seal_leak", { cursor: expected.at(-1)!, limit: 7 });
+    expect(last).toEqual({ status: "ok", rows: [], nextCursor: null, contributorDigest: bounded.facts[0]!.contributorDigest });
+  });
+
+  // Codex #5104 r2 F4: the continuation is bound to the contest the reader holds. The
+  // digest is computed in the page's own statement, so a report recorded between reading
+  // the state and paging its conflicts is refused, never mixed into the first page.
+  it("conflict_page_is_refused_when_the_contest_changed_after_the_state_was_read", async () => {
+    const tenant = uuid();
+    const entity = `cmms-${uuid()}`;
+    const nb = await makeNotebook(tenant, entity, true);
+    await bulkSeed(tenant, nb, entity, CONFLICTS_SHOWN + 10, "absent", "now() - interval '30 minutes' - g.i * interval '1 second'");
+    await seed(tenant, nb, entity, [{ factValue: "present", observedAt: new Date(Date.now() - 2 * MIN).toISOString() }]);
+
+    const read = await boundedState(tenant, entity, new Date());
+    const fact = read.facts[0]!;
+    expect(fact.contested).toBe(true);
+    expect(fact.conflictsNextCursor).not.toBeNull();
+
+    // Control: same contest, the page comes back with the digest the reader holds.
+    const same = await listConflictPage(tenant, entity, "seal_leak", {
+      cursor: fact.conflictsNextCursor, limit: 100, expectDigest: fact.contributorDigest,
+    });
+    if (same.status !== "ok") throw new Error(same.status);
+    expect(same.contributorDigest).toBe(fact.contributorDigest);
+    expect(same.rows.length).toBe(fact.conflictTotal - fact.conflicting.length);
+
+    // Another technician reports an opposing reading in between.
+    await bulkSeed(tenant, nb, entity, 1, "absent", "now() - interval '10 minutes'");
+    const stale = await listConflictPage(tenant, entity, "seal_leak", {
+      cursor: fact.conflictsNextCursor, limit: 100, expectDigest: fact.contributorDigest,
+    });
+    expect(stale).toEqual({ status: "state_changed" });
+
+    // Rereading the state gives the digest the new contest is paged under.
+    const reread = (await boundedState(tenant, entity, new Date())).facts[0]!;
+    expect(reread.contributorDigest).not.toBe(fact.contributorDigest);
+    const fresh = await listConflictPage(tenant, entity, "seal_leak", {
+      cursor: reread.conflictsNextCursor, limit: 100, expectDigest: reread.contributorDigest,
+    });
+    if (fresh.status !== "ok") throw new Error(fresh.status);
+    expect(fresh.rows.length).toBe(reread.conflictTotal - reread.conflicting.length);
+  });
+
+  // The contest window and the repair boundary are compared at millisecond precision, as
+  // the projector compares them. Sub-millisecond times on both sides of each edge.
+  it("contest_edges_follow_the_projector_at_millisecond_precision", async () => {
+    const tenant = uuid();
+    const entity = `cmms-${uuid()}`;
+    const nb = await makeNotebook(tenant, entity, true);
+    const T = Math.floor(Date.now() / 1000) * 1000 - 5 * MIN;
+    const at = (ms: number) => new Date(ms).toISOString();
+    const [current] = await seed(tenant, nb, entity, [{ factValue: "present", observedAt: at(T) }]);
+    const [inEdge, outEdge, outSubMs, inSubMs] = await seed(tenant, nb, entity, [
+      { factValue: "absent", observedAt: at(T - 60 * MIN) },
+      { factValue: "absent", observedAt: at(T - 60 * MIN - 1) },
+      { factValue: "absent", observedAt: at(T - 60 * MIN - 1) },
+      { factValue: "absent", observedAt: at(T - 60 * MIN) },
+    ]);
+    // Fixture microseconds: current 0.7 ms past T; one row 0.2 ms before the hour edge (the
+    // projector truncates it to 1 ms before: out, though a full-precision bound with 1 ms of
+    // slack would keep it), one 0.2 ms after the edge (truncates onto it: in).
+    const micro = (id: string, us: number) =>
+      testPool.query(`UPDATE asset_observations SET observed_at = observed_at + make_interval(secs => $2::double precision) WHERE id = $1::uuid`, [id, us / 1e6]);
+    await micro(current!, 700);
+    await micro(outSubMs!, 800);
+    await micro(inSubMs!, 200);
+
+    const now = new Date();
+    const full = deriveObservedState(await allRows(tenant, entity), { now });
+    expect(full.facts[0]!.conflicting.map((e) => e.observationId).sort()).toEqual([current!, inEdge!, inSubMs!].sort());
+    expect(outEdge).not.toBe(outSubMs);
+    const bounded = await boundedState(tenant, entity, now);
+    expect(bounded.facts).toEqual(full.facts);
+    expect(bounded.stateVersion).toBe(full.stateVersion);
+
+    // Repair boundary: a repair 0.6 ms into a millisecond; an opposing report 0.3 ms into the
+    // same millisecond is not before it to the projector, so it still contests.
+    const entity2 = `cmms-${uuid()}`;
+    const nb2 = await makeNotebook(tenant, entity2, true);
+    const R = T - 30 * MIN;
+    const [repair, sameMs, before] = await seed(tenant, nb2, entity2, [
+      { factValue: "repaired", observedAt: at(R) },
+      { factValue: "absent", observedAt: at(R) },
+      { factValue: "absent", observedAt: at(R - 1) },
+    ]);
+    const [cur2] = await seed(tenant, nb2, entity2, [{ factValue: "present", observedAt: at(T) }]);
+    await micro(repair!, 600);
+    await micro(sameMs!, 300);
+    await micro(before!, 900);
+    const full2 = deriveObservedState(await allRows(tenant, entity2), { now });
+    expect(full2.facts[0]!.conflicting.map((e) => e.observationId).sort()).toEqual([cur2!, sameMs!].sort());
+    const bounded2 = await boundedState(tenant, entity2, now);
+    expect(bounded2.facts).toEqual(full2.facts);
+    expect(bounded2.stateVersion).toBe(full2.stateVersion);
+
+    // Current report inside one millisecond: the report 0.2 ms in was recorded later than the
+    // one 0.8 ms in, so the projector picks it; a full-precision "newest" bound would drop it.
+    const entity3 = `cmms-${uuid()}`;
+    const nb3 = await makeNotebook(tenant, entity3, true);
+    // An earlier "present" report opposes the true current report but not the mutant's pick.
+    const [late, early, earlier] = await seed(tenant, nb3, entity3, [
+      { factValue: "present", observedAt: at(T) },
+      { factValue: "absent", observedAt: at(T) },
+      { factValue: "present", observedAt: at(T - 10 * MIN) },
+    ]);
+    await micro(late!, 800);
+    await micro(early!, 200);
+    await testPool.query(
+      `UPDATE asset_observations SET recorded_at = (SELECT recorded_at FROM asset_observations WHERE id = $1::uuid) + interval '5 milliseconds' WHERE id = $2::uuid`,
+      [late, early],
+    );
+    const full3 = deriveObservedState(await allRows(tenant, entity3), { now });
+    expect(full3.facts[0]!.current.observationId).toBe(early!);
+    expect(full3.facts[0]!.conflictTotal).toBe(3);
+    expect(full3.facts[0]!.conflicting.map((e) => e.observationId).sort()).toEqual([early!, late!, earlier!].sort());
+    const bounded3 = await boundedState(tenant, entity3, now);
+    expect(bounded3.facts).toEqual(full3.facts);
+    expect(bounded3.stateVersion).toBe(full3.stateVersion);
+  });
+
+  it("projection_matches_the_full_projection_at_millisecond_ties_and_window_edges", async () => {
+    let seedN = 5106;
+    const rand = () => ((seedN = (seedN * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
+    const values = ["present", "absent", "repaired"] as const;
+    for (let round = 0; round < 8; round++) {
+      const tenant = uuid();
+      const entity = `cmms-${uuid()}`;
+      const nb = await makeNotebook(tenant, entity, true);
+      const anchorMs = Math.floor(Date.now() / 1000) * 1000 - 10 * MIN;
+      // Observed times cluster on the anchor, exactly one hour before it, and one millisecond
+      // either side of that edge, so ties and window edges dominate.
+      const offsets = [0, 0, 0, -1, -60 * MIN, -60 * MIN - 1, -60 * MIN + 1, -30 * MIN];
+      const made: string[] = [];
+      for (let i = 0; i < 40; i++) {
+        const supersedesId = made.length > 0 && rand() < 0.15 ? made[Math.floor(rand() * made.length)]! : null;
+        const r = created(await insertObservation(tenant, nb, entity, null, input({
+          factValue: values[Math.floor(rand() * values.length)]!,
+          observedAt: new Date(anchorMs + offsets[Math.floor(rand() * offsets.length)]!).toISOString(),
+          supersedesId,
+        }), "tech-1"));
+        made.push(r.observation.id);
+      }
+      // Sub-millisecond recorded times: half the rows share one millisecond.
+      await testPool.query(
+        `UPDATE asset_observations SET recorded_at = date_trunc('milliseconds', now())
+                + (CASE WHEN random() < 0.5 THEN 0 ELSE 1 END) * interval '1 millisecond'
+                + (random() * 999)::int * interval '1 microsecond'
+          WHERE equipment_entity_id = $1`,
+        [entity],
+      );
+      const now = new Date();
+      const full = deriveObservedState(await allRows(tenant, entity), { now });
+      const bounded = await boundedState(tenant, entity, now);
+      expect({ round, facts: bounded.facts, v: bounded.stateVersion, n: bounded.contributorCount })
+        .toEqual({ round, facts: full.facts, v: full.stateVersion, n: full.contributorCount });
+    }
   });
 
   it("projection_matches_the_full_projection_on_random_report_sequences", async () => {
@@ -474,7 +910,7 @@ describe("observation reads are bounded (real Postgres)", () => {
       }
       const now = new Date();
       const full = deriveObservedState(await allRows(tenant, entity), { now });
-      const bounded = deriveObservedState(await listProjectionRows(tenant, entity), { now });
+      const bounded = await boundedState(tenant, entity, now);
       expect({ round, facts: bounded.facts, v: bounded.stateVersion }).toEqual({ round, facts: full.facts, v: full.stateVersion });
     }
   });
