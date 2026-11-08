@@ -263,3 +263,28 @@ export function edgePassagesUsage(): TurnUsage {
     attempted: [],
   };
 }
+
+/**
+ * EVIDENCE-ONLY fault mode — OFF unless MIRA_EDGE_EVIDENCE_ONLY_FAULTS=1.
+ *
+ * On the device no safety judge can run, so every FLAGGED turn (a hazard
+ * trigger or the output floor's warning) ends in the controlled unverified
+ * fallback (Safety Phase 0, #4372) and a fault question gets no manual text at
+ * all. With this flag ON — and only for a turn the edge profile answered from
+ * verbatim passages — the passages are served under this banner instead:
+ * the manual's own words with page, no generated instruction, no setting, and
+ * the hazard banner still above it. An "unsafe" verdict, the energized-work
+ * stop and the immediate-danger stop are unaffected.
+ *
+ * Changing what an undecided judge does is a safety-approval POLICY change:
+ * the flag stays off until Mike signs off (#5265).
+ */
+export function edgeEvidenceOnlyFaultsEnabled(): boolean {
+  return process.env.MIRA_EDGE_EVIDENCE_ONLY_FAULTS === "1";
+}
+
+export const EDGE_EVIDENCE_ONLY_BANNER =
+  "⚠️ **Manual pages only — safety review not available on this device.** These are the manual's own words, not instructions for this machine's present state. Treat it as energized and under stored energy until isolation is proven, follow your site's lockout/tagout procedure, and get a qualified person's direction before any hands-on step.";
+
+/** Route reason / violation code recorded when the evidence-only mode served a flagged turn. */
+export const EDGE_EVIDENCE_ONLY_CODE = "edge-evidence-only";
