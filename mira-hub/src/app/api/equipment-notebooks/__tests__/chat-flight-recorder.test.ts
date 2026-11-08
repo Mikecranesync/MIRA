@@ -109,6 +109,9 @@ const veMock = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/visual-evidence-context", () => veMock);
 
+// #5268 option A: the public-manual proof is a DB read; default "not proven".
+const proofMock = vi.hoisted(() => ({ publicManualSeries: vi.fn(async (..._a: unknown[]) => null as string | null) }));
+vi.mock("@/capabilities/public-model-proof", () => proofMock);
 const manualDiscoveryMock = vi.hoisted(() => ({ discoverManual: vi.fn() }));
 // #4171 F3 — the one-time proposal claim is a DB write; claimed by default.
 const claimMock = vi.hoisted(() => ({ claimPartSearchProposal: vi.fn(async () => true) }));
@@ -197,6 +200,7 @@ beforeEach(() => {
   acqMock.acquisitionEnabled.mockReturnValue(false);
   acqMock.startManualAcquisition.mockResolvedValue(false);
   handle.reset();
+  proofMock.publicManualSeries.mockResolvedValue(null);
   process.env.GROQ_API_KEY = "k1";
   process.env.CEREBRAS_API_KEY = "k2";
   process.env.TOGETHERAI_API_KEY = "k3";
@@ -479,8 +483,8 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
     veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
       observationId: "o3", sessionId: "s1", text, obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
     } as never);
-  it.each(["SMC MODEL: TP1200\n(customer\nasset tag)", "SMC MODEL: TP1200 (customer\nasset tag)", "SMC MODEL: TP1200 (internal\r\nasset tag)", "SMC MODEL: TP1200\n(customer\nS/N)", "SMC MODEL: TP1200 (customer #1 asset tag)", "SMC MODEL: TP1200 (customer\n#1 asset tag)", "SMC MODEL: TP1200 (customer #1 S/N)"])(
-    "#5268 r16/r17: confirming a persisted TP1200 offer does not search when the plate has a dangling private label (%j)",
+  it.each(["SMC MODEL: TP1200\n(customer\nasset tag)", "SMC MODEL: TP1200 (customer\nasset tag)", "SMC MODEL: TP1200 (internal\r\nasset tag)", "SMC MODEL: TP1200\n(customer\nS/N)", "SMC MODEL: TP1200 (customer #1 asset tag)", "SMC MODEL: TP1200 (customer\n#1 asset tag)", "SMC MODEL: TP1200 (customer #1 S/N)", "SMC MODEL: TP1200 (customer\n#1234 asset tag)", "SMC MODEL: TP1200 (customer\r\n#1234 S/N)"])(
+    "#5268 r16-r18 (option A): confirming a persisted TP1200 offer does not search when the plate has a dangling private label (%j)",
     async (plate) => {
       plateLabel(plate);
       domainMock.listTurns.mockResolvedValueOnce(proposalTurn("TP1200", "u1", "SMC") as never);
@@ -489,8 +493,9 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
       expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
     },
   );
-  it("#5268 r16 control: a plate whose serial label owns its value still confirms the TP1200 offer into one search", async () => {
+  it("#5268 r16 control: a serial plate whose model is in the maker's public manuals still confirms the TP1200 offer into one search", async () => {
     plateLabel("SMC MODEL: TP1200\nS/N: 00998877");
+    proofMock.publicManualSeries.mockResolvedValue("");
     domainMock.listTurns.mockResolvedValueOnce(proposalTurn("TP1200", "u1", "SMC") as never);
     manualDiscoveryMock.discoverManual.mockResolvedValueOnce(found);
     await ask('Search the web for "TP1200"');

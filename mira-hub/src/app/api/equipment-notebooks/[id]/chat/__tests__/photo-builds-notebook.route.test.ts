@@ -81,6 +81,9 @@ vi.mock("@/lib/visual-evidence-context", async (original) => ({
   loadRecentLookObservations: vi.fn(async () => []),
 }));
 
+// #5268 option A: the public-manual proof is a DB read; default "not proven".
+const proofMock = vi.hoisted(() => ({ publicManualSeries: vi.fn(async (..._a: unknown[]) => null as string | null) }));
+vi.mock("@/capabilities/public-model-proof", () => proofMock);
 const acqMock = vi.hoisted(() => ({
   acquisitionEnabled: vi.fn(() => true),
   startManualAcquisition: vi.fn(async () => true),
@@ -165,6 +168,7 @@ beforeEach(() => {
   ragMock.retrieveManualChunks.mockResolvedValue([]);
   ragMock.corpusManufacturers.mockResolvedValue([]);
   ragMock.manufacturerFromObservationText.mockReturnValue(null);
+  proofMock.publicManualSeries.mockResolvedValue(null);
   acqMock.acquisitionEnabled.mockReturnValue(true);
   acqMock.startManualAcquisition.mockResolvedValue(true);
   acqMock.readAcquisition.mockResolvedValue(null);
@@ -192,6 +196,7 @@ describe("a nameplate photo starts the manual search on the same turn", () => {
   });
 
   it("a plate that prints a serial does not search by itself, and the serial never leaves", async () => {
+    proofMock.publicManualSeries.mockResolvedValue("GS10");
     visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
       observationId: "obs", sessionId: "session", text: SERIAL_PLATE, obsKind: "look", trust: "candidate", fileId: PHOTO, hazards: [],
     });
@@ -233,7 +238,62 @@ describe("a nameplate photo starts the manual search on the same turn", () => {
       expect(followups?.suggestions ?? []).not.toContainEqual(expect.stringMatching(/TP1200/));
     },
   );
+  // #5268 owner decision 2026-11-07 (option A): on a plate that shows a serial
+  // or asset label, the maker's own public manuals decide — not label wording.
+  it("option A: a serial plate whose model is NOT in the maker's public manuals offers no chip", async () => {
+    visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+      observationId: "obs", sessionId: "session", text: SERIAL_PLATE, obsKind: "look", trust: "candidate", fileId: PHOTO, hazards: [],
+    });
+    const f = await frames(await POST(req({ message: "Find the manual for this drive", mode: "general", visualEvidence: { fileId: PHOTO } }), params));
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    const followups = f.find((x) => x.kind === "followups") as { suggestions?: string[] } | undefined;
+    expect(followups?.suggestions ?? []).not.toContainEqual(expect.stringMatching(/Search the web for/));
+    expect(proofMock.publicManualSeries).toHaveBeenCalledWith(expect.anything(), "AUTOMATIONDIRECT", MODEL);
+  });
+
+  it("option A (the Pixel plate): a library maker whose pages missed the full catalog number still offers the proven model", async () => {
+    ragMock.corpusManufacturers.mockResolvedValue(["AutomationDirect"]);
+    ragMock.manufacturerFromObservationText.mockReturnValue("AutomationDirect");
+    ragMock.retrieveManualChunks.mockResolvedValue([]);
+    proofMock.publicManualSeries.mockResolvedValue("GS10");
+    visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+      observationId: "obs", sessionId: "session", text: SERIAL_PLATE, obsKind: "look", trust: "candidate", fileId: PHOTO, hazards: [],
+    });
+    const f = await frames(await POST(req({ message: "Find the manual for this drive", mode: "general", visualEvidence: { fileId: PHOTO } }), params));
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    const followups = f.find((x) => x.kind === "followups") as { suggestions?: string[] } | undefined;
+    expect(followups?.suggestions).toContain(`Search the web for "${MODEL}"`);
+    // Only the maker and the model reach the proof query; the serial never leaves.
+    expect(proofMock.publicManualSeries).toHaveBeenCalledWith(expect.anything(), "AutomationDirect", MODEL);
+    expect(JSON.stringify(proofMock.publicManualSeries.mock.calls)).not.toContain(SERIAL);
+    expect(JSON.stringify(f)).not.toContain(SERIAL);
+  });
+
+  it("option A control: the same library-maker plate with the model NOT proven public offers no chip", async () => {
+    ragMock.corpusManufacturers.mockResolvedValue(["AutomationDirect"]);
+    ragMock.manufacturerFromObservationText.mockReturnValue("AutomationDirect");
+    ragMock.retrieveManualChunks.mockResolvedValue([]);
+    visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+      observationId: "obs", sessionId: "session", text: SERIAL_PLATE, obsKind: "look", trust: "candidate", fileId: PHOTO, hazards: [],
+    });
+    const f = await frames(await POST(req({ message: "Find the manual for this drive", mode: "general", visualEvidence: { fileId: PHOTO } }), params));
+    const followups = f.find((x) => x.kind === "followups") as { suggestions?: string[] } | undefined;
+    expect(followups?.suggestions ?? []).not.toContainEqual(expect.stringMatching(/Search the web for/));
+  });
+
+  it.each(["SMC MODEL: TP1200 (customer\n#1234 asset tag)", "SMC MODEL: TP1200 (customer\r\n#1234 S/N)"])(
+    "option A: a wording the label rules miss (Codex r18) is stopped by the public-manual proof (%j)",
+    async (plate) => {
+      visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+        observationId: "obs", sessionId: "session", text: plate, obsKind: "look", trust: "candidate", fileId: PHOTO, hazards: [],
+      });
+      const f = await frames(await POST(req({ message: "Find the manual for this", mode: "general", visualEvidence: { fileId: PHOTO } }), params));
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+      for (const frame of f) expect(JSON.stringify(frame)).not.toMatch(/Search the web for[^"]*\\?"TP1200/);
+    },
+  );
   it("r14 control: a public model beside a distinct serial is still offered on the confirm chip", async () => {
+    proofMock.publicManualSeries.mockResolvedValue("");
     visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
       observationId: "obs", sessionId: "session", text: "SMC MODEL: TP1200\nS/N: 00998877", obsKind: "look", trust: "candidate", fileId: PHOTO, hazards: [],
     });

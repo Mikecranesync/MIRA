@@ -148,6 +148,8 @@ import {
   PART_SEARCH_CANCEL,
   asksPartCompatibility,
   isPartSearchProposal,
+  mentionsAssetLabel,
+  mentionsSerialLabel,
   partSearchConfirmation,
   partSearchDecision,
   pendingPartSearchProposal,
@@ -155,6 +157,7 @@ import {
   type PartSearchDecision,
   type PartSearchProposalEntry,
 } from "@/capabilities/photo-part-lookup";
+import { publicManualSeries } from "@/capabilities/public-model-proof";
 import { extractCandidateIdentity, isSafeCandidateSearchIdentity, wantsManualDocumentation } from "@/capabilities/candidate-identity";
 import { citationTitle } from "@/capabilities/citation-title";
 import { claimPartSearchProposal } from "@/capabilities/part-search-claim";
@@ -2765,7 +2768,38 @@ async function handleChatTurn(
     // proposal) passes the same candidate validator before any search starts.
     isSafeCandidateSearchIdentity(photoTextForOem, message, identityProposal.model, identityProposal.manufacturer) &&
     ((Boolean(photoTextForOem) && unambiguousPartNumber(photoTextForOem) !== null) || wantsManualDocumentation(message));
-  const partSearchEligible = chunks.length === 0 && general && oemManufacturer === null && !candidateAcquisitionOwnsTurn;
+  // #5268 owner decision 2026-11-07 (option A): a plate that shows a serial or
+  // asset label offers its code only when the code is proven public — printed
+  // in that maker's own manuals in the shared library. That proof, not how the
+  // plate words its labels, decides; it also lets a library maker whose pages
+  // did not match the full catalog number ("GS11N-20P2" lives in the GS10
+  // manual) offer the confirm-first search. The label rules in
+  // photo-part-lookup still only ever remove a code.
+  const photoPrivateLabelled =
+    photoTextForPartLookup !== "" && (mentionsSerialLabel(photoTextForPartLookup) || mentionsAssetLabel(photoTextForPartLookup));
+  let offeredPartNumber = photoPartNumber;
+  let publicModelProven = false;
+  if (photoPrivateLabelled && photoPartNumber !== null) {
+    const proofMaker = oemManufacturer?.name ?? photoMaker;
+    if (proofMaker && chunks.length === 0 && general && !candidateAcquisitionOwnsTurn) {
+      let client: PoolClient | null = null;
+      try {
+        client = await pool.connect();
+        publicModelProven = (await publicManualSeries(client, proofMaker, photoPartNumber)) !== null;
+      } catch (err) {
+        console.error("[notebook-chat] public-model proof skipped (not proven):", err instanceof Error ? err.message : err);
+      } finally {
+        try {
+          client?.release();
+        } catch {
+          /* already released */
+        }
+      }
+    }
+    if (!publicModelProven) offeredPartNumber = null;
+  }
+  const partSearchEligible =
+    chunks.length === 0 && general && (oemManufacturer === null || publicModelProven) && !candidateAcquisitionOwnsTurn;
   // The technician's own immediately preceding turn in this thread carries any
   // pending proposal. #4185/#4186 (the #4160 Pixel walk incident): read it on
   // EVERY eligible turn, not only an exact confirm/cancel string — otherwise a
@@ -2788,7 +2822,7 @@ async function handleChatTurn(
   const partSearch: PartSearchDecision = partSearchEligible
     ? partSearchDecision({
         message,
-        candidate: photoPartNumber,
+        candidate: offeredPartNumber,
         manufacturer: photoMaker,
         previousEvidence: previousTurnEvidence,
         previousTurnId,
