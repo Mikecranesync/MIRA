@@ -1,3 +1,13 @@
+---
+paths:
+  - "**/*.py"
+  - "**/*.ts"
+  - "**/*.tsx"
+  - "**/*.js"
+  - "**/*.mjs"
+  - "**/*.sh"
+---
+
 # CodeGraph Usage
 
 CodeGraph is the SQLite semantic index of the MIRA codebase (symbols, edges,

@@ -1,3 +1,9 @@
+---
+paths:
+  - "mira-relay/**"
+  - "simlab/**"
+---
+
 # The One-Pipeline Law (canonical factory ingest contract)
 
 Every factory data **source** — garage conveyor, MQTT devices, Sparkplug, Ignition, PLC feeds,
