@@ -12,6 +12,9 @@ if [ -n "$(git -C "$ROOT" status --porcelain --untracked-files=no)" ]; then
   echo "refusing: tracked changes in the tree; build a committed SHA" >&2
   exit 1
 fi
+# The shared UI packages resolve their imports (e.g. @assistant-ui/react) through the Hub's
+# node_modules, exactly as mira-hub/Dockerfile links them.
+[ -e "$ROOT/packages/node_modules" ] || ln -s ../mira-hub/node_modules "$ROOT/packages/node_modules"
 cd "$ROOT/mira-hub"
 # The Dockerfile defaults NEXT_PUBLIC_* to the cloud (/hub, app.factorylm.com). An edge
 # build must override them, or browser sign-in on the device breaks (2026-11-08).
