@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { API_BASE } from "@/lib/config";
 import { POLL_INTERVAL_MS, POLL_MAX, type SetupDeps } from "./new-project-setup-logic";
-import { addPendingManual, checkPendingManuals, reuploadPendingManual, type PendingManual } from "./pending-manuals";
+import { addPendingManual, checkPendingManuals, knownSources, reuploadPendingManual, type PendingManual } from "./pending-manuals";
 
 type Props = {
   notebookId: string;
@@ -42,13 +42,15 @@ export function PendingManuals({ notebookId, nodeId, sources, approved, onAttach
   useEffect(() => { latest.current = { sources, approved, onAttached }; }, [sources, approved, onAttached]);
   const names = useRef(new Map<string, string>());
   const [busy, setBusy] = useState<string | null>(null);
+  /** Documents this panel attached; counted as sources until the host's refresh lists them (#5325). */
+  const attachedDocs = useRef(new Set<string>());
 
   useEffect(() => {
     let alive = true;
     void (async () => {
       setStatus("checking");
       for (let poll = 1; poll <= POLL_MAX && alive; poll++) {
-        const r = await checkPendingManuals({ notebookId, nodeId, sources: latest.current.sources, approved: latest.current.approved }, deps, () => !alive);
+        const r = await checkPendingManuals({ notebookId, nodeId, sources: knownSources(latest.current.sources, attachedDocs.current), approved: latest.current.approved }, deps, () => !alive);
         if (!alive) return;
         if (!r.ok) { setStatus("error"); return; }
         for (const [id, name] of Object.entries(r.filenames)) names.current.set(id, name);
@@ -70,6 +72,7 @@ export function PendingManuals({ notebookId, nodeId, sources, approved, onAttach
     if (!p.docId) return;
     const r = await addPendingManual(notebookId, p.docId, deps);
     if (r.ok) {
+      attachedDocs.current.add(p.docId);
       setPending((list) => list.filter((x) => x.fileId !== p.fileId));
       setAdded((a) => [...a, p.filename]);
       latest.current.onAttached([p.fileId]);
@@ -84,6 +87,7 @@ export function PendingManuals({ notebookId, nodeId, sources, approved, onAttach
     const r = await reuploadPendingManual({ notebookId, nodeId, file }, deps);
     setBusy(null);
     if (r.kind === "attached") {
+      attachedDocs.current.add(r.docId);
       // Name the file that was added, and re-read the project rather than drop the
       // row: a different PDF leaves the original unread on the server (#5316 device run).
       setAdded((a) => [...a, r.filename]);
