@@ -42,16 +42,19 @@ const { testPool } = vi.hoisted(() => {
 vi.mock("@/lib/db", () => ({ default: testPool }));
 vi.mock("@/lib/session", () => ({ sessionOr401: vi.fn() }));
 // Keep PDF parsing/provider calls out of this database/RLS integration suite.
-vi.mock("@/lib/node-knowledge-ingest", () => ({
-  ingestPdfToNode: vi.fn(),
-  ingestTextToNode: vi.fn(),
-  deleteOrphanNodeIngest: vi.fn(async () => undefined),
-}));
+vi.mock("@/lib/node-knowledge-ingest", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/node-knowledge-ingest")>();
+  return {
+    ingestPdfToNode: vi.fn(),
+    ingestTextToNode: vi.fn(),
+    deleteOrphanNodeIngest: actual.deleteOrphanNodeIngest,
+  };
+});
 
 import { GET, POST } from "../route";
-import { ingestPdfToNode } from "@/lib/node-knowledge-ingest";
-import { createUpload, updateUploadStatus } from "@/lib/uploads";
-import { parkOrReuseFile, claimIngest } from "@/lib/workspace-files";
+import { ingestPdfToNode, deleteOrphanNodeIngest } from "@/lib/node-knowledge-ingest";
+import { createUpload, updateUploadStatus, findDuplicateUpload } from "@/lib/uploads";
+import { parkOrReuseFile, claimIngest, linkFileToUpload } from "@/lib/workspace-files";
 import { sessionOr401 } from "@/lib/session";
 
 const TENANT = "3f000000-0000-4000-8000-000000000001";
@@ -117,6 +120,7 @@ async function listFiles(nodeId: string) {
 
 async function wipe() {
   const tenants = [TENANT, OTHER_TENANT];
+  await testPool.query(`DELETE FROM knowledge_entries WHERE tenant_id = ANY($1::uuid[])`, [tenants]);
   await testPool.query(`DELETE FROM workspace_file_links WHERE tenant_id = ANY($1::uuid[])`, [tenants]);
   await testPool.query(`DELETE FROM namespace_direct_uploads WHERE tenant_id = ANY($1::uuid[])`, [tenants]);
   await testPool.query(`DELETE FROM hub_uploads WHERE tenant_id = ANY($1::text[])`, [tenants]);
@@ -246,6 +250,100 @@ describe("POST — recover a parsed document after finalization failed (#5318)",
     expect(ingestPdfToNode).not.toHaveBeenCalled();
     const saved = await testPool.query("SELECT upload_id, ingest_claim_token::text FROM namespace_direct_uploads WHERE id = $1", [parked.fileId]);
     expect(saved.rows[0]).toEqual({ upload_id: null, ingest_claim_token: owner.claimed ? owner.claimToken : null });
+  });
+
+  it.each(["after adoption", "between lookup and adoption"] as const)("preserves the parsed document and chunks when a stale producer cleans up %s", async (order) => {
+    const parked = await parkOrReuseFile({ tenantId: TENANT, nodeId: nodeA, filename: "race.pdf", mimeType: "application/pdf", sizeBytes: bytes.length, buffer: bytes });
+    const upload = await createUpload({ tenantId: TENANT, provider: "local", filename: "race.pdf", initialStatus: "parsed", kgEntityId: nodeA, ingestRoute: "v2", contentSha256: hash });
+    await testPool.query("INSERT INTO knowledge_entries (tenant_id, doc_id, content) VALUES ($1::uuid, $2::uuid, 'retained fixture chunk')", [TENANT, upload.id]);
+    const claim = await claimIngest(TENANT, parked.fileId);
+    expect(claim.claimed).toBe(true);
+    if (!claim.claimed) throw new Error("fixture claim unavailable");
+    expect((await findDuplicateUpload(TENANT, hash, nodeA))?.id).toBe(upload.id);
+
+    if (order === "between lookup and adoption") await deleteOrphanNodeIngest(TENANT, upload.id);
+    expect(await linkFileToUpload(TENANT, parked.fileId, upload.id, claim.claimToken)).toBe(true);
+    if (order === "after adoption") await deleteOrphanNodeIngest(TENANT, upload.id);
+
+    const document = await testPool.query("SELECT id FROM hub_uploads WHERE tenant_id = $1 AND id = $2", [TENANT, upload.id]);
+    expect(document.rowCount).toBe(1);
+    const chunks = await testPool.query("SELECT count(*)::int AS n FROM knowledge_entries WHERE tenant_id = $1::uuid AND doc_id = $2::uuid", [TENANT, upload.id]);
+    expect(chunks.rows[0].n).toBe(1);
+    const saved = await testPool.query("SELECT upload_id::text FROM namespace_direct_uploads WHERE id = $1", [parked.fileId]);
+    expect(saved.rows[0].upload_id).toBe(upload.id);
+  });
+
+  it("serializes cleanup before a retry can claim and adopt the document being removed", async () => {
+    const parked = await parkOrReuseFile({ tenantId: TENANT, nodeId: nodeA, filename: "ordered.pdf", mimeType: "application/pdf", sizeBytes: bytes.length, buffer: bytes });
+    const input = { tenantId: TENANT, provider: "local" as const, filename: "ordered.pdf", initialStatus: "parsed" as const, kgEntityId: nodeA, ingestRoute: "v2", contentSha256: hash };
+    const oldUpload = await createUpload(input);
+    const chunk = await testPool.query("INSERT INTO knowledge_entries (tenant_id, doc_id, content) VALUES ($1::uuid, $2::uuid, 'blocked fixture chunk') RETURNING id", [TENANT, oldUpload.id]);
+    const locker = await testPool.connect();
+    let cleanup: Promise<void> | undefined;
+    let retry: Promise<Response> | undefined;
+    let retryFinished = false;
+    let replacementId = "";
+    try {
+      await locker.query("BEGIN");
+      await locker.query("SELECT id FROM knowledge_entries WHERE id = $1 FOR UPDATE", [chunk.rows[0].id]);
+      cleanup = deleteOrphanNodeIngest(TENANT, oldUpload.id);
+      // A real row lock pauses cleanup at DELETE, after it locked the file.
+      let blocked = false;
+      for (let n = 0; n < 200; n++) {
+        const waiting = await testPool.query("SELECT 1 FROM pg_stat_activity WHERE query LIKE 'DELETE FROM knowledge_entries%' AND wait_event_type = 'Lock'");
+        if (waiting.rowCount) { blocked = true; break; }
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(blocked).toBe(true);
+      vi.mocked(ingestPdfToNode).mockImplementationOnce(async () => {
+        const replacement = await createUpload(input);
+        replacementId = replacement.id;
+        return { uploadId: replacement.id, chunkCount: 1 };
+      });
+      const form = new FormData();
+      form.append("file", new File([bytes], "ordered.pdf", { type: "application/pdf" }));
+      retry = POST(new Request(`https://hub.test/api/namespace/node/${nodeA}/files`, { method: "POST", body: form }), { params: Promise.resolve({ id: nodeA }) }).finally(() => { retryFinished = true; });
+      // Wait for the retry to reach a database wait, or incorrectly finish.
+      for (let n = 0; n < 200 && !retryFinished; n++) {
+        const waiting = await testPool.query("SELECT count(*)::int AS n FROM pg_stat_activity WHERE wait_event_type = 'Lock'");
+        if (waiting.rows[0].n >= 2) break;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(retryFinished).toBe(false);
+    } finally {
+      await locker.query("ROLLBACK");
+      locker.release();
+      await cleanup;
+      if (retry) await retry;
+    }
+    const res = await retry!;
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({ indexed: true, uploadId: replacementId, fileId: parked.fileId });
+    expect((await testPool.query("SELECT id FROM hub_uploads WHERE id = $1", [oldUpload.id])).rowCount).toBe(0);
+    expect((await testPool.query("SELECT id FROM hub_uploads WHERE id = $1", [replacementId])).rowCount).toBe(1);
+    const saved = await testPool.query("SELECT upload_id::text FROM namespace_direct_uploads WHERE id = $1", [parked.fileId]);
+    expect(saved.rows[0].upload_id).toBe(replacementId);
+  });
+
+  it.each(["hash", "file"] as const)("retains the upload when its canonical %s identity is unavailable", async (missing) => {
+    const upload = await createUpload({ tenantId: TENANT, provider: "local", filename: "uncertain.pdf", initialStatus: "parsed", kgEntityId: nodeA, ingestRoute: "v2", contentSha256: missing === "hash" ? null : hash });
+    await deleteOrphanNodeIngest(TENANT, upload.id);
+    expect((await testPool.query("SELECT id FROM hub_uploads WHERE id = $1", [upload.id])).rowCount).toBe(1);
+  });
+
+  it("still cleans a proven losing document when the canonical file is linked to a different winner", async () => {
+    const parked = await parkOrReuseFile({ tenantId: TENANT, nodeId: nodeA, filename: "winner.pdf", mimeType: "application/pdf", sizeBytes: bytes.length, buffer: bytes });
+    const input = { tenantId: TENANT, provider: "local" as const, filename: "winner.pdf", initialStatus: "parsed" as const, kgEntityId: nodeA, ingestRoute: "v2", contentSha256: hash };
+    const loser = await createUpload(input);
+    const winner = await createUpload(input);
+    await testPool.query("INSERT INTO knowledge_entries (tenant_id, doc_id, content) VALUES ($1::uuid, $2::uuid, 'losing fixture chunk'), ($1::uuid, $3::uuid, 'winning fixture chunk')", [TENANT, loser.id, winner.id]);
+    const claim = await claimIngest(TENANT, parked.fileId);
+    if (!claim.claimed) throw new Error("fixture claim unavailable");
+    expect(await linkFileToUpload(TENANT, parked.fileId, winner.id, claim.claimToken)).toBe(true);
+    await deleteOrphanNodeIngest(TENANT, loser.id);
+    expect((await testPool.query("SELECT id FROM hub_uploads WHERE id = $1", [loser.id])).rowCount).toBe(0);
+    expect((await testPool.query("SELECT id FROM hub_uploads WHERE id = $1", [winner.id])).rowCount).toBe(1);
+    expect((await testPool.query("SELECT doc_id::text FROM knowledge_entries WHERE tenant_id = $1::uuid", [TENANT])).rows).toEqual([{ doc_id: winner.id }]);
   });
 
   it.each(["tenant", "node", "hash", "failed", "legacy", "duplicate"] as const)("does not relink a document with the wrong %s scope or state", async (mismatch) => {

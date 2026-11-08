@@ -787,31 +787,63 @@ export async function ingestTextToNode(opts: {
 }
 
 /**
- * Best-effort removal of an ORPHANED node ingest — an upload whose token-fenced
- * finalize LOST the claim (stolen mid-ingest after the stale window): its
- * chunks duplicate the winner's and must not stay retrievable, which is the
- * exact duplicate-corpus bug the ingestion claim exists to prevent.
+ * Best-effort removal of a losing node ingest. A retry can adopt a completed
+ * document after taking over a stale claim (#5319), so losing finalization is
+ * no longer sufficient proof that its upload/chunks are orphaned.
  *
- * Raw owner pool, explicit tenant + doc predicates: factorylm_app has no
- * DELETE grant on knowledge_entries (migrations 011/049 grant SELECT/INSERT
- * only), and the scope here is one tenant's one upload. Never throws — losing
- * the race is benign and a cleanup failure must not fail the request; a leaked
- * orphan is logged and stays invisible to notebook chat (no source row points
- * at it).
+ * Lock the same canonical file row used by claimIngest/linkFileToUpload. A
+ * claimant reads for reusable documents only AFTER claiming that row: cleanup
+ * either sees its active claim/adopted upload and retains the document, or
+ * finishes deleting before the next claimant can look it up. Keep an upload
+ * when its canonical identity is unavailable; absence is not orphan proof.
+ *
+ * Raw owner pool as before (factorylm_app cannot DELETE knowledge_entries),
+ * with explicit tenant predicates on every read/write and one transaction.
  */
 export async function deleteOrphanNodeIngest(
   tenantId: string,
   uploadId: string,
 ): Promise<void> {
   try {
-    await pool.query(
-      `DELETE FROM knowledge_entries WHERE tenant_id = $1::uuid AND doc_id = $2::uuid`,
-      [tenantId, uploadId],
-    );
-    await pool.query(`DELETE FROM hub_uploads WHERE tenant_id = $1 AND id = $2::uuid`, [
-      tenantId,
-      uploadId,
-    ]);
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const upload = await client.query<{ content_sha256: string | null }>(
+        `SELECT content_sha256 FROM hub_uploads WHERE tenant_id = $1 AND id = $2::uuid`,
+        [tenantId, uploadId],
+      );
+      const hash = upload.rows[0]?.content_sha256;
+      if (!hash) {
+        await client.query("COMMIT");
+        return;
+      }
+      const canonical = await client.query<{ upload_id: string | null; ingest_claim_token: string | null }>(
+        `SELECT upload_id::text, ingest_claim_token::text
+           FROM namespace_direct_uploads
+          WHERE tenant_id = $1::uuid AND content_sha256 = $2
+          FOR UPDATE`,
+        [tenantId, hash],
+      );
+      const file = canonical.rows[0];
+      if (!file || file.ingest_claim_token !== null || file.upload_id === uploadId) {
+        await client.query("COMMIT");
+        return;
+      }
+      await client.query(
+        `DELETE FROM knowledge_entries WHERE tenant_id = $1::uuid AND doc_id = $2::uuid`,
+        [tenantId, uploadId],
+      );
+      await client.query(`DELETE FROM hub_uploads WHERE tenant_id = $1 AND id = $2::uuid`, [
+        tenantId,
+        uploadId,
+      ]);
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
   } catch (err) {
     console.warn(
       `[node-ingest] orphan cleanup failed upload=${uploadId}: ${(err as Error).message}`,
