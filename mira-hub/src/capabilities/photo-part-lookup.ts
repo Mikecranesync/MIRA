@@ -291,23 +291,31 @@ export function unambiguousPartNumber(photoText: string): string | null {
  * digit-bearing code straight after it in the same field ("S/N: 00998877",
  * "asset tag 4471") or right before it on its line ("AB-1234567 S/N")?
  * "(customer\nasset tag)", "24VDC\n(asset tag)" and a label
- * whose value sits on another line are dangling. Read over the whole text.
+ * whose value sits on another line are dangling. A value needs four letters or
+ * digits, and one before the label never counts from inside an open bracket:
+ * "(customer #1 asset tag)" qualifies the code before it, so it is dangling
+ * too (#5268 Codex r17, fail closed). Read over the whole text.
  */
 export function danglingPrivateLabel(text: string): boolean {
   const t = normalize(text);
   const OWN_VALUE = new RegExp(
-    String.raw`^[ \t]*(?:(?:${ID_WORD})(?![a-z])[ \t:#=.-]*)*(?:is\b)?[ \t:#=.-]*${DIGIT_TOKEN.source}`,
+    String.raw`^[ \t]*(?:(?:${ID_WORD})(?![a-z])[ \t:#=.-]*)*(?:is\b)?[ \t:#=.-]*(${DIGIT_TOKEN.source})`,
     "i",
   );
   // A suffix label owns the code straight before it on its own line
   // ("AB-1234567 S/N", "12345678 (asset tag)") — never one past a word or a
   // line break ("TP1200 (customer\nasset tag)", "24VDC\n(asset tag)").
-  const OWN_PRIOR = new RegExp(String.raw`(?:^|[^A-Za-z0-9])${DIGIT_TOKEN.source}[ \t]*[(\[,:-]?[ \t]*$`, "i");
+  const OWN_PRIOR = new RegExp(String.raw`(?:^|[^A-Za-z0-9])(${DIGIT_TOKEN.source})[ \t]*[(\[,:-]?[ \t]*$`, "i");
+  const isValue = (v: string | undefined) => (v ?? "").replace(/[^A-Za-z0-9]/g, "").length >= 4;
+  const openBracket = (s: string) => (s.match(/[(\[]/g) ?? []).length > (s.match(/[)\]]/g) ?? []).length;
   for (const label of [SERIAL_LABEL, ASSET_LABEL]) {
     for (const m of t.matchAll(new RegExp(label.source, "gi"))) {
       const at = m.index ?? 0;
       const line = t.slice(0, at).split(/\r\n|\r|\n/).pop() ?? "";
-      if (!OWN_VALUE.test(t.slice(at + m[0].length)) && !OWN_PRIOR.test(line)) return true;
+      const after = OWN_VALUE.exec(t.slice(at + m[0].length));
+      const prior = OWN_PRIOR.exec(line);
+      const ownsPrior = prior !== null && isValue(prior[1]) && !openBracket(line.slice(0, prior.index));
+      if (!(after && isValue(after[1])) && !ownsPrior) return true;
     }
   }
   return false;

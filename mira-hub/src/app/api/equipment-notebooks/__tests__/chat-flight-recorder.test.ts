@@ -479,8 +479,8 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
     veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
       observationId: "o3", sessionId: "s1", text, obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
     } as never);
-  it.each(["SMC MODEL: TP1200\n(customer\nasset tag)", "SMC MODEL: TP1200 (customer\nasset tag)", "SMC MODEL: TP1200 (internal\r\nasset tag)", "SMC MODEL: TP1200\n(customer\nS/N)"])(
-    "#5268 r16: confirming a persisted TP1200 offer does not search when the plate has a dangling private label (%j)",
+  it.each(["SMC MODEL: TP1200\n(customer\nasset tag)", "SMC MODEL: TP1200 (customer\nasset tag)", "SMC MODEL: TP1200 (internal\r\nasset tag)", "SMC MODEL: TP1200\n(customer\nS/N)", "SMC MODEL: TP1200 (customer #1 asset tag)", "SMC MODEL: TP1200 (customer\n#1 asset tag)", "SMC MODEL: TP1200 (customer #1 S/N)"])(
+    "#5268 r16/r17: confirming a persisted TP1200 offer does not search when the plate has a dangling private label (%j)",
     async (plate) => {
       plateLabel(plate);
       domainMock.listTurns.mockResolvedValueOnce(proposalTurn("TP1200", "u1", "SMC") as never);

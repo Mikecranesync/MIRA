@@ -220,8 +220,8 @@ describe("a nameplate photo starts the manual search on the same turn", () => {
       expect(followups?.suggestions ?? []).not.toContainEqual(expect.stringMatching(/TP1200/));
     },
   );
-  it.each(["SMC MODEL: TP1200\n(customer\nasset tag)", "SMC MODEL: TP1200 (customer\nasset tag)", "SMC MODEL: TP1200 (internal\r\nasset tag)", "SMC MODEL: TP1200\n(customer\nS/N)", "SMC MODEL: TP1200 24VDC\n(asset tag)"])(
-    "#5268 Codex r16: a dangling private label anywhere on the plate means no chip at all (%j)",
+  it.each(["SMC MODEL: TP1200\n(customer\nasset tag)", "SMC MODEL: TP1200 (customer\nasset tag)", "SMC MODEL: TP1200 (internal\r\nasset tag)", "SMC MODEL: TP1200\n(customer\nS/N)", "SMC MODEL: TP1200 24VDC\n(asset tag)", "SMC MODEL: TP1200 (customer #1 asset tag)", "SMC MODEL: TP1200 (customer\n#1 asset tag)", "SMC MODEL: TP1200 (customer #1 S/N)"])(
+    "#5268 Codex r16/r17: a dangling private label anywhere on the plate means no chip at all (%j)",
     async (plate) => {
       visualMock.loadVisualEvidenceForPhoto.mockResolvedValue({
         observationId: "obs", sessionId: "session", text: plate, obsKind: "look", trust: "candidate", fileId: PHOTO, hazards: [],
