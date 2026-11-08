@@ -124,7 +124,7 @@
     <div class="inner">
       <div class="legal">
         <h1>Privacy Policy</h1>
-        <p class="effective">Effective April 11, 2026</p>
+        <p class="effective">Updated November 8, 2026</p>
 
         <h2>1. What We Collect</h2>
         <ul>
@@ -132,14 +132,14 @@
           <li><strong>Payment information:</strong> processed and stored by Stripe. We never see or store your card number.</li>
           <li><strong>Equipment manuals:</strong> PDFs and documents you upload for MIRA to index</li>
           <li><strong>Usage data:</strong> diagnostic queries you submit and MIRA's responses</li>
-          <li><strong>Technical data:</strong> IP address, browser type, device type (server logs only, no tracking cookies)</li>
+          <li><strong>Technical data:</strong> IP address, browser type, and device type from server logs, plus the product-analytics events described in section 6</li>
         </ul>
 
         <h2>2. How We Use Your Data</h2>
         <ul>
           <li><strong>Account info:</strong> to identify your account, send transactional emails (signup confirmation, payment receipts, Loom nurture sequence), and personalize MIRA's responses</li>
           <li><strong>Equipment manuals:</strong> indexed into your tenant's private knowledge base to power MIRA's diagnostic responses. Your manuals are never shared with other tenants.</li>
-          <li><strong>Diagnostic queries:</strong> processed in real-time via Claude API (Anthropic) to generate responses. Queries are not stored by Anthropic for training per our DPA.</li>
+          <li><strong>Diagnostic queries:</strong> sent to configured inference APIs to generate responses. The web cascade tries OpenAI and OpenRouter first when their keys are configured. OpenAI API data is not used for model training by default. Our OpenRouter requests deny data collection and require zero-data-retention endpoints.</li>
           <li><strong>Usage data:</strong> to improve MIRA's response quality and monitor for abuse</li>
         </ul>
 
@@ -155,8 +155,13 @@
           </thead>
           <tbody>
             <tr>
-              <td>Anthropic (Claude API)</td>
-              <td>AI inference for chat, diagnosis, citations</td>
+              <td>Configured inference APIs, including OpenAI and OpenRouter</td>
+              <td>AI inference for web diagnostic responses. The providers used depend on configuration and fallback availability.</td>
+              <td>USA</td>
+            </tr>
+            <tr>
+              <td>PostHog</td>
+              <td>Product and marketing analytics (page views, CTA clicks, autocapture, and server-side product-funnel events). The factorylm.com snippet does not enable session replay.</td>
               <td>USA</td>
             </tr>
             <tr>
@@ -214,7 +219,7 @@
         <p>If you're located outside the United States, contact us at the same address and we'll coordinate on a case-by-case basis. We do not currently offer service in the European Union, so we are not registered as a GDPR data controller.</p>
 
         <h2>6. Cookies &amp; Tracking</h2>
-        <p>We do not use cookies for tracking. We do not use Google Analytics or any third-party tracking scripts. Session state is managed via JWT tokens stored in browser sessionStorage (cleared when you close the tab).</p>
+        <p>We use <strong>PostHog</strong> for product and marketing analytics. On factorylm.com the snippet records page views and clicks on marked CTAs, and PostHog may autocapture other interactions. Server-side product-funnel events are also sent to PostHog. PostHog may set first-party cookies and local storage. We do not use Google Analytics. We do not use advertising pixels. The factorylm.com snippet does not enable session replay. Sign-in session cookies are separate from analytics.</p>
 
         <h2>7. Security</h2>
         <ul>

@@ -1,4 +1,6 @@
 ---
+paths:
+  - "**/*.py"
 name: python-standards
 description: MIRA Python coding standards — Python 3.12, ruff, httpx, async, NeonDB
 ---

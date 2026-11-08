@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { act } from "react";
 import { composerKeyAction } from "../Composer";
+import { BACK_EVENT } from "../FactoryLMShell";
 import { fakeAdapter, renderHarness, type HarnessView } from "./harness";
 
 const views: HarnessView[] = [];
@@ -16,15 +17,15 @@ function render(...args: Parameters<typeof renderHarness>): HarnessView {
   return view;
 }
 
-function key(target: EventTarget, key: string, init: KeyboardEventInit = {}): void {
-  act(() => {
-    target.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...init }));
-  });
+function key(target: EventTarget, key: string, init: KeyboardEventInit = {}): KeyboardEvent {
+  const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...init });
+  act(() => { target.dispatchEvent(event); });
+  return event;
 }
 
 function back(): void {
   act(() => {
-    document.dispatchEvent(new Event("factorylm:back", { bubbles: true, cancelable: true }));
+    document.dispatchEvent(new Event(BACK_EVENT, { bubbles: true, cancelable: true }));
   });
 }
 
@@ -34,7 +35,7 @@ function must<T>(value: T | null | undefined, what: string): T {
 }
 
 describe("layer-closing precedence", () => {
-  it("closes the source viewer, then the inspector, then passes Back to the host", () => {
+  it("closes the source viewer, then the inspector, and leaves root Escape to the browser", () => {
     const adapter = fakeAdapter();
     const view = render({ surface: "hub", fixture: "enterprise-inspector", adapter });
     view.click(must(view.buttonNamed("Inspector"), "Inspector toggle"));
@@ -51,7 +52,9 @@ describe("layer-closing precedence", () => {
     expect(view.container.querySelector('[aria-label="Inspector"]')).toBeNull();
     expect(adapter.calls).toEqual([]);
 
-    key(document, "Escape");
+    expect(key(document, "Escape").defaultPrevented).toBe(false);
+    expect(adapter.calls).toEqual([]);
+    back();
     expect(adapter.calls).toEqual(["onBack"]);
   });
 
@@ -86,6 +89,8 @@ describe("layer-closing precedence", () => {
     expect(shell.dataset.navigationVisible).toBe("true");
     key(document, "Escape");
     expect(shell.dataset.navigationVisible).toBe("true");
+    expect(adapter.calls).toEqual([]);
+    back();
     expect(adapter.calls).toEqual(["onBack"]);
   });
 
@@ -101,6 +106,104 @@ describe("layer-closing precedence", () => {
     expect(view.container.querySelector('[aria-label="Source viewer"]')).toBeNull();
     expect(view.container.querySelector(".fl-scrim")).toBeNull();
   });
+});
+
+describe("Escape preserves the current thread at shell root (#5250)", () => {
+  for (const conversationSurface of ["classic", "assistant"] as const) {
+    for (const draft of ["", "  Keep this exact draft\nwith its spacing  "]) {
+      it(`${conversationSurface}: root Escape preserves ${draft ? "a draft" : "an empty composer"}, focus and context`, () => {
+        const adapter = fakeAdapter();
+        const view = render({ surface: "web", fixture: "grounded-answer", adapter, conversationSurface });
+        const textarea = must(view.container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Ask MIRA"]'), "composer");
+        view.type(textarea, draft);
+        const context = view.activeContext();
+        const turns = Array.from(view.container.querySelectorAll<HTMLElement>("[data-turn-id]"), (turn) => turn.dataset.turnId);
+        act(() => textarea.focus());
+
+        const escape = key(textarea, "Escape");
+
+        expect(escape.defaultPrevented).toBe(false);
+        expect(adapter.calls).toEqual([]);
+        expect(textarea.value).toBe(draft);
+        expect(view.outputs().draft).toBe(draft);
+        expect(document.activeElement).toBe(textarea);
+        expect(view.activeContext()).toEqual(context);
+        expect(Array.from(view.container.querySelectorAll<HTMLElement>("[data-turn-id]"), (turn) => turn.dataset.turnId)).toEqual(turns);
+      });
+    }
+
+    it(`${conversationSurface}: root Escape preserves pending attachments with the exact draft`, async () => {
+      const adapter = fakeAdapter({ photo: { id: "unsent-photo", name: "fault-screen.jpg", mediaType: "image/jpeg", kind: "photo", status: "ready" } });
+      const view = render({ surface: "web", fixture: "grounded-answer", adapter, conversationSurface });
+      view.click(must(view.buttonNamed("Add attachment"), "Add attachment"));
+      view.click(must(view.buttonNamed("Photo"), "Photo"));
+      await view.flush();
+      const pending = must(view.container.querySelector('[aria-label="Pending attachments"]'), "pending attachment");
+      expect(pending.textContent).toContain("fault-screen.jpg");
+      const textarea = must(view.container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Ask MIRA"]'), "composer");
+      view.type(textarea, "  Keep photo and question\nfor later  ");
+      act(() => textarea.focus());
+
+      const escape = key(textarea, "Escape");
+
+      expect(escape.defaultPrevented).toBe(false);
+      expect(adapter.calls).toEqual(["attachPhoto"]);
+      expect(view.container.querySelector('[aria-label="Pending attachments"]')).toBe(pending);
+      expect(textarea.value).toBe("  Keep photo and question\nfor later  ");
+      expect(document.activeElement).toBe(textarea);
+    });
+
+    it(`${conversationSurface}: citation Escape dismisses the viewer, then repeated root Escape is inert`, () => {
+      const adapter = fakeAdapter();
+      const view = render({ surface: "web", fixture: "grounded-answer", adapter, conversationSurface });
+      const citation = must(view.container.querySelector<HTMLButtonElement>('button[data-part-type="source"]'), "citation");
+      const textarea = must(view.container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Ask MIRA"]'), "composer");
+      view.type(textarea, "Keep while checking the citation");
+      act(() => citation.focus());
+      view.click(citation);
+      expect(view.container.querySelector('[aria-label="Source viewer"]')).not.toBeNull();
+
+      expect(key(document, "Escape").defaultPrevented).toBe(true);
+      expect(view.container.querySelector('[aria-label="Source viewer"]')).toBeNull();
+      expect(document.activeElement).toBe(citation);
+      act(() => textarea.focus());
+      expect(key(textarea, "Escape").defaultPrevented).toBe(false);
+      expect(key(textarea, "Escape").defaultPrevented).toBe(false);
+      expect(adapter.calls).toEqual([]);
+      expect(view.outputs().draft).toBe("Keep while checking the citation");
+      expect(document.activeElement).toBe(textarea);
+    });
+
+    it(`${conversationSurface}: mobile drawer Escape closes only the drawer before root Escape`, () => {
+      const adapter = fakeAdapter();
+      const view = render({ surface: "mobile", fixture: "machine-ask", adapter, conversationSurface });
+      const shell = must(view.container.querySelector<HTMLElement>(".fl-shell"), "shell");
+      const textarea = must(view.container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Ask MIRA"]'), "composer");
+      view.type(textarea, "Preserve on mobile");
+      expect(key(document, "Escape").defaultPrevented).toBe(true);
+      expect(shell.dataset.navigationVisible).toBe("false");
+      act(() => textarea.focus());
+
+      expect(key(textarea, "Escape").defaultPrevented).toBe(false);
+      expect(adapter.calls).toEqual([]);
+      expect(view.outputs().draft).toBe("Preserve on mobile");
+      expect(document.activeElement).toBe(textarea);
+      back();
+      expect(adapter.calls).toEqual(["onBack"]);
+    });
+
+    it(`${conversationSurface}: a child-owned Escape does not close an open shell layer`, () => {
+      const adapter = fakeAdapter();
+      const view = render({ surface: "web", fixture: "grounded-answer", adapter, conversationSurface });
+      view.click(must(view.buttonNamed("Add attachment"), "Add attachment"));
+      const child = must(view.buttonNamed("Photo"), "Photo");
+      child.addEventListener("keydown", (event) => event.preventDefault(), { once: true });
+
+      expect(key(child, "Escape").defaultPrevented).toBe(true);
+      expect(view.container.querySelector('[aria-label="Attachment menu"]')).not.toBeNull();
+      expect(adapter.calls).toEqual([]);
+    });
+  }
 });
 
 describe("focus trap and return", () => {

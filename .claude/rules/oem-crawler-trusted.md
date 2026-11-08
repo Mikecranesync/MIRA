@@ -1,3 +1,10 @@
+---
+paths:
+  - "mira-crawler/**"
+  - "tools/seeds/**"
+  - "mira-hub/db/migrations/**"
+---
+
 # OEM Crawler Content Is Trusted By Source
 
 Content crawled from a **curated OEM source in `mira-crawler/sources.yaml`** is

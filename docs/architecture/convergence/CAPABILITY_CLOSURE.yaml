@@ -666,9 +666,9 @@ capabilities:
       - "mira-hub/db/migrations/101_notebook_manual_acquisition_revoke_trigger.sql   # identity change revokes auto-enabled manuals atomically"
       - "mira-hub/db/migrations/102_notebook_manual_acquisition_revoke_spares_confirmed.sql   # the revocation never touches a technician-confirmed manual"
     environments:
-      dev: unset
-      staging: "1"                          # Doppler factorylm/stg, observed 2026-10-13 (MIRA_NOTEBOOK_CANDIDATE_ACQUISITION=1 too)
-      production: unset                     # unset in factorylm/prd AND not forwarded by docker-compose.saas.yml (#4406)
+      dev: unset                            # code default ON since 2026-11-07 (only an exact 0 turns it off)
+      staging: "1"                          # Doppler factorylm/stg, observed 2026-10-13; compose default now 1
+      production: "1"                       # Doppler factorylm/prd set 2026-11-07 (run 42366020785); compose default now 1
     state: staging_enabled
     reason: >-
       New in #4075 slice 2. Enabled in staging (the record said unset until
@@ -696,8 +696,10 @@ capabilities:
       - "https://github.com/Mikecranesync/MIRA/pull/4540"   # same walk: Bihl+Wiedemann plant designator =EQU+96 -A57 read as catalog number -> rejected
       - "https://github.com/Mikecranesync/MIRA/issues/4406"   # staging probe 2026-10-13 (Hub a40eb52a0): GE Fanuc IC752DPA062A completed with a junk candidate (#4400); Emerson IC752DPA062A 'unavailable' 3/3 (#4401)
     rollback: >-
-      Set MIRA_NOTEBOOK_MANUAL_ACQUISITION=0 (or unset) in Doppler and redeploy
-      mira-hub. The column is additive and nullable; code fails open without it.
+      Set MIRA_NOTEBOOK_MANUAL_ACQUISITION=0 in Doppler and redeploy mira-hub
+      (unset is ON since 2026-11-07 — the photo builds the notebook; the tenant
+      allowlist and MIRA_NOTEBOOK_CANDIDATE_ACQUISITION were removed). The
+      column is additive and nullable; code fails open without it.
     blocker: >-
       Production: the finder still surfaced a junk "possible manual" (#4400) and
       reported a deadline overrun as an outage (#4401) on the 2026-10-13 staging

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createObservationRequestIds, factLine, observationSaveMessage } from "./machine-observations-logic";
+import { conflictCountLine, createObservationRequestIds, factLine, observationSaveMessage } from "./machine-observations-logic";
 import type { ObservationPreview } from "./machine-observations-logic";
 
 const preview: ObservationPreview = {
@@ -44,19 +44,24 @@ describe("panel copy", () => {
   };
 
   it("names the fact and its reported status, never a health or cause claim", () => {
-    const line = factLine({ factKey: "seal_leak", state: "leak_reported", contested: false, current: entry, conflicting: [] });
+    const line = factLine({ factKey: "seal_leak", state: "leak_reported", contested: false, current: entry, conflicting: [], conflictTotal: 0, conflictsNextCursor: null, contributorDigest: "d" });
     expect(line).toBe("Seal leak — reported");
     expect(line).not.toMatch(/healthy|fixed|safe|cause/i);
   });
 
   it("a repair report reads as reported, not as healthy", () => {
-    const line = factLine({ factKey: "seal_leak", state: "repair_reported", contested: false, current: { ...entry, factValue: "repaired" }, conflicting: [] });
+    const line = factLine({ factKey: "seal_leak", state: "repair_reported", contested: false, current: { ...entry, factValue: "repaired" }, conflicting: [], conflictTotal: 0, conflictsNextCursor: null, contributorDigest: "d" });
     expect(line).toBe("Seal leak — repair reported");
   });
 
   it("a contested fact says the reports disagree", () => {
-    const line = factLine({ factKey: "seal_leak", state: "contested", contested: true, current: entry, conflicting: [entry, { ...entry, observationId: "o2", factValue: "absent" }] });
+    const line = factLine({ factKey: "seal_leak", state: "contested", contested: true, current: entry, conflicting: [entry, { ...entry, observationId: "o2", factValue: "absent" }], conflictTotal: 2, conflictsNextCursor: null, contributorDigest: "d" });
     expect(line).toMatch(/contested/);
+  });
+
+  it("a partly listed contest says how many reports exist; a fully listed one says nothing extra", () => {
+    expect(conflictCountLine(20, 135)).toBe("Showing 20 of 135 reports");
+    expect(conflictCountLine(4, 4)).toBeNull();
   });
 
   it("the server's own message wins; known codes get plain copy; unknown is retry-safe", () => {
