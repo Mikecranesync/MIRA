@@ -471,6 +471,37 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
     expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
   });
 
+  // #5268 Codex r16 F1 (owner decision 2026-11-07, fail safe): a serial or
+  // asset label with no value of its own anywhere on the plate means the plate
+  // offers no code — so even a persisted offer for it is never confirmed into
+  // a search, however the annotation wraps.
+  const plateLabel = (text: string) =>
+    veMock.loadVisualEvidenceForPhoto.mockResolvedValue({
+      observationId: "o3", sessionId: "s1", text, obsKind: "look", trust: "candidate", confidence: null, fileId: PHOTO, photoHash: null, observedAt: null,
+    } as never);
+  it.each(["SMC MODEL: TP1200\n(customer\nasset tag)", "SMC MODEL: TP1200 (customer\nasset tag)", "SMC MODEL: TP1200 (internal\r\nasset tag)", "SMC MODEL: TP1200\n(customer\nS/N)"])(
+    "#5268 r16: confirming a persisted TP1200 offer does not search when the plate has a dangling private label (%j)",
+    async (plate) => {
+      plateLabel(plate);
+      domainMock.listTurns.mockResolvedValueOnce(proposalTurn("TP1200", "u1", "SMC") as never);
+      await ask('Search the web for "TP1200"');
+      expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+      expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    },
+  );
+  it("#5268 r16 control: a plate whose serial label owns its value still confirms the TP1200 offer into one search", async () => {
+    plateLabel("SMC MODEL: TP1200\nS/N: 00998877");
+    domainMock.listTurns.mockResolvedValueOnce(proposalTurn("TP1200", "u1", "SMC") as never);
+    manualDiscoveryMock.discoverManual.mockResolvedValueOnce(found);
+    await ask('Search the web for "TP1200"');
+    expect(manualDiscoveryMock.discoverManual).toHaveBeenCalledTimes(1);
+    expect(manualDiscoveryMock.discoverManual).toHaveBeenCalledWith(
+      { manufacturer: "SMC", catalogNumber: "TP1200" },
+      expect.objectContaining({ tenantId: expect.any(String) }),
+    );
+    expect(JSON.stringify(manualDiscoveryMock.discoverManual.mock.calls)).not.toContain("00998877");
+  });
+
   // #4185/#4186 (the #4160 Pixel walk incident, c5941295415): an unquoted or
   // short-affirmative reply to a pending offer must be honoured through the
   // REAL route — not just the pure `partSearchDecision` unit — and a

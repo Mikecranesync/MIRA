@@ -279,7 +279,38 @@ export function unambiguousPartNumber(photoText: string): string | null {
   if ([...privateIdentifierKeys(photoText)].some((k) => k.includes(key))) return null;
   if (privateSuffixTails(photoText).some((tail) => tail.includes(key))) return null;
   if (labelledPrivateBySuffix(photoText, codes[0])) return null;
+  // #5268 Codex r16 (owner decision 2026-11-07, fail safe): a serial or asset
+  // label ANYWHERE on the plate with no value of its own cannot say which code
+  // it marks, however the annotation wraps — so the plate offers no code at all.
+  if (danglingPrivateLabel(photoText)) return null;
   return codes[0];
+}
+
+/**
+ * Does the text carry a serial or asset label with no value of its own — a
+ * digit-bearing code straight after it in the same field ("S/N: 00998877",
+ * "asset tag 4471") or right before it on its line ("AB-1234567 S/N")?
+ * "(customer\nasset tag)", "24VDC\n(asset tag)" and a label
+ * whose value sits on another line are dangling. Read over the whole text.
+ */
+export function danglingPrivateLabel(text: string): boolean {
+  const t = normalize(text);
+  const OWN_VALUE = new RegExp(
+    String.raw`^[ \t]*(?:(?:${ID_WORD})(?![a-z])[ \t:#=.-]*)*(?:is\b)?[ \t:#=.-]*${DIGIT_TOKEN.source}`,
+    "i",
+  );
+  // A suffix label owns the code straight before it on its own line
+  // ("AB-1234567 S/N", "12345678 (asset tag)") — never one past a word or a
+  // line break ("TP1200 (customer\nasset tag)", "24VDC\n(asset tag)").
+  const OWN_PRIOR = new RegExp(String.raw`(?:^|[^A-Za-z0-9])${DIGIT_TOKEN.source}[ \t]*[(\[,:-]?[ \t]*$`, "i");
+  for (const label of [SERIAL_LABEL, ASSET_LABEL]) {
+    for (const m of t.matchAll(new RegExp(label.source, "gi"))) {
+      const at = m.index ?? 0;
+      const line = t.slice(0, at).split(/\r\n|\r|\n/).pop() ?? "";
+      if (!OWN_VALUE.test(t.slice(at + m[0].length)) && !OWN_PRIOR.test(line)) return true;
+    }
+  }
+  return false;
 }
 
 const DIGIT_TOKEN = /(?=[A-Z0-9./-]*\d)[A-Z0-9][A-Z0-9./-]*/i;

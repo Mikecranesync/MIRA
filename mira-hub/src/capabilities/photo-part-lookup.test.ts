@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PART_SEARCH_CANCEL, asksPartCompatibility, confirmedPartSearchCandidate, explicitManualLookupRequest, partSearchConfirmation, mentionsAssetLabel, mentionsSerialLabel, partSearchDecision, unambiguousPartNumber } from "./photo-part-lookup";
+import { PART_SEARCH_CANCEL, asksPartCompatibility, danglingPrivateLabel, confirmedPartSearchCandidate, explicitManualLookupRequest, partSearchConfirmation, mentionsAssetLabel, mentionsSerialLabel, partSearchDecision, unambiguousPartNumber } from "./photo-part-lookup";
 import { resolveModelFromObservationText } from "@/lib/manual-rag";
 
 describe("photo part lookup", () => {
@@ -682,7 +682,6 @@ describe("#5268 Codex r14 F1: a value the plate marks private is never a confirm
     ["SMC MODEL: TP1200 asset tag 4471", "TP1200"],
     ["SMC MODEL: TP1200\r\nS/N: 00998877", "TP1200"],
     ["SMC MODEL: TP1200\n(asset tag 4471)", "TP1200"],
-    ["SMC MODEL: TP1200 24VDC\n(asset tag)", "TP1200"],
   ])("control: a label with its own value leaves the model public (%s)", (plate, model) => {
     expect(unambiguousPartNumber(plate)).toBe(model);
   });
@@ -707,5 +706,44 @@ describe("#5268 Codex r14 F1: a value the plate marks private is never a confirm
         previousTurnId: "t1",
       }).action,
     ).toBe("search");
+  });
+});
+
+describe("#5268 Codex r16 F1 (owner decision: fail safe): a dangling serial/asset label anywhere withholds every code", () => {
+  it.each([
+    "SMC MODEL: TP1200\n(customer\nasset tag)",
+    "SMC MODEL: TP1200 (customer\nasset tag)",
+    "SMC MODEL: TP1200 (internal\r\nasset tag)",
+    "SMC MODEL: TP1200\n(internal\r\nasset tag)",
+    "SMC MODEL: TP1200 (customer\nS/N)",
+    "SMC MODEL: TP1200\n(customer\nS/N)",
+    "SMC MODEL: TP1200 24VDC\n(asset tag)",
+    "SMC MODEL: TP1200\nS/N:\n00998877",
+  ])("%s", (plate) => {
+    expect(danglingPrivateLabel(plate)).toBe(true);
+    expect(unambiguousPartNumber(plate)).toBeNull();
+  });
+
+  it("a persisted offer confirmed on such a plate never searches", () => {
+    const pending = [{ kind: "part_search_proposal", candidate: "TP1200", manufacturer: "SMC", originTurnId: "t1" }];
+    const d = partSearchDecision({
+      message: partSearchConfirmation("TP1200"),
+      candidate: unambiguousPartNumber("SMC MODEL: TP1200\n(customer\nasset tag)"),
+      manufacturer: "SMC",
+      previousEvidence: pending,
+      previousTurnId: "t1",
+    });
+    expect(d.action).toBe("mismatch");
+  });
+
+  it.each([
+    ["SMC MODEL: TP1200 S/N: 00998877", "TP1200"],
+    ["SMC MODEL: TP1200\nS/N: 00998877", "TP1200"],
+    ["SMC MODEL: TP1200\r\nSerial No. 00998877", "TP1200"],
+    ["SMC MODEL: TP1200\nAsset Tag: 4471", "TP1200"],
+    ["AutomationDirect.com\nMODEL: GS11N-20P2\nINPUT: 1PH 200-240V 50/60Hz 8.4A\nSERIAL NO: 7A3K9Q2026X11", "GS11N-20P2"],
+  ])("control: every serial/asset label carries its own value (%s)", (plate, model) => {
+    expect(danglingPrivateLabel(plate)).toBe(false);
+    expect(unambiguousPartNumber(plate)).toBe(model);
   });
 });
