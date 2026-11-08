@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PART_SEARCH_CANCEL, asksPartCompatibility, confirmedPartSearchCandidate, explicitManualLookupRequest, partSearchConfirmation, mentionsAssetLabel, mentionsSerialLabel, partSearchDecision, unambiguousPartNumber } from "./photo-part-lookup";
+import { PART_SEARCH_CANCEL, asksPartCompatibility, danglingPrivateLabel, confirmedPartSearchCandidate, explicitManualLookupRequest, partSearchConfirmation, mentionsAssetLabel, mentionsSerialLabel, partSearchDecision, unambiguousPartNumber } from "./photo-part-lookup";
 import { resolveModelFromObservationText } from "@/lib/manual-rag";
 
 describe("photo part lookup", () => {
@@ -151,7 +151,11 @@ describe("#4150 Codex r2 — fail closed on serials and on non-requests", () => 
   });
 
   it("F1: with a serial present, only an explicitly labelled part number is accepted", () => {
-    expect(unambiguousPartNumber("Serial number is AB-1234567. P/N Ni8U-S12-AP6")).toBe("Ni8U-S12-AP6");
+    expect(unambiguousPartNumber("P/N Ni8U-S12-AP6\nSerial number is AB-1234567")).toBe("Ni8U-S12-AP6");
+    // #5268 Codex r8: nothing printed after a serial label is ever a part.
+    expect(unambiguousPartNumber("Serial number is AB-1234567\nP/N Ni8U-S12-AP6")).toBeNull();
+    // #5268 Codex r6: a full stop never ends a private field — the rest of the line stays private.
+    expect(unambiguousPartNumber("Serial number is AB-1234567. P/N Ni8U-S12-AP6")).toBeNull();
     expect(unambiguousPartNumber("Serial number is AB-1234567. Ni8U-S12-AP6")).toBeNull();
   });
 
@@ -494,7 +498,11 @@ describe("#4150 review r4 F1 — any serial label disables unlabelled extraction
   );
 
   it("control: an explicitly labelled part number next to a suffix serial is still proposed", () => {
-    expect(unambiguousPartNumber("AB-1234567 S/N. P/N 6ES7214-1AG40-0XB0")).toBe("6ES7214-1AG40-0XB0");
+    expect(unambiguousPartNumber("P/N 6ES7214-1AG40-0XB0\nAB-1234567 S/N")).toBe("6ES7214-1AG40-0XB0");
+    expect(unambiguousPartNumber("S/N AB-1234567\nP/N 6ES7214-1AG40-0XB0")).toBeNull();
+    // #5268 Codex r7 known limit: a label with no value after it owns the next field
+    // (a wrapped value), so a part right after a suffix serial label is not searched.
+    expect(unambiguousPartNumber("AB-1234567 S/N\nP/N 6ES7214-1AG40-0XB0")).toBeNull();
   });
 });
 
@@ -641,7 +649,9 @@ describe("asset-tag labels", () => {
   });
   it("an explicitly labelled part survives beside an asset tag, and the tag itself is never the part", () => {
     expect(unambiguousPartNumber("SMC P/N: SY3120-5LZD Asset tag: VALVE-1234")).toBe("SY3120-5LZD");
-    expect(unambiguousPartNumber("Asset tag: VALVE-1234 P/N: SY3120-5LZD")).toBe("SY3120-5LZD");
+    expect(unambiguousPartNumber("Asset tag: VALVE-1234\nP/N: SY3120-5LZD")).toBeNull();
+    // #5268 Codex r6 known limit: on the SAME line after a private label, nothing is a part (fail closed).
+    expect(unambiguousPartNumber("Asset tag: VALVE-1234 P/N: SY3120-5LZD")).toBeNull();
   });
   it.each(["tag the valve SY3120-5LZD", "the line stopped on SY3120-5LZD", "unit cooler SY3120-5LZD", "site visit for SY3120-5LZD", "SMC SY3120-5LZD assets list", "tagged for SY3120-5LZD", "SY3120-5LZD tagline", "inverter drive SY3120-5LZD", "invalid reading on SY3120-5LZD"])(
     "control: %s is ordinary prose",
@@ -650,4 +660,125 @@ describe("asset-tag labels", () => {
       expect(unambiguousPartNumber(text)).toBe("SY3120-5LZD");
     },
   );
+});
+
+describe("#5268 Codex r14 F1: a value the plate marks private is never a confirm-chip candidate", () => {
+  it.each([
+    "SMC MODEL: TP1200 (customer asset tag)",
+    "SMC MODEL: TP1200 (internal asset tag)",
+    "SMC MODEL: TP1200 (customer S/N)",
+    "SMC MODEL: TP1200 (customer asset tag) 24VDC",
+    "SMC MODEL: TP1200 asset tag",
+    "SMC MODEL: TP1200\n(customer asset tag)",
+    "SMC MODEL: TP1200\r\n(internal asset tag)",
+    "SMC MODEL: TP1200\n\n(customer S/N)",
+    "SMC MODEL: TP1200 \n  (asset tag)",
+  ])("%s", (plate) => {
+    expect(unambiguousPartNumber(plate)).toBeNull();
+  });
+  it.each([
+    ["SMC MODEL: TP1200 S/N: 00998877", "TP1200"],
+    ["SMC MODEL: TP1200\nS/N: 00998877", "TP1200"],
+    ["SMC MODEL: TP1200 asset tag 4471", "TP1200"],
+    ["SMC MODEL: TP1200\r\nS/N: 00998877", "TP1200"],
+    ["SMC MODEL: TP1200\n(asset tag 4471)", "TP1200"],
+  ])("control: a label with its own value leaves the model public (%s)", (plate, model) => {
+    expect(unambiguousPartNumber(plate)).toBe(model);
+  });
+
+  it("a confirmation of a persisted offer for the private value never searches", () => {
+    const pending = [{ kind: "part_search_proposal", candidate: "TP1200", manufacturer: "SMC", originTurnId: "t1" }];
+    const d = partSearchDecision({
+      message: partSearchConfirmation("TP1200"),
+      candidate: unambiguousPartNumber("SMC MODEL: TP1200 (customer asset tag)"),
+      manufacturer: "SMC",
+      previousEvidence: pending,
+      previousTurnId: "t1",
+    });
+    expect(d.action).toBe("mismatch");
+    // Control: the same persisted offer on a plate where TP1200 is public does search.
+    expect(
+      partSearchDecision({
+        message: partSearchConfirmation("TP1200"),
+        candidate: unambiguousPartNumber("SMC MODEL: TP1200 S/N: 00998877"),
+        manufacturer: "SMC",
+        previousEvidence: pending,
+        previousTurnId: "t1",
+      }).action,
+    ).toBe("search");
+  });
+});
+
+describe("#5268 Codex r16 F1 (owner decision: fail safe): a dangling serial/asset label anywhere withholds every code", () => {
+  it.each([
+    "SMC MODEL: TP1200\n(customer\nasset tag)",
+    "SMC MODEL: TP1200 (customer\nasset tag)",
+    "SMC MODEL: TP1200 (internal\r\nasset tag)",
+    "SMC MODEL: TP1200\n(internal\r\nasset tag)",
+    "SMC MODEL: TP1200 (customer\nS/N)",
+    "SMC MODEL: TP1200\n(customer\nS/N)",
+    "SMC MODEL: TP1200 24VDC\n(asset tag)",
+    "SMC MODEL: TP1200\nS/N:\n00998877",
+  ])("%s", (plate) => {
+    expect(danglingPrivateLabel(plate)).toBe(true);
+    expect(unambiguousPartNumber(plate)).toBeNull();
+  });
+
+  it("a persisted offer confirmed on such a plate never searches", () => {
+    const pending = [{ kind: "part_search_proposal", candidate: "TP1200", manufacturer: "SMC", originTurnId: "t1" }];
+    const d = partSearchDecision({
+      message: partSearchConfirmation("TP1200"),
+      candidate: unambiguousPartNumber("SMC MODEL: TP1200\n(customer\nasset tag)"),
+      manufacturer: "SMC",
+      previousEvidence: pending,
+      previousTurnId: "t1",
+    });
+    expect(d.action).toBe("mismatch");
+  });
+
+  it.each([
+    ["SMC MODEL: TP1200 S/N: 00998877", "TP1200"],
+    ["SMC MODEL: TP1200\nS/N: 00998877", "TP1200"],
+    ["SMC MODEL: TP1200\r\nSerial No. 00998877", "TP1200"],
+    ["SMC MODEL: TP1200\nAsset Tag: 4471", "TP1200"],
+    ["AutomationDirect.com\nMODEL: GS11N-20P2\nINPUT: 1PH 200-240V 50/60Hz 8.4A\nSERIAL NO: 7A3K9Q2026X11", "GS11N-20P2"],
+  ])("control: every serial/asset label carries its own value (%s)", (plate, model) => {
+    expect(danglingPrivateLabel(plate)).toBe(false);
+    expect(unambiguousPartNumber(plate)).toBe(model);
+  });
+});
+
+describe("#5268 Codex r17 F1 (fail closed): a number inside a private annotation is not the label's own value", () => {
+  it.each([
+    "SMC MODEL: TP1200 (customer #1 asset tag)",
+    "SMC MODEL: TP1200 (customer\n#1 asset tag)",
+    "SMC MODEL: TP1200 (customer #1 S/N)",
+    "SMC MODEL: TP1200 (customer #1234 asset tag)",
+    "SMC MODEL: TP1200\n#1 asset tag",
+    "SMC MODEL: TP1200 (asset tag #1)",
+  ])("%s", (plate) => {
+    expect(danglingPrivateLabel(plate)).toBe(true);
+    expect(unambiguousPartNumber(plate)).toBeNull();
+  });
+
+  it("a persisted offer confirmed on a numbered annotation never searches", () => {
+    const pending = [{ kind: "part_search_proposal", candidate: "TP1200", manufacturer: "SMC", originTurnId: "t1" }];
+    const d = partSearchDecision({
+      message: partSearchConfirmation("TP1200"),
+      candidate: unambiguousPartNumber("SMC MODEL: TP1200 (customer #1 asset tag)"),
+      manufacturer: "SMC",
+      previousEvidence: pending,
+      previousTurnId: "t1",
+    });
+    expect(d.action).toBe("mismatch");
+  });
+
+  it.each([
+    ["SMC MODEL: TP1200 S/N: 00998877", "TP1200"],
+    ["SMC MODEL: TP1200\n12345678 (asset tag)", "TP1200"],
+    ["SMC MODEL: TP1200\nAB-1234567 S/N", "TP1200"],
+  ])("control: a label owning a real value keeps the model public (%s)", (plate, model) => {
+    expect(danglingPrivateLabel(plate)).toBe(false);
+    expect(unambiguousPartNumber(plate)).toBe(model);
+  });
 });

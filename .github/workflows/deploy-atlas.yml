@@ -1,0 +1,672 @@
+name: Deploy Atlas CMMS to production
+
+# Installs/updates the production Atlas CMMS stack (compose project
+# `factorylm-cmms`) on the OVH VPS (ubuntu@40.160.141.61) and its nginx vhost
+# (cmms.factorylm.com). Atlas has not run anywhere reachable since the Sept
+# 2026 DO->OVH move (ATLAS-ON-OVH-PLAN.md) — every prod Atlas caller (Hub
+# /cmms, mira-web provisioning, mira-mcp CMMS tools, OWUI create_work_order)
+# fails because nothing named `cmms-backend` exists on network
+# `factorylm-cmms_default`.
+#
+# Release order (SDLC v1): merge → deploy-staging.yml for that SHA with services
+# including `atlas-api atlas-frontend mira-hub` → retrieval-acceptance.yml runs on
+# it → dispatch this workflow with approved_rc_sha = that SHA. Both modes verify
+# the staging + acceptance receipts before any production credential is used.
+#
+# Human-dispatched only (touches production). `mode=dry-run` (default) runs
+# every read-only check and the compose config render and stops; `mode=apply`
+# additionally installs the files, brings the stack up, waits for health,
+# provisions the admin account, installs/reloads nginx, and attempts TLS.
+# Modeled on .github/workflows/deploy-nginx-stg.yml (checkout/SSH/site-hash
+# safeguards) and .github/workflows/deploy-vps.yml (feature-detected `--wait`).
+#
+# Rollback (manual, on the host, if `apply` leaves the stack in a bad state):
+#   docker compose -p factorylm-cmms -f /opt/mira-cmms/docker-compose.prod.yml down   # never add -v — keeps the DB/MinIO volumes
+# Version rollback (an image bump migrated the schema forward; #5188): every apply
+# over existing data first writes /opt/mira-cmms/backups/<stamp>/ (previous compose
+# file + pg_dump). To return to that version, as root on the host:
+#   sudo bash /opt/mira-cmms/atlas-version-rollback.sh <stamp>
+# (deployment/atlas-version-rollback.sh, installed by apply). It validates the backup
+# BEFORE dropping anything and starts the app only after the restore is verified.
+#   restore the previous vhost from /etc/nginx/sites-backup/atlas-<stamp>/cmms.factorylm.com
+#     (or, if there was none: sudo rm -f /etc/nginx/sites-enabled/cmms.factorylm.com)
+#   sudo nginx -t && sudo systemctl reload nginx
+#
+# The vhost is a regular file named `cmms.factorylm.com` in sites-enabled — the
+# name both deploy-vps.yml and nginx-sites-enabled-hygiene.yml ALLOW. Backups go
+# to /etc/nginx/sites-backup/, never sites-enabled (every file there is live).
+#
+# Hub/web reach Atlas only after docker-compose.production.yml stops dropping
+# `cmms-ext` and overriding HUB_CMMS_API_URL — a separate change shipped through
+# deploy-vps.yml AFTER this stack (and its network) exists.
+
+on:
+  workflow_dispatch:
+    inputs:
+      approved_rc_sha:
+        description: "Merged release candidate SHA whose staging deploy (incl. atlas-api atlas-frontend) and acceptance receipts exist (40 lowercase hex)"
+        required: true
+        type: string
+      mode:
+        description: "dry-run (read-only checks only) or apply (install + bring up)"
+        type: choice
+        options:
+          - dry-run
+          - apply
+        default: dry-run
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-atlas
+  cancel-in-progress: false
+
+jobs:
+  # No environment: this job holds only GITHUB_TOKEN (contents: read) — never the
+  # production SSH key or Doppler — exactly like deploy-vps.yml's authorize job.
+  authorize:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      stg_api_id: ${{ steps.staging-receipt.outputs.stg_api_id }}
+      stg_fe_id: ${{ steps.staging-receipt.outputs.stg_fe_id }}
+
+    steps:
+      - name: Validate mode input
+        run: |
+          set -euo pipefail
+          case "${{ inputs.mode }}" in
+            dry-run|apply) ;;
+            *) echo "::error::invalid mode '${{ inputs.mode }}'"; exit 1 ;;
+          esac
+
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.approved_rc_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      # SDLC v1 §5.2 / §6.2 / §7.2 — same authorization chain as deploy-vps.yml, run
+      # BEFORE any production credential exists in this job (both modes): the
+      # candidate is a merged commit, the validators come from the trusted base
+      # (github.sha, the tip of main), and staging + acceptance receipts for the
+      # exact candidate must verify. Atlas has no acceptance suite of its own: its
+      # Atlas-specific acceptance is the post-deploy gate below (admin sign-in,
+      # public HTTPS, in-network name); the generation audit is the standard
+      # retrieval+capture receipt bound to the same staging run.
+      - name: Validate the candidate and pin the trusted validators
+        env:
+          APPROVED_RC_SHA: ${{ inputs.approved_rc_sha }}
+          TRUSTED_BASE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$APPROVED_RC_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::approved_rc_sha must be exactly 40 lowercase hex characters"; exit 1; }
+          [[ "$TRUSTED_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::trusted base sha is not a 40-hex commit"; exit 1; }
+          [ "$(git rev-parse HEAD)" = "$APPROVED_RC_SHA" ] || { echo "::error::HEAD != approved_rc_sha"; exit 1; }
+          git fetch --no-tags origin "$TRUSTED_BASE_SHA"
+          if ! git merge-base --is-ancestor "$APPROVED_RC_SHA" "$TRUSTED_BASE_SHA"; then
+            echo "::error::approved_rc_sha $APPROVED_RC_SHA is not reachable from main ($TRUSTED_BASE_SHA) — only merged commits may be authorized (SDLC v1 §5.2)"
+            exit 1
+          fi
+          install -d -m 700 "$RUNNER_TEMP/trusted"
+          for f in tools/staging_receipt.py tools/acceptance_receipt.py; do
+            git show "$TRUSTED_BASE_SHA:$f" > "$RUNNER_TEMP/trusted/$(basename "$f")"
+            [ -s "$RUNNER_TEMP/trusted/$(basename "$f")" ] || { echo "::error::trusted base has no $f"; exit 1; }
+          done
+          echo "trusted base $TRUSTED_BASE_SHA; candidate $APPROVED_RC_SHA is an ancestor" >> "$GITHUB_STEP_SUMMARY"
+
+      # SDLC v1 §7.2, copied verbatim from deploy-vps.yml: the candidate must be the
+      # merge commit of exactly one merged PR into main whose head passed the
+      # Staging Gate — ancestry alone could authorize a superseded intermediate commit.
+      - name: Verify Staging Gate passed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEPLOY_SHA: ${{ inputs.approved_rc_sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          echo "Resolving PR head for merge commit $DEPLOY_SHA"
+          if ! PULLS_JSON=$(gh api "/repos/$REPO/commits/$DEPLOY_SHA/pulls" 2>gh_api_err.txt); then
+            echo "::error::GitHub API lookup failed for $DEPLOY_SHA — transient; re-run this workflow. stderr: $(cat gh_api_err.txt)"
+            exit 1
+          fi
+          # SDLC v1 §7.2: EXACTLY ONE merged PR into main whose merge_commit_sha is
+          # the approved SHA. No first-associated-PR fallback — a commit that merely
+          # appears in some PR's history is not that PR's reviewed head.
+          MATCHES="$(echo "$PULLS_JSON" | jq -c --arg sha "$DEPLOY_SHA" \
+            '[.[] | select(.merge_commit_sha == $sha and .merged_at != null and .base.ref == "main")] | map(.head.sha)')"
+          MATCH_COUNT="$(echo "$MATCHES" | jq 'length')"
+          if [ "$MATCH_COUNT" != "1" ]; then
+            echo "::error::expected exactly one merged PR into main with merge_commit_sha $DEPLOY_SHA, found $MATCH_COUNT ($MATCHES). Direct pushes and ambiguous associations are not authorized for production (SDLC v1 §7.2)."
+            exit 1
+          fi
+          PR_HEAD_SHA="$(echo "$MATCHES" | jq -r '.[0]')"
+          [[ "$PR_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::merged PR head is not a 40-hex commit: $PR_HEAD_SHA"; exit 1; }
+          echo "PR head SHA: $PR_HEAD_SHA"
+          if ! STATUS=$(gh run list \
+            --repo "$REPO" \
+            --workflow "Staging Gate" \
+            --commit "$PR_HEAD_SHA" \
+            --limit 1 \
+            --json status,conclusion \
+            --jq '.[0] | "\(.status):\(.conclusion)"' 2>gh_run_err.txt); then
+            echo "::error::GitHub API run lookup failed for $PR_HEAD_SHA — transient; re-run this workflow. stderr: $(cat gh_run_err.txt)"
+            exit 1
+          fi
+          echo "Most recent Staging Gate run on $PR_HEAD_SHA: $STATUS"
+          case "$STATUS" in
+            completed:success)
+              echo "✓ source authorized by the Staging Gate"
+              ;;
+            ""|"null:null")
+              echo "::error::No Staging Gate run found for PR head $PR_HEAD_SHA."
+              exit 1
+              ;;
+            *)
+              echo "::error::Staging Gate did not pass for PR head $PR_HEAD_SHA (status=$STATUS)."
+              exit 1
+              ;;
+          esac
+
+      - name: Require a deployed-staging receipt covering atlas-api + atlas-frontend
+        id: staging-receipt
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPROVED_RC_SHA: ${{ inputs.approved_rc_sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Provenance rules copied from deploy-vps.yml: newest unexpired artifact of the
+          # exact name, produced by a completed, successful workflow_dispatch run of
+          # deploy-staging.yml in this repo; never fall through to an older candidate.
+          STAGING_WORKFLOW_PATH=".github/workflows/deploy-staging.yml"
+          ARTIFACT="$(gh api "/repos/$REPO/actions/artifacts?name=staging-receipt-${APPROVED_RC_SHA}&per_page=50" \
+            --jq '[.artifacts[] | select(.expired == false)] | sort_by(.created_at) | reverse | .[0] // empty')"
+          if [ -z "$ARTIFACT" ]; then
+            echo "::error::No unexpired staging-receipt-${APPROVED_RC_SHA} artifact exists — deploy staging first (services must include atlas-api atlas-frontend mira-hub)."
+            exit 1
+          fi
+          ARTIFACT_ID="$(echo "$ARTIFACT" | jq -r '.id')"
+          STAGING_RUN_ID="$(echo "$ARTIFACT" | jq -r '.workflow_run.id // empty')"
+          [ -n "$STAGING_RUN_ID" ] || { echo "::error::staging receipt artifact ${ARTIFACT_ID} has no workflow_run provenance — STOP."; exit 1; }
+          RUN_JSON="$(gh api "/repos/$REPO/actions/runs/${STAGING_RUN_ID}")"
+          RUN_PATH="$(echo "$RUN_JSON" | jq -r '.path // empty')"
+          RUN_EVENT="$(echo "$RUN_JSON" | jq -r '.event // empty')"
+          RUN_STATUS="$(echo "$RUN_JSON" | jq -r '.status // empty')"
+          RUN_CONCLUSION="$(echo "$RUN_JSON" | jq -r '.conclusion // empty')"
+          RUN_REPO="$(echo "$RUN_JSON" | jq -r '.repository.full_name // empty')"
+          RUN_URL="$(echo "$RUN_JSON" | jq -r '.html_url // empty')"
+          echo "staging receipt artifact ${ARTIFACT_ID} <- run ${STAGING_RUN_ID}: path=${RUN_PATH} event=${RUN_EVENT} status=${RUN_STATUS} conclusion=${RUN_CONCLUSION} repo=${RUN_REPO}"
+          if [ "$RUN_REPO" != "$REPO" ] || [ "$RUN_PATH" != "$STAGING_WORKFLOW_PATH" ] || [ "$RUN_EVENT" != "workflow_dispatch" ] \
+             || [ "$RUN_STATUS" != "completed" ] || [ "$RUN_CONCLUSION" != "success" ]; then
+            echo "::error::staging receipt artifact ${ARTIFACT_ID} was not produced by a completed, successful workflow_dispatch run of ${STAGING_WORKFLOW_PATH} in ${REPO} — STOP."
+            exit 1
+          fi
+          install -d -m 700 "$RUNNER_TEMP/staging-receipt"
+          gh api "/repos/$REPO/actions/artifacts/${ARTIFACT_ID}/zip" > "$RUNNER_TEMP/staging-receipt.zip"
+          unzip -o "$RUNNER_TEMP/staging-receipt.zip" -d "$RUNNER_TEMP/staging-receipt"
+          RECEIPT="$RUNNER_TEMP/staging-receipt/staging-receipt.json"
+          [ -s "$RECEIPT" ] || { echo "::error::artifact ${ARTIFACT_ID} contains no staging-receipt.json — STOP."; exit 1; }
+          # Trusted validator: image identity required for both Atlas services
+          # (runtime identity NOT_APPLICABLE — Atlas reports no git SHA).
+          python3 -I "$RUNNER_TEMP/trusted/staging_receipt.py" verify --receipt "$RECEIPT" \
+            --approved-rc-sha "$APPROVED_RC_SHA" --environment staging --max-age-hours 168 \
+            --expect-run-id "$STAGING_RUN_ID" --expect-run-url "$RUN_URL" \
+            --effective-services atlas-api,atlas-frontend | tee -a "$GITHUB_STEP_SUMMARY"
+          install -m 600 "$RECEIPT" "$RUNNER_TEMP/staging-receipt.json"
+          # The image ids staging ran — production must pull byte-identical images.
+          STG_API_ID="$(jq -r '.running_images["atlas-api"] // empty' "$RECEIPT")"
+          STG_FE_ID="$(jq -r '.running_images["atlas-frontend"] // empty' "$RECEIPT")"
+          [[ "$STG_API_ID" =~ ^sha256:[0-9a-f]{64}$ && "$STG_FE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::staging receipt lacks atlas image ids — STOP."; exit 1; }
+          {
+            echo "staging_run_id=$STAGING_RUN_ID"
+            echo "stg_api_id=$STG_API_ID"
+            echo "stg_fe_id=$STG_FE_ID"
+          } >> "$GITHUB_OUTPUT"
+          echo "staging receipt verified: run ${RUN_URL}"
+
+      - name: Require a generation-matched acceptance receipt
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPROVED_RC_SHA: ${{ inputs.approved_rc_sha }}
+          STAGING_RUN_ID: ${{ steps.staging-receipt.outputs.staging_run_id }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          [[ "$STAGING_RUN_ID" =~ ^[1-9][0-9]*$ ]] || { echo "::error::no verified staging run id to bind the acceptance receipt to"; exit 1; }
+          ACCEPTANCE_WORKFLOW_PATH=".github/workflows/retrieval-acceptance.yml"
+          ARTIFACT="$(gh api "/repos/$REPO/actions/artifacts?name=acceptance-receipt-${APPROVED_RC_SHA}&per_page=50" \
+            --jq '[.artifacts[] | select(.expired == false)] | sort_by(.created_at) | reverse | .[0] // empty')"
+          [ -n "$ARTIFACT" ] || { echo "::error::No unexpired acceptance-receipt-${APPROVED_RC_SHA} artifact exists (SDLC v1 §6.2)."; exit 1; }
+          ARTIFACT_ID="$(echo "$ARTIFACT" | jq -r '.id')"
+          ACCEPTANCE_RUN_ID="$(echo "$ARTIFACT" | jq -r '.workflow_run.id // empty')"
+          [ -n "$ACCEPTANCE_RUN_ID" ] || { echo "::error::acceptance receipt artifact ${ARTIFACT_ID} has no workflow_run provenance — STOP."; exit 1; }
+          RUN_JSON="$(gh api "/repos/$REPO/actions/runs/${ACCEPTANCE_RUN_ID}")"
+          RUN_PATH="$(echo "$RUN_JSON" | jq -r '.path // empty')"
+          RUN_EVENT="$(echo "$RUN_JSON" | jq -r '.event // empty')"
+          RUN_STATUS="$(echo "$RUN_JSON" | jq -r '.status // empty')"
+          RUN_CONCLUSION="$(echo "$RUN_JSON" | jq -r '.conclusion // empty')"
+          RUN_REPO="$(echo "$RUN_JSON" | jq -r '.repository.full_name // empty')"
+          RUN_URL="$(echo "$RUN_JSON" | jq -r '.html_url // empty')"
+          echo "acceptance receipt artifact ${ARTIFACT_ID} <- run ${ACCEPTANCE_RUN_ID}: path=${RUN_PATH} event=${RUN_EVENT} status=${RUN_STATUS} conclusion=${RUN_CONCLUSION} repo=${RUN_REPO}"
+          if [ "$RUN_REPO" != "$REPO" ] || [ "$RUN_PATH" != "$ACCEPTANCE_WORKFLOW_PATH" ] || [ "$RUN_EVENT" != "workflow_run" ] \
+             || [ "$RUN_STATUS" != "completed" ] || [ "$RUN_CONCLUSION" != "success" ]; then
+            echo "::error::acceptance receipt artifact ${ARTIFACT_ID} was not produced by a completed, successful workflow_run-triggered run of ${ACCEPTANCE_WORKFLOW_PATH} in ${REPO} — STOP."
+            exit 1
+          fi
+          install -d -m 700 "$RUNNER_TEMP/acceptance-receipt"
+          gh api "/repos/$REPO/actions/artifacts/${ARTIFACT_ID}/zip" > "$RUNNER_TEMP/acceptance-receipt.zip"
+          unzip -o "$RUNNER_TEMP/acceptance-receipt.zip" -d "$RUNNER_TEMP/acceptance-receipt"
+          [ -s "$RUNNER_TEMP/acceptance-receipt/acceptance-receipt.json" ] || { echo "::error::artifact ${ARTIFACT_ID} contains no acceptance-receipt.json — STOP."; exit 1; }
+          RECEIPT_RUN_ID="$(jq -r '.acceptance_run_id // empty' "$RUNNER_TEMP/acceptance-receipt/acceptance-receipt.json")"
+          [ "$RECEIPT_RUN_ID" = "$ACCEPTANCE_RUN_ID" ] || { echo "::error::acceptance receipt says acceptance_run_id=${RECEIPT_RUN_ID}, artifact came from run ${ACCEPTANCE_RUN_ID} — STOP."; exit 1; }
+          python3 -I "$RUNNER_TEMP/trusted/acceptance_receipt.py" verify \
+            --receipt "$RUNNER_TEMP/acceptance-receipt/acceptance-receipt.json" \
+            --approved-rc-sha "$APPROVED_RC_SHA" --max-age-hours 168 \
+            --expect-staging-run-id "$STAGING_RUN_ID" \
+            --staging-receipt "$RUNNER_TEMP/staging-receipt.json" \
+            --require-capabilities retrieval,capture --require-services mira-hub
+          echo "acceptance receipt verified: run ${RUN_URL} (generation = staging run ${STAGING_RUN_ID})" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  deploy-atlas:
+    needs: authorize
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.approved_rc_sha }}
+          persist-credentials: false
+
+      - name: Require HEAD == the authorized candidate
+        env:
+          APPROVED_RC_SHA: ${{ inputs.approved_rc_sha }}
+        run: |
+          set -euo pipefail
+          [ "$(git rev-parse HEAD)" = "$APPROVED_RC_SHA" ] || { echo "::error::HEAD != approved_rc_sha"; exit 1; }
+
+      - name: Set up SSH
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/vps_deploy_key
+          chmod 600 ~/.ssh/vps_deploy_key
+          install -m 600 deployment/known_hosts.factorylm-prod ~/.ssh/known_hosts
+
+      - name: Static checks — loopback-only ports, single hostname
+        run: |
+          set -euo pipefail
+          # No service in the compose file may publish on a non-loopback address.
+          if grep -n '0\.0\.0\.0' mira-cmms/docker-compose.prod.yml; then
+            echo "::error::docker-compose.prod.yml binds a non-loopback (0.0.0.0) port"
+            exit 1
+          fi
+          if grep -nE '^\s*-\s*"[0-9]' mira-cmms/docker-compose.prod.yml | grep -v '127\.0\.0\.1:'; then
+            echo "::error::docker-compose.prod.yml has a published port not bound to 127.0.0.1"
+            exit 1
+          fi
+          # The nginx conf must name exactly one hostname: cmms.factorylm.com.
+          NAMES="$(grep -oE 'server_name[^;]+;' deployment/nginx-cmms-factorylm.conf | sed 's/server_name *//; s/;//' | tr -s ' \t' '\n' | grep -v '^$' | sort -u)"
+          if [ "$NAMES" != "cmms.factorylm.com" ]; then
+            echo "::error::nginx-cmms-factorylm.conf names hostname(s) other than cmms.factorylm.com: $NAMES"
+            exit 1
+          fi
+          echo "static checks OK"
+
+      - name: SCP compose + nginx conf to the host
+        run: |
+          set -euo pipefail
+          RUN="atlas-deploy-${{ github.run_id }}"
+          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+            ubuntu@40.160.141.61 "mkdir -p /tmp/${RUN}"
+          scp -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+            mira-cmms/docker-compose.prod.yml deployment/nginx-cmms-factorylm.conf deployment/atlas-version-rollback.sh \
+            "ubuntu@40.160.141.61:/tmp/${RUN}/"
+
+      - name: Remote checks + (conditionally) apply
+        run: |
+          set -euo pipefail
+          MODE="${{ inputs.mode }}"
+          RUN="atlas-deploy-${{ github.run_id }}"
+          STG_API_ID="${{ needs.authorize.outputs.stg_api_id }}"
+          STG_FE_ID="${{ needs.authorize.outputs.stg_fe_id }}"
+          ssh -i ~/.ssh/vps_deploy_key -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+            ubuntu@40.160.141.61 "sudo bash -s -- '${MODE}' '${RUN}' '${STG_API_ID}' '${STG_FE_ID}'" << 'ENDSSH'
+          set -euo pipefail
+          MODE="$1"
+          RUN="$2"
+          STG_API_ID="$3"
+          STG_FE_ID="$4"
+          [[ "$STG_API_ID" =~ ^sha256:[0-9a-f]{64}$ && "$STG_FE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::verified staging image ids missing"; exit 1; }
+          COMPOSE_SRC="/tmp/${RUN}/docker-compose.prod.yml"
+          NGINX_SRC="/tmp/${RUN}/nginx-cmms-factorylm.conf"
+
+          echo "=== identity & resources ==="
+          whoami
+          if sudo -n true 2>/dev/null; then echo "sudo=ok"; else echo "sudo=NO"; fi
+          free -m
+          df -h /
+          nproc
+          docker stats --no-stream --format 'table {{.Name}}\t{{.MemUsage}}\t{{.CPUPerc}}' || true
+
+          echo "=== factorylm-cmms_default network ==="
+          docker network inspect factorylm-cmms_default --format '{{.Name}} labels={{.Labels}} containers={{len .Containers}}' 2>/dev/null || echo "absent"
+
+          echo "=== listeners on target ports (8088/3100/9000/9001/5433) ==="
+          ss -ltnp 2>/dev/null | grep -E ':(8088|3100|9000|9001|5433)\b' || echo "none"
+
+          echo "=== existing cmms-* containers ==="
+          docker ps -a --filter "name=cmms-" --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}' || true
+
+          echo "=== existing nginx cmms server_name lines ==="
+          sudo nginx -T 2>/dev/null | grep -n 'server_name.*cmms' || echo "none"
+
+          echo "=== DNS vs public IP ==="
+          PUBLIC_IP="$(curl -s --max-time 10 https://api.ipify.org || true)"
+          DNS_IP="$(dig +short cmms.factorylm.com A | tail -1)"
+          echo "public_ip=${PUBLIC_IP:-unknown} dns_a=${DNS_IP:-unresolved}"
+
+          echo "=== letsencrypt dir ==="
+          if [ -d /etc/letsencrypt/live/cmms.factorylm.com ]; then echo "present"; else echo "absent"; fi
+
+          echo "=== staging Atlas probe (read-only, informational) ==="
+          curl -s -o /dev/null -w 'stg /health-check -> %{http_code}\n' --max-time 10 http://127.0.0.1:4088/health-check || true
+          curl -s -o /dev/null -w 'stg /api/health-check -> %{http_code}\n' --max-time 10 http://127.0.0.1:4088/api/health-check || true
+
+          echo "=== render compose config (output withheld — contains secrets) ==="
+          cd /opt/mira
+          # Captured in memory; on failure only secret-free error lines are shown.
+          if RENDER_ERR="$(doppler run --project factorylm --config prd -- \
+               docker compose -p factorylm-cmms -f "$COMPOSE_SRC" config -q 2>&1)"; then
+            echo "compose config OK"
+          else
+            echo "::error::compose config render failed (likely a missing required secret)"
+            printf '%s\n' "$RENDER_ERR" | tail -c 500 | grep -vi 'password\|secret\|token' || true
+            exit 1
+          fi
+
+          echo "=== doppler secret-name presence check (names only) ==="
+          # Checked inside `doppler run` so only presence is tested; values never leave the subshell.
+          MISSING="$(doppler run --project factorylm --config prd -- sh -c '
+            for n in ATLAS_DB_PASSWORD ATLAS_JWT_SECRET ATLAS_MINIO_PASSWORD ATLAS_API_USER ATLAS_API_PASSWORD; do
+              eval "v=\${$n:-}"; [ -n "$v" ] || printf " %s" "$n"
+            done' 2>/dev/null)" || { echo "::error::doppler run failed for factorylm/prd"; exit 1; }
+          [ -n "$MISSING" ] || echo "  all five Atlas secrets present (names only)"
+          if [ -n "$MISSING" ]; then
+            echo "::error::missing Doppler secret(s) in factorylm/prd:$MISSING"
+            exit 1
+          fi
+
+          echo "=== resource gate ==="
+          AVAIL_MB="$(free -m | awk '/^Mem:/{print $7}')"
+          [ -n "$AVAIL_MB" ] || AVAIL_MB="$(free -m | awk '/^Mem:/{print $4}')"
+          if [ "$AVAIL_MB" -lt 3000 ]; then
+            echo "::error::available memory ${AVAIL_MB}MB < 3000MB required"
+            exit 1
+          fi
+          DISK_FREE_KB="$(df -Pk / | awk 'NR==2{print $4}')"
+          DISK_FREE_GB=$(( DISK_FREE_KB / 1024 / 1024 ))
+          if [ "$DISK_FREE_GB" -lt 10 ]; then
+            echo "::error::free disk ${DISK_FREE_GB}GB < 10GB required"
+            exit 1
+          fi
+          echo "available_mem=${AVAIL_MB}MB free_disk=${DISK_FREE_GB}GB"
+
+          echo "=== port-conflict gate ==="
+          # A held port is fine only when a factorylm-cmms container publishes it (re-run).
+          for p in 8088 3100 9000 9001 5433; do
+            ss -ltn 2>/dev/null | awk '{print $4}' | grep -qE ":${p}\$" || continue
+            OWNER="$(docker ps --filter "publish=${p}" --format '{{.Label "com.docker.compose.project"}}' | sort -u)"
+            if [ "$OWNER" != "factorylm-cmms" ]; then
+              echo "::error::port $p is held by something other than factorylm-cmms (compose project: '${OWNER:-not a container}')"
+              exit 1
+            fi
+          done
+
+          echo "=== nginx-hostname-conflict gate ==="
+          CONFLICT=""
+          for f in /etc/nginx/sites-enabled/*; do
+            [ -e "$f" ] || continue
+            base="$(basename "$f")"
+            [ "$base" = "cmms.factorylm.com" ] && continue
+            if sudo grep -qE 'server_name[^;]*\bcmms\.factorylm\.com\b' "$f" 2>/dev/null; then
+              CONFLICT="$CONFLICT $base"
+            fi
+          done
+          if [ -n "$CONFLICT" ]; then
+            echo "::error::another nginx site already names cmms.factorylm.com:$CONFLICT"
+            exit 1
+          fi
+
+          echo "=== DNS gate (TLS needs cmms.factorylm.com to resolve here) ==="
+          if [ -z "$PUBLIC_IP" ] || [ "$DNS_IP" != "$PUBLIC_IP" ]; then
+            if [ "$MODE" = "apply" ]; then
+              echo "::error::DNS A for cmms.factorylm.com (${DNS_IP:-unresolved}) != this host (${PUBLIC_IP:-unknown}) — refusing apply"
+              exit 1
+            fi
+            echo "::warning::DNS A for cmms.factorylm.com (${DNS_IP:-unresolved}) != this host (${PUBLIC_IP:-unknown}) — apply would refuse"
+          else
+            echo "dns ok"
+          fi
+
+          if [ "$MODE" = "dry-run" ]; then
+            echo "DRY-RUN OK"
+            exit 0
+          fi
+
+          echo "=== apply: backup before any change (previous compose file + pg_dump) ==="
+          # A version bump migrates the Atlas schema forward; the dump is the only way
+          # back (#5188). Fail closed: existing data without a verified backup = no change.
+          # "Existing" = a cmms-db container in ANY state or a retained data volume —
+          # not only a running container (a stopped or removed container keeps its data).
+          DB_VOL="factorylm-cmms_cmms-pgdata"
+          HAS_CTR=0; HAS_VOL=0
+          docker ps -a --format '{{.Names}}' | grep -qx cmms-db && HAS_CTR=1
+          docker volume inspect "$DB_VOL" >/dev/null 2>&1 && HAS_VOL=1
+          if [ "$HAS_CTR" = 1 ] || [ "$HAS_VOL" = 1 ]; then
+            if ! docker ps --format '{{.Names}}' | grep -qx cmms-db; then
+              # Start ONLY the database, from the compose file that is installed now
+              # (the version that owns the data), so nothing migrates before the dump.
+              [ -f /opt/mira-cmms/docker-compose.prod.yml ] || { echo "::error::existing Atlas data (container=$HAS_CTR volume=$HAS_VOL) but no installed compose file to start it — refusing apply"; exit 1; }
+              (cd /opt/mira && doppler run --project factorylm --config prd -- \
+                docker compose -p factorylm-cmms -f /opt/mira-cmms/docker-compose.prod.yml up -d --no-deps --pull never cmms-db)
+            fi
+            for _ in $(seq 1 30); do
+              docker exec cmms-db sh -c 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"' >/dev/null 2>&1 && break
+              sleep 2
+            done
+            docker exec cmms-db sh -c 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"' >/dev/null || { echo "::error::cmms-db did not become ready for the backup — STOP"; exit 1; }
+            STAMP="$(date -u +%Y%m%dT%H%M%SZ)-run${RUN}"
+            BK="/opt/mira-cmms/backups/${STAMP}"
+            install -d -m 700 "$BK"
+            if [ -f /opt/mira-cmms/docker-compose.prod.yml ]; then
+              install -m 600 /opt/mira-cmms/docker-compose.prod.yml "$BK/docker-compose.prod.yml"
+            fi
+            docker exec cmms-db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --no-owner' | gzip -c > "$BK/atlas.sql.gz"
+            gzip -t "$BK/atlas.sql.gz" || { echo "::error::backup is not a valid gzip — STOP"; exit 1; }
+            TABLES="$(gunzip -c "$BK/atlas.sql.gz" | grep -c '^CREATE TABLE' || true)"
+            [ "${TABLES:-0}" -gt 0 ] || { echo "::error::backup has no tables — STOP before any change"; exit 1; }
+            echo "backup: $BK ($(du -h "$BK/atlas.sql.gz" | cut -f1), ${TABLES} tables)"
+          else
+            echo "no cmms-db container and no ${DB_VOL} volume — first install, nothing to back up"
+          fi
+
+          echo "=== apply: installing compose file to /opt/mira-cmms (never /opt/mira) ==="
+          sudo install -d -m 755 /opt/mira-cmms
+          sudo install -m 644 "$COMPOSE_SRC" /opt/mira-cmms/docker-compose.prod.yml
+          sudo install -m 750 "/tmp/${RUN}/atlas-version-rollback.sh" /opt/mira-cmms/atlas-version-rollback.sh
+
+          echo "=== apply: ensuring factorylm-cmms_default network ==="
+          docker network inspect factorylm-cmms_default >/dev/null 2>&1 || docker network create factorylm-cmms_default
+
+          echo "=== apply: pull + up (feature-detected --wait) ==="
+          cd /opt/mira
+          WAIT_FLAGS=""
+          if docker compose up --help 2>&1 | grep -q -- '--wait-timeout'; then
+            WAIT_FLAGS="--wait --wait-timeout 300"
+          elif docker compose up --help 2>&1 | grep -q -- '--wait'; then
+            WAIT_FLAGS="--wait"
+          fi
+          echo "wait flags: ${WAIT_FLAGS:-<none: compose too old, falling back to health poll below>}"
+          # quay.io/minio/minio no longer serves anonymous pulls (401, 2026-11-04 run
+          # 41832853758), so cmms-minio is never pulled: it must already be on the host
+          # (the co-hosted staging stack runs the identical tag) — checked below.
+          doppler run --project factorylm --config prd -- \
+            docker compose -p factorylm-cmms -f /opt/mira-cmms/docker-compose.prod.yml pull cmms-db cmms-backend cmms-frontend
+          MINIO_REF="$(awk -v s="  cmms-minio:" '$0==s{f=1;next} f&&/^  [a-z]/{f=0} f&&$1=="image:"{print $2;exit}' /opt/mira-cmms/docker-compose.prod.yml)"
+          docker image inspect "$MINIO_REF" >/dev/null 2>&1 || { echo "::error::$MINIO_REF is not on this host and can no longer be pulled — STOP"; exit 1; }
+
+          echo "=== apply: pulled images must equal the ones the verified staging receipt ran ==="
+          for pair in "cmms-backend:${STG_API_ID}" "cmms-frontend:${STG_FE_ID}"; do
+            svc="${pair%%:*}"; want="${pair#*:}"
+            ref="$(awk -v s="  ${svc}:" '$0==s{f=1;next} f&&/^  [a-z]/{f=0} f&&$1=="image:"{print $2;exit}' /opt/mira-cmms/docker-compose.prod.yml)"
+            have="$(docker image inspect --format '{{.Id}}' "$ref" 2>/dev/null || true)"
+            echo "  $svc $ref -> ${have:-missing} (staging ran $want)"
+            [ -n "$ref" ] && [ "$have" = "$want" ] || { echo "::error::$svc image differs from the staging-receipted image — STOP before any container starts"; exit 1; }
+          done
+          # shellcheck disable=SC2086
+          doppler run --project factorylm --config prd -- \
+            docker compose -p factorylm-cmms -f /opt/mira-cmms/docker-compose.prod.yml up -d --pull never $WAIT_FLAGS || {
+            echo "::error::compose up failed — leaving stack up for diagnosis"
+            docker ps -a --filter label=com.docker.compose.project=factorylm-cmms || true
+            docker logs --tail 80 cmms-backend || true
+            exit 1
+          }
+
+          echo "=== apply: health wait (up to 5 min) ==="
+          HEALTHY=""
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8088/health-check >/dev/null 2>&1; then
+              HEALTHY=1
+              break
+            fi
+            sleep 5
+          done
+          if [ -z "$HEALTHY" ]; then
+            echo "::error::cmms-backend did not become healthy within 5 minutes — leaving stack up for diagnosis"
+            docker logs --tail 80 cmms-backend || true
+            exit 1
+          fi
+          echo "cmms-backend healthy"
+
+          echo "=== apply: admin account ==="
+          cd /opt/mira
+          # In memory only: no response or token touches disk; prints HTTP codes + token length.
+          doppler run --project factorylm --config prd -- python3 - <<'PY'
+          import json, os, sys, urllib.error, urllib.request
+          email = os.environ.get("ATLAS_API_USER", "")
+          password = os.environ.get("ATLAS_API_PASSWORD", "")
+          if not email or not password:
+              sys.exit("::error::ATLAS_API_USER/ATLAS_API_PASSWORD required")
+          def post(path, body):
+              req = urllib.request.Request("http://127.0.0.1:8088" + path, data=json.dumps(body).encode(),
+                                           headers={"Content-Type": "application/json"}, method="POST")
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as r:
+                      return r.status, r.read()
+              except urllib.error.HTTPError as e:
+                  return e.code, b""
+              except OSError:
+                  return 0, b""
+          def signin():
+              code, raw = post("/auth/signin", {"email": email, "password": password, "type": "CLIENT"})
+              try:
+                  d = json.loads(raw or b"{}")
+              except ValueError:
+                  d = {}
+              tok = (d.get("accessToken") or d.get("token") or "") if isinstance(d, dict) else ""
+              print(f"signin http={code} token_len={len(tok)}")
+              return tok
+          tok = signin()
+          if not tok:
+              code, _ = post("/auth/signup", {"email": email, "password": password, "firstName": "FactoryLM",
+                                               "lastName": "Admin", "companyName": "FactoryLM", "phone": ""})
+              print(f"signup http={code}")
+              tok = signin()
+          if not tok:
+              sys.exit("::error::could not obtain an Atlas admin token after signin+signup")
+          print(f"admin token acquired (token_len={len(tok)})")
+          PY
+
+          echo "=== apply: nginx ==="
+          SITE=/etc/nginx/sites-enabled/cmms.factorylm.com
+          site_hashes() {
+            local f h out=""
+            for f in /etc/nginx/sites-enabled/*; do
+              [ -e "$f" ] || continue
+              case "$f" in "$SITE") continue;; esac
+              h="$(sha256sum "$f")" || { echo "::error::cannot hash $f — refusing to proceed without a site snapshot" >&2; return 1; }
+              out+="$h"$'\n'
+            done
+            printf '%s' "$out" | sort
+          }
+          OTHER_BEFORE="$(site_hashes)" || exit 1
+          check_other_sites() {
+            local after
+            after="$(site_hashes)" || exit 1
+            [ "$OTHER_BEFORE" = "$after" ] || { echo "::error::a non-cmms nginx site changed — STOP"; exit 1; }
+          }
+
+          BACKUP_DIR="/etc/nginx/sites-backup/atlas-$(date +%Y%m%d%H%M%S)"
+          install -d -m 755 "$BACKUP_DIR"
+          HAD_OLD=""
+          if [ -e "$SITE" ]; then
+            cp -P "$SITE" "$BACKUP_DIR/cmms.factorylm.com"
+            HAD_OLD=1
+          fi
+          echo "previous vhost backed up: ${HAD_OLD:+$BACKUP_DIR/cmms.factorylm.com}${HAD_OLD:-none}"
+          restore_site() {
+            rm -f "$SITE"
+            [ -z "$HAD_OLD" ] || cp -P "$BACKUP_DIR/cmms.factorylm.com" "$SITE"
+            nginx -t && systemctl reload nginx || true
+          }
+          # Regular file (not a symlink), matching the existing ALLOW-listed name.
+          rm -f "$SITE"
+          install -m 644 "$NGINX_SRC" "$SITE"
+          if ! nginx -t; then
+            echo "::error::nginx -t failed with the new vhost — restoring previous"
+            restore_site
+            exit 1
+          fi
+          systemctl reload nginx
+          check_other_sites
+
+          echo "=== apply: TLS ==="
+          # certbot reinstalls an existing cert into the fresh vhost (or issues one).
+          if ! certbot --nginx --non-interactive --agree-tos --keep-until-expiring \
+               --cert-name cmms.factorylm.com -d cmms.factorylm.com; then
+            echo "::error::certbot failed — restoring previous vhost"
+            restore_site
+            exit 1
+          fi
+          nginx -t && systemctl reload nginx
+          check_other_sites
+
+          echo "=== apply: probes ==="
+          FAIL=""
+          for u in https://cmms.factorylm.com/ https://cmms.factorylm.com/api/health-check; do
+            code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$u" || true)"
+            echo "$u -> $code"
+            [ "$code" = "200" ] || FAIL="$FAIL $u"
+          done
+          # In-network name check from a throwaway container on the shared network
+          # (Hub itself is detached from it until the production overlay change ships).
+          if docker run --rm --network factorylm-cmms_default curlimages/curl:8.11.1 \
+               -fsS -o /dev/null --max-time 10 http://cmms-backend:8080/health-check; then
+            echo "factorylm-cmms_default -> cmms-backend:8080 OK"
+          else
+            FAIL="$FAIL in-network:cmms-backend"
+          fi
+          [ -z "$FAIL" ] || { echo "::error::post-deploy probes failed:$FAIL"; exit 1; }
+          echo "=== APPLY COMPLETE ==="
+          ENDSSH

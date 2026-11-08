@@ -90,7 +90,7 @@ services:
       retries: 5
 
   atlas-api:
-    image: intelloop/atlas-cmms-backend@sha256:21c42377dd758dbc4a9aa1676e62b01a13cf8822b0ecd3019b274b53c2369b1e
+    image: intelloop/atlas-cmms-backend@sha256:a112fa5831f9827c92ad7d436cff8ff7bc18116be1aab3ab09639793774e49a2
     container_name: stg-atlas-api
     restart: unless-stopped
     depends_on:
@@ -149,7 +149,7 @@ services:
     # Pre-built image from Docker Hub. Prod's mira-cmms/docker-compose.yml uses a
     # local build context that only resolves on Bravo — won't build on the VPS.
     # Using the published image avoids that.
-    image: intelloop/atlas-cmms-frontend@sha256:9393849caa8ff980b02cdc0836d3797da78a8a3a4672acff80206de4e11fa8de
+    image: intelloop/atlas-cmms-frontend@sha256:57e01b75dcf83ab645c47b37ccdf88dd9929e26950bd1d099f24ea8a986e7d3d
     container_name: stg-atlas-frontend
     restart: unless-stopped
     depends_on:
@@ -157,6 +157,9 @@ services:
         condition: service_healthy
     environment:
       API_URL: ${ATLAS_PUBLIC_API_URL:-http://127.0.0.1:4088}
+      # v1.8.0's runtime-env entrypoint refuses to start without these two (#5188).
+      HOME_URL: ${ATLAS_PUBLIC_FRONT_URL:-http://127.0.0.1:4100}
+      LDAP_ENABLED: "false"
       INVITATION_VIA_EMAIL: "false"
       CLOUD_VERSION: "false"
       NODE_ENV: production
@@ -359,6 +362,9 @@ services:
       # #4982 technician Work Packet (sourced draft from CAT Pumps manuals, PDF export). OFF
       # unless NOTEBOOK_WORK_PACKET=1 (the route 404s otherwise). Staging only.
       - NOTEBOOK_WORK_PACKET=${NOTEBOOK_WORK_PACKET:-0}
+      # #5207 Living Work Sheet (job sheet, corrections, export, Atlas work order). OFF
+      # unless NOTEBOOK_LIVING_SHEET=1 (the sheet routes 404 otherwise). Staging only.
+      - NOTEBOOK_LIVING_SHEET=${NOTEBOOK_LIVING_SHEET:-0}
       # #4513 IDF-sum lexical candidate scoring. OFF unless the environment sets
       # NOTEBOOK_LEXICAL_V2=1. Staging only until its walk passes and Mike decides.
       - NOTEBOOK_LEXICAL_V2=${NOTEBOOK_LEXICAL_V2:-0}
@@ -395,6 +401,10 @@ services:
       - SLACK_CLIENT_ID=${SLACK_CLIENT_ID:-}
       # Visual Focus Workspace (PR V2): optional HMAC secret for signed evidence-view tokens (fail-closed when unset).
       - VISUAL_EVIDENCE_SIGNING_SECRET=${VISUAL_EVIDENCE_SIGNING_SECRET:-}
+      # Mission 001 (#5088) technician observation state. OFF unless
+      # MIRA_OBSERVATION_STATE=1 (the routes 404 and the chat section is absent
+      # otherwise). Staging only; docker-compose.saas.yml does not forward it.
+      - MIRA_OBSERVATION_STATE=${MIRA_OBSERVATION_STATE:-0}
       - SLACK_CLIENT_SECRET=${SLACK_CLIENT_SECRET:-}
       # SLACK_BOT_TOKEN is intentionally omitted — the prod bot polls with the
       # same token and a second connection would dual-poll. The hub status
@@ -468,12 +478,18 @@ services:
       - MIRA_TRACE_VIEWER_URL_TEMPLATE=${MIRA_TRACE_VIEWER_URL_TEMPLATE:-}
       # Shadow-mode Jev evidence-sufficiency judgment (recorded, never consulted). Off unless set in Doppler stg.
       - MIRA_JEV_SHADOW=${MIRA_JEV_SHADOW:-0}
-      # #4075: a technician-confirmed identity starts a background search for the
-      # official manual (discover -> download -> ingest -> applicability). Off
-      # unless set in Doppler stg; needs migration 100. Staging only for now.
-      - MIRA_NOTEBOOK_MANUAL_ACQUISITION=${MIRA_NOTEBOOK_MANUAL_ACQUISITION:-0}
-      # #4160 S6 candidate takeover (#4175): off until a client can confirm a candidate identity.
-      - MIRA_NOTEBOOK_CANDIDATE_ACQUISITION=${MIRA_NOTEBOOK_CANDIDATE_ACQUISITION:-0}
+      # #4075: the automatic official-manual search (discover -> download ->
+      # ingest -> applicability) for a confirmed identity OR a nameplate photo.
+      # The ONE kill switch, ON by default (owner decision 2026-11-07); set
+      # exactly 0 in Doppler stg to stop it. Needs migration 100.
+      - MIRA_NOTEBOOK_MANUAL_ACQUISITION=${MIRA_NOTEBOOK_MANUAL_ACQUISITION:-1}
+      # Emergency rollback levers for the notebook chat's safety layers (ON by
+      # default in code; forwarded so a Doppler 0 reaches the container).
+      - NOTEBOOK_ANSWER_GATE=${NOTEBOOK_ANSWER_GATE:-1}
+      - NOTEBOOK_ENERGIZED_HARD_STOP=${NOTEBOOK_ENERGIZED_HARD_STOP:-1}
+      - NOTEBOOK_SEMANTIC_CHECK=${NOTEBOOK_SEMANTIC_CHECK:-1}
+      - NODE_DOC_PROPOSALS=${NODE_DOC_PROPOSALS:-1}
+      - NODE_EMBED_ON_WRITE=${NODE_EMBED_ON_WRITE:-1}
       # The 12-question decision fabric. A SEPARATE flag from the shadow above
       # on purpose: this payload also carries the delivered answer and the photo
       # observations, so enabling the smaller export must not turn on the larger

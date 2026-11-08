@@ -27,6 +27,7 @@ export const CMMS_OPERATIONS = [
   "transition_work_order",
   "read_work_log",
   "list_changes",
+  "create_work_order",
 ] as const;
 export type CmmsOperation = (typeof CMMS_OPERATIONS)[number];
 
@@ -63,6 +64,25 @@ export type WorkLogNote = {
   sourceRef: string;
 };
 
+/**
+ * A technician-confirmed request to CREATE a new work order (not append to an
+ * existing one). `marker` is embedded in the created order's description so
+ * read-back can find it — same idempotency discipline as `WorkLogNote`.
+ * `externalAssetId` is the provider's own asset id (e.g. an Atlas asset id);
+ * `null` means "create without an asset link" (the sheet says so honestly).
+ */
+export type WorkOrderRequest = {
+  idempotencyKey: string;
+  marker: string;
+  title: string;
+  description: string;
+  priority: string;
+  externalAssetId: string | null;
+  attributionLabel: string;
+  occurredAt: string;
+  sourceRef: string;
+};
+
 export type CmmsReceipt = Record<string, unknown>;
 
 export type CmmsWriteResult =
@@ -94,6 +114,14 @@ export interface CmmsWriteProvider {
   appendWorkLog(target: WorkOrderTarget, note: WorkLogNote): Promise<CmmsWriteResult>;
   /** Find delivered records carrying `marker`. Must never throw. */
   readBackWorkLog(target: WorkOrderTarget, marker: string): Promise<CmmsReadBackResult>;
+  /**
+   * Create a new work order. Must be idempotent on `req.marker`: if an order
+   * carrying the marker already exists, return `verified_by_readback` for it
+   * instead of creating a second one. Must never throw.
+   */
+  createWorkOrder(req: WorkOrderRequest): Promise<CmmsWriteResult>;
+  /** Find a created work order carrying `marker`. Must never throw. */
+  readBackWorkOrder(marker: string): Promise<CmmsReadBackResult>;
 }
 
 // ── Delivery states (mirrors migration 111's CHECK list; keep in sync) ──────
@@ -197,3 +225,9 @@ export function backoffDelayMs(attempts: number, rand: () => number = Math.rando
   const factor = 0.5 + 0.5 * Math.min(1, Math.max(0, rand()));
   return Math.round(exp * factor);
 }
+
+/** Reason (and `last_error`) of a create the CMMS refused because its licence
+ *  caps open work orders — Atlas free edition: 30 incomplete per company. A
+ *  `permission_denied` with this reason is a capacity refusal, not an access
+ *  one, and is the only refusal a technician re-tap may re-queue. */
+export const CMMS_LICENCE_LIMIT = "cmms_licence_limit";

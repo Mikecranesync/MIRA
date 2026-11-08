@@ -155,3 +155,78 @@ test.describe("mobile drawer, sheet, Back, and keyboard", () => {
     expect(names).toContain("button:Add attachment");
   });
 });
+
+for (const thread of ["classic", "assistant"] as const) {
+  test(`${thread}: desktop root Escape preserves draft, attachments and citation-return state`, async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`/?surface=web&theme=light&scenario=grounded-answer&thread=${thread}`);
+    const box = page.getByRole("textbox", { name: "Ask MIRA", exact: true });
+    const backs = page.locator('[aria-label="Adapter log"] li').filter({ hasText: "onBack" });
+    await box.focus();
+    await page.keyboard.press("Escape");
+    await expect(box).toHaveValue("");
+    await expect(box).toBeFocused();
+    await expect(backs).toHaveCount(0);
+
+    const draft = "  Keep this exact draft\nwith its spacing  ";
+    await box.fill(draft);
+    await page.keyboard.press("Escape");
+    await expect(box).toHaveValue(draft);
+    await expect(box).toBeFocused();
+    await expect(backs).toHaveCount(0);
+    const turns = await page.locator("[data-turn-id]").count();
+
+    const citation = page.locator('button[data-part-type="source"]').first();
+    await citation.click();
+    await expect(page.getByRole("dialog", { name: "Source viewer" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog", { name: "Source viewer" })).toHaveCount(0);
+    await expect(citation).toBeFocused();
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
+    await expect(citation).toBeFocused();
+    await expect(backs).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Add attachment", exact: true }).click();
+    await page.getByRole("button", { name: "Photo", exact: true }).click();
+    const pending = page.getByRole("list", { name: "Pending attachments" });
+    await expect(pending).toContainText("drive-a-nameplate.jpg");
+    await box.focus();
+    await page.keyboard.press("Escape");
+    await expect(box).toHaveValue(draft);
+    await expect(box).toBeFocused();
+    await expect(pending).toContainText("drive-a-nameplate.jpg");
+    await expect(backs).toHaveCount(0);
+    await expect(page.locator("[data-turn-id]")).toHaveCount(turns);
+
+    await page.evaluate(() => document.dispatchEvent(new Event("factorylm:back", { bubbles: true, cancelable: true })));
+    await expect(backs).toHaveCount(1);
+    await box.press("Enter");
+    await expect(page.locator("[data-turn-id]")).toHaveCount(turns + 1);
+    await expect(box).toHaveValue("");
+  });
+
+  test(`${thread}: phone drawer closes once, then root Escape preserves the draft through rotation`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`/?surface=mobile&theme=light&scenario=machine-ask&thread=${thread}`);
+    const shell = page.locator(".fl-shell");
+    const box = page.getByRole("textbox", { name: "Ask MIRA", exact: true });
+    const backs = page.locator('[aria-label="Adapter log"] li').filter({ hasText: "onBack" });
+    await expect(shell).toHaveAttribute("data-navigation-visible", "true");
+    await page.keyboard.press("Escape");
+    await expect(shell).toHaveAttribute("data-navigation-visible", "false");
+    await box.fill("Keep the phone draft");
+    await page.keyboard.press("Escape");
+    await expect(box).toHaveValue("Keep the phone draft");
+    await expect(box).toBeFocused();
+    await expect(backs).toHaveCount(0);
+
+    await page.setViewportSize({ width: 844, height: 390 });
+    await page.keyboard.press("Escape");
+    await expect(box).toHaveValue("Keep the phone draft");
+    await expect(box).toBeFocused();
+    await expect(backs).toHaveCount(0);
+    await page.evaluate(() => document.dispatchEvent(new Event("factorylm:back", { bubbles: true, cancelable: true })));
+    await expect(backs).toHaveCount(1);
+  });
+}

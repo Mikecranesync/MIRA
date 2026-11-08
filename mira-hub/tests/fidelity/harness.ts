@@ -119,6 +119,11 @@ export async function installRoutes(page: Page, scenario: Scenario) {
     if (m === "GET" && p === `${nbPath}/work-packet`) {
       return route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ error: "not_enabled" }) });
     }
+    // #5207: the Living Work Sheet panel lists the open notebook's jobs. Off in this harness, as
+    // the route is when NOTEBOOK_LIVING_SHEET is unset (404 living_sheet_disabled); the panel hides.
+    if (m === "GET" && p === `${nbPath}/sheets`) {
+      return route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ error: "living_sheet_disabled" }) });
+    }
     if (m === "GET" && p === "/api/assets") {
       return route.fulfill(json([]));
     }

@@ -1,0 +1,239 @@
+{
+  "sourceRevision": "8ea113991910f473221ef68f278b93e3f3a99664",
+  "scope": "Local disconnected static UI lab; fake adapters; not staging, production, Pixel or customer acceptance",
+  "issues": [
+    4631,
+    4683
+  ],
+  "environment": {
+    "bun": "1.4.0",
+    "chromium": "147.0.7727.15",
+    "playwright": "1.59.1"
+  },
+  "validation": {
+    "componentRed": {
+      "pass": 16,
+      "fail": 4
+    },
+    "targetedGreen": 38,
+    "fullBunTests": 466,
+    "typecheckBuildBudgetLicenses": "PASS",
+    "semanticPostCommitMutation": {
+      "pass": 20,
+      "fail": 2,
+      "trigger": "missing associated visible availability reason"
+    },
+    "stylePostCommitMutation": {
+      "pass": 0,
+      "fail": 6,
+      "trigger": "disabled color equals enabled color"
+    },
+    "restoredBrowser": {
+      "pass": 6,
+      "fail": 0
+    },
+    "sourceRestoredByteForByte": true
+  },
+  "records": [
+    {
+      "renderer": "classic",
+      "viewport": "landscape",
+      "width": 844,
+      "height": 390,
+      "browser": "147.0.7727.15",
+      "attachBox": {
+        "x": 313,
+        "y": 321,
+        "width": 85.03125,
+        "height": 44
+      },
+      "glyphBox": {
+        "x": 322,
+        "y": 329.5,
+        "width": 24,
+        "height": 24
+      },
+      "styles": {
+        "enabled": "rgb(31, 41, 55)",
+        "disabled": "rgb(107, 114, 128)",
+        "disabledBorder": "dashed",
+        "disabledCursor": "not-allowed"
+      },
+      "external": [],
+      "errors": [],
+      "providerCalls": 0
+    },
+    {
+      "renderer": "assistant",
+      "viewport": "desktop",
+      "width": 1280,
+      "height": 900,
+      "browser": "147.0.7727.15",
+      "attachBox": {
+        "x": 409,
+        "y": 831,
+        "width": 85.03125,
+        "height": 44
+      },
+      "glyphBox": {
+        "x": 418,
+        "y": 839.5,
+        "width": 24,
+        "height": 24
+      },
+      "styles": {
+        "enabled": "rgb(31, 41, 55)",
+        "disabled": "rgb(107, 114, 128)",
+        "disabledBorder": "dashed",
+        "disabledCursor": "not-allowed"
+      },
+      "external": [],
+      "errors": [],
+      "providerCalls": 0
+    },
+    {
+      "renderer": "classic",
+      "viewport": "portrait",
+      "width": 390,
+      "height": 844,
+      "browser": "147.0.7727.15",
+      "attachBox": {
+        "x": 21,
+        "y": 775,
+        "width": 90.625,
+        "height": 44
+      },
+      "glyphBox": {
+        "x": 30,
+        "y": 783.5,
+        "width": 24,
+        "height": 24
+      },
+      "styles": {
+        "enabled": "rgb(31, 41, 55)",
+        "disabled": "rgb(107, 114, 128)",
+        "disabledBorder": "dashed",
+        "disabledCursor": "not-allowed"
+      },
+      "external": [],
+      "errors": [],
+      "providerCalls": 0
+    },
+    {
+      "renderer": "classic",
+      "viewport": "desktop",
+      "width": 1280,
+      "height": 900,
+      "browser": "147.0.7727.15",
+      "attachBox": {
+        "x": 409,
+        "y": 831,
+        "width": 85.03125,
+        "height": 44
+      },
+      "glyphBox": {
+        "x": 418,
+        "y": 839.5,
+        "width": 24,
+        "height": 24
+      },
+      "styles": {
+        "enabled": "rgb(31, 41, 55)",
+        "disabled": "rgb(107, 114, 128)",
+        "disabledBorder": "dashed",
+        "disabledCursor": "not-allowed"
+      },
+      "external": [],
+      "errors": [],
+      "providerCalls": 0
+    },
+    {
+      "renderer": "assistant",
+      "viewport": "portrait",
+      "width": 390,
+      "height": 844,
+      "browser": "147.0.7727.15",
+      "attachBox": {
+        "x": 21,
+        "y": 775,
+        "width": 90.625,
+        "height": 44
+      },
+      "glyphBox": {
+        "x": 30,
+        "y": 783.5,
+        "width": 24,
+        "height": 24
+      },
+      "styles": {
+        "enabled": "rgb(31, 41, 55)",
+        "disabled": "rgb(107, 114, 128)",
+        "disabledBorder": "dashed",
+        "disabledCursor": "not-allowed"
+      },
+      "external": [],
+      "errors": [],
+      "providerCalls": 0
+    },
+    {
+      "renderer": "assistant",
+      "viewport": "landscape",
+      "width": 844,
+      "height": 390,
+      "browser": "147.0.7727.15",
+      "attachBox": {
+        "x": 313,
+        "y": 321,
+        "width": 85.03125,
+        "height": 44
+      },
+      "glyphBox": {
+        "x": 322,
+        "y": 329.5,
+        "width": 24,
+        "height": 24
+      },
+      "styles": {
+        "enabled": "rgb(31, 41, 55)",
+        "disabled": "rgb(107, 114, 128)",
+        "disabledBorder": "dashed",
+        "disabledCursor": "not-allowed"
+      },
+      "external": [],
+      "errors": [],
+      "providerCalls": 0
+    }
+  ],
+  "images": [
+    {
+      "path": "docs/promo-screenshots/2026-11-05_attach-assistant-desktop_lab.png",
+      "sha256": "88daa2e457eab8dd544b75f840b99e93816016033f54ef3f098ff7e9d8120b13"
+    },
+    {
+      "path": "docs/promo-screenshots/2026-11-05_attach-assistant-landscape_lab.png",
+      "sha256": "c4b62dae76916da04736dd8a8e09f1c980b7cf98ba5ce316ca019e97cef429c6"
+    },
+    {
+      "path": "docs/promo-screenshots/2026-11-05_attach-assistant-portrait_lab.png",
+      "sha256": "dc1bc70fc6471eb438ff53e40a13b8d218710420003cd002cc92836f66c1a0e1"
+    },
+    {
+      "path": "docs/promo-screenshots/2026-11-05_attach-classic-desktop_lab.png",
+      "sha256": "553ade04a43e26653a1f444a1a291922132f9afeb9a6c7585928cbb261d9be18"
+    },
+    {
+      "path": "docs/promo-screenshots/2026-11-05_attach-classic-landscape_lab.png",
+      "sha256": "611979e49771229b6f00a2f6d6be3eca05bf29932475609192c0c0cb367961af"
+    },
+    {
+      "path": "docs/promo-screenshots/2026-11-05_attach-classic-portrait_lab.png",
+      "sha256": "e647acb404d5e267dabb09220a3f39c53e62478e12fd44680bf3afd76ff471c1"
+    }
+  ],
+  "pending": [
+    "Actual CI on PR head",
+    "Independent current-head cheap review",
+    "Governed merge/staging/production and bug-specific runtime proof",
+    "Applicable post-deploy observation window"
+  ]
+}

@@ -41,6 +41,11 @@ export function rerankTimeoutMs(): number {
 
 export type RerankFallback = "not_configured" | "http_error" | "timeout" | "malformed" | "network";
 
+/** The one log line for a fallback (kept verbatim so existing greps still match). */
+export function logRerankFallback(reason: RerankFallback, detail?: string): void {
+  console.warn(`[reranker] reranker_fallback reason=${reason}${detail ? ` ${detail}` : ""}`);
+}
+
 /**
  * Score each passage against the query. Returns one finite score per passage, in input order,
  * or null (with a logged reason) — never throws.
@@ -50,10 +55,7 @@ export async function rerankScores(
   passages: readonly string[],
   deps: { fetch?: typeof fetch; log?: (reason: RerankFallback, detail?: string) => void } = {},
 ): Promise<number[] | null> {
-  const log =
-    deps.log ??
-    ((reason: RerankFallback, detail?: string) =>
-      console.warn(`[reranker] reranker_fallback reason=${reason}${detail ? ` ${detail}` : ""}`));
+  const log = deps.log ?? logRerankFallback;
   const base = process.env.RERANKER_URL;
   if (!base) {
     log("not_configured");
@@ -98,4 +100,31 @@ export function orderByScores<T>(items: readonly T[], scores: readonly number[])
     .map((item, i) => ({ item, i, s: scores[i] }))
     .sort((a, b) => b.s - a.s || a.i - b.i)
     .map((x) => x.item);
+}
+
+/**
+ * How many of the lexical order's leading passages the reranker never moves. A full rerank won
+ * and lost about equally in the 2026-11-04 replay (it demotes exact part and fault-code hits that
+ * lexical search already ranks first); keeping the top 2 in place beat plain search at every
+ * passage count (docs/evals/retrieval-eval/2026-11-04-pinned-rerank-k8.md).
+ */
+export const RERANK_PINNED_HEAD = 2;
+
+/** The lexical head stays first and in order; only the items after it are sorted by score. */
+export function orderWithPinnedHead<T>(
+  items: readonly T[],
+  scores: readonly number[],
+  pinned: number = RERANK_PINNED_HEAD,
+): T[] {
+  const n = Math.min(Math.max(0, pinned), items.length);
+  return [...items.slice(0, n), ...orderByScores(items.slice(n), scores.slice(n))];
+}
+
+/**
+ * Passages a notebook question keeps: 8 with the rerank lane on, today's 6 with it off, so a
+ * deployment without the flag is unchanged. A rerank fallback on a flag-on turn serves plain
+ * search at 8, which lost no answer against 6 in the same replay.
+ */
+export function notebookQuestionTopK(): number {
+  return rerankEnabled() ? 8 : 6;
 }

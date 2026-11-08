@@ -119,7 +119,7 @@ def test_build_happens_before_container_swap():
 def test_deploy_layers_the_production_overlay():
     """The minimal-production deploy (#3800) must build AND swap with BOTH the base
     SaaS compose and the production overlay — never the bare base, which would drop
-    the localhost-only Hub bind, re-add the absent cmms-ext network, and re-enable
+    the localhost-only Hub bind, and re-enable
     integrations that are not deployed. This pins the overlay so a future edit that
     silently drops it (reintroducing the outage class) fails here."""
     body = _deploy_body()

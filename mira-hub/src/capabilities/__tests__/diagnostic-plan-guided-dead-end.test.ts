@@ -147,9 +147,6 @@ vi.mock("@/lib/manual-discovery", async (importOriginal) => ({
 // seams. Off by default so every other test in this file is unaffected.
 const acqMock = vi.hoisted(() => ({
   acquisitionEnabled: vi.fn(() => false),
-  // #4175: the candidate takeover flag follows the base flag in this file
-  // unless a test pins it (so "acquisition on" tests exercise S6 behaviour).
-  candidateAcquisitionEnabled: vi.fn((): boolean => acqMock.acquisitionEnabled()),
   readAcquisition: vi.fn(async () => null as unknown),
   reconcileAcquisition: vi.fn(async (_t: string, _n: string, r: unknown) => r),
   startManualAcquisition: vi.fn(async () => false),
@@ -227,7 +224,6 @@ beforeEach(() => {
   tc.machineReadFails = false;
   domainMock.listSources.mockResolvedValue([{ filename: "150-um008_-en-p.pdf", docId: DOC_A, fileId: MANUAL_FILE }]);
   acqMock.acquisitionEnabled.mockReturnValue(false);
-  acqMock.candidateAcquisitionEnabled.mockImplementation(() => acqMock.acquisitionEnabled());
   process.env.GROQ_API_KEY = "k1";
   process.env.MIRA_CANONICAL_SEAM = "1";
   process.env.NOTEBOOK_ANSWER_GATE = "0";

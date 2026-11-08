@@ -1,0 +1,19 @@
+{
+  "label": "before",
+  "listCalls": [
+    {
+      "status": 503,
+      "ms": 835
+    },
+    {
+      "status": 503,
+      "ms": 838
+    }
+  ],
+  "warnings": [],
+  "urlNotebookKept": true,
+  "generalQuestionShown": true,
+  "jobSheetPill": false,
+  "notebookNameShown": false,
+  "at": "2026-11-07T05:58:56.226Z"
+}

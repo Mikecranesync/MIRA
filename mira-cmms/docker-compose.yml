@@ -51,7 +51,7 @@ services:
   atlas-api:
     mem_limit: 512m
     memswap_limit: 512m
-    image: intelloop/atlas-cmms-backend@sha256:21c42377dd758dbc4a9aa1676e62b01a13cf8822b0ecd3019b274b53c2369b1e
+    image: intelloop/atlas-cmms-backend@sha256:a112fa5831f9827c92ad7d436cff8ff7bc18116be1aab3ab09639793774e49a2
     container_name: atlas-api
     restart: unless-stopped
     # atlas-api's bean init connects to PUBLIC_MINIO_ENDPOINT at startup; Linux Docker

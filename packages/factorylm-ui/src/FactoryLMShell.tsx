@@ -166,6 +166,8 @@ export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, on
   // so re-renders never re-subscribe two document listeners.
   const closeTopRef = useRef(closeTop);
   closeTopRef.current = closeTop;
+  const topLayerRef = useRef(top);
+  topLayerRef.current = top;
 
   useEffect(() => {
     // A native modal <dialog> (the photo viewer) sits above every shell layer:
@@ -173,7 +175,8 @@ export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, on
     // underneath — never navigates away from an open photo.
     const openDialog = () => document.querySelector<HTMLDialogElement>("dialog[open]");
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented || openDialog()) return;
+      // Escape dismisses a layer; only an explicit Back may leave the thread.
+      if (event.key !== "Escape" || event.defaultPrevented || openDialog() || topLayerRef.current === null) return;
       event.preventDefault();
       closeTopRef.current();
     };

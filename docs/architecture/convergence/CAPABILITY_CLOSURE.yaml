@@ -395,8 +395,8 @@ capabilities:
       - "mira-hub/src/factorylm-ui/MachineObservations.tsx              # Machine state panel"
     environments:
       dev: unset
-      staging: unset
-      production: unset
+      staging: unset                        # forwarded by docker-compose.staging-vps.yml (default 0); Doppler stg not set
+      production: unset                     # not forwarded by docker-compose.saas.yml
     state: deployed_disabled
     owner: null
     owner_missing: "Mission 001 lane; owner assigned at promotion (Mike)."
@@ -406,9 +406,10 @@ capabilities:
     evidence: []
     rollback: "n/a — off in every environment; flag off returns 404 and leaves the chat prompt byte-identical."
     reason: >-
-      Migration 113 is still proposed (mira-hub/db/proposed/), not applied to any
-      shared database, and the flag is not forwarded by any compose file. Staging
-      enablement needs Mike to authorize promoting 113 and forwarding the flag.
+      Migration 113 is in mira-hub/db/migrations/ (Migration Verify applies it to
+      staging Neon when the promotion PR opens) and the staging compose forwards
+      MIRA_OBSERVATION_STATE with default 0. The flag is not set in Doppler stg, so
+      staging stays off until Mike authorizes that write and a staging deploy.
     promotion_criteria:
       - "Mike authorizes promoting 113 to db/migrations (staging auto-apply) and forwarding MIRA_OBSERVATION_STATE in the staging compose."
       - "Staging trace: confirm on a real asset, readback by a second technician, later chat answer carries the observedState frame."
@@ -665,9 +666,9 @@ capabilities:
       - "mira-hub/db/migrations/101_notebook_manual_acquisition_revoke_trigger.sql   # identity change revokes auto-enabled manuals atomically"
       - "mira-hub/db/migrations/102_notebook_manual_acquisition_revoke_spares_confirmed.sql   # the revocation never touches a technician-confirmed manual"
     environments:
-      dev: unset
-      staging: "1"                          # Doppler factorylm/stg, observed 2026-10-13 (MIRA_NOTEBOOK_CANDIDATE_ACQUISITION=1 too)
-      production: unset                     # unset in factorylm/prd AND not forwarded by docker-compose.saas.yml (#4406)
+      dev: unset                            # code default ON since 2026-11-07 (only an exact 0 turns it off)
+      staging: "1"                          # Doppler factorylm/stg, observed 2026-10-13; compose default now 1
+      production: "1"                       # Doppler factorylm/prd set 2026-11-07 (run 42366020785); compose default now 1
     state: staging_enabled
     reason: >-
       New in #4075 slice 2. Enabled in staging (the record said unset until
@@ -695,8 +696,10 @@ capabilities:
       - "https://github.com/Mikecranesync/MIRA/pull/4540"   # same walk: Bihl+Wiedemann plant designator =EQU+96 -A57 read as catalog number -> rejected
       - "https://github.com/Mikecranesync/MIRA/issues/4406"   # staging probe 2026-10-13 (Hub a40eb52a0): GE Fanuc IC752DPA062A completed with a junk candidate (#4400); Emerson IC752DPA062A 'unavailable' 3/3 (#4401)
     rollback: >-
-      Set MIRA_NOTEBOOK_MANUAL_ACQUISITION=0 (or unset) in Doppler and redeploy
-      mira-hub. The column is additive and nullable; code fails open without it.
+      Set MIRA_NOTEBOOK_MANUAL_ACQUISITION=0 in Doppler and redeploy mira-hub
+      (unset is ON since 2026-11-07 — the photo builds the notebook; the tenant
+      allowlist and MIRA_NOTEBOOK_CANDIDATE_ACQUISITION were removed). The
+      column is additive and nullable; code fails open without it.
     blocker: >-
       Production: the finder still surfaced a junk "possible manual" (#4400) and
       reported a deadline overrun as an outage (#4401) on the 2026-10-13 staging
@@ -730,10 +733,23 @@ capabilities:
       - "mira-hub/src/app/api/equipment-notebooks/[id]/chat/route.ts   # notebook chat retrieval"
     environments:
       dev: unset
-      staging: "1"                          # Doppler factorylm/stg, set 2026-10-21; forwarded by docker-compose.staging-vps.yml (#4557)
+      staging: "0"                          # Doppler factorylm/stg, set 1 on 2026-10-21, set 0 on 2026-11-03 (owner decision, #5138); forwarded by docker-compose.staging-vps.yml (#4557)
       production: unset                     # not forwarded by docker-compose.saas.yml
-    state: staging_enabled
+    state: deployed_disabled
     reason: >-
+      Turned off in staging 2026-11-03 (owner decision on tracker #5138). The
+      flag-on path keeps its own IDF-sum scorer and skips the rare-term lane,
+      per-pass normalisation, cover-word exclusion and IDF-cover rerank that
+      #4979 added to the default path (manual-rag.ts, flag-off only). Zero-token
+      replay of 30 real failing staging turns at main dd2cc10fb (a regression
+      set, not a quality benchmark): default path 24/30 answer pages in the top
+      6, flag on 18/30 (six losses, no gains). Staging's lexical path now
+      matches production. Hybrid retrieval was also turned off in staging later
+      on 2026-11-03 (same tracker), leaving the cross-encoder rerank as the only
+      staging-only retrieval switch. The flag guard
+      mira-hub/src/lib/__tests__/notebook-retrieval-flag-guard.test.ts fails if
+      this record says "1" in staging or production while the flag still skips
+      production passes. Earlier history follows.
       New in #4513. Gate 1 (77-question local harness, pre-registered in the
       spec) passed: top 6 54->70, McNemar p=0.0009, top 1 31->42, p95 220 ms.
       Gate 2 retrieval half passed (unseen 36->48). Gate 3 staging A/B (2026-10-21,

@@ -41,7 +41,7 @@
 
 import { AtlasClient } from "@/lib/atlas/client";
 import { runForwardSync, runReverseSync, syncEnabled } from "@/lib/atlas/sync";
-import { AtlasWriteProvider } from "@/lib/cmms/atlas-write-provider";
+import { atlasWriteProviderFromClient } from "@/lib/cmms/atlas-write-provider";
 import { dispatchEnabled, dispatchTenantAllowlist, runDispatchTick } from "@/capabilities/cmms-dispatch";
 
 function parseFlag(name: string): boolean {
@@ -101,7 +101,7 @@ if (DISPATCH_ENABLED && DISPATCH_TENANTS.size === 0) {
       "every delivery will be blocked_policy (no tenant is allowlisted).",
   );
 }
-const writeProvider = new AtlasWriteProvider(client, { log: (line) => console.log(line) });
+const writeProvider = atlasWriteProviderFromClient(client, { log: (line) => console.log(line) });
 
 async function dispatchTick(): Promise<void> {
   if (!DISPATCH_ENABLED) return;

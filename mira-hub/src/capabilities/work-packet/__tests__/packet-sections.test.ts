@@ -45,9 +45,15 @@ describe("illustrated steps — the manufacturer's photos on the page the steps 
   it("a section's page photos are attached to that section, once, with their captions and page", () => {
     const p = build([sheet(), doc("manual-cpstyle.txt", "sm", { 2: photos })], "valve service");
     expect(p.steps.some((s) => s.section === "SERVICING THE VALVES")).toBe(true);
+    // V2: a photo whose caption shares two words with a step on its page sits with that step (proposed).
+    const plugs = p.steps.findIndex((s) => (s.text.value ?? "").startsWith("Remove the hex Valve Plugs"));
+    expect(plugs).toBeGreaterThanOrEqual(0);
     expect(p.figures).toEqual([
-      { section: "SERVICING THE VALVES", docId: "sm", filename: "manual-cpstyle.txt", page: 2, image: PNG, caption: ["9XP1000, 9XP1010", "Removal of Valve Assembly"] },
-      { section: "SERVICING THE VALVES", docId: "sm", filename: "manual-cpstyle.txt", page: 2, image: PNG, caption: ["All Models", "Removal of Valve Plugs"] },
+      { section: "SERVICING THE VALVES", docId: "sm", filename: "manual-cpstyle.txt", page: 2, image: PNG, caption: ["9XP1000, 9XP1010", "Removal of Valve Assembly"], step: null },
+      {
+        section: "SERVICING THE VALVES", docId: "sm", filename: "manual-cpstyle.txt", page: 2, image: PNG, caption: ["All Models", "Removal of Valve Plugs"], step: plugs,
+        placement: expect.objectContaining({ label: "proposed", basis: expect.stringContaining("valve, plug") }),
+      },
     ]);
   });
 
@@ -400,7 +406,9 @@ describe("data-sheet ratings — one value per model, or unknown (Codex #5062 F1
 });
 
 describe("a caution shown in three sections is one field (Codex #5062 F18)", () => {
-  const raw = FIXTURES["manual-cpstyle.txt"].replace("3. Grasp Spring Retainer", "NOTE: Do not lubricate wicks at initial start-up.\n3. Grasp Spring Retainer");
+  // A start-up CAUTION is shown in Safety, the hazard analysis and return to service. (V2: a start-up
+  // NOTE inside a procedure now sits beside its step instead — v2-procedure.test.ts covers that copy.)
+  const raw = FIXTURES["manual-cpstyle.txt"].replace("3. Grasp Spring Retainer", "CAUTION: Do not lubricate wicks at initial start-up.\n3. Grasp Spring Retainer");
   const packet = () => build([sheet(), { docId: "sm", fileId: null, filename: "m.pdf", pages: fixturePages(raw), via: "file" }], "valve service");
   const occurrences = (p: WorkPacket, at?: number) => {
     const i = at ?? p.safety.cautions.findIndex((c) => /lubricate wicks/.test(c.value ?? ""));

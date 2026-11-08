@@ -566,6 +566,10 @@ jobs:
         # comments resetting the clock, a closed PR losing its branch, a dry run that
         # writes — fails the merge instead of a nightly run. Hermetic: no gh, no network.
         run: pytest tests/test_stale_pr_sweep.py -v
+      - name: Staging Atlas helpers (service account)
+        # tools/stg_atlas_service_account.py: hermetic, stub Atlas on localhost; never
+        # prints credentials (public logs).
+        run: pytest tests/test_stg_atlas_service_account.py -v
       - name: Answer Radar benchmark (rubric, rights gate, leakage split)
         # answer_radar/: the real-world maintenance-question benchmark (VCAD). Named
         # explicitly because root `tests/` is not collected wholesale in this job, and
@@ -768,6 +772,14 @@ jobs:
               # class as guardrails.py above. Mirror: Mobile Unit Tests
               # watches the hub-side grammar sources.
               - 'docs/contracts/asset-tag-grammar.json'
+              # notebook-retrieval-flag-guard.test.ts reads this registry and
+              # fails if notebook_lexical_idf is recorded on in staging or
+              # production while it still skips production lexical passes.
+              # A registry-only PR must still run Hub Unit Tests or that
+              # guard never fires (#5166). Enforced by
+              # tests/test_hub_unit_filter_contract.py.
+              - 'docs/architecture/convergence/CAPABILITY_CLOSURE.yaml'
+              - '.github/workflows/ci.yml'
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         if: steps.changes.outputs.hub == 'true'
@@ -787,6 +799,51 @@ jobs:
         if: steps.changes.outputs.hub == 'true'
         working-directory: mira-hub
         run: bun run test
+
+      - name: Prove retrieval flag guard rejects enabled bypasses
+        # Execute the assertions; source-text fragments cannot prove they run.
+        # Both temporary registry mutations are restored byte-for-byte.
+        if: steps.changes.outputs.hub == 'true'
+        working-directory: mira-hub
+        run: |
+          bun - <<'BUN'
+          import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+          import { tmpdir } from "node:os";
+          import { join, resolve } from "node:path";
+          import { spawnSync } from "node:child_process";
+
+          const registry = resolve("../docs/architecture/convergence/CAPABILITY_CLOSURE.yaml");
+          const original = readFileSync(registry);
+          const scratch = mkdtempSync(join(tmpdir(), "mira-flag-guard-"));
+          try {
+            for (const environment of ["staging", "production"]) {
+              const document = Bun.YAML.parse(original.toString("utf8"));
+              const capability = document.capabilities.find((entry) => entry.id === "notebook_lexical_idf");
+              if (!capability?.environments) throw new Error("Retrieval bypass capability is missing");
+              capability.environments[environment] = "1";
+              writeFileSync(registry, Bun.YAML.stringify(document, null, 2));
+              const reportPath = join(scratch, `${environment}.json`);
+              const result = spawnSync(resolve("node_modules/.bin/vitest"), [
+                "run", "src/lib/__tests__/notebook-retrieval-flag-guard.test.ts",
+                "--reporter=json", `--outputFile=${reportPath}`,
+              ], { encoding: "utf8", timeout: 60000, env: { ...process.env, NO_COLOR: "1" } });
+              if (result.error) throw result.error;
+              const report = JSON.parse(readFileSync(reportPath, "utf8"));
+              const failures = report.testResults.flatMap((file) => file.assertionResults)
+                .filter((test) => test.status === "failed");
+              const expected = `AssertionError: notebook_lexical_idf must stay off in ${environment} while it bypasses production passes:`;
+              if (result.status !== 1 || report.numFailedTests !== 1 || failures.length !== 1
+                || !failures[0].fullName.includes("NOTEBOOK_LEXICAL_V2 on:")
+                || !failures[0].failureMessages.some((message) => message.startsWith(expected))) {
+                throw new Error(`Retrieval guard did not reject the enabled ${environment} bypass for the expected reason`);
+              }
+              console.log(`Verified actual retrieval guard rejects ${environment}=1`);
+            }
+          } finally {
+            writeFileSync(registry, original);
+            rmSync(scratch, { recursive: true, force: true });
+          }
+          BUN
 
   mobile-unit-tests:
     name: Mobile Unit Tests
@@ -1744,8 +1801,10 @@ jobs:
               - 'mira-hub/src/capabilities/fix-records.ts'
               - 'mira-hub/src/lib/cmms/**'
               - 'mira-hub/src/lib/atlas/**'
+              - 'mira-hub/src/capabilities/living-sheet/**'
+              - 'mira-hub/db/migrations/114_living_work_sheet.sql'
               - 'mira-hub/src/app/api/equipment-notebooks/[id]/fixes/**'
-              - 'mira-hub/db/proposed/113_asset_observations.sql'
+              - 'mira-hub/db/migrations/113_asset_observations.sql'
               - 'mira-hub/src/capabilities/observations/**'
               - 'mira-hub/src/app/api/equipment-notebooks/[id]/observations/**'
               - 'mira-hub/scripts/cmms-sync-worker.ts'
@@ -1793,7 +1852,7 @@ jobs:
 
       # Mission 001 (#5088): observation record + same-transaction event against the
       # same disposable DB. A separate step, AFTER the dispatcher suite, because its
-      # beforeAll applies the proposed migration 113 (widens the outbox event CHECK);
+      # beforeAll applies migration 113 (widens the outbox event CHECK);
       # running both files in parallel on one database would race that DDL.
       - name: Observation store suite (must RUN, not skip)
         if: steps.changes.outputs.outbox == 'true'
@@ -1815,6 +1874,31 @@ jobs:
             echo "::error::could not confirm a positive passing test count"; exit 1; }
           grep -qE "✓ src/capabilities/observations/__tests__/observations\.integration\.test\.ts" /tmp/observations.plain || {
             echo "::error::observation integration suite did not run and pass"; exit 1; }
+
+      - name: Work-order request outbox suite (must RUN, not skip)
+        if: steps.changes.outputs.outbox == 'true'
+        working-directory: mira-hub
+        run: |
+          set -euo pipefail
+          node node_modules/vitest/vitest.mjs run \
+            --config vitest.integration.config.ts \
+            src/capabilities/living-sheet/__tests__/request-work-order-outbox.integration.test.ts \
+            src/capabilities/living-sheet/__tests__/migration-order.integration.test.ts \
+            2>&1 | tee /tmp/wo-request.out
+          sed -E 's/\x1b\[[0-9;]*[A-Za-z]//g' /tmp/wo-request.out > /tmp/wo-request.plain
+          if grep -qiE "no test files found" /tmp/wo-request.plain; then
+            echo "::error::no test file matched — the gate proved nothing"; exit 1
+          fi
+          if grep -qE "Tests +[0-9]+ skipped" /tmp/wo-request.plain; then
+            echo "::error::work-order request suite SKIPPED (TEST_DATABASE_URL unset?) — the gate proved nothing"; exit 1
+          fi
+          grep -qE "Tests +[1-9][0-9]* passed" /tmp/wo-request.plain || {
+            echo "::error::could not confirm a positive passing test count"; exit 1; }
+          grep -qE "✓ src/capabilities/living-sheet/__tests__/request-work-order-outbox\.integration\.test\.ts" /tmp/wo-request.plain || {
+            echo "::error::work-order request outbox suite did not run and pass"; exit 1; }
+          # Six order/population cases plus the113-only rollback: a partial skip must fail.
+          grep -qE "✓ src/capabilities/living-sheet/__tests__/migration-order\.integration\.test\.ts \(7 tests\)" /tmp/wo-request.plain || {
+            echo "::error::migration-order suite did not run and pass"; exit 1; }
 
   manual-search-quota-pg:
     name: Manual-search quota caps (disposable Postgres, migration 103)

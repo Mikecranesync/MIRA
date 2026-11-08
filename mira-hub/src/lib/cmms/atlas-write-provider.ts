@@ -11,7 +11,8 @@
 // latter also returns synthetic system-generated history rows (system=true)
 // that are filtered out before looking for our idempotency marker.
 
-import { AtlasAuthError, AtlasHttpError, type AtlasComment } from "@/lib/atlas/client";
+import { AtlasAuthError, AtlasHttpError, priorityHubToAtlas, type AtlasComment } from "@/lib/atlas/client";
+import { isQuotaError } from "@/lib/atlas/sync";
 
 import {
   type CmmsCapability,
@@ -20,7 +21,9 @@ import {
   type CmmsWriteProvider,
   type CmmsWriteResult,
   type WorkLogNote,
+  type WorkOrderRequest,
   type WorkOrderTarget,
+  CMMS_LICENCE_LIMIT,
   countMarker,
   renderWorkLogText,
 } from "./write-contract";
@@ -32,15 +35,57 @@ export interface AtlasCommentApi {
   searchComments(workOrderId: string | number): Promise<AtlasComment[]>;
 }
 
+/**
+ * The subset of `AtlasClient` the create-work-order path needs. Deliberately
+ * a SEPARATE, OPTIONAL interface from `AtlasCommentApi` — not a new required
+ * method on it — because existing inline test fakes
+ * (`dispatcher.integration.test.ts`) implement only `AtlasCommentApi` and
+ * would fail to typecheck if that interface grew a required member.
+ */
+export interface AtlasWorkOrderApi {
+  createWorkOrder(payload: {
+    title: string;
+    description: string;
+    priority: string;
+    asset?: { id: number };
+  }): Promise<{ id: number }>;
+  searchWorkOrders(payload: {
+    pageSize?: number;
+    pageNum?: number;
+  }): Promise<{ content?: Array<{ id: number; description?: string }> }>;
+}
+
 export interface AtlasWriteProviderOptions {
   log?: (line: string) => void;
   /** How long a DEFINITIVE capability answer is trusted. Default 10 minutes. */
   capabilityTtlMs?: number;
   /** Injectable clock (ms) for tests. */
   now?: () => number;
+  /** Wires the create-work-order path. Absent ⇒ `createWorkOrder` reports
+   *  `unsupported` and `capabilities().create_work_order` reflects that. */
+  workOrders?: AtlasWorkOrderApi;
 }
 
+/** Bounds the read-back page scan (`findWorkOrderByMarker`) — Atlas's
+ *  `/work-orders/search` has no text filter, so finding a marker means
+ *  paging and checking `description` client-side. A scan that exhausts the
+ *  cap without reaching the last page CANNOT prove the marker is absent, so
+ *  it must never be read as `not_found` (that would let a pre-create check
+ *  double-create). */
+const WORK_ORDER_SEARCH_PAGE_SIZE = 25;
+const WORK_ORDER_SEARCH_PAGE_CAP = 20;
+
 export const CAPABILITY_TTL_MS = 10 * 60_000;
+
+/** The worker's composition: one Atlas client serves both the comment path
+ *  and the work-order path. Building the provider from a single client means
+ *  the create path cannot be left unwired by a caller (Codex #5207 F1). */
+export function atlasWriteProviderFromClient(
+  client: AtlasCommentApi & AtlasWorkOrderApi,
+  opts: Omit<AtlasWriteProviderOptions, "workOrders"> = {},
+): AtlasWriteProvider {
+  return new AtlasWriteProvider(client, { ...opts, workOrders: client });
+}
 
 const PROBE = "GET /comments/count/{id}";
 
@@ -48,6 +93,7 @@ export class AtlasWriteProvider implements CmmsWriteProvider {
   readonly providerId = "atlas";
 
   private readonly api: AtlasCommentApi;
+  private readonly workOrders: AtlasWorkOrderApi | undefined;
   private readonly log: (line: string) => void;
   // Codex round 1, F2: only DEFINITIVE probe results are cached, and only for
   // a bounded time. A transient error (network, 5xx, expired token) yields
@@ -61,6 +107,7 @@ export class AtlasWriteProvider implements CmmsWriteProvider {
 
   constructor(api: AtlasCommentApi, opts: AtlasWriteProviderOptions = {}) {
     this.api = api;
+    this.workOrders = opts.workOrders;
     this.log = opts.log ?? (() => {});
     this.ttlMs = opts.capabilityTtlMs ?? CAPABILITY_TTL_MS;
     this.clock = opts.now ?? Date.now;
@@ -195,6 +242,126 @@ export class AtlasWriteProvider implements CmmsWriteProvider {
     }
   }
 
+  async createWorkOrder(req: WorkOrderRequest): Promise<CmmsWriteResult> {
+    if (!this.workOrders) {
+      return { kind: "unsupported", reason: "atlas_work_order_create_not_wired", receipt: {} };
+    }
+
+    // Idempotency before any write: a matching order already exists. A
+    // failed lookup happened before any create, so it maps like the
+    // work-log path's (never `outcome_unknown`).
+    let existing: Awaited<ReturnType<AtlasWriteProvider["findWorkOrderByMarker"]>>;
+    try {
+      existing = await this.findWorkOrderByMarker(req.marker);
+    } catch (err) {
+      return this.mapPreCreateLookupError(err);
+    }
+    if (existing.status === "cap_exhausted") {
+      return { kind: "retryable_failure", reason: "readback_scan_cap_exhausted", receipt: {} };
+    }
+    if (existing.matches.length > 1) {
+      return { kind: "conflict", reason: "duplicate_marker", receipt: { ids: existing.matches.map((m) => m.id) } };
+    }
+    if (existing.matches.length === 1) {
+      return {
+        kind: "verified_by_readback",
+        externalRef: String(existing.matches[0].id),
+        receipt: { id: existing.matches[0].id },
+      };
+    }
+
+    const description = `${req.marker} ${req.description}\n— ${req.attributionLabel} via MIRA, ${req.occurredAt} (ref ${req.sourceRef})`;
+    let created: { id: number };
+    try {
+      created = await this.workOrders.createWorkOrder({
+        title: req.title,
+        description,
+        // Hub-shaped priority ("medium") -> Atlas's uppercase enum, same
+        // mapper `lib/atlas/sync.ts`'s forward push uses (idempotent on an
+        // already-uppercase value like "MEDIUM").
+        priority: priorityHubToAtlas(req.priority),
+        ...(req.externalAssetId ? { asset: { id: Number(req.externalAssetId) } } : {}),
+      });
+    } catch (err) {
+      return this.mapCreateError(err);
+    }
+
+    try {
+      const after = await this.findWorkOrderByMarker(req.marker);
+      if (after.status === "cap_exhausted") {
+        // The create itself succeeded (`created` exists) — only the
+        // confirming scan was inconclusive. Don't lose the create's result.
+        return { kind: "accepted_pending_verification", externalRef: String(created.id), receipt: { createdId: created.id } };
+      }
+      if (after.matches.length > 1) {
+        return { kind: "conflict", reason: "duplicate_marker", receipt: { ids: after.matches.map((m) => m.id) } };
+      }
+      if (after.matches.length === 1) {
+        return {
+          kind: "verified_by_readback",
+          externalRef: String(after.matches[0].id),
+          receipt: { id: after.matches[0].id },
+        };
+      }
+      return { kind: "accepted_pending_verification", externalRef: String(created.id), receipt: { createdId: created.id } };
+    } catch {
+      this.log(`atlas work-order create: post-create read-back failed for marker=${req.marker}`);
+      return { kind: "accepted_pending_verification", externalRef: String(created.id), receipt: { createdId: created.id } };
+    }
+  }
+
+  async readBackWorkOrder(marker: string): Promise<CmmsReadBackResult> {
+    if (!this.workOrders) {
+      return { kind: "unsupported", reason: "atlas_work_order_create_not_wired", receipt: {} };
+    }
+    try {
+      const scan = await this.findWorkOrderByMarker(marker);
+      if (scan.status === "cap_exhausted") {
+        return { kind: "error", reason: "readback_scan_cap_exhausted", retryable: true, receipt: {} };
+      }
+      if (scan.matches.length === 0) return { kind: "not_found", receipt: {} };
+      return {
+        kind: "found",
+        externalRef: String(scan.matches[0].id),
+        count: scan.matches.length,
+        receipt: { ids: scan.matches.map((m) => m.id) },
+      };
+    } catch (err) {
+      if (err instanceof AtlasHttpError && (err.status === 404 || err.status === 405)) {
+        return { kind: "unsupported", reason: "atlas_version_without_work_order_search", receipt: { status: err.status } };
+      }
+      if (err instanceof AtlasHttpError && (err.status === 401 || err.status === 403)) {
+        return { kind: "error", reason: "permission_denied", retryable: false, receipt: { status: err.status } };
+      }
+      if (err instanceof AtlasAuthError) {
+        return { kind: "error", reason: "atlas_not_configured", retryable: false, receipt: {} };
+      }
+      return { kind: "error", reason: "atlas_read_back_failed", retryable: true, receipt: {} };
+    }
+  }
+
+  /** Pages `/work-orders/search` and filters by `marker` in `description`
+   *  client-side (Atlas has no server-side text filter). Bounded by
+   *  `WORK_ORDER_SEARCH_PAGE_CAP`; exhausting the cap WITHOUT reaching a
+   *  short last page cannot prove absence — callers must treat that as
+   *  inconclusive, never as `not_found`. */
+  private async findWorkOrderByMarker(
+    marker: string,
+  ): Promise<{ status: "ok"; matches: Array<{ id: number }> } | { status: "cap_exhausted" }> {
+    const matches: Array<{ id: number }> = [];
+    for (let pageNum = 0; pageNum < WORK_ORDER_SEARCH_PAGE_CAP; pageNum++) {
+      const resp = await this.workOrders!.searchWorkOrders({ pageSize: WORK_ORDER_SEARCH_PAGE_SIZE, pageNum });
+      const items = resp.content ?? [];
+      for (const item of items) {
+        if (typeof item.description === "string" && countMarker(item.description, marker) > 0) {
+          matches.push({ id: item.id });
+        }
+      }
+      if (items.length < WORK_ORDER_SEARCH_PAGE_SIZE) return { status: "ok", matches };
+    }
+    return { status: "cap_exhausted" };
+  }
+
   private foreignTargetMatrix(target: WorkOrderTarget): CmmsCapabilityMatrix {
     const cap: CmmsCapability = { support: "unsupported", reason: `target_provider_mismatch:${target.providerId}` };
     return {
@@ -204,7 +371,16 @@ export class AtlasWriteProvider implements CmmsWriteProvider {
       record_reading: cap,
       transition_work_order: cap,
       list_changes: cap,
+      create_work_order: this.createWorkOrderCapability(),
     };
+  }
+
+  /** Static (not probed): creation has no existing target to probe against.
+   *  `implemented` iff this provider was wired with a `workOrders` API. */
+  private createWorkOrderCapability(): CmmsCapability {
+    return this.workOrders
+      ? { support: "implemented" }
+      : { support: "unsupported", reason: "atlas_work_order_create_not_wired" };
   }
 
   private targetKey(target: WorkOrderTarget): string {
@@ -232,6 +408,7 @@ export class AtlasWriteProvider implements CmmsWriteProvider {
       record_reading: { support: "unsupported", reason: "not_implemented" },
       transition_work_order: { support: "unsupported", reason: "not_implemented" },
       list_changes: { support: "unsupported", reason: "not_implemented" },
+      create_work_order: this.createWorkOrderCapability(),
     };
   }
 
@@ -284,6 +461,14 @@ export class AtlasWriteProvider implements CmmsWriteProvider {
    * only ever reconciles it by read-back.
    */
   private mapCreateError(err: unknown): CmmsWriteResult {
+    // Atlas's free edition refuses a create once the company holds 30
+    // incomplete work orders (403 "Free Limit of 30 incomplete work orders
+    // reached"). It is a refusal before acting, like any other 4xx, but the
+    // cause is capacity, not access: name it so the technician and admin are
+    // told the real reason, and so a re-tap can re-queue it once room frees.
+    if (isQuotaError(err)) {
+      return { kind: "permission_denied", reason: CMMS_LICENCE_LIMIT, receipt: { status: err.status } };
+    }
     if (err instanceof AtlasAuthError) return this.mapWriteError(err);
     if (err instanceof AtlasHttpError && err.status >= 400 && err.status < 500 && err.status !== 408) {
       return this.mapWriteError(err);

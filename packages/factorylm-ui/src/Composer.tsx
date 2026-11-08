@@ -1,6 +1,7 @@
 import type { Attachment, PlatformAdapter, ShellAction, ShellState } from "@factorylm/interaction";
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type Dispatch, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
 import { AttachmentMenu } from "./AttachmentMenu";
+import { PlusIcon } from "./icons";
 import { Overlay } from "./Overlay";
 import { openableUrl } from "./links";
 import { ATTACHMENT_KIND_LABEL, machineName, type HostHooks } from "./parts";
@@ -322,7 +323,7 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
         aria-busy={busy !== null}
         onClick={() => dispatch({ type: "set-attachment-menu-visible", visible: !state.attachmentMenuVisible })}
       >
-        <span aria-hidden="true">＋</span><span className="fl-composer__label">Attach</span>
+        <PlusIcon className="fl-composer__attach-glyph" /><span className="fl-composer__label">Attach</span>
       </button>
       <textarea
         ref={fieldRef}

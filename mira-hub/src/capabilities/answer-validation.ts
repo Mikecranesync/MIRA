@@ -1007,11 +1007,11 @@ const MANUAL_SELF_SERVE_LINE =
  *  say the search is underway and where the manual will appear. */
 const MANUAL_SEARCH_RUNNING_LINE =
   "- If you need the document itself: I'm already searching for the official manual for this equipment. When I find it, it will show up in this notebook's Sources — ask again then and I'll answer from it with a page reference.";
-/** Codex #4183 F1: a CANDIDATE-basis manual lands turned off pending the
- *  technician's check (the identity is unconfirmed), so asking again alone
- *  cannot ground an answer — say to turn it on first. */
+/** A photo-basis ("candidate") search was started from the nameplate the
+ *  technician photographed (owner decision 2026-11-07): say so, and that the
+ *  manual lands turned on — never send them to a switch. */
 const MANUAL_SEARCH_RUNNING_CANDIDATE_LINE =
-  "- If you need the document itself: I'm already searching for the official manual for this equipment. When I find it, it'll be saved to this notebook's Sources, turned off until you check it — turn it on there if it's right and ask again, and I'll answer from it with a page reference.";
+  "- If you need the document itself: I'm already searching for the official manual for the equipment in your photo. When I find it, it will show up in this notebook's Sources, turned on — ask again then and I'll answer from it with a page reference.";
 
 /** Which automatic manual search is running for this notebook, if any. */
 export type ManualSearchRunning = "confirmed" | "candidate" | null;

@@ -32,26 +32,27 @@ import type {
   WorkPacketAvailability,
 } from "@/capabilities/work-packet/types";
 import { applyEdit } from "@/capabilities/work-packet/edits";
+import { emptyRecord, parseRecord, type JobRecord } from "@/capabilities/work-packet/job-record";
+import { CompletionBlock, JobNotesSection, JobPhotosSection, MeasurementRecordInput, PacketCoverage, StepRecordControls } from "./JobRecordView";
+import { BlockersSection, CoverageStop, JhaTable, LeftOutAppendix, MeasurementsTable, PartsTable, PhasedSteps, ReadinessBlock, type RenderField } from "./WorkPacketV2Sections";
+import { pageHeadCss } from "./work-packet-v2-view";
 import {
   badgeText,
+  quoteChipLabel,
+  technicianEntryNote,
   cautionFieldPath,
   confirmedRevisionsPayload,
   confidencePercent,
   documentsSignature,
-  jhaFieldPath,
-  measurementFieldPath,
   packetForNotebook,
   packetHeaderRows,
   packetStaleReason,
   revisionTickHolds,
-  partFieldPath,
   printTitle,
   qualificationFieldPath,
   restorationFieldPath,
   scopeFieldPath,
   sourceChipLabel,
-  stepFieldPath,
-  stepsWithFigures,
   syntheticDemoWorkOrder,
   toolFieldPath,
   unknownFieldPath,
@@ -96,11 +97,13 @@ const S: Record<string, CSSProperties> = {
   label: { display: "block", marginTop: 10, fontSize: "var(--fl-fs-sm)" },
   field: { borderTop: "1px solid var(--fl-line)", padding: "10px 0" },
   chip: {
-    display: "inline-block", marginTop: 6, padding: "4px 8px", minHeight: 0, border: "1px solid var(--fl-line-strong)",
+    display: "inline-block", marginTop: 6, padding: "4px 8px", minHeight: 44, border: "1px solid var(--fl-line-strong)",
     borderRadius: "var(--fl-radius-sm, 6px)", background: "var(--fl-surface)", color: "var(--fl-muted)",
     fontSize: "var(--fl-fs-xs)", cursor: "pointer",
   },
   struck: { textDecoration: "line-through", color: "var(--fl-muted)" },
+  quote: { margin: "6px 0 0 0", padding: "8px 10px", borderLeft: "3px solid var(--fl-line-strong)", background: "var(--fl-line)", fontSize: "var(--fl-fs-sm)" },
+  techNote: { marginTop: 4, paddingLeft: 6, borderLeft: "2px solid var(--fl-line-strong)", fontSize: "var(--fl-fs-xs)", color: "var(--fl-ink)", fontStyle: "italic" },
   stamp: {
     display: "inline-block", border: "2px solid var(--fl-fault)", color: "var(--fl-fault)", borderRadius: "var(--fl-radius-sm, 6px)",
     padding: "4px 10px", fontWeight: 700, fontSize: "var(--fl-fs-sm)", transform: "rotate(-4deg)", marginBottom: 10,
@@ -123,6 +126,7 @@ function badgeStyle(label: Field["label"]): CSSProperties {
  *  the packet (portal root)"). `[data-no-print]` hides every edit/nav control on paper; nothing
  *  outside `.wp-print-root` is visible on paper. */
 const PRINT_CSS = `
+@page { margin: 14mm 12mm 16mm 12mm; @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 9pt; } }
 @media print {
   body * { visibility: hidden; }
   .wp-print-root, .wp-print-root * { visibility: visible; }
@@ -157,12 +161,36 @@ function loadDraft(notebookId: string): WorkPacket | null {
     return null;
   }
 }
-function saveDraft(notebookId: string, packet: WorkPacket): void {
+function saveDraft(notebookId: string, packet: WorkPacket): boolean {
   try {
     window.localStorage.setItem(DRAFT_KEY(notebookId), JSON.stringify(packet));
+    return true;
   } catch {
     // localStorage unavailable (private mode, quota, disabled) — the packet still renders from
-    // in-memory state; it just won't survive a reload. Never throw over this.
+    // in-memory state; it just won't survive a reload. Never throw over this; the caller says so.
+    return false;
+  }
+}
+
+// The job record (what was actually done) is keyed by packet, not notebook: rebuilding the packet
+// starts a new record, so a performed step can never attach to a different procedure.
+const RECORD_KEY = (packetId: string) => `work-packet-record:${packetId}`;
+
+function loadRecord(packetId: string): JobRecord {
+  try {
+    return parseRecord(window.localStorage.getItem(RECORD_KEY(packetId)), packetId) ?? emptyRecord(packetId);
+  } catch {
+    return emptyRecord(packetId);
+  }
+}
+
+/** False when this device refused the write (storage full or blocked) — the caller says so. */
+function saveRecord(record: JobRecord): boolean {
+  try {
+    window.localStorage.setItem(RECORD_KEY(record.packetId), JSON.stringify(record));
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -203,34 +231,56 @@ export function FieldRow({
 }: {
   path: string;
   field: Field;
-  onEdit: (path: string, action: EditAction, value?: string) => void;
+  onEdit: (path: string, action: EditAction, value?: string, source?: string) => void;
   onOpenSource?: (source: SourceRef) => void;
   busy: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(field.value ?? "");
+  // Settle (Codex EGM F17): the answer to an open item and where it came from — both required.
+  const [settling, setSettling] = useState(false);
+  const [answer, setAnswer] = useState("");
+  const [from, setFrom] = useState("");
+  const canSettle = field.label === "unknown" && !field.struck;
   const [expanded, setExpanded] = useState(false);
   const chip = sourceChipLabel(field.source);
+  const entry = technicianEntryNote(field);
 
   return (
     <div style={S.field} data-testid={`field-${path}`}>
       <span style={badgeStyle(field.label)}>{badgeText(field.label)}</span>
       <span style={field.struck ? S.struck : undefined}>{field.value ?? "(unknown)"}</span>
       {field.basis && <div style={S.muted}>{field.basis}</div>}
+      {/* A technician's change is marked as theirs on screen and on paper (never read as manual text). */}
+      {entry && <div style={S.techNote} data-testid="wp-entry-note">{entry}</div>}
       {chip && (
         <button
           type="button"
           data-no-print
+          data-testid="wp-quote-chip"
           style={S.chip}
+          aria-expanded={onOpenSource ? undefined : expanded}
           onClick={() => (onOpenSource ? onOpenSource(field.source!) : setExpanded((e) => !e))}
         >
-          {chip}
+          {onOpenSource ? chip : quoteChipLabel(field.source)}
         </button>
       )}
       {/* The chip is a button and is hidden on paper; the PDF still says where each line came from. */}
       {chip && <div className="wp-print-only" style={S.muted} data-testid="wp-print-source">Source: {chip}</div>}
-      {chip && !onOpenSource && expanded && <div style={S.muted}>{field.source!.line}</div>}
-      {editing ? (
+      {chip && !onOpenSource && expanded && (
+        <blockquote style={S.quote} data-testid="wp-quote" data-no-print>
+          <div style={S.muted}>Quoted from {chip}. This shows the manual&apos;s text only; it does not open the original page.</div>
+          {field.source!.line}
+        </blockquote>
+      )}
+      {settling ? (
+        <div data-no-print data-testid="wp-settle-form">
+          <input aria-label="Answer" style={S.input} value={answer} onChange={(e) => setAnswer(e.target.value)} placeholder="Answer" />
+          <input aria-label="Where the answer came from" style={S.input} value={from} onChange={(e) => setFrom(e.target.value)} placeholder="Where it came from (nameplate, site procedure, person)" />
+          <button type="button" style={{ ...S.btn, ...S.primary }} disabled={busy || !answer.trim() || !from.trim()} onClick={() => { onEdit(path, "settle", answer, from); setSettling(false); }}>Save as settled</button>
+          <button type="button" style={S.btn} onClick={() => setSettling(false)}>Cancel</button>
+        </div>
+      ) : editing ? (
         <div data-no-print>
           <input style={S.input} value={draft} onChange={(e) => setDraft(e.target.value)} />
           <button type="button" style={{ ...S.btn, ...S.primary }} disabled={busy} onClick={() => { onEdit(path, "set", draft); setEditing(false); }}>Save</button>
@@ -242,6 +292,7 @@ export function FieldRow({
           <button type="button" style={S.btn} disabled={busy} onClick={() => onEdit(path, "confirm")}>Confirm</button>
           <button type="button" style={S.btn} disabled={busy} onClick={() => onEdit(path, "strike")}>Strike</button>
           <button type="button" style={S.btn} disabled={busy} onClick={() => onEdit(path, "mark_unknown")}>Mark unknown</button>
+          {canSettle && <button type="button" style={S.btn} disabled={busy} data-testid="wp-settle" onClick={() => { setAnswer(""); setFrom(""); setSettling(true); }}>Settle</button>}
         </div>
       )}
     </div>
@@ -274,8 +325,11 @@ export function WorkPacketPanel({
   notebookId,
   technicianName,
   onOpenSource,
+  openOnArrival = false,
 }: {
   notebookId: string;
+  /** Open the packet on mount — set by the host for a `?workpacket=open` direct link. */
+  openOnArrival?: boolean;
   /** Recorded as the `by` on every ReviewEntry (task §E step 5). Falls back to a generic label
    *  when the shell has no signed-in name to offer — the edit is still attributed, just not to a
    *  specific person. */
@@ -285,7 +339,7 @@ export function WorkPacketPanel({
   onOpenSource?: (source: SourceRef) => void;
 }) {
   const [avail, setAvail] = useState<WorkPacketAvailability | null>(null);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(openOnArrival);
   const [error, setError] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const openerRef = useRef<HTMLButtonElement>(null);
@@ -316,12 +370,13 @@ export function WorkPacketPanel({
     };
   }, [baseUrl]);
 
+  const availReady = avail !== null; // the dialog only exists once availability has resolved
   useEffect(() => {
     const d = dialogRef.current;
     if (!d) return;
     if (open && !d.open) d.showModal();
     if (!open && d.open) d.close();
-  }, [open]);
+  }, [open, availReady]);
 
   // ── Equipment step state (nameplate photo OR typed manufacturer/model) ───────────────────────
   const [napBusy, setNapBusy] = useState(false);
@@ -484,7 +539,7 @@ export function WorkPacketPanel({
       if (liveNotebook.current !== notebookId || data.packet.notebookId !== notebookId) return;
       setPacket(data.packet);
       setWarnings(data.warnings);
-      saveDraft(notebookId, data.packet);
+      if (!saveDraft(notebookId, data.packet)) setError("This device did not save the packet (storage is full or blocked). It is shown here but will be lost on reload.");
     } catch {
       setError("No connection. Nothing was built — try again.");
     } finally {
@@ -492,13 +547,13 @@ export function WorkPacketPanel({
     }
   }, [baseUrl, notebookId, wo, synthetic, revConfirmed, avail]);
 
-  const onEditField = useCallback((path: string, action: EditAction, value?: string) => {
+  const onEditField = useCallback((path: string, action: EditAction, value?: string, source?: string) => {
     setPacket((p) => {
       if (!p) return p;
       setEditBusy(true);
       try {
-        const next = applyEdit(p, { path, action, value }, by, new Date().toISOString());
-        saveDraft(notebookId, next);
+        const next = applyEdit(p, { path, action, value, source }, by, new Date().toISOString());
+        if (!saveDraft(notebookId, next)) setError("This device did not save that edit (storage is full or blocked). It is shown here but will be lost on reload.");
         return next;
       } catch (err) {
         setError(err instanceof Error ? err.message : "That edit could not be applied.");
@@ -508,6 +563,24 @@ export function WorkPacketPanel({
       }
     });
   }, [notebookId, by]);
+
+  // ── Job record (what the technician did) ───────────────────────────────────────────────────────
+  const [record, setRecord] = useState<JobRecord | null>(() => (packet ? loadRecord(packet.packetId) : null));
+  const [recordError, setRecordError] = useState<string | null>(null);
+  // A new packet means a new record (adjusted during render, not in an effect).
+  const packetIdNow = packet?.packetId ?? null;
+  if ((record?.packetId ?? null) !== packetIdNow) {
+    setRecord(packet ? loadRecord(packet.packetId) : null);
+    setRecordError(null);
+  }
+  const onRecord = useCallback((next: JobRecord) => {
+    setRecord(next);
+    setRecordError(saveRecord(next) ? null : "This device did not save that change (storage is full or blocked). It is shown here but will be lost on reload — remove a photo and try again.");
+  }, []);
+
+  const renderField: RenderField = (path, field) => (
+    <FieldRow path={path} field={field} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />
+  );
 
   // ── Export PDF ────────────────────────────────────────────────────────────────────────────────
   const stale = packet && avail ? packetStaleReason(packet, avail) : null;
@@ -660,8 +733,13 @@ export function WorkPacketPanel({
                 style={{ ...S.btn, ...S.btnBlock, ...S.primary, marginTop: 12, ...(buildBusy || !revConfirmed ? { opacity: 0.45, cursor: "not-allowed" } : {}) }}
                 disabled={buildBusy || !revConfirmed} onClick={() => void onBuild()}
               >
-                Build draft packet
+                {packet ? "Build a new packet" : "Build draft packet"}
               </button>
+              {packet && (
+                <div style={{ ...S.muted, marginTop: 8 }} data-testid="wp-rebuild-note">
+                  Building again replaces this packet and starts a new, empty work record.
+                </div>
+              )}
               {!revConfirmed && (avail?.documents.length ?? 0) > 0 && (
                 <div style={{ ...S.muted, marginTop: 8 }} data-testid="wp-rev-needed">
                   Confirm the machine and the manual revisions above before building.
@@ -681,6 +759,8 @@ export function WorkPacketPanel({
               // Keyed by packet: a rebuilt packet remounts every row, so no row keeps an edit box or
               // draft text from the packet it replaced (Codex #5062 F16).
               <div data-testid="wp-packet" key={packet.packetId}>
+                {/* Job, pump and SYNTHETIC in every printed page's margin (Codex EGM F13). */}
+                <style data-testid="wp-page-head">{pageHeadCss(packet)}</style>
                 {stale && (
                   // Printed too: a stale packet that reaches paper by the browser's own print still says so.
                   <div role="alert" style={{ ...S.fault, marginBottom: 8 }} data-testid="wp-stale">
@@ -688,8 +768,11 @@ export function WorkPacketPanel({
                   </div>
                 )}
                 {packet.workOrder.synthetic && <div style={S.stamp} data-testid="wp-synthetic-stamp">SYNTHETIC — not a real job</div>}
+                <CoverageStop packet={packet} />
                 <PacketHeader packet={packet} />
                 <div style={S.warn} data-testid="wp-disclaimer">{packet.disclaimer}</div>
+                <ReadinessBlock packet={packet} record={record} />
+                <PacketCoverage packet={packet} />
                 {warnings.length > 0 && (
                   // Every warning is a verifyPacket line check; each such line is already shown below
                   // as Unknown with its reason. On paper only the count prints.
@@ -703,6 +786,7 @@ export function WorkPacketPanel({
                   </details>
                 )}
                 {packet.safety.hazardFlags.map((h, i) => <div key={i} style={{ ...S.warn, marginTop: 8 }} data-testid={`wp-hazard-${i}`}>{h}</div>)}
+                <BlockersSection packet={packet} renderField={renderField} />
 
                 <section style={S.section}>
                   <h3 style={S.sectionTitle}>Scope</h3>
@@ -718,19 +802,7 @@ export function WorkPacketPanel({
                   </div>
                 </section>
 
-                {(packet.jha?.length ?? 0) > 0 && (
-                  <section style={S.section} data-testid="wp-jha">
-                    <h3 style={S.sectionTitle}>Job hazard analysis</h3>
-                    <div style={S.muted}>Hazards are the manufacturer&apos;s cautions. Controls, PPE and isolation are set by your site.</div>
-                    {packet.jha!.map((r, i) => (
-                      <div key={i} style={i > 0 ? S.jhaRow : { marginTop: 8 }}>
-                        <FieldRow path={jhaFieldPath(i, "task")} field={r.task} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />
-                        <FieldRow path={jhaFieldPath(i, "hazard")} field={r.hazard} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />
-                        <FieldRow path={jhaFieldPath(i, "controls")} field={r.controls} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />
-                      </div>
-                    ))}
-                  </section>
-                )}
+                <JhaTable packet={packet} renderField={renderField} />
 
                 {(packet.qualifications?.length ?? 0) > 0 && (
                   <section style={S.section} data-testid="wp-qualifications">
@@ -739,58 +811,27 @@ export function WorkPacketPanel({
                   </section>
                 )}
 
-                <section style={S.section}>
-                  <h3 style={S.sectionTitle}>Parts &amp; kits</h3>
-                  {packet.parts.map((p, i) => (
-                    <div key={i} style={{ marginTop: i > 0 ? 10 : 0 }}>
-                      {p.kit && <div style={S.muted}>{p.kit} kit</div>}
-                      <FieldRow path={partFieldPath(i, "partNumber")} field={p.partNumber} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />
-                      <FieldRow path={partFieldPath(i, "description")} field={p.description} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />
-                      <FieldRow path={partFieldPath(i, "qty")} field={p.qty} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />
-                    </div>
-                  ))}
-                </section>
+                <PartsTable packet={packet} renderField={renderField} />
 
                 <section style={S.section}>
                   <h3 style={S.sectionTitle}>Tools</h3>
                   {packet.tools.map((f, i) => <FieldRow key={i} path={toolFieldPath(i)} field={f} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />)}
                 </section>
 
-                <section style={S.section}>
-                  <h3 style={S.sectionTitle}>Steps</h3>
-                  {stepsWithFigures(packet).map(({ index: i, figures }) => (
-                    <div key={i}>
-                      <FieldRow path={stepFieldPath(i)} field={packet.steps[i].text} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />
-                      {figures.map((f, j) => (
-                        <figure key={j} style={S.figure} data-testid="wp-figure">
-                          {f.image
-                            ? // eslint-disable-next-line @next/next/no-img-element -- an inline data: URL photo; next/image cannot optimise it
-                              <img src={f.image} alt={f.caption.join(" — ") || `Manufacturer photo, p.${f.page}`} style={S.figureImg} />
-                            : <div style={S.muted}>Photo could not be read — see the manual.</div>}
-                          <figcaption style={S.muted}>{[...f.caption, `Manufacturer photo, p.${f.page} ${f.filename ?? "document"}`].join(" · ")}</figcaption>
-                        </figure>
-                      ))}
-                    </div>
-                  ))}
-                  {packet.steps.length > 0 && (packet.figures?.length ?? 0) === 0 && (
-                    <div style={{ ...S.muted, marginTop: 8 }}>Photos: open the cited manual page (this document was read as text only).</div>
-                  )}
-                </section>
+                <PhasedSteps
+                  packet={packet} renderField={renderField}
+                  stepExtra={(i) => record && <StepRecordControls index={i} struck={!!packet.steps[i].text.struck} text={packet.steps[i].text.value} record={record} by={by} onChange={onRecord} />}
+                />
 
-                <section style={S.section}>
-                  <h3 style={S.sectionTitle}>Torque / measurements</h3>
-                  {packet.measurements.map((m, i) => (
-                    <div key={i} style={{ marginTop: i > 0 ? 10 : 0 }}>
-                      <FieldRow path={measurementFieldPath(i, "name")} field={m.name} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />
-                      <FieldRow path={measurementFieldPath(i, "value")} field={m.value} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />
-                      <FieldRow path={measurementFieldPath(i, "tool")} field={m.tool} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />
-                    </div>
-                  ))}
-                </section>
+                <MeasurementsTable
+                  packet={packet} record={record} renderField={renderField}
+                  measureInput={(i) => record && <MeasurementRecordInput index={i} record={record} by={by} onChange={onRecord} />}
+                />
 
                 {(packet.restoration?.length ?? 0) > 0 && (
                   <section style={S.section} data-testid="wp-restoration">
                     <h3 style={S.sectionTitle}>Return to service</h3>
+                    <div style={S.muted} data-testid="wp-restoration-note">These are the manual&apos;s reassembly and start-up lines. This packet does not authorize return to service — a qualified person decides that on site.</div>
                     {packet.restoration!.map((f, i) => <FieldRow key={i} path={restorationFieldPath(i)} field={f} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />)}
                   </section>
                 )}
@@ -799,6 +840,18 @@ export function WorkPacketPanel({
                   <h3 style={S.sectionTitle}>Exceptions &amp; unknowns</h3>
                   {packet.unknowns.map((f, i) => <FieldRow key={i} path={unknownFieldPath(i)} field={f} onEdit={onEditField} onOpenSource={onOpenSource} busy={editBusy} />)}
                 </section>
+
+                {record && (
+                  <section style={S.section} data-testid="wp-job-record">
+                    <h3 style={S.sectionTitle}>Work record</h3>
+                    {recordError && <div role="alert" style={S.fault} data-testid="wp-record-error">{recordError}</div>}
+                    <JobNotesSection record={record} by={by} steps={packet.steps.length} onChange={onRecord} />
+                    <JobPhotosSection record={record} by={by} onChange={onRecord} onError={setRecordError} synthetic={packet.workOrder.synthetic} />
+                    <CompletionBlock packet={packet} record={record} />
+                  </section>
+                )}
+
+                <LeftOutAppendix packet={packet} renderField={renderField} />
 
                 <section style={S.section}>
                   <h3 style={S.sectionTitle}>Sources</h3>

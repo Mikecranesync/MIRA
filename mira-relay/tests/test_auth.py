@@ -383,6 +383,20 @@ class TestSignHmacHeaders:
         assert auth.verify_hmac(first, body, TEST_KEY) == TEST_TENANT
         assert auth.verify_hmac(second, body, TEST_KEY) == TEST_TENANT
 
+    def test_explicit_signing_time_is_used_and_window_is_unchanged(self):
+        """A producer with a known-wrong host clock signs with its corrected
+        time; the server's skew window is still enforced against that time."""
+        body = b"payload"
+        server_now = 1_793_590_925
+        headers = auth.sign_hmac_headers(TEST_TENANT, body, TEST_KEY, now=server_now)
+        assert headers["X-MIRA-Timestamp"] == str(server_now)
+        assert auth.verify_hmac(headers, body, TEST_KEY, _now=server_now) == TEST_TENANT
+        stale = auth.sign_hmac_headers(
+            TEST_TENANT, body, TEST_KEY, now=server_now - auth.TIMESTAMP_SKEW_SECONDS - 1
+        )
+        with pytest.raises(ValueError, match="bad_timestamp"):
+            auth.verify_hmac(stale, body, TEST_KEY, _now=server_now)
+
     def test_the_key_never_appears_in_the_headers(self):
         headers = auth.sign_hmac_headers(TEST_TENANT, b"payload", TEST_KEY)
         assert TEST_KEY not in json.dumps(headers)

@@ -1,0 +1,26 @@
+{
+  "label": "after",
+  "listCalls": [
+    {
+      "status": 503,
+      "ms": 955
+    },
+    {
+      "status": 503,
+      "ms": 957
+    },
+    {
+      "status": 200,
+      "ms": 1961
+    }
+  ],
+  "warnings": [
+    "[hub-host] notebook list failed: HTTP 503 (attempt 1)",
+    "[hub-host] notebook list failed: HTTP 503 (attempt 1)"
+  ],
+  "urlNotebookKept": true,
+  "generalQuestionShown": false,
+  "jobSheetPill": false,
+  "notebookNameShown": true,
+  "at": "2026-11-07T05:58:22.463Z"
+}

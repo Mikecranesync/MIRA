@@ -416,7 +416,13 @@ jobs:
           echo "=== Built image identities ==="
           BUILT_IDS="$(mktemp)"
           for svc in "${TARGET_LIST[@]}"; do
-            img="$(doppler run --project factorylm --config stg -- docker compose -p "$PROJECT" -f "$COMPOSE_FILE" config --images "$svc" | head -1)"
+            # `config --images <svc>` also lists the images of <svc>'s dependencies, so its
+            # first line can belong to another service (atlas-frontend resolved to the
+            # minio image in run 41950955387). Read this service's own image instead.
+            img="$(doppler run --project factorylm --config stg -- docker compose -p "$PROJECT" -f "$COMPOSE_FILE" config --format json \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"][sys.argv[1]].get("image",""))' "$svc")"
+            # A built service has no image key; Compose names it <project>-<service>.
+            [ -n "$img" ] || img="${PROJECT}-${svc}"
             [ -n "$img" ] || { echo "::error::compose reports no image for ${svc} — failing closed."; exit 1; }
             id="$(docker image inspect --format '{{.Id}}' "$img")"
             [ -n "$id" ] || { echo "::error::no built image id for ${svc} (${img}) — failing closed."; exit 1; }
@@ -429,7 +435,23 @@ jobs:
             cid="$(doppler run --project factorylm --config stg -- docker compose -p "$PROJECT" -f "$COMPOSE_FILE" ps -q "$svc")"
             [ -n "$cid" ] || { echo "::error::no running container for ${svc} after the swap — failing closed."; exit 1; }
             running="$(docker inspect --format '{{.Image}}' "$cid")"
+            # Digest-pinned pulled images (atlas-api) report the container's image as
+            # the pinned manifest digest while `docker image inspect <ref>` (the built
+            # side) reports the image id. Resolve the container's image through the
+            # same `docker image inspect` so both sides use one namespace (#5179 run
+            # 41823381467). A locally built image resolves to itself; unresolvable
+            # stays a mismatch (fail closed).
             built="$(grep "^${svc}=" "$BUILT_IDS" | cut -d= -f2-)"
+            if [ -n "$running" ] && [ "$running" != "$built" ]; then
+              resolved="$(docker image inspect --format '{{.Id}}' "$running" 2>/dev/null || true)"
+              if [ -n "$resolved" ] && [ "$resolved" = "$built" ]; then
+                running="$resolved"
+              elif [[ "$running" =~ ^sha256:[0-9a-f]{64}$ ]] \
+                && docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$built" 2>/dev/null | grep -qE "@${running}\$"; then
+                # The container's manifest digest is one of the built image's own repo digests.
+                running="$built"
+              fi
+            fi
             if [ -z "$running" ] || [ "$running" != "$built" ]; then
               echo "::error::built/running image mismatch for ${svc}: built=${built} running=${running} — STOP."
               exit 1

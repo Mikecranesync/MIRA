@@ -73,13 +73,14 @@ describe("CU-RR1 reranker lane", () => {
     expect(baseline.length).toBe(3);
   });
 
-  it("flag on: the pool is reordered by the reranker's scores", async () => {
+  it("flag on: after the pinned lexical top 2, the pool is reordered by the reranker's scores", async () => {
+    const rows = [...ROWS, mk(40, "Dynamic braking resistor ohm and watt ratings by drive frame.", 0.1)];
     vi.stubEnv("NOTEBOOK_RERANK", "0");
-    const baseline = pages(await ask("How do I select a braking resistor?"));
+    const baseline = pages(await ask("How do I select a braking resistor?", rows));
     vi.stubEnv("NOTEBOOK_RERANK", "1");
     vi.stubGlobal("fetch", reversingService());
-    const reranked = pages(await ask("How do I select a braking resistor?"));
-    expect(reranked).toEqual([...baseline].reverse());
+    const reranked = pages(await ask("How do I select a braking resistor?", rows));
+    expect(reranked).toEqual([...baseline.slice(0, 2), ...baseline.slice(2).reverse()]);
   });
 
   it("2. flag on but the service fails (HTTP 500, timeout, wrong count, NaN, no URL): today's order", async () => {

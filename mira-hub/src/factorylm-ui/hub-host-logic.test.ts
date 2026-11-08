@@ -147,6 +147,14 @@ describe("chatBodyFor — general help is always available (Codex #3839 Spec P1,
     expect(strip(chatBodyFor("q", [], history, sel, undefined))).toEqual(strip(chatBodyFor("q", [], history, sel)));
     expect("visualEvidence" in chatBodyFor("q", ["d"], [], sel)).toBe(false);
   });
+  // TASK-S3: the chat route reads this literal field name off the body
+  // (chat/route.ts:5498 `const jobId = b?.livingSheetJobId`) — never a
+  // differently-named rider.
+  it("a livingSheetJobId rider is carried through only when provided", () => {
+    const body = chatBodyFor("q", ["doc-a"], history, sel, { livingSheetJobId: "job-1" });
+    expect(body.livingSheetJobId).toBe("job-1");
+    expect("livingSheetJobId" in chatBodyFor("q", ["doc-a"], history, sel)).toBe(false);
+  });
   it("the legacy selection posts threadId null, a named thread posts its id", () => {
     expect(chatBodyFor("q", ["d"], [], { notebookId: "nb", threadId: "legacy" }).threadId).toBeNull();
     expect(chatBodyFor("q", ["d"], [], { notebookId: "nb", threadId: "abc" }).threadId).toBe("abc");
