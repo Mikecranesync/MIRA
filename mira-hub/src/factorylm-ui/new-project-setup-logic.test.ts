@@ -4,9 +4,11 @@ import {
   applicabilityLine,
   createNewProjectSetup,
   findExistingProject,
+  INDEXING_CAPPED,
   linkedDocsFrom,
   machinesFromTree,
   readinessView,
+  resolveIndexing,
   resultRows,
   runCommit,
   STILL_PROCESSING,
@@ -220,15 +222,211 @@ describe("write plan (runCommit)", () => {
     expect(rows[0]!.readiness.tone).not.toBe("ready");
   });
 
-  it("an upload that returns 202 indexing:true (no uploadId) is also Needs attention", async () => {
+  it("#5295 r2: an upload that returns 202 indexing:true keeps its fileId and shows Processing, not Needs attention", async () => {
     const h = harness({
       "POST /api/equipment-notebooks/": { status: 201, body: { notebook: { id: "nb-g", nodeId: "node-g" } } },
       "GET /api/equipment-notebooks/nb-g/": { status: 200, body: { notebook: { nodeId: "node-g" } } },
-      "POST /api/namespace/node/node-g/files/": { status: 202, body: { ok: true, indexed: false, indexing: true, fileId: "f" } },
+      "POST /api/namespace/node/node-g/files/": { status: 202, body: { ok: true, indexed: false, indexing: true, fileId: "f-202" } },
     });
     const pdf = new File(["%PDF"], "m.pdf", { type: "application/pdf" });
     const outcome = await runCommit({ selected: { kind: "general" }, name: "G", docs: [], pdfs: [pdf] }, deps(h.fetch, { createNotebook: async () => "nb-g" }));
-    expect(outcome.kind === "created" && outcome.docs[0]!.notIndexed).toBe(true);
+    expect(outcome.kind).toBe("created");
+    if (outcome.kind !== "created") return;
+    expect(outcome.docs[0]).toMatchObject({ key: "file:f-202", fileId: "f-202", indexing: true, notIndexed: false, docId: null });
+    expect(h.calls.some((c) => c.path.includes("/sources/"))).toBe(false);
+    const rows = resultRows(outcome.docs, [], false);
+    expect(rows[0]!.readiness).toEqual({ tone: "processing", label: "Processing" });
+  });
+
+  it("control: a 202 without a fileId cannot be followed and is Needs attention", async () => {
+    const h = harness({
+      "POST /api/equipment-notebooks/": { status: 201, body: { notebook: { id: "nb-g", nodeId: "node-g" } } },
+      "GET /api/equipment-notebooks/nb-g/": { status: 200, body: { notebook: { nodeId: "node-g" } } },
+      "POST /api/namespace/node/node-g/files/": { status: 202, body: { ok: true, indexed: false, indexing: true } },
+    });
+    const pdf = new File(["%PDF"], "m.pdf", { type: "application/pdf" });
+    const outcome = await runCommit({ selected: { kind: "general" }, name: "G", docs: [], pdfs: [pdf] }, deps(h.fetch, { createNotebook: async () => "nb-g" }));
+    expect(outcome.kind === "created" && resultRows(outcome.docs, [], false)[0]!.readiness.label).toBe("Needs attention");
+  });
+});
+
+describe("#5295 r2: a document still being read by another upload", () => {
+  const indexingDoc = { key: "file:f-202", filename: "m.pdf", docId: null, fileId: "f-202", indexing: true, attachFailed: false, notIndexed: false, message: null };
+  const ready = (docId: string) => ({ docId, readiness: { state: "chat_ready_basic" }, matchState: "user_confirmed", enabledByDefault: true });
+
+  it("delayed indexing: polls the file until it has an uploadId, attaches it once, then reads Ready", async () => {
+    let fileReads = 0;
+    const h = harness({
+      "GET /api/files/f-202": () => { fileReads++; return { status: 200, body: { file: { id: "f-202", uploadId: fileReads < 3 ? null : "up-late", indexed: fileReads >= 3 } } }; },
+      "POST /api/equipment-notebooks/nb/sources/": { status: 201, body: { ok: true } },
+      "GET /api/equipment-notebooks/nb/": () => ({ status: 200, body: { sources: fileReads >= 3 ? [ready("up-late")] : [] } }),
+    });
+    const docs = [indexingDoc];
+    const r = await watchReadiness("nb", [], deps(h.fetch), { intervalMs: 0, max: 6 }, { resolve: () => resolveIndexing("nb", docs, deps(h.fetch)) });
+    expect(fileReads).toBe(3);
+    expect(nonGet(h.calls)).toEqual([{ method: "POST", path: "/api/equipment-notebooks/nb/sources/", body: { docId: "up-late", sourceRole: "manual" } }]);
+    expect(r.capped).toBe(false);
+    expect(docs[0]).toMatchObject({ docId: "up-late", indexing: false, attachFailed: false });
+    expect(resultRows(docs, r.sources, r.capped)[0]!.readiness.label).toBe("Ready to search");
+  });
+
+  it("cap reached with no uploadId: stays Processing with a recoverable note, never Ready, nothing attached", async () => {
+    const h = harness({
+      "GET /api/files/f-202": { status: 200, body: { file: { id: "f-202", uploadId: null, indexed: false } } },
+      "GET /api/equipment-notebooks/nb/": { status: 200, body: { sources: [] } },
+    });
+    const docs = [indexingDoc];
+    const r = await watchReadiness("nb", [], deps(h.fetch), noSleep, { resolve: () => resolveIndexing("nb", docs, deps(h.fetch)) });
+    expect(r.capped).toBe(true);
+    expect(nonGet(h.calls)).toEqual([]);
+    const row = resultRows(docs, r.sources, r.capped)[0]!;
+    expect(row.readiness).toEqual({ tone: "processing", label: "Processing" });
+    expect(row.note).toBe(INDEXING_CAPPED);
+  });
+
+  it("error: the file is gone (404) is Needs attention and stops following it", async () => {
+    const h = harness({
+      "GET /api/files/f-202": { status: 404, body: { error: "not_found" } },
+      "GET /api/equipment-notebooks/nb/": { status: 200, body: { sources: [] } },
+    });
+    const docs = [indexingDoc];
+    const r = await watchReadiness("nb", [], deps(h.fetch), noSleep, { resolve: () => resolveIndexing("nb", docs, deps(h.fetch)) });
+    expect(r.capped).toBe(false);
+    expect(h.calls.filter((c) => c.path.startsWith("/api/files/"))).toHaveLength(1);
+    expect(resultRows(docs, r.sources, r.capped)[0]!.readiness.label).toBe("Needs attention");
+  });
+
+  it("retry: a failed file read (500 or network) is retried on the next poll", async () => {
+    let fileReads = 0;
+    const h = harness({
+      "GET /api/files/f-202": () => { fileReads++; return fileReads === 1 ? { status: 500, body: {} } : { status: 200, body: { file: { uploadId: "up-r" } } }; },
+      "POST /api/equipment-notebooks/nb/sources/": { status: 201, body: { ok: true } },
+      "GET /api/equipment-notebooks/nb/": () => ({ status: 200, body: { sources: fileReads >= 2 ? [ready("up-r")] : [] } }),
+    });
+    const docs = [indexingDoc];
+    await watchReadiness("nb", [], deps(h.fetch), noSleep, { resolve: () => resolveIndexing("nb", docs, deps(h.fetch)) });
+    expect(fileReads).toBe(2);
+    expect(docs[0]!.docId).toBe("up-r");
+  });
+
+  it("a refused attach of the resolved document is Needs attention, not Ready", async () => {
+    const h = harness({
+      "GET /api/files/f-202": { status: 200, body: { file: { uploadId: "up-x" } } },
+      "POST /api/equipment-notebooks/nb/sources/": { status: 404, body: { error: "doc_not_found" } },
+      "GET /api/equipment-notebooks/nb/": { status: 200, body: { sources: [] } },
+    });
+    const docs = [indexingDoc];
+    const r = await watchReadiness("nb", [], deps(h.fetch), noSleep, { resolve: () => resolveIndexing("nb", docs, deps(h.fetch)) });
+    expect(docs[0]).toMatchObject({ attachFailed: true, indexing: false });
+    expect(resultRows(docs, r.sources, r.capped)[0]!.readiness.label).toBe("Needs attention");
+  });
+
+  it("cancellation: closing the sheet while waiting stops polling and attaches nothing", async () => {
+    let releaseSleep: () => void = () => {};
+    let fileReads = 0;
+    const h = harness({
+      "GET /api/files/": (call) => {
+        if (call.path.startsWith("/api/files/f-202")) { fileReads++; return { status: 200, body: { file: { uploadId: fileReads < 2 ? null : "up-late" } } }; }
+        return { status: 200, body: { files: [] } };
+      },
+      "POST /api/equipment-notebooks/nb-general/sources/": { status: 201, body: { ok: true } },
+      "GET /api/equipment-notebooks/nb-general/": { status: 200, body: { notebook: { nodeId: "node-g" }, sources: [] } },
+      "POST /api/namespace/node/node-g/files/": { status: 202, body: { ok: true, indexed: false, indexing: true, fileId: "f-202" } },
+    });
+    const c = createNewProjectSetup({ ...deps(h.fetch, { sleep: () => new Promise<void>((r) => { releaseSleep = r; }) }), getNotebooks: () => [] });
+    await c.choose({ kind: "general" });
+    c.setName("Bench");
+    await c.next();
+    c.addPdfs([new File(["%PDF"], "m.pdf", { type: "application/pdf" })]);
+    const committing = c.commit();
+    for (let i = 0; i < 30; i++) await Promise.resolve();
+    expect(c.getState().done).toBe(true);
+    expect(c.getState().rows[0]?.readiness.label).toBe("Processing");
+    expect(fileReads).toBe(1);
+    expect(c.cancel()).toBe(true);
+    releaseSleep();
+    await committing;
+    expect(fileReads).toBe(1);
+    expect(h.calls.some((x) => x.path.includes("/sources/"))).toBe(false);
+  });
+});
+
+describe("#5295 r2: Ready means chat will search it", () => {
+  const doc = { key: "d1", filename: "a.pdf", docId: "d1", attachFailed: false, notIndexed: false, message: null };
+  const src = (patch: Record<string, unknown>) => [{ docId: "d1", filename: "a.pdf", readiness: { state: "chat_ready_basic" }, matchState: "user_confirmed", enabledByDefault: true, ...patch }];
+  it("a readable, confirmed, enabled source is Ready", () => {
+    expect(resultRows([doc], src({}), false)[0]!.readiness.label).toBe("Ready to search");
+    expect(resultRows([doc], src({ matchState: "verified" }), false)[0]!.readiness.label).toBe("Ready to search");
+  });
+  it("a readable but unapproved (candidate or rejected) source is never Ready", () => {
+    for (const matchState of ["candidate", "rejected", undefined, "bogus"]) {
+      expect(resultRows([doc], src({ matchState }), false)[0]!.readiness).toEqual({ tone: "attention", label: "Not searchable" });
+    }
+  });
+  it("a readable source switched off for chat is never Ready", () => {
+    for (const enabledByDefault of [false, undefined, "true"]) {
+      expect(resultRows([doc], src({ enabledByDefault }), false)[0]!.readiness.label).toBe("Not searchable");
+    }
+  });
+});
+
+describe("#5296: a refusal never outlives the selection it was for", () => {
+  const treeReply = { status: 200, body: { nodes: [
+    { id: "node-a", name: "Machine A", kind: "asset", unsPath: "enterprise.a", children: [] },
+    { id: "node-b", name: "Machine B", kind: "asset", unsPath: "enterprise.b", children: [] },
+  ] } };
+  const machineA: Machine = { id: "node-a", name: "Machine A", tag: "A", unsPath: "enterprise.a", manufacturer: null, model: null, location: null };
+  const machineB: Machine = { id: "node-b", name: "Machine B", tag: "B", unsPath: "enterprise.b", manufacturer: null, model: null, location: null };
+  const existingB = [{ id: "nb-b", displayName: "Machine B project", asset: { entityId: "node-b" } } as unknown as HubNotebook];
+  const routes = {
+    "GET /api/namespace/tree/": treeReply,
+    "GET /api/files/": { status: 200, body: { files: [] } },
+    "GET /api/namespace/node/": { status: 200, body: { files: [] } },
+    "POST /api/assets/node-a/notebook/": { status: 200, body: { ok: true, created: false, notebook: { id: "nb-a", nodeId: "n-a", displayName: "Machine A project" } } },
+  };
+  const refuseA = async () => {
+    const h = harness(routes);
+    const c = createNewProjectSetup({ ...deps(h.fetch), getNotebooks: () => existingB });
+    await c.start();
+    await c.choose({ kind: "machine", machine: machineA });
+    await c.next();
+    await c.next();
+    await c.commit();
+    expect(c.getState().refusal?.notebookId).toBe("nb-a");
+    expect(c.openProjectId()).toBe("nb-a");
+    return { c, h };
+  };
+
+  it("refuse A, go back, choose B (which has a project): Open opens B, never A", async () => {
+    const { c, h } = await refuseA();
+    c.back();
+    c.back();
+    expect(c.getState().step).toBe(1);
+    await c.choose({ kind: "machine", machine: machineB });
+    expect(c.getState().refusal).toBeNull();
+    expect(c.getState().duplicate).toEqual({ notebookId: "nb-b", name: "Machine B project" });
+    expect(c.openProjectId()).toBe("nb-b");
+    expect(nonGet(h.calls).map((x) => x.path)).toEqual(["/api/assets/node-a/notebook/"]);
+  });
+
+  it("choosing another machine clears the refusal by itself (no Back needed)", async () => {
+    const { c } = await refuseA();
+    await c.choose({ kind: "machine", machine: machineB });
+    expect(c.getState().refusal).toBeNull();
+    expect(c.openProjectId()).toBe("nb-b");
+  });
+
+  it("refuse A, then choose General: no project to open until General is created", async () => {
+    const { c } = await refuseA();
+    await c.choose({ kind: "general" });
+    expect(c.getState().refusal).toBeNull();
+    expect(c.openProjectId()).toBeNull();
+  });
+
+  it("going back from the refusal clears it, so the refusal message does not linger", async () => {
+    const { c } = await refuseA();
+    c.back();
+    expect(c.getState().refusal).toBeNull();
   });
 });
 

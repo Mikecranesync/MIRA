@@ -209,5 +209,103 @@ for (const vp of VIEWPORTS) {
       await page.keyboard.press("Escape");
       expect(writes).toEqual([]);
     });
+
+    test("#5296: the server refuses machine A; after Back, machine B's project opens, never A's", async ({ page }) => {
+      const writes = await stub(page);
+      const json = (body: unknown, status = 200) => ({ status, contentType: "application/json", body: JSON.stringify(body) });
+      // CV-103 passes the client pre-check (no project in the list) but the server
+      // says it already has one: created:false.
+      await page.route(/\/api\/namespace\/tree\/?$/, (route) => route.fulfill(json({
+        nodes: [{ id: "line4", name: "Line 4", kind: "line", unsPath: "enterprise.lake_wales.line_4", children: [
+          { id: "node-cv102", name: "Infeed Conveyor CV-102 (synthetic)", kind: "asset", unsPath: "enterprise.lake_wales.line_4.cv_102", children: [] },
+          { id: "node-cv103", name: "Transfer Conveyor CV-103 (synthetic)", kind: "asset", unsPath: "enterprise.lake_wales.line_4.cv_103", children: [] },
+        ] }],
+      })));
+      await page.route(/\/api\/assets\/node-cv103\/notebook\/?$/, (route) => route.fulfill(json({
+        ok: true, created: false, notebook: { id: "nb-cv103-old", nodeId: "node-of-nb-cv103-old", displayName: "Transfer Conveyor (older project)" },
+      })));
+      await page.route(/\/api\/equipment-notebooks\/nb-existing-cv102\/(\?.*)?$/, (route) => route.fulfill(json({
+        notebook: notebook("nb-existing-cv102", "Infeed Conveyor", "node-cv102"), sources: [], turns: [], threads: [],
+      })));
+      await page.route(/\/api\/equipment-notebooks\/nb-cv103-old\/(\?.*)?$/, (route) => route.fulfill(json({
+        notebook: notebook("nb-cv103-old", "Transfer Conveyor (older project)", "node-cv103"), sources: [], turns: [], threads: [],
+      })));
+      const dlg = await openSheet(page, vp.mobile);
+      await dlg.getByRole("button", { name: /Transfer Conveyor CV-103/ }).click();
+      await dlg.getByRole("button", { name: "Next", exact: true }).click();
+      await dlg.getByRole("button", { name: "Review" }).click();
+      await dlg.getByRole("button", { name: "Create project" }).click();
+      await expect(dlg.getByText("This machine already has a project: Transfer Conveyor (older project)")).toBeVisible();
+      await shot(page, vp.name, "5296-1-refused-a");
+      await dlg.getByRole("button", { name: "Back", exact: true }).click();
+      await dlg.getByRole("button", { name: "Back", exact: true }).click();
+      await expect(dlg.getByRole("heading", { name: "What are you working on?" })).toBeVisible();
+      await expect(dlg.getByText("Transfer Conveyor (older project)")).toHaveCount(0);
+      await dlg.getByRole("button", { name: /Infeed Conveyor CV-102/ }).click();
+      await expect(dlg.getByText("This machine already has a project: Infeed Conveyor")).toBeVisible();
+      await shot(page, vp.name, "5296-2-chose-b");
+      await dlg.getByRole("button", { name: "Open that project" }).click();
+      await expect(dlg).toBeHidden();
+      await expect(page).toHaveURL(/notebook=nb-existing-cv102/);
+      await expect(page).not.toHaveURL(/nb-cv103-old/);
+      await shot(page, vp.name, "5296-3-opened-b");
+      expect(writes).toEqual(["POST /hub/api/assets/node-cv103/notebook/"]);
+    });
+
+    test("a manual another upload is still reading shows Processing, then Ready once it is indexed", async ({ page }) => {
+      const writes = await stub(page);
+      const json = (body: unknown, status = 200) => ({ status, contentType: "application/json", body: JSON.stringify(body) });
+      let fileReads = 0;
+      let attached = false;
+      await page.route(/\/api\/namespace\/node\/[^/]+\/files\/?$/, (route) => route.fulfill(json({ ok: true, indexed: false, indexing: true, fileId: "f-late" }, 202)));
+      await page.route(/\/api\/files\/f-late\/?$/, (route) => {
+        fileReads++;
+        return route.fulfill(json({ file: { id: "f-late", filename: "Pump manual.pdf", uploadId: fileReads < 3 ? null : "up-late", indexed: fileReads >= 3 }, links: [] }));
+      });
+      await page.route(/\/api\/equipment-notebooks\/nb-general\/sources\/?$/, (route) => { attached = true; return route.fulfill(json({ ok: true }, 201)); });
+      await page.route(/\/api\/equipment-notebooks\/nb-general\/(\?.*)?$/, (route) => route.fulfill(json({
+        notebook: notebook("nb-general", "Bench notes (synthetic)", null),
+        sources: attached ? [{ docId: "up-late", filename: "Pump manual.pdf", enabledByDefault: true, readiness: { state: "chat_ready_basic", canChat: true }, matchState: "user_confirmed" }] : [],
+        turns: [], threads: [],
+      })));
+      const dlg = await openSheet(page, vp.mobile);
+      await dlg.getByRole("button", { name: "General (no machine)" }).click();
+      await dlg.getByRole("textbox").fill("Bench notes (synthetic)");
+      await dlg.getByRole("button", { name: "Next", exact: true }).click();
+      await dlg.getByLabel("Upload PDF").setInputFiles({ name: "Pump manual.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n%synthetic\n") });
+      await dlg.getByRole("button", { name: "Review" }).click();
+      await dlg.getByRole("button", { name: "Create project" }).click();
+      await expect(dlg.getByText("Processing")).toBeVisible();
+      await expect(dlg.getByText("Needs attention")).toHaveCount(0);
+      await shot(page, vp.name, "indexing-1-processing");
+      await expect(dlg.getByText("Ready to search")).toBeVisible({ timeout: 30_000 });
+      await shot(page, vp.name, "indexing-2-ready");
+      expect(fileReads).toBe(3);
+      expect(writes).toEqual([
+        "POST /hub/api/equipment-notebooks/",
+        "POST /hub/api/namespace/node/node-of-nb-general/files/",
+        "POST /hub/api/equipment-notebooks/nb-general/sources/",
+      ]);
+    });
+
+    test("an interrupted upload is Needs attention and the project still opens", async ({ page }) => {
+      const writes = await stub(page);
+      await page.route(/\/api\/namespace\/node\/[^/]+\/files\/?$/, (route) => route.abort("connectionreset"));
+      const dlg = await openSheet(page, vp.mobile);
+      await dlg.getByRole("button", { name: "General (no machine)" }).click();
+      await dlg.getByRole("textbox").fill("Bench notes (synthetic)");
+      await dlg.getByRole("button", { name: "Next", exact: true }).click();
+      await dlg.getByLabel("Upload PDF").setInputFiles({ name: "Pump manual.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n%synthetic\n") });
+      await dlg.getByRole("button", { name: "Review" }).click();
+      await dlg.getByRole("button", { name: "Create project" }).click();
+      await expect(dlg.getByText("Needs attention")).toBeVisible();
+      await expect(dlg.getByText("Couldn't save this file. Try again.")).toBeVisible();
+      await expect(dlg.getByText("Ready to search")).toHaveCount(0);
+      await shot(page, vp.name, "interrupted-upload");
+      await dlg.getByRole("button", { name: "Continue" }).click();
+      await dlg.getByRole("button", { name: "Open project" }).click();
+      await expect(page).toHaveURL(/notebook=nb-general/);
+      expect(writes).toEqual(["POST /hub/api/equipment-notebooks/", "POST /hub/api/namespace/node/node-of-nb-general/files/"]);
+    });
   });
 }

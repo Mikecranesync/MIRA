@@ -22,6 +22,8 @@ const ATTENTION: ReadinessView = { tone: "attention", label: "Needs attention" }
 const READY: ReadinessView = { tone: "ready", label: "Ready to search" };
 const PROCESSING: ReadinessView = { tone: "processing", label: "Processing" };
 const UPLOADING: ReadinessView = { tone: "processing", label: "Uploading" };
+/** Readable, but chat will not search it: not approved for this project, or switched off. */
+const NOT_SEARCHABLE: ReadinessView = { tone: "attention", label: "Not searchable" };
 
 /** Exhaustive over ReadinessState: a new state is a compile error here. */
 const READINESS_VIEW = {
@@ -210,6 +212,9 @@ export type DocOutcome = {
   attachFailed: boolean;
   notIndexed: boolean;
   message: string | null;
+  /** The parked file (202 indexing:true): another upload holds the read; follow it by file id. */
+  fileId?: string;
+  indexing?: boolean;
 };
 
 export type CommitInput = {
@@ -313,6 +318,13 @@ export async function runCommit(input: CommitInput, deps: SetupDeps): Promise<Co
       continue;
     }
     const uploadId = up.body.uploadId;
+    // 202: the same bytes are being read by another upload. Keep the file id and
+    // follow it after the writes (resolveIndexing); it is Processing, not a failure.
+    if (up.status === 202 && up.body.indexing === true && typeof up.body.fileId === "string" && up.body.fileId) {
+      const fileId = up.body.fileId;
+      docs.push({ key: `file:${fileId}`, filename: pdf.name, docId: null, fileId, indexing: true, attachFailed: false, notIndexed: false, message: null });
+      continue;
+    }
     if (up.body.indexed !== true || typeof uploadId !== "string" || !uploadId) {
       const warning = typeof up.body.warning === "string" && up.body.warning ? ` (${up.body.warning})` : "";
       docs.push({ key: `upload:${pdf.name}`, filename: pdf.name, docId: null, attachFailed: false, notIndexed: true, message: `Saved to this project, but it couldn't be read for chat yet${warning}.` });
@@ -326,37 +338,101 @@ export async function runCommit(input: CommitInput, deps: SetupDeps): Promise<Co
 
 // ---------- readiness watch and result rows ----------
 
-export type SourceView = { docId: string; filename: string | null; readiness: unknown; matchState: unknown };
+export type SourceView = { docId: string; filename: string | null; readiness: unknown; matchState: unknown; enabledByDefault?: unknown };
 export const POLL_INTERVAL_MS = 3000;
 export const POLL_MAX = 20;
 export const STILL_PROCESSING = "Still processing, you can start; it becomes searchable when ready.";
+export const INDEXING_CAPPED = "Saved, and still being read. It is not a source yet: once it is readable, add it from the project's documents.";
+
+/**
+ * Follow each 202 document by its file id (GET /api/files/{fileId}). Once the
+ * other upload links it to an indexed document (uploadId), attach that as a
+ * source. Updates `docs` in place; returns the newly attached doc ids and
+ * whether any are still unresolved. A missing file stops being followed; a
+ * failed read is retried next poll. `stop()` true means no further reads or writes.
+ */
+export async function resolveIndexing(
+  notebookId: string,
+  docs: DocOutcome[],
+  deps: SetupDeps,
+  stop: () => boolean = () => false,
+): Promise<{ added: string[]; pending: boolean }> {
+  const added: string[] = [];
+  for (let i = 0; i < docs.length; i++) {
+    const doc = docs[i]!;
+    if (!doc.indexing || !doc.fileId) continue;
+    if (stop()) return { added, pending: true };
+    const res = await call(deps, "GET", `/api/files/${encodeURIComponent(doc.fileId)}`);
+    if (res.status === 404) {
+      docs[i] = { ...doc, indexing: false, notIndexed: true, message: "This file is no longer in the project. Add it again." };
+      continue;
+    }
+    const uploadId = (res.body.file as { uploadId?: unknown } | undefined)?.uploadId;
+    if (!res.ok || typeof uploadId !== "string" || !uploadId) continue;
+    if (stop()) return { added, pending: true };
+    const att = await call(deps, "POST", `/api/equipment-notebooks/${encodeURIComponent(notebookId)}/sources/`, {
+      json: { docId: uploadId, sourceRole: "manual" },
+    });
+    docs[i] = {
+      ...doc,
+      docId: uploadId,
+      indexing: false,
+      attachFailed: !att.ok,
+      message: att.ok ? null : messageOf(att, "Couldn't be added as a source. Try again from the project."),
+    };
+    if (att.ok) added.push(uploadId);
+  }
+  return { added, pending: docs.some((d) => d.indexing === true) };
+}
 
 /**
  * Poll the notebook's sources on a bounded schedule. Stops early once every
- * watched document has left uploading/stored. `capped` means the schedule ran out.
+ * watched document has left uploading/stored and nothing is still being
+ * resolved. `capped` means the schedule ran out.
  */
 export async function watchReadiness(
   notebookId: string,
   docIds: readonly string[],
   deps: SetupDeps,
   limits: { intervalMs?: number; max?: number } = {},
-  /** Called after every poll; `stop()` true ends the watch (the sheet closed). */
-  hooks: { onUpdate?: (sources: SourceView[]) => void; stop?: () => boolean } = {},
+  /**
+   * `onUpdate` runs after every poll; `stop()` true ends the watch (the sheet
+   * closed); `resolve` runs before every poll and may add documents to watch.
+   */
+  hooks: {
+    onUpdate?: (sources: SourceView[]) => void;
+    stop?: () => boolean;
+    resolve?: () => Promise<{ added: string[]; pending: boolean }>;
+  } = {},
 ): Promise<{ sources: SourceView[]; capped: boolean; unauthorized: boolean }> {
   const max = limits.max ?? POLL_MAX;
   const intervalMs = limits.intervalMs ?? POLL_INTERVAL_MS;
+  const watched = [...docIds];
+  let pending = false;
   let sources: SourceView[] = [];
   for (let poll = 1; poll <= max; poll++) {
+    if (hooks.resolve) {
+      const r = await hooks.resolve();
+      watched.push(...r.added);
+      pending = r.pending;
+    }
+    if (hooks.stop?.()) return { sources, capped: false, unauthorized: false };
     const res = await call(deps, "GET", `/api/equipment-notebooks/${encodeURIComponent(notebookId)}/`);
     if (res.status === 401) return { sources, capped: false, unauthorized: true };
     if (res.ok && Array.isArray(res.body.sources)) {
       sources = (res.body.sources as Array<Record<string, unknown>>).flatMap((s) =>
         typeof s.docId === "string"
-          ? [{ docId: s.docId, filename: typeof s.filename === "string" ? s.filename : null, readiness: s.readiness, matchState: s.matchState }]
+          ? [{
+              docId: s.docId,
+              filename: typeof s.filename === "string" ? s.filename : null,
+              readiness: s.readiness,
+              matchState: s.matchState,
+              enabledByDefault: s.enabledByDefault,
+            }]
           : []);
     }
     hooks.onUpdate?.(sources);
-    const settled = docIds.every((id) => {
+    const settled = !pending && watched.every((id) => {
       const src = sources.find((s) => s.docId === id);
       return src !== undefined && !["uploading", "stored"].includes((src.readiness as { state?: string } | null)?.state ?? "");
     });
@@ -375,14 +451,23 @@ export type ResultRow = {
   note: string | null;
 };
 
-/** One row per document. A failed or unindexed document never shows Ready. */
+/**
+ * One row per document. Ready means chat will search it: readable, approved for
+ * this project (user_confirmed or verified) and switched on, the same filter the
+ * notebook chat applies. A failed, unindexed or unapproved document never shows Ready.
+ */
 export function resultRows(docs: readonly DocOutcome[], sources: readonly SourceView[], capped: boolean): ResultRow[] {
   return docs.map((doc) => {
+    if (doc.indexing && !doc.docId) {
+      return { key: doc.key, filename: doc.filename, readiness: PROCESSING, applicability: null, note: capped ? INDEXING_CAPPED : null };
+    }
     if (doc.notIndexed) return { key: doc.key, filename: doc.filename, readiness: ATTENTION, applicability: null, note: doc.message };
     if (doc.attachFailed || !doc.docId) return { key: doc.key, filename: doc.filename, readiness: ATTENTION, applicability: null, note: doc.message };
     const src = sources.find((s) => s.docId === doc.docId);
     if (!src) return { key: doc.key, filename: doc.filename, readiness: ATTENTION, applicability: null, note: "Not listed in this project yet. Check the project before relying on it." };
-    const readiness = readinessView(src.readiness);
+    const searchable = (src.matchState === "user_confirmed" || src.matchState === "verified") && src.enabledByDefault === true;
+    const view = readinessView(src.readiness);
+    const readiness = view.tone === "ready" && !searchable ? NOT_SEARCHABLE : view;
     const stillBusy = readiness.tone === "processing" && capped;
     return {
       key: doc.key,
@@ -507,8 +592,10 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
 
     async choose(selection) {
       if (state.committing || state.done) return;
+      // #5296: a refusal belongs to the selection it was for; openProjectId()
+      // checks it first, so a stale one would open the wrong machine's project.
       if (selection.kind === "general") {
-        set({ selected: selection, duplicate: null, linked: [], chosenDocIds: [] });
+        set({ selected: selection, duplicate: null, linked: [], chosenDocIds: [], refusal: null, error: null });
         return;
       }
       const machine = selection.machine;
@@ -519,6 +606,8 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
         duplicate: dup ? { notebookId: dup.id, name: dup.displayName } : null,
         linked: null,
         chosenDocIds: [],
+        refusal: null,
+        error: null,
       });
       if (dup) return;
       await ensureWorkspace();
@@ -583,7 +672,7 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
 
     back() {
       if (state.committing || state.done) return;
-      if (state.step === 2 || state.step === 3) set({ step: (state.step - 1) as SetupStep, error: null });
+      if (state.step === 2 || state.step === 3) set({ step: (state.step - 1) as SetupStep, error: null, refusal: null });
     },
 
     async commit() {
@@ -613,22 +702,27 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
         return;
       }
       set({ notebookId: outcome.notebookId, confirmed: outcome.confirmed, notes: outcome.notes });
-      const watched = outcome.docs.flatMap((d) => (d.docId ? [d.docId] : []));
+      const results = [...outcome.docs];
+      const watched = results.flatMap((d) => (d.docId ? [d.docId] : []));
       // The writes are finished. After the first readiness read the sheet unlocks
-      // (Continue, Cancel and Open work) while slow documents keep updating.
+      // (Continue, Cancel and Open work) while slow documents keep updating. A
+      // document another upload is still reading (202) is attached when it
+      // resolves, unless the sheet has closed: then nothing more is read or written.
       const w = await watchReadiness(outcome.notebookId, watched, deps, {}, {
-        onUpdate: (sources) => { if (!disposed) set({ committing: false, done: true, rows: resultRows(outcome.docs, sources, false) }); },
+        onUpdate: (sources) => { if (!disposed) set({ committing: false, done: true, rows: resultRows(results, sources, false) }); },
         stop: () => disposed,
+        resolve: () => resolveIndexing(outcome.notebookId, results, deps, () => disposed),
       });
       if (disposed) return;
       if (w.unauthorized) {
-        set({ committing: false, done: true, error: "Sign in again to see document status.", rows: resultRows(outcome.docs, [], false) });
+        const unread = results.map((d) => (d.indexing ? { ...d, indexing: false, notIndexed: true, message: "Sign in again to check this file." } : d));
+        set({ committing: false, done: true, error: "Sign in again to see document status.", rows: resultRows(unread, [], false) });
         return;
       }
       set({
         committing: false,
         done: true,
-        rows: resultRows(outcome.docs, w.sources, w.capped),
+        rows: resultRows(results, w.sources, w.capped),
         stillProcessing: w.capped,
       });
     },
