@@ -57,5 +57,24 @@
    "pageLabel": "4–31",
    "content": "Chapter 4: AC Drive Parameters\nPage 4–31DURApulse GS10 AC Drive User Manual – 1st Ed., Rev C\nGS10 Parameters Summary – Special Parameters (P07.xx) – (continued)\nParameter Range\nRun*\nRead/\nWrite\nModbus Address Settings\nHex Dec Default User\nP07.16 Dwell frequency at\nacceleration 0.00–599.0 Hz ♦R/W 0710 41809 0.00\nP07.17 Dwell time at deceleration 0.00–600.0 sec. ♦R/W 0711 41810 0.00\nP07.18 Dwell frequency at\ndeceleration 0.00–599.0 Hz ♦R/W 0712 41811 0.00\nP07.19 Fan cooling control\n0: Fan is always ON\n1: Fan is OFF after the AC motor\ndrive stops for one minute.\n2: Fan is ON when the AC motor\ndrive runs, fan is OFF when\nthe AC motor drive stops.\n3: Fan turns ON when\ntemperature (IGBT) reaches\napprox 60°C.\n♦R/W 0713 41812 3\nP07.20 Emergency stop (EF) &\nforce to stop selection\n0: Coast to stop\n1: Stop by the first deceleration\ntime\n2: Stop by the second\ndeceleration time\n3: Stop by the third deceleration\ntime\n4: Stop by the fourth deceleration\ntime\n5: System deceleration\n6: Automatic decele"
   }
+ },
+ "definitionPage": {
+  "sourcePage": 139,
+  "pageLabel": "4–69",
+  "note": "Every knowledge_entries chunk of pdf page 139 on the tablet (doc f41821d6), in chunk order, read 2026-11-08; ids e1c15a87 / 97f3ec7a / 917fdbe7.",
+  "chunks": [
+   {
+    "id": "e1c15a87-c957-454e-8a4f-085c70cb1a02",
+    "content": "Chapter 4: AC Drive Parameters\nPage 4–69DURApulse GS10 AC Drive User Manual – 1st Ed., Rev C\nType Hex Addr Dec Addr\nP01.12 Acceleration Time 1 ♦R/W 010C 40269\nP01.13 Deceleration Time 1 ♦R/W 010D 40270\nP01.14 Acceleration Time 2 ♦R/W 010E 40271\nP01.15 Deceleration Time 2 ♦R/W 010F 40272\nP01.16 Acceleration Time 3 ♦R/W 0110 40273\nP01.17 Deceleration Time 3 ♦R/W 0111 40274\nP01.18 Acceleration Time 4 ♦R/W 0112 40275\nP01.19 Deceleration Time 4 ♦R/W 0113 40276\nP01.20 JOG Acceleration Time ♦R/W 0114 40277\nP01.21 JOG Deceleration Time ♦R/W 0115 40278\nRange/Units (Format: 16-bit unsigned) Default\nP01.45 = 0: 0.00–600.0 sec.\nP01.45 = 1: 0.0–6000 sec.\n10.00 / 10.0\nThe acceleration time determines the time required for the AC motor drive to ramp from 0.00 Hz to\nthe maximum operation frequency (P01.00)."
+   },
+   {
+    "id": "97f3ec7a-bf8c-4837-8f8c-244fdfec93a5",
+    "content": "me determines the time required for the AC motor drive to ramp from 0.00 Hz to\nthe maximum operation frequency (P01.00). The deceleration time determines the time required\nfor the AC motor drive to decelerate from the maximum operation frequency (P01.00) down to\n0.00 Hz.\n•\nThe acceleration and deceleration time are invalid when using P01.44 Auto-acceleration and\nAuto-deceleration Setting.\n•\nSelect the Acceleration/Deceleration Time 1, 2, 3, 4 with the multi-function input terminal settings.\nThe defaults are Acceleration Time 1 and Deceleration Time 1.\n•\nWith the enabled torque limits and stall prevention functions, the actual acceleration and\ndeceleration time are longer than the above action time.\n•\nNote that setting the acceleration and deceleration time too short may trigger the drive’s\nprotection function (P06.03 Over-current Stall Prevention during Acceleration or P06.01\nOver-voltage Stall Prevention), and the actual acceleration and deceleration time are longer than\nthis setting."
+   },
+   {
+    "id": "917fdbe7-9f8a-4dfb-992c-f863fabc51ed",
+    "content": "r P06.01\nOver-voltage Stall Prevention), and the actual acceleration and deceleration time are longer than\nthis setting.\n•\nNote that setting the acceleration time too short may cause motor damage or trigger drive\nprotection due to over-current during the drive’s acceleration.\n•\nNote that setting the deceleration time too short may cause motor damage or trigger drive\nprotection due to over-current during the drive’s deceleration or over-voltage.\n•\nUse suitable braking resistors (refer to Appendix A: Accessories) to decelerate in a short time and\nprevent over-voltage.\n•\nWhen you enable P01.24–P01.27 (S-curve acceleration and deceleration begin and arrival time),\nthe actual acceleration and deceleration time are longer than the setting."
+   }
+  ]
  }
 }

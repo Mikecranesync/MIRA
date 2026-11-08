@@ -57,6 +57,7 @@ const ragMock = vi.hoisted(() => ({
   buildManualUserContent: vi.fn((q: string) => q),
   neutralizeReferenceText: vi.fn((t: string) => t),
   retrieveCitedPageChunks: vi.fn(async () => [] as unknown[]),
+  retrievePageChunksInOrder: vi.fn(async (..._args: unknown[]): Promise<string[]> => []),
 }));
 vi.mock("@/lib/manual-rag", () => ragMock);
 
@@ -88,6 +89,7 @@ const seamMock = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/inference/canonical-cascade", () => seamMock);
 
+import gs10 from "@/capabilities/__tests__/fixtures/gs10-revc-acceleration-chunks.json";
 import { POST } from "../route";
 import { EDGE_PASSAGES_LEAD } from "@/capabilities/edge-passages";
 import { RESTART_BANNER } from "@/capabilities/restart-advisory";
@@ -114,6 +116,10 @@ const contentOf = (f: Record<string, unknown>[]) =>
   f.filter((x) => x.kind === "content").map((x) => String(x.content)).join("");
 
 const ASK = "How do I find the empty weight center of gravity?";
+const GS11N =
+  "For the GS11N-20P2 drive in this project, which parameter controls acceleration time? Explain what it controls and cite the exact manual page. Do not recommend a new setting or assume the present drive settings.";
+const MOTOR_DAMAGE =
+  "Note that setting the acceleration time too short may cause motor damage or trigger drive protection due to over-current during the drive’s acceleration.";
 
 function providerAnswers(text: string) {
   vi.stubGlobal(
@@ -139,6 +145,7 @@ beforeEach(() => {
   nbMock.getNotebook.mockResolvedValue({ id: NB, displayName: "Aircraft weight and balance", manufacturer: "FAA", model: "FAA-H-8083-1B" });
   ragMock.retrieveNodeChunks.mockResolvedValue([INDEX_CHUNK, HOWTO_CHUNK]);
   ragMock.retrieveCitedPageChunks.mockResolvedValue([]);
+  ragMock.retrievePageChunksInOrder.mockResolvedValue([]);
   filesMock.photoLinkedToTarget.mockResolvedValue(null);
   providerAnswers("Use the equipment list.");
   vi.spyOn(console, "warn").mockImplementation(() => undefined);
@@ -307,6 +314,53 @@ describe("#5265 edge profile — the manual speaks", () => {
         ]),
       );
       expect(persisted.evidence.some((e) => "citationId" in e)).toBe(false);
+    });
+
+    // Samsung physical run 2026-11-08: the definition was served, its page's
+    // cautions were not. They live in a sibling chunk retrieval did not return.
+    it("the GS11N question gets P01.12 with its page's cautions, served and persisted, no model", async () => {
+      const GS10_URL = "node-doc/u1/GS10-User-Manual-RevC.pdf";
+      ragMock.retrieveNodeChunks.mockResolvedValue(
+        (gs10.retrievalOrder as { sourcePage: number; pageLabel: string; content: string }[]).map((c, i) => ({
+          ...HOWTO_CHUNK,
+          content: c.content,
+          sourceUrl: GS10_URL,
+          sourcePage: Number(c.sourcePage),
+          pageLabel: c.pageLabel,
+          title: "GS10-User-Manual-RevC.pdf",
+          rank: 0.9 - i * 0.01,
+        })),
+      );
+      ragMock.retrievePageChunksInOrder.mockResolvedValue(gs10.definitionPage.chunks.map((c) => c.content));
+      const out = await frames(await POST(req({ message: GS11N, sourceDocIds: [DOC_A] }), params));
+      expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+      expect(out.some((f) => f.kind === "safety")).toBe(false);
+      expect(ragMock.retrievePageChunksInOrder).toHaveBeenCalledTimes(1);
+      expect(ragMock.retrievePageChunksInOrder.mock.calls[0][2]).toEqual({ docId: DOC_A, sourceUrl: GS10_URL, page: 139 });
+      const content = contentOf(out);
+      expect(content).toContain("Definition of P01.12");
+      expect(content).toContain(MOTOR_DAMAGE);
+      const persisted = (vi.mocked(nbMock.recordTurn).mock.calls[0] as unknown as unknown[])[2] as { answerText: string; answerStatus: string };
+      expect(persisted.answerText).toContain(MOTOR_DAMAGE);
+      expect(persisted.answerStatus).toBe("answered");
+    });
+
+    it("a failed page read still quotes the cautions in the retrieved chunks of that page", async () => {
+      ragMock.retrieveNodeChunks.mockResolvedValue(
+        (gs10.retrievalOrder as { sourcePage: number; pageLabel: string; content: string }[]).map((c, i) => ({
+          ...HOWTO_CHUNK,
+          content: c.content,
+          sourceUrl: "node-doc/u1/GS10-User-Manual-RevC.pdf",
+          sourcePage: Number(c.sourcePage),
+          pageLabel: c.pageLabel,
+          title: "GS10-User-Manual-RevC.pdf",
+          rank: 0.9 - i * 0.01,
+        })),
+      );
+      ragMock.retrievePageChunksInOrder.mockRejectedValue(new Error("statement timeout"));
+      const content = contentOf(await frames(await POST(req({ message: GS11N, sourceDocIds: [DOC_A] }), params)));
+      expect(content).toContain("invalid when using P01.44");
+      expect(content).not.toContain(MOTOR_DAMAGE);
     });
 
     it("an unflagged how-to is still served as passages, and calls no model", async () => {

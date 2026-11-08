@@ -174,7 +174,7 @@ import {
 } from "@/lib/inference/canonical-cascade";
 import { legacyProviders } from "@/lib/inference/legacy-cascade";
 import { edgeProfileEnabled } from "@/lib/inference/edge-profile";
-import { edgePassagesUsage, renderEdgePassages, selectEdgePassages } from "@/capabilities/edge-passages";
+import { edgePassagesUsage, renderEdgePassages, selectEdgePassages, withDefinitionCautions } from "@/capabilities/edge-passages";
 import { persistTurnUsage } from "@/lib/inference/persist-usage";
 import {
   logProvidersExhausted,
@@ -202,6 +202,7 @@ import {
   resolveModelFromObservationText,
   retrieveManualChunks,
   retrieveCitedPageChunks,
+  retrievePageChunksInOrder,
   retrieveNodeChunks,
   type ManualChunk,
 } from "@/lib/manual-rag";
@@ -3624,7 +3625,26 @@ async function handleChatTurn(
   // energized-work stop and the no-evidence abstain above still win.
   let edgeAnswerText: string | null = null;
   if (edgeProfileEnabled()) {
-    const passages = selectEdgePassages(chunks, citations, message);
+    let passages = selectEdgePassages(chunks, citations, message);
+    // The definition's page prints its cautions beside it, often in sibling
+    // chunks retrieval did not return; read that page whole and quote them.
+    // On a failed read, the retrieved chunks of that page are all there is.
+    const definitionPassage = passages.find((p) => p.definition);
+    const [definitionPage] = definitionPassage ? citedPagesFor([definitionPassage.citation], chunks) : [];
+    if (definitionPage) {
+      let pageTexts = chunks
+        .filter((c) => c.sourceUrl === definitionPage.sourceUrl && c.sourcePage === definitionPage.page)
+        .map((c) => c.content);
+      try {
+        const whole = await withTenantContext(ctx.tenantId, (c) =>
+          retrievePageChunksInOrder(c, ctx.tenantId, definitionPage, { approvedSourceDocIds: docIds }),
+        );
+        if (whole.length > 0) pageTexts = whole;
+      } catch (err) {
+        console.warn("[notebook-chat] edge definition-page read failed (cautions from retrieved chunks only):", err instanceof Error ? err.message : err);
+      }
+      passages = withDefinitionCautions(passages, pageTexts);
+    }
     const edgeCitations = passages.map((p) => p.citation);
     // The manual's own safety statement on a cited page, read from the whole page
     // (#4508) and printed in the text, which here is all the technician reads.
