@@ -200,6 +200,7 @@ beforeEach(() => {
   acqMock.acquisitionEnabled.mockReturnValue(false);
   acqMock.startManualAcquisition.mockResolvedValue(false);
   handle.reset();
+  proofMock.publicManualSeries.mockReset();
   proofMock.publicManualSeries.mockResolvedValue(null);
   process.env.GROQ_API_KEY = "k1";
   process.env.CEREBRAS_API_KEY = "k2";
@@ -493,6 +494,40 @@ describe("#4148 — part-number claims and unconfirmed manual lookup", () => {
       expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
     },
   );
+  // #5268 Codex r19: the public-manual proof must be for the maker the search
+  // sends. A notebook naming another maker whose manuals print the code never
+  // vouches for the photo's maker.
+  const siemensOnlyProof = (_c: unknown, maker: unknown) => (String(maker).toLowerCase() === "siemens" ? "" : null);
+  it("#5268 r19: a Siemens notebook's public manuals never authorize an SMC search confirmed from a private-annotated plate", async () => {
+    domainMock.getNotebook.mockResolvedValue({ id: NB, displayName: "Panel", manufacturer: "Siemens", model: null } as never);
+    plateLabel("SMC MODEL: TP1200 (customer\n#1234 asset tag)");
+    proofMock.publicManualSeries.mockImplementation(siemensOnlyProof as never);
+    // A persistent (not one-shot) offer: this turn may never read it, and an
+    // unread one-shot would leak into the next test.
+    domainMock.listTurns.mockImplementation((async () => proposalTurn("TP1200", "u1", "SMC")) as never);
+    let f: Awaited<ReturnType<typeof ask>>;
+    try {
+      f = await ask('Search the web for "TP1200"');
+    } finally {
+      domainMock.listTurns.mockImplementation((async () => []) as never);
+    }
+    expect(manualDiscoveryMock.discoverManual).not.toHaveBeenCalled();
+    expect(JSON.stringify(f)).not.toMatch(/Search the web for[^"]*\\?"TP1200/);
+    for (const call of proofMock.publicManualSeries.mock.calls) expect(String(call[1]).toLowerCase()).not.toBe("siemens");
+  });
+  it("#5268 r19 control: when the searched maker's own manuals print the code, the confirmed offer searches once", async () => {
+    domainMock.getNotebook.mockResolvedValue({ id: NB, displayName: "Valve", manufacturer: "SMC", model: null } as never);
+    plateLabel("SMC MODEL: TP1200\nS/N: 00998877");
+    proofMock.publicManualSeries.mockImplementation(((_c: unknown, maker: unknown) => (String(maker).toLowerCase() === "smc" ? "" : null)) as never);
+    domainMock.listTurns.mockResolvedValueOnce(proposalTurn("TP1200", "u1", "SMC") as never);
+    manualDiscoveryMock.discoverManual.mockResolvedValueOnce(found);
+    await ask('Search the web for "TP1200"');
+    expect(manualDiscoveryMock.discoverManual).toHaveBeenCalledTimes(1);
+    expect(manualDiscoveryMock.discoverManual).toHaveBeenCalledWith(
+      { manufacturer: "SMC", catalogNumber: "TP1200" },
+      expect.objectContaining({ tenantId: expect.any(String) }),
+    );
+  });
   it("#5268 r16 control: a serial plate whose model is in the maker's public manuals still confirms the TP1200 offer into one search", async () => {
     plateLabel("SMC MODEL: TP1200\nS/N: 00998877");
     proofMock.publicManualSeries.mockResolvedValue("");

@@ -2780,7 +2780,12 @@ async function handleChatTurn(
   let offeredPartNumber = photoPartNumber;
   let publicModelProven = false;
   if (photoPrivateLabelled && photoPartNumber !== null) {
-    const proofMaker = oemManufacturer?.name ?? photoMaker;
+    // Codex r19: the proof is for the exact maker the search will send — the
+    // photo's own maker — and a notebook or library maker that names someone
+    // else fails closed rather than vouching for this one.
+    const makerKey = (m: string) => m.replace(/[^A-Za-z0-9]/g, "").toLowerCase();
+    const proofMaker =
+      photoMaker && (oemManufacturer === null || makerKey(oemManufacturer.name) === makerKey(photoMaker)) ? photoMaker : null;
     if (proofMaker && chunks.length === 0 && general && !candidateAcquisitionOwnsTurn) {
       let client: PoolClient | null = null;
       try {

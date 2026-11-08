@@ -264,7 +264,7 @@ describe("a nameplate photo starts the manual search on the same turn", () => {
     const followups = f.find((x) => x.kind === "followups") as { suggestions?: string[] } | undefined;
     expect(followups?.suggestions).toContain(`Search the web for "${MODEL}"`);
     // Only the maker and the model reach the proof query; the serial never leaves.
-    expect(proofMock.publicManualSeries).toHaveBeenCalledWith(expect.anything(), "AutomationDirect", MODEL);
+    expect(proofMock.publicManualSeries).toHaveBeenCalledWith(expect.anything(), "AUTOMATIONDIRECT", MODEL);
     expect(JSON.stringify(proofMock.publicManualSeries.mock.calls)).not.toContain(SERIAL);
     expect(JSON.stringify(f)).not.toContain(SERIAL);
   });
