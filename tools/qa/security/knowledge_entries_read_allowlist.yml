@@ -497,14 +497,16 @@ approved:
     approved_classification: TENANT-ONLY
     query_sha256: "dee656cf94155590b027157cfdb55518b25950383359bd299e7fc64b2b060df4"
     reason: "HASH MIGRATION (query-rewrite PR, 2026-10-30): unchanged query, line moved 1692 -> 1708 (see :1701). NEW (#4979, T-1 forum ranking, flag-off only): code-selectivity scope size — count(*) over the same tenant/node/doc/approval scope as the entry above (:1701), the denominator for the >5% rule. Count only, no content; TENANT-ONLY by the same rule."
-  "mira-hub/src/lib/manual-rag.ts:2077":
+  "mira-hub/src/lib/manual-rag.ts:2128":
     approved_classification: TENANT-ONLY
-    query_sha256: "ca93aab02d6d14c1c6e20f1d45767901d37940b42ee1eec599a1d03527996578"
+    query_sha256: "7c42969a5118f63398a8adb2ce8857250267013947907b031300c3c3ca287e21"
     reason: "NEW (#4979, T-1 forum ranking, flag-off only): question-IDF table — the `scope` CTE reads the SAME pure-tenant scope as the retrieveNodeChunks BM25 pass (:1108) and exact-token lane (:1163): tenant_id=$1, ingest_route='v2', and the same ${approvalClauseMain}/${nodeClauseMain}/${docClause} (or the exact lane's ${approvalClauseExact}/${nodeClauseExact}/doc clause) fragments at the same parameter positions. Node attachments are the caller's own private uploads, so this is a pure-tenant surface, not the OEM hybrid — TENANT-ONLY by the same rule. It yields per-lexeme document frequency and the scope size (numbers only) for the rerank's coverage feature; no content leaves the query and no row is admitted by it."
-  "mira-hub/src/lib/manual-rag.ts:2087":
+    hash_migration: "#5294: reviewed full scope/heading context after adding doc_id/page projection and same-document later-page cover predicate. Tenant, ingest route, approval/node/doc clauses and bound parameter positions are unchanged. No corpus visibility expansion; the new EXISTS only narrows cover-word classification. Old context ca93aab02d6d14c1c6e20f1d45767901d37940b42ee1eec599a1d03527996578 is retained here for audit."
+  "mira-hub/src/lib/manual-rag.ts:2139":
     approved_classification: TENANT-ONLY
-    query_sha256: "515f57198d852f4251ed2d38850283306df25dda25c8a9f70a503a47fb94ef8c"
-    reason: "NEW (#4979, T-1 forum ranking, flag-off only): question-IDF table — the `heading` CTE reads the first chunk (left(content, 2000)) of each document in the SAME tenant/node/doc/approval scope as :2077, so cover-page words (brand, product, 'User Manual') can be left out of the IDF table. Same predicates, same parameter positions; the text is only tokenised into lexemes, never returned or cited. TENANT-ONLY by the same rule."
+    query_sha256: "53da2df19dda21e22cf254c55b0576b3c70cc47b2ae250f596bf78a0b793be07"
+    reason: "NEW (#4979, T-1 forum ranking, flag-off only): question-IDF table — the `heading` CTE reads the first chunk (left(content, 2000)) of each document in the SAME tenant/node/doc/approval scope as :2128, so cover-page words (brand, product, 'User Manual') can be left out of the IDF table. Same predicates, same parameter positions; the text is only tokenised into lexemes, never returned or cited. TENANT-ONLY by the same rule."
+    hash_migration: "#5294: reviewed full heading/hlex context with added doc_id/page projection and same-document later-page EXISTS. Approval/node/doc/tenant predicates and parameters unchanged; a single-page reading is no longer classified as a manual cover. Old context 515f57198d852f4251ed2d38850283306df25dda25c8a9f70a503a47fb94ef8c retained for audit."
   "mira-hub/src/lib/__tests__/manual-rag-optional-reads.integration.test.ts:28":
     approved_classification: TENANT-ONLY
     query_sha256: "2f42be93066b7cff58ca9e5fce1de92b00f526fe3f3a8a14152333ab36f1f22b"
