@@ -89,7 +89,7 @@ const seamMock = vi.hoisted(() => ({
 vi.mock("@/lib/inference/canonical-cascade", () => seamMock);
 
 import { POST } from "../route";
-import { EDGE_PASSAGES_LEAD } from "@/capabilities/edge-passages";
+import { EDGE_EVIDENCE_ONLY_BANNER, EDGE_PASSAGES_LEAD } from "@/capabilities/edge-passages";
 import { RESTART_BANNER } from "@/capabilities/restart-advisory";
 import { SEMANTIC_UNVERIFIED_FALLBACK } from "@/capabilities/answer-safety-check";
 
@@ -370,6 +370,58 @@ describe("#5265 edge profile — the manual speaks", () => {
         ]),
       );
       expect(persisted.evidence.some((e) => "citationId" in e)).toBe(false);
+    });
+
+    // #5265 evidence-only fault mode: OFF by default (owner sign-off pending).
+    describe("evidence-only fault mode (MIRA_EDGE_EVIDENCE_ONLY_FAULTS)", () => {
+      afterEach(() => {
+        delete process.env.MIRA_EDGE_EVIDENCE_ONLY_FAULTS;
+      });
+
+      it.each([undefined, "0", "true", "yes"])("flag %s: byte-identical controlled fallback", async (flag) => {
+        if (flag !== undefined) process.env.MIRA_EDGE_EVIDENCE_ONLY_FAULTS = flag;
+        const out = await frames(await POST(req({ message: LOCKOUT_ASK, sourceDocIds: [DOC_A] }), params));
+        expect(contentOf(out)).toBe(SEMANTIC_UNVERIFIED_FALLBACK);
+        expect(out).toContainEqual({ kind: "safety", trigger: "unsafe-answer:semantic-unverified" });
+      });
+
+      it("flag 1: the verbatim passages under the hazard banner and the evidence-only banner, cited, no model", async () => {
+        process.env.MIRA_EDGE_EVIDENCE_ONLY_FAULTS = "1";
+        const out = await frames(await POST(req({ message: LOCKOUT_ASK, sourceDocIds: [DOC_A] }), params));
+        expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+        const content = contentOf(out);
+        expect(content.startsWith("⚠️ **Isolation.**")).toBe(true);
+        expect(content).toContain(EDGE_EVIDENCE_ONLY_BANNER);
+        expect(content.indexOf(EDGE_EVIDENCE_ONLY_BANNER)).toBeLessThan(content.indexOf(EDGE_PASSAGES_LEAD));
+        expect(content).toContain(HOWTO_CHUNK.content);
+        expect(out.some((f) => f.kind === "safety")).toBe(false);
+        const sources = out.find((f) => f.kind === "sources") as { citations: Array<{ page: number | null }> };
+        expect(sources.citations.map((c) => c.page)).toEqual([43]);
+        const persisted = (vi.mocked(nbMock.recordTurn).mock.calls[0] as unknown as unknown[])[2] as { answerText: string };
+        expect(persisted.answerText).toBe(content);
+      });
+
+      it("flag 1 never weakens the immediate-danger STOP", async () => {
+        process.env.MIRA_EDGE_EVIDENCE_ONLY_FAULTS = "1";
+        const out = await frames(await POST(req({ message: "there is smoke from the drive panel, what do I check", sourceDocIds: [DOC_A] }), params));
+        expect(contentOf(out).startsWith("⛔ **STOP — DO NOT OPERATE")).toBe(true);
+        expect(contentOf(out)).not.toContain(HOWTO_CHUNK.content);
+      });
+
+      it("flag 1 with no usable passage still refuses (unsupported procedure: nothing to show)", async () => {
+        process.env.MIRA_EDGE_EVIDENCE_ONLY_FAULTS = "1";
+        ragMock.retrieveNodeChunks.mockResolvedValue([INDEX_CHUNK]);
+        const out = await frames(await POST(req({ message: LOCKOUT_ASK, sourceDocIds: [DOC_A] }), params));
+        expect(contentOf(out)).not.toContain(EDGE_EVIDENCE_ONLY_BANNER);
+        expect((out.find((f) => f.kind === "status") as { status: string }).status).toBe("insufficient_evidence");
+      });
+
+      it("flag 1, profile off: the cloud path is untouched (no evidence-only banner)", async () => {
+        process.env.MIRA_EDGE_EVIDENCE_ONLY_FAULTS = "1";
+        delete process.env.MIRA_PROFILE;
+        const out = await frames(await POST(req({ message: LOCKOUT_ASK, sourceDocIds: [DOC_A] }), params));
+        expect(contentOf(out)).not.toContain(EDGE_EVIDENCE_ONLY_BANNER);
+      });
     });
 
     it("an unflagged how-to is still served as passages, and calls no model", async () => {

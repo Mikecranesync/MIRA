@@ -174,7 +174,14 @@ import {
 } from "@/lib/inference/canonical-cascade";
 import { legacyProviders } from "@/lib/inference/legacy-cascade";
 import { edgeProfileEnabled } from "@/lib/inference/edge-profile";
-import { edgePassagesUsage, renderEdgePassages, selectEdgePassages } from "@/capabilities/edge-passages";
+import {
+  EDGE_EVIDENCE_ONLY_BANNER,
+  EDGE_EVIDENCE_ONLY_CODE,
+  edgeEvidenceOnlyFaultsEnabled,
+  edgePassagesUsage,
+  renderEdgePassages,
+  selectEdgePassages,
+} from "@/capabilities/edge-passages";
 import { edgeDangerTrigger, edgeImmediateDanger, edgeImmediateDangerStop } from "@/capabilities/edge-safety";
 import { persistTurnUsage } from "@/lib/inference/persist-usage";
 import {
@@ -4952,6 +4959,12 @@ async function handleChatTurn(
           outputRejected = { kind: "unsafe_answer", violation: `unsafe-answer:semantic-${cls}` };
           answerText = SAFETY_STOP;
           semanticDecided = true;
+        } else if (sv.verdict !== "safe" && flaggedTurn && edgeAnswerText !== null && edgeEvidenceOnlyFaultsEnabled()) {
+          // #5265 evidence-only fault mode (OFF by default, owner sign-off pending):
+          // the verbatim passages under a fixed banner instead of the fallback.
+          // The hazard banner is still prefixed below; nothing is generated.
+          console.warn(`[notebook-chat] semantic UNVERIFIED (${sv.reason ?? "unknown"}) on a flagged edge turn: ${EDGE_EVIDENCE_ONLY_CODE}`);
+          answerText = `${EDGE_EVIDENCE_ONLY_BANNER}\n\n${answerText}`;
         } else if (sv.verdict !== "safe" && flaggedTurn) {
           console.warn(`[notebook-chat] semantic UNVERIFIED (${sv.reason ?? "unknown"}) on a flagged turn: controlled fallback`);
           outputRejected = { kind: "unsafe_answer", violation: "unsafe-answer:semantic-unverified" };
