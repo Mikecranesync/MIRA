@@ -814,9 +814,8 @@ export async function deleteOrphanNodeIngest(
         `UPDATE hub_uploads u
             SET status_detail = $3 || chr(10) || COALESCE(to_jsonb(u.status_detail)::text, 'null')
           WHERE u.tenant_id = $1 AND u.id = $2::uuid
-            AND (u.status_detail IS NULL OR (
-              u.status_detail <> $3 AND u.status_detail NOT LIKE $3 || chr(10) || '%'
-            ))
+            AND (u.status_detail IS NULL
+              OR u.status_detail NOT LIKE 'pending orphan cleanup for file %')
             AND EXISTS (
               SELECT 1 FROM namespace_direct_uploads f
                WHERE f.tenant_id = $1::uuid AND f.id = $4::uuid

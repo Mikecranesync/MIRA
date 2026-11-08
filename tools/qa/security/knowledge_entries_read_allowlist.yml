@@ -617,7 +617,7 @@ approved:
       `SELECT id::text, content FROM knowledge_entries
                   WHERE tenant_id = $1 AND source_url = $2
                     AND source_type = 'node_attachment' AND embedding IS NULL
-  "mira-hub/src/lib/node-knowledge-ingest.ts:868":
+  "mira-hub/src/lib/node-knowledge-ingest.ts:867":
     approved_classification: TENANT-ONLY
     query_sha256: "7e7c5c42082b5901512f14c03f9a77409b0b3c2d81ca83c911ac1d82886dfed1"
     reason: "Canonical orphan maintenance, not a hybrid corpus read. The heuristic context starts at the canonical-file SELECT and includes DELETE of only this tenant and the explicitly selected losing doc IDs. A transaction locks the actual tenant/file row and protects any active claim or adopted document. Adding public/OEM visibility to this destructive operation would be incorrect. Deferred status text is preserved/restored; all read/delete predicates and the file lock stay tenant-scoped."
@@ -650,7 +650,7 @@ approved:
                 [tenantId, losers],
               );
 
-  "mira-hub/src/app/api/namespace/node/[id]/files/__tests__/node-files-links.integration.test.ts:132":
+  "mira-hub/src/app/api/namespace/node/[id]/files/__tests__/node-files-links.integration.test.ts:137":
     approved_classification: TENANT-ONLY
     query_sha256: "9f2a585ad5a3ae23d2f298fde987bb1aa013f9a7f6473830956bb7ca61988b78"
     reason: "Disposable-database fixture teardown only. The suite refuses missing disposable confirmation and production/staging targets before pool creation; these fixed synthetic tenants are the only rows removed. No request or shared OEM corpus read."
@@ -658,7 +658,7 @@ approved:
       await testPool.query(`DELETE FROM knowledge_entries WHERE tenant_id = ANY($1::uuid[])`, [tenants]);
         await testPool.query(`DELETE FROM workspace_file_links WHERE tenant_id = ANY($1::uuid[])`, [tenants]);
 
-  "mira-hub/src/app/api/namespace/node/[id]/files/__tests__/node-files-links.integration.test.ts:279":
+  "mira-hub/src/app/api/namespace/node/[id]/files/__tests__/node-files-links.integration.test.ts:297":
     approved_classification: TENANT-ONLY
     query_sha256: "6e0117a6137f35f1631319d50eed811e0db1b0ce58061580058bcd63bd2d5991"
     reason: "Disposable-database assertion: count chunks for the exact synthetic tenant and fixture upload ID after an adoption/cleanup race. No content is returned and shared OEM rows must not enter this assertion."
@@ -666,7 +666,7 @@ approved:
       const chunks = await testPool.query("SELECT count(*)::int AS n FROM knowledge_entries WHERE tenant_id = $1::uuid AND doc_id = $2::uuid", [TENANT, upload.id]);
           expect(chunks.rows[0].n).toBe(1);
 
-  "mira-hub/src/app/api/namespace/node/[id]/files/__tests__/node-files-links.integration.test.ts:297":
+  "mira-hub/src/app/api/namespace/node/[id]/files/__tests__/node-files-links.integration.test.ts:315":
     approved_classification: UNFILTERED
     query_sha256: "ffcbb327f1a65b6ca807f0f81e7ffc1559b903ab76ab31024c820f720057f8d3"
     reason: "Disposable-database concurrency fixture only: lock the exact row returned by this test INSERT so DELETE can be paused deterministically. Returns its ID only, never content; unreachable from a product request and guarded before connection."
@@ -674,7 +674,7 @@ approved:
       await locker.query("SELECT id FROM knowledge_entries WHERE id = $1 FOR UPDATE", [chunk.rows[0].id]);
             cleanup = deleteOrphanNodeIngest(TENANT, oldUpload.id, parked.fileId);
 
-  "mira-hub/src/app/api/namespace/node/[id]/files/__tests__/node-files-links.integration.test.ts:302":
+  "mira-hub/src/app/api/namespace/node/[id]/files/__tests__/node-files-links.integration.test.ts:320":
     approved_classification: UNFILTERED
     query_sha256: "b3b369a8483c1bc53216139aca808bb572b2df72969afd3d6c0a2aa1b5cf0284"
     reason: "Heuristic false positive: the only queried table is pg_stat_activity. The knowledge_entries text is a SQL-pattern value identifying the deliberately blocked test DELETE; this is disposable-database wait metadata, not a knowledge corpus read."
@@ -682,7 +682,7 @@ approved:
       const waiting = await testPool.query("SELECT 1 FROM pg_stat_activity WHERE query LIKE 'DELETE FROM knowledge_entries%' AND wait_event_type = 'Lock'");
               if (waiting.rowCount) { blocked = true; break; }
 
-  "mira-hub/src/app/api/namespace/node/[id]/files/__tests__/node-files-links.integration.test.ts:378":
+  "mira-hub/src/app/api/namespace/node/[id]/files/__tests__/node-files-links.integration.test.ts:396":
     approved_classification: TENANT-ONLY
     query_sha256: "95121198f6bc0817a555ae6d2c360660600252a513a59c7f23dec60e565c6dd1"
     reason: "Disposable-database assertion of remaining synthetic document IDs after deferred cleanup, scoped to the fixed fixture tenant. No user content or shared OEM rows; the suite fails closed without disposable confirmation."
@@ -690,7 +690,7 @@ approved:
       const chunks = await testPool.query("SELECT doc_id::text FROM knowledge_entries WHERE tenant_id = $1::uuid", [TENANT]);
           expect(chunks.rows).toEqual(winnerId === late.id ? [{ doc_id: late.id }] : []);
 
-  "mira-hub/src/app/api/namespace/node/[id]/files/__tests__/node-files-links.integration.test.ts:457":
+  "mira-hub/src/app/api/namespace/node/[id]/files/__tests__/node-files-links.integration.test.ts:513":
     approved_classification: TENANT-ONLY
     query_sha256: "fd5f8eb8bd9ea0e2ff827932249d76a4623d19b59eda79ed3962770be4005429"
     reason: "Disposable-database assertion that only the committed winning fixture doc ID remains for this synthetic tenant. No returned content and no shared corpus read; the synthetic database is separately confirmed and stopped after testing."

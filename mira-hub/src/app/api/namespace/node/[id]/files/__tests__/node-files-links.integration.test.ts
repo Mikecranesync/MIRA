@@ -43,6 +43,9 @@ const { testPool } = vi.hoisted(() => {
   if (/prod|prd|staging/i.test(`${target.hostname} ${target.pathname}`)) {
     throw new Error("Refusing a production/staging integration database");
   }
+  if (!["127.0.0.1", "localhost", "[::1]"].includes(target.hostname)) {
+    throw new Error("This destructive integration suite requires a loopback disposable database");
+  }
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { Pool: PgPool } = require("pg");
   return { testPool: new PgPool({ connectionString: databaseUrl }) as Pool };
@@ -72,6 +75,7 @@ const OTHER_TENANT = "3f000000-0000-4000-8000-0000000000ff";
 let nodeA = "";
 let nodeB = "";
 let otherTenantNode = "";
+let disposableVerified = false;
 
 const session = (tenantId: string) => ({
   userId: "3f000000-0000-4000-8000-000000000099",
@@ -128,6 +132,7 @@ async function listFiles(nodeId: string) {
 }
 
 async function wipe() {
+  if (!disposableVerified) throw new Error("Disposable integration schema has not been verified");
   const tenants = [TENANT, OTHER_TENANT];
   await testPool.query(`DELETE FROM knowledge_entries WHERE tenant_id = ANY($1::uuid[])`, [tenants]);
   await testPool.query(`DELETE FROM workspace_file_links WHERE tenant_id = ANY($1::uuid[])`, [tenants]);
@@ -137,6 +142,14 @@ async function wipe() {
 
 beforeAll(async () => {
   process.env.NEON_DATABASE_URL = process.env.TEST_DATABASE_URL;
+  // Use the existing setup tool's fixture ledger, not a permissive database
+  // name. This check is read-only and must succeed before any cleanup/write.
+  const ledger = await testPool.query("SELECT to_regclass('public.integration_schema_migrations') AS ledger");
+  if (!ledger.rows[0]?.ledger) throw new Error("Run db:integration:setup on a disposable database first");
+  const fixtures = ["000_base_cmms_rls.sql", "001_tenant_cmms_config.sql", "077_ingest_claim.sql"];
+  const applied = await testPool.query("SELECT file_name FROM public.integration_schema_migrations WHERE file_name = ANY($1::text[])", [fixtures]);
+  if (applied.rows.length !== fixtures.length) throw new Error("Disposable integration schema is missing required fixture migrations");
+  disposableVerified = true;
   await wipe();
   await testPool.query(`DELETE FROM kg_entities WHERE tenant_id = ANY($1::uuid[])`, [[TENANT, OTHER_TENANT]]);
   nodeA = await makeNode(TENANT, "Line A");
@@ -145,9 +158,14 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await wipe();
-  await testPool.query(`DELETE FROM kg_entities WHERE tenant_id = ANY($1::uuid[])`, [[TENANT, OTHER_TENANT]]);
-  await testPool.end();
+  try {
+    if (disposableVerified) {
+      await wipe();
+      await testPool.query(`DELETE FROM kg_entities WHERE tenant_id = ANY($1::uuid[])`, [[TENANT, OTHER_TENANT]]);
+    }
+  } finally {
+    await testPool.end();
+  }
 });
 
 beforeEach(async () => {
@@ -377,6 +395,43 @@ describe("POST — recover a parsed document after finalization failed (#5318)",
     expect((await listFiles(nodeA)).names).toEqual(["deferred.pdf"]);
     const chunks = await testPool.query("SELECT doc_id::text FROM knowledge_entries WHERE tenant_id = $1::uuid", [TENANT]);
     expect(chunks.rows).toEqual(winnerId === late.id ? [{ doc_id: late.id }] : []);
+  });
+
+  it.each(["active", "released", "removed"] as const)("cleanup for a different file never selects file A's deferred document when A is %s", async (state) => {
+    const otherBytes = Buffer.from("%PDF-1.4 different canonical file 5319");
+    const fileA = await parkOrReuseFile({ tenantId: TENANT, nodeId: nodeA, filename: "A.pdf", mimeType: "application/pdf", sizeBytes: bytes.length, buffer: bytes });
+    const fileB = await parkOrReuseFile({ tenantId: TENANT, nodeId: nodeB, filename: "B.pdf", mimeType: "application/pdf", sizeBytes: otherBytes.length, buffer: otherBytes });
+    expect(fileA.fileId).not.toBe(fileB.fileId);
+    const input = { tenantId: TENANT, provider: "local" as const, initialStatus: "parsed" as const, ingestRoute: "v2" };
+    const docA = await createUpload({ ...input, filename: "A.pdf", kgEntityId: nodeA });
+    const docB = await createUpload({ ...input, filename: "B.pdf", kgEntityId: nodeB });
+    const claimA = await claimIngest(TENANT, fileA.fileId);
+    const claimB = await claimIngest(TENANT, fileB.fileId);
+    if (!claimA.claimed || !claimB.claimed) throw new Error("fixture claim unavailable");
+    await deleteOrphanNodeIngest(TENANT, docA.id, fileA.fileId);
+    await deleteOrphanNodeIngest(TENANT, docB.id, fileB.fileId);
+    // Declared fixture states: A's release committed before its drain, or its
+    // canonical row was removed. Neither can make marker A match marker B.
+    if (state === "released") await testPool.query("UPDATE namespace_direct_uploads SET ingest_claim_token = NULL, ingest_claimed_at = NULL WHERE id = $1", [fileA.fileId]);
+    if (state === "removed") await testPool.query("DELETE FROM workspace_file_links WHERE file_id = $1;", [fileA.fileId]);
+    if (state === "removed") await testPool.query("DELETE FROM namespace_direct_uploads WHERE id = $1", [fileA.fileId]);
+    const before = (await testPool.query("SELECT status_detail FROM hub_uploads WHERE id = $1", [docA.id])).rows[0].status_detail;
+    await releaseIngestClaim(TENANT, fileB.fileId, claimB.claimToken);
+    expect((await testPool.query("SELECT status_detail FROM hub_uploads WHERE id = $1", [docA.id])).rows[0].status_detail).toBe(before);
+    expect((await testPool.query("SELECT id FROM hub_uploads WHERE id = $1", [docB.id])).rowCount).toBe(0);
+  });
+
+  it("never reassigns an existing deferred cleanup intent to a different canonical file", async () => {
+    const otherBytes = Buffer.from("%PDF-1.4 mismatched canonical file 5319");
+    const fileA = await parkOrReuseFile({ tenantId: TENANT, nodeId: nodeA, filename: "A.pdf", mimeType: "application/pdf", sizeBytes: bytes.length, buffer: bytes });
+    const fileB = await parkOrReuseFile({ tenantId: TENANT, nodeId: nodeB, filename: "B.pdf", mimeType: "application/pdf", sizeBytes: otherBytes.length, buffer: otherBytes });
+    const docA = await createUpload({ tenantId: TENANT, provider: "local", filename: "A.pdf", initialStatus: "parsed", kgEntityId: nodeA, ingestRoute: "v2" });
+    expect((await claimIngest(TENANT, fileA.fileId)).claimed).toBe(true);
+    await deleteOrphanNodeIngest(TENANT, docA.id, fileA.fileId);
+    const before = (await testPool.query("SELECT status_detail FROM hub_uploads WHERE id = $1", [docA.id])).rows[0].status_detail;
+    // Invalid internal pairing is a negative control, not an exposed API path.
+    await deleteOrphanNodeIngest(TENANT, docA.id, fileB.fileId);
+    expect((await testPool.query("SELECT status_detail FROM hub_uploads WHERE id = $1", [docA.id])).rows[0].status_detail).toBe(before);
   });
 
   it.each([null, "3 pages indexed", "", 'A "quoted" status\nwith a second line'])("preserves an adopted document's previous status explanation: %j", async (detail) => {
