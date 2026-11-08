@@ -20,6 +20,14 @@ export async function register(): Promise<void> {
       console.error(err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
+    // #5265 W1: the runtime block for destinations the startup guard cannot see
+    // (per-request URLs, stored bindings, redirects): only loopback and local
+    // sockets are reachable under the edge profile.
+    const { edgeProfileEnabled } = await import("./lib/inference/edge-profile");
+    if (edgeProfileEnabled()) {
+      const { installEdgeEgressGuard } = await import("./lib/inference/edge-egress");
+      installEdgeEgressGuard();
+    }
 
     const { shutdownTelemetry } = await import("./instrumentation.node");
     // Flush any queued spans before the container is killed on redeploy.
