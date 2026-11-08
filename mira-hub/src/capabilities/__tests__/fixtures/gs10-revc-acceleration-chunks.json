@@ -1,0 +1,61 @@
+{
+ "source": "Samsung SM-X510 local mira_edge, knowledge_entries for upload f41821d6 (GS10-User-Manual-RevC.pdf, 454 pp, sha256 43a66d756b9c53f2...), read 2026-11-08. Retrieval order is BRAVO's CV101-EDGE-COMPOSITION-RED probe: pages 65, 290, 369, 139, 139, 286.",
+ "retrievalOrder": [
+  {
+   "sourcePage": 65,
+   "chunkIndex": 164,
+   "pageLabel": "3–5",
+   "content": "til the final digit of the value begins to blink.\n3) Press the LEFT/DOWN button to select the digits you wish to change. Press the UP button to\ncycle through the values available.\n4) Press and hold MENU until no digits are blinking.\nNote: To change the value to something greater than 99.9, follow the steps above but\npress the LEFT/DOWN button until the left-most digit (normally blank) switches to\na blinking 0. Then use the UP button to change to the desired value. The maximum\nfrequency value is 599.0. If a higher value is chosen, the parameter screen will display Err,\nfollowed by 599.0 (the maximum possible), then revert to the previous good value."
+  },
+  {
+   "sourcePage": 290,
+   "chunkIndex": 716,
+   "pageLabel": "4–220",
+   "content": "de 0 (IMVF)\nP00.20 Master frequency command source\n(AUTO, REMOTE)\n0 (Digital keypad)\nP00.21 Operation command source (AUTO, REMOTE) 2 (RS-485 communication input)\nP02.00 Two-wire / three-wire operation control 1 (two-wire mode 1, power on for operation\ncontrol (D1: FWD / STOP, D2: REV / STOP))\nP01.00 Maximum operation frequency Default setting\nP01.01 Output frequency of motor 1\n(Base frequency / Motor’s rated frequency)\nDefault setting\nP01.02 Output voltage of motor 1\n(Base voltage / Motor’s rated voltage)\nDefault setting\nP01.03 Mid-point frequency 1 of motor 1 Default setting\nP01.04 Mid-point voltage 1 of motor 1 Default setting\nP01.05 Mid-point frequency 2 of motor 1 Default setting\nP01.06 Mid-point voltage 2 of motor 1 Default setting\nP01.07 Minimum output frequency of motor 1 Default setting\nP01.08 Minimum output voltage of motor 1 Default setting\nP01.12 Acceleration time 1 10 (sec.)\nP01.13 Deceleration time 1 10 (sec.)\nP01.24 S-curve for acceleration begin time 1 Default setting\nP"
+  },
+  {
+   "sourcePage": 369,
+   "chunkIndex": 930,
+   "pageLabel": "7–2",
+   "content": "Page 7–2 DURApulse GS10 AC Drive User Manual – 1st Ed., Rev C\nChapter 7: GSoft2 – Getting Started\nGS10 Drive Configuration Software\nGSoft2 is the configuration software for the Automation Direct DuraPULSE GS4, GS10, and GS20\nfamily of AC drives. It is designed to allow you to connect a personal computer to the drive, and\nperform a variety of functions:\n•\nCreate new drive configurations\n•\nUpload/download drive configurations\n•\nEdit drive configurations\n•\nArchive/store multiple drive configurations on your PC\n•\nTrend drive operation parameters\n•\nTune the drive PID loop\n•\nView real time key operating parameters\n•\nStart/Stop drive and switch directions, provided drive is set up for remote operation\n•\nView drive faults\nGSoft2 includes an integral help file with software instructions. GSoft2 can be downloaded for free\nor purchased on USB card from AutomationDirect.com (search for GSoft2)."
+  },
+  {
+   "sourcePage": 139,
+   "chunkIndex": 347,
+   "pageLabel": "4–69",
+   "content": "me determines the time required for the AC motor drive to ramp from 0.00 Hz to\nthe maximum operation frequency (P01.00). The deceleration time determines the time required\nfor the AC motor drive to decelerate from the maximum operation frequency (P01.00) down to\n0.00 Hz.\n•\nThe acceleration and deceleration time are invalid when using P01.44 Auto-acceleration and\nAuto-deceleration Setting.\n•\nSelect the Acceleration/Deceleration Time 1, 2, 3, 4 with the multi-function input terminal settings.\nThe defaults are Acceleration Time 1 and Deceleration Time 1.\n•\nWith the enabled torque limits and stall prevention functions, the actual acceleration and\ndeceleration time are longer than the above action time.\n•\nNote that setting the acceleration and deceleration time too short may trigger the drive’s\nprotection function (P06.03 Over-current Stall Prevention during Acceleration or P06.01\nOver-voltage Stall Prevention), and the actual acceleration and deceleration time are longer than\nthis setting."
+  },
+  {
+   "sourcePage": 139,
+   "chunkIndex": 346,
+   "pageLabel": "4–69",
+   "content": "Chapter 4: AC Drive Parameters\nPage 4–69DURApulse GS10 AC Drive User Manual – 1st Ed., Rev C\nType Hex Addr Dec Addr\nP01.12 Acceleration Time 1 ♦R/W 010C 40269\nP01.13 Deceleration Time 1 ♦R/W 010D 40270\nP01.14 Acceleration Time 2 ♦R/W 010E 40271\nP01.15 Deceleration Time 2 ♦R/W 010F 40272\nP01.16 Acceleration Time 3 ♦R/W 0110 40273\nP01.17 Deceleration Time 3 ♦R/W 0111 40274\nP01.18 Acceleration Time 4 ♦R/W 0112 40275\nP01.19 Deceleration Time 4 ♦R/W 0113 40276\nP01.20 JOG Acceleration Time ♦R/W 0114 40277\nP01.21 JOG Deceleration Time ♦R/W 0115 40278\nRange/Units (Format: 16-bit unsigned) Default\nP01.45 = 0: 0.00–600.0 sec.\nP01.45 = 1: 0.0–6000 sec.\n10.00 / 10.0\nThe acceleration time determines the time required for the AC motor drive to ramp from 0.00 Hz to\nthe maximum operation frequency (P01.00)."
+  },
+  {
+   "sourcePage": 286,
+   "chunkIndex": 705,
+   "pageLabel": "4–216",
+   "content": "Page 4–216 DURApulse GS10 AC Drive User Manual – 1st Ed., Rev C\nChapter 4: AC Drive Parameters\nType Hex Addr Dec Addr\nP12.42 Main Frequency Time Setting R/W 0C2A 43115\nP12.43 1st Speed Time Setting R/W 0C2B 43116\nP12.44 2nd Speed Time Setting R/W 0C2C 43117\nP12.45 3rd Speed Time Setting R/W 0C2D 43118\nP12.46 4th Speed Time Setting R/W 0C2E 43119\nP12.47 5th Speed Time Setting R/W 0C2F 43120\nP12.48 6th Speed Time Setting R/W 0C30 43121\nP12.49 7th Speed Time Setting R/W 0C31 43122\nRange/Units (Format: 16-bit binary) Default\n0–65500 seconds 0\nP12.42 to P12.49 correspond to the operation time for each multi-step speed defined.\nThe maximum value for these parameters is 65500 seconds, and it displays as 65.5.\nIf it is set to 0 (0 sec.), the corresponding step skips."
+  }
+ ],
+ "controls": {
+  "p143": {
+   "sourcePage": 143,
+   "chunkIndex": 358,
+   "pageLabel": "4–73",
+   "content": "Chapter 4: AC Drive Parameters\nPage 4–73DURApulse GS10 AC Drive User Manual – 1st Ed., Rev C\nType Hex Addr Dec Addr\nP01.44 Auto-acceleration and Auto-deceleration Setting ♦R/W 012C 40301\nRange/Units (Format: 16-bit binary) Default\n0: Linear acceleration and deceleration\n1: Auto-acceleration and linear deceleration\n2: Linear acceleration and auto-deceleration\n3: Auto-acceleration and auto-deceleration\n4: Stall prevention by auto-acceleration and\nauto-deceleration (limited by P01.12 –P01.21)\n0\nP01.44 is used to configure auto-acceleration and auto-deceleration settings.\n•\n0 (linear acceleration and deceleration): the drive accelerates and decelerates according to the\nsetting for P01.12–P01.19.\n•\n1 or 2 (auto/linear acceleration and auto/linear deceleration): the drive auto-tunes the\nacceleration and deceleration to effectively reduce the mechanical vibration during the load\nstart-up and stop and make the auto-tuning process more easier."
+  },
+  "p290_table": {
+   "sourcePage": 290,
+   "chunkIndex": 715,
+   "pageLabel": "4–220",
+   "content": "Page 4–220 DURApulse GS10 AC Drive User Manual – 1st Ed., Rev C\nChapter 4: AC Drive Parameters\nParameter Parameter Name Settings\nP01.01 Output frequency of motor 1\n(Base frequency / Motor’s rated frequency)\nDefault setting\nP01.02 Output voltage of motor 1 (\nBase voltage / Motor’s rated voltage)\nDefault setting\nP01.03 Mid-point frequency 1 of motor 1 Default setting\nP01.04 Mid-point voltage 1 of motor 1 Default setting\nP01.05 Mid-point frequency 2 of motor 1 Default setting\nP01.06 Mid-point voltage 2 of motor 1 Default setting\nP01.07 Minimum output frequency of motor 1 Default setting\nP01.08 Minimum output voltage of motor 1 Default setting\nP01.12 Acceleration time 1 10 (sec.)\nP01.13 Deceleration time 1 10 (sec.)\nP13.00=07: Packing\nThe following table lists the relevant compressor setting application parameters.\nParameter Parameter Name Settings\nP00.11 Speed control mode 0 (IMVF)\nP00.20 Master frequency command source\n(AUTO, REMOTE)\n0 (Digital keypad)\nP00.21 Operation command source (AU"
+  },
+  "p101_p07": {
+   "sourcePage": 101,
+   "chunkIndex": 254,
+   "pageLabel": "4–31",
+   "content": "Chapter 4: AC Drive Parameters\nPage 4–31DURApulse GS10 AC Drive User Manual – 1st Ed., Rev C\nGS10 Parameters Summary – Special Parameters (P07.xx) – (continued)\nParameter Range\nRun*\nRead/\nWrite\nModbus Address Settings\nHex Dec Default User\nP07.16 Dwell frequency at\nacceleration 0.00–599.0 Hz ♦R/W 0710 41809 0.00\nP07.17 Dwell time at deceleration 0.00–600.0 sec. ♦R/W 0711 41810 0.00\nP07.18 Dwell frequency at\ndeceleration 0.00–599.0 Hz ♦R/W 0712 41811 0.00\nP07.19 Fan cooling control\n0: Fan is always ON\n1: Fan is OFF after the AC motor\ndrive stops for one minute.\n2: Fan is ON when the AC motor\ndrive runs, fan is OFF when\nthe AC motor drive stops.\n3: Fan turns ON when\ntemperature (IGBT) reaches\napprox 60°C.\n♦R/W 0713 41812 3\nP07.20 Emergency stop (EF) &\nforce to stop selection\n0: Coast to stop\n1: Stop by the first deceleration\ntime\n2: Stop by the second\ndeceleration time\n3: Stop by the third deceleration\ntime\n4: Stop by the fourth deceleration\ntime\n5: System deceleration\n6: Automatic decele"
+  }
+ }
+}

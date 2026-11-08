@@ -21,15 +21,156 @@ export const EDGE_PASSAGES_LEAD = "Matching passages from this notebook's manual
 export const EDGE_NO_PASSAGE_TEXT =
   "I couldn't find support for that in this notebook's manuals. Try the manual's own wording, or refer it to a qualified person.";
 
-export type EdgePassage = { citation: EvidenceCitation; text: string };
+export type EdgePassage = {
+  citation: EvidenceCitation;
+  text: string;
+  /** The parameter this passage DEFINES, as printed on its code line (see parameterDefinition). */
+  definition?: { code: string; name: string } | null;
+  /** The manual's printed page label for the cited page ("4-69"), when ingest kept one. */
+  pageLabel?: string | null;
+  /** Edition/revision as printed in the cited chunk ("1st Ed., Rev C"). Never guessed. */
+  revision?: string | null;
+};
+
+type EdgeChunk = { content: string; sourceUrl: string; sourcePage: number | null; pageLabel?: string | null };
+
+/** A parameter code as manuals print it: P01.12, Pr.01-12, 01.12, F1-04 style rows start a line. */
+const PARAM_LINE_RE = /(?:^|\n)[ \t]*((?:P|Pr\.?\s?)?\d{1,2}[.-]\d{2})[ \t]+([A-Za-z][^\n]{2,80})/g;
+// Where a printed name ends: the access marker, a value with units ("10 (sec.)"), or a register column.
+const NAME_END_RE = /\s*(?:♦|R\/W|\s\d+(?:\.\d+)?\s*\(|\s[0-9A-F]{4}\s+\d{5}).*$/;
+function printedName(raw: string): string {
+  return raw.replace(NAME_END_RE, "").trim();
+}
+const EXPLICIT_CODE_RE = /\b(P\d{1,2}\.\d{2})\b/i;
+// Words that say nothing about WHICH parameter: the question's frame, not its subject.
+const FRAME_WORDS = new Set([
+  "which", "what", "parameter", "parameters", "controls", "control", "explain", "cite", "exact", "manual",
+  "page", "drive", "this", "that", "project", "does", "recommend", "setting", "settings", "assume", "present",
+  "current", "about", "from", "with", "into", "should", "would", "could", "there", "their", "where", "when",
+  "have", "show", "tell", "find", "value", "values", "change", "adjust", "number",
+]);
+const DEFINING_VERB_RE = /\b(?:determines?|sets?|specif(?:y|ies)|defines?|is used to|controls?|selects?)\b/i;
+
+function stem(w: string): string {
+  return w.slice(0, 6);
+}
+
+function subjectTerms(question: string): Set<string> {
+  const out = new Set<string>();
+  for (const w of question.toLowerCase().split(/[^a-z]+/)) {
+    if (w.length >= 4 && !FRAME_WORDS.has(w)) out.add(stem(w));
+  }
+  return out;
+}
+
+function nameWords(name: string): string[] {
+  return name.toLowerCase().split(/[^a-z]+/).filter((w) => w.length >= 4);
+}
+
+/**
+ * The parameter the question is about, read from the retrieved text only.
+ * A code typed in the question wins. Otherwise a printed code line whose name
+ * the question's subject words cover ("acceleration time" → "P01.12
+ * Acceleration Time 1"): at least two name words matched and at least 60% of
+ * them. Ties go to the code printed most often across the retrieved chunks,
+ * then to the one retrieved first. Null when nothing qualifies, so a vague
+ * question never gets a parameter pinned on it.
+ */
+export function identifyParameter(chunks: EdgeChunk[], question: string): { code: string; name: string } | null {
+  const lines: { code: string; name: string; rank: number }[] = [];
+  chunks.forEach((c, rank) => {
+    for (const m of c.content.matchAll(PARAM_LINE_RE)) lines.push({ code: m[1].toUpperCase(), name: printedName(m[2]), rank });
+  });
+  const explicit = EXPLICIT_CODE_RE.exec(question)?.[1]?.toUpperCase();
+  if (explicit) {
+    const hit = lines.find((l) => l.code === explicit);
+    return hit ? { code: hit.code, name: hit.name } : null;
+  }
+  const terms = subjectTerms(question);
+  const freq = new Map<string, number>();
+  for (const l of lines) freq.set(l.code, (freq.get(l.code) ?? 0) + 1);
+  let best: { code: string; name: string; rank: number; matched: number; cover: number } | null = null;
+  for (const l of lines) {
+    const words = nameWords(l.name);
+    if (words.length === 0) continue;
+    const matched = words.filter((w) => terms.has(stem(w))).length;
+    const cover = matched / words.length;
+    if (matched < 2 || cover < 0.6) continue;
+    const better =
+      !best ||
+      cover > best.cover ||
+      (cover === best.cover && matched > best.matched) ||
+      (cover === best.cover && matched === best.matched && (freq.get(l.code) ?? 0) > (freq.get(best.code) ?? 0)) ||
+      (cover === best.cover && matched === best.matched && (freq.get(l.code) ?? 0) === (freq.get(best.code) ?? 0) && l.rank < best.rank);
+    if (better) best = { ...l, matched, cover };
+  }
+  return best ? { code: best.code, name: best.name } : null;
+}
+
+const SENTENCE_RE = /[A-Z](?:[^.]|\.(?=\d|\w))*\./g;
+
+/**
+ * Where a chunk DEFINES the parameter: its code line, followed in the same chunk
+ * by a sentence that names the parameter and says what it does ("The
+ * acceleration time determines the time required …"). A summary table row
+ * ("P01.12 Acceleration time 1 10 (sec.)") has no such sentence and is not a
+ * definition. Returns the verbatim span from the code line through that
+ * sentence, or null.
+ */
+export function definitionSpan(content: string, param: { code: string; name: string }, maxChars: number): string | null {
+  const clean = content.trim();
+  const codeAt = clean.search(new RegExp(`(?:^|\\n)[ \\t]*${param.code.replace(/\./g, "\\.")}[ \\t]`, "i"));
+  if (codeAt < 0) return null;
+  const start = clean[codeAt] === "\n" ? codeAt + 1 : codeAt;
+  const phrase = nameWords(param.name).join(" ");
+  if (!phrase) return null;
+  const rest = clean.slice(start);
+  for (const m of rest.replace(/\s+/g, " ").matchAll(SENTENCE_RE)) {
+    const sentence = m[0];
+    if (!sentence.toLowerCase().includes(phrase) || !DEFINING_VERB_RE.test(sentence)) continue;
+    // Map the end of the whitespace-normalised sentence back onto the raw text.
+    const tail = sentence.slice(-24);
+    const rawEnd = findNormalised(rest, tail);
+    if (rawEnd < 0) return null;
+    const span = rest.slice(0, rawEnd).trim();
+    return span.length <= maxChars ? span : null;
+  }
+  return null;
+}
+
+/** End offset in `raw` of `needle` compared with whitespace runs collapsed, or -1. */
+function findNormalised(raw: string, needle: string): number {
+  const re = new RegExp(needle.trim().split(/\s+/).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+"));
+  const m = re.exec(raw);
+  return m ? m.index + m[0].length : -1;
+}
+
+const REVISION_RE = /\b(?:(\d+(?:st|nd|rd|th)\s+Ed\.?,?\s+))?Rev(?:ision)?\.?\s+([A-Z0-9]{1,3})\b/;
+
+/** "1st Ed., Rev C" exactly as the cited chunk prints it, or null. */
+export function printedRevision(content: string): string | null {
+  const m = REVISION_RE.exec(content);
+  if (!m) return null;
+  return m[0].replace(/\s+/g, " ").trim();
+}
+
+export const EDGE_DEFINITION_CHARS = 900;
 
 /**
  * Pair each retrieved chunk with the citation buildCitations gave it (same
  * per-page dedupe key, same order), drop navigation chunks, keep the first
  * EDGE_PASSAGE_LIMIT. The text is a verbatim window of the chunk.
+ *
+ * When the question names a parameter (identifyParameter) and a retrieved
+ * chunk DEFINES it (definitionSpan), that page goes first and its passage is
+ * the code line through the defining sentence — the field run of 2026-11-08
+ * cut exactly this page (pdf p.139, P01.12) because it was retrieved fourth.
+ * The other passages prefer chunks that print the code, then retrieval order,
+ * and their windows are anchored on the code. Selection only: every passage
+ * is still a verbatim substring of a retrieved chunk.
  */
 export function selectEdgePassages(
-  chunks: { content: string; sourceUrl: string; sourcePage: number | null }[],
+  chunks: EdgeChunk[],
   citations: EvidenceCitation[],
   question: string,
 ): EdgePassage[] {
@@ -42,14 +183,33 @@ export function selectEdgePassages(
   order.forEach((key, i) => {
     if (citations[i]) byKey.set(key, citations[i]);
   });
+  const usable = chunks.filter((c) => !isNavigationChunk(c.content));
+  const param = identifyParameter(usable, question);
+  const anchor = param ? `${question} parameter ${param.code}` : question;
   const out: EdgePassage[] = [];
   const used = new Set<string>();
-  for (const c of chunks) {
-    if (out.length >= EDGE_PASSAGE_LIMIT) break;
+  const take = (c: EdgeChunk, text: string, definition: EdgePassage["definition"]) => {
     const citation = byKey.get(`${c.sourceUrl}::${c.sourcePage ?? ""}`);
-    if (!citation || used.has(citation.citationId) || isNavigationChunk(c.content)) continue;
+    if (!citation || used.has(citation.citationId)) return;
     used.add(citation.citationId);
-    out.push({ citation, text: relevantQuoteWindow(c.content, question, EDGE_PASSAGE_CHARS) });
+    out.push({ citation, text, definition, pageLabel: c.pageLabel ?? null, revision: printedRevision(c.content) });
+  };
+  if (param) {
+    for (const c of usable) {
+      const span = definitionSpan(c.content, param, EDGE_DEFINITION_CHARS);
+      if (span) {
+        // Label it with the name as THIS page prints it, not a summary table's.
+        const printed = [...span.matchAll(PARAM_LINE_RE)][0];
+        take(c, span, { code: param.code, name: printed ? printedName(printed[2]) : param.name });
+        break;
+      }
+    }
+  }
+  const codeRe = param ? new RegExp(`(?<![A-Za-z0-9.])${param.code.replace(/\./g, "\\.")}(?![0-9])`, "i") : null;
+  const ranked = codeRe ? [...usable.filter((c) => codeRe.test(c.content)), ...usable.filter((c) => !codeRe.test(c.content))] : usable;
+  for (const c of ranked) {
+    if (out.length >= EDGE_PASSAGE_LIMIT) break;
+    take(c, relevantQuoteWindow(c.content, anchor, EDGE_PASSAGE_CHARS), null);
   }
   return out;
 }
@@ -65,9 +225,15 @@ export type EdgeWarning = { marker: string; statement: string; page: number | nu
  */
 export function renderEdgePassages(passages: EdgePassage[], warning: EdgeWarning | null = null): string {
   if (passages.length === 0) return EDGE_NO_PASSAGE_TEXT;
-  const blocks = passages.map(({ citation, text }) => {
-    const where = citation.page != null ? `${citation.sourceTitle}, page ${citation.page}` : citation.sourceTitle;
-    return `"${text}" [${citation.citationId}]\n— ${where}`;
+  const blocks = passages.map(({ citation, text, definition, pageLabel, revision }) => {
+    const where = [citation.sourceTitle];
+    if (revision && !citation.sourceTitle.toLowerCase().includes(revision.toLowerCase())) where.push(revision);
+    if (citation.page != null) {
+      const label = pageLabel ? pageLabel.replace(/–/g, "-") : null;
+      where.push(label && label !== String(citation.page) ? `page ${label} (PDF page ${citation.page})` : `page ${citation.page}`);
+    }
+    const quoted = `"${text}" [${citation.citationId}]\n— ${where.join(", ")}`;
+    return definition ? `Definition of ${definition.code} (${definition.name}), as printed:\n${quoted}` : quoted;
   });
   const head = warning
     ? [EDGE_PASSAGES_LEAD, `${warning.marker}${warning.page != null ? ` (page ${warning.page})` : ""}: "${warning.statement}"`]
