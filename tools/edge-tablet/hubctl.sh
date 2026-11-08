@@ -18,8 +18,13 @@ case "$1" in
   start)
     [ -n "$(nodes)" ] && { echo "already running: $(nodes)"; exit 1; }
     pg_up || { echo "postgres did not start; see ~/pg.log"; exit 1; }
+    # Background only node itself, with every fd redirected: backgrounding the whole
+    # `cd && . && node` list forks a subshell that keeps the caller's (ssh's) stdout open,
+    # so install.sh never returned, and $! named that subshell instead of node.
+    cd ~/hub || exit 1
     # shellcheck source=/dev/null
-    cd ~/hub && . ~/hub.env && setsid nohup node server.js > ~/hub.log 2>&1 < /dev/null &
+    . ~/hub.env
+    setsid nohup node server.js > ~/hub.log 2>&1 < /dev/null &
     echo $! > ~/hub.pid
     ;;
   restart) "$0" stop; "$0" start ;;
