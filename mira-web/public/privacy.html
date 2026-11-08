@@ -124,7 +124,7 @@
     <div class="inner">
       <div class="legal">
         <h1>Privacy Policy</h1>
-        <p class="effective">Effective November 2, 2026</p>
+        <p class="effective">Updated November 8, 2026</p>
 
         <h2>1. What We Collect</h2>
         <ul>
@@ -139,7 +139,7 @@
         <ul>
           <li><strong>Account info:</strong> to identify your account, send transactional emails (signup confirmation, payment receipts, Loom nurture sequence), and personalize MIRA's responses</li>
           <li><strong>Equipment manuals:</strong> indexed into your tenant's private knowledge base to power MIRA's diagnostic responses. Your manuals are never shared with other tenants.</li>
-          <li><strong>Diagnostic queries:</strong> processed by the live diagnostic cascade (OpenAI, then OpenRouter, each key-gated) to generate responses. Customer queries are not used to train those providers. Anthropic is not in that cascade (removed PR #610).</li>
+          <li><strong>Diagnostic queries:</strong> sent to configured inference APIs to generate responses. The web cascade tries OpenAI and OpenRouter first when their keys are configured. OpenAI API data is not used for model training by default. Our OpenRouter requests deny data collection and require zero-data-retention endpoints.</li>
           <li><strong>Usage data:</strong> to improve MIRA's response quality and monitor for abuse</li>
         </ul>
 
@@ -155,8 +155,8 @@
           </thead>
           <tbody>
             <tr>
-              <td>OpenAI, OpenRouter</td>
-              <td>AI inference cascade for chat, diagnosis, citations (key-gated). Anthropic is not in this cascade (removed PR #610).</td>
+              <td>Configured inference APIs, including OpenAI and OpenRouter</td>
+              <td>AI inference for web diagnostic responses. The providers used depend on configuration and fallback availability.</td>
               <td>USA</td>
             </tr>
             <tr>

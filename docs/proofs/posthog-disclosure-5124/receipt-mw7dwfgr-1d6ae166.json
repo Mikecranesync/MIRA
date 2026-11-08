@@ -1,0 +1,64 @@
+{
+  "status": "PASS",
+  "environment": "local candidate; no DB; fake analytics; external requests blocked",
+  "sourceGitParent": "f71a1adcf95646ed28f0225b362cf02ce81a7420",
+  "identity": "source-byte hashes (not a claim that the parent commit contains uncommitted changes)",
+  "sourceHashes": {
+    ".github/workflows/ci.yml": "2acda37ea69a6e97ed55e9c520a3c4c72480d6281ca50d57d6d03093d5710197",
+    "mira-web/public/privacy.html": "c63234cae268f424b26a07655dc794e87d830a4e1bc6d31de4b42cbb00fe100b",
+    "mira-web/public/trust.html": "95757353da33830ed6cbcd11e9995f1319ca52d9c0677e70f83c418cc07bd6c7",
+    "mira-web/src/server.ts": "203d17d8a3703bbbbceba5cddb34e60aa398b88a768992302a781c5cf3234a4a",
+    "mira-web/src/capabilities/posthog-init-route.test.ts": "0fa31c4dc4462285a237a3052ab257be6e10956bada2f1d176cc30ee7fd2c61c",
+    "mira-web/src/views/__tests__/honest-claims.test.ts": "d5a905493a9a7b9987dc3d4858bc2cf380fd8ba6b1b69195e10c39344bf1072c",
+    "docs/proofs/posthog-disclosure-5124/browser-proof.ts": "fd267c3a3a90d82da467852ee1bc8217c450436bfc13b3cf787bc4ab90b06118"
+  },
+  "browser": "146.0.7680.72",
+  "externalRequestsBlocked": 6,
+  "cases": [
+    {
+      "route": "/privacy",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "httpStatus": 200,
+      "visiblePosthogCell": true,
+      "overflowPx": 0,
+      "configuredReplayDisabled": true,
+      "screenshot": "docs/promo-screenshots/2026-11-08_posthog-disclosure-5124-mw7dwfgr-1d6ae166-privacy_desktop.png"
+    },
+    {
+      "route": "/trust",
+      "viewport": "desktop",
+      "width": 1440,
+      "height": 900,
+      "httpStatus": 200,
+      "visiblePosthogCell": true,
+      "overflowPx": 0,
+      "configuredReplayDisabled": null,
+      "screenshot": "docs/promo-screenshots/2026-11-08_posthog-disclosure-5124-mw7dwfgr-1d6ae166-trust_desktop.png"
+    },
+    {
+      "route": "/privacy",
+      "viewport": "mobile",
+      "width": 412,
+      "height": 915,
+      "httpStatus": 200,
+      "visiblePosthogCell": true,
+      "overflowPx": 0,
+      "configuredReplayDisabled": true,
+      "screenshot": "docs/promo-screenshots/2026-11-08_posthog-disclosure-5124-mw7dwfgr-1d6ae166-privacy_mobile.png"
+    },
+    {
+      "route": "/trust",
+      "viewport": "mobile",
+      "width": 412,
+      "height": 915,
+      "httpStatus": 200,
+      "visiblePosthogCell": true,
+      "overflowPx": 0,
+      "configuredReplayDisabled": null,
+      "screenshot": "docs/promo-screenshots/2026-11-08_posthog-disclosure-5124-mw7dwfgr-1d6ae166-trust_mobile.png"
+    }
+  ],
+  "limitations": "No external SDK ingestion, live provider inventory, production deployment, physical phone, or offline acceptance verified"
+}

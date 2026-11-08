@@ -236,10 +236,9 @@ const DONT_SAY: ClaimRule[] = [
   { category: "price", label: "locked $3,990", re: /\$3,990|\$3990/ },
   { category: "overclaim", label: "dedicated Atlas container per customer", re: /own Atlas container|Physical isolation|no shared tables/i },
   { category: "overclaim", label: "CI cross-tenant build-fail claim", re: /fails the build if any row leaks|queries as Tenant B/i },
-  { category: "overclaim", label: "no third-party tracking", re: /third[- ]party tracking/i },
+  { category: "overclaim", label: "no third-party tracking", re: /\b(?:no\s+third[- ]party\s+tracking|(?:do not|does not|don't|doesn't|never)\s+use\s+(?:Google\s+Analytics\s+or\s+)?(?:any\s+)?third[- ]party\s+tracking)/i },
   { category: "overclaim", label: "no tracking cookies", re: /no tracking cookies|not use tracking cookies/i },
   { category: "overclaim", label: "do not use cookies for tracking", re: /do not use cookies for tracking/i },
-  { category: "overclaim", label: "third-party tracking scripts", re: /third-party tracking scripts/i },
 ];
 
 /**
@@ -382,14 +381,11 @@ describe("public marketing copy — don't-say list and no published prices", () 
         html,
         `${name} must state the snippet does not enable session replay`,
       ).toContain("The factorylm.com snippet does not enable session replay");
-      expect(html, `${name} still claims no third-party tracking`).not.toMatch(
-        /third[- ]party tracking/i,
+      expect(claimHits(name, html), `${name} still claims no third-party tracking`).not.toContain(
+        "overclaim: no third-party tracking",
       );
       expect(html, `${name} still claims no tracking cookies`).not.toMatch(
         /no tracking cookies|do not use cookies for tracking/i,
-      );
-      expect(html, `${name} still claims third-party tracking scripts`).not.toMatch(
-        /third-party tracking scripts/i,
       );
     }
     expect(privacy).toContain(
@@ -708,10 +704,19 @@ describe("/privacy and /trust disclose PostHog (analytics honesty)", () => {
   const OLD_TECHNICAL =
     "IP address, browser type, device type (server logs only, no tracking cookies)";
 
+  test("/privacy distinguishes configured provider controls from an unverified live inventory", () => {
+    const privacy = withoutComments(readPublic("privacy.html"));
+    expect(privacy).toContain("when their keys are configured");
+    expect(privacy).toContain("OpenAI API data is not used for model training by default");
+    expect(privacy).toContain("OpenRouter requests deny data collection and require zero-data-retention endpoints");
+    expect(privacy).not.toContain("Customer queries are not used to train those providers");
+    expect(privacy).not.toContain("the live diagnostic cascade (OpenAI, then OpenRouter");
+  });
+
   test("planted: the pre-disclosure /privacy tracking paragraph is rejected", () => {
     const hits = claimHits("/privacy", OLD_PRIVACY_TRACKING + " " + OLD_TECHNICAL);
     expect(hits).toContain("overclaim: do not use cookies for tracking");
-    expect(hits).toContain("overclaim: third-party tracking scripts");
+    expect(hits).toContain("overclaim: no third-party tracking");
     expect(hits).toContain("overclaim: no tracking cookies");
   });
 
@@ -727,6 +732,11 @@ describe("/privacy and /trust disclose PostHog (analytics honesty)", () => {
     expect(claimHits("/privacy", commentOnly)).toContain(
       "overclaim: do not use cookies for tracking",
     );
+  });
+
+  test("control: truthful third-party tracking disclosure stays allowed", () => {
+    expect(claimHits("/privacy", "We use PostHog and third-party tracking scripts for analytics. We do not use Google Analytics.")).toEqual([]);
+    expect(claimHits("/privacy", "We do not use Google Analytics; we do use PostHog third-party tracking scripts.")).toEqual([]);
   });
 
   test("control: the shipped /privacy and /trust pages pass the PostHog disclosure contract", () => {
