@@ -182,6 +182,7 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - **Debugging & verification** — perf problems are multi-cause (re-measure after each fix); verify exact table/column names + API auth paths from the codebase before guessing. See `.claude/rules/debugging-conventions.md`.
 - **Multi-session protocol** — claims, isolation, actual-overlap checks, the adversarial-review gate (exact-SHA GREEN or CONVERGED at 0 BLOCKER/HIGH with filed follow-ups, fail-closed, 3-round max), human-gated merge/deploy, bounded continuation, session closeout. See `.claude/rules/multi-session-protocol.md`.
 - **Session discipline** — verify stated premises against the codebase + `git log` before building; re-run the full suite before reporting eval gains; stage only files your change touched (never `git add -A` over foreign WIP); validate migration/seed prerequisites + schema constraints; checkpoint long tasks to `.planning/STATE.md` early. See `.claude/rules/session-discipline.md`.
+- **Claims and outward actions** — before asking Mike for a GO or telling a PR/issue what code will do, trace every early-return in the handler; phrase authorizations as mechanism → effect → proof; prod runners assert the effect (`duplicate: true` = nothing chunked); label findings red-repro vs read-not-run; never @-mention a non-collaborator (public repo — run `scripts/check_gh_mentions.py`). See `.claude/rules/claims-and-outward-actions.md`.
 - **Sub-agent worktree isolation** — any parallel-dispatched sub-agent that Edits/Writes files runs in its own git worktree (or has confirmed there's no foreign WIP in the shared checkout it could clobber). See `.claude/rules/subagent-worktree-isolation.md`.
 - **Dangerous commands** — before `rm -rf`, `git reset --hard`, or any other irreversible command, print the resolved absolute path/target and confirm it matches intent before executing. See `.claude/rules/dangerous-commands-safety.md`.
 - **Don't break the UNS confirmation gate.** Run `mira-run-hallucination-audit` after engine/bot edits.
@@ -228,6 +229,7 @@ Full rules: `.claude/rules/codegraph-usage.md`. Reference: `wiki/references/code
 - `.claude/rules/debugging-conventions.md` — multi-cause perf debugging + verify schema/API paths before guessing
 - `.claude/rules/multi-session-protocol.md` — multi-session claims/isolation/review-gate/closeout governance
 - `.claude/rules/session-discipline.md` — premise-verify, regression-recheck, scoped-commits, migration-safety, long-task checkpointing
+- `.claude/rules/claims-and-outward-actions.md` — prove effects before claiming/asking GO; assert prod effects; run-vs-read findings; no stranger @-mentions
 - `.claude/rules/subagent-worktree-isolation.md` — parallel-dispatched sub-agents isolate via git worktree before touching files
 - `.claude/rules/dangerous-commands-safety.md` — print + confirm the resolved path before `rm -rf`/`git reset --hard`/etc.
 - `.claude/rules/codegraph-usage.md` — when to use CodeGraph vs grep/Read + trust model + preflight + blind spots
