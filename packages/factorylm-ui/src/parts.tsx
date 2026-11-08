@@ -435,19 +435,48 @@ function VisualObservationPart({
   readonly hooks?: HostHooks;
 }) {
   const { observation } = part;
+  const keptByHost = hooks?.isPhotoKept?.(observation.fileId) ?? false;
+  const readPhoto = hooks?.onReviewPhoto;
   const [state, setState] = useState<"idle" | "busy" | "kept" | "failed" | "refresh_pending" | "refreshing">(
-    hooks?.isPhotoKept?.(observation.fileId) ? "kept" : "idle",
+    keptByHost ? "kept" : "idle",
   );
   const [review, setReview] = useState<{ observationId: string; text: string } | null>(null);
+  const [savedReviewStatus, setSavedReviewStatus] = useState<"loading" | "reviewed" | "unconfirmed" | "unavailable">(
+    keptByHost ? readPhoto ? "loading" : "unavailable" : "unconfirmed",
+  );
+  const reviewGeneration = useRef(0);
   const [acknowledged, setAcknowledged] = useState(false);
   const failedReview = useRef<{ observationId: string; text: string } | null>(null);
   const [recoveryMessage, setRecoveryMessage] = useState<string | null>(null);
+  // Restore persisted trust, not the transient editor. An edit/save supersedes
+  // this read so a delayed response cannot overwrite a newer technician review.
+  useEffect(() => {
+    const generation = ++reviewGeneration.current;
+    let current = true;
+    if (!keptByHost) return;
+    if (!readPhoto) { setSavedReviewStatus("unavailable"); return; }
+    setSavedReviewStatus("loading");
+    readPhoto(observation.fileId).then(
+      (reading) => {
+        if (current && generation === reviewGeneration.current) {
+          setSavedReviewStatus(reading.reviewed === true ? "reviewed" : "unconfirmed");
+        }
+      },
+      () => {
+        if (current && generation === reviewGeneration.current) setSavedReviewStatus("unavailable");
+      },
+    );
+    return () => { current = false; };
+  }, [keptByHost, observation.fileId, readPhoto]);
   const beginReview = () => {
     if (!hooks?.onReviewPhoto || state === "busy") return;
+    const generation = ++reviewGeneration.current;
     setState("busy");
     hooks.onReviewPhoto(observation.fileId).then((reading) => {
+      if (generation !== reviewGeneration.current) return;
       failedReview.current = null;
       setRecoveryMessage(null);
+      setSavedReviewStatus(reading.reviewed === true ? "reviewed" : "unconfirmed");
       setReview({ observationId: reading.observationId, text: reading.text });
       setAcknowledged(false);
       setState("idle");
@@ -455,7 +484,6 @@ function VisualObservationPart({
   };
   // The host learns about sources after mount (the notebook reloads), so follow
   // it; never step back from a keep this card made itself.
-  const keptByHost = hooks?.isPhotoKept?.(observation.fileId) ?? false;
   useEffect(() => {
     if (keptByHost) setState((current) =>
       current === "refresh_pending" || current === "refreshing" || current === "busy" ? current : "kept");
@@ -464,6 +492,7 @@ function VisualObservationPart({
     if (!hooks?.onKeepPhoto || state === "busy" || state === "kept") return;
     if (!review && hooks.onReviewPhoto) { beginReview(); return; }
     if (review && (!acknowledged || !review.text.trim())) return;
+    ++reviewGeneration.current;
     setState("busy");
     try {
       if (review && failedReview.current && hooks.onReviewPhoto) {
@@ -488,6 +517,7 @@ function VisualObservationPart({
       setRecoveryMessage(null);
       const result = await hooks.onKeepPhoto(observation.fileId, review ? { ...review, confirmed: true } : undefined);
       failedReview.current = null;
+      setSavedReviewStatus(review ? "reviewed" : "unconfirmed");
       setState(result === "refresh_pending" ? "refresh_pending" : "kept");
     } catch {
       setState("failed");
@@ -505,6 +535,10 @@ function VisualObservationPart({
   // opens the full-size image in an in-app (native <dialog>) viewer. The raw file id
   // is only printed when there is no picture to show instead.
   const preview = openableUrl(observation.previewUrl);
+  const reviewLabel = savedReviewStatus === "reviewed" ? "Technician-reviewed reading."
+    : savedReviewStatus === "unconfirmed" ? "What MIRA read from it is still unconfirmed."
+    : savedReviewStatus === "loading" ? "Checking saved review status."
+    : "Review status unavailable.";
   return <Card type="visual_observation" label="IMG · Photo observation" extra={{ "data-verified": String(observation.verified), "data-file-id": observation.fileId }}>
     {preview ? <PhotoThumb className="fl-photo" src={preview} alt={`Photo captured ${observation.capturedAt}`} /> : review && hooks?.renderPhoto ? hooks.renderPhoto(observation.fileId) : null}
     <dl className="fl-card__facts">
@@ -524,10 +558,10 @@ function VisualObservationPart({
         <button type="button" disabled={state === "busy"} onClick={() => { setReview(null); setAcknowledged(false); setState(state === "failed" ? "idle" : keptByHost ? "kept" : "idle"); }}>Cancel review</button>
       </div>
       : state === "kept"
-      ? <p role="status" className="fl-card__meta">Kept on this machine. New conversations here can use it. {review ? "Technician-reviewed reading." : "What MIRA read from it is still unconfirmed."}</p>
+      ? <p role="status" className="fl-card__meta">Kept on this machine. New conversations here can use it. {reviewLabel}</p>
       : state === "refresh_pending" || state === "refreshing"
         ? <>
-          <p role="alert" className="fl-card__meta">Photo saved, but sources could not refresh. Refresh sources before asking about it. {review ? "Technician-reviewed reading." : "What MIRA read from it is still unconfirmed."}</p>
+          <p role="alert" className="fl-card__meta">Photo saved, but sources could not refresh. Refresh sources before asking about it. {reviewLabel}</p>
           {hooks.onRefreshPhotoScope
             ? <button type="button" disabled={state === "refreshing"} aria-busy={state === "refreshing"} onClick={refresh}>Refresh sources</button>
             : <p className="fl-card__meta">Reopen this machine to refresh its sources.</p>}
@@ -621,7 +655,10 @@ export function PartRenderer({ part, turn, state, dispatch, adapter, hooks }: Pa
     }
 
     case "visual_observation":
-      return <VisualObservationPart part={part} hooks={hooks} />;
+      return <VisualObservationPart
+        key={JSON.stringify([state.activeContext.tenantId, state.activeContext.projectId, state.activeContext.machineId, state.thread.id, part.observation.fileId])}
+        part={part} hooks={hooks}
+      />;
 
     case "safety_notice": {
       const { notice } = part;
