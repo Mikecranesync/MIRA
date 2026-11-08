@@ -21,7 +21,7 @@ type Call = { method: string; path: string; body?: unknown; form?: boolean };
 type Reply = { status: number; body: Record<string, unknown> };
 
 /** Routes by "METHOD path" prefix. Unknown routes fail the test loudly. */
-function harness(routes: Record<string, Reply | ((call: Call) => Reply)>) {
+function harness(routes: Record<string, Reply | ((call: Call) => Reply | Promise<Reply>)>) {
   const calls: Call[] = [];
   const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = String(input).replace(/^\/?/, "/").replace(/^\/\//, "/");
@@ -36,7 +36,7 @@ function harness(routes: Record<string, Reply | ((call: Call) => Reply)>) {
     });
     if (!key) throw new Error(`unexpected request ${method} ${path}`);
     const route = routes[key]!;
-    const reply = typeof route === "function" ? route(call) : route;
+    const reply = typeof route === "function" ? await route(call) : route;
     return { status: reply.status, ok: reply.status >= 200 && reply.status < 300, json: async () => reply.body } as Response;
   });
   return { calls, fetch: fetchFn as unknown as typeof fetch };
@@ -349,6 +349,102 @@ describe("controller", () => {
     expect(c.getState().error).toBe("That asset hasn't been approved yet.");
     expect(c.getState().done).toBe(false);
     expect(c.openProjectId()).toBeNull();
+  });
+});
+
+describe("Codex #5295 r1: slow manuals and closing mid-commit", () => {
+  const treeReply = { status: 200, body: { nodes: [{ id: "node-cv101", name: "Discharge Conveyor", kind: "asset", unsPath: "enterprise.a.cv101", children: [] }] } };
+  const wsReply = { status: 200, body: { files: [{ id: "f1", filename: "manual.pdf", uploadId: "up-1" }, { id: "f3", filename: "wiring.pdf", uploadId: "up-3" }] } };
+  const linkedReply = { status: 200, body: { files: [{ id: "up-1", filename: "manual.pdf", source: "upload", indexed: true }] } };
+  const flush = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
+  const later = () => {
+    let release: (r: Reply) => void = () => {};
+    const promise = new Promise<Reply>((r) => { release = r; });
+    return { route: () => promise, release: (r: Reply) => release(r) };
+  };
+  const createdRoutes = {
+    "POST /api/assets/": { status: 201, body: { ok: true, created: true, notebook: { id: "nb-m", nodeId: "n", displayName: "CV" } } },
+    "PUT /api/equipment-notebooks/nb-m/asset/": { status: 200, body: { ok: true } },
+    "GET /api/equipment-notebooks/nb-m/": { status: 200, body: { notebook: { asset: { entityId: "e", confirmedAt: "2026-11-08T10:00:00Z" } }, sources: [] } },
+    "POST /api/equipment-notebooks/nb-m/sources/": { status: 201, body: { ok: true } },
+  };
+
+  it("Next and Create wait for the machine's manuals; once they load, Next works and the defaults apply", async () => {
+    const linked = later();
+    const h = harness({ "GET /api/namespace/tree/": treeReply, "GET /api/files/": wsReply, "GET /api/namespace/node/": linked.route, ...createdRoutes });
+    const c = createNewProjectSetup({ ...deps(h.fetch), getNotebooks: () => [] });
+    await c.start();
+    const choosing = c.choose({ kind: "machine", machine });
+    await flush();
+    expect(c.getState().linked).toBeNull();
+    await c.next();
+    expect(c.getState().step).toBe(1);
+    await c.commit();
+    expect(nonGet(h.calls)).toEqual([]);
+    linked.release(linkedReply);
+    await choosing;
+    expect(c.getState().chosenDocIds).toEqual(["up-1"]);
+    await c.next();
+    expect(c.getState().step).toBe(2);
+  });
+
+  it("a manuals answer that arrives after the technician moved on changes nothing", async () => {
+    const linked = later();
+    const h = harness({ "GET /api/namespace/tree/": treeReply, "GET /api/files/": wsReply, "GET /api/namespace/node/": linked.route });
+    const c = createNewProjectSetup({ ...deps(h.fetch), getNotebooks: () => [] });
+    await c.start();
+    const choosing = c.choose({ kind: "machine", machine });
+    await flush();
+    await c.choose({ kind: "general" });
+    c.setName("Shift line");
+    await c.next();
+    c.toggleDoc("up-3");
+    linked.release(linkedReply);
+    await choosing;
+    expect(c.getState().step).toBe(2);
+    expect(c.getState().selected).toEqual({ kind: "general" });
+    expect(c.getState().chosenDocIds).toEqual(["up-3"]);
+  });
+
+  it("closing the sheet mid-commit still tells the host about the saved project, exactly once", async () => {
+    const create = later();
+    const onWritten = vi.fn();
+    const h = harness({ "GET /api/namespace/tree/": treeReply, "GET /api/files/": wsReply, "GET /api/namespace/node/": linkedReply, ...createdRoutes, "POST /api/assets/": create.route });
+    const c = createNewProjectSetup({ ...deps(h.fetch), onWritten, getNotebooks: () => [] });
+    await c.start();
+    await c.choose({ kind: "machine", machine });
+    await c.next();
+    const committing = c.commit();
+    await flush();
+    c.dispose();
+    create.release(createdRoutes["POST /api/assets/"]);
+    await committing;
+    expect(nonGet(h.calls).map((x) => `${x.method} ${x.path}`)).toContain("PUT /api/equipment-notebooks/nb-m/asset/");
+    expect(onWritten).toHaveBeenCalledTimes(1);
+  });
+
+  it("a project created but returned without its node id still refreshes the host", async () => {
+    const onWritten = vi.fn();
+    const h = harness({ "GET /api/namespace/tree/": treeReply, "GET /api/files/": wsReply, "GET /api/namespace/node/": linkedReply, "POST /api/assets/": { status: 201, body: { ok: true, created: true, notebook: { id: "nb-m" } } } });
+    const c = createNewProjectSetup({ ...deps(h.fetch), onWritten, getNotebooks: () => [] });
+    await c.start();
+    await c.choose({ kind: "machine", machine });
+    await c.next();
+    await c.commit();
+    expect(c.getState().error).toMatch(/created but could not be opened/);
+    expect(onWritten).toHaveBeenCalledTimes(1);
+  });
+
+  it("control: a refused or failed-before-write commit does not refresh the host", async () => {
+    const onWritten = vi.fn();
+    const h = harness({ "GET /api/namespace/tree/": treeReply, "GET /api/files/": wsReply, "GET /api/namespace/node/": linkedReply, "POST /api/assets/": { status: 422, body: { error: "nope", code: "asset_not_verified" } } });
+    const c = createNewProjectSetup({ ...deps(h.fetch), onWritten, getNotebooks: () => [] });
+    await c.start();
+    await c.choose({ kind: "machine", machine });
+    await c.next();
+    await c.commit();
+    expect(c.getState().error).toBe("nope");
+    expect(onWritten).not.toHaveBeenCalled();
   });
 });
 

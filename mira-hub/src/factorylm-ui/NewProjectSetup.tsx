@@ -42,6 +42,8 @@ export type SetupActions = {
 const field: CSSProperties = { display: "block", width: "100%", minHeight: 44, fontSize: 16, padding: "8px 10px", border: "1px solid var(--fl-line-strong)", borderRadius: "var(--fl-radius)", background: "var(--fl-surface)", color: "var(--fl-ink)", boxSizing: "border-box" };
 const button: CSSProperties = { minHeight: 44, minWidth: 44, padding: "0 16px", borderRadius: "var(--fl-radius)", border: "1px solid var(--fl-line-strong)", background: "var(--fl-surface)", color: "var(--fl-ink)", fontSize: "var(--fl-fs-sm)", cursor: "pointer" };
 const primary: CSSProperties = { ...button, background: "var(--fl-accent)", color: "var(--fl-surface)", border: "1px solid var(--fl-accent)" };
+/** A disabled button looks disabled (same dimming as a disabled checkbox row). */
+const unless = (style: CSSProperties, off: boolean): CSSProperties => (off ? { ...style, opacity: 0.6, cursor: "not-allowed" } : style);
 const row: CSSProperties = { display: "flex", alignItems: "center", gap: 12, minHeight: 44, padding: "8px 0", borderBottom: "1px solid var(--fl-line)" };
 const muted: CSSProperties = { color: "var(--fl-muted)", fontSize: "var(--fl-fs-sm)", margin: "4px 0" };
 const alertBox: CSSProperties = { background: "var(--fl-warn-bg)", border: "1px solid var(--fl-line)", borderRadius: "var(--fl-radius)", padding: "10px 12px", margin: "10px 0", fontSize: "var(--fl-fs-sm)" };
@@ -92,6 +94,7 @@ function Step1({ state, actions }: { state: SetupState; actions: SetupActions })
           <button type="button" style={primary} onClick={actions.openProject}>Open that project</button>
         </p>
       ) : null}
+      {state.selected?.kind === "machine" && !state.duplicate && state.linked === null ? <p role="status" style={muted}>Loading this machine&apos;s manuals…</p> : null}
       {state.selected ? (
         <label style={{ display: "block", marginTop: 14 }}>
           <span style={muted}>{generalSelected ? "Project name (required)" : "Project name"}</span>
@@ -179,7 +182,7 @@ function Step4({ state }: { state: SetupState }) {
 export function NewProjectSetupView({ state, actions }: { state: SetupState; actions: SetupActions }) {
   const busy = state.committing;
   const canNext = state.step === 1
-    ? !!state.selected && !state.duplicate && (state.selected.kind === "machine" || state.name.trim() !== "")
+    ? !!state.selected && !state.duplicate && (state.selected.kind === "machine" ? state.linked !== null : state.name.trim() !== "")
     : state.step === 2;
   let body: ReactNode;
   if (state.step === 1) body = <Step1 state={state} actions={actions} />;
@@ -194,12 +197,12 @@ export function NewProjectSetupView({ state, actions }: { state: SetupState; act
       {body}
       <div style={{ display: "flex", gap: 8, justifyContent: "space-between", marginTop: 16, flexWrap: "wrap" }}>
         <div style={{ display: "flex", gap: 8 }}>
-          {state.step > 1 && state.step < 4 ? <button type="button" style={button} disabled={busy || state.done} onClick={actions.back}>Back</button> : null}
-          {state.step < 4 && !state.done ? <button type="button" style={button} disabled={busy} onClick={actions.cancel}>Cancel</button> : null}
+          {state.step > 1 && state.step < 4 ? <button type="button" style={unless(button, busy || state.done)} disabled={busy || state.done} onClick={actions.back}>Back</button> : null}
+          {state.step < 4 && !state.done ? <button type="button" style={unless(button, busy)} disabled={busy} onClick={actions.cancel}>Cancel</button> : null}
         </div>
-        {state.step === 1 ? <button type="button" style={primary} disabled={!canNext} onClick={actions.next}>Next</button> : null}
+        {state.step === 1 ? <button type="button" style={unless(primary, !canNext)} disabled={!canNext} onClick={actions.next}>Next</button> : null}
         {state.step === 2 ? <button type="button" style={primary} onClick={actions.next}>Review</button> : null}
-        {state.step === 3 && !state.done ? <button type="button" style={primary} disabled={busy} onClick={actions.commit}>{busy ? "Creating…" : "Create project"}</button> : null}
+        {state.step === 3 && !state.done ? <button type="button" style={unless(primary, busy)} disabled={busy} onClick={actions.commit}>{busy ? "Creating…" : "Create project"}</button> : null}
         {state.step === 3 && state.done ? <button type="button" style={primary} onClick={actions.next}>Continue</button> : null}
         {state.step === 4 ? <button type="button" style={primary} onClick={actions.openProject}>Open project</button> : null}
       </div>

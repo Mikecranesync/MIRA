@@ -52,9 +52,20 @@ describe("duplicate machine refusal", () => {
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Next<\/button>/);
   });
   it("control: no duplicate means no refusal and Next is enabled", () => {
-    const html = render({ step: 1, selected: { kind: "machine", machine }, name: machine.name, duplicate: null });
+    const html = render({ step: 1, selected: { kind: "machine", machine }, name: machine.name, duplicate: null, linked: [] });
     expect(html).not.toContain("already has a project");
     expect(html).not.toMatch(/<button[^>]*disabled=""[^>]*>Next<\/button>/);
+  });
+  it("Codex #5295 r1: while the machine's manuals load, Next is disabled and says why", () => {
+    const html = render({ step: 1, selected: { kind: "machine", machine }, name: machine.name, duplicate: null, linked: null });
+    expect(html).toContain("Loading this machine&#x27;s manuals");
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Next<\/button>/);
+  });
+  it("a disabled Next looks disabled; control: an enabled Next does not", () => {
+    const off = render({ step: 1, selected: null });
+    const on = render({ step: 1, selected: { kind: "machine", machine }, name: machine.name, duplicate: null, linked: [] });
+    expect(off).toMatch(/<button[^>]*opacity:0\.6[^>]*disabled=""[^>]*>Next<\/button>/);
+    expect(on).not.toMatch(/<button[^>]*opacity[^>]*>Next<\/button>/);
   });
   it("a refusal at commit (created:false) offers Open existing", () => {
     const html = render({ step: 3, selected: { kind: "machine", machine }, refusal: { notebookId: "nb-old", message: "This machine already has a project: Old" } });

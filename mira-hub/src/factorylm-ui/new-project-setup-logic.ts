@@ -192,7 +192,7 @@ export function messageOf(res: HttpResult, fallback: string): string {
 
 export type CommitOutcome =
   | { kind: "refused"; notebookId: string; name: string; message: string }
-  | { kind: "failed"; message: string }
+  | { kind: "failed"; message: string; wrote?: boolean }
   | {
       kind: "created";
       notebookId: string;
@@ -253,7 +253,7 @@ export async function runCommit(input: CommitInput, deps: SetupDeps): Promise<Co
     if (!res.ok) return { kind: "failed", message: messageOf(res, "Could not open a project for that machine.") };
     const nb = res.body.notebook as { id?: unknown; nodeId?: unknown; displayName?: unknown } | undefined;
     if (typeof nb?.id !== "string" || typeof nb.nodeId !== "string") {
-      return { kind: "failed", message: "The project was created but could not be opened. Refresh projects before trying again." };
+      return { kind: "failed", wrote: true, message: "The project was created but could not be opened. Refresh projects before trying again." };
     }
     const existingName = typeof nb.displayName === "string" && nb.displayName ? nb.displayName : machine.name;
     if (res.body.created === false) {
@@ -523,6 +523,8 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
       if (dup) return;
       await ensureWorkspace();
       const res = await call(deps, "GET", `/api/namespace/node/${encodeURIComponent(machine.id)}/files/`);
+      // Codex #5295 r1 F1: Next and Create wait for this answer, so it lands on
+      // step 1 with this machine still chosen, or not at all.
       if (disposed || state.selected !== selection) return;
       const linked = res.ok ? linkedDocsFrom(res.body, state.workspace ?? []) : [];
       set({
@@ -566,6 +568,7 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
       if (state.committing) return;
       if (state.step === 1) {
         if (!state.selected || state.duplicate) return;
+        if (state.selected.kind === "machine" && state.linked === null) return; // manuals still loading
         if (state.selected.kind === "general" && state.name.trim() === "") {
           set({ error: "Name this project first." });
           return;
@@ -585,6 +588,7 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
 
     async commit() {
       if (state.committing || state.done || !state.selected || state.duplicate) return;
+      if (state.selected.kind === "machine" && state.linked === null) return;
       const selected = state.selected;
       const docs: CommitDoc[] = [];
       const seen = new Set<string>();
@@ -596,6 +600,9 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
       }
       set({ committing: true, error: null, refusal: null });
       const outcome = await runCommit({ selected, name: state.name, docs, pdfs: state.pdfs }, deps);
+      // Codex #5295 r1 F2: a saved project reaches the host's list even when the
+      // sheet was closed mid-commit (the shell's Back closes open dialogs).
+      if (outcome.kind === "created" || (outcome.kind === "failed" && outcome.wrote)) deps.onWritten?.();
       if (disposed) return;
       if (outcome.kind === "refused") {
         set({ committing: false, refusal: { notebookId: outcome.notebookId, message: outcome.message } });
@@ -605,7 +612,6 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
         set({ committing: false, error: outcome.message });
         return;
       }
-      deps.onWritten?.();
       set({ notebookId: outcome.notebookId, confirmed: outcome.confirmed, notes: outcome.notes });
       const watched = outcome.docs.flatMap((d) => (d.docId ? [d.docId] : []));
       // The writes are finished. After the first readiness read the sheet unlocks
