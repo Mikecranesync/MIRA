@@ -5,11 +5,13 @@
  * when the technician approved it at Create project in this session; otherwise
  * (after a reload, another device) it offers an explicit Add. Renders nothing
  * when there is nothing pending.
+ * #5316: "still being read" is shown only while the server confirms an ingest is
+ * running. A file nothing is reading says so and offers Upload again.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { API_BASE } from "@/lib/config";
 import { POLL_INTERVAL_MS, POLL_MAX, type SetupDeps } from "./new-project-setup-logic";
-import { addPendingManual, checkPendingManuals, type PendingManual } from "./pending-manuals";
+import { addPendingManual, checkPendingManuals, reuploadPendingManual, type PendingManual } from "./pending-manuals";
 
 type Props = {
   notebookId: string;
@@ -39,6 +41,7 @@ export function PendingManuals({ notebookId, nodeId, sources, approved, onAttach
   const latest = useRef({ sources, approved, onAttached });
   useEffect(() => { latest.current = { sources, approved, onAttached }; }, [sources, approved, onAttached]);
   const names = useRef(new Map<string, string>());
+  const [busy, setBusy] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -73,6 +76,21 @@ export function PendingManuals({ notebookId, nodeId, sources, approved, onAttach
     } else setFailed((f) => ({ ...f, [p.fileId]: r.message ?? "" }));
   }, [notebookId]);
 
+  // Upload again: the technician picked the PDF again; the tap is the approval to add it here.
+  const reupload = useCallback(async (p: PendingManual, file: File | undefined) => {
+    if (!file) return;
+    setBusy(p.fileId);
+    setFailed((f) => { const next = { ...f }; delete next[p.fileId]; return next; });
+    const r = await reuploadPendingManual({ notebookId, nodeId, file }, deps);
+    setBusy(null);
+    if (r.kind === "attached") {
+      setPending((list) => list.filter((x) => x.fileId !== p.fileId));
+      setAdded((a) => [...a, p.filename]);
+      latest.current.onAttached([p.fileId]);
+    } else if (r.kind === "reading") setRun((n) => n + 1);
+    else setFailed((f) => ({ ...f, [p.fileId]: r.message }));
+  }, [notebookId, nodeId]);
+
   if (pending.length === 0 && added.length === 0 && status !== "error") return null;
   const again = <button type="button" style={btn} onClick={() => setRun((n) => n + 1)}>Check again</button>;
   return (
@@ -82,7 +100,11 @@ export function PendingManuals({ notebookId, nodeId, sources, approved, onAttach
         <p key={p.fileId} style={{ margin: "4px 0" }}>
           {p.state === "reading"
             ? <>{p.filename} is saved here and still being read. It is not searchable yet.{approved.has(p.fileId) ? " It is added as a source when it is ready." : " Once readable, add it as a source here."}</>
-            : <>{p.filename} is readable but not a source of this project yet.<button type="button" style={btn} onClick={() => void add(p)}>Add as source</button></>}
+            : p.state === "unread"
+              ? <>{p.filename} is saved here but wasn&apos;t read, so it is not searchable.{busy === p.fileId
+                  ? " Uploading…"
+                  : <label style={btn}>Upload again<input type="file" accept="application/pdf" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; void reupload(p, f); }} /></label>}</>
+              : <>{p.filename} is readable but not a source of this project yet.<button type="button" style={btn} onClick={() => void add(p)}>Add as source</button></>}
           {failed[p.fileId] ? <span role="alert" style={{ display: "block", color: "var(--fl-fault)" }}>{failed[p.fileId]}</span> : null}
         </p>
       ))}
