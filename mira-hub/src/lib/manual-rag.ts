@@ -2593,3 +2593,46 @@ export async function retrieveCitedPageChunks(
   }
   return out;
 }
+
+/** Hard bound on one page's chunks for the edge definition-page read. */
+export const EDGE_PAGE_CHUNK_LIMIT = 24;
+
+/**
+ * #5265 edge profile: EVERY v2 chunk of one cited page, in ingest order. The
+ * cautions a manual prints beside a parameter definition ("setting the
+ * acceleration time too short may cause motor damage …") carry none of the
+ * marker words `retrieveCitedPageChunks` pre-filters on, so this read has no
+ * content filter. Same tenant, ingest route and approval predicate as that read.
+ */
+export async function retrievePageChunksInOrder(
+  client: Pick<PoolClient, "query">,
+  tenantId: string,
+  page: CitedPageRef,
+  opts: { approvedSourceDocIds?: string[] } = {},
+): Promise<string[]> {
+  const params: unknown[] = [tenantId, page.docId, page.sourceUrl, page.page];
+  const approved = (opts.approvedSourceDocIds ?? []).filter(Boolean);
+  const admitApproved = approved.length > 0 && approvalGateEnabled();
+  if (admitApproved) params.push(approved);
+  await client.query("SET LOCAL statement_timeout = '3s'");
+  const res = await client.query(
+    `SELECT content, metadata->>'chunk_index' AS chunk_index
+       FROM knowledge_entries
+      WHERE tenant_id = $1
+        AND ingest_route = 'v2'
+        ${approvedSourceFilterSql(admitApproved ? 5 : null)}
+        AND doc_id::text = $2
+        AND source_url = $3
+        AND COALESCE(page_start, source_page) = $4
+      ORDER BY id
+      LIMIT ${EDGE_PAGE_CHUNK_LIMIT}`,
+    params,
+  );
+  // Ordered here, not in SQL: chunk_index is text in metadata ("10" sorts before "9").
+  const rows = (res.rows as Array<Record<string, unknown>>).map((r) => ({
+    content: String(r.content ?? ""),
+    index: r.chunk_index == null ? Infinity : Number(r.chunk_index),
+  }));
+  rows.sort((a, b) => (Number.isNaN(a.index) ? Infinity : a.index) - (Number.isNaN(b.index) ? Infinity : b.index));
+  return rows.map((r) => r.content);
+}
