@@ -65,7 +65,7 @@ beforeAll(async () => {
       (tenant_id, content, source_url, source_page, page_start, metadata,
        verified, is_private, doc_id, ingest_route)
       VALUES ($1,$2,'https://test.invalid/manual.pdf',$3,$3,$4::jsonb,false,true,$5,'v2')`,
-    [TENANT, "Drive parameter controls and present drive settings.", page,
+    [TENANT, "Drive parameter controls, acceleration time and present drive settings.", page,
       JSON.stringify({ node_id: "cv101-fixture", filename: "gs10usermanual.pdf", chunk_index: 0 }), CURRENT]);
   }
 });
@@ -87,7 +87,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  expect(fetch).not.toHaveBeenCalled();
+  if (process.env.NOTEBOOK_RERANK !== "1") expect(fetch).not.toHaveBeenCalled();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
 });
@@ -134,5 +134,22 @@ describe("CV101 catalog applicability over actual SQL", () => {
 
   it("a different tenant cannot retrieve this notebook's private document", async () => {
     expect(await retrieve(QUESTION, [CURRENT], [CURRENT], "52850000-0000-4000-8000-000000000099")).toEqual([]);
+  });
+
+  it("reranking sees only admitted current-revision passages, never a selected sibling or unapproved revision", async () => {
+    vi.stubEnv("NOTEBOOK_RERANK", "1");
+    vi.stubEnv("RERANKER_URL", "http://rerank.test.invalid");
+    const scorer = vi.fn(async (_url: string, init: RequestInit) => {
+      const { query, passages } = JSON.parse(String(init.body)) as { query: string; passages: string[] };
+      expect(query).toBe(QUESTION);
+      expect(passages.length).toBeGreaterThan(2);
+      expect(passages.every((p) => !/sibling only|obsolete revision|other asset|foreign tenant/.test(p))).toBe(true);
+      return new Response(JSON.stringify({ scores: passages.map((p) => /sibling only|obsolete revision/.test(p) ? 100 : p.includes("P01.12") ? 10 : 0) }));
+    });
+    vi.stubGlobal("fetch", scorer);
+    const hits = await retrieve(QUESTION, [CURRENT, SIBLING, OLD_REVISION], [CURRENT, SIBLING]);
+    expect(scorer).toHaveBeenCalledTimes(1);
+    expect(hits.every((hit) => hit.docId === CURRENT)).toBe(true);
+    expect(hits.some((hit) => hit.sourcePage === 139 && hit.content.includes("P01.12"))).toBe(true);
   });
 });

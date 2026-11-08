@@ -72,7 +72,7 @@ describe("CV-101 supported catalog-family admission (#5285)", () => {
     const hits = await retrieve("DURApulse GS10 AC Drive User Manual");
     expect(hits).toHaveLength(1);
     expect(hits[0]).toMatchObject({ docId: DOC, sourcePage: 139, pageLabel: "4-69" });
-    expect(hits[0].content).toContain("P01.12");
+    expect(hits[0].content).toBe(candidate("DURApulse GS10 AC Drive User Manual").content);
   });
 
   it("control: changing only the requested model to GS10 already retains it", async () => {
