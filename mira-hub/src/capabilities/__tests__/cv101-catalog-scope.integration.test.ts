@@ -58,6 +58,16 @@ beforeAll(async () => {
     [TENANT, "GS11N-20P2 drive parameter controls and present drive settings. GS11N-20P2 catalog technical specification.", page,
       JSON.stringify({ node_id: "cv101-fixture", filename: "gs10usermanual.pdf", chunk_index: 0 }), CURRENT]);
   }
+  // Long-manual frequency context: boilerplate is common, catalog suffixes
+  // are rare. Without these rows a tiny fixture inverts the real IDF signal.
+  for (let page = 700; page < 740; page++) {
+    await client.query(`INSERT INTO knowledge_entries
+      (tenant_id, content, source_url, source_page, page_start, metadata,
+       verified, is_private, doc_id, ingest_route)
+      VALUES ($1,$2,'https://test.invalid/manual.pdf',$3,$3,$4::jsonb,false,true,$5,'v2')`,
+    [TENANT, "Drive parameter controls and present drive settings.", page,
+      JSON.stringify({ node_id: "cv101-fixture", filename: "gs10usermanual.pdf", chunk_index: 0 }), CURRENT]);
+  }
 });
 
 afterAll(async () => {

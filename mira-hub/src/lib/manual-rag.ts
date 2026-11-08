@@ -13,6 +13,7 @@ import {
   expandIndustrialQuery,
   withRawCodeTokens,
   withoutIdentityCodes,
+  identityTokens,
   type EquipmentIdentity,
   prioritizeCurrentCodeEvidence,
   rerankChunks,
@@ -2107,7 +2108,16 @@ export async function retrieveNodeChunks(
     }
   }
   if (!lexicalV2) try {
-    const idfParams: unknown[] = [tenantId, boundBm25Query(opts.rawQuery?.trim() || q), nodeIds, POOL, ...docParams, ...approvedParams];
+    // A covered catalog identifies the drive, not the question's topic. Its
+    // rare suffix otherwise promotes specification pages over the requested
+    // parameter. Keep raw retrieval, exact-code lanes and admission unchanged.
+    const catalogNames = identityTokens({ model: [...(requestedIdentities ?? [])]
+      .filter((id) => isCatalogIdentity(id) && GS10_MEMBERS.test(id.split("-")[0]))
+      .join(" ") });
+    const rawQuestion = opts.rawQuery?.trim() || q;
+    const topicQuestion = rawQuestion.replace(/[a-z0-9]+/gi, (word) => catalogNames.has(word.toLowerCase()) ? " " : word);
+    const idfQuestion = /[a-z0-9]/i.test(topicQuestion) ? topicQuestion : rawQuestion;
+    const idfParams: unknown[] = [tenantId, boundBm25Query(idfQuestion), nodeIds, POOL, ...docParams, ...approvedParams];
     const res = await client.query(
       `WITH qlex AS (
           SELECT DISTINCT unnest(tsvector_to_array(to_tsvector('english', $2))) AS lex
