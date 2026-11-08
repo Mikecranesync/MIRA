@@ -80,3 +80,24 @@ def test_toolchain_contract_is_executed_by_architecture_check() -> None:
     assert len(jobs) == 1
     commands = "\n".join(step.get("run", "") for step in jobs[0]["steps"])
     assert "pytest tests/test_ci_bun_toolchain.py" in commands
+
+
+@pytest.mark.parametrize("suite", ["cv101-catalog-scope", "cv101-photo-recall"])
+def test_cv101_sql_regressions_are_triggered_executed_and_required(suite: str) -> None:
+    workflow = yaml.safe_load(WORKFLOW.read_text())
+    job = workflow["jobs"]["turn-lifecycle-reconciliation"]
+    short = f"src/capabilities/__tests__/{suite}.integration.test.ts"
+    filters = next(
+        yaml.safe_load(step["with"]["filters"])
+        for step in job["steps"]
+        if str(step.get("uses", "")).startswith("dorny/paths-filter@")
+    )
+    assert f"mira-hub/{short}" in filters["lifecycle"]
+    script = next(
+        step["run"]
+        for step in job["steps"]
+        if step.get("name") == "Reconciliation suite (must RUN, not skip)"
+    )
+    assert any(line.strip().rstrip("\\").rstrip() == short for line in script.splitlines())
+    escaped = short.replace(".", r"\.")
+    assert any("grep -qE" in line and escaped in line for line in script.splitlines())
