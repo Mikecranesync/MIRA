@@ -1,7 +1,7 @@
 /** #5302: a manual still being read when the setup sheet closes is not abandoned. Fake fetch only; no DOM. */
 import { describe, expect, it, vi } from "vitest";
 import { createNewProjectSetup, type SetupDeps } from "./new-project-setup-logic";
-import { checkPendingManuals, filedManuals, reuploadPendingManual } from "./pending-manuals";
+import { checkPendingManuals, filedManuals, knownSources, reuploadPendingManual } from "./pending-manuals";
 
 type Call = { method: string; path: string; body?: unknown };
 type Reply = { status: number; body: Record<string, unknown> };
@@ -308,5 +308,42 @@ describe("#5316 Upload again: the technician's recovery for a manual that was no
   it("read, but the source attach is refused: failed, with the attach reason", async () => {
     const h = harness({ [UP]: { status: 201, body: { ok: true, indexed: true, uploadId: "up-1", fileId: "f-202" } }, [SRC]: { status: 503, body: {} } });
     expect(await run(h.fetch)).toEqual({ kind: "failed", message: "Couldn't be added as a source. Try again." });
+  });
+});
+
+describe("#5325 the check after Upload again knows the document it just attached", () => {
+  const NODE = "GET /api/namespace/node/node-g/files/";
+  const UP = "POST /api/namespace/node/node-g/files/";
+  const SRC = "POST /api/equipment-notebooks/nb-g/sources/";
+  // After the different-file retry the node holds the original (unread) and the new, linked file.
+  const routes = {
+    [UP]: { status: 201, body: { ok: true, indexed: true, uploadId: "up-g120x", fileId: "f-new" } },
+    [SRC]: { status: 201, body: { ok: true } },
+    [NODE]: { status: 200, body: { files: [pdf({ id: "f-blank", filename: "blank.pdf" }), pdf({ id: "f-new", filename: "G120X.pdf", indexed: true })] } },
+    "GET /api/files/f-blank": fileLookup("f-blank", null),
+    "GET /api/files/f-new": fileLookup("f-new", "up-g120x"),
+  };
+  const other = () => new File(["%PDF real"], "G120X.pdf", { type: "application/pdf" });
+
+  it("host refresh still stale: the original stays unread and the new manual is not offered again", async () => {
+    const h = harness(routes);
+    const r = await reuploadPendingManual({ notebookId: "nb-g", nodeId: "node-g", file: other() }, deps(h.fetch));
+    if (r.kind !== "attached") throw new Error("precondition: the retry must attach");
+    const staleHostSources: Array<{ docId: string; fileId: string | null }> = []; // loadDetail has not returned yet
+    const check = await checkPendingManuals({ notebookId: "nb-g", nodeId: "node-g", sources: knownSources(staleHostSources, [r.docId]), approved: new Set() }, deps(h.fetch));
+    expect(check.pending).toEqual([{ fileId: "f-blank", filename: "blank.pdf", docId: null, state: "unread" }]);
+    expect(attaches(h.calls)).toHaveLength(1);
+  });
+
+  it("control: the same stale check without the attached document lists the new manual again (the race)", async () => {
+    const h = harness(routes);
+    const check = await checkPendingManuals({ notebookId: "nb-g", nodeId: "node-g", sources: knownSources([], []), approved: new Set() }, deps(h.fetch));
+    expect(check.pending.map((p) => [p.fileId, p.state])).toEqual([["f-blank", "unread"], ["f-new", "readable"]]);
+  });
+
+  it("knownSources adds only documents the host does not already list", () => {
+    const host = [{ docId: "up-1", fileId: "f-1" }];
+    expect(knownSources(host, ["up-1", "up-2"])).toEqual([{ docId: "up-1", fileId: "f-1" }, { docId: "up-2", fileId: null }]);
+    expect(knownSources(host, [])).toEqual(host);
   });
 });
