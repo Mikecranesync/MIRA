@@ -84,9 +84,11 @@ export function PendingManuals({ notebookId, nodeId, sources, approved, onAttach
     const r = await reuploadPendingManual({ notebookId, nodeId, file }, deps);
     setBusy(null);
     if (r.kind === "attached") {
-      setPending((list) => list.filter((x) => x.fileId !== p.fileId));
-      setAdded((a) => [...a, p.filename]);
+      // Name the file that was added, and re-read the project rather than drop the
+      // row: a different PDF leaves the original unread on the server (#5316 device run).
+      setAdded((a) => [...a, r.filename]);
       latest.current.onAttached([p.fileId]);
+      setRun((n) => n + 1);
     } else if (r.kind === "reading") setRun((n) => n + 1);
     else setFailed((f) => ({ ...f, [p.fileId]: r.message }));
   }, [notebookId, nodeId]);

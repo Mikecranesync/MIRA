@@ -272,9 +272,17 @@ describe("#5316 Upload again: the technician's recovery for a manual that was no
 
   it("re-sends the PDF to the project's own node and attaches the returned document once", async () => {
     const h = harness({ [UP]: { status: 200, body: { ok: true, indexed: true, duplicate: true, uploadId: "up-orphan" } }, [SRC]: { status: 201, body: { ok: true } } });
-    expect(await run(h.fetch)).toEqual({ kind: "attached", docId: "up-orphan" });
+    expect(await run(h.fetch)).toEqual({ kind: "attached", docId: "up-orphan", filename: "manual.pdf" });
     expect(h.calls.filter((c) => c.method === "POST").map((c) => c.path)).toEqual(["/api/namespace/node/node-g/files/", "/api/equipment-notebooks/nb-g/sources/"]);
     expect(attaches(h.calls)).toEqual([{ method: "POST", path: "/api/equipment-notebooks/nb-g/sources/", body: { docId: "up-orphan", sourceRole: "manual" } }]);
+  });
+
+  it("device finding: a different PDF picked at Upload again is the one named as added, never the pending row", async () => {
+    const h = harness({ [UP]: { status: 201, body: { ok: true, indexed: true, uploadId: "up-g120x", fileId: "f-new" } }, [SRC]: { status: 201, body: { ok: true } } });
+    const other = new File(["%PDF real"], "G120X_op_instr.pdf", { type: "application/pdf" });
+    const r = await reuploadPendingManual({ notebookId: "nb-g", nodeId: "node-g", file: other }, deps(h.fetch));
+    expect(r).toEqual({ kind: "attached", docId: "up-g120x", filename: "G120X_op_instr.pdf" });
+    expect(attaches(h.calls)).toHaveLength(1);
   });
 
   it("a 202 means the server is reading it now: reading, no source write", async () => {
