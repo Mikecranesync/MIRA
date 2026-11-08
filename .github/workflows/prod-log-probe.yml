@@ -107,7 +107,7 @@ jobs:
               exit 3
             fi
             # BEGIN atlas-exception-filter
-            hits="$(printf '%s\n' "$all" | sed -nE -e 's/^(Caused by: )?((java|javax|jakarta|org|com|io|net)(\.[a-z][a-z0-9_]*)+\.[A-Z][A-Za-z0-9_$]*(Exception|Error))(: .*)?$/\2/p' -e 's/^[[:space:]]+(at com\.grash\.[A-Za-z0-9_.$]+\([A-Za-z0-9_]+\.java:[0-9]+\))[[:space:]]*$/\1/p' | uniq -c | tail -n 80 || true)"
+            hits="$(printf '%s\n' "$all" | sed -nE -e 's/^(Caused by: )?((java|javax|jakarta|org|com|io|net)(\.[a-z][a-z0-9_]*)+\.([A-Z][A-Za-z0-9_$]*)?(Exception|Error))(: .*)?$/\2/p' -e 's/^[[:space:]]+(at com\.grash\.[A-Za-z0-9_.$]+\([A-Za-z0-9_]+\.java:[0-9]+\))[[:space:]]*$/\1/p' | uniq -c | tail -n 80 || true)"
             # END atlas-exception-filter
             if [ -z "$hits" ]; then echo "read OK: no exception lines in the last 6h"; else printf '%s\n' "$hits"; fi
           }
