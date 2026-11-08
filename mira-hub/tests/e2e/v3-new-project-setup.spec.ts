@@ -288,6 +288,108 @@ for (const vp of VIEWPORTS) {
       ]);
     });
 
+    // #5302: Open before the 202 file is read; the opened project keeps following it.
+    async function stillReading(page: Page, readsUntilIndexed: number) {
+      const writes = await stub(page);
+      const json = (body: unknown, status = 200) => ({ status, contentType: "application/json", body: JSON.stringify(body) });
+      const state = { listReads: 0, attached: false, readsUntilIndexed, created: false };
+      // Like the server: once created, the project is in the list, so a reload reopens it.
+      await page.route(/\/api\/equipment-notebooks\/(\?.*)?$/, (route) => {
+        if (route.request().method() !== "GET") { state.created = true; return route.fallback(); }
+        return route.fulfill(json({ notebooks: [notebook("nb-existing-cv102", "Infeed Conveyor", "node-cv102"), ...(state.created ? [notebook("nb-general", "Bench notes (synthetic)", null)] : [])] }));
+      });
+      await page.route(/\/api\/namespace\/node\/[^/]+\/files\/?$/, (route) => {
+        if (route.request().method() !== "GET") return route.fulfill(json({ ok: true, indexed: false, indexing: true, fileId: "f-late" }, 202));
+        if (!route.request().url().includes("/node/node-of-nb-general/")) return route.fulfill(json({ files: [] }));
+        state.listReads++;
+        const read = state.listReads >= state.readsUntilIndexed;
+        return route.fulfill(json({ files: [{ id: "f-late", filename: "Pump manual.pdf", mime_type: "application/pdf", size_bytes: 20, source: "direct", created_at: "2026-11-08T12:00:05.000Z", verified: false, indexed: read, upload_id: read ? "up-late" : null }] }));
+      });
+      await page.route(/\/api\/files\/f-late\/?$/, (route) => route.fulfill(json({ file: { id: "f-late", uploadId: null, indexed: false }, links: [] })));
+      await page.route(/\/api\/equipment-notebooks\/nb-general\/sources\/?$/, (route) => { state.attached = true; return route.fulfill(json({ ok: true }, 201)); });
+      await page.route(/\/api\/equipment-notebooks\/nb-general\/(\?.*)?$/, (route) => route.fulfill(json({
+        notebook: notebook("nb-general", "Bench notes (synthetic)", null),
+        sources: state.attached ? [{ docId: "up-late", fileId: "f-late", filename: "Pump manual.pdf", enabledByDefault: true, readiness: { state: "chat_ready_basic", canChat: true }, matchState: "user_confirmed" }] : [],
+        turns: [], threads: [],
+      })));
+      const dlg = await openSheet(page, vp.mobile);
+      await dlg.getByRole("button", { name: "General (no machine)" }).click();
+      await dlg.getByRole("textbox").fill("Bench notes (synthetic)");
+      await dlg.getByRole("button", { name: "Next", exact: true }).click();
+      await dlg.getByLabel("Upload PDF").setInputFiles({ name: "Pump manual.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n%synthetic\n") });
+      await dlg.getByRole("button", { name: "Review" }).click();
+      await dlg.getByRole("button", { name: "Create project" }).click();
+      await expect(dlg.getByText("Processing")).toBeVisible();
+      await expect(dlg.getByText("You can open the project now: it is added as a source when it is ready.")).toBeVisible();
+      await shot(page, vp.name, "5302-1-processing-before-open");
+      await dlg.getByRole("button", { name: "Continue" }).click();
+      await dlg.getByRole("button", { name: "Open project" }).click();
+      await expect(page.getByRole("dialog", { name: "New project" })).toHaveCount(0);
+      await expect(page).toHaveURL(/notebook=nb-general/);
+      return { writes, state };
+    }
+
+    test("#5302: Open before the manual is read; the project attaches it once readable", async ({ page }) => {
+      const { writes, state } = await stillReading(page, 3);
+      const panel = page.getByTestId("pending-manuals");
+      await expect(panel.getByText("Pump manual.pdf is saved here and still being read.")).toBeVisible();
+      await expect(panel.getByText("It is added as a source when it is ready.")).toBeVisible();
+      await expect(panel).toBeInViewport({ ratio: 1 }); // on screen, not below the fold
+      await shot(page, vp.name, "5302-2-opened-still-reading");
+      await expect(panel.getByText("Pump manual.pdf was added as a source of this project.")).toBeVisible({ timeout: 30_000 });
+      await shot(page, vp.name, "5302-3-attached");
+      expect(state.attached).toBe(true);
+      expect(writes.filter((w) => w.includes("/sources/"))).toEqual(["POST /hub/api/equipment-notebooks/nb-general/sources/"]);
+      // Reopen: it is a source now, so nothing is pending and nothing more is written.
+      const readsBefore = state.listReads;
+      await page.reload();
+      await expect(page).toHaveURL(/notebook=nb-general/);
+      // The reopened project re-checked its files (precondition) and found nothing pending.
+      await expect.poll(() => state.listReads).toBeGreaterThan(readsBefore);
+      await expect(page.getByTestId("pending-manuals")).toHaveCount(0);
+      expect(writes.filter((w) => w.includes("/sources/"))).toHaveLength(1);
+    });
+
+    test("#5302: after a reload the readable manual is offered, attached only on Add", async ({ page }) => {
+      const { writes, state } = await stillReading(page, 1_000);
+      await expect(page.getByTestId("pending-manuals").getByText("still being read")).toBeVisible();
+      state.readsUntilIndexed = 0; // indexing finishes while the page reloads
+      await page.reload();
+      const panel = page.getByTestId("pending-manuals");
+      await expect(panel.getByText("Pump manual.pdf is readable but not a source of this project yet.")).toBeVisible();
+      await expect(panel.getByRole("button", { name: "Add as source" })).toBeInViewport({ ratio: 1 });
+      await shot(page, vp.name, "5302-4-after-reload-offered");
+      expect(writes.filter((w) => w.includes("/sources/"))).toHaveLength(0);
+      await panel.getByRole("button", { name: "Add as source" }).click();
+      await expect(panel.getByText("Pump manual.pdf was added as a source of this project.")).toBeVisible();
+      expect(writes.filter((w) => w.includes("/sources/"))).toEqual(["POST /hub/api/equipment-notebooks/nb-general/sources/"]);
+    });
+
+    test("#5302: switching projects while it is read writes nothing; back on its project it is attached once", async ({ page }) => {
+      const { writes, state } = await stillReading(page, 1_000);
+      await page.route(/\/api\/equipment-notebooks\/nb-existing-cv102\/(\?.*)?$/, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+        notebook: notebook("nb-existing-cv102", "Infeed Conveyor", "node-cv102"), sources: [], turns: [], threads: [],
+      }) }));
+      await expect(page.getByTestId("pending-manuals").getByText("still being read")).toBeVisible();
+      const goTo = async (name: RegExp) => {
+        if (vp.mobile) await page.getByRole("button", { name: "Open navigation" }).first().click();
+        await page.getByRole("list", { name: "Projects" }).getByRole("button", { name }).first().click();
+      };
+      await goTo(/Infeed Conveyor/);
+      await expect(page).toHaveURL(/notebook=nb-existing-cv102/);
+      await expect(page.getByTestId("pending-manuals")).toHaveCount(0);
+      state.readsUntilIndexed = 0; // reading finishes while another project is open
+      const readsAway = state.listReads;
+      await page.waitForTimeout(4_000); // longer than one poll interval
+      expect(state.listReads).toBe(readsAway); // the closed project stopped following
+      expect(writes.filter((w) => w.includes("/sources/"))).toHaveLength(0);
+      await shot(page, vp.name, "5302-5-other-project-no-write");
+      await goTo(/Bench notes/);
+      await expect(page).toHaveURL(/notebook=nb-general/);
+      await expect(page.getByTestId("pending-manuals").getByText("Pump manual.pdf was added as a source of this project.")).toBeVisible({ timeout: 15_000 });
+      expect(writes.filter((w) => w.includes("/sources/"))).toEqual(["POST /hub/api/equipment-notebooks/nb-general/sources/"]);
+    });
+
     test("an interrupted upload is Needs attention and the project still opens", async ({ page }) => {
       const writes = await stub(page);
       await page.route(/\/api\/namespace\/node\/[^/]+\/files\/?$/, (route) => route.abort("connectionreset"));

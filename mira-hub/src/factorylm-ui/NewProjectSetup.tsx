@@ -218,12 +218,14 @@ export type NewProjectSetupProps = {
   createNotebook: (body: { displayName: string; identitySourceType: "user" }) => Promise<string | null>;
   /** Select the project and close the sheet. */
   onOpenProject: (notebookId: string) => void;
+  /** #5302: still-reading files saved into a new project, for the host to keep following. */
+  onPendingManuals?: (notebookId: string, fileIds: string[]) => void;
   /** A write created or bound a project: refresh the host's list. */
   onWritten: () => void;
 };
 
 /** Container: owns the controller, the native dialog and the phone Back layer. */
-export function NewProjectSetup({ open, onClose, notebooks, createNotebook, onOpenProject, onWritten }: NewProjectSetupProps) {
+export function NewProjectSetup({ open, onClose, notebooks, createNotebook, onOpenProject, onWritten, onPendingManuals }: NewProjectSetupProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const notebooksRef = useRef(notebooks);
   const [ctl, setCtl] = useState<SetupController | null>(null);
@@ -245,6 +247,7 @@ export function NewProjectSetup({ open, onClose, notebooks, createNotebook, onOp
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
       getNotebooks: () => notebooksRef.current,
       onWritten,
+      onPendingManuals,
     });
     setCtl(controller);
     setState(controller.getState());

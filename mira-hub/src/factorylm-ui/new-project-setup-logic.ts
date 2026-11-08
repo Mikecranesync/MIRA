@@ -342,7 +342,9 @@ export type SourceView = { docId: string; filename: string | null; readiness: un
 export const POLL_INTERVAL_MS = 3000;
 export const POLL_MAX = 20;
 export const STILL_PROCESSING = "Still processing, you can start; it becomes searchable when ready.";
-export const INDEXING_CAPPED = "Saved, and still being read. It is not a source yet: once it is readable, add it from the project's documents.";
+export const INDEXING_CAPPED = "Saved, and still being read. It is not a source yet: the project keeps checking it and adds it once it is readable.";
+/** #5302: shown while a 202 file is still being read, so Open never reads as "done". */
+export const INDEXING_PENDING = "Still being read. You can open the project now: it is added as a source when it is ready.";
 
 /**
  * Follow each 202 document by its file id (GET /api/files/{fileId}). Once the
@@ -459,7 +461,7 @@ export type ResultRow = {
 export function resultRows(docs: readonly DocOutcome[], sources: readonly SourceView[], capped: boolean): ResultRow[] {
   return docs.map((doc) => {
     if (doc.indexing && !doc.docId) {
-      return { key: doc.key, filename: doc.filename, readiness: PROCESSING, applicability: null, note: capped ? INDEXING_CAPPED : null };
+      return { key: doc.key, filename: doc.filename, readiness: PROCESSING, applicability: null, note: capped ? INDEXING_CAPPED : INDEXING_PENDING };
     }
     if (doc.notIndexed) return { key: doc.key, filename: doc.filename, readiness: ATTENTION, applicability: null, note: doc.message };
     if (doc.attachFailed || !doc.docId) return { key: doc.key, filename: doc.filename, readiness: ATTENTION, applicability: null, note: doc.message };
@@ -540,6 +542,12 @@ export type ControllerDeps = SetupDeps & {
   getNotebooks: () => readonly HubNotebook[];
   /** Called once a write has created or bound a project, so the host can refresh its list. */
   onWritten?: () => void;
+  /**
+   * #5302: files saved into the new project that another upload is still
+   * reading (202). Reported even when the sheet already closed, so the host can
+   * keep following them and attach each once readable (approved at Create project).
+   */
+  onPendingManuals?: (notebookId: string, fileIds: string[]) => void;
   maxPdfBytes?: number;
 };
 
@@ -692,6 +700,10 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
       // Codex #5295 r1 F2: a saved project reaches the host's list even when the
       // sheet was closed mid-commit (the shell's Back closes open dialogs).
       if (outcome.kind === "created" || (outcome.kind === "failed" && outcome.wrote)) deps.onWritten?.();
+      if (outcome.kind === "created") {
+        const reading = outcome.docs.flatMap((d) => (d.indexing && d.fileId ? [d.fileId] : []));
+        if (reading.length) deps.onPendingManuals?.(outcome.notebookId, reading);
+      }
       if (disposed) return;
       if (outcome.kind === "refused") {
         set({ committing: false, refusal: { notebookId: outcome.notebookId, message: outcome.message } });

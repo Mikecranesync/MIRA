@@ -69,6 +69,7 @@ import { WorkPacketPanel } from "./WorkPacketPanel";
 import { wantsPacketOpen } from "./work-packet-view";
 import { LivingSheet } from "./LivingSheet";
 import { NewProjectSetup } from "./NewProjectSetup";
+import { PendingManuals } from "./PendingManuals";
 import { clearSheetDataForSignOut, localStorageStore, parseSheetReceipts } from "./living-sheet-client";
 import { NOTEBOOK_ACTIONS_STYLE } from "./notebook-actions";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
@@ -164,6 +165,8 @@ export function HubShellHost() {
   const [notebooks, setNotebooks] = useState<HubNotebook[] | null>(null);
   // #4632: the New project setup sheet (replaces window.prompt).
   const [newProjectOpen, setNewProjectOpen] = useState(false);
+  // #5302: per project, the still-reading files the technician approved at Create project.
+  const [pendingApprovals, setPendingApprovals] = useState<Record<string, string[]>>({});
   const [notebookGate] = useState(() => latestRequestGate());
   const [selection, setSelection] = useState<HubSelection | null>(null);
   // Mirror for async callbacks that must know whether anything is open yet
@@ -355,6 +358,10 @@ export function HubShellHost() {
 
   // --- derived shell inputs ---
   const projects = useMemo(() => notebookProjects(notebooks ?? []), [notebooks]);
+  const approvedManuals = useMemo(
+    () => new Set(selection ? pendingApprovals[selection.notebookId] ?? [] : []),
+    [selection, pendingApprovals],
+  );
   const machines = useMemo(() => notebookMachines(notebooks ?? []), [notebooks]);
   const meta = useMemo(
     () => (detail && selection ? metaFor(detail.notebook, selection, null, capturedAt, detail.sources) : null),
@@ -1076,6 +1083,23 @@ export function HubShellHost() {
           receipt={sheetReceipt}
         />
       )}
+      {/* #5302: manuals saved into this project that are not sources yet; renders nothing otherwise.
+          Last row of the actions column, so it is on screen and never covers the buttons above. */}
+      {selection && detail && detail.notebook.id === selection.notebookId && (
+        <PendingManuals
+          key={`pending-manuals|${selection.notebookId}`}
+          notebookId={selection.notebookId}
+          nodeId={detail.notebook.nodeId}
+          createdAt={detail.notebook.createdAt}
+          sources={detail.sources}
+          approved={approvedManuals}
+          onAttached={(fileIds) => {
+            const nb = selection.notebookId;
+            setPendingApprovals((m) => ({ ...m, [nb]: (m[nb] ?? []).filter((id) => !fileIds.includes(id)) }));
+            void loadDetail(selection);
+          }}
+        />
+      )}
       </div>
       {/* #4632: New project setup; a sibling of the notebook actions, never inside them. */}
       <NewProjectSetup
@@ -1087,6 +1111,8 @@ export function HubShellHost() {
           setNewProjectOpen(false);
           select({ notebookId, threadId: newThreadId() });
         }}
+        onPendingManuals={(notebookId, fileIds) =>
+          setPendingApprovals((m) => ({ ...m, [notebookId]: [...new Set([...(m[notebookId] ?? []), ...fileIds])] }))}
         onWritten={() => void loadNotebooks().catch((error) => console.warn("[hub-host] project list refresh failed", error))}
       />
     </div>
