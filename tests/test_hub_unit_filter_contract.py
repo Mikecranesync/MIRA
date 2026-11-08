@@ -34,6 +34,7 @@ _CI = _ROOT / ".github" / "workflows" / "ci.yml"
 # source of truth). Kept as a repo-relative POSIX path — matches the filter glob.
 _GUARDRAILS = "mira-bots/shared/guardrails.py"
 _HUB_GLOB = "mira-hub/**"
+_CI_GLOB = ".github/workflows/ci.yml"
 _CAPABILITY_CLOSURE = "docs/architecture/convergence/CAPABILITY_CLOSURE.yaml"
 _FLAG_GUARD = (
     _ROOT / "mira-hub" / "src" / "lib" / "__tests__" / "notebook-retrieval-flag-guard.test.ts"
@@ -63,9 +64,7 @@ def _hub_filter_patterns() -> list[str]:
                 "path-gating changed shape; update this contract."
             )
             return list(filters["hub"])
-    raise AssertionError(
-        "Hub Unit Tests job has no dorny/paths-filter step — path-gating removed?"
-    )
+    raise AssertionError("Hub Unit Tests job has no dorny/paths-filter step — path-gating removed?")
 
 
 def test_hub_filter_watches_mira_hub():
@@ -107,12 +106,31 @@ def test_hub_filter_watches_capability_closure_registry():
         "notebook-retrieval-flag-guard.test.ts must stay under mira-hub/** "
         "so a hub-filter hit actually runs it."
     )
-    src = _FLAG_GUARD.read_text(encoding="utf-8")
-    assert "CAPABILITY_CLOSURE.yaml" in src, (
-        "the flag guard no longer reads CAPABILITY_CLOSURE.yaml; the hub "
-        "filter watch would not exercise a registry contract."
+
+
+def test_hub_filter_watches_its_own_workflow():
+    assert _CI_GLOB in _hub_filter_patterns(), (
+        "CI edits must execute the Hub suite and its executable guard control."
     )
-    assert 'envs.staging' in src and '.not.toBe("1")' in src, (
-        "the flag guard no longer fails when staging is recorded as 1; a "
-        "registry-only PR that turns notebook_lexical_idf on would go green."
+
+
+def test_guard_negative_control_runs_with_the_actual_hub_suite():
+    """Selection is a YAML contract; assertion semantics are tested by executing Vitest."""
+    workflow = yaml.safe_load(_CI.read_text(encoding="utf-8"))
+    hub = workflow["jobs"]["mira-hub-unit"]
+    assert "if" not in hub, "The Hub job itself must not skip a registry-only PR."
+    steps = hub["steps"]
+    suite_index = next(
+        i for i, step in enumerate(steps) if step.get("name") == "Run vitest unit suite"
     )
+    control_index = next(
+        i
+        for i, step in enumerate(steps)
+        if step.get("name") == "Prove retrieval flag guard rejects enabled bypasses"
+    )
+    suite, control = steps[suite_index], steps[control_index]
+    assert control_index > suite_index
+    assert suite["if"] == control["if"] == "steps.changes.outputs.hub == 'true'"
+    assert suite["working-directory"] == control["working-directory"] == "mira-hub"
+    gate = workflow["jobs"]["ci-gate"]
+    assert "mira-hub-unit" in gate["needs"]
