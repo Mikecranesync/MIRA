@@ -4,6 +4,7 @@ import type { IdentityStatus } from "@/lib/equipment-notebooks";
 import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
 import { MODEL_PATTERNS, modelIdentitiesInText, resolveModelFromObservationText } from "@/capabilities/model-token";
+import gs10Pack from "@/lib/drive-packs/gs10-pack.json";
 import { embedQueryDetailed, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
 import { setSpanAttrs } from "@/capabilities/observability/tracing";
 import { logRerankFallback, orderWithPinnedHead, rerankEnabled, rerankPool, rerankScores } from "@/capabilities/reranker";
@@ -271,7 +272,14 @@ function bareNumberFamilyRoot(digits: string, manufacturer: string | null | unde
 // can never admit "6AV2124-0GC01-9AX0" for a "6AV2124-0GC01-0AX0" question.
 // With a catalog on only one side, the label match still applies (the
 // technician did not name a variant, or the manual covers the whole panel).
-const isCatalogIdentity = (id: string) => /^6AV/.test(id);
+const isCatalogIdentity = (id: string) => /^6AV/.test(id) || /^GS\d{1,2}[A-Z]?-[A-Z0-9]+$/.test(id);
+
+function catalogsConflict(requested: Set<string>, title: Set<string>): boolean {
+  const requestedCatalogs = [...requested].filter(isCatalogIdentity);
+  const titleCatalogs = [...title].filter(isCatalogIdentity);
+  return requestedCatalogs.length > 0 && titleCatalogs.length > 0
+    && !titleCatalogs.some((id) => requested.has(id));
+}
 
 // Round-2 review on #4484: a catalog number and its panel label never met —
 // a TP700 notebook could not cite a manual titled by order number, and a
@@ -335,7 +343,12 @@ function documentCoversRequest(requested: Set<string>, title: Set<string>): bool
 // ("850") is resolved to a family ONLY through a root of the notebook's own
 // manufacturer, so an Allen-Bradley "850" reaches MICRO850 and never ACS850.
 const ROCKWELL = /rockwell|allen[\s-]*bradley/i;
+// Reuse reviewed drive-pack membership instead of guessing a GS prefix rule.
+const GS10_MEMBERS = new RegExp(`^(?:${gs10Pack.family.aliases
+  .filter((alias) => /^GS\d{1,2}[A-Z]?$/.test(alias) && alias !== "GS10")
+  .join("|")})$`);
 const FAMILY_ROOTS: ReadonlyArray<readonly [root: string, members: RegExp, vendor: RegExp]> = [
+  ["GS10", GS10_MEMBERS, /automation\s*direct|durapulse/i],
   ["PF520", /^PF52\d$/, ROCKWELL], // PowerFlex 520-series: 523, 525, 527
   ["PF750", /^PF75\d$/, ROCKWELL], // PowerFlex 750-series: 753, 755 (round-2 review)
   ["MICRO800", /^MICRO8\d0$/, ROCKWELL], // Micro800: 810, 820, 830, 850, 870
@@ -352,6 +365,7 @@ const familyCovers = (root: string, model: string) =>
  *  question did not ask for is that member's manual ("Micro800 … Micro810" is
  *  not the Micro820's), so it is not admitted on the family alone. */
 function documentCoversNamedAsk(requested: Set<string>, title: Set<string>): boolean {
+  if (catalogsConflict(requested, title)) return false;
   if (documentCoversRequest(requested, title)) return true;
   const req = withCatalogModels(requested);
   const declared = withCatalogModels(title);
@@ -370,7 +384,9 @@ function documentCoversNamedAsk(requested: Set<string>, title: Set<string>): boo
  *  not name a machine the filter could scope to — any TP or Micro8x0 manual
  *  attached to it is plausibly right, so the filter is skipped. */
 function identitiesAreFamilyOnly(ids: Set<string>): boolean {
-  return ids.size > 0 && [...ids].every(isFamilyRoot);
+  // GS10 was already a concrete notebook scope; adding catalog coverage must
+  // not turn its existing wrong-model filter off.
+  return ids.size > 0 && [...ids].every((id) => isFamilyRoot(id) && id !== "GS10");
 }
 
 /** Notebook-identity applicability: the exact-identity rule, plus a title
@@ -399,10 +415,10 @@ function documentCoversNotebook(notebook: Set<string>, title: Set<string>, manuf
   // reach the family check AS its panel label, or the Comfort Panels manual is
   // lost to it — expand before both comparisons.
   const nb = withCatalogModels(notebook);
-  if (documentCoversRequest(nb, title)) return true;
+  if (catalogsConflict(nb, title)) return false;
+  if (documentCoversNamedAsk(nb, title)) return true;
   for (const t of title) {
     for (const n of nb) {
-      if (familyCovers(t, n)) return true;
       if (n.startsWith("#")) {
         // Bare-number identity (r1 F1, tightened in r2 F1, split in r3 F5): the
         // digits alone name no family, so matching digits are NOT enough —

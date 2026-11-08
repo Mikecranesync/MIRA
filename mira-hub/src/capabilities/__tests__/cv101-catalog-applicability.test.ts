@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PoolClient } from "pg";
-import { retrieveNodeChunks } from "@/lib/manual-rag";
+import { approvalGateEnabled, retrieveNodeChunks } from "@/lib/manual-rag";
 
 // Original device question, without an answer, parameter or page hint.
 const QUESTION = "For the GS11N-20P2 drive in this project, which parameter controls acceleration time? Explain what it controls and cite the exact manual page. Do not recommend a new setting or assume the present drive settings.";
@@ -23,7 +23,7 @@ function candidate(heading: string) {
   };
 }
 
-async function retrieve(heading: string, question = QUESTION) {
+async function retrieve(heading: string, question = QUESTION, notebookModel?: string) {
   const row = candidate(heading);
   let offered = 0;
   const query = vi.fn(async (sql: string) => {
@@ -43,13 +43,18 @@ async function retrieve(heading: string, question = QUESTION) {
     validatedDocScope: true,
     rawQuery: question,
     topK: 6,
+    ...(notebookModel ? {
+      identity: { manufacturer: "AutomationDirect", model: notebookModel },
+      identityStatus: "user_confirmed" as const,
+    } : {}),
   });
   expect(offered, "the real admission path received a candidate").toBeGreaterThan(0);
   return hits;
 }
 
 beforeEach(() => {
-  vi.stubEnv("MIRA_ENFORCE_APPROVED_RETRIEVAL", "1");
+  vi.stubEnv("MIRA_ENFORCE_APPROVED_RETRIEVAL", "true");
+  expect(approvalGateEnabled()).toBe(true);
   vi.stubEnv("NOTEBOOK_HYBRID_RETRIEVAL", "0");
   vi.stubEnv("NOTEBOOK_RERANK", "0");
   vi.stubEnv("NOTEBOOK_LEXICAL_V2", "0");
@@ -91,5 +96,23 @@ describe("CV-101 supported catalog-family admission (#5285)", () => {
 
   it("does not make the GS10 family cover another drive family", async () => {
     expect(await retrieve("DURApulse GS10 AC Drive User Manual", QUESTION.replace("GS11N-20P2", "GS20"))).toEqual([]);
+  });
+
+  it("covers the other reviewed GS10 catalog series without conflating its specific manuals", async () => {
+    expect(await retrieve("DURApulse GS10 AC Drive User Manual", QUESTION.replace("GS11N-20P2", "GS13N"))).toHaveLength(1);
+  });
+
+  it("uses family coverage for an explicitly confirmed notebook when the question omits its model", async () => {
+    expect(await retrieve("GS10 AC Drive User Manual", "Which parameter controls acceleration time?", "GS11N-20P2")).toHaveLength(1);
+  });
+
+  it.each(["GS20 AC Drive User Manual", "GS10 GS13N AC Drive User Manual", "GS10 GS11N-21P0 AC Drive User Manual"])(
+    "preserves confirmed-notebook rejection for %s", async (heading) => {
+      expect(await retrieve(heading, "Which parameter controls acceleration time?", "GS11N-20P2")).toEqual([]);
+    },
+  );
+
+  it("does not disable the existing GS10 notebook scope when adding family membership", async () => {
+    expect(await retrieve("GS20 AC Drive User Manual", "Which parameter controls acceleration time?", "GS10")).toEqual([]);
   });
 });
