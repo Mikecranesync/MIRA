@@ -1084,7 +1084,7 @@ describe("fail-closed attach + orphan cleanup (self-review round 3, 2026-08-16)"
     const res = await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
     const body = await res.json();
     expect(body.status).toBe("nameplate_not_indexed");
-    expect(deleteOrphanNodeIngest).toHaveBeenCalledWith(TENANT_ID, NAMEPLATE_DOC_ID);
+    expect(deleteOrphanNodeIngest).toHaveBeenCalledWith(TENANT_ID, NAMEPLATE_DOC_ID, MANUAL_FILE_ID);
   });
 
   it("a lost manual fence deletes the orphaned duplicate ingest", async () => {
@@ -1101,7 +1101,7 @@ describe("fail-closed attach + orphan cleanup (self-review round 3, 2026-08-16)"
     });
     vi.mocked(linkFileToUpload).mockResolvedValueOnce(false);
     await POST(makeReq(baseBody), makeParams(NOTEBOOK_ID));
-    expect(deleteOrphanNodeIngest).toHaveBeenCalledWith(TENANT_ID, MANUAL_DOC_ID);
+    expect(deleteOrphanNodeIngest).toHaveBeenCalledWith(TENANT_ID, MANUAL_DOC_ID, MANUAL_FILE_ID);
   });
 });
 

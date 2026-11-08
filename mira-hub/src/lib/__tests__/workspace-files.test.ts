@@ -8,6 +8,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { PoolClient } from "pg";
 
+vi.mock("@/lib/node-knowledge-ingest", () => ({ deleteOrphanNodeIngest: vi.fn(async () => undefined) }));
+
 const poolQuery = vi.fn();
 vi.mock("@/lib/db", () => ({ default: { query: (...a: unknown[]) => poolQuery(...a) } }));
 

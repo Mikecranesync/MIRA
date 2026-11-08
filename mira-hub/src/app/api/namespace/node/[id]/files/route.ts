@@ -391,7 +391,7 @@ export async function POST(
         if (!won) {
           // Only this request's new chunk set is ours to remove. A reused
           // completed document may already serve another supported consumer.
-          if (!duplicateUpload) await deleteOrphanNodeIngest(ctx.tenantId, uploadId);
+          if (!duplicateUpload) await deleteOrphanNodeIngest(ctx.tenantId, uploadId, directId);
           return NextResponse.json(
             { ok: true, indexed: false, indexing: true, fileId: directId },
             { status: 202 },

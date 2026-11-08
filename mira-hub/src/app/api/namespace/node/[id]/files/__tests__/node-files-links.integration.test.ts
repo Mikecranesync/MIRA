@@ -35,9 +35,17 @@ import type { Pool } from "pg";
 import { createHash } from "node:crypto";
 
 const { testPool } = vi.hoisted(() => {
+  const databaseUrl = process.env.TEST_DATABASE_URL;
+  if (!databaseUrl || process.env.MIRA_TEST_DB_CONFIRM !== "DISPOSABLE") {
+    throw new Error("This suite requires TEST_DATABASE_URL and MIRA_TEST_DB_CONFIRM=DISPOSABLE");
+  }
+  const target = new URL(databaseUrl);
+  if (/prod|prd|staging/i.test(`${target.hostname} ${target.pathname}`)) {
+    throw new Error("Refusing a production/staging integration database");
+  }
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { Pool: PgPool } = require("pg");
-  return { testPool: new PgPool({ connectionString: process.env.TEST_DATABASE_URL }) as Pool };
+  return { testPool: new PgPool({ connectionString: databaseUrl }) as Pool };
 });
 vi.mock("@/lib/db", () => ({ default: testPool }));
 vi.mock("@/lib/session", () => ({ sessionOr401: vi.fn() }));
@@ -52,9 +60,10 @@ vi.mock("@/lib/node-knowledge-ingest", async (importOriginal) => {
 });
 
 import { GET, POST } from "../route";
+import { POST as uploadFile } from "@/app/api/files/route";
 import { ingestPdfToNode, deleteOrphanNodeIngest } from "@/lib/node-knowledge-ingest";
 import { createUpload, updateUploadStatus, findDuplicateUpload } from "@/lib/uploads";
-import { parkOrReuseFile, claimIngest, linkFileToUpload } from "@/lib/workspace-files";
+import { parkOrReuseFile, claimIngest, linkFileToUpload, releaseIngestClaim } from "@/lib/workspace-files";
 import { sessionOr401 } from "@/lib/session";
 
 const TENANT = "3f000000-0000-4000-8000-000000000001";
@@ -255,15 +264,15 @@ describe("POST — recover a parsed document after finalization failed (#5318)",
   it.each(["after adoption", "between lookup and adoption"] as const)("preserves the parsed document and chunks when a stale producer cleans up %s", async (order) => {
     const parked = await parkOrReuseFile({ tenantId: TENANT, nodeId: nodeA, filename: "race.pdf", mimeType: "application/pdf", sizeBytes: bytes.length, buffer: bytes });
     const upload = await createUpload({ tenantId: TENANT, provider: "local", filename: "race.pdf", initialStatus: "parsed", kgEntityId: nodeA, ingestRoute: "v2", contentSha256: hash });
-    await testPool.query("INSERT INTO knowledge_entries (tenant_id, doc_id, content) VALUES ($1::uuid, $2::uuid, 'retained fixture chunk')", [TENANT, upload.id]);
+    await testPool.query("INSERT INTO knowledge_entries (tenant_id, doc_id, content, is_private) VALUES ($1::uuid, $2::uuid, 'retained fixture chunk', true)", [TENANT, upload.id]);
     const claim = await claimIngest(TENANT, parked.fileId);
     expect(claim.claimed).toBe(true);
     if (!claim.claimed) throw new Error("fixture claim unavailable");
     expect((await findDuplicateUpload(TENANT, hash, nodeA))?.id).toBe(upload.id);
 
-    if (order === "between lookup and adoption") await deleteOrphanNodeIngest(TENANT, upload.id);
+    if (order === "between lookup and adoption") await deleteOrphanNodeIngest(TENANT, upload.id, parked.fileId);
     expect(await linkFileToUpload(TENANT, parked.fileId, upload.id, claim.claimToken)).toBe(true);
-    if (order === "after adoption") await deleteOrphanNodeIngest(TENANT, upload.id);
+    if (order === "after adoption") await deleteOrphanNodeIngest(TENANT, upload.id, parked.fileId);
 
     const document = await testPool.query("SELECT id FROM hub_uploads WHERE tenant_id = $1 AND id = $2", [TENANT, upload.id]);
     expect(document.rowCount).toBe(1);
@@ -277,7 +286,7 @@ describe("POST — recover a parsed document after finalization failed (#5318)",
     const parked = await parkOrReuseFile({ tenantId: TENANT, nodeId: nodeA, filename: "ordered.pdf", mimeType: "application/pdf", sizeBytes: bytes.length, buffer: bytes });
     const input = { tenantId: TENANT, provider: "local" as const, filename: "ordered.pdf", initialStatus: "parsed" as const, kgEntityId: nodeA, ingestRoute: "v2", contentSha256: hash };
     const oldUpload = await createUpload(input);
-    const chunk = await testPool.query("INSERT INTO knowledge_entries (tenant_id, doc_id, content) VALUES ($1::uuid, $2::uuid, 'blocked fixture chunk') RETURNING id", [TENANT, oldUpload.id]);
+    const chunk = await testPool.query("INSERT INTO knowledge_entries (tenant_id, doc_id, content, is_private) VALUES ($1::uuid, $2::uuid, 'blocked fixture chunk', true) RETURNING id", [TENANT, oldUpload.id]);
     const locker = await testPool.connect();
     let cleanup: Promise<void> | undefined;
     let retry: Promise<Response> | undefined;
@@ -286,7 +295,7 @@ describe("POST — recover a parsed document after finalization failed (#5318)",
     try {
       await locker.query("BEGIN");
       await locker.query("SELECT id FROM knowledge_entries WHERE id = $1 FOR UPDATE", [chunk.rows[0].id]);
-      cleanup = deleteOrphanNodeIngest(TENANT, oldUpload.id);
+      cleanup = deleteOrphanNodeIngest(TENANT, oldUpload.id, parked.fileId);
       // A real row lock pauses cleanup at DELETE, after it locked the file.
       let blocked = false;
       for (let n = 0; n < 200; n++) {
@@ -325,10 +334,99 @@ describe("POST — recover a parsed document after finalization failed (#5318)",
     expect(saved.rows[0].upload_id).toBe(replacementId);
   });
 
-  it.each(["hash", "file"] as const)("retains the upload when its canonical %s identity is unavailable", async (missing) => {
-    const upload = await createUpload({ tenantId: TENANT, provider: "local", filename: "uncertain.pdf", initialStatus: "parsed", kgEntityId: nodeA, ingestRoute: "v2", contentSha256: missing === "hash" ? null : hash });
-    await deleteOrphanNodeIngest(TENANT, upload.id);
+  it("retains an upload when the supplied canonical file no longer exists", async () => {
+    const upload = await createUpload({ tenantId: TENANT, provider: "local", filename: "uncertain.pdf", initialStatus: "parsed", kgEntityId: nodeA, ingestRoute: "v2" });
+    await deleteOrphanNodeIngest(TENANT, upload.id, nodeB);
     expect((await testPool.query("SELECT id FROM hub_uploads WHERE id = $1", [upload.id])).rowCount).toBe(1);
+  });
+
+  it.each(["missing", "different"] as const)("cleans a loser using its canonical file identity when the derived content hash is %s", async (hashKind) => {
+    const parked = await parkOrReuseFile({ tenantId: TENANT, nodeId: nodeA, filename: "derived.txt", mimeType: "text/plain", sizeBytes: bytes.length, buffer: bytes });
+    const input = { tenantId: TENANT, provider: "local" as const, filename: "derived.txt", initialStatus: "parsed" as const, kgEntityId: nodeA, ingestRoute: "v2", contentSha256: hashKind === "missing" ? null : "b".repeat(64) };
+    const loser = await createUpload(input);
+    const winner = await createUpload(input);
+    const claim = await claimIngest(TENANT, parked.fileId);
+    if (!claim.claimed) throw new Error("fixture claim unavailable");
+    expect(await linkFileToUpload(TENANT, parked.fileId, winner.id, claim.claimToken)).toBe(true);
+    await deleteOrphanNodeIngest(TENANT, loser.id, parked.fileId);
+    expect((await testPool.query("SELECT id FROM hub_uploads WHERE id = $1", [loser.id])).rowCount).toBe(0);
+    expect((await testPool.query("SELECT id FROM hub_uploads WHERE id = $1", [winner.id])).rowCount).toBe(1);
+  });
+
+  it.each(["finalize a different document", "adopt the deferred document", "release the claim"] as const)("reconciles durable deferred cleanup when the active winner will %s", async (outcome) => {
+    const parked = await parkOrReuseFile({ tenantId: TENANT, nodeId: nodeA, filename: "deferred.pdf", mimeType: "application/pdf", sizeBytes: bytes.length, buffer: bytes });
+    const claim = await claimIngest(TENANT, parked.fileId);
+    if (!claim.claimed) throw new Error("fixture claim unavailable");
+    // The takeover has already missed A's not-yet-published document.
+    expect(await findDuplicateUpload(TENANT, hash, nodeA)).toBeNull();
+    const input = { tenantId: TENANT, provider: "local" as const, filename: "deferred.pdf", initialStatus: "parsed" as const, kgEntityId: nodeA, ingestRoute: "v2", contentSha256: hash };
+    const late = await createUpload(input);
+    await testPool.query("INSERT INTO knowledge_entries (tenant_id, doc_id, content, is_private) VALUES ($1::uuid, $2::uuid, 'deferred private fixture', true)", [TENANT, late.id]);
+    await deleteOrphanNodeIngest(TENANT, late.id, parked.fileId);
+    expect((await testPool.query("SELECT status_detail FROM hub_uploads WHERE id = $1", [late.id])).rows[0].status_detail).toContain(parked.fileId);
+    let winnerId: string | null = null;
+    if (outcome === "release the claim") {
+      await releaseIngestClaim(TENANT, parked.fileId, claim.claimToken);
+    } else {
+      winnerId = outcome === "adopt the deferred document" ? late.id : (await createUpload(input)).id;
+      expect(await linkFileToUpload(TENANT, parked.fileId, winnerId, claim.claimToken)).toBe(true);
+    }
+    const retained = await testPool.query("SELECT id::text, status_detail FROM hub_uploads WHERE tenant_id = $1", [TENANT]);
+    expect(retained.rows.map((row) => row.id)).toEqual(winnerId ? [winnerId] : []);
+    if (winnerId) expect(retained.rows[0].status_detail).toBeNull();
+    expect((await listFiles(nodeA)).names).toEqual(["deferred.pdf"]);
+    const chunks = await testPool.query("SELECT doc_id::text FROM knowledge_entries WHERE tenant_id = $1::uuid", [TENANT]);
+    expect(chunks.rows).toEqual(winnerId === late.id ? [{ doc_id: late.id }] : []);
+  });
+
+  it("keeps cleanup intent durable after a database failure and drains it on supported reuse", async () => {
+    const parked = await parkOrReuseFile({ tenantId: TENANT, nodeId: nodeA, filename: "durable.pdf", mimeType: "application/pdf", sizeBytes: bytes.length, buffer: bytes });
+    const input = { tenantId: TENANT, provider: "local" as const, filename: "durable.pdf", initialStatus: "parsed" as const, kgEntityId: nodeA, ingestRoute: "v2" };
+    const loser = await createUpload(input);
+    const winner = await createUpload(input);
+    await testPool.query("INSERT INTO knowledge_entries (tenant_id, doc_id, content, is_private) VALUES ($1::uuid, $2::uuid, 'cleanup fault fixture', true)", [TENANT, loser.id]);
+    const claim = await claimIngest(TENANT, parked.fileId);
+    if (!claim.claimed) throw new Error("fixture claim unavailable");
+    expect(await linkFileToUpload(TENANT, parked.fileId, winner.id, claim.claimToken)).toBe(true);
+    // Disposable-DB fault injection only: fail DELETE after intent is stored.
+    await testPool.query("CREATE FUNCTION cv101_5319_cleanup_fault() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'declared cleanup fault'; END $$; CREATE TRIGGER cv101_5319_cleanup_fault BEFORE DELETE ON knowledge_entries FOR EACH ROW EXECUTE FUNCTION cv101_5319_cleanup_fault()");
+    try {
+      await deleteOrphanNodeIngest(TENANT, loser.id, parked.fileId);
+      expect((await testPool.query("SELECT status_detail FROM hub_uploads WHERE id = $1", [loser.id])).rows[0].status_detail).toContain(parked.fileId);
+    } finally {
+      await testPool.query("DROP TRIGGER cv101_5319_cleanup_fault ON knowledge_entries; DROP FUNCTION cv101_5319_cleanup_fault()");
+    }
+    const reused = await parkOrReuseFile({ tenantId: TENANT, nodeId: nodeA, filename: "durable.pdf", mimeType: "application/pdf", sizeBytes: bytes.length, buffer: bytes });
+    expect(reused).toMatchObject({ fileId: parked.fileId, uploadId: winner.id, reused: true });
+    expect((await testPool.query("SELECT id FROM hub_uploads WHERE id = $1", [loser.id])).rowCount).toBe(0);
+    expect((await testPool.query("SELECT id FROM hub_uploads WHERE id = $1", [winner.id])).rowCount).toBe(1);
+  });
+
+  it("cleans a real /api/files stale producer that does not supply a content hash", async () => {
+    const parked = await parkOrReuseFile({ tenantId: TENANT, filename: "files-door.pdf", mimeType: "application/pdf", sizeBytes: bytes.length, buffer: bytes });
+    let loserId = "";
+    let winnerId = "";
+    vi.mocked(ingestPdfToNode).mockImplementationOnce(async (opts) => {
+      expect(opts.contentSha256).toBeUndefined();
+      const input = { tenantId: TENANT, provider: "local" as const, filename: "files-door.pdf", initialStatus: "parsed" as const, kgEntityId: nodeA, ingestRoute: "v2" };
+      loserId = (await createUpload(input)).id;
+      await testPool.query("INSERT INTO knowledge_entries (tenant_id, doc_id, content, is_private) VALUES ($1::uuid, $2::uuid, 'files door private fixture', true)", [TENANT, loserId]);
+      // Declared clock fixture: allow B to take over A's real claim.
+      await testPool.query("UPDATE namespace_direct_uploads SET ingest_claimed_at = now() - interval '11 minutes' WHERE id = $1", [parked.fileId]);
+      const takeover = await claimIngest(TENANT, parked.fileId);
+      if (!takeover.claimed) throw new Error("fixture takeover unavailable");
+      winnerId = (await createUpload(input)).id;
+      expect(await linkFileToUpload(TENANT, parked.fileId, winnerId, takeover.claimToken)).toBe(true);
+      return { uploadId: loserId, chunkCount: 1 };
+    });
+    const form = new FormData();
+    form.append("file", new File([bytes], "files-door.pdf", { type: "application/pdf" }));
+    form.append("targets", JSON.stringify([{ targetType: "namespace_node", targetId: nodeA }]));
+    const res = await uploadFile(new Request("https://hub.test/api/files", { method: "POST", body: form }));
+    expect(res.status).toBe(202);
+    expect((await testPool.query("SELECT id FROM hub_uploads WHERE id = $1", [loserId])).rowCount).toBe(0);
+    expect((await testPool.query("SELECT id FROM hub_uploads WHERE id = $1", [winnerId])).rowCount).toBe(1);
+    expect((await listFiles(nodeA)).names).toEqual(["files-door.pdf"]);
   });
 
   it("still cleans a proven losing document when the canonical file is linked to a different winner", async () => {
@@ -336,11 +434,11 @@ describe("POST — recover a parsed document after finalization failed (#5318)",
     const input = { tenantId: TENANT, provider: "local" as const, filename: "winner.pdf", initialStatus: "parsed" as const, kgEntityId: nodeA, ingestRoute: "v2", contentSha256: hash };
     const loser = await createUpload(input);
     const winner = await createUpload(input);
-    await testPool.query("INSERT INTO knowledge_entries (tenant_id, doc_id, content) VALUES ($1::uuid, $2::uuid, 'losing fixture chunk'), ($1::uuid, $3::uuid, 'winning fixture chunk')", [TENANT, loser.id, winner.id]);
+    await testPool.query("INSERT INTO knowledge_entries (tenant_id, doc_id, content, is_private) VALUES ($1::uuid, $2::uuid, 'losing fixture chunk', true), ($1::uuid, $3::uuid, 'winning fixture chunk', true)", [TENANT, loser.id, winner.id]);
     const claim = await claimIngest(TENANT, parked.fileId);
     if (!claim.claimed) throw new Error("fixture claim unavailable");
     expect(await linkFileToUpload(TENANT, parked.fileId, winner.id, claim.claimToken)).toBe(true);
-    await deleteOrphanNodeIngest(TENANT, loser.id);
+    await deleteOrphanNodeIngest(TENANT, loser.id, parked.fileId);
     expect((await testPool.query("SELECT id FROM hub_uploads WHERE id = $1", [loser.id])).rowCount).toBe(0);
     expect((await testPool.query("SELECT id FROM hub_uploads WHERE id = $1", [winner.id])).rowCount).toBe(1);
     expect((await testPool.query("SELECT doc_id::text FROM knowledge_entries WHERE tenant_id = $1::uuid", [TENANT])).rows).toEqual([{ doc_id: winner.id }]);

@@ -21,6 +21,7 @@ import { createHash } from "node:crypto";
 import type { PoolClient } from "pg";
 import pool from "@/lib/db";
 import { withTenantContext } from "@/lib/tenant-context";
+import { deleteOrphanNodeIngest } from "@/lib/node-knowledge-ingest";
 import { upsertNotebookSourceTx, type MatchState } from "@/lib/equipment-notebooks";
 
 export function sha256Hex(buffer: Buffer): string {
@@ -213,7 +214,7 @@ export async function parkOrReuseFile(opts: {
 }): Promise<ParkResult> {
   const sha = sha256Hex(opts.buffer);
   const mime = normalizeMime(opts.mimeType);
-  return withTenantContext(opts.tenantId, async (c) => {
+  const parked = await withTenantContext(opts.tenantId, async (c) => {
     const existing = await c.query<{ id: string; upload_id: string | null }>(
       `SELECT id::text AS id, upload_id::text AS upload_id
          FROM namespace_direct_uploads
@@ -260,6 +261,10 @@ export async function parkOrReuseFile(opts: {
     }
     return { fileId: winner.rows[0].id, reused: true, uploadId: winner.rows[0].upload_id };
   });
+  if (parked.reused && parked.uploadId !== null) {
+    await deleteOrphanNodeIngest(opts.tenantId, null, parked.fileId);
+  }
+  return parked;
 }
 
 /**
@@ -279,7 +284,7 @@ export async function linkFileToUpload(
   uploadId: string,
   claimToken?: string,
 ): Promise<boolean> {
-  return withTenantContext(tenantId, async (c) => {
+  const won = await withTenantContext(tenantId, async (c) => {
     const res = await c.query(
       `UPDATE namespace_direct_uploads
           SET upload_id = $1::uuid, ingest_claim_token = NULL, ingest_claimed_at = NULL
@@ -290,6 +295,8 @@ export async function linkFileToUpload(
     );
     return (res.rowCount ?? 0) > 0;
   });
+  if (won) await deleteOrphanNodeIngest(tenantId, null, fileId);
+  return won;
 }
 
 // ── Atomic ingestion claim (Codex P1, 2026-08-16 — migration 077) ────────────
@@ -311,7 +318,7 @@ export type IngestClaim =
  * worker) is taken over after INGEST_CLAIM_STALE_MINUTES. */
 export async function claimIngest(tenantId: string, fileId: string): Promise<IngestClaim> {
   const token = crypto.randomUUID();
-  return withTenantContext(tenantId, async (c) => {
+  const claim = await withTenantContext(tenantId, async (c) => {
     const res = await c.query<{ id: string }>(
       `UPDATE namespace_direct_uploads
           SET ingest_claim_token = $1::uuid, ingest_claimed_at = now()
@@ -333,6 +340,10 @@ export async function claimIngest(tenantId: string, fileId: string): Promise<Ing
       ? { claimed: false as const, reason: "already_ingested" as const, uploadId }
       : { claimed: false as const, reason: "ingest_in_progress" as const, uploadId: null };
   });
+  if (!claim.claimed && claim.reason === "already_ingested") {
+    await deleteOrphanNodeIngest(tenantId, null, fileId);
+  }
+  return claim;
 }
 
 /** Release a claim WITHOUT an upload (the ingest failed) so another request
@@ -351,6 +362,7 @@ export async function releaseIngestClaim(
       [fileId, tenantId, claimToken],
     );
   });
+  await deleteOrphanNodeIngest(tenantId, null, fileId);
 }
 
 // ── Target validation ────────────────────────────────────────────────────────

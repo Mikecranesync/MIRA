@@ -471,7 +471,7 @@ describe("POST /api/namespace/node/[id]/files — originals are parked, never lo
     const res = await POST(makePostReq("manual.pdf", "application/pdf"), makeParams(VALID_UUID));
     expect(res.status).toBe(202);
     expect(await res.json()).toMatchObject({ indexed: false, indexing: true });
-    expect(deleteOrphanNodeIngest).toHaveBeenCalledWith(TENANT_ID, "new-losing-upload");
+    expect(deleteOrphanNodeIngest).toHaveBeenCalledWith(TENANT_ID, "new-losing-upload", "direct-parked-default");
   });
 
   it("does not create another index when an unlinked reused file's duplicate lookup is unavailable", async () => {
