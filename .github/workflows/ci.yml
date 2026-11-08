@@ -1707,6 +1707,7 @@ jobs:
               - 'mira-hub/src/capabilities/model-token.ts'
               - 'mira-hub/src/lib/drive-packs/gs10-pack.json'
               - 'mira-hub/src/capabilities/__tests__/cv101-catalog-scope.integration.test.ts'
+              - 'mira-hub/src/capabilities/__tests__/cv101-photo-recall.integration.test.ts'
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         if: steps.changes.outputs.lifecycle == 'true'
@@ -1734,6 +1735,7 @@ jobs:
             src/capabilities/__tests__/part-search-claim.integration.test.ts \
             tests/integration/lexical-v2-determinism.integration.test.ts \
             src/capabilities/__tests__/cv101-catalog-scope.integration.test.ts \
+            src/capabilities/__tests__/cv101-photo-recall.integration.test.ts \
             2>&1 | tee /tmp/reconciliation.out
           # A skip here is the exact failure this job was added to prevent. The
           # suite self-skips when TEST_DATABASE_URL is unset, vitest then EXITS 0,
@@ -1766,6 +1768,8 @@ jobs:
             echo "::error::lexical-v2-determinism suite did not run and pass"; exit 1; }
           grep -qE "✓ src/capabilities/__tests__/cv101-catalog-scope\.integration\.test\.ts" /tmp/reconciliation.plain || {
             echo "::error::CV101 catalog SQL isolation suite did not run and pass"; exit 1; }
+          grep -qE "✓ src/capabilities/__tests__/cv101-photo-recall\.integration\.test\.ts" /tmp/reconciliation.plain || {
+            echo "::error::CV101 photo recall SQL suite did not run and pass"; exit 1; }
 
   notebook-event-outbox-pg:
     name: Notebook event outbox + CMMS dispatcher (disposable Postgres, migration 111)
