@@ -170,10 +170,6 @@ function lookAlikeTokens(text: string): { id: string; letters: string; digits: s
   }));
 }
 
-/** Whether a span carries a letters+digits token (the title-boundary test for
- *  covers the detector cannot read — Codex r1 F2 on #5371). */
-export const hasLookAlikeToken = (text: string): boolean => lookAlikeTokens(text).length > 0;
-
 export type LookAlikeVerdict =
   | { kind: "mismatch"; requested: string[]; declared: string[] }
   | { kind: "ambiguous"; named: string[] };
@@ -181,33 +177,30 @@ export type LookAlikeVerdict =
 const isSibling = (a: { letters: string; digits: string }, b: { letters: string; digits: string }) =>
   a.letters === b.letters && a.digits.length === b.digits.length && a.digits[0] === b.digits[0];
 
-/** Whether the question names a model a cover only MENTIONS in prose ("M172 is
- *  not covered by this manual"): the same token or a near-sibling of it. Such a
- *  cover declares nothing, so the detector path's rule applies — a named ask
- *  is refused, never answered from it. */
-export function namesLookAlikeOf(question: string, text: string): boolean {
-  const mentioned = lookAlikeTokens(text);
-  return lookAlikeTokens(question).some((q) => mentioned.some((t) => t.id === q.id || isSibling(t, q)));
-}
-
-/** Codex r1 F1 on #5371: a question that names the manual's own model AND its
- *  near-sibling ("M172 … the attached manual is M171", "M171 or M172?") is not
- *  proof it targets the loaded model, so it asks which one — the #5355 safe
- *  default, without that path's comparison exemptions (residual: a genuine
- *  comparison of two unlisted siblings also asks). */
-export function lookAlikeModelMismatch(question: string, title: string): LookAlikeVerdict | null {
-  const declared = lookAlikeTokens(title);
-  if (declared.length === 0) return null;
-  const declaredIds = new Set(declared.map((t) => t.id));
-  // Every question token that IS a declared model or a near-sibling of one.
-  // Codex r2 F1 on #5371: two of them (one manual declaring both, or the
-  // manual's model plus its sibling) is one machine named two ways — ask.
-  const related = [
-    ...new Set(lookAlikeTokens(question).filter((q) => declared.some((t) => t.id === q.id || isSibling(t, q))).map((t) => t.id)),
-  ];
-  if (related.length >= 2) return { kind: "ambiguous", named: related.sort() };
-  if (related.length === 1 && !declaredIds.has(related[0])) {
-    return { kind: "mismatch", requested: related, declared: [...declaredIds] };
-  }
-  return null;
+/** #5369 — the blunt rule (after Codex r2–r5 on #5371 each found another cover
+ *  wording that a prose reader misjudged). The cover's WORDING is never read:
+ *  only which letters+digits model numbers it carries. A manual is answered for
+ *  a model the detector cannot read only when the asked model is the ONLY
+ *  member of its sibling family on the cover. Any sibling on the cover — a
+ *  title, a cross-reference, an exclusion, a combined manual — refuses. That
+ *  over-refuses some valid asks (a guide that mentions its sibling, a combined
+ *  M171/M172 guide); it never answers from the wrong machine's manual.
+ *  The filename is consulted only when the cover carries no related number,
+ *  and is never published as what the manual declares (Codex r1 F3).
+ *  Naming two related models asks which one (Codex r1 F1, the #5355 default). */
+export function lookAlikeCoverVerdict(question: string, cover: string, filename: string): LookAlikeVerdict | null {
+  const asked = lookAlikeTokens(question);
+  if (asked.length === 0) return null;
+  const relatedTo = (tokens: ReturnType<typeof lookAlikeTokens>) =>
+    tokens.filter((t) => asked.some((q) => t.id === q.id || isSibling(t, q)));
+  const onCover = relatedTo(lookAlikeTokens(cover));
+  const fromDocument = onCover.length > 0;
+  const source = fromDocument ? onCover : relatedTo(lookAlikeTokens(filename));
+  if (source.length === 0) return null;
+  const named = [...new Set(asked.filter((q) => source.some((t) => t.id === q.id || isSibling(t, q))).map((q) => q.id))];
+  if (named.length >= 2) return { kind: "ambiguous", named: named.sort() };
+  const family = new Set(source.map((t) => t.id));
+  if (family.size === 1 && family.has(named[0])) return null;
+  const declared = fromDocument && family.size === 1 ? [...family] : [];
+  return { kind: "mismatch", requested: named, declared };
 }

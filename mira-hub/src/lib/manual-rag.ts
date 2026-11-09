@@ -4,7 +4,7 @@ import type { IdentityStatus } from "@/lib/equipment-notebooks";
 import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
 import { FAMILY_ROOTS, MODEL_PATTERNS, ROCKWELL, familyCovers, modelIdentitiesInText, resolveModelFromObservationText } from "@/capabilities/model-token";
-import { ambiguousSiblingModels, hasLookAlikeToken, lookAlikeModelMismatch, namesLookAlikeOf } from "@/capabilities/named-model-mismatch";
+import { ambiguousSiblingModels, lookAlikeCoverVerdict } from "@/capabilities/named-model-mismatch";
 import { embedQueryDetailed, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
 import { setSpanAttrs } from "@/capabilities/observability/tracing";
 import { logRerankFallback, orderWithPinnedHead, rerankEnabled, rerankPool, rerankScores } from "@/capabilities/reranker";
@@ -188,60 +188,14 @@ function titleSegment(text: string): string {
 const TITLE_BOUNDARY_RE =
   /\b(?:user\s+manual|manual|guide|instructions|handbook|reference|specifications?|data\s*sheet|datasheet)\b|\s[\u2014\u2013-]\s|[\u2014\u2013:;([|]|\s(?=(?:for|see|consult|refer|not|except|excluding|unlike|replaces|supersedes)\b)/gi;
 
-function declaredTitle(segment: string, namesModel = (text: string) => modelIdentitiesInText(text).size > 0): string {
+function declaredTitle(segment: string): string {
   for (const m of segment.matchAll(TITLE_BOUNDARY_RE)) {
     const isNoun = /^\w/.test(m[0]);
     const end = isNoun ? m.index! + m[0].length : m.index!;
     const prefix = segment.slice(0, end);
-    if (namesModel(prefix)) return prefix;
+    if (modelIdentitiesInText(prefix).size > 0) return prefix;
   }
   return segment;
-}
-
-/** #5369: the title a cover DECLARES, read with the generic letters+digits
- *  token (the detector cannot read these families). Same structure as the
- *  detector's path: the title segment, cut at a title boundary (Codex r1 F2 —
- *  "M171 Hardware Guide — for M172 consult …" declares M171 only); else the
- *  first token-bearing line below a generic opener, unless it is prose
- *  (COVER_PROSE_RE), which declares nothing. `fromDocument` is false only for
- *  the filename fallback, which may refuse a manual but is never published as
- *  what the manual declares (Codex r1 F3; the F1 contract on #5350). */
-function lookAlikeDeclaredTitle(
-  heading: string,
-  filename: string,
-): { title: string; fromDocument: boolean; prose?: string } {
-  // Codex r2 F2: every token-bearing cover line is judged WHOLE for prose
-  // before it can declare anything — including the first line ("M172 is not
-  // covered by this manual.", "For M172 see the separate manual."). A prose
-  // line is skipped and the next token-bearing line is the title; a cover
-  // whose token lines are all prose declares nothing.
-  const lines = heading.split("\n");
-  let prose: string | undefined;
-  for (let i = 0; i < lines.length; i++) {
-    if (!hasLookAlikeToken(lines[i])) continue;
-    // Codex r3 F1: a sentence wrapped by layout ("For M172\nsee the separate
-    // manual.", "M172\nis not covered …") is judged as one line — a next line
-    // that starts lower-case or with a prose verb continues it.
-    let line = lines[i];
-    let j = i;
-    // Codex r4 F1: blank layout lines between the parts do not end the sentence.
-    for (;;) {
-      let k = j + 1;
-      while (k < lines.length && lines[k].trim() === "") k++;
-      if (k >= lines.length || !continuesCoverLine(lines[k])) break;
-      line = `${line} ${lines[k].trim()}`;
-      j = k;
-    }
-    const segment = titleSegment([line, ...lines.slice(j + 1)].join("\n"));
-    if (COVER_PROSE_RE.test(segment) || COVER_POINTING_START_RE.test(segment)) {
-      prose = (prose ? `${prose}\n` : "") + segment;
-      i = j;
-      continue;
-    }
-    return { title: declaredTitle(segment, hasLookAlikeToken), fromDocument: true };
-  }
-  if (prose) return { title: "", fromDocument: true, prose };
-  return { title: stripFileExtension(filename).replace(/_+/g, " "), fromDocument: false };
 }
 
 function stripFileExtension(filename: string): string {
@@ -292,14 +246,6 @@ function ambiguousCoverIdentities(heading: string): Set<string> {
   }
   return new Set();
 }
-/** #5369 (Codex r3 F1): a cover line that continues the previous one — it
- *  starts lower-case, or with a verb / pointing word a title never opens with. */
-const continuesCoverLine = (line: string): boolean =>
-  /^\s*[a-z]/.test(line) || /^\s*(?:is|are|was|were|see|refer|consult|not|does|do|covered|covers|use)\b/i.test(line);
-/** A cover fragment that opens by pointing elsewhere ("For M172", "See M172")
- *  is a cross-reference, not a title. */
-const COVER_POINTING_START_RE = /^\s*(?:for|see|refer|consult|not|except|excluding|unlike|replaces|supersedes)\b/i;
-
 /** Words a product TITLE never carries but exclusion / cross-reference prose does. */
 const COVER_PROSE_RE =
   /\b(?:is|are|was|were|not|see|refer|refers|covered|covers|separate|also|related|documents?|instead|only|except|does|do|use|uses|for\s+the|this\s+manual)\b|[.!?]\s*$/i;
@@ -1907,12 +1853,14 @@ export async function retrieveNodeChunks(
   const refusedDeclared = new Set<string>();
   const refusedDocs = new Set<string>();
   let namedClaimPoisoned = false;
-  // #5369: what a look-alike refusal (lookAlikeModelMismatch) says was asked,
+  // #5369: what a look-alike refusal (lookAlikeCoverVerdict) says was asked,
   // when the detector itself named no model.
   const lookAlikeRequested = new Set<string>();
   // Codex r2 F1 on #5371: a look-alike ambiguity stops the whole retrieval, not
   // just the row that revealed it — another selected document must not answer.
   let lookAlikeAmbiguous = false;
+  const detectorNamedModel =
+    Boolean(requestedModel.model) || Boolean(requestedModel.ambiguous) || modelIdentitiesInText(opts.rawQuery ?? q).size > 0;
   const publishNamedMismatch = () => {
     const requested = requestedIdentities ?? (lookAlikeRequested.size > 0 ? lookAlikeRequested : null);
     if (!opts.diagnostics || !requested) return;
@@ -1931,17 +1879,17 @@ export async function retrieveNodeChunks(
   // model-applicability rule as one BM25 found.
   const admit = (r: Record<string, unknown>): boolean => {
       // #5369: no detector pattern named a model, but the question names a
-      // near-sibling of the model this manual's own cover declares (letters +
-      // digits — a sibling controller of an unlisted vendor family). Naming
-      // both asks which one (Codex r1 F1). A cover that declares no such token
-      // falls back to the filename, which refuses without a categorical notice.
-      if (!requestedIdentities) {
-        const { title, fromDocument, prose } = lookAlikeDeclaredTitle(String(r.document_heading ?? ""), String(r.filename ?? ""));
-        if (prose && namesLookAlikeOf(opts.rawQuery ?? q, prose)) {
-          noteNamedAskRefusal(String(r.doc_id ?? ""), new Set());
-          return false;
-        }
-        const lookAlike = lookAlikeModelMismatch(opts.rawQuery ?? q, title);
+      // letters+digits model this manual's cover (or, with no related number
+      // on the cover, its filename) shows a sibling of — an unlisted vendor
+      // family. lookAlikeCoverVerdict holds the blunt rule. Codex r5 F2: a
+      // question naming models the detector DOES read keeps the existing
+      // comparison policy (ambiguousSiblingModels) and never enters here.
+      if (!requestedIdentities && !detectorNamedModel) {
+        const lookAlike = lookAlikeCoverVerdict(
+          opts.rawQuery ?? q,
+          String(r.document_heading ?? ""),
+          stripFileExtension(String(r.filename ?? "")).replace(/_+/g, " "),
+        );
         if (lookAlike?.kind === "ambiguous") {
           lookAlikeAmbiguous = true;
           if (opts.diagnostics) opts.diagnostics.ambiguousModelAsk = { named: lookAlike.named };
@@ -1949,7 +1897,7 @@ export async function retrieveNodeChunks(
         }
         if (lookAlike) {
           for (const id of lookAlike.requested) lookAlikeRequested.add(id);
-          noteNamedAskRefusal(String(r.doc_id ?? ""), fromDocument ? new Set(lookAlike.declared) : new Set());
+          noteNamedAskRefusal(String(r.doc_id ?? ""), new Set(lookAlike.declared));
           return false;
         }
       }
