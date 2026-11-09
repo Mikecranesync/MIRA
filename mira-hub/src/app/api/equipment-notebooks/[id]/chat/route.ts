@@ -138,6 +138,7 @@ import {
   lockoutPageOf,
   pickLockoutChunk,
 } from "@/capabilities/energized-work-stop";
+import { namedModelMismatchText, type NamedModelMismatch } from "@/capabilities/named-model-mismatch";
 import { isOffTopic, SCOPE_REPLY } from "@/capabilities/scope-check";
 import { englishSearchQuery, withAnswerLanguage } from "@/capabilities/answer-language";
 import { normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
@@ -2440,6 +2441,7 @@ async function handleChatTurn(
     rerankMs?: number | null;
     searchPath?: string;
     queryRewrite?: string;
+    namedModelMismatch?: NamedModelMismatch;
   } = {};
   const queryRewrite = await queryRewritePromise;
   retrievalDiagnostics.queryRewrite = queryRewrite.status;
@@ -3460,6 +3462,10 @@ async function handleChatTurn(
         ? `I couldn't find anything about this in the ${noEvidenceForMachine} manuals I have${oemEquipmentType && oemEquipmentType !== "Other" ? ", or in related manuals from the same maker" : ""}, so I won't guess at a procedure for your machine. Upload the manual for the equipment this is about (or the page that covers it) to this notebook, or photograph the nameplate, and ask again — I'll answer from it and show you the page.`
       : visualEntry
         ? "I saw your photo, but I couldn't find anything about it in the selected sources."
+      // CV-101 S6: the question named a model and every refused manual declares a
+      // different one — say which, and still answer nothing from it.
+      : notebookRetrieval && retrievalDiagnostics.namedModelMismatch
+        ? namedModelMismatchText(retrievalDiagnostics.namedModelMismatch)
       : notebookRetrieval
         ? "I couldn't find support for that in this notebook's manuals. Add the manual for the equipment you're asking about, or the page that covers it, and ask again."
         : null;
