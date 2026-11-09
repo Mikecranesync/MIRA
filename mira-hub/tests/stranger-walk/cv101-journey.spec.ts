@@ -16,7 +16,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { chromium, devices, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { chromium, devices, test, type Browser, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { extractTurn, UI } from "../fidelity/surfaces";
 import { cardsOf, viewerTargetOf } from "./extract";
 import { githubToken } from "./required-fixes";
@@ -111,6 +111,35 @@ async function notebookRecord(page: Page): Promise<NbRecord | null> {
   return page.evaluate(async (nb) => (await fetch(`/api/equipment-notebooks/${nb}/`, { cache: "no-store" })).json(), id);
 }
 
+/**
+ * Press a visible control the way a person does. On the Pixel, Chrome for Android ignored a scripted
+ * click on Create Asset (pixel1-charlie; BRAVO saw the same), so there the walk scrolls the control
+ * into view and taps its centre, which is what a finger sends. Other targets click as before.
+ */
+async function press(page: Page, target: Locator) {
+  if (TARGET !== "pixel") return target.click();
+  await target.scrollIntoViewIfNeeded();
+  const box = await target.boundingBox();
+  if (!box) return target.click();
+  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+}
+
+/** Settle a cleanup step within `ms` so one hung call cannot stop the steps after it. */
+async function bounded<T>(label: string, ms: number, work: () => Promise<T>): Promise<T | null> {
+  let timer: NodeJS.Timeout | undefined;
+  const limit = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), ms); });
+  try {
+    const out = await Promise.race([work(), limit]);
+    if (out === null) writeFileSync(path.join(OUT, `cleanup-timeout-${label}.txt`), `${label} exceeded ${ms} ms`);
+    return out;
+  } catch (e) {
+    writeFileSync(path.join(OUT, `cleanup-error-${label}.txt`), String(e));
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function openSidebar(page: Page) {
   if (TARGET === "desktop") return;
   // Already open (a person sees the drawer and does not reach for the hidden toggle under it).
@@ -138,7 +167,7 @@ async function ask(page: Page, q: string, meter: BudgetMeter, tenantId: string, 
     meter.book();
   }
   const chat = page.waitForResponse((r) => r.request().method() === "POST" && /\/chat\/?$/.test(new URL(r.url()).pathname), { timeout: 180_000 });
-  await page.getByRole("button", { name: "Send" }).click();
+  await press(page, page.getByRole("button", { name: "Send" }));
   const res = await chat.catch(() => null);
   const sse = res && res.status() === 200 ? await res.body().then((b) => decodeChatBody(b), () => null) : null;
   let status: string | null = null;
@@ -182,7 +211,7 @@ async function ask(page: Page, q: string, meter: BudgetMeter, tenantId: string, 
 
 async function newChat(page: Page) {
   await openSidebar(page);
-  await page.getByRole("button", { name: "New chat" }).click();
+  await press(page, page.getByRole("button", { name: "New chat" }));
   // A person waits until the screen names the project's sources. Sending earlier
   // hits #4752 ("Couldn't reach MIRA — Still loading your projects", ~3 s after New chat).
   await page.waitForTimeout(300);
@@ -190,7 +219,7 @@ async function newChat(page: Page) {
 }
 
 async function jobSheet(page: Page) {
-  await page.getByRole("button", { name: "Job sheet" }).click();
+  await press(page, page.getByRole("button", { name: "Job sheet" }));
   const dlg = page.getByRole("dialog", { name: "Job sheet" });
   await dlg.waitFor({ timeout: 20_000 });
   return dlg;
@@ -199,7 +228,7 @@ async function jobSheet(page: Page) {
 /** Open the saved job from the sheet's job list (its list button names the title). */
 async function openJob(page: Page) {
   const dlg = await jobSheet(page);
-  await dlg.getByRole("button", { name: new RegExp(`^${JOB.replace(/[()]/g, ".")}`) }).first().click();
+  await press(page, dlg.getByRole("button", { name: new RegExp(`^${JOB.replace(/[()]/g, ".")}`) }).first());
   await dlg.getByRole("button", { name: "Back to jobs" }).waitFor({ timeout: 20_000 });
   return dlg;
 }
@@ -220,7 +249,7 @@ async function newBrowser(): Promise<{ browser: Browser; ctx: BrowserContext }> 
   const storageState = existsSync(state) ? state : undefined;
   if (TARGET === "pixel") {
     const browser = await chromium.connectOverCDP(process.env.CV_CDP ?? "http://localhost:9333");
-    const ctx = await browser.newContext({ viewport: null, storageState }); // viewport null: Android refuses setWindowBounds; incognito: the phone's own sessions are untouched
+    const ctx = await browser.newContext({ viewport: null, hasTouch: true, storageState }); // viewport null: Android refuses setWindowBounds; incognito: the phone's own sessions are untouched
     return { browser, ctx };
   }
   const browser = await chromium.launch({ channel: "chrome", headless: process.env.CV_HEADED !== "1" });
@@ -254,7 +283,7 @@ test("cv101 journey", async () => {
     await page.locator("#signup-email").fill(EMAIL);
     await page.locator("#signup-password").fill(`Sw!${crypto.randomUUID()}Aa1`);
     const register = page.waitForResponse((r) => /\/api\/auth\/register\/?$/.test(new URL(r.url()).pathname), { timeout: 60_000 });
-    await page.getByRole("button", { name: /create|sign up/i }).first().click();
+    await press(page, page.getByRole("button", { name: /create|sign up/i }).first());
     tenantId = ((await (await register).json().catch(() => ({}))) as { tenantId?: string }).tenantId ?? "";
     if (!/^[0-9a-f-]{36}$/.test(tenantId)) throw new Error("register returned no tenant id");
     writeFileSync(path.join(OUT, "tenant.txt"), tenantId);
@@ -267,17 +296,24 @@ test("cv101 journey", async () => {
     // ── S1 machine via Assets → New Asset ───────────────────────────────
     await step("S1-new-asset", `Asset created with OEM ${OEM}, model ${MODEL}`, page, async (s) => {
       await page.goto(`${base}/assets/`);
-      await page.getByRole("button", { name: "New Asset" }).click();
+      await press(page, page.getByRole("button", { name: "New Asset" }));
       await page.getByPlaceholder("e.g. GS10 VFD - Line 3").fill(MACHINE);
       await page.getByRole("combobox").first().selectOption({ label: OEM });
       await page.getByPlaceholder("e.g. GS10", { exact: true }).fill(MODEL);
-      const post = page.waitForResponse((r) => r.request().method() === "POST" && /\/api\/assets\/?$/.test(new URL(r.url()).pathname));
-      await page.getByRole("button", { name: "Create Asset" }).click();
-      const r = await post;
+      const isAssetPost = (r: { request(): { method(): string }; url(): string }) => r.request().method() === "POST" && /\/api\/assets\/?$/.test(new URL(r.url()).pathname);
+      const create = page.getByRole("button", { name: "Create Asset" });
+      let r = await Promise.all([page.waitForResponse(isAssetPost, { timeout: 20_000 }), press(page, create)]).then(([x]) => x, () => null);
+      if (!r && TARGET === "pixel") {
+        // The tap reached no handler. One retry with a mouse click at the same centre, and the receipt says so.
+        s.actual = "tap sent no POST; retried with a centre click | ";
+        const box = await create.boundingBox();
+        if (box) r = await Promise.all([page.waitForResponse(isAssetPost, { timeout: 20_000 }), page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)]).then(([x]) => x, () => null);
+      }
+      if (!r) throw new Error("pressing Create Asset sent no POST /api/assets");
       const j = await r.json().catch(() => ({}));
       ids.asset = j.id;
       const listed = await page.getByRole("link", { name: new RegExp(MACHINE.replace(/[()]/g, ".")) }).isVisible().catch(() => false);
-      s.actual = `POST /api/assets ${r.status()} id=${j.id} mfr=${j.manufacturer} model=${j.model}; listed=${listed}`;
+      s.actual += `POST /api/assets ${r.status()} id=${j.id} mfr=${j.manufacturer} model=${j.model}; listed=${listed}`;
       s.verdict = r.status() === 201 && j.manufacturer === OEM && j.model === MODEL && listed ? "PASS" : "FAIL";
     });
     await page.goto(`${base}/v3/`);
@@ -289,10 +325,10 @@ test("cv101 journey", async () => {
     await step("S2-cancel", "Sheet closes; zero writes", page, async (s) => {
       const mark = trace.length;
       await openSidebar(page);
-      await page.getByRole("button", { name: "New project" }).click();
-      await page.getByRole("button", { name: new RegExp(`^${MACHINE.replace(/[()]/g, ".")}`) }).click();
-      await page.getByRole("button", { name: "Next" }).click();
-      await page.getByRole("button", { name: "Cancel" }).click();
+      await press(page, page.getByRole("button", { name: "New project" }));
+      await press(page, page.getByRole("button", { name: new RegExp(`^${MACHINE.replace(/[()]/g, ".")}`) }));
+      await press(page, page.getByRole("button", { name: "Next" }));
+      await press(page, page.getByRole("button", { name: "Cancel" }));
       const open = await page.getByRole("dialog", { name: "New project" }).isVisible().catch(() => false);
       const w = writesSince(mark);
       s.actual = `dialog open after cancel=${open}; writes=${w.length ? w.join(", ") : "none"}`;
@@ -302,21 +338,21 @@ test("cv101 journey", async () => {
     // ── S3 CV-101 project with the manual ───────────────────────────────
     await step("S3-project-cv101", "Project bound to CV-101, manual attached and searchable", page, async (s) => {
       await openSidebar(page);
-      await page.getByRole("button", { name: "New project" }).click();
+      await press(page, page.getByRole("button", { name: "New project" }));
       const machineBtn = page.getByRole("button", { name: new RegExp(`^${MACHINE.replace(/[()]/g, ".")}`) });
       s.actual = `machine row: ${(await machineBtn.innerText()).replace(/\s+/g, " ")}`;
       await machineBtn.click();
-      await page.getByRole("button", { name: "Next" }).click();
+      await press(page, page.getByRole("button", { name: "Next" }));
       await page.getByLabel("Upload PDF").setInputFiles({ name: MANUAL.name, mimeType: "application/pdf", buffer: readFileSync(MANUAL.file) });
-      await page.getByRole("button", { name: "Review" }).click();
+      await press(page, page.getByRole("button", { name: "Review" }));
       const t0 = Date.now();
-      await page.getByRole("button", { name: "Create project" }).click();
+      await press(page, page.getByRole("button", { name: "Create project" }));
       const dlg = page.getByRole("dialog", { name: "New project" });
       await page.getByRole("button", { name: "Continue" }).waitFor({ timeout: 600_000 });
       const sheetText = (await dlg.innerText()).replace(/\s+/g, " ");
       s.actual += ` | create→continue ${((Date.now() - t0) / 1000).toFixed(0)}s; sheet: ${sheetText.slice(0, 300)}`;
-      await page.getByRole("button", { name: "Continue" }).click();
-      await page.getByRole("button", { name: "Open project" }).click();
+      await press(page, page.getByRole("button", { name: "Continue" }));
+      await press(page, page.getByRole("button", { name: "Open project" }));
       await page.getByRole("heading", { level: 1, name: MACHINE }).waitFor({ timeout: 30_000 });
       const rec = await notebookRecord(page);
       ids.notebook = rec?.notebook?.id;
@@ -330,16 +366,16 @@ test("cv101 journey", async () => {
     // ── S4 General project, no manual ───────────────────────────────────
     await step("S4-project-general", "General project with no manual opens", page, async (s) => {
       await openSidebar(page);
-      await page.getByRole("button", { name: "New project" }).click();
-      await page.getByRole("button", { name: "General (no machine)" }).click();
+      await press(page, page.getByRole("button", { name: "New project" }));
+      await press(page, page.getByRole("button", { name: "General (no machine)" }));
       const name = page.getByRole("dialog", { name: "New project" }).getByRole("textbox").first();
       if (await name.isVisible().catch(() => false)) await name.fill("Bench questions (no manual)");
-      await page.getByRole("button", { name: "Next" }).click();
-      await page.getByRole("button", { name: "Review" }).click();
-      await page.getByRole("button", { name: "Create project" }).click();
+      await press(page, page.getByRole("button", { name: "Next" }));
+      await press(page, page.getByRole("button", { name: "Review" }));
+      await press(page, page.getByRole("button", { name: "Create project" }));
       await page.getByRole("button", { name: "Continue" }).waitFor({ timeout: 60_000 });
-      await page.getByRole("button", { name: "Continue" }).click();
-      await page.getByRole("button", { name: "Open project" }).click();
+      await press(page, page.getByRole("button", { name: "Continue" }));
+      await press(page, page.getByRole("button", { name: "Open project" }));
       await page.waitForTimeout(3_000);
       const h1 = await page.getByRole("heading", { level: 1 }).innerText();
       const rec = await notebookRecord(page);
@@ -398,9 +434,9 @@ test("cv101 journey", async () => {
     await step("S10-job", "Job saved with the note and the photo", page, async (s) => {
       const dlg = await jobSheet(page);
       await dlg.getByRole("textbox", { name: "Title" }).fill(JOB);
-      await dlg.getByRole("button", { name: "Start a job" }).click();
+      await press(page, dlg.getByRole("button", { name: "Start a job" }));
       await dlg.getByRole("textbox", { name: "Note" }).fill(NOTE);
-      await dlg.getByRole("button", { name: "Add note" }).click();
+      await press(page, dlg.getByRole("button", { name: "Add note" }));
       await dlg.getByText(NOTE).waitFor({ timeout: 20_000 });
       await dlg.locator('input[type=file][accept="image/*"]').setInputFiles(PHOTO);
       await dlg.getByRole("img", { name: /job photo|caption/i }).first().waitFor({ timeout: 60_000 });
@@ -409,7 +445,7 @@ test("cv101 journey", async () => {
       ids.sheet = (sheet?.body?.match(/"id":"([0-9a-f-]{36})"/) ?? [])[1] ?? "";
       s.actual = `ui: ${head}; sheet=${ids.sheet}`;
       s.verdict = /Saved/.test(head) ? "PASS" : "FAIL";
-      await dlg.getByRole("button", { name: "Close" }).click();
+      await press(page, dlg.getByRole("button", { name: "Close" }));
     });
 
     // ── S11 restart: new browser context from the saved session ─────────
@@ -434,7 +470,7 @@ test("cv101 journey", async () => {
       const hasPhoto = await dlg.getByRole("img", { name: /job photo/i }).count();
       s.actual = `asset=${rec?.notebook?.asset?.entityId === ids.asset} source=${(rec?.sources ?? []).length} list: ${list.slice(0, 200)} | note=${hasNote} photos=${hasPhoto}`;
       s.verdict = rec?.notebook?.asset?.entityId === ids.asset && hasNote && hasPhoto > 0 ? "PASS" : "FAIL";
-      await dlg.getByRole("button", { name: "Close" }).click();
+      await press(page, dlg.getByRole("button", { name: "Close" }));
     });
     await control("S12-recall", "Recalls the saved note, labelled as the technician's note", "What did I note on the open CV-101 job?",
       (a) => /relay output suspected|PLC program and I\/O NOT read/i.test(a.text));
@@ -455,7 +491,7 @@ test("cv101 journey", async () => {
       const dlg = await openJob(page);
       const popup = page.context().waitForEvent("page", { timeout: 8_000 }).catch(() => null);
       await page.evaluate(() => { (window as Window & { __printed?: number }).__printed = 0; window.print = () => { (window as Window & { __printed?: number }).__printed! += 1; }; });
-      await dlg.getByRole("button", { name: "Print / save PDF" }).click();
+      await press(page, dlg.getByRole("button", { name: "Print / save PDF" }));
       const p2 = await popup;
       const printed = await page.evaluate(() => (window as Window & { __printed?: number }).__printed);
       // The print copy is a body-level portal shown only in print media (print-portal.tsx), so the
@@ -489,7 +525,7 @@ test("cv101 journey", async () => {
       const offNote = `Offline note ${RUN_ID}`;
       await ctx.setOffline(true);
       await dlg.getByRole("textbox", { name: "Note" }).fill(offNote);
-      await dlg.getByRole("button", { name: "Add note" }).click();
+      await press(page, dlg.getByRole("button", { name: "Add note" }));
       await page.waitForTimeout(4_000);
       const whileOff = (await dlg.innerText()).replace(/\s+/g, " ");
       await shot(page, "offline");
@@ -512,15 +548,15 @@ test("cv101 journey", async () => {
     // ── S16 failed upload then retry ────────────────────────────────────
     await step("S16-upload-offline-retry", "Truthful upload error; retry gives one source", page, async (s) => {
       await openSidebar(page);
-      await page.getByRole("button", { name: "New project" }).click();
-      await page.getByRole("button", { name: "General (no machine)" }).click();
+      await press(page, page.getByRole("button", { name: "New project" }));
+      await press(page, page.getByRole("button", { name: "General (no machine)" }));
       const name = page.getByRole("dialog", { name: "New project" }).getByRole("textbox").first();
       if (await name.isVisible().catch(() => false)) await name.fill("Upload retry test");
-      await page.getByRole("button", { name: "Next" }).click();
+      await press(page, page.getByRole("button", { name: "Next" }));
       await page.getByLabel("Upload PDF").setInputFiles({ name: MANUAL.name, mimeType: "application/pdf", buffer: readFileSync(MANUAL.file) });
-      await page.getByRole("button", { name: "Review" }).click();
+      await press(page, page.getByRole("button", { name: "Review" }));
       const dlg = page.getByRole("dialog", { name: "New project" });
-      await page.getByRole("button", { name: "Create project" }).click();
+      await press(page, page.getByRole("button", { name: "Create project" }));
       await page.waitForTimeout(1_500);
       await ctx.setOffline(true);
       await page.waitForTimeout(15_000);
@@ -530,7 +566,7 @@ test("cv101 journey", async () => {
       await page.waitForTimeout(3_000);
       const sheetRetry = await dlg.getByRole("button", { name: /retry|try again|upload again/i }).count();
       await page.getByRole("button", { name: "Continue" }).click({ timeout: 120_000 });
-      await page.getByRole("button", { name: "Open project" }).click();
+      await press(page, page.getByRole("button", { name: "Open project" }));
       await page.getByRole("heading", { level: 1, name: "Upload retry test" }).waitFor({ timeout: 30_000 });
       await page.waitForTimeout(3_000);
       const before = (await notebookRecord(page))?.sources ?? [];
@@ -561,7 +597,7 @@ test("cv101 journey", async () => {
       if (!meter.canAfford()) throw new Error("budget stop");
       meter.book();
       await UI.clone.composer(page).fill("Explain every specification table in this Micro820 manual in detail with page numbers.");
-      await page.getByRole("button", { name: "Send" }).click();
+      await press(page, page.getByRole("button", { name: "Send" }));
       await page.waitForTimeout(1_200);
       const stop = page.getByRole("button", { name: /^Stop/ }).first();
       const had = await stop.isVisible().catch(() => false);
@@ -573,16 +609,19 @@ test("cv101 journey", async () => {
       s.verdict = had && !/answered/i.test(t) ? "PASS" : "FAIL";
     });
   } finally {
-    const end = await identity(base).catch(() => null);
+    // Every cleanup step is bounded and independent: pixel1-charlie left no run-end.json and no
+    // teardown, so a hung browser call must never keep the spend settle or the tenant teardown from running.
+    const end = await bounded("identity", 20_000, () => identity(base));
     const drift = end ? runtimeDrift(runtimeOf(start), runtimeOf(end)) : "end identity unreadable";
     writeFileSync(path.join(OUT, "run-end.json"), JSON.stringify({ endedAt: new Date().toISOString(), drift, booked: meter.booked, turns: meter.turns, ids }, null, 1));
     persist();
-    await ctx.storageState({ path: path.join(OUT, "state.json") }).catch(() => undefined);
-    await ctx.close().catch(() => undefined);
-    if (TARGET !== "pixel") await browser.close().catch(() => undefined);
     if (reservation?.ok) {
-      await settleWalkSpend({ token: githubToken(), repo: process.env.GITHUB_REPOSITORY, entryId: reservation.entryId, reservedUsd: reservation.reservedUsd, bookedUsd: meter.booked, note: `${meter.turns} turns booked` }).catch((e) => writeFileSync(path.join(OUT, "settle-error.txt"), String(e)));
+      const r = reservation;
+      await bounded("settle", 60_000, () => settleWalkSpend({ token: githubToken(), repo: process.env.GITHUB_REPOSITORY, entryId: r.entryId, reservedUsd: r.reservedUsd, bookedUsd: meter.booked, note: `${meter.turns} turns booked` }));
     }
+    await bounded("storage-state", 15_000, () => ctx.storageState({ path: path.join(OUT, "state.json") }));
+    await bounded("context-close", 15_000, () => ctx.close());
+    if (TARGET !== "pixel") await bounded("browser-close", 15_000, () => browser.close());
     if (tenantId && process.env.CV_KEEP !== "1") writeFileSync(path.join(OUT, "teardown.txt"), JSON.stringify(teardownTenant(tenantId)));
   }
 });
