@@ -902,6 +902,77 @@ describe("S16: a PDF that never reached the project can be sent again from the s
     expect(rows.map((r) => r.readiness.label)).toEqual(["Ready to search", "Ready to search", "Ready to search"]);
   });
 
+  it("Codex #5353 r6 F7: a retired attach that fails late cannot undo the current watch's successful attach", async () => {
+    const attached: string[] = [];
+    const uploads: Record<string, number> = {};
+    let bReads = 0;
+    let bAttaches = 0;
+    // one gate per B attach: `started` resolves when the request is sent, `release(status)` answers it
+    const gate = () => {
+      let release: (status: number) => void = () => {};
+      let start: () => void = () => {};
+      const done = new Promise<number>((r) => { release = r; });
+      const started = new Promise<void>((r) => { start = r; });
+      return { done, started, start: () => start(), release: (status: number) => release(status) };
+    };
+    const gates = [gate(), gate()];
+    const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      const reply = (status: number, body: Record<string, unknown>) =>
+        ({ status, ok: status >= 200 && status < 300, json: async () => body }) as Response;
+      if (method === "GET" && path.startsWith("/api/namespace/tree/")) return reply(200, { nodes: [] });
+      if (method === "GET" && path.startsWith("/api/files/f-B")) { bReads++; return reply(200, { file: { id: "f-B", uploadId: bReads < 2 ? null : "doc-B" } }); }
+      if (method === "GET" && path.startsWith("/api/files/")) return reply(200, { files: [] });
+      if (method === "POST" && path.startsWith("/api/namespace/node/node-g/files/")) {
+        const bytes = await ((init!.body as FormData).get("file") as File).text();
+        uploads[bytes] = (uploads[bytes] ?? 0) + 1;
+        if (bytes === "B") return reply(202, { ok: true, indexed: false, indexing: true, fileId: "f-B" });
+        if (uploads[bytes] === 1) return reply(503, { error: "offline" });
+        return reply(201, { ok: true, indexed: true, uploadId: `doc-${bytes}`, fileId: `f-${bytes}` });
+      }
+      if (method === "POST" && path.startsWith("/api/equipment-notebooks/nb-general/sources/")) {
+        const docId = String(JSON.parse(String(init!.body)).docId);
+        if (docId === "doc-B") {
+          const g = gates[bAttaches++]!;
+          g.start();
+          const status = await g.done;
+          if (status !== 201) return reply(status, { error: "old attach failed" });
+        }
+        if (!attached.includes(docId)) attached.push(docId);
+        return reply(201, { ok: true });
+      }
+      if (method === "GET" && path.startsWith("/api/equipment-notebooks/nb-general/")) {
+        return reply(200, {
+          notebook: { nodeId: "node-g" },
+          sources: attached.map((docId) => ({ docId, filename: `${docId}.pdf`, readiness: { state: "chat_ready_basic" }, matchState: "user_confirmed", enabledByDefault: true })),
+        });
+      }
+      throw new Error(`unexpected request ${method} ${path}`);
+    });
+    const c = createNewProjectSetup({ ...deps(fetchFn as unknown as typeof fetch), getNotebooks: () => [] });
+    await c.start();
+    await c.choose({ kind: "general" });
+    c.setName("Late failure from a retired attach");
+    await c.next();
+    c.addPdfs([new File(["A"], "a.pdf", { type: "application/pdf" }), new File(["B"], "b.pdf", { type: "application/pdf" })]);
+    await c.next();
+    const commitDone = c.commit();
+    await gates[0]!.started; // the commit's watch is attaching B
+    const aRetry = c.getState().rows.find((r) => r.retry && r.filename === "a.pdf")!;
+    expect(aRetry).toBeDefined();
+    const retryDone = c.retryUpload(aRetry.key);
+    await gates[1]!.started; // the retry's watch is attaching B too
+    gates[0]!.release(503); // the retired attach fails late
+    await commitDone;
+    gates[1]!.release(201); // the current attach succeeds
+    await retryDone;
+    const rows = c.getState().rows;
+    expect(rows.map((r) => r.filename)).toEqual(["a.pdf", "b.pdf"]);
+    expect(rows.map((r) => r.readiness.label)).toEqual(["Ready to search", "Ready to search"]);
+    expect(rows[1]!.note ?? "").not.toMatch(/old attach failed/);
+  });
+
   it("Codex #5353 r5 F6: the resolver writes back to its own row by identity, and leaves a row a retry replaced", async () => {
     const indexingDoc = { key: "file:f-202", filename: "m.pdf", docId: null, fileId: "f-202", indexing: true, attachFailed: false, notIndexed: false, message: null };
     let release: () => void = () => {};

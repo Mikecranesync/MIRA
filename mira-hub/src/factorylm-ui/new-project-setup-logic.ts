@@ -395,9 +395,13 @@ export async function resolveIndexing(
     // Codex #5353 r5 F6: a retry can remove a row while a read or attach is in
     // flight, shifting every later row. Write back to this row by identity, never
     // to the index taken before the await; a row a retry replaced is left alone.
+    // r6 F7: a watch retired during the await writes nothing at all, so only the
+    // current watch decides a row (a late failure cannot undo its success).
     const put = (next: DocOutcome) => {
+      if (stop()) return false;
       const at = docs.indexOf(doc);
       if (at >= 0) docs[at] = next;
+      return true;
     };
     if (res.status === 404) {
       put({ ...doc, indexing: false, notIndexed: true, message: "This file is no longer in the project. Add it again." });
@@ -409,13 +413,14 @@ export async function resolveIndexing(
     const att = await call(deps, "POST", `/api/equipment-notebooks/${encodeURIComponent(notebookId)}/sources/`, {
       json: { docId: uploadId, sourceRole: "manual" },
     });
-    put({
+    const kept = put({
       ...doc,
       docId: uploadId,
       indexing: false,
       attachFailed: !att.ok,
       message: att.ok ? null : messageOf(att, "Couldn't be added as a source. Try again from the project."),
     });
+    if (!kept) return { added, pending: true };
     if (att.ok) added.push(uploadId);
   }
   return { added, pending: docs.some((d) => d.indexing === true) };
