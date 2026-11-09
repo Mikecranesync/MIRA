@@ -127,6 +127,11 @@ export function modelIdentitiesInText(text: string): Set<string> {
       }
     }
   });
+  // Retain exact catalog identity for applicability without changing the
+  // single-token SQL/query resolver: GS11N-20P2 is not GS11N-21P0.
+  for (const match of text.matchAll(/\b(GS\d{1,2}[a-z]?\s*-\s*[a-z0-9]+)\b/gi)) {
+    identities.add(match[1].replace(/\s+/g, "").toUpperCase());
+  }
   // Round-2 review on #4484: a title that lists sibling numbers after ONE
   // family word — "PowerFlex 523 and 525", "Micro810 and 820", "ACS580/880" —
   // was credited to the first number only, so the 525 half of a "523 and 525"
