@@ -297,16 +297,33 @@ export type EdgeWarning = { marker: string; statement: string; page: number | nu
  * a sibling chunk of the page), then each passage quoted with its [n] marker
  * and page.
  */
+/** "<title>, <revision>, page 4-69 (PDF page 139)": where a passage is printed. */
+function passageWhere({ citation, pageLabel, revision }: EdgePassage): string {
+  const where = [citation.sourceTitle];
+  if (revision && !citation.sourceTitle.toLowerCase().includes(revision.toLowerCase())) where.push(revision);
+  if (citation.page != null) {
+    const label = pageLabel ? pageLabel.replace(/–/g, "-") : null;
+    where.push(label && label !== String(citation.page) ? `page ${label} (PDF page ${citation.page})` : `page ${citation.page}`);
+  }
+  return where.join(", ");
+}
+
+/**
+ * The definition's page could not be read whole (the read failed, came back
+ * empty, or lacked a chunk retrieval already returned for it), so the cautions
+ * printed beside the definition cannot be checked. The definition is not served
+ * without them; the technician is pointed at the page instead.
+ */
+export function edgeDefinitionPageUnreadText(definition: EdgePassage): string {
+  const code = definition.definition?.code ?? "that parameter";
+  return `I couldn't read all of ${passageWhere(definition)} just now, so I won't show the definition of ${code} without the cautions printed beside it. Open that page in the manual, or ask again in a moment.`;
+}
+
 export function renderEdgePassages(passages: EdgePassage[], warning: EdgeWarning | null = null): string {
   if (passages.length === 0) return EDGE_NO_PASSAGE_TEXT;
-  const blocks = passages.map(({ citation, text, definition, pageLabel, revision, cautions }) => {
-    const where = [citation.sourceTitle];
-    if (revision && !citation.sourceTitle.toLowerCase().includes(revision.toLowerCase())) where.push(revision);
-    if (citation.page != null) {
-      const label = pageLabel ? pageLabel.replace(/–/g, "-") : null;
-      where.push(label && label !== String(citation.page) ? `page ${label} (PDF page ${citation.page})` : `page ${citation.page}`);
-    }
-    const quoted = `"${text}" [${citation.citationId}]\n— ${where.join(", ")}`;
+  const blocks = passages.map((passage) => {
+    const { citation, text, definition, cautions } = passage;
+    const quoted = `"${text}" [${citation.citationId}]\n— ${passageWhere(passage)}`;
     if (!definition) return quoted;
     const block = `Definition of ${definition.code} (${definition.name}), as printed:\n${quoted}`;
     if (!cautions || cautions.length === 0) return block;

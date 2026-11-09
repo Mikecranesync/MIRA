@@ -345,22 +345,50 @@ describe("#5265 edge profile — the manual speaks", () => {
       expect(persisted.answerStatus).toBe("answered");
     });
 
-    it("a failed page read still quotes the cautions in the retrieved chunks of that page", async () => {
-      ragMock.retrieveNodeChunks.mockResolvedValue(
-        (gs10.retrievalOrder as { sourcePage: number; pageLabel: string; content: string }[]).map((c, i) => ({
-          ...HOWTO_CHUNK,
-          content: c.content,
-          sourceUrl: "node-doc/u1/GS10-User-Manual-RevC.pdf",
-          sourcePage: Number(c.sourcePage),
-          pageLabel: c.pageLabel,
-          title: "GS10-User-Manual-RevC.pdf",
-          rank: 0.9 - i * 0.01,
-        })),
-      );
+    // Codex integration review 6726339145 (HIGH): when the definition's page cannot
+    // be read whole, its cautions cannot be checked, so the definition is not
+    // served as answered. The turn says so, names the page, and calls no model.
+    const gs10Retrieved = () =>
+      (gs10.retrievalOrder as { sourcePage: number; pageLabel: string; content: string }[]).map((c, i) => ({
+        ...HOWTO_CHUNK,
+        content: c.content,
+        sourceUrl: "node-doc/u1/GS10-User-Manual-RevC.pdf",
+        sourcePage: Number(c.sourcePage),
+        pageLabel: c.pageLabel,
+        title: "GS10-User-Manual-RevC.pdf",
+        rank: 0.9 - i * 0.01,
+      }));
+    const expectPageUnread = async () => {
+      const out = await frames(await POST(req({ message: GS11N, sourceDocIds: [DOC_A] }), params));
+      expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+      const content = contentOf(out);
+      expect(content).not.toContain("Definition of P01.12");
+      expect(content).toMatch(/couldn.t read all of/i);
+      expect(content).toContain("page 4-69 (PDF page 139)");
+      const persisted = (vi.mocked(nbMock.recordTurn).mock.calls[0] as unknown as unknown[])[2] as { answerText: string; answerStatus: string };
+      expect(persisted.answerStatus).toBe("insufficient_evidence");
+      expect(persisted.answerText).not.toContain("Definition of P01.12");
+    };
+
+    it("page read times out: no definition without its cautions, insufficient_evidence, names the page", async () => {
+      ragMock.retrieveNodeChunks.mockResolvedValue(gs10Retrieved());
       ragMock.retrievePageChunksInOrder.mockRejectedValue(new Error("statement timeout"));
-      const content = contentOf(await frames(await POST(req({ message: GS11N, sourceDocIds: [DOC_A] }), params)));
-      expect(content).toContain("invalid when using P01.44");
-      expect(content).not.toContain(MOTOR_DAMAGE);
+      await expectPageUnread();
+    });
+
+    it("page read returns nothing: treated as unread, not as a page with no cautions", async () => {
+      ragMock.retrieveNodeChunks.mockResolvedValue(gs10Retrieved());
+      ragMock.retrievePageChunksInOrder.mockResolvedValue([]);
+      await expectPageUnread();
+    });
+
+    it("page read comes back missing a chunk retrieval already returned for that page: treated as unread", async () => {
+      const retrieved = gs10Retrieved();
+      ragMock.retrieveNodeChunks.mockResolvedValue(retrieved);
+      const onPage = retrieved.filter((c) => c.sourcePage === 139).map((c) => c.content);
+      expect(onPage.length).toBeGreaterThan(0);
+      ragMock.retrievePageChunksInOrder.mockResolvedValue(gs10.definitionPage.chunks.map((c) => c.content).filter((t) => t !== onPage[0]));
+      await expectPageUnread();
     });
 
     it("an unflagged how-to is still served as passages, and calls no model", async () => {
