@@ -224,7 +224,14 @@ function lookAlikeDeclaredTitle(
     // that starts lower-case or with a prose verb continues it.
     let line = lines[i];
     let j = i;
-    while (j + 1 < lines.length && continuesCoverLine(lines[j + 1])) line = `${line} ${lines[++j].trim()}`;
+    // Codex r4 F1: blank layout lines between the parts do not end the sentence.
+    for (;;) {
+      let k = j + 1;
+      while (k < lines.length && lines[k].trim() === "") k++;
+      if (k >= lines.length || !continuesCoverLine(lines[k])) break;
+      line = `${line} ${lines[k].trim()}`;
+      j = k;
+    }
     const segment = titleSegment([line, ...lines.slice(j + 1)].join("\n"));
     if (COVER_PROSE_RE.test(segment) || COVER_POINTING_START_RE.test(segment)) {
       prose = (prose ? `${prose}\n` : "") + segment;
