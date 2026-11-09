@@ -392,8 +392,15 @@ export async function resolveIndexing(
     if (!doc.indexing || !doc.fileId) continue;
     if (stop()) return { added, pending: true };
     const res = await call(deps, "GET", `/api/files/${encodeURIComponent(doc.fileId)}`);
+    // Codex #5353 r5 F6: a retry can remove a row while a read or attach is in
+    // flight, shifting every later row. Write back to this row by identity, never
+    // to the index taken before the await; a row a retry replaced is left alone.
+    const put = (next: DocOutcome) => {
+      const at = docs.indexOf(doc);
+      if (at >= 0) docs[at] = next;
+    };
     if (res.status === 404) {
-      docs[i] = { ...doc, indexing: false, notIndexed: true, message: "This file is no longer in the project. Add it again." };
+      put({ ...doc, indexing: false, notIndexed: true, message: "This file is no longer in the project. Add it again." });
       continue;
     }
     const uploadId = (res.body.file as { uploadId?: unknown } | undefined)?.uploadId;
@@ -402,13 +409,13 @@ export async function resolveIndexing(
     const att = await call(deps, "POST", `/api/equipment-notebooks/${encodeURIComponent(notebookId)}/sources/`, {
       json: { docId: uploadId, sourceRole: "manual" },
     });
-    docs[i] = {
+    put({
       ...doc,
       docId: uploadId,
       indexing: false,
       attachFailed: !att.ok,
       message: att.ok ? null : messageOf(att, "Couldn't be added as a source. Try again from the project."),
-    };
+    });
     if (att.ok) added.push(uploadId);
   }
   return { added, pending: docs.some((d) => d.indexing === true) };
