@@ -356,7 +356,7 @@ describe("energizedWorkStop — manual warning line", () => {
     const text = energizedWorkStop(null, { lookupFailed: true });
     expect(text).toContain("SAFETY STOP — energized work.");
     expect(text).not.toContain("couldn't find a lockout page");
-    expect(text).toContain("couldn't read this notebook's manuals just now");
+    expect(text).toContain("couldn't fully search this notebook's manuals just now");
   });
   it("is byte-identical to the previous stop when there is no warning and the lookup worked", () => {
     expect(energizedWorkStop(null, {})).toBe(energizedWorkStop(null));

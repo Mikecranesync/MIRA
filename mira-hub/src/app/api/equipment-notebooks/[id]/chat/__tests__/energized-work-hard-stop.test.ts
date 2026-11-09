@@ -474,6 +474,28 @@ describe("CV-101 S5b — the stop carries the manual's own warning about this as
     const content = contentOf(out);
     expect(content).toMatch(/SAFETY STOP — energized work/);
     expect(content).not.toContain("couldn't find a lockout page");
-    expect(content).toContain("couldn't read this notebook's manuals just now");
+    expect(content).toContain("couldn't fully search this notebook's manuals just now");
+  });
+
+  it("cheap review #5349: when the lockout search fails but the question pass returned pages, it still says the search was incomplete", async () => {
+    ragMock.retrieveNodeChunks.mockImplementation(async (_c: unknown, _t: unknown, query: unknown) => {
+      if (/lockout tagout|warning caution danger/i.test(String(query))) throw new Error("db down");
+      return [RELAY_RATINGS];
+    });
+    const content = contentOf(await frames(await POST(req({ message: S5B_ASK, sourceDocIds: [DOC_A] }), params)));
+    expect(content).toMatch(/SAFETY STOP — energized work/);
+    expect(content).not.toContain("couldn't find a lockout page");
+    expect(content).toContain("couldn't fully search this notebook's manuals just now");
+  });
+
+  it("when only the lockout search fails and the warning search works, it still never claims there is no lockout page", async () => {
+    ragMock.retrieveNodeChunks.mockImplementation(async (_c: unknown, _t: unknown, query: unknown) => {
+      if (/lockout tagout/i.test(String(query))) throw new Error("db down");
+      return [];
+    });
+    const content = contentOf(await frames(await POST(req({ message: S5B_ASK, sourceDocIds: [DOC_A] }), params)));
+    expect(content).toMatch(/SAFETY STOP — energized work/);
+    expect(content).not.toContain("couldn't find a lockout page");
+    expect(content).toContain("couldn't fully search this notebook's manuals just now");
   });
 });

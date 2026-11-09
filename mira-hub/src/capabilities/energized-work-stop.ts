@@ -243,7 +243,7 @@ export function pickQuestionWarningChunk(chunks: readonly ManualChunk[], message
 export type EnergizedStopOptions = {
   /** A related warning in the manual (`pickQuestionWarningChunk`) — a page only, never its words. */
   warning?: { page: string | null } | null;
-  /** Every manual lookup for the stop failed, so "no lockout page" would be a guess. */
+  /** The lockout-page search failed, so "no lockout page" would be a guess. */
   lookupFailed?: boolean;
 };
 
@@ -262,7 +262,7 @@ export function energizedWorkStop(cite: LockoutCitation | null, opts: EnergizedS
   const page = cite ? citationPageLabel(cite.page) : null;
   const where = !cite
     ? opts.lookupFailed
-      ? "I couldn't read this notebook's manuals just now — follow your site's lockout/tagout procedure, and check your manual's warnings before you start."
+      ? "I couldn't fully search this notebook's manuals just now — follow your site's lockout/tagout procedure, and check your manual's warnings before you start."
       : "I couldn't find a lockout page in this notebook's manuals — follow your site's lockout/tagout procedure."
     : page
       ? `Your manual's lockout / disconnect-power procedure is on **p.${page}** — follow that page first.`

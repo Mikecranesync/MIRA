@@ -3323,7 +3323,11 @@ async function handleChatTurn(
       ]);
       lockoutChunks = lockoutHits ?? [];
       warningChunks = warningHits ?? [];
-      stopLookupsFailed = lockoutHits === null && warningHits === null && chunks.length === 0;
+      // "No lockout page" is claimed only when the lockout search itself ran. If it
+      // failed, the stop says the manuals couldn't be fully searched, whatever the
+      // question pass returned (cheap review #5349 r1/r2/r5: pages from the
+      // question pass are not a lockout search).
+      stopLookupsFailed = lockoutHits === null;
     }
     const lockoutChunk = pickLockoutChunk([...lockoutChunks, ...chunks]);
     const warningPick = pickQuestionWarningChunk([...warningChunks, ...chunks], message);
