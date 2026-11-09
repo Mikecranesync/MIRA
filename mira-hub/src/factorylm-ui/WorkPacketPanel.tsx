@@ -125,11 +125,14 @@ function badgeStyle(label: Field["label"]): CSSProperties {
 /** Watermark + print-only visibility, confined to the packet root (task §E step 6: "prints ONLY
  *  the packet (portal root)"). `[data-no-print]` hides every edit/nav control on paper; nothing
  *  outside `.wp-print-root` is visible on paper. */
-const PRINT_CSS = `
+export const PRINT_CSS = `
 @page { margin: 14mm 12mm 16mm 12mm; @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 9pt; } }
 @media print {
-  body * { visibility: hidden; }
-  .wp-print-root, .wp-print-root * { visibility: visible; }
+  /* #5332: hide the page only while the packet dialog is open. Unscoped, this rule hid every other
+     print copy on the page (the job sheet printed blank) whenever the panel was merely mounted. */
+  body:has(dialog[data-testid="wp-dialog"][open]) * { visibility: hidden; }
+  body:has(dialog[data-testid="wp-dialog"][open]) .wp-print-root,
+  body:has(dialog[data-testid="wp-dialog"][open]) .wp-print-root * { visibility: visible; }
   html, body { height: auto !important; overflow: visible !important; }
   /* The open packet lives in a full-height modal <dialog> whose sheet scrolls; on paper both must
      grow with the content or only the visible scroll window prints (one page). */
