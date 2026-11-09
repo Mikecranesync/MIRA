@@ -5,7 +5,7 @@
  * short paraphrases of the shape of real manual passages, not manual excerpts.
  */
 import { describe, expect, it } from "vitest";
-import { expandIndustrialQuery, rerankChunks, type ExpandedQuery } from "../notebook-query";
+import { expandIndustrialQuery, rerankChunks, type ExpandedQuery } from "@/lib/notebook-query";
 
 const mk = (content: string, rank: number, page = 1) => ({ content, rank, sourcePage: page, docId: "d1" });
 const joined = (q: string) => expandIndustrialQuery(q).variants.join(" ").toLowerCase();
