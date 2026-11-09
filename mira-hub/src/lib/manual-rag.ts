@@ -4,7 +4,7 @@ import type { IdentityStatus } from "@/lib/equipment-notebooks";
 import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
 import { FAMILY_ROOTS, MODEL_PATTERNS, ROCKWELL, familyCovers, modelIdentitiesInText, resolveModelFromObservationText } from "@/capabilities/model-token";
-import { ambiguousSiblingModels, lookAlikeModelMismatch } from "@/capabilities/named-model-mismatch";
+import { ambiguousSiblingModels, hasLookAlikeToken, lookAlikeModelMismatch, namesLookAlikeOf } from "@/capabilities/named-model-mismatch";
 import { embedQueryDetailed, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
 import { setSpanAttrs } from "@/capabilities/observability/tracing";
 import { logRerankFallback, orderWithPinnedHead, rerankEnabled, rerankPool, rerankScores } from "@/capabilities/reranker";
@@ -188,14 +188,38 @@ function titleSegment(text: string): string {
 const TITLE_BOUNDARY_RE =
   /\b(?:user\s+manual|manual|guide|instructions|handbook|reference|specifications?|data\s*sheet|datasheet)\b|\s[\u2014\u2013-]\s|[\u2014\u2013:;([|]|\s(?=(?:for|see|consult|refer|not|except|excluding|unlike|replaces|supersedes)\b)/gi;
 
-function declaredTitle(segment: string): string {
+function declaredTitle(segment: string, namesModel = (text: string) => modelIdentitiesInText(text).size > 0): string {
   for (const m of segment.matchAll(TITLE_BOUNDARY_RE)) {
     const isNoun = /^\w/.test(m[0]);
     const end = isNoun ? m.index! + m[0].length : m.index!;
     const prefix = segment.slice(0, end);
-    if (modelIdentitiesInText(prefix).size > 0) return prefix;
+    if (namesModel(prefix)) return prefix;
   }
   return segment;
+}
+
+/** #5369: the title a cover DECLARES, read with the generic letters+digits
+ *  token (the detector cannot read these families). Same structure as the
+ *  detector's path: the title segment, cut at a title boundary (Codex r1 F2 —
+ *  "M171 Hardware Guide — for M172 consult …" declares M171 only); else the
+ *  first token-bearing line below a generic opener, unless it is prose
+ *  (COVER_PROSE_RE), which declares nothing. `fromDocument` is false only for
+ *  the filename fallback, which may refuse a manual but is never published as
+ *  what the manual declares (Codex r1 F3; the F1 contract on #5350). */
+function lookAlikeDeclaredTitle(
+  heading: string,
+  filename: string,
+): { title: string; fromDocument: boolean; prose?: string } {
+  const title = declaredTitle(titleSegment(heading), hasLookAlikeToken);
+  if (hasLookAlikeToken(title)) return { title, fromDocument: true };
+  const lines = heading.split("\n");
+  const i = lines.findIndex(hasLookAlikeToken);
+  if (i >= 0) {
+    const segment = titleSegment(lines.slice(i).join("\n"));
+    if (COVER_PROSE_RE.test(segment)) return { title: "", fromDocument: true, prose: segment };
+    return { title: declaredTitle(segment, hasLookAlikeToken), fromDocument: true };
+  }
+  return { title: stripFileExtension(filename).replace(/_+/g, " "), fromDocument: false };
 }
 
 function stripFileExtension(filename: string): string {
@@ -1874,18 +1898,24 @@ export async function retrieveNodeChunks(
   // model-applicability rule as one BM25 found.
   const admit = (r: Record<string, unknown>): boolean => {
       // #5369: no detector pattern named a model, but the question names a
-      // near-sibling of the model this manual's own title declares (letters +
-      // digits, e.g. a sibling controller of an unlisted vendor family). The
-      // title is read the same way as below (declared title, filename as the
-      // fallback); a manual whose title declares no such token abstains.
+      // near-sibling of the model this manual's own cover declares (letters +
+      // digits — a sibling controller of an unlisted vendor family). Naming
+      // both asks which one (Codex r1 F1). A cover that declares no such token
+      // falls back to the filename, which refuses without a categorical notice.
       if (!requestedIdentities) {
-        const heading = String(r.document_heading ?? "");
-        const headingTitle = declaredTitle(titleSegment(heading));
-        const title = /\d/.test(headingTitle) ? headingTitle : stripFileExtension(String(r.filename ?? "")).replace(/_+/g, " ");
+        const { title, fromDocument, prose } = lookAlikeDeclaredTitle(String(r.document_heading ?? ""), String(r.filename ?? ""));
+        if (prose && namesLookAlikeOf(opts.rawQuery ?? q, prose)) {
+          noteNamedAskRefusal(String(r.doc_id ?? ""), new Set());
+          return false;
+        }
         const lookAlike = lookAlikeModelMismatch(opts.rawQuery ?? q, title);
+        if (lookAlike?.kind === "ambiguous") {
+          if (opts.diagnostics) opts.diagnostics.ambiguousModelAsk = { named: lookAlike.named };
+          return false;
+        }
         if (lookAlike) {
           for (const id of lookAlike.requested) lookAlikeRequested.add(id);
-          noteNamedAskRefusal(String(r.doc_id ?? ""), new Set(lookAlike.declared));
+          noteNamedAskRefusal(String(r.doc_id ?? ""), fromDocument ? new Set(lookAlike.declared) : new Set());
           return false;
         }
       }

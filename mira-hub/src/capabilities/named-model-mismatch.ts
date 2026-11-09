@@ -170,15 +170,41 @@ function lookAlikeTokens(text: string): { id: string; letters: string; digits: s
   }));
 }
 
-export function lookAlikeModelMismatch(question: string, title: string): NamedModelMismatch | null {
+/** Whether a span carries a letters+digits token (the title-boundary test for
+ *  covers the detector cannot read — Codex r1 F2 on #5371). */
+export const hasLookAlikeToken = (text: string): boolean => lookAlikeTokens(text).length > 0;
+
+export type LookAlikeVerdict =
+  | { kind: "mismatch"; requested: string[]; declared: string[] }
+  | { kind: "ambiguous"; named: string[] };
+
+const isSibling = (a: { letters: string; digits: string }, b: { letters: string; digits: string }) =>
+  a.letters === b.letters && a.digits.length === b.digits.length && a.digits[0] === b.digits[0];
+
+/** Whether the question names a model a cover only MENTIONS in prose ("M172 is
+ *  not covered by this manual"): the same token or a near-sibling of it. Such a
+ *  cover declares nothing, so the detector path's rule applies — a named ask
+ *  is refused, never answered from it. */
+export function namesLookAlikeOf(question: string, text: string): boolean {
+  const mentioned = lookAlikeTokens(text);
+  return lookAlikeTokens(question).some((q) => mentioned.some((t) => t.id === q.id || isSibling(t, q)));
+}
+
+/** Codex r1 F1 on #5371: a question that names the manual's own model AND its
+ *  near-sibling ("M172 … the attached manual is M171", "M171 or M172?") is not
+ *  proof it targets the loaded model, so it asks which one — the #5355 safe
+ *  default, without that path's comparison exemptions (residual: a genuine
+ *  comparison of two unlisted siblings also asks). */
+export function lookAlikeModelMismatch(question: string, title: string): LookAlikeVerdict | null {
   const declared = lookAlikeTokens(title);
   if (declared.length === 0) return null;
-  const asked = lookAlikeTokens(question);
   const declaredIds = new Set(declared.map((t) => t.id));
-  if (asked.some((t) => declaredIds.has(t.id))) return null;
-  const requested = asked.filter((q) =>
-    declared.some((t) => t.letters === q.letters && t.digits.length === q.digits.length && t.digits[0] === q.digits[0]),
-  );
-  if (requested.length === 0) return null;
-  return { requested: [...new Set(requested.map((t) => t.id))], declared: [...declaredIds] };
+  const asked = lookAlikeTokens(question);
+  const siblings = asked.filter((q) => !declaredIds.has(q.id) && declared.some((t) => isSibling(t, q)));
+  if (siblings.length === 0) return null;
+  const sameModel = asked.filter((q) => declaredIds.has(q.id));
+  if (sameModel.length > 0) {
+    return { kind: "ambiguous", named: [...new Set([...sameModel, ...siblings].map((t) => t.id))].sort() };
+  }
+  return { kind: "mismatch", requested: [...new Set(siblings.map((t) => t.id))], declared: [...declaredIds] };
 }
