@@ -134,21 +134,30 @@ function toPacketDocuments(classified: Classified[], identity: Identity): Packet
   }));
 }
 
+/** Refusals known before any document read; preserve GET and draft wording. */
+function identityBlocking(identity: Identity, draft = false): WorkPacketAvailability["blocking"] {
+  if (!identityConfirmed(identity)) {
+    return {
+      reason: "identity_not_confirmed",
+      message: draft
+        ? "Confirm the equipment's identity (manufacturer and model) before drafting a job packet."
+        : "Confirm this machine's identity before preparing a job packet.",
+    };
+  }
+  if (!isSupportedManufacturer(identity.manufacturer)) {
+    return { reason: "manufacturer_not_supported", message: manufacturerRefusalMessage(identity.manufacturer) };
+  }
+  return null;
+}
+
 /** The first of the non-text-dependent refusals (see file header), or null
  *  when nothing here stops a draft — `no_task_matched` is POST-only. */
 function availabilityBlocking(
   identity: Identity,
   classified: Classified[],
 ): { reason: DraftRefusal; message: string } | null {
-  if (!identityConfirmed(identity)) {
-    return {
-      reason: "identity_not_confirmed",
-      message: "Confirm this machine's identity before preparing a job packet.",
-    };
-  }
-  if (!isSupportedManufacturer(identity.manufacturer)) {
-    return { reason: "manufacturer_not_supported", message: manufacturerRefusalMessage(identity.manufacturer) };
-  }
+  const identityBlock = identityBlocking(identity);
+  if (identityBlock) return identityBlock;
   if (classified.length === 0) {
     return {
       reason: "no_documents",
@@ -253,8 +262,16 @@ export async function GET(req: NextRequest, { params }: Params) {
   try {
     const notebook = await getNotebook(ctx.tenantId, id);
     if (!notebook) return NextResponse.json({ error: "notebook_not_found" }, { status: 404 });
+    if (req.signal.aborted) return NextResponse.json({ error: "request_aborted" }, { status: 499 });
 
     const identity = identityOf(notebook);
+    const identityBlock = identityBlocking(identity);
+    if (identityBlock) {
+      const body: WorkPacketAvailability = {
+        enabled: true, identity, documents: [], documentsState: "deferred", blocking: identityBlock,
+      };
+      return NextResponse.json(body);
+    }
     const docs = await loadNotebookDocTexts(ctx.tenantId, id, { signal: req.signal });
     const classified = classifyAll(docs);
     const body: WorkPacketAvailability = {
@@ -294,6 +311,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   try {
     const notebook = await getNotebook(ctx.tenantId, id);
     if (!notebook) return NextResponse.json({ error: "notebook_not_found" }, { status: 404 });
+    if (req.signal.aborted) return NextResponse.json({ error: "request_aborted" }, { status: 499 });
 
     // SAFETY, on the work-order text only — see file header for the two gates.
     const safetyText = `${workOrder.title}\n${workOrder.description}`;
@@ -306,6 +324,8 @@ export async function POST(req: NextRequest, { params }: Params) {
     if (trigger) hazardFlags.push(hazardBanner(trigger));
 
     const identity = identityOf(notebook);
+    const identityBlock = identityBlocking(identity, true);
+    if (identityBlock) return NextResponse.json({ ok: false, ...identityBlock } satisfies DraftResult, { status: 422 });
     const docs = await loadNotebookDocTexts(ctx.tenantId, id, { signal: req.signal });
     const input: DraftInput = {
       notebookId: id,

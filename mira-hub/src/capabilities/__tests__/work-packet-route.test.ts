@@ -125,6 +125,40 @@ describe("#5289 request cancellation", () => {
     expect(await response.json()).toEqual({ error: "request_aborted" });
     expect(buildDraftPacket).not.toHaveBeenCalled();
   });
+
+  it.each(["GET", "POST"])("does no document work when %s aborts during notebook lookup", async (method) => {
+    const controller = new AbortController();
+    vi.mocked(getNotebook).mockImplementationOnce(async () => { controller.abort(); return notebook(); });
+    const request = new Request(`https://hub.test/api/equipment-notebooks/${NOTEBOOK_ID}/work-packet`, {
+      method, signal: controller.signal,
+      ...(method === "POST" ? { body: JSON.stringify({ workOrder: baseWorkOrder }) } : {}),
+    });
+    const response = await (method === "GET" ? GET : POST)(request as never, makeParams(NOTEBOOK_ID));
+    expect(response.status).toBe(499);
+    expect(loadNotebookDocTexts).not.toHaveBeenCalled();
+    expect(buildDraftPacket).not.toHaveBeenCalled();
+  });
+});
+
+describe("#5289 early draft refusal", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.NOTEBOOK_WORK_PACKET = "1";
+    vi.mocked(sessionOr401).mockResolvedValue(session as never);
+    vi.mocked(energizedHardStopEnabled).mockReturnValue(false);
+    vi.mocked(notebookSafetyTrigger).mockReturnValue(null);
+  });
+  it.each([
+    [{ identityStatus: "candidate" }, "identity_not_confirmed", "Confirm the equipment's identity (manufacturer and model) before drafting a job packet."],
+    [{ manufacturer: "AutomationDirect" }, "manufacturer_not_supported", "AutomationDirect"],
+  ] as const)("preserves %s refusal without fetching documents", async (identity, reason, message) => {
+    vi.mocked(getNotebook).mockResolvedValue(notebook(identity));
+    const res = await POST(makePost({ workOrder: baseWorkOrder }), makeParams(NOTEBOOK_ID));
+    expect(res.status).toBe(422);
+    expect(await res.json()).toEqual({ ok: false, reason, message: expect.stringContaining(message) });
+    expect(loadNotebookDocTexts).not.toHaveBeenCalled();
+    expect(buildDraftPacket).not.toHaveBeenCalled();
+  });
 });
 
 describe("GET /work-packet", () => {
@@ -176,6 +210,8 @@ describe("GET /work-packet", () => {
       reason: "identity_not_confirmed",
       message: "Confirm this machine's identity before preparing a job packet.",
     });
+    expect(loadNotebookDocTexts).not.toHaveBeenCalled();
+    expect(body.documentsState).toBe("deferred");
   });
 
   it("blocks no_documents when nothing is attached", async () => {
@@ -186,6 +222,8 @@ describe("GET /work-packet", () => {
     const body = await res.json();
     expect(body.blocking?.reason).toBe("no_documents");
     expect(body.documents).toEqual([]);
+    expect(loadNotebookDocTexts).toHaveBeenCalledTimes(1);
+    expect(body.documentsState).not.toBe("deferred");
   });
 
   it("blocks unsupported_documents when nothing attached parses as CAT Pumps", async () => {
@@ -223,6 +261,8 @@ describe("GET /work-packet", () => {
     const body = await (await GET(makeGet(), makeParams(NOTEBOOK_ID))).json();
     expect(body.blocking?.reason).toBe("manufacturer_not_supported");
     expect(body.blocking?.message).toContain("Other Pump Manufacturer");
+    expect(loadNotebookDocTexts).not.toHaveBeenCalled();
+    expect(body.documentsState).toBe("deferred");
   });
 
   it("is not blocked (null) and reports the model's pages when everything lines up", async () => {

@@ -710,7 +710,9 @@ export function WorkPacketPanel({
                 </>
               ) : (
                 <div style={S.muted}>
-                  No manufacturer documents yet. Attach this machine&apos;s data sheet and service manual in Sources.
+                  {avail?.documentsState === "deferred"
+                    ? "Documents have not been read yet."
+                    : <>No manufacturer documents yet. Attach this machine&apos;s data sheet and service manual in Sources.</>}
                 </div>
               )}
             </section>
