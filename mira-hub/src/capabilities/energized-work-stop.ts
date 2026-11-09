@@ -171,6 +171,15 @@ const NON_SUBJECT_WORDS = new Set([
   "equipment", "machine", "unit", "work", "working",
 ]);
 
+// Words that place a hazard rather than name an action or a part: two of these
+// in common ("hazardous" + "environment") are what the manual's front-matter
+// definition of WARNING shares with every hazardous-location ask (Codex #5349 F2).
+const HAZARD_CONTEXT_WORDS = new Set([
+  "hazard", "hazards", "hazardous", "nonhazardous", "location", "locations", "environment", "environments",
+  "area", "areas", "installation", "installations", "explosion", "explosive", "danger", "dangerous",
+  "warning", "caution", "injury", "death", "electrical", "electric", "shock", "fire", "burn", "burns",
+]);
+
 function subjectTerms(message: string): string[] {
   const words = message.toLowerCase().match(/[a-z0-9]+/g) ?? [];
   return [...new Set(words.filter((w) => w.length >= 4 && !NON_SUBJECT_WORDS.has(w)))];
@@ -181,8 +190,10 @@ function subjectTerms(message: string): string[] {
  * this ask names, or null. A passage qualifies only when it is a hazard box
  * (capitalised WARNING / DANGER / CAUTION heading AND a named harm) and it
  * shares at least two of the ask's subject words ("serial", "cable",
- * "disconnect", "hazardous", "location") — front-matter boilerplate and a
- * warning about a different action share none. Ranked by shared subject
+ * "disconnect", "hazardous", "location"), at least one of which names the
+ * action or the part rather than the hazard's location. The manual's own
+ * definition of WARNING, and a warning about a different action in the same
+ * hazardous location, are never picked. Ranked by shared subject
  * words, then by retrieval order.
  */
 export function pickQuestionWarningChunk(chunks: readonly ManualChunk[], message: string): ManualChunk | null {
@@ -194,7 +205,12 @@ export function pickQuestionWarningChunk(chunks: readonly ManualChunk[], message
     const content = c.content ?? "";
     if (!WARNING_BOX_RE.test(content) || !HAZARD_CONSEQUENCE_RE.test(content)) continue;
     const lower = content.toLowerCase();
-    const overlap = terms.filter((t) => new RegExp(`\\b${t}`).test(lower)).length;
+    const shared = terms.filter((t) => new RegExp(`\\b${t}`).test(lower));
+    // At least one shared word must name the action or the part ("disconnect",
+    // "serial", "cable") — not where the hazard is, and not the model number,
+    // which every page of this machine's manual carries.
+    if (!shared.some((t) => !HAZARD_CONTEXT_WORDS.has(t) && !/\d/.test(t))) continue;
+    const overlap = shared.length;
     if (overlap < need) continue;
     if (!best || overlap > best.overlap) best = { c, overlap };
   }

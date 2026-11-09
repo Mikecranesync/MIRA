@@ -286,6 +286,20 @@ describe("pickQuestionWarningChunk — the manual's own warning about THIS ask",
     });
     expect(pickQuestionWarningChunk([rtb], "Can I swap the cooling fan while the drive is powered?")).toBeNull();
   });
+  it("control (Codex #5349 F2): the WARNING definition is not picked even when the ask says 'hazardous environment'", () => {
+    const ask = "Can I disconnect the serial cable from a Micro820 with power applied in a hazardous environment?";
+    expect(pickQuestionWarningChunk([FRONT_MATTER], ask)).toBeNull();
+    expect(pickQuestionWarningChunk([FRONT_MATTER, P5_WARNING], ask)).toBe(P5_WARNING);
+  });
+  it("control (Codex #5349 F2): a warning about a different action that shares only the hazardous-location words is not picked", () => {
+    const pluginModule = chunk({
+      content:
+        "WARNING: If you insert or remove the plug-in module on a Micro820 while backplane power is on, an electrical arc can occur. This could cause an explosion in hazardous location installations.",
+      sourcePage: 7,
+    });
+    expect(pickQuestionWarningChunk([pluginModule], S5B_ASK)).toBeNull();
+    expect(pickQuestionWarningChunk([pluginModule, P5_WARNING], S5B_ASK)).toBe(P5_WARNING);
+  });
   it("returns null with no chunks", () => {
     expect(pickQuestionWarningChunk([], S5B_ASK)).toBeNull();
   });

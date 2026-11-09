@@ -3344,10 +3344,13 @@ async function handleChatTurn(
         sourceTitle,
         quote: null,
       }));
+    // Each pointer is built alone, so each starts at citation "1"; renumber
+    // across the stop so the lockout page and the warning page are two
+    // sources, not one id that opens whichever came first (Codex #5349 F1).
     const stopCitations = [
       ...(lockoutChunk ? await pointerCitations(lockoutChunk, "Lockout / disconnect-power procedure") : []),
       ...(warningChunk ? await pointerCitations(warningChunk, "Manual warning") : []),
-    ];
+    ].map((c, i) => ({ ...c, citationId: String(i + 1) }));
     const stopText = energizedWorkStop(
       lockoutChunk ? { title: citationTitle(lockoutChunk), page: lockoutPageOf(lockoutChunk) } : null,
       { warning: warningChunk ? { page: lockoutPageOf(warningChunk) } : null, lookupFailed: stopLookupsFailed },

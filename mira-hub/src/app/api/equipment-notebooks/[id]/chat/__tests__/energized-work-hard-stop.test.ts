@@ -88,6 +88,7 @@ const seamMock = vi.hoisted(() => ({
 vi.mock("@/lib/inference/canonical-cascade", () => seamMock);
 
 import { POST } from "../route";
+import { answerTurnId, citationIndex, sourceIdFor } from "@/factorylm-ui/to-interaction";
 
 function req(body: unknown) {
   return new NextRequest("http://test/api/equipment-notebooks/x/chat", {
@@ -374,6 +375,33 @@ describe("CV-101 S5b — the stop carries the manual's own warning about this as
     expect(sources.citations[0].sourceTitle).toBe("Manual warning");
     const persisted = (vi.mocked(nbMock.recordTurn).mock.calls[0] as unknown as unknown[])[2] as { answerText: string };
     expect(persisted.answerText).toContain("p.5");
+  });
+
+  it("Codex #5349 F1: a lockout page and a warning page are two sources that each open their own page, live and after reload", async () => {
+    ragMock.retrieveNodeChunks.mockImplementation(async (_c: unknown, _t: unknown, query: unknown) =>
+      /lockout tagout/i.test(String(query)) ? [LOCKOUT_CHUNK] : /warning caution danger/i.test(String(query)) ? [P5_WARNING] : [RELAY_RATINGS],
+    );
+    const out = await frames(await POST(req({ message: S5B_ASK, sourceDocIds: [DOC_A] }), params));
+    const live = (out.find((f) => f.kind === "sources") as {
+      citations: Array<{ citationId: string; page: number | null; quote: string | null; sourceTitle: string }>;
+    }).citations;
+    expect(live.map((c) => [c.citationId, c.sourceTitle, c.page])).toEqual([
+      ["1", "Lockout / disconnect-power procedure", 25],
+      ["2", "Manual warning", 5],
+    ]);
+    expect(live.every((c) => c.quote === null)).toBe(true);
+    // Live: the in-flight exchange's index.
+    const liveTurn = "live-a";
+    const liveIndex = citationIndex([], live as never, liveTurn);
+    expect(liveIndex.get(sourceIdFor(liveTurn, "1"))?.page).toBe(25);
+    expect(liveIndex.get(sourceIdFor(liveTurn, "2"))?.page).toBe(5);
+    // Reload: the persisted row's evidence, read back through the same adapter.
+    const persisted = (vi.mocked(nbMock.recordTurn).mock.calls[0] as unknown as unknown[])[2] as { evidence: unknown[] };
+    const row = { id: "row-1", evidence: persisted.evidence } as never;
+    const reloaded = citationIndex([row]);
+    expect(reloaded.size).toBe(2);
+    expect(reloaded.get(sourceIdFor(answerTurnId("row-1"), "1"))?.page).toBe(25);
+    expect(reloaded.get(sourceIdFor(answerTurnId("row-1"), "2"))?.page).toBe(5);
   });
 
   it("control: on the pre-fix shape (no warning anywhere) the stop is unchanged and claims no warning", async () => {
