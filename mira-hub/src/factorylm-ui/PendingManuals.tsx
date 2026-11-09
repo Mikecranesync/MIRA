@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { API_BASE } from "@/lib/config";
 import { POLL_INTERVAL_MS, POLL_MAX, type SetupDeps } from "./new-project-setup-logic";
-import { addPendingManual, checkPendingManuals, knownSources, reuploadPendingManual, type PendingManual } from "./pending-manuals";
+import { addPendingManual, approvedFiles, checkPendingManuals, knownSources, outstandingAttached, reuploadPendingManual, settleAttachments, type PendingManual } from "./pending-manuals";
 
 type Props = {
   notebookId: string;
@@ -40,23 +40,30 @@ export function PendingManuals({ notebookId, nodeId, sources, approved, onAttach
   const [run, setRun] = useState(0);
   const latest = useRef({ sources, approved, onAttached });
   useEffect(() => { latest.current = { sources, approved, onAttached }; }, [sources, approved, onAttached]);
-  const names = useRef(new Map<string, string>());
-  const [busy, setBusy] = useState<string | null>(null);
   /** Documents this panel attached; counted as sources until the host's refresh lists them (#5325). */
   const attachedDocs = useRef(new Set<string>());
+  // #5327: once the host lists a document, the host is the authority, so a later
+  // detach elsewhere is not hidden by this panel's memory of attaching it.
+  useEffect(() => { attachedDocs.current = outstandingAttached(attachedDocs.current, sources); }, [sources]);
+  /** Files sent with Upload again in this project that the server is still reading (#5322). */
+  const retried = useRef(new Set<string>());
+  useEffect(() => { retried.current = new Set(); attachedDocs.current = new Set(); }, [notebookId]);
+  const names = useRef(new Map<string, string>());
+  const [busy, setBusy] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
     void (async () => {
       setStatus("checking");
       for (let poll = 1; poll <= POLL_MAX && alive; poll++) {
-        const r = await checkPendingManuals({ notebookId, nodeId, sources: knownSources(latest.current.sources, attachedDocs.current), approved: latest.current.approved }, deps, () => !alive);
+        const r = await checkPendingManuals({ notebookId, nodeId, sources: knownSources(latest.current.sources, attachedDocs.current), approved: approvedFiles(latest.current.approved, retried.current) }, deps, () => !alive);
         if (!alive) return;
         if (!r.ok) { setStatus("error"); return; }
         for (const [id, name] of Object.entries(r.filenames)) names.current.set(id, name);
         setPending(r.pending);
         setFailed(Object.fromEntries(r.failed.map((f) => [f.fileId, f.message])));
         if (r.attached.length) {
+          settleAttachments(r, attachedDocs.current, retried.current);
           setAdded((a) => [...a, ...r.attached.map((id) => names.current.get(id) ?? "Document")]);
           latest.current.onAttached(r.attached);
         }
@@ -93,7 +100,12 @@ export function PendingManuals({ notebookId, nodeId, sources, approved, onAttach
       setAdded((a) => [...a, r.filename]);
       latest.current.onAttached([p.fileId]);
       setRun((n) => n + 1);
-    } else if (r.kind === "reading") setRun((n) => n + 1);
+    } else if (r.kind === "reading") {
+      // The tap approved this file for this project (#5322): follow the id the
+      // server is reading, which differs from the row's when another copy was picked.
+      retried.current.add(r.fileId ?? p.fileId);
+      setRun((n) => n + 1);
+    }
     else setFailed((f) => ({ ...f, [p.fileId]: r.message }));
   }, [notebookId, nodeId]);
 
@@ -105,11 +117,11 @@ export function PendingManuals({ notebookId, nodeId, sources, approved, onAttach
       {pending.map((p) => (
         <p key={p.fileId} style={{ margin: "4px 0" }}>
           {p.state === "reading"
-            ? <>{p.filename} is saved here and still being read. It is not searchable yet.{approved.has(p.fileId) ? " It is added as a source when it is ready." : " Once readable, add it as a source here."}</>
+            ? <>{p.filename} is saved here and still being read. It is not searchable yet.{approvedFiles(approved, retried.current).has(p.fileId) ? " It is added as a source when it is ready." : " Once readable, add it as a source here."}</>
             : p.state === "unread"
               ? <>{p.filename} is saved here but wasn&apos;t read, so it is not searchable.{busy === p.fileId
                   ? " Uploading…"
-                  : <label style={btn}>Upload again<input type="file" accept="application/pdf" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; void reupload(p, f); }} /></label>}</>
+                  : <UploadAgain filename={p.filename} onPick={(f) => void reupload(p, f)} />}</>
               : <>{p.filename} is readable but not a source of this project yet.<button type="button" style={btn} onClick={() => void add(p)}>Add as source</button></>}
           {failed[p.fileId] ? <span role="alert" style={{ display: "block", color: "var(--fl-fault)" }}>{failed[p.fileId]}</span> : null}
         </p>
@@ -117,5 +129,20 @@ export function PendingManuals({ notebookId, nodeId, sources, approved, onAttach
       {status === "capped" ? <p style={{ margin: "4px 0" }}>Still being read.{again}</p> : null}
       {status === "error" ? <p role="alert" style={{ margin: "4px 0" }}>Couldn&apos;t check this project&apos;s documents.{again}</p> : null}
     </section>
+  );
+}
+
+/**
+ * #5323: Upload again as a real button. The file input stays out of the layout
+ * and the tab order; the button is what keyboard and screen-reader users reach,
+ * and it opens the platform file chooser.
+ */
+export function UploadAgain({ filename, onPick }: { filename: string; onPick: (file: File | undefined) => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  return (
+    <>
+      <button type="button" style={btn} aria-label={`Upload ${filename} again`} onClick={() => input.current?.click()}>Upload again</button>
+      <input ref={input} type="file" accept="application/pdf" hidden tabIndex={-1} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; onPick(f); }} />
+    </>
   );
 }

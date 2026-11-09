@@ -1,7 +1,7 @@
 /** #5302: a manual still being read when the setup sheet closes is not abandoned. Fake fetch only; no DOM. */
 import { describe, expect, it, vi } from "vitest";
 import { createNewProjectSetup, type SetupDeps } from "./new-project-setup-logic";
-import { checkPendingManuals, filedManuals, knownSources, reuploadPendingManual } from "./pending-manuals";
+import { approvedFiles, checkPendingManuals, filedManuals, knownSources, outstandingAttached, reuploadPendingManual, settleAttachments } from "./pending-manuals";
 
 type Call = { method: string; path: string; body?: unknown };
 type Reply = { status: number; body: Record<string, unknown> };
@@ -287,8 +287,13 @@ describe("#5316 Upload again: the technician's recovery for a manual that was no
 
   it("a 202 means the server is reading it now: reading, no source write", async () => {
     const h = harness({ [UP]: { status: 202, body: { ok: true, indexed: false, indexing: true, fileId: "f-202" } } });
-    expect(await run(h.fetch)).toEqual({ kind: "reading" });
+    expect(await run(h.fetch)).toEqual({ kind: "reading", fileId: "f-202" });
     expect(attaches(h.calls)).toHaveLength(0);
+  });
+
+  it("#5322: a 202 without a usable file id is still reading, with no id to follow", async () => {
+    const h = harness({ [UP]: { status: 202, body: { ok: true, indexed: false, indexing: true, fileId: "" } } });
+    expect(await run(h.fetch)).toEqual({ kind: "reading", fileId: null });
   });
 
   it("read again but failed again: unread with the server's reason, no source write", async () => {
@@ -345,5 +350,117 @@ describe("#5325 the check after Upload again knows the document it just attached
     const host = [{ docId: "up-1", fileId: "f-1" }];
     expect(knownSources(host, ["up-1", "up-2"])).toEqual([{ docId: "up-1", fileId: "f-1" }, { docId: "up-2", fileId: null }]);
     expect(knownSources(host, [])).toEqual(host);
+  });
+});
+
+describe("#5322 a 202 Upload again is the technician's approval, followed by the returned file id", () => {
+  const NODE = "GET /api/namespace/node/node-g/files/";
+  const UP = "POST /api/namespace/node/node-g/files/";
+  const SRC = "POST /api/equipment-notebooks/nb-g/sources/";
+  const picked = (name = "manual.pdf") => new File(["%PDF"], name, { type: "application/pdf" });
+
+  /** Upload again (202), then the panel's follow-up checks, as PendingManuals runs them. */
+  async function retryThenFollow(returnedId: string, nodeFiles: Record<string, unknown>[], lookups: Record<string, Reply>) {
+    let indexed = false;
+    const h = harness({
+      [UP]: { status: 202, body: { ok: true, indexed: false, indexing: true, fileId: returnedId } },
+      [NODE]: { status: 200, body: { files: nodeFiles } },
+      [`GET /api/files/${returnedId}`]: () => (indexed ? fileLookup(returnedId, "up-new") : fileLookup(returnedId, null, true)),
+      ...lookups,
+      [SRC]: { status: 201, body: { ok: true } },
+    });
+    const setupApprovals = new Set<string>(); // empty: the sheet was closed or the page reloaded
+    const r = await reuploadPendingManual({ notebookId: "nb-g", nodeId: "node-g", file: picked() }, deps(h.fetch));
+    if (r.kind !== "reading" || !r.fileId) throw new Error("precondition: the retry must be reading with a file id");
+    const retried = new Set([r.fileId]);
+    const attachedDocs = new Set<string>();
+    const hostSources: Array<{ docId: string; fileId: string | null }> = [];
+    const check = async () => {
+      const res = await checkPendingManuals({ notebookId: "nb-g", nodeId: "node-g", sources: knownSources(hostSources, attachedDocs), approved: approvedFiles(setupApprovals, retried) }, deps(h.fetch));
+      settleAttachments(res, attachedDocs, retried); // the component's own bookkeeping
+      return res;
+    };
+    const reading = await check();
+    indexed = true;
+    const landed = await check();
+    const after = await check();
+    return { h, reading, landed, after, attachedDocs };
+  }
+
+  it("empty approvals, 202 with a file id, lookup resolves: attached automatically, exactly once", async () => {
+    const { h, reading, landed, after } = await retryThenFollow("f-202", [pdf({})], {});
+    expect(reading.pending).toEqual([{ fileId: "f-202", filename: "manual.pdf", docId: null, state: "reading" }]);
+    expect(landed.attached).toEqual(["f-202"]);
+    expect(after).toMatchObject({ ok: true, attached: [], pending: [] });
+    expect(attaches(h.calls)).toEqual([{ method: "POST", path: "/api/equipment-notebooks/nb-g/sources/", body: { docId: "up-new", sourceRole: "manual" } }]);
+  });
+
+  it("a returned file id different from the pending row: the new file is attached once, the original row is not", async () => {
+    const files = [pdf({ id: "f-blank", filename: "blank.pdf" }), pdf({ id: "f-copy", filename: "copy.pdf" })];
+    const { h, landed, after } = await retryThenFollow("f-copy", files, { "GET /api/files/f-blank": fileLookup("f-blank", null) });
+    expect(landed.attached).toEqual(["f-copy"]);
+    expect(landed.pending).toEqual([{ fileId: "f-blank", filename: "blank.pdf", docId: null, state: "unread" }]);
+    expect(after.attached).toEqual([]);
+    expect(attaches(h.calls)).toHaveLength(1);
+    expect(attaches(h.calls)[0]?.body).toEqual({ docId: "up-new", sourceRole: "manual" });
+  });
+
+  it("Codex 5344 F1: host still stale and another file still reading: the attached manual is never offered again", async () => {
+    const files = [pdf({}), pdf({ id: "f-other", filename: "other.pdf" })];
+    const { h, landed, after, attachedDocs } = await retryThenFollow("f-202", files, { "GET /api/files/f-other": fileLookup("f-other", null, true) });
+    expect(landed.attached).toEqual(["f-202"]);
+    expect(landed.attachedDocIds).toEqual(["up-new"]);
+    expect(landed.pending.map((p) => p.state)).toEqual(["reading"]); // the poll goes on
+    expect(attachedDocs.has("up-new")).toBe(true);
+    expect(after.pending).toEqual([{ fileId: "f-other", filename: "other.pdf", docId: null, state: "reading" }]);
+    expect(attaches(h.calls)).toHaveLength(1);
+  });
+
+  it("settleAttachments records the attached documents and retires their retry approvals", () => {
+    const docs = new Set<string>(); const retried = new Set(["f-202", "f-keep"]);
+    settleAttachments({ attached: ["f-202"], attachedDocIds: ["up-new"] }, docs, retried);
+    expect([...docs]).toEqual(["up-new"]);
+    expect([...retried]).toEqual(["f-keep"]);
+  });
+
+  it("control: the same readable file without the retry approval is offered, never attached", async () => {
+    const h = harness({ [NODE]: { status: 200, body: { files: [pdf({})] } }, "GET /api/files/f-202": fileLookup("f-202", "up-new") });
+    const r = await checkPendingManuals({ notebookId: "nb-g", nodeId: "node-g", sources: [], approved: approvedFiles(new Set(), []) }, deps(h.fetch));
+    expect(r.pending).toEqual([{ fileId: "f-202", filename: "manual.pdf", docId: "up-new", state: "readable" }]);
+    expect(attaches(h.calls)).toHaveLength(0);
+  });
+
+  it("approvedFiles is the union of setup approvals and retried files", () => {
+    expect([...approvedFiles(new Set(["f-1"]), ["f-2", "f-1"])].sort()).toEqual(["f-1", "f-2"]);
+    expect([...approvedFiles(new Set(), [])]).toEqual([]);
+  });
+});
+
+describe("#5327 the panel's own attachments yield to the host once it lists them", () => {
+  it("a document the host now lists is dropped; one it does not list yet is kept", () => {
+    expect([...outstandingAttached(["up-1", "up-2"], [{ docId: "up-1", fileId: "f-1" }])]).toEqual(["up-2"]);
+    expect([...outstandingAttached(["up-2"], [])]).toEqual(["up-2"]);
+  });
+
+  it("detached elsewhere after the host listed it: the manual is offered again, not hidden", async () => {
+    const h = harness({
+      "GET /api/namespace/node/node-g/files/": { status: 200, body: { files: [pdf({ indexed: true })] } },
+      "GET /api/files/f-202": fileLookup("f-202", "up-1"),
+    });
+    let attached = new Set(["up-1"]);
+    attached = outstandingAttached(attached, [{ docId: "up-1", fileId: "f-202" }]); // host refresh lists it
+    const hostAfterDetach: Array<{ docId: string; fileId: string | null }> = [];
+    const r = await checkPendingManuals({ notebookId: "nb-g", nodeId: "node-g", sources: knownSources(hostAfterDetach, attached), approved: new Set() }, deps(h.fetch));
+    expect(r.pending).toEqual([{ fileId: "f-202", filename: "manual.pdf", docId: "up-1", state: "readable" }]);
+    expect(attaches(h.calls)).toHaveLength(0);
+  });
+
+  it("control: without the yield the detached manual stays hidden (the #5327 defect)", async () => {
+    const h = harness({
+      "GET /api/namespace/node/node-g/files/": { status: 200, body: { files: [pdf({ indexed: true })] } },
+      "GET /api/files/f-202": fileLookup("f-202", "up-1"),
+    });
+    const r = await checkPendingManuals({ notebookId: "nb-g", nodeId: "node-g", sources: knownSources([], ["up-1"]), approved: new Set() }, deps(h.fetch));
+    expect(r.pending).toEqual([]);
   });
 });

@@ -76,6 +76,8 @@ export type PendingCheck = {
   pending: PendingManual[];
   /** File ids attached as sources by this check. */
   attached: string[];
+  /** Document ids of those attachments, in the same order (#5344 F1). */
+  attachedDocIds: string[];
   failed: Array<{ fileId: string; message: string }>;
   /** Display name of every file this check found, attached ones included. */
   filenames: Record<string, string>;
@@ -96,6 +98,26 @@ export function knownSources(host: readonly SourceRef[], attachedDocIds: Iterabl
 }
 
 /**
+ * #5327: documents this panel attached stay counted as sources only until the
+ * host's own sources list them. After that the host is the authority, so a
+ * later detach elsewhere shows the manual again instead of hiding it.
+ */
+export function outstandingAttached(attachedDocIds: Iterable<string>, host: readonly SourceRef[]): Set<string> {
+  const listed = new Set(host.map((s) => s.docId));
+  return new Set([...attachedDocIds].filter((docId) => !listed.has(docId)));
+}
+
+/**
+ * #5322: every file the technician approved for this project: the files chosen
+ * at Create project plus files sent with Upload again in this panel (a 202
+ * reading retry). The tap is the approval, so it still holds after a reload
+ * empties the setup approvals.
+ */
+export function approvedFiles(setup: ReadonlySet<string>, retried: Iterable<string>): Set<string> {
+  return new Set([...setup, ...retried]);
+}
+
+/**
  * One read of the project's files; attaches each readable file in `approved`.
  * `stale()` true (the project closed or changed) stops before any write.
  */
@@ -104,7 +126,7 @@ export async function checkPendingManuals(
   deps: SetupDeps,
   stale: () => boolean = () => false,
 ): Promise<PendingCheck> {
-  const none: PendingCheck = { ok: false, pending: [], attached: [], failed: [], filenames: {} };
+  const none: PendingCheck = { ok: false, pending: [], attached: [], attachedDocIds: [], failed: [], filenames: {} };
   const res = await call(deps, "GET", `/api/namespace/node/${encodeURIComponent(input.nodeId)}/files/`);
   if (!res.ok || stale()) return none;
   const filed = filedManuals(res.body, input.sources);
@@ -125,15 +147,27 @@ export async function checkPendingManuals(
   }
   const filenames = Object.fromEntries(pending.map((p) => [p.fileId, p.filename]));
   const attached: string[] = [];
+  const attachedDocIds: string[] = [];
   const failed: PendingCheck["failed"] = [];
   for (const p of pending) {
     if (p.state !== "readable" || !p.docId || !input.approved.has(p.fileId)) continue;
-    if (stale()) return { ok: false, pending, attached, failed, filenames };
+    if (stale()) return { ok: false, pending, attached, attachedDocIds, failed, filenames };
     const att = await attach(input.notebookId, p.docId, deps);
-    if (att.ok) attached.push(p.fileId);
+    if (att.ok) { attached.push(p.fileId); attachedDocIds.push(p.docId); }
     else failed.push({ fileId: p.fileId, message: attachMessage(att) });
   }
-  return { ok: true, pending: pending.filter((p) => !attached.includes(p.fileId)), attached, failed, filenames };
+  return { ok: true, pending: pending.filter((p) => !attached.includes(p.fileId)), attached, attachedDocIds, failed, filenames };
+}
+
+/**
+ * The panel's bookkeeping after a check attached files (#5344 F1): remember each
+ * attached document until the host lists it, and retire the Upload again approval
+ * it consumed. Without the first half a late host refresh lets the next poll offer
+ * the just-attached manual again.
+ */
+export function settleAttachments(r: Pick<PendingCheck, "attached" | "attachedDocIds">, attachedDocs: Set<string>, retried: Set<string>): void {
+  for (const docId of r.attachedDocIds) attachedDocs.add(docId);
+  for (const fileId of r.attached) retried.delete(fileId);
 }
 
 /** One explicit Add (a technician tap): attach a readable file to this project. */
@@ -145,7 +179,12 @@ export async function addPendingManual(notebookId: string, docId: string, deps: 
 export type ReuploadOutcome =
   /** filename: the PDF the technician picked, which may differ from the pending row. */
   | { kind: "attached"; docId: string; filename: string }
-  | { kind: "reading" }
+  /**
+   * fileId (#5322): the canonical stored file the server is reading now. A
+   * different copy of the PDF gets its own id, so the panel must follow this
+   * id, not the pending row's, as the technician's approval.
+   */
+  | { kind: "reading"; fileId: string | null }
   | { kind: "unread"; message: string }
   | { kind: "failed"; message: string };
 
@@ -167,7 +206,10 @@ export async function reuploadPendingManual(
   form.append("file", input.file);
   const up = await call(deps, "POST", `/api/namespace/node/${encodeURIComponent(input.nodeId)}/files/`, { form });
   if (!up.ok) return { kind: "failed", message: messageOf(up, REUPLOAD_FAILED) };
-  if (up.status === 202 && up.body.indexing === true) return { kind: "reading" };
+  if (up.status === 202 && up.body.indexing === true) {
+    const fileId = up.body.fileId;
+    return { kind: "reading", fileId: typeof fileId === "string" && fileId ? fileId : null };
+  }
   const docId = up.body.uploadId;
   if (up.body.indexed === true && typeof docId === "string" && docId) {
     const att = await attach(input.notebookId, docId, deps);
