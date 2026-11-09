@@ -676,3 +676,535 @@ describe("slow indexing does not lock the sheet", () => {
     expect(polls).toBe(1);
   });
 });
+
+describe("S16: a PDF that never reached the project can be sent again from the sheet", () => {
+  const pdf = new File(["%PDF"], "manual.pdf", { type: "application/pdf" });
+  const setup = (files: (call: Call) => Reply) => {
+    let sourceCalls = 0;
+    const h = harness({
+      "GET /api/namespace/tree/": { status: 200, body: { nodes: [] } },
+      "GET /api/files/": { status: 200, body: { files: [] } },
+      "POST /api/namespace/node/node-g/files/": files,
+      // The project record lists the manual as a source only once it has been attached.
+      "GET /api/equipment-notebooks/nb-general/": () => ({ status: 200, body: { notebook: { nodeId: "node-g" }, sources: sourceCalls ? [{ docId: "doc-1", filename: "manual.pdf", readiness: { state: "chat_ready_basic" }, matchState: "user_confirmed", enabledByDefault: true }] : [] } }),
+      "POST /api/equipment-notebooks/nb-general/sources/": () => { sourceCalls += 1; return { status: 201, body: { ok: true } }; },
+    });
+    const c = createNewProjectSetup({ ...deps(h.fetch), getNotebooks: () => [] });
+    return { c, h, sources: () => sourceCalls };
+  };
+  const toCommit = async (c: ReturnType<typeof createNewProjectSetup>) => {
+    await c.start();
+    await c.choose({ kind: "general" });
+    c.setName("Upload retry test");
+    await c.next();
+    c.addPdfs([pdf]);
+    await c.next();
+    await c.commit();
+  };
+
+  it("a failed save is Needs attention, keeps the file, and offers Try again; nothing is attached", async () => {
+    const { c, sources } = setup(() => { throw new TypeError("Failed to fetch"); });
+    await toCommit(c);
+    const row = c.getState().rows[0]!;
+    expect(row.readiness.label).toBe("Needs attention");
+    expect(row.retry).toBe(true);
+    expect(row.note).toMatch(/Try again/);
+    expect(c.getState().pdfs).toHaveLength(1);
+    expect(sources()).toBe(0);
+  });
+
+  it("Try again sends the same file once, attaches it once and the row reads Ready", async () => {
+    let n = 0;
+    const { c, h, sources } = setup(() => (++n === 1 ? { status: 503, body: { error: "offline" } } : { status: 201, body: { ok: true, indexed: true, uploadId: "doc-1", fileId: "f-1" } }));
+    await toCommit(c);
+    const key = c.getState().rows[0]!.key;
+    await c.retryUpload(key);
+    const files = h.calls.filter((x) => x.method === "POST" && x.path.endsWith("/files/"));
+    expect(files).toHaveLength(2);
+    expect(sources()).toBe(1);
+    const row = c.getState().rows[0]!;
+    expect(row.readiness.label).toBe("Ready to search");
+    expect(row.retry).toBeFalsy();
+    expect(c.getState().rows).toHaveLength(1);
+  });
+
+  it("control: an upload saved but unreadable (indexed:false) offers no Try again", async () => {
+    const { c } = setup(() => ({ status: 201, body: { ok: true, indexed: false, warning: "scanned", fileId: "f" } }));
+    await toCommit(c);
+    expect(c.getState().rows[0]!.retry).toBeFalsy();
+  });
+
+  it("Codex #5353 r2 F4: retrying a second copy of an already-saved PDF leaves one row for that document", async () => {
+    const uploaded: string[] = [];
+    const attached: string[] = [];
+    let copies = 0;
+    const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      const reply = (status: number, body: Record<string, unknown>) =>
+        ({ status, ok: status >= 200 && status < 300, json: async () => body }) as Response;
+      if (method === "GET" && path.startsWith("/api/namespace/tree/")) return reply(200, { nodes: [] });
+      if (method === "GET" && path.startsWith("/api/files/")) return reply(200, { files: [] });
+      if (method === "POST" && path.startsWith("/api/namespace/node/node-g/files/")) {
+        const bytes = await ((init!.body as FormData).get("file") as File).text();
+        uploaded.push(bytes);
+        copies++;
+        if (copies === 2) return reply(503, { error: "offline" });
+        // content dedup: the same bytes always come back as the same document
+        return reply(201, { ok: true, indexed: true, uploadId: `doc-${bytes}`, fileId: `f-${bytes}` });
+      }
+      if (method === "POST" && path.startsWith("/api/equipment-notebooks/nb-general/sources/")) {
+        const docId = String(JSON.parse(String(init!.body)).docId);
+        if (!attached.includes(docId)) attached.push(docId);
+        return reply(201, { ok: true });
+      }
+      if (method === "GET" && path.startsWith("/api/equipment-notebooks/nb-general/")) {
+        return reply(200, {
+          notebook: { nodeId: "node-g" },
+          sources: attached.map((docId) => ({ docId, filename: "manual.pdf", readiness: { state: "chat_ready_basic" }, matchState: "user_confirmed", enabledByDefault: true })),
+        });
+      }
+      throw new Error(`unexpected request ${method} ${path}`);
+    });
+    const c = createNewProjectSetup({ ...deps(fetchFn as unknown as typeof fetch), getNotebooks: () => [] });
+    await c.start();
+    await c.choose({ kind: "general" });
+    c.setName("Duplicate retry");
+    await c.next();
+    c.addPdfs([new File(["A"], "manual.pdf", { type: "application/pdf" }), new File(["A"], "manual.pdf", { type: "application/pdf" })]);
+    await c.next();
+    await c.commit();
+    const failed = c.getState().rows.find((r) => r.retry)!;
+    expect(failed).toBeDefined();
+    await c.retryUpload(failed.key);
+    expect(uploaded).toEqual(["A", "A", "A"]);
+    expect(attached).toEqual(["doc-A"]);
+    const rows = c.getState().rows;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.retry).toBeFalsy();
+    expect(rows[0]!.readiness.label).toBe("Ready to search");
+  });
+
+  it("Codex #5353 r3 F5: a deduplicated retry that attaches clears the first copy's earlier attach failure", async () => {
+    const attached: string[] = [];
+    let copies = 0;
+    let attachCalls = 0;
+    const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      const reply = (status: number, body: Record<string, unknown>) =>
+        ({ status, ok: status >= 200 && status < 300, json: async () => body }) as Response;
+      if (method === "GET" && path.startsWith("/api/namespace/tree/")) return reply(200, { nodes: [] });
+      if (method === "GET" && path.startsWith("/api/files/")) return reply(200, { files: [] });
+      if (method === "POST" && path.startsWith("/api/namespace/node/node-g/files/")) {
+        const bytes = await ((init!.body as FormData).get("file") as File).text();
+        copies++;
+        if (copies === 2) return reply(503, { error: "offline" });
+        return reply(201, { ok: true, indexed: true, uploadId: `doc-${bytes}`, fileId: `f-${bytes}` });
+      }
+      if (method === "POST" && path.startsWith("/api/equipment-notebooks/nb-general/sources/")) {
+        attachCalls++;
+        // the first copy's attach fails; the retry's attach succeeds
+        if (attachCalls === 1) return reply(503, { error: "attach offline" });
+        const docId = String(JSON.parse(String(init!.body)).docId);
+        if (!attached.includes(docId)) attached.push(docId);
+        return reply(201, { ok: true });
+      }
+      if (method === "GET" && path.startsWith("/api/equipment-notebooks/nb-general/")) {
+        return reply(200, {
+          notebook: { nodeId: "node-g" },
+          sources: attached.map((docId) => ({ docId, filename: "manual.pdf", readiness: { state: "chat_ready_basic" }, matchState: "user_confirmed", enabledByDefault: true })),
+        });
+      }
+      throw new Error(`unexpected request ${method} ${path}`);
+    });
+    const c = createNewProjectSetup({ ...deps(fetchFn as unknown as typeof fetch), getNotebooks: () => [] });
+    await c.start();
+    await c.choose({ kind: "general" });
+    c.setName("Duplicate retry after attach failure");
+    await c.next();
+    c.addPdfs([new File(["A"], "manual.pdf", { type: "application/pdf" }), new File(["A"], "manual.pdf", { type: "application/pdf" })]);
+    await c.next();
+    await c.commit();
+    const failed = c.getState().rows.find((r) => r.retry)!;
+    expect(failed).toBeDefined();
+    await c.retryUpload(failed.key);
+    expect(attached).toEqual(["doc-A"]);
+    const rows = c.getState().rows;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.retry).toBeFalsy();
+    expect(rows[0]!.readiness.label).toBe("Ready to search");
+    expect(rows[0]!.note ?? "").not.toMatch(/attach offline|Couldn't be added/);
+  });
+
+  it("Codex #5353 r5 F6: a retry that removes a row while an older attach is in flight does not overwrite another file's failed row", async () => {
+    const attached: string[] = [];
+    const uploads: Record<string, number> = {};
+    let bReads = 0;
+    let bAttaches = 0;
+    let releaseB: () => void = () => {};
+    const bGate = new Promise<void>((r) => { releaseB = r; });
+    let bRequested: () => void = () => {};
+    const bInFlight = new Promise<void>((r) => { bRequested = r; });
+    const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      const reply = (status: number, body: Record<string, unknown>) =>
+        ({ status, ok: status >= 200 && status < 300, json: async () => body }) as Response;
+      if (method === "GET" && path.startsWith("/api/namespace/tree/")) return reply(200, { nodes: [] });
+      if (method === "GET" && path.startsWith("/api/files/f-B")) { bReads++; return reply(200, { file: { id: "f-B", uploadId: bReads < 2 ? null : "doc-B" } }); }
+      if (method === "GET" && path.startsWith("/api/files/")) return reply(200, { files: [] });
+      if (method === "POST" && path.startsWith("/api/namespace/node/node-g/files/")) {
+        const bytes = await ((init!.body as FormData).get("file") as File).text();
+        uploads[bytes] = (uploads[bytes] ?? 0) + 1;
+        if (bytes === "B") return reply(202, { ok: true, indexed: false, indexing: true, fileId: "f-B" });
+        // the first A copy and C fail; the second A copy and every retry save
+        if ((bytes === "A" || bytes === "C") && uploads[bytes] === 1) return reply(503, { error: "offline" });
+        return reply(201, { ok: true, indexed: true, uploadId: `doc-${bytes}`, fileId: `f-${bytes}` });
+      }
+      if (method === "POST" && path.startsWith("/api/equipment-notebooks/nb-general/sources/")) {
+        const docId = String(JSON.parse(String(init!.body)).docId);
+        if (docId === "doc-B" && ++bAttaches === 1) { bRequested(); await bGate; }
+        if (!attached.includes(docId)) attached.push(docId);
+        return reply(201, { ok: true });
+      }
+      if (method === "GET" && path.startsWith("/api/equipment-notebooks/nb-general/")) {
+        return reply(200, {
+          notebook: { nodeId: "node-g" },
+          sources: attached.map((docId) => ({ docId, filename: `${docId}.pdf`, readiness: { state: "chat_ready_basic" }, matchState: "user_confirmed", enabledByDefault: true })),
+        });
+      }
+      throw new Error(`unexpected request ${method} ${path}`);
+    });
+    const c = createNewProjectSetup({ ...deps(fetchFn as unknown as typeof fetch), getNotebooks: () => [] });
+    await c.start();
+    await c.choose({ kind: "general" });
+    c.setName("Retry during an in-flight attach");
+    await c.next();
+    const pdf = (bytes: string, name: string) => new File([bytes], name, { type: "application/pdf" });
+    c.addPdfs([pdf("A", "a.pdf"), pdf("A", "a.pdf"), pdf("B", "b.pdf"), pdf("C", "c.pdf")]);
+    await c.next();
+    const commitDone = c.commit();
+    // the first poll unlocked the sheet; the next poll is attaching B and waits
+    await bInFlight;
+    expect(c.getState().committing).toBe(false);
+    const aRetry = c.getState().rows.find((r) => r.retry && r.filename === "a.pdf")!;
+    expect(aRetry).toBeDefined();
+    await c.retryUpload(aRetry.key); // deduplicates into the saved A copy and removes its row
+    releaseB(); // the retired attach completes after the rows shifted
+    await commitDone;
+    const cRetry = c.getState().rows.find((r) => r.retry && r.filename === "c.pdf");
+    expect(cRetry).toBeDefined();
+    await c.retryUpload(cRetry!.key);
+    expect(uploads.C).toBe(2);
+    const rows = c.getState().rows;
+    expect(rows.map((r) => r.filename)).toEqual(["a.pdf", "b.pdf", "c.pdf"]);
+    expect(rows.map((r) => r.readiness.label)).toEqual(["Ready to search", "Ready to search", "Ready to search"]);
+  });
+
+  it("Codex #5353 r7 F8: a retry deduplicates into a copy that was resolved from a 202", async () => {
+    const attached: string[] = [];
+    let copies = 0;
+    let aReads = 0;
+    const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      const reply = (status: number, body: Record<string, unknown>) =>
+        ({ status, ok: status >= 200 && status < 300, json: async () => body }) as Response;
+      if (method === "GET" && path.startsWith("/api/namespace/tree/")) return reply(200, { nodes: [] });
+      if (method === "GET" && path.startsWith("/api/files/f-A")) { aReads++; return reply(200, { file: { id: "f-A", uploadId: "doc-A" } }); }
+      if (method === "GET" && path.startsWith("/api/files/")) return reply(200, { files: [] });
+      if (method === "POST" && path.startsWith("/api/namespace/node/node-g/files/")) {
+        copies++;
+        if (copies === 1) return reply(202, { ok: true, indexed: false, indexing: true, fileId: "f-A" });
+        if (copies === 2) return reply(503, { error: "offline" });
+        return reply(201, { ok: true, indexed: true, uploadId: "doc-A", fileId: "f-A" });
+      }
+      if (method === "POST" && path.startsWith("/api/equipment-notebooks/nb-general/sources/")) {
+        const docId = String(JSON.parse(String(init!.body)).docId);
+        if (!attached.includes(docId)) attached.push(docId);
+        return reply(201, { ok: true });
+      }
+      if (method === "GET" && path.startsWith("/api/equipment-notebooks/nb-general/")) {
+        return reply(200, {
+          notebook: { nodeId: "node-g" },
+          sources: attached.map((docId) => ({ docId, filename: "manual.pdf", readiness: { state: "chat_ready_basic" }, matchState: "user_confirmed", enabledByDefault: true })),
+        });
+      }
+      throw new Error(`unexpected request ${method} ${path}`);
+    });
+    const c = createNewProjectSetup({ ...deps(fetchFn as unknown as typeof fetch), getNotebooks: () => [] });
+    await c.start();
+    await c.choose({ kind: "general" });
+    c.setName("Duplicate retry after a 202");
+    await c.next();
+    c.addPdfs([new File(["A"], "manual.pdf", { type: "application/pdf" }), new File(["A"], "manual.pdf", { type: "application/pdf" })]);
+    await c.next();
+    await c.commit();
+    expect(aReads).toBeGreaterThan(0); // the 202 copy was resolved to doc-A
+    const failed = c.getState().rows.find((r) => r.retry)!;
+    expect(failed).toBeDefined();
+    await c.retryUpload(failed.key);
+    const rows = c.getState().rows;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.readiness.label).toBe("Ready to search");
+    expect(attached).toEqual(["doc-A"]);
+  });
+
+  it("Codex #5353 r6 F7: a retired attach that fails late cannot undo the current watch's successful attach", async () => {
+    const attached: string[] = [];
+    const uploads: Record<string, number> = {};
+    let bReads = 0;
+    let bAttaches = 0;
+    // one gate per B attach: `started` resolves when the request is sent, `release(status)` answers it
+    const gate = () => {
+      let release: (status: number) => void = () => {};
+      let start: () => void = () => {};
+      const done = new Promise<number>((r) => { release = r; });
+      const started = new Promise<void>((r) => { start = r; });
+      return { done, started, start: () => start(), release: (status: number) => release(status) };
+    };
+    const gates = [gate(), gate()];
+    const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      const reply = (status: number, body: Record<string, unknown>) =>
+        ({ status, ok: status >= 200 && status < 300, json: async () => body }) as Response;
+      if (method === "GET" && path.startsWith("/api/namespace/tree/")) return reply(200, { nodes: [] });
+      if (method === "GET" && path.startsWith("/api/files/f-B")) { bReads++; return reply(200, { file: { id: "f-B", uploadId: bReads < 2 ? null : "doc-B" } }); }
+      if (method === "GET" && path.startsWith("/api/files/")) return reply(200, { files: [] });
+      if (method === "POST" && path.startsWith("/api/namespace/node/node-g/files/")) {
+        const bytes = await ((init!.body as FormData).get("file") as File).text();
+        uploads[bytes] = (uploads[bytes] ?? 0) + 1;
+        if (bytes === "B") return reply(202, { ok: true, indexed: false, indexing: true, fileId: "f-B" });
+        if (uploads[bytes] === 1) return reply(503, { error: "offline" });
+        return reply(201, { ok: true, indexed: true, uploadId: `doc-${bytes}`, fileId: `f-${bytes}` });
+      }
+      if (method === "POST" && path.startsWith("/api/equipment-notebooks/nb-general/sources/")) {
+        const docId = String(JSON.parse(String(init!.body)).docId);
+        if (docId === "doc-B") {
+          const g = gates[bAttaches++]!;
+          g.start();
+          const status = await g.done;
+          if (status !== 201) return reply(status, { error: "old attach failed" });
+        }
+        if (!attached.includes(docId)) attached.push(docId);
+        return reply(201, { ok: true });
+      }
+      if (method === "GET" && path.startsWith("/api/equipment-notebooks/nb-general/")) {
+        return reply(200, {
+          notebook: { nodeId: "node-g" },
+          sources: attached.map((docId) => ({ docId, filename: `${docId}.pdf`, readiness: { state: "chat_ready_basic" }, matchState: "user_confirmed", enabledByDefault: true })),
+        });
+      }
+      throw new Error(`unexpected request ${method} ${path}`);
+    });
+    const c = createNewProjectSetup({ ...deps(fetchFn as unknown as typeof fetch), getNotebooks: () => [] });
+    await c.start();
+    await c.choose({ kind: "general" });
+    c.setName("Late failure from a retired attach");
+    await c.next();
+    c.addPdfs([new File(["A"], "a.pdf", { type: "application/pdf" }), new File(["B"], "b.pdf", { type: "application/pdf" })]);
+    await c.next();
+    const commitDone = c.commit();
+    await gates[0]!.started; // the commit's watch is attaching B
+    const aRetry = c.getState().rows.find((r) => r.retry && r.filename === "a.pdf")!;
+    expect(aRetry).toBeDefined();
+    const retryDone = c.retryUpload(aRetry.key);
+    await gates[1]!.started; // the retry's watch is attaching B too
+    gates[0]!.release(503); // the retired attach fails late
+    await commitDone;
+    gates[1]!.release(201); // the current attach succeeds
+    await retryDone;
+    const rows = c.getState().rows;
+    expect(rows.map((r) => r.filename)).toEqual(["a.pdf", "b.pdf"]);
+    expect(rows.map((r) => r.readiness.label)).toEqual(["Ready to search", "Ready to search"]);
+    expect(rows[1]!.note ?? "").not.toMatch(/old attach failed/);
+  });
+
+  it("Codex #5353 r5 F6: the resolver writes back to its own row by identity, and leaves a row a retry replaced", async () => {
+    const indexingDoc = { key: "file:f-202", filename: "m.pdf", docId: null, fileId: "f-202", indexing: true, attachFailed: false, notIndexed: false, message: null };
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => { release = r; });
+    let requested: () => void = () => {};
+    const inFlight = new Promise<void>((r) => { requested = r; });
+    const h = harness({
+      "GET /api/files/f-202": { status: 200, body: { file: { uploadId: "up-b" } } },
+      "POST /api/equipment-notebooks/nb/sources/": async () => { requested(); await gate; return { status: 201, body: { ok: true } }; },
+    });
+    const failed = (name: string) => ({ key: `pdf:${name}`, filename: name, docId: null, attachFailed: false, notIndexed: true, retryUpload: true as const, message: "Couldn't upload." });
+    const docs: Parameters<typeof resolveIndexing>[1] = [failed("a.pdf"), { ...indexingDoc }, failed("c.pdf")];
+    const run = resolveIndexing("nb", docs, deps(h.fetch));
+    await inFlight;
+    docs.splice(0, 1); // a deduplicated retry removed the first row
+    release();
+    await run;
+    expect(docs.map((d) => d.filename)).toEqual(["m.pdf", "c.pdf"]);
+    expect(docs[0]).toMatchObject({ docId: "up-b", indexing: false, attachFailed: false });
+    expect(docs[1]).toMatchObject({ filename: "c.pdf", retryUpload: true, notIndexed: true });
+
+    let release2: () => void = () => {};
+    const gate2 = new Promise<void>((r) => { release2 = r; });
+    let requested2: () => void = () => {};
+    const inFlight2 = new Promise<void>((r) => { requested2 = r; });
+    const h2 = harness({
+      "GET /api/files/f-202": { status: 200, body: { file: { uploadId: "up-b" } } },
+      "POST /api/equipment-notebooks/nb/sources/": async () => { requested2(); await gate2; return { status: 503, body: { error: "late" } }; },
+    });
+    const docs2: Parameters<typeof resolveIndexing>[1] = [{ ...indexingDoc }];
+    const run2 = resolveIndexing("nb", docs2, deps(h2.fetch));
+    await inFlight2;
+    const replaced = { ...indexingDoc, key: "doc:up-b", docId: "up-b", indexing: false };
+    docs2[0] = replaced; // a newer write already settled this row
+    release2();
+    await run2;
+    expect(docs2[0]).toBe(replaced);
+  });
+
+  it("Codex #5353 r3 F5 control: a deduplicated retry whose attach fails never overwrites the first copy's good row", async () => {
+    const attached: string[] = [];
+    let copies = 0;
+    let attachCalls = 0;
+    const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      const reply = (status: number, body: Record<string, unknown>) =>
+        ({ status, ok: status >= 200 && status < 300, json: async () => body }) as Response;
+      if (method === "GET" && path.startsWith("/api/namespace/tree/")) return reply(200, { nodes: [] });
+      if (method === "GET" && path.startsWith("/api/files/")) return reply(200, { files: [] });
+      if (method === "POST" && path.startsWith("/api/namespace/node/node-g/files/")) {
+        const bytes = await ((init!.body as FormData).get("file") as File).text();
+        copies++;
+        if (copies === 2) return reply(503, { error: "offline" });
+        return reply(201, { ok: true, indexed: true, uploadId: `doc-${bytes}`, fileId: `f-${bytes}` });
+      }
+      if (method === "POST" && path.startsWith("/api/equipment-notebooks/nb-general/sources/")) {
+        attachCalls++;
+        // the first copy attaches; the retry's attach fails
+        if (attachCalls > 1) return reply(503, { error: "attach offline" });
+        const docId = String(JSON.parse(String(init!.body)).docId);
+        if (!attached.includes(docId)) attached.push(docId);
+        return reply(201, { ok: true });
+      }
+      if (method === "GET" && path.startsWith("/api/equipment-notebooks/nb-general/")) {
+        return reply(200, {
+          notebook: { nodeId: "node-g" },
+          sources: attached.map((docId) => ({ docId, filename: "manual.pdf", readiness: { state: "chat_ready_basic" }, matchState: "user_confirmed", enabledByDefault: true })),
+        });
+      }
+      throw new Error(`unexpected request ${method} ${path}`);
+    });
+    const c = createNewProjectSetup({ ...deps(fetchFn as unknown as typeof fetch), getNotebooks: () => [] });
+    await c.start();
+    await c.choose({ kind: "general" });
+    c.setName("Duplicate retry attach fails");
+    await c.next();
+    c.addPdfs([new File(["A"], "manual.pdf", { type: "application/pdf" }), new File(["A"], "manual.pdf", { type: "application/pdf" })]);
+    await c.next();
+    await c.commit();
+    const failed = c.getState().rows.find((r) => r.retry)!;
+    await c.retryUpload(failed.key);
+    const rows = c.getState().rows;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.readiness.label).toBe("Ready to search");
+  });
+
+  it("Codex #5353 F1: two different files with the same name — Try again sends the failed file's own bytes", async () => {
+    const uploaded: string[] = [];
+    const attached: string[] = [];
+    let bFailed = false;
+    const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      const reply = (status: number, body: Record<string, unknown>) =>
+        ({ status, ok: status >= 200 && status < 300, json: async () => body }) as Response;
+      if (method === "GET" && path.startsWith("/api/namespace/tree/")) return reply(200, { nodes: [] });
+      if (method === "GET" && path.startsWith("/api/files/")) return reply(200, { files: [] });
+      if (method === "POST" && path.startsWith("/api/namespace/node/node-g/files/")) {
+        const bytes = await ((init!.body as FormData).get("file") as File).text();
+        uploaded.push(bytes);
+        if (bytes === "B" && !bFailed) { bFailed = true; return reply(503, { error: "offline" }); }
+        return reply(201, { ok: true, indexed: true, uploadId: `doc-${bytes}`, fileId: `f-${bytes}` });
+      }
+      if (method === "POST" && path.startsWith("/api/equipment-notebooks/nb-general/sources/")) {
+        attached.push(String(JSON.parse(String(init!.body)).docId));
+        return reply(201, { ok: true });
+      }
+      if (method === "GET" && path.startsWith("/api/equipment-notebooks/nb-general/")) {
+        return reply(200, {
+          notebook: { nodeId: "node-g" },
+          sources: attached.map((docId) => ({ docId, filename: "manual.pdf", readiness: { state: "chat_ready_basic" }, matchState: "user_confirmed", enabledByDefault: true })),
+        });
+      }
+      throw new Error(`unexpected request ${method} ${path}`);
+    });
+    const c = createNewProjectSetup({ ...deps(fetchFn as unknown as typeof fetch), getNotebooks: () => [] });
+    await c.start();
+    await c.choose({ kind: "general" });
+    c.setName("Same-name retry");
+    await c.next();
+    c.addPdfs([new File(["A"], "manual.pdf", { type: "application/pdf" }), new File(["B"], "manual.pdf", { type: "application/pdf" })]);
+    await c.next();
+    await c.commit();
+    const failed = c.getState().rows.find((r) => r.retry)!;
+    expect(failed).toBeDefined();
+    await c.retryUpload(failed.key);
+    expect(uploaded).toEqual(["A", "B", "B"]);
+    expect(attached.sort()).toEqual(["doc-A", "doc-B"]);
+    const rows = c.getState().rows;
+    expect(rows).toHaveLength(2);
+    expect(new Set(rows.map((r) => r.key)).size).toBe(2);
+    expect(rows.every((r) => r.readiness.label === "Ready to search" && !r.retry)).toBe(true);
+  });
+
+  it("Codex #5353 F2: an older readiness poll that wakes during a retry does not unlock the sheet", async () => {
+    let releaseOldPoll: () => void = () => {};
+    let sleeps = 0;
+    let releasePost: (r: Reply) => void = () => {};
+    let n = 0;
+    const h = harness({
+      "GET /api/namespace/tree/": { status: 200, body: { nodes: [] } },
+      "GET /api/files/": { status: 200, body: { files: [{ id: "f1", filename: "slow.pdf", uploadId: "up-1" }] } },
+      "POST /api/namespace/node/node-g/files/": () =>
+        ++n === 1 ? { status: 503, body: { error: "offline" } } : new Promise<Reply>((r) => { releasePost = r; }),
+      "GET /api/equipment-notebooks/nb-general/": { status: 200, body: { notebook: { nodeId: "node-g" }, sources: [{ docId: "up-1", readiness: { state: "stored" }, matchState: "user_confirmed" }] } },
+      "POST /api/equipment-notebooks/nb-general/sources/": { status: 201, body: { ok: true } },
+    });
+    const c = createNewProjectSetup({
+      // The commit's watch sleeps until released; later sleeps never resolve (the test ends first).
+      ...deps(h.fetch, { sleep: () => new Promise<void>((r) => { if (++sleeps === 1) releaseOldPoll = r; }) }),
+      getNotebooks: () => [],
+    });
+    await c.start();
+    await c.choose({ kind: "general" });
+    c.setName("Stale poll");
+    await c.next();
+    c.toggleDoc("up-1");
+    c.addPdfs([new File(["%PDF"], "manual.pdf", { type: "application/pdf" })]);
+    await c.next();
+    void c.commit();
+    for (let i = 0; i < 30; i++) await Promise.resolve();
+    expect(c.getState().committing).toBe(false); // the commit's watch unlocked after its first read
+    const key = c.getState().rows.find((r) => r.retry)!.key;
+    void c.retryUpload(key);
+    for (let i = 0; i < 30; i++) await Promise.resolve();
+    expect(c.getState().committing).toBe(true); // retry POST is pending
+    releaseOldPoll();
+    for (let i = 0; i < 30; i++) await Promise.resolve();
+    expect(c.getState().committing).toBe(true);
+    expect(c.cancel()).toBe(false);
+    const postsBefore = h.calls.filter((x) => x.method === "POST" && x.path.endsWith("/files/")).length;
+    await c.retryUpload(key);
+    expect(h.calls.filter((x) => x.method === "POST" && x.path.endsWith("/files/")).length).toBe(postsBefore);
+    releasePost({ status: 201, body: { ok: true, indexed: true, uploadId: "doc-1", fileId: "f-1" } });
+    c.dispose();
+  });
+
+  it("control: Try again on a saved-but-unreadable file writes nothing (it is on the project already)", async () => {
+    const { c, h } = setup(() => ({ status: 201, body: { ok: true, indexed: false, warning: "scanned", fileId: "f" } }));
+    await toCommit(c);
+    const before = nonGet(h.calls).length;
+    await c.retryUpload(c.getState().rows[0]!.key);
+    expect(nonGet(h.calls).length).toBe(before);
+  });
+});
