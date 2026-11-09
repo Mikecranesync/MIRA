@@ -29,6 +29,11 @@ describe("expandIndustrialQuery — live / energized / shock wording", () => {
     "How do I see live tag values from the PLC?",
     "My drive runs hot in the cabinet, what clearance does it need?",
     "What is the hot restart time after a power loss?",
+    // Codex F1 on #5362: an electrical noun nearby is not enough.
+    "The drive runs hot and output current is high, what should I check?",
+    "Can I watch live data on the output terminals?",
+    "What is the mechanical shock rating of the controller?",
+    "The circuit board is still hot after shutdown, is that normal?",
   ])("leaves non-electrical %j alone", (q) => {
     expect(joined(q)).not.toContain("hazardous voltage");
   });
@@ -42,6 +47,15 @@ describe("rerankChunks — the synonym boost counts only the added vocabulary", 
     const echo = mk("SMC Flex controller troubleshooting: if the motor side voltage is still present when powered, check the side wiring", 0.8, 104);
     const hazard = mk("SHOCK HAZARD: Hazardous voltage is present in the motor circuit even when the controller is off. To avoid shock hazard, disconnect main power.", 0.5, 103);
     expect(rerankChunks(e, [echo, hazard])[0]).toBe(hazard);
+  });
+
+  it("keeps an overheating answer first among shock warnings (Codex F1 on #5362)", () => {
+    const e = expandIndustrialQuery("The drive runs hot and output current is high");
+    const answer = mk("Drive overheating with high output current: check the heatsink fan, ambient temperature and motor load", 0.9, 60);
+    const warnings = [1, 2, 3, 4, 5, 6, 7, 8].map((p) =>
+      mk(`SHOCK HAZARD: hazardous voltage and dangerous voltage are present; shock hazard on page ${p}`, 0.1, p),
+    );
+    expect(rerankChunks(e, [...warnings, answer])[0]).toBe(answer);
   });
 
   it("still boosts a query rewrite's terms when no static synonym fired", () => {

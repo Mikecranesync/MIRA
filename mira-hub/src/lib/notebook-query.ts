@@ -43,12 +43,22 @@ const SYNONYMS: ReadonlyArray<readonly [RegExp, readonly string[]]> = [
   [/\bmax(?:imum)?\s+freq\w*\b/i, ["maximum freq"]],
   [/\bmin(?:imum)?\s+freq\w*\b/i, ["minimum freq"]],
   // #5356: a technician asks whether something is still "live", "energized" or
-  // "hot", or whether it can "shock" them; manuals put that answer in a hazard
+  // "hot", or whether it can shock them; manuals put that answer in a hazard
   // statement worded "hazardous/dangerous voltage" or "shock hazard" (SMC Flex
-  // p.103). Fires only when the live/hot word sits next to an electrical noun,
-  // so "live data", "live tag" and "runs hot" (temperature) stay out.
+  // p.103). Only electrical phrasing fires: "live voltage", "hot wire", "the
+  // terminals are still live", "get shocked". "runs hot and output current is
+  // high" (temperature), "live data on the output terminals" and "mechanical
+  // shock rating" do not (Codex F1 on #5362).
   [
-    /\b(?:live|energi[sz]ed|hot)\b[^.?!]{0,30}\b(?:voltage|terminals?|leads?|wires?|wiring|circuits?|outputs?|bus|motor side|load side)\b|\b(?:voltage|terminals?|leads?|wires?|wiring|circuits?|outputs?|bus|motor side|load side|side)\b[^.?!]{0,30}\b(?:still\s+)?(?:live|energi[sz]ed|hot)\b|\b(?:get\s+)?shock(?:ed)?\b|\belectrocut\w*\b/i,
+    new RegExp(
+      [
+        String.raw`\b(?:live|energi[sz]ed)\s+(?:voltage|terminals?|leads?|wires?|wiring|circuits?|conductors?|parts|bus)\b`,
+        String.raw`\bhot\s+(?:wires?|legs?|leads?|conductors?|terminals?)\b`,
+        String.raw`\b(?:voltage|terminals?|leads?|wires?|wiring|circuits?(?!\s+board)|conductors?|outputs?|bus|(?:motor|load|line) side)\s+(?:(?:is|are|stays?|remains?|still)\s+){1,2}(?:live|energi[sz]ed|hot)\b`,
+        String.raw`\b(?:get|getting|got|be|been)\s+(?:a\s+)?shock(?:ed)?\b|\belectric(?:al)?\s+shock\b|\belectrocut\w*`,
+      ].join("|"),
+      "i",
+    ),
     ["hazardous voltage", "dangerous voltage", "shock hazard"],
   ],
 ];
