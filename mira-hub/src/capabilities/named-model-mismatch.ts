@@ -45,20 +45,24 @@ export function namedModelMismatchText(m: NamedModelMismatch): string {
  * question for cue words misfired both ways ("tripped due to a fault" read as
  * a comparison). So ambiguity is decided by what sits BETWEEN two adjacent
  * mentions of one product family (same identity prefix: SMC, PF, MICRO…):
- * nothing, "or", "/" or "," (optionally in an opening parenthesis, optionally
- * followed by the/my/a/an) is one
- * machine named two ways; ANY other word between them ("and", "vs", "with",
- * "communicating with", "between") keeps today's path, where every manual is
- * cited under its own title. Different families are never ambiguous here.
- * Pure, no LLM.
+ * "or" or "/" (optionally in an opening parenthesis, optionally followed by
+ * the/my/a/an) is one machine named two ways and ALWAYS asks which one,
+ * whatever else the sentence says (Codex r4 F6: "between shifts my SMC-50 or
+ * SMC Flex…", "compared to yesterday…" — no comparison word may exempt an
+ * explicit alternative). Nothing or a bare "," between them also asks, unless
+ * the same clause opens with a comparison that names the list ("Compare the
+ * SMC-50, SMC Flex fault codes", "the difference between Micro820, Micro850").
+ * Any other word between them ("and", "vs", "with", "communicating with") keeps
+ * today's path, where every manual is cited under its own title. Different
+ * families are never ambiguous here. When unsure, it asks. Pure, no LLM.
  */
-const ALTERNATIVE_GAP_RE = /^\s*\(?\s*(?:or\b|\/|,)?\s*(?:(?:the|my|a|an)\s+)?$/i;
-// Codex r3 F1: a comparison word that GOVERNS the listed models — earlier in
-// the same clause as the first of the pair ("Compare the SMC-50, SMC Flex
-// fault codes", "difference between Micro820, Micro850") — makes even a
-// comma-listed pair a comparison. A clause ends at . ? ! ; or :, so a
-// comparison word in another sentence never applies.
-const GOVERNING_COMPARISON_RE = /\b(?:compar\w*|differen\w*|between|vs\.?|versus|contrast\w*)\s/i;
+const OR_GAP_RE = /^\s*\(?\s*(?:or\b|\/)\s*(?:(?:the|my|a|an)\s+)?$/i;
+const LIST_GAP_RE = /^\s*\(?\s*,?\s*(?:(?:the|my|a|an)\s+)?$/i;
+// Only a comparison that names the listed models: "compare", "comparing",
+// "comparison", "difference(s) between". Not "compared to", not a bare
+// "between" or "vs" elsewhere in the clause (Codex r4 F6). A clause ends at
+// . ? ! ; or :, so a comparison in another sentence never applies.
+const LIST_COMPARISON_RE = /\b(?:compare|comparing|comparison|differences?\s+between)\b/i;
 const clauseBefore = (text: string, at: number) => text.slice(0, at).split(/[.?!;:]/).pop() ?? "";
 
 /** The family prefix of an identity ("SMC50" → "SMC", "PF4M" → "PF"); null for
@@ -71,8 +75,10 @@ export function ambiguousSiblingModels(question: string): string[] | null {
     const [a, b] = [mentions[i - 1], mentions[i]];
     const family = familyOf(a.id);
     if (!family || family !== familyOf(b.id) || a.id === b.id || b.start < a.end) continue;
-    if (!ALTERNATIVE_GAP_RE.test(question.slice(a.end, b.start))) continue;
-    if (GOVERNING_COMPARISON_RE.test(clauseBefore(question, a.start))) continue;
+    const gap = question.slice(a.end, b.start);
+    if (OR_GAP_RE.test(gap)) return [a.id, b.id].sort();
+    if (!LIST_GAP_RE.test(gap)) continue;
+    if (LIST_COMPARISON_RE.test(clauseBefore(question, a.start))) continue;
     return [a.id, b.id].sort();
   }
   return null;

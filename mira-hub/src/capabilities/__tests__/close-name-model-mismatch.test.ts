@@ -197,6 +197,13 @@ describe("#5355 — two models: comparison vs ambiguous", () => {
     "PowerFlex 40 (PowerFlex 4M?) A093 max?",
     // a comparison word in ANOTHER sentence does not govern the pair
     "I compared the logs. My SMC-50 or SMC Flex shows fault 10, what is it?",
+    // Codex r4 F6: a comparison word never exempts an explicit "or" / "/" alternative.
+    "Between shifts my SMC-50 or SMC Flex tripped on fault 10, what is it?",
+    "Compared to yesterday my SMC-50 or SMC Flex has fault 10, what does it mean?",
+    "Compare notes: my SMC-50 / SMC Flex shows fault 10, what is it?",
+    "Compare my SMC-50 or SMC Flex fault 10 to last week, what is it?",
+    "Compared to yesterday my SMC-50, SMC Flex has fault 10, what does it mean?",
+    "Between shifts my SMC-50, SMC Flex tripped on fault 10, what is it?",
   ])("ambiguous: %s", (q) => {
     expect(ambiguousSiblingModels(q)).not.toBeNull();
   });
@@ -214,6 +221,7 @@ describe("#5355 — two models: comparison vs ambiguous", () => {
     // Codex r3 F1: a comparison word governing a comma-listed pair.
     "Compare the SMC-50, SMC Flex fault codes.",
     "What is the difference between Micro820, Micro850 relay ratings?",
+    "Comparing the SMC-50, SMC Flex: which has a PTC input?",
   ])("not ambiguous: %s", (q) => {
     expect(ambiguousSiblingModels(q)).toBeNull();
   });
@@ -307,6 +315,24 @@ describe("#5355 — two models: comparison vs ambiguous", () => {
     });
     expect(hits).toEqual([]);
     expect(d.ambiguousModelAsk).toEqual({ named: ["SMC50", "SMCFLEX"] });
+  });
+
+  it("Codex r4 F6: 'between shifts' with an 'or' pair asks which one and admits no page, even in a notebook confirmed as SMC-50", async () => {
+    for (const model of ["150-F", "SMC-50"]) {
+      const d: { ambiguousModelAsk?: { named: string[] } } = {};
+      const client = { query: vi.fn(async () => ({ rows: [row(SMC_FLEX_COVER, SMC_FAULTS)] })) } as unknown as PoolClient;
+      const hits = await retrieveNodeChunks(client, "t-1", "Between shifts my SMC-50 or SMC Flex tripped on fault 10, what is it?", {
+        nodeId: "n-1",
+        unsPath: null,
+        docIds: ["d-1"],
+        validatedDocScope: true,
+        identity: { manufacturer: "Rockwell Automation", model },
+        identityStatus: "user_confirmed" as never,
+        diagnostics: d as never,
+      });
+      expect(hits, model).toEqual([]);
+      expect(d.ambiguousModelAsk, model).toEqual({ named: ["SMC50", "SMCFLEX"] });
+    }
   });
 
   it.each([
