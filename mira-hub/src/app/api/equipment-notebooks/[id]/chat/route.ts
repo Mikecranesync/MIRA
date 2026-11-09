@@ -139,7 +139,6 @@ import {
   pickLockoutChunk,
   pickQuestionWarningChunk,
   questionWarningQuery,
-  warningCoversAskAction,
 } from "@/capabilities/energized-work-stop";
 import { isOffTopic, SCOPE_REPLY } from "@/capabilities/scope-check";
 import { englishSearchQuery, withAnswerLanguage } from "@/capabilities/answer-language";
@@ -3354,12 +3353,7 @@ async function handleChatTurn(
     ].map((c, i) => ({ ...c, citationId: String(i + 1) }));
     const stopText = energizedWorkStop(
       lockoutChunk ? { title: citationTitle(lockoutChunk), page: lockoutPageOf(lockoutChunk) } : null,
-      {
-        warning: warningChunk
-          ? { page: lockoutPageOf(warningChunk), coversAction: warningCoversAskAction(warningChunk, message) }
-          : null,
-        lookupFailed: stopLookupsFailed,
-      },
+      { warning: warningChunk ? { page: lockoutPageOf(warningChunk) } : null, lookupFailed: stopLookupsFailed },
     );
     console.warn(
       `[notebook-chat] energized-work STOP (${stopTrigger}) lockout_page=${lockoutChunk ? lockoutPageOf(lockoutChunk) ?? "none" : "none"} warning_page=${warningChunk ? lockoutPageOf(warningChunk) ?? "none" : "none"}`,

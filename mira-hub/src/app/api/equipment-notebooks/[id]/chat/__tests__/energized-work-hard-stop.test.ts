@@ -363,7 +363,8 @@ describe("CV-101 S5b — the stop carries the manual's own warning about this as
     expect(out.some((f) => f.kind === "safety")).toBe(true);
     const content = contentOf(out);
     expect(content).toMatch(/SAFETY STOP — energized work/);
-    expect(content).toContain("warning about exactly this on **p.5**");
+    expect(content).toContain("a related warning on **p.5**");
+    expect(content).not.toMatch(/exactly this/);
     // A page pointer only — never the passage's words inside a stop.
     expect(content).not.toMatch(/nonhazardous|electrical arc|before proceeding/i);
     const sources = out.find((f) => f.kind === "sources") as {
@@ -419,12 +420,12 @@ describe("CV-101 S5b — the stop carries the manual's own warning about this as
     expect(vi.mocked(fetch)).not.toHaveBeenCalled();
     const content = contentOf(out);
     expect(content).toMatch(/SAFETY STOP — energized work/);
-    expect(content).not.toMatch(/warning about exactly this/);
+    expect(content).not.toMatch(/related warning|exactly this/);
     const sources = out.find((f) => f.kind === "sources") as { citations: unknown[] };
     expect(sources.citations).toHaveLength(0);
   });
 
-  it("Codex #5349 round 3 F2: a serial-cable ROUTING warning is pointed at as a warning about this part, not 'exactly this'", async () => {
+  it("Codex #5349 r3/r4 F2: a serial-cable ROUTING warning is pointed at as a related warning, never 'exactly this'", async () => {
     const ROUTING_WARNING = {
       ...P5_WARNING,
       content: "WARNING: Route the serial cable away from hot surfaces. Damaged cable insulation can cause electrical shock or fire.",
@@ -438,7 +439,7 @@ describe("CV-101 S5b — the stop carries the manual's own warning about this as
     expect(vi.mocked(fetch)).not.toHaveBeenCalled();
     const content = contentOf(out);
     expect(content).toMatch(/SAFETY STOP — energized work/);
-    expect(content).toContain("a warning about this part on **p.7**");
+    expect(content).toContain("a related warning on **p.7**");
     expect(content).not.toMatch(/exactly this/);
     expect(content).not.toMatch(/hot surfaces|insulation/i);
   });
@@ -447,7 +448,7 @@ describe("CV-101 S5b — the stop carries the manual's own warning about this as
     ragMock.retrieveNodeChunks.mockImplementation(async () => [RELAY_RATINGS]);
     const content = contentOf(await frames(await POST(req({ message: S5B_ASK, sourceDocIds: [DOC_A] }), params)));
     expect(content).toMatch(/SAFETY STOP/);
-    expect(content).not.toMatch(/warning about exactly this/);
+    expect(content).not.toMatch(/related warning|exactly this/);
     expect(content).toContain("couldn't find a lockout page");
   });
 
@@ -457,7 +458,7 @@ describe("CV-101 S5b — the stop carries the manual's own warning about this as
     );
     const content = contentOf(await frames(await POST(req({ message: S5B_ASK, sourceDocIds: [DOC_A] }), params)));
     expect(content).toMatch(/SAFETY STOP/);
-    expect(content).toContain("warning about exactly this in the document cited below");
+    expect(content).toContain("a related warning in the document cited below");
     expect(content).not.toContain("Unplug it live");
   });
 
