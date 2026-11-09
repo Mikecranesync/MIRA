@@ -42,6 +42,15 @@ const SYNONYMS: ReadonlyArray<readonly [RegExp, readonly string[]]> = [
   [/\btorque\b/i, ["torque"]],
   [/\bmax(?:imum)?\s+freq\w*\b/i, ["maximum freq"]],
   [/\bmin(?:imum)?\s+freq\w*\b/i, ["minimum freq"]],
+  // #5356: a technician asks whether something is still "live", "energized" or
+  // "hot", or whether it can "shock" them; manuals put that answer in a hazard
+  // statement worded "hazardous/dangerous voltage" or "shock hazard" (SMC Flex
+  // p.103). Fires only when the live/hot word sits next to an electrical noun,
+  // so "live data", "live tag" and "runs hot" (temperature) stay out.
+  [
+    /\b(?:live|energi[sz]ed|hot)\b[^.?!]{0,30}\b(?:voltage|terminals?|leads?|wires?|wiring|circuits?|outputs?|bus|motor side|load side)\b|\b(?:voltage|terminals?|leads?|wires?|wiring|circuits?|outputs?|bus|motor side|load side|side)\b[^.?!]{0,30}\b(?:still\s+)?(?:live|energi[sz]ed|hot)\b|\b(?:get\s+)?shock(?:ed)?\b|\belectrocut\w*\b/i,
+    ["hazardous voltage", "dangerous voltage", "shock hazard"],
+  ],
 ];
 
 /** Patterns for exact tokens that MUST be retrievable verbatim (they name a
@@ -547,8 +556,15 @@ export function rerankChunks<T extends Rerankable>(
   const exact = expanded.exactTokens.map((t) => t.toLowerCase());
   const phrases = expanded.phrases.map((p) => p.toLowerCase());
   const codeRes = (expanded.codeTokens ?? []).map((t) => codeTokenMatcher(t).re);
+  // #5356: boost on the ADDED vocabulary only. The fold-in variant ("<question>
+  // <synonyms>") repeats the technician's own words, which nearly every candidate
+  // shares, so with it in the set every chunk reached the 4-hit cap and the
+  // synonym bonus could not single out the chunk worded like the manual (SMC Flex
+  // p.103 "hazardous voltage" sat at 15th). The pure-synonym variant and a query
+  // rewrite still count.
   const synTerms = expanded.variants
     .slice(1)
+    .filter((v) => !v.startsWith(`${expanded.variants[0]} `))
     .join(" ")
     .toLowerCase()
     .split(/\s+/)
