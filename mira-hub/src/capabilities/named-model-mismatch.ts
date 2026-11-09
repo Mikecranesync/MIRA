@@ -54,20 +54,27 @@ export function namedModelMismatchText(m: NamedModelMismatch): string {
  *   word exempts an explicit alternative);
  * - nothing or a bare "," asks, unless the clause opens with a comparison that
  *   names the list ("Compare the SMC-50, SMC Flex fault codes");
- * - the pair is answered only when the words between them are a short, plain
- *   link: at most six words with no bracket or dash, ending in a joining word
- *   ("and", "vs", "versus", "with", "than", "as", "to", "from", "between").
- *   That is today's path, where every manual is cited under its own title.
- *   A trailing joining word alone is not proof of a comparison: "(not certain,
- *   could be the same as SMC Flex)" asks (Codex r10 F12);
+ * - the pair is answered only when the words between them are EXACTLY one
+ *   link from a closed list: and, vs, versus, with, to, than, compared
+ *   with/to, connected/wired/talking/communicating/linked/networked with/to,
+ *   (is) the same as, similar to, different from — optionally after a comma
+ *   and before the/my/a/an (Codex r10 F12, r11 F13: free words before a
+ *   joining word were eventually a hedge). Today's path then cites every
+ *   manual under its own title;
+ * - a doubt word anywhere in the clause that holds the pair asks (r11 F13:
+ *   "I may have confused my SMC-50 and SMC Flex");
  * - anything else asks.
  * Different families are never ambiguous here. Pure, no LLM.
  */
 const CLAUSE_BREAK_RE = /[.?!;:]/;
 const DOUBT_GAP_RE =
   /\bor\b|\/|\b(?:maybe|possibly|perhaps|probably|either|could|might|unsure|uncertain|aka|not\s+(?:sure|certain)|i\s+(?:think|guess|believe))\b/i;
-const JOINED_GAP_RE =
-  /^\s*,?\s*(?:[^\s()[\]\u2013\u2014]+\s+){0,6}(?:and|vs|versus|with|than|as|to|from|between)\s+(?:(?:the|my|a|an)\s+)?$/i;
+// Codex r11 F13: any free text inside the "answered" exception was eventually
+// a hedge ("may be the same as", "I may have confused with"), so the exception
+// is now a CLOSED list of exact links between the two names, nothing else.
+const LINK_RE_SRC =
+  "(?:and|vs|versus|with|to|than|compared\\s+(?:with|to)|(?:communicating|talking|connected|wired|linked|networked)\\s+(?:with|to)|(?:is\\s+|are\\s+)?(?:the\\s+same\\s+as|similar\\s+to|different\\s+from))";
+const JOINED_GAP_RE = new RegExp(`^\\s*,?\\s*${LINK_RE_SRC}\\s+(?:(?:the|my|a|an)\\s+)?$`, "i");
 const LIST_GAP_RE = /^\s*\(?\s*,?\s*(?:(?:the|my|a|an)\s+)?$/i;
 // Only a comparison that names the listed models: "compare", "comparing",
 // "comparison", "difference(s) between". Not "compared to", not a bare
@@ -100,7 +107,9 @@ export function ambiguousSiblingModels(question: string): string[] | null {
     if (!b || a.id === b.id || b.start < a.end) continue;
     const gap = question.slice(a.end, b.start);
     if (CLAUSE_BREAK_RE.test(gap)) continue;
-    if (DOUBT_GAP_RE.test(gap)) return [a.id, b.id].sort();
+    // Doubt anywhere in the clause that holds the pair asks (Codex r11 F13).
+    const clause = clauseBefore(question, a.start) + question.slice(a.start, b.end) + (question.slice(b.end).split(/[.?!;:]/)[0] ?? "");
+    if (DOUBT_GAP_RE.test(clause.replace(/\bor\b|\//gi, " ")) || DOUBT_GAP_RE.test(gap)) return [a.id, b.id].sort();
     if (LIST_GAP_RE.test(gap)) {
       if (LIST_COMPARISON_RE.test(clauseBefore(question, a.start))) continue;
       return [a.id, b.id].sort();

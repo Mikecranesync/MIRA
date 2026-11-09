@@ -227,7 +227,6 @@ describe("#5355 — two models: comparison vs ambiguous", () => {
     "What's the difference between the SMC-50 and SMC Flex fault codes?",
     "SMC-50 vs SMC Flex: which has a PTC input?",
     "Can I replace a PowerFlex 4M with a PowerFlex 40?",
-    "Is the Micro820 wiring the same as the Micro850?",
     "wire RS-485 between a Micro820 and a GS10", // two families: multi-device
     "Micro820 talking to a GS10 over Modbus", // two families, connection cue
     "Micro820 GS10 comms fault after power loss", // two families, no cue at all
@@ -241,8 +240,6 @@ describe("#5355 — two models: comparison vs ambiguous", () => {
     // an "or" in another clause does not join the pair
     "Is fault 10 on my SMC-50 a reset or a replace? The SMC Flex is fine.",
     // joined by a comparison or connection word: today's path
-    "Is the SMC-50 fault list the same as the SMC Flex?",
-    "Does the PowerFlex 40 have a longer A093 than the PowerFlex 4M?",
     "Moving settings from a PowerFlex 4M to a PowerFlex 40: what changes?",
     "SMC-50 versus SMC Flex PTC input",
     // Codex r7 F9: a family and its own member are one model
@@ -440,8 +437,6 @@ describe("#5355 — two models: comparison vs ambiguous", () => {
   });
 
   it.each([
-    "Micro820 talking to a GS10 and to a Micro850 over Modbus: how do I wire RS-485?",
-    "SMC-50 wired to a Micro820, and the SMC Flex wired to a Micro850: which input is PTC?",
     "My SMC-50 tripped. The Micro820 and the SMC Flex are fine.",
   ])("Codex r9 F11 control: a connection or another clause still answers: %s", (q) => {
     expect(ambiguousSiblingModels(q)).toBeNull();
@@ -481,6 +476,52 @@ describe("#5355 — two models: comparison vs ambiguous", () => {
     "My SMC-50 that the last tech swapped in yesterday is listed with the SMC Flex, fault 10?",
   ])("Codex r10 F12: not a plain link, asks: %s", (q) => {
     expect(ambiguousSiblingModels(q)).not.toBeNull();
+  });
+
+  it.each([
+    ["My SMC-50 I may have confused with SMC Flex tripped; what does fault 10 mean?", SMC_FLEX_COVER, SMC_FAULTS, ["150-F", "SMC-50"], ["SMC50", "SMCFLEX"]],
+    ["My PowerFlex 40 may be the same as PowerFlex 4M; what is the maximum A093 Auto Rstrt Delay?", PF4M_COVER, PF_RESTART, ["PowerFlex 4M", "PowerFlex 40"], ["PF40", "PF4M"]],
+  ])("Codex r11 F13: a hedge before a joining word asks: %s", async (q, cover, body, models, named) => {
+    expect(ambiguousSiblingModels(q)).toEqual(named);
+    for (const model of models) {
+      const d: { ambiguousModelAsk?: { named: string[] } } = {};
+      const query = vi.fn(async () => ({ rows: [row(cover, body)] }));
+      const hits = await retrieveNodeChunks({ query } as unknown as PoolClient, "t-1", q, {
+        nodeId: "n-1",
+        unsPath: null,
+        docIds: ["d-1"],
+        validatedDocScope: true,
+        identity: { manufacturer: "Rockwell Automation", model },
+        identityStatus: "user_confirmed" as never,
+        diagnostics: d as never,
+      });
+      expect(hits, model).toEqual([]);
+      expect(d.ambiguousModelAsk, model).toEqual({ named });
+      expect(query, model).not.toHaveBeenCalled();
+    }
+  });
+
+  it.each([
+    // Fail-safe trade-off (r11): the answered exception is a closed list of exact
+    // links, so a comparison with extra words between the names asks which one.
+    "Is the Micro820 wiring the same as the Micro850?",
+    "Is the SMC-50 fault list the same as the SMC Flex?",
+    "Does the PowerFlex 40 have a longer A093 than the PowerFlex 4M?",
+    "Micro820 talking to a GS10 and to a Micro850 over Modbus: how do I wire RS-485?",
+    // doubt anywhere in the clause
+    "I might have mixed up the SMC-50 and SMC Flex, fault 10 what is it?",
+  ])("r11 closed list: not an exact link, asks: %s", (q) => {
+    expect(ambiguousSiblingModels(q)).not.toBeNull();
+  });
+
+  it.each([
+    "Is the Micro820 the same as the Micro850?",
+    "SMC-50 compared with the SMC Flex: which has a PTC input?",
+    "Is the PowerFlex 40 different from the PowerFlex 4M on A093?",
+    "Micro820 connected to a Micro850 over Ethernet: which IP?",
+    "Which is longer, the PowerFlex 40 than the PowerFlex 4M A093?",
+  ])("r11 closed list: an exact link still answers: %s", (q) => {
+    expect(ambiguousSiblingModels(q)).toBeNull();
   });
 
   it("a family alone against a model it does not cover still asks", () => {
