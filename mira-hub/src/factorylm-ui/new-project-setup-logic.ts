@@ -800,7 +800,13 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
       }
       let row: DocOutcome | null = null;
       const doc = await uploadPdf(c.nodeId, pdf, deps, async (docId, k) => { row = await attachSource(c.notebookId, docId, pdf.name, k, deps); }, key);
-      c.results[i] = doc ?? row ?? c.results[i]!;
+      const next = doc ?? row ?? c.results[i]!;
+      // Codex #5353 r2 F4: the server deduplicates by content, so retrying a second
+      // copy of an already-saved PDF returns that document. It is already a row:
+      // drop the failed row instead of showing the same source twice (the commit
+      // path's `attached` set applies the same one-row-per-document policy).
+      if (next.key !== c.results[i]!.key && c.results.some((r, j) => j !== i && r.key === next.key)) c.results.splice(i, 1);
+      else c.results[i] = next;
       if (doc?.indexing && doc.fileId) deps.onPendingManuals?.(c.notebookId, [doc.fileId]);
       if (disposed) return;
       await showReadiness(c.notebookId, c.results);
