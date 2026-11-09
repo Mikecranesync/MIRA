@@ -145,3 +145,40 @@ export function ambiguousModelAskText(ids: string[]): string {
   const listed = names.length === 2 ? `${names[0]} or the ${names[1]}` : `${names.slice(0, -1).join(", ")} or the ${names[names.length - 1]}`;
   return `You mentioned the ${names.join(" and the ")}. They are different models with different fault codes and settings, so I won't guess which one you mean. Which one is it — the ${listed}? Ask again naming just that one and I'll answer from its manual.`;
 }
+
+/**
+ * #5369 — a look-alike model the detector has no pattern for. maq2-2026-11-09
+ * on 6e5361bff: two sibling controllers of a vendor family missing from
+ * MODEL_PATTERNS were each answered from the other's manual, because the
+ * question read as "no model named" and the named-ask filter never ran. One
+ * more pattern per vendor would repeat the #5359 loop, so this check is
+ * generic, and relational on purpose: a letters+digits token counts as a
+ * model ONLY when the manual's own title declares a near-sibling of it (same
+ * letters, same number of digits, same first digit, different number). A
+ * parameter or fault code (A093, F005) never matches a title token, so it can
+ * never refuse a manual. A question that also names the title's own model
+ * (a comparison, or "M171 or M172?") is left to the existing paths.
+ * Applicability only — never a retrieval-scoping token. Pure, no LLM.
+ */
+const LOOK_ALIKE_TOKEN_RE = /\b([a-z]{1,3})-?(\d{3,4})\b/gi;
+
+function lookAlikeTokens(text: string): { id: string; letters: string; digits: string }[] {
+  return [...text.matchAll(LOOK_ALIKE_TOKEN_RE)].map((m) => ({
+    id: `${m[1]}${m[2]}`.toUpperCase(),
+    letters: m[1].toUpperCase(),
+    digits: m[2],
+  }));
+}
+
+export function lookAlikeModelMismatch(question: string, title: string): NamedModelMismatch | null {
+  const declared = lookAlikeTokens(title);
+  if (declared.length === 0) return null;
+  const asked = lookAlikeTokens(question);
+  const declaredIds = new Set(declared.map((t) => t.id));
+  if (asked.some((t) => declaredIds.has(t.id))) return null;
+  const requested = asked.filter((q) =>
+    declared.some((t) => t.letters === q.letters && t.digits.length === q.digits.length && t.digits[0] === q.digits[0]),
+  );
+  if (requested.length === 0) return null;
+  return { requested: [...new Set(requested.map((t) => t.id))], declared: [...declaredIds] };
+}

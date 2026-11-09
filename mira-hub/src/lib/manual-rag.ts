@@ -4,7 +4,7 @@ import type { IdentityStatus } from "@/lib/equipment-notebooks";
 import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
 import { FAMILY_ROOTS, MODEL_PATTERNS, ROCKWELL, familyCovers, modelIdentitiesInText, resolveModelFromObservationText } from "@/capabilities/model-token";
-import { ambiguousSiblingModels } from "@/capabilities/named-model-mismatch";
+import { ambiguousSiblingModels, lookAlikeModelMismatch } from "@/capabilities/named-model-mismatch";
 import { embedQueryDetailed, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
 import { setSpanAttrs } from "@/capabilities/observability/tracing";
 import { logRerankFallback, orderWithPinnedHead, rerankEnabled, rerankPool, rerankScores } from "@/capabilities/reranker";
@@ -1853,11 +1853,15 @@ export async function retrieveNodeChunks(
   const refusedDeclared = new Set<string>();
   const refusedDocs = new Set<string>();
   let namedClaimPoisoned = false;
+  // #5369: what a look-alike refusal (lookAlikeModelMismatch) says was asked,
+  // when the detector itself named no model.
+  const lookAlikeRequested = new Set<string>();
   const publishNamedMismatch = () => {
-    if (!opts.diagnostics || !requestedIdentities) return;
+    const requested = requestedIdentities ?? (lookAlikeRequested.size > 0 ? lookAlikeRequested : null);
+    if (!opts.diagnostics || !requested) return;
     const everyDocRefused = allowedDocIds.length > 0 && allowedDocIds.every((d) => refusedDocs.has(d));
     if (namedClaimPoisoned || refusedDeclared.size === 0 || !everyDocRefused) delete opts.diagnostics.namedModelMismatch;
-    else opts.diagnostics.namedModelMismatch = { requested: [...requestedIdentities], declared: [...refusedDeclared] };
+    else opts.diagnostics.namedModelMismatch = { requested: [...requested], declared: [...refusedDeclared] };
   };
   const noteNamedAskRefusal = (docId: string, headingDeclared: Set<string>) => {
     if (headingDeclared.size === 0) namedClaimPoisoned = true;
@@ -1869,6 +1873,22 @@ export async function retrieveNodeChunks(
   // 4) vector — so a chunk the vector lane finds is held to exactly the same
   // model-applicability rule as one BM25 found.
   const admit = (r: Record<string, unknown>): boolean => {
+      // #5369: no detector pattern named a model, but the question names a
+      // near-sibling of the model this manual's own title declares (letters +
+      // digits, e.g. a sibling controller of an unlisted vendor family). The
+      // title is read the same way as below (declared title, filename as the
+      // fallback); a manual whose title declares no such token abstains.
+      if (!requestedIdentities) {
+        const heading = String(r.document_heading ?? "");
+        const headingTitle = declaredTitle(titleSegment(heading));
+        const title = /\d/.test(headingTitle) ? headingTitle : stripFileExtension(String(r.filename ?? "")).replace(/_+/g, " ");
+        const lookAlike = lookAlikeModelMismatch(opts.rawQuery ?? q, title);
+        if (lookAlike) {
+          for (const id of lookAlike.requested) lookAlikeRequested.add(id);
+          noteNamedAskRefusal(String(r.doc_id ?? ""), new Set(lookAlike.declared));
+          return false;
+        }
+      }
       if (requestedIdentities || notebookScoped) {
         // F2 — affirmative title/heading applicability only (see
         // affirmativeModelIdentities): the heading's own title segment is
