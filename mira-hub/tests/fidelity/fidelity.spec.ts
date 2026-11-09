@@ -95,8 +95,15 @@ async function drive(browser: Browser, baseURL: string, surface: Surface, scenar
       const frame = ui.viewerFrame(page);
       await frame.waitFor({ timeout: 10_000 }).catch(() => undefined);
       const src = (await frame.count()) ? await frame.getAttribute("src") : null;
-      const m = src ? /\/api\/namespace\/files\/([^/#?]+)\/?(?:[^#]*)(?:#page=(\d+))?/.exec(src) : null;
-      opened = { fileId: m?.[1] ?? null, page: m?.[2] ?? null, fetched: await fetched };
+      // The classic page frames the file itself; /v3 frames the same-origin page
+      // viewer (#5333), which names the file and page in its query and fetches the file.
+      const direct = src ? /\/api\/namespace\/files\/([^/#?]+)\/?(?:[^#]*)(?:#page=(\d+))?/.exec(src) : null;
+      const viewer = src && !direct ? new URL(src, "http://x").searchParams : null;
+      opened = {
+        fileId: direct?.[1] ?? viewer?.get("file") ?? null,
+        page: direct?.[2] ?? viewer?.get("page") ?? null,
+        fetched: await fetched,
+      };
     }
     return {
       request: cap.chatBodies[0] ?? null, chatPosts: cap.chatBodies.length, live, hydrated, opened,
