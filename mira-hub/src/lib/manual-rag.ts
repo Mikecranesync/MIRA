@@ -210,15 +210,23 @@ function lookAlikeDeclaredTitle(
   heading: string,
   filename: string,
 ): { title: string; fromDocument: boolean; prose?: string } {
-  const title = declaredTitle(titleSegment(heading), hasLookAlikeToken);
-  if (hasLookAlikeToken(title)) return { title, fromDocument: true };
+  // Codex r2 F2: every token-bearing cover line is judged WHOLE for prose
+  // before it can declare anything — including the first line ("M172 is not
+  // covered by this manual.", "For M172 see the separate manual."). A prose
+  // line is skipped and the next token-bearing line is the title; a cover
+  // whose token lines are all prose declares nothing.
   const lines = heading.split("\n");
-  const i = lines.findIndex(hasLookAlikeToken);
-  if (i >= 0) {
+  let prose: string | undefined;
+  for (let i = 0; i < lines.length; i++) {
+    if (!hasLookAlikeToken(lines[i])) continue;
     const segment = titleSegment(lines.slice(i).join("\n"));
-    if (COVER_PROSE_RE.test(segment)) return { title: "", fromDocument: true, prose: segment };
+    if (COVER_PROSE_RE.test(segment)) {
+      prose = (prose ? `${prose}\n` : "") + segment;
+      continue;
+    }
     return { title: declaredTitle(segment, hasLookAlikeToken), fromDocument: true };
   }
+  if (prose) return { title: "", fromDocument: true, prose };
   return { title: stripFileExtension(filename).replace(/_+/g, " "), fromDocument: false };
 }
 
@@ -1880,6 +1888,9 @@ export async function retrieveNodeChunks(
   // #5369: what a look-alike refusal (lookAlikeModelMismatch) says was asked,
   // when the detector itself named no model.
   const lookAlikeRequested = new Set<string>();
+  // Codex r2 F1 on #5371: a look-alike ambiguity stops the whole retrieval, not
+  // just the row that revealed it — another selected document must not answer.
+  let lookAlikeAmbiguous = false;
   const publishNamedMismatch = () => {
     const requested = requestedIdentities ?? (lookAlikeRequested.size > 0 ? lookAlikeRequested : null);
     if (!opts.diagnostics || !requested) return;
@@ -1910,6 +1921,7 @@ export async function retrieveNodeChunks(
         }
         const lookAlike = lookAlikeModelMismatch(opts.rawQuery ?? q, title);
         if (lookAlike?.kind === "ambiguous") {
+          lookAlikeAmbiguous = true;
           if (opts.diagnostics) opts.diagnostics.ambiguousModelAsk = { named: lookAlike.named };
           return false;
         }
@@ -2384,6 +2396,7 @@ export async function retrieveNodeChunks(
     );
   }
 
+  if (lookAlikeAmbiguous) return [];
   return reranked.map(({ _row: r }) => ({
     content: String(r.content ?? ""),
     docId: r.doc_id == null ? null : String(r.doc_id),

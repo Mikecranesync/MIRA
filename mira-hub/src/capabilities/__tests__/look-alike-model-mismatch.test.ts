@@ -30,13 +30,13 @@ const row = (heading: string, content: string, filename = "manual.pdf", docId = 
 
 type Diag = { namedModelMismatch?: { requested: string[]; declared: string[] }; ambiguousModelAsk?: { named: string[] } };
 
-async function ask(rows: Record<string, unknown>[], question: string, manufacturer: string, model: string) {
+async function ask(rows: Record<string, unknown>[], question: string, manufacturer: string, model: string, docIds = ["d-1"]) {
   const client = { query: vi.fn(async () => ({ rows })) } as unknown as PoolClient;
   const diagnostics: Diag = {};
   const hits = await retrieveNodeChunks(client, "t-1", question, {
     nodeId: "n-1",
     unsPath: null,
-    docIds: ["d-1"],
+    docIds,
     validatedDocScope: true,
     identity: { manufacturer, model },
     identityStatus: "user_confirmed" as never,
@@ -62,6 +62,14 @@ describe("lookAlikeModelMismatch (pure)", () => {
     ["M171 vs M172 supply range", ["M171", "M172"]],
   ])("both the manual's model and its sibling named → asks which one: %s", (q, named) => {
     expect(lookAlikeModelMismatch(q, M171_COVER)).toEqual({ kind: "ambiguous", named });
+  });
+
+  it("a manual declaring both siblings asks when the question names both (r2 F1)", () => {
+    expect(lookAlikeModelMismatch("M171 or M172, what supply?", "Modicon M171 and M172 Hardware Guide")).toEqual({
+      kind: "ambiguous",
+      named: ["M171", "M172"],
+    });
+    expect(lookAlikeModelMismatch("M172 supply voltage?", "Modicon M171 and M172 Hardware Guide")).toBeNull();
   });
 
   it.each([
@@ -106,20 +114,22 @@ describe("#5369 — retrieval refuses the sibling's manual, both directions", ()
     expect(sibling.diagnostics.namedModelMismatch).toEqual({ requested: ["M171"], declared: ["M172"] });
   });
 
-  it("a same-line cross-reference is not coverage (r1 F2)", async () => {
+  it("a same-line cross-reference is not coverage: the cover is prose and a named ask is refused (r1 F2, r2 F2)", async () => {
     const cover = "Modicon M171 Hardware Guide — for M172 consult the separate manual";
     const { hits, diagnostics } = await ask([row(cover, SUPPLY)], "What supply voltage does the M172 accept?", "Schneider Electric", "M171");
     expect(hits).toEqual([]);
-    expect(diagnostics.namedModelMismatch).toEqual({ requested: ["M172"], declared: ["M171"] });
+    expect(diagnostics.namedModelMismatch).toBeUndefined();
   });
 
-  it("a prose cover line declares nothing: a named ask is refused without a notice", async () => {
-    const cover = "Hardware Guide\nM172 is not covered by this manual.";
-    const named = await ask([row(cover, SUPPLY)], "M172 supply voltage?", "Schneider Electric", "M171");
-    expect(named.hits).toEqual([]);
-    expect(named.diagnostics.namedModelMismatch).toBeUndefined();
-    const unnamed = await ask([row(cover, SUPPLY)], "What is the supply voltage range?", "Schneider Electric", "M171");
-    expect(unnamed.hits.length).toBeGreaterThan(0);
+  it.each([
+    "M172 is not covered by this manual.\nModicon M171 Hardware Guide",
+    "For M172 see the separate manual.\nModicon M171 Hardware Guide",
+  ])("first-line exclusion prose is skipped; the title below declares (r2 F2): %s", async (cover) => {
+    const sibling = await ask([row(cover, SUPPLY)], "M172 supply voltage?", "Schneider Electric", "M171");
+    expect(sibling.hits).toEqual([]);
+    expect(sibling.diagnostics.namedModelMismatch).toEqual({ requested: ["M172"], declared: ["M171"] });
+    const own = await ask([row(cover, SUPPLY)], "M171 supply voltage?", "Schneider Electric", "M171");
+    expect(own.hits.length).toBeGreaterThan(0);
   });
 
   it.each([
@@ -133,6 +143,27 @@ describe("#5369 — retrieval refuses the sibling's manual, both directions", ()
 
   it("the notice names both models as written", () => {
     expect(namedModelMismatchText({ requested: ["M172"], declared: ["M171"] })).toContain("is for the M171, not the M172 you asked about");
+  });
+});
+
+describe("r2 F1 — an ambiguity stops the whole retrieval", () => {
+  const generic = row("Controller wiring notes", SUPPLY, "notes.pdf", "d-2");
+  it.each([
+    ["M171 manual first", () => [row(M171_COVER, SUPPLY), generic]],
+    ["generic document first", () => [generic, row(M171_COVER, SUPPLY)]],
+  ])("%s", async (_order, rows) => {
+    const { hits, diagnostics } = await ask(rows(), "My controller is M171 or M172, what supply does it take?", "Schneider Electric", "M171", ["d-1", "d-2"]);
+    expect(hits).toEqual([]);
+    expect(diagnostics.ambiguousModelAsk).toEqual({ named: ["M171", "M172"] });
+  });
+
+  it("one manual declaring both siblings", async () => {
+    const both = row("Modicon M171 and M172 Hardware Guide", SUPPLY);
+    const named = await ask([both], "My controller is M171 or M172, what supply does it take?", "Schneider Electric", "M171");
+    expect(named.hits).toEqual([]);
+    expect(named.diagnostics.ambiguousModelAsk).toEqual({ named: ["M171", "M172"] });
+    const one = await ask([both], "M172 supply voltage?", "Schneider Electric", "M172");
+    expect(one.hits.length).toBeGreaterThan(0);
   });
 });
 

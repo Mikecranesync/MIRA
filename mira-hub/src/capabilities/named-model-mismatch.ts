@@ -199,12 +199,15 @@ export function lookAlikeModelMismatch(question: string, title: string): LookAli
   const declared = lookAlikeTokens(title);
   if (declared.length === 0) return null;
   const declaredIds = new Set(declared.map((t) => t.id));
-  const asked = lookAlikeTokens(question);
-  const siblings = asked.filter((q) => !declaredIds.has(q.id) && declared.some((t) => isSibling(t, q)));
-  if (siblings.length === 0) return null;
-  const sameModel = asked.filter((q) => declaredIds.has(q.id));
-  if (sameModel.length > 0) {
-    return { kind: "ambiguous", named: [...new Set([...sameModel, ...siblings].map((t) => t.id))].sort() };
+  // Every question token that IS a declared model or a near-sibling of one.
+  // Codex r2 F1 on #5371: two of them (one manual declaring both, or the
+  // manual's model plus its sibling) is one machine named two ways — ask.
+  const related = [
+    ...new Set(lookAlikeTokens(question).filter((q) => declared.some((t) => t.id === q.id || isSibling(t, q))).map((t) => t.id)),
+  ];
+  if (related.length >= 2) return { kind: "ambiguous", named: related.sort() };
+  if (related.length === 1 && !declaredIds.has(related[0])) {
+    return { kind: "mismatch", requested: related, declared: [...declaredIds] };
   }
-  return { kind: "mismatch", requested: [...new Set(siblings.map((t) => t.id))], declared: [...declaredIds] };
+  return null;
 }
