@@ -1445,7 +1445,14 @@ export async function retrieveNodeChunks(
   //     notebook identity scopes;
   //   - neither resolves (an unparseable asset name like "CV-101", or an
   //     unbound notebook) → no filter, exactly as before.
-  const questionScoped = Boolean(requestedModel.model) && !requestedModel.ambiguous;
+  //   - #5355: a close-name model the single token cannot carry (SMC-50 vs SMC
+  //     Flex, PowerFlex 4M vs 40 — model-token.ts APPLICABILITY_ONLY_PATTERNS)
+  //     scopes the same way when it is the ONE model the question names. The
+  //     token stays null, so OEM `model_number` scoping is unchanged.
+  const closeNameIdentities =
+    !requestedModel.model && !requestedModel.ambiguous ? modelIdentitiesInText(opts.rawQuery ?? q) : new Set<string>();
+  const questionScoped =
+    (Boolean(requestedModel.model) && !requestedModel.ambiguous) || closeNameIdentities.size === 1;
   // 2026-10-18 scope pass: two more ways the notebook identity must NOT scope.
   //   - It was never confirmed by a person. `equipment_notebooks.model` and
   //     `identity_status` are independent columns (updateNotebook builds its

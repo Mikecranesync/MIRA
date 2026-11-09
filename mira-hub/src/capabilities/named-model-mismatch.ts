@@ -18,8 +18,12 @@ export type NamedModelMismatch = { requested: string[]; declared: string[] };
 export function displayModelIdentity(id: string): string {
   const micro = /^MICRO(\d+)$/.exec(id);
   if (micro) return `Micro${micro[1]}`;
-  const pf = /^PF(\d+)$/.exec(id);
+  const pf = /^PF(\d+M?)$/.exec(id);
   if (pf) return `PowerFlex ${pf[1]}`;
+  // #5355: the SMC starters as Rockwell writes them.
+  if (id === "SMCFLEX") return "SMC Flex";
+  const smc = /^SMC(\d+)$/.exec(id);
+  if (smc) return `SMC-${smc[1]}`;
   return id;
 }
 

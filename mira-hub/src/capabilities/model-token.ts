@@ -151,8 +151,31 @@ export function modelIdentitiesInText(text: string): Set<string> {
   if (identities.size > 1 && [...identities].some((id) => /^(?:K?TP\d|6AV)/.test(id))) {
     identities.delete("COMFORT");
   }
+  for (const [family, pattern] of APPLICABILITY_ONLY_PATTERNS) {
+    for (const match of text.matchAll(pattern)) {
+      identities.add(`${family}${match[1].toUpperCase()}`);
+    }
+  }
   return identities;
 }
+
+// #5355 — close-name families the single ILIKE token cannot carry. With the
+// SMC Flex manual selected, an SMC-50 question was answered with SMC Flex fault
+// codes: no MODEL_PATTERNS entry named either starter, so the question named
+// "no model" and every manual looked model-free. PowerFlex 4 / 4M had the same
+// gap (the PowerFlex pattern needs two digits, so "4M" read as nothing and a
+// PowerFlex 40 manual answered a 4M question). These are APPLICABILITY ONLY,
+// like CONJOINED_DIGIT_FAMILIES: they are deliberately not in MODEL_PATTERNS,
+// whose token feeds `model_number ILIKE '%<token>%'` scoping — an "SMC-50"
+// token of "50" would match a PowerFlex 750's model_number, and an
+// identity-bound "SMC Flex" caller would narrow from '%SMC Flex%' to a
+// spelling the column may not store. Each identity carries its family, so
+// SMCFLEX ≠ SMC50 ≠ SMC3 and PF4 ≠ PF4M ≠ PF40 (the trailing \b keeps "40"
+// from reading as "4").
+const APPLICABILITY_ONLY_PATTERNS: ReadonlyArray<readonly [family: string, pattern: RegExp]> = [
+  ["SMC", /\bsmc[\s-]*(flex|50|3)\b/gi], // SMC Flex / SMC-Flex, SMC-50, SMC-3
+  ["PF", /\b(?:powerflex|pf)\s*(4m?)\b/gi], // PowerFlex 4, PowerFlex 4M
+];
 
 /**
  * One key per model, however it was written (Codex r7 on #4360): "PF525",
