@@ -86,6 +86,47 @@ const baseWorkOrder = {
   synthetic: true,
 };
 
+describe("#5289 request cancellation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.NOTEBOOK_WORK_PACKET = "1";
+    vi.mocked(sessionOr401).mockResolvedValue(session as never);
+    vi.mocked(getNotebook).mockResolvedValue(notebook());
+  });
+
+  it.each(["GET", "POST"])("refuses an already-aborted %s without loading a notebook or PDF", async (method) => {
+    const controller = new AbortController(); controller.abort();
+    const request = new Request(`https://hub.test/api/equipment-notebooks/${NOTEBOOK_ID}/work-packet`, {
+      method, signal: controller.signal,
+      ...(method === "POST" ? { body: JSON.stringify({ workOrder: baseWorkOrder }) } : {}),
+    });
+    const response = await (method === "GET" ? GET : POST)(request as never, makeParams(NOTEBOOK_ID));
+    expect(response.status).toBe(499);
+    expect(await response.json()).toEqual({ error: "request_aborted" });
+    expect(getNotebook).not.toHaveBeenCalled();
+    expect(loadNotebookDocTexts).not.toHaveBeenCalled();
+    expect(buildDraftPacket).not.toHaveBeenCalled();
+  });
+
+  it.each(["GET", "POST"])("forwards the %s signal and reports cancellation without building a packet", async (method) => {
+    const controller = new AbortController();
+    const request = new Request(`https://hub.test/api/equipment-notebooks/${NOTEBOOK_ID}/work-packet`, {
+      method, signal: controller.signal,
+      ...(method === "POST" ? { body: JSON.stringify({ workOrder: baseWorkOrder }) } : {}),
+    });
+    // Request creates its own dependent signal; compare the actual routed signal.
+    vi.mocked(loadNotebookDocTexts).mockImplementationOnce(async (_tenant, _id, options) => {
+      expect(options?.signal).toBe(request.signal);
+      controller.abort();
+      throw new DOMException("cancelled", "AbortError");
+    });
+    const response = await (method === "GET" ? GET : POST)(request as never, makeParams(NOTEBOOK_ID));
+    expect(response.status).toBe(499);
+    expect(await response.json()).toEqual({ error: "request_aborted" });
+    expect(buildDraftPacket).not.toHaveBeenCalled();
+  });
+});
+
 describe("GET /work-packet", () => {
   beforeEach(() => {
     vi.clearAllMocks();
