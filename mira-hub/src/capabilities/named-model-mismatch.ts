@@ -49,19 +49,25 @@ export function namedModelMismatchText(m: NamedModelMismatch): string {
  * rounds of listing the gap shapes that ask — "or", "(or maybe", ", or",
  * "(maybe" — the rule is inverted, so a phrasing nobody listed asks):
  * - doubt between them ("or", "/", "maybe", "possibly", "perhaps", "probably",
- *   "either", "not sure", "I think") always asks, whatever else the sentence
- *   says (Codex r4 F6: no comparison word exempts an explicit alternative);
+ *   "either", "could", "might", "not sure/certain", "I think/guess/believe")
+ *   always asks, whatever else the sentence says (Codex r4 F6: no comparison
+ *   word exempts an explicit alternative);
  * - nothing or a bare "," asks, unless the clause opens with a comparison that
  *   names the list ("Compare the SMC-50, SMC Flex fault codes");
- * - the pair is answered only when the words between them end in a joining
- *   word ("and", "vs", "versus", "with", "than", "as", "to", "from",
- *   "between"): today's path, where every manual is cited under its own title;
+ * - the pair is answered only when the words between them are a short, plain
+ *   link: at most six words with no bracket or dash, ending in a joining word
+ *   ("and", "vs", "versus", "with", "than", "as", "to", "from", "between").
+ *   That is today's path, where every manual is cited under its own title.
+ *   A trailing joining word alone is not proof of a comparison: "(not certain,
+ *   could be the same as SMC Flex)" asks (Codex r10 F12);
  * - anything else asks.
  * Different families are never ambiguous here. Pure, no LLM.
  */
 const CLAUSE_BREAK_RE = /[.?!;:]/;
-const DOUBT_GAP_RE = /\bor\b|\/|\b(?:maybe|possibly|perhaps|probably|either|not\s+sure|i\s+think)\b/i;
-const JOINED_GAP_RE = /\b(?:and|vs|versus|with|than|as|to|from|between)\s+(?:(?:the|my|a|an)\s+)?$/i;
+const DOUBT_GAP_RE =
+  /\bor\b|\/|\b(?:maybe|possibly|perhaps|probably|either|could|might|unsure|uncertain|aka|not\s+(?:sure|certain)|i\s+(?:think|guess|believe))\b/i;
+const JOINED_GAP_RE =
+  /^\s*,?\s*(?:[^\s()[\]\u2013\u2014]+\s+){0,6}(?:and|vs|versus|with|than|as|to|from|between)\s+(?:(?:the|my|a|an)\s+)?$/i;
 const LIST_GAP_RE = /^\s*\(?\s*,?\s*(?:(?:the|my|a|an)\s+)?$/i;
 // Only a comparison that names the listed models: "compare", "comparing",
 // "comparison", "difference(s) between". Not "compared to", not a bare

@@ -447,6 +447,42 @@ describe("#5355 — two models: comparison vs ambiguous", () => {
     expect(ambiguousSiblingModels(q)).toBeNull();
   });
 
+  it.each([
+    ["My SMC-50 (not certain, could be the same as SMC Flex) tripped; what does fault 10 mean?", SMC_FLEX_COVER, SMC_FAULTS, ["150-F", "SMC-50"], ["SMC50", "SMCFLEX"]],
+    ["My PowerFlex 40 (not certain, could be the same as PowerFlex 4M) faulted; what is the maximum A093 Auto Rstrt Delay?", PF4M_COVER, PF_RESTART, ["PowerFlex 4M", "PowerFlex 40"], ["PF40", "PF4M"]],
+  ])("Codex r10 F12: doubt before a joining word still asks: %s", async (q, cover, body, models, named) => {
+    expect(ambiguousSiblingModels(q)).toEqual(named);
+    for (const model of models) {
+      const d: { ambiguousModelAsk?: { named: string[] } } = {};
+      const query = vi.fn(async () => ({ rows: [row(cover, body)] }));
+      const hits = await retrieveNodeChunks({ query } as unknown as PoolClient, "t-1", q, {
+        nodeId: "n-1",
+        unsPath: null,
+        docIds: ["d-1"],
+        validatedDocScope: true,
+        identity: { manufacturer: "Rockwell Automation", model },
+        identityStatus: "user_confirmed" as never,
+        diagnostics: d as never,
+      });
+      expect(hits, model).toEqual([]);
+      expect(d.ambiguousModelAsk, model).toEqual({ named });
+      expect(query, model).not.toHaveBeenCalled();
+    }
+  });
+
+  it.each([
+    // a bracket or dash before the joining word is an aside, not a link
+    "My SMC-50 (it is the same as the SMC Flex) shows fault 10, what is it?",
+    "My SMC-50 — same as the SMC Flex — shows fault 10, what is it?",
+    // modal doubt without any of the older doubt words
+    "My SMC-50 might be wired the same as the SMC Flex; fault 10?",
+    "My SMC-50 I guess works like the SMC Flex, fault 10 what is it?",
+    // a long gap ending in a joining word is not a plain link
+    "My SMC-50 that the last tech swapped in yesterday is listed with the SMC Flex, fault 10?",
+  ])("Codex r10 F12: not a plain link, asks: %s", (q) => {
+    expect(ambiguousSiblingModels(q)).not.toBeNull();
+  });
+
   it("a family alone against a model it does not cover still asks", () => {
     expect(ambiguousSiblingModels("My PowerFlex 520 series (maybe PowerFlex 40) fault F004?")).not.toBeNull();
   });
