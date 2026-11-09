@@ -124,7 +124,11 @@ describe("#5369 — retrieval refuses the sibling's manual, both directions", ()
   it.each([
     "M172 is not covered by this manual.\nModicon M171 Hardware Guide",
     "For M172 see the separate manual.\nModicon M171 Hardware Guide",
-  ])("first-line exclusion prose is skipped; the title below declares (r2 F2): %s", async (cover) => {
+    "For M172\nsee the separate manual.\nModicon M171 Hardware Guide",
+    "M172\nis not covered by this manual.\nModicon M171 Hardware Guide",
+    "For M172\nSee the separate manual.\nModicon M171 Hardware Guide",
+    "M172\nIs not covered by this manual.\nModicon M171 Hardware Guide",
+  ])("first-line exclusion prose (also wrapped, r3 F1) is skipped; the title below declares (r2 F2): %s", async (cover) => {
     const sibling = await ask([row(cover, SUPPLY)], "M172 supply voltage?", "Schneider Electric", "M171");
     expect(sibling.hits).toEqual([]);
     expect(sibling.diagnostics.namedModelMismatch).toEqual({ requested: ["M172"], declared: ["M171"] });

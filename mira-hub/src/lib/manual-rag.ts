@@ -219,9 +219,16 @@ function lookAlikeDeclaredTitle(
   let prose: string | undefined;
   for (let i = 0; i < lines.length; i++) {
     if (!hasLookAlikeToken(lines[i])) continue;
-    const segment = titleSegment(lines.slice(i).join("\n"));
-    if (COVER_PROSE_RE.test(segment)) {
+    // Codex r3 F1: a sentence wrapped by layout ("For M172\nsee the separate
+    // manual.", "M172\nis not covered …") is judged as one line — a next line
+    // that starts lower-case or with a prose verb continues it.
+    let line = lines[i];
+    let j = i;
+    while (j + 1 < lines.length && continuesCoverLine(lines[j + 1])) line = `${line} ${lines[++j].trim()}`;
+    const segment = titleSegment([line, ...lines.slice(j + 1)].join("\n"));
+    if (COVER_PROSE_RE.test(segment) || COVER_POINTING_START_RE.test(segment)) {
       prose = (prose ? `${prose}\n` : "") + segment;
+      i = j;
       continue;
     }
     return { title: declaredTitle(segment, hasLookAlikeToken), fromDocument: true };
@@ -278,6 +285,14 @@ function ambiguousCoverIdentities(heading: string): Set<string> {
   }
   return new Set();
 }
+/** #5369 (Codex r3 F1): a cover line that continues the previous one — it
+ *  starts lower-case, or with a verb / pointing word a title never opens with. */
+const continuesCoverLine = (line: string): boolean =>
+  /^\s*[a-z]/.test(line) || /^\s*(?:is|are|was|were|see|refer|consult|not|does|do|covered|covers|use)\b/i.test(line);
+/** A cover fragment that opens by pointing elsewhere ("For M172", "See M172")
+ *  is a cross-reference, not a title. */
+const COVER_POINTING_START_RE = /^\s*(?:for|see|refer|consult|not|except|excluding|unlike|replaces|supersedes)\b/i;
+
 /** Words a product TITLE never carries but exclusion / cross-reference prose does. */
 const COVER_PROSE_RE =
   /\b(?:is|are|was|were|not|see|refer|refers|covered|covers|separate|also|related|documents?|instead|only|except|does|do|use|uses|for\s+the|this\s+manual)\b|[.!?]\s*$/i;
