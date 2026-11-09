@@ -49,7 +49,8 @@ export function namedModelMismatchText(m: NamedModelMismatch): string {
  * rounds of listing the gap shapes that ask — "or", "(or maybe", ", or",
  * "(maybe" — the rule is inverted, so a phrasing nobody listed asks):
  * - doubt between them ("or", "/", "maybe", "possibly", "perhaps", "probably",
- *   "either", "could", "might", "not sure/certain", "I think/guess/believe")
+ *   "either", "could", "might", "may", "mixed up", "confused", "mistaken",
+ *   "not sure/certain", "don't know", "unclear", "I think/guess/believe")
  *   always asks, whatever else the sentence says (Codex r4 F6: no comparison
  *   word exempts an explicit alternative);
  * - nothing or a bare "," asks, unless the clause opens with a comparison that
@@ -61,14 +62,14 @@ export function namedModelMismatchText(m: NamedModelMismatch): string {
  *   and before the/my/a/an (Codex r10 F12, r11 F13: free words before a
  *   joining word were eventually a hedge). Today's path then cites every
  *   manual under its own title;
- * - a doubt word anywhere in the clause that holds the pair asks (r11 F13:
- *   "I may have confused my SMC-50 and SMC Flex");
+ * - a doubt word anywhere in the sentence that holds the pair asks (r11/r12
+ *   F13: "I may have confused my SMC-50 and SMC Flex");
  * - anything else asks.
  * Different families are never ambiguous here. Pure, no LLM.
  */
 const CLAUSE_BREAK_RE = /[.?!;:]/;
 const DOUBT_GAP_RE =
-  /\bor\b|\/|\b(?:maybe|possibly|perhaps|probably|either|could|might|unsure|uncertain|aka|not\s+(?:sure|certain)|i\s+(?:think|guess|believe))\b/i;
+  /\bor\b|\/|\b(?:maybe|possibly|perhaps|probably|either|could|might|may|unsure|uncertain|unclear|aka|mix(?:ed)?\s+up|confus\w*|mistak\w*|not\s+(?:sure|certain)|(?:do\s*n[o']?t|don't)\s+know|i\s+(?:think|guess|believe))\b/i;
 // Codex r11 F13: any free text inside the "answered" exception was eventually
 // a hedge ("may be the same as", "I may have confused with"), so the exception
 // is now a CLOSED list of exact links between the two names, nothing else.
@@ -107,9 +108,10 @@ export function ambiguousSiblingModels(question: string): string[] | null {
     if (!b || a.id === b.id || b.start < a.end) continue;
     const gap = question.slice(a.end, b.start);
     if (CLAUSE_BREAK_RE.test(gap)) continue;
-    // Doubt anywhere in the clause that holds the pair asks (Codex r11 F13).
-    const clause = clauseBefore(question, a.start) + question.slice(a.start, b.end) + (question.slice(b.end).split(/[.?!;:]/)[0] ?? "");
-    if (DOUBT_GAP_RE.test(clause.replace(/\bor\b|\//gi, " ")) || DOUBT_GAP_RE.test(gap)) return [a.id, b.id].sort();
+    // Doubt anywhere in the SENTENCE that holds the pair asks, even across a ; or
+    // : ("Not sure which: the SMC-50 vs the SMC Flex") (Codex r11/r12 F13).
+    const sentence = (question.slice(0, a.start).split(/[.?!]/).pop() ?? "") + question.slice(a.start, b.end) + (question.slice(b.end).split(/[.?!]/)[0] ?? "");
+    if (DOUBT_GAP_RE.test(sentence.replace(/\bor\b|\//gi, " ")) || DOUBT_GAP_RE.test(gap)) return [a.id, b.id].sort();
     if (LIST_GAP_RE.test(gap)) {
       if (LIST_COMPARISON_RE.test(clauseBefore(question, a.start))) continue;
       return [a.id, b.id].sort();

@@ -481,7 +481,9 @@ describe("#5355 — two models: comparison vs ambiguous", () => {
   it.each([
     ["My SMC-50 I may have confused with SMC Flex tripped; what does fault 10 mean?", SMC_FLEX_COVER, SMC_FAULTS, ["150-F", "SMC-50"], ["SMC50", "SMCFLEX"]],
     ["My PowerFlex 40 may be the same as PowerFlex 4M; what is the maximum A093 Auto Rstrt Delay?", PF4M_COVER, PF_RESTART, ["PowerFlex 4M", "PowerFlex 40"], ["PF40", "PF4M"]],
-  ])("Codex r11 F13: a hedge before a joining word asks: %s", async (q, cover, body, models, named) => {
+    ["I may have confused my SMC-50 and SMC Flex; what does fault 10 mean?", SMC_FLEX_COVER, SMC_FAULTS, ["150-F", "SMC-50"], ["SMC50", "SMCFLEX"]],
+    ["I may have mixed up my PowerFlex 40 and PowerFlex 4M; what is the maximum A093 Auto Rstrt Delay?", PF4M_COVER, PF_RESTART, ["PowerFlex 4M", "PowerFlex 40"], ["PF40", "PF4M"]],
+  ])("Codex r11/r12 F13: a hedge anywhere in the clause asks: %s", async (q, cover, body, models, named) => {
     expect(ambiguousSiblingModels(q)).toEqual(named);
     for (const model of models) {
       const d: { ambiguousModelAsk?: { named: string[] } } = {};
@@ -510,6 +512,9 @@ describe("#5355 — two models: comparison vs ambiguous", () => {
     "Micro820 talking to a GS10 and to a Micro850 over Modbus: how do I wire RS-485?",
     // doubt anywhere in the clause
     "I might have mixed up the SMC-50 and SMC Flex, fault 10 what is it?",
+    "I don't know if it's the SMC-50 and SMC Flex manual I need, fault 10?",
+    "Not sure which: the SMC-50 vs the SMC Flex, fault 10?",
+    "My tag is mistaken, SMC-50 and SMC Flex both listed, fault 10?",
   ])("r11 closed list: not an exact link, asks: %s", (q) => {
     expect(ambiguousSiblingModels(q)).not.toBeNull();
   });
