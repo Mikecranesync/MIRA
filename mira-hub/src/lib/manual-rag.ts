@@ -3,7 +3,7 @@ import { citationPageLabel } from "@/lib/citation-page";
 import type { IdentityStatus } from "@/lib/equipment-notebooks";
 import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
-import { FAMILY_ROOTS, MODEL_PATTERNS, ROCKWELL, modelIdentitiesInText, resolveModelFromObservationText } from "@/capabilities/model-token";
+import { FAMILY_ROOTS, MODEL_PATTERNS, ROCKWELL, familyCovers, modelIdentitiesInText, resolveModelFromObservationText } from "@/capabilities/model-token";
 import { ambiguousSiblingModels } from "@/capabilities/named-model-mismatch";
 import { embedQueryDetailed, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
 import { setSpanAttrs } from "@/capabilities/observability/tracing";
@@ -338,8 +338,6 @@ function documentCoversRequest(requested: Set<string>, title: Set<string>): bool
 // The table itself lives in model-token.ts (FAMILY_ROOTS), shared with the
 // close-name ambiguity check (Codex #5359 r7 F9).
 const isFamilyRoot = (id: string) => FAMILY_ROOTS.some(([root]) => root === id);
-const familyCovers = (root: string, model: string) =>
-  FAMILY_ROOTS.some(([r, members]) => r === root && members.test(model));
 
 /** Named-ask applicability (Foreman T-038 fix A): the exact-identity rule, plus
  *  a title naming a family root that covers the requested model — so "PowerFlex

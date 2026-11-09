@@ -393,6 +393,32 @@ describe("#5355 — two models: comparison vs ambiguous", () => {
     expect(hits).toHaveLength(1);
   });
 
+  it.each([
+    ["My Micro820 (or Micro800 series Micro850) relay ratings at 120 V AC?", "Micro850 Programmable Controllers\nCatalog Numbers 2080-LC50\nUser Manual", "Relay output ratings: 2 A at 240 V AC.", ["Micro850", "Micro800"], ["MICRO820", "MICRO850"]],
+    ["My PowerFlex 523 (or PowerFlex 520 series PowerFlex 525) what is parameter P031?", "PowerFlex 525 Adjustable Frequency AC Drive\nUser Manual", "P031 [Motor NP Volts]: motor nameplate voltage.", ["PowerFlex 525", "PowerFlex 520"], ["PF523", "PF525"]],
+  ])("Codex r8 F10: a family name between two members does not hide the choice: %s", async (q, cover, body, models, named) => {
+    expect(ambiguousSiblingModels(q)).toEqual(named);
+    for (const model of models) {
+      const d: { ambiguousModelAsk?: { named: string[] } } = {};
+      const client = { query: vi.fn(async () => ({ rows: [row(cover, body)] })) } as unknown as PoolClient;
+      const hits = await retrieveNodeChunks(client, "t-1", q, {
+        nodeId: "n-1",
+        unsPath: null,
+        docIds: ["d-1"],
+        validatedDocScope: true,
+        identity: { manufacturer: "Rockwell Automation", model },
+        identityStatus: "user_confirmed" as never,
+        diagnostics: d as never,
+      });
+      expect(hits, model).toEqual([]);
+      expect(d.ambiguousModelAsk, model).toEqual({ named });
+    }
+  });
+
+  it("a family alone against a model it does not cover still asks", () => {
+    expect(ambiguousSiblingModels("My PowerFlex 520 series (maybe PowerFlex 40) fault F004?")).not.toBeNull();
+  });
+
   it("Codex r7 F9 control: two members of one family still ask which one", () => {
     expect(ambiguousSiblingModels("My Micro820 (maybe Micro850) relay ratings?")).toEqual(["MICRO820", "MICRO850"]);
     expect(ambiguousSiblingModels("My PowerFlex 523 (maybe PowerFlex 525) P031?")).not.toBeNull();

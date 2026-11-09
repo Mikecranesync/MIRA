@@ -231,6 +231,6 @@ export const FAMILY_ROOTS: ReadonlyArray<readonly [root: string, members: RegExp
   ["COMFORT", /^TP\d{3,4}$/, /siemens/i], // SIMATIC Comfort Panels: TP700, TP900, TP1200, …
 ];
 
-/** True when one identity is a family root and the other is one of its members. */
-export const familyAndMember = (a: string, b: string): boolean =>
-  FAMILY_ROOTS.some(([root, members]) => (root === a && members.test(b)) || (root === b && members.test(a)));
+/** True when `root` is a family root and `model` is one of its members. */
+export const familyCovers = (root: string, model: string): boolean =>
+  FAMILY_ROOTS.some(([r, members]) => r === root && members.test(model));

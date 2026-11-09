@@ -1,4 +1,4 @@
-import { familyAndMember, modelMentionsInText } from "./model-token";
+import { familyCovers, modelMentionsInText } from "./model-token";
 
 /**
  * CV-101 journey S6 (2026-11-08): a question that names a model the notebook's
@@ -75,14 +75,17 @@ const clauseBefore = (text: string, at: number) => text.slice(0, at).split(/[.?!
 const familyOf = (id: string): string | null => /^([A-Z]+)\d|^([A-Z]+)FLEX$/.exec(id)?.slice(1).find(Boolean) ?? null;
 
 export function ambiguousSiblingModels(question: string): string[] | null {
-  const mentions = modelMentionsInText(question);
+  // A family named alongside one of its own members ("Micro800 … Micro820") is
+  // that member, so the family mention is dropped before pairing (Codex r7 F9).
+  // Dropping it, rather than skipping its pairs, keeps the members it sits
+  // between adjacent: "Micro820 (or Micro800 series Micro850)" still compares
+  // 820 with 850 across the gap and its "or" (Codex r8 F10).
+  const all = modelMentionsInText(question);
+  const mentions = all.filter((m) => !all.some((o) => o !== m && familyCovers(m.id, o.id)));
   for (let i = 1; i < mentions.length; i++) {
     const [a, b] = [mentions[i - 1], mentions[i]];
     const family = familyOf(a.id);
     if (!family || family !== familyOf(b.id) || a.id === b.id || b.start < a.end) continue;
-    // A family and its own member ("Micro800 … Micro820", "PowerFlex 520 series … 525")
-    // name one model, not two (Codex r7 F9).
-    if (familyAndMember(a.id, b.id)) continue;
     const gap = question.slice(a.end, b.start);
     if (CLAUSE_BREAK_RE.test(gap)) continue;
     if (DOUBT_GAP_RE.test(gap)) return [a.id, b.id].sort();
