@@ -1,3 +1,5 @@
+import { modelMentionsInText } from "./model-token";
+
 /**
  * CV-101 journey S6 (2026-11-08): a question that names a model the notebook's
  * manuals do not cover ("Micro850" in a notebook holding only the Micro820
@@ -37,31 +39,32 @@ export function namedModelMismatchText(m: NamedModelMismatch): string {
 
 /**
  * #5355 (Mike, 2026-11-09): a question that names two models is either a
- * genuine comparison / connection ("SMC-50 vs SMC Flex", "wire a Micro820 to a
- * GS10") or an ambiguous request ("my SMC-50 or SMC Flex just faulted, what is
- * code 10?"). A comparison keeps today's behaviour: no model filter, every
- * manual citable under its own title. Only SIBLINGS of one product family
- * (same identity prefix: SMC, PF, MICRO, ACS, GS…) asked with no comparison
- * cue are ambiguous, because their fault codes and parameters differ while
- * the question reads as one machine. Different families (Micro820 + GS10) are
- * a multi-device question, never ambiguous here. Pure, no LLM.
+ * genuine comparison / connection ("SMC-50 vs SMC Flex", "Micro820
+ * communicating with Micro850") or an ambiguous request ("my SMC-50 or SMC
+ * Flex just faulted, what is code 10?"). Codex r2 on #5359: scanning the whole
+ * question for cue words misfired both ways ("tripped due to a fault" read as
+ * a comparison). So ambiguity is decided by what sits BETWEEN two adjacent
+ * mentions of one product family (same identity prefix: SMC, PF, MICRO…):
+ * nothing, "or", "/" or "," — optionally followed by the/my/a/an — is one
+ * machine named two ways; ANY other word between them ("and", "vs", "with",
+ * "communicating with", "between") keeps today's path, where every manual is
+ * cited under its own title. Different families are never ambiguous here.
+ * Pure, no LLM.
  */
-const COMPARISON_CUE_RE =
-  /\b(?:vs\.?|versus|compar\w*|differen\w*|differ|between|both|same\s+as|similar|unlike|instead\s+of|replac\w*|upgrad\w*|migrat\w*|swap\w*|convert\w*|to\s+an?|with\s+an?|from\s+an?)\b/i;
+const ALTERNATIVE_GAP_RE = /^\s*(?:or\b|\/|,)?\s*(?:(?:the|my|a|an)\s+)?$/i;
 
 /** The family prefix of an identity ("SMC50" → "SMC", "PF4M" → "PF"); null for
  *  identities without a letter prefix (catalog numbers). */
 const familyOf = (id: string): string | null => /^([A-Z]+)\d|^([A-Z]+)FLEX$/.exec(id)?.slice(1).find(Boolean) ?? null;
 
-export function ambiguousSiblingModels(question: string, identities: Iterable<string>): string[] | null {
-  if (COMPARISON_CUE_RE.test(question)) return null;
-  const byFamily = new Map<string, string[]>();
-  for (const id of identities) {
-    const family = familyOf(id);
-    if (!family) continue;
-    byFamily.set(family, [...(byFamily.get(family) ?? []), id]);
+export function ambiguousSiblingModels(question: string): string[] | null {
+  const mentions = modelMentionsInText(question);
+  for (let i = 1; i < mentions.length; i++) {
+    const [a, b] = [mentions[i - 1], mentions[i]];
+    const family = familyOf(a.id);
+    if (!family || family !== familyOf(b.id) || a.id === b.id || b.start < a.end) continue;
+    if (ALTERNATIVE_GAP_RE.test(question.slice(a.end, b.start))) return [a.id, b.id].sort();
   }
-  for (const ids of byFamily.values()) if (ids.length >= 2) return [...ids].sort();
   return null;
 }
 

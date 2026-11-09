@@ -16,7 +16,7 @@
 import type { PoolClient } from "pg";
 import { describe, expect, it, vi } from "vitest";
 import { retrieveNodeChunks } from "../../lib/manual-rag";
-import { modelIdentitiesInText } from "../model-token";
+import { modelIdentitiesInText, modelMentionsInText } from "../model-token";
 import {
   ambiguousModelAskText,
   ambiguousSiblingModels,
@@ -188,8 +188,12 @@ describe("#5355 — two models: comparison vs ambiguous", () => {
     "my SMC-50 or SMC Flex flagged fault 10, what is it?",
     "PowerFlex 40 or PowerFlex 4M, what's the max A093?", // a bare "4M" with no PowerFlex prefix is not read (documented limit)
     "Micro820 Micro850 relay rating at 120 V AC?",
+    // Codex r2 on #5359 F2: words elsewhere in the question do not matter.
+    "My SMC-50 or SMC Flex tripped due to a fault 10; what is it?",
+    "SMC-50 / SMC Flex fault 10 with a hot heatsink, what is it?",
+    "is it the Micro820 or the Micro850 that has 7 relay outputs?",
   ])("ambiguous: %s", (q) => {
-    expect(ambiguousSiblingModels(q, ids(q))).not.toBeNull();
+    expect(ambiguousSiblingModels(q)).not.toBeNull();
   });
   it.each([
     "What's the difference between the SMC-50 and SMC Flex fault codes?",
@@ -199,11 +203,30 @@ describe("#5355 — two models: comparison vs ambiguous", () => {
     "wire RS-485 between a Micro820 and a GS10", // two families: multi-device
     "Micro820 talking to a GS10 over Modbus", // two families, connection cue
     "Micro820 GS10 comms fault after power loss", // two families, no cue at all
+    // Codex r2 on #5359 F3: a same-family connection is two devices.
+    "Micro820 communicating with Micro850 over Modbus: how should I wire RS-485?",
+    "Micro820 and Micro850 on one network, which IP settings?",
   ])("not ambiguous: %s", (q) => {
-    expect(ambiguousSiblingModels(q, ids(q))).toBeNull();
+    expect(ambiguousSiblingModels(q)).toBeNull();
   });
   it("the no-cue two-family case really names two models", () => {
     expect(ids("Micro820 GS10 comms fault after power loss").size).toBe(2);
+  });
+  it("Codex r2 F1: a joined model spelling is a model whatever follows it", () => {
+    for (const q of ["I reset the SMC-50 a few times; what fault code is SCR Overtemp?", "SMC-50 phase loss fault: what does code 10 mean?", "SMC50 A-phase fault"]) {
+      expect([...ids(q)], q).toEqual(["SMC50"]);
+    }
+    expect([...ids("PowerFlex 4M a while ago faulted")]).toEqual(["PF4M"]);
+    expect([...ids("SMC 50 phase loss fault")]).toEqual(["SMC50"]); // phase is a rating only after 3
+    // documented residual: an all-lower-case spaced "smc 50 a" reads as the model
+    expect([...ids("smc 50 a soft starter")]).toEqual(["SMC50"]);
+  });
+  it("mentions carry positions in text order", () => {
+    const q = "my SMC-50 or SMC Flex";
+    expect(modelMentionsInText(q).map((m) => [m.id, q.slice(m.start, m.end)])).toEqual([
+      ["SMC50", "SMC-50"],
+      ["SMCFLEX", "SMC Flex"],
+    ]);
   });
   it("a rating guard never swallows SMC Flex", () => {
     expect([...ids("I reset the SMC Flex a few times")]).toEqual(["SMCFLEX"]);
@@ -225,6 +248,41 @@ describe("#5355 — two models: comparison vs ambiguous", () => {
     expect(hits).toEqual([]);
     expect(diagnostics.ambiguousModelAsk).toEqual({ named: ["SMC50", "SMCFLEX"] });
     expect(vi.mocked(client.query)).not.toHaveBeenCalled();
+  });
+
+  it("Codex r2 F1: 'reset the SMC-50 a few times' keeps SMC-50 and refuses the SMC Flex manual", async () => {
+    for (const q of ["I reset the SMC-50 a few times; what fault code is SCR Overtemp?", "SMC-50 phase loss fault: what does code 10 mean?"]) {
+      const { hits, diagnostics } = await ask([row(SMC_FLEX_COVER, SMC_FAULTS)], q, "150-F");
+      expect(hits, q).toEqual([]);
+      expect(diagnostics.namedModelMismatch, q).toEqual({ requested: ["SMC50"], declared: ["SMCFLEX"] });
+    }
+  });
+
+  it("Codex r2 F2: 'tripped due to a fault' is still ambiguous at retrieval", async () => {
+    const d: { ambiguousModelAsk?: { named: string[] } } = {};
+    const client = { query: vi.fn(async () => ({ rows: [row(SMC_FLEX_COVER, SMC_FAULTS)] })) } as unknown as PoolClient;
+    const hits = await retrieveNodeChunks(client, "t-1", "My SMC-50 or SMC Flex tripped due to a fault 10; what is it?", {
+      nodeId: "n-1",
+      unsPath: null,
+      docIds: ["d-1"],
+      validatedDocScope: true,
+      identity: { manufacturer: "Rockwell Automation", model: "150-F" },
+      identityStatus: "user_confirmed" as never,
+      diagnostics: d as never,
+    });
+    expect(hits).toEqual([]);
+    expect(d.ambiguousModelAsk).toEqual({ named: ["SMC50", "SMCFLEX"] });
+  });
+
+  it("Codex r2 F3: a same-family connection question still retrieves", async () => {
+    const MICRO820_COVER = "Micro820 Programmable Controllers\nCatalog Numbers 2080-LC20\nInstallation Instructions";
+    const { hits, diagnostics } = await ask(
+      [row(MICRO820_COVER, "RS-485 serial port wiring: terminals D+ D- and G.")],
+      "Micro820 communicating with Micro850 over Modbus: how should I wire RS-485?",
+      "2080-LC20",
+    );
+    expect((diagnostics as { ambiguousModelAsk?: unknown }).ambiguousModelAsk).toBeUndefined();
+    expect(hits).toHaveLength(1);
   });
 
   it("a comparison still retrieves from the selected manual", async () => {

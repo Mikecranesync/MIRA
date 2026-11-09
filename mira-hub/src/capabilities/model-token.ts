@@ -113,18 +113,38 @@ const CONJOINED_DIGIT_FAMILIES: ReadonlyArray<readonly [family: string, head: Re
  * #4469 F3 is a normalization bug in the CALLER's title string, not here).
  */
 export function modelIdentitiesInText(text: string): Set<string> {
-  const identities = new Set<string>();
+  const identities = new Set(modelMentionsInText(text).map((m) => m.id));
+  // Mirror resolveModelFromObservationText's COMFORT-is-a-family-hint drop
+  // (primary review, pass 2): "Comfort" alone names the PANEL FAMILY, not a
+  // specific sibling model — a TP/KTP panel or 6AV order number is the
+  // specific model. Without this, "TP700 Comfort" and a document titled
+  // "TP1200 Comfort Operating Instructions" each carry COMFORT, so the two
+  // sets would intersect on COMFORT ALONE even though TP700 ≠ TP1200 — the
+  // exact cross-family false-grounding this detector exists to prevent.
+  if (identities.size > 1 && [...identities].some((id) => /^(?:K?TP\d|6AV)/.test(id))) {
+    identities.delete("COMFORT");
+  }
+  return identities;
+}
+
+/** One model mention: its identity (modelIdentitiesInText's shape) and where it sits in the text. */
+export type ModelMention = { id: string; start: number; end: number };
+
+/**
+ * #5355 (Codex r2 on #5359): every model mention WITH its position, in text
+ * order — modelIdentitiesInText is this list's identity set. Positions let a
+ * caller read what sits BETWEEN two mentions ("SMC-50 or SMC Flex" vs
+ * "Micro820 communicating with Micro850") instead of scanning the whole
+ * question for cue words.
+ */
+export function modelMentionsInText(text: string): ModelMention[] {
+  const mentions: ModelMention[] = [];
   MODEL_PATTERNS.forEach((pattern, i) => {
     const family = FAMILY_KEYS[i];
     for (const match of text.matchAll(new RegExp(pattern.source, "gi"))) {
       const captured = (match[1] ?? match[0]).replace(/\s+/g, "").toUpperCase();
-      if (captured === "SINAMICSV20") {
-        identities.add("V20");
-      } else if (/^\d+$/.test(captured)) {
-        identities.add(`${family}${captured}`);
-      } else {
-        identities.add(captured);
-      }
+      const id = captured === "SINAMICSV20" ? "V20" : /^\d+$/.test(captured) ? `${family}${captured}` : captured;
+      mentions.push({ id, start: match.index, end: match.index + match[0].length });
     }
   });
   // Round-2 review on #4484: a title that lists sibling numbers after ONE
@@ -136,27 +156,21 @@ export function modelIdentitiesInText(text: string): Set<string> {
   // token) is deliberately untouched.
   for (const [family, head] of CONJOINED_DIGIT_FAMILIES) {
     for (const match of text.matchAll(head)) {
+      const tailStart = match.index + match[0].length - match[1].length;
       for (const tail of match[1].matchAll(/\d{2,4}/g)) {
-        identities.add(`${family}${tail[0]}`);
+        const start = tailStart + tail.index;
+        mentions.push({ id: `${family}${tail[0]}`, start, end: start + tail[0].length });
       }
     }
   }
-  // Mirror resolveModelFromObservationText's COMFORT-is-a-family-hint drop
-  // (primary review, pass 2): "Comfort" alone names the PANEL FAMILY, not a
-  // specific sibling model — a TP/KTP panel or 6AV order number is the
-  // specific model. Without this, "TP700 Comfort" and a document titled
-  // "TP1200 Comfort Operating Instructions" each carry COMFORT, so the two
-  // sets would intersect on COMFORT ALONE even though TP700 ≠ TP1200 — the
-  // exact cross-family false-grounding this detector exists to prevent.
-  if (identities.size > 1 && [...identities].some((id) => /^(?:K?TP\d|6AV)/.test(id))) {
-    identities.delete("COMFORT");
-  }
   for (const [family, pattern] of APPLICABILITY_ONLY_PATTERNS) {
     for (const match of text.matchAll(pattern)) {
-      identities.add(`${family}${match[1].toUpperCase()}`);
+      const end = match.index + match[0].length;
+      if (isSpacedRating(match[1], match[2], text.slice(end))) continue;
+      mentions.push({ id: `${family}${match[2].toUpperCase()}`, start: match.index, end });
     }
   }
-  return identities;
+  return mentions.sort((a, b) => a.start - b.start);
 }
 
 // #5355 — close-name families the single ILIKE token cannot carry. With the
@@ -172,12 +186,23 @@ export function modelIdentitiesInText(text: string): Set<string> {
 // spelling the column may not store. Each identity carries its family, so
 // SMCFLEX ≠ SMC50 ≠ SMC3 and PF4 ≠ PF4M ≠ PF40 (the trailing \b keeps "40"
 // from reading as "4").
-// Codex r1 on #5359: a number followed by a unit or "phase" is a rating, not a
-// model ("SMC 3 phase starter", "SMC 50 A soft starter", "PF 4 kW").
-const NOT_A_RATING = String.raw`(?![\s-]*(?:phase|ph|a|amps?|amperes?|v|vac|vdc|volts?|hp|kw|w|hz)\b)`;
+// Codex r1+r2 on #5359: "SMC 3 phase starter" and "SMC 50 A soft starter" are
+// ratings, not models — but "reset the SMC-50 a few times" and "SMC-50 phase
+// loss" name SMC-50. So the joined spellings (SMC-50, SMC50, SMC-3, PF4M) are
+// ALWAYS models, and only a SPACED number ("SMC 50", "PowerFlex 4") followed by
+// a unit is a rating: a single-letter unit (A, V, W) must be upper-case (a
+// lower-case "a" is the article), a unit word is any case, and "phase"/"ph"
+// counts only after 3. Residual: all-lower-case "smc 50 a soft starter"
+// reads as SMC-50.
+function isSpacedRating(separator: string, model: string, after: string): boolean {
+  if (!/^\s+$/.test(separator) || !/^\d+$/.test(model)) return false;
+  if (/^[\s-]*(?:A|V|W)\b/.test(after)) return true;
+  if (/^[\s-]*(?:amps?|amperes?|volts?|vac|vdc|hp|kw|hz)\b/i.test(after)) return true;
+  return model === "3" && /^[\s-]*(?:phase|ph)\b/i.test(after);
+}
 const APPLICABILITY_ONLY_PATTERNS: ReadonlyArray<readonly [family: string, pattern: RegExp]> = [
-  ["SMC", new RegExp(String.raw`\bsmc[\s-]*(flex\b|(?:50|3)\b${NOT_A_RATING})`, "gi")], // SMC Flex / SMC-Flex, SMC-50, SMC-3
-  ["PF", new RegExp(String.raw`\b(?:powerflex|pf)\s*(4m?)\b${NOT_A_RATING}`, "gi")], // PowerFlex 4, PowerFlex 4M
+  ["SMC", /\bsmc([\s-]*)(flex|50|3)\b/gi], // SMC Flex / SMC-Flex, SMC-50, SMC-3
+  ["PF", /\b(?:powerflex|pf)(\s*)(4m?)\b/gi], // PowerFlex 4, PowerFlex 4M
 ];
 
 /**

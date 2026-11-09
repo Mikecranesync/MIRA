@@ -1457,12 +1457,12 @@ export async function retrieveNodeChunks(
     !requestedModel.model && !requestedModel.ambiguous ? modelIdentitiesInText(opts.rawQuery ?? q) : new Set<string>();
   const questionScoped =
     (Boolean(requestedModel.model) && !requestedModel.ambiguous) || closeNameIdentities.size === 1;
-  // #5355: two sibling models of one family with no comparison cue ("my
-  // SMC-50 or SMC Flex faulted — what is code 10?") is one machine named two
-  // ways. Answering from either manual guesses; ask which one instead
+  // #5355: two sibling models of one family joined only by "or" / "/" / ","
+  // ("my SMC-50 or SMC Flex faulted — what is code 10?") is one machine named
+  // two ways. Answering from either manual guesses; ask which one instead
   // (named-model-mismatch.ts ambiguousSiblingModels). A comparison or a
   // two-device question keeps the unfiltered behaviour below.
-  const ambiguousSiblings = ambiguousSiblingModels(opts.rawQuery ?? q, modelIdentitiesInText(opts.rawQuery ?? q));
+  const ambiguousSiblings = ambiguousSiblingModels(opts.rawQuery ?? q);
   if (ambiguousSiblings) {
     if (opts.diagnostics) opts.diagnostics.ambiguousModelAsk = { named: ambiguousSiblings };
     return [];
