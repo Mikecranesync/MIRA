@@ -902,6 +902,55 @@ describe("S16: a PDF that never reached the project can be sent again from the s
     expect(rows.map((r) => r.readiness.label)).toEqual(["Ready to search", "Ready to search", "Ready to search"]);
   });
 
+  it("Codex #5353 r7 F8: a retry deduplicates into a copy that was resolved from a 202", async () => {
+    const attached: string[] = [];
+    let copies = 0;
+    let aReads = 0;
+    const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      const reply = (status: number, body: Record<string, unknown>) =>
+        ({ status, ok: status >= 200 && status < 300, json: async () => body }) as Response;
+      if (method === "GET" && path.startsWith("/api/namespace/tree/")) return reply(200, { nodes: [] });
+      if (method === "GET" && path.startsWith("/api/files/f-A")) { aReads++; return reply(200, { file: { id: "f-A", uploadId: "doc-A" } }); }
+      if (method === "GET" && path.startsWith("/api/files/")) return reply(200, { files: [] });
+      if (method === "POST" && path.startsWith("/api/namespace/node/node-g/files/")) {
+        copies++;
+        if (copies === 1) return reply(202, { ok: true, indexed: false, indexing: true, fileId: "f-A" });
+        if (copies === 2) return reply(503, { error: "offline" });
+        return reply(201, { ok: true, indexed: true, uploadId: "doc-A", fileId: "f-A" });
+      }
+      if (method === "POST" && path.startsWith("/api/equipment-notebooks/nb-general/sources/")) {
+        const docId = String(JSON.parse(String(init!.body)).docId);
+        if (!attached.includes(docId)) attached.push(docId);
+        return reply(201, { ok: true });
+      }
+      if (method === "GET" && path.startsWith("/api/equipment-notebooks/nb-general/")) {
+        return reply(200, {
+          notebook: { nodeId: "node-g" },
+          sources: attached.map((docId) => ({ docId, filename: "manual.pdf", readiness: { state: "chat_ready_basic" }, matchState: "user_confirmed", enabledByDefault: true })),
+        });
+      }
+      throw new Error(`unexpected request ${method} ${path}`);
+    });
+    const c = createNewProjectSetup({ ...deps(fetchFn as unknown as typeof fetch), getNotebooks: () => [] });
+    await c.start();
+    await c.choose({ kind: "general" });
+    c.setName("Duplicate retry after a 202");
+    await c.next();
+    c.addPdfs([new File(["A"], "manual.pdf", { type: "application/pdf" }), new File(["A"], "manual.pdf", { type: "application/pdf" })]);
+    await c.next();
+    await c.commit();
+    expect(aReads).toBeGreaterThan(0); // the 202 copy was resolved to doc-A
+    const failed = c.getState().rows.find((r) => r.retry)!;
+    expect(failed).toBeDefined();
+    await c.retryUpload(failed.key);
+    const rows = c.getState().rows;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.readiness.label).toBe("Ready to search");
+    expect(attached).toEqual(["doc-A"]);
+  });
+
   it("Codex #5353 r6 F7: a retired attach that fails late cannot undo the current watch's successful attach", async () => {
     const attached: string[] = [];
     const uploads: Record<string, number> = {};

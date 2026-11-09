@@ -820,7 +820,9 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
       // r3 F5: the retry's outcome is newer than that row. A clean one replaces
       // it, so an earlier attach failure the retry has fixed is not left showing;
       // a failed retry never overwrites a row that was fine.
-      const dup = next.key === c.results[i]!.key ? -1 : c.results.findIndex((r, j) => j !== i && r.key === next.key);
+      // r7 F8: a copy resolved from a 202 keeps its file key, so match by document id too.
+      const sameDoc = (r: DocOutcome) => r.key === next.key || (next.docId !== null && r.docId === next.docId);
+      const dup = next.key === c.results[i]!.key ? -1 : c.results.findIndex((r, j) => j !== i && sameDoc(r));
       if (dup >= 0) {
         if (!next.attachFailed && !next.notIndexed) c.results[dup] = next;
         c.results.splice(i, 1);
