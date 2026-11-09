@@ -174,6 +174,7 @@ import {
 } from "@/lib/inference/canonical-cascade";
 import { legacyProviders } from "@/lib/inference/legacy-cascade";
 import { edgeProfileEnabled } from "@/lib/inference/edge-profile";
+import { stitchChunks } from "@/capabilities/work-packet/document-text";
 import { edgeDefinitionPageUnreadText, edgePassagesUsage, renderEdgePassages, selectEdgePassages, withDefinitionCautions } from "@/capabilities/edge-passages";
 import { persistTurnUsage } from "@/lib/inference/persist-usage";
 import {
@@ -3641,18 +3642,22 @@ async function handleChatTurn(
         .filter((c) => c.sourceUrl === definitionPage.sourceUrl && c.sourcePage === definitionPage.page)
         .map((c) => c.content);
       let whole: string[] = [];
+      let complete = false;
       try {
-        whole = await withTenantContext(ctx.tenantId, (c) =>
+        ({ chunks: whole, complete } = await withTenantContext(ctx.tenantId, (c) =>
           retrievePageChunksInOrder(c, ctx.tenantId, definitionPage, { approvedSourceDocIds: docIds }),
-        );
+        ));
       } catch (err) {
         console.warn("[notebook-chat] edge definition-page read failed (definition withheld):", err instanceof Error ? err.message : err);
       }
-      if (whole.length === 0 || retrievedOnPage.some((t) => !whole.includes(t))) {
+      if (!complete || whole.length === 0 || retrievedOnPage.some((t) => !whole.includes(t))) {
         edgeDefinitionPageUnread = true;
-        console.warn(`[notebook-chat] edge definition page not read whole (${whole.length} chunks; ${retrievedOnPage.length} retrieved on it): definition withheld`);
+        console.warn(`[notebook-chat] edge definition page not read whole (${complete ? whole.length : "over the bound of"} chunks; ${retrievedOnPage.length} retrieved on it): definition withheld`);
       } else {
-        passages = withDefinitionCautions(passages, whole);
+        // Ingest splits a page into overlapping windows, so a caution can start in
+        // one chunk and end in the next. Read the cautions from the page's text
+        // re-joined with the overlap removed, not chunk by chunk (Codex #5317 F2).
+        passages = withDefinitionCautions(passages, [stitchChunks(whole)]);
       }
     }
     const edgeCitations = passages.map((p) => p.citation);

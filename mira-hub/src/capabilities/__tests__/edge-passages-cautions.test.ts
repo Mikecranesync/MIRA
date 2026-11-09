@@ -14,6 +14,8 @@ import {
   withDefinitionCautions,
 } from "../edge-passages";
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
+import { chunkText } from "@/lib/node-knowledge-ingest";
+import { stitchChunks } from "../work-packet/document-text";
 
 const URL = "node-doc/f41821d6-68c9-4840-bc37-ea4b36bbc900/GS10-User-Manual-RevC.pdf";
 type Fx = { sourcePage: number; pageLabel: string | null; content: string };
@@ -101,5 +103,36 @@ describe("rendered GS11N answer", () => {
   it("renders exactly as before when the page has no cautions", () => {
     const plain = selectEdgePassages(chunks, citations, ORIGINAL);
     expect(renderEdgePassages(withDefinitionCautions(plain, ["P01.12 Acceleration Time 1 ♦R/W 010C 40269"]))).toBe(renderEdgePassages(plain));
+  });
+});
+
+describe("Codex #5317 F2: cautions that cross an ingest chunk boundary", () => {
+  // Re-split the real page with the ingest chunker until a window boundary falls
+  // inside the motor-damage caution, so the fixture is what ingest really writes.
+  const text = stitchChunks(wholePage);
+  const ingest = (() => {
+    for (let size = 200; size <= 1000; size += 10) {
+      const pieces = chunkText(text, size, 120);
+      if (pieces.length > 1 && !pieces.some((p) => p.replace(/\s+/g, " ").includes(MOTOR_DAMAGE))) return pieces;
+    }
+    return null;
+  })();
+
+  it("the fixture really splits the caution", () => {
+    expect(ingest).not.toBeNull();
+  });
+
+  it("chunk by chunk the caution is lost (the defect)", () => {
+    expect(definitionCautions(ingest!, P0112)).not.toContain(MOTOR_DAMAGE);
+  });
+
+  it("from the re-joined page text it is quoted whole, exactly once", () => {
+    const got = definitionCautions([stitchChunks(ingest!)], P0112);
+    expect(got.filter((c) => c === MOTOR_DAMAGE)).toHaveLength(1);
+    expect(got).toEqual([INVALID, PROTECTION, MOTOR_DAMAGE]);
+  });
+
+  it("control: the original page's chunks re-joined give the same three cautions as before", () => {
+    expect(definitionCautions([stitchChunks(wholePage)], P0112)).toEqual(definitionCautions(wholePage, P0112));
   });
 });

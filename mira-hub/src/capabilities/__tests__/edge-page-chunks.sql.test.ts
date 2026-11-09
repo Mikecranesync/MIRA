@@ -31,7 +31,8 @@ describe("retrievePageChunksInOrder (#5265)", () => {
     expect(sql).toMatch(/doc_id::text = \$2/);
     expect(sql).toMatch(/source_url = \$3/);
     expect(sql).toMatch(/COALESCE\(page_start, source_page\) = \$4/);
-    expect(sql).toContain(`LIMIT ${EDGE_PAGE_CHUNK_LIMIT}`);
+    // One past the bound, so a longer page is detected rather than silently truncated.
+    expect(sql).toContain(`LIMIT ${EDGE_PAGE_CHUNK_LIMIT + 1}`);
     expect(sql).not.toMatch(/content ~\*/);
     expect(params).toEqual([TENANT, DOC, "gs10.pdf", 139]);
   });
@@ -43,7 +44,22 @@ describe("retrievePageChunksInOrder (#5265)", () => {
       { content: "nine", chunk_index: "9" },
       { content: "eleven", chunk_index: "11" },
     ]);
-    expect(await retrievePageChunksInOrder(client, TENANT, page)).toEqual(["nine", "ten", "eleven", "none"]);
+    expect(await retrievePageChunksInOrder(client, TENANT, page)).toEqual({ chunks: ["nine", "ten", "eleven", "none"], complete: true });
+  });
+
+  it("Codex #5317 F1: a page with one row past the bound is reported incomplete, not truncated to the bound", async () => {
+    const rows = Array.from({ length: EDGE_PAGE_CHUNK_LIMIT + 1 }, (_, i) => ({ content: `chunk ${i}`, chunk_index: String(i) }));
+    rows[EDGE_PAGE_CHUNK_LIMIT] = { content: "Note that setting the acceleration time too short may cause motor damage.", chunk_index: String(EDGE_PAGE_CHUNK_LIMIT) };
+    const { client } = fakeClient(rows);
+    expect(await retrievePageChunksInOrder(client, TENANT, page)).toEqual({ chunks: [], complete: false });
+  });
+
+  it("control: a page exactly at the bound is complete", async () => {
+    const rows = Array.from({ length: EDGE_PAGE_CHUNK_LIMIT }, (_, i) => ({ content: `chunk ${i}`, chunk_index: String(i) }));
+    const { client } = fakeClient(rows);
+    const got = await retrievePageChunksInOrder(client, TENANT, page);
+    expect(got.complete).toBe(true);
+    expect(got.chunks).toHaveLength(EDGE_PAGE_CHUNK_LIMIT);
   });
 
   it("approval gate on: applies retrieval's predicate with the approved source set bound", async () => {

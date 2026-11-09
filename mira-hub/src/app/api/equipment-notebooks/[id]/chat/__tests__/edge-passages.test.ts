@@ -57,7 +57,7 @@ const ragMock = vi.hoisted(() => ({
   buildManualUserContent: vi.fn((q: string) => q),
   neutralizeReferenceText: vi.fn((t: string) => t),
   retrieveCitedPageChunks: vi.fn(async () => [] as unknown[]),
-  retrievePageChunksInOrder: vi.fn(async (..._args: unknown[]): Promise<string[]> => []),
+  retrievePageChunksInOrder: vi.fn(async (..._args: unknown[]): Promise<{ chunks: string[]; complete: boolean }> => ({ chunks: [], complete: true })),
 }));
 vi.mock("@/lib/manual-rag", () => ragMock);
 
@@ -145,7 +145,7 @@ beforeEach(() => {
   nbMock.getNotebook.mockResolvedValue({ id: NB, displayName: "Aircraft weight and balance", manufacturer: "FAA", model: "FAA-H-8083-1B" });
   ragMock.retrieveNodeChunks.mockResolvedValue([INDEX_CHUNK, HOWTO_CHUNK]);
   ragMock.retrieveCitedPageChunks.mockResolvedValue([]);
-  ragMock.retrievePageChunksInOrder.mockResolvedValue([]);
+  ragMock.retrievePageChunksInOrder.mockResolvedValue({ chunks: [], complete: true });
   filesMock.photoLinkedToTarget.mockResolvedValue(null);
   providerAnswers("Use the equipment list.");
   vi.spyOn(console, "warn").mockImplementation(() => undefined);
@@ -331,7 +331,7 @@ describe("#5265 edge profile — the manual speaks", () => {
           rank: 0.9 - i * 0.01,
         })),
       );
-      ragMock.retrievePageChunksInOrder.mockResolvedValue(gs10.definitionPage.chunks.map((c) => c.content));
+      ragMock.retrievePageChunksInOrder.mockResolvedValue({ chunks: gs10.definitionPage.chunks.map((c) => c.content), complete: true });
       const out = await frames(await POST(req({ message: GS11N, sourceDocIds: [DOC_A] }), params));
       expect(vi.mocked(fetch)).not.toHaveBeenCalled();
       expect(out.some((f) => f.kind === "safety")).toBe(false);
@@ -378,7 +378,7 @@ describe("#5265 edge profile — the manual speaks", () => {
 
     it("page read returns nothing: treated as unread, not as a page with no cautions", async () => {
       ragMock.retrieveNodeChunks.mockResolvedValue(gs10Retrieved());
-      ragMock.retrievePageChunksInOrder.mockResolvedValue([]);
+      ragMock.retrievePageChunksInOrder.mockResolvedValue({ chunks: [], complete: true });
       await expectPageUnread();
     });
 
@@ -387,8 +387,37 @@ describe("#5265 edge profile — the manual speaks", () => {
       ragMock.retrieveNodeChunks.mockResolvedValue(retrieved);
       const onPage = retrieved.filter((c) => c.sourcePage === 139).map((c) => c.content);
       expect(onPage.length).toBeGreaterThan(0);
-      ragMock.retrievePageChunksInOrder.mockResolvedValue(gs10.definitionPage.chunks.map((c) => c.content).filter((t) => t !== onPage[0]));
+      ragMock.retrievePageChunksInOrder.mockResolvedValue({ chunks: gs10.definitionPage.chunks.map((c) => c.content).filter((t) => t !== onPage[0]), complete: true });
       await expectPageUnread();
+    });
+
+    it("Codex #5317 F1: a page over the read bound is unread even when every retrieved chunk came back", async () => {
+      ragMock.retrieveNodeChunks.mockResolvedValue(gs10Retrieved());
+      // Every retrieved chunk is among the rows read, but the reader says the page
+      // runs past its bound: the route must not take that subset for the whole page.
+      ragMock.retrievePageChunksInOrder.mockResolvedValue({ chunks: gs10.definitionPage.chunks.map((c) => c.content), complete: false });
+      await expectPageUnread();
+    });
+
+    it("Codex #5317 F2: a caution split across two overlapping chunks is quoted whole, once", async () => {
+      ragMock.retrieveNodeChunks.mockResolvedValue(gs10Retrieved());
+      const page = gs10.definitionPage.chunks.map((c) => c.content);
+      // The stored text wraps lines; the caution is matched with whitespace collapsed.
+      const flat = (t: string) => t.replace(/\s+/g, " ");
+      const at = page.findIndex((t) => flat(t).includes(MOTOR_DAMAGE));
+      expect(at).toBeGreaterThanOrEqual(0);
+      const host = page[at]!;
+      // Cut near the caution's end, so the next window (120 characters back) starts inside it.
+      const cut = host.indexOf("during the drive", host.indexOf("may cause motor damage"));
+      expect(cut).toBeGreaterThan(0);
+      // Ingest windows overlap by 120 characters (node-knowledge-ingest CHUNK_OVERLAP).
+      const split = [host.slice(0, cut), host.slice(Math.max(0, cut - 120))];
+      expect(split.some((t) => flat(t).includes(MOTOR_DAMAGE))).toBe(false);
+      ragMock.retrievePageChunksInOrder.mockResolvedValue({ chunks: [...page.slice(0, at), ...split, ...page.slice(at + 1)], complete: true });
+      const out = await frames(await POST(req({ message: GS11N, sourceDocIds: [DOC_A] }), params));
+      const content = contentOf(out);
+      expect(content).toContain("Definition of P01.12");
+      expect(content.split(MOTOR_DAMAGE).length - 1).toBe(1);
     });
 
     it("an unflagged how-to is still served as passages, and calls no model", async () => {
