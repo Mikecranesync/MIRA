@@ -362,7 +362,7 @@ export function WorkPacketPanel({
   // state; on mount only the availability needs fetching (dropped if the panel unmounts first).
   useEffect(() => {
     let live = true;
-    void fetchAvailability(baseUrl).then((body) => {
+    void fetchAvailability(`${baseUrl}?metadataOnly=1`).then((body) => {
       if (live) setAvail(body);
     });
     return () => {

@@ -30,6 +30,15 @@ describe("#5289 unread documents are distinct from an empty source register", ()
     expect(text).not.toContain("No manufacturer documents yet");
     expect(text).not.toContain("Attach this machine");
   });
+  it("a deferred supported machine does not offer revision confirmation or an enabled build", () => {
+    state.availability.documentsState = "deferred";
+    state.availability.blocking = null;
+    state.availability.identity = { manufacturer: "CAT Pumps", model: "3520", status: "user_confirmed", catalogNumber: null };
+    const html = renderToStaticMarkup(<WorkPacketPanel notebookId="52890000-0000-4000-8000-000000000003" openOnArrival />);
+    expect(html).toContain("Documents have not been read yet.");
+    expect(html).not.toContain('data-testid="wp-rev-confirm"');
+    expect(html).toMatch(/<button[^>]*data-testid="wp-build"[^>]*disabled/);
+  });
   it.each([undefined, "read"])("preserves the actual empty-source copy for state %s", (value) => {
     if (value !== undefined) state.availability.documentsState = value;
     const text = documentText();

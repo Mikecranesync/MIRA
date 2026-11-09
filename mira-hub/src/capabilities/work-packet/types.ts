@@ -497,10 +497,11 @@ export interface WorkPacketAvailability {
   enabled: true;
   identity: Identity;
   documents: PacketDocument[];
-  /** Deferred means parsing was skipped for an identity/manufacturer refusal;
+  /** Deferred means parsing was skipped for a metadata check or early refusal;
    * an empty documents array then says nothing about the source register.
    * Absent preserves the legacy response's already-read interpretation. */
   documentsState?: "read" | "deferred";
-  /** null when a draft can be built; otherwise the first refusal a POST would return. */
+  /** First evaluated refusal; when documentsState is deferred, document-derived
+   * readiness has not been evaluated, even when no identity refusal is known. */
   blocking: { reason: DraftRefusal; message: string } | null;
 }

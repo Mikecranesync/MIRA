@@ -266,7 +266,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 
     const identity = identityOf(notebook);
     const identityBlock = identityBlocking(identity);
-    if (identityBlock) {
+    if (identityBlock || new URL(req.url).searchParams.get("metadataOnly") === "1") {
       const body: WorkPacketAvailability = {
         enabled: true, identity, documents: [], documentsState: "deferred", blocking: identityBlock,
       };

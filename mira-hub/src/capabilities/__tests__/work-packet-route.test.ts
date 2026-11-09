@@ -226,6 +226,42 @@ describe("GET /work-packet", () => {
     expect(body.documentsState).not.toBe("deferred");
   });
 
+  it("a supported machine's metadata-only check reads no documents or parsers", async () => {
+    process.env.NOTEBOOK_WORK_PACKET = "1";
+    vi.mocked(getNotebook).mockResolvedValue(notebook());
+    const req = new Request(`https://hub.test/api/equipment-notebooks/${NOTEBOOK_ID}/work-packet?metadataOnly=1`);
+    const res = await GET(req as never, makeParams(NOTEBOOK_ID));
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({ enabled: true, documents: [], documentsState: "deferred", blocking: null });
+    expect(getNotebook).toHaveBeenCalledWith(TENANT_ID, NOTEBOOK_ID);
+    expect(loadNotebookDocTexts).not.toHaveBeenCalled();
+    expect(parseCatPumpsDataSheet).not.toHaveBeenCalled();
+    expect(parseCatPumpsServiceManual).not.toHaveBeenCalled();
+  });
+
+  it("metadataOnly=0 retains the explicit full-read behavior", async () => {
+    process.env.NOTEBOOK_WORK_PACKET = "1";
+    vi.mocked(getNotebook).mockResolvedValue(notebook());
+    vi.mocked(loadNotebookDocTexts).mockResolvedValue([]);
+    const req = new Request(`https://hub.test/api/equipment-notebooks/${NOTEBOOK_ID}/work-packet?metadataOnly=0`);
+    const body = await (await GET(req as never, makeParams(NOTEBOOK_ID))).json();
+    expect(loadNotebookDocTexts).toHaveBeenCalledTimes(1);
+    expect(body.blocking?.reason).toBe("no_documents");
+    expect(body.documentsState).not.toBe("deferred");
+  });
+
+  it.each(["flag", "session", "notebook"])("metadata-only preserves the %s refusal", async (boundary) => {
+    process.env.NOTEBOOK_WORK_PACKET = boundary === "flag" ? "0" : "1";
+    if (boundary === "session") vi.mocked(sessionOr401).mockResolvedValueOnce(NextResponse.json({ error: "unauthorized" }, { status: 401 }));
+    if (boundary === "notebook") vi.mocked(getNotebook).mockResolvedValueOnce(null);
+    const req = new Request(`https://hub.test/api/equipment-notebooks/${NOTEBOOK_ID}/work-packet?metadataOnly=1`);
+    const res = await GET(req as never, makeParams(NOTEBOOK_ID));
+    expect(res.status).toBe(boundary === "session" ? 401 : 404);
+    expect(loadNotebookDocTexts).not.toHaveBeenCalled();
+    if (boundary !== "notebook") expect(getNotebook).not.toHaveBeenCalled();
+  });
+
   it("blocks unsupported_documents when nothing attached parses as CAT Pumps", async () => {
     process.env.NOTEBOOK_WORK_PACKET = "1";
     (getNotebook as ReturnType<typeof vi.fn>).mockResolvedValue(notebook());
