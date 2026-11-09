@@ -218,3 +218,19 @@ export function canonicalModelKey(span: string | null | undefined): string {
   const { model } = resolveModelFromObservationText(s);
   return (model ?? s).toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
+
+/** Product families whose manual covers every member (see the scope note above
+ *  FAMILY_ROOTS' use in manual-rag.ts): root identity, member identities, vendor.
+ *  Shared so the close-name ambiguity check knows a family and its own member
+ *  are one model, not two (Codex #5359 r7 F9). */
+export const ROCKWELL = /rockwell|allen[\s-]*bradley/i;
+export const FAMILY_ROOTS: ReadonlyArray<readonly [root: string, members: RegExp, vendor: RegExp]> = [
+  ["PF520", /^PF52\d$/, ROCKWELL], // PowerFlex 520-series: 523, 525, 527
+  ["PF750", /^PF75\d$/, ROCKWELL], // PowerFlex 750-series: 753, 755 (round-2 review)
+  ["MICRO800", /^MICRO8\d0$/, ROCKWELL], // Micro800: 810, 820, 830, 850, 870
+  ["COMFORT", /^TP\d{3,4}$/, /siemens/i], // SIMATIC Comfort Panels: TP700, TP900, TP1200, …
+];
+
+/** True when one identity is a family root and the other is one of its members. */
+export const familyAndMember = (a: string, b: string): boolean =>
+  FAMILY_ROOTS.some(([root, members]) => (root === a && members.test(b)) || (root === b && members.test(a)));

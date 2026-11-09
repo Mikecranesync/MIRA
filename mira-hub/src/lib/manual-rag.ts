@@ -3,7 +3,7 @@ import { citationPageLabel } from "@/lib/citation-page";
 import type { IdentityStatus } from "@/lib/equipment-notebooks";
 import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
-import { MODEL_PATTERNS, modelIdentitiesInText, resolveModelFromObservationText } from "@/capabilities/model-token";
+import { FAMILY_ROOTS, MODEL_PATTERNS, ROCKWELL, modelIdentitiesInText, resolveModelFromObservationText } from "@/capabilities/model-token";
 import { ambiguousSiblingModels } from "@/capabilities/named-model-mismatch";
 import { embedQueryDetailed, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
 import { setSpanAttrs } from "@/capabilities/observability/tracing";
@@ -335,13 +335,8 @@ function documentCoversRequest(requested: Set<string>, title: Set<string>): bool
 // Each root also names its vendor (Codex #4484 r2 F1): a bare-number identity
 // ("850") is resolved to a family ONLY through a root of the notebook's own
 // manufacturer, so an Allen-Bradley "850" reaches MICRO850 and never ACS850.
-const ROCKWELL = /rockwell|allen[\s-]*bradley/i;
-const FAMILY_ROOTS: ReadonlyArray<readonly [root: string, members: RegExp, vendor: RegExp]> = [
-  ["PF520", /^PF52\d$/, ROCKWELL], // PowerFlex 520-series: 523, 525, 527
-  ["PF750", /^PF75\d$/, ROCKWELL], // PowerFlex 750-series: 753, 755 (round-2 review)
-  ["MICRO800", /^MICRO8\d0$/, ROCKWELL], // Micro800: 810, 820, 830, 850, 870
-  ["COMFORT", /^TP\d{3,4}$/, /siemens/i], // SIMATIC Comfort Panels: TP700, TP900, TP1200, …
-];
+// The table itself lives in model-token.ts (FAMILY_ROOTS), shared with the
+// close-name ambiguity check (Codex #5359 r7 F9).
 const isFamilyRoot = (id: string) => FAMILY_ROOTS.some(([root]) => root === id);
 const familyCovers = (root: string, model: string) =>
   FAMILY_ROOTS.some(([r, members]) => r === root && members.test(model));

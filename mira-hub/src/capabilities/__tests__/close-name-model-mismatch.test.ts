@@ -245,6 +245,9 @@ describe("#5355 — two models: comparison vs ambiguous", () => {
     "Does the PowerFlex 40 have a longer A093 than the PowerFlex 4M?",
     "Moving settings from a PowerFlex 4M to a PowerFlex 40: what changes?",
     "SMC-50 versus SMC Flex PTC input",
+    // Codex r7 F9: a family and its own member are one model
+    "My Micro800 controller is a Micro820; what are the relay ratings?",
+    "My PowerFlex 520 series drive is a PowerFlex 525; what is parameter P031?",
   ])("not ambiguous: %s", (q) => {
     expect(ambiguousSiblingModels(q)).toBeNull();
   });
@@ -379,6 +382,20 @@ describe("#5355 — two models: comparison vs ambiguous", () => {
       expect(hits, model).toEqual([]);
       expect(d.ambiguousModelAsk, model).toEqual({ named });
     }
+  });
+
+  it.each([
+    ["My Micro800 controller is a Micro820; what are the relay ratings?", "Micro820 Programmable Controllers\nCatalog Numbers 2080-LC20\nUser Manual", "Relay output ratings: 2 A at 240 V AC.", "Micro820"],
+    ["My PowerFlex 520 series drive is a PowerFlex 525; what is parameter P031?", "PowerFlex 525 Adjustable Frequency AC Drive\nUser Manual", "P031 [Motor NP Volts]: motor nameplate voltage.", "PowerFlex 525"],
+  ])("Codex r7 F9: a family named with its own member retrieves the member's manual: %s", async (q, cover, body, model) => {
+    const { hits, diagnostics } = await ask([row(cover, body)], q, model);
+    expect((diagnostics as { ambiguousModelAsk?: unknown }).ambiguousModelAsk).toBeUndefined();
+    expect(hits).toHaveLength(1);
+  });
+
+  it("Codex r7 F9 control: two members of one family still ask which one", () => {
+    expect(ambiguousSiblingModels("My Micro820 (maybe Micro850) relay ratings?")).toEqual(["MICRO820", "MICRO850"]);
+    expect(ambiguousSiblingModels("My PowerFlex 523 (maybe PowerFlex 525) P031?")).not.toBeNull();
   });
 
   it.each([

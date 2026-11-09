@@ -1,4 +1,4 @@
-import { modelMentionsInText } from "./model-token";
+import { familyAndMember, modelMentionsInText } from "./model-token";
 
 /**
  * CV-101 journey S6 (2026-11-08): a question that names a model the notebook's
@@ -80,6 +80,9 @@ export function ambiguousSiblingModels(question: string): string[] | null {
     const [a, b] = [mentions[i - 1], mentions[i]];
     const family = familyOf(a.id);
     if (!family || family !== familyOf(b.id) || a.id === b.id || b.start < a.end) continue;
+    // A family and its own member ("Micro800 … Micro820", "PowerFlex 520 series … 525")
+    // name one model, not two (Codex r7 F9).
+    if (familyAndMember(a.id, b.id)) continue;
     const gap = question.slice(a.end, b.start);
     if (CLAUSE_BREAK_RE.test(gap)) continue;
     if (DOUBT_GAP_RE.test(gap)) return [a.id, b.id].sort();
