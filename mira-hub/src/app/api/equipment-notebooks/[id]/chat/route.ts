@@ -174,7 +174,8 @@ import {
 } from "@/lib/inference/canonical-cascade";
 import { legacyProviders } from "@/lib/inference/legacy-cascade";
 import { edgeProfileEnabled } from "@/lib/inference/edge-profile";
-import { edgePassagesUsage, renderEdgePassages, selectEdgePassages } from "@/capabilities/edge-passages";
+import { stitchChunks } from "@/capabilities/work-packet/document-text";
+import { edgeDefinitionPageUnreadText, edgePassagesUsage, renderEdgePassages, selectEdgePassages, withDefinitionCautions } from "@/capabilities/edge-passages";
 import { persistTurnUsage } from "@/lib/inference/persist-usage";
 import {
   logProvidersExhausted,
@@ -202,6 +203,7 @@ import {
   resolveModelFromObservationText,
   retrieveManualChunks,
   retrieveCitedPageChunks,
+  retrievePageChunksInOrder,
   retrieveNodeChunks,
   type ManualChunk,
 } from "@/lib/manual-rag";
@@ -3623,8 +3625,47 @@ async function handleChatTurn(
   // filtering, cited-page safety statement, persistence) applies unchanged. The
   // energized-work stop and the no-evidence abstain above still win.
   let edgeAnswerText: string | null = null;
+  // The definition's page could not be read whole, so its cautions are unchecked:
+  // the turn is not answered (Codex integration review 6726339145, HIGH).
+  let edgeDefinitionPageUnread = false;
   if (edgeProfileEnabled()) {
-    const passages = selectEdgePassages(chunks, citations, message);
+    let passages = selectEdgePassages(chunks, citations, message);
+    // The definition's page prints its cautions beside it, often in sibling
+    // chunks retrieval did not return; read that page whole and quote them.
+    // A read that fails, comes back empty, or lacks a chunk retrieval already
+    // returned for that page is not the whole page: the cautions cannot be
+    // checked, so the definition is withheld and the page named instead.
+    const definitionPassage = passages.find((p) => p.definition);
+    const [definitionPage] = definitionPassage ? citedPagesFor([definitionPassage.citation], chunks) : [];
+    if (definitionPassage && !definitionPage) {
+      // Codex #5317 r2 F4: no page to read (a shared OEM chunk carries no docId,
+      // or the chunk has no page locator) is not a page with no cautions — the
+      // cautions are unchecked, so the definition is withheld like any unread page.
+      edgeDefinitionPageUnread = true;
+      console.warn("[notebook-chat] edge definition has no readable page reference: definition withheld");
+    } else if (definitionPage) {
+      const retrievedOnPage = chunks
+        .filter((c) => c.sourceUrl === definitionPage.sourceUrl && c.sourcePage === definitionPage.page)
+        .map((c) => c.content);
+      let whole: string[] = [];
+      let complete = false;
+      try {
+        ({ chunks: whole, complete } = await withTenantContext(ctx.tenantId, (c) =>
+          retrievePageChunksInOrder(c, ctx.tenantId, definitionPage, { approvedSourceDocIds: docIds }),
+        ));
+      } catch (err) {
+        console.warn("[notebook-chat] edge definition-page read failed (definition withheld):", err instanceof Error ? err.message : err);
+      }
+      if (!complete || whole.length === 0 || retrievedOnPage.some((t) => !whole.includes(t))) {
+        edgeDefinitionPageUnread = true;
+        console.warn(`[notebook-chat] edge definition page not read whole (${complete ? whole.length : "over the bound of"} chunks; ${retrievedOnPage.length} retrieved on it): definition withheld`);
+      } else {
+        // Ingest splits a page into overlapping windows, so a caution can start in
+        // one chunk and end in the next. Read the cautions from the page's text
+        // re-joined with the overlap removed, not chunk by chunk (Codex #5317 F2).
+        passages = withDefinitionCautions(passages, [stitchChunks(whole)]);
+      }
+    }
     const edgeCitations = passages.map((p) => p.citation);
     // The manual's own safety statement on a cited page, read from the whole page
     // (#4508) and printed in the text, which here is all the technician reads.
@@ -3640,7 +3681,9 @@ async function handleChatTurn(
         console.warn("[notebook-chat] edge cited-page read failed (notice from retrieved chunks only):", err instanceof Error ? err.message : err);
       }
     }
-    edgeAnswerText = renderEdgePassages(passages, manualSafetyStatementForCitations(edgeCitations, chunks, edgePageChunks));
+    edgeAnswerText = edgeDefinitionPageUnread && definitionPassage
+      ? edgeDefinitionPageUnreadText(definitionPassage)
+      : renderEdgePassages(passages, manualSafetyStatementForCitations(edgeCitations, chunks, edgePageChunks));
   }
 
   const machineSection = machinePacket
@@ -4703,7 +4746,7 @@ async function handleChatTurn(
         console.warn(`[notebook-chat] uncited manufacturer-library claim withheld (#4426): ${answerText.length} chars, ${citations.length} citations available`);
         answerText = UNCITED_OEM_CLAIM_TEXT;
       }
-      const refused = refusedByText || uncitedDocumentClaim;
+      const refused = refusedByText || uncitedDocumentClaim || edgeDefinitionPageUnread;
       // SECOND BRACKET GUARD (the prompt is the first). A general answer has no
       // sources, so any [n] the model emitted anyway points at nothing and would
       // render as a citation chip in mira-mobile. Strip the markers rather than

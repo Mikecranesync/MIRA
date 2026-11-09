@@ -57,6 +57,7 @@ const ragMock = vi.hoisted(() => ({
   buildManualUserContent: vi.fn((q: string) => q),
   neutralizeReferenceText: vi.fn((t: string) => t),
   retrieveCitedPageChunks: vi.fn(async () => [] as unknown[]),
+  retrievePageChunksInOrder: vi.fn(async (..._args: unknown[]): Promise<{ chunks: string[]; complete: boolean }> => ({ chunks: [], complete: true })),
 }));
 vi.mock("@/lib/manual-rag", () => ragMock);
 
@@ -88,6 +89,7 @@ const seamMock = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/inference/canonical-cascade", () => seamMock);
 
+import gs10 from "@/capabilities/__tests__/fixtures/gs10-revc-acceleration-chunks.json";
 import { POST } from "../route";
 import { EDGE_PASSAGES_LEAD } from "@/capabilities/edge-passages";
 import { RESTART_BANNER } from "@/capabilities/restart-advisory";
@@ -114,6 +116,10 @@ const contentOf = (f: Record<string, unknown>[]) =>
   f.filter((x) => x.kind === "content").map((x) => String(x.content)).join("");
 
 const ASK = "How do I find the empty weight center of gravity?";
+const GS11N =
+  "For the GS11N-20P2 drive in this project, which parameter controls acceleration time? Explain what it controls and cite the exact manual page. Do not recommend a new setting or assume the present drive settings.";
+const MOTOR_DAMAGE =
+  "Note that setting the acceleration time too short may cause motor damage or trigger drive protection due to over-current during the drive’s acceleration.";
 
 function providerAnswers(text: string) {
   vi.stubGlobal(
@@ -139,6 +145,7 @@ beforeEach(() => {
   nbMock.getNotebook.mockResolvedValue({ id: NB, displayName: "Aircraft weight and balance", manufacturer: "FAA", model: "FAA-H-8083-1B" });
   ragMock.retrieveNodeChunks.mockResolvedValue([INDEX_CHUNK, HOWTO_CHUNK]);
   ragMock.retrieveCitedPageChunks.mockResolvedValue([]);
+  ragMock.retrievePageChunksInOrder.mockResolvedValue({ chunks: [], complete: true });
   filesMock.photoLinkedToTarget.mockResolvedValue(null);
   providerAnswers("Use the equipment list.");
   vi.spyOn(console, "warn").mockImplementation(() => undefined);
@@ -307,6 +314,130 @@ describe("#5265 edge profile — the manual speaks", () => {
         ]),
       );
       expect(persisted.evidence.some((e) => "citationId" in e)).toBe(false);
+    });
+
+    // Samsung physical run 2026-11-08: the definition was served, its page's
+    // cautions were not. They live in a sibling chunk retrieval did not return.
+    it("the GS11N question gets P01.12 with its page's cautions, served and persisted, no model", async () => {
+      const GS10_URL = "node-doc/u1/GS10-User-Manual-RevC.pdf";
+      ragMock.retrieveNodeChunks.mockResolvedValue(
+        (gs10.retrievalOrder as { sourcePage: number; pageLabel: string; content: string }[]).map((c, i) => ({
+          ...HOWTO_CHUNK,
+          content: c.content,
+          sourceUrl: GS10_URL,
+          sourcePage: Number(c.sourcePage),
+          pageLabel: c.pageLabel,
+          title: "GS10-User-Manual-RevC.pdf",
+          rank: 0.9 - i * 0.01,
+        })),
+      );
+      ragMock.retrievePageChunksInOrder.mockResolvedValue({ chunks: gs10.definitionPage.chunks.map((c) => c.content), complete: true });
+      const out = await frames(await POST(req({ message: GS11N, sourceDocIds: [DOC_A] }), params));
+      expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+      expect(out.some((f) => f.kind === "safety")).toBe(false);
+      expect(ragMock.retrievePageChunksInOrder).toHaveBeenCalledTimes(1);
+      expect(ragMock.retrievePageChunksInOrder.mock.calls[0][2]).toEqual({ docId: DOC_A, sourceUrl: GS10_URL, page: 139 });
+      const content = contentOf(out);
+      expect(content).toContain("Definition of P01.12");
+      expect(content).toContain(MOTOR_DAMAGE);
+      const persisted = (vi.mocked(nbMock.recordTurn).mock.calls[0] as unknown as unknown[])[2] as { answerText: string; answerStatus: string };
+      expect(persisted.answerText).toContain(MOTOR_DAMAGE);
+      expect(persisted.answerStatus).toBe("answered");
+    });
+
+    // Codex integration review 6726339145 (HIGH): when the definition's page cannot
+    // be read whole, its cautions cannot be checked, so the definition is not
+    // served as answered. The turn says so, names the page, and calls no model.
+    const gs10Retrieved = () =>
+      (gs10.retrievalOrder as { sourcePage: number; pageLabel: string; content: string }[]).map((c, i) => ({
+        ...HOWTO_CHUNK,
+        content: c.content,
+        sourceUrl: "node-doc/u1/GS10-User-Manual-RevC.pdf",
+        sourcePage: Number(c.sourcePage),
+        pageLabel: c.pageLabel,
+        title: "GS10-User-Manual-RevC.pdf",
+        rank: 0.9 - i * 0.01,
+      }));
+    const expectPageUnread = async () => {
+      const out = await frames(await POST(req({ message: GS11N, sourceDocIds: [DOC_A] }), params));
+      expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+      const content = contentOf(out);
+      expect(content).not.toContain("Definition of P01.12");
+      expect(content).toMatch(/couldn.t read all of/i);
+      expect(content).toContain("page 4-69 (PDF page 139)");
+      const persisted = (vi.mocked(nbMock.recordTurn).mock.calls[0] as unknown as unknown[])[2] as { answerText: string; answerStatus: string };
+      expect(persisted.answerStatus).toBe("insufficient_evidence");
+      expect(persisted.answerText).not.toContain("Definition of P01.12");
+    };
+
+    it("page read times out: no definition without its cautions, insufficient_evidence, names the page", async () => {
+      ragMock.retrieveNodeChunks.mockResolvedValue(gs10Retrieved());
+      ragMock.retrievePageChunksInOrder.mockRejectedValue(new Error("statement timeout"));
+      await expectPageUnread();
+    });
+
+    it("page read returns nothing: treated as unread, not as a page with no cautions", async () => {
+      ragMock.retrieveNodeChunks.mockResolvedValue(gs10Retrieved());
+      ragMock.retrievePageChunksInOrder.mockResolvedValue({ chunks: [], complete: true });
+      await expectPageUnread();
+    });
+
+    it("page read comes back missing a chunk retrieval already returned for that page: treated as unread", async () => {
+      const retrieved = gs10Retrieved();
+      ragMock.retrieveNodeChunks.mockResolvedValue(retrieved);
+      const onPage = retrieved.filter((c) => c.sourcePage === 139).map((c) => c.content);
+      expect(onPage.length).toBeGreaterThan(0);
+      ragMock.retrievePageChunksInOrder.mockResolvedValue({ chunks: gs10.definitionPage.chunks.map((c) => c.content).filter((t) => t !== onPage[0]), complete: true });
+      await expectPageUnread();
+    });
+
+    it("Codex #5317 F1: a page over the read bound is unread even when every retrieved chunk came back", async () => {
+      ragMock.retrieveNodeChunks.mockResolvedValue(gs10Retrieved());
+      // Every retrieved chunk is among the rows read, but the reader says the page
+      // runs past its bound: the route must not take that subset for the whole page.
+      ragMock.retrievePageChunksInOrder.mockResolvedValue({ chunks: gs10.definitionPage.chunks.map((c) => c.content), complete: false });
+      await expectPageUnread();
+    });
+
+    // Codex #5317 r2 F4: a definition whose chunk has no page reference to read
+    // (shared OEM retrieval carries no docId; a chunk may lack a page) is
+    // withheld, not served as answered without its cautions.
+    it.each([
+      ["no docId (shared OEM chunk)", { docId: undefined }],
+      ["no source page", { sourcePage: null }],
+    ])("Codex #5317 r2 F4: definition chunk with %s is withheld, insufficient_evidence, no model", async (_label, override) => {
+      ragMock.retrieveNodeChunks.mockResolvedValue(gs10Retrieved().map((c) => ({ ...c, ...override })));
+      ragMock.retrievePageChunksInOrder.mockResolvedValue({ chunks: gs10.definitionPage.chunks.map((c) => c.content), complete: true });
+      const out = await frames(await POST(req({ message: GS11N, sourceDocIds: [DOC_A] }), params));
+      expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+      expect(ragMock.retrievePageChunksInOrder).not.toHaveBeenCalled();
+      const content = contentOf(out);
+      expect(content).not.toContain("Definition of P01.12");
+      expect(content).toMatch(/couldn.t read all of/i);
+      const persisted = (vi.mocked(nbMock.recordTurn).mock.calls[0] as unknown as unknown[])[2] as { answerText: string; answerStatus: string };
+      expect(persisted.answerStatus).toBe("insufficient_evidence");
+      expect(persisted.answerText).not.toContain("Definition of P01.12");
+    });
+
+    it("Codex #5317 F2: a caution split across two overlapping chunks is quoted whole, once", async () => {
+      ragMock.retrieveNodeChunks.mockResolvedValue(gs10Retrieved());
+      const page = gs10.definitionPage.chunks.map((c) => c.content);
+      // The stored text wraps lines; the caution is matched with whitespace collapsed.
+      const flat = (t: string) => t.replace(/\s+/g, " ");
+      const at = page.findIndex((t) => flat(t).includes(MOTOR_DAMAGE));
+      expect(at).toBeGreaterThanOrEqual(0);
+      const host = page[at]!;
+      // Cut near the caution's end, so the next window (120 characters back) starts inside it.
+      const cut = host.indexOf("during the drive", host.indexOf("may cause motor damage"));
+      expect(cut).toBeGreaterThan(0);
+      // Ingest windows overlap by 120 characters (node-knowledge-ingest CHUNK_OVERLAP).
+      const split = [host.slice(0, cut), host.slice(Math.max(0, cut - 120))];
+      expect(split.some((t) => flat(t).includes(MOTOR_DAMAGE))).toBe(false);
+      ragMock.retrievePageChunksInOrder.mockResolvedValue({ chunks: [...page.slice(0, at), ...split, ...page.slice(at + 1)], complete: true });
+      const out = await frames(await POST(req({ message: GS11N, sourceDocIds: [DOC_A] }), params));
+      const content = contentOf(out);
+      expect(content).toContain("Definition of P01.12");
+      expect(content.split(MOTOR_DAMAGE).length - 1).toBe(1);
     });
 
     it("an unflagged how-to is still served as passages, and calls no model", async () => {

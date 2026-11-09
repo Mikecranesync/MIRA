@@ -30,6 +30,8 @@ export type EdgePassage = {
   pageLabel?: string | null;
   /** Edition/revision as printed in the cited chunk ("1st Ed., Rev C"). Never guessed. */
   revision?: string | null;
+  /** Consequence sentences the definition's page prints about the parameter (definitionCautions). */
+  cautions?: string[];
 };
 
 type EdgeChunk = { content: string; sourceUrl: string; sourcePage: number | null; pageLabel?: string | null };
@@ -214,6 +216,78 @@ export function selectEdgePassages(
   return out;
 }
 
+export const EDGE_CAUTION_CHARS = 800;
+export const EDGE_CAUTION_LIMIT = 4;
+/**
+ * A sentence that states what goes wrong or stops applying: "may cause motor
+ * damage", "may trigger the drive's protection", "too short", "invalid when".
+ * "Longer than the setting" is a description, not a caution, and is left out.
+ */
+const CONSEQUENCE_RE = /\b(?:may|can|could|might|will)\s+(?:cause|trigger|damage|result|lead)\b|\binvalid\b|\btoo\s+(?:short|long|high|low|fast|slow)\b/i;
+// A sentence ends at a period followed by whitespace or the end ("P01.00)." yes, "P06.03" no).
+const SENTENCE_END_RE = /\.(?=\s|$)/;
+
+/**
+ * The cautions the definition's own page prints about the parameter, word for
+ * word, in page order (#5265: the Samsung run of 2026-11-08 quoted P01.12's
+ * definition and dropped "setting the acceleration time too short may cause
+ * motor damage …", printed a few lines below it). A sentence qualifies when it
+ * names every word of the parameter's printed name as a whole word (so a
+ * deceleration-only caution is not pinned on acceleration time) and states a
+ * consequence (CONSEQUENCE_RE). Chunks overlap, so a chunk's leading partial
+ * sentence is dropped and a sentence contained in another, or in the quoted
+ * definition, is dropped. Capped at EDGE_CAUTION_LIMIT sentences and
+ * EDGE_CAUTION_CHARS characters; a sentence that would pass the cap is skipped.
+ */
+export function definitionCautions(
+  pageTexts: readonly string[],
+  param: { code: string; name: string },
+  definitionText = "",
+): string[] {
+  const words = nameWords(param.name);
+  if (words.length === 0) return [];
+  const wordRes = words.map((w) => new RegExp(`\\b${w}\\b`, "i"));
+  const found: string[] = [];
+  for (const raw of pageTexts) {
+    let text = raw.replace(/\s+/g, " ").trim();
+    // Starts mid-sentence (an overlap with the previous chunk): skip to the next sentence.
+    if (text && !/^[A-Z•]/.test(text)) {
+      const end = SENTENCE_END_RE.exec(text);
+      text = end ? text.slice(end.index + 1) : "";
+    }
+    for (const segment of text.split("•")) {
+      for (const m of segment.matchAll(SENTENCE_RE)) {
+        const s = m[0].trim();
+        if (CONSEQUENCE_RE.test(s) && wordRes.every((re) => re.test(s)) && !found.includes(s)) found.push(s);
+      }
+    }
+  }
+  const definition = definitionText.replace(/\s+/g, " ");
+  const out: string[] = [];
+  let chars = 0;
+  for (const s of found) {
+    if (definition.includes(s) || found.some((o) => o !== s && o.includes(s))) continue;
+    if (out.length >= EDGE_CAUTION_LIMIT) break;
+    if (chars + s.length > EDGE_CAUTION_CHARS) continue;
+    out.push(s);
+    chars += s.length;
+  }
+  return out;
+}
+
+/**
+ * The definition passage with its page's cautions attached (definitionCautions),
+ * read from `pageTexts` — the definition page's chunks in page order. Other
+ * passages are returned unchanged.
+ */
+export function withDefinitionCautions(passages: EdgePassage[], pageTexts: readonly string[]): EdgePassage[] {
+  return passages.map((p) => {
+    if (!p.definition) return p;
+    const cautions = definitionCautions(pageTexts, p.definition, p.text);
+    return cautions.length > 0 ? { ...p, cautions } : p;
+  });
+}
+
 /** The manual's own safety statement on a cited page (manual-safety-statement.ts). */
 export type EdgeWarning = { marker: string; statement: string; page: number | null };
 
@@ -223,17 +297,38 @@ export type EdgeWarning = { marker: string; statement: string; page: number | nu
  * a sibling chunk of the page), then each passage quoted with its [n] marker
  * and page.
  */
+/** "<title>, <revision>, page 4-69 (PDF page 139)": where a passage is printed. */
+function passageWhere({ citation, pageLabel, revision }: EdgePassage): string {
+  const where = [citation.sourceTitle];
+  if (revision && !citation.sourceTitle.toLowerCase().includes(revision.toLowerCase())) where.push(revision);
+  if (citation.page != null) {
+    const label = pageLabel ? pageLabel.replace(/–/g, "-") : null;
+    where.push(label && label !== String(citation.page) ? `page ${label} (PDF page ${citation.page})` : `page ${citation.page}`);
+  }
+  return where.join(", ");
+}
+
+/**
+ * The definition's page could not be read whole (the read failed, came back
+ * empty, or lacked a chunk retrieval already returned for it), so the cautions
+ * printed beside the definition cannot be checked. The definition is not served
+ * without them; the technician is pointed at the page instead.
+ */
+export function edgeDefinitionPageUnreadText(definition: EdgePassage): string {
+  const code = definition.definition?.code ?? "that parameter";
+  return `I couldn't read all of ${passageWhere(definition)} just now, so I won't show the definition of ${code} without the cautions printed beside it. Open that page in the manual, or ask again in a moment.`;
+}
+
 export function renderEdgePassages(passages: EdgePassage[], warning: EdgeWarning | null = null): string {
   if (passages.length === 0) return EDGE_NO_PASSAGE_TEXT;
-  const blocks = passages.map(({ citation, text, definition, pageLabel, revision }) => {
-    const where = [citation.sourceTitle];
-    if (revision && !citation.sourceTitle.toLowerCase().includes(revision.toLowerCase())) where.push(revision);
-    if (citation.page != null) {
-      const label = pageLabel ? pageLabel.replace(/–/g, "-") : null;
-      where.push(label && label !== String(citation.page) ? `page ${label} (PDF page ${citation.page})` : `page ${citation.page}`);
-    }
-    const quoted = `"${text}" [${citation.citationId}]\n— ${where.join(", ")}`;
-    return definition ? `Definition of ${definition.code} (${definition.name}), as printed:\n${quoted}` : quoted;
+  const blocks = passages.map((passage) => {
+    const { citation, text, definition, cautions } = passage;
+    const quoted = `"${text}" [${citation.citationId}]\n— ${passageWhere(passage)}`;
+    if (!definition) return quoted;
+    const block = `Definition of ${definition.code} (${definition.name}), as printed:\n${quoted}`;
+    if (!cautions || cautions.length === 0) return block;
+    const lines = cautions.map((s) => `- "${s}" [${citation.citationId}]`);
+    return `${block}\n\nAlso printed on that page about ${definition.code}:\n${lines.join("\n")}`;
   });
   const head = warning
     ? [EDGE_PASSAGES_LEAD, `${warning.marker}${warning.page != null ? ` (page ${warning.page})` : ""}: "${warning.statement}"`]
