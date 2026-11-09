@@ -10,6 +10,7 @@ import {
   lockoutPageOf,
   pickLockoutChunk,
   pickQuestionWarningChunk,
+  warningCoversAskAction,
 } from "../energized-work-stop";
 
 const chunk = (over: Partial<ManualChunk>): ManualChunk => ({
@@ -327,15 +328,42 @@ describe("pickQuestionWarningChunk — the manual's own warning about THIS ask",
   });
 });
 
+describe("warningCoversAskAction (Codex #5349 round 3 F2)", () => {
+  const CABLE_ROUTING: ManualChunk = {
+    ...P5_WARNING,
+    content: "WARNING: Route the serial cable away from hot surfaces. Damaged cable insulation can cause electrical shock or fire.",
+    sourcePage: 7,
+    pageLabel: "7",
+  };
+  it("a cable-routing warning is still a warning about the serial cable, but not about disconnecting it", () => {
+    expect(pickQuestionWarningChunk([CABLE_ROUTING], S5B_ASK)).toBe(CABLE_ROUTING);
+    expect(warningCoversAskAction(CABLE_ROUTING, S5B_ASK)).toBe(false);
+  });
+  it("positive control: the real p.5 connect-or-disconnect warning covers the asked action", () => {
+    expect(warningCoversAskAction(P5_WARNING, S5B_ASK)).toBe(true);
+  });
+  it("an ask that names no action never earns the exact claim", () => {
+    expect(warningCoversAskAction(P5_WARNING, "Is the serial cable still live with power applied?")).toBe(false);
+  });
+});
+
 describe("energizedWorkStop — manual warning line", () => {
+  it("without the action match it says the warning is about this part, never 'exactly this'", () => {
+    for (const warning of [{ page: "7" }, { page: "7", coversAction: false }]) {
+      const text = energizedWorkStop(null, { warning });
+      expect(text).toContain("a warning about this part on **p.7**");
+      expect(text).not.toMatch(/exactly this/);
+    }
+    expect(energizedWorkStop(null, { warning: { page: null } })).toContain("a warning about this part in the document cited below");
+  });
   it("names the warning's page and keeps the stop header and LOTO directive", () => {
-    const text = energizedWorkStop(null, { warning: { page: "5" } });
+    const text = energizedWorkStop(null, { warning: { page: "5", coversAction: true } });
     expect(text).toContain("SAFETY STOP — energized work.");
     expect(text).toContain("lock out and tag out every energy source");
     expect(text).toMatch(/warning about exactly this on \*\*p\.5\*\*/);
   });
   it("when the warning's page cannot be read it still points at the cited document, never a guessed page", () => {
-    const text = energizedWorkStop(null, { warning: { page: "5**\n\n1. Unplug it live" } });
+    const text = energizedWorkStop(null, { warning: { page: "5**\n\n1. Unplug it live", coversAction: true } });
     expect(text).toContain("warning about exactly this in the document cited below");
     expect(text).not.toContain("Unplug it live");
   });

@@ -424,6 +424,25 @@ describe("CV-101 S5b — the stop carries the manual's own warning about this as
     expect(sources.citations).toHaveLength(0);
   });
 
+  it("Codex #5349 round 3 F2: a serial-cable ROUTING warning is pointed at as a warning about this part, not 'exactly this'", async () => {
+    const ROUTING_WARNING = {
+      ...P5_WARNING,
+      content: "WARNING: Route the serial cable away from hot surfaces. Damaged cable insulation can cause electrical shock or fire.",
+      sourcePage: 7,
+      pageLabel: "7",
+    };
+    ragMock.retrieveNodeChunks.mockImplementation(async (_c: unknown, _t: unknown, query: unknown) =>
+      /lockout tagout/i.test(String(query)) ? [] : /warning caution danger/i.test(String(query)) ? [ROUTING_WARNING] : [RELAY_RATINGS],
+    );
+    const out = await frames(await POST(req({ message: S5B_ASK, sourceDocIds: [DOC_A] }), params));
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    const content = contentOf(out);
+    expect(content).toMatch(/SAFETY STOP — energized work/);
+    expect(content).toContain("a warning about this part on **p.7**");
+    expect(content).not.toMatch(/exactly this/);
+    expect(content).not.toMatch(/hot surfaces|insulation/i);
+  });
+
   it("control: on the pre-fix shape (no warning anywhere) the stop is unchanged and claims no warning", async () => {
     ragMock.retrieveNodeChunks.mockImplementation(async () => [RELAY_RATINGS]);
     const content = contentOf(await frames(await POST(req({ message: S5B_ASK, sourceDocIds: [DOC_A] }), params)));

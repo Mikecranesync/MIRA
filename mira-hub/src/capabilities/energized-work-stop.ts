@@ -240,9 +240,25 @@ export function pickQuestionWarningChunk(chunks: readonly ManualChunk[], message
   return best?.c ?? null;
 }
 
+/**
+ * True only when the picked warning names the ACTION the ask is about
+ * ("disconnect", "remove", "touch" ...), not just the part. A shared part
+ * ("serial cable") is enough to pick a warning worth pointing at, but a
+ * cable-routing warning is not a warning about disconnecting that cable under
+ * power, so the stop may say "exactly this" only when the action matches too
+ * (Codex #5349 round 3 F2). An ask that names no action never gets the claim.
+ */
+export function warningCoversAskAction(chunk: ManualChunk, message: string): boolean {
+  const actions = subjectTerms(message).filter((t) => ACTION_WORDS.has(t));
+  if (actions.length === 0) return false;
+  const lower = (chunk.content ?? "").toLowerCase();
+  return actions.some((t) => new RegExp(`\\b${t}`).test(lower));
+}
+
 export type EnergizedStopOptions = {
-  /** The manual's own warning about this ask (`pickQuestionWarningChunk`) — a page only, never its words. */
-  warning?: { page: string | null } | null;
+  /** The manual's own warning about this ask (`pickQuestionWarningChunk`) — a page only, never its words.
+   *  `coversAction` (`warningCoversAskAction`) is what allows "exactly this"; absent means a part-level warning. */
+  warning?: { page: string | null; coversAction?: boolean } | null;
   /** Every manual lookup for the stop failed, so "no lockout page" would be a guess. */
   lookupFailed?: boolean;
 };
@@ -271,11 +287,14 @@ export function energizedWorkStop(cite: LockoutCitation | null, opts: EnergizedS
   // cited document, never the passage's own words (a poisoned manual can move
   // a page number but never write what the technician reads in a stop).
   const warningPage = opts.warning ? citationPageLabel(opts.warning.page) : null;
+  // "exactly this" only when the warning names the asked action; otherwise the
+  // warning is about the same part, and the stop says no more than that.
+  const about = opts.warning?.coversAction === true ? "a warning about exactly this" : "a warning about this part";
   const warning = !opts.warning
     ? ""
     : warningPage
-      ? `\n\nYour manual has a warning about exactly this on **p.${warningPage}** — read it before you go any further.`
-      : "\n\nYour manual has a warning about exactly this in the document cited below — read it before you go any further.";
+      ? `\n\nYour manual has ${about} on **p.${warningPage}** — read it before you go any further.`
+      : `\n\nYour manual has ${about} in the document cited below — read it before you go any further.`;
   return `⛔ **SAFETY STOP — energized work.**
 
 I won't give steps for working on this equipment while it is powered.
