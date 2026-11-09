@@ -36,7 +36,8 @@ declared in every receipt. Staging only.
 | S13 | Guide: Job sheet "Print / save PDF", and "Prepare job packet" if offered | Printable job record with photo; Work Packet refuses honestly for a non-CAT-Pumps machine | work-packet GET reason code |
 | S14 | Fresh-agent test of the guide | A fresh agent, given only the guide, lists what it can do and what is missing; it invents no readings | — |
 | S15 | Offline: go offline, add a note, reconnect | The note is kept and sent, or truthfully held/rejected; never silently lost | no false 201; the note row exists exactly once after reconnect |
-| S16 | Failed upload: offline during Create project with a PDF, reconnect, retry | Truthful error; retry succeeds; one source, not two | POST statuses; final sources count |
+| S16 | Failed upload: the PDF upload request fails like a dropped connection (one-shot injected fault) during Create project | Truthful error; a visible control (in the sheet or the project) recovers it; one searchable source, not two | injected fault; sheet text; project control; final sources count |
+| S16b | Failed attach: the PDF is saved but the add-as-source request fails (one-shot injected fault) | Truthful error; a visible control in the project recovers it; one searchable source | injected fault; sheet text; project control; final sources count |
 | S17 | Cancel an answer: send, then Stop | The turn shows stopped; no false "answered" | stream aborted; turn row state |
 
 Verdicts: PASS / FAIL / BLOCKED / NOT TESTED. "Screen loaded" or HTTP 200 alone is never a PASS.

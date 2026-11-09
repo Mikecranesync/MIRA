@@ -551,57 +551,77 @@ test("cv101 journey", async () => {
     });
 
     // ── S16 failed upload then retry ────────────────────────────────────
-    await step("S16-upload-offline-retry", "Truthful upload error; retry gives one source", page, async (s) => {
-      await openSidebar(page);
-      await press(page, page.getByRole("button", { name: "New project" }));
-      await press(page, page.getByRole("button", { name: "General (no machine)" }));
-      const name = page.getByRole("dialog", { name: "New project" }).getByRole("textbox").first();
-      if (await name.isVisible().catch(() => false)) await name.fill("Upload retry test");
-      await press(page, page.getByRole("button", { name: "Next" }));
-      await page.getByLabel("Upload PDF").setInputFiles({ name: MANUAL.name, mimeType: "application/pdf", buffer: readFileSync(MANUAL.file) });
-      await press(page, page.getByRole("button", { name: "Review" }));
-      const dlg = page.getByRole("dialog", { name: "New project" });
-      // Drop the connection when the sheet starts sending the PDF (observed, not stubbed). A fixed delay
-      // sometimes cut the project create instead (dry9), which is a different failure.
-      const fileSent = page.waitForRequest((r) => r.method() === "POST" && /\/files\/?$/.test(new URL(r.url()).pathname), { timeout: 60_000 }).then(() => true, () => false);
-      await press(page, page.getByRole("button", { name: "Create project" }));
-      const cutAtFile = await fileSent;
-      await ctx.setOffline(true);
-      await page.waitForTimeout(15_000);
-      const offText = (await dlg.innerText().catch(() => "")).replace(/\s+/g, " ");
-      await shot(page, "upload-offline");
-      await ctx.setOffline(false);
-      await page.waitForTimeout(3_000);
-      const sheetRetry = await dlg.getByRole("button", { name: /retry|try again|upload again/i }).count();
-      const cont = page.getByRole("button", { name: "Continue" });
-      if (!(await cont.isVisible().catch(() => false)) && (await dlg.getByRole("button", { name: "Create project" }).isVisible().catch(() => false))) {
-        // The create itself failed. A person presses Create project again once back online.
-        s.actual = `create failed offline (cutAtFile=${cutAtFile}): "${offText.slice(0, 200)}"; pressed Create project again | `;
-        await press(page, dlg.getByRole("button", { name: "Create project" }));
-      }
-      await cont.click({ timeout: 120_000 });
-      await press(page, page.getByRole("button", { name: "Open project" }));
-      await page.getByRole("heading", { level: 1, name: "Upload retry test" }).waitFor({ timeout: 30_000 });
-      await page.waitForTimeout(3_000);
-      const before = (await notebookRecord(page))?.sources ?? [];
-      // The in-project retry a technician can see (PendingManuals "Upload again", #5321/#5324).
-      const again = page.getByText("Upload again").first();
-      const againShown = await again.isVisible().catch(() => false);
-      let after = before;
-      if (againShown) {
-        const [chooser] = await Promise.all([page.waitForEvent("filechooser", { timeout: 15_000 }), again.click()]);
-        await chooser.setFiles({ name: MANUAL.name, mimeType: "application/pdf", buffer: readFileSync(MANUAL.file) });
-        for (let k = 0; k < 18; k++) {
+    // S16: the PDF never reaches the server (the upload request fails like a dropped connection).
+    // S16b: the PDF is saved but the connection drops before it becomes a source.
+    // Either way a person must see a truthful message, then a control that ends with one searchable source.
+    const isFilePost = (u: string, m: string) => m === "POST" && /\/files\/?$/.test(new URL(u).pathname);
+    const isSourcePost = (u: string) => /\/equipment-notebooks\/[^/]+\/sources\/?$/.test(new URL(u).pathname);
+    const uploadCase = (id: string, project: string, cut: "upload" | "attach") =>
+      step(id, "Truthful upload error; one visible control recovers it to one searchable source", page, async (s) => {
+        await openSidebar(page);
+        await press(page, page.getByRole("button", { name: "New project" }));
+        await press(page, page.getByRole("button", { name: "General (no machine)" }));
+        const dlg = page.getByRole("dialog", { name: "New project" });
+        const name = dlg.getByRole("textbox").first();
+        if (await name.isVisible().catch(() => false)) await name.fill(project);
+        await press(page, page.getByRole("button", { name: "Next" }));
+        await page.getByLabel("Upload PDF").setInputFiles({ name: MANUAL.name, mimeType: "application/pdf", buffer: readFileSync(MANUAL.file) });
+        await press(page, page.getByRole("button", { name: "Review" }));
+        // Fault injection, declared in the receipt: fail ONE request the way a dropped connection does,
+        // either the PDF upload or the add-as-source after it. Timing an offline switch landed on either
+        // one by chance (dry9-dry11), so the two cases could not be told apart.
+        let injected = false;
+        const matcher = (u: URL) => (cut === "upload" ? isFilePost(u.toString(), "POST") : isSourcePost(u.toString()));
+        await page.route(matcher, async (route) => {
+          if (route.request().method() !== "POST" || injected) return route.fallback();
+          injected = true;
+          await route.abort("internetdisconnected");
+        });
+        const fileSent = page.waitForRequest((r) => isFilePost(r.url(), r.method()), { timeout: 60_000 }).then(() => true, () => false);
+        await press(page, page.getByRole("button", { name: "Create project" }));
+        const sawFile = await fileSent;
+        await page.waitForTimeout(8_000);
+        const offText = (await dlg.innerText().catch(() => "")).replace(/\s+/g, " ");
+        await shot(page, `${id}-error`);
+        await page.unroute(matcher).catch(() => undefined);
+        await page.waitForTimeout(3_000);
+        const sheetRetry = dlg.getByRole("button", { name: /retry|try again|upload again/i });
+        const sheetRetryCount = await sheetRetry.count();
+        const cont = page.getByRole("button", { name: "Continue" });
+        if (!(await cont.isVisible().catch(() => false)) && (await dlg.getByRole("button", { name: "Create project" }).isVisible().catch(() => false))) {
+          s.actual = "create failed; pressed Create project again | ";
+          await press(page, dlg.getByRole("button", { name: "Create project" }));
+        }
+        await cont.click({ timeout: 120_000 });
+        await press(page, page.getByRole("button", { name: "Open project" }));
+        await page.getByRole("heading", { level: 1, name: project }).waitFor({ timeout: 30_000 });
+        await page.waitForTimeout(5_000);
+        const before = (await notebookRecord(page))?.sources ?? [];
+        // The in-project recovery a technician can see (PendingManuals, #5344): Upload again or Add as source.
+        const again = page.getByRole("button", { name: "Upload again" }).first();
+        const add = page.getByRole("button", { name: "Add as source" }).first();
+        let control = "none";
+        if (await again.isVisible().catch(() => false)) {
+          control = "Upload again";
+          const [chooser] = await Promise.all([page.waitForEvent("filechooser", { timeout: 15_000 }), press(page, again)]);
+          await chooser.setFiles({ name: MANUAL.name, mimeType: "application/pdf", buffer: readFileSync(MANUAL.file) });
+        } else if (await add.isVisible().catch(() => false)) {
+          control = "Add as source";
+          await press(page, add);
+        }
+        let after = before;
+        for (let k = 0; k < 18 && control !== "none"; k++) {
           await page.waitForTimeout(5_000);
           after = (await notebookRecord(page))?.sources ?? [];
           if (after.some((x: NbSource) => x.filename === MANUAL.name && x.readiness?.canChat)) break;
         }
-      }
-      const n = after.filter((x: NbSource) => x.filename === MANUAL.name).length;
-      const ready = after.some((x: NbSource) => x.filename === MANUAL.name && x.readiness?.canChat);
-      s.actual += `cutAtFile=${cutAtFile}; offline sheet: "${offText.slice(0, 260)}" | in-sheet retry buttons=${sheetRetry} | sources after Open project=${before.length} (${before.map((x: NbSource) => `${x.filename}:${x.status}`).join(",") || "none"}) | Upload again shown=${againShown} | after retry: ${n} source(s) named ${MANUAL.name}, searchable=${ready}`;
-      s.verdict = /Needs attention|Couldn.t save/i.test(offText) && n === 1 && ready ? "PASS" : "FAIL";
-    });
+        const n = after.filter((x: NbSource) => x.filename === MANUAL.name).length;
+        const ready = after.some((x: NbSource) => x.filename === MANUAL.name && x.readiness?.canChat);
+        s.actual += `cut=${cut} fileRequestSeen=${sawFile} injected=${injected}; sheet: "${offText.slice(0, 260)}" | in-sheet retry buttons=${sheetRetryCount} | sources at open=${before.length} | project control=${control} | after: ${n} source(s) named ${MANUAL.name}, searchable=${ready}`;
+        s.verdict = /Needs attention|Couldn.t/i.test(offText) && control !== "none" && n === 1 && ready ? "PASS" : "FAIL";
+      });
+    await uploadCase("S16-upload-lost-retry", "Upload retry test", "upload");
+    await uploadCase("S16b-attach-lost-retry", "Attach retry test", "attach");
 
     // ── S17 cancel an answer ────────────────────────────────────────────
     await step("S17-cancel-answer", "Stopped turn shows stopped, not answered", page, async (s) => {
