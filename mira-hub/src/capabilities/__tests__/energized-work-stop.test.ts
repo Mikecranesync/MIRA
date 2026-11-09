@@ -300,6 +300,28 @@ describe("pickQuestionWarningChunk — the manual's own warning about THIS ask",
     expect(pickQuestionWarningChunk([pluginModule], S5B_ASK)).toBeNull();
     expect(pickQuestionWarningChunk([pluginModule, P5_WARNING], S5B_ASK)).toBe(P5_WARNING);
   });
+  it("control (Codex #5349 round 2 F2): a terminal-block warning that shares only 'disconnect' and the hazardous-location words is not the serial-cable warning", () => {
+    const rtb = chunk({
+      content:
+        "WARNING: If you connect or disconnect the Removable Terminal Block (RTB) with field side power applied, an electrical arc can occur. This could cause an explosion in hazardous location installations. Be sure that power is removed or the area is nonhazardous before proceeding.",
+      sourcePage: 7,
+      pageLabel: "7",
+    });
+    expect(pickQuestionWarningChunk([rtb], S5B_ASK)).toBeNull();
+    expect(pickQuestionWarningChunk([rtb, P5_WARNING], S5B_ASK)).toBe(P5_WARNING);
+    // The same passage IS the warning for an ask about the terminal block.
+    expect(pickQuestionWarningChunk([rtb, P5_WARNING], "Can I disconnect the terminal block with power applied in a hazardous location?")).toBe(rtb);
+  });
+  it("control: a communications-cable warning shares only 'cable' with a serial-cable ask and is not picked", () => {
+    const comms = chunk({
+      content:
+        "WARNING: If you connect or disconnect the communications cable with power applied to this module or any device on the network, an electrical arc can occur. This could cause an explosion in hazardous location installations.",
+      sourcePage: 6,
+    });
+    expect(pickQuestionWarningChunk([comms], S5B_ASK)).toBeNull();
+    // An extra noun in the ask the warning doesn't print ("controller") does not lose the real warning.
+    expect(pickQuestionWarningChunk([comms, P5_WARNING], "Can I disconnect the serial cable from the controller with power applied?")).toBe(P5_WARNING);
+  });
   it("returns null with no chunks", () => {
     expect(pickQuestionWarningChunk([], S5B_ASK)).toBeNull();
   });

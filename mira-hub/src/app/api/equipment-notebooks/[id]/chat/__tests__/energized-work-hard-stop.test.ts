@@ -404,6 +404,26 @@ describe("CV-101 S5b — the stop carries the manual's own warning about this as
     expect(reloaded.get(sourceIdFor(answerTurnId("row-1"), "2"))?.page).toBe(5);
   });
 
+  it("Codex #5349 round 2 F2: a terminal-block warning is not claimed as the serial-cable warning; the stop still serves", async () => {
+    const RTB_WARNING = {
+      ...P5_WARNING,
+      content:
+        "WARNING: If you connect or disconnect the Removable Terminal Block (RTB) with field side power applied, an electrical arc can occur. This could cause an explosion in hazardous location installations.",
+      sourcePage: 7,
+      pageLabel: "7",
+    };
+    ragMock.retrieveNodeChunks.mockImplementation(async (_c: unknown, _t: unknown, query: unknown) =>
+      /lockout tagout/i.test(String(query)) ? [] : /warning caution danger/i.test(String(query)) ? [RTB_WARNING] : [RELAY_RATINGS],
+    );
+    const out = await frames(await POST(req({ message: S5B_ASK, sourceDocIds: [DOC_A] }), params));
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    const content = contentOf(out);
+    expect(content).toMatch(/SAFETY STOP — energized work/);
+    expect(content).not.toMatch(/warning about exactly this/);
+    const sources = out.find((f) => f.kind === "sources") as { citations: unknown[] };
+    expect(sources.citations).toHaveLength(0);
+  });
+
   it("control: on the pre-fix shape (no warning anywhere) the stop is unchanged and claims no warning", async () => {
     ragMock.retrieveNodeChunks.mockImplementation(async () => [RELAY_RATINGS]);
     const content = contentOf(await frames(await POST(req({ message: S5B_ASK, sourceDocIds: [DOC_A] }), params)));

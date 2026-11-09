@@ -180,6 +180,19 @@ const HAZARD_CONTEXT_WORDS = new Set([
   "warning", "caution", "injury", "death", "electrical", "electric", "shock", "fire", "burn", "burns",
 ]);
 
+// Verbs that name what is being done, not what it is done to. Many warnings in
+// one manual share them ("connect or disconnect the serial cable" / "... the
+// Removable Terminal Block"), so a shared verb never identifies the part
+// (Codex #5349 round 2 F2).
+const ACTION_WORDS = new Set([
+  "connect", "connecting", "disconnect", "disconnecting", "unplug", "unplugging", "plug", "plugging",
+  "remove", "removing", "removal", "install", "installing", "insert", "inserting", "replace", "replacing",
+  "swap", "swapping", "change", "changing", "pull", "pulling", "attach", "attaching", "detach", "detaching",
+  "open", "opening", "close", "closing", "touch", "touching", "wire", "wiring", "rewire", "mount", "mounting",
+  "unmount", "reset", "resetting", "adjust", "adjusting", "service", "servicing", "clean", "cleaning",
+  "measure", "measuring", "test", "testing", "check", "checking", "handle", "handling",
+]);
+
 function subjectTerms(message: string): string[] {
   const words = message.toLowerCase().match(/[a-z0-9]+/g) ?? [];
   return [...new Set(words.filter((w) => w.length >= 4 && !NON_SUBJECT_WORDS.has(w)))];
@@ -190,26 +203,36 @@ function subjectTerms(message: string): string[] {
  * this ask names, or null. A passage qualifies only when it is a hazard box
  * (capitalised WARNING / DANGER / CAUTION heading AND a named harm) and it
  * shares at least two of the ask's subject words ("serial", "cable",
- * "disconnect", "hazardous", "location"), at least one of which names the
- * action or the part rather than the hazard's location. The manual's own
- * definition of WARNING, and a warning about a different action in the same
- * hazardous location, are never picked. Ranked by shared subject
+ * "disconnect", "hazardous", "location"). When the ask names a part, one of
+ * the shared words must be that part; an ask that names no part may match on
+ * its action. The manual's own definition of WARNING, a warning about a
+ * different action, and a warning about a different part that shares only
+ * the verb and the hazardous-location words are never picked. Ranked by shared subject
  * words, then by retrieval order.
  */
 export function pickQuestionWarningChunk(chunks: readonly ManualChunk[], message: string): ManualChunk | null {
   const terms = subjectTerms(message);
   if (terms.length === 0) return null;
   const need = Math.min(2, terms.length);
+  const isSubjectTerm = (t: string) => !HAZARD_CONTEXT_WORDS.has(t) && !/\d/.test(t);
+  const isPartTerm = (t: string) => isSubjectTerm(t) && !ACTION_WORDS.has(t);
+  const askParts = terms.filter(isPartTerm);
+  const askNamesPart = askParts.length > 0;
+  // "serial cable" is two part words: "cable" alone also names the
+  // communications cable, so an ask that names two parts needs two in common.
+  const needParts = Math.min(2, askParts.length);
   let best: { c: ManualChunk; overlap: number } | null = null;
   for (const c of chunks) {
     const content = c.content ?? "";
     if (!WARNING_BOX_RE.test(content) || !HAZARD_CONSEQUENCE_RE.test(content)) continue;
     const lower = content.toLowerCase();
     const shared = terms.filter((t) => new RegExp(`\\b${t}`).test(lower));
-    // At least one shared word must name the action or the part ("disconnect",
-    // "serial", "cable") — not where the hazard is, and not the model number,
-    // which every page of this machine's manual carries.
-    if (!shared.some((t) => !HAZARD_CONTEXT_WORDS.has(t) && !/\d/.test(t))) continue;
+    // When the ask names a part ("serial", "cable"), the warning must name that
+    // part too: a shared verb ("disconnect") plus where the hazard is ("hazardous
+    // location") describes a different part's warning just as well. Only an ask
+    // that names no part may match on the action alone. Hazard-location words
+    // and the model number (on every page of this machine's manual) never count.
+    if (askNamesPart ? shared.filter(isPartTerm).length < needParts : !shared.some(isSubjectTerm)) continue;
     const overlap = shared.length;
     if (overlap < need) continue;
     if (!best || overlap > best.overlap) best = { c, overlap };
