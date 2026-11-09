@@ -488,6 +488,10 @@ test("cv101 journey", async () => {
     // ── S13 guide ───────────────────────────────────────────────────────
     await step("S13-guide", "Printable job record with photo; Work Packet honest for non-CAT machine", page, async (s) => {
       await openProject(page, MACHINE);
+      // A technician sees the whole screen before printing. Wait for the job-packet pill so the print
+      // runs in the state #5332 breaks (printing before it renders passed by timing alone: dry9).
+      const pill = await page.getByRole("button", { name: /^(Prepare job|Resume job packet)$/ }).first().waitFor({ timeout: 30_000 }).then(() => true, () => false);
+      const wpCss = await page.locator('style[data-testid="work-packet-print-css"]').count();
       const dlg = await openJob(page);
       const popup = page.context().waitForEvent("page", { timeout: 8_000 }).catch(() => null);
       await page.evaluate(() => { (window as Window & { __printed?: number }).__printed = 0; window.print = () => { (window as Window & { __printed?: number }).__printed! += 1; }; });
@@ -513,8 +517,9 @@ test("cv101 journey", async () => {
       // The page's own Work Packet availability calls, read from the trace (no extra request: #5289).
       const wpCalls = trace.filter((r) => /\/work-packet\/?$/.test(r.path) && r.path.includes(ids.notebook ?? "-"));
       const wp = `${wpCalls.length} page calls, statuses ${[...new Set(wpCalls.map((r) => r.status))].join("/") || "none"}`;
-      s.actual = `print popup=${!!p2} window.print calls=${printed}; guide chars=${guideText.length} hasNote=${guideText.includes(NOTE)}; work-packet GET: ${wp}`;
-      s.verdict = guideText.replace(/\s+/g, " ").includes(NOTE) && /Photos/.test(guideText) && imgs.length > 0 ? "PASS" : "FAIL";
+      const hasNote = guideText.replace(/\s+/g, " ").includes(NOTE);
+      s.actual = `packet pill=${pill} packet print css=${wpCss}; print popup=${!!p2} window.print calls=${printed}; guide chars=${guideText.length} hasNote=${hasNote} images=${imgs.length}; work-packet GET: ${wp}`;
+      s.verdict = hasNote && /Photos/.test(guideText) && imgs.length > 0 ? "PASS" : "FAIL";
       await page.goto(`${base}/v3/?notebook=${ids.notebook}`); // leave the print view the way a technician would: reopen the project
       await page.getByRole("heading", { level: 1, name: MACHINE }).waitFor({ timeout: 30_000 });
     });
@@ -556,8 +561,11 @@ test("cv101 journey", async () => {
       await page.getByLabel("Upload PDF").setInputFiles({ name: MANUAL.name, mimeType: "application/pdf", buffer: readFileSync(MANUAL.file) });
       await press(page, page.getByRole("button", { name: "Review" }));
       const dlg = page.getByRole("dialog", { name: "New project" });
+      // Drop the connection when the sheet starts sending the PDF (observed, not stubbed). A fixed delay
+      // sometimes cut the project create instead (dry9), which is a different failure.
+      const fileSent = page.waitForRequest((r) => r.method() === "POST" && /\/files\/?$/.test(new URL(r.url()).pathname), { timeout: 60_000 }).then(() => true, () => false);
       await press(page, page.getByRole("button", { name: "Create project" }));
-      await page.waitForTimeout(1_500);
+      const cutAtFile = await fileSent;
       await ctx.setOffline(true);
       await page.waitForTimeout(15_000);
       const offText = (await dlg.innerText().catch(() => "")).replace(/\s+/g, " ");
@@ -565,7 +573,13 @@ test("cv101 journey", async () => {
       await ctx.setOffline(false);
       await page.waitForTimeout(3_000);
       const sheetRetry = await dlg.getByRole("button", { name: /retry|try again|upload again/i }).count();
-      await page.getByRole("button", { name: "Continue" }).click({ timeout: 120_000 });
+      const cont = page.getByRole("button", { name: "Continue" });
+      if (!(await cont.isVisible().catch(() => false)) && (await dlg.getByRole("button", { name: "Create project" }).isVisible().catch(() => false))) {
+        // The create itself failed. A person presses Create project again once back online.
+        s.actual = `create failed offline (cutAtFile=${cutAtFile}): "${offText.slice(0, 200)}"; pressed Create project again | `;
+        await press(page, dlg.getByRole("button", { name: "Create project" }));
+      }
+      await cont.click({ timeout: 120_000 });
       await press(page, page.getByRole("button", { name: "Open project" }));
       await page.getByRole("heading", { level: 1, name: "Upload retry test" }).waitFor({ timeout: 30_000 });
       await page.waitForTimeout(3_000);
@@ -585,7 +599,7 @@ test("cv101 journey", async () => {
       }
       const n = after.filter((x: NbSource) => x.filename === MANUAL.name).length;
       const ready = after.some((x: NbSource) => x.filename === MANUAL.name && x.readiness?.canChat);
-      s.actual = `offline sheet: "${offText.slice(0, 260)}" | in-sheet retry buttons=${sheetRetry} | sources after Open project=${before.length} (${before.map((x: NbSource) => `${x.filename}:${x.status}`).join(",") || "none"}) | Upload again shown=${againShown} | after retry: ${n} source(s) named ${MANUAL.name}, searchable=${ready}`;
+      s.actual += `cutAtFile=${cutAtFile}; offline sheet: "${offText.slice(0, 260)}" | in-sheet retry buttons=${sheetRetry} | sources after Open project=${before.length} (${before.map((x: NbSource) => `${x.filename}:${x.status}`).join(",") || "none"}) | Upload again shown=${againShown} | after retry: ${n} source(s) named ${MANUAL.name}, searchable=${ready}`;
       s.verdict = /Needs attention|Couldn.t save/i.test(offText) && n === 1 && ready ? "PASS" : "FAIL";
     });
 
