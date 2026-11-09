@@ -20,7 +20,8 @@ const MICRO820_COVER =
   "Installation Instructions\nMicro820 20-Point Programmable Controllers\n" +
   "Catalog Numbers 2080-LC20-20QWB, 2080-LC20-20QBB,\n2080-LC20-20AWB, 2080-LC20-20QWBR";
 
-const row = (heading: string, filename = "2080-IN009B-EN-P.pdf") => ({
+const row = (heading: string, filename = "2080-IN009B-EN-P.pdf", docId = "d-1") => ({
+  doc_id: docId,
   content: "Relay Contact Ratings. 120V AC: make 15 A, break 1.5 A, continuous 2.0 A, 1800 VA make, 180 VA break.",
   source_url: `node-doc/u1/${filename}`,
   source_page: 19,
@@ -33,13 +34,13 @@ const row = (heading: string, filename = "2080-IN009B-EN-P.pdf") => ({
 
 type Diag = { namedModelMismatch?: { requested: string[]; declared: string[] } };
 
-async function ask(rows: Record<string, unknown>[], question: string) {
+async function ask(rows: Record<string, unknown>[], question: string, docIds = ["d-1"]) {
   const client = { query: vi.fn(async () => ({ rows })) } as unknown as PoolClient;
   const diagnostics: Diag = {};
   const hits = await retrieveNodeChunks(client, "t-1", question, {
     nodeId: "n-1",
     unsPath: null,
-    docIds: ["d-1"],
+    docIds,
     validatedDocScope: true,
     identity: { manufacturer: "Rockwell Automation", model: "2080-LC20-20QWB" },
     identityStatus: "user_confirmed" as never,
@@ -72,6 +73,25 @@ describe("retrieval reports a named-model mismatch it can prove", () => {
   it("control: if any refused page declared nothing, the mismatch is not claimed (the unknown manual might cover it)", async () => {
     const { diagnostics } = await ask([row(MICRO820_COVER), row("Installation Instructions", "other.pdf")], S6_ASK);
     expect(diagnostics.namedModelMismatch).toBeUndefined();
+  });
+});
+
+describe("Codex #5350 round 1 — the mismatch is claimed only when the documents prove it", () => {
+  it("F1: a model named only by the filename still refuses the row but is not claimed as the manual's model", async () => {
+    const { hits, diagnostics } = await ask([row("Installation Instructions", "Micro820.pdf")], "What are the relay contact ratings on a Micro850?");
+    expect(hits).toEqual([]);
+    expect(diagnostics.namedModelMismatch).toBeUndefined();
+  });
+
+  it("F2: a second selected document that returned no candidates withholds the notebook-wide claim", async () => {
+    const { hits, diagnostics } = await ask([row(MICRO820_COVER)], S6_ASK, ["d-1", "d-2"]);
+    expect(hits).toEqual([]);
+    expect(diagnostics.namedModelMismatch).toBeUndefined();
+  });
+
+  it("control (F2): when every selected document is refused on its own declared model, the claim stands", async () => {
+    const { diagnostics } = await ask([row(MICRO820_COVER), row(MICRO820_COVER, "copy.pdf", "d-2")], S6_ASK, ["d-1", "d-2"]);
+    expect(diagnostics.namedModelMismatch).toEqual({ requested: ["MICRO850"], declared: ["MICRO820"] });
   });
 });
 

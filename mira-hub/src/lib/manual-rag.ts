@@ -1823,16 +1823,26 @@ export async function retrieveNodeChunks(
     : null;
   const keyOf = (r: Record<string, unknown>) =>
     `${r.doc_id}|${r.page_start ?? r.source_page}|${String(r.content ?? "").slice(0, 60)}`;
-  // CV-101 S6: what the named-ask refusals below declared. A refused page that
-  // declares nothing poisons the claim — that manual might cover the ask.
+  // CV-101 S6: what the named-ask refusals below declared. The claim "this
+  // notebook's manual is for a different model" stands only while (a) every
+  // refused page declared its model on its own heading/cover — a filename is
+  // not a declaration (Codex #5350 F1) — and (b) EVERY selected document was
+  // refused that way: a document that returned no candidates, or whose pages
+  // were admitted, has not been shown to mismatch (Codex #5350 F2).
   const refusedDeclared = new Set<string>();
-  let refusedUndeclared = false;
-  const noteNamedAskRefusal = (declared: Set<string>) => {
-    if (declared.size === 0) refusedUndeclared = true;
-    for (const id of declared) refusedDeclared.add(id);
+  const refusedDocs = new Set<string>();
+  let namedClaimPoisoned = false;
+  const publishNamedMismatch = () => {
     if (!opts.diagnostics || !requestedIdentities) return;
-    if (refusedUndeclared || refusedDeclared.size === 0) delete opts.diagnostics.namedModelMismatch;
+    const everyDocRefused = allowedDocIds.length > 0 && allowedDocIds.every((d) => refusedDocs.has(d));
+    if (namedClaimPoisoned || refusedDeclared.size === 0 || !everyDocRefused) delete opts.diagnostics.namedModelMismatch;
     else opts.diagnostics.namedModelMismatch = { requested: [...requestedIdentities], declared: [...refusedDeclared] };
+  };
+  const noteNamedAskRefusal = (docId: string, headingDeclared: Set<string>) => {
+    if (headingDeclared.size === 0) namedClaimPoisoned = true;
+    for (const id of headingDeclared) refusedDeclared.add(id);
+    refusedDocs.add(docId);
+    publishNamedMismatch();
   };
   // Admission is ONE predicate for every lane — lexical, exact-token and (item
   // 4) vector — so a chunk the vector lane finds is held to exactly the same
@@ -1865,7 +1875,11 @@ export async function retrieveNodeChunks(
           const declared =
             titleIdentities.size === 0 && coverIsAmbiguous(heading) ? ambiguousCoverIdentities(heading) : titleIdentities;
           if (!documentCoversNamedAsk(requestedIdentities, declared)) {
-            noteNamedAskRefusal(declared);
+            // The diagnostic counts only what the document itself declares.
+            const headingDeclared = coverIsAmbiguous(heading)
+              ? ambiguousCoverIdentities(heading)
+              : modelIdentitiesInText(declaredTitle(titleSegment(heading)));
+            noteNamedAskRefusal(String(r.doc_id ?? ""), headingDeclared);
             return false;
           }
         } else if (
