@@ -82,10 +82,16 @@ export function ambiguousSiblingModels(question: string): string[] | null {
   // 820 with 850 across the gap and its "or" (Codex r8 F10).
   const all = modelMentionsInText(question);
   const mentions = all.filter((m) => !all.some((o) => o !== m && familyCovers(m.id, o.id)));
-  for (let i = 1; i < mentions.length; i++) {
-    const [a, b] = [mentions[i - 1], mentions[i]];
+  // Each model is compared with the NEXT model of its own family, skipping other
+  // families in between: "SMC-50 connected to a Micro820 might be an SMC Flex"
+  // still compares the two starters (Codex r9 F11). The clause rule below keeps
+  // the comparison inside one clause.
+  for (let i = 0; i < mentions.length; i++) {
+    const a = mentions[i];
     const family = familyOf(a.id);
-    if (!family || family !== familyOf(b.id) || a.id === b.id || b.start < a.end) continue;
+    if (!family) continue;
+    const b = mentions.slice(i + 1).find((m) => familyOf(m.id) === family);
+    if (!b || a.id === b.id || b.start < a.end) continue;
     const gap = question.slice(a.end, b.start);
     if (CLAUSE_BREAK_RE.test(gap)) continue;
     if (DOUBT_GAP_RE.test(gap)) return [a.id, b.id].sort();

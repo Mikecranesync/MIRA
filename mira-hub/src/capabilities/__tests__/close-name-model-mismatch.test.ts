@@ -415,6 +415,38 @@ describe("#5355 — two models: comparison vs ambiguous", () => {
     }
   });
 
+  it.each([
+    ["My SMC-50 connected to a Micro820 might actually be an SMC Flex; what does fault 10 mean?", SMC_FLEX_COVER, SMC_FAULTS, ["150-F", "SMC-50"], ["SMC50", "SMCFLEX"]],
+    ["My PowerFlex 40 wired to a Micro820 might actually be a PowerFlex 4M; what is the maximum A093 Auto Rstrt Delay?", PF4M_COVER, PF_RESTART, ["PowerFlex 4M", "PowerFlex 40"], ["PF40", "PF4M"]],
+  ])("Codex r9 F11: another family named in between does not hide the choice: %s", async (q, cover, body, models, named) => {
+    expect(ambiguousSiblingModels(q)).toEqual(named);
+    for (const model of models) {
+      const d: { ambiguousModelAsk?: { named: string[] } } = {};
+      const query = vi.fn(async () => ({ rows: [row(cover, body)] }));
+      const client = { query } as unknown as PoolClient;
+      const hits = await retrieveNodeChunks(client, "t-1", q, {
+        nodeId: "n-1",
+        unsPath: null,
+        docIds: ["d-1"],
+        validatedDocScope: true,
+        identity: { manufacturer: "Rockwell Automation", model },
+        identityStatus: "user_confirmed" as never,
+        diagnostics: d as never,
+      });
+      expect(hits, model).toEqual([]);
+      expect(d.ambiguousModelAsk, model).toEqual({ named });
+      expect(query, model).not.toHaveBeenCalled();
+    }
+  });
+
+  it.each([
+    "Micro820 talking to a GS10 and to a Micro850 over Modbus: how do I wire RS-485?",
+    "SMC-50 wired to a Micro820, and the SMC Flex wired to a Micro850: which input is PTC?",
+    "My SMC-50 tripped. The Micro820 and the SMC Flex are fine.",
+  ])("Codex r9 F11 control: a connection or another clause still answers: %s", (q) => {
+    expect(ambiguousSiblingModels(q)).toBeNull();
+  });
+
   it("a family alone against a model it does not cover still asks", () => {
     expect(ambiguousSiblingModels("My PowerFlex 520 series (maybe PowerFlex 40) fault F004?")).not.toBeNull();
   });
