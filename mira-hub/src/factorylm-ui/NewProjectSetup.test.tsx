@@ -10,7 +10,7 @@ import { initialSetupState, type SetupState } from "./new-project-setup-logic";
 
 const actions: SetupActions = {
   retryMachines: vi.fn(), choose: vi.fn(), setName: vi.fn(), toggleDoc: vi.fn(), addPdfs: vi.fn(),
-  removePdf: vi.fn(), next: vi.fn(), back: vi.fn(), commit: vi.fn(), openProject: vi.fn(), cancel: vi.fn(),
+  removePdf: vi.fn(), next: vi.fn(), back: vi.fn(), commit: vi.fn(), retryUpload: vi.fn(), openProject: vi.fn(), cancel: vi.fn(),
 };
 const machine = { id: "node-cv101", name: "CV-101 Discharge Conveyor", tag: "CV-101", unsPath: "enterprise.p.l4.cv101", manufacturer: null, model: null, location: "Line 4" };
 const render = (patch: Partial<SetupState>) => renderToStaticMarkup(<NewProjectSetupView state={{ ...initialSetupState(), ...patch }} actions={actions} />);
@@ -106,3 +106,22 @@ describe("controls", () => {
   });
 });
 
+
+describe("S16: a failed save offers Try again on its row", () => {
+  const attention = { tone: "attention" as const, label: "Needs attention" };
+  const failed = { key: "upload:manual.pdf", filename: "manual.pdf", readiness: attention, applicability: null, note: "Couldn't save this file. Try again.", retry: true as const };
+  it("the row names the file and has a labelled Try again button", () => {
+    const html = render({ step: 3, selected: { kind: "general" }, done: true, rows: [failed] });
+    expect(html).toContain('aria-label="Try again: manual.pdf"');
+    expect(html).toMatch(/<button[^>]*aria-label="Try again: manual.pdf"[^>]*>Try again<\/button>/);
+  });
+  it("Try again is disabled while a write is running", () => {
+    const html = render({ step: 3, selected: { kind: "general" }, done: true, committing: true, rows: [failed] });
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*aria-label="Try again: manual.pdf"|<button[^>]*aria-label="Try again: manual.pdf"[^>]*disabled=""/);
+  });
+  it("control: a Needs attention row the sheet cannot resend has no Try again", () => {
+    const unreadable = { key: "upload:scan.pdf", filename: "scan.pdf", readiness: attention, applicability: null, note: "Saved to this project, but it couldn't be read for chat yet." };
+    const html = render({ step: 3, selected: { kind: "general" }, done: true, rows: [unreadable] });
+    expect(html).not.toContain("Try again:");
+  });
+});

@@ -35,6 +35,8 @@ export type SetupActions = {
   next: () => void;
   back: () => void;
   commit: () => void;
+  /** S16: send a PDF whose save failed again. */
+  retryUpload: (key: string) => void;
   openProject: () => void;
   cancel: () => void;
 };
@@ -158,6 +160,9 @@ function Step3({ state, actions }: { state: SetupState; actions: SetupActions })
               <span style={{ color: TONE_COLOR[r.readiness.tone], fontWeight: 600 }}>{r.readiness.label}</span>
               {r.applicability ? <p style={{ ...muted, width: "100%", margin: 0 }}>{r.applicability}</p> : null}
               {r.note ? <p style={{ ...muted, width: "100%", margin: 0 }}>{r.note}</p> : null}
+              {r.retry ? (
+                <button type="button" style={unless(button, state.committing)} disabled={state.committing} aria-label={`Try again: ${r.filename}`} onClick={() => actions.retryUpload(r.key)}>Try again</button>
+              ) : null}
             </div>
           ))}
         </>
@@ -301,6 +306,7 @@ export function NewProjectSetup({ open, onClose, notebooks, createNotebook, onOp
     next: () => { void ctl?.next(); },
     back: () => ctl?.back(),
     commit: () => { void ctl?.commit(); },
+    retryUpload: (key) => { void ctl?.retryUpload(key); },
     openProject: () => {
       const id = ctl?.openProjectId();
       if (id) onOpenProject(id);

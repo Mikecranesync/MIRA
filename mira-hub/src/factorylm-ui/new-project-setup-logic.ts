@@ -215,6 +215,8 @@ export type DocOutcome = {
   /** The parked file (202 indexing:true): another upload holds the read; follow it by file id. */
   fileId?: string;
   indexing?: boolean;
+  /** S16: the PDF never reached the project. The sheet still holds it, so it can be sent again. */
+  retryUpload?: true;
 };
 
 export type CommitInput = {
@@ -232,6 +234,50 @@ const NOT_CONFIRMED = "The project is open, but the machine is not confirmed yet
  * then a sources POST per selected document, then each uploaded PDF (POST
  * files, then sources). A refusal stops before any further write.
  */
+/**
+ * One PDF into the project: POST files on the project's node, then attach the
+ * indexed document through `attach`, which records its own row. Returns the row
+ * for any other outcome, or null once handed to `attach`. A failed save is
+ * marked retryUpload.
+ */
+export async function uploadPdf(
+  nodeId: string | null,
+  pdf: File,
+  deps: SetupDeps,
+  attach: (docId: string, key: string) => Promise<void>,
+): Promise<DocOutcome | null> {
+  if (nodeId === null) {
+    return { key: `upload:${pdf.name}`, filename: pdf.name, docId: null, attachFailed: false, notIndexed: true, retryUpload: true, message: "Couldn't save the file to this project. Try again." };
+  }
+  const form = new FormData();
+  form.append("file", pdf);
+  const up = await call(deps, "POST", `/api/namespace/node/${encodeURIComponent(nodeId)}/files/`, { form });
+  if (!up.ok) {
+    return { key: `upload:${pdf.name}`, filename: pdf.name, docId: null, attachFailed: false, notIndexed: true, retryUpload: true, message: messageOf(up, "Couldn't save this file. Try again.") };
+  }
+  const uploadId = up.body.uploadId;
+  // 202: the same bytes are being read by another upload. Keep the file id and
+  // follow it after the writes (resolveIndexing); it is Processing, not a failure.
+  if (up.status === 202 && up.body.indexing === true && typeof up.body.fileId === "string" && up.body.fileId) {
+    const fileId = up.body.fileId;
+    return { key: `file:${fileId}`, filename: pdf.name, docId: null, fileId, indexing: true, attachFailed: false, notIndexed: false, message: null };
+  }
+  if (up.body.indexed !== true || typeof uploadId !== "string" || !uploadId) {
+    const warning = typeof up.body.warning === "string" && up.body.warning ? ` (${up.body.warning})` : "";
+    return { key: `upload:${pdf.name}`, filename: pdf.name, docId: null, attachFailed: false, notIndexed: true, message: `Saved to this project, but it couldn't be read for chat yet${warning}.` };
+  }
+  await attach(uploadId, uploadId);
+  return null;
+}
+
+/** POST one document as a manual source of the project; the outcome row for it. */
+export async function attachSource(notebookId: string, docId: string, filename: string, key: string, deps: SetupDeps): Promise<DocOutcome> {
+  const res = await call(deps, "POST", `/api/equipment-notebooks/${encodeURIComponent(notebookId)}/sources/`, {
+    json: { docId, sourceRole: "manual" },
+  });
+  return { key, filename, docId, attachFailed: !res.ok, notIndexed: false, message: res.ok ? null : messageOf(res, "Couldn't be added as a source. Try again from the project.") };
+}
+
 export async function runCommit(input: CommitInput, deps: SetupDeps): Promise<CommitOutcome> {
   const notes: string[] = [];
   let notebookId: string;
@@ -298,39 +344,14 @@ export async function runCommit(input: CommitInput, deps: SetupDeps): Promise<Co
   const attach = async (docId: string, filename: string, key: string, message: string | null) => {
     if (attached.has(docId)) return;
     attached.add(docId);
-    const res = await call(deps, "POST", `/api/equipment-notebooks/${encodeURIComponent(notebookId)}/sources/`, {
-      json: { docId, sourceRole: "manual" },
-    });
-    docs.push({ key, filename, docId, attachFailed: !res.ok, notIndexed: false, message: res.ok ? message : messageOf(res, "Couldn't be added as a source. Try again from the project.") });
+    const row = await attachSource(notebookId, docId, filename, key, deps);
+    docs.push(row.attachFailed ? row : { ...row, message });
   };
   for (const doc of input.docs) await attach(doc.docId, doc.filename, doc.docId, null);
 
   for (const pdf of input.pdfs) {
-    if (nodeId === null) {
-      docs.push({ key: `upload:${pdf.name}`, filename: pdf.name, docId: null, attachFailed: false, notIndexed: true, message: "Couldn't save the file to this project." });
-      continue;
-    }
-    const form = new FormData();
-    form.append("file", pdf);
-    const up = await call(deps, "POST", `/api/namespace/node/${encodeURIComponent(nodeId)}/files/`, { form });
-    if (!up.ok) {
-      docs.push({ key: `upload:${pdf.name}`, filename: pdf.name, docId: null, attachFailed: false, notIndexed: true, message: messageOf(up, "Couldn't save this file. Try again.") });
-      continue;
-    }
-    const uploadId = up.body.uploadId;
-    // 202: the same bytes are being read by another upload. Keep the file id and
-    // follow it after the writes (resolveIndexing); it is Processing, not a failure.
-    if (up.status === 202 && up.body.indexing === true && typeof up.body.fileId === "string" && up.body.fileId) {
-      const fileId = up.body.fileId;
-      docs.push({ key: `file:${fileId}`, filename: pdf.name, docId: null, fileId, indexing: true, attachFailed: false, notIndexed: false, message: null });
-      continue;
-    }
-    if (up.body.indexed !== true || typeof uploadId !== "string" || !uploadId) {
-      const warning = typeof up.body.warning === "string" && up.body.warning ? ` (${up.body.warning})` : "";
-      docs.push({ key: `upload:${pdf.name}`, filename: pdf.name, docId: null, attachFailed: false, notIndexed: true, message: `Saved to this project, but it couldn't be read for chat yet${warning}.` });
-      continue;
-    }
-    await attach(uploadId, pdf.name, uploadId, null);
+    const doc = await uploadPdf(nodeId, pdf, deps, (docId, key) => attach(docId, pdf.name, key, null));
+    if (doc) docs.push(doc);
   }
 
   return { kind: "created", notebookId, nodeId, confirmed, notes, docs };
@@ -451,6 +472,8 @@ export type ResultRow = {
   readiness: ReadinessView;
   applicability: string | null;
   note: string | null;
+  /** S16: the sheet still holds this PDF and can send it again (SetupController.retryUpload). */
+  retry?: true;
 };
 
 /**
@@ -463,7 +486,7 @@ export function resultRows(docs: readonly DocOutcome[], sources: readonly Source
     if (doc.indexing && !doc.docId) {
       return { key: doc.key, filename: doc.filename, readiness: PROCESSING, applicability: null, note: capped ? INDEXING_CAPPED : INDEXING_PENDING };
     }
-    if (doc.notIndexed) return { key: doc.key, filename: doc.filename, readiness: ATTENTION, applicability: null, note: doc.message };
+    if (doc.notIndexed) return { key: doc.key, filename: doc.filename, readiness: ATTENTION, applicability: null, note: doc.message, ...(doc.retryUpload ? { retry: true as const } : {}) };
     if (doc.attachFailed || !doc.docId) return { key: doc.key, filename: doc.filename, readiness: ATTENTION, applicability: null, note: doc.message };
     const src = sources.find((s) => s.docId === doc.docId);
     if (!src) return { key: doc.key, filename: doc.filename, readiness: ATTENTION, applicability: null, note: "Not listed in this project yet. Check the project before relying on it." };
@@ -531,6 +554,8 @@ export type SetupController = {
   next(): Promise<void>;
   back(): void;
   commit(): Promise<void>;
+  /** S16: send a PDF whose save failed again (a row with retry), then re-read readiness. No-op otherwise. */
+  retryUpload(key: string): Promise<void>;
   /** The notebook the technician should open, if any (created, or the existing one on a refusal). */
   openProjectId(): string | null;
   /** False while a commit is running: the sheet must not close mid-write. */
@@ -577,6 +602,34 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
     ...(state.linked ?? []),
     ...(state.workspace ?? []).map((w) => ({ docId: w.docId, filename: w.filename })),
   ];
+
+  // The created project and its document rows, kept so a failed save can be sent again (S16).
+  let created: { notebookId: string; nodeId: string | null; results: DocOutcome[] } | null = null;
+
+  const showReadiness = async (notebookId: string, results: DocOutcome[]) => {
+    const watched = results.flatMap((d) => (d.docId ? [d.docId] : []));
+    // The writes are finished. After the first readiness read the sheet unlocks
+    // (Continue, Cancel and Open work) while slow documents keep updating. A
+    // document another upload is still reading (202) is attached when it
+    // resolves, unless the sheet has closed: then nothing more is read or written.
+    const w = await watchReadiness(notebookId, watched, deps, {}, {
+      onUpdate: (sources) => { if (!disposed) set({ committing: false, done: true, rows: resultRows(results, sources, false) }); },
+      stop: () => disposed,
+      resolve: () => resolveIndexing(notebookId, results, deps, () => disposed),
+    });
+    if (disposed) return;
+    if (w.unauthorized) {
+      const unread = results.map((d) => (d.indexing ? { ...d, indexing: false, notIndexed: true, message: "Sign in again to check this file." } : d));
+      set({ committing: false, done: true, error: "Sign in again to see document status.", rows: resultRows(unread, [], false) });
+      return;
+    }
+    set({
+      committing: false,
+      done: true,
+      rows: resultRows(results, w.sources, w.capped),
+      stillProcessing: w.capped,
+    });
+  };
 
   const controller: SetupController = {
     getState: () => state,
@@ -715,28 +768,28 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
       }
       set({ notebookId: outcome.notebookId, confirmed: outcome.confirmed, notes: outcome.notes });
       const results = [...outcome.docs];
-      const watched = results.flatMap((d) => (d.docId ? [d.docId] : []));
-      // The writes are finished. After the first readiness read the sheet unlocks
-      // (Continue, Cancel and Open work) while slow documents keep updating. A
-      // document another upload is still reading (202) is attached when it
-      // resolves, unless the sheet has closed: then nothing more is read or written.
-      const w = await watchReadiness(outcome.notebookId, watched, deps, {}, {
-        onUpdate: (sources) => { if (!disposed) set({ committing: false, done: true, rows: resultRows(results, sources, false) }); },
-        stop: () => disposed,
-        resolve: () => resolveIndexing(outcome.notebookId, results, deps, () => disposed),
-      });
-      if (disposed) return;
-      if (w.unauthorized) {
-        const unread = results.map((d) => (d.indexing ? { ...d, indexing: false, notIndexed: true, message: "Sign in again to check this file." } : d));
-        set({ committing: false, done: true, error: "Sign in again to see document status.", rows: resultRows(unread, [], false) });
-        return;
+      created = { notebookId: outcome.notebookId, nodeId: outcome.nodeId, results };
+      await showReadiness(outcome.notebookId, results);
+    },
+
+    async retryUpload(key) {
+      const c = created;
+      if (!c || state.committing || disposed) return;
+      const i = c.results.findIndex((d) => d.key === key && d.retryUpload);
+      const pdf = state.pdfs.find((f) => `upload:${f.name}` === key);
+      if (i < 0 || !pdf) return;
+      set({ committing: true, error: null });
+      if (c.nodeId === null) {
+        const read = await call(deps, "GET", `/api/equipment-notebooks/${encodeURIComponent(c.notebookId)}/`);
+        const id = (read.body.notebook as { nodeId?: unknown } | undefined)?.nodeId;
+        if (read.ok && typeof id === "string") c.nodeId = id;
       }
-      set({
-        committing: false,
-        done: true,
-        rows: resultRows(results, w.sources, w.capped),
-        stillProcessing: w.capped,
-      });
+      let row: DocOutcome | null = null;
+      const doc = await uploadPdf(c.nodeId, pdf, deps, async (docId, k) => { row = await attachSource(c.notebookId, docId, pdf.name, k, deps); });
+      c.results[i] = doc ?? row ?? c.results[i]!;
+      if (doc?.indexing && doc.fileId) deps.onPendingManuals?.(c.notebookId, [doc.fileId]);
+      if (disposed) return;
+      await showReadiness(c.notebookId, c.results);
     },
 
     openProjectId() {

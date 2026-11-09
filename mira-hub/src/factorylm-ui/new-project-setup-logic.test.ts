@@ -676,3 +676,69 @@ describe("slow indexing does not lock the sheet", () => {
     expect(polls).toBe(1);
   });
 });
+
+describe("S16: a PDF that never reached the project can be sent again from the sheet", () => {
+  const pdf = new File(["%PDF"], "manual.pdf", { type: "application/pdf" });
+  const setup = (files: (call: Call) => Reply) => {
+    let sourceCalls = 0;
+    const h = harness({
+      "GET /api/namespace/tree/": { status: 200, body: { nodes: [] } },
+      "GET /api/files/": { status: 200, body: { files: [] } },
+      "POST /api/namespace/node/node-g/files/": files,
+      // The project record lists the manual as a source only once it has been attached.
+      "GET /api/equipment-notebooks/nb-general/": () => ({ status: 200, body: { notebook: { nodeId: "node-g" }, sources: sourceCalls ? [{ docId: "doc-1", filename: "manual.pdf", readiness: { state: "chat_ready_basic" }, matchState: "user_confirmed", enabledByDefault: true }] : [] } }),
+      "POST /api/equipment-notebooks/nb-general/sources/": () => { sourceCalls += 1; return { status: 201, body: { ok: true } }; },
+    });
+    const c = createNewProjectSetup({ ...deps(h.fetch), getNotebooks: () => [] });
+    return { c, h, sources: () => sourceCalls };
+  };
+  const toCommit = async (c: ReturnType<typeof createNewProjectSetup>) => {
+    await c.start();
+    await c.choose({ kind: "general" });
+    c.setName("Upload retry test");
+    await c.next();
+    c.addPdfs([pdf]);
+    await c.next();
+    await c.commit();
+  };
+
+  it("a failed save is Needs attention, keeps the file, and offers Try again; nothing is attached", async () => {
+    const { c, sources } = setup(() => { throw new TypeError("Failed to fetch"); });
+    await toCommit(c);
+    const row = c.getState().rows[0]!;
+    expect(row.readiness.label).toBe("Needs attention");
+    expect(row.retry).toBe(true);
+    expect(row.note).toMatch(/Try again/);
+    expect(c.getState().pdfs).toHaveLength(1);
+    expect(sources()).toBe(0);
+  });
+
+  it("Try again sends the same file once, attaches it once and the row reads Ready", async () => {
+    let n = 0;
+    const { c, h, sources } = setup(() => (++n === 1 ? { status: 503, body: { error: "offline" } } : { status: 201, body: { ok: true, indexed: true, uploadId: "doc-1", fileId: "f-1" } }));
+    await toCommit(c);
+    const key = c.getState().rows[0]!.key;
+    await c.retryUpload(key);
+    const files = h.calls.filter((x) => x.method === "POST" && x.path.endsWith("/files/"));
+    expect(files).toHaveLength(2);
+    expect(sources()).toBe(1);
+    const row = c.getState().rows[0]!;
+    expect(row.readiness.label).toBe("Ready to search");
+    expect(row.retry).toBeFalsy();
+    expect(c.getState().rows).toHaveLength(1);
+  });
+
+  it("control: an upload saved but unreadable (indexed:false) offers no Try again", async () => {
+    const { c } = setup(() => ({ status: 201, body: { ok: true, indexed: false, warning: "scanned", fileId: "f" } }));
+    await toCommit(c);
+    expect(c.getState().rows[0]!.retry).toBeFalsy();
+  });
+
+  it("control: Try again on a saved-but-unreadable file writes nothing (it is on the project already)", async () => {
+    const { c, h } = setup(() => ({ status: 201, body: { ok: true, indexed: false, warning: "scanned", fileId: "f" } }));
+    await toCommit(c);
+    const before = nonGet(h.calls).length;
+    await c.retryUpload(c.getState().rows[0]!.key);
+    expect(nonGet(h.calls).length).toBe(before);
+  });
+});
