@@ -172,9 +172,12 @@ export function modelIdentitiesInText(text: string): Set<string> {
 // spelling the column may not store. Each identity carries its family, so
 // SMCFLEX ≠ SMC50 ≠ SMC3 and PF4 ≠ PF4M ≠ PF40 (the trailing \b keeps "40"
 // from reading as "4").
+// Codex r1 on #5359: a number followed by a unit or "phase" is a rating, not a
+// model ("SMC 3 phase starter", "SMC 50 A soft starter", "PF 4 kW").
+const NOT_A_RATING = String.raw`(?![\s-]*(?:phase|ph|a|amps?|amperes?|v|vac|vdc|volts?|hp|kw|w|hz)\b)`;
 const APPLICABILITY_ONLY_PATTERNS: ReadonlyArray<readonly [family: string, pattern: RegExp]> = [
-  ["SMC", /\bsmc[\s-]*(flex|50|3)\b/gi], // SMC Flex / SMC-Flex, SMC-50, SMC-3
-  ["PF", /\b(?:powerflex|pf)\s*(4m?)\b/gi], // PowerFlex 4, PowerFlex 4M
+  ["SMC", new RegExp(String.raw`\bsmc[\s-]*(flex\b|(?:50|3)\b${NOT_A_RATING})`, "gi")], // SMC Flex / SMC-Flex, SMC-50, SMC-3
+  ["PF", new RegExp(String.raw`\b(?:powerflex|pf)\s*(4m?)\b${NOT_A_RATING}`, "gi")], // PowerFlex 4, PowerFlex 4M
 ];
 
 /**

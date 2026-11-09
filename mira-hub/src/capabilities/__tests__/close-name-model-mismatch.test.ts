@@ -17,7 +17,12 @@ import type { PoolClient } from "pg";
 import { describe, expect, it, vi } from "vitest";
 import { retrieveNodeChunks } from "../../lib/manual-rag";
 import { modelIdentitiesInText } from "../model-token";
-import { displayModelIdentity, namedModelMismatchText } from "../named-model-mismatch";
+import {
+  ambiguousModelAskText,
+  ambiguousSiblingModels,
+  displayModelIdentity,
+  namedModelMismatchText,
+} from "../named-model-mismatch";
 
 const SMC_FLEX_COVER =
   "This manual links to SMC Flex Soft Starter Parameters, publication\n150-RD001; download the spreadsheet now for offline access.\n\nSMC Flex Soft Starters\nBulletin 150-F\n\nUser Manual\n\nOriginal Instructions";
@@ -81,7 +86,14 @@ describe("the model detector reads the close-name families", () => {
   });
 
   it("does not coin a model from unrelated numbers", () => {
-    expect(modelIdentitiesInText("SMC 3 phase starter rated 480V").has("SMC480")).toBe(false);
+    expect(modelIdentitiesInText("SMC 3 phase starter rated 480V").size).toBe(0);
+    // Codex r1 on #5359: ratings and phase counts are not models.
+    for (const q of ["SMC 50 A soft starter", "SMC 3-phase supply", "SMC 50 amps", "SMC 3 ph 480 V", "PowerFlex 4 kW frame", "PF 4 HP"]) {
+      expect(modelIdentitiesInText(q).size, q).toBe(0);
+    }
+    // ...but a real model followed by a rating still reads.
+    expect([...modelIdentitiesInText("SMC-50 rated 90 A")]).toEqual(["SMC50"]);
+    expect([...modelIdentitiesInText("SMC-3, 3 phase, 480V")]).toEqual(["SMC3"]);
     expect(modelIdentitiesInText("PowerFlex 40 at 4 kHz").size).toBe(1);
     // A longer number after "SMC" is not SMC-3 / SMC-50.
     expect(modelIdentitiesInText("SMC 30 A frame, SMC 500 series").size).toBe(0);
@@ -135,6 +147,10 @@ describe("controls — the right manual stays usable", () => {
     [PF4M_COVER, PF_RESTART, "On my PowerFlex 4M, max A093 Auto Rstrt Delay?", "22F"],
     [PF40_COVER, PF_RESTART, "On my PowerFlex 40, max A093 Auto Rstrt Delay?", "22B"],
     [PF40_COVER, PF_RESTART, "On my PF40, max A093 Auto Rstrt Delay?", "22B"],
+    // Codex r1 on #5359: a rating or phase count is not a second model.
+    [SMC_FLEX_COVER, SMC_FAULTS, "SMC 3 phase starter rated 480V: what fault code is SCR Overtemp?", "150-F"],
+    [SMC_FLEX_COVER, SMC_FAULTS, "SMC 50 A soft starter, what fault code is SCR Overtemp?", "150-F"],
+    [SMC_FLEX_COVER, SMC_FAULTS, "I reset the SMC Flex a few times, what fault code is SCR Overtemp?", "150-F"],
   ])("same model answers: %#", async (cover, content, q, model) => {
     const { hits, diagnostics } = await ask([row(cover, content)], q, model);
     expect(hits).toHaveLength(1);
@@ -163,5 +179,66 @@ describe("#5355 — the notice names close-name models as a technician writes th
     const text = namedModelMismatchText({ requested: ["SMC50"], declared: ["SMCFLEX"] });
     expect(text).toContain("for the SMC Flex, not the SMC-50");
     expect(text).not.toMatch(/\b1[01]\b/);
+  });
+});
+
+describe("#5355 — two models: comparison vs ambiguous", () => {
+  const ids = (q: string) => modelIdentitiesInText(q);
+  it.each([
+    "my SMC-50 or SMC Flex flagged fault 10, what is it?",
+    "PowerFlex 40 or PowerFlex 4M, what's the max A093?", // a bare "4M" with no PowerFlex prefix is not read (documented limit)
+    "Micro820 Micro850 relay rating at 120 V AC?",
+  ])("ambiguous: %s", (q) => {
+    expect(ambiguousSiblingModels(q, ids(q))).not.toBeNull();
+  });
+  it.each([
+    "What's the difference between the SMC-50 and SMC Flex fault codes?",
+    "SMC-50 vs SMC Flex: which has a PTC input?",
+    "Can I replace a PowerFlex 4M with a PowerFlex 40?",
+    "Is the Micro820 wiring the same as the Micro850?",
+    "wire RS-485 between a Micro820 and a GS10", // two families: multi-device
+    "Micro820 talking to a GS10 over Modbus", // two families, connection cue
+    "Micro820 GS10 comms fault after power loss", // two families, no cue at all
+  ])("not ambiguous: %s", (q) => {
+    expect(ambiguousSiblingModels(q, ids(q))).toBeNull();
+  });
+  it("the no-cue two-family case really names two models", () => {
+    expect(ids("Micro820 GS10 comms fault after power loss").size).toBe(2);
+  });
+  it("a rating guard never swallows SMC Flex", () => {
+    expect([...ids("I reset the SMC Flex a few times")]).toEqual(["SMCFLEX"]);
+    expect([...ids("SMC Flex 480 V, 3 phase")]).toEqual(["SMCFLEX"]);
+  });
+
+  it("retrieval returns nothing and reports the ambiguity before any query", async () => {
+    const client = { query: vi.fn(async () => ({ rows: [row(SMC_FLEX_COVER, SMC_FAULTS)] })) } as unknown as PoolClient;
+    const diagnostics: { ambiguousModelAsk?: { named: string[] } } = {};
+    const hits = await retrieveNodeChunks(client, "t-1", "my SMC-50 or SMC Flex flagged fault 10, what is it?", {
+      nodeId: "n-1",
+      unsPath: null,
+      docIds: ["d-1"],
+      validatedDocScope: true,
+      identity: { manufacturer: "Rockwell Automation", model: "150-F" },
+      identityStatus: "user_confirmed" as never,
+      diagnostics: diagnostics as never,
+    });
+    expect(hits).toEqual([]);
+    expect(diagnostics.ambiguousModelAsk).toEqual({ named: ["SMC50", "SMCFLEX"] });
+    expect(vi.mocked(client.query)).not.toHaveBeenCalled();
+  });
+
+  it("a comparison still retrieves from the selected manual", async () => {
+    const { hits } = await ask(
+      [row(SMC_FLEX_COVER, SMC_FAULTS)],
+      "What's the difference between the SMC-50 and SMC Flex SCR Overtemp fault code?",
+      "150-F",
+    );
+    expect(hits).toHaveLength(1);
+  });
+
+  it("the which-one text names both and gives no value", () => {
+    const t = ambiguousModelAskText(["SMC50", "SMCFLEX"]);
+    expect(t).toContain("Which one is it — the SMC-50 or the SMC Flex?");
+    expect(t).not.toMatch(/\b1[01]\b/);
   });
 });

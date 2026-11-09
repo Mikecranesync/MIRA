@@ -138,7 +138,7 @@ import {
   lockoutPageOf,
   pickLockoutChunk,
 } from "@/capabilities/energized-work-stop";
-import { namedModelMismatchText, type NamedModelMismatch } from "@/capabilities/named-model-mismatch";
+import { ambiguousModelAskText, namedModelMismatchText, type NamedModelMismatch } from "@/capabilities/named-model-mismatch";
 import { isOffTopic, SCOPE_REPLY } from "@/capabilities/scope-check";
 import { englishSearchQuery, withAnswerLanguage } from "@/capabilities/answer-language";
 import { normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
@@ -2442,6 +2442,7 @@ async function handleChatTurn(
     searchPath?: string;
     queryRewrite?: string;
     namedModelMismatch?: NamedModelMismatch;
+    ambiguousModelAsk?: { named: string[] };
   } = {};
   const queryRewrite = await queryRewritePromise;
   retrievalDiagnostics.queryRewrite = queryRewrite.status;
@@ -3464,6 +3465,9 @@ async function handleChatTurn(
         ? "I saw your photo, but I couldn't find anything about it in the selected sources."
       // CV-101 S6: the question named a model and every refused manual declares a
       // different one — say which, and still answer nothing from it.
+      // #5355: two sibling models named with no comparison — ask which one.
+      : notebookRetrieval && retrievalDiagnostics.ambiguousModelAsk
+        ? ambiguousModelAskText(retrievalDiagnostics.ambiguousModelAsk.named)
       : notebookRetrieval && retrievalDiagnostics.namedModelMismatch
         ? namedModelMismatchText(retrievalDiagnostics.namedModelMismatch)
       : notebookRetrieval

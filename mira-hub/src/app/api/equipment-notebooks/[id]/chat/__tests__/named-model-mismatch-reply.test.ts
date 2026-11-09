@@ -152,3 +152,22 @@ describe("CV-101 S6 — a wrong-model ask names the mismatch and answers nothing
     );
   });
 });
+
+describe("#5355 — two sibling models with no comparison get a which-one question", () => {
+  it("serves insufficient_evidence asking SMC-50 or SMC Flex, with no provider call and no citation", async () => {
+    ragMock.retrieveNodeChunks.mockImplementation(async (_c: unknown, _t: unknown, _q: unknown, opts: unknown) => {
+      const o = opts as Opts;
+      if (o?.diagnostics) o.diagnostics.ambiguousModelAsk = { named: ["SMC50", "SMCFLEX"] };
+      return [];
+    });
+    const out = await frames(
+      await POST(req({ message: "my SMC-50 or SMC Flex flagged fault 10, what is it?", sourceDocIds: [DOC_A] }), params),
+    );
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    const status = out.find((f) => f.kind === "status") as { status: string; message?: string };
+    expect(status.status).toBe("insufficient_evidence");
+    expect(status.message).toContain("Which one is it — the SMC-50 or the SMC Flex?");
+    const sources = out.find((f) => f.kind === "sources") as { citations: unknown[] };
+    expect(sources.citations).toEqual([]);
+  });
+});

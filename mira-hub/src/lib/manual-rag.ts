@@ -4,6 +4,7 @@ import type { IdentityStatus } from "@/lib/equipment-notebooks";
 import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
 import { MODEL_PATTERNS, modelIdentitiesInText, resolveModelFromObservationText } from "@/capabilities/model-token";
+import { ambiguousSiblingModels } from "@/capabilities/named-model-mismatch";
 import { embedQueryDetailed, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
 import { setSpanAttrs } from "@/capabilities/observability/tracing";
 import { logRerankFallback, orderWithPinnedHead, rerankEnabled, rerankPool, rerankScores } from "@/capabilities/reranker";
@@ -1339,6 +1340,9 @@ export async function retrieveNodeChunks(
        *  page declared its own model — the evidence that the notebook's manual
        *  is for a different model than the one asked about. */
       namedModelMismatch?: { requested: string[]; declared: string[] };
+      /** #5355: the question named two sibling models with no comparison cue;
+       *  nothing was retrieved and the reply asks which one. */
+      ambiguousModelAsk?: { named: string[] };
     };
   },
 ): Promise<ManualChunk[]> {
@@ -1453,6 +1457,16 @@ export async function retrieveNodeChunks(
     !requestedModel.model && !requestedModel.ambiguous ? modelIdentitiesInText(opts.rawQuery ?? q) : new Set<string>();
   const questionScoped =
     (Boolean(requestedModel.model) && !requestedModel.ambiguous) || closeNameIdentities.size === 1;
+  // #5355: two sibling models of one family with no comparison cue ("my
+  // SMC-50 or SMC Flex faulted — what is code 10?") is one machine named two
+  // ways. Answering from either manual guesses; ask which one instead
+  // (named-model-mismatch.ts ambiguousSiblingModels). A comparison or a
+  // two-device question keeps the unfiltered behaviour below.
+  const ambiguousSiblings = ambiguousSiblingModels(opts.rawQuery ?? q, modelIdentitiesInText(opts.rawQuery ?? q));
+  if (ambiguousSiblings) {
+    if (opts.diagnostics) opts.diagnostics.ambiguousModelAsk = { named: ambiguousSiblings };
+    return [];
+  }
   // 2026-10-18 scope pass: two more ways the notebook identity must NOT scope.
   //   - It was never confirmed by a person. `equipment_notebooks.model` and
   //     `identity_status` are independent columns (updateNotebook builds its
