@@ -44,6 +44,7 @@ import {
   isVisualObservationEntry,
 } from "@/lib/notebook-chat-types";
 import { API_BASE } from "@/lib/config";
+import { viewerHref } from "./document-page-viewer-logic";
 import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
 import { PROVIDER_EXHAUSTION_COPY } from "@/capabilities/provider-health";
 import type { PersistedTurn, StreamResult } from "@/components/equipment/notebook-chat-utils";
@@ -181,12 +182,15 @@ export function fileUrl(fileId: string): string {
 /** Where a citation opens, by the classic source page's rule
  *  ((hub)/equipment/[id]/source/[docId]): the canonical origin wins (085), so a
  *  photo-derived doc opens the photograph, which has no page; otherwise the
- *  doc's own parked file at its cited page; otherwise a manufacturer manual's
- *  own http(s) address. Undefined when there is nothing to open. */
+ *  doc's own parked file at its cited page, through the cited-page viewer
+ *  (#5333: phones have no inline PDF viewer, so a framed PDF was blocked; the
+ *  viewer draws the page there and hands desktop browsers the file at
+ *  `#page=N`); otherwise a manufacturer manual's own http(s) address.
+ *  Undefined when there is nothing to open. */
 export function citationHref(citation: EvidenceCitation): string | undefined {
   const page = citation.page ? `#page=${citation.page}` : "";
   if (citation.originFileId) return fileUrl(citation.originFileId);
-  if (citation.fileId) return `${fileUrl(citation.fileId)}${page}`;
+  if (citation.fileId) return viewerHref(citation.fileId, citation.page);
   const url = citation.sourceUrl ?? "";
   if (/^https?:\/\//i.test(url)) return url.includes("#") ? url : `${url}${page}`;
   return undefined;

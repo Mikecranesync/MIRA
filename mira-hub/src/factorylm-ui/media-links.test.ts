@@ -5,6 +5,7 @@ import { citationHref, fileUrl, sourceFor, visualObservationPart } from "./to-in
 
 // Photo thumbnails and openable references in the /v3 shell (owner ask
 // 2026-10-05). The adapter says where the bytes live; the shell renders them.
+const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "/hub";
 const base: EvidenceCitation = { citationId: "1", docId: "doc-1", sourceTitle: "GS10 User Manual", page: 47, fileId: null, quote: "q" };
 
 describe("fileUrl — the existing byte route the classic notebook and mobile already use", () => {
@@ -17,11 +18,16 @@ describe("fileUrl — the existing byte route the classic notebook and mobile al
 });
 
 describe("citationHref — the classic source page's rule", () => {
-  it("a parked document opens at its cited page", () => {
-    expect(citationHref({ ...base, fileId: "f-1" })).toBe(`${API_BASE}/api/namespace/files/f-1/#page=47`);
+  // #5333: through the same-origin cited-page viewer, never the raw PDF — a
+  // framed PDF is blocked on Android Chrome, which has no inline PDF viewer.
+  it("a parked document opens in the cited-page viewer at its cited page", () => {
+    expect(citationHref({ ...base, fileId: "f-1" })).toBe(`${BASE_PATH}/v3/source/?file=f-1&page=47`);
   });
-  it("without a page it opens at the start", () => {
-    expect(citationHref({ ...base, fileId: "f-1", page: null })).toBe(`${API_BASE}/api/namespace/files/f-1/`);
+  it("without a page it opens the viewer at the start", () => {
+    expect(citationHref({ ...base, fileId: "f-1", page: null })).toBe(`${BASE_PATH}/v3/source/?file=f-1`);
+  });
+  it("the viewer address stays a same-site path the shared viewer frames", () => {
+    expect(citationHref({ ...base, fileId: "f-1" })).toMatch(/^\/(?!\/)/);
   });
   it("the canonical origin wins: a photo-derived doc opens the photograph, which has no page (085)", () => {
     expect(citationHref({ ...base, fileId: "ocr-sidecar", originFileId: "photo-9" })).toBe(`${API_BASE}/api/namespace/files/photo-9/`);
@@ -39,7 +45,7 @@ describe("citationHref — the classic source page's rule", () => {
 
 describe("parts carry the address", () => {
   it("a source part carries href when there is something to open", () => {
-    expect(sourceFor({ ...base, fileId: "f-1" }, "t").href).toBe(`${API_BASE}/api/namespace/files/f-1/#page=47`);
+    expect(sourceFor({ ...base, fileId: "f-1" }, "t").href).toBe(`${BASE_PATH}/v3/source/?file=f-1&page=47`);
     expect(sourceFor(base, "t")).not.toHaveProperty("href");
   });
   it("a photo observation carries the photo's address", () => {
