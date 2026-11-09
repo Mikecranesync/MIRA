@@ -3637,7 +3637,13 @@ async function handleChatTurn(
     // checked, so the definition is withheld and the page named instead.
     const definitionPassage = passages.find((p) => p.definition);
     const [definitionPage] = definitionPassage ? citedPagesFor([definitionPassage.citation], chunks) : [];
-    if (definitionPage) {
+    if (definitionPassage && !definitionPage) {
+      // Codex #5317 r2 F4: no page to read (a shared OEM chunk carries no docId,
+      // or the chunk has no page locator) is not a page with no cautions — the
+      // cautions are unchecked, so the definition is withheld like any unread page.
+      edgeDefinitionPageUnread = true;
+      console.warn("[notebook-chat] edge definition has no readable page reference: definition withheld");
+    } else if (definitionPage) {
       const retrievedOnPage = chunks
         .filter((c) => c.sourceUrl === definitionPage.sourceUrl && c.sourcePage === definitionPage.page)
         .map((c) => c.content);

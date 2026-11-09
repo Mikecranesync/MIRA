@@ -399,6 +399,26 @@ describe("#5265 edge profile — the manual speaks", () => {
       await expectPageUnread();
     });
 
+    // Codex #5317 r2 F4: a definition whose chunk has no page reference to read
+    // (shared OEM retrieval carries no docId; a chunk may lack a page) is
+    // withheld, not served as answered without its cautions.
+    it.each([
+      ["no docId (shared OEM chunk)", { docId: undefined }],
+      ["no source page", { sourcePage: null }],
+    ])("Codex #5317 r2 F4: definition chunk with %s is withheld, insufficient_evidence, no model", async (_label, override) => {
+      ragMock.retrieveNodeChunks.mockResolvedValue(gs10Retrieved().map((c) => ({ ...c, ...override })));
+      ragMock.retrievePageChunksInOrder.mockResolvedValue({ chunks: gs10.definitionPage.chunks.map((c) => c.content), complete: true });
+      const out = await frames(await POST(req({ message: GS11N, sourceDocIds: [DOC_A] }), params));
+      expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+      expect(ragMock.retrievePageChunksInOrder).not.toHaveBeenCalled();
+      const content = contentOf(out);
+      expect(content).not.toContain("Definition of P01.12");
+      expect(content).toMatch(/couldn.t read all of/i);
+      const persisted = (vi.mocked(nbMock.recordTurn).mock.calls[0] as unknown as unknown[])[2] as { answerText: string; answerStatus: string };
+      expect(persisted.answerStatus).toBe("insufficient_evidence");
+      expect(persisted.answerText).not.toContain("Definition of P01.12");
+    });
+
     it("Codex #5317 F2: a caution split across two overlapping chunks is quoted whole, once", async () => {
       ragMock.retrieveNodeChunks.mockResolvedValue(gs10Retrieved());
       const page = gs10.definitionPage.chunks.map((c) => c.content);
