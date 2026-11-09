@@ -1489,8 +1489,15 @@ export async function retrieveNodeChunks(
         ? new Set([bareNumberFamilyRoot(notebookModel, opts.identity?.manufacturer) ?? `#${notebookModel}`])
         : modelIdentitiesInText(notebookModel)
       : new Set<string>();
+  // Codex r3 F3 on #5359: a question that names several close-name models
+  // (a comparison or a connection that passed the ambiguity check) is "names
+  // several models → no filter", like the single-token ambiguous case — the
+  // notebook identity must not narrow it back to one sibling.
   const notebookScoped =
-    !questionScoped && notebookIdentities.size > 0 && !identitiesAreFamilyOnly(notebookIdentities);
+    !questionScoped &&
+    closeNameIdentities.size < 2 &&
+    notebookIdentities.size > 0 &&
+    !identitiesAreFamilyOnly(notebookIdentities);
   // Give each attached manual its own candidate window for a model-scoped ask.
   // Otherwise a large sibling manual can consume LIMIT before applicability
   // filtering, hiding the correct manual and making a supported ask abstain.

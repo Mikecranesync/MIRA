@@ -192,6 +192,11 @@ describe("#5355 — two models: comparison vs ambiguous", () => {
     "My SMC-50 or SMC Flex tripped due to a fault 10; what is it?",
     "SMC-50 / SMC Flex fault 10 with a hot heatsink, what is it?",
     "is it the Micro820 or the Micro850 that has 7 relay outputs?",
+    // Codex r3 F2: a parenthesised alternative is still one machine.
+    "SMC-50 (or SMC Flex) flagged fault 10, what is it?",
+    "PowerFlex 40 (PowerFlex 4M?) A093 max?",
+    // a comparison word in ANOTHER sentence does not govern the pair
+    "I compared the logs. My SMC-50 or SMC Flex shows fault 10, what is it?",
   ])("ambiguous: %s", (q) => {
     expect(ambiguousSiblingModels(q)).not.toBeNull();
   });
@@ -206,6 +211,9 @@ describe("#5355 — two models: comparison vs ambiguous", () => {
     // Codex r2 on #5359 F3: a same-family connection is two devices.
     "Micro820 communicating with Micro850 over Modbus: how should I wire RS-485?",
     "Micro820 and Micro850 on one network, which IP settings?",
+    // Codex r3 F1: a comparison word governing a comma-listed pair.
+    "Compare the SMC-50, SMC Flex fault codes.",
+    "What is the difference between Micro820, Micro850 relay ratings?",
   ])("not ambiguous: %s", (q) => {
     expect(ambiguousSiblingModels(q)).toBeNull();
   });
@@ -283,6 +291,43 @@ describe("#5355 — two models: comparison vs ambiguous", () => {
     );
     expect((diagnostics as { ambiguousModelAsk?: unknown }).ambiguousModelAsk).toBeUndefined();
     expect(hits).toHaveLength(1);
+  });
+
+  it("Codex r3 F2: a parenthesised alternative asks which one and admits no page", async () => {
+    const d: { ambiguousModelAsk?: { named: string[] } } = {};
+    const client = { query: vi.fn(async () => ({ rows: [row(SMC_FLEX_COVER, SMC_FAULTS)] })) } as unknown as PoolClient;
+    const hits = await retrieveNodeChunks(client, "t-1", "SMC-50 (or SMC Flex) flagged fault 10, what is it?", {
+      nodeId: "n-1",
+      unsPath: null,
+      docIds: ["d-1"],
+      validatedDocScope: true,
+      identity: { manufacturer: "Rockwell Automation", model: "150-F" },
+      identityStatus: "user_confirmed" as never,
+      diagnostics: d as never,
+    });
+    expect(hits).toEqual([]);
+    expect(d.ambiguousModelAsk).toEqual({ named: ["SMC50", "SMCFLEX"] });
+  });
+
+  it.each([
+    "Compare the SMC-50, SMC Flex SCR Overtemp fault codes.",
+    "What is the difference between the SMC-50 and SMC Flex SCR Overtemp fault code?",
+  ])("Codex r3 F1/F3: a comparison retrieves even in a notebook confirmed as SMC-50: %s", async (q) => {
+    const { hits, diagnostics } = await ask([row(SMC_FLEX_COVER, SMC_FAULTS)], q, "SMC-50");
+    expect((diagnostics as { ambiguousModelAsk?: unknown }).ambiguousModelAsk).toBeUndefined();
+    expect(diagnostics.namedModelMismatch).toBeUndefined();
+    expect(hits).toHaveLength(1);
+  });
+
+  it("Codex r3 F3: both manuals selected, a comparison in a confirmed SMC-50 notebook cites both", async () => {
+    const rows = [row(SMC_FLEX_COVER, SMC_FAULTS), { ...row(SMC_50_COVER, SMC_FAULTS), doc_id: "d-2" }];
+    const { hits } = await ask(rows, "What is the difference between the SMC-50 and SMC Flex SCR Overtemp fault code?", "SMC-50", ["d-1", "d-2"]);
+    expect(hits.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("control: a one-model question in a confirmed SMC-50 notebook still refuses the SMC Flex manual", async () => {
+    const { hits } = await ask([row(SMC_FLEX_COVER, SMC_FAULTS)], "what fault code is SCR Overtemp?", "SMC-50");
+    expect(hits).toEqual([]);
   });
 
   it("a comparison still retrieves from the selected manual", async () => {

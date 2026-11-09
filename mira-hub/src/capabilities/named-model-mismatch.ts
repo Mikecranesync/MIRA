@@ -45,13 +45,21 @@ export function namedModelMismatchText(m: NamedModelMismatch): string {
  * question for cue words misfired both ways ("tripped due to a fault" read as
  * a comparison). So ambiguity is decided by what sits BETWEEN two adjacent
  * mentions of one product family (same identity prefix: SMC, PF, MICRO…):
- * nothing, "or", "/" or "," — optionally followed by the/my/a/an — is one
+ * nothing, "or", "/" or "," (optionally in an opening parenthesis, optionally
+ * followed by the/my/a/an) is one
  * machine named two ways; ANY other word between them ("and", "vs", "with",
  * "communicating with", "between") keeps today's path, where every manual is
  * cited under its own title. Different families are never ambiguous here.
  * Pure, no LLM.
  */
-const ALTERNATIVE_GAP_RE = /^\s*(?:or\b|\/|,)?\s*(?:(?:the|my|a|an)\s+)?$/i;
+const ALTERNATIVE_GAP_RE = /^\s*\(?\s*(?:or\b|\/|,)?\s*(?:(?:the|my|a|an)\s+)?$/i;
+// Codex r3 F1: a comparison word that GOVERNS the listed models — earlier in
+// the same clause as the first of the pair ("Compare the SMC-50, SMC Flex
+// fault codes", "difference between Micro820, Micro850") — makes even a
+// comma-listed pair a comparison. A clause ends at . ? ! ; or :, so a
+// comparison word in another sentence never applies.
+const GOVERNING_COMPARISON_RE = /\b(?:compar\w*|differen\w*|between|vs\.?|versus|contrast\w*)\s/i;
+const clauseBefore = (text: string, at: number) => text.slice(0, at).split(/[.?!;:]/).pop() ?? "";
 
 /** The family prefix of an identity ("SMC50" → "SMC", "PF4M" → "PF"); null for
  *  identities without a letter prefix (catalog numbers). */
@@ -63,7 +71,9 @@ export function ambiguousSiblingModels(question: string): string[] | null {
     const [a, b] = [mentions[i - 1], mentions[i]];
     const family = familyOf(a.id);
     if (!family || family !== familyOf(b.id) || a.id === b.id || b.start < a.end) continue;
-    if (ALTERNATIVE_GAP_RE.test(question.slice(a.end, b.start))) return [a.id, b.id].sort();
+    if (!ALTERNATIVE_GAP_RE.test(question.slice(a.end, b.start))) continue;
+    if (GOVERNING_COMPARISON_RE.test(clauseBefore(question, a.start))) continue;
+    return [a.id, b.id].sort();
   }
   return null;
 }
