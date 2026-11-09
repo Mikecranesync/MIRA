@@ -785,6 +785,106 @@ describe("S16: a PDF that never reached the project can be sent again from the s
     expect(rows[0]!.readiness.label).toBe("Ready to search");
   });
 
+  it("Codex #5353 r3 F5: a deduplicated retry that attaches clears the first copy's earlier attach failure", async () => {
+    const attached: string[] = [];
+    let copies = 0;
+    let attachCalls = 0;
+    const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      const reply = (status: number, body: Record<string, unknown>) =>
+        ({ status, ok: status >= 200 && status < 300, json: async () => body }) as Response;
+      if (method === "GET" && path.startsWith("/api/namespace/tree/")) return reply(200, { nodes: [] });
+      if (method === "GET" && path.startsWith("/api/files/")) return reply(200, { files: [] });
+      if (method === "POST" && path.startsWith("/api/namespace/node/node-g/files/")) {
+        const bytes = await ((init!.body as FormData).get("file") as File).text();
+        copies++;
+        if (copies === 2) return reply(503, { error: "offline" });
+        return reply(201, { ok: true, indexed: true, uploadId: `doc-${bytes}`, fileId: `f-${bytes}` });
+      }
+      if (method === "POST" && path.startsWith("/api/equipment-notebooks/nb-general/sources/")) {
+        attachCalls++;
+        // the first copy's attach fails; the retry's attach succeeds
+        if (attachCalls === 1) return reply(503, { error: "attach offline" });
+        const docId = String(JSON.parse(String(init!.body)).docId);
+        if (!attached.includes(docId)) attached.push(docId);
+        return reply(201, { ok: true });
+      }
+      if (method === "GET" && path.startsWith("/api/equipment-notebooks/nb-general/")) {
+        return reply(200, {
+          notebook: { nodeId: "node-g" },
+          sources: attached.map((docId) => ({ docId, filename: "manual.pdf", readiness: { state: "chat_ready_basic" }, matchState: "user_confirmed", enabledByDefault: true })),
+        });
+      }
+      throw new Error(`unexpected request ${method} ${path}`);
+    });
+    const c = createNewProjectSetup({ ...deps(fetchFn as unknown as typeof fetch), getNotebooks: () => [] });
+    await c.start();
+    await c.choose({ kind: "general" });
+    c.setName("Duplicate retry after attach failure");
+    await c.next();
+    c.addPdfs([new File(["A"], "manual.pdf", { type: "application/pdf" }), new File(["A"], "manual.pdf", { type: "application/pdf" })]);
+    await c.next();
+    await c.commit();
+    const failed = c.getState().rows.find((r) => r.retry)!;
+    expect(failed).toBeDefined();
+    await c.retryUpload(failed.key);
+    expect(attached).toEqual(["doc-A"]);
+    const rows = c.getState().rows;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.retry).toBeFalsy();
+    expect(rows[0]!.readiness.label).toBe("Ready to search");
+    expect(rows[0]!.note ?? "").not.toMatch(/attach offline|Couldn't be added/);
+  });
+
+  it("Codex #5353 r3 F5 control: a deduplicated retry whose attach fails never overwrites the first copy's good row", async () => {
+    const attached: string[] = [];
+    let copies = 0;
+    let attachCalls = 0;
+    const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      const reply = (status: number, body: Record<string, unknown>) =>
+        ({ status, ok: status >= 200 && status < 300, json: async () => body }) as Response;
+      if (method === "GET" && path.startsWith("/api/namespace/tree/")) return reply(200, { nodes: [] });
+      if (method === "GET" && path.startsWith("/api/files/")) return reply(200, { files: [] });
+      if (method === "POST" && path.startsWith("/api/namespace/node/node-g/files/")) {
+        const bytes = await ((init!.body as FormData).get("file") as File).text();
+        copies++;
+        if (copies === 2) return reply(503, { error: "offline" });
+        return reply(201, { ok: true, indexed: true, uploadId: `doc-${bytes}`, fileId: `f-${bytes}` });
+      }
+      if (method === "POST" && path.startsWith("/api/equipment-notebooks/nb-general/sources/")) {
+        attachCalls++;
+        // the first copy attaches; the retry's attach fails
+        if (attachCalls > 1) return reply(503, { error: "attach offline" });
+        const docId = String(JSON.parse(String(init!.body)).docId);
+        if (!attached.includes(docId)) attached.push(docId);
+        return reply(201, { ok: true });
+      }
+      if (method === "GET" && path.startsWith("/api/equipment-notebooks/nb-general/")) {
+        return reply(200, {
+          notebook: { nodeId: "node-g" },
+          sources: attached.map((docId) => ({ docId, filename: "manual.pdf", readiness: { state: "chat_ready_basic" }, matchState: "user_confirmed", enabledByDefault: true })),
+        });
+      }
+      throw new Error(`unexpected request ${method} ${path}`);
+    });
+    const c = createNewProjectSetup({ ...deps(fetchFn as unknown as typeof fetch), getNotebooks: () => [] });
+    await c.start();
+    await c.choose({ kind: "general" });
+    c.setName("Duplicate retry attach fails");
+    await c.next();
+    c.addPdfs([new File(["A"], "manual.pdf", { type: "application/pdf" }), new File(["A"], "manual.pdf", { type: "application/pdf" })]);
+    await c.next();
+    await c.commit();
+    const failed = c.getState().rows.find((r) => r.retry)!;
+    await c.retryUpload(failed.key);
+    const rows = c.getState().rows;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.readiness.label).toBe("Ready to search");
+  });
+
   it("Codex #5353 F1: two different files with the same name — Try again sends the failed file's own bytes", async () => {
     const uploaded: string[] = [];
     const attached: string[] = [];

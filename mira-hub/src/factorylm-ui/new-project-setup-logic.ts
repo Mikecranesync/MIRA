@@ -805,8 +805,14 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
       // copy of an already-saved PDF returns that document. It is already a row:
       // drop the failed row instead of showing the same source twice (the commit
       // path's `attached` set applies the same one-row-per-document policy).
-      if (next.key !== c.results[i]!.key && c.results.some((r, j) => j !== i && r.key === next.key)) c.results.splice(i, 1);
-      else c.results[i] = next;
+      // r3 F5: the retry's outcome is newer than that row. A clean one replaces
+      // it, so an earlier attach failure the retry has fixed is not left showing;
+      // a failed retry never overwrites a row that was fine.
+      const dup = next.key === c.results[i]!.key ? -1 : c.results.findIndex((r, j) => j !== i && r.key === next.key);
+      if (dup >= 0) {
+        if (!next.attachFailed && !next.notIndexed) c.results[dup] = next;
+        c.results.splice(i, 1);
+      } else c.results[i] = next;
       if (doc?.indexing && doc.fileId) deps.onPendingManuals?.(c.notebookId, [doc.fileId]);
       if (disposed) return;
       await showReadiness(c.notebookId, c.results);
