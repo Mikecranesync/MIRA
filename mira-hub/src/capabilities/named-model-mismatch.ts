@@ -56,26 +56,42 @@ export function namedModelMismatchText(m: NamedModelMismatch): string {
  * - nothing or a bare "," asks, unless the clause opens with a comparison that
  *   names the list ("Compare the SMC-50, SMC Flex fault codes");
  * - the pair is answered only when the words between them are EXACTLY one
- *   link from a closed list: and, vs, versus, with, to, than, compared
- *   with/to, connected/wired/talking/communicating/linked/networked with/to,
- *   (is) the same as, similar to, different from — optionally after a comma
- *   and before the/my/a/an (Codex r10 F12, r11 F13: free words before a
- *   joining word were eventually a hedge). Today's path then cites every
- *   manual under its own title;
- * - a doubt word anywhere in the sentence that holds the pair asks (r11/r12
- *   F13: "I may have confused my SMC-50 and SMC Flex");
+ *   link from a closed list (optionally after a comma, before the/my/a/an):
+ *   explicit links answer on their own — vs, versus, than, compared with/to,
+ *   connected/wired/talking/communicating/linked/networked with/to, (is) the
+ *   same as, similar to, different from; plain links (and, with, to, from)
+ *   answer only when the sentence also names why two machines are involved —
+ *   a comparison, a replacement or move, a connection or network, "both"
+ *   (Codex r10–r13: free words, and a bare "and", were eventually a hedge);
+ * - identity doubt anywhere in the sentence ("mixed up", "confused", "can't
+ *   tell … apart", "not sure", "which one") asks; modal words ("might",
+ *   "could", "may") ask only between the names, since "why might the link be
+ *   down" is about the fault, not the machine (Codex r13 F14);
  * - anything else asks.
  * Different families are never ambiguous here. Pure, no LLM.
  */
 const CLAUSE_BREAK_RE = /[.?!;:]/;
+// Doubt BETWEEN the two names: an alternative ("or", "/") or any hedge.
 const DOUBT_GAP_RE =
-  /\bor\b|\/|\b(?:maybe|possibly|perhaps|probably|either|could|might|may|unsure|uncertain|unclear|aka|mix(?:ed)?\s+up|confus\w*|mistak\w*|not\s+(?:sure|certain)|(?:do\s*n[o']?t|don't)\s+know|i\s+(?:think|guess|believe))\b/i;
-// Codex r11 F13: any free text inside the "answered" exception was eventually
-// a hedge ("may be the same as", "I may have confused with"), so the exception
-// is now a CLOSED list of exact links between the two names, nothing else.
-const LINK_RE_SRC =
-  "(?:and|vs|versus|with|to|than|compared\\s+(?:with|to)|(?:communicating|talking|connected|wired|linked|networked)\\s+(?:with|to)|(?:is\\s+|are\\s+)?(?:the\\s+same\\s+as|similar\\s+to|different\\s+from))";
-const JOINED_GAP_RE = new RegExp(`^\\s*,?\\s*${LINK_RE_SRC}\\s+(?:(?:the|my|a|an)\\s+)?$`, "i");
+  /\bor\b|\/|\b(?:maybe|possibly|perhaps|probably|either|could|might|may|unsure|uncertain|unclear|aka|mix(?:ed)?\s+up|confus\w*|mistak\w*|not\s+(?:sure|certain)|(?:do\s*n[o']?t|don't)\s+know|can'?t\s+tell|cannot\s+tell|apart|i\s+(?:think|guess|believe))\b/i;
+// Doubt about WHICH MACHINE anywhere in the sentence. Modal words about the
+// fault or the link ("why might the link be down", "how could they talk")
+// are not identity doubt (Codex r13 F14), so they count only between the names.
+const IDENTITY_DOUBT_RE =
+  /\b(?:unsure|uncertain|unclear|aka|mix(?:ed)?\s+up|confus\w*|mistak\w*|not\s+(?:sure|certain)|(?:do\s*n[o']?t|don't)\s+know|can'?t\s+tell|cannot\s+tell|apart|which\s+one|i\s+(?:think|guess|believe))\b/i;
+// Codex r11 F13: free text inside the "answered" exception was eventually a
+// hedge, so it is a CLOSED list of exact links. Codex r13 F13: a plain "and"
+// can join two machines or one machine the technician cannot place ("I can't
+// tell the SMC-50 and SMC Flex apart"), so plain links answer only when the
+// sentence also says why two machines are named (a comparison, a replacement
+// or move, or a connection).
+const EXPLICIT_LINK_SRC =
+  "(?:vs|versus|than|compared\\s+(?:with|to)|(?:communicating|talking|connected|wired|linked|networked)\\s+(?:with|to)|(?:is\\s+|are\\s+)?(?:the\\s+same\\s+as|similar\\s+to|different\\s+from))";
+const gapIs = (link: string) => new RegExp(`^\\s*,?\\s*${link}\\s+(?:(?:the|my|a|an)\\s+)?$`, "i");
+const EXPLICIT_GAP_RE = gapIs(EXPLICIT_LINK_SRC);
+const PLAIN_GAP_RE = gapIs("(?:and|with|to|from)");
+const TWO_MACHINE_CUE_RE =
+  /\b(?:compar\w*|differen\w*|replac\w*|swap\w*|upgrad\w*|migrat\w*|mov(?:e|ing)\b|transfer\w*|cop(?:y|ying)\b|communicat\w*|connect\w*|wir(?:e|ed|ing)\b|network\w*|talk\w*|link\w*|both)\b/i;
 const LIST_GAP_RE = /^\s*\(?\s*,?\s*(?:(?:the|my|a|an)\s+)?$/i;
 // Only a comparison that names the listed models: "compare", "comparing",
 // "comparison", "difference(s) between". Not "compared to", not a bare
@@ -108,15 +124,17 @@ export function ambiguousSiblingModels(question: string): string[] | null {
     if (!b || a.id === b.id || b.start < a.end) continue;
     const gap = question.slice(a.end, b.start);
     if (CLAUSE_BREAK_RE.test(gap)) continue;
-    // Doubt anywhere in the SENTENCE that holds the pair asks, even across a ; or
-    // : ("Not sure which: the SMC-50 vs the SMC Flex") (Codex r11/r12 F13).
+    // Identity doubt anywhere in the SENTENCE that holds the pair asks, even
+    // across a ; or : ("Not sure which: the SMC-50 vs the SMC Flex"); any hedge
+    // between the names asks (Codex r11/r12/r13 F13).
     const sentence = (question.slice(0, a.start).split(/[.?!]/).pop() ?? "") + question.slice(a.start, b.end) + (question.slice(b.end).split(/[.?!]/)[0] ?? "");
-    if (DOUBT_GAP_RE.test(sentence.replace(/\bor\b|\//gi, " ")) || DOUBT_GAP_RE.test(gap)) return [a.id, b.id].sort();
+    if (IDENTITY_DOUBT_RE.test(sentence) || DOUBT_GAP_RE.test(gap)) return [a.id, b.id].sort();
     if (LIST_GAP_RE.test(gap)) {
       if (LIST_COMPARISON_RE.test(clauseBefore(question, a.start))) continue;
       return [a.id, b.id].sort();
     }
-    if (JOINED_GAP_RE.test(gap)) continue;
+    if (EXPLICIT_GAP_RE.test(gap)) continue;
+    if (PLAIN_GAP_RE.test(gap) && TWO_MACHINE_CUE_RE.test(sentence)) continue;
     return [a.id, b.id].sort();
   }
   return null;

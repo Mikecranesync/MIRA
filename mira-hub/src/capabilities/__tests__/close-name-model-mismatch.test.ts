@@ -483,7 +483,10 @@ describe("#5355 — two models: comparison vs ambiguous", () => {
     ["My PowerFlex 40 may be the same as PowerFlex 4M; what is the maximum A093 Auto Rstrt Delay?", PF4M_COVER, PF_RESTART, ["PowerFlex 4M", "PowerFlex 40"], ["PF40", "PF4M"]],
     ["I may have confused my SMC-50 and SMC Flex; what does fault 10 mean?", SMC_FLEX_COVER, SMC_FAULTS, ["150-F", "SMC-50"], ["SMC50", "SMCFLEX"]],
     ["I may have mixed up my PowerFlex 40 and PowerFlex 4M; what is the maximum A093 Auto Rstrt Delay?", PF4M_COVER, PF_RESTART, ["PowerFlex 4M", "PowerFlex 40"], ["PF40", "PF4M"]],
-  ])("Codex r11/r12 F13: a hedge anywhere in the clause asks: %s", async (q, cover, body, models, named) => {
+    ["I can't tell the SMC-50 and SMC Flex apart; mine shows fault 10, what is it?", SMC_FLEX_COVER, SMC_FAULTS, ["150-F", "SMC-50"], ["SMC50", "SMCFLEX"]],
+    ["I can't tell the PowerFlex 40 and PowerFlex 4M apart; what is the maximum A093 Auto Rstrt Delay?", PF4M_COVER, PF_RESTART, ["PowerFlex 4M", "PowerFlex 40"], ["PF40", "PF4M"]],
+    ["My SMC-50 and SMC Flex tripped on fault 10; what is it?", SMC_FLEX_COVER, SMC_FAULTS, ["150-F", "SMC-50"], ["SMC50", "SMCFLEX"]],
+  ])("Codex r11–r13 F13: a hedge, or a plain 'and' with no reason for two machines, asks: %s", async (q, cover, body, models, named) => {
     expect(ambiguousSiblingModels(q)).toEqual(named);
     for (const model of models) {
       const d: { ambiguousModelAsk?: { named: string[] } } = {};
@@ -515,6 +518,8 @@ describe("#5355 — two models: comparison vs ambiguous", () => {
     "I don't know if it's the SMC-50 and SMC Flex manual I need, fault 10?",
     "Not sure which: the SMC-50 vs the SMC Flex, fault 10?",
     "My tag is mistaken, SMC-50 and SMC Flex both listed, fault 10?",
+    // identity doubt wins over a reason word ("both", "connected")
+    "I can't tell my SMC-50 and SMC Flex apart, both show fault 10, what is it?",
   ])("r11 closed list: not an exact link, asks: %s", (q) => {
     expect(ambiguousSiblingModels(q)).not.toBeNull();
   });
@@ -526,6 +531,25 @@ describe("#5355 — two models: comparison vs ambiguous", () => {
     "Micro820 connected to a Micro850 over Ethernet: which IP?",
     "Which is longer, the PowerFlex 40 than the PowerFlex 4M A093?",
   ])("r11 closed list: an exact link still answers: %s", (q) => {
+    expect(ambiguousSiblingModels(q)).toBeNull();
+  });
+
+  it.each([
+    "Micro820 communicating with Micro850: why might the Modbus link be down?",
+    "How could Micro820 and Micro850 communicate over Modbus?",
+  ])("Codex r13 F14: modal words about the link are not identity doubt; the connection retrieves: %s", async (q) => {
+    expect(ambiguousSiblingModels(q)).toBeNull();
+    const MICRO820_COVER = "Micro820 Programmable Controllers\nCatalog Numbers 2080-LC20\nInstallation Instructions";
+    const { hits, diagnostics } = await ask([row(MICRO820_COVER, "RS-485 serial port wiring: terminals D+ D- and G.")], q, "2080-LC20");
+    expect((diagnostics as { ambiguousModelAsk?: unknown }).ambiguousModelAsk).toBeUndefined();
+    expect(hits).toHaveLength(1);
+  });
+
+  it.each([
+    "Both my SMC-50 and SMC Flex show fault 10, what is it on each?",
+    "Can I swap a PowerFlex 4M with a PowerFlex 40 on this conveyor?",
+    "Copying parameters from a PowerFlex 4M to a PowerFlex 40: what changes?",
+  ])("r14: a plain link with a reason for two machines still answers: %s", (q) => {
     expect(ambiguousSiblingModels(q)).toBeNull();
   });
 
