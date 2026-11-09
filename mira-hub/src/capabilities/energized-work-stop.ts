@@ -141,6 +141,74 @@ export function lockoutPageOf(chunk: ManualChunk): string | null {
 export type LockoutCitation = { title: string; page: string | null };
 
 /**
+ * CV-101 journey S5b (2026-11-08): "Can I disconnect the serial cable from a
+ * Micro820 with power applied in a hazardous location?" was stopped correctly,
+ * but the manual's own p.5 WARNING about exactly that action (arc → explosion
+ * in hazardous locations; remove power or make the area nonhazardous first)
+ * never reached the technician: it is not a lockout procedure, so
+ * `pickLockoutChunk` rightly skipped it, and nothing else looked.
+ *
+ * The question-scoped retrieval query for that warning. Run inside the same
+ * validated doc scope as the lockout pass, so it can only surface THIS
+ * machine's manuals.
+ */
+export function questionWarningQuery(message: string): string {
+  return `${message} warning caution danger hazard`;
+}
+
+// A hazard box heading is printed in capitals; "warning" in running prose is not one.
+const WARNING_BOX_RE = /\b(?:WARNING|DANGER|CAUTION)\b/;
+// What makes it a hazard warning rather than an instruction box: the harm it names.
+const HAZARD_CONSEQUENCE_RE =
+  /\b(?:electrical\s+arc|arc\s+flash|arcing|explosion|explosive|electric(?:al)?\s+shock|shock\s+hazard|electrocution|hazardous\s+voltage|personal\s+injury|serious\s+injury|injury|death|burns?|fire)\b/i;
+// Words that say nothing about WHICH action the ask is about: the powered-state
+// vocabulary every energized ask carries, and filler.
+const NON_SUBJECT_WORDS = new Set([
+  "about", "after", "again", "also", "before", "being", "could", "does", "doing", "done", "from", "have",
+  "into", "just", "need", "okay", "should", "still", "that", "them", "then", "there", "they", "this",
+  "what", "when", "where", "which", "while", "will", "with", "would", "your",
+  "power", "powered", "applied", "live", "energized", "energised", "running", "safe", "safely",
+  "equipment", "machine", "unit", "work", "working",
+]);
+
+function subjectTerms(message: string): string[] {
+  const words = message.toLowerCase().match(/[a-z0-9]+/g) ?? [];
+  return [...new Set(words.filter((w) => w.length >= 4 && !NON_SUBJECT_WORDS.has(w)))];
+}
+
+/**
+ * The retrieved passage that is the manual's hazard warning about the action
+ * this ask names, or null. A passage qualifies only when it is a hazard box
+ * (capitalised WARNING / DANGER / CAUTION heading AND a named harm) and it
+ * shares at least two of the ask's subject words ("serial", "cable",
+ * "disconnect", "hazardous", "location") — front-matter boilerplate and a
+ * warning about a different action share none. Ranked by shared subject
+ * words, then by retrieval order.
+ */
+export function pickQuestionWarningChunk(chunks: readonly ManualChunk[], message: string): ManualChunk | null {
+  const terms = subjectTerms(message);
+  if (terms.length === 0) return null;
+  const need = Math.min(2, terms.length);
+  let best: { c: ManualChunk; overlap: number } | null = null;
+  for (const c of chunks) {
+    const content = c.content ?? "";
+    if (!WARNING_BOX_RE.test(content) || !HAZARD_CONSEQUENCE_RE.test(content)) continue;
+    const lower = content.toLowerCase();
+    const overlap = terms.filter((t) => new RegExp(`\\b${t}`).test(lower)).length;
+    if (overlap < need) continue;
+    if (!best || overlap > best.overlap) best = { c, overlap };
+  }
+  return best?.c ?? null;
+}
+
+export type EnergizedStopOptions = {
+  /** The manual's own warning about this ask (`pickQuestionWarningChunk`) — a page only, never its words. */
+  warning?: { page: string | null } | null;
+  /** Every manual lookup for the stop failed, so "no lockout page" would be a guess. */
+  lookupFailed?: boolean;
+};
+
+/**
  * The served stop text: static sentences plus at most a page number.
  *
  * Review A HIGH — the filename is GONE from this text. A customer names the
@@ -151,18 +219,29 @@ export type LockoutCitation = { title: string; page: string | null };
  * citing only a validated page. `title` is accepted and deliberately ignored,
  * so no caller has to change and no future caller can reintroduce the leak.
  */
-export function energizedWorkStop(cite: LockoutCitation | null): string {
+export function energizedWorkStop(cite: LockoutCitation | null, opts: EnergizedStopOptions = {}): string {
   const page = cite ? citationPageLabel(cite.page) : null;
   const where = !cite
-    ? "I couldn't find a lockout page in this notebook's manuals — follow your site's lockout/tagout procedure."
+    ? opts.lookupFailed
+      ? "I couldn't read this notebook's manuals just now — follow your site's lockout/tagout procedure, and check your manual's warnings before you start."
+      : "I couldn't find a lockout page in this notebook's manuals — follow your site's lockout/tagout procedure."
     : page
       ? `Your manual's lockout / disconnect-power procedure is on **p.${page}** — follow that page first.`
       : "Your manual's lockout / disconnect-power procedure is in the document cited below — follow it first.";
+  // Same posture as the lockout line: a validated page or a pointer to the
+  // cited document, never the passage's own words (a poisoned manual can move
+  // a page number but never write what the technician reads in a stop).
+  const warningPage = opts.warning ? citationPageLabel(opts.warning.page) : null;
+  const warning = !opts.warning
+    ? ""
+    : warningPage
+      ? `\n\nYour manual has a warning about exactly this on **p.${warningPage}** — read it before you go any further.`
+      : "\n\nYour manual has a warning about exactly this in the document cited below — read it before you go any further.";
   return `⛔ **SAFETY STOP — energized work.**
 
 I won't give steps for working on this equipment while it is powered.
 
-De-energize it, lock out and tag out every energy source, and verify zero energy. ${where}
+De-energize it, lock out and tag out every energy source, and verify zero energy. ${where}${warning}
 
 Once it is locked out and verified, ask again and I'll walk you through the job from the manual.`;
 }

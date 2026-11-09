@@ -137,6 +137,8 @@ import {
   energizedWorkStop,
   lockoutPageOf,
   pickLockoutChunk,
+  pickQuestionWarningChunk,
+  questionWarningQuery,
 } from "@/capabilities/energized-work-stop";
 import { isOffTopic, SCOPE_REPLY } from "@/capabilities/scope-check";
 import { englishSearchQuery, withAnswerLanguage } from "@/capabilities/answer-language";
@@ -3293,42 +3295,66 @@ async function handleChatTurn(
     // question's own pass already surfaced. Best-effort — a failed lookup
     // serves the stop without a page (site LOTO), never an answer.
     let lockoutChunks: ManualChunk[] = [];
+    // CV-101 S5b: the manual's own warning about THIS ask (p.5 "disconnect the
+    // serial cable with power applied … explosion") is not a lockout page, so
+    // it needs its own pass in the same scope. Both passes are best-effort.
+    let warningChunks: ManualChunk[] = [];
+    let stopLookupsFailed = false;
     if (notebookRetrieval && nodeId !== null) {
-      try {
-        lockoutChunks = await withTenantContext(ctx.tenantId, (client) =>
-          retrieveNodeChunks(client, ctx.tenantId, LOCKOUT_PAGE_QUERY, {
+      const stopPass = (query: string, rawQuery: string, label: string) =>
+        withTenantContext(ctx.tenantId, (client) =>
+          retrieveNodeChunks(client, ctx.tenantId, query, {
             nodeId,
             unsPath: null,
             topK: 8,
             docIds,
-            rawQuery: LOCKOUT_PAGE_QUERY,
+            rawQuery,
             identity: { manufacturer: nb?.manufacturer ?? null, model: nb?.model ?? null },
             validatedDocScope: true,
             approvedSourceDocIds: docIds,
           }),
-        );
-      } catch (err) {
-        console.error("[notebook-chat] lockout-page retrieval failed (stop served without a page):", err instanceof Error ? err.message : err);
-      }
+        ).catch((err: unknown) => {
+          console.error(`[notebook-chat] ${label} retrieval failed (stop served without it):`, err instanceof Error ? err.message : err);
+          return null;
+        });
+      const [lockoutHits, warningHits] = await Promise.all([
+        stopPass(LOCKOUT_PAGE_QUERY, LOCKOUT_PAGE_QUERY, "lockout-page"),
+        stopPass(questionWarningQuery(message), message, "question-warning"),
+      ]);
+      lockoutChunks = lockoutHits ?? [];
+      warningChunks = warningHits ?? [];
+      stopLookupsFailed = lockoutHits === null && warningHits === null && chunks.length === 0;
     }
     const lockoutChunk = pickLockoutChunk([...lockoutChunks, ...chunks]);
+    const warningPick = pickQuestionWarningChunk([...warningChunks, ...chunks], message);
+    // The same passage is not cited twice (a lockout page that is also the warning).
+    const warningChunk =
+      warningPick && !(lockoutChunk && warningPick.docId === lockoutChunk.docId && warningPick.content === lockoutChunk.content)
+        ? warningPick
+        : null;
     // Round-2 review: the stop TEXT was clean, but the same turn's citation
     // chip carried a claim-centred quote of the lockout chunk (which can hold
     // removal steps and torques when the lockout box sits on a procedure
     // page) and the upload filename as its title — a crafted filename reached
     // the chip even after it was kept out of the stop text. On the stop path
     // the chip is a POINTER to the page, nothing more: no quote, neutral title.
-    const stopCitations = lockoutChunk
-      ? (await releaseClaimOnFailure(() => buildCitations(ctx.tenantId, notebookId, [lockoutChunk], message))).map((c) => ({
-          ...c,
-          sourceTitle: "Lockout / disconnect-power procedure",
-          quote: null,
-        }))
-      : [];
+    const pointerCitations = async (chunk: ManualChunk, sourceTitle: string) =>
+      (await releaseClaimOnFailure(() => buildCitations(ctx.tenantId, notebookId, [chunk], message))).map((c) => ({
+        ...c,
+        sourceTitle,
+        quote: null,
+      }));
+    const stopCitations = [
+      ...(lockoutChunk ? await pointerCitations(lockoutChunk, "Lockout / disconnect-power procedure") : []),
+      ...(warningChunk ? await pointerCitations(warningChunk, "Manual warning") : []),
+    ];
     const stopText = energizedWorkStop(
       lockoutChunk ? { title: citationTitle(lockoutChunk), page: lockoutPageOf(lockoutChunk) } : null,
+      { warning: warningChunk ? { page: lockoutPageOf(warningChunk) } : null, lookupFailed: stopLookupsFailed },
     );
-    console.warn(`[notebook-chat] energized-work STOP (${stopTrigger}) lockout_page=${lockoutChunk ? lockoutPageOf(lockoutChunk) ?? "none" : "none"}`);
+    console.warn(
+      `[notebook-chat] energized-work STOP (${stopTrigger}) lockout_page=${lockoutChunk ? lockoutPageOf(lockoutChunk) ?? "none" : "none"} warning_page=${warningChunk ? lockoutPageOf(warningChunk) ?? "none" : "none"}`,
+    );
     const stopGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
     lifecycleOutcome = "safety_stop";
     rec.stage("answer_gate", {
@@ -3353,6 +3379,7 @@ async function handleChatTurn(
         "mira.answer_gate.answer_chars": stopText.length,
         "mira.safety.trigger": stopTrigger,
         "mira.safety.lockout_page": lockoutChunk ? lockoutPageOf(lockoutChunk) : null,
+        "mira.safety.warning_page": warningChunk ? lockoutPageOf(warningChunk) : null,
       },
       stopGateSpan,
     );

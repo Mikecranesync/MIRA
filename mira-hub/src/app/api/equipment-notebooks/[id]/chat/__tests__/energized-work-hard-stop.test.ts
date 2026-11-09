@@ -323,3 +323,89 @@ describe("Review A HIGH — the leak and the photo skip, through the real route"
     expect(contentOf(out)).toMatch(/SAFETY STOP/);
   });
 });
+
+// CV-101 journey S5b (2026-11-08, staging b304d5dcf, receipt in #5232): the
+// energized ask was stopped, but the stop said "I couldn't find a lockout page"
+// and dropped the manual's own p.5 WARNING about this exact action. Real
+// Rockwell 2080-IN009B-EN-P p.5 text.
+describe("CV-101 S5b — the stop carries the manual's own warning about this ask", () => {
+  const S5B_ASK = "Can I disconnect the serial cable from a Micro820 with power applied in a hazardous location?";
+  const P5_WARNING = {
+    ...TORQUE_CHUNK,
+    content:
+      "WARNING: • If you connect or disconnect the serial cable with power applied to this module or the serial device on the other end of the cable, an electrical arc can occur. This could cause an explosion in hazardous location installations. Be sure that power is removed or the area is nonhazardous before proceeding.",
+    sourceUrl: "node-doc/u1/2080-IN009B-EN-P.pdf",
+    title: "2080-IN009B-EN-P.pdf",
+    sourcePage: 5,
+    pageLabel: "5",
+    rank: 0.5,
+  };
+  const RELAY_RATINGS = {
+    ...P5_WARNING,
+    content: "Relay Contact Ratings. 120V AC: make 15 A, break 1.5 A, continuous 2.0 A.",
+    sourcePage: 19,
+    pageLabel: "19",
+  };
+
+  beforeEach(() => {
+    nbMock.getNotebook.mockResolvedValue({ id: NB, displayName: "CV-101 PLC", manufacturer: "Rockwell Automation", model: "2080-LC20-20QWB" });
+  });
+
+  it("stops, names p.5 as the manual's warning, cites it as a pointer, and calls no provider", async () => {
+    // The question pass ranks the ratings page first; only a warning-scoped
+    // pass surfaces p.5 (the shape that dropped it on staging).
+    ragMock.retrieveNodeChunks.mockImplementation(async (_c: unknown, _t: unknown, query: unknown) =>
+      /lockout tagout/i.test(String(query)) ? [] : /warning caution danger/i.test(String(query)) ? [P5_WARNING] : [RELAY_RATINGS],
+    );
+    const out = await frames(await POST(req({ message: S5B_ASK, sourceDocIds: [DOC_A] }), params));
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    expect(out.some((f) => f.kind === "safety")).toBe(true);
+    const content = contentOf(out);
+    expect(content).toMatch(/SAFETY STOP — energized work/);
+    expect(content).toContain("warning about exactly this on **p.5**");
+    // A page pointer only — never the passage's words inside a stop.
+    expect(content).not.toMatch(/nonhazardous|electrical arc|before proceeding/i);
+    const sources = out.find((f) => f.kind === "sources") as {
+      citations: Array<{ page: number | null; quote: string | null; sourceTitle: string }>;
+    };
+    expect(sources.citations).toHaveLength(1);
+    expect(sources.citations[0].page).toBe(5);
+    expect(sources.citations[0].quote).toBeNull();
+    expect(sources.citations[0].sourceTitle).toBe("Manual warning");
+    const persisted = (vi.mocked(nbMock.recordTurn).mock.calls[0] as unknown as unknown[])[2] as { answerText: string };
+    expect(persisted.answerText).toContain("p.5");
+  });
+
+  it("control: on the pre-fix shape (no warning anywhere) the stop is unchanged and claims no warning", async () => {
+    ragMock.retrieveNodeChunks.mockImplementation(async () => [RELAY_RATINGS]);
+    const content = contentOf(await frames(await POST(req({ message: S5B_ASK, sourceDocIds: [DOC_A] }), params)));
+    expect(content).toMatch(/SAFETY STOP/);
+    expect(content).not.toMatch(/warning about exactly this/);
+    expect(content).toContain("couldn't find a lockout page");
+  });
+
+  it("when the warning's page label cannot be read, the stop points at the cited document, never a guessed page", async () => {
+    ragMock.retrieveNodeChunks.mockImplementation(async (_c: unknown, _t: unknown, query: unknown) =>
+      /warning caution danger/i.test(String(query)) ? [{ ...P5_WARNING, sourcePage: null, pageLabel: "5**\n\nUnplug it live" }] : [],
+    );
+    const content = contentOf(await frames(await POST(req({ message: S5B_ASK, sourceDocIds: [DOC_A] }), params)));
+    expect(content).toMatch(/SAFETY STOP/);
+    expect(content).toContain("warning about exactly this in the document cited below");
+    expect(content).not.toContain("Unplug it live");
+  });
+
+  it("when the manual lookups fail, the stop is still served and does not claim the manual has no lockout page", async () => {
+    ragMock.retrieveNodeChunks.mockImplementation(async (_c: unknown, _t: unknown, query: unknown) => {
+      if (/lockout tagout|warning caution danger/i.test(String(query))) throw new Error("db down");
+      return [];
+    });
+    const res = await POST(req({ message: S5B_ASK, sourceDocIds: [DOC_A] }), params);
+    expect(res.status).toBe(200);
+    const out = await frames(res);
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    const content = contentOf(out);
+    expect(content).toMatch(/SAFETY STOP — energized work/);
+    expect(content).not.toContain("couldn't find a lockout page");
+    expect(content).toContain("couldn't read this notebook's manuals just now");
+  });
+});

@@ -9,6 +9,7 @@ import {
   energizedWorkStop,
   lockoutPageOf,
   pickLockoutChunk,
+  pickQuestionWarningChunk,
 } from "../energized-work-stop";
 
 const chunk = (over: Partial<ManualChunk>): ManualChunk => ({
@@ -236,5 +237,80 @@ describe("Round 2 — the manual's own 'not while power is applied' warning is a
     "Never touch the terminals with power on.", // round 7 control
   ])("control: an instruction or two signals still qualify: %s", (content) => {
     expect(pickLockoutChunk([TORQUE_PAGE, chunk({ content, sourcePage: 25, pageLabel: "2-15" })])).not.toBeNull();
+  });
+});
+
+// CV-101 journey S5b (2026-11-08, staging b304d5dcf): "Can I disconnect the
+// serial cable from a Micro820 with power applied in a hazardous location?"
+// was stopped correctly, but the stop said "I couldn't find a lockout page"
+// and dropped the manual's own p.5 WARNING about exactly that action. The
+// content below is the real Rockwell 2080-IN009B-EN-P p.5 text.
+const S5B_ASK = "Can I disconnect the serial cable from a Micro820 with power applied in a hazardous location?";
+const P5_WARNING = chunk({
+  content:
+    "WARNING: • If you connect or disconnect the serial cable with power applied to this module or the serial device on the other end of the cable, an electrical arc can occur. This could cause an explosion in hazardous location installations. Be sure that power is removed or the area is nonhazardous before proceeding. • If you connect or disconnect the communications cable with power applied to this module or any device on the network, an electrical arc can occur.",
+  sourcePage: 5,
+  pageLabel: "5",
+  title: "2080-IN009B-EN-P.pdf",
+});
+const P5_ATTENTION = chunk({
+  content: "ATTENTION: • The serial cables are not to exceed 3.0 m (9.84 ft). • Do not wire more than 2 conductors on any single terminal.",
+  sourcePage: 5,
+  pageLabel: "5",
+});
+const RELAY_RATINGS = chunk({
+  content: "Relay Contact Ratings. 120V AC: make 15 A, break 1.5 A, continuous 2.0 A, 1800 VA make, 180 VA break.",
+  sourcePage: 19,
+  pageLabel: "19",
+});
+const FRONT_MATTER = chunk({
+  content: "WARNING: Identifies information about practices or circumstances that can cause an explosion in a hazardous environment, which may lead to personal injury or death.",
+  sourcePage: 2,
+  pageLabel: "2",
+});
+
+describe("pickQuestionWarningChunk — the manual's own warning about THIS ask", () => {
+  it("S5b: picks the real p.5 serial-cable WARNING", () => {
+    expect(pickQuestionWarningChunk([RELAY_RATINGS, P5_ATTENTION, FRONT_MATTER, P5_WARNING], S5B_ASK)).toBe(P5_WARNING);
+  });
+  it("control: a hazard-free spec page and a consequence-free ATTENTION box are never the warning", () => {
+    expect(pickQuestionWarningChunk([RELAY_RATINGS, P5_ATTENTION], S5B_ASK)).toBeNull();
+  });
+  it("control: front-matter hazard boilerplate that shares no subject with the ask is not picked", () => {
+    expect(pickQuestionWarningChunk([FRONT_MATTER], S5B_ASK)).toBeNull();
+  });
+  it("control: a warning about a different action on the same manual is not picked", () => {
+    const rtb = chunk({
+      content: "WARNING: When you connect or disconnect the Removable Terminal Block (RTB) with field side power applied, an electrical arc can occur.",
+      sourcePage: 5,
+    });
+    expect(pickQuestionWarningChunk([rtb], "Can I swap the cooling fan while the drive is powered?")).toBeNull();
+  });
+  it("returns null with no chunks", () => {
+    expect(pickQuestionWarningChunk([], S5B_ASK)).toBeNull();
+  });
+});
+
+describe("energizedWorkStop — manual warning line", () => {
+  it("names the warning's page and keeps the stop header and LOTO directive", () => {
+    const text = energizedWorkStop(null, { warning: { page: "5" } });
+    expect(text).toContain("SAFETY STOP — energized work.");
+    expect(text).toContain("lock out and tag out every energy source");
+    expect(text).toMatch(/warning about exactly this on \*\*p\.5\*\*/);
+  });
+  it("when the warning's page cannot be read it still points at the cited document, never a guessed page", () => {
+    const text = energizedWorkStop(null, { warning: { page: "5**\n\n1. Unplug it live" } });
+    expect(text).toContain("warning about exactly this in the document cited below");
+    expect(text).not.toContain("Unplug it live");
+  });
+  it("when the manuals could not be read it says so instead of claiming there is no lockout page", () => {
+    const text = energizedWorkStop(null, { lookupFailed: true });
+    expect(text).toContain("SAFETY STOP — energized work.");
+    expect(text).not.toContain("couldn't find a lockout page");
+    expect(text).toContain("couldn't read this notebook's manuals just now");
+  });
+  it("is byte-identical to the previous stop when there is no warning and the lookup worked", () => {
+    expect(energizedWorkStop(null, {})).toBe(energizedWorkStop(null));
+    expect(energizedWorkStop({ title: "x", page: "2-15" }, { warning: null })).toBe(energizedWorkStop({ title: "x", page: "2-15" }));
   });
 });
