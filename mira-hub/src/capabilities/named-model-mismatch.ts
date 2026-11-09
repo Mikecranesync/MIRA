@@ -45,8 +45,8 @@ export function namedModelMismatchText(m: NamedModelMismatch): string {
  * question for cue words misfired both ways ("tripped due to a fault" read as
  * a comparison). So ambiguity is decided by what sits BETWEEN two adjacent
  * mentions of one product family (same identity prefix: SMC, PF, MICRO…):
- * "or" or "/" (optionally in an opening parenthesis, optionally followed by
- * the/my/a/an) is one machine named two ways and ALWAYS asks which one,
+ * any "or" or "/" between them in the same clause (", or", "(or maybe",
+ * "or possibly the" — Codex r5 F7) is one machine named two ways and ALWAYS asks which one,
  * whatever else the sentence says (Codex r4 F6: "between shifts my SMC-50 or
  * SMC Flex…", "compared to yesterday…" — no comparison word may exempt an
  * explicit alternative). Nothing or a bare "," between them also asks, unless
@@ -56,7 +56,11 @@ export function namedModelMismatchText(m: NamedModelMismatch): string {
  * today's path, where every manual is cited under its own title. Different
  * families are never ambiguous here. When unsure, it asks. Pure, no LLM.
  */
-const OR_GAP_RE = /^\s*\(?\s*(?:or\b|\/)\s*(?:(?:the|my|a|an)\s+)?$/i;
+// Any "or" or "/" between the two names in one clause asks, whatever else sits
+// beside it: ", or", "(or maybe", "or possibly the" (Codex r5 F7). Patching the
+// exact gap shapes failed twice, so the shape no longer matters.
+const OR_GAP_RE = /\bor\b|\//i;
+const CLAUSE_BREAK_RE = /[.?!;:]/;
 const LIST_GAP_RE = /^\s*\(?\s*,?\s*(?:(?:the|my|a|an)\s+)?$/i;
 // Only a comparison that names the listed models: "compare", "comparing",
 // "comparison", "difference(s) between". Not "compared to", not a bare
@@ -76,6 +80,7 @@ export function ambiguousSiblingModels(question: string): string[] | null {
     const family = familyOf(a.id);
     if (!family || family !== familyOf(b.id) || a.id === b.id || b.start < a.end) continue;
     const gap = question.slice(a.end, b.start);
+    if (CLAUSE_BREAK_RE.test(gap)) continue;
     if (OR_GAP_RE.test(gap)) return [a.id, b.id].sort();
     if (!LIST_GAP_RE.test(gap)) continue;
     if (LIST_COMPARISON_RE.test(clauseBefore(question, a.start))) continue;

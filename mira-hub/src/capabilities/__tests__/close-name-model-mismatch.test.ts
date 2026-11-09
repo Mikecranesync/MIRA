@@ -204,6 +204,11 @@ describe("#5355 — two models: comparison vs ambiguous", () => {
     "Compare my SMC-50 or SMC Flex fault 10 to last week, what is it?",
     "Compared to yesterday my SMC-50, SMC Flex has fault 10, what does it mean?",
     "Between shifts my SMC-50, SMC Flex tripped on fault 10, what is it?",
+    // Codex r5 F7: any "or" between the names asks, whatever surrounds it.
+    "My SMC-50, or SMC Flex, tripped on fault 10; what does that mean?",
+    "My SMC-50 (or maybe SMC Flex) tripped on fault 10; what does that mean?",
+    "SMC-50 or possibly the SMC Flex shows fault 10, what is it?",
+    "Micro820, or is it a Micro850, has 7 relay outputs?",
   ])("ambiguous: %s", (q) => {
     expect(ambiguousSiblingModels(q)).not.toBeNull();
   });
@@ -222,6 +227,8 @@ describe("#5355 — two models: comparison vs ambiguous", () => {
     "Compare the SMC-50, SMC Flex fault codes.",
     "What is the difference between Micro820, Micro850 relay ratings?",
     "Comparing the SMC-50, SMC Flex: which has a PTC input?",
+    // an "or" in another clause does not join the pair
+    "Is fault 10 on my SMC-50 a reset or a replace? The SMC Flex is fine.",
   ])("not ambiguous: %s", (q) => {
     expect(ambiguousSiblingModels(q)).toBeNull();
   });
