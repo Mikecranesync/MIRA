@@ -96,6 +96,26 @@ export function knownSources(host: readonly SourceRef[], attachedDocIds: Iterabl
 }
 
 /**
+ * #5327: documents this panel attached stay counted as sources only until the
+ * host's own sources list them. After that the host is the authority, so a
+ * later detach elsewhere shows the manual again instead of hiding it.
+ */
+export function outstandingAttached(attachedDocIds: Iterable<string>, host: readonly SourceRef[]): Set<string> {
+  const listed = new Set(host.map((s) => s.docId));
+  return new Set([...attachedDocIds].filter((docId) => !listed.has(docId)));
+}
+
+/**
+ * #5322: every file the technician approved for this project: the files chosen
+ * at Create project plus files sent with Upload again in this panel (a 202
+ * reading retry). The tap is the approval, so it still holds after a reload
+ * empties the setup approvals.
+ */
+export function approvedFiles(setup: ReadonlySet<string>, retried: Iterable<string>): Set<string> {
+  return new Set([...setup, ...retried]);
+}
+
+/**
  * One read of the project's files; attaches each readable file in `approved`.
  * `stale()` true (the project closed or changed) stops before any write.
  */
@@ -145,7 +165,12 @@ export async function addPendingManual(notebookId: string, docId: string, deps: 
 export type ReuploadOutcome =
   /** filename: the PDF the technician picked, which may differ from the pending row. */
   | { kind: "attached"; docId: string; filename: string }
-  | { kind: "reading" }
+  /**
+   * fileId (#5322): the canonical stored file the server is reading now. A
+   * different copy of the PDF gets its own id, so the panel must follow this
+   * id, not the pending row's, as the technician's approval.
+   */
+  | { kind: "reading"; fileId: string | null }
   | { kind: "unread"; message: string }
   | { kind: "failed"; message: string };
 
@@ -167,7 +192,10 @@ export async function reuploadPendingManual(
   form.append("file", input.file);
   const up = await call(deps, "POST", `/api/namespace/node/${encodeURIComponent(input.nodeId)}/files/`, { form });
   if (!up.ok) return { kind: "failed", message: messageOf(up, REUPLOAD_FAILED) };
-  if (up.status === 202 && up.body.indexing === true) return { kind: "reading" };
+  if (up.status === 202 && up.body.indexing === true) {
+    const fileId = up.body.fileId;
+    return { kind: "reading", fileId: typeof fileId === "string" && fileId ? fileId : null };
+  }
   const docId = up.body.uploadId;
   if (up.body.indexed === true && typeof docId === "string" && docId) {
     const att = await attach(input.notebookId, docId, deps);
