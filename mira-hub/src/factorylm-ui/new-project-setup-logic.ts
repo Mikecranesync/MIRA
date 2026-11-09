@@ -217,6 +217,9 @@ export type DocOutcome = {
   indexing?: boolean;
   /** S16: the PDF never reached the project. The sheet still holds it, so it can be sent again. */
   retryUpload?: true;
+  /** S16: the exact file to send again. Kept with the row, never found by name: two
+   *  selected files can share a filename (Codex #5353 F1). */
+  retryFile?: File;
 };
 
 export type CommitInput = {
@@ -245,15 +248,17 @@ export async function uploadPdf(
   pdf: File,
   deps: SetupDeps,
   attach: (docId: string, key: string) => Promise<void>,
+  /** The row key for an outcome that is not a document yet; unique per selected file. */
+  key = `upload:${pdf.name}`,
 ): Promise<DocOutcome | null> {
   if (nodeId === null) {
-    return { key: `upload:${pdf.name}`, filename: pdf.name, docId: null, attachFailed: false, notIndexed: true, retryUpload: true, message: "Couldn't save the file to this project. Try again." };
+    return { key, filename: pdf.name, docId: null, attachFailed: false, notIndexed: true, retryUpload: true, retryFile: pdf, message: "Couldn't save the file to this project. Try again." };
   }
   const form = new FormData();
   form.append("file", pdf);
   const up = await call(deps, "POST", `/api/namespace/node/${encodeURIComponent(nodeId)}/files/`, { form });
   if (!up.ok) {
-    return { key: `upload:${pdf.name}`, filename: pdf.name, docId: null, attachFailed: false, notIndexed: true, retryUpload: true, message: messageOf(up, "Couldn't save this file. Try again.") };
+    return { key, filename: pdf.name, docId: null, attachFailed: false, notIndexed: true, retryUpload: true, retryFile: pdf, message: messageOf(up, "Couldn't save this file. Try again.") };
   }
   const uploadId = up.body.uploadId;
   // 202: the same bytes are being read by another upload. Keep the file id and
@@ -264,7 +269,7 @@ export async function uploadPdf(
   }
   if (up.body.indexed !== true || typeof uploadId !== "string" || !uploadId) {
     const warning = typeof up.body.warning === "string" && up.body.warning ? ` (${up.body.warning})` : "";
-    return { key: `upload:${pdf.name}`, filename: pdf.name, docId: null, attachFailed: false, notIndexed: true, message: `Saved to this project, but it couldn't be read for chat yet${warning}.` };
+    return { key, filename: pdf.name, docId: null, attachFailed: false, notIndexed: true, message: `Saved to this project, but it couldn't be read for chat yet${warning}.` };
   }
   await attach(uploadId, uploadId);
   return null;
@@ -349,8 +354,9 @@ export async function runCommit(input: CommitInput, deps: SetupDeps): Promise<Co
   };
   for (const doc of input.docs) await attach(doc.docId, doc.filename, doc.docId, null);
 
-  for (const pdf of input.pdfs) {
-    const doc = await uploadPdf(nodeId, pdf, deps, (docId, key) => attach(docId, pdf.name, key, null));
+  for (const [n, pdf] of input.pdfs.entries()) {
+    // The position keeps two selected files with the same name on separate rows.
+    const doc = await uploadPdf(nodeId, pdf, deps, (docId, key) => attach(docId, pdf.name, key, null), `upload:${n}:${pdf.name}`);
     if (doc) docs.push(doc);
   }
 
@@ -606,18 +612,24 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
   // The created project and its document rows, kept so a failed save can be sent again (S16).
   let created: { notebookId: string; nodeId: string | null; results: DocOutcome[] } | null = null;
 
+  // Each write (the commit, then any retry) starts a new readiness watch and
+  // retires the older one. A retired watch neither unlocks the sheet nor writes
+  // rows, so a poll that wakes during a retry cannot release its lock (Codex #5353 F2).
+  let watchGeneration = 0;
   const showReadiness = async (notebookId: string, results: DocOutcome[]) => {
+    const generation = ++watchGeneration;
+    const retired = () => disposed || generation !== watchGeneration;
     const watched = results.flatMap((d) => (d.docId ? [d.docId] : []));
     // The writes are finished. After the first readiness read the sheet unlocks
     // (Continue, Cancel and Open work) while slow documents keep updating. A
     // document another upload is still reading (202) is attached when it
     // resolves, unless the sheet has closed: then nothing more is read or written.
     const w = await watchReadiness(notebookId, watched, deps, {}, {
-      onUpdate: (sources) => { if (!disposed) set({ committing: false, done: true, rows: resultRows(results, sources, false) }); },
-      stop: () => disposed,
-      resolve: () => resolveIndexing(notebookId, results, deps, () => disposed),
+      onUpdate: (sources) => { if (!retired()) set({ committing: false, done: true, rows: resultRows(results, sources, false) }); },
+      stop: retired,
+      resolve: () => resolveIndexing(notebookId, results, deps, retired),
     });
-    if (disposed) return;
+    if (retired()) return;
     if (w.unauthorized) {
       const unread = results.map((d) => (d.indexing ? { ...d, indexing: false, notIndexed: true, message: "Sign in again to check this file." } : d));
       set({ committing: false, done: true, error: "Sign in again to see document status.", rows: resultRows(unread, [], false) });
@@ -776,8 +788,10 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
       const c = created;
       if (!c || state.committing || disposed) return;
       const i = c.results.findIndex((d) => d.key === key && d.retryUpload);
-      const pdf = state.pdfs.find((f) => `upload:${f.name}` === key);
+      const pdf = i < 0 ? undefined : c.results[i]!.retryFile;
       if (i < 0 || !pdf) return;
+      // Retire the commit's watch before the lock is taken: its next poll must not unlock this write.
+      watchGeneration++;
       set({ committing: true, error: null });
       if (c.nodeId === null) {
         const read = await call(deps, "GET", `/api/equipment-notebooks/${encodeURIComponent(c.notebookId)}/`);
@@ -785,7 +799,7 @@ export function createNewProjectSetup(deps: ControllerDeps): SetupController {
         if (read.ok && typeof id === "string") c.nodeId = id;
       }
       let row: DocOutcome | null = null;
-      const doc = await uploadPdf(c.nodeId, pdf, deps, async (docId, k) => { row = await attachSource(c.notebookId, docId, pdf.name, k, deps); });
+      const doc = await uploadPdf(c.nodeId, pdf, deps, async (docId, k) => { row = await attachSource(c.notebookId, docId, pdf.name, k, deps); }, key);
       c.results[i] = doc ?? row ?? c.results[i]!;
       if (doc?.indexing && doc.fileId) deps.onPendingManuals?.(c.notebookId, [doc.fileId]);
       if (disposed) return;
