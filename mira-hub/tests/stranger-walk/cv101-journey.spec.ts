@@ -113,6 +113,8 @@ async function notebookRecord(page: Page): Promise<NbRecord | null> {
 
 async function openSidebar(page: Page) {
   if (TARGET === "desktop") return;
+  // Already open (a person sees the drawer and does not reach for the hidden toggle under it).
+  if (await page.locator('[data-layer="navigation"][data-active="true"]').isVisible().catch(() => false)) return;
   const menu = page.getByRole("button", { name: /open navigation|menu|projects/i }).first();
   if (await menu.isVisible().catch(() => false)) await menu.click();
 }
@@ -279,6 +281,8 @@ test("cv101 journey", async () => {
       s.verdict = r.status() === 201 && j.manufacturer === OEM && j.model === MODEL && listed ? "PASS" : "FAIL";
     });
     await page.goto(`${base}/v3/`);
+    await page.getByRole("heading", { level: 1 }).first().waitFor({ timeout: 30_000 });
+    await openSidebar(page); // phone width: "New project" lives in the navigation drawer
     await page.getByRole("button", { name: "New project" }).first().waitFor();
 
     // ── S2 Cancel writes nothing ────────────────────────────────────────
