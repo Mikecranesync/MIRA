@@ -214,9 +214,9 @@ type WOFields = { id: string; title: string; description: string; assetTag: stri
 const EMPTY_WO: WOFields = { id: "", title: "", description: "", assetTag: "", site: "" };
 
 /** The notebook's work-packet availability, or null when it cannot be read. */
-async function fetchAvailability(baseUrl: string): Promise<WorkPacketAvailability | null> {
+async function fetchAvailability(baseUrl: string, signal?: AbortSignal): Promise<WorkPacketAvailability | null> {
   try {
-    const res = await fetch(baseUrl, { credentials: "include", headers: { accept: "application/json" } });
+    const res = await fetch(baseUrl, { credentials: "include", headers: { accept: "application/json" }, signal });
     return res.ok ? ((await res.json()) as WorkPacketAvailability) : null;
   } catch {
     return null;
@@ -349,26 +349,40 @@ export function WorkPacketPanel({
   // The notebook this panel is showing right now. A response that arrives after the technician
   // moved to another notebook is dropped, never shown under the new machine (Codex #5062 F4).
   const liveNotebook = useRef(notebookId);
+  const availabilityRequest = useRef(0);
   useEffect(() => {
     liveNotebook.current = notebookId;
   }, [notebookId]);
 
-  const refreshAvailability = useCallback(async () => {
-    const body = await fetchAvailability(baseUrl);
-    if (liveNotebook.current === notebookId) setAvail(body);
+  const refreshAvailability = useCallback(async (signal?: AbortSignal) => {
+    const request = ++availabilityRequest.current;
+    const body = await fetchAvailability(baseUrl, signal);
+    if (!signal?.aborted && liveNotebook.current === notebookId && request === availabilityRequest.current) setAvail(body);
   }, [baseUrl, notebookId]);
 
   // The host keys this panel by notebook, identity and manuals, so a change remounts it with fresh
   // state; on mount only the availability needs fetching (dropped if the panel unmounts first).
   useEffect(() => {
     let live = true;
-    void fetchAvailability(`${baseUrl}?metadataOnly=1`).then((body) => {
-      if (live) setAvail(body);
+    const controller = new AbortController();
+    const request = ++availabilityRequest.current;
+    void fetchAvailability(`${baseUrl}?metadataOnly=1`, controller.signal).then((body) => {
+      if (live && request === availabilityRequest.current) setAvail(body);
     });
     return () => {
       live = false;
+      controller.abort();
     };
   }, [baseUrl]);
+
+  // Every way of opening the panel, including a direct link, reads documents.
+  // A late mount-metadata response cannot replace this newer full response.
+  useEffect(() => {
+    if (!open) return;
+    const controller = new AbortController();
+    void refreshAvailability(controller.signal);
+    return () => controller.abort();
+  }, [open, refreshAvailability]);
 
   const availReady = avail !== null; // the dialog only exists once availability has resolved
   useEffect(() => {
@@ -583,7 +597,11 @@ export function WorkPacketPanel({
   );
 
   // ── Export PDF ────────────────────────────────────────────────────────────────────────────────
-  const stale = packet && avail ? packetStaleReason(packet, avail) : null;
+  const stale = packet && avail
+    ? avail.documentsState === "deferred"
+      ? "the current document revisions have not yet been checked against this saved packet"
+      : packetStaleReason(packet, avail)
+    : null;
 
   const onExport = useCallback(() => {
     if (!packet || stale) return;
@@ -604,7 +622,7 @@ export function WorkPacketPanel({
   return (
     <>
       <style data-testid="work-packet-print-css">{PRINT_CSS}</style>
-      <button type="button" ref={openerRef} data-testid="wp-open" style={S.pill} onClick={() => { setOpen(true); void refreshAvailability(); }}>{pillLabel}</button>
+      <button type="button" ref={openerRef} data-testid="wp-open" style={S.pill} onClick={() => setOpen(true)}>{pillLabel}</button>
       <dialog
         ref={dialogRef}
         style={S.dialog}
