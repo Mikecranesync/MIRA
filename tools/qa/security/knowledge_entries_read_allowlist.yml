@@ -1416,10 +1416,10 @@ approved:
       FROM knowledge_entries
               WHERE tenant_id = $1
                 AND ingest_route = 'v2'
-  "mira-hub/src/lib/manual-rag.ts:2594":
+  "mira-hub/src/lib/manual-rag.ts:2598":
     approved_classification: TENANT-ONLY
-    query_sha256: "01d892b99f0f428ca7a21871e3f9135a91150cdd79cc79b27af202b37a429092"
-    reason: "NEW (#5265 edge profile, the cited definition page's own cautions): retrievePageChunksInOrder — reads EVERY chunk of the ONE page whose parameter definition the edge answer quotes, so cautions printed beside the definition with no WARNING/CAUTION marker word (GS10 Rev C pdf p.139: 'setting the acceleration time too short may cause motor damage') reach the answer. Same pure-tenant scope as retrieveCitedPageChunks (:2496) and the retrieveNodeChunks BM25 pass (:1108): tenant_id=$1, ingest_route='v2', and the SAME approvedSourceFilterSql predicate retrieval uses (verified rows, or the caller's own private approved docs bound at $5). The page is pinned to the exact (doc_id, source_url, page) of a chunk retrieval already admitted ($2-$4), so it can never widen what the turn may read beyond a page the answer cites; no content filter, LIMIT 24, 3s statement timeout. Called only under MIRA_PROFILE=edge. TENANT-ONLY by the same rule as :2496."
+    query_sha256: "aad7448372de7757c60430fe4519afcba633d95da5055ab24eeb5ae024134b43"
+    reason: "NEW (#5265 edge profile, the cited definition page's own cautions): retrievePageChunksInOrder — reads EVERY chunk of the ONE page whose parameter definition the edge answer quotes, so cautions printed beside the definition with no WARNING/CAUTION marker word (GS10 Rev C pdf p.139: 'setting the acceleration time too short may cause motor damage') reach the answer. Same pure-tenant scope as retrieveCitedPageChunks (:2496) and the retrieveNodeChunks BM25 pass (:1108): tenant_id=$1, ingest_route='v2', and the SAME approvedSourceFilterSql predicate retrieval uses (verified rows, or the caller's own private approved docs bound at $5). The page is pinned to the exact (doc_id, source_url, page) of a chunk retrieval already admitted ($2-$4), so it can never widen what the turn may read beyond a page the answer cites; no content filter, LIMIT 25 (the 24-chunk cap plus one overflow probe: a 25th row means the page is incomplete and the caller refuses rather than answering from a partial page), 3s statement timeout. Called only under MIRA_PROFILE=edge. TENANT-ONLY by the same rule as :2496."
     query_snippet: |
       FROM knowledge_entries
               WHERE tenant_id = $1
