@@ -13,6 +13,7 @@ import {
   expandIndustrialQuery,
   withRawCodeTokens,
   withoutIdentityCodes,
+  identityTokens,
   type EquipmentIdentity,
   prioritizeCurrentCodeEvidence,
   rerankChunks,
@@ -272,7 +273,14 @@ function bareNumberFamilyRoot(digits: string, manufacturer: string | null | unde
 // can never admit "6AV2124-0GC01-9AX0" for a "6AV2124-0GC01-0AX0" question.
 // With a catalog on only one side, the label match still applies (the
 // technician did not name a variant, or the manual covers the whole panel).
-const isCatalogIdentity = (id: string) => /^6AV/.test(id);
+const isCatalogIdentity = (id: string) => /^6AV/.test(id) || /^GS\d{1,2}[A-Z]?-[A-Z0-9]+$/.test(id);
+
+function catalogsConflict(requested: Set<string>, title: Set<string>): boolean {
+  const requestedCatalogs = [...requested].filter(isCatalogIdentity);
+  const titleCatalogs = [...title].filter(isCatalogIdentity);
+  return requestedCatalogs.length > 0 && titleCatalogs.length > 0
+    && !titleCatalogs.some((id) => requested.has(id));
+}
 
 // Round-2 review on #4484: a catalog number and its panel label never met —
 // a TP700 notebook could not cite a manual titled by order number, and a
@@ -346,6 +354,7 @@ const isFamilyRoot = (id: string) => FAMILY_ROOTS.some(([root]) => root === id);
  *  question did not ask for is that member's manual ("Micro800 … Micro810" is
  *  not the Micro820's), so it is not admitted on the family alone. */
 function documentCoversNamedAsk(requested: Set<string>, title: Set<string>): boolean {
+  if (catalogsConflict(requested, title)) return false;
   if (documentCoversRequest(requested, title)) return true;
   const req = withCatalogModels(requested);
   const declared = withCatalogModels(title);
@@ -364,7 +373,9 @@ function documentCoversNamedAsk(requested: Set<string>, title: Set<string>): boo
  *  not name a machine the filter could scope to — any TP or Micro8x0 manual
  *  attached to it is plausibly right, so the filter is skipped. */
 function identitiesAreFamilyOnly(ids: Set<string>): boolean {
-  return ids.size > 0 && [...ids].every(isFamilyRoot);
+  // GS10 was already a concrete notebook scope; adding catalog coverage must
+  // not turn its existing wrong-model filter off.
+  return ids.size > 0 && [...ids].every((id) => isFamilyRoot(id) && id !== "GS10");
 }
 
 /** Notebook-identity applicability: the exact-identity rule, plus a title
@@ -393,10 +404,10 @@ function documentCoversNotebook(notebook: Set<string>, title: Set<string>, manuf
   // reach the family check AS its panel label, or the Comfort Panels manual is
   // lost to it — expand before both comparisons.
   const nb = withCatalogModels(notebook);
-  if (documentCoversRequest(nb, title)) return true;
+  if (catalogsConflict(nb, title)) return false;
+  if (documentCoversNamedAsk(nb, title)) return true;
   for (const t of title) {
     for (const n of nb) {
-      if (familyCovers(t, n)) return true;
       if (n.startsWith("#")) {
         // Bare-number identity (r1 F1, tightened in r2 F1, split in r3 F5): the
         // digits alone name no family, so matching digits are NOT enough —
@@ -1827,7 +1838,8 @@ export async function retrieveNodeChunks(
 
   // Collect a pooled candidate set across: original AND (precision), each
   // expanded variant OR (manufacturer-vocabulary recall), and the exact-token
-  // lane. De-dupe by (doc_id, page, content prefix) so a chunk counts once.
+  // lane. Exact copies in one source consume one context slot, not one per
+  // repeated page. Full text keeps differing qualifiers/warnings distinct.
   const pool: Record<string, unknown>[] = [];
   const seen = new Set<string>();
   // A notebook is a document boundary, not proof that every attached manual
@@ -1843,7 +1855,7 @@ export async function retrieveNodeChunks(
     ? modelIdentitiesInText(opts.rawQuery ?? q)
     : null;
   const keyOf = (r: Record<string, unknown>) =>
-    `${r.doc_id}|${r.page_start ?? r.source_page}|${String(r.content ?? "").slice(0, 60)}`;
+    JSON.stringify([r.doc_id, r.source_url, String(r.content ?? "")]);
   // CV-101 S6: what the named-ask refusals below declared. The claim "this
   // notebook's manual is for a different model" stands only while (a) every
   // refused page declared its model on its own heading/cover — a filename is
@@ -2149,12 +2161,22 @@ export async function retrieveNodeChunks(
     }
   }
   if (!lexicalV2) try {
-    const idfParams: unknown[] = [tenantId, boundBm25Query(opts.rawQuery?.trim() || q), nodeIds, POOL, ...docParams, ...approvedParams];
+    // A covered catalog identifies the drive, not the question's topic. Its
+    // rare suffix otherwise promotes specification pages over the requested
+    // parameter. Keep raw retrieval, exact-code lanes and admission unchanged.
+    const catalogNames = identityTokens({ model: [...(requestedIdentities ?? [])]
+      .filter((id) => isCatalogIdentity(id) && familyCovers("GS10", id.split("-")[0]))
+      .join(" ") });
+    const rawQuestion = opts.rawQuery?.trim() || q;
+    const topicQuestion = rawQuestion.replace(/[a-z0-9]+/gi, (word) => catalogNames.has(word.toLowerCase()) ? " " : word);
+    const idfQuestion = /[a-z0-9]/i.test(topicQuestion) ? topicQuestion : rawQuestion;
+    const idfParams: unknown[] = [tenantId, boundBm25Query(idfQuestion), nodeIds, POOL, ...docParams, ...approvedParams];
     const res = await client.query(
       `WITH qlex AS (
           SELECT DISTINCT unnest(tsvector_to_array(to_tsvector('english', $2))) AS lex
         ), scope AS (
-          SELECT id, tsvector_to_array(content_tsv) AS lexemes
+          SELECT id, doc_id, COALESCE(page_start, source_page) AS page,
+            tsvector_to_array(content_tsv) AS lexemes
             FROM knowledge_entries
             WHERE tenant_id = $1
               AND ingest_route = 'v2'
@@ -2164,7 +2186,8 @@ export async function retrieveNodeChunks(
         ), n AS (
           SELECT count(*)::float8 AS n FROM scope
         ), heading AS (
-          SELECT DISTINCT ON (doc_id) left(content, 2000) AS content
+          SELECT DISTINCT ON (doc_id) doc_id, COALESCE(page_start, source_page) AS page,
+            left(content, 2000) AS content
             FROM knowledge_entries
             WHERE tenant_id = $1
               AND ingest_route = 'v2'
@@ -2174,6 +2197,7 @@ export async function retrieveNodeChunks(
             ORDER BY doc_id, page_start NULLS LAST, source_page NULLS LAST, (metadata->>'chunk_index')::int NULLS LAST, id
         ), hlex AS (
           SELECT DISTINCT unnest(tsvector_to_array(to_tsvector('english', content))) AS lex FROM heading
+          WHERE EXISTS (SELECT 1 FROM scope s WHERE s.doc_id = heading.doc_id AND s.page > heading.page)
         ), df AS (
           SELECT q.lex, count(s.id)::float8 AS df, (q.lex IN (SELECT lex FROM hlex)) AS names_document
             FROM qlex q LEFT JOIN scope s ON q.lex = ANY(s.lexemes) GROUP BY q.lex
@@ -2186,7 +2210,9 @@ export async function retrieveNodeChunks(
     // body (the brand sits on the cover and the back page) and so would
     // outweigh the topic words. forum-new fn-pf40-2 ("check fault history in
     // Allen Bradley powerflex 40") led with the cover pages until the heading
-    // lexemes were left out. Only when at least one topic lexeme remains.
+    // lexemes were left out. A cover requires a later in-scope page: the only
+    // page of a photo reading is its evidence, not a cover naming a document.
+    // Only when at least one topic lexeme remains.
     const rows = res.rows as Array<Record<string, unknown>>;
     const topical = rows.filter((r) => r.names_document !== true);
     for (const r of topical.length > 0 ? topical : rows) {

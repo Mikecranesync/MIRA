@@ -10,6 +10,8 @@
  * unchanged.
  */
 
+import gs10Pack from "@/lib/drive-packs/gs10-pack.json";
+
 // #2178 — model-number detector. Extracts the drive/controller model the user is
 // asking about so retrieval can scope to THAT model's manuals, not every chunk
 // from the same vendor (a "PowerFlex 753 F005" question was citing PowerFlex 525
@@ -114,6 +116,11 @@ const CONJOINED_DIGIT_FAMILIES: ReadonlyArray<readonly [family: string, head: Re
  */
 export function modelIdentitiesInText(text: string): Set<string> {
   const identities = new Set(modelMentionsInText(text).map((m) => m.id));
+  // Retain the admitted exact GS catalog boundary without changing the
+  // canonical close-name mentions or the single-token SQL/query resolver.
+  for (const match of text.matchAll(/\b(GS\d{1,2}[a-z]?\s*-\s*[a-z0-9]+)\b/gi)) {
+    identities.add(match[1].replace(/\s+/g, "").toUpperCase());
+  }
   // Mirror resolveModelFromObservationText's COMFORT-is-a-family-hint drop
   // (primary review, pass 2): "Comfort" alone names the PANEL FAMILY, not a
   // specific sibling model — a TP/KTP panel or 6AV order number is the
@@ -224,7 +231,13 @@ export function canonicalModelKey(span: string | null | undefined): string {
  *  Shared so the close-name ambiguity check knows a family and its own member
  *  are one model, not two (Codex #5359 r7 F9). */
 export const ROCKWELL = /rockwell|allen[\s-]*bradley/i;
+// Preserve the admitted drive-pack family membership in the shared table,
+// so retrieval and the current close-name ambiguity guard use one boundary.
+const GS10_MEMBERS = new RegExp(`^(?:${gs10Pack.family.aliases
+  .filter((alias) => /^GS\d{1,2}[A-Z]?$/.test(alias) && alias !== "GS10")
+  .join("|")})$`);
 export const FAMILY_ROOTS: ReadonlyArray<readonly [root: string, members: RegExp, vendor: RegExp]> = [
+  ["GS10", GS10_MEMBERS, /automation\s*direct|durapulse/i],
   ["PF520", /^PF52\d$/, ROCKWELL], // PowerFlex 520-series: 523, 525, 527
   ["PF750", /^PF75\d$/, ROCKWELL], // PowerFlex 750-series: 753, 755 (round-2 review)
   ["MICRO800", /^MICRO8\d0$/, ROCKWELL], // Micro800: 810, 820, 830, 850, 870
