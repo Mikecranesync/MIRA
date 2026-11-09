@@ -209,6 +209,17 @@ describe("#5355 — two models: comparison vs ambiguous", () => {
     "My SMC-50 (or maybe SMC Flex) tripped on fault 10; what does that mean?",
     "SMC-50 or possibly the SMC Flex shows fault 10, what is it?",
     "Micro820, or is it a Micro850, has 7 relay outputs?",
+    // Codex r6 F8: doubt without "or", and any join nobody listed, asks by default.
+    "My SMC-50 (maybe SMC Flex) tripped on fault 10; what does that mean?",
+    "My SMC-50 (possibly SMC Flex) tripped on fault 10; what does that mean?",
+    "My PowerFlex 40 (maybe PowerFlex 4M) faulted, what is the maximum A093 Auto Rstrt Delay?",
+    "My PowerFlex 40 (possibly PowerFlex 4M) faulted, what is the maximum A093 Auto Rstrt Delay?",
+    "My SMC-50 — I think it's actually an SMC Flex — shows fault 10, what is it?",
+    "SMC-50, not sure if SMC Flex, fault 10 what is it?",
+    "SMC-50 aka SMC Flex fault 10 what is it?",
+    "Micro820 and maybe Micro850, which has 7 relay outputs?",
+    // doubt wins over a joining word that follows it
+    "My SMC-50, maybe the same as the SMC Flex, shows fault 10, what is it?",
   ])("ambiguous: %s", (q) => {
     expect(ambiguousSiblingModels(q)).not.toBeNull();
   });
@@ -229,6 +240,11 @@ describe("#5355 — two models: comparison vs ambiguous", () => {
     "Comparing the SMC-50, SMC Flex: which has a PTC input?",
     // an "or" in another clause does not join the pair
     "Is fault 10 on my SMC-50 a reset or a replace? The SMC Flex is fine.",
+    // joined by a comparison or connection word: today's path
+    "Is the SMC-50 fault list the same as the SMC Flex?",
+    "Does the PowerFlex 40 have a longer A093 than the PowerFlex 4M?",
+    "Moving settings from a PowerFlex 4M to a PowerFlex 40: what changes?",
+    "SMC-50 versus SMC Flex PTC input",
   ])("not ambiguous: %s", (q) => {
     expect(ambiguousSiblingModels(q)).toBeNull();
   });
@@ -339,6 +355,29 @@ describe("#5355 — two models: comparison vs ambiguous", () => {
       });
       expect(hits, model).toEqual([]);
       expect(d.ambiguousModelAsk, model).toEqual({ named: ["SMC50", "SMCFLEX"] });
+    }
+  });
+
+  it.each([
+    ["My SMC-50 (maybe SMC Flex) tripped on fault 10; what does that mean?", SMC_FLEX_COVER, SMC_FAULTS, ["150-F", "SMC-50"], ["SMC50", "SMCFLEX"]],
+    ["My SMC-50 (possibly SMC Flex) tripped on fault 10; what does that mean?", SMC_FLEX_COVER, SMC_FAULTS, ["150-F", "SMC-50"], ["SMC50", "SMCFLEX"]],
+    ["My PowerFlex 40 (maybe PowerFlex 4M) faulted; what is the maximum A093 Auto Rstrt Delay?", PF4M_COVER, PF_RESTART, ["PowerFlex 4M", "PowerFlex 40"], ["PF40", "PF4M"]],
+    ["My PowerFlex 40 (possibly PowerFlex 4M) faulted; what is the maximum A093 Auto Rstrt Delay?", PF4M_COVER, PF_RESTART, ["PowerFlex 4M", "PowerFlex 40"], ["PF40", "PF4M"]],
+  ])("Codex r6 F8: doubt without 'or' asks which one and admits no page in either notebook identity: %s", async (q, cover, body, models, named) => {
+    for (const model of models) {
+      const d: { ambiguousModelAsk?: { named: string[] } } = {};
+      const client = { query: vi.fn(async () => ({ rows: [row(cover, body)] })) } as unknown as PoolClient;
+      const hits = await retrieveNodeChunks(client, "t-1", q, {
+        nodeId: "n-1",
+        unsPath: null,
+        docIds: ["d-1"],
+        validatedDocScope: true,
+        identity: { manufacturer: "Rockwell Automation", model },
+        identityStatus: "user_confirmed" as never,
+        diagnostics: d as never,
+      });
+      expect(hits, model).toEqual([]);
+      expect(d.ambiguousModelAsk, model).toEqual({ named });
     }
   });
 

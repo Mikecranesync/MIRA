@@ -44,23 +44,24 @@ export function namedModelMismatchText(m: NamedModelMismatch): string {
  * Flex just faulted, what is code 10?"). Codex r2 on #5359: scanning the whole
  * question for cue words misfired both ways ("tripped due to a fault" read as
  * a comparison). So ambiguity is decided by what sits BETWEEN two adjacent
- * mentions of one product family (same identity prefix: SMC, PF, MICRO…):
- * any "or" or "/" between them in the same clause (", or", "(or maybe",
- * "or possibly the" — Codex r5 F7) is one machine named two ways and ALWAYS asks which one,
- * whatever else the sentence says (Codex r4 F6: "between shifts my SMC-50 or
- * SMC Flex…", "compared to yesterday…" — no comparison word may exempt an
- * explicit alternative). Nothing or a bare "," between them also asks, unless
- * the same clause opens with a comparison that names the list ("Compare the
- * SMC-50, SMC Flex fault codes", "the difference between Micro820, Micro850").
- * Any other word between them ("and", "vs", "with", "communicating with") keeps
- * today's path, where every manual is cited under its own title. Different
- * families are never ambiguous here. When unsure, it asks. Pure, no LLM.
+ * mentions of one product family (same identity prefix: SMC, PF, MICRO…) in
+ * one clause, and the DEFAULT is to ask which one (Codex r6 F8: after four
+ * rounds of listing the gap shapes that ask — "or", "(or maybe", ", or",
+ * "(maybe" — the rule is inverted, so a phrasing nobody listed asks):
+ * - doubt between them ("or", "/", "maybe", "possibly", "perhaps", "probably",
+ *   "either", "not sure", "I think") always asks, whatever else the sentence
+ *   says (Codex r4 F6: no comparison word exempts an explicit alternative);
+ * - nothing or a bare "," asks, unless the clause opens with a comparison that
+ *   names the list ("Compare the SMC-50, SMC Flex fault codes");
+ * - the pair is answered only when the words between them end in a joining
+ *   word ("and", "vs", "versus", "with", "than", "as", "to", "from",
+ *   "between"): today's path, where every manual is cited under its own title;
+ * - anything else asks.
+ * Different families are never ambiguous here. Pure, no LLM.
  */
-// Any "or" or "/" between the two names in one clause asks, whatever else sits
-// beside it: ", or", "(or maybe", "or possibly the" (Codex r5 F7). Patching the
-// exact gap shapes failed twice, so the shape no longer matters.
-const OR_GAP_RE = /\bor\b|\//i;
 const CLAUSE_BREAK_RE = /[.?!;:]/;
+const DOUBT_GAP_RE = /\bor\b|\/|\b(?:maybe|possibly|perhaps|probably|either|not\s+sure|i\s+think)\b/i;
+const JOINED_GAP_RE = /\b(?:and|vs|versus|with|than|as|to|from|between)\s+(?:(?:the|my|a|an)\s+)?$/i;
 const LIST_GAP_RE = /^\s*\(?\s*,?\s*(?:(?:the|my|a|an)\s+)?$/i;
 // Only a comparison that names the listed models: "compare", "comparing",
 // "comparison", "difference(s) between". Not "compared to", not a bare
@@ -81,9 +82,12 @@ export function ambiguousSiblingModels(question: string): string[] | null {
     if (!family || family !== familyOf(b.id) || a.id === b.id || b.start < a.end) continue;
     const gap = question.slice(a.end, b.start);
     if (CLAUSE_BREAK_RE.test(gap)) continue;
-    if (OR_GAP_RE.test(gap)) return [a.id, b.id].sort();
-    if (!LIST_GAP_RE.test(gap)) continue;
-    if (LIST_COMPARISON_RE.test(clauseBefore(question, a.start))) continue;
+    if (DOUBT_GAP_RE.test(gap)) return [a.id, b.id].sort();
+    if (LIST_GAP_RE.test(gap)) {
+      if (LIST_COMPARISON_RE.test(clauseBefore(question, a.start))) continue;
+      return [a.id, b.id].sort();
+    }
+    if (JOINED_GAP_RE.test(gap)) continue;
     return [a.id, b.id].sort();
   }
   return null;
