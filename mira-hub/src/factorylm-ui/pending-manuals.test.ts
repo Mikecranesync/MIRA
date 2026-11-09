@@ -1,7 +1,7 @@
 /** #5302: a manual still being read when the setup sheet closes is not abandoned. Fake fetch only; no DOM. */
 import { describe, expect, it, vi } from "vitest";
 import { createNewProjectSetup, type SetupDeps } from "./new-project-setup-logic";
-import { approvedFiles, checkPendingManuals, filedManuals, knownSources, outstandingAttached, reuploadPendingManual } from "./pending-manuals";
+import { approvedFiles, checkPendingManuals, filedManuals, knownSources, outstandingAttached, reuploadPendingManual, settleAttachments } from "./pending-manuals";
 
 type Call = { method: string; path: string; body?: unknown };
 type Reply = { status: number; body: Record<string, unknown> };
@@ -373,19 +373,18 @@ describe("#5322 a 202 Upload again is the technician's approval, followed by the
     const r = await reuploadPendingManual({ notebookId: "nb-g", nodeId: "node-g", file: picked() }, deps(h.fetch));
     if (r.kind !== "reading" || !r.fileId) throw new Error("precondition: the retry must be reading with a file id");
     const retried = new Set([r.fileId]);
-    let attachedDocs = new Set<string>();
+    const attachedDocs = new Set<string>();
     const hostSources: Array<{ docId: string; fileId: string | null }> = [];
     const check = async () => {
       const res = await checkPendingManuals({ notebookId: "nb-g", nodeId: "node-g", sources: knownSources(hostSources, attachedDocs), approved: approvedFiles(setupApprovals, retried) }, deps(h.fetch));
-      for (const id of res.attached) { const p = r.fileId === id ? "up-new" : null; if (p) attachedDocs.add(p); retried.delete(id); }
+      settleAttachments(res, attachedDocs, retried); // the component's own bookkeeping
       return res;
     };
     const reading = await check();
     indexed = true;
     const landed = await check();
     const after = await check();
-    attachedDocs = outstandingAttached(attachedDocs, hostSources);
-    return { h, reading, landed, after };
+    return { h, reading, landed, after, attachedDocs };
   }
 
   it("empty approvals, 202 with a file id, lookup resolves: attached automatically, exactly once", async () => {
@@ -404,6 +403,24 @@ describe("#5322 a 202 Upload again is the technician's approval, followed by the
     expect(after.attached).toEqual([]);
     expect(attaches(h.calls)).toHaveLength(1);
     expect(attaches(h.calls)[0]?.body).toEqual({ docId: "up-new", sourceRole: "manual" });
+  });
+
+  it("Codex 5344 F1: host still stale and another file still reading: the attached manual is never offered again", async () => {
+    const files = [pdf({}), pdf({ id: "f-other", filename: "other.pdf" })];
+    const { h, landed, after, attachedDocs } = await retryThenFollow("f-202", files, { "GET /api/files/f-other": fileLookup("f-other", null, true) });
+    expect(landed.attached).toEqual(["f-202"]);
+    expect(landed.attachedDocIds).toEqual(["up-new"]);
+    expect(landed.pending.map((p) => p.state)).toEqual(["reading"]); // the poll goes on
+    expect(attachedDocs.has("up-new")).toBe(true);
+    expect(after.pending).toEqual([{ fileId: "f-other", filename: "other.pdf", docId: null, state: "reading" }]);
+    expect(attaches(h.calls)).toHaveLength(1);
+  });
+
+  it("settleAttachments records the attached documents and retires their retry approvals", () => {
+    const docs = new Set<string>(); const retried = new Set(["f-202", "f-keep"]);
+    settleAttachments({ attached: ["f-202"], attachedDocIds: ["up-new"] }, docs, retried);
+    expect([...docs]).toEqual(["up-new"]);
+    expect([...retried]).toEqual(["f-keep"]);
   });
 
   it("control: the same readable file without the retry approval is offered, never attached", async () => {

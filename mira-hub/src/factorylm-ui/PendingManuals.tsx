@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { API_BASE } from "@/lib/config";
 import { POLL_INTERVAL_MS, POLL_MAX, type SetupDeps } from "./new-project-setup-logic";
-import { addPendingManual, approvedFiles, checkPendingManuals, knownSources, outstandingAttached, reuploadPendingManual, type PendingManual } from "./pending-manuals";
+import { addPendingManual, approvedFiles, checkPendingManuals, knownSources, outstandingAttached, reuploadPendingManual, settleAttachments, type PendingManual } from "./pending-manuals";
 
 type Props = {
   notebookId: string;
@@ -63,7 +63,7 @@ export function PendingManuals({ notebookId, nodeId, sources, approved, onAttach
         setPending(r.pending);
         setFailed(Object.fromEntries(r.failed.map((f) => [f.fileId, f.message])));
         if (r.attached.length) {
-          for (const id of r.attached) retried.current.delete(id);
+          settleAttachments(r, attachedDocs.current, retried.current);
           setAdded((a) => [...a, ...r.attached.map((id) => names.current.get(id) ?? "Document")]);
           latest.current.onAttached(r.attached);
         }

@@ -76,6 +76,8 @@ export type PendingCheck = {
   pending: PendingManual[];
   /** File ids attached as sources by this check. */
   attached: string[];
+  /** Document ids of those attachments, in the same order (#5344 F1). */
+  attachedDocIds: string[];
   failed: Array<{ fileId: string; message: string }>;
   /** Display name of every file this check found, attached ones included. */
   filenames: Record<string, string>;
@@ -124,7 +126,7 @@ export async function checkPendingManuals(
   deps: SetupDeps,
   stale: () => boolean = () => false,
 ): Promise<PendingCheck> {
-  const none: PendingCheck = { ok: false, pending: [], attached: [], failed: [], filenames: {} };
+  const none: PendingCheck = { ok: false, pending: [], attached: [], attachedDocIds: [], failed: [], filenames: {} };
   const res = await call(deps, "GET", `/api/namespace/node/${encodeURIComponent(input.nodeId)}/files/`);
   if (!res.ok || stale()) return none;
   const filed = filedManuals(res.body, input.sources);
@@ -145,15 +147,27 @@ export async function checkPendingManuals(
   }
   const filenames = Object.fromEntries(pending.map((p) => [p.fileId, p.filename]));
   const attached: string[] = [];
+  const attachedDocIds: string[] = [];
   const failed: PendingCheck["failed"] = [];
   for (const p of pending) {
     if (p.state !== "readable" || !p.docId || !input.approved.has(p.fileId)) continue;
-    if (stale()) return { ok: false, pending, attached, failed, filenames };
+    if (stale()) return { ok: false, pending, attached, attachedDocIds, failed, filenames };
     const att = await attach(input.notebookId, p.docId, deps);
-    if (att.ok) attached.push(p.fileId);
+    if (att.ok) { attached.push(p.fileId); attachedDocIds.push(p.docId); }
     else failed.push({ fileId: p.fileId, message: attachMessage(att) });
   }
-  return { ok: true, pending: pending.filter((p) => !attached.includes(p.fileId)), attached, failed, filenames };
+  return { ok: true, pending: pending.filter((p) => !attached.includes(p.fileId)), attached, attachedDocIds, failed, filenames };
+}
+
+/**
+ * The panel's bookkeeping after a check attached files (#5344 F1): remember each
+ * attached document until the host lists it, and retire the Upload again approval
+ * it consumed. Without the first half a late host refresh lets the next poll offer
+ * the just-attached manual again.
+ */
+export function settleAttachments(r: Pick<PendingCheck, "attached" | "attachedDocIds">, attachedDocs: Set<string>, retried: Set<string>): void {
+  for (const docId of r.attachedDocIds) attachedDocs.add(docId);
+  for (const fileId of r.attached) retried.delete(fileId);
 }
 
 /** One explicit Add (a technician tap): attach a readable file to this project. */
