@@ -60,6 +60,19 @@ describe("isPilotApprovalRequired", () => {
 });
 
 describe("approvePilotTenant", () => {
+  it.each(["betagate-1793524261387@factorylm.com", "strangerwalk-charlie-dry3-1500@factorylm.com"])(
+    "refuses approval of %s before consuming a cohort slot", async (email) => {
+      const client = makeClient([
+        [/FROM hub_tenants WHERE id = \$1 FOR UPDATE/, () => ({ rows: [{ id: "tenant-1", owner_user_id: "owner-1", owner_email: email, pilot_status: "pending" }] })],
+      ]);
+      connectMock.mockResolvedValue(client);
+      await expect(approvePilotTenant("tenant-1", "admin-1")).rejects.toThrow(/automated test account/i);
+      expect(client.calls.some(c => /UPDATE hub_tenants|UPDATE hub_users|SELECT COUNT/.test(c.sql))).toBe(false);
+      expect(client.calls.some(c => c.sql === "ROLLBACK")).toBe(true);
+      expect(client.release).toHaveBeenCalled();
+    },
+  );
+
   it("activates a pending tenant, sets the owner to trial with the org's expiry date", async () => {
     const client = makeClient([
       [

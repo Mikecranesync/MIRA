@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { ensureUserAndTenant, findUserByEmail } from "@/lib/users";
 import { attributionFromRequest, handlePilotApplicationSubmitted } from "@/capabilities/pilot-funnel";
+import { isAutomatedSignup } from "@/capabilities/automated-signup";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +40,7 @@ export async function OPTIONS(req: Request) {
 }
 
 async function captureHubSpotLead(email: string, name: string | undefined): Promise<void> {
+  if (isAutomatedSignup(email)) return;
   const apiKey = process.env.HUBSPOT_API_KEY;
   if (!apiKey) return;
   try {

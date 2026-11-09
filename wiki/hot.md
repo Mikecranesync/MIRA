@@ -1,3 +1,9 @@
+# 2026-11-01 — Synthetic signup isolation investigation
+
+Branch `codex/pilot-test-isolation`, base `31c8e324c`: 141 delivered pilot notices matched Beta Gate/Stranger Walk fixtures; shared stg/prd HubSpot and Resend config values confirmed without disclosure. CRM still has 843 Beta Gate Stranger contacts, newest September 27; recent inflow and exact quota causality remain unproven. See `docs/proofs/2026-11-01-synthetic-signup-isolation.md`. Narrow fixture guard excludes CRM/application effects and cohort approval; normal signup/gate and harness trial release remain. Local: 130 tests, lint, production build pass; standalone typecheck has same 77 baseline diagnostics. No credential/customer-data writes, merge or deployment. Draft PR #5067; independent Sonnet review passed with admin-filter follow-up addressed; exact-head review and CI still required.
+
+---
+
 # Honest landing Codex round 2 — 2026-10-29
 
 Draft PR #4570 (`cursor/honest-landing-capabilities-ded8`). Codex round 2 on `c08384e0` (ISSUES_FOUND, 4 P2) fixed on the same draft: Drive Commander `/drive-commander/powerflex-525` drops `$197/yr` and checkout, CTA is Talk to Mike / free 30-day pilot; blog articles no longer claim auto work-order creation, a free CMMS tier, or "in seconds"; `provenText()` no longer falls back when a claim is unproven; honest-claims is recursive over public HTML, renders every real blog post plus Drive Commander and marketing renderers, uses semantic bans (auto+CMMS/work order, any `$`, timing promises), and has mutation + notebook-cited-answer flip tests. No merge, deploy, labels, ready, or Codex. mira-web full suite at new tip: 598 pass / 18 fail (21 fail on `origin/main`; the 18 remaining are pre-existing Neon/cookie/admin/DC-Pro).
