@@ -145,3 +145,68 @@ export function ambiguousModelAskText(ids: string[]): string {
   const listed = names.length === 2 ? `${names[0]} or the ${names[1]}` : `${names.slice(0, -1).join(", ")} or the ${names[names.length - 1]}`;
   return `You mentioned the ${names.join(" and the ")}. They are different models with different fault codes and settings, so I won't guess which one you mean. Which one is it — the ${listed}? Ask again naming just that one and I'll answer from its manual.`;
 }
+
+/**
+ * #5369 — a look-alike model the detector has no pattern for. maq2-2026-11-09
+ * on 6e5361bff: two sibling controllers of a vendor family missing from
+ * MODEL_PATTERNS were each answered from the other's manual, because the
+ * question read as "no model named" and the named-ask filter never ran. One
+ * more pattern per vendor would repeat the #5359 loop, so this check is
+ * generic, and relational on purpose: a letters+digits token counts as a
+ * model ONLY when the manual's own title declares a near-sibling of it (same
+ * letters, same number of digits, same first digit, different number). A
+ * parameter or fault code (A093, F005) never matches a title token, so it can
+ * never refuse a manual. A question that also names the title's own model
+ * (a comparison, or "M171 or M172?") is left to the existing paths.
+ * Applicability only — never a retrieval-scoping token. Pure, no LLM.
+ */
+const LOOK_ALIKE_TOKEN_RE = /\b([a-z]{1,3})-?(\d{3,4})\b/gi;
+
+function lookAlikeTokens(text: string): { id: string; letters: string; digits: string }[] {
+  return [...text.matchAll(LOOK_ALIKE_TOKEN_RE)].map((m) => ({
+    id: `${m[1]}${m[2]}`.toUpperCase(),
+    letters: m[1].toUpperCase(),
+    digits: m[2],
+  }));
+}
+
+export type LookAlikeVerdict =
+  | { kind: "mismatch"; requested: string[]; declared: string[] }
+  | { kind: "ambiguous"; named: string[] };
+
+const isSibling = (a: { letters: string; digits: string }, b: { letters: string; digits: string }) =>
+  a.letters === b.letters && a.digits.length === b.digits.length && a.digits[0] === b.digits[0];
+
+/** #5369 — the blunt rule (after Codex r2–r5 on #5371 each found another cover
+ *  wording that a prose reader misjudged). The cover's WORDING is never read:
+ *  only which letters+digits model numbers it carries. A manual is answered for
+ *  a model the detector cannot read only when the asked model is the ONLY
+ *  member of its sibling family on the cover. Any sibling on the cover — a
+ *  title, a cross-reference, an exclusion, a combined manual — refuses. That
+ *  over-refuses some valid asks (a guide that mentions its sibling, a combined
+ *  M171/M172 guide); it never answers from the wrong machine's manual.
+ *  The filename's numbers count with the cover's (Codex r6 F2), and a
+ *  filename is never published as what the manual declares (Codex r1 F3).
+ *  Naming two related models asks which one (Codex r1 F1, the #5355 default). */
+export function lookAlikeCoverVerdict(question: string, cover: string, filename: string): LookAlikeVerdict | null {
+  const asked = lookAlikeTokens(question);
+  if (asked.length === 0) return null;
+  const relatedTo = (tokens: ReturnType<typeof lookAlikeTokens>) =>
+    tokens.filter((t) => asked.some((q) => t.id === q.id || isSibling(t, q)));
+  // Codex r6 F2: the cover and the filename are ONE evidence set. A cover
+  // whose only related number is the asked model ("M172 is not covered by this
+  // manual.") is not coverage when the filename names a sibling: the two
+  // disagree, and the wording that would settle it is never read. So a stale
+  // filename on a correct manual now refuses too (accepted over-refusal).
+  const onCover = relatedTo(lookAlikeTokens(cover));
+  const source = [...onCover, ...relatedTo(lookAlikeTokens(filename))];
+  if (source.length === 0) return null;
+  const named = [...new Set(asked.filter((q) => source.some((t) => t.id === q.id || isSibling(t, q))).map((q) => q.id))];
+  if (named.length >= 2) return { kind: "ambiguous", named: named.sort() };
+  const family = new Set(source.map((t) => t.id));
+  if (family.size === 1 && family.has(named[0])) return null;
+  // Published only when the cover names the one family member in evidence;
+  // a filename alone, or a filename that disagrees with the cover, never is.
+  const declared = onCover.length > 0 && family.size === 1 ? [...family] : [];
+  return { kind: "mismatch", requested: named, declared };
+}
