@@ -507,6 +507,15 @@ approved:
     query_sha256: "53da2df19dda21e22cf254c55b0576b3c70cc47b2ae250f596bf78a0b793be07"
     reason: "NEW (#4979, T-1 forum ranking, flag-off only): question-IDF table — the `heading` CTE reads the first chunk (left(content, 2000)) of each document in the SAME tenant/node/doc/approval scope as :2128, so cover-page words (brand, product, 'User Manual') can be left out of the IDF table. Same predicates, same parameter positions; the text is only tokenised into lexemes, never returned or cited. TENANT-ONLY by the same rule."
     hash_migration: "#5294: reviewed full heading/hlex context with added doc_id/page projection and same-document later-page EXISTS. Approval/node/doc/tenant predicates and parameters unchanged; a single-page reading is no longer classified as a manual cover. Old context 515f57198d852f4251ed2d38850283306df25dda25c8a9f70a503a47fb94ef8c retained for audit."
+  "mira-hub/src/lib/manual-rag.ts:2228":
+    approved_classification: TENANT-ONLY
+    query_sha256: "e455019dd3de21c83da3f99de210a4ee903027a15074a1959f89ab613fa9d187"
+    reason: "NEW (#5369, an attached manual is not automatically an applicable one): the cover pre-pass of retrieveNodeChunks. It reads the FIRST chunk (DISTINCT ON (doc_id), left(content, 2000)) of each selected manual the lexical/exact passes returned no passage from, so that manual is still judged by its cover and a refusal's reason does not depend on what the search happened to find. Pure-tenant surface by the same rule as the BM25 pass (:1108) and the exact-token lane (:1163): tenant_id=$1 (the caller), ingest_route='v2', the same approved-source predicate (approvedSourceFilterSql, its doc-id set bound at $3 only when the approval gate admits one), and doc_id = ANY($2) where $2 is a SUBSET of the caller's selected documents. It runs ONLY when opts.validatedDocScope is true (docScopeOnly), i.e. inside the notebook chat after validateChatSources has proven every doc id is the caller's own and linked to this notebook; it carries no node clause because that validated selection is the scope, and it is strictly narrower than a bare tenant scope (same tenant AND selected docs AND v2 AND approved). These are the caller's private uploads, so hiding the shared OEM corpus is the intended behaviour, not bug class #1761. The rows are passed to admit() for its side effect only (the return value is discarded): they can mark a manual inapplicable, never add a passage to the pool, a citation, or the returned ManualChunk list. Covered by wrong-manual.test.ts (bench-project rows) and attached-is-not-applicable.route.test.ts."
+    query_snippet: |
+      FROM knowledge_entries
+        WHERE tenant_id = $1
+          AND doc_id::text = ANY($2::text[])
+          AND ingest_route = 'v2'
   "mira-hub/src/lib/__tests__/manual-rag-optional-reads.integration.test.ts:28":
     approved_classification: TENANT-ONLY
     query_sha256: "2f42be93066b7cff58ca9e5fce1de92b00f526fe3f3a8a14152333ab36f1f22b"
