@@ -101,6 +101,32 @@ describe("the PLC, typed with both lines of its plate", () => {
     expect(propose(typed)).toBeNull();
   });
 
+  // Review round 2 on #5387: the pairing counts DISTINCT listed catalog numbers,
+  // so the same number typed twice is still one machine. That is the rule the
+  // proposal already had for any model ("repeating the chosen model ... still
+  // proposes"), not a new one: a technician who types the plate line and then
+  // the fault sentence names the number twice. A second DIFFERENT number is the
+  // comparison, and it is refused two rows up.
+  it.each([
+    "Allen-Bradley Micro820 2080-LC20-20QBB and 2080-LC20-20QBB",
+    "Allen-Bradley Micro820 2080-LC20-20QBB. The 2080-lc20-20qbb will not go to run",
+    "Allen-Bradley 2080-LC20-20QBB Micro820, plate reads 2080-LC20-20QBB",
+    "Allen-Bradley Micro820 2080-LC20-20QBB, the Micro820 has a red fault light",
+  ])("the same catalog number or family typed twice is still one machine: %s", (typed) => {
+    const proposed = propose(typed);
+    expect(proposed).toEqual({ manufacturer: "Allen-Bradley", model: "820" });
+    expect(isSafeCandidateSearchIdentity("", typed, proposed!.model, proposed!.manufacturer)).toBe(false);
+    expect(namesOnlyThisMachine(typed, proposed!.model)).toBe(false);
+  });
+
+  it.each([
+    ["the same number twice and a different one", "Allen-Bradley Micro820 2080-LC20-20QBB and 2080-LC20-20QBB and 2080-LC20-20QWB"],
+    ["the same number twice beside another family's name", "Allen-Bradley Micro850 2080-LC20-20QBB and 2080-LC20-20QBB"],
+    ["the same number twice and a second machine", "Allen-Bradley Micro820 2080-LC20-20QBB, 2080-LC20-20QBB, and a PowerFlex 525"],
+  ])("repeating the number does not get a comparison through: %s", (_why, typed) => {
+    expect(propose(typed)).toBeNull();
+  });
+
   it("a value under a serial label is not read at all: the family alone is proposed, as before", () => {
     expect(propose("Allen-Bradley Micro820 SN: 2080-LC20-20QBB")).toEqual({ manufacturer: "Allen-Bradley", model: "820" });
   });
