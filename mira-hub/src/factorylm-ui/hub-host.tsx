@@ -910,7 +910,7 @@ export function HubShellHost() {
       });
       if (res.ok) {
         fixRequestIds.settle(turnId, fix);
-        window.alert("Saved. MIRA will use this fix on this machine next time.");
+        window.alert("Saved to this machine's history.");
         return;
       }
       const body = (await res.json().catch(() => null)) as { error?: string } | null;

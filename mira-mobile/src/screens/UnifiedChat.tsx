@@ -974,7 +974,7 @@ function UnifiedChatForNotebook({
         json: { symptom, fix, clientRequestId, sourceTurnId },
       });
       fixRequestIds.settle(turnId, fix);
-      window.alert("Saved. MIRA will use this fix on this machine next time.");
+      window.alert("Saved to this machine's history.");
     } catch (e) {
       const refusal = e instanceof ApiError ? fixRefusalMessage(e.detail) : null;
       if (refusal) fixRequestIds.settle(turnId, fix);
