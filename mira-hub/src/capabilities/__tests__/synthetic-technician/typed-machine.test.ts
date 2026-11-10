@@ -59,6 +59,11 @@ describe("the relay, typed the way its data sheet titles it", () => {
     ["a serial label's value is never the model", "Schneider Electric TeSys SN: CA3KN22BD"],
     ["a rating after the range is not a model", "Schneider Electric TeSys 24VDC coil"],
     ["a maker the library does not hold is never proposed", "Dorner TeSys CA3KN22BD"],
+    // TeSys is Schneider's range. After another maker's name it is a maker and a
+    // range that do not belong together, and the number is not given to that maker.
+    ["the range after another maker's name", "Allen-Bradley TeSys K CA3KN22BD"],
+    ["the same, without the range letter", "Siemens TeSys CA3KN22BD"],
+    ["the same, in a sentence", "The AutomationDirect TeSys K CA3KN22BD relay chatters"],
     // Known limit, on purpose: the number must sit directly after the range name.
     ["words between the range and the number (the data sheet's full title)", "The Schneider Electric TeSys K control relay CA3KN22BD is chattering"],
     ["a number further along may be another machine's", "Schneider Electric TeSys K relay feeds the GS11N-20P2"],

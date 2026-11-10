@@ -166,27 +166,32 @@ function isVariantCode(t: string | undefined): t is string {
  * CA3KN22BD", "… TeSys K CA3KN22BD" (the CA3KN22BD data sheet's own title is
  * "TeSys K control relay"). Not a series name: a range never forms a model
  * with a letters-only code, so it stays out of SERIES_WORDS and its variant
- * fallback. Closed list, like SERIES_WORDS.
+ * fallback. Closed list, like SERIES_WORDS. Each range is listed with its own
+ * maker and is read only after that maker's name: "Allen-Bradley TeSys K
+ * CA3KN22BD" is a maker and a range that do not belong together, and the
+ * number is not given to that maker (cheap review r7 on #5387).
  */
-const RANGE_WORDS = new Set(["TESYS"]);
+const RANGE_WORDS: ReadonlyMap<string, RegExp> = new Map([["TESYS", /schneider/i]]);
 const RANGE_MEMBER_RE = /^[A-Z]$/;
 
 /**
- * The catalog number DIRECTLY after a range name (and its member letter), or
- * null. Adjacent only: a word in between ("TeSys K relay feeds the PF525")
- * means the number may belong to another machine, and that is never guessed.
+ * The catalog number DIRECTLY after a range name (and its member letter) of
+ * `manufacturer`'s own, or null. Adjacent only: a word in between ("TeSys K
+ * relay feeds the PF525") means the number may belong to another machine, and
+ * that is never guessed.
  */
-function modelAfterRangeName(tokens: string[]): string | null {
-  if (!tokens[0] || !RANGE_WORDS.has(tokens[0].toUpperCase())) return null;
+function modelAfterRangeName(tokens: string[], manufacturer: string): string | null {
+  const maker = tokens[0] ? RANGE_WORDS.get(tokens[0].toUpperCase()) : undefined;
+  if (!maker?.test(manufacturer)) return null;
   const model = RANGE_MEMBER_RE.test(tokens[1] ?? "") ? tokens[2] : tokens[1];
   return model && isModelToken(model) && splitJoinedModels(model).length === 1 ? model : null;
 }
 
-/** The model span starting at `tokens[0]`, or null. `rangeNames: false` reads it without RANGE_WORDS. */
-function modelSpanAt(tokens: string[], rangeNames = true): string | null {
+/** The model span starting at `tokens[0]`, or null. `rangeMaker: null` reads it without RANGE_WORDS. */
+function modelSpanAt(tokens: string[], rangeMaker: string | null): string | null {
   const plain = plainModelSpanAt(tokens);
   if (plain) return plain;
-  const ranged = rangeNames ? modelAfterRangeName(tokens) : null;
+  const ranged = rangeMaker ? modelAfterRangeName(tokens, rangeMaker) : null;
   if (ranged) return ranged;
   // "Siemens SINAMICS G120C": skip at most two known series names before the model.
   let rest = tokens;
@@ -255,7 +260,7 @@ export function modelAfterManufacturer(message: string, manufacturer: string, ra
     // always bound to the manufacturer named before it (Codex #4120 F1).
     const parsed = resolveModelFromObservationText(tokens.join(" "));
     if (parsed.ambiguous) continue;
-    const span = withSeriesPrefix(parsed.model, tokens) ?? parsed.model ?? modelSpanAt(wide, rangeNames);
+    const span = withSeriesPrefix(parsed.model, tokens) ?? parsed.model ?? modelSpanAt(wide, rangeNames ? manufacturer : null);
     if (span) return span;
   }
   return null;
