@@ -202,6 +202,20 @@ describe("a blank notebook, and the technician types both lines of the PLC's pla
     expect(identityWrite()).toBeUndefined();
     expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
   });
+
+  // Codex round 2 on #5387 (F3): a rating typed after the machine is not a
+  // second machine. Main sends this card; the reviewed head sent none.
+  it("the family with its supply voltage after a comma still carries the proposal", async () => {
+    expect(proposalIn(await ask("Allen-Bradley Micro820, 24 VDC supply"))).toMatchObject({ manufacturer: "Allen-Bradley", model: "820" });
+  });
+
+  it("both lines of the plate with a comma between them still carry the proposal", async () => {
+    expect(proposalIn(await ask("Allen-Bradley Micro820, 2080-LC20-20QBB, 24 VDC"))).toMatchObject({ manufacturer: "Allen-Bradley", model: "820" });
+  });
+
+  it("a sibling written as a bare number after the plate carries no proposal", async () => {
+    expect(proposalIn(await ask("Allen-Bradley Micro820 2080-LC20-20QBB and 850 both faulted"))).toBeUndefined();
+  });
 });
 
 describe("a blank notebook, and the technician types the relay the way its data sheet titles it", () => {

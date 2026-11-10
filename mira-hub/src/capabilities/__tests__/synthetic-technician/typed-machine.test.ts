@@ -31,6 +31,8 @@ describe("the relay, typed the way its data sheet titles it", () => {
     ["Schneider Electric TeSys CA3KN22BD", "Schneider Electric"],
     ["Schneider TeSys CA3KN22BD control relay, what is the coil voltage?", "Schneider"],
     ["Schneider Electric TeSys K CA3KN22BD", "Schneider Electric"],
+    ["Schneider Electric TeSys K: CA3KN22BD", "Schneider Electric"],
+    ["Schneider Electric TeSys K, CA3KN22BD", "Schneider Electric"],
   ])("%s", (typed, maker) => {
     expect(propose(typed)).toEqual({ manufacturer: maker, model: "CA3KN22BD" });
   });
@@ -150,10 +152,11 @@ describe("the PLC, typed with both lines of its plate", () => {
   // Codex round 1 on #5387 (F1): a second machine whose name has no digit in it
   // ("SMC Flex") is invisible to the mention scan, which only sees a token with
   // a digit. With the plate's two lines now read as one machine, the message
-  // was proposed as that machine. The shared model detector does read it, and
-  // any model it reads that is not the proposed machine now removes the card.
-  // The two wordings Codex ran are the first two rows; each proposed on the
-  // reviewed head and proposed nothing on main.
+  // was proposed as that machine. The shared model detector does read it. A
+  // proposal this change newly makes (the family pairing, the range name) is
+  // now put to that detector, and a model it reads that is not the proposed
+  // machine removes the card. The two wordings Codex ran are the first two
+  // rows; each proposed on the reviewed head and proposed nothing on main.
   it.each([
     ["the PLC plate and a digitless second machine (Codex's message)", "Allen-Bradley Micro820 2080-LC20-20QBB and an SMC Flex both faulted, which manual should I use?"],
     ["the relay and a digitless second machine (Codex's message)", "Schneider Electric TeSys K CA3KN22BD and an SMC Flex both faulted"],
@@ -164,16 +167,6 @@ describe("the PLC, typed with both lines of its plate", () => {
     expect(propose(typed)).toBeNull();
   });
 
-  // The same gap was on main for the plain wording (one line of the plate),
-  // and the same rule closes it. These two rows PROPOSE on main today; they are
-  // listed in the PR text as a behaviour change outside the two new wordings.
-  it.each([
-    ["the family alone and a digitless second machine", "Allen-Bradley Micro820 and an SMC Flex both faulted"],
-    ["the catalog number alone and a digitless second machine", "Schneider Electric CA3KN22BD and an SMC Flex both faulted"],
-  ])("the same on the plain wording, which main proposed: %s", (_why, typed) => {
-    expect(propose(typed)).toBeNull();
-  });
-
   it("controls: the same plates without the second machine are still proposed", () => {
     expect(propose("Allen-Bradley Micro820 2080-LC20-20QBB both lights faulted, which manual should I use?")).toEqual({
       manufacturer: "Allen-Bradley",
@@ -181,6 +174,204 @@ describe("the PLC, typed with both lines of its plate", () => {
     });
     expect(propose("Schneider Electric TeSys K CA3KN22BD faulted")).toEqual({ manufacturer: "Schneider Electric", model: "CA3KN22BD" });
     expect(propose("Allen-Bradley Micro820 faulted")).toEqual({ manufacturer: "Allen-Bradley", model: "820" });
+  });
+
+  // Codex round 2 on #5387 (F3). The first version of that rule was put to
+  // EVERY proposal, and it read a rating or a count typed after the machine as
+  // a second model: the detector lets a bare number after a comma or "and"
+  // inherit the family before it ("PowerFlex 523 and 525"), so "Micro820,
+  // 24 VDC" also read as a "Micro 24". Each row here is one machine, proposes
+  // on main, and proposed nothing on the reviewed head. The rule is now put
+  // only to the proposals this change adds, so a message main proposes is
+  // never put to it. The first three rows are the messages Codex ran.
+  it.each([
+    ["a supply voltage (Codex's message)", "Allen-Bradley Micro820, 24 VDC supply", "Allen-Bradley", "820"],
+    ["input and output counts (Codex's message)", "Allen-Bradley Micro820, 16 inputs, 12 outputs", "Allen-Bradley", "820"],
+    ["another maker's drive and its voltage (Codex's message)", "ABB ACS580, 400 V supply", "ABB", "ACS580"],
+    ["a bare number with no unit", "Allen-Bradley Micro820, 24", "Allen-Bradley", "820"],
+    ["a drive, power and voltage", "Allen-Bradley PowerFlex 525, 10 HP, 480 V", "Allen-Bradley", "525"],
+    ["a drive and a count", "Allen-Bradley PowerFlex 525, 16 inputs", "Allen-Bradley", "525"],
+    ["a drive and a slash before the voltage", "Allen-Bradley PowerFlex 525 / 480 V", "Allen-Bradley", "525"],
+    ["a power rating that is also a sibling's number", "Allen-Bradley PowerFlex 755, 753 HP", "Allen-Bradley", "755"],
+    ["a current rating that is also a sibling's number", "Allen-Bradley Micro820, 850 mA", "Allen-Bradley", "820"],
+    ["the family's own series number", "Allen-Bradley Micro820, 800 series", "Allen-Bradley", "820"],
+    ["a starter named by its catalog number and then its family in words", "Allen-Bradley 150-F43NBD SMC Flex", "Allen-Bradley", "150-F43NBD"],
+  ])("one machine with a rating, a count or its family after it is proposed, as on main: %s", (_why, typed, manufacturer, model) => {
+    expect(proposeIdentityFromText(typed, [...MAKERS, "ABB"])).toEqual({ manufacturer, model });
+  });
+
+  // What is NOT changed, pinned so a change is seen. Each of these names a
+  // second machine that main's mention scan does not see, and main proposes the
+  // first one. That gap is on main, it is not closed here, and this branch
+  // gives the same card (the first version of the rule removed these; that is
+  // taken back). Filed as #5395 and listed in the PR text.
+  it.each([
+    ["a second machine in words alone", "Allen-Bradley Micro820 and an SMC Flex both faulted", "Allen-Bradley", "820"],
+    ["the same beside a catalog number", "Schneider Electric CA3KN22BD and an SMC Flex both faulted", "Schneider Electric", "CA3KN22BD"],
+    ["a sibling written as a bare number", "Allen-Bradley Micro820 and 850", "Allen-Bradley", "820"],
+    ["two drives of one series", "Allen-Bradley PowerFlex 523 and 525", "Allen-Bradley", "523"],
+    ["a drive family with no table", "ABB ACS580 and 880", "ABB", "ACS580"],
+    ["a second maker's machine, far from the relay", "Siemens 2200 and Schneider Electric CA3KN22BD", "Schneider Electric", "CA3KN22BD"],
+    ["a second maker's machine, far from the PLC", "The Siemens panel is fine but the Allen-Bradley Micro820 faulted", "Allen-Bradley", "820"],
+    ["a second product line in a word alone", "Allen-Bradley Micro820 and a PowerFlex", "Allen-Bradley", "820"],
+    ["a second series name", "Schneider Electric CA3KN22BD and the Altivar", "Schneider Electric", "CA3KN22BD"],
+  ])("a gap that is on main (#5395) and is not closed here gives the same card as main: %s", (_why, typed, manufacturer, model) => {
+    expect(proposeIdentityFromText(typed, [...MAKERS, "ABB"])).toEqual({ manufacturer, model });
+  });
+
+  // This PR's own plate with a comma or a rating. The catalog number's leading
+  // "2080" after a comma was read as a "Micro 2080", and a rating after the
+  // plate must not remove the new card either. The first two proposed on the
+  // commit before the rule and nothing on the reviewed head.
+  it.each([
+    ["a comma between the plate's two lines", "Allen-Bradley Micro820, 2080-LC20-20QBB"],
+    ["the same, and the supply voltage", "Allen-Bradley Micro820, 2080-LC20-20QBB, 24 VDC"],
+    ["the plate, then the supply voltage", "Allen-Bradley Micro820 2080-LC20-20QBB, 24 VDC supply"],
+    ["the plate, then input and output counts", "Allen-Bradley Micro820 2080-LC20-20QBB, 12 inputs, 8 outputs"],
+    ["the plate, then its own series", "Allen-Bradley Micro820 2080-LC20-20QBB, 800 series"],
+    ["the plate, then its own number", "Allen-Bradley Micro820 2080-LC20-20QBB, 820 series"],
+    ["a decimal that ends in a sibling's number", "Allen-Bradley Micro820 2080-LC20-20QBB reads 12.850 on the display"],
+  ])("the plate with a comma or a rating is still the Micro820: %s", (_why, typed) => {
+    expect(propose(typed)).toEqual({ manufacturer: "Allen-Bradley", model: "820" });
+  });
+
+  it.each([
+    ["the coil voltage", "Schneider Electric TeSys K CA3KN22BD, 24 VDC coil"],
+    ["its contacts", "Schneider Electric TeSys K CA3KN22BD, 2 NO, 2 NC"],
+  ])("the relay with a rating after it is still proposed: %s", (_why, typed) => {
+    expect(propose(typed)).toEqual({ manufacturer: "Schneider Electric", model: "CA3KN22BD" });
+  });
+
+  // A real sibling written as a bare number beside both lines of the plate
+  // ("… and 850" is a Micro850: the Micro800 family table lists it). Main
+  // proposes nothing here; the commit before the rule proposed the Micro820.
+  // The number is looked for anywhere in the message, not only directly after
+  // the family: brackets, "the", or the plate's own catalog number in between
+  // must not hide it.
+  it.each([
+    ["and", "Allen-Bradley Micro820 2080-LC20-20QBB and 850"],
+    ["a comma", "Allen-Bradley Micro820 2080-LC20-20QBB, 850"],
+    ["with words after", "Allen-Bradley Micro820 2080-LC20-20QBB and 850 both faulted"],
+    ["a fault code after the number", "Allen-Bradley Micro820 2080-LC20-20QBB and 850 F1"],
+    ["the catalog number in brackets", "Allen-Bradley Micro820 (2080-LC20-20QBB) and 850"],
+    ["the catalog number in brackets, then a comma", "Rockwell Automation Micro820 [2080-LC20-20QBB], 830"],
+    ["the family in brackets", "Allen-Bradley 2080-LC20-20QBB (Micro820) and 850"],
+    ["the family in quotes", 'Allen-Bradley "Micro820" 2080-LC20-20QBB and 850'],
+    ["a word before the number", "Allen-Bradley Micro820 2080-LC20-20QBB and the 850"],
+    ["the sibling before the plate", "Allen-Bradley 850 and Micro820 2080-LC20-20QBB"],
+    ["a slash", "Allen-Bradley Micro820/850 2080-LC20-20QBB"],
+    ["further along the sentence", "Allen-Bradley Micro820 2080-LC20-20QBB, also the 830 next to it"],
+    ["versus", "Allen-Bradley Micro820 2080-LC20-20QBB vs 870"],
+  ])("a bare-number sibling beside both lines of the plate proposes nothing: %s", (_why, typed) => {
+    expect(propose(typed)).toBeNull();
+  });
+
+  // Stated limits of the new card, each "no card", never a different machine.
+  // A number a family table lists as a sibling is read as that sibling whatever
+  // follows it: units and count words are not read.
+  it.each([
+    ["a rating whose number is a sibling's", "Allen-Bradley Micro820 2080-LC20-20QBB, 850 mA"],
+    ["a count whose number is a sibling's", "Allen-Bradley Micro820 2080-LC20-20QBB, 850 inputs"],
+  ])("limit: after the plate, a number that is also a sibling's gives no card: %s", (_why, typed) => {
+    expect(propose(typed)).toBeNull();
+  });
+
+  // A second known maker in the message is a second machine, whatever is or is
+  // not written after its name. Main proposes nothing for these wordings (the
+  // new rules do not exist there); the reviewed head proposed the relay or the
+  // PLC. Asked only of the proposals this change adds.
+  it.each([
+    ["a second maker's machine by its series number", "Siemens 2200 and Schneider Electric TeSys K CA3KN22BD"],
+    ["a second maker's machine in words", "AutomationDirect drive feeds the conveyor and a Schneider Electric TeSys K CA3KN22BD"],
+    ["a second maker before the plate", "The Siemens panel is fine but the Allen-Bradley Micro820 2080-LC20-20QBB faulted"],
+    ["a second maker after the plate", "Allen-Bradley Micro820 2080-LC20-20QBB trips when the AutomationDirect drive on the conveyor starts"],
+  ])("a second maker beside a newly proposed machine proposes nothing: %s", (_why, typed) => {
+    expect(propose(typed)).toBeNull();
+  });
+
+  // A limit: the second-maker check knows only the makers the library holds.
+  // A second machine from a maker that is not in it ("Dorner" is not in MAKERS)
+  // is a word and a number no list knows, the same shape as "Studio 5000" or
+  // "station 12", and the new card is still shown. It is main's gap (#5395)
+  // on a new card. With the maker in the library the card is not shown.
+  it.each([
+    ["Dorner 2200 and Schneider Electric TeSys K CA3KN22BD", "Schneider Electric", "CA3KN22BD"],
+    ["Dorner 2200 conveyor and the Allen-Bradley Micro820 2080-LC20-20QBB", "Allen-Bradley", "820"],
+  ])("limit: a second machine from a maker the library does not hold still gets the new card: %s", (typed, manufacturer, model) => {
+    expect(propose(typed)).toEqual({ manufacturer, model });
+    expect(proposeIdentityFromText(typed, [...MAKERS, "Dorner"])).toBeNull();
+  });
+
+  // A second product line named by a series or range word this file's own
+  // closed lists hold (SERIES_WORDS, RANGE_WORDS), with no number after it.
+  it.each([
+    ["another member of the relay's own range", "Schneider Electric TeSys K CA3KN22BD and TeSys D"],
+    ["the same, with a noun after it", "Schneider Electric TeSys K CA3KN22BD and a TeSys D contactor"],
+    ["a drive series of the same maker", "Schneider Electric TeSys K CA3KN22BD and the Altivar"],
+    ["another maker's series, the maker not named", "Allen-Bradley Micro820 2080-LC20-20QBB and the SINAMICS"],
+    // Series words only the closed list holds: the equipment vocabulary does not know them.
+    ["a series only the closed list holds", "Allen-Bradley Micro820 2080-LC20-20QBB and the Movitrac"],
+    ["the same, beside the relay", "Schneider Electric TeSys K CA3KN22BD and a DuraPulse"],
+    ["the same, in brackets", "Allen-Bradley Micro820 2080-LC20-20QBB (Movitrac)"],
+    ["the relay's other range member, in quotes", 'Schneider Electric TeSys K CA3KN22BD and the "TeSys D"'],
+    // A limit, not a second machine: the range named again gives no card either.
+    ["limit: the relay's own range named a second time", "Schneider Electric TeSys K CA3KN22BD, is the TeSys K rated for 24 VDC?"],
+  ])("a second series or range name beside a newly proposed machine proposes nothing: %s", (_why, typed) => {
+    expect(propose(typed)).toBeNull();
+  });
+
+  // A second product line named by a word alone that the shared equipment
+  // vocabulary (equipment-type.ts) reads as a product line. The mention scan
+  // already asks that vocabulary about a word followed by a number; here the
+  // word stands alone.
+  it.each([
+    ["a drive family", "Allen-Bradley Micro820 2080-LC20-20QBB and a PowerFlex"],
+    ["a servo family", "Allen-Bradley Micro820 2080-LC20-20QBB and a Kinetix"],
+    ["a controller family", "Allen-Bradley Micro820 2080-LC20-20QBB and CompactLogix"],
+    ["beside the relay", "Schneider Electric TeSys K CA3KN22BD and a PowerFlex"],
+    ["lower case", "Allen-Bradley Micro820 2080-LC20-20QBB and a powerflex"],
+    ["in brackets", "Allen-Bradley Micro820 2080-LC20-20QBB (PowerFlex)"],
+    ["in quotes", 'Allen-Bradley Micro820 2080-LC20-20QBB and the "Kinetix"'],
+    // A limit, not a second machine: "click" is also a controller line's name.
+    ["limit: an everyday word that is also a product line's name", "I hear a click from the Schneider Electric TeSys K CA3KN22BD"],
+    // Limits: the vocabulary reads these spellings of a device or protocol word
+    // as a product line, and the generic-word lists hold only the plain spelling.
+    ["limit: a device word in the plural", "Schneider Electric TeSys K CA3KN22BD drops out when the VFDs start"],
+    ["limit: a device word joined by a hyphen", "Schneider Electric TeSys K CA3KN22BD feeds the variable-frequency drive"],
+    ["limit: a protocol written with a slash", "Allen-Bradley Micro820 2080-LC20-20QBB is on EtherNet/IP"],
+  ])("a second product line in a word alone beside a newly proposed machine proposes nothing: %s", (_why, typed) => {
+    expect(propose(typed)).toBeNull();
+  });
+
+  // The plain spelling of the device words a technician uses around ONE machine
+  // is not a product line. Other spellings (plural, hyphen, slash) are the
+  // limit rows above.
+  it.each([
+    ["Allen-Bradley Micro820 2080-LC20-20QBB will not talk to the drive", "Allen-Bradley", "820"],
+    ["Allen-Bradley Micro820 2080-LC20-20QBB PLC stopped the conveyor motor", "Allen-Bradley", "820"],
+    ["Allen-Bradley Micro820 2080-LC20-20QBB controller lost its Ethernet link to the HMI", "Allen-Bradley", "820"],
+    ["Schneider Electric TeSys K CA3KN22BD relay drops out when the VFD starts", "Schneider Electric", "CA3KN22BD"],
+    ["Schneider Electric TeSys K CA3KN22BD control relay on the servo panel", "Schneider Electric", "CA3KN22BD"],
+  ])("control: one machine with everyday device words is still proposed: %s", (typed, manufacturer, model) => {
+    expect(propose(typed)).toEqual({ manufacturer, model });
+  });
+
+  // A card main shows is never changed, also when the same message names the
+  // machine a second time in one of the new wordings. Main's reading runs
+  // first and its card is returned as it is; the new rules and their checks
+  // are only reached when main's reading gives nothing. The last two rows are
+  // main's own gap (#5395), unchanged.
+  it.each([
+    ["Schneider CA3KN22BD, plate reads Schneider Electric TeSys K CA3KN22BD", "Schneider", "CA3KN22BD"],
+    ["Schneider Electric CA3KN22BD chatters. The Schneider Electric TeSys K CA3KN22BD sits beside the Altivar", "Schneider Electric", "CA3KN22BD"],
+    ["Schneider Electric CA3KN22BD. Schneider Electric TeSys K CA3KN22BD and an SMC Flex", "Schneider Electric", "CA3KN22BD"],
+  ])("the card main shows is returned unchanged: %s", (typed, manufacturer, model) => {
+    expect(propose(typed)).toEqual({ manufacturer, model });
+  });
+
+  it("control: the maker's two names are one maker, and the plate is still proposed", () => {
+    expect(propose("Allen-Bradley Micro820 2080-LC20-20QBB from Rockwell Automation")).toEqual({ manufacturer: "Allen-Bradley", model: "820" });
+    expect(propose("Schneider TeSys K CA3KN22BD, the Schneider Electric one")).toEqual({ manufacturer: "Schneider", model: "CA3KN22BD" });
   });
 
   it("a value under a serial label is not read at all: the family alone is proposed, as before", () => {
