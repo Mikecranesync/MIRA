@@ -210,6 +210,17 @@ describe("after the technician confirms what was proposed", () => {
     expect(await citedFor("820", [SIBLING_MANUAL])).toEqual([]);
   });
 
+  // Why the family is proposed and not the catalog number: the SAME plate,
+  // bound by its catalog number, is not protected today. A known defect
+  // (#5369), written with the correct expectation: this row turns red the day
+  // it is fixed, and the mark comes off then.
+  it("contrast, reached admission: bound by catalog number, its own manual is cited", async () => {
+    expect(await citedFor("2080-LC20-20QBB", [MICRO820_MANUAL])).toEqual([MICRO820_MANUAL.doc_id]);
+  });
+  it.fails("contrast (#5369): bound by catalog number, the sibling's manual should not be cited", async () => {
+    expect(await citedFor("2080-LC20-20QBB", [MICRO820_MANUAL, SIBLING_MANUAL])).toEqual([MICRO820_MANUAL.doc_id]);
+  });
+
   // The drive's plate reads GS11N-20P2; typed, it was already proposed (as the
   // series "GS11N"). The same outcome check, so all three garage parts have one.
   it("the drive: what its typed plate proposes is answered from the GS10 manual, not another family's", async () => {
