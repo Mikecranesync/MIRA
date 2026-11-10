@@ -37,8 +37,10 @@ import {
  *     maker, a range or an adjective, as on real covers. Asking that every
  *     word beside the model be known was tried and withdrawn: it refused
  *     ordinary covers (see "Known limits");
- *   - the line below is read whole for a listed negation, and a heading that
- *     ends in a colon and carries one is read a few lines up;
+ *   - the line below is read for a remark on coverage: a negation together
+ *     with a coverage word ("is not covered"), a joined negation, or an
+ *     exclusion phrase or mark. A heading that ends in a colon and carries a
+ *     negation is read a few lines up;
  *   - the filename counts only when the cover carries no such number at all,
  *     and a cover and a filename that name different look-alikes disagree.
  *
@@ -60,19 +62,34 @@ import {
  *     sold by distributors", "RX420 (dealer stock) Logic Controller", "Dealer
  *     stock RX420 Logic Controller", "RX420 Logic Controller: N", "(X)". On the
  *     line below or above: "Cancelled", "Archived", "Sold through
- *     distributors:". Also "RX420 Guide NF22" on a sibling's cover, a second
- *     title stacked directly under the first with no heading between, and an
- *     exclusion heading with no colon two or more lines up. No finite word
- *     list closes this. The alternative that does (every word beside the model
- *     must be a known title word) was built and measured on 181 realistic
+ *     distributors:". Also: a word the lists do not hold ("(EOL)", "TBD",
+ *     "nein", "isnt", "sold elsewhere" after the product noun, "wrong
+ *     manual"); a negation on the line below with no coverage word beside it
+ *     ("Controller: no.", "Version: false"); a line below that excludes the
+ *     model and names another ("Use the RX430 manual instead - not covered
+ *     here"); an exclusion two or more lines below the title; a heading above
+ *     that carries no negation ("Models this guide leaves to others:"); "RX420
+ *     Guide NF22" on a sibling's cover; a second title stacked directly under
+ *     the first with no heading between; and an exclusion heading with no
+ *     colon two or more lines up. No finite word list closes this. Forty-one
+ *     more words (false, invalid, skipped, TBD, elsewhere ...) and looser
+ *     readings of headings and of the line below were built and withdrawn:
+ *     they refused ordinary covers ("RX420 Drive Skipped Frequency Setup
+ *     Guide", "Rev. TBD", "Applies to:" above the title, "Draft - not for
+ *     distribution" below it). The alternative that does close it (every word
+ *     beside the model must be a known title word) was measured on 181 realistic
  *     cover checks: it refused 38 that answer today, among them "(EN)",
  *     "(CE)", "(Rev 2, Dec 2020)", "Manual del usuario", "FX5U-32MR/ES" and a
  *     catalog number written before the product name;
  *   - WRONG REFUSALS accepted (a question that names the model is refused on
- *     the model's own manual): "N/A" meaning North America; "EOL" meaning
- *     end-of-line; a line under the title that carries a negation or an
- *     exclusion word about something else ("This manual covers installation",
- *     "Warning: not for use in hazardous locations");
+ *     the model's own manual): "N/A" meaning North America, or a field left
+ *     empty under the title ("Part Number: N/A", "Revision: n/a"); a line
+ *     under the title that carries a negation together with a coverage word
+ *     about something else ("Supports Modbus, no extra license", "Includes
+ *     Alternative Wiring Diagrams") or opens with a contraction ("Isn't it
+ *     time to upgrade"); a joined warning or remark beside the model
+ *     ("Do-Not-Open", "Non-UL-Listed", "Do-It-Yourself",
+ *     "Not-Included-Accessories");
  *   - an accessory's manual that names the model it is for ("EtherNet/IP
  *     Adapter for RX420 Drives") is not told apart from the model's own manual;
  *   - a filename that names the asked number counts when the cover names no
@@ -272,12 +289,7 @@ const SENTENCE_WORDS = new Set(
     "another see refer consult please it its this that these those you your we our they " +
     "their if when where which who what how why because but however while than versus vs missing former " +
     "formerly legacy previous successor predecessor related associated compatible additional further pending " +
-    // Remarks that carry no verb: "sold elsewhere", "(EOL)", "wrong manual". And
-    // a contraction typed without its apostrophe.
-    "elsewhere eol retired wrong incorrect invalid excl isnt doesnt dont arent wasnt werent wont cant " +
-    "skipped dropped absent void ignored tbd tba upcoming nope false " +
     // Negations and pointers on German, French, Spanish and Italian covers.
-    "nein nichts keinen keiner keines aucun aucune ningún ningun ninguna nessun nessuno nessuna hors fuori fuera " +
     "nicht kein keine ohne außer ausser siehe sauf sans pas voir excepto salvo sin véase vease senza vedi"
   ).split(" "),
 );
@@ -297,13 +309,12 @@ const EXCLUSION_STEMS = [
 ];
 const JOINERS = new Set(["and", "or", "&", "+"]);
 const DANGLING_JOIN_RE = /(?:\b(?:and|or)|[&/,+])\s*$/i;
-// The plain negations and exclusions among the sentence words: what makes the
-// line BELOW a model a remark about it, wherever in that line it stands.
+// The plain negations and exclusions among the sentence words: what makes a
+// joined word, a heading above or the line below a remark that something is
+// left out. Only words the lists held before review round 2 on #5389.
 const NEGATION_WORDS = new Set(
   (
-    "not no non never none neither nor without except unless cannot elsewhere eol retired wrong incorrect invalid " +
-    "excl isnt doesnt dont arent wasnt werent wont cant skipped dropped absent void ignored tbd tba upcoming nope false " +
-    "nein nichts keinen keiner keines aucun aucune ningún ningun ninguna nessun nessuno nessuna hors fuori fuera " +
+    "not no non never none neither nor without except unless cannot " +
     "nicht kein keine ohne außer ausser sauf sans excepto salvo sin senza"
   ).split(" "),
 );
@@ -319,23 +330,6 @@ const EXCLUSION_PHRASE_RES = [
   /[\u2715-\u2718\u274c\u274e\u2a2f\u{1f6ab}\u26d4\u2260\u2209\u2298]/u,
 ];
 const hasExclusionPhrase = (line: string) => EXCLUSION_PHRASE_RES.some((re) => re.test(line));
-// Product words that are written joined to a sentence word. A joined word is
-// read by its parts (joinedSentenceWord); a pair named here is never the part
-// that makes it a sentence word. It decides when the word also holds a number
-// or a sentence word: "30A-Non-Fused" is a rating and a product word, while
-// "non-RX420" is an exclusion. Closed on purpose.
-const PRODUCT_COMPOUNDS = new Set(
-  (
-    "non-isolated non-isolating non-insulated non-reversing non-reversible non-fused non-fusible non-contact " +
-    "non-contacting non-metallic non-incendive non-volatile non-hazardous non-return non-latching non-inverting " +
-    "non-ventilated non-vented non-illuminated non-shielded non-regenerative non-programmable non-magnetic " +
-    "non-conductive non-locking non-linear non-polarized non-polarised non-combination non-intrusive non-invasive " +
-    "non-modular non-expandable non-indicating non-time non-delay non-adjustable non-automatic non-feedback " +
-    "non-drive non-stop non-flammable non-corrosive non-rotating non-safety " +
-    "no-load no-voltage no-fuse no-flow no-break do-more how-to read-only write-only safety-related " +
-    "not-aus not-halt not-stopp"
-  ).split(" "),
-);
 // An abbreviation's full stop is not the end of a sentence, and "No." is a
 // label, not a negation: "Model No. RX420", "Cat. No.", "Rev. 3", "Corp.".
 // Read as written for the eye: compatibility forms folded (full-width letters,
@@ -349,7 +343,7 @@ const plain = (line: string) =>
     .replace(/[\u00ad\u200b-\u200d\u2060\ufeff]/g, "")
     .replace(/\b(?:no|nr)\.(?=\s+\S|\d)/gi, "number ")
     .replace(/\b(rev|cat|corp|inc|ltd|co|vol|ver|ed|pub|doc|mfg|art|ref|fig|mod|dept|div)\.(?=\s|$)/gi, "$1");
-const strip = (word: string) => word.replace(/^[("'[]+|[)"'\]:;.!?]+$/g, "");
+const strip = (word: string) => word.replace(/^[("'[{<]+|[)"'\]}>:;.!?]+$/g, "");
 const wordsOf = (line: string) => plain(line).split(/[\s,/]+/).map(strip).filter(Boolean);
 const isExclusionWord = (lower: string) => EXCLUSION_WORDS.has(lower) || EXCLUSION_STEMS.some((stem) => lower.startsWith(stem));
 // A web or mail address is not prose: "www.example.com/how-to" stays as it was read before.
@@ -366,22 +360,26 @@ const joinedTokens = (line: string) =>
  * underscore, a dot, a plus, an apostrophe) is read by its parts: one part that
  * `counts` makes the whole word count. So does "un-" (un-supported), the parts
  * run together (can-not), and a contraction (isn't).
- * Not counted: a pair PRODUCT_COMPOUNDS names, and contact or channel notation
- * ("NO-NC", "DI-DO", "2-NO").
- * The word must also say what is negated: a coverage word, a sentence word or
- * a number ("non-supported", "not-for-this-model", "ohne-RX420"). A product
- * word no list names ("Non-Sparking") stays a product word: read the other
- * way, the rule refused real covers (measured, see "Known limits").
+ * Not counted: contact or channel notation ("NO-NC", "DI-DO", "2-NO").
+ * The word must also say what is negated: a coverage word, a sentence word
+ * or, after a negation, a model number ("non-supported", "not-for-this-model",
+ * "ohne-RX420"). A product word ("Non-Isolated", "Non-Sparking", "No-Load")
+ * stays a product word with no list of them kept: nothing in it says what is
+ * negated. So does a rating or a module name with a digit in it ("NO-24VDC",
+ * "DO-16TP", "IS-Barrier-24V"): read the other way, the rule refused real
+ * covers (measured, see "Known limits").
  */
 function joinedSentenceWord(word: string, counts: (lower: string) => boolean): boolean {
   if (/n['’‘`´]t$/i.test(word)) return true;
   const parts = word.toLowerCase().replace(/['’]s$/, "").split(/[^\p{L}\p{N}]+/u).filter(Boolean);
   if (parts.length < 2) return false;
   if (parts.every((part) => NOTATION_PARTS.has(part) || /^\d{1,2}$/.test(part))) return false;
-  const named = (i: number) => PRODUCT_COMPOUNDS.has(`${parts[i]}-${parts[i + 1]}`) || PRODUCT_COMPOUNDS.has(`${parts[i - 1]}-${parts[i]}`);
-  const hit = parts.findIndex((part, i) => (part === "un" || counts(part)) && !named(i));
-  if (hit >= 0) return parts.some((part, i) => i !== hit && (isCoverageWord(part) || SENTENCE_WORDS.has(part) || /\d/.test(part)));
-  return counts(parts.join("")) && !parts.some((_, i) => named(i));
+  const hit = parts.findIndex((part) => part === "un" || counts(part));
+  if (hit < 0) return counts(parts.join(""));
+  // "non-RX420", "ohne-RX420": a negation joined to a model number. Only a
+  // negation: "DO-16TP" and "NO-24VDC" are an output module and a contact rating.
+  const negatesNumber = (part: string) => countsAsNegation(parts[hit]) && !NOTATION_PARTS.has(parts[hit]) && modelNumbersIn(part).length > 0;
+  return parts.some((part, i) => i !== hit && (isCoverageWord(part) || SENTENCE_WORDS.has(part) || negatesNumber(part)));
 }
 // "NotSupported", "notcovered", "unlisted", "nichtenthalten": a negation run
 // together with a word about coverage. Only those: "Notebook", "Nonius" and
@@ -420,7 +418,8 @@ const isNotationNoun = (words: string[], i: number): boolean => {
 };
 const sentenceWordAt = (words: string[], i: number) => isSentenceWord(words[i]) && !isMonthMay(words, i) && !isNotationNoun(words, i);
 const countsAsSentence = (lower: string) => SENTENCE_WORDS.has(lower) || isExclusionWord(lower) || isRunTogetherNegation(lower);
-const countsAsNegation = (lower: string) => NEGATION_WORDS.has(lower) || isExclusionWord(lower) || isRunTogetherNegation(lower);
+const countsAsNegation = (lower: string) =>
+  NEGATION_WORDS.has(lower) || EXCLUSION_STEMS.some((stem) => lower.startsWith(stem)) || isRunTogetherNegation(lower);
 /** `strict` (see isTitleLine): any sentence word inside a joined word counts;
  *  otherwise only a negation or an exclusion does. */
 const hasSentenceWord = (line: string, strict = true) => {
@@ -437,6 +436,15 @@ const hasNegation = (line: string) => {
     joinedTokens(line).some((t) => joinedSentenceWord(t, countsAsNegation))
   );
 };
+/** The line says something is NOT covered: a negation together with a word
+ *  about coverage ("This controller is not covered"), a joined negation
+ *  ("not-supported"), or an exclusion phrase or mark ("N/A", "End of life", a
+ *  cross). A negation about something else is not one ("Draft - not for
+ *  distribution", "Warning: do not operate without guard"). */
+const remarksOnCoverage = (line: string) =>
+  hasExclusionPhrase(plain(line)) ||
+  joinedTokens(line).some((t) => joinedSentenceWord(t, countsAsNegation)) ||
+  (hasNegation(line) && wordsOf(line).some((w) => isCoverageWord(w.toLowerCase())));
 /** The word is one model number ("RX420", "2080-LC20-20QBB", "RX420-U"). */
 const isWholeNumber = (word: string) => modelNumbersIn(word).length === 1;
 const hasTitleNoun = (line: string) => wordsOf(line).some((w) => TITLE_NOUNS.has(w.toLowerCase()));
@@ -530,7 +538,7 @@ function declaresAsTitle(lines: string[], at: number, end: number, line: string,
     // under it ("Not covered in this guide:\nHardware\nRX420 Logic Controller"):
     // the nearest few are read.
     const endsInColon = (l: string) => /:\s*$/.test(plain(l)) && !isProductLine(l);
-    if (lines.slice(0, at).filter((l) => l.trim()).slice(-HEADING_REACH).some((l) => endsInColon(l) && hasSentenceWord(l))) return false;
+    if (lines.slice(0, at).filter((l) => l.trim()).slice(-HEADING_REACH).some((l) => endsInColon(l) && hasNegation(l))) return false;
     // A word broken across two lines ("… Controller unsup-\nported", "… ex-\ncluding RX420") is read whole.
     const broken = (upper: string | undefined, lower: string | undefined) => {
       const head = /(\p{L}+)[-‐‑]\s*$/u.exec(plain(upper ?? ""))?.[1];
@@ -538,11 +546,11 @@ function declaresAsTitle(lines: string[], at: number, end: number, line: string,
       return head !== undefined && rest !== undefined && countsAsSentence(`${head}${rest}`.toLowerCase());
     };
     if (broken(above, line) || broken(line, below)) return false;
-    // A negation or an exclusion anywhere on the line below is a remark about
-    // the model above it ("RX420 Logic Controller\nThis controller is not
-    // covered") — unless that line names a different number: then it is about
-    // that one ("RX410 Drive User Manual\nRX420 Drive is sold separately").
-    if (below && hasNegation(below)) {
+    // A remark on coverage anywhere on the line below is about the model above
+    // it ("RX420 Logic Controller\nThis controller is not covered") — unless
+    // that line names a different number: then it is about that one ("RX410
+    // Drive User Manual\nRX420 Drive is sold separately").
+    if (below && remarksOnCoverage(below)) {
       const mine = new Set(coverNumbersIn(line).map((n) => n.key));
       const theirs = coverNumbersIn(below);
       if (theirs.length === 0 || theirs.some((n) => mine.has(n.key))) return false;
