@@ -35,7 +35,16 @@ type Outcome = {
   reason: Reason | null;
   /** Whose model number the refusal is about, when it says. */
   about: "question" | "notebook" | "conversation" | null;
+  /** Statements the stand-in database does not know. It answers them with nothing and lists them here. */
+  unrecognised: string[];
 };
+
+/** How every passage query in the product opens today. A query that opens differently is not answered with passages. */
+const PASSAGE_QUERY_OPENS = "SELECT content, doc_id::text AS doc_id";
+/** The cover read: the first passage of each attached manual the search returned nothing from. */
+const COVER_QUERY_OPENS = "/* document-eligibility */ SELECT DISTINCT ON (doc_id) doc_id::text AS doc_id";
+/** Who wrote a photo-shaped document: asked of the upload records, then of the passages' own mark. */
+const ORIGIN_QUERY_OPENS = "/* document-origin */ SELECT";
 
 async function run(job: Job): Promise<Outcome> {
   const docs = job.attached.map((m, i) => ({ m, docId: docIdOf(i) }));
@@ -52,21 +61,40 @@ async function run(job: Job): Promise<Outcome> {
     rank: 0.8 - i * 0.01,
   }));
   let offered = 0;
+  const unrecognised: string[] = [];
+  // The stand-in knows five kinds of statement and no others: savepoint
+  // bookkeeping, the lookups that have no rows on this bench, the passage
+  // query, the cover read, and the who-wrote-it lookup. Anything else gets no
+  // rows and is listed, and a listed statement fails the job. So a retrieval query that is added or reworded cannot be
+  // answered with this bench's passages by accident, and cannot empty the
+  // bench without a failure either.
   const query = vi.fn(async (sql: string) => {
     if (sql.includes("WITH ORDINALITY") || sql.includes("names_document") || sql.includes("quote_literal(lex)")
       || /^\s*(SAVEPOINT|RELEASE SAVEPOINT|ROLLBACK TO SAVEPOINT)\b/.test(sql)) {
       return { rows: [] };
     }
+    const flat = sql.replace(/\s+/g, " ").trim();
     // Who wrote a photo-shaped document: the stand-in answers from the bench's
-    // own record of it, the way the upload records would. An uploaded file has
-    // no record, whatever its first line says.
-    if (sql.includes("document-origin")) {
-      return { rows: docs.filter((d) => d.m.writtenAs).map((d) => ({ doc_id: d.docId, written_as: d.m.writtenAs })) };
+    // own record of it, the way the server's records would. Readings and
+    // nameplates are recorded with the upload, OCR text on its passages; an
+    // uploaded file has no record, whatever its first line says.
+    if (flat.startsWith(ORIGIN_QUERY_OPENS)) {
+      const fromUploads = flat.includes("FROM namespace_direct_uploads");
+      return {
+        rows: docs
+          .filter((d) => d.m.writtenAs && (d.m.writtenAs === "photo_ocr") !== fromUploads)
+          .map((d) => ({ doc_id: d.docId, written_as: d.m.writtenAs })),
+      };
+    }
+    const coverRead = flat.startsWith(COVER_QUERY_OPENS);
+    if (!coverRead && !flat.startsWith(PASSAGE_QUERY_OPENS)) {
+      unrecognised.push(flat.slice(0, 120));
+      return { rows: [] };
     }
     offered++;
     // `noPassages`: the search finds nothing for this question. Each attached
-    // manual's cover is still read, by the one query that carries this marker.
-    if (job.noPassages && !sql.includes("document-eligibility")) return { rows: [] };
+    // manual's cover is still read, by the cover read alone.
+    if (job.noPassages && !coverRead) return { rows: [] };
     return { rows };
   });
   const diagnostics: {
@@ -107,6 +135,7 @@ async function run(job: Job): Promise<Outcome> {
   }
   return {
     offered,
+    unrecognised,
     citedFrom: [...new Set(citedFrom)].sort(),
     brokenCitations,
     reason: diagnostics.ambiguousModelAsk ? "asks-which-model"
@@ -121,6 +150,15 @@ async function run(job: Job): Promise<Outcome> {
 
 /** The one definition of "this job went right". */
 function expectRight(job: Job, got: Outcome) {
+  // A refusal only counts when the manual's pages were really on offer: with
+  // nothing offered, "nothing cited" would be true of any product at all.
+  expect(got.unrecognised, "every statement sent to the stand-in database is one it knows").toEqual([]);
+  // The one refusal that comes before any search is the product asking which
+  // of two named models is meant. It has to say so; silence does not count.
+  if (got.offered === 0) {
+    expect(got.reason, "nothing was searched, so the product must have asked which model").toBe("asks-which-model");
+    expect("refuse" in job.want, "a job that expects an answer must have been searched").toBe(true);
+  }
   expect(got.brokenCitations, "every citation points at its own manual and page").toEqual([]);
   if ("refuse" in job.want) {
     expect(got.citedFrom, "nothing may be cited").toEqual([]);
@@ -173,6 +211,7 @@ if (failing.length > 0) describe("synthetic technician — KNOWN FAILS on main (
   it.each(failing.map((j) => [title(j), j] as const))("reached admission: %s", async (_t, job) => {
     const got = await run(job);
     expect(got.offered, "the stand-in database was asked for candidates").toBeGreaterThan(0);
+    expect(got.unrecognised).toEqual([]);
     expect(got.brokenCitations).toEqual([]);
   });
 
@@ -183,7 +222,7 @@ if (failing.length > 0) describe("synthetic technician — KNOWN FAILS on main (
   });
 });
 
-describe("synthetic technician — rows added with the #5369 fix (not part of the 30)", () => {
+describe("synthetic technician — rows added with the #5369 fix (not part of the 37)", () => {
   it.each(EXTRA_JOBS.map((j) => [title(j), j] as const))("%s", async (_t, job) => {
     const got = await run(job);
     expect(got.offered, "the stand-in database was asked for candidates").toBeGreaterThan(0);
@@ -191,7 +230,7 @@ describe("synthetic technician — rows added with the #5369 fix (not part of th
   });
 });
 
-describe("synthetic technician — an attached manual is not automatically an applicable one (not part of the 30)", () => {
+describe("synthetic technician — an attached manual is not automatically an applicable one (not part of the 37)", () => {
   it.each(PROJECT_JOBS.map((j) => [title(j), j] as const))("%s", async (_t, job) => {
     const got = await run(job);
     expect(got.offered, "the stand-in database was asked for candidates").toBeGreaterThan(0);
@@ -209,17 +248,17 @@ describe("synthetic technician — scorecard", () => {
 
   // The count is pinned so that a silently dropped job, or a job quietly moved
   // into the known-fail list, changes a number a reviewer has to look at.
-  it("counts: all 30 jobs go right, none is a known wrong-manual fail; the added rows are counted beside them", () => {
+  it("counts: all 37 jobs go right, none is a known wrong-manual fail; the added rows are counted beside them", () => {
     expect({ right: passing.length, knownWrong: failing.length, added: EXTRA_JOBS.length, project: PROJECT_JOBS.length })
-      .toEqual({ right: 30, knownWrong: 0, added: 54, project: 53 });
+      .toEqual({ right: 37, knownWrong: 0, added: 54, project: 53 });
   });
 
-  // 30 right answers are also reachable by refusing more. These are the jobs
+  // 37 right answers are also reachable by refusing more. These are the jobs
   // that must ANSWER; the number is pinned so one cannot be turned into a refusal unseen.
-  it("counts: the jobs that must answer, in the 30 and in the added rows", () => {
+  it("counts: the jobs that must answer, in the 37 and in the added rows", () => {
     const answers = (jobs: Job[]) => jobs.filter((j) => "answerFrom" in j.want).length;
     expect({ contract: answers(JOBS), added: answers(EXTRA_JOBS), project: answers(PROJECT_JOBS) })
-      .toEqual({ contract: 15, added: 29, project: 30 });
+      .toEqual({ contract: 19, added: 29, project: 30 });
   });
 });
 

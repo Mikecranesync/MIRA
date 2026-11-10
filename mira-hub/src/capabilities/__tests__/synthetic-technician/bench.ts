@@ -192,6 +192,25 @@ export const JOBS: Job[] = [
     attached: [MICRO820_SHEET], identity: DRIVE,
     ask: "What supply voltage does it need?", want: REFUSE },
 
+  // The same questions typed the way a phone keyboard leaves them, and a file
+  // whose name arrived in capitals. Letter case must change nothing.
+  { id: "C-01", who: "apprentice", doing: "naming the controller in lower case", attached: [MICRO820_SHEET], identity: PLC,
+    ask: "what supply voltage does the micro820 need?", want: answer(MICRO820_SHEET) },
+  { id: "C-02", who: "apprentice", doing: "naming the next model up in lower case", attached: [MICRO820_SHEET], identity: PLC,
+    ask: "what supply voltage does the micro850 need?", want: REFUSE },
+  { id: "C-03", who: "journeyman", doing: "naming a different drive family in lower case", attached: [GS10], identity: DRIVE,
+    ask: "which parameter sets acceleration time on the gs20?", want: REFUSE },
+  { id: "C-04", who: "journeyman", doing: "naming the drive by its part number in lower case", attached: [GS10], identity: DRIVE,
+    ask: "which parameter sets acceleration time on the gs11n-20p2?", want: answer(GS10) },
+  { id: "C-05", who: "senior", doing: "shouting the controller's name in capitals", attached: [MICRO820_SHEET], identity: PLC,
+    ask: "WHAT SUPPLY VOLTAGE DOES THE MICRO820 NEED?", want: answer(MICRO820_SHEET) },
+  { id: "C-06", who: "journeyman", doing: "asking about the controller with both manuals attached; the sheet's file name is in capitals",
+    attached: [GS10, { ...MICRO820_SHEET, key: "micro820-sheet-capitals-file", filename: MICRO820_SHEET.filename.toUpperCase() }],
+    ask: "What supply voltage does the Micro820 need?", want: answer({ ...MICRO820_SHEET, key: "micro820-sheet-capitals-file" }) },
+  { id: "C-07", who: "apprentice", doing: "working from a manual left attached from another drive; its cover is in capitals",
+    attached: [{ ...GS10, key: "gs20-cover-capitals", heading: "DURAPULSE GS20 DRIVE USER MANUAL" }], identity: DRIVE,
+    ask: "How do I change how fast it ramps up?", want: REFUSE },
+
   // A sibling pair the detector has no pattern for (synthetic RX410 / RX420).
   { id: "S-01", who: "journeyman", doing: "asking about the manual's own model", attached: [RX410_TITLED],
     ask: "What supply voltage does the RX410 controller accept?", want: answer(RX410_TITLED) },
@@ -239,7 +258,7 @@ export const JOBS: Job[] = [
 ];
 
 // ── Rows added with the #5369 fix ──────────────────────────────────────────────
-// The 30 jobs above are the contract and are counted on their own. These rows
+// The 37 jobs above are the contract and are counted on their own. These rows
 // were written RED before the fix: wordings a reviewer broke the shelved attempt
 // with, and controls that a rule which simply refuses more would fail.
 
