@@ -141,6 +141,7 @@ import {
   questionWarningQuery,
 } from "@/capabilities/energized-work-stop";
 import { ambiguousModelAskText, namedModelMismatchText, type NamedModelMismatch } from "@/capabilities/named-model-mismatch";
+import { notebookManualIdentity } from "@/capabilities/notebook-manual-identity";
 import {
   otherProductRefusalText,
   unlistedModelRefusalText,
@@ -2342,6 +2343,9 @@ async function handleChatTurn(
   // turn's or an earlier one's) that names the manufacturer — never the
   // client's free text (UNS gate doctrine).
   const notebookRetrieval = !(general || nodeId === null);
+  // One identity for every manual read of this turn (the question's pass and
+  // the safety stop's passes), so no read is scoped differently from another.
+  const manualIdentity = notebookManualIdentity(nb, boundAsset, identityDisputed);
   // Resolve OEM identity from one observation: this turn's LOOK, otherwise the
   // newest prior LOOK. Earlier photos still reach context, but may be different
   // machines and must not contaminate retrieval identity (#3966).
@@ -2504,11 +2508,12 @@ async function handleChatTurn(
             rawQuery: message,
             // The notebook's own machine name is never a fault code in the
             // whole-token lane ("GS10 oC" binds oC, not GS10 — Codex r6 on #4360).
-            identity: { manufacturer: nb?.manufacturer ?? null, model: nb?.model ?? null },
-            catalogNumber: nb?.catalogNumber ?? null,
-            // Model-less questions scope to that machine only once a person has
-            // confirmed it — an OCR `candidate` must not hide the right manual.
-            identityStatus: nb?.identityStatus ?? null,
+            // Which machine the manuals have to be for: the notebook's own
+            // confirmed identity, else the confirmed machine it was made from
+            // (notebook-manual-identity.ts). Model-less questions scope to it
+            // only once a person has confirmed it — an OCR `candidate` must not
+            // hide the right manual.
+            ...manualIdentity,
             includeQueryRecall: Boolean(lookRow?.text && buildRetrievalQuery(message, [], lookRow.text) !== message.trim()),
             // validateChatSources() has already proven tenant + notebook membership
             // for every id in docIds — the validated doc set is the boundary, so a
@@ -3321,7 +3326,9 @@ async function handleChatTurn(
             topK: 8,
             docIds,
             rawQuery,
-            identity: { manufacturer: nb?.manufacturer ?? null, model: nb?.model ?? null },
+            // The same machine as the question's own pass, so a stop never
+            // cites another product's page that pass refused.
+            ...manualIdentity,
             validatedDocScope: true,
             approvedSourceDocIds: docIds,
           }),

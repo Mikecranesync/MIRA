@@ -31,8 +31,10 @@ vi.mock("@/lib/session", () => ({
   sessionOr401: vi.fn(async () => ({ tenantId: TENANT, userId: "u1" })),
 }));
 
-type StoredTurn = { question: string; answerStatus: string; answerText: string | null };
-const stored = vi.hoisted(() => ({ turns: [] as Array<{ question: string; answerStatus: string; answerText: string | null }> }));
+type StoredTurn = { question: string; answerStatus: string; answerText: string | null; basis: string | null };
+const stored = vi.hoisted(() => ({
+  turns: [] as Array<{ question: string; answerStatus: string; answerText: string | null; basis: string | null }>,
+}));
 
 const nbMock = vi.hoisted(() => ({
   validateChatSources: vi.fn(),
@@ -103,7 +105,10 @@ async function frames(res: Response): Promise<Record<string, unknown>[]> {
 }
 
 const PASSAGE = "The controller requires a 24 V DC supply.";
-const attach = (m: Manual) => {
+const LOCKOUT_PASSAGE =
+  "WARNING: Hazardous voltage. Disconnect power and apply lockout/tagout before servicing. Wait 5 minutes for the capacitors to discharge.";
+const HAZARD_ASK = "It's still powered up. Can I swap the fan?";
+const attach = (m: Manual, content = PASSAGE) => {
   db.rows = [{
     doc_id: DOC_A,
     filename: m.filename,
@@ -113,7 +118,7 @@ const attach = (m: Manual) => {
     page_start: m.page,
     page_label: m.pageLabel,
     section_path: null,
-    content: PASSAGE,
+    content,
     rank: 0.8,
   }];
 };
@@ -122,7 +127,12 @@ async function ask(message: string) {
   const out = await frames(await POST(req({ message, sourceDocIds: [DOC_A] }), params));
   const status = out.find((f) => f.kind === "status") as { status: string; message?: string } | undefined;
   const sources = out.find((f) => f.kind === "sources") as { citations: unknown[] } | undefined;
-  return { status, citations: sources?.citations ?? [], providerAsked: vi.mocked(fetch).mock.calls.length > 0 };
+  return {
+    status,
+    citations: sources?.citations ?? [],
+    providerAsked: vi.mocked(fetch).mock.calls.length > 0,
+    kinds: out.map((f) => String(f.kind)),
+  };
 }
 
 const blankProject = { id: NB, displayName: "Bench drive wrong sheet", manufacturer: null, model: null, catalogNumber: null, identityStatus: "unknown" };
@@ -139,12 +149,15 @@ beforeEach(() => {
   nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: "node-1" });
   nbMock.getNotebook.mockResolvedValue(blankProject);
   nbMock.resolveBoundAsset.mockResolvedValue({ state: "unbound" });
-  // What the route stores is what the next turn reads back, newest first.
+  // What the route stores is what the next turn reads back. Like the real
+  // listTurns: the most recent `limit` turns, OLDEST first.
   nbMock.recordTurn.mockImplementation(async (_t: string, _n: string, turn: StoredTurn) => {
-    stored.turns.unshift({ question: turn.question, answerStatus: turn.answerStatus, answerText: turn.answerText });
+    stored.turns.push({ question: turn.question, answerStatus: turn.answerStatus, answerText: turn.answerText, basis: turn.basis ?? null });
     return "turn-row";
   });
-  nbMock.listTurns.mockImplementation(async () => stored.turns.map((t, i) => ({ id: `t${i}`, threadId: "thread", evidence: [], ...t })));
+  nbMock.listTurns.mockImplementation(async (_t: string, _n: string, limit = 50) =>
+    stored.turns.slice(-limit).map((t, i) => ({ id: `t${i}`, threadId: null, evidence: [], ...t })),
+  );
   filesMock.photoLinkedToTarget.mockResolvedValue(null);
   // If the route asks a provider, this is the wrong-manual value it would serve.
   vi.stubGlobal(
@@ -247,6 +260,56 @@ describe("a project made from a registered machine carries that machine into the
     expect(providerAsked).toBe(true);
     expect(citations.length).toBeGreaterThan(0);
   });
+
+  it("a machine made in the namespace has no maker or model on record and scopes nothing, as today", async () => {
+    nbMock.resolveBoundAsset.mockResolvedValue({ ...boundController, manufacturer: null, model: null });
+    attach(RELAY_SHEET_AS_STORED);
+    const { citations, providerAsked } = await ask("What is the supply voltage?");
+    expect(providerAsked).toBe(true);
+    expect(citations.length).toBeGreaterThan(0);
+  });
+
+  it("the notebook's own confirmed identity wins over the machine it is bound to", async () => {
+    // Confirmed on the notebook as the relay; bound to the controller. The relay's sheet is its own.
+    nbMock.getNotebook.mockResolvedValue({ ...blankProject, manufacturer: "Schneider Electric", model: "CA3KN22BD", identityStatus: "user_confirmed" });
+    nbMock.resolveBoundAsset.mockResolvedValue(boundController);
+    attach(RELAY_SHEET_AS_STORED);
+    const { citations, providerAsked } = await ask("What is the coil voltage?");
+    expect(providerAsked).toBe(true);
+    expect(citations.length).toBeGreaterThan(0);
+  });
+});
+
+describe("the safety stop reads the same manuals as the question does", () => {
+  const boundController = {
+    state: "resolved", entityId: MACHINE, name: "CV-101 bench PLC", unsPath: "enterprise.garage.cv_101.plc",
+    selectedVia: "asset_picker", confirmedAt: "2026-11-10T07:40:00.000Z", manufacturer: "Allen-Bradley", model: "2080-LC20-20QBB",
+  };
+
+  it("control: a hazard question in the controller's project still stops and cites the controller manual's own lockout page", async () => {
+    nbMock.resolveBoundAsset.mockResolvedValue(boundController);
+    attach(MICRO820_SHEET_AS_STORED, LOCKOUT_PASSAGE);
+    const { citations, providerAsked, kinds } = await ask(HAZARD_ASK);
+    expect(kinds).toContain("safety");
+    expect(providerAsked, "a stop never asks a provider").toBe(false);
+    expect(citations.length, "the manual's own lockout page is still cited").toBeGreaterThan(0);
+  });
+
+  it("the stop does not cite a lockout page from another product's sheet", async () => {
+    nbMock.resolveBoundAsset.mockResolvedValue(boundController);
+    attach(RELAY_SHEET_AS_STORED, LOCKOUT_PASSAGE);
+    const { citations, providerAsked, kinds } = await ask(HAZARD_ASK);
+    expect(kinds, "the stop is still served").toContain("safety");
+    expect(providerAsked).toBe(false);
+    expect(citations, "the relay's sheet must not be cited for the controller").toEqual([]);
+  });
+
+  it("control: with no machine identity the stop cites the attached manual's lockout page, as today", async () => {
+    attach(RELAY_SHEET_AS_STORED, LOCKOUT_PASSAGE);
+    const { citations, kinds } = await ask(HAZARD_ASK);
+    expect(kinds).toContain("safety");
+    expect(citations.length).toBeGreaterThan(0);
+  });
 });
 
 describe("the model a technician named is still the subject of the next question", () => {
@@ -260,7 +323,7 @@ describe("the model a technician named is still the subject of the next question
     expect(first.providerAsked).toBe(false);
     expect(first.status?.status).toBe("insufficient_evidence");
     expect(first.status?.message).toContain("GS11N-20P2");
-    expect(stored.turns[0]).toMatchObject({ question: PLATE, answerStatus: "insufficient_evidence" });
+    expect(stored.turns.at(-1)).toMatchObject({ question: PLATE, answerStatus: "insufficient_evidence" });
 
     const second = await ask("What supply voltage does it need?");
     expect(second.citations, "the controller sheet must not be cited for the drive the technician named").toEqual([]);

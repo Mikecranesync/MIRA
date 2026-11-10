@@ -657,7 +657,11 @@ describe("a real thread: the terse follow-up arrives conversation-augmented", ()
         "utf8",
       );
       const attached = route.slice(route.indexOf("retrieveNodeChunks(client, ctx.tenantId, retrievalQuery"));
-      expect(attached.slice(0, attached.indexOf("validatedDocScope"))).toMatch(/identity: \{ manufacturer: nb\?\.manufacturer/);
+      // The identity is built once for every manual read of the turn, from the
+      // notebook row (and, for a notebook made from a registered machine, from
+      // that machine) — notebook-manual-identity.ts — and spread into the call.
+      expect(attached.slice(0, attached.indexOf("validatedDocScope"))).toMatch(/\.\.\.manualIdentity,/);
+      expect(route).toMatch(/const manualIdentity = notebookManualIdentity\(nb, boundAsset, identityDisputed\);/);
     });
 
     // Codex r7 on #4360 — the stored model is not always spelled "PowerFlex 525".
