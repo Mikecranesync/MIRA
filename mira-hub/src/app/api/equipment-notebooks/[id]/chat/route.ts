@@ -140,8 +140,8 @@ import {
   pickQuestionWarningChunk,
   questionWarningQuery,
 } from "@/capabilities/energized-work-stop";
-import { ambiguousModelAskText, namedModelMismatchText, type NamedModelMismatch } from "@/capabilities/named-model-mismatch";
-import { openQuestions } from "@/capabilities/conversation-subject";
+import { ambiguousModelAskText, namedModelMismatchText, subjectOutOfReachText, type NamedModelMismatch } from "@/capabilities/named-model-mismatch";
+import { readSubject, SUBJECT_READ_STEPS } from "@/capabilities/conversation-subject";
 import { notebookManualIdentity } from "@/capabilities/notebook-manual-identity";
 import {
   otherProductRefusalText,
@@ -2352,14 +2352,29 @@ async function handleChatTurn(
   // still about the model one of them named, so the manual check keeps
   // applying to it. A failed read carries nothing: the turn is then judged on
   // its own words, exactly as before this read existed.
+  //
+  // The read widens only while the newest turns are all unanswered and older
+  // ones exist (SUBJECT_READ_STEPS): a model named seven turns back is still
+  // the subject. If even the widest read finds no start to the open run, the
+  // subject is out of reach and a model-less question is refused rather than
+  // judged on its own words (subjectOutOfReach, manual-rag.ts).
   let subjectQueries: string[] = [];
+  let subjectOutOfReach = false;
   if (notebookRetrieval) {
     try {
-      subjectQueries = openQuestions(
-        await listTurns(ctx.tenantId, notebookId, 6, { viewerUserId: ctx.userId, threadId }),
-      );
+      for (const limit of SUBJECT_READ_STEPS) {
+        const read = readSubject(
+          await listTurns(ctx.tenantId, notebookId, limit, { viewerUserId: ctx.userId, threadId }),
+          limit,
+        );
+        subjectQueries = read.questions;
+        subjectOutOfReach = !read.complete;
+        if (read.complete) break;
+      }
     } catch (err) {
-      console.error("[notebook-chat] earlier-question read failed (follow-up judged on its own words):", err instanceof Error ? err.message : err);
+      // A failed FIRST read carries nothing, as before. A failed wider read
+      // keeps what the narrower one found and leaves the subject out of reach.
+      console.error("[notebook-chat] earlier-question read failed (follow-up judged on what was read):", err instanceof Error ? err.message : err);
     }
   }
   // Resolve OEM identity from one observation: this turn's LOOK, otherwise the
@@ -2471,6 +2486,7 @@ async function handleChatTurn(
     queryRewrite?: string;
     namedModelMismatch?: NamedModelMismatch;
     ambiguousModelAsk?: { named: string[] };
+    subjectOutOfReach?: true;
     unlistedModelRefusal?: UnlistedModelRefusal;
     otherProductRefusal?: OtherProductRefusal;
   } = {};
@@ -2531,6 +2547,7 @@ async function handleChatTurn(
             // hide the right manual.
             ...manualIdentity,
             subjectQueries,
+            subjectOutOfReach,
             includeQueryRecall: Boolean(lookRow?.text && buildRetrievalQuery(message, [], lookRow.text) !== message.trim()),
             // validateChatSources() has already proven tenant + notebook membership
             // for every id in docIds — the validated doc set is the boundary, so a
@@ -3347,6 +3364,7 @@ async function handleChatTurn(
             // cites another product's page that pass refused.
             ...manualIdentity,
             subjectQueries,
+            subjectOutOfReach,
             validatedDocScope: true,
             approvedSourceDocIds: docIds,
           }),
@@ -3538,6 +3556,11 @@ async function handleChatTurn(
         ? ambiguousModelAskText(retrievalDiagnostics.ambiguousModelAsk.named)
       : notebookRetrieval && retrievalDiagnostics.namedModelMismatch
         ? namedModelMismatchText(retrievalDiagnostics.namedModelMismatch)
+      // The conversation has gone further without a document answer than the
+      // route reads back, and this question names no model: which machine it
+      // is about cannot be told, so nothing is answered from any manual.
+      : notebookRetrieval && retrievalDiagnostics.subjectOutOfReach
+        ? subjectOutOfReachText()
       // #5369: a model or catalog number the detector has no pattern for, and
       // no selected manual is shown to cover it — say so, and say why.
       : notebookRetrieval && retrievalDiagnostics.unlistedModelRefusal

@@ -155,3 +155,9 @@ export function ambiguousModelAskText(ids: string[]): string {
   const listed = names.length === 2 ? `${names[0]} or the ${names[1]}` : `${names.slice(0, -1).join(", ")} or the ${names[names.length - 1]}`;
   return `You mentioned the ${names.join(" and the ")}. They are different models with different fault codes and settings, so I won't guess which one you mean. Which one is it — the ${listed}? Ask again naming just that one and I'll answer from its manual.`;
 }
+
+/** The conversation has run further without an answer from a manual than the
+ *  route reads back, and the question names no model. */
+export function subjectOutOfReachText(): string {
+  return "This conversation has gone a long way without an answer from a manual, so I can't tell which machine this question is about and I won't guess. Name the model in your question, or start a new conversation, and I'll answer from its manual.";
+}

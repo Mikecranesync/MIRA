@@ -599,3 +599,118 @@ describe("a cover that marks the asked model as not covered never reaches a prov
     expect(citations.length).toBeGreaterThan(0);
   });
 });
+
+// Cheap review round 9 on #5389. The route read the six newest turns, so a
+// model named seven turns back fell out of what it could see, and the next
+// model-less question was answered from the other product's sheet. A subject
+// stays open until a document answer closes it, however many turns that takes.
+describe("a subject stays open past six turns, until a document answer closes it", () => {
+  const PLATE = "The plate reads AutomationDirect GS11N-20P2. It will not start.";
+  const open = (question: string) => ({ question, answerStatus: "insufficient_evidence", answerText: null, basis: null });
+  const generalAnswer = (question: string) => ({ question, answerStatus: "answered", answerText: "In general…", basis: "general_reasoning" });
+
+  it("after the plate message and seven unanswered follow-ups, the next one is still refused for the drive", async () => {
+    attach(MICRO820_SHEET_AS_STORED);
+    await ask(PLATE);
+    for (let i = 0; i < 7; i++) {
+      const next = await ask("What supply voltage does it need?");
+      expect(next.providerAsked, `follow-up ${i + 1}`).toBe(false);
+      expect(next.citations, `follow-up ${i + 1}`).toEqual([]);
+      expect(next.status?.message, `follow-up ${i + 1}`).toContain("GS11N-20P2");
+    }
+    expect(stored.turns).toHaveLength(8);
+    // The wider read is the same technician's turns of the same conversation.
+    expect(nbMock.listTurns).toHaveBeenCalledWith(TENANT, expect.any(String), 60, { viewerUserId: "u1", threadId: null });
+  });
+
+  it("an ordinary conversation is not read any further back than six turns", async () => {
+    attach(MICRO820_SHEET_AS_STORED);
+    await ask("What supply voltage does the Micro820 need?");
+    nbMock.listTurns.mockClear();
+    await ask("And the input voltage range?");
+    const limits = nbMock.listTurns.mock.calls.map((c) => c[2]);
+    expect(limits).toContain(6);
+    expect(limits.filter((l) => l === 60 || l === 300), "no wider read when the newest turns hold a document answer").toEqual([]);
+  });
+
+  it("when the wider read fails, what the first read found is kept and a model-less question is refused", async () => {
+    attach(MICRO820_SHEET_AS_STORED);
+    stored.turns = Array.from({ length: 9 }, (_, i) => generalAnswer(`How does a contactor work, part ${i + 1}?`));
+    const real = nbMock.listTurns.getMockImplementation()!;
+    nbMock.listTurns.mockImplementation(async (t: string, n: string, limit = 50, ...rest: unknown[]) => {
+      if (limit === 60) throw new Error("history read failed");
+      return real(t, n, limit, ...rest);
+    });
+    const next = await ask("What supply voltage does it need?");
+    expect(next.providerAsked).toBe(false);
+    expect(next.citations).toEqual([]);
+    expect(next.status?.message).toMatch(/name the model/i);
+  });
+
+  it("general answers and a safety stop in between do not push the model out of reach either", async () => {
+    attach(MICRO820_SHEET_AS_STORED, LOCKOUT_PASSAGE);
+    stored.turns = [
+      open(PLATE),
+      ...Array.from({ length: 9 }, (_, i) => generalAnswer(`How does a contactor work, part ${i + 1}?`)),
+      { question: HAZARD_ASK, answerStatus: "answered", answerText: "STOP", basis: null },
+    ];
+    const next = await ask("What supply voltage does it need?");
+    expect(next.providerAsked).toBe(false);
+    expect(next.citations).toEqual([]);
+    expect(next.status?.message).toContain("GS11N-20P2");
+    expect(next.status?.message).toMatch(/earlier in this conversation/i);
+  });
+
+  it("control: a long run of general turns that never named a model does not narrow the next question", async () => {
+    attach(MICRO820_SHEET_AS_STORED);
+    stored.turns = Array.from({ length: 40 }, (_, i) => generalAnswer(`How does a contactor work, part ${i + 1}?`));
+    const next = await ask("What supply voltage does it need?");
+    expect(next.providerAsked).toBe(true);
+    expect(next.citations.length).toBeGreaterThan(0);
+  });
+
+  it("control: a document answer further back than six turns still closes what came before it", async () => {
+    attach(MICRO820_SHEET_AS_STORED);
+    stored.turns = [
+      open(PLATE),
+      { question: "What supply voltage does the Micro820 need?", answerStatus: "answered", answerText: "24 V DC [1].", basis: "workspace_evidence" },
+      ...Array.from({ length: 9 }, (_, i) => generalAnswer(`How does a contactor work, part ${i + 1}?`)),
+    ];
+    const next = await ask("And the input voltage range?");
+    expect(next.providerAsked).toBe(true);
+    expect(next.citations.length).toBeGreaterThan(0);
+  });
+
+  it("when even the widest read finds no start to the open run, a model-less question is refused and told the way out", async () => {
+    attach(MICRO820_SHEET_AS_STORED);
+    stored.turns = Array.from({ length: 320 }, (_, i) => generalAnswer(`How does a contactor work, part ${i + 1}?`));
+    const next = await ask("What supply voltage does it need?");
+    expect(next.providerAsked, "no provider is asked when the machine cannot be told").toBe(false);
+    expect(next.citations).toEqual([]);
+    expect(next.status?.status).toBe("insufficient_evidence");
+    expect(next.status?.message).toMatch(/name the model/i);
+    expect(next.status?.message).toMatch(/new conversation/i);
+    expect(next.status?.message).not.toMatch(/24 V/);
+  });
+
+  it("control: in that same long conversation, naming the sheet's own model answers", async () => {
+    attach(MICRO820_SHEET_AS_STORED);
+    stored.turns = Array.from({ length: 320 }, (_, i) => generalAnswer(`How does a contactor work, part ${i + 1}?`));
+    const next = await ask("What supply voltage does the Micro820 need?");
+    expect(next.providerAsked).toBe(true);
+    expect(next.citations.length).toBeGreaterThan(0);
+  });
+
+  it("control: a model named inside the widest read is carried even when the open run is longer than it", async () => {
+    attach(MICRO820_SHEET_AS_STORED);
+    stored.turns = [
+      ...Array.from({ length: 320 }, (_, i) => generalAnswer(`How does a contactor work, part ${i + 1}?`)),
+      open(PLATE),
+      ...Array.from({ length: 10 }, (_, i) => generalAnswer(`And part ${i + 1}?`)),
+    ];
+    const next = await ask("What supply voltage does it need?");
+    expect(next.providerAsked).toBe(false);
+    expect(next.status?.message).toContain("GS11N-20P2");
+    expect(next.status?.message).toMatch(/earlier in this conversation/i);
+  });
+});

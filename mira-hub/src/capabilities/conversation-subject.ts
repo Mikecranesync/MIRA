@@ -24,20 +24,46 @@ export type PriorTurn = {
  *  an error — leaves the subject of its question open. */
 const DOCUMENT_BASES: ReadonlySet<string> = new Set(["workspace_evidence", "oem_documentation"]);
 
-/** Hard bound on how far back a subject carries, whatever the caller read. */
-const MAX_OPEN_QUESTIONS = 6;
+/**
+ * How many turns to read, widening only while the open run has no start in
+ * sight. The first step is the ordinary case: one small read. A conversation
+ * whose newest six turns are all unanswered is read again, further back.
+ */
+export const SUBJECT_READ_STEPS: readonly number[] = [6, 60, 300];
+
+export type SubjectRead = {
+  /** The questions whose subject is still open, NEWEST FIRST. */
+  questions: string[];
+  /**
+   * True when the start of the open run was seen: a document answer closed
+   * what came before it, or the conversation began inside what was read.
+   * False means older turns exist that were not read and nothing read closes
+   * them off — a model named back there would still be the subject.
+   */
+  complete: boolean;
+};
+
+/**
+ * `turns` is the newest `limit` completed turns of one conversation, OLDEST
+ * FIRST (listTurns' order).
+ */
+export function readSubject(turns: readonly PriorTurn[], limit: number): SubjectRead {
+  const questions: string[] = [];
+  for (let i = turns.length - 1; i >= 0; i--) {
+    const turn = turns[i];
+    if (turn.answerStatus === "answered" && typeof turn.basis === "string" && DOCUMENT_BASES.has(turn.basis)) {
+      return { questions, complete: true };
+    }
+    const question = turn.question?.trim();
+    if (question) questions.push(question);
+  }
+  return { questions, complete: turns.length < limit };
+}
 
 /**
  * The questions whose subject is still open, NEWEST FIRST.
  * `turns` is one conversation's completed turns, OLDEST FIRST (listTurns' order).
  */
 export function openQuestions(turns: readonly PriorTurn[]): string[] {
-  const open: string[] = [];
-  for (let i = turns.length - 1; i >= 0 && open.length < MAX_OPEN_QUESTIONS; i--) {
-    const turn = turns[i];
-    if (turn.answerStatus === "answered" && typeof turn.basis === "string" && DOCUMENT_BASES.has(turn.basis)) break;
-    const question = turn.question?.trim();
-    if (question) open.push(question);
-  }
-  return open;
+  return readSubject(turns, Number.POSITIVE_INFINITY).questions;
 }

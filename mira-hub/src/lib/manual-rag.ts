@@ -1476,6 +1476,12 @@ export async function retrieveNodeChunks(
      *  names no model and no confirmed notebook identity scopes it: the model
      *  an earlier, unanswered question named is then still the subject. */
     subjectQueries?: readonly string[];
+    /** True when the caller's widest read of earlier turns found no start to
+     *  the open run (conversation-subject.ts `complete: false`): a model named
+     *  further back than was read would still be the subject. A question that
+     *  names no model, with no model named in what WAS read, is then refused
+     *  (`diagnostics.subjectOutOfReach`) instead of being judged on its own. */
+    subjectOutOfReach?: boolean;
     /** #4983 — the question rewritten into the manual's vocabulary (search
      *  phrases a model produced from the forum-style post). Rides as one more
      *  query variant: its own OR pass for recall and its terms in the rerank's
@@ -1530,6 +1536,10 @@ export async function retrieveNodeChunks(
       /** #5355: the question named two sibling models with no comparison cue;
        *  nothing was retrieved and the reply asks which one. */
       ambiguousModelAsk?: { named: string[] };
+      /** The question named no model, none of the earlier questions read names
+       *  one, and older unanswered turns exist that were not read: nothing was
+       *  retrieved and the reply asks for the model or a new conversation. */
+      subjectOutOfReach?: true;
       /** #5369: a model or catalog number the detector has no pattern for, and
        *  EVERY selected manual was refused because it is not shown to cover it. */
       unlistedModelRefusal?: UnlistedModelRefusal;
@@ -1660,6 +1670,15 @@ export async function retrieveNodeChunks(
   const ownNumbers = unlistedModelNumbers(ownQuestion);
   const earlierQuestions = !namesKnownModel(ownQuestion) ? (opts.subjectQueries ?? []) : [];
   const modelAt = earlierQuestions.findIndex(namesKnownModel);
+  // The open run is longer than the caller could read, this question names
+  // no model, and nothing read names one: a model named further back would
+  // still be the subject, and it cannot be seen. Retrieve nothing rather than
+  // judge the question on its own words. A model named in what was read is
+  // carried as usual (it is the newest one; nothing older than it matters).
+  if (opts.subjectOutOfReach && !namesKnownModel(ownQuestion) && modelAt < 0) {
+    if (opts.diagnostics) opts.diagnostics.subjectOutOfReach = true;
+    return [];
+  }
   const carriedModelQuestion = modelAt >= 0 ? earlierQuestions[modelAt] : null;
   const modelQuestion = carriedModelQuestion ?? ownQuestion;
   const carriedNumbers = (modelAt >= 0 ? earlierQuestions.slice(0, modelAt + 1) : earlierQuestions)
