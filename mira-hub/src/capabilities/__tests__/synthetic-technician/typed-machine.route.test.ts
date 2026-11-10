@@ -7,7 +7,14 @@
  * database and the session are stand-ins; the route, the proposal code and the
  * model parser are the real ones. No network, $0.
  *
- * Not proven here: the card on a screen, or production's maker list.
+ * It then does what the card's "Use its manuals" button does: posts the
+ * proposal to POST /api/equipment-notebooks/[id]/identity/confirm, with the
+ * work-packet switch unset (production's value). The confirm write is the real
+ * function; only the SQL client is a stand-in, so the test reads the statement
+ * and the values it would send.
+ *
+ * Not proven here: the card on a screen, the database trigger that promotes a
+ * found manual, or production's maker list.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
@@ -43,8 +50,12 @@ vi.mock("@/lib/manual-rag", async (importOriginal) => ({
   ...ragMock,
 }));
 
+// One shared SQL stand-in, so the confirm step can read what would be written.
+// Reset to "returns nothing" before every test, which is what the chat route's
+// fail-open reads saw before this stand-in was shared.
+const tenantQuery = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/tenant-context", () => ({
-  withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) => fn({ query: vi.fn() })),
+  withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) => fn({ query: tenantQuery })),
 }));
 vi.mock("@/lib/db", () => ({
   default: {
@@ -80,6 +91,7 @@ vi.mock("@/capabilities/notebook-manual-acquisition", async (importOriginal) => 
 }));
 
 import { POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
+import { POST as CONFIRM } from "@/app/api/equipment-notebooks/[id]/identity/confirm/route";
 
 function providerStream(text: string) {
   const enc = new TextEncoder();
@@ -115,10 +127,37 @@ async function ask(message: string): Promise<Record<string, unknown>[]> {
 
 const proposalIn = (frames: Record<string, unknown>[]) => frames.find((f) => f.kind === "identity_proposal");
 
+/** What the card's "Use its manuals" button sends (hub-host.tsx onConfirmIdentity). */
+async function confirm(proposal: Record<string, unknown> | undefined) {
+  if (!proposal) throw new Error("no machine was proposed, so there is nothing to confirm");
+  const res = await CONFIRM(
+    new NextRequest("http://test/api/equipment-notebooks/x/identity/confirm", {
+      method: "POST",
+      body: JSON.stringify({ manufacturer: proposal.manufacturer, model: proposal.model }),
+      headers: { "Content-Type": "application/json" },
+    }),
+    { params: Promise.resolve({ id: NB }) },
+  );
+  return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+}
+
+/** The identity write the confirm step sent to the database, if any. */
+function identityWrite(): unknown[] | undefined {
+  const call = tenantQuery.mock.calls.find(([sql]) => /UPDATE equipment_notebooks/.test(String(sql)));
+  return call?.[1] as unknown[] | undefined;
+}
+
+const writeSucceeds = () =>
+  tenantQuery.mockImplementation(async (sql: string) =>
+    /UPDATE equipment_notebooks/.test(sql) ? { rows: [{ id: NB }], rowCount: 1 } : { rows: [], rowCount: 0 },
+  );
+
 beforeEach(() => {
   process.env.NOTEBOOK_SEMANTIC_CHECK = "0";
   process.env.NEON_DATABASE_URL = "postgres://test";
+  delete process.env.NOTEBOOK_WORK_PACKET;
   vi.clearAllMocks();
+  tenantQuery.mockReset();
   nbMock.getNotebook.mockResolvedValue({ id: NB, displayName: "New machine", nodeId: NODE, manufacturer: null, model: null });
   nbMock.resolveBoundAsset.mockResolvedValue({ state: "unbound" });
   nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
@@ -160,5 +199,56 @@ describe("a blank notebook, and the technician types the relay the way its data 
 
   it("control: a general question proposes nothing", async () => {
     expect(proposalIn(await ask("what does PNP mean on a sensor?"))).toBeUndefined();
+  });
+});
+
+describe("the technician taps \"Use its manuals\" on the card, with the work-packet switch off", () => {
+  it("PLC: the family is recorded as the confirmed machine, and only then does the manual search start", async () => {
+    const proposal = proposalIn(await ask("Allen-Bradley Micro820 2080-LC20-20QBB has a red fault light"));
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+    writeSucceeds();
+
+    const { status, body } = await confirm(proposal);
+
+    expect(status).toBe(200);
+    expect(body).toMatchObject({ ok: true, manufacturer: "Allen-Bradley", model: "820", catalogNumber: "" });
+    const write = identityWrite();
+    expect(write?.slice(0, 5)).toEqual([TENANT, NB, "Allen-Bradley", "820", ""]);
+    expect(acqMock.startManualAcquisition).toHaveBeenCalledTimes(1);
+    expect(acqMock.startManualAcquisition.mock.calls[0]).toMatchObject([
+      { notebookId: NB, identity: { identityStatus: "user_confirmed", manufacturer: "Allen-Bradley", model: "820" } },
+    ]);
+  });
+
+  it("relay: the catalog number is recorded as the confirmed machine", async () => {
+    const proposal = proposalIn(await ask("Schneider Electric TeSys K CA3KN22BD, what is the coil voltage?"));
+    writeSucceeds();
+
+    const { status, body } = await confirm(proposal);
+
+    expect(status).toBe(200);
+    expect(body).toMatchObject({ ok: true, manufacturer: "Schneider Electric", model: "CA3KN22BD" });
+    expect(identityWrite()?.slice(0, 5)).toEqual([TENANT, NB, "Schneider Electric", "CA3KN22BD", ""]);
+  });
+
+  it("control: a machine already confirmed as something else is not overwritten (a stale card)", async () => {
+    const proposal = { manufacturer: "Allen-Bradley", model: "820" };
+    tenantQuery.mockImplementation(async (sql: string) =>
+      /UPDATE equipment_notebooks/.test(sql)
+        ? { rows: [], rowCount: 0 }
+        : { rows: [{ manufacturer: "AutomationDirect", model: "GS11N-20P2" }], rowCount: 1 },
+    );
+
+    const { status, body } = await confirm(proposal);
+
+    expect(status).toBe(409);
+    expect(body).toMatchObject({ error: "identity_already_confirmed", manufacturer: "AutomationDirect", model: "GS11N-20P2" });
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+  });
+
+  it("control: the plate that contradicts itself gives the technician nothing to confirm", async () => {
+    const proposal = proposalIn(await ask("Allen-Bradley Micro850 2080-LC20-20QBB has a red fault light"));
+    await expect(confirm(proposal)).rejects.toThrow("nothing to confirm");
+    expect(identityWrite()).toBeUndefined();
   });
 });
