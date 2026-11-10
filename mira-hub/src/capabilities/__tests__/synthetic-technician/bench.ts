@@ -262,6 +262,25 @@ export const SIBLING_PLC_SHEET: Manual = {
 /** The controller recorded by the catalog number on its plate, not by its family. */
 export const PLC_BY_CATALOG: Identity = { manufacturer: "Allen-Bradley", model: "2080-LC20-20QBB" };
 
+export const MICRO820_SHEET_AS_STORED: Manual = {
+  ...MICRO820_SHEET,
+  key: "micro820-installation-instructions-as-stored",
+  heading:
+    MICRO820_SHEET.heading
+    + "\nhttp://rockwellautomation.com/literature\nFR\nCette publication est disponible en fran\u00e7ais\n"
+    + "sous forme \u00e9lectronique (fichier PDF). Pour la\nt\u00e9l\u00e9charger, rendez-vous sur la page Internet\nindiqu\u00e9e ci-dessus.",
+};
+export const RELAY_SHEET_AS_STORED: Manual = {
+  ...RELAY_SHEET,
+  key: "ca3kn22bd-data-sheet-as-stored",
+  filename: "DS0004417.pdf",
+  heading:
+    RELAY_SHEET.heading
+    + "\nProduct availability: Stock - Normally stocked in distribution\nfacility\nMain\nRange TeSys\n"
+    + "Product name TeSys CAK\nProduct or Component Type Control relay\nDevice short name CA3K\n"
+    + "Contactor application Control circuit\nUtilisation category AC-15\nDC-13\nPole contact composition 2 NO + 2 NC",
+};
+
 export const EXTRA_JOBS: Job[] = [
   // Wordings that must still refuse.
   { id: "X-01", who: "journeyman", doing: "asking about the sibling; the exclusion is in capitals",
@@ -320,4 +339,20 @@ export const EXTRA_JOBS: Job[] = [
   { id: "X-18", who: "apprentice", doing: "asking in a project whose relay part number was typed but never confirmed",
     attached: [SIBLING_RELAY_SHEET], identity: RELAY, unconfirmed: true,
     ask: "What is the coil voltage?", want: answer(SIBLING_RELAY_SHEET) },
+  // The same two public covers, as the hub's own extractor and chunker store them
+  // (run over the PDFs 2026-11-10). The typed covers above stop at the model
+  // line; the stored text carries on, and on the PLC sheet the next line is a
+  // web address.
+  { id: "X-19", who: "journeyman", doing: "asking by a listed catalog number, against the sheet's cover as stored",
+    attached: [MICRO820_SHEET_AS_STORED], identity: PLC_BY_CATALOG,
+    ask: "Supply voltage for 2080-LC20-20QBB?", want: answer(MICRO820_SHEET_AS_STORED) },
+  { id: "X-20", who: "apprentice", doing: "asking with no model named, in a project confirmed by catalog number, cover as stored",
+    attached: [MICRO820_SHEET_AS_STORED], identity: PLC_BY_CATALOG,
+    ask: "What is the supply voltage?", want: answer(MICRO820_SHEET_AS_STORED) },
+  { id: "X-21", who: "senior", doing: "asking by an unlisted catalog number, cover as stored",
+    attached: [MICRO820_SHEET_AS_STORED], identity: PLC_BY_CATALOG,
+    ask: "Supply voltage for 2080-LC50-24QWB?", want: REFUSE, says: "other-model", about: "question" },
+  { id: "X-22", who: "apprentice", doing: "asking with no model named, relay sheet as stored",
+    attached: [RELAY_SHEET_AS_STORED], identity: RELAY,
+    ask: "What is the coil voltage?", want: answer(RELAY_SHEET_AS_STORED) },
 ];

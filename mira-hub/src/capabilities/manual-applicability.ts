@@ -46,7 +46,16 @@ import { modelMentionsInText } from "./model-token";
  *     look-alike, so it is not judged, as today;
  *   - covers in languages other than English, German, French, Spanish and
  *     Italian are read with the English lists only;
+ *   - "NO" and "DO" read as contact or channel notation only beside a count of
+ *     one or two digits or their pair ("2 NO + 2 NC", "DI/DO"); "IS" and "IT"
+ *     read as nouns only when shouted in a line that is not. A remark shouted
+ *     that way in mixed-case text ("RX420 IS sold elsewhere") reads as a title
+ *     when a title noun is beside it;
  *   - a cover that names exactly one model, as a title, is trusted.
+ *
+ * Checked 2026-11-10 against the first stored block of the pilot's public
+ * manuals (the hub's own extractor and chunker over the PDFs): each answers
+ * for its own part or catalog number and refuses a sibling's.
  */
 
 /** One model or catalog number: `key` compares, `label` is shown. */
@@ -241,7 +250,22 @@ const isSentenceWord = (word: string): boolean => {
 };
 // "May 2021", "12 May 2021", "May 12, 2021": the month, not the verb.
 const isMonthMay = (words: string[], i: number) => words[i].toLowerCase() === "may" && /^(?:\d{1,2}|(?:19|20)\d{2})$/.test(words[i + 1] ?? "");
-const sentenceWordAt = (words: string[], i: number) => isSentenceWord(words[i]) && !isMonthMay(words, i);
+// "NO", "DO", "IS" and "IT" are also nouns on a cover: normally-open contacts
+// ("2 NO + 2 NC", "NO/NC"), digital outputs ("4 DO", "DI/DO"), intrinsic safety
+// ("IS Barrier") and IT power systems. NO and DO count as the noun only beside a
+// contact or channel count or their pair; IS and IT only when shouted in a line
+// that is not ("RX420 IS SOLD ELSEWHERE" stays a sentence).
+const CONTACT_PAIRS: Record<string, string[]> = { no: ["nc"], do: ["di"] };
+const isNotationNoun = (words: string[], i: number): boolean => {
+  const pairs = CONTACT_PAIRS[words[i].toLowerCase()];
+  if (pairs) {
+    const at = (step: number) => (words[i + step] ?? "").toLowerCase();
+    const paired = [-1, 1].some((d) => pairs.includes(at(d)) || (at(d) === "+" && pairs.includes(at(2 * d))));
+    return /^\d{1,2}$/.test(at(-1)) || paired;
+  }
+  return (words[i] === "IS" || words[i] === "IT") && words.some((w) => /[a-z]/.test(w));
+};
+const sentenceWordAt = (words: string[], i: number) => isSentenceWord(words[i]) && !isMonthMay(words, i) && !isNotationNoun(words, i);
 const hasSentenceWord = (line: string) => {
   const words = wordsOf(line);
   return /\bw\/o\b/i.test(line) || words.some((_, i) => sentenceWordAt(words, i));
@@ -283,11 +307,12 @@ function continuesSentence(below: string): boolean {
   const words = wordsOf(below);
   const first = (words[0] ?? "").toLowerCase();
   // A wrapped sentence starts with an ordinary lower-case word ("is not …",
-  // "and accessories …"). A brand that starts small ("iC7 Series") is not one.
-  if (/^[a-z]+$/.test(words[0] ?? "")) return true;
+  // "and accessories …"). A brand that starts small ("iC7 Series") is not one,
+  // nor is a web address ("http://…" sits under the catalog list on a real cover).
+  if (/^[a-z]+$/.test(words[0] ?? "") && !/^[a-z][a-z0-9+.-]*:\/\//i.test(below.trim())) return true;
   // "CAN Interface Module" is a part, "Can be found in …" is a sentence.
   const acronym = (words[0] ?? "") === "CAN" && /[a-z]/.test(below);
-  if ((PREDICATE_WORDS.has(first) && !isMonthMay(words, 0) && !acronym) || isExclusionWord(first)) return true;
+  if ((PREDICATE_WORDS.has(first) && !isMonthMay(words, 0) && !acronym && !isNotationNoun(words, 0)) || isExclusionWord(first)) return true;
   return POINTER_WORDS.has(first) && modelNumbersIn(below).length === 0;
 }
 

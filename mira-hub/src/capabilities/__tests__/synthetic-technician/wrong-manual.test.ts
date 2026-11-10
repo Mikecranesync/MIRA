@@ -177,14 +177,14 @@ describe("synthetic technician — scorecard", () => {
   // into the known-fail list, changes a number a reviewer has to look at.
   it("counts: all 30 jobs go right, none is a known wrong-manual fail; 16 rows were added beside them", () => {
     expect({ right: passing.length, knownWrong: failing.length, added: EXTRA_JOBS.length })
-      .toEqual({ right: 30, knownWrong: 0, added: 18 });
+      .toEqual({ right: 30, knownWrong: 0, added: 22 });
   });
 
   // 30 right answers are also reachable by refusing more. These are the jobs
   // that must ANSWER; the number is pinned so one cannot be turned into a refusal unseen.
   it("counts: 15 of the 30 must answer, and 9 of the 16 added rows", () => {
     const answers = (jobs: Job[]) => jobs.filter((j) => "answerFrom" in j.want).length;
-    expect({ contract: answers(JOBS), added: answers(EXTRA_JOBS) }).toEqual({ contract: 15, added: 11 });
+    expect({ contract: answers(JOBS), added: answers(EXTRA_JOBS) }).toEqual({ contract: 15, added: 14 });
   });
 });
 

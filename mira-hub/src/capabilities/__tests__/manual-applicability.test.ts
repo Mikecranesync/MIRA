@@ -385,6 +385,70 @@ describe("real cover shapes that must still answer", () => {
   });
 });
 
+// "NO", "DO", "IS" and "IT" are sentence words and also cover nouns: normally-open
+// contacts, digital outputs, intrinsic safety, IT power systems.
+describe("contact and I/O notation is not a negation", () => {
+  it.each([
+    ["Coil voltage of the CA3KN22BD?", "CA3KN22BD - TeSys K control relay - 2 NO + 2 NC - 24 V DC coil"],
+    ["Coil voltage of the CA3KN22BD?", "TeSys K control relay, 2 NO + 2 NC, 24 V DC coil\nCA3KN22BD"],
+    ["Coil voltage of the CA3KN22BD?", "CONTROL RELAY 2 NO + 2 NC\nCA3KN22BD"],
+    ["RX420 supply voltage?", "RX420 Relay Output Module NO/NC"],
+    ["RX420 supply voltage?", "RX420 Relay Output Module NO + NC"],
+    ["RX420 supply voltage?", "RX420 Logic Controller 8 DI / 4 DO"],
+    ["RX420 supply voltage?", "RX420 Logic Controller DI/DO"],
+    ["RX420 supply voltage?", "RX420 IT Power Systems Guide"],
+    ["RX420 supply voltage?", "RX420 IS Barrier Installation Guide"],
+    ["RX420 supply voltage?", "RX420 Logic Controller\nIS Barrier Module"],
+    ["RX420 supply voltage?", "RX420 Logic Controller\nNO/NC Relay Outputs"],
+  ])("%s on %j answers", (question, heading) => expect(kindOf(verdict(question, heading, "DS1.pdf"))).toBe("answers"));
+
+  it.each([
+    ["a bare NO", "RX420 NO SUPPORT\nHardware User Guide"],
+    ["NO after a model's own digits, not a contact count", "RX420 Drive Series 525 NO SUPPORT\nUser Manual"],
+    ["NO opening a mixed-case remark", "NO RX420 support in this Guide"],
+    ["a shouted IS in a shouted line", "RX420 IS SOLD ELSEWHERE\nHardware User Guide"],
+    ["a shouted IS on the line below", "RX420 Logic Controller\nIS SOLD ELSEWHERE"],
+    ["an ordinary is", "RX420 is sold elsewhere\nHardware User Guide"],
+    ["DO as a verb", "RX420 DO NOT INSTALL\nHardware User Guide"],
+    ["do not, in a count's shadow", "RX420 Controller 2 do not fit"],
+  ])("control, still refused: %s", (_why, heading) =>
+    expect(kindOf(verdict("RX420 supply voltage?", heading, "DS1.pdf"))).toBe("coverage-not-shown"));
+});
+
+// The first block of each pilot manual as the hub stores it: its own extractor and
+// chunker run over the public PDF (2026-11-10). Earlier fixtures stopped at the
+// catalog list; the stored text carries on, and the next line is a web address.
+describe("pilot covers as stored, not as typed", () => {
+  const IN009_AS_STORED =
+    "Installation Instructions\nMicro820 20-Point Programmable Controllers\n"
+    + "Catalog Numbers 2080-LC20-20QWB, 2080-LC20-20QBB,\n2080-LC20-20AWB, 2080-LC20-20QWBR,\n"
+    + "2080-LC20-20QBBR, 2080-LC20-20AWBR\nhttp://rockwellautomation.com/literature\nFR\n"
+    + "Cette publication est disponible en fran\u00e7ais\nsous forme \u00e9lectronique (fichier PDF). Pour la";
+  const RELAY_AS_STORED =
+    "Control relay, TeSys K, 2 NO + 2\nNC, lt or eq to 690V, 24VDC\nstandard coil\nCA3KN22BD\n"
+    + "Product availability: Stock - Normally stocked in distribution\nfacility\nMain\nRange TeSys\n"
+    + "Product name TeSys CAK\nProduct or Component Type Control relay\nDevice short name CA3K\n"
+    + "Pole contact composition 2 NO + 2 NC";
+
+  it("the Micro820 installation sheet answers for a catalog number it lists, with a web address on the next line", () => {
+    expect(kindOf(verdict("Supply voltage for 2080-LC20-20QBB?", IN009_AS_STORED, "2080-in009_-en-p.pdf"))).toBe("answers");
+  });
+  it("and still refuses a catalog number it does not list", () => {
+    expect(verdict("Supply voltage for 2080-LC50-24QWB?", IN009_AS_STORED, "2080-in009_-en-p.pdf")).toMatchObject({ admit: false, kind: "other-model" });
+  });
+  it("the relay data sheet answers for its own part number and refuses its sibling's", () => {
+    expect(kindOf(verdict("Coil voltage of the CA3KN22BD?", RELAY_AS_STORED, "DS0004417.pdf"))).toBe("answers");
+    expect(verdict("Coil voltage of the CA3KN31BD?", RELAY_AS_STORED, "DS0004417.pdf")).toMatchObject({ admit: false, kind: "other-model", declared: ["CA3KN22BD"] });
+  });
+  it.each(["www.northfield.example/rx", "https://northfield.example/literature", "support@northfield.example"])(
+    "an address below a title is not the rest of a sentence: %s",
+    (address) => expect(kindOf(verdict("RX420 supply voltage?", `Northfield RX420 Logic Controller\n${address}`))).toBe("answers"),
+  );
+  it("control: an ordinary lower-case line below still is", () => {
+    expect(kindOf(verdict("RX420 supply voltage?", "Northfield RX420 Logic Controller\nis described in a separate guide"))).toBe("coverage-not-shown");
+  });
+});
+
 describe("a remark that a clean title beside it must not carry", () => {
   it("a sibling's line with a mark and no noun does not join the title above it", () => {
     expect(verdict("RX420 supply voltage?", "Northfield RX410 Logic Controller\nRX420: sold elsewhere\nHardware User Guide")).toMatchObject({
