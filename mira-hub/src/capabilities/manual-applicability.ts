@@ -59,9 +59,12 @@ import { type PhotoDocumentKind, productWrittenBody } from "./photo-document-tex
  *     Italian are read with the English lists only;
  *   - "NO" and "DO" read as contact or channel notation only beside a count of
  *     one or two digits or their pair ("2 NO + 2 NC", "DI/DO"); "IS" and "IT"
- *     read as nouns only when shouted in a line that is not. A remark shouted
- *     that way in mixed-case text ("RX420 IS sold elsewhere") reads as a title
- *     when a title noun is beside it;
+ *     read as nouns only when shouted in a line that is not, directly before
+ *     one of a short list of words they qualify ("IS Barrier", "IT Power
+ *     Systems"). So "RX420 IS sold elsewhere Logic Controller" is a remark and
+ *     is refused; a legit cover whose word is not on the list ("IS Repeater")
+ *     is refused too; and a remark built from a listed word ("RX420 IS power
+ *     hungry Controller") still reads as a title;
  *   - a cover that names exactly one model, as a title, is trusted;
  *   - an uploaded file whose first line is the product's own photo-reading,
  *     nameplate or photo-OCR line is read as one;
@@ -282,8 +285,15 @@ const isMonthMay = (words: string[], i: number) => words[i].toLowerCase() === "m
 // ("2 NO + 2 NC", "NO/NC"), digital outputs ("4 DO", "DI/DO"), intrinsic safety
 // ("IS Barrier") and IT power systems. NO and DO count as the noun only beside a
 // contact or channel count or their pair; IS and IT only when shouted in a line
-// that is not ("RX420 IS SOLD ELSEWHERE" stays a sentence).
+// that is not ("RX420 IS SOLD ELSEWHERE" stays a sentence) AND directly before
+// the thing they qualify ("IS Barrier", "IT Power"). Anywhere else a shouted IS
+// is still the verb: "RX420 IS sold elsewhere Logic Controller" is a remark
+// (review round 3 on #5389). The list is closed and short on purpose: a legit
+// cover it misses is refused, which is the safe side.
 const CONTACT_PAIRS: Record<string, string[]> = { no: ["nc"], do: ["di"] };
+const IS_IT_QUALIFIES = new Set(
+  "barrier barriers isolator isolators interface interfaces power network networks system systems mains earthing grounding".split(" "),
+);
 const isNotationNoun = (words: string[], i: number): boolean => {
   const pairs = CONTACT_PAIRS[words[i].toLowerCase()];
   if (pairs) {
@@ -291,7 +301,11 @@ const isNotationNoun = (words: string[], i: number): boolean => {
     const paired = [-1, 1].some((d) => pairs.includes(at(d)) || (at(d) === "+" && pairs.includes(at(2 * d))));
     return /^\d{1,2}$/.test(at(-1)) || paired;
   }
-  return (words[i] === "IS" || words[i] === "IT") && words.some((w) => /[a-z]/.test(w));
+  return (
+    (words[i] === "IS" || words[i] === "IT") &&
+    IS_IT_QUALIFIES.has((words[i + 1] ?? "").toLowerCase()) &&
+    words.some((w) => /[a-z]/.test(w))
+  );
 };
 const sentenceWordAt = (words: string[], i: number) => isSentenceWord(words[i]) && !isMonthMay(words, i) && !isNotationNoun(words, i);
 const hasSentenceWord = (line: string) => {

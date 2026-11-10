@@ -396,6 +396,16 @@ export const PLC_WITH_CATALOG_FIELD: Identity = { manufacturer: "Allen-Bradley",
 /** The relay with its part number in both fields. */
 export const RELAY_BOTH_FIELDS: Identity = { manufacturer: "Schneider Electric", model: "CA3KN22BD", catalogNumber: "CA3KN22BD" };
 
+/** Review round 3 on #5389: a remark with a shouted IS, in a mixed-case line with a product noun beside it. */
+export const RX420_SHOUTED_IS_REMARK = synthetic(
+  "rx420-shouted-is-remark", "RX420 IS sold elsewhere Logic Controller\nHardware User Guide", "NF0000021.pdf");
+/** The same remark, wrapped: the shouted IS opens the line below the title. */
+export const RX420_SHOUTED_IS_BELOW = synthetic(
+  "rx420-shouted-is-below", "RX420 Logic Controller\nIS sold elsewhere", "NF0000021.pdf");
+/** Control: IS as intrinsic safety, directly before the part it qualifies. */
+export const RX420_IS_BARRIER = synthetic(
+  "rx420-is-barrier", "RX420 IS Barrier Installation Guide", "NF0000023.pdf");
+
 export const EXTRA_JOBS: Job[] = [
   // Wordings that must still refuse.
   { id: "X-01", who: "journeyman", doing: "asking about the sibling; the exclusion is in capitals",
@@ -578,4 +588,15 @@ export const EXTRA_JOBS: Job[] = [
   { id: "X-54", who: "senior", doing: "asking by another relay part number; the search finds no passage in this relay's confirmed nameplate",
     attached: [RELAY_PLATE], identity: RELAY,
     ask: "What is the coil voltage of the CA3KN31BD?", want: REFUSE, says: "other-model", about: "question", noPassages: true },
+
+  // A shouted IS is the noun only directly before what it qualifies (review round 3 on #5389).
+  { id: "X-55", who: "journeyman", doing: "asking about a model the cover only remarks on, with a shouted IS and a product noun beside it",
+    attached: [RX420_SHOUTED_IS_REMARK],
+    ask: "What supply voltage does the RX420 controller accept?", want: REFUSE, says: "coverage-not-shown", about: "question" },
+  { id: "X-56", who: "journeyman", doing: "asking about a model whose title is followed by a remark that opens with a shouted IS",
+    attached: [RX420_SHOUTED_IS_BELOW],
+    ask: "What supply voltage does the RX420 controller accept?", want: REFUSE, says: "coverage-not-shown", about: "question" },
+  { id: "X-57", who: "journeyman", doing: "control: asking about the model on an intrinsic-safety barrier guide",
+    attached: [RX420_IS_BARRIER],
+    ask: "What supply voltage does the RX420 controller accept?", want: answer(RX420_IS_BARRIER) },
 ];

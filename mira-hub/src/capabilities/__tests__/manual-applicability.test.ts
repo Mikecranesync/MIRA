@@ -430,6 +430,8 @@ describe("contact and I/O notation is not a negation", () => {
     ["RX420 supply voltage?", "RX420 IT Power Systems Guide"],
     ["RX420 supply voltage?", "RX420 IS Barrier Installation Guide"],
     ["RX420 supply voltage?", "RX420 Logic Controller\nIS Barrier Module"],
+    ["RX420 supply voltage?", "RX420 IS barrier - installation guide"],
+    ["RX420 supply voltage?", "RX420 IT Network Supply Module"],
     ["RX420 supply voltage?", "RX420 Logic Controller\nNO/NC Relay Outputs"],
   ])("%s on %j answers", (question, heading) => expect(kindOf(verdict(question, heading, "DS1.pdf"))).toBe("answers"));
 
@@ -440,6 +442,14 @@ describe("contact and I/O notation is not a negation", () => {
     ["a shouted IS in a shouted line", "RX420 IS SOLD ELSEWHERE\nHardware User Guide"],
     ["a shouted IS on the line below", "RX420 Logic Controller\nIS SOLD ELSEWHERE"],
     ["an ordinary is", "RX420 is sold elsewhere\nHardware User Guide"],
+    // Review round 3 on #5389: a shouted IS or IT is the noun only directly
+    // before what it qualifies ("IS Barrier", "IT Power"), not anywhere in a
+    // line that happens to carry lower case.
+    ["a shouted IS in a mixed-case remark", "RX420 IS sold elsewhere Logic Controller"],
+    ["a shouted IS in a title-cased remark", "RX420 IS Sold Elsewhere Logic Controller"],
+    ["a shouted IT in a mixed-case remark", "RX420 IT ships separately Logic Controller"],
+    ["a shouted IS opening a lower-case line below", "RX420 Logic Controller\nIS sold elsewhere"],
+    ["a shouted IS at the end of the line", "RX420 Logic Controller sold where the RX410 IS"],
     ["DO as a verb", "RX420 DO NOT INSTALL\nHardware User Guide"],
     ["do not, in a count's shadow", "RX420 Controller 2 do not fit"],
   ])("control, still refused: %s", (_why, heading) =>
@@ -643,6 +653,13 @@ describe("stated limits, pinned so a change to them is seen", () => {
     const tagPlate = reading("CV-101", "Asset tag plate reads CV-101.");
     expect(kindOf(written("CV-101 stops when CV-102 is full, what should I check?", tagPlate, READING_FILE))).toBe("several-look-alikes");
     expect(kindOf(written("What is the belt speed on CV-101?", tagPlate, READING_FILE))).toBe("answers");
+  });
+  // A shouted IS or IT is a noun only before a short closed list of words (review round 3 on #5389).
+  it("an intrinsic-safety cover whose next word is not on the list is refused", () => {
+    expect(kindOf(verdict("RX420 supply voltage?", "RX420 IS Repeater Installation Guide", "DS1.pdf"))).toBe("coverage-not-shown");
+  });
+  it("a remark built from a listed word, with a product noun beside it, still reads as a title", () => {
+    expect(kindOf(verdict("RX420 supply voltage?", "RX420 IS power hungry Controller", "DS1.pdf"))).toBe("answers");
   });
 });
 
