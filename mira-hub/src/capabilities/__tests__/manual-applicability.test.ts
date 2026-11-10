@@ -270,7 +270,7 @@ describe("the reply text", () => {
     const r = summarizeUnlistedRefusals([refusal(manualAnswersFor(asked("CA3KN22BD"), "standard coil\nCA3KN31BD", "DS1.pdf"))], "conversation");
     const text = unlistedModelRefusalText(r);
     expect(text).toContain("not the CA3KN22BD you asked about earlier in this conversation");
-    expect(text).toMatch(/name its model in the question or start a new conversation/);
+    expect(text).toMatch(/name its model in the question or start a new chat/);
     expect(text).toMatch(/won't answer/);
   });
   it("manuals refused for different reasons share only the weakest claim, and no cover number", () => {

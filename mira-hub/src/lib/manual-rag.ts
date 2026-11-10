@@ -1476,24 +1476,29 @@ export async function retrieveNodeChunks(
   // subject of a follow-up that names none ("It will not start" about a named
   // drive, then "What supply voltage does it need?"). Narrow on purpose:
   //   - this question names no model or number of its own (naming one wins);
-  //   - no confirmed notebook identity (that machine is the subject, and its
-  //     own check below applies);
-  //   - the detector model comes from the newest earlier question that names
-  //     one; numbers the detector cannot read are taken from all of them.
+  //   - the model is the one the NEWEST earlier question names, and nothing
+  //     older than that question is read: an older subject does not leak
+  //     past a newer named model;
+  //   - numbers the detector cannot read are taken from every question up to
+  //     that one. A number alone is not a boundary, because a fault code
+  //     reads as a number too (F0004), and a fault question in between must
+  //     not drop the model number asked before it.
+  // A confirmed notebook machine does not switch this off: "the plate reads
+  // <another product>" followed by "what voltage does it need?" is about that
+  // other product, whatever the notebook is set up for.
   const ownQuestion = opts.rawQuery ?? q;
   const namesKnownModel = (text: string) => {
     const named = resolveModelFromObservationText(text);
     return Boolean(named.model) || named.ambiguous || modelIdentitiesInText(text).size > 0;
   };
   const ownNumbers = unlistedModelNumbers(ownQuestion);
-  const notebookHasConfirmedIdentity =
-    (opts.identityStatus === "user_confirmed" || opts.identityStatus === "verified") &&
-    Boolean(opts.identity?.model?.trim() || opts.catalogNumber?.trim());
-  const carriedQuestions =
-    !namesKnownModel(ownQuestion) && ownNumbers.length === 0 && !notebookHasConfirmedIdentity ? (opts.subjectQueries ?? []) : [];
-  const carriedModelQuestion = carriedQuestions.find(namesKnownModel) ?? null;
+  const earlierQuestions = !namesKnownModel(ownQuestion) && ownNumbers.length === 0 ? (opts.subjectQueries ?? []) : [];
+  const modelAt = earlierQuestions.findIndex(namesKnownModel);
+  const carriedModelQuestion = modelAt >= 0 ? earlierQuestions[modelAt] : null;
   const modelQuestion = carriedModelQuestion ?? ownQuestion;
-  const carriedNumbers = carriedQuestions.flatMap((text) => unlistedModelNumbers(text));
+  const carriedNumbers = (modelAt >= 0 ? earlierQuestions.slice(0, modelAt + 1) : earlierQuestions).flatMap((text) =>
+    unlistedModelNumbers(text),
+  );
   const carriedLabels = new Set(carriedNumbers.map((n) => n.label));
 
   const requestedModel = resolveModelFromObservationText(modelQuestion);

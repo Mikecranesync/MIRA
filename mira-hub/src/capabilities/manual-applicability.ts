@@ -537,7 +537,7 @@ export function summarizeUnlistedRefusals(
 
 /** The way out when the subject was carried from an earlier question. */
 export const EARLIER_SUBJECT_WAY_OUT =
-  "If this question is about a different machine, name its model in the question or start a new conversation.";
+  "If this question is about a different machine, name its model in the question or start a new chat.";
 
 const listed = (labels: string[]) => (labels.length > 6 ? `${labels.slice(0, 6).join(" / ")} and others` : labels.join(" / "));
 

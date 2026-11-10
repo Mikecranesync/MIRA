@@ -111,7 +111,7 @@ describe("namedModelMismatchText", () => {
     const text = namedModelMismatchText({ requested: ["MICRO850"], declared: ["MICRO820"], source: "conversation" });
     expect(text).toContain("not the Micro850 you asked about earlier in this conversation");
     expect(text).toMatch(/won't answer from it/);
-    expect(text).toMatch(/name its model in the question or start a new conversation/);
+    expect(text).toMatch(/name its model in the question or start a new chat/);
     expect(text).toContain("add the Micro850 manual");
   });
 });

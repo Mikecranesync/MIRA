@@ -20,12 +20,13 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { MICRO820_SHEET_AS_STORED, RELAY_SHEET_AS_STORED, type Manual } from "./synthetic-technician/bench";
+import { GS10, MICRO820_SHEET_AS_STORED, RELAY_SHEET_AS_STORED, type Manual } from "./synthetic-technician/bench";
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const NB = "22222222-2222-4222-8222-222222222222";
 const DOC_A = "33333333-3333-4333-8333-333333333333";
 const MACHINE = "44444444-4444-4444-8444-444444444444";
+const DOC_B = "55555555-5555-4555-8555-555555555555";
 
 vi.mock("@/lib/session", () => ({
   sessionOr401: vi.fn(async () => ({ tenantId: TENANT, userId: "u1" })),
@@ -108,23 +109,29 @@ const PASSAGE = "The controller requires a 24 V DC supply.";
 const LOCKOUT_PASSAGE =
   "WARNING: Hazardous voltage. Disconnect power and apply lockout/tagout before servicing. Wait 5 minutes for the capacitors to discharge.";
 const HAZARD_ASK = "It's still powered up. Can I swap the fan?";
+const pageOf = (m: Manual, docId: string, content: string) => ({
+  doc_id: docId,
+  filename: m.filename,
+  document_heading: m.heading,
+  source_url: `https://test.invalid/${m.key}/${m.filename}`,
+  source_page: m.page,
+  page_start: m.page,
+  page_label: m.pageLabel,
+  section_path: null,
+  content,
+  rank: 0.8,
+});
 const attach = (m: Manual, content = PASSAGE) => {
-  db.rows = [{
-    doc_id: DOC_A,
-    filename: m.filename,
-    document_heading: m.heading,
-    source_url: `https://test.invalid/${m.key}/${m.filename}`,
-    source_page: m.page,
-    page_start: m.page,
-    page_label: m.pageLabel,
-    section_path: null,
-    content,
-    rank: 0.8,
-  }];
+  db.rows = [pageOf(m, DOC_A, content)];
+};
+/** Two manuals in one notebook, both selected for the turn. */
+const attachTwo = (a: Manual, b: Manual) => {
+  db.rows = [pageOf(a, DOC_A, PASSAGE), pageOf(b, DOC_B, PASSAGE)];
+  nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A, DOC_B], nodeId: "node-1" });
 };
 
 async function ask(message: string) {
-  const out = await frames(await POST(req({ message, sourceDocIds: [DOC_A] }), params));
+  const out = await frames(await POST(req({ message, sourceDocIds: db.rows.map((r) => String(r.doc_id)) }), params));
   const status = out.find((f) => f.kind === "status") as { status: string; message?: string } | undefined;
   const sources = out.find((f) => f.kind === "sources") as { citations: unknown[] } | undefined;
   return {
@@ -359,6 +366,68 @@ describe("the model a technician named is still the subject of the next question
     const { providerAsked, citations } = await ask("What supply voltage does it need?");
     expect(providerAsked).toBe(true);
     expect(citations.length).toBeGreaterThan(0);
+  });
+
+  it("an answer from a document closes the subject: the next model-less question answers again", async () => {
+    attach(MICRO820_SHEET_AS_STORED);
+    const plate = await ask(PLATE);
+    expect(plate.providerAsked).toBe(false);
+
+    const named = await ask("What supply voltage does the Micro820 need?");
+    expect(named.providerAsked).toBe(true);
+    expect(named.citations.length).toBeGreaterThan(0);
+    // The stored turn, as the route wrote it, is what closes the subject.
+    expect(stored.turns.at(-1)).toMatchObject({ answerStatus: "answered" });
+    expect(["workspace_evidence", "oem_documentation"]).toContain(stored.turns.at(-1)?.basis);
+
+    vi.mocked(fetch).mockClear();
+    const third = await ask("And the input voltage range?");
+    expect(third.providerAsked, "the drive named two turns ago is no longer the subject").toBe(true);
+    expect(third.citations.length).toBeGreaterThan(0);
+  });
+
+  it("two manuals: once a question is answered from a document, the model it named stops narrowing the next one", async () => {
+    attachTwo(MICRO820_SHEET_AS_STORED, GS10);
+    // What the route handed the answer model for the newest turn (its excerpts name their files).
+    const handedToModel = () => JSON.stringify(seamMock.buildRequestBody.mock.calls.at(-1));
+
+    const other = await ask("Which parameter sets acceleration time on the GS23-4010?");
+    expect(other.providerAsked, "neither manual is for the GS23").toBe(false);
+
+    const named = await ask("What supply voltage does the Micro820 need?");
+    expect(named.providerAsked).toBe(true);
+    expect(handedToModel()).toContain(MICRO820_SHEET_AS_STORED.filename);
+    expect(handedToModel(), "the drive manual is not offered for a Micro820 question").not.toContain(GS10.filename);
+    expect(stored.turns.at(-1)).toMatchObject({ answerStatus: "answered" });
+
+    await ask("Which parameter sets the acceleration time?");
+    expect(handedToModel(), "the Micro820 named in the answered turn no longer narrows this one").toContain(GS10.filename);
+    expect(handedToModel()).toContain(MICRO820_SHEET_AS_STORED.filename);
+  });
+
+  it("in a project made from the confirmed controller machine, the follow-up to the refused plate message is refused too", async () => {
+    attach(MICRO820_SHEET_AS_STORED);
+    nbMock.resolveBoundAsset.mockResolvedValue({
+      state: "resolved", entityId: "e-plc", name: "CV-101 PLC", unsPath: "enterprise.garage.cv_101.plc",
+      selectedVia: "asset_picker", confirmedAt: "2026-11-10T07:40:00.000Z", manufacturer: "Allen-Bradley", model: "Micro820",
+    });
+
+    const control = await ask("What supply voltage does it need?");
+    expect(control.providerAsked, "control: the controller's own project answers a model-less question").toBe(true);
+    expect(control.citations.length).toBeGreaterThan(0);
+    stored.turns.length = 0;
+    vi.mocked(fetch).mockClear();
+
+    const first = await ask(PLATE);
+    expect(first.providerAsked).toBe(false);
+    expect(first.status?.message).toContain("GS11N-20P2");
+
+    const second = await ask("What supply voltage does it need?");
+    expect(second.citations, "the controller sheet must not answer for the drive on the plate").toEqual([]);
+    expect(second.providerAsked).toBe(false);
+    expect(second.status?.message).toContain("GS11N-20P2");
+    expect(second.status?.message).toMatch(/earlier in this conversation/i);
+    expect(second.status?.message).toMatch(/start a new chat/);
   });
 
   it("reads only this technician's turns of this conversation", async () => {

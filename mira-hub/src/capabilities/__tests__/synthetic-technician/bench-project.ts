@@ -193,12 +193,16 @@ export const PROJECT_JOBS: Job[] = [
   { id: "P-45", who: "journeyman", doing: "asking with no model after a refused question about another drive family; both manuals are attached",
     attached: [GS10, MICRO820_SHEET], earlier: ["Which parameter sets acceleration time on the GS23-4010?"],
     ask: "Which parameter sets the acceleration time?", want: REFUSE, says: "mismatch-named", about: "conversation" },
-  // A project with a CONFIRMED machine keeps answering for that machine: a question that names no
-  // model is about the project's machine, whatever an earlier refused question named. (The stricter
-  // reading, refusing here too, is a decision for the owner; it is not what was seen on screen.)
-  { id: "P-46", who: "journeyman", doing: "the same in a project confirmed as the drive, with its own manual attached",
+  // A CONFIRMED project machine does not switch the carry off. The on-screen defect, in a project
+  // confirmed as the controller, is P-61: "the plate reads <a drive>" then "what voltage does it
+  // need?" must not be answered from the controller's sheet. P-46 is the COUNTED COST of that
+  // choice: the drive's own project refuses a model-less follow-up to a refused question about
+  // another drive, until the technician names the model or starts a new chat (P-62 is that way
+  // out). First written as "answers" (2026-11-10 04:20 ET) and flipped the same morning, before
+  // any push, when P-61 was added. Reversing it is the owner's decision, not a test edit.
+  { id: "P-46", who: "journeyman", doing: "the same in a project confirmed as the drive, with its own manual attached (counted cost)",
     attached: [GS10], identity: DRIVE, earlier: ["Which parameter sets acceleration time on the GS23-4010?"],
-    ask: "Which parameter sets the acceleration time?", want: answer(GS10) },
+    ask: "Which parameter sets the acceleration time?", want: REFUSE, says: "mismatch-named", about: "conversation" },
   // Controls: naming a model now wins; a subject the project does cover narrows to its manual.
   { id: "P-47", who: "apprentice", doing: "naming the attached sheet's own model after the plate message was refused",
     attached: [MICRO820_SHEET_AS_STORED], earlier: [PLATE],
@@ -212,4 +216,28 @@ export const PROJECT_JOBS: Job[] = [
   { id: "P-50", who: "journeyman", doing: "asking in the drive's project after a refused question that named the drive itself",
     attached: [GS10], identity: DRIVE, earlier: ["What is the terminal torque on the GS11N-20P2?"],
     ask: "Which parameter sets the acceleration time?", want: answer(GS10) },
+  // The newest named model bounds the subject: nothing older than it is read.
+  { id: "P-59", who: "apprentice", doing: "asking with no model after the plate message, then an unanswered question that named the controller",
+    attached: [MICRO820_SHEET_AS_STORED], earlier: ["Is the Micro820 safe to open while it is powered?", PLATE],
+    ask: "What supply voltage does it need?", want: answer(MICRO820_SHEET_AS_STORED) },
+  // A fault code reads as a number too; a fault question in between must not drop the part number.
+  { id: "P-60", who: "journeyman", doing: "asking with no model after a refused sibling-relay question and then a refused fault-code question",
+    attached: [RELAY_SHEET_AS_STORED], earlier: ["What does fault F0004 mean?", "What is the coil voltage of the CA3KN31BD?"],
+    ask: "What is the coil voltage?", want: REFUSE, says: "other-model", about: "conversation" },
+  // The on-screen defect in a project CONFIRMED as the controller (machine-first or card-confirmed).
+  { id: "P-61", who: "apprentice", doing: "asking with no model after the plate message was refused, in a project confirmed as the controller",
+    attached: [MICRO820_SHEET_AS_STORED], identity: PLC_AS_CARD, earlier: [PLATE],
+    ask: "What supply voltage does it need?", want: REFUSE, says: "mismatch-named", about: "conversation" },
+  // A part number asked BEFORE the newest named model is no longer the subject (P-63); one asked
+  // AFTER it still is (P-64).
+  { id: "P-63", who: "journeyman", doing: "asking with no model after a refused sibling catalog number, then an unanswered question that named the controller",
+    attached: [MICRO820_SHEET_AS_STORED], earlier: ["Is the Micro820 safe to open while it is powered?", "Supply voltage for 2080-LC50-24QWB?"],
+    ask: "What supply voltage does it need?", want: answer(MICRO820_SHEET_AS_STORED) },
+  { id: "P-64", who: "journeyman", doing: "asking with no model after an unanswered question that named the controller, then a refused sibling catalog number",
+    attached: [MICRO820_SHEET_AS_STORED], earlier: ["Supply voltage for 2080-LC50-24QWB?", "Is the Micro820 safe to open while it is powered?"],
+    ask: "What supply voltage does it need?", want: REFUSE, says: "other-model", about: "conversation" },
+  // The way out of P-46: naming the project's own model answers.
+  { id: "P-62", who: "journeyman", doing: "naming the drive's own model after a refused question about another drive, in the drive's project",
+    attached: [GS10], identity: DRIVE, earlier: ["Which parameter sets acceleration time on the GS23-4010?"],
+    ask: "Which parameter sets the acceleration time on the GS11N-20P2?", want: answer(GS10) },
 ];
