@@ -127,6 +127,26 @@ describe("the PLC, typed with both lines of its plate", () => {
     expect(propose(typed)).toBeNull();
   });
 
+  // Review round 4 on #5387: the plate plus a sibling or an accessory from the
+  // SAME maker. Two checks refuse these: a message that names two models the
+  // detector reads proposes nothing, and the pairing needs every mention that
+  // is not a listed catalog number to be this family itself. Removing either
+  // one alone leaves most of these refused; removing both turns all seven red.
+  // One wall only: "Micro 850" with a space is not a model mention, so that
+  // row is held by the first check alone, and the last three (parts the
+  // detector does not read) by the second alone.
+  it.each([
+    ["a sibling family", "Allen-Bradley Micro820 2080-LC20-20QBB and a Micro850"],
+    ["a sibling family, no space before the digits or one", "Allen-Bradley Micro820 2080-LC20-20QBB and a Micro 850"],
+    ["a sibling with its own catalog number", "Allen-Bradley Micro820 2080-LC20-20QBB, the old one was a Micro850 2080-LC50-24QBB"],
+    ["the range name the family belongs to", "Allen-Bradley Micro820 2080-LC20-20QBB compare with Micro800"],
+    ["an older controller line", "Allen-Bradley Micro820 2080-LC20-20QBB and a MicroLogix 1400"],
+    ["a plug-in module", "Allen-Bradley Micro820 2080-LC20-20QBB with the 2080-IF4 plug-in"],
+    ["the controller it replaces", "Allen-Bradley Micro820 2080-LC20-20QBB replaces the 1766-L32BWA"],
+  ])("the plate beside a same-maker sibling or accessory proposes nothing: %s", (_why, typed) => {
+    expect(propose(typed)).toBeNull();
+  });
+
   it("a value under a serial label is not read at all: the family alone is proposed, as before", () => {
     expect(propose("Allen-Bradley Micro820 SN: 2080-LC20-20QBB")).toEqual({ manufacturer: "Allen-Bradley", model: "820" });
   });
