@@ -156,8 +156,8 @@ describe("synthetic technician — scorecard", () => {
 
   // The count is pinned so that a silently dropped job, or a job quietly moved
   // into the known-fail list, changes a number a reviewer has to look at.
-  it("counts: 19 jobs go right, 11 are known wrong-manual fails", () => {
-    expect({ right: passing.length, knownWrong: failing.length }).toEqual({ right: 19, knownWrong: 11 });
+  it("counts: 26 jobs go right, 11 are known wrong-manual fails", () => {
+    expect({ right: passing.length, knownWrong: failing.length }).toEqual({ right: 26, knownWrong: 11 });
   });
 });
 
