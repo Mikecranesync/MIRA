@@ -292,6 +292,51 @@ describe("turnsFromPersisted — hydration mirrors the classic web notebook", ()
     expect(a3.context).toMatchObject({ machineId: "asset-uuid-OLD", machineIdentity: "unconfirmed", evidenceAuthorization: "not_authorized" });
   });
 
+  it("a stored equipment snapshot survives reload without inventing a telemetry card", () => {
+    const [q, a] = turnsFromPersisted(row({ equipmentEntityId: "asset-uuid-1" }), meta);
+    expect(q.context).toMatchObject({ machineId: "asset-uuid-1" });
+    expect(a.context).toMatchObject({ machineId: "asset-uuid-1", machineIdentity: "confirmed", evidenceAuthorization: "authorized" });
+    expect(a.parts.some((p) => p.type === "machine_evidence")).toBe(false);
+  });
+
+  it("a recorded equipment snapshot never follows a notebook's later rebind", () => {
+    const [, a] = turnsFromPersisted(row({ equipmentEntityId: "asset-uuid-OLD" }), meta);
+    expect(a.context).toMatchObject({ machineId: "asset-uuid-OLD", machineIdentity: "unconfirmed", evidenceAuthorization: "not_authorized" });
+  });
+
+  it.each(["Machine-CV101", "AAAAAAAA-0000-4000-8000-00000000000A"])("compares the opaque equipment key %s exactly, like the database", (key) => {
+    const exact = { ...meta, asset: { id: key, name: "CV-101" } };
+    const [, same] = turnsFromPersisted(row({ equipmentEntityId: key }), exact);
+    expect(same.context).toMatchObject({ machineId: key, machineIdentity: "confirmed", evidenceAuthorization: "authorized" });
+    const [, different] = turnsFromPersisted(row({ equipmentEntityId: key.toLowerCase() }), exact);
+    expect(different.context).toMatchObject({ machineId: key.toLowerCase(), machineIdentity: "unconfirmed", evidenceAuthorization: "not_authorized" });
+  });
+
+  it("a snapshot alone never confirms an unconfirmed notebook identity", () => {
+    const [, a] = turnsFromPersisted(row({ equipmentEntityId: "asset-uuid-1" }), { ...meta, identityConfirmed: false });
+    expect(a.context).toMatchObject({ machineId: "asset-uuid-1", machineIdentity: "unconfirmed", evidenceAuthorization: "not_authorized" });
+  });
+
+  it("an empty recorded key retains the legacy telemetry identity fallback", () => {
+    const [, a] = turnsFromPersisted(row({ equipmentEntityId: "", evidence: [citation, {
+      kind: "machine_evidence", assetId: "asset-uuid-1", anchorAt: AT, pre: 30, post: 30, rowCount: 2, freshness: "unknown",
+    }] }), meta);
+    expect(a.context).toMatchObject({ machineId: "asset-uuid-1", machineIdentity: "confirmed", evidenceAuthorization: "authorized" });
+  });
+
+  it("an unbound recorded turn is not backfilled from the current notebook", () => {
+    const [, a] = turnsFromPersisted(row({ equipmentEntityId: null }), meta);
+    expect(a.context.machineId).toBeUndefined();
+    expect(a.context.machineIdentity).toBe("not_applicable");
+  });
+
+  it("contradictory telemetry cannot override or authorize the recorded machine", () => {
+    const [, a] = turnsFromPersisted(row({ equipmentEntityId: "asset-uuid-1", evidence: [citation, {
+      kind: "machine_evidence", assetId: "asset-uuid-OTHER", anchorAt: AT, pre: 30, post: 30, rowCount: 2, freshness: "unknown",
+    }] }), meta);
+    expect(a.context).toMatchObject({ machineId: "asset-uuid-1", machineIdentity: "unconfirmed", evidenceAuthorization: "not_authorized" });
+  });
+
   it("a persisted safety refusal hydrates as safety_stop, not completed (Codex #3839 F2)", () => {
     const [, a] = turnsFromPersisted(row({ evidence: [citation, { kind: "safety_notice", trigger: "arc flash" }] }), meta);
     expect(a.lifecycle).toBe("safety_stop");
