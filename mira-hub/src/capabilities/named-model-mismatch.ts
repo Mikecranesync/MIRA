@@ -185,22 +185,28 @@ const isSibling = (a: { letters: string; digits: string }, b: { letters: string;
  *  title, a cross-reference, an exclusion, a combined manual — refuses. That
  *  over-refuses some valid asks (a guide that mentions its sibling, a combined
  *  M171/M172 guide); it never answers from the wrong machine's manual.
- *  The filename is consulted only when the cover carries no related number,
- *  and is never published as what the manual declares (Codex r1 F3).
+ *  The filename's numbers count with the cover's (Codex r6 F2), and a
+ *  filename is never published as what the manual declares (Codex r1 F3).
  *  Naming two related models asks which one (Codex r1 F1, the #5355 default). */
 export function lookAlikeCoverVerdict(question: string, cover: string, filename: string): LookAlikeVerdict | null {
   const asked = lookAlikeTokens(question);
   if (asked.length === 0) return null;
   const relatedTo = (tokens: ReturnType<typeof lookAlikeTokens>) =>
     tokens.filter((t) => asked.some((q) => t.id === q.id || isSibling(t, q)));
+  // Codex r6 F2: the cover and the filename are ONE evidence set. A cover
+  // whose only related number is the asked model ("M172 is not covered by this
+  // manual.") is not coverage when the filename names a sibling: the two
+  // disagree, and the wording that would settle it is never read. So a stale
+  // filename on a correct manual now refuses too (accepted over-refusal).
   const onCover = relatedTo(lookAlikeTokens(cover));
-  const fromDocument = onCover.length > 0;
-  const source = fromDocument ? onCover : relatedTo(lookAlikeTokens(filename));
+  const source = [...onCover, ...relatedTo(lookAlikeTokens(filename))];
   if (source.length === 0) return null;
   const named = [...new Set(asked.filter((q) => source.some((t) => t.id === q.id || isSibling(t, q))).map((q) => q.id))];
   if (named.length >= 2) return { kind: "ambiguous", named: named.sort() };
   const family = new Set(source.map((t) => t.id));
   if (family.size === 1 && family.has(named[0])) return null;
-  const declared = fromDocument && family.size === 1 ? [...family] : [];
+  // Published only when the cover names the one family member in evidence;
+  // a filename alone, or a filename that disagrees with the cover, never is.
+  const declared = onCover.length > 0 && family.size === 1 ? [...family] : [];
   return { kind: "mismatch", requested: named, declared };
 }

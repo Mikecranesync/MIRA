@@ -73,9 +73,31 @@ describe("lookAlikeCoverVerdict (pure) — the cover's numbers, never its wordin
     expect(lookAlikeCoverVerdict("M171 supply voltage?", cover, "manual")).toEqual({ kind: "mismatch", requested: ["M171"], declared: [] });
   });
 
-  it("the filename is used only when the cover carries no related number, and is never declared", () => {
+  it("a filename alone refuses its sibling, and is never declared (r1 F3)", () => {
     expect(lookAlikeCoverVerdict("M172 supply?", "Hardware Guide", "m171")).toEqual({ kind: "mismatch", requested: ["M172"], declared: [] });
-    expect(lookAlikeCoverVerdict("M172 supply?", "Hardware Guide\nModicon M172 Logic Controller", "m171")).toBeNull();
+  });
+
+  // Codex r6 F2. Before: the filename was read only when the cover carried no
+  // related number, so an exclusion-only first block ("M172 is not covered…")
+  // counted as M172 coverage and hid the m171 filename. Now the two are one
+  // evidence set; when they name different siblings neither model is answered
+  // and nothing is declared. This replaces the r1 F3 stale-filename control,
+  // which asserted the M172 ask was answered (accepted over-refusal).
+  it.each([
+    ["exclusion-only first block, sibling filename", "M172 supply voltage?", "M172 is not covered by this manual.", ["M172"]],
+    ["the same manual asked for its filename's model", "M171 supply voltage?", "M172 is not covered by this manual.", ["M171"]],
+    ["cover names the model, stale sibling filename", "M172 supply?", "Hardware Guide\nModicon M172 Logic Controller", ["M172"]],
+    ["the stale filename's model asked", "M171 supply?", "Hardware Guide\nModicon M172 Logic Controller", ["M171"]],
+  ])("cover and filename naming different siblings refuse, nothing declared: %s", (_why, q, cover, requested) => {
+    expect(lookAlikeCoverVerdict(q, cover, "m171")).toEqual({ kind: "mismatch", requested, declared: [] });
+  });
+
+  it.each([
+    ["cover and filename agree", "M172 supply?", M172_COVER, "m172 hardware guide"],
+    ["filename only, the model asked", "M171 supply?", "Hardware Guide", "m171"],
+    ["cover only, neutral filename", "M172 supply?", "Hardware Guide\nModicon M172 Logic Controller", "hardware guide"],
+  ])("the right manual is still answered when its evidence agrees: %s", (_why, q, cover, filename) => {
+    expect(lookAlikeCoverVerdict(q, cover, filename)).toBeNull();
   });
 
   it.each([
@@ -110,14 +132,64 @@ describe("#5369 — retrieval refuses the sibling's manual, both directions", ()
     expect(diagnostics.namedModelMismatch).toBeUndefined();
   });
 
-  it("a generic opener reads the model line below it, not a stale filename (r1 F3)", async () => {
+  it("a generic opener reads the model line below it (r1 F3)", async () => {
     const cover = "Hardware Guide\nModicon M172 Logic Controller\nOriginal instructions";
-    const own = await ask([row(cover, SUPPLY, "m171.pdf")], "M172 supply voltage?", "Schneider Electric", "M172");
+    const own = await ask([row(cover, SUPPLY, "m172.pdf")], "M172 supply voltage?", "Schneider Electric", "M172");
     expect(own.hits.length).toBeGreaterThan(0);
     expect(own.diagnostics.namedModelMismatch).toBeUndefined();
-    const sibling = await ask([row(cover, SUPPLY, "m171.pdf")], "M171 supply voltage?", "Schneider Electric", "M172");
+    const sibling = await ask([row(cover, SUPPLY, "m172.pdf")], "M171 supply voltage?", "Schneider Electric", "M172");
     expect(sibling.hits).toEqual([]);
     expect(sibling.diagnostics.namedModelMismatch).toEqual({ requested: ["M171"], declared: ["M172"] });
+  });
+
+  // Codex r6 F2 — replaces the r1 F3 stale-filename control. The same cover as
+  // the test above, which answers under m172.pdf; under m171.pdf the cover and
+  // the filename disagree, so neither model is answered and no "this manual is
+  // for the M172" notice is published (accepted over-refusal, Mike 2026-11-09).
+  it("a cover and a filename naming different siblings answer neither model (r6 F2)", async () => {
+    const cover = "Hardware Guide\nModicon M172 Logic Controller\nOriginal instructions";
+    for (const q of ["M172 supply voltage?", "M171 supply voltage?"]) {
+      const { hits, diagnostics } = await ask([row(cover, SUPPLY, "m171.pdf")], q, "Schneider Electric", "M172");
+      expect(hits).toEqual([]);
+      expect(diagnostics.namedModelMismatch).toBeUndefined();
+    }
+    const unnamed = await ask([row(cover, SUPPLY, "m171.pdf")], "What is the supply voltage range?", "Schneider Electric", "M172");
+    expect(unnamed.hits.length).toBeGreaterThan(0);
+  });
+
+  it("an exclusion-only first block does not hide a sibling filename (r6 F2)", async () => {
+    const rows = () => [row("M172 is not covered by this manual.", SUPPLY, "m171.pdf")];
+    const sibling = await ask(rows(), "M172 supply voltage?", "Schneider Electric", "M171");
+    expect(sibling.hits).toEqual([]);
+    expect(sibling.diagnostics.namedModelMismatch).toBeUndefined();
+    // The same row is retrievable: the refusal above is the rule, not an empty fixture.
+    const unnamed = await ask(rows(), "What is the supply voltage range?", "Schneider Electric", "M171");
+    expect(unnamed.hits.length).toBeGreaterThan(0);
+  });
+
+  // Codex r6 F1. Before: any model the detector reads, anywhere in the
+  // question, switched the look-alike check off for the whole question. Each
+  // of these three returned the M171 passage with the old gate restored
+  // (measured 2026-11-09); questions the existing policy already refuses for
+  // another reason are deliberately not listed, they would pass either way.
+  it.each([
+    "An ACS350 connected to ACS355. What supply voltage does the M172 controller accept?",
+    "What supply voltage does the M172 controller accept? It is an ACS350 connected to ACS355 job.",
+    "Micro820 communicating with Micro850. What supply voltage does the M172 accept?",
+  ])("a recognized model elsewhere in the question does not switch the check off (r6 F1): %s", async (q) => {
+    const { hits, diagnostics } = await ask([row(M171_COVER, SUPPLY)], q, "Schneider Electric", "M171");
+    expect(hits).toEqual([]);
+    // Generic refusal: the notice's "asked" side would name the recognized model.
+    expect(diagnostics.namedModelMismatch).toBeUndefined();
+  });
+
+  it.each([
+    "An ACS350 connected to ACS355. What supply voltage does the M171 controller accept?",
+    "Micro820 communicating with Micro850. What supply voltage does the M171 accept?",
+  ])("the same mixed question about the manual's own model is answered (r6 F1 control): %s", async (q) => {
+    const { hits, diagnostics } = await ask([row(M171_COVER, SUPPLY)], q, "Schneider Electric", "M171");
+    expect(hits.length).toBeGreaterThan(0);
+    expect(diagnostics.namedModelMismatch).toBeUndefined();
   });
 
   it("a same-line cross-reference is not coverage: the cover is prose and a named ask is refused (r1 F2, r2 F2)", async () => {
@@ -214,5 +286,20 @@ describe("controls — the right manual and ordinary questions stay usable", () 
     const unsure = await ask(rows, "My drive is an ACS350 or ACS355, what supply voltage?", "ABB", "", ["d-1", "d-2"]);
     expect(unsure.hits).toEqual([]);
     expect(unsure.diagnostics.ambiguousModelAsk).toBeDefined();
+  });
+
+  // r6 F1 runs the look-alike check on every question, so the models the
+  // detector reads must be taken out of what it sees. A second family whose
+  // short spelling (PF525) has the look-alike shape: with the question passed
+  // through unblanked, pf525.pdf would read "PF525 and its sibling PF523 both
+  // named" and stop the whole retrieval.
+  it("r6 F1: a comparison in a second recognized family keeps both manuals", async () => {
+    const rows = [
+      row("PowerFlex 525 Adjustable Frequency AC Drive\nUser Manual", SUPPLY, "pf525.pdf", "d-1"),
+      row("PowerFlex 523 Adjustable Frequency AC Drive\nUser Manual", SUPPLY, "pf523.pdf", "d-2"),
+    ];
+    const { hits, diagnostics } = await ask(rows, "Compare PF525 vs PF523 supply voltages", "Rockwell Automation", "", ["d-1", "d-2"]);
+    expect(new Set(hits.map((h) => (h as { doc_id?: string }).doc_id ?? (h as { docId?: string }).docId))).toEqual(new Set(["d-1", "d-2"]));
+    expect(diagnostics.ambiguousModelAsk).toBeUndefined();
   });
 });

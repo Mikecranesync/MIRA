@@ -3,7 +3,7 @@ import { citationPageLabel } from "@/lib/citation-page";
 import type { IdentityStatus } from "@/lib/equipment-notebooks";
 import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
-import { FAMILY_ROOTS, MODEL_PATTERNS, ROCKWELL, familyCovers, modelIdentitiesInText, resolveModelFromObservationText } from "@/capabilities/model-token";
+import { FAMILY_ROOTS, MODEL_PATTERNS, ROCKWELL, familyCovers, modelIdentitiesInText, modelMentionsInText, resolveModelFromObservationText } from "@/capabilities/model-token";
 import { ambiguousSiblingModels, lookAlikeCoverVerdict } from "@/capabilities/named-model-mismatch";
 import { embedQueryDetailed, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
 import { setSpanAttrs } from "@/capabilities/observability/tracing";
@@ -1861,6 +1861,15 @@ export async function retrieveNodeChunks(
   let lookAlikeAmbiguous = false;
   const detectorNamedModel =
     Boolean(requestedModel.model) || Boolean(requestedModel.ambiguous) || modelIdentitiesInText(opts.rawQuery ?? q).size > 0;
+  // Codex r6 F1: the look-alike check reads every letters+digits token the
+  // detector did NOT read, whatever else the question names. The detector's
+  // own mentions are blanked (same length, so word boundaries hold) and keep
+  // their existing policy: "ACS350 vs ACS355" is still a comparison, but an
+  // M172 asked in the same question is still checked against the cover.
+  const unreadQuestion = modelMentionsInText(opts.rawQuery ?? q).reduce(
+    (text, m) => text.slice(0, m.start) + " ".repeat(m.end - m.start) + text.slice(m.end),
+    opts.rawQuery ?? q,
+  );
   const publishNamedMismatch = () => {
     const requested = requestedIdentities ?? (lookAlikeRequested.size > 0 ? lookAlikeRequested : null);
     if (!opts.diagnostics || !requested) return;
@@ -1878,15 +1887,16 @@ export async function retrieveNodeChunks(
   // 4) vector — so a chunk the vector lane finds is held to exactly the same
   // model-applicability rule as one BM25 found.
   const admit = (r: Record<string, unknown>): boolean => {
-      // #5369: no detector pattern named a model, but the question names a
-      // letters+digits model this manual's cover (or, with no related number
-      // on the cover, its filename) shows a sibling of — an unlisted vendor
-      // family. lookAlikeCoverVerdict holds the blunt rule. Codex r5 F2: a
-      // question naming models the detector DOES read keeps the existing
-      // comparison policy (ambiguousSiblingModels) and never enters here.
-      if (!requestedIdentities && !detectorNamedModel) {
+      // #5369: the question names a letters+digits model the detector has no
+      // pattern for, and this manual's cover or filename shows a sibling of it
+      // — an unlisted vendor family. lookAlikeCoverVerdict holds the blunt
+      // rule. Codex r5 F2 / r6 F1: models the detector DOES read keep the
+      // existing comparison policy (ambiguousSiblingModels) because they are
+      // blanked out of unreadQuestion — but they no longer switch this check
+      // off for the other tokens in the same question.
+      {
         const lookAlike = lookAlikeCoverVerdict(
-          opts.rawQuery ?? q,
+          unreadQuestion,
           String(r.document_heading ?? ""),
           stripFileExtension(String(r.filename ?? "")).replace(/_+/g, " "),
         );
@@ -1896,8 +1906,14 @@ export async function retrieveNodeChunks(
           return false;
         }
         if (lookAlike) {
-          for (const id of lookAlike.requested) lookAlikeRequested.add(id);
-          noteNamedAskRefusal(String(r.doc_id ?? ""), new Set(lookAlike.declared));
+          // A question that also names a model the detector reads gets the
+          // generic refusal: the notice's "asked" side would name the wrong one.
+          if (detectorNamedModel) {
+            noteNamedAskRefusal(String(r.doc_id ?? ""), new Set());
+          } else {
+            for (const id of lookAlike.requested) lookAlikeRequested.add(id);
+            noteNamedAskRefusal(String(r.doc_id ?? ""), new Set(lookAlike.declared));
+          }
           return false;
         }
       }
