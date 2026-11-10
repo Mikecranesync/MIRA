@@ -578,6 +578,22 @@ function namesAnotherMaker(message: string, manufacturer: string, corpus: readon
 }
 
 /**
+ * A word, then the I/O word, standing together in the sentence: a space, a
+ * hyphen or a line break between them ("POINT I/O", "Flex-I/O"), never a
+ * comma. One sub-family word of those lines may sit between ("POINT Guard
+ * I/O", "Compact 5000 I/O"). The I/O word may be plural; "IO-Link" is another
+ * word. Which first words make a product line is the shared vocabulary's
+ * answer (equipment-type.ts), not this pattern's.
+ */
+const WORD_THEN_IO_RE = /(?<![\w-])([a-z]+)(?:[\s-]+(?:guard|ex|5000))?[\s-]*(i\/?o)(?:['’]?s)?(?![\w/-])/giu;
+function namesAnIoLine(message: string): boolean {
+  for (const [, word, io] of message.matchAll(WORD_THEN_IO_RE)) {
+    if (GENERIC_TECH_WORDS.has(word.toUpperCase()) && inferEquipmentType({ modelNumber: `${word} ${io}` }) === "I/O") return true;
+  }
+  return false;
+}
+
+/**
  * 4. A second product line named in words, with no number after it: a series
  *    or range word the closed lists above hold ("… and the Altivar", "… and
  *    TeSys D"), or a word the shared equipment vocabulary (equipment-type.ts)
@@ -591,6 +607,7 @@ function namesAnotherMaker(message: string, manufacturer: string, corpus: readon
  *    ("servo motor", "load cell") are device words, not product lines.
  */
 function namesAnotherProductLine(message: string, model: string): boolean {
+  if (namesAnIoLine(message)) return true;
   const chosen = canonicalModel(model);
   const tokens = message
     .split(/[\s,;]+/)
@@ -598,8 +615,6 @@ function namesAnotherProductLine(message: string, model: string): boolean {
     .filter(Boolean);
   return tokens.some((t, i) => {
     const upper = t.toUpperCase();
-    const next = tokens[i + 1];
-    if (GENERIC_TECH_WORDS.has(upper) && next && !/\d/.test(next) && inferEquipmentType({ modelNumber: `${t} ${next}` }) === "I/O") return true;
     if (RANGE_WORDS.has(upper)) {
       const after = RANGE_MEMBER_RE.test(tokens[i + 1] ?? "") ? tokens[i + 2] : tokens[i + 1];
       return !after || !sameMachine(after, model, chosen);

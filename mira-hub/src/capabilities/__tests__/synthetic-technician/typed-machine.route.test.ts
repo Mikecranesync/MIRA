@@ -205,7 +205,7 @@ describe("a blank notebook, and the technician types both lines of the PLC's pla
 
   // Codex round 3 on #5387 (F4): the second machine is a product line named
   // in two everyday words. Main sends no card for these; the reviewed head did.
-  it.each(["POINT I/O", "FLEX I/O", "Compact I/O"])("the plate beside a %s rack carries no proposal", async (line) => {
+  it.each(["POINT I/O", "FLEX I/O", "Compact I/O", "POINT I/Os", "Flex-I/O", "Compact 5000 I/O"])("the plate beside a %s rack carries no proposal", async (line) => {
     const frames = await ask(`Allen-Bradley Micro820 2080-LC20-20QBB and a ${line} rack both faulted, which manual should I use?`);
     expect(proposalIn(frames)).toBeUndefined();
     expect(identityWrite()).toBeUndefined();

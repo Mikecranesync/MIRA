@@ -374,8 +374,56 @@ describe("the PLC, typed with both lines of its plate", () => {
     // Two-word device phrases the vocabulary also holds are not product lines.
     ["Allen-Bradley Micro820 2080-LC20-20QBB drives a servo motor"],
     ["Allen-Bradley Micro820 2080-LC20-20QBB reads a proximity sensor and a load cell"],
+    // The two words are a line only when they stand together in the sentence.
+    ["Allen-Bradley Micro820 2080-LC20-20QBB at the set point, I/O looks fine"],
+    ["Allen-Bradley Micro820 2080-LC20-20QBB set-point I/O looks fine"],
+    ["Allen-Bradley Micro820 2080-LC20-20QBB flex cable to the I/O is loose"],
+    ["Allen-Bradley Micro820 2080-LC20-20QBB point 3 of the I/O is dead"],
+    // "IO-Link" is a sensor interface, not the I/O word.
+    ["Allen-Bradley Micro820 2080-LC20-20QBB has a flex IO-Link master"],
   ])("control: one machine with those words used plainly is still proposed: %s", (typed) => {
     expect(propose(typed)).toEqual({ manufacturer: "Allen-Bradley", model: "820" });
+  });
+
+  // The same three lines in the other ways a technician writes them: plural,
+  // joined by a hyphen, and with the line's own sub-family word in between.
+  it.each([
+    ["plural", "POINT I/Os"],
+    ["plural with an apostrophe", "FLEX I/O's"],
+    ["hyphen", "Flex-I/O"],
+    ["hyphen, no slash", "Point-IO"],
+    ["hyphen", "Compact-I/O"],
+    ["sub-family word", "POINT Guard I/O"],
+    ["sub-family word", "FLEX 5000 I/O"],
+    ["sub-family word", "Compact 5000 I/O"],
+    ["sub-family word", "FLEX Ex I/O"],
+    ["over a line break", "POINT\nI/O"],
+  ])("a two-word product line written another way proposes nothing: %s (%s)", (_why, line) => {
+    expect(propose(`Allen-Bradley Micro820 2080-LC20-20QBB and a ${line} rack both faulted`)).toBeNull();
+  });
+
+  // KNOWN LIMIT, pinned so a change either way is seen. The shared vocabulary
+  // has no entry for these names (or none for the spaced spelling), so a
+  // second machine named this way is still missed and the card is still
+  // offered. Main offers no card for any of them.
+  it.each([
+    ["ArmorBlock I/O"],
+    ["GuardLogix"],
+    ["Compact Logix"],
+    ["Control Logix"],
+    ["Power Flex 525"],
+    ["Panel View"],
+  ])("known limit: a second machine the vocabulary does not name is not seen: %s", (line) => {
+    expect(propose(`Allen-Bradley Micro820 2080-LC20-20QBB and a ${line} both faulted`)).toEqual({ manufacturer: "Allen-Bradley", model: "820" });
+  });
+
+  // KNOWN LIMIT the other way: the two words standing together are read as the
+  // line even when the technician means the controller's own expansion.
+  it.each([
+    ["Allen-Bradley Micro820 2080-LC20-20QBB with a POINT I/O expansion"],
+    ["Allen-Bradley Micro820 2080-LC20-20QBB set point I/O looks fine"],
+  ])("known limit: the two words together about one machine propose nothing: %s", (typed) => {
+    expect(propose(typed)).toBeNull();
   });
 
   // The plain spelling of the device words a technician uses around ONE machine
