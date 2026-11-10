@@ -71,7 +71,7 @@ import { LivingSheet } from "./LivingSheet";
 import { NewProjectSetup } from "./NewProjectSetup";
 import { PendingManuals } from "./PendingManuals";
 import { clearSheetDataForSignOut, localStorageStore, parseSheetReceipts } from "./living-sheet-client";
-import { NOTEBOOK_ACTIONS_STYLE } from "./notebook-actions";
+import { floatingControlsWrapperStyle, notebookActionsStyle } from "./notebook-actions";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
 import { answerTurnId, citationIndex, contextFor, lifecycleFromStream, livePartsWhileRunning, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus, withSettledFollowups, type SettledFollowups } from "./to-interaction";
 import {
@@ -436,6 +436,9 @@ export function HubShellHost() {
     const thread = { ...base.thread, turns };
     return shellReducer(state, { type: "hydrate", data: { thread, projects, machines, activeContext: base.activeContext } });
   }, [state, detail, meta, selection, projects, machines, liveTurns, live, notebooks, follow, outgoing, settledFollowups]);
+  // #5372: the shell's source viewer renders from this same `view`; while it is open the
+  // floating notebook controls step aside so they don't cover the dialog.
+  const sourceOpen = view.selectedSource != null;
 
   // The outgoing message owns its photo previews until it is dropped; leaving
   // the hub releases whatever it still holds (Codex #4289 F2).
@@ -1024,7 +1027,9 @@ export function HubShellHost() {
           />
         }
       />
-      {/* WP-1: shown only when the route is enabled and a manufacturer procedure applies. */}
+      {/* WP-1: shown only when the route is enabled and a manufacturer procedure applies.
+          #5372: hidden (not unmounted) while the source viewer dialog is open. */}
+      <div data-testid="guided-procedure-slot" style={floatingControlsWrapperStyle(sourceOpen)}>
       {selection && detail && (
         <GuidedProcedure
           // Re-mount (and re-read availability) when the machine's identity or its manuals change
@@ -1042,9 +1047,11 @@ export function HubShellHost() {
           chatBusy={busy}
         />
       )}
+      </div>
       {/* The notebook's action buttons share one column below the guided-procedure pill, each in its
-          own row, so Machine state and Work Packet never cover each other (#5102). */}
-      <div data-testid="notebook-actions" style={NOTEBOOK_ACTIONS_STYLE}>
+          own row, so Machine state and Work Packet never cover each other (#5102). #5372: hidden
+          (not unmounted) while the source viewer dialog is open, so they never cover its Close. */}
+      <div data-testid="notebook-actions" style={notebookActionsStyle(sourceOpen)}>
       {/* Mission 001: report an observation and read back machine state; renders nothing while off. */}
       {selection && detail && (
         <MachineObservations
