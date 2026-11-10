@@ -107,6 +107,13 @@ describe("each attached manual has its own candidate window wherever a check can
     await retrieveNodeChunks(carried.client, "t-1", "communication settings", { ...base, subjectQueries: ["RX420 will not start"] });
     expect(lanes(carried.calls).slice(0, 2).map((c) => c.params[4])).toEqual([["d-1"], ["d-2"]]);
 
+    // A model the detector reads, carried from an earlier question, scopes the ask as well.
+    const carriedKnown = makeClient();
+    await retrieveNodeChunks(carriedKnown.client, "t-1", "communication settings", {
+      ...base, subjectQueries: ["The plate reads AutomationDirect GS11N-20P2. It will not start."],
+    });
+    expect(lanes(carriedKnown.calls).slice(0, 2).map((c) => c.params[4])).toEqual([["d-1"], ["d-2"]]);
+
     const own = makeClient();
     await retrieveNodeChunks(own.client, "t-1", "CA3KN22BD communication settings", {
       ...base, identity: { manufacturer: "Schneider Electric", model: "CA3KN22BD" }, identityStatus: "user_confirmed",
