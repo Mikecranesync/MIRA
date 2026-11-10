@@ -1,0 +1,164 @@
+/**
+ * Synthetic technician — the typed plate, through the real notebook chat route.
+ *
+ * typed-machine.test.ts proves the proposal function. This file sends the same
+ * messages through POST /api/equipment-notebooks/[id]/chat for a blank notebook
+ * and reads the frames a client would receive. The model provider, the
+ * database and the session are stand-ins; the route, the proposal code and the
+ * model parser are the real ones. No network, $0.
+ *
+ * Not proven here: the card on a screen, or production's maker list.
+ */
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { NextRequest } from "next/server";
+
+const TENANT = "5e7c0000-0000-4000-8000-000000000011";
+const NB = "5e7c0000-0000-4000-8000-000000000022";
+const NODE = "5e7c0000-0000-4000-8000-000000000033";
+
+vi.mock("@/lib/session", () => ({
+  sessionOr401: vi.fn(async () => ({ tenantId: TENANT, userId: "u1" })),
+}));
+
+const nbMock = vi.hoisted(() => ({
+  validateChatSources: vi.fn(),
+  getNotebook: vi.fn(),
+  resolveBoundAsset: vi.fn(async () => ({ state: "unbound" as const })),
+  recordTurn: vi.fn(async () => undefined),
+  listSources: vi.fn(async () => [] as { filename: string | null }[]),
+  originFileIdsByDoc: vi.fn(async () => new Map<string, string>()),
+  listTurns: vi.fn(async () => [] as unknown[]),
+}));
+vi.mock("@/lib/equipment-notebooks", () => nbMock);
+
+// The model parser stays REAL (the proposal depends on it); only the database
+// reads are stand-ins. The maker list is the fixture typed-machine.test.ts uses.
+const ragMock = vi.hoisted(() => ({
+  retrieveNodeChunks: vi.fn(async () => [] as unknown[]),
+  retrieveManualChunks: vi.fn(async () => [] as unknown[]),
+  corpusManufacturers: vi.fn(async () => [] as string[]),
+}));
+vi.mock("@/lib/manual-rag", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/manual-rag")>()),
+  ...ragMock,
+}));
+
+vi.mock("@/lib/tenant-context", () => ({
+  withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) => fn({ query: vi.fn() })),
+}));
+vi.mock("@/lib/db", () => ({
+  default: {
+    query: vi.fn(async () => ({ rows: [] })),
+    connect: vi.fn(async () => ({ query: vi.fn(async () => ({ rows: [] })), release: vi.fn() })),
+  },
+}));
+vi.mock("@/lib/inference/persist-usage", () => ({ persistTurnUsage: vi.fn(async () => undefined) }));
+
+const seamMock = vi.hoisted(() => ({
+  canonicalSeamEnabled: vi.fn(() => true),
+  canonicalProviders: vi.fn(() => [{ name: "stand-in", url: "https://test.invalid/v1", key: "k", model: "m" }]),
+  buildRequestBody: vi.fn((provider: { model: string }, messages: unknown) => ({ model: provider.model, messages, stream: true })),
+  maxOutputTokens: vi.fn(() => 1000),
+  routeReasonFor: vi.fn(() => "ok"),
+  exhaustedUsage: vi.fn(() => ({ status: "error" })),
+  usageFrame: vi.fn(() => ({ kind: "usage", provider: "stand-in" })),
+  usageFromRaw: vi.fn(() => ({ status: "ok" })),
+  logTurnUsage: vi.fn(),
+  DEFAULT_MAX_OUTPUT_TOKENS: 4000,
+}));
+vi.mock("@/lib/inference/canonical-cascade", () => seamMock);
+
+const acqMock = vi.hoisted(() => ({
+  acquisitionEnabled: vi.fn(() => true),
+  startManualAcquisition: vi.fn(async () => true),
+  readAcquisition: vi.fn(async () => null as unknown),
+  reconcileAcquisition: vi.fn(async (_t: string, _n: string, rec: unknown) => rec),
+}));
+vi.mock("@/capabilities/notebook-manual-acquisition", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/capabilities/notebook-manual-acquisition")>()),
+  ...acqMock,
+}));
+
+import { POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
+
+function providerStream(text: string) {
+  const enc = new TextEncoder();
+  return new ReadableStream<Uint8Array>({
+    start(c) {
+      c.enqueue(enc.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`));
+      c.enqueue(enc.encode("data: [DONE]\n\n"));
+      c.close();
+    },
+  });
+}
+
+async function ask(message: string): Promise<Record<string, unknown>[]> {
+  const res = await POST(
+    new NextRequest("http://test/api/equipment-notebooks/x/chat", {
+      method: "POST",
+      body: JSON.stringify({ message, mode: "general" }),
+      headers: { "Content-Type": "application/json" },
+    }),
+    { params: Promise.resolve({ id: NB }) },
+  );
+  const out: Record<string, unknown>[] = [];
+  for (const line of (await res.text()).split("\n")) {
+    if (!line.startsWith("data: ") || line.slice(6) === "[DONE]") continue;
+    try {
+      out.push(JSON.parse(line.slice(6)));
+    } catch {
+      /* partial frame */
+    }
+  }
+  return out;
+}
+
+const proposalIn = (frames: Record<string, unknown>[]) => frames.find((f) => f.kind === "identity_proposal");
+
+beforeEach(() => {
+  process.env.NOTEBOOK_SEMANTIC_CHECK = "0";
+  process.env.NEON_DATABASE_URL = "postgres://test";
+  vi.clearAllMocks();
+  nbMock.getNotebook.mockResolvedValue({ id: NB, displayName: "New machine", nodeId: NODE, manufacturer: null, model: null });
+  nbMock.resolveBoundAsset.mockResolvedValue({ state: "unbound" });
+  nbMock.validateChatSources.mockResolvedValue({ ok: false, error: "no_sources_selected" });
+  ragMock.retrieveNodeChunks.mockResolvedValue([]);
+  ragMock.retrieveManualChunks.mockResolvedValue([]);
+  ragMock.corpusManufacturers.mockResolvedValue(["Rockwell Automation", "AutomationDirect", "Schneider Electric", "Siemens"]);
+  acqMock.acquisitionEnabled.mockReturnValue(true);
+  acqMock.startManualAcquisition.mockResolvedValue(true);
+  acqMock.readAcquisition.mockResolvedValue(null);
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(providerStream("A general reply."), { status: 200 })));
+});
+
+describe("a blank notebook, and the technician types both lines of the PLC's plate", () => {
+  const TYPED = "Allen-Bradley Micro820 2080-LC20-20QBB has a red fault light";
+
+  it("the reply carries a machine proposal for the family", async () => {
+    expect(proposalIn(await ask(TYPED))).toMatchObject({ manufacturer: "Allen-Bradley", model: "820" });
+  });
+
+  it("nothing is bound and no manual search starts before the technician confirms", async () => {
+    await ask(TYPED);
+    expect(nbMock.recordTurn).toHaveBeenCalled();
+    expect(Object.keys(nbMock)).not.toContain("updateNotebook");
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+  });
+
+  it("a plate that contradicts itself is not proposed", async () => {
+    expect(proposalIn(await ask("Allen-Bradley Micro850 2080-LC20-20QBB has a red fault light"))).toBeUndefined();
+  });
+});
+
+describe("a blank notebook, and the technician types the relay the way its data sheet titles it", () => {
+  it("the reply carries a machine proposal for the relay", async () => {
+    expect(proposalIn(await ask("Schneider Electric TeSys K CA3KN22BD, what is the coil voltage?"))).toMatchObject({
+      manufacturer: "Schneider Electric",
+      model: "CA3KN22BD",
+    });
+  });
+
+  it("control: a general question proposes nothing", async () => {
+    expect(proposalIn(await ask("what does PNP mean on a sensor?"))).toBeUndefined();
+  });
+});
