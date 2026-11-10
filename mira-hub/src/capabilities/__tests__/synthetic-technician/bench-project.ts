@@ -15,7 +15,7 @@
 // Nothing here calls a model, a network or a database.
 import {
   CONTROLLER_PHOTO_READING, DRIVE, GS10, MICRO820_SHEET, MICRO820_SHEET_AS_STORED, NO_MODEL_ANYWHERE, PLC,
-  PLC_BY_CATALOG, PLC_WITH_CATALOG_FIELD, RELAY, RELAY_PLATE, RELAY_SHEET, RELAY_SHEET_AS_STORED,
+  PLC_BY_CATALOG, PLC_WITH_CATALOG_FIELD, RELAY, RELAY_PLATE, RELAY_SHEET, RELAY_SHEET_AS_STORED, RX410_TITLED,
   type Identity, type Job, type Manual,
 } from "./bench";
 
@@ -240,4 +240,42 @@ export const PROJECT_JOBS: Job[] = [
   { id: "P-62", who: "journeyman", doing: "naming the drive's own model after a refused question about another drive, in the drive's project",
     attached: [GS10], identity: DRIVE, earlier: ["Which parameter sets acceleration time on the GS23-4010?"],
     ask: "Which parameter sets the acceleration time on the GS11N-20P2?", want: answer(GS10) },
+
+  // ── A fault code, a parameter or a tag in the NEXT question names no model ────
+  // Codex round 1 on #5389 (F1): "RX420 will not start" was refused against the RX410 guide, and
+  // the next question, "What does fault F0004 mean?", was answered from that guide. F0004 reads as
+  // a number, and any number in the question used to end the carry. Now only naming a model does:
+  // a known one, or a number of the carried number's own family. The same rule the project's own
+  // numbers already follow.
+  { id: "P-65", who: "journeyman", doing: "asking what a fault code means after a refused question about the sibling model",
+    attached: [RX410_TITLED], earlier: ["RX420 will not start"],
+    ask: "What does fault F0004 mean?", want: REFUSE, says: "other-model", about: "conversation" },
+  { id: "P-66", who: "apprentice", doing: "asking what a fault code means after the plate message was refused",
+    attached: [MICRO820_SHEET_AS_STORED], earlier: [PLATE],
+    ask: "What does fault F0004 mean?", want: REFUSE, says: "mismatch-named", about: "conversation" },
+  { id: "P-67", who: "apprentice", doing: "asking about a two-letter fault code after the plate message was refused",
+    attached: [MICRO820_SHEET_AS_STORED], earlier: [PLATE],
+    ask: "What does CE10 mean?", want: REFUSE, says: "mismatch-named", about: "conversation" },
+  // Controls: naming a model still wins, in the question that carries the fault code too.
+  { id: "P-68", who: "journeyman", doing: "naming the attached guide's own model beside the fault code, after the sibling was refused",
+    attached: [RX410_TITLED], earlier: ["RX420 will not start"],
+    ask: "What does fault F0004 mean on the RX410?", want: answer(RX410_TITLED) },
+  { id: "P-69", who: "journeyman", doing: "naming a different part, whose own sheet is attached, after the plate message was refused",
+    attached: [RELAY_SHEET_AS_STORED], earlier: [PLATE],
+    ask: "What is the coil voltage of the CA3KN22BD?", want: answer(RELAY_SHEET_AS_STORED) },
+  { id: "P-70", who: "journeyman", doing: "naming a different part after the sibling model was refused; the part's sheet and the sibling's guide are attached",
+    attached: [RELAY_SHEET_AS_STORED, RX410_TITLED], earlier: ["RX420 will not start"],
+    ask: "What is the coil voltage of the CA3KN22BD?", want: answer(RELAY_SHEET_AS_STORED) },
+  { id: "P-71", who: "journeyman", doing: "asking what a fault code means with nothing open before it",
+    attached: [MICRO820_SHEET_AS_STORED],
+    ask: "What does fault F0004 mean?", want: answer(MICRO820_SHEET_AS_STORED) },
+  // Stated limits of that rule. A question that names a different part, with no document for that
+  // part attached, is refused for the model the conversation was about: the reason names the
+  // earlier model, not the part just asked. Before, the unrelated manual was admitted for it.
+  { id: "P-72", who: "journeyman", doing: "stated limit: naming a different part, with no sheet for it, after the sibling model was refused",
+    attached: [RX410_TITLED], earlier: ["RX420 will not start"],
+    ask: "What is the coil voltage of the CA3KN22BD?", want: REFUSE, says: "other-model", about: "conversation" },
+  { id: "P-73", who: "apprentice", doing: "stated limit: naming a different part, with no sheet for it, after the plate message was refused",
+    attached: [MICRO820_SHEET_AS_STORED], earlier: [PLATE],
+    ask: "What is the coil voltage of the CA3KN22BD?", want: REFUSE, says: "mismatch-named", about: "conversation" },
 ];

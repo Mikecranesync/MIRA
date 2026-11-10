@@ -20,7 +20,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { GS10, MICRO820_SHEET_AS_STORED, RELAY_SHEET_AS_STORED, type Manual } from "./synthetic-technician/bench";
+import { GS10, MICRO820_SHEET_AS_STORED, RELAY_SHEET_AS_STORED, RX410_TITLED, type Manual } from "./synthetic-technician/bench";
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const NB = "22222222-2222-4222-8222-222222222222";
@@ -449,5 +449,71 @@ describe("the model a technician named is still the subject of the next question
     expect(third.providerAsked).toBe(false);
     expect(third.status?.message).toContain("GS11N-20P2");
     expect(third.status?.message).toMatch(/earlier in this conversation/i);
+  });
+});
+
+// Codex round 1 on #5389 (F1). A fault code, a parameter or a tag reads as a
+// number, and any number in the next question used to end the carry: "RX420
+// will not start" was refused against the RX410 guide, then "What does fault
+// F0004 mean?" was answered from that guide. The stored refusal is what keeps
+// the subject open, so this runs through the route, turn after turn.
+describe("a fault code in the next question does not change which machine the conversation is about", () => {
+  const PLATE = "The plate reads AutomationDirect GS11N-20P2. It will not start.";
+
+  it("refuses the sibling, then the fault-code question, then a model-less one; naming the guide's own model answers", async () => {
+    attach(RX410_TITLED);
+
+    const first = await ask("RX420 will not start");
+    expect(first.providerAsked).toBe(false);
+    expect(first.status?.message).toContain("RX420");
+
+    const fault = await ask("What does fault F0004 mean?");
+    expect(fault.citations, "the RX410 guide must not be cited for a fault on the RX420").toEqual([]);
+    expect(fault.providerAsked, "no provider is asked when no manual applies").toBe(false);
+    expect(fault.status?.status).toBe("insufficient_evidence");
+    expect(fault.status?.message).toContain("RX420");
+    expect(fault.status?.message).toMatch(/earlier in this conversation/i);
+    // The refused fault question is stored unanswered, so the subject stays open.
+    expect(stored.turns.at(-1)).toMatchObject({ question: "What does fault F0004 mean?", answerStatus: "insufficient_evidence" });
+
+    const third = await ask("What supply voltage does it need?");
+    expect(third.citations).toEqual([]);
+    expect(third.providerAsked).toBe(false);
+    expect(third.status?.message).toContain("RX420");
+
+    const named = await ask("What does fault F0004 mean on the RX410?");
+    expect(named.providerAsked, "control: naming the guide's own model answers").toBe(true);
+    expect(named.citations.length).toBeGreaterThan(0);
+  });
+
+  it("the same for a model the detector reads: the plate message, then two fault codes", async () => {
+    attach(MICRO820_SHEET_AS_STORED);
+    await ask(PLATE);
+
+    for (const question of ["What does fault F0004 mean?", "What does CE10 mean?"]) {
+      const next = await ask(question);
+      expect(next.citations, question).toEqual([]);
+      expect(next.providerAsked, question).toBe(false);
+      expect(next.status?.message, question).toContain("GS11N-20P2");
+      expect(next.status?.message, question).toMatch(/earlier in this conversation/i);
+    }
+  });
+
+  it("control: a part named in the next question is answered from that part's own sheet", async () => {
+    attachTwo(MICRO820_SHEET_AS_STORED, RELAY_SHEET_AS_STORED);
+    const handedToModel = () => JSON.stringify(seamMock.buildRequestBody.mock.calls.at(-1));
+    await ask(PLATE);
+
+    const relay = await ask("What is the coil voltage of the CA3KN22BD?");
+    expect(relay.providerAsked).toBe(true);
+    expect(handedToModel()).toContain(RELAY_SHEET_AS_STORED.filename);
+    expect(handedToModel(), "the controller sheet is not offered: the conversation was about the drive").not.toContain(MICRO820_SHEET_AS_STORED.filename);
+  });
+
+  it("control: a fault-code question with nothing open before it answers", async () => {
+    attach(MICRO820_SHEET_AS_STORED);
+    const { providerAsked, citations } = await ask("What does fault F0004 mean?");
+    expect(providerAsked).toBe(true);
+    expect(citations.length).toBeGreaterThan(0);
   });
 });

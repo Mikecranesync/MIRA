@@ -250,7 +250,7 @@ describe("synthetic technician — scorecard", () => {
   // into the known-fail list, changes a number a reviewer has to look at.
   it("counts: all 37 jobs go right, none is a known wrong-manual fail; the added rows are counted beside them", () => {
     expect({ right: passing.length, knownWrong: failing.length, added: EXTRA_JOBS.length, project: PROJECT_JOBS.length })
-      .toEqual({ right: 37, knownWrong: 0, added: 57, project: 53 });
+      .toEqual({ right: 37, knownWrong: 0, added: 57, project: 62 });
   });
 
   // 37 right answers are also reachable by refusing more. These are the jobs
@@ -258,7 +258,7 @@ describe("synthetic technician — scorecard", () => {
   it("counts: the jobs that must answer, in the 37 and in the added rows", () => {
     const answers = (jobs: Job[]) => jobs.filter((j) => "answerFrom" in j.want).length;
     expect({ contract: answers(JOBS), added: answers(EXTRA_JOBS), project: answers(PROJECT_JOBS) })
-      .toEqual({ contract: 19, added: 29, project: 30 });
+      .toEqual({ contract: 19, added: 29, project: 34 });
   });
 });
 

@@ -1475,7 +1475,17 @@ export async function retrieveNodeChunks(
   // The model an earlier, still-open question of this conversation named is the
   // subject of a follow-up that names none ("It will not start" about a named
   // drive, then "What supply voltage does it need?"). Narrow on purpose:
-  //   - this question names no model or number of its own (naming one wins);
+  //   - this question names no model itself (naming one wins): not a known
+  //     one, and not a number of the carried number's own family ("RX410"
+  //     after "RX420"). Any OTHER number in it (a fault code, a parameter, a
+  //     machine tag, an unrelated part) names no model and does not end the
+  //     carry: "What does fault F0004 mean?" after a refused "RX420 will not
+  //     start" is still about the RX420 (Codex round 1 on #5389, F1). The
+  //     same rule the notebook's own numbers follow below;
+  //   - a document that itself covers a number this question names is judged
+  //     by that number, not by a carried known model (admit(), below): the
+  //     relay's own sheet answers "coil voltage of the CA3KN22BD?" whatever
+  //     drive was asked about before;
   //   - the model is the one the NEWEST earlier question names, and nothing
   //     older than that question is read: an older subject does not leak
   //     past a newer named model;
@@ -1492,13 +1502,17 @@ export async function retrieveNodeChunks(
     return Boolean(named.model) || named.ambiguous || modelIdentitiesInText(text).size > 0;
   };
   const ownNumbers = unlistedModelNumbers(ownQuestion);
-  const earlierQuestions = !namesKnownModel(ownQuestion) && ownNumbers.length === 0 ? (opts.subjectQueries ?? []) : [];
-  const modelAt = earlierQuestions.findIndex(namesKnownModel);
-  const carriedModelQuestion = modelAt >= 0 ? earlierQuestions[modelAt] : null;
-  const modelQuestion = carriedModelQuestion ?? ownQuestion;
-  const carriedNumbers = (modelAt >= 0 ? earlierQuestions.slice(0, modelAt + 1) : earlierQuestions).flatMap((text) =>
+  const openQuestions = !namesKnownModel(ownQuestion) ? (opts.subjectQueries ?? []) : [];
+  const openModelAt = openQuestions.findIndex(namesKnownModel);
+  const openNumbers = (openModelAt >= 0 ? openQuestions.slice(0, openModelAt + 1) : openQuestions).flatMap((text) =>
     unlistedModelNumbers(text),
   );
+  const ownNamesCarriedFamily = ownNumbers.some((own) => openNumbers.some((carried) => sameModelFamily(own, carried)));
+  const earlierQuestions = ownNamesCarriedFamily ? [] : openQuestions;
+  const modelAt = ownNamesCarriedFamily ? -1 : openModelAt;
+  const carriedModelQuestion = modelAt >= 0 ? earlierQuestions[modelAt] : null;
+  const modelQuestion = carriedModelQuestion ?? ownQuestion;
+  const carriedNumbers = ownNamesCarriedFamily ? [] : openNumbers;
   const carriedLabels = new Set(carriedNumbers.map((n) => n.label));
 
   const requestedModel = resolveModelFromObservationText(modelQuestion);
@@ -1566,13 +1580,6 @@ export async function retrieveNodeChunks(
     closeNameIdentities.size < 2 &&
     notebookIdentities.size > 0 &&
     !identitiesAreFamilyOnly(notebookIdentities);
-  // Give each attached manual its own candidate window for a model-scoped ask.
-  // Otherwise a large sibling manual can consume LIMIT before applicability
-  // filtering, hiding the correct manual and making a supported ask abstain.
-  const docWindows = (questionScoped || notebookScoped) && allowedDocIds.length > 1
-    ? allowedDocIds.map((id) => [id])
-    : [allowedDocIds];
-
   // Read the document's opening text, not just the retrieved page: later pages
   // often omit the product name and OEM filenames are publication numbers.
   // Match tenant AND doc id so another tenant's attachment cannot supply identity.
@@ -2089,6 +2096,20 @@ export async function retrieveNodeChunks(
   // notebook recorded only by family name, is refused until the catalog number
   // is recorded or named (bench-project.ts P-53..P-58).
   const projectScoped = namesNoKnownModel && identityConfirmed && (notebookScoped || confirmedNumbers.length > 0);
+  // Give each attached manual its own candidate window wherever a check
+  // refuses rows after the SQL LIMIT: a model-scoped ask, or a number the
+  // detector has no pattern for (#5369), in the question, carried from an
+  // earlier one, or in the confirmed machine's own record. Otherwise a large
+  // refused manual can consume LIMIT before applicability filtering, hiding
+  // the correct manual and making a supported ask abstain. The project check
+  // needs no clause of its own: it is on only when `notebookScoped` is, or
+  // when the confirmed record holds such a number, and then `unlistedAsk` is
+  // not empty. Declared here because it needs those values; every pass that
+  // reads it runs below.
+  const docWindows =
+    (questionScoped || notebookScoped || unlistedAsk.length > 0) && allowedDocIds.length > 1
+      ? allowedDocIds.map((id) => [id])
+      : [allowedDocIds];
   const projectLabel = [opts.identity?.manufacturer?.trim(), notebookModel, opts.catalogNumber?.trim()]
     .filter((part, i, all): part is string => Boolean(part) && all.indexOf(part) === i)
     .join(" ");
@@ -2151,7 +2172,16 @@ export async function retrieveNodeChunks(
           String(r.filename ?? ""),
           String(r.document_heading ?? ""),
         );
-        if (requestedIdentities) {
+        // A carried model is the subject only where the question names nothing
+        // this document is for. A document that covers a number the question
+        // itself names (the relay's own sheet, asked by its part number) is
+        // judged by that number below, not by the drive asked about earlier.
+        const ownNumberIsThisDocuments =
+          carriedModelQuestion !== null &&
+          ownNumbers.some((n) => manualCoversNumber(n, String(r.document_heading ?? ""), String(r.filename ?? ""), writtenAsOf(r)));
+        if (ownNumberIsThisDocuments) {
+          // fall through to the unlisted-number check
+        } else if (requestedIdentities) {
           // #4511 (Release 1 regression, Lane A replay 2026-10-18): the real
           // Rockwell Micro810 cover is "User Manual Original Instructions\n
           // Micro810 Programmable\nControllers…" — a generic opener with the
