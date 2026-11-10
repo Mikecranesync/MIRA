@@ -31,7 +31,12 @@ type Outcome = {
   brokenCitations: string[];
   /** The product's own stated reason, when it gave one. */
   reason: "mismatch-named" | "asks-which-model" | null;
+  /** Statements the stand-in database does not know. It answers them with nothing and lists them here. */
+  unrecognised: string[];
 };
+
+/** How every passage query in the product opens today. A query that opens differently is not answered with passages. */
+const PASSAGE_QUERY_OPENS = "SELECT content, doc_id::text AS doc_id";
 
 async function run(job: Job): Promise<Outcome> {
   const docs = job.attached.map((m, i) => ({ m, docId: docIdOf(i) }));
@@ -48,9 +53,21 @@ async function run(job: Job): Promise<Outcome> {
     rank: 0.8 - i * 0.01,
   }));
   let offered = 0;
+  const unrecognised: string[] = [];
+  // The stand-in knows three kinds of statement and no others: savepoint
+  // bookkeeping, the lookups that have no rows on this bench, and the passage
+  // query. Anything else gets no rows and is listed, and a listed statement
+  // fails the job. So a retrieval query that is added or reworded cannot be
+  // answered with this bench's passages by accident, and cannot empty the
+  // bench without a failure either.
   const query = vi.fn(async (sql: string) => {
     if (sql.includes("WITH ORDINALITY") || sql.includes("names_document") || sql.includes("quote_literal(lex)")
       || /^\s*(SAVEPOINT|RELEASE SAVEPOINT|ROLLBACK TO SAVEPOINT)\b/.test(sql)) {
+      return { rows: [] };
+    }
+    const flat = sql.replace(/\s+/g, " ").trim();
+    if (!flat.startsWith(PASSAGE_QUERY_OPENS)) {
+      unrecognised.push(flat.slice(0, 120));
       return { rows: [] };
     }
     offered++;
@@ -82,6 +99,7 @@ async function run(job: Job): Promise<Outcome> {
   }
   return {
     offered,
+    unrecognised,
     citedFrom: [...new Set(citedFrom)].sort(),
     brokenCitations,
     reason: diagnostics.ambiguousModelAsk ? "asks-which-model" : diagnostics.namedModelMismatch ? "mismatch-named" : null,
@@ -90,6 +108,15 @@ async function run(job: Job): Promise<Outcome> {
 
 /** The one definition of "this job went right". */
 function expectRight(job: Job, got: Outcome) {
+  // A refusal only counts when the manual's pages were really on offer: with
+  // nothing offered, "nothing cited" would be true of any product at all.
+  expect(got.unrecognised, "every statement sent to the stand-in database is one it knows").toEqual([]);
+  // The one refusal that comes before any search is the product asking which
+  // of two named models is meant. It has to say so; silence does not count.
+  if (got.offered === 0) {
+    expect(got.reason, "nothing was searched, so the product must have asked which model").toBe("asks-which-model");
+    expect("refuse" in job.want, "a job that expects an answer must have been searched").toBe(true);
+  }
   expect(got.brokenCitations, "every citation points at its own manual and page").toEqual([]);
   if ("refuse" in job.want) {
     expect(got.citedFrom, "nothing may be cited").toEqual([]);
@@ -138,6 +165,7 @@ describe("synthetic technician — KNOWN FAILS on main (each is a wrong-manual a
   it.each(failing.map((j) => [title(j), j] as const))("reached admission: %s", async (_t, job) => {
     const got = await run(job);
     expect(got.offered, "the stand-in database was asked for candidates").toBeGreaterThan(0);
+    expect(got.unrecognised).toEqual([]);
     expect(got.brokenCitations).toEqual([]);
   });
 
