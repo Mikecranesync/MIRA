@@ -188,8 +188,8 @@ describe("labels", () => {
   });
 
   it("the heading says whose fixes these are", () => {
-    expect(savedFixesHeading(true)).toBe("Saved fixes for this machine");
-    expect(savedFixesHeading(null)).toBe("Saved fixes in this project");
+    expect(savedFixesHeading(true)).toBe("Fixes saved in this project for this machine");
+    expect(savedFixesHeading(null)).toBe("Fixes saved in this project");
   });
 
   it("the saved time is shown in the reader's zone", () => {

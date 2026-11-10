@@ -122,8 +122,10 @@ export function savedFixesPillLabel(shown: number, hasMore: boolean): string {
   return `Saved fixes (${shown}${hasMore ? "+" : ""})`;
 }
 
+/** The list holds fixes saved in THIS project only (and, once the machine is confirmed, for that
+ *  machine); a fix saved for the same machine in another project is not in it. The heading says so. */
 export function savedFixesHeading(assetConfirmed: boolean | null): string {
-  return assetConfirmed === true ? "Saved fixes for this machine" : "Saved fixes in this project";
+  return assetConfirmed === true ? "Fixes saved in this project for this machine" : "Fixes saved in this project";
 }
 
 /** When the fix was saved, in the reader's locale and zone; blank when the time cannot be read. */

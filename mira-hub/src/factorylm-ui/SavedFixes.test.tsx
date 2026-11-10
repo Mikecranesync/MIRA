@@ -43,7 +43,7 @@ describe("SavedFixesView", () => {
   it("open: each fix shows the problem, what fixed it and when it was saved", () => {
     const html = render({ open: true, fixes: [fix(1), fix(2, { faultCode: "F0004" })] });
     expect(html).toContain('role="dialog"');
-    expect(html).toContain("Saved fixes for this machine");
+    expect(html).toContain("Fixes saved in this project for this machine");
     expect(html).toContain("Conveyor will not start 1");
     expect(html).toContain("Replaced the belt tensioner 1");
     expect(html).toContain("Nov 10, 2026, 9:05 AM");
@@ -57,7 +57,7 @@ describe("SavedFixesView", () => {
   });
 
   it("an unbound project says the fixes belong to the project", () => {
-    expect(render({ open: true, assetConfirmed: null })).toContain("Saved fixes in this project");
+    expect(render({ open: true, assetConfirmed: null })).toContain("Fixes saved in this project");
   });
 
   it("what the technician typed is shown as text, never as markup", () => {
