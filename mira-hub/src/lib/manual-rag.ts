@@ -7,10 +7,13 @@ import { FAMILY_ROOTS, MODEL_PATTERNS, ROCKWELL, familyCovers, modelIdentitiesIn
 import { ambiguousSiblingModels } from "@/capabilities/named-model-mismatch";
 import {
   coverDeclaredNumbers,
+  isTitleLine,
   manualAnswersFor,
   manualCoversNumber,
+  remarksOnCoverage,
   sameModelFamily,
   summarizeUnlistedRefusals,
+  titleLinesBelow,
   unlistedModelNumbers,
   type ManualVerdict,
   type OtherProductRefusal,
@@ -160,6 +163,11 @@ export function lexicalV2Enabled(): boolean {
 // lines down abstains under this rule — the title segment genuinely has no
 // model in it. That is the conservative failure mode this design accepts.
 function titleSegment(text: string): string {
+  return titleSpan(text).segment;
+}
+
+/** The title segment, and the text on the lines under it. */
+function titleSpan(text: string): { segment: string; below: string } {
   // Codex #4469 r2 F6: a layout line break is not the end of a title. A first
   // line that ends on a joining word or mark ("Micro810 and" / "Micro810 &" /
   // "Micro810/" / "Micro810,") continues on the next line, so the wrapped
@@ -167,6 +175,7 @@ function titleSegment(text: string): string {
   // any other newline still ends the title (the "Related documents" line).
   let rest = text;
   let head = "";
+  let below = "";
   for (;;) {
     const newline = rest.indexOf("\n");
     if (newline < 0) {
@@ -180,10 +189,11 @@ function titleSegment(text: string): string {
       continue;
     }
     head += line;
+    below = rest.slice(newline + 1);
     break;
   }
   const periodSpace = head.indexOf(". ");
-  return periodSpace >= 0 ? head.slice(0, periodSpace) : head;
+  return { segment: periodSpace >= 0 ? head.slice(0, periodSpace) : head, below };
 }
 
 // Codex #4469 r2 F2: a first-line cross-reference ("Micro810 User Manual — for
@@ -262,6 +272,145 @@ function ambiguousCoverIdentities(heading: string): Set<string> {
 /** Words a product TITLE never carries but exclusion / cross-reference prose does. */
 const COVER_PROSE_RE =
   /\b(?:is|are|was|were|not|see|refer|refers|covered|covers|separate|also|related|documents?|instead|only|except|does|do|use|uses|for\s+the|this\s+manual)\b|[.!?]\s*$/i;
+
+/**
+ * #5369: the stricter reading of a cover whose title names only a RANGE.
+ *
+ * "Micro800 Programmable Controllers" alone is the range manual and answers
+ * for every member. But a title BLOCK that goes on to name members of that
+ * range is those members' manual, exactly as if the title line had named them
+ * ("Micro800 ... Micro850 User Manual", which documentCoversNamedAsk and
+ * documentCoversNotebook already refuse for a Micro820): the rest of the title
+ * line after its boundary ("Micro800 Programmable Controllers - Micro850
+ * 48-Point") and the title lines stacked under it ("Micro850 48-point
+ * Controllers User Manual"). Before this, such a cover answered for every
+ * member of the range, by name, by bare number and for a named question.
+ *
+ * Returns the title's identities plus those members, or null when the title
+ * names no range, already names a member of it, or nothing under it does.
+ * What counts as a title line is manual-applicability.ts's rule (isTitleLine,
+ * titleLinesBelow): a pointer, a remark or an exclusion under the title is
+ * prose and is not read, so "For the Micro850 see publication ..." leaves the
+ * range manual a range manual.
+ *
+ * All or nothing: when a title-like line further down names a member the
+ * block did not, the cover is not narrowed at all (see the end of the function).
+ *
+ * Refusal only. Callers hold a cover to BOTH readings (the title, and this
+ * one), so a line under a title can take an answer away and can never add one.
+ * Only members of a range the title itself declares are read, and only as
+ * model names: a catalog number under a range title is the catalog-number
+ * gate's to match (Siemens order numbers, which name their panel, excepted).
+ */
+/** The title of a cover that names a range and no member of it; null otherwise. */
+function rangeTitleOf(heading: string): { declared: Set<string>; tail: string; below: string[]; membersIn: (line: string) => string[] } | null {
+  let read = titleSpan(heading);
+  if (modelIdentitiesInText(declaredTitle(read.segment)).size === 0) {
+    // A generic opener: the title is the first model-bearing line, as in
+    // ambiguousCoverIdentities, and prose there declares nothing.
+    const lines = heading.split("\n");
+    const at = lines.findIndex((line) => modelIdentitiesInText(line).size > 0);
+    if (at < 0) return null;
+    read = titleSpan(lines.slice(at).join("\n"));
+    if (COVER_PROSE_RE.test(read.segment)) return null;
+  }
+  const title = declaredTitle(read.segment);
+  const declared = modelIdentitiesInText(title);
+  const named = [...withCatalogModels(declared)];
+  const roots = named.filter((id) => isFamilyRoot(id) && !named.some((m) => !isFamilyRoot(m) && familyCovers(id, m)));
+  if (roots.length === 0) return null;
+  const membersIn = (line: string) =>
+    [...withCatalogModels(modelIdentitiesInText(line))].filter((id) => !isFamilyRoot(id) && roots.some((root) => familyCovers(root, id)));
+  return { declared, tail: read.segment.slice(title.length), below: read.below.split("\n"), membersIn };
+}
+
+function rangeCoverMembers(heading: string): Set<string> | null {
+  const range = rangeTitleOf(heading);
+  if (range === null) return null;
+  const { declared, tail, membersIn } = range;
+  const block = titleLinesBelow(range.below, (line) => membersIn(line).length > 0);
+  const members = [...(tail.trim() && isTitleLine(tail) ? membersIn(tail) : []), ...block.declared.flatMap(membersIn)];
+  if (members.length === 0) return null;
+  // The block was not read to its end when a later line that itself reads as a
+  // title names a member the block did not ("PowerFlex 523\nPowerFlex 525",
+  // where the second line has no product word beside it; a member's own title
+  // under a "Related Publications" heading). The cover then does not say which
+  // members it is for, and it stays the range manual it was. A member named
+  // only in a sentence is not evidence either way, as everywhere on a cover.
+  const unread = block.rest.filter((line) => line.trim() && isTitleLine(line)).flatMap(membersIn);
+  if (unread.some((id) => !members.includes(id))) return null;
+  return new Set([...declared, ...members]);
+}
+
+/**
+ * #5369: the members a range cover SAYS it leaves out.
+ *
+ * "Micro800 Programmable Controllers User Manual\nMicro820 is not covered by
+ * this manual." answered for a Micro820 (on main too): the range name covers
+ * every member, and nothing under a title was read. An explicit exclusion must
+ * outweigh the range name. A member is excluded when a remark on coverage
+ * (manual-applicability.ts remarksOnCoverage: the listed negations, coverage
+ * words, phrases and marks, and nothing new) stands on the member's own line,
+ * or on the line under it when that line names no other model: the same two
+ * places an asked number is read. Only under a title that names the range and
+ * no member of it. Refusal only: it is never a reason to admit.
+ *
+ * Not read: an exclusion with no listed coverage word ("Not for use with
+ * Micro820"), and a heading over the member's line ("Not covered:\nMicro820").
+ * Stated cost, as for an asked number: a negation beside a coverage word about
+ * something else ("Micro820 controllers do not support motion") refuses.
+ */
+function rangeCoverExclusions(heading: string): Set<string> {
+  const excluded = new Set<string>();
+  const range = rangeTitleOf(heading);
+  if (range === null) return excluded;
+  const lines = [range.tail, ...range.below];
+  lines.forEach((line, at) => {
+    const members = range.membersIn(line);
+    if (members.length === 0) return;
+    const under = lines.slice(at + 1).find((l) => l.trim());
+    const underIsAboutThisLine = (l: string) => {
+      const named = modelIdentitiesInText(l);
+      return named.size === 0 || members.some((id) => named.has(id));
+    };
+    // A line that ends in a colon is a heading over what follows it ("Not
+    // covered:" above a list), not a remark on the line above.
+    const underIsHeading = under !== undefined && /:\s*$/.test(under);
+    if (remarksOnCoverage(line) || (under !== undefined && !underIsHeading && remarksOnCoverage(under) && underIsAboutThisLine(under))) {
+      for (const id of members) excluded.add(id);
+    }
+  });
+  return excluded;
+}
+
+/** Does the cover say it leaves out a model the question or the notebook names?
+ *  A bare notebook number ("820") is the member its maker's family makes of it. */
+function rangeCoverExcludes(heading: string, ids: Set<string>, manufacturer: string | null): boolean {
+  const excluded = rangeCoverExclusions(heading);
+  if (excluded.size === 0) return false;
+  for (const id of withCatalogModels(ids)) {
+    if (excluded.has(id)) return true;
+    if (!id.startsWith("#") || !manufacturer) continue;
+    for (const member of excluded) {
+      const m = FAMILY_DIGITS_RE.exec(member);
+      const vendor = m ? FAMILY_PREFIX_VENDORS.find(([prefix]) => prefix === m[1])?.[1] : undefined;
+      if (m && m[2] === id.slice(1) && vendor?.test(manufacturer)) return true;
+    }
+  }
+  return false;
+}
+
+/** The notebook passes the range-members reading, or the cover has none. */
+function coversNotebookByRangeMembers(heading: string, notebook: Set<string>, manufacturer: string | null): boolean {
+  const members = rangeCoverMembers(heading);
+  return members === null || documentCoversNotebook(notebook, members, manufacturer);
+}
+
+/** What a refusal names for such a cover: the members, not the range they belong to. */
+function withoutCoveredRoots(ids: Set<string>): Set<string> {
+  const all = [...ids];
+  return new Set(all.filter((id) => !(isFamilyRoot(id) && all.some((m) => !isFamilyRoot(m) && familyCovers(id, m)))));
+}
 
 /** Codex #4484 r4 F7: the proposal flow stores a FAMILY ROOT as digits too
  *  ("800" for a Micro800, "520" / "750" for the PowerFlex series). As "#800"
@@ -2147,10 +2296,13 @@ export async function retrieveNodeChunks(
     if (names.size === 0 && numbers.length === 0) return null;
     if (confirmedNumbers.some((own) => numbers.some((n) => n.key === own.key))) return null;
     const maker = opts.identity?.manufacturer?.trim() || null;
-    const declared = [...new Set([...names, ...numbers.map((n) => n.label.toUpperCase())])];
+    const members = rangeCoverMembers(heading);
+    const declared = [...new Set([...(members ? withoutCoveredRoots(members) : names), ...numbers.map((n) => n.label.toUpperCase())])];
     if (names.size === 0) return numbers.map((n) => n.label);
     if (notebookIdentities.size > 0 && !identitiesAreFamilyOnly(notebookIdentities)) {
-      return documentCoversNotebook(notebookIdentities, names, maker) ? null : declared;
+      return documentCoversNotebook(notebookIdentities, names, maker) && coversNotebookByRangeMembers(heading, notebookIdentities, maker)
+        ? null
+        : declared;
     }
     return maker !== null && [...names].every((id) => isAnotherMakersFamily(id, maker)) ? declared : null;
   };
@@ -2198,11 +2350,26 @@ export async function retrieveNodeChunks(
           const heading = String(r.document_heading ?? "");
           const declared =
             titleIdentities.size === 0 && coverIsAmbiguous(heading) ? ambiguousCoverIdentities(heading) : titleIdentities;
-          if (!documentCoversNamedAsk(requestedIdentities, declared)) {
+          // A range title with members named under it is held to that reading
+          // too (rangeCoverMembers): it can refuse, never admit.
+          const members = rangeCoverMembers(heading);
+          // And a range cover that says it leaves the asked model out does not
+          // answer for it (rangeCoverExcludes). The reply then names no "other
+          // model": the cover declares the asked model's own range.
+          const leftOut = rangeCoverExcludes(heading, requestedIdentities, null);
+          if (
+            leftOut ||
+            !documentCoversNamedAsk(requestedIdentities, declared) ||
+            (members !== null && !documentCoversNamedAsk(requestedIdentities, members))
+          ) {
             // The diagnostic counts only what the document itself declares.
-            const headingDeclared = coverIsAmbiguous(heading)
-              ? ambiguousCoverIdentities(heading)
-              : modelIdentitiesInText(declaredTitle(titleSegment(heading)));
+            const headingDeclared = leftOut
+              ? new Set<string>()
+              : members
+                ? withoutCoveredRoots(members)
+                : coverIsAmbiguous(heading)
+                  ? ambiguousCoverIdentities(heading)
+                  : modelIdentitiesInText(declaredTitle(titleSegment(heading)));
             noteNamedAskRefusal(String(r.doc_id ?? ""), headingDeclared);
             return false;
           }
@@ -2218,7 +2385,12 @@ export async function retrieveNodeChunks(
               notebookIdentities,
               ambiguousCoverIdentities(String(r.document_heading ?? "")),
               opts.identity?.manufacturer?.trim() || null,
-            ))
+            )) ||
+          // A range title with members named under it must cover the notebook
+          // by that reading as well (rangeCoverMembers).
+          !coversNotebookByRangeMembers(String(r.document_heading ?? ""), notebookIdentities, opts.identity?.manufacturer?.trim() || null) ||
+          // A range cover that says it leaves the notebook's model out.
+          rangeCoverExcludes(String(r.document_heading ?? ""), notebookIdentities, opts.identity?.manufacturer?.trim() || null)
         ) {
           // Notebook-identity scope is deliberately one notch less strict than
           // a named ask: a manual that names NO model is kept, because the

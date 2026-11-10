@@ -632,6 +632,13 @@ describe("an exclusion written as a mark, run together or broken across lines", 
     ["unlisted", "Hardware User Guide\nUNLISTED RX420 Logic Controller"],
     ["run together, German", "Hardware User Guide\nNichtenthalten RX420 Steuerung"],
     ["a negation broken across lines, below", "Hardware User Guide\nRX420 Logic Controller unsup-\nported"],
+    // Read on the line below too. Until 2026-11-10 it was read only on the
+    // model's own line and the line above ("NOT-SUPPORTED by ..." refused,
+    // "NotSupported by ..." answered).
+    ["run together, alone on the line below", "RX420 Logic Controller\nNotSupported"],
+    ["run together, opening the line below", "RX420 Logic Controller\nNotSupported by this manual"],
+    ["run together, lower case, on the line below", "RX420 Logic Controller\nnotcovered in this guide"],
+    ["run together, inside the line below", "RX420 Logic Controller\nThis model: NotIncluded"],
     ["an exclusion broken across lines, above", "Hardware User Guide ex-\ncluding RX420 Logic Controller"],
     ["a heading two lines up that ends in a colon", "Not covered in this guide:\nHardware\nRX420 Logic Controller"],
     ["the same heading five lines up", "Not covered in this guide:\nA\nB\nC\nD\nRX420 Logic Controller"],
@@ -823,6 +830,12 @@ describe("stated limits of the joined-word and remark rules (wrong refusals)", (
     ["a joined warning", "RX420 Logic Controller\nDo-Not-Open"],
     ["a joined approval remark", "RX420 Logic Controller Non-UL-Listed"],
     ["a joined accessories remark", "RX420 Logic Controller Not-Included-Accessories User Manual"],
+    // New on 2026-11-10 with the line-below reading of run-together negations
+    // (found by the independent pass): an ordinary word that IS a negation
+    // prefix plus a coverage word, under the title. It already refused on the
+    // model's own line.
+    ["'Uncovered' under the title", "RX420 Logic Controller\nUncovered Terminals"],
+    ["'Unlisted' under the title", "RX420 Logic Controller\nUnlisted accessories"],
   ])("%s", (_why, heading) => {
     expect(kindOf(verdict("RX420 fault F004?", heading, "NF0000021.pdf"))).toBe("coverage-not-shown");
   });
@@ -989,6 +1002,11 @@ describe("real cover shapes the second rework refused still answer", () => {
     ["a range typed with a no-break hyphen", "RX410", "RX410 \u2011 RX430 Logic Controllers\nUser Manual"],
     ["an exclusion-zone sensor", "ZSX100", "Banner ZSX100 Exclusion Zone Radar Sensor\nInstruction Manual"],
     ["a joined product phrase opening the line below", "RX420", "RX420 Logic Controller\nDo-It-Yourself Installation Guide"],
+    // An ordinary word that only starts like a negation is not one, below the title either.
+    ["'Notebook' on the line below", "RX420", "RX420 Logic Controller\nNotebook Edition User Guide"],
+    ["'Universal' on the line below", "RX420", "RX420 Logic Controller\nUniversal Input Module Guide"],
+    ["'Noncontact' on the line below", "RX420", "RX420 Logic Controller\nNoncontact Sensor Kit Manual"],
+    ["a run-together negation below that names another model", "RX410", "RX410 Drive User Manual\nRX420 Drive NotSupported"],
   ])("%s", (_why, number, heading) => {
     expect(kindOf(verdict(`${number} supply voltage?`, heading))).toBe("answers");
   });
@@ -1010,8 +1028,8 @@ describe("known limit: a listed word written or placed where it is not read", ()
     ["full-width, on the line below", "RX420 Logic Controller\nｎｏｔ covered"],
     ["a full-width slash in N/A", "Hardware User Guide\nRX420 Logic Controller N／A"],
     ["an answer after a colon", "Hardware User Guide\nRX420 Logic Controller: no."],
-    ["run together, alone on the line below", "RX420 Logic Controller\nNotSupported"],
-    ["run together, opening the line below", "RX420 Logic Controller\nNotSupported by this manual"],
+    ["run together with a word between the negation and the coverage word", "RX420 Logic Controller\nNoLongerSupported"],
+    ["run together, two lines below", "RX420 Logic Controller\nUser Guide\nNotSupported"],
     ["emphasis marks around it", "Hardware User Guide\nRX420 Logic Controller **not covered**"],
     ["curly quotes around it", "Hardware User Guide\nRX420 Logic Controller “not covered”"],
     ["letters spaced out", "RX420 Logic Controller\nN O T  C O V E R E D"],

@@ -31,7 +31,7 @@ import {
  *     (or nothing on the line but numbers). Prose shows nothing;
  *   - a joined word is read by its parts: "not-covered", "NOT_SUPPORTED" and
  *     "isn't" are negations, whatever joins them, and so is "NotSupported" on
- *     the model's own line (review round 2 on #5389);
+ *     the model's own line or the line under it (review round 2 on #5389);
  *   - an exclusion is recognised by a listed word, phrase or mark ("not",
  *     "excluded", "n/a", "out of scope", a cross). A word no list holds is a
  *     maker, a range or an adjective, as on real covers. Asking that every
@@ -72,8 +72,7 @@ import {
  *     Guide NF22" on a sibling's cover; a second title stacked directly under
  *     the first with no heading between; and an exclusion heading with no
  *     colon two or more lines up. A LISTED word is not read either when it is
- *     written in full-width letters ("ｎｏｔ", "N／A"); run together on the
- *     line below ("NotSupported by this manual"); wrapped in emphasis or quote marks
+ *     written in full-width letters ("ｎｏｔ", "N／A"); wrapped in emphasis or quote marks
  *     ("**not covered**"); letter-spaced; typed "N / A"; a phrase wrapped
  *     over two lines ("End of" / "life"); "no." after a colon at the end of
  *     the line; in a heading more than six lines up or one that does not end
@@ -96,7 +95,10 @@ import {
  *     Alternative Wiring Diagrams") or opens with a contraction ("Isn't it
  *     time to upgrade"); a joined warning or remark beside the model
  *     ("Do-Not-Open", "Non-UL-Listed", "Do-It-Yourself",
- *     "Not-Included-Accessories", "End-of-Service Notice"). An independent
+ *     "Not-Included-Accessories", "End-of-Service Notice"); an ordinary word
+ *     that is a negation prefix run together with a coverage word, on the
+ *     model's line or the line under it ("Uncovered Terminals", "Unlisted
+ *     accessories"). An independent
  *     pass added more of the same kind, all under the title: "Cable not
  *     included", "Contains no hazardous substances", "The information
  *     contained herein is subject to change without notice", "Edition 2
@@ -393,10 +395,9 @@ function joinedSentenceWord(word: string, counts: (lower: string) => boolean): b
 }
 // "NotSupported", "notcovered", "unlisted", "nichtenthalten": a negation run
 // together with a word about coverage. Only those: "Notebook", "Nonius" and
-// "Universal" are ordinary words. Read on the model's own line and the line
-// above it. On the line below it is not read ("RX420 Logic Controller\n
-// NotSupported by this manual" answers, where "NOT-SUPPORTED by …" refuses): a
-// known limit.
+// "Universal" are ordinary words. Read on the model's own line, the line above
+// it and the line below it ("RX420 Logic Controller\nNotSupported by this
+// manual" refuses, as "NOT-SUPPORTED by …" does).
 const RUN_TOGETHER_RE = /^(?:not|non|never|no|un|nicht|kein)(.{4,})$/;
 const COVERAGE_STEMS = ["support", "cover", "includ", "contain", "list", "avail", "valid", "applic", "enthalten", "inhalt", "unterst"];
 const isCoverageWord = (lower: string) => COVERAGE_STEMS.some((stem) => lower.startsWith(stem)) || isExclusionWord(lower);
@@ -455,10 +456,13 @@ const hasNegation = (line: string) => {
  *  about coverage ("This controller is not covered"), a joined negation
  *  ("not-supported"), or an exclusion phrase or mark ("N/A", "End of life", a
  *  cross). A negation about something else is not one ("Draft - not for
- *  distribution", "Warning: do not operate without guard"). */
-const remarksOnCoverage = (line: string) =>
+ *  distribution", "Warning: do not operate without guard"). Exported for
+ *  manual-rag.ts, which reads the same remark beside a member of a range. */
+export const remarksOnCoverage = (line: string) =>
   hasExclusionPhrase(plain(line)) ||
   joinedTokens(line).some((t) => joinedSentenceWord(t, countsAsNegation)) ||
+  // "NotSupported": the negation and the coverage word in one word.
+  wordsOf(line).some((w) => isRunTogetherNegation(w.toLowerCase())) ||
   (hasNegation(line) && wordsOf(line).some((w) => isCoverageWord(w.toLowerCase())));
 /** The word is one model number ("RX420", "2080-LC20-20QBB", "RX420-U"). */
 const isWholeNumber = (word: string) => modelNumbersIn(word).length === 1;
@@ -580,6 +584,58 @@ function declaresAsTitle(lines: string[], at: number, end: number, line: string,
   // ("RX420 Compact" above "The Do-It-Yourself Logic Controller").
   const beside = [above, below].some((l) => l && isTitleLine(l, false) && hasTitleNoun(l));
   return bare || hasTitleNoun(line) || beside;
+}
+
+/**
+ * The title lines stacked directly under a cover's title, for a caller that has
+ * read the title itself and asks what the cover goes on to name (manual-rag.ts:
+ * a title that names only a range, "Micro800 Programmable Controllers", over
+ * "Micro850 48-point Controllers User Manual").
+ *
+ * `declared`: the lines that `carries` says name a product AND that declare it
+ * as a title: rules 1-3 in the strict reading, the same ones an asked number
+ * is judged by. A wrapped list is one line. The block ends at the first line
+ * that is not a title line, or that names a product without declaring it
+ * ("Micro850 Controllers\nare covered in a separate manual"): what follows a
+ * sentence is not the title block, however much like a title a later line looks.
+ * `rest`: that line and every line after it, unread.
+ *
+ * A line that gives the DOCUMENT its number and names no product ("Rockwell
+ * Automation Publication 2080-UM002H-EN-E - May 2020", "Supersedes Publication
+ * 2080-UM002G-EN-E", "Replaces 2080-UM002G") is not part of the title block
+ * and not a remark on the product beside it: it is read as if it were blank.
+ * A line with no number on it, one that ends in a colon, or one that carries a
+ * plain negation is never such a line.
+ * Without that, the publication line every Rockwell cover carries under its
+ * title made the title above it "superseded" and the block empty.
+ */
+export function titleLinesBelow(input: string[], carries: (line: string) => boolean): { declared: string[]; rest: string[] } {
+  // Only a line that carries such a number, and only when it cannot be a
+  // heading over the lines under it: "Not covered in this document:" ends in a
+  // colon and carries a negation, and must stay what it is.
+  const numbersTheDocument = (line: string) => {
+    const numbers = modelNumbersIn(line);
+    if (numbers.length === 0 || /:\s*$/.test(plain(line))) return false;
+    if (wordsOf(line).some((w) => NEGATION_WORDS.has(w.toLowerCase()))) return false;
+    return PUBLICATION_LINE_RE.test(line) || numbers.every(isPublicationNumber);
+  };
+  const lines = input.map((line) => (!carries(line) && numbersTheDocument(line) ? "" : line));
+  const declared: string[] = [];
+  let at = 0;
+  while (at < lines.length) {
+    let line = lines[at];
+    let end = at;
+    while (end + 1 < lines.length && DANGLING_JOIN_RE.test(line)) line += ` ${lines[++end]}`;
+    if (line.trim()) {
+      if (!isTitleLine(line)) break;
+      if (carries(line)) {
+        if (!declaresAsTitle(lines, at, end, line, () => true, true)) break;
+        declared.push(line);
+      }
+    }
+    at = end + 1;
+  }
+  return { declared, rest: lines.slice(at) };
 }
 
 type OneVerdict =
