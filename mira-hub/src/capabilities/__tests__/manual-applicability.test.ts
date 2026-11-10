@@ -17,7 +17,7 @@ import {
   manualCoversNumber,
   otherProductRefusalText,
 } from "../manual-applicability";
-import { NAMEPLATE_BODY_MARK, NAMEPLATE_OPENER, PHOTO_OCR_OPENER_START, PHOTO_READING_BODY_MARK, PHOTO_READING_OPENER, buildPhotoSourceText, photoDocumentBody } from "../photo-document-text";
+import { NAMEPLATE_BODY_MARK, NAMEPLATE_OPENER, PHOTO_OCR_OPENER_START, PHOTO_READING_BODY_MARK, PHOTO_READING_OPENER, buildPhotoSourceText, photoDocumentShape, productWrittenBody } from "../photo-document-text";
 import { ocrSourceText } from "@/lib/photo-ocr";
 
 const keys = (text: string) => modelNumbersIn(text).map((n) => n.key);
@@ -501,16 +501,25 @@ const RELAY_PLATE = plate("K1 control relay", ["Manufacturer: Schneider Electric
 const READING_FILE = "Technician-reviewed photo reading 2026-11-09.txt";
 const PLATE_FILE = `nameplate-${FILE_ID}.txt`;
 
+// Every text built by `reading`, `plate` and `ocr` below comes from the
+// product's own writers, so the upload records name it. `written` judges it
+// with that record: the kind its writer produces. `verdict`, with no record,
+// is how the same words are judged when they arrive as an uploaded file.
+const recordOf = (heading: string) => photoDocumentShape(heading);
+const written = (question: string, heading: string, filename = OPAQUE): ManualVerdict =>
+  manualAnswersFor(asked(question), heading, filename, recordOf(heading));
+const readOff = (heading: string) => productWrittenBody(heading, recordOf(heading));
+
 describe("a photo reading or a confirmed nameplate is read by what it carries, not as a cover", () => {
   it("is told from an uploaded manual by its opening line", () => {
-    expect(photoDocumentBody(CONTROLLER_READING)).toContain("Controller Micro820");
-    expect(photoDocumentBody(CONTROLLER_READING)).not.toContain("CV-101");
-    expect(photoDocumentBody(RELAY_PLATE)).toContain("- Model: CA3KN22BD");
-    expect(photoDocumentBody(RELAY_PLATE)).not.toContain("K1 control relay");
-    expect(photoDocumentBody("Northfield RX410 Logic Controller\nHardware User Guide")).toBeNull();
-    expect(photoDocumentBody(`Hardware User Guide\n${PHOTO_READING_OPENER}\n${PHOTO_READING_BODY_MARK}\nRX420`)).toBeNull();
-    expect(photoDocumentBody(`${PHOTO_READING_OPENER}. Unconfirmed transcription of motor nameplate ratings.`)).toBeNull();
-    expect(photoDocumentBody(`${PHOTO_READING_OPENER}\nMachine: CV-101`)).toBe("");
+    expect(readOff(CONTROLLER_READING)).toContain("Controller Micro820");
+    expect(readOff(CONTROLLER_READING)).not.toContain("CV-101");
+    expect(readOff(RELAY_PLATE)).toContain("- Model: CA3KN22BD");
+    expect(readOff(RELAY_PLATE)).not.toContain("K1 control relay");
+    expect(readOff("Northfield RX410 Logic Controller\nHardware User Guide")).toBeNull();
+    expect(readOff(`Hardware User Guide\n${PHOTO_READING_OPENER}\n${PHOTO_READING_BODY_MARK}\nRX420`)).toBeNull();
+    expect(readOff(`${PHOTO_READING_OPENER}. Unconfirmed transcription of motor nameplate ratings.`)).toBeNull();
+    expect(readOff(`${PHOTO_READING_OPENER}\nMachine: CV-101`)).toBe("");
   });
 
   it.each([
@@ -524,7 +533,7 @@ describe("a photo reading or a confirmed nameplate is read by what it carries, n
     ["the reading itself is outside the stored block", "RX420 supply voltage?", `${PHOTO_READING_OPENER}\nMachine: RX410 press`, READING_FILE],
     ["an unreviewed reading that carries the asked number", "RX420 supply voltage?", reading("Press 2", "Drive model RX420, 24 V DC.", false), "Unconfirmed photo reading 2026-11-09.txt"],
   ])("answers: %s", (_name, question, heading, filename) => {
-    expect(kindOf(verdict(question, heading, filename))).toBe("answers");
+    expect(kindOf(written(question, heading, filename))).toBe("answers");
   });
 
   it.each([
@@ -532,7 +541,7 @@ describe("a photo reading or a confirmed nameplate is read by what it carries, n
     ["a sibling catalog number against the controller's reading", "Supply voltage for 2080-LC50-24QWB?", CONTROLLER_READING, READING_FILE, ["2080-LC20-20QBB"]],
     ["a sibling model against a reading that says, in a sentence, what the drive is", "RX420 supply voltage?", reading("Press 2", "The drive on this press is an RX410."), READING_FILE, ["RX410"]],
   ])("refuses, and names what the reading shows: %s", (_name, question, heading, filename, declared) => {
-    expect(verdict(question, heading, filename)).toMatchObject({ admit: false, kind: "other-model", declared, reading: true });
+    expect(written(question, heading, filename)).toMatchObject({ admit: false, kind: "other-model", declared, reading: true });
   });
 
   it("an uploaded manual is still read as a cover, whatever it quotes lower down", () => {
@@ -542,8 +551,19 @@ describe("a photo reading or a confirmed nameplate is read by what it carries, n
     expect(v).not.toHaveProperty("reading");
   });
 
+  // Until review round 1 on #5389 this was a pinned limit ("…is read as a
+  // reading"). It let a typed file choose the lenient rule for itself.
+  it("an uploaded file that opens with the product's own photo-reading line is NOT read as a reading", () => {
+    const upload = `${PHOTO_READING_OPENER}\n${PHOTO_READING_BODY_MARK}\nRX420 is not covered by this manual.`;
+    const v = verdict("RX420 supply voltage?", upload);
+    expect(v).toMatchObject({ admit: false, kind: "coverage-not-shown" });
+    expect(v).not.toHaveProperty("reading");
+    // The same words in a document the records say the product wrote are a reading.
+    expect(kindOf(written("RX420 supply voltage?", upload))).toBe("answers");
+  });
+
   it("the reply says it is a photo reading, not a manual, when only readings were refused", () => {
-    const refused = verdict("What is the coil voltage of the CA3KN31BD?", RELAY_PLATE, PLATE_FILE);
+    const refused = written("What is the coil voltage of the CA3KN31BD?", RELAY_PLATE, PLATE_FILE);
     const text = unlistedModelRefusalText(summarizeUnlistedRefusals([refusal(refused)], "question"));
     expect(text).toBe(
       "The photo reading saved in this notebook shows the CA3KN22BD, not the CA3KN31BD you asked about, so I won't answer from it — its values may not apply to the CA3KN31BD. Add the CA3KN31BD manual (or the page that covers it) to this notebook and ask again.",
@@ -559,9 +579,9 @@ describe("a photo reading or a confirmed nameplate is read by what it carries, n
   it("OCR text of a photo is told by how its first line starts, and read from the next line on", () => {
     const stored = ocr("CV-101 relay.jpg", "Schneider Electric\nCA3KN22BD\n24 V DC");
     expect(stored.startsWith(PHOTO_OCR_OPENER_START)).toBe(true);
-    expect(photoDocumentBody(stored)).toContain("CA3KN22BD");
-    expect(photoDocumentBody(stored)).not.toContain("CV-101");
-    expect(photoDocumentBody(`Hardware User Guide\n${PHOTO_OCR_OPENER_START}x.jpg" (OCR, 90% confidence):\nRX420`)).toBeNull();
+    expect(readOff(stored)).toContain("CA3KN22BD");
+    expect(readOff(stored)).not.toContain("CV-101");
+    expect(readOff(`Hardware User Guide\n${PHOTO_OCR_OPENER_START}x.jpg" (OCR, 90% confidence):\nRX420`)).toBeNull();
   });
 
   it.each([
@@ -570,17 +590,17 @@ describe("a photo reading or a confirmed nameplate is read by what it carries, n
     ["the asked number is read inside a sentence", "What is the coil voltage of the CA3KN22BD?", "IMG_0042.jpg", "Do not exceed 24 V DC on the CA3KN22BD coil."],
     ["a look-alike in the photo's name only", "RX420 supply voltage?", "RX410 press.jpg", "Label reads 24 V DC supply"],
   ])("OCR text answers: %s", (_name, question, photoName, text) => {
-    expect(kindOf(verdict(question, ocr(photoName, text), photoName))).toBe("answers");
+    expect(kindOf(written(question, ocr(photoName, text), photoName))).toBe("answers");
   });
 
   it("OCR text that carries only a look-alike is refused as a reading, whatever the photo is named", () => {
-    const v = verdict("What is the coil voltage of the CA3KN22BD?", ocr("CA3KN22BD.jpg", "Schneider Electric\nCA3KN31BD\n24 V DC"), "CA3KN22BD.jpg");
+    const v = written("What is the coil voltage of the CA3KN22BD?", ocr("CA3KN22BD.jpg", "Schneider Electric\nCA3KN31BD\n24 V DC"), "CA3KN22BD.jpg");
     expect(v).toMatchObject({ admit: false, kind: "other-model", declared: ["CA3KN31BD"], reading: true });
   });
 
   it("a refused manual beside a refused reading keeps the manual's sentence", () => {
     const manual = verdict("What is the coil voltage of the CA3KN31BD?", "Control relay, TeSys K\nstandard coil\nCA3KN22BD", "DS0004417.pdf");
-    const refused = verdict("What is the coil voltage of the CA3KN31BD?", RELAY_PLATE, PLATE_FILE);
+    const refused = written("What is the coil voltage of the CA3KN31BD?", RELAY_PLATE, PLATE_FILE);
     const text = unlistedModelRefusalText(summarizeUnlistedRefusals([refusal(manual), refusal(refused)], "question"));
     expect(text).toContain("The manual in this notebook is for the CA3KN22BD, not the CA3KN31BD you asked about");
   });
@@ -589,7 +609,7 @@ describe("a photo reading or a confirmed nameplate is read by what it carries, n
 describe("stated limits, pinned so a change to them is seen", () => {
   it("a photo reading that mentions the asked number only in passing answers for it", () => {
     const stored = buildPhotoSourceText({ machineName: "Press 2", fileId: "0b6f4c1e-7a2d-4e59-9c3a-5d1f8e2b7a40", photoSha256: null, capturedAt: null, reviewed: true, observation: "Page reads: for the RX420 see publication NF-UM002." }).trim();
-    expect(kindOf(verdict("RX420 supply voltage?", stored, "Technician-reviewed photo reading.txt"))).toBe("answers");
+    expect(kindOf(written("RX420 supply voltage?", stored, "Technician-reviewed photo reading.txt"))).toBe("answers");
   });
   it("an accessory's manual that names the model it is for is not told apart from the model's own manual", () => {
     expect(kindOf(verdict("How do I clear fault F004 on the RX420?", "EtherNet/IP Adapter for RX420 Drives\nUser Manual", "UM_ENET.pdf"))).toBe("answers");
@@ -600,14 +620,10 @@ describe("stated limits, pinned so a change to them is seen", () => {
   it("a filename that names the asked model counts when the cover names none, whatever else the name carries", () => {
     expect(kindOf(verdict("Torque limit on the RX420?", "Migration Guide\nSetup Notes", "RX410_to_RX420_Migration.pdf"))).toBe("answers");
   });
-  it("an uploaded file that opens with the product's own photo-reading line is read as a reading", () => {
-    const upload = `${PHOTO_READING_OPENER}\n${PHOTO_READING_BODY_MARK}\nRX420 is not covered by this manual.`;
-    expect(kindOf(verdict("RX420 supply voltage?", upload))).toBe("answers");
-  });
   it("a reading that carries one machine's tag is refused for a question that names that tag and a look-alike tag", () => {
     const tagPlate = reading("CV-101", "Asset tag plate reads CV-101.");
-    expect(kindOf(verdict("CV-101 stops when CV-102 is full, what should I check?", tagPlate, READING_FILE))).toBe("several-look-alikes");
-    expect(kindOf(verdict("What is the belt speed on CV-101?", tagPlate, READING_FILE))).toBe("answers");
+    expect(kindOf(written("CV-101 stops when CV-102 is full, what should I check?", tagPlate, READING_FILE))).toBe("several-look-alikes");
+    expect(kindOf(written("What is the belt speed on CV-101?", tagPlate, READING_FILE))).toBe("answers");
   });
 });
 

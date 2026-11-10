@@ -516,6 +516,15 @@ approved:
         WHERE tenant_id = $1
           AND doc_id::text = ANY($2::text[])
           AND ingest_route = 'v2'
+  "mira-hub/src/lib/manual-rag.ts:1749":
+    approved_classification: TENANT-ONLY
+    query_sha256: "e4e8489e42987dbbd0863195debeaf14dd9fcd5fdb1e4f154d4fe03236b60d00"
+    reason: "NEW (#5389 review round 1, who wrote a photo-shaped document): the document-origin lookup in proveOrigins. A document whose first line is the product's own photo-OCR opener is read as a photo reading only when the product's OCR writer marked its passages (metadata.derived_from = 'photo_ocr', set in code by POST /api/files and never from file content); this read asks whether that mark exists. Pure-tenant by intent: tenant_id=$1 is the caller, and $2 is only doc ids that the retrieval passes of this same call just returned to this caller, so it can never widen what the caller sees. It returns doc ids and a constant, never content, a passage or a citation; its only effect is to let admit() read an already-returned document by its body instead of its cover. A mark written by another tenant must NOT vouch for a document (cv101-photo-recall.integration.test.ts pins that over real SQL), so adding the shared-corpus branch (is_private = false) here would be the defect, not the fix for bug class #1761. A failed or empty lookup leaves the document judged by its cover (fail closed). Covered by photo-document-origin.test.ts, photo-document-origin.vector-lane.test.ts, wrong-manual.test.ts rows X-47..X-54 and the cv101 real-SQL cases."
+    query_snippet: |
+      FROM knowledge_entries
+        WHERE tenant_id = $1
+          AND doc_id = ANY($2::uuid[])
+          AND ingest_route = 'v2'
   "mira-hub/src/lib/__tests__/manual-rag-optional-reads.integration.test.ts:28":
     approved_classification: TENANT-ONLY
     query_sha256: "2f42be93066b7cff58ca9e5fce1de92b00f526fe3f3a8a14152333ab36f1f22b"

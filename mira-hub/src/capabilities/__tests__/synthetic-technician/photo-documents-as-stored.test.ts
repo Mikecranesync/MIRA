@@ -9,15 +9,20 @@ vi.mock("@/lib/db", () => ({ default: { query: vi.fn(async () => ({ rows: [] }))
 
 import { chunkText } from "@/lib/node-knowledge-ingest";
 import { manualAnswersFor, unlistedModelNumbers } from "../../manual-applicability";
-import { buildPhotoSourceText, photoDocumentBody } from "../../photo-document-text";
+import { buildPhotoSourceText, photoDocumentShape, productWrittenBody } from "../../photo-document-text";
 import { PHOTO_DOCUMENT_TEXTS } from "./bench";
 
 const storedHeading = (text: string) => chunkText(text)[0].slice(0, 2000);
 
 describe("photo documents as the hub stores them", () => {
-  it.each(PHOTO_DOCUMENT_TEXTS.map(([m, text]) => [m.key, m.heading, text] as const))("%s: the fixture is the stored first block", (_key, heading, text) => {
+  it.each(PHOTO_DOCUMENT_TEXTS.map(([m, text]) => [m.key, m, text] as const))("%s: the fixture is the stored first block", (_key, m, text) => {
+    const heading = m.heading;
     expect(storedHeading(text)).toBe(heading);
-    expect(photoDocumentBody(heading)).not.toBe("");
+    // The record the bench gives this fixture is the kind its text really has.
+    expect(m.writtenAs).toBe(photoDocumentShape(heading));
+    expect(m.writtenAs).not.toBeUndefined();
+    expect(productWrittenBody(heading, m.writtenAs ?? null)).not.toBe("");
+    expect(productWrittenBody(heading, m.writtenAs ?? null)).not.toBeNull();
   });
 
   // A long reading is cut into blocks. Whatever the cut, the first block is
@@ -33,9 +38,9 @@ describe("photo documents as the hub stores them", () => {
     });
     expect(text.length).toBeGreaterThan(2000);
     const heading = storedHeading(text);
-    expect(photoDocumentBody(heading)).toContain("Relay CA3KN22BD");
-    expect(manualAnswersFor(unlistedModelNumbers("coil voltage of the CA3KN22BD?"), heading, "x.txt")).toEqual({ admit: true });
-    expect(manualAnswersFor(unlistedModelNumbers("coil voltage of the CA3KN31BD?"), heading, "x.txt")).toMatchObject({ admit: false, kind: "other-model", reading: true });
-    expect(manualAnswersFor(unlistedModelNumbers("What is saved for CV-101?"), heading, "x.txt")).toEqual({ admit: true });
+    expect(productWrittenBody(heading, "photo_text")).toContain("Relay CA3KN22BD");
+    expect(manualAnswersFor(unlistedModelNumbers("coil voltage of the CA3KN22BD?"), heading, "x.txt", "photo_text")).toEqual({ admit: true });
+    expect(manualAnswersFor(unlistedModelNumbers("coil voltage of the CA3KN31BD?"), heading, "x.txt", "photo_text")).toMatchObject({ admit: false, kind: "other-model", reading: true });
+    expect(manualAnswersFor(unlistedModelNumbers("What is saved for CV-101?"), heading, "x.txt", "photo_text")).toEqual({ admit: true });
   });
 });

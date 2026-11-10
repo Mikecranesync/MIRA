@@ -12,7 +12,7 @@
 //
 // Nothing here calls a model, a network or a database.
 import { ocrSourceText } from "@/lib/photo-ocr";
-import { NAMEPLATE_BODY_MARK, NAMEPLATE_OPENER, buildPhotoSourceText } from "../../photo-document-text";
+import { NAMEPLATE_BODY_MARK, NAMEPLATE_OPENER, PHOTO_OCR_OPENER_START, PHOTO_READING_BODY_MARK, PHOTO_READING_OPENER, type PhotoDocumentKind, buildPhotoSourceText } from "../../photo-document-text";
 
 export type Manual = {
   key: string;
@@ -23,6 +23,9 @@ export type Manual = {
   pageLabel: string;
   /** `product-written`: the product's own text around a synthetic reading. */
   origin: "public-cover" | "synthetic" | "product-written";
+  /** What the upload records say the product wrote this document as. Absent for
+   *  every uploaded file, including one that only OPENS like a photo document. */
+  writtenAs?: PhotoDocumentKind;
 };
 
 const standIn = (key: string) => `Stand-in passage for ${key}. Admission fixture only, not a quotation.`;
@@ -312,8 +315,8 @@ const storedBlock = (text: string) => {
   if (clean.length > 1000) throw new Error("fixture is longer than one stored block");
   return clean;
 };
-const photoDocument = (key: string, filename: string, text: string): Manual => ({
-  key, filename, heading: storedBlock(text), page: 1, pageLabel: "1", origin: "product-written",
+const photoDocument = (key: string, filename: string, text: string, writtenAs: PhotoDocumentKind): Manual => ({
+  key, filename, heading: storedBlock(text), page: 1, pageLabel: "1", origin: "product-written", writtenAs,
 });
 const CONTROLLER_PHOTO_TEXT = buildPhotoSourceText({
   machineName: "CV-101", fileId: PHOTO_FILE_ID, photoSha256: PHOTO_SHA, capturedAt: "2026-11-09T14:32:08.000Z", reviewed: true,
@@ -332,23 +335,43 @@ export const OTHER_MACHINE_RELAY_SHEET: Manual = {
 };
 /** A technician-reviewed photo reading of the controller, kept as a source of the CV-101 project. */
 export const CONTROLLER_PHOTO_READING = photoDocument(
-  "controller-photo-reading", "Technician-reviewed photo reading 2026-11-09.txt", CONTROLLER_PHOTO_TEXT);
+  "controller-photo-reading", "Technician-reviewed photo reading 2026-11-09.txt", CONTROLLER_PHOTO_TEXT, "photo_text");
 /** The relay's confirmed nameplate, as the confirm route writes it. */
-export const RELAY_PLATE = photoDocument("relay-confirmed-nameplate", `nameplate-${PHOTO_FILE_ID}.txt`, RELAY_PLATE_TEXT);
+export const RELAY_PLATE = photoDocument("relay-confirmed-nameplate", `nameplate-${PHOTO_FILE_ID}.txt`, RELAY_PLATE_TEXT, "nameplate_text");
 /** Each product-written fixture beside the full text it was cut from, for the as-stored check. */
 const ocrOf = (text: string) => ({ text, meanConfidence: 87.4, wordCount: 12, engine: "tesseract", ms: 40 });
 const RELAY_PLATE_OCR_TEXT = ocrSourceText("CV-101 K1 relay.jpg", ocrOf("Schneider Electric\nTeSys\nCA3KN22BD\nUi 690V\n24V DC"));
 const SIBLING_PLATE_OCR_TEXT = ocrSourceText("IMG_20261109_143208.jpg", ocrOf("Schneider Electric\nTeSys\nCA3KN31BD\nUi 690V\n24V DC"));
 /** What OCR read off an uploaded photo of the relay's plate; the photo is named for the machine. */
-export const RELAY_PLATE_OCR = photoDocument("relay-plate-photo-ocr", "CV-101 K1 relay.jpg", RELAY_PLATE_OCR_TEXT);
+export const RELAY_PLATE_OCR = photoDocument("relay-plate-photo-ocr", "CV-101 K1 relay.jpg", RELAY_PLATE_OCR_TEXT, "photo_ocr");
 /** The same for a photo of a sibling relay's plate. */
-export const SIBLING_PLATE_OCR = photoDocument("sibling-relay-plate-photo-ocr", "IMG_20261109_143208.jpg", SIBLING_PLATE_OCR_TEXT);
+export const SIBLING_PLATE_OCR = photoDocument("sibling-relay-plate-photo-ocr", "IMG_20261109_143208.jpg", SIBLING_PLATE_OCR_TEXT, "photo_ocr");
 export const PHOTO_DOCUMENT_TEXTS: Array<[Manual, string]> = [
   [CONTROLLER_PHOTO_READING, CONTROLLER_PHOTO_TEXT],
   [RELAY_PLATE, RELAY_PLATE_TEXT],
   [RELAY_PLATE_OCR, RELAY_PLATE_OCR_TEXT],
   [SIBLING_PLATE_OCR, SIBLING_PLATE_OCR_TEXT],
 ];
+
+// ── Uploaded files that only OPEN like the product's photo documents ──────────
+// Anyone can type the product's opening line at the top of a file. Each of
+// these is a sibling's cover with such a line pasted above it and a passing
+// mention of the other model below. They are uploads: no upload record names
+// them, so `writtenAs` is absent and their cover decides.
+const SIBLING_COVER_LINES = "Northfield RX410 Logic Controller\nHardware User Guide";
+const PASSING_MENTION = "This guide is sometimes kept beside the RX420 on the same line.";
+const posing = (key: string, filename: string, heading: string): Manual => ({ key, heading, filename, page: 1, pageLabel: "1", origin: "synthetic" });
+export const POSING_AS_READING = posing("upload-posing-as-photo-reading", "line-2-notes.txt",
+  `${PHOTO_READING_OPENER}\n${SIBLING_COVER_LINES}\n${PHOTO_READING_BODY_MARK}\n${PASSING_MENTION}`);
+export const POSING_AS_NAMEPLATE = posing("upload-posing-as-nameplate", "line-2-plate.txt",
+  `${NAMEPLATE_OPENER}\n${SIBLING_COVER_LINES}\n${NAMEPLATE_BODY_MARK}\n${PASSING_MENTION}`);
+export const POSING_AS_OCR = posing("upload-posing-as-photo-ocr", "line-2-scan.txt",
+  `${PHOTO_OCR_OPENER_START}line-2.jpg" (OCR, 90% confidence):\n${SIBLING_COVER_LINES}\n${PASSING_MENTION}`);
+/** A sibling relay's sheet with the photo-reading opener pasted above its cover. */
+export const SIBLING_SHEET_POSING_AS_READING = posing("sibling-relay-sheet-posing-as-photo-reading", "relay-notes.txt",
+  `${PHOTO_READING_OPENER}\nControl relay, TeSys K\nstandard coil\nCA3KN31BD\n${PHOTO_READING_BODY_MARK}\nCoil 24 V DC.`);
+/** The record says "nameplate", the text is shaped as a photo reading: the record does not vouch for it. */
+export const READING_SHAPE_NAMEPLATE_RECORD: Manual = { ...POSING_AS_READING, key: "reading-shape-with-a-nameplate-record", writtenAs: "nameplate_text" };
 /** The controller as the confirm screens record it: family name as the model, catalog number in its own field. */
 export const PLC_WITH_CATALOG_FIELD: Identity = { manufacturer: "Allen-Bradley", model: "Micro820", catalogNumber: "2080-LC20-20QBB" };
 /** The relay with its part number in both fields. */
@@ -511,4 +534,29 @@ export const EXTRA_JOBS: Job[] = [
   { id: "X-46", who: "senior", doing: "asking about the next model up, by name, in a project with a catalog number in the catalog field; its sheet is attached",
     attached: [SIBLING_PLC_SHEET], identity: PLC_WITH_CATALOG_FIELD,
     ask: "What supply voltage does the Micro850 need?", want: answer(SIBLING_PLC_SHEET) },
+  // Review round 1 on #5389: the lenient photo-document rule was chosen by a
+  // file's own first line. A typed file could paste that line above a sibling's
+  // cover and be read as a reading. Who wrote a document now comes from the
+  // upload records; these files have none, so their cover decides.
+  { id: "X-47", who: "senior", doing: "asking about the sibling; the only source is a typed file that opens like a kept photo reading, above the other model's cover",
+    attached: [POSING_AS_READING], ask: "RX420 supply voltage?", want: REFUSE, says: "other-model", about: "question" },
+  { id: "X-48", who: "senior", doing: "asking about the sibling; the only source is a typed file that opens like a confirmed nameplate, above the other model's cover",
+    attached: [POSING_AS_NAMEPLATE], ask: "RX420 supply voltage?", want: REFUSE, says: "other-model", about: "question" },
+  { id: "X-49", who: "senior", doing: "asking about the sibling; the only source is a typed file that opens like a photo's OCR text, above the other model's cover",
+    attached: [POSING_AS_OCR], ask: "RX420 supply voltage?", want: REFUSE, says: "other-model", about: "question" },
+  { id: "X-50", who: "senior", doing: "asking about the sibling; the search finds no passage in the typed file that opens like a photo reading",
+    attached: [POSING_AS_READING], ask: "RX420 supply voltage?", want: REFUSE, says: "other-model", about: "question", noPassages: true },
+  { id: "X-51", who: "apprentice", doing: "asking in the relay's project; the only source is a sibling relay's sheet with the photo-reading line pasted on top",
+    attached: [SIBLING_SHEET_POSING_AS_READING], identity: RELAY,
+    ask: "What is the coil voltage?", want: REFUSE, says: "other-model", about: "notebook" },
+  { id: "X-52", who: "senior", doing: "asking about the sibling; the file is shaped as a photo reading but its upload record is a nameplate's",
+    attached: [READING_SHAPE_NAMEPLATE_RECORD], ask: "RX420 supply voltage?", want: REFUSE, says: "other-model", about: "question" },
+  // The other half: a typed file is still an upload, and still answers for the
+  // model its own cover declares. And a real reading is still read as one when
+  // the search itself finds no passage, so its refusal still says why.
+  { id: "X-53", who: "journeyman", doing: "asking about the model on the cover of a typed file that opens like a photo reading",
+    attached: [POSING_AS_READING], ask: "RX410 supply voltage?", want: answer(POSING_AS_READING) },
+  { id: "X-54", who: "senior", doing: "asking by another relay part number; the search finds no passage in this relay's confirmed nameplate",
+    attached: [RELAY_PLATE], identity: RELAY,
+    ask: "What is the coil voltage of the CA3KN31BD?", want: REFUSE, says: "other-model", about: "question", noPassages: true },
 ];

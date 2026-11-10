@@ -1,5 +1,5 @@
 import { modelMentionsInText } from "./model-token";
-import { photoDocumentBody } from "./photo-document-text";
+import { type PhotoDocumentKind, productWrittenBody } from "./photo-document-text";
 
 /**
  * #5369 — is this manual shown to be for the model number that was asked about?
@@ -367,13 +367,14 @@ type OneVerdict =
 
 const stemOf = (filename: string) => filename.replace(/\.[a-z0-9]{1,6}$/i, "");
 
-function coverageOf(asked: ModelNumber, heading: string, filename: string): OneVerdict {
+function coverageOf(asked: ModelNumber, heading: string, filename: string, writtenAs: PhotoDocumentKind | null): OneVerdict {
   const inFamily = (n: ModelNumber) => sameFamily(n, asked);
   const isAsked = (n: ModelNumber) => n.key === asked.key;
   const familyOn = (text: string) => coverNumbersIn(text).filter(inFamily);
-  // A photo reading or a confirmed nameplate: what was read off the photo is
-  // the evidence, sentence or not. Its filename is the product's own, too.
-  const read = photoDocumentBody(heading);
+  // A photo reading or a confirmed nameplate THE PRODUCT WROTE: what was read
+  // off the photo is the evidence, sentence or not. Its filename is the
+  // product's own, too. A file that only opens like one is read by its cover.
+  const read = productWrittenBody(heading, writtenAs);
   if (read !== null) {
     const carried = familyOn(read);
     if (carried.length === 0) return { kind: "silent" };
@@ -422,11 +423,15 @@ function coverageOf(asked: ModelNumber, heading: string, filename: string): OneV
 /** May this manual answer a question (or a notebook) that names these numbers?
  *  Every asked number must be either unknown to this manual (nothing like it on
  *  the cover or filename) or shown to be covered. One number that is not shown
- *  refuses the manual, whatever else the question names. */
-export function manualAnswersFor(asked: ModelNumber[], heading: string, filename: string): ManualVerdict {
+ *  refuses the manual, whatever else the question names.
+ *
+ *  `writtenAs`: what the upload records say the product wrote this document as
+ *  (a photo reading, a confirmed nameplate, a photo's OCR text). Leave it out
+ *  for anything they do not vouch for; it is then judged by its cover. */
+export function manualAnswersFor(asked: ModelNumber[], heading: string, filename: string, writtenAs: PhotoDocumentKind | null = null): ManualVerdict {
   const failed: Array<{ number: ModelNumber; verdict: OneVerdict }> = [];
   for (const number of asked) {
-    const verdict = coverageOf(number, heading, filename);
+    const verdict = coverageOf(number, heading, filename, writtenAs);
     if (verdict.kind !== "silent" && verdict.kind !== "covers") failed.push({ number, verdict });
   }
   if (failed.length === 0) return { admit: true };
@@ -445,13 +450,13 @@ export function manualAnswersFor(asked: ModelNumber[], heading: string, filename
     kind,
     asked: (pair ? asked : failed.map((f) => f.number)).map((n) => n.label),
     declared: [...new Set(declared)],
-    ...(photoDocumentBody(heading) !== null ? { reading: true as const } : {}),
+    ...(productWrittenBody(heading, writtenAs) !== null ? { reading: true as const } : {}),
   };
 }
 
 /** Does this manual's cover or filename show it covers this one number? */
-export function manualCoversNumber(number: ModelNumber, heading: string, filename: string): boolean {
-  return coverageOf(number, heading, filename).kind === "covers";
+export function manualCoversNumber(number: ModelNumber, heading: string, filename: string, writtenAs: PhotoDocumentKind | null = null): boolean {
+  return coverageOf(number, heading, filename, writtenAs).kind === "covers";
 }
 
 // A cover line that gives the DOCUMENT its number, not the product.
@@ -474,12 +479,13 @@ const isPublicationNumber = (n: ModelNumber) => n.label.split("-").some((part) =
  *   - that line must be a title (declaresAsTitle); prose declares nothing;
  *   - a publication or document number is not a product: a line labelled as
  *     one, a publication-type group, or six digits in a row.
- * A photo reading has no cover and declares nothing. The filename is never a
+ * A photo reading the product wrote has no cover and declares nothing (a file
+ * that only opens like one is an upload, and its cover is read). The filename is never a
  * declaration. Every miss here fails toward "declares nothing", which is what
  * the product did before this rule existed.
  */
-export function coverDeclaredNumbers(heading: string): ModelNumber[] {
-  if (photoDocumentBody(heading) !== null) return [];
+export function coverDeclaredNumbers(heading: string, writtenAs: PhotoDocumentKind | null = null): ModelNumber[] {
+  if (productWrittenBody(heading, writtenAs) !== null) return [];
   const lines = heading.split("\n");
   const lineAt = (at: number) => {
     let line = lines[at];

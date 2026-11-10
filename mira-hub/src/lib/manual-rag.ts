@@ -16,7 +16,7 @@ import {
   type OtherProductRefusal,
   type UnlistedModelRefusal,
 } from "@/capabilities/manual-applicability";
-import { photoDocumentBody } from "@/capabilities/photo-document-text";
+import { type PhotoDocumentKind, photoDocumentShape, productWrittenBody } from "@/capabilities/photo-document-text";
 import { embedQueryDetailed, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
 import { setSpanAttrs } from "@/capabilities/observability/tracing";
 import { logRerankFallback, orderWithPinnedHead, rerankEnabled, rerankPool, rerankScores } from "@/capabilities/reranker";
@@ -1692,6 +1692,91 @@ export async function retrieveNodeChunks(
           AND content_tsv @@ q.tsq
         ORDER BY rank DESC, doc_id, page_start NULLS LAST, source_page NULLS LAST, metadata->>'chunk_index', id
         LIMIT $4`;
+  // Who wrote a document that OPENS like one of the product's own photo
+  // documents (a kept photo reading, a confirmed nameplate, a photo's OCR
+  // text). The opening line is ordinary text and proves nothing: a typed file
+  // can carry it. What vouches for it is a record the SERVER made when it wrote
+  // the document, which no upload can set:
+  //   - `namespace_direct_uploads.source` for a photo reading or a nameplate;
+  //   - `metadata.derived_from` on the passages of a photo's OCR text.
+  // Asked once per document, and only for documents with such an opening, so a
+  // notebook without one costs no query. No record, or a failed lookup, leaves
+  // the document judged by its cover like any other upload.
+  const provenOrigins = new Map<string, PhotoDocumentKind | null>();
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const proveOrigins = async (rows: Record<string, unknown>[]): Promise<void> => {
+    const shaped = new Map<string, PhotoDocumentKind>();
+    for (const r of rows) {
+      const docId = String(r.doc_id ?? "");
+      if (provenOrigins.has(docId)) continue;
+      const shape = photoDocumentShape(String(r.document_heading ?? ""));
+      if (shape !== null) shaped.set(docId, shape);
+    }
+    if (shaped.size === 0) return;
+    for (const d of shaped.keys()) provenOrigins.set(d, null);
+    const idsShaped = (...kinds: PhotoDocumentKind[]) => [...shaped].filter(([d, k]) => kinds.includes(k) && UUID_RE.test(d)).map(([d]) => d);
+    const fromUploads = idsShaped("photo_text", "nameplate_text");
+    const fromPassages = idsShaped("photo_ocr");
+    if (fromUploads.length + fromPassages.length === 0) return;
+    // Optional reads inside the caller's transaction: same SAVEPOINT pattern as
+    // the code-selectivity count, so a failure here cannot abort the lanes
+    // that follow.
+    let savepoint = false;
+    try {
+      await client.query("SAVEPOINT document_origin");
+      savepoint = true;
+    } catch {
+      savepoint = false;
+    }
+    try {
+      const found: Array<Record<string, unknown>> = [];
+      // Each record is asked only of the documents shaped for it, and a record
+      // of one kind never vouches for a text shaped as another (productWrittenBody).
+      if (fromUploads.length > 0) {
+        const res = await client.query(
+          `/* document-origin */ SELECT upload_id::text AS doc_id, source AS written_as
+             FROM namespace_direct_uploads
+            WHERE tenant_id = $1
+              AND upload_id = ANY($2::uuid[])
+              AND source IN ('photo_text', 'nameplate_text')`,
+          [tenantId, fromUploads],
+        );
+        found.push(...(res.rows as Array<Record<string, unknown>>));
+      }
+      if (fromPassages.length > 0) {
+        const res = await client.query(
+          `/* document-origin */ SELECT DISTINCT doc_id::text AS doc_id, 'photo_ocr' AS written_as
+             FROM knowledge_entries
+            WHERE tenant_id = $1
+              AND doc_id = ANY($2::uuid[])
+              AND ingest_route = 'v2'
+              AND metadata->>'derived_from' = 'photo_ocr'`,
+          [tenantId, fromPassages],
+        );
+        found.push(...(res.rows as Array<Record<string, unknown>>));
+      }
+      for (const row of found) {
+        const docId = String(row.doc_id ?? "");
+        const kind = row.written_as;
+        if (!shaped.has(docId)) continue;
+        if (kind === "photo_text" || kind === "nameplate_text" || kind === "photo_ocr") provenOrigins.set(docId, kind);
+      }
+      if (savepoint) await client.query("RELEASE SAVEPOINT document_origin");
+    } catch (err) {
+      for (const d of shaped.keys()) provenOrigins.set(d, null);
+      console.warn("[retrieveNodeChunks] document-origin lookup failed; photo-shaped documents are judged by their cover:", err instanceof Error ? err.message : err);
+      if (savepoint) {
+        try {
+          await client.query("ROLLBACK TO SAVEPOINT document_origin");
+        } catch (rollbackErr) {
+          console.warn("[retrieveNodeChunks] document-origin savepoint rollback failed:", rollbackErr instanceof Error ? rollbackErr.message : rollbackErr);
+        }
+      }
+    }
+  };
+  /** What the records say the product wrote this row's document as; `null` when they say nothing. */
+  const writtenAsOf = (r: Record<string, unknown>): PhotoDocumentKind | null => provenOrigins.get(String(r.doc_id ?? "")) ?? null;
+
   const runRetrieval = async (tsquery: string, queryText: string) => {
     const rows: Record<string, unknown>[] = [];
     for (const window of docWindows) {
@@ -1737,6 +1822,7 @@ export async function retrieveNodeChunks(
       const max = Math.max(1e-6, ...rows.map((r) => Number(r.rank ?? 0)));
       for (const r of rows) r.rank = Number(r.rank ?? 0) / max;
     }
+    await proveOrigins(rows);
     return rows;
   };
 
@@ -1897,6 +1983,7 @@ export async function retrieveNodeChunks(
       );
       rows.push(...res.rows);
     }
+    await proveOrigins(rows);
     return rows;
   };
 
@@ -2028,11 +2115,11 @@ export async function retrieveNodeChunks(
    *     the model) → only when that family is another maker's. A same-maker
    *     family may well be what the number belongs to, so it is kept;
    *   - the cover gives only catalog numbers, none of them the notebook's. */
-  const declaresOnlyOtherProducts = (filename: string, heading: string): string[] | null => {
-    if (photoDocumentBody(heading) !== null) return null;
-    if (questionNumbers.some((asked) => manualCoversNumber(asked, heading, filename))) return null;
+  const declaresOnlyOtherProducts = (filename: string, heading: string, writtenAs: PhotoDocumentKind | null): string[] | null => {
+    if (productWrittenBody(heading, writtenAs) !== null) return null;
+    if (questionNumbers.some((asked) => manualCoversNumber(asked, heading, filename, writtenAs))) return null;
     const names = coverIdentitiesOf(filename, heading);
-    const numbers = coverDeclaredNumbers(heading);
+    const numbers = coverDeclaredNumbers(heading, writtenAs);
     if (names.size === 0 && numbers.length === 0) return null;
     if (confirmedNumbers.some((own) => numbers.some((n) => n.key === own.key))) return null;
     const maker = opts.identity?.manufacturer?.trim() || null;
@@ -2109,21 +2196,21 @@ export async function retrieveNodeChunks(
           // FAMILY manual (PowerFlex 520-Series for a 525) counts as covering
           // its members, not as a different model (FAMILY_ROOTS).
           if (projectScoped) {
-            const declared = declaresOnlyOtherProducts(String(r.filename ?? ""), String(r.document_heading ?? ""));
+            const declared = declaresOnlyOtherProducts(String(r.filename ?? ""), String(r.document_heading ?? ""), writtenAsOf(r));
             if (declared) noteOtherProduct(String(r.doc_id ?? ""), declared);
           }
           return false;
         }
       }
       if (unlistedAsk.length > 0) {
-        const verdict = manualAnswersFor(unlistedAsk, String(r.document_heading ?? ""), String(r.filename ?? ""));
+        const verdict = manualAnswersFor(unlistedAsk, String(r.document_heading ?? ""), String(r.filename ?? ""), writtenAsOf(r));
         if (!verdict.admit) {
           noteUnlistedRefusal(String(r.doc_id ?? ""), verdict);
           return false;
         }
       }
       if (projectScoped) {
-        const declared = declaresOnlyOtherProducts(String(r.filename ?? ""), String(r.document_heading ?? ""));
+        const declared = declaresOnlyOtherProducts(String(r.filename ?? ""), String(r.document_heading ?? ""), writtenAsOf(r));
         if (declared) {
           noteOtherProduct(String(r.doc_id ?? ""), declared);
           return false;
@@ -2234,6 +2321,7 @@ export async function retrieveNodeChunks(
           (metadata->>'chunk_index')::int NULLS LAST, id`,
       [tenantId, unjudged, ...approvedParams],
     );
+    await proveOrigins(covers.rows as Record<string, unknown>[]);
     for (const row of covers.rows as Record<string, unknown>[]) {
       if (unjudged.includes(String(row.doc_id ?? ""))) admit(row);
     }
@@ -2323,6 +2411,7 @@ export async function retrieveNodeChunks(
         if (docWindows.length > 1) {
           vectorRows.sort((a, b) => Number(b.vscore ?? 0) - Number(a.vscore ?? 0));
         }
+        await proveOrigins(vectorRows);
         vectorKeys = [];
         for (const r of vectorRows) {
           if (!admit(r)) continue;
