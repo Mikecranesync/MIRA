@@ -68,7 +68,13 @@ async function run(job: Job): Promise<Outcome> {
     validatedDocScope: true,
     rawQuery: job.ask,
     topK: 6,
-    ...(job.identity ? { identity: job.identity, identityStatus: job.unconfirmed ? ("candidate" as const) : ("user_confirmed" as const) } : {}),
+    ...(job.identity
+      ? {
+          identity: { manufacturer: job.identity.manufacturer, model: job.identity.model },
+          ...(job.identity.catalogNumber ? { catalogNumber: job.identity.catalogNumber } : {}),
+          identityStatus: job.unconfirmed ? ("candidate" as const) : ("user_confirmed" as const),
+        }
+      : {}),
     diagnostics: diagnostics as never,
   });
   const byDoc = new Map(docs.map((d) => [d.docId, d.m] as const));
@@ -177,14 +183,14 @@ describe("synthetic technician — scorecard", () => {
   // into the known-fail list, changes a number a reviewer has to look at.
   it("counts: all 30 jobs go right, none is a known wrong-manual fail; the added rows are counted beside them", () => {
     expect({ right: passing.length, knownWrong: failing.length, added: EXTRA_JOBS.length })
-      .toEqual({ right: 30, knownWrong: 0, added: 38 });
+      .toEqual({ right: 30, knownWrong: 0, added: 46 });
   });
 
   // 30 right answers are also reachable by refusing more. These are the jobs
   // that must ANSWER; the number is pinned so one cannot be turned into a refusal unseen.
   it("counts: the jobs that must answer, in the 30 and in the added rows", () => {
     const answers = (jobs: Job[]) => jobs.filter((j) => "answerFrom" in j.want).length;
-    expect({ contract: answers(JOBS), added: answers(EXTRA_JOBS) }).toEqual({ contract: 15, added: 23 });
+    expect({ contract: answers(JOBS), added: answers(EXTRA_JOBS) }).toEqual({ contract: 15, added: 28 });
   });
 });
 

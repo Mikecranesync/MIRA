@@ -1314,6 +1314,10 @@ export async function retrieveNodeChunks(
     /** The notebook's machine (manufacturer/model), so its own name is never
      *  read as a fault code by the whole-token lane (Codex r6 on #4360). */
     identity?: EquipmentIdentity | null;
+    /** The notebook's catalog-number field, recorded beside its model. Judged
+     *  with the model's own unreadable numbers, under the same confirmation
+     *  rule as `identity.model` (#5369). */
+    catalogNumber?: string | null;
     /** How the notebook's identity was established. Model-less questions are
      *  scoped to `identity.model` ONLY when this is `user_confirmed` or
      *  `verified`: an OCR `candidate` can misread a nameplate, and scoping to a
@@ -1892,8 +1896,8 @@ export async function retrieveNodeChunks(
   // ("RX420", "CA3KN99ZZ", "2080-LC99-99ZZZ"). They read as "no model named",
   // so every check above was skipped and a sibling's manual answered. The
   // question's own numbers are judged. So is any number in a CONFIRMED
-  // notebook model that the detector cannot read (a catalog number, recorded
-  // alone or beside the family name), unless the
+  // notebook model or catalog-number field that the detector cannot read (a
+  // catalog number, recorded alone or beside the family name), unless the
   // question names a model itself: a known one, or a number of the notebook
   // number's own family. Any other number in the question (the machine's tag,
   // a fault code) names no model and must not switch the notebook's check off.
@@ -1901,7 +1905,7 @@ export async function retrieveNodeChunks(
   const questionNumbers = unlistedModelNumbers(opts.rawQuery ?? q);
   const namesNoKnownModel = !requestedModel.model && !requestedModel.ambiguous && closeNameIdentities.size === 0;
   const confirmedNumbers =
-    namesNoKnownModel && identityConfirmed && notebookModel ? unlistedModelNumbers(notebookModel) : [];
+    namesNoKnownModel && identityConfirmed ? unlistedModelNumbers(`${notebookModel} ${opts.catalogNumber ?? ""}`) : [];
   const notebookNumbers = questionNumbers.some((asked) => confirmedNumbers.some((own) => sameModelFamily(asked, own))) ? [] : confirmedNumbers;
   const notebookLabels = new Set(notebookNumbers.map((n) => n.label));
   const unlistedAsk = [...questionNumbers, ...notebookNumbers];

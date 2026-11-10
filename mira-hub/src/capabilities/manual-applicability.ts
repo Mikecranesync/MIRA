@@ -25,11 +25,13 @@ import { photoDocumentBody } from "./photo-document-text";
  *     and a cover and a filename that name different look-alikes disagree.
  *
  * A document the PRODUCT wrote from a technician's photo (a kept photo reading,
- * a confirmed nameplate) has no cover, so none of that applies to it. It is
+ * a confirmed nameplate, the OCR text of an uploaded photo) has no cover, so
+ * none of that applies to it. It is
  * read by what was read off the photo: it answers for a number it carries, is
  * refused for a number it carries only a look-alike of, and is not judged
  * otherwise. Its header lines are the product's own and are never read: the
- * machine's name in them ("CV-101") is a label, not a model number. This is
+ * machine's name in them ("CV-101") is a label, not a model number, and so is
+ * a photo's file name. This is
  * what the existing check already does for the families it reads.
  * No model call, no database call. Pure.
  *
@@ -61,8 +63,10 @@ import { photoDocumentBody } from "./photo-document-text";
  *     that way in mixed-case text ("RX420 IS sold elsewhere") reads as a title
  *     when a title noun is beside it;
  *   - a cover that names exactly one model, as a title, is trusted;
- *   - an uploaded file whose first line is the product's own photo-reading or
- *     nameplate line is read as one;
+ *   - an uploaded file whose first line is the product's own photo-reading,
+ *     nameplate or photo-OCR line is read as one;
+ *   - a photo reading that mentions the asked number only in passing (a
+ *     photographed page that points to another model's manual) answers for it;
  *   - a photo reading that carries one machine tag is refused for a question
  *     that names that tag and a look-alike tag ("CV-101 … CV-102").
  *

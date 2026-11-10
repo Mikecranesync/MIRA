@@ -165,6 +165,17 @@ describe("#5369 — a model number no attached manual is shown to cover", () => 
     expect(status.message).toContain("for the CA3KN31BD, not the CA3KN22BD this notebook is set up for");
   });
 
+  it("hands retrieval the notebook's catalog number beside its model", async () => {
+    nbMock.getNotebook.mockResolvedValue({
+      id: NB, displayName: "CV-101 controller", manufacturer: "Allen-Bradley", model: "Micro820", catalogNumber: "2080-LC20-20QBB", identityStatus: "user_confirmed",
+    });
+    ragMock.retrieveNodeChunks.mockImplementation(async () => []);
+    await ask("What supply voltage does it need?");
+    const scoped = ragMock.retrieveNodeChunks.mock.calls.map((c) => c[3] as { identityStatus?: unknown; catalogNumber?: unknown }).filter((o) => o.identityStatus !== undefined);
+    expect(scoped.length).toBeGreaterThan(0);
+    for (const o of scoped) expect(o).toMatchObject({ identity: { model: "Micro820" }, catalogNumber: "2080-LC20-20QBB", identityStatus: "user_confirmed" });
+  });
+
   it("control: without that proof the generic refusal is unchanged", async () => {
     ragMock.retrieveNodeChunks.mockImplementation(async () => []);
     const { status } = await ask();

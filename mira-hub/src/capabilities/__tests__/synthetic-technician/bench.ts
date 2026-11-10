@@ -11,6 +11,7 @@
 //    not judge the wording of an answer.
 //
 // Nothing here calls a model, a network or a database.
+import { ocrSourceText } from "@/lib/photo-ocr";
 import { NAMEPLATE_BODY_MARK, NAMEPLATE_OPENER, buildPhotoSourceText } from "../../photo-document-text";
 
 export type Manual = {
@@ -100,7 +101,8 @@ export const RX420_COVER_RX410_FILE = synthetic(
 
 // ── Jobs ───────────────────────────────────────────────────────────────────────
 
-export type Identity = { manufacturer: string; model: string };
+/** `catalogNumber` is the notebook's own catalog-number field, recorded beside the model. */
+export type Identity = { manufacturer: string; model: string; catalogNumber?: string };
 
 /** What the product says when it refuses, as the suite reads it off the retrieval diagnostics. */
 export type Reason =
@@ -328,10 +330,23 @@ export const CONTROLLER_PHOTO_READING = photoDocument(
 /** The relay's confirmed nameplate, as the confirm route writes it. */
 export const RELAY_PLATE = photoDocument("relay-confirmed-nameplate", `nameplate-${PHOTO_FILE_ID}.txt`, RELAY_PLATE_TEXT);
 /** Each product-written fixture beside the full text it was cut from, for the as-stored check. */
+const ocrOf = (text: string) => ({ text, meanConfidence: 87.4, wordCount: 12, engine: "tesseract", ms: 40 });
+const RELAY_PLATE_OCR_TEXT = ocrSourceText("CV-101 K1 relay.jpg", ocrOf("Schneider Electric\nTeSys\nCA3KN22BD\nUi 690V\n24V DC"));
+const SIBLING_PLATE_OCR_TEXT = ocrSourceText("IMG_20261109_143208.jpg", ocrOf("Schneider Electric\nTeSys\nCA3KN31BD\nUi 690V\n24V DC"));
+/** What OCR read off an uploaded photo of the relay's plate; the photo is named for the machine. */
+export const RELAY_PLATE_OCR = photoDocument("relay-plate-photo-ocr", "CV-101 K1 relay.jpg", RELAY_PLATE_OCR_TEXT);
+/** The same for a photo of a sibling relay's plate. */
+export const SIBLING_PLATE_OCR = photoDocument("sibling-relay-plate-photo-ocr", "IMG_20261109_143208.jpg", SIBLING_PLATE_OCR_TEXT);
 export const PHOTO_DOCUMENT_TEXTS: Array<[Manual, string]> = [
   [CONTROLLER_PHOTO_READING, CONTROLLER_PHOTO_TEXT],
   [RELAY_PLATE, RELAY_PLATE_TEXT],
+  [RELAY_PLATE_OCR, RELAY_PLATE_OCR_TEXT],
+  [SIBLING_PLATE_OCR, SIBLING_PLATE_OCR_TEXT],
 ];
+/** The controller as the confirm screens record it: family name as the model, catalog number in its own field. */
+export const PLC_WITH_CATALOG_FIELD: Identity = { manufacturer: "Allen-Bradley", model: "Micro820", catalogNumber: "2080-LC20-20QBB" };
+/** The relay with its part number in both fields. */
+export const RELAY_BOTH_FIELDS: Identity = { manufacturer: "Schneider Electric", model: "CA3KN22BD", catalogNumber: "CA3KN22BD" };
 
 export const EXTRA_JOBS: Job[] = [
   // Wordings that must still refuse.
@@ -464,4 +479,30 @@ export const EXTRA_JOBS: Job[] = [
   { id: "X-38", who: "apprentice", doing: "asking in a project confirmed by family name and catalog number; its own sheet is attached",
     attached: [MICRO820_SHEET_AS_STORED], identity: PLC_BY_NAME_AND_CATALOG,
     ask: "What supply voltage does it need?", want: answer(MICRO820_SHEET_AS_STORED) },
+  // Photo OCR text: the product's first line quotes the photo's file name.
+  { id: "X-39", who: "apprentice", doing: "naming the machine by tag; the only source is OCR text of the relay's plate, from a photo named for the machine",
+    attached: [RELAY_PLATE_OCR], identity: RELAY,
+    ask: "What is the coil voltage of the relay on CV-101?", want: answer(RELAY_PLATE_OCR) },
+  { id: "X-40", who: "apprentice", doing: "asking in the relay's project; the only source is OCR text of a sibling relay's plate",
+    attached: [SIBLING_PLATE_OCR], identity: RELAY,
+    ask: "What is the coil voltage?", want: REFUSE, says: "other-model", about: "notebook" },
+  // The catalog number in the notebook's own field, as the confirm screens record it.
+  { id: "X-41", who: "apprentice", doing: "asking in a project confirmed as a Micro820 with its catalog number in the catalog field; the only sheet is the family's, for another catalog number",
+    attached: [MICRO820_OTHER_CATALOG_SHEET], identity: PLC_WITH_CATALOG_FIELD,
+    ask: "What supply voltage does it need?", want: REFUSE, says: "other-model", about: "notebook" },
+  { id: "X-42", who: "apprentice", doing: "asking in the same project; its own sheet is attached",
+    attached: [MICRO820_SHEET_AS_STORED], identity: PLC_WITH_CATALOG_FIELD,
+    ask: "What supply voltage does it need?", want: answer(MICRO820_SHEET_AS_STORED) },
+  { id: "X-43", who: "apprentice", doing: "asking in a relay project with the part number in both fields; only a sibling relay's sheet is attached",
+    attached: [SIBLING_RELAY_SHEET], identity: RELAY_BOTH_FIELDS,
+    ask: "What is the coil voltage?", want: REFUSE, says: "other-model", about: "notebook" },
+  { id: "X-44", who: "apprentice", doing: "asking in the same relay project; its own sheet is attached",
+    attached: [RELAY_SHEET_OPAQUE_FILE], identity: RELAY_BOTH_FIELDS,
+    ask: "What is the coil voltage?", want: answer(RELAY_SHEET_OPAQUE_FILE) },
+  { id: "X-45", who: "apprentice", doing: "asking in a project whose catalog number was read off a plate but never confirmed",
+    attached: [MICRO820_OTHER_CATALOG_SHEET], identity: PLC_WITH_CATALOG_FIELD, unconfirmed: true,
+    ask: "What supply voltage does it need?", want: answer(MICRO820_OTHER_CATALOG_SHEET) },
+  { id: "X-46", who: "senior", doing: "asking about the next model up, by name, in a project with a catalog number in the catalog field; its sheet is attached",
+    attached: [SIBLING_PLC_SHEET], identity: PLC_WITH_CATALOG_FIELD,
+    ask: "What supply voltage does the Micro850 need?", want: answer(SIBLING_PLC_SHEET) },
 ];

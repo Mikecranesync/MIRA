@@ -14,7 +14,8 @@ import {
   unlistedModelRefusalText,
   type ManualVerdict,
 } from "../manual-applicability";
-import { NAMEPLATE_BODY_MARK, NAMEPLATE_OPENER, PHOTO_READING_BODY_MARK, PHOTO_READING_OPENER, buildPhotoSourceText, photoDocumentBody } from "../photo-document-text";
+import { NAMEPLATE_BODY_MARK, NAMEPLATE_OPENER, PHOTO_OCR_OPENER_START, PHOTO_READING_BODY_MARK, PHOTO_READING_OPENER, buildPhotoSourceText, photoDocumentBody } from "../photo-document-text";
+import { ocrSourceText } from "@/lib/photo-ocr";
 
 const keys = (text: string) => modelNumbersIn(text).map((n) => n.key);
 const asked = (text: string) => unlistedModelNumbers(text);
@@ -539,6 +540,34 @@ describe("a photo reading or a confirmed nameplate is read by what it carries, n
     );
   });
 
+  // A third text the product writes: what OCR read off an uploaded photo. Its
+  // first line is the product's and quotes the photo's file name; the same
+  // name is the stored filename.
+  const ocr = (photoName: string, text: string) =>
+    ocrSourceText(photoName, { text, meanConfidence: 87.4, wordCount: 12, engine: "tesseract", ms: 40 }).replace(/[ \t]+\n/g, "\n").trim();
+
+  it("OCR text of a photo is told by how its first line starts, and read from the next line on", () => {
+    const stored = ocr("CV-101 relay.jpg", "Schneider Electric\nCA3KN22BD\n24 V DC");
+    expect(stored.startsWith(PHOTO_OCR_OPENER_START)).toBe(true);
+    expect(photoDocumentBody(stored)).toContain("CA3KN22BD");
+    expect(photoDocumentBody(stored)).not.toContain("CV-101");
+    expect(photoDocumentBody(`Hardware User Guide\n${PHOTO_OCR_OPENER_START}x.jpg" (OCR, 90% confidence):\nRX420`)).toBeNull();
+  });
+
+  it.each([
+    ["the photo is named for the machine, and the question names the machine", "What is the coil voltage of the relay on CV-101?", "CV-101 relay.jpg", "Schneider Electric\nCA3KN22BD\n24 V DC"],
+    ["the photo is named for a look-alike, the text carries the asked number", "What is the coil voltage of the CA3KN22BD?", "CA3KN31BD.jpg", "Schneider Electric\nCA3KN22BD\n24 V DC"],
+    ["the asked number is read inside a sentence", "What is the coil voltage of the CA3KN22BD?", "IMG_0042.jpg", "Do not exceed 24 V DC on the CA3KN22BD coil."],
+    ["a look-alike in the photo's name only", "RX420 supply voltage?", "RX410 press.jpg", "Label reads 24 V DC supply"],
+  ])("OCR text answers: %s", (_name, question, photoName, text) => {
+    expect(kindOf(verdict(question, ocr(photoName, text), photoName))).toBe("answers");
+  });
+
+  it("OCR text that carries only a look-alike is refused as a reading, whatever the photo is named", () => {
+    const v = verdict("What is the coil voltage of the CA3KN22BD?", ocr("CA3KN22BD.jpg", "Schneider Electric\nCA3KN31BD\n24 V DC"), "CA3KN22BD.jpg");
+    expect(v).toMatchObject({ admit: false, kind: "other-model", declared: ["CA3KN31BD"], reading: true });
+  });
+
   it("a refused manual beside a refused reading keeps the manual's sentence", () => {
     const manual = verdict("What is the coil voltage of the CA3KN31BD?", "Control relay, TeSys K\nstandard coil\nCA3KN22BD", "DS0004417.pdf");
     const refused = verdict("What is the coil voltage of the CA3KN31BD?", RELAY_PLATE, PLATE_FILE);
@@ -548,6 +577,10 @@ describe("a photo reading or a confirmed nameplate is read by what it carries, n
 });
 
 describe("stated limits, pinned so a change to them is seen", () => {
+  it("a photo reading that mentions the asked number only in passing answers for it", () => {
+    const stored = buildPhotoSourceText({ machineName: "Press 2", fileId: "0b6f4c1e-7a2d-4e59-9c3a-5d1f8e2b7a40", photoSha256: null, capturedAt: null, reviewed: true, observation: "Page reads: for the RX420 see publication NF-UM002." }).trim();
+    expect(kindOf(verdict("RX420 supply voltage?", stored, "Technician-reviewed photo reading.txt"))).toBe("answers");
+  });
   it("an accessory's manual that names the model it is for is not told apart from the model's own manual", () => {
     expect(kindOf(verdict("How do I clear fault F004 on the RX420?", "EtherNet/IP Adapter for RX420 Drives\nUser Manual", "UM_ENET.pdf"))).toBe("answers");
   });
