@@ -58,13 +58,10 @@ import { type PhotoDocumentKind, productWrittenBody } from "./photo-document-tex
  *   - covers in languages other than English, German, French, Spanish and
  *     Italian are read with the English lists only;
  *   - "NO" and "DO" read as contact or channel notation only beside a count of
- *     one or two digits or their pair ("2 NO + 2 NC", "DI/DO"); "IS" and "IT"
- *     read as nouns only when shouted in a line that is not, directly before
- *     one of a short list of words they qualify ("IS Barrier", "IT Power
- *     Systems"). So "RX420 IS sold elsewhere Logic Controller" is a remark and
- *     is refused; a legit cover whose word is not on the list ("IS Repeater")
- *     is refused too; and a remark built from a listed word ("RX420 IS power
- *     hungry Controller") still reads as a title;
+ *     one or two digits or their pair ("2 NO + 2 NC", "DI/DO");
+ *   - "IS" and "IT" are always read as sentence words, so a cover that uses
+ *     them as nouns ("RX420 IS Barrier Installation Guide", "RX420 IT Power
+ *     Systems Guide") refuses a question that names that model;
  *   - a cover that names exactly one model, as a title, is trusted;
  *   - an uploaded file whose first line is the product's own photo-reading,
  *     nameplate or photo-OCR line is read as one;
@@ -281,31 +278,22 @@ const isSentenceWord = (word: string): boolean => {
 };
 // "May 2021", "12 May 2021", "May 12, 2021": the month, not the verb.
 const isMonthMay = (words: string[], i: number) => words[i].toLowerCase() === "may" && /^(?:\d{1,2}|(?:19|20)\d{2})$/.test(words[i + 1] ?? "");
-// "NO", "DO", "IS" and "IT" are also nouns on a cover: normally-open contacts
-// ("2 NO + 2 NC", "NO/NC"), digital outputs ("4 DO", "DI/DO"), intrinsic safety
-// ("IS Barrier") and IT power systems. NO and DO count as the noun only beside a
-// contact or channel count or their pair; IS and IT only when shouted in a line
-// that is not ("RX420 IS SOLD ELSEWHERE" stays a sentence) AND directly before
-// the thing they qualify ("IS Barrier", "IT Power"). Anywhere else a shouted IS
-// is still the verb: "RX420 IS sold elsewhere Logic Controller" is a remark
-// (review round 3 on #5389). The list is closed and short on purpose: a legit
-// cover it misses is refused, which is the safe side.
+// "NO" and "DO" are also nouns on a cover: normally-open contacts ("2 NO + 2 NC",
+// "NO/NC") and digital outputs ("4 DO", "DI/DO"). They count as the noun only
+// beside a contact or channel count or their pair.
+// "IS" and "IT" are always read as the sentence words. They can be nouns too
+// (intrinsic safety, IT power systems), and until review round 3 on #5389 a
+// shouted one in a mixed-case line was read that way; but nothing on the page
+// tells "RX420 IS Barrier Guide" from "RX420 IS sold elsewhere Logic
+// Controller" for certain, no cover in the pilot or the bench needs it, and a
+// wrong refusal is the safe side.
 const CONTACT_PAIRS: Record<string, string[]> = { no: ["nc"], do: ["di"] };
-const IS_IT_QUALIFIES = new Set(
-  "barrier barriers isolator isolators interface interfaces power network networks system systems mains earthing grounding".split(" "),
-);
 const isNotationNoun = (words: string[], i: number): boolean => {
   const pairs = CONTACT_PAIRS[words[i].toLowerCase()];
-  if (pairs) {
-    const at = (step: number) => (words[i + step] ?? "").toLowerCase();
-    const paired = [-1, 1].some((d) => pairs.includes(at(d)) || (at(d) === "+" && pairs.includes(at(2 * d))));
-    return /^\d{1,2}$/.test(at(-1)) || paired;
-  }
-  return (
-    (words[i] === "IS" || words[i] === "IT") &&
-    IS_IT_QUALIFIES.has((words[i + 1] ?? "").toLowerCase()) &&
-    words.some((w) => /[a-z]/.test(w))
-  );
+  if (!pairs) return false;
+  const at = (step: number) => (words[i + step] ?? "").toLowerCase();
+  const paired = [-1, 1].some((d) => pairs.includes(at(d)) || (at(d) === "+" && pairs.includes(at(2 * d))));
+  return /^\d{1,2}$/.test(at(-1)) || paired;
 };
 const sentenceWordAt = (words: string[], i: number) => isSentenceWord(words[i]) && !isMonthMay(words, i) && !isNotationNoun(words, i);
 const hasSentenceWord = (line: string) => {

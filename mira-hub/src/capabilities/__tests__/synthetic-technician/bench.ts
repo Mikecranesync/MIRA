@@ -402,7 +402,7 @@ export const RX420_SHOUTED_IS_REMARK = synthetic(
 /** The same remark, wrapped: the shouted IS opens the line below the title. */
 export const RX420_SHOUTED_IS_BELOW = synthetic(
   "rx420-shouted-is-below", "RX420 Logic Controller\nIS sold elsewhere", "NF0000021.pdf");
-/** Control: IS as intrinsic safety, directly before the part it qualifies. */
+/** Stated limit: IS as intrinsic safety. Nothing on the page tells it from the verb for certain, so it is refused. */
 export const RX420_IS_BARRIER = synthetic(
   "rx420-is-barrier", "RX420 IS Barrier Installation Guide", "NF0000023.pdf");
 
@@ -589,14 +589,14 @@ export const EXTRA_JOBS: Job[] = [
     attached: [RELAY_PLATE], identity: RELAY,
     ask: "What is the coil voltage of the CA3KN31BD?", want: REFUSE, says: "other-model", about: "question", noPassages: true },
 
-  // A shouted IS is the noun only directly before what it qualifies (review round 3 on #5389).
+  // A shouted IS or IT is always the sentence word (review round 3 on #5389).
   { id: "X-55", who: "journeyman", doing: "asking about a model the cover only remarks on, with a shouted IS and a product noun beside it",
     attached: [RX420_SHOUTED_IS_REMARK],
     ask: "What supply voltage does the RX420 controller accept?", want: REFUSE, says: "coverage-not-shown", about: "question" },
   { id: "X-56", who: "journeyman", doing: "asking about a model whose title is followed by a remark that opens with a shouted IS",
     attached: [RX420_SHOUTED_IS_BELOW],
     ask: "What supply voltage does the RX420 controller accept?", want: REFUSE, says: "coverage-not-shown", about: "question" },
-  { id: "X-57", who: "journeyman", doing: "control: asking about the model on an intrinsic-safety barrier guide",
+  { id: "X-57", who: "journeyman", doing: "stated limit, a wrong refusal: asking about the model on an intrinsic-safety barrier guide, where IS is a noun",
     attached: [RX420_IS_BARRIER],
-    ask: "What supply voltage does the RX420 controller accept?", want: answer(RX420_IS_BARRIER) },
+    ask: "What supply voltage does the RX420 controller accept?", want: REFUSE, says: "coverage-not-shown", about: "question" },
 ];

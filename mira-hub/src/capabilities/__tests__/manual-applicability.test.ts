@@ -416,8 +416,9 @@ describe("real cover shapes that must still answer", () => {
   });
 });
 
-// "NO", "DO", "IS" and "IT" are sentence words and also cover nouns: normally-open
-// contacts, digital outputs, intrinsic safety, IT power systems.
+// "NO" and "DO" are sentence words and also cover nouns: normally-open contacts
+// and digital outputs. "IS" and "IT" are always read as sentence words (see the
+// stated limits below).
 describe("contact and I/O notation is not a negation", () => {
   it.each([
     ["Coil voltage of the CA3KN22BD?", "CA3KN22BD - TeSys K control relay - 2 NO + 2 NC - 24 V DC coil"],
@@ -427,11 +428,6 @@ describe("contact and I/O notation is not a negation", () => {
     ["RX420 supply voltage?", "RX420 Relay Output Module NO + NC"],
     ["RX420 supply voltage?", "RX420 Logic Controller 8 DI / 4 DO"],
     ["RX420 supply voltage?", "RX420 Logic Controller DI/DO"],
-    ["RX420 supply voltage?", "RX420 IT Power Systems Guide"],
-    ["RX420 supply voltage?", "RX420 IS Barrier Installation Guide"],
-    ["RX420 supply voltage?", "RX420 Logic Controller\nIS Barrier Module"],
-    ["RX420 supply voltage?", "RX420 IS barrier - installation guide"],
-    ["RX420 supply voltage?", "RX420 IT Network Supply Module"],
     ["RX420 supply voltage?", "RX420 Logic Controller\nNO/NC Relay Outputs"],
   ])("%s on %j answers", (question, heading) => expect(kindOf(verdict(question, heading, "DS1.pdf"))).toBe("answers"));
 
@@ -442,14 +438,15 @@ describe("contact and I/O notation is not a negation", () => {
     ["a shouted IS in a shouted line", "RX420 IS SOLD ELSEWHERE\nHardware User Guide"],
     ["a shouted IS on the line below", "RX420 Logic Controller\nIS SOLD ELSEWHERE"],
     ["an ordinary is", "RX420 is sold elsewhere\nHardware User Guide"],
-    // Review round 3 on #5389: a shouted IS or IT is the noun only directly
-    // before what it qualifies ("IS Barrier", "IT Power"), not anywhere in a
-    // line that happens to carry lower case.
+    // Review round 3 on #5389: a shouted IS or IT in a line that carries
+    // lower case used to be read as a noun, and these were admitted.
     ["a shouted IS in a mixed-case remark", "RX420 IS sold elsewhere Logic Controller"],
     ["a shouted IS in a title-cased remark", "RX420 IS Sold Elsewhere Logic Controller"],
     ["a shouted IT in a mixed-case remark", "RX420 IT ships separately Logic Controller"],
     ["a shouted IS opening a lower-case line below", "RX420 Logic Controller\nIS sold elsewhere"],
     ["a shouted IS at the end of the line", "RX420 Logic Controller sold where the RX410 IS"],
+    ["a remark built from a word IS can qualify", "RX420 IS power hungry Controller"],
+    ["the same with IT", "RX420 IT system incompatible Controller"],
     ["DO as a verb", "RX420 DO NOT INSTALL\nHardware User Guide"],
     ["do not, in a count's shadow", "RX420 Controller 2 do not fit"],
   ])("control, still refused: %s", (_why, heading) =>
@@ -654,12 +651,17 @@ describe("stated limits, pinned so a change to them is seen", () => {
     expect(kindOf(written("CV-101 stops when CV-102 is full, what should I check?", tagPlate, READING_FILE))).toBe("several-look-alikes");
     expect(kindOf(written("What is the belt speed on CV-101?", tagPlate, READING_FILE))).toBe("answers");
   });
-  // A shouted IS or IT is a noun only before a short closed list of words (review round 3 on #5389).
-  it("an intrinsic-safety cover whose next word is not on the list is refused", () => {
-    expect(kindOf(verdict("RX420 supply voltage?", "RX420 IS Repeater Installation Guide", "DS1.pdf"))).toBe("coverage-not-shown");
-  });
-  it("a remark built from a listed word, with a product noun beside it, still reads as a title", () => {
-    expect(kindOf(verdict("RX420 supply voltage?", "RX420 IS power hungry Controller", "DS1.pdf"))).toBe("answers");
+  // IS and IT are always sentence words (review round 3 on #5389): nothing on
+  // the page tells the noun from the verb for certain, so these real-looking
+  // covers are refused. A wrong refusal, on the safe side, and seen here if it changes.
+  it.each([
+    "RX420 IS Barrier Installation Guide",
+    "RX420 IT Power Systems Guide",
+    "RX420 Logic Controller\nIS Barrier Module",
+    "RX420 IS barrier - installation guide",
+    "RX420 IT Network Supply Module",
+  ])("a cover that uses IS or IT as a noun is refused: %j", (heading) => {
+    expect(kindOf(verdict("RX420 supply voltage?", heading, "DS1.pdf"))).toBe("coverage-not-shown");
   });
 });
 
