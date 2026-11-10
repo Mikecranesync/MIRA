@@ -437,24 +437,28 @@ export function lifecycleFromStream(result: StreamResult, opts: { stopped?: bool
 /**
  * A persisted turn keeps the machine context it was SERVED with, not the
  * notebook's current binding (Codex #3839 Spec P1: rebinding a notebook must
- * not make old turns appear to concern the new machine). The only durable
- * record of that context is the row's own `machine_evidence` (086): its
- * `assetId` names the machine the answer was grounded in. A row with none was
- * served without machine context and stays `not_applicable`. The binding is
+ * not make old turns appear to concern the new machine). Prefer the row's
+ * equipment snapshot (081): document-only answers need no telemetry packet.
+ * Older history servers/rows can fall back to `machine_evidence.assetId`.
+ * With neither record, the turn stays `not_applicable`. The binding is
  * called confirmed only when it is the notebook's CURRENT confirmed asset —
  * a row from a since-rebound machine is shown, never re-authorized.
  */
 export function persistedMeta(
   meta: HubNotebookMeta,
   machineEvidence: readonly Pick<MachineEvidenceEntry, "assetId">[],
+  recordedEquipmentEntityId?: string | null,
 ): HubNotebookMeta {
-  const servedAssetId = machineEvidence[0]?.assetId ?? null;
+  const servedAssetId = (recordedEquipmentEntityId || machineEvidence[0]?.assetId) ?? null;
   if (!servedAssetId) return { ...meta, asset: null, identityConfirmed: false };
+  // Migration 081 stores opaque TEXT keys, resolved with exact SQL equality.
+  // UUID-looking keys are not a license to merge differently cased identities.
   const current = meta.asset && meta.asset.id === servedAssetId ? meta.asset : null;
   return {
     ...meta,
     asset: current ?? { id: servedAssetId, name: servedAssetId },
-    identityConfirmed: current !== null && meta.identityConfirmed,
+    identityConfirmed: current !== null && meta.identityConfirmed
+      && machineEvidence.every((entry) => entry.assetId === servedAssetId),
   };
 }
 
@@ -467,7 +471,7 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
   const disputed = hasIdentityDispute(row.evidence);
   const threadId = threadIdFor(meta);
   const { citations, machineEvidence, visualEvidence } = splitEvidence(row.evidence);
-  const context = contextFor(persistedMeta(meta, machineEvidence), disputed);
+  const context = contextFor(persistedMeta(meta, machineEvidence, row.equipmentEntityId), disputed);
   // All safety entries, not `splitEvidence`'s single slot: a rejected unsafe
   // answer persists the directive AND the violation, and the violation decides.
   const notices = safetyNoticesOf(row.evidence);

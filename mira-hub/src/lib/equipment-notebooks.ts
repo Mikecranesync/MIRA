@@ -1743,6 +1743,8 @@ export async function listTurns(
   {
     id: string;
     threadId: string;
+    /** Machine recorded for this turn (081), independent of optional telemetry. */
+    equipmentEntityId: string | null;
     question: string;
     answerStatus: string;
     answerText: string | null;
@@ -1789,10 +1791,10 @@ export async function listTurns(
           AND n.equipment_entity_id IS NOT DISTINCT FROM $${equipmentParam}::text
           AND (n.equipment_entity_id IS NULL OR n.asset_confirmed_at IS NOT NULL))`;
     const res = await c.query(
-      `SELECT id, thread_id, question, answer_status, answer_text, evidence, basis, created_at, owner_user_id, client_request_id
+      `SELECT id, thread_id, question, answer_status, answer_text, evidence, basis, created_at, owner_user_id, client_request_id, equipment_entity_id
          FROM (
            SELECT id::text AS id, thread_id, question, answer_status, answer_text, evidence, basis, created_at, owner_user_id,
-                  client_request_id::text AS client_request_id
+                  client_request_id::text AS client_request_id, equipment_entity_id
             FROM equipment_notebook_turns
             WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid
               AND client_request_state = 'complete'
@@ -1808,6 +1810,7 @@ export async function listTurns(
     return res.rows.map((r: Record<string, unknown>) => ({
       id: String(r.id),
       threadId: publicThreadId(r.thread_id),
+      equipmentEntityId: r.equipment_entity_id == null ? null : String(r.equipment_entity_id),
       question: String(r.question),
       answerStatus: String(r.answer_status),
       answerText: (r.answer_text as string) ?? null,

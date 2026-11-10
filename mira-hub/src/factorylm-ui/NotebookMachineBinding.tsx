@@ -5,6 +5,11 @@ import { API_BASE } from "@/lib/config";
 import type { NamespaceNode } from "@/app/api/namespace/tree/route";
 import { listNotice, partitionMachines, type Machine } from "./ScopePicker";
 
+const MAX_TREE_NODES = 10_000;
+// Bound the text rendered in options too: a node cap alone still permits
+// quadratic output when every ancestor is itself a selectable machine.
+const MAX_MACHINE_LABEL_CHARS = 1_000_000;
+
 /** Recovery for the existing job gate. Choosing stays local; only the final
  * confirmation writes, through the existing session/tenant-checked asset API. */
 export function NotebookMachineBinding({ notebookId, onConfirmed, buttonStyle, fieldStyle }: {
@@ -43,19 +48,40 @@ export function NotebookMachineBinding({ notebookId, onConfirmed, buttonStyle, f
         // may have a location yet lack the verified node required by the gate.
         // Reuse the existing machine projection after walking the tenant tree.
         const rows: unknown[] = [];
-        const pending: Array<{ node: unknown; parents: string[] }> = body.nodes.map((node: unknown) => ({ node, parents: [] }));
-        let visited = 0;
+        let scheduled = body.nodes.length;
+        if (scheduled > MAX_TREE_NODES) throw new Error("machine_list_too_large");
+        // One mutable ancestor path, shared by iterative DFS frames. Copying it
+        // for every child makes a deep, mostly non-machine tree quadratic.
+        const pending: Array<{ nodes: unknown[]; next: number }> = [{ nodes: body.nodes, next: body.nodes.length - 1 }];
+        const parents: string[] = [];
+        let parentChars = 0;
+        let labelChars = 0;
         while (pending.length) {
-          if (++visited > 10_000) throw new Error("machine_list_too_large");
-          const entry = pending.pop()!;
-          if (!entry.node || typeof entry.node !== "object") throw new Error("machine_list_unreadable");
-          const node = entry.node as Partial<NamespaceNode>;
+          const frame = pending[pending.length - 1]!;
+          if (frame.next < 0) {
+            pending.pop();
+            if (parents.length) {
+              parentChars -= parents.pop()!.length + (parents.length ? 3 : 0);
+            }
+            continue;
+          }
+          const raw = frame.nodes[frame.next--];
+          if (!raw || typeof raw !== "object") throw new Error("machine_list_unreadable");
+          const node = raw as Partial<NamespaceNode>;
           if (typeof node.kind !== "string" || typeof node.name !== "string") throw new Error("machine_list_unreadable");
           if (node.kind === "asset" || node.kind === "equipment") {
-            rows.push({ id: node.id, name: node.name, tag: node.name, unsPath: node.unsPath, location: entry.parents.join(" / ") || null });
+            labelChars += node.name.length + parentChars;
+            if (labelChars > MAX_MACHINE_LABEL_CHARS) throw new Error("machine_list_too_large");
+            rows.push({ id: node.id, name: node.name, tag: node.name, unsPath: node.unsPath, location: parents.join(" / ") || null });
           }
           if (node.children !== undefined && !Array.isArray(node.children)) throw new Error("machine_list_unreadable");
-          for (const child of node.children ?? []) pending.push({ node: child, parents: [...entry.parents, node.name] });
+          if (node.children?.length) {
+            scheduled += node.children.length;
+            if (scheduled > MAX_TREE_NODES) throw new Error("machine_list_too_large");
+            parentChars += node.name.length + (parents.length ? 3 : 0);
+            parents.push(node.name);
+            pending.push({ nodes: node.children, next: node.children.length - 1 });
+          }
         }
         const result = partitionMachines(rows);
         if (listNotice({ failed: false, machines: result.machines, malformed: result.malformed, shown: result.machines.length }) === "unreadable") throw new Error("machine_list_unreadable");
