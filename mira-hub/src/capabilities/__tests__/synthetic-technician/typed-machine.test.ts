@@ -116,6 +116,24 @@ describe("the PLC, typed with both lines of its plate", () => {
     expect(namesOnlyThisMachine(typed, "2080-LC20-20QBB")).toBe(false);
     expect(isSafeCandidateSearchIdentity("", typed, "2080-LC20-20QBB", "ALLEN-BRADLEY")).toBe(false);
   });
+
+  // Review round 1 on #5387: the check above passes the catalog number as the
+  // part. What the fallback actually proposes is the FAMILY, and that proposal
+  // is what the chat route hands to the gate. Nothing starts the automatic
+  // manual search until the technician confirms the card. Two separate checks
+  // in the gate each say no (the proposed model is not the one part code in
+  // the text; the text does not name only that machine), so removing either
+  // one alone leaves this green: the second assertion pins the second wall.
+  it.each([
+    "Allen-Bradley Micro820 2080-LC20-20QBB",
+    "Allen-Bradley Micro820 2080-LC20-20QBB manual please",
+    "I need the manual for the Allen-Bradley Micro820 2080-LC20-20QBB",
+  ])("the family it proposes does not pass the search gate either: %s", (typed) => {
+    const proposed = propose(typed);
+    expect(proposed).toEqual({ manufacturer: "Allen-Bradley", model: "820" });
+    expect(isSafeCandidateSearchIdentity("", typed, proposed!.model, proposed!.manufacturer)).toBe(false);
+    expect(namesOnlyThisMachine(typed, proposed!.model)).toBe(false);
+  });
 });
 
 // ── what the proposed identity buys: the manual check can then do its job ────
