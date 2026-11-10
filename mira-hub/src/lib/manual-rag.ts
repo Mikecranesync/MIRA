@@ -1475,13 +1475,15 @@ export async function retrieveNodeChunks(
   // The model an earlier, still-open question of this conversation named is the
   // subject of a follow-up that names none ("It will not start" about a named
   // drive, then "What supply voltage does it need?"). Narrow on purpose:
-  //   - this question names no model itself (naming one wins): not a known
-  //     one, and not a number of the carried number's own family ("RX410"
-  //     after "RX420"). Any OTHER number in it (a fault code, a parameter, a
-  //     machine tag, an unrelated part) names no model and does not end the
-  //     carry: "What does fault F0004 mean?" after a refused "RX420 will not
-  //     start" is still about the RX420 (Codex round 1 on #5389, F1). The
-  //     same rule the notebook's own numbers follow below;
+  //   - only a model the detector reads, named in this question, ends the
+  //     carry (naming one wins). A number it cannot read never does, because
+  //     a fault code, a parameter and a machine tag read as numbers too:
+  //     "What does fault F0004 mean?" after a refused "RX420 will not start"
+  //     is still about the RX420 (Codex round 1 on #5389, F1);
+  //   - such a number in this question takes the place of the earlier numbers
+  //     of its own family, and of nothing else: "RX410" replaces a carried
+  //     "RX420", and a repeated "F0004" replaces only the earlier "F0004",
+  //     so asking about the same fault twice does not drop the model either;
   //   - a document that itself covers a number this question names is judged
   //     by that number, not by a carried known model (admit(), below): the
   //     relay's own sheet answers "coil voltage of the CA3KN22BD?" whatever
@@ -1502,17 +1504,13 @@ export async function retrieveNodeChunks(
     return Boolean(named.model) || named.ambiguous || modelIdentitiesInText(text).size > 0;
   };
   const ownNumbers = unlistedModelNumbers(ownQuestion);
-  const openQuestions = !namesKnownModel(ownQuestion) ? (opts.subjectQueries ?? []) : [];
-  const openModelAt = openQuestions.findIndex(namesKnownModel);
-  const openNumbers = (openModelAt >= 0 ? openQuestions.slice(0, openModelAt + 1) : openQuestions).flatMap((text) =>
-    unlistedModelNumbers(text),
-  );
-  const ownNamesCarriedFamily = ownNumbers.some((own) => openNumbers.some((carried) => sameModelFamily(own, carried)));
-  const earlierQuestions = ownNamesCarriedFamily ? [] : openQuestions;
-  const modelAt = ownNamesCarriedFamily ? -1 : openModelAt;
+  const earlierQuestions = !namesKnownModel(ownQuestion) ? (opts.subjectQueries ?? []) : [];
+  const modelAt = earlierQuestions.findIndex(namesKnownModel);
   const carriedModelQuestion = modelAt >= 0 ? earlierQuestions[modelAt] : null;
   const modelQuestion = carriedModelQuestion ?? ownQuestion;
-  const carriedNumbers = ownNamesCarriedFamily ? [] : openNumbers;
+  const carriedNumbers = (modelAt >= 0 ? earlierQuestions.slice(0, modelAt + 1) : earlierQuestions)
+    .flatMap((text) => unlistedModelNumbers(text))
+    .filter((carried) => !ownNumbers.some((own) => sameModelFamily(own, carried)));
   const carriedLabels = new Set(carriedNumbers.map((n) => n.label));
 
   const requestedModel = resolveModelFromObservationText(modelQuestion);

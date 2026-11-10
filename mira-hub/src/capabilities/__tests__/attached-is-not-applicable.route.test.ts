@@ -499,6 +499,36 @@ describe("a fault code in the next question does not change which machine the co
     }
   });
 
+  // Found before the push: the first fix dropped the model again when the next
+  // question repeated a fault code an earlier question had already given.
+  it("asking about the same fault code again, or the next one, is still about the refused model", async () => {
+    attach(RX410_TITLED);
+    await ask("RX420 shows fault F0004");
+
+    for (const question of ["What does F0004 mean?", "How do I clear F0004?", "And F0005?"]) {
+      const next = await ask(question);
+      expect(next.citations, question).toEqual([]);
+      expect(next.providerAsked, question).toBe(false);
+      expect(next.status?.message, question).toContain("RX420");
+    }
+
+    const named = await ask("What does F0004 mean on the RX410?");
+    expect(named.providerAsked, "control: naming the guide's own model answers").toBe(true);
+    expect(named.citations.length).toBeGreaterThan(0);
+  });
+
+  it("the same when the plate message itself carried the fault code", async () => {
+    attach(MICRO820_SHEET_AS_STORED);
+    await ask(`${PLATE} It shows CE10.`);
+
+    for (const question of ["What does CE10 mean?", "How do I reset CE10?"]) {
+      const next = await ask(question);
+      expect(next.citations, question).toEqual([]);
+      expect(next.providerAsked, question).toBe(false);
+      expect(next.status?.message, question).toContain("GS11N-20P2");
+    }
+  });
+
   it("control: a part named in the next question is answered from that part's own sheet", async () => {
     attachTwo(MICRO820_SHEET_AS_STORED, RELAY_SHEET_AS_STORED);
     const handedToModel = () => JSON.stringify(seamMock.buildRequestBody.mock.calls.at(-1));

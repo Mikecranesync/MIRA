@@ -278,4 +278,40 @@ export const PROJECT_JOBS: Job[] = [
   { id: "P-73", who: "apprentice", doing: "stated limit: naming a different part, with no sheet for it, after the plate message was refused",
     attached: [MICRO820_SHEET_AS_STORED], earlier: [PLATE],
     ask: "What is the coil voltage of the CA3KN22BD?", want: REFUSE, says: "mismatch-named", about: "conversation" },
+
+  // ── Asking about the SAME fault code again does not name a model either ──────
+  // Found before the push that answered Codex F1: the first fix ended the carry whenever the
+  // question's number was of the same family as ANY earlier number, and an earlier fault code is
+  // an earlier number. "RX420 shows fault F0004", refused, then "What does F0004 mean?" was
+  // answered from the RX410 guide again. A number in the question now only takes the place of the
+  // earlier numbers of its own family; it never ends the carry, and never drops a model the
+  // detector reads.
+  { id: "P-74", who: "journeyman", doing: "asking about the same fault code again after the sibling model was refused",
+    attached: [RX410_TITLED], earlier: ["RX420 shows fault F0004"],
+    ask: "What does F0004 mean?", want: REFUSE, says: "other-model", about: "conversation" },
+  { id: "P-75", who: "journeyman", doing: "asking about the next fault code after the sibling model was refused",
+    attached: [RX410_TITLED], earlier: ["RX420 shows fault F0004"],
+    ask: "How do I clear F0005?", want: REFUSE, says: "other-model", about: "conversation" },
+  { id: "P-76", who: "journeyman", doing: "a third question about the same fault code, two refused questions back to the model",
+    attached: [RX410_TITLED], earlier: ["What does fault F0004 mean?", "RX420 will not start"],
+    ask: "How do I clear F0004?", want: REFUSE, says: "other-model", about: "conversation" },
+  { id: "P-77", who: "apprentice", doing: "asking about the fault code the plate message already gave",
+    attached: [MICRO820_SHEET_AS_STORED], earlier: [`${PLATE} It shows CE10.`],
+    ask: "What does CE10 mean?", want: REFUSE, says: "mismatch-named", about: "conversation" },
+  { id: "P-78", who: "apprentice", doing: "asking about the same fault code again, the plate message two refused questions back",
+    attached: [MICRO820_SHEET_AS_STORED], earlier: ["What does CE10 mean?", PLATE],
+    ask: "How do I reset CE10?", want: REFUSE, says: "mismatch-named", about: "conversation" },
+  // Controls: naming the guide's own model still answers, with the repeated code beside it.
+  { id: "P-79", who: "journeyman", doing: "naming the attached guide's own model beside a fault code asked before",
+    attached: [RX410_TITLED], earlier: ["RX420 shows fault F0004"],
+    ask: "What does F0004 mean on the RX410?", want: answer(RX410_TITLED) },
+  { id: "P-80", who: "journeyman", doing: "naming the attached guide's own model with nothing else, after a refused fault question about the sibling",
+    attached: [RX410_TITLED], earlier: ["RX420 shows fault F0004"],
+    ask: "What supply voltage does the RX410 need?", want: answer(RX410_TITLED) },
+  // A code that happens to be of the carried model number's own family takes its place (nothing
+  // tells a code from a model number). It is then judged as a number of that family itself, so
+  // the sibling's guide is still refused; the reply names the code, not the model asked before.
+  { id: "P-81", who: "journeyman", doing: "stated limit: a code of the carried model's own family, after the sibling model was refused",
+    attached: [RX410_TITLED], earlier: ["RX420 will not start"],
+    ask: "What does RX421 mean?", want: REFUSE, says: "other-model", about: "question" },
 ];
