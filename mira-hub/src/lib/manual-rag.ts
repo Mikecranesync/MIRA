@@ -5,6 +5,13 @@ import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
 import { FAMILY_ROOTS, MODEL_PATTERNS, ROCKWELL, familyCovers, modelIdentitiesInText, resolveModelFromObservationText } from "@/capabilities/model-token";
 import { ambiguousSiblingModels } from "@/capabilities/named-model-mismatch";
+import {
+  manualAnswersFor,
+  summarizeUnlistedRefusals,
+  unlistedModelNumbers,
+  type ManualVerdict,
+  type UnlistedModelRefusal,
+} from "@/capabilities/manual-applicability";
 import { embedQueryDetailed, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
 import { setSpanAttrs } from "@/capabilities/observability/tracing";
 import { logRerankFallback, orderWithPinnedHead, rerankEnabled, rerankPool, rerankScores } from "@/capabilities/reranker";
@@ -1347,6 +1354,9 @@ export async function retrieveNodeChunks(
       /** #5355: the question named two sibling models with no comparison cue;
        *  nothing was retrieved and the reply asks which one. */
       ambiguousModelAsk?: { named: string[] };
+      /** #5369: a model or catalog number the detector has no pattern for, and
+       *  EVERY selected manual was refused because it is not shown to cover it. */
+      unlistedModelRefusal?: UnlistedModelRefusal;
     };
   },
 ): Promise<ManualChunk[]> {
@@ -1877,6 +1887,31 @@ export async function retrieveNodeChunks(
     refusedDocs.add(docId);
     publishNamedMismatch();
   };
+  // #5369 — model and catalog numbers model-token.ts has no pattern for
+  // ("RX420", "CA3KN99ZZ", "2080-LC99-99ZZZ"). They read as "no model named",
+  // so every check above was skipped and a sibling's manual answered. The
+  // question's own numbers are judged; when it names no model at all, a
+  // CONFIRMED notebook model the detector cannot read is judged the same way
+  // (a notebook recorded by catalog number). manual-applicability.ts decides.
+  const questionNumbers = unlistedModelNumbers(opts.rawQuery ?? q);
+  const namesNoModel =
+    questionNumbers.length === 0 && !requestedModel.model && !requestedModel.ambiguous && closeNameIdentities.size === 0;
+  const notebookNumbers =
+    namesNoModel && identityConfirmed && notebookModel && notebookIdentities.size === 0 ? unlistedModelNumbers(notebookModel) : [];
+  const unlistedAsk = questionNumbers.length > 0 ? questionNumbers : notebookNumbers;
+  const unlistedRefusals = new Map<string, Extract<ManualVerdict, { admit: false }>>();
+  const noteUnlistedRefusal = (docId: string, verdict: Extract<ManualVerdict, { admit: false }>) => {
+    unlistedRefusals.set(docId, verdict);
+    if (!opts.diagnostics) return;
+    // Same bar as the named-ask claim above: it stands only while EVERY
+    // selected manual was refused this way.
+    if (allowedDocIds.length > 0 && allowedDocIds.every((d) => unlistedRefusals.has(d))) {
+      opts.diagnostics.unlistedModelRefusal = summarizeUnlistedRefusals(
+        [...unlistedRefusals.values()],
+        questionNumbers.length > 0 ? "question" : "notebook",
+      );
+    } else delete opts.diagnostics.unlistedModelRefusal;
+  };
   // Admission is ONE predicate for every lane — lexical, exact-token and (item
   // 4) vector — so a chunk the vector lane finds is held to exactly the same
   // model-applicability rule as one BM25 found.
@@ -1937,6 +1972,13 @@ export async function retrieveNodeChunks(
           // the Micro820 notebook — the prod-test miss) is rejected — and a
           // FAMILY manual (PowerFlex 520-Series for a 525) counts as covering
           // its members, not as a different model (FAMILY_ROOTS).
+          return false;
+        }
+      }
+      if (unlistedAsk.length > 0) {
+        const verdict = manualAnswersFor(unlistedAsk, String(r.document_heading ?? ""), String(r.filename ?? ""));
+        if (!verdict.admit) {
+          noteUnlistedRefusal(String(r.doc_id ?? ""), verdict);
           return false;
         }
       }

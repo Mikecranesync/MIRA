@@ -141,6 +141,7 @@ import {
   questionWarningQuery,
 } from "@/capabilities/energized-work-stop";
 import { ambiguousModelAskText, namedModelMismatchText, type NamedModelMismatch } from "@/capabilities/named-model-mismatch";
+import { unlistedModelRefusalText, type UnlistedModelRefusal } from "@/capabilities/manual-applicability";
 import { isOffTopic, SCOPE_REPLY } from "@/capabilities/scope-check";
 import { englishSearchQuery, withAnswerLanguage } from "@/capabilities/answer-language";
 import { normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
@@ -2445,6 +2446,7 @@ async function handleChatTurn(
     queryRewrite?: string;
     namedModelMismatch?: NamedModelMismatch;
     ambiguousModelAsk?: { named: string[] };
+    unlistedModelRefusal?: UnlistedModelRefusal;
   } = {};
   const queryRewrite = await queryRewritePromise;
   retrievalDiagnostics.queryRewrite = queryRewrite.status;
@@ -3504,6 +3506,10 @@ async function handleChatTurn(
         ? ambiguousModelAskText(retrievalDiagnostics.ambiguousModelAsk.named)
       : notebookRetrieval && retrievalDiagnostics.namedModelMismatch
         ? namedModelMismatchText(retrievalDiagnostics.namedModelMismatch)
+      // #5369: a model or catalog number the detector has no pattern for, and
+      // no selected manual is shown to cover it — say so, and say why.
+      : notebookRetrieval && retrievalDiagnostics.unlistedModelRefusal
+        ? unlistedModelRefusalText(retrievalDiagnostics.unlistedModelRefusal)
       : notebookRetrieval
         ? "I couldn't find support for that in this notebook's manuals. Add the manual for the equipment you're asking about, or the page that covers it, and ask again."
         : null;
