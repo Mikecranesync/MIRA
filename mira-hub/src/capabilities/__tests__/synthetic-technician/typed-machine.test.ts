@@ -148,7 +148,7 @@ describe("the PLC, typed with both lines of its plate", () => {
   // the fault sentence names the number twice. A second DIFFERENT number is the
   // comparison, and it is refused two rows up.
   it.each([
-    "Allen-Bradley Micro820 2080-LC20-20QBB and 2080-LC20-20QBB",
+    "Allen-Bradley Micro820 2080-LC20-20QBB, 2080-LC20-20QBB",
     "Allen-Bradley Micro820 2080-LC20-20QBB. The 2080-lc20-20qbb will not go to run",
     "Allen-Bradley 2080-LC20-20QBB Micro820, plate reads 2080-LC20-20QBB",
     "Allen-Bradley Micro820 2080-LC20-20QBB, the Micro820 has a red fault light",
@@ -327,15 +327,24 @@ describe("the PLC, typed with both lines of its plate", () => {
     expect(propose(typed)).toBeNull();
   });
 
-  // A limit: the second-maker check knows only the makers the library holds.
-  // A second machine from a maker that is not in it ("Dorner" is not in MAKERS)
-  // is a word and a number no list knows, the same shape as "Studio 5000" or
-  // "station 12", and the new card is still shown. It is main's gap (#5395)
-  // on a new card. With the maker in the library the card is not shown.
+  // The second-maker check knows only the makers the library holds. A second
+  // machine from a maker that is not in it ("Dorner" is not in MAKERS) is a
+  // word and a number no list knows, the same shape as "Studio 5000" or
+  // "station 12". Joined to the plate with "and" it gives no new card (the
+  // joining-word rule below); with the maker in the library it gives none either.
   it.each([
-    ["Dorner 2200 and Schneider Electric TeSys K CA3KN22BD", "Schneider Electric", "CA3KN22BD"],
-    ["Dorner 2200 conveyor and the Allen-Bradley Micro820 2080-LC20-20QBB", "Allen-Bradley", "820"],
-  ])("limit: a second machine from a maker the library does not hold still gets the new card: %s", (typed, manufacturer, model) => {
+    ["Dorner 2200 and Schneider Electric TeSys K CA3KN22BD"],
+    ["Dorner 2200 conveyor and the Allen-Bradley Micro820 2080-LC20-20QBB"],
+  ])("a second machine from a maker the library does not hold, joined with 'and', proposes nothing: %s", (typed) => {
+    expect(propose(typed)).toBeNull();
+    expect(proposeIdentityFromText(typed, [...MAKERS, "Dorner"])).toBeNull();
+  });
+
+  // KNOWN LIMIT, pinned: the same second machine with no joining word still
+  // gets the new card. It is main's gap (#5395) on a new card.
+  it.each([
+    ["Dorner 2200 conveyor is fed by the Allen-Bradley Micro820 2080-LC20-20QBB", "Allen-Bradley", "820"],
+  ])("known limit: a second machine from a maker the library does not hold, with no joining word, still gets the new card: %s", (typed, manufacturer, model) => {
     expect(propose(typed)).toEqual({ manufacturer, model });
     expect(proposeIdentityFromText(typed, [...MAKERS, "Dorner"])).toBeNull();
   });
@@ -406,7 +415,7 @@ describe("the PLC, typed with both lines of its plate", () => {
     ["Allen-Bradley Micro820 2080-LC20-20QBB has a point I can not reach"],
     // Two-word device phrases the vocabulary also holds are not product lines.
     ["Allen-Bradley Micro820 2080-LC20-20QBB drives a servo motor"],
-    ["Allen-Bradley Micro820 2080-LC20-20QBB reads a proximity sensor and a load cell"],
+    ["Allen-Bradley Micro820 2080-LC20-20QBB reads a proximity sensor with a load cell"],
     // The two words are a line only when they stand together in the sentence.
     ["Allen-Bradley Micro820 2080-LC20-20QBB at the set point, I/O looks fine"],
     ["Allen-Bradley Micro820 2080-LC20-20QBB set-point I/O looks fine"],
@@ -435,19 +444,78 @@ describe("the PLC, typed with both lines of its plate", () => {
     expect(propose(`Allen-Bradley Micro820 2080-LC20-20QBB and a ${line} rack both faulted`)).toBeNull();
   });
 
-  // KNOWN LIMIT, pinned so a change either way is seen. The shared vocabulary
-  // has no entry for these names (or none for the spaced spelling), so a
-  // second machine named this way is still missed and the card is still
-  // offered. Main offers no card for any of them.
+  // Codex round 4 on #5387 (F5). The shared vocabulary has no entry for these
+  // names (or none for the spaced spelling), so no list sees the second
+  // machine. Main offers no card for any of them. What the message does carry
+  // is the joining word: a new card is not offered for a message that joins
+  // two things with "and", "or", "plus", "versus" or "&", whatever is joined.
+  const UNLISTED_LINES = ["ArmorBlock I/O", "GuardLogix", "Compact Logix", "Control Logix", "Power Flex 525", "Panel View"];
+  it.each(UNLISTED_LINES.map((line) => [line]))("a second machine no list names, joined with 'and', proposes nothing: %s", (line) => {
+    expect(propose(`Allen-Bradley Micro820 2080-LC20-20QBB and a ${line} both faulted`)).toBeNull();
+    expect(propose(`Allen-Bradley Micro820 2080-LC20-20QBB and a ${line} both faulted, which manual should I use?`)).toBeNull();
+  });
+
   it.each([
-    ["ArmorBlock I/O"],
-    ["GuardLogix"],
-    ["Compact Logix"],
-    ["Control Logix"],
-    ["Power Flex 525"],
-    ["Panel View"],
-  ])("known limit: a second machine the vocabulary does not name is not seen: %s", (line) => {
-    expect(propose(`Allen-Bradley Micro820 2080-LC20-20QBB and a ${line} both faulted`)).toEqual({ manufacturer: "Allen-Bradley", model: "820" });
+    ["the relay and a line no list names (Codex's message)", "Schneider Electric TeSys K CA3KN22BD and a Modicon both faulted, which manual should I use?"],
+    ["or", "Allen-Bradley Micro820 2080-LC20-20QBB or the GuardLogix, which one has the fault?"],
+    ["plus", "Allen-Bradley Micro820 2080-LC20-20QBB plus a GuardLogix on the same rack"],
+    ["versus", "Allen-Bradley Micro820 2080-LC20-20QBB versus the GuardLogix"],
+    ["vs", "Allen-Bradley Micro820 2080-LC20-20QBB vs. GuardLogix"],
+    ["an ampersand standing alone", "Allen-Bradley Micro820 2080-LC20-20QBB & a GuardLogix both faulted"],
+    ["upper case", "Allen-Bradley Micro820 2080-LC20-20QBB AND A GUARDLOGIX BOTH FAULTED"],
+    ["over a line break", "Allen-Bradley Micro820 2080-LC20-20QBB\nand a GuardLogix"],
+    ["the second machine first", "The GuardLogix and the Allen-Bradley Micro820 2080-LC20-20QBB both faulted"],
+  ])("a joining word in the message gives no new card: %s", (_why, typed) => {
+    expect(propose(typed)).toBeNull();
+  });
+
+  // The rule reads the word, not what it joins, so it stands only on the new
+  // cards: a card main already gives is returned before the rule is asked.
+  it.each([
+    ["Allen-Bradley Micro820 and a GuardLogix both faulted, which manual should I use?", "Allen-Bradley", "820"],
+    ["Allen-Bradley PowerFlex 525 trips on start and on stop", "Allen-Bradley", "525"],
+    ["Schneider Electric CA3KN22BD chatters and hums", "Schneider Electric", "CA3KN22BD"],
+  ])("control: a card main already gives is unchanged by a joining word: %s", (typed, manufacturer, model) => {
+    expect(propose(typed)).toEqual({ manufacturer, model });
+  });
+
+  // A word that only contains a joining word, or a maker's name written with
+  // an ampersand, is not one.
+  it.each([
+    ["Allen-Bradley Micro820 2080-LC20-20QBB both lights faulted, which manual should I use?"],
+    ["Allen-Bradley Micro820 2080-LC20-20QBB on the sand conveyor, standby light is off"],
+    ["Allen-Bradley Micro820 2080-LC20-20QBB error light is on for the operator"],
+    ["Allen-Bradley Micro820 2080-LC20-20QBB surplus unit from the R&D bench"],
+    ["Allen-Bradley Micro820 2080-LC20-20QBB has a red fault light"],
+    ["Allen-Bradley Micro820 2080-LC20-20QBB either light is off"],
+  ])("control: one machine with no joining word is still proposed: %s", (typed) => {
+    expect(propose(typed)).toEqual({ manufacturer: "Allen-Bradley", model: "820" });
+  });
+
+  // STATED COST of the joining-word rule, pinned. One machine described with a
+  // joining word gets no new card, which is what main does today for every one
+  // of these messages. The technician can still set the machine by hand.
+  it.each([
+    ["Allen-Bradley Micro820 2080-LC20-20QBB faulted and won't reset"],
+    ["Allen-Bradley Micro820 2080-LC20-20QBB reads a proximity sensor and a load cell"],
+    ["Schneider Electric TeSys K CA3KN22BD chatters and hums"],
+    ["Allen-Bradley Micro820 2080-LC20-20QBB, is the fault on input 3 or input 4?"],
+    // The same number typed twice is one machine (review round 2), and joined
+    // with a comma or a full stop it is still proposed, above. Joined with
+    // "and" it is this rule's cost.
+    ["Allen-Bradley Micro820 2080-LC20-20QBB and 2080-LC20-20QBB"],
+  ])("stated cost: one machine described with a joining word gets no new card, as on main: %s", (typed) => {
+    expect(propose(typed)).toBeNull();
+  });
+
+  // KNOWN LIMIT, pinned so a change either way is seen: a second machine no
+  // list names, with no joining word before it, is still missed and the new
+  // card is still offered. Main offers no card for these.
+  it.each([
+    ["Allen-Bradley Micro820 2080-LC20-20QBB will not talk to the GuardLogix"],
+    ["Allen-Bradley Micro820 2080-LC20-20QBB feeds a Panel View"],
+  ])("known limit: a second machine no list names, with no joining word, is not seen: %s", (typed) => {
+    expect(propose(typed)).toEqual({ manufacturer: "Allen-Bradley", model: "820" });
   });
 
   // KNOWN LIMIT the other way: the two words standing together are read as the

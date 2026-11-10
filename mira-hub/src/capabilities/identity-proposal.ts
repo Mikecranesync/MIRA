@@ -637,6 +637,21 @@ function namesAnotherProductLine(message: string, model: string): boolean {
 }
 
 /**
+ * 5. A joining word anywhere in the message: "and", "or", "plus", "versus",
+ *    "vs", or an ampersand standing alone. What it joins is not read, so a
+ *    second machine no list names ("… and a GuardLogix") gives no new card,
+ *    and neither does one machine described with a joining word ("… faulted
+ *    and won't reset"). Both are main's behaviour. A word that only contains
+ *    one ("standby", "operator") and a name written with an ampersand ("R&D")
+ *    are not joining words. A second machine named with no joining word
+ *    ("… will not talk to the GuardLogix") is not seen by this check.
+ */
+const JOINING_WORD_RE = /(?<![\w-])(?:and|or|plus|versus|vs)(?![\w-])|(?<=\s)&(?=\s)/iu;
+function joinsTwoThings(message: string): boolean {
+  return JOINING_WORD_RE.test(message);
+}
+
+/**
  * The one (manufacturer, model) the message names, or null. `newRules: false`
  * reads it without the range-name rule and without the family pairing.
  */
@@ -682,7 +697,8 @@ export function proposeIdentityFromText(
       namesAnotherRecognizedModel(message, proposal.model) ||
       namesASiblingByNumber(message, proposal.model) ||
       namesAnotherMaker(message, proposal.manufacturer, knownManufacturers) ||
-      namesAnotherProductLine(message, proposal.model);
+      namesAnotherProductLine(message, proposal.model) ||
+      joinsTwoThings(message);
     return secondMachine ? null : proposal;
   } catch (err) {
     console.error("[identity-proposal] failed (no proposal):", err instanceof Error ? err.message : err);
