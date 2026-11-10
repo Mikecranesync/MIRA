@@ -141,6 +141,7 @@ import {
   questionWarningQuery,
 } from "@/capabilities/energized-work-stop";
 import { ambiguousModelAskText, namedModelMismatchText, type NamedModelMismatch } from "@/capabilities/named-model-mismatch";
+import { openQuestions } from "@/capabilities/conversation-subject";
 import { notebookManualIdentity } from "@/capabilities/notebook-manual-identity";
 import {
   otherProductRefusalText,
@@ -2346,6 +2347,21 @@ async function handleChatTurn(
   // One identity for every manual read of this turn (the question's pass and
   // the safety stop's passes), so no read is scoped differently from another.
   const manualIdentity = notebookManualIdentity(nb, boundAsset, identityDisputed);
+  // The earlier questions of THIS conversation that were not answered from a
+  // document (conversation-subject.ts). A follow-up that names no model is
+  // still about the model one of them named, so the manual check keeps
+  // applying to it. A failed read carries nothing: the turn is then judged on
+  // its own words, exactly as before this read existed.
+  let subjectQueries: string[] = [];
+  if (notebookRetrieval) {
+    try {
+      subjectQueries = openQuestions(
+        await listTurns(ctx.tenantId, notebookId, 6, { viewerUserId: ctx.userId, threadId }),
+      );
+    } catch (err) {
+      console.error("[notebook-chat] earlier-question read failed (follow-up judged on its own words):", err instanceof Error ? err.message : err);
+    }
+  }
   // Resolve OEM identity from one observation: this turn's LOOK, otherwise the
   // newest prior LOOK. Earlier photos still reach context, but may be different
   // machines and must not contaminate retrieval identity (#3966).
@@ -2514,6 +2530,7 @@ async function handleChatTurn(
             // only once a person has confirmed it — an OCR `candidate` must not
             // hide the right manual.
             ...manualIdentity,
+            subjectQueries,
             includeQueryRecall: Boolean(lookRow?.text && buildRetrievalQuery(message, [], lookRow.text) !== message.trim()),
             // validateChatSources() has already proven tenant + notebook membership
             // for every id in docIds — the validated doc set is the boundary, so a
@@ -3329,6 +3346,7 @@ async function handleChatTurn(
             // The same machine as the question's own pass, so a stop never
             // cites another product's page that pass refused.
             ...manualIdentity,
+            subjectQueries,
             validatedDocScope: true,
             approvedSourceDocIds: docIds,
           }),

@@ -360,4 +360,25 @@ describe("the model a technician named is still the subject of the next question
     expect(providerAsked).toBe(true);
     expect(citations.length).toBeGreaterThan(0);
   });
+
+  it("reads only this technician's turns of this conversation", async () => {
+    attach(MICRO820_SHEET_AS_STORED);
+    await ask("What supply voltage does it need?");
+    expect(nbMock.listTurns).toHaveBeenCalledWith(TENANT, expect.any(String), 6, { viewerUserId: "u1", threadId: null });
+  });
+
+  it("a safety stop in between does not close the subject: the next question is still refused", async () => {
+    attach(MICRO820_SHEET_AS_STORED, LOCKOUT_PASSAGE);
+    await ask(PLATE);
+
+    const stop = await ask(HAZARD_ASK);
+    expect(stop.kinds, "the stop is still served").toContain("safety");
+    expect(stop.citations, "the stop cites no page from the controller sheet for the drive").toEqual([]);
+
+    const third = await ask("What supply voltage does it need?");
+    expect(third.citations).toEqual([]);
+    expect(third.providerAsked).toBe(false);
+    expect(third.status?.message).toContain("GS11N-20P2");
+    expect(third.status?.message).toMatch(/earlier in this conversation/i);
+  });
 });

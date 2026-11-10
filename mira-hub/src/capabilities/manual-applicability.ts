@@ -91,8 +91,10 @@ export type UnlistedModelRefusal = {
   asked: string[];
   /** What the refused covers declare. Never a filename's number. */
   declared: string[];
-  /** Whether the number came from the question or from the notebook's confirmed machine. */
-  source: "question" | "notebook";
+  /** Whether the number came from the question, from the notebook's confirmed
+   *  machine, or from an earlier question of this conversation that was not
+   *  answered from a document (conversation-subject.ts). */
+  source: "question" | "notebook" | "conversation";
   /** Set when every refused document is a photo reading the product wrote, not a manual. */
   reading?: true;
 };
@@ -533,14 +535,24 @@ export function summarizeUnlistedRefusals(
   };
 }
 
+/** The way out when the subject was carried from an earlier question. */
+export const EARLIER_SUBJECT_WAY_OUT =
+  "If this question is about a different machine, name its model in the question or start a new conversation.";
+
 const listed = (labels: string[]) => (labels.length > 6 ? `${labels.slice(0, 6).join(" / ")} and others` : labels.join(" / "));
 
 /** Static text plus model-number labels only: no value, page or wording from a
  *  refused manual reaches it (the rule namedModelMismatchText already follows). */
 export function unlistedModelRefusalText(r: UnlistedModelRefusal): string {
   const asked = listed(r.asked);
-  const whose = r.source === "notebook" ? "this notebook is set up for" : "you asked about";
-  const add = `Add the ${asked} manual (or the page that covers it) to this notebook and ask again.`;
+  const whose =
+    r.source === "notebook" ? "this notebook is set up for"
+    : r.source === "conversation" ? "you asked about earlier in this conversation"
+    : "you asked about";
+  const add =
+    r.source === "conversation"
+      ? `${EARLIER_SUBJECT_WAY_OUT} Otherwise add the ${asked} manual (or the page that covers it) to this notebook and ask again.`
+      : `Add the ${asked} manual (or the page that covers it) to this notebook and ask again.`;
   switch (r.kind) {
     case "other-model":
       if (r.reading)

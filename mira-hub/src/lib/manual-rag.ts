@@ -1317,6 +1317,11 @@ export async function retrieveNodeChunks(
      *  (e.g. a thread's P042) can only ADD candidates — never crowd the
      *  message's own keywords ("keypad") out of the pool. */
     rawQuery?: string;
+    /** Earlier questions of this conversation whose subject is still open
+     *  (conversation-subject.ts), NEWEST FIRST. Read only when this question
+     *  names no model and no confirmed notebook identity scopes it: the model
+     *  an earlier, unanswered question named is then still the subject. */
+    subjectQueries?: readonly string[];
     /** #4983 — the question rewritten into the manual's vocabulary (search
      *  phrases a model produced from the forum-style post). Rides as one more
      *  query variant: its own OR pass for recall and its terms in the rerank's
@@ -1367,7 +1372,7 @@ export async function retrieveNodeChunks(
       /** CV-101 S6: set only when a named ask refused pages and EVERY refused
        *  page declared its own model — the evidence that the notebook's manual
        *  is for a different model than the one asked about. */
-      namedModelMismatch?: { requested: string[]; declared: string[] };
+      namedModelMismatch?: { requested: string[]; declared: string[]; source?: "conversation" };
       /** #5355: the question named two sibling models with no comparison cue;
        *  nothing was retrieved and the reply asks which one. */
       ambiguousModelAsk?: { named: string[] };
@@ -1467,7 +1472,31 @@ export async function retrieveNodeChunks(
   // out-ranked). POOL is retrieved per pass; the final slice is topK.
   const POOL = Math.max(topK * 4, 24);
 
-  const requestedModel = resolveModelFromObservationText(opts.rawQuery ?? q);
+  // The model an earlier, still-open question of this conversation named is the
+  // subject of a follow-up that names none ("It will not start" about a named
+  // drive, then "What supply voltage does it need?"). Narrow on purpose:
+  //   - this question names no model or number of its own (naming one wins);
+  //   - no confirmed notebook identity (that machine is the subject, and its
+  //     own check below applies);
+  //   - the detector model comes from the newest earlier question that names
+  //     one; numbers the detector cannot read are taken from all of them.
+  const ownQuestion = opts.rawQuery ?? q;
+  const namesKnownModel = (text: string) => {
+    const named = resolveModelFromObservationText(text);
+    return Boolean(named.model) || named.ambiguous || modelIdentitiesInText(text).size > 0;
+  };
+  const ownNumbers = unlistedModelNumbers(ownQuestion);
+  const notebookHasConfirmedIdentity =
+    (opts.identityStatus === "user_confirmed" || opts.identityStatus === "verified") &&
+    Boolean(opts.identity?.model?.trim() || opts.catalogNumber?.trim());
+  const carriedQuestions =
+    !namesKnownModel(ownQuestion) && ownNumbers.length === 0 && !notebookHasConfirmedIdentity ? (opts.subjectQueries ?? []) : [];
+  const carriedModelQuestion = carriedQuestions.find(namesKnownModel) ?? null;
+  const modelQuestion = carriedModelQuestion ?? ownQuestion;
+  const carriedNumbers = carriedQuestions.flatMap((text) => unlistedModelNumbers(text));
+  const carriedLabels = new Set(carriedNumbers.map((n) => n.label));
+
+  const requestedModel = resolveModelFromObservationText(modelQuestion);
   // 2026-10-17 prod-test item 1 (stacked on #4469): the question is not the
   // only source of model identity. The notebook is bound to ONE confirmed
   // machine (`opts.identity.model`, from the notebook row), and most
@@ -1488,7 +1517,7 @@ export async function retrieveNodeChunks(
   //     scopes the same way when it is the ONE model the question names. The
   //     token stays null, so OEM `model_number` scoping is unchanged.
   const closeNameIdentities =
-    !requestedModel.model && !requestedModel.ambiguous ? modelIdentitiesInText(opts.rawQuery ?? q) : new Set<string>();
+    !requestedModel.model && !requestedModel.ambiguous ? modelIdentitiesInText(modelQuestion) : new Set<string>();
   const questionScoped =
     (Boolean(requestedModel.model) && !requestedModel.ambiguous) || closeNameIdentities.size === 1;
   // #5355: two sibling models of one family joined only by "or" / "/" / ","
@@ -1496,7 +1525,7 @@ export async function retrieveNodeChunks(
   // two ways. Answering from either manual guesses; ask which one instead
   // (named-model-mismatch.ts ambiguousSiblingModels). A comparison or a
   // two-device question keeps the unfiltered behaviour below.
-  const ambiguousSiblings = ambiguousSiblingModels(opts.rawQuery ?? q);
+  const ambiguousSiblings = ambiguousSiblingModels(modelQuestion);
   if (ambiguousSiblings) {
     if (opts.diagnostics) opts.diagnostics.ambiguousModelAsk = { named: ambiguousSiblings };
     return [];
@@ -1882,7 +1911,7 @@ export async function retrieveNodeChunks(
   // never disagree). Null when the query named no single model — the filter
   // below is then skipped entirely, same as before.
   const requestedIdentities: Set<string> | null = questionScoped
-    ? modelIdentitiesInText(opts.rawQuery ?? q)
+    ? modelIdentitiesInText(modelQuestion)
     : null;
   const keyOf = (r: Record<string, unknown>) =>
     JSON.stringify([r.doc_id, r.source_url, String(r.content ?? "")]);
@@ -1899,7 +1928,12 @@ export async function retrieveNodeChunks(
     if (!opts.diagnostics || !requestedIdentities) return;
     const everyDocRefused = allowedDocIds.length > 0 && allowedDocIds.every((d) => refusedDocs.has(d));
     if (namedClaimPoisoned || refusedDeclared.size === 0 || !everyDocRefused) delete opts.diagnostics.namedModelMismatch;
-    else opts.diagnostics.namedModelMismatch = { requested: [...requestedIdentities], declared: [...refusedDeclared] };
+    else
+      opts.diagnostics.namedModelMismatch = {
+        requested: [...requestedIdentities],
+        declared: [...refusedDeclared],
+        ...(carriedModelQuestion !== null ? { source: "conversation" as const } : {}),
+      };
   };
   const noteNamedAskRefusal = (docId: string, headingDeclared: Set<string>) => {
     if (headingDeclared.size === 0) namedClaimPoisoned = true;
@@ -1917,7 +1951,10 @@ export async function retrieveNodeChunks(
   // number's own family. Any other number in the question (the machine's tag,
   // a fault code) names no model and must not switch the notebook's check off.
   // manual-applicability.ts decides.
-  const questionNumbers = unlistedModelNumbers(opts.rawQuery ?? q);
+  const questionNumbers = [
+    ...ownNumbers,
+    ...carriedNumbers.filter((n, i) => carriedNumbers.findIndex((m) => m.key === n.key) === i),
+  ];
   const namesNoKnownModel = !requestedModel.model && !requestedModel.ambiguous && closeNameIdentities.size === 0;
   const confirmedNumbers =
     namesNoKnownModel && identityConfirmed ? unlistedModelNumbers(`${notebookModel} ${opts.catalogNumber ?? ""}`) : [];
@@ -1934,7 +1971,11 @@ export async function retrieveNodeChunks(
       const refused = [...unlistedRefusals.values()];
       opts.diagnostics.unlistedModelRefusal = summarizeUnlistedRefusals(
         refused,
-        refused.every((r) => r.asked.every((label) => notebookLabels.has(label))) ? "notebook" : "question",
+        refused.every((r) => r.asked.every((label) => notebookLabels.has(label)))
+          ? "notebook"
+          : refused.every((r) => r.asked.every((label) => carriedLabels.has(label)))
+            ? "conversation"
+            : "question",
       );
     } else delete opts.diagnostics.unlistedModelRefusal;
   };
@@ -1954,7 +1995,7 @@ export async function retrieveNodeChunks(
   // A family-only identity ("Micro800") or an unconfirmed one scopes nothing,
   // as before. Known cost: a cover that gives only catalog numbers, in a
   // notebook recorded only by family name, is refused until the catalog number
-  // is recorded or named (bench-project.ts P-51..P-53).
+  // is recorded or named (bench-project.ts P-53..P-58).
   const projectScoped = namesNoKnownModel && identityConfirmed && (notebookScoped || confirmedNumbers.length > 0);
   const projectLabel = [opts.identity?.manufacturer?.trim(), notebookModel, opts.catalogNumber?.trim()]
     .filter((part, i, all): part is string => Boolean(part) && all.indexOf(part) === i)
