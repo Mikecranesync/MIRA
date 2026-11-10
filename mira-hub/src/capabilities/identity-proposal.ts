@@ -23,8 +23,17 @@
  *    carries a digit or is an all-caps code ("SLC 5/03", "SPC-100-P-F", "FX5U").
  *    A fault-code-shaped token (F004) is never a model, and an ambiguous model
  *    (two different ones named) yields no proposal.
+ *  - A family named beside ONE catalog number its own manual lists for it
+ *    ("Micro820 2080-LC20-20QBB", both lines of one plate) is one machine, and
+ *    the FAMILY is proposed (FAMILY_CATALOG_NUMBERS).
  */
-import { canonicalModelKey } from "@/capabilities/model-token";
+import {
+  canonicalModelKey,
+  FAMILY_ROOTS,
+  modelIdentitiesInText,
+  modelMentionsInText,
+  ROCKWELL,
+} from "@/capabilities/model-token";
 import { resolveModelFromObservationText } from "@/lib/manual-rag";
 import { inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerSearchNames } from "@/lib/manufacturerNormalize";
@@ -151,10 +160,39 @@ function isVariantCode(t: string | undefined): t is string {
   return !LABEL_WORDS.has(head) && !GENERIC_TECH_WORDS.has(head) && !GENERIC_DEVICE_WORDS.has(head);
 }
 
-/** The model span starting at `tokens[0]`, or null. */
-function modelSpanAt(tokens: string[]): string | null {
+/**
+ * A product RANGE name a maker prints between its name and the catalog number,
+ * with the range's one-letter member when it has one: "Schneider Electric TeSys
+ * CA3KN22BD", "… TeSys K CA3KN22BD" (the CA3KN22BD data sheet's own title is
+ * "TeSys K control relay"). Not a series name: a range never forms a model
+ * with a letters-only code, so it stays out of SERIES_WORDS and its variant
+ * fallback. Closed list, like SERIES_WORDS. Each range is listed with its own
+ * maker and is read only after that maker's name: "Allen-Bradley TeSys K
+ * CA3KN22BD" is a maker and a range that do not belong together, and the
+ * number is not given to that maker (cheap review r7 on #5387).
+ */
+const RANGE_WORDS: ReadonlyMap<string, RegExp> = new Map([["TESYS", /schneider/i]]);
+const RANGE_MEMBER_RE = /^[A-Z]$/;
+
+/**
+ * The catalog number DIRECTLY after a range name (and its member letter) of
+ * `manufacturer`'s own, or null. Adjacent only: a word in between ("TeSys K
+ * relay feeds the PF525") means the number may belong to another machine, and
+ * that is never guessed.
+ */
+function modelAfterRangeName(tokens: string[], manufacturer: string): string | null {
+  const maker = tokens[0] ? RANGE_WORDS.get(tokens[0].toUpperCase()) : undefined;
+  if (!maker?.test(manufacturer)) return null;
+  const model = RANGE_MEMBER_RE.test(tokens[1] ?? "") ? tokens[2] : tokens[1];
+  return model && isModelToken(model) && splitJoinedModels(model).length === 1 ? model : null;
+}
+
+/** The model span starting at `tokens[0]`, or null. `rangeMaker: null` reads it without RANGE_WORDS. */
+function modelSpanAt(tokens: string[], rangeMaker: string | null): string | null {
   const plain = plainModelSpanAt(tokens);
   if (plain) return plain;
+  const ranged = rangeMaker ? modelAfterRangeName(tokens, rangeMaker) : null;
+  if (ranged) return ranged;
   // "Siemens SINAMICS G120C": skip at most two known series names before the model.
   let rest = tokens;
   for (let i = 0; i < MAX_SERIES_SKIP && rest[0] && SERIES_WORDS.has(rest[0].toUpperCase()); i++) rest = rest.slice(1);
@@ -204,9 +242,10 @@ function withSeriesPrefix(parsedModel: string | null, tokens: string[]): string 
 
 /**
  * The model-like span right after ONE manufacturer mention, or null. Pure;
- * exported for tests.
+ * exported for tests. `rangeNames: false` gives the reading without RANGE_WORDS,
+ * so proposeIdentityFromText can tell a proposal that needed a range name.
  */
-export function modelAfterManufacturer(message: string, manufacturer: string): string | null {
+export function modelAfterManufacturer(message: string, manufacturer: string, rangeNames = true): string | null {
   const re = new RegExp(`(?<![A-Za-z0-9])${escapeRegExp(manufacturer)}(?![A-Za-z0-9])`, "ig");
   for (const m of message.matchAll(re)) {
     const rest = message.slice((m.index ?? 0) + m[0].length);
@@ -221,7 +260,7 @@ export function modelAfterManufacturer(message: string, manufacturer: string): s
     // always bound to the manufacturer named before it (Codex #4120 F1).
     const parsed = resolveModelFromObservationText(tokens.join(" "));
     if (parsed.ambiguous) continue;
-    const span = withSeriesPrefix(parsed.model, tokens) ?? parsed.model ?? modelSpanAt(wide);
+    const span = withSeriesPrefix(parsed.model, tokens) ?? parsed.model ?? modelSpanAt(wide, rangeNames ? manufacturer : null);
     if (span) return span;
   }
   return null;
@@ -430,6 +469,209 @@ function sameMachine(mention: string, model: string, chosen: string): boolean {
 }
 
 /**
+ * A controller's plate prints its family AND its catalog number, and a
+ * technician types both lines ("Allen-Bradley Micro820 2080-LC20-20QBB"). Read
+ * as two models that is a comparison and proposes nothing; it is one machine.
+ *
+ * A closed list. Each entry is the catalog numbers the maker's own manual lists
+ * on its cover for that family — never derived from the shape of the number,
+ * so a look-alike ("2080-LC20-99ZZZ") or another family's number pairs with
+ * nothing. `family` is the proposed model, in the parser's reviewed form.
+ */
+const FAMILY_CATALOG_NUMBERS: ReadonlyArray<{ maker: RegExp; family: string; catalogNumbers: ReadonlySet<string> }> = [
+  {
+    // Rockwell Automation publication 2080-UM005, "Micro820 Programmable Controllers" user manual, cover.
+    maker: ROCKWELL,
+    family: "820",
+    catalogNumbers: new Set([
+      "2080-LC20-20QWB", "2080-L20E-20QWB", "2080-LC20-20QBB", "2080-L20E-20QBB", "2080-LC20-20AWB",
+      "2080-L20E-20AWB", "2080-LC20-20QWBR", "2080-L20E-20QWBR", "2080-LC20-20QBBK", "2080-L20E-20QBBK",
+      "2080-LC20-20QBBR", "2080-L20E-20QBBR", "2080-LC20-20AWBR", "2080-L20E-20AWBR",
+    ]),
+  },
+];
+
+/**
+ * The family, when the message's model mentions are exactly that family's name
+ * and ONE of its listed catalog numbers — else null. The family is proposed and
+ * not the catalog number: it is the identity the manual check protects. Two
+ * catalog numbers are two machines, and any other mention is a second machine.
+ *
+ * Used by proposeIdentityFromText ONLY. `sameMachine` also decides
+ * `namesOnlyThisMachine`, the gate of the automatic pre-confirmation manual
+ * search, and that gate must not learn this pairing here. Pure; exported for tests.
+ */
+export function familyNamedWithItsCatalogNumber(manufacturer: string, mentions: readonly string[]): string | null {
+  for (const { maker, family, catalogNumbers } of FAMILY_CATALOG_NUMBERS) {
+    if (!maker.test(manufacturer)) continue;
+    const listed = new Set(mentions.map((m) => m.toUpperCase()).filter((m) => catalogNumbers.has(m)));
+    const rest = mentions.filter((m) => !catalogNumbers.has(m.toUpperCase()));
+    if (listed.size === 1 && rest.length > 0 && rest.every((m) => canonicalModel(m) === family)) return family;
+  }
+  return null;
+}
+
+/**
+ * A catalog number this table lists for ONE maker's family, proposed under a
+ * different maker ("Schneider Electric TeSys 2080-LC20-20QBB": the number is a
+ * Micro820's). Asked only of a proposal the new rules make; a number the table
+ * does not hold proves nothing and is left alone.
+ */
+function isAnotherMakersListedNumber(manufacturer: string, model: string): boolean {
+  const number = model.toUpperCase();
+  return FAMILY_CATALOG_NUMBERS.some(({ maker, catalogNumbers }) => catalogNumbers.has(number) && !maker.test(manufacturer));
+}
+
+/**
+ * Four closed checks for a second machine. They are asked ONLY of a proposal
+ * the two rules above newly make (the family pairing, a model reached through
+ * a range name), and each can only REMOVE that proposal. The reading without
+ * those two rules runs first and its proposal is returned as it is, so a
+ * proposal that was already made is never put to them and none of those
+ * changes (Codex r2 on #5387, F3).
+ *
+ * 1. A model the shared detector reads that is NOT the proposed machine (Codex
+ *    r1, F1). `modelMentions` only sees a token with a digit in it, so a
+ *    product named in words alone ("SMC Flex") is invisible to it, and "… and
+ *    an SMC Flex both faulted" read as one machine. The detector
+ *    (model-token.ts) knows those names. One kind of its reading is not used:
+ *    it lets a bare number after a comma, "and", "or" or a slash inherit the
+ *    family before it, so a manual titled "PowerFlex 523 and 525" covers a
+ *    525. In a technician's message that shape is usually a rating or a count
+ *    ("Micro820 2080-LC20-20QBB, 24 VDC"), so an inherited number is left to
+ *    check 2.
+ */
+function namesAnotherRecognizedModel(text: string, model: string): boolean {
+  const chosen = canonicalModel(model);
+  const mentions = modelMentionsInText(text);
+  return [...modelIdentitiesInText(text)].some((id) => {
+    if (sameMachine(id, model, chosen)) return false;
+    const own = mentions.filter((m) => m.id === id);
+    const inherited = own.length > 0 && own.every((m) => /^\d+$/.test(text.slice(m.start, m.end)));
+    return !inherited;
+  });
+}
+
+/**
+ * 2. A sibling written as a bare number, anywhere in the message ("… and 850",
+ *    "850 and …", "(Micro820) and the 850" beside a Micro820). The family table
+ *    (FAMILY_ROOTS) decides which numbers are siblings; where the number sits
+ *    and the words around it are not read, so a rating or a count with a
+ *    sibling's number ("850 mA") also gives no card. The family's own number
+ *    and its series number ("800 series") are not siblings, and neither is the
+ *    fraction of a decimal ("12.850").
+ */
+function namesASiblingByNumber(message: string, model: string): boolean {
+  const chosen = canonicalModel(model);
+  for (const id of modelIdentitiesInText(message)) {
+    if (!sameMachine(id, model, chosen)) continue;
+    const family = FAMILY_ROOTS.find(([, members]) => members.test(id));
+    if (!family) continue;
+    const stem = id.replace(/\d+$/, "");
+    for (const n of message.matchAll(/(?<![.\d])\d+/g)) {
+      const sibling = stem + n[0];
+      if (sibling !== id && sibling !== family[0] && family[1].test(sibling)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * 3. A second known maker, wherever it is named and whatever follows it
+ *    ("Siemens 2200 and Schneider Electric TeSys K CA3KN22BD"). Two spellings
+ *    of one library name ("Allen-Bradley", "Rockwell Automation") are one maker.
+ */
+function namesAnotherMaker(message: string, manufacturer: string, corpus: readonly string[]): boolean {
+  const libraryNames = (text: string): string[] =>
+    corpus.filter((name) => [name, ...manufacturerSearchNames(name)].some((sp) => sp.toLowerCase() === text.toLowerCase()));
+  const own = new Set(libraryNames(manufacturer));
+  return manufacturerMentions(message, corpus).some((m) => !libraryNames(m.text).some((name) => own.has(name)));
+}
+
+/**
+ * A word, then the I/O word, standing together in the sentence: a space, a
+ * hyphen or a line break between them ("POINT I/O", "Flex-I/O"), never a
+ * comma. One sub-family word of those lines may sit between ("POINT Guard
+ * I/O", "Compact 5000 I/O"). The I/O word may be plural; "IO-Link" is another
+ * word. Which first words make a product line is the shared vocabulary's
+ * answer (equipment-type.ts), not this pattern's.
+ */
+const WORD_THEN_IO_RE = /(?<![\w-])([a-z]+)(?:[\s-]+(?:guard|ex|5000))?[\s-]*(i\/?o)(?:['’]?s)?(?![\w/-])/giu;
+function namesAnIoLine(message: string): boolean {
+  for (const [, word, io] of message.matchAll(WORD_THEN_IO_RE)) {
+    if (GENERIC_TECH_WORDS.has(word.toUpperCase()) && inferEquipmentType({ modelNumber: `${word} ${io}` }) === "I/O") return true;
+  }
+  return false;
+}
+
+/**
+ * 4. A second product line named in words, with no number after it: a series
+ *    or range word the closed lists above hold ("… and the Altivar", "… and
+ *    TeSys D"), or a word the shared equipment vocabulary (equipment-type.ts)
+ *    reads as a product line ("… and a PowerFlex"), the same vocabulary the
+ *    mention scan asks about a word followed by a number. A technology or
+ *    device word ("drive", "PLC", "servo") is not a product line. A range name
+ *    directly before the proposed model is the machine's own; named again
+ *    without it, it gives no card. An I/O line the vocabulary names in two
+ *    words ("POINT I/O", "FLEX I/O", "Compact I/O") is read as the pair: each
+ *    word alone is an everyday one. Other two-word entries of the vocabulary
+ *    ("servo motor", "load cell") are device words, not product lines.
+ */
+function namesAnotherProductLine(message: string, model: string): boolean {
+  if (namesAnIoLine(message)) return true;
+  const chosen = canonicalModel(model);
+  const tokens = message
+    .split(/[\s,;]+/)
+    .map((t) => cleanToken(t.replace(/^[("'‘“[]+/u, "")))
+    .filter(Boolean);
+  return tokens.some((t, i) => {
+    const upper = t.toUpperCase();
+    if (RANGE_WORDS.has(upper)) {
+      const after = RANGE_MEMBER_RE.test(tokens[i + 1] ?? "") ? tokens[i + 2] : tokens[i + 1];
+      return !after || !sameMachine(after, model, chosen);
+    }
+    if (SERIES_WORDS.has(upper)) return true;
+    if (/\d/.test(t) || GENERIC_TECH_WORDS.has(upper) || GENERIC_DEVICE_WORDS.has(upper)) return false;
+    return inferEquipmentType({ modelNumber: t }) !== "Other";
+  });
+}
+
+/**
+ * 5. A joining word anywhere in the message: "and", "or", "plus", "versus",
+ *    "vs", or an ampersand standing alone. What it joins is not read, so a
+ *    second machine no list names ("… and a GuardLogix") gives no new card,
+ *    and neither does one machine described with a joining word ("… faulted
+ *    and won't reset"). Both are main's behaviour. A word that only contains
+ *    one ("standby", "operator") and a name written with an ampersand ("R&D")
+ *    are not joining words. A second machine named with no joining word
+ *    ("… will not talk to the GuardLogix") is not seen by this check.
+ */
+const JOINING_WORD_RE = /(?<![\w-])(?:and|or|plus|versus|vs)(?![\w-])|(?<=\s)&(?=\s)/iu;
+function joinsTwoThings(message: string): boolean {
+  return JOINING_WORD_RE.test(message);
+}
+
+/**
+ * The one (manufacturer, model) the message names, or null. `newRules: false`
+ * reads it without the range-name rule and without the family pairing.
+ */
+function readProposal(message: string, knownManufacturers: readonly string[], newRules: boolean): IdentityProposal | null {
+  const candidates = new Map<string, IdentityProposal>();
+  for (const mention of manufacturerMentions(message, knownManufacturers)) {
+    const model = modelAfterManufacturer(message.slice(mention.index), mention.text, newRules);
+    if (!model) continue;
+    candidates.set(`${norm(mention.text)}|${canonicalModel(model)}`, { manufacturer: mention.text, model });
+  }
+  if (candidates.size !== 1) return null;
+  const only = [...candidates.values()][0];
+  const chosen = canonicalModel(only.model);
+  const mentions = modelMentions(message, only.model);
+  if (mentions.every((m) => sameMachine(m, only.model, chosen))) return only;
+  const family = newRules ? familyNamedWithItsCatalogNumber(only.manufacturer, mentions) : null;
+  return family ? { manufacturer: only.manufacturer, model: family } : null;
+}
+
+/**
  * Propose a machine from the technician's free text, or null. Never throws.
  * `knownManufacturers` is the shared library's manufacturer list. Proposes ONLY
  * when exactly one (manufacturer, model) pair is named and every model mention
@@ -444,15 +686,20 @@ export function proposeIdentityFromText(
   try {
     message = withoutLabelValues(message);
     if (resolveModelFromObservationText(message).ambiguous) return null;
-    const candidates = new Map<string, IdentityProposal>();
-    for (const mention of manufacturerMentions(message, knownManufacturers)) {
-      const model = modelAfterManufacturer(message.slice(mention.index), mention.text);
-      if (model) candidates.set(`${norm(mention.text)}|${canonicalModel(model)}`, { manufacturer: mention.text, model });
-    }
-    if (candidates.size !== 1) return null;
-    const only = [...candidates.values()][0];
-    const chosen = canonicalModel(only.model);
-    return modelMentions(message, only.model).every((m) => sameMachine(m, only.model, chosen)) ? only : null;
+    // The reading without the range-name rule and the family pairing. A card it
+    // gives is returned untouched: the new rules and their checks never change it.
+    const already = readProposal(message, knownManufacturers, false);
+    if (already) return already;
+    const proposal = readProposal(message, knownManufacturers, true);
+    if (!proposal) return null;
+    if (isAnotherMakersListedNumber(proposal.manufacturer, proposal.model)) return null;
+    const secondMachine =
+      namesAnotherRecognizedModel(message, proposal.model) ||
+      namesASiblingByNumber(message, proposal.model) ||
+      namesAnotherMaker(message, proposal.manufacturer, knownManufacturers) ||
+      namesAnotherProductLine(message, proposal.model) ||
+      joinsTwoThings(message);
+    return secondMachine ? null : proposal;
   } catch (err) {
     console.error("[identity-proposal] failed (no proposal):", err instanceof Error ? err.message : err);
     return null;
