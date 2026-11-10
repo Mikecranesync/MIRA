@@ -14,6 +14,7 @@ import {
   unlistedModelRefusalText,
   type ManualVerdict,
 } from "../manual-applicability";
+import { NAMEPLATE_BODY_MARK, NAMEPLATE_OPENER, PHOTO_READING_BODY_MARK, PHOTO_READING_OPENER, buildPhotoSourceText, photoDocumentBody } from "../photo-document-text";
 
 const keys = (text: string) => modelNumbersIn(text).map((n) => n.key);
 const asked = (text: string) => unlistedModelNumbers(text);
@@ -21,6 +22,10 @@ const OPAQUE = "NF0000021.pdf";
 const verdict = (question: string, heading: string, filename = OPAQUE): ManualVerdict =>
   manualAnswersFor(asked(question), heading, filename);
 const kindOf = (v: ManualVerdict) => (v.admit ? "answers" : v.kind);
+const refusal = (v: ManualVerdict) => {
+  if (v.admit) throw new Error("expected a refusal");
+  return v;
+};
 
 describe("what reads as a model number", () => {
   it.each([
@@ -247,10 +252,6 @@ describe("a question that names more than one number", () => {
 });
 
 describe("the reply text", () => {
-  const refusal = (v: ManualVerdict) => {
-    if (v.admit) throw new Error("expected a refusal");
-    return v;
-  };
   it("names the asked number and what the cover declares, and nothing from the manual's body", () => {
     const r = summarizeUnlistedRefusals([refusal(verdict("RX420 supply voltage?", "Northfield RX410 Logic Controller\nHardware User Guide"))], "question");
     expect(unlistedModelRefusalText(r)).toBe(
@@ -462,6 +463,90 @@ describe("a remark that a clean title beside it must not carry", () => {
   });
 });
 
+// The product writes two documents itself from a technician's photo: a kept
+// photo reading and a confirmed nameplate. Neither has a cover, and both carry
+// the machine's NAME in a header line the product writes. The CI suite
+// cv101-photo-recall caught the first version of this rule refusing every saved
+// reading as soon as the question named the machine ("CV-101").
+const FILE_ID = "0b6f4c1e-7a2d-4e59-9c3a-5d1f8e2b7a40";
+const SHA = "9f2c41d07be35a68c1d2e4f5a6b7c8d90e1f2a3b4c5d6e7f8091a2b3c4d5e6f7";
+/** The first stored block: the chunker returns a short text whole, trimmed. */
+const stored = (text: string) => {
+  const clean = text.replace(/[ \t]+\n/g, "\n").trim();
+  expect(clean.length, "fits one stored block").toBeLessThanOrEqual(1000);
+  return clean;
+};
+const reading = (machine: string, observation: string, reviewed = true) =>
+  stored(buildPhotoSourceText({ machineName: machine, fileId: FILE_ID, photoSha256: SHA, capturedAt: "2026-11-09T14:32:08.000Z", observation, reviewed }));
+/** The confirmed-nameplate text, in the layout the confirm route writes. */
+const plate = (notebook: string, identity: string[], raw: string[]) =>
+  stored([
+    NAMEPLATE_OPENER, "", `Machine notebook: ${notebook}`, `Canonical nameplate photo (file id): ${FILE_ID}`, "Recognition confidence: 0.91", "",
+    NAMEPLATE_BODY_MARK, ...identity.map((l) => `- ${l}`), "",
+    "RAW NAMEPLATE OBSERVATION (unedited vision extraction)", "- reader: stub", ...raw.map((l) => `- ${l}`), "",
+  ].join("\n"));
+const CONTROLLER_READING = reading("CV-101", "Controller Micro820, catalog 2080-LC20-20QBB. Reviewed against the photo only; physical condition and operating state unknown. No completed work or live measurements.");
+const RELAY_PLATE = plate("K1 control relay", ["Manufacturer: Schneider Electric", "Model: CA3KN22BD", "Voltage: 24 V DC"], ["Schneider Electric", "TeSys CA3KN22BD", "Ui 690V", "24V DC"]);
+const READING_FILE = "Technician-reviewed photo reading 2026-11-09.txt";
+const PLATE_FILE = `nameplate-${FILE_ID}.txt`;
+
+describe("a photo reading or a confirmed nameplate is read by what it carries, not as a cover", () => {
+  it("is told from an uploaded manual by its opening line", () => {
+    expect(photoDocumentBody(CONTROLLER_READING)).toContain("Controller Micro820");
+    expect(photoDocumentBody(CONTROLLER_READING)).not.toContain("CV-101");
+    expect(photoDocumentBody(RELAY_PLATE)).toContain("- Model: CA3KN22BD");
+    expect(photoDocumentBody(RELAY_PLATE)).not.toContain("K1 control relay");
+    expect(photoDocumentBody("Northfield RX410 Logic Controller\nHardware User Guide")).toBeNull();
+    expect(photoDocumentBody(`Hardware User Guide\n${PHOTO_READING_OPENER}\n${PHOTO_READING_BODY_MARK}\nRX420`)).toBeNull();
+    expect(photoDocumentBody(`${PHOTO_READING_OPENER}. Unconfirmed transcription of motor nameplate ratings.`)).toBeNull();
+    expect(photoDocumentBody(`${PHOTO_READING_OPENER}\nMachine: CV-101`)).toBe("");
+  });
+
+  it.each([
+    ["the question names the machine, and the product wrote that name into the reading",
+      "Which components of CV-101 have reviewed photo readings saved in this project? Summarize them with their source evidence.", CONTROLLER_READING, READING_FILE],
+    ["the question names two machines", "CV-101 stops when CV-102 is full, what should I check?", CONTROLLER_READING, READING_FILE],
+    ["the catalog number the reading carries", "Supply voltage for 2080-LC20-20QBB?", CONTROLLER_READING, READING_FILE],
+    ["the plate's own part number", "What is the coil voltage of the CA3KN22BD?", RELAY_PLATE, PLATE_FILE],
+    ["a look-alike in the machine's name only", "RX420 supply voltage?", reading("RX410 press, line 2", "Label reads 24 V DC supply. No model is legible."), READING_FILE],
+    ["a look-alike in the notebook's name only", "RX420 supply voltage?", plate("RX410 press", ["Manufacturer: Northfield"], ["Northfield", "24 V DC"]), PLATE_FILE],
+    ["the reading itself is outside the stored block", "RX420 supply voltage?", `${PHOTO_READING_OPENER}\nMachine: RX410 press`, READING_FILE],
+    ["an unreviewed reading that carries the asked number", "RX420 supply voltage?", reading("Press 2", "Drive model RX420, 24 V DC.", false), "Unconfirmed photo reading 2026-11-09.txt"],
+  ])("answers: %s", (_name, question, heading, filename) => {
+    expect(kindOf(verdict(question, heading, filename))).toBe("answers");
+  });
+
+  it.each([
+    ["a sibling part number against the relay's plate", "What is the coil voltage of the CA3KN31BD?", RELAY_PLATE, PLATE_FILE, ["CA3KN22BD"]],
+    ["a sibling catalog number against the controller's reading", "Supply voltage for 2080-LC50-24QWB?", CONTROLLER_READING, READING_FILE, ["2080-LC20-20QBB"]],
+    ["a sibling model against a reading that says, in a sentence, what the drive is", "RX420 supply voltage?", reading("Press 2", "The drive on this press is an RX410."), READING_FILE, ["RX410"]],
+  ])("refuses, and names what the reading shows: %s", (_name, question, heading, filename, declared) => {
+    expect(verdict(question, heading, filename)).toMatchObject({ admit: false, kind: "other-model", declared, reading: true });
+  });
+
+  it("an uploaded manual is still read as a cover, whatever it quotes lower down", () => {
+    const upload = `Hardware User Guide\n${PHOTO_READING_OPENER}\n${PHOTO_READING_BODY_MARK}\nRX420 is not covered by this manual.`;
+    const v = verdict("RX420 supply voltage?", upload);
+    expect(v).toMatchObject({ admit: false, kind: "coverage-not-shown" });
+    expect(v).not.toHaveProperty("reading");
+  });
+
+  it("the reply says it is a photo reading, not a manual, when only readings were refused", () => {
+    const refused = verdict("What is the coil voltage of the CA3KN31BD?", RELAY_PLATE, PLATE_FILE);
+    const text = unlistedModelRefusalText(summarizeUnlistedRefusals([refusal(refused)], "question"));
+    expect(text).toBe(
+      "The photo reading saved in this notebook shows the CA3KN22BD, not the CA3KN31BD you asked about, so I won't answer from it — its values may not apply to the CA3KN31BD. Add the CA3KN31BD manual (or the page that covers it) to this notebook and ask again.",
+    );
+  });
+
+  it("a refused manual beside a refused reading keeps the manual's sentence", () => {
+    const manual = verdict("What is the coil voltage of the CA3KN31BD?", "Control relay, TeSys K\nstandard coil\nCA3KN22BD", "DS0004417.pdf");
+    const refused = verdict("What is the coil voltage of the CA3KN31BD?", RELAY_PLATE, PLATE_FILE);
+    const text = unlistedModelRefusalText(summarizeUnlistedRefusals([refusal(manual), refusal(refused)], "question"));
+    expect(text).toContain("The manual in this notebook is for the CA3KN22BD, not the CA3KN31BD you asked about");
+  });
+});
+
 describe("stated limits, pinned so a change to them is seen", () => {
   it("an accessory's manual that names the model it is for is not told apart from the model's own manual", () => {
     expect(kindOf(verdict("How do I clear fault F004 on the RX420?", "EtherNet/IP Adapter for RX420 Drives\nUser Manual", "UM_ENET.pdf"))).toBe("answers");
@@ -471,5 +556,14 @@ describe("stated limits, pinned so a change to them is seen", () => {
   });
   it("a filename that names the asked model counts when the cover names none, whatever else the name carries", () => {
     expect(kindOf(verdict("Torque limit on the RX420?", "Migration Guide\nSetup Notes", "RX410_to_RX420_Migration.pdf"))).toBe("answers");
+  });
+  it("an uploaded file that opens with the product's own photo-reading line is read as a reading", () => {
+    const upload = `${PHOTO_READING_OPENER}\n${PHOTO_READING_BODY_MARK}\nRX420 is not covered by this manual.`;
+    expect(kindOf(verdict("RX420 supply voltage?", upload))).toBe("answers");
+  });
+  it("a reading that carries one machine's tag is refused for a question that names that tag and a look-alike tag", () => {
+    const tagPlate = reading("CV-101", "Asset tag plate reads CV-101.");
+    expect(kindOf(verdict("CV-101 stops when CV-102 is full, what should I check?", tagPlate, READING_FILE))).toBe("several-look-alikes");
+    expect(kindOf(verdict("What is the belt speed on CV-101?", tagPlate, READING_FILE))).toBe("answers");
   });
 });

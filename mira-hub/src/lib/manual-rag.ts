@@ -7,6 +7,7 @@ import { FAMILY_ROOTS, MODEL_PATTERNS, ROCKWELL, familyCovers, modelIdentitiesIn
 import { ambiguousSiblingModels } from "@/capabilities/named-model-mismatch";
 import {
   manualAnswersFor,
+  sameModelFamily,
   summarizeUnlistedRefusals,
   unlistedModelNumbers,
   type ManualVerdict,
@@ -1890,15 +1891,20 @@ export async function retrieveNodeChunks(
   // #5369 — model and catalog numbers model-token.ts has no pattern for
   // ("RX420", "CA3KN99ZZ", "2080-LC99-99ZZZ"). They read as "no model named",
   // so every check above was skipped and a sibling's manual answered. The
-  // question's own numbers are judged; when it names no model at all, a
-  // CONFIRMED notebook model the detector cannot read is judged the same way
-  // (a notebook recorded by catalog number). manual-applicability.ts decides.
+  // question's own numbers are judged. So is any number in a CONFIRMED
+  // notebook model that the detector cannot read (a catalog number, recorded
+  // alone or beside the family name), unless the
+  // question names a model itself: a known one, or a number of the notebook
+  // number's own family. Any other number in the question (the machine's tag,
+  // a fault code) names no model and must not switch the notebook's check off.
+  // manual-applicability.ts decides.
   const questionNumbers = unlistedModelNumbers(opts.rawQuery ?? q);
-  const namesNoModel =
-    questionNumbers.length === 0 && !requestedModel.model && !requestedModel.ambiguous && closeNameIdentities.size === 0;
-  const notebookNumbers =
-    namesNoModel && identityConfirmed && notebookModel && notebookIdentities.size === 0 ? unlistedModelNumbers(notebookModel) : [];
-  const unlistedAsk = questionNumbers.length > 0 ? questionNumbers : notebookNumbers;
+  const namesNoKnownModel = !requestedModel.model && !requestedModel.ambiguous && closeNameIdentities.size === 0;
+  const confirmedNumbers =
+    namesNoKnownModel && identityConfirmed && notebookModel ? unlistedModelNumbers(notebookModel) : [];
+  const notebookNumbers = questionNumbers.some((asked) => confirmedNumbers.some((own) => sameModelFamily(asked, own))) ? [] : confirmedNumbers;
+  const notebookLabels = new Set(notebookNumbers.map((n) => n.label));
+  const unlistedAsk = [...questionNumbers, ...notebookNumbers];
   const unlistedRefusals = new Map<string, Extract<ManualVerdict, { admit: false }>>();
   const noteUnlistedRefusal = (docId: string, verdict: Extract<ManualVerdict, { admit: false }>) => {
     unlistedRefusals.set(docId, verdict);
@@ -1906,9 +1912,10 @@ export async function retrieveNodeChunks(
     // Same bar as the named-ask claim above: it stands only while EVERY
     // selected manual was refused this way.
     if (allowedDocIds.length > 0 && allowedDocIds.every((d) => unlistedRefusals.has(d))) {
+      const refused = [...unlistedRefusals.values()];
       opts.diagnostics.unlistedModelRefusal = summarizeUnlistedRefusals(
-        [...unlistedRefusals.values()],
-        questionNumbers.length > 0 ? "question" : "notebook",
+        refused,
+        refused.every((r) => r.asked.every((label) => notebookLabels.has(label))) ? "notebook" : "question",
       );
     } else delete opts.diagnostics.unlistedModelRefusal;
   };

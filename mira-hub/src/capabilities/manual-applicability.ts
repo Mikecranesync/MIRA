@@ -1,4 +1,5 @@
 import { modelMentionsInText } from "./model-token";
+import { photoDocumentBody } from "./photo-document-text";
 
 /**
  * #5369 — is this manual shown to be for the model number that was asked about?
@@ -22,6 +23,14 @@ import { modelMentionsInText } from "./model-token";
  *     (or nothing on the line but numbers). Prose shows nothing;
  *   - the filename counts only when the cover carries no such number at all,
  *     and a cover and a filename that name different look-alikes disagree.
+ *
+ * A document the PRODUCT wrote from a technician's photo (a kept photo reading,
+ * a confirmed nameplate) has no cover, so none of that applies to it. It is
+ * read by what was read off the photo: it answers for a number it carries, is
+ * refused for a number it carries only a look-alike of, and is not judged
+ * otherwise. Its header lines are the product's own and are never read: the
+ * machine's name in them ("CV-101") is a label, not a model number. This is
+ * what the existing check already does for the families it reads.
  * No model call, no database call. Pure.
  *
  * Known limits:
@@ -51,7 +60,11 @@ import { modelMentionsInText } from "./model-token";
  *     read as nouns only when shouted in a line that is not. A remark shouted
  *     that way in mixed-case text ("RX420 IS sold elsewhere") reads as a title
  *     when a title noun is beside it;
- *   - a cover that names exactly one model, as a title, is trusted.
+ *   - a cover that names exactly one model, as a title, is trusted;
+ *   - an uploaded file whose first line is the product's own photo-reading or
+ *     nameplate line is read as one;
+ *   - a photo reading that carries one machine tag is refused for a question
+ *     that names that tag and a look-alike tag ("CV-101 … CV-102").
  *
  * Checked 2026-11-10 against the first stored block of the pilot's public
  * manuals (the hub's own extractor and chunker over the PDFs): each answers
@@ -76,9 +89,13 @@ export type UnlistedModelRefusal = {
   declared: string[];
   /** Whether the number came from the question or from the notebook's confirmed machine. */
   source: "question" | "notebook";
+  /** Set when every refused document is a photo reading the product wrote, not a manual. */
+  reading?: true;
 };
 
-export type ManualVerdict = { admit: true } | { admit: false; kind: UnlistedRefusalKind; asked: string[]; declared: string[] };
+export type ManualVerdict =
+  | { admit: true }
+  | { admit: false; kind: UnlistedRefusalKind; asked: string[]; declared: string[]; /** A product-written photo reading, not a manual. */ reading?: true };
 
 // A rating or a count is not a model number: 24VDC, 690V, 4-20mA, 2NO, 3PH, 1st.
 const UNIT_RE =
@@ -156,6 +173,8 @@ function lookAlike(a: ModelNumber, b: ModelNumber): boolean {
   return da.length === db.length && da[0] === db[0];
 }
 const sameFamily = (a: ModelNumber, b: ModelNumber) => a.key === b.key || lookAlike(a, b);
+/** The same number, or two numbers of one family. */
+export const sameModelFamily = sameFamily;
 
 /** The model numbers a text names that model-token.ts does NOT read. Whatever
  *  the detector reads is left to the existing check, whole: "GS11N-20P2" must
@@ -346,6 +365,14 @@ function coverageOf(asked: ModelNumber, heading: string, filename: string): OneV
   const inFamily = (n: ModelNumber) => sameFamily(n, asked);
   const isAsked = (n: ModelNumber) => n.key === asked.key;
   const familyOn = (text: string) => coverNumbersIn(text).filter(inFamily);
+  // A photo reading or a confirmed nameplate: what was read off the photo is
+  // the evidence, sentence or not. Its filename is the product's own, too.
+  const read = photoDocumentBody(heading);
+  if (read !== null) {
+    const carried = familyOn(read);
+    if (carried.length === 0) return { kind: "silent" };
+    return carried.some(isAsked) ? { kind: "covers" } : { kind: "other-model", declared: [...new Set(carried.map((c) => c.label))] };
+  }
   const onFile = familyOn(stemOf(filename));
   const lines = heading.split("\n");
   // A list that wraps ("… 2080-LC20-20QBB,\n2080-LC20-20AWB, …") is one line.
@@ -407,7 +434,13 @@ export function manualAnswersFor(asked: ModelNumber[], heading: string, filename
     : first.kind === "other-model"
       ? declared.length > 0 ? "other-model" : "coverage-not-shown"
       : (first.kind as UnlistedRefusalKind);
-  return { admit: false, kind, asked: (pair ? asked : failed.map((f) => f.number)).map((n) => n.label), declared: [...new Set(declared)] };
+  return {
+    admit: false,
+    kind,
+    asked: (pair ? asked : failed.map((f) => f.number)).map((n) => n.label),
+    declared: [...new Set(declared)],
+    ...(photoDocumentBody(heading) !== null ? { reading: true as const } : {}),
+  };
 }
 
 /** One reason for the whole reply, from the refusal of every selected manual. */
@@ -423,6 +456,7 @@ export function summarizeUnlistedRefusals(
     asked: [...new Set(refusals.flatMap((r) => r.asked))],
     declared: kind === "other-model" ? [...new Set(refusals.flatMap((r) => r.declared))] : [],
     source,
+    ...(refusals.every((r) => r.reading) ? { reading: true as const } : {}),
   };
 }
 
@@ -436,6 +470,8 @@ export function unlistedModelRefusalText(r: UnlistedModelRefusal): string {
   const add = `Add the ${asked} manual (or the page that covers it) to this notebook and ask again.`;
   switch (r.kind) {
     case "other-model":
+      if (r.reading)
+        return `The photo reading saved in this notebook shows the ${listed(r.declared)}, not the ${asked} ${whose}, so I won't answer from it — its values may not apply to the ${asked}. ${add}`;
       return `The manual in this notebook is for the ${listed(r.declared)}, not the ${asked} ${whose}, so I won't answer from it — its values may not apply to the ${asked}. ${add}`;
     case "cover-and-file-disagree":
       return `The manual in this notebook has a cover and a file name that point at different models, so I can't confirm it covers the ${asked} ${whose}, and I won't answer from it. Check that the right file is attached, or add the ${asked} manual, and ask again.`;

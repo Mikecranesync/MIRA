@@ -11,6 +11,7 @@
 //    not judge the wording of an answer.
 //
 // Nothing here calls a model, a network or a database.
+import { NAMEPLATE_BODY_MARK, NAMEPLATE_OPENER, buildPhotoSourceText } from "../../photo-document-text";
 
 export type Manual = {
   key: string;
@@ -19,7 +20,8 @@ export type Manual = {
   filename: string;
   page: number;
   pageLabel: string;
-  origin: "public-cover" | "synthetic";
+  /** `product-written`: the product's own text around a synthetic reading. */
+  origin: "public-cover" | "synthetic" | "product-written";
 };
 
 const standIn = (key: string) => `Stand-in passage for ${key}. Admission fixture only, not a quotation.`;
@@ -261,6 +263,14 @@ export const SIBLING_PLC_SHEET: Manual = {
 
 /** The controller recorded by the catalog number on its plate, not by its family. */
 export const PLC_BY_CATALOG: Identity = { manufacturer: "Allen-Bradley", model: "2080-LC20-20QBB" };
+/** The same controller recorded by family name and catalog number together. */
+export const PLC_BY_NAME_AND_CATALOG: Identity = { manufacturer: "Allen-Bradley", model: "Micro820 2080-LC20-20QBB" };
+/** A sheet of the same family for one other catalog number. Synthetic heading in the real sheet's layout, not a quotation. */
+export const MICRO820_OTHER_CATALOG_SHEET: Manual = {
+  key: "micro820-other-catalog-sheet",
+  heading: "Installation Instructions\nMicro820 20-Point Programmable Controllers\nCatalog Number 2080-LC20-20AWB",
+  filename: "2080-in998_-en-p.pdf", page: 12, pageLabel: "12", origin: "synthetic",
+};
 
 export const MICRO820_SHEET_AS_STORED: Manual = {
   ...MICRO820_SHEET,
@@ -280,6 +290,48 @@ export const RELAY_SHEET_AS_STORED: Manual = {
     + "Product name TeSys CAK\nProduct or Component Type Control relay\nDevice short name CA3K\n"
     + "Contactor application Control circuit\nUtilisation category AC-15\nDC-13\nPole contact composition 2 NO + 2 NC",
 };
+
+// ── Documents the product writes itself from a technician's photo ─────────────
+// A kept photo reading and a confirmed nameplate. The header lines are the
+// product's own (built by its own function, or in the confirm route's layout
+// with its own marker lines); what was "read off the photo" is synthetic. The
+// file id and hash are invented. No serial number, no lot or date code.
+const PHOTO_FILE_ID = "0b6f4c1e-7a2d-4e59-9c3a-5d1f8e2b7a40";
+const PHOTO_SHA = "9f2c41d07be35a68c1d2e4f5a6b7c8d90e1f2a3b4c5d6e7f8091a2b3c4d5e6f7";
+/** What the hub stores as the first block of a text this short: the whole text, trimmed. */
+const storedBlock = (text: string) => {
+  const clean = text.replace(/[ \t]+\n/g, "\n").trim();
+  if (clean.length > 1000) throw new Error("fixture is longer than one stored block");
+  return clean;
+};
+const photoDocument = (key: string, filename: string, text: string): Manual => ({
+  key, filename, heading: storedBlock(text), page: 1, pageLabel: "1", origin: "product-written",
+});
+const CONTROLLER_PHOTO_TEXT = buildPhotoSourceText({
+  machineName: "CV-101", fileId: PHOTO_FILE_ID, photoSha256: PHOTO_SHA, capturedAt: "2026-11-09T14:32:08.000Z", reviewed: true,
+  observation: "Controller Micro820, catalog 2080-LC20-20QBB. Reviewed against the photo only; physical condition and operating state unknown. No completed work or live measurements.",
+});
+const RELAY_PLATE_TEXT = [
+  NAMEPLATE_OPENER, "", "Machine notebook: K1 control relay", `Canonical nameplate photo (file id): ${PHOTO_FILE_ID}`, "Recognition confidence: 0.91", "",
+  NAMEPLATE_BODY_MARK, "- Manufacturer: Schneider Electric", "- Model: CA3KN22BD", "- Voltage: 24 V DC", "",
+  "RAW NAMEPLATE OBSERVATION (unedited vision extraction)", "- reader: stub", "- Schneider Electric", "- TeSys CA3KN22BD", "- Ui 690V", "- 24V DC", "",
+].join("\n");
+/** A sheet titled for another machine's tag AND a sibling relay: refused on both counts. Synthetic. */
+export const OTHER_MACHINE_RELAY_SHEET: Manual = {
+  key: "other-machine-sibling-relay-sheet",
+  heading: "CV-102 Conveyor Control Relay CA3KN31BD\nData Sheet",
+  filename: "DS0004419.pdf", page: 1, pageLabel: "1", origin: "synthetic",
+};
+/** A technician-reviewed photo reading of the controller, kept as a source of the CV-101 project. */
+export const CONTROLLER_PHOTO_READING = photoDocument(
+  "controller-photo-reading", "Technician-reviewed photo reading 2026-11-09.txt", CONTROLLER_PHOTO_TEXT);
+/** The relay's confirmed nameplate, as the confirm route writes it. */
+export const RELAY_PLATE = photoDocument("relay-confirmed-nameplate", `nameplate-${PHOTO_FILE_ID}.txt`, RELAY_PLATE_TEXT);
+/** Each product-written fixture beside the full text it was cut from, for the as-stored check. */
+export const PHOTO_DOCUMENT_TEXTS: Array<[Manual, string]> = [
+  [CONTROLLER_PHOTO_READING, CONTROLLER_PHOTO_TEXT],
+  [RELAY_PLATE, RELAY_PLATE_TEXT],
+];
 
 export const EXTRA_JOBS: Job[] = [
   // Wordings that must still refuse.
@@ -355,4 +407,61 @@ export const EXTRA_JOBS: Job[] = [
   { id: "X-22", who: "apprentice", doing: "asking with no model named, relay sheet as stored",
     attached: [RELAY_SHEET_AS_STORED], identity: RELAY,
     ask: "What is the coil voltage?", want: answer(RELAY_SHEET_AS_STORED) },
+  // The product's own photo documents. CI's cv101-photo-recall suite caught the
+  // first version of the rule refusing every saved reading once the question
+  // named the machine: the product writes that name into each reading's header.
+  { id: "X-23", who: "journeyman", doing: "asking what is saved for the machine, by its tag; one reviewed photo reading is attached",
+    attached: [CONTROLLER_PHOTO_READING],
+    ask: "Which components of CV-101 have reviewed photo readings saved in this project? Summarize them with their source evidence.",
+    want: answer(CONTROLLER_PHOTO_READING) },
+  { id: "X-24", who: "journeyman", doing: "naming two machines by tag; one reviewed photo reading is attached",
+    attached: [CONTROLLER_PHOTO_READING],
+    ask: "CV-101 stops when CV-102 is full, what should I check?", want: answer(CONTROLLER_PHOTO_READING) },
+  { id: "X-25", who: "journeyman", doing: "asking by the relay's own part number; only its confirmed nameplate is attached",
+    attached: [RELAY_PLATE], identity: RELAY,
+    ask: "What is the coil voltage of the CA3KN22BD?", want: answer(RELAY_PLATE) },
+  { id: "X-26", who: "apprentice", doing: "asking with no model named; only the relay's confirmed nameplate is attached",
+    attached: [RELAY_PLATE], identity: RELAY,
+    ask: "What is the coil voltage?", want: answer(RELAY_PLATE) },
+  { id: "X-27", who: "senior", doing: "asking by another relay part number; only this relay's confirmed nameplate is attached",
+    attached: [RELAY_PLATE], identity: RELAY,
+    ask: "What is the coil voltage of the CA3KN31BD?", want: REFUSE, says: "other-model", about: "question" },
+  { id: "X-28", who: "apprentice", doing: "asking in the relay's project; its nameplate and a sibling relay's sheet are attached",
+    attached: [RELAY_PLATE, SIBLING_RELAY_SHEET], identity: RELAY,
+    ask: "What is the coil voltage?", want: answer(RELAY_PLATE) },
+  { id: "X-29", who: "senior", doing: "asking by another relay part number; this relay's nameplate and its own sheet are attached",
+    attached: [RELAY_PLATE, RELAY_SHEET_AS_STORED], identity: RELAY,
+    ask: "What is the coil voltage of the CA3KN31BD?", want: REFUSE, says: "other-model", about: "question" },
+  { id: "X-30", who: "journeyman", doing: "naming the machine by tag in a project confirmed by catalog number; the sheet and a photo reading are attached",
+    attached: [MICRO820_SHEET_AS_STORED, CONTROLLER_PHOTO_READING], identity: PLC_BY_CATALOG,
+    ask: "What supply voltage does the controller on CV-101 need?", want: answer(MICRO820_SHEET_AS_STORED, CONTROLLER_PHOTO_READING) },
+  // A tag or a fault code in the question is not a model: it must not switch
+  // off the check on the project's own confirmed part number.
+  { id: "X-31", who: "apprentice", doing: "naming the machine by tag in the relay's project; only a sibling relay's sheet is attached",
+    attached: [SIBLING_RELAY_SHEET], identity: RELAY,
+    ask: "What is the coil voltage of the relay on CV-101?", want: REFUSE, says: "other-model", about: "notebook" },
+  { id: "X-32", who: "journeyman", doing: "asking about a fault code in a project confirmed by catalog number; only a sibling's sheet is attached",
+    attached: [SIBLING_PLC_SHEET], identity: PLC_BY_CATALOG,
+    ask: "What does fault F0004 mean?", want: REFUSE, says: "other-model", about: "notebook" },
+  { id: "X-35", who: "senior", doing: "naming the machine by tag in the relay's project; the only sheet is for another machine's sibling relay",
+    attached: [OTHER_MACHINE_RELAY_SHEET], identity: RELAY,
+    ask: "What is the coil voltage of the relay on CV-101?", want: REFUSE, says: "other-model", about: "question" },
+  // Controls: the question's own part number still wins over the project's, and a fault code changes nothing for the right sheet.
+  { id: "X-33", who: "senior", doing: "asking by the sibling relay's part number in the relay's project; the sibling's sheet is attached",
+    attached: [SIBLING_RELAY_SHEET], identity: RELAY,
+    ask: "What is the coil voltage of the CA3KN31BD?", want: answer(SIBLING_RELAY_SHEET) },
+  { id: "X-34", who: "journeyman", doing: "asking about a fault code in a project confirmed by catalog number; its own sheet is attached",
+    attached: [MICRO820_SHEET_AS_STORED], identity: PLC_BY_CATALOG,
+    ask: "What does fault F0004 mean?", want: answer(MICRO820_SHEET_AS_STORED) },
+  // Two manuals refused for different reasons: one against the project's part, one against a number in the question.
+  { id: "X-36", who: "senior", doing: "naming another controller in the relay's project; a sibling relay's sheet and that controller's sibling guide are attached",
+    attached: [SIBLING_RELAY_SHEET, RX410_TITLED], identity: RELAY,
+    ask: "Can an RX420 output switch this coil?", want: REFUSE, says: "other-model", about: "question" },
+  // A project recorded by family name AND catalog number: the catalog number is still checked.
+  { id: "X-37", who: "apprentice", doing: "asking in a project confirmed by family name and catalog number; the only sheet is the family's, for another catalog number",
+    attached: [MICRO820_OTHER_CATALOG_SHEET], identity: PLC_BY_NAME_AND_CATALOG,
+    ask: "What supply voltage does it need?", want: REFUSE, says: "other-model", about: "notebook" },
+  { id: "X-38", who: "apprentice", doing: "asking in a project confirmed by family name and catalog number; its own sheet is attached",
+    attached: [MICRO820_SHEET_AS_STORED], identity: PLC_BY_NAME_AND_CATALOG,
+    ask: "What supply voltage does it need?", want: answer(MICRO820_SHEET_AS_STORED) },
 ];
