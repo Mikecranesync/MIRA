@@ -71,6 +71,39 @@ describe("the relay, typed the way its data sheet titles it", () => {
   ])("still nothing: %s", (_why, typed) => {
     expect(propose(typed)).toBeNull();
   });
+
+  // Cheap review round 9 on #5387. The number after the range name was given to
+  // Schneider whatever it was. The family table in the same file lists these
+  // numbers as an Allen-Bradley Micro820's, so the card named a machine the
+  // file itself knows is another maker's. Main gives no card for these.
+  it.each([
+    ["Schneider Electric TeSys 2080-LC20-20QBB"],
+    ["Schneider Electric TeSys K 2080-LC20-20QBB"],
+    ["Schneider Electric TeSys D 2080-L20E-20QWBR has a red fault light"],
+    ["The Schneider Electric TeSys 2080-LC20-20AWB, which manual should I use?"],
+  ])("a number the family table lists as another maker's is not given to the range's maker: %s", (typed) => {
+    expect(propose(typed)).toBeNull();
+  });
+
+  // Main's own card for the same contradiction in the plain wording is not
+  // changed here (#5395): main's reading runs first and its card is returned.
+  it.each([
+    ["Schneider Electric 2080-LC20-20QBB", "Schneider Electric"],
+    ["Siemens 2080-LC20-20QBB", "Siemens"],
+  ])("a gap that is on main gives the same card as main: %s", (typed, manufacturer) => {
+    expect(propose(typed)).toEqual({ manufacturer, model: "2080-LC20-20QBB" });
+  });
+
+  // KNOWN LIMIT, pinned. A number no list in this file attributes to a maker is
+  // still given to the range's maker, as main gives any number to the maker
+  // named before it: another family's number, a look-alike, another maker's.
+  it.each([
+    ["Schneider Electric TeSys 2080-LC50-24QWB"],
+    ["Schneider Electric TeSys 2080-LC20-99ZZZ"],
+    ["Schneider Electric TeSys 6ES7214-1AG40-0XB0"],
+  ])("known limit: a number no list attributes is still proposed under the range's maker: %s", (typed) => {
+    expect(propose(typed)).toEqual({ manufacturer: "Schneider Electric", model: typed.split(" ").pop() });
+  });
 });
 
 describe("the PLC, typed with both lines of its plate", () => {

@@ -512,6 +512,17 @@ export function familyNamedWithItsCatalogNumber(manufacturer: string, mentions: 
 }
 
 /**
+ * A catalog number this table lists for ONE maker's family, proposed under a
+ * different maker ("Schneider Electric TeSys 2080-LC20-20QBB": the number is a
+ * Micro820's). Asked only of a proposal the new rules make; a number the table
+ * does not hold proves nothing and is left alone.
+ */
+function isAnotherMakersListedNumber(manufacturer: string, model: string): boolean {
+  const number = model.toUpperCase();
+  return FAMILY_CATALOG_NUMBERS.some(({ maker, catalogNumbers }) => catalogNumbers.has(number) && !maker.test(manufacturer));
+}
+
+/**
  * Four closed checks for a second machine. They are asked ONLY of a proposal
  * the two rules above newly make (the family pairing, a model reached through
  * a range name), and each can only REMOVE that proposal. The reading without
@@ -666,6 +677,7 @@ export function proposeIdentityFromText(
     if (already) return already;
     const proposal = readProposal(message, knownManufacturers, true);
     if (!proposal) return null;
+    if (isAnotherMakersListedNumber(proposal.manufacturer, proposal.model)) return null;
     const secondMachine =
       namesAnotherRecognizedModel(message, proposal.model) ||
       namesASiblingByNumber(message, proposal.model) ||

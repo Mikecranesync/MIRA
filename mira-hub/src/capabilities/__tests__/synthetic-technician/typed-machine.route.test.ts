@@ -239,6 +239,27 @@ describe("a blank notebook, and the technician types the relay the way its data 
     expect(proposalIn(await ask("Schneider Electric TeSys K CA3KN22BD and an SMC Flex both faulted"))).toBeUndefined();
   });
 
+  // Cheap review round 9: the number belongs to an Allen-Bradley controller.
+  // The typed-text reader is the only one asked when the label reader is
+  // switched off with the automatic manual search; there it now gives no card,
+  // as on main.
+  it("the relay's range before another maker's catalog number carries no proposal from the typed-text reader", async () => {
+    acqMock.acquisitionEnabled.mockReturnValue(false);
+    const frames = await ask("Schneider Electric TeSys 2080-LC20-20QBB has a red fault light");
+    expect(proposalIn(frames)).toBeUndefined();
+    expect(identityWrite()).toBeUndefined();
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+  });
+
+  // KNOWN LIMIT, on main and unchanged here: with the label reader on, IT
+  // proposes the maker and the part for the same message (a maker and one part
+  // number, nothing else). Main shows this same card. The spelling of the
+  // maker tells the two readers apart.
+  it("known limit: the label reader still proposes that message, the same card as main", async () => {
+    const proposal = proposalIn(await ask("Schneider Electric TeSys 2080-LC20-20QBB has a red fault light"));
+    expect(proposal).toMatchObject({ manufacturer: "SCHNEIDER ELECTRIC", model: "2080-LC20-20QBB" });
+  });
+
   it("control: a general question proposes nothing", async () => {
     expect(proposalIn(await ask("what does PNP mean on a sensor?"))).toBeUndefined();
   });
