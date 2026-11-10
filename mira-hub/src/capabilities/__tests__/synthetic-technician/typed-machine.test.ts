@@ -134,7 +134,20 @@ const SIBLING_MANUAL = {
   document_heading: "Micro850 Programmable Controllers User Manual",
 };
 
-async function citedFor(model: string, manuals: Array<typeof MICRO820_MANUAL>): Promise<string[]> {
+/** Cover of the AutomationDirect GS10 user manual (public). */
+const GS10_MANUAL = {
+  doc_id: "5e7c0000-0000-4000-8000-0000000000c3",
+  filename: "gs10usermanual.pdf",
+  document_heading: "DURApulse GS10 Drive User Manual\nGS10_UMW\nOriginal Instructions",
+};
+/** Another drive family's manual. Synthetic heading, not a quotation. */
+const OTHER_DRIVE_MANUAL = {
+  doc_id: "5e7c0000-0000-4000-8000-0000000000d4",
+  filename: "other-drive.pdf",
+  document_heading: "GS20 AC Drive User Manual",
+};
+
+async function citedFor(model: string, manuals: Array<typeof MICRO820_MANUAL>, manufacturer = "Allen-Bradley"): Promise<string[]> {
   const rows = manuals.map((m, i) => ({
     ...m,
     source_url: `https://test.invalid/${m.filename}`,
@@ -164,7 +177,7 @@ async function citedFor(model: string, manuals: Array<typeof MICRO820_MANUAL>): 
     validatedDocScope: true,
     rawQuery: question,
     topK: 6,
-    identity: { manufacturer: "Allen-Bradley", model },
+    identity: { manufacturer, model },
     identityStatus: "user_confirmed" as const,
   });
   expect(offered, "the real admission step received the candidates").toBeGreaterThan(0);
@@ -195,5 +208,14 @@ describe("after the technician confirms what was proposed", () => {
 
   it("refuses when only the sibling's manual is attached", async () => {
     expect(await citedFor("820", [SIBLING_MANUAL])).toEqual([]);
+  });
+
+  // The drive's plate reads GS11N-20P2; typed, it was already proposed (as the
+  // series "GS11N"). The same outcome check, so all three garage parts have one.
+  it("the drive: what its typed plate proposes is answered from the GS10 manual, not another family's", async () => {
+    const proposed = propose("AutomationDirect GS11N-20P2 trips on acceleration");
+    expect(proposed).toEqual({ manufacturer: "AutomationDirect", model: "GS11N" });
+    expect(await citedFor(proposed!.model, [GS10_MANUAL, OTHER_DRIVE_MANUAL], proposed!.manufacturer)).toEqual([GS10_MANUAL.doc_id]);
+    expect(await citedFor(proposed!.model, [OTHER_DRIVE_MANUAL], proposed!.manufacturer)).toEqual([]);
   });
 });
