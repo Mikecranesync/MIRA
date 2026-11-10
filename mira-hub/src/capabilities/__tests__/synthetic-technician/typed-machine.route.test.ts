@@ -8,10 +8,15 @@
  * model parser are the real ones. No network, $0.
  *
  * It then does what the card's "Use its manuals" button does: posts the
- * proposal to POST /api/equipment-notebooks/[id]/identity/confirm, with the
- * work-packet switch unset (production's value). The confirm write is the real
- * function; only the SQL client is a stand-in, so the test reads the statement
- * and the values it would send.
+ * proposal to POST /api/equipment-notebooks/[id]/identity/confirm. That route
+ * reads no work-packet switch (it is left unset here, which is production's
+ * value, but unsetting it changes nothing). The automatic manual search switch
+ * is on, as in production, and one row turns it off. The confirm write is the
+ * real function; only the SQL client is a stand-in, so the test reads the
+ * statement and the values it would send.
+ *
+ * The card is offered to a blank project only: no machine picked, no maker or
+ * model recorded, no manual selected. The last rows pin that.
  *
  * Not proven here: the card on a screen, the database trigger that promotes a
  * found manual, or production's maker list.
@@ -30,7 +35,7 @@ vi.mock("@/lib/session", () => ({
 const nbMock = vi.hoisted(() => ({
   validateChatSources: vi.fn(),
   getNotebook: vi.fn(),
-  resolveBoundAsset: vi.fn(async () => ({ state: "unbound" as const })),
+  resolveBoundAsset: vi.fn(async (): Promise<Record<string, unknown>> => ({ state: "unbound" })),
   recordTurn: vi.fn(async () => undefined),
   listSources: vi.fn(async () => [] as { filename: string | null }[]),
   originFileIdsByDoc: vi.fn(async () => new Map<string, string>()),
@@ -104,11 +109,12 @@ function providerStream(text: string) {
   });
 }
 
-async function ask(message: string): Promise<Record<string, unknown>[]> {
+/** `docIds` empty is what the screen sends as a general question (hub-host-logic.ts). */
+async function ask(message: string, docIds: string[] = []): Promise<Record<string, unknown>[]> {
   const res = await POST(
     new NextRequest("http://test/api/equipment-notebooks/x/chat", {
       method: "POST",
-      body: JSON.stringify({ message, mode: "general" }),
+      body: JSON.stringify(docIds.length === 0 ? { message, mode: "general" } : { message, docIds }),
       headers: { "Content-Type": "application/json" },
     }),
     { params: Promise.resolve({ id: NB }) },
@@ -180,7 +186,7 @@ describe("a blank notebook, and the technician types both lines of the PLC's pla
   it("nothing is bound and no manual search starts before the technician confirms", async () => {
     await ask(TYPED);
     expect(nbMock.recordTurn).toHaveBeenCalled();
-    expect(Object.keys(nbMock)).not.toContain("updateNotebook");
+    expect(identityWrite()).toBeUndefined();
     expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
   });
 
@@ -261,5 +267,51 @@ describe("the technician taps \"Use its manuals\" on the card, with the work-pac
     const proposal = proposalIn(await ask("Allen-Bradley Micro850 2080-LC20-20QBB has a red fault light"));
     await expect(confirm(proposal)).rejects.toThrow("nothing to confirm");
     expect(identityWrite()).toBeUndefined();
+  });
+});
+
+// The card is offered to a BLANK project only. These rows pin that, because the
+// pilot's project is set up with a machine picked and a manual attached: there,
+// typing the plate offers nothing, with or without this branch.
+describe("the same plate typed into a project that is no longer blank", () => {
+  const TYPED = "Allen-Bradley Micro820 2080-LC20-20QBB has a red fault light";
+  const DOC = "5e7c0000-0000-4000-8000-000000000044";
+
+  it("a machine is already picked: no card", async () => {
+    nbMock.resolveBoundAsset.mockResolvedValue({
+      state: "resolved",
+      entityId: "5e7c0000-0000-4000-8000-000000000055",
+      name: "CV-101",
+      unsPath: "enterprise.garage.demo_cell.cv_101",
+      selectedVia: "asset_picker",
+      confirmedAt: null,
+    });
+    expect(proposalIn(await ask(TYPED))).toBeUndefined();
+  });
+
+  it("a model is already recorded: no card", async () => {
+    nbMock.getNotebook.mockResolvedValue({ id: NB, displayName: "PLC", nodeId: NODE, manufacturer: null, model: "Micro850" });
+    expect(proposalIn(await ask(TYPED))).toBeUndefined();
+  });
+
+  it("a manual is attached and selected: no card", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC], nodeId: NODE });
+    nbMock.listSources.mockResolvedValue([{ filename: "2080-um005.pdf" }]);
+    expect(proposalIn(await ask(TYPED, [DOC]))).toBeUndefined();
+  });
+});
+
+describe("the confirm step with the automatic manual search switched off", () => {
+  it("the machine is still recorded, and no search starts", async () => {
+    const proposal = proposalIn(await ask("Allen-Bradley Micro820 2080-LC20-20QBB has a red fault light"));
+    acqMock.acquisitionEnabled.mockReturnValue(false);
+    writeSucceeds();
+
+    const { status, body } = await confirm(proposal);
+
+    expect(status).toBe(200);
+    expect(body).toMatchObject({ ok: true, model: "820", searching: false });
+    expect(identityWrite()?.slice(0, 5)).toEqual([TENANT, NB, "Allen-Bradley", "820", ""]);
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
   });
 });
