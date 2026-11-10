@@ -3361,8 +3361,12 @@ async function handleChatTurn(
             docIds,
             rawQuery,
             // The same machine as the question's own pass, so a stop never
-            // cites another product's page that pass refused.
+            // cites another product's page that pass refused. The lockout
+            // search is made with fixed words, so the machine this turn names
+            // is read from the message, not from the search words (Codex
+            // round 3 on #5389, F7).
             ...manualIdentity,
+            subjectQuestion: message,
             subjectQueries,
             subjectOutOfReach,
             validatedDocScope: true,

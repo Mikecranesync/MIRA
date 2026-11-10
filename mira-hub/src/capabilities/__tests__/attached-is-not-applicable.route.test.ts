@@ -156,6 +156,7 @@ async function ask(message: string) {
     citations: sources?.citations ?? [],
     providerAsked: vi.mocked(fetch).mock.calls.length > 0,
     kinds: out.map((f) => String(f.kind)),
+    text: out.filter((f) => f.kind === "content").map((f) => String(f.content ?? "")).join(""),
   };
 }
 
@@ -333,6 +334,107 @@ describe("the safety stop reads the same manuals as the question does", () => {
     const { citations, kinds } = await ask(HAZARD_ASK);
     expect(kinds).toContain("safety");
     expect(citations.length).toBeGreaterThan(0);
+  });
+
+  // Codex round 3 on #5389, F7. The lockout search is made with fixed lockout
+  // words, so it never saw the model the technician named in THIS question,
+  // and offered a sibling's lockout page as "your manual's". Every search made
+  // for one turn is judged on that turn's question.
+  describe("the model named in the hazard question itself decides whose lockout page is offered", () => {
+    it.each([
+      ["a sibling controller, only the Micro820 sheet attached", MICRO820_SHEET_AS_STORED, "The Micro830 is still powered up. Can I swap the fan?"],
+      ["a sibling drive, only the GS10 manual attached", GS10, "The GS20 is still powered up. Can I swap the fan?"],
+      ["a model no list names, only its sibling's guide attached", RX410_TITLED, "The RX420 is still powered up. Can I swap the fan?"],
+    ])("%s: the stop is served and cites nothing", async (_why, manual, question) => {
+      attach(manual, LOCKOUT_PASSAGE);
+      const { citations, providerAsked, kinds, text } = await ask(question);
+      expect(kinds, "the stop is still served").toContain("safety");
+      expect(providerAsked, "a stop never asks a provider").toBe(false);
+      expect(citations, "another model's lockout page must not be offered").toEqual([]);
+      expect(text, "the stop points at no page of another model's manual").not.toMatch(/\*\*p\./);
+      expect(text).toContain("follow your site's lockout/tagout procedure");
+    });
+
+    it.each([
+      ["the controller named, its own sheet attached", MICRO820_SHEET_AS_STORED, "The Micro820 is still powered up. Can I swap the fan?"],
+      ["the drive named, its own manual attached", GS10, "The GS10 is still powered up. Can I swap the fan?"],
+    ])("control: %s: the stop cites that manual's lockout page", async (_why, manual, question) => {
+      attach(manual, LOCKOUT_PASSAGE);
+      const { citations, kinds } = await ask(question);
+      expect(kinds).toContain("safety");
+      expect(citations.length, "the named machine's own lockout page is cited").toBeGreaterThan(0);
+    });
+
+    // The rule, not the examples: the stop offers a lockout page from exactly
+    // the manuals the same machine's ordinary question is answered from. The
+    // stand-in database always offers the attached page, so "cited" means
+    // "admitted" on both sides.
+    it.each([
+      ["the Micro820 sheet", MICRO820_SHEET_AS_STORED, "Micro820"],
+      ["the Micro820 sheet", MICRO820_SHEET_AS_STORED, "Micro830"],
+      ["the Micro820 sheet", MICRO820_SHEET_AS_STORED, "2080-LC20-20QBB"],
+      ["the Micro820 sheet", MICRO820_SHEET_AS_STORED, "CA3KN22BD"],
+      ["the Micro820 sheet", MICRO820_SHEET_AS_STORED, "RX420"],
+      ["the GS10 manual", GS10, "GS10"],
+      ["the GS10 manual", GS10, "GS20"],
+      ["the GS10 manual", GS10, "GS11N-20P2"],
+      ["the GS10 manual", GS10, "Micro820"],
+      ["the relay's sheet", RELAY_SHEET_AS_STORED, "CA3KN22BD"],
+      ["the relay's sheet", RELAY_SHEET_AS_STORED, "Micro820"],
+      ["the RX410 guide", RX410_TITLED, "RX410"],
+      ["the RX410 guide", RX410_TITLED, "RX420"],
+    ])("%s, asked about the %s: the stop cites a page exactly when the ordinary question is answered from it", async (_which, manual, named) => {
+      attach(manual, LOCKOUT_PASSAGE);
+      const ordinary = await ask(`What supply voltage does the ${named} need?`);
+      stored.turns = [];
+      vi.mocked(fetch).mockClear();
+      const stop = await ask(`The ${named} is still powered up. Can I swap the fan?`);
+      expect(stop.kinds).toContain("safety");
+      expect(stop.providerAsked).toBe(false);
+      expect(stop.citations.length > 0, `ordinary question cited ${ordinary.citations.length}`).toBe(ordinary.citations.length > 0);
+    });
+
+    it("a project confirmed as the Micro820: a hazard question naming the Micro830 is not sent to the Micro820 sheet's lockout page", async () => {
+      nbMock.resolveBoundAsset.mockResolvedValue(boundController);
+      attach(MICRO820_SHEET_AS_STORED, LOCKOUT_PASSAGE);
+      const { citations, kinds, text } = await ask("The Micro830 is still powered up. Can I swap the fan?");
+      expect(kinds).toContain("safety");
+      expect(citations).toEqual([]);
+      expect(text).not.toMatch(/\*\*p\./);
+    });
+
+    it("the model named in the hazard question wins over the one an earlier, refused question named", async () => {
+      attach(GS10, LOCKOUT_PASSAGE);
+      const first = await ask("The GS20 will not start. What supply voltage does it need?");
+      expect(first.citations, "the GS10 manual does not answer for the GS20").toEqual([]);
+      const stop = await ask("The GS10 is still powered up. Can I swap the fan?");
+      expect(stop.kinds).toContain("safety");
+      expect(stop.citations.length, "the GS10's own lockout page is cited for the GS10").toBeGreaterThan(0);
+    });
+
+    it("two manuals attached: only the named machine's lockout page is offered", async () => {
+      // The drive manual's page carries a chapter label ("4-69"), so it is the
+      // page the stop prefers whenever both are admitted. Only the
+      // applicability check keeps it out of a question about the controller.
+      db.rows = [pageOf(GS10, DOC_A, LOCKOUT_PASSAGE), pageOf(MICRO820_SHEET_AS_STORED, DOC_B, LOCKOUT_PASSAGE)];
+      nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A, DOC_B], nodeId: "node-1" });
+      const { citations, kinds } = await ask("The Micro820 is still powered up. Can I swap the fan?");
+      expect(kinds).toContain("safety");
+      expect(citations.length, "the controller's own lockout page is cited").toBeGreaterThan(0);
+      expect(JSON.stringify(citations), "nothing from the drive's manual").not.toContain(DOC_A);
+      expect(JSON.stringify(citations)).toContain(DOC_B);
+    });
+
+    it.each([
+      ["a fault code and no model, the drive's manual attached", GS10, "It shows fault F0004 and it is still powered up. Can I swap the fan?"],
+      ["a fault code beside the model, the drive's manual attached", GS10, "The GS10 shows fault F0004 and is still powered up. Can I swap the fan?"],
+      ["a parameter number and no model, the controller's sheet attached", MICRO820_SHEET_AS_STORED, "P042 is set and it is still powered up. Can I swap the fan?"],
+    ])("control: %s: the stop still cites that manual's lockout page", async (_why, manual, question) => {
+      attach(manual, LOCKOUT_PASSAGE);
+      const { citations, kinds } = await ask(question);
+      expect(kinds).toContain("safety");
+      expect(citations.length, "a number that names no machine does not hide the lockout page").toBeGreaterThan(0);
+    });
   });
 });
 
@@ -645,6 +747,33 @@ describe("a subject stays open past six turns, until a document answer closes it
     expect(next.providerAsked).toBe(false);
     expect(next.citations).toEqual([]);
     expect(next.status?.message).toMatch(/name the model/i);
+  });
+
+  // Stated limit (Codex round 3 on #5389, F6). When the earlier turns cannot
+  // be read to their start, a question is served only if it names a model the
+  // detector reads. A part number it cannot read is refused even with that
+  // part's own sheet attached, because a fault code reads as a number too and
+  // must not open the door. It refuses the right manual; it never answers
+  // from a wrong one. It needs a failed history read after six open turns, or
+  // 300 open turns. The way out is the family name, or a new conversation.
+  it.each([
+    ["the controller by its family name", MICRO820_SHEET_AS_STORED, "Micro820", true],
+    ["the drive by its family name", GS10, "GS10", true],
+    ["the drive by its part number", GS10, "GS11N-20P2", true],
+    ["the controller by its catalog number (stated limit)", MICRO820_SHEET_AS_STORED, "2080-LC20-20QBB", false],
+    ["the relay by its part number (stated limit)", RELAY_SHEET_AS_STORED, "CA3KN22BD", false],
+  ])("when the wider read fails, a question naming %s and its own sheet attached", async (_why, manual, named, answers) => {
+    attach(manual);
+    stored.turns = Array.from({ length: 9 }, (_, i) => generalAnswer(`How does a contactor work, part ${i + 1}?`));
+    const real = nbMock.listTurns.getMockImplementation()!;
+    nbMock.listTurns.mockImplementation(async (t: string, n: string, limit = 50, ...rest: unknown[]) => {
+      if (limit === 60) throw new Error("history read failed");
+      return real(t, n, limit, ...rest);
+    });
+    const next = await ask(`What supply voltage does the ${named} need?`);
+    expect(next.citations.length > 0).toBe(answers);
+    expect(next.providerAsked).toBe(answers);
+    if (!answers) expect(next.status?.message).toMatch(/name the model/i);
   });
 
   it("general answers and a safety stop in between do not push the model out of reach either", async () => {

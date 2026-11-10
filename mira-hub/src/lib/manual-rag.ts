@@ -1471,6 +1471,12 @@ export async function retrieveNodeChunks(
      *  (e.g. a thread's P042) can only ADD candidates — never crowd the
      *  message's own keywords ("keypad") out of the pool. */
     rawQuery?: string;
+    /** The technician's own question of this turn, when the search words are
+     *  not that question (the safety stop's lockout-page search is made with
+     *  fixed lockout words). It decides which machine is asked about, exactly
+     *  as the question does for a search made from it: every search of one
+     *  turn is held to the same manuals. Search words are unchanged by it. */
+    subjectQuestion?: string;
     /** Earlier questions of this conversation whose subject is still open
      *  (conversation-subject.ts), NEWEST FIRST. Read only when this question
      *  names no model and no confirmed notebook identity scopes it: the model
@@ -1662,7 +1668,7 @@ export async function retrieveNodeChunks(
   // A confirmed notebook machine does not switch this off: "the plate reads
   // <another product>" followed by "what voltage does it need?" is about that
   // other product, whatever the notebook is set up for.
-  const ownQuestion = opts.rawQuery ?? q;
+  const ownQuestion = opts.subjectQuestion ?? opts.rawQuery ?? q;
   const namesKnownModel = (text: string) => {
     const named = resolveModelFromObservationText(text);
     return Boolean(named.model) || named.ambiguous || modelIdentitiesInText(text).size > 0;
