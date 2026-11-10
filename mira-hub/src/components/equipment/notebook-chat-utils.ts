@@ -415,6 +415,8 @@ export async function postNotebookChat(
 /** One persisted turn row as the GET route returns it. */
 export type PersistedTurn = {
   id: string;
+  /** Turn-scoped machine snapshot (081). Optional for older history servers. */
+  equipmentEntityId?: string | null;
   question: string;
   answerStatus: string;
   answerText: string | null;
