@@ -500,6 +500,319 @@ describe("a remark that a clean title beside it must not carry", () => {
   });
 });
 
+// Codex round 2 on #5389 (F4): a negation the lists already know got past them
+// by being joined to another word. "RX420 (not-covered)" read as a title because
+// "not-covered" is one word and no list holds it; the same for "NOT-SUPPORTED"
+// on the line below and "Non-supported models:" on the line above.
+//
+// The rule now: a word joined by a hyphen (of any kind), an underscore, a dot,
+// a plus or an apostrophe is read by its parts, and one known negation or
+// exclusion part makes it a sentence word UNLESS the pair is a product word the
+// allowlist names ("Non-Isolated", "Do-more"). An unknown joined negation
+// refuses. And three places a remark is written (brackets, the text after a
+// dash or colon that follows the number, a label before a colon) must be made
+// of title vocabulary, or show nothing.
+describe("an exclusion joined to another word shows no coverage, wherever it sits", () => {
+  const ASK = "RX420 supply voltage?";
+  const JOINED = [
+    "not-covered", "NOT-COVERED", "Not-Covered", "not-supported", "NOT-SUPPORTED", "non-supported", "Non-Supported",
+    "un-supported", "not_covered", "not–covered", "not‑covered", "not‐covered", "not.covered",
+    "non-applicable", "not-included", "not-listed", "never-supported", "no-support", "nicht-enthalten", "kein-Inhalt",
+    "ohne-RX420", "not-for-this-model", "non-RX420",
+  ];
+  const cap = (w: string) => w[0].toUpperCase() + w.slice(1);
+
+  it.each(JOINED)("on the model's line, after the title: %s", (w) => {
+    expect(kindOf(verdict(ASK, `Hardware User Guide\nRX420 Logic Controller ${w}`))).toBe("coverage-not-shown");
+  });
+  it.each(JOINED)("on the model's line, in brackets: (%s)", (w) => {
+    expect(kindOf(verdict(ASK, `Hardware User Guide\nRX420 (${w})`))).toBe("coverage-not-shown");
+    expect(kindOf(verdict(ASK, `Hardware User Guide\nRX420 Logic Controller [${w}]`))).toBe("coverage-not-shown");
+  });
+  it.each(JOINED)("on the model's line, before the model: %s", (w) => {
+    expect(kindOf(verdict(ASK, `Hardware User Guide\n${cap(w)} RX420 Logic Controller`))).toBe("coverage-not-shown");
+  });
+  it.each(JOINED)("opening the line below: %s", (w) => {
+    expect(kindOf(verdict(ASK, `RX420 Logic Controller\n${w.toUpperCase()} by this manual`))).toBe("coverage-not-shown");
+    expect(kindOf(verdict(ASK, `RX420 Logic Controller\n${cap(w)} by this manual\nHardware User Guide`))).toBe("coverage-not-shown");
+    expect(kindOf(verdict(ASK, `RX420 Logic Controller\n(${w})\nHardware User Guide`))).toBe("coverage-not-shown");
+  });
+  it.each(JOINED)("in a heading on the line above: %s", (w) => {
+    expect(kindOf(verdict(ASK, `Hardware User Guide\n${cap(w)} models:\nRX420 Logic Controller`))).toBe("coverage-not-shown");
+    expect(kindOf(verdict(ASK, `Hardware User Guide\n${cap(w)} models\nRX420 Logic Controller`))).toBe("coverage-not-shown");
+  });
+  it.each(JOINED)("and it declares no product either: %s", (w) => {
+    for (const heading of [
+      `Hardware User Guide\nRX420 (${w})`,
+      `RX420 Logic Controller\n${w.toUpperCase()} by this manual`,
+      `Hardware User Guide\n${cap(w)} models:\nRX420 Logic Controller`,
+    ]) expect(coverDeclaredNumbers(heading), heading).toEqual([]);
+  });
+
+  // The three covers in the finding, word for word.
+  it.each([
+    "Hardware User Guide\nRX420 (not-covered)",
+    "RX420 Logic Controller\nNOT-SUPPORTED by this manual",
+    "Hardware User Guide\nNon-supported models:\nRX420 Logic Controller",
+  ])("the reviewer's cover: %j", (heading) => {
+    expect(verdict(ASK, heading)).toEqual({ admit: false, kind: "coverage-not-shown", asked: ["RX420"], declared: [] });
+    expect(manualCoversNumber(asked(ASK)[0], heading, OPAQUE)).toBe(false);
+    expect(coverDeclaredNumbers(heading)).toEqual([]);
+  });
+
+  it.each([
+    ["isn't", "RX420 Logic Controller isn't here"],
+    ["doesn't, opening the line below", "RX420 Logic Controller\nDoesn't ship with a guide"],
+    ["won't, with a curly apostrophe", "RX420 Logic Controller won’t ship"],
+    ["can't, in a heading above", "Models Northfield can't supply\nRX420 Logic Controller"],
+    ["typed with no apostrophe", "RX420 Logic Controller isnt here"],
+  ])("a contraction is a negation: %s", (_w, heading) => {
+    expect(kindOf(verdict(ASK, `Hardware User Guide\n${heading}`))).toBe("coverage-not-shown");
+  });
+
+  it.each([
+    ["a soft hyphen", "RX420 Logic Controller n­ot"],
+    ["a zero-width space", "RX420 Logic Controller n​ot"],
+    ["full-width letters", "RX420 Logic Controller ｎｏｔ"],
+    ["a no-break hyphen and a no-break space", "RX420 Logic Controller not‑supported"],
+  ])("a negation is read as it prints: %s", (_why, line) => {
+    expect(kindOf(verdict(ASK, `Hardware User Guide\n${line}`))).toBe("coverage-not-shown");
+  });
+
+  // The line BELOW the model is read whole for a negation, not only its first word.
+  it.each([
+    ["a sentence about the model above", "RX420 Logic Controller\nThis controller is not covered by this manual"],
+    ["a sentence that names the same model again", "RX420 Logic Controller\nThis guide does not cover the RX420"],
+    ["a joined negation mid-line", "RX420 Logic Controller\nModels NOT-SUPPORTED by this manual"],
+    ["an abbreviation on its own line", "RX420 Logic Controller\n(N/A)"],
+    ["a phrase", "RX420 Logic Controller\nNow out of scope"],
+    ["an exclusion word mid-line", "RX420 Logic Controller\nNow discontinued"],
+  ])("a negation anywhere on the line below: %s", (_why, heading) => {
+    expect(kindOf(verdict(ASK, `Hardware User Guide\n${heading}`))).toBe("coverage-not-shown");
+  });
+  it("but a remark below that names a different model is about that one, not the title above", () => {
+    const heading = "RX410 Drive User Manual\nThe RX420 Drive is not covered here";
+    expect(kindOf(verdict("RX410 supply voltage?", heading))).toBe("answers");
+    expect(verdict(ASK, heading)).toMatchObject({ admit: false, kind: "other-model", declared: ["RX410"] });
+  });
+});
+
+describe("a remark beside the model must be title vocabulary, or it shows nothing", () => {
+  const ASK = "RX420 supply voltage?";
+  it.each([
+    ["not applicable, abbreviated", "Hardware User Guide\nRX420 Logic Controller (N/A)"],
+    ["the same, with dots", "Hardware User Guide\nRX420 Logic Controller (n.a.)"],
+    ["the same, with no brackets", "Hardware User Guide\nRX420 Logic Controller N/A"],
+    ["end of life, abbreviated", "Hardware User Guide\nRX420 Logic Controller (EOL)"],
+    ["end of life after a dash", "Hardware User Guide\nRX420 Logic Controller - end of life"],
+    ["a bracketed remark of ordinary words", "Hardware User Guide\nRX420 Logic Controller (wrong manual)"],
+    ["a bracketed remark between the model and its noun", "Hardware User Guide\nRX420 (dealer stock) Logic Controller"],
+    ["out of scope, in brackets", "Hardware User Guide\nRX420 Logic Controller (out of scope)"],
+    ["out of scope, as a label before the model", "Hardware User Guide\nOut-of-scope: RX420 Logic Controller"],
+    ["out of scope, as a heading above", "Hardware User Guide\nOut-of-scope models:\nRX420 Logic Controller"],
+    ["a label of ordinary words above", "Hardware User Guide\nSold through distributors:\nRX420 Logic Controller"],
+    ["a note label before the model", "Hardware User Guide\nNote: RX420 Logic Controller"],
+    ["German, joined, after a dash", "Hardware User Guide\nRX420 Logic Controller – nicht-enthalten"],
+    ["German, joined, in brackets", "Hardware User Guide\nRX420 Logic Controller (kein-Inhalt)"],
+    ["a bracket that is never closed", "Hardware User Guide\nRX420 Logic Controller (ask your dealer"],
+    ["square brackets", "Hardware User Guide\nRX420 Logic Controller [dealer only]"],
+    ["a remark after a dash with no product or document word", "Hardware User Guide\nRX420 Logic Controller — dealer stock"],
+    ["a pointer after a colon", "Hardware User Guide\nRX420 Logic Controller manual: publication 1234"],
+    ["an answer after a colon", "Hardware User Guide\nRX420 Logic Controller: no."],
+    ["a label that is not one, with 'No.' after it", "Hardware User Guide\nIncluded: No. RX420 Logic Controller"],
+    ["sold elsewhere, no punctuation", "Hardware User Guide\nRX420 Logic Controller sold elsewhere"],
+    ["abbreviated exclusion", "Hardware User Guide\nExcl. RX420 Logic Controller"],
+    ["not equal", "Hardware User Guide\nRX420 Logic Controller ≠ this manual"],
+  ])("refuses, coverage not shown: %s", (_why, heading) => {
+    expect(kindOf(verdict(ASK, heading))).toBe("coverage-not-shown");
+  });
+
+  it("a second title stacked under the first does not count when it ends in a pointer", () => {
+    const heading = "RX410 Hardware User Guide\nRX420 Logic Controller manual: publication 1234";
+    expect(verdict(ASK, heading)).toMatchObject({ admit: false, kind: "other-model", declared: ["RX410"] });
+  });
+});
+
+// More ways the same exclusion is written with no listed word standing alone.
+describe("an exclusion written as a mark, run together, broken across lines, or trailing the title", () => {
+  const ASK = "RX420 supply voltage?";
+  it.each([
+    ["a cross", "Hardware User Guide\nRX420 Logic Controller ✗"],
+    ["a cross mark", "Hardware User Guide\nRX420 ❌"],
+    ["a no-entry sign", "Hardware User Guide\n\u{1f6ab} RX420 Logic Controller"],
+    ["run together, capitals inside", "Hardware User Guide\nRX420 Logic Controller NotSupported"],
+    ["run together, lower case", "Hardware User Guide\nRX420 Logic Controller notcovered"],
+    ["run together, before the model", "Hardware User Guide\nNonSupported RX420 Logic Controller"],
+    ["unlisted", "Hardware User Guide\nUNLISTED RX420 Logic Controller"],
+    ["run together, German", "Hardware User Guide\nNichtenthalten RX420 Steuerung"],
+    ["a negation broken across lines, below", "Hardware User Guide\nRX420 Logic Controller unsup-\nported"],
+    ["an exclusion broken across lines, above", "Hardware User Guide ex-\ncluding RX420 Logic Controller"],
+    ["a remark that trails the product noun", "Hardware User Guide\nRX420 Logic Controller sold by distributors"],
+    ["another", "Hardware User Guide\nRX420 Logic Controller left out"],
+    ["a remark that trails a bare model", "RX420 left out\nHardware User Guide"],
+    ["a German no", "Hardware User Guide\nRX420 Logic Controller nein"],
+    ["to be decided", "Hardware User Guide\nRX420 Logic Controller TBD"],
+    ["a heading two lines up that ends in a colon", "Not covered in this guide:\nHardware\nRX420 Logic Controller"],
+    ["the same heading five lines up", "Models this guide leaves to others:\nA\nB\nC\nD\nRX420 Logic Controller"],
+  ])("refuses, coverage not shown: %s", (_why, heading) => {
+    expect(kindOf(verdict(ASK, heading))).toBe("coverage-not-shown");
+  });
+
+  it.each([
+    ["Notebook", "RX420 Notebook Interface Module Manual"],
+    ["Universal", "RX420 Universal Drive Controller Manual"],
+    ["Unit", "RX420 Unit Controller Manual"],
+    ["Noncontact", "RX420 Noncontact Sensor Manual"],
+    ["Uncoated", "RX420 Uncoated Terminal Module Manual"],
+    ["a maker before the model", "Northfield RX420 Logic Controller"],
+    ["adjectives before the noun", "RX420 Adjustable Frequency AC Drive\nUser Manual"],
+    ["a title that ends after its noun", "RX420 Drive with Removable Terminal Block\nUser Manual"],
+    ["a label heading further up", "Catalog Numbers:\nRX410\nRX420"],
+  ])("an ordinary word that only starts like a negation, or a real title, still answers: %s", (_why, heading) => {
+    expect(kindOf(verdict("RX420 fault F004?", heading, "rx420.pdf"))).toBe("answers");
+  });
+});
+
+// coverDeclaredNumbers answers a different question ("is this manual for some
+// OTHER product than the notebook's machine?"), and a miss there lets the manual
+// answer. So it reads a negation as the asked-number check does, and nothing
+// stricter: a cover with a word the title lists do not know still declares.
+describe("what a cover declares when no number was asked", () => {
+  const labels = (heading: string) => coverDeclaredNumbers(heading).map((n) => n.label);
+  it.each([
+    "Hardware User Guide\nRX420 (not-covered)",
+    "RX420 Logic Controller\nNOT-SUPPORTED by this manual",
+    "Hardware User Guide\nNon-supported models:\nRX420 Logic Controller",
+    "Hardware User Guide\nRX420 Logic Controller (N/A)",
+    "Hardware User Guide\nRX420 Logic Controller ✗",
+    "Hardware User Guide\nRX420 Logic Controller NotSupported",
+    "Hardware User Guide\nOut-of-scope: RX420 Logic Controller",
+    "Hardware User Guide\nRX420 Logic Controller sold elsewhere",
+    "Hardware User Guide\nRX420 Logic Controller isn't here",
+    // Each of these is told from a title by one rule only (the tamper checks
+    // found the rows above were also caught by another).
+    "Hardware User Guide\nRX420 Logic Controller hasn't shipped",
+    "Hardware User Guide\nRX420 Logic Controller couldn’t ship",
+    "Hardware User Guide\nRX420 Logic Controller n­ot",
+    "Hardware User Guide\nRX420 Logic Controller n​ot",
+    "Hardware User Guide\nRX420 Logic Controller ｎｏｔ",
+  ])("a negation declares nothing: %j", (heading) => {
+    expect(labels(heading)).toEqual([]);
+  });
+  it.each([
+    ["a bracketed maker", "RX420 Logic Controller (Northfield)\nUser Manual"],
+    ["a title ending in an unknown product word", "RX420 Drive with Brake Chopper\nUser Manual"],
+    ["an unknown label", "Bestellbezeichnung: RX420\nBetriebsanleitung"],
+    ["an unknown joined product word", "RX420 Non-Sparking Tool Kit Manual"],
+    ["an unknown joined product word on the line below", "RX420 Logic Controller\nNon-Sparking Tool Kit"],
+    ["a sentence under the title that uses an exclusion word in passing", "RX420 Drive User Manual\nThis manual covers installation and wiring"],
+    ["a remark with no negation after a dash", "Hardware User Guide\nRX420 Logic Controller — dealer stock"],
+  ])("a cover the asked-number check refuses for an unknown word still declares its product: %s", (_why, heading) => {
+    expect(kindOf(verdict("RX420 supply voltage?", heading))).toBe("coverage-not-shown");
+    expect(labels(heading)).toEqual(["RX420"]);
+  });
+});
+
+// The other half: what the new rules must NOT refuse. Each row answers on the
+// commit before this change too, unless it is marked as a behaviour change.
+describe("joined words and bracketed notes on real cover shapes still answer", () => {
+  it.each([
+    ["a non-isolated module", "RX420 Non-Isolated Analog Module User Manual"],
+    ["the same in capitals", "RX420 NON-ISOLATED ANALOG MODULE USER MANUAL"],
+    ["a non-reversing starter", "RX420 Non-Reversing Starter\nUser Manual"],
+    ["a non-fused disconnect", "RX420 Non-Fused Disconnect Switch Manual"],
+    ["a three-part compound that holds an allowed pair", "RX420 Non-Isolated-Input Module User Manual"],
+    ["the Do-more family name", "Do-more RX420 Logic Controller User Manual"],
+    ["a how-to guide", "RX420 Drive How-To Guide"],
+    ["a read-only part", "RX420 Read-Only Memory Module Manual"],
+    ["a no-load test", "RX420 Drive No-Load Test Instructions"],
+    ["a safety-related part", "RX420 Safety-Related Controller Manual"],
+    ["a German emergency-stop relay", "RX420 Not-Aus-Schaltgerät Betriebsanleitung"],
+    ["stand-alone", "RX420 Stand-Alone Drive User Manual"],
+    ["three-phase", "RX420 Three-Phase AC Drive User Manual"],
+    ["contact notation, joined", "RX420 Relay Output Module NO-NC"],
+    ["contact counts written tight", "CA3KN22BD Control Relay 2NO+2NC"],
+    ["I/O notation, joined", "RX420 Logic Controller DI-DO Module"],
+    ["a possessive", "RX420 Drive User's Manual"],
+    ["a French elision", "Variateur RX420 Manuel d'utilisation"],
+    ["a series in brackets", "RX420 Logic Controller (Series B)\nUser Manual"],
+    ["a rating in brackets", "RX420 Drive (24 V DC) User Manual"],
+    ["a frame size in brackets", "RX420 Drive (Frame A) User Manual"],
+    ["a document kind in brackets", "RX420 Drive User Manual (Original Instructions)"],
+    ["a language in brackets", "RX420 Drive User Manual (English)"],
+    ["contacts in brackets", "RX420 Control Relay (2 NO + 2 NC)"],
+    ["a catalog number in brackets", "RX420 Logic Controller (2080-LC20-20QBB)\nUser Manual"],
+    ["a 'Catalog Numbers:' label", "Catalog Numbers: RX410, RX420\nUser Manual"],
+    ["a 'Type:' label", "Type: RX420 Drive\nOperating Instructions"],
+    ["a catalog label on the line above", "User Manual\nCatalog Numbers:\nRX420"],
+    ["a specifications label on the line above", "Technical Specifications:\nRX420 Logic Controller"],
+    ["a product name after a dash, with a maker's range in it", "RX420 - TeSys K control relay - 2 NO + 2 NC - 24 V DC coil"],
+    ["a web address under the title that holds a sentence word", "RX420 Logic Controller\nwww.northfield.example/how-to/not-found"],
+  ])("%s", (_why, heading) => {
+    expect(kindOf(verdict("RX420 fault F004?", heading, "rx420.pdf"))).toBe("answers");
+  });
+
+  // The first block of every pilot manual as the hub stores it (2026-11-10).
+  const UM005_AS_STORED =
+    "User Manual Original Instructions\nMicro820 Programmable\nControllers\n"
+    + "Catalog Numbers 2080-LC20-20QWB, 2080-L20E-20QWB,\n2080-LC20-20QBB, 2080-L20E-20QBB, 2080-LC20-20AWB,\n"
+    + "2080-L20E-20AWB, 2080-LC20-20QWBR, 2080-L20E-20QWBR,\n2080-LC20-20QBBK, 2080-L20E-20QBBK, 2080-LC20-20QBBR,\n"
+    + "2080-L20E-20QBBR, 2080-LC20-20AWBR, 2080-L20E-20AWBR";
+  const RELAY_DISTRIBUTOR_AS_STORED =
+    "Disclaimer: This documentation is not intended as a substitute for and is not to be used for determining suitability or reliability of these products for specific user applications\n"
+    + "Jul 31, 2017\n1\nProduct data sheet\nCharacteristics\nCA3KN22BD\nTeSys K control relay - 2 NO + 2 NC - <= 690 V -\n"
+    + "24 V DC standard coil\nProduct availability : Stock - Normally stocked in distribution facility\nPrice* : 49.20 USD\nMain\nRange TeSys";
+  const PLC_DISTRIBUTOR_AS_STORED =
+    "2080-LC20-20QBB\nAllen Bradley PLC – Micro 820\nTechnical Specifications:\nManufacturer\nBrand\nPart Number/Catalog No.\n"
+    + "Product Type\nInputs\nOutputs\nDimensions HxWxD\nPower Input\nPower Dissipation\nPower Supply Voltage Range\nEnclosure\n"
+    + "Non-Isolated DC Input On-state Voltage\nRange\nDC Output User Supply Voltage\nPilot Duty Rating\nTerminal Block\n"
+    + "Rockwell Automation\nAllen-Bradley\n2080-LC20-20QBB\nProgrammable Controller\n12(24V DC)";
+  it.each([
+    ["the Micro820 user manual", "Supply voltage for 2080-LC20-20QBB?", UM005_AS_STORED, "2080-um005_-en-e.pdf"],
+    ["the same, by a number on its last wrapped line", "Supply voltage for 2080-L20E-20AWBR?", UM005_AS_STORED, "2080-um005_-en-e.pdf"],
+    ["the relay sheet from a distributor", "Coil voltage of the CA3KN22BD?", RELAY_DISTRIBUTOR_AS_STORED, "CA3KN22BD.pdf"],
+    ["the same, saved under a document number", "Coil voltage of the CA3KN22BD?", RELAY_DISTRIBUTOR_AS_STORED, "DS0004417.pdf"],
+    ["the controller sheet from a distributor", "Supply voltage for 2080-LC20-20QBB?", PLC_DISTRIBUTOR_AS_STORED, "2080-LC20-20QBB.pdf"],
+    ["the same, saved under a plain name", "Supply voltage for 2080-LC20-20QBB?", PLC_DISTRIBUTOR_AS_STORED, "sheet.pdf"],
+  ])("pilot cover as stored still answers: %s", (_why, question, heading, filename) => {
+    expect(kindOf(verdict(question, heading, filename))).toBe("answers");
+  });
+  it.each([
+    ["the Micro820 user manual", "Supply voltage for 2080-LC50-24QWB?", UM005_AS_STORED, "2080-um005_-en-e.pdf"],
+    ["the relay sheet from a distributor", "Coil voltage of the CA3KN31BD?", RELAY_DISTRIBUTOR_AS_STORED, "DS0004417.pdf"],
+    ["the controller sheet from a distributor", "Supply voltage for 2080-LC50-24QWB?", PLC_DISTRIBUTOR_AS_STORED, "sheet.pdf"],
+  ])("and still refuses a sibling's number: %s", (_why, question, heading, filename) => {
+    expect(verdict(question, heading, filename)).toMatchObject({ admit: false, kind: "other-model" });
+  });
+});
+
+// The line BESIDE the number is read for its noun only, never strictly: on the
+// stored relay sheet "Utilisation category AC-15" sits under "Contactor
+// application Control circuit", whose last word no title list holds.
+describe("a rating named in the question is not refused on the part's own sheet", () => {
+  const SHEET = "CA3KN22BD\nControl relay, TeSys K\nContactor application Control circuit\nUtilisation category AC-15\nDC-13\nPole contact composition 2 NO + 2 NC";
+  it("answers a question that names the utilisation category and the part", () => {
+    expect(kindOf(verdict("What is the AC-15 rating of the CA3KN22BD?", SHEET, "DS0004417.pdf"))).toBe("answers");
+  });
+});
+
+// Wrong refusals the new rules accept, pinned so a change to them is seen.
+describe("stated limits of the joined-word and remark rules (wrong refusals)", () => {
+  it.each([
+    ["a joined product word the allowlist does not name", "RX420 Non-Sparking Tool Kit Manual"],
+    ["a bracketed maker or range name", "RX420 Logic Controller (Northfield)\nUser Manual"],
+    ["North America written N/A", "RX420 Drive N/A Version User Manual"],
+    ["a label the list does not know", "Bestellbezeichnung: RX420\nBetriebsanleitung"],
+    ["'Model No.:' with the colon tight against it (it refused before this change too)", "Model No.: RX420\nUser Manual"],
+    ["a sentence under the title that uses an exclusion word in passing", "RX420 Drive User Manual\nThis manual covers installation and wiring"],
+    ["a warning under the title", "RX420 Drive User Manual\nWarning: not for use in hazardous locations"],
+    ["a title that ends in a product word the list does not know", "RX420 Drive with Brake Chopper\nUser Manual"],
+    ["an unknown heading that ends in a colon, directly above", "Hauptkatalog:\nRX420 Logic Controller"],
+  ])("%s", (_why, heading) => {
+    expect(kindOf(verdict("RX420 fault F004?", heading, "NF0000021.pdf"))).toBe("coverage-not-shown");
+  });
+});
+
 // The product writes two documents itself from a technician's photo: a kept
 // photo reading and a confirmed nameplate. Neither has a cover, and both carry
 // the machine's NAME in a header line the product writes. The CI suite

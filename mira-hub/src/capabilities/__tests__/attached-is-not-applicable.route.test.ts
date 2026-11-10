@@ -20,7 +20,23 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { GS10, MICRO820_SHEET_AS_STORED, RELAY_SHEET_AS_STORED, RX410_TITLED, type Manual } from "./synthetic-technician/bench";
+import {
+  GS10,
+  MICRO820_SHEET_AS_STORED,
+  RELAY_SHEET_AS_STORED,
+  RX410_TITLED,
+  RX420_JOINED_ABOVE,
+  RX420_JOINED_BELOW,
+  RX420_JOINED_INLINE,
+  RX420_NON_ISOLATED,
+  RX420_NOT_APPLICABLE,
+  RX420_OUT_OF_SCOPE_LABEL,
+  RX420_SENTENCE_BELOW,
+  RX420_SERIES_NOTE,
+  RX420_TRAILING_REMARK,
+  RX420_UNDER_EXCLUSION_HEADING,
+  type Manual,
+} from "./synthetic-technician/bench";
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const NB = "22222222-2222-4222-8222-222222222222";
@@ -543,6 +559,40 @@ describe("a fault code in the next question does not change which machine the co
   it("control: a fault-code question with nothing open before it answers", async () => {
     attach(MICRO820_SHEET_AS_STORED);
     const { providerAsked, citations } = await ask("What does fault F0004 mean?");
+    expect(providerAsked).toBe(true);
+    expect(citations.length).toBeGreaterThan(0);
+  });
+});
+
+// Codex round 2 on #5389 (F4): "RX420 (not-covered)" on another model's cover
+// read as the RX420's title, so the guide's passage reached the provider and was
+// cited. Through the real route: no passage, no citation, no provider call.
+describe("a cover that marks the asked model as not covered never reaches a provider", () => {
+  it.each([
+    ["in brackets beside the model", RX420_JOINED_INLINE],
+    ["on the line below the model", RX420_JOINED_BELOW],
+    ["in a heading above the model", RX420_JOINED_ABOVE],
+    ["as (N/A)", RX420_NOT_APPLICABLE],
+    ["as a label before the model", RX420_OUT_OF_SCOPE_LABEL],
+    ["as a sentence under the model", RX420_SENTENCE_BELOW],
+    ["as a remark that trails the model's line", RX420_TRAILING_REMARK],
+    ["under a heading two lines up", RX420_UNDER_EXCLUSION_HEADING],
+  ])("%s", async (_where, manual) => {
+    attach(manual);
+    const { status, citations, providerAsked } = await ask("What supply voltage does the RX420 accept?");
+    expect(citations, "a manual that says it does not cover the RX420 must not be cited for it").toEqual([]);
+    expect(providerAsked, "no provider is asked when no manual applies").toBe(false);
+    expect(status?.status).toBe("insufficient_evidence");
+    expect(status?.message).toContain("RX420");
+    expect(status?.message).toMatch(/can't confirm/i);
+  });
+
+  it.each([
+    ["a joined product word", RX420_NON_ISOLATED],
+    ["a series in brackets", RX420_SERIES_NOTE],
+  ])("control: the model's own manual still answers with %s on its cover", async (_what, manual) => {
+    attach(manual);
+    const { citations, providerAsked } = await ask("What supply voltage does the RX420 accept?");
     expect(providerAsked).toBe(true);
     expect(citations.length).toBeGreaterThan(0);
   });

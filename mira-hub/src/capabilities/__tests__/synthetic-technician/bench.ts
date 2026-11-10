@@ -406,6 +406,28 @@ export const RX420_SHOUTED_IS_BELOW = synthetic(
 export const RX420_IS_BARRIER = synthetic(
   "rx420-is-barrier", "RX420 IS Barrier Installation Guide", "NF0000023.pdf");
 
+/** Codex round 2 on #5389: an exclusion joined to another word, beside the model, below it, and in a heading above it. */
+export const RX420_JOINED_INLINE = synthetic("rx420-joined-exclusion-inline", "Hardware User Guide\nRX420 (not-covered)", "NF0000021.pdf");
+export const RX420_JOINED_BELOW = synthetic("rx420-joined-exclusion-below", "RX420 Logic Controller\nNOT-SUPPORTED by this manual", "NF0000021.pdf");
+export const RX420_JOINED_ABOVE = synthetic(
+  "rx420-joined-exclusion-above", "Hardware User Guide\nNon-supported models:\nRX420 Logic Controller", "NF0000021.pdf");
+/** The same finding in the other places a remark is written. */
+export const RX420_NOT_APPLICABLE = synthetic("rx420-not-applicable-note", "Hardware User Guide\nRX420 Logic Controller (N/A)", "NF0000021.pdf");
+export const RX420_OUT_OF_SCOPE_LABEL = synthetic(
+  "rx420-out-of-scope-label", "Hardware User Guide\nOut-of-scope: RX420 Logic Controller", "NF0000021.pdf");
+export const RX420_SENTENCE_BELOW = synthetic(
+  "rx420-sentence-below", "RX420 Logic Controller\nThis controller is not covered by this manual", "NF0000021.pdf");
+export const RX420_TRAILING_REMARK = synthetic(
+  "rx420-trailing-remark", "Hardware User Guide\nRX420 Logic Controller sold by distributors", "NF0000021.pdf");
+export const RX420_UNDER_EXCLUSION_HEADING = synthetic(
+  "rx420-under-exclusion-heading", "Not covered in this guide:\nHardware\nRX420 Logic Controller", "NF0000021.pdf");
+/** Controls: joined product words and a bracketed series on the model's own manual. */
+export const RX420_NON_ISOLATED = synthetic("rx420-non-isolated-module", "RX420 Non-Isolated Analog Module User Manual", "NF0000024.pdf");
+export const RX420_SERIES_NOTE = synthetic("rx420-series-note", "RX420 Logic Controller (Series B)\nUser Manual", "NF0000025.pdf");
+export const RX420_DO_MORE = synthetic("rx420-do-more", "Do-more RX420 Logic Controller User Manual", "NF0000026.pdf");
+/** Stated limit: a joined product word the allowlist does not name is refused. */
+export const RX420_NON_SPARKING = synthetic("rx420-non-sparking", "RX420 Non-Sparking Tool Kit Manual", "NF0000027.pdf");
+
 export const EXTRA_JOBS: Job[] = [
   // Wordings that must still refuse.
   { id: "X-01", who: "journeyman", doing: "asking about the sibling; the exclusion is in capitals",
@@ -598,5 +620,39 @@ export const EXTRA_JOBS: Job[] = [
     ask: "What supply voltage does the RX420 controller accept?", want: REFUSE, says: "coverage-not-shown", about: "question" },
   { id: "X-57", who: "journeyman", doing: "stated limit, a wrong refusal: asking about the model on an intrinsic-safety barrier guide, where IS is a noun",
     attached: [RX420_IS_BARRIER],
+    ask: "What supply voltage does the RX420 controller accept?", want: REFUSE, says: "coverage-not-shown", about: "question" },
+  // Codex round 2 on #5389: an exclusion joined to another word.
+  { id: "X-58", who: "journeyman", doing: "asking about a model the cover marks (not-covered), in brackets beside it",
+    attached: [RX420_JOINED_INLINE],
+    ask: "What supply voltage does the RX420 controller accept?", want: REFUSE, says: "coverage-not-shown", about: "question" },
+  { id: "X-59", who: "journeyman", doing: "asking about a model whose title is followed by NOT-SUPPORTED on the line below",
+    attached: [RX420_JOINED_BELOW],
+    ask: "What supply voltage does the RX420 controller accept?", want: REFUSE, says: "coverage-not-shown", about: "question" },
+  { id: "X-60", who: "journeyman", doing: "asking about a model listed under a 'Non-supported models:' heading",
+    attached: [RX420_JOINED_ABOVE],
+    ask: "What supply voltage does the RX420 controller accept?", want: REFUSE, says: "coverage-not-shown", about: "question" },
+  { id: "X-61", who: "apprentice", doing: "asking about a model the cover marks (N/A)",
+    attached: [RX420_NOT_APPLICABLE],
+    ask: "What supply voltage does the RX420 controller accept?", want: REFUSE, says: "coverage-not-shown", about: "question" },
+  { id: "X-62", who: "apprentice", doing: "asking about a model the cover labels out of scope",
+    attached: [RX420_OUT_OF_SCOPE_LABEL],
+    ask: "What supply voltage does the RX420 controller accept?", want: REFUSE, says: "coverage-not-shown", about: "question" },
+  { id: "X-63", who: "senior", doing: "asking about a model whose title is followed by a sentence that says it is not covered",
+    attached: [RX420_SENTENCE_BELOW],
+    ask: "What supply voltage does the RX420 controller accept?", want: REFUSE, says: "coverage-not-shown", about: "question" },
+  { id: "X-64", who: "senior", doing: "asking about a model whose line ends in a remark with no verb and no negation",
+    attached: [RX420_TRAILING_REMARK],
+    ask: "What supply voltage does the RX420 controller accept?", want: REFUSE, says: "coverage-not-shown", about: "question" },
+  { id: "X-65", who: "senior", doing: "asking about a model listed two lines under a heading that says what the guide does not cover",
+    attached: [RX420_UNDER_EXCLUSION_HEADING],
+    ask: "What supply voltage does the RX420 controller accept?", want: REFUSE, says: "coverage-not-shown", about: "question" },
+  { id: "X-66", who: "journeyman", doing: "control: asking about the model on its own manual, a non-isolated module",
+    attached: [RX420_NON_ISOLATED], ask: "What supply voltage does the RX420 module accept?", want: answer(RX420_NON_ISOLATED) },
+  { id: "X-67", who: "journeyman", doing: "control: asking about the model on its own manual, with its series in brackets",
+    attached: [RX420_SERIES_NOTE], ask: "What supply voltage does the RX420 controller accept?", want: answer(RX420_SERIES_NOTE) },
+  { id: "X-68", who: "journeyman", doing: "control: asking about the model on its own manual, in the Do-more family",
+    attached: [RX420_DO_MORE], ask: "What supply voltage does the RX420 controller accept?", want: answer(RX420_DO_MORE) },
+  { id: "X-69", who: "journeyman", doing: "stated limit, a wrong refusal: a joined product word the list does not name",
+    attached: [RX420_NON_SPARKING],
     ask: "What supply voltage does the RX420 controller accept?", want: REFUSE, says: "coverage-not-shown", about: "question" },
 ];
