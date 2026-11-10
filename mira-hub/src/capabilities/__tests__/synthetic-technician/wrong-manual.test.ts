@@ -19,6 +19,7 @@ import { writeFileSync } from "node:fs";
 import type { PoolClient } from "pg";
 import { approvalGateEnabled, retrieveNodeChunks } from "@/lib/manual-rag";
 import { EXTRA_JOBS, JOBS, passageOf, type Job, type Manual, type Reason } from "./bench";
+import { PROJECT_JOBS } from "./bench-project";
 
 const TENANT = "5a7ec000-0000-4000-8000-000000000001";
 const docIdOf = (i: number) => `5a7ec000-0000-4000-8000-0000000001${String(i).padStart(2, "0")}`;
@@ -33,7 +34,7 @@ type Outcome = {
   /** The product's own stated reason, when it gave one. */
   reason: Reason | null;
   /** Whose model number the refusal is about, when it says. */
-  about: "question" | "notebook" | null;
+  about: "question" | "notebook" | "conversation" | null;
 };
 
 async function run(job: Job): Promise<Outcome> {
@@ -57,9 +58,17 @@ async function run(job: Job): Promise<Outcome> {
       return { rows: [] };
     }
     offered++;
+    // `noPassages`: the search finds nothing for this question. Each attached
+    // manual's cover is still read, by the one query that carries this marker.
+    if (job.noPassages && !sql.includes("document-eligibility")) return { rows: [] };
     return { rows };
   });
-  const diagnostics: { namedModelMismatch?: unknown; ambiguousModelAsk?: unknown; unlistedModelRefusal?: { kind: Reason; source: "question" | "notebook" } } = {};
+  const diagnostics: {
+    namedModelMismatch?: { source?: "conversation" };
+    ambiguousModelAsk?: unknown;
+    unlistedModelRefusal?: { kind: Reason; source: "question" | "notebook" | "conversation" };
+    otherProductRefusal?: unknown;
+  } = {};
   const hits = await retrieveNodeChunks({ query } as unknown as PoolClient, TENANT, job.ask, {
     nodeId: "synthetic-technician",
     unsPath: null,
@@ -68,6 +77,7 @@ async function run(job: Job): Promise<Outcome> {
     validatedDocScope: true,
     rawQuery: job.ask,
     topK: 6,
+    ...(job.earlier ? { subjectQueries: job.earlier } : {}),
     ...(job.identity
       ? {
           identity: { manufacturer: job.identity.manufacturer, model: job.identity.model },
@@ -95,8 +105,11 @@ async function run(job: Job): Promise<Outcome> {
     brokenCitations,
     reason: diagnostics.ambiguousModelAsk ? "asks-which-model"
       : diagnostics.namedModelMismatch ? "mismatch-named"
-      : diagnostics.unlistedModelRefusal?.kind ?? null,
-    about: diagnostics.unlistedModelRefusal?.source ?? null,
+      : diagnostics.unlistedModelRefusal?.kind
+      ?? (diagnostics.otherProductRefusal ? "another-product" : null),
+    about: diagnostics.unlistedModelRefusal?.source
+      ?? (diagnostics.namedModelMismatch ? diagnostics.namedModelMismatch.source ?? "question"
+        : diagnostics.otherProductRefusal ? "notebook" : null),
   };
 }
 
@@ -172,25 +185,35 @@ describe("synthetic technician — rows added with the #5369 fix (not part of th
   });
 });
 
+describe("synthetic technician — an attached manual is not automatically an applicable one (not part of the 30)", () => {
+  it.each(PROJECT_JOBS.map((j) => [title(j), j] as const))("%s", async (_t, job) => {
+    const got = await run(job);
+    expect(got.offered, "the stand-in database was asked for candidates").toBeGreaterThan(0);
+    expectRight(job, got);
+  });
+});
+
 describe("synthetic technician — scorecard", () => {
   it("every job has a unique id and every known fail names where it is tracked", () => {
-    expect(new Set([...JOBS, ...EXTRA_JOBS].map((j) => j.id)).size).toBe(JOBS.length + EXTRA_JOBS.length);
-    expect(EXTRA_JOBS.every((j) => !j.knownFail), "an added row is never a known fail").toBe(true);
+    const all = [...JOBS, ...EXTRA_JOBS, ...PROJECT_JOBS];
+    expect(new Set(all.map((j) => j.id)).size).toBe(all.length);
+    expect([...EXTRA_JOBS, ...PROJECT_JOBS].every((j) => !j.knownFail), "an added row is never a known fail").toBe(true);
     for (const j of failing) expect(j.knownFail!.tracked, j.id).toMatch(/#\d+/);
   });
 
   // The count is pinned so that a silently dropped job, or a job quietly moved
   // into the known-fail list, changes a number a reviewer has to look at.
   it("counts: all 30 jobs go right, none is a known wrong-manual fail; the added rows are counted beside them", () => {
-    expect({ right: passing.length, knownWrong: failing.length, added: EXTRA_JOBS.length })
-      .toEqual({ right: 30, knownWrong: 0, added: 46 });
+    expect({ right: passing.length, knownWrong: failing.length, added: EXTRA_JOBS.length, project: PROJECT_JOBS.length })
+      .toEqual({ right: 30, knownWrong: 0, added: 46, project: 47 });
   });
 
   // 30 right answers are also reachable by refusing more. These are the jobs
   // that must ANSWER; the number is pinned so one cannot be turned into a refusal unseen.
   it("counts: the jobs that must answer, in the 30 and in the added rows", () => {
     const answers = (jobs: Job[]) => jobs.filter((j) => "answerFrom" in j.want).length;
-    expect({ contract: answers(JOBS), added: answers(EXTRA_JOBS) }).toEqual({ contract: 15, added: 28 });
+    expect({ contract: answers(JOBS), added: answers(EXTRA_JOBS), project: answers(PROJECT_JOBS) })
+      .toEqual({ contract: 15, added: 28, project: 28 });
   });
 });
 

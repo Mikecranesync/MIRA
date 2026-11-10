@@ -141,7 +141,12 @@ import {
   questionWarningQuery,
 } from "@/capabilities/energized-work-stop";
 import { ambiguousModelAskText, namedModelMismatchText, type NamedModelMismatch } from "@/capabilities/named-model-mismatch";
-import { unlistedModelRefusalText, type UnlistedModelRefusal } from "@/capabilities/manual-applicability";
+import {
+  otherProductRefusalText,
+  unlistedModelRefusalText,
+  type OtherProductRefusal,
+  type UnlistedModelRefusal,
+} from "@/capabilities/manual-applicability";
 import { isOffTopic, SCOPE_REPLY } from "@/capabilities/scope-check";
 import { englishSearchQuery, withAnswerLanguage } from "@/capabilities/answer-language";
 import { normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
@@ -2447,6 +2452,7 @@ async function handleChatTurn(
     namedModelMismatch?: NamedModelMismatch;
     ambiguousModelAsk?: { named: string[] };
     unlistedModelRefusal?: UnlistedModelRefusal;
+    otherProductRefusal?: OtherProductRefusal;
   } = {};
   const queryRewrite = await queryRewritePromise;
   retrievalDiagnostics.queryRewrite = queryRewrite.status;
@@ -3511,6 +3517,11 @@ async function handleChatTurn(
       // no selected manual is shown to cover it — say so, and say why.
       : notebookRetrieval && retrievalDiagnostics.unlistedModelRefusal
         ? unlistedModelRefusalText(retrievalDiagnostics.unlistedModelRefusal)
+      // An attached manual is not automatically an applicable one: the question
+      // named no model, the notebook's machine is confirmed, and every selected
+      // manual's cover declares some other product — say which, and the way out.
+      : notebookRetrieval && retrievalDiagnostics.otherProductRefusal
+        ? otherProductRefusalText(retrievalDiagnostics.otherProductRefusal)
       : notebookRetrieval
         ? "I couldn't find support for that in this notebook's manuals. Add the manual for the equipment you're asking about, or the page that covers it, and ask again."
         : null;

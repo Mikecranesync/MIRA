@@ -13,6 +13,9 @@ import {
   unlistedModelNumbers,
   unlistedModelRefusalText,
   type ManualVerdict,
+  coverDeclaredNumbers,
+  manualCoversNumber,
+  otherProductRefusalText,
 } from "../manual-applicability";
 import { NAMEPLATE_BODY_MARK, NAMEPLATE_OPENER, PHOTO_OCR_OPENER_START, PHOTO_READING_BODY_MARK, PHOTO_READING_OPENER, buildPhotoSourceText, photoDocumentBody } from "../photo-document-text";
 import { ocrSourceText } from "@/lib/photo-ocr";
@@ -598,5 +601,50 @@ describe("stated limits, pinned so a change to them is seen", () => {
     const tagPlate = reading("CV-101", "Asset tag plate reads CV-101.");
     expect(kindOf(verdict("CV-101 stops when CV-102 is full, what should I check?", tagPlate, READING_FILE))).toBe("several-look-alikes");
     expect(kindOf(verdict("What is the belt speed on CV-101?", tagPlate, READING_FILE))).toBe("answers");
+  });
+});
+
+describe("what a cover declares it is for (numbers the detector does not read)", () => {
+  const labels = (heading: string) => coverDeclaredNumbers(heading).map((n) => n.label);
+
+  it("reads the pilot's real covers as stored", () => {
+    // Relay data sheet, maker's copy: the part number is its own title line.
+    expect(labels("Control relay, TeSys K, 2 NO + 2\nNC, lt or eq to 690V, 24VDC\nstandard coil\nCA3KN22BD\nProduct availability: Stock")).toEqual(["CA3KN22BD"]);
+    // Distributor's copy: a disclaimer, a date and a page number come first.
+    expect(labels("Disclaimer: This documentation is not intended as a substitute for determining suitability\nJul 31, 2017\n1\nProduct data sheet\nCharacteristics\nCA3KN22BD\nTeSys K control relay - 2 NO + 2 NC - <= 690 V -\n24 V DC standard coil")).toEqual(["CA3KN22BD"]);
+    // Controller sheet: the catalog-number list runs over stacked lines.
+    expect(labels("Installation Instructions\nMicro820 20-Point Programmable Controllers\nCatalog Numbers 2080-LC20-20QWB, 2080-LC20-20QBB,\n2080-LC20-20AWB")).toEqual(["2080-LC20-20QWB", "2080-LC20-20QBB", "2080-LC20-20AWB"]);
+  });
+
+  it("a guide that names no product declares nothing, publication and document numbers included", () => {
+    expect(labels("Wiring and Grounding Guidelines\nPublication NF-IN041B-EN-P\nOriginal Instructions")).toEqual([]);
+    expect(labels("Conveyor Safety Guide\nDocument No. NF0000077 Rev. C")).toEqual([]);
+  });
+
+  it("a cover whose model the detector reads may repeat it here; it never adds another product", () => {
+    // The drive manual's second line is its document code, "GS10_UMW".
+    expect(labels("DURApulse GS10 Drive User Manual\nGS10_UMW\nOriginal Instructions")).toEqual(["GS10"]);
+  });
+
+  it("a number in running text further down is not a declaration", () => {
+    expect(labels("Wiring Guide\nGeneral practice\nThis guide also applies when a CA3KN22BD relay is fitted in the panel.")).toEqual([]);
+  });
+
+  it("a photo reading has no cover", () => {
+    expect(labels(reading("CV-101", "Relay plate reads CA3KN22BD."))).toEqual([]);
+  });
+
+  it("a manual covers a number its cover or filename carries, and only then", () => {
+    const [relay] = unlistedModelNumbers("coil voltage of the CA3KN22BD");
+    expect(manualCoversNumber(relay, "Product data sheet\nCA3KN22BD\nTeSys K control relay", "sheet.pdf")).toBe(true);
+    expect(manualCoversNumber(relay, "Wiring Guide\nGeneral practice", "guide.pdf")).toBe(false);
+  });
+
+  it("the refusal says which product the manual is for, which the notebook is for, and both ways out", () => {
+    const text = otherProductRefusalText({ declared: ["CA3KN22BD"], project: "Allen-Bradley Micro820" });
+    expect(text).toContain("for the CA3KN22BD");
+    expect(text).toContain("set up for the Allen-Bradley Micro820");
+    expect(text).toMatch(/name it in the question/);
+    expect(text).toMatch(/add the Allen-Bradley Micro820 manual/);
   });
 });

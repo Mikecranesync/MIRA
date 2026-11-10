@@ -447,6 +447,75 @@ export function manualAnswersFor(asked: ModelNumber[], heading: string, filename
   };
 }
 
+/** Does this manual's cover or filename show it covers this one number? */
+export function manualCoversNumber(number: ModelNumber, heading: string, filename: string): boolean {
+  return coverageOf(number, heading, filename).kind === "covers";
+}
+
+// A cover line that gives the DOCUMENT its number, not the product.
+const PUBLICATION_LINE_RE = /\b(?:publication|pub|document|doc|literature|drawing|dwg|rev|revision|edition|version|issue)\b/i;
+// A publication-type group ("2080-IN009C", "520-UM001") or a long serial of digits ("NF0000021").
+const PUBLICATION_PART_RE = /^(?:UM|IN|RM|QS|TD|PM|AT|SG|WD|IM|QR|AP|PP|BR|SR|TG|RN|PC)\d{3,4}[A-Z]?$/;
+const isPublicationNumber = (n: ModelNumber) => n.label.split("-").some((part) => PUBLICATION_PART_RE.test(part)) || /\d{6,}/.test(n.key);
+
+/**
+ * The model or catalog numbers a cover DECLARES as its own product, when no
+ * number was asked: "is this manual for some other product than the project's
+ * machine?" (an attached manual is not automatically an applicable one).
+ *
+ * Read the way coverageOf reads an asked number, and no further:
+ *   - only numbers model-token.ts does not read (it reads its own families,
+ *     and the caller compares those with the existing identity check);
+ *   - only the FIRST cover line that carries one decides, with the lines
+ *     stacked directly under it; a rating table or a "related publications"
+ *     list further down is never read ("AC-15", "C300, R150");
+ *   - that line must be a title (declaresAsTitle); prose declares nothing;
+ *   - a publication or document number is not a product: a line labelled as
+ *     one, a publication-type group, or six digits in a row.
+ * A photo reading has no cover and declares nothing. The filename is never a
+ * declaration. Every miss here fails toward "declares nothing", which is what
+ * the product did before this rule existed.
+ */
+export function coverDeclaredNumbers(heading: string): ModelNumber[] {
+  if (photoDocumentBody(heading) !== null) return [];
+  const lines = heading.split("\n");
+  const lineAt = (at: number) => {
+    let line = lines[at];
+    let end = at;
+    while (end + 1 < lines.length && DANGLING_JOIN_RE.test(line)) line += ` ${lines[++end]}`;
+    return { line, end };
+  };
+  const own = (line: string) =>
+    PUBLICATION_LINE_RE.test(line) ? [] : unlistedModelNumbers(line).filter((n) => !isPublicationNumber(n));
+  const first = lines.findIndex((l) => own(l).length > 0);
+  if (first < 0) return [];
+  const declared: ModelNumber[] = [];
+  for (let at = first; at < lines.length; ) {
+    const { line, end } = lineAt(at);
+    const numbers = own(line);
+    if (numbers.length === 0 || !declaresAsTitle(lines, at, end, line, (n) => numbers.some((m) => m.key === n.key))) break;
+    declared.push(...numbers);
+    at = end + 1;
+  }
+  const seen = new Set<string>();
+  return declared.filter((n) => !seen.has(n.key) && seen.add(n.key));
+}
+
+/** #5369 follow-up: every selected manual's cover declares a product that is
+ *  not the project's confirmed machine, and the question named no model. */
+export type OtherProductRefusal = {
+  /** What the covers declare (model or catalog number labels only). */
+  declared: string[];
+  /** The project's confirmed machine, as recorded. */
+  project: string;
+};
+
+/** Static text plus labels only; nothing from a refused manual's pages. */
+export function otherProductRefusalText(r: OtherProductRefusal): string {
+  const have = listed(r.declared);
+  return `The manual in this notebook is for the ${have}, and this notebook is set up for the ${r.project}, so I won't answer from it — its values may not apply to the ${r.project}. If your question is about the ${have}, name it in the question and ask again. Otherwise add the ${r.project} manual (or the page that covers it) to this notebook.`;
+}
+
 /** One reason for the whole reply, from the refusal of every selected manual. */
 export function summarizeUnlistedRefusals(
   refusals: Array<Extract<ManualVerdict, { admit: false }>>,

@@ -6,13 +6,17 @@ import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } f
 import { FAMILY_ROOTS, MODEL_PATTERNS, ROCKWELL, familyCovers, modelIdentitiesInText, resolveModelFromObservationText } from "@/capabilities/model-token";
 import { ambiguousSiblingModels } from "@/capabilities/named-model-mismatch";
 import {
+  coverDeclaredNumbers,
   manualAnswersFor,
+  manualCoversNumber,
   sameModelFamily,
   summarizeUnlistedRefusals,
   unlistedModelNumbers,
   type ManualVerdict,
+  type OtherProductRefusal,
   type UnlistedModelRefusal,
 } from "@/capabilities/manual-applicability";
+import { photoDocumentBody } from "@/capabilities/photo-document-text";
 import { embedQueryDetailed, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
 import { setSpanAttrs } from "@/capabilities/observability/tracing";
 import { logRerankFallback, orderWithPinnedHead, rerankEnabled, rerankPool, rerankScores } from "@/capabilities/reranker";
@@ -406,6 +410,14 @@ const FAMILY_PREFIX_VENDORS: ReadonlyArray<readonly [prefix: string, vendor: Reg
   ["KTP", /siemens/i],
   ["V", /siemens/i],
 ];
+
+/** Is this detector identity ("MICRO820", "GS10") a family of some OTHER maker
+ *  than the one named? Unknown families answer no: nothing is proved. */
+function isAnotherMakersFamily(id: string, manufacturer: string): boolean {
+  const m = FAMILY_DIGITS_RE.exec(id);
+  const vendor = m ? FAMILY_PREFIX_VENDORS.find(([prefix]) => prefix === m[1])?.[1] : undefined;
+  return vendor !== undefined && !vendor.test(manufacturer);
+}
 
 function documentCoversNotebook(notebook: Set<string>, title: Set<string>, manufacturer: string | null): boolean {
   // Codex #4484 F2: a catalog-only notebook identity (6AV2124-0GC01-0AX0) must
@@ -1362,6 +1374,9 @@ export async function retrieveNodeChunks(
       /** #5369: a model or catalog number the detector has no pattern for, and
        *  EVERY selected manual was refused because it is not shown to cover it. */
       unlistedModelRefusal?: UnlistedModelRefusal;
+      /** The question named no model, the notebook's machine is confirmed, and
+       *  EVERY selected manual's cover declares some other product. */
+      otherProductRefusal?: OtherProductRefusal;
     };
   },
 ): Promise<ManualChunk[]> {
@@ -1923,10 +1938,74 @@ export async function retrieveNodeChunks(
       );
     } else delete opts.diagnostics.unlistedModelRefusal;
   };
+  // An attached manual is not automatically an applicable one. Seen on screen
+  // 2026-11-10: a notebook confirmed as a controller, with only a relay's data
+  // sheet attached, answered "What is the supply voltage?" from the relay
+  // sheet. The checks above compare like with like (a family name with a
+  // family name, a part number with its look-alikes), so a cover that names an
+  // UNRELATED product in the other vocabulary read as "says nothing about this
+  // machine" and was kept. Rule, for a question that names no model in a
+  // notebook whose machine a person confirmed:
+  //   - a manual whose cover declares one or more products, none of them the
+  //     notebook's machine, is refused;
+  //   - a manual whose cover declares nothing stays usable (a wiring guide);
+  //   - a part's own sheet still answers when the question names that part;
+  //   - a photo reading has no cover and is not judged here.
+  // A family-only identity ("Micro800") or an unconfirmed one scopes nothing,
+  // as before. Known cost: a cover that gives only catalog numbers, in a
+  // notebook recorded only by family name, is refused until the catalog number
+  // is recorded or named (bench-project.ts P-51..P-53).
+  const projectScoped = namesNoKnownModel && identityConfirmed && (notebookScoped || confirmedNumbers.length > 0);
+  const projectLabel = [opts.identity?.manufacturer?.trim(), notebookModel, opts.catalogNumber?.trim()]
+    .filter((part, i, all): part is string => Boolean(part) && all.indexOf(part) === i)
+    .join(" ");
+  const otherProductDocs = new Map<string, string[]>();
+  const noteOtherProduct = (docId: string, declared: string[]) => {
+    otherProductDocs.set(docId, declared);
+    if (!opts.diagnostics) return;
+    if (allowedDocIds.length > 0 && allowedDocIds.every((d) => otherProductDocs.has(d))) {
+      opts.diagnostics.otherProductRefusal = {
+        declared: [...new Set([...otherProductDocs.values()].flat())],
+        project: projectLabel,
+      };
+    } else delete opts.diagnostics.otherProductRefusal;
+  };
+  const coverIdentitiesOf = (filename: string, heading: string): Set<string> => {
+    const title = affirmativeModelIdentities(filename, heading);
+    return title.size === 0 && coverIsAmbiguous(heading) ? ambiguousCoverIdentities(heading) : title;
+  };
+  /** Does this cover declare products, none of them the notebook's machine?
+   *  Returns what it declares. Refuses only where the mismatch is provable:
+   *   - the cover names a family and so does the notebook → the family rule;
+   *   - the cover names a family and the notebook is known only by a number
+   *     the detector cannot read (a catalog number, or a machine tag typed as
+   *     the model) → only when that family is another maker's. A same-maker
+   *     family may well be what the number belongs to, so it is kept;
+   *   - the cover gives only catalog numbers, none of them the notebook's. */
+  const declaresOnlyOtherProducts = (filename: string, heading: string): string[] | null => {
+    if (photoDocumentBody(heading) !== null) return null;
+    if (questionNumbers.some((asked) => manualCoversNumber(asked, heading, filename))) return null;
+    const names = coverIdentitiesOf(filename, heading);
+    const numbers = coverDeclaredNumbers(heading);
+    if (names.size === 0 && numbers.length === 0) return null;
+    if (confirmedNumbers.some((own) => numbers.some((n) => n.key === own.key))) return null;
+    const maker = opts.identity?.manufacturer?.trim() || null;
+    const declared = [...new Set([...names, ...numbers.map((n) => n.label.toUpperCase())])];
+    if (names.size === 0) return numbers.map((n) => n.label);
+    if (notebookIdentities.size > 0 && !identitiesAreFamilyOnly(notebookIdentities)) {
+      return documentCoversNotebook(notebookIdentities, names, maker) ? null : declared;
+    }
+    return maker !== null && [...names].every((id) => isAnotherMakersFamily(id, maker)) ? declared : null;
+  };
+  // Which selected manuals admit() has judged. A manual the search returned no
+  // passage from is judged by its cover after the lexical passes (below), so a
+  // refusal's reason does not depend on what the search happened to find.
+  const judgedDocs = new Set<string>();
   // Admission is ONE predicate for every lane — lexical, exact-token and (item
   // 4) vector — so a chunk the vector lane finds is held to exactly the same
   // model-applicability rule as one BM25 found.
   const admit = (r: Record<string, unknown>): boolean => {
+      judgedDocs.add(String(r.doc_id ?? ""));
       if (requestedIdentities || notebookScoped) {
         // F2 — affirmative title/heading applicability only (see
         // affirmativeModelIdentities): the heading's own title segment is
@@ -1983,6 +2062,10 @@ export async function retrieveNodeChunks(
           // the Micro820 notebook — the prod-test miss) is rejected — and a
           // FAMILY manual (PowerFlex 520-Series for a 525) counts as covering
           // its members, not as a different model (FAMILY_ROOTS).
+          if (projectScoped) {
+            const declared = declaresOnlyOtherProducts(String(r.filename ?? ""), String(r.document_heading ?? ""));
+            if (declared) noteOtherProduct(String(r.doc_id ?? ""), declared);
+          }
           return false;
         }
       }
@@ -1990,6 +2073,13 @@ export async function retrieveNodeChunks(
         const verdict = manualAnswersFor(unlistedAsk, String(r.document_heading ?? ""), String(r.filename ?? ""));
         if (!verdict.admit) {
           noteUnlistedRefusal(String(r.doc_id ?? ""), verdict);
+          return false;
+        }
+      }
+      if (projectScoped) {
+        const declared = declaresOnlyOtherProducts(String(r.filename ?? ""), String(r.document_heading ?? ""));
+        if (declared) {
+          noteOtherProduct(String(r.doc_id ?? ""), declared);
           return false;
         }
       }
@@ -2076,6 +2166,32 @@ export async function retrieveNodeChunks(
   // original OR pass (a fully off-vocabulary conversational query). Exact-lane
   // rows do not count as lexical coverage (see lexicalRows).
   if (lexicalRows === 0 && opts.includeQueryRecall !== true) await addLexical(OR_TSQUERY, expanded.variants[0]);
+  // Judge by its cover every selected manual the passes above returned no
+  // passage from. Only when a model rule is in play, and only for the manuals
+  // not yet seen, so an unscoped question costs no extra query. Only inside a
+  // validated document selection (the notebook chat), with the same tenant,
+  // ingest-route and approved-source predicates as every other read here.
+  const modelRuleActive = Boolean(requestedIdentities) || notebookScoped || unlistedAsk.length > 0 || projectScoped;
+  const unjudged = modelRuleActive && docScopeOnly ? allowedDocIds.filter((d) => !judgedDocs.has(d)) : [];
+  if (unjudged.length > 0) {
+    const covers = await client.query(
+      `/* document-eligibility */ SELECT DISTINCT ON (doc_id)
+          doc_id::text AS doc_id,
+          metadata->>'filename' AS filename,
+          left(content, 2000) AS document_heading
+        FROM knowledge_entries
+        WHERE tenant_id = $1
+          AND doc_id::text = ANY($2::text[])
+          AND ingest_route = 'v2'
+          ${approvedSourceFilterSql(admitApproved ? 3 : null)}
+        ORDER BY doc_id, page_start NULLS LAST, source_page NULLS LAST,
+          (metadata->>'chunk_index')::int NULLS LAST, id`,
+      [tenantId, unjudged, ...approvedParams],
+    );
+    for (const row of covers.rows as Record<string, unknown>[]) {
+      if (unjudged.includes(String(row.doc_id ?? ""))) admit(row);
+    }
+  }
 
   // 2026-10-17 prod-test item 4 — the VECTOR lane, behind NOTEBOOK_HYBRID_RETRIEVAL
   // (default off). node ingest already stores a nomic-embed-text vector on every

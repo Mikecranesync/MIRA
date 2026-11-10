@@ -111,7 +111,8 @@ export type Reason =
   | "other-model"             // a number the detector cannot read; the cover declares a look-alike
   | "coverage-not-shown"      // the number is on the cover or file, but not as what the manual is for
   | "cover-and-file-disagree" // cover and filename name different look-alikes
-  | "several-look-alikes";    // the question names two look-alike numbers; no one manual is shown to cover both
+  | "several-look-alikes"     // the question names two look-alike numbers; no one manual is shown to cover both
+  | "another-product";        // the cover declares a product that is not the project's confirmed machine
 
 export type Job = {
   id: string;
@@ -127,7 +128,12 @@ export type Job = {
   /** The reason the product must state when it refuses. Checked only where set. */
   says?: Reason;
   /** Whose model number the refusal is about. Checked only where set. */
-  about?: "question" | "notebook";
+  about?: "question" | "notebook" | "conversation";
+  /** Earlier questions of this conversation that were refused, newest first.
+   *  A model named in them is still the subject of a question that names none. */
+  earlier?: string[];
+  /** The search finds no passage for this question. The manual is still attached. */
+  noPassages?: true;
   /** The project's equipment was typed in but never confirmed. */
   unconfirmed?: true;
   /** Set when main is known to get this row wrong. The row then counts as FAIL. */
