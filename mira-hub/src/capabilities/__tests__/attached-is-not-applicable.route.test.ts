@@ -28,12 +28,13 @@ import {
   RX420_JOINED_ABOVE,
   RX420_JOINED_BELOW,
   RX420_JOINED_INLINE,
+  RX420_LANGUAGE_CODE,
   RX420_NON_ISOLATED,
+  RX420_NON_SPARKING,
   RX420_NOT_APPLICABLE,
   RX420_OUT_OF_SCOPE_LABEL,
   RX420_SENTENCE_BELOW,
   RX420_SERIES_NOTE,
-  RX420_TRAILING_REMARK,
   RX420_UNDER_EXCLUSION_HEADING,
   type Manual,
 } from "./synthetic-technician/bench";
@@ -575,7 +576,6 @@ describe("a cover that marks the asked model as not covered never reaches a prov
     ["as (N/A)", RX420_NOT_APPLICABLE],
     ["as a label before the model", RX420_OUT_OF_SCOPE_LABEL],
     ["as a sentence under the model", RX420_SENTENCE_BELOW],
-    ["as a remark that trails the model's line", RX420_TRAILING_REMARK],
     ["under a heading two lines up", RX420_UNDER_EXCLUSION_HEADING],
   ])("%s", async (_where, manual) => {
     attach(manual);
@@ -590,6 +590,8 @@ describe("a cover that marks the asked model as not covered never reaches a prov
   it.each([
     ["a joined product word", RX420_NON_ISOLATED],
     ["a series in brackets", RX420_SERIES_NOTE],
+    ["a language code in brackets", RX420_LANGUAGE_CODE],
+    ["a joined product word no list names", RX420_NON_SPARKING],
   ])("control: the model's own manual still answers with %s on its cover", async (_what, manual) => {
     attach(manual);
     const { citations, providerAsked } = await ask("What supply voltage does the RX420 accept?");

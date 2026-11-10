@@ -417,16 +417,15 @@ export const RX420_OUT_OF_SCOPE_LABEL = synthetic(
   "rx420-out-of-scope-label", "Hardware User Guide\nOut-of-scope: RX420 Logic Controller", "NF0000021.pdf");
 export const RX420_SENTENCE_BELOW = synthetic(
   "rx420-sentence-below", "RX420 Logic Controller\nThis controller is not covered by this manual", "NF0000021.pdf");
-export const RX420_TRAILING_REMARK = synthetic(
-  "rx420-trailing-remark", "Hardware User Guide\nRX420 Logic Controller sold by distributors", "NF0000021.pdf");
 export const RX420_UNDER_EXCLUSION_HEADING = synthetic(
   "rx420-under-exclusion-heading", "Not covered in this guide:\nHardware\nRX420 Logic Controller", "NF0000021.pdf");
 /** Controls: joined product words and a bracketed series on the model's own manual. */
 export const RX420_NON_ISOLATED = synthetic("rx420-non-isolated-module", "RX420 Non-Isolated Analog Module User Manual", "NF0000024.pdf");
 export const RX420_SERIES_NOTE = synthetic("rx420-series-note", "RX420 Logic Controller (Series B)\nUser Manual", "NF0000025.pdf");
 export const RX420_DO_MORE = synthetic("rx420-do-more", "Do-more RX420 Logic Controller User Manual", "NF0000026.pdf");
-/** Stated limit: a joined product word the allowlist does not name is refused. */
+/** Controls a withdrawn rule refused (every word beside the model a known title word). */
 export const RX420_NON_SPARKING = synthetic("rx420-non-sparking", "RX420 Non-Sparking Tool Kit Manual", "NF0000027.pdf");
+export const RX420_LANGUAGE_CODE = synthetic("rx420-language-code", "RX420 Drive Manual (EN)", "NF0000028.pdf");
 
 export const EXTRA_JOBS: Job[] = [
   // Wordings that must still refuse.
@@ -640,9 +639,8 @@ export const EXTRA_JOBS: Job[] = [
   { id: "X-63", who: "senior", doing: "asking about a model whose title is followed by a sentence that says it is not covered",
     attached: [RX420_SENTENCE_BELOW],
     ask: "What supply voltage does the RX420 controller accept?", want: REFUSE, says: "coverage-not-shown", about: "question" },
-  { id: "X-64", who: "senior", doing: "asking about a model whose line ends in a remark with no verb and no negation",
-    attached: [RX420_TRAILING_REMARK],
-    ask: "What supply voltage does the RX420 controller accept?", want: REFUSE, says: "coverage-not-shown", about: "question" },
+  { id: "X-64", who: "journeyman", doing: "control: asking about the model on its own manual, with a language code in brackets",
+    attached: [RX420_LANGUAGE_CODE], ask: "What supply voltage does the RX420 drive accept?", want: answer(RX420_LANGUAGE_CODE) },
   { id: "X-65", who: "senior", doing: "asking about a model listed two lines under a heading that says what the guide does not cover",
     attached: [RX420_UNDER_EXCLUSION_HEADING],
     ask: "What supply voltage does the RX420 controller accept?", want: REFUSE, says: "coverage-not-shown", about: "question" },
@@ -652,7 +650,6 @@ export const EXTRA_JOBS: Job[] = [
     attached: [RX420_SERIES_NOTE], ask: "What supply voltage does the RX420 controller accept?", want: answer(RX420_SERIES_NOTE) },
   { id: "X-68", who: "journeyman", doing: "control: asking about the model on its own manual, in the Do-more family",
     attached: [RX420_DO_MORE], ask: "What supply voltage does the RX420 controller accept?", want: answer(RX420_DO_MORE) },
-  { id: "X-69", who: "journeyman", doing: "stated limit, a wrong refusal: a joined product word the list does not name",
-    attached: [RX420_NON_SPARKING],
-    ask: "What supply voltage does the RX420 controller accept?", want: REFUSE, says: "coverage-not-shown", about: "question" },
+  { id: "X-69", who: "journeyman", doing: "control: asking about the model on its own manual, with a joined product word no list names",
+    attached: [RX420_NON_SPARKING], ask: "What supply voltage does the RX420 tool kit accept?", want: answer(RX420_NON_SPARKING) },
 ];

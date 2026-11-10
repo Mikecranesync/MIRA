@@ -32,12 +32,13 @@ import {
  *   - a word is read as it prints and by its parts: "not-covered",
  *     "NOT_SUPPORTED", "NotSupported" and "isn't" are negations, whatever joins
  *     them (review round 2 on #5389);
- *   - where a remark about a model is written, every word must be a known title
- *     word, or nothing is shown: inside brackets, after a dash or a colon that
- *     follows the number, after the last product or document noun on the line,
- *     and in a label or a heading that ends in a colon;
- *   - the line below is read whole for a negation, and a heading that ends in a
- *     colon is read a few lines up;
+ *   - an exclusion is recognised by a listed word, phrase or mark ("not",
+ *     "excluded", "n/a", "out of scope", a cross). A word no list holds is a
+ *     maker, a range or an adjective, as on real covers. Asking that every
+ *     word beside the model be known was tried and withdrawn: it refused
+ *     ordinary covers (see "Known limits");
+ *   - the line below is read whole for a listed negation, and a heading that
+ *     ends in a colon and carries one is read a few lines up;
  *   - the filename counts only when the cover carries no such number at all,
  *     and a cover and a filename that name different look-alikes disagree.
  *
@@ -53,22 +54,23 @@ import {
  * No model call, no database call. Pure.
  *
  * Known limits:
- *   - WRONG-ADMIT residual: a remark written BEFORE the last product or
- *     document noun on the model's line, with no sentence word, no listed
- *     exclusion word and no mark ("Dealer stock RX420 Logic Controller"), reads
- *     as a title: a maker, a range and an adjective stand there on real covers
- *     and are not told apart from it. So does "RX420 Guide NF22" on a sibling's
- *     cover, a second title stacked directly under the first with no heading
- *     between, and an exclusion heading with no colon two or more lines up. No
- *     finite word list closes this; everything else fails toward refusing;
- *   - WRONG REFUSALS accepted for that (a question that names the model is
- *     refused on the model's own manual): a joined word with a sentence word in
- *     it that PRODUCT_COMPOUNDS does not name ("Non-Sparking"); a bracketed
- *     note, a tail after a dash or colon, or the words after the last noun that
- *     hold a word the title lists do not know ("(Northfield)", "… Drive with
- *     Brake Chopper"); a label or a heading ending in a colon that is not a
- *     known label ("Bestellbezeichnung:"); "N/A" meaning North America; "EOL"
- *     meaning end-of-line; a line under the title that carries a negation or an
+ *   - WRONG-ADMIT residual (open; the owner's decision on #5389): an
+ *     exclusion written with no listed word, phrase or mark still reads as a
+ *     title, wherever it sits. On the model's line: "RX420 Logic Controller
+ *     sold by distributors", "RX420 (dealer stock) Logic Controller", "Dealer
+ *     stock RX420 Logic Controller", "RX420 Logic Controller: N", "(X)". On the
+ *     line below or above: "Cancelled", "Archived", "Sold through
+ *     distributors:". Also "RX420 Guide NF22" on a sibling's cover, a second
+ *     title stacked directly under the first with no heading between, and an
+ *     exclusion heading with no colon two or more lines up. No finite word
+ *     list closes this. The alternative that does (every word beside the model
+ *     must be a known title word) was built and measured on 181 realistic
+ *     cover checks: it refused 38 that answer today, among them "(EN)",
+ *     "(CE)", "(Rev 2, Dec 2020)", "Manual del usuario", "FX5U-32MR/ES" and a
+ *     catalog number written before the product name;
+ *   - WRONG REFUSALS accepted (a question that names the model is refused on
+ *     the model's own manual): "N/A" meaning North America; "EOL" meaning
+ *     end-of-line; a line under the title that carries a negation or an
  *     exclusion word about something else ("This manual covers installation",
  *     "Warning: not for use in hazardous locations");
  *   - an accessory's manual that names the model it is for ("EtherNet/IP
@@ -318,9 +320,10 @@ const EXCLUSION_PHRASE_RES = [
 ];
 const hasExclusionPhrase = (line: string) => EXCLUSION_PHRASE_RES.some((re) => re.test(line));
 // Product words that are written joined to a sentence word. A joined word is
-// read by its parts (joinedSentenceWord), and one sentence part makes it a
-// sentence word unless the pair is named here. Closed on purpose: an unknown
-// "non-…" refuses.
+// read by its parts (joinedSentenceWord); a pair named here is never the part
+// that makes it a sentence word. It decides when the word also holds a number
+// or a sentence word: "30A-Non-Fused" is a rating and a product word, while
+// "non-RX420" is an exclusion. Closed on purpose.
 const PRODUCT_COMPOUNDS = new Set(
   (
     "non-isolated non-isolating non-insulated non-reversing non-reversible non-fused non-fusible non-contact " +
@@ -333,45 +336,6 @@ const PRODUCT_COMPOUNDS = new Set(
     "not-aus not-halt not-stopp"
   ).split(" "),
 );
-// What a bracketed note, the text after a dash or colon that follows the
-// number, and a label before a colon may be made of. These three are where a
-// remark about a model is written, so there the rule is the strict one: every
-// word known, or the line shows nothing. (Measured on the title as a whole the
-// strict rule refused real covers; see TITLE_NOUNS.)
-const NEUTRAL_WORDS = new Set(
-  (
-    "a an the and or for of to with from in on by at as per de la le les du des der die das für fur mit und zur zum et y e " +
-    "con el los il lo user users operator operators installation installing operating operation operations quick start " +
-    "getting started reference technical data product products hardware software firmware programming maintenance " +
-    "service safety setup wiring mounting commissioning configuration application applications original translation " +
-    "translated general basic advanced complete english german french spanish italian deutsch français francais " +
-    "español espanol italiano january february march april may june july august september october november december " +
-    "frame size type types version revision rev edition issue volume vol part parts model models number numbers " +
-    "ac dc phase single three input output inputs outputs analog digital coil standard rated rating control logic " +
-    "programmable no nc di do"
-  ).split(" "),
-);
-// Product and document words a title ends in, after its noun ("… Drive with CAN
-// Interface", "… Terminal Block", "… Application Note"). Not label words:
-// "Note: RX420 Logic Controller" is a remark.
-const ENDING_WORDS = new Set(
-  (
-    "block blocks interface interfaces can note notes kit kits option options accessory accessories unit units system " +
-    "systems assembly assemblies board boards card cards cable cables enclosure enclosures filter filters reactor " +
-    "reactors resistor resistors fan fans keypad keypads display displays station stations base bases rack racks " +
-    "chassis backplane processor processors cpu communication communications network networks ethernet fieldbus bus " +
-    "power line family range platform component components device devices equipment machine machines tool tools " +
-    "package packages overview introduction description list table index contents supplement addendum bulletin " +
-    "brochure drawing drawings diagram diagrams schematic schematics dimensions parameter parameters fault faults " +
-    "troubleshooting diagnostics repair startup tuning calibration certificate declaration conformity removable " +
-    // The same on French, German, Spanish and Italian covers.
-    "utilisation mise entretien vitesse uso instalación instalacion mantenimiento installazione manutenzione " +
-    "bedienung betrieb montage inbetriebnahme wartung"
-  ).split(" "),
-);
-const LABEL_WORDS = new Set("catalogue cat order ordering item article ref sku manufacturer brand designation description name code codes".split(" "));
-const UNIT_WORD_RE = /^(?:vac|vdc|kv|mv|ma|ka|kw|mw|va|kva|hp|hz|khz|rpm|mm|cm|ft|nm|psi|bar|ph|ip)$/;
-
 // An abbreviation's full stop is not the end of a sentence, and "No." is a
 // label, not a negation: "Model No. RX420", "Cat. No.", "Rev. 3", "Corp.".
 // Read as written for the eye: compatibility forms folded (full-width letters,
@@ -404,19 +368,19 @@ const joinedTokens = (line: string) =>
  * run together (can-not), and a contraction (isn't).
  * Not counted: a pair PRODUCT_COMPOUNDS names, and contact or channel notation
  * ("NO-NC", "DI-DO", "2-NO").
- * `aboutCoverage` (the reading that is not strict, see isTitleLine): the word
- * must also say what is negated — a coverage word, a sentence word or a number
- * ("non-supported", "not-for-this-model", "ohne-RX420"). An unknown product
- * word ("Non-Sparking") then stays a product word.
+ * The word must also say what is negated: a coverage word, a sentence word or
+ * a number ("non-supported", "not-for-this-model", "ohne-RX420"). A product
+ * word no list names ("Non-Sparking") stays a product word: read the other
+ * way, the rule refused real covers (measured, see "Known limits").
  */
-function joinedSentenceWord(word: string, counts: (lower: string) => boolean, aboutCoverage = false): boolean {
+function joinedSentenceWord(word: string, counts: (lower: string) => boolean): boolean {
   if (/n['’‘`´]t$/i.test(word)) return true;
   const parts = word.toLowerCase().replace(/['’]s$/, "").split(/[^\p{L}\p{N}]+/u).filter(Boolean);
   if (parts.length < 2) return false;
   if (parts.every((part) => NOTATION_PARTS.has(part) || /^\d{1,2}$/.test(part))) return false;
   const named = (i: number) => PRODUCT_COMPOUNDS.has(`${parts[i]}-${parts[i + 1]}`) || PRODUCT_COMPOUNDS.has(`${parts[i - 1]}-${parts[i]}`);
   const hit = parts.findIndex((part, i) => (part === "un" || counts(part)) && !named(i));
-  if (hit >= 0) return !aboutCoverage || parts.some((part, i) => i !== hit && (isCoverageWord(part) || SENTENCE_WORDS.has(part) || /\d/.test(part)));
+  if (hit >= 0) return parts.some((part, i) => i !== hit && (isCoverageWord(part) || SENTENCE_WORDS.has(part) || /\d/.test(part)));
   return counts(parts.join("")) && !parts.some((_, i) => named(i));
 }
 // "NotSupported", "notcovered", "unlisted", "nichtenthalten": a negation run
@@ -462,7 +426,7 @@ const countsAsNegation = (lower: string) => NEGATION_WORDS.has(lower) || isExclu
 const hasSentenceWord = (line: string, strict = true) => {
   const words = wordsOf(line);
   const counts = strict ? countsAsSentence : countsAsNegation;
-  return hasExclusionPhrase(plain(line)) || words.some((_, i) => sentenceWordAt(words, i)) || joinedTokens(line).some((t) => joinedSentenceWord(t, counts, !strict));
+  return hasExclusionPhrase(plain(line)) || words.some((_, i) => sentenceWordAt(words, i)) || joinedTokens(line).some((t) => joinedSentenceWord(t, counts));
 };
 /** A negation or an exclusion anywhere on the line. */
 const hasNegation = (line: string) => {
@@ -473,18 +437,6 @@ const hasNegation = (line: string) => {
     joinedTokens(line).some((t) => joinedSentenceWord(t, countsAsNegation))
   );
 };
-/** A word a bracketed note, a tail or a label may hold: a number, a symbol, a
- *  single letter, a unit, a product or document noun, or a NEUTRAL_WORDS word. */
-const isNeutralWord = (word: string, endings = true): boolean => {
-  const lower = word.toLowerCase().replace(/['’]s$/, "");
-  const known = (w: string) =>
-    !/\p{L}/u.test(w) || /\d/.test(w) || w.length === 1 || TITLE_NOUNS.has(w) || NEUTRAL_WORDS.has(w) || UNIT_WORD_RE.test(w) || (endings && ENDING_WORDS.has(w));
-  // A joined word is known when each part is ("NO-NC", "d'utilisation", "Three-Phase").
-  return known(lower) || lower.split(/[^\p{L}\p{N}]+/u).filter(Boolean).every(known);
-};
-const allNeutral = (text: string) => wordsOf(text).every((w) => isNeutralWord(w));
-/** A label ("Catalog Numbers:", "Model:", "Technical Specifications:"). */
-const isLabel = (text: string) => wordsOf(text).every((w) => isNeutralWord(w, false) || LABEL_WORDS.has(w.toLowerCase()));
 /** The word is one model number ("RX420", "2080-LC20-20QBB", "RX420-U"). */
 const isWholeNumber = (word: string) => modelNumbersIn(word).length === 1;
 const hasTitleNoun = (line: string) => wordsOf(line).some((w) => TITLE_NOUNS.has(w.toLowerCase()));
@@ -494,52 +446,40 @@ const hasTitleNoun = (line: string) => wordsOf(line).some((w) => TITLE_NOUNS.has
  *
  * Two questions are put to a cover, and they fail safe in opposite directions:
  *   - "is this manual shown to be for the number that was ASKED?" (coverageOf).
- *     A miss refuses. That reading is `strict`: wherever a remark about a model
- *     is written, every word must be a known title word.
+ *     A miss refuses. That reading is `strict`: any sentence word inside a
+ *     joined word counts ("see-RX430"), and the lines around the title are read
+ *     for an exclusion too (declaresAsTitle).
  *   - "does this cover DECLARE a product?" (coverDeclaredNumbers), asked when
  *     the notebook is set up for a machine. A miss there lets another product's
  *     manual answer, so that reading keeps the rule it had before review round
  *     2 on #5389 and gains only what recognises a negation ("not-covered").
+ *
+ * Neither reading asks that every word be a known title word. That was tried
+ * for bracketed notes, tails, labels and trailing words and withdrawn: it
+ * refused ordinary covers ("(EN)", "(CE)", "Manual del usuario", a catalog
+ * number before the product name). An exclusion is recognised by a listed word,
+ * phrase or mark; see "Known limits".
  */
 export function isTitleLine(input: string, strict = true): boolean {
   const line = plain(input);
   // A sentence end, or a second sentence, on the line.
   if (/[.!?]\s*$/.test(line) || /[.!?;]\s/.test(line)) return false;
   if (hasSentenceWord(line, strict)) return false;
-  // A bracketed note is a remark: "(Series B)", "(24 V DC)" and "(Original
-  // Instructions)" are title words; "(wrong manual)" and "(dealer stock)" are
-  // not. A bracket that is never closed runs to the end of the line.
-  if (strict) for (const note of line.matchAll(/[([{]([^)\]}]*)/g)) if (!allNeutral(note[1])) return false;
   // A colon or a dash after the number (or on it: "RX420:") either finishes
   // the title ("RX410 - Hardware User Guide", "RX420 Drive Manual – English")
-  // or starts a remark about the number ("RX420: NF0000022", "RX420 Logic
-  // Controller — dealer stock"). What follows must name no other number and
-  // the line must carry a product or document noun; read strictly, the tail
-  // must itself carry one or be title words only.
-  // Before the number a colon ends a label ("Catalog Numbers:"); read strictly,
-  // a label is label words only ("Dealer stock: RX420 Logic Controller" is not one).
+  // or starts a remark about the number ("RX420: NF0000022"). What follows
+  // must name no other number and the line must carry a product or document noun.
   let numberSeen = false;
   const raws = line.split(/[\s,/]+/);
   for (let i = 0; i < raws.length; i++) {
     const isNumber = isWholeNumber(strip(raws[i]));
     if ((numberSeen || isNumber) && (raws[i].includes(":") || /^[‐-―−-]+$/.test(raws[i]))) {
       const tail = raws.slice(i + 1).join(" ");
-      return modelNumbersIn(tail).length === 0 && hasTitleNoun(line) && (!strict || hasTitleNoun(tail) || allNeutral(tail));
+      return modelNumbersIn(tail).length === 0 && hasTitleNoun(line);
     }
-    if (strict && /:$/.test(raws[i]) && !ADDRESS_RE.test(raws[i]) && !isLabel(raws.slice(0, i + 1).join(" "))) return false;
     numberSeen ||= isNumber;
   }
-  if (!strict) return true;
-  // What trails the last product or document noun, or the last number, is where
-  // a remark with no verb is written ("RX420 Logic Controller left out"). It
-  // must be title words. Before the noun an unknown word is a maker, a range or
-  // an adjective, as real covers have ("Adjustable Frequency AC Drive").
-  const words = wordsOf(line);
-  let last = -1;
-  words.forEach((w, i) => {
-    if (TITLE_NOUNS.has(w.toLowerCase()) || isWholeNumber(w)) last = i;
-  });
-  return last < 0 || words.slice(last + 1).every((w) => isNeutralWord(w));
+  return true;
 }
 
 const PREDICATE_WORDS = new Set(
@@ -548,7 +488,7 @@ const PREDICATE_WORDS = new Set(
 );
 const POINTER_WORDS = new Set(["see", "refer", "consult", "use"]);
 /** The line below carries on the sentence of the line above it. */
-function continuesSentence(below: string, strict: boolean): boolean {
+function continuesSentence(below: string): boolean {
   const words = wordsOf(below);
   const first = (words[0] ?? "").toLowerCase();
   // A wrapped sentence starts with an ordinary lower-case word ("is not …",
@@ -561,7 +501,7 @@ function continuesSentence(below: string, strict: boolean): boolean {
   // "NOT-SUPPORTED by this manual": the same first word, written joined.
   const opening = joinedTokens(below)[0] ?? "";
   const opens = strip(plain(below).trim().split(/[\s,/]+/)[0] ?? "") === opening;
-  if (opens && joinedSentenceWord(opening, (p) => PREDICATE_WORDS.has(p) || countsAsNegation(p), !strict)) return true;
+  if (opens && joinedSentenceWord(opening, (p) => PREDICATE_WORDS.has(p) || countsAsNegation(p))) return true;
   return POINTER_WORDS.has(first) && modelNumbersIn(below).length === 0;
 }
 
@@ -584,14 +524,12 @@ function declaresAsTitle(lines: string[], at: number, end: number, line: string,
   // separate manual"). A heading ("Related Publications") or a remark with its
   // own subject ("For the RX420 see publication …") is a new line, not a continuation.
   if (above && hasSentenceWord(above, strict)) return false;
-  if (below && continuesSentence(below, strict)) return false;
+  if (below && continuesSentence(below)) return false;
   if (strict) {
-    // A heading that ends in a colon above the model is a label for it, and must
-    // read as one ("Catalog Numbers:", not "Sold through distributors:"). One
-    // that says what is left out governs the lines under it ("Not covered in
-    // this guide:\nHardware\nRX420 Logic Controller"): the nearest few are read.
+    // A heading that ends in a colon and says what is left out governs the lines
+    // under it ("Not covered in this guide:\nHardware\nRX420 Logic Controller"):
+    // the nearest few are read.
     const endsInColon = (l: string) => /:\s*$/.test(plain(l)) && !isProductLine(l);
-    if (above && endsInColon(above) && !isLabel(above)) return false;
     if (lines.slice(0, at).filter((l) => l.trim()).slice(-HEADING_REACH).some((l) => endsInColon(l) && hasSentenceWord(l))) return false;
     // A word broken across two lines ("… Controller unsup-\nported", "… ex-\ncluding RX420") is read whole.
     const broken = (upper: string | undefined, lower: string | undefined) => {
@@ -614,8 +552,8 @@ function declaresAsTitle(lines: string[], at: number, end: number, line: string,
   // next to an unrelated number ("RX420 NF0000022") is a row of a cross-reference table.
   const bare = wordsOf(line).every((w) => JOINERS.has(w.toLowerCase()) || (isWholeNumber(w) && inFamily(modelNumbersIn(w)[0])));
   // The line beside is read for its noun, not for a remark about the number: it
-  // is never the strict reading ("Contactor application Control circuit" above
-  // "Utilisation category AC-15" on a real relay sheet).
+  // is never the strict reading, so a joined phrase on it stays a product word
+  // ("RX420 Compact" above "The Do-It-Yourself Logic Controller").
   const beside = [above, below].some((l) => l && isTitleLine(l, false) && hasTitleNoun(l));
   return bare || hasTitleNoun(line) || beside;
 }
@@ -745,7 +683,7 @@ const isPublicationNumber = (n: ModelNumber) => n.label.split("-").some((part) =
  * declaration. Every miss here fails toward "declares nothing", which is what
  * the product did before this rule existed — and which lets the manual answer
  * in a notebook set up for another machine. That is why this reading is not the
- * strict one: a cover with a word the title lists do not know still declares.
+ * strict one: the lines around the title are not read for an exclusion here.
  */
 export function coverDeclaredNumbers(heading: string, writtenAs: PhotoDocumentKind | null = null): ModelNumber[] {
   if (productWrittenBody(heading, writtenAs) !== null) return [];

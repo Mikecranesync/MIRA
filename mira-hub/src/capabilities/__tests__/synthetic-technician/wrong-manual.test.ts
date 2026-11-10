@@ -258,7 +258,7 @@ describe("synthetic technician — scorecard", () => {
   it("counts: the jobs that must answer, in the 37 and in the added rows", () => {
     const answers = (jobs: Job[]) => jobs.filter((j) => "answerFrom" in j.want).length;
     expect({ contract: answers(JOBS), added: answers(EXTRA_JOBS), project: answers(PROJECT_JOBS) })
-      .toEqual({ contract: 19, added: 32, project: 36 });
+      .toEqual({ contract: 19, added: 34, project: 36 });
   });
 });
 

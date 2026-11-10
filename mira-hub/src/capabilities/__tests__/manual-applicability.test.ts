@@ -597,7 +597,7 @@ describe("an exclusion joined to another word shows no coverage, wherever it sit
   });
 });
 
-describe("a remark beside the model must be title vocabulary, or it shows nothing", () => {
+describe("a remark beside the model written with a listed word, phrase or mark shows nothing", () => {
   const ASK = "RX420 supply voltage?";
   it.each([
     ["not applicable, abbreviated", "Hardware User Guide\nRX420 Logic Controller (N/A)"],
@@ -606,35 +606,24 @@ describe("a remark beside the model must be title vocabulary, or it shows nothin
     ["end of life, abbreviated", "Hardware User Guide\nRX420 Logic Controller (EOL)"],
     ["end of life after a dash", "Hardware User Guide\nRX420 Logic Controller - end of life"],
     ["a bracketed remark of ordinary words", "Hardware User Guide\nRX420 Logic Controller (wrong manual)"],
-    ["a bracketed remark between the model and its noun", "Hardware User Guide\nRX420 (dealer stock) Logic Controller"],
     ["out of scope, in brackets", "Hardware User Guide\nRX420 Logic Controller (out of scope)"],
     ["out of scope, as a label before the model", "Hardware User Guide\nOut-of-scope: RX420 Logic Controller"],
     ["out of scope, as a heading above", "Hardware User Guide\nOut-of-scope models:\nRX420 Logic Controller"],
-    ["a label of ordinary words above", "Hardware User Guide\nSold through distributors:\nRX420 Logic Controller"],
-    ["a note label before the model", "Hardware User Guide\nNote: RX420 Logic Controller"],
     ["German, joined, after a dash", "Hardware User Guide\nRX420 Logic Controller – nicht-enthalten"],
     ["German, joined, in brackets", "Hardware User Guide\nRX420 Logic Controller (kein-Inhalt)"],
     ["a bracket that is never closed", "Hardware User Guide\nRX420 Logic Controller (ask your dealer"],
     ["square brackets", "Hardware User Guide\nRX420 Logic Controller [dealer only]"],
-    ["a remark after a dash with no product or document word", "Hardware User Guide\nRX420 Logic Controller — dealer stock"],
-    ["a pointer after a colon", "Hardware User Guide\nRX420 Logic Controller manual: publication 1234"],
     ["an answer after a colon", "Hardware User Guide\nRX420 Logic Controller: no."],
-    ["a label that is not one, with 'No.' after it", "Hardware User Guide\nIncluded: No. RX420 Logic Controller"],
     ["sold elsewhere, no punctuation", "Hardware User Guide\nRX420 Logic Controller sold elsewhere"],
     ["abbreviated exclusion", "Hardware User Guide\nExcl. RX420 Logic Controller"],
     ["not equal", "Hardware User Guide\nRX420 Logic Controller ≠ this manual"],
   ])("refuses, coverage not shown: %s", (_why, heading) => {
     expect(kindOf(verdict(ASK, heading))).toBe("coverage-not-shown");
   });
-
-  it("a second title stacked under the first does not count when it ends in a pointer", () => {
-    const heading = "RX410 Hardware User Guide\nRX420 Logic Controller manual: publication 1234";
-    expect(verdict(ASK, heading)).toMatchObject({ admit: false, kind: "other-model", declared: ["RX410"] });
-  });
 });
 
 // More ways the same exclusion is written with no listed word standing alone.
-describe("an exclusion written as a mark, run together, broken across lines, or trailing the title", () => {
+describe("an exclusion written as a mark, run together or broken across lines", () => {
   const ASK = "RX420 supply voltage?";
   it.each([
     ["a cross", "Hardware User Guide\nRX420 Logic Controller ✗"],
@@ -647,9 +636,6 @@ describe("an exclusion written as a mark, run together, broken across lines, or 
     ["run together, German", "Hardware User Guide\nNichtenthalten RX420 Steuerung"],
     ["a negation broken across lines, below", "Hardware User Guide\nRX420 Logic Controller unsup-\nported"],
     ["an exclusion broken across lines, above", "Hardware User Guide ex-\ncluding RX420 Logic Controller"],
-    ["a remark that trails the product noun", "Hardware User Guide\nRX420 Logic Controller sold by distributors"],
-    ["another", "Hardware User Guide\nRX420 Logic Controller left out"],
-    ["a remark that trails a bare model", "RX420 left out\nHardware User Guide"],
     ["a German no", "Hardware User Guide\nRX420 Logic Controller nein"],
     ["to be decided", "Hardware User Guide\nRX420 Logic Controller TBD"],
     ["a heading two lines up that ends in a colon", "Not covered in this guide:\nHardware\nRX420 Logic Controller"],
@@ -675,8 +661,8 @@ describe("an exclusion written as a mark, run together, broken across lines, or 
 
 // coverDeclaredNumbers answers a different question ("is this manual for some
 // OTHER product than the notebook's machine?"), and a miss there lets the manual
-// answer. So it reads a negation as the asked-number check does, and nothing
-// stricter: a cover with a word the title lists do not know still declares.
+// answer. So it reads a negation on the title line as the asked-number check
+// does, and nothing stricter: the lines around the title are not read for one.
 describe("what a cover declares when no number was asked", () => {
   const labels = (heading: string) => coverDeclaredNumbers(heading).map((n) => n.label);
   it.each([
@@ -700,14 +686,9 @@ describe("what a cover declares when no number was asked", () => {
     expect(labels(heading)).toEqual([]);
   });
   it.each([
-    ["a bracketed maker", "RX420 Logic Controller (Northfield)\nUser Manual"],
-    ["a title ending in an unknown product word", "RX420 Drive with Brake Chopper\nUser Manual"],
-    ["an unknown label", "Bestellbezeichnung: RX420\nBetriebsanleitung"],
-    ["an unknown joined product word", "RX420 Non-Sparking Tool Kit Manual"],
-    ["an unknown joined product word on the line below", "RX420 Logic Controller\nNon-Sparking Tool Kit"],
     ["a sentence under the title that uses an exclusion word in passing", "RX420 Drive User Manual\nThis manual covers installation and wiring"],
-    ["a remark with no negation after a dash", "Hardware User Guide\nRX420 Logic Controller — dealer stock"],
-  ])("a cover the asked-number check refuses for an unknown word still declares its product: %s", (_why, heading) => {
+    ["a warning under the title", "RX420 Drive User Manual\nWarning: not for use in hazardous locations"],
+  ])("a cover the asked-number check refuses for the line below still declares its product: %s", (_why, heading) => {
     expect(kindOf(verdict("RX420 supply voltage?", heading))).toBe("coverage-not-shown");
     expect(labels(heading)).toEqual(["RX420"]);
   });
@@ -748,6 +729,17 @@ describe("joined words and bracketed notes on real cover shapes still answer", (
     ["a specifications label on the line above", "Technical Specifications:\nRX420 Logic Controller"],
     ["a product name after a dash, with a maker's range in it", "RX420 - TeSys K control relay - 2 NO + 2 NC - 24 V DC coil"],
     ["a web address under the title that holds a sentence word", "RX420 Logic Controller\nwww.northfield.example/how-to/not-found"],
+    // Each row below isolates one exemption: with it taken out, the row refuses.
+    ["a web address under the title that reads like an exclusion", "RX420 Logic Controller\nwww.northfield.example/not-supported"],
+    ["a mail address under the title that reads like an exclusion", "RX420 Logic Controller\nsupport@not-covered.example"],
+    ["a product word joined to a rating", "RX420 30A-Non-Fused Disconnect Switch Manual"],
+    ["a product word joined to a wire count", "RX420 2-Wire-Non-Isolated Transmitter Manual"],
+    ["a no-load test joined to a voltage", "RX420 Drive 24V-No-Load Test Guide"],
+    ["a contact count, joined", "RX420 Relay Output Module 2-NO"],
+    ["contact counts joined with a plus", "RX420 Logic Controller 1-NO+1-NC Module"],
+    ["channel counts, joined", "RX420 Logic Controller 8-DI/8-DO Module"],
+    ["a joined phrase on the line beside a model line with no noun of its own", "RX420 Compact\nThe Do-It-Yourself Logic Controller"],
+    ["a typed file that opens with the product's photo heading, two lines above the title", `${PHOTO_READING_BODY_MARK}\nNorthfield\nRX420 Logic Controller`],
   ])("%s", (_why, heading) => {
     expect(kindOf(verdict("RX420 fault F004?", heading, "rx420.pdf"))).toBe("answers");
   });
@@ -799,17 +791,104 @@ describe("a rating named in the question is not refused on the part's own sheet"
 // Wrong refusals the new rules accept, pinned so a change to them is seen.
 describe("stated limits of the joined-word and remark rules (wrong refusals)", () => {
   it.each([
-    ["a joined product word the allowlist does not name", "RX420 Non-Sparking Tool Kit Manual"],
-    ["a bracketed maker or range name", "RX420 Logic Controller (Northfield)\nUser Manual"],
     ["North America written N/A", "RX420 Drive N/A Version User Manual"],
-    ["a label the list does not know", "Bestellbezeichnung: RX420\nBetriebsanleitung"],
     ["'Model No.:' with the colon tight against it (it refused before this change too)", "Model No.: RX420\nUser Manual"],
     ["a sentence under the title that uses an exclusion word in passing", "RX420 Drive User Manual\nThis manual covers installation and wiring"],
     ["a warning under the title", "RX420 Drive User Manual\nWarning: not for use in hazardous locations"],
-    ["a title that ends in a product word the list does not know", "RX420 Drive with Brake Chopper\nUser Manual"],
-    ["an unknown heading that ends in a colon, directly above", "Hauptkatalog:\nRX420 Logic Controller"],
   ])("%s", (_why, heading) => {
     expect(kindOf(verdict("RX420 fault F004?", heading, "NF0000021.pdf"))).toBe("coverage-not-shown");
+  });
+});
+
+// A rule that asked every word beside the model to be a known title word was
+// built for this change and withdrawn before it shipped: an independent pass
+// found it refused ordinary covers. Every row here failed with that rule in
+// place (commit 5cc481470, never pushed) and answers on the commit before this
+// change.
+describe("ordinary covers the withdrawn every-word-known rule refused still answer", () => {
+  it.each([
+    ["a language code in brackets", "RX420", "RX420 Drive Manual (EN)"],
+    ["the same in lower case", "RX420", "RX420 Drive Manual (en)"],
+    ["a language code with no brackets", "RX420", "RX420 Drive Manual EN"],
+    ["a file type in brackets", "RX420", "RX420 Drive Manual (PDF)"],
+    ["a market in brackets", "RX420", "RX420 Drive Manual (US)"],
+    ["a UL mark", "RX420", "RX420 Drive Manual (UL)"],
+    ["a CE mark", "RX420", "RX420 Drive Manual (CE)"],
+    ["hardware, abbreviated", "RX420", "RX420 Drive Manual (HW)"],
+    ["software, abbreviated", "RX420", "RX420 Drive Manual (SW)"],
+    ["a page number", "RX420", "RX420 Drive Manual (Page 1)"],
+    ["a revision and date", "RX420", "RX420 Drive Manual (Rev 2, Dec 2020)"],
+    ["a maker in brackets", "RX420", "RX420 Drive Manual (Siemens)"],
+    ["a bracketed maker or range name", "RX420", "RX420 Logic Controller (Northfield)\nUser Manual"],
+    ["a manual kind in brackets", "RX420", "RX420 Drive Manual (Detailed)"],
+    ["another", "RX420", "RX420 Drive Manual (Short)"],
+    ["another", "RX420", "RX420 Drive Manual (Full)"],
+    ["'translation' in French", "RX420", "RX420 Drive Manual (Traduction)"],
+    ["'translation' in German", "RX420", "RX420 Servoantrieb Betriebsanleitung (Übersetzung)"],
+    ["a Spanish user manual", "RX420", "RX420 Manual del usuario"],
+    ["a French user manual", "RX420", "RX420 Variateur de fréquence Manuel de l'utilisateur"],
+    ["a Mitsubishi part number with its suffix", "FX5U-32MR", "MELSEC iQ-F FX5U-32MR/ES\nUser's Manual (Hardware)"],
+    ["a Mitsubishi drive manual with its range letters", "FR-D700", "FR-D700 SC Instruction Manual (Applied)\nFR-D720S-025"],
+    ["a catalog number before the product name", "22B-D4P0N104", "Rockwell 22B-D4P0N104 PowerFlex 40\nUser Manual\nPublication 22B-UM001"],
+    ["a joined product word no list names", "RX420", "RX420 Non-Sparking Drive Manual"],
+    ["the same on a tool kit", "RX420", "RX420 Non-Sparking Tool Kit Manual"],
+    ["the same on the line below", "RX420", "RX420 Drive Manual\nNon-Sparking"],
+    ["a label the lists do not know", "RX420", "Bestellbezeichnung: RX420 Logic Controller"],
+    ["the same, with the title below", "RX420", "Bestellbezeichnung: RX420\nBetriebsanleitung"],
+    ["a title that ends in a product word the lists do not know", "RX420", "RX420 Drive with Brake Chopper\nUser Manual"],
+    ["a heading the lists do not know, directly above", "RX420", "Hauptkatalog:\nRX420 Logic Controller"],
+  ])("%s", (_why, number, heading) => {
+    expect(kindOf(verdict(`What does the fault mean on the ${number}?`, heading, "x.pdf"))).toBe("answers");
+  });
+
+  // Controls: these answered with the withdrawn rule too.
+  it.each([
+    ["PowerFlex 525, by catalog number", "25B-D1P4N104", "PowerFlex 525 Adjustable Frequency AC Drive\nUser Manual\nCatalog Numbers 25B-D1P4N104, 25B-D2P3N104"],
+    ["SINAMICS V20, by order number", "6SL3210-5BB11-2UV1", "SINAMICS V20 Inverter\nOperating Instructions\n6SL3210-5BB11-2UV1"],
+    ["SIMATIC S7-1200", "S7-1200", "SIMATIC S7-1200 Controller\nSystem Manual\n6ES7214-1AG40-0XB0"],
+    ["SINAMICS G120C, German", "G120C", "Betriebsanleitung\nSINAMICS G120C 6SL3210-1KE12-3UB2\nFrequenzumrichter"],
+    ["Altivar 320", "ATV320U06N4B", "Altivar 320 Variable speed drives ATV320U06N4B\nInstallation manual"],
+    ["Altivar 320, French", "ATV320U06N4B", "Variateur de vitesse ATV320U06N4B\nManuel d'installation"],
+    ["TeSys D", "LC1D09BD", "TeSys D contactors LC1D09BD\nInstructions for use"],
+    ["Omron CP1E", "CP1E-N40DR", "Omron CP1E-N40DR-A\nCP1E CPU Unit Software User's Manual"],
+    ["Mitsubishi FR-D700, basic manual", "FR-D700", "FR-D700 Inverter\nInstruction Manual (Basic)\nFR-D720S-025"],
+    ["a publication number under the title", "RX420", "RX420 Logic Controller\nInstallation Instructions\nPublication 2080-IN009C-EN-P"],
+    ["a model label", "RX420", "Model: RX420\nDrive Manual"],
+    ["a maker with a trade mark sign", "RX420", "Northfield® RX420 Logic Controller"],
+    ["a guide and revision after a dash", "RX420", "RX420 Logic Controller - Installation Guide, Rev 3"],
+    ["a rating after commas", "RX420", "RX420 Logic Controller, 24 VDC, Ethernet"],
+    ["one word per line", "RX420", "Northfield\nRX420\nLogic Controller\nUser Manual"],
+    ["a non-isolated version on the line below", "RX420", "RX420 Drive Manual\nNon-isolated version"],
+    ["an Italian manual", "RX420", "RX420 Manuale di installazione e uso"],
+    ["a Spanish manual", "RX420", "RX420 Convertidor de frecuencia Manual de instrucciones"],
+    ["a safety line below", "RX420", "RX420 Drive Manual\nFor use in non-hazardous locations"],
+    ["a firmware version in brackets", "RX420", "RX420 Drive Manual (Firmware V3.1)"],
+    ["an edition in brackets", "RX420", "RX420 Drive Manual (Edition 2021-05)"],
+    ["a part count in brackets", "RX420", "RX420 Drive Manual (Part 1 of 3)"],
+  ])("control: %s", (_why, number, heading) => {
+    expect(kindOf(verdict(`What does the fault mean on the ${number}?`, heading, "x.pdf"))).toBe("answers");
+  });
+});
+
+// KNOWN WRONG-ADMIT, open: an exclusion written with no listed word, phrase or
+// mark reads as a title. The rule that closed it is the withdrawn one above.
+// Each row answered on the commit before this change too. Pinned so a change
+// here is seen, and so nobody reads the rows above as "every exclusion refuses".
+describe("known limit: an exclusion written with no listed word still answers", () => {
+  it.each([
+    ["a remark that trails the product noun", "Hardware User Guide\nRX420 Logic Controller sold by distributors"],
+    ["'left out'", "Hardware User Guide\nRX420 Logic Controller left out"],
+    ["a bracketed remark between the model and its noun", "Hardware User Guide\nRX420 (dealer stock) Logic Controller"],
+    ["a remark after a dash", "Hardware User Guide\nRX420 Logic Controller — dealer stock"],
+    ["a remark before the model", "Dealer stock RX420 Logic Controller"],
+    ["a status word on the line below", "RX420 Logic Controller\nCancelled"],
+    ["another", "RX420 Logic Controller\nArchived"],
+    ["a status word on the line above", "Cancelled\nRX420 Logic Controller"],
+    ["a heading of ordinary words above", "Hardware User Guide\nSold through distributors:\nRX420 Logic Controller"],
+    ["a single letter after a colon", "RX420 Logic Controller: N"],
+    ["a bracketed letter", "RX420 Logic Controller (X)"],
+  ])("%s", (_why, heading) => {
+    expect(kindOf(verdict("RX420 supply voltage?", heading))).toBe("answers");
   });
 });
 
