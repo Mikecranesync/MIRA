@@ -71,6 +71,25 @@ describe("numbers the existing detector already reads are left to it, whole", ()
   it("a number beside a detector-read one is still returned", () => {
     expect(asked("Wire the Micro820 to the RX420").map((n) => n.key)).toEqual(["RX420"]);
   });
+
+  // Review round 2 on #5389: the detector's positions count UTF-16 units, and an
+  // emoji is two of them. Typed before a model on a phone keyboard, each one
+  // shifted the masking by a character and left the model's head behind as a
+  // "number" the detector does not read (GS11N out of GS11N-20P2).
+  it.each([
+    "😀 Which parameter sets acceleration time on the GS11N-20P2?",
+    "😀😀😀😀😀 GS11N-20P2 will not start",
+    "⚠️🔧🔧🔧🔧🔧🔧 Wiring for the Micro820-20QBB",
+    "👍🏽👍🏽👍🏽 Micro850-48QWB supply",
+    "GS11N-20P2 😀😀😀😀😀😀 Micro820-20QBB",
+  ])("an emoji before a detector-read number does not shift the masking: %s", (text) => {
+    expect(asked(text).map((n) => n.key)).toEqual([]);
+  });
+
+  it("an emoji before an unread number leaves it whole, and the rest of the text as typed", () => {
+    expect(asked("😀😀😀 Wire the Micro820 to the RX420 😀").map((n) => n.label)).toEqual(["RX420"]);
+    expect(asked("😀😀😀 coil voltage of the CA3KN22BD").map((n) => n.label)).toEqual(["CA3KN22BD"]);
+  });
 });
 
 describe("a title line, and what is not one", () => {

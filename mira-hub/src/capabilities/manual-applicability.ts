@@ -186,7 +186,10 @@ export const sameModelFamily = sameFamily;
  *  the detector reads is left to the existing check, whole: "GS11N-20P2" must
  *  not come back as a leftover "20P2". */
 export function unlistedModelNumbers(text: string): ModelNumber[] {
-  const chars = [...text];
+  // UTF-16 units, not code points: the detector's positions and `text[i]` below
+  // count units, and an emoji is two. Only letters, digits and hyphens are ever
+  // blanked, so a surrogate pair is never split.
+  const chars = text.split("");
   const blank = (start: number, end: number) => {
     let s = start;
     let e = end;
