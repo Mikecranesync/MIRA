@@ -29,9 +29,9 @@ import {
  *     sentence punctuation, not part of a sentence that wraps from the line
  *     above or onto the line below, and a product or document noun beside it
  *     (or nothing on the line but numbers). Prose shows nothing;
- *   - a word is read as it prints and by its parts: "not-covered",
- *     "NOT_SUPPORTED", "NotSupported" and "isn't" are negations, whatever joins
- *     them (review round 2 on #5389);
+ *   - a joined word is read by its parts: "not-covered", "NOT_SUPPORTED" and
+ *     "isn't" are negations, whatever joins them, and so is "NotSupported" on
+ *     the model's own line (review round 2 on #5389);
  *   - an exclusion is recognised by a listed word, phrase or mark ("not",
  *     "excluded", "n/a", "out of scope", a cross). A word no list holds is a
  *     maker, a range or an adjective, as on real covers. Asking that every
@@ -71,7 +71,14 @@ import {
  *     that carries no negation ("Models this guide leaves to others:"); "RX420
  *     Guide NF22" on a sibling's cover; a second title stacked directly under
  *     the first with no heading between; and an exclusion heading with no
- *     colon two or more lines up. No finite word list closes this. Forty-one
+ *     colon two or more lines up. A LISTED word is not read either when it is
+ *     written in full-width letters ("ｎｏｔ", "N／A"); run together on the
+ *     line below ("NotSupported by this manual"); wrapped in emphasis or quote marks
+ *     ("**not covered**"); letter-spaced; typed "N / A"; a phrase wrapped
+ *     over two lines ("End of" / "life"); "no." after a colon at the end of
+ *     the line; in a heading more than six lines up or one that does not end
+ *     in a colon; or under the last of three stacked models.
+ *     No finite word list closes this. Forty-one
  *     more words (false, invalid, skipped, TBD, elsewhere ...) and looser
  *     readings of headings and of the line below were built and withdrawn:
  *     they refused ordinary covers ("RX420 Drive Skipped Frequency Setup
@@ -89,7 +96,13 @@ import {
  *     Alternative Wiring Diagrams") or opens with a contraction ("Isn't it
  *     time to upgrade"); a joined warning or remark beside the model
  *     ("Do-Not-Open", "Non-UL-Listed", "Do-It-Yourself",
- *     "Not-Included-Accessories");
+ *     "Not-Included-Accessories", "End-of-Service Notice"). An independent
+ *     pass added more of the same kind, all under the title: "Cable not
+ *     included", "Contains no hazardous substances", "The information
+ *     contained herein is subject to change without notice", "Edition 2
+ *     supersedes edition 1", "Prices excluding VAT"; and a heading that ends
+ *     in a colon up to six lines above the title and carries a negation
+ *     ("Appelez sans frais:", "Model No:");
  *   - an accessory's manual that names the model it is for ("EtherNet/IP
  *     Adapter for RX420 Drives") is not told apart from the model's own manual;
  *   - a filename that names the asked number counts when the cover names no
@@ -304,7 +317,7 @@ const EXCLUSION_WORDS = new Set(
   ).split(" "),
 );
 const EXCLUSION_STEMS = [
-  "exclud", "exclusion", "omit", "unsupport", "unavailab", "incompatib", "discontinu", "obsolet", "deprecat",
+  "exclud", "omit", "unsupport", "unavailab", "incompatib", "discontinu", "obsolet", "deprecat",
   "supersed", "withdraw", "substitut", "alternativ",
 ];
 const JOINERS = new Set(["and", "or", "&", "+"]);
@@ -332,16 +345,13 @@ const EXCLUSION_PHRASE_RES = [
 const hasExclusionPhrase = (line: string) => EXCLUSION_PHRASE_RES.some((re) => re.test(line));
 // An abbreviation's full stop is not the end of a sentence, and "No." is a
 // label, not a negation: "Model No. RX420", "Cat. No.", "Rev. 3", "Corp.".
-// Read as written for the eye: compatibility forms folded (full-width letters,
-// a no-break space or hyphen), and characters that print as nothing removed (a
-// soft hyphen or a zero-width space inside "not" hid it from every list).
-// "No." is a label only with something after it; at the end of a line it is an
-// answer ("RX420 Logic Controller: no.").
+// The line is read as stored. Folding compatibility forms, and reading "No." at
+// the end of a line as an answer, were built and withdrawn: they refused a
+// "Catalog No." label above its number, "Nº de pedido …" and a title that
+// trails off in "…", and those covers stopped declaring their own product.
 const plain = (line: string) =>
   line
-    .normalize("NFKC")
-    .replace(/[\u00ad\u200b-\u200d\u2060\ufeff]/g, "")
-    .replace(/\b(?:no|nr)\.(?=\s+\S|\d)/gi, "number ")
+    .replace(/\b(?:no|nr)\.(?=\s|$)/gi, "number")
     .replace(/\b(rev|cat|corp|inc|ltd|co|vol|ver|ed|pub|doc|mfg|art|ref|fig|mod|dept|div)\.(?=\s|$)/gi, "$1");
 const strip = (word: string) => word.replace(/^[("'[{<]+|[)"'\]}>:;.!?]+$/g, "");
 const wordsOf = (line: string) => plain(line).split(/[\s,/]+/).map(strip).filter(Boolean);
@@ -383,7 +393,10 @@ function joinedSentenceWord(word: string, counts: (lower: string) => boolean): b
 }
 // "NotSupported", "notcovered", "unlisted", "nichtenthalten": a negation run
 // together with a word about coverage. Only those: "Notebook", "Nonius" and
-// "Universal" are ordinary words.
+// "Universal" are ordinary words. Read on the model's own line and the line
+// above it. On the line below it is not read ("RX420 Logic Controller\n
+// NotSupported by this manual" answers, where "NOT-SUPPORTED by …" refuses): a
+// known limit.
 const RUN_TOGETHER_RE = /^(?:not|non|never|no|un|nicht|kein)(.{4,})$/;
 const COVERAGE_STEMS = ["support", "cover", "includ", "contain", "list", "avail", "valid", "applic", "enthalten", "inhalt", "unterst"];
 const isCoverageWord = (lower: string) => COVERAGE_STEMS.some((stem) => lower.startsWith(stem)) || isExclusionWord(lower);
@@ -391,11 +404,11 @@ const isRunTogetherNegation = (lower: string) => {
   const rest = RUN_TOGETHER_RE.exec(lower)?.[1];
   return rest !== undefined && isCoverageWord(rest);
 };
-const isSentenceWord = (word: string): boolean => {
+const isSentenceWord = (word: string, strict = true): boolean => {
   const lower = word.toLowerCase().replace(/[’']s$/, "");
-  if (SENTENCE_WORDS.has(lower) || isExclusionWord(lower) || isRunTogetherNegation(lower)) return true;
+  if (SENTENCE_WORDS.has(lower) || isExclusionWord(lower) || (strict && isRunTogetherNegation(lower))) return true;
   // "not-RX420": a word hyphenated to a model number is read by its parts.
-  return word.includes("-") && modelNumbersIn(word).length > 0 && word.split("-").some((part) => part !== word && isSentenceWord(part));
+  return word.includes("-") && modelNumbersIn(word).length > 0 && word.split("-").some((part) => part !== word && isSentenceWord(part, strict));
 };
 // "May 2021", "12 May 2021", "May 12, 2021": the month, not the verb.
 const isMonthMay = (words: string[], i: number) => words[i].toLowerCase() === "may" && /^(?:\d{1,2}|(?:19|20)\d{2})$/.test(words[i + 1] ?? "");
@@ -416,16 +429,18 @@ const isNotationNoun = (words: string[], i: number): boolean => {
   const paired = [-1, 1].some((d) => pairs.includes(at(d)) || (at(d) === "+" && pairs.includes(at(2 * d))));
   return /^\d{1,2}$/.test(at(-1)) || paired;
 };
-const sentenceWordAt = (words: string[], i: number) => isSentenceWord(words[i]) && !isMonthMay(words, i) && !isNotationNoun(words, i);
+const sentenceWordAt = (words: string[], i: number, strict = true) => isSentenceWord(words[i], strict) && !isMonthMay(words, i) && !isNotationNoun(words, i);
 const countsAsSentence = (lower: string) => SENTENCE_WORDS.has(lower) || isExclusionWord(lower) || isRunTogetherNegation(lower);
 const countsAsNegation = (lower: string) =>
   NEGATION_WORDS.has(lower) || EXCLUSION_STEMS.some((stem) => lower.startsWith(stem)) || isRunTogetherNegation(lower);
-/** `strict` (see isTitleLine): any sentence word inside a joined word counts;
- *  otherwise only a negation or an exclusion does. */
+/** `strict`: see isTitleLine. Not strict is the reading the declared-product
+ *  check had before review round 2 on #5389. One thing differs, because both
+ *  readings strip the same brackets: a listed negation in curly or angle
+ *  brackets is read there too ("RX420 {not covered}" declares nothing). */
 const hasSentenceWord = (line: string, strict = true) => {
   const words = wordsOf(line);
-  const counts = strict ? countsAsSentence : countsAsNegation;
-  return hasExclusionPhrase(plain(line)) || words.some((_, i) => sentenceWordAt(words, i)) || joinedTokens(line).some((t) => joinedSentenceWord(t, counts));
+  if (!strict) return /\bw\/o\b/i.test(line) || words.some((_, i) => sentenceWordAt(words, i, false));
+  return hasExclusionPhrase(plain(line)) || words.some((_, i) => sentenceWordAt(words, i)) || joinedTokens(line).some((t) => joinedSentenceWord(t, countsAsSentence));
 };
 /** A negation or an exclusion anywhere on the line. */
 const hasNegation = (line: string) => {
@@ -459,8 +474,11 @@ const hasTitleNoun = (line: string) => wordsOf(line).some((w) => TITLE_NOUNS.has
  *     for an exclusion too (declaresAsTitle).
  *   - "does this cover DECLARE a product?" (coverDeclaredNumbers), asked when
  *     the notebook is set up for a machine. A miss there lets another product's
- *     manual answer, so that reading keeps the rule it had before review round
- *     2 on #5389 and gains only what recognises a negation ("not-covered").
+ *     manual answer, so that reading is the one it had before review round 2
+ *     on #5389 (but for curly and angle brackets, stripped in both readings:
+ *     see hasSentenceWord). A draft that read joined negations and exclusion
+ *     phrases there too was withdrawn: covers stopped declaring their own
+ *     product ("Version N/A" above the title, "Do-It-Yourself" below it).
  *
  * Neither reading asks that every word be a known title word. That was tried
  * for bracketed notes, tails, labels and trailing words and withdrawn: it
@@ -481,7 +499,7 @@ export function isTitleLine(input: string, strict = true): boolean {
   const raws = line.split(/[\s,/]+/);
   for (let i = 0; i < raws.length; i++) {
     const isNumber = isWholeNumber(strip(raws[i]));
-    if ((numberSeen || isNumber) && (raws[i].includes(":") || /^[‐-―−-]+$/.test(raws[i]))) {
+    if ((numberSeen || isNumber) && (raws[i].includes(":") || /^[—–-]+$/.test(raws[i]))) {
       const tail = raws.slice(i + 1).join(" ");
       return modelNumbersIn(tail).length === 0 && hasTitleNoun(line);
     }
@@ -506,10 +524,6 @@ function continuesSentence(below: string): boolean {
   // "CAN Interface Module" is a part, "Can be found in …" is a sentence.
   const acronym = (words[0] ?? "") === "CAN" && /[a-z]/.test(below);
   if ((PREDICATE_WORDS.has(first) && !isMonthMay(words, 0) && !acronym && !isNotationNoun(words, 0)) || isExclusionWord(first)) return true;
-  // "NOT-SUPPORTED by this manual": the same first word, written joined.
-  const opening = joinedTokens(below)[0] ?? "";
-  const opens = strip(plain(below).trim().split(/[\s,/]+/)[0] ?? "") === opening;
-  if (opens && joinedSentenceWord(opening, (p) => PREDICATE_WORDS.has(p) || countsAsNegation(p))) return true;
   return POINTER_WORDS.has(first) && modelNumbersIn(below).length === 0;
 }
 
@@ -540,8 +554,10 @@ function declaresAsTitle(lines: string[], at: number, end: number, line: string,
     const endsInColon = (l: string) => /:\s*$/.test(plain(l)) && !isProductLine(l);
     if (lines.slice(0, at).filter((l) => l.trim()).slice(-HEADING_REACH).some((l) => endsInColon(l) && hasNegation(l))) return false;
     // A word broken across two lines ("… Controller unsup-\nported", "… ex-\ncluding RX420") is read whole.
+    // The look-behind starts the match at the start of the run of letters only:
+    // without it a long run with no hyphen was scanned once per letter.
     const broken = (upper: string | undefined, lower: string | undefined) => {
-      const head = /(\p{L}+)[-‐‑]\s*$/u.exec(plain(upper ?? ""))?.[1];
+      const head = /(?<!\p{L})(\p{L}+)[-‐‑]\s*$/u.exec(plain(upper ?? ""))?.[1];
       const rest = /^\s*(\p{L}+)/u.exec(plain(lower ?? ""))?.[1];
       return head !== undefined && rest !== undefined && countsAsSentence(`${head}${rest}`.toLowerCase());
     };
@@ -682,8 +698,8 @@ const isPublicationNumber = (n: ModelNumber) => n.label.split("-").some((part) =
  *     stacked directly under it; a rating table or a "related publications"
  *     list further down is never read ("AC-15", "C300, R150");
  *   - that line must be a title (declaresAsTitle, not strict: see
- *     isTitleLine); prose declares nothing, and neither does a line that
- *     carries a negation ("RX420 (not-covered)");
+ *     isTitleLine); prose declares nothing. A joined negation is not read
+ *     here: "RX420 (not-covered)" declares RX420, as it did before;
  *   - a publication or document number is not a product: a line labelled as
  *     one, a publication-type group, or six digits in a row.
  * A photo reading the product wrote has no cover and declares nothing (a file

@@ -540,12 +540,15 @@ describe("an exclusion joined to another word shows no coverage, wherever it sit
     expect(kindOf(verdict(ASK, `Hardware User Guide\n${cap(w)} models:\nRX420 Logic Controller`))).toBe("coverage-not-shown");
     expect(kindOf(verdict(ASK, `Hardware User Guide\n${cap(w)} models\nRX420 Logic Controller`))).toBe("coverage-not-shown");
   });
-  it.each(JOINED)("and it declares no product either: %s", (w) => {
+  // What the cover DECLARES (read when the question names no number) is left
+  // as it was: there a product the cover no longer declares lets another
+  // machine's notebook be answered from this manual.
+  it.each(JOINED.filter((w) => !w.includes("RX420")))("and the cover declares what it did before: %s", (w) => {
     for (const heading of [
       `Hardware User Guide\nRX420 (${w})`,
       `RX420 Logic Controller\n${w.toUpperCase()} by this manual`,
       `Hardware User Guide\n${cap(w)} models:\nRX420 Logic Controller`,
-    ]) expect(coverDeclaredNumbers(heading), heading).toEqual([]);
+    ]) expect(coverDeclaredNumbers(heading).map((n) => n.label), heading).toEqual(["RX420"]);
   });
 
   // The three covers in the finding, word for word.
@@ -556,7 +559,6 @@ describe("an exclusion joined to another word shows no coverage, wherever it sit
   ])("the reviewer's cover: %j", (heading) => {
     expect(verdict(ASK, heading)).toEqual({ admit: false, kind: "coverage-not-shown", asked: ["RX420"], declared: [] });
     expect(manualCoversNumber(asked(ASK)[0], heading, OPAQUE)).toBe(false);
-    expect(coverDeclaredNumbers(heading)).toEqual([]);
   });
 
   it.each([
@@ -571,7 +573,6 @@ describe("an exclusion joined to another word shows no coverage, wherever it sit
   it.each([
     ["a soft hyphen", "RX420 Logic Controller n­ot"],
     ["a zero-width space", "RX420 Logic Controller n​ot"],
-    ["full-width letters", "RX420 Logic Controller ｎｏｔ"],
     ["a no-break hyphen and a no-break space", "RX420 Logic Controller not‑supported"],
   ])("a negation is read as it prints: %s", (_why, line) => {
     expect(kindOf(verdict(ASK, `Hardware User Guide\n${line}`))).toBe("coverage-not-shown");
@@ -611,7 +612,6 @@ describe("a remark beside the model written with a listed word, phrase or mark s
     ["square brackets", "Hardware User Guide\nRX420 Logic Controller [dealer only]"],
     ["curly brackets", "Hardware User Guide\nRX420 Logic Controller {not covered}"],
     ["angle brackets", "Hardware User Guide\nRX420 Logic Controller <not covered>"],
-    ["an answer after a colon", "Hardware User Guide\nRX420 Logic Controller: no."],
     ["abbreviated exclusion", "Hardware User Guide\nExcl. RX420 Logic Controller"],
     ["not equal", "Hardware User Guide\nRX420 Logic Controller ≠ this manual"],
   ])("refuses, coverage not shown: %s", (_why, heading) => {
@@ -656,8 +656,9 @@ describe("an exclusion written as a mark, run together or broken across lines", 
 
 // coverDeclaredNumbers answers a different question ("is this manual for some
 // OTHER product than the notebook's machine?"), and a miss there lets the manual
-// answer. So it reads a negation on the title line as the asked-number check
-// does, and nothing stricter: the lines around the title are not read for one.
+// answer. So this change leaves it alone, but for one thing pinned at the end
+// of this block. An earlier draft made it read these negations too, and an
+// independent pass showed covers that stopped declaring their own product.
 describe("what a cover declares when no number was asked", () => {
   const labels = (heading: string) => coverDeclaredNumbers(heading).map((n) => n.label);
   it.each([
@@ -676,9 +677,33 @@ describe("what a cover declares when no number was asked", () => {
     "Hardware User Guide\nRX420 Logic Controller n­ot",
     "Hardware User Guide\nRX420 Logic Controller n​ot",
     "Hardware User Guide\nRX420 Logic Controller ｎｏｔ",
-  ])("a negation declares nothing: %j", (heading) => {
-    expect(labels(heading)).toEqual([]);
+  ])("a negation the asked-number check refuses is still declared: %j", (heading) => {
+    expect(kindOf(verdict("RX420 supply voltage?", heading))).toBe(heading.includes("ｎｏｔ") ? "answers" : "coverage-not-shown");
+    expect(labels(heading)).toEqual(["RX420"]);
   });
+  // Red on the unpushed second rework (970d26cbe), which declared nothing here.
+  it.each([
+    ["a label line ending in No.", "Catalog No.\n25B-D010N104\nPowerFlex 525 Adjustable Frequency AC Drive\nUser Manual", ["25B-D010N104"]],
+    ["the Spanish number sign", "PowerFlex 525 Drive Nº 25B-D010N104\nManual do usuário", ["25B-D010N104"]],
+    ["a range typed with a minus sign", "RX410 \u2212 RX430 Logic Controllers\nUser Manual", ["RX410", "RX430"]],
+    ["a range typed with a no-break hyphen", "RX410 \u2011 RX430 Logic Controllers\nUser Manual", ["RX410", "RX430"]],
+    ["N/A as a field value above the title", "Version N/A\n\nRX420 Drive User Manual\nUser Manual", ["RX420"]],
+    ["a joined remark below the title", "RX420 Drive User Manual\nDo-It-Yourself", ["RX420"]],
+    ["an end-of-service notice above the title", "End-of-Service Notice\nRX420 Drive User Manual", ["RX420"]],
+    ["an exclusion-zone sensor", "Banner ZSX100 Exclusion Zone Radar Sensor\nInstruction Manual", ["ZSX100"]],
+  ])("the cover declares what it did before this change: %s", (_why, heading, declared) => {
+    expect(labels(heading)).toEqual(declared);
+  });
+  // The one difference from the commit before, measured on 52,089 covers from
+  // the independent pass and 6,933 of this change's own: curly and angle
+  // brackets are stripped in both readings, so a listed negation inside them
+  // is read here too.
+  it.each(["RX420 Logic Controller {not covered}", "Hardware User Guide\nRX420 Logic Controller <not covered>"])(
+    "a listed negation in curly or angle brackets declares nothing: %j",
+    (heading) => {
+      expect(labels(heading)).toEqual([]);
+    },
+  );
   it.each([
     ["a remark on coverage under the title", "RX420 Drive User Manual\nThis drive is not covered here"],
     ["not applicable, alone under the title", "RX420 Drive User Manual\nN/A"],
@@ -947,6 +972,56 @@ describe("ordinary covers the unpushed first rework refused still answer", () =>
     "RX420 Drive User Manual\nWarning: not for use in hazardous locations",
   ])("%j", (heading) => {
     expect(kindOf(verdict("RX420 fault F004?", heading, "NF0000021.pdf"))).toBe("answers");
+  });
+});
+
+// An independent pass on the unpushed second rework (970d26cbe) found cover
+// shapes seen on real manuals that it refused and the commit before answered.
+// Each row is red on 970d26cbe.
+describe("real cover shapes the second rework refused still answer", () => {
+  it.each([
+    ["a label line ending in No., the number below", "25B-D010N104", "Catalog No.\n25B-D010N104\nPowerFlex 525 Adjustable Frequency AC Drive\nUser Manual"],
+    ["the same, Model No.", "25B-D010N104", "Model No.\n25B-D010N104\nUser Manual"],
+    ["the Spanish number sign before the number", "6SL3210-1KE12-3UB2", "SINAMICS G120C\nNº de pedido 6SL3210-1KE12-3UB2\nInstrucciones de servicio"],
+    ["the same on the title line", "25B-D010N104", "PowerFlex 525 Drive Nº 25B-D010N104\nManual do usuário"],
+    ["a title that trails off in an ellipsis", "ACS580-01-12A6-4", "ACS580-01-12A6-4 Drive Manual …"],
+    ["a range typed with a minus sign", "RX410", "RX410 \u2212 RX430 Logic Controllers\nUser Manual"],
+    ["a range typed with a no-break hyphen", "RX410", "RX410 \u2011 RX430 Logic Controllers\nUser Manual"],
+    ["an exclusion-zone sensor", "ZSX100", "Banner ZSX100 Exclusion Zone Radar Sensor\nInstruction Manual"],
+    ["a joined product phrase opening the line below", "RX420", "RX420 Logic Controller\nDo-It-Yourself Installation Guide"],
+  ])("%s", (_why, number, heading) => {
+    expect(kindOf(verdict(`${number} supply voltage?`, heading))).toBe("answers");
+  });
+
+  // One pattern backtracked on a long run of letters: 0.9 s at 40,000 letters.
+  it("a title line that ends in one very long run of letters is read at once", () => {
+    const heading = `RX420 Logic Controller ${"a".repeat(40000)}`;
+    const started = performance.now();
+    verdict("RX420 supply voltage?", heading);
+    expect(performance.now() - started).toBeLessThan(250);
+  });
+});
+
+// KNOWN WRONG-ADMIT, open: a LISTED word the rules do not read where or how it
+// is written. Each row answered on the commit before this change too.
+describe("known limit: a listed word written or placed where it is not read", () => {
+  it.each([
+    ["full-width letters", "Hardware User Guide\nRX420 Logic Controller ｎｏｔ"],
+    ["full-width, on the line below", "RX420 Logic Controller\nｎｏｔ covered"],
+    ["a full-width slash in N/A", "Hardware User Guide\nRX420 Logic Controller N／A"],
+    ["an answer after a colon", "Hardware User Guide\nRX420 Logic Controller: no."],
+    ["run together, alone on the line below", "RX420 Logic Controller\nNotSupported"],
+    ["run together, opening the line below", "RX420 Logic Controller\nNotSupported by this manual"],
+    ["emphasis marks around it", "Hardware User Guide\nRX420 Logic Controller **not covered**"],
+    ["curly quotes around it", "Hardware User Guide\nRX420 Logic Controller “not covered”"],
+    ["letters spaced out", "RX420 Logic Controller\nN O T  C O V E R E D"],
+    ["N/A typed with spaces", "Hardware User Guide\nRX420 Logic Controller N / A"],
+    ["a phrase wrapped over two lines", "RX420 Logic Controller\nEnd of\nlife"],
+    ["a heading seven lines up", "Not covered:\nA\nB\nC\nD\nE\nF\nG\nRX420 Logic Controller"],
+    ["a heading that ends in a dash, not a colon", "Not covered in this guide -\nHardware\nRX420 Logic Controller"],
+    ["under the last of three stacked models", "RX410 Logic Controller\nRX420 Logic Controller\nRX430 Logic Controller\nnot covered"],
+  ])("%s", (_why, heading) => {
+    expect(kindOf(verdict("RX420 supply voltage?", heading))).toBe("answers");
   });
 });
 
