@@ -348,6 +348,36 @@ describe("the PLC, typed with both lines of its plate", () => {
     expect(propose(typed)).toBeNull();
   });
 
+  // Codex round 3 on #5387 (F4): a product line the shared vocabulary names in
+  // TWO words. Each word alone is an everyday one ("point", "flex", "compact",
+  // "I/O"), so reading word by word never saw the line.
+  it.each([
+    ["POINT I/O", "Allen-Bradley Micro820 2080-LC20-20QBB and a POINT I/O rack both faulted, which manual should I use?"],
+    ["FLEX I/O", "Allen-Bradley Micro820 2080-LC20-20QBB and a FLEX I/O rack both faulted, which manual should I use?"],
+    ["Compact I/O", "Allen-Bradley Micro820 2080-LC20-20QBB and a Compact I/O rack both faulted, which manual should I use?"],
+    ["lower case, no slash", "Allen-Bradley Micro820 2080-LC20-20QBB and the point io rack"],
+    ["in brackets", "Allen-Bradley Micro820 2080-LC20-20QBB (POINT I/O)"],
+    ["beside the relay", "Schneider Electric TeSys K CA3KN22BD next to the Flex I/O"],
+    // A limit, not a second machine: the two words can also describe the controller's own I/O.
+    ["limit: the two words about the machine's own I/O", "Allen-Bradley Micro820 2080-LC20-20QBB compact I/O fault"],
+  ])("a second product line named in two words beside a newly proposed machine proposes nothing: %s", (_why, typed) => {
+    expect(propose(typed)).toBeNull();
+  });
+
+  // Each of those words on its own, or beside another word, is not a product line.
+  it.each([
+    ["Allen-Bradley Micro820 2080-LC20-20QBB trips at the same point every cycle"],
+    ["Allen-Bradley Micro820 2080-LC20-20QBB is wired through flex conduit"],
+    ["Allen-Bradley Micro820 2080-LC20-20QBB is a compact controller"],
+    ["Allen-Bradley Micro820 2080-LC20-20QBB I/O fault light is on"],
+    ["Allen-Bradley Micro820 2080-LC20-20QBB has a point I can not reach"],
+    // Two-word device phrases the vocabulary also holds are not product lines.
+    ["Allen-Bradley Micro820 2080-LC20-20QBB drives a servo motor"],
+    ["Allen-Bradley Micro820 2080-LC20-20QBB reads a proximity sensor and a load cell"],
+  ])("control: one machine with those words used plainly is still proposed: %s", (typed) => {
+    expect(propose(typed)).toEqual({ manufacturer: "Allen-Bradley", model: "820" });
+  });
+
   // The plain spelling of the device words a technician uses around ONE machine
   // is not a product line. Other spellings (plural, hyphen, slash) are the
   // limit rows above.

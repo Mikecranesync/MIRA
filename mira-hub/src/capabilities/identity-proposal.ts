@@ -585,7 +585,10 @@ function namesAnotherMaker(message: string, manufacturer: string, corpus: readon
  *    mention scan asks about a word followed by a number. A technology or
  *    device word ("drive", "PLC", "servo") is not a product line. A range name
  *    directly before the proposed model is the machine's own; named again
- *    without it, it gives no card.
+ *    without it, it gives no card. An I/O line the vocabulary names in two
+ *    words ("POINT I/O", "FLEX I/O", "Compact I/O") is read as the pair: each
+ *    word alone is an everyday one. Other two-word entries of the vocabulary
+ *    ("servo motor", "load cell") are device words, not product lines.
  */
 function namesAnotherProductLine(message: string, model: string): boolean {
   const chosen = canonicalModel(model);
@@ -595,6 +598,8 @@ function namesAnotherProductLine(message: string, model: string): boolean {
     .filter(Boolean);
   return tokens.some((t, i) => {
     const upper = t.toUpperCase();
+    const next = tokens[i + 1];
+    if (GENERIC_TECH_WORDS.has(upper) && next && !/\d/.test(next) && inferEquipmentType({ modelNumber: `${t} ${next}` }) === "I/O") return true;
     if (RANGE_WORDS.has(upper)) {
       const after = RANGE_MEMBER_RE.test(tokens[i + 1] ?? "") ? tokens[i + 2] : tokens[i + 1];
       return !after || !sameMachine(after, model, chosen);
