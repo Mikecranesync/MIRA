@@ -10,10 +10,10 @@
 
 | Surface | Count |
 |---|---|
-| Pages | **70** (12 dynamic) |
+| Pages | **71** (12 dynamic) |
 | API routes | **205** (85 dynamic) |
 
-## Pages (70)
+## Pages (71)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -81,6 +81,7 @@
 | `/upgrade` | static | `(hub)/upgrade/page.tsx` |
 | `/usage` | static | `(hub)/usage/page.tsx` |
 | `/v3` | static | `v3/page.tsx` |
+| `/v3/source` | static | `v3/source/page.tsx` |
 | `/visual` | static | `(hub)/visual/page.tsx` |
 | `/visual/[id]` | dynamic | `(hub)/visual/[id]/page.tsx` |
 | `/workflows` | static | `(hub)/workflows/page.tsx` |

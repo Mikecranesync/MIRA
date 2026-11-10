@@ -3,8 +3,8 @@ import { citationPageLabel } from "@/lib/citation-page";
 import type { IdentityStatus } from "@/lib/equipment-notebooks";
 import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
-import { MODEL_PATTERNS, modelIdentitiesInText, resolveModelFromObservationText } from "@/capabilities/model-token";
-import gs10Pack from "@/lib/drive-packs/gs10-pack.json";
+import { FAMILY_ROOTS, MODEL_PATTERNS, ROCKWELL, familyCovers, modelIdentitiesInText, resolveModelFromObservationText } from "@/capabilities/model-token";
+import { ambiguousSiblingModels } from "@/capabilities/named-model-mismatch";
 import { embedQueryDetailed, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
 import { setSpanAttrs } from "@/capabilities/observability/tracing";
 import { logRerankFallback, orderWithPinnedHead, rerankEnabled, rerankPool, rerankScores } from "@/capabilities/reranker";
@@ -343,21 +343,9 @@ function documentCoversRequest(requested: Set<string>, title: Set<string>): bool
 // Each root also names its vendor (Codex #4484 r2 F1): a bare-number identity
 // ("850") is resolved to a family ONLY through a root of the notebook's own
 // manufacturer, so an Allen-Bradley "850" reaches MICRO850 and never ACS850.
-const ROCKWELL = /rockwell|allen[\s-]*bradley/i;
-// Reuse reviewed drive-pack membership instead of guessing a GS prefix rule.
-const GS10_MEMBERS = new RegExp(`^(?:${gs10Pack.family.aliases
-  .filter((alias) => /^GS\d{1,2}[A-Z]?$/.test(alias) && alias !== "GS10")
-  .join("|")})$`);
-const FAMILY_ROOTS: ReadonlyArray<readonly [root: string, members: RegExp, vendor: RegExp]> = [
-  ["GS10", GS10_MEMBERS, /automation\s*direct|durapulse/i],
-  ["PF520", /^PF52\d$/, ROCKWELL], // PowerFlex 520-series: 523, 525, 527
-  ["PF750", /^PF75\d$/, ROCKWELL], // PowerFlex 750-series: 753, 755 (round-2 review)
-  ["MICRO800", /^MICRO8\d0$/, ROCKWELL], // Micro800: 810, 820, 830, 850, 870
-  ["COMFORT", /^TP\d{3,4}$/, /siemens/i], // SIMATIC Comfort Panels: TP700, TP900, TP1200, …
-];
+// The table itself lives in model-token.ts (FAMILY_ROOTS), shared with the
+// close-name ambiguity check (Codex #5359 r7 F9).
 const isFamilyRoot = (id: string) => FAMILY_ROOTS.some(([root]) => root === id);
-const familyCovers = (root: string, model: string) =>
-  FAMILY_ROOTS.some(([r, members]) => r === root && members.test(model));
 
 /** Named-ask applicability (Foreman T-038 fix A): the exact-identity rule, plus
  *  a title naming a family root that covers the requested model — so "PowerFlex
@@ -1347,7 +1335,19 @@ export async function retrieveNodeChunks(
      *  failed) so the caller can put it on its own retrieval span: callers
      *  start stage spans without activating them, so setSpanAttrs() on the
      *  active span alone never reached the trace (#4548). */
-    diagnostics?: { vectorLane?: string; rerank?: string; rerankMs?: number | null; searchPath?: string };
+    diagnostics?: {
+      vectorLane?: string;
+      rerank?: string;
+      rerankMs?: number | null;
+      searchPath?: string;
+      /** CV-101 S6: set only when a named ask refused pages and EVERY refused
+       *  page declared its own model — the evidence that the notebook's manual
+       *  is for a different model than the one asked about. */
+      namedModelMismatch?: { requested: string[]; declared: string[] };
+      /** #5355: the question named two sibling models with no comparison cue;
+       *  nothing was retrieved and the reply asks which one. */
+      ambiguousModelAsk?: { named: string[] };
+    };
   },
 ): Promise<ManualChunk[]> {
   const q = query.trim();
@@ -1453,7 +1453,24 @@ export async function retrieveNodeChunks(
   //     notebook identity scopes;
   //   - neither resolves (an unparseable asset name like "CV-101", or an
   //     unbound notebook) → no filter, exactly as before.
-  const questionScoped = Boolean(requestedModel.model) && !requestedModel.ambiguous;
+  //   - #5355: a close-name model the single token cannot carry (SMC-50 vs SMC
+  //     Flex, PowerFlex 4M vs 40 — model-token.ts APPLICABILITY_ONLY_PATTERNS)
+  //     scopes the same way when it is the ONE model the question names. The
+  //     token stays null, so OEM `model_number` scoping is unchanged.
+  const closeNameIdentities =
+    !requestedModel.model && !requestedModel.ambiguous ? modelIdentitiesInText(opts.rawQuery ?? q) : new Set<string>();
+  const questionScoped =
+    (Boolean(requestedModel.model) && !requestedModel.ambiguous) || closeNameIdentities.size === 1;
+  // #5355: two sibling models of one family joined only by "or" / "/" / ","
+  // ("my SMC-50 or SMC Flex faulted — what is code 10?") is one machine named
+  // two ways. Answering from either manual guesses; ask which one instead
+  // (named-model-mismatch.ts ambiguousSiblingModels). A comparison or a
+  // two-device question keeps the unfiltered behaviour below.
+  const ambiguousSiblings = ambiguousSiblingModels(opts.rawQuery ?? q);
+  if (ambiguousSiblings) {
+    if (opts.diagnostics) opts.diagnostics.ambiguousModelAsk = { named: ambiguousSiblings };
+    return [];
+  }
   // 2026-10-18 scope pass: two more ways the notebook identity must NOT scope.
   //   - It was never confirmed by a person. `equipment_notebooks.model` and
   //     `identity_status` are independent columns (updateNotebook builds its
@@ -1476,8 +1493,15 @@ export async function retrieveNodeChunks(
         ? new Set([bareNumberFamilyRoot(notebookModel, opts.identity?.manufacturer) ?? `#${notebookModel}`])
         : modelIdentitiesInText(notebookModel)
       : new Set<string>();
+  // Codex r3 F3 on #5359: a question that names several close-name models
+  // (a comparison or a connection that passed the ambiguity check) is "names
+  // several models → no filter", like the single-token ambiguous case — the
+  // notebook identity must not narrow it back to one sibling.
   const notebookScoped =
-    !questionScoped && notebookIdentities.size > 0 && !identitiesAreFamilyOnly(notebookIdentities);
+    !questionScoped &&
+    closeNameIdentities.size < 2 &&
+    notebookIdentities.size > 0 &&
+    !identitiesAreFamilyOnly(notebookIdentities);
   // Give each attached manual its own candidate window for a model-scoped ask.
   // Otherwise a large sibling manual can consume LIMIT before applicability
   // filtering, hiding the correct manual and making a supported ask abstain.
@@ -1832,6 +1856,27 @@ export async function retrieveNodeChunks(
     : null;
   const keyOf = (r: Record<string, unknown>) =>
     JSON.stringify([r.doc_id, r.source_url, String(r.content ?? "")]);
+  // CV-101 S6: what the named-ask refusals below declared. The claim "this
+  // notebook's manual is for a different model" stands only while (a) every
+  // refused page declared its model on its own heading/cover — a filename is
+  // not a declaration (Codex #5350 F1) — and (b) EVERY selected document was
+  // refused that way: a document that returned no candidates, or whose pages
+  // were admitted, has not been shown to mismatch (Codex #5350 F2).
+  const refusedDeclared = new Set<string>();
+  const refusedDocs = new Set<string>();
+  let namedClaimPoisoned = false;
+  const publishNamedMismatch = () => {
+    if (!opts.diagnostics || !requestedIdentities) return;
+    const everyDocRefused = allowedDocIds.length > 0 && allowedDocIds.every((d) => refusedDocs.has(d));
+    if (namedClaimPoisoned || refusedDeclared.size === 0 || !everyDocRefused) delete opts.diagnostics.namedModelMismatch;
+    else opts.diagnostics.namedModelMismatch = { requested: [...requestedIdentities], declared: [...refusedDeclared] };
+  };
+  const noteNamedAskRefusal = (docId: string, headingDeclared: Set<string>) => {
+    if (headingDeclared.size === 0) namedClaimPoisoned = true;
+    for (const id of headingDeclared) refusedDeclared.add(id);
+    refusedDocs.add(docId);
+    publishNamedMismatch();
+  };
   // Admission is ONE predicate for every lane — lexical, exact-token and (item
   // 4) vector — so a chunk the vector lane finds is held to exactly the same
   // model-applicability rule as one BM25 found.
@@ -1862,7 +1907,14 @@ export async function retrieveNodeChunks(
           const heading = String(r.document_heading ?? "");
           const declared =
             titleIdentities.size === 0 && coverIsAmbiguous(heading) ? ambiguousCoverIdentities(heading) : titleIdentities;
-          if (!documentCoversNamedAsk(requestedIdentities, declared)) return false;
+          if (!documentCoversNamedAsk(requestedIdentities, declared)) {
+            // The diagnostic counts only what the document itself declares.
+            const headingDeclared = coverIsAmbiguous(heading)
+              ? ambiguousCoverIdentities(heading)
+              : modelIdentitiesInText(declaredTitle(titleSegment(heading)));
+            noteNamedAskRefusal(String(r.doc_id ?? ""), headingDeclared);
+            return false;
+          }
         } else if (
           (titleIdentities.size > 0 &&
             !documentCoversNotebook(notebookIdentities, titleIdentities, opts.identity?.manufacturer?.trim() || null)) ||
@@ -2113,7 +2165,7 @@ export async function retrieveNodeChunks(
     // rare suffix otherwise promotes specification pages over the requested
     // parameter. Keep raw retrieval, exact-code lanes and admission unchanged.
     const catalogNames = identityTokens({ model: [...(requestedIdentities ?? [])]
-      .filter((id) => isCatalogIdentity(id) && GS10_MEMBERS.test(id.split("-")[0]))
+      .filter((id) => isCatalogIdentity(id) && familyCovers("GS10", id.split("-")[0]))
       .join(" ") });
     const rawQuestion = opts.rawQuery?.trim() || q;
     const topicQuestion = rawQuestion.replace(/[a-z0-9]+/gi, (word) => catalogNames.has(word.toLowerCase()) ? " " : word);

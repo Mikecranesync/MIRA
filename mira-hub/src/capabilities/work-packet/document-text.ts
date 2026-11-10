@@ -69,6 +69,38 @@ interface UploadBytesRow {
   content: Buffer;
 }
 
+function checkAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new DOMException("PDF processing was cancelled", "AbortError");
+}
+
+/** Stop awaiting a PDF operation on cancellation. Handlers remain attached to
+ * its outcome so worker teardown cannot create an unhandled rejection. */
+function untilAbort<T>(pending: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return pending;
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => {
+      signal.removeEventListener("abort", abort);
+      reject(new DOMException("PDF processing was cancelled", "AbortError"));
+    };
+    signal.addEventListener("abort", abort, { once: true });
+    pending.then((value) => { signal.removeEventListener("abort", abort); resolve(value); },
+      (error) => { signal.removeEventListener("abort", abort); reject(error); });
+    if (signal.aborted) abort();
+  });
+}
+
+async function pdfSlot(signal?: AbortSignal): Promise<() => void> {
+  checkAborted(signal);
+  const pending = acquireIngestSlot();
+  try { return await untilAbort(pending, signal); }
+  catch (error) {
+    // The shared limiter does not remove waiters. A cancelled waiter must
+    // return its eventual grant, without fetching bytes or starting a parser.
+    void pending.then((release) => release(), () => {});
+    throw error;
+  }
+}
+
 /**
  * The kept original's own page text via unpdf — same call shape
  * (`getDocumentProxy` + `extractText(pdf, { mergePages: false })`) as
@@ -83,60 +115,89 @@ interface UploadBytesRow {
  * under a photo (`pdf-figure-lines.ts`). If reading a page's layout fails, that page simply has none, and the
  * parser treats every unplaced line on it as content (Codex #5062 F15).
  */
-async function fileDocPages(tenantId: string, fileId: string): Promise<PageText[] | null> {
-  const row = await withTenantContext(tenantId, async (c) => {
-    const res = await c.query<UploadBytesRow>(
-      `SELECT content FROM namespace_direct_uploads WHERE id = $1 AND tenant_id = $2`,
-      [fileId, tenantId],
-    );
-    return res.rows[0] ?? null;
-  });
-  if (!row) return null;
-  return pdfDocPages(new Uint8Array(row.content));
+async function fileDocPages(tenantId: string, fileId: string, signal?: AbortSignal): Promise<PageText[] | null> {
+  const release = await pdfSlot(signal);
+  try {
+    checkAborted(signal);
+    // Admit before reading/copying the kept original, not just before parsing.
+    // Waiting requests retain source IDs, never whole PDF byte buffers.
+    const row = await withTenantContext(tenantId, async (c) => {
+      const res = await c.query<UploadBytesRow>(
+        `SELECT content FROM namespace_direct_uploads WHERE id = $1 AND tenant_id = $2`,
+        [fileId, tenantId],
+      );
+      return res.rows[0] ?? null;
+    });
+    checkAborted(signal);
+    if (!row) return null;
+    return await readPdfPages(new Uint8Array(row.content), signal);
+  } finally { release(); }
 }
 
 /** A PDF's own pages: unpdf page text plus each page's layout-derived `figureLines`. Holds one
  *  shared PDF-parse slot for the whole read, released on success and on failure. */
-export async function pdfDocPages(bytes: Uint8Array): Promise<PageText[]> {
-  const release = await acquireIngestSlot();
+export async function pdfDocPages(bytes: Uint8Array, signal?: AbortSignal): Promise<PageText[]> {
+  const release = await pdfSlot(signal);
   try {
-    return await readPdfPages(bytes);
+    checkAborted(signal);
+    return await readPdfPages(bytes, signal);
   } finally {
     release();
   }
 }
 
-async function readPdfPages(bytes: Uint8Array): Promise<PageText[]> {
+async function readPdfPages(bytes: Uint8Array, signal?: AbortSignal): Promise<PageText[]> {
+  checkAborted(signal);
+  // Keep the slot until opening resolves: unpdf does not expose its loading
+  // task. A cancellation during open is checked before extraction, then the
+  // newly acquired PDF is destroyed before another parse may be admitted.
   const pdf = await getDocumentProxy(bytes);
-  const { text } = await extractText(pdf, { mergePages: false });
-  const texts = Array.isArray(text) ? text : [text];
-  const pages: PageText[] = [];
-  for (let i = 0; i < texts.length; i++) {
-    const page: PageText = { page: i + 1, text: texts[i] };
-    try {
-      const { OPS } = await getResolvedPDFJS();
-      const pg = await pdf.getPage(i + 1);
-      const content = await pg.getTextContent();
-      const items: LayoutItem[] = [];
-      for (const it of content.items) {
-        if (!("str" in it) || !("transform" in it)) continue;
-        const [, b, , d, x, y] = it.transform as number[];
-        items.push({ str: it.str, x, y, w: it.width, size: Math.round(Math.hypot(b, d) * 10) / 10 });
+  let destruction: Promise<void> | undefined;
+  const destroy = () => destruction ??= Promise.resolve().then(() => pdf.destroy());
+  const abort = () => { void destroy().catch(() => {}); };
+  signal?.addEventListener("abort", abort, { once: true });
+  try {
+    checkAborted(signal);
+    const { text } = await untilAbort(extractText(pdf, { mergePages: false }), signal);
+    const texts = Array.isArray(text) ? text : [text];
+    const pages: PageText[] = [];
+    for (let i = 0; i < texts.length; i++) {
+      checkAborted(signal);
+      const page: PageText = { page: i + 1, text: texts[i] };
+      let pg: Awaited<ReturnType<typeof pdf.getPage>> | undefined;
+      try {
+        const { OPS } = await getResolvedPDFJS();
+        pg = await untilAbort(pdf.getPage(i + 1), signal);
+        const content = await untilAbort(pg.getTextContent(), signal);
+        const items: LayoutItem[] = [];
+        for (const it of content.items) {
+          if (!("str" in it) || !("transform" in it)) continue;
+          const [, b, , d, x, y] = it.transform as number[];
+          items.push({ str: it.str, x, y, w: it.width, size: Math.round(Math.hypot(b, d) * 10) / 10 });
+        }
+        const ops = await untilAbort(pg.getOperatorList(), signal);
+        const boxes = imageBoxesFromOps(ops.fnArray, ops.argsArray, OPS);
+        page.figureLines = figureLinesForPage(items, boxes, texts[i]);
+        const figures: PageFigure[] = [];
+        for (const f of figuresForPage(items, boxes)) {
+          figures.push({ image: f.box.name ? await untilAbort(photoPng(pg, f.box.name), signal) : null, caption: f.caption });
+        }
+        if (figures.length > 0) page.figures = figures;
+      } catch (err) {
+        checkAborted(signal);
+        console.error(`[work-packet/document-text] page ${i + 1} layout read failed (no figure lines):`, err instanceof Error ? err.message : err);
+      } finally {
+        // All required captions and encoded figure bytes have been captured.
+        // Do not retain every page's operator lists/decoded images until EOF.
+        if (pg && !pg.cleanup() && !signal?.aborted) throw new Error("PDF page resources could not be released");
       }
-      const ops = await pg.getOperatorList();
-      const boxes = imageBoxesFromOps(ops.fnArray, ops.argsArray, OPS);
-      page.figureLines = figureLinesForPage(items, boxes, texts[i]);
-      const figures: PageFigure[] = [];
-      for (const f of figuresForPage(items, boxes)) {
-        figures.push({ image: f.box.name ? await photoPng(pg, f.box.name) : null, caption: f.caption });
-      }
-      if (figures.length > 0) page.figures = figures;
-    } catch (err) {
-      console.error(`[work-packet/document-text] page ${i + 1} layout read failed (no figure lines):`, err instanceof Error ? err.message : err);
+      pages.push(page);
     }
-    pages.push(page);
+    return pages;
+  } finally {
+    signal?.removeEventListener("abort", abort);
+    await destroy();
   }
-  return pages;
 }
 
 /** The decoded pixels of one page image as a PNG data URL; null if pdf.js cannot hand them over. */
@@ -218,30 +279,37 @@ async function chunkDocPages(tenantId: string, notebookId: string, docId: string
  * fails on it) falls back to its chunk text rather than dropping the document
  * — a notebook's draft should degrade, never silently lose a source.
  */
-export async function loadNotebookDocTexts(tenantId: string, notebookId: string): Promise<DocText[]> {
+export async function loadNotebookDocTexts(tenantId: string, notebookId: string, options: { signal?: AbortSignal } = {}): Promise<DocText[]> {
+  checkAborted(options.signal);
   const sources = await listSources(tenantId, notebookId);
+  checkAborted(options.signal);
   const usable = sources.filter((s) => s.enabledByDefault && s.matchState !== "rejected");
 
   const out: DocText[] = [];
   for (const s of usable) {
+    checkAborted(options.signal);
     let pages: PageText[] | null = null;
     let via: DocText["via"] = "chunks";
     if (s.fileId && UUID_RE.test(s.fileId)) {
       try {
-        const filePages = await fileDocPages(tenantId, s.fileId);
+        const filePages = await fileDocPages(tenantId, s.fileId, options.signal);
         if (filePages) {
           pages = filePages;
           via = "file";
         }
       } catch (err) {
+        checkAborted(options.signal);
+        if (err instanceof Error && err.name === "AbortError") throw err;
         console.error(
           `[work-packet/document-text] doc ${s.docId} file re-extraction failed (falling back to chunks):`,
           err instanceof Error ? err.message : err,
         );
       }
     }
+    checkAborted(options.signal);
     if (!pages) {
       pages = await chunkDocPages(tenantId, notebookId, s.docId);
+      checkAborted(options.signal);
       via = "chunks";
     }
     out.push({ docId: s.docId, fileId: s.fileId, filename: s.filename, pages, via });

@@ -10,6 +10,8 @@
  * unchanged.
  */
 
+import gs10Pack from "@/lib/drive-packs/gs10-pack.json";
+
 // #2178 — model-number detector. Extracts the drive/controller model the user is
 // asking about so retrieval can scope to THAT model's manuals, not every chunk
 // from the same vendor (a "PowerFlex 753 F005" question was citing PowerFlex 525
@@ -113,20 +115,7 @@ const CONJOINED_DIGIT_FAMILIES: ReadonlyArray<readonly [family: string, head: Re
  * #4469 F3 is a normalization bug in the CALLER's title string, not here).
  */
 export function modelIdentitiesInText(text: string): Set<string> {
-  const identities = new Set<string>();
-  MODEL_PATTERNS.forEach((pattern, i) => {
-    const family = FAMILY_KEYS[i];
-    for (const match of text.matchAll(new RegExp(pattern.source, "gi"))) {
-      const captured = (match[1] ?? match[0]).replace(/\s+/g, "").toUpperCase();
-      if (captured === "SINAMICSV20") {
-        identities.add("V20");
-      } else if (/^\d+$/.test(captured)) {
-        identities.add(`${family}${captured}`);
-      } else {
-        identities.add(captured);
-      }
-    }
-  });
+  const identities = new Set(modelMentionsInText(text).map((m) => m.id));
   // Retain exact catalog identity for applicability without changing the
   // single-token SQL/query resolver: GS11N-20P2 is not GS11N-21P0.
   // GS rating suffixes start with a number. Words after a prose/file-name
@@ -135,20 +124,6 @@ export function modelIdentitiesInText(text: string): Set<string> {
   // so a specific conflicting catalog cannot collapse to its family.
   for (const match of text.matchAll(/\b(GS\d{1,2}[a-z]?\s*-\s*\d[a-z0-9]*)\b/gi)) {
     identities.add(match[1].replace(/\s+/g, "").toUpperCase());
-  }
-  // Round-2 review on #4484: a title that lists sibling numbers after ONE
-  // family word — "PowerFlex 523 and 525", "Micro810 and 820", "ACS580/880" —
-  // was credited to the first number only, so the 525 half of a "523 and 525"
-  // manual was invisible to a PowerFlex 525 notebook. Each trailing number
-  // joined by and/&/,/or/slash inherits the family of the number before it.
-  // Applicability only: resolveModelFromObservationText (the single ILIKE
-  // token) is deliberately untouched.
-  for (const [family, head] of CONJOINED_DIGIT_FAMILIES) {
-    for (const match of text.matchAll(head)) {
-      for (const tail of match[1].matchAll(/\d{2,4}/g)) {
-        identities.add(`${family}${tail[0]}`);
-      }
-    }
   }
   // Mirror resolveModelFromObservationText's COMFORT-is-a-family-hint drop
   // (primary review, pass 2): "Comfort" alone names the PANEL FAMILY, not a
@@ -163,6 +138,84 @@ export function modelIdentitiesInText(text: string): Set<string> {
   return identities;
 }
 
+/** One model mention: its identity (modelIdentitiesInText's shape) and where it sits in the text. */
+export type ModelMention = { id: string; start: number; end: number };
+
+/**
+ * #5355 (Codex r2 on #5359): every model mention WITH its position, in text
+ * order — modelIdentitiesInText is this list's identity set. Positions let a
+ * caller read what sits BETWEEN two mentions ("SMC-50 or SMC Flex" vs
+ * "Micro820 communicating with Micro850") instead of scanning the whole
+ * question for cue words.
+ */
+export function modelMentionsInText(text: string): ModelMention[] {
+  const mentions: ModelMention[] = [];
+  MODEL_PATTERNS.forEach((pattern, i) => {
+    const family = FAMILY_KEYS[i];
+    for (const match of text.matchAll(new RegExp(pattern.source, "gi"))) {
+      const captured = (match[1] ?? match[0]).replace(/\s+/g, "").toUpperCase();
+      const id = captured === "SINAMICSV20" ? "V20" : /^\d+$/.test(captured) ? `${family}${captured}` : captured;
+      mentions.push({ id, start: match.index, end: match.index + match[0].length });
+    }
+  });
+  // Round-2 review on #4484: a title that lists sibling numbers after ONE
+  // family word — "PowerFlex 523 and 525", "Micro810 and 820", "ACS580/880" —
+  // was credited to the first number only, so the 525 half of a "523 and 525"
+  // manual was invisible to a PowerFlex 525 notebook. Each trailing number
+  // joined by and/&/,/or/slash inherits the family of the number before it.
+  // Applicability only: resolveModelFromObservationText (the single ILIKE
+  // token) is deliberately untouched.
+  for (const [family, head] of CONJOINED_DIGIT_FAMILIES) {
+    for (const match of text.matchAll(head)) {
+      const tailStart = match.index + match[0].length - match[1].length;
+      for (const tail of match[1].matchAll(/\d{2,4}/g)) {
+        const start = tailStart + tail.index;
+        mentions.push({ id: `${family}${tail[0]}`, start, end: start + tail[0].length });
+      }
+    }
+  }
+  for (const [family, pattern] of APPLICABILITY_ONLY_PATTERNS) {
+    for (const match of text.matchAll(pattern)) {
+      const end = match.index + match[0].length;
+      if (isSpacedRating(match[1], match[2], text.slice(end))) continue;
+      mentions.push({ id: `${family}${match[2].toUpperCase()}`, start: match.index, end });
+    }
+  }
+  return mentions.sort((a, b) => a.start - b.start);
+}
+
+// #5355 — close-name families the single ILIKE token cannot carry. With the
+// SMC Flex manual selected, an SMC-50 question was answered with SMC Flex fault
+// codes: no MODEL_PATTERNS entry named either starter, so the question named
+// "no model" and every manual looked model-free. PowerFlex 4 / 4M had the same
+// gap (the PowerFlex pattern needs two digits, so "4M" read as nothing and a
+// PowerFlex 40 manual answered a 4M question). These are APPLICABILITY ONLY,
+// like CONJOINED_DIGIT_FAMILIES: they are deliberately not in MODEL_PATTERNS,
+// whose token feeds `model_number ILIKE '%<token>%'` scoping — an "SMC-50"
+// token of "50" would match a PowerFlex 750's model_number, and an
+// identity-bound "SMC Flex" caller would narrow from '%SMC Flex%' to a
+// spelling the column may not store. Each identity carries its family, so
+// SMCFLEX ≠ SMC50 ≠ SMC3 and PF4 ≠ PF4M ≠ PF40 (the trailing \b keeps "40"
+// from reading as "4").
+// Codex r1+r2 on #5359: "SMC 3 phase starter" and "SMC 50 A soft starter" are
+// ratings, not models — but "reset the SMC-50 a few times" and "SMC-50 phase
+// loss" name SMC-50. So the joined spellings (SMC-50, SMC50, SMC-3, PF4M) are
+// ALWAYS models, and only a SPACED number ("SMC 50", "PowerFlex 4") followed by
+// a unit is a rating: a single-letter unit (A, V, W) must be upper-case (a
+// lower-case "a" is the article), a unit word is any case, and "phase"/"ph"
+// counts only after 3. Residual: all-lower-case "smc 50 a soft starter"
+// reads as SMC-50.
+function isSpacedRating(separator: string, model: string, after: string): boolean {
+  if (!/^\s+$/.test(separator) || !/^\d+$/.test(model)) return false;
+  if (/^[\s-]*(?:A|V|W)\b/.test(after)) return true;
+  if (/^[\s-]*(?:amps?|amperes?|volts?|vac|vdc|hp|kw|hz)\b/i.test(after)) return true;
+  return model === "3" && /^[\s-]*(?:phase|ph)\b/i.test(after);
+}
+const APPLICABILITY_ONLY_PATTERNS: ReadonlyArray<readonly [family: string, pattern: RegExp]> = [
+  ["SMC", /\bsmc([\s-]*)(flex|50|3)\b/gi], // SMC Flex / SMC-Flex, SMC-50, SMC-3
+  ["PF", /\b(?:powerflex|pf)(\s*)(4m?)\b/gi], // PowerFlex 4, PowerFlex 4M
+];
+
 /**
  * One key per model, however it was written (Codex r7 on #4360): "PF525",
  * "PowerFlex 525", "POWERFLEX 525", "powerflex 525" and the identity-proposal
@@ -176,3 +229,25 @@ export function canonicalModelKey(span: string | null | undefined): string {
   const { model } = resolveModelFromObservationText(s);
   return (model ?? s).toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
+
+/** Product families whose manual covers every member (see the scope note above
+ *  FAMILY_ROOTS' use in manual-rag.ts): root identity, member identities, vendor.
+ *  Shared so the close-name ambiguity check knows a family and its own member
+ *  are one model, not two (Codex #5359 r7 F9). */
+export const ROCKWELL = /rockwell|allen[\s-]*bradley/i;
+// Preserve the admitted drive-pack family membership in the shared table,
+// so retrieval and the current close-name ambiguity guard use one boundary.
+const GS10_MEMBERS = new RegExp(`^(?:${gs10Pack.family.aliases
+  .filter((alias) => /^GS\d{1,2}[A-Z]?$/.test(alias) && alias !== "GS10")
+  .join("|")})$`);
+export const FAMILY_ROOTS: ReadonlyArray<readonly [root: string, members: RegExp, vendor: RegExp]> = [
+  ["GS10", GS10_MEMBERS, /automation\s*direct|durapulse/i],
+  ["PF520", /^PF52\d$/, ROCKWELL], // PowerFlex 520-series: 523, 525, 527
+  ["PF750", /^PF75\d$/, ROCKWELL], // PowerFlex 750-series: 753, 755 (round-2 review)
+  ["MICRO800", /^MICRO8\d0$/, ROCKWELL], // Micro800: 810, 820, 830, 850, 870
+  ["COMFORT", /^TP\d{3,4}$/, /siemens/i], // SIMATIC Comfort Panels: TP700, TP900, TP1200, …
+];
+
+/** True when `root` is a family root and `model` is one of its members. */
+export const familyCovers = (root: string, model: string): boolean =>
+  FAMILY_ROOTS.some(([r, members]) => r === root && members.test(model));

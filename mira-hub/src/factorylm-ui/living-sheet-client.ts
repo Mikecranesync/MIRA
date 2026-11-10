@@ -217,14 +217,16 @@ export const SIGN_OUT_MARKER_KEY = "flm.sheetsignout.v1";
 /** Codex #5276 r11: how many sign-outs had finished when this page loaded,
  *  read synchronously from device storage as the module loads. A sign-out that
  *  finishes later ended this tab's session. A count, not a clock time, so a tab
- *  opened in the same millisecond as a finish is still ordered exactly. */
-const TAB_LOADED_GEN = loadedSignOutGeneration();
-function loadedSignOutGeneration(): number {
+ *  opened in the same millisecond as a finish is still ordered exactly.
+ *  #5292: null when the marker was corrupt at load, which blocks this tab's
+ *  writes until it reloads, since it cannot know which sign-outs it missed. */
+const TAB_LOADED = loadedSignOutMarker();
+function loadedSignOutMarker(): SignOutMarker | null {
   try {
     const ls = typeof window === "undefined" ? undefined : window.localStorage;
-    return ls ? parseSignOutMarker(ls.getItem(SIGN_OUT_MARKER_KEY)).gen : 0;
+    return ls ? parseSignOutMarker(ls.getItem(SIGN_OUT_MARKER_KEY)) : { gen: 0, pending: {} };
   } catch {
-    return 0;
+    return { gen: 0, pending: {} };
   }
 }
 
@@ -234,9 +236,11 @@ function loadedSignOutGeneration(): number {
 async function sheetSet(store: KvStore, key: string, value: string): Promise<boolean> {
   return withSheetWriteLock(async () => {
     // Codex #5276 r12 audit: a marker that cannot be read blocks the write,
-    // never lets it through as "no sign-out".
+    // never lets it through as "no sign-out". #5292: neither does one that
+    // reads back as something other than a marker this client wrote.
     const marker = await readBeforeWrite(store, SIGN_OUT_MARKER_KEY);
-    if (marker === null || signOutBlocksWrites(parseSignOutMarker(marker.raw))) return false;
+    const parsed = marker === null ? null : parseSignOutMarker(marker.raw);
+    if (parsed === null || signOutBlocksWrites(parsed)) return false;
     return store.set(key, value);
   });
 }
@@ -246,37 +250,51 @@ async function sheetSet(store: KvStore, key: string, value: string): Promise<boo
  *  is the id, never a clock value, so two sign-outs in the same millisecond
  *  never share it, and Cancel only ever removes its own id. Stored as a plain
  *  number when nothing is pending. */
-type SignOutMarker = { gen: number; pending: Record<string, number> };
+type SignOutMarker = { gen: number; pending: Record<string, number>; epoch?: string };
 
 /** An in-progress sign-out left behind by a closed or crashed tab stops
  *  blocking writes after this long. */
 export const SIGN_OUT_PENDING_MAX_MS = 10 * 60 * 1000;
 
-function parseSignOutMarker(raw: string | null): SignOutMarker {
-  const empty: SignOutMarker = { gen: 0, pending: {} };
-  const count = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0);
-  if (raw === null || raw.trim() === "") return empty;
-  if (Number.isFinite(Number(raw))) return { gen: count(Number(raw)), pending: {} };
+/** #5292: null when the stored text is readable but is not a marker this
+ *  client writes (bad JSON, a non-object, a bad count or lease). It blocks
+ *  writes and is replaced only by a finished sign-out, never read as empty. */
+function parseSignOutMarker(raw: string | null): SignOutMarker | null {
+  const isCount = (v: unknown): v is number => typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
+  if (raw === null || raw.trim() === "") return { gen: 0, pending: {} };
+  if (Number.isFinite(Number(raw))) return isCount(Number(raw)) ? { gen: Number(raw), pending: {} } : null;
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(raw) as { gen?: unknown; pending?: unknown };
-    if (typeof parsed !== "object" || parsed === null) return empty;
-    const pending: Record<string, number> = {};
-    if (typeof parsed.pending === "object" && parsed.pending !== null) {
-      for (const [id, at] of Object.entries(parsed.pending)) if (typeof at === "number" && Number.isFinite(at)) pending[id] = at;
-    }
-    return { gen: count(parsed.gen), pending };
+    parsed = JSON.parse(raw);
   } catch {
-    return empty;
+    return null;
   }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+  const { gen, pending, epoch, done } = parsed as { gen?: unknown; pending?: unknown; epoch?: unknown; done?: unknown };
+  // #5308: this client always writes a count. An object without one is corrupt,
+  // except the older `{ done, pending }` shape a tab from before the count may
+  // still write during rollout; its `done` must itself be empty or a count.
+  if (gen === undefined && !("done" in parsed && (done === null || isCount(done)))) return null;
+  if (gen !== undefined && !isCount(gen)) return null;
+  if (epoch !== undefined && (typeof epoch !== "string" || epoch === "")) return null;
+  if (pending !== undefined && (typeof pending !== "object" || pending === null || Array.isArray(pending))) return null;
+  const leases: Record<string, number> = {};
+  for (const [id, at] of Object.entries(pending ?? {})) {
+    if (typeof at !== "number" || !Number.isFinite(at)) return null;
+    leases[id] = at;
+  }
+  return epoch === undefined ? { gen: gen ?? 0, pending: leases } : { gen: gen ?? 0, pending: leases, epoch };
 }
 
 function serializeSignOutMarker(m: SignOutMarker): string | null {
-  if (Object.keys(m.pending).length > 0) return JSON.stringify(m);
+  // An epoch, once written, is never dropped: losing it would let a tab loaded
+  // before the repair match the marker again.
+  if (Object.keys(m.pending).length > 0 || m.epoch !== undefined) return JSON.stringify(m);
   return m.gen === 0 ? null : String(m.gen);
 }
 
 function signOutBlocksWrites(m: SignOutMarker, now = Date.now()): boolean {
-  if (m.gen > TAB_LOADED_GEN) return true;
+  if (TAB_LOADED === null || m.epoch !== TAB_LOADED.epoch || m.gen > TAB_LOADED.gen) return true;
   return Object.values(m.pending).some((at) => now - at < SIGN_OUT_PENDING_MAX_MS);
 }
 
@@ -291,7 +309,12 @@ function withSheetWriteLock<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 /** Read-modify-write of the marker under the cross-tab write lock. It counts
- *  only once the stored marker reads back with `holds` true (Codex #5276 r6). */
+ *  only once the stored marker reads back with `holds` true (Codex #5276 r6).
+ *  #5292: a stored marker that is not ours is replaced before the change, with
+ *  a new random epoch. Every tab loaded before the repair holds another epoch
+ *  (or none), so it stays blocked whatever the count or the clock says (Codex
+ *  #5297 r1 F2). The count restarts from the clock only for an older version
+ *  of this page still open in another tab, which compares counts alone. */
 function updateSignOutMarker(
   store: KvStore,
   change: (m: SignOutMarker) => void,
@@ -302,11 +325,12 @@ function updateSignOutMarker(
     // lower the count or drop another tab's in-progress sign-out.
     const current = await readBeforeWrite(store, SIGN_OUT_MARKER_KEY);
     if (current === null) return false;
-    const m = parseSignOutMarker(current.raw);
+    const m = parseSignOutMarker(current.raw) ?? { gen: Math.max(Date.now(), 1), pending: {}, epoch: newSignOutId() };
     change(m);
     const next = serializeSignOutMarker(m);
     const written = next === null ? await store.remove(SIGN_OUT_MARKER_KEY) : await store.set(SIGN_OUT_MARKER_KEY, next);
-    return written && holds(parseSignOutMarker(await tolerantGet(store, SIGN_OUT_MARKER_KEY)));
+    const stored = parseSignOutMarker(await tolerantGet(store, SIGN_OUT_MARKER_KEY));
+    return written && stored !== null && holds(stored);
   });
 }
 
@@ -785,6 +809,12 @@ export async function clearSheetDataForSignOut(
     return ok;
   };
   const lapsed = () => Date.now() - leaseAt >= SIGN_OUT_PENDING_MAX_MS;
+  // Codex #5297 r1 F1: another tab's repair of a corrupt marker drops this
+  // sign-out's entry, and a tab opened after it can save again.
+  const lost = async () => {
+    const read = await readBeforeWrite(store, SIGN_OUT_MARKER_KEY);
+    return read === null || parseSignOutMarker(read.raw)?.pending[id] !== leaseAt;
+  };
   let markerInstalled = await begin();
   const cancel = async (): Promise<false> => {
     sheetSignOutBarrier = false;
@@ -805,7 +835,7 @@ export async function clearSheetDataForSignOut(
     // queue holds the only copy of that note until the server answers, so
     // Cancel must leave storage untouched.
     if (!drained && !confirm(SIGN_OUT_STILL_SENDING_PROMPT)) return cancel();
-    if (markerInstalled && lapsed()) {
+    if (markerInstalled && (lapsed() || (await lost()))) {
       markerInstalled = await begin();
       continue; // the warning may be out of date: count and ask again
     }

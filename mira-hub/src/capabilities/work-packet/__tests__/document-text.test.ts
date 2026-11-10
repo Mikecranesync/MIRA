@@ -11,7 +11,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const { unpdfExtract, getDocumentProxyMock, poolQuery, tenantQuery, listSourcesMock } = vi.hoisted(() => ({
   unpdfExtract: vi.fn(),
-  getDocumentProxyMock: vi.fn(async () => ({})),
+  getDocumentProxyMock: vi.fn(async () => ({ destroy: vi.fn(async () => {}) })),
   poolQuery: vi.fn(),
   tenantQuery: vi.fn(),
   listSourcesMock: vi.fn(),
@@ -116,7 +116,7 @@ describe("stitchChunks", () => {
 describe("loadNotebookDocTexts", () => {
   beforeEach(() => {
     unpdfExtract.mockReset();
-    getDocumentProxyMock.mockReset().mockImplementation(async () => ({}));
+    getDocumentProxyMock.mockReset().mockImplementation(async () => ({ destroy: vi.fn(async () => {}) }));
     poolQuery.mockReset();
     tenantQuery.mockReset();
     listSourcesMock.mockReset();
@@ -245,7 +245,7 @@ describe("loadNotebookDocTexts", () => {
 describe("loadNotebookDocTexts — shared PDF-parse slot", () => {
   beforeEach(() => {
     unpdfExtract.mockReset();
-    getDocumentProxyMock.mockReset().mockImplementation(async () => ({}));
+    getDocumentProxyMock.mockReset().mockImplementation(async () => ({ destroy: vi.fn(async () => {}) }));
     poolQuery.mockReset();
     tenantQuery.mockReset();
     listSourcesMock.mockReset();
@@ -260,7 +260,7 @@ describe("loadNotebookDocTexts — shared PDF-parse slot", () => {
     const pending = loadNotebookDocTexts(TENANT_ID, NOTEBOOK_ID);
     await flush();
     await flush();
-    expect(tenantQuery).toHaveBeenCalled(); // reached the file read …
+    expect(tenantQuery).not.toHaveBeenCalled(); // no kept bytes while queued
     expect(getDocumentProxyMock).not.toHaveBeenCalled(); // … but is waiting for the slot
     releaseIngest();
     const docs = await pending;

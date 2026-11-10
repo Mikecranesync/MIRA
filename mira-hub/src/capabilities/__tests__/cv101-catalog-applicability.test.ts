@@ -23,7 +23,7 @@ function candidate(heading: string, filename = "gs10usermanual.pdf") {
   };
 }
 
-async function retrieve(heading: string, question = QUESTION, notebookModel?: string, filename?: string) {
+async function retrieve(heading: string, question = QUESTION, notebookModel?: string, filename?: string, expectCandidate = true) {
   const row = candidate(heading, filename);
   let offered = 0;
   const query = vi.fn(async (sql: string) => {
@@ -48,7 +48,8 @@ async function retrieve(heading: string, question = QUESTION, notebookModel?: st
       identityStatus: "user_confirmed" as const,
     } : {}),
   });
-  expect(offered, "the real admission path received a candidate").toBeGreaterThan(0);
+  if (expectCandidate) expect(offered, "the real admission path received a candidate").toBeGreaterThan(0);
+  else expect(offered, "identity ambiguity stops before candidate retrieval").toBe(0);
   return hits;
 }
 
@@ -142,6 +143,16 @@ describe("CV-101 supported catalog-family admission (#5285)", () => {
       expect(await retrieve(heading, "Which parameter controls acceleration time?", "GS11N-20P2")).toEqual([]);
     },
   );
+
+  it("composes GS10 family coverage with the current sibling-ambiguity guard", async () => {
+    const question = QUESTION.replace("For the GS11N-20P2 drive", "For the GS10 family GS11N-20P2 drive");
+    expect(await retrieve("DURApulse GS10 AC Drive User Manual", question)).toHaveLength(1);
+  });
+
+  it("still refuses an unresolved choice between two GS family members", async () => {
+    const question = QUESTION.replace("GS11N-20P2", "GS11N or GS13N");
+    expect(await retrieve("DURApulse GS10 AC Drive User Manual", question, undefined, undefined, false)).toEqual([]);
+  });
 
   it("does not disable the existing GS10 notebook scope when adding family membership", async () => {
     expect(await retrieve("GS20 AC Drive User Manual", "Which parameter controls acceleration time?", "GS10")).toEqual([]);

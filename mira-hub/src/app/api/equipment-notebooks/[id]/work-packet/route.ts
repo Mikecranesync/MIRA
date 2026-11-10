@@ -134,21 +134,30 @@ function toPacketDocuments(classified: Classified[], identity: Identity): Packet
   }));
 }
 
+/** Refusals known before any document read; preserve GET and draft wording. */
+function identityBlocking(identity: Identity, draft = false): WorkPacketAvailability["blocking"] {
+  if (!identityConfirmed(identity)) {
+    return {
+      reason: "identity_not_confirmed",
+      message: draft
+        ? "Confirm the equipment's identity (manufacturer and model) before drafting a job packet."
+        : "Confirm this machine's identity before preparing a job packet.",
+    };
+  }
+  if (!isSupportedManufacturer(identity.manufacturer)) {
+    return { reason: "manufacturer_not_supported", message: manufacturerRefusalMessage(identity.manufacturer) };
+  }
+  return null;
+}
+
 /** The first of the non-text-dependent refusals (see file header), or null
  *  when nothing here stops a draft — `no_task_matched` is POST-only. */
 function availabilityBlocking(
   identity: Identity,
   classified: Classified[],
 ): { reason: DraftRefusal; message: string } | null {
-  if (!identityConfirmed(identity)) {
-    return {
-      reason: "identity_not_confirmed",
-      message: "Confirm this machine's identity before preparing a job packet.",
-    };
-  }
-  if (!isSupportedManufacturer(identity.manufacturer)) {
-    return { reason: "manufacturer_not_supported", message: manufacturerRefusalMessage(identity.manufacturer) };
-  }
+  const identityBlock = identityBlocking(identity);
+  if (identityBlock) return identityBlock;
   if (classified.length === 0) {
     return {
       reason: "no_documents",
@@ -242,19 +251,28 @@ function parseWorkOrder(body: unknown): WorkOrderParse {
   };
 }
 
-export async function GET(_req: NextRequest, { params }: Params) {
+export async function GET(req: NextRequest, { params }: Params) {
   const ctx = await sessionOr401();
   if (ctx instanceof NextResponse) return ctx;
   if (!workPacketEnabled()) return NextResponse.json({ error: "not_enabled" }, { status: 404 });
   const { id } = await params;
   if (!UUID_RE.test(id)) return NextResponse.json({ error: "notebook_not_found" }, { status: 404 });
+  if (req.signal.aborted) return NextResponse.json({ error: "request_aborted" }, { status: 499 });
 
   try {
     const notebook = await getNotebook(ctx.tenantId, id);
     if (!notebook) return NextResponse.json({ error: "notebook_not_found" }, { status: 404 });
+    if (req.signal.aborted) return NextResponse.json({ error: "request_aborted" }, { status: 499 });
 
     const identity = identityOf(notebook);
-    const docs = await loadNotebookDocTexts(ctx.tenantId, id);
+    const identityBlock = identityBlocking(identity);
+    if (identityBlock || new URL(req.url).searchParams.get("metadataOnly") === "1") {
+      const body: WorkPacketAvailability = {
+        enabled: true, identity, documents: [], documentsState: "deferred", blocking: identityBlock,
+      };
+      return NextResponse.json(body);
+    }
+    const docs = await loadNotebookDocTexts(ctx.tenantId, id, { signal: req.signal });
     const classified = classifyAll(docs);
     const body: WorkPacketAvailability = {
       enabled: true,
@@ -264,6 +282,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     };
     return NextResponse.json(body);
   } catch (err) {
+    if (req.signal.aborted) return NextResponse.json({ error: "request_aborted" }, { status: 499 });
     console.error("[api/equipment-notebooks work-packet GET]", err);
     return NextResponse.json({ error: "Query failed" }, { status: 500 });
   }
@@ -275,11 +294,13 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!workPacketEnabled()) return NextResponse.json({ error: "not_enabled" }, { status: 404 });
   const { id } = await params;
   if (!UUID_RE.test(id)) return NextResponse.json({ error: "notebook_not_found" }, { status: 404 });
+  if (req.signal.aborted) return NextResponse.json({ error: "request_aborted" }, { status: 499 });
 
   let rawBody: unknown;
   try {
     rawBody = await req.json();
   } catch {
+    if (req.signal.aborted) return NextResponse.json({ error: "request_aborted" }, { status: 499 });
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
   const parsed = parseWorkOrder(rawBody);
@@ -290,6 +311,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   try {
     const notebook = await getNotebook(ctx.tenantId, id);
     if (!notebook) return NextResponse.json({ error: "notebook_not_found" }, { status: 404 });
+    if (req.signal.aborted) return NextResponse.json({ error: "request_aborted" }, { status: 499 });
 
     // SAFETY, on the work-order text only — see file header for the two gates.
     const safetyText = `${workOrder.title}\n${workOrder.description}`;
@@ -302,7 +324,9 @@ export async function POST(req: NextRequest, { params }: Params) {
     if (trigger) hazardFlags.push(hazardBanner(trigger));
 
     const identity = identityOf(notebook);
-    const docs = await loadNotebookDocTexts(ctx.tenantId, id);
+    const identityBlock = identityBlocking(identity, true);
+    if (identityBlock) return NextResponse.json({ ok: false, ...identityBlock } satisfies DraftResult, { status: 422 });
+    const docs = await loadNotebookDocTexts(ctx.tenantId, id, { signal: req.signal });
     const input: DraftInput = {
       notebookId: id,
       packetId: randomUUID(),
@@ -334,6 +358,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
     return NextResponse.json(result, { status: 200 });
   } catch (err) {
+    if (req.signal.aborted) return NextResponse.json({ error: "request_aborted" }, { status: 499 });
     console.error("[api/equipment-notebooks work-packet POST]", err);
     return NextResponse.json({ error: "Query failed" }, { status: 500 });
   }

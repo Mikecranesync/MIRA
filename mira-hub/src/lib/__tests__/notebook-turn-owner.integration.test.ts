@@ -9,7 +9,7 @@
  *     INSERT … SELECT against equipment_notebooks)
  *   - stale lease holders cannot abandon or complete a successor's request
  *
- * Run: cd mira-hub && TEST_DATABASE_URL=… npm run db:integration:setup && npx vitest run --config vitest.integration.config.ts src/lib/__tests__/notebook-turn-owner
+ * Run: cd mira-hub && MIRA_TEST_DB_CONFIRM=DISPOSABLE TEST_DATABASE_URL=… npm run db:integration:setup && npx vitest run --config vitest.integration.config.ts src/lib/__tests__/notebook-turn-owner
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -21,8 +21,15 @@ const USER_B = "user-b-integration";
 // vi.mock factories are hoisted above every import, so the pool the mock hands
 // to `@/lib/db` must itself be created in a hoisted block.
 const { pool } = await vi.hoisted(async () => {
+  const databaseUrl = process.env.TEST_DATABASE_URL;
+  if (databaseUrl) {
+    const target = new URL(databaseUrl);
+    if (process.env.MIRA_TEST_DB_CONFIRM !== "DISPOSABLE" || !["127.0.0.1", "localhost", "[::1]"].includes(target.hostname) || /prod|prd|staging/i.test(`${target.hostname} ${target.pathname}`)) {
+      throw new Error("Turn integration tests require a loopback TEST_DATABASE_URL and MIRA_TEST_DB_CONFIRM=DISPOSABLE");
+    }
+  }
   const pg = await import("pg");
-  return { pool: new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL }) };
+  return { pool: new pg.Pool({ connectionString: databaseUrl }) };
 });
 
 vi.mock("@/lib/db", () => ({ default: pool }));
@@ -34,11 +41,13 @@ import {
   NotebookNotFoundError,
   recordTurn,
 } from "../equipment-notebooks";
+import { turnsFromPersisted, type HubNotebookMeta } from "../../factorylm-ui/to-interaction";
 
 const run = process.env.TEST_DATABASE_URL ? describe : describe.skip;
 
 let nbA = "";
 let nbB = "";
+let fixtureVerified = false;
 
 async function q(sql: string, values: unknown[] = []) {
   const c = await pool.connect();
@@ -51,6 +60,12 @@ async function q(sql: string, values: unknown[] = []) {
 
 run("equipment_notebook_turns.owner_user_id (integration)", () => {
   beforeAll(async () => {
+    const ledger = await q("SELECT to_regclass('public.integration_schema_migrations') AS ledger");
+    if (!ledger.rows[0]?.ledger) throw new Error("Run db:integration:setup on the disposable fixture first");
+    const required = ["081_notebook_asset_binding.sql", "086_notebook_turn_owner.sql", "089_notebook_turn_request_claim.sql"];
+    const applied = await q("SELECT file_name FROM public.integration_schema_migrations WHERE file_name = ANY($1::text[])", [required]);
+    if (applied.rows.length !== required.length) throw new Error("Required disposable turn fixture migrations are missing");
+    fixtureVerified = true;
     const a = await q(
       `INSERT INTO equipment_notebooks (tenant_id, display_name, node_id) VALUES ($1::uuid, 'Shared conveyor', gen_random_uuid()) RETURNING id::text AS id`,
       [TENANT_A],
@@ -69,9 +84,15 @@ run("equipment_notebook_turns.owner_user_id (integration)", () => {
   });
 
   afterAll(async () => {
-    await q(`DELETE FROM equipment_notebook_turns WHERE tenant_id IN ($1::uuid, $2::uuid)`, [TENANT_A, TENANT_B]);
-    await q(`DELETE FROM equipment_notebooks WHERE tenant_id IN ($1::uuid, $2::uuid)`, [TENANT_A, TENANT_B]);
-    await pool.end();
+    try {
+      if (fixtureVerified) {
+        const ownedNotebookIds = [nbA, nbB].filter(Boolean);
+        await q(`DELETE FROM equipment_notebook_turns WHERE notebook_id = ANY($1::uuid[]) AND tenant_id IN ($2::uuid, $3::uuid)`, [ownedNotebookIds, TENANT_A, TENANT_B]);
+        await q(`DELETE FROM equipment_notebooks WHERE id = ANY($1::uuid[]) AND tenant_id IN ($2::uuid, $3::uuid)`, [ownedNotebookIds, TENANT_A, TENANT_B]);
+      }
+    } finally {
+      await pool.end();
+    }
   });
 
   it("User A's new turn is private; legacy is shared and labeled; User B sees legacy only", async () => {
@@ -98,6 +119,41 @@ run("equipment_notebook_turns.owner_user_id (integration)", () => {
     // The legacy row was never silently assigned an owner.
     const legacy = await q(`SELECT owner_user_id FROM equipment_notebook_turns WHERE tenant_id = $1::uuid AND question = 'legacy q'`, [TENANT_A]);
     expect(legacy.rows[0].owner_user_id).toBeNull();
+  });
+
+  it("round-trips the stored machine scope on a document-only answer through history and hydration", async () => {
+    const machineId = "machine-snapshot-integration";
+    await recordTurn(TENANT_A, nbA, {
+      question: "machine snapshot without telemetry",
+      answerStatus: "answered",
+      answerText: "The applicable manual defines acceleration time.",
+      enabledSourceDocIds: [], evidence: [], model: null,
+      ownerUserId: USER_A, equipmentEntityId: machineId, assetUnsPath: "qa.garage.cv_101",
+    });
+    const stored = await q("SELECT equipment_entity_id, asset_uns_path FROM equipment_notebook_turns WHERE notebook_id = $1::uuid AND question = $2", [nbA, "machine snapshot without telemetry"]);
+    expect(stored.rows[0]).toEqual({ equipment_entity_id: machineId, asset_uns_path: "qa.garage.cv_101" });
+    const own = await listTurns(TENANT_A, nbA, 50, { viewerUserId: USER_A });
+    const saved = own.find((t) => t.question === "machine snapshot without telemetry")!;
+    expect(saved).toMatchObject({ equipmentEntityId: machineId });
+    const meta: HubNotebookMeta = { notebookId: nbA, title: "CV-101", tenantId: TENANT_A, capturedAt: new Date().toISOString(), asset: { id: machineId, name: "CV-101" }, identityConfirmed: true };
+    const [, answer] = turnsFromPersisted(saved as Parameters<typeof turnsFromPersisted>[0], meta);
+    expect(answer.context).toMatchObject({ machineId, machineIdentity: "confirmed", evidenceAuthorization: "authorized" });
+    expect(answer.parts.some((p) => p.type === "machine_evidence")).toBe(false);
+    const rebound = turnsFromPersisted(saved as Parameters<typeof turnsFromPersisted>[0], { ...meta, asset: { id: "other-machine", name: "Other conveyor" } })[1];
+    expect(rebound.context).toMatchObject({ machineId, machineIdentity: "unconfirmed", evidenceAuthorization: "not_authorized" });
+    const otherUser = await listTurns(TENANT_A, nbA, 50, { viewerUserId: USER_B });
+    expect(otherUser.some((t) => t.question === saved.question)).toBe(false);
+    expect(await listTurns(TENANT_B, nbA, 50, { viewerUserId: USER_A })).toEqual([]);
+  });
+
+  it("retains telemetry fallback for a persisted empty equipment snapshot", async () => {
+    const machineId = "machine-empty-snapshot-integration";
+    const packet = { kind: "machine_evidence", assetId: machineId, anchorAt: new Date().toISOString(), pre: 30, post: 30, rowCount: 2, freshness: "unknown" } as const;
+    await recordTurn(TENANT_A, nbA, { question: "empty snapshot with telemetry", answerStatus: "answered", answerText: "Historical answer", enabledSourceDocIds: [], evidence: [packet], model: null, ownerUserId: USER_A, equipmentEntityId: "" });
+    const saved = (await listTurns(TENANT_A, nbA, 50, { viewerUserId: USER_A })).find((t) => t.question === "empty snapshot with telemetry")!;
+    expect(saved.equipmentEntityId).toBe("");
+    const meta: HubNotebookMeta = { notebookId: nbA, title: "CV-101", tenantId: TENANT_A, capturedAt: packet.anchorAt, asset: { id: machineId, name: "CV-101" }, identityConfirmed: true };
+    expect(turnsFromPersisted(saved as Parameters<typeof turnsFromPersisted>[0], meta)[1].context).toMatchObject({ machineId, machineIdentity: "confirmed", evidenceAuthorization: "authorized" });
   });
 
   it("a turn cannot be written into another tenant's notebook", async () => {
