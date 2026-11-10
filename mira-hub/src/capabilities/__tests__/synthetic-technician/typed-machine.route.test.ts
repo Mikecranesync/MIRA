@@ -231,6 +231,17 @@ describe("the technician taps \"Use its manuals\" on the card, with the work-pac
     expect(identityWrite()?.slice(0, 5)).toEqual([TENANT, NB, "Schneider Electric", "CA3KN22BD", ""]);
   });
 
+  it("control: the drive, which main already proposes, is recorded as its series", async () => {
+    const proposal = proposalIn(await ask("AutomationDirect GS11N-20P2 trips on acceleration"));
+    writeSucceeds();
+
+    const { status, body } = await confirm(proposal);
+
+    expect(status).toBe(200);
+    expect(body).toMatchObject({ ok: true, manufacturer: "AutomationDirect", model: "GS11N" });
+    expect(identityWrite()?.slice(0, 5)).toEqual([TENANT, NB, "AutomationDirect", "GS11N", ""]);
+  });
+
   it("control: a machine already confirmed as something else is not overwritten (a stale card)", async () => {
     const proposal = { manufacturer: "Allen-Bradley", model: "820" };
     tenantQuery.mockImplementation(async (sql: string) =>
