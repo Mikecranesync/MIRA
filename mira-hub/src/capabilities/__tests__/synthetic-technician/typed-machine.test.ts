@@ -147,6 +147,42 @@ describe("the PLC, typed with both lines of its plate", () => {
     expect(propose(typed)).toBeNull();
   });
 
+  // Codex round 1 on #5387 (F1): a second machine whose name has no digit in it
+  // ("SMC Flex") is invisible to the mention scan, which only sees a token with
+  // a digit. With the plate's two lines now read as one machine, the message
+  // was proposed as that machine. The shared model detector does read it, and
+  // any model it reads that is not the proposed machine now removes the card.
+  // The two wordings Codex ran are the first two rows; each proposed on the
+  // reviewed head and proposed nothing on main.
+  it.each([
+    ["the PLC plate and a digitless second machine (Codex's message)", "Allen-Bradley Micro820 2080-LC20-20QBB and an SMC Flex both faulted, which manual should I use?"],
+    ["the relay and a digitless second machine (Codex's message)", "Schneider Electric TeSys K CA3KN22BD and an SMC Flex both faulted"],
+    ["the catalog number first, the family later, and the second machine", "Allen-Bradley 2080-LC20-20QBB is the Micro820, and the SMC Flex beside it tripped"],
+    ["the relay without its range letter", "Schneider Electric TeSys CA3KN22BD and an SMC Flex both faulted"],
+    ["lower case", "Allen-Bradley Micro820 2080-LC20-20QBB and an smc flex both faulted"],
+  ])("a second machine with no digit in its name proposes nothing: %s", (_why, typed) => {
+    expect(propose(typed)).toBeNull();
+  });
+
+  // The same gap was on main for the plain wording (one line of the plate),
+  // and the same rule closes it. These two rows PROPOSE on main today; they are
+  // listed in the PR text as a behaviour change outside the two new wordings.
+  it.each([
+    ["the family alone and a digitless second machine", "Allen-Bradley Micro820 and an SMC Flex both faulted"],
+    ["the catalog number alone and a digitless second machine", "Schneider Electric CA3KN22BD and an SMC Flex both faulted"],
+  ])("the same on the plain wording, which main proposed: %s", (_why, typed) => {
+    expect(propose(typed)).toBeNull();
+  });
+
+  it("controls: the same plates without the second machine are still proposed", () => {
+    expect(propose("Allen-Bradley Micro820 2080-LC20-20QBB both lights faulted, which manual should I use?")).toEqual({
+      manufacturer: "Allen-Bradley",
+      model: "820",
+    });
+    expect(propose("Schneider Electric TeSys K CA3KN22BD faulted")).toEqual({ manufacturer: "Schneider Electric", model: "CA3KN22BD" });
+    expect(propose("Allen-Bradley Micro820 faulted")).toEqual({ manufacturer: "Allen-Bradley", model: "820" });
+  });
+
   it("a value under a serial label is not read at all: the family alone is proposed, as before", () => {
     expect(propose("Allen-Bradley Micro820 SN: 2080-LC20-20QBB")).toEqual({ manufacturer: "Allen-Bradley", model: "820" });
   });

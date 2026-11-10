@@ -193,6 +193,15 @@ describe("a blank notebook, and the technician types both lines of the PLC's pla
   it("a plate that contradicts itself is not proposed", async () => {
     expect(proposalIn(await ask("Allen-Bradley Micro850 2080-LC20-20QBB has a red fault light"))).toBeUndefined();
   });
+
+  // Codex round 1 on #5387 (F1): an explicit two-machine question. The second
+  // machine has no digit in its name, so only the shared model detector sees it.
+  it("the plate beside a second machine with no digit in its name carries no proposal", async () => {
+    const frames = await ask("Allen-Bradley Micro820 2080-LC20-20QBB and an SMC Flex both faulted, which manual should I use?");
+    expect(proposalIn(frames)).toBeUndefined();
+    expect(identityWrite()).toBeUndefined();
+    expect(acqMock.startManualAcquisition).not.toHaveBeenCalled();
+  });
 });
 
 describe("a blank notebook, and the technician types the relay the way its data sheet titles it", () => {
@@ -201,6 +210,10 @@ describe("a blank notebook, and the technician types the relay the way its data 
       manufacturer: "Schneider Electric",
       model: "CA3KN22BD",
     });
+  });
+
+  it("the relay beside a second machine with no digit in its name carries no proposal", async () => {
+    expect(proposalIn(await ask("Schneider Electric TeSys K CA3KN22BD and an SMC Flex both faulted"))).toBeUndefined();
   });
 
   it("control: a general question proposes nothing", async () => {

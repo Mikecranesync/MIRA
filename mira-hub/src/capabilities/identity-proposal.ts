@@ -27,7 +27,7 @@
  *    ("Micro820 2080-LC20-20QBB", both lines of one plate) is one machine, and
  *    the FAMILY is proposed (FAMILY_CATALOG_NUMBERS).
  */
-import { canonicalModelKey, ROCKWELL } from "@/capabilities/model-token";
+import { canonicalModelKey, modelIdentitiesInText, ROCKWELL } from "@/capabilities/model-token";
 import { resolveModelFromObservationText } from "@/lib/manual-rag";
 import { inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerSearchNames } from "@/lib/manufacturerNormalize";
@@ -500,6 +500,18 @@ export function familyNamedWithItsCatalogNumber(manufacturer: string, mentions: 
 }
 
 /**
+ * Does the message name a model the shared detector reads that is NOT the
+ * proposed machine (Codex r1 on #5387)? `modelMentions` only sees a token with
+ * a digit in it, so a product named in words alone ("SMC Flex") is invisible
+ * to it, and "… and an SMC Flex both faulted" read as one machine. The shared
+ * detector (model-token.ts) knows those names. This can only REMOVE a proposal.
+ */
+function namesAnotherRecognizedModel(message: string, model: string): boolean {
+  const chosen = canonicalModel(model);
+  return [...modelIdentitiesInText(message)].some((id) => !sameMachine(id, model, chosen));
+}
+
+/**
  * Propose a machine from the technician's free text, or null. Never throws.
  * `knownManufacturers` is the shared library's manufacturer list. Proposes ONLY
  * when exactly one (manufacturer, model) pair is named and every model mention
@@ -523,9 +535,13 @@ export function proposeIdentityFromText(
     const only = [...candidates.values()][0];
     const chosen = canonicalModel(only.model);
     const mentions = modelMentions(message, only.model);
-    if (mentions.every((m) => sameMachine(m, only.model, chosen))) return only;
-    const family = familyNamedWithItsCatalogNumber(only.manufacturer, mentions);
-    return family ? { manufacturer: only.manufacturer, model: family } : null;
+    let proposal: IdentityProposal | null = null;
+    if (mentions.every((m) => sameMachine(m, only.model, chosen))) proposal = only;
+    else {
+      const family = familyNamedWithItsCatalogNumber(only.manufacturer, mentions);
+      if (family) proposal = { manufacturer: only.manufacturer, model: family };
+    }
+    return proposal && !namesAnotherRecognizedModel(message, proposal.model) ? proposal : null;
   } catch (err) {
     console.error("[identity-proposal] failed (no proposal):", err instanceof Error ? err.message : err);
     return null;
