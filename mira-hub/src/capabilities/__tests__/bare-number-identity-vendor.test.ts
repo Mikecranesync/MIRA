@@ -158,3 +158,40 @@ describe("a bare number that is a family root's number is family-only, like its 
     expect(await ask("Micro810 Programmable Controllers User Manual", "2080-um001.pdf", "Allen-Bradley", "850")).toEqual([]);
   });
 });
+
+// Found 2026-11-10 by a read-only pass over the catalog-number work: a range
+// name beside ONE sibling on the cover is that sibling's manual. A project
+// recorded as "Micro820" refused it; the same project recorded as "820" (the
+// form the machine card stores) answered from it.
+describe("a bare number under a range name that also names a sibling is the sibling's manual", () => {
+  it.each([
+    ["820", "Micro800 Programmable Controllers Micro850 User Manual", "2080-um002.pdf"],
+    ["850", "Micro800 Programmable Controllers Micro810 User Manual", "2080-um001.pdf"],
+    ["820", "Micro800 Micro830 and Micro850 Programmable Controllers", "2080-um002.pdf"],
+    ["525", "PowerFlex 520-Series PowerFlex 523 User Manual", "520-um001.pdf"],
+  ])("Allen-Bradley %j is not answered from %j", async (model, heading, filename) => {
+    expect(await ask(heading, filename, "Allen-Bradley", model)).toEqual([]);
+  });
+
+  it.each([
+    ["820", "Micro820", "Micro800 Programmable Controllers Micro850 User Manual"],
+    ["820", "Micro820", "Micro800 Programmable Controllers Micro820 User Manual"],
+    ["820", "Micro820", "Micro800 Programmable Controllers: Micro820, Micro830, Micro850"],
+    ["820", "Micro820", "Micro800 Programmable Controllers General Instructions"],
+    ["820", "Micro820", "Micro830, Micro850, and Micro870 Programmable Controllers User Manual"],
+    ["525", "PowerFlex 525", "PowerFlex 520-Series PowerFlex 523 User Manual"],
+    ["525", "PowerFlex 525", "PowerFlex 520-Series Adjustable Frequency AC Drive User Manual"],
+    ["525", "PowerFlex 525", "PowerFlex 520-Series PowerFlex 523 and PowerFlex 525 User Manual"],
+  ])("the number %j and the name %j get the same answer for %j", async (number, name, heading) => {
+    const byNumber = (await ask(heading, "manual.pdf", "Allen-Bradley", number)).length;
+    const byName = (await ask(heading, "manual.pdf", "Allen-Bradley", name)).length;
+    expect(byNumber).toBe(byName);
+  });
+
+  it("control: the range manual, and a cover that lists the machine among its siblings, still answer", async () => {
+    expect(await ask("Micro800 Programmable Controllers General Instructions", "2080-rm001.pdf", "Allen-Bradley", "820")).toHaveLength(1);
+    expect(await ask("Micro800 Programmable Controllers Micro820 User Manual", "2080-um005.pdf", "Allen-Bradley", "820")).toHaveLength(1);
+    expect(await ask("Micro800 Programmable Controllers: Micro820, Micro830, Micro850", "2080-rm001.pdf", "Allen-Bradley", "820")).toHaveLength(1);
+    expect(await ask("PowerFlex 520-Series Adjustable Frequency AC Drive User Manual", "520-um001.pdf", "Allen-Bradley", "525")).toHaveLength(1);
+  });
+});

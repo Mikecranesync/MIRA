@@ -445,7 +445,12 @@ function documentCoversNotebook(notebook: Set<string>, title: Set<string>, manuf
         if (!vendor || !vendor.test(manufacturer)) continue;
         if (m[2] === digits) return true;
         const member = `${m[1]}${digits}`;
-        if (FAMILY_ROOTS.some(([root, members]) => t === root && members.test(member))) return true;
+        if (!FAMILY_ROOTS.some(([root, members]) => t === root && members.test(member))) continue;
+        // A title that names the range AND another member is that member's
+        // manual ("Micro800 … Micro850" is not the 820's), the rule
+        // documentCoversNamedAsk already applies to a notebook stored by name.
+        const siblings = [...withCatalogModels(title)].filter((id) => !isFamilyRoot(id) && familyCovers(t, id) && id !== member);
+        if (siblings.length === 0) return true;
       }
     }
   }
