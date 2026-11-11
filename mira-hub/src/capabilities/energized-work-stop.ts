@@ -260,16 +260,23 @@ export type EnergizedStopOptions = {
    *  its cover declares (the model reader's own identities, never the cover's
    *  words) and the numbers in the question that its cover does not list. The
    *  stop names the manual by those models and calls the numbers out. Only a
-   *  plain model name or number is ever printed; anything else is dropped. */
+   *  family name (a family word and its digits) or a plain number is ever
+   *  printed; anything else is dropped. */
   pageFrom?: { models?: readonly string[]; unlisted?: readonly string[] } | null;
 };
 
-// What may be printed from `pageFrom`: letters, digits, spaces and hyphens,
-// bounded. A model identity and a model-number token are already this shape;
-// this is the floor under them, so no caller can put prose in a safety stop.
-const PLAIN_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9 -]{1,31}$/;
-const plainNames = (names: readonly string[] | undefined): string[] =>
-  [...new Set(names ?? [])].filter((n) => PLAIN_NAME_RE.test(n)).slice(0, 3);
+// What may be printed from `pageFrom`.
+//
+// A manual is named only by a FAMILY NAME: a family word and its digits
+// (MICRO820, PF525, GS10, SMC50). The model reader also returns open-ended
+// identities (a 6AV order number, a GS catalog suffix) that are whatever the
+// customer wrote on the cover, so letters, digits and hyphens are enough to
+// carry an instruction ("6AV-OK-TO-WORK-LIVE"). Those are never printed; the
+// page is then "the cited manual's". This list only removes text.
+const FAMILY_NAME_RE = /^(?:MICRO\d{2,4}|PF\d{1,4}[A-Z]?|ACS\d{2,4}|GS\d{1,2}[A-Z]?|[AUVJ]1000|K?TP\d{2,4}|V20|SMCFLEX|SMC\d{1,2})$/;
+// A number from the technician's own question: letters, digits, spaces and
+// hyphens, bounded. One that is not this shape is still called out, unnamed.
+const PLAIN_NUMBER_RE = /^[A-Za-z0-9][A-Za-z0-9 -]{1,31}$/;
 const joined = (names: string[]) => (names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`);
 
 /**
@@ -295,10 +302,15 @@ export function energizedWorkStop(cite: LockoutCitation | null, opts: EnergizedS
   const unmatched = !unclear && opts.libraryUnmatched === true;
   const offersPage = Boolean(cite) && !unclear && !unmatched;
   const page = offersPage && cite ? citationPageLabel(cite.page) : null;
-  const models = plainNames((opts.pageFrom?.models ?? []).map(displayModelIdentity));
+  // More than three family names would be a partial list, so it is not named.
+  const families = [...new Set(opts.pageFrom?.models ?? [])].filter((id) => FAMILY_NAME_RE.test(id));
+  const models = families.length <= 3 ? families.map(displayModelIdentity) : [];
   const manual = models.length > 0 ? `The **${models.join(" / ")}** manual's` : "The cited manual's";
-  const unlisted = plainNames(opts.pageFrom?.unlisted);
-  const them = unlisted.length === 1 ? "it" : "them";
+  // Whether the call-out is said depends on what the question carried, never
+  // on what can be printed: an unprintable number must not switch it off.
+  const asked = [...new Set(opts.pageFrom?.unlisted ?? [])];
+  const named = asked.filter((n) => PLAIN_NUMBER_RE.test(n)).slice(0, 3).map((n) => `**${n}**`);
+  const them = asked.length === 1 ? "it" : "them";
   const where = unmatched
     ? "No manual is selected for this question and I can't match one to the machine you're asking about, so I'm not pointing you to a lockout page — follow your site's lockout/tagout procedure. Select or attach that machine's manual and I can look for the lockout page in it."
     : unclear
@@ -310,9 +322,13 @@ export function energizedWorkStop(cite: LockoutCitation | null, opts: EnergizedS
     : page
       ? `${manual} lockout / disconnect-power procedure is on **p.${page}** — follow that page first.`
       : `${manual} lockout / disconnect-power procedure is in the document cited below — follow it first.`;
+  const mention =
+    named.length === 0
+      ? `${asked.length === 1 ? "a number" : "numbers"} that manual's cover does not list,`
+      : `${asked.length > named.length ? `${named.join(", ")} and other numbers` : joined(named)}. That manual's cover does not list ${them},`;
   const callOut =
-    offersPage && unlisted.length > 0
-      ? `\n\nYour question mentions ${joined(unlisted.map((n) => `**${n}**`))}. That manual's cover does not list ${them}, so I can't tell whether this page covers ${them} — if ${unlisted.length === 1 ? "it is" : "they are"} a separate device, follow your site's lockout/tagout procedure for ${them}.`
+    offersPage && asked.length > 0
+      ? `\n\nYour question mentions ${mention} so I can't tell whether this page covers ${them} — if ${asked.length === 1 ? "it is" : "they are"} a separate device, follow your site's lockout/tagout procedure for ${them}.`
       : "";
   // Same posture as the lockout line: a validated page or a pointer to the
   // cited document, never the passage's own words (a poisoned manual can move

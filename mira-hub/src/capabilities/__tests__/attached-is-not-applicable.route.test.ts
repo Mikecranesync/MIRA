@@ -467,6 +467,57 @@ describe("the safety stop reads the same manuals as the question does", () => {
       expect(stop.text).not.toMatch(/jumper|torque|JP1/i);
       expect(stop.text).not.toMatch(/your manual/i);
     });
+
+    // Independent read of this change, finding 1. The model reader has
+    // open-ended patterns (a 6AV order number, a GS catalog suffix), so words a
+    // customer puts in a file name or on a cover come back from it as a
+    // "model". None of that may be printed in a stop. The name is read from
+    // the cover only, never the file name, and only a plain family name
+    // (a family word and its digits) is ever printed.
+    it.each([
+      ["a file named like an order number, on a cover that names no model", "Installation Instructions", "6AV-OK-TO-WORK-LIVE.pdf"],
+      ["a file named like a drive catalog number, on a cover that names no model", "Installation Instructions", "GS10-bypass-interlock.pdf"],
+      ["a cover titled like an order number", "6AV-OK-TO-WORK-LIVE Operating Instructions", "manual.pdf"],
+    ])("%s: the page is the cited manual's and none of those words are printed", async (_why, heading, filename) => {
+      attach({ ...RELAY_SHEET_AS_STORED, key: `crafted-${filename}-${heading.length}`, heading, filename }, LOCKOUT_PASSAGE);
+      const stop = await ask(HAZARD_ASK);
+      expect(stop.kinds).toContain("safety");
+      expect(stop.citations.length, "the page is still cited").toBeGreaterThan(0);
+      expect(stop.text).toMatch(/The cited manual's lockout \/ disconnect-power procedure is on \*\*p\./);
+      expect(stop.text).not.toMatch(/6AV|OK-TO-WORK|bypass|GS10/i);
+    });
+
+    it("a cover titled like a drive catalog number: only the family name is printed, not the words after it", async () => {
+      attach({ ...GS10, key: "crafted-gs-cover", heading: "GS10-BYPASS-INTERLOCK Drive User Manual", filename: "manual.pdf" }, LOCKOUT_PASSAGE);
+      const stop = await ask(HAZARD_ASK);
+      expect(stop.citations.length).toBeGreaterThan(0);
+      expect(stop.text).toContain("The **GS10** manual's lockout / disconnect-power procedure is on **p.");
+      expect(stop.text).not.toMatch(/bypass|interlock/i);
+    });
+
+    // Stated behaviour: the name comes from the cover. A file merely NAMED
+    // for a model, on a cover that names none, is not called that model's manual.
+    it("stated behaviour: a file named Micro820.pdf whose cover names no model is the cited manual's, not the Micro820 manual's", async () => {
+      attach({ ...RELAY_SHEET_AS_STORED, key: "named-only-by-file", heading: "Installation Instructions", filename: "Micro820.pdf" }, LOCKOUT_PASSAGE);
+      const stop = await ask(HAZARD_ASK);
+      expect(stop.citations.length).toBeGreaterThan(0);
+      expect(stop.text).toMatch(/The cited manual's lockout \/ disconnect-power procedure is on \*\*p\./);
+      expect(stop.text).not.toContain("Micro820");
+    });
+
+    // The confirmed machine's own recorded number is the only number the
+    // project record places. A look-alike of it (the same catalog line, a
+    // different unit) is another number and is called out.
+    it("a catalog number that only looks like the confirmed machine's own is still called out", async () => {
+      nbMock.getNotebook.mockResolvedValue({ ...confirmedController, catalogNumber: "2080-LC20-20QBB" });
+      attach({ ...MICRO820_SHEET_AS_STORED, key: "micro820-cover-without-numbers", heading: "Micro820 Programmable Controllers\nUser Manual", filename: "manual.pdf" }, LOCKOUT_PASSAGE);
+      const own = await ask("The 2080-LC20-20QBB is still powered up. Can I swap the fan?");
+      expect(own.citations.length).toBeGreaterThan(0);
+      expect(own.text, "the project's own recorded number is not called out").not.toMatch(/Your question mentions/);
+      const other = await ask("The 2080-LC20-20AWB is still powered up. Can I swap the fan?");
+      expect(other.citations.length, "the page is still offered").toBeGreaterThan(0);
+      expect(other.text).toContain("Your question mentions **2080-LC20-20AWB**. That manual's cover does not list it");
+    });
   });
 
   // Codex round 3 on #5389, F7. The lockout search is made with fixed lockout

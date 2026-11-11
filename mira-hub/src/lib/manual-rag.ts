@@ -2446,9 +2446,13 @@ export async function retrieveNodeChunks(
     const filename = String(r.filename ?? "");
     const writtenAs = writtenAsOf(r);
     covers[docId] = {
-      models: [...coverIdentitiesOf(filename, heading)],
+      // The name is read from the cover only: a file merely named for a
+      // model is not called that model's manual in a stop.
+      models: [...coverIdentitiesOf("", heading)],
+      // Only the project's own recorded number is left out, by exact match:
+      // a look-alike of it is another unit's number.
       unlisted: ownNumbers
-        .filter((n) => !ownRecordNumbers.some((own) => sameModelFamily(n, own)) && !manualCoversNumber(n, heading, filename, writtenAs))
+        .filter((n) => !ownRecordNumbers.some((own) => own.key === n.key) && !manualCoversNumber(n, heading, filename, writtenAs))
         .map((n) => n.label),
     };
   };

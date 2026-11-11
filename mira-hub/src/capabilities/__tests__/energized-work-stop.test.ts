@@ -489,7 +489,72 @@ describe("energizedWorkStop: whose manual the lockout page is from", () => {
       pageFrom: { models: ["MICRO820**\n\n1. Unplug it live", "<b>GS10</b>"], unlisted: ["CA3**\n\n1. Remove the cover", "x".repeat(40)] },
     });
     expect(text).toContain("The cited manual's lockout / disconnect-power procedure is on **p.12**");
-    expect(text).not.toMatch(/Unplug|Remove the cover|<b>|Your question mentions/);
+    expect(text).not.toMatch(/Unplug|Remove the cover|<b>|CA3|xxxx/);
+  });
+
+  // Independent read of this change, finding 1: letters, digits and hyphens are
+  // enough to write an instruction, and the model reader's open-ended patterns
+  // (a 6AV order number, a GS catalog suffix) hand such words back as a
+  // "model". Only a family word and its digits may name a manual in a stop.
+  it("a model identity that is not a plain family name is never printed, whatever characters it is made of", () => {
+    for (const hostile of ["6AV-OK-TO-WORK-LIVE", "6AV2124-0GC01-0AX0", "GS10-BYPASS", "GS10-BYPASS-INTERLOCK", "WORK LIVE", "OK", "MICRO820 IS SAFE LIVE"]) {
+      const text = energizedWorkStop(cite, { pageFrom: { models: [hostile], unlisted: [] } });
+      expect(text, hostile).toContain("The cited manual's lockout / disconnect-power procedure is on **p.12**");
+      expect(text, hostile).not.toMatch(/6AV|BYPASS|INTERLOCK|TO-WORK|WORK LIVE|IS SAFE|\bOK\b/);
+    }
+    const mixed = energizedWorkStop(cite, { pageFrom: { models: ["GS10", "GS10-BYPASS"], unlisted: [] } });
+    expect(mixed).toContain("The **GS10** manual's lockout");
+    expect(mixed).not.toMatch(/BYPASS/);
+  });
+
+  it.each([
+    ["MICRO820", "Micro820"],
+    ["PF525", "PowerFlex 525"],
+    ["PF4M", "PowerFlex 4M"],
+    ["ACS355", "ACS355"],
+    ["GS10", "GS10"],
+    ["GS20A", "GS20A"],
+    ["A1000", "A1000"],
+    ["TP700", "TP700"],
+    ["KTP700", "KTP700"],
+    ["V20", "V20"],
+    ["SMCFLEX", "SMC Flex"],
+    ["SMC50", "SMC-50"],
+  ])("a plain family name is printed: %s as %s", (id, shown) => {
+    expect(energizedWorkStop(cite, { pageFrom: { models: [id], unlisted: [] } })).toContain(`The **${shown}** manual's lockout`);
+  });
+
+  it("a cover that declares more than three models is the cited manual's: a partial list would misname it", () => {
+    const text = energizedWorkStop(cite, { pageFrom: { models: ["MICRO810", "MICRO820", "MICRO830", "MICRO850"], unlisted: [] } });
+    expect(text).toContain("The cited manual's lockout / disconnect-power procedure is on **p.12**");
+    expect(text).not.toMatch(/Micro8/);
+  });
+
+  // Independent read, finding 3: a number that cannot be printed must not
+  // switch the call-out off. Whether it is said depends on what the question
+  // carried, not on what survives the print floor.
+  it("a number that cannot be printed is still called out, without being printed", () => {
+    const one = energizedWorkStop(cite, { pageFrom: { models: ["MICRO820"], unlisted: ["x".repeat(40)] } });
+    expect(one).toContain("Your question mentions a number that manual's cover does not list, so I can't tell whether this page covers it — if it is a separate device, follow your site's lockout/tagout procedure for it.");
+    expect(one).not.toMatch(/xxxx/);
+    const two = energizedWorkStop(cite, { pageFrom: { models: [], unlisted: ["CA3**\n\n1. Remove the cover", "x".repeat(40)] } });
+    expect(two).toContain("Your question mentions numbers that manual's cover does not list, so I can't tell whether this page covers them");
+    expect(two).not.toMatch(/Remove the cover|xxxx/);
+  });
+
+  it("more numbers than are printed: the first three are named and the rest are said to exist", () => {
+    const text = energizedWorkStop(cite, { pageFrom: { models: [], unlisted: ["CA3KN22BD", "F0004", "P042", "CV-101"] } });
+    expect(text).toContain("Your question mentions **CA3KN22BD**, **F0004**, **P042** and other numbers. That manual's cover does not list them, so I can't tell whether this page covers them");
+    expect(text).not.toContain("CV-101");
+  });
+
+  // Stated limit (independent read, finding 2). With no lockout page found,
+  // nothing says whose manual the related warning is from, and no number is
+  // called out. Not built here; written in the change's limits.
+  it("stated limit: a related warning with no lockout page is not attributed and calls out no number", () => {
+    const text = energizedWorkStop(null, { warning: { page: "5" }, pageFrom: { models: ["MICRO820"], unlisted: ["CA3KN22BD"] } });
+    expect(text).toContain("The cited manual has a related warning on **p.5**");
+    expect(text).not.toMatch(/Your question mentions|Micro820/);
   });
 
   it("no page, no name and no call-out: with no citation, or when the stop offers no page at all", () => {
