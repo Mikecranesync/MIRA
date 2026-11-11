@@ -245,6 +245,16 @@ export type EnergizedStopOptions = {
   warning?: { page: string | null } | null;
   /** The lockout-page search failed, so "no lockout page" would be a guess. */
   lookupFailed?: boolean;
+  /** Nothing says which machine the question is about and more than one
+   *  document is selected, so any page would be one document's, chosen by
+   *  rank. The stop prints no page at all (lockout or warning), whatever else
+   *  the caller passes, and says why. */
+  machineUnclear?: boolean;
+  /** No document is selected and the shared library's passages are not tied
+   *  to the machine the question is about (another model is named, or the
+   *  project has no model on record). The stop prints no page at all, lockout
+   *  or warning, whatever else the caller passes, and says why. */
+  libraryUnmatched?: boolean;
 };
 
 /**
@@ -259,8 +269,14 @@ export type EnergizedStopOptions = {
  * so no caller has to change and no future caller can reintroduce the leak.
  */
 export function energizedWorkStop(cite: LockoutCitation | null, opts: EnergizedStopOptions = {}): string {
-  const page = cite ? citationPageLabel(cite.page) : null;
-  const where = !cite
+  const unclear = opts.machineUnclear === true;
+  const unmatched = !unclear && opts.libraryUnmatched === true;
+  const page = cite && !unclear && !unmatched ? citationPageLabel(cite.page) : null;
+  const where = unmatched
+    ? "No manual is selected for this question and I can't match one to the machine you're asking about, so I'm not pointing you to a lockout page — follow your site's lockout/tagout procedure. Select or attach that machine's manual and I can look for the lockout page in it."
+    : unclear
+    ? "This notebook has more than one document and I can't tell from your question which machine's manual to use, so I'm not pointing you to a lockout page — follow your site's lockout/tagout procedure. Name the machine's model in your question and I can look for the lockout page in its own manual."
+    : !cite
     ? opts.lookupFailed
       ? "I couldn't fully search this notebook's manuals just now — follow your site's lockout/tagout procedure, and check your manual's warnings before you start."
       : "I couldn't find a lockout page in this notebook's manuals — follow your site's lockout/tagout procedure."
@@ -274,7 +290,7 @@ export function energizedWorkStop(cite: LockoutCitation | null, opts: EnergizedS
   // "Related", never "exactly this": word overlap can show a warning names the
   // same part or action, not that it covers this ask (Codex #5349 r3 F2, r4 F2),
   // so the stop claims no more than that and the technician reads the page.
-  const warning = !opts.warning
+  const warning = !opts.warning || unclear || unmatched
     ? ""
     : warningPage
       ? `\n\nYour manual has a related warning on **p.${warningPage}** — read it before you go any further.`
