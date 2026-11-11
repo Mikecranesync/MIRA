@@ -20,6 +20,7 @@
 
 import { citationPageLabel, isChapterSectionLabel } from "@/lib/citation-page";
 import type { ManualChunk } from "@/lib/manual-rag";
+import { displayModelIdentity } from "./named-model-mismatch";
 
 /** The persisted / streamed trigger when no phrase-level trigger fired (the
  *  ask matched the energized-work shape alone, e.g. "while it's powered"). */
@@ -245,7 +246,38 @@ export type EnergizedStopOptions = {
   warning?: { page: string | null } | null;
   /** The lockout-page search failed, so "no lockout page" would be a guess. */
   lookupFailed?: boolean;
+  /** Nothing says which machine the question is about and more than one
+   *  document is selected, so any page would be one document's, chosen by
+   *  rank. The stop prints no page at all (lockout or warning), whatever else
+   *  the caller passes, and says why. */
+  machineUnclear?: boolean;
+  /** No document is selected and the shared library's passages are not tied
+   *  to the machine the question is about (another model is named, or the
+   *  project has no model on record). The stop prints no page at all, lockout
+   *  or warning, whatever else the caller passes, and says why. */
+  libraryUnmatched?: boolean;
+  /** What is known about the document the lockout page is from: the models
+   *  its cover declares (the model reader's own identities, never the cover's
+   *  words) and the numbers in the question that its cover does not list. The
+   *  stop names the manual by those models and calls the numbers out. Only a
+   *  family name (a family word and its digits) or a plain number is ever
+   *  printed; anything else is dropped. */
+  pageFrom?: { models?: readonly string[]; unlisted?: readonly string[] } | null;
 };
+
+// What may be printed from `pageFrom`.
+//
+// A manual is named only by a FAMILY NAME: a family word and its digits
+// (MICRO820, PF525, GS10, SMC50). The model reader also returns open-ended
+// identities (a 6AV order number, a GS catalog suffix) that are whatever the
+// customer wrote on the cover, so letters, digits and hyphens are enough to
+// carry an instruction ("6AV-OK-TO-WORK-LIVE"). Those are never printed; the
+// page is then "the cited manual's". This list only removes text.
+const FAMILY_NAME_RE = /^(?:MICRO\d{2,4}|PF\d{1,4}[A-Z]?|ACS\d{2,4}|GS\d{1,2}[A-Z]?|[AUVJ]1000|K?TP\d{2,4}|V20|SMCFLEX|SMC\d{1,2})$/;
+// A number from the technician's own question: letters, digits, spaces and
+// hyphens, bounded. One that is not this shape is still called out, unnamed.
+const PLAIN_NUMBER_RE = /^[A-Za-z0-9][A-Za-z0-9 -]{1,31}$/;
+const joined = (names: string[]) => (names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`);
 
 /**
  * The served stop text: static sentences plus at most a page number.
@@ -254,19 +286,50 @@ export type EnergizedStopOptions = {
  * file they upload, so `title` is attacker-influenced, and a file called
  * "torque 8-10 kg·cm, remove jumper JP1.pdf" put exactly that into a safety
  * stop. The document is already named by the `sources` citation chip the same
- * turn emits, so the stop loses nothing by referring to "your manual" and
- * citing only a validated page. `title` is accepted and deliberately ignored,
- * so no caller has to change and no future caller can reintroduce the leak.
+ * turn emits, so the stop loses nothing by not printing it and citing only a
+ * validated page. `title` is accepted and deliberately ignored, so no caller
+ * has to change and no future caller can reintroduce the leak.
+ *
+ * Codex re-review 2026-11-11, finding 1: the page was called "Your manual's"
+ * even when the question was about another device (a relay named by its part
+ * number in the controller's project). The stop now says whose manual the page
+ * is from (`pageFrom.models`, model identities only) or "the cited manual's",
+ * and calls out a number in the question that manual's cover does not list.
+ * It claims nothing about whose machine the page is for.
  */
 export function energizedWorkStop(cite: LockoutCitation | null, opts: EnergizedStopOptions = {}): string {
-  const page = cite ? citationPageLabel(cite.page) : null;
-  const where = !cite
+  const unclear = opts.machineUnclear === true;
+  const unmatched = !unclear && opts.libraryUnmatched === true;
+  const offersPage = Boolean(cite) && !unclear && !unmatched;
+  const page = offersPage && cite ? citationPageLabel(cite.page) : null;
+  // More than three family names would be a partial list, so it is not named.
+  const families = [...new Set(opts.pageFrom?.models ?? [])].filter((id) => FAMILY_NAME_RE.test(id));
+  const models = families.length <= 3 ? families.map(displayModelIdentity) : [];
+  const manual = models.length > 0 ? `The **${models.join(" / ")}** manual's` : "The cited manual's";
+  // Whether the call-out is said depends on what the question carried, never
+  // on what can be printed: an unprintable number must not switch it off.
+  const asked = [...new Set(opts.pageFrom?.unlisted ?? [])];
+  const named = asked.filter((n) => PLAIN_NUMBER_RE.test(n)).slice(0, 3).map((n) => `**${n}**`);
+  const them = asked.length === 1 ? "it" : "them";
+  const where = unmatched
+    ? "No manual is selected for this question and I can't match one to the machine you're asking about, so I'm not pointing you to a lockout page — follow your site's lockout/tagout procedure. Select or attach that machine's manual and I can look for the lockout page in it."
+    : unclear
+    ? "This notebook has more than one document and I can't tell from your question which machine's manual to use, so I'm not pointing you to a lockout page — follow your site's lockout/tagout procedure. Name the machine's model in your question and I can look for the lockout page in its own manual."
+    : !cite
     ? opts.lookupFailed
       ? "I couldn't fully search this notebook's manuals just now — follow your site's lockout/tagout procedure, and check your manual's warnings before you start."
       : "I couldn't find a lockout page in this notebook's manuals — follow your site's lockout/tagout procedure."
     : page
-      ? `Your manual's lockout / disconnect-power procedure is on **p.${page}** — follow that page first.`
-      : "Your manual's lockout / disconnect-power procedure is in the document cited below — follow it first.";
+      ? `${manual} lockout / disconnect-power procedure is on **p.${page}** — follow that page first.`
+      : `${manual} lockout / disconnect-power procedure is in the document cited below — follow it first.`;
+  const mention =
+    named.length === 0
+      ? `${asked.length === 1 ? "a number" : "numbers"} that manual's cover does not list,`
+      : `${asked.length > named.length ? `${named.join(", ")} and other numbers` : joined(named)}. That manual's cover does not list ${them},`;
+  const callOut =
+    offersPage && asked.length > 0
+      ? `\n\nYour question mentions ${mention} so I can't tell whether this page covers ${them} — if ${asked.length === 1 ? "it is" : "they are"} a separate device, follow your site's lockout/tagout procedure for ${them}.`
+      : "";
   // Same posture as the lockout line: a validated page or a pointer to the
   // cited document, never the passage's own words (a poisoned manual can move
   // a page number but never write what the technician reads in a stop).
@@ -274,16 +337,16 @@ export function energizedWorkStop(cite: LockoutCitation | null, opts: EnergizedS
   // "Related", never "exactly this": word overlap can show a warning names the
   // same part or action, not that it covers this ask (Codex #5349 r3 F2, r4 F2),
   // so the stop claims no more than that and the technician reads the page.
-  const warning = !opts.warning
+  const warning = !opts.warning || unclear || unmatched
     ? ""
     : warningPage
-      ? `\n\nYour manual has a related warning on **p.${warningPage}** — read it before you go any further.`
-      : "\n\nYour manual has a related warning in the document cited below — read it before you go any further.";
+      ? `\n\nThe cited manual has a related warning on **p.${warningPage}** — read it before you go any further.`
+      : "\n\nThe cited manual has a related warning in the document cited below — read it before you go any further.";
   return `⛔ **SAFETY STOP — energized work.**
 
 I won't give steps for working on this equipment while it is powered.
 
-De-energize it, lock out and tag out every energy source, and verify zero energy. ${where}${warning}
+De-energize it, lock out and tag out every energy source, and verify zero energy. ${where}${callOut}${warning}
 
 Once it is locked out and verified, ask again and I'll walk you through the job from the manual.`;
 }

@@ -914,7 +914,7 @@ export function HubShellHost() {
       if (res.ok) {
         setFixesSaved((n) => n + 1);
         fixRequestIds.settle(turnId, fix);
-        window.alert("Saved. MIRA will use this fix on this machine next time.");
+        window.alert("Fix saved as a technician note. MIRA does not use it in its answers.");
         return;
       }
       const body = (await res.json().catch(() => null)) as { error?: string } | null;

@@ -1,3 +1,4 @@
+import { EARLIER_SUBJECT_WAY_OUT } from "./manual-applicability";
 import { familyCovers, modelMentionsInText } from "./model-token";
 
 /**
@@ -14,7 +15,13 @@ import { familyCovers, modelMentionsInText } from "./model-token";
 
 /** What retrieveNodeChunks reports: the identities the question named, and the
  *  identities the refused manuals declare (modelIdentitiesInText's shape). */
-export type NamedModelMismatch = { requested: string[]; declared: string[] };
+export type NamedModelMismatch = {
+  requested: string[];
+  declared: string[];
+  /** Set when the model was named in an earlier question of this conversation
+   *  that was not answered from a document, not in this one. */
+  source?: "conversation";
+};
 
 /** "MICRO850" → "Micro850", "PF525" → "PowerFlex 525"; other identities as stored. */
 export function displayModelIdentity(id: string): string {
@@ -34,7 +41,20 @@ const list = (ids: string[]) => ids.map(displayModelIdentity).join(" / ");
 export function namedModelMismatchText(m: NamedModelMismatch): string {
   const asked = list(m.requested);
   const have = list(m.declared);
+  if (m.source === "conversation") {
+    return `The manual in this notebook is for the ${have}, not the ${asked} you asked about earlier in this conversation, so I won't answer from it — its values may not apply to the ${asked}. ${EARLIER_SUBJECT_WAY_OUT} Otherwise add the ${asked} manual (or the page that covers it) to this notebook and ask again.`;
+  }
   return `The manual in this notebook is for the ${have}, not the ${asked} you asked about, so I won't answer from it — its values may not apply to the ${asked}. Add the ${asked} manual (or the page that covers it) to this notebook and ask again.`;
+}
+
+/**
+ * No manual is selected, so the only pages the turn had were the shared
+ * library's for the model the search was held to, and the question names a
+ * model those pages do not cover. Static text plus identity labels only.
+ */
+export function libraryNotForAskedModelText(requested: string[], libraryModel: string): string {
+  const asked = list(requested);
+  return `No manual is selected for this question, so the only pages I could use are the shared library's for the ${libraryModel}. You asked about the ${asked}, so I won't answer from them — their values may not apply to the ${asked}. Select or attach the ${asked} manual (or the page that covers it) and ask again.`;
 }
 
 /**
@@ -144,4 +164,10 @@ export function ambiguousModelAskText(ids: string[]): string {
   const names = ids.map(displayModelIdentity);
   const listed = names.length === 2 ? `${names[0]} or the ${names[1]}` : `${names.slice(0, -1).join(", ")} or the ${names[names.length - 1]}`;
   return `You mentioned the ${names.join(" and the ")}. They are different models with different fault codes and settings, so I won't guess which one you mean. Which one is it — the ${listed}? Ask again naming just that one and I'll answer from its manual.`;
+}
+
+/** The conversation has run further without an answer from a manual than the
+ *  route reads back, and the question names no model. */
+export function subjectOutOfReachText(): string {
+  return "This conversation has gone a long way without an answer from a manual, so I can't tell which machine this question is about and I won't guess. Name the model in your question, or start a new conversation, and I'll answer from its manual.";
 }

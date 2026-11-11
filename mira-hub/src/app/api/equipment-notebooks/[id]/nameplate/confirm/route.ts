@@ -38,6 +38,7 @@ import {
 } from "@/lib/equipment-notebooks";
 import { getFile } from "@/lib/workspace-files";
 import { materializeDerivedTextDoc } from "@/capabilities/photo-source";
+import { NAMEPLATE_BODY_MARK, NAMEPLATE_OPENER } from "@/capabilities/photo-document-text";
 import { acquireManualForIdentity } from "@/capabilities/manual-acquisition";
 import { acquisitionEnabled, acquisitionKey, runManualAcquisition } from "@/capabilities/notebook-manual-acquisition";
 import {
@@ -172,7 +173,7 @@ function buildNameplateText(opts: {
   rawObservation: unknown;
 }): string {
   const lines: string[] = [];
-  lines.push("EQUIPMENT NAMEPLATE — TECHNICIAN-CONFIRMED");
+  lines.push(NAMEPLATE_OPENER);
   lines.push("");
   lines.push(`Machine notebook: ${opts.notebookName}`);
   lines.push(`Canonical nameplate photo (file id): ${opts.fileId}`);
@@ -180,7 +181,7 @@ function buildNameplateText(opts: {
     `Recognition confidence: ${opts.confidence === null ? "not reported" : opts.confidence.toFixed(2)}`,
   );
   lines.push("");
-  lines.push("CONFIRMED IDENTITY (as corrected by the technician)");
+  lines.push(NAMEPLATE_BODY_MARK);
   const present = IDENTITY_FIELDS.filter((f) => opts.identity[f]);
   if (present.length === 0) {
     lines.push("- (no identity fields were confirmed)");

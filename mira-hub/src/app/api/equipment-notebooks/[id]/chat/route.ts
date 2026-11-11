@@ -140,7 +140,16 @@ import {
   pickQuestionWarningChunk,
   questionWarningQuery,
 } from "@/capabilities/energized-work-stop";
-import { ambiguousModelAskText, namedModelMismatchText, type NamedModelMismatch } from "@/capabilities/named-model-mismatch";
+import { ambiguousModelAskText, libraryNotForAskedModelText, namedModelMismatchText, subjectOutOfReachText, type NamedModelMismatch } from "@/capabilities/named-model-mismatch";
+import { readSubject, SUBJECT_READ_STEPS } from "@/capabilities/conversation-subject";
+import { notebookManualIdentity } from "@/capabilities/notebook-manual-identity";
+import {
+  otherProductRefusalText,
+  unlistedModelNumbers,
+  unlistedModelRefusalText,
+  type OtherProductRefusal,
+  type UnlistedModelRefusal,
+} from "@/capabilities/manual-applicability";
 import { isOffTopic, SCOPE_REPLY } from "@/capabilities/scope-check";
 import { englishSearchQuery, withAnswerLanguage } from "@/capabilities/answer-language";
 import { normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
@@ -205,8 +214,11 @@ import {
   manufacturerFromObservationText,
   resolveModelFromObservationText,
   retrieveManualChunks,
+  libraryIsForTurnsMachine,
+  type LibraryNotForAsk,
   retrieveCitedPageChunks,
   retrieveNodeChunks,
+  type AdmittedCover,
   type ManualChunk,
 } from "@/lib/manual-rag";
 import { inferEquipmentType } from "@/lib/equipment-type";
@@ -2336,6 +2348,39 @@ async function handleChatTurn(
   // turn's or an earlier one's) that names the manufacturer — never the
   // client's free text (UNS gate doctrine).
   const notebookRetrieval = !(general || nodeId === null);
+  // One identity for every manual read of this turn (the question's pass and
+  // the safety stop's passes), so no read is scoped differently from another.
+  const manualIdentity = notebookManualIdentity(nb, boundAsset, identityDisputed);
+  // The earlier questions of THIS conversation that were not answered from a
+  // document (conversation-subject.ts). A follow-up that names no model is
+  // still about the model one of them named, so the manual check keeps
+  // applying to it. A failed read carries nothing: the turn is then judged on
+  // its own words, exactly as before this read existed.
+  //
+  // The read widens only while the newest turns are all unanswered and older
+  // ones exist (SUBJECT_READ_STEPS): a model named seven turns back is still
+  // the subject. If even the widest read finds no start to the open run, the
+  // subject is out of reach and a model-less question is refused rather than
+  // judged on its own words (subjectOutOfReach, manual-rag.ts).
+  let subjectQueries: string[] = [];
+  let subjectOutOfReach = false;
+  if (notebookRetrieval) {
+    try {
+      for (const limit of SUBJECT_READ_STEPS) {
+        const read = readSubject(
+          await listTurns(ctx.tenantId, notebookId, limit, { viewerUserId: ctx.userId, threadId }),
+          limit,
+        );
+        subjectQueries = read.questions;
+        subjectOutOfReach = !read.complete;
+        if (read.complete) break;
+      }
+    } catch (err) {
+      // A failed FIRST read carries nothing, as before. A failed wider read
+      // keeps what the narrower one found and leaves the subject out of reach.
+      console.error("[notebook-chat] earlier-question read failed (follow-up judged on what was read):", err instanceof Error ? err.message : err);
+    }
+  }
   // Resolve OEM identity from one observation: this turn's LOOK, otherwise the
   // newest prior LOOK. Earlier photos still reach context, but may be different
   // machines and must not contaminate retrieval identity (#3966).
@@ -2445,6 +2490,12 @@ async function handleChatTurn(
     queryRewrite?: string;
     namedModelMismatch?: NamedModelMismatch;
     ambiguousModelAsk?: { named: string[] };
+    subjectOutOfReach?: true;
+    unlistedModelRefusal?: UnlistedModelRefusal;
+    otherProductRefusal?: OtherProductRefusal;
+    machineKnown?: boolean;
+    admittedCovers?: Record<string, AdmittedCover>;
+    libraryNotForAsk?: LibraryNotForAsk;
   } = {};
   const queryRewrite = await queryRewritePromise;
   retrievalDiagnostics.queryRewrite = queryRewrite.status;
@@ -2469,6 +2520,10 @@ async function handleChatTurn(
             // whole-token lane even when buildRetrievalQuery carried the
             // thread's earlier code in (#4224, Codex r1 on #4360).
             rawQuery: message,
+            // The search is held to the bound model whatever this message
+            // names. Passages it finds for a model the message does not ask
+            // about are withheld and reported, never answered from.
+            askedMachine: { message, report: retrievalDiagnostics },
           });
         } catch (err) {
           console.error("[notebook-chat] OEM corpus retrieval failed (continuing general):", err instanceof Error ? err.message : err);
@@ -2496,10 +2551,14 @@ async function handleChatTurn(
             rawQuery: message,
             // The notebook's own machine name is never a fault code in the
             // whole-token lane ("GS10 oC" binds oC, not GS10 — Codex r6 on #4360).
-            identity: { manufacturer: nb?.manufacturer ?? null, model: nb?.model ?? null },
-            // Model-less questions scope to that machine only once a person has
-            // confirmed it — an OCR `candidate` must not hide the right manual.
-            identityStatus: nb?.identityStatus ?? null,
+            // Which machine the manuals have to be for: the notebook's own
+            // confirmed identity, else the confirmed machine it was made from
+            // (notebook-manual-identity.ts). Model-less questions scope to it
+            // only once a person has confirmed it — an OCR `candidate` must not
+            // hide the right manual.
+            ...manualIdentity,
+            subjectQueries,
+            subjectOutOfReach,
             includeQueryRecall: Boolean(lookRow?.text && buildRetrievalQuery(message, [], lookRow.text) !== message.trim()),
             // validateChatSources() has already proven tenant + notebook membership
             // for every id in docIds — the validated doc set is the boundary, so a
@@ -2536,6 +2595,12 @@ async function handleChatTurn(
     }
   }
   const chunks: ManualChunk[] = safetyChapterChunks.length > 0 ? [...retrievedChunks, ...safetyChapterChunks] : retrievedChunks;
+  // No document selected and the library's pages were for the bound model, not
+  // the model this message names: the turn has no passages (so nothing below
+  // can answer, cite or print a page from them) and this says why. It is NOT
+  // "the bound model's manual has nothing": every site that reads an empty
+  // result as that consults this first.
+  const libraryNotForAsk = oemRetrieval ? retrievalDiagnostics.libraryNotForAsk ?? null : null;
   // Banner is classified before retrieval; the page citation can only be
   // written now that chunks exist. Prefer the WARNING/CAUTION/DANGER chunk's
   // printed label (TQ-29: p.2-15) over INTEGER source_page.
@@ -2568,6 +2633,8 @@ async function handleChatTurn(
       ? "ambiguous_model_observation"
       : oemRetrievalFailed
       ? "oem_query_failed"
+      : libraryNotForAsk
+      ? "library_other_model"
       : retrievalExecuted && chunks.length === 0 ? "no_matches" : null;
     const oemScope: "model" | "vendor_fallback" | "manufacturer" | null =
       !oemRetrieval || chunks.length === 0
@@ -2732,7 +2799,7 @@ async function handleChatTurn(
   // is evidence of its own, so it keeps the lane.
   const boundAndEmpty =
     !guidedDeadEnd &&
-    oemRetrieval && oemModel !== null && chunks.length === 0 && !groundedMachineEntry &&
+    oemRetrieval && oemModel !== null && chunks.length === 0 && !libraryNotForAsk && !groundedMachineEntry &&
     !visualEntry && priorLookRows.length === 0;
   const missingModelManual =
     boundAndEmpty && asksForDocumentedValue(message, oemModel!.value)
@@ -3303,8 +3370,13 @@ async function handleChatTurn(
     // it needs its own pass in the same scope. Both passes are best-effort.
     let warningChunks: ManualChunk[] = [];
     let stopLookupsFailed = false;
+    // What each stop search was told about the machine (one object per search:
+    // the two run together).
+    type StopDiagnostics = { machineKnown?: boolean; admittedCovers?: Record<string, AdmittedCover> };
+    const lockoutDiagnostics: StopDiagnostics = {};
+    const warningDiagnostics: StopDiagnostics = {};
     if (notebookRetrieval && nodeId !== null) {
-      const stopPass = (query: string, rawQuery: string, label: string) =>
+      const stopPass = (query: string, rawQuery: string, label: string, diagnostics: StopDiagnostics) =>
         withTenantContext(ctx.tenantId, (client) =>
           retrieveNodeChunks(client, ctx.tenantId, query, {
             nodeId,
@@ -3312,17 +3384,26 @@ async function handleChatTurn(
             topK: 8,
             docIds,
             rawQuery,
-            identity: { manufacturer: nb?.manufacturer ?? null, model: nb?.model ?? null },
+            // The same machine as the question's own pass, so a stop never
+            // cites another product's page that pass refused. The lockout
+            // search is made with fixed words, so the machine this turn names
+            // is read from the message, not from the search words (Codex
+            // round 3 on #5389, F7).
+            ...manualIdentity,
+            subjectQuestion: message,
+            subjectQueries,
+            subjectOutOfReach,
             validatedDocScope: true,
             approvedSourceDocIds: docIds,
+            diagnostics,
           }),
         ).catch((err: unknown) => {
           console.error(`[notebook-chat] ${label} retrieval failed (stop served without it):`, err instanceof Error ? err.message : err);
           return null;
         });
       const [lockoutHits, warningHits] = await Promise.all([
-        stopPass(LOCKOUT_PAGE_QUERY, LOCKOUT_PAGE_QUERY, "lockout-page"),
-        stopPass(questionWarningQuery(message), message, "question-warning"),
+        stopPass(LOCKOUT_PAGE_QUERY, LOCKOUT_PAGE_QUERY, "lockout-page", lockoutDiagnostics),
+        stopPass(questionWarningQuery(message), message, "question-warning", warningDiagnostics),
       ]);
       lockoutChunks = lockoutHits ?? [];
       warningChunks = warningHits ?? [];
@@ -3332,8 +3413,36 @@ async function handleChatTurn(
       // question pass are not a lockout search).
       stopLookupsFailed = lockoutHits === null;
     }
-    const lockoutChunk = pickLockoutChunk([...lockoutChunks, ...chunks]);
-    const warningPick = pickQuestionWarningChunk([...warningChunks, ...chunks], message);
+    // More than one document is selected and no search of this turn knew which
+    // machine is meant (no model named, no confirmed machine; a fault code, a
+    // tag or a part number is not a machine): documents were admitted without
+    // being matched to anything, so a page would be one document's, chosen by
+    // rank. Offer none, lockout or warning, and say why. It counts the
+    // documents SELECTED, not the ones a search returned, so the result does
+    // not depend on ranking. A search that returned before deciding reports
+    // nothing and returned no passage.
+    const machineUnclear =
+      new Set(docIds).size > 1 &&
+      [retrievalDiagnostics, lockoutDiagnostics, warningDiagnostics].some((d) => d.machineKnown === false);
+    // No document is selected: the passages are the shared library's, searched
+    // for the project's own model whatever this turn names (or, with no model
+    // on record, for whatever the words gave, widening to the whole maker).
+    // The stop's searches above do not run on this path, so nothing has
+    // judged those passages against the machine the technician is asking
+    // about. A page from them is offered only for the project's own model, and
+    // never from a related machine's manual the search widened to (#4068).
+    // With no library passage at all nothing is withheld, and the stop reads
+    // as it always has.
+    const ownPassages = notebookRetrieval ? chunks : chunks.filter((c) => c.retrievalScope !== "vendor_fallback");
+    const libraryUnmatched =
+      !notebookRetrieval &&
+      oemRetrieval &&
+      (libraryNotForAsk !== null ||
+        (chunks.length > 0 &&
+          (ownPassages.length === 0 || !libraryIsForTurnsMachine(message, oemModel?.value ?? null, oemManufacturer?.name ?? null))));
+    const noPage = machineUnclear || libraryUnmatched;
+    const lockoutChunk = noPage ? null : pickLockoutChunk([...lockoutChunks, ...ownPassages]);
+    const warningPick = noPage ? null : pickQuestionWarningChunk([...warningChunks, ...ownPassages], message);
     // The same passage is not cited twice (a lockout page that is also the warning).
     const warningChunk =
       warningPick && !(lockoutChunk && warningPick.docId === lockoutChunk.docId && warningPick.content === lockoutChunk.content)
@@ -3358,12 +3467,32 @@ async function handleChatTurn(
       ...(lockoutChunk ? await pointerCitations(lockoutChunk, "Lockout / disconnect-power procedure") : []),
       ...(warningChunk ? await pointerCitations(warningChunk, "Manual warning") : []),
     ].map((c, i) => ({ ...c, citationId: String(i + 1) }));
+    // Whose manual the lockout page is from, as the search that admitted it
+    // reported (Codex re-review 2026-11-11, finding 1). Every search of this
+    // turn judged the same question, so the first report for the document is
+    // the report. A library page (no document id) has none and is "the cited
+    // manual's".
+    const lockoutDocId = lockoutChunk?.docId ?? null;
+    const lockoutCover =
+      lockoutDocId === null
+        ? null
+        : [lockoutDiagnostics, retrievalDiagnostics, warningDiagnostics].map((d) => d.admittedCovers?.[lockoutDocId]).find(Boolean) ?? null;
+    // The machine a person bound this project to has a name of its own, and
+    // its tag ("CV-101") is a number the model reader has no pattern for. It
+    // is the project's own, so it is not called out as unlisted.
+    const boundNameNumbers =
+      boundAsset.state === "resolved" && boundAsset.confirmedAt && !identityDisputed
+        ? unlistedModelNumbers(boundAsset.name).map((n) => n.label)
+        : [];
+    const pageFrom = lockoutCover
+      ? { models: lockoutCover.models, unlisted: lockoutCover.unlisted.filter((label) => !boundNameNumbers.includes(label)) }
+      : null;
     const stopText = energizedWorkStop(
       lockoutChunk ? { title: citationTitle(lockoutChunk), page: lockoutPageOf(lockoutChunk) } : null,
-      { warning: warningChunk ? { page: lockoutPageOf(warningChunk) } : null, lookupFailed: stopLookupsFailed },
+      { warning: warningChunk ? { page: lockoutPageOf(warningChunk) } : null, lookupFailed: stopLookupsFailed, machineUnclear, libraryUnmatched, pageFrom },
     );
     console.warn(
-      `[notebook-chat] energized-work STOP (${stopTrigger}) lockout_page=${lockoutChunk ? lockoutPageOf(lockoutChunk) ?? "none" : "none"} warning_page=${warningChunk ? lockoutPageOf(warningChunk) ?? "none" : "none"}`,
+      `[notebook-chat] energized-work STOP (${stopTrigger}) lockout_page=${lockoutChunk ? lockoutPageOf(lockoutChunk) ?? "none" : "none"} warning_page=${warningChunk ? lockoutPageOf(warningChunk) ?? "none" : "none"} machine_unclear=${machineUnclear} library_unmatched=${libraryUnmatched}`,
     );
     const stopGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
     lifecycleOutcome = "safety_stop";
@@ -3469,7 +3598,7 @@ async function handleChatTurn(
   // A flagged hazard turn is never swallowed by this abstain (owner decision
   // 2026-09-27): with no documents it takes the general lane, so the tech gets
   // the hazard banner and an answer instead of "couldn't find that".
-  if (chunks.length === 0 && (!general || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText) && !groundedMachineEntry && !safetyTrigger) {
+  if (chunks.length === 0 && (!general || libraryNotForAsk || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText) && !groundedMachineEntry && !safetyTrigger) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
     // #4015: "couldn't find that in the documentation I have", not "I don't have
     // the manual" — a zero-hit scoped search does not prove the manual is absent
@@ -3482,6 +3611,10 @@ async function handleChatTurn(
       ? photoPartLookup.message
       : photoPartCompatibilityText
       ? photoPartCompatibilityText
+      // No document selected, and the library's pages were for the bound model,
+      // not the one this message names: say which, and answer nothing from them.
+      : libraryNotForAsk
+      ? libraryNotForAskedModelText(libraryNotForAsk.requested, `${oemManufacturer!.name} ${libraryNotForAsk.boundModel}`)
       : (missingModelManual || noEvidenceForMachine) && declineKind(message)
       ? declineText(declineKind(message)!, (missingModelManual ?? noEvidenceForMachine)!, oemManufacturer!.name)
       : acquisitionText
@@ -3504,6 +3637,20 @@ async function handleChatTurn(
         ? ambiguousModelAskText(retrievalDiagnostics.ambiguousModelAsk.named)
       : notebookRetrieval && retrievalDiagnostics.namedModelMismatch
         ? namedModelMismatchText(retrievalDiagnostics.namedModelMismatch)
+      // The conversation has gone further without a document answer than the
+      // route reads back, and this question names no model: which machine it
+      // is about cannot be told, so nothing is answered from any manual.
+      : notebookRetrieval && retrievalDiagnostics.subjectOutOfReach
+        ? subjectOutOfReachText()
+      // #5369: a model or catalog number the detector has no pattern for, and
+      // no selected manual is shown to cover it — say so, and say why.
+      : notebookRetrieval && retrievalDiagnostics.unlistedModelRefusal
+        ? unlistedModelRefusalText(retrievalDiagnostics.unlistedModelRefusal)
+      // An attached manual is not automatically an applicable one: the question
+      // named no model, the notebook's machine is confirmed, and every selected
+      // manual's cover declares some other product — say which, and the way out.
+      : notebookRetrieval && retrievalDiagnostics.otherProductRefusal
+        ? otherProductRefusalText(retrievalDiagnostics.otherProductRefusal)
       : notebookRetrieval
         ? "I couldn't find support for that in this notebook's manuals. Add the manual for the equipment you're asking about, or the page that covers it, and ask again."
         : null;
@@ -3512,7 +3659,7 @@ async function handleChatTurn(
     rec.stage("answer_gate", {
       invoked: true,
       decision: "insufficient_evidence",
-      reason: oemRetrievalFailed && (missingModelManual || noEvidenceForMachine) ? "identity_bound_retrieval_failed" : unidentifiedServiceText ? "unidentified_service_decline" : missingModelManual ? "identity_bound_no_manual" : noEvidenceForMachine ? "identity_bound_no_evidence" : "gate_g_no_evidence",
+      reason: oemRetrievalFailed && (missingModelManual || noEvidenceForMachine) ? "identity_bound_retrieval_failed" : libraryNotForAsk ? "library_other_model" : unidentifiedServiceText ? "unidentified_service_decline" : missingModelManual ? "identity_bound_no_manual" : noEvidenceForMachine ? "identity_bound_no_evidence" : "gate_g_no_evidence",
       answer_chars: abstainAnswerText?.length ?? 0,
       refusal_phrase_matched: false,
       evidence_phrase_matched: false,
