@@ -34,6 +34,7 @@ import {
   releaseIngestClaim,
 } from "@/lib/workspace-files";
 import { correctVisualObservations, loadVisualEvidenceForPhoto } from "@/lib/visual-evidence-context";
+import { buildPhotoSourceText } from "./photo-document-text";
 
 /**
  * Park a generated text document and ingest it once, under the same canonical
@@ -93,28 +94,9 @@ export async function materializeDerivedTextDoc(opts: {
   }
 }
 
-/** The header states, inside the document, what kind of evidence it is. */
-export function buildPhotoSourceText(opts: {
-  readonly machineName: string;
-  readonly fileId: string;
-  readonly photoSha256: string | null;
-  readonly capturedAt: string | null;
-  readonly observation: string;
-  readonly reviewed?: boolean;
-}): string {
-  return [
-    "Photo source: technician photo",
-    `Machine: ${opts.machineName}`,
-    opts.reviewed ? "Evidence: technician-reviewed transcription of this photo. Review confirms the text, not a diagnosis or authorization to operate equipment." : "Evidence: a vision model's transcription of a technician's photo. The technician confirmed this photo belongs to this machine; the transcription itself is NOT technician-verified. Check any identifier against the original photo before acting on it.",
-    `Photo file: ${opts.fileId}`,
-    ...(opts.photoSha256 ? [`Photo sha256: ${opts.photoSha256}`] : []),
-    ...(opts.capturedAt ? [`Captured: ${opts.capturedAt}`] : []),
-    "",
-    "What the photo shows:",
-    opts.observation.trim(),
-    "",
-  ].join("\n");
-}
+// The text itself lives in photo-document-text.ts (pure), beside the reader that
+// tells such a document from an uploaded manual.
+export { buildPhotoSourceText };
 
 /**
  * True when an answer's citations ALL point at kept photo readings: each one

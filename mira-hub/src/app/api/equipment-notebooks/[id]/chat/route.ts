@@ -140,7 +140,15 @@ import {
   pickQuestionWarningChunk,
   questionWarningQuery,
 } from "@/capabilities/energized-work-stop";
-import { ambiguousModelAskText, namedModelMismatchText, type NamedModelMismatch } from "@/capabilities/named-model-mismatch";
+import { ambiguousModelAskText, namedModelMismatchText, subjectOutOfReachText, type NamedModelMismatch } from "@/capabilities/named-model-mismatch";
+import { readSubject, SUBJECT_READ_STEPS } from "@/capabilities/conversation-subject";
+import { notebookManualIdentity } from "@/capabilities/notebook-manual-identity";
+import {
+  otherProductRefusalText,
+  unlistedModelRefusalText,
+  type OtherProductRefusal,
+  type UnlistedModelRefusal,
+} from "@/capabilities/manual-applicability";
 import { isOffTopic, SCOPE_REPLY } from "@/capabilities/scope-check";
 import { englishSearchQuery, withAnswerLanguage } from "@/capabilities/answer-language";
 import { normalizeCitationMarkers, withStepSafety } from "@/capabilities/answer-shape";
@@ -2336,6 +2344,39 @@ async function handleChatTurn(
   // turn's or an earlier one's) that names the manufacturer — never the
   // client's free text (UNS gate doctrine).
   const notebookRetrieval = !(general || nodeId === null);
+  // One identity for every manual read of this turn (the question's pass and
+  // the safety stop's passes), so no read is scoped differently from another.
+  const manualIdentity = notebookManualIdentity(nb, boundAsset, identityDisputed);
+  // The earlier questions of THIS conversation that were not answered from a
+  // document (conversation-subject.ts). A follow-up that names no model is
+  // still about the model one of them named, so the manual check keeps
+  // applying to it. A failed read carries nothing: the turn is then judged on
+  // its own words, exactly as before this read existed.
+  //
+  // The read widens only while the newest turns are all unanswered and older
+  // ones exist (SUBJECT_READ_STEPS): a model named seven turns back is still
+  // the subject. If even the widest read finds no start to the open run, the
+  // subject is out of reach and a model-less question is refused rather than
+  // judged on its own words (subjectOutOfReach, manual-rag.ts).
+  let subjectQueries: string[] = [];
+  let subjectOutOfReach = false;
+  if (notebookRetrieval) {
+    try {
+      for (const limit of SUBJECT_READ_STEPS) {
+        const read = readSubject(
+          await listTurns(ctx.tenantId, notebookId, limit, { viewerUserId: ctx.userId, threadId }),
+          limit,
+        );
+        subjectQueries = read.questions;
+        subjectOutOfReach = !read.complete;
+        if (read.complete) break;
+      }
+    } catch (err) {
+      // A failed FIRST read carries nothing, as before. A failed wider read
+      // keeps what the narrower one found and leaves the subject out of reach.
+      console.error("[notebook-chat] earlier-question read failed (follow-up judged on what was read):", err instanceof Error ? err.message : err);
+    }
+  }
   // Resolve OEM identity from one observation: this turn's LOOK, otherwise the
   // newest prior LOOK. Earlier photos still reach context, but may be different
   // machines and must not contaminate retrieval identity (#3966).
@@ -2445,6 +2486,9 @@ async function handleChatTurn(
     queryRewrite?: string;
     namedModelMismatch?: NamedModelMismatch;
     ambiguousModelAsk?: { named: string[] };
+    subjectOutOfReach?: true;
+    unlistedModelRefusal?: UnlistedModelRefusal;
+    otherProductRefusal?: OtherProductRefusal;
   } = {};
   const queryRewrite = await queryRewritePromise;
   retrievalDiagnostics.queryRewrite = queryRewrite.status;
@@ -2496,10 +2540,14 @@ async function handleChatTurn(
             rawQuery: message,
             // The notebook's own machine name is never a fault code in the
             // whole-token lane ("GS10 oC" binds oC, not GS10 — Codex r6 on #4360).
-            identity: { manufacturer: nb?.manufacturer ?? null, model: nb?.model ?? null },
-            // Model-less questions scope to that machine only once a person has
-            // confirmed it — an OCR `candidate` must not hide the right manual.
-            identityStatus: nb?.identityStatus ?? null,
+            // Which machine the manuals have to be for: the notebook's own
+            // confirmed identity, else the confirmed machine it was made from
+            // (notebook-manual-identity.ts). Model-less questions scope to it
+            // only once a person has confirmed it — an OCR `candidate` must not
+            // hide the right manual.
+            ...manualIdentity,
+            subjectQueries,
+            subjectOutOfReach,
             includeQueryRecall: Boolean(lookRow?.text && buildRetrievalQuery(message, [], lookRow.text) !== message.trim()),
             // validateChatSources() has already proven tenant + notebook membership
             // for every id in docIds — the validated doc set is the boundary, so a
@@ -3312,7 +3360,11 @@ async function handleChatTurn(
             topK: 8,
             docIds,
             rawQuery,
-            identity: { manufacturer: nb?.manufacturer ?? null, model: nb?.model ?? null },
+            // The same machine as the question's own pass, so a stop never
+            // cites another product's page that pass refused.
+            ...manualIdentity,
+            subjectQueries,
+            subjectOutOfReach,
             validatedDocScope: true,
             approvedSourceDocIds: docIds,
           }),
@@ -3504,6 +3556,20 @@ async function handleChatTurn(
         ? ambiguousModelAskText(retrievalDiagnostics.ambiguousModelAsk.named)
       : notebookRetrieval && retrievalDiagnostics.namedModelMismatch
         ? namedModelMismatchText(retrievalDiagnostics.namedModelMismatch)
+      // The conversation has gone further without a document answer than the
+      // route reads back, and this question names no model: which machine it
+      // is about cannot be told, so nothing is answered from any manual.
+      : notebookRetrieval && retrievalDiagnostics.subjectOutOfReach
+        ? subjectOutOfReachText()
+      // #5369: a model or catalog number the detector has no pattern for, and
+      // no selected manual is shown to cover it — say so, and say why.
+      : notebookRetrieval && retrievalDiagnostics.unlistedModelRefusal
+        ? unlistedModelRefusalText(retrievalDiagnostics.unlistedModelRefusal)
+      // An attached manual is not automatically an applicable one: the question
+      // named no model, the notebook's machine is confirmed, and every selected
+      // manual's cover declares some other product — say which, and the way out.
+      : notebookRetrieval && retrievalDiagnostics.otherProductRefusal
+        ? otherProductRefusalText(retrievalDiagnostics.otherProductRefusal)
       : notebookRetrieval
         ? "I couldn't find support for that in this notebook's manuals. Add the manual for the equipment you're asking about, or the page that covers it, and ask again."
         : null;

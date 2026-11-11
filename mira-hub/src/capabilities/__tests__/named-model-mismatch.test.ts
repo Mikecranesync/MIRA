@@ -107,4 +107,11 @@ describe("namedModelMismatchText", () => {
   it("PowerFlex identities read as the technician writes them", () => {
     expect(namedModelMismatchText({ requested: ["PF755"], declared: ["PF525"] })).toContain("for the PowerFlex 525, not the PowerFlex 755");
   });
+  it("says where the model came from when it was named in an earlier question, and gives the way out", () => {
+    const text = namedModelMismatchText({ requested: ["MICRO850"], declared: ["MICRO820"], source: "conversation" });
+    expect(text).toContain("not the Micro850 you asked about earlier in this conversation");
+    expect(text).toMatch(/won't answer from it/);
+    expect(text).toMatch(/name its model in the question or start a new chat/);
+    expect(text).toContain("add the Micro850 manual");
+  });
 });
