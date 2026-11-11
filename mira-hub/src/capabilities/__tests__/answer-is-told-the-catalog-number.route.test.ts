@@ -114,9 +114,9 @@ async function systemMessageFor(message: string, extra: Record<string, unknown> 
     }),
     params,
   );
-  await res.text();
+  const served = await res.text();
   const call = seamMock.buildRequestBody.mock.calls[0];
-  expect(call, "the provider was asked").toBeDefined();
+  expect(call, `the provider was asked; the route served: ${served.slice(0, 600)}`).toBeDefined();
   const system = call![1].find((m) => m.role === "system");
   expect(system, "a system message was sent").toBeDefined();
   return system!.content;
@@ -184,6 +184,8 @@ describe("a project with a model on record and no catalog number", () => {
     expect(system).toMatch(/only when the model above identifies that variant/);
     expect(system).toMatch(/full catalog number from the nameplate/);
     expect(system).not.toMatch(CATALOG_ON_RECORD);
+    // One header line, between the equipment line and the document line.
+    expect(system).toMatch(/"Bench drive"\.\n- Catalog number: none on record\. [^\n]+ nameplate\.\n- Loaded source documents: none\.\n/);
   });
 
   it("says the same when the catalog number is stored as null", async () => {
@@ -204,7 +206,9 @@ describe("a project with a catalog number on record", () => {
     nbMock.getNotebook.mockResolvedValue({ ...typedPlateProject, catalogNumber: "GS11N-20P2" });
     attach(GS10);
     const system = await systemMessageFor(QUESTION);
-    expect(system).toContain("- Catalog number on record: GS11N-20P2.");
+    expect(system).toContain(
+      '- Equipment: AutomationDirect GS11N — "Bench drive".\n- Catalog number on record: GS11N-20P2.\n- Loaded source documents: none.\n',
+    );
     expect(system).not.toMatch(NO_CATALOG);
   });
 
@@ -267,12 +271,41 @@ describe("a project made from a registered machine", () => {
   });
 });
 
+describe("a turn with no manual to read", () => {
+  // The app's general mode, with nothing offered by the database stand-in: no
+  // excerpt reaches the model and the route answers on its no-manual path. The
+  // question is a general one on purpose: with a model on record and no manual,
+  // a question about THIS machine is declined before any provider is asked.
+  const noManual = async (project: Record<string, unknown>) => {
+    nbMock.getNotebook.mockResolvedValue(project);
+    db.rows = [];
+    return systemMessageFor("What does PNP mean on a sensor?", { mode: "general" });
+  };
+
+  it("keep: the line about excerpts is not sent when there are no excerpts; the header is as today", async () => {
+    const system = await noManual(typedPlateProject);
+    expect(system).toContain('- Equipment: AutomationDirect GS11N — "Bench drive".\n- Loaded source documents: none.\n');
+    expect(system).not.toMatch(/Catalog number/);
+  });
+
+  it("a catalog number on record is still stated", async () => {
+    const system = await noManual({ ...typedPlateProject, catalogNumber: "GS11N-20P2" });
+    expect(system).toContain("- Catalog number on record: GS11N-20P2.\n- Loaded source documents: none.\n");
+  });
+});
+
 describe("keep: a project with nothing on record", () => {
   it("is sent no machine header at all, as today", async () => {
     attach(GS10);
     const system = await systemMessageFor(QUESTION);
     expect(system).not.toContain("MACHINE CONTEXT");
     expect(system).not.toMatch(/Catalog number/);
+  });
+
+  it("stated limit: with ONLY a catalog number on record it is sent no machine header, as today", async () => {
+    nbMock.getNotebook.mockResolvedValue({ ...blankProject, catalogNumber: "GS11N-20P2", identityStatus: "user_confirmed" });
+    attach(GS10);
+    expect(await systemMessageFor(QUESTION)).not.toContain("MACHINE CONTEXT");
   });
 
   it("with a loaded document it is sent the header with no catalog line, as today", async () => {

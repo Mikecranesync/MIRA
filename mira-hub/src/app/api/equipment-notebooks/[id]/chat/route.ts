@@ -3982,11 +3982,16 @@ async function handleChatTurn(
   // differs by variant. The line reads no model or number shape: it is the
   // same for every model, and the model judges from the excerpts whether the
   // model on record identifies a variant. Withheld while identity is disputed.
+  // The "none on record" line speaks of excerpts, so it goes only on a turn
+  // that has them; a turn with no manual keeps the header it had.
+  // Stated limit: a project with ONLY a catalog number on record (no maker,
+  // model, binding or document) is sent no header at all, as before. Neither
+  // confirm route stores that shape.
   const catalogLine = identityDisputed
     ? ""
     : catalogOnRecord
       ? `- Catalog number on record: ${catalogOnRecord}.\n`
-      : modelOnRecord
+      : modelOnRecord && docGrounded
         ? "- Catalog number: none on record. Only the model above is recorded for this machine. If an excerpt gives a value that differs between variants or catalog numbers of this model (for example supply voltage, phase, rated current, power, fuse or breaker size), state it as this machine's only when the model above identifies that variant. Otherwise say it depends on the full catalog number, give what the excerpt lists for each variant, and ask for the full catalog number from the nameplate.\n"
         : "";
   // A bound asset is a stronger identity claim than free-text manufacturer/model,
