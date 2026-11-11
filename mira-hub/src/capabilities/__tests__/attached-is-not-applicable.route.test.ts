@@ -423,18 +423,151 @@ describe("the safety stop reads the same manuals as the question does", () => {
       expect(stop.text).not.toMatch(/\*\*p\./);
     });
 
-    // Stated behaviour, not changed here. Two machines' manuals in one project,
-    // no confirmed machine, and a hazard question that names neither: nothing
-    // says which machine is meant, so both manuals are admitted and the stop
-    // points at ONE lockout page (the chapter-labelled one). One project per
-    // machine, or a confirmed machine, is what makes the stop's page the right one.
-    it("stated behaviour: two manuals, no confirmed machine, no model named: the stop points at one manual's page", async () => {
+    // More than one document in the project, no confirmed machine, and a hazard
+    // question that names none: nothing says which machine is meant, so every
+    // document is admitted unjudged and any page would be one document's,
+    // chosen by rank. The stop offers no page and says so. It counts the
+    // documents SELECTED for the turn, not the ones a search happened to return.
+    const expectNoPageAndWhy = (stop: Awaited<ReturnType<typeof ask>>) => {
+      expect(stop.kinds).toContain("safety");
+      expect(stop.providerAsked, "a stop never asks a provider").toBe(false);
+      expect(stop.citations, "no page from any document").toEqual([]);
+      expect(stop.text).not.toMatch(/\*\*p\./);
+      expect(stop.text).toMatch(/more than one document/i);
+      expect(stop.text, "the site's own lockout procedure is still the instruction").toMatch(/follow your site's lockout\/tagout procedure/i);
+      expect(stop.text, "it does not claim the manuals hold no lockout page").not.toMatch(/couldn't find a lockout page/i);
+    };
+
+    it("two manuals, no confirmed machine, no model named: the stop offers no page and says why", async () => {
+      db.rows = [pageOf(GS10, DOC_A, LOCKOUT_PASSAGE), pageOf(MICRO820_SHEET_AS_STORED, DOC_B, LOCKOUT_PASSAGE)];
+      nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A, DOC_B], nodeId: "node-1" });
+      expectNoPageAndWhy(await ask(HAZARD_ASK));
+    });
+
+    // A fault code, a tag or a part number is not a machine. It reads as a
+    // number the detector has no pattern for, which puts a number rule in
+    // play, but a cover that says nothing about that number is still admitted:
+    // no document was matched to anything.
+    it.each([
+      ["a fault code", "It shows fault F0004 and it is still powered up. Can I swap the fan?"],
+      ["a machine tag", "CV-101 is still powered up. Can I swap the fan?"],
+      ["a part number no cover lists", "It's still powered up. Can I swap fan 3M4012 without shutting it down?"],
+    ])("two manuals, machine unknown, and the question carries %s: still no page", async (_what, question) => {
+      db.rows = [pageOf(GS10, DOC_A, LOCKOUT_PASSAGE), pageOf(MICRO820_SHEET_AS_STORED, DOC_B, LOCKOUT_PASSAGE)];
+      nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A, DOC_B], nodeId: "node-1" });
+      expectNoPageAndWhy(await ask(question));
+    });
+
+    // Stated behaviour: a catalog number alone is treated like any other
+    // number, so with two manuals and no confirmed machine the stop withholds
+    // the page even from the sheet that lists that number. It withholds; it
+    // never points at the other manual. The model name restores the page.
+    it("stated behaviour: two manuals, machine unknown, question gives only a catalog number: no page", async () => {
+      db.rows = [pageOf(GS10, DOC_A, LOCKOUT_PASSAGE), pageOf(MICRO820_SHEET_AS_STORED, DOC_B, LOCKOUT_PASSAGE)];
+      nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A, DOC_B], nodeId: "node-1" });
+      expectNoPageAndWhy(await ask("The 2080-LC20-20QBB is still powered up. Can I swap the fan?"));
+    });
+
+    // A project confirmed only by a family name and a catalog number: the
+    // number puts a rule in play, but another product line of the SAME maker
+    // says nothing about that number and is kept. No cover was matched to a
+    // model, so with two documents the stop offers no page. Stated cost: the
+    // sheet that does list the number is withheld too.
+    it("two documents, a project confirmed only by family and catalog number: no page, not the other product line's", async () => {
+      const SAME_MAKER_DRIVE: Manual = {
+        ...GS10,
+        key: "powerflex-525-user-manual",
+        heading: "PowerFlex 525 Adjustable Frequency AC Drive\nUser Manual\nOriginal Instructions",
+        filename: "520-um001_-en-e.pdf",
+      };
+      nbMock.getNotebook.mockResolvedValue({
+        ...blankProject, manufacturer: "Allen-Bradley", model: "Micro800", catalogNumber: "2080-LC20-20QBB", identityStatus: "user_confirmed",
+      });
+      db.rows = [pageOf(SAME_MAKER_DRIVE, DOC_A, LOCKOUT_PASSAGE), pageOf(MICRO820_SHEET_AS_STORED, DOC_B, PASSAGE)];
+      nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A, DOC_B], nodeId: "node-1" });
+      expectNoPageAndWhy(await ask(HAZARD_ASK));
+    });
+
+    it("one document sent twice in the selection is one document: its page is still offered", async () => {
+      db.rows = [pageOf(GS10, DOC_A, LOCKOUT_PASSAGE)];
+      nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A, DOC_A], nodeId: "node-1" });
+      const out = await frames(await POST(req({ message: HAZARD_ASK, sourceDocIds: [DOC_A, DOC_A] }), params));
+      const sources = out.find((f) => f.kind === "sources") as { citations: unknown[] } | undefined;
+      const text = out.filter((f) => f.kind === "content").map((f) => String(f.content ?? "")).join("");
+      expect(out.map((f) => String(f.kind))).toContain("safety");
+      expect((sources?.citations ?? []).length).toBeGreaterThan(0);
+      expect(text).not.toMatch(/more than one document/i);
+    });
+
+    // Stated behaviour, not changed here: in a project CONFIRMED as one
+    // machine, a second document whose cover names no model at all is kept
+    // (the technician attached it to this machine's project), so its lockout
+    // page can be the one offered. Only a cover that declares another product
+    // is refused.
+    it("stated behaviour: confirmed machine, and a second document whose cover names no model: its page can be offered", async () => {
+      const NO_MODEL_GUIDE: Manual = { ...GS10, key: "wiring-guide-no-model", heading: "Wiring and Grounding Guidelines\nInstallation Guide", filename: "wiring-guidelines.pdf" };
+      nbMock.getNotebook.mockResolvedValue({ ...blankProject, manufacturer: "Allen-Bradley", model: "Micro820", identityStatus: "user_confirmed" });
+      db.rows = [pageOf(NO_MODEL_GUIDE, DOC_A, LOCKOUT_PASSAGE), pageOf(MICRO820_SHEET_AS_STORED, DOC_B, PASSAGE)];
+      nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A, DOC_B], nodeId: "node-1" });
+      const stop = await ask(HAZARD_ASK);
+      expect(stop.kinds).toContain("safety");
+      expect(JSON.stringify(stop.citations)).toContain(DOC_A);
+    });
+
+    it("two manuals, machine unknown, and only ONE of them holds a lockout page: still no page", async () => {
+      db.rows = [pageOf(GS10, DOC_A, LOCKOUT_PASSAGE), pageOf(MICRO820_SHEET_AS_STORED, DOC_B, PASSAGE)];
+      nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A, DOC_B], nodeId: "node-1" });
+      expectNoPageAndWhy(await ask(HAZARD_ASK));
+    });
+
+    it("two manuals selected, machine unknown, and the search returns pages from only ONE: still no page", async () => {
+      db.rows = [pageOf(GS10, DOC_A, LOCKOUT_PASSAGE)];
+      nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A, DOC_B], nodeId: "node-1" });
+      const out = await frames(await POST(req({ message: HAZARD_ASK, sourceDocIds: [DOC_A, DOC_B] }), params));
+      const sources = out.find((f) => f.kind === "sources") as { citations: unknown[] } | undefined;
+      const text = out.filter((f) => f.kind === "content").map((f) => String(f.content ?? "")).join("");
+      expect(out.map((f) => String(f.kind))).toContain("safety");
+      expect(sources?.citations ?? []).toEqual([]);
+      expect(text).not.toMatch(/\*\*p\./);
+      expect(text).toMatch(/more than one document/i);
+    });
+
+    // Stated behaviour, a known cost of the rule above: ONE machine's manual
+    // stored as two files, in a project whose machine nobody confirmed, loses
+    // its page pointer too. The stop cannot tell two files of one manual from
+    // two machines' manuals. Confirming the machine, or naming it, restores it.
+    it("stated behaviour: one machine's manual in two files, machine not confirmed: no page", async () => {
+      db.rows = [pageOf(GS10, DOC_A, LOCKOUT_PASSAGE), pageOf(GS10, DOC_B, PASSAGE)];
+      nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A, DOC_B], nodeId: "node-1" });
+      expectNoPageAndWhy(await ask(HAZARD_ASK));
+    });
+
+    it("control: one machine's manual in two files, and the question names that machine: its page is offered", async () => {
+      db.rows = [pageOf(GS10, DOC_A, LOCKOUT_PASSAGE), pageOf(GS10, DOC_B, PASSAGE)];
+      nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A, DOC_B], nodeId: "node-1" });
+      const stop = await ask("The GS10 is still powered up. Can I swap the fan?");
+      expect(stop.kinds).toContain("safety");
+      expect(stop.citations.length).toBeGreaterThan(0);
+      expect(stop.text).not.toMatch(/more than one document/i);
+    });
+
+    it("control: the same two manuals in a project confirmed as the controller: the controller sheet's page is offered", async () => {
+      nbMock.getNotebook.mockResolvedValue({ ...blankProject, manufacturer: "Allen-Bradley", model: "Micro820", identityStatus: "user_confirmed" });
       db.rows = [pageOf(GS10, DOC_A, LOCKOUT_PASSAGE), pageOf(MICRO820_SHEET_AS_STORED, DOC_B, LOCKOUT_PASSAGE)];
       nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A, DOC_B], nodeId: "node-1" });
       const stop = await ask(HAZARD_ASK);
       expect(stop.kinds).toContain("safety");
-      expect(stop.citations).toHaveLength(1);
-      expect(JSON.stringify(stop.citations)).toContain(DOC_A);
+      expect(stop.citations.length, "the confirmed machine's own lockout page is cited").toBeGreaterThan(0);
+      expect(JSON.stringify(stop.citations)).toContain(DOC_B);
+      expect(JSON.stringify(stop.citations), "nothing from the drive's manual").not.toContain(DOC_A);
+    });
+
+    it("control: one manual, no confirmed machine, no model named: its lockout page is still offered", async () => {
+      attach(GS10, LOCKOUT_PASSAGE);
+      const stop = await ask(HAZARD_ASK);
+      expect(stop.kinds).toContain("safety");
+      expect(stop.citations.length).toBeGreaterThan(0);
+      expect(stop.text).not.toMatch(/more than one document/i);
     });
 
     it("two manuals attached: only the named machine's lockout page is offered", async () => {

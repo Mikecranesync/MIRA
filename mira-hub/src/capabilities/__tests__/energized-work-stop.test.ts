@@ -363,3 +363,41 @@ describe("energizedWorkStop — manual warning line", () => {
     expect(energizedWorkStop({ title: "x", page: "2-15" }, { warning: null })).toBe(energizedWorkStop({ title: "x", page: "2-15" }));
   });
 });
+
+describe("energizedWorkStop: the machine is not known and the project holds more than one document", () => {
+  const SAYS = "more than one document";
+  it("offers no page, says why, and still sends the technician to the site lockout procedure", () => {
+    const text = energizedWorkStop(null, { machineUnclear: true });
+    expect(text).toContain("SAFETY STOP — energized work.");
+    expect(text).toContain("lock out and tag out every energy source");
+    expect(text).toContain(SAYS);
+    expect(text).toContain("follow your site's lockout/tagout procedure");
+    expect(text).not.toMatch(/\*\*p\./);
+    expect(text).not.toContain("couldn't find a lockout page");
+  });
+  it("wins over a failed lookup: no page would be offered even if the search had worked", () => {
+    const text = energizedWorkStop(null, { machineUnclear: true, lookupFailed: true });
+    expect(text).toContain(SAYS);
+    expect(text).not.toContain("couldn't fully search");
+    expect(text).toBe(energizedWorkStop(null, { machineUnclear: true }));
+  });
+  it("never prints a lockout page, even when a caller passes one", () => {
+    const text = energizedWorkStop({ title: "GS10 User Manual.pdf", page: "2-15" }, { machineUnclear: true });
+    expect(text).toContain(SAYS);
+    expect(text).not.toContain("2-15");
+    expect(text).not.toMatch(/\*\*p\./);
+  });
+  it("never prints a warning page, even when a caller passes one", () => {
+    const text = energizedWorkStop(null, { machineUnclear: true, warning: { page: "5" } });
+    expect(text).not.toContain("related warning");
+    expect(text).not.toMatch(/\*\*p\./);
+    expect(text).toBe(energizedWorkStop(null, { machineUnclear: true }));
+  });
+  it("leaves every other stop byte-identical when the option is absent or false", () => {
+    expect(energizedWorkStop(null, { machineUnclear: false })).toBe(energizedWorkStop(null));
+    expect(energizedWorkStop(null, { machineUnclear: false, lookupFailed: true })).toBe(energizedWorkStop(null, { lookupFailed: true }));
+    expect(energizedWorkStop({ title: "x", page: "2-15" }, { machineUnclear: false, warning: { page: "5" } })).toBe(
+      energizedWorkStop({ title: "x", page: "2-15" }, { warning: { page: "5" } }),
+    );
+  });
+});
