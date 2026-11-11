@@ -3960,9 +3960,35 @@ async function handleChatTurn(
   );
   endTimed(identityResolveSpan, "identity");
   openChildren.delete(identityResolveSpan);
+  // What is on record about which machine this is. The project's own maker and
+  // model are shown as before. A project made from a registered machine has
+  // neither of its own, so the header said "an unspecified machine" while the
+  // manual check (manualIdentity) already knew the confirmed machine's model;
+  // the header now states that same model. Nothing is taken from an
+  // unconfirmed or disputed binding: notebookManualIdentity already refuses both.
+  const ownIdentity = [nb?.manufacturer, nb?.model].filter(Boolean).join(" ");
+  const recordedIdentity =
+    ownIdentity || [manualIdentity.identity.manufacturer, manualIdentity.identity.model].filter(Boolean).join(" ");
+  const modelOnRecord = (ownIdentity ? nb?.model : manualIdentity.identity.model)?.trim() || "";
+  const catalogOnRecord = nb?.catalogNumber?.trim() || "";
   const identity = identityDisputed
     ? "identity DISPUTED for this question (the notebook's bound machine is withheld)"
-    : [nb?.manufacturer, nb?.model].filter(Boolean).join(" ") || "an unspecified machine";
+    : recordedIdentity || "an unspecified machine";
+  // Seen on staging 2026-11-11: a project stored as a drive SERIES with no
+  // catalog number was told one variant's supply voltage as its own. The page
+  // cited did say it; the header had told the model nothing about which
+  // variant this is. So the header states what is on record about the catalog
+  // number. With none on record it also says how to answer a value that
+  // differs by variant. The line reads no model or number shape: it is the
+  // same for every model, and the model judges from the excerpts whether the
+  // model on record identifies a variant. Withheld while identity is disputed.
+  const catalogLine = identityDisputed
+    ? ""
+    : catalogOnRecord
+      ? `- Catalog number on record: ${catalogOnRecord}.\n`
+      : modelOnRecord
+        ? "- Catalog number: none on record. Only the model above is recorded for this machine. If an excerpt gives a value that differs between variants or catalog numbers of this model (for example supply voltage, phase, rated current, power, fuse or breaker size), state it as this machine's only when the model above identifies that variant. Otherwise say it depends on the full catalog number, give what the excerpt lists for each variant, and ask for the full catalog number from the nameplate.\n"
+        : "";
   // A bound asset is a stronger identity claim than free-text manufacturer/model,
   // so it is stated explicitly. Until a human confirms it, it is marked SELECTED:
   // a QR scan proves which sticker was scanned, not which machine wears it, and
@@ -3995,6 +4021,7 @@ async function handleChatTurn(
     ? ""
     : `\n\nMACHINE CONTEXT (facts about this notebook, not retrieved excerpts):\n` +
     `- Equipment: ${identity}${nb?.displayName && !identityDisputed ? ` — "${nb.displayName}"` : ""}.${assetLine}\n` +
+    catalogLine +
     `- Loaded source documents: ${loadedDocs}.\n` +
     `- Coverage note: a quick-start guide does not replace the full user manual; if a question needs detail the loaded docs lack, say so and point to the full user manual.`;
 
