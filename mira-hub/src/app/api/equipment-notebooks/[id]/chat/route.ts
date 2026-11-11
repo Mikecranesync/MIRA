@@ -3960,9 +3960,62 @@ async function handleChatTurn(
   );
   endTimed(identityResolveSpan, "identity");
   openChildren.delete(identityResolveSpan);
+  // What is on record about which machine this is: ONE identity, the one the
+  // manual check uses for every read of the turn (manualIdentity). The
+  // project's own confirmed maker and model win. Otherwise a confirmed bound
+  // machine with a model supplies them. Otherwise the project's own fields are
+  // shown as stored, as before. The header used to read the project's own
+  // fields by itself, so it could name one machine while the manuals were
+  // checked against another: "an unspecified machine" for a project made from
+  // a registered machine, or an unconfirmed maker and model (and catalog
+  // number) of the project's own beside the bound machine's "Identity
+  // CONFIRMED". Maker, model and catalog number now come from the same place.
+  // Nothing is taken from an unconfirmed or disputed binding:
+  // notebookManualIdentity already refuses both.
+  //
+  // ONLY on a turn that reads the selected documents (notebookRetrieval). On
+  // any other turn the passages, if any, come from the shared library, and
+  // that search is asked for the project's own maker and model or a photo's
+  // (oemManufacturer and oemIdentity above), not for manualIdentity. Naming
+  // manualIdentity's machine there would put one machine's name over passages
+  // searched for another. So such a turn keeps the header it had before this
+  // change, whole: the project's own maker and model, and no catalog line.
+  // (The shared-library search itself is untouched: it still does not use a
+  // confirmed bound machine. That is a standing gap, not fixed here.)
+  //
+  // The header names THIS project's machine. It does not follow a question
+  // that names another model: with two documents selected, a question about
+  // the other one is answered from that document under this machine's name,
+  // as it already was for a project with a maker and model of its own.
+  const headerFromManualCheck = notebookRetrieval;
+  const recordedIdentity = headerFromManualCheck
+    ? [manualIdentity.identity.manufacturer, manualIdentity.identity.model].filter(Boolean).join(" ")
+    : [nb?.manufacturer, nb?.model].filter(Boolean).join(" ");
+  const modelOnRecord = headerFromManualCheck ? manualIdentity.identity.model?.trim() || "" : "";
+  const catalogOnRecord = headerFromManualCheck ? manualIdentity.catalogNumber?.trim() || "" : "";
   const identity = identityDisputed
     ? "identity DISPUTED for this question (the notebook's bound machine is withheld)"
-    : [nb?.manufacturer, nb?.model].filter(Boolean).join(" ") || "an unspecified machine";
+    : recordedIdentity || "an unspecified machine";
+  // Seen on staging 2026-11-11: a project stored as a drive SERIES with no
+  // catalog number was told one variant's supply voltage as its own. The page
+  // cited did say it; the header had told the model nothing about which
+  // variant this is. So the header states what is on record about the catalog
+  // number. With none on record it also says how to answer a value that
+  // differs by variant. The line reads no model or number shape: it is the
+  // same for every model, and the model judges from the excerpts whether the
+  // model on record identifies a variant. Withheld while identity is disputed.
+  // The "none on record" line speaks of excerpts, so it goes only on a turn
+  // that has them; a turn with no manual keeps the header it had.
+  // Stated limit: a project with ONLY a catalog number on record (no maker,
+  // model, binding or document) is sent no header at all, as before. Neither
+  // confirm route stores that shape.
+  const catalogLine = identityDisputed
+    ? ""
+    : catalogOnRecord
+      ? `- Catalog number on record: ${catalogOnRecord}.\n`
+      : modelOnRecord && docGrounded
+        ? "- Catalog number: none on record. Only the model above is recorded for this machine. If an excerpt gives a value that differs between variants or catalog numbers of this model (for example supply voltage, phase, rated current, power, fuse or breaker size), state it as this machine's only when the model above identifies that variant. Otherwise say it depends on the full catalog number, give what the excerpt lists for each variant, and ask for the full catalog number from the nameplate.\n"
+        : "";
   // A bound asset is a stronger identity claim than free-text manufacturer/model,
   // so it is stated explicitly. Until a human confirms it, it is marked SELECTED:
   // a QR scan proves which sticker was scanned, not which machine wears it, and
@@ -3995,6 +4048,7 @@ async function handleChatTurn(
     ? ""
     : `\n\nMACHINE CONTEXT (facts about this notebook, not retrieved excerpts):\n` +
     `- Equipment: ${identity}${nb?.displayName && !identityDisputed ? ` — "${nb.displayName}"` : ""}.${assetLine}\n` +
+    catalogLine +
     `- Loaded source documents: ${loadedDocs}.\n` +
     `- Coverage note: a quick-start guide does not replace the full user manual; if a question needs detail the loaded docs lack, say so and point to the full user manual.`;
 
