@@ -110,6 +110,8 @@ describe("source viewer", () => {
     const open = Array.from(viewer.querySelectorAll("a")).find((a) => a.textContent?.includes("Open document"));
     expect(open?.getAttribute("href")).toBe(href);
     expect(open?.getAttribute("target")).toBe("_blank");
+    expect(open?.getAttribute("rel")).toContain("noopener");
+    expect(open?.getAttribute("rel")).toContain("noreferrer");
     expect(viewer.textContent).not.toContain("not connected");
   });
 
@@ -157,6 +159,9 @@ describe("open affordances look like links", () => {
     const open = rule(".fl-source-viewer__open");
     expect(open).toContain("color: var(--fl-workspace-accent-ink)");
     expect(open).toContain("text-decoration: underline");
+  });
+  it("the source document link keeps a 44px minimum touch target", () => {
+    expect(rule(".fl-source-viewer__open")).toMatch(/min-(?:block-size|height):[^;]*44px/);
   });
   it("both openers show a keyboard focus ring", () => {
     expect(css).toMatch(/\.fl-source-viewer__open:focus-visible, \.fl-photo:focus-visible \{ outline: 2px solid var\(--fl-workspace-accent\)/);
