@@ -3420,7 +3420,7 @@ async function handleChatTurn(
       !notebookRetrieval &&
       oemRetrieval &&
       chunks.length > 0 &&
-      (ownPassages.length === 0 || !libraryIsForTurnsMachine(message, oemModel?.value ?? null));
+      (ownPassages.length === 0 || !libraryIsForTurnsMachine(message, oemModel?.value ?? null, oemManufacturer?.name ?? null));
     const noPage = machineUnclear || libraryUnmatched;
     const lockoutChunk = noPage ? null : pickLockoutChunk([...lockoutChunks, ...ownPassages]);
     const warningPick = noPage ? null : pickQuestionWarningChunk([...warningChunks, ...ownPassages], message);

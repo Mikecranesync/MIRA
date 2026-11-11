@@ -540,10 +540,25 @@ function documentCoversNamedAsk(requested: Set<string>, title: Set<string>): boo
  * model the search is asked for whatever the message gives and can widen to the
  * whole maker, so nothing ties a page to a machine.
  */
-export function libraryIsForTurnsMachine(message: string, boundModel: string | null): boolean {
-  if (!boundModel?.trim()) return false;
+export function libraryIsForTurnsMachine(message: string, boundModel: string | null, manufacturer: string | null): boolean {
+  const bound = boundModel?.trim();
+  if (!bound) return false;
   const named = modelIdentitiesInText(message);
-  return named.size === 0 || documentCoversNamedAsk(named, modelIdentitiesInText(boundModel));
+  if (named.size === 0) return true;
+  // The propose-then-confirm flow stores a model as digits only ("820", "525")
+  // and a model read off a photo arrives the same way; no pattern reads bare
+  // digits. It is carried the way the selected-document path carries it: the
+  // family root of this maker those digits name ("800" is the Micro800 range),
+  // held to the rule a model stored by name is; else `#820`, which the message
+  // names only by its own digits under one of this maker's families
+  // (`documentCoversNotebook`), never by digits alone.
+  if (BARE_MODEL_NUMBER_RE.test(bound)) {
+    const root = bareNumberFamilyRoot(bound, manufacturer);
+    return root
+      ? documentCoversNamedAsk(named, new Set([root]))
+      : documentCoversNotebook(new Set([`#${bound}`]), named, manufacturer);
+  }
+  return documentCoversNamedAsk(named, modelIdentitiesInText(bound));
 }
 
 /** A notebook identity made ONLY of family roots ("Comfort", "Micro800") does

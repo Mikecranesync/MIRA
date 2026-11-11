@@ -105,6 +105,7 @@ vi.mock("@/lib/inference/canonical-cascade", () => seamMock);
 
 import { POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
 import { libraryIsForTurnsMachine } from "@/lib/manual-rag";
+import { resolveModelFromObservationText } from "@/capabilities/model-token";
 
 function req(body: unknown) {
   return new NextRequest("http://test/api/equipment-notebooks/x/chat", {
@@ -735,7 +736,73 @@ describe("no document selected: the stop offers a shared-library page only for t
     ["a member of the bound family", "The PowerFlex 525 is still powered up.", "PowerFlex 520", true],
     ["a known model against a model no pattern reads", "The GS20 is still powered up.", "XR-9000", false],
   ])("libraryIsForTurnsMachine: %s", (_label, message, boundModel, expected) => {
-    expect(libraryIsForTurnsMachine(message, boundModel)).toBe(expected);
+    expect(libraryIsForTurnsMachine(message, boundModel, "AutomationDirect")).toBe(expected);
+  });
+
+  // Codex round 1 on #5404, F1: the propose-then-confirm flow stores a model as
+  // digits only ("820", "525"), and a model read off a photo arrives the same
+  // way. No pattern reads bare digits, so the project's own machine, named in
+  // full, was treated as another machine and lost its library page.
+  it.each([
+    ["Micro820 against a model stored as 820", "The Micro820 is still powered up.", "820", "Allen-Bradley", true],
+    ["PowerFlex 525 against 525", "The PowerFlex 525 is still powered up.", "525", "Allen-Bradley", true],
+    ["PF525 against 525", "The PF525 is still powered up.", "525", "Rockwell Automation", true],
+    ["ACS355 against 355", "The ACS355 is still powered up.", "355", "ABB", true],
+    ["PowerFlex 40 against 40", "The PowerFlex 40 is still powered up.", "40", "Allen-Bradley", true],
+    ["a sibling: Micro850 against 820", "The Micro850 is still powered up.", "820", "Allen-Bradley", false],
+    ["a sibling: PowerFlex 523 against 525", "The PowerFlex 523 is still powered up.", "525", "Allen-Bradley", false],
+    ["another maker's machine with the same digits: ACS850 against an Allen-Bradley 850", "The ACS850 is still powered up.", "850", "Allen-Bradley", false],
+    ["the stored digits and another machine", "The GS10 and the Micro820 are still powered up.", "820", "Allen-Bradley", true],
+    ["a family stored as digits: Micro820 against 800", "The Micro820 is still powered up.", "800", "Allen-Bradley", true],
+    ["a family stored as digits: PowerFlex 525 against 520", "The PowerFlex 525 is still powered up.", "520", "Allen-Bradley", true],
+    ["a family stored as digits, another family named: PowerFlex 525 against 800", "The PowerFlex 525 is still powered up.", "800", "Allen-Bradley", false],
+    ["no model named", "It is still powered up.", "820", "Allen-Bradley", true],
+    ["a fault code is not a model", "Fault F0004, still powered up.", "525", "Allen-Bradley", true],
+  ])("libraryIsForTurnsMachine, a model stored as digits: %s", (_label, message, boundModel, maker, expected) => {
+    expect(libraryIsForTurnsMachine(message, boundModel, maker)).toBe(expected);
+  });
+
+  it.each([
+    ["Allen-Bradley PowerFlex 525 AC drive", "The PowerFlex 525 is still powered up.", "Allen-Bradley", true],
+    ["Allen-Bradley Micro820 controller", "The Micro820 is still powered up.", "Allen-Bradley", true],
+    ["ABB ACS355 drive", "The ACS355 is still powered up.", "ABB", true],
+    ["Allen-Bradley PowerFlex 525 AC drive", "The PowerFlex 523 is still powered up.", "Allen-Bradley", false],
+  ])("libraryIsForTurnsMachine, a model read off a photo label (%s) and the question %s", (label, message, maker, expected) => {
+    const read = resolveModelFromObservationText(label);
+    expect(read.ambiguous).toBe(false);
+    expect(read.model, "the photo reading yields a model").toBeTruthy();
+    expect(libraryIsForTurnsMachine(message, read.model, maker)).toBe(expected);
+  });
+
+  describe("a project whose model is stored as digits (Allen-Bradley, 820)", () => {
+    const MICRO820_PROJECT = { ...blankProject, manufacturer: "Allen-Bradley", model: "820", identityStatus: "user_confirmed" };
+    const MICRO820_LIBRARY_PAGE = {
+      ...LIBRARY_PAGE,
+      manufacturer: "Allen-Bradley",
+      model_number: "Micro820",
+      title: MICRO820_SHEET_AS_STORED.heading,
+      source_url: "https://test.invalid/oem/micro820.pdf",
+    };
+    beforeEach(() => {
+      nbMock.getNotebook.mockResolvedValue(MICRO820_PROJECT);
+      libraryRows = () => [MICRO820_LIBRARY_PAGE];
+    });
+
+    it.each([
+      ["names the machine in full", "The Micro820 is still powered up. Can I swap the fan?"],
+      ["names no model", HAZARD_ASK],
+    ])("a hazard question that %s: the project's own library page is offered", async (_label, message) => {
+      const stop = await askWithNoDocument(message);
+      expect(stop.kinds).toContain("safety");
+      expect(stop.providerAsked).toBe(false);
+      expect(stop.citations.length, "the project's own library page is cited").toBeGreaterThan(0);
+      expect(stop.text).toMatch(/\*\*p\.4-69\*\*/);
+      expect(stop.text).not.toMatch(/no manual is selected/i);
+    });
+
+    it("a hazard question naming the sibling Micro850: no page from the Micro820 library", async () => {
+      expectNoLibraryPage(await askWithNoDocument("The Micro850 is still powered up. Can I swap the fan?"));
+    });
   });
 
   it("control: the library returns nothing: the stop reads as it always has", async () => {
