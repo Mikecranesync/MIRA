@@ -124,6 +124,11 @@ export async function installRoutes(page: Page, scenario: Scenario) {
     if (m === "GET" && p === `${nbPath}/sheets`) {
       return route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ error: "living_sheet_disabled" }) });
     }
+    // #5089: the Saved fixes list reads the open notebook's saved fixes. None in this harness, as
+    // for a project where no fix has been recorded; the list shows no button and no panel.
+    if (m === "GET" && p === `${nbPath}/fixes`) {
+      return route.fulfill(json({ fixes: [], nextCursor: null, assetConfirmed: null }));
+    }
     if (m === "GET" && p === "/api/assets") {
       return route.fulfill(json([]));
     }
