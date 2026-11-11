@@ -18,6 +18,27 @@ import { canonicalModelKey } from "@/capabilities/model-token";
  * terminals, faults) — not question-specific answer rules.
  */
 
+/**
+ * A technician asking whether something is still "live", "energized" or "hot", or whether it can
+ * shock them (#5356). Only electrical phrasing fires. One pattern, two readers: the SYNONYMS entry
+ * below (the hazard vocabulary added to the search) and `asksAboutElectricalHazard` (the questions
+ * whose warning passages the re-ordering step may not drop, #5370).
+ */
+const ELECTRICAL_HAZARD_ASK = new RegExp(
+  [
+    String.raw`\b(?:live|energi[sz]ed)\s+(?:voltage|terminals?|leads?|wires?|wiring|circuits?|conductors?|parts|bus)\b`,
+    String.raw`\bhot\s+(?:wires?|legs?|leads?|conductors?|terminals?)\b`,
+    String.raw`\b(?:voltage|terminals?|leads?|wires?|wiring|circuits?(?!\s+board)|conductors?|outputs?|bus|(?:motor|load|line) side)\s+(?:(?:is|are|stays?|remains?|still)\s+){1,2}(?:live|energi[sz]ed|hot)\b`,
+    String.raw`\b(?:get|getting|got|be|been)\s+(?:a\s+)?shock(?:ed)?\b|\belectric(?:al)?\s+shock\b|\belectrocut\w*`,
+  ].join("|"),
+  "i",
+);
+
+/** True when the hazard-vocabulary rule fires for this text. */
+export function asksAboutElectricalHazard(text: string): boolean {
+  return ELECTRICAL_HAZARD_ASK.test(text);
+}
+
 /** Domain synonym expansion: each trigger (matched as a whole phrase, case-
  *  insensitive) contributes manufacturer-vocabulary terms to the query set. */
 const SYNONYMS: ReadonlyArray<readonly [RegExp, readonly string[]]> = [
@@ -50,15 +71,7 @@ const SYNONYMS: ReadonlyArray<readonly [RegExp, readonly string[]]> = [
   // high" (temperature), "live data on the output terminals" and "mechanical
   // shock rating" do not (Codex F1 on #5362).
   [
-    new RegExp(
-      [
-        String.raw`\b(?:live|energi[sz]ed)\s+(?:voltage|terminals?|leads?|wires?|wiring|circuits?|conductors?|parts|bus)\b`,
-        String.raw`\bhot\s+(?:wires?|legs?|leads?|conductors?|terminals?)\b`,
-        String.raw`\b(?:voltage|terminals?|leads?|wires?|wiring|circuits?(?!\s+board)|conductors?|outputs?|bus|(?:motor|load|line) side)\s+(?:(?:is|are|stays?|remains?|still)\s+){1,2}(?:live|energi[sz]ed|hot)\b`,
-        String.raw`\b(?:get|getting|got|be|been)\s+(?:a\s+)?shock(?:ed)?\b|\belectric(?:al)?\s+shock\b|\belectrocut\w*`,
-      ].join("|"),
-      "i",
-    ),
+    ELECTRICAL_HAZARD_ASK,
     ["hazardous voltage", "dangerous voltage", "shock hazard"],
   ],
 ];

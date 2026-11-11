@@ -7,8 +7,18 @@ import { FAMILY_ROOTS, MODEL_PATTERNS, ROCKWELL, familyCovers, modelIdentitiesIn
 import { ambiguousSiblingModels } from "@/capabilities/named-model-mismatch";
 import { embedQueryDetailed, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
 import { setSpanAttrs } from "@/capabilities/observability/tracing";
-import { logRerankFallback, orderWithPinnedHead, rerankEnabled, rerankPool, rerankScores } from "@/capabilities/reranker";
+import { extractManualSafetyStatement } from "@/capabilities/manual-safety-statement";
 import {
+  keepWhatPlainSearchKept,
+  logRerankFallback,
+  orderWithPinnedHead,
+  RERANK_PINNED_HEAD,
+  rerankEnabled,
+  rerankPool,
+  rerankScores,
+} from "@/capabilities/reranker";
+import {
+  asksAboutElectricalHazard,
   codeTokenMatcher,
   expandIndustrialQuery,
   withRawCodeTokens,
@@ -1339,6 +1349,8 @@ export async function retrieveNodeChunks(
       vectorLane?: string;
       rerank?: string;
       rerankMs?: number | null;
+      /** #5370: warning passages plain search kept that the re-ordering dropped and this turn put back. */
+      warningsKept?: number;
       searchPath?: string;
       /** CV-101 S6: set only when a named ask refused pages and EVERY refused
        *  page declared its own model — the evidence that the notebook's manual
@@ -2341,13 +2353,42 @@ export async function retrieveNodeChunks(
   // overall, so one family (e.g. overload) can fill every slot while a planned
   // facet (overcurrent) sits uncovered in the pool. Every facet with pool
   // evidence gets representation; facets with none stay an explicit gap.
+  // #5370 — the cross-encoder may not drop a manual's warning that plain search kept. Measured
+  // on staging: for "are the terminals still live?", plain search placed the manual's hazard
+  // statement sixth of the eight kept; the cross-encoder scored it low, it fell to fourteenth, and
+  // the answer never saw it. On a question the hazard-vocabulary rule fires for, every passage
+  // that carries a manual safety statement and that the fallback order (this same list without the
+  // cross-encoder, cut at the same size) keeps is put back, in place of the lowest-placed passage
+  // that is neither a warning, nor one of the two pinned leaders, nor evidence for a code the
+  // technician just named. Any other question, and any turn where nothing was dropped, is cut
+  // exactly as before. It only restores passages already admitted for this machine.
+  let warningsKept = 0;
+  const cutKeepingWarnings = (): typeof rerankedAll => {
+    const cut = rerankedAll.slice(0, topK);
+    if (rerankOutcome !== "ran" || !(asksAboutElectricalHazard(q) || asksAboutElectricalHazard(opts.rawQuery ?? ""))) return cut;
+    const pinnedLeaders = new Set(hybridRanked.slice(0, RERANK_PINNED_HEAD));
+    const currentCodeRes = (expanded.currentCodeTokens ?? []).map((t) => codeTokenMatcher(t).re);
+    const kept = keepWhatPlainSearchKept(
+      rerankedAll,
+      prioritizeCurrentCodeEvidence(hybridRanked, expanded.currentCodeTokens),
+      topK,
+      (c) => extractManualSafetyStatement(c.content) !== null,
+      (c) => pinnedLeaders.has(c) || currentCodeRes.some((re) => re.test(c.content)),
+    );
+    warningsKept = kept.filter((c) => !cut.includes(c)).length;
+    return kept;
+  };
   const reranked = broad.broad
     ? ensureFacetRepresentation(
         diversifyByPage(rerankedAll, 2, Math.max(topK * 2, 12)),
         rerankedAll,
         broad.facets,
       )
-    : rerankedAll.slice(0, topK);
+    : cutKeepingWarnings();
+  if (warningsKept > 0) {
+    setSpanAttrs({ "mira.retrieval.warnings_kept": warningsKept });
+    if (opts.diagnostics) opts.diagnostics.warningsKept = warningsKept;
+  }
 
   if (trace) {
     // Observability (env-gated): the full ranked candidate set with per-chunk
