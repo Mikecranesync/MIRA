@@ -530,6 +530,22 @@ function documentCoversNamedAsk(requested: Set<string>, title: Set<string>): boo
   return false;
 }
 
+/**
+ * No document is selected, so the turn's passages are the shared library's.
+ * That search is held to `boundModel` (the project's model, or one read off a
+ * photo) whatever the technician's message names. True when a page from it is
+ * for the machine this message is about: a model is bound, and the message
+ * names no known model or names one that a manual declaring the bound model
+ * covers (the same rule a selected document's cover is held to). With no bound
+ * model the search is asked for whatever the message gives and can widen to the
+ * whole maker, so nothing ties a page to a machine.
+ */
+export function libraryIsForTurnsMachine(message: string, boundModel: string | null): boolean {
+  if (!boundModel?.trim()) return false;
+  const named = modelIdentitiesInText(message);
+  return named.size === 0 || documentCoversNamedAsk(named, modelIdentitiesInText(boundModel));
+}
+
 /** A notebook identity made ONLY of family roots ("Comfort", "Micro800") does
  *  not name a machine the filter could scope to — any TP or Micro8x0 manual
  *  attached to it is plausibly right, so the filter is skipped. */

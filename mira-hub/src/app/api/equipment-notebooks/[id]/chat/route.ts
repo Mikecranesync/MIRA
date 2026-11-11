@@ -213,6 +213,7 @@ import {
   manufacturerFromObservationText,
   resolveModelFromObservationText,
   retrieveManualChunks,
+  libraryIsForTurnsMachine,
   retrieveCitedPageChunks,
   retrieveNodeChunks,
   type ManualChunk,
@@ -3405,8 +3406,24 @@ async function handleChatTurn(
     const machineUnclear =
       new Set(docIds).size > 1 &&
       [retrievalDiagnostics, lockoutDiagnostics, warningDiagnostics].some((d) => d.machineKnown === false);
-    const lockoutChunk = machineUnclear ? null : pickLockoutChunk([...lockoutChunks, ...chunks]);
-    const warningPick = machineUnclear ? null : pickQuestionWarningChunk([...warningChunks, ...chunks], message);
+    // No document is selected: the passages are the shared library's, searched
+    // for the project's own model whatever this turn names (or, with no model
+    // on record, for whatever the words gave, widening to the whole maker).
+    // The stop's searches above do not run on this path, so nothing has
+    // judged those passages against the machine the technician is asking
+    // about. A page from them is offered only for the project's own model, and
+    // never from a related machine's manual the search widened to (#4068).
+    // With no library passage at all nothing is withheld, and the stop reads
+    // as it always has.
+    const ownPassages = notebookRetrieval ? chunks : chunks.filter((c) => c.retrievalScope !== "vendor_fallback");
+    const libraryUnmatched =
+      !notebookRetrieval &&
+      oemRetrieval &&
+      chunks.length > 0 &&
+      (ownPassages.length === 0 || !libraryIsForTurnsMachine(message, oemModel?.value ?? null));
+    const noPage = machineUnclear || libraryUnmatched;
+    const lockoutChunk = noPage ? null : pickLockoutChunk([...lockoutChunks, ...ownPassages]);
+    const warningPick = noPage ? null : pickQuestionWarningChunk([...warningChunks, ...ownPassages], message);
     // The same passage is not cited twice (a lockout page that is also the warning).
     const warningChunk =
       warningPick && !(lockoutChunk && warningPick.docId === lockoutChunk.docId && warningPick.content === lockoutChunk.content)
@@ -3433,10 +3450,10 @@ async function handleChatTurn(
     ].map((c, i) => ({ ...c, citationId: String(i + 1) }));
     const stopText = energizedWorkStop(
       lockoutChunk ? { title: citationTitle(lockoutChunk), page: lockoutPageOf(lockoutChunk) } : null,
-      { warning: warningChunk ? { page: lockoutPageOf(warningChunk) } : null, lookupFailed: stopLookupsFailed, machineUnclear },
+      { warning: warningChunk ? { page: lockoutPageOf(warningChunk) } : null, lookupFailed: stopLookupsFailed, machineUnclear, libraryUnmatched },
     );
     console.warn(
-      `[notebook-chat] energized-work STOP (${stopTrigger}) lockout_page=${lockoutChunk ? lockoutPageOf(lockoutChunk) ?? "none" : "none"} warning_page=${warningChunk ? lockoutPageOf(warningChunk) ?? "none" : "none"} machine_unclear=${machineUnclear}`,
+      `[notebook-chat] energized-work STOP (${stopTrigger}) lockout_page=${lockoutChunk ? lockoutPageOf(lockoutChunk) ?? "none" : "none"} warning_page=${warningChunk ? lockoutPageOf(warningChunk) ?? "none" : "none"} machine_unclear=${machineUnclear} library_unmatched=${libraryUnmatched}`,
     );
     const stopGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
     lifecycleOutcome = "safety_stop";

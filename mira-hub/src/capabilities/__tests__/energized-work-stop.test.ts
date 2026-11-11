@@ -401,3 +401,37 @@ describe("energizedWorkStop: the machine is not known and the project holds more
     );
   });
 });
+
+describe("energizedWorkStop: no document is selected and the library's pages are not tied to the asked machine", () => {
+  const SAYS = "No manual is selected for this question";
+  it("offers no page, says why, and still sends the technician to the site lockout procedure", () => {
+    const text = energizedWorkStop(null, { libraryUnmatched: true });
+    expect(text).toContain("SAFETY STOP — energized work.");
+    expect(text).toContain("lock out and tag out every energy source");
+    expect(text).toContain(SAYS);
+    expect(text).toContain("follow your site's lockout/tagout procedure");
+    expect(text).not.toMatch(/\*\*p\./);
+    expect(text).not.toContain("couldn't find a lockout page");
+    expect(text).not.toContain("more than one document");
+  });
+  it("never prints a lockout page or a warning page, even when a caller passes them", () => {
+    const text = energizedWorkStop({ title: "GS10 User Manual.pdf", page: "4-69" }, { libraryUnmatched: true, warning: { page: "5" } });
+    expect(text).not.toContain("4-69");
+    expect(text).not.toContain("related warning");
+    expect(text).not.toMatch(/\*\*p\./);
+    expect(text).toBe(energizedWorkStop(null, { libraryUnmatched: true }));
+  });
+  it("wins over a failed lookup", () => {
+    expect(energizedWorkStop(null, { libraryUnmatched: true, lookupFailed: true })).toBe(energizedWorkStop(null, { libraryUnmatched: true }));
+  });
+  it("several selected documents with an unknown machine keeps its own sentence (the two cannot both be true of one turn)", () => {
+    expect(energizedWorkStop(null, { libraryUnmatched: true, machineUnclear: true })).toBe(energizedWorkStop(null, { machineUnclear: true }));
+  });
+  it("leaves every other stop byte-identical when the option is absent or false", () => {
+    expect(energizedWorkStop(null, { libraryUnmatched: false })).toBe(energizedWorkStop(null));
+    expect(energizedWorkStop(null, { libraryUnmatched: false, lookupFailed: true })).toBe(energizedWorkStop(null, { lookupFailed: true }));
+    expect(energizedWorkStop({ title: "x", page: "2-15" }, { libraryUnmatched: false, warning: { page: "5" } })).toBe(
+      energizedWorkStop({ title: "x", page: "2-15" }, { warning: { page: "5" } }),
+    );
+  });
+});
