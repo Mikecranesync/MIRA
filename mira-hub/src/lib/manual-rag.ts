@@ -100,6 +100,17 @@ export interface ManualChunk {
   verified?: boolean;
 }
 
+/** What an admitted document's cover says, as the safety stop needs it. */
+export type AdmittedCover = {
+  /** The models the cover declares, as the model reader's own identities
+   *  ("MICRO820"), never the cover's words. */
+  models: string[];
+  /** Numbers in THIS turn's question that the model reader has no pattern for
+   *  (a part number, a fault code, a tag), that are not the confirmed
+   *  machine's own recorded number, and that this cover does not list. */
+  unlisted: string[];
+};
+
 export interface ManualSource {
   index: number;
   title: string;
@@ -1624,6 +1635,10 @@ export async function retrieveNodeChunks(
        *  family name): a cover that says nothing about it is still admitted.
        *  Absent = the search returned before deciding (and returned no passage). */
       machineKnown?: boolean;
+      /** For each document a passage was admitted from: what its cover says,
+       *  for the safety stop to name whose manual its page is from. Decides
+       *  nothing here: it is written after a row is admitted. */
+      admittedCovers?: Record<string, AdmittedCover>;
     };
   },
 ): Promise<ManualChunk[]> {
@@ -2414,6 +2429,29 @@ export async function retrieveNodeChunks(
     }
     return maker !== null && [...names].every((id) => isAnotherMakersFamily(id, maker)) ? declared : null;
   };
+  // Codex re-review 2026-11-11, finding 1. A number in the question that the
+  // model reader cannot read names no machine here, so the confirmed machine's
+  // manual is admitted for a question about another device (a relay named by
+  // its part number). Admission is unchanged. What the admitted cover says is
+  // reported, so the safety stop can say whose manual its page is from and
+  // that the cover does not list the number. The confirmed machine's own
+  // recorded number is not reported: the project record places it.
+  const ownRecordNumbers = identityConfirmed ? unlistedModelNumbers(`${notebookModel} ${opts.catalogNumber ?? ""}`) : [];
+  const noteAdmittedCover = (r: Record<string, unknown>) => {
+    const docId = String(r.doc_id ?? "");
+    if (!opts.diagnostics || !docId) return;
+    const covers = (opts.diagnostics.admittedCovers ??= {});
+    if (covers[docId]) return;
+    const heading = String(r.document_heading ?? "");
+    const filename = String(r.filename ?? "");
+    const writtenAs = writtenAsOf(r);
+    covers[docId] = {
+      models: [...coverIdentitiesOf(filename, heading)],
+      unlisted: ownNumbers
+        .filter((n) => !ownRecordNumbers.some((own) => sameModelFamily(n, own)) && !manualCoversNumber(n, heading, filename, writtenAs))
+        .map((n) => n.label),
+    };
+  };
   // Which selected manuals admit() has judged. A manual the search returned no
   // passage from is judged by its cover after the lexical passes (below), so a
   // refusal's reason does not depend on what the search happened to find.
@@ -2529,6 +2567,7 @@ export async function retrieveNodeChunks(
           return false;
         }
       }
+      noteAdmittedCover(r);
       return true;
   };
   // Returns how many rows passed admission (new or already pooled): a sibling
