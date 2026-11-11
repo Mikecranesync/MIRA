@@ -233,6 +233,47 @@ describe("a project made from a registered machine", () => {
     expect(system).toMatch(NO_CATALOG);
   });
 
+  it("does not pair the machine's maker and model with a catalog number of the project's own that nobody confirmed", async () => {
+    // Codex F1 on efe2d50c: the Equipment line came from the bound machine and the catalog line
+    // from the project's own unconfirmed field, so one header described two machines.
+    nbMock.getNotebook.mockResolvedValue({ ...blankProject, catalogNumber: "22B-D4P0N104", identityStatus: "candidate" });
+    nbMock.resolveBoundAsset.mockResolvedValue(boundDrive);
+    attach(GS10);
+    const system = await systemMessageFor(QUESTION);
+    expect(system).toContain('- Equipment: AutomationDirect GS11N-20P2 — "Bench drive".');
+    expect(system).not.toContain("22B-D4P0N104");
+    expect(system).not.toContain("Catalog number on record");
+    expect(system).toMatch(NO_CATALOG);
+  });
+
+  it("names the confirmed machine, not a maker and model of the project's own that nobody confirmed", async () => {
+    // The manual check already reads this turn's manuals against the confirmed machine. The
+    // header named the project's unconfirmed identity beside the machine's "Identity CONFIRMED".
+    nbMock.getNotebook.mockResolvedValue({
+      ...blankProject,
+      manufacturer: "Allen-Bradley",
+      model: "PowerFlex 525",
+      catalogNumber: "25B-D4P0N104",
+      identityStatus: "candidate",
+    });
+    nbMock.resolveBoundAsset.mockResolvedValue(boundDrive);
+    attach(GS10);
+    const system = await systemMessageFor(QUESTION);
+    expect(system).toContain('- Equipment: AutomationDirect GS11N-20P2 — "Bench drive".');
+    expect(system).not.toContain("PowerFlex");
+    expect(system).not.toContain("25B-D4P0N104");
+    expect(system).toMatch(NO_CATALOG);
+  });
+
+  it("keep: with a binding nobody confirmed, the project's own unconfirmed maker and model are shown as today", async () => {
+    nbMock.getNotebook.mockResolvedValue({ ...blankProject, manufacturer: "Allen-Bradley", model: "PowerFlex 525", identityStatus: "candidate" });
+    nbMock.resolveBoundAsset.mockResolvedValue({ ...boundDrive, confirmedAt: null });
+    attach(GS10);
+    const system = await systemMessageFor(QUESTION);
+    expect(system).toContain('- Equipment: Allen-Bradley PowerFlex 525 — "Bench drive".');
+    expect(system).not.toContain("GS11N-20P2");
+  });
+
   it("keep: a machine nobody confirmed supplies no model, as today", async () => {
     nbMock.resolveBoundAsset.mockResolvedValue({ ...boundDrive, confirmedAt: null });
     attach(GS10);

@@ -3960,17 +3960,21 @@ async function handleChatTurn(
   );
   endTimed(identityResolveSpan, "identity");
   openChildren.delete(identityResolveSpan);
-  // What is on record about which machine this is. The project's own maker and
-  // model are shown as before. A project made from a registered machine has
-  // neither of its own, so the header said "an unspecified machine" while the
-  // manual check (manualIdentity) already knew the confirmed machine's model;
-  // the header now states that same model. Nothing is taken from an
-  // unconfirmed or disputed binding: notebookManualIdentity already refuses both.
-  const ownIdentity = [nb?.manufacturer, nb?.model].filter(Boolean).join(" ");
-  const recordedIdentity =
-    ownIdentity || [manualIdentity.identity.manufacturer, manualIdentity.identity.model].filter(Boolean).join(" ");
-  const modelOnRecord = (ownIdentity ? nb?.model : manualIdentity.identity.model)?.trim() || "";
-  const catalogOnRecord = nb?.catalogNumber?.trim() || "";
+  // What is on record about which machine this is: ONE identity, the one the
+  // manual check uses for every read of the turn (manualIdentity). The
+  // project's own confirmed maker and model win. Otherwise a confirmed bound
+  // machine with a model supplies them. Otherwise the project's own fields are
+  // shown as stored, as before. The header used to read the project's own
+  // fields by itself, so it could name one machine while the manuals were
+  // checked against another: "an unspecified machine" for a project made from
+  // a registered machine, or an unconfirmed maker and model (and catalog
+  // number) of the project's own beside the bound machine's "Identity
+  // CONFIRMED". Maker, model and catalog number now come from the same place.
+  // Nothing is taken from an unconfirmed or disputed binding:
+  // notebookManualIdentity already refuses both.
+  const recordedIdentity = [manualIdentity.identity.manufacturer, manualIdentity.identity.model].filter(Boolean).join(" ");
+  const modelOnRecord = manualIdentity.identity.model?.trim() || "";
+  const catalogOnRecord = manualIdentity.catalogNumber?.trim() || "";
   const identity = identityDisputed
     ? "identity DISPUTED for this question (the notebook's bound machine is withheld)"
     : recordedIdentity || "an unspecified machine";
