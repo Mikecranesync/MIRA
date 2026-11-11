@@ -48,6 +48,16 @@ export function namedModelMismatchText(m: NamedModelMismatch): string {
 }
 
 /**
+ * No manual is selected, so the only pages the turn had were the shared
+ * library's for the model the search was held to, and the question names a
+ * model those pages do not cover. Static text plus identity labels only.
+ */
+export function libraryNotForAskedModelText(requested: string[], libraryModel: string): string {
+  const asked = list(requested);
+  return `No manual is selected for this question, so the only pages I could use are the shared library's for the ${libraryModel}. You asked about the ${asked}, so I won't answer from them — their values may not apply to the ${asked}. Select or attach the ${asked} manual (or the page that covers it) and ask again.`;
+}
+
+/**
  * #5355 (Mike, 2026-11-09): a question that names two models is either a
  * genuine comparison / connection ("SMC-50 vs SMC Flex", "Micro820
  * communicating with Micro850") or an ambiguous request ("my SMC-50 or SMC

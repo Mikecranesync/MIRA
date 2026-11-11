@@ -140,7 +140,7 @@ import {
   pickQuestionWarningChunk,
   questionWarningQuery,
 } from "@/capabilities/energized-work-stop";
-import { ambiguousModelAskText, namedModelMismatchText, subjectOutOfReachText, type NamedModelMismatch } from "@/capabilities/named-model-mismatch";
+import { ambiguousModelAskText, libraryNotForAskedModelText, namedModelMismatchText, subjectOutOfReachText, type NamedModelMismatch } from "@/capabilities/named-model-mismatch";
 import { readSubject, SUBJECT_READ_STEPS } from "@/capabilities/conversation-subject";
 import { notebookManualIdentity } from "@/capabilities/notebook-manual-identity";
 import {
@@ -214,6 +214,7 @@ import {
   resolveModelFromObservationText,
   retrieveManualChunks,
   libraryIsForTurnsMachine,
+  type LibraryNotForAsk,
   retrieveCitedPageChunks,
   retrieveNodeChunks,
   type ManualChunk,
@@ -2491,6 +2492,7 @@ async function handleChatTurn(
     unlistedModelRefusal?: UnlistedModelRefusal;
     otherProductRefusal?: OtherProductRefusal;
     machineKnown?: boolean;
+    libraryNotForAsk?: LibraryNotForAsk;
   } = {};
   const queryRewrite = await queryRewritePromise;
   retrievalDiagnostics.queryRewrite = queryRewrite.status;
@@ -2515,6 +2517,10 @@ async function handleChatTurn(
             // whole-token lane even when buildRetrievalQuery carried the
             // thread's earlier code in (#4224, Codex r1 on #4360).
             rawQuery: message,
+            // The search is held to the bound model whatever this message
+            // names. Passages it finds for a model the message does not ask
+            // about are withheld and reported, never answered from.
+            askedMachine: { message, report: retrievalDiagnostics },
           });
         } catch (err) {
           console.error("[notebook-chat] OEM corpus retrieval failed (continuing general):", err instanceof Error ? err.message : err);
@@ -2586,6 +2592,12 @@ async function handleChatTurn(
     }
   }
   const chunks: ManualChunk[] = safetyChapterChunks.length > 0 ? [...retrievedChunks, ...safetyChapterChunks] : retrievedChunks;
+  // No document selected and the library's pages were for the bound model, not
+  // the model this message names: the turn has no passages (so nothing below
+  // can answer, cite or print a page from them) and this says why. It is NOT
+  // "the bound model's manual has nothing": every site that reads an empty
+  // result as that consults this first.
+  const libraryNotForAsk = oemRetrieval ? retrievalDiagnostics.libraryNotForAsk ?? null : null;
   // Banner is classified before retrieval; the page citation can only be
   // written now that chunks exist. Prefer the WARNING/CAUTION/DANGER chunk's
   // printed label (TQ-29: p.2-15) over INTEGER source_page.
@@ -2618,6 +2630,8 @@ async function handleChatTurn(
       ? "ambiguous_model_observation"
       : oemRetrievalFailed
       ? "oem_query_failed"
+      : libraryNotForAsk
+      ? "library_other_model"
       : retrievalExecuted && chunks.length === 0 ? "no_matches" : null;
     const oemScope: "model" | "vendor_fallback" | "manufacturer" | null =
       !oemRetrieval || chunks.length === 0
@@ -2782,7 +2796,7 @@ async function handleChatTurn(
   // is evidence of its own, so it keeps the lane.
   const boundAndEmpty =
     !guidedDeadEnd &&
-    oemRetrieval && oemModel !== null && chunks.length === 0 && !groundedMachineEntry &&
+    oemRetrieval && oemModel !== null && chunks.length === 0 && !libraryNotForAsk && !groundedMachineEntry &&
     !visualEntry && priorLookRows.length === 0;
   const missingModelManual =
     boundAndEmpty && asksForDocumentedValue(message, oemModel!.value)
@@ -3419,8 +3433,9 @@ async function handleChatTurn(
     const libraryUnmatched =
       !notebookRetrieval &&
       oemRetrieval &&
-      chunks.length > 0 &&
-      (ownPassages.length === 0 || !libraryIsForTurnsMachine(message, oemModel?.value ?? null, oemManufacturer?.name ?? null));
+      (libraryNotForAsk !== null ||
+        (chunks.length > 0 &&
+          (ownPassages.length === 0 || !libraryIsForTurnsMachine(message, oemModel?.value ?? null, oemManufacturer?.name ?? null))));
     const noPage = machineUnclear || libraryUnmatched;
     const lockoutChunk = noPage ? null : pickLockoutChunk([...lockoutChunks, ...ownPassages]);
     const warningPick = noPage ? null : pickQuestionWarningChunk([...warningChunks, ...ownPassages], message);
@@ -3559,7 +3574,7 @@ async function handleChatTurn(
   // A flagged hazard turn is never swallowed by this abstain (owner decision
   // 2026-09-27): with no documents it takes the general lane, so the tech gets
   // the hazard banner and an answer instead of "couldn't find that".
-  if (chunks.length === 0 && (!general || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText) && !groundedMachineEntry && !safetyTrigger) {
+  if (chunks.length === 0 && (!general || libraryNotForAsk || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText) && !groundedMachineEntry && !safetyTrigger) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
     // #4015: "couldn't find that in the documentation I have", not "I don't have
     // the manual" — a zero-hit scoped search does not prove the manual is absent
@@ -3572,6 +3587,10 @@ async function handleChatTurn(
       ? photoPartLookup.message
       : photoPartCompatibilityText
       ? photoPartCompatibilityText
+      // No document selected, and the library's pages were for the bound model,
+      // not the one this message names: say which, and answer nothing from them.
+      : libraryNotForAsk
+      ? libraryNotForAskedModelText(libraryNotForAsk.requested, `${oemManufacturer!.name} ${libraryNotForAsk.boundModel}`)
       : (missingModelManual || noEvidenceForMachine) && declineKind(message)
       ? declineText(declineKind(message)!, (missingModelManual ?? noEvidenceForMachine)!, oemManufacturer!.name)
       : acquisitionText
@@ -3616,7 +3635,7 @@ async function handleChatTurn(
     rec.stage("answer_gate", {
       invoked: true,
       decision: "insufficient_evidence",
-      reason: oemRetrievalFailed && (missingModelManual || noEvidenceForMachine) ? "identity_bound_retrieval_failed" : unidentifiedServiceText ? "unidentified_service_decline" : missingModelManual ? "identity_bound_no_manual" : noEvidenceForMachine ? "identity_bound_no_evidence" : "gate_g_no_evidence",
+      reason: oemRetrievalFailed && (missingModelManual || noEvidenceForMachine) ? "identity_bound_retrieval_failed" : libraryNotForAsk ? "library_other_model" : unidentifiedServiceText ? "unidentified_service_decline" : missingModelManual ? "identity_bound_no_manual" : noEvidenceForMachine ? "identity_bound_no_evidence" : "gate_g_no_evidence",
       answer_chars: abstainAnswerText?.length ?? 0,
       refusal_phrase_matched: false,
       evidence_phrase_matched: false,

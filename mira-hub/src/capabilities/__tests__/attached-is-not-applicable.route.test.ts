@@ -73,16 +73,17 @@ vi.mock("@/lib/workspace-files", () => filesMock);
 // The database stand-in: it always offers the attached manual's page, the same
 // way the synthetic-technician bench does, so the only thing decided is whether
 // that page is admitted.
-const db = vi.hoisted(() => ({ rows: [] as Record<string, unknown>[] }));
+const db = vi.hoisted(() => ({ rows: [] as Record<string, unknown>[], sql: [] as string[] }));
 vi.mock("@/lib/tenant-context", () => ({
   withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) =>
     fn({
-      query: vi.fn(async (sql: string) =>
-        sql.includes("WITH ORDINALITY") || sql.includes("names_document") || sql.includes("quote_literal(lex)")
+      query: vi.fn(async (sql: string) => {
+        db.sql.push(sql);
+        return sql.includes("WITH ORDINALITY") || sql.includes("names_document") || sql.includes("quote_literal(lex)")
           || /^\s*(SAVEPOINT|RELEASE SAVEPOINT|ROLLBACK TO SAVEPOINT)\b/.test(sql)
           ? { rows: [] }
-          : { rows: db.rows },
-      ),
+          : { rows: db.rows };
+      }),
     }),
   ),
 }));
@@ -167,6 +168,7 @@ const blankProject = { id: NB, displayName: "Bench drive wrong sheet", manufactu
 beforeEach(() => {
   vi.clearAllMocks();
   stored.turns = [];
+  db.sql = [];
   process.env.NOTEBOOK_SEMANTIC_CHECK = "0";
   process.env.NOTEBOOK_HYBRID_RETRIEVAL = "0";
   process.env.NOTEBOOK_RERANK = "0";
@@ -821,6 +823,141 @@ describe("no document selected: the stop offers a shared-library page only for t
     const stop = await askWithNoDocument(HAZARD_ASK);
     expect(stop.kinds).toContain("safety");
     expect(stop.text).toMatch(/\*\*p\.4-69\*\*/);
+  });
+
+  // The same passages feed everything else the turn builds: the answer, its
+  // citations and the page on a hazard banner. A question that names another
+  // model is not about the machine those passages are for.
+  describe("an ordinary question that names another model is not answered from the project's library pages", () => {
+    async function askOrdinary(message: string) {
+      const out = await frames(await POST(req({ message, mode: "general" }), params));
+      const sources = out.find((f) => f.kind === "sources") as { citations: unknown[] } | undefined;
+      const status = out.find((f) => f.kind === "status") as { status?: string; message?: string } | undefined;
+      return {
+        status: status?.status,
+        citations: sources?.citations ?? [],
+        providerCalls: vi.mocked(fetch).mock.calls.length,
+        kinds: out.map((f) => String(f.kind)),
+        // A decline is carried on the status frame, an answer on content frames.
+        text: [...out.filter((f) => f.kind === "content").map((f) => String(f.content ?? "")), status?.message ?? ""].join(""),
+      };
+    }
+    // A confirmed project's turn always READS its manual-search record; only a
+    // decline for want of the project model's manual writes a claim to it.
+    const claimsManualSearch = (sql: string) => /SET\s+manual_acquisition\b/i.test(sql);
+    const expectDeclinedForTheAskedModel = (r: Awaited<ReturnType<typeof askOrdinary>>, asked: RegExp) => {
+      expect(r.providerCalls, "no provider is asked").toBe(0);
+      expect(r.citations, "nothing from the project's library is cited").toEqual([]);
+      expect(r.status).toBe("insufficient_evidence");
+      expect(r.text, "the reply names the model that was asked about").toMatch(asked);
+      expect(r.text, "and says no manual is selected").toMatch(/no manual is selected/i);
+      expect(r.text, "the wrong-manual value is not served").not.toMatch(/24 V/);
+      expect(r.text, "it does not claim a search of the project model's manual came up empty").not.toMatch(/couldn't find (that|anything)/i);
+      expect(r.text, "no manual search for the project's model is reported").not.toMatch(/search(ing)? for|official manual/i);
+      expect(db.sql.filter(claimsManualSearch), "no manual search is claimed or started for the project's model").toEqual([]);
+    };
+
+    it.each([
+      ["a documented value", "The GS20 will not start. What supply voltage does it need?"],
+      ["a troubleshooting step", "The GS20 trips on start. How do I fix it?"],
+      ["what the machine is for", "What is a GS20 used for?"],
+    ])("a project set up as the GS10, asked for %s on the GS20: declined, the GS20 named, no provider asked", async (_label, message) => {
+      nbMock.getNotebook.mockResolvedValue(GS10_PROJECT);
+      expectDeclinedForTheAskedModel(await askOrdinary(message), /GS20/);
+    });
+
+    it("the same when nobody confirmed the project's model", async () => {
+      nbMock.getNotebook.mockResolvedValue({ ...GS10_PROJECT, identityStatus: "unknown" });
+      expectDeclinedForTheAskedModel(await askOrdinary("The GS20 will not start. What supply voltage does it need?"), /GS20/);
+    });
+
+    it("a flagged hazard question naming the GS20: the banner carries no page from the GS10 library and nothing is cited", async () => {
+      nbMock.getNotebook.mockResolvedValue(GS10_PROJECT);
+      const r = await askOrdinary("Is there an arc flash risk on the GS20? What supply voltage does it need?");
+      expect(r.text, "the hazard banner is still shown").toMatch(/Energized electrical work/);
+      expect(r.text, "without the other machine's page").not.toMatch(/p\.4-69/);
+      expect(r.citations).toEqual([]);
+    });
+
+    it.each([
+      ["names the project's own model", "The GS10 will not start. What supply voltage does it need?"],
+      ["names no model", "It will not start. What supply voltage does it need?"],
+      ["gives a fault code", "It shows fault F0004. What supply voltage does it need?"],
+      ["names the project's model and another machine", "The Micro820 and the GS10 will not start. What supply voltage does the drive need?"],
+      ["gives the project model's own catalog number", "The GS11N-20P2 will not start. What supply voltage does it need?"],
+    ])("control: a project set up as the GS10, a question that %s: answered from the GS10 library page, as before", async (_label, message) => {
+      nbMock.getNotebook.mockResolvedValue(GS10_PROJECT);
+      const r = await askOrdinary(message);
+      expect(r.providerCalls).toBe(1);
+      expect(r.status).toBe("answered");
+      expect(r.citations.length, "the project's own library page is cited").toBeGreaterThan(0);
+      expect(r.text).not.toMatch(/no manual is selected/i);
+    });
+
+    it("control: a flagged hazard question naming the project's own model keeps the library's page on its banner", async () => {
+      nbMock.getNotebook.mockResolvedValue(GS10_PROJECT);
+      const r = await askOrdinary("Is there an arc flash risk on the GS10? What supply voltage does it need?");
+      expect(r.text).toMatch(/Energized electrical work/);
+      expect(r.text).toMatch(/p\.4-69/);
+      expect(r.citations.length).toBeGreaterThan(0);
+    });
+
+    // #4068 (owner decision): a model with no pages of its own is answered from
+    // a related machine of the same maker, marked as such. Unchanged here.
+    it("control: the project's model has no pages and the library widens to a related machine: still answered", async () => {
+      nbMock.getNotebook.mockResolvedValue({ ...blankProject, manufacturer: "Allen-Bradley", model: "PowerFlex 525", identityStatus: "user_confirmed" });
+      libraryRows = (queryParams) =>
+        queryParams.some((v) => typeof v === "string" && v.includes("525"))
+          ? []
+          : [{ ...LIBRARY_PAGE, manufacturer: "Allen-Bradley", model_number: "PowerFlex 40", title: "PowerFlex 40 Adjustable Frequency AC Drive User Manual", source_url: "https://test.invalid/oem/pf40.pdf" }];
+      const r = await askOrdinary("It will not start. What supply voltage does it need?");
+      expect(r.providerCalls).toBe(1);
+      expect(r.citations.length).toBeGreaterThan(0);
+    });
+
+    it("control: the library has nothing for the project's model: the existing decline for that model is unchanged", async () => {
+      nbMock.getNotebook.mockResolvedValue(GS10_PROJECT);
+      libraryRows = () => [];
+      const r = await askOrdinary("The GS20 will not start. What supply voltage does it need?");
+      expect(r.providerCalls).toBe(0);
+      expect(r.text).not.toMatch(/no manual is selected/i);
+      // The detector the declines above rely on: this decline does claim the
+      // project model's manual search.
+      expect(db.sql.some(claimsManualSearch)).toBe(true);
+    });
+
+    // The propose-then-confirm flow stores a model as digits only. The search
+    // hands the maker to the same rule the stop uses, so such a project is
+    // still recognised as the machine a full name asks about.
+    describe("a project whose model is stored as digits (Allen-Bradley, 820)", () => {
+      beforeEach(() => {
+        nbMock.getNotebook.mockResolvedValue({ ...blankProject, manufacturer: "Allen-Bradley", model: "820", identityStatus: "user_confirmed" });
+        libraryRows = () => [
+          {
+            ...LIBRARY_PAGE,
+            manufacturer: "Allen-Bradley",
+            model_number: "Micro820",
+            title: MICRO820_SHEET_AS_STORED.heading,
+            source_url: "https://test.invalid/oem/micro820.pdf",
+          },
+        ];
+      });
+
+      it.each([
+        ["names the machine in full", "The Micro820 will not start. What supply voltage does it need?"],
+        ["names no model", "It will not start. What supply voltage does it need?"],
+      ])("control: a question that %s is answered from the project's own library page", async (_label, message) => {
+        const r = await askOrdinary(message);
+        expect(r.providerCalls).toBe(1);
+        expect(r.status).toBe("answered");
+        expect(r.citations.length, "the project's own library page is cited").toBeGreaterThan(0);
+        expect(r.text).not.toMatch(/no manual is selected/i);
+      });
+
+      it("a question naming the sibling Micro850 is declined, the Micro850 named", async () => {
+        expectDeclinedForTheAskedModel(await askOrdinary("The Micro850 will not start. What supply voltage does it need?"), /Micro850/);
+      });
+    });
   });
 
   it("control: a document IS selected: the new sentence never appears", async () => {

@@ -918,7 +918,41 @@ export function manufacturerFromObservationText(text: string, manufacturers: rea
   return null;
 }
 
+/** What `retrieveManualChunks` reports when it withholds what it found. */
+export type LibraryNotForAsk = {
+  /** The known models the technician's message names (modelIdentitiesInText's shape). */
+  requested: string[];
+  /** The model the search was held to. */
+  boundModel: string;
+};
+
+/**
+ * The shared-library search, with one opt-in rule on top (`askedMachine`, the
+ * notebook chat with no document selected). The search is held to the caller's
+ * model whatever the technician's message names, so what it finds is that
+ * model's pages. When the message names a known model those pages do not cover
+ * (`libraryIsForTurnsMachine`), they are not about the machine asked about:
+ * nothing is returned, and the reason is written to `askedMachine.report` so
+ * the caller can say so instead of answering, citing or printing a page from
+ * another machine's manual. A search that found nothing reports nothing.
+ */
 export async function retrieveManualChunks(
+  client: PoolClient,
+  tenantId: string,
+  query: string,
+  opts: NonNullable<Parameters<typeof searchManualLibrary>[3]> & {
+    askedMachine?: { message: string; report: { libraryNotForAsk?: LibraryNotForAsk } };
+  } = {},
+): Promise<ManualChunk[]> {
+  const found = await searchManualLibrary(client, tenantId, query, opts);
+  const asked = opts.askedMachine;
+  const boundModel = opts.model?.trim();
+  if (!asked || !boundModel || found.length === 0 || libraryIsForTurnsMachine(asked.message, boundModel, opts.manufacturer ?? null)) return found;
+  asked.report.libraryNotForAsk = { requested: [...modelIdentitiesInText(asked.message)], boundModel };
+  return [];
+}
+
+async function searchManualLibrary(
   client: PoolClient,
   tenantId: string,
   query: string,
