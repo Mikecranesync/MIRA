@@ -145,6 +145,7 @@ import { readSubject, SUBJECT_READ_STEPS } from "@/capabilities/conversation-sub
 import { notebookManualIdentity } from "@/capabilities/notebook-manual-identity";
 import {
   otherProductRefusalText,
+  unlistedModelNumbers,
   unlistedModelRefusalText,
   type OtherProductRefusal,
   type UnlistedModelRefusal,
@@ -217,6 +218,7 @@ import {
   type LibraryNotForAsk,
   retrieveCitedPageChunks,
   retrieveNodeChunks,
+  type AdmittedCover,
   type ManualChunk,
 } from "@/lib/manual-rag";
 import { inferEquipmentType } from "@/lib/equipment-type";
@@ -2492,6 +2494,7 @@ async function handleChatTurn(
     unlistedModelRefusal?: UnlistedModelRefusal;
     otherProductRefusal?: OtherProductRefusal;
     machineKnown?: boolean;
+    admittedCovers?: Record<string, AdmittedCover>;
     libraryNotForAsk?: LibraryNotForAsk;
   } = {};
   const queryRewrite = await queryRewritePromise;
@@ -3369,10 +3372,11 @@ async function handleChatTurn(
     let stopLookupsFailed = false;
     // What each stop search was told about the machine (one object per search:
     // the two run together).
-    const lockoutDiagnostics: { machineKnown?: boolean } = {};
-    const warningDiagnostics: { machineKnown?: boolean } = {};
+    type StopDiagnostics = { machineKnown?: boolean; admittedCovers?: Record<string, AdmittedCover> };
+    const lockoutDiagnostics: StopDiagnostics = {};
+    const warningDiagnostics: StopDiagnostics = {};
     if (notebookRetrieval && nodeId !== null) {
-      const stopPass = (query: string, rawQuery: string, label: string, diagnostics: { machineKnown?: boolean }) =>
+      const stopPass = (query: string, rawQuery: string, label: string, diagnostics: StopDiagnostics) =>
         withTenantContext(ctx.tenantId, (client) =>
           retrieveNodeChunks(client, ctx.tenantId, query, {
             nodeId,
@@ -3463,9 +3467,29 @@ async function handleChatTurn(
       ...(lockoutChunk ? await pointerCitations(lockoutChunk, "Lockout / disconnect-power procedure") : []),
       ...(warningChunk ? await pointerCitations(warningChunk, "Manual warning") : []),
     ].map((c, i) => ({ ...c, citationId: String(i + 1) }));
+    // Whose manual the lockout page is from, as the search that admitted it
+    // reported (Codex re-review 2026-11-11, finding 1). Every search of this
+    // turn judged the same question, so the first report for the document is
+    // the report. A library page (no document id) has none and is "the cited
+    // manual's".
+    const lockoutDocId = lockoutChunk?.docId ?? null;
+    const lockoutCover =
+      lockoutDocId === null
+        ? null
+        : [lockoutDiagnostics, retrievalDiagnostics, warningDiagnostics].map((d) => d.admittedCovers?.[lockoutDocId]).find(Boolean) ?? null;
+    // The machine a person bound this project to has a name of its own, and
+    // its tag ("CV-101") is a number the model reader has no pattern for. It
+    // is the project's own, so it is not called out as unlisted.
+    const boundNameNumbers =
+      boundAsset.state === "resolved" && boundAsset.confirmedAt && !identityDisputed
+        ? unlistedModelNumbers(boundAsset.name).map((n) => n.label)
+        : [];
+    const pageFrom = lockoutCover
+      ? { models: lockoutCover.models, unlisted: lockoutCover.unlisted.filter((label) => !boundNameNumbers.includes(label)) }
+      : null;
     const stopText = energizedWorkStop(
       lockoutChunk ? { title: citationTitle(lockoutChunk), page: lockoutPageOf(lockoutChunk) } : null,
-      { warning: warningChunk ? { page: lockoutPageOf(warningChunk) } : null, lookupFailed: stopLookupsFailed, machineUnclear, libraryUnmatched },
+      { warning: warningChunk ? { page: lockoutPageOf(warningChunk) } : null, lookupFailed: stopLookupsFailed, machineUnclear, libraryUnmatched, pageFrom },
     );
     console.warn(
       `[notebook-chat] energized-work STOP (${stopTrigger}) lockout_page=${lockoutChunk ? lockoutPageOf(lockoutChunk) ?? "none" : "none"} warning_page=${warningChunk ? lockoutPageOf(warningChunk) ?? "none" : "none"} machine_unclear=${machineUnclear} library_unmatched=${libraryUnmatched}`,

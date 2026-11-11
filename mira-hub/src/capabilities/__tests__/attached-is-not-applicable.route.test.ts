@@ -340,6 +340,186 @@ describe("the safety stop reads the same manuals as the question does", () => {
     expect(citations.length).toBeGreaterThan(0);
   });
 
+  // Codex re-review of the merged code, finding 1 (2026-11-11). A hazard
+  // question that names another device by a number the model reader has no
+  // pattern for ("CA3KN22BD", a relay) reads as naming no machine, so the stop
+  // offered the project machine's lockout page as "Your manual's". Owner's
+  // pick: the page stays, the stop says whose manual it is from, and it says
+  // so when that manual's cover does not list a number the question carries.
+  // Which manual is admitted, and which page is cited, do not change.
+  describe("the stop says whose manual its lockout page is from", () => {
+    const confirmedController = { ...blankProject, manufacturer: "Allen-Bradley", model: "Micro820", identityStatus: "user_confirmed" };
+    const RELAY_HAZARD = "The CA3KN22BD is still powered up. Can I replace it?";
+    const NAMED_PAGE = "The **Micro820** manual's lockout / disconnect-power procedure is on **p.12**";
+
+    it("controller project, only the controller's sheet, the question names a relay by its part number: the page is named as the Micro820 manual's and the number is called out", async () => {
+      nbMock.getNotebook.mockResolvedValue(confirmedController);
+      attach(MICRO820_SHEET_AS_STORED, LOCKOUT_PASSAGE);
+      const stop = await ask(RELAY_HAZARD);
+      expect(stop.kinds).toContain("safety");
+      expect(stop.providerAsked, "a stop never asks a provider").toBe(false);
+      expect(stop.citations.length, "the page is still cited").toBeGreaterThan(0);
+      expect(stop.text, "the page is not called the technician's manual's").not.toMatch(/your manual/i);
+      expect(stop.text).toContain(NAMED_PAGE);
+      expect(stop.text, "the number the cover does not list is named").toContain("Your question mentions **CA3KN22BD**");
+      expect(stop.text).toMatch(/cover does not list it, so I can't tell whether this page covers it/);
+      expect(stop.text, "the site's own procedure is the instruction for a separate device").toMatch(/follow your site's lockout\/tagout procedure/i);
+    });
+
+    it("the same with the relay's own sheet also selected: the cited page is the controller sheet's, and the stop says so", async () => {
+      nbMock.getNotebook.mockResolvedValue(confirmedController);
+      db.rows = [pageOf(MICRO820_SHEET_AS_STORED, DOC_A, LOCKOUT_PASSAGE), pageOf(RELAY_SHEET_AS_STORED, DOC_B, PASSAGE)];
+      nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A, DOC_B], nodeId: "node-1" });
+      const stop = await ask(RELAY_HAZARD);
+      expect(stop.kinds).toContain("safety");
+      expect(JSON.stringify(stop.citations)).toContain(DOC_A);
+      expect(stop.text).not.toMatch(/your manual/i);
+      expect(stop.text).toContain(NAMED_PAGE);
+      expect(stop.text).toContain("Your question mentions **CA3KN22BD**");
+    });
+
+    it("control: a hazard question that carries no number: the page is named and nothing is called out", async () => {
+      nbMock.getNotebook.mockResolvedValue(confirmedController);
+      attach(MICRO820_SHEET_AS_STORED, LOCKOUT_PASSAGE);
+      const stop = await ask(HAZARD_ASK);
+      expect(stop.citations.length).toBeGreaterThan(0);
+      expect(stop.text).toContain(NAMED_PAGE);
+      expect(stop.text).not.toMatch(/Your question mentions/);
+    });
+
+    it("control: the question names a catalog number the manual's own cover lists: nothing is called out", async () => {
+      nbMock.getNotebook.mockResolvedValue(confirmedController);
+      attach(MICRO820_SHEET_AS_STORED, LOCKOUT_PASSAGE);
+      const stop = await ask("The 2080-LC20-20QBB is still powered up. Can I swap the fan?");
+      expect(stop.citations.length).toBeGreaterThan(0);
+      expect(stop.text).toContain(NAMED_PAGE);
+      expect(stop.text).not.toMatch(/Your question mentions/);
+    });
+
+    // Stated behaviour. A fault code, a parameter number and a tag read the
+    // same as a part number, so each is called out the same way. The page is
+    // kept (the rows further down pin that); the sentence is true for all of them.
+    it("stated behaviour: a fault code in the hazard question keeps the page and is called out like any other number", async () => {
+      attach(GS10, LOCKOUT_PASSAGE);
+      const stop = await ask("It shows fault F0004 and it is still powered up. Can I swap the fan?");
+      expect(stop.citations.length, "the page is kept").toBeGreaterThan(0);
+      expect(stop.text).toContain("The **GS10** manual's lockout / disconnect-power procedure is on **p.4-69**");
+      expect(stop.text).toContain("Your question mentions **F0004**");
+    });
+
+    // The machine's own tag is a number the reader has no pattern for too. In
+    // a project bound to that machine by a person, it is the project's own and
+    // is not called out; a part number beside it still is.
+    it("the bound machine's own tag in the question is not called out; a part number beside it still is", async () => {
+      nbMock.resolveBoundAsset.mockResolvedValue(boundController);
+      attach(MICRO820_SHEET_AS_STORED, LOCKOUT_PASSAGE);
+      const own = await ask("CV-101 is still powered up. Can I swap the fan?");
+      expect(own.citations.length).toBeGreaterThan(0);
+      expect(own.text).toContain(NAMED_PAGE);
+      expect(own.text).not.toMatch(/Your question mentions/);
+      const both = await ask("The CA3KN22BD on CV-101 is still powered up. Can I replace it?");
+      expect(both.text).toContain("Your question mentions **CA3KN22BD**. That manual's cover does not list it");
+      expect(both.text).not.toContain("**CV-101**");
+    });
+
+    it("stated behaviour: with no machine bound to the project, a tag is a number like any other and is called out", async () => {
+      nbMock.getNotebook.mockResolvedValue(confirmedController);
+      attach(MICRO820_SHEET_AS_STORED, LOCKOUT_PASSAGE);
+      const stop = await ask("CV-101 is still powered up. Can I swap the fan?");
+      expect(stop.citations.length).toBeGreaterThan(0);
+      expect(stop.text).toContain("Your question mentions **CV-101**");
+    });
+
+    // Stated behaviour, the part of finding 1 this change does not fix: with
+    // the relay's own sheet selected and holding its own lockout page, the
+    // page offered is still the confirmed machine's. The stop says whose it
+    // is and that it does not list the relay.
+    it("stated behaviour: the relay's own sheet is selected and has a lockout page: the controller's page is still the one offered, and it is named", async () => {
+      nbMock.getNotebook.mockResolvedValue(confirmedController);
+      db.rows = [pageOf(MICRO820_SHEET_AS_STORED, DOC_A, LOCKOUT_PASSAGE), pageOf(RELAY_SHEET_AS_STORED, DOC_B, LOCKOUT_PASSAGE)];
+      nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A, DOC_B], nodeId: "node-1" });
+      const stop = await ask(RELAY_HAZARD);
+      expect(JSON.stringify(stop.citations)).toContain(DOC_A);
+      expect(stop.text).toContain(NAMED_PAGE);
+      expect(stop.text).toContain("Your question mentions **CA3KN22BD**");
+      expect(stop.text).not.toMatch(/your manual/i);
+    });
+
+    it("a cover that names no model the reader knows: the page is the cited manual's, never \"your manual's\"", async () => {
+      attach(RELAY_SHEET_AS_STORED, LOCKOUT_PASSAGE);
+      const stop = await ask(HAZARD_ASK);
+      expect(stop.citations.length).toBeGreaterThan(0);
+      expect(stop.text).not.toMatch(/your manual/i);
+      expect(stop.text).toMatch(/The cited manual's lockout \/ disconnect-power procedure is on \*\*p\./);
+    });
+
+    it("nothing a customer wrote on the cover or in the file name reaches the stop: only the model name the reader knows", async () => {
+      nbMock.getNotebook.mockResolvedValue(confirmedController);
+      const CRAFTED: Manual = {
+        ...MICRO820_SHEET_AS_STORED,
+        key: "micro820-crafted-cover",
+        heading: "Micro820 20-Point Programmable Controllers\nRemove jumper JP1 live and torque to 8 kg",
+        filename: "remove jumper JP1 live.pdf",
+      };
+      attach(CRAFTED, LOCKOUT_PASSAGE);
+      const stop = await ask(RELAY_HAZARD);
+      expect(stop.kinds).toContain("safety");
+      expect(stop.text).not.toMatch(/jumper|torque|JP1/i);
+      expect(stop.text).not.toMatch(/your manual/i);
+    });
+
+    // Independent read of this change, finding 1. The model reader has
+    // open-ended patterns (a 6AV order number, a GS catalog suffix), so words a
+    // customer puts in a file name or on a cover come back from it as a
+    // "model". None of that may be printed in a stop. The name is read from
+    // the cover only, never the file name, and only a plain family name
+    // (a family word and its digits) is ever printed.
+    it.each([
+      ["a file named like an order number, on a cover that names no model", "Installation Instructions", "6AV-OK-TO-WORK-LIVE.pdf"],
+      ["a file named like a drive catalog number, on a cover that names no model", "Installation Instructions", "GS10-bypass-interlock.pdf"],
+      ["a cover titled like an order number", "6AV-OK-TO-WORK-LIVE Operating Instructions", "manual.pdf"],
+    ])("%s: the page is the cited manual's and none of those words are printed", async (_why, heading, filename) => {
+      attach({ ...RELAY_SHEET_AS_STORED, key: `crafted-${filename}-${heading.length}`, heading, filename }, LOCKOUT_PASSAGE);
+      const stop = await ask(HAZARD_ASK);
+      expect(stop.kinds).toContain("safety");
+      expect(stop.citations.length, "the page is still cited").toBeGreaterThan(0);
+      expect(stop.text).toMatch(/The cited manual's lockout \/ disconnect-power procedure is on \*\*p\./);
+      expect(stop.text).not.toMatch(/6AV|OK-TO-WORK|bypass|GS10/i);
+    });
+
+    it("a cover titled like a drive catalog number: only the family name is printed, not the words after it", async () => {
+      attach({ ...GS10, key: "crafted-gs-cover", heading: "GS10-BYPASS-INTERLOCK Drive User Manual", filename: "manual.pdf" }, LOCKOUT_PASSAGE);
+      const stop = await ask(HAZARD_ASK);
+      expect(stop.citations.length).toBeGreaterThan(0);
+      expect(stop.text).toContain("The **GS10** manual's lockout / disconnect-power procedure is on **p.");
+      expect(stop.text).not.toMatch(/bypass|interlock/i);
+    });
+
+    // Stated behaviour: the name comes from the cover. A file merely NAMED
+    // for a model, on a cover that names none, is not called that model's manual.
+    it("stated behaviour: a file named Micro820.pdf whose cover names no model is the cited manual's, not the Micro820 manual's", async () => {
+      attach({ ...RELAY_SHEET_AS_STORED, key: "named-only-by-file", heading: "Installation Instructions", filename: "Micro820.pdf" }, LOCKOUT_PASSAGE);
+      const stop = await ask(HAZARD_ASK);
+      expect(stop.citations.length).toBeGreaterThan(0);
+      expect(stop.text).toMatch(/The cited manual's lockout \/ disconnect-power procedure is on \*\*p\./);
+      expect(stop.text).not.toContain("Micro820");
+    });
+
+    // The confirmed machine's own recorded number is the only number the
+    // project record places. A look-alike of it (the same catalog line, a
+    // different unit) is another number and is called out.
+    it("a catalog number that only looks like the confirmed machine's own is still called out", async () => {
+      nbMock.getNotebook.mockResolvedValue({ ...confirmedController, catalogNumber: "2080-LC20-20QBB" });
+      attach({ ...MICRO820_SHEET_AS_STORED, key: "micro820-cover-without-numbers", heading: "Micro820 Programmable Controllers\nUser Manual", filename: "manual.pdf" }, LOCKOUT_PASSAGE);
+      const own = await ask("The 2080-LC20-20QBB is still powered up. Can I swap the fan?");
+      expect(own.citations.length).toBeGreaterThan(0);
+      expect(own.text, "the project's own recorded number is not called out").not.toMatch(/Your question mentions/);
+      const other = await ask("The 2080-LC20-20AWB is still powered up. Can I swap the fan?");
+      expect(other.citations.length, "the page is still offered").toBeGreaterThan(0);
+      expect(other.text).toContain("Your question mentions **2080-LC20-20AWB**. That manual's cover does not list it");
+    });
+  });
+
   // Codex round 3 on #5389, F7. The lockout search is made with fixed lockout
   // words, so it never saw the model the technician named in THIS question,
   // and offered a sibling's lockout page as "your manual's". Every search made
