@@ -329,9 +329,37 @@ describe("a turn with no manual to read", () => {
     expect(system).not.toMatch(/Catalog number/);
   });
 
-  it("a catalog number on record is still stated", async () => {
+  // On a turn with no selected document, any passages come from the shared
+  // library, and that search is asked for the project's own maker and model (or
+  // a photo's), not for the identity the manual check uses. So this change
+  // leaves the whole header of such a turn exactly as it was. Each row below
+  // asserts the Equipment line running straight into the documents line, which
+  // is the header main sends.
+  const ASSET = " Asset: CV-101 bench drive — canonical path enterprise.garage.cv_101.drive. Identity CONFIRMED by a technician.";
+  const DOCS_NONE = "\n- Loaded source documents: none.\n";
+
+  it("keep: a catalog number on record is not stated on a turn with no selected document, as today", async () => {
     const system = await noManual({ ...typedPlateProject, catalogNumber: "GS11N-20P2" });
-    expect(system).toContain("- Catalog number on record: GS11N-20P2.\n- Loaded source documents: none.\n");
+    expect(system).toContain(`- Equipment: AutomationDirect GS11N — "Bench drive".${DOCS_NONE}`);
+    expect(system).not.toMatch(/Catalog number/);
+  });
+
+  it("keep: a project made from a confirmed machine is not given that machine's model on a turn with no selected document, as today", async () => {
+    // The shared library is not searched for the bound machine's model, so the
+    // header must not name it beside whatever that search returns.
+    nbMock.resolveBoundAsset.mockResolvedValue(boundDrive);
+    const system = await noManual(blankProject);
+    expect(system).toContain(`- Equipment: an unspecified machine — "Bench drive".${ASSET}${DOCS_NONE}`);
+    expect(system).not.toContain("GS11N-20P2");
+    expect(system).not.toMatch(/Catalog number/);
+  });
+
+  it("keep: the header names the maker and model the shared library is searched for, not the bound machine's, as today", async () => {
+    nbMock.resolveBoundAsset.mockResolvedValue(boundDrive);
+    const system = await noManual({ ...blankProject, manufacturer: "Allen-Bradley", model: "PowerFlex 525", catalogNumber: "25B-D4P0N104", identityStatus: "candidate" });
+    expect(system).toContain(`- Equipment: Allen-Bradley PowerFlex 525 — "Bench drive".${ASSET}${DOCS_NONE}`);
+    expect(system).not.toContain("GS11N-20P2");
+    expect(system).not.toMatch(/Catalog number/);
   });
 });
 

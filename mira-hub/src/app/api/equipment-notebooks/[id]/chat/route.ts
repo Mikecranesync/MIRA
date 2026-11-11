@@ -3972,9 +3972,27 @@ async function handleChatTurn(
   // CONFIRMED". Maker, model and catalog number now come from the same place.
   // Nothing is taken from an unconfirmed or disputed binding:
   // notebookManualIdentity already refuses both.
-  const recordedIdentity = [manualIdentity.identity.manufacturer, manualIdentity.identity.model].filter(Boolean).join(" ");
-  const modelOnRecord = manualIdentity.identity.model?.trim() || "";
-  const catalogOnRecord = manualIdentity.catalogNumber?.trim() || "";
+  //
+  // ONLY on a turn that reads the selected documents (notebookRetrieval). On
+  // any other turn the passages, if any, come from the shared library, and
+  // that search is asked for the project's own maker and model or a photo's
+  // (oemManufacturer and oemIdentity above), not for manualIdentity. Naming
+  // manualIdentity's machine there would put one machine's name over passages
+  // searched for another. So such a turn keeps the header it had before this
+  // change, whole: the project's own maker and model, and no catalog line.
+  // (The shared-library search itself is untouched: it still does not use a
+  // confirmed bound machine. That is a standing gap, not fixed here.)
+  //
+  // The header names THIS project's machine. It does not follow a question
+  // that names another model: with two documents selected, a question about
+  // the other one is answered from that document under this machine's name,
+  // as it already was for a project with a maker and model of its own.
+  const headerFromManualCheck = notebookRetrieval;
+  const recordedIdentity = headerFromManualCheck
+    ? [manualIdentity.identity.manufacturer, manualIdentity.identity.model].filter(Boolean).join(" ")
+    : [nb?.manufacturer, nb?.model].filter(Boolean).join(" ");
+  const modelOnRecord = headerFromManualCheck ? manualIdentity.identity.model?.trim() || "" : "";
+  const catalogOnRecord = headerFromManualCheck ? manualIdentity.catalogNumber?.trim() || "" : "";
   const identity = identityDisputed
     ? "identity DISPUTED for this question (the notebook's bound machine is withheld)"
     : recordedIdentity || "an unspecified machine";
