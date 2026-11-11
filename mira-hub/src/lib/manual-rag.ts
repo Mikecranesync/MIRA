@@ -530,6 +530,37 @@ function documentCoversNamedAsk(requested: Set<string>, title: Set<string>): boo
   return false;
 }
 
+/**
+ * No document is selected, so the turn's passages are the shared library's.
+ * That search is held to `boundModel` (the project's model, or one read off a
+ * photo) whatever the technician's message names. True when a page from it is
+ * for the machine this message is about: a model is bound, and the message
+ * names no known model or names one that a manual declaring the bound model
+ * covers (the same rule a selected document's cover is held to). With no bound
+ * model the search is asked for whatever the message gives and can widen to the
+ * whole maker, so nothing ties a page to a machine.
+ */
+export function libraryIsForTurnsMachine(message: string, boundModel: string | null, manufacturer: string | null): boolean {
+  const bound = boundModel?.trim();
+  if (!bound) return false;
+  const named = modelIdentitiesInText(message);
+  if (named.size === 0) return true;
+  // The propose-then-confirm flow stores a model as digits only ("820", "525")
+  // and a model read off a photo arrives the same way; no pattern reads bare
+  // digits. It is carried the way the selected-document path carries it: the
+  // family root of this maker those digits name ("800" is the Micro800 range),
+  // held to the rule a model stored by name is; else `#820`, which the message
+  // names only by its own digits under one of this maker's families
+  // (`documentCoversNotebook`), never by digits alone.
+  if (BARE_MODEL_NUMBER_RE.test(bound)) {
+    const root = bareNumberFamilyRoot(bound, manufacturer);
+    return root
+      ? documentCoversNamedAsk(named, new Set([root]))
+      : documentCoversNotebook(new Set([`#${bound}`]), named, manufacturer);
+  }
+  return documentCoversNamedAsk(named, modelIdentitiesInText(bound));
+}
+
 /** A notebook identity made ONLY of family roots ("Comfort", "Micro800") does
  *  not name a machine the filter could scope to — any TP or Micro8x0 manual
  *  attached to it is plausibly right, so the filter is skipped. */
@@ -1471,6 +1502,12 @@ export async function retrieveNodeChunks(
      *  (e.g. a thread's P042) can only ADD candidates — never crowd the
      *  message's own keywords ("keypad") out of the pool. */
     rawQuery?: string;
+    /** The technician's own question of this turn, when the search words are
+     *  not that question (the safety stop's lockout-page search is made with
+     *  fixed lockout words). It decides which machine is asked about, exactly
+     *  as the question does for a search made from it: every search of one
+     *  turn is held to the same manuals. Search words are unchanged by it. */
+    subjectQuestion?: string;
     /** Earlier questions of this conversation whose subject is still open
      *  (conversation-subject.ts), NEWEST FIRST. Read only when this question
      *  names no model and no confirmed notebook identity scopes it: the model
@@ -1546,6 +1583,13 @@ export async function retrieveNodeChunks(
       /** The question named no model, the notebook's machine is confirmed, and
        *  EVERY selected manual's cover declares some other product. */
       otherProductRefusal?: OtherProductRefusal;
+      /** Whether this search knew which MODEL is meant: a model the question
+       *  (or an earlier open one) names, or the notebook's confirmed model.
+       *  A number alone is not enough, in the question (a fault code, a tag, a
+       *  part number) or in the confirmed record (a catalog number with only a
+       *  family name): a cover that says nothing about it is still admitted.
+       *  Absent = the search returned before deciding (and returned no passage). */
+      machineKnown?: boolean;
     };
   },
 ): Promise<ManualChunk[]> {
@@ -1662,7 +1706,7 @@ export async function retrieveNodeChunks(
   // A confirmed notebook machine does not switch this off: "the plate reads
   // <another product>" followed by "what voltage does it need?" is about that
   // other product, whatever the notebook is set up for.
-  const ownQuestion = opts.rawQuery ?? q;
+  const ownQuestion = opts.subjectQuestion ?? opts.rawQuery ?? q;
   const namesKnownModel = (text: string) => {
     const named = resolveModelFromObservationText(text);
     return Boolean(named.model) || named.ambiguous || modelIdentitiesInText(text).size > 0;
@@ -2267,6 +2311,17 @@ export async function retrieveNodeChunks(
   // notebook recorded only by family name, is refused until the catalog number
   // is recorded or named (bench-project.ts P-53..P-58).
   const projectScoped = namesNoKnownModel && identityConfirmed && (notebookScoped || confirmedNumbers.length > 0);
+  const modelRuleActive = Boolean(requestedIdentities) || notebookScoped || unlistedAsk.length > 0 || projectScoped;
+  // Told to the caller before any passage is read, so it is never missing for
+  // a search that returns passages: the safety stop offers no page when the
+  // model is not known and several documents are selected. Narrower than
+  // `modelRuleActive` on purpose. A number the detector cannot read puts a
+  // number rule in play, in the question (as often a fault code or a tag as
+  // a machine) or in the confirmed record (`projectScoped` by a catalog
+  // number alone), but a cover silent about that number is admitted either
+  // way, another product line of the same maker included. Only a named or
+  // confirmed MODEL holds every admitted cover to that model.
+  if (opts.diagnostics) opts.diagnostics.machineKnown = Boolean(requestedIdentities) || notebookScoped;
   // Give each attached manual its own candidate window wherever a check
   // refuses rows after the SQL LIMIT: a model-scoped ask, or a number the
   // detector has no pattern for (#5369), in the question, carried from an
@@ -2528,7 +2583,6 @@ export async function retrieveNodeChunks(
   // not yet seen, so an unscoped question costs no extra query. Only inside a
   // validated document selection (the notebook chat), with the same tenant,
   // ingest-route and approved-source predicates as every other read here.
-  const modelRuleActive = Boolean(requestedIdentities) || notebookScoped || unlistedAsk.length > 0 || projectScoped;
   const unjudged = modelRuleActive && docScopeOnly ? allowedDocIds.filter((d) => !judgedDocs.has(d)) : [];
   if (unjudged.length > 0) {
     const covers = await client.query(

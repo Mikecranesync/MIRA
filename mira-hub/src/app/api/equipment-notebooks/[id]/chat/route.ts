@@ -213,6 +213,7 @@ import {
   manufacturerFromObservationText,
   resolveModelFromObservationText,
   retrieveManualChunks,
+  libraryIsForTurnsMachine,
   retrieveCitedPageChunks,
   retrieveNodeChunks,
   type ManualChunk,
@@ -2489,6 +2490,7 @@ async function handleChatTurn(
     subjectOutOfReach?: true;
     unlistedModelRefusal?: UnlistedModelRefusal;
     otherProductRefusal?: OtherProductRefusal;
+    machineKnown?: boolean;
   } = {};
   const queryRewrite = await queryRewritePromise;
   retrievalDiagnostics.queryRewrite = queryRewrite.status;
@@ -3351,8 +3353,12 @@ async function handleChatTurn(
     // it needs its own pass in the same scope. Both passes are best-effort.
     let warningChunks: ManualChunk[] = [];
     let stopLookupsFailed = false;
+    // What each stop search was told about the machine (one object per search:
+    // the two run together).
+    const lockoutDiagnostics: { machineKnown?: boolean } = {};
+    const warningDiagnostics: { machineKnown?: boolean } = {};
     if (notebookRetrieval && nodeId !== null) {
-      const stopPass = (query: string, rawQuery: string, label: string) =>
+      const stopPass = (query: string, rawQuery: string, label: string, diagnostics: { machineKnown?: boolean }) =>
         withTenantContext(ctx.tenantId, (client) =>
           retrieveNodeChunks(client, ctx.tenantId, query, {
             nodeId,
@@ -3361,20 +3367,25 @@ async function handleChatTurn(
             docIds,
             rawQuery,
             // The same machine as the question's own pass, so a stop never
-            // cites another product's page that pass refused.
+            // cites another product's page that pass refused. The lockout
+            // search is made with fixed words, so the machine this turn names
+            // is read from the message, not from the search words (Codex
+            // round 3 on #5389, F7).
             ...manualIdentity,
+            subjectQuestion: message,
             subjectQueries,
             subjectOutOfReach,
             validatedDocScope: true,
             approvedSourceDocIds: docIds,
+            diagnostics,
           }),
         ).catch((err: unknown) => {
           console.error(`[notebook-chat] ${label} retrieval failed (stop served without it):`, err instanceof Error ? err.message : err);
           return null;
         });
       const [lockoutHits, warningHits] = await Promise.all([
-        stopPass(LOCKOUT_PAGE_QUERY, LOCKOUT_PAGE_QUERY, "lockout-page"),
-        stopPass(questionWarningQuery(message), message, "question-warning"),
+        stopPass(LOCKOUT_PAGE_QUERY, LOCKOUT_PAGE_QUERY, "lockout-page", lockoutDiagnostics),
+        stopPass(questionWarningQuery(message), message, "question-warning", warningDiagnostics),
       ]);
       lockoutChunks = lockoutHits ?? [];
       warningChunks = warningHits ?? [];
@@ -3384,8 +3395,35 @@ async function handleChatTurn(
       // question pass are not a lockout search).
       stopLookupsFailed = lockoutHits === null;
     }
-    const lockoutChunk = pickLockoutChunk([...lockoutChunks, ...chunks]);
-    const warningPick = pickQuestionWarningChunk([...warningChunks, ...chunks], message);
+    // More than one document is selected and no search of this turn knew which
+    // machine is meant (no model named, no confirmed machine; a fault code, a
+    // tag or a part number is not a machine): documents were admitted without
+    // being matched to anything, so a page would be one document's, chosen by
+    // rank. Offer none, lockout or warning, and say why. It counts the
+    // documents SELECTED, not the ones a search returned, so the result does
+    // not depend on ranking. A search that returned before deciding reports
+    // nothing and returned no passage.
+    const machineUnclear =
+      new Set(docIds).size > 1 &&
+      [retrievalDiagnostics, lockoutDiagnostics, warningDiagnostics].some((d) => d.machineKnown === false);
+    // No document is selected: the passages are the shared library's, searched
+    // for the project's own model whatever this turn names (or, with no model
+    // on record, for whatever the words gave, widening to the whole maker).
+    // The stop's searches above do not run on this path, so nothing has
+    // judged those passages against the machine the technician is asking
+    // about. A page from them is offered only for the project's own model, and
+    // never from a related machine's manual the search widened to (#4068).
+    // With no library passage at all nothing is withheld, and the stop reads
+    // as it always has.
+    const ownPassages = notebookRetrieval ? chunks : chunks.filter((c) => c.retrievalScope !== "vendor_fallback");
+    const libraryUnmatched =
+      !notebookRetrieval &&
+      oemRetrieval &&
+      chunks.length > 0 &&
+      (ownPassages.length === 0 || !libraryIsForTurnsMachine(message, oemModel?.value ?? null, oemManufacturer?.name ?? null));
+    const noPage = machineUnclear || libraryUnmatched;
+    const lockoutChunk = noPage ? null : pickLockoutChunk([...lockoutChunks, ...ownPassages]);
+    const warningPick = noPage ? null : pickQuestionWarningChunk([...warningChunks, ...ownPassages], message);
     // The same passage is not cited twice (a lockout page that is also the warning).
     const warningChunk =
       warningPick && !(lockoutChunk && warningPick.docId === lockoutChunk.docId && warningPick.content === lockoutChunk.content)
@@ -3412,10 +3450,10 @@ async function handleChatTurn(
     ].map((c, i) => ({ ...c, citationId: String(i + 1) }));
     const stopText = energizedWorkStop(
       lockoutChunk ? { title: citationTitle(lockoutChunk), page: lockoutPageOf(lockoutChunk) } : null,
-      { warning: warningChunk ? { page: lockoutPageOf(warningChunk) } : null, lookupFailed: stopLookupsFailed },
+      { warning: warningChunk ? { page: lockoutPageOf(warningChunk) } : null, lookupFailed: stopLookupsFailed, machineUnclear, libraryUnmatched },
     );
     console.warn(
-      `[notebook-chat] energized-work STOP (${stopTrigger}) lockout_page=${lockoutChunk ? lockoutPageOf(lockoutChunk) ?? "none" : "none"} warning_page=${warningChunk ? lockoutPageOf(warningChunk) ?? "none" : "none"}`,
+      `[notebook-chat] energized-work STOP (${stopTrigger}) lockout_page=${lockoutChunk ? lockoutPageOf(lockoutChunk) ?? "none" : "none"} warning_page=${warningChunk ? lockoutPageOf(warningChunk) ?? "none" : "none"} machine_unclear=${machineUnclear} library_unmatched=${libraryUnmatched}`,
     );
     const stopGateSpan = tracer.startSpan("answer_gate.evaluate", undefined, rootCtx);
     lifecycleOutcome = "safety_stop";

@@ -104,6 +104,8 @@ const seamMock = vi.hoisted(() => ({
 vi.mock("@/lib/inference/canonical-cascade", () => seamMock);
 
 import { POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
+import { libraryIsForTurnsMachine } from "@/lib/manual-rag";
+import { resolveModelFromObservationText } from "@/capabilities/model-token";
 
 function req(body: unknown) {
   return new NextRequest("http://test/api/equipment-notebooks/x/chat", {
@@ -156,6 +158,7 @@ async function ask(message: string) {
     citations: sources?.citations ?? [],
     providerAsked: vi.mocked(fetch).mock.calls.length > 0,
     kinds: out.map((f) => String(f.kind)),
+    text: out.filter((f) => f.kind === "content").map((f) => String(f.content ?? "")).join(""),
   };
 }
 
@@ -333,6 +336,499 @@ describe("the safety stop reads the same manuals as the question does", () => {
     const { citations, kinds } = await ask(HAZARD_ASK);
     expect(kinds).toContain("safety");
     expect(citations.length).toBeGreaterThan(0);
+  });
+
+  // Codex round 3 on #5389, F7. The lockout search is made with fixed lockout
+  // words, so it never saw the model the technician named in THIS question,
+  // and offered a sibling's lockout page as "your manual's". Every search made
+  // for one turn is judged on that turn's question.
+  describe("the model named in the hazard question itself decides whose lockout page is offered", () => {
+    it.each([
+      ["a sibling controller, only the Micro820 sheet attached", MICRO820_SHEET_AS_STORED, "The Micro830 is still powered up. Can I swap the fan?"],
+      ["a sibling drive, only the GS10 manual attached", GS10, "The GS20 is still powered up. Can I swap the fan?"],
+      ["a model no list names, only its sibling's guide attached", RX410_TITLED, "The RX420 is still powered up. Can I swap the fan?"],
+    ])("%s: the stop is served and cites nothing", async (_why, manual, question) => {
+      attach(manual, LOCKOUT_PASSAGE);
+      const { citations, providerAsked, kinds, text } = await ask(question);
+      expect(kinds, "the stop is still served").toContain("safety");
+      expect(providerAsked, "a stop never asks a provider").toBe(false);
+      expect(citations, "another model's lockout page must not be offered").toEqual([]);
+      expect(text, "the stop points at no page of another model's manual").not.toMatch(/\*\*p\./);
+      expect(text).toContain("follow your site's lockout/tagout procedure");
+    });
+
+    it.each([
+      ["the controller named, its own sheet attached", MICRO820_SHEET_AS_STORED, "The Micro820 is still powered up. Can I swap the fan?"],
+      ["the drive named, its own manual attached", GS10, "The GS10 is still powered up. Can I swap the fan?"],
+    ])("control: %s: the stop cites that manual's lockout page", async (_why, manual, question) => {
+      attach(manual, LOCKOUT_PASSAGE);
+      const { citations, kinds } = await ask(question);
+      expect(kinds).toContain("safety");
+      expect(citations.length, "the named machine's own lockout page is cited").toBeGreaterThan(0);
+    });
+
+    // The rule, not the examples: the stop offers a lockout page from exactly
+    // the manuals the same machine's ordinary question is answered from. The
+    // stand-in database always offers the attached page, so "cited" means
+    // "admitted" on both sides.
+    it.each([
+      ["the Micro820 sheet", MICRO820_SHEET_AS_STORED, "Micro820"],
+      ["the Micro820 sheet", MICRO820_SHEET_AS_STORED, "Micro830"],
+      ["the Micro820 sheet", MICRO820_SHEET_AS_STORED, "2080-LC20-20QBB"],
+      ["the Micro820 sheet", MICRO820_SHEET_AS_STORED, "CA3KN22BD"],
+      ["the Micro820 sheet", MICRO820_SHEET_AS_STORED, "RX420"],
+      ["the GS10 manual", GS10, "GS10"],
+      ["the GS10 manual", GS10, "GS20"],
+      ["the GS10 manual", GS10, "GS11N-20P2"],
+      ["the GS10 manual", GS10, "Micro820"],
+      ["the relay's sheet", RELAY_SHEET_AS_STORED, "CA3KN22BD"],
+      ["the relay's sheet", RELAY_SHEET_AS_STORED, "Micro820"],
+      ["the RX410 guide", RX410_TITLED, "RX410"],
+      ["the RX410 guide", RX410_TITLED, "RX420"],
+    ])("%s, asked about the %s: the stop cites a page exactly when the ordinary question is answered from it", async (_which, manual, named) => {
+      attach(manual, LOCKOUT_PASSAGE);
+      const ordinary = await ask(`What supply voltage does the ${named} need?`);
+      stored.turns = [];
+      vi.mocked(fetch).mockClear();
+      const stop = await ask(`The ${named} is still powered up. Can I swap the fan?`);
+      expect(stop.kinds).toContain("safety");
+      expect(stop.providerAsked).toBe(false);
+      expect(stop.citations.length > 0, `ordinary question cited ${ordinary.citations.length}`).toBe(ordinary.citations.length > 0);
+    });
+
+    it("a project confirmed as the Micro820: a hazard question naming the Micro830 is not sent to the Micro820 sheet's lockout page", async () => {
+      nbMock.resolveBoundAsset.mockResolvedValue(boundController);
+      attach(MICRO820_SHEET_AS_STORED, LOCKOUT_PASSAGE);
+      const { citations, kinds, text } = await ask("The Micro830 is still powered up. Can I swap the fan?");
+      expect(kinds).toContain("safety");
+      expect(citations).toEqual([]);
+      expect(text).not.toMatch(/\*\*p\./);
+    });
+
+    it("the model named in the hazard question wins over the one an earlier, refused question named", async () => {
+      attach(GS10, LOCKOUT_PASSAGE);
+      const first = await ask("The GS20 will not start. What supply voltage does it need?");
+      expect(first.citations, "the GS10 manual does not answer for the GS20").toEqual([]);
+      const stop = await ask("The GS10 is still powered up. Can I swap the fan?");
+      expect(stop.kinds).toContain("safety");
+      expect(stop.citations.length, "the GS10's own lockout page is cited for the GS10").toBeGreaterThan(0);
+    });
+
+    it("the model named in the hazard question wins over the one an earlier, still-open question named, the other way round", async () => {
+      attach(GS10, LOCKOUT_PASSAGE);
+      // An unanswered earlier turn about the GS10 itself: without the turn's own
+      // question, the lockout search would carry the GS10 and offer its page.
+      stored.turns = [{ question: "The GS10 will not start.", answerStatus: "insufficient_evidence", answerText: null, basis: null }];
+      const stop = await ask("The GS20 is still powered up. Can I swap the fan?");
+      expect(stop.kinds).toContain("safety");
+      expect(stop.citations, "the GS10's lockout page is not offered for the GS20").toEqual([]);
+      expect(stop.text).not.toMatch(/\*\*p\./);
+    });
+
+    // More than one document in the project, no confirmed machine, and a hazard
+    // question that names none: nothing says which machine is meant, so every
+    // document is admitted unjudged and any page would be one document's,
+    // chosen by rank. The stop offers no page and says so. It counts the
+    // documents SELECTED for the turn, not the ones a search happened to return.
+    const expectNoPageAndWhy = (stop: Awaited<ReturnType<typeof ask>>) => {
+      expect(stop.kinds).toContain("safety");
+      expect(stop.providerAsked, "a stop never asks a provider").toBe(false);
+      expect(stop.citations, "no page from any document").toEqual([]);
+      expect(stop.text).not.toMatch(/\*\*p\./);
+      expect(stop.text).toMatch(/more than one document/i);
+      expect(stop.text, "the site's own lockout procedure is still the instruction").toMatch(/follow your site's lockout\/tagout procedure/i);
+      expect(stop.text, "it does not claim the manuals hold no lockout page").not.toMatch(/couldn't find a lockout page/i);
+    };
+
+    it("two manuals, no confirmed machine, no model named: the stop offers no page and says why", async () => {
+      db.rows = [pageOf(GS10, DOC_A, LOCKOUT_PASSAGE), pageOf(MICRO820_SHEET_AS_STORED, DOC_B, LOCKOUT_PASSAGE)];
+      nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A, DOC_B], nodeId: "node-1" });
+      expectNoPageAndWhy(await ask(HAZARD_ASK));
+    });
+
+    // A fault code, a tag or a part number is not a machine. It reads as a
+    // number the detector has no pattern for, which puts a number rule in
+    // play, but a cover that says nothing about that number is still admitted:
+    // no document was matched to anything.
+    it.each([
+      ["a fault code", "It shows fault F0004 and it is still powered up. Can I swap the fan?"],
+      ["a machine tag", "CV-101 is still powered up. Can I swap the fan?"],
+      ["a part number no cover lists", "It's still powered up. Can I swap fan 3M4012 without shutting it down?"],
+    ])("two manuals, machine unknown, and the question carries %s: still no page", async (_what, question) => {
+      db.rows = [pageOf(GS10, DOC_A, LOCKOUT_PASSAGE), pageOf(MICRO820_SHEET_AS_STORED, DOC_B, LOCKOUT_PASSAGE)];
+      nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A, DOC_B], nodeId: "node-1" });
+      expectNoPageAndWhy(await ask(question));
+    });
+
+    // Stated behaviour: a catalog number alone is treated like any other
+    // number, so with two manuals and no confirmed machine the stop withholds
+    // the page even from the sheet that lists that number. It withholds; it
+    // never points at the other manual. The model name restores the page.
+    it("stated behaviour: two manuals, machine unknown, question gives only a catalog number: no page", async () => {
+      db.rows = [pageOf(GS10, DOC_A, LOCKOUT_PASSAGE), pageOf(MICRO820_SHEET_AS_STORED, DOC_B, LOCKOUT_PASSAGE)];
+      nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A, DOC_B], nodeId: "node-1" });
+      expectNoPageAndWhy(await ask("The 2080-LC20-20QBB is still powered up. Can I swap the fan?"));
+    });
+
+    // A project confirmed only by a family name and a catalog number: the
+    // number puts a rule in play, but another product line of the SAME maker
+    // says nothing about that number and is kept. No cover was matched to a
+    // model, so with two documents the stop offers no page. Stated cost: the
+    // sheet that does list the number is withheld too.
+    it("two documents, a project confirmed only by family and catalog number: no page, not the other product line's", async () => {
+      const SAME_MAKER_DRIVE: Manual = {
+        ...GS10,
+        key: "powerflex-525-user-manual",
+        heading: "PowerFlex 525 Adjustable Frequency AC Drive\nUser Manual\nOriginal Instructions",
+        filename: "520-um001_-en-e.pdf",
+      };
+      nbMock.getNotebook.mockResolvedValue({
+        ...blankProject, manufacturer: "Allen-Bradley", model: "Micro800", catalogNumber: "2080-LC20-20QBB", identityStatus: "user_confirmed",
+      });
+      db.rows = [pageOf(SAME_MAKER_DRIVE, DOC_A, LOCKOUT_PASSAGE), pageOf(MICRO820_SHEET_AS_STORED, DOC_B, PASSAGE)];
+      nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A, DOC_B], nodeId: "node-1" });
+      expectNoPageAndWhy(await ask(HAZARD_ASK));
+    });
+
+    it("one document sent twice in the selection is one document: its page is still offered", async () => {
+      db.rows = [pageOf(GS10, DOC_A, LOCKOUT_PASSAGE)];
+      nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A, DOC_A], nodeId: "node-1" });
+      const out = await frames(await POST(req({ message: HAZARD_ASK, sourceDocIds: [DOC_A, DOC_A] }), params));
+      const sources = out.find((f) => f.kind === "sources") as { citations: unknown[] } | undefined;
+      const text = out.filter((f) => f.kind === "content").map((f) => String(f.content ?? "")).join("");
+      expect(out.map((f) => String(f.kind))).toContain("safety");
+      expect((sources?.citations ?? []).length).toBeGreaterThan(0);
+      expect(text).not.toMatch(/more than one document/i);
+    });
+
+    // Stated behaviour, not changed here: in a project CONFIRMED as one
+    // machine, a second document whose cover names no model at all is kept
+    // (the technician attached it to this machine's project), so its lockout
+    // page can be the one offered. Only a cover that declares another product
+    // is refused.
+    it("stated behaviour: confirmed machine, and a second document whose cover names no model: its page can be offered", async () => {
+      const NO_MODEL_GUIDE: Manual = { ...GS10, key: "wiring-guide-no-model", heading: "Wiring and Grounding Guidelines\nInstallation Guide", filename: "wiring-guidelines.pdf" };
+      nbMock.getNotebook.mockResolvedValue({ ...blankProject, manufacturer: "Allen-Bradley", model: "Micro820", identityStatus: "user_confirmed" });
+      db.rows = [pageOf(NO_MODEL_GUIDE, DOC_A, LOCKOUT_PASSAGE), pageOf(MICRO820_SHEET_AS_STORED, DOC_B, PASSAGE)];
+      nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A, DOC_B], nodeId: "node-1" });
+      const stop = await ask(HAZARD_ASK);
+      expect(stop.kinds).toContain("safety");
+      expect(JSON.stringify(stop.citations)).toContain(DOC_A);
+    });
+
+    it("two manuals, machine unknown, and only ONE of them holds a lockout page: still no page", async () => {
+      db.rows = [pageOf(GS10, DOC_A, LOCKOUT_PASSAGE), pageOf(MICRO820_SHEET_AS_STORED, DOC_B, PASSAGE)];
+      nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A, DOC_B], nodeId: "node-1" });
+      expectNoPageAndWhy(await ask(HAZARD_ASK));
+    });
+
+    it("two manuals selected, machine unknown, and the search returns pages from only ONE: still no page", async () => {
+      db.rows = [pageOf(GS10, DOC_A, LOCKOUT_PASSAGE)];
+      nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A, DOC_B], nodeId: "node-1" });
+      const out = await frames(await POST(req({ message: HAZARD_ASK, sourceDocIds: [DOC_A, DOC_B] }), params));
+      const sources = out.find((f) => f.kind === "sources") as { citations: unknown[] } | undefined;
+      const text = out.filter((f) => f.kind === "content").map((f) => String(f.content ?? "")).join("");
+      expect(out.map((f) => String(f.kind))).toContain("safety");
+      expect(sources?.citations ?? []).toEqual([]);
+      expect(text).not.toMatch(/\*\*p\./);
+      expect(text).toMatch(/more than one document/i);
+    });
+
+    // Stated behaviour, a known cost of the rule above: ONE machine's manual
+    // stored as two files, in a project whose machine nobody confirmed, loses
+    // its page pointer too. The stop cannot tell two files of one manual from
+    // two machines' manuals. Confirming the machine, or naming it, restores it.
+    it("stated behaviour: one machine's manual in two files, machine not confirmed: no page", async () => {
+      db.rows = [pageOf(GS10, DOC_A, LOCKOUT_PASSAGE), pageOf(GS10, DOC_B, PASSAGE)];
+      nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A, DOC_B], nodeId: "node-1" });
+      expectNoPageAndWhy(await ask(HAZARD_ASK));
+    });
+
+    it("control: one machine's manual in two files, and the question names that machine: its page is offered", async () => {
+      db.rows = [pageOf(GS10, DOC_A, LOCKOUT_PASSAGE), pageOf(GS10, DOC_B, PASSAGE)];
+      nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A, DOC_B], nodeId: "node-1" });
+      const stop = await ask("The GS10 is still powered up. Can I swap the fan?");
+      expect(stop.kinds).toContain("safety");
+      expect(stop.citations.length).toBeGreaterThan(0);
+      expect(stop.text).not.toMatch(/more than one document/i);
+    });
+
+    it("control: the same two manuals in a project confirmed as the controller: the controller sheet's page is offered", async () => {
+      nbMock.getNotebook.mockResolvedValue({ ...blankProject, manufacturer: "Allen-Bradley", model: "Micro820", identityStatus: "user_confirmed" });
+      db.rows = [pageOf(GS10, DOC_A, LOCKOUT_PASSAGE), pageOf(MICRO820_SHEET_AS_STORED, DOC_B, LOCKOUT_PASSAGE)];
+      nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A, DOC_B], nodeId: "node-1" });
+      const stop = await ask(HAZARD_ASK);
+      expect(stop.kinds).toContain("safety");
+      expect(stop.citations.length, "the confirmed machine's own lockout page is cited").toBeGreaterThan(0);
+      expect(JSON.stringify(stop.citations)).toContain(DOC_B);
+      expect(JSON.stringify(stop.citations), "nothing from the drive's manual").not.toContain(DOC_A);
+    });
+
+    it("control: two manuals, and an earlier still-open question named the controller: the hazard follow-up that names no model gets the controller's page", async () => {
+      db.rows = [pageOf(GS10, DOC_A, LOCKOUT_PASSAGE), pageOf(MICRO820_SHEET_AS_STORED, DOC_B, LOCKOUT_PASSAGE)];
+      nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A, DOC_B], nodeId: "node-1" });
+      stored.turns = [{ question: "The Micro820 will not start.", answerStatus: "insufficient_evidence", answerText: null, basis: null }];
+      const stop = await ask(HAZARD_ASK);
+      expect(stop.kinds).toContain("safety");
+      expect(stop.text, "the machine is known from the open earlier question").not.toMatch(/more than one document/i);
+      expect(stop.citations.length, "the carried machine's own lockout page is cited").toBeGreaterThan(0);
+      expect(JSON.stringify(stop.citations)).toContain(DOC_B);
+      expect(JSON.stringify(stop.citations), "nothing from the drive's manual").not.toContain(DOC_A);
+    });
+
+    it("control: one manual, no confirmed machine, no model named: its lockout page is still offered", async () => {
+      attach(GS10, LOCKOUT_PASSAGE);
+      const stop = await ask(HAZARD_ASK);
+      expect(stop.kinds).toContain("safety");
+      expect(stop.citations.length).toBeGreaterThan(0);
+      expect(stop.text).not.toMatch(/more than one document/i);
+    });
+
+    it("two manuals attached: only the named machine's lockout page is offered", async () => {
+      // The drive manual's page carries a chapter label ("4-69"), so it is the
+      // page the stop prefers whenever both are admitted. Only the
+      // applicability check keeps it out of a question about the controller.
+      db.rows = [pageOf(GS10, DOC_A, LOCKOUT_PASSAGE), pageOf(MICRO820_SHEET_AS_STORED, DOC_B, LOCKOUT_PASSAGE)];
+      nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A, DOC_B], nodeId: "node-1" });
+      const { citations, kinds } = await ask("The Micro820 is still powered up. Can I swap the fan?");
+      expect(kinds).toContain("safety");
+      expect(citations.length, "the controller's own lockout page is cited").toBeGreaterThan(0);
+      expect(JSON.stringify(citations), "nothing from the drive's manual").not.toContain(DOC_A);
+      expect(JSON.stringify(citations)).toContain(DOC_B);
+    });
+
+    it.each([
+      ["a fault code and no model, the drive's manual attached", GS10, "It shows fault F0004 and it is still powered up. Can I swap the fan?"],
+      ["a fault code beside the model, the drive's manual attached", GS10, "The GS10 shows fault F0004 and is still powered up. Can I swap the fan?"],
+      ["a parameter number and no model, the controller's sheet attached", MICRO820_SHEET_AS_STORED, "P042 is set and it is still powered up. Can I swap the fan?"],
+    ])("control: %s: the stop still cites that manual's lockout page", async (_why, manual, question) => {
+      attach(manual, LOCKOUT_PASSAGE);
+      const { citations, kinds } = await ask(question);
+      expect(kinds).toContain("safety");
+      expect(citations.length, "a number that names no machine does not hide the lockout page").toBeGreaterThan(0);
+    });
+  });
+});
+
+// No document is selected for the turn, so the chat reads the shared maker
+// library instead. That search is held to the PROJECT's model when it has one
+// (confirmed or not), whatever model the question names; with no model on
+// record it is asked for whatever the question gives and can widen to the
+// whole maker. The stop offered a lockout page from those passages unchecked.
+describe("no document selected: the stop offers a shared-library page only for the project's own model", () => {
+  const LIBRARY_PAGE = {
+    content: LOCKOUT_PASSAGE,
+    manufacturer: "AutomationDirect",
+    model_number: "GS10",
+    source_url: "https://test.invalid/oem/gs10m.pdf",
+    source_page: 69,
+    page_label: "4-69",
+    chunk_index: 3,
+    title: GS10.heading,
+    rank: 0.8,
+    verified: true,
+  };
+  const GS10_PROJECT = { ...blankProject, manufacturer: "AutomationDirect", model: "GS10", identityStatus: "user_confirmed" };
+  const MAKER_ONLY_PROJECT = { ...blankProject, manufacturer: "AutomationDirect", model: null, identityStatus: "unknown" };
+  type Pool = { connect?: unknown };
+  let pool: Pool;
+  let libraryRows: (params: unknown[]) => Record<string, unknown>[];
+
+  beforeEach(async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [], nodeId: "node-1" });
+    libraryRows = () => [LIBRARY_PAGE];
+    pool = (await import("@/lib/db")).default as unknown as Pool;
+    pool.connect = vi.fn(async () => ({
+      query: vi.fn(async (_sql: string, queryParams: unknown[] = []) => ({ rows: libraryRows(queryParams) })),
+      release: vi.fn(),
+    }));
+  });
+  afterEach(() => {
+    delete pool.connect;
+  });
+
+  async function askWithNoDocument(message: string) {
+    const out = await frames(await POST(req({ message, mode: "general" }), params));
+    const sources = out.find((f) => f.kind === "sources") as { citations: unknown[] } | undefined;
+    return {
+      citations: sources?.citations ?? [],
+      providerAsked: vi.mocked(fetch).mock.calls.length > 0,
+      kinds: out.map((f) => String(f.kind)),
+      text: out.filter((f) => f.kind === "content").map((f) => String(f.content ?? "")).join(""),
+    };
+  }
+  const expectNoLibraryPage = (stop: Awaited<ReturnType<typeof askWithNoDocument>>) => {
+    expect(stop.kinds).toContain("safety");
+    expect(stop.providerAsked, "a stop never asks a provider").toBe(false);
+    expect(stop.citations, "no page from the library").toEqual([]);
+    expect(stop.text).not.toMatch(/\*\*p\./);
+    expect(stop.text).not.toMatch(/your manual's lockout/i);
+    expect(stop.text).toMatch(/no manual is selected/i);
+    expect(stop.text, "the site's own lockout procedure is still the instruction").toMatch(/follow your site's lockout\/tagout procedure/i);
+    expect(stop.text, "it does not claim a search of the notebook's manuals").not.toMatch(/couldn't find a lockout page/i);
+  };
+
+  it("a project set up as the GS10, a hazard question naming the GS20: no page from the GS10 library", async () => {
+    nbMock.getNotebook.mockResolvedValue(GS10_PROJECT);
+    expectNoLibraryPage(await askWithNoDocument("The GS20 is still powered up. Can I swap the fan?"));
+  });
+
+  it("the same when nobody confirmed the project's model: the library is searched for it either way", async () => {
+    nbMock.getNotebook.mockResolvedValue({ ...GS10_PROJECT, identityStatus: "unknown" });
+    expectNoLibraryPage(await askWithNoDocument("The GS20 is still powered up. Can I swap the fan?"));
+  });
+
+  it("a project with a maker and no model, a hazard question naming no model: no page from the maker's library", async () => {
+    nbMock.getNotebook.mockResolvedValue(MAKER_ONLY_PROJECT);
+    expectNoLibraryPage(await askWithNoDocument(HAZARD_ASK));
+  });
+
+  it("a project with a maker and no model, a hazard question naming the GS20: no page from the maker's library", async () => {
+    nbMock.getNotebook.mockResolvedValue(MAKER_ONLY_PROJECT);
+    expectNoLibraryPage(await askWithNoDocument("The GS20 is still powered up. Can I swap the fan?"));
+  });
+
+  it("stated behaviour: a project with a maker and no model gets no library page even when the question names a model", async () => {
+    nbMock.getNotebook.mockResolvedValue(MAKER_ONLY_PROJECT);
+    expectNoLibraryPage(await askWithNoDocument("The GS10 is still powered up. Can I swap the fan?"));
+  });
+
+  it.each([
+    ["names the project's own model", "The GS10 is still powered up. Can I swap the fan?"],
+    ["names no model", HAZARD_ASK],
+    ["gives a fault code", "It shows fault F0004 and it is still powered up. Can I swap the fan?"],
+    ["names the project's model and another machine", "The Micro820 and the GS10 are still powered up. Can I swap the fan?"],
+  ])("control: a project set up as the GS10, a hazard question that %s: the GS10 library page is offered, as before", async (_label, message) => {
+    nbMock.getNotebook.mockResolvedValue(GS10_PROJECT);
+    const stop = await askWithNoDocument(message);
+    expect(stop.kinds).toContain("safety");
+    expect(stop.providerAsked).toBe(false);
+    expect(stop.citations.length, "the project's own library page is cited").toBeGreaterThan(0);
+    expect(stop.text).toMatch(/\*\*p\.4-69\*\*/);
+    expect(stop.text).not.toMatch(/no manual is selected/i);
+  });
+
+  // The project's own model has no pages in the library, so the search widens
+  // to the same maker's related machines (#4068) and marks what it found.
+  it("the library has no page for the project's model and returns a related machine's: its page is not offered", async () => {
+    nbMock.getNotebook.mockResolvedValue({ ...blankProject, manufacturer: "Allen-Bradley", model: "PowerFlex 525", identityStatus: "user_confirmed" });
+    const scopes: string[] = [];
+    libraryRows = (queryParams) => {
+      const heldToTheModel = queryParams.some((v) => typeof v === "string" && v.includes("525"));
+      scopes.push(heldToTheModel ? "model" : "maker");
+      return heldToTheModel
+        ? []
+        : [{ ...LIBRARY_PAGE, manufacturer: "Allen-Bradley", model_number: "PowerFlex 40", title: "PowerFlex 40 Adjustable Frequency AC Drive User Manual", source_url: "https://test.invalid/oem/pf40.pdf" }];
+    };
+    const stop = await askWithNoDocument(HAZARD_ASK);
+    expect(scopes, "the search did widen past the project's model").toContain("maker");
+    expectNoLibraryPage(stop);
+  });
+
+  it.each([
+    ["no model on record", "The GS10 is still powered up.", null, false],
+    ["a blank model on record", "The GS10 is still powered up.", "  ", false],
+    ["the message names no model", "It is still powered up.", "GS10", true],
+    ["the message names the bound model", "The GS10 is still powered up.", "GS10", true],
+    ["the message names another model", "The GS20 is still powered up.", "GS10", false],
+    ["the message names the bound model and another", "The Micro820 and the GS10 are still powered up.", "GS10", true],
+    ["a fault code is not a model", "Fault F0004, still powered up.", "GS10", true],
+    ["a member of the bound family", "The PowerFlex 525 is still powered up.", "PowerFlex 520", true],
+    ["a known model against a model no pattern reads", "The GS20 is still powered up.", "XR-9000", false],
+  ])("libraryIsForTurnsMachine: %s", (_label, message, boundModel, expected) => {
+    expect(libraryIsForTurnsMachine(message, boundModel, "AutomationDirect")).toBe(expected);
+  });
+
+  // Codex round 1 on #5404, F1: the propose-then-confirm flow stores a model as
+  // digits only ("820", "525"), and a model read off a photo arrives the same
+  // way. No pattern reads bare digits, so the project's own machine, named in
+  // full, was treated as another machine and lost its library page.
+  it.each([
+    ["Micro820 against a model stored as 820", "The Micro820 is still powered up.", "820", "Allen-Bradley", true],
+    ["PowerFlex 525 against 525", "The PowerFlex 525 is still powered up.", "525", "Allen-Bradley", true],
+    ["PF525 against 525", "The PF525 is still powered up.", "525", "Rockwell Automation", true],
+    ["ACS355 against 355", "The ACS355 is still powered up.", "355", "ABB", true],
+    ["PowerFlex 40 against 40", "The PowerFlex 40 is still powered up.", "40", "Allen-Bradley", true],
+    ["a sibling: Micro850 against 820", "The Micro850 is still powered up.", "820", "Allen-Bradley", false],
+    ["a sibling: PowerFlex 523 against 525", "The PowerFlex 523 is still powered up.", "525", "Allen-Bradley", false],
+    ["another maker's machine with the same digits: ACS850 against an Allen-Bradley 850", "The ACS850 is still powered up.", "850", "Allen-Bradley", false],
+    ["the stored digits and another machine", "The GS10 and the Micro820 are still powered up.", "820", "Allen-Bradley", true],
+    ["a family stored as digits: Micro820 against 800", "The Micro820 is still powered up.", "800", "Allen-Bradley", true],
+    ["a family stored as digits: PowerFlex 525 against 520", "The PowerFlex 525 is still powered up.", "520", "Allen-Bradley", true],
+    ["a family stored as digits, another family named: PowerFlex 525 against 800", "The PowerFlex 525 is still powered up.", "800", "Allen-Bradley", false],
+    ["no model named", "It is still powered up.", "820", "Allen-Bradley", true],
+    ["a fault code is not a model", "Fault F0004, still powered up.", "525", "Allen-Bradley", true],
+  ])("libraryIsForTurnsMachine, a model stored as digits: %s", (_label, message, boundModel, maker, expected) => {
+    expect(libraryIsForTurnsMachine(message, boundModel, maker)).toBe(expected);
+  });
+
+  it.each([
+    ["Allen-Bradley PowerFlex 525 AC drive", "The PowerFlex 525 is still powered up.", "Allen-Bradley", true],
+    ["Allen-Bradley Micro820 controller", "The Micro820 is still powered up.", "Allen-Bradley", true],
+    ["ABB ACS355 drive", "The ACS355 is still powered up.", "ABB", true],
+    ["Allen-Bradley PowerFlex 525 AC drive", "The PowerFlex 523 is still powered up.", "Allen-Bradley", false],
+  ])("libraryIsForTurnsMachine, a model read off a photo label (%s) and the question %s", (label, message, maker, expected) => {
+    const read = resolveModelFromObservationText(label);
+    expect(read.ambiguous).toBe(false);
+    expect(read.model, "the photo reading yields a model").toBeTruthy();
+    expect(libraryIsForTurnsMachine(message, read.model, maker)).toBe(expected);
+  });
+
+  describe("a project whose model is stored as digits (Allen-Bradley, 820)", () => {
+    const MICRO820_PROJECT = { ...blankProject, manufacturer: "Allen-Bradley", model: "820", identityStatus: "user_confirmed" };
+    const MICRO820_LIBRARY_PAGE = {
+      ...LIBRARY_PAGE,
+      manufacturer: "Allen-Bradley",
+      model_number: "Micro820",
+      title: MICRO820_SHEET_AS_STORED.heading,
+      source_url: "https://test.invalid/oem/micro820.pdf",
+    };
+    beforeEach(() => {
+      nbMock.getNotebook.mockResolvedValue(MICRO820_PROJECT);
+      libraryRows = () => [MICRO820_LIBRARY_PAGE];
+    });
+
+    it.each([
+      ["names the machine in full", "The Micro820 is still powered up. Can I swap the fan?"],
+      ["names no model", HAZARD_ASK],
+    ])("a hazard question that %s: the project's own library page is offered", async (_label, message) => {
+      const stop = await askWithNoDocument(message);
+      expect(stop.kinds).toContain("safety");
+      expect(stop.providerAsked).toBe(false);
+      expect(stop.citations.length, "the project's own library page is cited").toBeGreaterThan(0);
+      expect(stop.text).toMatch(/\*\*p\.4-69\*\*/);
+      expect(stop.text).not.toMatch(/no manual is selected/i);
+    });
+
+    it("a hazard question naming the sibling Micro850: no page from the Micro820 library", async () => {
+      expectNoLibraryPage(await askWithNoDocument("The Micro850 is still powered up. Can I swap the fan?"));
+    });
+  });
+
+  it("control: the library returns nothing: the stop reads as it always has", async () => {
+    nbMock.getNotebook.mockResolvedValue(GS10_PROJECT);
+    libraryRows = () => [];
+    const stop = await askWithNoDocument("The GS20 is still powered up. Can I swap the fan?");
+    expect(stop.kinds).toContain("safety");
+    expect(stop.citations).toEqual([]);
+    expect(stop.text).toMatch(/couldn't find a lockout page/i);
+    expect(stop.text).not.toMatch(/no manual is selected/i);
+  });
+
+  it("stated behaviour: with no document selected, a model named in an earlier question is not carried; the project's own model decides", async () => {
+    nbMock.getNotebook.mockResolvedValue(GS10_PROJECT);
+    stored.turns = [{ question: "The GS20 will not start.", answerStatus: "insufficient_evidence", answerText: null, basis: null }];
+    const stop = await askWithNoDocument(HAZARD_ASK);
+    expect(stop.kinds).toContain("safety");
+    expect(stop.text).toMatch(/\*\*p\.4-69\*\*/);
+  });
+
+  it("control: a document IS selected: the new sentence never appears", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: "node-1" });
+    attach(GS10, LOCKOUT_PASSAGE);
+    const stop = await ask("The GS20 is still powered up. Can I swap the fan?");
+    expect(stop.kinds).toContain("safety");
+    expect(stop.text).not.toMatch(/no manual is selected/i);
   });
 });
 
@@ -645,6 +1141,33 @@ describe("a subject stays open past six turns, until a document answer closes it
     expect(next.providerAsked).toBe(false);
     expect(next.citations).toEqual([]);
     expect(next.status?.message).toMatch(/name the model/i);
+  });
+
+  // Stated limit (Codex round 3 on #5389, F6). When the earlier turns cannot
+  // be read to their start, a question is served only if it names a model the
+  // detector reads. A part number it cannot read is refused even with that
+  // part's own sheet attached, because a fault code reads as a number too and
+  // must not open the door. It refuses the right manual; it never answers
+  // from a wrong one. It needs a failed history read after six open turns, or
+  // 300 open turns. The way out is the family name, or a new conversation.
+  it.each([
+    ["the controller by its family name", MICRO820_SHEET_AS_STORED, "Micro820", true],
+    ["the drive by its family name", GS10, "GS10", true],
+    ["the drive by its part number", GS10, "GS11N-20P2", true],
+    ["the controller by its catalog number (stated limit)", MICRO820_SHEET_AS_STORED, "2080-LC20-20QBB", false],
+    ["the relay by its part number (stated limit)", RELAY_SHEET_AS_STORED, "CA3KN22BD", false],
+  ])("when the wider read fails, a question naming %s and its own sheet attached", async (_why, manual, named, answers) => {
+    attach(manual);
+    stored.turns = Array.from({ length: 9 }, (_, i) => generalAnswer(`How does a contactor work, part ${i + 1}?`));
+    const real = nbMock.listTurns.getMockImplementation()!;
+    nbMock.listTurns.mockImplementation(async (t: string, n: string, limit = 50, ...rest: unknown[]) => {
+      if (limit === 60) throw new Error("history read failed");
+      return real(t, n, limit, ...rest);
+    });
+    const next = await ask(`What supply voltage does the ${named} need?`);
+    expect(next.citations.length > 0).toBe(answers);
+    expect(next.providerAsked).toBe(answers);
+    if (!answers) expect(next.status?.message).toMatch(/name the model/i);
   });
 
   it("general answers and a safety stop in between do not push the model out of reach either", async () => {
