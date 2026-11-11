@@ -162,7 +162,7 @@
 .fl-run__criteria { margin: var(--fl-workspace-space-2) 0; padding: 0; list-style: none; display: grid; gap: var(--fl-workspace-space-2); }
 .fl-run__criteria { padding-inline-start: var(--fl-workspace-space-4); list-style: disc; font-size: var(--fl-workspace-fs-sm); }
 
-.fl-composer { position: sticky; inset-block-end: 0; padding: var(--fl-workspace-space-3) max(var(--fl-workspace-space-4), calc((100% - 48rem) / 2)) calc(var(--fl-workspace-space-4) + env(safe-area-inset-bottom, 0px)); border-block-start: 1px solid var(--fl-workspace-line); background: var(--fl-workspace-surface); }
+.fl-composer { --fl-composer-inline-inset: max(var(--fl-workspace-space-4), calc((100% - 48rem) / 2)); position: sticky; inset-block-end: 0; padding: var(--fl-workspace-space-3) var(--fl-composer-inline-inset) calc(var(--fl-workspace-space-4) + env(safe-area-inset-bottom, 0px)); border-block-start: 1px solid var(--fl-workspace-line); background: var(--fl-workspace-surface); }
 .fl-composer__sync { margin: 0 0 var(--fl-workspace-space-2); padding: var(--fl-workspace-space-2) var(--fl-workspace-space-3); border: 1px solid var(--fl-workspace-warn-line); border-radius: var(--fl-workspace-radius); background: var(--fl-workspace-warn-tint); color: var(--fl-workspace-warn-ink); font-size: var(--fl-workspace-fs-sm); }
 .fl-composer__sync[data-sync-state="error"] { border-color: var(--fl-workspace-fault-line); background: var(--fl-workspace-fault-tint); color: var(--fl-workspace-fault-ink); }
 .fl-composer__context { margin: 0 0 var(--fl-workspace-space-1); padding-inline: var(--fl-workspace-space-2); color: var(--fl-workspace-muted); font-size: var(--fl-workspace-fs-xs); }
@@ -242,7 +242,7 @@
 .fl-attachment-menu__reason { color: var(--fl-workspace-ink); font-size: var(--fl-workspace-fs-sm); }
 .fl-attachment-menu__icon { inline-size: 1.5rem; block-size: 1.5rem; flex: 0 0 auto; }
 /* Web profile: an anchored popover above the composer's "+" control. */
-.fl-attachment-menu { position: absolute; inset-inline-start: var(--fl-workspace-space-4); inset-block-end: calc(100% - var(--fl-workspace-space-1)); inline-size: min(20rem, calc(100% - 2 * var(--fl-workspace-space-4))); }
+.fl-attachment-menu { position: absolute; inset-inline-start: var(--fl-composer-inline-inset, var(--fl-workspace-space-4)); inset-block-end: calc(100% - var(--fl-workspace-space-1)); inline-size: min(20rem, calc(100% - 2 * var(--fl-workspace-space-4))); }
 
 @media (max-width: 48rem) {
   /* Mobile profile: a bottom sheet that clears the system navigation inset. */
