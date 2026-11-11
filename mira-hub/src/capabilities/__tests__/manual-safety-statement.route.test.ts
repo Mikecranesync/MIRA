@@ -10,6 +10,10 @@
  * Terminal stops and the energized directive are unchanged.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { AnswerWithSafety } from "@/factorylm-ui/answer-with-safety";
+import { AnswerMarkdown } from "@/components/equipment/notebook-markdown";
 import { NextRequest } from "next/server";
 
 const sessionMock = vi.hoisted(() => ({
@@ -48,7 +52,7 @@ import { POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
 import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
 import { extractManualSafetyStatement, manualSafetyStatementForCitations } from "@/capabilities/manual-safety-statement";
 import { isManualSafetyStatementEntry } from "@/lib/notebook-chat-types";
-import { splitEvidence } from "@/components/equipment/notebook-chat-utils";
+import { readNotebookStream, splitEvidence } from "@/components/equipment/notebook-chat-utils";
 import { turnsFromPersisted } from "@/factorylm-ui/to-interaction";
 
 const NB = "22222222-2222-4222-8222-222222222222";
@@ -97,7 +101,7 @@ function stubProvider(answer: string) {
   );
 }
 
-type Recorded = { evidence: unknown[]; answerStatus: string };
+type Recorded = { evidence: unknown[]; answerStatus: string; answerText: string };
 function recorded(): Recorded {
   const calls = domainMock.recordTurn.mock.calls as unknown as Array<[string, string, Recorded]>;
   expect(calls).toHaveLength(1);
@@ -343,5 +347,57 @@ describe("the rest of a cited page is read (#4509 Codex F1)", () => {
     await (await POST(chatReq({ message: QUESTION, sourceDocIds: [DOC_A] }), params)).text();
     const turn = recorded();
     expect(turn.evidence.filter(isManualSafetyStatementEntry)).toEqual([expect.objectContaining({ marker: "ATTENTION" })]);
+  });
+});
+
+
+describe("#5408 — generic safety reminders do not borrow a manual page", () => {
+  const question = "Before I put hands on an ATS22, what does the manual say I have to do for lockout?";
+  const answer = "The loaded excerpts discuss cautions [1] and installation [2].";
+
+  it.each([61, 26])("a retrieved hazard on page %s never becomes the generic reminder's citation, live and after reload", async (hazardPage) => {
+    // [3] is deliberately NOT cited by the answer. The second case puts an
+    // unrelated hazard on a page number already cited: equality is no provenance.
+    ragMock.retrieveNodeChunks.mockResolvedValue([
+      chunk(26, PLAIN_TEXT),
+      chunk(17, "Installation overview."),
+      chunk(hazardPage, "WARNING: Keep the enclosure closed."),
+    ]);
+    stubProvider(answer);
+    const response = await POST(chatReq({ message: question, sourceDocIds: [DOC_A] }), params);
+    const live = await readNotebookStream(response.body!.getReader(), () => {});
+    expect(live.status).toBe("answered");
+    const reminder = live.content.split("\n\n")[0];
+    expect(reminder).not.toMatch(/\(p\./);
+    expect(live.content).toContain("General safety reminder");
+    expect(live.content).toContain("Lock and tag every energy source");
+    expect(live.citations.map((c) => c.citationId)).toEqual(["1", "2"]);
+    expect(live.citations.map((c) => c.page)).toEqual([26, 17]);
+    const turn = recorded();
+    expect(turn.answerText).toBe(live.content);
+    const statements = turn.evidence.filter(isManualSafetyStatementEntry);
+    if (hazardPage === 26) {
+      // The real warning on the cited page still has valid provenance. It is
+      // a separate notice, not evidence for the fixed generic reminder.
+      expect(statements).toEqual([expect.objectContaining({ sourceDocId: DOC_A, sourceCitationId: "1", page: 26, statement: "Keep the enclosure closed." })]);
+    } else {
+      expect(statements).toEqual([]);
+    }
+    const [, restored] = turnsFromPersisted(
+      { id: "5408", question, answerStatus: "answered", answerText: turn.answerText, evidence: turn.evidence as never, basis: "oem_documentation" },
+      { notebookId: NB, title: "ATS22", identityConfirmed: false, capturedAt: "2026-11-11T00:00:00.000Z" },
+    );
+    const restoredText = restored.parts.filter((part) => part.type === "text").map((part) => part.type === "text" ? part.text : "").join("\n\n");
+    expect(restoredText).toBe(live.content);
+    const html = renderToStaticMarkup(createElement(AnswerWithSafety, {
+      text: restoredText,
+      markdown: (content: string) => createElement(AnswerMarkdown, { content, citations: live.citations, onCite: () => {} }),
+    }));
+    expect(html).toContain("General safety reminder");
+    expect(html).not.toContain("(p.");
+    expect(html).toContain("Open citation 1:");
+    expect(html).toContain("page 26");
+    expect(html).toContain("Open citation 2:");
+    expect(html).toContain("page 17");
   });
 });

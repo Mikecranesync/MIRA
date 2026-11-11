@@ -1074,11 +1074,14 @@ describe("no document selected: the stop offers a shared-library page only for t
       expect(r.text).not.toMatch(/no manual is selected/i);
     });
 
-    it("control: a flagged hazard question naming the project's own model keeps the library's page on its banner", async () => {
+    it("control: a flagged hazard question keeps its real citations, not a page on the generic banner", async () => {
       nbMock.getNotebook.mockResolvedValue(GS10_PROJECT);
       const r = await askOrdinary("Is there an arc flash risk on the GS10? What supply voltage does it need?");
       expect(r.text).toMatch(/Energized electrical work/);
-      expect(r.text).toMatch(/p\.4-69/);
+      expect(r.text).toContain("General safety reminder");
+      expect(r.text).not.toMatch(/p\.4-69/);
+      expect(r.providerCalls).toBe(1);
+      expect(r.status).toBe("answered");
       expect(r.citations.length).toBeGreaterThan(0);
     });
 
