@@ -412,6 +412,31 @@ describe("the safety stop reads the same manuals as the question does", () => {
       expect(stop.citations.length, "the GS10's own lockout page is cited for the GS10").toBeGreaterThan(0);
     });
 
+    it("the model named in the hazard question wins over the one an earlier, still-open question named, the other way round", async () => {
+      attach(GS10, LOCKOUT_PASSAGE);
+      // An unanswered earlier turn about the GS10 itself: without the turn's own
+      // question, the lockout search would carry the GS10 and offer its page.
+      stored.turns = [{ question: "The GS10 will not start.", answerStatus: "insufficient_evidence", answerText: null, basis: null }];
+      const stop = await ask("The GS20 is still powered up. Can I swap the fan?");
+      expect(stop.kinds).toContain("safety");
+      expect(stop.citations, "the GS10's lockout page is not offered for the GS20").toEqual([]);
+      expect(stop.text).not.toMatch(/\*\*p\./);
+    });
+
+    // Stated behaviour, not changed here. Two machines' manuals in one project,
+    // no confirmed machine, and a hazard question that names neither: nothing
+    // says which machine is meant, so both manuals are admitted and the stop
+    // points at ONE lockout page (the chapter-labelled one). One project per
+    // machine, or a confirmed machine, is what makes the stop's page the right one.
+    it("stated behaviour: two manuals, no confirmed machine, no model named: the stop points at one manual's page", async () => {
+      db.rows = [pageOf(GS10, DOC_A, LOCKOUT_PASSAGE), pageOf(MICRO820_SHEET_AS_STORED, DOC_B, LOCKOUT_PASSAGE)];
+      nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A, DOC_B], nodeId: "node-1" });
+      const stop = await ask(HAZARD_ASK);
+      expect(stop.kinds).toContain("safety");
+      expect(stop.citations).toHaveLength(1);
+      expect(JSON.stringify(stop.citations)).toContain(DOC_A);
+    });
+
     it("two manuals attached: only the named machine's lockout page is offered", async () => {
       // The drive manual's page carries a chapter label ("4-69"), so it is the
       // page the stop prefers whenever both are admitted. Only the
