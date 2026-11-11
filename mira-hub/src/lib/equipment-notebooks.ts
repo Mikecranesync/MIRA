@@ -1677,6 +1677,11 @@ export type ResolvedAsset =
       unsPath: string;
       selectedVia: AssetSelectionMethod | null;
       confirmedAt: string | null;
+      /** The registered machine's own maker and model (asset register), when it
+       *  has them. Null for a machine made in the namespace, which has none.
+       *  Read for the wrong-manual check only — see notebook-manual-identity.ts. */
+      manufacturer?: string | null;
+      model?: string | null;
     }
   | { state: "unresolvable"; entityId: string };
 
@@ -1714,6 +1719,31 @@ export async function resolveBoundAsset(
     const a = asset.rows[0];
     if (!a) return { state: "unresolvable" as const, entityId: String(row.equipment_entity_id) };
 
+    // A machine made in Assets carries its maker and model on its register row
+    // (cmms_equipment.id is the bridged entity's key; tenant_id there is TEXT).
+    // Best-effort inside a savepoint: a failed read leaves the binding resolved
+    // with no maker/model, which scopes nothing — exactly today's behaviour.
+    let registered: { manufacturer?: unknown; model_number?: unknown } | undefined;
+    try {
+      await c.query("SAVEPOINT bound_machine_identity");
+      const reg = await c.query(
+        `SELECT manufacturer, model_number
+           FROM cmms_equipment
+          WHERE tenant_id = $1::text AND id::text = $2
+          LIMIT 1`,
+        [tenantId, String(a.bind_key)],
+      );
+      registered = reg.rows[0];
+      await c.query("RELEASE SAVEPOINT bound_machine_identity");
+    } catch (err) {
+      console.warn(
+        "[equipment-notebooks] bound machine maker/model read failed (wrong-manual check runs without it):",
+        err instanceof Error ? err.message : err,
+      );
+      await c.query("ROLLBACK TO SAVEPOINT bound_machine_identity").catch(() => undefined);
+    }
+    const registeredText = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+
     return {
       state: "resolved" as const,
       entityId: String(a.bind_key),
@@ -1721,6 +1751,8 @@ export async function resolveBoundAsset(
       unsPath: String(a.uns_path),
       selectedVia: (row.asset_selected_via as AssetSelectionMethod) ?? null,
       confirmedAt: row.asset_confirmed_at ? String(row.asset_confirmed_at) : null,
+      manufacturer: registeredText(registered?.manufacturer),
+      model: registeredText(registered?.model_number),
     };
   });
 }

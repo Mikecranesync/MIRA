@@ -5,6 +5,21 @@ import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
 import { FAMILY_ROOTS, MODEL_PATTERNS, ROCKWELL, familyCovers, modelIdentitiesInText, resolveModelFromObservationText } from "@/capabilities/model-token";
 import { ambiguousSiblingModels } from "@/capabilities/named-model-mismatch";
+import {
+  coverDeclaredNumbers,
+  isTitleLine,
+  manualAnswersFor,
+  manualCoversNumber,
+  remarksOnCoverage,
+  sameModelFamily,
+  summarizeUnlistedRefusals,
+  titleLinesBelow,
+  unlistedModelNumbers,
+  type ManualVerdict,
+  type OtherProductRefusal,
+  type UnlistedModelRefusal,
+} from "@/capabilities/manual-applicability";
+import { type PhotoDocumentKind, photoDocumentShape, productWrittenBody } from "@/capabilities/photo-document-text";
 import { embedQueryDetailed, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
 import { setSpanAttrs } from "@/capabilities/observability/tracing";
 import { logRerankFallback, orderWithPinnedHead, rerankEnabled, rerankPool, rerankScores } from "@/capabilities/reranker";
@@ -148,6 +163,11 @@ export function lexicalV2Enabled(): boolean {
 // lines down abstains under this rule — the title segment genuinely has no
 // model in it. That is the conservative failure mode this design accepts.
 function titleSegment(text: string): string {
+  return titleSpan(text).segment;
+}
+
+/** The title segment, and the text on the lines under it. */
+function titleSpan(text: string): { segment: string; below: string } {
   // Codex #4469 r2 F6: a layout line break is not the end of a title. A first
   // line that ends on a joining word or mark ("Micro810 and" / "Micro810 &" /
   // "Micro810/" / "Micro810,") continues on the next line, so the wrapped
@@ -155,6 +175,7 @@ function titleSegment(text: string): string {
   // any other newline still ends the title (the "Related documents" line).
   let rest = text;
   let head = "";
+  let below = "";
   for (;;) {
     const newline = rest.indexOf("\n");
     if (newline < 0) {
@@ -168,10 +189,11 @@ function titleSegment(text: string): string {
       continue;
     }
     head += line;
+    below = rest.slice(newline + 1);
     break;
   }
   const periodSpace = head.indexOf(". ");
-  return periodSpace >= 0 ? head.slice(0, periodSpace) : head;
+  return { segment: periodSpace >= 0 ? head.slice(0, periodSpace) : head, below };
 }
 
 // Codex #4469 r2 F2: a first-line cross-reference ("Micro810 User Manual — for
@@ -250,6 +272,145 @@ function ambiguousCoverIdentities(heading: string): Set<string> {
 /** Words a product TITLE never carries but exclusion / cross-reference prose does. */
 const COVER_PROSE_RE =
   /\b(?:is|are|was|were|not|see|refer|refers|covered|covers|separate|also|related|documents?|instead|only|except|does|do|use|uses|for\s+the|this\s+manual)\b|[.!?]\s*$/i;
+
+/**
+ * #5369: the stricter reading of a cover whose title names only a RANGE.
+ *
+ * "Micro800 Programmable Controllers" alone is the range manual and answers
+ * for every member. But a title BLOCK that goes on to name members of that
+ * range is those members' manual, exactly as if the title line had named them
+ * ("Micro800 ... Micro850 User Manual", which documentCoversNamedAsk and
+ * documentCoversNotebook already refuse for a Micro820): the rest of the title
+ * line after its boundary ("Micro800 Programmable Controllers - Micro850
+ * 48-Point") and the title lines stacked under it ("Micro850 48-point
+ * Controllers User Manual"). Before this, such a cover answered for every
+ * member of the range, by name, by bare number and for a named question.
+ *
+ * Returns the title's identities plus those members, or null when the title
+ * names no range, already names a member of it, or nothing under it does.
+ * What counts as a title line is manual-applicability.ts's rule (isTitleLine,
+ * titleLinesBelow): a pointer, a remark or an exclusion under the title is
+ * prose and is not read, so "For the Micro850 see publication ..." leaves the
+ * range manual a range manual.
+ *
+ * All or nothing: when a title-like line further down names a member the
+ * block did not, the cover is not narrowed at all (see the end of the function).
+ *
+ * Refusal only. Callers hold a cover to BOTH readings (the title, and this
+ * one), so a line under a title can take an answer away and can never add one.
+ * Only members of a range the title itself declares are read, and only as
+ * model names: a catalog number under a range title is the catalog-number
+ * gate's to match (Siemens order numbers, which name their panel, excepted).
+ */
+/** The title of a cover that names a range and no member of it; null otherwise. */
+function rangeTitleOf(heading: string): { declared: Set<string>; tail: string; below: string[]; membersIn: (line: string) => string[] } | null {
+  let read = titleSpan(heading);
+  if (modelIdentitiesInText(declaredTitle(read.segment)).size === 0) {
+    // A generic opener: the title is the first model-bearing line, as in
+    // ambiguousCoverIdentities, and prose there declares nothing.
+    const lines = heading.split("\n");
+    const at = lines.findIndex((line) => modelIdentitiesInText(line).size > 0);
+    if (at < 0) return null;
+    read = titleSpan(lines.slice(at).join("\n"));
+    if (COVER_PROSE_RE.test(read.segment)) return null;
+  }
+  const title = declaredTitle(read.segment);
+  const declared = modelIdentitiesInText(title);
+  const named = [...withCatalogModels(declared)];
+  const roots = named.filter((id) => isFamilyRoot(id) && !named.some((m) => !isFamilyRoot(m) && familyCovers(id, m)));
+  if (roots.length === 0) return null;
+  const membersIn = (line: string) =>
+    [...withCatalogModels(modelIdentitiesInText(line))].filter((id) => !isFamilyRoot(id) && roots.some((root) => familyCovers(root, id)));
+  return { declared, tail: read.segment.slice(title.length), below: read.below.split("\n"), membersIn };
+}
+
+function rangeCoverMembers(heading: string): Set<string> | null {
+  const range = rangeTitleOf(heading);
+  if (range === null) return null;
+  const { declared, tail, membersIn } = range;
+  const block = titleLinesBelow(range.below, (line) => membersIn(line).length > 0);
+  const members = [...(tail.trim() && isTitleLine(tail) ? membersIn(tail) : []), ...block.declared.flatMap(membersIn)];
+  if (members.length === 0) return null;
+  // The block was not read to its end when a later line that itself reads as a
+  // title names a member the block did not ("PowerFlex 523\nPowerFlex 525",
+  // where the second line has no product word beside it; a member's own title
+  // under a "Related Publications" heading). The cover then does not say which
+  // members it is for, and it stays the range manual it was. A member named
+  // only in a sentence is not evidence either way, as everywhere on a cover.
+  const unread = block.rest.filter((line) => line.trim() && isTitleLine(line)).flatMap(membersIn);
+  if (unread.some((id) => !members.includes(id))) return null;
+  return new Set([...declared, ...members]);
+}
+
+/**
+ * #5369: the members a range cover SAYS it leaves out.
+ *
+ * "Micro800 Programmable Controllers User Manual\nMicro820 is not covered by
+ * this manual." answered for a Micro820 (on main too): the range name covers
+ * every member, and nothing under a title was read. An explicit exclusion must
+ * outweigh the range name. A member is excluded when a remark on coverage
+ * (manual-applicability.ts remarksOnCoverage: the listed negations, coverage
+ * words, phrases and marks, and nothing new) stands on the member's own line,
+ * or on the line under it when that line names no other model: the same two
+ * places an asked number is read. Only under a title that names the range and
+ * no member of it. Refusal only: it is never a reason to admit.
+ *
+ * Not read: an exclusion with no listed coverage word ("Not for use with
+ * Micro820"), and a heading over the member's line ("Not covered:\nMicro820").
+ * Stated cost, as for an asked number: a negation beside a coverage word about
+ * something else ("Micro820 controllers do not support motion") refuses.
+ */
+function rangeCoverExclusions(heading: string): Set<string> {
+  const excluded = new Set<string>();
+  const range = rangeTitleOf(heading);
+  if (range === null) return excluded;
+  const lines = [range.tail, ...range.below];
+  lines.forEach((line, at) => {
+    const members = range.membersIn(line);
+    if (members.length === 0) return;
+    const under = lines.slice(at + 1).find((l) => l.trim());
+    const underIsAboutThisLine = (l: string) => {
+      const named = modelIdentitiesInText(l);
+      return named.size === 0 || members.some((id) => named.has(id));
+    };
+    // A line that ends in a colon is a heading over what follows it ("Not
+    // covered:" above a list), not a remark on the line above.
+    const underIsHeading = under !== undefined && /:\s*$/.test(under);
+    if (remarksOnCoverage(line) || (under !== undefined && !underIsHeading && remarksOnCoverage(under) && underIsAboutThisLine(under))) {
+      for (const id of members) excluded.add(id);
+    }
+  });
+  return excluded;
+}
+
+/** Does the cover say it leaves out a model the question or the notebook names?
+ *  A bare notebook number ("820") is the member its maker's family makes of it. */
+function rangeCoverExcludes(heading: string, ids: Set<string>, manufacturer: string | null): boolean {
+  const excluded = rangeCoverExclusions(heading);
+  if (excluded.size === 0) return false;
+  for (const id of withCatalogModels(ids)) {
+    if (excluded.has(id)) return true;
+    if (!id.startsWith("#") || !manufacturer) continue;
+    for (const member of excluded) {
+      const m = FAMILY_DIGITS_RE.exec(member);
+      const vendor = m ? FAMILY_PREFIX_VENDORS.find(([prefix]) => prefix === m[1])?.[1] : undefined;
+      if (m && m[2] === id.slice(1) && vendor?.test(manufacturer)) return true;
+    }
+  }
+  return false;
+}
+
+/** The notebook passes the range-members reading, or the cover has none. */
+function coversNotebookByRangeMembers(heading: string, notebook: Set<string>, manufacturer: string | null): boolean {
+  const members = rangeCoverMembers(heading);
+  return members === null || documentCoversNotebook(notebook, members, manufacturer);
+}
+
+/** What a refusal names for such a cover: the members, not the range they belong to. */
+function withoutCoveredRoots(ids: Set<string>): Set<string> {
+  const all = [...ids];
+  return new Set(all.filter((id) => !(isFamilyRoot(id) && all.some((m) => !isFamilyRoot(m) && familyCovers(id, m)))));
+}
 
 /** Codex #4484 r4 F7: the proposal flow stores a FAMILY ROOT as digits too
  *  ("800" for a Micro800, "520" / "750" for the PowerFlex series). As "#800"
@@ -369,6 +530,37 @@ function documentCoversNamedAsk(requested: Set<string>, title: Set<string>): boo
   return false;
 }
 
+/**
+ * No document is selected, so the turn's passages are the shared library's.
+ * That search is held to `boundModel` (the project's model, or one read off a
+ * photo) whatever the technician's message names. True when a page from it is
+ * for the machine this message is about: a model is bound, and the message
+ * names no known model or names one that a manual declaring the bound model
+ * covers (the same rule a selected document's cover is held to). With no bound
+ * model the search is asked for whatever the message gives and can widen to the
+ * whole maker, so nothing ties a page to a machine.
+ */
+export function libraryIsForTurnsMachine(message: string, boundModel: string | null, manufacturer: string | null): boolean {
+  const bound = boundModel?.trim();
+  if (!bound) return false;
+  const named = modelIdentitiesInText(message);
+  if (named.size === 0) return true;
+  // The propose-then-confirm flow stores a model as digits only ("820", "525")
+  // and a model read off a photo arrives the same way; no pattern reads bare
+  // digits. It is carried the way the selected-document path carries it: the
+  // family root of this maker those digits name ("800" is the Micro800 range),
+  // held to the rule a model stored by name is; else `#820`, which the message
+  // names only by its own digits under one of this maker's families
+  // (`documentCoversNotebook`), never by digits alone.
+  if (BARE_MODEL_NUMBER_RE.test(bound)) {
+    const root = bareNumberFamilyRoot(bound, manufacturer);
+    return root
+      ? documentCoversNamedAsk(named, new Set([root]))
+      : documentCoversNotebook(new Set([`#${bound}`]), named, manufacturer);
+  }
+  return documentCoversNamedAsk(named, modelIdentitiesInText(bound));
+}
+
 /** A notebook identity made ONLY of family roots ("Comfort", "Micro800") does
  *  not name a machine the filter could scope to — any TP or Micro8x0 manual
  *  attached to it is plausibly right, so the filter is skipped. */
@@ -399,6 +591,14 @@ const FAMILY_PREFIX_VENDORS: ReadonlyArray<readonly [prefix: string, vendor: Reg
   ["V", /siemens/i],
 ];
 
+/** Is this detector identity ("MICRO820", "GS10") a family of some OTHER maker
+ *  than the one named? Unknown families answer no: nothing is proved. */
+function isAnotherMakersFamily(id: string, manufacturer: string): boolean {
+  const m = FAMILY_DIGITS_RE.exec(id);
+  const vendor = m ? FAMILY_PREFIX_VENDORS.find(([prefix]) => prefix === m[1])?.[1] : undefined;
+  return vendor !== undefined && !vendor.test(manufacturer);
+}
+
 function documentCoversNotebook(notebook: Set<string>, title: Set<string>, manufacturer: string | null): boolean {
   // Codex #4484 F2: a catalog-only notebook identity (6AV2124-0GC01-0AX0) must
   // reach the family check AS its panel label, or the Comfort Panels manual is
@@ -425,7 +625,12 @@ function documentCoversNotebook(notebook: Set<string>, title: Set<string>, manuf
         if (!vendor || !vendor.test(manufacturer)) continue;
         if (m[2] === digits) return true;
         const member = `${m[1]}${digits}`;
-        if (FAMILY_ROOTS.some(([root, members]) => t === root && members.test(member))) return true;
+        if (!FAMILY_ROOTS.some(([root, members]) => t === root && members.test(member))) continue;
+        // A title that names the range AND another member is that member's
+        // manual ("Micro800 … Micro850" is not the 820's), the rule
+        // documentCoversNamedAsk already applies to a notebook stored by name.
+        const siblings = [...withCatalogModels(title)].filter((id) => !isFamilyRoot(id) && familyCovers(t, id) && id !== member);
+        if (siblings.length === 0) return true;
       }
     }
   }
@@ -713,7 +918,41 @@ export function manufacturerFromObservationText(text: string, manufacturers: rea
   return null;
 }
 
+/** What `retrieveManualChunks` reports when it withholds what it found. */
+export type LibraryNotForAsk = {
+  /** The known models the technician's message names (modelIdentitiesInText's shape). */
+  requested: string[];
+  /** The model the search was held to. */
+  boundModel: string;
+};
+
+/**
+ * The shared-library search, with one opt-in rule on top (`askedMachine`, the
+ * notebook chat with no document selected). The search is held to the caller's
+ * model whatever the technician's message names, so what it finds is that
+ * model's pages. When the message names a known model those pages do not cover
+ * (`libraryIsForTurnsMachine`), they are not about the machine asked about:
+ * nothing is returned, and the reason is written to `askedMachine.report` so
+ * the caller can say so instead of answering, citing or printing a page from
+ * another machine's manual. A search that found nothing reports nothing.
+ */
 export async function retrieveManualChunks(
+  client: PoolClient,
+  tenantId: string,
+  query: string,
+  opts: NonNullable<Parameters<typeof searchManualLibrary>[3]> & {
+    askedMachine?: { message: string; report: { libraryNotForAsk?: LibraryNotForAsk } };
+  } = {},
+): Promise<ManualChunk[]> {
+  const found = await searchManualLibrary(client, tenantId, query, opts);
+  const asked = opts.askedMachine;
+  const boundModel = opts.model?.trim();
+  if (!asked || !boundModel || found.length === 0 || libraryIsForTurnsMachine(asked.message, boundModel, opts.manufacturer ?? null)) return found;
+  asked.report.libraryNotForAsk = { requested: [...modelIdentitiesInText(asked.message)], boundModel };
+  return [];
+}
+
+async function searchManualLibrary(
   client: PoolClient,
   tenantId: string,
   query: string,
@@ -1297,6 +1536,23 @@ export async function retrieveNodeChunks(
      *  (e.g. a thread's P042) can only ADD candidates — never crowd the
      *  message's own keywords ("keypad") out of the pool. */
     rawQuery?: string;
+    /** The technician's own question of this turn, when the search words are
+     *  not that question (the safety stop's lockout-page search is made with
+     *  fixed lockout words). It decides which machine is asked about, exactly
+     *  as the question does for a search made from it: every search of one
+     *  turn is held to the same manuals. Search words are unchanged by it. */
+    subjectQuestion?: string;
+    /** Earlier questions of this conversation whose subject is still open
+     *  (conversation-subject.ts), NEWEST FIRST. Read only when this question
+     *  names no model and no confirmed notebook identity scopes it: the model
+     *  an earlier, unanswered question named is then still the subject. */
+    subjectQueries?: readonly string[];
+    /** True when the caller's widest read of earlier turns found no start to
+     *  the open run (conversation-subject.ts `complete: false`): a model named
+     *  further back than was read would still be the subject. A question that
+     *  names no model, with no model named in what WAS read, is then refused
+     *  (`diagnostics.subjectOutOfReach`) instead of being judged on its own. */
+    subjectOutOfReach?: boolean;
     /** #4983 — the question rewritten into the manual's vocabulary (search
      *  phrases a model produced from the forum-style post). Rides as one more
      *  query variant: its own OR pass for recall and its terms in the rerank's
@@ -1306,6 +1562,10 @@ export async function retrieveNodeChunks(
     /** The notebook's machine (manufacturer/model), so its own name is never
      *  read as a fault code by the whole-token lane (Codex r6 on #4360). */
     identity?: EquipmentIdentity | null;
+    /** The notebook's catalog-number field, recorded beside its model. Judged
+     *  with the model's own unreadable numbers, under the same confirmation
+     *  rule as `identity.model` (#5369). */
+    catalogNumber?: string | null;
     /** How the notebook's identity was established. Model-less questions are
      *  scoped to `identity.model` ONLY when this is `user_confirmed` or
      *  `verified`: an OCR `candidate` can misread a nameplate, and scoping to a
@@ -1343,10 +1603,27 @@ export async function retrieveNodeChunks(
       /** CV-101 S6: set only when a named ask refused pages and EVERY refused
        *  page declared its own model — the evidence that the notebook's manual
        *  is for a different model than the one asked about. */
-      namedModelMismatch?: { requested: string[]; declared: string[] };
+      namedModelMismatch?: { requested: string[]; declared: string[]; source?: "conversation" };
       /** #5355: the question named two sibling models with no comparison cue;
        *  nothing was retrieved and the reply asks which one. */
       ambiguousModelAsk?: { named: string[] };
+      /** The question named no model, none of the earlier questions read names
+       *  one, and older unanswered turns exist that were not read: nothing was
+       *  retrieved and the reply asks for the model or a new conversation. */
+      subjectOutOfReach?: true;
+      /** #5369: a model or catalog number the detector has no pattern for, and
+       *  EVERY selected manual was refused because it is not shown to cover it. */
+      unlistedModelRefusal?: UnlistedModelRefusal;
+      /** The question named no model, the notebook's machine is confirmed, and
+       *  EVERY selected manual's cover declares some other product. */
+      otherProductRefusal?: OtherProductRefusal;
+      /** Whether this search knew which MODEL is meant: a model the question
+       *  (or an earlier open one) names, or the notebook's confirmed model.
+       *  A number alone is not enough, in the question (a fault code, a tag, a
+       *  part number) or in the confirmed record (a catalog number with only a
+       *  family name): a cover that says nothing about it is still admitted.
+       *  Absent = the search returned before deciding (and returned no passage). */
+      machineKnown?: boolean;
     };
   },
 ): Promise<ManualChunk[]> {
@@ -1437,7 +1714,57 @@ export async function retrieveNodeChunks(
   // out-ranked). POOL is retrieved per pass; the final slice is topK.
   const POOL = Math.max(topK * 4, 24);
 
-  const requestedModel = resolveModelFromObservationText(opts.rawQuery ?? q);
+  // The model an earlier, still-open question of this conversation named is the
+  // subject of a follow-up that names none ("It will not start" about a named
+  // drive, then "What supply voltage does it need?"). Narrow on purpose:
+  //   - only a model the detector reads, named in this question, ends the
+  //     carry (naming one wins). A number it cannot read never does, because
+  //     a fault code, a parameter and a machine tag read as numbers too:
+  //     "What does fault F0004 mean?" after a refused "RX420 will not start"
+  //     is still about the RX420 (Codex round 1 on #5389, F1);
+  //   - such a number in this question takes the place of the earlier numbers
+  //     of its own family, and of nothing else: "RX410" replaces a carried
+  //     "RX420", and a repeated "F0004" replaces only the earlier "F0004",
+  //     so asking about the same fault twice does not drop the model either;
+  //   - a document that itself covers a number this question names is judged
+  //     by that number, not by a carried known model (admit(), below): the
+  //     relay's own sheet answers "coil voltage of the CA3KN22BD?" whatever
+  //     drive was asked about before;
+  //   - the model is the one the NEWEST earlier question names, and nothing
+  //     older than that question is read: an older subject does not leak
+  //     past a newer named model;
+  //   - numbers the detector cannot read are taken from every question up to
+  //     that one. A number alone is not a boundary, because a fault code
+  //     reads as a number too (F0004), and a fault question in between must
+  //     not drop the model number asked before it.
+  // A confirmed notebook machine does not switch this off: "the plate reads
+  // <another product>" followed by "what voltage does it need?" is about that
+  // other product, whatever the notebook is set up for.
+  const ownQuestion = opts.subjectQuestion ?? opts.rawQuery ?? q;
+  const namesKnownModel = (text: string) => {
+    const named = resolveModelFromObservationText(text);
+    return Boolean(named.model) || named.ambiguous || modelIdentitiesInText(text).size > 0;
+  };
+  const ownNumbers = unlistedModelNumbers(ownQuestion);
+  const earlierQuestions = !namesKnownModel(ownQuestion) ? (opts.subjectQueries ?? []) : [];
+  const modelAt = earlierQuestions.findIndex(namesKnownModel);
+  // The open run is longer than the caller could read, this question names
+  // no model, and nothing read names one: a model named further back would
+  // still be the subject, and it cannot be seen. Retrieve nothing rather than
+  // judge the question on its own words. A model named in what was read is
+  // carried as usual (it is the newest one; nothing older than it matters).
+  if (opts.subjectOutOfReach && !namesKnownModel(ownQuestion) && modelAt < 0) {
+    if (opts.diagnostics) opts.diagnostics.subjectOutOfReach = true;
+    return [];
+  }
+  const carriedModelQuestion = modelAt >= 0 ? earlierQuestions[modelAt] : null;
+  const modelQuestion = carriedModelQuestion ?? ownQuestion;
+  const carriedNumbers = (modelAt >= 0 ? earlierQuestions.slice(0, modelAt + 1) : earlierQuestions)
+    .flatMap((text) => unlistedModelNumbers(text))
+    .filter((carried) => !ownNumbers.some((own) => sameModelFamily(own, carried)));
+  const carriedLabels = new Set(carriedNumbers.map((n) => n.label));
+
+  const requestedModel = resolveModelFromObservationText(modelQuestion);
   // 2026-10-17 prod-test item 1 (stacked on #4469): the question is not the
   // only source of model identity. The notebook is bound to ONE confirmed
   // machine (`opts.identity.model`, from the notebook row), and most
@@ -1458,7 +1785,7 @@ export async function retrieveNodeChunks(
   //     scopes the same way when it is the ONE model the question names. The
   //     token stays null, so OEM `model_number` scoping is unchanged.
   const closeNameIdentities =
-    !requestedModel.model && !requestedModel.ambiguous ? modelIdentitiesInText(opts.rawQuery ?? q) : new Set<string>();
+    !requestedModel.model && !requestedModel.ambiguous ? modelIdentitiesInText(modelQuestion) : new Set<string>();
   const questionScoped =
     (Boolean(requestedModel.model) && !requestedModel.ambiguous) || closeNameIdentities.size === 1;
   // #5355: two sibling models of one family joined only by "or" / "/" / ","
@@ -1466,7 +1793,7 @@ export async function retrieveNodeChunks(
   // two ways. Answering from either manual guesses; ask which one instead
   // (named-model-mismatch.ts ambiguousSiblingModels). A comparison or a
   // two-device question keeps the unfiltered behaviour below.
-  const ambiguousSiblings = ambiguousSiblingModels(opts.rawQuery ?? q);
+  const ambiguousSiblings = ambiguousSiblingModels(modelQuestion);
   if (ambiguousSiblings) {
     if (opts.diagnostics) opts.diagnostics.ambiguousModelAsk = { named: ambiguousSiblings };
     return [];
@@ -1502,13 +1829,6 @@ export async function retrieveNodeChunks(
     closeNameIdentities.size < 2 &&
     notebookIdentities.size > 0 &&
     !identitiesAreFamilyOnly(notebookIdentities);
-  // Give each attached manual its own candidate window for a model-scoped ask.
-  // Otherwise a large sibling manual can consume LIMIT before applicability
-  // filtering, hiding the correct manual and making a supported ask abstain.
-  const docWindows = (questionScoped || notebookScoped) && allowedDocIds.length > 1
-    ? allowedDocIds.map((id) => [id])
-    : [allowedDocIds];
-
   // Read the document's opening text, not just the retrieved page: later pages
   // often omit the product name and OEM filenames are publication numbers.
   // Match tenant AND doc id so another tenant's attachment cannot supply identity.
@@ -1628,6 +1948,91 @@ export async function retrieveNodeChunks(
           AND content_tsv @@ q.tsq
         ORDER BY rank DESC, doc_id, page_start NULLS LAST, source_page NULLS LAST, metadata->>'chunk_index', id
         LIMIT $4`;
+  // Who wrote a document that OPENS like one of the product's own photo
+  // documents (a kept photo reading, a confirmed nameplate, a photo's OCR
+  // text). The opening line is ordinary text and proves nothing: a typed file
+  // can carry it. What vouches for it is a record the SERVER made when it wrote
+  // the document, which no upload can set:
+  //   - `namespace_direct_uploads.source` for a photo reading or a nameplate;
+  //   - `metadata.derived_from` on the passages of a photo's OCR text.
+  // Asked once per document, and only for documents with such an opening, so a
+  // notebook without one costs no query. No record, or a failed lookup, leaves
+  // the document judged by its cover like any other upload.
+  const provenOrigins = new Map<string, PhotoDocumentKind | null>();
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const proveOrigins = async (rows: Record<string, unknown>[]): Promise<void> => {
+    const shaped = new Map<string, PhotoDocumentKind>();
+    for (const r of rows) {
+      const docId = String(r.doc_id ?? "");
+      if (provenOrigins.has(docId)) continue;
+      const shape = photoDocumentShape(String(r.document_heading ?? ""));
+      if (shape !== null) shaped.set(docId, shape);
+    }
+    if (shaped.size === 0) return;
+    for (const d of shaped.keys()) provenOrigins.set(d, null);
+    const idsShaped = (...kinds: PhotoDocumentKind[]) => [...shaped].filter(([d, k]) => kinds.includes(k) && UUID_RE.test(d)).map(([d]) => d);
+    const fromUploads = idsShaped("photo_text", "nameplate_text");
+    const fromPassages = idsShaped("photo_ocr");
+    if (fromUploads.length + fromPassages.length === 0) return;
+    // Optional reads inside the caller's transaction: same SAVEPOINT pattern as
+    // the code-selectivity count, so a failure here cannot abort the lanes
+    // that follow.
+    let savepoint = false;
+    try {
+      await client.query("SAVEPOINT document_origin");
+      savepoint = true;
+    } catch {
+      savepoint = false;
+    }
+    try {
+      const found: Array<Record<string, unknown>> = [];
+      // Each record is asked only of the documents shaped for it, and a record
+      // of one kind never vouches for a text shaped as another (productWrittenBody).
+      if (fromUploads.length > 0) {
+        const res = await client.query(
+          `/* document-origin */ SELECT upload_id::text AS doc_id, source AS written_as
+             FROM namespace_direct_uploads
+            WHERE tenant_id = $1
+              AND upload_id = ANY($2::uuid[])
+              AND source IN ('photo_text', 'nameplate_text')`,
+          [tenantId, fromUploads],
+        );
+        found.push(...(res.rows as Array<Record<string, unknown>>));
+      }
+      if (fromPassages.length > 0) {
+        const res = await client.query(
+          `/* document-origin */ SELECT DISTINCT doc_id::text AS doc_id, 'photo_ocr' AS written_as
+             FROM knowledge_entries
+            WHERE tenant_id = $1
+              AND doc_id = ANY($2::uuid[])
+              AND ingest_route = 'v2'
+              AND metadata->>'derived_from' = 'photo_ocr'`,
+          [tenantId, fromPassages],
+        );
+        found.push(...(res.rows as Array<Record<string, unknown>>));
+      }
+      for (const row of found) {
+        const docId = String(row.doc_id ?? "");
+        const kind = row.written_as;
+        if (!shaped.has(docId)) continue;
+        if (kind === "photo_text" || kind === "nameplate_text" || kind === "photo_ocr") provenOrigins.set(docId, kind);
+      }
+      if (savepoint) await client.query("RELEASE SAVEPOINT document_origin");
+    } catch (err) {
+      for (const d of shaped.keys()) provenOrigins.set(d, null);
+      console.warn("[retrieveNodeChunks] document-origin lookup failed; photo-shaped documents are judged by their cover:", err instanceof Error ? err.message : err);
+      if (savepoint) {
+        try {
+          await client.query("ROLLBACK TO SAVEPOINT document_origin");
+        } catch (rollbackErr) {
+          console.warn("[retrieveNodeChunks] document-origin savepoint rollback failed:", rollbackErr instanceof Error ? rollbackErr.message : rollbackErr);
+        }
+      }
+    }
+  };
+  /** What the records say the product wrote this row's document as; `null` when they say nothing. */
+  const writtenAsOf = (r: Record<string, unknown>): PhotoDocumentKind | null => provenOrigins.get(String(r.doc_id ?? "")) ?? null;
+
   const runRetrieval = async (tsquery: string, queryText: string) => {
     const rows: Record<string, unknown>[] = [];
     for (const window of docWindows) {
@@ -1673,6 +2078,7 @@ export async function retrieveNodeChunks(
       const max = Math.max(1e-6, ...rows.map((r) => Number(r.rank ?? 0)));
       for (const r of rows) r.rank = Number(r.rank ?? 0) / max;
     }
+    await proveOrigins(rows);
     return rows;
   };
 
@@ -1833,6 +2239,7 @@ export async function retrieveNodeChunks(
       );
       rows.push(...res.rows);
     }
+    await proveOrigins(rows);
     return rows;
   };
 
@@ -1852,7 +2259,7 @@ export async function retrieveNodeChunks(
   // never disagree). Null when the query named no single model — the filter
   // below is then skipped entirely, same as before.
   const requestedIdentities: Set<string> | null = questionScoped
-    ? modelIdentitiesInText(opts.rawQuery ?? q)
+    ? modelIdentitiesInText(modelQuestion)
     : null;
   const keyOf = (r: Record<string, unknown>) =>
     JSON.stringify([r.doc_id, r.source_url, String(r.content ?? "")]);
@@ -1869,7 +2276,12 @@ export async function retrieveNodeChunks(
     if (!opts.diagnostics || !requestedIdentities) return;
     const everyDocRefused = allowedDocIds.length > 0 && allowedDocIds.every((d) => refusedDocs.has(d));
     if (namedClaimPoisoned || refusedDeclared.size === 0 || !everyDocRefused) delete opts.diagnostics.namedModelMismatch;
-    else opts.diagnostics.namedModelMismatch = { requested: [...requestedIdentities], declared: [...refusedDeclared] };
+    else
+      opts.diagnostics.namedModelMismatch = {
+        requested: [...requestedIdentities],
+        declared: [...refusedDeclared],
+        ...(carriedModelQuestion !== null ? { source: "conversation" as const } : {}),
+      };
   };
   const noteNamedAskRefusal = (docId: string, headingDeclared: Set<string>) => {
     if (headingDeclared.size === 0) namedClaimPoisoned = true;
@@ -1877,10 +2289,140 @@ export async function retrieveNodeChunks(
     refusedDocs.add(docId);
     publishNamedMismatch();
   };
+  // #5369 — model and catalog numbers model-token.ts has no pattern for
+  // ("RX420", "CA3KN99ZZ", "2080-LC99-99ZZZ"). They read as "no model named",
+  // so every check above was skipped and a sibling's manual answered. The
+  // question's own numbers are judged. So is any number in a CONFIRMED
+  // notebook model or catalog-number field that the detector cannot read (a
+  // catalog number, recorded alone or beside the family name), unless the
+  // question names a model itself: a known one, or a number of the notebook
+  // number's own family. Any other number in the question (the machine's tag,
+  // a fault code) names no model and must not switch the notebook's check off.
+  // manual-applicability.ts decides.
+  const questionNumbers = [
+    ...ownNumbers,
+    ...carriedNumbers.filter((n, i) => carriedNumbers.findIndex((m) => m.key === n.key) === i),
+  ];
+  const namesNoKnownModel = !requestedModel.model && !requestedModel.ambiguous && closeNameIdentities.size === 0;
+  const confirmedNumbers =
+    namesNoKnownModel && identityConfirmed ? unlistedModelNumbers(`${notebookModel} ${opts.catalogNumber ?? ""}`) : [];
+  const notebookNumbers = questionNumbers.some((asked) => confirmedNumbers.some((own) => sameModelFamily(asked, own))) ? [] : confirmedNumbers;
+  const notebookLabels = new Set(notebookNumbers.map((n) => n.label));
+  const unlistedAsk = [...questionNumbers, ...notebookNumbers];
+  const unlistedRefusals = new Map<string, Extract<ManualVerdict, { admit: false }>>();
+  const noteUnlistedRefusal = (docId: string, verdict: Extract<ManualVerdict, { admit: false }>) => {
+    unlistedRefusals.set(docId, verdict);
+    if (!opts.diagnostics) return;
+    // Same bar as the named-ask claim above: it stands only while EVERY
+    // selected manual was refused this way.
+    if (allowedDocIds.length > 0 && allowedDocIds.every((d) => unlistedRefusals.has(d))) {
+      const refused = [...unlistedRefusals.values()];
+      opts.diagnostics.unlistedModelRefusal = summarizeUnlistedRefusals(
+        refused,
+        refused.every((r) => r.asked.every((label) => notebookLabels.has(label)))
+          ? "notebook"
+          : refused.every((r) => r.asked.every((label) => carriedLabels.has(label)))
+            ? "conversation"
+            : "question",
+      );
+    } else delete opts.diagnostics.unlistedModelRefusal;
+  };
+  // An attached manual is not automatically an applicable one. Seen on screen
+  // 2026-11-10: a notebook confirmed as a controller, with only a relay's data
+  // sheet attached, answered "What is the supply voltage?" from the relay
+  // sheet. The checks above compare like with like (a family name with a
+  // family name, a part number with its look-alikes), so a cover that names an
+  // UNRELATED product in the other vocabulary read as "says nothing about this
+  // machine" and was kept. Rule, for a question that names no model in a
+  // notebook whose machine a person confirmed:
+  //   - a manual whose cover declares one or more products, none of them the
+  //     notebook's machine, is refused;
+  //   - a manual whose cover declares nothing stays usable (a wiring guide);
+  //   - a part's own sheet still answers when the question names that part;
+  //   - a photo reading has no cover and is not judged here.
+  // A family-only identity ("Micro800") or an unconfirmed one scopes nothing,
+  // as before. Known cost: a cover that gives only catalog numbers, in a
+  // notebook recorded only by family name, is refused until the catalog number
+  // is recorded or named (bench-project.ts P-53..P-58).
+  const projectScoped = namesNoKnownModel && identityConfirmed && (notebookScoped || confirmedNumbers.length > 0);
+  const modelRuleActive = Boolean(requestedIdentities) || notebookScoped || unlistedAsk.length > 0 || projectScoped;
+  // Told to the caller before any passage is read, so it is never missing for
+  // a search that returns passages: the safety stop offers no page when the
+  // model is not known and several documents are selected. Narrower than
+  // `modelRuleActive` on purpose. A number the detector cannot read puts a
+  // number rule in play, in the question (as often a fault code or a tag as
+  // a machine) or in the confirmed record (`projectScoped` by a catalog
+  // number alone), but a cover silent about that number is admitted either
+  // way, another product line of the same maker included. Only a named or
+  // confirmed MODEL holds every admitted cover to that model.
+  if (opts.diagnostics) opts.diagnostics.machineKnown = Boolean(requestedIdentities) || notebookScoped;
+  // Give each attached manual its own candidate window wherever a check
+  // refuses rows after the SQL LIMIT: a model-scoped ask, or a number the
+  // detector has no pattern for (#5369), in the question, carried from an
+  // earlier one, or in the confirmed machine's own record. Otherwise a large
+  // refused manual can consume LIMIT before applicability filtering, hiding
+  // the correct manual and making a supported ask abstain. The project check
+  // needs no clause of its own: it is on only when `notebookScoped` is, or
+  // when the confirmed record holds such a number, and then `unlistedAsk` is
+  // not empty. Declared here because it needs those values; every pass that
+  // reads it runs below.
+  const docWindows =
+    (questionScoped || notebookScoped || unlistedAsk.length > 0) && allowedDocIds.length > 1
+      ? allowedDocIds.map((id) => [id])
+      : [allowedDocIds];
+  const projectLabel = [opts.identity?.manufacturer?.trim(), notebookModel, opts.catalogNumber?.trim()]
+    .filter((part, i, all): part is string => Boolean(part) && all.indexOf(part) === i)
+    .join(" ");
+  const otherProductDocs = new Map<string, string[]>();
+  const noteOtherProduct = (docId: string, declared: string[]) => {
+    otherProductDocs.set(docId, declared);
+    if (!opts.diagnostics) return;
+    if (allowedDocIds.length > 0 && allowedDocIds.every((d) => otherProductDocs.has(d))) {
+      opts.diagnostics.otherProductRefusal = {
+        declared: [...new Set([...otherProductDocs.values()].flat())],
+        project: projectLabel,
+      };
+    } else delete opts.diagnostics.otherProductRefusal;
+  };
+  const coverIdentitiesOf = (filename: string, heading: string): Set<string> => {
+    const title = affirmativeModelIdentities(filename, heading);
+    return title.size === 0 && coverIsAmbiguous(heading) ? ambiguousCoverIdentities(heading) : title;
+  };
+  /** Does this cover declare products, none of them the notebook's machine?
+   *  Returns what it declares. Refuses only where the mismatch is provable:
+   *   - the cover names a family and so does the notebook → the family rule;
+   *   - the cover names a family and the notebook is known only by a number
+   *     the detector cannot read (a catalog number, or a machine tag typed as
+   *     the model) → only when that family is another maker's. A same-maker
+   *     family may well be what the number belongs to, so it is kept;
+   *   - the cover gives only catalog numbers, none of them the notebook's. */
+  const declaresOnlyOtherProducts = (filename: string, heading: string, writtenAs: PhotoDocumentKind | null): string[] | null => {
+    if (productWrittenBody(heading, writtenAs) !== null) return null;
+    if (questionNumbers.some((asked) => manualCoversNumber(asked, heading, filename, writtenAs))) return null;
+    const names = coverIdentitiesOf(filename, heading);
+    const numbers = coverDeclaredNumbers(heading, writtenAs);
+    if (names.size === 0 && numbers.length === 0) return null;
+    if (confirmedNumbers.some((own) => numbers.some((n) => n.key === own.key))) return null;
+    const maker = opts.identity?.manufacturer?.trim() || null;
+    const members = rangeCoverMembers(heading);
+    const declared = [...new Set([...(members ? withoutCoveredRoots(members) : names), ...numbers.map((n) => n.label.toUpperCase())])];
+    if (names.size === 0) return numbers.map((n) => n.label);
+    if (notebookIdentities.size > 0 && !identitiesAreFamilyOnly(notebookIdentities)) {
+      return documentCoversNotebook(notebookIdentities, names, maker) && coversNotebookByRangeMembers(heading, notebookIdentities, maker)
+        ? null
+        : declared;
+    }
+    return maker !== null && [...names].every((id) => isAnotherMakersFamily(id, maker)) ? declared : null;
+  };
+  // Which selected manuals admit() has judged. A manual the search returned no
+  // passage from is judged by its cover after the lexical passes (below), so a
+  // refusal's reason does not depend on what the search happened to find.
+  const judgedDocs = new Set<string>();
   // Admission is ONE predicate for every lane — lexical, exact-token and (item
   // 4) vector — so a chunk the vector lane finds is held to exactly the same
   // model-applicability rule as one BM25 found.
   const admit = (r: Record<string, unknown>): boolean => {
+      judgedDocs.add(String(r.doc_id ?? ""));
       if (requestedIdentities || notebookScoped) {
         // F2 — affirmative title/heading applicability only (see
         // affirmativeModelIdentities): the heading's own title segment is
@@ -1893,7 +2435,16 @@ export async function retrieveNodeChunks(
           String(r.filename ?? ""),
           String(r.document_heading ?? ""),
         );
-        if (requestedIdentities) {
+        // A carried model is the subject only where the question names nothing
+        // this document is for. A document that covers a number the question
+        // itself names (the relay's own sheet, asked by its part number) is
+        // judged by that number below, not by the drive asked about earlier.
+        const ownNumberIsThisDocuments =
+          carriedModelQuestion !== null &&
+          ownNumbers.some((n) => manualCoversNumber(n, String(r.document_heading ?? ""), String(r.filename ?? ""), writtenAsOf(r)));
+        if (ownNumberIsThisDocuments) {
+          // fall through to the unlisted-number check
+        } else if (requestedIdentities) {
           // #4511 (Release 1 regression, Lane A replay 2026-10-18): the real
           // Rockwell Micro810 cover is "User Manual Original Instructions\n
           // Micro810 Programmable\nControllers…" — a generic opener with the
@@ -1907,11 +2458,26 @@ export async function retrieveNodeChunks(
           const heading = String(r.document_heading ?? "");
           const declared =
             titleIdentities.size === 0 && coverIsAmbiguous(heading) ? ambiguousCoverIdentities(heading) : titleIdentities;
-          if (!documentCoversNamedAsk(requestedIdentities, declared)) {
+          // A range title with members named under it is held to that reading
+          // too (rangeCoverMembers): it can refuse, never admit.
+          const members = rangeCoverMembers(heading);
+          // And a range cover that says it leaves the asked model out does not
+          // answer for it (rangeCoverExcludes). The reply then names no "other
+          // model": the cover declares the asked model's own range.
+          const leftOut = rangeCoverExcludes(heading, requestedIdentities, null);
+          if (
+            leftOut ||
+            !documentCoversNamedAsk(requestedIdentities, declared) ||
+            (members !== null && !documentCoversNamedAsk(requestedIdentities, members))
+          ) {
             // The diagnostic counts only what the document itself declares.
-            const headingDeclared = coverIsAmbiguous(heading)
-              ? ambiguousCoverIdentities(heading)
-              : modelIdentitiesInText(declaredTitle(titleSegment(heading)));
+            const headingDeclared = leftOut
+              ? new Set<string>()
+              : members
+                ? withoutCoveredRoots(members)
+                : coverIsAmbiguous(heading)
+                  ? ambiguousCoverIdentities(heading)
+                  : modelIdentitiesInText(declaredTitle(titleSegment(heading)));
             noteNamedAskRefusal(String(r.doc_id ?? ""), headingDeclared);
             return false;
           }
@@ -1927,7 +2493,12 @@ export async function retrieveNodeChunks(
               notebookIdentities,
               ambiguousCoverIdentities(String(r.document_heading ?? "")),
               opts.identity?.manufacturer?.trim() || null,
-            ))
+            )) ||
+          // A range title with members named under it must cover the notebook
+          // by that reading as well (rangeCoverMembers).
+          !coversNotebookByRangeMembers(String(r.document_heading ?? ""), notebookIdentities, opts.identity?.manufacturer?.trim() || null) ||
+          // A range cover that says it leaves the notebook's model out.
+          rangeCoverExcludes(String(r.document_heading ?? ""), notebookIdentities, opts.identity?.manufacturer?.trim() || null)
         ) {
           // Notebook-identity scope is deliberately one notch less strict than
           // a named ask: a manual that names NO model is kept, because the
@@ -1937,6 +2508,24 @@ export async function retrieveNodeChunks(
           // the Micro820 notebook — the prod-test miss) is rejected — and a
           // FAMILY manual (PowerFlex 520-Series for a 525) counts as covering
           // its members, not as a different model (FAMILY_ROOTS).
+          if (projectScoped) {
+            const declared = declaresOnlyOtherProducts(String(r.filename ?? ""), String(r.document_heading ?? ""), writtenAsOf(r));
+            if (declared) noteOtherProduct(String(r.doc_id ?? ""), declared);
+          }
+          return false;
+        }
+      }
+      if (unlistedAsk.length > 0) {
+        const verdict = manualAnswersFor(unlistedAsk, String(r.document_heading ?? ""), String(r.filename ?? ""), writtenAsOf(r));
+        if (!verdict.admit) {
+          noteUnlistedRefusal(String(r.doc_id ?? ""), verdict);
+          return false;
+        }
+      }
+      if (projectScoped) {
+        const declared = declaresOnlyOtherProducts(String(r.filename ?? ""), String(r.document_heading ?? ""), writtenAsOf(r));
+        if (declared) {
+          noteOtherProduct(String(r.doc_id ?? ""), declared);
           return false;
         }
       }
@@ -2023,6 +2612,32 @@ export async function retrieveNodeChunks(
   // original OR pass (a fully off-vocabulary conversational query). Exact-lane
   // rows do not count as lexical coverage (see lexicalRows).
   if (lexicalRows === 0 && opts.includeQueryRecall !== true) await addLexical(OR_TSQUERY, expanded.variants[0]);
+  // Judge by its cover every selected manual the passes above returned no
+  // passage from. Only when a model rule is in play, and only for the manuals
+  // not yet seen, so an unscoped question costs no extra query. Only inside a
+  // validated document selection (the notebook chat), with the same tenant,
+  // ingest-route and approved-source predicates as every other read here.
+  const unjudged = modelRuleActive && docScopeOnly ? allowedDocIds.filter((d) => !judgedDocs.has(d)) : [];
+  if (unjudged.length > 0) {
+    const covers = await client.query(
+      `/* document-eligibility */ SELECT DISTINCT ON (doc_id)
+          doc_id::text AS doc_id,
+          metadata->>'filename' AS filename,
+          left(content, 2000) AS document_heading
+        FROM knowledge_entries
+        WHERE tenant_id = $1
+          AND doc_id::text = ANY($2::text[])
+          AND ingest_route = 'v2'
+          ${approvedSourceFilterSql(admitApproved ? 3 : null)}
+        ORDER BY doc_id, page_start NULLS LAST, source_page NULLS LAST,
+          (metadata->>'chunk_index')::int NULLS LAST, id`,
+      [tenantId, unjudged, ...approvedParams],
+    );
+    await proveOrigins(covers.rows as Record<string, unknown>[]);
+    for (const row of covers.rows as Record<string, unknown>[]) {
+      if (unjudged.includes(String(row.doc_id ?? ""))) admit(row);
+    }
+  }
 
   // 2026-10-17 prod-test item 4 — the VECTOR lane, behind NOTEBOOK_HYBRID_RETRIEVAL
   // (default off). node ingest already stores a nomic-embed-text vector on every
@@ -2108,6 +2723,7 @@ export async function retrieveNodeChunks(
         if (docWindows.length > 1) {
           vectorRows.sort((a, b) => Number(b.vscore ?? 0) - Number(a.vscore ?? 0));
         }
+        await proveOrigins(vectorRows);
         vectorKeys = [];
         for (const r of vectorRows) {
           if (!admit(r)) continue;

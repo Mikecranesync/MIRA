@@ -304,8 +304,7 @@ export async function POST(req: Request) {
           );
           return r.rows[0]?.uns_path ?? null;
         });
-        const ingest = isPdf ? ingestPdfToNode : ingestTextToNode;
-        const { uploadId, chunkCount } = await ingest({
+        const ingestOpts = {
           tenantId: ctx.tenantId,
           nodeId,
           unsPath,
@@ -316,7 +315,13 @@ export async function POST(req: Request) {
           // document still IS the photo — linked below to this file, so a
           // citation opens the photograph, not a transcript.
           buffer: photoOcr ? Buffer.from(ocrSourceText(file.name, photoOcr.result), "utf-8") : buffer,
-        });
+        };
+        // Only OCR this request ran on an uploaded photo is marked as a photo's
+        // text. A typed file that opens with the same line is an upload like
+        // any other: retrieval asks for this mark, not for the opening line.
+        const { uploadId, chunkCount } = isPdf
+          ? await ingestPdfToNode(ingestOpts)
+          : await ingestTextToNode(photoOcr ? { ...ingestOpts, derivedFrom: "photo_ocr" } : ingestOpts);
         const won = await linkFileToUpload(ctx.tenantId, park.fileId, uploadId, claim.claimToken);
         if (!won) {
           // Claim stolen mid-ingest — our doc is orphaned; remove its duplicate

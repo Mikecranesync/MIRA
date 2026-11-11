@@ -407,6 +407,11 @@ interface NodeChunkOpts {
   nodeId: string;
   unsPath: string | null;
   filename: string;
+  /** Set ONLY by the upload route, when the text is what OCR read off an
+   *  uploaded photo. Recorded on every passage as `metadata.derived_from`, the
+   *  record retrieval asks for before it reads a document as a photo's text
+   *  rather than by its cover. Never taken from the request or the file. */
+  derivedFrom?: "photo_ocr";
 }
 
 /**
@@ -430,7 +435,7 @@ async function writeChunkRowsForNode(
    *  with `pages`), recorded as `metadata.page_label` (#4508). Absent = none. */
   pageLabels?: ReadonlyArray<string | null> | null,
 ): Promise<number> {
-  const { tenantId, uploadId, nodeId, unsPath, filename } = opts;
+  const { tenantId, uploadId, nodeId, unsPath, filename, derivedFrom } = opts;
 
   // Unique per attachment so same-named files on different nodes never false-dedup
   // against the partial UNIQUE (tenant_id, source_url, metadata->>'chunk_index').
@@ -470,6 +475,7 @@ async function writeChunkRowsForNode(
             node_id: nodeId,
             chunk_index: r.idx,
             source: "hub_node_attachment",
+            ...(derivedFrom ? { derived_from: derivedFrom } : {}),
             ...(r.repair ? { text_repair: r.repair } : {}),
             ...(r.label ? { page_label: r.label } : {}),
           }),
@@ -707,6 +713,8 @@ export async function writeTextChunksForNode(opts: {
   unsPath: string | null;
   filename: string;
   buffer: Buffer | Uint8Array;
+  /** See NodeChunkOpts.derivedFrom. */
+  derivedFrom?: "photo_ocr";
 }): Promise<number> {
   const { buffer, ...rest } = opts;
   const text = new TextDecoder("utf-8", { fatal: false }).decode(
@@ -736,6 +744,8 @@ export async function ingestTextToNode(opts: {
   sizeBytes: number;
   buffer: Buffer;
   contentSha256?: string | null;
+  /** See NodeChunkOpts.derivedFrom. */
+  derivedFrom?: "photo_ocr";
 }): Promise<NodeIngestResult> {
   const { tenantId, nodeId, unsPath, filename, mimeType, sizeBytes, buffer } =
     opts;
@@ -762,6 +772,7 @@ export async function ingestTextToNode(opts: {
       unsPath,
       filename,
       buffer,
+      ...(opts.derivedFrom ? { derivedFrom: opts.derivedFrom } : {}),
     });
     await updateUploadStatus(upload.id, tenantId, "parsed", null, {
       kbChunkCount: chunkCount,
