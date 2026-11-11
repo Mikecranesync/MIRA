@@ -121,6 +121,40 @@ export function orderWithPinnedHead<T>(
 }
 
 /**
+ * The re-ordered cut, with every protected item plain search would have kept put back (#5370).
+ *
+ * `reordered` is the list after the cross-encoder; `plain` is the same list in the order served
+ * when the reranker is off or fails. An item is "kept" when it is in the first `keep` of a list.
+ * Each protected item plain search kept and the re-ordering dropped takes the place of the
+ * lowest-placed item of the cut that is neither protected nor locked, in plain-search order.
+ * Nothing is added that plain search did not keep, nothing protected or locked is displaced, and
+ * with nothing dropped the cut is returned as it was. If there are fewer free places than dropped
+ * items, the earliest in plain-search order are put back.
+ */
+export function keepWhatPlainSearchKept<T>(
+  reordered: readonly T[],
+  plain: readonly T[],
+  keep: number,
+  isProtected: (item: T) => boolean,
+  isLocked: (item: T) => boolean = () => false,
+): T[] {
+  const cut = reordered.slice(0, Math.max(0, keep));
+  const inCut = new Set(cut);
+  const dropped = plain.slice(0, Math.max(0, keep)).filter((item) => isProtected(item) && !inCut.has(item));
+  if (dropped.length === 0) return cut;
+  const free: number[] = [];
+  for (let i = cut.length - 1; i >= 0 && free.length < dropped.length; i--) {
+    if (!isProtected(cut[i]) && !isLocked(cut[i])) free.push(i);
+  }
+  free.reverse();
+  // Fewer free places than dropped items: the earliest in plain order go back, into the lowest places.
+  free.forEach((slot, n) => {
+    cut[slot] = dropped[n];
+  });
+  return cut;
+}
+
+/**
  * Passages a notebook question keeps: 8 with the rerank lane on, today's 6 with it off, so a
  * deployment without the flag is unchanged. A rerank fallback on a flag-on turn serves plain
  * search at 8, which lost no answer against 6 in the same replay.
