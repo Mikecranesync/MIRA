@@ -110,6 +110,17 @@ export interface ManualChunk {
   verified?: boolean;
 }
 
+/** What an admitted document's cover says, as the safety stop needs it. */
+export type AdmittedCover = {
+  /** The models the cover declares, as the model reader's own identities
+   *  ("MICRO820"), never the cover's words. */
+  models: string[];
+  /** Numbers in THIS turn's question that the model reader has no pattern for
+   *  (a part number, a fault code, a tag), that are not the confirmed
+   *  machine's own recorded number, and that this cover does not list. */
+  unlisted: string[];
+};
+
 export interface ManualSource {
   index: number;
   title: string;
@@ -540,6 +551,37 @@ function documentCoversNamedAsk(requested: Set<string>, title: Set<string>): boo
   return false;
 }
 
+/**
+ * No document is selected, so the turn's passages are the shared library's.
+ * That search is held to `boundModel` (the project's model, or one read off a
+ * photo) whatever the technician's message names. True when a page from it is
+ * for the machine this message is about: a model is bound, and the message
+ * names no known model or names one that a manual declaring the bound model
+ * covers (the same rule a selected document's cover is held to). With no bound
+ * model the search is asked for whatever the message gives and can widen to the
+ * whole maker, so nothing ties a page to a machine.
+ */
+export function libraryIsForTurnsMachine(message: string, boundModel: string | null, manufacturer: string | null): boolean {
+  const bound = boundModel?.trim();
+  if (!bound) return false;
+  const named = modelIdentitiesInText(message);
+  if (named.size === 0) return true;
+  // The propose-then-confirm flow stores a model as digits only ("820", "525")
+  // and a model read off a photo arrives the same way; no pattern reads bare
+  // digits. It is carried the way the selected-document path carries it: the
+  // family root of this maker those digits name ("800" is the Micro800 range),
+  // held to the rule a model stored by name is; else `#820`, which the message
+  // names only by its own digits under one of this maker's families
+  // (`documentCoversNotebook`), never by digits alone.
+  if (BARE_MODEL_NUMBER_RE.test(bound)) {
+    const root = bareNumberFamilyRoot(bound, manufacturer);
+    return root
+      ? documentCoversNamedAsk(named, new Set([root]))
+      : documentCoversNotebook(new Set([`#${bound}`]), named, manufacturer);
+  }
+  return documentCoversNamedAsk(named, modelIdentitiesInText(bound));
+}
+
 /** A notebook identity made ONLY of family roots ("Comfort", "Micro800") does
  *  not name a machine the filter could scope to — any TP or Micro8x0 manual
  *  attached to it is plausibly right, so the filter is skipped. */
@@ -897,7 +939,41 @@ export function manufacturerFromObservationText(text: string, manufacturers: rea
   return null;
 }
 
+/** What `retrieveManualChunks` reports when it withholds what it found. */
+export type LibraryNotForAsk = {
+  /** The known models the technician's message names (modelIdentitiesInText's shape). */
+  requested: string[];
+  /** The model the search was held to. */
+  boundModel: string;
+};
+
+/**
+ * The shared-library search, with one opt-in rule on top (`askedMachine`, the
+ * notebook chat with no document selected). The search is held to the caller's
+ * model whatever the technician's message names, so what it finds is that
+ * model's pages. When the message names a known model those pages do not cover
+ * (`libraryIsForTurnsMachine`), they are not about the machine asked about:
+ * nothing is returned, and the reason is written to `askedMachine.report` so
+ * the caller can say so instead of answering, citing or printing a page from
+ * another machine's manual. A search that found nothing reports nothing.
+ */
 export async function retrieveManualChunks(
+  client: PoolClient,
+  tenantId: string,
+  query: string,
+  opts: NonNullable<Parameters<typeof searchManualLibrary>[3]> & {
+    askedMachine?: { message: string; report: { libraryNotForAsk?: LibraryNotForAsk } };
+  } = {},
+): Promise<ManualChunk[]> {
+  const found = await searchManualLibrary(client, tenantId, query, opts);
+  const asked = opts.askedMachine;
+  const boundModel = opts.model?.trim();
+  if (!asked || !boundModel || found.length === 0 || libraryIsForTurnsMachine(asked.message, boundModel, opts.manufacturer ?? null)) return found;
+  asked.report.libraryNotForAsk = { requested: [...modelIdentitiesInText(asked.message)], boundModel };
+  return [];
+}
+
+async function searchManualLibrary(
   client: PoolClient,
   tenantId: string,
   query: string,
@@ -1481,6 +1557,12 @@ export async function retrieveNodeChunks(
      *  (e.g. a thread's P042) can only ADD candidates — never crowd the
      *  message's own keywords ("keypad") out of the pool. */
     rawQuery?: string;
+    /** The technician's own question of this turn, when the search words are
+     *  not that question (the safety stop's lockout-page search is made with
+     *  fixed lockout words). It decides which machine is asked about, exactly
+     *  as the question does for a search made from it: every search of one
+     *  turn is held to the same manuals. Search words are unchanged by it. */
+    subjectQuestion?: string;
     /** Earlier questions of this conversation whose subject is still open
      *  (conversation-subject.ts), NEWEST FIRST. Read only when this question
      *  names no model and no confirmed notebook identity scopes it: the model
@@ -1558,6 +1640,17 @@ export async function retrieveNodeChunks(
       /** The question named no model, the notebook's machine is confirmed, and
        *  EVERY selected manual's cover declares some other product. */
       otherProductRefusal?: OtherProductRefusal;
+      /** Whether this search knew which MODEL is meant: a model the question
+       *  (or an earlier open one) names, or the notebook's confirmed model.
+       *  A number alone is not enough, in the question (a fault code, a tag, a
+       *  part number) or in the confirmed record (a catalog number with only a
+       *  family name): a cover that says nothing about it is still admitted.
+       *  Absent = the search returned before deciding (and returned no passage). */
+      machineKnown?: boolean;
+      /** For each document a passage was admitted from: what its cover says,
+       *  for the safety stop to name whose manual its page is from. Decides
+       *  nothing here: it is written after a row is admitted. */
+      admittedCovers?: Record<string, AdmittedCover>;
     };
   },
 ): Promise<ManualChunk[]> {
@@ -1674,7 +1767,7 @@ export async function retrieveNodeChunks(
   // A confirmed notebook machine does not switch this off: "the plate reads
   // <another product>" followed by "what voltage does it need?" is about that
   // other product, whatever the notebook is set up for.
-  const ownQuestion = opts.rawQuery ?? q;
+  const ownQuestion = opts.subjectQuestion ?? opts.rawQuery ?? q;
   const namesKnownModel = (text: string) => {
     const named = resolveModelFromObservationText(text);
     return Boolean(named.model) || named.ambiguous || modelIdentitiesInText(text).size > 0;
@@ -2279,6 +2372,17 @@ export async function retrieveNodeChunks(
   // notebook recorded only by family name, is refused until the catalog number
   // is recorded or named (bench-project.ts P-53..P-58).
   const projectScoped = namesNoKnownModel && identityConfirmed && (notebookScoped || confirmedNumbers.length > 0);
+  const modelRuleActive = Boolean(requestedIdentities) || notebookScoped || unlistedAsk.length > 0 || projectScoped;
+  // Told to the caller before any passage is read, so it is never missing for
+  // a search that returns passages: the safety stop offers no page when the
+  // model is not known and several documents are selected. Narrower than
+  // `modelRuleActive` on purpose. A number the detector cannot read puts a
+  // number rule in play, in the question (as often a fault code or a tag as
+  // a machine) or in the confirmed record (`projectScoped` by a catalog
+  // number alone), but a cover silent about that number is admitted either
+  // way, another product line of the same maker included. Only a named or
+  // confirmed MODEL holds every admitted cover to that model.
+  if (opts.diagnostics) opts.diagnostics.machineKnown = Boolean(requestedIdentities) || notebookScoped;
   // Give each attached manual its own candidate window wherever a check
   // refuses rows after the SQL LIMIT: a model-scoped ask, or a number the
   // detector has no pattern for (#5369), in the question, carried from an
@@ -2336,6 +2440,33 @@ export async function retrieveNodeChunks(
         : declared;
     }
     return maker !== null && [...names].every((id) => isAnotherMakersFamily(id, maker)) ? declared : null;
+  };
+  // Codex re-review 2026-11-11, finding 1. A number in the question that the
+  // model reader cannot read names no machine here, so the confirmed machine's
+  // manual is admitted for a question about another device (a relay named by
+  // its part number). Admission is unchanged. What the admitted cover says is
+  // reported, so the safety stop can say whose manual its page is from and
+  // that the cover does not list the number. The confirmed machine's own
+  // recorded number is not reported: the project record places it.
+  const ownRecordNumbers = identityConfirmed ? unlistedModelNumbers(`${notebookModel} ${opts.catalogNumber ?? ""}`) : [];
+  const noteAdmittedCover = (r: Record<string, unknown>) => {
+    const docId = String(r.doc_id ?? "");
+    if (!opts.diagnostics || !docId) return;
+    const covers = (opts.diagnostics.admittedCovers ??= {});
+    if (covers[docId]) return;
+    const heading = String(r.document_heading ?? "");
+    const filename = String(r.filename ?? "");
+    const writtenAs = writtenAsOf(r);
+    covers[docId] = {
+      // The name is read from the cover only: a file merely named for a
+      // model is not called that model's manual in a stop.
+      models: [...coverIdentitiesOf("", heading)],
+      // Only the project's own recorded number is left out, by exact match:
+      // a look-alike of it is another unit's number.
+      unlisted: ownNumbers
+        .filter((n) => !ownRecordNumbers.some((own) => own.key === n.key) && !manualCoversNumber(n, heading, filename, writtenAs))
+        .map((n) => n.label),
+    };
   };
   // Which selected manuals admit() has judged. A manual the search returned no
   // passage from is judged by its cover after the lexical passes (below), so a
@@ -2452,6 +2583,7 @@ export async function retrieveNodeChunks(
           return false;
         }
       }
+      noteAdmittedCover(r);
       return true;
   };
   // Returns how many rows passed admission (new or already pooled): a sibling
@@ -2540,7 +2672,6 @@ export async function retrieveNodeChunks(
   // not yet seen, so an unscoped question costs no extra query. Only inside a
   // validated document selection (the notebook chat), with the same tenant,
   // ingest-route and approved-source predicates as every other read here.
-  const modelRuleActive = Boolean(requestedIdentities) || notebookScoped || unlistedAsk.length > 0 || projectScoped;
   const unjudged = modelRuleActive && docScopeOnly ? allowedDocIds.filter((d) => !judgedDocs.has(d)) : [];
   if (unjudged.length > 0) {
     const covers = await client.query(

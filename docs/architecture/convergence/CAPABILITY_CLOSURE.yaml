@@ -180,7 +180,8 @@ capabilities:
       - "Produce one diff from REAL production tag_events through NeonRunStore, not the in-memory store."
       - "REVIEW DEFERRED 2026-09-20 -> 2026-10-19 (reason): the 2026-09-19 review date lapsed during the #3875 merge train, which failed the capability-closure check on main. Open promotion criteria remain unchanged - CI enumeration, artifact questions, and production NeonRunStore proof. Re-decide by the new date."
       - "REVIEW DEFERRED 2026-10-19 -> 2026-11-10 (reason): moved without re-deciding by an owner-approved agent PR (Mike, in chat, 2026-10-14) so the date does not lapse at UTC midnight and fail CI Gate on every open PR and on main. Nothing about the capability changed. Re-decide by the new date."
-    review_by: "2026-11-10"
+      - "REVIEW DEFERRED 2026-11-10 -> 2026-11-24 (reason): moved without re-deciding by an owner-approved agent PR (Mike, in chat, 2026-11-10: pilot week; re-decide after the Nov 16 pilot decision) so the lapsed date stops failing CI Gate on every open PR and on main. Nothing about the capability changed."
+    review_by: "2026-11-24"
     notes: >-
       Issue #2341 still describes this engine as not existing. It shipped and is
       enabled. Commented there 2026-08-18; the issue text remains stale.
@@ -297,7 +298,8 @@ capabilities:
       - "REVIEW DEFERRED 2026-09-06 -> 2026-10-05 (reason): the 2026-09-05 review date lapsed with the owner still unassigned, which failed the capability-closure check on every open PR and blocked the #3597 release train. Nothing about the capability changed - it is production_enabled and runtime-proven (evidence above). The only open item remains recording an owner; that is the owner's decision (Mike), not this deferral's. Re-decide by the new date."
       - "REVIEW DEFERRED 2026-10-01 -> 2026-10-14 (reason): moved without re-deciding, together with machine_memory_observer_cv101, so a date lapsing mid-queue does not fail CI Gate on every open PR again; owner-approved agent PR (same route as #4027). Recording an owner is still the open item. Re-decide by the new date."
       - "REVIEW DEFERRED 2026-10-14 -> 2026-11-10 (reason): moved without re-deciding by an owner-approved agent PR (Mike, in chat, 2026-10-14) so the date does not lapse at UTC midnight and fail CI Gate on every open PR and on main. Nothing about the capability changed. Re-decide by the new date."
-    review_by: "2026-11-10"
+      - "REVIEW DEFERRED 2026-11-10 -> 2026-11-24 (reason): moved without re-deciding by an owner-approved agent PR (Mike, in chat, 2026-11-10: pilot week; re-decide after the Nov 16 pilot decision) so the lapsed date stops failing CI Gate on every open PR and on main. Nothing about the capability changed."
+    review_by: "2026-11-24"
 
   # =========================================================================
   - id: technician_context_contract
@@ -339,7 +341,8 @@ capabilities:
       - "A staging turn whose decision_traces.context_manifest is reviewed and recorded here."
       - "REVIEW DEFERRED 2026-09-20 -> 2026-10-19 (reason): the 2026-09-19 review date lapsed during the #3875 merge train, which failed the capability-closure check on main. Open promotion criteria remain unchanged - ADR-0033 decision and staging evidence. Re-decide by the new date."
       - "REVIEW DEFERRED 2026-10-19 -> 2026-11-10 (reason): moved without re-deciding by an owner-approved agent PR (Mike, in chat, 2026-10-14) so the date does not lapse at UTC midnight and fail CI Gate on every open PR and on main. Nothing about the capability changed. Re-decide by the new date."
-    review_by: "2026-11-10"
+      - "REVIEW DEFERRED 2026-11-10 -> 2026-11-24 (reason): moved without re-deciding by an owner-approved agent PR (Mike, in chat, 2026-11-10: pilot week; re-decide after the Nov 16 pilot decision) so the lapsed date stops failing CI Gate on every open PR and on main. Nothing about the capability changed."
+    review_by: "2026-11-24"
 
   # =========================================================================
   - id: live_machine_state
@@ -457,7 +460,8 @@ capabilities:
       - "A confirmation-gated flow so identity is proposed, never asserted."
       - "tests/test_nameplate_e2e.py enumerated in a named CI job (currently --ignore'd)."
       - "REVIEW DEFERRED 2026-10-19 -> 2026-11-10 (reason): moved without re-deciding by an owner-approved agent PR (Mike, in chat, 2026-10-14) so the date does not lapse at UTC midnight and fail CI Gate on every open PR and on main. Nothing about the capability changed. Re-decide by the new date."
-    review_by: "2026-11-10"
+      - "REVIEW DEFERRED 2026-11-10 -> 2026-11-24 (reason): moved without re-deciding by an owner-approved agent PR (Mike, in chat, 2026-11-10: pilot week; re-decide after the Nov 16 pilot decision) so the lapsed date stops failing CI Gate on every open PR and on main. Nothing about the capability changed."
+    review_by: "2026-11-24"
 
   # =========================================================================
   - id: photo_ocr_evidence
@@ -555,7 +559,7 @@ capabilities:
     promotion_criteria:
       - "Mike sets MACHINE_MEMORY_OBSERVER_ENABLED=1, _ASSET_ID, _EMAIL/_PASSWORD in Doppler prd; redeploy dogfood worker+beat via deploy-vps.yml."
       - "series.json: consecutive_days >= 7, defects == [], real_fault_window_with_rows == true."
-    review_by: "2026-11-10"
+    review_by: "2026-11-24"
     notes: >-
       Workstream C of docs/prd/2026-08-29-technician-beta-recovery-prd.md (PR #3486).
       REVIEW DEFERRED 2026-10-01 -> 2026-10-14: the 2026-09-30 date lapsed at UTC
@@ -565,6 +569,10 @@ capabilities:
       REVIEW DEFERRED 2026-10-14 -> 2026-11-10: moved without re-deciding by an
       owner-approved agent PR (Mike, in chat, 2026-10-14) so the date does not lapse
       at UTC midnight and fail CI Gate on every PR. Re-decide by the new date.
+      REVIEW DEFERRED 2026-11-10 -> 2026-11-24: moved without re-deciding by an
+      owner-approved agent PR (Mike, in chat, 2026-11-10: pilot week; re-decide
+      after the Nov 16 pilot decision) so the lapsed date stops failing CI Gate on
+      every open PR and on main. Nothing about the capability changed.
 
 # ---------------------------------------------------------------------------
 # Gate flags deliberately NOT tracked as product capabilities. Each needs a
@@ -632,9 +640,10 @@ capabilities:
       - "Enable in production for the supervised mike-pilot Pixel run; record device, build, backend SHA, time, outcome."
       - "GS10-20P5 positive and Harrington negative both pass on the phone; disable on any failure."
       - "Then: whole-manual preference when the OEM splits chapters (GS10 still lands on a chapter); free-tier vs OpenAI judge benchmark (later evaluation)."
-    review_by: "2026-11-10"
+    review_by: "2026-11-24"
     notes: >-
       Review date moved 2026-10-10 -> 2026-11-10 without re-deciding (PROPOSED by the land-the-queue agent 2026-10-11; awaiting Mike, gate G2 — the 10-10 expiry turned Capability Closure Registry + Eval Offline red on every PR); re-decide at the next Gate sitting.
+      REVIEW DEFERRED 2026-11-10 -> 2026-11-24 (reason): moved without re-deciding by an owner-approved agent PR (Mike, in chat, 2026-11-10: pilot week; re-decide after the Nov 16 pilot decision) so the lapsed date stops failing CI Gate on every open PR and on main. Nothing about the capability changed.
       Previously moved 2026-09-26 -> 2026-10-10 without re-deciding (owner-authorized by Mike, 2026-09-27 ~00:45Z, to unblock the merge queue).
       Slice 1 of docs/plans/2026-08-26-technician-copilot-prd-phase0-audit.md (PR #3411).
 
@@ -1042,9 +1051,10 @@ capabilities:
       - "Deploy and prove the exact Hub /v3 release (#3879), then prove one persisted thread phone -> web -> phone (#3882)."
       - "Make /v3 the authenticated default only with a tested legacy recovery path (#3880); public demo proof remains separate (#3883)."
       - "REVIEW 2026-09-20 -> 2026-09-27 (reason): #3839/#3875 connect and exercise Hub /v3 on main, so the record was re-decided rather than date-bumped. Production, current Pixel release (#3881), cross-surface continuity (#3882), and default cutover (#3880) remain open. Re-decide after exact-release evidence; do not extend again as a date-only fix."
-    review_by: "2026-11-10"
+    review_by: "2026-11-24"
     notes: >-
       Review date moved 2026-10-10 -> 2026-11-10 without re-deciding (PROPOSED by the land-the-queue agent 2026-10-11; awaiting Mike, gate G2 — the 10-10 expiry turned Capability Closure Registry + Eval Offline red on every PR); re-decide at the next Gate sitting.
+      REVIEW DEFERRED 2026-11-10 -> 2026-11-24 (reason): moved without re-deciding by an owner-approved agent PR (Mike, in chat, 2026-11-10: pilot week; re-decide after the Nov 16 pilot decision) so the lapsed date stops failing CI Gate on every open PR and on main. Nothing about the capability changed.
       Previously moved 2026-09-27 -> 2026-10-10 without re-deciding (owner-authorized by Mike, 2026-09-27 ~00:45Z, to unblock the merge queue).
       Do not create a second capability registry for UI cutover state — this
       record is the ONE capability-closure entry for the unified shell

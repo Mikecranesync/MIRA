@@ -65,6 +65,7 @@ import { composeHubSend, pairAttachments, resolveUploadNode, runAttachedSend, ty
 import { createManualSearchDriver, type ManualSearchDriver } from "./manual-search-driver";
 import { GuidedProcedure } from "./GuidedProcedure";
 import { MachineObservations } from "./MachineObservations";
+import { SavedFixes } from "./SavedFixes";
 import { WorkPacketPanel } from "./WorkPacketPanel";
 import { wantsPacketOpen } from "./work-packet-view";
 import { LivingSheet } from "./LivingSheet";
@@ -160,6 +161,8 @@ export function HubShellHost() {
   // Holds the linked notebook id, so only that notebook's packet opens.
   const [packetLink] = useState(() => (wantsPacketOpen(readSearch()) ? new URLSearchParams(readSearch()).get("notebook") : null));
   const [signedOut, setSignedOut] = useState(false);
+  // #5089: bumped after a fix is saved, so the Saved fixes list re-reads without a reload.
+  const [fixesSaved, setFixesSaved] = useState(0);
   const { data: authSession } = useSession();
   const [signingOut, setSigningOut] = useState(false);
   const [notebooks, setNotebooks] = useState<HubNotebook[] | null>(null);
@@ -909,8 +912,9 @@ export function HubShellHost() {
         body: JSON.stringify({ symptom, fix, clientRequestId, sourceTurnId }),
       });
       if (res.ok) {
+        setFixesSaved((n) => n + 1);
         fixRequestIds.settle(turnId, fix);
-        window.alert("Saved. MIRA will use this fix on this machine next time.");
+        window.alert("Fix saved as a technician note. MIRA does not use it in its answers.");
         return;
       }
       const body = (await res.json().catch(() => null)) as { error?: string } | null;
@@ -1052,6 +1056,8 @@ export function HubShellHost() {
           notebookId={selection.notebookId}
         />
       )}
+      {/* #5089: the fixes saved on this project, read back after a reload; nothing while there are none. */}
+      {selection && <SavedFixes key={`saved-fixes|${selection.notebookId}`} notebookId={selection.notebookId} refresh={fixesSaved} />}
       {/* #4982: shown only when NOTEBOOK_WORK_PACKET is on (the panel renders nothing on 404). */}
       {selection && (
         <WorkPacketPanel

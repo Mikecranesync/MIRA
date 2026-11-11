@@ -38,6 +38,7 @@ import { runDispatchTick, type DispatchDeps } from "../dispatcher";
 import { deliveryStatusForFixRecords } from "../status";
 import { subjectRefForFix } from "../types";
 import { deleteNotebook } from "@/lib/equipment-notebooks";
+import { insertFixRecord, listFixRecords } from "@/capabilities/fix-records";
 
 const URL_ = process.env.TEST_DATABASE_URL;
 
@@ -1368,6 +1369,116 @@ describe.skipIf(!URL_)("cmms-dispatch (real Postgres)", () => {
     row = await deliveryRow(deliveryId);
     expect(row.state).toBe("verified_by_readback");
     expect(row.external_ref).toBe("1");
+  });
+
+  // #4060: the SAVE path, `insertFixRecord`, against real Postgres. Every test
+  // above hands `enqueueFixRecordedEvent` an ISO string it built itself, so
+  // none of them carries the time the way the save does: read back from
+  // `asset_fix_records.created_at` (node-postgres returns a JS Date) and
+  // written again as the event's `occurred_at`. Rendered with String() that
+  // Date reads "Tue Nov 10 2026 04:55:00 GMT-0500 (Eastern Standard Time)",
+  // which Postgres refuses, so the whole save rolled back with a 500.
+  //
+  // Postgres refuses the UTC spelling of that string too ("GMT+0000
+  // (Coordinated Universal Time)" is invalid timestamp syntax; measured on
+  // pg17), so the save failed on every host. The zone is pinned here so the
+  // string the save builds, and the failure without the fix, are the same on a
+  // laptop and in CI.
+  describe("saving a fix end to end (#4060)", () => {
+    const ISO_8601 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+    const hostZone = process.env.TZ;
+
+    beforeAll(() => {
+      process.env.TZ = "America/New_York";
+    });
+
+    afterAll(() => {
+      if (hostZone === undefined) delete process.env.TZ;
+      else process.env.TZ = hostZone;
+    });
+
+    async function makeAnswerTurn(tenantId: string, notebookId: string): Promise<string> {
+      const res = await testPool.query<{ id: string }>(
+        `INSERT INTO equipment_notebook_turns (notebook_id, tenant_id, question, answer_text)
+         VALUES ($1::uuid, $2::uuid, 'Conveyor will not start', 'Check the belt tensioner.')
+         RETURNING id::text AS id`,
+        [notebookId, tenantId],
+      );
+      return res.rows[0]!.id;
+    }
+
+    function fixInput(sourceTurnId: string, clientRequestId: string = uuid()) {
+      return {
+        symptom: "Conveyor will not start",
+        fix: "Replaced the belt tensioner",
+        faultCode: null,
+        sourceTurnId,
+        clientRequestId,
+      };
+    }
+
+    it("the zone pin took effect", () => {
+      expect(String(new Date("2026-11-10T09:55:00.000Z"))).toContain("GMT-0500");
+    });
+
+    it("stores the fix and its event, and a fresh read lists it with an ISO-8601 time", async () => {
+      const tenantId = uuid();
+      const notebookId = await makeNotebook(tenantId);
+      const turnId = await makeAnswerTurn(tenantId, notebookId);
+
+      const saved = await insertFixRecord(tenantId, notebookId, null, fixInput(turnId), "tech-1");
+      expect(saved.status).toBe("created");
+      if (saved.status !== "created") return;
+      expect(saved.fix.createdAt).toMatch(ISO_8601);
+
+      // "Reload": a separate read, as GET /fixes does it.
+      const listed = await listFixRecords(tenantId, notebookId);
+      expect(listed.fixes.map((f) => f.id)).toEqual([saved.fix.id]);
+      expect(listed.fixes[0]).toMatchObject({
+        symptom: "Conveyor will not start",
+        fix: "Replaced the belt tensioner",
+        recordedBy: "tech-1",
+        createdAt: saved.fix.createdAt,
+      });
+
+      // The event carries the same instant the record does.
+      const events = await testPool.query<{ occurred_at: Date }>(
+        `SELECT occurred_at FROM notebook_domain_events
+          WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND event_type = 'fix_recorded'`,
+        [tenantId, notebookId],
+      );
+      expect(events.rows).toHaveLength(1);
+      expect(events.rows[0]!.occurred_at.toISOString()).toBe(saved.fix.createdAt);
+    });
+
+    it("a retried save returns the stored record with the same ISO-8601 time and adds no second row", async () => {
+      const tenantId = uuid();
+      const notebookId = await makeNotebook(tenantId);
+      const turnId = await makeAnswerTurn(tenantId, notebookId);
+      const input = fixInput(turnId);
+
+      const first = await insertFixRecord(tenantId, notebookId, null, input, "tech-1");
+      const again = await insertFixRecord(tenantId, notebookId, null, input, "tech-1");
+      expect(first.status).toBe("created");
+      expect(again.status).toBe("existing");
+      if (first.status !== "created" || again.status !== "existing") return;
+      expect(again.fix.id).toBe(first.fix.id);
+      expect(again.fix.createdAt).toMatch(ISO_8601);
+      expect(again.fix.createdAt).toBe(first.fix.createdAt);
+      expect((await listFixRecords(tenantId, notebookId)).fixes).toHaveLength(1);
+    });
+
+    it("a second project in the same tenant lists only its own fix", async () => {
+      const tenantId = uuid();
+      const first = await makeNotebook(tenantId);
+      const second = await makeNotebook(tenantId);
+      const a = await insertFixRecord(tenantId, first, null, fixInput(await makeAnswerTurn(tenantId, first)), "tech-1");
+      const b = await insertFixRecord(tenantId, second, null, fixInput(await makeAnswerTurn(tenantId, second)), "tech-1");
+      if (a.status !== "created" || b.status !== "created") throw new Error(`save failed: ${a.status} / ${b.status}`);
+
+      expect((await listFixRecords(tenantId, first)).fixes.map((f) => f.id)).toEqual([a.fix.id]);
+      expect((await listFixRecords(tenantId, second)).fixes.map((f) => f.id)).toEqual([b.fix.id]);
+    });
   });
 
 });
