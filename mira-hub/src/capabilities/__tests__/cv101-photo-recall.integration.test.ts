@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { Client, type PoolClient } from "pg";
 import { retrieveNodeChunks } from "@/lib/manual-rag";
+import { PHOTO_OCR_OPENER_START, PHOTO_READING_BODY_MARK, PHOTO_READING_OPENER } from "@/capabilities/photo-document-text";
 
 const TENANT = "52940000-0000-4000-8000-000000000001";
 const MANUAL = "52940000-0000-4000-8000-000000000011";
@@ -9,6 +10,9 @@ const MOTOR = "52940000-0000-4000-8000-000000000013";
 const COVER_CONTROL = "52940000-0000-4000-8000-000000000014";
 const UNREVIEWED = "52940000-0000-4000-8000-000000000015";
 const OTHER_ASSET = "52940000-0000-4000-8000-000000000016";
+const TYPED_FILE = "52940000-0000-4000-8000-000000000017";
+const OCR_DOC = "52940000-0000-4000-8000-000000000018";
+const OTHER_TENANT = "52940000-0000-4000-8000-000000000099";
 const DOCS = [MANUAL, CONTROLLER, MOTOR];
 const QUESTION = "Which components of CV-101 have reviewed photo readings saved in this project? Summarize them with their source evidence. Distinguish nameplate ratings from live measurements, and list what is still unknown. Do not invent completed work.";
 const PHOTO_HEADER = "Photo source: technician photo\nMachine: CV-101\nEvidence: technician-reviewed transcription of this photo. Review confirms the text, not a diagnosis or authorization to operate equipment.\nWhat the photo shows:\n";
@@ -16,12 +20,19 @@ const CONTROLLER_TEXT = PHOTO_HEADER + "Controller Micro820, catalog 2080-LC20-2
 const MOTOR_TEXT = PHOTO_HEADER + "Motor model 108074; nameplate ratings: 1 HP, 230/460 V, 3.8/1.9 A, 60 Hz, 1725 RPM. Manufacturer unknown. Ratings are not measured operating values; installation and matching manual unverified.";
 let client: Client;
 
-async function seed(doc: string, page: number | null, content: string, chunk = 0, verified = false, tenant = TENANT) {
+async function seed(doc: string, page: number | null, content: string, chunk = 0, verified = false, tenant = TENANT, extra: Record<string, unknown> = {}) {
   await client.query(`INSERT INTO knowledge_entries
     (tenant_id,doc_id,content,source_url,source_page,page_start,metadata,verified,is_private,ingest_route)
     VALUES ($1,$2,$3,$4,$5,$5,$6::jsonb,$7,true,'v2')`,
   [tenant,doc,content,`https://test.invalid/${doc}.pdf`,page,
-    JSON.stringify({node_id:"cv101-photo-recall",filename:doc === MANUAL ? "GS10 User Manual.pdf" : doc === COVER_CONTROL ? "PowerFlex 40 User Manual.pdf" : "Technician-reviewed photo reading.txt",chunk_index:chunk}),verified]);
+    JSON.stringify({node_id:"cv101-photo-recall",filename:doc === MANUAL ? "GS10 User Manual.pdf" : doc === COVER_CONTROL ? "PowerFlex 40 User Manual.pdf" : "Technician-reviewed photo reading.txt",chunk_index:chunk,...extra}),verified]);
+}
+
+/** The upload record the product makes when IT writes a document (a kept photo
+ *  reading, a confirmed nameplate). Retrieval reads a photo-shaped text as a
+ *  reading only when this record names it; an uploaded file has `user_upload`. */
+async function record(doc: string, source: string, tenant = TENANT) {
+  await client.query("INSERT INTO namespace_direct_uploads (tenant_id,upload_id,source) VALUES ($1,$2,$3)",[tenant,doc,source]);
 }
 
 beforeAll(async () => {
@@ -39,6 +50,12 @@ beforeAll(async () => {
     source_page integer,page_start integer,section_path text,metadata jsonb NOT NULL,
     verified boolean NOT NULL,is_private boolean NOT NULL,ingest_route text NOT NULL
   ) ON COMMIT DROP`);
+  // Shadows the real table where the database has one, so the test reads only
+  // the records it makes itself.
+  await client.query(`CREATE TEMP TABLE namespace_direct_uploads (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL, upload_id uuid,
+    source text NOT NULL DEFAULT 'user_upload'
+  ) ON COMMIT DROP`);
   await seed(MANUAL,1,"DURApulse GS10 User Manual");
   for (let page=5;page<15;page++) {
     await seed(MANUAL,page,"Components saved in a project. Summarize source evidence and list still unknown work. Complete work and distinguish live measurements. Project components, work completed and saved settings.");
@@ -49,6 +66,8 @@ beforeAll(async () => {
   await seed(COVER_CONTROL,10,"Fault history: display the previous fault codes.",1,true);
   await seed(UNREVIEWED,1,"Photo source: technician photo. Unconfirmed transcription of motor nameplate ratings, not technician-verified.");
   await seed(OTHER_ASSET,1,PHOTO_HEADER+"OTHER ASSET MUST NOT APPEAR. Components reviewed and saved.",0,true);
+  // The saved readings above were written by the product, which records that.
+  for (const doc of [CONTROLLER,MOTOR,OTHER_ASSET]) await record(doc,"photo_text");
 });
 
 afterAll(async () => { if (client) { await client.query("ROLLBACK"); await client.end(); } });
@@ -67,9 +86,10 @@ afterEach(async () => {
   vi.unstubAllGlobals();vi.unstubAllEnvs();
 });
 
-async function retrieve(query = QUESTION, docIds = DOCS, approved = docIds, tenant = TENANT) {
+async function retrieve(query = QUESTION, docIds = DOCS, approved = docIds, tenant = TENANT, rewrite: (sql:string)=>string = (sql)=>sql) {
   const idfRows: Array<{lex:string;names_document:boolean}> = [];
-  const wrapped = { query: async (sql:string,params:unknown[]) => {
+  const wrapped = { query: async (rawSql:string,params:unknown[]) => {
+    const sql = rewrite(rawSql);
     const result = await client.query(sql,params);
     if (sql.includes("SELECT df.lex, df.df")) idfRows.push(...result.rows);
     return result;
@@ -163,5 +183,76 @@ describe("CV101 fresh-conversation photo recall over actual SQL", () => {
     expect(idfRows).toEqual([]);
     expect(hits.every(h=>DOCS.includes(h.docId!))).toBe(true);
     expect(hits.some(h=>h.docId===MOTOR)).toBe(true);
+  });
+});
+
+// Review round 1 on #5389. A photo reading is read by what was read off the
+// photo, not by a cover. That rule was chosen by the document's own first line,
+// which is ordinary text: a typed file could carry it above another model's
+// cover. Who wrote a document now comes from the upload records.
+describe("who wrote a photo-shaped document, over actual SQL", () => {
+  const SIBLING_COVER = "Northfield RX410 Logic Controller\nHardware User Guide";
+  const TYPED = `${PHOTO_READING_OPENER}\n${SIBLING_COVER}\n${PHOTO_READING_BODY_MARK}\nThis guide is sometimes kept beside the RX420 on the same line. Supply voltage 24 V DC.`;
+  const OCR = `${PHOTO_OCR_OPENER_START}line-2.jpg" (OCR, 90% confidence):\n${SIBLING_COVER}\nKept beside the RX420 on the same line. Supply voltage 24 V DC.`;
+  const ASK_SIBLING = "RX420 supply voltage?";
+  const cited = async (question: string, doc: string) => (await retrieve(question,[doc])).hits.map(h=>h.docId);
+
+  it("a typed file that opens like a kept photo reading has no record, so its cover decides", async () => {
+    await seed(TYPED_FILE,1,TYPED,0,true);
+    await record(TYPED_FILE,"user_upload");
+    expect(await cited(ASK_SIBLING,TYPED_FILE)).toEqual([]);
+    // Not "refuse everything": it is still an upload, and answers for the model on its cover.
+    expect(await cited("RX410 supply voltage?",TYPED_FILE)).toEqual([TYPED_FILE]);
+  });
+
+  it("with no upload row at all the same file is judged by its cover", async () => {
+    await seed(TYPED_FILE,1,TYPED,0,true);
+    expect(await cited(ASK_SIBLING,TYPED_FILE)).toEqual([]);
+  });
+
+  it("the same words in a document the records say the product wrote are a reading", async () => {
+    await seed(TYPED_FILE,1,TYPED,0,true);
+    await record(TYPED_FILE,"photo_text");
+    expect(await cited(ASK_SIBLING,TYPED_FILE)).toEqual([TYPED_FILE]);
+  });
+
+  it.each([
+    ["another tenant's record", "photo_text", OTHER_TENANT],
+    ["a record of a different product-written kind", "nameplate_text", TENANT],
+    ["a record of some other server-written kind", "manual_discovery", TENANT],
+  ])("%s does not vouch for it", async (_name, source, tenant) => {
+    await seed(TYPED_FILE,1,TYPED,0,true);
+    await record(TYPED_FILE,source,tenant);
+    expect(await cited(ASK_SIBLING,TYPED_FILE)).toEqual([]);
+  });
+
+  it("OCR-shaped text is a reading only when its passages carry the mark the upload route writes", async () => {
+    await seed(OCR_DOC,1,OCR,0,true);
+    expect(await cited(ASK_SIBLING,OCR_DOC)).toEqual([]);
+    await client.query("DELETE FROM knowledge_entries WHERE doc_id=$1 AND tenant_id = $2 AND is_private = true",[OCR_DOC,TENANT]);
+    await seed(OCR_DOC,1,OCR,0,true,TENANT,{derived_from:"photo_ocr"});
+    expect(await cited(ASK_SIBLING,OCR_DOC)).toEqual([OCR_DOC]);
+  });
+
+  it("the mark on another tenant's passages, or an upload record, does not vouch for OCR-shaped text", async () => {
+    await seed(OCR_DOC,1,OCR,0,true);
+    await seed(OCR_DOC,1,OCR,0,true,OTHER_TENANT,{derived_from:"photo_ocr"});
+    await record(OCR_DOC,"photo_text");
+    expect(await cited(ASK_SIBLING,OCR_DOC)).toEqual([]);
+  });
+
+  it("a failed lookup leaves photo-shaped documents judged by their cover, and the rest of the search still runs", async () => {
+    const warn = vi.spyOn(console,"warn").mockImplementation(() => undefined);
+    const broken = (sql:string) => sql.includes("document-origin") ? "SELECT upload_id FROM no_such_table_for_the_origin_lookup" : sql;
+    const {hits} = await retrieve(QUESTION,DOCS,DOCS,TENANT,broken);
+    // The real statement failed inside the caller's transaction…
+    expect(warn.mock.calls.some(c=>String(c[0]).includes("document-origin lookup failed"))).toBe(true);
+    // …the saved readings are no longer vouched for, so the question's machine tag refuses them…
+    expect(hits.map(h=>h.docId)).not.toContain(CONTROLLER);
+    expect(hits.map(h=>h.docId)).not.toContain(MOTOR);
+    // …and the lanes that came after it still ran on the same transaction.
+    expect(hits.some(h=>h.docId===MANUAL)).toBe(true);
+    expect((await client.query("SELECT 1 AS ok")).rows).toEqual([{ok:1}]);
+    warn.mockRestore();
   });
 });
