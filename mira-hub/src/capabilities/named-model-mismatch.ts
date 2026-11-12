@@ -173,7 +173,7 @@ export function ambiguousModelAskText(ids: string[]): string {
 export function siblingOfRecordAskText(d: { asked: string[]; record: string }): string {
   const asked = d.asked.map((a) => `the ${a}`);
   const listed = asked.length <= 1 ? asked.join("") : `${asked.slice(0, -1).join(", ")} or ${asked[asked.length - 1]}`;
-  return `This project is set up for the ${d.record}. Your question names ${listed}, which is a different unit, so I can't give its values from this project's manual — the pages here answer for the ${d.record} only. If you are working on ${listed}, open or create a project for that unit and ask there; I'll answer from its manual and show you the page.`;
+  return `This project is set up for the ${d.record}. Your question is about ${listed}, which is a different unit, so I can't give its values from this project's manual — the pages here answer for the ${d.record} only. If you are working on ${listed}, open or create a project for that unit and ask there; I'll answer from its manual and show you the page.`;
 }
 
 /** The conversation has run further without an answer from a manual than the

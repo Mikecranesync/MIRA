@@ -180,6 +180,20 @@ describe("retrieveNodeChunks excludes another model's table passages when the re
       expect(diagnostics.siblingOfRecordAsk).toEqual({ asked: ["GS13N-20P2"], record: "GS11N-20P2" });
     });
 
+    it("control: after a refused sibling ask, a question naming the record's OWN number is served (the carry stops at a named model)", async () => {
+      // The refused turn stays in the open run (conversation-subject.ts closes a run only on an
+      // answered document-based turn), so a bare follow-up would still carry GS13N. A question
+      // that names the record's own number disables the carry (earlierQuestions is empty when
+      // the question itself names a known model) and must answer from the record's column.
+      const diagnostics: Record<string, unknown> = {};
+      const { client } = makeClient(rows());
+      const out = await retrieveNodeChunks(client, "t-1", "What is the rated input current of the GS11N-20P2?", scoped({ diagnostics, subjectQueries: ["What is the rated input current of the GS13N-20P2?"] }));
+      expect(diagnostics.siblingOfRecordAsk).toBeUndefined();
+      expect(diagnostics.recordNumber).toBe("GS11N-20P2");
+      expect(out.map((c) => c.content)).toContain(ownColumn.content);
+      expect(out.map((c) => c.content)).not.toContain(siblingColumn.content);
+    });
+
     it("a question naming the record's own number beside a sibling is refused too (no other model's value)", async () => {
       const diagnostics: Record<string, unknown> = {};
       const { client } = makeClient(rows());
