@@ -205,3 +205,35 @@ describe("garage pilot PR-4: the chat route hands the shadow verifier retrieval'
     expect(attrs["mira.claim_verifier.row_bound"]).toBe(0);
   });
 });
+
+/** The persisted turn record's answer_gate.claim_verifier — what the harness reads back per turn. */
+function persistedClaimVerifier(): unknown {
+  const call = persistMock.persistTurnUsage.mock.calls[0] as unknown[];
+  const record = call[2] as { packet: { answer_gate: Record<string, unknown> } };
+  return record.packet.answer_gate.claim_verifier;
+}
+
+describe("garage pilot PR-4f: the shadow verdict is kept on the persisted turn record (the per-build flag rate's source)", () => {
+  it("shadow on: answer_gate.claim_verifier carries the verdict, counts and per-claim statuses — never a value", async () => {
+    retrievalReports("GS11N-20P2", [OWN]);
+    await gateAttrs("What is its CT rated input current?", "It is 5.1 A [1].");
+    const cv = persistedClaimVerifier();
+    expect(cv).toEqual({
+      verdict: "supported",
+      reason: "all_bound",
+      claim_count: 1,
+      row_bound: 1,
+      unbound: 0,
+      absent: 0,
+      claims: [{ kind: "quantity", status: "supported", page: 26, via: "row" }],
+    });
+    expect(JSON.stringify(cv)).not.toContain("5.1");
+  });
+
+  it("shadow off: the field is absent (not run), so the harness never reads an absent verdict as supported", async () => {
+    delete process.env.NOTEBOOK_CLAIM_VERIFIER;
+    retrievalReports("GS11N-20P2", [OWN]);
+    await gateAttrs("What is its CT rated input current?", "It is 5.1 A [1].");
+    expect(persistedClaimVerifier()).toBeUndefined();
+  });
+});

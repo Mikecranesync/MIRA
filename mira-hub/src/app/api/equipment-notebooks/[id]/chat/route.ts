@@ -59,7 +59,7 @@ import {
 import { withSupportingQuotes } from "@/capabilities/supporting-quote";
 import { citedPagesFor, extractManualSafetyStatement, manualSafetyStatementForCitations } from "@/capabilities/manual-safety-statement";
 import { retrieveSafetyChapterChunks, SAFETY_CHAPTER_DIRECTIVE } from "@/capabilities/manual-safety-chapter";
-import { shadowVerifyCitedTurn } from "@/capabilities/claim-verifier-shadow";
+import { shadowVerifyCitedTurnResult } from "@/capabilities/claim-verifier-shadow";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
 import { isWeakEvidence, WEAK_EVIDENCE_LABEL, WEAK_EVIDENCE_RULE } from "@/capabilities/observability/jev-weak-evidence";
 import {
@@ -5426,7 +5426,7 @@ async function handleChatTurn(
         // the answer, its citations and its status are already final above and are never touched.
         const claimShadow =
           docGrounded && served && !refused && !outputRejected
-            ? shadowVerifyCitedTurn({
+            ? shadowVerifyCitedTurnResult({
                 question: message,
                 answer: answerText,
                 citationIds: emittedCitations.map((c) => c.citationId),
@@ -5438,7 +5438,13 @@ async function handleChatTurn(
                 recordCatalogNumber: retrievalDiagnostics.recordNumber ?? null,
               })
             : null;
-        if (claimShadow) setSpanAttrs(claimShadow, finalAnswerGateSpan);
+        if (claimShadow) {
+          setSpanAttrs(claimShadow.attrs, finalAnswerGateSpan);
+          // Garage pilot PR-4f: the same verdict rides the persisted packet (statuses and counts only) —
+          // the span is sampled and ephemeral, the packet is what the harness reads back per turn. A
+          // nested object is never mirrored onto a span, so nothing is recorded twice.
+          rec.stage("answer_gate", { claim_verifier: claimShadow.record });
+        }
         finalAnswerGateSpan.end();
       }
 
