@@ -234,6 +234,25 @@ describe("retrieveNodeChunks excludes another model's table passages when the re
       expect(out.map((c) => c.content)).not.toContain(siblingColumn.content);
     });
 
+    // Codex r4 on #5451 (F4, MEDIUM, a regression of the r3 reader): "Micro820 2080-LC20-20QWB" —
+    // the identity reader finds the product name (MICRO820), so the identity-first reading dropped
+    // the generic catalog number beside it, the sibling refusal missed, and the record's own
+    // 2080-LC20-20QBB voltage row answered for the other unit. Both readers' numbers are kept; only
+    // a fragment of a longer number in the same text (a bare root, a split half) is dropped.
+    it("a product name beside a sibling catalog number (Micro820 2080-LC20-20QWB) does not hide the sibling", async () => {
+      const cover = "Micro820 Controllers 2080-LC20-20QBB 2080-LC20-20QWB Installation Instructions";
+      const qbb = {
+        ...base, source_page: 15, page_start: 15, table_models: ["2080LC2020QBB"], document_heading: cover,
+        content: "2080-LC20-20QBB: Power supply voltage range 20.4…26.4 V DC\n",
+      };
+      const diagnostics: Record<string, unknown> = {};
+      const { client, calls } = makeClient([[qbb]]);
+      const out = await retrieveNodeChunks(client, "t-1", "What supply voltage does the Micro820 2080-LC20-20QWB need?", scoped({ diagnostics, catalogNumber: "2080-LC20-20QBB" }));
+      expect(out).toEqual([]);
+      expect(diagnostics.siblingOfRecordAsk).toEqual({ asked: ["2080-LC20-20QWB"], record: "2080-LC20-20QBB" });
+      expect(calls.filter((c) => /knowledge_entries/.test(c.sql))).toHaveLength(0);
+    });
+
     it("control: after a refused sibling ask, a question naming the record's OWN number is served (the carry stops at a named model)", async () => {
       // The refused turn stays in the open run (conversation-subject.ts closes a run only on an
       // answered document-based turn), so a bare follow-up would still carry GS13N. A question

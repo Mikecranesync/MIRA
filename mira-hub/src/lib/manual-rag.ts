@@ -1852,11 +1852,15 @@ export async function retrieveNodeChunks(
   // (a bare family root read beside its full number — GS11N beside GS11N-20P2 — is not a number
   // of its own and is dropped); otherwise the generic reader (a relay part, a parameter code).
   const catalogNumbersIn = (text: string): ModelNumber[] => {
-    const ids = [...modelIdentitiesInText(text)];
-    const read = ids.length > 0 ? ids.flatMap((id) => modelNumbersIn(id)) : modelNumbersIn(text);
+    // Both readers, united: the identity reader joins a spaced "GS11N - 20P2" that the generic
+    // reader splits, and the generic reader keeps a catalog number the identity reader leaves out
+    // when a product name (Micro820) stands beside it. A number that is a fragment of a longer
+    // number read from the same text (the bare root GS11N beside GS11N-20P2, the half 20P2 of the
+    // spaced form) is dropped; every other number stays.
+    const read = [...[...modelIdentitiesInText(text)].flatMap((id) => modelNumbersIn(id)), ...modelNumbersIn(text)];
     const seen = new Set<string>();
     const unique = read.filter((n) => (seen.has(n.key) ? false : (seen.add(n.key), true)));
-    return unique.filter((n) => !unique.some((m) => m.key !== n.key && m.key.startsWith(n.key)));
+    return unique.filter((n) => !unique.some((m) => m.key !== n.key && m.key.includes(n.key)));
   };
   const recordFamilyNumbers = recordText ? catalogNumbersIn(recordText) : [];
   const siblingAsked = [...catalogNumbersIn(ownQuestion), ...catalogNumbersIn(carriedModelQuestion ?? ""), ...carriedNumbers].filter((n) =>
