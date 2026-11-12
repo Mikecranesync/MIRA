@@ -35,8 +35,11 @@
  *    dropped; a trailing unit token (supporting-quote's closed unit table, also "(kg)" / "(VAC)" /
  *    "(Hz)") becomes `unit`. A label-only line attaches to the adjacent value row above/below
  *    (within 14 pt) when that row's label has < 2 words or the line is itself a unit token
- *    ("Max Motor Output" between the "hp" and "kW" rows; "kW" below its values). A pure-number
- *    label-only line is a footnote mark and is dropped.
+ *    ("Max Motor Output" between the "hp" and "kW" rows; "kW" below its values). A label-only line
+ *    that attaches to neither row is kept as unqualified flat text (nothing inside the block is
+ *    lost). A pure-number label-only line is a footnote mark and is dropped.
+ *  - A page's block qualifies with ≥ 2 rows of which ≥ 1 is per-model; an all-merged "table" (the
+ *    shape a sentence with two model-number items plus trailing numbers takes) is not a table.
  *  - Continuation: a value line with no label, or a label starting lowercase, within 14 pt of the
  *    previous row whose label has ≥ 2 words and whose cells are not number-shaped, extends that
  *    row (the Micro820's 11-line "Isolation voltage" cell; "Power supply" + "voltage range").
@@ -270,7 +273,80 @@ describe("Schneider CA3KN22BD data sheet (p.1) — label/value pairs are not a m
   });
 });
 
+describe("nothing inside a table block is lost (cheap review of PR-1, #5430 r1)", () => {
+  // Two per-model rows with a standalone label-only line between them that attaches to neither:
+  // the row above has a 2+ word label and the line is not a unit token, so no backward attach; the
+  // row below also has a 2+ word label, so no forward attach. Before the fix the line fell out of
+  // both the row chunks and the page remainder (the remainder drops every line inside the block).
+  const page: LayoutItem[] = [
+    { str: "Rated Input Current", x: 72, y: 700, w: 90, size: 9 },
+    { str: "GS11N-20P2", x: 200, y: 700, w: 50, size: 9 },
+    { str: "GS11N-20P5", x: 300, y: 700, w: 50, size: 9 },
+    { str: "CT Rated Input Current A", x: 72, y: 688, w: 110, size: 9 },
+    { str: "5.1", x: 220, y: 688, w: 14, size: 9 },
+    { str: "7.3", x: 320, y: 688, w: 14, size: 9 },
+    { str: "Values Shown Are Typical", x: 72, y: 676, w: 100, size: 9 },
+    { str: "VT Rated Input Current A", x: 72, y: 664, w: 110, size: 9 },
+    { str: "5.8", x: 220, y: 664, w: 14, size: 9 },
+    { str: "8.3", x: 320, y: 664, w: 14, size: 9 },
+    { str: "1. Footnote stays in the remainder.", x: 72, y: 630, w: 150, size: 8 },
+  ];
+
+  it("keeps a label-only line that attaches to no row as unqualified flat text", () => {
+    const result = pageWithTables(page);
+    expect(result).not.toBeNull();
+    const allChunkText = result!.chunks.map((c) => c.text).join("\n");
+    expect(allChunkText).toContain("Values Shown Are Typical");
+    const unq = result!.chunks.filter((c) => c.unqualified);
+    expect(unq).toHaveLength(1);
+    expect(unq[0].text).toContain("Values Shown Are Typical");
+    // ...and it did not leak into either row's label.
+    for (const c of result!.chunks.filter((x) => !x.unqualified)) expect(c.text).not.toContain("Values Shown Are Typical");
+    expect(result!.remainder).toContain("Footnote stays in the remainder");
+    expect(result!.remainder).not.toContain("Values Shown Are Typical");
+  });
+
+  it("every text item of the page reaches a row chunk, the unqualified chunk, or the remainder", () => {
+    const result = pageWithTables(page)!;
+    const everything = `${result.chunks.map((c) => c.text).join("\n")}\n${result.remainder}`;
+    // Labels lose their trailing unit token to `unit` (re-emitted beside each value), so check the
+    // label text without it.
+    for (const s of [
+      "Rated Input Current",
+      "GS11N-20P2",
+      "GS11N-20P5",
+      "CT Rated Input Current",
+      "5.1 A",
+      "7.3 A",
+      "Values Shown Are Typical",
+      "VT Rated Input Current",
+      "5.8 A",
+      "8.3 A",
+      "1. Footnote stays in the remainder.",
+    ])
+      expect(everything, s).toContain(s);
+  });
+});
+
 describe("prose", () => {
+  it("is not a table when two identifier items share a line but no row has per-model cells", () => {
+    // pdf.js often splits a sentence into several items; two model numbers as their own items make
+    // an identifier-cell pair. The lines below each carry one trailing number under the first
+    // identifier, which the parser reads as a single MERGED cell — a "table" with no column
+    // information at all. A model-column table has at least one row whose cells differ per column.
+    const prose: LayoutItem[] = [
+      { str: "Both the", x: 72, y: 700, w: 40, size: 10 },
+      { str: "GS11N-20P2", x: 120, y: 700, w: 50, size: 10 },
+      { str: "and the", x: 175, y: 700, w: 35, size: 10 },
+      { str: "GS13N-20P2", x: 215, y: 700, w: 50, size: 10 },
+      { str: "need a line reactor when the supply exceeds", x: 72, y: 688, w: 200, size: 10 },
+      { str: "500", x: 120, y: 676, w: 20, size: 10 },
+      { str: "kVA; see the wiring chapter, page", x: 72, y: 664, w: 150, size: 10 },
+      { str: "18", x: 120, y: 652, w: 10, size: 10 },
+    ];
+    expect(pageWithTables(prose)).toBeNull();
+  });
+
   it("detects nothing on a page of sentences", () => {
     const prose: LayoutItem[] = [
       { str: "Disconnect power before servicing the GS11N-20P2 or GS13N-20P2 drive.", x: 72, y: 700, w: 300, size: 10 },
