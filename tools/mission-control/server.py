@@ -16,6 +16,7 @@ from __future__ import annotations
 import datetime as dt
 import html
 import importlib.util
+import json
 import logging
 import os
 import re
@@ -30,11 +31,14 @@ from typing import Callable, List, Optional
 import httpx
 
 
-def _load_board():
+def _load(name: str):
     # Loaded by file path under a unique name: a bare "import board" could pick up
     # another module of that name elsewhere on sys.path (this broke the full CI suite).
+    found = sys.modules.get(f"mission_control_{name}")
+    if found is not None:
+        return found
     spec = importlib.util.spec_from_file_location(
-        "mission_control_board", Path(__file__).resolve().parent / "board.py"
+        f"mission_control_{name}", Path(__file__).resolve().parent / f"{name}.py"
     )
     mod = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = mod
@@ -42,7 +46,11 @@ def _load_board():
     return mod
 
 
-board = _load_board()
+board = _load("board")
+store_mod = _load("store")
+webhook = _load("webhook")
+reports = _load("reports")
+poll = _load("poll")
 
 log = logging.getLogger("mission-control")
 HERE = Path(__file__).resolve().parent
@@ -197,8 +205,14 @@ def render(snap: Snapshot) -> str:
     )
 
 
+def trusted_authors() -> tuple[str, ...]:
+    return tuple(a for a in os.getenv("MC_TRUSTED_AUTHORS", "Mikecranesync").split(",") if a)
+
+
 class Handler(BaseHTTPRequestHandler):
     snapshot: Snapshot
+    store: object
+    last_webhook: Optional[str] = None
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path in ("/", "/index.html"):
@@ -217,8 +231,35 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._send(404, "text/plain", b"not found")
 
-    def do_POST(self) -> None:  # noqa: N802  (read-only page: nothing accepts writes)
-        self._send(405, "text/plain", b"read-only")
+    def do_POST(self) -> None:  # noqa: N802  (the webhook is the only write; all else 405)
+        if self.path != "/webhook/github":
+            self._send(405, "text/plain", b"read-only")
+            return
+        secret = os.getenv("MC_WEBHOOK_SECRET", "")
+        body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+        if not secret:
+            self._send(503, "text/plain", b"webhook not configured")
+            return
+        if not webhook.verify(secret, body, self.headers.get("X-Hub-Signature-256")):
+            self._send(401, "text/plain", b"bad signature")
+            return
+        self._send(202, "text/plain", self.store_delivery(body).encode())
+
+    def store_delivery(self, body: bytes) -> str:
+        try:
+            payload = json.loads(body.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError):
+            return "ignored: not json"
+        event = self.headers.get("X-GitHub-Event", "unknown")
+        delivery = self.headers.get("X-GitHub-Delivery") or f"nodelivery-{time.time_ns()}"
+        now = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+        new = self.store.add_event(webhook.normalise(event, delivery, payload, now))
+        if event == "issue_comment":
+            row = webhook.comment_report(payload, trusted_authors(), reports.parse)
+            if row:
+                self.store.put_report(row)
+        self.last_webhook = now
+        return "stored" if new else "duplicate"
 
     def _send(self, code: int, ctype: str, body: bytes) -> None:
         self.send_response(code)
