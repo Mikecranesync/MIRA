@@ -190,6 +190,8 @@ import {
   type TurnUsage,
 } from "@/lib/inference/canonical-cascade";
 import { legacyProviders } from "@/lib/inference/legacy-cascade";
+import { edgeProfileEnabled } from "@/lib/inference/edge-profile";
+import { edgePassagesUsage, renderEdgePassages, selectEdgePassages } from "@/capabilities/edge-passages";
 import { persistTurnUsage } from "@/lib/inference/persist-usage";
 import {
   logProvidersExhausted,
@@ -3848,6 +3850,34 @@ async function handleChatTurn(
       );
     }
   }
+  // #5265 edge profile — "AI finds, manual speaks": under MIRA_PROFILE=edge the
+  // served answer is the retrieved passages themselves, verbatim with page, and
+  // no model runs. The text is computed here and fed to the dispatch below in
+  // place of a provider's output, so every existing finalization step (output
+  // validation, hazard/restart banners, related-manual warning, citation
+  // filtering, cited-page safety statement, persistence) applies unchanged. The
+  // energized-work stop and the no-evidence abstain above still win.
+  let edgeAnswerText: string | null = null;
+  if (edgeProfileEnabled()) {
+    const passages = selectEdgePassages(chunks, citations, message);
+    const edgeCitations = passages.map((p) => p.citation);
+    // The manual's own safety statement on a cited page, read from the whole page
+    // (#4508) and printed in the text, which here is all the technician reads.
+    // The final path reads the cited pages again for the persisted entry.
+    let edgePageChunks: Awaited<ReturnType<typeof retrieveCitedPageChunks>> = [];
+    const edgeCitedPages = citedPagesFor(edgeCitations, chunks);
+    if (edgeCitedPages.length > 0) {
+      try {
+        edgePageChunks = await withTenantContext(ctx.tenantId, (c) =>
+          retrieveCitedPageChunks(c, ctx.tenantId, edgeCitedPages, { approvedSourceDocIds: docIds, keep: (t) => extractManualSafetyStatement(t) !== null }),
+        );
+      } catch (err) {
+        console.warn("[notebook-chat] edge cited-page read failed (notice from retrieved chunks only):", err instanceof Error ? err.message : err);
+      }
+    }
+    edgeAnswerText = renderEdgePassages(passages, manualSafetyStatementForCitations(edgeCitations, chunks, edgePageChunks));
+  }
+
   const machineSection = machinePacket
     ? renderMachineEvidenceSection(machinePacket, sanitizeMachineMemoryField)
     : "";
@@ -4420,7 +4450,28 @@ async function handleChatTurn(
       const judgeWillRun = gate && semanticCheckEnabled();
       // #4372: the judge also reads this turn's retrieved sources, so they size the room too.
       const judgeInputBound = judgeWillRun ? judgeHoldInputBound(message, requestCap, chunks.map((c) => c.content)) : 0;
-      cascade: for (const provider of cascadeProviders) {
+      // #5265 edge profile: the verbatim passage text stands in for a provider's
+      // output — no provider is dispatched, no hold is taken (holds are per
+      // attempt, inside the loop), and the turn is served with model null.
+      if (edgeAnswerText !== null) {
+        responseBuffer.push(edgeAnswerText);
+        if (!gate) {
+          if (restartAdvisory && flagBanner && !restartBannerStreamed) {
+            restartBannerStreamed = true;
+            controller.enqueue(enc.encode(sse({ kind: "content", content: `${flagBanner}\n\n` } as NotebookContentFrame)));
+          }
+          if (relatedManualWarning && !relatedWarningStreamed) {
+            relatedWarningStreamed = true;
+            controller.enqueue(enc.encode(sse({ kind: "content", content: `${relatedManualWarning}\n\n` } as NotebookContentFrame)));
+          }
+          controller.enqueue(enc.encode(sse({ kind: "content", content: edgeAnswerText } as NotebookContentFrame)));
+        }
+        served = true;
+        // One usage record for both seam settings (Codex #5266 F7): the seam
+        // block emits/logs turnUsage, the legacy ledger reads pendingUsage.
+        turnUsage = pendingUsage = edgePassagesUsage();
+      }
+      cascade: for (const provider of edgeAnswerText !== null ? [] : cascadeProviders) {
         if (!provider.key) continue;
         // STRM-2: a stopped turn must never open a second provider stream.
         // The catch block below breaks on abort, but the two NON-throwing
