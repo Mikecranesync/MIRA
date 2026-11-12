@@ -365,7 +365,7 @@ export async function runCommit(input: CommitInput, deps: SetupDeps): Promise<Co
 
 // ---------- readiness watch and result rows ----------
 
-export type SourceView = { docId: string; filename: string | null; readiness: unknown; matchState: unknown; enabledByDefault?: unknown };
+export type SourceView = { docId: string; filename: string | null; readiness: unknown; matchState: unknown; enabledByDefault?: unknown; unreadablePages?: unknown };
 export const POLL_INTERVAL_MS = 3000;
 export const POLL_MAX = 20;
 export const STILL_PROCESSING = "Still processing, you can start; it becomes searchable when ready.";
@@ -469,6 +469,7 @@ export async function watchReadiness(
               readiness: s.readiness,
               matchState: s.matchState,
               enabledByDefault: s.enabledByDefault,
+              unreadablePages: s.unreadablePages,
             }]
           : []);
     }
@@ -512,12 +513,19 @@ export function resultRows(docs: readonly DocOutcome[], sources: readonly Source
     const view = readinessView(src.readiness);
     const readiness = view.tone === "ready" && !searchable ? NOT_SEARCHABLE : view;
     const stillBusy = readiness.tone === "processing" && capped;
+    // Garage pilot L2: pages whose numbers carry an unmapped glyph ("5�1"
+    // for 5.1). The document is still askable, so readiness is untouched; the
+    // technician is told which numbers to distrust.
+    const unreadable = typeof src.unreadablePages === "number" && src.unreadablePages > 0 ? src.unreadablePages : 0;
+    const unreadableNote = unreadable > 0
+      ? `${unreadable} page${unreadable === 1 ? "" : "s"} did not read cleanly. Numbers on those pages may be missing or wrong.`
+      : null;
     return {
       key: doc.key,
       filename: doc.filename,
       readiness,
       applicability: applicabilityLine(src.matchState),
-      note: stillBusy ? STILL_PROCESSING : doc.message,
+      note: stillBusy ? STILL_PROCESSING : (doc.message ?? unreadableNote),
     };
   });
 }

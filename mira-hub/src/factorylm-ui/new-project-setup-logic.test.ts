@@ -1208,3 +1208,26 @@ describe("S16: a PDF that never reached the project can be sent again from the s
     expect(nonGet(h.calls).length).toBe(before);
   });
 });
+
+describe("garage pilot L2 — a document with pages that did not read cleanly says so on its row", () => {
+  const doc = { key: "doc-1", filename: "ch1.pdf", docId: "doc-1", attachFailed: false, notIndexed: false, message: null };
+  const source = (unreadablePages: number) => ({
+    docId: "doc-1", filename: "ch1.pdf", readiness: { state: "chat_ready_basic" }, matchState: "user_confirmed", enabledByDefault: true, unreadablePages,
+  });
+
+  it("11 flagged pages → the row stays Ready and notes the count", () => {
+    const [row] = resultRows([doc], [source(11)], false);
+    expect(row!.readiness.tone).toBe("ready");
+    expect(row!.note).toBe("11 pages did not read cleanly. Numbers on those pages may be missing or wrong.");
+  });
+
+  it("one page is singular", () => {
+    expect(resultRows([doc], [source(1)], false)[0]!.note).toMatch(/^1 page did not read cleanly\./);
+  });
+
+  it("control: 0 flagged pages (or the field absent) → no note", () => {
+    expect(resultRows([doc], [source(0)], false)[0]!.note).toBeNull();
+    const { unreadablePages: _omit, ...without } = source(3);
+    expect(resultRows([doc], [without], false)[0]!.note).toBeNull();
+  });
+});

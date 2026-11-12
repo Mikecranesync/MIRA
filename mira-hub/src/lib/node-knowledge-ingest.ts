@@ -28,6 +28,7 @@ import { ocrExtractPage } from "@/capabilities/garbled-text-ocr";
 import { readPageLabelsBounded } from "@/capabilities/pdf-page-label-reader";
 import { pageLayoutItems } from "@/capabilities/pdf-layout-items";
 import { pageWithTables, type TableChunk } from "@/capabilities/table-rows";
+import { hasUnmappedGlyphBetweenDigits } from "@/capabilities/manual-completeness";
 
 const CHUNK_CHARS = 1000;
 const CHUNK_OVERLAP = 120;
@@ -576,10 +577,15 @@ async function writeChunkRowsForNode(
 }
 
 /** `metadata.text_repair` values — how a page's text was changed after
- *  extraction. `shift29_partial` = the decoder repaired part of the page and
+ *  extraction, or (`unmapped_glyph`) that it was flagged and NOT changed.
+ *  `shift29_partial` = the decoder repaired part of the page and
  *  cipher-looking text remains (Codex r2 F3 on #4486): still searchable where
- *  decoded, still eligible for the backfill and the OCR seam. */
-export type TextRepair = "shift29" | "shift29_partial" | "ocr";
+ *  decoded, still eligible for the backfill and the OCR seam.
+ *  `unmapped_glyph` (garage pilot L2) = the page carries U+FFFD between two
+ *  digits — a number whose glyph the PDF cannot map ("5�1" for 5.1); the
+ *  text is stored as extracted, the document list counts the page as one that
+ *  did not read cleanly, and the acquisition never promotes such a document. */
+export type TextRepair = "shift29" | "shift29_partial" | "ocr" | "unmapped_glyph";
 
 /**
  * TQ-05 / TQ-06 (2026-10-17 prod test): repair garbled extraction IN PLACE
@@ -706,7 +712,17 @@ export async function writePdfChunksForNode(opts: {
         pageTables.push(null);
       }
     }
-    return await writeChunkRowsForNode(pages, rest, repairs, labels, pageTables);
+    // Garage pilot L2 (plan row 5-A): a page whose numbers carry a replacement
+    // character between two digits ("5�1" for 5.1 A — the PDF's ToUnicode
+    // map has no entry for the decimal-point glyph; the GS10 chapter file) is
+    // FLAGGED, never repaired: no decode, no OCR, the text is stored exactly as
+    // extracted. The flag is merged only into what the row writer stamps, and
+    // only AFTER the table read above: the page's positions are reliable, so its
+    // table rows are written (flagged) rather than dropped. A page the repair
+    // touched keeps its repair marker. Independent of NOTEBOOK_GARBLE_DECODE —
+    // this is detection, not a repair.
+    const markers: Array<TextRepair | null> = repairs.map((r, p) => r ?? (hasUnmappedGlyphBetweenDigits(pages[p]) ? "unmapped_glyph" : null));
+    return await writeChunkRowsForNode(pages, rest, markers, labels, pageTables);
   } finally {
     release();
   }

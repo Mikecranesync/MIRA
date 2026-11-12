@@ -123,6 +123,10 @@ export type NotebookSource = {
    *  stored — a projection of upload status + materialized chunk facts. The
    *  composer gates on `readiness.canChat`, which never depends on embeddings. */
   readiness: Readiness;
+  /** Garage pilot L2: pages the ingest flagged `text_repair = unmapped_glyph`
+   *  (a number whose glyph the PDF cannot map — "5�1" for 5.1). Counted
+   *  beside readiness, never folded into it: "N pages did not read cleanly". */
+  unreadablePages: number;
 };
 
 export const LEGACY_THREAD_ID = "legacy";
@@ -1194,22 +1198,26 @@ export async function listSources(
     `SELECT doc_id::text AS doc_id,
             count(*)::int                                   AS n,
             count(embedding)::int                           AS emb,
-            count(*) FILTER (WHERE source_page IS NOT NULL)::int AS anchored
+            count(*) FILTER (WHERE source_page IS NOT NULL)::int AS anchored,
+            count(DISTINCT source_page) FILTER (WHERE metadata->>'text_repair' = 'unmapped_glyph')::int AS unreadable_pages
        FROM knowledge_entries
       WHERE tenant_id = $1::uuid AND doc_id = ANY($2::uuid[])
       GROUP BY doc_id`,
     [tenantId, ids],
   );
-  const chunksById = new Map<string, { n: number; emb: number; anchored: number }>(
+  //   unreadable_pages -> pages the ingest flagged `unmapped_glyph` (a number
+  //   whose glyph the PDF cannot map — garage pilot L2). Shown beside readiness,
+  //   never folded into it: the document is still askable.
+  const chunksById = new Map<string, { n: number; emb: number; anchored: number; unreadable: number }>(
     counts.rows.map((r: Record<string, unknown>) => [
       String(r.doc_id),
-      { n: Number(r.n), emb: Number(r.emb), anchored: Number(r.anchored) },
+      { n: Number(r.n), emb: Number(r.emb), anchored: Number(r.anchored), unreadable: Number(r.unreadable_pages ?? 0) },
     ]),
   );
 
   return memb.map((m) => {
     const d = byId.get(String(m.doc_id));
-    const c = chunksById.get(String(m.doc_id)) ?? { n: 0, emb: 0, anchored: 0 };
+    const c = chunksById.get(String(m.doc_id)) ?? { n: 0, emb: 0, anchored: 0, unreadable: 0 };
     const status = d ? ((d.status as string) ?? null) : null;
     const readiness = deriveReadiness({
       // An upload row exists at all => the bytes were durably accepted.
@@ -1237,6 +1245,7 @@ export async function listSources(
       originFileId: (m.origin_file_id as string) ?? null,
       matchEvidence: m.match_evidence ?? null,
       readiness,
+      unreadablePages: c.unreadable,
     };
   });
 }

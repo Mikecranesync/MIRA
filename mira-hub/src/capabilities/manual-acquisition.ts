@@ -32,6 +32,7 @@ import {
 } from "@/lib/manual-discovery";
 import { safeDownloadPdf, safePdfFilename } from "@/lib/safe-download";
 import { assessApplicability, type ApplicabilityVerdict } from "@/lib/manual-applicability";
+import { assessCompleteness, partialManualReason, type Completeness } from "@/capabilities/manual-completeness";
 import type { SpanContext } from "@opentelemetry/api";
 import { addActiveSpanEvent, safeSpan, setActiveSpanAttrs } from "@/capabilities/observability/acquisition-spans";
 
@@ -650,6 +651,13 @@ async function acquireInner(
   // ("confirm and I'll answer from it") depends on this stamp, so the outcome
   // carries it alongside the persisted evidence.
   let candidateApplicability: "verified" | "candidate" | null = null;
+  // Garage pilot L2 (plan row 5-A/C, M5): is the document a WHOLE manual whose
+  // numbers read? The GS10 auto-acquisition landed one chapter file with every
+  // decimal point unmapped; applicability verified it (the model number IS in
+  // the text) and it was answered from. A partial document is never promoted
+  // — by this run or by a later identity confirmation — and the outcome says
+  // "add the full manual".
+  let completeness: Completeness | null = null;
   // A database failure while judging the manual is transient: the manual stays
   // an UNDECIDED candidate (the pending evidence from the attach above, which
   // a retry may still promote), and the outcome says "retry", never "reviewed"
@@ -676,6 +684,7 @@ async function acquireInner(
   if (manualDocId) {
     const chunks = await chunksForDoc(ctx.tenantId, manualDocId);
     if (chunks === null) return retryLater();
+    completeness = assessCompleteness(chunks);
     verdict = await safeSpan("manual_acquisition.applicability", {}, async () => {
       const v = assessApplicability({
         identity: {
@@ -712,9 +721,14 @@ async function acquireInner(
       // `requiresUserConfirmation` exist to enforce. An exact-matching verdict
       // on an unvalidated download therefore still stamps 'candidate': a
       // human must review the SOURCE, not just confirm the identity.
+      //
+      // Garage pilot L2: the same holds for a PARTIAL document (one chapter,
+      // or numbers that did not read) — it must never stamp 'verified', or
+      // identity confirmation alone would promote it after this run refused to.
       ...(input.basis === "candidate"
-        ? { candidateApplicability: verdict.state === "verified" && !probeUnvalidated ? "verified" : "candidate" }
+        ? { candidateApplicability: verdict.state === "verified" && !probeUnvalidated && completeness.complete ? "verified" : "candidate" }
         : {}),
+      completeness,
     };
     candidateApplicability =
       (verifiedEvidence as { candidateApplicability?: "verified" | "candidate" }).candidateApplicability ?? null;
@@ -725,7 +739,7 @@ async function acquireInner(
     // technician's decision stands, and a source removed meanwhile is not
     // reported as added (F9).
     const write = input.writeSourceState ?? writeUnconditionally;
-    const promote = verdict.state === "verified" && !requiresUserConfirmation;
+    const promote = verdict.state === "verified" && !requiresUserConfirmation && completeness.complete;
     let persisted: PersistedSource;
     try {
       persisted = await write(ctx.tenantId, notebookId, manualDocId, {
@@ -769,14 +783,17 @@ async function acquireInner(
       reused,
       attached,
       ...(candidateApplicability ? { candidateApplicability } : {}),
+      ...(completeness ? { completeness } : {}),
     },
     applicability: verdict,
     message: !attached
       ? "The manual was found, but it is not among this notebook's sources."
       : answering
         ? `Manual added and enabled — ${verdict?.reason ?? "identity confirmed in the document text"}.`
-        : `Manual saved but left off until you confirm it — ${
-            verdict?.reason ?? "its text does not prove it covers this component"
-          }.`,
+        : completeness && !completeness.complete
+          ? `Manual saved but left off — ${partialManualReason(completeness)}. Add the full manual to this notebook.`
+          : `Manual saved but left off until you confirm it — ${
+              verdict?.reason ?? "its text does not prove it covers this component"
+            }.`,
   });
 }

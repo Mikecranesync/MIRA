@@ -70,6 +70,10 @@ export interface AcquisitionRecord {
    *  attached, indexed, and stamped candidateApplicability='verified' (the only
    *  rows migration 104 / fencedWriter promote). Never true otherwise. */
   promotes_on_confirm?: boolean;
+  /** Garage pilot L2: the attached document is PART of a manual (one chapter,
+   *  or pages whose numbers did not read). Confirming it never turns it on;
+   *  the chat says "add the full manual". Absent when complete. */
+  partial?: boolean;
   /** The claim generation that wrote this record (Codex #4118 r3 F6). */
   gen?: string;
   /** The acquired document — reconciled against the notebook's current sources (Codex #4118 r8 F13). */
@@ -342,6 +346,7 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
       indexed?: unknown;
       attached?: unknown;
       candidateApplicability?: unknown;
+      completeness?: unknown;
     } | null;
     oemRequestUrl?: unknown;
     searchPageUrl?: unknown;
@@ -358,6 +363,10 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
   // chat must never point at a source that is not there (Codex #4118 F9).
   const attachedIndexed =
     Boolean(str(p.manual?.docId)) && p.manual?.indexed === true && p.manual?.attached !== false && p.removedByTechnician !== true;
+  // Garage pilot L2: the acquisition judged the document partial (one chapter,
+  // or numbers that did not read). It stamped candidateApplicability='candidate'
+  // so confirmation cannot promote it; the record says so explicitly.
+  const partial = (p.manual?.completeness as { complete?: unknown } | null | undefined)?.complete === false;
   // Another request is indexing these exact bytes: nothing is attached here YET.
   // Leave the claim "running" so the stale-claim recovery retries it and the
   // retry reuses the finished document instead of reporting a phantom source.
@@ -386,7 +395,8 @@ export function recordFromOutcome(key: string, startedAt: string | null, out: Ma
     search_page_url: str(p.searchPageUrl),
     candidate_url: str(p.candidate?.url),
     attached_indexed: attachedIndexed,
-    promotes_on_confirm: attachedIndexed && p.manual?.candidateApplicability === "verified",
+    promotes_on_confirm: attachedIndexed && p.manual?.candidateApplicability === "verified" && !partial,
+    ...(partial ? { partial: true } : {}),
     doc_id: str(p.manual?.docId),
     file_id: str(p.manual?.fileId),
     download_reason: downloadReason,
@@ -985,6 +995,12 @@ export function acquisitionDeclineText(
       return `I found the official ${label} manual and added it to this notebook's Sources. Reopen the notebook (or turn it on in Sources) and ask again — I'll answer from it and show you the page.`;
     case "candidate_review":
       // Only name Sources when an indexed document is actually there to review.
+      // Garage pilot L2: the document is PART of a manual (one chapter, or pages
+      // whose numbers did not read). It is never turned on by confirming it —
+      // the one real next step is the full manual.
+      if (rec.attached_indexed && rec.partial) {
+        return `I found part of the ${label} manual${rec.candidate_host ? ` (from ${rec.candidate_host})` : ""}, but not the whole manual — one chapter, or pages whose numbers did not read — so it isn't turned on. Add the full manual for the ${label} to this notebook and ask again — I'll answer from it and show you the page.`;
+      }
       if (rec.attached_indexed) {
         return `I found a possible manual for the ${label}${rec.candidate_host ? ` (from ${rec.candidate_host})` : ""}, but I couldn't confirm it covers this exact model, so it isn't turned on. Check it in this notebook's Sources — turn it on if it's right and ask again.`;
       }

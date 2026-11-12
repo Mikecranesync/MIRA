@@ -161,3 +161,30 @@ describe("writePdfChunksForNode stores a model-column table as one chunk per mod
     expect(rows.some((r) => r.metadata.table_models)).toBe(false);
   });
 });
+
+describe("garage pilot L2 — a page whose numbers carry an unmapped glyph still gets its table read, and every row is flagged", () => {
+  beforeEach(() => {
+    captured.length = 0;
+    // ch1.pdf's p.12 shape: the same table, every decimal point extracted as U+FFFD
+    // ("5�1" for 5.1 A) in both the page text and the positioned items.
+    const glyph = (s: string) => s.replace(/(\d)\.(\d)/g, "$1�$2");
+    pdf.pages = [PROSE, glyph(gs10p26.text)];
+    pdf.layout = new Map([[2, gs10p26.items.map((i) => ({ ...i, str: glyph(i.str) }))]]);
+    pdf.getPageThrows = false;
+    pdf.withoutGetPage = false;
+    vi.resetModules();
+  });
+
+  it("writes the model row chunks (positions are reliable) and stamps text_repair: unmapped_glyph on the page's rows only", async () => {
+    const { writePdfChunksForNode } = await import("@/lib/node-knowledge-ingest");
+    await writePdfChunksForNode(opts);
+    const rows = insertedRows();
+    const own = rows.filter((r) => Array.isArray(r.metadata.table_models) && (r.metadata.table_models as string[]).join() === "GS11N20P2");
+    expect(own).toHaveLength(1);
+    expect(own[0].content).toContain("GS11N-20P2: CT Rated Input Current 5�1 A");
+    const page2 = rows.filter((r) => r.page === 2);
+    expect(page2.length).toBeGreaterThan(1);
+    for (const r of page2) expect(r.metadata.text_repair).toBe("unmapped_glyph");
+    for (const r of rows.filter((r) => r.page === 1)) expect(r.metadata.text_repair).toBeUndefined();
+  });
+});
