@@ -1464,3 +1464,7 @@ approved:
     approved_classification: UNFILTERED
     query_sha256: "fcbf1d76698fbbf1803103158b0976db6cfcb75c4c5c31463fee2cef45068b27"
     reason: "Not a database read: a regex assertion locating listSources' counts SQL in a MOCK client's call log to prove it counts unmapped_glyph pages (DISTINCT source_page). Phase 1 PR-3 (#5425). No connection, no data."
+  "mira-hub/src/capabilities/__tests__/notebook-source-indexing.test.ts:44":
+    approved_classification: UNFILTERED
+    query_sha256: "7c2184ecfc448078de8e49c3a73ce35d7487f9cc09ba9a40506a5220337f0684"
+    reason: "Not a database read: a regex (/FROM knowledge_entries/.test) routing a MOCK pool's query() to a canned counts row so listSources can run with no connection and no data; the real read is equipment-notebooks.ts:1093 (approved). Phase 1 PR-5 (#5426), 'indexing' until every chunk is embedded."
