@@ -1231,3 +1231,35 @@ describe("garage pilot L2 — a document with pages that did not read cleanly sa
     expect(resultRows([doc], [without], false)[0]!.note).toBeNull();
   });
 });
+
+describe("garage pilot M8 — a document says it is still indexing until its embeddings exist", () => {
+  // Embed-on-write is fire-and-forget: a question asked right after an upload
+  // runs on word search only. The server already reports `enhancing` while the
+  // chunks are being embedded; the sheet showed it as plain Ready.
+  const doc = { key: "d1", filename: "gs10.pdf", docId: "d1", attachFailed: false, notIndexed: false, message: null };
+
+  it("enhancing is still Ready (chat never waits on embeddings) but the label says so", () => {
+    expect(readinessView({ state: "enhancing" })).toEqual({ tone: "ready", label: "Ready to search · still indexing" });
+    expect(readinessView({ state: "chat_ready_enhanced" })).toEqual({ tone: "ready", label: "Ready to search" });
+    expect(readinessView({ state: "chat_ready_basic" })).toEqual({ tone: "ready", label: "Ready to search" });
+  });
+
+  it("the watch keeps polling through enhancing and stops once the document is fully indexed", async () => {
+    let n = 0;
+    const h = harness({ "GET /api/equipment-notebooks/nb/": () => { n++; return { status: 200, body: { sources: [{ docId: "d1", readiness: { state: n < 3 ? "enhancing" : "chat_ready_enhanced" }, matchState: "user_confirmed", enabledByDefault: true }] } }; } });
+    const r = await watchReadiness("nb", ["d1"], deps(h.fetch), { intervalMs: 0, max: 6 });
+    expect(r.capped).toBe(false);
+    expect(h.calls).toHaveLength(3);
+    expect(resultRows([doc], r.sources, r.capped)[0]!.readiness.label).toBe("Ready to search");
+  });
+
+  it("at the cap a document still indexing stays Ready with the indexing label and no processing note", async () => {
+    const h = harness({ "GET /api/equipment-notebooks/nb/": { status: 200, body: { sources: [{ docId: "d1", readiness: { state: "enhancing" }, matchState: "user_confirmed", enabledByDefault: true }] } } });
+    const r = await watchReadiness("nb", ["d1"], deps(h.fetch), noSleep);
+    expect(r.capped).toBe(true);
+    expect(h.calls).toHaveLength(3);
+    const row = resultRows([doc], r.sources, r.capped)[0]!;
+    expect(row.readiness).toEqual({ tone: "ready", label: "Ready to search · still indexing" });
+    expect(row.note).toBeNull();
+  });
+});

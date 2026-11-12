@@ -20,6 +20,8 @@ export type ReadinessView = { tone: ReadinessTone; label: string };
 
 const ATTENTION: ReadinessView = { tone: "attention", label: "Needs attention" };
 const READY: ReadinessView = { tone: "ready", label: "Ready to search" };
+/** Askable now (word search), embeddings still being written — garage pilot M8. */
+const INDEXING_READY: ReadinessView = { tone: "ready", label: "Ready to search · still indexing" };
 const PROCESSING: ReadinessView = { tone: "processing", label: "Processing" };
 const UPLOADING: ReadinessView = { tone: "processing", label: "Uploading" };
 /** Readable, but chat will not search it: not approved for this project, or switched off. */
@@ -30,7 +32,7 @@ const READINESS_VIEW = {
   uploading: UPLOADING,
   stored: PROCESSING,
   chat_ready_basic: READY,
-  enhancing: READY,
+  enhancing: INDEXING_READY,
   chat_ready_enhanced: READY,
   enhancement_degraded: READY,
   needs_ocr: ATTENTION,
@@ -476,7 +478,9 @@ export async function watchReadiness(
     hooks.onUpdate?.(sources);
     const settled = !pending && watched.every((id) => {
       const src = sources.find((s) => s.docId === id);
-      return src !== undefined && !["uploading", "stored"].includes((src.readiness as { state?: string } | null)?.state ?? "");
+      // `enhancing` is askable but still indexing (M8): keep polling so the
+      // row can settle on fully indexed, up to the cap.
+      return src !== undefined && !["uploading", "stored", "enhancing"].includes((src.readiness as { state?: string } | null)?.state ?? "");
     });
     if (settled) return { sources, capped: false, unauthorized: false };
     if (poll < max) await deps.sleep(intervalMs);

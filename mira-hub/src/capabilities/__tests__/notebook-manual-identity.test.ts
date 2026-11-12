@@ -49,3 +49,44 @@ describe("which machine a notebook's manuals have to be for", () => {
     });
   });
 });
+
+describe("garage pilot M4 — a bound machine's catalog number reaches the manual check", () => {
+  // The pilot's CV-101 project is made from a registered machine whose record
+  // holds the full designation (manufacturer_part_number). Until now the bound
+  // path hard-coded catalogNumber: null, so the wrong-manual check and the
+  // sibling-table exclusion ran on the family only.
+  const boundDrive = {
+    state: "resolved" as const,
+    confirmedAt: "2026-11-10T07:40:00.000Z",
+    manufacturer: "AutomationDirect",
+    model: "GS11N",
+    catalogNumber: " GS11N-20P2 ",
+  };
+
+  it("a confirmed bound machine with a part number on record supplies it, trimmed", () => {
+    expect(notebookManualIdentity(blank, boundDrive)).toEqual({
+      identity: { manufacturer: "AutomationDirect", model: "GS11N" },
+      catalogNumber: "GS11N-20P2",
+      identityStatus: "user_confirmed",
+    });
+  });
+
+  it("a part number alone (no model on the register) still scopes the manual check, like the notebook's own identity does", () => {
+    expect(notebookManualIdentity(blank, { ...boundDrive, model: null })).toEqual({
+      identity: { manufacturer: "AutomationDirect", model: null },
+      catalogNumber: "GS11N-20P2",
+      identityStatus: "user_confirmed",
+    });
+  });
+
+  it("control: a machine with a blank part number and no model scopes nothing", () => {
+    expect(notebookManualIdentity(blank, { ...boundDrive, model: null, catalogNumber: "   " })).toEqual({
+      identity: { manufacturer: null, model: null }, catalogNumber: null, identityStatus: "unknown",
+    });
+  });
+
+  it("control: the notebook's own confirmed number still wins over the machine's", () => {
+    const own = { manufacturer: "AutomationDirect", model: "GS11N", catalogNumber: "GS11N-20P5", identityStatus: "user_confirmed" as const };
+    expect(notebookManualIdentity(own, boundDrive).catalogNumber).toBe("GS11N-20P5");
+  });
+});

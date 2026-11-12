@@ -82,3 +82,20 @@ describe("resolveBoundAsset — the registered machine's maker and model", () =>
     expect(script.calls.some((c) => /FROM cmms_equipment/.test(c.sql))).toBe(false);
   });
 });
+
+describe("garage pilot M4 — the registered machine's catalog number (manufacturer_part_number)", () => {
+  it("is read in the same register statement and returned trimmed as catalogNumber", async () => {
+    script.register = { rows: [{ manufacturer: "AutomationDirect", model_number: "GS11N", manufacturer_part_number: " GS11N-20P2 " }] };
+    const got = await resolveBoundAsset(TENANT, NB);
+    expect(got).toMatchObject({ state: "resolved", manufacturer: "AutomationDirect", model: "GS11N", catalogNumber: "GS11N-20P2" });
+    const read = script.calls.find((c) => /FROM cmms_equipment/.test(c.sql))!;
+    expect(read.sql).toMatch(/manufacturer_part_number/);
+  });
+
+  it("a blank or missing part number is null, never an empty string", async () => {
+    script.register = { rows: [{ manufacturer: "AutomationDirect", model_number: "GS11N", manufacturer_part_number: "  " }] };
+    expect(await resolveBoundAsset(TENANT, NB)).toMatchObject({ state: "resolved", model: "GS11N", catalogNumber: null });
+    script.register = { rows: [{ manufacturer: "Allen-Bradley", model_number: "2080-LC20-20QBB" }] };
+    expect(await resolveBoundAsset(TENANT, NB)).toMatchObject({ state: "resolved", catalogNumber: null });
+  });
+});

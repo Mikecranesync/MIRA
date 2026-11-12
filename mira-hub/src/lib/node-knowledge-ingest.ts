@@ -201,6 +201,12 @@ const EMBED_BATCH = 16; // chunks embedded per SELECT→embed→UPDATE round
 // BM25-live regardless. Honors the #1385 caution: ingest never depends on embeds.
 const EMBED_ON_WRITE = (process.env.NODE_EMBED_ON_WRITE ?? "1") !== "0";
 
+/** Is the trailing embed pass on? Read by the document list so an unembedded
+ *  document is reported as "still indexing" only when something will index it. */
+export function embedOnWriteEnabled(): boolean {
+  return EMBED_ON_WRITE;
+}
+
 /**
  * Stable, greppable reason codes for why the trailing embed pass stopped.
  *

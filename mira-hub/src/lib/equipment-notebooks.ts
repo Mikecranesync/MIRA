@@ -15,6 +15,7 @@ import type { PoolClient } from "pg";
 import pool from "@/lib/db";
 import { withTenantContext } from "@/lib/tenant-context";
 import { deriveReadiness, type Readiness } from "@/lib/document-readiness";
+import { embedOnWriteEnabled } from "@/lib/node-knowledge-ingest";
 import { insertWithUniqueFallback } from "@/lib/pg-unique-retry";
 
 /** Short disambiguator for an internal backing-node name. Never user-facing. */
@@ -1232,6 +1233,11 @@ export async function listSources(
       scopeValidated: true, // membership was proven by the query above
       originalResolvable: Boolean(d?.file_id),
       embeddedChunkCount: c.emb,
+      // Embeds are fire-and-forget after the write (garage pilot M8): a document
+      // whose chunks are not all embedded yet is `enhancing` — askable, still
+      // indexing. With the kill switch off nothing will ever embed, so say
+      // basic rather than "indexing" forever.
+      enhancementDisabled: !embedOnWriteEnabled(),
     });
     return {
       docId: String(m.doc_id),
@@ -1691,6 +1697,8 @@ export type ResolvedAsset =
        *  Read for the wrong-manual check only — see notebook-manual-identity.ts. */
       manufacturer?: string | null;
       model?: string | null;
+      /** The register's full designation (manufacturer_part_number), when it holds one. */
+      catalogNumber?: string | null;
     }
   | { state: "unresolvable"; entityId: string };
 
@@ -1732,11 +1740,11 @@ export async function resolveBoundAsset(
     // (cmms_equipment.id is the bridged entity's key; tenant_id there is TEXT).
     // Best-effort inside a savepoint: a failed read leaves the binding resolved
     // with no maker/model, which scopes nothing — exactly today's behaviour.
-    let registered: { manufacturer?: unknown; model_number?: unknown } | undefined;
+    let registered: { manufacturer?: unknown; model_number?: unknown; manufacturer_part_number?: unknown } | undefined;
     try {
       await c.query("SAVEPOINT bound_machine_identity");
       const reg = await c.query(
-        `SELECT manufacturer, model_number
+        `SELECT manufacturer, model_number, manufacturer_part_number
            FROM cmms_equipment
           WHERE tenant_id = $1::text AND id::text = $2
           LIMIT 1`,
@@ -1762,6 +1770,7 @@ export async function resolveBoundAsset(
       confirmedAt: row.asset_confirmed_at ? String(row.asset_confirmed_at) : null,
       manufacturer: registeredText(registered?.manufacturer),
       model: registeredText(registered?.model_number),
+      catalogNumber: registeredText(registered?.manufacturer_part_number),
     };
   });
 }
