@@ -32,6 +32,14 @@ const LINE_GAP_PT = 2.5;
 const CAPTION_BAND_PT = 40;
 const ATTACH_BAND_PT = 14;
 const BLOCK_GAP_MULT = 3;
+/** Gap, in the x direction, below which two consecutive value items are the SAME fragmented
+ *  cell rather than two adjacent columns (see `groupRuns`). Deliberately NOT `cols.tol`
+ *  (≈12–15pt on the pilot fixtures): on the Micro820 Isolation-voltage block, real adjacent
+ *  columns sit as close as 8.05pt apart (long label text narrows the gap below the column
+ *  pitch), while every real same-cell pdf.js fragment gap measured on the pilot fixtures is
+ *  ≤0.72pt. `LINE_GAP_PT`'s 2.5pt sits safely between both and is already the module's
+ *  constant for "tiny gap = contiguous content", applied here on the x axis instead of y. */
+const RUN_GAP_PT = LINE_GAP_PT;
 
 /** uppercase, drop a trailing "(…)" group, keep [A-Z0-9] only. */
 export function exactModelKey(cell: string): string {
@@ -141,6 +149,33 @@ function nearestColumn(x: number, cols: Columns): number {
     }
   }
   return best;
+}
+
+/** A horizontal run: consecutive items (x-ascending) whose gap from the previous item's right
+ *  edge is <= tol join the same run; a whitespace-only item joins whatever run it touches and
+ *  contributes nothing but a space once rendered. `leftX` is the run's own LEFT edge (its first
+ *  item's x), never a per-item x, so a cell split into several fragments by pdf.js is assigned to
+ *  one column by where it STARTS — never pulled toward a column a later fragment's x happens to
+ *  land nearer to (Codex #5429 r1 F1). */
+interface Run {
+  items: LayoutItem[];
+  leftX: number;
+}
+
+function groupRuns(items: readonly LayoutItem[], tol: number): Run[] {
+  const runs: Run[] = [];
+  let current: LayoutItem[] | null = null;
+  let prevEnd = -Infinity;
+  for (const it of items) {
+    if (current && it.x - prevEnd <= tol) {
+      current.push(it);
+    } else {
+      current = [it];
+      runs.push({ items: current, leftX: it.x });
+    }
+    prevEnd = Math.max(prevEnd, it.x + it.w);
+  }
+  return runs;
 }
 
 /** Strip a leading 1-2 digit footnote-mark token ("2 CT ..." -> "CT ..."). */
@@ -298,9 +333,14 @@ function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBl
           const extra = renderItems(valueItems);
           for (const c of lastRow.cells) c.value = `${c.value} ${extra}`.trim();
         } else {
-          for (const it of valueItems) {
-            const col = nearestColumn(it.x, cols);
-            lastRow.cells[col].value = `${lastRow.cells[col].value} ${it.str.trim()}`.trim();
+          // Each run (not each raw item) is one column, by its LEFT edge — a fragmented cell
+          // must stay together in the column its first fragment started in. If a continuation
+          // line puts two runs in the same column, they append in x order (Codex #5429 r1 F1).
+          for (const run of groupRuns(valueItems, RUN_GAP_PT)) {
+            const text = renderItems(run.items);
+            if (!text) continue;
+            const col = nearestColumn(run.leftX, cols);
+            lastRow.cells[col].value = `${lastRow.cells[col].value} ${text}`.trim();
           }
         }
         if (labelText) lastRow.label = `${lastRow.label} ${labelText}`.trim();
@@ -310,19 +350,27 @@ function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBl
       }
     }
 
-    // Fresh row by count (merged / per-model / unqualified).
+    // Fresh row by RUN count (merged / per-model / unqualified) — grouping fragments into runs
+    // before counting lets a multi-fragment cell still qualify as "exactly n columns", and a
+    // run-count of n that still collapses onto fewer than n distinct columns is rejected rather
+    // than mis-assigned (Codex #5429 r1 F1).
     const built = labelAndUnit(labelItems);
+    const valueRuns = groupRuns(valueItems, RUN_GAP_PT);
     let freshRow: TableRow | null = null;
-    if (valueItems.length === 1) {
-      const value = valueItems[0].str.trim();
+    if (valueRuns.length === 1) {
+      const value = renderItems(valueRuns[0].items);
       freshRow = { label: built.label, unit: built.unit, merged: true, cells: models.map((m) => ({ model: m, value })) };
-    } else if (valueItems.length === n) {
-      freshRow = {
-        label: built.label,
-        unit: built.unit,
-        merged: false,
-        cells: models.map((m, idx) => ({ model: m, value: valueItems[idx].str.trim() })),
-      };
+    } else if (valueRuns.length === n) {
+      const colOf = valueRuns.map((r) => nearestColumn(r.leftX, cols));
+      if (new Set(colOf).size === n) {
+        const valueByCol = new Map<number, string>(colOf.map((col, idx) => [col, renderItems(valueRuns[idx].items)]));
+        freshRow = {
+          label: built.label,
+          unit: built.unit,
+          merged: false,
+          cells: models.map((m, idx) => ({ model: m, value: valueByCol.get(idx) ?? "" })),
+        };
+      }
     }
 
     if (freshRow) {

@@ -264,6 +264,62 @@ describe("Micro820 install sheet (2080-IN009, p.15–16) — attribute × catalo
     expect(b.unqualified.join("\n")).toMatch(/0\.14 mm/);
     expect(b.unqualified.join("\n")).toMatch(/rated @ 90 °C/);
   });
+
+  it("F1: keeps the AWB I/O-rating cell whole, out of the QBB cell, even though a fragment's x (261.78/266.46) lands nearer the QBB anchor than the AWB/QBB midpoint (~260.3)", () => {
+    const io = row(p16[0], /^I\/O rating$/);
+    // Typed from the fixture items at y=466.68/458.64/450.66 (AWB column, x≈216–266), not derived
+    // from the parser output.
+    expect(cell(io, "2080-LC20-20AWB(R)")).toBe("Input: 120V AC 16 mA Output: 2 A, 240 V AC 2A, 24V DC");
+    const qbb = cell(io, "2080-LC20-20QBB(R)");
+    expect(qbb).not.toContain("240");
+    expect(qbb).not.toContain("V AC");
+    expect(qbb).not.toContain("2A, 24V DC");
+  });
+});
+
+describe("table-rows run-grouping (Codex #5429 r1 F1)", () => {
+  it("keeps a cell fragmented across the midpoint between column anchors together in column 1", () => {
+    const page: LayoutItem[] = [
+      // Header: three identifier-shaped model cells, columns at x=200/300/400.
+      { str: "GS11N-20P2", x: 200, y: 700, w: 60, size: 9 },
+      { str: "GS11N-20P5", x: 300, y: 700, w: 60, size: 9 },
+      { str: "GS11N-21P0", x: 400, y: 700, w: 60, size: 9 },
+      // Label + fragmented column-1 cell (gap from "Output:" end (249) to "2A" start (251) is 2pt,
+      // tiny — same cell; "2A" at x=251 is nevertheless closer to the column-2 anchor (300, dist 49)
+      // than to column 1's anchor (200, dist 51) by raw per-item distance — the exact shape of
+      // #5429 r1 F1. "Vac"/"X" sit exactly on their header x's so the computed column positions
+      // don't drift off the seed values, keeping the arithmetic above exact.
+      { str: "Spec", x: 72, y: 688, w: 30, size: 9 },
+      { str: "Output:", x: 210, y: 688, w: 39, size: 9 },
+      { str: "2A", x: 251, y: 688, w: 10, size: 9 },
+      { str: "Vac", x: 300, y: 688, w: 15, size: 9 },
+      { str: "X", x: 400, y: 688, w: 10, size: 9 },
+    ];
+    const blocks = detectModelTables(page);
+    expect(blocks).toHaveLength(1);
+    const r = row(blocks[0], /^Spec$/);
+    expect(cell(r, "GS11N-20P2")).toBe("Output: 2A");
+    expect(cell(r, "GS11N-20P5")).toBe("Vac");
+    expect(cell(r, "GS11N-21P0")).toBe("X");
+  });
+
+  it("emits a line as unqualified, not a row, when two runs fall in the same column", () => {
+    const page: LayoutItem[] = [
+      { str: "GS11N-20P2", x: 200, y: 700, w: 60, size: 9 },
+      { str: "GS11N-20P5", x: 300, y: 700, w: 60, size: 9 },
+      { str: "GS11N-21P0", x: 400, y: 700, w: 60, size: 9 },
+      // Three runs, far enough apart to stay separate (gaps > tol), but B (x=295) and C (x=330)
+      // both resolve to the middle column by nearest-anchor distance — not n distinct columns.
+      { str: "Weird Row", x: 72, y: 688, w: 50, size: 9 },
+      { str: "A", x: 205, y: 688, w: 10, size: 9 },
+      { str: "B", x: 295, y: 688, w: 10, size: 9 },
+      { str: "C", x: 330, y: 688, w: 10, size: 9 },
+    ];
+    const blocks = detectModelTables(page);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].rows.some((r) => /Weird Row/.test(r.label))).toBe(false);
+    expect(blocks[0].unqualified.some((l) => /Weird Row/.test(l) && /\bA\b/.test(l) && /\bB\b/.test(l) && /\bC\b/.test(l))).toBe(true);
+  });
 });
 
 describe("Schneider CA3KN22BD data sheet (p.1) — label/value pairs are not a model table", () => {
