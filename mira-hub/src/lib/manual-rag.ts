@@ -10,16 +10,20 @@ import {
   isTitleLine,
   manualAnswersFor,
   manualCoversNumber,
+  modelNumbersIn,
   remarksOnCoverage,
   sameModelFamily,
   summarizeUnlistedRefusals,
   titleLinesBelow,
   unlistedModelNumbers,
+  type ExcludedTable,
   type ManualVerdict,
   type OtherProductRefusal,
   type UnlistedModelRefusal,
 } from "@/capabilities/manual-applicability";
 import { type PhotoDocumentKind, photoDocumentShape, productWrittenBody } from "@/capabilities/photo-document-text";
+import { exactModelKey } from "@/capabilities/table-rows";
+import { confirmedCatalogNumber } from "@/capabilities/notebook-manual-identity";
 import { embedQueryDetailed, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
 import { setSpanAttrs } from "@/capabilities/observability/tracing";
 import { extractManualSafetyStatement } from "@/capabilities/manual-safety-statement";
@@ -99,6 +103,12 @@ export interface ManualChunk {
    * a real page (e.g. node `page_start`) leave it null and always render the page.
    */
   chunkIndex?: number | null;
+  /**
+   * Garage pilot PR-1/PR-4: the exact keys (`exactModelKey`) of the models a stored table chunk is
+   * about (`metadata.table_models`), empty for prose. Node path only; the answer path's shadow claim
+   * verifier binds a quantity by the record's own row with it.
+   */
+  tableModels?: string[];
   title: string;
   rank: number;
   /**
@@ -1651,6 +1661,19 @@ export async function retrieveNodeChunks(
        *  for the safety stop to name whose manual its page is from. Decides
        *  nothing here: it is written after a row is admitted. */
       admittedCovers?: Record<string, AdmittedCover>;
+      /** Garage pilot L3/L4: passages of the admitted manuals that are ANOTHER
+       *  model's table (a row chunk stamped `table_models` at upload that does
+       *  not list the record's catalog number, or an untagged passage naming
+       *  only other numbers of its family). Excluded, never demoted; listed so
+       *  the answer can say "this manual's table for <number> was not found —
+       *  open page N" instead of answering from a sibling's column. */
+      excludedTables?: ExcludedTable[];
+      /** Garage pilot PR-4: the record's catalog number THIS search scoped by — the
+       *  confirmed number, or null when the question (or a carried earlier one)
+       *  named a sibling of its family and the record was suspended. The answer
+       *  path's shadow claim verifier binds rows by this, so a deliberate sibling
+       *  question is never flagged against the record's own column. */
+      recordNumber?: string | null;
     };
   },
 ): Promise<ManualChunk[]> {
@@ -1905,6 +1928,7 @@ export async function retrieveNodeChunks(
           ${PAGE_LABEL_SQL},
           section_path,
           metadata->>'filename' AS filename,
+          metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified,
           ${documentHeadingSql},
           verified,
           tsvector_to_array(content_tsv) AS lexemes,
@@ -1962,6 +1986,7 @@ export async function retrieveNodeChunks(
           ${PAGE_LABEL_SQL},
           section_path,
           metadata->>'filename' AS filename,
+          metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified,
           ${documentHeadingSql},
           verified,
           tsvector_to_array(content_tsv) AS lexemes,
@@ -2077,6 +2102,7 @@ export async function retrieveNodeChunks(
             ${PAGE_LABEL_SQL},
             section_path,
             metadata->>'filename' AS filename,
+            metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified,
             ${documentHeadingSql},
             verified,
             tsvector_to_array(content_tsv) AS lexemes,
@@ -2249,7 +2275,7 @@ export async function retrieveNodeChunks(
         `SELECT
             content, doc_id::text AS doc_id, source_url, source_page, page_start,
             ${PAGE_LABEL_SQL},
-            section_path, metadata->>'filename' AS filename, verified,
+            section_path, metadata->>'filename' AS filename, metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, verified,
             ${documentHeadingSql},
             tsvector_to_array(content_tsv) AS lexemes,
             0::float4 AS rank
@@ -2468,6 +2494,80 @@ export async function retrieveNodeChunks(
         .map((n) => n.label),
     };
   };
+  // Garage pilot L3/L4 (plan rows 2-B/2-C). Inside an ADMITTED manual, a passage
+  // that is another model's table is not evidence for this model: on staging the
+  // GS13N (three-phase) specification table supplied 9 of 22 wrong rated-current
+  // answers and every "460 V" supply-voltage answer for a GS11N-20P2 drive. The
+  // record's catalog number judged only a document's cover; now it judges the
+  // passage too, inside the same predicate, and only when the machine is
+  // confirmed AND the number is on record:
+  //   (a) a row chunk stamped `table_models` at upload (table-rows.ts) whose
+  //       list does not hold the record's EXACT key (a GS11N-20P5 record drops
+  //       the GS11N-20P2 column too — the family is not the model);
+  //   (b) an untagged passage (the older flat extraction) naming other numbers
+  //       of the record's family and not the record's own.
+  // A passage naming the record's number beside a sibling, and prose naming no
+  // number, are kept. Excluded, never demoted; what was excluded is reported.
+  // The technician may deliberately ask about a sibling ("rated current of the
+  // GS13N-20P2?"), in this question or in the open one it follows: then the
+  // question's number is the subject, the existing cover rule judges it, and
+  // the record's table is not the measure of any passage.
+  const recordText = confirmedCatalogNumber(opts);
+  const recordFamilyNumbers = recordText ? modelNumbersIn(recordText) : [];
+  const asksAnotherOfFamily = [...modelNumbersIn(ownQuestion), ...carriedNumbers].some((n) =>
+    recordFamilyNumbers.some((own) => own.key !== n.key && sameModelFamily(own, n)),
+  );
+  const recordNumber = recordText && !asksAnotherOfFamily ? recordText : null;
+  if (opts.diagnostics) opts.diagnostics.recordNumber = recordNumber;
+  const recordKey = recordNumber ? exactModelKey(recordNumber) || null : null;
+  const tableModelsOf = (r: Record<string, unknown>): string[] => {
+    const raw = r.table_models;
+    let list: unknown = raw;
+    if (typeof raw === "string") {
+      try {
+        list = JSON.parse(raw);
+      } catch {
+        list = [];
+      }
+    }
+    return Array.isArray(list) ? list.map((m) => exactModelKey(String(m))).filter((k) => k.length > 0) : [];
+  };
+  // A table line the layout parser could not tie to one column is stored as flat
+  // text tagged with EVERY model of its block and `table_unqualified` (table-rows.ts).
+  // Its values are nobody's in particular, so for a record with a number it is
+  // excluded even though the tag holds the record's key: an unreadable line of the
+  // record's own table is not the record's value (Gate 7 on #5429: it was admitted,
+  // and the GS10 p.26 "Cooling Method Convective Fan" line could answer for a drive
+  // whose own cooling method the line does not say). Reported as unresolved, so the
+  // refusal names the page and never calls the record's own table another model's.
+  const isUnresolvedTableLine = (r: Record<string, unknown>): boolean =>
+    r.table_unqualified === true || String(r.table_unqualified) === "true";
+  const excludedTableOf = (r: Record<string, unknown>): string[] | null => {
+    if (!recordKey) return null;
+    const tagged = tableModelsOf(r);
+    if (tagged.length > 0) return isUnresolvedTableLine(r) || !tagged.includes(recordKey) ? tagged : null;
+    if (recordFamilyNumbers.length === 0) return null;
+    const named = modelNumbersIn(String(r.content ?? ""));
+    if (named.some((n) => recordFamilyNumbers.some((own) => own.key === n.key))) return null;
+    const siblings = new Set<string>();
+    for (const n of named) {
+      if (recordFamilyNumbers.some((own) => sameModelFamily(own, n))) siblings.add(exactModelKey(n.label));
+    }
+    return siblings.size > 0 ? [...siblings] : null;
+  };
+  const excludedKeys = new Set<string>();
+  const noteExcludedTable = (r: Record<string, unknown>, models: string[]) => {
+    if (!opts.diagnostics) return;
+    const key = keyOf(r);
+    if (excludedKeys.has(key)) return;
+    excludedKeys.add(key);
+    const page = Number(r.page_start ?? r.source_page);
+    (opts.diagnostics.excludedTables ??= []).push({
+      page: Number.isFinite(page) ? page : null,
+      models,
+      ...(isUnresolvedTableLine(r) ? { unqualified: true as const } : {}),
+    });
+  };
   // Which selected manuals admit() has judged. A manual the search returned no
   // passage from is judged by its cover after the lexical passes (below), so a
   // refusal's reason does not depend on what the search happened to find.
@@ -2583,6 +2683,12 @@ export async function retrieveNodeChunks(
           return false;
         }
       }
+      // The passage itself: another model's table in this (admitted) manual.
+      const excludedTable = excludedTableOf(r);
+      if (excludedTable) {
+        noteExcludedTable(r, excludedTable);
+        return false;
+      }
       noteAdmittedCover(r);
       return true;
   };
@@ -2624,6 +2730,11 @@ export async function retrieveNodeChunks(
   // below must still run when the AND and synonym passes found nothing.
   if (!lexicalV2) add(await runRetrieval(RARE_TSQUERY, opts.rawQuery?.trim() || expanded.variants[0]));
   add(await runExactLane(expanded.exactTokens.map((t) => `%${t}%`)));
+  // Garage pilot L3: the record's own catalog number is one more exact term, so
+  // the row chunk holding its column ("GS11N-20P2: CT Rated Input Current …")
+  // is a candidate even when the question never names the number. Same lane,
+  // same predicates; admit() above still judges every row it finds.
+  if (recordNumber) add(await runExactLane([`%${recordNumber}%`]));
   // The code the technician JUST named gets its own whole-token pass with its
   // own window BEFORE the combined pass (Codex r8 on #4360): the combined query
   // binds history and current patterns together, orders by page and LIMITs to
@@ -2756,6 +2867,7 @@ export async function retrieveNodeChunks(
                 page_start,
                 section_path,
                 metadata->>'filename' AS filename,
+                metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified,
                 ${documentHeadingSql},
                 verified,
                 tsvector_to_array(content_tsv) AS lexemes,
@@ -3080,6 +3192,7 @@ export async function retrieveNodeChunks(
     title: String(r.filename ?? r.section_path ?? "Attached document"),
     rank: Number(r.rank ?? 0),
     verified: r.verified === true,
+    tableModels: tableModelsOf(r),
   }));
 }
 

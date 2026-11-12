@@ -15,6 +15,7 @@ import type { PoolClient } from "pg";
 import pool from "@/lib/db";
 import { withTenantContext } from "@/lib/tenant-context";
 import { deriveReadiness, type Readiness } from "@/lib/document-readiness";
+import { embedOnWriteEnabled } from "@/lib/node-knowledge-ingest";
 import { insertWithUniqueFallback } from "@/lib/pg-unique-retry";
 
 /** Short disambiguator for an internal backing-node name. Never user-facing. */
@@ -123,6 +124,15 @@ export type NotebookSource = {
    *  stored — a projection of upload status + materialized chunk facts. The
    *  composer gates on `readiness.canChat`, which never depends on embeddings. */
   readiness: Readiness;
+  /** Garage pilot L2: pages the ingest flagged `text_repair = unmapped_glyph`
+   *  (a number whose glyph the PDF cannot map — "5�1" for 5.1). Counted
+   *  beside readiness, never folded into it: "N pages did not read cleanly". */
+  unreadablePages: number;
+  /** Garage pilot PR-6: the `metadata.extraction_version` the document's stored
+   *  chunks carry — null when ANY chunk is unstamped (pre-PR-1 flat rows still
+   *  present) or when there are no chunks. The staging read-back after a
+   *  reprocess checks this equals the current EXTRACTION_VERSION. */
+  extractionVersion: number | null;
 };
 
 export const LEGACY_THREAD_ID = "legacy";
@@ -1194,22 +1204,39 @@ export async function listSources(
     `SELECT doc_id::text AS doc_id,
             count(*)::int                                   AS n,
             count(embedding)::int                           AS emb,
-            count(*) FILTER (WHERE source_page IS NOT NULL)::int AS anchored
+            count(*) FILTER (WHERE source_page IS NOT NULL)::int AS anchored,
+            count(DISTINCT source_page) FILTER (WHERE metadata->>'text_repair' = 'unmapped_glyph')::int AS unreadable_pages,
+            CASE WHEN count(*) FILTER (WHERE metadata->>'extraction_version' IS NULL) > 0 THEN NULL
+                 ELSE min((metadata->>'extraction_version')::int) END::int AS extraction_version
        FROM knowledge_entries
       WHERE tenant_id = $1::uuid AND doc_id = ANY($2::uuid[])
       GROUP BY doc_id`,
     [tenantId, ids],
   );
-  const chunksById = new Map<string, { n: number; emb: number; anchored: number }>(
+  //   unreadable_pages -> pages the ingest flagged `unmapped_glyph` (a number
+  //   whose glyph the PDF cannot map — garage pilot L2). Shown beside readiness,
+  //   never folded into it: the document is still askable.
+  //   extraction_version -> the stamp the chunks carry (garage pilot PR-6): NULL
+  //   when ANY chunk is unstamped (a pre-PR-1 flat row still present — the
+  //   state a reprocess read-back exists to catch), else the lowest stamp. Not
+  //   a bare min(): min() skips NULLs and would report 2 for a half-reprocessed
+  //   document.
+  const chunksById = new Map<string, { n: number; emb: number; anchored: number; unreadable: number; version: number | null }>(
     counts.rows.map((r: Record<string, unknown>) => [
       String(r.doc_id),
-      { n: Number(r.n), emb: Number(r.emb), anchored: Number(r.anchored) },
+      {
+        n: Number(r.n),
+        emb: Number(r.emb),
+        anchored: Number(r.anchored),
+        unreadable: Number(r.unreadable_pages ?? 0),
+        version: r.extraction_version == null ? null : Number(r.extraction_version),
+      },
     ]),
   );
 
   return memb.map((m) => {
     const d = byId.get(String(m.doc_id));
-    const c = chunksById.get(String(m.doc_id)) ?? { n: 0, emb: 0, anchored: 0 };
+    const c = chunksById.get(String(m.doc_id)) ?? { n: 0, emb: 0, anchored: 0, unreadable: 0, version: null };
     const status = d ? ((d.status as string) ?? null) : null;
     const readiness = deriveReadiness({
       // An upload row exists at all => the bytes were durably accepted.
@@ -1224,6 +1251,11 @@ export async function listSources(
       scopeValidated: true, // membership was proven by the query above
       originalResolvable: Boolean(d?.file_id),
       embeddedChunkCount: c.emb,
+      // Embeds are fire-and-forget after the write (garage pilot M8): a document
+      // whose chunks are not all embedded yet is `enhancing` — askable, still
+      // indexing. With the kill switch off nothing will ever embed, so say
+      // basic rather than "indexing" forever.
+      enhancementDisabled: !embedOnWriteEnabled(),
     });
     return {
       docId: String(m.doc_id),
@@ -1237,6 +1269,8 @@ export async function listSources(
       originFileId: (m.origin_file_id as string) ?? null,
       matchEvidence: m.match_evidence ?? null,
       readiness,
+      unreadablePages: c.unreadable,
+      extractionVersion: c.version,
     };
   });
 }
@@ -1682,6 +1716,8 @@ export type ResolvedAsset =
        *  Read for the wrong-manual check only — see notebook-manual-identity.ts. */
       manufacturer?: string | null;
       model?: string | null;
+      /** The register's full designation (manufacturer_part_number), when it holds one. */
+      catalogNumber?: string | null;
     }
   | { state: "unresolvable"; entityId: string };
 
@@ -1723,11 +1759,11 @@ export async function resolveBoundAsset(
     // (cmms_equipment.id is the bridged entity's key; tenant_id there is TEXT).
     // Best-effort inside a savepoint: a failed read leaves the binding resolved
     // with no maker/model, which scopes nothing — exactly today's behaviour.
-    let registered: { manufacturer?: unknown; model_number?: unknown } | undefined;
+    let registered: { manufacturer?: unknown; model_number?: unknown; manufacturer_part_number?: unknown } | undefined;
     try {
       await c.query("SAVEPOINT bound_machine_identity");
       const reg = await c.query(
-        `SELECT manufacturer, model_number
+        `SELECT manufacturer, model_number, manufacturer_part_number
            FROM cmms_equipment
           WHERE tenant_id = $1::text AND id::text = $2
           LIMIT 1`,
@@ -1753,6 +1789,7 @@ export async function resolveBoundAsset(
       confirmedAt: row.asset_confirmed_at ? String(row.asset_confirmed_at) : null,
       manufacturer: registeredText(registered?.manufacturer),
       model: registeredText(registered?.model_number),
+      catalogNumber: registeredText(registered?.manufacturer_part_number),
     };
   });
 }

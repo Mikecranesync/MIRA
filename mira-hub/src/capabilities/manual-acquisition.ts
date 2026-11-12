@@ -32,6 +32,7 @@ import {
 } from "@/lib/manual-discovery";
 import { safeDownloadPdf, safePdfFilename } from "@/lib/safe-download";
 import { assessApplicability, type ApplicabilityVerdict } from "@/lib/manual-applicability";
+import { assessCompleteness, partialManualReason, DIGIT_GLYPH_DIGIT, type Completeness } from "@/capabilities/manual-completeness";
 import type { SpanContext } from "@opentelemetry/api";
 import { addActiveSpanEvent, safeSpan, setActiveSpanAttrs } from "@/capabilities/observability/acquisition-spans";
 
@@ -186,6 +187,38 @@ async function chunksForDoc(
     // A read failure is NOT "no evidence": it must neither verify the manual
     // nor settle it as a candidate. null = retry later (Codex #4118 r13 F17).
     console.error("[manual-acquisition] chunk read failed:", err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+/**
+ * Document-wide count of DISTINCT pages carrying the digit-U+FFFD-digit pattern (see
+ * manual-completeness.ts), across the WHOLE stored document — not the
+ * APPLICABILITY_CHUNK_LIMIT-bounded sample `chunksForDoc` reads for identity evidence. A
+ * long manual's unreadable tables can sit past that sample's limit, where the bounded scan
+ * would never see them (Codex #5429 r1 F3). The SQL pattern is `DIGIT_GLYPH_DIGIT.source` —
+ * the SAME regex `assessCompleteness` uses — so the two can't drift apart. `null` on any read
+ * failure: retry later, same posture as `chunksForDoc` (never silently "0 unreadable pages").
+ *
+ * `coalesce(source_page, -1)`: a chunk stored with NO page number must still count as one
+ * unreadable "page", exactly as `assessCompleteness`'s `glyphPages` Set counts `null`. Plain
+ * `count(DISTINCT source_page)` drops NULL, returned 0, and — since this count OVERRIDES the
+ * chunk-level one — marked a manual complete whose unreadable chunk the assessor had already
+ * seen (Gate 7 cheap-lane r5 HIGH on #5429).
+ */
+async function countUnreadablePagesDocumentWide(tenantId: string, docId: string): Promise<number | null> {
+  try {
+    return await withTenantContext(tenantId, async (c) => {
+      const r = await c.query<{ n: number }>(
+        `SELECT count(DISTINCT coalesce(source_page, -1))::int AS n
+           FROM knowledge_entries
+          WHERE tenant_id = $1 AND doc_id = $2::uuid AND content ~ $3`,
+        [tenantId, docId, DIGIT_GLYPH_DIGIT.source],
+      );
+      return Number(r.rows[0]?.n ?? 0);
+    });
+  } catch (err) {
+    console.error("[manual-acquisition] document-wide glyph scan failed:", err instanceof Error ? err.message : err);
     return null;
   }
 }
@@ -650,6 +683,13 @@ async function acquireInner(
   // ("confirm and I'll answer from it") depends on this stamp, so the outcome
   // carries it alongside the persisted evidence.
   let candidateApplicability: "verified" | "candidate" | null = null;
+  // Garage pilot L2 (plan row 5-A/C, M5): is the document a WHOLE manual whose
+  // numbers read? The GS10 auto-acquisition landed one chapter file with every
+  // decimal point unmapped; applicability verified it (the model number IS in
+  // the text) and it was answered from. A partial document is never promoted
+  // — by this run or by a later identity confirmation — and the outcome says
+  // "add the full manual".
+  let completeness: Completeness | null = null;
   // A database failure while judging the manual is transient: the manual stays
   // an UNDECIDED candidate (the pending evidence from the attach above, which
   // a retry may still promote), and the outcome says "retry", never "reviewed"
@@ -676,6 +716,9 @@ async function acquireInner(
   if (manualDocId) {
     const chunks = await chunksForDoc(ctx.tenantId, manualDocId);
     if (chunks === null) return retryLater();
+    const unreadablePagesDocumentWide = await countUnreadablePagesDocumentWide(ctx.tenantId, manualDocId);
+    if (unreadablePagesDocumentWide === null) return retryLater();
+    completeness = assessCompleteness(chunks, { unreadablePagesDocumentWide });
     verdict = await safeSpan("manual_acquisition.applicability", {}, async () => {
       const v = assessApplicability({
         identity: {
@@ -712,9 +755,14 @@ async function acquireInner(
       // `requiresUserConfirmation` exist to enforce. An exact-matching verdict
       // on an unvalidated download therefore still stamps 'candidate': a
       // human must review the SOURCE, not just confirm the identity.
+      //
+      // Garage pilot L2: the same holds for a PARTIAL document (one chapter,
+      // or numbers that did not read) — it must never stamp 'verified', or
+      // identity confirmation alone would promote it after this run refused to.
       ...(input.basis === "candidate"
-        ? { candidateApplicability: verdict.state === "verified" && !probeUnvalidated ? "verified" : "candidate" }
+        ? { candidateApplicability: verdict.state === "verified" && !probeUnvalidated && completeness.complete ? "verified" : "candidate" }
         : {}),
+      completeness,
     };
     candidateApplicability =
       (verifiedEvidence as { candidateApplicability?: "verified" | "candidate" }).candidateApplicability ?? null;
@@ -725,7 +773,7 @@ async function acquireInner(
     // technician's decision stands, and a source removed meanwhile is not
     // reported as added (F9).
     const write = input.writeSourceState ?? writeUnconditionally;
-    const promote = verdict.state === "verified" && !requiresUserConfirmation;
+    const promote = verdict.state === "verified" && !requiresUserConfirmation && completeness.complete;
     let persisted: PersistedSource;
     try {
       persisted = await write(ctx.tenantId, notebookId, manualDocId, {
@@ -769,14 +817,17 @@ async function acquireInner(
       reused,
       attached,
       ...(candidateApplicability ? { candidateApplicability } : {}),
+      ...(completeness ? { completeness } : {}),
     },
     applicability: verdict,
     message: !attached
       ? "The manual was found, but it is not among this notebook's sources."
       : answering
         ? `Manual added and enabled — ${verdict?.reason ?? "identity confirmed in the document text"}.`
-        : `Manual saved but left off until you confirm it — ${
-            verdict?.reason ?? "its text does not prove it covers this component"
-          }.`,
+        : completeness && !completeness.complete
+          ? `Manual saved but left off — ${partialManualReason(completeness)}. Add the full manual to this notebook.`
+          : `Manual saved but left off until you confirm it — ${
+              verdict?.reason ?? "its text does not prove it covers this component"
+            }.`,
   });
 }

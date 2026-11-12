@@ -20,6 +20,7 @@
  */
 
 import { findValues, normalize } from "./supporting-quote";
+import { exactModelKey } from "./table-rows";
 
 export type ClaimKind = "bit" | "address" | "code" | "pin" | "hex" | "quantity";
 
@@ -32,9 +33,16 @@ export type TypedClaim = {
 
 export type ClaimStatus = "supported" | "unbound" | "absent";
 
-export type ClaimResult = TypedClaim & { status: ClaimStatus; page: number | null };
+/** `via: "row"` — a quantity found on the record's own `MODEL:` line of a stored table chunk. */
+export type ClaimResult = TypedClaim & { status: ClaimStatus; page: number | null; via?: "row" };
 
-export type Evidence = { page: number; text: string };
+/**
+ * One stored table chunk of the page (table-rows.ts): a title line, then `MODEL: <label> <value>
+ * <unit>` lines, tagged with the exact keys of the models it is about (`metadata.table_models`).
+ */
+export type EvidenceRows = { tableModels: readonly string[]; text: string };
+
+export type Evidence = { page: number; text: string; rows?: EvidenceRows[] };
 
 export type Verdict = {
   verdict: "supported" | "unsupported" | "no_opinion";
@@ -155,6 +163,34 @@ function valueOffsets(claim: TypedClaim, text: string, raw: string): number[] {
   return hits;
 }
 
+/** The exact model key a `MODEL: …` line is about, or null for a line with no such prefix. */
+function lineModelKey(line: string): string | null {
+  const m = /^([^:\n]+):\s/.exec(line);
+  return m ? exactModelKey(m[1]) || null : null;
+}
+
+/**
+ * Garage pilot PR-4 (ledger L3/L5). A spec table is stored as one chunk per model, so the wrong
+ * column's value is never on the record's chunk — it is on a sibling's. Split a page's table chunks
+ * for a record: `own` = lines whose prefix is the record's key; `other` = lines of a model the chunk
+ * is tagged with; everything else (the title line, an unqualified chunk's flat lines) is prose.
+ */
+function splitRows(rows: readonly EvidenceRows[], recordKey: string): { own: string; other: string; prose: string } {
+  const own: string[] = [];
+  const other: string[] = [];
+  const prose: string[] = [];
+  for (const r of rows) {
+    const tagged = new Set(r.tableModels.map((m) => exactModelKey(m)));
+    for (const line of r.text.split("\n")) {
+      const key = lineModelKey(line);
+      if (key === recordKey) own.push(line);
+      else if (key && tagged.has(key)) other.push(line);
+      else prose.push(line);
+    }
+  }
+  return { own: own.join("\n"), other: other.join("\n"), prose: prose.join("\n") };
+}
+
 function subjectOffsets(subjects: string[], text: string): number[] {
   const hits: number[] = [];
   for (const s of subjects) {
@@ -170,9 +206,15 @@ function subjectOffsets(subjects: string[], text: string): number[] {
  * question's strong identifiers (when it has any), or of a weak one present on the page (else
  * anywhere on the page); `unbound` when stated only away from them; `absent` when no cited page
  * states it.
+ *
+ * `recordCatalogNumber` (garage pilot PR-4): the record's confirmed catalog number. With one, a
+ * QUANTITY claim binds on a page's stored table chunks (`evidence[].rows`) only through the
+ * record's own `MODEL:` lines (`via: "row"`); a value found only on another model's line is
+ * `unbound`. Title lines and untagged lines are prose and bind as before. Without a record number,
+ * or for any other kind of claim, the rows are plain page text — verdicts are unchanged.
  */
 export function verifyAnswer(
-  input: { question: string; answer: string; evidence: Evidence[] },
+  input: { question: string; answer: string; evidence: Evidence[]; recordCatalogNumber?: string | null },
   opts: { joinWrappedLines?: boolean } = {},
 ): Verdict {
   const subjects = questionSubjects(input.question);
@@ -184,15 +226,34 @@ export function verifyAnswer(
       claims: claims.map((c) => ({ ...c, status: "absent", page: null })),
     };
   }
+  const recordKey = input.recordCatalogNumber ? exactModelKey(input.recordCatalogNumber) : "";
+  // V1b (post-hoc, runoff 2026-10-20): PDF extraction wraps "10\nminutes"; the reused quantity
+  // extractor keeps a value and its unit on one line, so a wrapped value never matches its page.
+  const unwrap = (s: string) => (opts.joinWrappedLines ? s.replace(/(?<=\S)[ \t]*\n[ \t]*(?=\S)/g, " ") : s);
+  const stated = (s: string, claim: TypedClaim) => valueOffsets(claim, flat(s), s).length > 0;
   const results: ClaimResult[] = claims.map((c) => {
     let best: ClaimResult = { ...c, status: "absent", page: null };
     for (const ev of input.evidence) {
-      // V1b (post-hoc, runoff 2026-10-20): PDF extraction wraps "10\nminutes"; the reused quantity
-      // extractor keeps a value and its unit on one line, so a wrapped value never matches its page.
-      const text = opts.joinWrappedLines ? ev.text.replace(/(?<=\S)[ \t]*\n[ \t]*(?=\S)/g, " ") : ev.text;
+      const rows = ev.rows ?? [];
+      const byRow = recordKey && c.kind === "quantity" && rows.length > 0 ? splitRows(rows, recordKey) : null;
+      if (byRow && stated(unwrap(byRow.own), c)) {
+        // The record's own line IS the binding — but a strong subject the question names must
+        // still be on the page (as for any other hit); the row rule does not waive it.
+        const page = flat(unwrap([ev.text, ...rows.map((r) => r.text)].filter(Boolean).join("\n")));
+        if (subjects.strong.length === 0 || subjectOffsets(subjects.strong, page).length > 0) {
+          return { ...c, status: "supported", page: ev.page, via: "row" };
+        }
+        best = { ...c, status: "unbound", page: ev.page };
+        continue;
+      }
+      const text = unwrap([ev.text, ...(byRow ? [byRow.prose] : rows.map((r) => r.text))].filter(Boolean).join("\n"));
       const t = flat(text);
       const vals = valueOffsets(c, t, text);
-      if (vals.length === 0) continue;
+      if (vals.length === 0) {
+        // Stated only on another model's line of a table chunk: on the page, not for this record.
+        if (byRow && stated(unwrap(byRow.other), c)) best = { ...c, status: "unbound", page: ev.page };
+        continue;
+      }
       // Strong subjects are required when the question has any: a page that never mentions
       // .DLEN cannot support "bit N is set when .DLEN ≠ .RLEN". Weak ones bind only if present.
       const required = subjects.strong.length > 0 ? subjects.strong : subjects.weak;

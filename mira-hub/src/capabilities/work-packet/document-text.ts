@@ -18,6 +18,7 @@ import pool from "@/lib/db";
 import { withTenantContext } from "@/lib/tenant-context";
 import { listSources } from "@/lib/equipment-notebooks";
 import { acquireIngestSlot } from "@/lib/node-knowledge-ingest";
+import { layoutItemsFromTextContent } from "@/capabilities/pdf-layout-items";
 import { figureLinesForPage, figuresForPage, imageBoxesFromOps, type LayoutItem } from "./pdf-figure-lines";
 import { decodedImageToPng, type DecodedImage } from "./pdf-image-png";
 import type { DocText, PageFigure, PageText } from "./types";
@@ -169,12 +170,7 @@ async function readPdfPages(bytes: Uint8Array, signal?: AbortSignal): Promise<Pa
         const { OPS } = await getResolvedPDFJS();
         pg = await untilAbort(pdf.getPage(i + 1), signal);
         const content = await untilAbort(pg.getTextContent(), signal);
-        const items: LayoutItem[] = [];
-        for (const it of content.items) {
-          if (!("str" in it) || !("transform" in it)) continue;
-          const [, b, , d, x, y] = it.transform as number[];
-          items.push({ str: it.str, x, y, w: it.width, size: Math.round(Math.hypot(b, d) * 10) / 10 });
-        }
+        const items: LayoutItem[] = layoutItemsFromTextContent(content);
         const ops = await untilAbort(pg.getOperatorList(), signal);
         const boxes = imageBoxesFromOps(ops.fnArray, ops.argsArray, OPS);
         page.figureLines = figureLinesForPage(items, boxes, texts[i]);

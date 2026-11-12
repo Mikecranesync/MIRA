@@ -20,6 +20,8 @@ export type ReadinessView = { tone: ReadinessTone; label: string };
 
 const ATTENTION: ReadinessView = { tone: "attention", label: "Needs attention" };
 const READY: ReadinessView = { tone: "ready", label: "Ready to search" };
+/** Askable now (word search), embeddings still being written — garage pilot M8. */
+const INDEXING_READY: ReadinessView = { tone: "ready", label: "Ready to search · still indexing" };
 const PROCESSING: ReadinessView = { tone: "processing", label: "Processing" };
 const UPLOADING: ReadinessView = { tone: "processing", label: "Uploading" };
 /** Readable, but chat will not search it: not approved for this project, or switched off. */
@@ -30,7 +32,7 @@ const READINESS_VIEW = {
   uploading: UPLOADING,
   stored: PROCESSING,
   chat_ready_basic: READY,
-  enhancing: READY,
+  enhancing: INDEXING_READY,
   chat_ready_enhanced: READY,
   enhancement_degraded: READY,
   needs_ocr: ATTENTION,
@@ -365,7 +367,7 @@ export async function runCommit(input: CommitInput, deps: SetupDeps): Promise<Co
 
 // ---------- readiness watch and result rows ----------
 
-export type SourceView = { docId: string; filename: string | null; readiness: unknown; matchState: unknown; enabledByDefault?: unknown };
+export type SourceView = { docId: string; filename: string | null; readiness: unknown; matchState: unknown; enabledByDefault?: unknown; unreadablePages?: unknown };
 export const POLL_INTERVAL_MS = 3000;
 export const POLL_MAX = 20;
 export const STILL_PROCESSING = "Still processing, you can start; it becomes searchable when ready.";
@@ -469,13 +471,16 @@ export async function watchReadiness(
               readiness: s.readiness,
               matchState: s.matchState,
               enabledByDefault: s.enabledByDefault,
+              unreadablePages: s.unreadablePages,
             }]
           : []);
     }
     hooks.onUpdate?.(sources);
     const settled = !pending && watched.every((id) => {
       const src = sources.find((s) => s.docId === id);
-      return src !== undefined && !["uploading", "stored"].includes((src.readiness as { state?: string } | null)?.state ?? "");
+      // `enhancing` is askable but still indexing (M8): keep polling so the
+      // row can settle on fully indexed, up to the cap.
+      return src !== undefined && !["uploading", "stored", "enhancing"].includes((src.readiness as { state?: string } | null)?.state ?? "");
     });
     if (settled) return { sources, capped: false, unauthorized: false };
     if (poll < max) await deps.sleep(intervalMs);
@@ -512,12 +517,19 @@ export function resultRows(docs: readonly DocOutcome[], sources: readonly Source
     const view = readinessView(src.readiness);
     const readiness = view.tone === "ready" && !searchable ? NOT_SEARCHABLE : view;
     const stillBusy = readiness.tone === "processing" && capped;
+    // Garage pilot L2: pages whose numbers carry an unmapped glyph ("5�1"
+    // for 5.1). The document is still askable, so readiness is untouched; the
+    // technician is told which numbers to distrust.
+    const unreadable = typeof src.unreadablePages === "number" && src.unreadablePages > 0 ? src.unreadablePages : 0;
+    const unreadableNote = unreadable > 0
+      ? `${unreadable} page${unreadable === 1 ? "" : "s"} did not read cleanly. Numbers on those pages may be missing or wrong.`
+      : null;
     return {
       key: doc.key,
       filename: doc.filename,
       readiness,
       applicability: applicabilityLine(src.matchState),
-      note: stillBusy ? STILL_PROCESSING : doc.message,
+      note: stillBusy ? STILL_PROCESSING : (doc.message ?? unreadableNote),
     };
   });
 }

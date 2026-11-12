@@ -59,7 +59,7 @@ import {
 import { withSupportingQuotes } from "@/capabilities/supporting-quote";
 import { citedPagesFor, extractManualSafetyStatement, manualSafetyStatementForCitations } from "@/capabilities/manual-safety-statement";
 import { retrieveSafetyChapterChunks, SAFETY_CHAPTER_DIRECTIVE } from "@/capabilities/manual-safety-chapter";
-import { shadowVerifyCitedTurn } from "@/capabilities/claim-verifier-shadow";
+import { shadowVerifyCitedTurnResult } from "@/capabilities/claim-verifier-shadow";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
 import { isWeakEvidence, WEAK_EVIDENCE_LABEL, WEAK_EVIDENCE_RULE } from "@/capabilities/observability/jev-weak-evidence";
 import {
@@ -144,9 +144,11 @@ import { ambiguousModelAskText, libraryNotForAskedModelText, namedModelMismatchT
 import { readSubject, SUBJECT_READ_STEPS } from "@/capabilities/conversation-subject";
 import { notebookManualIdentity } from "@/capabilities/notebook-manual-identity";
 import {
+  excludedTablesRefusalText,
   otherProductRefusalText,
   unlistedModelNumbers,
   unlistedModelRefusalText,
+  type ExcludedTable,
   type OtherProductRefusal,
   type UnlistedModelRefusal,
 } from "@/capabilities/manual-applicability";
@@ -2496,6 +2498,13 @@ async function handleChatTurn(
     machineKnown?: boolean;
     admittedCovers?: Record<string, AdmittedCover>;
     libraryNotForAsk?: LibraryNotForAsk;
+    /** Garage pilot L3/L4: passages of the admitted manuals that were another
+     *  model's table and were excluded (page + model keys). */
+    excludedTables?: ExcludedTable[];
+    /** Garage pilot PR-4: the record number retrieval scoped by (null when the
+     *  question named a sibling and retrieval suspended it) — what the shadow
+     *  claim verifier binds rows by, so it is gated exactly as the exclusion. */
+    recordNumber?: string | null;
   } = {};
   const queryRewrite = await queryRewritePromise;
   retrievalDiagnostics.queryRewrite = queryRewrite.status;
@@ -3651,6 +3660,12 @@ async function handleChatTurn(
       // manual's cover declares some other product — say which, and the way out.
       : notebookRetrieval && retrievalDiagnostics.otherProductRefusal
         ? otherProductRefusalText(retrievalDiagnostics.otherProductRefusal)
+      // Garage pilot L3/L4: every passage the search found for this was another
+      // model's table in the notebook's own manual (retrieval excluded them, by
+      // the record's catalog number) — name the number and the page, and answer
+      // nothing from a sibling's column.
+      : notebookRetrieval && (retrievalDiagnostics.excludedTables?.length ?? 0) > 0 && manualIdentity.catalogNumber?.trim()
+        ? excludedTablesRefusalText(manualIdentity.catalogNumber.trim(), retrievalDiagnostics.excludedTables ?? [])
       : notebookRetrieval
         ? "I couldn't find support for that in this notebook's manuals. Add the manual for the equipment you're asking about, or the page that covers it, and ask again."
         : null;
@@ -5411,14 +5426,25 @@ async function handleChatTurn(
         // the answer, its citations and its status are already final above and are never touched.
         const claimShadow =
           docGrounded && served && !refused && !outputRejected
-            ? shadowVerifyCitedTurn({
+            ? shadowVerifyCitedTurnResult({
                 question: message,
                 answer: answerText,
                 citationIds: emittedCitations.map((c) => c.citationId),
                 chunks,
+                // Garage pilot PR-4: the record number retrieval's sibling-table exclusion
+                // actually scoped by — null when the question named a sibling and retrieval
+                // suspended the record — never the raw confirmed number, so the shadow and
+                // the exclusion are gated identically.
+                recordCatalogNumber: retrievalDiagnostics.recordNumber ?? null,
               })
             : null;
-        if (claimShadow) setSpanAttrs(claimShadow, finalAnswerGateSpan);
+        if (claimShadow) {
+          setSpanAttrs(claimShadow.attrs, finalAnswerGateSpan);
+          // Garage pilot PR-4f: the same verdict rides the persisted packet (statuses and counts only) —
+          // the span is sampled and ephemeral, the packet is what the harness reads back per turn. A
+          // nested object is never mirrored onto a span, so nothing is recorded twice.
+          rec.stage("answer_gate", { claim_verifier: claimShadow.record });
+        }
         finalAnswerGateSpan.end();
       }
 

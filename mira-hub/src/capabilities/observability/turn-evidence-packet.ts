@@ -206,6 +206,24 @@ export type SafetyOutcome = {
   semantic_verdict: "safe" | "unsafe" | "unknown" | "not_run";
 };
 
+/**
+ * Garage pilot PR-4f: the shadow claim verifier's verdict for one turn (claim-verifier-shadow.ts,
+ * NOTEBOOK_CLAIM_VERIFIER=shadow) — the per-build flag rate's source. Statuses and counts only: never a
+ * claim's text or value (the packet stores no answer text by construction).
+ */
+export type TurnEvidencePacketClaimVerifier = {
+  verdict: "supported" | "unsupported" | "no_opinion" | "error";
+  reason: string | null;
+  claim_count: number;
+  /** Claims bound by the record's own `MODEL:` row line (PR-4). */
+  row_bound: number;
+  /** Claims found only on another model's line / beyond the bind window. */
+  unbound: number;
+  /** Claims found nowhere on the cited pages (the VAC-vs-V unit mismatch lands here). */
+  absent: number;
+  claims: Array<{ kind: string; status: "supported" | "unbound" | "absent"; page: number | null; via?: "row" }>;
+};
+
 export type TurnEvidencePacketAnswerGate = {
   invoked: boolean;
   decision: AnswerGateDecision;
@@ -254,6 +272,12 @@ export type TurnEvidencePacketAnswerGate = {
   cited_values_unsupported?: number;
   /** #4315: emitted citations that kept the question-window quote (no claimed value matched). */
   citation_quote_fallbacks?: number;
+  /**
+   * Garage pilot PR-4f: the shadow verdict, when the shadow ran on this path. Optional like the two
+   * fields above (no packet version bump — additive, read as "not run" when absent); a reader must
+   * never take absence for `supported`.
+   */
+  claim_verifier?: TurnEvidencePacketClaimVerifier;
   /**
    * Versioned assessment of whether the answer engaged with the VISUAL evidence
    * in context. An assessment, never a claim about the model's reasoning — see

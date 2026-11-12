@@ -26,9 +26,21 @@ import { extractText, getDocumentProxy } from "unpdf";
 import { repairExtractedPage, type PageRepair } from "@/capabilities/garbled-text";
 import { ocrExtractPage } from "@/capabilities/garbled-text-ocr";
 import { readPageLabelsBounded } from "@/capabilities/pdf-page-label-reader";
+import { pageLayoutItems } from "@/capabilities/pdf-layout-items";
+import { pageWithTables, type TableChunk } from "@/capabilities/table-rows";
+import { hasUnmappedGlyphBetweenDigits } from "@/capabilities/manual-completeness";
+import { uploadIdentity } from "@/capabilities/page-label-backfill";
 
 const CHUNK_CHARS = 1000;
 const CHUNK_OVERLAP = 120;
+
+/**
+ * Table rows at upload (garage pilot plan row 1-A). Bumped whenever the chunks written for a
+ * document change shape (flat-text-only -> table-aware, or a change to that algorithm) so a
+ * reprocessing pass can tell an old stored document from a freshly re-ingested one. Stamped as
+ * `metadata.extraction_version` on EVERY chunk this module writes, PDF or text path alike.
+ */
+export const EXTRACTION_VERSION = 2;
 
 // Multi-row INSERT batch size. Bounds BOTH the chunk rows held in memory at once
 // (≤ BATCH_ROWS, instead of every chunk of a 1200-page manual accumulated in one
@@ -189,6 +201,12 @@ const EMBED_BATCH = 16; // chunks embedded per SELECT→embed→UPDATE round
 // embed pass without a redeploy if the embedder is ever overloaded — chunks stay
 // BM25-live regardless. Honors the #1385 caution: ingest never depends on embeds.
 const EMBED_ON_WRITE = (process.env.NODE_EMBED_ON_WRITE ?? "1") !== "0";
+
+/** Is the trailing embed pass on? Read by the document list so an unembedded
+ *  document is reported as "still indexing" only when something will index it. */
+export function embedOnWriteEnabled(): boolean {
+  return EMBED_ON_WRITE;
+}
 
 /**
  * Stable, greppable reason codes for why the trailing embed pass stopped.
@@ -434,88 +452,17 @@ async function writeChunkRowsForNode(
   /** Per-page printed label from the PDF's own /PageLabels tree (index-aligned
    *  with `pages`), recorded as `metadata.page_label` (#4508). Absent = none. */
   pageLabels?: ReadonlyArray<string | null> | null,
+  /** Per-page table read (index-aligned with `pages`), from `pageWithTables` — null for a page
+   *  with no qualifying table (or whose layout read was skipped/failed). When present, the
+   *  page's OWN text is chunked from `remainder` (the table's lines excluded) and one extra row
+   *  is written per `TableChunk`, carrying `metadata.table_models` (+`table_unqualified` for the
+   *  one flat-text chunk) instead of the page's ordinary chunk text. */
+  tables?: ReadonlyArray<{ remainder: string; chunks: TableChunk[] } | null> | null,
 ): Promise<number> {
-  const { tenantId, uploadId, nodeId, unsPath, filename, derivedFrom } = opts;
+  const { tenantId, uploadId, filename } = opts;
+  const sourceUrl = nodeDocSourceUrl(uploadId, filename);
 
-  // Unique per attachment so same-named files on different nodes never false-dedup
-  // against the partial UNIQUE (tenant_id, source_url, metadata->>'chunk_index').
-  const sourceUrl = `node-doc/${uploadId}/${filename}`;
-
-  type ChunkRow = {
-    content: string;
-    page: number;
-    idx: number;
-    repair: TextRepair | null;
-    label: string | null;
-  };
-  let idx = 0;
-  let batch: ChunkRow[] = [];
-
-  await withTenantContext(tenantId, async (c) => {
-    // Flush the buffered chunks as ONE multi-row INSERT, then drop them.
-    // tenant_id / source_url / doc_id are constant across the whole file, so
-    // they are fixed leading params ($1..$3) and only id/content/page/metadata
-    // vary per row — keeping the param count at 3 + 4*BATCH_ROWS.
-    const flush = async () => {
-      if (batch.length === 0) return;
-      const tuples = batch.map((_r, k) => {
-        const b = 3 + k * 4; // per-row params start after the 3 fixed ones
-        // page_start and page_end reuse the SAME page placeholder ($b+3).
-        return `($${b + 1}, $1, 'node_attachment', $${b + 2}, $2, $${b + 3}, $3, 'v2', $${b + 3}, $${b + 3}, $${b + 4}, true)`;
-      });
-      const params: unknown[] = [tenantId, sourceUrl, uploadId];
-      for (const r of batch) {
-        params.push(
-          randomUUID(),
-          r.content,
-          r.page,
-          JSON.stringify({
-            filename,
-            uns_path: unsPath,
-            node_id: nodeId,
-            chunk_index: r.idx,
-            source: "hub_node_attachment",
-            ...(derivedFrom ? { derived_from: derivedFrom } : {}),
-            ...(r.repair ? { text_repair: r.repair } : {}),
-            ...(r.label ? { page_label: r.label } : {}),
-          }),
-        );
-      }
-      await c.query(
-        // #1903: a node attachment is a per-tenant upload, NOT shared OEM corpus.
-        // is_private = true (a LITERAL, never a bound param) keeps it out of the
-        // universal/library aggregate surfaces and the hybrid read filter
-        // `(is_private = false OR tenant_id = $caller)`, so tenant A's manual is
-        // never visible to tenant B. The column defaults to false, so relying on
-        // the default would leak (see .claude/rules/knowledge-entries-tenant-scoping.md #1833).
-        `INSERT INTO knowledge_entries
-             (id, tenant_id, source_type, content, source_url, source_page,
-              doc_id, ingest_route, page_start, page_end, metadata, is_private)
-           VALUES ${tuples.join(", ")}
-           ON CONFLICT (tenant_id, source_url, ((metadata->>'chunk_index')::int))
-             WHERE (metadata->>'chunk_index') IS NOT NULL
-             DO NOTHING`,
-        params,
-      );
-      batch = [];
-    };
-
-    for (let p = 0; p < pages.length; p++) {
-      const pageText = pages[p];
-      pages[p] = ""; // release each page's text once chunked — bounds peak memory
-      for (const piece of chunkText(pageText)) {
-        batch.push({
-          content: piece,
-          page: p + 1,
-          idx: idx++,
-          repair: repairs?.[p] ?? null,
-          label: pageLabels?.[p] ?? null,
-        });
-        if (batch.length >= BATCH_ROWS) await flush();
-      }
-    }
-    await flush();
-  });
+  const idx = await withTenantContext(tenantId, (c) => insertChunkRows(c, pages, opts, repairs, pageLabels, tables));
 
   // Zero chunks = nothing was inserted above; failing here is honest and safe.
   if (idx === 0) throw new NoExtractableTextError(filename);
@@ -533,11 +480,145 @@ async function writeChunkRowsForNode(
   return idx;
 }
 
+/** Unique per attachment so same-named files on different nodes never false-dedup
+ *  against the partial UNIQUE (tenant_id, source_url, metadata->>'chunk_index'). */
+function nodeDocSourceUrl(uploadId: string, filename: string): string {
+  return `node-doc/${uploadId}/${filename}`;
+}
+
+/**
+ * The ONE chunk INSERT (garage pilot PR-6 factored it out of
+ * `writeChunkRowsForNode`, unchanged). Takes any `{ query }` client — the
+ * upload runs it under `withTenantContext`; `reprocessNodeDocument` runs it on
+ * the owner pool inside its own BEGIN/DELETE/…/COMMIT, because factorylm_app
+ * cannot DELETE knowledge_entries. Same SQL text, same `is_private … true`
+ * literal, same `ON CONFLICT … DO NOTHING`, same metadata — so a reprocessed
+ * document is byte-for-byte what a fresh upload of it would be. Returns the
+ * generated chunk count (attempted, not post-ON-CONFLICT).
+ */
+async function insertChunkRows(
+  c: { query: (sql: string, params?: unknown[]) => Promise<unknown> },
+  pages: string[],
+  opts: NodeChunkOpts,
+  repairs?: ReadonlyArray<TextRepair | null>,
+  pageLabels?: ReadonlyArray<string | null> | null,
+  tables?: ReadonlyArray<{ remainder: string; chunks: TableChunk[] } | null> | null,
+): Promise<number> {
+  const { tenantId, uploadId, nodeId, unsPath, filename, derivedFrom } = opts;
+  const sourceUrl = nodeDocSourceUrl(uploadId, filename);
+
+  type ChunkRow = {
+    content: string;
+    page: number;
+    idx: number;
+    repair: TextRepair | null;
+    label: string | null;
+    tableModels?: string[];
+    tableUnqualified?: boolean;
+  };
+  let idx = 0;
+  let batch: ChunkRow[] = [];
+
+  // Flush the buffered chunks as ONE multi-row INSERT, then drop them.
+  // tenant_id / source_url / doc_id are constant across the whole file, so
+  // they are fixed leading params ($1..$3) and only id/content/page/metadata
+  // vary per row — keeping the param count at 3 + 4*BATCH_ROWS.
+  const flush = async () => {
+    if (batch.length === 0) return;
+    const tuples = batch.map((_r, k) => {
+      const b = 3 + k * 4; // per-row params start after the 3 fixed ones
+      // page_start and page_end reuse the SAME page placeholder ($b+3).
+      return `($${b + 1}, $1, 'node_attachment', $${b + 2}, $2, $${b + 3}, $3, 'v2', $${b + 3}, $${b + 3}, $${b + 4}, true)`;
+    });
+    const params: unknown[] = [tenantId, sourceUrl, uploadId];
+    for (const r of batch) {
+      params.push(
+        randomUUID(),
+        r.content,
+        r.page,
+        JSON.stringify({
+          filename,
+          uns_path: unsPath,
+          node_id: nodeId,
+          chunk_index: r.idx,
+          source: "hub_node_attachment",
+          extraction_version: EXTRACTION_VERSION,
+          ...(derivedFrom ? { derived_from: derivedFrom } : {}),
+          ...(r.repair ? { text_repair: r.repair } : {}),
+          ...(r.label ? { page_label: r.label } : {}),
+          ...(r.tableModels ? { table_models: r.tableModels } : {}),
+          ...(r.tableUnqualified ? { table_unqualified: true } : {}),
+        }),
+      );
+    }
+    await c.query(
+      // #1903: a node attachment is a per-tenant upload, NOT shared OEM corpus.
+      // is_private = true (a LITERAL, never a bound param) keeps it out of the
+      // universal/library aggregate surfaces and the hybrid read filter
+      // `(is_private = false OR tenant_id = $caller)`, so tenant A's manual is
+      // never visible to tenant B. The column defaults to false, so relying on
+      // the default would leak (see .claude/rules/knowledge-entries-tenant-scoping.md #1833).
+      `INSERT INTO knowledge_entries
+           (id, tenant_id, source_type, content, source_url, source_page,
+            doc_id, ingest_route, page_start, page_end, metadata, is_private)
+         VALUES ${tuples.join(", ")}
+         ON CONFLICT (tenant_id, source_url, ((metadata->>'chunk_index')::int))
+           WHERE (metadata->>'chunk_index') IS NOT NULL
+           DO NOTHING`,
+      params,
+    );
+    batch = [];
+  };
+
+  for (let p = 0; p < pages.length; p++) {
+    const pageText = pages[p];
+    pages[p] = ""; // release each page's text once chunked — bounds peak memory
+    const table = tables?.[p] ?? null;
+    // A page with a qualifying table chunks its own text from the REMAINDER
+    // (the table's row-grid lines excluded, so a drive's column values never
+    // bleed into the flat-text chunk) and pushes ONE extra, un-re-chunked row
+    // per TableChunk — the ingest contract asserts exactly one row per model
+    // tag (`table-rows.test.ts`), so TableChunk.text goes in verbatim.
+    const textToChunk = table ? table.remainder : pageText;
+    for (const piece of chunkText(textToChunk)) {
+      batch.push({
+        content: piece,
+        page: p + 1,
+        idx: idx++,
+        repair: repairs?.[p] ?? null,
+        label: pageLabels?.[p] ?? null,
+      });
+      if (batch.length >= BATCH_ROWS) await flush();
+    }
+    if (table) {
+      for (const tc of table.chunks) {
+        batch.push({
+          content: tc.text,
+          page: p + 1,
+          idx: idx++,
+          repair: repairs?.[p] ?? null,
+          label: pageLabels?.[p] ?? null,
+          tableModels: tc.models,
+          tableUnqualified: tc.unqualified,
+        });
+        if (batch.length >= BATCH_ROWS) await flush();
+      }
+    }
+  }
+  await flush();
+  return idx;
+}
+
 /** `metadata.text_repair` values — how a page's text was changed after
- *  extraction. `shift29_partial` = the decoder repaired part of the page and
+ *  extraction, or (`unmapped_glyph`) that it was flagged and NOT changed.
+ *  `shift29_partial` = the decoder repaired part of the page and
  *  cipher-looking text remains (Codex r2 F3 on #4486): still searchable where
- *  decoded, still eligible for the backfill and the OCR seam. */
-export type TextRepair = "shift29" | "shift29_partial" | "ocr";
+ *  decoded, still eligible for the backfill and the OCR seam.
+ *  `unmapped_glyph` (garage pilot L2) = the page carries U+FFFD between two
+ *  digits — a number whose glyph the PDF cannot map ("5�1" for 5.1); the
+ *  text is stored as extracted, the document list counts the page as one that
+ *  did not read cleanly, and the acquisition never promotes such a document. */
+export type TextRepair = "shift29" | "shift29_partial" | "ocr" | "unmapped_glyph";
 
 /**
  * TQ-05 / TQ-06 (2026-10-17 prod test): repair garbled extraction IN PLACE
@@ -630,19 +711,77 @@ export async function writePdfChunksForNode(opts: {
   // PDF peak (see acquireIngestSlot / INGEST_CONCURRENCY above).
   const release = await acquireIngestSlot();
   try {
-    const pdf = await getDocumentProxy(new Uint8Array(buffer));
-    const { text } = await extractText(pdf, { mergePages: false });
-    const pages: string[] = Array.isArray(text) ? text : [text];
-    const repairs = await repairGarbledPages(pages, rest);
-    const labels = await printedPageLabels(
-      { getPageLabels: () => readPageLabelsBounded(buffer, rest.filename) },
-      pages.length,
-      rest.filename,
-    );
-    return await writeChunkRowsForNode(pages, rest, repairs, labels);
+    const { pages, markers, labels, pageTables } = await parsePdfForNode(buffer, rest);
+    return await writeChunkRowsForNode(pages, rest, markers, labels, pageTables);
   } finally {
     release();
   }
+}
+
+/** Everything the row writer needs from one PDF: page text (repaired in place
+ *  where the garble decoder applied), the per-page repair/flag markers, the
+ *  printed page labels, and the per-page table read. Index-aligned. */
+interface ParsedPdfForNode {
+  pages: string[];
+  markers: Array<TextRepair | null>;
+  labels: Array<string | null> | null;
+  pageTables: Array<{ remainder: string; chunks: TableChunk[] } | null>;
+}
+
+/**
+ * The ONE PDF parse (garage pilot PR-6 factored it out of
+ * `writePdfChunksForNode`, unchanged): unpdf text → garble repair → printed
+ * page labels → per-page table read → unmapped-glyph flag. Shared by the
+ * upload and by `reprocessNodeDocument`, so a reprocessed document is parsed
+ * exactly as a fresh upload would be. Does NOT take the ingest slot — the
+ * caller holds it around this call (it is the heavy, memory-peaking step).
+ */
+async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts): Promise<ParsedPdfForNode> {
+  const pdf = await getDocumentProxy(new Uint8Array(buffer));
+  const { text } = await extractText(pdf, { mergePages: false });
+  // Copy rather than alias: writeChunkRowsForNode releases each page's text
+  // in place (`pages[p] = ""`) to bound peak memory, and `text` may be the
+  // SAME array a caller/mock holds a reference to (e.g. a test re-using its
+  // fixture array across two writePdfChunksForNode calls) — mutating that
+  // array out from under the caller is a bug the release optimization must
+  // not cause.
+  const pages: string[] = Array.isArray(text) ? [...text] : [text];
+  const repairs = await repairGarbledPages(pages, rest);
+  const labels = await printedPageLabels(
+    { getPageLabels: () => readPageLabelsBounded(buffer, rest.filename) },
+    pages.length,
+    rest.filename,
+  );
+  // Table rows at upload (garage pilot plan row 1-A): read each page's
+  // positioned text items and recover any qualifying table, skipping a page
+  // whose text was itself repaired (garbled extraction has no reliable x/y
+  // geometry to key columns off of). A read/detect failure is warned and
+  // treated as "no table on this page" — it must never fail the upload.
+  const pageTables: Array<{ remainder: string; chunks: TableChunk[] } | null> = [];
+  for (let p = 0; p < pages.length; p++) {
+    if (repairs[p] !== null) {
+      pageTables.push(null);
+      continue;
+    }
+    try {
+      const items = await pageLayoutItems(pdf, p + 1);
+      pageTables.push(items.length > 0 ? pageWithTables(items) : null);
+    } catch (err) {
+      console.warn(`[node-ingest] table read failed on ${rest.filename} p.${p + 1} (page kept as flat text):`, err instanceof Error ? err.message : err);
+      pageTables.push(null);
+    }
+  }
+  // Garage pilot L2 (plan row 5-A): a page whose numbers carry a replacement
+  // character between two digits ("5�1" for 5.1 A — the PDF's ToUnicode
+  // map has no entry for the decimal-point glyph; the GS10 chapter file) is
+  // FLAGGED, never repaired: no decode, no OCR, the text is stored exactly as
+  // extracted. The flag is merged only into what the row writer stamps, and
+  // only AFTER the table read above: the page's positions are reliable, so its
+  // table rows are written (flagged) rather than dropped. A page the repair
+  // touched keeps its repair marker. Independent of NOTEBOOK_GARBLE_DECODE —
+  // this is detection, not a repair.
+  const markers: Array<TextRepair | null> = repairs.map((r, p) => r ?? (hasUnmappedGlyphBetweenDigits(pages[p]) ? "unmapped_glyph" : null));
+  return { pages, markers, labels, pageTables };
 }
 
 /**
@@ -828,6 +967,249 @@ export async function deleteOrphanNodeIngest(
       `[node-ingest] orphan cleanup failed upload=${uploadId}: ${(err as Error).message}`,
     );
   }
+}
+
+/** Why a stored document was recomputed (materialized-evidence rule 2 — a
+ *  recomputation is observable, with its reason). `recomputed_algorithm_changed`
+ *  = its chunks predate the current EXTRACTION_VERSION; `recomputed_human_requested`
+ *  = an owner forced it although the chunks were already current. */
+export type ReprocessReason = "recomputed_algorithm_changed" | "recomputed_human_requested";
+
+export type ReprocessRefusal = "no_upload" | "no_node" | "no_bytes" | "no_upload_hash" | "sha_mismatch";
+
+export type ReprocessResult =
+  /** Every stored chunk already carries the current version and nobody forced it: nothing touched. */
+  | {
+      action: "noop";
+      version: number;
+      chunkCount: number;
+      /** The upload's `kb_chunk_count` disagreed with the stored rows (a status write after an earlier
+       *  COMMIT failed) and was repaired with the write that step would have made. */
+      countRepaired?: true;
+      /** Same disagreement, but `opts.dryRun` was set: nothing was written (a dry run writes
+       *  nothing — Codex #5429 r1 F2) and the repair is still owed on a real run. */
+      countRepairPending?: true;
+    }
+  /** The document could not be proven re-readable: nothing touched, the reason named. */
+  | { action: "refused"; reason: ReprocessRefusal }
+  /** `dryRun`: what a real run would do, after the bytes were proven — no parse, no write. */
+  | {
+      action: "plan";
+      reason: ReprocessReason;
+      from: number | null;
+      to: number;
+      /** Rows that would be deleted. */
+      chunkCount: number;
+      bytesFrom: "local_pdf" | "parked_original";
+    }
+  | {
+      action: "reprocessed";
+      reason: ReprocessReason;
+      /** The version the stored chunks carried before — null when any chunk was unstamped (pre-PR-1). */
+      from: number | null;
+      to: number;
+      deleted: number;
+      inserted: number;
+      /** The awaited embed pass — reported, never thrown. */
+      embed: EmbedPassResult;
+    };
+
+/**
+ * Garage pilot PR-6 (plan row 16-A) — re-extract ONE already-stored node
+ * document through the upload's own parse + row writer and swap its chunks.
+ *
+ * Why this exists: the pilot's manuals were stored as flat lines before the
+ * table step (PR-1) and the glyph flag (PR-3). Those only reach a document
+ * uploaded AFTER the deploy — unless the stored document is reprocessed.
+ *
+ * Order, and why:
+ *   1. Read the upload for THIS tenant (filename, node, uns_path, sha, parked
+ *      file). Another tenant's upload id reads as "no upload".
+ *   2. Idempotency on `metadata.extraction_version` (materialized-evidence
+ *      rule 7): every chunk already at EXTRACTION_VERSION → noop, unless
+ *      `force` (reason `recomputed_human_requested`).
+ *   3. Bytes. The v2 upload's bytes are NOT kept after parsing, so they come
+ *      from (a) `bytes` the caller supplies, accepted ONLY when sha256 equals
+ *      `hub_uploads.content_sha256` (`uploadIdentity`, the page-label
+ *      backfill's rule) — an upload with no recorded hash cannot prove a
+ *      local file is itself and is refused; else (b) the parked original in
+ *      `namespace_direct_uploads` (what the viewer serves); else refused.
+ *      Never "best effort".
+ *   4. Parse under the ingest slot (`parsePdfForNode`, the upload's parse).
+ *   5. ONE transaction on the owner pool (factorylm_app has no DELETE grant on
+ *      knowledge_entries — migrations 011/049/079): BEGIN → DELETE this
+ *      tenant's, this doc's `node_attachment` rows → `insertChunkRows` (the
+ *      upload's INSERT, `is_private … true` literal, version stamp) → COMMIT.
+ *      Delete-then-insert, not the reverse: the INSERT is `ON CONFLICT
+ *      (tenant_id, source_url, chunk_index) DO NOTHING`, so inserting first
+ *      would collide on chunk_index 0..N and silently drop every new row.
+ *      Any throw → ROLLBACK, the old rows stay.
+ *   6. The embed pass is AWAITED (the upload fires and forgets) and its result
+ *      reported, never thrown — the caller is a script, not a request.
+ *   7. `kb_chunk_count` through `updateUploadStatus`, the call the upload makes.
+ *
+ * Non-goal: no `proposeDocumentEdgesForNode` — the upload already filed that
+ * document's graph proposal; filing it again would duplicate it.
+ */
+export async function reprocessNodeDocument(opts: {
+  tenantId: string;
+  uploadId: string;
+  /** A local copy of the uploaded PDF. Used only when its sha256 equals the upload's recorded hash. */
+  bytes?: Uint8Array | null;
+  /** Recompute even when every chunk is already at the current version. */
+  force?: boolean;
+  /** Report the plan after proving the bytes; parse nothing, write nothing. */
+  dryRun?: boolean;
+}): Promise<ReprocessResult> {
+  const { tenantId, uploadId } = opts;
+
+  const upload = (
+    await pool.query<{
+      filename: string;
+      kg_entity_id: string | null;
+      uns_path: string | null;
+      content_sha256: string | null;
+      file_id: string | null;
+      kb_chunk_count: number | null;
+    }>(
+      `SELECT u.filename, u.kg_entity_id::text AS kg_entity_id, u.uns_path, u.content_sha256,
+              u.kb_chunk_count, d.id::text AS file_id
+         FROM hub_uploads u
+         LEFT JOIN namespace_direct_uploads d ON d.upload_id = u.id
+        WHERE u.id = $1::uuid AND u.tenant_id = $2
+        LIMIT 1`,
+      [uploadId, tenantId],
+    )
+  ).rows[0];
+  if (!upload) return { action: "refused", reason: "no_upload" };
+  // Every v2 node document is attached to a node and every chunk names it
+  // (`metadata.node_id`); an upload with none is not a node document — refuse
+  // rather than write rows with an empty node.
+  if (!upload.kg_entity_id) return { action: "refused", reason: "no_node" };
+
+  // Owner pool, explicit tenant + doc predicates (the same shape as listSources'
+  // counts): these are this tenant's own rows, not the hybrid OEM read.
+  const v = (
+    await pool.query<{ n: number; current: number; unstamped: number; min_version: number | null }>(
+      `SELECT count(*)::int AS n,
+              count(*) FILTER (WHERE (metadata->>'extraction_version')::int = $3)::int AS current,
+              count(*) FILTER (WHERE metadata->>'extraction_version' IS NULL)::int AS unstamped,
+              min((metadata->>'extraction_version')::int)::int AS min_version
+         FROM knowledge_entries
+        WHERE tenant_id = $1::uuid AND doc_id = $2::uuid AND source_type = 'node_attachment'`,
+      [tenantId, uploadId, EXTRACTION_VERSION],
+    )
+  ).rows[0] ?? { n: 0, current: 0, unstamped: 0, min_version: null };
+  const n = Number(v.n ?? 0);
+  const current = Number(v.current ?? 0);
+  const allCurrent = n > 0 && current === n;
+  if (allCurrent && !opts.force) {
+    // The count is written after COMMIT (below). If that write failed on an earlier run the rows
+    // are current and the retry lands here — make the write it would have made, nothing else.
+    // A dry run writes nothing (Codex #5429 r1 F2): report the repair as pending instead.
+    if (Number(upload.kb_chunk_count ?? -1) !== n) {
+      if (opts.dryRun) {
+        return { action: "noop", version: EXTRACTION_VERSION, chunkCount: n, countRepairPending: true };
+      }
+      await updateUploadStatus(uploadId, tenantId, "parsed", null, { kbChunkCount: n });
+      console.info(`[node-ingest] reprocess noop doc=${uploadId}: repaired kb_chunk_count ${upload.kb_chunk_count ?? "null"}→${n}`);
+      return { action: "noop", version: EXTRACTION_VERSION, chunkCount: n, countRepaired: true };
+    }
+    return { action: "noop", version: EXTRACTION_VERSION, chunkCount: n };
+  }
+  const from: number | null =
+    allCurrent ? EXTRACTION_VERSION : n > 0 && Number(v.unstamped ?? 0) === 0 && v.min_version != null ? Number(v.min_version) : null;
+  const reason: ReprocessReason = allCurrent ? "recomputed_human_requested" : "recomputed_algorithm_changed";
+
+  const chunkOpts: NodeChunkOpts = {
+    tenantId,
+    uploadId,
+    nodeId: upload.kg_entity_id,
+    unsPath: upload.uns_path,
+    filename: upload.filename,
+  };
+
+  // Prove the bytes BEFORE taking the slot: a sha check needs no memory and a
+  // refusal should never wait behind a parse.
+  if (opts.bytes) {
+    const check = uploadIdentity(upload.content_sha256, createHash("sha256").update(opts.bytes).digest("hex"));
+    if (!check.ok) return { action: "refused", reason: check.reason };
+  } else if (!upload.file_id) {
+    return { action: "refused", reason: "no_bytes" };
+  } else {
+    // The parked original must be PRESENT before a plan or a slot — presence only, no bytes read
+    // (the bytes are read under the slot below).
+    const present = await withTenantContext(tenantId, async (c) => {
+      const res = await c.query(
+        `SELECT 1 FROM namespace_direct_uploads WHERE id = $1 AND tenant_id = $2 AND content IS NOT NULL`,
+        [upload.file_id, tenantId],
+      );
+      return (res.rowCount ?? res.rows.length) > 0;
+    });
+    if (!present) return { action: "refused", reason: "no_bytes" };
+  }
+  if (opts.dryRun) {
+    return { action: "plan", reason, from, to: EXTRACTION_VERSION, chunkCount: n, bytesFrom: opts.bytes ? "local_pdf" : "parked_original" };
+  }
+
+  // Bytes + parse under the ingest slot — the parked original is read there
+  // too, so a waiting reprocess never holds a whole PDF in memory (the same
+  // discipline as document-text.ts).
+  let parsed: ParsedPdfForNode;
+  const release = await acquireIngestSlot();
+  try {
+    let bytes: Uint8Array | null = opts.bytes ?? null;
+    if (!bytes && upload.file_id) {
+      const parked = await withTenantContext(tenantId, async (c) => {
+        const res = await c.query<{ content: Buffer }>(
+          `SELECT content FROM namespace_direct_uploads WHERE id = $1 AND tenant_id = $2`,
+          [upload.file_id, tenantId],
+        );
+        return res.rows[0] ?? null;
+      });
+      if (parked?.content) bytes = new Uint8Array(parked.content);
+      // #5432: the parked copy is proven against the recorded hash before the swap, exactly as
+      // a local file is — a stale or corrupted parked row must never replace the stored chunks.
+      // No recorded hash → there is nothing to compare, and the parked row is the system's own
+      // copy (the local-file path refuses in that case because that file is foreign input).
+      if (bytes && upload.content_sha256) {
+        const check = uploadIdentity(upload.content_sha256, createHash("sha256").update(bytes).digest("hex"));
+        if (!check.ok) return { action: "refused", reason: check.reason };
+      }
+    }
+    if (!bytes) return { action: "refused", reason: "no_bytes" };
+    parsed = await parsePdfForNode(bytes, chunkOpts);
+  } finally {
+    release();
+  }
+
+  const client = await pool.connect();
+  let deleted = 0;
+  let inserted = 0;
+  try {
+    await client.query("BEGIN");
+    const del = await client.query(
+      `DELETE FROM knowledge_entries
+        WHERE tenant_id = $1::uuid AND doc_id = $2::uuid AND source_type = 'node_attachment'`,
+      [tenantId, uploadId],
+    );
+    deleted = del.rowCount ?? 0;
+    inserted = await insertChunkRows(client, parsed.pages, chunkOpts, parsed.markers, parsed.labels, parsed.pageTables);
+    if (inserted === 0) throw new NoExtractableTextError(upload.filename);
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  const embed = await embedPendingNodeChunks(tenantId, nodeDocSourceUrl(uploadId, upload.filename));
+  await updateUploadStatus(uploadId, tenantId, "parsed", null, { kbChunkCount: inserted });
+  console.info(
+    `[node-ingest] reprocessed doc=${uploadId} reason=${reason} from=${from === null ? "unstamped" : `v${from}`} to=v${EXTRACTION_VERSION} rows=${deleted}→${inserted} embedded=${embed.embedded} embed_state=${embed.state}`,
+  );
+  return { action: "reprocessed", reason, from, to: EXTRACTION_VERSION, deleted, inserted, embed };
 }
 
 export async function ingestPdfToNode(opts: {

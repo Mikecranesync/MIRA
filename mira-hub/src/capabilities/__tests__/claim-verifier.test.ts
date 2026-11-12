@@ -67,6 +67,122 @@ describe("claim-verifier: never refuses what it cannot judge (#4488 lesson)", ()
   });
 });
 
+// Garage pilot PR-4 (ledger L3/L5): a spec table is stored as ONE chunk per model (table-rows.ts),
+// so the wrong column's value is never in the record's chunk — it sits in a sibling's chunk whose
+// `table_models` lacks the record's key. A quantity claim binds on a row chunk only through the
+// lines whose `MODEL:` prefix is the record's own number. Lines below are table-rows.ts's real
+// output on the committed GS10 p.26 / p.27 item dumps (abbreviated to the lines in play).
+const HEADER_1PH =
+  "230V Class – 1-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B, C — Model Name: GS11N-2xPx — ";
+const OWN_ROWS = {
+  tableModels: ["GS11N20P2"],
+  text:
+    `${HEADER_1PH}GS11N-20P2\n` +
+    "GS11N-20P2: CT Rated Output Current 1.6 A\n" +
+    "GS11N-20P2: CT Rated Input Current 5.1 A\n" +
+    "GS11N-20P2: VT Rated Input Current 5.8 A\n" +
+    "GS11N-20P2: Rated Voltage/Frequency One-phase 200-240 VAC (-15% to +10%), 50/60 Hz",
+};
+const SIBLING_ROWS = {
+  tableModels: ["GS11N20P5"],
+  text:
+    `${HEADER_1PH}GS11N-20P5\n` +
+    "GS11N-20P5: CT Rated Output Current 2.8 A\n" +
+    "GS11N-20P5: CT Rated Input Current 7.3 A\n" +
+    "GS11N-20P5: VT Rated Input Current 8.3 A",
+};
+const LOOKALIKE_ROWS = {
+  tableModels: ["GS13N20P2"],
+  text:
+    "230V Class – 3-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B — Model Name: GS13N-2xPx — GS13N-20P2\n" +
+    "GS13N-20P2: CT Rated Input Current 1.9 A\n" +
+    "GS13N-20P2: VT Rated Input Current 2.2 A",
+};
+const UNQUALIFIED_ROWS = {
+  tableModels: ["GS11N20P2", "GS11N20P5", "GS11N21P0", "GS11N22P0", "GS11N23P0"],
+  text: `${HEADER_1PH}unqualified\nCooling Method Convective Fan`,
+};
+const QI = "What is its CT rated input current?";
+const RECORD = "GS11N-20P2";
+const P26 = { page: 26, text: "", rows: [OWN_ROWS, SIBLING_ROWS] };
+
+describe("claim-verifier: row-aware binding for a record with a catalog number (garage pilot PR-4)", () => {
+  it("right row: 5.1 A on the record's own line is supported, via the row", () => {
+    const v = verifyAnswer({ question: QI, answer: "The CT rated input current is 5.1 A [1].", evidence: [P26], recordCatalogNumber: RECORD });
+    expect(v.verdict).toBe("supported");
+    expect(v.claims).toEqual([expect.objectContaining({ key: "qty:5.1|A", status: "supported", page: 26, via: "row" })]);
+  });
+
+  it("wrong column: 7.3 A is on the cited page (the GS11N-20P5 chunk) but never on the record's line → unbound", () => {
+    const v = verifyAnswer({ question: QI, answer: "The CT rated input current is 7.3 A [1].", evidence: [P26], recordCatalogNumber: RECORD });
+    expect(v.verdict).toBe("unsupported");
+    expect(v.reason).toBe("unbound");
+    expect(v.claims).toEqual([expect.objectContaining({ key: "qty:7.3|A", status: "unbound", page: 26 })]);
+  });
+
+  it("look-alike: 1.9 A from the GS13N chunk, whose table_models lacks the record's key → unbound", () => {
+    const v = verifyAnswer({
+      question: QI,
+      answer: "The CT rated input current is 1.9 A [1].",
+      evidence: [{ page: 27, text: "", rows: [LOOKALIKE_ROWS] }],
+      recordCatalogNumber: RECORD,
+    });
+    expect(v.verdict).toBe("unsupported");
+    expect(v.reason).toBe("unbound");
+  });
+
+  it("control: without a record number the same rows bind by page co-occurrence, as today (7.3 A reads as supported)", () => {
+    const v = verifyAnswer({ question: QI, answer: "The CT rated input current is 7.3 A [1].", evidence: [P26] });
+    expect(v.verdict).toBe("supported");
+    expect(v.claims[0]).not.toHaveProperty("via");
+  });
+
+  it("control: with a record number but flat page text (no rows — the pre-PR-1 shape) nothing changes", () => {
+    const flat = { page: 26, text: `${OWN_ROWS.text}\n${SIBLING_ROWS.text}` };
+    const v = verifyAnswer({ question: QI, answer: "The CT rated input current is 7.3 A [1].", evidence: [flat], recordCatalogNumber: RECORD });
+    expect(v.verdict).toBe("supported");
+  });
+
+  it("a row chunk's title line is prose, not a column: 230 V from the header binds as before", () => {
+    const v = verifyAnswer({ question: "What voltage class is it?", answer: "It is a 230 V class drive [1].", evidence: [P26], recordCatalogNumber: RECORD });
+    expect(v.verdict).toBe("supported");
+    expect(v.claims[0]).not.toHaveProperty("via");
+  });
+
+  it("control: an unqualified flat chunk (table_models lists every model, no MODEL: lines) is judged as prose", () => {
+    const v = verifyAnswer({
+      question: "What voltage class is it?",
+      answer: "It is a 230 V class drive [1].",
+      evidence: [{ page: 26, text: "", rows: [UNQUALIFIED_ROWS] }],
+      recordCatalogNumber: RECORD,
+    });
+    expect(v.verdict).toBe("supported");
+  });
+
+  it("a strong subject the question names must still be on the cited page: the record's row alone does not bind without it", () => {
+    // Before PR-4 a quantity on a page that never mentions the question's mnemonic was unbound;
+    // the row rule binds BY the record's line, it does not waive the subject.
+    const QS = "What is the CT rated input current at P00.04?";
+    const miss = verifyAnswer({ question: QS, answer: "It is 5.1 A [1].", evidence: [P26], recordCatalogNumber: RECORD });
+    expect(miss.reason).toBe("unbound");
+    expect(miss.claims[0]).not.toHaveProperty("via");
+    const hit = verifyAnswer({
+      question: QS,
+      answer: "It is 5.1 A [1].",
+      evidence: [{ ...P26, text: "Parameter P00.04 displays the drive's rating." }],
+      recordCatalogNumber: RECORD,
+    });
+    expect(hit.verdict).toBe("supported");
+    expect(hit.claims[0]).toEqual(expect.objectContaining({ status: "supported", page: 26, via: "row" }));
+  });
+
+  it("a record number whose key matches no row on the cited page cannot be supported from another model's line", () => {
+    const v = verifyAnswer({ question: QI, answer: "It is 5.1 A [1].", evidence: [P26], recordCatalogNumber: "GS11N-21P0" });
+    expect(v.verdict).toBe("unsupported");
+    expect(v.reason).toBe("unbound");
+  });
+});
+
 describe("claim-verifier: subjects and kinds", () => {
   it("strong subjects are the question's mnemonics; product names are weak", () => {
     expect(questionSubjects(Q)).toEqual({ strong: ["dlen", "rlen"], weak: ["plc-5"] });

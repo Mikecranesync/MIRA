@@ -183,3 +183,59 @@ describe("#5369 — a model number no attached manual is shown to cover", () => 
     expect(status.message).toBe(GENERIC);
   });
 });
+
+describe("garage pilot L3/L4 — every passage found was another model's table", () => {
+  const gs10 = () =>
+    nbMock.getNotebook.mockResolvedValue({
+      id: NB, displayName: "Bench drive", manufacturer: "AutomationDirect", model: "GS10", catalogNumber: "GS11N-20P2", identityStatus: "user_confirmed",
+    });
+
+  it("names the record's number and the page, with no provider call and no citation", async () => {
+    gs10();
+    retrievalReports({ excludedTables: [{ page: 27, models: ["GS13N20P2"] }] });
+    const { status, sources } = await ask("What is its rated input current?");
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    expect(status.status).toBe("insufficient_evidence");
+    expect(status.message).toContain("This manual's table for the GS11N-20P2 was not found");
+    expect(status.message).toContain("GS13N20P2 table (page 27)");
+    expect(status.message).not.toMatch(/24 V/);
+    expect(sources.citations).toEqual([]);
+  });
+
+  it("control: with nothing excluded the generic refusal is unchanged", async () => {
+    gs10();
+    retrievalReports({ excludedTables: [] });
+    const { status } = await ask("What is its rated input current?");
+    expect(status.message).toBe(GENERIC);
+  });
+
+  // Cheap review of PR-2 (#5424 r1): the refusal must not fire on a MIXED result. The
+  // refusal chain lives inside Gate G (`chunks.length === 0`), so one admissible passage
+  // beside an excluded sibling table is answered from that passage, never refused.
+  it("control: one admissible passage beside an excluded sibling table is answered, not refused", async () => {
+    gs10();
+    ragMock.retrieveNodeChunks.mockImplementation(async (_c: unknown, _t: unknown, _q: unknown, opts: unknown) => {
+      const o = opts as Opts;
+      if (o?.diagnostics) Object.assign(o.diagnostics, { excludedTables: [{ page: 27, models: ["GS13N20P2"] }] });
+      return [
+        {
+          content: "GS11N-20P2: CT Rated Input Current 5.1 A",
+          docId: DOC_A,
+          manufacturer: "",
+          modelNumber: "",
+          sourceUrl: "node-doc/u1/gs10_manual.pdf",
+          sourcePage: 26,
+          pageLabel: "26",
+          chunkIndex: null,
+          title: "GS10 User Manual.pdf",
+          rank: 0.5,
+          verified: true,
+        },
+      ];
+    });
+    const { status } = await ask("What is its rated input current?");
+    expect(vi.mocked(fetch)).toHaveBeenCalled();
+    expect(status?.status ?? "answered").not.toBe("insufficient_evidence");
+    expect(status?.message ?? "").not.toContain("was not found");
+  });
+});

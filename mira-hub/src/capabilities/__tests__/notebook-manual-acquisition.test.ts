@@ -1187,3 +1187,36 @@ describe("currentManualSearchStatus — recomputed fresh, never a stale snapshot
     });
   });
 });
+
+describe("garage pilot L2 — a partial manual (one chapter / unreadable numbers) never promotes and says so", () => {
+  const partialOutcome = (completeness: unknown) => ({
+    status: "candidate_review" as const,
+    payload: {
+      candidate: { host: "cdn.automationdirect.com", url: "https://cdn.automationdirect.com/static/manuals/gs10m/ch1.pdf" },
+      manual: { docId: "d1", indexed: true, attached: true, candidateApplicability: "candidate", completeness },
+    },
+  });
+
+  it("recordFromOutcome carries partial: true and never promotes on confirm", () => {
+    const r = recordFromOutcome("K", null, partialOutcome({ complete: false, reasons: ["chapter_start", "unmapped_glyphs"], unreadablePages: 11 }));
+    expect(r.partial).toBe(true);
+    expect(r.promotes_on_confirm).toBe(false);
+    expect(r.attached_indexed).toBe(true);
+  });
+
+  it("control: a complete manual's record has no partial mark", () => {
+    const r = recordFromOutcome("K", null, partialOutcome({ complete: true, reasons: [], unreadablePages: 0 }));
+    expect(r.partial).toBeUndefined();
+  });
+
+  it("the chat says it found PART of the manual and asks for the full one — never 'turn it on if it's right'", () => {
+    const base = recordFromOutcome("K", null, partialOutcome({ complete: false, reasons: ["chapter_start"], unreadablePages: 0 }));
+    const t = acquisitionDeclineText(base, "K", "AutomationDirect GS11N-20P2")!;
+    expect(t).toContain("part of the AutomationDirect GS11N-20P2 manual");
+    expect(t).toContain("full manual");
+    expect(t).toContain("isn't turned on");
+    expect(t).not.toContain("turn it on if it's right");
+    // Photo basis uses the same shared candidate_review copy.
+    expect(acquisitionDeclineText(base, "K", "AutomationDirect GS11N-20P2", "candidate")).toBe(t);
+  });
+});
