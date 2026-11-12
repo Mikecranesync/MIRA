@@ -142,7 +142,7 @@ import {
 } from "@/capabilities/energized-work-stop";
 import { ambiguousModelAskText, libraryNotForAskedModelText, namedModelMismatchText, subjectOutOfReachText, type NamedModelMismatch } from "@/capabilities/named-model-mismatch";
 import { readSubject, SUBJECT_READ_STEPS } from "@/capabilities/conversation-subject";
-import { confirmedCatalogNumber, notebookManualIdentity } from "@/capabilities/notebook-manual-identity";
+import { notebookManualIdentity } from "@/capabilities/notebook-manual-identity";
 import {
   excludedTablesRefusalText,
   otherProductRefusalText,
@@ -2501,6 +2501,10 @@ async function handleChatTurn(
     /** Garage pilot L3/L4: passages of the admitted manuals that were another
      *  model's table and were excluded (page + model keys). */
     excludedTables?: ExcludedTable[];
+    /** Garage pilot PR-4: the record number retrieval scoped by (null when the
+     *  question named a sibling and retrieval suspended it) — what the shadow
+     *  claim verifier binds rows by, so it is gated exactly as the exclusion. */
+    recordNumber?: string | null;
   } = {};
   const queryRewrite = await queryRewritePromise;
   retrievalDiagnostics.queryRewrite = queryRewrite.status;
@@ -5427,8 +5431,11 @@ async function handleChatTurn(
                 answer: answerText,
                 citationIds: emittedCitations.map((c) => c.citationId),
                 chunks,
-                // Garage pilot PR-4: the same record number retrieval's sibling-table exclusion used.
-                recordCatalogNumber: confirmedCatalogNumber(manualIdentity),
+                // Garage pilot PR-4: the record number retrieval's sibling-table exclusion
+                // actually scoped by — null when the question named a sibling and retrieval
+                // suspended the record — never the raw confirmed number, so the shadow and
+                // the exclusion are gated identically.
+                recordCatalogNumber: retrievalDiagnostics.recordNumber ?? null,
               })
             : null;
         if (claimShadow) setSpanAttrs(claimShadow, finalAnswerGateSpan);

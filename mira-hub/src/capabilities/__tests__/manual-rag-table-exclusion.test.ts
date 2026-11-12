@@ -125,6 +125,22 @@ describe("retrieveNodeChunks excludes another model's table passages when the re
     expect(out.map((c) => c.content)).toEqual([prose.content]);
   });
 
+  it("reports the record number it scoped by — null when the question suspended it — so the shadow verifier is gated exactly as the exclusion was (PR-4)", async () => {
+    const heading = "DURApulse GS10 Drive User Manual\nModels covered: GS11N-20P2, GS13N-20P2";
+    let diagnostics: Record<string, unknown> = {};
+    let c = makeClient([[ownColumn, prose]]);
+    await retrieveNodeChunks(c.client, "t-1", "What is its rated input current?", scoped({ diagnostics }));
+    expect(diagnostics.recordNumber).toBe("GS11N-20P2");
+    diagnostics = {};
+    c = makeClient([[{ ...siblingColumn, document_heading: heading }, { ...ownColumn, document_heading: heading }]]);
+    await retrieveNodeChunks(c.client, "t-1", "What is the rated input current of the GS13N-20P2?", scoped({ diagnostics }));
+    expect(diagnostics.recordNumber).toBeNull();
+    diagnostics = {};
+    c = makeClient([[ownColumn, prose]]);
+    await retrieveNodeChunks(c.client, "t-1", "What is its rated input current?", scoped({ diagnostics, identityStatus: "candidate" }));
+    expect(diagnostics.recordNumber).toBeNull();
+  });
+
   it("a question that itself names a sibling of the family is judged by the existing cover rule, not by the record's table", async () => {
     // The technician may deliberately ask about the sibling. A manual whose cover
     // lists both numbers answers for the sibling; the record's own column is not

@@ -1668,6 +1668,12 @@ export async function retrieveNodeChunks(
        *  the answer can say "this manual's table for <number> was not found —
        *  open page N" instead of answering from a sibling's column. */
       excludedTables?: ExcludedTable[];
+      /** Garage pilot PR-4: the record's catalog number THIS search scoped by — the
+       *  confirmed number, or null when the question (or a carried earlier one)
+       *  named a sibling of its family and the record was suspended. The answer
+       *  path's shadow claim verifier binds rows by this, so a deliberate sibling
+       *  question is never flagged against the record's own column. */
+      recordNumber?: string | null;
     };
   },
 ): Promise<ManualChunk[]> {
@@ -2512,6 +2518,7 @@ export async function retrieveNodeChunks(
     recordFamilyNumbers.some((own) => own.key !== n.key && sameModelFamily(own, n)),
   );
   const recordNumber = recordText && !asksAnotherOfFamily ? recordText : null;
+  if (opts.diagnostics) opts.diagnostics.recordNumber = recordNumber;
   const recordKey = recordNumber ? exactModelKey(recordNumber) || null : null;
   const tableModelsOf = (r: Record<string, unknown>): string[] => {
     const raw = r.table_models;

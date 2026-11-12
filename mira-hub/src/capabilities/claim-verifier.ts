@@ -236,7 +236,16 @@ export function verifyAnswer(
     for (const ev of input.evidence) {
       const rows = ev.rows ?? [];
       const byRow = recordKey && c.kind === "quantity" && rows.length > 0 ? splitRows(rows, recordKey) : null;
-      if (byRow && stated(unwrap(byRow.own), c)) return { ...c, status: "supported", page: ev.page, via: "row" };
+      if (byRow && stated(unwrap(byRow.own), c)) {
+        // The record's own line IS the binding — but a strong subject the question names must
+        // still be on the page (as for any other hit); the row rule does not waive it.
+        const page = flat(unwrap([ev.text, ...rows.map((r) => r.text)].filter(Boolean).join("\n")));
+        if (subjects.strong.length === 0 || subjectOffsets(subjects.strong, page).length > 0) {
+          return { ...c, status: "supported", page: ev.page, via: "row" };
+        }
+        best = { ...c, status: "unbound", page: ev.page };
+        continue;
+      }
       const text = unwrap([ev.text, ...(byRow ? [byRow.prose] : rows.map((r) => r.text))].filter(Boolean).join("\n"));
       const t = flat(text);
       const vals = valueOffsets(c, t, text);

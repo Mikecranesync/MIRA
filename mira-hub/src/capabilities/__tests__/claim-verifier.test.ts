@@ -159,6 +159,23 @@ describe("claim-verifier: row-aware binding for a record with a catalog number (
     expect(v.verdict).toBe("supported");
   });
 
+  it("a strong subject the question names must still be on the cited page: the record's row alone does not bind without it", () => {
+    // Before PR-4 a quantity on a page that never mentions the question's mnemonic was unbound;
+    // the row rule binds BY the record's line, it does not waive the subject.
+    const QS = "What is the CT rated input current at P00.04?";
+    const miss = verifyAnswer({ question: QS, answer: "It is 5.1 A [1].", evidence: [P26], recordCatalogNumber: RECORD });
+    expect(miss.reason).toBe("unbound");
+    expect(miss.claims[0]).not.toHaveProperty("via");
+    const hit = verifyAnswer({
+      question: QS,
+      answer: "It is 5.1 A [1].",
+      evidence: [{ ...P26, text: "Parameter P00.04 displays the drive's rating." }],
+      recordCatalogNumber: RECORD,
+    });
+    expect(hit.verdict).toBe("supported");
+    expect(hit.claims[0]).toEqual(expect.objectContaining({ status: "supported", page: 26, via: "row" }));
+  });
+
   it("a record number whose key matches no row on the cited page cannot be supported from another model's line", () => {
     const v = verifyAnswer({ question: QI, answer: "It is 5.1 A [1].", evidence: [P26], recordCatalogNumber: "GS11N-21P0" });
     expect(v.verdict).toBe("unsupported");
