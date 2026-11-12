@@ -1574,6 +1574,15 @@ export async function retrieveNodeChunks(
      *  as the question does for a search made from it: every search of one
      *  turn is held to the same manuals. Search words are unchanged by it. */
     subjectQuestion?: string;
+    /** Garage pilot L8 (Mike 2026-11-12): what to do when the question names a
+     *  sibling of the record's confirmed catalog number. "refuse" (default): no
+     *  lane is queried and `diagnostics.siblingOfRecordAsk` is reported, so the
+     *  reply names both numbers and gives no value. "serve": the two safety-stop
+     *  passes only — the record is suspended (`recordNumber` null, the sibling's
+     *  page admitted by the cover rule) because a lockout page is never withheld
+     *  over a look-alike number; the stop itself calls the number out
+     *  (admittedCovers.unlisted). */
+    siblingAsk?: "refuse" | "serve";
     /** Earlier questions of this conversation whose subject is still open
      *  (conversation-subject.ts), NEWEST FIRST. Read only when this question
      *  names no model and no confirmed notebook identity scopes it: the model
@@ -1675,6 +1684,11 @@ export async function retrieveNodeChunks(
        *  path's shadow claim verifier binds rows by this, so a deliberate sibling
        *  question is never flagged against the record's own column. */
       recordNumber?: string | null;
+      /** Garage pilot L8 (Mike 2026-11-12): the notebook is confirmed with a catalog
+       *  number and the question (or an earlier open one) named ANOTHER number of
+       *  that number's family — a different unit. Nothing was retrieved; the reply
+       *  names both numbers and gives no value (named-model-mismatch.ts). */
+      siblingOfRecordAsk?: { asked: string[]; record: string };
     };
   },
 ): Promise<ManualChunk[]> {
@@ -1814,6 +1828,36 @@ export async function retrieveNodeChunks(
     .flatMap((text) => unlistedModelNumbers(text))
     .filter((carried) => !ownNumbers.some((own) => sameModelFamily(own, carried)));
   const carriedLabels = new Set(carriedNumbers.map((n) => n.label));
+  // Mike's ruling 2026-11-12 (garage pilot L8; HARNESS-SPEC.md bar "refuse"): the
+  // notebook is confirmed with a catalog number on record, and this question (or
+  // an earlier open one it follows) names ANOTHER number of that number's family
+  // — the look-alike GS13N-20P2 in a GS11N-20P2 project. That is a different
+  // unit. On staging 5e79ca713 the record was suspended and the sibling's own
+  // column answered (1.9 A, labelled GS13N); the pre-registered bar says a value
+  // from any other model is wrong here. Nothing is retrieved — no lane is
+  // queried — and the reply names both numbers (route.ts, siblingOfRecordAskText).
+  // Judged with the SAME reader the passage exclusion below uses
+  // (manual-applicability.ts modelNumbersIn + sameModelFamily), never a second
+  // rule. A number of another family (a relay part number) and a question that
+  // names only the record's own number pass through unchanged. Judged BEFORE
+  // the two-siblings "which one?" check: a question naming the record's own
+  // number beside a sibling is refused here, not asked which one it meant.
+  const recordText = confirmedCatalogNumber(opts);
+  const recordFamilyNumbers = recordText ? modelNumbersIn(recordText) : [];
+  const siblingAsked = [...modelNumbersIn(ownQuestion), ...modelNumbersIn(carriedModelQuestion ?? ""), ...carriedNumbers].filter((n) =>
+    recordFamilyNumbers.some((own) => own.key !== n.key && sameModelFamily(own, n)),
+  );
+  const asksSiblingOfRecord = Boolean(recordText) && siblingAsked.length > 0;
+  if (asksSiblingOfRecord && opts.siblingAsk !== "serve") {
+    if (opts.diagnostics) {
+      opts.diagnostics.recordNumber = null;
+      opts.diagnostics.siblingOfRecordAsk = {
+        asked: siblingAsked.filter((n, i) => siblingAsked.findIndex((m) => m.key === n.key) === i).map((n) => n.label),
+        record: recordText as string,
+      };
+    }
+    return [];
+  }
 
   const requestedModel = resolveModelFromObservationText(modelQuestion);
   // 2026-10-17 prod-test item 1 (stacked on #4469): the question is not the
@@ -2509,16 +2553,13 @@ export async function retrieveNodeChunks(
   //       of the record's family and not the record's own.
   // A passage naming the record's number beside a sibling, and prose naming no
   // number, are kept. Excluded, never demoted; what was excluded is reported.
-  // The technician may deliberately ask about a sibling ("rated current of the
-  // GS13N-20P2?"), in this question or in the open one it follows: then the
-  // question's number is the subject, the existing cover rule judges it, and
-  // the record's table is not the measure of any passage.
-  const recordText = confirmedCatalogNumber(opts);
-  const recordFamilyNumbers = recordText ? modelNumbersIn(recordText) : [];
-  const asksAnotherOfFamily = [...modelNumbersIn(ownQuestion), ...carriedNumbers].some((n) =>
-    recordFamilyNumbers.some((own) => own.key !== n.key && sameModelFamily(own, n)),
-  );
-  const recordNumber = recordText && !asksAnotherOfFamily ? recordText : null;
+  // A question that names a sibling of the record's family reaches here only on
+  // a safety-stop pass (`siblingAsk: "serve"`, Mike 2026-11-12); the answer pass
+  // refused it above. On that pass the record is suspended: the question's
+  // number is the subject, the cover rule judges it, and the record's table is
+  // not the measure of any passage. `recordText` / `recordFamilyNumbers` were
+  // read above.
+  const recordNumber = recordText && !asksSiblingOfRecord ? recordText : null;
   if (opts.diagnostics) opts.diagnostics.recordNumber = recordNumber;
   const recordKey = recordNumber ? exactModelKey(recordNumber) || null : null;
   const tableModelsOf = (r: Record<string, unknown>): string[] => {

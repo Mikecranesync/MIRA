@@ -166,6 +166,16 @@ export function ambiguousModelAskText(ids: string[]): string {
   return `You mentioned the ${names.join(" and the ")}. They are different models with different fault codes and settings, so I won't guess which one you mean. Which one is it — the ${listed}? Ask again naming just that one and I'll answer from its manual.`;
 }
 
+/** Garage pilot L8 (Mike 2026-11-12): the project is confirmed as one unit by its
+ *  catalog number and the question names a sibling of that number's family. Both
+ *  numbers are named, no value is given, and the wording is one the pilot
+ *  harness's refusal rule reads as a refusal that names the manual. */
+export function siblingOfRecordAskText(d: { asked: string[]; record: string }): string {
+  const asked = d.asked.map((a) => `the ${a}`);
+  const listed = asked.length <= 1 ? asked.join("") : `${asked.slice(0, -1).join(", ")} or ${asked[asked.length - 1]}`;
+  return `This project is set up for the ${d.record}. Your question names ${listed}, which is a different unit, so I can't give its values from this project's manual — the pages here answer for the ${d.record} only. If you are working on ${listed}, open or create a project for that unit and ask there; I'll answer from its manual and show you the page.`;
+}
+
 /** The conversation has run further without an answer from a manual than the
  *  route reads back, and the question names no model. */
 export function subjectOutOfReachText(): string {

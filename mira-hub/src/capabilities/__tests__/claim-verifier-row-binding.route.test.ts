@@ -1,10 +1,12 @@
 /**
  * Garage pilot PR-4, route level: the shadow claim verifier is handed the record
  * number RETRIEVAL scoped by — the post-suspension `diagnostics.recordNumber` —
- * never the raw confirmed catalog number. When the technician deliberately asks
- * about a sibling ("the GS13N-20P2?") retrieval suspends the record and keeps the
- * sibling's column; the shadow must judge that turn without the record too, or
- * every deliberate sibling question becomes a false flag. Same seams as
+ * never the raw confirmed catalog number. (Until Mike's 2026-11-12 ruling a
+ * sibling question — "the GS13N-20P2?" — suspended the record and kept the
+ * sibling's column; retrieval now refuses it, manual-rag.ts siblingOfRecordAsk.
+ * The mocked-retrieval case below still pins the verifier's own contract: a
+ * turn served with `recordNumber: null` is judged without the record, never
+ * flagged against it.) Same seams as
  * citation-source-url.route.test.ts; span attributes read from the real tracer.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";

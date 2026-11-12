@@ -152,16 +152,67 @@ describe("retrieveNodeChunks excludes another model's table passages when the re
     expect(diagnostics.recordNumber).toBeNull();
   });
 
-  it("a question that itself names a sibling of the family is judged by the existing cover rule, not by the record's table", async () => {
-    // The technician may deliberately ask about the sibling. A manual whose cover
-    // lists both numbers answers for the sibling; the record's own column is not
-    // the subject and the sibling's column must not be thrown away.
+  // Mike's ruling 2026-11-12 (pilot harness L8, pre-registered bar "refuse"): a question
+  // in a project with a confirmed catalog number that names ANOTHER number of the
+  // record's family is about a different unit. Nothing is retrieved, the record is not
+  // suspended into answering for the sibling, and the reason is reported so the reply
+  // names both numbers. On staging 5e79ca713 this ask answered GS13N's own 1.9 A / 2.2 A.
+  describe("a question naming a sibling of the record's family is refused, not answered from the sibling's column", () => {
     const heading = "DURApulse GS10 Drive User Manual\nModels covered: GS11N-20P2, GS13N-20P2";
-    const diagnostics: Record<string, unknown> = {};
-    const { client } = makeClient([[{ ...siblingColumn, document_heading: heading }, { ...ownColumn, document_heading: heading }]]);
-    const out = await retrieveNodeChunks(client, "t-1", "What is the rated input current of the GS13N-20P2?", scoped({ diagnostics }));
-    expect(out.map((c) => c.content)).toContain(siblingColumn.content);
-    expect(diagnostics.excludedTables).toBeUndefined();
+    const rows = () => [[{ ...siblingColumn, document_heading: heading }, { ...ownColumn, document_heading: heading }]];
+
+    it("retrieves nothing and reports siblingOfRecordAsk with both numbers; the record is not scoped by", async () => {
+      const diagnostics: Record<string, unknown> = {};
+      const { client, calls } = makeClient(rows());
+      const out = await retrieveNodeChunks(client, "t-1", "What is the rated input current of the GS13N-20P2?", scoped({ diagnostics }));
+      expect(out).toEqual([]);
+      expect(diagnostics.siblingOfRecordAsk).toEqual({ asked: ["GS13N-20P2"], record: "GS11N-20P2" });
+      expect(diagnostics.recordNumber).toBeNull();
+      expect(diagnostics.excludedTables).toBeUndefined();
+      expect(calls.filter((c) => /knowledge_entries/.test(c.sql))).toHaveLength(0);
+    });
+
+    it("a sibling named in an earlier open question carries into this one and is refused the same way", async () => {
+      const diagnostics: Record<string, unknown> = {};
+      const { client } = makeClient(rows());
+      const out = await retrieveNodeChunks(client, "t-1", "and its VT rated current?", scoped({ diagnostics, subjectQueries: ["What is the rated input current of the GS13N-20P2?"] }));
+      expect(out).toEqual([]);
+      expect(diagnostics.siblingOfRecordAsk).toEqual({ asked: ["GS13N-20P2"], record: "GS11N-20P2" });
+    });
+
+    it("a question naming the record's own number beside a sibling is refused too (no other model's value)", async () => {
+      const diagnostics: Record<string, unknown> = {};
+      const { client } = makeClient(rows());
+      const out = await retrieveNodeChunks(client, "t-1", "Is the GS13N-20P2 input current higher than the GS11N-20P2?", scoped({ diagnostics }));
+      expect(out).toEqual([]);
+      expect(diagnostics.siblingOfRecordAsk).toEqual({ asked: ["GS13N-20P2"], record: "GS11N-20P2" });
+    });
+
+    it("control: without a catalog number on record the sibling question is answered as before", async () => {
+      const diagnostics: Record<string, unknown> = {};
+      const { client } = makeClient(rows());
+      const out = await retrieveNodeChunks(client, "t-1", "What is the rated input current of the GS13N-20P2?", scoped({ diagnostics, catalogNumber: null }));
+      expect(out.map((c) => c.content)).toContain(siblingColumn.content);
+      expect(diagnostics.siblingOfRecordAsk).toBeUndefined();
+    });
+
+    it("a safety-stop pass opts out (siblingAsk: \"serve\"): the record is suspended and the sibling's page is served, so a lockout page is never withheld", async () => {
+      const diagnostics: Record<string, unknown> = {};
+      const { client } = makeClient(rows());
+      const out = await retrieveNodeChunks(client, "t-1", "What is the rated input current of the GS13N-20P2?", scoped({ diagnostics, siblingAsk: "serve" }));
+      expect(out.map((c) => c.content)).toContain(siblingColumn.content);
+      expect(diagnostics.siblingOfRecordAsk).toBeUndefined();
+      expect(diagnostics.recordNumber).toBeNull();
+      expect(diagnostics.excludedTables).toBeUndefined();
+    });
+
+    it("control: a number of another family in the question (a relay part) is not this rule's business", async () => {
+      const diagnostics: Record<string, unknown> = {};
+      const { client } = makeClient([[ownColumn, prose]]);
+      const out = await retrieveNodeChunks(client, "t-1", "Does the CA3KN22BD relay need its own supply?", scoped({ diagnostics }));
+      expect(diagnostics.siblingOfRecordAsk).toBeUndefined();
+      expect(out.length).toBeGreaterThan(0);
+    });
   });
 
   // These two run last on purpose: the scripted mock hands its one row set to whichever lane
