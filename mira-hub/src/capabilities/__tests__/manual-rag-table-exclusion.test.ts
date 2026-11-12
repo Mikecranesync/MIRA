@@ -279,6 +279,29 @@ describe("retrieveNodeChunks excludes another model's table passages when the re
       expect(diagnostics.siblingOfRecordAsk).toEqual({ asked: ["CA3KN22BD3"], record: "CA3KN22BD" });
       expect(calls.filter((c) => /knowledge_entries/.test(c.sql))).toHaveLength(0);
     });
+    // Codex r6 on #5451: the one rule left — collapsing a shorter identity-read number into a
+    // longer one as its "root" — also collapsed a separately named complete number (GS11N-20P2
+    // beside record GS11N-20P2A; 6AV2124-0GC01-0AX beside 6AV2124-0GC01-0AX0), both variant
+    // siblings. No rule remains: a bare family root (GS11N) pairs with no full number under
+    // sameModelFamily, so keeping it costs nothing, and every complete number is kept whole.
+    const variantCover = "DURApulse GS10 Drive User Manual\nModels covered: GS11N-20P2, GS11N-20P2A";
+    it("a shorter identity-read number named beside its longer variant (GS11N-20P2 beside the record GS11N-20P2A) is refused", async () => {
+      const diagnostics: Record<string, unknown> = {};
+      const { client, calls } = makeClient([[{ ...base, table_models: ["GS11N20P2A"], document_heading: variantCover, content: "GS11N-20P2A: Supply voltage 24 V DC\n" }]]);
+      const out = await retrieveNodeChunks(client, "t-1", "What supply voltage does GS11N-20P2 need when paired with GS11N-20P2A?", scoped({ diagnostics, catalogNumber: "GS11N-20P2A" }));
+      expect(out).toEqual([]);
+      expect(diagnostics.siblingOfRecordAsk).toEqual({ asked: ["GS11N-20P2"], record: "GS11N-20P2A" });
+      expect(calls.filter((c) => /knowledge_entries/.test(c.sql))).toHaveLength(0);
+    });
+    it("the same with identity-read Siemens order numbers (6AV2124-0GC01-0AX beside the record 6AV2124-0GC01-0AX0)", async () => {
+      const cover = "SIMATIC HMI TP700 Comfort 6AV2124-0GC01-0AX0 6AV2124-0GC01-0AX Operating Instructions";
+      const diagnostics: Record<string, unknown> = {};
+      const { client, calls } = makeClient([[{ ...base, source_page: 9, page_start: 9, table_models: ["6AV21240GC010AX0"], document_heading: cover, content: "6AV2124-0GC01-0AX0: Supply voltage 24 V DC\n" }]]);
+      const out = await retrieveNodeChunks(client, "t-1", "What supply voltage does 6AV2124-0GC01-0AX need when paired with 6AV2124-0GC01-0AX0?", scoped({ diagnostics, catalogNumber: "6AV2124-0GC01-0AX0" }));
+      expect(out).toEqual([]);
+      expect(diagnostics.siblingOfRecordAsk).toEqual({ asked: ["6AV2124-0GC01-0AX"], record: "6AV2124-0GC01-0AX0" });
+      expect(calls.filter((c) => /knowledge_entries/.test(c.sql))).toHaveLength(0);
+    });
     // The space the five Codex rounds walked one cell at a time, as one matrix: every spelling of
     // the record × every spelling of the sibling ask refuses, and every spelling of the record's
     // own number is served.

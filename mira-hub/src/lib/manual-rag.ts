@@ -3,7 +3,7 @@ import { citationPageLabel } from "@/lib/citation-page";
 import type { IdentityStatus } from "@/lib/equipment-notebooks";
 import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
-import { FAMILY_ROOTS, MODEL_PATTERNS, ROCKWELL, familyCovers, modelIdentitiesInText, resolveModelFromObservationText } from "@/capabilities/model-token";
+import { FAMILY_ROOTS, MODEL_PATTERNS, ROCKWELL, type ModelMention, familyCovers, modelIdentitiesInText, modelMentionsInText, resolveModelFromObservationText } from "@/capabilities/model-token";
 import { ambiguousSiblingModels } from "@/capabilities/named-model-mismatch";
 import {
   coverDeclaredNumbers,
@@ -1852,20 +1852,30 @@ export async function retrieveNodeChunks(
   // (a bare family root read beside its full number — GS11N beside GS11N-20P2 — is not a number
   // of its own and is dropped); otherwise the generic reader (a relay part, a parameter code).
   const catalogNumbersIn = (text: string): ModelNumber[] => {
-    // Two reviewed readers joined by one bounded rule. The identity reader's numbers (it joins a
-    // spaced "GS11N - 20P2" that the generic reader would split) plus unlistedModelNumbers, which
-    // blanks each identity OCCURRENCE out of the text before reading the rest generically — so the
-    // split halves of a spaced number cannot survive, while a catalog number the identity reader
-    // left beside a product name (Micro820 2080-LC20-20QWB) and a separately named prefix sibling
-    // (CA3KN22BD beside CA3KN22BD3) are both kept whole. A fragment is a property of one
-    // occurrence, never of the text (Codex r5 on #5451): the only pair ever collapsed is the
-    // identity reader's own root beside its full number (GS11N from GS11N-20P2), and that root can
-    // never be a sibling of anything by sameModelFamily's rules (layout differs, tail > 2), so the
-    // collapse cannot cost a refusal.
-    const fromIdentities = [...modelIdentitiesInText(text)].flatMap((id) => modelNumbersIn(id));
-    const wholeIdentities = fromIdentities.filter((n) => !fromIdentities.some((m) => m.key !== n.key && m.key.startsWith(n.key)));
+    // Two reviewed readers. The identity reader's numbers (it joins a spaced "GS11N - 20P2" that
+    // the generic reader would split) plus unlistedModelNumbers, which blanks each identity
+    // OCCURRENCE out of the text before reading the rest generically — so the split halves of a
+    // spaced number cannot survive, while a catalog number the identity reader left beside a
+    // product name (Micro820 2080-LC20-20QWB) and a separately named prefix sibling (CA3KN22BD
+    // beside CA3KN22BD3, GS11N-20P2 beside GS11N-20P2A) are kept whole. The identity reader also
+    // reads the bare family root of a catalog number (GS11N from GS11N-20P2), and a root pairs
+    // with another root (GS11N with GS13N) though with no full number — so a root is set aside,
+    // but only by its OCCURRENCE: a span-reader mention whose every occurrence continues into a
+    // longer identity read from that same position. Nothing compares one number against another
+    // elsewhere in the text (Codex r3–r6 on #5451: every rule that did — text-wide prefix,
+    // text-wide substring, identity-only prefix — dropped some separately named sibling).
+    const identities = [...modelIdentitiesInText(text)];
+    const continuesIntoLonger = (m: ModelMention) =>
+      identities.some((id) => id !== m.id && id.startsWith(m.id) && text.slice(m.start).replace(/\s+/g, "").toUpperCase().startsWith(id));
+    const mentions = modelMentionsInText(text);
+    const rootsOfLonger = new Set(
+      mentions.filter((m) => mentions.filter((o) => o.id === m.id).every(continuesIntoLonger)).map((m) => m.id),
+    );
     const seen = new Set<string>();
-    return [...wholeIdentities, ...unlistedModelNumbers(text)].filter((n) => (seen.has(n.key) ? false : (seen.add(n.key), true)));
+    return [
+      ...identities.filter((id) => !rootsOfLonger.has(id)).flatMap((id) => modelNumbersIn(id)),
+      ...unlistedModelNumbers(text),
+    ].filter((n) => (seen.has(n.key) ? false : (seen.add(n.key), true)));
   };
   const recordFamilyNumbers = recordText ? catalogNumbersIn(recordText) : [];
   const siblingAsked = [...catalogNumbersIn(ownQuestion), ...catalogNumbersIn(carriedModelQuestion ?? ""), ...carriedNumbers].filter((n) =>
