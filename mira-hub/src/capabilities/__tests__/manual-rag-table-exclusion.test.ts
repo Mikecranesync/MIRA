@@ -84,6 +84,12 @@ describe("retrieveNodeChunks excludes another model's table passages when the re
     expect(diagnostics.excludedTables).toEqual([{ page: 27, models: ["GS13N20P2"] }]);
   });
 
+  it("the kept chunks carry their table tag as exact keys, so the answer path's shadow verifier can bind by row (PR-4)", async () => {
+    const { client } = makeClient([[ownColumn, prose]]);
+    const out = await retrieveNodeChunks(client, "t-1", "What is its rated input current?", scoped());
+    expect(out.map((c) => c.tableModels)).toEqual([["GS11N20P2"], []]);
+  });
+
   it("drops an untagged flat passage that names only sibling numbers of the family", async () => {
     const { client } = makeClient([[flatSiblingTable, ownColumn]]);
     const out = await retrieveNodeChunks(client, "t-1", "What is its rated input current?", scoped());

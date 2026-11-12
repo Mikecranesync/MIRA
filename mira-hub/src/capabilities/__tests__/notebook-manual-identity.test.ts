@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { notebookManualIdentity } from "../notebook-manual-identity";
+import { confirmedCatalogNumber, notebookManualIdentity } from "../notebook-manual-identity";
 
 const blank = { manufacturer: null, model: null, catalogNumber: null, identityStatus: "unknown" as const };
 const boundPlc = { state: "resolved" as const, confirmedAt: "2026-11-10T07:40:00.000Z", manufacturer: "Allen-Bradley", model: "2080-LC20-20QBB" };
@@ -88,5 +88,29 @@ describe("garage pilot M4 — a bound machine's catalog number reaches the manua
   it("control: the notebook's own confirmed number still wins over the machine's", () => {
     const own = { manufacturer: "AutomationDirect", model: "GS11N", catalogNumber: "GS11N-20P5", identityStatus: "user_confirmed" as const };
     expect(notebookManualIdentity(own, boundDrive).catalogNumber).toBe("GS11N-20P5");
+  });
+});
+
+describe("garage pilot PR-4 — the ONE definition of 'the record's number' (retrieval exclusion and the shadow verifier)", () => {
+  // retrieveNodeChunks excludes other models' table chunks, and the claim verifier binds
+  // quantities by row, on the same number: a confirmed identity's trimmed catalog number.
+  it.each([
+    ["user_confirmed", "user_confirmed" as const],
+    ["verified", "verified" as const],
+  ])("a %s identity's catalog number is the record's number, trimmed", (_s, identityStatus) => {
+    expect(confirmedCatalogNumber({ catalogNumber: " GS11N-20P2 ", identityStatus })).toBe("GS11N-20P2");
+  });
+
+  it.each([
+    ["candidate", "candidate" as const],
+    ["unknown", "unknown" as const],
+    ["null", null],
+  ])("an identity nobody confirmed (%s) has no record number", (_s, identityStatus) => {
+    expect(confirmedCatalogNumber({ catalogNumber: "GS11N-20P2", identityStatus })).toBeNull();
+  });
+
+  it("a blank or missing number is no number", () => {
+    expect(confirmedCatalogNumber({ catalogNumber: "   ", identityStatus: "user_confirmed" })).toBeNull();
+    expect(confirmedCatalogNumber({ identityStatus: "user_confirmed" })).toBeNull();
   });
 });

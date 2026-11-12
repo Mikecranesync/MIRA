@@ -43,6 +43,16 @@ const confirmed = (status: IdentityStatus | null | undefined) => status === "use
 const text = (value: string | null | undefined) => value?.trim() || null;
 
 /**
+ * The record's number — the ONE definition shared by retrieval's sibling-table exclusion
+ * (manual-rag.ts `retrieveNodeChunks`) and the answer path's shadow claim verifier
+ * (claim-verifier-shadow.ts), so "the record" means the same thing in both: a confirmed
+ * identity's trimmed catalog number, else null (garage pilot PR-2 / PR-4).
+ */
+export function confirmedCatalogNumber(identity: { catalogNumber?: string | null; identityStatus?: IdentityStatus | null }): string | null {
+  return confirmed(identity.identityStatus) ? text(identity.catalogNumber) : null;
+}
+
+/**
  * The notebook's own confirmed identity wins. Otherwise a CONFIRMED bound
  * machine that has a model or a catalog number on record supplies them (the
  * same predicate the notebook's own identity uses). Otherwise the notebook's

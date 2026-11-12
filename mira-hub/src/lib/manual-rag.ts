@@ -23,6 +23,7 @@ import {
 } from "@/capabilities/manual-applicability";
 import { type PhotoDocumentKind, photoDocumentShape, productWrittenBody } from "@/capabilities/photo-document-text";
 import { exactModelKey } from "@/capabilities/table-rows";
+import { confirmedCatalogNumber } from "@/capabilities/notebook-manual-identity";
 import { embedQueryDetailed, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
 import { setSpanAttrs } from "@/capabilities/observability/tracing";
 import { extractManualSafetyStatement } from "@/capabilities/manual-safety-statement";
@@ -102,6 +103,12 @@ export interface ManualChunk {
    * a real page (e.g. node `page_start`) leave it null and always render the page.
    */
   chunkIndex?: number | null;
+  /**
+   * Garage pilot PR-1/PR-4: the exact keys (`exactModelKey`) of the models a stored table chunk is
+   * about (`metadata.table_models`), empty for prose. Node path only; the answer path's shadow claim
+   * verifier binds a quantity by the record's own row with it.
+   */
+  tableModels?: string[];
   title: string;
   rank: number;
   /**
@@ -2499,7 +2506,7 @@ export async function retrieveNodeChunks(
   // GS13N-20P2?"), in this question or in the open one it follows: then the
   // question's number is the subject, the existing cover rule judges it, and
   // the record's table is not the measure of any passage.
-  const recordText = identityConfirmed ? opts.catalogNumber?.trim() || null : null;
+  const recordText = confirmedCatalogNumber(opts);
   const recordFamilyNumbers = recordText ? modelNumbersIn(recordText) : [];
   const asksAnotherOfFamily = [...modelNumbersIn(ownQuestion), ...carriedNumbers].some((n) =>
     recordFamilyNumbers.some((own) => own.key !== n.key && sameModelFamily(own, n)),
@@ -3164,6 +3171,7 @@ export async function retrieveNodeChunks(
     title: String(r.filename ?? r.section_path ?? "Attached document"),
     rank: Number(r.rank ?? 0),
     verified: r.verified === true,
+    tableModels: tableModelsOf(r),
   }));
 }
 

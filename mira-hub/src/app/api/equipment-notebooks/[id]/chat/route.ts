@@ -142,7 +142,7 @@ import {
 } from "@/capabilities/energized-work-stop";
 import { ambiguousModelAskText, libraryNotForAskedModelText, namedModelMismatchText, subjectOutOfReachText, type NamedModelMismatch } from "@/capabilities/named-model-mismatch";
 import { readSubject, SUBJECT_READ_STEPS } from "@/capabilities/conversation-subject";
-import { notebookManualIdentity } from "@/capabilities/notebook-manual-identity";
+import { confirmedCatalogNumber, notebookManualIdentity } from "@/capabilities/notebook-manual-identity";
 import {
   excludedTablesRefusalText,
   otherProductRefusalText,
@@ -5427,6 +5427,8 @@ async function handleChatTurn(
                 answer: answerText,
                 citationIds: emittedCitations.map((c) => c.citationId),
                 chunks,
+                // Garage pilot PR-4: the same record number retrieval's sibling-table exclusion used.
+                recordCatalogNumber: confirmedCatalogNumber(manualIdentity),
               })
             : null;
         if (claimShadow) setSpanAttrs(claimShadow, finalAnswerGateSpan);
