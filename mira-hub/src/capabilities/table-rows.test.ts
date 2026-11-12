@@ -50,6 +50,11 @@
  *    two title lines directly above the header, ≤ 40 pt), then one line per row
  *    `<MODEL>: <label> <value>[ <unit>]`. The chunk never names another header model. One extra
  *    chunk carries the unqualified lines, tagged with ALL the block's models and `unqualified`.
+ *  - Model-keyed table (#5450, GS10 p.394): a run of ≥ 3 lines each with exactly one identifier
+ *    cell as its leftmost item at one shared x (± 6 pt) beside ≥ 1 number-shaped value, starting
+ *    beneath a line with no identifier cell, is ONE unqualified chunk (its tight header band
+ *    included, caption = the band's first line) tagged with every model of the run. No row is ever
+ *    emitted from it: cells merged down a group of models cannot be bounded from positions.
  *  - Pure and deterministic; zero tokens.
  */
 import { describe, expect, it } from "vitest";
@@ -68,6 +73,7 @@ import gs10p27 from "./__fixtures__/table-rows/gs10-p27-230v-3ph.json";
 import micro820p15 from "./__fixtures__/table-rows/micro820-in009-p15.json";
 import micro820p16 from "./__fixtures__/table-rows/micro820-in009-p16.json";
 import relayP1 from "./__fixtures__/table-rows/ca3kn22bd-p1.json";
+import gs10p394 from "./__fixtures__/table-rows/gs10-p394-cable-length.json";
 
 const items = (f: { items: LayoutItem[] }): LayoutItem[] => f.items;
 
@@ -520,5 +526,99 @@ describe("prose", () => {
     ];
     expect(detectModelTables(prose)).toEqual([]);
     expect(pageWithTables(prose)).toBeNull();
+  });
+});
+
+/**
+ * #5450 — the GS10 manual's Appendix A cable-length table (PDF p.394) is a MODEL-KEYED table:
+ * one model per line in a left column (`GS11N-10P2` … `GS13N-4010`, 22 of them), attributes as
+ * columns ("VT Rated Current (Arms)", cable lengths), with the Ø / Volts cells merged across
+ * groups of rows. No header line carries ≥ 2 model cells, so `detectModelTables` never fires and
+ * the page stored FLAT — `GS11N-20P2 230 1.8` beside "VT Rated Current (Arms)" with no row
+ * qualification — and on staging build 5e79ca713 that flat text answered "rated input current"
+ * with the 1.8 A OUTPUT current (harness L3 wording 2, ask 7 of 10).
+ *
+ * Contract (fail closed, no invented cells): a run of ≥ 3 lines, each carrying exactly one
+ * identifier cell at one shared x with only number-shaped values beside it (interior lines of
+ * bare numbers — the merged Ø marks — allowed), together with its header band directly above,
+ * is ONE unqualified chunk tagged with every model of the run. The vertically merged cells cannot
+ * be bounded from text positions alone, so no value is attributed to any model; the existing
+ * exclusion (manual-rag.ts `isUnresolvedTableLine`) then withholds the chunk from a record that
+ * holds a catalog number and reports the page as unresolved instead of letting a flat line answer.
+ */
+describe("a model-keyed (one model per line) table is stored as one unqualified chunk, never flat (#5450)", () => {
+  const p394Models = [
+    "GS11N-10P2", "GS11N-10P5", "GS11N-11P0", "GS11N-20P2", "GS11N-20P5", "GS11N-21P0", "GS11N-22P0", "GS11N-23P0",
+    "GS13N-20P2", "GS13N-20P5", "GS13N-21P0", "GS13N-22P0", "GS13N-23P0", "GS13N-25P0", "GS13N-27P5",
+    "GS13N-40P5", "GS13N-41P0", "GS13N-42P0", "GS13N-43P0", "GS13N-45P0", "GS13N-47P5", "GS13N-4010",
+  ];
+
+  it("recognises the p.394 cable-length table and stores every line of it as unqualified text tagged with all 22 models", () => {
+    const page = pageWithTables(items(gs10p394));
+    expect(page).not.toBeNull();
+    expect(page!.chunks.length).toBeGreaterThan(0);
+    for (const c of page!.chunks) {
+      expect(c.unqualified).toBe(true);
+      expect([...c.models].sort()).toEqual(p394Models.map(exactModelKey).sort());
+    }
+    const text = page!.chunks.map((c) => c.text).join("");
+    expect(text).toMatch(/Maximum Recommended Cable Length - GS10/);
+    expect(text).toMatch(/VT Rated/);
+    expect(text).toMatch(/GS11N-20P2/);
+    expect(text).toMatch(/\b1\.8\b/);
+    expect(text).toMatch(/GS13N-4010/);
+  });
+
+  it("never emits a per-model row from it — no value is attributed to a model whose cell may be merged", () => {
+    const page = pageWithTables(items(gs10p394))!;
+    expect(page.chunks.every((c) => c.unqualified)).toBe(true);
+    expect(page.chunks.some((c) => c.models.length === 1)).toBe(false);
+    expect(detectModelTables(items(gs10p394))).toEqual([]);
+  });
+
+  it("keeps the page's other text (section title, footer) in the remainder and drops every table line from it", () => {
+    const page = pageWithTables(items(gs10p394))!;
+    expect(page.remainder).toMatch(/Appendix A: Accessories/);
+    expect(page.remainder).toMatch(/Page A–15/);
+    expect(page.remainder).not.toMatch(/GS11N-20P2/);
+    expect(page.remainder).not.toMatch(/Maximum Recommended Cable Length/);
+  });
+
+  it("does not fire on the header-row tables or the relay sheet (do-not-regress controls: same output as before)", () => {
+    // Before this detector: relay → null; Micro820 p.15 → null at the page level (its block is
+    // all-merged rows under `pageWithTables`'s filter; the grid tests above read it through
+    // `detectModelTables`); p.26 / p.27 / Micro820 p.16 → per-model chunks. All unchanged.
+    expect(pageWithTables(items(relayP1))).toBeNull();
+    expect(pageWithTables(items(micro820p15))).toBeNull();
+    for (const f of [gs10p26, gs10p27, micro820p16]) {
+      const page = pageWithTables(items(f))!;
+      expect(page.chunks.some((c) => !c.unqualified)).toBe(true);
+      expect(page.chunks.every((c) => c.models.length === 1 || c.unqualified)).toBe(true);
+    }
+  });
+
+  it("does not fire on an identifier column that continues out of an unreadable table (GS10 p.227: P06.17–P06.22 with fault-code cells, then P06.63–P06.70 with numeric cells)", () => {
+    // A key column starts beneath its header band. On p.227 the numeric P06.63… lines sit directly
+    // under identifier lines whose cells are fault codes (not number-shaped), i.e. they are the
+    // tail of one worked-example table the reader cannot qualify — leave the page flat rather than
+    // tag parameter numbers as "models" and withhold the example from every drive record.
+    const line = (y: number, cells: string[]): LayoutItem[] => cells.map((str, i) => ({ str, x: 134 + i * 56, y, w: 20, size: 8 }));
+    const page = [
+      ...line(324, ["Parameter", "1st fault", "2nd fault", "3rd fault"]),
+      ...line(310, ["P06.17", "ocA", "ocd", "ocn"]),
+      ...line(296, ["P06.18", "0", "ocA", "ocd"]),
+      ...line(281, ["P06.19", "0", "0", "ocA"]),
+      ...line(225, ["P06.63", "1000", "560", "120"]),
+      ...line(210, ["P06.64", "0", "1", "2"]),
+      ...line(196, ["P06.65", "0", "1000", "560"]),
+      ...line(182, ["P06.66", "0", "0", "1"]),
+    ];
+    expect(pageWithTables(page)).toBeNull();
+    // Control: the same numeric run under a header band with no identifier cell IS a model-keyed table.
+    const keyed = [...line(324, ["Parameter", "1st fault", "2nd fault", "3rd fault"]), ...page.filter((it) => it.y <= 225)];
+    const out = pageWithTables(keyed);
+    expect(out).not.toBeNull();
+    expect(out!.chunks.every((c) => c.unqualified)).toBe(true);
+    expect(out!.chunks[0].models).toEqual(["P0663", "P0664", "P0665", "P0666"]);
   });
 });
