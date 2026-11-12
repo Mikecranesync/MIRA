@@ -278,7 +278,7 @@ describe("reprocessNodeDocument — one transaction, delete then insert, then th
 });
 
 describe("reprocessNodeDocument — where the bytes come from", () => {
-  it("the parked original (namespace_direct_uploads by file_id) is used when the upload has one, with no local file", async () => {
+  it("the parked original (namespace_direct_uploads by file_id) is used when the upload has one, with no local file; no recorded hash → the system's own copy is used unchecked", async () => {
     db.upload = uploadRow({ file_id: FILE, content_sha256: null });
     db.parked = LOCAL_PDF;
     const r = await reprocess();
@@ -286,6 +286,25 @@ describe("reprocessNodeDocument — where the bytes come from", () => {
     const read = db.stmts.find((s) => /FROM namespace_direct_uploads/.test(s.sql))!;
     expect(read).toBeDefined();
     expect(read.params).toEqual([FILE, TENANT]);
+  });
+
+  // Cheap review of PR-6 (#5427 r3; #5432): the parked copy is proven against the recorded
+  // hash before the swap, exactly as a local file is — a stale or corrupted parked row must
+  // never replace the stored chunks.
+  it("parked bytes whose sha256 differs from the upload's recorded hash → refused sha_mismatch; nothing deleted or inserted", async () => {
+    db.upload = uploadRow({ file_id: FILE }); // content_sha256 = LOCAL_SHA
+    db.parked = Buffer.from("%PDF-1.4 a stale parked copy");
+    const r = await reprocess();
+    expect(r).toEqual({ action: "refused", reason: "sha_mismatch" });
+    expect(seq().filter((s) => /BEGIN|DELETE FROM knowledge_entries|INSERT INTO knowledge_entries/.test(s))).toEqual([]);
+    expect(uploads.updateUploadStatus).not.toHaveBeenCalled();
+  });
+
+  it("control: parked bytes whose sha256 equals the recorded hash are reprocessed", async () => {
+    db.upload = uploadRow({ file_id: FILE }); // content_sha256 = LOCAL_SHA
+    db.parked = LOCAL_PDF;
+    const r = await reprocess();
+    expect(r.action).toBe("reprocessed");
   });
 
   it("a local PDF is accepted only when its sha256 equals the upload's recorded hash", async () => {
