@@ -236,6 +236,18 @@ describe("reprocessNodeDocument — one transaction, delete then insert, then th
     expect(db.stmts.some((s) => /^DELETE|^INSERT|^BEGIN/.test(sqlOf(s)))).toBe(false);
   });
 
+  // Codex #5429 r1 F2: the write above must not happen in a dry run — a plan/no-op preview
+  // writes nothing (see `opts.dryRun` elsewhere in this function). The repair is reported as
+  // pending instead, so the script's dry-run output can mention it without touching the row.
+  it("a no-op dry run reports a pending count repair but writes nothing", async () => {
+    db.versionRow = { n: 12, current: 12, unstamped: 0, min_version: 2 };
+    db.upload = uploadRow({ kb_chunk_count: 7 });
+    const r = await reprocess({ dryRun: true });
+    expect(r).toEqual({ action: "noop", version: 2, chunkCount: 12, countRepairPending: true });
+    expect(uploads.updateUploadStatus).not.toHaveBeenCalled();
+    expect(db.stmts.some((s) => /^DELETE|^INSERT|^BEGIN/.test(sqlOf(s)))).toBe(false);
+  });
+
   it("control: a no-op whose count already matches writes nothing", async () => {
     db.versionRow = { n: 12, current: 12, unstamped: 0, min_version: 2 };
     db.upload = uploadRow({ kb_chunk_count: 12 });

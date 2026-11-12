@@ -75,7 +75,11 @@ async function main(): Promise<void> {
       process.exitCode = 2;
       break;
     case "noop":
-      console.log(`NOOP: all ${result.chunkCount} chunks already at v${result.version} (pass --force to recompute anyway)`);
+      console.log(
+        `NOOP: all ${result.chunkCount} chunks already at v${result.version} (pass --force to recompute anyway)${
+          result.countRepairPending ? " — kb_chunk_count is stale; re-run with --apply to repair it" : ""
+        }`,
+      );
       break;
     case "plan":
       console.log(

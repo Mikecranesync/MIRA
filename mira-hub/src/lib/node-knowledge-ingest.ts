@@ -986,6 +986,9 @@ export type ReprocessResult =
       /** The upload's `kb_chunk_count` disagreed with the stored rows (a status write after an earlier
        *  COMMIT failed) and was repaired with the write that step would have made. */
       countRepaired?: true;
+      /** Same disagreement, but `opts.dryRun` was set: nothing was written (a dry run writes
+       *  nothing — Codex #5429 r1 F2) and the repair is still owed on a real run. */
+      countRepairPending?: true;
     }
   /** The document could not be proven re-readable: nothing touched, the reason named. */
   | { action: "refused"; reason: ReprocessRefusal }
@@ -1103,7 +1106,11 @@ export async function reprocessNodeDocument(opts: {
   if (allCurrent && !opts.force) {
     // The count is written after COMMIT (below). If that write failed on an earlier run the rows
     // are current and the retry lands here — make the write it would have made, nothing else.
+    // A dry run writes nothing (Codex #5429 r1 F2): report the repair as pending instead.
     if (Number(upload.kb_chunk_count ?? -1) !== n) {
+      if (opts.dryRun) {
+        return { action: "noop", version: EXTRACTION_VERSION, chunkCount: n, countRepairPending: true };
+      }
       await updateUploadStatus(uploadId, tenantId, "parsed", null, { kbChunkCount: n });
       console.info(`[node-ingest] reprocess noop doc=${uploadId}: repaired kb_chunk_count ${upload.kb_chunk_count ?? "null"}→${n}`);
       return { action: "noop", version: EXTRACTION_VERSION, chunkCount: n, countRepaired: true };
