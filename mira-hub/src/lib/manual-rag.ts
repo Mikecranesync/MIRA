@@ -1852,15 +1852,20 @@ export async function retrieveNodeChunks(
   // (a bare family root read beside its full number — GS11N beside GS11N-20P2 — is not a number
   // of its own and is dropped); otherwise the generic reader (a relay part, a parameter code).
   const catalogNumbersIn = (text: string): ModelNumber[] => {
-    // Both readers, united: the identity reader joins a spaced "GS11N - 20P2" that the generic
-    // reader splits, and the generic reader keeps a catalog number the identity reader leaves out
-    // when a product name (Micro820) stands beside it. A number that is a fragment of a longer
-    // number read from the same text (the bare root GS11N beside GS11N-20P2, the half 20P2 of the
-    // spaced form) is dropped; every other number stays.
-    const read = [...[...modelIdentitiesInText(text)].flatMap((id) => modelNumbersIn(id)), ...modelNumbersIn(text)];
+    // Two reviewed readers joined by one bounded rule. The identity reader's numbers (it joins a
+    // spaced "GS11N - 20P2" that the generic reader would split) plus unlistedModelNumbers, which
+    // blanks each identity OCCURRENCE out of the text before reading the rest generically — so the
+    // split halves of a spaced number cannot survive, while a catalog number the identity reader
+    // left beside a product name (Micro820 2080-LC20-20QWB) and a separately named prefix sibling
+    // (CA3KN22BD beside CA3KN22BD3) are both kept whole. A fragment is a property of one
+    // occurrence, never of the text (Codex r5 on #5451): the only pair ever collapsed is the
+    // identity reader's own root beside its full number (GS11N from GS11N-20P2), and that root can
+    // never be a sibling of anything by sameModelFamily's rules (layout differs, tail > 2), so the
+    // collapse cannot cost a refusal.
+    const fromIdentities = [...modelIdentitiesInText(text)].flatMap((id) => modelNumbersIn(id));
+    const wholeIdentities = fromIdentities.filter((n) => !fromIdentities.some((m) => m.key !== n.key && m.key.startsWith(n.key)));
     const seen = new Set<string>();
-    const unique = read.filter((n) => (seen.has(n.key) ? false : (seen.add(n.key), true)));
-    return unique.filter((n) => !unique.some((m) => m.key !== n.key && m.key.includes(n.key)));
+    return [...wholeIdentities, ...unlistedModelNumbers(text)].filter((n) => (seen.has(n.key) ? false : (seen.add(n.key), true)));
   };
   const recordFamilyNumbers = recordText ? catalogNumbersIn(recordText) : [];
   const siblingAsked = [...catalogNumbersIn(ownQuestion), ...catalogNumbersIn(carriedModelQuestion ?? ""), ...carriedNumbers].filter((n) =>

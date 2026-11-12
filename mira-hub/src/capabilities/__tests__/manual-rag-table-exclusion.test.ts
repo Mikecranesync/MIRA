@@ -253,6 +253,53 @@ describe("retrieveNodeChunks excludes another model's table passages when the re
       expect(calls.filter((c) => /knowledge_entries/.test(c.sql))).toHaveLength(0);
     });
 
+    // Codex r5 on #5451 (F5, MEDIUM): the fragment rule compared keys across the whole text, so a
+    // separately named CA3KN22BD (a prefix of the record CA3KN22BD3, and a variant sibling by the
+    // reader's own rule) was dropped and the record's voltage row answered for the other unit.
+    // Fragments belong to one occurrence: the identity reader's own root/full pair is the only
+    // pair this reader ever collapses; every other number the text names is kept whole.
+    const relayCover = "TeSys K CA3KN Control Relays CA3KN22BD CA3KN22BD3 Instruction Sheet";
+    const relayRow = (model: string, volts: string) => ({
+      ...base, source_page: 2, page_start: 2, table_models: [model], document_heading: relayCover,
+      content: `${model}: Supply voltage ${volts} V DC\n`,
+    });
+    it("a separately named prefix sibling (CA3KN22BD beside the record CA3KN22BD3) is refused, not dropped as a fragment", async () => {
+      const diagnostics: Record<string, unknown> = {};
+      const { client, calls } = makeClient([[relayRow("CA3KN22BD3", "24")]]);
+      const out = await retrieveNodeChunks(client, "t-1", "What supply voltage does CA3KN22BD need when paired with CA3KN22BD3?", scoped({ diagnostics, catalogNumber: "CA3KN22BD3" }));
+      expect(out).toEqual([]);
+      expect(diagnostics.siblingOfRecordAsk).toEqual({ asked: ["CA3KN22BD"], record: "CA3KN22BD3" });
+      expect(calls.filter((c) => /knowledge_entries/.test(c.sql))).toHaveLength(0);
+    });
+    it("the mirror: a longer sibling (CA3KN22BD3) named beside the record CA3KN22BD is refused too", async () => {
+      const diagnostics: Record<string, unknown> = {};
+      const { client, calls } = makeClient([[relayRow("CA3KN22BD", "24")]]);
+      const out = await retrieveNodeChunks(client, "t-1", "What supply voltage does CA3KN22BD3 need when paired with CA3KN22BD?", scoped({ diagnostics, catalogNumber: "CA3KN22BD" }));
+      expect(out).toEqual([]);
+      expect(diagnostics.siblingOfRecordAsk).toEqual({ asked: ["CA3KN22BD3"], record: "CA3KN22BD" });
+      expect(calls.filter((c) => /knowledge_entries/.test(c.sql))).toHaveLength(0);
+    });
+    // The space the five Codex rounds walked one cell at a time, as one matrix: every spelling of
+    // the record × every spelling of the sibling ask refuses, and every spelling of the record's
+    // own number is served.
+    const recordSpellings = ["GS11N-20P2", "GS11N - 20P2", "GS11N20P2"];
+    const siblingSpellings = ["GS13N-20P2", "GS13N - 20P2", "GS13N20P2", "GS11N-20P5", "GS11N - 20P5", "GS11N20P5"];
+    it.each(recordSpellings.flatMap((r) => siblingSpellings.map((q) => [r, q])))("record %j × sibling ask %j refuses", async (record, sibling) => {
+      const diagnostics: Record<string, unknown> = {};
+      const { client, calls } = makeClient([[ownColumn]]);
+      const out = await retrieveNodeChunks(client, "t-1", `What is the rated input current of ${sibling}?`, scoped({ diagnostics, catalogNumber: record }));
+      expect(out).toEqual([]);
+      expect(diagnostics.siblingOfRecordAsk).toMatchObject({ record });
+      expect(calls.filter((c) => /knowledge_entries/.test(c.sql))).toHaveLength(0);
+    });
+    it.each(recordSpellings.flatMap((r) => recordSpellings.map((q) => [r, q])))("record %j × own-number ask %j is served", async (record, own) => {
+      const diagnostics: Record<string, unknown> = {};
+      const { client } = makeClient([[ownColumn]]);
+      const out = await retrieveNodeChunks(client, "t-1", `What is the rated input current of ${own}?`, scoped({ diagnostics, catalogNumber: record }));
+      expect(diagnostics.siblingOfRecordAsk).toBeUndefined();
+      expect(out.map((c) => c.content)).toEqual([ownColumn.content]);
+    });
+
     it("control: after a refused sibling ask, a question naming the record's OWN number is served (the carry stops at a named model)", async () => {
       // The refused turn stays in the open run (conversation-subject.ts closes a run only on an
       // answered document-based turn), so a bare follow-up would still carry GS13N. A question
