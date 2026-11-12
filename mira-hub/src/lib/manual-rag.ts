@@ -45,6 +45,7 @@ import {
   identityTokens,
   type EquipmentIdentity,
   prioritizeCurrentCodeEvidence,
+  leadWithRecordRows,
   rerankChunks,
   classifyBroad,
   classifyIntent,
@@ -3119,7 +3120,35 @@ export async function retrieveNodeChunks(
     opts.diagnostics.rerankMs = rerankMs;
     opts.diagnostics.searchPath = searchPath;
   }
-  const rerankedAll = prioritizeCurrentCodeEvidence(modelRanked, expanded.currentCodeTokens);
+  // #5449 (garage pilot L4 / L14): the record's own table rows reach the pool through the
+  // catalog-number exact lane at rank 0, and the rerank — scoring the question's words — cut
+  // them behind prose when the row label did not carry those words ("supply voltage" never
+  // matched "Rated Voltage/Frequency"; the Micro820 row has no "Micro820" token): staging
+  // 5e79ca713 refused "What supply voltage does it need?" 10 of 10 with the right row stored.
+  // A row of the record's OWN table that shares a question lexeme is the most specific
+  // evidence the manual holds for a value question, so up to RECORD_ROW_SEATS of them keep
+  // a seat at the head of the cut. Rows sharing no lexeme (a fault-code question) stay where
+  // the rerank put them; unqualified rows never reach the pool (admit); without a confirmed
+  // number `recordKey` is null and nothing changes. The code the technician just named still
+  // leads (prioritizeCurrentCodeEvidence runs after).
+  const RECORD_ROW_SEATS = 2;
+  const sharedQuestionLexemes = (r: Record<string, unknown>): number =>
+    Array.isArray(r.lexemes) ? (r.lexemes as unknown[]).filter((lex) => qIdf.has(String(lex))).length : 0;
+  const seated = leadWithRecordRows(
+    modelRanked,
+    (c) => recordKey !== null && !isUnresolvedTableLine(c._row) && tableModelsOf(c._row).includes(recordKey),
+    (c) => sharedQuestionLexemes(c._row),
+    RECORD_ROW_SEATS,
+  );
+  let recordRowsSeated = 0;
+  if (seated !== modelRanked) {
+    for (const c of seated.slice(0, RECORD_ROW_SEATS)) {
+      if (recordKey !== null && tableModelsOf(c._row).includes(recordKey)) recordRowsSeated++;
+      else break;
+    }
+  }
+  if (recordRowsSeated > 0) setSpanAttrs({ "mira.retrieval.record_rows_seated": recordRowsSeated });
+  const rerankedAll = prioritizeCurrentCodeEvidence(seated, expanded.currentCodeTokens);
   // Facet-guaranteed slots (answer completeness): rerank picks the BEST chunks
   // overall, so one family (e.g. overload) can fill every slot while a planned
   // facet (overcurrent) sits uncovered in the pool. Every facet with pool

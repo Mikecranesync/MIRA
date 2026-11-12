@@ -322,6 +322,25 @@ export function prioritizeCurrentCodeEvidence<T extends { content: string }>(
   return current.length === 0 ? ranked : [...current, ...rest];
 }
 
+/** Up to `seats` chunks of the record's OWN table rows lead the ranked list — only those that share at
+ *  least one question lexeme (#5449: the catalog-number exact lane puts the own row in the pool at rank 0,
+ *  and the lexical rerank cuts it behind prose when the row label does not carry the question's words —
+ *  "supply voltage" vs "Rated Voltage/Frequency"; the Micro820 row carries no "Micro820"). A row sharing no
+ *  lexeme (a fault-code question) is left where the rerank put it; `shared` returns that count. Order
+ *  among the seated rows: more shared lexemes first, then the rerank's order. */
+export function leadWithRecordRows<T>(ranked: T[], isRecordRow: (c: T) => boolean, shared: (c: T) => number, seats = 2): T[] {
+  if (seats <= 0 || ranked.length === 0) return ranked;
+  const own = ranked
+    .map((c, i) => ({ c, i, n: isRecordRow(c) ? shared(c) : 0 }))
+    .filter((x) => x.n > 0)
+    .sort((a, b) => b.n - a.n || a.i - b.i)
+    .slice(0, seats)
+    .map((x) => x.c);
+  if (own.length === 0) return ranked;
+  const lead = new Set(own);
+  return [...own, ...ranked.filter((c) => !lead.has(c))];
+}
+
 /** One source for both match sites: the SQL exact lane (`content ~* sql`) and
  *  the rerank boost (`re.test`). Whole token, case-insensitive, any whitespace
  *  between words, regex metacharacters (the dot in E.OV1) taken literally. */

@@ -5,6 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  leadWithRecordRows,
   expandIndustrialQuery,
   rerankChunks,
   sanitizeHistory,
@@ -891,5 +892,26 @@ describe("isNavigationChunk + demoteNavigation", () => {
     const e = expandIndustrialQuery("controller password");
     const only = mk(index, 0.5, 123);
     expect(rerankChunks(e, [only], { demoteNavigation: true })).toEqual([only]);
+  });
+});
+
+describe("leadWithRecordRows (#5449)", () => {
+  type C = { id: string; own: boolean; shared: number };
+  const c = (id: string, own: boolean, shared: number): C => ({ id, own, shared });
+  const run = (xs: C[], seats?: number) => leadWithRecordRows(xs, (x) => x.own, (x) => x.shared, seats).map((x) => x.id);
+
+  it("moves own rows that share a question lexeme to the head, most shared first, keeping the rest in order", () => {
+    expect(run([c("p1", false, 3), c("p2", false, 2), c("own-a", true, 1), c("p3", false, 1), c("own-b", true, 2)])).toEqual(["own-b", "own-a", "p1", "p2", "p3"]);
+  });
+
+  it("seats at most `seats` rows", () => {
+    expect(run([c("p1", false, 3), c("own-a", true, 1), c("own-b", true, 1), c("own-c", true, 1)], 2)).toEqual(["own-a", "own-b", "p1", "own-c"]);
+  });
+
+  it("leaves an own row that shares no lexeme where it was, and returns the same array when nothing is seated", () => {
+    const xs = [c("p1", false, 3), c("own-a", true, 0)];
+    expect(leadWithRecordRows(xs, (x) => x.own, (x) => x.shared)).toBe(xs);
+    expect(run([], 2)).toEqual([]);
+    expect(leadWithRecordRows(xs, (x) => x.own, (x) => x.shared, 0)).toBe(xs);
   });
 });
