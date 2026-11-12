@@ -28,6 +28,7 @@
  * Run: npx vitest run src/capabilities/__tests__/node-document-reprocess.test.ts
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { EXTRACTION_VERSION } from "@/lib/node-knowledge-ingest";
 import { createHash } from "node:crypto";
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
@@ -159,7 +160,7 @@ describe("reprocessNodeDocument — one transaction, delete then insert, then th
     expect(r.action).toBe("reprocessed");
     if (r.action !== "reprocessed") return;
     expect(r.from).toBeNull();
-    expect(r.to).toBe(2);
+    expect(r.to).toBe(EXTRACTION_VERSION);
     expect(r.deleted).toBe(12);
     expect(r.inserted).toBeGreaterThan(0);
 
@@ -187,7 +188,7 @@ describe("reprocessNodeDocument — one transaction, delete then insert, then th
       expect(s.params[1]).toBe(`node-doc/${DOC}/gs10usermanual.pdf`);
       expect(s.params[2]).toBe(DOC);
       for (let i = 3; i + 3 < s.params.length; i += 4) {
-        expect(JSON.parse(String(s.params[i + 3])).extraction_version).toBe(2);
+        expect(JSON.parse(String(s.params[i + 3])).extraction_version).toBe(EXTRACTION_VERSION);
       }
     }
 
@@ -214,10 +215,10 @@ describe("reprocessNodeDocument — one transaction, delete then insert, then th
   });
 
   it("control: a document already at the current version is a no-op — nothing deleted, inserted, embedded or parsed", async () => {
-    db.versionRow = { n: 20, current: 20, unstamped: 0, min_version: 2 };
+    db.versionRow = { n: 20, current: 20, unstamped: 0, min_version: EXTRACTION_VERSION };
     db.upload = uploadRow({ kb_chunk_count: 20 }); // the recorded count agrees with the rows
     const r = await reprocess({ bytes: LOCAL_PDF });
-    expect(r).toEqual({ action: "noop", version: 2, chunkCount: 20 });
+    expect(r).toEqual({ action: "noop", version: EXTRACTION_VERSION, chunkCount: 20 });
     const q = db.stmts.map(sqlOf);
     expect(q.some((s) => /^DELETE|^INSERT|^BEGIN/.test(s))).toBe(false);
     expect(db.stmts.some((s) => /embedding IS NULL/.test(s.sql))).toBe(false);
@@ -228,10 +229,10 @@ describe("reprocessNodeDocument — one transaction, delete then insert, then th
   // status write leaves the swapped chunks with a stale kb_chunk_count; the retry lands on the
   // no-op path, which must make the write the failed step would have made.
   it("a no-op retry repairs a stale kb_chunk_count with the same write the failed step would have made", async () => {
-    db.versionRow = { n: 12, current: 12, unstamped: 0, min_version: 2 };
+    db.versionRow = { n: 12, current: 12, unstamped: 0, min_version: EXTRACTION_VERSION };
     db.upload = uploadRow({ kb_chunk_count: 7 });
     const r = await reprocess();
-    expect(r).toEqual({ action: "noop", version: 2, chunkCount: 12, countRepaired: true });
+    expect(r).toEqual({ action: "noop", version: EXTRACTION_VERSION, chunkCount: 12, countRepaired: true });
     expect(uploads.updateUploadStatus).toHaveBeenCalledWith(DOC, TENANT, "parsed", null, { kbChunkCount: 12 });
     expect(db.stmts.some((s) => /^DELETE|^INSERT|^BEGIN/.test(sqlOf(s)))).toBe(false);
   });
@@ -240,28 +241,28 @@ describe("reprocessNodeDocument — one transaction, delete then insert, then th
   // writes nothing (see `opts.dryRun` elsewhere in this function). The repair is reported as
   // pending instead, so the script's dry-run output can mention it without touching the row.
   it("a no-op dry run reports a pending count repair but writes nothing", async () => {
-    db.versionRow = { n: 12, current: 12, unstamped: 0, min_version: 2 };
+    db.versionRow = { n: 12, current: 12, unstamped: 0, min_version: EXTRACTION_VERSION };
     db.upload = uploadRow({ kb_chunk_count: 7 });
     const r = await reprocess({ dryRun: true });
-    expect(r).toEqual({ action: "noop", version: 2, chunkCount: 12, countRepairPending: true });
+    expect(r).toEqual({ action: "noop", version: EXTRACTION_VERSION, chunkCount: 12, countRepairPending: true });
     expect(uploads.updateUploadStatus).not.toHaveBeenCalled();
     expect(db.stmts.some((s) => /^DELETE|^INSERT|^BEGIN/.test(sqlOf(s)))).toBe(false);
   });
 
   it("control: a no-op whose count already matches writes nothing", async () => {
-    db.versionRow = { n: 12, current: 12, unstamped: 0, min_version: 2 };
+    db.versionRow = { n: 12, current: 12, unstamped: 0, min_version: EXTRACTION_VERSION };
     db.upload = uploadRow({ kb_chunk_count: 12 });
-    expect(await reprocess()).toEqual({ action: "noop", version: 2, chunkCount: 12 });
+    expect(await reprocess()).toEqual({ action: "noop", version: EXTRACTION_VERSION, chunkCount: 12 });
     expect(uploads.updateUploadStatus).not.toHaveBeenCalled();
   });
 
   it("force (recomputed_human_requested) recomputes a document already at the current version", async () => {
-    db.versionRow = { n: 20, current: 20, unstamped: 0, min_version: 2 };
+    db.versionRow = { n: 20, current: 20, unstamped: 0, min_version: EXTRACTION_VERSION };
     db.deleteCount = 20;
     const r = await reprocess({ bytes: LOCAL_PDF, force: true });
     expect(r.action).toBe("reprocessed");
     if (r.action === "reprocessed") {
-      expect(r.from).toBe(2);
+      expect(r.from).toBe(EXTRACTION_VERSION);
       expect(r.deleted).toBe(20);
       expect(r.reason).toBe("recomputed_human_requested");
     }
@@ -271,7 +272,7 @@ describe("reprocessNodeDocument — one transaction, delete then insert, then th
     const { getDocumentProxy } = await import("unpdf");
     vi.mocked(getDocumentProxy).mockClear();
     const r = await reprocess({ bytes: LOCAL_PDF, dryRun: true });
-    expect(r).toEqual({ action: "plan", reason: "recomputed_algorithm_changed", from: null, to: 2, chunkCount: 12, bytesFrom: "local_pdf" });
+    expect(r).toEqual({ action: "plan", reason: "recomputed_algorithm_changed", from: null, to: EXTRACTION_VERSION, chunkCount: 12, bytesFrom: "local_pdf" });
     expect(db.stmts.some((s) => /^DELETE|^INSERT|^BEGIN/.test(sqlOf(s)))).toBe(false);
     expect(db.stmts.some((s) => /embedding IS NULL/.test(s.sql))).toBe(false);
     expect(uploads.updateUploadStatus).not.toHaveBeenCalled();
@@ -280,8 +281,8 @@ describe("reprocessNodeDocument — one transaction, delete then insert, then th
     expect(await reprocess({ bytes: Buffer.from("%PDF-1.4 not it"), dryRun: true })).toEqual({ action: "refused", reason: "sha_mismatch" });
   });
 
-  it("a partly-stamped document (some rows at 2, some unstamped) is NOT current: it is reprocessed", async () => {
-    db.versionRow = { n: 20, current: 8, unstamped: 12, min_version: 2 };
+  it("a partly-stamped document (some rows at the current version, some unstamped) is NOT current: it is reprocessed", async () => {
+    db.versionRow = { n: 20, current: 8, unstamped: 12, min_version: EXTRACTION_VERSION };
     db.deleteCount = 20;
     const r = await reprocess({ bytes: LOCAL_PDF });
     expect(r.action).toBe("reprocessed");
@@ -353,7 +354,7 @@ describe("reprocessNodeDocument — where the bytes come from", () => {
     db.upload = uploadRow({ file_id: FILE, content_sha256: null });
     db.parked = LOCAL_PDF;
     expect(await reprocess({ dryRun: true })).toEqual({
-      action: "plan", reason: "recomputed_algorithm_changed", from: null, to: 2, chunkCount: 12, bytesFrom: "parked_original",
+      action: "plan", reason: "recomputed_algorithm_changed", from: null, to: EXTRACTION_VERSION, chunkCount: 12, bytesFrom: "parked_original",
     });
   });
 
