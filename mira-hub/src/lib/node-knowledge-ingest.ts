@@ -979,7 +979,14 @@ export type ReprocessRefusal = "no_upload" | "no_node" | "no_bytes" | "no_upload
 
 export type ReprocessResult =
   /** Every stored chunk already carries the current version and nobody forced it: nothing touched. */
-  | { action: "noop"; version: number; chunkCount: number }
+  | {
+      action: "noop";
+      version: number;
+      chunkCount: number;
+      /** The upload's `kb_chunk_count` disagreed with the stored rows (a status write after an earlier
+       *  COMMIT failed) and was repaired with the write that step would have made. */
+      countRepaired?: true;
+    }
   /** The document could not be proven re-readable: nothing touched, the reason named. */
   | { action: "refused"; reason: ReprocessRefusal }
   /** `dryRun`: what a real run would do, after the bytes were proven — no parse, no write. */
@@ -1060,9 +1067,10 @@ export async function reprocessNodeDocument(opts: {
       uns_path: string | null;
       content_sha256: string | null;
       file_id: string | null;
+      kb_chunk_count: number | null;
     }>(
       `SELECT u.filename, u.kg_entity_id::text AS kg_entity_id, u.uns_path, u.content_sha256,
-              d.id::text AS file_id
+              u.kb_chunk_count, d.id::text AS file_id
          FROM hub_uploads u
          LEFT JOIN namespace_direct_uploads d ON d.upload_id = u.id
         WHERE u.id = $1::uuid AND u.tenant_id = $2
@@ -1092,7 +1100,16 @@ export async function reprocessNodeDocument(opts: {
   const n = Number(v.n ?? 0);
   const current = Number(v.current ?? 0);
   const allCurrent = n > 0 && current === n;
-  if (allCurrent && !opts.force) return { action: "noop", version: EXTRACTION_VERSION, chunkCount: n };
+  if (allCurrent && !opts.force) {
+    // The count is written after COMMIT (below). If that write failed on an earlier run the rows
+    // are current and the retry lands here — make the write it would have made, nothing else.
+    if (Number(upload.kb_chunk_count ?? -1) !== n) {
+      await updateUploadStatus(uploadId, tenantId, "parsed", null, { kbChunkCount: n });
+      console.info(`[node-ingest] reprocess noop doc=${uploadId}: repaired kb_chunk_count ${upload.kb_chunk_count ?? "null"}→${n}`);
+      return { action: "noop", version: EXTRACTION_VERSION, chunkCount: n, countRepaired: true };
+    }
+    return { action: "noop", version: EXTRACTION_VERSION, chunkCount: n };
+  }
   const from: number | null =
     allCurrent ? EXTRACTION_VERSION : n > 0 && Number(v.unstamped ?? 0) === 0 && v.min_version != null ? Number(v.min_version) : null;
   const reason: ReprocessReason = allCurrent ? "recomputed_human_requested" : "recomputed_algorithm_changed";
@@ -1112,6 +1129,17 @@ export async function reprocessNodeDocument(opts: {
     if (!check.ok) return { action: "refused", reason: check.reason };
   } else if (!upload.file_id) {
     return { action: "refused", reason: "no_bytes" };
+  } else {
+    // The parked original must be PRESENT before a plan or a slot — presence only, no bytes read
+    // (the bytes are read under the slot below).
+    const present = await withTenantContext(tenantId, async (c) => {
+      const res = await c.query(
+        `SELECT 1 FROM namespace_direct_uploads WHERE id = $1 AND tenant_id = $2 AND content IS NOT NULL`,
+        [upload.file_id, tenantId],
+      );
+      return (res.rowCount ?? res.rows.length) > 0;
+    });
+    if (!present) return { action: "refused", reason: "no_bytes" };
   }
   if (opts.dryRun) {
     return { action: "plan", reason, from, to: EXTRACTION_VERSION, chunkCount: n, bytesFrom: opts.bytes ? "local_pdf" : "parked_original" };

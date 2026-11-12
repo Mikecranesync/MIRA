@@ -125,6 +125,7 @@ const uploadRow = (extra: Record<string, unknown> = {}) => ({
   uns_path: "enterprise.garage.demo_cell.cv_101",
   content_sha256: LOCAL_SHA,
   file_id: null,
+  kb_chunk_count: 12,
   ...extra,
 });
 
@@ -214,11 +215,31 @@ describe("reprocessNodeDocument — one transaction, delete then insert, then th
 
   it("control: a document already at the current version is a no-op — nothing deleted, inserted, embedded or parsed", async () => {
     db.versionRow = { n: 20, current: 20, unstamped: 0, min_version: 2 };
+    db.upload = uploadRow({ kb_chunk_count: 20 }); // the recorded count agrees with the rows
     const r = await reprocess({ bytes: LOCAL_PDF });
     expect(r).toEqual({ action: "noop", version: 2, chunkCount: 20 });
     const q = db.stmts.map(sqlOf);
     expect(q.some((s) => /^DELETE|^INSERT|^BEGIN/.test(s))).toBe(false);
     expect(db.stmts.some((s) => /embedding IS NULL/.test(s.sql))).toBe(false);
+    expect(uploads.updateUploadStatus).not.toHaveBeenCalled();
+  });
+
+  // Cheap review of PR-6 (#5427 r1) finding 1: the count is written AFTER commit, so a failed
+  // status write leaves the swapped chunks with a stale kb_chunk_count; the retry lands on the
+  // no-op path, which must make the write the failed step would have made.
+  it("a no-op retry repairs a stale kb_chunk_count with the same write the failed step would have made", async () => {
+    db.versionRow = { n: 12, current: 12, unstamped: 0, min_version: 2 };
+    db.upload = uploadRow({ kb_chunk_count: 7 });
+    const r = await reprocess();
+    expect(r).toEqual({ action: "noop", version: 2, chunkCount: 12, countRepaired: true });
+    expect(uploads.updateUploadStatus).toHaveBeenCalledWith(DOC, TENANT, "parsed", null, { kbChunkCount: 12 });
+    expect(db.stmts.some((s) => /^DELETE|^INSERT|^BEGIN/.test(sqlOf(s)))).toBe(false);
+  });
+
+  it("control: a no-op whose count already matches writes nothing", async () => {
+    db.versionRow = { n: 12, current: 12, unstamped: 0, min_version: 2 };
+    db.upload = uploadRow({ kb_chunk_count: 12 });
+    expect(await reprocess()).toEqual({ action: "noop", version: 2, chunkCount: 12 });
     expect(uploads.updateUploadStatus).not.toHaveBeenCalled();
   });
 
@@ -282,6 +303,27 @@ describe("reprocessNodeDocument — where the bytes come from", () => {
   it("no parked original and no local file → refused (never 'best effort')", async () => {
     const r = await reprocess();
     expect(r).toEqual({ action: "refused", reason: "no_bytes" });
+  });
+
+  // Cheap review of PR-6 (#5427 r1) finding 2: a plan must not promise bytes it never checked.
+  it("dry run with a file_id whose parked row has no content → refused no_bytes, not a plan", async () => {
+    db.upload = uploadRow({ file_id: FILE, content_sha256: null });
+    db.parked = null;
+    expect(await reprocess({ dryRun: true })).toEqual({ action: "refused", reason: "no_bytes" });
+    expect(db.stmts.some((s) => /^DELETE|^INSERT|^BEGIN/.test(sqlOf(s)))).toBe(false);
+    // The proof reads presence, never the bytes.
+    const probe = db.stmts.find((s) => /FROM namespace_direct_uploads/.test(s.sql))!;
+    expect(probe).toBeDefined();
+    expect(probe.sql).toMatch(/content IS NOT NULL/);
+    expect(probe.sql).not.toMatch(/SELECT\s+content\b/);
+  });
+
+  it("control: dry run with a parked original present → plan from parked_original", async () => {
+    db.upload = uploadRow({ file_id: FILE, content_sha256: null });
+    db.parked = LOCAL_PDF;
+    expect(await reprocess({ dryRun: true })).toEqual({
+      action: "plan", reason: "recomputed_algorithm_changed", from: null, to: 2, chunkCount: 12, bytesFrom: "parked_original",
+    });
   });
 
   it("an upload with no attached node (kg_entity_id null) → refused: the rows would carry an empty node_id", async () => {
