@@ -16,6 +16,7 @@ import {
   coverDeclaredNumbers,
   manualCoversNumber,
   otherProductRefusalText,
+  excludedTablesRefusalText,
 } from "../manual-applicability";
 import { NAMEPLATE_BODY_MARK, NAMEPLATE_OPENER, PHOTO_OCR_OPENER_START, PHOTO_READING_BODY_MARK, PHOTO_READING_OPENER, buildPhotoSourceText, photoDocumentShape, productWrittenBody } from "../photo-document-text";
 import { ocrSourceText } from "@/lib/photo-ocr";
@@ -275,6 +276,22 @@ describe("a question that names more than one number", () => {
 });
 
 describe("the reply text", () => {
+  it("another model's table was all that was found: names the record's number, the table's models and the page, and nothing from the passage", () => {
+    expect(excludedTablesRefusalText("GS11N-20P2", [{ page: 27, models: ["GS13N20P2"] }])).toBe(
+      "This manual's table for the GS11N-20P2 was not found. What I found is the GS13N20P2 table (page 27), and I won't answer the GS11N-20P2 from another model's column — its values may not apply. Open page 27 and read the GS11N-20P2 column there, or add the page that lists the GS11N-20P2 to this notebook and ask again.",
+    );
+    const two = excludedTablesRefusalText("GS11N-20P2", [
+      { page: 27, models: ["GS13N20P2"] },
+      { page: 26, models: ["GS13N20P2", "GS13N20P5"] },
+      { page: null, models: [] },
+    ]);
+    expect(two).toContain("the GS13N20P2 / GS13N20P5 table (pages 26, 27)");
+    expect(two).toContain("Open pages 26, 27 and read the GS11N-20P2 column there");
+    expect(two).not.toMatch(/1\.9|5\.1/);
+    expect(excludedTablesRefusalText("GS11N-20P2", [{ page: null, models: ["GS13N20P2"] }])).toBe(
+      "This manual's table for the GS11N-20P2 was not found. What I found is the GS13N20P2 table, and I won't answer the GS11N-20P2 from another model's column — its values may not apply. Add the page that lists the GS11N-20P2 to this notebook and ask again.",
+    );
+  });
   it("names the asked number and what the cover declares, and nothing from the manual's body", () => {
     const r = summarizeUnlistedRefusals([refusal(verdict("RX420 supply voltage?", "Northfield RX410 Logic Controller\nHardware User Guide"))], "question");
     expect(unlistedModelRefusalText(r)).toBe(

@@ -144,9 +144,11 @@ import { ambiguousModelAskText, libraryNotForAskedModelText, namedModelMismatchT
 import { readSubject, SUBJECT_READ_STEPS } from "@/capabilities/conversation-subject";
 import { notebookManualIdentity } from "@/capabilities/notebook-manual-identity";
 import {
+  excludedTablesRefusalText,
   otherProductRefusalText,
   unlistedModelNumbers,
   unlistedModelRefusalText,
+  type ExcludedTable,
   type OtherProductRefusal,
   type UnlistedModelRefusal,
 } from "@/capabilities/manual-applicability";
@@ -2496,6 +2498,9 @@ async function handleChatTurn(
     machineKnown?: boolean;
     admittedCovers?: Record<string, AdmittedCover>;
     libraryNotForAsk?: LibraryNotForAsk;
+    /** Garage pilot L3/L4: passages of the admitted manuals that were another
+     *  model's table and were excluded (page + model keys). */
+    excludedTables?: ExcludedTable[];
   } = {};
   const queryRewrite = await queryRewritePromise;
   retrievalDiagnostics.queryRewrite = queryRewrite.status;
@@ -3651,6 +3656,12 @@ async function handleChatTurn(
       // manual's cover declares some other product — say which, and the way out.
       : notebookRetrieval && retrievalDiagnostics.otherProductRefusal
         ? otherProductRefusalText(retrievalDiagnostics.otherProductRefusal)
+      // Garage pilot L3/L4: every passage the search found for this was another
+      // model's table in the notebook's own manual (retrieval excluded them, by
+      // the record's catalog number) — name the number and the page, and answer
+      // nothing from a sibling's column.
+      : notebookRetrieval && (retrievalDiagnostics.excludedTables?.length ?? 0) > 0 && manualIdentity.catalogNumber?.trim()
+        ? excludedTablesRefusalText(manualIdentity.catalogNumber.trim(), retrievalDiagnostics.excludedTables ?? [])
       : notebookRetrieval
         ? "I couldn't find support for that in this notebook's manuals. Add the manual for the equipment you're asking about, or the page that covers it, and ask again."
         : null;

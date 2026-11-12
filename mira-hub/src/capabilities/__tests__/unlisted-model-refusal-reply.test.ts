@@ -183,3 +183,29 @@ describe("#5369 — a model number no attached manual is shown to cover", () => 
     expect(status.message).toBe(GENERIC);
   });
 });
+
+describe("garage pilot L3/L4 — every passage found was another model's table", () => {
+  const gs10 = () =>
+    nbMock.getNotebook.mockResolvedValue({
+      id: NB, displayName: "Bench drive", manufacturer: "AutomationDirect", model: "GS10", catalogNumber: "GS11N-20P2", identityStatus: "user_confirmed",
+    });
+
+  it("names the record's number and the page, with no provider call and no citation", async () => {
+    gs10();
+    retrievalReports({ excludedTables: [{ page: 27, models: ["GS13N20P2"] }] });
+    const { status, sources } = await ask("What is its rated input current?");
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    expect(status.status).toBe("insufficient_evidence");
+    expect(status.message).toContain("This manual's table for the GS11N-20P2 was not found");
+    expect(status.message).toContain("GS13N20P2 table (page 27)");
+    expect(status.message).not.toMatch(/24 V/);
+    expect(sources.citations).toEqual([]);
+  });
+
+  it("control: with nothing excluded the generic refusal is unchanged", async () => {
+    gs10();
+    retrievalReports({ excludedTables: [] });
+    const { status } = await ask("What is its rated input current?");
+    expect(status.message).toBe(GENERIC);
+  });
+});

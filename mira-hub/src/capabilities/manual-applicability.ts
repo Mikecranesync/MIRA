@@ -805,6 +805,25 @@ export function otherProductRefusalText(r: OtherProductRefusal): string {
   return `The manual in this notebook is for the ${have}, and this notebook is set up for the ${r.project}, so I won't answer from it — its values may not apply to the ${r.project}. If your question is about the ${have}, name it in the question and ask again. Otherwise add the ${r.project} manual (or the page that covers it) to this notebook.`;
 }
 
+/** Garage pilot L3/L4: a passage of an admitted manual that is ANOTHER model's
+ *  table, excluded by retrieval (manual-rag.ts admit) — its page and the model
+ *  keys its rows are for. */
+export type ExcludedTable = { page: number | null; models: string[] };
+
+/** Static text plus model keys and page numbers only; no value or wording from
+ *  an excluded passage reaches it. */
+export function excludedTablesRefusalText(recordNumber: string, excluded: ExcludedTable[]): string {
+  const models = listed([...new Set(excluded.flatMap((e) => e.models))]);
+  const pages = [...new Set(excluded.map((e) => e.page).filter((p): p is number => p !== null))].sort((a, b) => a - b);
+  const pageWord = pages.length === 1 ? `page ${pages[0]}` : `pages ${pages.join(", ")}`;
+  const where = pages.length > 0 ? ` (${pageWord})` : "";
+  const wayOut =
+    pages.length > 0
+      ? `Open ${pageWord} and read the ${recordNumber} column there, or add the page that lists the ${recordNumber} to this notebook and ask again.`
+      : `Add the page that lists the ${recordNumber} to this notebook and ask again.`;
+  return `This manual's table for the ${recordNumber} was not found. What I found is the ${models} table${where}, and I won't answer the ${recordNumber} from another model's column — its values may not apply. ${wayOut}`;
+}
+
 /** One reason for the whole reply, from the refusal of every selected manual. */
 export function summarizeUnlistedRefusals(
   refusals: Array<Extract<ManualVerdict, { admit: false }>>,

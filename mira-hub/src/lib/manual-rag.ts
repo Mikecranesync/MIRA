@@ -16,6 +16,7 @@ import {
   summarizeUnlistedRefusals,
   titleLinesBelow,
   unlistedModelNumbers,
+  type ExcludedTable,
   type ManualVerdict,
   type OtherProductRefusal,
   type UnlistedModelRefusal,
@@ -1659,7 +1660,7 @@ export async function retrieveNodeChunks(
        *  only other numbers of its family). Excluded, never demoted; listed so
        *  the answer can say "this manual's table for <number> was not found —
        *  open page N" instead of answering from a sibling's column. */
-      excludedTables?: Array<{ page: number | null; models: string[] }>;
+      excludedTables?: ExcludedTable[];
     };
   },
 ): Promise<ManualChunk[]> {
