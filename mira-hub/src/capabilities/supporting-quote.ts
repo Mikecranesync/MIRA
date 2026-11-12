@@ -47,7 +47,7 @@ const UNIT_NAMES = new Map<string, string>(Object.entries({
   ohm: "Ω", ohms: "Ω", millimeter: "mm", millimeters: "mm", millimetre: "mm", millimetres: "mm", inch: "in", inches: "in",
 }));
 /** The table unit a token names, or null. `N · m` and `lb - in` close up before lookup. */
-function tableUnit(token: string): string | null {
+export function tableUnit(token: string): string | null {
   const k = token.replace(/\s*([·-])\s*/g, "$1").replace(/\s+/g, " ");
   return UNIT_SYMBOLS.get(k) ?? UNIT_NAMES.get(k.toLowerCase()) ?? null;
 }

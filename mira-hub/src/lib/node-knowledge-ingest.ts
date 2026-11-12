@@ -26,9 +26,19 @@ import { extractText, getDocumentProxy } from "unpdf";
 import { repairExtractedPage, type PageRepair } from "@/capabilities/garbled-text";
 import { ocrExtractPage } from "@/capabilities/garbled-text-ocr";
 import { readPageLabelsBounded } from "@/capabilities/pdf-page-label-reader";
+import { pageLayoutItems } from "@/capabilities/pdf-layout-items";
+import { pageWithTables, type TableChunk } from "@/capabilities/table-rows";
 
 const CHUNK_CHARS = 1000;
 const CHUNK_OVERLAP = 120;
+
+/**
+ * Table rows at upload (garage pilot plan row 1-A). Bumped whenever the chunks written for a
+ * document change shape (flat-text-only -> table-aware, or a change to that algorithm) so a
+ * reprocessing pass can tell an old stored document from a freshly re-ingested one. Stamped as
+ * `metadata.extraction_version` on EVERY chunk this module writes, PDF or text path alike.
+ */
+export const EXTRACTION_VERSION = 2;
 
 // Multi-row INSERT batch size. Bounds BOTH the chunk rows held in memory at once
 // (≤ BATCH_ROWS, instead of every chunk of a 1200-page manual accumulated in one
@@ -434,6 +444,12 @@ async function writeChunkRowsForNode(
   /** Per-page printed label from the PDF's own /PageLabels tree (index-aligned
    *  with `pages`), recorded as `metadata.page_label` (#4508). Absent = none. */
   pageLabels?: ReadonlyArray<string | null> | null,
+  /** Per-page table read (index-aligned with `pages`), from `pageWithTables` — null for a page
+   *  with no qualifying table (or whose layout read was skipped/failed). When present, the
+   *  page's OWN text is chunked from `remainder` (the table's lines excluded) and one extra row
+   *  is written per `TableChunk`, carrying `metadata.table_models` (+`table_unqualified` for the
+   *  one flat-text chunk) instead of the page's ordinary chunk text. */
+  tables?: ReadonlyArray<{ remainder: string; chunks: TableChunk[] } | null> | null,
 ): Promise<number> {
   const { tenantId, uploadId, nodeId, unsPath, filename, derivedFrom } = opts;
 
@@ -447,6 +463,8 @@ async function writeChunkRowsForNode(
     idx: number;
     repair: TextRepair | null;
     label: string | null;
+    tableModels?: string[];
+    tableUnqualified?: boolean;
   };
   let idx = 0;
   let batch: ChunkRow[] = [];
@@ -475,9 +493,12 @@ async function writeChunkRowsForNode(
             node_id: nodeId,
             chunk_index: r.idx,
             source: "hub_node_attachment",
+            extraction_version: EXTRACTION_VERSION,
             ...(derivedFrom ? { derived_from: derivedFrom } : {}),
             ...(r.repair ? { text_repair: r.repair } : {}),
             ...(r.label ? { page_label: r.label } : {}),
+            ...(r.tableModels ? { table_models: r.tableModels } : {}),
+            ...(r.tableUnqualified ? { table_unqualified: true } : {}),
           }),
         );
       }
@@ -503,7 +524,14 @@ async function writeChunkRowsForNode(
     for (let p = 0; p < pages.length; p++) {
       const pageText = pages[p];
       pages[p] = ""; // release each page's text once chunked — bounds peak memory
-      for (const piece of chunkText(pageText)) {
+      const table = tables?.[p] ?? null;
+      // A page with a qualifying table chunks its own text from the REMAINDER
+      // (the table's row-grid lines excluded, so a drive's column values never
+      // bleed into the flat-text chunk) and pushes ONE extra, un-re-chunked row
+      // per TableChunk — the ingest contract asserts exactly one row per model
+      // tag (`table-rows.test.ts`), so TableChunk.text goes in verbatim.
+      const textToChunk = table ? table.remainder : pageText;
+      for (const piece of chunkText(textToChunk)) {
         batch.push({
           content: piece,
           page: p + 1,
@@ -512,6 +540,20 @@ async function writeChunkRowsForNode(
           label: pageLabels?.[p] ?? null,
         });
         if (batch.length >= BATCH_ROWS) await flush();
+      }
+      if (table) {
+        for (const tc of table.chunks) {
+          batch.push({
+            content: tc.text,
+            page: p + 1,
+            idx: idx++,
+            repair: repairs?.[p] ?? null,
+            label: pageLabels?.[p] ?? null,
+            tableModels: tc.models,
+            tableUnqualified: tc.unqualified,
+          });
+          if (batch.length >= BATCH_ROWS) await flush();
+        }
       }
     }
     await flush();
@@ -632,14 +674,39 @@ export async function writePdfChunksForNode(opts: {
   try {
     const pdf = await getDocumentProxy(new Uint8Array(buffer));
     const { text } = await extractText(pdf, { mergePages: false });
-    const pages: string[] = Array.isArray(text) ? text : [text];
+    // Copy rather than alias: writeChunkRowsForNode releases each page's text
+    // in place (`pages[p] = ""`) to bound peak memory, and `text` may be the
+    // SAME array a caller/mock holds a reference to (e.g. a test re-using its
+    // fixture array across two writePdfChunksForNode calls) — mutating that
+    // array out from under the caller is a bug the release optimization must
+    // not cause.
+    const pages: string[] = Array.isArray(text) ? [...text] : [text];
     const repairs = await repairGarbledPages(pages, rest);
     const labels = await printedPageLabels(
       { getPageLabels: () => readPageLabelsBounded(buffer, rest.filename) },
       pages.length,
       rest.filename,
     );
-    return await writeChunkRowsForNode(pages, rest, repairs, labels);
+    // Table rows at upload (garage pilot plan row 1-A): read each page's
+    // positioned text items and recover any qualifying table, skipping a page
+    // whose text was itself repaired (garbled extraction has no reliable x/y
+    // geometry to key columns off of). A read/detect failure is warned and
+    // treated as "no table on this page" — it must never fail the upload.
+    const pageTables: Array<{ remainder: string; chunks: TableChunk[] } | null> = [];
+    for (let p = 0; p < pages.length; p++) {
+      if (repairs[p] !== null) {
+        pageTables.push(null);
+        continue;
+      }
+      try {
+        const items = await pageLayoutItems(pdf, p + 1);
+        pageTables.push(items.length > 0 ? pageWithTables(items) : null);
+      } catch (err) {
+        console.warn(`[node-ingest] table read failed on ${rest.filename} p.${p + 1} (page kept as flat text):`, err instanceof Error ? err.message : err);
+        pageTables.push(null);
+      }
+    }
+    return await writeChunkRowsForNode(pages, rest, repairs, labels, pageTables);
   } finally {
     release();
   }
