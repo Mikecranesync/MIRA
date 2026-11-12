@@ -436,27 +436,65 @@ export function detectModelTables(items: readonly LayoutItem[]): TableBlock[] {
   return blocks;
 }
 
-/** Serialises one table block into one chunk per model column, plus one chunk of its unqualified
- *  (flat-text) lines tagged with every model in the block. Each model chunk names only its own
- *  model and carries only that model's values — never another model's column. */
+/** manual-rag.ts's `buildGroundedContext` truncates a chunk's rendered content at
+ *  `MAX_CONTENT_CHARS` (1200) — before this fix `tableChunks` stored one chunk per model holding
+ *  EVERY row, so a long table's trailing rows were silently dropped from what the model sees
+ *  (Codex #5429 r1 F4). Split at this smaller, headroom-leaving limit instead, so the eventual
+ *  1200-char truncation downstream never lands inside a table chunk. */
+const TABLE_CHUNK_MAX_CHARS = 1000;
+
+/** Splits `rowLines` across one or more chunk texts, each starting with `prefix` (continuation
+ *  chunks get " (cont.)" appended), never exceeding `TABLE_CHUNK_MAX_CHARS` EXCEPT when a single
+ *  row line is itself longer than the budget — that row still goes in its own chunk whole, never
+ *  split mid-row. `currentLen` tracks the exact length the serialised `${lines.join("\n")}\n` text
+ *  will have, so the limit is exact, not approximate. */
+function splitRowsIntoChunks(prefix: string, rowLines: readonly string[]): string[] {
+  if (rowLines.length === 0) return [`${prefix}\n`];
+  const texts: string[] = [];
+  let header = prefix;
+  let lines: string[] = [header];
+  let currentLen = header.length + 1;
+  for (const line of rowLines) {
+    const lineLen = line.length + 1;
+    if (lines.length > 1 && currentLen + lineLen > TABLE_CHUNK_MAX_CHARS) {
+      texts.push(`${lines.join("\n")}\n`);
+      header = `${prefix} (cont.)`;
+      lines = [header];
+      currentLen = header.length + 1;
+    }
+    lines.push(line);
+    currentLen += lineLen;
+  }
+  texts.push(`${lines.join("\n")}\n`);
+  return texts;
+}
+
+/** Serialises one table block into one or more chunks per model column (split at row boundaries,
+ *  never mid-row, when the model's full text would exceed `TABLE_CHUNK_MAX_CHARS`), plus one or
+ *  more chunks of its unqualified (flat-text) lines tagged with every model in the block. Each
+ *  model chunk names only its own model and carries only that model's values — never another
+ *  model's column. */
 export function tableChunks(block: TableBlock): TableChunk[] {
   const prefix = [block.caption, block.header].filter((s) => s.trim().length > 0).join(" — ");
   const chunks: TableChunk[] = [];
   for (let i = 0; i < block.models.length; i++) {
     const model = block.models[i];
     const key = block.modelKeys[i];
-    const lines: string[] = [prefix ? `${prefix} — ${model}` : model];
+    const modelPrefix = prefix ? `${prefix} — ${model}` : model;
+    const rowLines: string[] = [];
     for (const r of block.rows) {
       const c = r.cells.find((x) => x.model === model);
       if (!c) continue;
       const unitSuffix = r.unit ? ` ${r.unit}` : "";
-      lines.push(`${model}: ${r.label} ${c.value}${unitSuffix}`);
+      rowLines.push(`${model}: ${r.label} ${c.value}${unitSuffix}`);
     }
-    chunks.push({ text: `${lines.join("\n")}\n`, models: [key], unqualified: false });
+    for (const text of splitRowsIntoChunks(modelPrefix, rowLines)) chunks.push({ text, models: [key], unqualified: false });
   }
   if (block.unqualified.length > 0) {
-    const lines = [prefix ? `${prefix} — unqualified` : "unqualified", ...block.unqualified];
-    chunks.push({ text: `${lines.join("\n")}\n`, models: [...block.modelKeys], unqualified: true });
+    const unqualifiedPrefix = prefix ? `${prefix} — unqualified` : "unqualified";
+    for (const text of splitRowsIntoChunks(unqualifiedPrefix, block.unqualified)) {
+      chunks.push({ text, models: [...block.modelKeys], unqualified: true });
+    }
   }
   return chunks;
 }

@@ -60,6 +60,7 @@ import {
   tableChunks,
   type LayoutItem,
   type TableBlock,
+  type TableCell,
   type TableRow,
 } from "./table-rows";
 import gs10p26 from "./__fixtures__/table-rows/gs10-p26-230v-1ph.json";
@@ -319,6 +320,114 @@ describe("table-rows run-grouping (Codex #5429 r1 F1)", () => {
     expect(blocks).toHaveLength(1);
     expect(blocks[0].rows.some((r) => /Weird Row/.test(r.label))).toBe(false);
     expect(blocks[0].unqualified.some((l) => /Weird Row/.test(l) && /\bA\b/.test(l) && /\bB\b/.test(l) && /\bC\b/.test(l))).toBe(true);
+  });
+});
+
+describe("tableChunks splits a long model's table at row boundaries (Codex #5429 r1 F4)", () => {
+  // manual-rag.ts's buildGroundedContext truncates a chunk's content at MAX_CONTENT_CHARS=1200;
+  // table-rows.ts stored one chunk per model holding EVERY row, so a long table's trailing rows
+  // were silently dropped from what the model sees. The fix splits at TABLE_CHUNK_MAX_CHARS=1000,
+  // never mid-row, with each continuation chunk re-starting with the prefix line plus " (cont.)".
+
+  it("byte-identical for an existing short fixture (gs10p27 GS13N-20P2, 921 chars, under the 1000 limit)", () => {
+    const blocks = detectModelTables(items(gs10p27));
+    const chunks = tableChunks(blocks[0]);
+    const own = chunks.find((c) => c.models.length === 1 && c.models[0] === "GS13N20P2")!;
+    expect(own.text).toBe(
+      "230V Class – 3-Phase Model-Specific Specifications / GS10 230V Class Specifications; Frame Size A, B — Model Name: GS13N-2xPx — GS13N-20P2\n" +
+        "GS13N-20P2: Frame Size A1\n" +
+        "GS13N-20P2: hp 1/4\n" +
+        "GS13N-20P2: Max Motor Output hp [0.1]\n" +
+        "GS13N-20P2: (3-phase [1-phase]) kW 0.2\n" +
+        "GS13N-20P2: kW [0.1]\n" +
+        "GS13N-20P2: Rated Output Capacity 0.6 kVA\n" +
+        "GS13N-20P2: Rated Output Current 1.6\n" +
+        "GS13N-20P2: (3-phase [1-phase]) [0.8]\n" +
+        "GS13N-20P2: Carrier Frequency 2–15 kHz\n" +
+        "GS13N-20P2: Rated Output Capacity 0.7 kVA\n" +
+        "GS13N-20P2: VT Rated Output Current 1.8 A\n" +
+        "GS13N-20P2: Carrier Frequency 2–15 kHz\n" +
+        "GS13N-20P2: CT Rated Input Current 1.9 A\n" +
+        "GS13N-20P2: VT Rated Input Current 2.2 A\n" +
+        "GS13N-20P2: Rated Voltage/Frequency 3-phase 200-240 VAC (-15% to +10%), 50/60 Hz\n" +
+        "GS13N-20P2: Operating Voltage Range 170–265 VAC\n" +
+        "GS13N-20P2: Frequency Tolerance 47–63 Hz\n" +
+        "GS13N-20P2: IE2 Efficiency - Relative Power Loss 4.7%\n" +
+        "GS13N-20P2: Weight 0.4 kg\n" +
+        "GS13N-20P2: IP Rating IP20\n",
+    );
+    expect(chunks.filter((c) => c.models.length === 1 && c.models[0] === "GS13N20P2")).toHaveLength(1);
+  });
+
+  function syntheticBlock(rowCount: number, cellValue: (i: number) => string): TableBlock {
+    const model = "LONGMODEL1";
+    const rows: TableRow[] = Array.from({ length: rowCount }, (_, i) => ({
+      label: `Row${i}`,
+      unit: null,
+      cells: [{ model, value: cellValue(i) } as TableCell],
+      merged: false,
+    }));
+    return { caption: "", header: "Spec", models: [model], modelKeys: [model], rows, unqualified: [], top: 0, bottom: 0 };
+  }
+
+  it("splits a long model table into multiple chunks, none over 1000 chars, every chunk prefixed and no row lost", () => {
+    const block = syntheticBlock(15, () => "V".repeat(80));
+    const chunks = tableChunks(block).filter((c) => !c.unqualified);
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const c of chunks) expect(c.text.length).toBeLessThanOrEqual(1000);
+    // Every chunk is tagged with the one model, and begins with the prefix line — "(cont.)" on
+    // every chunk after the first, never on the first.
+    chunks.forEach((c, i) => {
+      expect(c.models).toEqual(["LONGMODEL1"]);
+      const firstLine = c.text.split("\n")[0];
+      if (i === 0) expect(firstLine).toBe("Spec — LONGMODEL1");
+      else expect(firstLine).toBe("Spec — LONGMODEL1 (cont.)");
+    });
+    // Every row survives exactly once, in order, across the chunks — never split mid-row.
+    const allRowLines = chunks.flatMap((c) => c.text.trim().split("\n").slice(1));
+    expect(allRowLines).toEqual(Array.from({ length: 15 }, (_, i) => `LONGMODEL1: Row${i} ${"V".repeat(80)}`));
+  });
+
+  it("a single row longer than the limit stays whole in its own chunk, never split mid-row", () => {
+    const block = syntheticBlock(2, (i) => (i === 0 ? "X".repeat(1200) : "short"));
+    const chunks = tableChunks(block).filter((c) => !c.unqualified);
+    expect(chunks).toHaveLength(2);
+    expect(chunks[0].text).toBe(`Spec — LONGMODEL1\nLONGMODEL1: Row0 ${"X".repeat(1200)}\n`);
+    expect(chunks[1].text).toBe("Spec — LONGMODEL1 (cont.)\nLONGMODEL1: Row1 short\n");
+  });
+
+  it("control: a short model table (well under the limit) is still exactly one chunk", () => {
+    const block = syntheticBlock(2, () => "ok");
+    const chunks = tableChunks(block).filter((c) => !c.unqualified);
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0].text).toBe("Spec — LONGMODEL1\nLONGMODEL1: Row0 ok\nLONGMODEL1: Row1 ok\n");
+  });
+
+  it("the unqualified chunk gets the same bounded, row-boundary split", () => {
+    const model = "LONGMODEL1";
+    const block: TableBlock = {
+      caption: "",
+      header: "Spec",
+      models: [model],
+      modelKeys: [model],
+      rows: [],
+      unqualified: Array.from({ length: 15 }, (_, i) => `Note${i} ${"Y".repeat(80)}`),
+      top: 0,
+      bottom: 0,
+    };
+    const chunks = tableChunks(block).filter((c) => c.unqualified);
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const c of chunks) {
+      expect(c.text.length).toBeLessThanOrEqual(1000);
+      expect(c.models).toEqual([model]);
+    }
+    chunks.forEach((c, i) => {
+      const firstLine = c.text.split("\n")[0];
+      if (i === 0) expect(firstLine).toBe("Spec — unqualified");
+      else expect(firstLine).toBe("Spec — unqualified (cont.)");
+    });
+    const allLines = chunks.flatMap((c) => c.text.trim().split("\n").slice(1));
+    expect(allLines).toEqual(Array.from({ length: 15 }, (_, i) => `Note${i} ${"Y".repeat(80)}`));
   });
 });
 
