@@ -3,78 +3,148 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="refresh" content="60">
 <title>Mission Control</title>
 <link rel="stylesheet" href="/factorylm-tokens.css">
 <style>
-  /* Page tokens map onto the shared FactoryLM tokens; dark mode swaps to the --fl-dark-* set. */
+  /* Dark by default (a control-room page); light only when the OS asks for it. Tokens: --fl-* / --fl-dark-*. */
   :root {
-    color-scheme: light;
-    --bg: var(--fl-bg); --surface: var(--fl-surface); --ink: var(--fl-ink);
-    --muted: var(--fl-muted); --faint: var(--fl-faint); --line: var(--fl-line);
-    --ok: var(--fl-ok); --warn: var(--fl-warn); --fault: var(--fl-fault);
+    color-scheme: dark;
+    --bg: var(--fl-dark-bg); --surface: var(--fl-dark-surface); --surface-hi: var(--fl-dark-surface-hi); --ink: var(--fl-dark-ink);
+    --muted: var(--fl-dark-muted); --faint: var(--fl-dark-faint); --line: var(--fl-dark-line);
+    --ok: var(--fl-dark-ok); --ok-tint: var(--fl-dark-ok-tint); --warn: var(--fl-dark-warn); --warn-tint: var(--fl-dark-warn-tint);
+    --fault: var(--fl-dark-fault); --fault-tint: var(--fl-dark-fault-tint); --accent: var(--fl-dark-accent);
   }
-  @media (prefers-color-scheme: dark) {
+  @media (prefers-color-scheme: light) {
     :root {
-      color-scheme: dark;
-      --bg: var(--fl-dark-bg); --surface: var(--fl-dark-surface); --ink: var(--fl-dark-ink);
-      --muted: var(--fl-dark-muted); --faint: var(--fl-dark-faint); --line: var(--fl-dark-line);
-      --ok: var(--fl-dark-ok); --warn: var(--fl-dark-warn); --fault: var(--fl-dark-fault);
+      color-scheme: light;
+      --bg: var(--fl-bg); --surface: var(--fl-surface); --surface-hi: var(--fl-surface); --ink: var(--fl-ink);
+      --muted: var(--fl-muted); --faint: var(--fl-faint); --line: var(--fl-line);
+      --ok: var(--fl-ok); --ok-tint: var(--fl-ok-bg); --warn: var(--fl-warn); --warn-tint: var(--fl-warn-bg);
+      --fault: var(--fl-fault); --fault-tint: var(--fl-fault-bg); --accent: var(--fl-accent);
     }
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 var(--fl-font); }
-  .wrap { max-width: 1200px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 40px; }
-  header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; }
-  h1 { margin: 0; font-size: 22px; letter-spacing: -0.01em; }
-  .asof { color: var(--muted); font-size: var(--fl-fs-sm); }
-  .totals { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 12px 0 0; padding: 0; list-style: none;
-            color: var(--muted); font-variant-numeric: tabular-nums; }
-  .totals b { color: var(--ink); }
-  .plan { color: var(--fl-accent); font-size: var(--fl-fs-sm); text-decoration: none; }
-  .plan:hover, .plan:focus-visible { text-decoration: underline; }
-  .notice { margin: 16px 0 0; padding: 10px 12px; border: 1px solid var(--line); border-left: 3px solid var(--warn);
-            border-radius: var(--fl-radius); background: var(--surface); }
-  .error { margin: 12px 0 0; color: var(--fault); }
-  main { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-top: 20px; }
-  section { min-width: 0; }
+  .wrap { max-width: 1400px; margin: 0 auto; padding-inline: 16px; padding-block: 16px 40px; }
+  header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 24px; }
+  h1 { margin: 0; font-size: 22px; letter-spacing: -0.01em; display: flex; align-items: center; gap: 10px; }
   h2 { margin: 0; font-size: var(--fl-fs-title); display: flex; align-items: baseline; gap: 8px; }
-  .count { color: var(--muted); font-weight: 400; font-variant-numeric: tabular-nums; }
-  .hint, .more { margin: 2px 0 8px; color: var(--muted); font-size: var(--fl-fs-sm); }
+  .asof { color: var(--muted); font-size: var(--fl-fs-sm); }
+  .mono { font-family: var(--fl-mono); }
+  .pill { font-size: var(--fl-fs-xs); font-weight: 700; letter-spacing: .06em; padding: 1px 8px; border-radius: var(--fl-radius-pill); border: 1px solid var(--line); }
+  .pill.live { color: var(--ok); border-color: var(--ok); } .pill.stale { color: var(--warn); border-color: var(--warn); }
+  .plan { color: var(--accent); font-size: var(--fl-fs-sm); text-decoration: none; }
+  .totals { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 8px 0 0; padding: 0; list-style: none; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .totals b { color: var(--ink); }
+  .notice { margin: 12px 0 0; padding: 8px 12px; border: 1px solid var(--line); border-left: 3px solid var(--warn); border-radius: var(--fl-radius); background: var(--surface); font-size: var(--fl-fs-sm); }
+  .error { margin: 12px 0 0; color: var(--fault); }
+  .hint, .more, .meta { margin: 2px 0 8px; color: var(--muted); font-size: var(--fl-fs-sm); }
   ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  a { color: var(--accent); } a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* Readiness row: badge + tiles */
+  .ready { display: grid; grid-template-columns: minmax(220px, 1fr) 3fr; gap: 16px; margin-top: 16px; }
+  .go-panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--fl-radius-card); padding: 16px; display: grid; gap: 6px; align-content: center; }
+  .go-badge { font-size: 40px; font-weight: 800; letter-spacing: .04em; line-height: 1; }
+  .go-badge.go { color: var(--ok); } .go-badge.no-go { color: var(--fault); }
+  .go-rule { color: var(--muted); font-size: var(--fl-fs-xs); }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .tile { background: var(--surface); border: 1px solid var(--line); border-radius: var(--fl-radius-card); padding: 12px 14px; text-decoration: none; color: inherit; display: grid; }
+  .tile .n { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .tile .l { color: var(--muted); font-size: var(--fl-fs-sm); }
+
+  /* Environments + lanes */
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-top: 20px; }
+  .envs { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
+  .env { background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--faint); border-radius: var(--fl-radius); padding: 10px 12px; display: grid; gap: 2px; }
+  .env.on { border-left-color: var(--ok); } .env .v { color: var(--muted); font-size: var(--fl-fs-sm); }
+  .lanes { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px; }
+  .lane { background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--faint); border-radius: var(--fl-radius); padding: 10px 12px; }
+  .lane[data-fresh="fresh"] { border-left-color: var(--ok); } .lane[data-fresh="stale"] { border-left-color: var(--warn); }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: var(--fl-fs-sm); }
+  .chip { font-size: var(--fl-fs-xs); color: var(--muted); border: 1px solid var(--line); border-radius: var(--fl-radius-pill); padding: 0 8px; white-space: nowrap; }
+  .chip.state { color: var(--ink); } .chip.warn { color: var(--warn); border-color: var(--warn); }
+  .chip.ev-verified { color: var(--ok); border-color: var(--ok); } .chip.ev-reported { color: var(--warn); border-color: var(--warn); }
+  .kv { display: grid; gap: 2px; margin-top: 6px; font-size: var(--fl-fs-sm); }
+  .kv div { display: grid; grid-template-columns: 80px 1fr; gap: 8px; } .kv .k { color: var(--muted); } .kv .v { overflow-wrap: anywhere; }
+
+  /* Lifecycle table */
+  .tablewrap { overflow-x: auto; margin-top: 8px; }
+  table.lifecycle { border-collapse: collapse; width: 100%; font-size: var(--fl-fs-sm); background: var(--surface); border: 1px solid var(--line); }
+  table.lifecycle th, table.lifecycle td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+  table.lifecycle th { color: var(--muted); font-weight: 600; white-space: nowrap; }
+  td.cell { min-width: 110px; } td.cell.on { background: var(--ok-tint); color: var(--ok); } td.cell.off { color: var(--faint); }
+  td.cell a { color: inherit; } td.reported { color: var(--muted); }
+
+  /* v1 board + feed */
+  main { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-top: 20px; }
+  section { min-width: 0; }
+  .count { color: var(--muted); font-weight: 400; font-variant-numeric: tabular-nums; }
   .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--fl-radius); padding: 10px 12px; }
   .card.state-closed, .card.state-merged { border-left: 3px solid var(--faint); }
-  .row { display: flex; justify-content: space-between; gap: 8px; font-size: var(--fl-fs-sm); }
+  .card .row { justify-content: space-between; }
   .ref a { color: var(--ink); font-family: var(--fl-mono); text-decoration: none; }
-  .ref a:hover, .ref a:focus-visible { text-decoration: underline; }
   .status { color: var(--muted); white-space: nowrap; }
   .title { margin: 4px 0; overflow-wrap: anywhere; }
   .chips { display: flex; flex-wrap: wrap; gap: 4px; }
-  .chip { font-size: var(--fl-fs-xs); color: var(--muted); border: 1px solid var(--line); border-radius: var(--fl-radius-pill); padding: 0 8px; }
-  .decide { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px;
-            margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); font-size: var(--fl-fs-sm); }
-  .rec { color: var(--muted); }
-  .rec b { color: var(--ink); }
-  button[disabled] { font: inherit; padding: 4px 12px; border-radius: var(--fl-radius); border: 1px solid var(--line);
-                     background: transparent; color: var(--faint); cursor: not-allowed; }
+  .decide { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); font-size: var(--fl-fs-sm); }
+  .rec { color: var(--muted); } .rec b { color: var(--ink); }
+  button[disabled] { font: inherit; padding: 4px 12px; border-radius: var(--fl-radius); border: 1px solid var(--line); background: transparent; color: var(--faint); cursor: not-allowed; }
   .empty { color: var(--muted); padding: 8px 0; }
-  a:focus-visible, button:focus-visible { outline: 2px solid var(--fl-accent); outline-offset: 2px; }
+  .feed li { display: grid; grid-template-columns: 150px 64px 1fr; gap: 8px; font-size: var(--fl-fs-sm); padding: 4px 0; border-bottom: 1px solid var(--line); }
+  .feed .t { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .src { font-size: var(--fl-fs-xs); text-align: center; border-radius: var(--fl-radius-pill); border: 1px solid var(--line); color: var(--muted); }
+  .src.webhook { color: var(--ok); border-color: var(--ok); }
+  @media (max-width: 720px) {
+    .ready { grid-template-columns: 1fr; } .go-badge { font-size: 32px; }
+    .feed li { grid-template-columns: 1fr; gap: 2px; }
+  }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <h1>Mission Control</h1>
+    <h1>Mission Control $live</h1>
     $plan_link
-    <span class="asof">Board data as of $snapshot_time &middot; refreshes at most every 5 minutes &middot; read-only</span>
+    <span class="asof">Board $snapshot_time &middot; poll $poll_time &middot; webhook $webhook_time &middot; evidence $evidence_time &middot; read-only, refreshes every 60 s</span>
   </header>
-  <ul class="totals" aria-label="Cards by status"><li><b>$total</b> cards on Project #4</li>$status_list</ul>
-  <p class="notice"><b>Send is off.</b> $send_reason Recommendations come from simple rules over each card's GitHub record, not from a model.</p>
   $error
+  $evidence_error
+
+  <div class="ready">
+    <div class="go-panel" id="readiness">
+      $go_badge
+      <span>$go_reason</span>
+      <span class="go-rule">GO needs every pilot candidate DEPLOYED:production and FIELD-VERIFIED by the owner. Staging, CI and agent reports never light GO.</span>
+    </div>
+    <div class="tiles">$tiles</div>
+  </div>
+
+  <div class="grid2">
+    <section id="envs"><h2>Environments</h2><p class="hint">Live /api/version per environment; ancestry checked against main.</p><ul class="envs">$envs</ul></section>
+    <section id="decisions"><h2>Decisions for Mike</h2><p class="hint">From current trusted lane reports (Decision / Blocked by lines).</p><ul>$decisions</ul></section>
+  </div>
+
+  <section id="lanes" style="margin-top:20px"><h2>Agent lanes</h2>
+    <p class="hint">Newest trusted [DELIVERY-UPDATE] per lane (DELIVERY.md). Missing or stale reports never imply success.</p>
+    <ul class="lanes">$lanes</ul>
+  </section>
+
+  <section id="lifecycle" style="margin-top:20px"><h2>Evidence lifecycle</h2>
+    <p class="hint">Each cell lights only on independent evidence with a source. A report only ever claims (last column).</p>
+    <div class="tablewrap"><table class="lifecycle"><thead><tr><th>Item</th><th>IMPLEMENTED</th><th>TESTED</th><th>REVIEWED</th><th>DEPLOYED:staging</th><th>DEPLOYED:production</th><th>FIELD-VERIFIED</th><th>Reported</th></tr></thead>
+    <tbody>$lifecycle_rows</tbody></table></div>
+  </section>
+
+  <ul class="totals" aria-label="Cards by status" style="margin-top:20px"><li><b>$total</b> cards on Project #4</li>$status_list</ul>
+  <p class="notice"><b>Send is off.</b> $send_reason Recommendations come from simple rules over each card's GitHub record, not from a model.</p>
   <main>
     $focus
     $needs
     $blocked
     $mismatched
+    <section id="feed"><h2>Activity</h2><p class="hint">Last 50 GitHub events (webhook or poll), newest first.</p><ul class="feed">$feed</ul></section>
   </main>
 </div>
 </body>
