@@ -140,7 +140,7 @@ import {
   pickQuestionWarningChunk,
   questionWarningQuery,
 } from "@/capabilities/energized-work-stop";
-import { ambiguousModelAskText, libraryNotForAskedModelText, namedModelMismatchText, subjectOutOfReachText, type NamedModelMismatch } from "@/capabilities/named-model-mismatch";
+import { ambiguousModelAskText, libraryNotForAskedModelText, namedModelMismatchText, siblingOfRecordAskText, subjectOutOfReachText, type NamedModelMismatch } from "@/capabilities/named-model-mismatch";
 import { readSubject, SUBJECT_READ_STEPS } from "@/capabilities/conversation-subject";
 import { notebookManualIdentity } from "@/capabilities/notebook-manual-identity";
 import {
@@ -2505,6 +2505,7 @@ async function handleChatTurn(
      *  question named a sibling and retrieval suspended it) — what the shadow
      *  claim verifier binds rows by, so it is gated exactly as the exclusion. */
     recordNumber?: string | null;
+    siblingOfRecordAsk?: { asked: string[]; record: string };
   } = {};
   const queryRewrite = await queryRewritePromise;
   retrievalDiagnostics.queryRewrite = queryRewrite.status;
@@ -3400,6 +3401,10 @@ async function handleChatTurn(
             // round 3 on #5389, F7).
             ...manualIdentity,
             subjectQuestion: message,
+            // A stop is never withheld over a look-alike catalog number (Mike
+            // 2026-11-12, L8): the answer pass refuses such a question, the
+            // stop still serves the lockout page and calls the number out.
+            siblingAsk: "serve",
             subjectQueries,
             subjectOutOfReach,
             validatedDocScope: true,
@@ -3642,6 +3647,11 @@ async function handleChatTurn(
       // CV-101 S6: the question named a model and every refused manual declares a
       // different one — say which, and still answer nothing from it.
       // #5355: two sibling models named with no comparison — ask which one.
+      // Garage pilot L8 (Mike 2026-11-12): the question named a sibling of the
+      // project's confirmed catalog number — a different unit. Name both numbers,
+      // answer nothing from the sibling's column.
+      : notebookRetrieval && retrievalDiagnostics.siblingOfRecordAsk
+        ? siblingOfRecordAskText(retrievalDiagnostics.siblingOfRecordAsk)
       : notebookRetrieval && retrievalDiagnostics.ambiguousModelAsk
         ? ambiguousModelAskText(retrievalDiagnostics.ambiguousModelAsk.named)
       : notebookRetrieval && retrievalDiagnostics.namedModelMismatch

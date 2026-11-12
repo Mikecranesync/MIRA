@@ -153,6 +153,37 @@ describe("CV-101 S6 — a wrong-model ask names the mismatch and answers nothing
   });
 });
 
+describe("garage pilot L8 (Mike 2026-11-12): a sibling of the record's number is refused by name, from this project's manual", () => {
+  it("serves insufficient_evidence naming GS11N-20P2 vs GS13N-20P2, no provider call, no citation, no value", async () => {
+    nbMock.getNotebook.mockResolvedValue({
+      id: NB, displayName: "Garage GS10", manufacturer: "AutomationDirect", model: "GS10",
+      catalogNumber: "GS11N-20P2", identityStatus: "user_confirmed",
+    });
+    ragMock.retrieveNodeChunks.mockImplementation(async (_c: unknown, _t: unknown, _q: unknown, opts: unknown) => {
+      const o = opts as Opts;
+      if (o?.diagnostics) {
+        o.diagnostics.siblingOfRecordAsk = { asked: ["GS13N-20P2"], record: "GS11N-20P2" };
+        o.diagnostics.recordNumber = null;
+      }
+      return [];
+    });
+    const out = await frames(
+      await POST(req({ message: "What is the rated input current of the GS13N-20P2?", sourceDocIds: [DOC_A] }), params),
+    );
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    const status = out.find((f) => f.kind === "status") as { status: string; message?: string };
+    expect(status.status).toBe("insufficient_evidence");
+    expect(status.message).toContain("GS11N-20P2");
+    expect(status.message).toContain("GS13N-20P2");
+    expect(status.message).toMatch(/manual/i);
+    // The harness L8 refusal regex (rules v2) must match the served wording.
+    expect(status.message).toMatch(/not (covered|found|in this manual|provided|stated|mentioned|specified|given)|do(es)? not (cover|include|list|provide|state|mention|give|specify)|can(no|['’])?t (answer|find|give|determine|provide)|isn'?t (covered|in)/i);
+    expect(status.message).not.toMatch(/\d+(\.\d+)?\s*A\b/);
+    const sources = out.find((f) => f.kind === "sources") as { citations: unknown[] };
+    expect(sources.citations).toEqual([]);
+  });
+});
+
 describe("#5355 — two sibling models with no comparison get a which-one question", () => {
   it("serves insufficient_evidence asking SMC-50 or SMC Flex, with no provider call and no citation", async () => {
     ragMock.retrieveNodeChunks.mockImplementation(async (_c: unknown, _t: unknown, _q: unknown, opts: unknown) => {

@@ -6,6 +6,7 @@
  * regex (the only shape test is "an identifier cell": letters AND digits, >=5 chars, no spaces).
  */
 import { tableUnit } from "./supporting-quote";
+import { modelNumbersIn } from "./manual-applicability";
 
 export type LayoutItem = { str: string; x: number; y: number; w: number; size: number };
 export type TableCell = { model: string; value: string };
@@ -21,6 +22,11 @@ export type TableBlock = {
   bottom: number;
 };
 export type TableChunk = { text: string; models: string[]; unqualified: boolean };
+/** A MODEL-KEYED table (one model per line in a left column, attributes as columns — the GS10
+ *  Appendix A cable-length table, #5450): its header band + model lines as rendered text, and the
+ *  models of its key column. It carries NO rows on purpose: cells merged down a group of models
+ *  cannot be bounded from text positions, so no value is attributed to any model (fail closed). */
+export type ModelKeyedTable = { caption: string; lines: string[]; models: string[]; modelKeys: string[]; top: number; bottom: number };
 
 /** A line: items already sorted left-to-right (x ascending), with a representative y. */
 interface Line {
@@ -40,6 +46,14 @@ const BLOCK_GAP_MULT = 3;
  *  ≤0.72pt. `LINE_GAP_PT`'s 2.5pt sits safely between both and is already the module's
  *  constant for "tiny gap = contiguous content", applied here on the x axis instead of y. */
 const RUN_GAP_PT = LINE_GAP_PT;
+/** Model-keyed table (#5450): the key column's identifier cells must share one x within this
+ *  tolerance (p.394 prints every model at x=111.x), and a run needs this many model lines. */
+const MODEL_KEY_X_TOL_PT = 6;
+const MODEL_KEYED_MIN_LINES = 3;
+/** The header band above a model-keyed run: lines whose gap to the line below is at most this
+ *  multiple of the run's own median line pitch (p.394: pitch ≈ 11 pt; the band's gaps are ≤ 13 pt
+ *  and the section title above it sits 33 pt away). */
+const MODEL_KEYED_HEADER_GAP_MULT = 2;
 
 /** uppercase, drop a trailing "(…)" group, keep [A-Z0-9] only. */
 export function exactModelKey(cell: string): string {
@@ -501,6 +515,85 @@ export function tableChunks(block: TableBlock): TableChunk[] {
   return chunks;
 }
 
+/** Finds every MODEL-KEYED table on a page (#5450): a run of >= MODEL_KEYED_MIN_LINES lines, each
+ *  with exactly one identifier cell that is the line's LEFTMOST item at one shared x, beside >= 1
+ *  value item, every value number-shaped; interior lines of bare numbers (a merged Ø mark printed
+ *  at the centre of its span) are allowed and a gap > BLOCK_GAP_MULT × the run's median pitch, a
+ *  prose word, a second identifier, or a line inside `occupied` (a header-row block) ends it. The
+ *  run must start beneath a line with no identifier cell (its header band, which is part of the
+ *  table when its gaps are tight). Across the three pilot manuals (GS10 454 pages, Micro820 24,
+ *  relay 4) this fires on exactly one page, GS10 p.394. Nothing is parsed into rows — see
+ *  `ModelKeyedTable`. */
+function detectModelKeyedTables(lines: readonly Line[], occupied: ReadonlySet<number>): ModelKeyedTable[] {
+  const tables: ModelKeyedTable[] = [];
+  const isValueItem = (it: LayoutItem): boolean => isNumberShaped(it.str);
+  // Codex r1 on #5451 (F1): the key cell must READ as a model number — by the same reader the
+  // record's number and a manual's cover are read with (manual-applicability.ts) — not merely be
+  // identifier-shaped. "P06.63" (a parameter code) is identifier-shaped but reads as no model, so a
+  // Parameter / Default / Min / Max table stays ordinary text instead of a tagged, withheld block.
+  const keyedLine = (line: Line): LayoutItem | null => {
+    const ids = identifierCells(line);
+    if (ids.length !== 1 || line.items[0] !== ids[0] || line.items.length < 2) return null;
+    if (modelNumbersIn(ids[0].str).length === 0) return null;
+    return line.items.slice(1).every(isValueItem) ? ids[0] : null;
+  };
+  const bareNumberLine = (line: Line): boolean => identifierCells(line).length === 0 && line.items.every(isValueItem);
+
+  let i = 0;
+  while (i < lines.length) {
+    const first = occupied.has(i) ? null : keyedLine(lines[i]);
+    // A key column starts beneath its header band: a run whose line above carries an identifier
+    // cell is the tail of a table the reader could not qualify (GS10 p.227 — P06.17–P06.22 with
+    // fault-code cells, then P06.63–P06.70 with numeric cells), not a table of its own.
+    if (!first || (i > 0 && identifierCells(lines[i - 1]).length > 0)) {
+      i++;
+      continue;
+    }
+    const modelIdx: number[] = [i];
+    const gaps: number[] = [];
+    let j = i + 1;
+    for (; j < lines.length && !occupied.has(j); j++) {
+      const gap = lines[j - 1].y - lines[j].y;
+      const medianGap = gaps.length > 0 ? median(gaps) : 12;
+      if (gap > BLOCK_GAP_MULT * Math.max(medianGap, 1)) break;
+      const key = keyedLine(lines[j]);
+      if (key) {
+        if (Math.abs(key.x - first.x) > MODEL_KEY_X_TOL_PT) break;
+        gaps.push(lines[modelIdx[modelIdx.length - 1]].y - lines[j].y);
+        modelIdx.push(j);
+        continue;
+      }
+      if (!bareNumberLine(lines[j])) break;
+    }
+    if (modelIdx.length < MODEL_KEYED_MIN_LINES) {
+      i++;
+      continue;
+    }
+    const last = modelIdx[modelIdx.length - 1];
+    const pitch = median(gaps);
+    let start = i;
+    while (start > 0 && !occupied.has(start - 1)) {
+      const above = lines[start - 1];
+      if (identifierCells(above).length > 0 || above.y - lines[start].y > MODEL_KEYED_HEADER_GAP_MULT * pitch) break;
+      start--;
+    }
+    const models = modelIdx.map((idx) => keyedLine(lines[idx])!.str.trim());
+    const distinct = [...new Set(models)];
+    const rendered = lines.slice(start, last + 1).map((l) => renderItems(l.items));
+    const caption = start < i ? rendered[0] : "";
+    tables.push({
+      caption,
+      lines: start < i ? rendered.slice(1) : rendered,
+      models: distinct,
+      modelKeys: distinct.map(exactModelKey),
+      top: lines[start].y,
+      bottom: lines[last].y,
+    });
+    i = last + 1;
+  }
+  return tables;
+}
+
 /** Reads a page's positioned text items, finds every qualifying model-column table, and returns
  *  the chunked tables plus the page's remaining text with those table lines excluded. A block
  *  qualifies with >= 2 rows (so a bare label/value sheet like the Schneider data sheet is never
@@ -508,17 +601,32 @@ export function tableChunks(block: TableBlock): TableChunk[] {
  *  row is one merged value carries no column information, and that is exactly the shape a sentence
  *  with two model numbers as separate items plus a few trailing numbers takes (cheap review of
  *  #5430 r1 — without this rule such a "table" swallowed the whole page into chunks).
+ *  A MODEL-KEYED table (`detectModelKeyedTables`, #5450) also qualifies, as unqualified text only.
  *  Returns null when the page has no qualifying table (the remainder is then just the page as-is,
  *  which callers already have via the flat-text path). */
 export function pageWithTables(items: readonly LayoutItem[]): { remainder: string; chunks: TableChunk[] } | null {
   const blocks = detectModelTables(items).filter((b) => b.rows.length >= 2 && b.rows.some((r) => !r.merged));
-  if (blocks.length === 0) return null;
-
   const lines = buildLines(items);
+  const occupied = new Set<number>();
+  lines.forEach((l, idx) => {
+    if (blocks.some((b) => l.y <= b.top && l.y >= b.bottom)) occupied.add(idx);
+  });
+  const keyed = detectModelKeyedTables(lines, occupied);
+  if (blocks.length === 0 && keyed.length === 0) return null;
+
   const chunks: TableChunk[] = [];
   for (const block of blocks) chunks.push(...tableChunks(block));
+  // A model-keyed table is ONE unqualified chunk (split only by the size budget) tagged with every
+  // model of its key column, so retrieval withholds it from a record holding a catalog number and
+  // reports the page as unresolved — a flat `GS11N-20P2 230 1.8` line never answers for a value
+  // again (#5450). No per-model chunk is written: nothing was tied to a column.
+  for (const t of keyed) {
+    const prefix = t.caption ? `${t.caption} — unqualified` : "unqualified";
+    for (const text of splitRowsIntoChunks(prefix, t.lines)) chunks.push({ text, models: [...t.modelKeys], unqualified: true });
+  }
 
-  const kept = lines.filter((l) => !blocks.some((b) => l.y <= b.top && l.y >= b.bottom));
+  const spans = [...blocks.map((b) => ({ top: b.top, bottom: b.bottom })), ...keyed.map((t) => ({ top: t.top, bottom: t.bottom }))];
+  const kept = lines.filter((l) => !spans.some((s) => l.y <= s.top && l.y >= s.bottom));
   const remainder = kept.map((l) => renderItems(l.items)).join("\n");
   return { remainder, chunks };
 }

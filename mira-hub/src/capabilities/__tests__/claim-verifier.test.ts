@@ -206,3 +206,25 @@ describe("claim-verifier: subjects and kinds", () => {
     expect(v.verdict).toBe("supported");
   });
 });
+
+// #5450 — staging 5e79ca713 (2026-11-12 harness, L3 ask 7): the one wrong-row answer of the run,
+// "GS11N-20P2 is listed with a VT rated current of 1.8 Arms [7]" cited to the Appendix A cable-length
+// table, came back `no_opinion` / `no_typed_claim`: `Arms` was not in the closed unit table, so the
+// verifier typed no claim on the one answer it was built to catch. Real p.394 stored text (flat, the
+// row values carry no unit of their own — the unit sits in the column header) and the real p.26 row.
+const P394 = "Maximum Recommended Cable Length - GS10\nGS10 Model Input Power VT Rated\nCurrent\n(Arms)\nWithout Output AC Reactor\n(meters)\nGS11N-20P2\n230\n1.8\nGS11N-20P5 3.2\nGS13N-20P2\n3\n230\n1.8\n";
+const P26_ROW = "GS11N-20P2: CT Rated Output Current 1.6 A\nGS11N-20P2: VT Rated Output Current 1.8 A\nGS11N-20P2: CT Rated Input Current 5.1 A\nGS11N-20P2: VT Rated Input Current 5.8 A\n";
+describe("claim-verifier: `Arms` is amps (#5450)", () => {
+  const Q394 = "Rated input current for this drive?";
+  it("types '1.8 Arms' as a quantity, and judges it absent on the cable-length page whose values carry no unit", () => {
+    const v = verifyAnswer({ question: Q394, answer: "The GS11N-20P2 is listed with a VT rated current of 1.8 Arms [1].", evidence: [{ page: 394, text: P394 }] });
+    expect(v.reason).not.toBe("no_typed_claim");
+    expect(v.claims).toEqual([expect.objectContaining({ kind: "quantity", status: "absent" })]);
+    expect(v.verdict).toBe("unsupported");
+  });
+
+  it("'1.8 Arms' is the same quantity as the row's '1.8 A' (amps rms are amps), so an honest answer off the p.26 row is supported", () => {
+    const v = verifyAnswer({ question: "What is its VT rated output current?", answer: "The VT rated output current of the GS11N-20P2 is 1.8 Arms [1].", evidence: [{ page: 26, text: P26_ROW }] });
+    expect(v.claims).toEqual([expect.objectContaining({ kind: "quantity", status: "supported", page: 26 })]);
+  });
+});

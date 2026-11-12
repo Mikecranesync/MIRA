@@ -39,8 +39,11 @@ const CHUNK_OVERLAP = 120;
  * document change shape (flat-text-only -> table-aware, or a change to that algorithm) so a
  * reprocessing pass can tell an old stored document from a freshly re-ingested one. Stamped as
  * `metadata.extraction_version` on EVERY chunk this module writes, PDF or text path alike.
+ *   v2 — header-row model tables as one chunk per model column (PR-1, #5430).
+ *   v3 — a model-keyed table (one model per line) stored as one unqualified chunk instead of flat
+ *        text (#5450); a document stamped v2 is stale and `reprocessNodeDocument` rewrites it.
  */
-export const EXTRACTION_VERSION = 2;
+export const EXTRACTION_VERSION = 3;
 
 // Multi-row INSERT batch size. Bounds BOTH the chunk rows held in memory at once
 // (≤ BATCH_ROWS, instead of every chunk of a 1200-page manual accumulated in one

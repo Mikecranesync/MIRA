@@ -31,7 +31,9 @@ const MAX_MARKER_DISTANCE = 300;
 const UNIT_SYMBOLS = new Map<string, string>(Object.entries({
   V: "V", v: "V", mV: "mV", kV: "kV", KV: "kV", MV: "MV", Vrms: "Vrms", VRMS: "Vrms",
   VAC: "VAC", Vac: "VAC", "V AC": "VAC", "V ac": "VAC", VDC: "VDC", Vdc: "VDC", "V DC": "VDC", "V dc": "VDC",
-  A: "A", mA: "mA", kA: "kA", W: "W", mW: "mW", kW: "kW", KW: "kW", kw: "kW", MW: "MW",
+  // Arms = amps rms = amps for an AC rating (#5450: GS10 p.394 prints "VT Rated Current (Arms)"); Vrms stays its own
+  // symbol as before — not changed here.
+  A: "A", Arms: "A", ARMS: "A", mA: "mA", kA: "kA", W: "W", mW: "mW", kW: "kW", KW: "kW", kw: "kW", MW: "MW",
   VA: "VA", kVA: "kVA", KVA: "kVA", kva: "kVA", Hz: "Hz", hz: "Hz", HZ: "Hz", kHz: "kHz", KHz: "kHz", khz: "kHz", MHz: "MHz",
   rpm: "rpm", RPM: "rpm", "°C": "°C", "ºC": "°C", "℃": "°C", "°F": "°F", "ºF": "°F", "℉": "°F", "%": "%",
   "Ω": "Ω", "kΩ": "kΩ", "MΩ": "MΩ", "mΩ": "mΩ", "N·m": "N·m", "N-m": "N·m", Nm: "N·m", "N m": "N·m",

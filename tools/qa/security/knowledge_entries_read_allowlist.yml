@@ -1499,9 +1499,9 @@ approved:
     approved_classification: UNFILTERED
     query_sha256: "e1000f500b2e7a1f16b94f877abdd69c724e1d777b6cf02b2c5ec7ad934ff09b"
     reason: "Not a database read: a regex routing a MOCK client's DELETE FROM knowledge_entries to a canned rowCount. Phase 1 PR-6 (#5427); the real statement is node-knowledge-ingest.ts:1185 (approved)."
-  "mira-hub/src/capabilities/__tests__/node-document-reprocess.test.ts:169":
+  "mira-hub/src/capabilities/__tests__/node-document-reprocess.test.ts:170":
     approved_classification: UNFILTERED
-    query_sha256: "2ade550bd810367c55810a8b91f078fef39af87e2a9fce3219fe02ae0eae1511"
+    query_sha256: "3895956b8f0d5b817082d2e4d372ea69ae455a55ab59bbc01cee7bb060dd58d2"
     reason: "Not a database read: a regex classifying the MOCK client's captured statements (BEGIN / DELETE FROM knowledge_entries / INSERT / COMMIT) to prove the delete-then-insert order inside one transaction. Phase 1 PR-6 (#5427). No connection, no data."
   "mira-hub/src/capabilities/__tests__/node-document-reprocess.test.ts:299":
     approved_classification: UNFILTERED

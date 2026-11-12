@@ -3,7 +3,7 @@ import { citationPageLabel } from "@/lib/citation-page";
 import type { IdentityStatus } from "@/lib/equipment-notebooks";
 import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
-import { FAMILY_ROOTS, MODEL_PATTERNS, ROCKWELL, familyCovers, modelIdentitiesInText, resolveModelFromObservationText } from "@/capabilities/model-token";
+import { FAMILY_ROOTS, MODEL_PATTERNS, ROCKWELL, type ModelMention, familyCovers, modelIdentitiesInText, modelMentionsInText, resolveModelFromObservationText } from "@/capabilities/model-token";
 import { ambiguousSiblingModels } from "@/capabilities/named-model-mismatch";
 import {
   coverDeclaredNumbers,
@@ -18,6 +18,7 @@ import {
   unlistedModelNumbers,
   type ExcludedTable,
   type ManualVerdict,
+  type ModelNumber,
   type OtherProductRefusal,
   type UnlistedModelRefusal,
 } from "@/capabilities/manual-applicability";
@@ -45,6 +46,7 @@ import {
   identityTokens,
   type EquipmentIdentity,
   prioritizeCurrentCodeEvidence,
+  leadWithRecordRows,
   rerankChunks,
   classifyBroad,
   classifyIntent,
@@ -1573,6 +1575,15 @@ export async function retrieveNodeChunks(
      *  as the question does for a search made from it: every search of one
      *  turn is held to the same manuals. Search words are unchanged by it. */
     subjectQuestion?: string;
+    /** Garage pilot L8 (Mike 2026-11-12): what to do when the question names a
+     *  sibling of the record's confirmed catalog number. "refuse" (default): no
+     *  lane is queried and `diagnostics.siblingOfRecordAsk` is reported, so the
+     *  reply names both numbers and gives no value. "serve": the two safety-stop
+     *  passes only — the record is suspended (`recordNumber` null, the sibling's
+     *  page admitted by the cover rule) because a lockout page is never withheld
+     *  over a look-alike number; the stop itself calls the number out
+     *  (admittedCovers.unlisted). */
+    siblingAsk?: "refuse" | "serve";
     /** Earlier questions of this conversation whose subject is still open
      *  (conversation-subject.ts), NEWEST FIRST. Read only when this question
      *  names no model and no confirmed notebook identity scopes it: the model
@@ -1674,6 +1685,11 @@ export async function retrieveNodeChunks(
        *  path's shadow claim verifier binds rows by this, so a deliberate sibling
        *  question is never flagged against the record's own column. */
       recordNumber?: string | null;
+      /** Garage pilot L8 (Mike 2026-11-12): the notebook is confirmed with a catalog
+       *  number and the question (or an earlier open one) named ANOTHER number of
+       *  that number's family — a different unit. Nothing was retrieved; the reply
+       *  names both numbers and gives no value (named-model-mismatch.ts). */
+      siblingOfRecordAsk?: { asked: string[]; record: string };
     };
   },
 ): Promise<ManualChunk[]> {
@@ -1813,6 +1829,69 @@ export async function retrieveNodeChunks(
     .flatMap((text) => unlistedModelNumbers(text))
     .filter((carried) => !ownNumbers.some((own) => sameModelFamily(own, carried)));
   const carriedLabels = new Set(carriedNumbers.map((n) => n.label));
+  // Mike's ruling 2026-11-12 (garage pilot L8; HARNESS-SPEC.md bar "refuse"): the
+  // notebook is confirmed with a catalog number on record, and this question (or
+  // an earlier open one it follows) names ANOTHER number of that number's family
+  // — the look-alike GS13N-20P2 in a GS11N-20P2 project. That is a different
+  // unit. On staging 5e79ca713 the record was suspended and the sibling's own
+  // column answered (1.9 A, labelled GS13N); the pre-registered bar says a value
+  // from any other model is wrong here. Nothing is retrieved — no lane is
+  // queried — and the reply names both numbers (route.ts, siblingOfRecordAskText).
+  // Judged with the SAME reader the passage exclusion below uses
+  // (manual-applicability.ts modelNumbersIn + sameModelFamily), never a second
+  // rule. A number of another family (a relay part number) and a question that
+  // names only the record's own number pass through unchanged. Judged BEFORE
+  // the two-siblings "which one?" check: a question naming the record's own
+  // number beside a sibling is refused here, not asked which one it meant.
+  const recordText = confirmedCatalogNumber(opts);
+  // ONE reader for the record and for the questions (Codex r2 F3 + r3 F3 on #5451: the same
+  // defect mirrored — "GS13N - 20P2" in a question, then "GS11N - 20P2" on the record, spaces
+  // around the hyphen as a tablet types them). The generic number reader splits that spelling
+  // into GS11N + 20P2; the identity reader (model-token.ts) accepts it and yields the full catalog
+  // identity. So: when the identity reader finds identities, their full numbers are the reading
+  // (a bare family root read beside its full number — GS11N beside GS11N-20P2 — is not a number
+  // of its own and is dropped); otherwise the generic reader (a relay part, a parameter code).
+  const catalogNumbersIn = (text: string): ModelNumber[] => {
+    // Two reviewed readers. The identity reader's numbers (it joins a spaced "GS11N - 20P2" that
+    // the generic reader would split) plus unlistedModelNumbers, which blanks each identity
+    // OCCURRENCE out of the text before reading the rest generically — so the split halves of a
+    // spaced number cannot survive, while a catalog number the identity reader left beside a
+    // product name (Micro820 2080-LC20-20QWB) and a separately named prefix sibling (CA3KN22BD
+    // beside CA3KN22BD3, GS11N-20P2 beside GS11N-20P2A) are kept whole. The identity reader also
+    // reads the bare family root of a catalog number (GS11N from GS11N-20P2), and a root pairs
+    // with another root (GS11N with GS13N) though with no full number — so a root is set aside,
+    // but only by its OCCURRENCE: a span-reader mention whose every occurrence continues into a
+    // longer identity read from that same position. Nothing compares one number against another
+    // elsewhere in the text (Codex r3–r6 on #5451: every rule that did — text-wide prefix,
+    // text-wide substring, identity-only prefix — dropped some separately named sibling).
+    const identities = [...modelIdentitiesInText(text)];
+    const continuesIntoLonger = (m: ModelMention) =>
+      identities.some((id) => id !== m.id && id.startsWith(m.id) && text.slice(m.start).replace(/\s+/g, "").toUpperCase().startsWith(id));
+    const mentions = modelMentionsInText(text);
+    const rootsOfLonger = new Set(
+      mentions.filter((m) => mentions.filter((o) => o.id === m.id).every(continuesIntoLonger)).map((m) => m.id),
+    );
+    const seen = new Set<string>();
+    return [
+      ...identities.filter((id) => !rootsOfLonger.has(id)).flatMap((id) => modelNumbersIn(id)),
+      ...unlistedModelNumbers(text),
+    ].filter((n) => (seen.has(n.key) ? false : (seen.add(n.key), true)));
+  };
+  const recordFamilyNumbers = recordText ? catalogNumbersIn(recordText) : [];
+  const siblingAsked = [...catalogNumbersIn(ownQuestion), ...catalogNumbersIn(carriedModelQuestion ?? ""), ...carriedNumbers].filter((n) =>
+    recordFamilyNumbers.some((own) => own.key !== n.key && sameModelFamily(own, n)),
+  );
+  const asksSiblingOfRecord = Boolean(recordText) && siblingAsked.length > 0;
+  if (asksSiblingOfRecord && opts.siblingAsk !== "serve") {
+    if (opts.diagnostics) {
+      opts.diagnostics.recordNumber = null;
+      opts.diagnostics.siblingOfRecordAsk = {
+        asked: siblingAsked.filter((n, i) => siblingAsked.findIndex((m) => m.key === n.key) === i).map((n) => n.label),
+        record: recordText as string,
+      };
+    }
+    return [];
+  }
 
   const requestedModel = resolveModelFromObservationText(modelQuestion);
   // 2026-10-17 prod-test item 1 (stacked on #4469): the question is not the
@@ -2508,16 +2587,13 @@ export async function retrieveNodeChunks(
   //       of the record's family and not the record's own.
   // A passage naming the record's number beside a sibling, and prose naming no
   // number, are kept. Excluded, never demoted; what was excluded is reported.
-  // The technician may deliberately ask about a sibling ("rated current of the
-  // GS13N-20P2?"), in this question or in the open one it follows: then the
-  // question's number is the subject, the existing cover rule judges it, and
-  // the record's table is not the measure of any passage.
-  const recordText = confirmedCatalogNumber(opts);
-  const recordFamilyNumbers = recordText ? modelNumbersIn(recordText) : [];
-  const asksAnotherOfFamily = [...modelNumbersIn(ownQuestion), ...carriedNumbers].some((n) =>
-    recordFamilyNumbers.some((own) => own.key !== n.key && sameModelFamily(own, n)),
-  );
-  const recordNumber = recordText && !asksAnotherOfFamily ? recordText : null;
+  // A question that names a sibling of the record's family reaches here only on
+  // a safety-stop pass (`siblingAsk: "serve"`, Mike 2026-11-12); the answer pass
+  // refused it above. On that pass the record is suspended: the question's
+  // number is the subject, the cover rule judges it, and the record's table is
+  // not the measure of any passage. `recordText` / `recordFamilyNumbers` were
+  // read above.
+  const recordNumber = recordText && !asksSiblingOfRecord ? recordText : null;
   if (opts.diagnostics) opts.diagnostics.recordNumber = recordNumber;
   const recordKey = recordNumber ? exactModelKey(recordNumber) || null : null;
   const tableModelsOf = (r: Record<string, unknown>): string[] => {
@@ -2545,7 +2621,17 @@ export async function retrieveNodeChunks(
   const excludedTableOf = (r: Record<string, unknown>): string[] | null => {
     if (!recordKey) return null;
     const tagged = tableModelsOf(r);
-    if (tagged.length > 0) return isUnresolvedTableLine(r) || !tagged.includes(recordKey) ? tagged : null;
+    if (tagged.length > 0) {
+      // Codex r1 on #5451 (F1): a table keyed by numbers of ANOTHER family (parameter codes,
+      // accessory parts) is nobody's look-alike — for this record it is ordinary text. Only a
+      // table that carries a number of the record's own family is judged here. When the
+      // record's number cannot be read as a model (no family to compare), the old rule holds.
+      const ofRecordFamily =
+        recordFamilyNumbers.length === 0 ||
+        tagged.some((key) => modelNumbersIn(key).some((n) => recordFamilyNumbers.some((own) => sameModelFamily(own, n))));
+      if (!ofRecordFamily) return null;
+      return isUnresolvedTableLine(r) || !tagged.includes(recordKey) ? tagged : null;
+    }
     if (recordFamilyNumbers.length === 0) return null;
     const named = modelNumbersIn(String(r.content ?? ""));
     if (named.some((n) => recordFamilyNumbers.some((own) => own.key === n.key))) return null;
@@ -3119,7 +3205,35 @@ export async function retrieveNodeChunks(
     opts.diagnostics.rerankMs = rerankMs;
     opts.diagnostics.searchPath = searchPath;
   }
-  const rerankedAll = prioritizeCurrentCodeEvidence(modelRanked, expanded.currentCodeTokens);
+  // #5449 (garage pilot L4 / L14): the record's own table rows reach the pool through the
+  // catalog-number exact lane at rank 0, and the rerank — scoring the question's words — cut
+  // them behind prose when the row label did not carry those words ("supply voltage" never
+  // matched "Rated Voltage/Frequency"; the Micro820 row has no "Micro820" token): staging
+  // 5e79ca713 refused "What supply voltage does it need?" 10 of 10 with the right row stored.
+  // A row of the record's OWN table that shares a question lexeme is the most specific
+  // evidence the manual holds for a value question, so up to RECORD_ROW_SEATS of them keep
+  // a seat at the head of the cut. Rows sharing no lexeme (a fault-code question) stay where
+  // the rerank put them; unqualified rows never reach the pool (admit); without a confirmed
+  // number `recordKey` is null and nothing changes. The code the technician just named still
+  // leads (prioritizeCurrentCodeEvidence runs after).
+  const RECORD_ROW_SEATS = 2;
+  const sharedQuestionLexemes = (r: Record<string, unknown>): number =>
+    Array.isArray(r.lexemes) ? (r.lexemes as unknown[]).filter((lex) => qIdf.has(String(lex))).length : 0;
+  const seated = leadWithRecordRows(
+    modelRanked,
+    (c) => recordKey !== null && !isUnresolvedTableLine(c._row) && tableModelsOf(c._row).includes(recordKey),
+    (c) => sharedQuestionLexemes(c._row),
+    RECORD_ROW_SEATS,
+  );
+  let recordRowsSeated = 0;
+  if (seated !== modelRanked) {
+    for (const c of seated.slice(0, RECORD_ROW_SEATS)) {
+      if (recordKey !== null && tableModelsOf(c._row).includes(recordKey)) recordRowsSeated++;
+      else break;
+    }
+  }
+  if (recordRowsSeated > 0) setSpanAttrs({ "mira.retrieval.record_rows_seated": recordRowsSeated });
+  const rerankedAll = prioritizeCurrentCodeEvidence(seated, expanded.currentCodeTokens);
   // Facet-guaranteed slots (answer completeness): rerank picks the BEST chunks
   // overall, so one family (e.g. overload) can fill every slot while a planned
   // facet (overcurrent) sits uncovered in the pool. Every facet with pool

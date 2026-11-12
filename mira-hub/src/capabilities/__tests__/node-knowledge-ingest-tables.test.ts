@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import gs10p26 from "@/capabilities/__fixtures__/table-rows/gs10-p26-230v-1ph.json";
+import gs10p394 from "@/capabilities/__fixtures__/table-rows/gs10-p394-cable-length.json";
 import { chunkText } from "@/lib/node-knowledge-ingest";
 
 /**
@@ -186,5 +187,36 @@ describe("garage pilot L2 — a page whose numbers carry an unmapped glyph still
     expect(page2.length).toBeGreaterThan(1);
     for (const r of page2) expect(r.metadata.text_repair).toBe("unmapped_glyph");
     for (const r of rows.filter((r) => r.page === 1)) expect(r.metadata.text_repair).toBeUndefined();
+  });
+});
+
+describe("writePdfChunksForNode stores a model-keyed table (one model per line) as unqualified text only (#5450)", () => {
+  beforeEach(() => {
+    captured.length = 0;
+    pdf.pages = [PROSE, gs10p394.text];
+    pdf.layout = new Map([[2, gs10p394.items]]);
+    pdf.getPageThrows = false;
+    pdf.withoutGetPage = false;
+    vi.resetModules();
+  });
+
+  it("writes the GS10 p.394 cable-length table as one table_unqualified chunk tagged with all 22 models, and no per-model chunk", async () => {
+    const { writePdfChunksForNode } = await import("@/lib/node-knowledge-ingest");
+    await writePdfChunksForNode(opts);
+    const rows = insertedRows().filter((r) => r.page === 2);
+    const flat = rows.filter((r) => r.metadata.table_unqualified === true);
+    expect(flat).toHaveLength(1);
+    expect((flat[0].metadata.table_models as string[]).length).toBe(22);
+    expect(flat[0].metadata.table_models).toContain("GS11N20P2");
+    expect(flat[0].metadata.table_models).toContain("GS13N4010");
+    expect(flat[0].content).toMatch(/Maximum Recommended Cable Length - GS10/);
+    expect(flat[0].content).toMatch(/GS11N-20P2/);
+    const perModel = rows.filter((r) => Array.isArray(r.metadata.table_models) && !r.metadata.table_unqualified);
+    expect(perModel).toHaveLength(0);
+    // The flat page remainder no longer carries the table's model lines (that is what answered the
+    // output current as "rated input current" on staging build 5e79ca713).
+    const remainder = rows.filter((r) => !r.metadata.table_models).map((r) => r.content).join("\n");
+    expect(remainder).not.toMatch(/GS11N-20P2/);
+    expect(remainder).toMatch(/Appendix A: Accessories/);
   });
 });
