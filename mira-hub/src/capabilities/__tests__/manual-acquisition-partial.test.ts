@@ -86,9 +86,22 @@ vi.mock("@/lib/tenant-context", () => ({
           const limit = (params?.[2] as number | undefined) ?? stored.rows.length;
           return { rows: stored.rows.slice(0, limit) };
         }
-        if (/count\(DISTINCT source_page\)/.test(sql)) {
+        if (/count\(DISTINCT/.test(sql)) {
           if (stored.documentWideError) throw new Error("document-wide glyph scan: connection reset");
-          const pages = new Set(stored.rows.filter((r) => /\d�\d/.test(r.content)).map((r) => r.source_page));
+          // Emulates Postgres NULL semantics from the query's own shape (Gate 7 cheap-lane r5 HIGH on
+          // #5429): `count(DISTINCT source_page)` DROPS a NULL page, so a glyph-bearing chunk with no
+          // page number is invisible to it, while `assessCompleteness`'s own `glyphPages` Set counts
+          // that chunk as one unreadable "page". `count(DISTINCT coalesce(source_page, -1))` keeps
+          // NULL as one bucket, matching the Set. A mock that always used Set semantics could never
+          // go red on the SQL — this one answers the way the database would.
+          const nullAsBucket = /coalesce\(\s*source_page/i.test(sql);
+          const pages = new Set(
+            stored.rows
+              .filter((r) => /\d�\d/.test(r.content))
+              .map((r) => r.source_page)
+              .filter((p) => nullAsBucket || p !== null)
+              .map((p) => (nullAsBucket ? (p ?? -1) : p)),
+          );
           return { rows: [{ n: pages.size }] };
         }
         return { rows: [] };
@@ -267,6 +280,35 @@ describe("the document-wide unreadable-glyph scan sees past the bounded sample (
     expect(out.status).toBe("complete");
     const evidence = storedPatch().matchEvidence as { completeness?: { complete: boolean } };
     expect(evidence.completeness?.complete).toBe(true);
+  });
+
+  // Gate 7 cheap-lane r5 HIGH (#5429 at 43f61dca8): a glyph-bearing chunk stored with NO page
+  // number (source_page NULL). The chunk-level assessor counts it (`glyphPages` holds null as one
+  // entry), but the document-wide SQL `count(DISTINCT source_page)` drops NULL, returned 0, and
+  // — because the document-wide count OVERRIDES the chunk-level one — the manual was marked
+  // complete with the unreadable chunk sitting inside the first 80 chunks the assessor had read.
+  const NULL_PAGE_GLYPH = { content: "Input Rating2 CT Rated Input Current A 5�1 7�3", source_page: null };
+  const COVER = LONG_CLEAN_ROWS[0];
+
+  it("a glyph in a chunk with no page number still marks the manual partial: the document-wide count keeps NULL as one page, like the chunk-level assessor", async () => {
+    stored.rows = [COVER, NULL_PAGE_GLYPH, ...LONG_CLEAN_ROWS.slice(1, 10)];
+    const out = await acquireManualForIdentity(BASE_INPUT);
+    expect(out.status).toBe("candidate_review");
+    const evidence = storedPatch().matchEvidence as {
+      completeness?: { complete: boolean; reasons: string[]; unreadablePages: number };
+    };
+    expect(evidence.completeness?.complete).toBe(false);
+    expect(evidence.completeness?.reasons).toEqual(["unmapped_glyphs"]);
+    expect(evidence.completeness?.unreadablePages).toBe(1);
+  });
+
+  it("control — a clean chunk with no page number does not count as unreadable", async () => {
+    stored.rows = [COVER, { content: "Input Rating2 CT Rated Input Current A 5.1 7.3", source_page: null }, ...LONG_CLEAN_ROWS.slice(1, 10)];
+    const out = await acquireManualForIdentity(BASE_INPUT);
+    expect(out.status).toBe("complete");
+    const evidence = storedPatch().matchEvidence as { completeness?: { complete: boolean; unreadablePages: number } };
+    expect(evidence.completeness?.complete).toBe(true);
+    expect(evidence.completeness?.unreadablePages).toBe(0);
   });
 
   it("a failed document-wide scan retries later rather than treating the document as clean", async () => {

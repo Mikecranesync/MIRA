@@ -199,12 +199,18 @@ async function chunksForDoc(
  * would never see them (Codex #5429 r1 F3). The SQL pattern is `DIGIT_GLYPH_DIGIT.source` —
  * the SAME regex `assessCompleteness` uses — so the two can't drift apart. `null` on any read
  * failure: retry later, same posture as `chunksForDoc` (never silently "0 unreadable pages").
+ *
+ * `coalesce(source_page, -1)`: a chunk stored with NO page number must still count as one
+ * unreadable "page", exactly as `assessCompleteness`'s `glyphPages` Set counts `null`. Plain
+ * `count(DISTINCT source_page)` drops NULL, returned 0, and — since this count OVERRIDES the
+ * chunk-level one — marked a manual complete whose unreadable chunk the assessor had already
+ * seen (Gate 7 cheap-lane r5 HIGH on #5429).
  */
 async function countUnreadablePagesDocumentWide(tenantId: string, docId: string): Promise<number | null> {
   try {
     return await withTenantContext(tenantId, async (c) => {
       const r = await c.query<{ n: number }>(
-        `SELECT count(DISTINCT source_page)::int AS n
+        `SELECT count(DISTINCT coalesce(source_page, -1))::int AS n
            FROM knowledge_entries
           WHERE tenant_id = $1 AND doc_id = $2::uuid AND content ~ $3`,
         [tenantId, docId, DIGIT_GLYPH_DIGIT.source],

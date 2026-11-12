@@ -363,10 +363,10 @@ approved:
     query_snippet: |
       FROM knowledge_entries
           WHERE tenant_id = $1 AND doc_id = $2::uuid
-  "mira-hub/src/capabilities/manual-acquisition.ts:208":
+  "mira-hub/src/capabilities/manual-acquisition.ts:214":
     approved_classification: TENANT-ONLY
     query_sha256: "fb54f7a3575dc0c4c9979302d80517883e9d65b16dfe66281a3d779fab1253f9"
-    reason: "countUnreadablePagesDocumentWide (Phase 1 PR-3 #5425 via Codex r1 F3 on #5429): a count(DISTINCT source_page) of the caller's OWN uploaded document's chunks whose text holds a digit-glyph-digit sequence, by (tenant_id, doc_id) under withTenantContext RLS — the completeness verdict's unreadable-page count must cover the whole document, not the first 80 chunks the assessor reads. Same scope and doctrine as chunksForDoc at :112 directly above: pure-tenant is the security property (never another tenant's doc), shared OEM rows are not acquisition targets (no per-tenant doc_id flow reaches them), and the read returns one integer, no row content. A read failure returns null and the acquisition is retried later, never marked ready."
+    reason: "LINE MOVE 2026-11-12 (#5429 Phase 1 tip, Gate 7 cheap-lane r5 HIGH, :208->:214; hash UNCHANGED because the checker's hashed context begins at this FROM line): the aggregate above it is now count(DISTINCT coalesce(source_page, -1)) so a glyph-bearing chunk with a NULL page counts as one unreadable page, matching assessCompleteness's own Set; the FROM/WHERE (tenant_id = $1 AND doc_id = $2::uuid AND content ~ $3) is byte-identical, re-reviewed TENANT-ONLY. ORIGINAL: countUnreadablePagesDocumentWide (Phase 1 PR-3 #5425 via Codex r1 F3 on #5429): a count(DISTINCT source_page) of the caller's OWN uploaded document's chunks whose text holds a digit-glyph-digit sequence, by (tenant_id, doc_id) under withTenantContext RLS — the completeness verdict's unreadable-page count must cover the whole document, not the first 80 chunks the assessor reads. Same scope and doctrine as chunksForDoc at :112 directly above: pure-tenant is the security property (never another tenant's doc), shared OEM rows are not acquisition targets (no per-tenant doc_id flow reaches them), and the read returns one integer, no row content. A read failure returns null and the acquisition is retried later, never marked ready."
     query_snippet: |
       FROM knowledge_entries
           WHERE tenant_id = $1 AND doc_id = $2::uuid AND content ~ $3
