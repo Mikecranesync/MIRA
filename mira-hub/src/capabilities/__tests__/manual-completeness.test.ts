@@ -70,6 +70,24 @@ describe("a document whose first page is a chapter heading is one chapter, not a
     expect(c.reasons).toEqual(["chapter_start"]);
   });
 
+  // #5434 (cheap review of #5425, rounds 2 and 3): the heading's CASE is the manual's typography, not
+  // evidence of completeness — an OEM file whose page 1 prints "CHAPTER 1" or "chapter 1" is still one chapter.
+  it.each([
+    ["uppercase", "CHAPTER 1: GETTING STARTED\nPage 1–1 DURApulse GS10 Drive User Manual – 1st Ed., Rev C\nTable of Contents\nCHAPTER 1: GETTING STARTED"],
+    ["lowercase", "chapter 1: getting started\nPage 1–1 DURApulse GS10 Drive User Manual – 1st Ed., Rev C"],
+    ["uppercase appendix", "APPENDIX A: ACCESSORIES\nPage A–1 DURApulse GS10 Drive User Manual – 1st Ed., Rev C\nAccessories for the GS10"],
+  ])("a %s heading on page 1 is one chapter too → partial, reason chapter_start", (_case, page1) => {
+    const c = assessCompleteness(chunks([1, page1], [2, "User Manual Overview"]));
+    expect(c.complete).toBe(false);
+    expect(c.reasons).toEqual(["chapter_start"]);
+  });
+
+  it("a table of contents in uppercase still lists MANY chapters → not partial", () => {
+    const c = assessCompleteness(chunks([1, "TABLE OF CONTENTS\nCHAPTER 1: GETTING STARTED\nCHAPTER 2: INSTALLATION AND WIRING\nCHAPTER 3: KEYPAD OPERATION"], [2, GS10_WARNINGS]));
+    expect(c.complete).toBe(true);
+    expect(c.reasons).toEqual([]);
+  });
+
   it("judges the document's FIRST page even when its chunks arrive out of order", () => {
     const c = assessCompleteness(chunks([3, GS10_WARNINGS], [1, CH1_PAGE1], [2, "Chapter 1: Getting Started"]));
     expect(c.complete).toBe(false);
