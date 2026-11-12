@@ -1468,3 +1468,47 @@ approved:
     approved_classification: UNFILTERED
     query_sha256: "7c2184ecfc448078de8e49c3a73ce35d7487f9cc09ba9a40506a5220337f0684"
     reason: "Not a database read: a regex (/FROM knowledge_entries/.test) routing a MOCK pool's query() to a canned counts row so listSources can run with no connection and no data; the real read is equipment-notebooks.ts:1093 (approved). Phase 1 PR-5 (#5426), 'indexing' until every chunk is embedded."
+  "mira-hub/src/lib/node-knowledge-ingest.ts:1095":
+    approved_classification: TENANT-ONLY
+    query_sha256: "53904c41c2b35b4347bc2e3dfc3c548a4e06c47f286c2a5ddf6a1bbfba2c8a01"
+    reason: "NEW (Phase 1 PR-6 #5427, reprocessNodeDocument): version census of ONE node document's chunks on the owner pool — tenant_id = $1::uuid AND doc_id = $2::uuid AND source_type = 'node_attachment'. Node attachments are the caller's own private uploads (is_private = true at write), so this is a pure-tenant surface, not the OEM hybrid — TENANT-ONLY by the same rule as listSources' counts (equipment-notebooks.ts:1093). It only decides no-op vs reprocess (counts and min extraction_version) and returns no row content."
+  "mira-hub/src/lib/node-knowledge-ingest.ts:1185":
+    approved_classification: TENANT-ONLY
+    query_sha256: "66a581b7655a32b146fb789fdef6af784f05258f0b7dbb076739a8e888348fb5"
+    reason: "NEW (Phase 1 PR-6 #5427, reprocessNodeDocument): the DELETE half of the versioned reprocess transaction (the checker's FROM regex matches DELETE FROM; this is a write, not a read). Inside BEGIN…COMMIT it removes exactly this tenant's rows for this doc_id with source_type = 'node_attachment' before the re-extracted rows are inserted. The hybrid law's OR is_private = false would be WRONG here (it would delete shared OEM rows); the pure-tenant predicate is the narrowest and only correct scope."
+  "mira-hub/src/capabilities/__tests__/notebook-source-extraction-version.test.ts:44":
+    approved_classification: UNFILTERED
+    query_sha256: "14db1854f38339533511f4d889d66166fa77c30312db6129366c7134f5db17a2"
+    reason: "Not a database read: a regex (/FROM knowledge_entries/.test) routing a MOCK pool's query() to a canned counts row so listSources can run with no connection and no data; the real read is equipment-notebooks.ts:1093 (approved). Phase 1 PR-6 (#5427), extraction_version shown per document."
+  "mira-hub/src/capabilities/__tests__/notebook-source-extraction-version.test.ts:62":
+    approved_classification: UNFILTERED
+    query_sha256: "252844eb70fd74a517dcccd1e093f2a4b0d07398a17695b58616576ee68fd0dd"
+    reason: "Not a database read: a regex assertion locating listSources' counts SQL in a MOCK client's call log to prove it reads extraction_version. Phase 1 PR-6 (#5427). No connection, no data."
+  "mira-hub/src/capabilities/__tests__/node-document-reprocess.test.ts:69":
+    approved_classification: UNFILTERED
+    query_sha256: "24fe7d12576a5339252bf2b12508771ffa7ef940248d6b5ab7708545bb4acb1a"
+    reason: "Not a database read: a regex routing a MOCK client's query() to the canned version-census row (count(*) … FROM knowledge_entries) so reprocessNodeDocument runs with no connection. Phase 1 PR-6 (#5427); the real read is node-knowledge-ingest.ts:1095 (approved)."
+  "mira-hub/src/capabilities/__tests__/node-document-reprocess.test.ts:70":
+    approved_classification: UNFILTERED
+    query_sha256: "e1000f500b2e7a1f16b94f877abdd69c724e1d777b6cf02b2c5ec7ad934ff09b"
+    reason: "Not a database read: a regex routing a MOCK client's DELETE FROM knowledge_entries to a canned rowCount. Phase 1 PR-6 (#5427); the real statement is node-knowledge-ingest.ts:1185 (approved)."
+  "mira-hub/src/capabilities/__tests__/node-document-reprocess.test.ts:169":
+    approved_classification: UNFILTERED
+    query_sha256: "2ade550bd810367c55810a8b91f078fef39af87e2a9fce3219fe02ae0eae1511"
+    reason: "Not a database read: a regex classifying the MOCK client's captured statements (BEGIN / DELETE FROM knowledge_entries / INSERT / COMMIT) to prove the delete-then-insert order inside one transaction. Phase 1 PR-6 (#5427). No connection, no data."
+  "mira-hub/src/capabilities/__tests__/node-document-reprocess.test.ts:299":
+    approved_classification: UNFILTERED
+    query_sha256: "d935c2590c1996f377a4c195c39a7ee13bf7167d670e85081c9b533ef388d2ff"
+    reason: "Not a database read: a regex over the MOCK client's call log proving that a sha_mismatch refusal issues no BEGIN, no DELETE FROM knowledge_entries and no INSERT (#5432 fix). Phase 1 PR-6 (#5427). No connection, no data."
+  "mira-hub/src/capabilities/__tests__/node-document-reprocess.integration.test.ts:74":
+    approved_classification: TENANT-ONLY
+    query_sha256: "230b95c65ddf91d200e1e0c804bd989ffa3511ffa86b8adffa408fc6c1e9d7e4"
+    reason: "Integration test (vitest.integration.config.ts, runs only with TEST_DATABASE_URL + MIRA_TEST_DB_CONFIRM=DISPOSABLE): reads back the version census of the rows this test itself wrote for its own tenant + doc_id (tenant_id = $1::uuid AND doc_id = $2::uuid AND source_type = 'node_attachment'). Pure-tenant by construction, mirrors node-knowledge-ingest.ts:1095; not a product surface. Phase 1 PR-6 (#5427)."
+  "mira-hub/src/capabilities/__tests__/node-document-reprocess.integration.test.ts:111":
+    approved_classification: TENANT-ONLY
+    query_sha256: "5f5699657d2f237727ad2e79fc603bd51d235f2e04449b67b97f91b851da071a"
+    reason: "Integration-test afterAll cleanup: DELETE FROM knowledge_entries WHERE tenant_id = the test's own disposable tenant (the checker's FROM regex matches DELETE FROM; this is a write). Disposable DB only (MIRA_TEST_DB_CONFIRM=DISPOSABLE). Phase 1 PR-6 (#5427)."
+  "mira-hub/src/capabilities/__tests__/node-document-reprocess.integration.test.ts:143":
+    approved_classification: TENANT-ONLY
+    query_sha256: "d8e4d3c7a88110744b0bf75b8045da3aae06b6b870153daabd79feabefabb221"
+    reason: "Integration test: reads back the rows this test wrote (tenant_id = $1::uuid AND doc_id = $2::uuid) to assert every reprocessed chunk still carries is_private = true (the write law) and the row form. Disposable DB only; pure-tenant by construction; not a product surface. Phase 1 PR-6 (#5427)."
