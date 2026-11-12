@@ -6,6 +6,7 @@
  * regex (the only shape test is "an identifier cell": letters AND digits, >=5 chars, no spaces).
  */
 import { tableUnit } from "./supporting-quote";
+import { modelNumbersIn } from "./manual-applicability";
 
 export type LayoutItem = { str: string; x: number; y: number; w: number; size: number };
 export type TableCell = { model: string; value: string };
@@ -526,9 +527,14 @@ export function tableChunks(block: TableBlock): TableChunk[] {
 function detectModelKeyedTables(lines: readonly Line[], occupied: ReadonlySet<number>): ModelKeyedTable[] {
   const tables: ModelKeyedTable[] = [];
   const isValueItem = (it: LayoutItem): boolean => isNumberShaped(it.str);
+  // Codex r1 on #5451 (F1): the key cell must READ as a model number — by the same reader the
+  // record's number and a manual's cover are read with (manual-applicability.ts) — not merely be
+  // identifier-shaped. "P06.63" (a parameter code) is identifier-shaped but reads as no model, so a
+  // Parameter / Default / Min / Max table stays ordinary text instead of a tagged, withheld block.
   const keyedLine = (line: Line): LayoutItem | null => {
     const ids = identifierCells(line);
     if (ids.length !== 1 || line.items[0] !== ids[0] || line.items.length < 2) return null;
+    if (modelNumbersIn(ids[0].str).length === 0) return null;
     return line.items.slice(1).every(isValueItem) ? ids[0] : null;
   };
   const bareNumberLine = (line: Line): boolean => identifierCells(line).length === 0 && line.items.every(isValueItem);

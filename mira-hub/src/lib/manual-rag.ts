@@ -2587,7 +2587,17 @@ export async function retrieveNodeChunks(
   const excludedTableOf = (r: Record<string, unknown>): string[] | null => {
     if (!recordKey) return null;
     const tagged = tableModelsOf(r);
-    if (tagged.length > 0) return isUnresolvedTableLine(r) || !tagged.includes(recordKey) ? tagged : null;
+    if (tagged.length > 0) {
+      // Codex r1 on #5451 (F1): a table keyed by numbers of ANOTHER family (parameter codes,
+      // accessory parts) is nobody's look-alike — for this record it is ordinary text. Only a
+      // table that carries a number of the record's own family is judged here. When the
+      // record's number cannot be read as a model (no family to compare), the old rule holds.
+      const ofRecordFamily =
+        recordFamilyNumbers.length === 0 ||
+        tagged.some((key) => modelNumbersIn(key).some((n) => recordFamilyNumbers.some((own) => sameModelFamily(own, n))));
+      if (!ofRecordFamily) return null;
+      return isUnresolvedTableLine(r) || !tagged.includes(recordKey) ? tagged : null;
+    }
     if (recordFamilyNumbers.length === 0) return null;
     const named = modelNumbersIn(String(r.content ?? ""));
     if (named.some((n) => recordFamilyNumbers.some((own) => own.key === n.key))) return null;

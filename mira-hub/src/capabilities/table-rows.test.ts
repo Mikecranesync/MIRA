@@ -614,11 +614,12 @@ describe("a model-keyed (one model per line) table is stored as one unqualified 
       ...line(182, ["P06.66", "0", "0", "1"]),
     ];
     expect(pageWithTables(page)).toBeNull();
-    // Control: the same numeric run under a header band with no identifier cell IS a model-keyed table.
+    // Codex r1 on #5451 (F1, MEDIUM): the same numeric run under a header band with no identifier
+    // cell is a PARAMETER table (P06.63 … are parameter codes, not models). It must not become a
+    // model-keyed table: tagged "P0663…" and stored unqualified, a confirmed drive record would have
+    // it withheld and lose the parameter values. A key column is a model column only when the
+    // model-number reader (manual-applicability.ts) reads its cells as model numbers.
     const keyed = [...line(324, ["Parameter", "1st fault", "2nd fault", "3rd fault"]), ...page.filter((it) => it.y <= 225)];
-    const out = pageWithTables(keyed);
-    expect(out).not.toBeNull();
-    expect(out!.chunks.every((c) => c.unqualified)).toBe(true);
-    expect(out!.chunks[0].models).toEqual(["P0663", "P0664", "P0665", "P0666"]);
+    expect(pageWithTables(keyed)).toBeNull();
   });
 });

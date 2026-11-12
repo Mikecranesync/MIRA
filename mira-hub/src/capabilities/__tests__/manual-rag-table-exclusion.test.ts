@@ -220,6 +220,27 @@ describe("retrieveNodeChunks excludes another model's table passages when the re
       expect(diagnostics.excludedTables).toBeUndefined();
     });
 
+    // Codex r1 on #5451 (F1, MEDIUM): an unresolved table whose tags are numbers of ANOTHER family
+    // (parameter codes, accessory parts) is nobody's look-alike; for this record it is ordinary
+    // text and must be served, or a confirmed drive loses every parameter value in its manual.
+    // The record's own family's unresolved table (p.394 shape) stays withheld.
+    it("an unresolved table tagged with another family's numbers (parameter codes) is served to the confirmed record; the record's family's unresolved table is still withheld", async () => {
+      const parameterTable = {
+        ...ownColumn, source_page: 227, page_start: 227, table_models: ["P0663", "P0664", "P0665"], table_unqualified: true,
+        content: "Parameter Default Minimum Maximum\nP06.63 1000 560 120\nP06.64 0 1 2\nP06.65 0 1000 560\n",
+      };
+      const familyUnresolved = {
+        ...ownColumn, source_page: 394, page_start: 394, table_models: ["GS11N20P2", "GS13N20P2"], table_unqualified: true,
+        content: "Model Ø Volts VT Rated Current Arms\nGS11N-20P2 1 230 1.8\nGS13N-20P2 3 230 2.2\n",
+      };
+      const diagnostics: Record<string, unknown> = {};
+      const { client } = makeClient([[parameterTable, familyUnresolved, ownColumn]]);
+      const out = await retrieveNodeChunks(client, "t-1", "What is the default of P06.63?", scoped({ diagnostics }));
+      expect(out.map((c) => c.content)).toContain(parameterTable.content);
+      expect(out.map((c) => c.content)).not.toContain(familyUnresolved.content);
+      expect(diagnostics.excludedTables).toEqual([{ page: 394, models: ["GS11N20P2", "GS13N20P2"], unqualified: true }]);
+    });
+
     it("control: a number of another family in the question (a relay part) is not this rule's business", async () => {
       const diagnostics: Record<string, unknown> = {};
       const { client } = makeClient([[ownColumn, prose]]);
