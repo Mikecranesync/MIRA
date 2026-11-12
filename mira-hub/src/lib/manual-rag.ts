@@ -1844,19 +1844,22 @@ export async function retrieveNodeChunks(
   // the two-siblings "which one?" check: a question naming the record's own
   // number beside a sibling is refused here, not asked which one it meant.
   const recordText = confirmedCatalogNumber(opts);
-  const recordFamilyNumbers = recordText ? modelNumbersIn(recordText) : [];
-  // Codex r2 on #5451 (F3): a question's numbers are read by BOTH readers. The identity reader
-  // (model-token.ts) accepts "GS13N - 20P2" (spaces around the hyphen) and yields the exact
-  // catalog identity; the generic number reader splits that spelling into GS13N + 20P2 and the
-  // refusal would never fire — the record's own values would answer a question about the
-  // look-alike. Each identity is re-read into a ModelNumber so family and key compare as usual.
-  const numbersAskedIn = (text: string): ModelNumber[] => {
+  // ONE reader for the record and for the questions (Codex r2 F3 + r3 F3 on #5451: the same
+  // defect mirrored — "GS13N - 20P2" in a question, then "GS11N - 20P2" on the record, spaces
+  // around the hyphen as a tablet types them). The generic number reader splits that spelling
+  // into GS11N + 20P2; the identity reader (model-token.ts) accepts it and yields the full catalog
+  // identity. So: when the identity reader finds identities, their full numbers are the reading
+  // (a bare family root read beside its full number — GS11N beside GS11N-20P2 — is not a number
+  // of its own and is dropped); otherwise the generic reader (a relay part, a parameter code).
+  const catalogNumbersIn = (text: string): ModelNumber[] => {
+    const ids = [...modelIdentitiesInText(text)];
+    const read = ids.length > 0 ? ids.flatMap((id) => modelNumbersIn(id)) : modelNumbersIn(text);
     const seen = new Set<string>();
-    return [...modelNumbersIn(text), ...[...modelIdentitiesInText(text)].flatMap((id) => modelNumbersIn(id))].filter((n) =>
-      seen.has(n.key) ? false : (seen.add(n.key), true),
-    );
+    const unique = read.filter((n) => (seen.has(n.key) ? false : (seen.add(n.key), true)));
+    return unique.filter((n) => !unique.some((m) => m.key !== n.key && m.key.startsWith(n.key)));
   };
-  const siblingAsked = [...numbersAskedIn(ownQuestion), ...numbersAskedIn(carriedModelQuestion ?? ""), ...carriedNumbers].filter((n) =>
+  const recordFamilyNumbers = recordText ? catalogNumbersIn(recordText) : [];
+  const siblingAsked = [...catalogNumbersIn(ownQuestion), ...catalogNumbersIn(carriedModelQuestion ?? ""), ...carriedNumbers].filter((n) =>
     recordFamilyNumbers.some((own) => own.key !== n.key && sameModelFamily(own, n)),
   );
   const asksSiblingOfRecord = Boolean(recordText) && siblingAsked.length > 0;

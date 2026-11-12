@@ -202,6 +202,38 @@ describe("retrieveNodeChunks excludes another model's table passages when the re
       expect(diagnostics.siblingOfRecordAsk).toEqual({ asked: ["GS13N-20P2"], record: "GS11N-20P2" });
     });
 
+    // Codex r3 on #5451 (F3, MEDIUM): the SAME class mirrored onto the record. A record confirmed as
+    // "GS11N - 20P2" (spaces around the hyphen, as typed) was read by the generic number reader alone
+    // and split into GS11N + 20P2, so a GS11N-20P5 question was not a sibling of anything, its column
+    // was admitted and another unit's values answered. One shared reader now reads the record and the
+    // questions: the identity reader's full catalog identities, bare family roots dropped.
+    it("a record confirmed with spaces around the hyphen (GS11N - 20P2) still refuses a sibling ask (GS11N-20P5)", async () => {
+      const fiveColumn = { ...siblingColumn, table_models: ["GS11N20P5"], content: "230V Class – 1-Phase Model-Specific Specifications — Model Name: GS11N-2xPx — GS11N-20P5\nGS11N-20P5: CT Rated Input Current 6.3 A\n" };
+      const diagnostics: Record<string, unknown> = {};
+      const { client, calls } = makeClient([[{ ...fiveColumn, document_heading: heading }, { ...ownColumn, document_heading: heading }]]);
+      const out = await retrieveNodeChunks(client, "t-1", "What is the rated input current of GS11N-20P5?", scoped({ diagnostics, catalogNumber: "GS11N - 20P2" }));
+      expect(out).toEqual([]);
+      expect(diagnostics.siblingOfRecordAsk).toEqual({ asked: ["GS11N-20P5"], record: "GS11N - 20P2" });
+      expect(calls.filter((c) => /knowledge_entries/.test(c.sql))).toHaveLength(0);
+    });
+
+    it("the spaced record refuses the carried form too", async () => {
+      const diagnostics: Record<string, unknown> = {};
+      const { client } = makeClient(rows());
+      const out = await retrieveNodeChunks(client, "t-1", "and its VT rated current?", scoped({ diagnostics, catalogNumber: "GS11N - 20P2", subjectQueries: ["What is the rated input current of the GS13N-20P2?"] }));
+      expect(out).toEqual([]);
+      expect(diagnostics.siblingOfRecordAsk).toEqual({ asked: ["GS13N-20P2"], record: "GS11N - 20P2" });
+    });
+
+    it("control: the spaced record still serves its OWN column for a question naming its own number", async () => {
+      const diagnostics: Record<string, unknown> = {};
+      const { client } = makeClient(rows());
+      const out = await retrieveNodeChunks(client, "t-1", "What is the rated input current of the GS11N-20P2?", scoped({ diagnostics, catalogNumber: "GS11N - 20P2" }));
+      expect(diagnostics.siblingOfRecordAsk).toBeUndefined();
+      expect(out.map((c) => c.content)).toContain(ownColumn.content);
+      expect(out.map((c) => c.content)).not.toContain(siblingColumn.content);
+    });
+
     it("control: after a refused sibling ask, a question naming the record's OWN number is served (the carry stops at a named model)", async () => {
       // The refused turn stays in the open run (conversation-subject.ts closes a run only on an
       // answered document-based turn), so a bare follow-up would still carry GS13N. A question
