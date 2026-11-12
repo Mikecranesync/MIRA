@@ -302,6 +302,28 @@ describe("retrieveNodeChunks excludes another model's table passages when the re
       expect(diagnostics.siblingOfRecordAsk).toEqual({ asked: ["6AV2124-0GC01-0AX"], record: "6AV2124-0GC01-0AX0" });
       expect(calls.filter((c) => /knowledge_entries/.test(c.sql))).toHaveLength(0);
     });
+    // Controls for the two r6 record shapes: the longer number asked by its own name is served.
+    // Without these, a reader that dropped the LONGER number (or refused every variant pair)
+    // would pass the two must-refuse cells above.
+    it("control: the longer variant record (GS11N-20P2A) asked by its own number is served", async () => {
+      const diagnostics: Record<string, unknown> = {};
+      const row = { ...base, table_models: ["GS11N20P2A"], document_heading: variantCover, content: "GS11N-20P2A: Supply voltage 24 V DC\n" };
+      const { client, calls } = makeClient([[row]]);
+      const out = await retrieveNodeChunks(client, "t-1", "What supply voltage does GS11N-20P2A need?", scoped({ diagnostics, catalogNumber: "GS11N-20P2A" }));
+      expect(diagnostics.siblingOfRecordAsk).toBeUndefined();
+      expect(out.map((c) => c.content)).toEqual([row.content]);
+      expect(calls.filter((c) => /knowledge_entries/.test(c.sql)).length).toBeGreaterThan(0);
+    });
+    it("control: the longer Siemens record (6AV2124-0GC01-0AX0) asked by its own number is served", async () => {
+      const cover = "SIMATIC HMI TP700 Comfort 6AV2124-0GC01-0AX0 6AV2124-0GC01-0AX Operating Instructions";
+      const diagnostics: Record<string, unknown> = {};
+      const row = { ...base, source_page: 9, page_start: 9, table_models: ["6AV21240GC010AX0"], document_heading: cover, content: "6AV2124-0GC01-0AX0: Supply voltage 24 V DC\n" };
+      const { client, calls } = makeClient([[row]]);
+      const out = await retrieveNodeChunks(client, "t-1", "What supply voltage does 6AV2124-0GC01-0AX0 need?", scoped({ diagnostics, catalogNumber: "6AV2124-0GC01-0AX0" }));
+      expect(diagnostics.siblingOfRecordAsk).toBeUndefined();
+      expect(out.map((c) => c.content)).toEqual([row.content]);
+      expect(calls.filter((c) => /knowledge_entries/.test(c.sql)).length).toBeGreaterThan(0);
+    });
     // The space the five Codex rounds walked one cell at a time, as one matrix: every spelling of
     // the record × every spelling of the sibling ask refuses, and every spelling of the record's
     // own number is served.
