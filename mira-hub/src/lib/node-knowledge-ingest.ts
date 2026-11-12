@@ -1161,6 +1161,14 @@ export async function reprocessNodeDocument(opts: {
         return res.rows[0] ?? null;
       });
       if (parked?.content) bytes = new Uint8Array(parked.content);
+      // #5432: the parked copy is proven against the recorded hash before the swap, exactly as
+      // a local file is — a stale or corrupted parked row must never replace the stored chunks.
+      // No recorded hash → there is nothing to compare, and the parked row is the system's own
+      // copy (the local-file path refuses in that case because that file is foreign input).
+      if (bytes && upload.content_sha256) {
+        const check = uploadIdentity(upload.content_sha256, createHash("sha256").update(bytes).digest("hex"));
+        if (!check.ok) return { action: "refused", reason: check.reason };
+      }
     }
     if (!bytes) return { action: "refused", reason: "no_bytes" };
     parsed = await parsePdfForNode(bytes, chunkOpts);
