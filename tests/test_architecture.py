@@ -1169,6 +1169,7 @@ _KE_INSERT_ALLOWLIST: dict[str, str] = {
     "mira-hub/src/capabilities/__tests__/node-knowledge-ingest-page-labels-real.test.ts": "not a writer — same mock-capture "
     "assertion string (#5065, a real PDF's /PageLabels through ingest); the real writer (node-knowledge-ingest.ts) pins true.",
     "mira-hub/src/capabilities/__tests__/node-knowledge-ingest-tables.test.ts": "not a writer — same mock-capture assertion string (Phase 1 PR-1, table rows at upload); the real writer (node-knowledge-ingest.ts) pins true.",
+    "mira-hub/src/capabilities/__tests__/node-knowledge-ingest-unmapped-glyph.test.ts": "not a writer — same mock-capture assertion string (Phase 1 PR-3, unmapped-glyph flag at ingest); the real writer (node-knowledge-ingest.ts) pins true.",
 }
 
 
