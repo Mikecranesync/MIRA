@@ -808,20 +808,48 @@ export function otherProductRefusalText(r: OtherProductRefusal): string {
 /** Garage pilot L3/L4: a passage of an admitted manual that is ANOTHER model's
  *  table, excluded by retrieval (manual-rag.ts admit) — its page and the model
  *  keys its rows are for. */
-export type ExcludedTable = { page: number | null; models: string[] };
+export type ExcludedTable = {
+  page: number | null;
+  models: string[];
+  /** The record's OWN table, but a line the layout parser could not tie to one
+   *  column (table-rows.ts `unqualified`): excluded because its values are
+   *  nobody's in particular, not because it is another model's. The models are
+   *  the whole block's, the record's own key among them. */
+  unqualified?: true;
+};
 
 /** Static text plus model keys and page numbers only; no value or wording from
- *  an excluded passage reaches it. */
+ *  an excluded passage reaches it. The record's own unreadable lines are named
+ *  by page only — never as "another model's" table. */
 export function excludedTablesRefusalText(recordNumber: string, excluded: ExcludedTable[]): string {
-  const models = listed([...new Set(excluded.flatMap((e) => e.models))]);
-  const pages = [...new Set(excluded.map((e) => e.page).filter((p): p is number => p !== null))].sort((a, b) => a - b);
-  const pageWord = pages.length === 1 ? `page ${pages[0]}` : `pages ${pages.join(", ")}`;
-  const where = pages.length > 0 ? ` (${pageWord})` : "";
+  const siblings = excluded.filter((e) => !e.unqualified);
+  const unresolved = excluded.filter((e) => e.unqualified);
+  const pagesOf = (list: ExcludedTable[]) => [...new Set(list.map((e) => e.page).filter((p): p is number => p !== null))].sort((a, b) => a - b);
+  const pageWordOf = (pages: number[]) => (pages.length === 1 ? `page ${pages[0]}` : `pages ${pages.join(", ")}`);
+  const pages = pagesOf(excluded);
+  const pageWord = pageWordOf(pages);
+  if (siblings.length === 0) {
+    const own = pagesOf(unresolved);
+    const found = own.length > 0 ? `is on ${pageWordOf(own)}` : "was found";
+    const wayOut =
+      own.length > 0
+        ? `Open ${pageWordOf(own)} and read the ${recordNumber} column there, or add a clearer copy of that page to this notebook and ask again.`
+        : `Add a clearer copy of the page that lists the ${recordNumber} to this notebook and ask again.`;
+    return `This manual's table for the ${recordNumber} ${found}, but I could not read its lines as values for one model, and I won't answer the ${recordNumber} from a line I can't tie to its column. ${wayOut}`;
+  }
+  const models = listed([...new Set(siblings.flatMap((e) => e.models))]);
+  const siblingPages = pagesOf(siblings);
+  const where = siblingPages.length > 0 ? ` (${pageWordOf(siblingPages)})` : "";
+  const ownPages = pagesOf(unresolved);
+  const ownNote =
+    unresolved.length > 0
+      ? ` The ${recordNumber} table itself ${ownPages.length > 0 ? `is on ${pageWordOf(ownPages)}` : "was found"}, but I could not read its lines as values for one model.`
+      : "";
   const wayOut =
     pages.length > 0
       ? `Open ${pageWord} and read the ${recordNumber} column there, or add the page that lists the ${recordNumber} to this notebook and ask again.`
       : `Add the page that lists the ${recordNumber} to this notebook and ask again.`;
-  return `This manual's table for the ${recordNumber} was not found. What I found is the ${models} table${where}, and I won't answer the ${recordNumber} from another model's column — its values may not apply. ${wayOut}`;
+  return `This manual's table for the ${recordNumber} was not found. What I found is the ${models} table${where}, and I won't answer the ${recordNumber} from another model's column — its values may not apply.${ownNote} ${wayOut}`;
 }
 
 /** One reason for the whole reply, from the refusal of every selected manual. */

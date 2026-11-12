@@ -1928,7 +1928,7 @@ export async function retrieveNodeChunks(
           ${PAGE_LABEL_SQL},
           section_path,
           metadata->>'filename' AS filename,
-          metadata->'table_models' AS table_models,
+          metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified,
           ${documentHeadingSql},
           verified,
           tsvector_to_array(content_tsv) AS lexemes,
@@ -1986,7 +1986,7 @@ export async function retrieveNodeChunks(
           ${PAGE_LABEL_SQL},
           section_path,
           metadata->>'filename' AS filename,
-          metadata->'table_models' AS table_models,
+          metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified,
           ${documentHeadingSql},
           verified,
           tsvector_to_array(content_tsv) AS lexemes,
@@ -2102,7 +2102,7 @@ export async function retrieveNodeChunks(
             ${PAGE_LABEL_SQL},
             section_path,
             metadata->>'filename' AS filename,
-            metadata->'table_models' AS table_models,
+            metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified,
             ${documentHeadingSql},
             verified,
             tsvector_to_array(content_tsv) AS lexemes,
@@ -2275,7 +2275,7 @@ export async function retrieveNodeChunks(
         `SELECT
             content, doc_id::text AS doc_id, source_url, source_page, page_start,
             ${PAGE_LABEL_SQL},
-            section_path, metadata->>'filename' AS filename, metadata->'table_models' AS table_models, verified,
+            section_path, metadata->>'filename' AS filename, metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, verified,
             ${documentHeadingSql},
             tsvector_to_array(content_tsv) AS lexemes,
             0::float4 AS rank
@@ -2532,10 +2532,20 @@ export async function retrieveNodeChunks(
     }
     return Array.isArray(list) ? list.map((m) => exactModelKey(String(m))).filter((k) => k.length > 0) : [];
   };
+  // A table line the layout parser could not tie to one column is stored as flat
+  // text tagged with EVERY model of its block and `table_unqualified` (table-rows.ts).
+  // Its values are nobody's in particular, so for a record with a number it is
+  // excluded even though the tag holds the record's key: an unreadable line of the
+  // record's own table is not the record's value (Gate 7 on #5429: it was admitted,
+  // and the GS10 p.26 "Cooling Method Convective Fan" line could answer for a drive
+  // whose own cooling method the line does not say). Reported as unresolved, so the
+  // refusal names the page and never calls the record's own table another model's.
+  const isUnresolvedTableLine = (r: Record<string, unknown>): boolean =>
+    r.table_unqualified === true || String(r.table_unqualified) === "true";
   const excludedTableOf = (r: Record<string, unknown>): string[] | null => {
     if (!recordKey) return null;
     const tagged = tableModelsOf(r);
-    if (tagged.length > 0) return tagged.includes(recordKey) ? null : tagged;
+    if (tagged.length > 0) return isUnresolvedTableLine(r) || !tagged.includes(recordKey) ? tagged : null;
     if (recordFamilyNumbers.length === 0) return null;
     const named = modelNumbersIn(String(r.content ?? ""));
     if (named.some((n) => recordFamilyNumbers.some((own) => own.key === n.key))) return null;
@@ -2552,7 +2562,11 @@ export async function retrieveNodeChunks(
     if (excludedKeys.has(key)) return;
     excludedKeys.add(key);
     const page = Number(r.page_start ?? r.source_page);
-    (opts.diagnostics.excludedTables ??= []).push({ page: Number.isFinite(page) ? page : null, models });
+    (opts.diagnostics.excludedTables ??= []).push({
+      page: Number.isFinite(page) ? page : null,
+      models,
+      ...(isUnresolvedTableLine(r) ? { unqualified: true as const } : {}),
+    });
   };
   // Which selected manuals admit() has judged. A manual the search returned no
   // passage from is judged by its cover after the lexical passes (below), so a
@@ -2853,7 +2867,7 @@ export async function retrieveNodeChunks(
                 page_start,
                 section_path,
                 metadata->>'filename' AS filename,
-                metadata->'table_models' AS table_models,
+                metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified,
                 ${documentHeadingSql},
                 verified,
                 tsvector_to_array(content_tsv) AS lexemes,

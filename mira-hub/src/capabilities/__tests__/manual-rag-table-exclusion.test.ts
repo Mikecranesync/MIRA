@@ -59,6 +59,16 @@ const bothNamed = {
   ...base, source_page: 5, page_start: 5, table_models: null,
   content: "Ordering: GS11N-20P2 (one-phase 230 V) and GS13N-20P2 (three-phase 230 V) share frame size A1.",
 };
+// A line of the record's OWN table that the layout parser could not tie to a column (table-rows.ts
+// keeps it as flat text, tagged with every model of the block and `table_unqualified`). On the real
+// GS10 page 26 that is "Cooling Method Convective Fan": two values across five columns, the drive's
+// own value unknowable from the line. Gate 7 (cheap lane r4 on #5429, HIGH): such a chunk carried
+// the record's key, so it was admitted, and its flat values could answer for the record.
+const unresolvedOwnRow = {
+  ...base, source_page: 26, page_start: 26, table_unqualified: true,
+  table_models: ["GS11N20P2", "GS11N20P5", "GS11N21P0", "GS11N22P0", "GS11N23P0"],
+  content: "230V Class – 1-Phase Model-Specific Specifications — Model Name: GS11N-2xPx — unqualified\nCooling Method Convective Fan\n",
+};
 
 const scoped = (extra: Record<string, unknown> = {}) => ({
   nodeId: "n-1", unsPath: null, docIds: ["d-1"], validatedDocScope: true,
@@ -73,6 +83,7 @@ describe("retrieveNodeChunks excludes another model's table passages when the re
     const lane = calls.find((c) => /knowledge_entries/.test(c.sql) && /content/.test(c.sql));
     expect(lane).toBeDefined();
     expect(lane!.sql).toMatch(/table_models/);
+    expect(lane!.sql).toMatch(/table_unqualified/);
     expect(JSON.stringify(calls.map((c) => c.params))).toMatch(/GS11N-20P2|GS11N20P2/i);
   });
 
@@ -151,5 +162,21 @@ describe("retrieveNodeChunks excludes another model's table passages when the re
     const out = await retrieveNodeChunks(client, "t-1", "What is the rated input current of the GS13N-20P2?", scoped({ diagnostics }));
     expect(out.map((c) => c.content)).toContain(siblingColumn.content);
     expect(diagnostics.excludedTables).toBeUndefined();
+  });
+
+  // These two run last on purpose: the scripted mock hands its one row set to whichever lane
+  // queries first, and which lane that is depends on process-level state the earlier tests warm.
+  it("drops a line of the record's own table that the parser could not tie to a column, and reports it as unresolved, not as a sibling's table", async () => {
+    const diagnostics: Record<string, unknown> = {};
+    const { client } = makeClient([[unresolvedOwnRow, ownColumn, prose]]);
+    const out = await retrieveNodeChunks(client, "t-1", "What is its cooling method?", scoped({ diagnostics }));
+    expect(out.map((c) => c.content)).toEqual([ownColumn.content, prose.content]);
+    expect(diagnostics.excludedTables).toEqual([{ page: 26, models: unresolvedOwnRow.table_models, unqualified: true }]);
+  });
+
+  it("keeps the unresolved line when no catalog number is on record (do-not-regress)", async () => {
+    const { client } = makeClient([[unresolvedOwnRow, prose]]);
+    const out = await retrieveNodeChunks(client, "t-1", "What is its cooling method?", scoped({ catalogNumber: null }));
+    expect(out.map((c) => c.content)).toEqual([unresolvedOwnRow.content, prose.content]);
   });
 });

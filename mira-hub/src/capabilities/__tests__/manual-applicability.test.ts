@@ -292,6 +292,25 @@ describe("the reply text", () => {
       "This manual's table for the GS11N-20P2 was not found. What I found is the GS13N20P2 table, and I won't answer the GS11N-20P2 from another model's column — its values may not apply. Add the page that lists the GS11N-20P2 to this notebook and ask again.",
     );
   });
+  it("the record's own table was found but its lines could not be tied to a column: says so by page, never calls the record's own table another model's", () => {
+    const own = ["GS11N20P2", "GS11N20P5", "GS11N21P0"];
+    const only = excludedTablesRefusalText("GS11N-20P2", [{ page: 26, models: own, unqualified: true }]);
+    expect(only).toBe(
+      "This manual's table for the GS11N-20P2 is on page 26, but I could not read its lines as values for one model, and I won't answer the GS11N-20P2 from a line I can't tie to its column. Open page 26 and read the GS11N-20P2 column there, or add a clearer copy of that page to this notebook and ask again.",
+    );
+    expect(only).not.toMatch(/another model's column|GS11N20P2/);
+    const mixed = excludedTablesRefusalText("GS11N-20P2", [
+      { page: 27, models: ["GS13N20P2"] },
+      { page: 26, models: own, unqualified: true },
+    ]);
+    expect(mixed).toContain("What I found is the GS13N20P2 table (page 27), and I won't answer the GS11N-20P2 from another model's column");
+    expect(mixed).toContain("The GS11N-20P2 table itself is on page 26, but I could not read its lines as values for one model.");
+    expect(mixed).toContain("Open pages 26, 27 and read the GS11N-20P2 column there");
+    expect(mixed).not.toContain("GS11N20P2");
+    expect(excludedTablesRefusalText("GS11N-20P2", [{ page: null, models: own, unqualified: true }])).toBe(
+      "This manual's table for the GS11N-20P2 was found, but I could not read its lines as values for one model, and I won't answer the GS11N-20P2 from a line I can't tie to its column. Add a clearer copy of the page that lists the GS11N-20P2 to this notebook and ask again.",
+    );
+  });
   it("names the asked number and what the cover declares, and nothing from the manual's body", () => {
     const r = summarizeUnlistedRefusals([refusal(verdict("RX420 supply voltage?", "Northfield RX410 Logic Controller\nHardware User Guide"))], "question");
     expect(unlistedModelRefusalText(r)).toBe(

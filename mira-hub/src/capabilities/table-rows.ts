@@ -473,7 +473,9 @@ function splitRowsIntoChunks(prefix: string, rowLines: readonly string[]): strin
  *  never mid-row, when the model's full text would exceed `TABLE_CHUNK_MAX_CHARS`), plus one or
  *  more chunks of its unqualified (flat-text) lines tagged with every model in the block. Each
  *  model chunk names only its own model and carries only that model's values — never another
- *  model's column. */
+ *  model's column. The unqualified chunk's values are nobody's in particular: retrieval
+ *  (manual-rag.ts admit) withholds it from a record that holds a catalog number and reports it
+ *  as unresolved, so an unreadable line of the record's own table never answers for it. */
 export function tableChunks(block: TableBlock): TableChunk[] {
   const prefix = [block.caption, block.header].filter((s) => s.trim().length > 0).join(" — ");
   const chunks: TableChunk[] = [];
