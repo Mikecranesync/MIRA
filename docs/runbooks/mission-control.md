@@ -111,6 +111,8 @@ tailscale serve --bg --https=8443 http://127.0.0.1:8790
 **Rollback:** point `current` at the previous release and `launchctl kickstart -k gui/$(id -u)/com.factorylm.mission-control-v2`.
 **Remove:** `tailscale serve --https=8443 off`, then `launchctl bootout gui/$(id -u)/com.factorylm.mission-control-v2`.
 
+**launchd prerequisite:** `run.sh` reads the token with the Doppler CLI, which under launchd has no shell token. One-time on the node: `doppler configure set token-storage file` and `doppler configure set token <token> --scope /` (the file is mode 0600 in the Doppler config dir). Without it `err.log` shows `Doppler Error: you must provide a token` and the agent restarts every 30 s.
+
 Staging reads "unreachable from this host" from BRAVO (the hub's `/api/version` is VPS-local); webhooks cannot reach a tailnet host, so BRAVO is poll-only (60 s).
 
 ### Stage A — upgrade CHARLIE to v2 (needs owner GO)
