@@ -32,7 +32,7 @@ import {
 } from "@/lib/manual-discovery";
 import { safeDownloadPdf, safePdfFilename } from "@/lib/safe-download";
 import { assessApplicability, type ApplicabilityVerdict } from "@/lib/manual-applicability";
-import { assessCompleteness, partialManualReason, type Completeness } from "@/capabilities/manual-completeness";
+import { assessCompleteness, partialManualReason, DIGIT_GLYPH_DIGIT, type Completeness } from "@/capabilities/manual-completeness";
 import type { SpanContext } from "@opentelemetry/api";
 import { addActiveSpanEvent, safeSpan, setActiveSpanAttrs } from "@/capabilities/observability/acquisition-spans";
 
@@ -187,6 +187,32 @@ async function chunksForDoc(
     // A read failure is NOT "no evidence": it must neither verify the manual
     // nor settle it as a candidate. null = retry later (Codex #4118 r13 F17).
     console.error("[manual-acquisition] chunk read failed:", err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+/**
+ * Document-wide count of DISTINCT pages carrying the digit-U+FFFD-digit pattern (see
+ * manual-completeness.ts), across the WHOLE stored document — not the
+ * APPLICABILITY_CHUNK_LIMIT-bounded sample `chunksForDoc` reads for identity evidence. A
+ * long manual's unreadable tables can sit past that sample's limit, where the bounded scan
+ * would never see them (Codex #5429 r1 F3). The SQL pattern is `DIGIT_GLYPH_DIGIT.source` —
+ * the SAME regex `assessCompleteness` uses — so the two can't drift apart. `null` on any read
+ * failure: retry later, same posture as `chunksForDoc` (never silently "0 unreadable pages").
+ */
+async function countUnreadablePagesDocumentWide(tenantId: string, docId: string): Promise<number | null> {
+  try {
+    return await withTenantContext(tenantId, async (c) => {
+      const r = await c.query<{ n: number }>(
+        `SELECT count(DISTINCT source_page)::int AS n
+           FROM knowledge_entries
+          WHERE tenant_id = $1 AND doc_id = $2::uuid AND content ~ $3`,
+        [tenantId, docId, DIGIT_GLYPH_DIGIT.source],
+      );
+      return Number(r.rows[0]?.n ?? 0);
+    });
+  } catch (err) {
+    console.error("[manual-acquisition] document-wide glyph scan failed:", err instanceof Error ? err.message : err);
     return null;
   }
 }
@@ -684,7 +710,9 @@ async function acquireInner(
   if (manualDocId) {
     const chunks = await chunksForDoc(ctx.tenantId, manualDocId);
     if (chunks === null) return retryLater();
-    completeness = assessCompleteness(chunks);
+    const unreadablePagesDocumentWide = await countUnreadablePagesDocumentWide(ctx.tenantId, manualDocId);
+    if (unreadablePagesDocumentWide === null) return retryLater();
+    completeness = assessCompleteness(chunks, { unreadablePagesDocumentWide });
     verdict = await safeSpan("manual_acquisition.applicability", {}, async () => {
       const v = assessApplicability({
         identity: {

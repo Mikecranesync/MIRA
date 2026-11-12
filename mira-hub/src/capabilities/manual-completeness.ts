@@ -50,8 +50,11 @@ export interface CompletenessChunk {
   page: number | null;
 }
 
-/** A replacement character with a digit on both sides: a number whose glyph did not map. */
-const DIGIT_GLYPH_DIGIT = /\d�\d/;
+/** A replacement character with a digit on both sides: a number whose glyph did not map.
+ *  Exported so the document-wide SQL probe in manual-acquisition.ts is built from THIS
+ *  pattern's `.source` (a valid Postgres ARE: `\d` is recognized there too) rather than a
+ *  hand-copied regex string that could drift from this one (Codex #5429 r1 F3). */
+export const DIGIT_GLYPH_DIGIT = /\d�\d/;
 
 export function hasUnmappedGlyphBetweenDigits(text: string): boolean {
   return DIGIT_GLYPH_DIGIT.test(text);
@@ -68,7 +71,18 @@ function distinct(text: string, re: RegExp): Set<string> {
   return out;
 }
 
-export function assessCompleteness(chunks: ReadonlyArray<CompletenessChunk>): Completeness {
+export function assessCompleteness(
+  chunks: ReadonlyArray<CompletenessChunk>,
+  opts?: {
+    /** Distinct pages carrying the glyph pattern across the WHOLE stored document, from a
+     *  tenant-scoped SQL count — not just the bounded identity-evidence sample passed as
+     *  `chunks`. A long manual's unreadable tables can sit past that sample's limit; when
+     *  the caller supplies this (it is a superset of what `chunks` alone can see), it is
+     *  authoritative for `unreadablePages`/the `unmapped_glyphs` reason. Omit it to keep the
+     *  old chunk-only behavior (Codex #5429 r1 F3). */
+    unreadablePagesDocumentWide?: number;
+  },
+): Completeness {
   const reasons: CompletenessReason[] = [];
 
   let firstPage: number | null = null;
@@ -94,9 +108,10 @@ export function assessCompleteness(chunks: ReadonlyArray<CompletenessChunk>): Co
   for (const c of chunks) {
     if (hasUnmappedGlyphBetweenDigits(c.content)) glyphPages.add(c.page);
   }
-  if (glyphPages.size > 0) reasons.push("unmapped_glyphs");
+  const unreadablePages = opts?.unreadablePagesDocumentWide ?? glyphPages.size;
+  if (unreadablePages > 0) reasons.push("unmapped_glyphs");
 
-  return { complete: reasons.length === 0, reasons, firstPage, unreadablePages: glyphPages.size };
+  return { complete: reasons.length === 0, reasons, firstPage, unreadablePages };
 }
 
 /** The technician-facing reason a document is not complete, for the acquisition outcome message. */

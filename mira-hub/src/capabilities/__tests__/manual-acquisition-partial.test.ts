@@ -66,12 +66,33 @@ vi.mock("@/lib/equipment-notebooks", async (importOriginal) => ({
   setSourceState: equipmentNotebooksMock.setSourceState,
 }));
 
-/** The acquired document's stored chunks, answered to the chunk read only. */
-const stored = vi.hoisted(() => ({ rows: [] as Array<{ content: string; source_page: number | null }> }));
+/** The acquired document's stored chunks, answered to the chunk read only. The document-wide
+ *  glyph-count query (Codex #5429 r1 F3) is answered from the SAME fixture — computed over
+ *  ALL of `stored.rows`, unbounded, mirroring the real query scanning the whole document
+ *  rather than the APPLICABILITY_CHUNK_LIMIT-bounded sample `chunksForDoc` reads. Set
+ *  `stored.documentWideError = true` to make that query throw (the retry-later path). */
+const stored = vi.hoisted(() => ({
+  rows: [] as Array<{ content: string; source_page: number | null }>,
+  documentWideError: false,
+}));
 vi.mock("@/lib/tenant-context", () => ({
   withTenantContext: vi.fn(async (_t: string, fn: (c: unknown) => unknown) =>
     fn({
-      query: vi.fn(async (sql: string) => ({ rows: /SELECT content, source_page/.test(sql) ? stored.rows : [] })),
+      // `params` is honored for the chunk read so the mock actually simulates the real
+      // query's `LIMIT $3` (APPLICABILITY_CHUNK_LIMIT) — otherwise a fixture with >80 rows
+      // could never exercise "the bounded sample misses it" (Codex #5429 r1 F3).
+      query: vi.fn(async (sql: string, params?: unknown[]) => {
+        if (/SELECT content, source_page/.test(sql)) {
+          const limit = (params?.[2] as number | undefined) ?? stored.rows.length;
+          return { rows: stored.rows.slice(0, limit) };
+        }
+        if (/count\(DISTINCT source_page\)/.test(sql)) {
+          if (stored.documentWideError) throw new Error("document-wide glyph scan: connection reset");
+          const pages = new Set(stored.rows.filter((r) => /\d�\d/.test(r.content)).map((r) => r.source_page));
+          return { rows: [{ n: pages.size }] };
+        }
+        return { rows: [] };
+      }),
     }),
   ),
 }));
@@ -142,6 +163,7 @@ beforeEach(() => {
   ingestMock.ingestPdfToNode.mockResolvedValue({ uploadId: "test-doc-doc1", chunkCount: 3 });
   applicabilityMock.assessApplicability.mockReturnValue(VERIFIED_VERDICT);
   stored.rows = CH1_ROWS;
+  stored.documentWideError = false;
 });
 
 function storedPatch(): Patch {
@@ -210,5 +232,50 @@ describe("controls", () => {
     expect(out.status).toBe("candidate_review");
     expect(storedPatch().matchState).toBe("candidate");
     expect(String(out.payload.message)).toMatch(/full manual/i);
+  });
+});
+
+// A long manual whose first 80 pages (the APPLICABILITY_CHUNK_LIMIT-bounded identity-evidence
+// sample `chunksForDoc` reads) are entirely clean; page 81 — past that sample — carries the
+// unmapped glyph. Before Codex #5429 r1 F3 this was invisible: assessCompleteness only ever
+// saw the bounded sample, so a long table's unreadable numbers past chunk 80 never marked the
+// manual partial.
+const LONG_CLEAN_ROWS = Array.from({ length: 80 }, (_, i) => ({
+  content: i === 0 ? "DURApulse GS10 Drive User Manual\nGS10_UMW\nOriginal Instructions" : `Section ${i} filler text, nothing special.`,
+  source_page: i + 1,
+}));
+const ROW_81_GLYPH = { content: "Appendix table continued\nInput Rating2 CT Rated Input Current A 5�1 7�3", source_page: 81 };
+const LONG_DOC_WITH_LATE_GLYPH = [...LONG_CLEAN_ROWS, ROW_81_GLYPH];
+
+describe("the document-wide unreadable-glyph scan sees past the bounded sample (Codex #5429 r1 F3)", () => {
+  it("a glyph on page 81 — past the 80-chunk identity-evidence sample — still marks the manual partial", async () => {
+    stored.rows = LONG_DOC_WITH_LATE_GLYPH;
+    const out = await acquireManualForIdentity(BASE_INPUT);
+    expect(out.status).toBe("candidate_review");
+    const evidence = storedPatch().matchEvidence as {
+      completeness?: { complete: boolean; reasons: string[]; unreadablePages: number };
+    };
+    expect(evidence.completeness?.complete).toBe(false);
+    expect(evidence.completeness?.reasons).toEqual(["unmapped_glyphs"]);
+    expect(evidence.completeness?.unreadablePages).toBe(1);
+    expect(String(out.payload.message)).toMatch(/full manual/i);
+  });
+
+  it("control — the same long document with no glyph anywhere stays complete", async () => {
+    stored.rows = LONG_CLEAN_ROWS;
+    const out = await acquireManualForIdentity(BASE_INPUT);
+    expect(out.status).toBe("complete");
+    const evidence = storedPatch().matchEvidence as { completeness?: { complete: boolean } };
+    expect(evidence.completeness?.complete).toBe(true);
+  });
+
+  it("a failed document-wide scan retries later rather than treating the document as clean", async () => {
+    stored.rows = LONG_CLEAN_ROWS;
+    stored.documentWideError = true;
+    const out = await acquireManualForIdentity(BASE_INPUT);
+    expect(out.status).toBe("candidate_review");
+    expect(out.payload.retryable).toBe(true);
+    expect(String(out.payload.message)).toMatch(/try again/i);
+    expect(equipmentNotebooksMock.setSourceState).not.toHaveBeenCalled();
   });
 });

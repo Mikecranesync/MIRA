@@ -137,3 +137,24 @@ describe("a replacement character between two digits is a number that cannot be 
     expect(hasUnmappedGlyphBetweenDigits(text)).toBe(true);
   });
 });
+
+describe("the document-wide unreadable-glyph count (Codex #5429 r1 F3)", () => {
+  it("a document-wide count past the bounded sample marks it partial even when the sampled chunks are clean", () => {
+    const c = assessCompleteness(chunks([1, GS10_COVER], [2, GS10_BLANK]), { unreadablePagesDocumentWide: 3 });
+    expect(c.complete).toBe(false);
+    expect(c.reasons).toEqual(["unmapped_glyphs"]);
+    expect(c.unreadablePages).toBe(3);
+  });
+
+  it("control — unreadablePagesDocumentWide: 0 with no chunk-level glyphs either stays complete", () => {
+    const c = assessCompleteness(chunks([1, GS10_COVER]), { unreadablePagesDocumentWide: 0 });
+    expect(c.complete).toBe(true);
+    expect(c.unreadablePages).toBe(0);
+  });
+
+  it("control — omitting opts preserves the old chunk-only behavior", () => {
+    const c = assessCompleteness(chunks([1, GS10_COVER], [12, CH1_PAGE12]));
+    expect(c.reasons).toEqual(["unmapped_glyphs"]);
+    expect(c.unreadablePages).toBe(1);
+  });
+});
