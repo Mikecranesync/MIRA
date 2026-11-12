@@ -242,10 +242,18 @@ function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBl
   const rowRawLine = new Map<TableRow, string>();
   let lastRow: TableRow | null = null;
   let lastColumnCellIdx = headerIdx;
-  let pendingLabelOnly: { y: number; text: string } | null = null;
+  // A label-only line waiting to forward-attach onto the next row. `attached` is true once its text
+  // reached any row (backward or forward); a line that reaches none is kept as unqualified flat
+  // text, so nothing inside the block is lost (cheap review of #5430 r1: the remainder drops every
+  // line between the header and the last column-cell line).
+  let pendingLabelOnly: { y: number; idx: number; text: string; attached: boolean } | null = null;
   let scanEnd = windowEnd;
 
   const wordCount = (s: string): number => (s.trim().length === 0 ? 0 : s.trim().split(/\s+/).length);
+  const releasePending = (): void => {
+    if (pendingLabelOnly && !pendingLabelOnly.attached) unqualified.push(pendingLabelOnly.text);
+    pendingLabelOnly = null;
+  };
 
   for (let i = headerIdx + 1; i < windowEnd; i++) {
     const line = lines[i];
@@ -264,14 +272,17 @@ function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBl
       const text = renderItems(labelItems);
       if (/^\d+$/.test(text)) continue; // pure-number footnote mark: dropped
       // Backward attach onto the already-built lastRow (independent of forward attach below).
+      let attached = false;
       if (lastRow) {
         const lastRowY = rowLines.get(lastRow) ?? -Infinity;
         const gapOk = lastRowY - line.y <= ATTACH_BAND_PT;
         if (gapOk && (wordCount(lastRow.label) < 2 || tableUnit(text) !== null)) {
           lastRow.label = `${lastRow.label} ${text}`.trim();
+          attached = true;
         }
       }
-      pendingLabelOnly = { y: line.y, text };
+      releasePending();
+      pendingLabelOnly = { y: line.y, idx: i, text, attached };
       continue;
     }
 
@@ -322,8 +333,9 @@ function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBl
         const gapOk = pendingLabelOnly.y - line.y <= ATTACH_BAND_PT;
         if (gapOk && (wordCount(freshRow.label) < 2 || tableUnit(pendingLabelOnly.text) !== null)) {
           freshRow.label = `${freshRow.label} ${pendingLabelOnly.text}`.trim();
+          pendingLabelOnly.attached = true;
         }
-        pendingLabelOnly = null;
+        releasePending();
       }
       // An empty label here isn't necessarily final: a label-only line further down may still
       // backward-attach onto this row (see above) before the loop ends. Defer the "empty label
@@ -338,6 +350,10 @@ function buildBlock(lines: readonly Line[], headerIdx: number): { block: TableBl
     }
     lastColumnCellIdx = i;
   }
+
+  // A pending line above the last column-cell line is inside the block (the remainder will drop
+  // it); one below it is outside and the remainder keeps it as-is.
+  if (pendingLabelOnly && pendingLabelOnly.idx < lastColumnCellIdx) releasePending();
 
   const finalRows: TableRow[] = [];
   for (const r of rows) {
@@ -397,13 +413,17 @@ export function tableChunks(block: TableBlock): TableChunk[] {
   return chunks;
 }
 
-/** Reads a page's positioned text items, finds every qualifying model-column table (>= 2 rows,
- *  so a bare label/value sheet like the Schneider data sheet is never mistaken for one), and
- *  returns the chunked tables plus the page's remaining text with those table lines excluded.
+/** Reads a page's positioned text items, finds every qualifying model-column table, and returns
+ *  the chunked tables plus the page's remaining text with those table lines excluded. A block
+ *  qualifies with >= 2 rows (so a bare label/value sheet like the Schneider data sheet is never
+ *  mistaken for one) of which >= 1 is per-model (cells that differ by column): a block whose every
+ *  row is one merged value carries no column information, and that is exactly the shape a sentence
+ *  with two model numbers as separate items plus a few trailing numbers takes (cheap review of
+ *  #5430 r1 — without this rule such a "table" swallowed the whole page into chunks).
  *  Returns null when the page has no qualifying table (the remainder is then just the page as-is,
  *  which callers already have via the flat-text path). */
 export function pageWithTables(items: readonly LayoutItem[]): { remainder: string; chunks: TableChunk[] } | null {
-  const blocks = detectModelTables(items).filter((b) => b.rows.length >= 2);
+  const blocks = detectModelTables(items).filter((b) => b.rows.length >= 2 && b.rows.some((r) => !r.merged));
   if (blocks.length === 0) return null;
 
   const lines = buildLines(items);
