@@ -18,6 +18,7 @@ import {
   unlistedModelNumbers,
   type ExcludedTable,
   type ManualVerdict,
+  type ModelNumber,
   type OtherProductRefusal,
   type UnlistedModelRefusal,
 } from "@/capabilities/manual-applicability";
@@ -1844,7 +1845,18 @@ export async function retrieveNodeChunks(
   // number beside a sibling is refused here, not asked which one it meant.
   const recordText = confirmedCatalogNumber(opts);
   const recordFamilyNumbers = recordText ? modelNumbersIn(recordText) : [];
-  const siblingAsked = [...modelNumbersIn(ownQuestion), ...modelNumbersIn(carriedModelQuestion ?? ""), ...carriedNumbers].filter((n) =>
+  // Codex r2 on #5451 (F3): a question's numbers are read by BOTH readers. The identity reader
+  // (model-token.ts) accepts "GS13N - 20P2" (spaces around the hyphen) and yields the exact
+  // catalog identity; the generic number reader splits that spelling into GS13N + 20P2 and the
+  // refusal would never fire — the record's own values would answer a question about the
+  // look-alike. Each identity is re-read into a ModelNumber so family and key compare as usual.
+  const numbersAskedIn = (text: string): ModelNumber[] => {
+    const seen = new Set<string>();
+    return [...modelNumbersIn(text), ...[...modelIdentitiesInText(text)].flatMap((id) => modelNumbersIn(id))].filter((n) =>
+      seen.has(n.key) ? false : (seen.add(n.key), true),
+    );
+  };
+  const siblingAsked = [...numbersAskedIn(ownQuestion), ...numbersAskedIn(carriedModelQuestion ?? ""), ...carriedNumbers].filter((n) =>
     recordFamilyNumbers.some((own) => own.key !== n.key && sameModelFamily(own, n)),
   );
   const asksSiblingOfRecord = Boolean(recordText) && siblingAsked.length > 0;

@@ -180,6 +180,28 @@ describe("retrieveNodeChunks excludes another model's table passages when the re
       expect(diagnostics.siblingOfRecordAsk).toEqual({ asked: ["GS13N-20P2"], record: "GS11N-20P2" });
     });
 
+    // Codex r2 on #5451 (F3, MEDIUM): "GS13N - 20P2" (spaces around the hyphen, a tablet keyboard's
+    // habit) is read by the identity reader (model-token.ts accepts whitespace around that hyphen)
+    // but split by the generic number reader into GS13N + 20P2, so the refusal never fired and the
+    // record's own GS11N values would have answered a question about the look-alike — the exact
+    // wrong-model class the pilot exists to stop. Both readers now feed the refusal.
+    it("a sibling spelled with spaces around the hyphen (GS13N - 20P2) is refused the same way", async () => {
+      const diagnostics: Record<string, unknown> = {};
+      const { client, calls } = makeClient(rows());
+      const out = await retrieveNodeChunks(client, "t-1", "What is the rated input current of GS13N - 20P2?", scoped({ diagnostics }));
+      expect(out).toEqual([]);
+      expect(diagnostics.siblingOfRecordAsk).toEqual({ asked: ["GS13N-20P2"], record: "GS11N-20P2" });
+      expect(calls.filter((c) => /knowledge_entries/.test(c.sql))).toHaveLength(0);
+    });
+
+    it("the spaced spelling in an earlier open question carries and is refused too", async () => {
+      const diagnostics: Record<string, unknown> = {};
+      const { client } = makeClient(rows());
+      const out = await retrieveNodeChunks(client, "t-1", "and its VT rated current?", scoped({ diagnostics, subjectQueries: ["What is the rated input current of GS13N - 20P2?"] }));
+      expect(out).toEqual([]);
+      expect(diagnostics.siblingOfRecordAsk).toEqual({ asked: ["GS13N-20P2"], record: "GS11N-20P2" });
+    });
+
     it("control: after a refused sibling ask, a question naming the record's OWN number is served (the carry stops at a named model)", async () => {
       // The refused turn stays in the open run (conversation-subject.ts closes a run only on an
       // answered document-based turn), so a bare follow-up would still carry GS13N. A question
