@@ -57,12 +57,14 @@ export function hasUnmappedGlyphBetweenDigits(text: string): boolean {
   return DIGIT_GLYPH_DIGIT.test(text);
 }
 
-const CHAPTER_HEADING = /\bChapter\s*(\d{1,2})\b/g;
-const APPENDIX_HEADING = /\bAppendix\s*([A-Z])\b/g;
+// Case-insensitive (#5434): "CHAPTER 1" / "chapter 1" / "APPENDIX A" are the manual's typography,
+// not evidence of completeness. The captured label is upper-cased so "a" and "A" are one appendix.
+const CHAPTER_HEADING = /\bChapter\s*(\d{1,2})\b/gi;
+const APPENDIX_HEADING = /\bAppendix\s*([A-Z])\b/gi;
 
 function distinct(text: string, re: RegExp): Set<string> {
   const out = new Set<string>();
-  for (const m of text.matchAll(re)) out.add(m[1]!);
+  for (const m of text.matchAll(re)) out.add(m[1]!.toUpperCase());
   return out;
 }
 
