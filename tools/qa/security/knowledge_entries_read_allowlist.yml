@@ -1456,3 +1456,11 @@ approved:
       FROM knowledge_entries
           WHERE tenant_id = $1
             AND ingest_route = 'v2'
+  "mira-hub/src/capabilities/__tests__/notebook-source-unreadable-pages.test.ts:40":
+    approved_classification: UNFILTERED
+    query_sha256: "981727431a6ba26d154401e972e67cf8d1298d80896a706b52f4bbb960edc0d4"
+    reason: "Not a database read: a regex (/FROM knowledge_entries/.test) routing a MOCK pool's query() to a canned counts row so listSources can run with no connection and no data; the real read is equipment-notebooks.ts:1093 (approved). Phase 1 PR-3 (#5425), unmapped-glyph page count."
+  "mira-hub/src/capabilities/__tests__/notebook-source-unreadable-pages.test.ts:61":
+    approved_classification: UNFILTERED
+    query_sha256: "fcbf1d76698fbbf1803103158b0976db6cfcb75c4c5c31463fee2cef45068b27"
+    reason: "Not a database read: a regex assertion locating listSources' counts SQL in a MOCK client's call log to prove it counts unmapped_glyph pages (DISTINCT source_page). Phase 1 PR-3 (#5425). No connection, no data."
