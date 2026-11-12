@@ -111,3 +111,15 @@ def test_poll_survives_a_github_error(tmp_path):
     url = "https://api.github.com/repos/o/r/events?per_page=100"
     get = FakeGet({url: (502, {}, {"message": "bad gateway"})})
     assert poll.poll_events(get, "o/r", st, {}) == 0
+
+
+def test_rest_event_without_html_url_falls_back_to_the_canonical_github_url():
+    ev = dict(
+        REST_EVENT,
+        payload={"action": "closed", "number": 12, "pull_request": {"head": {"sha": "0" * 40}}},
+    )
+    assert poll.normalise_rest_event(ev)["url"] == "https://github.com/o/r/pull/12"
+    issue = dict(
+        REST_EVENT, type="IssuesEvent", payload={"action": "opened", "issue": {"number": 7}}
+    )
+    assert poll.normalise_rest_event(issue)["url"] == "https://github.com/o/r/issues/7"

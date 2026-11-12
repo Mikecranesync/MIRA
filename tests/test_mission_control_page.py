@@ -157,6 +157,8 @@ def test_decisions_for_mike_come_from_blocked_by_and_decision_lines(tmp_path):
     m = build(tmp_path, reports=[r])
     assert [d["text"] for d in m["decisions"]] == ["merge #4985 and #5314", "Mike to merge #4985"]
     assert m["tiles"]["decisions"] == 2
+    quiet = report(2, lane="BRAVO-CODEX", decision="not stated", blocked_by="unparsed")
+    assert build(tmp_path / "quiet", reports=[quiet])["decisions"] == []  # placeholders are not decisions
 
 
 def test_lifecycle_table_has_six_cells_per_row_with_sources(tmp_path):

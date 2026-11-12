@@ -7,22 +7,13 @@
 <title>Mission Control</title>
 <link rel="stylesheet" href="/factorylm-tokens.css">
 <style>
-  /* Dark by default (a control-room page); light only when the OS asks for it. Tokens: --fl-* / --fl-dark-*. */
+  /* Always dark: a control-room page. Tokens come from the shared --fl-dark-* set; colour = state only. */
   :root {
     color-scheme: dark;
     --bg: var(--fl-dark-bg); --surface: var(--fl-dark-surface); --surface-hi: var(--fl-dark-surface-hi); --ink: var(--fl-dark-ink);
     --muted: var(--fl-dark-muted); --faint: var(--fl-dark-faint); --line: var(--fl-dark-line);
     --ok: var(--fl-dark-ok); --ok-tint: var(--fl-dark-ok-tint); --warn: var(--fl-dark-warn); --warn-tint: var(--fl-dark-warn-tint);
     --fault: var(--fl-dark-fault); --fault-tint: var(--fl-dark-fault-tint); --accent: var(--fl-dark-accent);
-  }
-  @media (prefers-color-scheme: light) {
-    :root {
-      color-scheme: light;
-      --bg: var(--fl-bg); --surface: var(--fl-surface); --surface-hi: var(--fl-surface); --ink: var(--fl-ink);
-      --muted: var(--fl-muted); --faint: var(--fl-faint); --line: var(--fl-line);
-      --ok: var(--fl-ok); --ok-tint: var(--fl-ok-bg); --warn: var(--fl-warn); --warn-tint: var(--fl-warn-bg);
-      --fault: var(--fl-fault); --fault-tint: var(--fl-fault-bg); --accent: var(--fl-accent);
-    }
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 var(--fl-font); }

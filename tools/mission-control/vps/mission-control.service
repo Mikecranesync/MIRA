@@ -1,0 +1,36 @@
+# Mission Control v2 on the OVH VPS (Stage B, #4737). NOT installed by any workflow or PR:
+# the owner copies this by hand after approving Stage B (see docs/runbooks/mission-control.md).
+#
+#   sudo cp mission-control.service /etc/systemd/system/mission-control.service
+#   sudo systemctl daemon-reload && sudo systemctl enable --now mission-control
+#
+# Binds 127.0.0.1:8787 only; nginx (nginx-mission-control.conf.example) adds TLS + basic auth.
+[Unit]
+Description=FactoryLM Mission Control v2 (read-only cockpit, #4737)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/mission-control/current
+# Secrets come from Doppler factorylm/prd at start; nothing is written to disk.
+#   GITHUB_PAT          -> GITHUB_TOKEN (read:project + repo read)
+#   MC_WEBHOOK_SECRET   -> the secret registered on the GitHub repo webhook
+ExecStart=/usr/bin/doppler run --project factorylm --config prd \
+  --name-transform none \
+  -- /bin/sh -c 'GITHUB_TOKEN="$GITHUB_PAT" exec /usr/bin/python3 /opt/mission-control/current/server.py'
+Environment=MC_PORT=8787
+Environment=MC_DATA_DIR=/opt/mission-control/data
+Environment=MC_ENV_PRODUCTION_URL=https://app.factorylm.com/api/version/
+Environment=MC_ENV_STAGING_URL=http://127.0.0.1:4101/api/version/
+Environment=MC_POLL_SECONDS=60
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/mission-control/data
+
+[Install]
+WantedBy=multi-user.target

@@ -115,7 +115,14 @@ def build(
         if ln["trusted"] and ln["freshness"] != "missing":
             for key in ("decision", "blocked_by"):
                 text = (ln.get(key) or "").strip()
-                if text and text.lower() not in ("none", "none.", "n/a", "-"):
+                if text and text.lower() not in (
+                    "none",
+                    "none.",
+                    "n/a",
+                    "-",
+                    "not stated",
+                    "unparsed",
+                ):
                     decisions.append({"lane": ln["lane"], "text": text, "url": ln["url"]})
     poll_age = _age_seconds(last_poll, now)
     hook_age = _age_seconds(last_webhook, now)

@@ -244,6 +244,7 @@ def bind_address() -> str:
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
+    logging.getLogger("httpx").setLevel(logging.WARNING)  # one line per poll, not per request
     token = os.getenv("GITHUB_TOKEN", "")
     if not token:
         raise SystemExit("GITHUB_TOKEN is not set.")

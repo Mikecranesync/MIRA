@@ -56,6 +56,9 @@ def normalise(event: str, delivery_id: str, payload: dict, received_at: str) -> 
     number, url, head = _subject(payload)
     repo = (payload.get("repository") or {}).get("full_name")
     sender = (payload.get("sender") or {}).get("login")
+    if not url and repo and number:  # REST /events carries trimmed objects without html_url
+        path = "issues" if ("issue" in payload and "pull_request" not in payload) else "pull"
+        url = f"https://github.com/{repo}/{path}/{number}"
     action = payload.get("action")
     if kind == "push":
         action = payload.get("ref")
