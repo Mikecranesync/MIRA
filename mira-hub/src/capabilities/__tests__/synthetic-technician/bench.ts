@@ -310,6 +310,13 @@ export const MICRO820_SHEET_AS_STORED: Manual = {
     + "\nhttp://rockwellautomation.com/literature\nFR\nCette publication est disponible en fran\u00e7ais\n"
     + "sous forme \u00e9lectronique (fichier PDF). Pour la\nt\u00e9l\u00e9charger, rendez-vous sur la page Internet\nindiqu\u00e9e ci-dessus.",
 };
+
+// #5465: the stored cover, under the name the file is downloaded with.
+export const MICRO820_SHEET_PUBLICATION_FILE: Manual = {
+  ...MICRO820_SHEET_AS_STORED,
+  key: "micro820-installation-instructions-publication-file-name",
+  filename: "2080-IN009B-EN-P.pdf",
+};
 export const RELAY_SHEET_AS_STORED: Manual = {
   ...RELAY_SHEET,
   key: "ca3kn22bd-data-sheet-as-stored",
@@ -497,6 +504,18 @@ export const EXTRA_JOBS: Job[] = [
     ask: "What is the supply voltage?", want: answer(MICRO820_SHEET_AS_STORED) },
   { id: "X-21", who: "senior", doing: "asking by an unlisted catalog number, cover as stored",
     attached: [MICRO820_SHEET_AS_STORED], identity: PLC_BY_CATALOG,
+    ask: "Supply voltage for 2080-LC50-24QWB?", want: REFUSE, says: "other-model", about: "question" },
+  // #5465: the same sheet under the file name Rockwell's site gives it. With its
+  // revision letter the publication number ("2080-IN009B") has the layout of the
+  // catalog numbers on the cover, and read as a model the cover does not list.
+  { id: "X-70", who: "journeyman", doing: "asking by a listed catalog number; the sheet is saved under its publication number",
+    attached: [MICRO820_SHEET_PUBLICATION_FILE], identity: PLC_BY_CATALOG,
+    ask: "What are the relay contact ratings at 120 V AC on a Micro820 2080-LC20-20QWB?", want: answer(MICRO820_SHEET_PUBLICATION_FILE) },
+  { id: "X-71", who: "apprentice", doing: "asking with no model named, in a project confirmed by catalog number; the sheet is saved under its publication number",
+    attached: [MICRO820_SHEET_PUBLICATION_FILE], identity: PLC_BY_CATALOG,
+    ask: "What is the supply voltage?", want: answer(MICRO820_SHEET_PUBLICATION_FILE) },
+  { id: "X-72", who: "senior", doing: "asking by an unlisted catalog number; the sheet is saved under its publication number",
+    attached: [MICRO820_SHEET_PUBLICATION_FILE], identity: PLC_BY_CATALOG,
     ask: "Supply voltage for 2080-LC50-24QWB?", want: REFUSE, says: "other-model", about: "question" },
   { id: "X-22", who: "apprentice", doing: "asking with no model named, relay sheet as stored",
     attached: [RELAY_SHEET_AS_STORED], identity: RELAY,
