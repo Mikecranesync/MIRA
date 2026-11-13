@@ -193,7 +193,9 @@ captured as UTF-8 bytes (`stream-decode.ts`); `res.text()` mis-decoded the chars
   the Hub's Gate G / off-topic abstain returns before any provider or Jev call exists, so it is accepted
   as zero-cost **only** when its ledger row proves that — no provider/model, status `empty`, outcome
   `abstained`, no tokens or cost, no generation attempt or served provider, an invoked gate that decided
-  `insufficient_evidence`, every Jev field null (a Jev skipped with a reason is fine). Before this the
+  `insufficient_evidence`, every Jev field null. A Jev decision skipped before any request (`disabled`,
+  `no_key`) with nothing recorded is fine; one that was attempted and failed (`timeout`, `http_<status>`,
+  `malformed`, `error`) is a request that went out with unknown usage and fails closed. Before this the
   walk read the absent Jev fields as "Jev call ran with unknown usage" and halted on the missing usage
   frame, which left CV-101 steps S7/S8/S9/S12/S17 NOT TESTED. A refusal that streams a usage frame is
   a served turn, never an abstain. Every halt now names the trace id, the stream status it saw, and

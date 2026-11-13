@@ -458,6 +458,28 @@ describe("#5357: abstain proof: the Hub's own ledger row, all of it, or nothing 
     expect(abstainVerdict([abstainRow({}, { jev_decision: { skipped_reason: null, input_tokens: 900 } })], ABSTAIN_TRACE)).toMatchObject({ ok: false, reason: expect.stringMatching(/Jev/) });
     expect(abstainVerdict([abstainRow({}, { jev_decision: { skipped_reason: null, input_tokens: null } })], ABSTAIN_TRACE)).toMatchObject({ ok: false, reason: expect.stringMatching(/Jev/) });
   });
+  it("a Jev decision that was attempted and failed (timeout, http_<status>, malformed, error) is a request that went out with unknown usage, never zero (Codex F1)", () => {
+    for (const reason of ["timeout", "http_500", "http_429", "malformed", "error"]) {
+      expect(abstainVerdict([abstainRow({}, { jev_decision: { skipped_reason: reason, input_tokens: null, latency_ms: 5000 } })], ABSTAIN_TRACE), reason)
+        .toMatchObject({ ok: false, reason: expect.stringMatching(new RegExp(`Jev decision.*${reason}.*unknown usage`)) });
+      expect(abstainVerdict([abstainRow({}, { jev_decision: { skipped_reason: reason, input_tokens: null, latency_ms: null } })], ABSTAIN_TRACE), `${reason} no latency`)
+        .toMatchObject({ ok: false });
+    }
+    const m = new BudgetMeter();
+    m.book();
+    m.verify("gs10-ch6-q9-abstain", ABSTAIN_SSE, abstainVerdict([abstainRow({}, { jev_decision: { skipped_reason: "timeout", input_tokens: null, latency_ms: 5000 } })], ABSTAIN_TRACE));
+    expect([m.canAfford(), m.unbounded]).toEqual([false, "gs10-ch6-q9-abstain"]);
+    expect(m.unboundedReason).toMatch(/timeout/);
+  });
+  it("a Jev decision skipped before any request (disabled, no_key) is accepted only when it carries no tokens, latency, model or result", () => {
+    for (const reason of ["disabled", "no_key"]) {
+      expect(abstainVerdict([abstainRow({}, { jev_decision: { skipped_reason: reason, input_tokens: null, latency_ms: null, model: null } })], ABSTAIN_TRACE), reason).toMatchObject({ ok: true, kind: "abstain" });
+      expect(abstainVerdict([abstainRow({}, { jev_decision: { skipped_reason: reason, input_tokens: 12, latency_ms: null } })], ABSTAIN_TRACE), `${reason} tokens`).toMatchObject({ ok: false, reason: expect.stringMatching(/Jev/) });
+      expect(abstainVerdict([abstainRow({}, { jev_decision: { skipped_reason: reason, input_tokens: null, latency_ms: 40 } })], ABSTAIN_TRACE), `${reason} latency`).toMatchObject({ ok: false, reason: expect.stringMatching(/Jev/) });
+      expect(abstainVerdict([abstainRow({}, { jev_decision: { skipped_reason: reason, input_tokens: null, model: "gpt-5.4-mini" } })], ABSTAIN_TRACE), `${reason} model`).toMatchObject({ ok: false, reason: expect.stringMatching(/Jev/) });
+    }
+    expect(abstainVerdict([abstainRow({}, { jev_decision: { skipped_reason: "something_new", input_tokens: null, latency_ms: null } })], ABSTAIN_TRACE), "unknown reason").toMatchObject({ ok: false, reason: expect.stringMatching(/Jev/) });
+  });
 });
 
 describe("#5357: the walk routes an abstain stream to the abstain verdict and the meter accepts only a proven one", () => {

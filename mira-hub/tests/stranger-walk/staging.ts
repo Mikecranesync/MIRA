@@ -259,8 +259,9 @@ export function zeroCallVerdict(rows: LedgerRow[], traceId: string): LedgerVerdi
  * outcome `abstained`, an answer_gate that decided `insufficient_evidence`, and they return BEFORE
  * the Jev shadow is created, so the packet carries the Jev defaults (every Jev field null). The same
  * rule as the safety stop: EVERY field must say nothing ran. Any positive evidence of a Jev call
- * (a score, a latency, tokens, or a decision call without a skipped reason) is metered activity
- * and fails closed; a Jev skipped WITH a reason is fine (nothing ran).
+ * (a score, a latency, tokens, a decision call without a skipped reason, or a decision that was
+ * attempted and failed) is metered activity and fails closed; only a Jev skipped BEFORE any request
+ * (`disabled`, `no_key`) with nothing recorded is accepted (nothing ran).
  */
 export function abstainVerdict(rows: LedgerRow[], traceId: string): LedgerVerdict {
   const one = oneRow(rows, traceId);
@@ -279,9 +280,21 @@ export function abstainVerdict(rows: LedgerRow[], traceId: string): LedgerVerdic
   if (gate.decision !== "insufficient_evidence") return fail(`gate decision ${String(gate.decision ?? null)}, not insufficient_evidence`);
   if (gate.jev_input_tokens != null || gate.jev_sufficient != null || gate.jev_latency_ms != null) return fail("Jev sufficiency call recorded on the abstain");
   const dec = obj(packet.jev_decision);
-  if (dec && dec.skipped_reason == null) return fail("Jev decision call recorded on the abstain");
+  if (dec) {
+    const r = dec.skipped_reason;
+    if (r == null) return fail("Jev decision call recorded on the abstain");
+    if (!JEV_PRE_REQUEST_SKIPS.has(String(r))) return fail(`Jev decision ${String(r)}: a request went out with unknown usage (only a pre-request skip is zero-call)`);
+    if (dec.input_tokens != null || dec.latency_ms != null || dec.model != null) return fail(`Jev decision skipped ${String(r)} but records tokens, latency or a model`);
+  }
   return { ok: true, kind: "abstain", answerUsd: 0, jevInputTokens: 0 };
 }
+
+/**
+ * jev-decision.ts skip reasons that are set BEFORE any request is built (`disabled`, `no_key`).
+ * Every other reason (`timeout`, `http_<status>`, `malformed`, `error`) is written after a fetch
+ * went out, so tokens may have been consumed with no usage recorded: unknown, never zero.
+ */
+const JEV_PRE_REQUEST_SKIPS = new Set(["disabled", "no_key"]);
 
 /** Input tokens of one Jev call recorded on the packet: 0 when it was skipped, a reason when it ran
  *  with unknown usage or above the booked bound. */
