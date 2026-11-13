@@ -6,6 +6,7 @@ no webhook is registered (BRAVO/CHARLIE) and as a safety net when one is.
 
 from __future__ import annotations
 
+import datetime as dt
 import importlib.util
 import logging
 import sys
@@ -80,10 +81,13 @@ def poll_events(get: Getter, repo: str, store, state: dict) -> int:
 def poll_reports(get: Getter, repo: str, issue: int, store, trusted: tuple[str, ...]) -> int:
     """Read every comment on the coordination issue; store the DELIVERY-UPDATE ones.
 
-    Only a complete, successful read reconciles: reports from this issue whose comment is
-    gone, or no longer carries the marker, are removed (tombstoned). A failed page changes
-    nothing.
+    Only a complete, successful read reconciles, and only the records it can speak for:
+    a comment that no longer carries the marker is withdrawn as of its own updated_at (a
+    later edit restores it); a comment that is gone is deleted for good — unless the stored
+    report was updated after this read began (a webhook landed mid-poll). A failed page
+    changes nothing.
     """
+    started = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
     stored, page, seen = 0, 1, []
     while True:
         url = f"{API}/repos/{repo}/issues/{issue}/comments?per_page=100&page={page}"
@@ -95,15 +99,19 @@ def poll_reports(get: Getter, repo: str, issue: int, store, trusted: tuple[str, 
         if len(body) < 100:
             break
         page += 1
-    present = set()
+    present: dict[int, str] = {}  # comment id -> updated_at of every comment in the snapshot
     for c in seen:
+        present[int(c["id"])] = c.get("updated_at") or ""
         row = webhook.comment_report({"comment": c}, trusted, reports.parse)
-        if row:
-            present.add(row["id"])
-            if store.put_report(row):
-                stored += 1
+        if row and store.put_report(row):
+            stored += 1
     marker = f"/issues/{issue}#issuecomment-"
     for r in store.reports():
-        if marker in r["url"] and r["id"] not in present:
-            store.delete_report(r["id"])
+        if marker not in r["url"] or r["updated_at"] > started:
+            continue  # another issue, or newer than this snapshot: not ours to judge
+        if r["id"] in present:
+            if present[r["id"]] > r["updated_at"]:  # edited, and the marker is gone
+                store.delete_report(r["id"], after=present[r["id"]])
+        else:
+            store.delete_report(r["id"], permanent=True)
     return stored

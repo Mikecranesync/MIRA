@@ -127,7 +127,7 @@ def test_reviewed_accepts_converged_only_with_followups_for_that_head():
         lc.parse_ledger(ledger(status="ISSUES_FOUND")), seq=0
     )  # 0 BLOCKER / 0 HIGH / 1 MEDIUM
     assert not on(lc.derive(bound(), evidence(ledgers=[conv]))["cells"], "REVIEWED")
-    fu = [{"sha": HEAD, "seq": 1, "issues": ["#1"]}]
+    fu = [{"sha": HEAD, "body_sha256": "a" * 64, "seq": 1, "issues": ["#1"]}]
     cells = lc.derive(bound(), evidence(ledgers=[conv], followups=fu))["cells"]
     assert on(cells, "REVIEWED") and "CONVERGED" in cells["REVIEWED"]["label"]
     blocker = dict(lc.parse_ledger(ledger(status="ISSUES_FOUND", bl=1)), seq=0)
@@ -260,22 +260,16 @@ def test_reviewed_rejects_green_with_findings_and_legacy_records():  # F3
 
 def test_converged_needs_a_followups_record_newer_than_the_verdict_naming_issues():  # F3
     conv = dict(lc.parse_ledger(ledger(status="ISSUES_FOUND", med=1)), seq=5)
-    good = {"sha": HEAD, "seq": 6, "issues": ["#1"]}
+    good = {"sha": HEAD, "body_sha256": "a" * 64, "seq": 6, "issues": ["#1"]}
     assert on(lc.derive(bound(), evidence(ledgers=[conv], followups=[good]))["cells"], "REVIEWED")
-    older = {"sha": HEAD, "seq": 4, "issues": ["#1"]}  # posted before the verdict
+    older = {"sha": HEAD, "body_sha256": "a" * 64, "seq": 4, "issues": ["#1"]}  # before the verdict
     assert not on(
         lc.derive(bound(), evidence(ledgers=[conv], followups=[older]))["cells"], "REVIEWED"
     )
-    bare = {"sha": HEAD, "seq": 6, "issues": []}  # no follow-up issue filed
+    bare = {"sha": HEAD, "body_sha256": "a" * 64, "seq": 6, "issues": []}  # no issue filed
     assert not on(
         lc.derive(bound(), evidence(ledgers=[conv], followups=[bare]))["cells"], "REVIEWED"
     )
-
-
-def test_followups_parser_reads_sha_and_issue_numbers():  # F3
-    body = f"[REVIEW-FOLLOWUPS]\nreviewed_sha: {HEAD}\nMEDIUM F5 -> #5301\nMEDIUM F6 -> #5302\n"
-    assert lc.followups(body) == {"sha": HEAD, "issues": ["#5301", "#5302"]}
-    assert lc.followups("[REVIEW-FOLLOWUPS]\nnothing") is None
 
 
 def test_readiness_is_no_go_while_any_candidate_has_incomplete_evidence():  # F4
@@ -290,3 +284,44 @@ def test_readiness_reports_the_given_staleness_reason():  # F1
     full = {"cells": {"DEPLOYED:production": {"on": True}, "FIELD-VERIFIED": {"on": True}}}
     r = lc.readiness([full], sources_stale=True, stale_reason="lifecycle evidence is 3 days old")
     assert r["decision"] == "NO-GO" and "3 days old" in r["reason"]
+
+
+# --- Codex round 2 (PR #5455) F3: match the canonical ledger / follow-ups contract -----------
+
+FOLLOWUPS = "[REVIEW-FOLLOWUPS]\n\n```\nreviewed_sha: {sha}\nreviewed_body_sha256: {b}\nissues:{issues}\n```\n"
+
+
+def test_followups_parser_is_the_strict_canonical_envelope():
+    r = lc.followups(FOLLOWUPS.format(sha=HEAD, b="a" * 64, issues=" #5301 #5302 #5301"))
+    assert r == {"sha": HEAD, "body_sha256": "a" * 64, "issues": ["#5301", "#5302"]}  # distinct
+    assert lc.followups(f"[REVIEW-FOLLOWUPS]\nreviewed_sha: {HEAD}\n#1") is None  # loose prose
+    assert lc.followups(FOLLOWUPS.format(sha=HEAD, b="a" * 64, issues="")) is None
+
+
+def test_green_with_any_finding_including_low_never_reviews():
+    low = lc.parse_ledger(ledger().replace("LOW: 0", "LOW: 3"))
+    assert low["low"] == 3  # precondition
+    assert not on(lc.derive(bound(), evidence(ledgers=[low]))["cells"], "REVIEWED")
+    assert on(
+        lc.derive(bound(), evidence(ledgers=[lc.parse_ledger(ledger())]))["cells"], "REVIEWED"
+    )
+
+
+def test_converged_followups_must_bind_the_body_and_list_one_distinct_issue_per_medium():
+    conv = dict(lc.parse_ledger(ledger(status="ISSUES_FOUND", med=2)), seq=0)
+    ok = {"sha": HEAD, "body_sha256": "a" * 64, "seq": 1, "issues": ["#1", "#2"]}
+    assert on(lc.derive(bound(), evidence(ledgers=[conv], followups=[ok]))["cells"], "REVIEWED")
+    wrong_body = dict(ok, body_sha256="b" * 64)
+    assert not on(
+        lc.derive(bound(), evidence(ledgers=[conv], followups=[wrong_body]))["cells"], "REVIEWED"
+    )
+    short = dict(ok, issues=["#1"])  # two MEDIUM, one issue
+    assert not on(
+        lc.derive(bound(), evidence(ledgers=[conv], followups=[short]))["cells"], "REVIEWED"
+    )
+    low_only = dict(
+        lc.parse_ledger(ledger(status="ISSUES_FOUND", med=0).replace("LOW: 0", "LOW: 2")), seq=0
+    )
+    assert on(
+        lc.derive(bound(), evidence(ledgers=[low_only], followups=[short]))["cells"], "REVIEWED"
+    )  # max(0,1)

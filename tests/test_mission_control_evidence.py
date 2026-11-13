@@ -264,13 +264,16 @@ def test_markers_carry_comment_order_and_followup_issues():  # F3
         {"user": {"login": "owner"}, "body": LEDGER.format(sha=HEAD, b=BODY_SHA), "html_url": "u1"},
         {
             "user": {"login": "owner"},
-            "body": f"[REVIEW-FOLLOWUPS]\nreviewed_sha: {HEAD}\n#9",
+            "body": (
+                f"[REVIEW-FOLLOWUPS]\n\n```\nreviewed_sha: {HEAD}\n"
+                f"reviewed_body_sha256: {BODY_SHA}\nissues: #9\n```\n"
+            ),
             "html_url": "u2",
         },
     ]
     ev = evidence.markers(comments, ("owner",))
     assert ev["ledgers"][0]["seq"] == 1
-    assert ev["followups"] == [{"sha": HEAD, "seq": 2, "issues": ["#9"]}]
+    assert ev["followups"] == [{"sha": HEAD, "body_sha256": BODY_SHA, "seq": 2, "issues": ["#9"]}]
 
 
 def test_pr_body_hash_rides_on_the_item():  # F3

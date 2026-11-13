@@ -152,6 +152,10 @@ def test_complete_poll_removes_reports_whose_comments_are_gone_or_edited_away(tm
     get.answers[url] = (200, {}, [edited])  # 78 deleted, 77 edited to drop the marker
     poll.poll_reports(get, "o/r", 5232, st, trusted=("owner",))
     assert st.reports() == []
+    restored = dict(COMMENT, updated_at="2026-11-12T23:45:00Z")  # 77 edited back later
+    get.answers[url] = (200, {}, [restored])
+    poll.poll_reports(get, "o/r", 5232, st, trusted=("owner",))
+    assert [r["id"] for r in st.reports()] == [77]  # a withdrawal is not a deletion
 
 
 def test_a_failed_poll_page_never_removes_reports(tmp_path):  # F9 control
@@ -162,3 +166,27 @@ def test_a_failed_poll_page_never_removes_reports(tmp_path):  # F9 control
     get.answers[url] = (502, {}, "bad gateway")
     poll.poll_reports(get, "o/r", 5232, st, trusted=("owner",))
     assert len(st.reports()) == 1
+
+
+def test_reconciliation_spares_reports_that_arrived_after_the_poll_began(tmp_path):  # r2 F10
+    st = store_mod.Store(tmp_path / "mc.sqlite")
+    url = "https://api.github.com/repos/o/r/issues/5232/comments?per_page=100&page=1"
+    late = {
+        "id": 99,
+        "lane": "BRAVO-CODEX",
+        "author": "owner",
+        "trusted": 1,
+        "updated_at": "2099-01-01T00:00:00Z",  # newer than any poll start
+        "url": "https://github.com/o/r/issues/5232#issuecomment-99",
+        "raw": "",
+        "parsed": {"state": "ACTIVE", "items": []},
+    }
+
+    class RacyGet(FakeGet):
+        def __call__(self, u, headers=None):
+            st.put_report(late)  # a webhook lands while the (older) page is in flight
+            return super().__call__(u, headers)
+
+    get = RacyGet({url: (200, {}, [COMMENT])})
+    poll.poll_reports(get, "o/r", 5232, st, trusted=("owner",))
+    assert {r["id"] for r in st.reports()} == {77, 99}

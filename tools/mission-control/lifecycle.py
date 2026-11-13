@@ -37,9 +37,12 @@ _LEDGER_LEGACY = re.compile(
     r"(?:post_cap_human_authorized: true\r?\n)?\r?\n"
     r"BLOCKER: ([0-9]+)\r?\nHIGH: ([0-9]+)\r?\nMEDIUM: ([0-9]+)\r?\nLOW: ([0-9]+)\r?\nFALSE_POSITIVE: [0-9]+\r?\n```"
 )
-_FOLLOWUPS_RE = re.compile(r"^\[REVIEW-FOLLOWUPS\][\s\S]*?reviewed_sha: ([0-9a-f]{40})", re.M)
+# The owner's follow-ups record, same strict envelope as tools/ui_surface_lifecycle_guard.py.
+_FOLLOWUPS_RE = re.compile(
+    r"^\[REVIEW-FOLLOWUPS\]\r?\n\r?\n```\r?\nreviewed_sha: ([0-9a-f]{40})\r?\n"
+    r"reviewed_body_sha256: ([0-9a-f]{64})\r?\nissues:((?: #[1-9][0-9]*)+)\r?\n```(?:\r?\n|$)"
+)
 _FIELD_VERIFIED_RE = re.compile(r"^\[FIELD-VERIFIED\][\s\S]*?\b([0-9a-f]{40})\b", re.M)
-_ISSUE_RE = re.compile(r"#[1-9][0-9]*")
 
 
 def parse_ledger(body: str) -> Optional[dict]:
@@ -65,11 +68,12 @@ def parse_ledger(body: str) -> Optional[dict]:
 
 
 def followups(body: str) -> Optional[dict]:
-    """{"sha", "issues"} of a [REVIEW-FOLLOWUPS] record (issues = every #n it names)."""
+    """{"sha", "body_sha256", "issues"} of a canonical [REVIEW-FOLLOWUPS] record, else None."""
     m = _FOLLOWUPS_RE.match(body or "")
     if not m:
         return None
-    return {"sha": m.group(1), "issues": _ISSUE_RE.findall(body[m.end() :])}
+    issues = list(dict.fromkeys(m.group(3).split()))  # distinct, in order
+    return {"sha": m.group(1), "body_sha256": m.group(2), "issues": issues}
 
 
 def field_verified_sha(body: str) -> Optional[str]:
@@ -84,22 +88,33 @@ def _cell(on: bool, label: str, source: Optional[str] = None) -> dict:
 def _reviewed(item: dict, ledgers: list[dict], fus: list[dict]) -> dict:
     """Exact head + exact body, v2 records only, counts consistent, follow-ups newer and filed."""
     head, body_sha = item.get("head_sha") or "", item.get("body_sha256")
-    # Legacy records carry no body hash, so the body-binding check below rejects them.
-    at_head = [r for r in ledgers if r["reviewed_sha"] == head]
+
+    # Mirrors tools/ui_surface_lifecycle_guard.py: a GREEN that lists any finding (LOW included)
+    # is malformed and ignored; legacy records carry no body hash, so body binding rejects them.
+    def counts(r: dict) -> tuple[int, ...]:
+        return (r["blocker"], r["high"], r["medium"], r.get("low", 0))
+
+    at_head = [
+        r
+        for r in ledgers
+        if r["reviewed_sha"] == head and not (r["status"] == "GREEN" and any(counts(r)))
+    ]
     if not at_head:
-        return _cell(False, "no review at this head")
+        return _cell(False, "no well-formed review at this head")
     newest = at_head[-1]
     if not body_sha or newest.get("body_sha256") != body_sha:
         return _cell(False, "review is for a different PR body")
-    findings = (newest["blocker"], newest["high"], newest["medium"])
     if newest["status"] == "GREEN":
-        if findings == (0, 0, 0):
-            return _cell(True, "GREEN at head", newest.get("url"))
-        return _cell(False, "GREEN record lists findings: not accepted")
+        return _cell(True, "GREEN at head", newest.get("url"))
     if newest["blocker"] == 0 and newest["high"] == 0:
-        seq = newest.get("seq", -1)
+        needed = max(newest["medium"], 1)  # LOW-only still needs one follow-up issue
         for fu in fus:
-            if fu.get("sha") == head and fu.get("seq", -1) > seq and fu.get("issues"):
+            if (
+                fu.get("sha") == head
+                and fu.get("body_sha256") == body_sha
+                and fu.get("seq", -1) > newest.get("seq", -1)
+                and len(fu.get("issues") or []) >= needed  # parser dedupes
+            ):
                 return _cell(
                     True, "CONVERGED (0 BLOCKER / 0 HIGH, follow-ups filed)", newest.get("url")
                 )

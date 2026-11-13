@@ -20,7 +20,15 @@ def _load(name, path):
 runtime = _load("mission_control_runtime", MC / "runtime.py")
 
 
+class _Snap:
+    items, at, error = [], None, None
+
+    def get(self):
+        return self
+
+
 class Handler:
+    snapshot = _Snap()
     evidence = {
         "rows": [{"number": 12, "cells": {}}],
         "envs": {},
@@ -52,3 +60,61 @@ def test_a_good_refresh_replaces_evidence_and_clears_the_error():
     h.evidence = dict(h.evidence, error="old")
     runtime.refresh_evidence(h, Ev(), None, None, [], {}, (), {}, None)
     assert h.evidence["error"] is None and h.evidence["at"] == "2026-11-12T23:00:00Z"
+
+
+# --- Codex round 2 (PR #5455) F1: the board is a candidate source with its own freshness ----
+
+import datetime as dt  # noqa: E402
+
+NOW = dt.datetime(2026, 11, 12, 23, 0, tzinfo=dt.timezone.utc)
+
+
+class Snap:
+    def __init__(self, items=(), at=None, error=None):
+        self.items, self.at, self.error = list(items), at, error
+
+    def get(self):
+        return self
+
+
+class H:
+    def __init__(self, snap):
+        self.snapshot = snap
+        self.evidence = {"rows": [], "envs": {}, "at": None, "error": None}
+
+
+class NoReports:
+    def reports(self):
+        return []
+
+
+CARD = {"kind": "PR", "state": "OPEN", "status": "In progress", "number": 13}
+
+
+def test_candidates_refuse_a_board_that_never_loaded_failed_or_expired():
+    fresh = Snap([CARD], at=NOW - dt.timedelta(minutes=5))
+    assert runtime.candidates(H(fresh), NoReports(), now=NOW, max_age=600) == [13]  # control
+    for snap, why in (
+        (Snap([], at=None), "never loaded"),
+        (
+            Snap([CARD], at=NOW - dt.timedelta(minutes=5), error="Refresh failed (x)"),
+            "Refresh failed",
+        ),
+        (Snap([CARD], at=NOW - dt.timedelta(minutes=20)), "old"),
+    ):
+        try:
+            runtime.candidates(H(snap), NoReports(), now=NOW, max_age=600)
+        except RuntimeError as exc:
+            assert "board" in str(exc) and why in str(exc)
+        else:
+            raise AssertionError(f"board {why} was accepted as a candidate source")
+
+
+def test_a_good_refresh_stamps_the_board_time_it_was_built_from():
+    class Ev:
+        def gather(self, *a, **k):
+            return {"rows": [], "envs": {}, "at": "2026-11-12T23:00:00Z", "error": None}
+
+    h = H(Snap([CARD], at=NOW - dt.timedelta(minutes=5)))
+    runtime.refresh_evidence(h, Ev(), None, None, [13], {}, (), {}, None)
+    assert h.evidence["board_at"] == "2026-11-12T22:55:00Z"

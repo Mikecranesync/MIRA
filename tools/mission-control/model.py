@@ -106,6 +106,7 @@ def build(
     now: dt.datetime,
     stale_hours: float,
     poll_seconds: int,
+    board_seconds: int = 600,
 ) -> dict:
     now_iso = _iso(now)
     reports = store.reports()
@@ -133,12 +134,17 @@ def build(
     # Lifecycle evidence has its own clock: it is current only when the last gather succeeded
     # recently. Event traffic (webhooks, polls) never refreshes it.
     ev_age = _age_seconds(evidence.get("at"), now)
+    board_age = _age_seconds(evidence.get("board_at"), now)
     stale_reason = None
     if evidence.get("error"):
         stale_reason = f"evidence refresh failed: {evidence['error']}"
     elif ev_age is None or ev_age > 2 * poll_seconds:
         stale_reason = "lifecycle evidence is " + (
             f"{int(ev_age // 60)} min old" if ev_age is not None else "missing"
+        )
+    elif board_age is None or board_age > board_seconds:
+        stale_reason = "board snapshot behind the candidate list is " + (
+            f"{int(board_age // 60)} min old" if board_age is not None else "missing"
         )
     elif not events_live:
         stale_reason = "no poll or webhook within two intervals"

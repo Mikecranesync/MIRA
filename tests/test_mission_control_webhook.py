@@ -248,3 +248,18 @@ def test_check_events_keep_their_conclusion_for_the_ci_tile():  # F7
         "check_suite": {"id": 6, "conclusion": "failure", "status": "completed"},
     }
     assert webhook.normalise("check_suite", "d", cs, "t")["payload"]["conclusion"] == "failure"
+
+
+def test_restoring_the_marker_on_the_same_comment_brings_the_report_back(running):  # r2 F10
+    port, st = running
+    body = "[DELIVERY-UPDATE: BRAVO-CLAUDE]\nUpdated: x\nState: ACTIVE\n"
+    for n, (text, action, when) in enumerate(
+        [
+            (body, "created", "2026-11-12T22:00:00Z"),
+            ("withdrawn", "edited", "2026-11-12T23:00:00Z"),
+            (body, "edited", "2026-11-12T23:30:00Z"),
+        ]
+    ):
+        b = json.dumps(comment_payload(77, text, action, when)).encode()
+        assert post(port, "/webhook/github", b, hdrs(b, f"dlv-{n}", "issue_comment"))[0] == 202
+    assert [r["updated_at"] for r in st.reports()] == ["2026-11-12T23:30:00Z"]

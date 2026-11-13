@@ -13,6 +13,8 @@ import threading
 from pathlib import Path
 from typing import Optional
 
+FOREVER = "9999-12-31T23:59:59Z"  # tombstone stamp for a comment that no longer exists
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS events (
   delivery_id TEXT PRIMARY KEY, source TEXT NOT NULL, kind TEXT NOT NULL,
@@ -78,12 +80,16 @@ class Store:
         return out
 
     def put_report(self, row: dict) -> bool:
-        """Upsert by comment id; False when an equal-or-newer version or a tombstone exists."""
+        """Upsert by comment id; False when an equal-or-newer version exists, or a tombstone
+        at or after this version's updated_at (a deleted comment is tombstoned forever)."""
         with self._lock:
-            if self._db.execute(
-                "SELECT 1 FROM report_tombstones WHERE id = ?", (row["id"],)
-            ).fetchone():
-                return False
+            stone = self._db.execute(
+                "SELECT deleted_at FROM report_tombstones WHERE id = ?", (row["id"],)
+            ).fetchone()
+            if stone:
+                if row["updated_at"] <= stone[0]:
+                    return False
+                self._db.execute("DELETE FROM report_tombstones WHERE id = ?", (row["id"],))
             cur = self._db.execute(
                 "INSERT INTO reports VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET "
                 "lane=excluded.lane, author=excluded.author, trusted=excluded.trusted, "
@@ -103,12 +109,16 @@ class Store:
             self._db.commit()
             return cur.rowcount == 1
 
-    def delete_report(self, comment_id: int, deleted_at: str = "") -> None:
-        """Remove a withdrawn/deleted report and tombstone its id against late deliveries."""
+    def delete_report(self, comment_id: int, after: str = "", permanent: bool = False) -> None:
+        """Remove a report. A withdrawal (marker edited away at `after`) blocks only versions
+        up to that time, so a later edit can restore it; a deleted comment is final."""
+        stamp = FOREVER if permanent else after
         with self._lock:
             self._db.execute("DELETE FROM reports WHERE id = ?", (comment_id,))
             self._db.execute(
-                "INSERT OR IGNORE INTO report_tombstones VALUES (?, ?)", (comment_id, deleted_at)
+                "INSERT INTO report_tombstones VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET "
+                "deleted_at = max(deleted_at, excluded.deleted_at)",
+                (comment_id, stamp),
             )
             self._db.commit()
 

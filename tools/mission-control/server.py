@@ -128,6 +128,7 @@ def build_model(
         now=dt.datetime.now(dt.timezone.utc),
         stale_hours=STALE_HOURS,
         poll_seconds=POLL_SECONDS,
+        board_seconds=runtime.BOARD_MAX_SECONDS,
     )
 
 
@@ -213,11 +214,12 @@ class Handler(BaseHTTPRequestHandler):
             cid = (payload.get("comment") or {}).get("id")
             row = webhook.comment_report(payload, trusted_authors(), reports.parse)
             if payload.get("action") == "deleted" and cid:
-                self.store.delete_report(int(cid), now)  # type: ignore[attr-defined]
+                self.store.delete_report(int(cid), permanent=True)  # type: ignore[attr-defined]
             elif row:
                 self.store.put_report(row)  # type: ignore[attr-defined]
             elif payload.get("action") == "edited" and cid:  # the marker was edited away
-                self.store.delete_report(int(cid), now)  # type: ignore[attr-defined]
+                when = (payload.get("comment") or {}).get("updated_at") or now
+                self.store.delete_report(int(cid), after=when)  # type: ignore[attr-defined]
         Handler.last_webhook = now
         return "stored" if new else "duplicate"
 

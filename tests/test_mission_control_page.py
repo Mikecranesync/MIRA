@@ -87,7 +87,12 @@ def build(tmp_path, reports=(), rows=(), events=(), envs=None, last_poll=None, l
         st.add_event(e)
     for env, row in (envs or {}).items():
         st.put_env(env, row)
-    ev = {"rows": list(rows), "envs": envs or {}, "at": "2026-11-12T22:59:00Z"}
+    ev = {
+        "rows": list(rows),
+        "envs": envs or {},
+        "at": "2026-11-12T22:59:00Z",
+        "board_at": "2026-11-12T22:58:00Z",
+    }
     return model.build(
         st,
         ev,
@@ -255,6 +260,7 @@ def test_snapshot_json_route_serves_the_model(tmp_path, monkeypatch):
 def build_ev(tmp_path, ev, rows, last_poll="2026-11-12T22:59:30Z"):
     st = store_mod.Store(tmp_path / "mc.sqlite")
     ev = dict(ev, rows=list(rows), envs=ev.get("envs", {}))
+    ev.setdefault("board_at", "2026-11-12T22:58:00Z") if "never" not in str(tmp_path) else None
     return model.build(st, ev, last_poll, None, NOW, stale_hours=9, poll_seconds=60)
 
 
@@ -284,3 +290,14 @@ def test_ci_tile_counts_only_completed_runs_with_a_conclusion(tmp_path):  # F7
 
     m = build(tmp_path, events=[ev(1, "success"), ev(2, "failure"), ev(3, None, "in_progress")])
     assert m["tiles"]["ci"] == {"pass": 1, "total": 2}
+
+
+def test_go_needs_a_current_board_snapshot_behind_the_candidate_list(tmp_path):  # r2 F1
+    full = lifecycle_row(**{"DEPLOYED:production": True, "FIELD-VERIFIED": True})
+    at = "2026-11-12T22:59:00Z"
+    m = build_ev(tmp_path, {"at": at, "board_at": "2026-11-12T22:55:00Z"}, [full])
+    assert m["readiness"]["decision"] == "GO"  # control
+    m = build_ev(tmp_path / "never", {"at": at}, [full])  # board never loaded
+    assert m["readiness"]["decision"] == "NO-GO" and "board" in m["readiness"]["reason"]
+    m = build_ev(tmp_path / "old", {"at": at, "board_at": "2026-11-12T22:30:00Z"}, [full])
+    assert m["readiness"]["decision"] == "NO-GO" and "board" in m["readiness"]["reason"]

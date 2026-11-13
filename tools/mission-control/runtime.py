@@ -21,8 +21,12 @@ COORD_ISSUE = int(os.getenv("MC_COORD_ISSUE", "5232"))
 POLL_SECONDS = int(os.getenv("MC_POLL_SECONDS", "60"))
 
 
+def _iso(t: dt.datetime) -> str:
+    return t.astimezone(dt.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
 def _now_iso() -> str:
-    return dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    return _iso(dt.datetime.now(dt.timezone.utc))
 
 
 def github_post(token: str) -> Callable[[dict], dict]:
@@ -54,10 +58,28 @@ def http_get(token: str) -> Callable[..., tuple[int, dict, object]]:
     return get
 
 
-def candidates(handler, store) -> list[int]:
-    """PRs to track: open In-Progress PR cards on the board + items named by trusted reports."""
+BOARD_MAX_SECONDS = int(os.getenv("MC_BOARD_MAX_SECONDS", "600"))
+
+
+def candidates(handler, store, now: Optional[dt.datetime] = None, max_age: int = 0) -> list[int]:
+    """PRs to track: open In-Progress PR cards on the board + items named by trusted reports.
+
+    The board is a candidate *source*: if it never loaded, its last refresh failed, or its
+    snapshot is older than `max_age`, raise — a candidate list with a hole in it must not
+    feed a GO.
+    """
+    snap = handler.snapshot.get()
+    now = now or dt.datetime.now(dt.timezone.utc)
+    max_age = max_age or BOARD_MAX_SECONDS
+    if snap.at is None:
+        raise RuntimeError("board never loaded")
+    if snap.error:
+        raise RuntimeError(f"board refresh failed: {snap.error}")
+    age = (now - snap.at).total_seconds()
+    if age > max_age:
+        raise RuntimeError(f"board snapshot is {int(age // 60)} min old")
     nums: list[int] = []
-    for it in handler.snapshot.get().items:
+    for it in snap.items:
         if (
             it.get("kind") == "PR"
             and it.get("state") == "OPEN"
@@ -83,7 +105,10 @@ def refresh_evidence(handler, evidence, post, get, cands, envs, trusted, by_item
     """Replace handler.evidence on success; on failure keep the last rows for display but
     stamp the error and leave `at` untouched, so the model reads it as not current."""
     try:
-        handler.evidence = evidence.gather(post, get, REPO, cands, envs, trusted, by_item, main_sha)
+        fresh = evidence.gather(post, get, REPO, cands, envs, trusted, by_item, main_sha)
+        board_at = handler.snapshot.get().at  # the board snapshot these candidates came from
+        fresh["board_at"] = _iso(board_at) if board_at else None
+        handler.evidence = fresh
     except Exception as exc:
         log.warning("evidence refresh failed: %s", exc)
         old = dict(handler.evidence or {})
@@ -107,17 +132,15 @@ def poll_loop(handler, get, post) -> None:
                         by_item.setdefault(int(n), []).append(r["parsed"])
             status, _h, main = get(f"https://api.github.com/repos/{REPO}/commits/main", headers={})
             main_sha = main.get("sha") if status == 200 and isinstance(main, dict) else None
-            refresh_evidence(
-                handler,
-                evidence,
-                post,
-                get,
-                candidates(handler, store),
-                env_urls(),
-                trusted,
-                by_item,
-                main_sha,
-            )
+            try:
+                cands = candidates(handler, store)
+            except RuntimeError as exc:  # no candidate list -> the old evidence is not current
+                log.warning("candidates unavailable: %s", exc)
+                handler.evidence = dict(handler.evidence or {}, error=str(exc))
+            else:
+                refresh_evidence(
+                    handler, evidence, post, get, cands, env_urls(), trusted, by_item, main_sha
+                )
         except Exception as exc:  # never let the poller die; the page shows staleness
             log.warning("poll loop error: %s", exc)
         time.sleep(max(POLL_SECONDS, state.get("interval", 0)))
