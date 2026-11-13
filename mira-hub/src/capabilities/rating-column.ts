@@ -136,12 +136,27 @@ const WORD: Record<RatingColumn, string> = {
   break: String.raw`break|breaking|breaks|interrupt(?:ing|s)?`,
   continuous: "continuous|continuously|steady[- ]state",
 };
-const NOUN = String.raw`(?:\s+(?:ratings?|figure|current|limit|capacity|value|duty)){0,2}`;
+const NOUN = String.raw`(?:\s+(?:ratings?|rated|figure|current|limit|capacity|value|duty)){0,2}`;
 const AT_VOLTS = String.raw`(?:\s+(?:at|for|on)\s+(?:the\s+)?\d+(?:\.\d+)?\s?V(?:\s?(?:AC|DC))?(?:\s+row)?)?`;
-const LINK = String.raw`\s*(?:of|is|are|=|:|at|to)?\s*(?:only|just|about|around|approximately|roughly|up to|limited to|a maximum of|at most)?[\s(•–-]*$`;
-const assigns = (column: RatingColumn, before: string, after: string) =>
-  new RegExp(String.raw`\b(?:${WORD[column]})${NOUN}${AT_VOLTS}${LINK}`, "i").test(before)
-  || new RegExp(String.raw`^\s*\(?\s*(?:(?:is|as)\s+(?:the|its|a)\s+|(?:for|on|under)\s+(?:the\s+)?)?(?:${WORD[column]})\b`, "i").test(after);
+const LOAD_NOUN = "loads?|coils?|motors?|lamps?|solenoids?|heaters?|contactors?";
+// "the make rating for a 5 A coil load is 1.5 A": the load the rating is quoted for sits between.
+const FOR_LOAD = String.raw`(?:\s+(?:for|with)\s+(?:a|an|the|your)\s+[^,;:]{0,30}?(?:${LOAD_NOUN}))?`;
+// What may stand between the column word and its figure. A limit put as a denial ("is not more
+// than", "cannot exceed") still assigns the figure to the column.
+const EXCEEDS = String.raw`(?:cannot|can not|can[’']t|does not|doesn[’']t|do not|don[’']t|never)\s+(?:exceeds?|go above|go over|pass)`;
+const LINK = String.raw`\s*(?:of|is|are|=|:|at|to|${EXCEEDS})?\s*(?:only|just|about|around|approximately|roughly|up to|limited to|a maximum of|at most|not more than|no more than|no higher than|not above|not over)?[\s(•–-]*$`;
+/** Where `column`'s word is attached ahead of the figure (its index in `before`), or -1. */
+const assignedBefore = (column: RatingColumn, before: string) => new RegExp(String.raw`\b(?:${WORD[column]})${NOUN}${AT_VOLTS}${FOR_LOAD}${LINK}`, "i").exec(before)?.index ?? -1;
+/** The end of `column`'s word attached behind the figure (its index in `after`), or -1. */
+const assignedAfter = (column: RatingColumn, after: string) => {
+  const m = new RegExp(String.raw`^\s*\(?\s*(?:(?:rating|figure|limit|current)\s+)?(?:(?:is|as)\s+(?:the|its|a)\s+|(?:for|on|under)\s+(?:the\s+)?)?(?:${WORD[column]})\b`, "i").exec(after);
+  return m ? m[0].length : -1;
+};
+// Every column word in a stretch of text, in the order written.
+const columnWordsIn = (text: string): RatingColumn[] =>
+  [...text.matchAll(new RegExp(String.raw`\b(?:(${WORD.make})|(${WORD.break})|(${WORD.continuous}))\b`, "gi"))].map((m) => (m[1] ? "make" : m[2] ? "break" : "continuous"));
+// Between two figures of one list: "15 A / 1.5 A", "15 A, 1.5 A and 2 A", cells of a table row.
+const LIST_GAP_RE = /^\s*(?:,|\/|\||&|and|,\s*and)?\s*$/i;
 // The clause a figure stands in: the sentence between the commas, semicolons, "and" or "but" around it.
 const CLAUSE_EDGE_RE = /[,;]|\s(?:and|but)\s/gi;
 // A clause that denies before it reaches the figure assigns nothing to it ("cannot continuously
@@ -152,7 +167,7 @@ const DENIES_RE = /\b(?:not|never|cannot|neither|nor)\b|n[’']t\b/i;
 const DENIAL_ENDS_RE = /:|\b(?:because|since|as|so|which|when|while|where|though|although|given)\b/gi;
 // A figure the sentence gives as a load, not as a rating: "a 1.5 A steady-state load", "draws
 // 1.5 A", "a load current of 1.5 A".
-const LOAD_AFTER_RE = /^\s*(?:[A-Za-z-]+\s+){0,2}(?:loads?|coils?|motors?|lamps?|solenoids?|heaters?|draw)\b/i;
+const LOAD_AFTER_RE = new RegExp(String.raw`^\s*(?:[A-Za-z-]+\s+){0,2}(?:${LOAD_NOUN}|draw)\b`, "i");
 const LOAD_BEFORE_RE = /\b(?:loads?(?:\s+current)?(?:\s+of)?|draws|drawing|pulls|pulling)\s+(?:about\s+|around\s+|up to\s+)?$/i;
 // Words that put a figure on some other device than the one the table rates.
 const OTHER_DEVICE_RE = /\b(?:interposing|external|separate|another|different|contactor(?:'s|’s)? contacts?|pilot relay|solid[- ]state relay)\b/i;
@@ -268,31 +283,69 @@ export function ratingColumnFinding(question: string, answer: string, passages: 
     // The sentence's own voltage decides the row; the question's only when the sentence names none.
     const saidVolts = voltagesIn(sentence);
     const volts = saidVolts.length > 0 ? saidVolts : askedVolts;
+    const startOf = (k: number) => figures[k].index ?? 0;
+    const endOf = (k: number) => startOf(k) + figures[k][0].length;
+    const given = (k: number) => inQuestion.includes(Number(figures[k][1]));
+    // The column(s) each figure is assigned to, or null when the answer assigns it to none.
+    const named: Array<RatingColumn[] | null> = figures.map(() => null);
+    const listed = new Set<number>();
     for (let k = 0; k < figures.length; k++) {
-      const value = Number(figures[k][1]);
-      if (inQuestion.includes(value)) continue;
-      const at = figures[k].index ?? 0;
-      const end = at + figures[k][0].length;
+      if (listed.has(k)) continue;
+      const at = startOf(k);
+      const end = endOf(k);
+      // A list under a head of several column words: "make and break ratings are 1.5 A and 2 A",
+      // "Make / break / continuous: 15 A / 1.5 A / 2 A", a table row under its head row. The
+      // figures take the head's columns in the order written.
+      const head = columnWordsIn(sentence.slice(k > 0 ? endOf(k - 1) : 0, at));
+      if (head.length > 1) {
+        const run = [k];
+        while (run.length < figures.length - k && LIST_GAP_RE.test(sentence.slice(endOf(run[run.length - 1]), startOf(run[run.length - 1] + 1)))) run.push(run[run.length - 1] + 1);
+        if (run.length > 1 && run.length <= head.length) {
+          run.forEach((f, n) => {
+            named[f] = [head[n]];
+            listed.add(f);
+          });
+          continue;
+        }
+      }
       const clauseFrom = Math.max(0, ...edges.filter((e) => e.end <= at).map((e) => e.end));
       const clauseTo = Math.min(sentence.length, ...edges.filter((e) => e.at >= end).map((e) => e.at));
-      const before = sentence.slice(Math.max(clauseFrom, k > 0 ? (figures[k - 1].index ?? 0) + figures[k - 1][0].length : 0), at);
-      const after = sentence.slice(end, Math.min(clauseTo, k + 1 < figures.length ? (figures[k + 1].index ?? sentence.length) : sentence.length));
-      if (LOAD_AFTER_RE.test(sentence.slice(end)) || LOAD_BEFORE_RE.test(sentence.slice(0, at))) continue;
+      // The figure ahead bounds what is "before" this one, unless it is a figure the question gave
+      // ("the make rating for a 5 A coil load is 1.5 A").
+      let ahead = k - 1;
+      while (ahead >= 0 && given(ahead)) ahead--;
+      const beforeFrom = Math.max(clauseFrom, ahead >= 0 ? endOf(ahead) : 0);
+      const before = sentence.slice(beforeFrom, at);
+      const after = sentence.slice(end, Math.min(clauseTo, k + 1 < figures.length ? startOf(k + 1) : sentence.length));
+      const front = COLUMNS.map((c) => ({ c, at: assignedBefore(c, before) })).filter((a) => a.at >= 0);
+      const back = COLUMNS.map((c) => ({ c, end: assignedAfter(c, after) })).filter((a) => a.end >= 0);
+      if (front.length + back.length === 0) continue;
+      if (OTHER_DEVICE_RE.test(sentence.slice(clauseFrom, clauseTo))) continue;
       // A denial reaches the figure only from inside its own clause, and not across a colon or a joining word.
       const denyFrom = Math.max(clauseFrom, ...[...sentence.slice(0, at).matchAll(DENIAL_ENDS_RE)].map((m) => (m.index ?? 0) + m[0].length));
-      if (DENIES_RE.test(sentence.slice(denyFrom, at)) || OTHER_DEVICE_RE.test(sentence.slice(clauseFrom, clauseTo))) continue;
-      // Several column words ahead of the figure are the head of a list ("Make / break /
-      // continuous: 15 A / 1.5 A / 2 A"), not an assignment of this figure.
-      if (COLUMNS.filter((c) => new RegExp(String.raw`\b(?:${WORD[c]})\b`, "i").test(before)).length > 1) continue;
-      const named = COLUMNS.filter((c) => assigns(c, before, after));
-      if (named.length === 0) continue;
+      if (front.length > 0) {
+        // Denied only when the denial comes before the column word: "is not rated to break 15 A".
+        // After it, the denial is a limit: "the make rating is not more than 1.5 A".
+        if (DENIES_RE.test(sentence.slice(denyFrom, beforeFrom + Math.min(...front.map((a) => a.at))))) continue;
+      } else {
+        // Column word behind the figure: a load ("a 1.5 A steady-state load"), a denial ahead ("do
+        // not treat 15 A as the continuous rating") or behind ("a 15 A continuous rating is not available").
+        if (LOAD_AFTER_RE.test(sentence.slice(end)) || LOAD_BEFORE_RE.test(sentence.slice(0, at))) continue;
+        if (DENIES_RE.test(sentence.slice(denyFrom, at)) || DENIES_RE.test(sentence.slice(end + Math.max(...back.map((a) => a.end)), clauseTo))) continue;
+      }
+      named[k] = [...new Set([...front.map((a) => a.c), ...back.map((a) => a.c)])];
+    }
+    for (let k = 0; k < figures.length; k++) {
+      const columns = named[k];
+      const value = Number(figures[k][1]);
+      if (columns === null || given(k)) continue;
       for (const table of judged) {
         // A passage may be one chunk of the page and hold only some rows: with a voltage named,
         // a passage that has no row for it says nothing about the figure.
         const rows = volts.length > 0 ? rowsAt(table.columns, volts) : table.columns;
         if (rows.some((r) => r.unread.some((u) => amp(u) === value))) continue;
         const printed = COLUMNS.filter((c) => placedIn(rows, c).includes(value));
-        if (printed.length > 0 && !printed.some((c) => named.includes(c))) return { rule: "wrong_column", ...where(table), figure: figures[k][0] };
+        if (printed.length > 0 && !printed.some((c) => columns.includes(c))) return { rule: "wrong_column", ...where(table), figure: figures[k][0] };
       }
     }
   }

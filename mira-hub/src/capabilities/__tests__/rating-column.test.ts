@@ -389,6 +389,40 @@ describe("WRONG-COLUMN rule (#5474 item 5) — a figure the page places in a col
     expect(ratingColumnFinding("Which fuse for the supply?", "The fuse's break rating is 2 A.", [prose(false), stored(false)])).toBeNull();
     expect(ratingColumnFinding("Which fuse for the supply?", "The fuse's break rating is 2 A [2].", [prose(false), stored(true)])).toMatchObject({ rule: "wrong_column" });
   });
+  it.each([
+    // The safety reviewer's misses on head 2aecea562 (second review).
+    ["a respectively list", "At 120 V AC the make and break ratings are 1.5 A and 2 A respectively [2].", "1.5 A"],
+    ["a list with no respectively", "At 120 V AC the make and break ratings are 15 A and 2 A [2].", "2 A"],
+    ["a slashed list", "At 120 V AC, make / break / continuous: 1.5 A / 2 A / 15 A [2].", "1.5 A"],
+    ["a table row under its head row", "| Voltage | Make | Break | Continuous |\n|---|---|---|---|\n| 120 V AC | 1.5 A | 2 A | 15 A | [2]", "1.5 A"],
+    ["a table row with two cells swapped", "| Voltage | Make | Break | Continuous |\n| 120 V AC | 15 A | 2 A | 1.5 A | [2]", "2 A"],
+    ["a limit put as not more than", "At 120 V AC the make rating is not more than 1.5 A [2].", "1.5 A"],
+    ["a limit put as cannot exceed", "At 120 V AC the break rating cannot exceed 15 A [2].", "15 A"],
+    ["a limit put as don't go above", "At 120 V AC the break ratings don’t go above 15 A [2].", "15 A"],
+    ["a limit put as no higher than", "At 120 V AC the break limit is no higher than 15 A [2].", "15 A"],
+    ["the figure's rating named after it", "At 120 V AC the 1.5 A rating is the make rating [2].", "1.5 A"],
+    ["rated between word and figure", "At 120 V AC the contact is continuously rated at 1.5 A [2].", "1.5 A"],
+    ["a load word after an assigned figure", "At 120 V AC the make rating is 1.5 A motor rating [2].", "1.5 A"],
+    ["a figure given to loads by a column verb", "At 120 V AC the contacts break 2 A loads [2].", "2 A"],
+  ])("caught: %s", (_name, answer, figure) => {
+    expect(ratingColumnFinding(RATING_QUESTION, answer, GIVEN)).toMatchObject({ rule: "wrong_column", figure });
+  });
+  it("the question's own load figure between the column word and its figure does not hide the assignment", () => {
+    expect(ratingColumnFinding(LOAD_QUESTION, "At 120 V AC, the make rating for a 5 A coil load is 1.5 A, and 2 A is the continuous figure [2].", GIVEN)).toMatchObject({ rule: "wrong_column", figure: "1.5 A" });
+  });
+  it.each([
+    ["a respectively list", "At 120 V AC the make and break ratings are 15 A and 1.5 A respectively [2]."],
+    ["a slashed list", "At 120 V AC, make / break / continuous: 15 A / 1.5 A / 2 A [2]."],
+    ["a table row under its head row", "| Voltage | Make | Break | Continuous |\n|---|---|---|---|\n| 120 V AC | 15 A | 1.5 A | 2 A | [2]"],
+    ["a two-figure list and a third on its own", "At 120 V AC the make and break ratings are 15 A and 1.5 A, with 2 A continuous [2]."],
+    ["a limit put as not more than", "At 120 V AC the break rating is not more than 1.5 A [2]."],
+    ["a limit put as cannot exceed", "At 120 V AC the continuous current cannot exceed 2 A [2]."],
+    ["the figure's rating named after it", "At 120 V AC the 15 A rating is the make rating [2]."],
+    ["a rating denied after the figure", "Warning: a 15 A continuous rating is not available on this relay; the continuous rating is 2 A at 120 V AC [2]."],
+    ["a column verb denied ahead of the figure", "At 120 V AC the contacts are not rated to break 15 A [2]."],
+  ])("control, passes: %s", (_name, answer) => {
+    expect(ratingColumnFinding(RATING_QUESTION, answer, GIVEN)).toBeNull();
+  });
   it("a load figure in the sentence does not excuse a misnamed rating beside it", () => {
     expect(ratingColumnFinding("What can the relay output carry?", "At 120 V AC, a 1 A steady-state load is below the 15 A continuous rating [2].", GIVEN)).toMatchObject({ rule: "wrong_column", figure: "15 A" });
   });
