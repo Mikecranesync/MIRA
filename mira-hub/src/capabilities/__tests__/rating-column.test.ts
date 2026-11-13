@@ -328,11 +328,15 @@ describe("WRONG-COLUMN rule (#5474 item 5) — a figure the page places in a col
     expect(ratingColumnFinding("What can the relay output carry?", "At 120 V AC, a 1 A steady-state load is below the 15 A continuous rating [2].", GIVEN)).toMatchObject({ rule: "wrong_column", figure: "15 A" });
   });
   it("a passage that is one chunk of the page, with no row for the voltage named, says nothing about the figure", () => {
-    // Only the 24 V DC row (continuous 1 A) reached this chunk. "1 A" at 120 V AC is not that row's figure.
-    const piece = [{ content: P19_STORED.split("\n").filter((l) => !/(?:120 V AC|240 V AC|125 V DC) row: /.test(l)).join("\n"), title: "2080-IN009B-EN-P.pdf", page: 19, cited: true }];
-    expect(readColumnLines(piece[0].content).rows.map((r) => r.label)).toEqual(["24 V DC"]);
-    expect(ratingColumnFinding(RATING_QUESTION, "At 120 V AC the make figure is 1 A [1].", piece)).toBeNull();
-    expect(ratingColumnFinding("What is the 24 V DC rating?", "At 24 V DC the break figure is 1 A [1].", piece)).toBeNull();
+    // Only the 240 V AC row (make 7.5 A, break 0.75 A) reached this chunk.
+    const piece = [{ content: P19_STORED.split("\n").filter((l) => !/(?:120 V AC|24 V DC|125 V DC) row: /.test(l)).join("\n"), title: "2080-IN009B-EN-P.pdf", page: 19, cited: true }];
+    expect(readColumnLines(piece[0].content).rows.map((r) => r.label)).toEqual(["240 V AC"]);
+    expect(ratingColumnFinding(RATING_QUESTION, "At 120 V AC the continuous figure is 7.5 A [1].", piece)).toBeNull();
+    expect(ratingColumnFinding("What is the rating at 240 V AC?", "At 240 V AC the continuous figure is 7.5 A [1].", piece)).toMatchObject({ rule: "wrong_column", figure: "7.5 A" });
+  });
+  it("control: a figure the question itself asks about is the asked duty, whatever column word the answer puts beside it", () => {
+    expect(ratingColumnFinding("Can the relay output make 1.5 A at 120 V AC?", "Making 1.5 A at 120 V AC is within the 15 A make rating [2].", GIVEN)).toBeNull();
+    expect(ratingColumnFinding("What can the relay output make at 120 V AC?", "Making 1.5 A at 120 V AC is the limit [2].", GIVEN)).toMatchObject({ rule: "wrong_column", figure: "1.5 A" });
   });
   it("a negation that is not on a column word does not excuse the sentence", () => {
     expect(ratingColumnFinding(RATING_QUESTION, "The load should not be switched: the break rating at 120 V AC is 15 A [2].", GIVEN)).toMatchObject({ rule: "wrong_column", figure: "15 A" });
