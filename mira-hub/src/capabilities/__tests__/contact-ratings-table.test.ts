@@ -78,6 +78,19 @@ describe("contactRatingColumns — position decides, not order", () => {
   });
 });
 
+describe("contactRatingColumns — where the table ends", () => {
+  it("the rows are the unbroken run under the heads: a voltage line further down the page is not one", () => {
+    // Under the page's other text, a line that opens with a voltage and has a figure at the make position.
+    const lower: LayoutItem[] = [
+      ...ITEMS,
+      { str: "24 V DC", x: 147.72, y: 60, w: 23, size: 7 },
+      { str: "9 A", x: 206.4, y: 60, w: 10, size: 7 },
+      { str: "8 A", x: 252.26, y: 60, w: 10, size: 7 },
+    ];
+    expect(contactRatingColumns(lower)).toEqual(PRINTED);
+  });
+});
+
 describe("contactRatingColumns — pages that are not a contact-ratings table", () => {
   it.each([
     ["no Continuous head", edited((i) => (i.str === "Continuous" ? null : i))],

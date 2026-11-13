@@ -285,6 +285,24 @@ describe("WRONG-COLUMN rule (#5474 item 5) — a figure the page places in a col
   ])("control, passes: %s", (_name, answer) => {
     expect(ratingColumnFinding(RATING_QUESTION, answer, GIVEN)).toBeNull();
   });
+  it("control: a sentence whose only column word is negated says what the figure is not", () => {
+    expect(ratingColumnFinding(RATING_QUESTION, "At 120 V AC, 15 A is not the continuous rating [2].", GIVEN)).toBeNull();
+    expect(ratingColumnFinding(RATING_QUESTION, "Size the load to 2 A at 120 V AC rather than the break figure [2].", GIVEN)).toBeNull();
+  });
+  it("one value in different columns on different rows is judged on the row named", () => {
+    // A made-up table: 2 A is continuous at 120 V AC and make at 240 V AC.
+    const content = withColumnLines("Make Break\nContinuous\n120 V AC 15 A 1.5 A 2 A\n240 V AC 2 A 0.5 A", [
+      { label: "120 V AC", make: "15 A", break: "1.5 A", continuous: "2 A", unread: [] },
+      { label: "240 V AC", make: "2 A", break: "0.5 A", continuous: null, unread: [] },
+    ]);
+    const given = [{ content, title: "relay.pdf", page: 3, cited: true }];
+    expect(ratingColumnFinding("What is the make rating?", "At 240 V AC the make rating is 2 A [1].", given)).toBeNull();
+    expect(ratingColumnFinding("What is the make rating?", "At 120 V AC the make rating is 2 A [1].", given)).toMatchObject({ rule: "wrong_column", figure: "2 A" });
+    // The sentence names no voltage: the question's is used.
+    expect(ratingColumnFinding("What is the make rating at 120 V AC?", "The make rating is 2 A [1].", given)).toMatchObject({ rule: "wrong_column", figure: "2 A" });
+    // Neither names one: every row is read, and 2 A is a make figure on one of them.
+    expect(ratingColumnFinding("What is the make rating?", "The make rating is 2 A [1].", given)).toBeNull();
+  });
   it("a negation that is not on a column word does not excuse the sentence", () => {
     expect(ratingColumnFinding(RATING_QUESTION, "The load should not be switched: the break rating at 120 V AC is 15 A [2].", GIVEN)).toMatchObject({ rule: "wrong_column", figure: "15 A" });
   });
