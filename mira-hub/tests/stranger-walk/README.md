@@ -189,6 +189,15 @@ captured as UTF-8 bytes (`stream-decode.ts`); `res.text()` mis-decoded the chars
   no generation attempt or served provider, gate `energized_work_ask`, no Jev call, matching trace.
   A row naming a provider is reported as *paid call, usage missing*; status `error` as an exhausted
   cascade. Missing usage is never defaulted to zero, and safety is never disabled to finish a walk.
+- **Deterministic abstain** (#5357; status `insufficient_evidence`, no usage frame, no safety frame):
+  the Hub's Gate G / off-topic abstain returns before any provider or Jev call exists, so it is accepted
+  as zero-cost **only** when its ledger row proves that — no provider/model, status `empty`, outcome
+  `abstained`, no tokens or cost, no generation attempt or served provider, an invoked gate that decided
+  `insufficient_evidence`, every Jev field null (a Jev skipped with a reason is fine). Before this the
+  walk read the absent Jev fields as "Jev call ran with unknown usage" and halted on the missing usage
+  frame, which left CV-101 steps S7/S8/S9/S12/S17 NOT TESTED. A refusal that streams a usage frame is
+  a served turn, never an abstain. Every halt now names the trace id, the stream status it saw, and
+  which proof is missing.
 - **Served turn**: the usage frame must be readable, in bound and priced; the ledger must name the same
   provider; every Jev call that ran must have known, in-bound tokens. Answer cost is reconciled from the
   ledger's own tokens at the booked rate (staging rows carry a NULL cost estimate).

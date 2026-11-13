@@ -21,15 +21,17 @@ import { buildJevSufficiencyRequest } from "@/capabilities/observability/jev-sha
 import { buildTurnDecisionState } from "@/capabilities/observability/turn-decision-state";
 import corpusJson from "./corpus.json";
 import fx from "./fixtures-accounting.json";
-import { classify, scoreAll, scorecard, safetyStopTrace, type Corpus, type Observation } from "./score";
+import { abstainTrace, classify, scoreAll, scorecard, safetyStopTrace, type Corpus, type Observation } from "./score";
 import {
   BUDGET, BudgetMeter, checkFingerprint, ledgerRowsFor, ledgerVerdictFor, JEV_CALLS_PER_TURN, JEV_CEILING_PER_MTOK_IN, JEV_INPUT_BOUND, pricesFromEnv,
-  PROVIDER_PRICES, runtimeDrift, servedVerdict, TURN_BOUND, worstCaseTurnUsd, zeroCallVerdict, type LedgerRow,
+  PROVIDER_PRICES, runtimeDrift, servedVerdict, TURN_BOUND, worstCaseTurnUsd, zeroCallVerdict, abstainVerdict, type LedgerRow,
 } from "./staging";
 
 const corpus = corpusJson as Corpus;
 const STOP_SSE = fx.safetyStop.sse;
 const SERVED_SSE = fx.served.sse;
+const ABSTAIN_SSE = fx.abstain.sse;
+const ABSTAIN_TRACE = "5b7c0f2a9d3e4c1b8a6f7e5d4c3b2a19";
 const TRACE = "a08ed5d8e240893725d684ce7a0d3f7b";
 
 /** The row the route's energized-work stop writes (route.ts `stopUsage` + the recorder packet). */
@@ -374,5 +376,143 @@ describe("scoring: unrun is NOT ASSESSED, the stop is its own class, red lines a
     const card = scorecard(scoreAll(corpus, [ok]));
     expect(card.headline).toBe("1/1 CORRECT (right page cited) · 49 NOT ASSESSED");
     expect(card.complete).toBe(false);
+  });
+});
+
+/** The row the route's Gate G abstain writes (route.ts `gateUsage` + the recorder packet; the abstain
+ *  persists BEFORE the Jev shadow is created, so the answer_gate carries the packet's Jev defaults). */
+const abstainRow = (over: Partial<LedgerRow> = {}, packet: Record<string, unknown> = {}): LedgerRow => ({
+  provider: null, model: null, status: "empty", route_reason: "legacy_cascade", outcome: "abstained",
+  input_tokens: null, output_tokens: null, cost_usd_estimate: null,
+  evidence_packet: {
+    trace_id: ABSTAIN_TRACE,
+    generation: { attempts: [], served_provider: null, served_model: null, input_tokens: null, output_tokens: null },
+    answer_gate: { invoked: true, decision: "insufficient_evidence", reason: "gate_g_no_evidence", safety_classification: "none", jev_sufficient: null, jev_skipped_reason: null, jev_latency_ms: null, jev_input_tokens: null },
+    ...packet,
+  },
+  ...over,
+});
+
+describe("#5357: a deterministic abstain is recognised from its stream, never from its wording", () => {
+  it("the Gate G abstain: trace id, status insufficient_evidence, no usage frame, no safety frame", () => {
+    expect(abstainTrace(ABSTAIN_SSE)).toBe(ABSTAIN_TRACE);
+    expect(ABSTAIN_SSE).not.toContain('"kind":"usage"');
+  });
+  it("control: an insufficient_evidence status WITH a usage frame is a served refusal, not an abstain", () => {
+    const usage = SERVED_SSE.split("\n").find((l) => l.includes('"kind":"usage"'))!;
+    const refusal = ABSTAIN_SSE.replace('data: {"kind":"status"', usage + "\n\ndata: {\"kind\":\"status\"");
+    expect(refusal).toContain('"kind":"usage"');
+    expect(abstainTrace(refusal)).toBeNull();
+  });
+  it("the recorded safety stop and the served answer are not abstains, and an abstain is not a stop", () => {
+    expect(abstainTrace(STOP_SSE)).toBeNull();
+    expect(abstainTrace(SERVED_SSE)).toBeNull();
+    expect(safetyStopTrace(ABSTAIN_SSE)).toBeNull();
+  });
+  it("an abstain without a trace frame cannot be tied to a ledger row: not recognised", () => {
+    expect(abstainTrace(ABSTAIN_SSE.split("\n").filter((l) => !l.includes('"kind":"trace"')).join("\n"))).toBeNull();
+    expect(abstainTrace(null)).toBeNull();
+  });
+});
+
+describe("#5357: abstain proof: the Hub's own ledger row, all of it, or nothing (unknown usage is never zero)", () => {
+  it("accepts the row the Gate G abstain writes", () => {
+    expect(abstainVerdict([abstainRow()], ABSTAIN_TRACE)).toEqual({ ok: true, kind: "abstain", answerUsd: 0, jevInputTokens: 0 });
+  });
+  it("a Jev call that was skipped with a reason is still an abstain (nothing ran)", () => {
+    expect(abstainVerdict([abstainRow({}, { answer_gate: { invoked: true, decision: "insufficient_evidence", jev_skipped_reason: "no_evidence", jev_input_tokens: null, jev_sufficient: null, jev_latency_ms: null } })], ABSTAIN_TRACE)).toMatchObject({ ok: true, kind: "abstain" });
+  });
+  it("no row, more than one row, or a packet for another trace is not proof", () => {
+    expect(abstainVerdict([], ABSTAIN_TRACE)).toMatchObject({ ok: false, reason: expect.stringMatching(/no ledger row/) });
+    expect(abstainVerdict([abstainRow(), abstainRow()], ABSTAIN_TRACE)).toMatchObject({ ok: false, reason: expect.stringMatching(/2 ledger rows/) });
+    expect(abstainVerdict([abstainRow({}, { trace_id: "f".repeat(32) })], ABSTAIN_TRACE)).toMatchObject({ ok: false, reason: expect.stringMatching(/trace/) });
+  });
+  it("a row naming a provider or model is a PAID call whose usage never reached the stream", () => {
+    expect(abstainVerdict([abstainRow({ provider: "OpenAI" })], ABSTAIN_TRACE)).toMatchObject({ ok: false, reason: expect.stringMatching(/paid call, usage missing/) });
+    expect(abstainVerdict([abstainRow({ model: "gpt-5.4-mini" })], ABSTAIN_TRACE)).toMatchObject({ ok: false, reason: expect.stringMatching(/paid call, usage missing/) });
+  });
+  it("any recorded token or cost is not an abstain", () => {
+    for (const k of ["input_tokens", "output_tokens", "cost_usd_estimate"] as const) {
+      expect(abstainVerdict([abstainRow({ [k]: 1 })], ABSTAIN_TRACE), k).toMatchObject({ ok: false, reason: expect.stringMatching(/tokens or cost/) });
+    }
+  });
+  it("an exhausted cascade or any non-empty status is not an abstain", () => {
+    expect(abstainVerdict([abstainRow({ status: "error", route_reason: "exhausted:OpenAI" })], ABSTAIN_TRACE)).toMatchObject({ ok: false, reason: expect.stringMatching(/status error/) });
+  });
+  it("the outcome must be abstained and the gate must have decided insufficient_evidence", () => {
+    expect(abstainVerdict([abstainRow({ outcome: "answered" })], ABSTAIN_TRACE)).toMatchObject({ ok: false, reason: expect.stringMatching(/outcome answered/) });
+    expect(abstainVerdict([abstainRow({ outcome: "safety_stop" })], ABSTAIN_TRACE)).toMatchObject({ ok: false, reason: expect.stringMatching(/outcome safety_stop/) });
+    expect(abstainVerdict([abstainRow({}, { answer_gate: { invoked: true, decision: "answered", jev_sufficient: null, jev_skipped_reason: null, jev_latency_ms: null, jev_input_tokens: null } })], ABSTAIN_TRACE)).toMatchObject({ ok: false, reason: expect.stringMatching(/gate decision answered/) });
+    expect(abstainVerdict([abstainRow({}, { answer_gate: { invoked: false, decision: "insufficient_evidence", jev_sufficient: null, jev_skipped_reason: null, jev_latency_ms: null, jev_input_tokens: null } })], ABSTAIN_TRACE)).toMatchObject({ ok: false, reason: expect.stringMatching(/gate/) });
+  });
+  it("a recorded generation attempt or served provider is a provider call", () => {
+    expect(abstainVerdict([abstainRow({}, { generation: { attempts: [{ provider: "OpenAI" }], served_provider: null } })], ABSTAIN_TRACE)).toMatchObject({ ok: false, reason: expect.stringMatching(/generation attempt/) });
+    expect(abstainVerdict([abstainRow({}, { generation: { attempts: [], served_provider: "OpenAI" } })], ABSTAIN_TRACE)).toMatchObject({ ok: false, reason: expect.stringMatching(/served provider/) });
+    expect(abstainVerdict([abstainRow({}, { generation: null })], ABSTAIN_TRACE)).toMatchObject({ ok: false, reason: expect.stringMatching(/no generation record/) });
+  });
+  it("any positive evidence of a Jev call on the abstain is metered activity, never zero", () => {
+    const gate = { invoked: true, decision: "insufficient_evidence", jev_sufficient: null, jev_skipped_reason: null, jev_latency_ms: null, jev_input_tokens: null };
+    expect(abstainVerdict([abstainRow({}, { answer_gate: { ...gate, jev_input_tokens: 10 } })], ABSTAIN_TRACE)).toMatchObject({ ok: false, reason: expect.stringMatching(/Jev/) });
+    expect(abstainVerdict([abstainRow({}, { answer_gate: { ...gate, jev_sufficient: 0.4 } })], ABSTAIN_TRACE)).toMatchObject({ ok: false, reason: expect.stringMatching(/Jev/) });
+    expect(abstainVerdict([abstainRow({}, { answer_gate: { ...gate, jev_latency_ms: 812 } })], ABSTAIN_TRACE)).toMatchObject({ ok: false, reason: expect.stringMatching(/Jev/) });
+    expect(abstainVerdict([abstainRow({}, { jev_decision: { skipped_reason: null, input_tokens: 900 } })], ABSTAIN_TRACE)).toMatchObject({ ok: false, reason: expect.stringMatching(/Jev/) });
+    expect(abstainVerdict([abstainRow({}, { jev_decision: { skipped_reason: null, input_tokens: null } })], ABSTAIN_TRACE)).toMatchObject({ ok: false, reason: expect.stringMatching(/Jev/) });
+  });
+});
+
+describe("#5357: the walk routes an abstain stream to the abstain verdict and the meter accepts only a proven one", () => {
+  const T = "11111111-2222-3333-4444-555555555555";
+  it("ledgerVerdictFor reads the abstain's own row and judges it as an abstain", async () => {
+    const asked: string[][] = [];
+    const v = await ledgerVerdictFor(T, ABSTAIN_SSE, async (t, tr) => { asked.push([t, tr]); return [abstainRow()]; });
+    expect(asked).toEqual([[T, ABSTAIN_TRACE]]);
+    expect(v.verdict).toEqual({ ok: true, kind: "abstain", answerUsd: 0, jevInputTokens: 0 });
+    const paid = await ledgerVerdictFor(T, ABSTAIN_SSE, async () => [abstainRow({ provider: "OpenAI" })]);
+    expect(paid.verdict).toMatchObject({ ok: false, reason: expect.stringMatching(/paid call/) });
+  });
+  it("an abstain with its proving row keeps the run going, counts an abstain turn, and never refunds the booking", () => {
+    const meter = new BudgetMeter();
+    meter.book(); meter.verify("gs10-ch6-q9", ABSTAIN_SSE, abstainVerdict([abstainRow()], ABSTAIN_TRACE));
+    expect([meter.canAfford(), meter.unbounded, meter.abstainTurns, meter.zeroCallTurns, meter.turns]).toEqual([true, null, 1, 0, 1]);
+    expect(meter.booked).toBeCloseTo(meter.perTurn, 9);
+  });
+  it("an abstain with no ledger verdict halts, naming the trace id, the missing proof and #5357", () => {
+    const meter = new BudgetMeter();
+    meter.book(); meter.verify("gs10-ch6-q9", ABSTAIN_SSE);
+    expect([meter.canAfford(), meter.unbounded]).toEqual([false, "gs10-ch6-q9"]);
+    expect(meter.unboundedReason).toMatch(ABSTAIN_TRACE);
+    expect(meter.unboundedReason).toMatch(/no ledger verdict/);
+    expect(meter.unboundedReason).toMatch(/#5357/);
+  });
+  it("an abstain with a failing verdict halts carrying the ledger's reason and the trace id", () => {
+    const meter = new BudgetMeter();
+    meter.book(); meter.verify("gs10-ch6-q9", ABSTAIN_SSE, abstainVerdict([abstainRow({ input_tokens: 5 })], ABSTAIN_TRACE));
+    expect(meter.canAfford()).toBe(false);
+    expect(meter.unboundedReason).toMatch(/tokens or cost/);
+    expect(meter.unboundedReason).toMatch(ABSTAIN_TRACE);
+  });
+  it("a zero-call or served verdict cannot excuse an abstain, and an abstain verdict cannot excuse a stop or a served stream", () => {
+    const a = new BudgetMeter();
+    a.book(); a.verify("a", ABSTAIN_SSE, zeroCallVerdict([stopRow()], TRACE));
+    expect(a.canAfford()).toBe(false);
+    expect(a.unboundedReason).toMatch(/abstain/);
+    const b = new BudgetMeter();
+    b.book(); b.verify("b", ABSTAIN_SSE, servedVerdict([servedRow()], TRACE, "OpenAI"));
+    expect(b.canAfford()).toBe(false);
+    const c = new BudgetMeter();
+    c.book(); c.verify("c", STOP_SSE, abstainVerdict([abstainRow()], ABSTAIN_TRACE));
+    expect(c.canAfford()).toBe(false);
+    const d = new BudgetMeter();
+    d.book(); d.verify("d", SERVED_SSE, abstainVerdict([abstainRow()], ABSTAIN_TRACE));
+    expect(d.canAfford()).toBe(false);
+  });
+  it("a non-stop, non-abstain stream without a usage frame still halts, and the reason now names what was seen and #5357", () => {
+    const meter = new BudgetMeter();
+    const noUsage = SERVED_SSE.split("\n").filter((l) => !l.includes('"kind":"usage"')).join("\n");
+    meter.book(); meter.verify("u", noUsage, servedVerdict([servedRow()], TRACE, "OpenAI"));
+    expect(meter.canAfford()).toBe(false);
+    expect(meter.unboundedReason).toMatch(/usage missing/);
+    expect(meter.unboundedReason).toMatch(/status answered/);
+    expect(meter.unboundedReason).toMatch(/#5357/);
   });
 });
