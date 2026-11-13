@@ -89,6 +89,9 @@ describe("whether a question returns to the technician's own unit", () => {
     "and back to ours, supply voltage?",
     "I'm not sure about that one, back to mine: what frame size is it",
     "ok, now back to my drive",
+    "let's go back to mine, what is its rated input current?",
+    "go back to mine now. frame size?",
+    "Back to mine please - what is the rated output current",
   ])("is a return: %s", (q) => {
     expect(returnsToRecord(q)).toBe(true);
   });
@@ -108,7 +111,20 @@ describe("whether a question returns to the technician's own unit", () => {
     "don't go back to my drive, what about its VT current",
     "until we're back to mine, same thing?",
     "if we go back to mine later, what would its frame size be",
+    // Codex r2 on #5464 (F1): a deferral or cancellation AFTER the phrase keeps the sibling too.
+    "let's go back to mine later; what is its rated input current?",
+    "go back to mine? No, stay on this one. What is its rated input current?",
+    "back to mine or stay on this one?",
+    "should we go back to my drive at some point, what's its VT current",
+    "ok back to mine?",
+    "I'd rather not go back to mine, what about its VT current",
+    // Fails closed: with no clause break the return is not plain, and the carry stays.
+    "ok back to mine what frame size is it",
   ])("is not a return: %s", (q) => {
     expect(returnsToRecord(q)).toBe(false);
+  });
+
+  it("accepted residue: a reversal in a LATER clause is not detected (the sibling is re-named by typing it)", () => {
+    expect(returnsToRecord("go back to mine. No, stay on this one. What is its rated input current?")).toBe(true);
   });
 });

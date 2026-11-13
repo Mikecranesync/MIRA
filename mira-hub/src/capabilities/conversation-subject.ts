@@ -79,24 +79,47 @@ export function openQuestions(turns: readonly PriorTurn[]): string[] {
  * it was refused again — with no way back except typing the catalog number.
  *
  * Mike's decision (2026-11-13, option A): "back to mine" / "back to my drive"
- * ends the carry; typing nothing after a sibling still means the sibling. So
- * this is narrow on purpose — anchored on "back to", followed by an ownership
- * word. A bare "my drive" is not a return (a follow-up still about the sibling
- * can say "my other drive"), nor is "back to the drive" (which one?).
+ * ends the carry; typing nothing after a sibling still means the sibling.
+ *
+ * THE RULE (Codex r1 + r2 on #5464 found the same class twice — a mention that
+ * is not a return: "before we go back to mine, …", "let's go back to mine
+ * later; …", "go back to mine? No, stay on this one." — so this is structural,
+ * not a word list): a return is read only when one clause of the message IS the
+ * return phrase and nothing else — leading and trailing words all from a short
+ * closed set of connectives ("ok", "now", "let's go", "please"), and the clause
+ * not ending in a question mark. Anything else in that clause, before or after
+ * the phrase, means it is not a plain return and the sibling stays. This fails
+ * closed on purpose: "ok back to mine what frame size is it" with no comma is
+ * NOT read as a return (the carry stays, the catalog number is the way back).
+ *
+ * Accepted residue, by design: a reversal in a LATER clause is not detected
+ * ("go back to mine. No, stay on this one." reads as a return); the sibling is
+ * re-named by typing it. A bare "my drive" is not a return (a follow-up still
+ * about the sibling can say "my other drive"), nor is "back to the drive".
  */
-const RETURN_TO_OWN_UNIT =
-  /\bback to (?:mine|ours|(?:my|our) (?:own\b|drive|vfd|unit|plc|controller|relay|machine|conveyor|motor|inverter|project|notebook)|this (?:project|notebook)(?:'s)?)\b/i;
+const OWN_UNIT = "(?:drive|vfd|unit|plc|controller|relay|machine|conveyor|motor|inverter)";
+const RETURN_TO_OWN_UNIT = new RegExp(
+  `\\bback to (?:mine|ours|(?:my|our) (?:own(?: ${OWN_UNIT})?|${OWN_UNIT}|project|notebook)|this (?:project|notebook)(?:'s(?: ${OWN_UNIT})?)?)\\b`,
+  "i",
+);
 
-/** Codex r1 on #5464 (F1): "before we go back to mine, …" and "do not go back to
- *  mine yet, …" mention a return and keep the sibling. A return is read only when
- *  nothing earlier in its own clause negates or defers it. The clause is what
- *  follows the last comma, colon, dash or sentence end — "I'm not sure, back to
- *  mine: frame size?" is still a return. */
-const NEGATED_OR_DEFERRED = /\b(?:not|no|never|don'?t|won'?t|can'?t|before|until|unless|once|after|if|when|later|instead)\b|n't\b/i;
+/** The only words allowed beside the phrase in its clause. */
+const CONNECTIVES: ReadonlySet<string> = new Set([
+  "ok", "okay", "alright", "right", "so", "and", "then", "now", "well", "anyway",
+  "yes", "yeah", "yep", "let's", "lets", "go", "please", "pls", "just",
+]);
+
+/** Clause boundaries: , ; : . ! ? a spaced dash, or a line break (kept, to read the terminator). */
+const CLAUSE_BOUNDARY = /(\s[-–—]\s|[,;:.!?]|\n)/;
 
 export function returnsToRecord(question: string): boolean {
-  const at = question.search(RETURN_TO_OWN_UNIT);
-  if (at < 0) return false;
-  const clause = question.slice(0, at).split(/[,;:.!?]|\s[-–—]\s|\n/).pop() ?? "";
-  return !NEGATED_OR_DEFERRED.test(clause);
+  const parts = question.split(CLAUSE_BOUNDARY);
+  for (let i = 0; i < parts.length; i += 2) {
+    const clause = parts[i];
+    if (!RETURN_TO_OWN_UNIT.test(clause)) continue;
+    if ((parts[i + 1] ?? "").trim() === "?") return false;
+    const rest = clause.replace(RETURN_TO_OWN_UNIT, " ").toLowerCase().split(/\s+/).filter(Boolean);
+    return rest.every((word) => CONNECTIVES.has(word));
+  }
+  return false;
 }

@@ -233,7 +233,13 @@ describe("retrieveNodeChunks excludes another model's table passages when the re
       // Codex r1 on #5464 (F1, MEDIUM): "before we go back to mine" / "do not go back to mine yet"
       // mention a return and keep the sibling — as this question and as an earlier open one.
       it("control: a negated or deferred return keeps the sibling, in this question and in an earlier one", async () => {
-        const negated = ["before we go back to mine, what is its rated input current?", "do not go back to mine yet, what is its rated input current?"];
+        const negated = [
+          "before we go back to mine, what is its rated input current?",
+          "do not go back to mine yet, what is its rated input current?",
+          // Codex r2 on #5464 (F1): deferred or cancelled AFTER the phrase.
+          "let's go back to mine later; what is its rated input current?",
+          "go back to mine? No, stay on this one. What is its rated input current?",
+        ];
         for (const question of negated) {
           const diagnostics: Record<string, unknown> = {};
           const { client } = makeClient(rows());
