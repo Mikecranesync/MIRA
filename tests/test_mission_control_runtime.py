@@ -178,3 +178,23 @@ def test_candidates_are_never_silently_capped():  # F12
 
     out = runtime.candidates(H(Snap([], at=NOW)), Reports(), now=NOW, max_age=600)
     assert len(out) == 26 and 125 in out
+
+
+def test_a_transport_failure_during_the_poll_marks_evidence_errored():  # r5 F15
+    import httpx
+
+    answers = {EVENTS_URL: (200, {}, []), MAIN_URL: (200, {}, {"sha": "m" * 40})}
+    h, get_ok = _handler(answers)
+    h.evidence = {"rows": [{"number": 13, "cells": {}}], "envs": {}, "at": "x", "error": None}
+
+    def get(url, headers=None):
+        if url == COMMENTS_URL:
+            raise httpx.ReadTimeout("timed out")
+        return get_ok(url, headers)
+
+    runtime.poll_once(h, get, post=None, state={})
+    assert "ReadTimeout" in h.evidence["error"] and h.evidence["at"] == "x"  # kept, but errored
+    assert h.evidence["rows"][0]["number"] == 13  # last rows stay for display
+    answers[COMMENTS_URL] = (200, {}, [])  # control: a complete poll clears it
+    runtime.poll_once(h, get_ok, post=None, state={})
+    assert h.evidence["error"] is None

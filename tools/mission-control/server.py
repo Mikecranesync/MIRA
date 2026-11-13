@@ -210,7 +210,12 @@ class Handler(BaseHTTPRequestHandler):
         delivery = self.headers.get("X-GitHub-Delivery") or f"nodelivery-{time.time_ns()}"
         now = _now_iso()
         new = self.store.add_event(webhook.normalise(event, delivery, payload, now))  # type: ignore[attr-defined]
-        if event == "issue_comment" and new:  # a redelivery changes nothing, reports included
+        in_scope = (payload.get("repository") or {}).get("full_name") == runtime.REPO and (
+            payload.get("issue") or {}
+        ).get("number") == runtime.COORD_ISSUE
+        # Only the coordination issue carries lane reports; a DELIVERY-UPDATE anywhere else
+        # is an activity-feed event and nothing more (the poller could never reconcile it).
+        if event == "issue_comment" and new and in_scope:
             cid = (payload.get("comment") or {}).get("id")
             row = webhook.comment_report(payload, trusted_authors(), reports.parse)
             if payload.get("action") == "deleted" and cid:

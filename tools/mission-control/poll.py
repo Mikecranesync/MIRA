@@ -87,8 +87,10 @@ def poll_reports(get: Getter, repo: str, issue: int, store, trusted: tuple[str, 
     that is gone is deleted for good, conditionally on the captured version. A failed page
     raises: the caller must not mistake it for a read.
     """
-    marker = f"/issues/{issue}#issuecomment-"
-    before = {r["id"]: r["updated_at"] for r in store.reports() if marker in r["url"]}
+    marker = f"github.com/{repo}/issues/{issue}#issuecomment-"
+    before, stray = {}, {}
+    for r in store.reports():
+        (before if marker in r["url"] else stray)[r["id"]] = r["updated_at"]
     stored, page, seen = 0, 1, []
     headers = {"Accept": "application/vnd.github+json"}
     while True:
@@ -124,4 +126,6 @@ def poll_reports(get: Getter, repo: str, issue: int, store, trusted: tuple[str, 
                 store.delete_report(cid, after=c["updated_at"], if_updated_at=version)
         else:
             raise RuntimeError(f"report poll failed: comment {cid}: {status}")
+    for cid, version in stray.items():  # stored from another issue/repo: never a lane report
+        store.delete_report(cid, permanent=True, if_updated_at=version)
     return stored

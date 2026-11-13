@@ -317,3 +317,21 @@ def test_a_confirmed_deletion_still_spares_a_version_written_during_the_poll(tmp
     get = FakeGet({url: (200, {}, []), _comment_url(77): (404, {}, {})})  # no race this time
     poll.poll_reports(get, "o/r", 5232, st, trusted=("owner",))
     assert st.reports() == []
+
+
+def test_a_complete_poll_drops_reports_stored_from_other_issues(tmp_path):  # r5 F16 cleanup
+    st = store_mod.Store(tmp_path / "mc.sqlite")
+    stray = {
+        "id": 500,
+        "lane": "BRAVO-CODEX",
+        "author": "owner",
+        "trusted": 1,
+        "updated_at": "2026-11-12T23:00:00Z",
+        "url": "https://github.com/o/r/issues/999#issuecomment-500",
+        "raw": "",
+        "parsed": {"state": "ACTIVE", "items": [9999]},
+    }
+    st.put_report(stray)
+    url = "https://api.github.com/repos/o/r/issues/5232/comments?per_page=100&page=1"
+    poll.poll_reports(FakeGet({url: (200, {}, [COMMENT])}), "o/r", 5232, st, trusted=("owner",))
+    assert [r["id"] for r in st.reports()] == [77]

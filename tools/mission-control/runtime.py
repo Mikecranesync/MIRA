@@ -125,9 +125,10 @@ def poll_once(handler, get, post, state: dict) -> None:
     try:
         poll.poll_reports(get, REPO, COORD_ISSUE, store, trusted)
         cands = candidates(handler, store)
-    except RuntimeError as exc:  # the candidate set is not current -> neither is the evidence
+    except Exception as exc:  # any failure (HTTP status, transport, board): not current
         log.warning("candidates unavailable: %s", exc)
-        handler.evidence = dict(handler.evidence or {}, error=str(exc))
+        reason = str(exc) if isinstance(exc, RuntimeError) else f"{type(exc).__name__}: {exc}"
+        handler.evidence = dict(handler.evidence or {}, error=f"report poll failed: {reason}")
         return
     handler.last_poll = _now_iso()
     by_item: dict[int, list[dict]] = {}

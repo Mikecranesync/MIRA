@@ -78,6 +78,7 @@ def test_unknown_event_is_stored_as_other_not_dropped():
 @pytest.fixture
 def running(tmp_path, monkeypatch):
     monkeypatch.setenv("MC_WEBHOOK_SECRET", SECRET)
+    monkeypatch.setattr(server.runtime, "REPO", "o/r")  # the fixtures' repo + issue #5232
     server.Handler.store = store_mod.Store(tmp_path / "mc.sqlite")
     server.Handler.snapshot = server.Snapshot(lambda: [])
     srv = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
@@ -276,3 +277,17 @@ def test_a_late_withdrawal_webhook_never_deletes_a_newer_restored_report(running
     newer = json.dumps(comment_payload(77, "withdrawn", "edited", "2026-11-12T23:45:00Z")).encode()
     assert post(port, "/webhook/github", newer, hdrs(newer, "dlv-x", "issue_comment"))[0] == 202
     assert st.reports() == []  # control: a genuinely newer withdrawal still removes it
+
+
+def test_a_report_on_another_issue_is_an_event_but_never_a_lane_report(running):  # r5 F16
+    port, st = running
+    body = "[DELIVERY-UPDATE: BRAVO-CLAUDE]\nUpdated: x\nState: ACTIVE\nItems: #9999\n"
+    p = comment_payload(78, body)
+    p["issue"] = {"number": 999, "html_url": "https://github.com/o/r/issues/999"}
+    p["comment"]["html_url"] = "https://github.com/o/r/issues/999#issuecomment-78"
+    b = json.dumps(p).encode()
+    assert post(port, "/webhook/github", b, hdrs(b, "dlv-other", "issue_comment"))[0] == 202
+    assert st.counts() == {"events": 1, "reports": 0}
+    b2 = json.dumps(comment_payload(77, body)).encode()  # control: the coordination issue
+    assert post(port, "/webhook/github", b2, hdrs(b2, "dlv-coord", "issue_comment"))[0] == 202
+    assert st.counts() == {"events": 2, "reports": 1}
