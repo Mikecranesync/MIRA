@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   deriveReadiness,
+  deriveSearchable,
   meetsBasicReady,
   type ReadinessFacts,
 } from "../document-readiness";
@@ -180,5 +181,105 @@ describe("THE invariant: embeddings can never gate chat", () => {
     });
     expect(r.state).toBe("needs_ocr");
     expect(r.canChat).toBe(false);
+  });
+});
+
+/**
+ * deriveSearchable — #5456. `readiness` above is text readiness ONLY by
+ * design; it is "true" (label "Ready to ask") for a source that is OFF
+ * (candidate, not enabled) or a known-partial manual (manual-completeness.ts:
+ * one chapter file, or pages whose numbers didn't read). The legacy Sources
+ * sheet let an OFF partial candidate be ticked on with no warning. This is
+ * the pure projection any renderer must read instead of recomputing the gate
+ * (or showing `readiness.label` raw).
+ */
+describe("deriveSearchable — the #5456 off/partial projection", () => {
+  /** The exact staging shape from #5456: GS10 ch1.pdf — a chapter-only
+   *  candidate the auto-search saved OFF, with 10 unreadable pages. */
+  const offPartialCandidate = {
+    matchState: "candidate" as const,
+    enabledByDefault: false,
+    canChat: true, // text readiness says "Ready to ask" — that's the bug surface
+    completenessComplete: false, // manual-completeness: chapter_start + unmapped_glyphs
+  };
+
+  it("an OFF partial candidate is NOT searchable, even though canChat/readiness says ready", () => {
+    const s = deriveSearchable(offPartialCandidate);
+    expect(s.searchable).toBe(false);
+  });
+
+  it("an OFF partial candidate's label says it is off or partial — never bare 'Ready to ask'", () => {
+    const s = deriveSearchable(offPartialCandidate);
+    expect(s.searchableLabel).toMatch(/off|partial|not turned on/i);
+    expect(s.searchableLabel).not.toBe("Ready to ask");
+  });
+
+  it("not text-ready yet ⇒ not searchable, regardless of approval/enable state", () => {
+    const s = deriveSearchable({
+      matchState: "verified",
+      enabledByDefault: true,
+      canChat: false,
+    });
+    expect(s.searchable).toBe(false);
+  });
+
+  it("candidate (not yet approved) is not searchable even when enabled", () => {
+    const s = deriveSearchable({
+      matchState: "candidate",
+      enabledByDefault: true,
+      canChat: true,
+    });
+    expect(s.searchable).toBe(false);
+    expect(s.searchableLabel).toMatch(/not turned on/i);
+  });
+
+  it("verified + enabled but switched off is not searchable", () => {
+    const s = deriveSearchable({
+      matchState: "verified",
+      enabledByDefault: false,
+      canChat: true,
+    });
+    expect(s.searchable).toBe(false);
+  });
+
+  it("rejected is never searchable", () => {
+    const s = deriveSearchable({
+      matchState: "rejected",
+      enabledByDefault: true,
+      canChat: true,
+    });
+    expect(s.searchable).toBe(false);
+  });
+
+  it("control: verified + enabled + canChat + complete IS searchable, plain 'Ready to ask'", () => {
+    const s = deriveSearchable({
+      matchState: "verified",
+      enabledByDefault: true,
+      canChat: true,
+      completenessComplete: true,
+    });
+    expect(s.searchable).toBe(true);
+    expect(s.searchableLabel).toBe("Ready to ask");
+  });
+
+  it("control: user_confirmed + enabled + canChat is searchable (no completeness judgement recorded)", () => {
+    const s = deriveSearchable({
+      matchState: "user_confirmed",
+      enabledByDefault: true,
+      canChat: true,
+    });
+    expect(s.searchable).toBe(true);
+    expect(s.searchableLabel).toBe("Ready to ask");
+  });
+
+  it("approved + enabled + canChat but a known-partial manual stays searchable — labeled, not hidden", () => {
+    const s = deriveSearchable({
+      matchState: "verified",
+      enabledByDefault: true,
+      canChat: true,
+      completenessComplete: false,
+    });
+    expect(s.searchable).toBe(true);
+    expect(s.searchableLabel).toMatch(/partial/i);
   });
 });

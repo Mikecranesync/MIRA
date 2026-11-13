@@ -14,7 +14,7 @@
 import type { PoolClient } from "pg";
 import pool from "@/lib/db";
 import { withTenantContext } from "@/lib/tenant-context";
-import { deriveReadiness, type Readiness } from "@/lib/document-readiness";
+import { deriveReadiness, deriveSearchable, type Readiness } from "@/lib/document-readiness";
 import { embedOnWriteEnabled } from "@/lib/node-knowledge-ingest";
 import { insertWithUniqueFallback } from "@/lib/pg-unique-retry";
 
@@ -122,8 +122,20 @@ export type NotebookSource = {
   matchEvidence: unknown | null;
   /** "Ready to Ask" contract (see lib/document-readiness.ts). Derived, not
    *  stored — a projection of upload status + materialized chunk facts. The
-   *  composer gates on `readiness.canChat`, which never depends on embeddings. */
+   *  composer gates on `readiness.canChat`, which never depends on embeddings.
+   *  TEXT readiness only — says nothing about approval/enabled/completeness.
+   *  Any renderer that needs to say whether chat will actually search this
+   *  document reads `searchable`/`searchableLabel` below, never this label
+   *  raw (#5456: an OFF/partial candidate can carry `readiness.label ===
+   *  "Ready to ask"`). */
   readiness: Readiness;
+  /** #5456 — derived projection of matchState + enabledByDefault + readiness +
+   *  manual-completeness (see lib/document-readiness.ts `deriveSearchable`).
+   *  THE answer to "will chat search this document right now". */
+  searchable: boolean;
+  /** Short, technician-facing copy for `searchable` — says "off" or "partial"
+   *  plainly instead of letting a raw `readiness.label` contradict the chat. */
+  searchableLabel: string;
   /** Garage pilot L2: pages the ingest flagged `text_repair = unmapped_glyph`
    *  (a number whose glyph the PDF cannot map — "5�1" for 5.1). Counted
    *  beside readiness, never folded into it: "N pages did not read cleanly". */
@@ -1257,18 +1269,33 @@ export async function listSources(
       // basic rather than "indexing" forever.
       enhancementDisabled: !embedOnWriteEnabled(),
     });
+    const matchState = m.match_state as MatchState;
+    const enabledByDefault = Boolean(m.enabled_by_default);
+    // #5456: manual-completeness (chapter_start / unmapped_glyphs) is judged
+    // once at acquisition time and persisted on `match_evidence.completeness`
+    // (see capabilities/manual-acquisition.ts) — not recomputed here.
+    // Missing/null means no judgement was ever recorded (treated as complete).
+    const evidence = (m.match_evidence ?? null) as { completeness?: { complete?: boolean } } | null;
+    const searchability = deriveSearchable({
+      matchState,
+      enabledByDefault,
+      canChat: readiness.canChat,
+      completenessComplete: evidence?.completeness?.complete,
+    });
     return {
       docId: String(m.doc_id),
       filename: d ? ((d.filename as string) ?? null) : null,
       status,
-      enabledByDefault: Boolean(m.enabled_by_default),
-      matchState: m.match_state as MatchState,
+      enabledByDefault,
+      matchState,
       sourceRole: (m.source_role as string) ?? null,
       pages: null,
       fileId: d ? ((d.file_id as string) ?? null) : null,
       originFileId: (m.origin_file_id as string) ?? null,
       matchEvidence: m.match_evidence ?? null,
       readiness,
+      searchable: searchability.searchable,
+      searchableLabel: searchability.searchableLabel,
       unreadablePages: c.unreadable,
       extractionVersion: c.version,
     };

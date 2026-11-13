@@ -30,6 +30,10 @@ type Source = {
   enabledByDefault: boolean;
   matchState: string;
   fileId: string | null;
+  /** #5456 — whether chat will actually search this doc right now, and the
+   *  off/partial copy to show beside the checkbox before a tap turns it on. */
+  searchable?: boolean;
+  searchableLabel?: string;
 };
 
 export default function NotebookPage() {
@@ -348,6 +352,11 @@ export default function NotebookPage() {
                         {rejected && (
                           <span className="text-xs" style={{ color: "var(--status-red)" }}>
                             rejected
+                          </span>
+                        )}
+                        {!processing && !rejected && s.searchable === false && s.searchableLabel && (
+                          <span className="text-xs" style={{ color: "var(--status-yellow)" }}>
+                            {s.searchableLabel}
                           </span>
                         )}
                       </button>

@@ -193,3 +193,78 @@ export function deriveReadiness(f: ReadinessFacts): Readiness {
     embeddingCoverage: cov,
   };
 }
+
+/**
+ * Searchability — whether chat will actually search this document right now,
+ * and the short copy to show beside a raw `readiness.label`.
+ *
+ * WHY THIS EXISTS (#5456)
+ * ------------------------
+ * `readiness` above is TEXT readiness ONLY, by design (the one rule at the top
+ * of this file). It says nothing about whether a source is approved for this
+ * notebook (`matchState`), switched on (`enabledByDefault`), or judged a
+ * partial document (`manual-completeness.ts` — a single chapter file, or
+ * pages whose numbers didn't read). A source can be `matchState: "candidate"`,
+ * `enabledByDefault: false`, and still carry `readiness.label === "Ready to
+ * ask"` — correct for the text, but a contradiction to any renderer or
+ * operator reading the raw label. `deriveSearchable` is the ONE projection
+ * that combines those facts; callers show `searchableLabel`, never the raw
+ * `readiness.label`, when they need to say whether chat will search the doc.
+ *
+ * Pure projection of facts the caller already has — no new state, no store.
+ */
+export interface SearchabilityFacts {
+  /** `equipment_notebook_sources.match_state` for this document. */
+  matchState: "candidate" | "user_confirmed" | "verified" | "rejected";
+  /** `equipment_notebook_sources.enabled_by_default` for this document. */
+  enabledByDefault: boolean;
+  /** This document's `readiness.canChat` (text readiness). */
+  canChat: boolean;
+  /**
+   * `matchEvidence.completeness.complete` when manual-completeness judged
+   * this document (acquisition time only). `undefined`/`null` means no
+   * judgement was ever recorded — treated as complete (not partial).
+   */
+  completenessComplete?: boolean | null;
+}
+
+export interface Searchability {
+  /** THE product question for any source-list renderer: will chat search this
+   *  document right now? Never derive this locally — read it from here. */
+  searchable: boolean;
+  /** Short, technician-facing copy. Says "off"/"partial" plainly when
+   *  `searchable` is false, or when it's true but the document is a known
+   *  partial manual. */
+  searchableLabel: string;
+}
+
+export function deriveSearchable(f: SearchabilityFacts): Searchability {
+  if (!f.canChat) {
+    // Not text-ready yet — defer to the readiness label's own copy; there is
+    // nothing more specific to say.
+    return { searchable: false, searchableLabel: "Not searchable yet" };
+  }
+
+  const approved = f.matchState === "user_confirmed" || f.matchState === "verified";
+  const on = approved && f.enabledByDefault;
+  const partial = f.completenessComplete === false;
+
+  if (!on) {
+    return {
+      searchable: false,
+      searchableLabel: partial
+        ? "Saved, switched off — partial manual"
+        : "Not searchable: not turned on",
+    };
+  }
+
+  if (partial) {
+    // Approved + enabled, but a known-partial document (one chapter, or pages
+    // whose numbers didn't read): it DOES answer, so `searchable` stays true,
+    // but the label must say so — this is the exact "Ready to ask" vs.
+    // "it's off and partial" contradiction #5456 reports.
+    return { searchable: true, searchableLabel: "Ready to ask — partial manual" };
+  }
+
+  return { searchable: true, searchableLabel: "Ready to ask" };
+}
