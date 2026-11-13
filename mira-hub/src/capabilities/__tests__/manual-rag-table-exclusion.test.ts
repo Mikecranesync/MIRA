@@ -241,6 +241,9 @@ describe("retrieveNodeChunks excludes another model's table passages when the re
           "go back to mine? No, stay on this one. What is its rated input current?",
           // Codex r3 on #5464 (F1), Mike B: the reversal in the NEXT clause cancels the return.
           "go back to mine. No, stay on this one. What is its rated input current?",
+          // Codex r4 on #5464 (F1): a second separator does not hide the reversal.
+          "go back to mine.\nNo, stay on this one. What is its rated input current?",
+          "go back to mine... No, stay on this one. What is its rated input current?",
         ];
         for (const question of negated) {
           const diagnostics: Record<string, unknown> = {};

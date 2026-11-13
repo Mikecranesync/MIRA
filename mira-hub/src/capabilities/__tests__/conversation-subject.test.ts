@@ -131,6 +131,11 @@ describe("whether a question returns to the technician's own unit", () => {
     "back to mine. never mind, same thing?",
     "let's go back to my drive, scratch that, what is its frame size",
     "back to mine\nhold on, stay on this one",
+    // Codex r4 on #5464 (F1): consecutive separators leave an empty clause between them;
+    // the reversal is in the next NON-EMPTY clause.
+    "go back to mine.\nNo, stay on this one. What is its rated input current?",
+    "go back to mine... No, stay on this one. What is its rated input current?",
+    "ok back to mine -- actually wait, what about its VT current",
   ])("is not a return (cancelled in the next clause): %s", (q) => {
     expect(returnsToRecord(q)).toBe(false);
   });
@@ -139,6 +144,7 @@ describe("whether a question returns to the technician's own unit", () => {
     "go back to mine. what is its VT current",
     "ok back to mine, now what frame size is it",
     "back to mine. not sure of the exact spec, what is its VT current",
+    "go back to mine...\nwhat is its VT current",
   ])("is still a return (the next clause is a question, not a reversal): %s", (q) => {
     expect(returnsToRecord(q)).toBe(true);
   });

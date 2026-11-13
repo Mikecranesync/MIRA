@@ -125,7 +125,11 @@ export function returnsToRecord(question: string): boolean {
     if ((parts[i + 1] ?? "").trim() === "?") return false;
     const rest = clause.replace(RETURN_TO_OWN_UNIT, " ").toLowerCase().split(/\s+/).filter(Boolean);
     if (!rest.every((word) => CONNECTIVES.has(word))) return false;
-    return !REVERSAL_OPENERS.test((parts[i + 2] ?? "").trim());
+    // Codex r4 on #5464 (F1): ".\n" or "..." leaves empty clauses between the separators;
+    // the next clause is the next one with words in it.
+    let next = i + 2;
+    while (next < parts.length && parts[next].trim() === "") next += 2;
+    return !REVERSAL_OPENERS.test((parts[next] ?? "").trim());
   }
   return false;
 }
