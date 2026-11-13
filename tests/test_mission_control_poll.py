@@ -164,7 +164,10 @@ def test_a_failed_poll_page_never_removes_reports(tmp_path):  # F9 control
     get = FakeGet({url: (200, {}, [COMMENT])})
     poll.poll_reports(get, "o/r", 5232, st, trusted=("owner",))
     get.answers[url] = (502, {}, "bad gateway")
-    poll.poll_reports(get, "o/r", 5232, st, trusted=("owner",))
+    import pytest
+
+    with pytest.raises(RuntimeError):
+        poll.poll_reports(get, "o/r", 5232, st, trusted=("owner",))
     assert len(st.reports()) == 1
 
 
@@ -190,3 +193,61 @@ def test_reconciliation_spares_reports_that_arrived_after_the_poll_began(tmp_pat
     get = RacyGet({url: (200, {}, [COMMENT])})
     poll.poll_reports(get, "o/r", 5232, st, trusted=("owner",))
     assert {r["id"] for r in st.reports()} == {77, 99}
+
+
+def test_a_failed_poll_page_raises_so_the_caller_cannot_treat_it_as_a_read(tmp_path):  # r3 F11
+    import pytest
+
+    st = store_mod.Store(tmp_path / "mc.sqlite")
+    url = "https://api.github.com/repos/o/r/issues/5232/comments?per_page=100&page=1"
+    get = FakeGet({url: (502, {}, "bad gateway")})
+    with pytest.raises(RuntimeError, match="502"):
+        poll.poll_reports(get, "o/r", 5232, st, trusted=("owner",))
+
+
+def test_reconciliation_spares_a_report_that_arrived_in_the_same_second(tmp_path):  # r3 F10
+    st = store_mod.Store(tmp_path / "mc.sqlite")
+    url = "https://api.github.com/repos/o/r/issues/5232/comments?per_page=100&page=1"
+    late = {
+        "id": 99,
+        "lane": "BRAVO-CODEX",
+        "author": "owner",
+        "trusted": 1,
+        "updated_at": "2026-11-12T23:00:00Z",  # older than the poll start: time cannot fence it
+        "url": "https://github.com/o/r/issues/5232#issuecomment-99",
+        "raw": "",
+        "parsed": {"state": "ACTIVE", "items": []},
+    }
+
+    class RacyGet(FakeGet):
+        def __call__(self, u, headers=None):
+            st.put_report(late)  # a webhook lands while the (older, empty) page is in flight
+            return super().__call__(u, headers)
+
+    get = RacyGet({url: (200, {}, [])})
+    poll.poll_reports(get, "o/r", 5232, st, trusted=("owner",))
+    assert [r["id"] for r in st.reports()] == [99]
+    assert st.put_report(dict(late, updated_at="2026-11-12T23:01:00Z"))  # no tombstone either
+
+
+def test_a_report_re_edited_during_the_poll_is_not_deleted_by_a_page_that_predates_it(tmp_path):
+    """r3 F10: the stored version is in the pre-poll set, the page lacks it, but a webhook
+    wrote a newer version meanwhile — the conditional delete must leave the newer one."""
+    st = store_mod.Store(tmp_path / "mc.sqlite")
+    url = "https://api.github.com/repos/o/r/issues/5232/comments?per_page=100&page=1"
+    get = FakeGet({url: (200, {}, [COMMENT])})
+    poll.poll_reports(get, "o/r", 5232, st, trusted=("owner",))
+    newer = dict(
+        poll.webhook.comment_report({"comment": COMMENT}, ("owner",), poll.reports.parse),
+        updated_at="2026-11-12T23:30:00Z",
+    )
+
+    class RacyGet(FakeGet):
+        def __call__(self, u, headers=None):
+            st.put_report(newer)  # lands between the pre-poll capture and the page read
+            return super().__call__(u, headers)
+
+    get = RacyGet({url: (200, {}, [])})  # a stale page: 77 missing
+    poll.poll_reports(get, "o/r", 5232, st, trusted=("owner",))
+    assert [(r["id"], r["updated_at"]) for r in st.reports()] == [(77, "2026-11-12T23:30:00Z")]
+    assert st.put_report(dict(newer, updated_at="2026-11-12T23:31:00Z"))  # and no tombstone

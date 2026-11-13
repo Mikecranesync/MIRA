@@ -109,12 +109,29 @@ class Store:
             self._db.commit()
             return cur.rowcount == 1
 
-    def delete_report(self, comment_id: int, after: str = "", permanent: bool = False) -> None:
+    def delete_report(
+        self,
+        comment_id: int,
+        after: str = "",
+        permanent: bool = False,
+        if_updated_at: Optional[str] = None,
+    ) -> None:
         """Remove a report. A withdrawal (marker edited away at `after`) blocks only versions
-        up to that time, so a later edit can restore it; a deleted comment is final."""
+        up to that time, so a later edit can restore it; a deleted comment is final. With
+        `if_updated_at`, only that exact stored version is removed (one statement, so a newer
+        version written meanwhile survives untouched, tombstone included)."""
         stamp = FOREVER if permanent else after
         with self._lock:
-            self._db.execute("DELETE FROM reports WHERE id = ?", (comment_id,))
+            if if_updated_at is not None:
+                cur = self._db.execute(
+                    "DELETE FROM reports WHERE id = ? AND updated_at = ?",
+                    (comment_id, if_updated_at),
+                )
+                if cur.rowcount != 1:
+                    self._db.commit()
+                    return
+            else:
+                self._db.execute("DELETE FROM reports WHERE id = ?", (comment_id,))
             self._db.execute(
                 "INSERT INTO report_tombstones VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET "
                 "deleted_at = max(deleted_at, excluded.deleted_at)",

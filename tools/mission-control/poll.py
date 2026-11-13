@@ -6,7 +6,6 @@ no webhook is registered (BRAVO/CHARLIE) and as a safety net when one is.
 
 from __future__ import annotations
 
-import datetime as dt
 import importlib.util
 import logging
 import sys
@@ -82,19 +81,20 @@ def poll_reports(get: Getter, repo: str, issue: int, store, trusted: tuple[str, 
     """Read every comment on the coordination issue; store the DELIVERY-UPDATE ones.
 
     Only a complete, successful read reconciles, and only the records it can speak for:
-    a comment that no longer carries the marker is withdrawn as of its own updated_at (a
-    later edit restores it); a comment that is gone is deleted for good — unless the stored
-    report was updated after this read began (a webhook landed mid-poll). A failed page
-    changes nothing.
+    the versions that were stored *before* the read began (captured by id + updated_at,
+    not by clock — a webhook can land in the same second). A comment that no longer carries
+    the marker is withdrawn as of its own updated_at (a later edit restores it); a comment
+    that is gone is deleted for good, conditionally on the captured version. A failed page
+    raises: the caller must not mistake it for a read.
     """
-    started = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    marker = f"/issues/{issue}#issuecomment-"
+    before = {r["id"]: r["updated_at"] for r in store.reports() if marker in r["url"]}
     stored, page, seen = 0, 1, []
     while True:
         url = f"{API}/repos/{repo}/issues/{issue}/comments?per_page=100&page={page}"
         status, _h, body = get(url, headers={"Accept": "application/vnd.github+json"})
         if status != 200 or not isinstance(body, list):
-            log.warning("comments poll failed: %s %s", status, body)
-            return stored
+            raise RuntimeError(f"report poll failed: comments page {page}: {status}")
         seen.extend(body)
         if len(body) < 100:
             break
@@ -105,13 +105,10 @@ def poll_reports(get: Getter, repo: str, issue: int, store, trusted: tuple[str, 
         row = webhook.comment_report({"comment": c}, trusted, reports.parse)
         if row and store.put_report(row):
             stored += 1
-    marker = f"/issues/{issue}#issuecomment-"
-    for r in store.reports():
-        if marker not in r["url"] or r["updated_at"] > started:
-            continue  # another issue, or newer than this snapshot: not ours to judge
-        if r["id"] in present:
-            if present[r["id"]] > r["updated_at"]:  # edited, and the marker is gone
-                store.delete_report(r["id"], after=present[r["id"]])
+    for cid, version in before.items():  # only versions this read can speak for
+        if cid in present:
+            if present[cid] > version:  # edited, and the marker is gone
+                store.delete_report(cid, after=present[cid], if_updated_at=version)
         else:
-            store.delete_report(r["id"], permanent=True)
+            store.delete_report(cid, permanent=True, if_updated_at=version)
     return stored

@@ -89,7 +89,7 @@ def candidates(handler, store, now: Optional[dt.datetime] = None, max_age: int =
     for r in store.reports():
         if r["trusted"]:
             nums.extend(int(n) for n in r["parsed"].get("items", []))
-    return list(dict.fromkeys(nums))[:25]
+    return list(dict.fromkeys(nums))  # never capped: evidence.fetch_prs batches the query
 
 
 def env_urls() -> dict[str, str]:
@@ -115,32 +115,37 @@ def refresh_evidence(handler, evidence, post, get, cands, envs, trusted, by_item
         handler.evidence = dict(old, error=f"{type(exc).__name__}: {exc}")
 
 
+def poll_once(handler, get, post, state: dict) -> None:
+    """One poll iteration. A failed report read or an unavailable candidate list stamps the
+    kept evidence with the error instead of refreshing it, so the model reads NO-GO until a
+    complete read succeeds (the stamp is renewed every failing iteration)."""
+    store, poll, evidence = handler.store, handler.poll_mod, handler.evidence_mod
+    trusted = handler.trusted_authors()
+    poll.poll_events(get, REPO, store, state)
+    try:
+        poll.poll_reports(get, REPO, COORD_ISSUE, store, trusted)
+        cands = candidates(handler, store)
+    except RuntimeError as exc:  # the candidate set is not current -> neither is the evidence
+        log.warning("candidates unavailable: %s", exc)
+        handler.evidence = dict(handler.evidence or {}, error=str(exc))
+        return
+    handler.last_poll = _now_iso()
+    by_item: dict[int, list[dict]] = {}
+    for r in reversed(store.reports()):  # oldest first so the newest ends up last
+        if r["trusted"]:
+            for n in r["parsed"].get("items", []):
+                by_item.setdefault(int(n), []).append(r["parsed"])
+    status, _h, main = get(f"https://api.github.com/repos/{REPO}/commits/main", headers={})
+    main_sha = main.get("sha") if status == 200 and isinstance(main, dict) else None
+    refresh_evidence(handler, evidence, post, get, cands, env_urls(), trusted, by_item, main_sha)
+
+
 def poll_loop(handler, get, post) -> None:
     """handler: the server.Handler class (store, poll, evidence_mod, trusted_authors)."""
-    store, poll, evidence = handler.store, handler.poll_mod, handler.evidence_mod
     state: dict = {}
     while True:
         try:
-            trusted = handler.trusted_authors()
-            poll.poll_events(get, REPO, store, state)
-            poll.poll_reports(get, REPO, COORD_ISSUE, store, trusted)
-            handler.last_poll = _now_iso()
-            by_item: dict[int, list[dict]] = {}
-            for r in reversed(store.reports()):  # oldest first so the newest ends up last
-                if r["trusted"]:
-                    for n in r["parsed"].get("items", []):
-                        by_item.setdefault(int(n), []).append(r["parsed"])
-            status, _h, main = get(f"https://api.github.com/repos/{REPO}/commits/main", headers={})
-            main_sha = main.get("sha") if status == 200 and isinstance(main, dict) else None
-            try:
-                cands = candidates(handler, store)
-            except RuntimeError as exc:  # no candidate list -> the old evidence is not current
-                log.warning("candidates unavailable: %s", exc)
-                handler.evidence = dict(handler.evidence or {}, error=str(exc))
-            else:
-                refresh_evidence(
-                    handler, evidence, post, get, cands, env_urls(), trusted, by_item, main_sha
-                )
+            poll_once(handler, get, post, state)
         except Exception as exc:  # never let the poller die; the page shows staleness
             log.warning("poll loop error: %s", exc)
         time.sleep(max(POLL_SECONDS, state.get("interval", 0)))

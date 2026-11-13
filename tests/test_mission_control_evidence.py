@@ -279,3 +279,18 @@ def test_markers_carry_comment_order_and_followup_issues():  # F3
 def test_pr_body_hash_rides_on_the_item():  # F3
     out = evidence.fetch_prs(gql({12: pr(body="hello")}), "o/r", [12])
     assert out[12]["body_sha256"] == hashlib.sha256(b"hello").hexdigest()
+
+
+def test_fetch_prs_batches_large_candidate_sets_instead_of_dropping_them():  # r3 F12
+    import re
+
+    calls = []
+
+    def post(body):
+        calls.append(body["query"])
+        nums = [int(n) for n in re.findall(r"pr(\d+): pullRequest", body["query"])]
+        assert len(nums) <= 25
+        return {"data": {"repository": {f"pr{n}": dict(pr(), number=n) for n in nums}}}
+
+    out = evidence.fetch_prs(post, "o/r", list(range(100, 126)))
+    assert len(calls) == 2 and sorted(out) == list(range(100, 126))

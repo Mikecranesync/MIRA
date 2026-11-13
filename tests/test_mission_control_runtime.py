@@ -118,3 +118,63 @@ def test_a_good_refresh_stamps_the_board_time_it_was_built_from():
     h = H(Snap([CARD], at=NOW - dt.timedelta(minutes=5)))
     runtime.refresh_evidence(h, Ev(), None, None, [13], {}, (), {}, None)
     assert h.evidence["board_at"] == "2026-11-12T22:55:00Z"
+
+
+# --- Codex round 3 (PR #5455) F11/F12 ------------------------------------------------------
+
+import tempfile  # noqa: E402
+
+store_mod = _load("mission_control_store_rt", MC / "store.py")
+poll_mod = _load("mission_control_poll_rt", MC / "poll.py")
+
+EVENTS_URL = f"https://api.github.com/repos/{runtime.REPO}/events?per_page=100"
+COMMENTS_URL = (
+    f"https://api.github.com/repos/{runtime.REPO}/issues/{runtime.COORD_ISSUE}/comments"
+    "?per_page=100&page=1"
+)
+MAIN_URL = f"https://api.github.com/repos/{runtime.REPO}/commits/main"
+
+
+class GoodEv:
+    def gather(self, *a, **k):
+        return {"rows": [{"number": 13, "cells": {}}], "envs": {}, "at": "x", "error": None}
+
+
+def _handler(answers):
+    class Hd:
+        snapshot = Snap([CARD], at=dt.datetime.now(dt.timezone.utc))
+        store = store_mod.Store(Path(tempfile.mkdtemp()) / "mc.sqlite")
+        evidence = {"rows": [], "envs": {}, "at": None, "error": None}
+        last_poll = None
+        poll_mod, evidence_mod = poll_mod, GoodEv()
+        trusted_authors = staticmethod(lambda: ("owner",))
+
+    def get(url, headers=None):
+        return answers.get(url, (404, {}, {}))
+
+    return Hd, get
+
+
+def test_a_failed_report_poll_marks_evidence_errored_every_iteration():  # F11
+    answers = {
+        EVENTS_URL: (200, {}, []),
+        COMMENTS_URL: (502, {}, "bad gateway"),
+        MAIN_URL: (200, {}, {"sha": "m" * 40}),
+    }
+    h, get = _handler(answers)
+    for _ in range(2):
+        runtime.poll_once(h, get, post=None, state={})
+        assert "report" in h.evidence["error"] and "502" in h.evidence["error"]
+        assert h.evidence["rows"] == []  # nothing fresh was published over the failed read
+    answers[COMMENTS_URL] = (200, {}, [])  # control: a complete read clears it
+    runtime.poll_once(h, get, post=None, state={})
+    assert h.evidence["error"] is None and h.evidence["rows"][0]["number"] == 13
+
+
+def test_candidates_are_never_silently_capped():  # F12
+    class Reports:
+        def reports(self):
+            return [{"trusted": 1, "parsed": {"items": list(range(100, 126))}}]
+
+    out = runtime.candidates(H(Snap([], at=NOW)), Reports(), now=NOW, max_age=600)
+    assert len(out) == 26 and 125 in out

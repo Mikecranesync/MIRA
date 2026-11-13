@@ -50,6 +50,11 @@ def fetch_prs(post: Callable[[dict], dict], repo: str, numbers: list[int]) -> di
     GitHub says NOT_FOUND (an issue number, not a PR), which is simply absent."""
     if not numbers:
         return {}
+    if len(numbers) > 25:  # one query per 25 aliases; never drop a candidate
+        out: dict[int, dict] = {}
+        for i in range(0, len(numbers), 25):
+            out.update(fetch_prs(post, repo, numbers[i : i + 25]))
+        return out
     owner, name = repo.split("/", 1)
     data = post({"query": pr_query(owner, name, numbers), "variables": {}})
     if data.get("errors") and not data.get("data"):
