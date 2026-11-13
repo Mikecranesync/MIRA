@@ -67,3 +67,69 @@ export function readSubject(turns: readonly PriorTurn[], limit: number): Subject
 export function openQuestions(turns: readonly PriorTurn[]): string[] {
   return readSubject(turns, Number.POSITIVE_INFINITY).questions;
 }
+
+/**
+ * Does this question say, in so many words, that it is about the technician's
+ * OWN unit again — the one the project is set up for?
+ *
+ * Seen on staging 6da4ab674 (CV-101 benchmark FU-A4, 2026-11-13): a look-alike
+ * ("what about the GS13N-20P2, same thing?") was refused, as it must be, and
+ * the technician typed "ok back to mine, what frame size is it". The refused
+ * question was still open, so the look-alike carried into the new question and
+ * it was refused again — with no way back except typing the catalog number.
+ *
+ * Mike's decision (2026-11-13, option A): "back to mine" / "back to my drive"
+ * ends the carry; typing nothing after a sibling still means the sibling.
+ *
+ * THE RULE (Codex r1 + r2 on #5464 found the same class twice — a mention that
+ * is not a return: "before we go back to mine, …", "let's go back to mine
+ * later; …", "go back to mine? No, stay on this one." — so this is structural,
+ * not a word list): a return is read only when one clause of the message IS the
+ * return phrase and nothing else — leading and trailing words all from a short
+ * closed set of connectives ("ok", "now", "let's go", "please"), and the clause
+ * not ending in a question mark. Anything else in that clause, before or after
+ * the phrase, means it is not a plain return and the sibling stays. This fails
+ * closed on purpose: "ok back to mine what frame size is it" with no comma is
+ * NOT read as a return (the carry stays, the catalog number is the way back).
+ *
+ * A reversal that OPENS THE NEXT CLAUSE cancels the return ("go back to mine.
+ * No, stay on this one." — Codex r3 on #5464, Mike's B 2026-11-13). Accepted
+ * residue, by design: a reversal two or more clauses later is not detected;
+ * the sibling is re-named by typing it. A bare "my drive" is not a return (a
+ * follow-up still about the sibling can say "my other drive"), nor is "back to
+ * the drive".
+ */
+const OWN_UNIT = "(?:drive|vfd|unit|plc|controller|relay|machine|conveyor|motor|inverter)";
+const RETURN_TO_OWN_UNIT = new RegExp(
+  `\\bback to (?:mine|ours|(?:my|our) (?:own(?: ${OWN_UNIT})?|${OWN_UNIT}|project|notebook)|this (?:project|notebook)(?:'s(?: ${OWN_UNIT})?)?)\\b`,
+  "i",
+);
+
+/** The only words allowed beside the phrase in its clause. */
+const CONNECTIVES: ReadonlySet<string> = new Set([
+  "ok", "okay", "alright", "right", "so", "and", "then", "now", "well", "anyway",
+  "yes", "yeah", "yep", "let's", "lets", "go", "please", "pls", "just",
+]);
+
+/** A next clause that opens with one of these takes the return back. */
+const REVERSAL_OPENERS = /^(?:no|nope|nah|never ?mind|actually|wait|hold on|hang on|stay|scratch that|forget (?:that|it)|on second thought|cancel)\b/i;
+
+/** Clause boundaries: , ; : . ! ? a spaced dash, or a line break (kept, to read the terminator). */
+const CLAUSE_BOUNDARY = /(\s[-–—]\s|[,;:.!?]|\n)/;
+
+export function returnsToRecord(question: string): boolean {
+  const parts = question.split(CLAUSE_BOUNDARY);
+  for (let i = 0; i < parts.length; i += 2) {
+    const clause = parts[i];
+    if (!RETURN_TO_OWN_UNIT.test(clause)) continue;
+    if ((parts[i + 1] ?? "").trim() === "?") return false;
+    const rest = clause.replace(RETURN_TO_OWN_UNIT, " ").toLowerCase().split(/\s+/).filter(Boolean);
+    if (!rest.every((word) => CONNECTIVES.has(word))) return false;
+    // Codex r4 on #5464 (F1): ".\n" or "..." leaves empty clauses between the separators;
+    // the next clause is the next one with words in it.
+    let next = i + 2;
+    while (next < parts.length && parts[next].trim() === "") next += 2;
+    return !REVERSAL_OPENERS.test((parts[next] ?? "").trim());
+  }
+  return false;
+}

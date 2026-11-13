@@ -107,6 +107,13 @@ describe("each attached manual has its own candidate window wherever a check can
     await retrieveNodeChunks(carried.client, "t-1", "communication settings", { ...base, subjectQueries: ["RX420 will not start"] });
     expect(lanes(carried.calls).slice(0, 2).map((c) => c.params[4])).toEqual([["d-1"], ["d-2"]]);
 
+    // Mike 2026-11-13 (option A on CV-101 D-A): "back to mine" ends a carry only when the
+    // project has a catalog number on record. Without one, "mine" has no referent the notebook
+    // knows and the carried number may BE the technician's own unit — so the carry stays.
+    const noRecordReturn = makeClient();
+    await retrieveNodeChunks(noRecordReturn.client, "t-1", "ok back to mine, communication settings", { ...base, subjectQueries: ["RX420 will not start"] });
+    expect(lanes(noRecordReturn.calls).slice(0, 2).map((c) => c.params[4])).toEqual([["d-1"], ["d-2"]]);
+
     // A model the detector reads, carried from an earlier question, scopes the ask as well.
     const carriedKnown = makeClient();
     await retrieveNodeChunks(carriedKnown.client, "t-1", "communication settings", {

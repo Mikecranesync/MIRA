@@ -5,6 +5,7 @@ import { familySqlTerms, inferEquipmentType } from "@/lib/equipment-type";
 import { manufacturerInGroup, manufacturerSearchNames, normalizeManufacturer } from "@/lib/manufacturerNormalize";
 import { FAMILY_ROOTS, MODEL_PATTERNS, ROCKWELL, type ModelMention, familyCovers, modelIdentitiesInText, modelMentionsInText, resolveModelFromObservationText } from "@/capabilities/model-token";
 import { ambiguousSiblingModels } from "@/capabilities/named-model-mismatch";
+import { returnsToRecord } from "@/capabilities/conversation-subject";
 import {
   coverDeclaredNumbers,
   isTitleLine,
@@ -1812,14 +1813,32 @@ export async function retrieveNodeChunks(
     return Boolean(named.model) || named.ambiguous || modelIdentitiesInText(text).size > 0;
   };
   const ownNumbers = unlistedModelNumbers(ownQuestion);
-  const earlierQuestions = !namesKnownModel(ownQuestion) ? (opts.subjectQueries ?? []) : [];
+  // The project's confirmed catalog number — the unit "mine" refers to below,
+  // and the record the sibling rule further down judges against.
+  const recordText = confirmedCatalogNumber(opts);
+  // Mike's decision 2026-11-13 (CV-101 benchmark FU-A4; option A): a question
+  // that says it is back to the technician's OWN unit ("ok back to mine, what
+  // frame size is it") is about the record again, so nothing earlier carries
+  // into it — and nothing older than that return carries into the questions
+  // after it either, or the next bare follow-up would read past it to the
+  // refused look-alike and refuse once more. Only with a catalog number on
+  // record: without one "mine" has no referent the notebook knows, and the
+  // carried model may BE the technician's own unit ("the plate reads
+  // GS11N-20P2. It will not start." in a controller's notebook). Typing
+  // nothing after a sibling still means the sibling (the case below this one).
+  const openQuestions = opts.subjectQueries ?? [];
+  const returnsToOwn = Boolean(recordText) && returnsToRecord(ownQuestion);
+  const returnAt = recordText ? openQuestions.findIndex(returnsToRecord) : -1;
+  const earlierQuestions =
+    namesKnownModel(ownQuestion) || returnsToOwn ? [] : returnAt >= 0 ? openQuestions.slice(0, returnAt + 1) : openQuestions;
   const modelAt = earlierQuestions.findIndex(namesKnownModel);
   // The open run is longer than the caller could read, this question names
   // no model, and nothing read names one: a model named further back would
   // still be the subject, and it cannot be seen. Retrieve nothing rather than
   // judge the question on its own words. A model named in what was read is
   // carried as usual (it is the newest one; nothing older than it matters).
-  if (opts.subjectOutOfReach && !namesKnownModel(ownQuestion) && modelAt < 0) {
+  // A return to the record, in this question or in one read, is a start too.
+  if (opts.subjectOutOfReach && !namesKnownModel(ownQuestion) && !returnsToOwn && returnAt < 0 && modelAt < 0) {
     if (opts.diagnostics) opts.diagnostics.subjectOutOfReach = true;
     return [];
   }
@@ -1843,7 +1862,7 @@ export async function retrieveNodeChunks(
   // names only the record's own number pass through unchanged. Judged BEFORE
   // the two-siblings "which one?" check: a question naming the record's own
   // number beside a sibling is refused here, not asked which one it meant.
-  const recordText = confirmedCatalogNumber(opts);
+  // (`recordText` is read above, where the return-to-record rule needs it.)
   // ONE reader for the record and for the questions (Codex r2 F3 + r3 F3 on #5451: the same
   // defect mirrored — "GS13N - 20P2" in a question, then "GS11N - 20P2" on the record, spaces
   // around the hyphen as a tablet types them). The generic number reader splits that spelling

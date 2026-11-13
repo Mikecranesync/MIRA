@@ -180,6 +180,107 @@ describe("retrieveNodeChunks excludes another model's table passages when the re
       expect(diagnostics.siblingOfRecordAsk).toEqual({ asked: ["GS13N-20P2"], record: "GS11N-20P2" });
     });
 
+    // CV-101 complete-machine benchmark FU-A4 (staging 6da4ab674, 2026-11-13, thread FU-A): after the
+    // sibling ask above was refused, the technician said "ok back to mine, what frame size is it".
+    // The refused sibling question is still open (conversation-subject.ts: a refusal leaves its
+    // subject open), so the carry rule re-applied GS13N-20P2 to a turn that named no number and
+    // refused it again with "Your question is about the GS13N-20P2" — and there is no way back to
+    // the record without typing its catalog number. The carry itself is Mike's L8 ruling and is
+    // kept by the case above. Mike's decision 2026-11-13 (option A): an explicit return to the
+    // technician's own unit ends the carry; typing nothing after a sibling still means the sibling.
+    describe("an explicit return to the record ('ok back to mine') ends the carry (Mike 2026-11-13, option A)", () => {
+      const retrieved = (calls: Array<{ sql: string }>) => calls.filter((c) => /knowledge_entries/.test(c.sql)).length;
+
+      it("after a refused sibling ask, 'ok back to mine' is about the record again, not the sibling", async () => {
+        const diagnostics: Record<string, unknown> = {};
+        const { client, calls } = makeClient(rows());
+        const out = await retrieveNodeChunks(client, "t-1", "ok back to mine, what frame size is it", scoped({ diagnostics, subjectQueries: ["what about the GS13N-20P2, same thing?", "hey what supply voltage does this drive need"] }));
+        expect(diagnostics.siblingOfRecordAsk).toBeUndefined();
+        expect(retrieved(calls)).toBeGreaterThan(0);
+        expect(out.map((c) => c.content)).toContain(ownColumn.content);
+        expect(out.map((c) => c.content)).not.toContain(siblingColumn.content);
+      });
+
+      it("a return read in an earlier open question ends the carry for the questions after it too", async () => {
+        // The return itself may be refused for some other reason and stay open; the next bare
+        // follow-up must not read past it to the look-alike and refuse once more.
+        const diagnostics: Record<string, unknown> = {};
+        const { client, calls } = makeClient(rows());
+        const out = await retrieveNodeChunks(client, "t-1", "and how much does it weigh?", scoped({ diagnostics, subjectQueries: ["ok back to mine, what frame size is it", "what about the GS13N-20P2, same thing?", "hey what supply voltage does this drive need"] }));
+        expect(diagnostics.siblingOfRecordAsk).toBeUndefined();
+        expect(retrieved(calls)).toBeGreaterThan(0);
+        expect(out.map((c) => c.content)).toContain(ownColumn.content);
+      });
+
+      it("control: the return phrase never overrides a sibling named in the same question", async () => {
+        const diagnostics: Record<string, unknown> = {};
+        const { client } = makeClient(rows());
+        const out = await retrieveNodeChunks(client, "t-1", "ok back to mine - what is the rated input current of the GS13N-20P2?", scoped({ diagnostics, subjectQueries: ["hey what supply voltage does this drive need"] }));
+        expect(out).toEqual([]);
+        expect(diagnostics.siblingOfRecordAsk).toEqual({ asked: ["GS13N-20P2"], record: "GS11N-20P2" });
+      });
+
+      it("control: words that are not a return ('my other drive', 'back to the') keep the carry", async () => {
+        for (const question of ["what about my other drive, same thing?", "back to the question, what is its VT rated current?"]) {
+          const diagnostics: Record<string, unknown> = {};
+          const { client } = makeClient(rows());
+          const out = await retrieveNodeChunks(client, "t-1", question, scoped({ diagnostics, subjectQueries: ["What is the rated input current of the GS13N-20P2?"] }));
+          expect(out, question).toEqual([]);
+          expect(diagnostics.siblingOfRecordAsk, question).toEqual({ asked: ["GS13N-20P2"], record: "GS11N-20P2" });
+        }
+      });
+
+      // Codex r1 on #5464 (F1, MEDIUM): "before we go back to mine" / "do not go back to mine yet"
+      // mention a return and keep the sibling — as this question and as an earlier open one.
+      it("control: a negated or deferred return keeps the sibling, in this question and in an earlier one", async () => {
+        const negated = [
+          "before we go back to mine, what is its rated input current?",
+          "do not go back to mine yet, what is its rated input current?",
+          // Codex r2 on #5464 (F1): deferred or cancelled AFTER the phrase.
+          "let's go back to mine later; what is its rated input current?",
+          "go back to mine? No, stay on this one. What is its rated input current?",
+          // Codex r3 on #5464 (F1), Mike B: the reversal in the NEXT clause cancels the return.
+          "go back to mine. No, stay on this one. What is its rated input current?",
+          // Codex r4 on #5464 (F1): a second separator does not hide the reversal.
+          "go back to mine.\nNo, stay on this one. What is its rated input current?",
+          "go back to mine... No, stay on this one. What is its rated input current?",
+        ];
+        for (const question of negated) {
+          const diagnostics: Record<string, unknown> = {};
+          const { client } = makeClient(rows());
+          const out = await retrieveNodeChunks(client, "t-1", question, scoped({ diagnostics, subjectQueries: ["What is the rated input current of the GS13N-20P2?"] }));
+          expect(out, question).toEqual([]);
+          expect(diagnostics.siblingOfRecordAsk, question).toEqual({ asked: ["GS13N-20P2"], record: "GS11N-20P2" });
+        }
+        for (const earlier of negated) {
+          const diagnostics: Record<string, unknown> = {};
+          const { client } = makeClient(rows());
+          const out = await retrieveNodeChunks(client, "t-1", "and its VT rated current?", scoped({ diagnostics, subjectQueries: [earlier, "What is the rated input current of the GS13N-20P2?"] }));
+          expect(out, earlier).toEqual([]);
+          expect(diagnostics.siblingOfRecordAsk, earlier).toEqual({ asked: ["GS13N-20P2"], record: "GS11N-20P2" });
+        }
+      });
+
+      it("a return is a start of the open run: it is never refused as out of reach", async () => {
+        const diagnostics: Record<string, unknown> = {};
+        const { client, calls } = makeClient(rows());
+        const out = await retrieveNodeChunks(client, "t-1", "ok back to mine, what frame size is it", scoped({ diagnostics, subjectQueries: ["what about the GS13N-20P2, same thing?"], subjectOutOfReach: true }));
+        expect(diagnostics.subjectOutOfReach).toBeUndefined();
+        expect(diagnostics.siblingOfRecordAsk).toBeUndefined();
+        expect(retrieved(calls)).toBeGreaterThan(0);
+        expect(out.map((c) => c.content)).toContain(ownColumn.content);
+      });
+
+      it("control: without a return, a model-less question past the end of the read is still out of reach", async () => {
+        const diagnostics: Record<string, unknown> = {};
+        const { client, calls } = makeClient(rows());
+        const out = await retrieveNodeChunks(client, "t-1", "what frame size is it", scoped({ diagnostics, subjectQueries: ["and its VT rated current?"], subjectOutOfReach: true }));
+        expect(out).toEqual([]);
+        expect(diagnostics.subjectOutOfReach).toBe(true);
+        expect(retrieved(calls)).toBe(0);
+      });
+    });
+
     // Codex r2 on #5451 (F3, MEDIUM): "GS13N - 20P2" (spaces around the hyphen, a tablet keyboard's
     // habit) is read by the identity reader (model-token.ts accepts whitespace around that hyphen)
     // but split by the generic number reader into GS13N + 20P2, so the refusal never fired and the

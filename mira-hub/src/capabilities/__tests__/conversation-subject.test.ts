@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { openQuestions, readSubject, SUBJECT_READ_STEPS } from "../conversation-subject";
+import { openQuestions, readSubject, returnsToRecord, SUBJECT_READ_STEPS } from "../conversation-subject";
 
 const refused = (question: string) => ({ question, answerStatus: "insufficient_evidence", basis: null });
 const fromManual = (question: string) => ({ question, answerStatus: "answered", basis: "workspace_evidence" });
@@ -74,5 +74,82 @@ describe("whether the start of the open run was seen", () => {
     expect(SUBJECT_READ_STEPS[0]).toBe(6);
     expect([...SUBJECT_READ_STEPS]).toEqual([...SUBJECT_READ_STEPS].sort((a, b) => a - b));
     expect(new Set(SUBJECT_READ_STEPS).size).toBe(SUBJECT_READ_STEPS.length);
+  });
+});
+
+// Mike 2026-11-13 (CV-101 benchmark D-A, option A): "back to mine" / "back to my drive" ends the
+// carry of a refused look-alike; typing nothing after a sibling still means the sibling.
+describe("whether a question returns to the technician's own unit", () => {
+  it.each([
+    "ok back to mine, what frame size is it",
+    "Back to my drive - what is the rated input current?",
+    "back to our unit now, what does ocd mean",
+    "right, back to my own PLC: how much clearance does it need",
+    "back to this project's drive, frame size?",
+    "and back to ours, supply voltage?",
+    "I'm not sure about that one, back to mine: what frame size is it",
+    "ok, now back to my drive",
+    "let's go back to mine, what is its rated input current?",
+    "go back to mine now. frame size?",
+    "Back to mine please - what is the rated output current",
+  ])("is a return: %s", (q) => {
+    expect(returnsToRecord(q)).toBe(true);
+  });
+
+  it.each([
+    "and its VT rated current?",
+    "what about the GS13N-20P2, same thing?",
+    "what about my other drive, same thing?",
+    "back to the question, what is its VT rated current?",
+    "the back of the drive has a fan",
+    "what does my drive need for supply voltage",
+    "go back to P00.04 and set it",
+    "",
+    // Codex r1 on #5464 (F1): a negated or deferred mention keeps the sibling subject.
+    "before we go back to mine, what is its rated input current?",
+    "do not go back to mine yet, what is its rated input current?",
+    "don't go back to my drive, what about its VT current",
+    "until we're back to mine, same thing?",
+    "if we go back to mine later, what would its frame size be",
+    // Codex r2 on #5464 (F1): a deferral or cancellation AFTER the phrase keeps the sibling too.
+    "let's go back to mine later; what is its rated input current?",
+    "go back to mine? No, stay on this one. What is its rated input current?",
+    "back to mine or stay on this one?",
+    "should we go back to my drive at some point, what's its VT current",
+    "ok back to mine?",
+    "I'd rather not go back to mine, what about its VT current",
+    // Fails closed: with no clause break the return is not plain, and the carry stays.
+    "ok back to mine what frame size is it",
+  ])("is not a return: %s", (q) => {
+    expect(returnsToRecord(q)).toBe(false);
+  });
+
+  // Codex r3 on #5464 (F1), Mike B 2026-11-13: a reversal opening the NEXT clause cancels the return.
+  it.each([
+    "go back to mine. No, stay on this one. What is its rated input current?",
+    "ok back to mine, actually wait, what about its VT current",
+    "back to mine. never mind, same thing?",
+    "let's go back to my drive, scratch that, what is its frame size",
+    "back to mine\nhold on, stay on this one",
+    // Codex r4 on #5464 (F1): consecutive separators leave an empty clause between them;
+    // the reversal is in the next NON-EMPTY clause.
+    "go back to mine.\nNo, stay on this one. What is its rated input current?",
+    "go back to mine... No, stay on this one. What is its rated input current?",
+    "ok back to mine -- actually wait, what about its VT current",
+  ])("is not a return (cancelled in the next clause): %s", (q) => {
+    expect(returnsToRecord(q)).toBe(false);
+  });
+
+  it.each([
+    "go back to mine. what is its VT current",
+    "ok back to mine, now what frame size is it",
+    "back to mine. not sure of the exact spec, what is its VT current",
+    "go back to mine...\nwhat is its VT current",
+  ])("is still a return (the next clause is a question, not a reversal): %s", (q) => {
+    expect(returnsToRecord(q)).toBe(true);
+  });
+
+  it("accepted residue: a reversal TWO clauses later is not detected (the sibling is re-named by typing it)", () => {
+    expect(returnsToRecord("go back to mine. what is its VT current. no wait, stay on this one")).toBe(true);
   });
 });
