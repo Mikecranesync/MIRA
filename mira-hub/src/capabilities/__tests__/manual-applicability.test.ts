@@ -321,6 +321,15 @@ describe("a file saved under its publication number (#5465)", () => {
       const cover = `Northfield ${asked} Drive\nHardware User Guide`;
       expect(kindOf(verdict(`Supply voltage for ${asked}?`, cover, filename))).toBe("cover-and-file-disagree");
     });
+  it("control: the same number written again without the suffix is still a model (Codex round 1, F1)", () => {
+    const BR200 = "Northfield 1234-BR200 Drive\nHardware User Guide";
+    for (const filename of ["1234-BR100-EN-P_1234-BR100.pdf", "1234-BR100_1234-BR100-EN-P.pdf"]) {
+      expect(kindOf(verdict("Supply voltage for 1234-BR200?", BR200, filename))).toBe("cover-and-file-disagree");
+      expect(verdict("Supply voltage for 1234-BR200?", GENERIC, filename)).toEqual({ admit: false, kind: "coverage-not-shown", asked: ["1234-BR200"], declared: [] });
+    }
+    // Twice WITH the suffix it is the document's number twice, and the cover decides.
+    expect(kindOf(verdict("Relay contact ratings on the 2080-LC20-20QWB?", SHEET, "2080-IN009B-EN-P_2080-IN009B-EN-P.pdf"))).toBe("answers");
+  });
   it("control: a sibling PRODUCT whose second group looks like a publication group still disagrees with the cover", () => {
     // "1234-BR100.pdf" has no language-and-format suffix: it is a product's name, not a document's.
     const BR200 = "Northfield 1234-BR200 Drive\nHardware User Guide";
