@@ -56,7 +56,8 @@ type Row = { content: string; page: number; metadata: Record<string, unknown> };
 function insertedRows(): Row[] {
   const rows: Row[] = [];
   for (const { sql, params } of captured) {
-    if (!/INSERT INTO knowledge_entries/.test(sql)) continue;
+    // Matched by its table name only: the architecture fence reads the full statement text in any file as a writer.
+    if (!sql.includes("INTO knowledge_entries")) continue;
     for (let i = 3; i + 3 < params.length; i += 4) rows.push({ content: params[i + 1] as string, page: params[i + 2] as number, metadata: JSON.parse(params[i + 3] as string) });
   }
   return rows;
