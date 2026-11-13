@@ -92,10 +92,12 @@ export function openQuestions(turns: readonly PriorTurn[]): string[] {
  * closed on purpose: "ok back to mine what frame size is it" with no comma is
  * NOT read as a return (the carry stays, the catalog number is the way back).
  *
- * Accepted residue, by design: a reversal in a LATER clause is not detected
- * ("go back to mine. No, stay on this one." reads as a return); the sibling is
- * re-named by typing it. A bare "my drive" is not a return (a follow-up still
- * about the sibling can say "my other drive"), nor is "back to the drive".
+ * A reversal that OPENS THE NEXT CLAUSE cancels the return ("go back to mine.
+ * No, stay on this one." — Codex r3 on #5464, Mike's B 2026-11-13). Accepted
+ * residue, by design: a reversal two or more clauses later is not detected;
+ * the sibling is re-named by typing it. A bare "my drive" is not a return (a
+ * follow-up still about the sibling can say "my other drive"), nor is "back to
+ * the drive".
  */
 const OWN_UNIT = "(?:drive|vfd|unit|plc|controller|relay|machine|conveyor|motor|inverter)";
 const RETURN_TO_OWN_UNIT = new RegExp(
@@ -109,6 +111,9 @@ const CONNECTIVES: ReadonlySet<string> = new Set([
   "yes", "yeah", "yep", "let's", "lets", "go", "please", "pls", "just",
 ]);
 
+/** A next clause that opens with one of these takes the return back. */
+const REVERSAL_OPENERS = /^(?:no|nope|nah|never ?mind|actually|wait|hold on|hang on|stay|scratch that|forget (?:that|it)|on second thought|cancel)\b/i;
+
 /** Clause boundaries: , ; : . ! ? a spaced dash, or a line break (kept, to read the terminator). */
 const CLAUSE_BOUNDARY = /(\s[-–—]\s|[,;:.!?]|\n)/;
 
@@ -119,7 +124,8 @@ export function returnsToRecord(question: string): boolean {
     if (!RETURN_TO_OWN_UNIT.test(clause)) continue;
     if ((parts[i + 1] ?? "").trim() === "?") return false;
     const rest = clause.replace(RETURN_TO_OWN_UNIT, " ").toLowerCase().split(/\s+/).filter(Boolean);
-    return rest.every((word) => CONNECTIVES.has(word));
+    if (!rest.every((word) => CONNECTIVES.has(word))) return false;
+    return !REVERSAL_OPENERS.test((parts[i + 2] ?? "").trim());
   }
   return false;
 }

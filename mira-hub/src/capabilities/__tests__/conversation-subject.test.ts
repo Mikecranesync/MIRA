@@ -124,7 +124,26 @@ describe("whether a question returns to the technician's own unit", () => {
     expect(returnsToRecord(q)).toBe(false);
   });
 
-  it("accepted residue: a reversal in a LATER clause is not detected (the sibling is re-named by typing it)", () => {
-    expect(returnsToRecord("go back to mine. No, stay on this one. What is its rated input current?")).toBe(true);
+  // Codex r3 on #5464 (F1), Mike B 2026-11-13: a reversal opening the NEXT clause cancels the return.
+  it.each([
+    "go back to mine. No, stay on this one. What is its rated input current?",
+    "ok back to mine, actually wait, what about its VT current",
+    "back to mine. never mind, same thing?",
+    "let's go back to my drive, scratch that, what is its frame size",
+    "back to mine\nhold on, stay on this one",
+  ])("is not a return (cancelled in the next clause): %s", (q) => {
+    expect(returnsToRecord(q)).toBe(false);
+  });
+
+  it.each([
+    "go back to mine. what is its VT current",
+    "ok back to mine, now what frame size is it",
+    "back to mine. not sure of the exact spec, what is its VT current",
+  ])("is still a return (the next clause is a question, not a reversal): %s", (q) => {
+    expect(returnsToRecord(q)).toBe(true);
+  });
+
+  it("accepted residue: a reversal TWO clauses later is not detected (the sibling is re-named by typing it)", () => {
+    expect(returnsToRecord("go back to mine. what is its VT current. no wait, stay on this one")).toBe(true);
   });
 });

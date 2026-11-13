@@ -239,6 +239,8 @@ describe("retrieveNodeChunks excludes another model's table passages when the re
           // Codex r2 on #5464 (F1): deferred or cancelled AFTER the phrase.
           "let's go back to mine later; what is its rated input current?",
           "go back to mine? No, stay on this one. What is its rated input current?",
+          // Codex r3 on #5464 (F1), Mike B: the reversal in the NEXT clause cancels the return.
+          "go back to mine. No, stay on this one. What is its rated input current?",
         ];
         for (const question of negated) {
           const diagnostics: Record<string, unknown> = {};
