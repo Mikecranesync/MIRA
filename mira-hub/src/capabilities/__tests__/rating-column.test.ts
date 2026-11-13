@@ -352,6 +352,33 @@ describe("WRONG-COLUMN rule (#5474 item 5) — a figure the page places in a col
       expect(ratingColumnFinding("What is the make rating at 120 V AC?", "The make rating is 2 A [1].", given)).toMatchObject({ rule: "wrong_column", figure: "2 A" });
     }
   });
+  it.each([
+    ["a refusal joined to the claim by because", "It should not be switched directly because the break rating at 120 V AC is 15 A [2].", "15 A"],
+    ["a refusal joined to the claim by since", "No, it can't since the make rating is 1.5 A at 120 V AC [2].", "1.5 A"],
+    ["only before the figure", "At 120 V AC the make rating is only 1.5 A [2].", "1.5 A"],
+    ["about before the figure", "At 120 V AC the make rating is about 1.5 A [2].", "1.5 A"],
+    ["up to before the figure", "At 120 V AC the output can break up to 2 A [2].", "2 A"],
+    ["bold column word in a bullet", "At 120 V AC:\n- **Break**: 2 A [2]", "2 A"],
+    ["bold figure", "At 120 V AC the **break** rating is **2 A** [2].", "2 A"],
+    ["two nouns after the column word", "At 120 V AC the continuous current rating is 15 A [2].", "15 A"],
+    ["column word after for", "At 120 V AC the rating is 2 A for break [2].", "2 A"],
+    ["column word in brackets after", "At 120 V AC the rating is 2 A (break) [2].", "2 A"],
+    ["verb form", "At 120 V AC it is rated to make 1.5 A and to break 15 A [2].", "1.5 A"],
+  ])("caught however the assignment is written: %s", (_name, answer, figure) => {
+    expect(ratingColumnFinding(RATING_QUESTION, answer, GIVEN)).toMatchObject({ rule: "wrong_column", figure });
+  });
+  it.each([
+    ["only before the figure", "At 120 V AC the make rating is only 15 A [2]."],
+    ["bold column word in a bullet", "At 120 V AC:\n- **Break**: 1.5 A [2]"],
+    ["two nouns after the column word", "At 120 V AC the continuous current rating is 2 A [2]."],
+    ["column word after for", "At 120 V AC the rating is 1.5 A for break [2]."],
+    ["a refusal joined to a right claim", "It should not be switched directly because the continuous rating at 120 V AC is 2 A [2]."],
+  ])("control, the same wording with the right column passes: %s", (_name, answer) => {
+    expect(ratingColumnFinding(RATING_QUESTION, answer, GIVEN)).toBeNull();
+  });
+  it("stated limit: a figure with no column word attached is not judged, though another figure in the sentence has one", () => {
+    expect(ratingColumnFinding(RATING_QUESTION, "At 120 V AC the make rating is 15 A and 2 A is the rating you can use [2].", GIVEN)).toBeNull();
+  });
   it("a load figure in the sentence does not excuse a misnamed rating beside it", () => {
     expect(ratingColumnFinding("What can the relay output carry?", "At 120 V AC, a 1 A steady-state load is below the 15 A continuous rating [2].", GIVEN)).toMatchObject({ rule: "wrong_column", figure: "15 A" });
   });

@@ -139,6 +139,25 @@ describe("writePdfChunksForNode writes a contact-ratings table's columns under t
     expect(split).toBeGreaterThan(1000);
   });
 
+  it("a right statement about another voltage than the question's passes on the whole page and on every chunking of it", () => {
+    // Codex round 2 on #5487: with the rows in different chunks, the first version fell back to the
+    // question's voltage and withheld a correct 240 V AC statement.
+    const stored = withColumnLines(p19.text, contactRatingColumns(p19.items)!);
+    const q = "What is the relay output's break rating at 120 V AC?";
+    const right = "At 240 V AC the break rating is 0.75 A [2].";
+    const wrong = "At 240 V AC the continuous rating is 7.5 A [2].";
+    let rowsApart = 0;
+    for (let n = 0; n <= 1400; n++) {
+      const chunks = chunkText(`${"x".repeat(n)}\n${stored}`);
+      const has = (label: string) => chunks.filter((c) => readColumnLines(c).rows.some((r) => r.label === label));
+      if (has("120 V AC").some((c) => !has("240 V AC").includes(c))) rowsApart++;
+      const passages = chunks.map((content) => ({ content, title: opts.filename, page: 19, cited: true }));
+      if (ratingColumnFinding(q, right, passages) !== null) throw new Error(`${n} characters above the table: the right 240 V AC statement was withheld`);
+      if (ratingColumnFinding(q, wrong, passages)?.rule !== "wrong_column") throw new Error(`${n} characters above the table: the wrong 240 V AC statement passed`);
+    }
+    expect(rowsApart).toBeGreaterThan(0);
+  });
+
   it.each([
     ["the layout read throws", () => { pdf.getPageThrows = true; }],
     ["the PDF proxy has no getPage", () => { pdf.withoutGetPage = true; }],

@@ -376,6 +376,28 @@ describe("#5474 item 5 — a page stored with its column lines: a figure named u
     expect(r.citations?.map((c) => c.page)).toContain(19);
   });
 
+  it.each([
+    // Codex rounds 1 and 2 on #5487: each of these correct answers was withheld by an earlier version.
+    ["a load set against a rating", "At 120 V AC, a 1.5 A steady-state load is below the 2 A continuous rating [2]."],
+    ["a load current set against a rating", "At 120 V AC a load current of 1.5 A continuously is below the 2 A continuous rating [2]."],
+    ["a warning that the contact cannot do something", "The relay cannot continuously carry 15 A at 120 V AC [2]."],
+    ["a rating recommended for another device", "At 120 V AC the continuous rating is 2 A [2], so use an interposing relay rated for 15 A continuous."],
+  ])("control: %s ships over the stored page", async (_name, answer) => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([P12, P19_STORED]);
+    const r = await ask(answer, { message: "What can the Micro820 relay output carry at 120 V AC?", sourceDocIds: [DOC_A] });
+    expect(r.status).toBe("answered");
+    expect(r.content).toContain(answer.slice(0, 40));
+  });
+
+  it("an explicit wrong assignment is replaced, also after a refusal in the same sentence", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([P12, P19_STORED]);
+    for (const answer of ["At 120 V AC the continuous rating is 15 A [2].", "It should not be switched directly because the break rating at 120 V AC is 15 A [2]."]) {
+      const r = await ask(answer, { message: "What can the Micro820 relay output carry at 120 V AC?", sourceDocIds: [DOC_A] });
+      expect(r.status).toBe("insufficient_evidence");
+      expect(r.content).not.toMatch(/\d\s?A\b/);
+    }
+  });
+
   it("control: the #5466 replacement over the stored page is unchanged, row and figures included", async () => {
     ragMock.retrieveNodeChunks.mockResolvedValue([P12, P19_STORED]);
     const r = await ask(SERVED);

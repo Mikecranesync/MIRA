@@ -136,17 +136,20 @@ const WORD: Record<RatingColumn, string> = {
   break: String.raw`break|breaking|breaks|interrupt(?:ing|s)?`,
   continuous: "continuous|continuously|steady[- ]state",
 };
-const NOUN = String.raw`(?:\s+(?:ratings?|figure|current|limit|capacity|value|duty))?`;
+const NOUN = String.raw`(?:\s+(?:ratings?|figure|current|limit|capacity|value|duty)){0,2}`;
 const AT_VOLTS = String.raw`(?:\s+(?:at|for|on)\s+(?:the\s+)?\d+(?:\.\d+)?\s?V(?:\s?(?:AC|DC))?(?:\s+row)?)?`;
-const LINK = String.raw`\s*(?:of|is|are|=|:|at|to|up to)?[\s(*•–-]*$`;
+const LINK = String.raw`\s*(?:of|is|are|=|:|at|to)?\s*(?:only|just|about|around|approximately|roughly|up to|limited to|a maximum of|at most)?[\s(•–-]*$`;
 const assigns = (column: RatingColumn, before: string, after: string) =>
   new RegExp(String.raw`\b(?:${WORD[column]})${NOUN}${AT_VOLTS}${LINK}`, "i").test(before)
-  || new RegExp(String.raw`^\s*\(?\s*(?:(?:is|as)\s+(?:the|its|a)\s+)?(?:${WORD[column]})\b`, "i").test(after);
+  || new RegExp(String.raw`^\s*\(?\s*(?:(?:is|as)\s+(?:the|its|a)\s+|(?:for|on|under)\s+(?:the\s+)?)?(?:${WORD[column]})\b`, "i").test(after);
 // The clause a figure stands in: the sentence between the commas, semicolons, "and" or "but" around it.
 const CLAUSE_EDGE_RE = /[,;]|\s(?:and|but)\s/gi;
 // A clause that denies before it reaches the figure assigns nothing to it ("cannot continuously
-// carry 15 A", "do not treat 15 A as the continuous rating").
+// carry 15 A", "do not treat 15 A as the continuous rating"). The denial must be in the figure's
+// own stretch of the sentence: a colon or a joining word ends its reach, so "it should not be
+// switched because the break rating is 15 A" still assigns.
 const DENIES_RE = /\b(?:not|never|cannot|neither|nor)\b|n[’']t\b/i;
+const DENIAL_ENDS_RE = /:|\b(?:because|since|as|so|which|when|while|where|though|although|given)\b/gi;
 // A figure the sentence gives as a load, not as a rating: "a 1.5 A steady-state load", "draws
 // 1.5 A", "a load current of 1.5 A".
 const LOAD_AFTER_RE = /^\s*(?:[A-Za-z-]+\s+){0,2}(?:loads?|coils?|motors?|lamps?|solenoids?|heaters?|draw)\b/i;
@@ -257,7 +260,9 @@ export function ratingColumnFinding(question: string, answer: string, passages: 
     (t) => t.passage.cited || (CONTACT_QUESTION_RE.test(question) && quoted.some((q) => COLUMNS.some((c) => placedIn(t.columns, c).includes(q.value)))),
   );
   if (judged.length === 0) return null;
-  for (const sentence of sentencesOf(answer)) {
+  for (const marked of sentencesOf(answer)) {
+    // Emphasis marks sit between a column word and its figure ("**Break**: 2 A") and say nothing.
+    const sentence = marked.replace(/[*_`]/g, "");
     const figures = [...sentence.matchAll(AMPERE_RE)];
     const edges = [...sentence.matchAll(CLAUSE_EDGE_RE)].map((m) => ({ at: m.index ?? 0, end: (m.index ?? 0) + m[0].length }));
     // The sentence's own voltage decides the row; the question's only when the sentence names none.
@@ -273,8 +278,8 @@ export function ratingColumnFinding(question: string, answer: string, passages: 
       const before = sentence.slice(Math.max(clauseFrom, k > 0 ? (figures[k - 1].index ?? 0) + figures[k - 1][0].length : 0), at);
       const after = sentence.slice(end, Math.min(clauseTo, k + 1 < figures.length ? (figures[k + 1].index ?? sentence.length) : sentence.length));
       if (LOAD_AFTER_RE.test(sentence.slice(end)) || LOAD_BEFORE_RE.test(sentence.slice(0, at))) continue;
-      // A denial reaches the figure only from inside its own clause, and not across a colon.
-      const denyFrom = Math.max(clauseFrom, sentence.lastIndexOf(":", at - 1) + 1);
+      // A denial reaches the figure only from inside its own clause, and not across a colon or a joining word.
+      const denyFrom = Math.max(clauseFrom, ...[...sentence.slice(0, at).matchAll(DENIAL_ENDS_RE)].map((m) => (m.index ?? 0) + m[0].length));
       if (DENIES_RE.test(sentence.slice(denyFrom, at)) || OTHER_DEVICE_RE.test(sentence.slice(clauseFrom, clauseTo))) continue;
       // Several column words ahead of the figure are the head of a list ("Make / break /
       // continuous: 15 A / 1.5 A / 2 A"), not an assignment of this figure.
