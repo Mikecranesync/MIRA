@@ -144,12 +144,12 @@ const FOR_LOAD = String.raw`(?:\s+(?:for|with)\s+(?:a|an|the|your)\s+[^,;:]{0,30
 // What may stand between the column word and its figure. A limit put as a denial ("is not more
 // than", "cannot exceed") still assigns the figure to the column.
 const EXCEEDS = String.raw`(?:cannot|can not|can[’']t|does not|doesn[’']t|do not|don[’']t|never)\s+(?:exceeds?|go above|go over|pass)`;
-const LINK = String.raw`\s*(?:of|is|are|=|:|at|to|${EXCEEDS})?\s*(?:only|just|about|around|approximately|roughly|up to|limited to|a maximum of|at most|not more than|no more than|no higher than|not above|not over)?[\s(•–-]*$`;
+const LINK = String.raw`\s*(?:\((?:max|maximum|min|minimum|typ|typical|nominal)\.?\)\s*)?(?:of|is|are|=|:|at|to|${EXCEEDS})?\s*(?:only|just|about|around|approximately|roughly|up to|limited to|a maximum of|at most|not more than|no more than|no higher than|not above|not over)?[\s(•–—|-]*$`;
 /** Where `column`'s word is attached ahead of the figure (its index in `before`), or -1. */
 const assignedBefore = (column: RatingColumn, before: string) => new RegExp(String.raw`\b(?:${WORD[column]})${NOUN}${AT_VOLTS}${FOR_LOAD}${LINK}`, "i").exec(before)?.index ?? -1;
 /** The end of `column`'s word attached behind the figure (its index in `after`), or -1. */
 const assignedAfter = (column: RatingColumn, after: string) => {
-  const m = new RegExp(String.raw`^\s*\(?\s*(?:(?:rating|figure|limit|current)\s+)?(?:(?:is|as)\s+(?:the|its|a)\s+|(?:for|on|under)\s+(?:the\s+)?)?(?:${WORD[column]})\b`, "i").exec(after);
+  const m = new RegExp(String.raw`^\s*\(?\s*(?:(?:rating|figure|limit|current|rated)\s+)?(?:(?:is|as)\s+(?:the|its|a)\s+|(?:for|on|under|at)\s+(?:the\s+)?)?(?:${WORD[column]})\b`, "i").exec(after);
   return m ? m[0].length : -1;
 };
 // Every column word in a stretch of text, in the order written.
@@ -157,6 +157,8 @@ const columnWordsIn = (text: string): RatingColumn[] =>
   [...text.matchAll(new RegExp(String.raw`\b(?:(${WORD.make})|(${WORD.break})|(${WORD.continuous}))\b`, "gi"))].map((m) => (m[1] ? "make" : m[2] ? "break" : "continuous"));
 // Between two figures of one list: "15 A / 1.5 A", "15 A, 1.5 A and 2 A", cells of a table row.
 const LIST_GAP_RE = /^\s*(?:,|\/|\||&|and|,\s*and)?\s*$/i;
+// A head behind its list opens "are the" / "is the".
+const TAIL_HEAD_RE = /^\s*(?:are|is)\s+(?:the|its)\s/i;
 // The clause a figure stands in: the sentence between the commas, semicolons, "and" or "but" around it.
 const CLAUSE_EDGE_RE = /[,;]|\s(?:and|but)\s/gi;
 // A clause that denies before it reaches the figure assigns nothing to it ("cannot continuously
@@ -297,16 +299,20 @@ export function ratingColumnFinding(question: string, answer: string, passages: 
       // "Make / break / continuous: 15 A / 1.5 A / 2 A", a table row under its head row. The
       // figures take the head's columns in the order written.
       const head = columnWordsIn(sentence.slice(k > 0 ? endOf(k - 1) : 0, at));
-      if (head.length > 1) {
-        const run = [k];
-        while (run.length < figures.length - k && LIST_GAP_RE.test(sentence.slice(endOf(run[run.length - 1]), startOf(run[run.length - 1] + 1)))) run.push(run[run.length - 1] + 1);
-        if (run.length > 1 && run.length <= head.length) {
-          run.forEach((f, n) => {
-            named[f] = [head[n]];
-            listed.add(f);
-          });
-          continue;
-        }
+      const run = [k];
+      while (run.length < figures.length - k && LIST_GAP_RE.test(sentence.slice(endOf(run[run.length - 1]), startOf(run[run.length - 1] + 1)))) run.push(run[run.length - 1] + 1);
+      // The head may also stand behind the list: "2 A and 15 A are the make and continuous
+      // ratings". Then it must name exactly as many columns as the list has figures.
+      const last = run[run.length - 1];
+      const tail = sentence.slice(endOf(last), last + 1 < figures.length ? startOf(last + 1) : sentence.length);
+      const behind = TAIL_HEAD_RE.test(tail) ? columnWordsIn(tail) : [];
+      const order = head.length > 1 && run.length <= head.length ? head : behind.length === run.length ? behind : null;
+      if (run.length > 1 && order !== null) {
+        run.forEach((f, n) => {
+          named[f] = [order[n]];
+          listed.add(f);
+        });
+        continue;
       }
       const clauseFrom = Math.max(0, ...edges.filter((e) => e.end <= at).map((e) => e.end));
       const clauseTo = Math.min(sentence.length, ...edges.filter((e) => e.at >= end).map((e) => e.at));

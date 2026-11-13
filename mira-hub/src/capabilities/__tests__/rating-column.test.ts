@@ -414,6 +414,28 @@ describe("WRONG-COLUMN rule (#5474 item 5) — a figure the page places in a col
     expect(ratingColumnFinding(RATING_QUESTION, "At 120 V AC, the make rating for a 3 A coil load is 1.5 A [2].", GIVEN)).toMatchObject({ rule: "wrong_column", figure: "1.5 A" });
     expect(ratingColumnFinding(RATING_QUESTION, "At 120 V AC, the make rating for a 3 A coil load is 15 A [2].", GIVEN)).toBeNull();
   });
+  it.each([
+    ["an em dash between word and figure", "Break — 15 A at 120 V AC [2].", "15 A"],
+    ["a bracketed max between word and figure", "Break (max.) 15 A at 120 V AC [2].", "15 A"],
+    ["a two-column table, one column word a row", "| Column | Rating |\n|---|---|\n| Break | 15 A |\n| Make | 1.5 A | [2]", "15 A"],
+    ["a three-row table with no head row", "| Make | 1.5 A |\n| Break | 15 A |\n| Continuous | 2 A | [2]", "1.5 A"],
+    ["rated between figure and word", "The relay is 2 A rated break at 120 V AC [2].", "2 A"],
+    ["at between figure and word", "At 120 V AC the contact can carry 15 A at break duty [2].", "15 A"],
+    ["a respectively list with its head behind", "At 120 V AC, 2 A and 15 A are the make and continuous ratings respectively [2].", "2 A"],
+  ])("caught (third safety review): %s", (_name, answer, figure) => {
+    expect(ratingColumnFinding(RATING_QUESTION, answer, GIVEN)).toMatchObject({ rule: "wrong_column", figure });
+  });
+  it.each([
+    ["an em dash", "Make — 15 A at 120 V AC [2]."],
+    ["a bracketed max", "Break (max.) 1.5 A at 120 V AC [2]."],
+    ["a two-column table", "| Column | Rating |\n|---|---|\n| Make | 15 A |\n| Break | 1.5 A |\n| Continuous | 2 A | [2]"],
+    ["rated between figure and word", "The relay is 15 A rated make at 120 V AC [2]."],
+    ["at between figure and word", "At 120 V AC the contact can carry 2 A at continuous duty [2]."],
+    ["a respectively list with its head behind", "At 120 V AC, 15 A and 2 A are the make and continuous ratings respectively [2]."],
+    ["figures that are above two ratings", "At 120 V AC, 5 A and 10 A are above the break and continuous ratings [2]."],
+  ])("passes with the right column (third safety review): %s", (_name, answer) => {
+    expect(ratingColumnFinding(RATING_QUESTION, answer, GIVEN)).toBeNull();
+  });
   it("a list longer than its head is not given the head's columns by position", () => {
     // Three figures under two column words: the head cannot say which figure is which, so only
     // the attached word counts ("make: 15 A"), and that is right.
