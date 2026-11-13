@@ -433,6 +433,8 @@ describe("WRONG-COLUMN rule (#5474 item 5) — a figure the page places in a col
     ["at between figure and word", "At 120 V AC the contact can carry 2 A at continuous duty [2]."],
     ["a respectively list with its head behind", "At 120 V AC, 15 A and 2 A are the make and continuous ratings respectively [2]."],
     ["figures that are above two ratings", "At 120 V AC, 5 A and 10 A are above the break and continuous ratings [2]."],
+    ["a head behind that names fewer columns than the list has figures", "At 120 V AC, 1.5 A and 2 A are the break and carry limits [2]."],
+    ["column words behind a list that are not its head", "At 120 V AC, 15 A and 2 A are both more than the contacts can break or carry continuously [2]."],
   ])("passes with the right column (third safety review): %s", (_name, answer) => {
     expect(ratingColumnFinding(RATING_QUESTION, answer, GIVEN)).toBeNull();
   });
