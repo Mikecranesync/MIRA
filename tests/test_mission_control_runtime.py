@@ -88,7 +88,7 @@ class NoReports:
         return []
 
 
-CARD = {"kind": "PR", "state": "OPEN", "status": "In progress", "number": 13}
+CARD = {"kind": "PR", "state": "OPEN", "status": "In progress", "number": 13, "repo": runtime.REPO}
 
 
 def test_candidates_refuse_a_board_that_never_loaded_failed_or_expired():
@@ -198,3 +198,36 @@ def test_a_transport_failure_during_the_poll_marks_evidence_errored():  # r5 F15
     answers[COMMENTS_URL] = (200, {}, [])  # control: a complete poll clears it
     runtime.poll_once(h, get_ok, post=None, state={})
     assert h.evidence["error"] is None
+
+
+def test_any_transport_failure_in_the_iteration_marks_evidence_errored():  # r6 F15
+    import httpx
+
+    for failing in (EVENTS_URL, MAIN_URL):
+        answers = {
+            EVENTS_URL: (200, {}, []),
+            COMMENTS_URL: (200, {}, []),
+            MAIN_URL: (200, {}, {"sha": "m" * 40}),
+        }
+        h, get_ok = _handler(answers)
+        h.evidence = {"rows": [{"number": 13, "cells": {}}], "envs": {}, "at": "x", "error": None}
+
+        def get(url, headers=None, failing=failing):
+            if url == failing:
+                raise httpx.ConnectError("refused")
+            return get_ok(url, headers)
+
+        runtime.poll_once(h, get, post=None, state={})
+        assert "ConnectError" in (h.evidence["error"] or ""), failing
+        assert h.evidence["at"] == "x" and h.evidence["rows"][0]["number"] == 13, failing
+        runtime.poll_once(h, get_ok, post=None, state={})  # control: a clean iteration clears
+        assert h.evidence["error"] is None, failing
+
+
+def test_board_cards_from_other_repositories_are_never_candidates():  # r6 F17
+    ours = dict(CARD, repo=runtime.REPO)
+    foreign = dict(CARD, repo="other/repository", number=13)
+    out = runtime.candidates(H(Snap([foreign, ours], at=NOW)), NoReports(), now=NOW, max_age=600)
+    assert out == [13]  # once, from our repo
+    out = runtime.candidates(H(Snap([foreign], at=NOW)), NoReports(), now=NOW, max_age=600)
+    assert out == []  # a foreign card with the same number is not PR #13 in MC_REPO

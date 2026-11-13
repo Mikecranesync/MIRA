@@ -82,6 +82,7 @@ def candidates(handler, store, now: Optional[dt.datetime] = None, max_age: int =
     for it in snap.items:
         if (
             it.get("kind") == "PR"
+            and it.get("repo") == REPO  # a card from another repo is not a PR number here
             and it.get("state") == "OPEN"
             and it["status"].lower() == "in progress"
         ):
@@ -116,20 +117,23 @@ def refresh_evidence(handler, evidence, post, get, cands, envs, trusted, by_item
 
 
 def poll_once(handler, get, post, state: dict) -> None:
-    """One poll iteration. A failed report read or an unavailable candidate list stamps the
-    kept evidence with the error instead of refreshing it, so the model reads NO-GO until a
-    complete read succeeds (the stamp is renewed every failing iteration)."""
+    """One poll iteration. Any failure that aborts it (HTTP status, transport, board) stamps
+    the kept evidence with the error instead of refreshing it, so the model reads NO-GO until
+    a complete iteration succeeds (the stamp is renewed every failing iteration)."""
+    try:
+        _poll_once(handler, get, post, state)
+    except Exception as exc:
+        log.warning("poll iteration failed: %s", exc)
+        reason = str(exc) if isinstance(exc, RuntimeError) else f"{type(exc).__name__}: {exc}"
+        handler.evidence = dict(handler.evidence or {}, error=f"poll failed: {reason}")
+
+
+def _poll_once(handler, get, post, state: dict) -> None:
     store, poll, evidence = handler.store, handler.poll_mod, handler.evidence_mod
     trusted = handler.trusted_authors()
     poll.poll_events(get, REPO, store, state)
-    try:
-        poll.poll_reports(get, REPO, COORD_ISSUE, store, trusted)
-        cands = candidates(handler, store)
-    except Exception as exc:  # any failure (HTTP status, transport, board): not current
-        log.warning("candidates unavailable: %s", exc)
-        reason = str(exc) if isinstance(exc, RuntimeError) else f"{type(exc).__name__}: {exc}"
-        handler.evidence = dict(handler.evidence or {}, error=f"report poll failed: {reason}")
-        return
+    poll.poll_reports(get, REPO, COORD_ISSUE, store, trusted)
+    cands = candidates(handler, store)
     handler.last_poll = _now_iso()
     by_item: dict[int, list[dict]] = {}
     for r in reversed(store.reports()):  # oldest first so the newest ends up last
