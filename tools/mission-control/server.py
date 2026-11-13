@@ -209,10 +209,15 @@ class Handler(BaseHTTPRequestHandler):
         delivery = self.headers.get("X-GitHub-Delivery") or f"nodelivery-{time.time_ns()}"
         now = _now_iso()
         new = self.store.add_event(webhook.normalise(event, delivery, payload, now))  # type: ignore[attr-defined]
-        if event == "issue_comment":
+        if event == "issue_comment" and new:  # a redelivery changes nothing, reports included
+            cid = (payload.get("comment") or {}).get("id")
             row = webhook.comment_report(payload, trusted_authors(), reports.parse)
-            if row:
+            if payload.get("action") == "deleted" and cid:
+                self.store.delete_report(int(cid), now)  # type: ignore[attr-defined]
+            elif row:
                 self.store.put_report(row)  # type: ignore[attr-defined]
+            elif payload.get("action") == "edited" and cid:  # the marker was edited away
+                self.store.delete_report(int(cid), now)  # type: ignore[attr-defined]
         Handler.last_webhook = now
         return "stored" if new else "duplicate"
 

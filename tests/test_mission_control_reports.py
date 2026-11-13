@@ -116,3 +116,12 @@ def test_crlf_bodies_parse_the_same():
 def test_updated_line_is_required():
     body = "\n".join(ln for ln in GOOD.splitlines() if not ln.startswith("Updated:")) + "\n"
     assert reports.parse(body) is None
+
+
+def test_a_marker_that_only_appears_inside_details_is_not_a_current_report():  # F8 (Codex r1)
+    body = (
+        "Current prose: nothing new since yesterday.\n\n<details><summary>history</summary>\n\n"
+        "[DELIVERY-UPDATE: BRAVO-CODEX]\nUpdated: 2026-11-08T15:12:20Z\nState: COMPLETE\n\n</details>\n"
+    )
+    assert reports.parse(body) is None
+    assert reports.parse(PROSE_WITH_NESTED_HISTORY) is not None  # control: top-level marker

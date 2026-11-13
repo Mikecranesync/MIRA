@@ -5,6 +5,7 @@ post/get are injected: no network. Only owner-account ledger comments count.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import sys
 from pathlib import Path
@@ -25,6 +26,7 @@ evidence = _load("mission_control_evidence", MC / "evidence.py")
 HEAD = "0123456789abcdef0123456789abcdef01234567"
 MERGE = "aaaa456789abcdef0123456789abcdef01234567"
 OTHER = "fedcba9876543210fedcba9876543210fedcba98"
+BODY_SHA = hashlib.sha256(b"").hexdigest()  # pr() fixtures carry an empty body
 LEDGER = (
     "[CODEX-ADVERSARIAL-REVIEW]\n\n```\nreviewed_sha: {sha}\nreviewed_body_sha256: {b}\nbase_sha: x\n"
     "status: GREEN\nreview_iteration: 1\n\nBLOCKER: 0\nHIGH: 0\nMEDIUM: 0\nLOW: 0\nFALSE_POSITIVE: 0\n```\n"
@@ -39,8 +41,9 @@ def gql(prs: dict):
     return post
 
 
-def pr(head=HEAD, state="OPEN", merge=None, rollup="SUCCESS"):
+def pr(head=HEAD, state="OPEN", merge=None, rollup="SUCCESS", body=""):
     return {
+        "body": body,
         "number": 12,
         "title": "t",
         "url": "https://github.com/o/r/pull/12",
@@ -73,12 +76,12 @@ def test_gather_builds_a_tested_and_reviewed_row_from_owner_comments():
                 [
                     {
                         "user": {"login": "owner"},
-                        "body": LEDGER.format(sha=HEAD, b="a" * 64),
+                        "body": LEDGER.format(sha=HEAD, b=BODY_SHA),
                         "html_url": "u1",
                     },
                     {
                         "user": {"login": "stranger"},
-                        "body": LEDGER.format(sha=OTHER, b="a" * 64),
+                        "body": LEDGER.format(sha=OTHER, b=BODY_SHA),
                         "html_url": "u2",
                     },
                 ],
@@ -113,7 +116,7 @@ def test_stranger_ledger_never_counts():
                 [
                     {
                         "user": {"login": "stranger"},
-                        "body": LEDGER.format(sha=HEAD, b="a" * 64),
+                        "body": LEDGER.format(sha=HEAD, b=BODY_SHA),
                         "html_url": "u2",
                     }
                 ],
@@ -166,7 +169,7 @@ def test_env_versions_and_ancestry_feed_deployed_cells():
 
 
 def test_field_verified_marker_from_owner_only():
-    body = f"[FIELD-VERIFIED]\nproduction sha {MERGE} checked on the Pixel"
+    body = f"[FIELD-VERIFIED]\nproduction sha {OTHER} checked on the Pixel"
     get = FakeGet(
         {
             comments_url(12): (
@@ -204,3 +207,72 @@ def test_gather_survives_graphql_failure_and_reports_it():
 
     out = evidence.gather(post, FakeGet({}), "o/r", [12], envs={}, trusted=("owner",))
     assert out["rows"] == [] and "github down" in out["error"]
+
+
+# --- Codex round 1 (PR #5455) findings -------------------------------------------------
+
+
+def page_url(n, page):
+    return f"https://api.github.com/repos/o/r/issues/{n}/comments?per_page=100&page={page}"
+
+
+def test_truncated_comment_pages_never_certify_reviewed():  # F4
+    first = [
+        {"user": {"login": "owner"}, "body": LEDGER.format(sha=HEAD, b=BODY_SHA), "html_url": "u"}
+    ]
+    first += [{"user": {"login": "x"}, "body": "chatter", "html_url": "u"}] * 99  # a full page
+    get = FakeGet({page_url(12, 1): (200, {}, first), page_url(12, 2): (502, {}, "bad gateway")})
+    out = evidence.gather(gql({12: pr()}), get, "o/r", [12], envs={}, trusted=("owner",))
+    row = out["rows"][0]
+    assert not row["cells"]["REVIEWED"]["on"] and "page 2" in row["error"]
+    get.answers[page_url(12, 2)] = (200, {}, [])  # control: complete read
+    out = evidence.gather(gql({12: pr()}), get, "o/r", [12], envs={}, trusted=("owner",))
+    assert out["rows"][0]["cells"]["REVIEWED"]["on"] and not out["rows"][0].get("error")
+
+
+def test_partial_graphql_failure_keeps_the_unresolved_candidate_as_an_unproven_row():  # F4
+    def post(body):
+        return {
+            "data": {"repository": {"pr12": pr(), "pr13": None}},
+            "errors": [
+                {"path": ["repository", "pr13"], "type": "RATE_LIMITED", "message": "slow down"}
+            ],
+        }
+
+    get = FakeGet({page_url(12, 1): (200, {}, [])})
+    out = evidence.gather(post, get, "o/r", [12, 13], envs={}, trusted=("owner",))
+    assert [r["number"] for r in out["rows"]] == [12, 13]
+    assert "RATE_LIMITED" in out["rows"][1]["error"]
+    assert not any(c["on"] for c in out["rows"][1]["cells"].values())
+
+
+def test_a_candidate_that_is_an_issue_not_a_pr_is_skipped_not_flagged():  # F4 control
+    def post(body):
+        return {
+            "data": {"repository": {"pr12": pr(), "pr5232": None}},
+            "errors": [{"path": ["repository", "pr5232"], "type": "NOT_FOUND", "message": "no"}],
+        }
+
+    get = FakeGet({page_url(12, 1): (200, {}, [])})
+    out = evidence.gather(post, get, "o/r", [12, 5232], envs={}, trusted=("owner",))
+    assert [r["number"] for r in out["rows"]] == [12]
+
+
+def test_markers_carry_comment_order_and_followup_issues():  # F3
+    comments = [
+        {"user": {"login": "x"}, "body": "chatter first", "html_url": "u0"},
+        {"user": {"login": "owner"}, "body": LEDGER.format(sha=HEAD, b=BODY_SHA), "html_url": "u1"},
+        {
+            "user": {"login": "owner"},
+            "body": f"[REVIEW-FOLLOWUPS]\nreviewed_sha: {HEAD}\n#9",
+            "html_url": "u2",
+        },
+    ]
+    ev = evidence.markers(comments, ("owner",))
+    assert ev["ledgers"][0]["seq"] == 1
+    assert ev["followups"] == [{"sha": HEAD, "seq": 2, "issues": ["#9"]}]
+
+
+def test_pr_body_hash_rides_on_the_item():  # F3
+    out = evidence.fetch_prs(gql({12: pr(body="hello")}), "o/r", [12])
+    assert out[12]["body_sha256"] == hashlib.sha256(b"hello").hexdigest()

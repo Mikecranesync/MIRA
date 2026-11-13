@@ -61,14 +61,15 @@ def poll_events(get: Getter, repo: str, store, state: dict) -> int:
     if state.get("etag"):
         headers["If-None-Match"] = state["etag"]
     status, resp_headers, body = get(f"{API}/repos/{repo}/events?per_page=100", headers=headers)
-    if "X-Poll-Interval" in resp_headers:
-        state["interval"] = int(resp_headers["X-Poll-Interval"])
+    hdrs = {str(k).lower(): v for k, v in dict(resp_headers or {}).items()}  # httpx lowercases
+    if "x-poll-interval" in hdrs:
+        state["interval"] = int(hdrs["x-poll-interval"])
     if status == 304:
         return 0
     if status != 200 or not isinstance(body, list):
         log.warning("events poll failed: %s %s", status, body)
         return 0
-    state["etag"] = resp_headers.get("ETag")
+    state["etag"] = hdrs.get("etag")
     added = 0
     for ev in body:
         if store.add_event(normalise_rest_event(ev)):
@@ -77,19 +78,32 @@ def poll_events(get: Getter, repo: str, store, state: dict) -> int:
 
 
 def poll_reports(get: Getter, repo: str, issue: int, store, trusted: tuple[str, ...]) -> int:
-    """Read every comment on the coordination issue; store the DELIVERY-UPDATE ones."""
-    stored, page = 0, 1
+    """Read every comment on the coordination issue; store the DELIVERY-UPDATE ones.
+
+    Only a complete, successful read reconciles: reports from this issue whose comment is
+    gone, or no longer carries the marker, are removed (tombstoned). A failed page changes
+    nothing.
+    """
+    stored, page, seen = 0, 1, []
     while True:
         url = f"{API}/repos/{repo}/issues/{issue}/comments?per_page=100&page={page}"
         status, _h, body = get(url, headers={"Accept": "application/vnd.github+json"})
         if status != 200 or not isinstance(body, list):
             log.warning("comments poll failed: %s %s", status, body)
             return stored
-        for c in body:
-            row = webhook.comment_report({"comment": c}, trusted, reports.parse)
-            if row:
-                store.put_report(row)
-                stored += 1
+        seen.extend(body)
         if len(body) < 100:
-            return stored
+            break
         page += 1
+    present = set()
+    for c in seen:
+        row = webhook.comment_report({"comment": c}, trusted, reports.parse)
+        if row:
+            present.add(row["id"])
+            if store.put_report(row):
+                stored += 1
+    marker = f"/issues/{issue}#issuecomment-"
+    for r in store.reports():
+        if marker in r["url"] and r["id"] not in present:
+            store.delete_report(r["id"])
+    return stored

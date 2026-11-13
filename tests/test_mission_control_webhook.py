@@ -178,3 +178,73 @@ def test_delivery_update_from_a_non_owner_is_untrusted(running, monkeypatch):
     body = json.dumps(payload).encode()
     assert post(port, "/webhook/github", body, hdrs(body, "dlv-10", "issue_comment"))[0] == 202
     assert st.reports()[0]["trusted"] == 0
+
+
+# --- Codex round 1 (PR #5455) findings -------------------------------------------------
+
+
+def comment_payload(cid, body, action="created", updated="2026-11-12T23:00:00Z"):
+    return {
+        "action": action,
+        "issue": {"number": 5232, "html_url": "https://github.com/o/r/issues/5232"},
+        "comment": {
+            "id": cid,
+            "html_url": f"https://github.com/o/r/issues/5232#issuecomment-{cid}",
+            "updated_at": updated,
+            "user": {"login": "owner"},
+            "body": body,
+        },
+        "repository": {"full_name": "o/r"},
+        "sender": {"login": "owner"},
+    }
+
+
+def test_replayed_or_late_deliveries_never_revert_a_newer_report(running):  # F5
+    port, st = running
+    old = "[DELIVERY-UPDATE: BRAVO-CLAUDE]\nUpdated: x\nState: COMPLETE\n"
+    new = "[DELIVERY-UPDATE: BRAVO-CLAUDE]\nUpdated: y\nState: BLOCKED\n"
+    b_new = json.dumps(comment_payload(77, new, "edited", "2026-11-12T23:00:00Z")).encode()
+    b_old = json.dumps(comment_payload(77, old, "created", "2026-11-12T22:00:00Z")).encode()
+    assert post(port, "/webhook/github", b_new, hdrs(b_new, "dlv-new", "issue_comment"))[0] == 202
+    assert post(port, "/webhook/github", b_old, hdrs(b_old, "dlv-old", "issue_comment"))[0] == 202
+    assert st.reports()[0]["parsed"]["state"] == "BLOCKED"  # late delivery ignored
+    assert post(port, "/webhook/github", b_new, hdrs(b_new, "dlv-new", "issue_comment"))[0] == 202
+    assert st.reports()[0]["parsed"]["state"] == "BLOCKED"  # replay is a no-op
+
+
+def test_deleted_comment_removes_its_report_and_cannot_be_replayed_back(running):  # F9
+    port, st = running
+    body = "[DELIVERY-UPDATE: BRAVO-CLAUDE]\nUpdated: x\nState: ACTIVE\n"
+    b1 = json.dumps(comment_payload(77, body)).encode()
+    post(port, "/webhook/github", b1, hdrs(b1, "dlv-1", "issue_comment"))
+    assert st.counts()["reports"] == 1  # precondition
+    b2 = json.dumps(comment_payload(77, body, "deleted", "2026-11-12T23:30:00Z")).encode()
+    assert post(port, "/webhook/github", b2, hdrs(b2, "dlv-2", "issue_comment"))[0] == 202
+    assert st.reports() == []
+    b3 = json.dumps(comment_payload(77, body, "created", "2026-11-12T23:40:00Z")).encode()
+    post(port, "/webhook/github", b3, hdrs(b3, "dlv-3", "issue_comment"))
+    assert st.reports() == []  # an old delivery arriving late cannot resurrect it
+
+
+def test_editing_the_marker_away_removes_the_report(running):  # F9
+    port, st = running
+    body = "[DELIVERY-UPDATE: BRAVO-CLAUDE]\nUpdated: x\nState: ACTIVE\n"
+    b1 = json.dumps(comment_payload(77, body)).encode()
+    post(port, "/webhook/github", b1, hdrs(b1, "dlv-1", "issue_comment"))
+    b2 = json.dumps(comment_payload(77, "withdrawn", "edited", "2026-11-12T23:30:00Z")).encode()
+    post(port, "/webhook/github", b2, hdrs(b2, "dlv-2", "issue_comment"))
+    assert st.reports() == []
+
+
+def test_check_events_keep_their_conclusion_for_the_ci_tile():  # F7
+    payload = {
+        "action": "completed",
+        "workflow_run": {"id": 5, "conclusion": "success", "status": "completed"},
+    }
+    row = webhook.normalise("workflow_run", "d", payload, "t")
+    assert row["payload"]["conclusion"] == "success" and row["payload"]["status"] == "completed"
+    cs = {
+        "action": "completed",
+        "check_suite": {"id": 6, "conclusion": "failure", "status": "completed"},
+    }
+    assert webhook.normalise("check_suite", "d", cs, "t")["payload"]["conclusion"] == "failure"

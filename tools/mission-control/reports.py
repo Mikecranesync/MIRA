@@ -36,12 +36,18 @@ FIELDS = {
 
 
 def _top_block(body: str) -> list[str]:
-    """Lines of the first marker block, stopped at the first <details> or next marker."""
+    """Lines of the first marker block, stopped at the first <details> or next marker.
+
+    A marker that first appears after a <details> tag is history, not a report: nothing
+    nested in a collapsed block may ever surface as the current state.
+    """
     lines = body.replace("\r\n", "\n").split("\n")
     out: list[str] = []
     started = False
     for ln in lines:
         if not started:
+            if ln.lstrip().startswith("<details"):
+                return []
             if MARKER_RE.match(ln.strip()):
                 started = True
                 out.append(ln.strip())

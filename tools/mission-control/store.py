@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS reports (
   id INTEGER PRIMARY KEY, lane TEXT NOT NULL, author TEXT NOT NULL, trusted INTEGER NOT NULL,
   updated_at TEXT NOT NULL, url TEXT NOT NULL, raw TEXT NOT NULL, parsed_json TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS report_tombstones (id INTEGER PRIMARY KEY, deleted_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS env_versions (
   env TEXT PRIMARY KEY, git_sha TEXT, built_at TEXT, ok INTEGER NOT NULL, fetched_at TEXT NOT NULL
 );
@@ -76,10 +77,18 @@ class Store:
             out.append(d)
         return out
 
-    def put_report(self, row: dict) -> None:
+    def put_report(self, row: dict) -> bool:
+        """Upsert by comment id; False when an equal-or-newer version or a tombstone exists."""
         with self._lock:
-            self._db.execute(
-                "INSERT OR REPLACE INTO reports VALUES (?,?,?,?,?,?,?,?)",
+            if self._db.execute(
+                "SELECT 1 FROM report_tombstones WHERE id = ?", (row["id"],)
+            ).fetchone():
+                return False
+            cur = self._db.execute(
+                "INSERT INTO reports VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET "
+                "lane=excluded.lane, author=excluded.author, trusted=excluded.trusted, "
+                "updated_at=excluded.updated_at, url=excluded.url, raw=excluded.raw, "
+                "parsed_json=excluded.parsed_json WHERE excluded.updated_at > reports.updated_at",
                 (
                     row["id"],
                     row["lane"],
@@ -90,6 +99,16 @@ class Store:
                     row["raw"],
                     json.dumps(row["parsed"], sort_keys=True),
                 ),
+            )
+            self._db.commit()
+            return cur.rowcount == 1
+
+    def delete_report(self, comment_id: int, deleted_at: str = "") -> None:
+        """Remove a withdrawn/deleted report and tombstone its id against late deliveries."""
+        with self._lock:
+            self._db.execute("DELETE FROM reports WHERE id = ?", (comment_id,))
+            self._db.execute(
+                "INSERT OR IGNORE INTO report_tombstones VALUES (?, ?)", (comment_id, deleted_at)
             )
             self._db.commit()
 

@@ -129,11 +129,29 @@ def build(
     freshest = (
         min(a for a in (poll_age, hook_age) if a is not None) if (poll_age or hook_age) else None
     )
-    live = freshest is not None and freshest <= 2 * poll_seconds
+    events_live = freshest is not None and freshest <= 2 * poll_seconds
+    # Lifecycle evidence has its own clock: it is current only when the last gather succeeded
+    # recently. Event traffic (webhooks, polls) never refreshes it.
+    ev_age = _age_seconds(evidence.get("at"), now)
+    stale_reason = None
+    if evidence.get("error"):
+        stale_reason = f"evidence refresh failed: {evidence['error']}"
+    elif ev_age is None or ev_age > 2 * poll_seconds:
+        stale_reason = "lifecycle evidence is " + (
+            f"{int(ev_age // 60)} min old" if ev_age is not None else "missing"
+        )
+    elif not events_live:
+        stale_reason = "no poll or webhook within two intervals"
+    live = stale_reason is None
     rows = list(evidence.get("rows") or [])
-    readiness = lifecycle.readiness(rows, sources_stale=not live)
+    readiness = lifecycle.readiness(rows, sources_stale=not live, stale_reason=stale_reason)
     feed = store.events(limit=50)
-    checks = [e for e in feed if e["kind"] in ("check_suite", "workflow_run")]
+    checks = [
+        e
+        for e in feed
+        if e["kind"] in ("check_suite", "workflow_run")
+        and (e.get("payload") or {}).get("conclusion") is not None
+    ]
     ci_pass = sum(1 for e in checks if (e.get("payload") or {}).get("conclusion") == "success")
     stage_counts = {s: 0 for s in lifecycle.STATES}
     for row in rows:

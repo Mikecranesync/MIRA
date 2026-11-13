@@ -36,11 +36,15 @@ States are never collapsed and "done" is not a state. Each cell lights only on t
 |---|---|---|
 | IMPLEMENTED | the PR exists with a head commit (GitHub record) | an agent saying so |
 | TESTED | `statusCheckRollup = SUCCESS` at the **exact** head | a rollup at an older sha; a failed or pending rollup |
-| REVIEWED | newest owner `[CODEX-ADVERSARIAL-REVIEW]` with `reviewed_sha == head` and `status: GREEN`, or CONVERGED (ISSUES_FOUND, 0 BLOCKER, 0 HIGH) plus an owner `[REVIEW-FOLLOWUPS]` for the same head | a GREEN at an older head; a non-owner ledger; CONVERGED without follow-ups |
+| REVIEWED | newest owner v2 `[CODEX-ADVERSARIAL-REVIEW]` with `reviewed_sha == head`, `reviewed_body_sha256` equal to the SHA-256 of the current PR body, and either `status: GREEN` with 0 BLOCKER / 0 HIGH / 0 MEDIUM, or CONVERGED (ISSUES_FOUND, 0 BLOCKER, 0 HIGH) plus a *later* owner `[REVIEW-FOLLOWUPS]` for the same head that names at least one issue | a GREEN at an older head or for an edited body; a legacy record (no body hash); a GREEN that lists findings; a non-owner ledger; follow-ups posted before the verdict or naming no issue |
 | DEPLOYED:staging / DEPLOYED:production | the PR is merged **and** `GET compare/{merge_sha}...{deployed gitSha}` reports `behind_by == 0` for that environment's `/api/version` | a string-equal sha with `behind_by > 0`; an unmerged PR; an unreachable environment (grey) |
-| FIELD-VERIFIED | DEPLOYED:production **and** an owner comment starting `[FIELD-VERIFIED]` naming the production sha | CI, any deploy, a staging receipt, agent prose |
+| FIELD-VERIFIED | DEPLOYED:production **and** an owner comment starting `[FIELD-VERIFIED]` naming the sha production is **currently running** (`/api/version` `gitSha`), not the merge commit; production moving to a new sha un-lights it | CI, any deploy, a staging receipt, agent prose, a marker for the merge commit |
 
 **GO** requires every candidate item DEPLOYED:production and FIELD-VERIFIED. A staging deploy can never light GO.
+
+**What forces NO-GO regardless of the cells:** lifecycle evidence older than two poll intervals (it has its own clock; webhook or poll traffic never refreshes it), a failed evidence refresh (the last rows stay on screen, stamped with the error), or any candidate whose GitHub reads were incomplete (a comment page that failed, a per-PR GraphQL error) — that row shows every cell as "evidence incomplete" and the badge names it.
+
+**Reports are reconciled, not only accumulated:** a deleted lane comment, or one edited so the marker is gone, removes the stored report (webhook `deleted`/`edited`, or a *complete* successful poll of the coordination issue). Removed ids are tombstoned so a late or replayed delivery cannot resurrect them, and an older version of a comment never overwrites a newer one. A marker that only appears inside `<details>` is history, never the current report.
 The Pilot Acceptance Ledger (`.planning/2026-11-10-garage-pilot/PILOT-ACCEPTANCE-LEDGER.md`, gitignored on CHARLIE) stays the authoritative pilot record; the cockpit never re-stores its rows (a header link to it is a follow-up; the file is not on a public URL).
 
 **Candidate items** = open PR cards in Project #4 with Status "In Progress" plus every `#n` named in a current trusted lane report (capped at 25).

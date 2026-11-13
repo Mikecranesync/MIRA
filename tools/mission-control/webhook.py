@@ -62,6 +62,10 @@ def normalise(event: str, delivery_id: str, payload: dict, received_at: str) -> 
     action = payload.get("action")
     if kind == "push":
         action = payload.get("ref")
+    kept = {"event": event, "action": payload.get("action")}
+    run = payload.get("workflow_run") or payload.get("check_suite") or payload.get("check_run")
+    if isinstance(run, dict):  # the CI tile needs the conclusion, not just that a run happened
+        kept["conclusion"], kept["status"] = run.get("conclusion"), run.get("status")
     return {
         "delivery_id": delivery_id,
         "source": "webhook",
@@ -73,7 +77,7 @@ def normalise(event: str, delivery_id: str, payload: dict, received_at: str) -> 
         "head_sha": head,
         "url": url,
         "received_at": received_at,
-        "payload": {"event": event, "action": payload.get("action")},
+        "payload": kept,
     }
 
 

@@ -8,6 +8,7 @@ follow-ups or field-verification markers. Everything degrades to "not proven".
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import importlib.util
 import logging
 import sys
@@ -34,7 +35,7 @@ def _load(name: str):
 lifecycle = _load("lifecycle")
 
 PR_FIELDS = (
-    "number title url state headRefOid mergeCommit { oid } "
+    "number title url state body headRefOid mergeCommit { oid } "
     "commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }"
 )
 
@@ -45,16 +46,25 @@ def pr_query(owner: str, name: str, numbers: list[int]) -> str:
 
 
 def fetch_prs(post: Callable[[dict], dict], repo: str, numbers: list[int]) -> dict[int, dict]:
+    """number -> item; a candidate the query could not resolve maps to {"error": ...} unless
+    GitHub says NOT_FOUND (an issue number, not a PR), which is simply absent."""
     if not numbers:
         return {}
     owner, name = repo.split("/", 1)
     data = post({"query": pr_query(owner, name, numbers), "variables": {}})
     if data.get("errors") and not data.get("data"):
         raise RuntimeError(str(data["errors"])[:200])
+    failed: dict[int, str] = {}
+    for err in data.get("errors") or []:
+        alias = str((err.get("path") or ["", ""])[-1])
+        if alias.startswith("pr") and alias[2:].isdigit() and err.get("type") != "NOT_FOUND":
+            failed[int(alias[2:])] = f"{err.get('type', 'ERROR')}: {err.get('message', '')}"[:160]
     out: dict[int, dict] = {}
     for n in numbers:
         pr = ((data.get("data") or {}).get("repository") or {}).get(f"pr{n}")
         if not pr:
+            if n in failed:
+                out[n] = {"number": n, "error": failed[n]}
             continue
         nodes = (pr.get("commits") or {}).get("nodes") or []
         rollup = ((nodes[0].get("commit") or {}).get("statusCheckRollup") or {}) if nodes else {}
@@ -66,18 +76,20 @@ def fetch_prs(post: Callable[[dict], dict], repo: str, numbers: list[int]) -> di
             "state": pr.get("state"),
             "head_sha": pr.get("headRefOid"),
             "merge_sha": (pr.get("mergeCommit") or {}).get("oid"),
+            "body_sha256": hashlib.sha256((pr.get("body") or "").encode()).hexdigest(),
             "rollup": {"state": rollup.get("state"), "sha": pr.get("headRefOid")},
         }
     return out
 
 
 def fetch_comments(get, repo: str, number: int) -> list[dict]:
+    """Every comment, or RuntimeError: a truncated read must never pass as complete."""
     out, page = [], 1
     while True:
         url = f"{API}/repos/{repo}/issues/{number}/comments?per_page=100&page={page}"
         status, _h, body = get(url, headers={"Accept": "application/vnd.github+json"})
         if status != 200 or not isinstance(body, list):
-            return out
+            raise RuntimeError(f"comments page {page}: {status}")
         out.extend(body)
         if len(body) < 100:
             return out
@@ -85,19 +97,20 @@ def fetch_comments(get, repo: str, number: int) -> list[dict]:
 
 
 def markers(comments: list[dict], trusted: tuple[str, ...]) -> dict:
+    """Owner-only ledgers/follow-ups/markers; `seq` keeps the comment order for recency rules."""
     ledgers, followups, verified = [], [], []
-    for c in comments:
+    for seq, c in enumerate(comments):
         if ((c.get("user") or {}).get("login") or "") not in trusted:
             continue
         body = c.get("body") or ""
         led = lifecycle.parse_ledger(body)
         if led:
-            led["url"] = c.get("html_url")
+            led["url"], led["seq"] = c.get("html_url"), seq
             ledgers.append(led)
             continue
-        fu = lifecycle.followups_sha(body)
+        fu = lifecycle.followups(body)
         if fu:
-            followups.append(fu)
+            followups.append(dict(fu, seq=seq))
             continue
         fv = lifecycle.field_verified_sha(body)
         if fv:
@@ -158,13 +171,29 @@ def gather(
         item = prs.get(n)
         if not item:
             continue
-        ev = markers(fetch_comments(get, repo, n), trusted)
+        ev: dict = {"ledgers": [], "followups": [], "field_verified": [], "envs": {}}
+        error = item.get("error")
+        if not error:
+            try:
+                ev = markers(fetch_comments(get, repo, n), trusted)
+            except RuntimeError as exc:  # incomplete read: the row stays unproven, never certified
+                error = str(exc)
         ev["reports"] = (reports_by_item or {}).get(n, [])
-        ev["envs"] = {
-            name: dict(row, behind_by=behind(get, repo, item.get("merge_sha"), row["git_sha"]))
-            for name, row in env_rows.items()
-        }
+        if not error:
+            ev["envs"] = {
+                name: dict(row, behind_by=behind(get, repo, item.get("merge_sha"), row["git_sha"]))
+                for name, row in env_rows.items()
+            }
         row = lifecycle.derive(item, ev)
-        row["title"], row["url"], row["state"] = item["title"], item["url"], item["state"]
+        row["title"], row["url"], row["state"] = (
+            item.get("title"),
+            item.get("url"),
+            item.get("state"),
+        )
+        if error:
+            row["error"] = error
+            row["cells"] = {
+                s: lifecycle._cell(False, "evidence incomplete") for s in lifecycle.STATES
+            }
         rows.append(row)
     return {"rows": rows, "envs": env_rows, "at": at, "error": None}

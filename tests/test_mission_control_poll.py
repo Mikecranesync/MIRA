@@ -123,3 +123,42 @@ def test_rest_event_without_html_url_falls_back_to_the_canonical_github_url():
         REST_EVENT, type="IssuesEvent", payload={"action": "opened", "issue": {"number": 7}}
     )
     assert poll.normalise_rest_event(issue)["url"] == "https://github.com/o/r/issues/7"
+
+
+# --- Codex round 1 (PR #5455) findings -------------------------------------------------
+
+
+def test_poll_events_reads_headers_case_insensitively_like_the_runtime_getter(tmp_path):  # F6
+    st = store_mod.Store(tmp_path / "mc.sqlite")
+    url = "https://api.github.com/repos/o/r/events?per_page=100"
+    lowered = {"etag": 'W/"abc"', "x-poll-interval": "90"}  # what dict(httpx.Headers) yields
+    get = FakeGet({url: (200, lowered, [REST_EVENT])})
+    state = {}
+    poll.poll_events(get, "o/r", st, state)
+    assert state["etag"] == 'W/"abc"' and state["interval"] == 90
+    get.answers[url] = (304, {}, None)
+    poll.poll_events(get, "o/r", st, state)
+    assert get.calls[-1][1].get("If-None-Match") == 'W/"abc"'
+
+
+def test_complete_poll_removes_reports_whose_comments_are_gone_or_edited_away(tmp_path):  # F9
+    st = store_mod.Store(tmp_path / "mc.sqlite")
+    url = "https://api.github.com/repos/o/r/issues/5232/comments?per_page=100&page=1"
+    gone = dict(COMMENT, id=78, html_url="https://github.com/o/r/issues/5232#issuecomment-78")
+    get = FakeGet({url: (200, {}, [COMMENT, gone])})
+    poll.poll_reports(get, "o/r", 5232, st, trusted=("owner",))
+    assert {r["id"] for r in st.reports()} == {77, 78}
+    edited = dict(COMMENT, body="no marker any more", updated_at="2026-11-12T23:30:00Z")
+    get.answers[url] = (200, {}, [edited])  # 78 deleted, 77 edited to drop the marker
+    poll.poll_reports(get, "o/r", 5232, st, trusted=("owner",))
+    assert st.reports() == []
+
+
+def test_a_failed_poll_page_never_removes_reports(tmp_path):  # F9 control
+    st = store_mod.Store(tmp_path / "mc.sqlite")
+    url = "https://api.github.com/repos/o/r/issues/5232/comments?per_page=100&page=1"
+    get = FakeGet({url: (200, {}, [COMMENT])})
+    poll.poll_reports(get, "o/r", 5232, st, trusted=("owner",))
+    get.answers[url] = (502, {}, "bad gateway")
+    poll.poll_reports(get, "o/r", 5232, st, trusted=("owner",))
+    assert len(st.reports()) == 1

@@ -158,7 +158,9 @@ def test_decisions_for_mike_come_from_blocked_by_and_decision_lines(tmp_path):
     assert [d["text"] for d in m["decisions"]] == ["merge #4985 and #5314", "Mike to merge #4985"]
     assert m["tiles"]["decisions"] == 2
     quiet = report(2, lane="BRAVO-CODEX", decision="not stated", blocked_by="unparsed")
-    assert build(tmp_path / "quiet", reports=[quiet])["decisions"] == []  # placeholders are not decisions
+    assert (
+        build(tmp_path / "quiet", reports=[quiet])["decisions"] == []
+    )  # placeholders are not decisions
 
 
 def test_lifecycle_table_has_six_cells_per_row_with_sources(tmp_path):
@@ -245,3 +247,40 @@ def test_snapshot_json_route_serves_the_model(tmp_path, monkeypatch):
         assert {"items", "ok", "events", "reports", "last_poll", "last_webhook"} <= set(h)
     finally:
         srv.shutdown()
+
+
+# --- Codex round 1 (PR #5455) findings -------------------------------------------------
+
+
+def build_ev(tmp_path, ev, rows, last_poll="2026-11-12T22:59:30Z"):
+    st = store_mod.Store(tmp_path / "mc.sqlite")
+    ev = dict(ev, rows=list(rows), envs=ev.get("envs", {}))
+    return model.build(st, ev, last_poll, None, NOW, stale_hours=9, poll_seconds=60)
+
+
+def test_old_lifecycle_evidence_forces_no_go_even_with_a_fresh_poll(tmp_path):  # F1
+    full = lifecycle_row(**{"DEPLOYED:production": True, "FIELD-VERIFIED": True})
+    m = build_ev(tmp_path, {"at": "2026-11-01T22:59:00Z"}, [full])  # evidence 11 days old
+    assert m["header"]["live"] is False and m["readiness"]["decision"] == "NO-GO"
+    assert "evidence" in m["readiness"]["reason"]
+    m = build_ev(tmp_path / "ok", {"at": "2026-11-12T22:59:00Z"}, [full])  # control
+    assert m["readiness"]["decision"] == "GO"
+
+
+def test_a_failed_evidence_refresh_forces_no_go_and_names_the_error(tmp_path):  # F1
+    full = lifecycle_row(**{"DEPLOYED:production": True, "FIELD-VERIFIED": True})
+    ev = {"at": "2026-11-12T22:59:00Z", "error": "RuntimeError: compare 502"}
+    m = build_ev(tmp_path, ev, [full])
+    assert m["readiness"]["decision"] == "NO-GO" and "compare 502" in m["readiness"]["reason"]
+
+
+def test_ci_tile_counts_only_completed_runs_with_a_conclusion(tmp_path):  # F7
+    def ev(i, conclusion, status="completed"):
+        payload = {
+            "action": status,
+            "workflow_run": {"id": i, "conclusion": conclusion, "status": status},
+        }
+        return server.webhook.normalise("workflow_run", f"d{i}", payload, "2026-11-12T22:30:00Z")
+
+    m = build(tmp_path, events=[ev(1, "success"), ev(2, "failure"), ev(3, None, "in_progress")])
+    assert m["tiles"]["ci"] == {"pass": 1, "total": 2}

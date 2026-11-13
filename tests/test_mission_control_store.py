@@ -111,3 +111,24 @@ def test_counts_reflect_rows(tmp_path):
     s.add_event(event())
     s.put_report(report())
     assert s.counts() == {"events": 1, "reports": 1}
+
+
+# --- Codex round 1 (PR #5455) findings -------------------------------------------------
+
+
+def test_an_older_report_version_never_overwrites_a_newer_one(tmp_path):  # F5
+    s = store.Store(tmp_path / "mc.sqlite")
+    assert s.put_report(report(1, "2026-11-12T23:00:00Z", parsed={"state": "BLOCKED"})) is True
+    assert s.put_report(report(1, "2026-11-12T22:00:00Z", parsed={"state": "COMPLETE"})) is False
+    assert s.reports()[0]["parsed"]["state"] == "BLOCKED"
+    assert s.put_report(report(1, "2026-11-12T23:30:00Z", parsed={"state": "COMPLETE"})) is True
+
+
+def test_deleted_reports_are_tombstoned_against_late_deliveries(tmp_path):  # F9
+    s = store.Store(tmp_path / "mc.sqlite")
+    s.put_report(report(1))
+    s.delete_report(1)
+    assert s.reports() == []
+    assert s.put_report(report(1, "2026-11-12T23:59:00Z")) is False  # a replay cannot resurrect it
+    assert s.reports() == []
+    assert s.put_report(report(2)) is True  # control: a new comment id is unaffected

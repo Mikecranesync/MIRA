@@ -32,18 +32,24 @@ MERGE = "aaaa456789abcdef0123456789abcdef01234567"
 LEDGER_V2 = (
     "[CODEX-ADVERSARIAL-REVIEW]\n\n```\nreviewed_sha: {sha}\nreviewed_body_sha256: {b}\n"
     "base_sha: {base}\nstatus: {status}\nreview_iteration: 1\n\nBLOCKER: {bl}\nHIGH: {hi}\n"
-    "MEDIUM: 1\nLOW: 0\nFALSE_POSITIVE: 0\n```\n"
+    "MEDIUM: {med}\nLOW: 0\nFALSE_POSITIVE: 0\n```\n"
 )
 
 
-def ledger(sha=HEAD, status="GREEN", bl=0, hi=0, crlf=False):
-    s = LEDGER_V2.format(sha=sha, b="a" * 64, base=OTHER, status=status, bl=bl, hi=hi)
+def ledger(sha=HEAD, status="GREEN", bl=0, hi=0, med=0, crlf=False):
+    s = LEDGER_V2.format(sha=sha, b="a" * 64, base=OTHER, status=status, bl=bl, hi=hi, med=med)
     return s.replace("\n", "\r\n") if crlf else s
 
 
 def test_ledger_parser_reads_v2_and_crlf_bodies():
-    r = lc.parse_ledger(ledger(crlf=True))
-    assert r == {"reviewed_sha": HEAD, "status": "GREEN", "blocker": 0, "high": 0, "medium": 1}
+    r = lc.parse_ledger(ledger(med=1, crlf=True))
+    assert (r["reviewed_sha"], r["status"], r["blocker"], r["high"], r["medium"]) == (
+        HEAD,
+        "GREEN",
+        0,
+        0,
+        1,
+    )
     assert lc.parse_ledger("[CODEX-ADVERSARIAL-REVIEW]\nnot a ledger") is None
 
 
@@ -69,6 +75,10 @@ def item(**over):
     }
     base.update(over)
     return base
+
+
+def bound(**over):
+    return item(**{"body_sha256": "a" * 64, **over})
 
 
 def evidence(**over):
@@ -104,22 +114,25 @@ def test_tested_requires_a_success_rollup_at_the_exact_head():
 
 def test_reviewed_requires_green_at_the_exact_head():
     green = lc.parse_ledger(ledger())
-    assert on(lc.derive(item(), evidence(ledgers=[green]))["cells"], "REVIEWED")  # control
+    assert on(lc.derive(bound(), evidence(ledgers=[green]))["cells"], "REVIEWED")  # control
     stale = lc.parse_ledger(ledger(sha=OTHER))
-    assert not on(lc.derive(item(), evidence(ledgers=[stale]))["cells"], "REVIEWED")
+    assert not on(lc.derive(bound(), evidence(ledgers=[stale]))["cells"], "REVIEWED")
     # The newest record wins: a later ISSUES_FOUND with a HIGH un-lights an earlier GREEN.
     later_high = lc.parse_ledger(ledger(status="ISSUES_FOUND", hi=1))
-    assert not on(lc.derive(item(), evidence(ledgers=[green, later_high]))["cells"], "REVIEWED")
+    assert not on(lc.derive(bound(), evidence(ledgers=[green, later_high]))["cells"], "REVIEWED")
 
 
 def test_reviewed_accepts_converged_only_with_followups_for_that_head():
-    conv = lc.parse_ledger(ledger(status="ISSUES_FOUND"))  # 0 BLOCKER, 0 HIGH, 1 MEDIUM
-    assert not on(lc.derive(item(), evidence(ledgers=[conv]))["cells"], "REVIEWED")
-    cells = lc.derive(item(), evidence(ledgers=[conv], followups=[HEAD]))["cells"]
+    conv = dict(
+        lc.parse_ledger(ledger(status="ISSUES_FOUND")), seq=0
+    )  # 0 BLOCKER / 0 HIGH / 1 MEDIUM
+    assert not on(lc.derive(bound(), evidence(ledgers=[conv]))["cells"], "REVIEWED")
+    fu = [{"sha": HEAD, "seq": 1, "issues": ["#1"]}]
+    cells = lc.derive(bound(), evidence(ledgers=[conv], followups=fu))["cells"]
     assert on(cells, "REVIEWED") and "CONVERGED" in cells["REVIEWED"]["label"]
-    blocker = lc.parse_ledger(ledger(status="ISSUES_FOUND", bl=1))
+    blocker = dict(lc.parse_ledger(ledger(status="ISSUES_FOUND", bl=1)), seq=0)
     assert not on(
-        lc.derive(item(), evidence(ledgers=[blocker], followups=[HEAD]))["cells"], "REVIEWED"
+        lc.derive(bound(), evidence(ledgers=[blocker], followups=fu))["cells"], "REVIEWED"
     )
 
 
@@ -147,12 +160,12 @@ def test_unmerged_pr_is_never_deployed():
 def test_field_verified_only_from_production_receipt_or_owner_marker():
     merged = item(state="MERGED", merge_sha=MERGE)
     prod = {"production": {"git_sha": OTHER, "behind_by": 0}}
-    cells = lc.derive(merged, evidence(envs=prod, field_verified=[MERGE]))["cells"]
+    cells = lc.derive(merged, evidence(envs=prod, field_verified=[OTHER]))["cells"]
     assert on(cells, "FIELD-VERIFIED")  # control
     staging_only = {"staging": {"git_sha": OTHER, "behind_by": 0}}
-    cells = lc.derive(merged, evidence(envs=staging_only, field_verified=[MERGE]))["cells"]
+    cells = lc.derive(merged, evidence(envs=staging_only, field_verified=[OTHER]))["cells"]
     assert not on(cells, "FIELD-VERIFIED")  # a staging deploy can never field-verify
-    cells = lc.derive(merged, evidence(envs=prod, field_verified=[OTHER]))["cells"]
+    cells = lc.derive(merged, evidence(envs=prod, field_verified=[HEAD]))["cells"]
     assert not on(cells, "FIELD-VERIFIED")  # receipt for a different sha
 
 
@@ -198,3 +211,82 @@ def test_readiness_is_go_only_when_every_candidate_is_prod_deployed_and_field_ve
     r = lc.readiness([prod_only], sources_stale=False)
     assert r["decision"] == "NO-GO" and "FIELD-VERIFIED" in r["reason"]  # deploy alone is not GO
     assert lc.readiness([], sources_stale=False)["decision"] == "NO-GO"  # nothing proven
+
+
+# --- Codex round 1 (PR #5455) findings -------------------------------------------------
+
+
+def test_field_verified_binds_to_the_running_production_sha_not_the_merge_commit():  # F2
+    merged = item(state="MERGED", merge_sha=MERGE)
+    prod = {"production": {"git_sha": OTHER, "behind_by": 0}}
+    cells = lc.derive(merged, evidence(envs=prod, field_verified=[OTHER]))["cells"]
+    assert on(cells, "FIELD-VERIFIED")  # control: marker names what production runs
+    cells = lc.derive(merged, evidence(envs=prod, field_verified=[MERGE]))["cells"]
+    assert not on(cells, "FIELD-VERIFIED")  # a marker for the merge commit is not a prod check
+    advanced = {"production": {"git_sha": HEAD, "behind_by": 0}}  # prod moved on, unverified
+    cells = lc.derive(merged, evidence(envs=advanced, field_verified=[OTHER]))["cells"]
+    assert not on(cells, "FIELD-VERIFIED")
+
+
+def test_ledger_parser_keeps_body_hash_low_count_and_legacy_flag():  # F3
+    r = lc.parse_ledger(ledger())
+    assert r["body_sha256"] == "a" * 64 and r["low"] == 0 and r["legacy"] is False
+    legacy = (
+        f"[CODEX-ADVERSARIAL-REVIEW]\n\n```\nreviewed_sha: {HEAD}\nbase_sha: {OTHER}\n"
+        "status: GREEN\nreview_iteration: 2\n\nBLOCKER: 0\nHIGH: 0\nMEDIUM: 0\nLOW: 0\n"
+        "FALSE_POSITIVE: 0\n```\n"
+    )
+    assert lc.parse_ledger(legacy)["legacy"] is True
+
+
+def test_reviewed_requires_the_ledger_body_hash_to_match_the_current_pr_body():  # F3
+    green = lc.parse_ledger(ledger())
+    assert on(lc.derive(bound(), evidence(ledgers=[green]))["cells"], "REVIEWED")  # control
+    edited = bound(body_sha256="b" * 64)  # body changed after GREEN, same head
+    assert not on(lc.derive(edited, evidence(ledgers=[green]))["cells"], "REVIEWED")
+    assert not on(lc.derive(item(), evidence(ledgers=[green]))["cells"], "REVIEWED")  # unknown body
+
+
+def test_reviewed_rejects_green_with_findings_and_legacy_records():  # F3
+    lying = lc.parse_ledger(ledger(status="GREEN", bl=1))
+    assert not on(lc.derive(bound(), evidence(ledgers=[lying]))["cells"], "REVIEWED")
+    legacy = lc.parse_ledger(
+        f"[CODEX-ADVERSARIAL-REVIEW]\n\n```\nreviewed_sha: {HEAD}\nbase_sha: {OTHER}\n"
+        "status: GREEN\nreview_iteration: 1\n\nBLOCKER: 0\nHIGH: 0\nMEDIUM: 0\nLOW: 0\n"
+        "FALSE_POSITIVE: 0\n```\n"
+    )
+    assert not on(lc.derive(bound(), evidence(ledgers=[legacy]))["cells"], "REVIEWED")
+
+
+def test_converged_needs_a_followups_record_newer_than_the_verdict_naming_issues():  # F3
+    conv = dict(lc.parse_ledger(ledger(status="ISSUES_FOUND", med=1)), seq=5)
+    good = {"sha": HEAD, "seq": 6, "issues": ["#1"]}
+    assert on(lc.derive(bound(), evidence(ledgers=[conv], followups=[good]))["cells"], "REVIEWED")
+    older = {"sha": HEAD, "seq": 4, "issues": ["#1"]}  # posted before the verdict
+    assert not on(
+        lc.derive(bound(), evidence(ledgers=[conv], followups=[older]))["cells"], "REVIEWED"
+    )
+    bare = {"sha": HEAD, "seq": 6, "issues": []}  # no follow-up issue filed
+    assert not on(
+        lc.derive(bound(), evidence(ledgers=[conv], followups=[bare]))["cells"], "REVIEWED"
+    )
+
+
+def test_followups_parser_reads_sha_and_issue_numbers():  # F3
+    body = f"[REVIEW-FOLLOWUPS]\nreviewed_sha: {HEAD}\nMEDIUM F5 -> #5301\nMEDIUM F6 -> #5302\n"
+    assert lc.followups(body) == {"sha": HEAD, "issues": ["#5301", "#5302"]}
+    assert lc.followups("[REVIEW-FOLLOWUPS]\nnothing") is None
+
+
+def test_readiness_is_no_go_while_any_candidate_has_incomplete_evidence():  # F4
+    full = {"cells": {"DEPLOYED:production": {"on": True}, "FIELD-VERIFIED": {"on": True}}}
+    broken = dict(full, number=13, error="comments page 2: 502")
+    r = lc.readiness([full, broken], sources_stale=False)
+    assert r["decision"] == "NO-GO" and "#13" in r["reason"] and "incomplete" in r["reason"]
+    assert lc.readiness([full], sources_stale=False)["decision"] == "GO"  # control
+
+
+def test_readiness_reports_the_given_staleness_reason():  # F1
+    full = {"cells": {"DEPLOYED:production": {"on": True}, "FIELD-VERIFIED": {"on": True}}}
+    r = lc.readiness([full], sources_stale=True, stale_reason="lifecycle evidence is 3 days old")
+    assert r["decision"] == "NO-GO" and "3 days old" in r["reason"]

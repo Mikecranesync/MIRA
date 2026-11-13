@@ -79,6 +79,17 @@ def env_urls() -> dict[str, str]:
     return out
 
 
+def refresh_evidence(handler, evidence, post, get, cands, envs, trusted, by_item, main_sha) -> None:
+    """Replace handler.evidence on success; on failure keep the last rows for display but
+    stamp the error and leave `at` untouched, so the model reads it as not current."""
+    try:
+        handler.evidence = evidence.gather(post, get, REPO, cands, envs, trusted, by_item, main_sha)
+    except Exception as exc:
+        log.warning("evidence refresh failed: %s", exc)
+        old = dict(handler.evidence or {})
+        handler.evidence = dict(old, error=f"{type(exc).__name__}: {exc}")
+
+
 def poll_loop(handler, get, post) -> None:
     """handler: the server.Handler class (store, poll, evidence_mod, trusted_authors)."""
     store, poll, evidence = handler.store, handler.poll_mod, handler.evidence_mod
@@ -96,8 +107,16 @@ def poll_loop(handler, get, post) -> None:
                         by_item.setdefault(int(n), []).append(r["parsed"])
             status, _h, main = get(f"https://api.github.com/repos/{REPO}/commits/main", headers={})
             main_sha = main.get("sha") if status == 200 and isinstance(main, dict) else None
-            handler.evidence = evidence.gather(
-                post, get, REPO, candidates(handler, store), env_urls(), trusted, by_item, main_sha
+            refresh_evidence(
+                handler,
+                evidence,
+                post,
+                get,
+                candidates(handler, store),
+                env_urls(),
+                trusted,
+                by_item,
+                main_sha,
             )
         except Exception as exc:  # never let the poller die; the page shows staleness
             log.warning("poll loop error: %s", exc)
