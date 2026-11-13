@@ -30,6 +30,21 @@
  *   earlier line of the same block that carries no figure (a heading, or the
  *   head row of a table).
  *
+ *   WRONG-COLUMN rule (#5474 item 5) — when the page was stored with its
+ *   columns read from the printed positions (`contact-ratings-table.ts`), an
+ *   answer figure that the table places in a column must have that column's
+ *   word beside it whenever a column word is beside it at all. "Beside" is the
+ *   text between the figure before it and the figure after it in the sentence.
+ *   On staging 2199f449a the answer read the 120 V AC row as "make rating of
+ *   1.5 A and break rating of 2 A"; the page prints 2 A under Continuous. The
+ *   rule reads the rows for the voltage the sentence names, else the question's,
+ *   else every row. It only ever withholds; it approves nothing. It does not
+ *   judge: a figure the question itself gives (that is the asked load), a
+ *   figure whose value also sits on those rows with no column read, or a
+ *   sentence that puts a negation directly on a column word ("15 A is not the
+ *   continuous rating"). A negation further off is not seen, so "do not treat
+ *   15 A as the continuous rating" is withheld though it is right.
+ *
  * A passage is a ratings table when it writes "Make" beside "Break" and also
  * writes "Continuous". Its rating rows are the lines that carry two or more
  * ampere figures, or that open with a voltage and carry one.
@@ -40,12 +55,20 @@
  *   - only ampere figures written with digits are read (not "fifteen amps", not
  *     volt-amperes, not a decimal comma), and only in THIS question: a load
  *     named in an earlier turn is not seen by the LOAD rule;
- *   - which column a figure belongs to is NOT worked out: the flattened page
- *     text does not keep columns in order, and a guess would be worse than
- *     none. So an answer that shows the lower figure and approves the load
- *     in the middle of a sentence ("… 2 A continuous, so it can be switched")
- *     passes the LOAD rule, and "the contact runs continuously at 15 A" passes
- *     the COLUMN rule;
+ *   - which column a figure belongs to is NOT worked out from the flattened
+ *     page text: it does not keep columns in order, and a guess would be worse
+ *     than none. It is known only for a page stored with its column lines, and
+ *     only the WRONG-COLUMN rule uses it. So an answer that shows the lower
+ *     figure and approves the load in the middle of a sentence ("… 2 A
+ *     continuous, so it can be switched") passes the LOAD rule, and on a page
+ *     stored WITHOUT column lines (every manual uploaded before extraction
+ *     version 4, until it is reprocessed) "the contact runs continuously at
+ *     15 A" still passes;
+ *   - the WRONG-COLUMN rule is satisfied by the right word anywhere between
+ *     the neighbouring figures, so "continuous 15 A, make 2 A" is caught at its
+ *     second figure and not its first, and an answer table with its columns
+ *     swapped is not caught at all (only the first figure of a row has the
+ *     heads beside it);
  *   - the COLUMN rule's column word only has to be in the sentence or above it
  *     ("make sure … 15 A" passes). The LOAD rule's figure check reads no words;
  *   - a correct refusal that shows no figure ("No, use an interposing relay")
@@ -56,6 +79,7 @@
  *
  * PURE: no I/O.
  */
+import { readColumnLines, type ColumnRow, type RatingColumn } from "./contact-ratings-table";
 
 /** A passage the answer was given. `cited`: the answer carries its [n]. */
 export type RatingPassage = { content: string; title: string; page: number | string | null; cited: boolean };
@@ -65,6 +89,7 @@ export type RatingColumnFinding = { title: string; page: number | string | null 
   /** `row` and `lower` are set only when exactly one row is the asked voltage's. */
   | { rule: "load"; load: string; row: string | null; lower: string[] }
   | { rule: "column"; figure: string }
+  | { rule: "wrong_column"; figure: string }
 );
 
 // Between a number and its unit: a space (also no-break or narrow no-break) or a hyphen.
@@ -93,6 +118,18 @@ const INRUSH_BEFORE_RE = new RegExp(String.raw`\b${INRUSH}(?:\s+current)?\s*(?:o
 // The LOAD rule reads an UNCITED table only for a question about what the table rates.
 const CONTACT_QUESTION_RE = /\b(?:relay|contacts?|outputs?|switch(?:es|ed|ing)?)\b/i;
 
+// WRONG-COLUMN rule: the words that name each column.
+const COLUMNS: readonly RatingColumn[] = ["make", "break", "continuous"];
+const WORDS_OF: Record<RatingColumn, RegExp> = {
+  make: /\b(?:make|making|makes|inrush)\b/i,
+  break: /\b(?:break|breaking|breaks|interrupt(?:ing|s)?)\b/i,
+  continuous: /\b(?:continuous|continuously|steady[- ]state)\b/i,
+};
+// A sentence that says what a figure is NOT: the negation sits directly on a column word
+// ("is not the continuous rating", "rather than the make figure"). "Should not be switched" is
+// not one.
+const NEGATES_COLUMN_RE = /(?:\b(?:not|never|rather than|instead of)|n[’']t)\s+(?:(?:the|a|an|its)\s+)?(?:make|making|break|breaking|continuous|inrush)\b/i;
+
 type Figure = { value: number; written: string };
 const amperesIn = (text: string): Figure[] => [...text.matchAll(AMPERE_RE)].map((m) => ({ value: Number(m[1]), written: m[0] }));
 /** The currents a question asks to have carried or switched off: its ampere
@@ -109,7 +146,9 @@ const voltagesIn = (text: string): number[] => [...text.matchAll(VOLTAGE_RE)].ma
 type RatingRow = { volts: number | null; label: string | null; figures: Figure[] };
 
 /** The rating rows of a contact-ratings table, or none when the passage is not one. */
-function ratingRows(content: string): RatingRow[] {
+function ratingRows(stored: string): RatingRow[] {
+  // The stored column lines repeat the rows; they are read by the WRONG-COLUMN rule only.
+  const content = readColumnLines(stored).rest;
   if (!MAKE_BESIDE_BREAK_RE.test(content) || !CONTINUOUS_RE.test(content)) return [];
   const rows: RatingRow[] = [];
   for (const line of content.split("\n")) {
@@ -146,10 +185,12 @@ function sentencesOf(answer: string): string[] {
 
 /** The first way the answer fails to keep a ratings table's columns apart, or null. */
 export function ratingColumnFinding(question: string, answer: string, passages: RatingPassage[]): RatingColumnFinding | null {
-  const tables = passages.map((passage) => ({ passage, rows: ratingRows(passage.content) })).filter((t) => t.rows.length > 0);
-  if (tables.length === 0) return null;
+  const read = passages.map((passage) => ({ passage, rows: ratingRows(passage.content), columns: readColumnLines(passage.content).rows }));
+  const tables = read.filter((t) => t.rows.length > 0);
+  const columned = read.filter((t) => t.columns.length > 0);
+  if (tables.length === 0 && columned.length === 0) return null;
   const quoted = amperesIn(answer);
-  const where = (t: (typeof tables)[number]) => ({ title: t.passage.title, page: t.passage.page });
+  const where = (t: (typeof read)[number]) => ({ title: t.passage.title, page: t.passage.page });
 
   // LOAD rule.
   const asked = loadsIn(question);
@@ -180,6 +221,37 @@ export function ratingColumnFinding(question: string, answer: string, passages: 
       if (table) return { rule: "column", ...where(table), figure: figure.written };
     }
   }
+
+  // WRONG-COLUMN rule. Applies as the LOAD rule does: to a cited table, or to one the answer
+  // quotes a placed figure from when the question is about what the table rates.
+  const amp = (written: string) => parseFloat(written);
+  const placedIn = (rows: ColumnRow[], column: RatingColumn) => rows.flatMap((r) => (r[column] === null ? [] : [amp(r[column] as string)]));
+  const rowsAt = (rows: ColumnRow[], volts: number[]) => rows.filter((r) => volts.includes(parseFloat(r.label)));
+  const inQuestion = amperesIn(question).map((f) => f.value);
+  const askedVolts = voltagesIn(question);
+  const judged = columned.filter(
+    (t) => t.passage.cited || (CONTACT_QUESTION_RE.test(question) && quoted.some((q) => COLUMNS.some((c) => placedIn(t.columns, c).includes(q.value)))),
+  );
+  if (judged.length === 0) return null;
+  for (const sentence of sentencesOf(answer)) {
+    if (NEGATES_COLUMN_RE.test(sentence)) continue;
+    const figures = [...sentence.matchAll(AMPERE_RE)];
+    const saidVolts = voltagesIn(sentence);
+    for (let k = 0; k < figures.length; k++) {
+      const value = Number(figures[k][1]);
+      if (inQuestion.includes(value)) continue;
+      const from = k > 0 ? (figures[k - 1].index ?? 0) + figures[k - 1][0].length : 0;
+      const to = k + 1 < figures.length ? (figures[k + 1].index ?? sentence.length) : sentence.length;
+      const named = COLUMNS.filter((c) => WORDS_OF[c].test(sentence.slice(from, to)));
+      if (named.length === 0) continue;
+      for (const table of judged) {
+        const rows = [rowsAt(table.columns, saidVolts), rowsAt(table.columns, askedVolts)].find((r) => r.length > 0) ?? table.columns;
+        if (rows.some((r) => r.unread.some((u) => amp(u) === value))) continue;
+        const printed = COLUMNS.filter((c) => placedIn(rows, c).includes(value));
+        if (printed.length > 0 && !printed.some((c) => named.includes(c))) return { rule: "wrong_column", ...where(table), figure: figures[k][0] };
+      }
+    }
+  }
   return null;
 }
 
@@ -201,5 +273,7 @@ export function ratingColumnText(found: RatingColumnFinding): string {
         : `it carries figures below your ${found.load} load. The row for your voltage and current type (AC or DC) is the one that applies`;
     return `I can't confirm that load is within the contact ratings, so I'm withholding my draft answer. The contact ratings table in ${table} lists separate make, break and continuous figures, and ${below}. ${columns}`;
   }
+  if (found.rule === "wrong_column")
+    return `I'm withholding my draft answer: it named a column for a figure from a contact ratings table, and the table prints that figure under a different column. The table in ${table} lists separate make, break and continuous figures. The row for your voltage and current type (AC or DC) is the one that applies. ${columns}`;
   return `I'm withholding my draft answer: it quoted one figure from a contact ratings table without saying which. The table in ${table} lists separate make, break and continuous figures. The row for your voltage and current type (AC or DC) is the one that applies. ${columns}`;
 }
