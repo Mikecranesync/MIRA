@@ -657,7 +657,9 @@ function coverageOf(asked: ModelNumber, heading: string, filename: string, writt
     if (carried.length === 0) return { kind: "silent" };
     return carried.some(isAsked) ? { kind: "covers" } : { kind: "other-model", declared: [...new Set(carried.map((c) => c.label))] };
   }
-  const onFile = familyOn(stemOf(filename));
+  // #5465: a file saved under its publication number ("2080-IN009B-EN-P.pdf")
+  // names the DOCUMENT. That number is not a model the cover has to list.
+  const onFile = familyOn(withoutPublicationNumbers(stemOf(filename)));
   const lines = heading.split("\n");
   // A list that wraps ("… 2080-LC20-20QBB,\n2080-LC20-20AWB, …") is one line.
   const lineAt = (at: number) => {
@@ -741,6 +743,23 @@ const PUBLICATION_LINE_RE = /\b(?:publication|pub|document|doc|literature|drawin
 // A publication-type group ("2080-IN009C", "520-UM001") or a long serial of digits ("NF0000021").
 const PUBLICATION_PART_RE = /^(?:UM|IN|RM|QS|TD|PM|AT|SG|WD|IM|QR|AP|PP|BR|SR|TG|RN|PC)\d{3,4}[A-Z]?$/;
 const isPublicationNumber = (n: ModelNumber) => n.label.split("-").some((part) => PUBLICATION_PART_RE.test(part)) || /\d{6,}/.test(n.key);
+/** On a FILE NAME, a document's own number is known by the whole signature a
+ *  publisher gives its files, not by one group: at least one group in front, a
+ *  publication-type group from the list above ("IN009B", "UM001O"), then a
+ *  two-letter language and a one-letter format ("2080-IN009B-EN-P",
+ *  "1766-UM001O-EN-P", "RX410-UM001A-EN-P"). Each such occurrence loses its
+ *  type group and suffix and keeps the groups in front, so a model written
+ *  there ("RX410") is still read, and the same number written again WITHOUT
+ *  the suffix ("…_1234-BR100.pdf") is still read as a model. Anything short of
+ *  the whole signature is a model: "1234-BR100.pdf" (no suffix),
+ *  "PM800-EN-P.pdf" (nothing in front), "1234-AB123-US-A.pdf" (not a
+ *  publication type). Stated limit: a PRODUCT whose name has that whole shape
+ *  ("1234-SR750-EN-P.pdf") is taken for a document, and the cover decides. */
+const FILE_PUBLICATION_RE = new RegExp(
+  `((?:[A-Za-z0-9]+-)+)${PUBLICATION_PART_RE.source.replace(/^\^|\$$/g, "")}-[A-Za-z]{2}-[A-Za-z](?![A-Za-z0-9])`,
+  "gi",
+);
+const withoutPublicationNumbers = (stem: string) => stem.replace(FILE_PUBLICATION_RE, (_whole, front: string) => `${front.slice(0, -1)} `);
 
 /**
  * The model or catalog numbers a cover DECLARES as its own product, when no

@@ -259,6 +259,109 @@ describe("catalog numbers", () => {
   });
 });
 
+// #5465 — a Rockwell manual downloaded under its publication number. With the
+// revision letter ("2080-IN009B") the number has the same letters/digits layout
+// as the catalog numbers on the cover ("2080-LC20-20QWB"), so it read as a
+// look-alike model the cover does not list.
+describe("a file saved under its publication number (#5465)", () => {
+  const SHEET = "Installation Instructions\nMicro820 20-Point Programmable Controllers\n"
+    + "Catalog Numbers 2080-LC20-20QWB, 2080-LC20-20QBB,\n2080-LC20-20AWB, 2080-LC20-20QWBR,\n2080-LC20-20QBBR, 2080-LC20-20AWBR";
+  // The first stored block of the real PDF (the hub's extractor, 2026-11-13).
+  const AS_STORED = SHEET
+    + "\nhttp://rockwellautomation.com/literature\nFR\nCette publication est disponible en français\n"
+    + "sous forme électronique (fichier PDF). Pour la\ntélécharger, rendez-vous sur la page Internet\nindiquée ci-dessus.\nPT";
+  const GENERIC = "Hardware User Guide\nOriginal instructions";
+  const FILE = "2080-IN009B-EN-P.pdf";
+  const RX420 = "Northfield RX420 Logic Controller\nHardware User Guide";
+
+  it("precondition: the publication number still reads as a number, and is a look-alike of the catalog numbers", () => {
+    expect(keys("2080-IN009B-EN-P")).toEqual(["2080IN009B"]);
+    // A neutral file name answers: the cover is right, only the file name differs.
+    expect(kindOf(verdict("Relay contact ratings on the 2080-LC20-20QWB?", SHEET, "micro820-install.pdf"))).toBe("answers");
+  });
+  it.each(["2080-LC20-20QWB", "2080-LC20-20QBB", "2080-LC20-20AWBR"])("the cover lists %s: the manual answers under its real file name", (n) => {
+    expect(kindOf(verdict(`Relay contact ratings on the ${n}?`, SHEET, FILE))).toBe("answers");
+    expect(kindOf(verdict(`Relay contact ratings on the ${n}?`, AS_STORED, FILE))).toBe("answers");
+  });
+  it.each(["2080-in009b-en-p.pdf", "2080-IN009B-EN-P (1).pdf", "1766-UM001O-EN-P.pdf"])("in any spelling a download gives it: %s", (filename) => {
+    const cover = filename.startsWith("1766") ? "MicroLogix 1400 Programmable Controllers\nCatalog Numbers 1766-L32BWA, 1766-L32AWA" : SHEET;
+    const n = filename.startsWith("1766") ? "1766-L32BWA" : "2080-LC20-20QWB";
+    expect(kindOf(verdict(`Supply voltage for the ${n}?`, cover, filename))).toBe("answers");
+  });
+  it("a cover with no number of the family: the publication file name does not refuse the manual", () => {
+    expect(kindOf(verdict("Relay contact ratings on the 2080-LC20-20QWB?", GENERIC, FILE))).toBe("answers");
+  });
+  it("control: the publication file name is never evidence that the manual covers a number", () => {
+    expect(manualCoversNumber(asked("2080-LC20-20QWB")[0], GENERIC, FILE)).toBe(false);
+  });
+  it("control: a catalog number the cover does not list still refuses, and names what it lists", () => {
+    const v = verdict("Supply voltage for 2080-LC99-99ZZZ?", SHEET, FILE);
+    expect(v).toMatchObject({ admit: false, kind: "other-model", declared: expect.arrayContaining(["2080-LC20-20QWB"]) });
+    expect(kindOf(verdict("Supply voltage for 2080-LC99-99ZZZ?", AS_STORED, FILE))).toBe("other-model");
+  });
+  it("control: a sibling model glued to a publication number in the file name still disagrees with the cover", () => {
+    expect(kindOf(verdict("RX420 supply voltage?", RX420, "RX410-UM001A-EN-P.pdf"))).toBe("cover-and-file-disagree");
+    expect(kindOf(verdict("RX410 supply voltage?", RX420, "RX410-UM001A-EN-P.pdf"))).toBe("cover-and-file-disagree");
+    expect(verdict("RX420 supply voltage?", GENERIC, "RX410-UM001A-EN-P.pdf")).toEqual({ admit: false, kind: "coverage-not-shown", asked: ["RX420"], declared: [] });
+    expect(kindOf(verdict("RX410 supply voltage?", GENERIC, "RX410-UM001A-EN-P.pdf"))).toBe("answers");
+  });
+  it.each(["2080-UM005E-EN-E.pdf", "2080-QS001A-EN-P.pdf", "2080-in009b-de-p.pdf", "2080-IN009B-ZH-P.pdf", "2080-IN009B-EN-P_v2.pdf", "2080-IN009B-EN-P copy.pdf"])(
+    "any listed publication type, language and download suffix: %s", (filename) => {
+      expect(kindOf(verdict("Relay contact ratings on the 2080-LC20-20QWB?", SHEET, filename))).toBe("answers");
+    });
+  it.each(["2080-DS001B-EN-P.pdf", "2080-IN009B_EN_P.pdf", "2080-IN009B-ENG-P.pdf", "2080-IN009B.pdf"])(
+    "short of the whole signature the number is read as a model (stated limit: the right manual still refuses): %s", (filename) => {
+      // A type code off the list, underscores, a three-letter language, or no
+      // suffix at all. Tracked in #5469.
+      expect(kindOf(verdict("Relay contact ratings on the 2080-LC20-20QWB?", SHEET, filename))).toBe("cover-and-file-disagree");
+    });
+  it.each(["1234-AB123-US-A.pdf", "1234-AB123-EN-P.pdf", "Z1234-BR100-EN-P_1234-BR100.pdf"])(
+    "control: a sibling product that only resembles the signature still disagrees with the cover: %s", (filename) => {
+      const asked = filename.includes("AB123") ? "1234-AB124" : "1234-BR200";
+      const cover = `Northfield ${asked} Drive\nHardware User Guide`;
+      expect(kindOf(verdict(`Supply voltage for ${asked}?`, cover, filename))).toBe("cover-and-file-disagree");
+    });
+  it("control: the same number written again without the suffix is still a model (Codex round 1, F1)", () => {
+    const BR200 = "Northfield 1234-BR200 Drive\nHardware User Guide";
+    for (const filename of ["1234-BR100-EN-P_1234-BR100.pdf", "1234-BR100_1234-BR100-EN-P.pdf"]) {
+      expect(kindOf(verdict("Supply voltage for 1234-BR200?", BR200, filename))).toBe("cover-and-file-disagree");
+      expect(verdict("Supply voltage for 1234-BR200?", GENERIC, filename)).toEqual({ admit: false, kind: "coverage-not-shown", asked: ["1234-BR200"], declared: [] });
+    }
+    // Twice WITH the suffix it is the document's number twice, and the cover decides.
+    expect(kindOf(verdict("Relay contact ratings on the 2080-LC20-20QWB?", SHEET, "2080-IN009B-EN-P_2080-IN009B-EN-P.pdf"))).toBe("answers");
+  });
+  it("control: a sibling PRODUCT whose second group looks like a publication group still disagrees with the cover", () => {
+    // "1234-BR100.pdf" has no language-and-format suffix: it is a product's name, not a document's.
+    const BR200 = "Northfield 1234-BR200 Drive\nHardware User Guide";
+    expect(kindOf(verdict("Supply voltage for 1234-BR200?", BR200, "1234-BR100.pdf"))).toBe("cover-and-file-disagree");
+    expect(kindOf(verdict("Supply voltage for 1234-BR200?", BR200, "1234-BR100-manual.pdf"))).toBe("cover-and-file-disagree");
+    expect(verdict("Supply voltage for 1234-BR200?", GENERIC, "1234-BR100.pdf")).toEqual({ admit: false, kind: "coverage-not-shown", asked: ["1234-BR200"], declared: [] });
+  });
+  it("a publication file name tells nothing about the model, exactly like a neutral one (stated limit: a silent cover answers)", () => {
+    // The cover is silent about the family, so the manual answers for any number
+    // of it, as it always has under a neutral file name. The publication number
+    // used to refuse here only by being misread as a model.
+    for (const filename of ["micro820-install.pdf", FILE]) {
+      expect(kindOf(verdict("Supply voltage for 2080-LC50-24QWB?", GENERIC, filename))).toBe("answers");
+    }
+  });
+  it("a product whose name has a document's whole shape is taken for a document (stated limit)", () => {
+    const SR745 = "Northfield 1234-SR745 Relay\nHardware User Guide";
+    expect(kindOf(verdict("Supply voltage for 1234-SR745?", SR745, "1234-SR750-EN-P.pdf"))).toBe("answers");
+    // The cover still decides: it lists the sibling, so the asked model is refused.
+    expect(kindOf(verdict("Supply voltage for 1234-SR750?", SR745, "1234-SR750-EN-P.pdf"))).toBe("other-model");
+  });
+  it("control: a model that only looks like a publication group on its own is still a model on the file name", () => {
+    // "PM800", "SR750" and "AT500" are products. Only a group AFTER a family
+    // prefix ("2080-IN009B") numbers the document.
+    const PM820 = "Northfield PM820 Power Meter\nInstallation Guide";
+    expect(kindOf(verdict("PM820 supply voltage?", PM820, "PM800.pdf"))).toBe("cover-and-file-disagree");
+    // Even with a document's suffix: there is no group in front of it.
+    expect(kindOf(verdict("PM820 supply voltage?", PM820, "PM800-EN-P.pdf"))).toBe("cover-and-file-disagree");
+    expect(kindOf(verdict("PM800 supply voltage?", GENERIC, "PM800.pdf"))).toBe("answers");
+  });
+});
+
 describe("a question that names more than one number", () => {
   const RX410 = "Northfield RX410 Logic Controller\nHardware User Guide";
   const BOTH = "Northfield RX410 and RX420 Logic Controllers\nHardware User Guide";

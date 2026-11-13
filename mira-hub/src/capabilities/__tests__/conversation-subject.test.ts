@@ -149,6 +149,28 @@ describe("whether a question returns to the technician's own unit", () => {
     expect(returnsToRecord(q)).toBe(true);
   });
 
+  // #5467 (Codex r5 on #5464, F1): a "?" ANYWHERE in the run of separators after the phrase makes it a
+  // question, not a return. The run is read whole, so no ordering of . ! ? , or line breaks hides it.
+  it.each([
+    "ok back to mine...? What is its rated input current?",
+    "back to mine!? what is its VT current",
+    "back to mine.? what is its VT current",
+    "back to mine!!? what is its VT current",
+    "ok back to mine...\n? what is its VT current",
+    "back to mine, ? what is its VT current",
+    "ok back to mine...?",
+  ])("is not a return (a question mark inside the separator run): %s", (q) => {
+    expect(returnsToRecord(q)).toBe(false);
+  });
+
+  it.each([
+    "back to mine! what is its VT current?",
+    "ok back to mine... what is its VT current?",
+    "back to mine!!\nwhat frame size is it?",
+  ])("is still a return (the only question mark ends a LATER clause): %s", (q) => {
+    expect(returnsToRecord(q)).toBe(true);
+  });
+
   it("accepted residue: a reversal TWO clauses later is not detected (the sibling is re-named by typing it)", () => {
     expect(returnsToRecord("go back to mine. what is its VT current. no wait, stay on this one")).toBe(true);
   });
