@@ -174,6 +174,7 @@ import {
 import { publicManualSeries } from "@/capabilities/public-model-proof";
 import { extractCandidateIdentity, isSafeCandidateSearchIdentity, wantsManualDocumentation } from "@/capabilities/candidate-identity";
 import { citationTitle } from "@/capabilities/citation-title";
+import { ratingColumnFinding, ratingColumnText } from "@/capabilities/rating-column";
 import { claimPartSearchProposal } from "@/capabilities/part-search-claim";
 import { translateForSearch } from "@/capabilities/translate-for-search";
 import { rewriteForManualSearch, type QueryRewrite } from "@/capabilities/query-rewrite";
@@ -387,6 +388,7 @@ PLANT-SPECIFIC VALUES — abstain on missing configuration:
 GROUNDING & CITATIONS:
 - Cite every factual claim inline like [1] or [2], matching the numbered excerpts.
 - Preserve parameter IDs, fault codes, terminal identifiers, and units EXACTLY (P042, F004, terminal 07, 60 Hz).
+- A ratings table often gives several figures for one condition (a relay contact: make, break, continuous). Say which column each figure you quote is from. A load that stays on is compared with the continuous figure. A closing surge (inrush) is compared with the make figure. Do not approve a load whose steady current exceeds the continuous figure, or whose switched-off current exceeds the break figure. For an inductive load (a coil), a volt-ampere rating in the same table also applies.
 - Cite ONLY an excerpt that actually supports the sentence it is attached to. Never cite an excerpt just because it was retrieved.
 - If the excerpts do not contain the answer, say so plainly in one sentence and cite NOTHING. Never present unrelated pages as if they were evidence.
 
@@ -4951,7 +4953,34 @@ async function handleChatTurn(
         console.warn(`[notebook-chat] uncited manufacturer-library claim withheld (#4426): ${answerText.length} chars, ${citations.length} citations available`);
         answerText = UNCITED_OEM_CLAIM_TEXT;
       }
-      const refused = refusedByText || uncitedDocumentClaim;
+      // #5466 deterministic floor: an answer drawn from a contact-ratings table
+      // (make / break / continuous) must keep the columns apart. "Rated 15 A"
+      // is on the page, so no support check can tell it from the 2 A the
+      // contact may carry. Every passage the answer was given is read, cited or
+      // not: a draft that drops its [n] must not escape. Same handling as the
+      // floor above: under the gate the draft is replaced before release and
+      // ships no citations. Unlike that floor it has no safety-trigger
+      // exemption — a flagged turn must not approve an overload either — and
+      // the turn's hazard banner is kept over the replacement (below).
+      const ratingColumn = (() => {
+        // Not skipped for a draft that only READS as a refusal (refusedByText): "Yes, rated 15 A. The
+        // excerpts do not say …" still approves, and a refusal's text is shown to the technician.
+        if (!gate || !served || !docGrounded || uncitedDocumentClaim) return null;
+        const used = citationsUsedInAnswer(answerText, citations);
+        return ratingColumnFinding(
+          message,
+          answerText,
+          chunks.map((c) => {
+            const title = citationTitle(c);
+            return { content: c.content, title, page: c.sourcePage, cited: used.some((u) => u.sourceTitle === title && u.page === c.sourcePage) };
+          }),
+        );
+      })();
+      if (ratingColumn) {
+        console.warn(`[notebook-chat] ratings-table answer withheld (#5466, ${ratingColumn.rule} rule): ${answerText.length} chars, table p. ${ratingColumn.page ?? "?"}`);
+        answerText = ratingColumnText(ratingColumn);
+      }
+      const refused = refusedByText || uncitedDocumentClaim || ratingColumn !== null;
       // SECOND BRACKET GUARD (the prompt is the first). A general answer has no
       // sources, so any [n] the model emitted anyway points at nothing and would
       // render as a citation chip in mira-mobile. Strip the markers rather than
@@ -5202,7 +5231,8 @@ async function handleChatTurn(
         }
       }
 
-      if (flagBanner && served && !refused && !outputRejected && answerText) answerText = `${flagBanner}\n\n${answerText}`;
+      // #5466: the ratings floor replaces the draft but the turn's hazard still stands, so its banner stays.
+      if (flagBanner && served && (!refused || ratingColumn !== null) && !outputRejected && answerText) answerText = `${flagBanner}\n\n${answerText}`;
 
       // #4068 — owner decision 2026-09-27 ("allow with a warning"): an answer
       // grounded on related-manual pages (the same-family fallback) may relay
@@ -5301,7 +5331,9 @@ async function handleChatTurn(
             : refused
               ? uncitedDocumentClaim
                 ? "uncited_document_claim"
-                : "refusal_regex"
+                : ratingColumn
+                  ? `rating_column_${ratingColumn.rule}`
+                  : "refusal_regex"
               : "served";
         const gateDecision: "answered" | "insufficient_evidence" | "blocked" | "error" = outputRejected
           ? "blocked"
