@@ -1,0 +1,326 @@
+[
+ {
+  "id": "fn-pf40-1",
+  "answerable": false,
+  "pages": [],
+  "quote": "",
+  "confidence": "medium",
+  "note": "Manual's F71 Net Loss entry (p94) is generic (cycle power/check cabling/adapter); manual explicitly defers DeviceNet specifics to the adapter's own manual, and asker already exhausted the generic checks."
+ },
+ {
+  "id": "fn-pf40-2",
+  "answerable": true,
+  "pages": [
+   42,
+   48
+  ],
+  "quote": "Faults                                                             View Fault Queue",
+  "confidence": "high",
+  "note": "HIM menu (p42, View/Clear Fault Queue) plus d007-d009 [Fault 1-3 Code] parameters (p48) give the fault-history procedure."
+ },
+ {
+  "id": "fn-pf40-3",
+  "answerable": true,
+  "pages": [
+   76,
+   94
+  ],
+  "quote": "A105 [Comm Loss Action]                                                           Related Parameters: d015, P037, A106",
+  "confidence": "high",
+  "note": "A105 Comm Loss Action (p76, incl. option 3 Continu Last) and the F81 Comm Loss fault entry referencing A105 (p94) directly match the asker's own A105 workaround."
+ },
+ {
+  "id": "fn-pf40-4",
+  "answerable": false,
+  "pages": [],
+  "quote": "",
+  "confidence": "medium",
+  "note": "Issue centers on 20-COMM-E module LED/DSI daisy-chain recovery behavior, which this base PF40 user manual doesn't document (only defines F81 generically and the DSI/Appendix C protocol, not 20-COMM-E status lights)."
+ },
+ {
+  "id": "fn-pf40-5",
+  "answerable": true,
+  "pages": [
+   33
+  ],
+  "quote": "Local/Remote Input             Start, Speed, and Direction commands",
+  "confidence": "high",
+  "note": "The Local/Remote Input override chart (Digital Inx Sel = 5) on p33 is exactly the local-HIM/remote-PLC single-switch mechanism being asked about."
+ },
+ {
+  "id": "fn-pf40-6",
+  "answerable": true,
+  "pages": [
+   33,
+   58
+  ],
+  "quote": "A051 [Digital In1 Sel]                                      Related Parameters: d012, d014, P038, P039, P040, A067,",
+  "confidence": "medium",
+  "note": "A051-A054 [Digital Inx Sel] (p58) and the speed-reference override chart (p33) clarify that A51-54 select digital input functions (e.g. Preset Freq), not a direct speed value as the asker assumed."
+ },
+ {
+  "id": "fn-pf4m-1",
+  "answerable": false,
+  "pages": [],
+  "quote": "",
+  "confidence": "medium",
+  "note": "F41/F42/F43 Phase UV/UW/VW Short fault entry (p74) only gives generic 'check wiring/replace drive' guidance, which the asker already exhausted; no EMI/grounding-specific root cause in the manual."
+ },
+ {
+  "id": "fn-pf4m-2",
+  "answerable": false,
+  "pages": [],
+  "quote": "",
+  "confidence": "medium",
+  "note": "No '8888' display code or all-LEDs-on non-responsive symptom documented anywhere in the manual."
+ },
+ {
+  "id": "fn-pf4m-3",
+  "answerable": false,
+  "pages": [],
+  "quote": "",
+  "confidence": "medium",
+  "note": "PF4M has no torque-limit/torque-control parameter for tension control; only boost-select (start torque) and V/Hz settings exist, matching the asker's own 'nothing jumping out' observation."
+ },
+ {
+  "id": "fn-pf4m-4",
+  "answerable": false,
+  "pages": [],
+  "quote": "",
+  "confidence": "medium",
+  "note": "22-COMM-E/22-XCOMM-DC-BASE BOOTP/CCW connection procedure is only name-checked as an accessory kit; no setup/troubleshooting detail for that module is in this PF4M user manual."
+ },
+ {
+  "id": "fn-micro820-1",
+  "answerable": true,
+  "pages": [
+   120
+  ],
+  "quote": "[CF]                       Power-up              Power up and attempt to clear fault.",
+  "confidence": "high",
+  "note": "ConfigMeFirst.txt [CF] setting on p120 is exactly the power-up auto-clear-fault mechanism asked about."
+ },
+ {
+  "id": "fn-micro820-2",
+  "answerable": false,
+  "pages": [],
+  "quote": "",
+  "confidence": "medium",
+  "note": "The specific CCW error 'GETACTIVERESOURCELIST' / 'unaccepted changes' dialog is a CCW software issue not documented in this hardware/firmware user manual."
+ },
+ {
+  "id": "fn-micro820-3",
+  "answerable": false,
+  "pages": [],
+  "quote": "",
+  "confidence": "medium",
+  "note": "The specific CCW upload file-corruption error message is a CCW software issue not documented in this user manual."
+ },
+ {
+  "id": "fn-micro820-4",
+  "answerable": true,
+  "pages": [
+   14
+  ],
+  "quote": "Output Terminal Block",
+  "confidence": "medium",
+  "note": "The Output Terminal Block diagram (p14) shows O-00 plus the +DC24/-DC24/common wiring an embedded DO needs to actually energize a load/LED, the likely root cause of the asker's non-working output."
+ },
+ {
+  "id": "fn-micro820-5",
+  "answerable": true,
+  "pages": [
+   13
+  ],
+  "quote": "D+           G            Tx",
+  "confidence": "medium",
+  "note": "p13 gives the embedded serial port's RS485 D+/D-/Ground pinout needed to wire the 2080-SERIALISOL; the MSG_MODBUS block Addr/Node field question is not covered in this installation-instructions doc."
+ },
+ {
+  "id": "fn-ml1100-1",
+  "answerable": true,
+  "pages": [
+   11
+  ],
+  "quote": "1763-L16AWA                         120/240V AC                            10 120V AC                             0...10V DC                            All individually isolated",
+  "confidence": "high",
+  "note": "Table 1 (p11) confirms the embedded analog inputs on the ML1100 are 0...10V DC voltage inputs, directly answering the question."
+ },
+ {
+  "id": "fn-ml1100-2",
+  "answerable": true,
+  "pages": [
+   71
+  ],
+  "quote": "Use the LCD and Keypad",
+  "confidence": "medium",
+  "note": "Chapter 5 'Use the LCD and Keypad' (p71 onward) describes what the LCD/keypad can actually do (monitoring, trimpots, user-defined screens, comm toggle) -- it does not support ladder-logic entry, answering the asker's core question."
+ },
+ {
+  "id": "fn-ml1100-3",
+  "answerable": true,
+  "pages": [
+   154
+  ],
+  "quote": "Protocol                                      with a maximum of 247 slave devices. MicroLogix 1100 controllers support Modbus RTU saster",
+  "confidence": "high",
+  "note": "Appendix E (p154), titled 'Connect to Networks via RS-232/RS-485 Interface', states ML1100 supports Modbus RTU master/slave -- confirming Modbus is a Channel 0 (serial) protocol, not available on the Ethernet port as the asker hoped."
+ },
+ {
+  "id": "fn-ml1100-4",
+  "answerable": true,
+  "pages": [
+   99,
+   100
+  ],
+  "quote": "When a fault occurs, the Fault Code screen does not display automatically. Only the FAULT LED",
+  "confidence": "medium",
+  "note": "'View Fault Code' (p99-100) explains the fault code does not auto-display on the LCD and must be navigated to manually -- matches the complaint of the fault display 'not showing'."
+ },
+ {
+  "id": "fn-ml1100-5",
+  "answerable": false,
+  "pages": [],
+  "quote": "",
+  "confidence": "low",
+  "note": "Exact RSLogix 500 data-file addressing / channel configuration bits for reading a raw analog value are deferred to the Instruction Set Reference manual (1763-RM001), not present in this user manual."
+ },
+ {
+  "id": "fn-ml1100-6",
+  "answerable": true,
+  "pages": [
+   37,
+   113
+  ],
+  "quote": "Wire Your Analog Channels         Analog input circuits can monitor voltage signals and convert them to serial digital data.",
+  "confidence": "medium",
+  "note": "Identifies and specs the embedded analog channels (wiring diagram p37, 0-10V/10-bit spec p113), though exact RSLogix program addressing isn't spelled out here (deferred to the Instruction Set Reference manual)."
+ },
+ {
+  "id": "fn-e3plus-1",
+  "answerable": true,
+  "pages": [
+   52,
+   53
+  ],
+  "quote": "Ground Fault Protection (E3                       In isolated or high impedance-grounded systems, core-balanced current sensors",
+  "confidence": "high",
+  "note": "Ground Fault Protection section (p52-53) explains the purpose of ground fault detection -- directly answers the plain-English explanation request."
+ },
+ {
+  "id": "fn-e3plus-2",
+  "answerable": true,
+  "pages": [
+   125,
+   126
+  ],
+  "quote": "INPUT ASSEMBLY                               Parameter Number       60",
+  "confidence": "high",
+  "note": "Table 61 (p125-126) defines Parameter 60 (Input Assembly, max 107) and Parameters 61-64 (ASSY WORD0-3 PARAM) -- shows word-0 content is set via Parameter 61, not by changing Parameter 60 to 114 (which exceeds the documented max of 107)."
+ },
+ {
+  "id": "fn-e3plus-3",
+  "answerable": true,
+  "pages": [
+   217,
+   218
+  ],
+  "quote": "Resetting a Trip",
+  "confidence": "medium",
+  "note": "'Resetting a Trip' (p217-218) lists resetting the EC3+ via the Fault Reset bit in the Output Assembly over DeviceNet, or via Parameter 26 Trip Reset -- answers resetting the overload from the SLC5/05; the separate softstart module's reset isn't covered by this manual."
+ },
+ {
+  "id": "fn-e3plus-4",
+  "answerable": false,
+  "pages": [],
+  "quote": "",
+  "confidence": "medium",
+  "note": "193-DNENCAT/DNENCATR is only named in the accessories parts table (p273); no wiring/DLR-port detail is given in this E3 Plus manual."
+ },
+ {
+  "id": "fn-lxm32a-1",
+  "answerable": true,
+  "pages": [
+   70
+  ],
+  "quote": "3008:F     Status of digital inputs                                            T_PDO   UINT16      _IO_DI_act",
+  "confidence": "medium",
+  "note": "Object Dictionary entry for 3008:F (p70) confirms the object/parameter and that it's a T_PDO type, which bears on why a generic SDO_read might not work as expected; the LMC058-side SDO_read error itself isn't drive-manual content."
+ },
+ {
+  "id": "fn-m172-1",
+  "answerable": false,
+  "pages": [],
+  "quote": "",
+  "confidence": "high",
+  "note": "This PDF is the M172 Hardware Guide (installation/wiring/specs); it contains no Structured Text / EcoStruxure programming syntax content relevant to the compile error being asked about."
+ },
+ {
+  "id": "fn-premium-1",
+  "answerable": false,
+  "pages": [],
+  "quote": "",
+  "confidence": "medium",
+  "note": "This manual is scoped to the Asynchronous Serial Link and explicitly states its exchange/report status objects apply to 'all communication protocols except Fipio and Ethernet' -- the asker's issue is Modbus TCP over Ethernet, outside this document's scope."
+ },
+ {
+  "id": "fn-x80-1",
+  "answerable": true,
+  "pages": [
+   298,
+   363
+  ],
+  "quote": "Implicit Exchange Language Objects Associated with",
+  "confidence": "high",
+  "note": "p298 explains analog module values are automatically available via implicit exchange (%IW), and the topological-address table on p363 gives BMX AMI 0810's exact %IW addressing -- directly answers how to get the value into CPU memory."
+ },
+ {
+  "id": "fn-micro810-1",
+  "answerable": true,
+  "pages": [
+   9
+  ],
+  "quote": "1     Optional power supply                5       USB port (for use with USB Adapter only)",
+  "confidence": "medium",
+  "note": "Hardware overview (p9) shows the Micro810's only communication port is USB, warned elsewhere as temporary-programming-only and not for permanent connection -- implying no practical path to a permanently connected PanelView Component HMI."
+ },
+ {
+  "id": "fn-micro810-2",
+  "answerable": true,
+  "pages": [
+   29
+  ],
+  "quote": "Output Terminal Block",
+  "confidence": "medium",
+  "note": "Output terminal block wiring diagrams (p29) show the Micro810 DO is a dry relay contact (O-xx/CMx) with no internal 24V supply -- the relay closing (audible click) does not itself produce 24V; external supply must be wired through the contact, explaining why none is read."
+ },
+ {
+  "id": "fn-ml1100-8",
+  "answerable": true,
+  "pages": [
+   160,
+   161
+  ],
+  "quote": "IMPORTANT           If BOOTP is disabled, or no BOOTP server exists on the network, you",
+  "confidence": "high",
+  "note": "p160-161: when BOOTP/DHCP are disabled, the controller keeps its existing/last channel configuration (IP), and the manual states you must use RSLogix 500 (over the network, i.e. Ethernet) to enter/change the IP -- confirming an Ethernet-only fix is possible without a serial cable."
+ },
+ {
+  "id": "fn-smcflex-1",
+  "answerable": true,
+  "pages": [
+   101
+  ],
+  "quote": "Line Loss F41, F42, F43                discontinuous.                                                    pole voltage and current.",
+  "confidence": "high",
+  "note": "Table 43 (p101) defines fault code 43 'Line Loss C' (the F41-F43 variant) as the controller detecting discontinuous SCR conduction during the expected gate period -- a specific root-cause mechanism (SCR firing/load-current related) beyond the generic 'check wiring' the asker already found."
+ },
+ {
+  "id": "fn-se-m172-2",
+  "answerable": false,
+  "pages": [],
+  "quote": "",
+  "confidence": "medium",
+  "note": "This PDF is the M172 Hardware Guide (installation/wiring/connectors); its only relevant mention is a one-line generic blurb that EcoStruxure Machine Expert - HVAC 'permits upload/download of applications' (p167), which is the HVAC-variant software intro, not an answer to whether online/live-edit is possible on the standard M172 Logic Controller without the original source project."
+ }
+]

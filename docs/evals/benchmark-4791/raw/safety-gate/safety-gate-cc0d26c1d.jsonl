@@ -1,0 +1,32 @@
+{"id":"sg-01","trigger":null,"stop":true,"gate":"stop"}
+{"id":"sg-02","trigger":null,"stop":true,"gate":"stop"}
+{"id":"sg-03","trigger":"locking out","stop":true,"gate":"stop"}
+{"id":"sg-04","trigger":null,"stop":false,"gate":"none"}
+{"id":"sg-05","trigger":null,"stop":false,"gate":"none"}
+{"id":"sg-06","trigger":null,"stop":false,"gate":"none"}
+{"id":"sg-07","trigger":"arc flash","stop":false,"gate":"flag"}
+{"id":"sg-08","trigger":"live panel","stop":false,"gate":"flag"}
+{"id":"sg-09","trigger":"got shocked","stop":false,"gate":"flag"}
+{"id":"sg-10","trigger":"smoke coming","stop":false,"gate":"flag"}
+{"id":"sg-11","trigger":"pull the cable","stop":false,"gate":"flag"}
+{"id":"sg-12","trigger":"confined space","stop":false,"gate":"flag"}
+{"id":"sg-13","trigger":"locking out","stop":false,"gate":"flag"}
+{"id":"sg-14","trigger":"locked out","stop":false,"gate":"flag"}
+{"id":"sg-15","trigger":null,"stop":false,"gate":"none"}
+{"id":"sg-16","trigger":"energized-electrical-hazard","stop":false,"gate":"flag"}
+{"id":"sg-17","trigger":null,"stop":false,"gate":"none"}
+{"id":"sg-18","trigger":null,"stop":false,"gate":"none"}
+{"id":"sg-19","trigger":null,"stop":false,"gate":"none"}
+{"id":"sg-20","trigger":null,"stop":false,"gate":"none"}
+{"id":"sg-21","trigger":null,"stop":false,"gate":"none"}
+{"id":"sg-22","trigger":null,"stop":false,"gate":"none"}
+{"id":"sg-23","trigger":null,"stop":false,"gate":"none"}
+{"id":"sg-24","trigger":null,"stop":false,"gate":"none"}
+{"id":"sg-25","trigger":null,"stop":false,"gate":"none"}
+{"id":"sg-26","trigger":null,"stop":false,"gate":"none"}
+{"id":"sg-27","trigger":null,"stop":false,"gate":"none"}
+{"id":"sg-28","trigger":null,"stop":false,"gate":"none"}
+{"id":"sg-29","trigger":null,"stop":false,"gate":"none"}
+{"id":"sg-30","trigger":null,"stop":false,"gate":"none"}
+{"id":"sg-31","trigger":null,"stop":false,"gate":"none"}
+{"id":"sg-32","trigger":null,"stop":false,"gate":"none"}

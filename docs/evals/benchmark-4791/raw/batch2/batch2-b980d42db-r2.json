@@ -1,0 +1,271 @@
+{
+ "ranAt": "2026-10-26T05:59:54.758Z",
+ "results": [
+  {
+   "id": "S1",
+   "kind": "sanity",
+   "baseline": "insufficient_evidence, no citation",
+   "expectedPages": [
+    65,
+    73,
+    76,
+    77,
+    85,
+    89,
+    155,
+    165
+   ],
+   "pages": [],
+   "hit": false,
+   "ms": 600,
+   "identity": {
+    "manufacturer": null,
+    "model": null,
+    "status": "unknown"
+   },
+   "diagnostics": {
+    "vectorLane": "off"
+   }
+  },
+  {
+   "id": "S2",
+   "kind": "sanity",
+   "baseline": "cited p.359",
+   "expectedPages": [
+    359
+   ],
+   "pages": [
+    30,
+    363,
+    353,
+    256,
+    257,
+    258
+   ],
+   "hit": false,
+   "ms": 626,
+   "identity": {
+    "manufacturer": null,
+    "model": null,
+    "status": "unknown"
+   },
+   "diagnostics": {
+    "vectorLane": "off"
+   }
+  },
+  {
+   "id": "S3",
+   "kind": "sanity",
+   "baseline": "insufficient_evidence, no citation",
+   "expectedPages": [
+    64
+   ],
+   "pages": [
+    73,
+    161,
+    57,
+    162,
+    161,
+    74
+   ],
+   "hit": false,
+   "ms": 818,
+   "identity": {
+    "manufacturer": null,
+    "model": null,
+    "status": "unknown"
+   },
+   "diagnostics": {
+    "vectorLane": "off"
+   }
+  },
+  {
+   "id": "S4",
+   "kind": "sanity",
+   "baseline": "cited p.1047",
+   "expectedPages": [
+    1047
+   ],
+   "pages": [
+    1047,
+    706,
+    1274,
+    80,
+    837,
+    276
+   ],
+   "hit": true,
+   "ms": 745,
+   "identity": {
+    "manufacturer": null,
+    "model": null,
+    "status": "unknown"
+   },
+   "diagnostics": {
+    "vectorLane": "off"
+   }
+  },
+  {
+   "id": "S5",
+   "kind": "sanity",
+   "baseline": "insufficient_evidence, empty answer",
+   "expectedPages": [
+    91
+   ],
+   "pages": [],
+   "hit": false,
+   "ms": 294,
+   "identity": {
+    "manufacturer": null,
+    "model": null,
+    "status": "unknown"
+   },
+   "diagnostics": {
+    "vectorLane": "off"
+   }
+  },
+  {
+   "id": "F1",
+   "kind": "forum",
+   "baseline": "PARTIAL (cited p.114)",
+   "expectedPages": [
+    114,
+    1047
+   ],
+   "pages": [
+    111,
+    114,
+    113,
+    112,
+    106,
+    109
+   ],
+   "hit": true,
+   "ms": 796,
+   "identity": {
+    "manufacturer": null,
+    "model": null,
+    "status": "unknown"
+   },
+   "diagnostics": {
+    "vectorLane": "off"
+   }
+  },
+  {
+   "id": "F2",
+   "kind": "forum",
+   "baseline": "ABSTAIN (false)",
+   "expectedPages": [
+    526,
+    527,
+    528,
+    529
+   ],
+   "pages": [],
+   "hit": false,
+   "ms": 680,
+   "identity": {
+    "manufacturer": null,
+    "model": null,
+    "status": "unknown"
+   },
+   "diagnostics": {
+    "vectorLane": "off"
+   }
+  },
+  {
+   "id": "F3",
+   "kind": "forum",
+   "baseline": "FAIL (false abstain)",
+   "expectedPages": [
+    356
+   ],
+   "pages": [
+    328,
+    374,
+    363,
+    45,
+    256,
+    363
+   ],
+   "hit": false,
+   "ms": 525,
+   "identity": {
+    "manufacturer": null,
+    "model": null,
+    "status": "unknown"
+   },
+   "diagnostics": {
+    "vectorLane": "off"
+   }
+  },
+  {
+   "id": "F4",
+   "kind": "forum",
+   "baseline": "NOT RUN (gate)",
+   "expectedPages": null,
+   "pages": [],
+   "hit": null,
+   "ms": 949,
+   "identity": {
+    "manufacturer": null,
+    "model": null,
+    "status": "unknown"
+   },
+   "diagnostics": {
+    "vectorLane": "off"
+   }
+  },
+  {
+   "id": "F5",
+   "kind": "forum",
+   "baseline": "NOT RUN (gate)",
+   "expectedPages": [
+    64
+   ],
+   "pages": [
+    14,
+    54,
+    55,
+    62,
+    143,
+    73,
+    161,
+    45,
+    57,
+    14,
+    23,
+    45,
+    55,
+    95
+   ],
+   "hit": false,
+   "ms": 814,
+   "identity": {
+    "manufacturer": null,
+    "model": null,
+    "status": "unknown"
+   },
+   "diagnostics": {
+    "vectorLane": "off"
+   }
+  },
+  {
+   "id": "F6",
+   "kind": "forum",
+   "baseline": "NOT RUN (gate)",
+   "expectedPages": null,
+   "pages": [],
+   "hit": null,
+   "ms": 905,
+   "identity": {
+    "manufacturer": null,
+    "model": null,
+    "status": "unknown"
+   },
+   "diagnostics": {
+    "vectorLane": "off"
+   }
+  }
+ ]
+}
