@@ -6,7 +6,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { safetyStopTrace, type Manual } from "./score";
+import { abstainTrace, safetyStopTrace, streamStatus, type Manual } from "./score";
 
 /** The ONLY base this walk may touch (same guard as retrieval-acceptance.yml). */
 export const STAGING = "https://app-staging.factorylm.com";
@@ -211,7 +211,7 @@ export type LedgerRow = {
   evidence_packet: Record<string, unknown> | null;
 };
 export type LedgerVerdict =
-  | { ok: true; kind: "zero_call" | "served"; answerUsd: number | null; jevInputTokens: number }
+  | { ok: true; kind: "zero_call" | "abstain" | "served"; answerUsd: number | null; jevInputTokens: number }
   | { ok: false; reason: string };
 
 const obj = (v: unknown): Record<string, unknown> | null => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
@@ -252,6 +252,49 @@ export function zeroCallVerdict(rows: LedgerRow[], traceId: string): LedgerVerdi
   if (dec && dec.skipped_reason == null) return fail("Jev decision call recorded on the stop");
   return { ok: true, kind: "zero_call", answerUsd: 0, jevInputTokens: 0 };
 }
+
+/**
+ * Zero-call proof for a deterministic abstain (#5357), from the Hub's own ledger row. route.ts's
+ * Gate G and off-topic abstains persist `gateUsage` (provider/model null, status empty, no tokens),
+ * outcome `abstained`, an answer_gate that decided `insufficient_evidence`, and they return BEFORE
+ * the Jev shadow is created, so the packet carries the Jev defaults (every Jev field null). The same
+ * rule as the safety stop: EVERY field must say nothing ran. Any positive evidence of a Jev call
+ * (a score, a latency, tokens, a decision call without a skipped reason, or a decision that was
+ * attempted and failed) is metered activity and fails closed; only a Jev skipped BEFORE any request
+ * (`disabled`, `no_key`) with nothing recorded is accepted (nothing ran).
+ */
+export function abstainVerdict(rows: LedgerRow[], traceId: string): LedgerVerdict {
+  const one = oneRow(rows, traceId);
+  if ("reason" in one) return fail(one.reason);
+  const { row, packet } = one;
+  if (row.provider !== null || row.model !== null) return fail(`paid call, usage missing: ledger names provider ${row.provider ?? "?"} model ${row.model ?? "?"}`);
+  if (row.status !== "empty") return fail(`ledger status ${row.status ?? "null"}, not the abstain's empty`);
+  if (row.outcome !== "abstained") return fail(`ledger outcome ${row.outcome ?? "null"}, not abstained`);
+  if (row.input_tokens !== null || row.output_tokens !== null || row.cost_usd_estimate !== null) return fail("ledger records tokens or cost on the abstain");
+  const gen = obj(packet.generation);
+  if (!gen || !Array.isArray(gen.attempts)) return fail("ledger has no generation record: zero-call not proven");
+  if (gen.attempts.length > 0) return fail(`ledger records ${gen.attempts.length} generation attempt(s)`);
+  if (gen.served_provider != null) return fail(`ledger records served provider ${String(gen.served_provider)}`);
+  const gate = obj(packet.answer_gate);
+  if (!gate || gate.invoked !== true) return fail("ledger has no invoked answer_gate record: the abstain decision is not proven");
+  if (gate.decision !== "insufficient_evidence") return fail(`gate decision ${String(gate.decision ?? null)}, not insufficient_evidence`);
+  if (gate.jev_input_tokens != null || gate.jev_sufficient != null || gate.jev_latency_ms != null) return fail("Jev sufficiency call recorded on the abstain");
+  const dec = obj(packet.jev_decision);
+  if (dec) {
+    const r = dec.skipped_reason;
+    if (r == null) return fail("Jev decision call recorded on the abstain");
+    if (!JEV_PRE_REQUEST_SKIPS.has(String(r))) return fail(`Jev decision ${String(r)}: a request went out with unknown usage (only a pre-request skip is zero-call)`);
+    if (dec.input_tokens != null || dec.latency_ms != null || dec.model != null) return fail(`Jev decision skipped ${String(r)} but records tokens, latency or a model`);
+  }
+  return { ok: true, kind: "abstain", answerUsd: 0, jevInputTokens: 0 };
+}
+
+/**
+ * jev-decision.ts skip reasons that are set BEFORE any request is built (`disabled`, `no_key`).
+ * Every other reason (`timeout`, `http_<status>`, `malformed`, `error`) is written after a fetch
+ * went out, so tokens may have been consumed with no usage recorded: unknown, never zero.
+ */
+const JEV_PRE_REQUEST_SKIPS = new Set(["disabled", "no_key"]);
 
 /** Input tokens of one Jev call recorded on the packet: 0 when it was skipped, a reason when it ran
  *  with unknown usage or above the booked bound. */
@@ -294,6 +337,8 @@ export class BudgetMeter {
   unboundedReason: string | null = null;
   /** Safety stops proven zero-call by their ledger row. */
   zeroCallTurns = 0;
+  /** Deterministic abstains proven zero-call by their ledger row (#5357). Booked like any turn. */
+  abstainTurns = 0;
   /** Sum of the ledger's own answer cost estimates (reconciled, not booked). */
   reconciledAnswerUsd = 0;
   /** Served turns whose ledger cost estimate was null: unknown, never counted as zero. */
@@ -308,9 +353,11 @@ export class BudgetMeter {
   /** Refuse every later paid turn (first reason wins). */
   halt(id: string, reason: string): void { this.unbounded ??= id; this.unboundedReason ??= reason; }
   /**
-   * Check what the turn showed against the bound the booking assumed. A deterministic stop (no usage
-   * frame) passes ONLY with a zero-call ledger verdict; any other stream needs a readable, in-bound
-   * usage frame, and a failing ledger verdict stops the run with the ledger's reason.
+   * Check what the turn showed against the bound the booking assumed. A deterministic stop or abstain
+   * (no usage frame) passes ONLY with the matching zero-call ledger verdict; any other stream needs a
+   * readable, in-bound usage frame, and a failing ledger verdict stops the run with the ledger's
+   * reason. Every halt names what the stream showed and which proof is missing, so the run report
+   * says what to fix (#5357). The booking is never refunded: a proven free turn still cost a booking.
    */
   verify(id: string, sse: string | null, ledger?: LedgerVerdict): void {
     if (safetyStopTrace(sse)) {
@@ -320,12 +367,20 @@ export class BudgetMeter {
       this.zeroCallTurns++;
       return;
     }
+    const abstain = abstainTrace(sse);
+    if (abstain) {
+      if (!ledger) return this.halt(id, `abstain on trace ${abstain} without usage: zero-call not proven (no ledger verdict was read; read the turn's decision_traces row and judge it with abstainVerdict, #5357)`);
+      if (!ledger.ok) return this.halt(id, `abstain on trace ${abstain}: ${ledger.reason}`);
+      if (ledger.kind !== "abstain") return this.halt(id, `abstain on trace ${abstain}: zero-call not proven (verdict is for a ${ledger.kind} turn, not an abstain)`);
+      this.abstainTurns++;
+      return;
+    }
     const u = turnUsage(sse);
-    if (!u.readable) return this.halt(id, "usage missing or unreadable on a non-stop turn");
+    if (!u.readable) return this.halt(id, `usage missing or unreadable on a non-stop turn (stream status ${streamStatus(sse)}, no safety or insufficient_evidence shape): a paid call whose usage never reached the stream cannot be bounded; if this reply was deterministic, the Hub must stream a recognisable no-call shape (#5357)`);
     if (!u.inBound) return this.halt(id, `usage out of bound or unpriced (${u.inputTokens} in / ${u.outputTokens} out)`);
     if (!ledger) return;
     if (!ledger.ok) return this.halt(id, ledger.reason);
-    if (ledger.kind !== "served") return this.halt(id, "zero-call verdict on a turn that streamed usage");
+    if (ledger.kind !== "served") return this.halt(id, `${ledger.kind} verdict on a turn that streamed usage`);
     if (ledger.answerUsd === null) this.unknownAnswerCostTurns++;
     else this.reconciledAnswerUsd += ledger.answerUsd;
     this.jevInputTokens += ledger.jevInputTokens;
@@ -385,14 +440,16 @@ export async function ledgerVerdictFor(
   prices: Record<string, { input: number; output: number }> = PROVIDER_PRICES,
 ): Promise<{ traceId: string | null; rows: LedgerRow[]; verdict: LedgerVerdict }> {
   const stop = safetyStopTrace(sse);
+  const abstain = abstainTrace(sse);
   const { traceId, provider } = streamKeys(sse);
-  const key = stop ?? traceId;
+  const key = stop ?? abstain ?? traceId;
   if (!key) return { traceId: null, rows: [], verdict: fail("no trace frame on the stream: cannot tie the turn to its ledger row") };
   let rows: LedgerRow[];
   try { rows = await read(tenantId, key); } catch (e) {
     return { traceId: key, rows: [], verdict: fail(`ledger read failed: ${(e as Error).message}`) };
   }
-  return { traceId: key, rows, verdict: stop ? zeroCallVerdict(rows, key) : servedVerdict(rows, key, provider, prices) };
+  const verdict = stop ? zeroCallVerdict(rows, key) : abstain ? abstainVerdict(rows, key) : servedVerdict(rows, key, provider, prices);
+  return { traceId: key, rows, verdict };
 }
 
 /**

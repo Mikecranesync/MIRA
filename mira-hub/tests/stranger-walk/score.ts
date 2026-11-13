@@ -41,6 +41,29 @@ export function safetyStopTrace(sse: string | null): string | null {
   return id && /^[0-9a-f]{32}$/.test(id) ? id : null;
 }
 
+/**
+ * The trace id of a deterministic abstain (#5357), or null. Recognised from stream STRUCTURE only:
+ * a status frame `insufficient_evidence`, NO usage frame, NO safety frame, and a trace frame with a
+ * 32-hex id. That is the shape of route.ts's Gate G / off-topic abstain, which persists before any
+ * provider or Jev call exists. A served refusal streams a usage frame and is NOT an abstain: it stays
+ * on the served path. A recognised abstain is still not free until its ledger row proves it
+ * (`abstainVerdict`, staging.ts).
+ */
+export function abstainTrace(sse: string | null): string | null {
+  const fs = frames(sse);
+  if (!fs.some((f) => f.kind === "status" && f.status === "insufficient_evidence")) return null;
+  if (fs.some((f) => f.kind === "usage" || f.kind === "safety")) return null;
+  const t = fs.find((f) => f.kind === "trace");
+  const id = typeof t?.traceId === "string" ? t.traceId : null;
+  return id && /^[0-9a-f]{32}$/.test(id) ? id : null;
+}
+
+/** The status the stream ended with, for halt reasons (`none` when no status frame was seen). */
+export function streamStatus(sse: string | null): string {
+  const s = frames(sse).find((f) => f.kind === "status");
+  return typeof s?.status === "string" ? s.status : "none";
+}
+
 export type Manual = { id: string; oem: string; family: string; title: string; url: string; filename: string; sha256: string; bytes: number; pages: number };
 /** A further page that answers the question on its own (the manual repeats the fact), with the
  *  verbatim pdftotext line that proves it. Matched exactly: the ±tolerance applies to expectedPage only. */
