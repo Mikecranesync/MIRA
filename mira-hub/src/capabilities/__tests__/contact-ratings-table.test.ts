@@ -78,6 +78,39 @@ describe("contactRatingColumns — position decides, not order", () => {
   });
 });
 
+describe("contactRatingColumns — a head word printed twice (the page's Volt-Amperes Make and Break)", () => {
+  it("an ampere figure under the second Make or Break is not a make or break figure: the row is not placed", () => {
+    // 125 V DC with a figure under the amperes Make, one under Continuous, and one under the
+    // volt-ampere Break head (x 418.44).
+    const y = ITEMS.find((r) => r.str === "125 V DC")!.y;
+    const under: LayoutItem[] = [
+      ...ITEMS.filter((i) => i.str !== "0.22 A"),
+      { str: "0.22 A", x: 206.4, y, w: 20, size: 7 },
+      { str: "0.5 A", x: 299.52, y, w: 15, size: 7 },
+      { str: "0.1 A", x: 418.44, y, w: 15, size: 7 },
+    ];
+    const row = contactRatingColumns(under)![3];
+    expect(row).toEqual({ label: "125 V DC", make: null, break: null, continuous: null, unread: ["0.22 A", "0.5 A", "0.1 A"] });
+  });
+  it("control: the first Make and Break still place their figures", () => {
+    expect(contactRatingColumns(ITEMS)![0]).toMatchObject({ make: "15 A", break: "1.5 A" });
+  });
+});
+
+describe("contactRatingColumns — one voltage on two rows", () => {
+  it("two rows for one voltage (say resistive and inductive) cannot be told apart by the lines: the page is not read", () => {
+    const y = ITEMS.find((r) => r.str === "125 V DC")!.y - 9;
+    const twice: LayoutItem[] = [
+      ...ITEMS,
+      { str: "120 V AC", x: 147.72, y, w: 30, size: 7 },
+      { str: "15 A", x: 206.4, y, w: 15, size: 7 },
+      { str: "0.5 A", x: 252.25, y, w: 15, size: 7 },
+      { str: "1 A", x: 299.52, y, w: 10, size: 7 },
+    ];
+    expect(contactRatingColumns(twice)).toBeNull();
+  });
+});
+
 describe("contactRatingColumns — where the table ends", () => {
   it("the rows are the unbroken run under the heads: a voltage line further down the page is not one", () => {
     // Under the page's other text, a line that opens with a voltage and has a figure at the make position.
@@ -115,6 +148,11 @@ describe("contactRatingColumns — pages that are not a contact-ratings table", 
 
 describe("the stored lines", () => {
   const lines = columnLines(PRINTED);
+  it("the head says a figure with no column read is not a rating for one column", () => {
+    expect(COLUMN_LINES_HEAD).toMatch(/"column not read"/);
+    expect(COLUMN_LINES_HEAD).toMatch(/not a rating for any one column/);
+    expect(COLUMN_LINES_HEAD).not.toMatch(/\n/);
+  });
   it("one line per row, under a fixed head", () => {
     expect(lines).toEqual([
       COLUMN_LINES_HEAD,

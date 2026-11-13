@@ -303,6 +303,19 @@ describe("WRONG-COLUMN rule (#5474 item 5) — a figure the page places in a col
     // Neither names one: every row is read, and 2 A is a make figure on one of them.
     expect(ratingColumnFinding("What is the make rating?", "The make rating is 2 A [1].", given)).toBeNull();
   });
+  it("a negated column word excuses only itself: a wrong column named later in the sentence is still judged", () => {
+    expect(
+      ratingColumnFinding("What is the break rating on 120 V AC?", "The make rating of 15 A is not the continuous rating, and the break rating of 2 A applies [2].", GIVEN),
+    ).toMatchObject({ rule: "wrong_column", figure: "2 A" });
+  });
+  it("surge names the make column", () => {
+    expect(ratingColumnFinding(RATING_QUESTION, "At 120 V AC the make rating is 15 A and the surge figure is 2 A [2].", GIVEN)).toMatchObject({ rule: "wrong_column", figure: "2 A" });
+    expect(ratingColumnFinding(RATING_QUESTION, "At 120 V AC the make rating is 1.5 A and the surge figure is 15 A [2].", GIVEN)).toMatchObject({ rule: "wrong_column", figure: "1.5 A" });
+    expect(ratingColumnFinding(RATING_QUESTION, "At 120 V AC the break rating is 1.5 A and the surge figure is 15 A [2].", GIVEN)).toBeNull();
+  });
+  it("control: a figure the page prints in one cell across make and break may be called either (24 V DC, 1.0 A)", () => {
+    expect(ratingColumnFinding(RATING_QUESTION, "The break rating at 24 V DC is 1 A [2].", GIVEN)).toBeNull();
+  });
   it("a negation that is not on a column word does not excuse the sentence", () => {
     expect(ratingColumnFinding(RATING_QUESTION, "The load should not be switched: the break rating at 120 V AC is 15 A [2].", GIVEN)).toMatchObject({ rule: "wrong_column", figure: "15 A" });
   });

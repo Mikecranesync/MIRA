@@ -39,11 +39,15 @@
  *   1.5 A and break rating of 2 A"; the page prints 2 A under Continuous. The
  *   rule reads the rows for the voltage the sentence names, else the question's,
  *   else every row. It only ever withholds; it approves nothing. It does not
- *   judge: a figure the question itself gives (that is the asked load), a
- *   figure whose value also sits on those rows with no column read, or a
- *   sentence that puts a negation directly on a column word ("15 A is not the
- *   continuous rating"). A negation further off is not seen, so "do not treat
- *   15 A as the continuous rating" is withheld though it is right.
+ *   judge: a figure the question itself gives (that is the asked load), or a
+ *   figure whose value also sits on those rows with no column read (the page
+ *   prints 1.0 A across make and break at 24 V DC, so "break 1 A" there is
+ *   right). A column word with a negation directly on it ("15 A is not the
+ *   continuous rating") names nothing; the sentence's other column words still
+ *   do. A negation further off is not seen, so "do not treat 15 A as the
+ *   continuous rating" is withheld though it is right. A figure with no column
+ *   word beside it is not judged by this rule, even when another figure in the
+ *   sentence has one ("the make rating is 15 A and 2 A is what you can use").
  *
  * A passage is a ratings table when it writes "Make" beside "Break" and also
  * writes "Continuous". Its rating rows are the lines that carry two or more
@@ -121,14 +125,14 @@ const CONTACT_QUESTION_RE = /\b(?:relay|contacts?|outputs?|switch(?:es|ed|ing)?)
 // WRONG-COLUMN rule: the words that name each column.
 const COLUMNS: readonly RatingColumn[] = ["make", "break", "continuous"];
 const WORDS_OF: Record<RatingColumn, RegExp> = {
-  make: /\b(?:make|making|makes|inrush)\b/i,
+  make: /\b(?:make|making|makes|inrush|surge)\b/i,
   break: /\b(?:break|breaking|breaks|interrupt(?:ing|s)?)\b/i,
   continuous: /\b(?:continuous|continuously|steady[- ]state)\b/i,
 };
-// A sentence that says what a figure is NOT: the negation sits directly on a column word
-// ("is not the continuous rating", "rather than the make figure"). "Should not be switched" is
-// not one.
-const NEGATES_COLUMN_RE = /(?:\b(?:not|never|rather than|instead of)|n[’']t)\s+(?:(?:the|a|an|its)\s+)?(?:make|making|break|breaking|continuous|inrush)\b/i;
+// Words that say what a figure is NOT: the negation sits directly on a column word ("is not the
+// continuous rating", "rather than the make figure"). That column word names nothing; every
+// other word in the sentence still does. "Should not be switched" is not one.
+const NEGATED_COLUMN_RE = /(?:\b(?:not|never|rather than|instead of)|n[’']t)\s+(?:(?:the|a|an|its)\s+)?(?:make|making|break|breaking|continuous|inrush|surge)\b/gi;
 
 type Figure = { value: number; written: string };
 const amperesIn = (text: string): Figure[] => [...text.matchAll(AMPERE_RE)].map((m) => ({ value: Number(m[1]), written: m[0] }));
@@ -234,7 +238,6 @@ export function ratingColumnFinding(question: string, answer: string, passages: 
   );
   if (judged.length === 0) return null;
   for (const sentence of sentencesOf(answer)) {
-    if (NEGATES_COLUMN_RE.test(sentence)) continue;
     const figures = [...sentence.matchAll(AMPERE_RE)];
     const saidVolts = voltagesIn(sentence);
     for (let k = 0; k < figures.length; k++) {
@@ -242,7 +245,8 @@ export function ratingColumnFinding(question: string, answer: string, passages: 
       if (inQuestion.includes(value)) continue;
       const from = k > 0 ? (figures[k - 1].index ?? 0) + figures[k - 1][0].length : 0;
       const to = k + 1 < figures.length ? (figures[k + 1].index ?? sentence.length) : sentence.length;
-      const named = COLUMNS.filter((c) => WORDS_OF[c].test(sentence.slice(from, to)));
+      const beside = sentence.slice(from, to).replace(NEGATED_COLUMN_RE, " ");
+      const named = COLUMNS.filter((c) => WORDS_OF[c].test(beside));
       if (named.length === 0) continue;
       for (const table of judged) {
         const rows = [rowsAt(table.columns, saidVolts), rowsAt(table.columns, askedVolts)].find((r) => r.length > 0) ?? table.columns;

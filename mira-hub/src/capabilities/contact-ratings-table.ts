@@ -21,13 +21,18 @@
  *  - A cell is an item that is exactly an ampere figure ("15 A"). It belongs to the one head
  *    item whose left edge is within 4 pt of its own. A volt-ampere figure carries no "A" and is
  *    never a cell.
- *  - A row is placed only when every cell on it found exactly one head and no two share one.
- *    Otherwise all its figures are "unread".
+ *  - A head word printed twice (this page also has Make and Break under Volt-Amperes): only the
+ *    leftmost places a figure. An ampere figure under another one is in a column this reader
+ *    does not know, and its row is not placed.
+ *  - A row is placed only when every cell on it found exactly one head, that head places, and
+ *    no two cells share one. Otherwise all its figures are "unread".
  *  - Make and break are given only when the row has a cell under each. One figure at the make
  *    position with nothing at the break position is how the page prints a cell that spans both;
  *    positions cannot tell that from a make-only figure, so it is unread.
  *  - A continuous figure is given to the row it is printed on, and to no other: a cell merged
  *    down several rows cannot be bounded from positions (the rule #5450 settled on).
+ *  - One voltage on two rows (resistive and inductive blocks, say): the stored lines could not
+ *    say which is which, so the page is not read (null).
  *  - No row with a column: the page is not read as a table at all (null).
  *
  * PURE: no I/O, no model call.
@@ -41,7 +46,7 @@ export type ColumnRow = { label: string; make: string | null; break: string | nu
 
 /** The first of the stored lines. `readColumnLines` matches it whole. */
 export const COLUMN_LINES_HEAD =
-  "Contact ratings by column (make, break, continuous), read from where the printed table places each figure. A figure the table prints once for several rows, or in one cell across two columns, is not repeated or placed here:";
+  "Contact ratings by column (make, break, continuous), read from where the printed table places each figure. A figure the table prints once for several rows is given only on the row it is printed on. A figure marked \"column not read\" is printed in the row but its column could not be read: it is not a rating for any one column, and the printed table says which columns it covers:";
 
 const LINE_GAP_PT = 2.5;
 const HEAD_BAND_PT = 20;
@@ -81,7 +86,8 @@ export function contactRatingColumns(items: readonly LayoutItem[]): ColumnRow[] 
   const headY = lines[headAt].y;
   const heads = lines
     .filter((l) => Math.abs(l.y - headY) <= HEAD_BAND_PT)
-    .flatMap((l) => l.items.flatMap((i) => COLUMNS.filter((c) => isWord(i, c)).map((column) => ({ column, x: i.x }))));
+    .flatMap((l) => l.items.flatMap((i) => COLUMNS.filter((c) => isWord(i, c)).map((column) => ({ column, x: i.x }))))
+    .map((h, _k, all) => ({ ...h, places: all.every((o) => o.column !== h.column || o.x >= h.x) }));
   if (!heads.some((h) => h.column === "continuous")) return null;
 
   const rows: ColumnRow[] = [];
@@ -91,7 +97,7 @@ export function contactRatingColumns(items: readonly LayoutItem[]): ColumnRow[] 
     const cells = line.items.slice(1).filter((i) => AMPERE_CELL_RE.test(i.str.trim()));
     const placed = cells.map((cell) => heads.filter((h) => Math.abs(h.x - cell.x) <= COLUMN_TOL_PT));
     const under = (column: RatingColumn) => cells.filter((_c, k) => placed[k][0].column === column).map((c) => c.str.trim());
-    const sound = placed.every((p) => p.length === 1) && COLUMNS.every((c) => under(c).length <= 1);
+    const sound = placed.every((p) => p.length === 1 && p[0].places) && COLUMNS.every((c) => under(c).length <= 1);
     const row: ColumnRow = { label, make: null, break: null, continuous: null, unread: [] };
     if (sound) {
       const [make] = under("make");
@@ -103,6 +109,7 @@ export function contactRatingColumns(items: readonly LayoutItem[]): ColumnRow[] 
     } else row.unread.push(...cells.map((c) => c.str.trim()));
     rows.push(row);
   }
+  if (new Set(rows.map((r) => r.label)).size !== rows.length) return null;
   return rows.some((r) => r.make || r.continuous) ? rows : null;
 }
 
