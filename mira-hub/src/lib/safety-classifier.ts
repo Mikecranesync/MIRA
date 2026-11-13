@@ -638,6 +638,12 @@ export function hazardBanner(trigger: string): string {
   return "⚠️ **Safety flag.** This task involves a hazard. Isolate and verify zero energy before hands-on work.";
 }
 
+/** Fixed server-written banner text, for recognizing historical generic notices.
+ * Returns a copy; consumers cannot mutate the classifier's banner table. */
+export function fixedHazardBanners(): readonly string[] {
+  return [...HAZARD_BANNER_CLASSES.map(({ banner }) => banner), hazardBanner("")];
+}
+
 /** Prompt directive for a flagged (non-electrical) turn: answer fully, keep
  *  isolation conditions inline at the step they apply, no lecture. */
 export function safetyFlagDirective(trigger: string): string {

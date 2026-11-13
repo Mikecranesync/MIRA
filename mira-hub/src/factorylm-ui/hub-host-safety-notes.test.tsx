@@ -85,3 +85,23 @@ describe("splitLeadingSafetyNotes — #4690 the warning above an answer is its o
     expect(html).toMatch(/<pre[\s>][\s\S]*IF fault THEN/);
   });
 });
+
+
+describe("#5408 historical generic reminders", () => {
+  it("drops a legacy borrowed page and labels the reminder without changing the stored answer", () => {
+    const stored = `${ISOLATION} (p.61)\n\n${ANSWER}`;
+    const html = renderToStaticMarkup(<AnswerWithSafety text={stored} markdown={(content) => <p>{content}</p>} />);
+    expect(html).not.toContain("(p.61)");
+    expect(html).toContain("General safety reminder");
+    expect(html).toContain("Lock and tag every energy source");
+    expect(html).toContain(ANSWER);
+    expect(stored).toContain("(p.61)");
+  });
+
+  it("does not rewrite a manual quotation or turn a page number into a source (control)", () => {
+    const sourced = "⚠️ **Manual warning.** WARNING: Keep covers closed. (p.26)";
+    const html = renderToStaticMarkup(<AnswerWithSafety text={`${sourced}\n\n${ANSWER}`} markdown={(content) => <p>{content}</p>} />);
+    expect(html).toContain(sourced);
+    expect(html).not.toContain("General safety reminder");
+  });
+});

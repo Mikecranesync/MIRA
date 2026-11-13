@@ -58,6 +58,7 @@ import {
 } from "@/capabilities/openai-run-budget";
 import { withSupportingQuotes } from "@/capabilities/supporting-quote";
 import { citedPagesFor, extractManualSafetyStatement, manualSafetyStatementForCitations } from "@/capabilities/manual-safety-statement";
+import { generalSafetyReminder } from "@/capabilities/general-safety-reminder";
 import { retrieveSafetyChapterChunks, SAFETY_CHAPTER_DIRECTIVE } from "@/capabilities/manual-safety-chapter";
 import { shadowVerifyCitedTurnResult } from "@/capabilities/claim-verifier-shadow";
 import { judgeEvidenceSufficiencyShadow, type JevShadowResult } from "@/capabilities/observability/jev-shadow";
@@ -129,7 +130,6 @@ import {
   withSafetyFlag,
 } from "@/lib/safety-classifier";
 import { RESTART_BANNER, RESTART_DIRECTIVE, isFaultResetAsk } from "@/capabilities/restart-advisory";
-import { pageFromRetrievedChunks, withPageCitation } from "@/lib/citation-page";
 import {
   ENERGIZED_WORK_TRIGGER,
   LOCKOUT_PAGE_QUERY,
@@ -2611,15 +2611,10 @@ async function handleChatTurn(
   // "the bound model's manual has nothing": every site that reads an empty
   // result as that consults this first.
   const libraryNotForAsk = oemRetrieval ? retrievalDiagnostics.libraryNotForAsk ?? null : null;
-  // Banner is classified before retrieval; the page citation can only be
-  // written now that chunks exist. Prefer the WARNING/CAUTION/DANGER chunk's
-  // printed label (TQ-29: p.2-15) over INTEGER source_page.
-  // The restart banner is site safety practice, not a manual claim: no page.
-  const flagBanner = flagBannerBase
-    ? restartAdvisory
-      ? flagBannerBase
-      : withPageCitation(flagBannerBase, pageFromRetrievedChunks(chunks))
-    : null;
+  // #5408: hazardBanner is fixed general guidance, not text from a manual.
+  // A retrieved page (even one the answer later cites) cannot substantiate it.
+  // Manual-specific warnings keep their own source-bound evidence below.
+  const flagBanner = flagBannerBase ? generalSafetyReminder(flagBannerBase) : null;
   {
     // Notebook chunks carry a doc id; shared-OEM chunks carry no doc id but a
     // source URL + page, which is their durable identity in knowledge_entries.
