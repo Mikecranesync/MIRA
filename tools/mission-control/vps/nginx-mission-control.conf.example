@@ -1,0 +1,47 @@
+# Mission Control v2 behind nginx on the OVH VPS (Stage B, #4737). Example only: the live
+# deployment/nginx-*.conf tree is guarded; the owner copies this to
+# /etc/nginx/sites-available/mission-control by hand after approving Stage B.
+#
+# Prerequisites (owner checklist in docs/runbooks/mission-control.md):
+#   1. DNS A record  mc.factorylm.com -> 40.160.141.61
+#   2. sudo certbot --nginx -d mc.factorylm.com        (fills in the ssl_* lines)
+#   3. sudo htpasswd -c /etc/nginx/.htpasswd-mc <user> (private, authenticated access only)
+#   4. MC_WEBHOOK_SECRET in Doppler factorylm/prd; the same value on the GitHub repo webhook
+#
+server {
+    listen 80;
+    server_name mc.factorylm.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name mc.factorylm.com;
+
+    # ssl_certificate     /etc/letsencrypt/live/mc.factorylm.com/fullchain.pem;   # certbot
+    # ssl_certificate_key /etc/letsencrypt/live/mc.factorylm.com/privkey.pem;     # certbot
+
+    add_header X-Frame-Options DENY always;
+    add_header X-Content-Type-Options nosniff always;
+
+    # Everything a person reads is behind basic auth.
+    location / {
+        auth_basic           "FactoryLM Mission Control";
+        auth_basic_user_file /etc/nginx/.htpasswd-mc;
+        proxy_pass           http://127.0.0.1:8787;
+        proxy_set_header     Host $host;
+        proxy_set_header     X-Forwarded-For $remote_addr;
+    }
+
+    # GitHub cannot send basic auth; this path is protected by the HMAC signature instead
+    # (server.py answers 401 on a bad signature and 503 when no secret is configured).
+    location = /webhook/github {
+        auth_basic           off;
+        client_max_body_size 2m;
+        proxy_pass           http://127.0.0.1:8787;
+        proxy_set_header     Host $host;
+        proxy_set_header     X-GitHub-Event $http_x_github_event;
+        proxy_set_header     X-GitHub-Delivery $http_x_github_delivery;
+        proxy_set_header     X-Hub-Signature-256 $http_x_hub_signature_256;
+    }
+}
