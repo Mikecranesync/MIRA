@@ -41,6 +41,19 @@ export function wantsProgress(req: Request): boolean {
   return process.env.MIRA_CHAT_PROGRESS === "1" && req.headers.get("x-mira-progress") === "1";
 }
 
+function joined(a: Uint8Array, b: Uint8Array): Uint8Array {
+  const out = new Uint8Array(a.length + b.length);
+  out.set(a);
+  out.set(b, a.length);
+  return out;
+}
+
+/** The index just past the last blank line (the end of the last whole SSE frame), or 0. */
+function lastFrameEnd(bytes: Uint8Array): number {
+  for (let i = bytes.length - 1; i > 0; i--) if (bytes[i] === 0x0a && bytes[i - 1] === 0x0a) return i + 1;
+  return 0;
+}
+
 const FORWARDED_HEADERS = ["x-safety-stop", "x-idempotent-replay", "x-mira-trace-id"];
 
 /**
@@ -92,11 +105,19 @@ export function withProgressStream(req: Request, handler: () => Promise<Response
             for (const [name, v] of res.headers) if (name.startsWith("x-safety-")) headers[name] = v;
             if (Object.keys(headers).length > 0) write({ kind: "headers", headers });
             inner = res.body.getReader();
+            // #5479: forward the turn's bytes only up to the end of a whole frame. A piece of a
+            // frame is held until the rest arrives, so a stage written by `write` above can
+            // never land inside it. (`withSheetReceipt` hands frames over in pieces.)
+            let held: Uint8Array | null = null;
             for (;;) {
               const { value, done } = await inner.read();
               if (done || closed) break;
-              controller.enqueue(value);
+              const bytes: Uint8Array = held ? joined(held, value) : value;
+              const end = lastFrameEnd(bytes);
+              if (end > 0) controller.enqueue(bytes.subarray(0, end));
+              held = end < bytes.length ? bytes.slice(end) : null;
             }
+            if (held && !closed) controller.enqueue(held);
           } else {
             let body: unknown = null;
             try {
