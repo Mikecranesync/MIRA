@@ -180,6 +180,21 @@ describe("retrieveNodeChunks excludes another model's table passages when the re
       expect(diagnostics.siblingOfRecordAsk).toEqual({ asked: ["GS13N-20P2"], record: "GS11N-20P2" });
     });
 
+    // CV-101 complete-machine benchmark FU-A4 (staging 6da4ab674, 2026-11-13, thread FU-A): after the
+    // sibling ask above was refused, the technician said "ok back to mine, what frame size is it".
+    // The refused sibling question is still open (conversation-subject.ts: a refusal leaves its
+    // subject open), so the carry rule re-applied GS13N-20P2 to a turn that named no number and
+    // refused it again with "Your question is about the GS13N-20P2" — and there is no way back to
+    // the record without typing its catalog number. The carry itself is Mike's L8 ruling and is
+    // kept by the case above; this case asks only that an explicit return to the technician's own
+    // unit ends the carry. EXPECTED RED until the rule is decided (report §6, options a/b/c).
+    it.fails("an explicit return to the record ('ok back to mine') after a refused sibling ask is about the record again, not the sibling", async () => {
+      const diagnostics: Record<string, unknown> = {};
+      const { client } = makeClient(rows());
+      await retrieveNodeChunks(client, "t-1", "ok back to mine, what frame size is it", scoped({ diagnostics, subjectQueries: ["what about the GS13N-20P2, same thing?", "hey what supply voltage does this drive need"] }));
+      expect(diagnostics.siblingOfRecordAsk).toBeUndefined();
+    });
+
     // Codex r2 on #5451 (F3, MEDIUM): "GS13N - 20P2" (spaces around the hyphen, a tablet keyboard's
     // habit) is read by the identity reader (model-token.ts accepts whitespace around that hyphen)
     // but split by the generic number reader into GS13N + 20P2, so the refusal never fired and the
