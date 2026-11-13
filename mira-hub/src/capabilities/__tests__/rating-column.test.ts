@@ -410,6 +410,15 @@ describe("WRONG-COLUMN rule (#5474 item 5) — a figure the page places in a col
   it("the question's own load figure between the column word and its figure does not hide the assignment", () => {
     expect(ratingColumnFinding(LOAD_QUESTION, "At 120 V AC, the make rating for a 5 A coil load is 1.5 A, and 2 A is the continuous figure [2].", GIVEN)).toMatchObject({ rule: "wrong_column", figure: "1.5 A" });
   });
+  it("a load figure the question did not give, between the column word and its figure, does not hide the assignment either", () => {
+    expect(ratingColumnFinding(RATING_QUESTION, "At 120 V AC, the make rating for a 3 A coil load is 1.5 A [2].", GIVEN)).toMatchObject({ rule: "wrong_column", figure: "1.5 A" });
+    expect(ratingColumnFinding(RATING_QUESTION, "At 120 V AC, the make rating for a 3 A coil load is 15 A [2].", GIVEN)).toBeNull();
+  });
+  it("a list longer than its head is not given the head's columns by position", () => {
+    // Three figures under two column words: the head cannot say which figure is which, so only
+    // the attached word counts ("make: 15 A"), and that is right.
+    expect(ratingColumnFinding(RATING_QUESTION, "At 120 V AC, break and make: 15 A, 1.5 A, 2 A [2].", GIVEN)).toBeNull();
+  });
   it.each([
     ["a respectively list", "At 120 V AC the make and break ratings are 15 A and 1.5 A respectively [2]."],
     ["a slashed list", "At 120 V AC, make / break / continuous: 15 A / 1.5 A / 2 A [2]."],

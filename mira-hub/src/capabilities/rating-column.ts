@@ -310,12 +310,10 @@ export function ratingColumnFinding(question: string, answer: string, passages: 
       }
       const clauseFrom = Math.max(0, ...edges.filter((e) => e.end <= at).map((e) => e.end));
       const clauseTo = Math.min(sentence.length, ...edges.filter((e) => e.at >= end).map((e) => e.at));
-      // The figure ahead bounds what is "before" this one, unless it is a figure the question gave
-      // ("the make rating for a 5 A coil load is 1.5 A").
-      let ahead = k - 1;
-      while (ahead >= 0 && given(ahead)) ahead--;
-      const beforeFrom = Math.max(clauseFrom, ahead >= 0 ? endOf(ahead) : 0);
-      const before = sentence.slice(beforeFrom, at);
+      // "Before" is the clause up to the figure. The patterns are anchored on the figure and admit
+      // another figure only as the load a rating is quoted for ("the make rating for a 5 A coil
+      // load is 1.5 A"), so a column word cannot reach across an earlier figure any other way.
+      const before = sentence.slice(clauseFrom, at);
       const after = sentence.slice(end, Math.min(clauseTo, k + 1 < figures.length ? startOf(k + 1) : sentence.length));
       const front = COLUMNS.map((c) => ({ c, at: assignedBefore(c, before) })).filter((a) => a.at >= 0);
       const back = COLUMNS.map((c) => ({ c, end: assignedAfter(c, after) })).filter((a) => a.end >= 0);
@@ -326,7 +324,7 @@ export function ratingColumnFinding(question: string, answer: string, passages: 
       if (front.length > 0) {
         // Denied only when the denial comes before the column word: "is not rated to break 15 A".
         // After it, the denial is a limit: "the make rating is not more than 1.5 A".
-        if (DENIES_RE.test(sentence.slice(denyFrom, beforeFrom + Math.min(...front.map((a) => a.at))))) continue;
+        if (DENIES_RE.test(sentence.slice(denyFrom, clauseFrom + Math.min(...front.map((a) => a.at))))) continue;
       } else {
         // Column word behind the figure: a load ("a 1.5 A steady-state load"), a denial ahead ("do
         // not treat 15 A as the continuous rating") or behind ("a 15 A continuous rating is not available").
