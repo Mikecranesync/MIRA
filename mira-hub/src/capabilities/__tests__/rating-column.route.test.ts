@@ -305,6 +305,16 @@ describe("#5466 — a ratings-table answer that does not keep the columns apart 
     expect(r.citations?.map((c) => c.page)).toContain(19);
   });
 
+  it.each([
+    ["a surge-suppressed 5 A coil", "Can the relay output switch a surge-suppressed 5 A coil at 120 V AC?"],
+    ["a coil with 10 A inrush / 5 A holding", "Can the relay output switch a 120 V AC coil rated 10 A inrush / 5 A holding?"],
+  ])("Codex round 2, F3: a make-only approval for %s is withheld, with no citations", async (_what, message) => {
+    const r = await ask("Yes, the 15 A make rating at 120 V AC covers this coil load [2].", { message, sourceDocIds: [DOC_A] });
+    expect(r.content).toBe(WITHHELD);
+    expect(r.status).toBe("insufficient_evidence");
+    expect(r.citations).toEqual([]);
+  });
+
   it("control: an answer from the prose page that quotes nothing from the table is not this check's business", async () => {
     const r = await ask("Fit a surge suppression device directly across the coil [1].");
     expect(r.status).toBe("answered");

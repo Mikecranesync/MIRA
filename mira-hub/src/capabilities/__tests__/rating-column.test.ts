@@ -125,6 +125,28 @@ describe("LOAD rule — the asked load is over a figure on the row, and the answ
       const q = "Can the relay output switch a 120 V AC coil with 10 A inrush and 3 A holding current?";
       expect(ratingColumnFinding(q, "Yes, 10 A inrush is under the 15 A make rating [2].", CITED)).toMatchObject({ rule: "load", load: "3 A", lower: ["1.5 A", "2 A"] });
     });
+    // Codex round 2, F3: the inrush word belongs to ONE figure, and "surge-suppressed" is not a current.
+    const MAKE_ONLY = "Yes, the 15 A make rating at 120 V AC covers this coil load [2].";
+    it.each([
+      ["Can the relay output switch a surge-suppressed 5 A coil at 120 V AC?", "5 A"],
+      ["Can the relay output switch a 5 A coil with surge protection at 120 V AC?", "5 A"],
+      ["Can the relay output switch a 5 A surge-suppressed coil at 120 V AC?", "5 A"],
+      ["Can the relay output switch a 5 A surge protected coil at 120 V AC?", "5 A"],
+      ["Can the relay output switch a 120 V AC coil rated 10 A inrush / 5 A holding?", "5 A"],
+      ["Can the relay output switch a 120 V AC coil: 10 A inrush, 5 A holding?", "5 A"],
+      ["Can the relay output switch a 5 A coil at 120 V AC? Inrush is 10 A.", "5 A"],
+      ["The inrush is high. Can the relay output switch a 5 A coil at 120 V AC?", "5 A"],
+    ])("only the figure the word sits on is set aside: %s", (q, load) => {
+      expect(ratingColumnFinding(q, MAKE_ONLY, CITED)).toMatchObject({ rule: "load", load, lower: ["1.5 A", "2 A"] });
+    });
+    it.each([
+      "Can the relay output switch a 120 V AC coil rated 10 A inrush / 1 A holding?",
+      "Can the relay output switch a 120 V AC coil with an inrush current of 10 A and 1 A sealed?",
+      "Can the relay output switch a 1 A coil at 120 V AC? Inrush is 10 A.",
+      "Can the relay output switch a 120 V AC coil with a 10 A (inrush) and 1 A holding draw?",
+    ])("and the qualified approval still passes: %s", (q) => {
+      expect(ratingColumnFinding(q, QUALIFIED, CITED)).toBeNull();
+    });
     it("a question with only an inrush figure is left to the column rule", () => {
       const q = "Can the relay output take a 10 A inrush at 120 V AC?";
       expect(ratingColumnFinding(q, "Yes: the make rating is 15 A at 120 V AC [2].", CITED)).toBeNull();

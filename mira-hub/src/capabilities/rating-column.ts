@@ -11,9 +11,9 @@
  *
  * Two deterministic rules, text only, no model call:
  *
- *   LOAD rule — the question names a load current (a figure it calls inrush
- *   or surge is not one: that is judged against the make figure, which this
- *   rule cannot pick out), and a ratings table the
+ *   LOAD rule — the question names a load current (a figure it labels inrush
+ *   or surge, word against figure, is not one: that is judged against the make
+ *   figure, which this rule cannot pick out), and a ratings table the
  *   answer was given carries an ampere figure BELOW that load on the row for
  *   the asked voltage (on every row, when the question names no voltage the
  *   table lists). Then the load is over at least one of make, break and
@@ -83,18 +83,27 @@ const COLUMN_WORD_RE = /\b(?:make|making|makes|inrush|break|breaking|breaks|inte
 const SENTENCE_APPROVES_RE = /^[^A-Za-z0-9]*(?:yes|yeah|yep|sure|absolutely|certainly|correct|ok|okay|that is fine|that's fine|no problem)\b/i;
 const ANSWER_OPENS_APPROVING_RE = /^[^A-Za-z0-9]*(?:you can|it can)\b/i;
 const approves = (answer: string) => ANSWER_OPENS_APPROVING_RE.test(answer) || answer.split(/(?<=[.!?])\s+|\n+/).some((s) => SENTENCE_APPROVES_RE.test(s));
-// A current the question itself calls a closing surge: "10 A inrush", "inrush of 10 A".
-const INRUSH_RE = /\b(?:inrush|in-rush|surge|pull-in|pick-?up)\b/i;
+// A current the question itself calls a closing surge. The word must sit ON the
+// figure ("10 A inrush", "inrush of 10 A", "inrush current is 10 A"); anywhere
+// else in the sentence it says nothing about a figure, and "surge-suppressed"
+// or "surge protection" is not a current at all.
+const INRUSH = String.raw`(?:inrush|in-rush|pull-in|pick-?up|surge(?![- ]?(?:suppress|protect|arrest)))\b`;
+const INRUSH_AFTER_RE = new RegExp(String.raw`^\s*\(?\s*(?:of\s+|peak\s+)?${INRUSH}`, "i");
+const INRUSH_BEFORE_RE = new RegExp(String.raw`\b${INRUSH}(?:\s+current)?\s*(?:of|is|=|:|at|about|around|up to)?\s*\(?\s*$`, "i");
 // The LOAD rule reads an UNCITED table only for a question about what the table rates.
 const CONTACT_QUESTION_RE = /\b(?:relay|contacts?|outputs?|switch(?:es|ed|ing)?)\b/i;
 
 type Figure = { value: number; written: string };
 const amperesIn = (text: string): Figure[] => [...text.matchAll(AMPERE_RE)].map((m) => ({ value: Number(m[1]), written: m[0] }));
 /** The currents a question asks to have carried or switched off: its ampere
- *  figures, less any that its own clause calls inrush ("10 A inrush and 1 A
- *  holding" asks about 1 A here). */
+ *  figures, less each one the question itself labels inrush ("10 A inrush /
+ *  5 A holding" asks about 5 A here). */
 const loadsIn = (question: string): Figure[] =>
-  question.split(/[,;()]|\b(?:and|with|but)\b/i).flatMap((clause) => (INRUSH_RE.test(clause) ? [] : amperesIn(clause)));
+  [...question.matchAll(AMPERE_RE)].flatMap((m) => {
+    const at = m.index ?? 0;
+    const inrush = INRUSH_AFTER_RE.test(question.slice(at + m[0].length)) || INRUSH_BEFORE_RE.test(question.slice(0, at));
+    return inrush ? [] : [{ value: Number(m[1]), written: m[0] }];
+  });
 const voltagesIn = (text: string): number[] => [...text.matchAll(VOLTAGE_RE)].map((m) => Number(m[1]));
 
 type RatingRow = { volts: number | null; label: string | null; figures: Figure[] };
