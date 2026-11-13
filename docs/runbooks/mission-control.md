@@ -44,6 +44,8 @@ States are never collapsed and "done" is not a state. Each cell lights only on t
 
 **What forces NO-GO regardless of the cells:** lifecycle evidence older than two poll intervals (it has its own clock; webhook or poll traffic never refreshes it), a failed evidence refresh (the last rows stay on screen, stamped with the error), or any candidate whose GitHub reads were incomplete (a comment page that failed, a per-PR GraphQL error) — that row shows every cell as "evidence incomplete" and the badge names it.
 
+**CI pass-rate tile:** fed only by `workflow_run` / `check_suite` webhook deliveries with a conclusion. GitHub's REST events feed carries no workflow or check events, so a poll-only host (BRAVO, CHARLIE Stage A) shows `n/a` until Stage B registers the webhook.
+
 **Reports are reconciled, not only accumulated:** a deleted lane comment, or one edited so the marker is gone, removes the stored report (webhook `deleted`/`edited`, or a *complete* successful poll of the coordination issue). Removed ids are tombstoned so a late or replayed delivery cannot resurrect them, and an older version of a comment never overwrites a newer one. A marker that only appears inside `<details>` is history, never the current report.
 The Pilot Acceptance Ledger (`.planning/2026-11-10-garage-pilot/PILOT-ACCEPTANCE-LEDGER.md`, gitignored on CHARLIE) stays the authoritative pilot record; the cockpit never re-stores its rows (a header link to it is a follow-up; the file is not on a public URL).
 
