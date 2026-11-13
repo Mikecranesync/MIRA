@@ -136,6 +136,9 @@ export type NotebookSource = {
   /** Short, technician-facing copy for `searchable` — says "off" or "partial"
    *  plainly instead of letting a raw `readiness.label` contradict the chat. */
   searchableLabel: string;
+  /** Whether a renderer must show `searchableLabel` (anything but a plain
+   *  "Ready to ask") — true for an enabled partial manual too. */
+  searchableWarning: boolean;
   /** Garage pilot L2: pages the ingest flagged `text_repair = unmapped_glyph`
    *  (a number whose glyph the PDF cannot map — "5�1" for 5.1). Counted
    *  beside readiness, never folded into it: "N pages did not read cleanly". */
@@ -1296,6 +1299,7 @@ export async function listSources(
       readiness,
       searchable: searchability.searchable,
       searchableLabel: searchability.searchableLabel,
+      searchableWarning: searchability.searchableWarning,
       unreadablePages: c.unreadable,
       extractionVersion: c.version,
     };

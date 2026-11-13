@@ -236,13 +236,18 @@ export interface Searchability {
    *  `searchable` is false, or when it's true but the document is a known
    *  partial manual. */
   searchableLabel: string;
+  /** Whether a renderer must SHOW `searchableLabel`: true for every state
+   *  except a plain "Ready to ask". Read this, never `searchable === false` —
+   *  an approved, enabled partial manual is searchable and still needs its
+   *  warning (Codex r1 on #5476, F1). */
+  searchableWarning: boolean;
 }
 
 export function deriveSearchable(f: SearchabilityFacts): Searchability {
   if (!f.canChat) {
     // Not text-ready yet — defer to the readiness label's own copy; there is
     // nothing more specific to say.
-    return { searchable: false, searchableLabel: "Not searchable yet" };
+    return { searchable: false, searchableLabel: "Not searchable yet", searchableWarning: true };
   }
 
   const approved = f.matchState === "user_confirmed" || f.matchState === "verified";
@@ -255,6 +260,7 @@ export function deriveSearchable(f: SearchabilityFacts): Searchability {
       searchableLabel: partial
         ? "Saved, switched off — partial manual"
         : "Not searchable: not turned on",
+      searchableWarning: true,
     };
   }
 
@@ -263,8 +269,8 @@ export function deriveSearchable(f: SearchabilityFacts): Searchability {
     // whose numbers didn't read): it DOES answer, so `searchable` stays true,
     // but the label must say so — this is the exact "Ready to ask" vs.
     // "it's off and partial" contradiction #5456 reports.
-    return { searchable: true, searchableLabel: "Ready to ask — partial manual" };
+    return { searchable: true, searchableLabel: "Ready to ask — partial manual", searchableWarning: true };
   }
 
-  return { searchable: true, searchableLabel: "Ready to ask" };
+  return { searchable: true, searchableLabel: "Ready to ask", searchableWarning: false };
 }

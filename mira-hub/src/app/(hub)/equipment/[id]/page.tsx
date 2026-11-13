@@ -13,6 +13,7 @@ import { NotebookDeleteDialog } from "@/components/equipment/NotebookDeleteDialo
 import { deleteFailureMessage, createSubmitGuard } from "@/lib/notebook-delete";
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
 import { persistedTurns } from "@/components/equipment/notebook-chat-utils";
+import { toggleSourceEnabled } from "@/capabilities/notebook-source-toggle";
 
 type Notebook = {
   id: string;
@@ -34,6 +35,9 @@ type Source = {
    *  off/partial copy to show beside the checkbox before a tap turns it on. */
   searchable?: boolean;
   searchableLabel?: string;
+  /** True whenever the label is anything but a plain "Ready to ask" — an
+   *  enabled partial manual included. The row shows the label on this. */
+  searchableWarning?: boolean;
 };
 
 export default function NotebookPage() {
@@ -84,21 +88,28 @@ export default function NotebookPage() {
   );
   const usableCount = sources.filter((s) => s.matchState !== "rejected").length;
 
+  // The label beside each checkbox is the server's projection, so a toggle
+  // re-reads the source list instead of guessing the new label locally.
+  const refreshSources = useCallback(async () => {
+    const res = await fetch(`${API_BASE}/api/equipment-notebooks/${id}/`, { cache: "no-store" });
+    if (!res.ok) return;
+    const data = await res.json();
+    setSources(data.sources ?? []);
+  }, [id]);
+
   const toggle = useCallback(
-    async (docId: string) => {
-      const next = !enabled[docId];
-      setEnabled((p) => ({ ...p, [docId]: next })); // optimistic
-      try {
-        await fetch(`${API_BASE}/api/equipment-notebooks/${id}/sources/${docId}/`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ enabledByDefault: next }),
-        });
-      } catch {
-        setEnabled((p) => ({ ...p, [docId]: !next })); // reconcile
-      }
-    },
-    [enabled, id],
+    (docId: string) =>
+      toggleSourceEnabled(!enabled[docId], {
+        setEnabled: (value) => setEnabled((p) => ({ ...p, [docId]: value })),
+        patch: (value) =>
+          fetch(`${API_BASE}/api/equipment-notebooks/${id}/sources/${docId}/`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ enabledByDefault: value }),
+          }),
+        refresh: refreshSources,
+      }),
+    [enabled, id, refreshSources],
   );
 
   // NotebookLM loop: pick a PDF → upload to this notebook's node (parks the
@@ -354,7 +365,7 @@ export default function NotebookPage() {
                             rejected
                           </span>
                         )}
-                        {!processing && !rejected && s.searchable === false && s.searchableLabel && (
+                        {!processing && !rejected && s.searchableWarning && s.searchableLabel && (
                           <span className="text-xs" style={{ color: "var(--status-yellow)" }}>
                             {s.searchableLabel}
                           </span>

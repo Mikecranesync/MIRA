@@ -283,3 +283,38 @@ describe("deriveSearchable — the #5456 off/partial projection", () => {
     expect(s.searchableLabel).toMatch(/partial/i);
   });
 });
+
+/**
+ * Codex r1 on #5476 (F1): the Sources sheet showed `searchableLabel` only when
+ * `searchable === false`, so an approved + enabled PARTIAL manual lost its
+ * warning. `searchableWarning` is the one predicate a renderer reads: show the
+ * label whenever it is anything other than a plain "Ready to ask".
+ */
+describe("deriveSearchable — searchableWarning says when the label must be shown", () => {
+  const states = ["candidate", "user_confirmed", "verified"] as const;
+
+  it("an approved, enabled PARTIAL manual is searchable AND carries the warning", () => {
+    const s = deriveSearchable({ matchState: "user_confirmed", enabledByDefault: true, canChat: true, completenessComplete: false });
+    expect(s).toEqual({ searchable: true, searchableLabel: "Ready to ask — partial manual", searchableWarning: true });
+  });
+
+  it("an approved, enabled, complete manual carries no warning", () => {
+    for (const completenessComplete of [true, null, undefined]) {
+      const s = deriveSearchable({ matchState: "verified", enabledByDefault: true, canChat: true, completenessComplete });
+      expect(s).toEqual({ searchable: true, searchableLabel: "Ready to ask", searchableWarning: false });
+    }
+  });
+
+  it("the warning is off ONLY for the plain 'Ready to ask' label, across every combination", () => {
+    for (const matchState of states)
+      for (const enabledByDefault of [true, false])
+        for (const canChat of [true, false])
+          for (const completenessComplete of [true, false, null]) {
+            const s = deriveSearchable({ matchState, enabledByDefault, canChat, completenessComplete });
+            expect(s.searchableWarning, JSON.stringify({ matchState, enabledByDefault, canChat, completenessComplete })).toBe(
+              s.searchableLabel !== "Ready to ask",
+            );
+            if (!s.searchable) expect(s.searchableWarning).toBe(true);
+          }
+  });
+});
