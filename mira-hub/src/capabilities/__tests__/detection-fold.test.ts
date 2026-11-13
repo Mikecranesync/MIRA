@@ -46,13 +46,13 @@ describe("the shared fold is the same fold as answer-validation's", () => {
 
 describe("foldForDetection (shared copy)", () => {
   it("folds hyphen equivalents, apostrophes, Unicode spaces and invisibles", () => {
-    expect(foldForDetection("GS11N‑20P2")).toBe("GS11N-20P2");
-    expect(foldForDetection("let’s")).toBe("let's");
-    expect(foldForDetection("back to mine")).toBe("back to mine");
-    expect(foldForDetection("mi​ne­")).toBe("mine");
+    expect(foldForDetection("GS11N\u201120P2")).toBe("GS11N-20P2");
+    expect(foldForDetection("let\u2019s")).toBe("let's");
+    expect(foldForDetection("back\u00A0to\u202Fmine")).toBe("back to mine");
+    expect(foldForDetection("mi\u200Bne\u00AD")).toBe("mine");
   });
 
   it("leaves en dash, em dash and the ellipsis character alone (each grammar owns those, #3980)", () => {
-    expect(foldForDetection("0–600 A — ok…")).toBe("0–600 A — ok…");
+    expect(foldForDetection("0\u2013600 A \u2014 ok\u2026")).toBe("0\u2013600 A \u2014 ok\u2026");
   });
 });

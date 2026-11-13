@@ -247,6 +247,12 @@ describe("retrieveNodeChunks excludes another model's table passages when the re
           // #5467 (Codex r5 on #5464, F1): a "?" inside a run of separators is still a question.
           "ok back to mine...? What is its rated input current?",
           "back to mine!? what is its VT current",
+          // Codex r1 on #5490 (F1): a mixed dash run ("—-", "–-") leaves no clause of its own,
+          // so neither the "?" after it nor the reversal after it is hidden.
+          "back to mine\u2014-? What is its rated input current?",
+          "back to mine\u2014-actually wait, what is its VT current",
+          "back to mine\u2013-? What is its rated input current?",
+          "back to mine\u2013-actually wait, what is its VT current",
         ];
         for (const question of negated) {
           const diagnostics: Record<string, unknown> = {};

@@ -134,6 +134,10 @@ const CLAUSE_BOUNDARY = /(\s[-–—]\s|[,;:.!?]|\n)/;
 const TYPED_ELLIPSIS = /…/g;
 const TYPED_DASH = /\s*(?:[–—―﹘]|-{2,})\s*/g;
 
+/** A clause "has words" when it holds a letter or a digit; anything else is punctuation. */
+const HAS_WORDS = /[\p{L}\p{N}]/u;
+const LEADING_NON_WORD = /^[^\p{L}\p{N}]+/u;
+
 function asTyped(question: string): string {
   return foldForDetection(question).replace(TYPED_ELLIPSIS, "...").replace(TYPED_DASH, " - ");
 }
@@ -146,15 +150,18 @@ export function returnsToRecord(question: string): boolean {
     const rest = clause.replace(RETURN_TO_OWN_UNIT, " ").toLowerCase().split(/\s+/).filter(Boolean);
     if (!rest.every((word) => CONNECTIVES.has(word))) return false;
     // Codex r4 on #5464 (F1): ".\n" or "..." leaves empty clauses between the separators;
-    // the next clause is the next one with words in it.
+    // the next clause is the next one with words in it. Codex r1 on #5490 (F1): a clause of
+    // punctuation only ("-" left between "—" and "-?") has no words either, so it is part of
+    // the separator run too, whatever the punctuation is.
     let next = i + 2;
-    while (next < parts.length && parts[next].trim() === "") next += 2;
+    while (next < parts.length && !HAS_WORDS.test(parts[next])) next += 2;
     // #5467 (Codex r5 on #5464, F1): the whole run of separators up to that clause is the
-    // terminator. A "?" anywhere in it ("...?", "!?") makes this a question, not a return.
+    // terminator. A "?" anywhere in it ("...?", "!?", "—-?") makes this a question, not a return.
     for (let sep = i + 1; sep < next; sep += 2) {
       if ((parts[sep] ?? "").includes("?")) return false;
     }
-    return !REVERSAL_OPENERS.test((parts[next] ?? "").trim());
+    // The reversal is read from the next clause's first word, past any punctuation in front of it.
+    return !REVERSAL_OPENERS.test((parts[next] ?? "").replace(LEADING_NON_WORD, ""));
   }
   return false;
 }

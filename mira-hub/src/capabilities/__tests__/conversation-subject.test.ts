@@ -196,14 +196,14 @@ const ALL_CASES: readonly string[] = [
   ...QUESTION_MARK_LATER,
 ];
 const PHONE_SPELLINGS: ReadonlyArray<[string, (q: string) => string]> = [
-  ["one-character ellipsis (U+2026)", (q) => q.replaceAll("...", "…")],
-  ["em dash, no spaces (U+2014)", (q) => q.replace(/ -{1,2} /g, "—")],
-  ["em dash, spaced (U+2014)", (q) => q.replace(/ -{1,2} /g, " — ")],
-  ["en dash, no spaces (U+2013)", (q) => q.replace(/ -{1,2} /g, "–")],
+  ["one-character ellipsis (U+2026)", (q) => q.replaceAll("...", "\u2026")],
+  ["em dash, no spaces (U+2014)", (q) => q.replace(/ -{1,2} /g, "\u2014")],
+  ["em dash, spaced (U+2014)", (q) => q.replace(/ -{1,2} /g, " \u2014 ")],
+  ["en dash, no spaces (U+2013)", (q) => q.replace(/ -{1,2} /g, "\u2013")],
   ["two hyphens, no spaces", (q) => q.replace(/ -{1,2} /g, "--")],
-  ["curly apostrophe (U+2019)", (q) => q.replaceAll("'", "’")],
-  ["no-break spaces (U+00A0)", (q) => q.replaceAll(" ", " ")],
-  ["zero-width space inside a word (U+200B)", (q) => q.replace(/back/gi, (w) => `${w[0]}​${w.slice(1)}`)],
+  ["curly apostrophe (U+2019)", (q) => q.replaceAll("'", "\u2019")],
+  ["no-break spaces (U+00A0)", (q) => q.replaceAll(" ", "\u00A0")],
+  ["zero-width space inside a word (U+200B)", (q) => q.replace(/back/gi, (w) => `${w[0]}\u200B${w.slice(1)}`)],
 ];
 const SPELLING_ROWS = PHONE_SPELLINGS.flatMap(([how, spell]) =>
   ALL_CASES.map((q) => [how, q, spell(q)] as const).filter(([, q, typed]) => typed !== q),
@@ -218,27 +218,39 @@ describe("#5485: a phone's spelling reads the same as plain typing", () => {
     expect(returnsToRecord(typed)).toBe(returnsToRecord(ascii));
   });
 
-  // The two shapes the campaign reported (F04, F06), written out.
+  // The two shapes the campaign reported (F04, F06), written out; and a dash run before a plain
+  // follow-up is still a return (control for Codex r1 on #5490).
   it.each([
-    "ok back to mine… what frame size is it",
-    "ok back to mine—what frame size is it",
-    "let’s go back to mine, what is its rated input current?",
+    "back to mine\u2014- what frame size is it",
+    "back to mine - - what frame size is it",
+    "ok back to mine\u2026 what frame size is it",
+    "ok back to mine\u2014what frame size is it",
+    "let\u2019s go back to mine, what is its rated input current?",
   ])("is a return: %j", (q) => {
     expect(returnsToRecord(q)).toBe(true);
   });
 
   it.each([
     // A question mark after the ellipsis character is still a question (#5467 controls).
-    "ok back to mine…?",
-    "ok back to mine…? What is its rated input current?",
+    "ok back to mine\u2026?",
+    "ok back to mine\u2026? What is its rated input current?",
     // A reversal after a dash still cancels.
-    "ok back to mine—actually wait, what about its VT current",
+    "ok back to mine\u2014actually wait, what about its VT current",
+    // Codex r1 on #5490 (F1): punctuation with no words between two separators is part of the
+    // separator run, not a clause. A mixed dash run hides neither the "?" nor the reversal after it.
+    "back to mine\u2014-? What is its rated input current?",
+    "back to mine\u2014-actually wait, what is its VT current",
+    "back to mine\u2013-? What is its rated input current?",
+    "back to mine\u2013-actually wait, what is its VT current",
+    "back to mine - -? What is its rated input current?",
+    "back to mine. -actually wait, what is its VT current",
+    "back to mine, -- no, stay on this one",
     // A single hyphen-equivalent is a hyphen, not a clause break: "mine-ish" is not a return, in any spelling.
-    "back to mine‑ish what frame size is it",
+    "back to mine\u2011ish what frame size is it",
     "back to mine-ish what frame size is it",
     // Out of scope, still fails closed: full-width punctuation is not read as a clause break.
-    "back to mine，what frame size is it",
-    "back to mine？",
+    "back to mine\uFF0Cwhat frame size is it",
+    "back to mine\uFF1F",
   ])("is not a return: %j", (q) => {
     expect(returnsToRecord(q)).toBe(false);
   });
