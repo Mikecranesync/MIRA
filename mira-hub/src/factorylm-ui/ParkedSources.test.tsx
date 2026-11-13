@@ -15,7 +15,7 @@ describe("#5456 Sources not in use", () => {
   it("is a named region the chat's word 'Sources' describes", () => {
     const html = render([row({})]);
     expect(html).toContain('aria-label="Sources not in use"');
-    expect(html).toContain(">Sources not in use</p>");
+    expect(html).toMatch(/<summary[^>]*>Sources not in use \(<!-- -->1<!-- -->\)<\/summary>|<summary[^>]*>Sources not in use \(1\)<\/summary>/);
   });
   it("a usable manual gets one button, named for the file, and a way to open it first", () => {
     const html = render([row({})]);
@@ -48,9 +48,34 @@ describe("#5456 Sources not in use", () => {
   it("confirms a manual that was turned on, with no heading when nothing is left", () => {
     const html = render([], { turnedOn: ["manual.pdf"] });
     expect(html).toContain("manual.pdf is now used for answers in this project.");
-    expect(html).not.toContain(">Sources not in use</p>");
+    expect(html).not.toContain("<summary");
+    expect(html).not.toContain("<details");
   });
   it("no file to open, no Open link", () => {
     expect(render([row({ fileId: null })])).not.toContain("<a ");
+  });
+  describe("it floats over the conversation, so it stays small (Codex r2 F4)", () => {
+    const many = Array.from({ length: 10 }, (_, i) => row({ docId: `d-${i}`, name: `m${i}.pdf`, fix: i % 3 === 0 ? "full_manual" : i % 3 === 1 ? "wait" : "use" }));
+    it("is one line until opened: a closed <details> whose summary carries the count", () => {
+      const html = render(many);
+      expect(html).toMatch(/<details(?![^>]*\bopen\b)[^>]*>/);
+      expect(html).toMatch(/<summary[^>]*min-height:44px[^>]*>Sources not in use \((<!-- -->)?10(<!-- -->)?\)<\/summary>/);
+    });
+    it("every row, of any number, is inside the one bounded scrolling region", () => {
+      const html = render(many);
+      const list = html.match(/<div data-testid="parked-sources-list" style="([^"]*)">([\s\S]*)<\/div><\/details>/);
+      expect(list).not.toBeNull();
+      expect(list![1]).toContain("max-height:min(40vh, 320px)");
+      expect(list![1]).toContain("overflow-y:auto");
+      expect(list![2].match(/data-testid="parked-source"/g)).toHaveLength(10);
+      expect(html.match(/data-testid="parked-source"/g)).toHaveLength(10);
+    });
+    it("confirmations alone are bounded too", () => {
+      const html = render([], { turnedOn: Array.from({ length: 30 }, (_, i) => `m${i}.pdf`) });
+      expect(html).toMatch(/<section[^>]*style="[^"]*max-height:min\(40vh, 320px\)[^"]*overflow-y:auto/);
+    });
+    it("the button is a full-size touch target", () => {
+      expect(render([row({})])).toMatch(/<button[^>]*style="[^"]*min-height:44px/);
+    });
   });
 });
