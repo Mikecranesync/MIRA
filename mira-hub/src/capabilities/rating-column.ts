@@ -37,9 +37,13 @@
  *   text between the figure before it and the figure after it in the sentence.
  *   On staging 2199f449a the answer read the 120 V AC row as "make rating of
  *   1.5 A and break rating of 2 A"; the page prints 2 A under Continuous. The
- *   rule reads the rows for the voltage the sentence names, else the question's,
- *   else every row. It only ever withholds; it approves nothing. It does not
- *   judge: a figure the question itself gives (that is the asked load), or a
+ *   rule reads the rows for the voltage the sentence names, else the question's;
+ *   every row when neither names one; and no row of a passage that has none
+ *   for a voltage that was named (a passage may be one chunk of the page). It only ever withholds; it approves nothing. It does not
+ *   judge: a figure the question itself gives (that is the asked load), a
+ *   figure the sentence gives as a load ("a 1.5 A steady-state load", "draws
+ *   1.5 A"), a figure beside words that put it on another device ("an
+ *   interposing relay rated 15 A continuous"), or a
  *   figure whose value also sits on those rows with no column read (the page
  *   prints 1.0 A across make and break at 24 V DC, so "break 1 A" there is
  *   right). A column word with a negation directly on it ("15 A is not the
@@ -132,6 +136,11 @@ const WORDS_OF: Record<RatingColumn, RegExp> = {
 // Words that say what a figure is NOT: the negation sits directly on a column word ("is not the
 // continuous rating", "rather than the make figure"). That column word names nothing; every
 // other word in the sentence still does. "Should not be switched" is not one.
+// A figure the sentence gives as a load, not as a rating: "a 1.5 A steady-state load", "draws 1.5 A".
+const LOAD_AFTER_RE = /^\s*(?:[A-Za-z-]+\s+){0,2}(?:loads?|coils?|motors?|lamps?|solenoids?|heaters?|draw)\b/i;
+const LOAD_BEFORE_RE = /\b(?:loads?(?:\s+of)?|draws|drawing|pulls|pulling)\s+(?:about\s+|around\s+|up to\s+)?$/i;
+// Words that put a figure on some other device than the one the table rates.
+const OTHER_DEVICE_RE = /\b(?:interposing|external|separate|another|different|contactor(?:'s|’s)? contacts?|pilot relay|solid[- ]state relay)\b/i;
 const NEGATED_COLUMN_RE = /(?:\b(?:not|never|rather than|instead of)|n[’']t)\s+(?:(?:the|a|an|its)\s+)?(?:make|making|break|breaking|continuous|inrush|surge)\b/gi;
 
 type Figure = { value: number; written: string };
@@ -245,11 +254,17 @@ export function ratingColumnFinding(question: string, answer: string, passages: 
       if (inQuestion.includes(value)) continue;
       const from = k > 0 ? (figures[k - 1].index ?? 0) + figures[k - 1][0].length : 0;
       const to = k + 1 < figures.length ? (figures[k + 1].index ?? sentence.length) : sentence.length;
-      const beside = sentence.slice(from, to).replace(NEGATED_COLUMN_RE, " ");
+      const at = figures[k].index ?? 0;
+      if (LOAD_AFTER_RE.test(sentence.slice(at + figures[k][0].length)) || LOAD_BEFORE_RE.test(sentence.slice(0, at))) continue;
+      const around = sentence.slice(from, to);
+      if (OTHER_DEVICE_RE.test(around)) continue;
+      const beside = around.replace(NEGATED_COLUMN_RE, " ");
       const named = COLUMNS.filter((c) => WORDS_OF[c].test(beside));
       if (named.length === 0) continue;
       for (const table of judged) {
-        const rows = [rowsAt(table.columns, saidVolts), rowsAt(table.columns, askedVolts)].find((r) => r.length > 0) ?? table.columns;
+        // A passage may be one chunk of the page and hold only some rows. When a voltage is named
+        // and this passage has no row for it, the passage says nothing about the figure.
+        const rows = [saidVolts, askedVolts].map((v) => rowsAt(table.columns, v)).find((r) => r.length > 0) ?? (saidVolts.length + askedVolts.length === 0 ? table.columns : []);
         if (rows.some((r) => r.unread.some((u) => amp(u) === value))) continue;
         const printed = COLUMNS.filter((c) => placedIn(rows, c).includes(value));
         if (printed.length > 0 && !printed.some((c) => named.includes(c))) return { rule: "wrong_column", ...where(table), figure: figures[k][0] };

@@ -16,7 +16,7 @@
 //
 // Run: npx vitest run src/capabilities/__tests__/contact-ratings-table.test.ts
 import { describe, expect, it } from "vitest";
-import { COLUMN_LINES_HEAD, columnLines, contactRatingColumns, readColumnLines, withColumnLines, type ColumnRow } from "../contact-ratings-table";
+import { COLUMN_LINE_MARK, COLUMN_LINE_MAX, columnLines, contactRatingColumns, readColumnLines, withColumnLines, type ColumnRow } from "../contact-ratings-table";
 import type { LayoutItem } from "../pdf-layout-items";
 import p19 from "../__fixtures__/contact-ratings/micro820-in009b-p19.json";
 import gs10p26 from "../__fixtures__/table-rows/gs10-p26-230v-1ph.json";
@@ -148,19 +148,24 @@ describe("contactRatingColumns — pages that are not a contact-ratings table", 
 
 describe("the stored lines", () => {
   const lines = columnLines(PRINTED);
-  it("the head says a figure with no column read is not a rating for one column", () => {
-    expect(COLUMN_LINES_HEAD).toMatch(/"column not read"/);
-    expect(COLUMN_LINES_HEAD).toMatch(/not a rating for any one column/);
-    expect(COLUMN_LINES_HEAD).not.toMatch(/\n/);
-  });
-  it("one line per row, under a fixed head", () => {
+  it("one line per row, each with its own mark, its row and a closing full stop", () => {
     expect(lines).toEqual([
-      COLUMN_LINES_HEAD,
-      "120 V AC: make 15 A, break 1.5 A, continuous 2 A",
-      "240 V AC: make 7.5 A, break 0.75 A",
-      "24 V DC: continuous 1 A (column not read: 1.0 A)",
-      "125 V DC: (column not read: 0.22 A)",
+      `${COLUMN_LINE_MARK}120 V AC row: make 15 A, break 1.5 A, continuous 2 A.`,
+      `${COLUMN_LINE_MARK}240 V AC row: make 7.5 A, break 0.75 A.`,
+      `${COLUMN_LINE_MARK}24 V DC row: continuous 1 A; no column read for 1.0 A.`,
+      `${COLUMN_LINE_MARK}125 V DC row: no column read for 0.22 A.`,
     ]);
+  });
+  it("no line is longer than the chunker's overlap, and none holds a full stop and a space (the chunker breaks there)", () => {
+    expect(COLUMN_LINE_MAX).toBe(120);
+    for (const l of lines) {
+      expect(l.length).toBeLessThanOrEqual(COLUMN_LINE_MAX);
+      expect(l).not.toContain(". ");
+    }
+  });
+  it("a row whose line would be longer than that is not written", () => {
+    const long: ColumnRow = { label: "125 V DC", make: null, break: null, continuous: null, unread: ["0.22 A", "0.33 A", "0.44 A", "0.55 A", "0.66 A", "0.77 A"] };
+    expect(columnLines([PRINTED[0], long])).toEqual([lines[0]]);
   });
   it("are read back exactly, and the rest of the text is returned without them", () => {
     const stored = withColumnLines(P19_TEXT, PRINTED);
@@ -171,22 +176,31 @@ describe("the stored lines", () => {
   it("are placed directly under the table's last row, with no blank line (a blank line invites a chunk break)", () => {
     const stored = withColumnLines(P19_TEXT, PRINTED).split("\n");
     const at = stored.indexOf("125 V DC 0.22 A");
-    expect(stored[at + 1]).toBe(COLUMN_LINES_HEAD);
-    expect(stored[at + 6]).toBe("Analog Output Specifications");
+    expect(stored.slice(at + 1, at + 5)).toEqual(lines);
+    expect(stored[at + 5]).toBe("Analog Output Specifications");
     expect(stored).not.toContain("");
   });
   it("go at the end when the text does not hold the table's rows", () => {
     const stored = withColumnLines("Some other text\nof the page", PRINTED);
-    expect(stored.startsWith("Some other text\nof the page\n" + COLUMN_LINES_HEAD)).toBe(true);
+    expect(stored).toBe(["Some other text", "of the page", ...lines].join("\n"));
     expect(readColumnLines(stored).rest).toBe("Some other text\nof the page");
   });
-  it("text without the head has no column rows, and is returned whole", () => {
+  it("text without stored lines has no column rows, and is returned whole", () => {
     expect(readColumnLines(P19_TEXT)).toEqual({ rows: [], rest: P19_TEXT });
   });
-  it("a line under the head that is not in the stored form ends the block; nothing after it is taken", () => {
-    const text = `${COLUMN_LINES_HEAD}\n120 V AC: make 15 A, break 1.5 A\n120 V AC: rated 15 A\n240 V AC: make 7.5 A, break 0.75 A`;
-    const back = readColumnLines(text);
-    expect(back.rows.map((r) => r.label)).toEqual(["120 V AC"]);
-    expect(back.rest).toBe("120 V AC: rated 15 A\n240 V AC: make 7.5 A, break 0.75 A");
+  it("each line is read on its own: one line of the block, with no other, is still a row", () => {
+    expect(readColumnLines(`Analog Output Specifications\n${lines[2]}\nAttribute Value`)).toEqual({ rows: [PRINTED[2]], rest: "Analog Output Specifications\nAttribute Value" });
+  });
+  it.each([
+    ["cut at its end, after a whole figure", lines[0].slice(0, lines[0].indexOf(", continuous"))],
+    ["cut at its end, inside a figure", lines[0].slice(0, -4)],
+    ["cut at its start", lines[0].slice(20)],
+    ["cut at its start, after the mark", lines[0].slice(COLUMN_LINE_MARK.length)],
+  ])("a stored line %s is not a row, and is not left in the text as one", (_name, piece) => {
+    expect(readColumnLines(`Relay Contact Ratings\n${piece}\nAnalog Output`)).toEqual({ rows: [], rest: "Relay Contact Ratings\nAnalog Output" });
+  });
+  it("a line that only looks like one is left alone", () => {
+    const text = `${COLUMN_LINE_MARK}120 V AC row: rated 15 A.`;
+    expect(readColumnLines(text)).toEqual({ rows: [], rest: text });
   });
 });

@@ -12,6 +12,11 @@
  * This module reads that, writes it as plain lines stored with the page text (so the model reads
  * them and `rating-column.ts` can check an answer against them), and reads those lines back.
  *
+ * Each stored line stands alone: it carries its own mark, its row and a closing full stop, and is
+ * at most 120 characters, the overlap of the upload chunker. So wherever a chunk boundary falls,
+ * every line is whole in one chunk, and a line cut short is never read as a row. (The first
+ * version put one long head line over the block; a boundary through it left no chunk readable.)
+ *
  * Rules (`__tests__/contact-ratings-table.test.ts` types the expected values from the page):
  *  - Lines: items grouped by y (gap <= 2.5 pt), sorted by x.
  *  - Head line: the topmost line with an item that is exactly "Make" and one that is exactly
@@ -44,9 +49,11 @@ export type RatingColumn = "make" | "break" | "continuous";
  *  row's ampere figures that were given no column, as printed. */
 export type ColumnRow = { label: string; make: string | null; break: string | null; continuous: string | null; unread: string[] };
 
-/** The first of the stored lines. `readColumnLines` matches it whole. */
-export const COLUMN_LINES_HEAD =
-  "Contact ratings by column (make, break, continuous), read from where the printed table places each figure. A figure the table prints once for several rows is given only on the row it is printed on. A figure marked \"column not read\" is printed in the row but its column could not be read: it is not a rating for any one column, and the printed table says which columns it covers:";
+/** How every stored line opens. */
+export const COLUMN_LINE_MARK = "Contact ratings table (columns read from the page layout), ";
+/** A stored line is never longer than the upload chunker's overlap, so no chunk boundary can
+ *  leave it whole in neither chunk. A row whose line would be longer is not written. */
+export const COLUMN_LINE_MAX = 120;
 
 const LINE_GAP_PT = 2.5;
 const HEAD_BAND_PT = 20;
@@ -56,11 +63,13 @@ const VOLTAGE = String.raw`\d+(?:\.\d+)?\s?V(?:\s?(?:AC|DC))?`;
 const AMPERES = String.raw`\d+(?:\.\d+)?\s?A`;
 const VOLTAGE_CELL_RE = new RegExp(`^${VOLTAGE}$`);
 const AMPERE_CELL_RE = new RegExp(`^${AMPERES}$`);
-// "<voltage>: make <A>, break <A>, continuous <A> (column not read: <A>, <A>)" — every part optional
-// but the label; an empty line ("120 V AC:") is not written and does not match.
+// "<mark><voltage> row: make <A>, break <A>, continuous <A>; no column read for <A>, <A>." — every
+// part after the label optional, but one must be there.
 const STORED_ROW_RE = new RegExp(
-  `^(${VOLTAGE}):(?: make (${AMPERES}), break (${AMPERES}))?(?:,? continuous (${AMPERES}))?(?: \\(column not read: (${AMPERES}(?:, ${AMPERES})*)\\))?$`,
+  `^${COLUMN_LINE_MARK.replace(/[()]/g, "\\$&")}(${VOLTAGE}) row: (?:make (${AMPERES}), break (${AMPERES}))?(?:(?:, )?continuous (${AMPERES}))?(?:(?:; )?no column read for (${AMPERES}(?:, ${AMPERES})*))?\\.$`,
 );
+// A piece of a stored line left at the edge of a chunk. It is not a row of the printed table.
+const STORED_PIECE_RE = / row: (?:make \d|continuous \d|no column read for )/;
 
 type Line = { y: number; items: LayoutItem[] };
 
@@ -113,13 +122,16 @@ export function contactRatingColumns(items: readonly LayoutItem[]): ColumnRow[] 
   return rows.some((r) => r.make || r.continuous) ? rows : null;
 }
 
-/** The lines stored with the page text: the head, then one line per row that has a figure. */
+/** The lines stored with the page text: one per row that has a figure. "No column read for" a
+ *  figure means the row prints it but its column could not be read from positions. */
 export function columnLines(rows: readonly ColumnRow[]): string[] {
-  const out = [COLUMN_LINES_HEAD];
+  const out: string[] = [];
   for (const r of rows) {
-    const parts = [r.make && r.break ? `make ${r.make}, break ${r.break}` : "", r.continuous ? `continuous ${r.continuous}` : ""].filter(Boolean).join(", ");
-    const unread = r.unread.length > 0 ? `(column not read: ${r.unread.join(", ")})` : "";
-    if (parts || unread) out.push(`${r.label}: ${[parts, unread].filter(Boolean).join(" ")}`);
+    const placed = [r.make && r.break ? `make ${r.make}, break ${r.break}` : "", r.continuous ? `continuous ${r.continuous}` : ""].filter(Boolean).join(", ");
+    const unread = r.unread.length > 0 ? `no column read for ${r.unread.join(", ")}` : "";
+    if (!placed && !unread) continue;
+    const line = `${COLUMN_LINE_MARK}${r.label} row: ${[placed, unread].filter(Boolean).join("; ")}.`;
+    if (line.length <= COLUMN_LINE_MAX) out.push(line);
   }
   return out;
 }
@@ -129,6 +141,7 @@ export function columnLines(rows: readonly ColumnRow[]): string[] {
  *  does not hold the rows they go at the end. No blank line is added: the chunker breaks on one. */
 export function withColumnLines(text: string, rows: readonly ColumnRow[]): string {
   const block = columnLines(rows);
+  if (block.length === 0) return text;
   const lines = text.split("\n");
   const head = lines.findIndex((l) => /\bmake\b/i.test(l) && /\bbreak\b/i.test(l));
   let last = -1;
@@ -137,19 +150,17 @@ export function withColumnLines(text: string, rows: readonly ColumnRow[]): strin
   return [...lines.slice(0, last + 1), ...block, ...lines.slice(last + 1)].join("\n");
 }
 
-/** The column rows stored in `content`, and the content without those lines. The block is the
- *  head line and the lines directly under it that are in the stored form; the first line that
- *  is not ends it. */
+/** The column rows stored in `content`, and the content without the stored lines. Every whole
+ *  stored line is a row, wherever it stands. A piece of one (a chunk edge) is no row, and is left
+ *  out of `rest` too. */
 export function readColumnLines(content: string): { rows: ColumnRow[]; rest: string } {
-  const lines = content.split("\n");
-  const at = lines.indexOf(COLUMN_LINES_HEAD);
-  if (at === -1) return { rows: [], rest: content };
+  if (!content.includes(" row: ")) return { rows: [], rest: content };
   const rows: ColumnRow[] = [];
-  let end = at + 1;
-  for (; end < lines.length; end++) {
-    const m = STORED_ROW_RE.exec(lines[end]);
-    if (!m || (!m[2] && !m[4] && !m[5])) break;
-    rows.push({ label: m[1], make: m[2] ?? null, break: m[3] ?? null, continuous: m[4] ?? null, unread: m[5] ? m[5].split(", ") : [] });
+  const rest: string[] = [];
+  for (const line of content.split("\n")) {
+    const m = STORED_ROW_RE.exec(line.trim());
+    if (m && (m[2] || m[4] || m[5])) rows.push({ label: m[1], make: m[2] ?? null, break: m[3] ?? null, continuous: m[4] ?? null, unread: m[5] ? m[5].split(", ") : [] });
+    else if (!STORED_PIECE_RE.test(line)) rest.push(line);
   }
-  return { rows, rest: [...lines.slice(0, at), ...lines.slice(end)].join("\n") };
+  return { rows, rest: rest.join("\n") };
 }

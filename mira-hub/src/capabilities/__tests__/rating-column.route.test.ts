@@ -110,7 +110,7 @@ vi.mock("@/capabilities/notebook-manual-acquisition", async () => {
 
 import { BASE_SYSTEM_PROMPT, POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
 import { ratingColumnText } from "@/capabilities/rating-column";
-import { COLUMN_LINES_HEAD } from "../contact-ratings-table";
+import { COLUMN_LINE_MARK } from "../contact-ratings-table";
 import type { ResolvedAsset } from "@/lib/equipment-notebooks";
 
 // Pages 12 and 19 of Rockwell 2080-IN009B-EN-P, as stored (see rating-column.test.ts).
@@ -336,8 +336,8 @@ describe("#5474 item 5 — a page stored with its column lines: a figure named u
     ...P19,
     content: P19.content.replace(
       "125 V DC 0.22 A\n",
-      `125 V DC 0.22 A\n${COLUMN_LINES_HEAD}\n120 V AC: make 15 A, break 1.5 A, continuous 2 A\n240 V AC: make 7.5 A, break 0.75 A\n`
-        + "24 V DC: continuous 1 A (column not read: 1.0 A)\n125 V DC: (column not read: 0.22 A)\n",
+      `125 V DC 0.22 A\n${COLUMN_LINE_MARK}120 V AC row: make 15 A, break 1.5 A, continuous 2 A.\n${COLUMN_LINE_MARK}240 V AC row: make 7.5 A, break 0.75 A.\n`
+        + `${COLUMN_LINE_MARK}24 V DC row: continuous 1 A; no column read for 1.0 A.\n${COLUMN_LINE_MARK}125 V DC row: no column read for 0.22 A.\n`,
     ),
   };
   /** The answer served on staging 2199f449a for CV-101 S7, 2026-11-13, verbatim with its markers. */

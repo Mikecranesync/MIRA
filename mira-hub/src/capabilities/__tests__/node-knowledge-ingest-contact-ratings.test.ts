@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import p19 from "@/capabilities/__fixtures__/contact-ratings/micro820-in009b-p19.json";
 import gs10p26 from "@/capabilities/__fixtures__/table-rows/gs10-p26-230v-1ph.json";
-import { COLUMN_LINES_HEAD } from "@/capabilities/contact-ratings-table";
+import { COLUMN_LINE_MARK, contactRatingColumns, readColumnLines, withColumnLines } from "@/capabilities/contact-ratings-table";
 import { ratingColumnFinding } from "@/capabilities/rating-column";
 import { chunkText } from "@/lib/node-knowledge-ingest";
 
@@ -85,20 +85,19 @@ describe("writePdfChunksForNode writes a contact-ratings table's columns under t
     const chunk = rows.filter((r) => r.page === 2 && r.content.includes("120 V AC 15 A 1.5 A 2 A 1800 180"));
     expect(chunk).toHaveLength(1);
     const lines = chunk[0].content.split("\n");
-    const at = lines.indexOf(COLUMN_LINES_HEAD);
-    expect(lines[at - 1]).toBe("125 V DC 0.22 A");
+    const at = lines.indexOf("125 V DC 0.22 A");
     expect(lines.slice(at + 1, at + 5)).toEqual([
-      "120 V AC: make 15 A, break 1.5 A, continuous 2 A",
-      "240 V AC: make 7.5 A, break 0.75 A",
-      "24 V DC: continuous 1 A (column not read: 1.0 A)",
-      "125 V DC: (column not read: 0.22 A)",
+      `${COLUMN_LINE_MARK}120 V AC row: make 15 A, break 1.5 A, continuous 2 A.`,
+      `${COLUMN_LINE_MARK}240 V AC row: make 7.5 A, break 0.75 A.`,
+      `${COLUMN_LINE_MARK}24 V DC row: continuous 1 A; no column read for 1.0 A.`,
+      `${COLUMN_LINE_MARK}125 V DC row: no column read for 0.22 A.`,
     ]);
     expect(lines[at + 5]).toBe("Analog Output Specifications");
   });
 
-  it("the head is written once for the page, and every chunk is stamped extraction version 4", async () => {
+  it("each row's line is written once for the page, and every chunk is stamped extraction version 4", async () => {
     const rows = await write();
-    expect(rows.filter((r) => r.content.includes(COLUMN_LINES_HEAD))).toHaveLength(1);
+    expect(rows.flatMap((r) => r.content.split("\n")).filter((l) => l.startsWith(COLUMN_LINE_MARK))).toHaveLength(4);
     for (const r of rows) expect(r.metadata.extraction_version).toBe(4);
   });
 
@@ -119,6 +118,27 @@ describe("writePdfChunksForNode writes a contact-ratings table's columns under t
     expect(ratingColumnFinding(q, correct, passages)).toBeNull();
   });
 
+  it("wherever the chunk boundaries fall, every row's line is whole in some chunk and the staging answer is still caught", () => {
+    // Codex round 1 on #5487: 443 characters of text above the table split the first version's one
+    // long head line, and no stored chunk could be read. Every amount of text above the table from
+    // none to 1,400 characters is tried here, with and without a sentence end in it.
+    const stored = withColumnLines(p19.text, contactRatingColumns(p19.items)!);
+    const q = "Can I switch a 5 A, 120 V AC motor contactor coil load directly from a Micro820 relay output?";
+    const served = "No — a 5 A, 120 V AC motor contactor coil exceeds the relay output’s 120 V AC make rating of 1.5 A and break rating of 2 A, so it should not be switched directly [2].";
+    let split = 0;
+    for (const filler of ["x", "Word. "]) {
+      for (let n = 0; n <= 1400; n++) {
+        const chunks = chunkText(`${filler.repeat(Math.ceil(n / filler.length)).slice(0, n)}\n${stored}`);
+        if (chunks.length > 1) split++;
+        const labels = new Set(chunks.flatMap((c) => readColumnLines(c).rows.map((r) => r.label)));
+        if (labels.size !== 4) throw new Error(`${n} characters of "${filler}" above the table: rows readable from the chunks: ${[...labels].join(", ")}`);
+        const passages = chunks.map((content) => ({ content, title: opts.filename, page: 19, cited: true }));
+        if (ratingColumnFinding(q, served, passages)?.rule !== "wrong_column") throw new Error(`${n} characters of "${filler}" above the table: the staging answer was not caught`);
+      }
+    }
+    expect(split).toBeGreaterThan(1000);
+  });
+
   it.each([
     ["the layout read throws", () => { pdf.getPageThrows = true; }],
     ["the PDF proxy has no getPage", () => { pdf.withoutGetPage = true; }],
@@ -127,7 +147,7 @@ describe("writePdfChunksForNode writes a contact-ratings table's columns under t
     arrange();
     const rows = await write();
     expect(rows.filter((r) => r.page === 2).map((r) => r.content)).toEqual(chunkText(p19.text));
-    expect(rows.some((r) => r.content.includes(COLUMN_LINES_HEAD))).toBe(false);
+    expect(rows.some((r) => r.content.includes(COLUMN_LINE_MARK))).toBe(false);
   });
 
   it("control: a page with a model-column table and no contact-ratings table gets no column lines", async () => {
@@ -135,6 +155,6 @@ describe("writePdfChunksForNode writes a contact-ratings table's columns under t
     pdf.layout = new Map([[2, gs10p26.items]]);
     const rows = await write();
     expect(rows.length).toBeGreaterThan(2);
-    expect(rows.some((r) => r.content.includes(COLUMN_LINES_HEAD))).toBe(false);
+    expect(rows.some((r) => r.content.includes(COLUMN_LINE_MARK))).toBe(false);
   });
 });
