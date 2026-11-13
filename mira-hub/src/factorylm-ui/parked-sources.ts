@@ -38,7 +38,7 @@ export function parkedRows(sources: ReadonlyArray<ParkedSource>): ParkedRow[] {
 }
 
 export const USE_FAILED = "Couldn't turn this manual on. Check the connection and try again.";
-export const REREAD_FAILED = "Turned on, but this list couldn't be refreshed. Reopen the project to see it.";
+export const REREAD_FAILED = "Turned on, but this list couldn't be refreshed. Try again.";
 export const USE_GONE = "This manual is no longer in this project.";
 export const USE_SIGNED_OUT = "Sign in again to continue.";
 
@@ -62,4 +62,41 @@ export async function turnOnParkedSource(notebookId: string, row: Pick<ParkedRow
 export function confirmedOn(turnedOn: ReadonlyArray<{ docId: string; name: string }>, rows: ReadonlyArray<Pick<ParkedRow, "docId">>): string[] {
   const parked = new Set(rows.map((r) => r.docId));
   return turnedOn.filter((t) => !parked.has(t.docId)).map((t) => t.name);
+}
+
+export type TurnOnOutcome = { kind: "on" } | { kind: "failed"; message: string };
+
+/**
+ * One tap on "Use this manual": the write, then the host's re-read of the
+ * project. The row stays in `inFlight` until that re-read settles, because the
+ * list on screen is the server's and nothing here says "on" before it does.
+ *  - A second tap while the first is in flight sends nothing (resolves null).
+ *  - A refused or lost write is never followed by a re-read.
+ *  - An accepted write whose re-read fails says so; the row is still listed, and
+ *    tapping again repeats the same idempotent write and re-reads.
+ * `onBusy` fires whenever `inFlight` changed.
+ */
+export async function turnOnAndReread(
+  notebookId: string,
+  row: Pick<ParkedRow, "docId" | "fix" | "needsApproval">,
+  inFlight: Set<string>,
+  io: { deps: SetupDeps; reread: () => Promise<boolean>; onBusy: () => void },
+): Promise<TurnOnOutcome | null> {
+  if (inFlight.has(row.docId)) return null;
+  inFlight.add(row.docId);
+  io.onBusy();
+  try {
+    const write = await turnOnParkedSource(notebookId, row, io.deps);
+    if (!write.ok) return { kind: "failed", message: write.message };
+    let landed = false;
+    try {
+      landed = await io.reread();
+    } catch {
+      landed = false;
+    }
+    return landed ? { kind: "on" } : { kind: "failed", message: REREAD_FAILED };
+  } finally {
+    inFlight.delete(row.docId);
+    io.onBusy();
+  }
 }

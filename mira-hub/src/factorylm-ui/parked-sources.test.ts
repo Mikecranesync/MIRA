@@ -1,7 +1,7 @@
 /** #5456: a manual saved switched off is shown on the v3 project screen with its one next step. Fake fetch only; no DOM. */
 import { describe, expect, it, vi } from "vitest";
 import type { SetupDeps } from "./new-project-setup-logic";
-import { confirmedOn, parkedRows, turnOnParkedSource, USE_FAILED, USE_GONE, USE_SIGNED_OUT, type ParkedSource } from "./parked-sources";
+import { confirmedOn, parkedRows, REREAD_FAILED, turnOnAndReread, turnOnParkedSource, USE_FAILED, USE_GONE, USE_SIGNED_OUT, type ParkedSource } from "./parked-sources";
 
 const src = (patch: Partial<ParkedSource>): ParkedSource => ({
   docId: "d-1", filename: "manual.pdf", fileId: "f-1", matchState: "candidate",
@@ -82,5 +82,65 @@ describe("confirmedOn: 'now used' is said only once the server's list agrees", (
   });
   it("drops the confirmation for a source that is listed again", () => {
     expect(confirmedOn(on, [{ docId: "a" }])).toEqual(["b.pdf"]);
+  });
+});
+
+describe("turnOnAndReread: one tap, start to finish", () => {
+  const row = { docId: "d", fix: "use" as const, needsApproval: true };
+  function gate() { let open!: (v: boolean) => void; const p = new Promise<boolean>((r) => { open = r; }); return { p, open }; }
+
+  it("a second tap while the first is in flight sends nothing", async () => {
+    const h = harness(200);
+    const g = gate();
+    const inFlight = new Set<string>();
+    const io = { deps: h.deps, reread: () => g.p, onBusy: vi.fn() };
+    const first = turnOnAndReread("nb", row, inFlight, io);
+    expect(await turnOnAndReread("nb", row, inFlight, io)).toBeNull();
+    g.open(true);
+    expect(await first).toEqual({ kind: "on" });
+    expect(h.calls).toHaveLength(1);
+  });
+  it("the row stays busy until the project re-read settles, then is released", async () => {
+    const h = harness(200);
+    const g = gate();
+    const inFlight = new Set<string>();
+    const seen: boolean[] = [];
+    const run = turnOnAndReread("nb", row, inFlight, { deps: h.deps, reread: () => { seen.push(inFlight.has("d")); return g.p; }, onBusy: vi.fn() });
+    await vi.waitFor(() => expect(seen).toEqual([true]));
+    expect(inFlight.has("d")).toBe(true);
+    g.open(true);
+    await run;
+    expect(inFlight.has("d")).toBe(false);
+  });
+  it("another document is not blocked by one in flight", async () => {
+    const h = harness(200);
+    const g = gate();
+    const inFlight = new Set<string>();
+    const first = turnOnAndReread("nb", row, inFlight, { deps: h.deps, reread: () => g.p, onBusy: vi.fn() });
+    expect(await turnOnAndReread("nb", { ...row, docId: "e" }, inFlight, { deps: h.deps, reread: async () => true, onBusy: vi.fn() })).toEqual({ kind: "on" });
+    g.open(true);
+    await first;
+  });
+  it("an accepted write whose re-read fails or throws says so, and a second tap can repeat it", async () => {
+    const h = harness(200);
+    const inFlight = new Set<string>();
+    expect(await turnOnAndReread("nb", row, inFlight, { deps: h.deps, reread: async () => false, onBusy: vi.fn() })).toEqual({ kind: "failed", message: REREAD_FAILED });
+    expect(await turnOnAndReread("nb", row, inFlight, { deps: h.deps, reread: async () => { throw new Error("offline"); }, onBusy: vi.fn() })).toEqual({ kind: "failed", message: REREAD_FAILED });
+    expect(await turnOnAndReread("nb", row, inFlight, { deps: h.deps, reread: async () => true, onBusy: vi.fn() })).toEqual({ kind: "on" });
+    expect(h.calls).toHaveLength(3);
+    expect(inFlight.size).toBe(0);
+  });
+  it("a refused write is never followed by a re-read, and the row is released", async () => {
+    const h = harness(500);
+    const reread = vi.fn(async () => true);
+    const inFlight = new Set<string>();
+    expect(await turnOnAndReread("nb", row, inFlight, { deps: h.deps, reread, onBusy: vi.fn() })).toEqual({ kind: "failed", message: USE_FAILED });
+    expect(reread).not.toHaveBeenCalled();
+    expect(inFlight.size).toBe(0);
+  });
+  it("tells the screen each time the busy set changed", async () => {
+    const onBusy = vi.fn();
+    await turnOnAndReread("nb", row, new Set(), { deps: harness(200).deps, reread: async () => true, onBusy });
+    expect(onBusy).toHaveBeenCalledTimes(2);
   });
 });

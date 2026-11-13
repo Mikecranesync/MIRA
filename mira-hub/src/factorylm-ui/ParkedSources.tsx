@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { API_BASE } from "@/lib/config";
 import type { SetupDeps } from "./new-project-setup-logic";
-import { confirmedOn, parkedRows, REREAD_FAILED, turnOnParkedSource, type ParkedRow, type ParkedSource } from "./parked-sources";
+import { confirmedOn, parkedRows, turnOnAndReread, type ParkedRow, type ParkedSource } from "./parked-sources";
 import { fileUrl } from "./to-interaction";
 
 type Props = {
@@ -38,18 +38,10 @@ export function ParkedSources({ notebookId, sources, onChanged }: Props) {
   useEffect(() => { latest.current = onChanged; }, [onChanged]);
 
   const use = useCallback(async (row: ParkedRow) => {
-    if (inFlight.current.has(row.docId)) return;
-    inFlight.current.add(row.docId);
-    setBusy(new Set(inFlight.current));
     setFailed((f) => { const next = { ...f }; delete next[row.docId]; return next; });
-    const r = await turnOnParkedSource(notebookId, row, deps);
-    // The row stays busy until the project is re-read: the list on screen is
-    // the server's, so nothing here says "on" before the server's list does.
-    const reread = r.ok ? await latest.current().catch(() => false) : false;
-    inFlight.current.delete(row.docId);
-    setBusy(new Set(inFlight.current));
-    if (!r.ok) setFailed((f) => ({ ...f, [row.docId]: r.message }));
-    else if (!reread) setFailed((f) => ({ ...f, [row.docId]: REREAD_FAILED }));
+    const r = await turnOnAndReread(notebookId, row, inFlight.current, { deps, reread: () => latest.current(), onBusy: () => setBusy(new Set(inFlight.current)) });
+    if (!r) return; // a second tap while the first is in flight
+    if (r.kind === "failed") setFailed((f) => ({ ...f, [row.docId]: r.message }));
     else setTurnedOn((list) => [...list.filter((t) => t.docId !== row.docId), { docId: row.docId, name: row.name }]);
   }, [notebookId]);
 
@@ -77,7 +69,7 @@ export function ParkedSourcesView({ rows, turnedOn, busy, failed, onUse }: ViewP
           {row.fix === "full_manual"
             ? <>{row.name} is saved here but switched off: it is only part of a manual. Add the full manual to this project to get cited answers.</>
             : row.fix === "wait"
-              ? <>{row.name} is saved here but can&apos;t be searched yet.</>
+              ? <>{row.name} is saved here, but its text isn&apos;t readable in this project, so answers can&apos;t use it.</>
               : <>{row.name} is saved here, but answers don&apos;t use it ({row.label}). Open it and check it is the right manual before you turn it on.</>}
           {row.fileId ? <a style={{ marginLeft: 8, color: "var(--fl-accent)" }} href={fileUrl(row.fileId)} target="_blank" rel="noreferrer" aria-label={`Open ${row.name}`}>Open</a> : null}
           {row.fix === "use"

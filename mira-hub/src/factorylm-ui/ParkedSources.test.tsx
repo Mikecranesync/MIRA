@@ -30,10 +30,11 @@ describe("#5456 Sources not in use", () => {
     expect(html).toContain("only part of a manual");
     expect(html).toContain("Add the full manual to this project");
   });
-  it("a document that can't be searched yet has no button", () => {
+  it("a document whose text isn't readable has no button, and no promise that it will be", () => {
     const html = render([row({ fix: "wait" })]);
     expect(html).not.toContain("<button");
-    expect(html).toContain("can&#x27;t be searched yet");
+    expect(html).toContain("its text isn&#x27;t readable in this project");
+    expect(html).not.toMatch(/\byet\b/);
   });
   it("a row with a write in the air is disabled and says so", () => {
     const html = render([row({})], { busy: ["d-1"] });
