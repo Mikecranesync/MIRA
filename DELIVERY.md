@@ -1,0 +1,188 @@
+# FactoryLM / MIRA — Shared Delivery Plan
+
+Status date: 2026-11-08. Owner: CHARLIE Codex, integration role.
+Strategy: [NORTH_STAR.md](NORTH_STAR.md).
+Live acceptance and agent updates: [#5232](https://github.com/Mikecranesync/MIRA/issues/5232).
+
+## North stars and end goals
+
+1. **Trustworthy context:** turn messy maintenance information into human-approved,
+   asset-bound context with source identity, applicability, revision and provenance.
+   FactoryLM is the context layer; MIRA proves it with grounded, cited assistance.
+2. **Useful technician workflow:** a technician can onboard equipment, find applicable
+   evidence, document work and recover it later without Mike repairing the application.
+3. **Customer value:** prove the workflow with representative technicians on unfamiliar
+   customer information; record usefulness, failures, assistance required and repeat use.
+   A seeded CV-101 demo is an engineering milestone, not customer demand.
+4. **Sustainable delivery:** earn a supported pilot and a defensible paid continuation
+   or consulting engagement under Mike's approved offer. Track actual agreements and
+   payment receipts separately from software progress. Do not invent a price or date.
+5. **Evidence-backed demonstrations and responses:** describe demonstrated capability,
+   prototype, planned work and gaps separately. Commercial, government-bid and
+   production acceptance remain distinct.
+
+This plan restates the current delivery mission. It does not replace strategy,
+architecture, existing work claims, G01–G12/W0–W5 definitions or release governance.
+Read those definitions before declaring their gates passed. No shorter checklist here
+reduces the controlling acceptance scope in #5232 and its linked #5086 report.
+Scope/offer changes belong to Mike; agents flag conflicts rather than silently choosing.
+
+## Dates and deliverables
+
+All deadlines below use America/New_York (ET). November dates and requirements were
+provided in Mike's November 8 handoff; primary assignment/solicitation verification is
+still required. An unverified deadline is a planning constraint, not proof of compliance.
+
+For each external commitment, retain its primary source, original timezone and ET
+conversion in the approved evidence location. Link only public sources in #5232;
+reference private evidence by repository/path without copying its details. Until
+verified, label it HANDOFF-REPORTED. Surface conflicts to Mike; do not silently change
+a date or scope.
+
+| Date | Deliverable | Accountable owner | Required proof / next action |
+|---|---|---|---|
+| Nov 7, 2026 — historical target | First Dollar | Mike | Agent reports target missed; verify current commercial state. Preserve the miss; Mike sets any replacement date and offer. |
+| Nov 16, 2026, 11:59 PM ET | I-Corps report; reported 5–10 interviews | Mike; CHARLIE Codex tracks | Read assignment; verify interview count and requirements; retain report and submission receipt without publishing private interview data. |
+| Nov 17, 2026, 7:00 AM ET | Government RFI questions | Mike; CHARLIE Codex tracks | Work from the original solicitation and the private bid plan in the factorylm repository; retain the authorized submission receipt there. |
+| Nov 24, 2026 — internal target | Evidence-backed tablet demonstration | CHARLIE Codex + CHARLIE Claude | One identified build, reviewed composition, physical workflow receipts and explicit gaps. This is not an external procurement deadline. |
+| Dec 1, 2026, 7:00 AM ET | Government RFI response | Mike; CHARLIE Codex tracks | Verify deadline and page limit against the original documents; requirements-to-evidence matrix, response and submission receipt live in the private factorylm repository. |
+| Dec 2, 2026–Jan 6, 2027 — reported window | Second government opportunity decision | Mike | Verify the official opportunity and dates before committing work; details stay private. |
+| Feb 9–12, 2027 — historical strategy date | ProveIt demonstration | Mike | NORTH_STAR records Dallas showcase goal; verify official dates and participation before travel or external commitments. |
+
+CHARLIE Codex tracks document owners and missing decisions; it does not abandon
+integration to become the sole author of every business deliverable. Mike supplies
+interviews, offer decisions and submission authority. No external message/submission
+is authorized merely by this plan.
+
+## Next integrated product milestone
+
+On one frozen candidate, through the real device interface:
+
+Fresh supported sign-in → New Project → choose and confirm CV-101 → select/attach an
+approved applicable manual → truthful indexing/search readiness → ask the original
+unhinted GS11N-20P2 acceleration question → correct P01.12 evidence and warnings →
+open the exact cited source page in the device's own browser → save job, photo and
+note → restart → recover context and reviewed status → reuse eligible saved
+evidence in a fresh conversation.
+Include the controlling illustrated-guide and second-technician acceptance steps.
+
+Answers must carry the cited page's own cautions, and machine-binding and review labels
+must match the stored record. A photo counts only when it is attached to the job.
+Validate model/revision/tenant negatives, immediate-danger stops, grounded fault
+responses, sign-out behavior, pending-upload recovery and large-manual stability.
+Test repeated/concurrent/cancelled work under the existing memory limit; preserve
+content rather than silently dropping pages. Independently record PDF and printed
+page numbers against the exact manual hash/revision.
+
+For the offline offer: separately prove fresh supported local authentication,
+the physical browser journey, cold restart/reboot recovery and monitored isolation.
+Record network windows, detector positive controls, timer/restoration behavior and
+cleanup. After a reboot the services must come back without manual commands, and the
+sign-in screen must lead with the path that works offline. A reused session, matching
+online answers, failed ping or free-memory snapshot alone does not establish
+correctness, no-egress or long-duration stability.
+Do not claim 180-day acceptance from a short run.
+
+Freeze SHA, included changes, configuration, source hashes, runtime generation and
+device identity. Review/CI must apply to the candidate required by existing governance.
+Record staging, physical acceptance, rollback and production as separate stages.
+Conveyor stays stopped; equipment interaction remains read-only.
+
+## Four agent lanes
+
+These are responsibility summaries, not grants to take over active file claims.
+Verify current ownership and exact heads before editing. PR numbers are entry points,
+not claims about current merge, review or deployment status.
+
+| Agent | Responsibility | Starting references |
+|---|---|---|
+| CHARLIE Codex | Integration, release composition, Pixel acceptance, combined evidence and deadline tracking | #5232; coordinate all lanes and preserve rollback |
+| CHARLIE Claude | Offline runtime, passage usefulness, safety, source-page UI, packaging and Samsung acceptance | #5265/#5266; existing #5300–#5306 slices as applicable |
+| BRAVO Codex | Retrieval/applicability, saved-evidence recall/photo work and bounded memory repair after handoff | #5285/#5294, #5289, existing photo/recall candidates |
+| BRAVO Claude | Dependable project setup, pending manual recovery and sign-out follow-up | #5295/#5302 (#5312), #5297/#5308 (#5311); follow-ups #5315, #5316 |
+
+The #5204 owner retains overlapping loader/route hunks until explicit handoff.
+CHARLIE Codex coordinates the boundary; a blocked lane continues authorized independent
+work. Do not create a fifth implementation of an existing repair.
+
+## Required agent communication
+
+**Every FactoryLM/MIRA agent must:**
+
+- At session start/resume, read this plan and the latest relevant owner updates in #5232.
+  Refresh current source/PR/CI facts; old comments and private memory are not live state.
+- Before editing, use existing durable claims and overlap checks. Link the chosen goal
+  and issue; if the task serves none, record why it is necessary before expanding scope.
+- Maintain one short, owner-managed status comment per lane in #5232, using the template
+  below. Update it at start/resume, material proof/blocker/ownership changes, handoff
+  and session end. Avoid unchanged heartbeat comments.
+- Reuse the lane's existing comment and verify its designated owner before editing.
+  A successor records the session/claim handoff there; another active session does not
+  overwrite it or create a competing lane summary. Specialist sessions pass updates
+  through the designated lane owner while retaining their own implementation claims.
+- Acknowledge the exact `DELIVERY.md` commit or blob permalink in that lane comment.
+  Label a pre-merge acknowledgment PROPOSED; do not claim merged adoption or acknowledge
+  another lane. CHARLIE Codex links missing acknowledgments as pending in the summary.
+- Keep detailed evidence on the implementation PR/issue and link it. A status comment
+  does not replace claims, review records, incident history or required session closeout.
+- Preserve prior material transitions in a brief history or linked receipts when editing.
+  Never overwrite another lane's comment or a review/approval ledger.
+- For a new or unreviewed delivery PR, include the #5232 status-comment link and affected
+  goal in its description. For a frozen reviewed PR, put that link in a separate
+  coordination comment instead. Report review/CI against its exact snapshot; adoption
+  and routine status updates must not change a reviewed body or require another review.
+- Flag an approaching or missed deadline with deliverable, owner, blocker and decision
+  needed. Request only genuinely missing decisions/permissions; continue independent work.
+
+If GitHub is unavailable, retain the same update locally with UTC timestamp, explicitly
+mark it UNPUBLISHED, and publish/reconcile when access returns. Never imply peers saw it.
+
+```text
+[DELIVERY-UPDATE: CHARLIE-CODEX | CHARLIE-CLAUDE | BRAVO-CODEX | BRAVO-CLAUDE]
+Updated: <ISO-8601 UTC>; session: <id>; claim: <link>
+Plan read: <DELIVERY.md commit/blob link>; acknowledgment: PROPOSED | MERGED
+Goal / slice: <goal and issue>; branch / SHA: <exact>
+State: ACTIVE | BLOCKED | HANDOFF | COMPLETE
+Evidence: VERIFIED | REPORTED | NOT TESTED — <scope and receipt link>
+Stage: local | review/CI | staging | device | human | production
+Changed: <one sentence; preserve material earlier receipts>
+Next: <one concrete action>; target: <ET date/time or not agreed>
+Blocked by / needs: <owner + specific action, or none>
+Decision for Mike: <specific decision, or none>
+```
+
+Choose one lane marker, state, evidence label, stage and acknowledgment status per
+update; use extra short lines when evidence spans stages. COMPLETE means the owned slice's acceptance is proven, not
+that the entire product is accepted. FAIL is a valid test verdict; record it explicitly.
+
+CHARLIE Codex maintains the existing combined acceptance summary in #5232, linking the
+four latest lane comments, candidate, milestone status and next decision. Refresh it
+when a material update changes integration or acceptance, and at integration closeout.
+The summary must distinguish VERIFIED, REPORTED, BLOCKED and NOT TESTED. Conflicting
+reports remain visible until reconciled against source or receipts.
+
+**Enforcement scope:** this PR adds an instruction requirement, not an automated CI
+attestation, running monitor or dispatcher. Existing running sessions must explicitly
+read/acknowledge it; a merged file cannot force already-running agents to reload.
+Do not require a new source commit/PR for each status update.
+
+## Change and authority boundaries
+
+This repository is public. Solicitation numbers, bid strategy, clearance, pricing and
+interview data stay in the private factorylm repository; link by path, do not copy.
+
+Keep this file focused on goals, deadlines, owners and communication. Store volatile
+engineering status in #5232; change this plan through a reviewed PR when scope,
+deadlines, responsibility or communication rules change. Preserve old targets/history.
+
+Existing SDLC, safety, isolation, review budgets, code-sharing permissions and human
+merge/deploy gates remain intact. Before any authorized merge, run current PR checks
+and compare failures with main; new failures cannot be bypassed. Pre-existing unrelated
+failures still require Mike's decision. No new spending, vendor sharing, migration,
+production change, live billing change or equipment command is granted by this plan.
+
+The customer milestone is a representative technician completing useful work with
+recoverable evidence and a supported way to get help. A pilot release also needs a
+clear supported scope, install/access path, recovery/support instructions and truthful
+claims. Offer, price and customer/payment records require current evidence; historical
+commercial targets and proposed #4960 acquisition changes are not current approval.

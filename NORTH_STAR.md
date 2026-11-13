@@ -22,6 +22,10 @@
 
 ---
 
+## Current delivery coordination
+
+[DELIVERY.md](DELIVERY.md) restates the current end goals, dated commitments and required cross-agent updates. Live acceptance remains in [#5232](https://github.com/Mikecranesync/MIRA/issues/5232); this strategy remains the long-term north star. Historical status below is not a current deployment or customer claim.
+
 ## The wedge — stated once
 
 **FactoryLM is the maintenance-context layer that makes a factory's messy reality — PLC tags,
