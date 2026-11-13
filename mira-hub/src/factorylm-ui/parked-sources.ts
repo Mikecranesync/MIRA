@@ -1,0 +1,65 @@
+/**
+ * #5456: sources of this project that chat will not search, and the one step
+ * that would change that. A manual the automatic search saved switched off is
+ * a source, so the pending-manuals box (files that are not sources yet) never
+ * listed it and the grounding line never counted it: on this screen it was
+ * invisible, while the chat told the technician to "check it in Sources".
+ *
+ * Which documents are unsearchable, why, and what the step is are all the
+ * server's (`deriveSearchable` in lib/document-readiness.ts). Nothing here
+ * re-derives them; the host re-reads the project after a write.
+ */
+import type { NotebookSource } from "@/lib/equipment-notebooks";
+import { call, type SetupDeps } from "./new-project-setup-logic";
+
+export type ParkedSource = Pick<NotebookSource, "docId" | "filename" | "fileId" | "matchState" | "searchable" | "searchableLabel" | "searchableFix">;
+
+export type ParkedRow = {
+  docId: string;
+  name: string;
+  fileId: string | null;
+  label: string;
+  fix: "use" | "full_manual" | "wait";
+  /** Only a suggestion needs approving; a verified source keeps its state. */
+  needsApproval: boolean;
+};
+
+/** A response from a server without the projection has no `searchable` field;
+ *  such a source is not listed (unknown is not "parked"). */
+export function parkedRows(sources: ReadonlyArray<ParkedSource>): ParkedRow[] {
+  const rows: ParkedRow[] = [];
+  for (const s of sources) {
+    if (s.searchable !== false || s.matchState === "rejected" || !s.docId) continue;
+    const fix = s.searchableFix;
+    if (fix !== "use" && fix !== "full_manual" && fix !== "wait") continue;
+    rows.push({ docId: s.docId, name: s.filename || "Document", fileId: s.fileId ?? null, label: s.searchableLabel, fix, needsApproval: s.matchState === "candidate" });
+  }
+  return rows;
+}
+
+export const USE_FAILED = "Couldn't turn this manual on. Check the connection and try again.";
+export const REREAD_FAILED = "Turned on, but this list couldn't be refreshed. Reopen the project to see it.";
+export const USE_GONE = "This manual is no longer in this project.";
+export const USE_SIGNED_OUT = "Sign in again to continue.";
+
+/**
+ * Approve and switch on in ONE write. Switching on alone leaves a suggestion
+ * unapproved, and the server then refuses every question in the project
+ * (`source_not_in_notebook`). Refuses any row whose step is not "use": a
+ * partial manual is never turned on by confirming it.
+ */
+export async function turnOnParkedSource(notebookId: string, row: Pick<ParkedRow, "docId" | "fix" | "needsApproval">, deps: SetupDeps): Promise<{ ok: true } | { ok: false; message: string }> {
+  if (row.fix !== "use") return { ok: false, message: USE_FAILED };
+  const json = row.needsApproval ? { enabledByDefault: true, matchState: "user_confirmed" } : { enabledByDefault: true };
+  const res = await call(deps, "PATCH", `/api/equipment-notebooks/${encodeURIComponent(notebookId)}/sources/${encodeURIComponent(row.docId)}/`, { json });
+  if (res.ok) return { ok: true };
+  return { ok: false, message: res.status === 401 ? USE_SIGNED_OUT : res.status === 404 ? USE_GONE : USE_FAILED };
+}
+
+/** Names to confirm as "now used": turned on here AND no longer listed as not
+ *  in use. The server's list decides; a source switched off again elsewhere
+ *  goes back to being a row and loses its confirmation. */
+export function confirmedOn(turnedOn: ReadonlyArray<{ docId: string; name: string }>, rows: ReadonlyArray<Pick<ParkedRow, "docId">>): string[] {
+  const parked = new Set(rows.map((r) => r.docId));
+  return turnedOn.filter((t) => !parked.has(t.docId)).map((t) => t.name);
+}

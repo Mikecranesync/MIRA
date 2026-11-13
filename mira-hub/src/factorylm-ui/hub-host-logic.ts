@@ -329,10 +329,12 @@ export function metaFor(
   };
 }
 
-/** Which sources a turn may cite: enabled by default and not rejected — the
- *  classic notebook's rule, unchanged. */
+/** Which sources a turn may cite: switched on AND approved — the server's own
+ *  rule (`validateChatSources`). Sending a switched-on source that is only a
+ *  suggestion makes the server refuse the whole turn (`source_not_in_notebook`),
+ *  so one unapproved document would break every question in the project (#5456). */
 export function enabledDocIds(sources: readonly Pick<NotebookSource, "docId" | "enabledByDefault" | "matchState">[]): string[] {
-  return sources.filter((s) => s.enabledByDefault && s.matchState !== "rejected").map((s) => s.docId);
+  return sources.filter((s) => s.enabledByDefault && (s.matchState === "user_confirmed" || s.matchState === "verified")).map((s) => s.docId);
 }
 
 /** The notebook's own sources, enabled or not — what the basis chip may call

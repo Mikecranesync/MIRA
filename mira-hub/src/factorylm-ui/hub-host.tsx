@@ -71,6 +71,7 @@ import { wantsPacketOpen } from "./work-packet-view";
 import { LivingSheet } from "./LivingSheet";
 import { NewProjectSetup } from "./NewProjectSetup";
 import { PendingManuals } from "./PendingManuals";
+import { ParkedSources } from "./ParkedSources";
 import { clearSheetDataForSignOut, localStorageStore, parseSheetReceipts } from "./living-sheet-client";
 import { NOTEBOOK_ACTIONS_STYLE } from "./notebook-actions";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
@@ -1103,6 +1104,16 @@ export function HubShellHost() {
             setPendingApprovals((m) => ({ ...m, [nb]: (m[nb] ?? []).filter((id) => !fileIds.includes(id)) }));
             void loadDetail(selection);
           }}
+        />
+      )}
+      {/* #5456: sources of this project that answers do not use (a manual saved switched off), each
+          with its one next step; renders nothing when every source is in use. */}
+      {selection && detail && detail.notebook.id === selection.notebookId && (
+        <ParkedSources
+          key={`parked-sources|${selection.notebookId}`}
+          notebookId={selection.notebookId}
+          sources={detail.sources}
+          onChanged={() => loadDetail(selection)}
         />
       )}
       </div>
