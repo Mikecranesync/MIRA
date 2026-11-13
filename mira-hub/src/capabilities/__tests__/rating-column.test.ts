@@ -247,7 +247,9 @@ describe("WRONG-COLUMN rule (#5474 item 5) — a figure the page places in a col
     + "These apply to the Micro820 relay outputs on the 2080-LC20-20QWB [2].";
 
   it("the answer served on staging is caught at the figure it misnames", () => {
-    expect(ratingColumnFinding(LOAD_QUESTION, S7_SERVED, GIVEN)).toEqual({ rule: "wrong_column", title: "2080-IN009B-EN-P.pdf", page: 19, figure: "2 A" });
+    expect(ratingColumnFinding(LOAD_QUESTION, S7_SERVED, GIVEN)).toEqual({ rule: "wrong_column", title: "2080-IN009B-EN-P.pdf", page: 19, figure: "1.5 A" });
+    // Its second wrong assignment, on its own, is caught too.
+    expect(ratingColumnFinding(LOAD_QUESTION, "The relay output has a 120 V AC make rating of 15 A and break rating of 2 A [2].", GIVEN)).toMatchObject({ rule: "wrong_column", figure: "2 A" });
   });
   it("the same answer on a page stored without column lines is not caught (stated limit: reprocess the manual)", () => {
     expect(ratingColumnFinding(LOAD_QUESTION, S7_SERVED, [prose(true), flat(true)])).toBeNull();
@@ -257,8 +259,8 @@ describe("WRONG-COLUMN rule (#5474 item 5) — a figure the page places in a col
     ["word after the figure", "At 120 V AC the contacts are rated 2 A make [2].", "2 A"],
     ["word before the figure", "The break rating at 120 V AC is 15 A [2].", "15 A"],
     ["two figures swapped, word after", "At 120 V AC: 1.5 A make, 15 A break [2].", "1.5 A"],
-    ["two figures swapped, word before", "At 120 V AC: break 15 A, make 1.5 A [2].", "1.5 A"],
-    ["all three turned round", "At 120 V AC the ratings are make 1.5 A, break 2 A, continuous 15 A [2].", "15 A"],
+    ["two figures swapped, word before", "At 120 V AC: break 15 A, make 1.5 A [2].", "15 A"],
+    ["all three turned round", "At 120 V AC the ratings are make 1.5 A, break 2 A, continuous 15 A [2].", "1.5 A"],
     ["another row", "At 240 V AC the contacts break 7.5 A [2].", "7.5 A"],
     ["inrush is a make word", "The contact can take an inrush of 2 A at 120 V AC [2].", "2 A"],
     ["under a heading", "Continuous:\n- 15 A at 120 V AC [2]", "15 A"],
@@ -324,6 +326,32 @@ describe("WRONG-COLUMN rule (#5474 item 5) — a figure the page places in a col
   ])("control: %s is not a claim about the table's columns", (_name, question, answer) => {
     expect(ratingColumnFinding(question, answer, GIVEN)).toBeNull();
   });
+  it.each([
+    // Codex round 2 on #5487: both were withheld.
+    ["a load current set against a rating", "At 120 V AC a load current of 1.5 A continuously is below the 2 A continuous rating [2]."],
+    ["a warning that the contact cannot do something", "The relay cannot continuously carry 15 A at 120 V AC [2]."],
+    ["a warning not to read a figure as a column", "Do not treat 15 A as the continuous rating at 120 V AC [2]."],
+    ["a column word near a figure but not on it", "At 120 V AC the output handles 15 A when the contact closes, and the continuous limit is lower [2]."],
+  ])("control: %s assigns no figure to a column", (_name, answer) => {
+    expect(ratingColumnFinding("What can the relay output carry?", answer, GIVEN)).toBeNull();
+  });
+  it("an explicit assignment is still withheld", () => {
+    expect(ratingColumnFinding("What can the relay output carry?", "At 120 V AC the continuous rating is 15 A [2].", GIVEN)).toMatchObject({ rule: "wrong_column", figure: "15 A" });
+    expect(ratingColumnFinding("What can the relay output carry?", "At 120 V AC 15 A is the continuous rating [2].", GIVEN)).toMatchObject({ rule: "wrong_column", figure: "15 A" });
+    expect(ratingColumnFinding("What can the relay output carry?", "The relay cannot break 5 A, and its break rating is 2 A at 120 V AC [2].", GIVEN)).toMatchObject({ rule: "wrong_column", figure: "2 A" });
+  });
+  it("the sentence's own voltage decides the row, not the question's, also when the rows are in different passages", () => {
+    // Codex round 2: 2 A is continuous at 120 V AC and make at 240 V AC; the question asks about 120 V AC.
+    const mark = "Contact ratings table (columns read from the page layout), ";
+    const one = { content: `${mark}120 V AC row: make 15 A, break 1.5 A, continuous 2 A.`, title: "relay.pdf", page: 3, cited: true };
+    const two = { content: `${mark}240 V AC row: make 2 A, break 0.5 A.`, title: "relay.pdf", page: 3, cited: true };
+    const whole = { ...one, content: `${one.content}\n${two.content}` };
+    for (const given of [[whole], [one, two], [two, one]]) {
+      expect(ratingColumnFinding("What is the make rating at 120 V AC?", "At 240 V AC the make rating is 2 A [1].", given)).toBeNull();
+      expect(ratingColumnFinding("What is the make rating at 120 V AC?", "At 240 V AC the continuous rating is 2 A [1].", given)).toMatchObject({ rule: "wrong_column", figure: "2 A" });
+      expect(ratingColumnFinding("What is the make rating at 120 V AC?", "The make rating is 2 A [1].", given)).toMatchObject({ rule: "wrong_column", figure: "2 A" });
+    }
+  });
   it("a load figure in the sentence does not excuse a misnamed rating beside it", () => {
     expect(ratingColumnFinding("What can the relay output carry?", "At 120 V AC, a 1 A steady-state load is below the 15 A continuous rating [2].", GIVEN)).toMatchObject({ rule: "wrong_column", figure: "15 A" });
   });
@@ -340,9 +368,6 @@ describe("WRONG-COLUMN rule (#5474 item 5) — a figure the page places in a col
   });
   it("a negation that is not on a column word does not excuse the sentence", () => {
     expect(ratingColumnFinding(RATING_QUESTION, "The load should not be switched: the break rating at 120 V AC is 15 A [2].", GIVEN)).toMatchObject({ rule: "wrong_column", figure: "15 A" });
-  });
-  it("stated limit: a correct warning whose negation is not directly on the column word is withheld", () => {
-    expect(ratingColumnFinding(RATING_QUESTION, "Do not treat 15 A as the continuous rating at 120 V AC [2].", GIVEN)).toMatchObject({ rule: "wrong_column", figure: "15 A" });
   });
   it("control: a figure the question itself gives is the asked load, not a quotation", () => {
     const q = "Can the relay output switch a 15 A load at 120 V AC?";

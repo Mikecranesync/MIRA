@@ -114,7 +114,7 @@ describe("writePdfChunksForNode writes a contact-ratings table's columns under t
     const q = "Can I switch a 5 A, 120 V AC motor contactor coil load directly from a Micro820 relay output?";
     const served = "No — a 5 A, 120 V AC motor contactor coil exceeds the relay output’s 120 V AC make rating of 1.5 A and break rating of 2 A, so it should not be switched directly [2].";
     const correct = "No. At 120 V AC the relay contacts are rated 15 A make, 1.5 A break and 2 A continuous [2], so a 5 A coil load is over the continuous rating.";
-    expect(ratingColumnFinding(q, served, passages)).toMatchObject({ rule: "wrong_column", figure: "2 A" });
+    expect(ratingColumnFinding(q, served, passages)).toMatchObject({ rule: "wrong_column", figure: "1.5 A" });
     expect(ratingColumnFinding(q, correct, passages)).toBeNull();
   });
 

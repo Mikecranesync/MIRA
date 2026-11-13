@@ -32,26 +32,25 @@
  *
  *   WRONG-COLUMN rule (#5474 item 5) — when the page was stored with its
  *   columns read from the printed positions (`contact-ratings-table.ts`), an
- *   answer figure that the table places in a column must have that column's
- *   word beside it whenever a column word is beside it at all. "Beside" is the
- *   text between the figure before it and the figure after it in the sentence.
- *   On staging 2199f449a the answer read the 120 V AC row as "make rating of
- *   1.5 A and break rating of 2 A"; the page prints 2 A under Continuous. The
- *   rule reads the rows for the voltage the sentence names, else the question's;
- *   every row when neither names one; and no row of a passage that has none
- *   for a voltage that was named (a passage may be one chunk of the page). It only ever withholds; it approves nothing. It does not
- *   judge: a figure the question itself gives (that is the asked load), a
- *   figure the sentence gives as a load ("a 1.5 A steady-state load", "draws
- *   1.5 A"), a figure beside words that put it on another device ("an
- *   interposing relay rated 15 A continuous"), or a
- *   figure whose value also sits on those rows with no column read (the page
- *   prints 1.0 A across make and break at 24 V DC, so "break 1 A" there is
- *   right). A column word with a negation directly on it ("15 A is not the
- *   continuous rating") names nothing; the sentence's other column words still
- *   do. A negation further off is not seen, so "do not treat 15 A as the
- *   continuous rating" is withheld though it is right. A figure with no column
- *   word beside it is not judged by this rule, even when another figure in the
- *   sentence has one ("the make rating is 15 A and 2 A is what you can use").
+ *   answer that ASSIGNS a figure to a column must assign it to the column the
+ *   table places it in. An assignment is a column word attached to the figure:
+ *   directly before it ("make rating of 1.5 A", "break rating at 120 V AC is
+ *   15 A", "continuously at 15 A") or directly after ("2 A make", "15 A is the
+ *   break rating"). On staging 2199f449a the answer read the 120 V AC row as
+ *   "make rating of 1.5 A and break rating of 2 A"; the page prints 2 A under
+ *   Continuous. The rule reads the rows for the voltage the sentence names; the
+ *   question's when the sentence names none; every row when neither does. A
+ *   passage with no row for that voltage is not read (it may be one chunk of
+ *   the page). It only ever withholds; it approves nothing. It does not judge:
+ *   a figure the question itself gives (the asked duty); a figure given as a
+ *   load ("a 1.5 A steady-state load", "draws 1.5 A"); a figure in a clause
+ *   that denies before reaching it ("cannot continuously carry 15 A", "do not
+ *   treat 15 A as the continuous rating") or that names another device ("an
+ *   interposing relay rated 15 A continuous"); a figure whose value also sits
+ *   on those rows with no column read (the page prints 1.0 A across make and
+ *   break at 24 V DC, so "break 1 A" there is right); or a figure with a column
+ *   word only somewhere near it. So "the make rating is 15 A and 2 A is what
+ *   you can use" and "the contacts break 2 A loads" pass.
  *
  * A passage is a ratings table when it writes "Make" beside "Break" and also
  * writes "Continuous". Its rating rows are the lines that carry two or more
@@ -126,22 +125,34 @@ const INRUSH_BEFORE_RE = new RegExp(String.raw`\b${INRUSH}(?:\s+current)?\s*(?:o
 // The LOAD rule reads an UNCITED table only for a question about what the table rates.
 const CONTACT_QUESTION_RE = /\b(?:relay|contacts?|outputs?|switch(?:es|ed|ing)?)\b/i;
 
-// WRONG-COLUMN rule: the words that name each column.
+// WRONG-COLUMN rule. A figure is judged only where the answer ASSIGNS it to a column: the column
+// word is attached to the figure, directly before ("make rating of 1.5 A", "break rating at
+// 120 V AC is 15 A", "continuously at 15 A", "break 7.5 A") or directly after ("2 A make",
+// "15 A is the break rating"). A column word that is merely near a figure assigns nothing
+// ("a 1.5 A load is below the 2 A continuous rating" assigns only the 2 A).
 const COLUMNS: readonly RatingColumn[] = ["make", "break", "continuous"];
-const WORDS_OF: Record<RatingColumn, RegExp> = {
-  make: /\b(?:make|making|makes|inrush|surge)\b/i,
-  break: /\b(?:break|breaking|breaks|interrupt(?:ing|s)?)\b/i,
-  continuous: /\b(?:continuous|continuously|steady[- ]state)\b/i,
+const WORD: Record<RatingColumn, string> = {
+  make: "make|making|makes|inrush|surge",
+  break: String.raw`break|breaking|breaks|interrupt(?:ing|s)?`,
+  continuous: "continuous|continuously|steady[- ]state",
 };
-// Words that say what a figure is NOT: the negation sits directly on a column word ("is not the
-// continuous rating", "rather than the make figure"). That column word names nothing; every
-// other word in the sentence still does. "Should not be switched" is not one.
-// A figure the sentence gives as a load, not as a rating: "a 1.5 A steady-state load", "draws 1.5 A".
+const NOUN = String.raw`(?:\s+(?:ratings?|figure|current|limit|capacity|value|duty))?`;
+const AT_VOLTS = String.raw`(?:\s+(?:at|for|on)\s+(?:the\s+)?\d+(?:\.\d+)?\s?V(?:\s?(?:AC|DC))?(?:\s+row)?)?`;
+const LINK = String.raw`\s*(?:of|is|are|=|:|at|to|up to)?[\s(*•–-]*$`;
+const assigns = (column: RatingColumn, before: string, after: string) =>
+  new RegExp(String.raw`\b(?:${WORD[column]})${NOUN}${AT_VOLTS}${LINK}`, "i").test(before)
+  || new RegExp(String.raw`^\s*\(?\s*(?:(?:is|as)\s+(?:the|its|a)\s+)?(?:${WORD[column]})\b`, "i").test(after);
+// The clause a figure stands in: the sentence between the commas, semicolons, "and" or "but" around it.
+const CLAUSE_EDGE_RE = /[,;]|\s(?:and|but)\s/gi;
+// A clause that denies before it reaches the figure assigns nothing to it ("cannot continuously
+// carry 15 A", "do not treat 15 A as the continuous rating").
+const DENIES_RE = /\b(?:not|never|cannot|neither|nor)\b|n[’']t\b/i;
+// A figure the sentence gives as a load, not as a rating: "a 1.5 A steady-state load", "draws
+// 1.5 A", "a load current of 1.5 A".
 const LOAD_AFTER_RE = /^\s*(?:[A-Za-z-]+\s+){0,2}(?:loads?|coils?|motors?|lamps?|solenoids?|heaters?|draw)\b/i;
-const LOAD_BEFORE_RE = /\b(?:loads?(?:\s+of)?|draws|drawing|pulls|pulling)\s+(?:about\s+|around\s+|up to\s+)?$/i;
+const LOAD_BEFORE_RE = /\b(?:loads?(?:\s+current)?(?:\s+of)?|draws|drawing|pulls|pulling)\s+(?:about\s+|around\s+|up to\s+)?$/i;
 // Words that put a figure on some other device than the one the table rates.
 const OTHER_DEVICE_RE = /\b(?:interposing|external|separate|another|different|contactor(?:'s|’s)? contacts?|pilot relay|solid[- ]state relay)\b/i;
-const NEGATED_COLUMN_RE = /(?:\b(?:not|never|rather than|instead of)|n[’']t)\s+(?:(?:the|a|an|its)\s+)?(?:make|making|break|breaking|continuous|inrush|surge)\b/gi;
 
 type Figure = { value: number; written: string };
 const amperesIn = (text: string): Figure[] => [...text.matchAll(AMPERE_RE)].map((m) => ({ value: Number(m[1]), written: m[0] }));
@@ -248,23 +259,32 @@ export function ratingColumnFinding(question: string, answer: string, passages: 
   if (judged.length === 0) return null;
   for (const sentence of sentencesOf(answer)) {
     const figures = [...sentence.matchAll(AMPERE_RE)];
+    const edges = [...sentence.matchAll(CLAUSE_EDGE_RE)].map((m) => ({ at: m.index ?? 0, end: (m.index ?? 0) + m[0].length }));
+    // The sentence's own voltage decides the row; the question's only when the sentence names none.
     const saidVolts = voltagesIn(sentence);
+    const volts = saidVolts.length > 0 ? saidVolts : askedVolts;
     for (let k = 0; k < figures.length; k++) {
       const value = Number(figures[k][1]);
       if (inQuestion.includes(value)) continue;
-      const from = k > 0 ? (figures[k - 1].index ?? 0) + figures[k - 1][0].length : 0;
-      const to = k + 1 < figures.length ? (figures[k + 1].index ?? sentence.length) : sentence.length;
       const at = figures[k].index ?? 0;
-      if (LOAD_AFTER_RE.test(sentence.slice(at + figures[k][0].length)) || LOAD_BEFORE_RE.test(sentence.slice(0, at))) continue;
-      const around = sentence.slice(from, to);
-      if (OTHER_DEVICE_RE.test(around)) continue;
-      const beside = around.replace(NEGATED_COLUMN_RE, " ");
-      const named = COLUMNS.filter((c) => WORDS_OF[c].test(beside));
+      const end = at + figures[k][0].length;
+      const clauseFrom = Math.max(0, ...edges.filter((e) => e.end <= at).map((e) => e.end));
+      const clauseTo = Math.min(sentence.length, ...edges.filter((e) => e.at >= end).map((e) => e.at));
+      const before = sentence.slice(Math.max(clauseFrom, k > 0 ? (figures[k - 1].index ?? 0) + figures[k - 1][0].length : 0), at);
+      const after = sentence.slice(end, Math.min(clauseTo, k + 1 < figures.length ? (figures[k + 1].index ?? sentence.length) : sentence.length));
+      if (LOAD_AFTER_RE.test(sentence.slice(end)) || LOAD_BEFORE_RE.test(sentence.slice(0, at))) continue;
+      // A denial reaches the figure only from inside its own clause, and not across a colon.
+      const denyFrom = Math.max(clauseFrom, sentence.lastIndexOf(":", at - 1) + 1);
+      if (DENIES_RE.test(sentence.slice(denyFrom, at)) || OTHER_DEVICE_RE.test(sentence.slice(clauseFrom, clauseTo))) continue;
+      // Several column words ahead of the figure are the head of a list ("Make / break /
+      // continuous: 15 A / 1.5 A / 2 A"), not an assignment of this figure.
+      if (COLUMNS.filter((c) => new RegExp(String.raw`\b(?:${WORD[c]})\b`, "i").test(before)).length > 1) continue;
+      const named = COLUMNS.filter((c) => assigns(c, before, after));
       if (named.length === 0) continue;
       for (const table of judged) {
-        // A passage may be one chunk of the page and hold only some rows. When a voltage is named
-        // and this passage has no row for it, the passage says nothing about the figure.
-        const rows = [saidVolts, askedVolts].map((v) => rowsAt(table.columns, v)).find((r) => r.length > 0) ?? (saidVolts.length + askedVolts.length === 0 ? table.columns : []);
+        // A passage may be one chunk of the page and hold only some rows: with a voltage named,
+        // a passage that has no row for it says nothing about the figure.
+        const rows = volts.length > 0 ? rowsAt(table.columns, volts) : table.columns;
         if (rows.some((r) => r.unread.some((u) => amp(u) === value))) continue;
         const printed = COLUMNS.filter((c) => placedIn(rows, c).includes(value));
         if (printed.length > 0 && !printed.some((c) => named.includes(c))) return { rule: "wrong_column", ...where(table), figure: figures[k][0] };
