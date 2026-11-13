@@ -379,6 +379,16 @@ describe("WRONG-COLUMN rule (#5474 item 5) — a figure the page places in a col
   it("stated limit: a figure with no column word attached is not judged, though another figure in the sentence has one", () => {
     expect(ratingColumnFinding(RATING_QUESTION, "At 120 V AC the make rating is 15 A and 2 A is the rating you can use [2].", GIVEN)).toBeNull();
   });
+  it("control: a column word ahead of a figure, but not attached to it, assigns nothing", () => {
+    expect(ratingColumnFinding(RATING_QUESTION, "The continuous rating is lower than the 15 A the contact can handle on closing at 120 V AC [2].", GIVEN)).toBeNull();
+  });
+  it("another device named in a later clause does not excuse a wrong assignment in this one", () => {
+    expect(ratingColumnFinding(RATING_QUESTION, "The continuous rating is 15 A at 120 V AC, and an interposing relay is not needed [2].", GIVEN)).toMatchObject({ rule: "wrong_column", figure: "15 A" });
+  });
+  it("control: an uncited stored page is not read for an assignment about something else", () => {
+    expect(ratingColumnFinding("Which fuse for the supply?", "The fuse's break rating is 2 A.", [prose(false), stored(false)])).toBeNull();
+    expect(ratingColumnFinding("Which fuse for the supply?", "The fuse's break rating is 2 A [2].", [prose(false), stored(true)])).toMatchObject({ rule: "wrong_column" });
+  });
   it("a load figure in the sentence does not excuse a misnamed rating beside it", () => {
     expect(ratingColumnFinding("What can the relay output carry?", "At 120 V AC, a 1 A steady-state load is below the 15 A continuous rating [2].", GIVEN)).toMatchObject({ rule: "wrong_column", figure: "15 A" });
   });
