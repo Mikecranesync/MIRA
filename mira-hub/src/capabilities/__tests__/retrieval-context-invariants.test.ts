@@ -105,7 +105,7 @@ describe.each(facts)("candidate admission: $id", (fact) => {
     expect(supported).toHaveLength(1);
     expect(supported[0]).toMatchObject({
       content: fact.content, sourcePage: fact.page, pageLabel: `fixture-${fact.page}`,
-      sourceUrl: own.source_url, tableModels: [...fact.table],
+      sourceUrl: own.source_url, title: own.filename, tableModels: [...fact.table],
     });
     for (const required of fact.required) expect(supported[0].content).toContain(required);
     expect(chunks.some((chunk) => chunk.docId === OTHER)).toBe(false);

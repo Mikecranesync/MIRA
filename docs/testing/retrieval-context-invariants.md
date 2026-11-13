@@ -4,7 +4,7 @@ First local, keyless implementation slice of [regression protection proposal #54
 
 `mira-hub/src/capabilities/__tests__/retrieval-context-invariants.test.ts` calls the production `retrieveNodeChunks` function with scripted SQL candidates, matching the existing capability tests. Three public development facts each run in five contexts: baseline, neutral filename, unrelated document added, document order reversed, and a wrong-model request. Every case forbids `fetch` calls.
 
-Positive cases require the original evidence text, CT/VT and units where applicable, document ID, source page, page label, source URL and table-model attribution to survive. Wrong-model controls require refusal before a knowledge search and the expected sibling diagnostic. These are candidate-admission and provenance tests. They do not measure SQL recall, PDF extraction, numeric answer generation, live retrieval, device behavior or technician acceptance. The private benchmark and Python replay store remain untouched.
+Positive cases require the original evidence text, CT/VT and units where applicable, document ID, citation title, source page, page label, source URL and table-model attribution to survive. Wrong-model controls require refusal before a knowledge search and the expected sibling diagnostic. These are candidate-admission and provenance tests. They do not measure SQL recall, PDF extraction, numeric answer generation, live retrieval, device behavior or technician acceptance. The private benchmark and Python replay store remain untouched.
 
 ## Public fact anchors
 
@@ -38,6 +38,7 @@ Author verification on base `91452e28fbe9adab88c627fede9d7bebef63d871`, November
 | Sibling early-refusal guard disabled | 12 / 3 | All wrong-model controls |
 | Candidate admission bypassed | 9 / 6 | All unrelated-document and document-order cases |
 | Returned table-model provenance removed | 3 / 12 | All positive cases |
+| Returned citation title replaced by a placeholder (review fix) | 3 / 12 | All positive cases |
 | Original production files restored byte-for-byte | 15 / 0 | None |
 | Report verifier before implementation | 1 / 20 | Missing, skipped and invalid reports accepted by the initial stub |
 | Report verifier after implementation | 21 / 0 | None |
