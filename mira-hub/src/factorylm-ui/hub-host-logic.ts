@@ -337,6 +337,23 @@ export function enabledDocIds(sources: readonly Pick<NotebookSource, "docId" | "
   return sources.filter((s) => s.enabledByDefault && (s.matchState === "user_confirmed" || s.matchState === "verified")).map((s) => s.docId);
 }
 
+/**
+ * Re-read a project only while it is still the one on screen (#5456, Codex r1
+ * F1 on #5488). A write started in project A can finish after the technician
+ * opened project B; re-reading A then would be the newest load, and A's detail
+ * would be committed under B's selection. Resolves false without loading when
+ * `sel` is no longer the current selection (another project, another thread,
+ * or the host is gone).
+ */
+export function reloadIfStillSelected(
+  current: Pick<HubSelection, "notebookId" | "threadId"> | null,
+  sel: HubSelection,
+  load: (sel: HubSelection) => Promise<boolean>,
+): Promise<boolean> {
+  if (!current || current.notebookId !== sel.notebookId || current.threadId !== sel.threadId) return Promise.resolve(false);
+  return load(sel);
+}
+
 /** The notebook's own sources, enabled or not — what the basis chip may call
  *  "this notebook's sources" (#4025). A rejected match was never one. */
 export function notebookSourceDocIds(sources: readonly Pick<NotebookSource, "docId" | "matchState">[]): string[] {

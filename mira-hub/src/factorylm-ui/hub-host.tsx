@@ -86,6 +86,7 @@ import {
   detailQueryFor,
   draftAfterSendSucceeded,
   enabledDocIds,
+  reloadIfStillSelected,
   errorMessageFor,
   fixtureFor,
   groundingLineFor,
@@ -1102,7 +1103,8 @@ export function HubShellHost() {
           onAttached={(fileIds) => {
             const nb = selection.notebookId;
             setPendingApprovals((m) => ({ ...m, [nb]: (m[nb] ?? []).filter((id) => !fileIds.includes(id)) }));
-            void loadDetail(selection);
+            // Same late-completion race as the box below: never re-read a project that is no longer on screen.
+            void reloadIfStillSelected(hostMountedRef.current ? selectionRef.current : null, selection, loadDetail);
           }}
         />
       )}
@@ -1113,7 +1115,7 @@ export function HubShellHost() {
           key={`parked-sources|${selection.notebookId}`}
           notebookId={selection.notebookId}
           sources={detail.sources}
-          onChanged={() => loadDetail(selection)}
+          onChanged={() => reloadIfStillSelected(hostMountedRef.current ? selectionRef.current : null, selection, loadDetail)}
         />
       )}
       </div>

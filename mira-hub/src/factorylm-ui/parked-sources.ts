@@ -56,12 +56,12 @@ export async function turnOnParkedSource(notebookId: string, row: Pick<ParkedRow
   return { ok: false, message: res.status === 401 ? USE_SIGNED_OUT : res.status === 404 ? USE_GONE : USE_FAILED };
 }
 
-/** Names to confirm as "now used": turned on here AND no longer listed as not
- *  in use. The server's list decides; a source switched off again elsewhere
- *  goes back to being a row and loses its confirmation. */
-export function confirmedOn(turnedOn: ReadonlyArray<{ docId: string; name: string }>, rows: ReadonlyArray<Pick<ParkedRow, "docId">>): string[] {
-  const parked = new Set(rows.map((r) => r.docId));
-  return turnedOn.filter((t) => !parked.has(t.docId)).map((t) => t.name);
+/** Names to confirm as "now used": turned on here AND the server's list now
+ *  says chat searches it. Absence proves nothing: a source that was removed,
+ *  rejected or switched off again elsewhere is not "used" (Codex r1 F2, #5488). */
+export function confirmedOn(turnedOn: ReadonlyArray<{ docId: string; name: string }>, sources: ReadonlyArray<Pick<ParkedSource, "docId" | "searchable">>): string[] {
+  const searched = new Set(sources.filter((s) => s.searchable === true).map((s) => s.docId));
+  return turnedOn.filter((t) => searched.has(t.docId)).map((t) => t.name);
 }
 
 export type TurnOnOutcome = { kind: "on" } | { kind: "failed"; message: string };

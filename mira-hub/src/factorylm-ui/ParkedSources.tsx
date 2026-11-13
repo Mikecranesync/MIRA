@@ -46,7 +46,7 @@ export function ParkedSources({ notebookId, sources, onChanged }: Props) {
   }, [notebookId]);
 
   const rows = parkedRows(sources);
-  return <ParkedSourcesView rows={rows} turnedOn={confirmedOn(turnedOn, rows)} busy={busy} failed={failed} onUse={(row) => void use(row)} />;
+  return <ParkedSourcesView rows={rows} turnedOn={confirmedOn(turnedOn, sources)} busy={busy} failed={failed} onUse={(row) => void use(row)} />;
 }
 
 type ViewProps = {

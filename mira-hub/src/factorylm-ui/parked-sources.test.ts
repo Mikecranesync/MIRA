@@ -1,5 +1,6 @@
 /** #5456: a manual saved switched off is shown on the v3 project screen with its one next step. Fake fetch only; no DOM. */
 import { describe, expect, it, vi } from "vitest";
+import { reloadIfStillSelected, type HubSelection } from "./hub-host-logic";
 import type { SetupDeps } from "./new-project-setup-logic";
 import { confirmedOn, parkedRows, REREAD_FAILED, turnOnAndReread, turnOnParkedSource, USE_FAILED, USE_GONE, USE_SIGNED_OUT, type ParkedSource } from "./parked-sources";
 
@@ -75,13 +76,20 @@ describe("turnOnParkedSource: one write", () => {
   });
 });
 
-describe("confirmedOn: 'now used' is said only once the server's list agrees", () => {
+describe("confirmedOn: 'now used' is said only when the server's list says chat searches it", () => {
   const on = [{ docId: "a", name: "a.pdf" }, { docId: "b", name: "b.pdf" }];
-  it("confirms a source that is no longer listed as not in use", () => {
-    expect(confirmedOn(on, [])).toEqual(["a.pdf", "b.pdf"]);
+  it("confirms a source the refreshed list marks searchable", () => {
+    expect(confirmedOn(on, [{ docId: "a", searchable: true }, { docId: "b", searchable: true }])).toEqual(["a.pdf", "b.pdf"]);
   });
-  it("drops the confirmation for a source that is listed again", () => {
-    expect(confirmedOn(on, [{ docId: "a" }])).toEqual(["b.pdf"]);
+  it("a source removed from the project is not confirmed", () => {
+    expect(confirmedOn(on, [])).toEqual([]);
+    expect(confirmedOn(on, [{ docId: "b", searchable: true }])).toEqual(["b.pdf"]);
+  });
+  it("a source rejected or switched off again is not confirmed", () => {
+    expect(confirmedOn(on, [{ docId: "a", searchable: false }, { docId: "b", searchable: true }])).toEqual(["b.pdf"]);
+  });
+  it("a list without the projection confirms nothing", () => {
+    expect(confirmedOn(on, [{ docId: "a" } as unknown as { docId: string; searchable: boolean }])).toEqual([]);
   });
 });
 
@@ -142,5 +150,40 @@ describe("turnOnAndReread: one tap, start to finish", () => {
     const onBusy = vi.fn();
     await turnOnAndReread("nb", row, new Set(), { deps: harness(200).deps, reread: async () => true, onBusy });
     expect(onBusy).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("#5488 r1 F1: a tap that finishes after the technician left the project", () => {
+  const A: HubSelection = { notebookId: "A", threadId: "t1" } as HubSelection;
+  const row = { docId: "d", fix: "use" as const, needsApproval: true };
+  function heldPatch() {
+    let release!: () => void;
+    const held = new Promise<void>((r) => { release = r; });
+    const fetchFn = vi.fn(async () => { await held; return { status: 200, ok: true, json: async () => ({ ok: true }) } as Response; });
+    const deps: SetupDeps = { fetch: fetchFn as unknown as typeof fetch, apiBase: "", createNotebook: async () => null, sleep: async () => {} };
+    return { deps, release };
+  }
+  it.each([
+    ["another project", { notebookId: "B", threadId: "t9" }],
+    ["another thread of the same project", { notebookId: "A", threadId: "t2" }],
+    ["nothing (host gone)", null],
+  ])("never re-reads project A once the screen shows %s", async (_n, now) => {
+    const h = heldPatch();
+    let current: { notebookId: string; threadId: string } | null = A;
+    const loads: string[] = [];
+    const load = async (sel: HubSelection) => { loads.push(sel.notebookId); return true; };
+    const run = turnOnAndReread("A", row, new Set(), { deps: h.deps, reread: () => reloadIfStillSelected(current, A, load), onBusy: vi.fn() });
+    current = now;
+    h.release();
+    expect(await run).toEqual({ kind: "failed", message: REREAD_FAILED });
+    expect(loads).toEqual([]);
+  });
+  it("control: still on project A, the re-read runs and the tap succeeds", async () => {
+    const h = heldPatch();
+    const loads: string[] = [];
+    const run = turnOnAndReread("A", row, new Set(), { deps: h.deps, reread: () => reloadIfStillSelected(A, A, async (sel) => { loads.push(sel.notebookId); return true; }), onBusy: vi.fn() });
+    h.release();
+    expect(await run).toEqual({ kind: "on" });
+    expect(loads).toEqual(["A"]);
   });
 });
