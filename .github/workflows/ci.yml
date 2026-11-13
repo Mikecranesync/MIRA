@@ -801,6 +801,17 @@ jobs:
         working-directory: mira-hub
         run: bun run test
 
+      - name: Prove context invariants executed
+        # A green runner with missing/skipped cases is not regression coverage.
+        if: steps.changes.outputs.hub == 'true'
+        working-directory: mira-hub
+        run: |
+          node --test scripts/check-context-invariants.test.mjs
+          report="$RUNNER_TEMP/context-invariants.json"
+          rm -f "$report"
+          bun run test src/capabilities/__tests__/retrieval-context-invariants.test.ts --reporter=json --outputFile="$report"
+          node scripts/check-context-invariants.mjs "$report"
+
       - name: Prove retrieval flag guard rejects enabled bypasses
         # Execute the assertions; source-text fragments cannot prove they run.
         # Both temporary registry mutations are restored byte-for-byte.

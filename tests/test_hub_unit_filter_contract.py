@@ -41,6 +41,22 @@ _FLAG_GUARD = (
 )
 
 
+def test_hub_unit_proves_context_invariant_execution():
+    workflow = yaml.safe_load(_CI.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["mira-hub-unit"]["steps"]
+    proof = [s for s in steps if s.get("name") == "Prove context invariants executed"]
+    assert len(proof) == 1, "Hub CI must positively verify the 15 context cases ran"
+    step = proof[0]
+    assert step["if"] == "steps.changes.outputs.hub == 'true'"
+    assert step.get("continue-on-error", False) is False
+    assert step["working-directory"] == "mira-hub"
+    command = step["run"]
+    assert "retrieval-context-invariants.test.ts" in command
+    assert "check-context-invariants.test.mjs" in command
+    assert "node scripts/check-context-invariants.mjs" in command
+    assert "--reporter=json" in command and "--outputFile=" in command
+
+
 def _hub_filter_patterns() -> list[str]:
     """Return the glob list of the Hub Unit Tests job's ``hub`` paths-filter.
 
