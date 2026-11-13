@@ -152,6 +152,7 @@ const assignedAfter = (column: RatingColumn, after: string) => {
   const m = new RegExp(String.raw`^\s*\(?\s*(?:(?:rating|figure|limit|current|rated)\s+)?(?:(?:is|as)\s+(?:the|its|a)\s+|(?:for|on|under|at)\s+(?:the\s+)?)?(?:${WORD[column]})\b`, "i").exec(after);
   return m ? m[0].length : -1;
 };
+const ANY_COLUMN_WORD_RE = new RegExp(String.raw`\b(?:${WORD.make}|${WORD.break}|${WORD.continuous})\b`, "i");
 // Every column word in a stretch of text, in the order written.
 const columnWordsIn = (text: string): RatingColumn[] =>
   [...text.matchAll(new RegExp(String.raw`\b(?:(${WORD.make})|(${WORD.break})|(${WORD.continuous}))\b`, "gi"))].map((m) => (m[1] ? "make" : m[2] ? "break" : "continuous"));
@@ -308,8 +309,14 @@ export function ratingColumnFinding(question: string, answer: string, passages: 
       const behind = TAIL_HEAD_RE.test(tail) ? columnWordsIn(tail) : [];
       const order = head.length > 1 && run.length <= head.length ? head : behind.length === run.length ? behind : null;
       if (run.length > 1 && order !== null) {
+        // The same two excuses a single figure gets: another device's ratings, and a denial ahead
+        // of the head ("do not read the make and break ratings as 1.5 A and 2 A").
+        const from = k > 0 ? endOf(k - 1) : 0;
+        const headAt = order === head ? from + sentence.slice(from, at).search(ANY_COLUMN_WORD_RE) : at;
+        const reach = Math.max(from, ...[...sentence.slice(0, headAt).matchAll(DENIAL_ENDS_RE)].map((m) => (m.index ?? 0) + m[0].length));
+        const excused = OTHER_DEVICE_RE.test(sentence.slice(from, endOf(last) + tail.length)) || DENIES_RE.test(sentence.slice(reach, headAt));
         run.forEach((f, n) => {
-          named[f] = [order[n]];
+          if (!excused) named[f] = [order[n]];
           listed.add(f);
         });
         continue;

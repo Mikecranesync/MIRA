@@ -422,6 +422,8 @@ describe("WRONG-COLUMN rule (#5474 item 5) — a figure the page places in a col
     ["rated between figure and word", "The relay is 2 A rated break at 120 V AC [2].", "2 A"],
     ["at between figure and word", "At 120 V AC the contact can carry 15 A at break duty [2].", "15 A"],
     ["a respectively list with its head behind", "At 120 V AC, 2 A and 15 A are the make and continuous ratings respectively [2].", "2 A"],
+    ["a list under a limit put as a denial", "At 120 V AC the make and break ratings are not more than 1.5 A and 2 A [2].", "1.5 A"],
+    ["a denied list, then because and a wrong list", "Do not switch it, because at 120 V AC the make and break ratings are 1.5 A and 2 A [2].", "1.5 A"],
   ])("caught (third safety review): %s", (_name, answer, figure) => {
     expect(ratingColumnFinding(RATING_QUESTION, answer, GIVEN)).toMatchObject({ rule: "wrong_column", figure });
   });
@@ -434,6 +436,9 @@ describe("WRONG-COLUMN rule (#5474 item 5) — a figure the page places in a col
     ["a respectively list with its head behind", "At 120 V AC, 15 A and 2 A are the make and continuous ratings respectively [2]."],
     ["figures that are above two ratings", "At 120 V AC, 5 A and 10 A are above the break and continuous ratings [2]."],
     ["a head behind that names fewer columns than the list has figures", "At 120 V AC, 1.5 A and 2 A are the break and carry limits [2]."],
+    ["a warning not to read a list that way", "At 120 V AC do not read the make and break ratings as 1.5 A and 2 A [2]."],
+    ["a list that rates another device", "At 120 V AC an interposing relay with make and continuous ratings of 2 A and 15 A would be required [2]."],
+    ["a denied list with its head behind", "At 120 V AC, 2 A and 15 A are not the make and continuous ratings [2]."],
     ["column words behind a list that are not its head", "At 120 V AC, 15 A and 2 A are both more than the contacts can break or carry continuously [2]."],
   ])("passes with the right column (third safety review): %s", (_name, answer) => {
     expect(ratingColumnFinding(RATING_QUESTION, answer, GIVEN)).toBeNull();
