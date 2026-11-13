@@ -130,8 +130,12 @@ class Store:
                 if cur.rowcount != 1:
                     self._db.commit()
                     return
-            else:
+            elif permanent:
                 self._db.execute("DELETE FROM reports WHERE id = ?", (comment_id,))
+            else:  # a withdrawal removes only versions it postdates: a newer restore stands
+                self._db.execute(
+                    "DELETE FROM reports WHERE id = ? AND updated_at <= ?", (comment_id, after)
+                )
             self._db.execute(
                 "INSERT INTO report_tombstones VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET "
                 "deleted_at = max(deleted_at, excluded.deleted_at)",

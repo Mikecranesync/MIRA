@@ -150,6 +150,7 @@ def test_complete_poll_removes_reports_whose_comments_are_gone_or_edited_away(tm
     assert {r["id"] for r in st.reports()} == {77, 78}
     edited = dict(COMMENT, body="no marker any more", updated_at="2026-11-12T23:30:00Z")
     get.answers[url] = (200, {}, [edited])  # 78 deleted, 77 edited to drop the marker
+    get.answers["https://api.github.com/repos/o/r/issues/comments/78"] = (404, {}, {})
     poll.poll_reports(get, "o/r", 5232, st, trusted=("owner",))
     assert st.reports() == []
     restored = dict(COMMENT, updated_at="2026-11-12T23:45:00Z")  # 77 edited back later
@@ -248,6 +249,71 @@ def test_a_report_re_edited_during_the_poll_is_not_deleted_by_a_page_that_predat
             return super().__call__(u, headers)
 
     get = RacyGet({url: (200, {}, [])})  # a stale page: 77 missing
+    get.answers["https://api.github.com/repos/o/r/issues/comments/77"] = (
+        200,
+        {},
+        dict(COMMENT, updated_at="2026-11-12T23:30:00Z"),  # the lookup sees the newer edit
+    )
     poll.poll_reports(get, "o/r", 5232, st, trusted=("owner",))
     assert [(r["id"], r["updated_at"]) for r in st.reports()] == [(77, "2026-11-12T23:30:00Z")]
     assert st.put_report(dict(newer, updated_at="2026-11-12T23:31:00Z"))  # and no tombstone
+
+
+def _comment_url(cid):
+    return f"https://api.github.com/repos/o/r/issues/comments/{cid}"
+
+
+def test_a_report_missing_from_the_pages_is_confirmed_before_it_is_deleted(tmp_path):  # r4 F13
+    """Page-number pagination can skip a comment when an earlier one is deleted between
+    page reads; absence from the pages is not proof of deletion."""
+    st = store_mod.Store(tmp_path / "mc.sqlite")
+    page = "https://api.github.com/repos/o/r/issues/5232/comments?per_page=100&page={}"
+    get = FakeGet({page.format(1): (200, {}, [COMMENT])})
+    poll.poll_reports(get, "o/r", 5232, st, trusted=("owner",))
+    get.answers[page.format(1)] = (200, {}, [])  # 77 slipped between the pages
+    get.answers[_comment_url(77)] = (200, {}, COMMENT)  # but it still exists
+    poll.poll_reports(get, "o/r", 5232, st, trusted=("owner",))
+    assert [r["id"] for r in st.reports()] == [77]
+    get.answers[_comment_url(77)] = (404, {}, {"message": "Not Found"})  # control: really gone
+    poll.poll_reports(get, "o/r", 5232, st, trusted=("owner",))
+    assert st.reports() == []
+
+
+def test_an_unconfirmed_absence_is_a_failed_read_not_a_deletion(tmp_path):  # r4 F13
+    import pytest
+
+    st = store_mod.Store(tmp_path / "mc.sqlite")
+    page = "https://api.github.com/repos/o/r/issues/5232/comments?per_page=100&page={}"
+    get = FakeGet({page.format(1): (200, {}, [COMMENT])})
+    poll.poll_reports(get, "o/r", 5232, st, trusted=("owner",))
+    get.answers[page.format(1)] = (200, {}, [])
+    get.answers[_comment_url(77)] = (502, {}, "bad gateway")
+    with pytest.raises(RuntimeError, match="502"):
+        poll.poll_reports(get, "o/r", 5232, st, trusted=("owner",))
+    assert [r["id"] for r in st.reports()] == [77]
+
+
+def test_a_confirmed_deletion_still_spares_a_version_written_during_the_poll(tmp_path):
+    """The permanent path is conditional too: a webhook version written between the
+    pre-poll capture and the 404 survives this poll; the next complete poll settles it."""
+    st = store_mod.Store(tmp_path / "mc.sqlite")
+    url = "https://api.github.com/repos/o/r/issues/5232/comments?per_page=100&page=1"
+    get = FakeGet({url: (200, {}, [COMMENT])})
+    poll.poll_reports(get, "o/r", 5232, st, trusted=("owner",))
+    newer = dict(
+        poll.webhook.comment_report({"comment": COMMENT}, ("owner",), poll.reports.parse),
+        updated_at="2026-11-12T23:30:00Z",
+    )
+
+    class RacyGet(FakeGet):
+        def __call__(self, u, headers=None):
+            st.put_report(newer)
+            return super().__call__(u, headers)
+
+    get = RacyGet({url: (200, {}, []), _comment_url(77): (404, {}, {})})
+    poll.poll_reports(get, "o/r", 5232, st, trusted=("owner",))
+    assert [r["updated_at"] for r in st.reports()] == ["2026-11-12T23:30:00Z"]
+    assert st.put_report(dict(newer, updated_at="2026-11-12T23:31:00Z"))  # and no tombstone
+    get = FakeGet({url: (200, {}, []), _comment_url(77): (404, {}, {})})  # no race this time
+    poll.poll_reports(get, "o/r", 5232, st, trusted=("owner",))
+    assert st.reports() == []

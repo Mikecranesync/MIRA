@@ -90,9 +90,10 @@ def poll_reports(get: Getter, repo: str, issue: int, store, trusted: tuple[str, 
     marker = f"/issues/{issue}#issuecomment-"
     before = {r["id"]: r["updated_at"] for r in store.reports() if marker in r["url"]}
     stored, page, seen = 0, 1, []
+    headers = {"Accept": "application/vnd.github+json"}
     while True:
         url = f"{API}/repos/{repo}/issues/{issue}/comments?per_page=100&page={page}"
-        status, _h, body = get(url, headers={"Accept": "application/vnd.github+json"})
+        status, _h, body = get(url, headers=headers)
         if status != 200 or not isinstance(body, list):
             raise RuntimeError(f"report poll failed: comments page {page}: {status}")
         seen.extend(body)
@@ -109,6 +110,18 @@ def poll_reports(get: Getter, repo: str, issue: int, store, trusted: tuple[str, 
         if cid in present:
             if present[cid] > version:  # edited, and the marker is gone
                 store.delete_report(cid, after=present[cid], if_updated_at=version)
-        else:
+            continue
+        # Absent from the pages is not proof: page-number pagination skips a comment when an
+        # earlier one is deleted between page reads. Only a confirmed 404 is a deletion.
+        status, _h, c = get(f"{API}/repos/{repo}/issues/comments/{cid}", headers=headers)
+        if status == 404:
             store.delete_report(cid, permanent=True, if_updated_at=version)
+        elif status == 200 and isinstance(c, dict):
+            row = webhook.comment_report({"comment": c}, trusted, reports.parse)
+            if row and store.put_report(row):
+                stored += 1
+            elif not row and (c.get("updated_at") or "") > version:  # marker edited away
+                store.delete_report(cid, after=c["updated_at"], if_updated_at=version)
+        else:
+            raise RuntimeError(f"report poll failed: comment {cid}: {status}")
     return stored

@@ -263,3 +263,16 @@ def test_restoring_the_marker_on_the_same_comment_brings_the_report_back(running
         b = json.dumps(comment_payload(77, text, action, when)).encode()
         assert post(port, "/webhook/github", b, hdrs(b, f"dlv-{n}", "issue_comment"))[0] == 202
     assert [r["updated_at"] for r in st.reports()] == ["2026-11-12T23:30:00Z"]
+
+
+def test_a_late_withdrawal_webhook_never_deletes_a_newer_restored_report(running):  # r4 F14
+    port, st = running
+    body = "[DELIVERY-UPDATE: BRAVO-CLAUDE]\nUpdated: x\nState: ACTIVE\n"
+    b_new = json.dumps(comment_payload(77, body, "edited", "2026-11-12T23:30:00Z")).encode()
+    assert post(port, "/webhook/github", b_new, hdrs(b_new, "dlv-r", "issue_comment"))[0] == 202
+    late = json.dumps(comment_payload(77, "withdrawn", "edited", "2026-11-12T23:00:00Z")).encode()
+    assert post(port, "/webhook/github", late, hdrs(late, "dlv-w", "issue_comment"))[0] == 202
+    assert [r["updated_at"] for r in st.reports()] == ["2026-11-12T23:30:00Z"]  # untouched
+    newer = json.dumps(comment_payload(77, "withdrawn", "edited", "2026-11-12T23:45:00Z")).encode()
+    assert post(port, "/webhook/github", newer, hdrs(newer, "dlv-x", "issue_comment"))[0] == 202
+    assert st.reports() == []  # control: a genuinely newer withdrawal still removes it
