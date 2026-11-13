@@ -244,6 +244,9 @@ describe("retrieveNodeChunks excludes another model's table passages when the re
           // Codex r4 on #5464 (F1): a second separator does not hide the reversal.
           "go back to mine.\nNo, stay on this one. What is its rated input current?",
           "go back to mine... No, stay on this one. What is its rated input current?",
+          // #5467 (Codex r5 on #5464, F1): a "?" inside a run of separators is still a question.
+          "ok back to mine...? What is its rated input current?",
+          "back to mine!? what is its VT current",
         ];
         for (const question of negated) {
           const diagnostics: Record<string, unknown> = {};

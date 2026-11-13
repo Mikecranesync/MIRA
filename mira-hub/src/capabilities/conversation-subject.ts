@@ -122,13 +122,17 @@ export function returnsToRecord(question: string): boolean {
   for (let i = 0; i < parts.length; i += 2) {
     const clause = parts[i];
     if (!RETURN_TO_OWN_UNIT.test(clause)) continue;
-    if ((parts[i + 1] ?? "").trim() === "?") return false;
     const rest = clause.replace(RETURN_TO_OWN_UNIT, " ").toLowerCase().split(/\s+/).filter(Boolean);
     if (!rest.every((word) => CONNECTIVES.has(word))) return false;
     // Codex r4 on #5464 (F1): ".\n" or "..." leaves empty clauses between the separators;
     // the next clause is the next one with words in it.
     let next = i + 2;
     while (next < parts.length && parts[next].trim() === "") next += 2;
+    // #5467 (Codex r5 on #5464, F1): the whole run of separators up to that clause is the
+    // terminator. A "?" anywhere in it ("...?", "!?") makes this a question, not a return.
+    for (let sep = i + 1; sep < next; sep += 2) {
+      if ((parts[sep] ?? "").includes("?")) return false;
+    }
     return !REVERSAL_OPENERS.test((parts[next] ?? "").trim());
   }
   return false;
