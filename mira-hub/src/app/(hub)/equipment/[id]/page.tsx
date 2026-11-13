@@ -13,7 +13,7 @@ import { NotebookDeleteDialog } from "@/components/equipment/NotebookDeleteDialo
 import { deleteFailureMessage, createSubmitGuard } from "@/lib/notebook-delete";
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
 import { persistedTurns } from "@/components/equipment/notebook-chat-utils";
-import { persistedEnabled, toggleSourceEnabled } from "@/capabilities/notebook-source-toggle";
+import { createSourceToggles } from "@/capabilities/notebook-source-toggle";
 
 type Notebook = {
   id: string;
@@ -46,7 +46,6 @@ export default function NotebookPage() {
   const [notebook, setNotebook] = useState<Notebook | null>(null);
   const [sources, setSources] = useState<Source[]>([]);
   const [initialTurns, setInitialTurns] = useState<ChatTurn[]>([]);
-  const [enabled, setEnabled] = useState<Record<string, boolean>>({});
   const [sheetOpen, setSheetOpen] = useState(false);
   const [notFound, setNotFound] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -59,76 +58,64 @@ export default function NotebookPage() {
   const [uploadNote, setUploadNote] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // One owner for the checkboxes, the server's labels and the chat scope
+  // (#5456): capabilities/notebook-source-toggle.ts. `sources` and
+  // `enabledDocIds` below are its output, re-read on every change.
+  const [enabledDocIds, setEnabledDocIds] = useState<string[]>([]);
+  const toggles = useMemo(() => {
+    const t = createSourceToggles<Source>({
+      patch: (docId, value) =>
+        fetch(`${API_BASE}/api/equipment-notebooks/${id}/sources/${docId}/`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabledByDefault: value }),
+        }),
+      list: async () => {
+        const res = await fetch(`${API_BASE}/api/equipment-notebooks/${id}/`, { cache: "no-store" });
+        if (!res.ok) return undefined;
+        return ((await res.json()).sources ?? []) as Source[];
+      },
+      onChange: () => {
+        setSources(t.getSources());
+        setEnabledDocIds(t.enabledDocIds());
+      },
+    });
+    return t;
+  }, [id]);
+  useEffect(() => {
+    // A toggle whose answer was lost is re-read when the network may be back.
+    const retry = () => void toggles.retryUnsettled();
+    const onVisible = () => document.visibilityState === "visible" && retry();
+    window.addEventListener("online", retry);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("online", retry);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [toggles]);
+
   const load = useCallback(async () => {
+    const readNo = toggles.beginRead();
     const res = await fetch(`${API_BASE}/api/equipment-notebooks/${id}/`, { cache: "no-store" });
     if (res.status === 404) return setNotFound(true);
     if (!res.ok) return;
     const data = await res.json();
     setNotebook(data.notebook);
     const srcs: Source[] = data.sources ?? [];
-    setSources(srcs);
-    setEnabled((prev) => {
-      const next = { ...prev };
-      for (const s of srcs) if (!(s.docId in next)) next[s.docId] = s.enabledByDefault && s.matchState !== "rejected";
-      return next;
-    });
+    toggles.applySources(srcs, readNo);
     // Reload applies the same stopped-turn rule as the live stream (STRM-2):
     // error + partial text ⇒ "Stopped", no citations, out of history.
     setInitialTurns(persistedTurns(data.turns ?? []));
-  }, [id]);
+  }, [id, toggles]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async data load (codebase precedent: namespace/page.tsx)
     void load();
   }, [load]);
 
-  const enabledDocIds = useMemo(
-    () => sources.filter((s) => enabled[s.docId] && s.matchState !== "rejected").map((s) => s.docId),
-    [sources, enabled],
-  );
   const usableCount = sources.filter((s) => s.matchState !== "rejected").length;
 
-  // The label beside each checkbox is the server's projection, so a toggle
-  // re-reads the source list instead of guessing the new label locally. Only
-  // the newest re-read is applied, so a slow older response cannot put stale
-  // labels back.
-  const refreshSeq = useRef(0);
-  const refreshSources = useCallback(async (): Promise<Source[] | undefined> => {
-    const mine = ++refreshSeq.current;
-    const res = await fetch(`${API_BASE}/api/equipment-notebooks/${id}/`, { cache: "no-store" });
-    if (!res.ok) return undefined;
-    const data = await res.json();
-    const srcs: Source[] = data.sources ?? [];
-    if (mine === refreshSeq.current) setSources(srcs);
-    return srcs;
-  }, [id]);
-
-  // Per-source toggle counter: an older toggle stops touching the checkbox
-  // once a newer one for the same source has started.
-  const toggleSeq = useRef<Record<string, number>>({});
-  const toggle = useCallback(
-    (docId: string) => {
-      const mine = (toggleSeq.current[docId] ?? 0) + 1;
-      toggleSeq.current[docId] = mine;
-      return toggleSourceEnabled(!enabled[docId], {
-        setEnabled: (value) => setEnabled((p) => ({ ...p, [docId]: value })),
-        patch: (value) =>
-          fetch(`${API_BASE}/api/equipment-notebooks/${id}/sources/${docId}/`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ enabledByDefault: value }),
-          }),
-        // The server's answer for THIS source drives the checkbox (and so the
-        // chat scope): a write whose response was lost may still have landed.
-        refresh: async () => {
-          const srcs = await refreshSources();
-          return srcs ? persistedEnabled(srcs, docId) : undefined;
-        },
-        isLatest: () => toggleSeq.current[docId] === mine,
-      });
-    },
-    [enabled, id, refreshSources],
-  );
+  const toggle = useCallback((docId: string) => void toggles.toggle(docId), [toggles]);
 
   // NotebookLM loop: pick a PDF → upload to this notebook's node (parks the
   // original + chunks it via ingest-v2) → attach the indexed doc as a source →
@@ -353,7 +340,7 @@ export default function NotebookPage() {
                 {sources.map((s) => {
                   const processing = s.status && !["parsed", "failed"].includes(s.status);
                   const rejected = s.matchState === "rejected";
-                  const on = enabled[s.docId] && !rejected;
+                  const on = enabledDocIds.includes(s.docId);
                   return (
                     <li key={s.docId}>
                       <button

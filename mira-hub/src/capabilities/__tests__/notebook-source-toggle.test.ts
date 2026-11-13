@@ -1,118 +1,300 @@
-import { describe, expect, it, vi } from "vitest";
-import { persistedEnabled, toggleSourceEnabled } from "../notebook-source-toggle";
+import { describe, expect, it } from "vitest";
+import { createSourceToggles, persistedEnabled } from "../notebook-source-toggle";
 
 /**
- * Codex r1 on #5476 (F2): the Sources sheet flipped the checkbox and sent the
- * PATCH, but never re-read the server's projection, so the label beside the
- * checkbox ("Not searchable: not turned on") stayed stale until a reload —
- * and a refused PATCH still looked like a success.
+ * Codex r1 + r2 on #5476 (F2). The Sources sheet's checkbox, the server's
+ * "will chat search this" label and the doc ids a chat turn sends must agree.
+ * A fake server stands behind the same two calls the page makes (PATCH one
+ * source, GET the list), so these cover the join the page relies on.
  */
-function harness(patch: () => Promise<{ ok: boolean }>) {
-  const calls: string[] = [];
-  const deps = {
-    setEnabled: vi.fn((v: boolean) => void calls.push(`set:${v}`)),
-    patch: vi.fn(async (v: boolean) => {
-      calls.push(`patch:${v}`);
-      return patch();
-    }),
-    refresh: vi.fn(async (): Promise<boolean | undefined> => {
-      calls.push("refresh");
-      return undefined;
-    }),
+type Row = { docId: string; enabledByDefault: boolean; matchState: string; searchableLabel: string };
+
+function fakeServer(initial: Record<string, boolean>) {
+  const db: Record<string, boolean> = { ...initial };
+  const rejected = new Set<string>();
+  const server = {
+    db,
+    rejected,
+    /** What the next PATCH does: commit?, then answer how. */
+    patchMode: "ok" as "ok" | "refuse" | "commit-then-lose-reply" | "offline",
+    listMode: "ok" as "ok" | "fail" | "throw",
+    patches: [] as string[],
+    lists: 0,
+    rows(): Row[] {
+      return Object.keys(db).map((docId) => ({
+        docId,
+        enabledByDefault: db[docId],
+        matchState: rejected.has(docId) ? "rejected" : "matched",
+        searchableLabel: db[docId] ? "Ready to ask" : "Not searchable: not turned on",
+      }));
+    },
+    async patch(docId: string, enabled: boolean): Promise<{ ok: boolean }> {
+      server.patches.push(`${docId}:${enabled}`);
+      if (server.patchMode === "offline") throw new Error("offline");
+      if (server.patchMode === "refuse") return { ok: false };
+      db[docId] = enabled;
+      if (server.patchMode === "commit-then-lose-reply") throw new Error("connection reset after commit");
+      return { ok: true };
+    },
+    async list(): Promise<Row[] | undefined> {
+      server.lists++;
+      if (server.listMode === "throw") throw new Error("offline");
+      if (server.listMode === "fail") return undefined;
+      return server.rows();
+    },
   };
-  return { calls, deps };
+  return server;
 }
 
-describe("toggleSourceEnabled", () => {
-  it("enable: ticks optimistically, persists, then re-reads the server projection", async () => {
-    const { calls, deps } = harness(async () => ({ ok: true }));
-    expect(await toggleSourceEnabled(true, deps)).toBe(true);
-    expect(calls).toEqual(["set:true", "patch:true", "refresh"]);
+function setup(initial: Record<string, boolean>) {
+  const server = fakeServer(initial);
+  let renders = 0;
+  const toggles = createSourceToggles<Row>({
+    patch: (docId, enabled) => server.patch(docId, enabled),
+    list: () => server.list(),
+    onChange: () => void renders++,
+  });
+  toggles.applySources(server.rows());
+  /** Checkbox, label and outgoing chat ids for one source, as the page shows them. */
+  const view = (docId: string) => ({
+    checkbox: toggles.isEnabled(docId),
+    label: toggles.getSources().find((s) => s.docId === docId)?.searchableLabel,
+    inChat: toggles.enabledDocIds().includes(docId),
+  });
+  return { server, toggles, view, renders: () => renders };
+}
+
+const ON = { checkbox: true, label: "Ready to ask", inChat: true };
+const OFF = { checkbox: false, label: "Not searchable: not turned on", inChat: false };
+
+describe("createSourceToggles", () => {
+  it("seeds from the server list; a rejected source is never on or in chat", () => {
+    const { server, toggles, view } = setup({ a: true, b: false, c: true });
+    server.rejected.add("c");
+    toggles.applySources(server.rows());
+    expect(view("a")).toEqual(ON);
+    expect(view("b")).toEqual(OFF);
+    expect(toggles.isEnabled("c")).toBe(false);
+    expect(toggles.enabledDocIds()).toEqual(["a"]);
   });
 
-  it("disable: same order, so the off warning appears without a reload", async () => {
-    const { calls, deps } = harness(async () => ({ ok: true }));
-    expect(await toggleSourceEnabled(false, deps)).toBe(true);
-    expect(calls).toEqual(["set:false", "patch:false", "refresh"]);
+  it("enable: persists, re-reads, and the label changes without a reload", async () => {
+    const { server, toggles, view } = setup({ a: false });
+    expect(await toggles.toggle("a")).toBe(true);
+    expect(server.patches).toEqual(["a:true"]);
+    expect(view("a")).toEqual(ON);
   });
 
-  it("a refused PATCH (non-2xx) puts the checkbox back and re-reads the server state", async () => {
-    const { calls, deps } = harness(async () => ({ ok: false }));
-    expect(await toggleSourceEnabled(true, deps)).toBe(false);
-    expect(calls).toEqual(["set:true", "patch:true", "set:false", "refresh"]);
+  it("disable: the off warning appears without a reload", async () => {
+    const { toggles, view } = setup({ a: true });
+    expect(await toggles.toggle("a")).toBe(true);
+    expect(view("a")).toEqual(OFF);
   });
 
-  it("a network failure puts the checkbox back and does not throw", async () => {
-    const { calls, deps } = harness(async () => {
-      throw new Error("offline");
-    });
-    expect(await toggleSourceEnabled(false, deps)).toBe(false);
-    expect(calls).toEqual(["set:false", "patch:false", "set:true", "refresh"]);
+  it("the checkbox moves at once, before the server answers", async () => {
+    const { toggles } = setup({ a: false });
+    const done = toggles.toggle("a");
+    expect(toggles.isEnabled("a")).toBe(true);
+    expect(toggles.isBusy("a")).toBe(true);
+    await done;
+    expect(toggles.isBusy("a")).toBe(false);
   });
 
-  it("a failed refresh never undoes a persisted toggle", async () => {
-    const { deps } = harness(async () => ({ ok: true }));
-    deps.refresh.mockRejectedValueOnce(new Error("offline"));
-    expect(await toggleSourceEnabled(true, deps)).toBe(true);
-    expect(deps.setEnabled).toHaveBeenCalledTimes(1);
+  it("a refused PATCH (non-2xx) puts everything back to the server's state", async () => {
+    const { server, toggles, view } = setup({ a: false });
+    server.patchMode = "refuse";
+    expect(await toggles.toggle("a")).toBe(false);
+    expect(view("a")).toEqual(OFF);
+    expect(toggles.hasUnsettled()).toBe(false);
   });
 
-  /**
-   * Codex r2 on #5476 (F2): a PATCH that COMMITS but whose response is lost
-   * used to leave the checkbox rolled back while the refreshed row said the
-   * source was on — checkbox, label and chat scope disagreed until a reload.
-   * The refresh is the authority: the checkbox takes the server's value.
-   */
-  it("enable committed but the response was lost: the checkbox ends ON, from the server", async () => {
-    const { calls, deps } = harness(async () => {
-      throw new Error("connection reset after commit");
-    });
-    deps.refresh.mockImplementationOnce(async () => {
-      calls.push("refresh");
-      return true;
-    });
-    expect(await toggleSourceEnabled(true, deps)).toBe(true);
-    expect(calls).toEqual(["set:true", "patch:true", "set:false", "refresh", "set:true"]);
+  it("offline, nothing committed: back to off, and it does not throw", async () => {
+    const { server, toggles, view } = setup({ a: false });
+    server.patchMode = "offline";
+    expect(await toggles.toggle("a")).toBe(false);
+    expect(view("a")).toEqual(OFF);
   });
 
-  it("disable committed but the response was lost: the checkbox ends OFF, from the server", async () => {
-    const { calls, deps } = harness(async () => {
-      throw new Error("connection reset after commit");
-    });
-    deps.refresh.mockImplementationOnce(async () => {
-      calls.push("refresh");
-      return false;
-    });
-    expect(await toggleSourceEnabled(false, deps)).toBe(true);
-    expect(calls).toEqual(["set:false", "patch:false", "set:true", "refresh", "set:false"]);
+  // Codex r2: the write COMMITS, the response is lost.
+  it("enable committed, reply lost: checkbox, label and chat ids all end ON", async () => {
+    const { server, toggles, view } = setup({ a: false });
+    server.patchMode = "commit-then-lose-reply";
+    expect(await toggles.toggle("a")).toBe(true);
+    expect(view("a")).toEqual(ON);
+    expect(toggles.hasUnsettled()).toBe(false);
   });
 
-  it("a 2xx the server did not actually keep: the checkbox follows the server, and it reports not persisted", async () => {
-    const { calls, deps } = harness(async () => ({ ok: true }));
-    deps.refresh.mockImplementationOnce(async () => {
-      calls.push("refresh");
-      return false;
-    });
-    expect(await toggleSourceEnabled(true, deps)).toBe(false);
-    expect(calls).toEqual(["set:true", "patch:true", "refresh", "set:false"]);
+  it("disable committed, reply lost: checkbox, label and chat ids all end OFF", async () => {
+    const { server, toggles, view } = setup({ a: true });
+    server.patchMode = "commit-then-lose-reply";
+    expect(await toggles.toggle("a")).toBe(true);
+    expect(view("a")).toEqual(OFF);
   });
 
-  it("a newer toggle on the same source is never overwritten by this one's undo or its refresh", async () => {
-    const { calls, deps } = harness(async () => {
-      throw new Error("offline");
-    });
-    deps.refresh.mockImplementationOnce(async () => {
-      calls.push("refresh");
-      return true;
-    });
-    await toggleSourceEnabled(true, { ...deps, isLatest: () => false });
-    expect(calls).toEqual(["set:true", "patch:true", "refresh"]);
+  it.each(["fail", "throw"] as const)(
+    "reply lost AND the re-read fails (%s): the three still agree, and the next list read reconciles",
+    async (listMode) => {
+      const { server, toggles, view } = setup({ a: false });
+      server.patchMode = "commit-then-lose-reply";
+      server.listMode = listMode;
+      expect(await toggles.toggle("a")).toBe(false);
+      // Last known server state, consistently — never a half-updated row.
+      expect(view("a")).toEqual(OFF);
+      expect(toggles.hasUnsettled()).toBe(true);
+
+      server.listMode = "ok"; // the network is back
+      await toggles.retryUnsettled();
+      expect(view("a")).toEqual(ON);
+      expect(toggles.hasUnsettled()).toBe(false);
+    },
+  );
+
+  it("an unsettled source is also reconciled by the page's own reload", async () => {
+    const { server, toggles, view } = setup({ a: true });
+    server.patchMode = "commit-then-lose-reply";
+    server.listMode = "fail";
+    await toggles.toggle("a");
+    toggles.applySources(server.rows()); // e.g. the reload after an upload
+    expect(view("a")).toEqual(OFF);
+    expect(toggles.hasUnsettled()).toBe(false);
   });
 
-  it("a refresh that cannot say (source gone from the list) leaves the checkbox alone", async () => {
-    const { calls, deps } = harness(async () => ({ ok: true }));
-    expect(await toggleSourceEnabled(true, deps)).toBe(true);
-    expect(calls).toEqual(["set:true", "patch:true", "refresh"]);
+  it("retryUnsettled does nothing when every write is settled", async () => {
+    const { server, toggles } = setup({ a: false });
+    await toggles.toggle("a");
+    const before = server.lists;
+    await toggles.retryUnsettled();
+    expect(server.lists).toBe(before);
+  });
+
+  it("accepted write, failed re-read: the checkbox stays on the accepted value", async () => {
+    const { server, toggles } = setup({ a: false });
+    server.listMode = "fail";
+    expect(await toggles.toggle("a")).toBe(true);
+    expect(toggles.isEnabled("a")).toBe(true);
+    expect(toggles.enabledDocIds()).toEqual(["a"]);
+  });
+
+  it("a 2xx the server did not keep: everything follows the server, reported not persisted", async () => {
+    const { server, toggles, view } = setup({ a: false });
+    const realPatch = server.patch;
+    server.patch = async (docId, enabled) => {
+      server.patches.push(`${docId}:${enabled}`);
+      return { ok: true }; // says yes, stores nothing
+    };
+    expect(await toggles.toggle("a")).toBe(false);
+    expect(view("a")).toEqual(OFF);
+    server.patch = realPatch;
+  });
+
+  it("a second tap on a source whose toggle is in flight sends nothing", async () => {
+    const { server, toggles, view } = setup({ a: false });
+    const first = toggles.toggle("a");
+    expect(await toggles.toggle("a")).toBe(false);
+    await first;
+    expect(server.patches).toEqual(["a:true"]);
+    expect(view("a")).toEqual(ON);
+  });
+
+  it("toggling two different sources at once settles both", async () => {
+    const { toggles, view } = setup({ a: false, b: true });
+    await Promise.all([toggles.toggle("a"), toggles.toggle("b")]);
+    expect(view("a")).toEqual(ON);
+    expect(view("b")).toEqual(OFF);
+  });
+
+  it("a list read that started before a write settled is discarded", async () => {
+    const { server, toggles, view } = setup({ a: false });
+    // A slow read captures the pre-write list…
+    let release!: (rows: Row[]) => void;
+    const realList = server.list;
+    server.list = () => new Promise<Row[]>((r) => (release = r));
+    const slow = toggles.refresh();
+    const stale = server.rows();
+    server.list = realList;
+    // …the toggle commits and re-reads…
+    await toggles.toggle("a");
+    expect(view("a")).toEqual(ON);
+    // …then the slow, stale read lands. It must not put OFF back.
+    release(stale);
+    expect(await slow).toBe(false);
+    expect(view("a")).toEqual(ON);
+  });
+
+  it("the page's own reload, started before a write settled, cannot put the old state back", async () => {
+    const { server, toggles, view } = setup({ a: false });
+    const readNo = toggles.beginRead(); // the reload's request goes out…
+    const stale = server.rows();
+    await toggles.toggle("a"); // …a toggle commits and re-reads meanwhile…
+    expect(toggles.applySources(stale, readNo)).toBe(false); // …then the reload lands
+    expect(view("a")).toEqual(ON);
+  });
+
+  // The two above are also covered by "newest applied wins". These two take
+  // that away (the toggle's own re-read fails), so only the write-ordering
+  // rule stands between a pre-write list and the checkbox.
+  it("a pre-write read is discarded even when the toggle's own re-read failed", async () => {
+    const { server, toggles } = setup({ a: false });
+    let release!: (rows: Row[]) => void;
+    const realList = server.list;
+    server.list = () => new Promise<Row[]>((r) => (release = r));
+    const slow = toggles.refresh();
+    const stale = server.rows();
+    server.list = realList;
+    server.listMode = "fail";
+    expect(await toggles.toggle("a")).toBe(true); // accepted; re-read failed
+    release(stale);
+    expect(await slow).toBe(false);
+    expect(toggles.isEnabled("a")).toBe(true);
+    expect(toggles.enabledDocIds()).toEqual(["a"]);
+  });
+
+  it("a pre-write page reload is discarded even when the toggle's own re-read failed", async () => {
+    const { server, toggles } = setup({ a: false });
+    const readNo = toggles.beginRead();
+    const stale = server.rows();
+    server.listMode = "fail";
+    expect(await toggles.toggle("a")).toBe(true);
+    expect(toggles.applySources(stale, readNo)).toBe(false);
+    expect(toggles.isEnabled("a")).toBe(true);
+  });
+
+  it("an older read that lands after a newer one was applied is discarded (no write involved)", async () => {
+    const { server, toggles, view } = setup({ a: false });
+    let release!: (rows: Row[]) => void;
+    const realList = server.list;
+    server.list = () => new Promise<Row[]>((r) => (release = r));
+    const older = toggles.refresh();
+    const stale = server.rows();
+    server.list = realList;
+    server.db.a = true; // turned on elsewhere
+    expect(await toggles.refresh()).toBe(true);
+    release(stale);
+    expect(await older).toBe(false);
+    expect(view("a")).toEqual(ON);
+  });
+
+  it("a good older read is applied when a newer read fails", async () => {
+    const { server, toggles } = setup({ a: false });
+    let release!: (rows: Row[] | undefined) => void;
+    const realList = server.list;
+    server.list = () => new Promise<Row[] | undefined>((r) => (release = r));
+    const older = toggles.refresh();
+    server.list = realList;
+    server.db.a = true; // changed elsewhere
+    const fresh = server.rows();
+    server.listMode = "fail";
+    expect(await toggles.refresh()).toBe(false); // the newer read fails
+    release(fresh);
+    expect(await older).toBe(true);
+    expect(toggles.isEnabled("a")).toBe(true);
+  });
+
+  it("tells the page to re-render on every visible change", async () => {
+    const { toggles, renders } = setup({ a: false });
+    const before = renders();
+    await toggles.toggle("a");
+    expect(renders()).toBeGreaterThanOrEqual(before + 3); // tick, settle, re-read
   });
 });
 

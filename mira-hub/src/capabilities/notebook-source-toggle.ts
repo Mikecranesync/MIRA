@@ -1,68 +1,138 @@
 /**
- * Turning a notebook source on or off from a source list (#5456, Codex r1 on
- * #5476 F2). The checkbox is only half of what the row shows: the "will chat
- * search this" label is a SERVER projection (`deriveSearchable` in
- * lib/document-readiness.ts), so after the write the row must be re-read from
- * the server, never patched up locally. A refused or failed write puts the
- * checkbox back — and then the re-read decides: whatever the server says this
- * source's state is, the checkbox takes it (Codex r2 F2: a write can commit
- * and still lose its response, so a transport failure is "unknown", not "no").
- * Pure sequencing — the caller supplies the effects.
+ * Which notebook sources are on, for a source list with on/off checkboxes
+ * (#5456; Codex r1 + r2 on #5476, F2).
+ *
+ * One owner for three things that must never disagree: the checkbox, the
+ * "will chat search this" label (a SERVER projection — `deriveSearchable` in
+ * lib/document-readiness.ts), and the doc ids sent with a chat turn.
+ *
+ *  - The server's source list is the truth. A checkbox is that list's value,
+ *    except while a toggle is in flight or was accepted but not yet re-read.
+ *  - A write can commit and still lose its response, so a transport failure
+ *    is "unknown", not "no": the row goes back to the last known server value
+ *    and stays marked unsettled until a list read lands (`retryUnsettled`).
+ *  - A list read that started before the latest write settled is discarded —
+ *    it may predate that write.
+ *  - One toggle per source at a time (`isBusy`), so two writes cannot race.
+ *
+ * Framework-free; the page supplies the two network calls and a re-render.
  */
-export interface SourceToggleEffects {
-  /** Set the checkbox for this source (optimistic, to undo, and to reconcile). */
-  setEnabled: (enabled: boolean) => void;
-  /** Persist the new state. Resolves `{ ok }` from the HTTP response. */
-  patch: (enabled: boolean) => Promise<{ ok: boolean }>;
-  /**
-   * Re-read the source list from the server. Resolves this source's persisted
-   * on/off state, or nothing when the re-read cannot say (source not listed).
-   */
-  refresh: () => Promise<boolean | undefined | void>;
-  /**
-   * False once a newer toggle of the same source has started. This call then
-   * stops touching the checkbox — the newer one owns it. Defaults to true.
-   */
-  isLatest?: () => boolean;
+export interface SourceRow {
+  docId: string;
+  enabledByDefault: boolean;
+  matchState?: string | null;
 }
 
-/** Returns true when the server holds the new state. Never throws. */
-export async function toggleSourceEnabled(next: boolean, fx: SourceToggleEffects): Promise<boolean> {
-  const owns = () => (fx.isLatest ? fx.isLatest() : true);
-  fx.setEnabled(next);
-  let persisted = false;
-  try {
-    persisted = (await fx.patch(next)).ok;
-  } catch {
-    persisted = false;
-  }
-  let shown = next;
-  if (!persisted && owns()) {
-    fx.setEnabled(!next);
-    shown = !next;
-  }
-  let server: boolean | undefined;
-  try {
-    const read = await fx.refresh();
-    if (typeof read === "boolean") server = read;
-  } catch {
-    // The list keeps its last server state; the next load corrects it.
-  }
-  if (server === undefined) return persisted;
-  if (server !== shown && owns()) fx.setEnabled(server);
-  return server === next;
+export interface SourceToggleIO<S extends SourceRow> {
+  /** Persist on/off for one source. Resolves `{ ok }` from the HTTP response. */
+  patch: (docId: string, enabled: boolean) => Promise<{ ok: boolean }>;
+  /** Read the source list from the server; undefined when the read failed. */
+  list: () => Promise<S[] | undefined>;
+  /** Something the page renders has changed. */
+  onChange: () => void;
 }
 
-/**
- * What a re-read source list says about one source's on/off state — the same
- * rule the page seeds its checkboxes with (a rejected source is never on).
- * Undefined when the source is not in the list.
- */
-export function persistedEnabled(
-  sources: ReadonlyArray<{ docId: string; enabledByDefault: boolean; matchState?: string | null }>,
-  docId: string,
-): boolean | undefined {
+/** A rejected source is never on. Undefined when the source is not listed. */
+export function persistedEnabled(sources: ReadonlyArray<SourceRow>, docId: string): boolean | undefined {
   const row = sources.find((s) => s.docId === docId);
   if (!row) return undefined;
   return row.enabledByDefault && row.matchState !== "rejected";
 }
+
+export function createSourceToggles<S extends SourceRow>(io: SourceToggleIO<S>) {
+  let sources: S[] = [];
+  /** Shown instead of the list's value: in flight, or accepted and not yet re-read. */
+  const overrides = new Map<string, boolean>();
+  const inFlight = new Set<string>();
+  /** Write outcome unknown and no list read has landed since. */
+  const unsettled = new Set<string>();
+  let readsStarted = 0;
+  let lastApplied = 0;
+  /** Reads numbered at or below this began before the latest write settled. */
+  let staleFloor = 0;
+
+  const isEnabled = (docId: string): boolean => overrides.get(docId) ?? persistedEnabled(sources, docId) ?? false;
+
+  function apply(next: S[]): void {
+    sources = next;
+    // The list now speaks for every source that has no write in the air.
+    for (const docId of [...overrides.keys()]) if (!inFlight.has(docId)) overrides.delete(docId);
+    for (const docId of [...unsettled]) if (!inFlight.has(docId)) unsettled.delete(docId);
+    io.onChange();
+  }
+
+  /** Re-read the list. True when this read was applied. Never throws. */
+  async function refresh(): Promise<boolean> {
+    const mine = ++readsStarted;
+    let next: S[] | undefined;
+    try {
+      next = await io.list();
+    } catch {
+      next = undefined;
+    }
+    // Last APPLIED, not last started: a good older read still counts when a
+    // newer one failed — unless it predates the latest write.
+    if (!next || mine <= lastApplied || mine <= staleFloor) return false;
+    lastApplied = mine;
+    apply(next);
+    return true;
+  }
+
+  /**
+   * Flip one source. Resolves true when the server is known to hold the new
+   * state. A source with a toggle already in flight is left alone.
+   */
+  async function toggle(docId: string): Promise<boolean> {
+    if (inFlight.has(docId)) return false;
+    const next = !isEnabled(docId);
+    overrides.set(docId, next);
+    inFlight.add(docId);
+    io.onChange();
+
+    let outcome: "ok" | "refused" | "unknown";
+    try {
+      outcome = (await io.patch(docId, next)).ok ? "ok" : "refused";
+    } catch {
+      outcome = "unknown";
+    }
+    inFlight.delete(docId);
+    staleFloor = readsStarted;
+    if (outcome !== "ok") overrides.delete(docId); // back to the last known server value
+    if (outcome === "unknown") unsettled.add(docId);
+    io.onChange();
+
+    const read = await refresh();
+    return read ? persistedEnabled(sources, docId) === next : outcome === "ok";
+  }
+
+  return {
+    /**
+     * For a list the page reads itself (first load, the reload after an
+     * upload): take a number BEFORE the request goes out, hand it back with
+     * the rows, and the same ordering rules as `refresh` apply.
+     */
+    beginRead: (): number => ++readsStarted,
+    /** Apply a list the page read. False when a newer read or write outdates it. */
+    applySources(next: S[], readNo: number = ++readsStarted): boolean {
+      if (readNo <= lastApplied || readNo <= staleFloor) return false;
+      lastApplied = readNo;
+      apply(next);
+      return true;
+    },
+    refresh,
+    toggle,
+    isEnabled,
+    isBusy: (docId: string): boolean => inFlight.has(docId),
+    getSources: (): S[] => sources,
+    /** The doc ids a chat turn searches: exactly what the checkboxes show. */
+    enabledDocIds: (): string[] =>
+      sources.filter((s) => s.matchState !== "rejected" && isEnabled(s.docId)).map((s) => s.docId),
+    hasUnsettled: (): boolean => unsettled.size > 0,
+    /** Call when the network may be back (online, tab shown again). */
+    async retryUnsettled(): Promise<void> {
+      if (unsettled.size > 0) await refresh();
+    },
+  };
+}
+
+export type SourceToggles<S extends SourceRow> = ReturnType<typeof createSourceToggles<S>>;
