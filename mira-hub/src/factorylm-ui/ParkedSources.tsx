@@ -29,7 +29,9 @@ const box = { maxWidth: "min(360px, calc(100vw - 24px))", boxSizing: "border-box
 /** Open, the rows scroll inside this; the box never grows past it. */
 export const PARKED_LIST_MAX_HEIGHT = "min(40vh, 320px)";
 const scroll = { maxHeight: PARKED_LIST_MAX_HEIGHT, overflowY: "auto", overscrollBehavior: "contain" } as const;
-const summary = { minHeight: 44, display: "flex", alignItems: "center", cursor: "pointer", fontWeight: 600 } as const;
+// No `display` here on purpose: a <summary> that is not a list item loses the
+// browser's open/closed triangle, and the closed box then reads as a plain label.
+const summary = { minHeight: 44, lineHeight: "44px", cursor: "pointer", fontWeight: 600 } as const;
 const btn = { marginLeft: 8, minHeight: 44, padding: "2px 10px", border: "1px solid var(--fl-line)", borderRadius: "var(--fl-radius)", background: "var(--fl-surface)", color: "var(--fl-accent)", cursor: "pointer" } as const;
 
 export function ParkedSources({ notebookId, sources, onChanged }: Props) {

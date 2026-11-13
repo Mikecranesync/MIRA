@@ -60,6 +60,9 @@ describe("#5456 Sources not in use", () => {
       const html = render(many);
       expect(html).toMatch(/<details(?![^>]*\bopen\b)[^>]*>/);
       expect(html).toMatch(/<summary[^>]*min-height:44px[^>]*>Sources not in use \((<!-- -->)?10(<!-- -->)?\)<\/summary>/);
+      // The header keeps the browser's open/closed triangle: any `display` on a
+      // <summary> removes it, and a closed box then looks like a plain label.
+      expect(html.match(/<summary[^>]*>/)![0]).not.toMatch(/display:/);
     });
     it("every row, of any number, is inside the one bounded scrolling region", () => {
       const html = render(many);
