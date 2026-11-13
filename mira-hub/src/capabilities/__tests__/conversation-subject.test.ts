@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { openQuestions, readSubject, SUBJECT_READ_STEPS } from "../conversation-subject";
+import { openQuestions, readSubject, returnsToRecord, SUBJECT_READ_STEPS } from "../conversation-subject";
 
 const refused = (question: string) => ({ question, answerStatus: "insufficient_evidence", basis: null });
 const fromManual = (question: string) => ({ question, answerStatus: "answered", basis: "workspace_evidence" });
@@ -74,5 +74,33 @@ describe("whether the start of the open run was seen", () => {
     expect(SUBJECT_READ_STEPS[0]).toBe(6);
     expect([...SUBJECT_READ_STEPS]).toEqual([...SUBJECT_READ_STEPS].sort((a, b) => a - b));
     expect(new Set(SUBJECT_READ_STEPS).size).toBe(SUBJECT_READ_STEPS.length);
+  });
+});
+
+// Mike 2026-11-13 (CV-101 benchmark D-A, option A): "back to mine" / "back to my drive" ends the
+// carry of a refused look-alike; typing nothing after a sibling still means the sibling.
+describe("whether a question returns to the technician's own unit", () => {
+  it.each([
+    "ok back to mine, what frame size is it",
+    "Back to my drive - what is the rated input current?",
+    "back to our unit now, what does ocd mean",
+    "right, back to my own PLC: how much clearance does it need",
+    "back to this project's drive, frame size?",
+    "and back to ours, supply voltage?",
+  ])("is a return: %s", (q) => {
+    expect(returnsToRecord(q)).toBe(true);
+  });
+
+  it.each([
+    "and its VT rated current?",
+    "what about the GS13N-20P2, same thing?",
+    "what about my other drive, same thing?",
+    "back to the question, what is its VT rated current?",
+    "the back of the drive has a fan",
+    "what does my drive need for supply voltage",
+    "go back to P00.04 and set it",
+    "",
+  ])("is not a return: %s", (q) => {
+    expect(returnsToRecord(q)).toBe(false);
   });
 });

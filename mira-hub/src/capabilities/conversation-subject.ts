@@ -67,3 +67,26 @@ export function readSubject(turns: readonly PriorTurn[], limit: number): Subject
 export function openQuestions(turns: readonly PriorTurn[]): string[] {
   return readSubject(turns, Number.POSITIVE_INFINITY).questions;
 }
+
+/**
+ * Does this question say, in so many words, that it is about the technician's
+ * OWN unit again — the one the project is set up for?
+ *
+ * Seen on staging 6da4ab674 (CV-101 benchmark FU-A4, 2026-11-13): a look-alike
+ * ("what about the GS13N-20P2, same thing?") was refused, as it must be, and
+ * the technician typed "ok back to mine, what frame size is it". The refused
+ * question was still open, so the look-alike carried into the new question and
+ * it was refused again — with no way back except typing the catalog number.
+ *
+ * Mike's decision (2026-11-13, option A): "back to mine" / "back to my drive"
+ * ends the carry; typing nothing after a sibling still means the sibling. So
+ * this is narrow on purpose — anchored on "back to", followed by an ownership
+ * word. A bare "my drive" is not a return (a follow-up still about the sibling
+ * can say "my other drive"), nor is "back to the drive" (which one?).
+ */
+const RETURN_TO_OWN_UNIT =
+  /\bback to (?:mine|ours|(?:my|our) (?:own\b|drive|vfd|unit|plc|controller|relay|machine|conveyor|motor|inverter|project|notebook)|this (?:project|notebook)(?:'s)?)\b/i;
+
+export function returnsToRecord(question: string): boolean {
+  return RETURN_TO_OWN_UNIT.test(question);
+}
