@@ -13,7 +13,7 @@ import { NotebookDeleteDialog } from "@/components/equipment/NotebookDeleteDialo
 import { deleteFailureMessage, createSubmitGuard } from "@/lib/notebook-delete";
 import type { EvidenceCitation } from "@/lib/notebook-chat-types";
 import { persistedTurns } from "@/components/equipment/notebook-chat-utils";
-import { toggleSourceEnabled } from "@/capabilities/notebook-source-toggle";
+import { persistedEnabled, toggleSourceEnabled } from "@/capabilities/notebook-source-toggle";
 
 type Notebook = {
   id: string;
@@ -89,17 +89,28 @@ export default function NotebookPage() {
   const usableCount = sources.filter((s) => s.matchState !== "rejected").length;
 
   // The label beside each checkbox is the server's projection, so a toggle
-  // re-reads the source list instead of guessing the new label locally.
-  const refreshSources = useCallback(async () => {
+  // re-reads the source list instead of guessing the new label locally. Only
+  // the newest re-read is applied, so a slow older response cannot put stale
+  // labels back.
+  const refreshSeq = useRef(0);
+  const refreshSources = useCallback(async (): Promise<Source[] | undefined> => {
+    const mine = ++refreshSeq.current;
     const res = await fetch(`${API_BASE}/api/equipment-notebooks/${id}/`, { cache: "no-store" });
-    if (!res.ok) return;
+    if (!res.ok) return undefined;
     const data = await res.json();
-    setSources(data.sources ?? []);
+    const srcs: Source[] = data.sources ?? [];
+    if (mine === refreshSeq.current) setSources(srcs);
+    return srcs;
   }, [id]);
 
+  // Per-source toggle counter: an older toggle stops touching the checkbox
+  // once a newer one for the same source has started.
+  const toggleSeq = useRef<Record<string, number>>({});
   const toggle = useCallback(
-    (docId: string) =>
-      toggleSourceEnabled(!enabled[docId], {
+    (docId: string) => {
+      const mine = (toggleSeq.current[docId] ?? 0) + 1;
+      toggleSeq.current[docId] = mine;
+      return toggleSourceEnabled(!enabled[docId], {
         setEnabled: (value) => setEnabled((p) => ({ ...p, [docId]: value })),
         patch: (value) =>
           fetch(`${API_BASE}/api/equipment-notebooks/${id}/sources/${docId}/`, {
@@ -107,8 +118,15 @@ export default function NotebookPage() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ enabledByDefault: value }),
           }),
-        refresh: refreshSources,
-      }),
+        // The server's answer for THIS source drives the checkbox (and so the
+        // chat scope): a write whose response was lost may still have landed.
+        refresh: async () => {
+          const srcs = await refreshSources();
+          return srcs ? persistedEnabled(srcs, docId) : undefined;
+        },
+        isLatest: () => toggleSeq.current[docId] === mine,
+      });
+    },
     [enabled, id, refreshSources],
   );
 
