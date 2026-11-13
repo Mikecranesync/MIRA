@@ -295,6 +295,16 @@ describe("#5466 — a ratings-table answer that does not keep the columns apart 
     expect(r.citations?.map((c) => c.page)).toContain(19);
   });
 
+  it("control (Codex round 1, F1): a qualified approval of a coil with separate inrush and holding currents ships, cited", async () => {
+    const r = await ask(
+      "Yes. The 10 A inrush is under the 15 A make rating, and the 1 A holding current is under the 2 A continuous and 1.5 A break ratings at 120 V AC [2].",
+      { message: "Can the relay output switch a 120 V AC coil with 10 A inrush and 1 A holding current?", sourceDocIds: [DOC_A] },
+    );
+    expect(r.status).toBe("answered");
+    expect(r.content).toContain("15 A make rating");
+    expect(r.citations?.map((c) => c.page)).toContain(19);
+  });
+
   it("control: an answer from the prose page that quotes nothing from the table is not this check's business", async () => {
     const r = await ask("Fit a surge suppression device directly across the coil [1].");
     expect(r.status).toBe("answered");

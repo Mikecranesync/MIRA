@@ -108,6 +108,32 @@ describe("LOAD rule — the asked load is over a figure on the row, and the answ
     expect(ratingColumnFinding(LOAD_QUESTION, "No: the continuous rating is 2 A [2]. You can use an interposing relay sized for the coil.", CITED)).toBeNull();
     expect(ratingColumnFinding(LOAD_QUESTION, "No: the continuous rating is 2 A [2].", CITED)).toBeNull();
   });
+  // Codex round 1, F1: an inrush figure is judged against make, not break or continuous.
+  describe("a question that separates inrush from holding current", () => {
+    const COIL = "Can the relay output switch a 120 V AC coil with 10 A inrush and 1 A holding current?";
+    const QUALIFIED = "Yes. The 10 A inrush is under the 15 A make rating, and the 1 A holding current is under the 2 A continuous and 1.5 A break ratings at 120 V AC [2].";
+    it("a correctly qualified approval is not withheld", () => {
+      expect(ratingColumnFinding(COIL, QUALIFIED, CITED)).toBeNull();
+    });
+    it.each([
+      "Can the relay output switch a 120 V AC coil (inrush of 10 A, 1 A sealed)?",
+      "Coil draws 1 A holding with a 10 A surge at 120 V AC. Can the relay output switch it?",
+    ])("however the question writes it: %s", (q) => {
+      expect(ratingColumnFinding(q, QUALIFIED, CITED)).toBeNull();
+    });
+    it("the holding current is still the load: over a figure on the row, an approval is withheld", () => {
+      const q = "Can the relay output switch a 120 V AC coil with 10 A inrush and 3 A holding current?";
+      expect(ratingColumnFinding(q, "Yes, 10 A inrush is under the 15 A make rating [2].", CITED)).toMatchObject({ rule: "load", load: "3 A", lower: ["1.5 A", "2 A"] });
+    });
+    it("a question with only an inrush figure is left to the column rule", () => {
+      const q = "Can the relay output take a 10 A inrush at 120 V AC?";
+      expect(ratingColumnFinding(q, "Yes: the make rating is 15 A at 120 V AC [2].", CITED)).toBeNull();
+      expect(ratingColumnFinding(q, "Yes, it is rated 15 A at 120 V AC [2].", CITED)).toMatchObject({ rule: "column" });
+    });
+    it("control: the issue's question names no inrush, so its 5 A is the load", () => {
+      expect(ratingColumnFinding(LOAD_QUESTION, SERVED, CITED)).toMatchObject({ rule: "load", load: "5 A" });
+    });
+  });
   it("control: a load under every figure on its row is not this rule's business", () => {
     expect(ratingColumnFinding("Can I switch a 1 A, 120 V AC pilot light from the relay output?", "Yes: 1 A is within the 2 A continuous and 1.5 A break ratings at 120 V AC [2].", CITED)).toBeNull();
   });

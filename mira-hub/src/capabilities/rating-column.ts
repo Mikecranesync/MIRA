@@ -11,7 +11,9 @@
  *
  * Two deterministic rules, text only, no model call:
  *
- *   LOAD rule — the question names a load current, and a ratings table the
+ *   LOAD rule — the question names a load current (a figure it calls inrush
+ *   or surge is not one: that is judged against the make figure, which this
+ *   rule cannot pick out), and a ratings table the
  *   answer was given carries an ampere figure BELOW that load on the row for
  *   the asked voltage (on every row, when the question names no voltage the
  *   table lists). Then the load is over at least one of make, break and
@@ -33,6 +35,8 @@
  * ampere figures, or that open with a voltage and carry one.
  *
  * Stated limits:
+ *   - a question that gives only an inrush figure is not judged by the LOAD
+ *     rule at all;
  *   - only ampere figures written with digits are read (not "fifteen amps", not
  *     volt-amperes, not a decimal comma), and only in THIS question: a load
  *     named in an earlier turn is not seen by the LOAD rule;
@@ -79,11 +83,18 @@ const COLUMN_WORD_RE = /\b(?:make|making|makes|inrush|break|breaking|breaks|inte
 const SENTENCE_APPROVES_RE = /^[^A-Za-z0-9]*(?:yes|yeah|yep|sure|absolutely|certainly|correct|ok|okay|that is fine|that's fine|no problem)\b/i;
 const ANSWER_OPENS_APPROVING_RE = /^[^A-Za-z0-9]*(?:you can|it can)\b/i;
 const approves = (answer: string) => ANSWER_OPENS_APPROVING_RE.test(answer) || answer.split(/(?<=[.!?])\s+|\n+/).some((s) => SENTENCE_APPROVES_RE.test(s));
+// A current the question itself calls a closing surge: "10 A inrush", "inrush of 10 A".
+const INRUSH_RE = /\b(?:inrush|in-rush|surge|pull-in|pick-?up)\b/i;
 // The LOAD rule reads an UNCITED table only for a question about what the table rates.
 const CONTACT_QUESTION_RE = /\b(?:relay|contacts?|outputs?|switch(?:es|ed|ing)?)\b/i;
 
 type Figure = { value: number; written: string };
 const amperesIn = (text: string): Figure[] => [...text.matchAll(AMPERE_RE)].map((m) => ({ value: Number(m[1]), written: m[0] }));
+/** The currents a question asks to have carried or switched off: its ampere
+ *  figures, less any that its own clause calls inrush ("10 A inrush and 1 A
+ *  holding" asks about 1 A here). */
+const loadsIn = (question: string): Figure[] =>
+  question.split(/[,;()]|\b(?:and|with|but)\b/i).flatMap((clause) => (INRUSH_RE.test(clause) ? [] : amperesIn(clause)));
 const voltagesIn = (text: string): number[] => [...text.matchAll(VOLTAGE_RE)].map((m) => Number(m[1]));
 
 type RatingRow = { volts: number | null; label: string | null; figures: Figure[] };
@@ -132,7 +143,7 @@ export function ratingColumnFinding(question: string, answer: string, passages: 
   const where = (t: (typeof tables)[number]) => ({ title: t.passage.title, page: t.passage.page });
 
   // LOAD rule.
-  const asked = amperesIn(question);
+  const asked = loadsIn(question);
   if (asked.length > 0) {
     const load = asked.reduce((a, b) => (b.value > a.value ? b : a));
     const askedVolts = voltagesIn(question);
