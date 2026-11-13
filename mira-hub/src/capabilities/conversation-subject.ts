@@ -13,6 +13,8 @@
 //
 // Pure: stored turns in, question texts out. No model, no network, no clock.
 
+import { foldForDetection } from "./detection-fold";
+
 export type PriorTurn = {
   question?: string | null;
   answerStatus?: string | null;
@@ -117,8 +119,27 @@ const REVERSAL_OPENERS = /^(?:no|nope|nah|never ?mind|actually|wait|hold on|hang
 /** Clause boundaries: , ; : . ! ? a spaced dash, or a line break (kept, to read the terminator). */
 const CLAUSE_BOUNDARY = /(\s[-–—]\s|[,;:.!?]|\n)/;
 
+/**
+ * #5485: what a phone keyboard types must read like its plain spelling. The shared
+ * detection fold (#3980) handles hyphen look-alikes, curly apostrophes, Unicode spaces
+ * and invisible characters. Dashes and the ellipsis stay with this reader, as #3980
+ * requires of every grammar that splits on them:
+ *  - U+2026 HORIZONTAL ELLIPSIS decomposes to "..." (iOS types it for "...").
+ *  - An em dash (U+2014; iOS types it for "--"), en dash (U+2013; Gboard), horizontal
+ *    bar (U+2015) or small em dash (U+FE58, <small> U+2014), or two or more hyphens, is a
+ *    dash at any spacing, so it is written as the spaced dash CLAUSE_BOUNDARY reads.
+ *    A single hyphen is not: it sits inside catalog numbers and "mine-ish".
+ * Full-width punctuation is out of scope and still fails closed.
+ */
+const TYPED_ELLIPSIS = /…/g;
+const TYPED_DASH = /\s*(?:[–—―﹘]|-{2,})\s*/g;
+
+function asTyped(question: string): string {
+  return foldForDetection(question).replace(TYPED_ELLIPSIS, "...").replace(TYPED_DASH, " - ");
+}
+
 export function returnsToRecord(question: string): boolean {
-  const parts = question.split(CLAUSE_BOUNDARY);
+  const parts = asTyped(question).split(CLAUSE_BOUNDARY);
   for (let i = 0; i < parts.length; i += 2) {
     const clause = parts[i];
     if (!RETURN_TO_OWN_UNIT.test(clause)) continue;

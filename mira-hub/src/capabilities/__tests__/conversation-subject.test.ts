@@ -79,99 +79,167 @@ describe("whether the start of the open run was seen", () => {
 
 // Mike 2026-11-13 (CV-101 benchmark D-A, option A): "back to mine" / "back to my drive" ends the
 // carry of a refused look-alike; typing nothing after a sibling still means the sibling.
+const RETURNS: readonly string[] = [
+  "ok back to mine, what frame size is it",
+  "Back to my drive - what is the rated input current?",
+  "back to our unit now, what does ocd mean",
+  "right, back to my own PLC: how much clearance does it need",
+  "back to this project's drive, frame size?",
+  "and back to ours, supply voltage?",
+  "I'm not sure about that one, back to mine: what frame size is it",
+  "ok, now back to my drive",
+  "let's go back to mine, what is its rated input current?",
+  "go back to mine now. frame size?",
+  "Back to mine please - what is the rated output current",
+];
+const NOT_RETURNS: readonly string[] = [
+  "and its VT rated current?",
+  "what about the GS13N-20P2, same thing?",
+  "what about my other drive, same thing?",
+  "back to the question, what is its VT rated current?",
+  "the back of the drive has a fan",
+  "what does my drive need for supply voltage",
+  "go back to P00.04 and set it",
+  "",
+  // Codex r1 on #5464 (F1): a negated or deferred mention keeps the sibling subject.
+  "before we go back to mine, what is its rated input current?",
+  "do not go back to mine yet, what is its rated input current?",
+  "don't go back to my drive, what about its VT current",
+  "until we're back to mine, same thing?",
+  "if we go back to mine later, what would its frame size be",
+  // Codex r2 on #5464 (F1): a deferral or cancellation AFTER the phrase keeps the sibling too.
+  "let's go back to mine later; what is its rated input current?",
+  "go back to mine? No, stay on this one. What is its rated input current?",
+  "back to mine or stay on this one?",
+  "should we go back to my drive at some point, what's its VT current",
+  "ok back to mine?",
+  "I'd rather not go back to mine, what about its VT current",
+  // Fails closed: with no clause break the return is not plain, and the carry stays.
+  "ok back to mine what frame size is it",
+];
+const CANCELLED_NEXT_CLAUSE: readonly string[] = [
+  "go back to mine. No, stay on this one. What is its rated input current?",
+  "ok back to mine, actually wait, what about its VT current",
+  "back to mine. never mind, same thing?",
+  "let's go back to my drive, scratch that, what is its frame size",
+  "back to mine\nhold on, stay on this one",
+  // Codex r4 on #5464 (F1): consecutive separators leave an empty clause between them;
+  // the reversal is in the next NON-EMPTY clause.
+  "go back to mine.\nNo, stay on this one. What is its rated input current?",
+  "go back to mine... No, stay on this one. What is its rated input current?",
+  "ok back to mine -- actually wait, what about its VT current",
+];
+const STILL_RETURN_NEXT_IS_QUESTION: readonly string[] = [
+  "go back to mine. what is its VT current",
+  "ok back to mine, now what frame size is it",
+  "back to mine. not sure of the exact spec, what is its VT current",
+  "go back to mine...\nwhat is its VT current",
+];
+const QUESTION_MARK_IN_RUN: readonly string[] = [
+  "ok back to mine...? What is its rated input current?",
+  "back to mine!? what is its VT current",
+  "back to mine.? what is its VT current",
+  "back to mine!!? what is its VT current",
+  "ok back to mine...\n? what is its VT current",
+  "back to mine, ? what is its VT current",
+  "ok back to mine...?",
+];
+const QUESTION_MARK_LATER: readonly string[] = [
+  "back to mine! what is its VT current?",
+  "ok back to mine... what is its VT current?",
+  "back to mine!!\nwhat frame size is it?",
+];
+
 describe("whether a question returns to the technician's own unit", () => {
-  it.each([
-    "ok back to mine, what frame size is it",
-    "Back to my drive - what is the rated input current?",
-    "back to our unit now, what does ocd mean",
-    "right, back to my own PLC: how much clearance does it need",
-    "back to this project's drive, frame size?",
-    "and back to ours, supply voltage?",
-    "I'm not sure about that one, back to mine: what frame size is it",
-    "ok, now back to my drive",
-    "let's go back to mine, what is its rated input current?",
-    "go back to mine now. frame size?",
-    "Back to mine please - what is the rated output current",
-  ])("is a return: %s", (q) => {
+  it.each(RETURNS)("is a return: %s", (q) => {
     expect(returnsToRecord(q)).toBe(true);
   });
 
-  it.each([
-    "and its VT rated current?",
-    "what about the GS13N-20P2, same thing?",
-    "what about my other drive, same thing?",
-    "back to the question, what is its VT rated current?",
-    "the back of the drive has a fan",
-    "what does my drive need for supply voltage",
-    "go back to P00.04 and set it",
-    "",
-    // Codex r1 on #5464 (F1): a negated or deferred mention keeps the sibling subject.
-    "before we go back to mine, what is its rated input current?",
-    "do not go back to mine yet, what is its rated input current?",
-    "don't go back to my drive, what about its VT current",
-    "until we're back to mine, same thing?",
-    "if we go back to mine later, what would its frame size be",
-    // Codex r2 on #5464 (F1): a deferral or cancellation AFTER the phrase keeps the sibling too.
-    "let's go back to mine later; what is its rated input current?",
-    "go back to mine? No, stay on this one. What is its rated input current?",
-    "back to mine or stay on this one?",
-    "should we go back to my drive at some point, what's its VT current",
-    "ok back to mine?",
-    "I'd rather not go back to mine, what about its VT current",
-    // Fails closed: with no clause break the return is not plain, and the carry stays.
-    "ok back to mine what frame size is it",
-  ])("is not a return: %s", (q) => {
+  it.each(NOT_RETURNS)("is not a return: %s", (q) => {
     expect(returnsToRecord(q)).toBe(false);
   });
 
   // Codex r3 on #5464 (F1), Mike B 2026-11-13: a reversal opening the NEXT clause cancels the return.
-  it.each([
-    "go back to mine. No, stay on this one. What is its rated input current?",
-    "ok back to mine, actually wait, what about its VT current",
-    "back to mine. never mind, same thing?",
-    "let's go back to my drive, scratch that, what is its frame size",
-    "back to mine\nhold on, stay on this one",
-    // Codex r4 on #5464 (F1): consecutive separators leave an empty clause between them;
-    // the reversal is in the next NON-EMPTY clause.
-    "go back to mine.\nNo, stay on this one. What is its rated input current?",
-    "go back to mine... No, stay on this one. What is its rated input current?",
-    "ok back to mine -- actually wait, what about its VT current",
-  ])("is not a return (cancelled in the next clause): %s", (q) => {
+  it.each(CANCELLED_NEXT_CLAUSE)("is not a return (cancelled in the next clause): %s", (q) => {
     expect(returnsToRecord(q)).toBe(false);
   });
 
-  it.each([
-    "go back to mine. what is its VT current",
-    "ok back to mine, now what frame size is it",
-    "back to mine. not sure of the exact spec, what is its VT current",
-    "go back to mine...\nwhat is its VT current",
-  ])("is still a return (the next clause is a question, not a reversal): %s", (q) => {
+  it.each(STILL_RETURN_NEXT_IS_QUESTION)("is still a return (the next clause is a question, not a reversal): %s", (q) => {
     expect(returnsToRecord(q)).toBe(true);
   });
 
   // #5467 (Codex r5 on #5464, F1): a "?" ANYWHERE in the run of separators after the phrase makes it a
   // question, not a return. The run is read whole, so no ordering of . ! ? , or line breaks hides it.
-  it.each([
-    "ok back to mine...? What is its rated input current?",
-    "back to mine!? what is its VT current",
-    "back to mine.? what is its VT current",
-    "back to mine!!? what is its VT current",
-    "ok back to mine...\n? what is its VT current",
-    "back to mine, ? what is its VT current",
-    "ok back to mine...?",
-  ])("is not a return (a question mark inside the separator run): %s", (q) => {
+  it.each(QUESTION_MARK_IN_RUN)("is not a return (a question mark inside the separator run): %s", (q) => {
     expect(returnsToRecord(q)).toBe(false);
   });
 
-  it.each([
-    "back to mine! what is its VT current?",
-    "ok back to mine... what is its VT current?",
-    "back to mine!!\nwhat frame size is it?",
-  ])("is still a return (the only question mark ends a LATER clause): %s", (q) => {
+  it.each(QUESTION_MARK_LATER)("is still a return (the only question mark ends a LATER clause): %s", (q) => {
     expect(returnsToRecord(q)).toBe(true);
   });
 
   it("accepted residue: a reversal TWO clauses later is not detected (the sibling is re-named by typing it)", () => {
     expect(returnsToRecord("go back to mine. what is its VT current. no wait, stay on this one")).toBe(true);
+  });
+});
+
+// #5485 (independent campaign, Unicode-consistency oracle): what a phone keyboard types must read the same
+// as its plain-ASCII spelling. iOS smart punctuation turns "..." into one ellipsis character and "--" into an
+// em dash with no spaces; Gboard types an en dash; both type a curly apostrophe. Mike chose A (2026-11-13):
+// one shared clean-up, not another single-spelling patch, so the proof is every case above in every spelling.
+const ALL_CASES: readonly string[] = [
+  ...RETURNS,
+  ...NOT_RETURNS,
+  ...CANCELLED_NEXT_CLAUSE,
+  ...STILL_RETURN_NEXT_IS_QUESTION,
+  ...QUESTION_MARK_IN_RUN,
+  ...QUESTION_MARK_LATER,
+];
+const PHONE_SPELLINGS: ReadonlyArray<[string, (q: string) => string]> = [
+  ["one-character ellipsis (U+2026)", (q) => q.replaceAll("...", "…")],
+  ["em dash, no spaces (U+2014)", (q) => q.replace(/ -{1,2} /g, "—")],
+  ["em dash, spaced (U+2014)", (q) => q.replace(/ -{1,2} /g, " — ")],
+  ["en dash, no spaces (U+2013)", (q) => q.replace(/ -{1,2} /g, "–")],
+  ["two hyphens, no spaces", (q) => q.replace(/ -{1,2} /g, "--")],
+  ["curly apostrophe (U+2019)", (q) => q.replaceAll("'", "’")],
+  ["no-break spaces (U+00A0)", (q) => q.replaceAll(" ", " ")],
+  ["zero-width space inside a word (U+200B)", (q) => q.replace(/back/gi, (w) => `${w[0]}​${w.slice(1)}`)],
+];
+const SPELLING_ROWS = PHONE_SPELLINGS.flatMap(([how, spell]) =>
+  ALL_CASES.map((q) => [how, q, spell(q)] as const).filter(([, q, typed]) => typed !== q),
+);
+
+describe("#5485: a phone's spelling reads the same as plain typing", () => {
+  it("every phone spelling changes at least one case (the table is not vacuous)", () => {
+    for (const [how] of PHONE_SPELLINGS) expect(SPELLING_ROWS.some(([h]) => h === how), how).toBe(true);
+  });
+
+  it.each(SPELLING_ROWS)("%s: %j", (_how, ascii, typed) => {
+    expect(returnsToRecord(typed)).toBe(returnsToRecord(ascii));
+  });
+
+  // The two shapes the campaign reported (F04, F06), written out.
+  it.each([
+    "ok back to mine… what frame size is it",
+    "ok back to mine—what frame size is it",
+    "let’s go back to mine, what is its rated input current?",
+  ])("is a return: %j", (q) => {
+    expect(returnsToRecord(q)).toBe(true);
+  });
+
+  it.each([
+    // A question mark after the ellipsis character is still a question (#5467 controls).
+    "ok back to mine…?",
+    "ok back to mine…? What is its rated input current?",
+    // A reversal after a dash still cancels.
+    "ok back to mine—actually wait, what about its VT current",
+    // A single hyphen-equivalent is a hyphen, not a clause break: "mine-ish" is not a return, in any spelling.
+    "back to mine‑ish what frame size is it",
+    "back to mine-ish what frame size is it",
+    // Out of scope, still fails closed: full-width punctuation is not read as a clause break.
+    "back to mine，what frame size is it",
+    "back to mine？",
+  ])("is not a return: %j", (q) => {
+    expect(returnsToRecord(q)).toBe(false);
   });
 });
