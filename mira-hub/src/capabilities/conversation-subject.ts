@@ -87,6 +87,16 @@ export function openQuestions(turns: readonly PriorTurn[]): string[] {
 const RETURN_TO_OWN_UNIT =
   /\bback to (?:mine|ours|(?:my|our) (?:own\b|drive|vfd|unit|plc|controller|relay|machine|conveyor|motor|inverter|project|notebook)|this (?:project|notebook)(?:'s)?)\b/i;
 
+/** Codex r1 on #5464 (F1): "before we go back to mine, …" and "do not go back to
+ *  mine yet, …" mention a return and keep the sibling. A return is read only when
+ *  nothing earlier in its own clause negates or defers it. The clause is what
+ *  follows the last comma, colon, dash or sentence end — "I'm not sure, back to
+ *  mine: frame size?" is still a return. */
+const NEGATED_OR_DEFERRED = /\b(?:not|no|never|don'?t|won'?t|can'?t|before|until|unless|once|after|if|when|later|instead)\b|n't\b/i;
+
 export function returnsToRecord(question: string): boolean {
-  return RETURN_TO_OWN_UNIT.test(question);
+  const at = question.search(RETURN_TO_OWN_UNIT);
+  if (at < 0) return false;
+  const clause = question.slice(0, at).split(/[,;:.!?]|\s[-–—]\s|\n/).pop() ?? "";
+  return !NEGATED_OR_DEFERRED.test(clause);
 }

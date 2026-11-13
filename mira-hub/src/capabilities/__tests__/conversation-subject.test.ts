@@ -87,6 +87,8 @@ describe("whether a question returns to the technician's own unit", () => {
     "right, back to my own PLC: how much clearance does it need",
     "back to this project's drive, frame size?",
     "and back to ours, supply voltage?",
+    "I'm not sure about that one, back to mine: what frame size is it",
+    "ok, now back to my drive",
   ])("is a return: %s", (q) => {
     expect(returnsToRecord(q)).toBe(true);
   });
@@ -100,6 +102,12 @@ describe("whether a question returns to the technician's own unit", () => {
     "what does my drive need for supply voltage",
     "go back to P00.04 and set it",
     "",
+    // Codex r1 on #5464 (F1): a negated or deferred mention keeps the sibling subject.
+    "before we go back to mine, what is its rated input current?",
+    "do not go back to mine yet, what is its rated input current?",
+    "don't go back to my drive, what about its VT current",
+    "until we're back to mine, same thing?",
+    "if we go back to mine later, what would its frame size be",
   ])("is not a return: %s", (q) => {
     expect(returnsToRecord(q)).toBe(false);
   });

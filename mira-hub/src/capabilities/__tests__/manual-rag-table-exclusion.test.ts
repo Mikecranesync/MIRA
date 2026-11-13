@@ -230,6 +230,26 @@ describe("retrieveNodeChunks excludes another model's table passages when the re
         }
       });
 
+      // Codex r1 on #5464 (F1, MEDIUM): "before we go back to mine" / "do not go back to mine yet"
+      // mention a return and keep the sibling — as this question and as an earlier open one.
+      it("control: a negated or deferred return keeps the sibling, in this question and in an earlier one", async () => {
+        const negated = ["before we go back to mine, what is its rated input current?", "do not go back to mine yet, what is its rated input current?"];
+        for (const question of negated) {
+          const diagnostics: Record<string, unknown> = {};
+          const { client } = makeClient(rows());
+          const out = await retrieveNodeChunks(client, "t-1", question, scoped({ diagnostics, subjectQueries: ["What is the rated input current of the GS13N-20P2?"] }));
+          expect(out, question).toEqual([]);
+          expect(diagnostics.siblingOfRecordAsk, question).toEqual({ asked: ["GS13N-20P2"], record: "GS11N-20P2" });
+        }
+        for (const earlier of negated) {
+          const diagnostics: Record<string, unknown> = {};
+          const { client } = makeClient(rows());
+          const out = await retrieveNodeChunks(client, "t-1", "and its VT rated current?", scoped({ diagnostics, subjectQueries: [earlier, "What is the rated input current of the GS13N-20P2?"] }));
+          expect(out, earlier).toEqual([]);
+          expect(diagnostics.siblingOfRecordAsk, earlier).toEqual({ asked: ["GS13N-20P2"], record: "GS11N-20P2" });
+        }
+      });
+
       it("a return is a start of the open run: it is never refused as out of reach", async () => {
         const diagnostics: Record<string, unknown> = {};
         const { client, calls } = makeClient(rows());
