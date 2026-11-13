@@ -201,11 +201,18 @@ function numberRuns(text: string): NumberRun[] {
     const detected = span?.detected ?? chain[0];
     const pieces = [...detected.matchAll(/[A-Za-z0-9]+/g)];
     const segments = pieces.map(piece => piece[0]);
-    // The previous numeric token may already own this short prefix as a
-    // count/unit ("2 NC - 24 V"). Reuse the EXISTING unit grammar; do not
-    // turn NC into a new catalog prefix or reject inventory "2 RX-420".
+    // Only a newly joined SPACED count/unit tail ("2 NC - 24 V") is
+    // suppressed. Explicit joined catalogs and spaced inventory without a
+    // following unit ("2 NC-24 indicators", "2 NC - 24 indicators") remain
+    // numbers. Both unit decisions reuse the EXISTING unit grammar.
     const previousCount = /(?:^|[^A-Za-z0-9])(\d+)[ \t]+$/.exec(text.slice(0, chain.index));
-    const countedPrefix = previousCount !== null && UNIT_RE.test(`${previousCount[1]}${segments[0].toUpperCase()}`);
+    const separator = pieces.length > 1 ? detected.slice(pieces[0].index + pieces[0][0].length, pieces[1].index) : "";
+    const numberEnd = pieces.length > 1 ? chain.index + pieces[1].index + pieces[1][0].length : chain.index;
+    const followingUnit = /^[ \t]+([A-Za-z]+)\b/.exec(text.slice(numberEnd));
+    const numericUnitTail = pieces.length > 1 && (UNIT_RE.test(segments[1].toUpperCase())
+      || (followingUnit !== null && UNIT_RE.test(`${segments[1]}${followingUnit[1]}`.toUpperCase())));
+    const countedPrefix = /[ \t]/.test(separator) && numericUnitTail && previousCount !== null
+      && UNIT_RE.test(`${previousCount[1]}${segments[0].toUpperCase()}`);
     consumed = span?.end ?? chain.index + chain[0].length;
     for (let i = 0; i < segments.length; i++) {
       const prefixed = !(i === 0 && countedPrefix) && /^[A-Za-z]{1,3}$/.test(segments[i]) && /^\d/.test(segments[i + 1] ?? "");

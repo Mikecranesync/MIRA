@@ -106,3 +106,23 @@ describe("identifier-only boundaries preserve conservative existing grammars", (
     expect(result(OWN, "Reference Guide\nGeneral practice\nA ZX731-04A may be fitted in the panel.").admit).toBe(false);
   });
 });
+
+
+describe("counted inventory preserves complete identifier runs", () => {
+  it.each(variants)("retains NC24 after an inventory count with separator %j", (separator) => {
+    const raw = `NC${separator}24`, text = `Inventory: 2 ${raw} indicators`;
+    for (const detect of [modelNumbersIn, unlistedModelNumbers]) {
+      expect.soft(detect(text)).toEqual([{ key: "NC24", label: raw }]);
+    }
+  });
+  it("retains the existing counted RX-420 identifier", () => {
+    for (const detect of [modelNumbersIn, unlistedModelNumbers]) {
+      expect(detect("Inventory: 2 RX-420 indicators")).toEqual([{ key: "RX420", label: "RX-420" }]);
+    }
+  });
+  it("keeps a spaced contact count followed by voltage as count/unit prose", () => {
+    for (const detect of [modelNumbersIn, unlistedModelNumbers]) {
+      expect(detect("2 NC - 24 V DC coil")).toEqual([]);
+    }
+  });
+});

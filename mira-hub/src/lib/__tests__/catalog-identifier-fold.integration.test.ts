@@ -8,6 +8,7 @@ const TENANT = "84000000-0000-4000-8000-000000000001", FOREIGN = "84000000-0000-
 const doc = (n: number) => `84000000-0000-4000-8000-${String(100 + n).padStart(12, "0")}`;
 const OWN_DOC = doc(1), KNOWN_DOC = doc(2), SIBLING_DOC = doc(3), OTHER_NODE_DOC = doc(4), OLD_DOC = doc(5);
 const TABLE_OWN = doc(6), TABLE_SIBLING = doc(7), TABLE_UNQUALIFIED = doc(8);
+const COUNTED_OWN_DOC = doc(9);
 const OWN = "ZX731-04A", SIBLING = "ZX731-09C", KNOWN = "GS11N-20P2", KNOWN_SIBLING = "GS11N-20P5";
 const NODE = "catalog-fold-current", BODY = "UNIT_FICTIONAL_LEGEND: indicator legend and reference marker description. No physical setting is asserted.";
 const variants = ["-", "\u2011", "\u2013", " - ", " \u2011 ", " \u2013 "];
@@ -52,6 +53,7 @@ beforeAll(async () => {
   await insert(TENANT, TABLE_OWN, "DURApulse GS10 AC Drive User Manual", "gs10-guide.pdf", { table_models: ["GS11N20P2"] });
   await insert(TENANT, TABLE_SIBLING, "DURApulse GS10 AC Drive User Manual", "gs10-guide.pdf", { table_models: ["GS11N20P5"] });
   await insert(TENANT, TABLE_UNQUALIFIED, "DURApulse GS10 AC Drive User Manual", "gs10-guide.pdf", { table_models: ["GS11N20P2", "GS11N20P5"], table_unqualified: true });
+  await insert(TENANT, COUNTED_OWN_DOC, "NC-24 Indicator Module\nUser Manual", "NC-24.pdf");
   for (const [index, separator] of variants.entries()) {
     await insert(TENANT, doc(20 + index), `${spell(OWN, separator)} Logic Controller\nUser Manual`, `${OWN}.pdf`);
     await insert(TENANT, doc(30 + index), `${OWN} Logic Controller\nUser Manual`, `${spell(OWN, separator)}.pdf`);
@@ -147,5 +149,17 @@ describe("existing source and identity boundaries remain authoritative", () => {
       ...knownRecord(KNOWN), identityStatus: "candidate", catalogNumber: null,
     });
     hasLegend(hits, TABLE_SIBLING);
+  });
+});
+
+
+describe.each(variants)("counted identifier admission over actual SQL: separator %j", (separator) => {
+  it("retains the exact own NC24 legend after an inventory count", async () => {
+    const inventory = `For 2 NC${separator}24 indicators, which fictional indicator legend applies?`;
+    hasLegend(await retrieve(inventory, [COUNTED_OWN_DOC]), COUNTED_OWN_DOC);
+  });
+  it("does not let counted NC28 borrow the NC24 legend", async () => {
+    const inventory = `For 2 NC${separator}28 indicators, which fictional indicator legend applies?`;
+    expect(await retrieve(inventory, [COUNTED_OWN_DOC])).toEqual([]);
   });
 });
