@@ -145,7 +145,7 @@ import { ambiguousModelAskText, libraryNotForAskedModelText, namedModelMismatchT
 import { readSubject, SUBJECT_READ_STEPS } from "@/capabilities/conversation-subject";
 import { notebookManualIdentity } from "@/capabilities/notebook-manual-identity";
 import { componentTurnFrame, noDocumentsForComponentText, readComponentSelection, resolveComponentTurn, selectionMovedText, type ComponentTurn } from "@/capabilities/bench-components/chat-turn";
-import { readSubjectUnderSelection } from "@/capabilities/bench-components/selection";
+import { historyUnderSelection, readSubjectUnderSelection } from "@/capabilities/bench-components/selection";
 import { listSelectionTurns, stampTurnComponent } from "@/capabilities/bench-components/store";
 import {
   excludedTablesRefusalText,
@@ -1744,7 +1744,7 @@ async function handleChatTurn(
   let selectionMoved = false;
   if (componentRequest && clientRequestId) {
     const resolved = await releaseClaimOnFailure(() =>
-      resolveComponentTurn(ctx.tenantId, notebookId, ctx.userId, threadId ?? LEGACY_THREAD_ID, componentRequest, message),
+      resolveComponentTurn(ctx.tenantId, notebookId, ctx.userId, threadId ?? LEGACY_THREAD_ID, componentRequest, message, clientRequestId),
     );
     if (resolved.kind === "conflict") {
       if (!questionSafetyTrigger && !energizedAskEarly) {
@@ -1771,6 +1771,28 @@ async function handleChatTurn(
   const componentHold: { text: string; reason: string } | null =
     componentTurn?.kind === "hold" ? componentTurn : selectionMoved ? { text: selectionMovedText, reason: "selection_changed" } : null;
   const componentScope = componentTurn?.kind === "scoped" ? componentTurn : null;
+  // Under a selected component the turn sees only the conversation asked under this
+  // selection: another component's topic never carries into retrieval, the topic
+  // hint, prior reports or the provider's messages (#5504 Codex F2). A failed read
+  // carries nothing.
+  let turnHistory = history;
+  let selectionTurnIds: Set<string> | null = null;
+  if (componentScope) {
+    try {
+      const scoped = historyUnderSelection(
+        history,
+        await listSelectionTurns(ctx.tenantId, notebookId, ctx.userId, threadId, 50),
+        componentScope.selection,
+        clientRequestId ?? null,
+      );
+      turnHistory = scoped.history;
+      selectionTurnIds = scoped.turnIds;
+    } catch (err) {
+      console.error("[notebook-chat] selection history read failed (no history carried):", err instanceof Error ? err.message : err);
+      turnHistory = [];
+      selectionTurnIds = new Set();
+    }
+  }
 
   // PRD §27: no sources selected is an explicit, honest state — not a silent
   // fall-through to the global corpus.
@@ -2399,7 +2421,7 @@ async function handleChatTurn(
   ]);
 
   // Non-English questions search the English corpus in English (answered in their own language).
-  const retrievalQuery = await englishSearchQuery(buildRetrievalQuery(message, history, lookRow?.text), translateForSearch);
+  const retrievalQuery = await englishSearchQuery(buildRetrievalQuery(message, turnHistory, lookRow?.text), translateForSearch);
   const retrievalSpan = startStage("retrieval.execute");
   // Retrieval policy (docs/plans/2026-09-22-retrieval-routing-evidence-continuity.md):
   //   1. notebook sources validated       → notebook_sources_bm25 (unchanged)
@@ -4293,11 +4315,11 @@ async function handleChatTurn(
   // only) riding IN the user turn next to the question — an end-of-system-prompt
   // hint measurably failed to stop "what's the maximum?" in a decel thread from
   // resolving to the lexically similar P044 [Maximum Freq] row (battery defect D).
-  const topicHint = buildTopicHint(message, history, lookRow?.text);
+  const topicHint = buildTopicHint(message, turnHistory, lookRow?.text);
   // Restore literal older technician reports from this viewer/thread only.
   // Existing per-turn machine snapshots prevent a notebook rebind from turning
   // a different machine's conversation into this machine's prior reports.
-  let priorReportContext = buildPriorReportContext([], history, "not_requested");
+  let priorReportContext = buildPriorReportContext([], turnHistory, "not_requested");
   // An explicit modern thread is the case boundary. Legacy/unscoped callers
   // keep their existing client history; never guess a case from a notebook.
   if (threadId && threadId !== "legacy" && !identityDisputed) try {
@@ -4305,10 +4327,13 @@ async function handleChatTurn(
     const reports = await listTurns(ctx.tenantId, notebookId, 25, {
       viewerUserId: ctx.userId, threadId, expectedEquipmentEntityId: assetSnapshot.equipmentEntityId,
     });
-    priorReportContext = buildPriorReportContext(reports.filter(report => report.ownerUserId === ctx.userId), history);
+    priorReportContext = buildPriorReportContext(
+      reports.filter(report => report.ownerUserId === ctx.userId && (!selectionTurnIds || selectionTurnIds.has(report.id))),
+      turnHistory,
+    );
   } catch (err) {
     console.error("[notebook-chat] prior technician reports unavailable:", err instanceof Error ? err.message : err);
-    priorReportContext = buildPriorReportContext([], history, "unavailable");
+    priorReportContext = buildPriorReportContext([], turnHistory, "unavailable");
     rec.error("context", "prior_reports_unavailable");
   }
   // R2-33: the Living Work Sheet job section rides into the SAME
@@ -4321,7 +4346,7 @@ async function handleChatTurn(
   const sheetAndLookContext = [lookContext, sheetSection].filter(Boolean).join("\n\n");
   const messages = buildProviderMessages(
     systemPrompt,
-    history,
+    turnHistory,
     buildManualUserContent(topicHint ? `${message}\n\n${topicHint}` : message, chunks, sheetAndLookContext),
     priorReportContext.content,
   );
@@ -4346,7 +4371,7 @@ async function handleChatTurn(
       chunk_count: chunks.length,
       visual_evidence_count: visualEvidenceCount,
       identity_included: identityIncluded,
-      history_turns: history.length,
+      history_turns: turnHistory.length,
       prior_report_turn_ids: priorReportContext.turnIds,
       prior_report_coverage: priorReportContext.coverage,
       prior_report_truncated: priorReportContext.truncated,
@@ -4359,7 +4384,7 @@ async function handleChatTurn(
         "mira.context.chunk_count": chunks.length,
         "mira.context.visual_evidence_count": visualEvidenceCount,
         "mira.context.identity_included": identityIncluded,
-        "mira.context.history_turns": history.length,
+        "mira.context.history_turns": turnHistory.length,
         "mira.context.prompt_chars": promptChars,
         "mira.context.system_prompt_kind": systemPromptKind,
       },
@@ -4450,6 +4475,10 @@ async function handleChatTurn(
       // 086 §3: the dispute marker goes out before the first content byte, so
       // a Stop mid-answer (persisted WITH the dispute) has already shown it.
       if (identityDisputed) controller.enqueue(enc.encode(sse(IDENTITY_DISPUTE_FRAME)));
+      // Bench components: which component this answer is about, before its first
+      // content byte, so the reply is attributed even if the header moves while it
+      // streams (#5504 Codex F1). No actions: nothing was refused.
+      if (componentScope) controller.enqueue(enc.encode(sse(componentTurnFrame(componentScope, false))));
       // Citations are emitted AFTER generation, filtered to what the answer
       // actually cited — so a refusal ships no pages and a grounded answer ships
       // only its supporting evidence (no retrieved-but-unused pages as proof).

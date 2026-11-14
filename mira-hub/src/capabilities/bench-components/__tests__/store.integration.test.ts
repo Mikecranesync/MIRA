@@ -268,6 +268,52 @@ run("bench component store (real Postgres, RLS)", () => {
     expect(await advanceSelectionRevision(tenantA, notebookA, USER, thread, 1, 2)).toBeNull();
   });
 
+  it("a label-only or note-only correction is saved as a new revision; a reused id with another label is a conflict (#5504 Codex F3)", async () => {
+    const added = await addComponent(tenantA, notebookA, USER, { clientRequestId: uuid(), kind: "drive", origin: "inventory", position: null, revision: rev(GS10, true) });
+    if (added.status !== "created") throw new Error();
+    const id = added.component.id;
+    const req = uuid();
+    const relabel = await reviseComponent(tenantA, notebookA, id, USER, { clientRequestId: req, expectedRevision: 1, revision: rev({ ...GS10, rawLabel: "GS11N-20P2 S/N 77" }, true) });
+    expect(relabel.status).toBe("created");
+    if (relabel.status !== "created") throw new Error();
+    expect(relabel.component.current).toMatchObject({ revision: 2, rawLabel: "GS11N-20P2 S/N 77" });
+    const renote = await reviseComponent(tenantA, notebookA, id, USER, { clientRequestId: uuid(), expectedRevision: 2, revision: rev({ ...GS10, rawLabel: "GS11N-20P2 S/N 77", evidenceNote: "read off the door" }, true) });
+    expect(renote.status).toBe("created");
+    // The same request id carrying a different label is not the earlier success.
+    const reused = await reviseComponent(tenantA, notebookA, id, USER, { clientRequestId: req, expectedRevision: 1, revision: rev({ ...GS10, rawLabel: "something else" }, true) });
+    expect(reused.status).toBe("request_id_conflict");
+    // Control: an exact repeat still writes nothing.
+    const repeat = await reviseComponent(tenantA, notebookA, id, USER, { clientRequestId: uuid(), expectedRevision: 3, revision: rev({ ...GS10, rawLabel: "GS11N-20P2 S/N 77", evidenceNote: "read off the door" }, true) });
+    expect(repeat.status).toBe("unchanged");
+    const count = await testPool.query(`SELECT count(*)::int AS n FROM notebook_component_revisions WHERE component_id = $1::uuid`, [id]);
+    expect(count.rows[0].n).toBe(3);
+  });
+
+  it("a correction noticed by a question moves the boundary to just before that question, so the question itself carries (#5504 Codex F4)", async () => {
+    const added = await addComponent(tenantA, notebookA, USER, { clientRequestId: uuid(), kind: "drive", origin: "inventory", position: null, revision: rev(GS10, true) });
+    if (added.status !== "created") throw new Error();
+    const cid = added.component.id;
+    const thread = `t-${uuid().slice(0, 8)}`;
+    const sel = await setSelection(tenantA, notebookA, USER, thread, { componentId: cid, via: "picker", expectedVersion: null, clientRequestId: uuid() });
+    if (sel.status !== "set") throw new Error();
+    const corrected = await reviseComponent(tenantA, notebookA, cid, USER, { clientRequestId: uuid(), expectedRevision: 1, revision: rev({ ...GS10, catalogNumber: "GS11N-20P5" }, true) });
+    if (corrected.status !== "created") throw new Error(corrected.status);
+    const asking = await turn(tenantA, notebookA, "what is P00.02", thread);
+    const created = await testPool.query(`SELECT to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS at FROM equipment_notebook_turns WHERE client_request_id = $1::uuid`, [asking]);
+    const moved = await advanceSelectionRevision(tenantA, notebookA, USER, thread, 1, 2, asking);
+    expect(moved).toMatchObject({ revision: 2, selectedVia: "correction" });
+    expect(moved!.selectedAt < created.rows[0].at).toBe(true);
+    // Control: with no triggering question the boundary is the moment of the correction.
+    const thread2 = `t-${uuid().slice(0, 8)}`;
+    const sel2 = await setSelection(tenantA, notebookA, USER, thread2, { componentId: cid, via: "picker", expectedVersion: null, clientRequestId: uuid() });
+    if (sel2.status !== "set") throw new Error();
+    const again = await reviseComponent(tenantA, notebookA, cid, USER, { clientRequestId: uuid(), expectedRevision: 2, revision: rev({ ...GS10, catalogNumber: "GS11N-20P7" }, true) });
+    if (again.status !== "created") throw new Error(again.status);
+    const plain = await advanceSelectionRevision(tenantA, notebookA, USER, thread2, 1, 3);
+    expect(plain).toMatchObject({ revision: 3 });
+    expect(plain!.selectedAt > created.rows[0].at).toBe(true);
+  });
+
   it("the provisional inventory seeds once: a second run adds nothing, every row unconfirmed; another tenant cannot seed this project", async () => {
     const inventory = JSON.parse(readFileSync(path.resolve(__dirname, "../../../../scripts/data/cv101-provisional-inventory.json"), "utf8")) as { rows: InventoryRow[] };
     const nb = await makeNotebook(tenantA);

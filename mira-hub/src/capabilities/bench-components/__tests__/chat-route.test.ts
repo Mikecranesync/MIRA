@@ -188,6 +188,74 @@ describe("a confirmed component is the record for the turn", () => {
     expect(prompt).not.toContain("2080-LC20-20QWB");
   });
 
+  it("an answered turn under a component names the component before any answer content", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
+    const out = await frames(await ask("what does fault oC mean", under(VFD, 3)));
+    const at = out.findIndex((f) => f.kind === "component");
+    expect(at).toBeGreaterThanOrEqual(0);
+    expect(out[at]).toMatchObject({ componentId: VFD, revision: 2, actions: [] });
+    const firstOther = out.findIndex((f) => f.kind !== "component" && f.kind !== "trace");
+    expect(at).toBeLessThan(firstOther);
+  });
+
+  const HISTORY = [
+    { role: "user", content: "what is the P042 deceleration time on the PLC" },
+    { role: "assistant", content: "P042 sets the deceleration time." },
+    { role: "user", content: "what is the GS13N-20P2 input current" },
+    { role: "assistant", content: "That number is not in this manual." },
+  ];
+  const providerText = () => {
+    const call = seamMock.buildRequestBody.mock.calls.at(-1) as unknown as [unknown, { role: string; content: string }[]] | undefined;
+    if (!call) throw new Error("no provider request was built");
+    return call[1].slice(1).map((m) => m.content).join("\n");
+  };
+
+  it("the model sees only the conversation asked under this selection, not another component's topic", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
+    storeMock.listSelectionTurns.mockResolvedValue([
+      { id: "t1", question: HISTORY[0].content, answerStatus: "answered", basis: "documents", createdAt: "2026-11-14T03:50:00.000Z", componentId: null, componentRevision: null, clientRequestId: null },
+      { id: "t2", question: HISTORY[2].content, answerStatus: "insufficient_evidence", basis: null, createdAt: "2026-11-14T04:05:00.000Z", componentId: VFD, componentRevision: 2, clientRequestId: null },
+    ]);
+    await frames(await ask("and its fuse size?", { ...under(VFD, 3), history: HISTORY }));
+    const text = providerText();
+    expect(text).not.toContain("P042");
+    expect(text).toContain("GS13N-20P2 input current");
+    expect(String(ragMock.retrieveNodeChunks.mock.calls[0]?.[2] ?? "")).not.toContain("P042");
+  });
+
+  it("the first question under a selection carries no earlier conversation at all", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
+    storeMock.listSelectionTurns.mockResolvedValue([
+      { id: "t1", question: HISTORY[0].content, answerStatus: "answered", basis: "documents", createdAt: "2026-11-14T03:50:00.000Z", componentId: null, componentRevision: null, clientRequestId: null },
+    ]);
+    await frames(await ask("and its fuse size?", { ...under(VFD, 3), history: HISTORY }));
+    const text = providerText();
+    expect(text).not.toContain("P042");
+    expect(text).not.toContain("GS13N-20P2");
+  });
+
+  it("control: without a component the conversation history reaches the model as before", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
+    await frames(await ask("and its fuse size?", { history: HISTORY }));
+    expect(providerText()).toContain("P042");
+  });
+
+  it("the saved technician reports given to the model are only the ones asked under this selection", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
+    const THREAD = "77777777-aaaa-4aaa-8aaa-777777777777";
+    const turns = [
+      { id: "t1", question: "the PLC1 analog card reads zarquon volts", answerStatus: "answered", basis: "documents", createdAt: "2026-11-14T03:50:00.000Z", componentId: null, componentRevision: null, clientRequestId: null },
+      { id: "t2", question: HISTORY[2].content, answerStatus: "insufficient_evidence", basis: null, createdAt: "2026-11-14T04:05:00.000Z", componentId: VFD, componentRevision: 2, clientRequestId: null },
+    ];
+    storeMock.listSelectionTurns.mockResolvedValue(turns);
+    nbMock.listTurns.mockResolvedValue(turns.map((t) => ({ ...t, ownerUserId: "u1" })));
+    await frames(await ask("and its fuse size?", { ...under(VFD, 3), threadId: THREAD }));
+    const all = `${systemPrompt()}\n${providerText()}`;
+    expect(all).toContain("PERSISTED TECHNICIAN REPORTS");
+    expect(all).toContain("GS13N-20P2 input current");
+    expect(all).not.toContain("zarquon");
+  });
+
   it("only questions asked under this selection carry; an earlier question in the same chat does not", async () => {
     storeMock.listSelectionTurns.mockResolvedValue([
       // Before this pick (selected 04:00): asked about the PLC.
@@ -233,7 +301,7 @@ describe("a confirmed component is the record for the turn", () => {
     storeMock.advanceSelectionRevision.mockResolvedValue({ ...selection(VFD, 2, 4), selectedVia: "correction", selectedAt: "2026-11-14T04:30:00.000Z" });
     ragMock.retrieveNodeChunks.mockImplementation(async () => []);
     const out = await frames(await ask("what does fault oC mean", under(VFD, 3)));
-    expect(storeMock.advanceSelectionRevision).toHaveBeenCalledWith(TENANT, NB, "u1", "legacy", 3, 2);
+    expect(storeMock.advanceSelectionRevision).toHaveBeenCalledWith(TENANT, NB, "u1", "legacy", 3, 2, REQ);
     expect(retrievalOpts()?.catalogNumber).toBe("GS11N-20P2");
     expect(componentFrame(out)?.selectionVersion).toBe(4);
   });

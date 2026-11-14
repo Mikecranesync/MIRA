@@ -15,7 +15,7 @@
 import type { PoolClient } from "pg";
 import { withTenantContext } from "@/lib/tenant-context";
 import type { ComponentInputKind, ComponentIdentityStatus, ComponentRevision, SelectedComponent, SelectionTurn } from "./selection";
-import { sameIdentity, type ComponentRevisionInput } from "./validate";
+import { sameContent, type ComponentRevisionInput } from "./validate";
 
 export type ComponentOrigin = "device_schedule" | "inventory" | "technician";
 export type SelectedVia = "picker" | "return" | "clarify" | "confirm" | "correction";
@@ -175,7 +175,7 @@ export async function addComponent(
       const sameShape =
         existing.kind === input.kind &&
         existing.origin === input.origin &&
-        (input.revision === null ? added === null : added !== null && sameIdentity(added, input.revision));
+        (input.revision === null ? added === null : added !== null && sameContent(added, input.revision));
       return sameShape ? { status: "existing", component: existing } : { status: "request_id_conflict" };
     }
     const inserted = await c.query(
@@ -236,11 +236,11 @@ export async function reviseComponent(
         [tenantId, componentId, Number(prior.rows[0].revision)],
       );
       const rev = toRevision(stored.rows[0]);
-      return sameIdentity(rev, input.revision) ? { status: "existing", component, previous: null } : { status: "request_id_conflict" };
+      return sameContent(rev, input.revision) ? { status: "existing", component, previous: null } : { status: "request_id_conflict" };
     }
     const currentRevision = component.current?.revision ?? 0;
     if (input.expectedRevision !== currentRevision) return { status: "stale_revision", component };
-    if (component.current && sameIdentity(component.current, input.revision)) {
+    if (component.current && sameContent(component.current, input.revision)) {
       return { status: "unchanged", component, previous: null };
     }
     await insertRevision(c, tenantId, componentId, currentRevision + 1, input.revision, userId, input.clientRequestId);
@@ -388,6 +388,9 @@ export async function setSelection(
  * The selection was made under an older identity revision of its component
  * (the identity was corrected since). Re-point it at the current revision and
  * move the boundary, so nothing asked under the old identity carries.
+ * `beforeRequestId` is the turn that found the correction: it was claimed before
+ * this runs, so the boundary goes just before it and that question belongs to the
+ * new selection (it is stamped with the new revision).
  */
 export async function advanceSelectionRevision(
   tenantId: string,
@@ -396,15 +399,20 @@ export async function advanceSelectionRevision(
   threadKey: string,
   expectedVersion: number,
   revision: number,
+  beforeRequestId: string | null = null,
 ): Promise<ThreadSelection | null> {
   return withTenantContext(tenantId, async (c) => {
     const res = await c.query(
       `UPDATE notebook_thread_selections s
-          SET component_revision = $6, selected_via = 'correction', selected_at = clock_timestamp(), version = s.version + 1
+          SET component_revision = $6, selected_via = 'correction', version = s.version + 1,
+              selected_at = COALESCE(
+                (SELECT t.created_at - interval '1 microsecond' FROM equipment_notebook_turns t
+                  WHERE t.tenant_id = $1::uuid AND t.notebook_id = $2::uuid AND t.client_request_id = $7::uuid),
+                clock_timestamp())
         WHERE s.tenant_id = $1::uuid AND s.notebook_id = $2::uuid AND s.owner_user_id = $3 AND s.thread_key = $4
           AND s.version = $5 AND s.cleared_at IS NULL
        RETURNING ${SELECTION_COLS}`,
-      [tenantId, notebookId, ownerUserId, threadKey, expectedVersion, revision],
+      [tenantId, notebookId, ownerUserId, threadKey, expectedVersion, revision, beforeRequestId],
     );
     return res.rows[0] ? toSelection(res.rows[0]) : null;
   });

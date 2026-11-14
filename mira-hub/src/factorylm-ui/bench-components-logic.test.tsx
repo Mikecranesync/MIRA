@@ -16,6 +16,7 @@ import {
   addRequestFor,
   askingAbout,
   cardFor,
+  lastAnswerNotice,
   parseComponentFrames,
   retakeCard,
   revisionBodyFor,
@@ -42,7 +43,7 @@ const view = (over: Partial<ComponentView>): ComponentView => ({
 });
 const state = (selection: BenchState["selection"]): BenchState => ({
   components: [view({}), view({ id: PS1, label: "PS1", status: "not_confirmed", statusLabel: "identity not confirmed", current: null })],
-  selection, selectionVersion: selection?.version ?? null, turnComponents: {}, tallies: {}, documentNumbers: [],
+  selection, selectionVersion: selection?.version ?? null, lastTurn: null, turnComponents: {}, tallies: {}, documentNumbers: [],
 });
 const SEL = { notebookId: NB, threadId: "legacy" };
 const selected = { componentId: VFD, revision: 2, selectedAt: "2026-11-14T04:00:00.000Z", selectedVia: "picker" as const, version: 3, current: true };
@@ -52,6 +53,29 @@ describe("Asking about", () => {
     expect(askingAbout(state(selected))).toBe("Asking about VFD1 · AutomationDirect GS11N-20P2");
     expect(askingAbout(state(null))).toBe(WHOLE_MACHINE);
     expect(askingAbout(null)).toBe(WHOLE_MACHINE);
+  });
+});
+
+describe("the last answer's component (#5504 Codex F1)", () => {
+  const withLast = (sel: BenchState["selection"], lastTurn: BenchState["lastTurn"]): BenchState => ({ ...state(sel), lastTurn });
+  it("says which component the answer above was about when the header has moved", () => {
+    expect(lastAnswerNotice(withLast({ ...selected, componentId: PS1, revision: 1 }, { componentId: VFD, revision: 2 }))).toBe(
+      "The last answer above was about VFD1 · AutomationDirect GS11N-20P2, not PS1.",
+    );
+    expect(lastAnswerNotice(withLast(null, { componentId: VFD, revision: 2 }))).toBe(
+      "The last answer above was about VFD1 · AutomationDirect GS11N-20P2, not the whole machine.",
+    );
+    expect(lastAnswerNotice(withLast(selected, { componentId: null, revision: null }))).toBe(
+      "The last answer above was about the whole machine, not VFD1 · AutomationDirect GS11N-20P2.",
+    );
+    expect(lastAnswerNotice(withLast(selected, { componentId: VFD, revision: 1 }))).toBe(
+      "The last answer above was for VFD1 · AutomationDirect GS11N-20P2 before its identity was corrected.",
+    );
+  });
+  it("control: nothing when the header still names what the last answer was about, or nothing was asked", () => {
+    expect(lastAnswerNotice(withLast(selected, { componentId: VFD, revision: 2 }))).toBeNull();
+    expect(lastAnswerNotice(withLast(null, { componentId: null, revision: null }))).toBeNull();
+    expect(lastAnswerNotice(withLast(selected, null))).toBeNull();
   });
 });
 

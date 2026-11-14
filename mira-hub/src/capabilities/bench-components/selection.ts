@@ -123,3 +123,35 @@ export function readSubjectUnderSelection(turns: readonly SelectionTurn[], limit
   if (start > 0) return readSubject(run, Number.POSITIVE_INFINITY);
   return readSubject(run, limit);
 }
+
+/**
+ * What a turn under a selected component may see of the conversation before it:
+ * only the questions asked under this selection (the same rule as the carry
+ * above). The client's history is plain text with no turn ids, so it is cut by
+ * count: the newest `run.length` questions and what followed them; nothing when
+ * this is the first question under the selection. `turnIds` scopes the prior
+ * technician reports the same way. Explicit numbers in the new question still
+ * reach retrieval: only implicit carry from another component is dropped.
+ */
+export function historyUnderSelection<H extends { role: "user" | "assistant" }>(
+  history: readonly H[],
+  turns: readonly (SelectionTurn & { id: string; clientRequestId?: string | null })[],
+  selection: SelectedComponent,
+  currentRequestId: string | null,
+): { history: H[]; turnIds: Set<string> } {
+  const since = instantMicros(selection.selectedAt);
+  const run = turns.filter(
+    (t) =>
+      t.componentId === selection.componentId &&
+      t.componentRevision === selection.revision &&
+      instantMicros(t.createdAt) > since &&
+      (currentRequestId === null || t.clientRequestId !== currentRequestId),
+  );
+  const turnIds = new Set(run.map((t) => t.id));
+  if (run.length === 0) return { history: [], turnIds };
+  let seen = 0;
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (history[i].role === "user" && ++seen === run.length) return { history: history.slice(i), turnIds };
+  }
+  return { history: [...history], turnIds };
+}

@@ -115,6 +115,18 @@ export function sameIdentity(a: Pick<ComponentRevision, IdentityField | "identit
   );
 }
 
+/**
+ * Same saved content: the same identity, and the same label text and evidence note.
+ * A correction to the label alone is a new revision, never "unchanged" (it would be
+ * lost), and a reused request id with a different label is a conflict.
+ */
+export function sameContent(
+  a: Pick<ComponentRevision, IdentityField | "identityStatus" | "unresolved" | "rawLabel"> & { evidenceNote: string | null },
+  b: Pick<ComponentRevisionInput, IdentityField | "identityStatus" | "unresolved" | "rawLabel" | "evidenceNote">,
+): boolean {
+  return sameIdentity(a, b) && (a.rawLabel ?? null) === (b.rawLabel ?? null) && (a.evidenceNote ?? null) === (b.evidenceNote ?? null);
+}
+
 /** The identity fields that differ between two revisions (what a correction changed). */
 export function changedFields(a: Pick<ComponentRevision, IdentityField>, b: Pick<ComponentRevision, IdentityField>): IdentityField[] {
   return IDENTITY_FIELDS.filter((f) => (a[f] ?? null) !== (b[f] ?? null));

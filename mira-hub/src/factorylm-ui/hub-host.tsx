@@ -1084,6 +1084,7 @@ export function HubShellHost() {
           notebookId={selection.notebookId}
           threadId={selection.threadId}
           refresh={benchRefresh}
+          busy={busy}
           frame={componentFrame?.key === `${selection.notebookId}|${selection.threadId}` ? componentFrame.frame : null}
           onState={onBenchState}
         />

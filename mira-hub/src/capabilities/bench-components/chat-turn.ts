@@ -113,6 +113,7 @@ export async function resolveComponentTurn(
   threadKey: string,
   requested: RequestedComponent,
   question: string,
+  clientRequestId: string | null = null,
 ): Promise<ComponentTurn> {
   const [stored, components] = await Promise.all([
     getSelection(tenantId, notebookId, userId, threadKey),
@@ -127,7 +128,7 @@ export async function resolveComponentTurn(
   if (stored.revision !== component.current.revision) {
     // The identity was corrected after this chat picked the component: re-check the turn
     // against the new identity, and nothing asked under the old one carries.
-    const moved = await advanceSelectionRevision(tenantId, notebookId, userId, threadKey, stored.version, component.current.revision);
+    const moved = await advanceSelectionRevision(tenantId, notebookId, userId, threadKey, stored.version, component.current.revision, clientRequestId);
     if (!moved) return { kind: "conflict", selection: await getSelection(tenantId, notebookId, userId, threadKey) };
     selection = moved;
   }

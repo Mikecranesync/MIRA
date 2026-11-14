@@ -42,6 +42,9 @@ export type BenchState = {
   /** The version the next pick must send: the stored one even after a clear, null if
    *  this conversation never had a selection. */
   selectionVersion: number | null;
+  /** The newest question of this conversation and the component (and identity revision)
+   *  it was asked under; component null = the whole machine. Null when nothing was asked. */
+  lastTurn: { componentId: string | null; revision: number | null } | null;
   /** turn id → the component and identity revision it was asked under. */
   turnComponents: Record<string, { componentId: string; revision: number }>;
   /** Per component, in this conversation: questions answered from a document, and
@@ -98,6 +101,7 @@ export async function benchState(
     components: views,
     selection: selection && selected ? { ...selection, current: selected.current?.revision === selection.revision } : null,
     selectionVersion,
+    lastTurn: turns.length ? { componentId: turns[turns.length - 1].componentId ?? null, revision: turns[turns.length - 1].componentRevision ?? null } : null,
     turnComponents,
     tallies,
     documentNumbers,

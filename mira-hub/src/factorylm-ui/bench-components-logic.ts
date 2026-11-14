@@ -30,6 +30,24 @@ export function askingAbout(state: BenchState | null): string {
   return c ? `Asking about ${c.label}` : WHOLE_MACHINE;
 }
 
+/**
+ * When the newest answer in this conversation was asked about something other than
+ * what the header now says (the picker moved, here or on another screen), say which
+ * component that answer was about, so it is never read as guidance for the new one.
+ * Null when they agree or nothing was asked yet.
+ */
+export function lastAnswerNotice(state: BenchState | null): string | null {
+  const last = state?.lastTurn;
+  if (!state || !last) return null;
+  const sel = state.selection;
+  if (sel ? last.componentId === sel.componentId && last.revision === sel.revision : last.componentId === null) return null;
+  const about = last.componentId ? state.components.find((c) => c.id === last.componentId)?.label ?? "another component" : "the whole machine";
+  const sameComponent = sel && last.componentId === sel.componentId;
+  return sameComponent
+    ? `The last answer above was for ${about} before its identity was corrected.`
+    : `The last answer above was about ${about}, not ${sel ? selectedComponent(state)?.label ?? "this component" : "the whole machine"}.`;
+}
+
 /** What one chat turn carries: the component the header showed and the version read with it. */
 export type ComponentRider = { notebookId: string; threadId: string; componentId: string; selectionVersion: number };
 

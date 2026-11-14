@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { API_BASE } from "@/lib/config";
 import { exactMatches, lookAlikes, type LookAlike } from "@/capabilities/bench-components/lookalike";
 import {
+  lastAnswerNotice,
   CARD_FIELDS,
   CONNECTION_MESSAGE,
   WHOLE_MACHINE,
@@ -75,6 +76,7 @@ export function BenchComponents({
   notebookId,
   threadId,
   refresh,
+  busy,
   frame,
   onState,
 }: {
@@ -82,6 +84,8 @@ export function BenchComponents({
   threadId: string;
   /** Bumped by the host after every chat turn (tallies, a correction made by a reply). */
   refresh: number;
+  /** An answer is coming in: the component can't change until it has (#5504 Codex F1). */
+  busy: boolean;
   /** The component frame of this conversation's newest reply, if it had one. */
   frame: ComponentTurnFrame | null;
   /** The state the header shows — the host builds the chat rider from it. */
@@ -241,10 +245,15 @@ export function BenchComponents({
         {askingAbout(bench)}
         {bench?.selection && !bench.selection.current && " (identity changed — next question re-checks it)"}
       </button>
+      {lastAnswerNotice(bench) && (
+        <p role="status" data-testid="bench-last-answer" style={{ margin: 0, fontSize: "var(--fl-fs-sm)", color: "var(--fl-warn, var(--fl-muted))" }}>
+          {lastAnswerNotice(bench)}
+        </p>
+      )}
       {actions.length > 0 && (
         <div data-testid="bench-component-actions" role="group" aria-label="What to do next" style={{ display: "flex", flexWrap: "wrap", justifyContent: "flex-end" }}>
           {actions.map((a) => (
-            <button key={`${a.action}-${a.componentId}`} type="button" style={a.action === "stay" ? QUIET_BUTTON : BUTTON_STYLE} disabled={saving} data-testid={`bench-action-${a.action}`} onClick={() => void onAction(a)}>
+            <button key={`${a.action}-${a.componentId}`} type="button" style={a.action === "stay" ? QUIET_BUTTON : BUTTON_STYLE} disabled={saving || busy} data-testid={`bench-action-${a.action}`} onClick={() => void onAction(a)}>
               {actionLabel(a)}
             </button>
           ))}
@@ -263,7 +272,7 @@ export function BenchComponents({
             <ConfirmationCard card={card} onChange={setCard} known={bench?.documentNumbers ?? []} saving={saving} onSave={saveCard} onCancel={() => setCard(null)} />
           ) : (
             <>
-              <button type="button" style={QUIET_BUTTON} disabled={saving || !current} data-testid="bench-whole-machine" onClick={() => void select(null, "picker")}>
+              <button type="button" style={QUIET_BUTTON} disabled={saving || busy || !current} data-testid="bench-whole-machine" onClick={() => void select(null, "picker")}>
                 {WHOLE_MACHINE.replace(" — no component selected", "")}
               </button>
               <ul style={{ listStyle: "none", padding: 0 }} data-testid="bench-component-list">
@@ -273,7 +282,7 @@ export function BenchComponents({
                     c={c}
                     selected={current?.id === c.id}
                     tally={bench?.tallies[c.id]}
-                    saving={saving}
+                    saving={saving || busy}
                     onAsk={async () => {
                       const ok = await select(c.id, "picker");
                       if (ok && c.status !== "confirmed") setCard(cardFor(c));
