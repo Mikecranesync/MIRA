@@ -779,3 +779,97 @@ describe("7. provenance the served row can and cannot answer for", () => {
     expect(rows).toEqual([]);
   });
 });
+
+describe("8. the same contract across more of the bench (provisional inventory, graph path)", () => {
+  // The inventory on #5504 is provisional. These are the machine-to-machine links its one-line
+  // implies, run through the SAME propose -> decide -> reader sequence as Q1 -> VFD1. This is
+  // second-consumer (graph path) evidence only; the pilot's notebook chat reads none of it.
+  const LINKS = [
+    { name: "feeds", from: "CB1", to: "PS1", stored: "UPSTREAM_OF", flipped: false },
+    { name: "feeds", from: "PS1", to: "PLC1", stored: "UPSTREAM_OF", flipped: false },
+    { name: "feeds", from: "VFD1", to: "M1", stored: "UPSTREAM_OF", flipped: false },
+    { name: "electrically_connected", from: "VFD1", to: "M1", stored: "WIRED_TO", flipped: false },
+    { name: "parent_of", from: "CV101", to: "M1", stored: "LOCATED_IN", flipped: true },
+    { name: "has_component", from: "CV101", to: "PLC1", stored: "HAS_COMPONENT", flipped: false },
+  ] as const;
+  const made: Record<string, string> = {};
+
+  beforeAll(async () => {
+    A.CB1 = await install(TENANT_A, "CB1", "CB1 supply breaker", "FactoryLM bench", "CB-1");
+    A.PS1 = await install(TENANT_A, "PS1", "PS1 24 V power supply", "FactoryLM bench", "PS-1");
+    A.PLC1 = await install(TENANT_A, "PLC1", "PLC1 controller", "FactoryLM bench", "PLC-1");
+    A.M1 = await install(TENANT_A, "M1", "M1 conveyor motor", "FactoryLM bench", "M-1");
+  });
+
+  for (const l of LINKS) {
+    const key = `${l.from} ${l.name} ${l.to}`;
+    it(`${key}: not in the graph while proposed; approval writes one verified ${l.stored} edge, direction ${l.flipped ? "flipped" : "kept"}`, async () => {
+      const id = (await propose(TENANT_A, l.name, A[l.from], A[l.to], `bench: ${key}`)) as string;
+      expect(id).toMatch(/^[0-9a-f-]{36}$/);
+      expect(await edgeRows(TENANT_A, id)).toEqual([]);
+      expect((await decide(id, "verify", { tenantId: TENANT_B, userId: "user-admin-b", role: "admin" })).status).toBe(404);
+      expect((await decide(id, "verify", { tenantId: TENANT_A, userId: ADMIN_A, role: "admin" })).status).toBe(200);
+      const rows = await edgeRows(TENANT_A, id);
+      expect(rows).toHaveLength(1);
+      const [src, tgt] = l.flipped ? [A[l.to], A[l.from]] : [A[l.from], A[l.to]];
+      expect(rows[0]).toMatchObject({
+        source_id: src.nodeId,
+        target_id: tgt.nodeId,
+        relationship_type: l.stored,
+        approval_state: "verified",
+        relationship_proposal_id: id,
+      });
+      made[key] = rows[0].id as string;
+    });
+  }
+
+  it("rejected evidence for a bench link (PLC1 feeds VFD1) writes no edge", async () => {
+    const id = (await propose(TENANT_A, "feeds", A.PLC1, A.VFD1, "bench: wrong reading of the one-line")) as string;
+    expect((await decide(id, "reject", { tenantId: TENANT_A, userId: ADMIN_A, role: "admin" })).status).toBe(200);
+    expect(await edgeRows(TENANT_A, id)).toEqual([]);
+    expect((await proposalRow(id))?.status).toBe("rejected");
+  });
+
+  it("positive control: under the reader's own name the supply chain CB1 -> PS1 -> PLC1 is read downstream of CB1", async () => {
+    const seen = await withStoredName(made["CB1 feeds PS1"], "feeds", () =>
+      withStoredName(made["PS1 feeds PLC1"], "feeds", () => downstreamNodeIds(TENANT_A, A.CB1)),
+    );
+    expect(seen).toContain(A.PS1.nodeId);
+    expect(seen).toContain(A.PLC1.nodeId);
+    expect(seen).not.toContain(A.M1.nodeId);
+  });
+
+  it("KNOWN GAP #5519: as approved, none of the supply chain is read downstream of CB1, PS1 or VFD1", async () => {
+    const seen = [
+      ...(await downstreamNodeIds(TENANT_A, A.CB1)),
+      ...(await downstreamNodeIds(TENANT_A, A.PS1)),
+      ...(await downstreamNodeIds(TENANT_A, A.VFD1)),
+    ];
+    knownGap(
+      "#5519",
+      () => expect(seen).toEqual([]),
+      () => expect(seen).toEqual(expect.arrayContaining([A.PS1.nodeId, A.PLC1.nodeId, A.M1.nodeId])),
+    );
+  });
+
+  it("KNOWN GAP #5519: the conveyor's approved controller is not in its component list", async () => {
+    const read = async () => (await maintenanceContext(TENANT_A, A.CV101.assetId))?.components.map((e) => e.id) ?? [];
+    expect(await withStoredName(made["CV101 has_component PLC1"], "has_component", read)).toContain(A.PLC1.nodeId);
+    const seen = await read();
+    knownGap(
+      "#5519",
+      () => expect(seen).not.toContain(A.PLC1.nodeId),
+      () => expect(seen).toContain(A.PLC1.nodeId),
+    );
+  });
+
+  it("the other tenant sees none of these bench links", async () => {
+    const { rows } = await admin.query(
+      `SELECT count(*)::int AS n FROM kg_relationships WHERE tenant_id = $1::uuid AND id = ANY($2::uuid[])`,
+      [TENANT_B, Object.values(made)],
+    );
+    expect(Object.values(made)).toHaveLength(LINKS.length);
+    expect(rows[0].n).toBe(0);
+    expect(await impactAnalysis(TENANT_B, A.CB1.nodeId).then((r) => r.downstream, () => [])).toEqual([]);
+  });
+});
