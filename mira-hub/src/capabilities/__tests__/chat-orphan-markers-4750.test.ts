@@ -53,7 +53,7 @@ const seamMock = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/inference/canonical-cascade", () => seamMock);
 
-import { POST } from "../route";
+import { POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
 
 /** A provider SSE stream that emits `text` as one delta, then [DONE]. */
 function providerStream(text: string) {
