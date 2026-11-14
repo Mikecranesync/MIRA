@@ -97,6 +97,8 @@ export const notConfirmedText = (label: string) =>
   `${label} isn't confirmed yet, so I won't answer from the manuals for it. Check what its label says and tap Confirm, then ask again.`;
 export const noModelText = (label: string) =>
   `${label} is confirmed without a model or catalog number, so I can't tell which manual is for it. Add the number from its label, then ask again.`;
+export const noDocumentsForComponentText = (label: string) =>
+  `No documents are selected for this chat, so I won't answer about ${label}. Turn on its manual in the sources, then ask again.`;
 export const otherComponentText = (selectedLabel: string, namedLabel: string, named: string) =>
   `This chat is asking about ${selectedLabel}. Your question names ${named}, which is ${namedLabel} on this bench. Switch to ${namedLabel} to ask about it, or stay on ${selectedLabel}.`;
 

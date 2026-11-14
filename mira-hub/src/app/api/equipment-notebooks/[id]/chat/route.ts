@@ -105,6 +105,7 @@ import {
   abandonNotebookTurnRequest,
   claimNotebookTurnRequest,
   getNotebook,
+  LEGACY_THREAD_ID,
   listSources,
   listTurns,
   normalizeNotebookThreadId,
@@ -143,6 +144,9 @@ import {
 import { ambiguousModelAskText, libraryNotForAskedModelText, namedModelMismatchText, siblingOfRecordAskText, subjectOutOfReachText, type NamedModelMismatch } from "@/capabilities/named-model-mismatch";
 import { readSubject, SUBJECT_READ_STEPS } from "@/capabilities/conversation-subject";
 import { notebookManualIdentity } from "@/capabilities/notebook-manual-identity";
+import { componentTurnFrame, noDocumentsForComponentText, readComponentSelection, resolveComponentTurn, type ComponentTurn } from "@/capabilities/bench-components/chat-turn";
+import { readSubjectUnderSelection } from "@/capabilities/bench-components/selection";
+import { listSelectionTurns, stampTurnComponent } from "@/capabilities/bench-components/store";
 import {
   excludedTablesRefusalText,
   otherProductRefusalText,
@@ -1260,6 +1264,11 @@ async function handleChatTurn(
      *  server re-derives the job's current view itself (loadJob, scoped to
      *  THIS notebook). */
     livingSheetJobId?: unknown;
+    /** Bench components: the component this conversation's "Asking about …"
+     *  header showed, and the selection version it read. Only these two are
+     *  read; the server checks them against the stored selection (409 when
+     *  they no longer match) and re-reads the component's identity itself. */
+    componentSelection?: unknown;
   };
   try {
     body = await req.json();
@@ -1317,6 +1326,20 @@ async function handleChatTurn(
       : null;
   if (body.clientRequestId != null && !clientRequestId) {
     return NextResponse.json({ error: "invalid_client_request_id" }, { status: 400 });
+  }
+  // Bench components: a malformed selection is a 400, never "answered for the
+  // whole machine". A component scopes the turn's manuals, so it cannot ride a
+  // general-mode turn (which reads none), and the turn is stamped with it by
+  // its request id, so it needs one.
+  const componentRequest = readComponentSelection(body.componentSelection);
+  if (componentRequest && "error" in componentRequest) {
+    return NextResponse.json({ error: componentRequest.error }, { status: 400 });
+  }
+  if (componentRequest && general) {
+    return NextResponse.json({ error: "component_selection_not_general" }, { status: 400 });
+  }
+  if (componentRequest && !clientRequestId) {
+    return NextResponse.json({ error: "client_request_id_required" }, { status: 400 });
   }
   // Carry the CLIENT's own key into the ingress ledger (093). The arrival row
   // is written before the body is parsed, so it cannot have this; the response
@@ -1710,6 +1733,34 @@ async function handleChatTurn(
       throw err;
     }
   };
+
+  // Bench components: checked after the claim, so an exact retry still replays
+  // its stored answer even if the selection moved since. A selection that no
+  // longer matches what the client showed answers nothing and writes nothing.
+  let componentTurn: Exclude<ComponentTurn, { kind: "conflict" }> | null = null;
+  if (componentRequest && clientRequestId) {
+    const resolved = await releaseClaimOnFailure(() =>
+      resolveComponentTurn(ctx.tenantId, notebookId, ctx.userId, threadId ?? LEGACY_THREAD_ID, componentRequest, message),
+    );
+    if (resolved.kind === "conflict") {
+      await abandonRequestClaim();
+      endRoot();
+      return NextResponse.json(
+        { error: "selection_changed", message: "The component for this chat was changed on another screen.", selection: resolved.selection },
+        { status: 409 },
+      );
+    }
+    componentTurn = resolved;
+    const revision = resolved.kind === "hold" ? resolved.revision : resolved.revision.revision;
+    const stamped = await releaseClaimOnFailure(() =>
+      stampTurnComponent(ctx.tenantId, notebookId, ctx.userId, clientRequestId, resolved.component.id, revision),
+    );
+    if (!stamped) console.error("[notebook-chat] component stamp matched no turn row (turn kept unlabelled)");
+  }
+  // A held turn (component not confirmed, no model number, or the question names
+  // another component of this bench) reads no manual and calls no provider.
+  const componentHold = componentTurn?.kind === "hold" ? componentTurn : null;
+  const componentScope = componentTurn?.kind === "scoped" ? componentTurn : null;
 
   // PRD §27: no sources selected is an explicit, honest state — not a silent
   // fall-through to the global corpus.
@@ -2313,7 +2364,7 @@ async function handleChatTurn(
   // turn (both `general || nodeId === null`, see notebookRetrieval below) must
   // not pay for or wait on a rewrite nothing reads (Codex F3 on #5003).
   const queryRewritePromise: Promise<QueryRewrite> =
-    general || nodeId === null
+    general || nodeId === null || componentHold
       ? Promise.resolve({ rewritten: null, status: "off", provider: null, durationMs: 0 })
       : rewriteForManualSearch(message);
   // A failed source read is UNKNOWN state, never "no sources" (#5268: the
@@ -2354,7 +2405,10 @@ async function handleChatTurn(
   const notebookRetrieval = !(general || nodeId === null);
   // One identity for every manual read of this turn (the question's pass and
   // the safety stop's passes), so no read is scoped differently from another.
-  const manualIdentity = notebookManualIdentity(nb, boundAsset, identityDisputed);
+  // Bench components: the selected component's confirmed identity replaces the
+  // notebook's for every read (a held turn reads none, so it keeps the notebook's
+  // for the energized-work stop's lockout page).
+  const manualIdentity = componentScope ? componentScope.identity : notebookManualIdentity(nb, boundAsset, identityDisputed);
   // The earlier questions of THIS conversation that were not answered from a
   // document (conversation-subject.ts). A follow-up that names no model is
   // still about the model one of them named, so the manual check keeps
@@ -2371,10 +2425,18 @@ async function handleChatTurn(
   if (notebookRetrieval) {
     try {
       for (const limit of SUBJECT_READ_STEPS) {
-        const read = readSubject(
-          await listTurns(ctx.tenantId, notebookId, limit, { viewerUserId: ctx.userId, threadId }),
-          limit,
-        );
+        // Under a selected component only the questions asked under this
+        // selection carry: a pick, a Return or a correction starts a new run.
+        const read = componentScope
+          ? readSubjectUnderSelection(
+              await listSelectionTurns(ctx.tenantId, notebookId, ctx.userId, threadId, limit),
+              limit,
+              componentScope.selection,
+            )
+          : readSubject(
+              await listTurns(ctx.tenantId, notebookId, limit, { viewerUserId: ctx.userId, threadId }),
+              limit,
+            );
         subjectQueries = read.questions;
         subjectOutOfReach = !read.complete;
         if (read.complete) break;
@@ -2477,8 +2539,10 @@ async function handleChatTurn(
           },
         )
       : false;
+  // A selected component is never answered from the shared library by the
+  // notebook's machine: its manuals are the notebook's documents or none.
   const oemRetrieval =
-    !guidedDeadEnd && !notebookRetrieval && oemManufacturer !== null && !oemIdentity.ambiguous && !oemIdentity.failed;
+    !guidedDeadEnd && !componentTurn && !notebookRetrieval && oemManufacturer !== null && !oemIdentity.ambiguous && !oemIdentity.failed;
   const retrievalExecuted = notebookRetrieval || oemRetrieval;
   // #4687: only when a document search actually runs (Codex #4765 F3).
   if (retrievalExecuted) reportProgress(req, "searching_documentation");
@@ -2550,7 +2614,7 @@ async function handleChatTurn(
           }
         }
       })()
-    : !notebookRetrieval
+    : !notebookRetrieval || componentHold
     ? []
     : await releaseClaimOnFailure(() =>
         withTenantContext(ctx.tenantId, (client) =>
@@ -3614,12 +3678,16 @@ async function handleChatTurn(
   // A flagged hazard turn is never swallowed by this abstain (owner decision
   // 2026-09-27): with no documents it takes the general lane, so the tech gets
   // the hazard banner and an answer instead of "couldn't find that".
-  if (chunks.length === 0 && (!general || libraryNotForAsk || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText) && !groundedMachineEntry && !safetyTrigger) {
+  if (chunks.length === 0 && (!general || libraryNotForAsk || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText) && (componentHold || !groundedMachineEntry) && !safetyTrigger) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
     // #4015: "couldn't find that in the documentation I have", not "I don't have
     // the manual" — a zero-hit scoped search does not prove the manual is absent
     // (staging holds 11 GS10 rows; a carrier-frequency query still hit none).
-    const abstainAnswerText = oemRetrievalFailed && (missingModelManual || noEvidenceForMachine)
+    const abstainAnswerText = componentHold
+      ? componentHold.text
+      : componentScope && !notebookRetrieval
+      ? noDocumentsForComponentText(componentScope.label)
+      : oemRetrievalFailed && (missingModelManual || noEvidenceForMachine)
       ? `I couldn't reach the manual library just now, so I won't guess at an answer for your ${(missingModelManual ?? noEvidenceForMachine)!}. Please try again in a moment.`
       : unidentifiedServiceText
       ? unidentifiedServiceText
@@ -3686,7 +3754,7 @@ async function handleChatTurn(
     rec.stage("answer_gate", {
       invoked: true,
       decision: "insufficient_evidence",
-      reason: oemRetrievalFailed && (missingModelManual || noEvidenceForMachine) ? "identity_bound_retrieval_failed" : libraryNotForAsk ? "library_other_model" : unidentifiedServiceText ? "unidentified_service_decline" : missingModelManual ? "identity_bound_no_manual" : noEvidenceForMachine ? "identity_bound_no_evidence" : "gate_g_no_evidence",
+      reason: componentHold ? `component_${componentHold.reason}` : oemRetrievalFailed && (missingModelManual || noEvidenceForMachine) ? "identity_bound_retrieval_failed" : libraryNotForAsk ? "library_other_model" : unidentifiedServiceText ? "unidentified_service_decline" : missingModelManual ? "identity_bound_no_manual" : noEvidenceForMachine ? "identity_bound_no_evidence" : "gate_g_no_evidence",
       answer_chars: abstainAnswerText?.length ?? 0,
       refusal_phrase_matched: false,
       evidence_phrase_matched: false,
@@ -3704,7 +3772,7 @@ async function handleChatTurn(
       {
         "mira.answer_gate.invoked": true,
         "mira.answer_gate.decision": "insufficient_evidence",
-        "mira.answer_gate.reason": oemRetrievalFailed && (missingModelManual || noEvidenceForMachine) ? "identity_bound_retrieval_failed" : unidentifiedServiceText ? "unidentified_service_decline" : missingModelManual ? "identity_bound_no_manual" : noEvidenceForMachine ? "identity_bound_no_evidence" : "gate_g_no_evidence",
+        "mira.answer_gate.reason": componentHold ? `component_${componentHold.reason}` : oemRetrievalFailed && (missingModelManual || noEvidenceForMachine) ? "identity_bound_retrieval_failed" : unidentifiedServiceText ? "unidentified_service_decline" : missingModelManual ? "identity_bound_no_manual" : noEvidenceForMachine ? "identity_bound_no_evidence" : "gate_g_no_evidence",
         "mira.answer_gate.answer_chars": abstainAnswerText?.length ?? 0,
       },
       gateAnswerGateSpan,
@@ -3805,6 +3873,10 @@ async function handleChatTurn(
           };
           controller.enqueue(enc.encode(sse(chips)));
         }
+        // Bench components: which component this was asked under, and its actions
+        // (Confirm / Switch / Stay / Return to …). They are buttons that call the
+        // selection and revision routes — never text for the next question.
+        if (componentTurn) controller.enqueue(enc.encode(sse(componentTurnFrame(componentTurn, true))));
         controller.enqueue(enc.encode("data: [DONE]\n\n"));
         controller.close();
       },
