@@ -15,6 +15,7 @@ honour on the paths the bench pilot uses, and what proves it?*
 | PR #5530 (ontology coverage gate + runtime mapping) — **the review candidate, untouched** | `c7a21990b391af70e62e4656a7cccc5b6cb4f01c` | draft, 0 behind main, checks green on that head, no GitHub review |
 | This follow-on (local branch `test/ontology-bench-runtime-contract`, stacked on #5530, **not pushed**) | the commit that adds this file (see `git log c7a21990b..`) | tests + mapping only; no production code |
 | PR #5504 (bench components) — not mine; its tests executed by me at this head | `e649880b1b51dcc010b539181a74a88f98ef7bea` | draft; last review found 2 HIGH on selection paths, owner repairing locally; migration 115 proposed, applied nowhere |
+| #5504 owner's **local candidate** (not pushed, not reviewed) | `f1be6b8f03a755af4f10ead16608f5cff19c1829` | the owner reports it repairs the two HIGH findings. I re-ran there: its store suite 19/19 on a disposable database, its unit and mocked-route suites 152/152, and my five probes 5/5. Migration 115 file unchanged (sha256 `4b23ca7f…`). |
 
 ## Two paths. Do not merge them in your head.
 
@@ -35,7 +36,7 @@ critical gaps in the last section block it.
 - **CI-via-meta** — picked up by `tests/test_ontology_attribution.py`, which CI names; needs this branch pushed first.
 - **LOCAL-PG** — I ran it against a disposable PostgreSQL built from the real Hub migrations. No CI job runs it.
 - **LOCAL** — pure, ran locally, no CI job runs that folder.
-- **RAN-AT-5504** — another owner's tests, which I executed unchanged at #5504's head `e649880b1` (detached checkout): the store suite against a disposable PostgreSQL with the proposed migration 115 applied (18 pass), the unit and mocked-route suites (123 pass), plus five probes of my own run at that head (saved outside the repository; listed below). That head has two open HIGH review findings on selection paths and its migration is applied to no environment, so this is *executed at an unaccepted head* — it shows the code there does this, not that the pilot ships it.
+- **RAN-AT-5504** — another owner's tests, which I executed unchanged at #5504's head `e649880b1` (detached checkout): the store suite against a disposable PostgreSQL with the proposed migration 115 applied (18 pass), the unit and mocked-route suites (123 pass), plus five probes of my own run at that head (saved outside the repository; listed below). That head has two open HIGH review findings on selection paths and its migration is applied to no environment, so this is *executed at an unaccepted head* — it shows the code there does this, not that the pilot ships it. The same suites and probes also pass at the owner's later local candidate `f1be6b8f0` (see the heads table); that head is likewise unpushed and unreviewed.
 
 Test files: **HUB-G** = `mira-hub/tests/integration/ontology/bench-context-contract.integration.test.ts` (45 tests) ·
 **HUB-P** = `mira-hub/tests/integration/ontology/bench-pilot-live-evidence.integration.test.ts` (13 pass + 1 expected failure) ·
