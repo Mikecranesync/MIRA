@@ -154,7 +154,7 @@ export function renderLimitations(
     "@context": "https://schema.org",
     "@type": "AboutPage",
     "name": "What FactoryLM doesn't do (yet)",
-    "description": "An honest list of what's missing from FactoryLM — current as of 2026-04. We'd rather you know upfront.",
+    "description": "A dated list of what FactoryLM does not do yet. Current as of 2026-04. We'd rather you know upfront.",
     "url": "https://factorylm.com/limitations",
     "publisher": {
       "@type": "Organization",
@@ -178,10 +178,10 @@ export function renderLimitations(
   ${head(
     {
       title: "What FactoryLM doesn't do (yet) — Limitations",
-      description: "An honest list of what's missing from FactoryLM — current as of 2026-04. We'd rather you know upfront.",
+      description: "A dated list of what FactoryLM does not do yet. Current as of 2026-04. We'd rather you know upfront.",
       canonical: "https://factorylm.com/limitations",
       ogTitle: "What FactoryLM doesn't do (yet)",
-      ogDescription: "An honest list of what's missing — we'd rather you know upfront than be surprised on day 7.",
+      ogDescription: "A dated list of what is missing — we'd rather you know upfront than be surprised on day 7.",
       jsonLd,
     },
     reqUrl,
@@ -194,7 +194,7 @@ export function renderLimitations(
 
   <section class="fl-lim-hero">
     <div class="fl-lim-hero-inner">
-      <p class="fl-lim-eyebrow">Honest by design</p>
+      <p class="fl-lim-eyebrow">Dated list</p>
       <h1 class="fl-lim-h1">What FactoryLM doesn't do (yet)</h1>
       <p class="fl-lim-sub">We'd rather you know upfront than be surprised on day 7.</p>
     </div>
@@ -210,7 +210,7 @@ export function renderLimitations(
   <div class="fl-lim-cta">
     ${btnPrimary("Talk to Mike", { href: TALK_TO_MIKE_HREF, cta: "lim-cta-talk" })}
     <p>
-      Spotted something we're not honest about?
+      Spotted something missing from this list?
       <a href="mailto:mike@factorylm.com">Email mike@factorylm.com</a> — we'll add it.
     </p>
   </div>
