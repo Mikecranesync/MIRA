@@ -139,6 +139,8 @@ export type Job = {
   noPassages?: true;
   /** The project's equipment was typed in but never confirmed. */
   unconfirmed?: true;
+  /** The UNS path of the machine the project is bound to, when a person confirmed that binding. */
+  boundMachine?: string;
   /** Set when main is known to get this row wrong. The row then counts as FAIL. */
   knownFail?: { tracked: string; why: string };
 };

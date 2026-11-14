@@ -14,6 +14,7 @@ import {
   unlistedModelRefusalText,
   type ManualVerdict,
   coverDeclaredNumbers,
+  printPackCover,
   manualCoversNumber,
   otherProductRefusalText,
   excludedTablesRefusalText,
@@ -1422,5 +1423,51 @@ describe("what a cover declares it is for (numbers the detector does not read)",
     expect(text).toContain("set up for the Allen-Bradley Micro820");
     expect(text).toMatch(/name it in the question/);
     expect(text).toMatch(/add the Allen-Bradley Micro820 manual/);
+  });
+});
+
+// A machine's own print set. The recogniser only reads the cover; admission is decided in
+// manual-rag.ts against the project's bound machine (bench-project.ts P-82..P-95).
+describe("printPackCover \u2014 the Print Pack build's own cover, and nothing looser", () => {
+  const PATH = "enterprise.garage.demo_cell.cv_101";
+  const PACK = "MIRA Print Pack  -  Verified Machine Print Pack";
+  const cover = (title: string, pack: string, scope: string, uns = `UNS path: ${PATH}`) =>
+    `${title}\n${pack}\nApproval tier:  X\n${scope}\n${uns}\nSite: a`;
+  const labels = (heading: string) => coverDeclaredNumbers(heading).map((n) => n.label);
+
+  it("reads the tag and the path when every line agrees", () => {
+    expect(printPackCover(cover("CV-101  -  Garage conveyor (Conv_Simple)", PACK, "This pack documents CV-101 only. 14 devices")))
+      .toEqual({ tag: "CV-101", unsPath: PATH });
+  });
+  it("reads the build's em dash as well as the hyphen a PDF text layer gives back", () => {
+    const h = cover("CV-101 \u2014 Garage conveyor", "MIRA Print Pack \u2014 Verified Machine Print Pack", "This pack documents CV-101 only. 3 devices");
+    expect(printPackCover(h)?.tag).toBe("CV-101");
+  });
+  it("reading the cover admits nothing: the tag is still the number the cover declares", () => {
+    expect(labels(cover("CV-101  -  Garage conveyor", PACK, "This pack documents CV-101 only. 14 devices"))).toEqual(["CV-101"]);
+  });
+  it("the cover the hub's own PDF text reader gets from the example print set is one", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { extractText, getDocumentProxy } = await import("unpdf");
+    const file = new URL("../../../../machine-print-pack/examples/cv-101/prints/CV-101_print_set.pdf", import.meta.url);
+    const { text } = await extractText(await getDocumentProxy(new Uint8Array(readFileSync(file))), { mergePages: false });
+    expect(printPackCover(text[0].slice(0, 2000))).toEqual({ tag: "CV-101", unsPath: PATH });
+  });
+  it("control: the same title without the pack's lines is not a print set cover", () => {
+    expect(printPackCover("CV-101\nTechnical Specifications\nInputs\nOutputs")).toBeNull();
+  });
+  it("control: a scope sentence for another tag than the title is not a print set cover", () => {
+    expect(printPackCover(cover("RX420  -  Compact drive", PACK, "This pack documents CV-101 only. 3 devices"))).toBeNull();
+  });
+  it("control: no scope sentence, or the pack line anywhere but the second line, is not a print set cover", () => {
+    expect(printPackCover(`RX420  -  Compact drive\n${PACK}\nRatings\nUNS path: ${PATH}`)).toBeNull();
+    expect(printPackCover(`RX420  -  Compact drive\nRatings\n${PACK}\nThis pack documents RX420 only.\nUNS path: ${PATH}`)).toBeNull();
+  });
+  it("control: a tag that only begins the title's first word is not that title's tag", () => {
+    expect(printPackCover(cover("CV-1012  -  Another line", PACK, "This pack documents CV-101 only. 3 devices"))).toBeNull();
+  });
+  it("control: no UNS path line, or one written before the scope sentence, is not a print set cover", () => {
+    expect(printPackCover(cover("CV-101  -  Garage conveyor", PACK, "This pack documents CV-101 only. 3 devices", "Site: b"))).toBeNull();
+    expect(printPackCover(`CV-101  -  Garage conveyor\n${PACK}\nUNS path: ${PATH}\nThis pack documents CV-101 only. 3 devices\nSite: a`)).toBeNull();
   });
 });

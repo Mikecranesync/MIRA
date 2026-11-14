@@ -8,6 +8,7 @@ import { ambiguousSiblingModels } from "@/capabilities/named-model-mismatch";
 import { returnsToRecord } from "@/capabilities/conversation-subject";
 import {
   coverDeclaredNumbers,
+  printPackCover,
   isTitleLine,
   manualAnswersFor,
   manualCoversNumber,
@@ -1609,6 +1610,14 @@ export async function retrieveNodeChunks(
      *  with the model's own unreadable numbers, under the same confirmation
      *  rule as `identity.model` (#5369). */
     catalogNumber?: string | null;
+    /** The UNS path of the machine this project is bound to, and only when a
+     *  person confirmed that binding; null or absent otherwise. Read by one
+     *  rule: a Print Pack print set whose cover gives this same path is the
+     *  drawings of the project's own machine, so the number on its cover (the
+     *  machine's asset tag) is not "another product" when the project's record
+     *  is one of the machine's parts. No path here, or another path on the
+     *  cover, and the print set is judged like any other cover. */
+    machineUnsPath?: string | null;
     /** How the notebook's identity was established. Model-less questions are
      *  scoped to `identity.model` ONLY when this is `user_confirmed` or
      *  `verified`: an OCR `candidate` can misread a nameplate, and scoping to a
@@ -2535,6 +2544,10 @@ export async function retrieveNodeChunks(
       };
     } else delete opts.diagnostics.otherProductRefusal;
   };
+  // Compared exactly, and only when it is a plain lowercase path: folding case
+  // would let a look-alike letter in a cover stand for the machine's own.
+  const boundPath = opts.machineUnsPath?.trim() ?? "";
+  const ownMachineUnsPath = /^[a-z0-9_.]+$/.test(boundPath) ? boundPath : null;
   const coverIdentitiesOf = (filename: string, heading: string): Set<string> => {
     const title = affirmativeModelIdentities(filename, heading);
     return title.size === 0 && coverIsAmbiguous(heading) ? ambiguousCoverIdentities(heading) : title;
@@ -2549,6 +2562,7 @@ export async function retrieveNodeChunks(
    *   - the cover gives only catalog numbers, none of them the notebook's. */
   const declaresOnlyOtherProducts = (filename: string, heading: string, writtenAs: PhotoDocumentKind | null): string[] | null => {
     if (productWrittenBody(heading, writtenAs) !== null) return null;
+    if (ownMachineUnsPath !== null && printPackCover(heading)?.unsPath === ownMachineUnsPath) return null;
     if (questionNumbers.some((asked) => manualCoversNumber(asked, heading, filename, writtenAs))) return null;
     const names = coverIdentitiesOf(filename, heading);
     const numbers = coverDeclaredNumbers(heading, writtenAs);
