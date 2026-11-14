@@ -8,8 +8,12 @@
 //   - corrected/superseded reading absent from the current answer scope, kept in history
 //   - tenant isolation
 //
-// The last section also runs the real `retrieveNodeChunks` with the validator's returned ids,
-// in the route's own call shape, with the approved-retrieval gate on and off.
+// The last section also runs the real `retrieveNodeChunks` with the approved-retrieval gate on
+// and off; two of its eight tests feed it the validator's returned ids, the rest hand-built
+// ids as controls. It is the MINIMAL call, not the route's: the route also passes the
+// notebook's confirmed identity, carried subject queries, a rewritten query and diagnostics,
+// none of which are passed here, and the seeded passages carry no maker or model, so model
+// scoping and other-product refusal never run. The vector and IDF lanes are forced off.
 //
 // WHAT THIS IS NOT: it does not run the chat route, the model call, or a generated answer.
 // That the route hands retrieval exactly the validator's returned ids (not the client's) is
@@ -181,7 +185,7 @@ const OLD_TEXT = "Nameplate reading: rated current 4.2 amps, serial number 49849
 const NEW_TEXT = "Nameplate reading: rated current 2.4 amps, serial number 49849";
 const QUESTION = "what is the rated current on the nameplate";
 
-/** The route's own retrieval call shape for a notebook turn (route.ts, retrieveNodeChunks). */
+/** Minimal retrieval call: the scope options the route passes, none of its identity/subject options. */
 async function retrieve(docIds: string[], approved: string[] = docIds, tenant: string = TENANT) {
   const chunks = await withTenantContext(tenant, (c) =>
     retrieveNodeChunks(c, tenant, QUESTION, {
@@ -312,9 +316,12 @@ describe("pilot path: another tenant's notebook and sources are out of reach", (
   it("history lookups do not cross the tenant line", async () => {
     expect(await getSourceResolution(OTHER_TENANT, NB, OLD)).toBeNull();
     expect((await originFileIdsByDoc(OTHER_TENANT, NB, [OLD])).size).toBe(0);
-    // OBSERVED: listSources does not itself check that the notebook belongs to the caller; it
-    // filters source rows by tenant. So the other tenant, asking about this notebook's id, gets
-    // back only the row that is its own (the planted one) and none of this tenant's sources.
+  });
+
+  it("OBSERVED, not an endorsement: listSources filters rows by tenant but does not check who owns the notebook", async () => {
+    // The other tenant, asking about this notebook's id, gets back the one row that is its own
+    // (the planted one) and none of this tenant's sources. No data crosses; the notebook check
+    // is left to the caller.
     const theirs = (await listSources(OTHER_TENANT, NB)).map((s) => s.docId);
     expect(theirs).toEqual([FOREIGN]);
     for (const s of SOURCES) expect(theirs).not.toContain(s.doc);
@@ -327,6 +334,8 @@ describe("pilot path: what retrieval returns for the scope the validator hands i
   for (const gate of ["on", "off"] as const) {
     describe(`approved-retrieval gate ${gate}`, () => {
       beforeAll(() => {
+        delete process.env.NOTEBOOK_HYBRID_RETRIEVAL; // text-search lane only, whatever the runner has set
+        delete process.env.NOTEBOOK_LEXICAL_V2;
         if (gate === "on") process.env.MIRA_ENFORCE_APPROVED_RETRIEVAL = "true";
         else delete process.env.MIRA_ENFORCE_APPROVED_RETRIEVAL;
       });
@@ -344,7 +353,7 @@ describe("pilot path: what retrieval returns for the scope the validator hands i
         expect(got.map((g) => g.docId)).toEqual(gate === "on" ? [] : [NEW]);
       });
 
-      it("another tenant handing in this tenant's document id retrieves nothing; this tenant retrieves it", async () => {
+      it("another tenant handing in this tenant's document id retrieves nothing; this tenant retrieves it (which layer holds is not singled out)", async () => {
         expect((await retrieve([NEW])).map((g) => g.docId)).toEqual([NEW]);
         expect(await retrieve([NEW], [NEW], OTHER_TENANT)).toEqual([]);
       });

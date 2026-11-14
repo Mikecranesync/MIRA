@@ -41,7 +41,7 @@ critical gaps in the last section block it.
 Test files: **HUB-G** = `mira-hub/tests/integration/ontology/bench-context-contract.integration.test.ts` (45 tests) ·
 **HUB-P** = `mira-hub/tests/integration/ontology/bench-pilot-live-evidence.integration.test.ts` (13 pass + 1 expected failure) ·
 **PY** = `tests/test_ontology_bench_contract.py` (18 pass + 7 strict xfail) ·
-**HUB-S** = `mira-hub/tests/integration/ontology/bench-notebook-source-scope.integration.test.ts` (23 tests; approval and supersession tests mutation-checked, tenant tests not — see row 3; the last eight run real retrieval with the validator's ids) ·
+**HUB-S** = `mira-hub/tests/integration/ontology/bench-notebook-source-scope.integration.test.ts` (24 tests; approval and supersession tests mutation-checked, tenant tests not — see row 3; the last eight run real retrieval, two of them with the validator's own returned ids and six with hand-built ids as controls) ·
 **EXIST-P** = `mira-hub/src/app/api/equipment-notebooks/[id]/chat/__tests__/machine-evidence.test.ts` (re-run here: green) ·
 **PROBE-5504** = five probes run at `e649880b1` (two drives of one model; confirm one, the other stays unconfirmed; correction keeps history; history is append-only for the application role; other tenant sees nothing through the store and through row-level security).
 
@@ -97,8 +97,12 @@ Stated plainly, by where the proof stands:
   in the approved set is withheld; with the gate **off it is served** (observed — the gate is an
   environment setting: read on 2026-11-14 it is `true` in the staging configuration and unset in
   the dev configuration, with a compose default of `false`; production was not read). Another tenant
-  handing in this tenant's document id retrieves nothing. Text-search lane only: no embeddings,
-  no re-ranking, two one-passage documents.
+  handing in this tenant's document id retrieves nothing (the tenant predicate and row-level
+  security both apply; no mutation was run on retrieval, so which one holds is not singled
+  out). This is the **minimal** retrieval call, not the route's: the route also passes the
+  notebook's confirmed identity, carried subject queries and a rewritten query; none are passed
+  here and the two one-passage test documents carry no maker or model, so model scoping and
+  other-product refusal never run. Text-search lane only (vector and IDF lanes forced off).
 - **Still not demonstrated:** the chat route itself on a real database, the model call, and a
   generated answer. The route's hand-off of the validator's ids to retrieval is shown with a
   mocked validator only.
@@ -194,7 +198,7 @@ compliance with any external standard, and nothing here should be quoted that wa
 
 - Independent review required for this work: **not obtained.** A governed Codex round needs
   the owner's authorization; none was requested or spent.
-- One read-only second-model read of this branch **as of `5fdb5f700`** was run as evidence only. The three commits after it (notebook source scope, bench links, these corrections) have had **no** second read; an advisor pass found three over-claims and a read-only second read (same model family, **PARTIAL**, ran no tests) found six more — one tenant test true by its own seed data, a missing positive control, titles that named a reader the test never called. All corrected in the last two commits. That second read did not cover the final corrections themselves, nor the retrieval section added after it. Label: **PARTIAL**
+- One read-only second-model read of this branch **as of `5fdb5f700`** was run as evidence only. The three commits after it (notebook source scope, bench links, these corrections) have had **no** second read; an advisor pass found three over-claims and a read-only second read (same model family, **PARTIAL**, ran no tests) found six more — one tenant test true by its own seed data, a missing positive control, titles that named a reader the test never called. All corrected in the last two commits. That second read did not cover the final corrections themselves, nor the retrieval section added after it. A third read of that section (same terms) found the "route's own call shape" wording overstated and three smaller slips; corrected. Mutation results quoted on this page were run by hand and are not reproducible from the diff. Label: **PARTIAL**
   (same model family as the author). It ran no tests. It found no vacuous test; it did find
   seven places where a test or this page claimed more than it exercised. All seven were
   accepted and corrected (the open-window gap above, the Ignition entry point, the
