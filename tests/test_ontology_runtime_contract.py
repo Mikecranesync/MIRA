@@ -23,6 +23,7 @@ from __future__ import annotations
 import ast
 import importlib.util
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -533,7 +534,9 @@ def pg():
         pytest.skip(f"no local PostgreSQL binaries ({found}); the database contract is NOT checked")
     bins = {n: str(p) for n, p in found.items()}
     root = tempfile.mkdtemp(prefix="mo")
-    data, port = str(Path(root) / "d"), 54329
+    # No TCP listener is opened (listen_addresses=''), so this number only names the socket file
+    # inside the private directory. It is still made per-process so nothing is shared by name.
+    data, port = str(Path(root) / "d"), 20000 + os.getpid() % 40000
     try:
         subprocess.run(
             [
