@@ -790,6 +790,13 @@ describe("every question's scope is checked against the saved choice", () => {
     noProviderNoRetrieval();
   });
 
+  it("a whole-machine question with no version, against a saved clear that has one, is a 409", async () => {
+    storeMock.getSelectionState.mockResolvedValue({ selection: null, version: 5 });
+    const res = await ask("what is the rated current", wholeMachine(null));
+    expect(res.status).toBe(409);
+    noProviderNoRetrieval();
+  });
+
   it("cleared on another screen: the version the screen read must be the saved one", async () => {
     storeMock.getSelectionState.mockResolvedValue({ selection: null, version: 5 });
     const stale = await ask("what is the rated current", wholeMachine(4));
