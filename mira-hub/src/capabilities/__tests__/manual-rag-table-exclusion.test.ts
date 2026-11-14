@@ -201,6 +201,29 @@ describe("retrieveNodeChunks excludes another model's table passages when the re
         expect(out.map((c) => c.content)).not.toContain(siblingColumn.content);
       });
 
+      // #5493 (Codex r2 on #5490, F2): a mixed dash run in front of the phrase, as typed on a phone,
+      // is still a return — as this question and as an earlier open one.
+      it("a mixed dash run before 'back to mine' is still a return, in this question and in an earlier one", async () => {
+        const typed = ["ok\u2014-back to mine, what frame size is it", "ok\u2013-back to mine, what frame size is it"];
+        for (const question of typed) {
+          const diagnostics: Record<string, unknown> = {};
+          const { client, calls } = makeClient(rows());
+          const out = await retrieveNodeChunks(client, "t-1", question, scoped({ diagnostics, subjectQueries: ["what about the GS13N-20P2, same thing?", "hey what supply voltage does this drive need"] }));
+          expect(diagnostics.siblingOfRecordAsk, question).toBeUndefined();
+          expect(retrieved(calls), question).toBeGreaterThan(0);
+          expect(out.map((c) => c.content), question).toContain(ownColumn.content);
+          expect(out.map((c) => c.content), question).not.toContain(siblingColumn.content);
+        }
+        for (const earlier of typed) {
+          const diagnostics: Record<string, unknown> = {};
+          const { client, calls } = makeClient(rows());
+          const out = await retrieveNodeChunks(client, "t-1", "and how much does it weigh?", scoped({ diagnostics, subjectQueries: [earlier, "what about the GS13N-20P2, same thing?", "hey what supply voltage does this drive need"] }));
+          expect(diagnostics.siblingOfRecordAsk, earlier).toBeUndefined();
+          expect(retrieved(calls), earlier).toBeGreaterThan(0);
+          expect(out.map((c) => c.content), earlier).toContain(ownColumn.content);
+        }
+      });
+
       it("a return read in an earlier open question ends the carry for the questions after it too", async () => {
         // The return itself may be refused for some other reason and stay open; the next bare
         // follow-up must not read past it to the look-alike and refuse once more.
@@ -247,6 +270,12 @@ describe("retrieveNodeChunks excludes another model's table passages when the re
           // #5467 (Codex r5 on #5464, F1): a "?" inside a run of separators is still a question.
           "ok back to mine...? What is its rated input current?",
           "back to mine!? what is its VT current",
+          // Codex r1 on #5490 (F1): a mixed dash run ("—-", "–-") leaves no clause of its own,
+          // so neither the "?" after it nor the reversal after it is hidden.
+          "back to mine\u2014-? What is its rated input current?",
+          "back to mine\u2014-actually wait, what is its VT current",
+          "back to mine\u2013-? What is its rated input current?",
+          "back to mine\u2013-actually wait, what is its VT current",
         ];
         for (const question of negated) {
           const diagnostics: Record<string, unknown> = {};

@@ -315,11 +315,18 @@ describe("metaFor — identity is server-owned", () => {
 });
 
 describe("enabledDocIds / historyRows / groundingLineFor", () => {
-  it("cites only enabled, non-rejected sources", () => {
+  it("cites only sources that are switched on AND approved (the server's rule)", () => {
     expect(enabledDocIds([
       { docId: "a", enabledByDefault: true, matchState: "user_confirmed" },
       { docId: "b", enabledByDefault: false, matchState: "user_confirmed" },
       { docId: "c", enabledByDefault: true, matchState: "rejected" },
+      { docId: "v", enabledByDefault: true, matchState: "verified" },
+    ])).toEqual(["a", "v"]);
+  });
+  it("#5456: a switched-on suggestion is never sent; the server would refuse the whole turn", () => {
+    expect(enabledDocIds([
+      { docId: "a", enabledByDefault: true, matchState: "user_confirmed" },
+      { docId: "s", enabledByDefault: true, matchState: "candidate" },
     ])).toEqual(["a"]);
   });
   it("the notebook's own sources are every non-rejected source, enabled or not (#4025 basis caption)", () => {

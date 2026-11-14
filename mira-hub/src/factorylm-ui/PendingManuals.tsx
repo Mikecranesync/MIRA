@@ -9,6 +9,7 @@
  * running. A file nothing is reading says so and offers Upload again.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { NoticeLine, useExpiringNotices } from "./expiring-notices";
 import { API_BASE } from "@/lib/config";
 import { POLL_INTERVAL_MS, POLL_MAX, type SetupDeps } from "./new-project-setup-logic";
 import { addPendingManual, approvedFiles, checkPendingManuals, knownSources, outstandingAttached, reuploadPendingManual, settleAttachments, type PendingManual } from "./pending-manuals";
@@ -35,7 +36,8 @@ const btn = { marginLeft: 8, padding: "2px 10px", border: "1px solid var(--fl-li
 export function PendingManuals({ notebookId, nodeId, sources, approved, onAttached }: Props) {
   const [pending, setPending] = useState<PendingManual[]>([]);
   const [failed, setFailed] = useState<Record<string, string>>({});
-  const [added, setAdded] = useState<string[]>([]);
+  /** "Was added" confirmations; they clear themselves, since this box floats over the conversation. */
+  const { notices: added, add: addNotice, drop: dropNotice } = useExpiringNotices();
   const [status, setStatus] = useState<"checking" | "idle" | "capped" | "error">("checking");
   const [run, setRun] = useState(0);
   const latest = useRef({ sources, approved, onAttached });
@@ -64,7 +66,7 @@ export function PendingManuals({ notebookId, nodeId, sources, approved, onAttach
         setFailed(Object.fromEntries(r.failed.map((f) => [f.fileId, f.message])));
         if (r.attached.length) {
           settleAttachments(r, attachedDocs.current, retried.current);
-          setAdded((a) => [...a, ...r.attached.map((id) => names.current.get(id) ?? "Document")]);
+          for (const id of r.attached) addNotice(id, names.current.get(id) ?? "Document");
           latest.current.onAttached(r.attached);
         }
         if (!r.pending.some((p) => p.state === "reading")) { setStatus("idle"); return; }
@@ -73,7 +75,7 @@ export function PendingManuals({ notebookId, nodeId, sources, approved, onAttach
       if (alive) setStatus("capped");
     })();
     return () => { alive = false; };
-  }, [notebookId, nodeId, run]);
+  }, [notebookId, nodeId, run, addNotice]);
 
   const add = useCallback(async (p: PendingManual) => {
     if (!p.docId) return;
@@ -81,10 +83,10 @@ export function PendingManuals({ notebookId, nodeId, sources, approved, onAttach
     if (r.ok) {
       attachedDocs.current.add(p.docId);
       setPending((list) => list.filter((x) => x.fileId !== p.fileId));
-      setAdded((a) => [...a, p.filename]);
+      addNotice(p.fileId, p.filename);
       latest.current.onAttached([p.fileId]);
     } else setFailed((f) => ({ ...f, [p.fileId]: r.message ?? "" }));
-  }, [notebookId]);
+  }, [notebookId, addNotice]);
 
   // Upload again: the technician picked the PDF again; the tap is the approval to add it here.
   const reupload = useCallback(async (p: PendingManual, file: File | undefined) => {
@@ -97,7 +99,7 @@ export function PendingManuals({ notebookId, nodeId, sources, approved, onAttach
       attachedDocs.current.add(r.docId);
       // Name the file that was added, and re-read the project rather than drop the
       // row: a different PDF leaves the original unread on the server (#5316 device run).
-      setAdded((a) => [...a, r.filename]);
+      addNotice(r.docId, r.filename);
       latest.current.onAttached([p.fileId]);
       setRun((n) => n + 1);
     } else if (r.kind === "reading") {
@@ -107,13 +109,13 @@ export function PendingManuals({ notebookId, nodeId, sources, approved, onAttach
       setRun((n) => n + 1);
     }
     else setFailed((f) => ({ ...f, [p.fileId]: r.message }));
-  }, [notebookId, nodeId]);
+  }, [notebookId, nodeId, addNotice]);
 
   if (pending.length === 0 && added.length === 0 && status !== "error") return null;
   const again = <button type="button" style={btn} onClick={() => setRun((n) => n + 1)}>Check again</button>;
   return (
     <section aria-label="Project documents not searchable yet" data-testid="pending-manuals" style={box}>
-      {added.map((name, i) => <p key={`a${i}`} style={{ margin: "4px 0" }}>{name} was added as a source of this project.</p>)}
+      {added.map((n) => <NoticeLine key={`a${n.id}`} onDismiss={() => dropNotice(n.id)}>{n.text} was added as a source of this project.</NoticeLine>)}
       {pending.map((p) => (
         <p key={p.fileId} style={{ margin: "4px 0" }}>
           {p.state === "reading"

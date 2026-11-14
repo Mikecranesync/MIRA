@@ -71,6 +71,7 @@ import { wantsPacketOpen } from "./work-packet-view";
 import { LivingSheet } from "./LivingSheet";
 import { NewProjectSetup } from "./NewProjectSetup";
 import { PendingManuals } from "./PendingManuals";
+import { ParkedSources } from "./ParkedSources";
 import { clearSheetDataForSignOut, localStorageStore, parseSheetReceipts } from "./living-sheet-client";
 import { NOTEBOOK_ACTIONS_STYLE } from "./notebook-actions";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
@@ -85,6 +86,7 @@ import {
   detailQueryFor,
   draftAfterSendSucceeded,
   enabledDocIds,
+  reloadIfStillSelected,
   errorMessageFor,
   fixtureFor,
   groundingLineFor,
@@ -1101,8 +1103,19 @@ export function HubShellHost() {
           onAttached={(fileIds) => {
             const nb = selection.notebookId;
             setPendingApprovals((m) => ({ ...m, [nb]: (m[nb] ?? []).filter((id) => !fileIds.includes(id)) }));
-            void loadDetail(selection);
+            // Same late-completion race as the box below: never re-read a project that is no longer on screen.
+            void reloadIfStillSelected(hostMountedRef.current ? selectionRef.current : null, selection, loadDetail);
           }}
+        />
+      )}
+      {/* #5456: sources of this project that answers do not use (a manual saved switched off), each
+          with its one next step; renders nothing when every source is in use. */}
+      {selection && detail && detail.notebook.id === selection.notebookId && (
+        <ParkedSources
+          key={`parked-sources|${selection.notebookId}`}
+          notebookId={selection.notebookId}
+          sources={detail.sources}
+          onChanged={() => reloadIfStillSelected(hostMountedRef.current ? selectionRef.current : null, selection, loadDetail)}
         />
       )}
       </div>

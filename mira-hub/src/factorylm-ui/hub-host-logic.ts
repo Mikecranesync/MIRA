@@ -329,10 +329,29 @@ export function metaFor(
   };
 }
 
-/** Which sources a turn may cite: enabled by default and not rejected — the
- *  classic notebook's rule, unchanged. */
+/** Which sources a turn may cite: switched on AND approved — the server's own
+ *  rule (`validateChatSources`). Sending a switched-on source that is only a
+ *  suggestion makes the server refuse the whole turn (`source_not_in_notebook`),
+ *  so one unapproved document would break every question in the project (#5456). */
 export function enabledDocIds(sources: readonly Pick<NotebookSource, "docId" | "enabledByDefault" | "matchState">[]): string[] {
-  return sources.filter((s) => s.enabledByDefault && s.matchState !== "rejected").map((s) => s.docId);
+  return sources.filter((s) => s.enabledByDefault && (s.matchState === "user_confirmed" || s.matchState === "verified")).map((s) => s.docId);
+}
+
+/**
+ * Re-read a project only while it is still the one on screen (#5456, Codex r1
+ * F1 on #5488). A write started in project A can finish after the technician
+ * opened project B; re-reading A then would be the newest load, and A's detail
+ * would be committed under B's selection. Resolves false without loading when
+ * `sel` is no longer the current selection (another project, another thread,
+ * or the host is gone).
+ */
+export function reloadIfStillSelected(
+  current: Pick<HubSelection, "notebookId" | "threadId"> | null,
+  sel: HubSelection,
+  load: (sel: HubSelection) => Promise<boolean>,
+): Promise<boolean> {
+  if (!current || current.notebookId !== sel.notebookId || current.threadId !== sel.threadId) return Promise.resolve(false);
+  return load(sel);
 }
 
 /** The notebook's own sources, enabled or not — what the basis chip may call

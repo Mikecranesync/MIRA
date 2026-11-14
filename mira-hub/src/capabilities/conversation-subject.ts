@@ -13,6 +13,8 @@
 //
 // Pure: stored turns in, question texts out. No model, no network, no clock.
 
+import { foldForDetection } from "./detection-fold";
+
 export type PriorTurn = {
   question?: string | null;
   answerStatus?: string | null;
@@ -117,23 +119,54 @@ const REVERSAL_OPENERS = /^(?:no|nope|nah|never ?mind|actually|wait|hold on|hang
 /** Clause boundaries: , ; : . ! ? a spaced dash, or a line break (kept, to read the terminator). */
 const CLAUSE_BOUNDARY = /(\s[-–—]\s|[,;:.!?]|\n)/;
 
+/**
+ * #5485: what a phone keyboard types must read like its plain spelling. The shared
+ * detection fold (#3980) handles hyphen look-alikes, curly apostrophes, Unicode spaces
+ * and invisible characters. Dashes and the ellipsis stay with this reader, as #3980
+ * requires of every grammar that splits on them:
+ *  - U+2026 HORIZONTAL ELLIPSIS decomposes to "..." (iOS types it for "...").
+ *  - An em dash (U+2014; iOS types it for "--"), en dash (U+2013; Gboard), horizontal
+ *    bar (U+2015) or small em dash (U+FE58, <small> U+2014), or two or more hyphens, is a
+ *    dash at any spacing, so it is written as the spaced dash CLAUSE_BOUNDARY reads.
+ *    A single hyphen is not: it sits inside catalog numbers and "mine-ish".
+ * Full-width punctuation is out of scope and still fails closed.
+ */
+const TYPED_ELLIPSIS = /…/g;
+const TYPED_DASH = /\s*(?:[–—―﹘]|-{2,})\s*/g;
+
+/** A clause "has words" when it holds a letter or a digit; anything else is punctuation. */
+const HAS_WORDS = /[\p{L}\p{N}]/u;
+const LEADING_NON_WORD = /^[^\p{L}\p{N}]+/u;
+/** After asTyped every dash form is "-", so a token of hyphens only is a piece of a dash run. */
+const HYPHENS_ONLY = /^-+$/;
+
+function asTyped(question: string): string {
+  return foldForDetection(question).replace(TYPED_ELLIPSIS, "...").replace(TYPED_DASH, " - ");
+}
+
 export function returnsToRecord(question: string): boolean {
-  const parts = question.split(CLAUSE_BOUNDARY);
+  const parts = asTyped(question).split(CLAUSE_BOUNDARY);
   for (let i = 0; i < parts.length; i += 2) {
     const clause = parts[i];
     if (!RETURN_TO_OWN_UNIT.test(clause)) continue;
-    const rest = clause.replace(RETURN_TO_OWN_UNIT, " ").toLowerCase().split(/\s+/).filter(Boolean);
+    // #5493 (Codex r2 on #5490, F2): a dash run in front of the phrase ("ok—-back", "ok - -back")
+    // leaves a token of hyphens only; it is part of the dash, not a word. Only hyphen tokens are
+    // dropped: other punctuation (a full-width "？") still fails closed.
+    const rest = clause.replace(RETURN_TO_OWN_UNIT, " ").toLowerCase().split(/\s+/).filter((word) => word && !HYPHENS_ONLY.test(word));
     if (!rest.every((word) => CONNECTIVES.has(word))) return false;
     // Codex r4 on #5464 (F1): ".\n" or "..." leaves empty clauses between the separators;
-    // the next clause is the next one with words in it.
+    // the next clause is the next one with words in it. Codex r1 on #5490 (F1): a clause of
+    // punctuation only ("-" left between "—" and "-?") has no words either, so it is part of
+    // the separator run too, whatever the punctuation is.
     let next = i + 2;
-    while (next < parts.length && parts[next].trim() === "") next += 2;
+    while (next < parts.length && !HAS_WORDS.test(parts[next])) next += 2;
     // #5467 (Codex r5 on #5464, F1): the whole run of separators up to that clause is the
-    // terminator. A "?" anywhere in it ("...?", "!?") makes this a question, not a return.
+    // terminator. A "?" anywhere in it ("...?", "!?", "—-?") makes this a question, not a return.
     for (let sep = i + 1; sep < next; sep += 2) {
       if ((parts[sep] ?? "").includes("?")) return false;
     }
-    return !REVERSAL_OPENERS.test((parts[next] ?? "").trim());
+    // The reversal is read from the next clause's first word, past any punctuation in front of it.
+    return !REVERSAL_OPENERS.test((parts[next] ?? "").replace(LEADING_NON_WORD, ""));
   }
   return false;
 }
