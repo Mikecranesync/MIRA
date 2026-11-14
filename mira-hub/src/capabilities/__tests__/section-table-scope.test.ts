@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mergeOutputTypes, readOutputTypes, SectionTableScope, sectionTableLayout } from "../section-table-scope";
+import { mergeOutputTypes, readOutputTypes, SectionTableScope, sectionTableLayout, withoutSharedTableHeader } from "../section-table-scope";
 import { pageWithTables, type LayoutItem, type TableChunk } from "../table-rows";
 import ml1100Ratings from "../__fixtures__/table-rows/ml1100-p114-p120-ratings-scope.json";
 import micro820 from "../__fixtures__/table-rows/micro820-in009-p16-20-scope.json";
@@ -127,6 +127,62 @@ describe("#5503 complete per-model output circuit evidence", () => {
   });
 });
 
+describe("#5503 shared-header family prerequisites and common-category proof", () => {
+  function realDcLayout() {
+    const page = micro820.pages.find((page) => page.page === 18)!;
+    // Actual DC-input caption/header/body only, ending before the next relay caption.
+    return sectionTableLayout(page.items.filter((item) => item.y > 360 && item.y < 640))!;
+  }
+  it.each([
+    { name: "empty observed inventory", outputs: new Map<string, boolean | null>() },
+    { name: "mixed-family inventory", outputs: new Map<string, boolean | null>([[QWB, true], ["1763L16BWA", true]]) },
+    { name: "only foreign-family inventory", outputs: new Map<string, boolean | null>([["1763L16BWA", true], ["1763L16BBB", true]]) },
+  ])("real shared-header evidence with $name remains unresolved through headerless continuation", ({ outputs }) => {
+    const layout = realDcLayout();
+    expect(layout.headings.find((heading) => heading.text === "DC Input Specifications")?.sharedHeader).toBeDefined();
+    const scope = new SectionTableScope(outputs, true);
+    const parts = scope.split(layout.text, layout);
+    const input = parts.find((part) => part.text.includes("Voltage category"))!;
+    expect(input.scope).toBe("unresolved");
+    expect(scope.split("Unheaded DC-input evidence continues on the next page.", null)[0].scope).toBe("unresolved");
+  });
+  it.each(["AC", "DC", "Relay", "Transistor"])("bare category %s without an input/output/channel noun cannot establish a common group", (label) => {
+    const items = [row("DC Input Specifications", 700), row("Attribute", 680, 8, 100), row(label, 680, 8, 250), row("Isolated inputs", 680, 8, 430),
+      row("2080-LC20-20QWB(R)", 668, 8, 430), row("Voltage category", 640, 8, 100), row("24V DC", 640, 8, 250), row("48V DC", 640, 8, 430)];
+    const layout = sectionTableLayout(items)!;
+    const scope = new SectionTableScope(readOutputTypes(complete()));
+    const parts = scope.split(layout.text, layout);
+    const input = parts.find((part) => part.text.includes("Voltage category"))!;
+    expect(input.scope).toBe("unresolved");
+    expect(input.sharedHeader).toBeUndefined();
+    expect(scope.split("Unheaded current values continue.", null)[0].scope).toBe("unresolved");
+  });
+  it("the real noun-bearing non-isolated and isolated input header retains its shared proof", () => {
+    const layout = realDcLayout();
+    const parts = new SectionTableScope(readOutputTypes(complete())).split(layout.text, layout);
+    const input = parts.find((part) => part.text.includes("Voltage category"))!;
+    expect(input.scope).toBe("shared");
+    expect(input.sharedHeader).toContain("Non-isolated");
+    expect(input.sharedHeader).toContain("2080-LC20-20QWB(R)");
+    expect(input.models).toBeUndefined();
+  });
+});
+
+describe("#5503 shared-header text occurrence", () => {
+  it("strips the actual whole-line mixed header while preserving an earlier inline reference", () => {
+    const page = micro820.pages.find((page) => page.page === 18)!;
+    const layout = sectionTableLayout(page.items)!;
+    const header = layout.headings.find((heading) => heading.text === "DC Input Specifications")!.sharedHeader!;
+    expect(header).toBeDefined();
+    const inline = `The earlier note quotes ${header.replace(/\n/g, " ")} for comparison.`;
+    const text = `${inline}\n${header}\nBody restricted to 2080-LC20-20QWB(R) only.`;
+    const stripped = withoutSharedTableHeader(text, header);
+    expect(stripped).toContain(inline);
+    expect(stripped).not.toContain(`\n${header}\n`);
+    expect(stripped).toContain("Body restricted to 2080-LC20-20QWB(R) only.");
+  });
+});
+
 describe("#5503 derived contact-column source ownership", () => {
   it("contact annotations attach to the original last rating-row item", () => {
     const items = micro820.pages.find((page) => page.page === 19)!.items;
@@ -176,15 +232,43 @@ describe("#5503 real ML1100 rating-head preservation", () => {
       expect(table!.remainderItems).not.toContain(removed);
     }
   });
-  it("the actual p114 table remainder cannot make all-relay ML1100 inventory unresolved through a false data caption", () => {
+  it("the two common p114 relay-rating regions remain available while distinct General Output groups stay unresolved", () => {
     const page = ml1100Ratings.pages.find((p) => p.page === 114)!;
     const table = pageWithTables(page.items);
     expect(table).not.toBeNull();
-    const layout = sectionTableLayout(page.items, true, table!.remainderItems)!;
+    const contact = contactRatingTable(page.items);
+    const layout = sectionTableLayout(page.items, true, table!.remainderItems, contact ? { after: contact.lastRow, lines: columnLines(contact.rows) } : undefined)!;
     const models = ["1763L16AWA", "1763L16BWA", "1763L16BBB", "1763L16DWD"];
     const outputs = new Map(models.map((model) => [model, true] as const));
-    const parts = new SectionTableScope(outputs).split(table!.remainder, layout);
-    expect(parts.some((part) => part.scope === "unresolved")).toBe(false);
+    const parts = new SectionTableScope(outputs).split(layout.text, layout);
+    let at = 0;
+    const spans = parts.map((part) => { const start = at; at += part.text.length; return { part, start, end: at }; });
+    let lineAt = 0;
+    const lineOffsets = layout.retainedLines.map((line) => { const start = lineAt; lineAt += line.length + 1; return start; });
+    const commonHeadings = layout.headings.filter((heading) => heading.table && /^Relay Contact Ratings(?:\s*\(\d+\))?$/.test(heading.text));
+    expect(commonHeadings).toHaveLength(2);
+    const commonRegions = commonHeadings.map((heading) => spans.find((span) => lineOffsets[heading.sourceLine] >= span.start && lineOffsets[heading.sourceLine] < span.end)!.part);
+    for (const region of commonRegions) expect(region.scope).not.toBe("unresolved");
+    expect(commonRegions[0].text).toContain("15.0 A 1.5 A");
+    expect(commonRegions[1].text).toContain("30.0 A 3.0 A");
+    const general = parts.find((part) => part.text.includes("Output Specifications For Ordinary"))!;
+    expect(general.scope).toBe("unresolved");
+    // The pre-existing reader's VA-shaped false model keys are a separate
+    // limitation; this test does not attribute 1440VA/720VA to model groups.
+    for (const line of contact ? columnLines(contact.rows) : []) {
+      expect(parts.find((part) => part.text.includes(line))?.scope).not.toBe("unresolved");
+    }
+  });
+  it("real p113 single-DWD caption and pure header establish only DWD scope", () => {
+    const page = ml1100Ratings.pages.find((p) => p.page === 113)!;
+    const table = pageWithTables(page.items);
+    const layout = sectionTableLayout(page.items, true, table?.remainderItems)!;
+    const outputs = new Map(["1763L16AWA", "1763L16BWA", "1763L16BBB", "1763L16DWD"].map((model) => [model, true] as const));
+    const parts = new SectionTableScope(outputs).split(layout.text, layout);
+    const dwd = parts.find((part) => part.text.includes("Digital Input Specifications for 1763-L16DWD"))!;
+    expect(dwd).toEqual(expect.objectContaining({ scope: "section", models: ["1763L16DWD"] }));
+    expect(dwd.text).toContain("Nominal impedance");
+    expect(dwd.models).not.toContain("1763L16BBB");
   });
 });
 

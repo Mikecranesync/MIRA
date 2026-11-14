@@ -74,6 +74,22 @@ async function retrieve(model: string, rows: Row[], question = "What are the con
   return { chunks, text: chunks.map((c) => c.content).join("\n"), diagnostics, calls };
 }
 
+async function ingestHeaderAttributeTable(heads: string[], values: string[][], wrappedModel = false, rowPitch = 14, caption = "Output Specifications") {
+  const extended = structuredClone(fixture.pages);
+  const item = (str: string, x: number, y: number, size = 8) => ({ str, x, y, size, w: str.length * size * 0.45 });
+  const positions = [148, 300, 430];
+  const items = [item("21", 144, 660, 9), item("Micro820 20-Point Programmable Controllers", 162, 660, 9),
+    item(caption, 148, 620, 10), ...heads.map((head, i) => item(head, positions[i], 600)),
+    ...(wrappedModel ? [item("2080-LC20-20QWB(R)", 300, 588)] : []),
+    ...values.flatMap((row, i) => row.map((value, column) => item(value, positions[column], (wrappedModel ? 568 : 580) - i * rowPitch)))];
+  const text = ["21 Micro820 20-Point Programmable Controllers", caption, heads.join(" "),
+    ...(wrappedModel ? ["2080-LC20-20QWB(R)"] : []), ...values.map((row) => row.join(" "))].join("\n");
+  extended.push({ page: 21, text, items });
+  pdfPages.current = extended;
+  try { return (await ingestFixture()).filter((row) => row.page_start === 21); }
+  finally { pdfPages.current = null; }
+}
+
 const relay = (r: Row) => /Relay Output Specifications|Relay Contact Ratings|columns read from the page layout|Maximum switching time|10,000,000 cycles/.test(r.content);
 const p18and19 = () => stored.filter((r) => r.page_start === 18 || r.page_start === 19);
 
@@ -459,7 +475,21 @@ describe("#5503: real Micro820 sections from upload through retrieval", () => {
     const page = rows.filter((row) => row.page_start === 114);
     expect(page.length).toBeGreaterThan(0);
     expect(page.some((row) => row.content.includes("Relay Contact Ratings"))).toBe(true);
-    expect(page.some((row) => row.table_scope === "unresolved")).toBe(false);
+    const commonRelay = page.filter((row) => /15\.0 A 1\.5 A|30\.0 A 3\.0 A/.test(row.content));
+    expect(commonRelay.some((row) => row.content.includes("15.0 A 1.5 A"))).toBe(true);
+    expect(commonRelay.some((row) => row.content.includes("30.0 A 3.0 A"))).toBe(true);
+    expect(commonRelay.every((row) => row.table_scope !== "unresolved")).toBe(true);
+    const general = page.find((row) => row.content.includes("Output Specifications For Ordinary"))!;
+    expect(general.table_scope).toBe("unresolved");
+    expect(general.table_unqualified).toBe(true);
+    for (const derived of page.filter((row) => row.content.includes(COLUMN_LINE_MARK))) expect(derived.table_scope).not.toBe("unresolved");
+    const dwd = rows.filter((row) => row.page_start === 113 && row.content.includes("Digital Input Specifications for 1763-L16DWD"));
+    expect(dwd.length).toBeGreaterThan(0);
+    for (const row of dwd) {
+      expect(row.table_scope).toBe("section");
+      expect(row.table_models).toEqual(["1763L16DWD"]);
+      expect(row.table_unqualified).not.toBe(true);
+    }
     const modelRows = rows.filter((row) => row.page_start === 111 && Array.isArray(row.table_models));
     expect(modelRows.length).toBeGreaterThan(4);
   });
@@ -494,6 +524,255 @@ describe("#5503: real Micro820 sections from upload through retrieval", () => {
     expect((await retrieve("20QBB", derived)).chunks).toEqual([]);
     for (const model of ["20QWB", "20AWB"]) {
       expect((await retrieve(model, derived)).text).toContain(`${COLUMN_LINE_MARK}120 V AC row: make 15 A, break 1.5 A, continuous 2 A.`);
+    }
+  });
+
+  it.each([
+    { name: "Units last", heads: ["Attribute", "2080-LC20-20QWB(R)", "Units"], values: [["Load current, max", "2.0", "A"], ["Surge current, max", "4.0", "A"], ["Leakage current, max", "0.1", "A"]] },
+    { name: "Units middle", heads: ["Attribute", "Units", "2080-LC20-20QWB(R)"], values: [["Load current, max", "A", "2.0"], ["Surge current, max", "A", "4.0"], ["Leakage current, max", "A", "0.1"]] },
+    { name: "Units first", heads: ["Units", "Attribute", "2080-LC20-20QWB(R)"], values: [["A", "Load current, max", "2.0"], ["A", "Surge current, max", "4.0"], ["A", "Leakage current, max", "0.1"]] },
+    ...["Unit", "UOM", "SI unit", "A", "V", "Notes"].map((label) => ({ name: `decorative ${label}`, heads: ["Attribute", "2080-LC20-20QWB(R)", label], values: [["Load current, max", "2.0", label === "Notes" ? "See note" : "A"], ["Surge current, max", "4.0", label === "Notes" ? "See note" : "A"], ["Leakage current, max", "0.1", label === "Notes" ? "See note" : "A"]] })),
+  ])("a single sibling model with $name remains QWB-only through upload and retrieval", async ({ heads, values }) => {
+    // Unit/decorative labels are not model identities and do not establish a
+    // second applicable value group. The sole actual model is QWB.
+    expect(modelNumbersIn(heads.join(" ")).map((model) => model.key)).toEqual(["2080LC2020QWB"]);
+    const rows = await ingestHeaderAttributeTable(heads, values);
+    expect(rows.some((row) => row.content.includes("2.0"))).toBe(true);
+    const qbb = await retrieve("20QBB", rows, "What is the maximum load current of the output?");
+    expect(qbb.text).not.toContain("2.0");
+    expect((await retrieve("20AWB", rows, "What is the maximum load current of the output?")).text).not.toContain("2.0");
+    expect((await retrieve("20QWB", rows, "What is the maximum load current of the output?")).text).toContain("2.0");
+  });
+
+  it("a wrapped sole QWB model sublabel above a value column plus Units remains QWB-only", async () => {
+    const rows = await ingestHeaderAttributeTable(["Attribute", "Outputs", "Units"], [
+      ["Load current, max", "2.0", "A"], ["Surge current, max", "4.0", "A"], ["Leakage current, max", "0.1", "A"],
+    ], true);
+    expect((await retrieve("20QBB", rows, "What is the maximum load current of the output?")).text).not.toContain("2.0");
+    expect((await retrieve("20QWB", rows, "What is the maximum load current of the output?")).text).toContain("2.0");
+  });
+
+  it("two sibling value columns remain independently scoped by the actual model-table reader", async () => {
+    const rows = await ingestHeaderAttributeTable(["Attribute", "2080-LC20-20QWB(R)", "2080-LC20-20AWB"], [
+      ["Load current, max", "2.0 A", "1.5 A"], ["Surge current, max", "4.0 A", "3.0 A"], ["Leakage current, max", "0.1 A", "0.2 A"],
+    ]);
+    const question = "What is the maximum load current of the output?";
+    const qbb = await retrieve("20QBB", rows, question);
+    expect(qbb.text).not.toMatch(/2\.0 A|1\.5 A/);
+    const qwb = await retrieve("20QWB", rows, question);
+    expect(qwb.text).toContain("2.0 A");
+    expect(qwb.text).not.toContain("1.5 A");
+    const awb = await retrieve("20AWB", rows, question);
+    expect(awb.text).toContain("1.5 A");
+    expect(awb.text).not.toContain("2.0 A");
+  });
+
+  it("a long single-QWB-plus-Units table keeps applicability after its header leaves the text window", async () => {
+    const values = Array.from({ length: 64 }, (_, i) => [`Output current characteristic ${String(i).padStart(2, "0")}`, `${i + 2}.0`, "A"]);
+    values.push(["Last output row sentinel", "6.75", "A"]);
+    const rows = await ingestHeaderAttributeTable(["Attribute", "2080-LC20-20QWB(R)", "Units"], values, false, 7);
+    const tableRows = rows.filter((row) => /Output current characteristic|Last output row sentinel/.test(row.content));
+    expect(tableRows.length).toBeGreaterThan(2);
+    expect(tableRows.map((row) => row.content).join("\n").length).toBeGreaterThan(2000);
+    expect(tableRows.some((row) => !row.content.includes("2080-LC20-20QWB"))).toBe(true);
+    for (const row of tableRows) {
+      expect((await retrieve("20QBB", [row], "What is the output current characteristic?")).chunks).toEqual([]);
+    }
+    const own = await retrieve("20QWB", tableRows, "What is the last output row sentinel?");
+    expect(own.text).toContain("Last output row sentinel");
+    expect(own.text).toContain("6.75");
+  });
+
+  it("staggered wrapped QWB/AWB qualifiers on both value groups do not establish a common group", async () => {
+    const extended = structuredClone(fixture.pages);
+    const item = (str: string, x: number, y: number, size = 8) => ({ str, x, y, size, w: str.length * size * 0.45 });
+    const items = [item("21", 144, 660, 9), item("Micro820 20-Point Programmable Controllers", 162, 660, 9),
+      item("Output Specifications", 148, 620, 10), item("Attribute", 148, 600), item("Normal", 300, 600), item("Isolated", 430, 600),
+      item("2080-LC20-20QWB(R)", 300, 588), item("2080-LC20-20AWB(R)", 430, 576),
+      item("Load current, max", 148, 556), item("2.0 A", 300, 556), item("1.5 A", 430, 556),
+      item("Surge current, max", 148, 542), item("4.0 A", 300, 542), item("3.0 A", 430, 542)];
+    // The labels are on different baselines, so the existing model-table
+    // reader does not already split them into per-model chunks.
+    expect(pageWithTables(items)).toBeNull();
+    const text = ["21 Micro820 20-Point Programmable Controllers", "Output Specifications", "Attribute Normal Isolated",
+      "2080-LC20-20QWB(R)", "2080-LC20-20AWB(R)", "Load current, max 2.0 A 1.5 A", "Surge current, max 4.0 A 3.0 A"].join("\n");
+    extended.push({ page: 21, text, items });
+    pdfPages.current = extended;
+    let rows: Row[];
+    try { rows = await ingestFixture(); } finally { pdfPages.current = null; }
+    const table = rows.filter((row) => row.page_start === 21);
+    const qbb = await retrieve("20QBB", table, "What is the maximum load current?");
+    expect(qbb.text).not.toMatch(/2\.0 A|1\.5 A/);
+    // A family-union scope cannot attribute flat adjacent values to an
+    // individual variant. Withholding the ambiguous grid is acceptable.
+    const qwb = await retrieve("20QWB", table, "What is the maximum load current?");
+    expect(qwb.text).not.toContain("1.5 A");
+    const awb = await retrieve("20AWB", table, "What is the maximum load current?");
+    expect(awb.text).not.toContain("2.0 A");
+  });
+
+  it("an explicit QBB caption conflicting with a QWB-only header stays unresolved across long windows", async () => {
+    const values = Array.from({ length: 64 }, (_, i) => [`Conflicting output characteristic ${String(i).padStart(2, "0")}`, `${i + 2}.0`, "A"]);
+    values.push(["Contradiction last-row sentinel", "6.75", "A"]);
+    const rows = await ingestHeaderAttributeTable(["Attribute", "2080-LC20-20QWB(R)", "Units"], values, false, 7, "Output Specifications for 2080-LC20-20QBB(R)");
+    const data = rows.filter((row) => /Conflicting output characteristic|Contradiction last-row sentinel/.test(row.content));
+    expect(data.length).toBeGreaterThan(2);
+    expect(data.some((row) => row.content.includes("Contradiction last-row sentinel"))).toBe(true);
+    for (const row of data) {
+      expect(row.table_scope).toBe("unresolved");
+      expect(row.table_unqualified).toBe(true);
+      for (const model of ["20QBB", "20QWB"]) {
+        expect((await retrieve(model, [row], "What is the output current characteristic?")).chunks).toEqual([]);
+      }
+    }
+  });
+
+  it.each([
+    { name: "a catalog before every value-column origin", label: "Normal", qualifierX: 230, unresolved: true },
+    ...["Method", "Condition", "Reference", "⊕"].map((label) => ({ name: `an unsupported ${label} common-column label`, label, qualifierX: 430, unresolved: label === "⊕" })),
+  ])("header proof with $name cannot justify shared applicability", async ({ label, qualifierX, unresolved }) => {
+    const extended = structuredClone(fixture.pages);
+    const item = (str: string, x: number, y: number, size = 8) => ({ str, x, y, size, w: str.length * size * 0.45 });
+    const items = [item("21", 144, 660, 9), item("Micro820 20-Point Programmable Controllers", 162, 660, 9),
+      item("Output Specifications", 148, 620, 10), item("Attribute", 148, 600), item(label, 300, 600), item("Isolated", 430, 600),
+      item("2080-LC20-20QWB(R)", qualifierX, 588),
+      item("Scoped current sentinel", 148, 568), item("unproven common value", 300, 568), item("2.0 A", 430, 568),
+      item("Scoped surge sentinel", 148, 554), item("unproven common value", 300, 554), item("4.0 A", 430, 554)];
+    const text = ["21 Micro820 20-Point Programmable Controllers", "Output Specifications", `Attribute ${label} Isolated`,
+      "2080-LC20-20QWB(R)", "Scoped current sentinel unproven common value 2.0 A", "Scoped surge sentinel unproven common value 4.0 A"].join("\n");
+    extended.push({ page: 21, text, items });
+    pdfPages.current = extended;
+    let rows: Row[];
+    try { rows = await ingestFixture(); } finally { pdfPages.current = null; }
+    const data = rows.filter((row) => row.page_start === 21 && row.content.includes("Scoped current sentinel"));
+    expect(data.length).toBeGreaterThan(0);
+    expect(data.every((row) => row.table_scope !== "shared")).toBe(true);
+    if (unresolved) expect(data.every((row) => row.table_scope === "unresolved" && row.table_unqualified === true)).toBe(true);
+    expect((await retrieve("20QBB", data, "What is the scoped current sentinel?")).text).not.toContain("2.0 A");
+  });
+
+  it("a QBB-only header preserves QBB values and excludes the relay variants in the reverse direction", async () => {
+    const rows = await ingestHeaderAttributeTable(["Attribute", "2080-LC20-20QBB(R)", "Units"], [
+      ["Load current, max", "2.0", "A"], ["Surge current, max", "4.0", "A"], ["Leakage current, max", "0.1", "A"],
+    ]);
+    const question = "What is the maximum load current of the output?";
+    expect((await retrieve("20QBB", rows, question)).text).toContain("2.0");
+    for (const model of ["20QWB", "20AWB"]) expect((await retrieve(model, rows, question)).text).not.toContain("2.0");
+  });
+
+  it.each([
+    { name: "Units before Attribute", heads: ["Units", "Attribute", "2080-LC20-20QWB(R)"], prefix: "A" },
+    { name: "Remarks before Description", heads: ["Remarks", "Description", "2080-LC20-20QWB(R)"], prefix: "See note" },
+  ])("a long sole-model header with $name preserves QWB applicability beyond the header window", async ({ heads, prefix }) => {
+    const values = Array.from({ length: 64 }, (_, i) => [prefix, `Output current characteristic ${String(i).padStart(2, "0")}`, `${i + 2}.0`]);
+    values.push([prefix, "Last reverse-header sentinel", "6.75"]);
+    const rows = await ingestHeaderAttributeTable(heads, values, false, 7);
+    const data = rows.filter((row) => /Output current characteristic|Last reverse-header sentinel/.test(row.content));
+    expect(data.length).toBeGreaterThan(2);
+    expect(data.some((row) => !row.content.includes("2080-LC20-20QWB"))).toBe(true);
+    for (const row of data) expect((await retrieve("20QBB", [row], "What is the output current characteristic?")).chunks).toEqual([]);
+    const own = await retrieve("20QWB", data, "What is the last reverse-header sentinel?");
+    expect(own.text).toContain("Last reverse-header sentinel");
+    expect(own.text).toContain("6.75");
+  });
+
+  it("a foreign-family explicit caption conflicts with a QWB-only header instead of being silently discarded", async () => {
+    const rows = await ingestHeaderAttributeTable(["Attribute", "2080-LC20-20QWB(R)", "Units"], [
+      ["Load current, max", "2.0", "A"], ["Surge current, max", "4.0", "A"], ["Leakage current, max", "0.1", "A"],
+    ], false, 14, "Output Specifications for 1763-L16BWA");
+    const data = rows.filter((row) => row.content.includes("Load current, max"));
+    expect(data.length).toBeGreaterThan(0);
+    for (const model of ["20QBB", "20QWB"]) {
+      expect((await retrieve(model, data, "What is the maximum load current?")).text).not.toContain("2.0");
+    }
+    expect(data.every((row) => row.table_scope === "unresolved" && row.table_unqualified === true)).toBe(true);
+  });
+
+  it.each([null, false])("an explicit unresolved scope cannot be admitted when its redundant unqualified flag is %s", async (flag) => {
+    const row = { ...stored[0], page_start: 19, content: "Output applicability is unresolved for the models listed here.",
+      table_models: ["2080LC2020QBB", "2080LC2020QWB"], table_scope: "unresolved", table_unqualified: flag, table_header: null };
+    for (const model of ["20QBB", "20QWB"]) {
+      const result = await retrieve(model, [row], "What is the output applicability?");
+      expect(result.chunks).toEqual([]);
+      expect(result.diagnostics.excludedTables).toEqual(expect.arrayContaining([
+        expect.objectContaining({ page: 19, section: true, unqualified: true }),
+      ]));
+    }
+  });
+
+  it("long rejected catalog prose in header geometry remains unresolved after its words leave the chunk", async () => {
+    const extended = structuredClone(fixture.pages);
+    const item = (str: string, x: number, y: number, size = 8) => ({ str, x, y, size, w: str.length * size * 0.45 });
+    const body = Array.from({ length: 64 }, (_, i) => [`Output current characteristic ${String(i).padStart(2, "0")}`, "common data", `${i + 2}.0 A`]);
+    body.push(["Last rejected-prose sentinel", "common data", "6.75 A"]);
+    const items = [item("21", 144, 660, 9), item("Micro820 20-Point Programmable Controllers", 162, 660, 9),
+      item("Output Specifications", 148, 620, 10), item("Attribute", 148, 600), item("Normal", 300, 600), item("Isolated", 430, 600),
+      item("Only 2080-LC20-20QWB(R) outputs", 430, 588),
+      ...body.flatMap((row, i) => row.map((value, column) => item(value, [148, 300, 430][column], 568 - i * 7)))];
+    const text = ["21 Micro820 20-Point Programmable Controllers", "Output Specifications", "Attribute Normal Isolated", "Only 2080-LC20-20QWB(R) outputs", ...body.map((row) => row.join(" "))].join("\n");
+    extended.push({ page: 21, text, items });
+    pdfPages.current = extended;
+    let rows: Row[];
+    try { rows = await ingestFixture(); } finally { pdfPages.current = null; }
+    const data = rows.filter((row) => row.page_start === 21 && /Output current characteristic|Last rejected-prose sentinel/.test(row.content));
+    expect(data.length).toBeGreaterThan(2);
+    expect(data.some((row) => !row.content.includes("2080-LC20-20QWB"))).toBe(true);
+    expect(data.some((row) => row.content.includes("Last rejected-prose sentinel"))).toBe(true);
+    for (const row of data) {
+      expect(row.table_scope).toBe("unresolved");
+      for (const model of ["20QBB", "20QWB"]) expect((await retrieve(model, [row], "What is the output current characteristic?")).chunks).toEqual([]);
+    }
+  });
+
+  it("a wrapped leading value column preserves QWB-only scope through every long text window", async () => {
+    const extended = structuredClone(fixture.pages);
+    const item = (str: string, x: number, y: number, size = 8) => ({ str, x, y, size, w: str.length * size * 0.45 });
+    const body = Array.from({ length: 64 }, (_, i) => [`${i + 2}.0`, `Output current characteristic ${String(i).padStart(2, "0")}`, "A"]);
+    body.push(["6.75", "Last leading-value sentinel", "A"]);
+    const items = [item("21", 144, 660, 9), item("Micro820 20-Point Programmable Controllers", 162, 660, 9),
+      item("Output Specifications", 148, 620, 10), item("Outputs", 148, 600), item("Attribute", 300, 600), item("Units", 430, 600),
+      item("2080-LC20-20QWB(R)", 148, 588),
+      ...body.flatMap((row, i) => row.map((value, column) => item(value, [148, 300, 430][column], 568 - i * 7)))];
+    const text = ["21 Micro820 20-Point Programmable Controllers", "Output Specifications", "Outputs Attribute Units", "2080-LC20-20QWB(R)", ...body.map((row) => row.join(" "))].join("\n");
+    extended.push({ page: 21, text, items });
+    pdfPages.current = extended;
+    let rows: Row[];
+    try { rows = await ingestFixture(); } finally { pdfPages.current = null; }
+    const data = rows.filter((row) => row.page_start === 21 && /Output current characteristic|Last leading-value sentinel/.test(row.content));
+    expect(data.length).toBeGreaterThan(2);
+    expect(data.some((row) => !row.content.includes("2080-LC20-20QWB"))).toBe(true);
+    for (const row of data) expect((await retrieve("20QBB", [row], "What is the output current characteristic?")).chunks).toEqual([]);
+    const own = await retrieve("20QWB", data, "What is the last leading-value sentinel?");
+    expect(own.text).toContain("Last leading-value sentinel");
+    expect(own.text).toContain("6.75");
+  });
+
+  it.each([null, false])("an unresolved empty model list remains excluded with duplicate flag %s while ordinary empty tags remain usable", async (flag) => {
+    const unresolved = { ...stored[0], page_start: 19, content: "Output applicability is unresolved without a readable model inventory.",
+      table_models: [], table_scope: "unresolved", table_unqualified: flag, table_header: null };
+    const ordinary = { ...unresolved, page_start: 20, table_scope: null, content: "General controller maintenance overview applies without a model-specific table." };
+    for (const model of ["20QBB", "20QWB"]) {
+      const result = await retrieve(model, [unresolved], "What is the output applicability?");
+      expect(result.chunks).toEqual([]);
+      expect(result.diagnostics.excludedTables).toEqual(expect.arrayContaining([
+        expect.objectContaining({ page: 19, models: [], section: true, unqualified: true }),
+      ]));
+      expect((await retrieve(model, [ordinary], "What is the maintenance overview?")).text).toContain(ordinary.content);
+    }
+  });
+
+  it("the real p16 writer excludes the full raw model-grid header and retains all three qualified model chunks", () => {
+    const source = fixture.pages.find((page) => page.page === 16)!;
+    const headerY = source.items.find((item) => item.str === "Attribute")!.y;
+    const rawHeader = source.items.filter((item) => Math.abs(item.y - headerY) <= 2.5 && item.str.trim()).sort((a, b) => a.x - b.x).map((item) => item.str.trim()).join(" ");
+    expect(rawHeader).toContain("2080-LC20-20AWB(R)");
+    expect(rawHeader).toContain("2080-LC20-20QBB(R)");
+    expect(rawHeader).toContain("2080-LC20-20QWB(R)");
+    const compact = (text: string) => text.replace(/\s+/g, "");
+    const page = stored.filter((row) => row.page_start === 16);
+    for (const row of page) expect(compact(row.content)).not.toContain(compact(rawHeader));
+    for (const model of ["2080LC2020AWB", "2080LC2020QBB", "2080LC2020QWB"]) {
+      expect(page.some((row) => Array.isArray(row.table_models) && row.table_models.length === 1 && row.table_models[0] === model && row.content.includes("Output circuit type"))).toBe(true);
     }
   });
 

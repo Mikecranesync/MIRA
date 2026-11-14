@@ -2637,7 +2637,7 @@ export async function retrieveNodeChunks(
   // whose own cooling method the line does not say). Reported as unresolved, so the
   // refusal names the page and never calls the record's own table another model's.
   const isUnresolvedTableLine = (r: Record<string, unknown>): boolean =>
-    r.table_unqualified === true || String(r.table_unqualified) === "true";
+    r.table_scope === "unresolved" || r.table_unqualified === true || String(r.table_unqualified) === "true";
   const excludedTableOf = (r: Record<string, unknown>): string[] | null => {
     if (!recordKey) return null;
     const tagged = tableModelsOf(r);

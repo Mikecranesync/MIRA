@@ -4,10 +4,11 @@
  */
 import { exactModelKey, type LayoutItem, type TableChunk } from "./table-rows";
 import { modelNumbersIn, sameModelFamily } from "./manual-applicability";
+import { tableUnit } from "./supporting-quote";
 
 export type SectionScope = "section" | "shared" | "unresolved";
 export type ScopedText = { text: string; models?: string[]; scope?: SectionScope; sharedHeader?: string };
-type Heading = { text: string; at: number; table: boolean; size: number; sharedHeader?: string; relayTable?: boolean; sourceLine: number };
+type Heading = { text: string; at: number; table: boolean; size: number; sharedHeader?: string; headerModels?: string[]; headerUnresolved?: boolean; headerInvalidLabels?: boolean; relayTable?: boolean; sourceLine: number };
 export type SectionLayout = { text: string; headings: Heading[]; hasTables: boolean; retainedLines: string[] };
 type OutputMap = Map<string, boolean | null>;
 
@@ -53,8 +54,9 @@ export function mergeOutputTypes(target: OutputMap, incoming: OutputMap): void {
  * Old shared markers without this proof get the normal sibling-number check. */
 export function withoutSharedTableHeader(text: string, header: unknown): string {
   if (typeof header !== "string" || !header.trim()) return text;
-  const pattern = header.trim().split(/\s+/).map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+");
-  return text.replace(new RegExp(pattern), " ");
+  const pattern = header.trim().split(/\r?\n/).map((line) => line.trim().split(/\s+/)
+    .map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("[\\t ]+")).join("[\\t ]*\\r?\\n[\\t ]*");
+  return text.replace(new RegExp(`(^|\\n)[\\t ]*${pattern}[\\t ]*(?=\\r?\\n|$)`), "$1 ");
 }
 
 /** Render every positioned item once, in page reading order. Caption positions, rather than
@@ -64,7 +66,7 @@ export function withoutSharedTableHeader(text: string, header: unknown): string 
 export function sectionTableLayout(items: readonly LayoutItem[], includeBoundaries = true, remainderItems?: readonly LayoutItem[], annotation?: { after: LayoutItem; lines: string[] }): SectionLayout | null {
   if (annotation && !items.includes(annotation.after)) throw new Error("contact-column source row is not in this page's positioned items");
   const retained = remainderItems ? new Set(remainderItems) : null;
-  const lines: Array<{ text: string; y: number; x: number; size: number; runs: number; removed: boolean; virtual: boolean }> = [];
+  const lines: Array<{ text: string; y: number; x: number; size: number; columns: Array<{ text: string; x: number; right: number }>; removed: boolean; virtual: boolean }> = [];
   const bands: LayoutItem[][] = [];
   for (const item of [...items].filter((i) => i.str.trim()).sort((a, b) => b.y - a.y || a.x - b.x)) {
     const last = bands.at(-1);
@@ -73,17 +75,22 @@ export function sectionTableLayout(items: readonly LayoutItem[], includeBoundari
   }
   for (const band of bands) {
     band.sort((a, b) => a.x - b.x);
-    const runs = band.filter((item, i) => i === 0 || item.x - (band[i - 1].x + band[i - 1].w) > 6).length;
+    const columns: Array<{ text: string; x: number; right: number }> = [];
+    for (const item of band) {
+      const last = columns.at(-1);
+      if (last && item.x - last.right <= 6) { last.text += ` ${item.str.trim()}`; last.right = item.x + item.w; }
+      else columns.push({ text: item.str.trim(), x: item.x, right: item.x + item.w });
+    }
     lines.push({ text: band.map((i) => i.str.trim()).join(" ").replace(/\s+/g, " "),
-      y: band[0].y, x: band[0].x, size: Math.max(...band.map((i) => i.size)), runs,
+      y: band[0].y, x: band[0].x, size: Math.max(...band.map((i) => i.size)), columns,
       removed: !!retained && band.every((item) => !retained.has(item)), virtual: false });
     // Derived contact columns belong to their physical source table, even when that table
     // was extracted into separate model chunks. Never append them under a later caption.
     if (annotation && band.includes(annotation.after)) {
-      for (const text of annotation.lines) lines.push({ text, y: band[0].y, x: band[0].x, size: 0, runs: 1, removed: false, virtual: true });
+      for (const text of annotation.lines) lines.push({ text, y: band[0].y, x: band[0].x, size: 0, columns: [], removed: false, virtual: true });
     }
   }
-  const captions = new Map<number, { text: string; end: number; sharedHeader?: string; relayTable: boolean }>();
+  const captions = new Map<number, { text: string; end: number; sharedHeader?: string; headerModels?: string[]; headerUnresolved?: boolean; headerInvalidLabels?: boolean; relayTable: boolean }>();
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (line.virtual || line.text.length > 200) continue;
@@ -113,13 +120,27 @@ export function sectionTableLayout(items: readonly LayoutItem[], includeBoundari
     const attributeCaption = /\b(?:Specifications|Requirements|Ratings|Relay|Contact)\b/i.test(line.text) &&
       header && header.size < line.size;
     if (!attributeCaption && !isRating) continue;
-    // A mixed header has Attribute plus at least TWO value columns. Its model labels may
-    // qualify just one sub-column, as on real DC-input p18. No header privilege for prose.
+    // Unit/annotation columns do not establish another applicability domain. A common
+    // electrical category must be positively identified; unsupported labels stay ambiguous.
     let sharedHeader: string | undefined;
-    if (header && header.runs >= 3) {
-      const headerStart = lines.indexOf(header);
-      let headerEnd = headerStart + 1;
-      while (headerEnd < lines.length && !lines[headerEnd].virtual && lines[headerEnd].x > header.x + 4 &&
+    let headerModels: string[] | undefined;
+    let headerUnresolved = false;
+    let headerInvalidLabels = false;
+    if (header) {
+      const attributeColumn = header.columns.findIndex((c) => /^(?:Attribute|Description)$/i.test(c.text));
+      const headerAt = lines.indexOf(header);
+      let headerStart = headerAt;
+      // A vertically centred Attribute cell can sit below the first model-header line.
+      while (headerStart > end + 1 && headerAt - headerStart < 3) {
+        const above = lines[headerStart - 1];
+        if (above.virtual || Math.abs(above.size - header.size) > 0.2 ||
+            above.y - lines[headerStart].y > header.size * 1.6 || modelNumbersIn(above.text).length === 0) break;
+        headerStart--;
+      }
+      let headerEnd = headerAt + 1;
+      let rejectedCatalogs: ReturnType<typeof modelNumbersIn> = [];
+      while (headerEnd < lines.length && !lines[headerEnd].virtual &&
+             (lines[headerEnd].x > header.x + 4 || modelNumbersIn(lines[headerEnd].text).length > 0) &&
              Math.abs(lines[headerEnd].size - header.size) <= 0.2 &&
              lines[headerEnd - 1].y - lines[headerEnd].y <= header.size * 1.6 &&
              header.y - lines[headerEnd].y <= 60) {
@@ -128,14 +149,72 @@ export function sectionTableLayout(items: readonly LayoutItem[], includeBoundari
           let rest = lines[headerEnd].text;
           for (const n of catalogLabels) rest = rest.replace(new RegExp(n.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), "");
           rest = rest.replace(/\([A-Z]\)/gi, "").replace(/\b(?:for|and|or|only)\b/gi, "").replace(/[\s(),;./–—-]/g, "");
-          if (rest) break; // catalog-bearing prose is not a column label, even in header typography
+          if (rest) {
+            // Reject its shared-label proof without forgetting observed ambiguity. Later
+            // windows must not lose this catalog-bearing, header-positioned restriction.
+            rejectedCatalogs = catalogLabels;
+            break;
+          }
         }
         headerEnd++;
       }
       const candidate = lines.slice(headerStart, headerEnd).map((l) => l.text).join("\n");
-      if (modelNumbersIn(candidate).length > 0) sharedHeader = candidate;
+      const numbers = [...modelNumbersIn(candidate), ...rejectedCatalogs];
+      if (numbers.length > 0) {
+        headerUnresolved = attributeColumn < 0 || rejectedCatalogs.length > 0;
+        headerInvalidLabels = rejectedCatalogs.length > 0;
+        headerModels = [...new Set(numbers.map((n) => n.key))];
+        const metadata = (label: string) => tableUnit(label) !== null || /^(?:units?(?:\s+of\s+measure)?|u\.?o\.?m\.?|si\s+units?|notes?|footnotes?|remarks?|status|reference|ref\.?|conditions?|method|tolerance)(?:\s*\([^)]*\))?$/i.test(label);
+        const catalogOnly = (text: string) => {
+          for (const n of modelNumbersIn(text)) text = text.replace(new RegExp(n.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), "");
+          return !text.replace(/\([A-Z]\)/gi, "").replace(/\b(?:for|and|or|only)\b/gi, "").replace(/[\s(),;./–—-]/g, "");
+        };
+        const categories = header.columns.filter((_column, index) => index !== attributeColumn).map((column) => ({ ...column, metadata: metadata(column.text), models: new Set<string>() }));
+        for (const above of lines.slice(headerStart, headerAt)) for (const column of above.columns) {
+          if (catalogOnly(column.text) && !categories.some((c) => Math.abs(c.x - column.x) <= 4)) {
+            categories.push({ ...column, metadata: false, models: new Set<string>() });
+          }
+        }
+        categories.sort((a, b) => a.x - b.x);
+        for (const sourceLine of lines.slice(headerStart, headerEnd)) {
+          for (const column of sourceLine.columns) {
+            const labels = modelNumbersIn(column.text);
+            if (labels.length === 0) {
+              if (sourceLine !== header) {
+                const category = categories.find((c) => Math.abs(column.x - c.x) <= 4);
+                if (category && !category.metadata) category.text += ` ${column.text}`;
+              }
+              continue;
+            }
+            if (!catalogOnly(column.text)) headerInvalidLabels = true;
+            const owner = categories.findLastIndex((c) => column.x >= c.x - 4);
+            if (owner < 0 || Math.abs(column.x - categories[owner].x) > 4 || categories[owner].metadata || !catalogOnly(column.text) ||
+                (categories[owner + 1] && column.right > categories[owner + 1].x - 4)) {
+              headerUnresolved = true;
+              continue;
+            }
+            for (const n of labels) categories[owner].models.add(n.key);
+          }
+        }
+        const values = categories.filter((c) => !c.metadata);
+        const common = values.filter((c) => c.models.size === 0);
+        const commonCategory = (label: string) => /\b(?:inputs?|outputs?|channels?)\b/i.test(label) &&
+          /^(?:(?:non[- ]?)?isolated|normal|standard|high[- ]speed|analog|digital|ac|dc|relay|transistor|sink(?:ing)?|sourc(?:e|ing)|inputs?|outputs?)\b/i.test(label) &&
+          !label.replace(/\b(?:non|isolated|normal|standard|high|speed|analog|digital|ac|dc|relay|transistor|sink|sinking|source|sourcing|inputs?|outputs?|channels?|shared|with|for|and|or|only)\b/gi, "").replace(/[\s\d(),./…–—-]/g, "");
+        // Top-level catalogs are explicit model columns, never subordinate shared labels.
+        // A fully model-qualified header scopes every later window, even after its text ends.
+        if (!headerUnresolved && values.length > 0 && common.length === 0) {
+          // Different model groups carry different flat values. Only the existing row
+          // reader can qualify those separately; residual text must not union the groups.
+          headerUnresolved = new Set(values.map((c) => [...c.models].sort().join(","))).size > 1;
+        }
+        else if (!headerUnresolved && headerStart === headerAt && modelNumbersIn(header.text).length === 0 && values.some((c) => c.models.size > 0) &&
+                 common.length > 0 && common.every((c) => commonCategory(c.text))) sharedHeader = candidate;
+        else headerUnresolved = true;
+      }
     }
     captions.set(i, { text: lines.slice(i, end + 1).map((l) => l.text).join(" "), end, sharedHeader,
+      headerModels, headerUnresolved, headerInvalidLabels,
       relayTable: isRating || /\brelay\b/i.test(line.text) });
   }
   if (captions.size === 0 && !includeBoundaries) return null;
@@ -152,6 +231,9 @@ export function sectionTableLayout(items: readonly LayoutItem[], includeBoundari
     if (!line.virtual && i > continuationEnd && (caption || (line.size >= captionSize && line.text.length < 200))) {
       headings.push({ text: caption?.text ?? line.text, at, table: !!caption, size: line.size,
         ...(caption?.sharedHeader ? { sharedHeader: caption.sharedHeader } : {}),
+        ...(caption?.headerModels ? { headerModels: caption.headerModels } : {}),
+        ...(caption?.headerUnresolved ? { headerUnresolved: true } : {}),
+        ...(caption?.headerInvalidLabels ? { headerInvalidLabels: true } : {}),
         ...(caption?.relayTable ? { relayTable: true } : {}),
         // The source ordinal applies to retained AND intentionally removed headings.
         // Identical labels and prose references cannot move a physical boundary.
@@ -198,6 +280,15 @@ export class SectionTableScope {
       this.active = {}; // a mixed-column header's privilege never crosses onto another page
       return [{ text }];
     }
+    const firstBoundary = layout.headings.find((h) => h.size >= this.headingSize);
+    if (!layout.hasTables && this.headingSize > 0 && firstBoundary?.sourceLine === 0 &&
+        layout.retainedLines[0] === firstBoundary.text) {
+      // A retained heading at the physical page top leaves no preceding continuation to
+      // protect. Reset scope while preserving the unrelated page's original text/windows.
+      this.active = {};
+      this.headingSize = firstBoundary.size;
+      return [{ text }];
+    }
     // An inherited section interrupted by a physical heading needs physical order. PDF
     // object order can put the new section's body before its heading (real p20 does this).
     // Unrelated plain pages above retain original bytes; model-table remainders stay grids-out.
@@ -227,8 +318,28 @@ export class SectionTableScope {
         const afterFor = lastFor ? h.text.slice(lastFor.index! + lastFor[0].length) : "";
         const known = [...this.outputs.keys()].flatMap((key) => modelNumbersIn(key));
         const oneFamily = known.length > 0 && known.every((n) => sameModelFamily(known[0], n));
-        const named = modelNumbersIn(afterFor).filter((n) => known.some((own) => sameModelFamily(own, n)));
-        if (named.length > 0) this.active = { models: [...new Set(named.map((n) => n.key))], scope: "section" };
+        const captionNumbers = modelNumbersIn(afterFor);
+        const named = captionNumbers.filter((n) => known.some((own) => sameModelFamily(own, n)));
+        const headerNumbers = (h.headerModels ?? []).flatMap((key) => modelNumbersIn(key));
+        const headerApplies = headerNumbers.length > 0 && (known.length === 0 || headerNumbers.some((n) => known.some((own) => sameModelFamily(own, n))));
+        const headerFamily = headerNumbers.length > 0 && headerNumbers.every((n) => sameModelFamily(headerNumbers[0], n));
+        const captionConflict = headerNumbers.length > 0 && captionNumbers.length > 0 &&
+          (headerNumbers.some((n) => !captionNumbers.some((own) => own.key === n.key)) ||
+           captionNumbers.some((n) => !sameModelFamily(headerNumbers[0], n)));
+        // A global, pure single-model header can agree with its explicit caption even
+        // when it is centred above several channel categories (real ML1100 DWD inputs).
+        const singleModelAgreement = !h.headerInvalidLabels && headerNumbers.length === 1 && captionNumbers.length > 0 &&
+          captionNumbers.every((n) => n.key === headerNumbers[0].key);
+        if (captionConflict || (headerApplies && ((!singleModelAgreement && h.headerUnresolved) || !headerFamily))) {
+          this.active = { models: [...new Set([...this.outputs.keys(), ...(h.headerModels ?? []), ...captionNumbers.map((n) => n.key)])], scope: "unresolved" };
+        } else if (headerApplies && !h.sharedHeader) this.active = { models: h.headerModels, scope: "section" };
+        else if (named.length > 0) this.active = { models: [...new Set(named.map((n) => n.key))], scope: "section" };
+        else if (h.sharedHeader && (!oneFamily || !headerFamily ||
+                 !known.every((n) => sameModelFamily(headerNumbers[0], n)))) {
+          // A rejected shared proof is uncertainty, not permission to forget the model
+          // labels when later windows no longer contain the physical header.
+          this.active = { models: [...new Set([...this.outputs.keys(), ...(h.headerModels ?? [])])], scope: "unresolved" };
+        }
         else if ((!afterFor || modelNumbersIn(afterFor).length === 0) || (h.relayTable && this.outputs.size === 0)) {
           if (h.relayTable) {
             const values = [...this.outputs.values()];
