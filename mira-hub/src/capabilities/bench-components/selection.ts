@@ -19,7 +19,9 @@
 // It never selects documents, never widens the gate and never confirms an
 // identity on its own. Pure: no database, no clock, no network.
 
+import { historyFromSavedTurns, type SavedTurnText } from "@/capabilities/conversation-history";
 import { readSubject, type PriorTurn, type SubjectRead } from "@/capabilities/conversation-subject";
+import { sanitizeHistory, type ChatHistoryTurn } from "@/lib/notebook-query";
 import type { ManualIdentity } from "@/capabilities/notebook-manual-identity";
 
 export type ComponentIdentityStatus = "unknown" | "candidate" | "user_confirmed";
@@ -126,19 +128,20 @@ export function readSubjectUnderSelection(turns: readonly SelectionTurn[], limit
 
 /**
  * What a turn under a selected component may see of the conversation before it:
- * only the questions asked under this selection (the same rule as the carry
- * above). The client's history is plain text with no turn ids, so it is cut by
- * count: the newest `run.length` questions and what followed them; nothing when
- * this is the first question under the selection. `turnIds` scopes the prior
- * technician reports the same way. Explicit numbers in the new question still
- * reach retrieval: only implicit carry from another component is dropped.
+ * only the turns the server saved under this selection (the same rule as the
+ * carry above), each contributing what the screen would (conversation-history
+ * historyFromSavedTurns). The client's history is plain text with no turn ids or
+ * component, so under a component it is never read (#5504 Codex r2 F2): a stale
+ * screen cannot carry another component's conversation, and no saved turn under
+ * the selection carries nothing. `turnIds` scopes the prior technician reports
+ * the same way. Explicit numbers in the new question still reach retrieval: only
+ * implicit carry from another component is dropped.
  */
-export function historyUnderSelection<H extends { role: "user" | "assistant" }>(
-  history: readonly H[],
-  turns: readonly (SelectionTurn & { id: string; clientRequestId?: string | null })[],
+export function historyUnderSelection(
+  turns: readonly (SelectionTurn & SavedTurnText & { id: string; clientRequestId?: string | null })[],
   selection: SelectedComponent,
   currentRequestId: string | null,
-): { history: H[]; turnIds: Set<string> } {
+): { history: ChatHistoryTurn[]; turnIds: Set<string> } {
   const since = instantMicros(selection.selectedAt);
   const run = turns.filter(
     (t) =>
@@ -147,11 +150,5 @@ export function historyUnderSelection<H extends { role: "user" | "assistant" }>(
       instantMicros(t.createdAt) > since &&
       (currentRequestId === null || t.clientRequestId !== currentRequestId),
   );
-  const turnIds = new Set(run.map((t) => t.id));
-  if (run.length === 0) return { history: [], turnIds };
-  let seen = 0;
-  for (let i = history.length - 1; i >= 0; i--) {
-    if (history[i].role === "user" && ++seen === run.length) return { history: history.slice(i), turnIds };
-  }
-  return { history: [...history], turnIds };
+  return { history: sanitizeHistory(historyFromSavedTurns(run)), turnIds: new Set(run.map((t) => t.id)) };
 }

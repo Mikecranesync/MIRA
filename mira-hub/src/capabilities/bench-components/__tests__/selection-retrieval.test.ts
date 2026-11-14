@@ -208,33 +208,33 @@ describe("componentManualsBlocked: unknown is not ready", () => {
   });
 });
 
-describe("historyUnderSelection: the conversation the model sees starts at the selection (#5504 Codex F2)", () => {
+describe("historyUnderSelection: the conversation the model sees is the saved turns under the selection (#5504 Codex F2)", () => {
   const VFD = "44444444-4444-4444-8444-444444444444";
   const sel: SelectedComponent = { componentId: VFD, revision: 2, selectedAt: "2026-11-14T04:00:00.000000Z" };
-  const history = [
-    { role: "user" as const, content: "PLC question" },
-    { role: "assistant" as const, content: "PLC answer" },
-    { role: "user" as const, content: "drive question" },
-    { role: "assistant" as const, content: "drive answer" },
-  ];
   const t = (id: string, createdAt: string, componentId: string | null, componentRevision: number | null, clientRequestId: string | null = null) =>
-    ({ id, question: id, answerStatus: "answered", basis: null, createdAt, componentId, componentRevision, clientRequestId });
+    ({ id, question: `${id} question`, answerStatus: "answered", answerText: `${id} answer`, evidence: [], basis: null, createdAt, componentId, componentRevision, clientRequestId });
 
   it("keeps only the turns asked under this component and revision since it was picked", () => {
-    const out = historyUnderSelection(history, [t("a", "2026-11-14T03:50:00.000000Z", null, null), t("b", "2026-11-14T04:05:00.000000Z", VFD, 2)], sel, null);
-    expect(out.history.map((h) => h.content)).toEqual(["drive question", "drive answer"]);
+    const out = historyUnderSelection([t("a", "2026-11-14T03:50:00.000000Z", null, null), t("b", "2026-11-14T04:05:00.000000Z", VFD, 2)], sel, null);
+    expect(out.history.map((h) => h.content)).toEqual(["b question", "b answer"]);
     expect([...out.turnIds]).toEqual(["b"]);
   });
 
   it("a turn under the older identity revision, or the request being answered now, does not count", () => {
-    const out = historyUnderSelection(history, [t("b", "2026-11-14T04:05:00.000000Z", VFD, 1), t("c", "2026-11-14T04:06:00.000000Z", VFD, 2, "req-now")], sel, "req-now");
+    const out = historyUnderSelection([t("b", "2026-11-14T04:05:00.000000Z", VFD, 1), t("c", "2026-11-14T04:06:00.000000Z", VFD, 2, "req-now")], sel, "req-now");
     expect(out.history).toEqual([]);
     expect(out.turnIds.size).toBe(0);
   });
 
-  it("control: when every turn in the chat is under the selection, the whole history is kept", () => {
-    const out = historyUnderSelection(history, [t("a", "2026-11-14T04:01:00.000000Z", VFD, 2), t("b", "2026-11-14T04:05:00.000000Z", VFD, 2)], sel, null);
-    expect(out.history).toEqual(history);
+  it("control: when every turn in the chat is under the selection, every saved exchange is kept in order", () => {
+    const out = historyUnderSelection([t("a", "2026-11-14T04:01:00.000000Z", VFD, 2), t("b", "2026-11-14T04:05:00.000000Z", VFD, 2)], sel, null);
+    expect(out.history.map((h) => h.content)).toEqual(["a question", "a answer", "b question", "b answer"]);
     expect(out.turnIds.size).toBe(2);
+  });
+
+  it("a terminal safety stop keeps its question and drops the refusal text, as the screen does", () => {
+    const stop = { ...t("s", "2026-11-14T04:05:00.000000Z", VFD, 2), evidence: [{ kind: "safety_notice", trigger: "bypass the interlock" }] };
+    const out = historyUnderSelection([stop], sel, null);
+    expect(out.history.map((h) => h.content)).toEqual(["s question"]);
   });
 });

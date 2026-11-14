@@ -248,6 +248,17 @@ run("bench component store (real Postgres, RLS)", () => {
     const selection = await getSelection(tenantA, notebookA, USER, thread);
     const turns = await listSelectionTurns(tenantA, notebookA, USER, thread, 6);
     expect(turns.map((t) => [t.componentId, t.componentRevision])).toEqual([[cid, 1]]);
+    // The panel's read leaves each answer and its evidence behind; the chat route's history asks for them (#5504 Codex r2 F2).
+    expect(turns.map((t) => [t.answerText, t.evidence])).toEqual([[null, []]]);
+    await testPool.query(
+      `UPDATE equipment_notebook_turns SET answer_text = 'ZQX saved answer', evidence = $2::jsonb WHERE client_request_id = $1::uuid`,
+      [t1, JSON.stringify([{ kind: "component_attribution", componentId: cid, revision: 1, selectionVersion: 1, label: "VFD1" }])],
+    );
+    const withAnswers = await listSelectionTurns(tenantA, notebookA, USER, thread, 6, { withAnswers: true });
+    expect(withAnswers.map((t) => [t.answerText, t.evidence])).toEqual([
+      ["ZQX saved answer", [{ kind: "component_attribution", componentId: cid, revision: 1, selectionVersion: 1, label: "VFD1" }]],
+    ]);
+    expect(await listSelectionTurns(tenantB, notebookA, USER, thread, 6, { withAnswers: true })).toEqual([]);
     expect(readSubjectUnderSelection(turns, 6, selection!).questions).toEqual([]);
     // Control: under the first pick (before the Return) the same stamped turn does carry.
     expect(readSubjectUnderSelection(turns, 6, sel.selection).questions).toEqual(["what about the GS13N-20P2, same thing?"]);

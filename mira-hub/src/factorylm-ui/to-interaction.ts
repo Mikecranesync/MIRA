@@ -36,6 +36,8 @@ import type {
   SafetyNoticeEntry,
   VisualObservationEntry,
 } from "@/lib/notebook-chat-types";
+import { componentAttributionText, isComponentAttributionEntry } from "@/capabilities/bench-components/attribution";
+import { isTerminalSafetyNotice, safetyNoticesOf } from "@/capabilities/conversation-history";
 import {
   isMachineEvidenceEntry,
   isManualSafetyStatementEntry,
@@ -45,7 +47,6 @@ import {
 } from "@/lib/notebook-chat-types";
 import { API_BASE } from "@/lib/config";
 import { viewerHref } from "./document-page-viewer-logic";
-import { ENERGIZED_ELECTRICAL_HAZARD } from "@/lib/safety-classifier";
 import { PROVIDER_EXHAUSTION_COPY } from "@/capabilities/provider-health";
 import type { PersistedTurn, StreamResult } from "@/components/equipment/notebook-chat-utils";
 import { BASIS_LABEL, splitEvidence } from "@/components/equipment/notebook-chat-utils";
@@ -248,34 +249,25 @@ const SAFETY_STOP_MESSAGE =
 const ELECTRICAL_DIRECTIVE_MESSAGE =
   "Energized electrical work: this answer is framed by the NFPA 70E directive. De-energize, lock out, and verify absence of voltage before any hands-on step.";
 
-/**
- * The notebook route persists two kinds of `safety_notice` and discriminates
- * them with its OWN sentinel, not prose (chat/route.ts: `safetyTrigger ===
- * ENERGIZED_ELECTRICAL_HAZARD`): the energized-electrical DIRECTIVE, whose
- * answer still streams and completes, carries the sentinel as its trigger; a
- * terminal refusal (input-side hard stop, or an unsafe answer rejected by
- * output validation) carries the matched phrase / violation. Mirroring that
- * rule here keeps live and re-hydrated lifecycles identical (Codex #3839 round
- * 2 F1) and keeps refusal prose out of model history (F2).
- */
-export function isTerminalSafetyNotice(entry: SafetyNoticeEntry): boolean {
-  return entry.trigger !== ENERGIZED_ELECTRICAL_HAZARD;
-}
-
-/** Every `safety_notice` entry on a persisted row (a rejected unsafe answer can carry the directive AND the violation). */
-export function safetyNoticesOf(evidence: readonly unknown[]): SafetyNoticeEntry[] {
-  return evidence.filter(isSafetyNoticeEntry);
-}
-
-export function hasTerminalSafetyStop(evidence: readonly unknown[]): boolean {
-  return safetyNoticesOf(evidence).some(isTerminalSafetyNotice);
-}
+// The terminal-safety rule lives in ONE place, shared with the server's
+// selection history (#5504 Codex r2 F2); re-exported here for existing callers.
+export { hasTerminalSafetyStop, isTerminalSafetyNotice, safetyNoticesOf } from "@/capabilities/conversation-history";
 
 /** The classic notebook draws every safety banner ABOVE the answer (`NotebookChat`
  *  `Bubble`), and the shell renders parts in array order — so notices lead, live
  *  and hydrated alike. Caught by the fidelity harness (#4439). */
 function safetyFirst(parts: InteractionPart[]): InteractionPart[] {
   return [...parts.filter((p) => p.type === "safety_notice"), ...parts.filter((p) => p.type !== "safety_notice")];
+}
+
+/**
+ * #5504 Codex r2 F1: an answer asked under a bench component names that component
+ * from its OWN record (the frame it streamed, or the saved attribution entry), never
+ * from the header, which shows what the NEXT question is about. It leads the answer,
+ * after any safety notice (`safetyFirst`), live and reloaded alike.
+ */
+function withComponentAttribution(parts: InteractionPart[], label: string | null | undefined): InteractionPart[] {
+  return label ? [{ type: "text", text: componentAttributionText(label) }, ...parts] : parts;
 }
 
 export function safetyNoticePart(entry: SafetyNoticeEntry): InteractionPart {
@@ -361,12 +353,22 @@ export function identityProposalOf(evidence: readonly unknown[]): IdentityPropos
  * plain words until the first answer text arrives, then only the text (progress is never
  * mixed into the answer, its persistence, or its citations).
  */
-export function livePartsWhileRunning(content: string, progress: ProgressStage | undefined): InteractionPart[] {
-  if (content) return [{ type: "text", text: content }];
+export function livePartsWhileRunning(
+  content: string,
+  progress: ProgressStage | undefined,
+  component?: { expected: boolean; label: string | null },
+): InteractionPart[] {
+  // A turn asked under a component holds its text until the stream has named the
+  // component, so no answer is ever on screen without the component it is about.
+  const held = component?.expected === true && !component.label;
+  if (content && !held) return withComponentAttribution([{ type: "text", text: content }], component?.label);
   return progress ? [{ type: "progress", stage: progress }] : [];
 }
 
-export function partsFromStream(result: StatusAwareStreamResult, opts: { stopped?: boolean; turnId: string; notebookDocIds?: readonly string[] }): InteractionPart[] {
+export function partsFromStream(
+  result: StatusAwareStreamResult,
+  opts: { stopped?: boolean; turnId: string; notebookDocIds?: readonly string[]; componentLabel?: string | null },
+): InteractionPart[] {
   const parts: InteractionPart[] = [];
   const truncated = !result.sawStatus;
   const stopped = opts.stopped === true;
@@ -394,7 +396,7 @@ export function partsFromStream(result: StatusAwareStreamResult, opts: { stopped
     // hydrated row uses, so live and reloaded turns render identically.
     if (result.hazardNotice) parts.push(safetyNoticePart(result.hazardNotice));
     if (result.followups.length) parts.push({ type: "followups", suggestions: result.followups });
-    return safetyFirst(parts);
+    return safetyFirst(withComponentAttribution(parts, opts.componentLabel));
   }
 
   if (stopped) {
@@ -417,7 +419,7 @@ export function partsFromStream(result: StatusAwareStreamResult, opts: { stopped
       parts.push({ type: "error", error: { code: "provider_failure", message: "The answer could not be completed.", retryable: true } });
     }
   }
-  return safetyFirst(parts);
+  return safetyFirst(withComponentAttribution(parts, opts.componentLabel));
 }
 
 /**
@@ -546,11 +548,13 @@ export function turnsFromPersisted(row: PersistedTurn & { createdAt?: string }, 
       : terminalStop
         ? "safety_stop"
         : "completed";
+  // #5504 Codex r2 F1: the saved attribution, never the header (persisted with the turn).
+  const attribution = (row.evidence as readonly unknown[]).find(isComponentAttributionEntry);
   const answer: InteractionTurn = {
     id: answerId,
     threadId,
     role: "assistant",
-    parts: safetyFirst(parts),
+    parts: safetyFirst(withComponentAttribution(parts, attribution?.label)),
     lifecycle,
     context,
     createdAt: at,

@@ -234,3 +234,95 @@ export function componentErrorMessage(code: string): string {
       return "That couldn't be saved just now. Try again.";
   }
 }
+
+export const SEND_BLOCKED_MESSAGE = "Saving the component choice — send again in a moment.";
+export const CHANGE_BLOCKED_MESSAGE = "Wait for the answer to finish, then change the component.";
+
+/**
+ * Sending and changing the component can never overlap (#5504 Codex r2): a question
+ * sent while a selection change is still saving would carry the version the header
+ * read before it, and a change made while an answer streams would move the header
+ * under that answer. One gate per conversation, enforced in the send path and in
+ * every component change itself, not only by greying out buttons.
+ *
+ * A change ends only after the panel has re-read the checklist, so the next send
+ * carries the new selection version. Single JS thread: check-and-set is atomic.
+ */
+export type BenchSendGate = {
+  /** A change may start: false while a send is in flight. */
+  tryBeginChange(): boolean;
+  endChange(): void;
+  /** A send may start: false while a change is saving. */
+  tryBeginSend(): boolean;
+  endSend(): void;
+  readonly changing: boolean;
+  readonly sending: boolean;
+};
+
+export function createBenchSendGate(): BenchSendGate {
+  let changes = 0;
+  let sends = 0;
+  return {
+    tryBeginChange() {
+      if (sends > 0) return false;
+      changes++;
+      return true;
+    },
+    endChange() {
+      if (changes > 0) changes--;
+    },
+    tryBeginSend() {
+      if (changes > 0) return false;
+      sends++;
+      return true;
+    },
+    endSend() {
+      if (sends > 0) sends--;
+    },
+    get changing() {
+      return changes > 0;
+    },
+    get sending() {
+      return sends > 0;
+    },
+  };
+}
+
+
+/**
+ * One selection change (picker, Return, Switch, Stay, clarify, confirm), exactly as the
+ * panel runs it: refused while a send is in flight, and the gate is released only after
+ * the checklist has been re-read (`load`), so the next send carries the new version.
+ */
+export async function changeSelection(opts: {
+  gate: BenchSendGate;
+  fetch: (url: string, init: RequestInit) => Promise<Response>;
+  url: string;
+  body: { threadId: string; componentId: string | null; via: string; expectedVersion: number | null; clientRequestId: string };
+  load: () => Promise<unknown>;
+}): Promise<{ ok: true } | { ok: false; message: string }> {
+  if (!opts.gate.tryBeginChange()) return { ok: false, message: CHANGE_BLOCKED_MESSAGE };
+  try {
+    const res = await opts.fetch(opts.url, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(opts.body),
+    });
+    if (!res.ok) {
+      let code = "";
+      try {
+        code = String(((await res.json()) as { error?: unknown }).error ?? "");
+      } catch {
+        /* no JSON body */
+      }
+      await opts.load();
+      return { ok: false, message: componentErrorMessage(code) };
+    }
+    await opts.load();
+    return { ok: true };
+  } catch {
+    return { ok: false, message: CONNECTION_MESSAGE };
+  } finally {
+    opts.gate.endChange();
+  }
+}

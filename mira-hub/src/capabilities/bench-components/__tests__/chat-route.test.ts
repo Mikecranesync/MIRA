@@ -213,8 +213,8 @@ describe("a confirmed component is the record for the turn", () => {
   it("the model sees only the conversation asked under this selection, not another component's topic", async () => {
     ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
     storeMock.listSelectionTurns.mockResolvedValue([
-      { id: "t1", question: HISTORY[0].content, answerStatus: "answered", basis: "documents", createdAt: "2026-11-14T03:50:00.000Z", componentId: null, componentRevision: null, clientRequestId: null },
-      { id: "t2", question: HISTORY[2].content, answerStatus: "insufficient_evidence", basis: null, createdAt: "2026-11-14T04:05:00.000Z", componentId: VFD, componentRevision: 2, clientRequestId: null },
+      { id: "t1", question: HISTORY[0].content, answerStatus: "answered", basis: "documents", createdAt: "2026-11-14T03:50:00.000Z", componentId: null, componentRevision: null, clientRequestId: null, answerText: null, evidence: [] },
+      { id: "t2", question: HISTORY[2].content, answerStatus: "insufficient_evidence", basis: null, createdAt: "2026-11-14T04:05:00.000Z", componentId: VFD, componentRevision: 2, clientRequestId: null, answerText: null, evidence: [] },
     ]);
     await frames(await ask("and its fuse size?", { ...under(VFD, 3), history: HISTORY }));
     const text = providerText();
@@ -226,12 +226,79 @@ describe("a confirmed component is the record for the turn", () => {
   it("the first question under a selection carries no earlier conversation at all", async () => {
     ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
     storeMock.listSelectionTurns.mockResolvedValue([
-      { id: "t1", question: HISTORY[0].content, answerStatus: "answered", basis: "documents", createdAt: "2026-11-14T03:50:00.000Z", componentId: null, componentRevision: null, clientRequestId: null },
+      { id: "t1", question: HISTORY[0].content, answerStatus: "answered", basis: "documents", createdAt: "2026-11-14T03:50:00.000Z", componentId: null, componentRevision: null, clientRequestId: null, answerText: null, evidence: [] },
     ]);
     await frames(await ask("and its fuse size?", { ...under(VFD, 3), history: HISTORY }));
     const text = providerText();
     expect(text).not.toContain("P042");
     expect(text).not.toContain("GS13N-20P2");
+  });
+
+  // #5504 Codex r2 F2: the client's history is text with no turn ids, so under a component the
+  // conversation comes from the saved turns only. A marker the system prompt never contains.
+  const STALE_A = [
+    { role: "user", content: "what is the ZQX-A-ONLY-7731 setting on the drive" },
+    { role: "assistant", content: "ZQX-A-ONLY-7731 answer about the drive." },
+  ];
+  const savedUnder = (componentId: string, revision: number, id: string, question: string, answerText: string | null, extra: Record<string, unknown> = {}) => ({
+    id, question, answerStatus: "answered", basis: "documents", createdAt: "2026-11-14T04:05:00.000Z",
+    componentId, componentRevision: revision, clientRequestId: null, answerText, evidence: [], ...extra,
+  });
+  const allProviderText = () => `${systemPrompt()}\n${providerText()}`;
+
+  it("stale client history from another component never reaches retrieval, the topic hint or the model; the saved turn does", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
+    storeMock.getSelection.mockResolvedValue(selection(K1, 1, 4));
+    storeMock.listSelectionTurns.mockResolvedValue([savedUnder(K1, 1, "tb", "what is the Q1 coil voltage", "The Q1 coil is 24 V DC.")]);
+    await frames(await ask("and its auxiliary contacts?", { ...under(K1, 4), history: STALE_A }));
+    expect(allProviderText()).not.toContain("ZQX-A-ONLY-7731");
+    expect(String(ragMock.retrieveNodeChunks.mock.calls[0]?.[2] ?? "")).not.toContain("ZQX-A-ONLY-7731");
+    expect(providerText()).toContain("what is the Q1 coil voltage");
+    expect(providerText()).toContain("The Q1 coil is 24 V DC.");
+  });
+
+  it("two screens: the stale selection gets 409, and the retry under the new selection carries only its saved turns", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
+    // Screen 2 moved this conversation to Q1 (version 4) and asked one question there.
+    storeMock.getSelection.mockResolvedValue(selection(K1, 1, 4));
+    storeMock.listSelectionTurns.mockResolvedValue([savedUnder(K1, 1, "tb", "what is the Q1 coil voltage", "The Q1 coil is 24 V DC.")]);
+    // Screen 1 still shows VFD1 (version 3) and A's conversation.
+    const stale = await ask("and its fuse size?", { ...under(VFD, 3), history: STALE_A });
+    expect(stale.status).toBe(409);
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    // After the 409 it re-reads the checklist (now Q1) but still holds A's conversation text.
+    const retry = await ask("and its auxiliary contacts?", { ...under(K1, 4), history: STALE_A, clientRequestId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" });
+    await frames(retry);
+    expect(allProviderText()).not.toContain("ZQX-A-ONLY-7731");
+    expect(String(ragMock.retrieveNodeChunks.mock.calls.at(-1)?.[2] ?? "")).not.toContain("ZQX-A-ONLY-7731");
+    expect(providerText()).toContain("The Q1 coil is 24 V DC.");
+  });
+
+  it("no saved turn under the selection: nothing carries, whatever the client sends", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
+    storeMock.listSelectionTurns.mockResolvedValue([
+      // Before the pick, under another revision, and the request being answered now: none count.
+      savedUnder(VFD, 2, "t0", "asked before the pick ZQX-BEFORE", "x", { createdAt: "2026-11-14T03:59:00.000Z" }),
+      savedUnder(VFD, 1, "t1", "asked under the old revision ZQX-OLDREV", "x"),
+      savedUnder(VFD, 2, "t2", "this very request ZQX-SELF", "x", { clientRequestId: REQ }),
+    ]);
+    await frames(await ask("and its fuse size?", { ...under(VFD, 3), history: STALE_A }));
+    const call = seamMock.buildRequestBody.mock.calls.at(-1) as unknown as [unknown, { role: string; content: string }[]];
+    expect(call[1].map((m) => m.role)).toEqual(["system", "user"]);
+    expect(allProviderText()).not.toMatch(/ZQX-(A-ONLY|BEFORE|OLDREV|SELF)/);
+  });
+
+  it("saved turns follow the same rule as the screen: a failed answer and anything after a safety stop never carry", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
+    storeMock.listSelectionTurns.mockResolvedValue([
+      savedUnder(VFD, 2, "t1", "first drive question", "ZQX-ERRORED answer", { answerStatus: "error" }),
+      savedUnder(VFD, 2, "t2", "second drive question", "ZQX-GOOD answer", { createdAt: "2026-11-14T04:06:00.000Z" }),
+    ]);
+    await frames(await ask("and its fuse size?", under(VFD, 3)));
+    const text = providerText();
+    expect(text).toContain("first drive question");
+    expect(text).not.toContain("ZQX-ERRORED");
+    expect(text).toContain("ZQX-GOOD answer");
   });
 
   it("control: without a component the conversation history reaches the model as before", async () => {
@@ -244,8 +311,8 @@ describe("a confirmed component is the record for the turn", () => {
     ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
     const THREAD = "77777777-aaaa-4aaa-8aaa-777777777777";
     const turns = [
-      { id: "t1", question: "the PLC1 analog card reads zarquon volts", answerStatus: "answered", basis: "documents", createdAt: "2026-11-14T03:50:00.000Z", componentId: null, componentRevision: null, clientRequestId: null },
-      { id: "t2", question: HISTORY[2].content, answerStatus: "insufficient_evidence", basis: null, createdAt: "2026-11-14T04:05:00.000Z", componentId: VFD, componentRevision: 2, clientRequestId: null },
+      { id: "t1", question: "the PLC1 analog card reads zarquon volts", answerStatus: "answered", basis: "documents", createdAt: "2026-11-14T03:50:00.000Z", componentId: null, componentRevision: null, clientRequestId: null, answerText: null, evidence: [] },
+      { id: "t2", question: HISTORY[2].content, answerStatus: "insufficient_evidence", basis: null, createdAt: "2026-11-14T04:05:00.000Z", componentId: VFD, componentRevision: 2, clientRequestId: null, answerText: null, evidence: [] },
     ];
     storeMock.listSelectionTurns.mockResolvedValue(turns);
     nbMock.listTurns.mockResolvedValue(turns.map((t) => ({ ...t, ownerUserId: "u1" })));
@@ -259,9 +326,9 @@ describe("a confirmed component is the record for the turn", () => {
   it("only questions asked under this selection carry; an earlier question in the same chat does not", async () => {
     storeMock.listSelectionTurns.mockResolvedValue([
       // Before this pick (selected 04:00): asked about the PLC.
-      { id: "t1", question: "what is the 2080-LC50-48QWB input rating", answerStatus: "insufficient_evidence", basis: null, createdAt: "2026-11-14T03:50:00.000Z", componentId: null, componentRevision: null, clientRequestId: null },
+      { id: "t1", question: "what is the 2080-LC50-48QWB input rating", answerStatus: "insufficient_evidence", basis: null, createdAt: "2026-11-14T03:50:00.000Z", componentId: null, componentRevision: null, clientRequestId: null, answerText: null, evidence: [] },
       // Under it: a sibling ask, unanswered.
-      { id: "t2", question: "what is the GS13N-20P2 input current", answerStatus: "insufficient_evidence", basis: null, createdAt: "2026-11-14T04:05:00.000Z", componentId: VFD, componentRevision: 2, clientRequestId: null },
+      { id: "t2", question: "what is the GS13N-20P2 input current", answerStatus: "insufficient_evidence", basis: null, createdAt: "2026-11-14T04:05:00.000Z", componentId: VFD, componentRevision: 2, clientRequestId: null, answerText: null, evidence: [] },
     ]);
     await frames(await ask("and its fuse size?", under(VFD, 3)));
     const opts = retrievalOpts()!;
@@ -428,5 +495,56 @@ describe("the selection the client showed is checked, not trusted", () => {
     expect(res.status).toBe(400);
     expect(((await res.json()) as { error: string }).error).toBe(error);
     expect(nbMock.claimNotebookTurnRequest).not.toHaveBeenCalled();
+  });
+});
+
+// #5504 Codex r2 F1: an answer keeps the component it was asked under. The label is saved WITH
+// the turn from the frame the stream sent, so a reload, a retry or a later header change cannot
+// relabel it.
+describe("each answer saves the component it was asked under", () => {
+  const savedEvidence = () => {
+    const call = nbMock.recordTurn.mock.calls.at(-1) as unknown as [string, string, { evidence: unknown[] }] | undefined;
+    if (!call) throw new Error("no turn was saved");
+    return call[2].evidence;
+  };
+  const attribution = (evidence: unknown[]) => evidence.filter((e) => (e as { kind?: string }).kind === "component_attribution");
+
+  it("an answered turn saves exactly the component the stream named", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
+    const out = await frames(await ask("what does fault oC mean", under(VFD, 3)));
+    const frame = componentFrame(out)!;
+    expect(attribution(savedEvidence())).toEqual([
+      { kind: "component_attribution", componentId: VFD, revision: 2, selectionVersion: frame.selectionVersion, label: frame.label },
+    ]);
+    expect(frame.label).toContain("VFD1");
+  });
+
+  it("a held turn saves the held component too", async () => {
+    storeMock.getSelection.mockResolvedValue(selection(B1, 1, 1));
+    await frames(await ask("what voltage is this button rated for", under(B1, 1)));
+    expect(attribution(savedEvidence())).toEqual([
+      { kind: "component_attribution", componentId: B1, revision: 1, selectionVersion: 1, label: "B1 · IDEC YW1B" },
+    ]);
+  });
+
+  it("control: a turn with no component saves no attribution", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
+    await frames(await ask("what does fault oC mean"));
+    expect(attribution(savedEvidence())).toEqual([]);
+  });
+
+  it("a retried request replays the saved component frame, without the buttons", async () => {
+    nbMock.claimNotebookTurnRequest.mockResolvedValue({
+      status: "replay",
+      turn: {
+        id: "turn-row-1", question: "what does fault oC mean", answerStatus: "answered", answerText: "oC is overcurrent.",
+        enabledSourceDocIds: [DOC_A], model: "m", basis: "documents",
+        evidence: [{ kind: "component_attribution", componentId: VFD, revision: 2, selectionVersion: 3, label: "VFD1 · AutomationDirect GS11N-20P2" }],
+      },
+    });
+    const out = await frames(await ask("what does fault oC mean", under(VFD, 3)));
+    expect(componentFrame(out)).toEqual({ kind: "component", componentId: VFD, revision: 2, selectionVersion: 3, label: "VFD1 · AutomationDirect GS11N-20P2", actions: [] });
+    const at = out.findIndex((f) => f.kind === "component");
+    expect(at).toBeLessThan(out.findIndex((f) => f.kind === "content"));
   });
 });

@@ -15,12 +15,14 @@ import {
   lastAnswerNotice,
   CARD_FIELDS,
   CONNECTION_MESSAGE,
+  CHANGE_BLOCKED_MESSAGE,
   WHOLE_MACHINE,
   actionLabel,
   addRequestFor,
   askingAbout,
   cardFor,
   cardIsEmpty,
+  changeSelection,
   componentErrorMessage,
   retakeCard,
   revisionBodyFor,
@@ -28,6 +30,7 @@ import {
   selectionChangeFor,
   statusTone,
   type AddRequest,
+  type BenchSendGate,
   type BenchState,
   type Card,
   type ComponentAction,
@@ -78,6 +81,7 @@ export function BenchComponents({
   refresh,
   busy,
   frame,
+  gate,
   onState,
 }: {
   notebookId: string;
@@ -88,6 +92,8 @@ export function BenchComponents({
   busy: boolean;
   /** The component frame of this conversation's newest reply, if it had one. */
   frame: ComponentTurnFrame | null;
+  /** Shared with the host's send path: a change and a send never overlap (#5504 Codex r2). */
+  gate: BenchSendGate;
   /** The state the header shows — the host builds the chat rider from it. */
   onState: (state: BenchState | null) => void;
 }) {
@@ -130,26 +136,20 @@ export function BenchComponents({
       setSaving(true);
       setMessage(null);
       try {
-        const res = await fetch(`${base(notebookId)}selection/`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ threadId, componentId, via, expectedVersion: bench?.selectionVersion ?? null, clientRequestId: crypto.randomUUID() }),
+        const out = await changeSelection({
+          gate,
+          fetch: (url, init) => fetch(url, init),
+          url: `${base(notebookId)}selection/`,
+          body: { threadId, componentId, via, expectedVersion: bench?.selectionVersion ?? null, clientRequestId: crypto.randomUUID() },
+          load,
         });
-        if (!res.ok) {
-          setMessage(componentErrorMessage(await errorCode(res)));
-          await load();
-          return false;
-        }
-        await load();
-        return true;
-      } catch {
-        setMessage(CONNECTION_MESSAGE);
-        return false;
+        if (!out.ok) setMessage(out.message);
+        return out.ok;
       } finally {
         setSaving(false);
       }
     },
-    [notebookId, threadId, bench, load],
+    [notebookId, threadId, bench, load, gate],
   );
 
   const onAction = useCallback(
@@ -172,6 +172,10 @@ export function BenchComponents({
   const saveCard = useCallback(
     async (confirm: boolean) => {
       if (!card) return;
+      if (!gate.tryBeginChange()) {
+        setMessage(CHANGE_BLOCKED_MESSAGE);
+        return;
+      }
       setSaving(true);
       setMessage(null);
       try {
@@ -194,13 +198,18 @@ export function BenchComponents({
       } catch {
         setMessage(CONNECTION_MESSAGE);
       } finally {
+        gate.endChange();
         setSaving(false);
       }
     },
-    [card, notebookId, threadId, load],
+    [card, notebookId, threadId, load, gate],
   );
 
   const add = useCallback(async () => {
+    if (!gate.tryBeginChange()) {
+      setMessage(CHANGE_BLOCKED_MESSAGE);
+      return;
+    }
     setSaving(true);
     setMessage(null);
     try {
@@ -230,9 +239,10 @@ export function BenchComponents({
     } catch {
       setMessage(CONNECTION_MESSAGE);
     } finally {
+      gate.endChange();
       setSaving(false);
     }
-  }, [adding, bench, notebookId, load]);
+  }, [adding, bench, notebookId, load, gate]);
 
   const current = selectedComponent(bench);
   const actions = frame && frame !== handled ? frame.actions : [];

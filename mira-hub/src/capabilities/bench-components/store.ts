@@ -444,7 +444,8 @@ export async function stampTurnComponent(
 /**
  * The newest `limit` completed turns of one technician's conversation, OLDEST
  * FIRST, with the component each was asked under — the read the selection
- * carry needs (selection.ts readSubjectUnderSelection). Same visibility as
+ * carry and the selection history need (selection.ts readSubjectUnderSelection,
+ * historyUnderSelection). Same visibility as
  * listTurns: the viewer's own turns plus ownerless legacy rows.
  */
 export async function listSelectionTurns(
@@ -453,13 +454,16 @@ export async function listSelectionTurns(
   viewerUserId: string,
   threadId: string | null,
   limit: number,
-): Promise<(SelectionTurn & { id: string; clientRequestId: string | null })[]> {
+  /** The chat route's history needs each answer and its evidence; the panel's read does not. */
+  opts: { withAnswers?: boolean } = {},
+): Promise<(SelectionTurn & { id: string; clientRequestId: string | null; answerText: string | null; evidence: unknown[] })[]> {
   return withTenantContext(tenantId, async (c) => {
     const values: unknown[] = [tenantId, notebookId, limit, viewerUserId];
     const threadPredicate = threadId === null ? "AND thread_id IS NULL" : `AND thread_id = $${values.push(threadId)}`;
+    const answers = opts.withAnswers ? "answer_text, evidence" : "NULL::text AS answer_text, NULL::jsonb AS evidence";
     const res = await c.query(
-      `SELECT id, question, answer_status, basis, ${MICROS("created_at")} AS created_at_us, component_id, component_revision, client_request_id FROM (
-         SELECT id::text AS id, question, answer_status, basis, created_at, component_id::text AS component_id,
+      `SELECT id, question, answer_status, answer_text, evidence, basis, ${MICROS("created_at")} AS created_at_us, component_id, component_revision, client_request_id FROM (
+         SELECT id::text AS id, question, answer_status, ${answers}, basis, created_at, component_id::text AS component_id,
                 component_revision, client_request_id::text AS client_request_id
            FROM equipment_notebook_turns
           WHERE tenant_id = $1::uuid AND notebook_id = $2::uuid AND client_request_state = 'complete'
@@ -472,6 +476,8 @@ export async function listSelectionTurns(
       id: String(r.id),
       question: str(r.question),
       answerStatus: str(r.answer_status),
+      answerText: str(r.answer_text),
+      evidence: Array.isArray(r.evidence) ? r.evidence : [],
       basis: str(r.basis),
       createdAt: str(r.created_at_us) ?? "",
       componentId: str(r.component_id),

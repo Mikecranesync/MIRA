@@ -9,7 +9,8 @@ import type { EquipmentNotebook, NotebookSource } from "@/lib/equipment-notebook
 import { buildChatBody, isAbortError, type ChatBody, type PersistedTurn, type StreamResult } from "@/components/equipment/notebook-chat-utils";
 import { isSafetyNoticeEntry } from "@/lib/notebook-chat-types";
 import { LEGACY_THREAD_ID, machineNameFor, notebookLabel, threadItemId, type HubNotebook } from "./notebook-tree";
-import { contextFor, hasTerminalSafetyStop, threadFromPersisted, type HubNotebookMeta } from "./to-interaction";
+import { historyFromSavedTurns, type HistoryRow } from "@/capabilities/conversation-history";
+import { contextFor, threadFromPersisted, type HubNotebookMeta } from "./to-interaction";
 
 /** The shell's fixture before any notebook loads: an empty, untitled thread. */
 export const EMPTY_FIXTURE = {
@@ -368,17 +369,8 @@ export function notebookSourceDocIds(sources: readonly Pick<NotebookSource, "doc
  *  steer retrieval or the model on the next turn. A directive-framed answer
  *  (energized-electrical) is a real answer and stays. The question is kept in
  *  both cases so the thread's shape is preserved. */
-export function historyRows(rows: readonly PersistedTurn[]): { role: "user" | "assistant"; content: string; status?: "answered" | "insufficient_evidence" | "error"; stopped?: boolean }[] {
-  const out: { role: "user" | "assistant"; content: string; status?: "answered" | "insufficient_evidence" | "error"; stopped?: boolean }[] = [];
-  for (const row of rows) {
-    const stopped = row.answerStatus === "error" && !!row.answerText;
-    out.push({ role: "user", content: row.question });
-    if (hasTerminalSafetyStop(row.evidence)) continue;
-    if (row.answerText && !stopped && row.answerStatus !== "error") {
-      out.push({ role: "assistant", content: row.answerText, status: row.answerStatus as "answered" | "insufficient_evidence" });
-    }
-  }
-  return out;
+export function historyRows(rows: readonly PersistedTurn[]): HistoryRow[] {
+  return historyFromSavedTurns(rows);
 }
 
 /** The first-run line under the greeting: claims only what this notebook can do. */

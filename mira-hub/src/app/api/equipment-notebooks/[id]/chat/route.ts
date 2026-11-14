@@ -144,7 +144,8 @@ import {
 import { ambiguousModelAskText, libraryNotForAskedModelText, namedModelMismatchText, siblingOfRecordAskText, subjectOutOfReachText, type NamedModelMismatch } from "@/capabilities/named-model-mismatch";
 import { readSubject, SUBJECT_READ_STEPS } from "@/capabilities/conversation-subject";
 import { notebookManualIdentity } from "@/capabilities/notebook-manual-identity";
-import { componentTurnFrame, noDocumentsForComponentText, readComponentSelection, resolveComponentTurn, selectionMovedText, type ComponentTurn } from "@/capabilities/bench-components/chat-turn";
+import { componentAttributionEntry, isComponentAttributionEntry, type ComponentAttributionEntry } from "@/capabilities/bench-components/attribution";
+import { componentTurnFrame, noDocumentsForComponentText, readComponentSelection, resolveComponentTurn, selectionMovedText, type ComponentTurn, type ComponentTurnFrame } from "@/capabilities/bench-components/chat-turn";
 import { historyUnderSelection, readSubjectUnderSelection } from "@/capabilities/bench-components/selection";
 import { listSelectionTurns, stampTurnComponent } from "@/capabilities/bench-components/store";
 import {
@@ -1093,6 +1094,9 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
     (entry) => typeof entry === "object" && entry !== null && (entry as { kind?: unknown }).kind === "identity_dispute",
   );
   const storedProposal = turn.evidence.find(isIdentityProposalEntry) ?? null;
+  // #5504 Codex r2 F1: a replayed component answer names the same component it did live.
+  // Its buttons are not replayed (they belonged to the screen that asked).
+  const storedComponent = turn.evidence.find(isComponentAttributionEntry) ?? null;
   const basis = REPLAY_BASES.has(turn.basis as EvidenceBasis) ? turn.basis as EvidenceBasis : null;
   // The weak-evidence badge replays exactly as it was delivered: the persisted
   // marker (not a re-run of the rule) decides, and only on the basis it fired for.
@@ -1102,6 +1106,10 @@ function replayNotebookTurnResponse(turn: StoredNotebookTurn): Response {
     start(controller) {
       const emit = (frame: NotebookChatFrame) => controller.enqueue(enc.encode(sse(frame)));
       if (identityDisputed) emit(IDENTITY_DISPUTE_FRAME);
+      if (storedComponent) {
+        const { componentId, revision, selectionVersion, label } = storedComponent;
+        controller.enqueue(enc.encode(sse({ kind: "component", componentId, revision, selectionVersion, label, actions: [] } satisfies ComponentTurnFrame)));
+      }
 
       const sources: NotebookSourcesFrame = {
         kind: "sources",
@@ -1771,6 +1779,11 @@ async function handleChatTurn(
   const componentHold: { text: string; reason: string } | null =
     componentTurn?.kind === "hold" ? componentTurn : selectionMoved ? { text: selectionMovedText, reason: "selection_changed" } : null;
   const componentScope = componentTurn?.kind === "scoped" ? componentTurn : null;
+  // #5504 Codex r2 F1: the component an answer is about is saved WITH the turn, from the
+  // same frame the stream sends, so a reload, a retry replay or a later header change
+  // can never relabel it. Only the paths that stream a component frame save one.
+  const componentEntries: ComponentAttributionEntry[] = componentScope ? [componentAttributionEntry(componentTurnFrame(componentScope, false))] : [];
+  const heldComponentEntries: ComponentAttributionEntry[] = componentTurn ? [componentAttributionEntry(componentTurnFrame(componentTurn, true))] : [];
   // Under a selected component the turn sees only the conversation asked under this
   // selection: another component's topic never carries into retrieval, the topic
   // hint, prior reports or the provider's messages (#5504 Codex F2). A failed read
@@ -1780,8 +1793,7 @@ async function handleChatTurn(
   if (componentScope) {
     try {
       const scoped = historyUnderSelection(
-        history,
-        await listSelectionTurns(ctx.tenantId, notebookId, ctx.userId, threadId, 50),
+        await listSelectionTurns(ctx.tenantId, notebookId, ctx.userId, threadId, 50, { withAnswers: true }),
         componentScope.selection,
         clientRequestId ?? null,
       );
@@ -3827,6 +3839,7 @@ async function handleChatTurn(
       // history read renders the same card the live turn showed.
       evidence: [
         ...disputeEntries,
+        ...heldComponentEntries,
         // A held component turn can carry the energized-electrical notice; it is
         // persisted so a reload shows the same flag (empty on every other abstain).
         ...hazardEntries,
@@ -4972,7 +4985,7 @@ async function handleChatTurn(
             // F3); a stop is still not an answer — hydration shows no
             // observation, citation or basis on a stopped answer, and prior-look
             // grounding reads answered turns only.
-            evidence: [...hazardEntries, ...disputeEntries, ...(visualEntry ? [visualEntry] : [])],
+            evidence: [...hazardEntries, ...disputeEntries, ...componentEntries, ...(visualEntry ? [visualEntry] : [])],
             model: stoppedModel,
             basis: null,
             ...assetSnapshot,
@@ -5737,13 +5750,14 @@ async function handleChatTurn(
                   { kind: "safety_notice", trigger: outputRejected.violation } satisfies SafetyNoticeEntry,
                   { kind: "safety_stop", trigger: outputRejected.violation } satisfies SafetyStopEntry,
                   ...disputeEntries,
+                  ...componentEntries,
                   ...(visualEntry ? [visualEntry] : []),
                   ...proposalEntries,
                 ]
-              : [...hazardEntries, ...(manualSafetyEntry ? [manualSafetyEntry] : []), ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries, ...proposalEntries, ...(observedPersistEntry ? [observedPersistEntry] : []), ...(weakEntry ? [weakEntry] : [])]
+              : [...hazardEntries, ...(manualSafetyEntry ? [manualSafetyEntry] : []), ...emittedCitations, ...(machineEntry ? [machineEntry] : []), ...(visualEntry ? [visualEntry] : []), ...disputeEntries, ...componentEntries, ...proposalEntries, ...(observedPersistEntry ? [observedPersistEntry] : []), ...(weakEntry ? [weakEntry] : [])]
             // Not served: the technician's own photo still stays on their saved
             // question (#4289 F4); hydration shows no observation on a failed answer.
-            : [...hazardEntries, ...emittedCitations, ...disputeEntries, ...proposalEntries, ...(visualEntry ? [visualEntry] : []), ...providerFailureEntries],
+            : [...hazardEntries, ...emittedCitations, ...disputeEntries, ...componentEntries, ...proposalEntries, ...(visualEntry ? [visualEntry] : []), ...providerFailureEntries],
           model: servedModel,
           basis: served ? (outputRejected?.kind === "unsafe_answer" ? null : evidenceFrame.basis) : null,
           ...assetSnapshot,
