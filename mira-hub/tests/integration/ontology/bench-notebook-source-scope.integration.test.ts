@@ -15,10 +15,8 @@
 // none of which are passed here, and the seeded passages carry no maker or model, so model
 // scoping and other-product refusal never run. The vector and IDF lanes are forced off.
 //
-// WHAT THIS IS NOT: it does not run the chat route, the model call, or a generated answer.
-// That the route hands retrieval exactly the validator's returned ids (not the client's) is
-// proven with a mocked validator by
-// src/app/api/equipment-notebooks/__tests__/chat-approved-source-scope.test.ts. Retrieval here
+// WHAT THIS IS NOT: it does not run the chat route. The route itself, on the same database,
+// is in bench-notebook-chat-route.integration.test.ts (provider call replaced). Retrieval here
 // is the plain text-search lane only (no embeddings, no rerank, two one-passage documents).
 //
 // NOTE ON AN EXISTING TEST: src/lib/__tests__/provenance-canonical-evidence.integration.test.ts
@@ -181,8 +179,8 @@ async function seed() {
   );
 }
 
-const OLD_TEXT = "Nameplate reading: rated current 4.2 amps, serial number 49849";
-const NEW_TEXT = "Nameplate reading: rated current 2.4 amps, serial number 49849";
+const OLD_TEXT = "Nameplate reading: rated current 4.2 amps, serial number TEST-0001";
+const NEW_TEXT = "Nameplate reading: rated current 2.4 amps, serial number TEST-0001";
 const QUESTION = "what is the rated current on the nameplate";
 
 /** Minimal retrieval call: the scope options the route passes, none of its identity/subject options. */

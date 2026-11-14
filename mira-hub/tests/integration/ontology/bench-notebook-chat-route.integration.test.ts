@@ -13,6 +13,10 @@
 // one-passage documents. Tables this test schema lacks (turn_ingress, decision_traces) make
 // the route log "capture degraded" and carry on; that telemetry path is not exercised.
 //
+// OBSERVED, not investigated: the safety-judge request receives the same canned streamed reply,
+// which is not a verdict it can parse; the turn is still returned as "answered". What the judge
+// does with a real verdict is not exercised here.
+//
 // Nothing here is CI-enforced. Same disposable database as the other contract files.
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
@@ -48,9 +52,9 @@ const PHOTO = "5c09e000-1111-4000-8000-0000000000c0";
 const OLD = "5c09e000-2222-4000-8000-0000000000c5"; // first reading — superseded
 const NEW = "5c09e000-2222-4000-8000-0000000000c6"; // corrected reading — current
 const REJECTED = "5c09e000-2222-4000-8000-0000000000c7";
-const OLD_TEXT = "Nameplate reading: rated current 4.2 amps, serial number 49849";
-const NEW_TEXT = "Nameplate reading: rated current 2.4 amps, serial number 49849";
-const REJECTED_TEXT = "Nameplate reading: rated current 9.9 amps, serial number 49849";
+const OLD_TEXT = "Nameplate reading: rated current 4.2 amps, serial number TEST-0001";
+const NEW_TEXT = "Nameplate reading: rated current 2.4 amps, serial number TEST-0001";
+const REJECTED_TEXT = "Nameplate reading: rated current 9.9 amps, serial number TEST-0001";
 const QUESTION = "what is the rated current on the nameplate";
 
 async function cleanup() {
@@ -79,7 +83,13 @@ async function ask(sourceDocIds: string[], tenantId = TENANT) {
     .split("\n")
     .filter((l) => l.startsWith("data: {"))
     .map((l) => JSON.parse(l.slice(6)) as Record<string, unknown>);
-  return { status: res.status, text, events, prompt: sent.join("\n") };
+  // The route makes two provider calls on an answered turn: the streamed ANSWER request, then a
+  // non-streamed safety-judge request about the candidate answer. `prompt` is the answer request
+  // only, so nothing the judge is sent (which includes the candidate answer) can satisfy an assertion.
+  const bodies = sent.map((b) => JSON.parse(b) as { stream?: boolean });
+  const calls = bodies.map((b) => (b.stream ? "answer" : "judge"));
+  const prompt = sent.filter((_, i) => calls[i] === "answer").join("\n");
+  return { status: res.status, text, events, prompt, calls };
 }
 
 beforeAll(async () => {
@@ -164,8 +174,8 @@ describe("pilot path, real chat route: a corrected reading replaces the old one 
   it("asked with the SUPERSEDED reading's id, the route shows the model only the corrected reading", async () => {
     const turn = await ask([OLD]);
     expect(turn.status).toBe(200);
-    expect(sent.length).toBeGreaterThan(0);
-    expect(turn.prompt).toContain("2.4 amps");
+    expect(turn.calls).toEqual(["answer", "judge"]);
+    expect(turn.prompt).toContain(NEW_TEXT); // the full passage — the canned reply does not contain it
     expect(turn.prompt).not.toContain("4.2 amps");
     const sources = turn.events.find((e) => e.kind === "sources");
     expect(sources?.sourceSnapshot).toEqual([NEW]);
@@ -203,7 +213,7 @@ describe("pilot path, real chat route: a corrected reading replaces the old one 
     try {
       const turn = await ask([OLD]);
       expect(turn.status).toBe(200);
-      expect(turn.prompt).toContain("4.2 amps");
+      expect(turn.prompt).toContain(OLD_TEXT);
     } finally {
       await testPool.query(
         `UPDATE equipment_notebook_sources SET superseded_at = now() WHERE notebook_id = $1::uuid AND doc_id = $2::uuid`,
@@ -238,7 +248,8 @@ describe("pilot path, real chat route: refusals happen before the model is calle
 
   it("another tenant asking about this notebook is refused and nothing is sent to the model", async () => {
     const turn = await ask([NEW], OTHER_TENANT);
-    expect(turn.status).toBeGreaterThanOrEqual(400);
+    expect(turn.status).toBe(404);
+    expect(turn.text).toContain("notebook_not_found");
     expect(sent).toEqual([]);
     expect(turn.text).not.toContain("amps");
   });
@@ -246,7 +257,8 @@ describe("pilot path, real chat route: refusals happen before the model is calle
   it("positive control: this tenant's good source is answered, and the corrected text reaches the model", async () => {
     const turn = await ask([NEW]);
     expect(turn.status).toBe(200);
-    expect(turn.prompt).toContain("2.4 amps");
+    expect(turn.prompt).toContain(NEW_TEXT);
     expect(turn.prompt).not.toContain("9.9 amps");
+    expect(turn.prompt).not.toContain("4.2 amps");
   });
 });
