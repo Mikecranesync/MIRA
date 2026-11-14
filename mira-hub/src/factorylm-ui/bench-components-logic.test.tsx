@@ -95,6 +95,12 @@ describe("the confirmation card", () => {
     });
   });
 
+  it("keeps spaces at the ends of the label as typed; an all-blank label is sent as none", () => {
+    const card = cardFor(view({}));
+    expect(revisionBodyFor({ ...card, rawLabel: "  GS11N-20P2 \n" }, false, "legacy", "req-2").rawLabel).toBe("  GS11N-20P2 \n");
+    expect(revisionBodyFor({ ...card, rawLabel: "   " }, false, "legacy", "req-3").rawLabel).toBeNull();
+  });
+
   it("Retake empties every field instead of keeping what was there", () => {
     const r = retakeCard(cardFor(view({})));
     expect(r.rawLabel).toBe("");

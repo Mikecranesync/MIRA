@@ -116,7 +116,7 @@ function summaryOf(diff: DiffSegment[]): string {
 /**
  * The look-alikes of `typed` among `known` numbers, closest first. A candidate
  * is a number that is not the typed one but differs only by commonly swapped
- * characters, by up to two characters added or dropped at the end, or by one
+ * characters (any number of them: two misreads on one label happen), by up to two characters added or dropped at the end, or by one
  * character in a number of five or more. An exact match is not a look-alike
  * (see `exactMatches`).
  */
