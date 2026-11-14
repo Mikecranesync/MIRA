@@ -761,6 +761,39 @@ const FILE_PUBLICATION_RE = new RegExp(
 );
 const withoutPublicationNumbers = (stem: string) => stem.replace(FILE_PUBLICATION_RE, (_whole, front: string) => `${front.slice(0, -1)} `);
 
+const PRINT_PACK_LINE_RE = /^MIRA Print Pack\s+[-\u2013\u2014]\s+Verified Machine Print Pack\s*$/;
+const PRINT_PACK_SCOPE_RE = /^This pack documents (\S+) only\./;
+const PRINT_PACK_UNS_RE = /^UNS path:\s*(\S+)\s*$/;
+/** What a Print Pack cover says it is the drawings of. */
+export type PrintPackCover = { tag: string; unsPath: string };
+/**
+ * The machine a Print Pack cover is for, or null when the text is not such a
+ * cover. A print set is the drawings of one whole machine, written by the
+ * Print Pack build (machine-print-pack/build/pack_docs.py). The number on its
+ * title line is that machine's asset tag ("CV-101"), which the cover rule
+ * reads as a product catalog number like any other.
+ *
+ * This only READS the cover; it admits nothing. The caller compares `unsPath`
+ * with the project's own bound machine (manual-rag.ts declaresOnlyOtherProducts)
+ * and a cover for any other machine is judged as before.
+ *
+ * Every one of the build's own lines must be present and agree, in the order it
+ * writes them: the title opens with the tag, the next line is the pack line,
+ * the scope sentence names the same tag, and a UNS path line follows it.
+ * Anything else is not a print set cover.
+ */
+export function printPackCover(heading: string): PrintPackCover | null {
+  const lines = heading.split("\n").map((l) => l.trim());
+  if (lines.length < 4 || !PRINT_PACK_LINE_RE.test(lines[1])) return null;
+  const scopeAt = lines.findIndex((l, i) => i >= 2 && PRINT_PACK_SCOPE_RE.test(l));
+  if (scopeAt < 0) return null;
+  const tag = PRINT_PACK_SCOPE_RE.exec(lines[scopeAt])![1];
+  const unsPath = lines.slice(scopeAt + 1).map((l) => PRINT_PACK_UNS_RE.exec(l)?.[1]).find(Boolean);
+  if (!unsPath) return null;
+  const title = lines[0];
+  return title.startsWith(tag) && /^\s+[-\u2013\u2014]\s/.test(title.slice(tag.length)) ? { tag, unsPath } : null;
+}
+
 /**
  * The model or catalog numbers a cover DECLARES as its own product, when no
  * number was asked: "is this manual for some other product than the project's

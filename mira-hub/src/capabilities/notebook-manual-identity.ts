@@ -18,6 +18,13 @@ export type ManualIdentity = {
   identity: { manufacturer: string | null; model: string | null };
   catalogNumber: string | null;
   identityStatus: IdentityStatus | null;
+  /** The UNS path of the machine this project is bound to, when a person
+   *  confirmed that binding and the device does not dispute it this turn;
+   *  absent otherwise. It names the MACHINE, whatever part of it the identity
+   *  above records, and is read by one rule only: the machine's own Print
+   *  Pack print set is not "another product's manual" (manual-rag.ts
+   *  `machineUnsPath`). */
+  machineUnsPath?: string;
 };
 
 type NotebookIdentityFields = {
@@ -37,6 +44,7 @@ type BoundMachine =
       model?: string | null;
       /** The register's full designation (cmms_equipment.manufacturer_part_number), when it holds one. */
       catalogNumber?: string | null;
+      unsPath?: string | null;
     };
 
 const confirmed = (status: IdentityStatus | null | undefined) => status === "user_confirmed" || status === "verified";
@@ -68,10 +76,13 @@ export function confirmedCatalogNumber(identity: { catalogNumber?: string | null
  * the one this notebook is bound to, so the binding is not used this turn.
  */
 export function notebookManualIdentity(nb: NotebookIdentityFields, bound: BoundMachine, disputed = false): ManualIdentity {
+  const unsPath = !disputed && bound.state === "resolved" && bound.confirmedAt ? text(bound.unsPath) : null;
+  const machine = unsPath ? { machineUnsPath: unsPath } : {};
   const own: ManualIdentity = {
     identity: { manufacturer: nb?.manufacturer ?? null, model: nb?.model ?? null },
     catalogNumber: nb?.catalogNumber ?? null,
     identityStatus: nb?.identityStatus ?? null,
+    ...machine,
   };
   if (confirmed(own.identityStatus) && (text(own.identity.model) || text(own.catalogNumber))) return own;
   if (!disputed && bound.state === "resolved" && bound.confirmedAt && (text(bound.model) || text(bound.catalogNumber))) {
@@ -79,6 +90,7 @@ export function notebookManualIdentity(nb: NotebookIdentityFields, bound: BoundM
       identity: { manufacturer: text(bound.manufacturer), model: text(bound.model) },
       catalogNumber: text(bound.catalogNumber),
       identityStatus: "user_confirmed",
+      ...machine,
     };
   }
   return own;
