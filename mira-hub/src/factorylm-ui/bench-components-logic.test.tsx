@@ -176,6 +176,20 @@ describe("the checklist", () => {
   });
 });
 
+describe("the checklist keeps selection, applicability and readiness apart (#5504 cheap review r5)", () => {
+  const doc = (selected: boolean) => ({ docId: "d", filename: "gs10usermanual.pdf", selected, model: "covers" as const, declared: [], ready: true, readyLabel: "searchable" });
+  const row = (selected: boolean) =>
+    renderToStaticMarkup(<ComponentRow c={view({ documents: [doc(selected)], hasOwnDocument: selected })} selected={false} tally={undefined} saving={false} onAsk={vi.fn()} onCheck={vi.fn()} />);
+  it("a covering, searchable manual that is not selected for this project is not called its manual", () => {
+    const html = row(false);
+    expect(html).not.toContain("Manual: gs10usermanual.pdf");
+    expect(html).toContain("gs10usermanual.pdf names its number but is not selected for this project.");
+  });
+  it("control: the same manual, selected, is named as its manual", () => {
+    expect(row(true)).toContain("Manual: gs10usermanual.pdf");
+  });
+});
+
 describe("component frames in the chat stream", () => {
   it("reads only well-formed component frames, across chunk boundaries", async () => {
     const frame: ComponentTurnFrame = { kind: "component", componentId: VFD, revision: 2, selectionVersion: 3, label: "VFD1", actions: [{ action: "return", componentId: VFD, label: "VFD1" }] };

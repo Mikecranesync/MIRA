@@ -314,7 +314,9 @@ export function ComponentRow({ c, selected, tally, saving, onAsk, onCheck }: {
   onAsk: () => void;
   onCheck: () => void;
 }) {
-  const own = c.documents.filter((d) => d.model === "covers" && d.ready);
+  // Selected for this project, names this number, and searchable: only then is it this component's manual.
+  const own = c.documents.filter((d) => d.selected && d.model === "covers" && d.ready);
+  const unselected = c.documents.filter((d) => !d.selected && d.model === "covers");
   return (
     <li data-testid={`bench-component-${c.id}`} data-status={c.status} style={{ borderTop: "1px solid var(--fl-line)", padding: "8px 0" }}>
       <div>
@@ -327,7 +329,9 @@ export function ComponentRow({ c, selected, tally, saving, onAsk, onCheck }: {
           ? "Manuals are not checked until its identity is confirmed."
           : own.length > 0
             ? `Manual: ${own.map((d) => d.filename ?? "attached document").join(", ")}`
-            : "No attached manual names its number."}
+            : unselected.length > 0
+              ? `${unselected.map((d) => d.filename ?? "An attached document").join(", ")} names its number but is not selected for this project.`
+              : "No attached manual names its number."}
         {tally && ` · answered ${tally.answered} · refused ${tally.refused} in this chat`}
       </div>
       <div style={{ fontSize: "var(--fl-fs-sm)", color: "var(--fl-muted)" }} data-testid="bench-evidence">Evidence: {c.evidence}</div>
