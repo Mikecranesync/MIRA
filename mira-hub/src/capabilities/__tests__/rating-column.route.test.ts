@@ -110,6 +110,7 @@ vi.mock("@/capabilities/notebook-manual-acquisition", async () => {
 
 import { BASE_SYSTEM_PROMPT, POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
 import { ratingColumnText } from "@/capabilities/rating-column";
+import { COLUMN_LINE_MARK } from "../contact-ratings-table";
 import type { ResolvedAsset } from "@/lib/equipment-notebooks";
 
 // Pages 12 and 19 of Rockwell 2080-IN009B-EN-P, as stored (see rating-column.test.ts).
@@ -326,6 +327,88 @@ describe("#5466 — a ratings-table answer that does not keep the columns apart 
     const r = await ask(SERVED);
     expect(r.status).toBe("answered");
     expect(r.content).toContain("15 A");
+  });
+});
+
+describe("#5474 item 5 — a page stored with its column lines: a figure named under the wrong column is withheld", () => {
+  // The page as an upload at extraction version 4 stores it (see contact-ratings-table.ts).
+  const P19_STORED = {
+    ...P19,
+    content: P19.content.replace(
+      "125 V DC 0.22 A\n",
+      `125 V DC 0.22 A\n${COLUMN_LINE_MARK}120 V AC row: make 15 A, break 1.5 A, continuous 2 A.\n${COLUMN_LINE_MARK}240 V AC row: make 7.5 A, break 0.75 A.\n`
+        + `${COLUMN_LINE_MARK}24 V DC row: continuous 1 A; no column read for 1.0 A.\n${COLUMN_LINE_MARK}125 V DC row: no column read for 0.22 A.\n`,
+    ),
+  };
+  /** The answer served on staging 2199f449a for CV-101 S7, 2026-11-13, verbatim with its markers. */
+  const S7_SERVED =
+    "No — a 5 A, 120 V AC motor contactor coil exceeds the relay output’s 120 V AC make rating of 1.5 A and break rating of 2 A, "
+    + "so it should not be switched directly [2]. For inductive coils, use surge suppression across the coil to protect the output contacts [1].";
+  const WRONG = ratingColumnText({ rule: "wrong_column", title: "2080-IN009B-EN-P.pdf", page: 19, figure: "2 A" });
+
+  it("precondition: the stored page differs from the flat one only by the column lines", () => {
+    expect(P19_STORED.content).not.toBe(P19.content);
+    expect(P19_STORED.content).toContain("120 V AC 15 A 1.5 A 2 A 1800 180");
+  });
+
+  it("the answer served on staging is replaced before release: no misnamed figure, no citations, insufficient_evidence", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([P12, P19_STORED]);
+    const r = await ask(S7_SERVED);
+    expect(r.content).toBe(WRONG);
+    expect(r.content).not.toMatch(/\d\s?A\b/);
+    expect(r.status).toBe("insufficient_evidence");
+    expect(r.citations).toEqual([]);
+    expect(r.persisted?.answerStatus).toBe("insufficient_evidence");
+    expect(r.persisted?.answerText).toBe(WRONG);
+  });
+
+  it("the same answer over a page stored without column lines still ships (stated limit until the manual is reprocessed)", async () => {
+    const r = await ask(S7_SERVED);
+    expect(r.status).toBe("answered");
+    expect(r.content).toContain("make rating of 1.5 A");
+  });
+
+  it("control: the correct answer over the stored page ships, cited to the ratings page", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([P12, P19_STORED]);
+    const r = await ask(NAMED);
+    expect(r.status).toBe("answered");
+    expect(r.content).toContain("15 A make, 1.5 A break and 2 A continuous");
+    expect(r.citations?.map((c) => c.page)).toContain(19);
+  });
+
+  it.each([
+    // Codex rounds 1 and 2 on #5487: each of these correct answers was withheld by an earlier version.
+    ["a load set against a rating", "At 120 V AC, a 1.5 A steady-state load is below the 2 A continuous rating [2]."],
+    ["a load current set against a rating", "At 120 V AC a load current of 1.5 A continuously is below the 2 A continuous rating [2]."],
+    ["a warning that the contact cannot do something", "The relay cannot continuously carry 15 A at 120 V AC [2]."],
+    ["a rating recommended for another device", "At 120 V AC the continuous rating is 2 A [2], so use an interposing relay rated for 15 A continuous."],
+  ])("control: %s ships over the stored page", async (_name, answer) => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([P12, P19_STORED]);
+    const r = await ask(answer, { message: "What can the Micro820 relay output carry at 120 V AC?", sourceDocIds: [DOC_A] });
+    expect(r.status).toBe("answered");
+    expect(r.content).toContain(answer.slice(0, 40));
+  });
+
+  it("an explicit wrong assignment is replaced, also after a refusal in the same sentence", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([P12, P19_STORED]);
+    for (const answer of ["At 120 V AC the continuous rating is 15 A [2].", "It should not be switched directly because the break rating at 120 V AC is 15 A [2]."]) {
+      const r = await ask(answer, { message: "What can the Micro820 relay output carry at 120 V AC?", sourceDocIds: [DOC_A] });
+      expect(r.status).toBe("insufficient_evidence");
+      expect(r.content).not.toMatch(/\d\s?A\b/);
+    }
+  });
+
+  it("control: the #5466 replacement over the stored page is unchanged, row and figures included", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([P12, P19_STORED]);
+    const r = await ask(SERVED);
+    expect(r.content).toBe(WITHHELD);
+  });
+
+  it("control: with the pre-display gate off (emergency lever) the draft ships as before", async () => {
+    process.env.NOTEBOOK_ANSWER_GATE = "0";
+    ragMock.retrieveNodeChunks.mockResolvedValue([P12, P19_STORED]);
+    const r = await ask(S7_SERVED);
+    expect(r.content).toContain("make rating of 1.5 A");
   });
 });
 
