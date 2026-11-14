@@ -74,6 +74,8 @@ import { PendingManuals } from "./PendingManuals";
 import { ParkedSources } from "./ParkedSources";
 import { clearSheetDataForSignOut, localStorageStore, parseSheetReceipts } from "./living-sheet-client";
 import { NOTEBOOK_ACTIONS_STYLE } from "./notebook-actions";
+import { BenchComponents } from "./BenchComponents";
+import { parseComponentFrames, riderFor, withComponentRider, type BenchState, type ComponentRider, type ComponentTurnFrame } from "./bench-components-logic";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
 import { answerTurnId, citationIndex, contextFor, lifecycleFromStream, livePartsWhileRunning, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus, withSettledFollowups, type SettledFollowups } from "./to-interaction";
 import {
@@ -197,6 +199,13 @@ export function HubShellHost() {
   // own notebook — switching notebooks never leaks a stale job id.
   const [livingSheetJob, setLivingSheetJob] = useState<{ notebookId: string; jobId: string } | null>(null);
   const [sheetReceipt, setSheetReceipt] = useState<NotebookSheetReceiptFrame | null>(null);
+  // Bench components: the component this conversation's header shows rides the
+  // next chat turn (ref, so send() never reads a stale render), the newest
+  // reply's Return / Switch / Stay / Confirm offers, and a counter that re-reads
+  // the checklist after every turn.
+  const componentRiderRef = useRef<ComponentRider | null>(null);
+  const [componentFrame, setComponentFrame] = useState<{ key: string; frame: ComponentTurnFrame } | null>(null);
+  const [benchRefresh, setBenchRefresh] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
   // The upload half of an attached send (#4019 round 2 F2): Stop and thread
   // changes abort it too, so a slow upload can never post afterwards.
@@ -470,7 +479,8 @@ export function HubShellHost() {
       // through every chatBodyFor(...) call site — one enforcement point
       // that can't be forgotten at a future call site, scoped to the turn's
       // own notebook so switching notebooks never sends a stale job id.
-      const outBody = withLivingSheetRider(body, sel.notebookId, livingSheetJob);
+      const outBody = withComponentRider(withLivingSheetRider(body, sel.notebookId, livingSheetJob), sel, componentRiderRef.current);
+      setComponentFrame(null);
       const res = await fetch(`${API_BASE}/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/chat/`, {
         // #4687: ask for stage progress; a server without MIRA_CHAT_PROGRESS ignores the header.
         method: "POST", headers: { "Content-Type": "application/json", "x-mira-progress": "1" }, body: JSON.stringify(outBody), signal: ctrl.signal,
@@ -485,14 +495,20 @@ export function HubShellHost() {
       // Only tee while a sheet is open for this notebook — zero behavior
       // change (no tee, no extra branch) on every other turn. A stream can
       // be tee'd exactly once; call it once and keep both branches.
-      let reader: ReturnType<ReadableStream<Uint8Array>["getReader"]>;
+      let stream: ReadableStream<Uint8Array> = res.body;
       if ("livingSheetJobId" in outBody) {
-        const [forChat, forReceipt] = res.body.tee();
-        reader = forChat.getReader();
+        const [forChat, forReceipt] = stream.tee();
+        stream = forChat;
         void parseSheetReceipts(forReceipt, (frame) => setSheetReceipt(frame));
-      } else {
-        reader = res.body.getReader();
       }
+      // Same rule for the component frame: tee only on a turn asked under a component.
+      if ("componentSelection" in outBody) {
+        const [forChat, forComponent] = stream.tee();
+        stream = forChat;
+        const key = `${sel.notebookId}|${sel.threadId}`;
+        void parseComponentFrames(forComponent, (frame) => setComponentFrame({ key, frame }));
+      }
+      const reader = stream.getReader();
       const result = await readNotebookStream(reader, (content, cits) => {
         setLive((cur) => (cur && cur.id === id ? { ...cur, content, citations: cits } : cur));
       }, null, {
@@ -544,8 +560,18 @@ export function HubShellHost() {
       dispatch({ type: "set-draft", draft: question });
     } finally {
       if (abortRef.current === ctrl) { abortRef.current = null; setBusy(false); }
+      // A turn can change the checklist (its tallies) or find the selection moved (409).
+      setBenchRefresh((n) => n + 1);
     }
   }, [selection, loadDetail, loadNotebooks, dropOutgoing, outgoingOwner, livingSheetJob]);
+
+  // Stable per conversation, so the panel's read does not re-run on every render.
+  const benchNotebookId = selection?.notebookId ?? null;
+  const benchThreadId = selection?.threadId ?? null;
+  const onBenchState = useCallback((bench: BenchState | null) => {
+    componentRiderRef.current =
+      benchNotebookId && benchThreadId ? riderFor(bench, { notebookId: benchNotebookId, threadId: benchThreadId }) : null;
+  }, [benchNotebookId, benchThreadId]);
 
   /**
    * #4019 — attachments ride the turn they were attached to. Upload through the
@@ -1051,6 +1077,17 @@ export function HubShellHost() {
       {/* The notebook's action buttons share one column below the guided-procedure pill, each in its
           own row, so Machine state and Work Packet never cover each other (#5102). */}
       <div data-testid="notebook-actions" style={NOTEBOOK_ACTIONS_STYLE}>
+      {/* Bench components: "Asking about …", the checklist and the reply's actions; nothing without migration 115. */}
+      {selection && (
+        <BenchComponents
+          key={`bench|${selection.notebookId}|${selection.threadId}`}
+          notebookId={selection.notebookId}
+          threadId={selection.threadId}
+          refresh={benchRefresh}
+          frame={componentFrame?.key === `${selection.notebookId}|${selection.threadId}` ? componentFrame.frame : null}
+          onState={onBenchState}
+        />
+      )}
       {/* Mission 001: report an observation and read back machine state; renders nothing while off. */}
       {selection && detail && (
         <MachineObservations

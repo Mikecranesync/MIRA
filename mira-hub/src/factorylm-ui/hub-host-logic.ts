@@ -472,6 +472,9 @@ export function errorMessageFor(code: string, status: number): string {
       return "The machine evidence attached to this question was not valid. Ask again without it.";
     case "invalid_json":
       return "The question could not be sent. Try again.";
+    // Bench components: the header's component no longer matches the server's.
+    case "selection_changed":
+      return "The component for this chat was changed on another screen. Check the header and ask again.";
     default:
       return status === 412
         ? "MIRA needs approved context for this machine before it will answer."
