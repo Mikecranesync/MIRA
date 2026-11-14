@@ -617,18 +617,26 @@ class TestApprovalStateInPostgres:
         assert out.returncode == 0 and "proposed" in out.stdout.split()
 
 
-# ── Every claimed test really is in this file ─────────────────────────────────
+# ── Every claimed test really is in a contract file ───────────────────────────
+
+# The only files a mapping entry may point at. The bench file holds the live-data half.
+CONTRACT_TEST_FILES = ("test_ontology_runtime_contract.py", "test_ontology_bench_contract.py")
 
 
-def test_every_contract_in_the_mapping_names_a_test_defined_here():
-    tree = ast.parse(Path(__file__).read_text())
-    defined = {
+def _tests_defined_in(name: str) -> set[str]:
+    tree = ast.parse((Path(__file__).parent / name).read_text())
+    return {
         f"{c.name}::{f.name}"
         for c in tree.body
         if isinstance(c, ast.ClassDef)
         for f in c.body
         if isinstance(f, ast.FunctionDef)
     }
+
+
+def test_every_contract_in_the_mapping_names_a_test_defined_here():
+    defined = {f"tests/{n}": _tests_defined_in(n) for n in CONTRACT_TEST_FILES}
     for cid, c in _real_mapping()["contracts"].items():
-        _, cls, fn = c["test"].split("::")
-        assert f"{cls}::{fn}" in defined, cid
+        path, cls, fn = c["test"].split("::")
+        assert path in defined, f"{cid}: {path} is not a contract test file"
+        assert f"{cls}::{fn}" in defined[path], cid
