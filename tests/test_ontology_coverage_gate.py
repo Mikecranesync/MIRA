@@ -127,6 +127,17 @@ class TestInvalidFixtureFailsForItsDeclaredReasonOnly:
         V.check_invalid_fixtures(report, onto, shapes, root)
         assert _result(report, "fixtures:invalid:a.ttl").passed
 
+    def test_a_header_with_the_wrong_prefix_does_not_count(self, tmp_path, graphs):
+        """Review finding on #5530: `wrong:FaultCodeScopeShape` was read as the real shape."""
+        onto, shapes = graphs
+        root = _root(
+            tmp_path, {"a.ttl": "# EXPECT-VIOLATION: wrong:FaultCodeScopeShape\n" + UNSCOPED}, {}
+        )
+        report = V.Report()
+        V.check_invalid_fixtures(report, onto, shapes, root)
+        assert not _result(report, "fixtures:invalid:a.ttl").passed
+        assert "FaultCodeScopeShape" not in V.fixture_coverage(onto, shapes, root).pinned
+
     def test_an_undeclared_extra_shape_fails_the_fixture(self, tmp_path, graphs):
         """The property the plan doc claimed and the validator did not enforce."""
         onto, shapes = graphs

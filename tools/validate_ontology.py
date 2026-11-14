@@ -349,7 +349,10 @@ def violated_shapes(results_graph: Graph, shapes: Graph) -> set[str]:
 
 
 def _headers(regex: re.Pattern[str], source: str) -> set[str]:
-    return {m.split(":")[-1] for m in regex.findall(source)}
+    """Shape names from a header. Only the `mirash:` prefix names a shape; any other token is
+    kept whole so it can never equal a real shape name and is reported as unknown."""
+    prefix = "mirash:"
+    return {m[len(prefix) :] if m.startswith(prefix) else m for m in regex.findall(source)}
 
 
 def declared_shapes(shapes: Graph) -> set[str]:
