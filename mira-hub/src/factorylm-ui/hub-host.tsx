@@ -74,6 +74,8 @@ import { PendingManuals } from "./PendingManuals";
 import { ParkedSources } from "./ParkedSources";
 import { clearSheetDataForSignOut, localStorageStore, parseSheetReceipts } from "./living-sheet-client";
 import { NOTEBOOK_ACTIONS_STYLE } from "./notebook-actions";
+import { BenchComponents } from "./BenchComponents";
+import { SEND_BLOCKED_MESSAGE, benchSendRefusal, createBenchSendGate, expectsComponentFrame, isScopeRefusalCode, parseComponentFrames, prepareChatSend, recordBenchScope, withoutScope, type BenchScopes, type BenchState, type ComponentTurnFrame, type ScopeField } from "./bench-components-logic";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
 import { answerTurnId, citationIndex, contextFor, lifecycleFromStream, livePartsWhileRunning, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus, withSettledFollowups, type SettledFollowups } from "./to-interaction";
 import {
@@ -135,6 +137,10 @@ type Live = {
   readonly outgoingId: string | null;
   /** #4687: the latest stage the server reported, shown until answer text arrives. */
   readonly progress?: ProgressStage;
+  /** #5504 Codex r2 F1: this send was asked under a component, so its answer waits for that
+   *  send's own component frame and shows its label — never the header's. */
+  readonly componentExpected?: boolean;
+  readonly componentLabel?: string | null;
 };
 
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<{ status: number; data: T | null }> {
@@ -189,7 +195,8 @@ export function HubShellHost() {
   // The technician's message from the moment Send is tapped (outgoing-turn.ts).
   const [outgoing, setOutgoing] = useState<Outgoing | null>(null);
   const [busy, setBusy] = useState(false);
-  const [failedBody, setFailedBody] = useState<{ body: ReturnType<typeof chatBodyFor>; question: string } | null>(null);
+  // A retry re-sends the body as it went out, with the component scope it was asked under (#5504 post-cap).
+  const [failedBody, setFailedBody] = useState<{ body: ReturnType<typeof chatBodyFor> & { componentSelection?: ScopeField }; question: string } | null>(null);
   // TASK-S3: the Living Work Sheet job open for ANY notebook (LivingSheet is
   // mounted per-notebook, but this state belongs to the host, not the panel,
   // so send() can read it without a prop round-trip). `livingSheetJobId`
@@ -197,6 +204,14 @@ export function HubShellHost() {
   // own notebook — switching notebooks never leaks a stale job id.
   const [livingSheetJob, setLivingSheetJob] = useState<{ notebookId: string; jobId: string } | null>(null);
   const [sheetReceipt, setSheetReceipt] = useState<NotebookSheetReceiptFrame | null>(null);
+  // Bench components: what each conversation's header shows rides that conversation's
+  // next chat turn (by conversation, so a late read from a conversation already left
+  // can never become this one's scope — #5504 post-cap F10; a ref, so send() never
+  // reads a stale render), the newest reply's Return / Switch / Stay / Confirm offers,
+  // and a counter that re-reads the checklist after every turn.
+  const benchScopesRef = useRef<BenchScopes>(new Map());
+  const [componentFrame, setComponentFrame] = useState<{ key: string; frame: ComponentTurnFrame } | null>(null);
+  const [benchRefresh, setBenchRefresh] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
   // The upload half of an attached send (#4019 round 2 F2): Stop and thread
   // changes abort it too, so a slow upload can never post afterwards.
@@ -392,10 +407,13 @@ export function HubShellHost() {
     let parts: InteractionPart[];
     let lifecycle: InteractionTurn["lifecycle"];
     if (live.result) {
-      parts = partsFromStream(live.result, { stopped: live.stopped, turnId: aId, notebookDocIds: meta.notebookDocIds });
+      parts = partsFromStream(live.result, { stopped: live.stopped, turnId: aId, notebookDocIds: meta.notebookDocIds, componentLabel: live.componentLabel });
       lifecycle = lifecycleFromStream(live.result, { stopped: live.stopped });
     } else {
-      parts = livePartsWhileRunning(live.content, live.stopped ? undefined : live.progress);
+      parts = livePartsWhileRunning(live.content, live.stopped ? undefined : live.progress, {
+        expected: live.componentExpected === true,
+        label: live.componentLabel ?? null,
+      });
       lifecycle = live.stopped ? "stopped" : "running";
     }
     const a: InteractionTurn = {
@@ -450,9 +468,41 @@ export function HubShellHost() {
   /** The outgoing message is done: the server's row (or the restored draft) takes over. */
   const dropOutgoing = outgoingOwner.drop;
 
+  // #5504 Codex r2: one send/change gate per conversation, shared with the component panel.
+  // Keyed on the conversation (not a bare ref), so a gate never outlives a thread switch.
+  const gateConversation = selection ? `${selection.notebookId}|${selection.threadId}` : null;
+  const benchGate = useMemo(() => {
+    void gateConversation; // a new conversation gets a new gate
+    return createBenchSendGate();
+  }, [gateConversation]);
+
   // --- the send path: the canonical notebook-chat route, streamed ---
-  const send = useCallback(async (body: ReturnType<typeof chatBodyFor>, question: string, sel: HubSelection | null = selection) => {
+  const send = useCallback(async (body: ReturnType<typeof chatBodyFor> & { componentSelection?: ScopeField }, question: string, sel: HubSelection | null = selection) => {
     if (!sel) return;
+    // Never while a component change is saving (this send would carry the version the
+    // header read before it), and never before this conversation's component selection
+    // has been read (#5504 Codex r3 F6: it would go out as whole-machine). Checked before
+    // anything else, so an answer already streaming is not aborted by a send that cannot
+    // start. A project just made from home (`sel` is not this gate's conversation) has
+    // no saved component and is not held.
+    const forThisGate = gateConversation === `${sel.notebookId}|${sel.threadId}`;
+    // #5504 post-cap F9/F10: every question carries its scope — the component, or the whole
+    // machine — with the version read for THIS conversation; an unread one is refused.
+    const prepared = prepareChatSend({
+      gate: benchGate,
+      forThisGate,
+      sel,
+      scopes: benchScopesRef.current,
+      body: withLivingSheetRider(body, sel.notebookId, livingSheetJob),
+    });
+    const refused = prepared.ok ? null : prepared.message;
+    if (!prepared.ok || !benchGate.tryBeginSend()) {
+      if (forThisGate && !benchGate.known && !benchGate.changing) setBenchRefresh((n) => n + 1);
+      dropOutgoing(outgoingOwner.current?.id ?? null);
+      dispatch({ type: "set-send-error", error: refused ?? SEND_BLOCKED_MESSAGE });
+      dispatch({ type: "set-draft", draft: question });
+      return;
+    }
     abortRef.current?.abort();
     const ctrl = new AbortController();
     abortRef.current = ctrl;
@@ -465,12 +515,17 @@ export function HubShellHost() {
     dispatch({ type: "set-send-error", error: null });
     setLive({ id, question, content: "", citations: [], result: null, stopped: false, startedAt: new Date().toISOString(), outgoingId });
     setBusy(true);
+    let outBody = prepared.body;
+    // The route refused the scope (the selection moved): a retry is asked again under what the
+    // header shows after the re-read, never replayed under the scope that was refused.
+    let scopeRefused = false;
     try {
       // TASK-S3: the rider is applied here, centrally, rather than threaded
       // through every chatBodyFor(...) call site — one enforcement point
       // that can't be forgotten at a future call site, scoped to the turn's
       // own notebook so switching notebooks never sends a stale job id.
-      const outBody = withLivingSheetRider(body, sel.notebookId, livingSheetJob);
+      outBody = prepared.body;
+      setComponentFrame(null);
       const res = await fetch(`${API_BASE}/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/chat/`, {
         // #4687: ask for stage progress; a server without MIRA_CHAT_PROGRESS ignores the header.
         method: "POST", headers: { "Content-Type": "application/json", "x-mira-progress": "1" }, body: JSON.stringify(outBody), signal: ctrl.signal,
@@ -480,24 +535,40 @@ export function HubShellHost() {
         // The route's own error codes, in plain language; never a bare status code.
         let code = "";
         try { code = String(((await res.json()) as { error?: unknown }).error ?? ""); } catch { /* no JSON body */ }
+        scopeRefused = isScopeRefusalCode(code);
         throw new Error(errorMessageFor(code, res.status));
       }
       // Only tee while a sheet is open for this notebook — zero behavior
       // change (no tee, no extra branch) on every other turn. A stream can
       // be tee'd exactly once; call it once and keep both branches.
-      let reader: ReturnType<ReadableStream<Uint8Array>["getReader"]>;
+      let stream: ReadableStream<Uint8Array> = res.body;
       if ("livingSheetJobId" in outBody) {
-        const [forChat, forReceipt] = res.body.tee();
-        reader = forChat.getReader();
+        const [forChat, forReceipt] = stream.tee();
+        stream = forChat;
         void parseSheetReceipts(forReceipt, (frame) => setSheetReceipt(frame));
-      } else {
-        reader = res.body.getReader();
       }
+      // Same rule for the component frame: tee only on a turn asked under a component.
+      // The frame's label goes onto THIS send's live turn (keyed by its id), so a later
+      // header change or another send cannot relabel it (#5504 Codex r2 F1).
+      let componentRead: Promise<void> | null = null;
+      if ("componentSelection" in outBody) {
+        const [forChat, forComponent] = stream.tee();
+        stream = forChat;
+        const key = `${sel.notebookId}|${sel.threadId}`;
+        if (expectsComponentFrame(outBody)) setLive((cur) => (cur && cur.id === id ? { ...cur, componentExpected: true } : cur));
+        componentRead = parseComponentFrames(forComponent, (frame) => {
+          setComponentFrame({ key, frame });
+          setLive((cur) => (cur && cur.id === id ? { ...cur, componentLabel: frame.label } : cur));
+        }).catch(() => undefined);
+      }
+      const reader = stream.getReader();
       const result = await readNotebookStream(reader, (content, cits) => {
         setLive((cur) => (cur && cur.id === id ? { ...cur, content, citations: cits } : cur));
       }, null, {
         onProgress: (stage) => setLive((cur) => (cur && cur.id === id ? { ...cur, progress: stage } : cur)),
       });
+      // Both readers end with the stream; the finished answer carries its label.
+      if (componentRead) await componentRead;
       setLive((cur) => (cur && cur.id === id ? { ...cur, result } : cur));
       // The server row is the source of truth; refresh it (also picks up a
       // thread created by this first turn) and let the live turn go.
@@ -521,6 +592,8 @@ export function HubShellHost() {
       // #4687: a refusal delivered inside the progress stream is handled exactly
       // like the non-OK response above (signed out, or the route's own message).
       if (caught instanceof NotebookHttpError && caught.status === 401) { setSignedOut(true); return; }
+      // The same refusal inside the progress stream re-scopes the retry too (#5504 F12, #5534).
+      if (caught instanceof NotebookHttpError && isScopeRefusalCode(caught.code)) scopeRefused = true;
       const err = caught instanceof NotebookHttpError ? new Error(errorMessageFor(caught.code, caught.status)) : caught;
       const retained = retainedStreamInterruption(err);
       if (retained) {
@@ -531,7 +604,7 @@ export function HubShellHost() {
         );
         if (!retained.stopped) {
           const message = sendFailureMessage(err);
-          setFailedBody({ body, question });
+          setFailedBody({ body: outBody, question });
           dispatch({ type: "set-send-error", error: message });
         }
         return;
@@ -539,13 +612,24 @@ export function HubShellHost() {
       const message = sendFailureMessage(err);
       setLive((cur) => (cur && cur.id === id ? null : cur));
       dropOutgoing(outgoingId);
-      setFailedBody({ body, question });
+      setFailedBody({ body: scopeRefused ? withoutScope(body) : outBody, question });
       dispatch({ type: "set-send-error", error: message });
       dispatch({ type: "set-draft", draft: question });
     } finally {
+      benchGate.endSend();
       if (abortRef.current === ctrl) { abortRef.current = null; setBusy(false); }
+      // A turn can change the checklist (its tallies) or find the selection moved (409).
+      setBenchRefresh((n) => n + 1);
     }
-  }, [selection, loadDetail, loadNotebooks, dropOutgoing, outgoingOwner, livingSheetJob]);
+  }, [selection, loadDetail, loadNotebooks, dropOutgoing, outgoingOwner, livingSheetJob, benchGate, gateConversation]);
+
+  // Stable per conversation, so the panel's read does not re-run on every render.
+  const benchNotebookId = selection?.notebookId ?? null;
+  const benchThreadId = selection?.threadId ?? null;
+  // Bound to the conversation it was rendered for: a panel left behind writes only its own entry.
+  const onBenchState = useCallback((bench: BenchState | null) => {
+    if (benchNotebookId && benchThreadId) recordBenchScope(benchScopesRef.current, { notebookId: benchNotebookId, threadId: benchThreadId }, bench);
+  }, [benchNotebookId, benchThreadId]);
 
   /**
    * #4019 — attachments ride the turn they were attached to. Upload through the
@@ -699,6 +783,14 @@ export function HubShellHost() {
     // photo, before anything uploads (Codex #4024 F1/F3).
     const files = pairAttachments(attachments, (id) => adapter.heldFile(id));
     if ((!q && files.length === 0) || busy) return;
+    // #5504 Codex r2/r3: the Composer keeps the draft and the attachments when this throws.
+    // Before the checklist has been read, ask the panel to read it again, so a failed
+    // first read does not leave the conversation unable to send.
+    const benchRefused = selection ? benchSendRefusal(benchGate) : null;
+    if (benchRefused) {
+      if (!benchGate.known && !benchGate.changing) setBenchRefresh((n) => n + 1);
+      throw new Error(benchRefused);
+    }
     // Codex #3839 Spec P1: the Composer clears the draft after a hook that
     // RETURNS, so a send before the data loaded used to discard the
     // technician's question. Throwing is the Composer's documented contract
@@ -723,7 +815,7 @@ export function HubShellHost() {
       return;
     }
     void send(chatBodyFor(q, docIds, historyRows(detail.turns), selection), q);
-  }, [adapter, busy, selection, notebooks, detail, docIds, send, sendFromHome, composeAndSend, putOutgoing]);
+  }, [adapter, busy, selection, notebooks, detail, docIds, send, sendFromHome, composeAndSend, putOutgoing, benchGate]);
 
   // WP-1 guided dead end: sent in general mode with the session id; the route confirms it.
   const onGuidedDeadEnd = useCallback((question: string, sessionId: string) => {
@@ -1051,6 +1143,19 @@ export function HubShellHost() {
       {/* The notebook's action buttons share one column below the guided-procedure pill, each in its
           own row, so Machine state and Work Packet never cover each other (#5102). */}
       <div data-testid="notebook-actions" style={NOTEBOOK_ACTIONS_STYLE}>
+      {/* Bench components: "Asking about …", the checklist and the reply's actions; nothing without migration 115. */}
+      {selection && (
+        <BenchComponents
+          key={`bench|${selection.notebookId}|${selection.threadId}`}
+          notebookId={selection.notebookId}
+          threadId={selection.threadId}
+          refresh={benchRefresh}
+          busy={busy}
+          frame={componentFrame?.key === `${selection.notebookId}|${selection.threadId}` ? componentFrame.frame : null}
+          gate={benchGate}
+          onState={onBenchState}
+        />
+      )}
       {/* Mission 001: report an observation and read back machine state; renders nothing while off. */}
       {selection && detail && (
         <MachineObservations

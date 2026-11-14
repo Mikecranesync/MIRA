@@ -11,7 +11,7 @@
 | Surface | Count |
 |---|---|
 | Pages | **71** (12 dynamic) |
-| API routes | **205** (85 dynamic) |
+| API routes | **208** (88 dynamic) |
 
 ## Pages (71)
 
@@ -89,7 +89,7 @@
 | `/workorders/[id]` | dynamic | `(hub)/workorders/[id]/page.tsx` |
 | `/workorders/new` | static | `(hub)/workorders/new/page.tsx` |
 
-## API routes (205)
+## API routes (208)
 
 | Route | Kind | Source |
 |---|---|---|
@@ -179,6 +179,9 @@
 | `/api/equipment-notebooks/[id]` | dynamic | `api/equipment-notebooks/[id]/route.ts` |
 | `/api/equipment-notebooks/[id]/asset` | dynamic | `api/equipment-notebooks/[id]/asset/route.ts` |
 | `/api/equipment-notebooks/[id]/chat` | dynamic | `api/equipment-notebooks/[id]/chat/route.ts` |
+| `/api/equipment-notebooks/[id]/components` | dynamic | `api/equipment-notebooks/[id]/components/route.ts` |
+| `/api/equipment-notebooks/[id]/components/[componentId]/revisions` | dynamic | `api/equipment-notebooks/[id]/components/[componentId]/revisions/route.ts` |
+| `/api/equipment-notebooks/[id]/components/selection` | dynamic | `api/equipment-notebooks/[id]/components/selection/route.ts` |
 | `/api/equipment-notebooks/[id]/fixes` | dynamic | `api/equipment-notebooks/[id]/fixes/route.ts` |
 | `/api/equipment-notebooks/[id]/identity/confirm` | dynamic | `api/equipment-notebooks/[id]/identity/confirm/route.ts` |
 | `/api/equipment-notebooks/[id]/look` | dynamic | `api/equipment-notebooks/[id]/look/route.ts` |

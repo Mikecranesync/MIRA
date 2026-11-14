@@ -1463,6 +1463,10 @@ approved:
       FROM knowledge_entries
           WHERE tenant_id = $1
             AND ingest_route = 'v2'
+  "mira-hub/src/capabilities/bench-components/store.ts:449":
+    approved_classification: TENANT-ONLY
+    query_sha256: "bbd493fb500b78a9be2028521f4b2f086ab333a43bbe5442dcf446190974a85f"
+    reason: "NEW (PR #5504, bench components): readDocumentHeadings reads each attached document's opening text (the same cover manual-rag.ts documentHeadingSql reads, allowlisted at :1084) so the component checklist can list the model numbers a document's cover names. Pure-tenant surface, same rule as retrieveNodeChunks (manual-rag.ts:1108): withTenantContext, tenant_id=$1, ingest_route='v2', doc_id = ANY($2) where $2 is only the doc ids of the notebook's own validated sources (benchState in bench-components/http.ts, passed the route's NotebookSource list). DISTINCT ON (doc_id), left() to 2000 characters. Display only: it never admits a chunk to retrieval, never reaches a citation, and never establishes a component's identity. A document this tenant cannot read has no heading, which the checklist shows as 'not stated', never as a match, so the tenant-only filter can only hide a heading, never widen what anyone sees."
   "mira-hub/src/capabilities/__tests__/notebook-source-unreadable-pages.test.ts:40":
     approved_classification: UNFILTERED
     query_sha256: "981727431a6ba26d154401e972e67cf8d1298d80896a706b52f4bbb960edc0d4"
