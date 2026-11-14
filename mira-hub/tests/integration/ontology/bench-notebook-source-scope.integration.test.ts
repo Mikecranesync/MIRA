@@ -20,6 +20,12 @@
 // it). The property that matters — the old reading's id is not in the returned scope —
 // is asserted here.
 //
+// MUTATION CHECKS RUN (and what they do NOT cover): dropping the approval-state filter turns
+// the rejected and unconfirmed tests red; dropping the enabled / superseded filters turns the
+// switched-off and all four supersession tests red. Dropping the tenant/notebook predicate from
+// the source query turns NOTHING red — the notebook lookup and row-level security still hold —
+// so the tenant tests show the outcome, not which layer earns it.
+//
 // Nothing here is CI-enforced. Same disposable database as the graph contract.
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { Pool } from "pg";

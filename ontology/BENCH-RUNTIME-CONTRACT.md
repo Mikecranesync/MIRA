@@ -37,10 +37,10 @@ critical gaps in the last section block it.
 - **LOCAL** — pure, ran locally, no CI job runs that folder.
 - **RAN-AT-5504** — another owner's tests, which I executed unchanged at #5504's head `e649880b1` (detached checkout): the store suite against a disposable PostgreSQL with the proposed migration 115 applied (18 pass), the unit and mocked-route suites (123 pass), plus five probes of my own run at that head (saved outside the repository; listed below). That head has two open HIGH review findings on selection paths and its migration is applied to no environment, so this is *executed at an unaccepted head* — it shows the code there does this, not that the pilot ships it.
 
-Test files: **HUB-G** = `mira-hub/tests/integration/ontology/bench-context-contract.integration.test.ts` (44 tests) ·
+Test files: **HUB-G** = `mira-hub/tests/integration/ontology/bench-context-contract.integration.test.ts` (45 tests) ·
 **HUB-P** = `mira-hub/tests/integration/ontology/bench-pilot-live-evidence.integration.test.ts` (13 pass + 1 expected failure) ·
 **PY** = `tests/test_ontology_bench_contract.py` (18 pass + 7 strict xfail) ·
-**HUB-S** = `mira-hub/tests/integration/ontology/bench-notebook-source-scope.integration.test.ts` (15 tests, mutation-checked) ·
+**HUB-S** = `mira-hub/tests/integration/ontology/bench-notebook-source-scope.integration.test.ts` (15 tests; approval and supersession tests mutation-checked, tenant tests not — see row 3) ·
 **EXIST-P** = `mira-hub/src/app/api/equipment-notebooks/[id]/chat/__tests__/machine-evidence.test.ts` (re-run here: green) ·
 **PROBE-5504** = five probes run at `e649880b1` (two drives of one model; confirm one, the other stays unconfirmed; correction keeps history; history is append-only for the application role; other tenant sees nothing through the store and through row-level security).
 
@@ -55,11 +55,11 @@ Test files: **HUB-G** = `mira-hub/tests/integration/ontology/bench-context-contr
 | 2 | Typed, directed relationships | G | `mapToCanonicalEdge` → `upsertInferredProposal` → decide route → `kg_relationships` | **Written correctly, not readable.** See gap #5519. | HUB-G §3–4 (LOCAL-PG) |
 | 2 | same | P | — | **Not expressible** on the pilot path. | none |
 | 3 | Tenant isolation | G | RLS on `kg_entities` / `kg_relationships`; `tenant_id` predicate in every reader; internal key on `/api/internal/kg` | Holds: other tenant's admin gets 404 on decide, readers return nothing, RLS counts 0, wrong key 401. Note: the `relationship_proposals` policy also admits rows with a NULL tenant. | HUB-G §3, §6 (LOCAL-PG) |
-| 3 | same | P | tenant-bound SELECT-only re-fetch; 404 for another tenant's notebook | Holds. | HUB-S (LOCAL-PG: another tenant cannot open the notebook's scope, pull a foreign source in, or read its history); EXIST-P; `asset-binding.test.ts`, `delete.test.ts` (CI); components: PROBE-5504 + #5504 `store.integration.test.ts` (RAN-AT-5504) |
+| 3 | same | P | tenant-bound SELECT-only re-fetch; 404 for another tenant's notebook | Holds. | HUB-S (LOCAL-PG: another tenant cannot open the notebook's scope, pull a foreign source in, or read its history — **not mutation-proof:** with the tenant/notebook predicate removed from the source query these still pass, because the notebook lookup and row-level security also hold the line; they show the outcome, not which layer earns it); EXIST-P; `asset-binding.test.ts`, `delete.test.ts` (CI); components: PROBE-5504 + #5504 `store.integration.test.ts` (RAN-AT-5504) |
 | 4 | Source / revision provenance | G | `relationship_evidence`, `relationship_proposal_id` on the edge | **Partly.** Proposer, approver, time and cited source are reachable by join. Nothing structured records a source revision, a validity window, or what replaced a fact. The answer context names no edge, proposal or source (#5527). | HUB-G §4, §7 (LOCAL-PG) |
 | 4 | same | P | citations on notebook answers; source → origin photograph; component revisions | **Holds.** A source (current or superseded) resolves to the photograph it was read from. At #5504's head, component revisions are numbered and the application role cannot update or delete one. | HUB-S (LOCAL-PG); PROBE-5504 (RAN-AT-5504) |
 | 5 | Explicit approval | G | `/api/proposals/[id]/decide`, capability `proposals.decide` | Holds: a proposed edge is not served; technician 403; reject keeps history and writes no edge; verify writes one linked edge; re-decide 409. | HUB-G §2–3 (LOCAL-PG) |
-| 5 | same | P | `validateChatSources` (documents); component `identity_status` + `confirmed_at` CHECK | **Holds for documents:** only a human-confirmed, enabled source enters the answer scope; rejected, merely suggested or switched-off sources are refused. **Holds for components at #5504's head:** an unconfirmed component may not be answered from manuals; the database refuses "confirmed" without a confirmation time. That the route passes retrieval the validator's ids (not the client's) is shown with a mocked validator only. | HUB-S (LOCAL-PG, mutation-checked); `chat-approved-source-scope.test.ts` (CI, mocked); PROBE-5504 + #5504 suites (RAN-AT-5504) |
+| 5 | same | P | `validateChatSources` (documents); component `identity_status` + `confirmed_at` CHECK | **Holds for documents:** only a human-confirmed, enabled source enters the answer scope; rejected, merely suggested or switched-off sources are refused. **Holds for components at #5504's head:** the gate function `componentManualsBlocked` returns blocked for an unconfirmed component (a pure function; that the chat route obeys it is shown by #5504's mocked route tests only); the database refuses "confirmed" without a confirmation time. That the route passes retrieval the validator's ids (not the client's) is shown with a mocked validator only. | HUB-S (LOCAL-PG; mutation-checked: dropping the approval-state filter turns the rejected and unconfirmed tests red, dropping the enabled filter the switched-off one); `chat-approved-source-scope.test.ts` (CI, mocked); PROBE-5504 + #5504 suites (RAN-AT-5504) |
 | 6 | Corrected / superseded fact leaves current answers, stays in history | G | `applyHubProposalTransition('supersede')` | **No.** See gap #5523. History is kept; the old edge is still served. | HUB-G §5 (LOCAL-PG) |
 | 6 | same | P | `validateChatSources` successor rename; identity correction = new revision | **Holds for document sources:** asking for a superseded reading returns its confirmed successor — the old id is not in the returned scope; with no confirmed successor it is refused; the source list hides it; it still resolves in history with its photograph. **Holds for components at #5504's head:** a correction is a new revision, the selection is re-pointed, the old value stays in history only. Correction to an earlier note: the existing `provenance-canonical-evidence.integration.test.ts` fails 1 of 8 because its last assertion predates the successor rename (#3442); that assertion is out of date, not a leak. It is in no CI job. | HUB-S (LOCAL-PG, mutation-checked); `equipment-notebooks-domain.test.ts` (CI, mocked SQL); PROBE-5504 + #5504 `store.integration.test.ts` (RAN-AT-5504) |
 | 7 | Timestamp and quality on every reading | P | `renderMachineEvidenceSection` (replay rows) | Holds for the render step: observed time, received time and quality on each row; quality never invented. | HUB-P (LOCAL); EXIST-P (CI) |
@@ -91,6 +91,9 @@ Stated plainly, by where the proof stands:
   has two open HIGH findings on selection paths, and its migration is applied nowhere.
 - **Not demonstrated end to end:** no test here drives the chat route itself on a real database
   through to a generated answer. The chain is validator (real database) + route hand-off (mocked).
+  I tried the next link — real retrieval given the validator's ids — and stopped at the timebox:
+  the Hub test schema lacks the engine-side search column, and with it stubbed the positive
+  control returned no passages, so nothing can be concluded from it either way.
 - **Not expressible on Path P:** a relationship between two components.
 - Nothing in HUB-G, HUB-P or HUB-S runs in a CI job.
 
@@ -139,14 +142,17 @@ the tests check each reader separately so a partial repair is visible.
 Inventory: `mira-hub/scripts/data/cv101-provisional-inventory.json` on #5504 — **provisional,
 not frozen** (19 rows + 2 excluded per the integrator's read). The contracts above are
 parameterised by tag and relationship name, not by device type, so the same assertions *should* apply
-to each further row. Executed end to end on the graph path (HUB-G §8): CB1 → PS1 → PLC1 and
-VFD1 → M1 as `feeds`; VFD1 — M1 as a wired connection; CV-101 as parent of M1 (direction
-flips on storage); CV-101 has component PLC1; one rejected link. Each: absent while proposed,
-other tenant refused, one verified edge on approval, **and no reader returns it** (#5519, with a
-positive control showing the supply chain is read once the stored name matches). `controls` and
-`protects` (PLC → drive, breaker → supply) cannot be proposed at all. Sensors, the selector and
-the pilot light were not run. **The inventory is provisional, not frozen; this is seven of its
-relationships, not all of them.** What does not extend:
+to each further row. Run through propose → decide on the graph path (HUB-G §8), six links:
+CB1 → PS1, PS1 → PLC1 and VFD1 → M1 as `feeds`; VFD1 — M1 as a wired connection; CV-101 as
+parent of M1; CV-101 has component PLC1; plus one rejected link. For all six: absent while
+proposed, other tenant refused, one verified edge on approval. **Readers were run for four of
+them** (the three `feeds` links and the component link): none is returned (#5519), with a
+positive control showing each is read once the stored name matches. The wired link has no
+reader at all. The parent link is stored reversed *and* renamed, so the hierarchy reader would
+miss it even with the name repaired — written, never shown readable. `controls` and `protects`
+(PLC → drive, breaker → supply) cannot be proposed at all. Sensors, the selector and the pilot
+light were not run. **The inventory is provisional, not frozen; this is six of its links, not
+all of them.** What does not extend:
 
 - On Path P, relationships between components (PS1 → PLC1, CB1 → PS1, VFD1 → M1 …) cannot be
   stated at all today.
@@ -179,7 +185,7 @@ compliance with any external standard, and nothing here should be quoted that wa
 
 - Independent review required for this work: **not obtained.** A governed Codex round needs
   the owner's authorization; none was requested or spent.
-- One read-only second-model read of this branch was run as evidence only. Label: **PARTIAL**
+- One read-only second-model read of this branch **as of `5fdb5f700`** was run as evidence only. The three commits after it (notebook source scope, bench links, these corrections) have had **no** second read; an advisor pass on them found three over-claims, corrected in the last commit. Label: **PARTIAL**
   (same model family as the author). It ran no tests. It found no vacuous test; it did find
   seven places where a test or this page claimed more than it exercised. All seven were
   accepted and corrected (the open-window gap above, the Ignition entry point, the

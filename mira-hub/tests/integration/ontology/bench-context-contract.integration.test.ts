@@ -863,13 +863,36 @@ describe("8. the same contract across more of the bench (provisional inventory, 
     );
   });
 
-  it("the other tenant sees none of these bench links", async () => {
-    const { rows } = await admin.query(
-      `SELECT count(*)::int AS n FROM kg_relationships WHERE tenant_id = $1::uuid AND id = ANY($2::uuid[])`,
-      [TENANT_B, Object.values(made)],
+  it("OBSERVED: the parent link is stored reversed AND renamed, so the hierarchy reader misses it twice over", async () => {
+    // Reader: maintenanceContext walks edges named 'parent_of' from parent to child. Approval
+    // stored child -> parent as LOCATED_IN. Renaming alone does not make it readable; this
+    // link was written but NOT shown readable by any control here.
+    const before = await admin.query(
+      `SELECT source_id::text AS s, target_id::text AS t, relationship_type AS r FROM kg_relationships WHERE id = $1::uuid`,
+      [made["CV101 parent_of M1"]],
     );
-    expect(Object.values(made)).toHaveLength(LINKS.length);
-    expect(rows[0].n).toBe(0);
-    expect(await impactAnalysis(TENANT_B, A.CB1.nodeId).then((r) => r.downstream, () => [])).toEqual([]);
+    expect(before.rows[0]).toEqual({ s: A.M1.nodeId, t: A.CV101.nodeId, r: "LOCATED_IN" });
+    expect(mapToCanonicalEdge("parent_of")).toEqual({ type: "LOCATED_IN", flip: true });
+  });
+
+  it("the other tenant cannot read these bench links even where this tenant can", async () => {
+    // Under the reader's own name (so the read is not empty for the #5519 reason):
+    const [own, other] = await withStoredName(made["CB1 feeds PS1"], "feeds", async () => [
+      await downstreamNodeIds(TENANT_A, A.CB1),
+      (await impactAnalysis(TENANT_B, A.CB1.nodeId)).downstream.map((n) => n.entity.id),
+    ]);
+    expect(own).toContain(A.PS1.nodeId);
+    expect(other).toEqual([]);
+    // And through row-level security, in the other tenant's own session:
+    const ids = Object.values(made);
+    expect(ids).toHaveLength(LINKS.length);
+    const seenByB = await withTenantContext(TENANT_B, async (c) =>
+      Number((await c.query<{ n: number }>(`SELECT count(*)::int AS n FROM kg_relationships WHERE id = ANY($1::uuid[])`, [ids])).rows[0].n),
+    );
+    const seenByA = await withTenantContext(TENANT_A, async (c) =>
+      Number((await c.query<{ n: number }>(`SELECT count(*)::int AS n FROM kg_relationships WHERE id = ANY($1::uuid[])`, [ids])).rows[0].n),
+    );
+    expect(seenByB).toBe(0);
+    expect(seenByA).toBe(LINKS.length);
   });
 });
