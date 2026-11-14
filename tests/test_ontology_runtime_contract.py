@@ -461,29 +461,122 @@ class TestSupersession:
         emitted = {kg_approval_for(t) for t in TRIGGERS} - {None}
         assert emitted <= KG_APPROVAL_STATES
 
+    # The throwaway database has only (id, tenant_id, approval_state). These columns and the
+    # proposals table are added INSIDE the test's transaction and rolled back with it.
+    _FACT_SCHEMA = (
+        "ALTER TABLE kg_relationships ADD COLUMN source_id TEXT, ADD COLUMN target_id TEXT, "
+        "ADD COLUMN relationship_type TEXT;"
+        "CREATE TABLE relationship_proposals (id TEXT PRIMARY KEY, tenant_id TEXT, "
+        "source_entity_id TEXT, target_entity_id TEXT, relationship_type TEXT, status TEXT);"
+    )
+
+    def _connect(self, pg):
+        psycopg2 = pytest.importorskip("psycopg2")
+        return psycopg2.connect(host=pg.sockdir, port=pg.port, user="postgres", dbname="postgres")
+
+    @staticmethod
+    def _verified(cur):
+        cur.execute(
+            "SELECT id FROM kg_relationships "
+            "WHERE tenant_id = 't' AND approval_state = 'verified' ORDER BY id"
+        )
+        return [r[0] for r in cur.fetchall()]
+
     def test_a_superseded_verified_edge_stops_being_served_as_verified(self, pg):
         """#5523 repaired (ADR-0017 amended): supersede takes the row out of the verified set."""
         from shared.proposal_transition import apply_kg_approval
 
-        psycopg2 = pytest.importorskip("psycopg2")
-        conn = psycopg2.connect(host=pg.sockdir, port=pg.port, user="postgres", dbname="postgres")
+        conn = self._connect(pg)
         try:
             cur = conn.cursor()
+            cur.execute(self._FACT_SCHEMA)
             cur.execute(
-                "INSERT INTO kg_relationships (id, tenant_id, approval_state) "
-                "VALUES ('old', 't', 'verified'), ('new', 't', 'verified')"
-            )
-            apply_kg_approval(
-                cur, table="kg_relationships", row_id="old", trigger="supersede", tenant_id="t"
+                "INSERT INTO kg_relationships "
+                "(id, tenant_id, approval_state, source_id, target_id, relationship_type) VALUES "
+                "('old', 't', 'verified', 'a', 'b', 'UPSTREAM_OF'), "
+                "('new', 't', 'verified', 'a', 'c', 'UPSTREAM_OF')"
             )
             cur.execute(
-                "SELECT id FROM kg_relationships "
-                "WHERE tenant_id = 't' AND approval_state = 'verified' ORDER BY id"
+                "INSERT INTO relationship_proposals VALUES "
+                "('p-old', 't', 'a', 'b', 'UPSTREAM_OF', 'verified')"
             )
-            assert [r[0] for r in cur.fetchall()] == ["new"]
+            wrote = apply_kg_approval(
+                cur,
+                table="kg_relationships",
+                row_id="old",
+                trigger="supersede",
+                tenant_id="t",
+                superseded_proposal_id="p-old",
+            )
+            assert wrote is True
+            assert self._verified(cur) == ["new"]
         finally:
             conn.rollback()
             conn.close()
+
+    def test_replaying_an_old_supersede_does_not_reject_a_fact_approved_again(self, pg):
+        """Review finding F7 on #5543: supersede, re-approve the SAME stored row under a newer
+        proposal, replay the original supersede. The newer approval must survive; superseding
+        the newer approval must still retire the row."""
+        from shared.proposal_transition import apply_kg_approval
+
+        def supersede(cur, proposal):
+            return apply_kg_approval(
+                cur,
+                table="kg_relationships",
+                row_id="e",
+                trigger="supersede",
+                tenant_id="t",
+                superseded_proposal_id=proposal,
+            )
+
+        conn = self._connect(pg)
+        try:
+            cur = conn.cursor()
+            cur.execute(self._FACT_SCHEMA)
+            cur.execute(
+                "INSERT INTO kg_relationships "
+                "(id, tenant_id, approval_state, source_id, target_id, relationship_type) "
+                "VALUES ('e', 't', 'verified', 'a', 'b', 'UPSTREAM_OF')"
+            )
+            cur.execute(
+                "INSERT INTO relationship_proposals VALUES "
+                "('p1', 't', 'a', 'b', 'UPSTREAM_OF', 'verified')"
+            )
+            assert supersede(cur, "p1") is True
+            cur.execute("UPDATE relationship_proposals SET status = 'deprecated' WHERE id = 'p1'")
+            assert self._verified(cur) == []
+
+            # a human approves the same fact again: newer proposal, same stored row
+            cur.execute(
+                "INSERT INTO relationship_proposals VALUES "
+                "('p2', 't', 'a', 'b', 'UPSTREAM_OF', 'verified')"
+            )
+            apply_kg_approval(
+                cur, table="kg_relationships", row_id="e", trigger="accept", tenant_id="t"
+            )
+            assert self._verified(cur) == ["e"]
+
+            assert supersede(cur, "p1") is False  # the replay
+            assert self._verified(cur) == ["e"]
+
+            assert supersede(cur, "p2") is True  # the newer approval can still be retired
+            assert self._verified(cur) == []
+        finally:
+            conn.rollback()
+            conn.close()
+
+    def test_a_supersede_that_does_not_name_the_approval_it_retires_is_refused(self):
+        from shared.proposal_transition import apply_kg_approval
+
+        class _Cur:
+            def execute(self, *a):  # pragma: no cover - must not be reached
+                raise AssertionError("no statement may run")
+
+        with pytest.raises(ValueError):
+            apply_kg_approval(
+                _Cur(), table="kg_relationships", row_id="e", trigger="supersede", tenant_id="t"
+            )
 
 
 # ── Migration 029 on a throwaway PostgreSQL ───────────────────────────────────
