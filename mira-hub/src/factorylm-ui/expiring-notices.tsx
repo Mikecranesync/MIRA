@@ -9,7 +9,7 @@
  * line above the chat, the citation on the answer), never the notice.
  *
  * The rules are pure and take the clock as an argument; the hook only holds
- * the list and one timer for the next expiry.
+ * the list and one timer, set from the earliest stored deadline.
  */
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 
@@ -25,19 +25,21 @@ export function liveNotices(list: ReadonlyArray<Notice>, now: number): Notice[] 
 export function dropNotice(list: ReadonlyArray<Notice>, id: string): Notice[] {
   return list.filter((n) => n.id !== id);
 }
-/** When the earliest live notice ends; null when none is live. */
-export function nextExpiry(list: ReadonlyArray<Notice>, now: number): number | null {
-  const live = liveNotices(list, now);
-  return live.length ? Math.min(...live.map((n) => n.until)) : null;
+/**
+ * How long until the list next needs clearing; null only when it is empty.
+ * A notice already past its time gives 0, never null: an effect that runs late
+ * (the tab was suspended, the screen was off) must still clear it (Codex r1 F1, #5494).
+ */
+export function expiryDelay(list: ReadonlyArray<Notice>, now: number): number | null {
+  return list.length ? Math.max(0, Math.min(...list.map((n) => n.until)) - now) : null;
 }
 
 export function useExpiringNotices() {
   const [notices, setNotices] = useState<Notice[]>([]);
   useEffect(() => {
-    const now = Date.now();
-    const next = nextExpiry(notices, now);
-    if (next === null) return;
-    const timer = setTimeout(() => setNotices((list) => liveNotices(list, Date.now())), next - now);
+    const delay = expiryDelay(notices, Date.now());
+    if (delay === null) return;
+    const timer = setTimeout(() => setNotices((list) => liveNotices(list, Date.now())), delay);
     return () => clearTimeout(timer);
   }, [notices]);
   const add = useCallback((id: string, text: string) => setNotices((list) => addNotice(liveNotices(list, Date.now()), { id, text }, Date.now())), []);
