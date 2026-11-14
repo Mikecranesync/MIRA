@@ -455,13 +455,13 @@ describe.skipIf(!CONTRACT_READY)("PDF pipeline contract", () => {
       "postgres://postgres@127.0.0.1/test?host=127.0.0.1"]) {
       expect(() => requireDisposableDatabase(url, "DISPOSABLE")).toThrow();
     }
-    const { rows } = await contract.client!.query("SELECT count(*)::int AS n, bool_and(is_private AND ingest_route = 'v2') AS private_v2 FROM knowledge_entries WHERE doc_id = $1", [DOC]);
+    const { rows } = await contract.client!.query("SELECT count(*)::int AS n, bool_and(is_private AND ingest_route = 'v2') AS private_v2 FROM knowledge_entries WHERE doc_id = $1 AND (is_private = false OR tenant_id = $2)", [DOC, TENANT]);
     expect(rows).toEqual([{ n: 3, private_v2: true }]);
     expectFact((await retrieve()).chunks);
   });
 
   it("[pipeline:rename] identical PDF bytes keep the fact and renamed title", async () => {
-    await contract.client!.query("DELETE FROM knowledge_entries WHERE doc_id = $1", [DOC]);
+    await contract.client!.query("DELETE FROM knowledge_entries WHERE doc_id = $1 AND (is_private = false OR tenant_id = $2)", [DOC, TENANT]);
     await ingest(DOC, "installation-guide.pdf");
     expectFact((await retrieve()).chunks, "installation-guide.pdf");
   });
@@ -494,15 +494,15 @@ describe.skipIf(!CONTRACT_READY)("PDF pipeline contract", () => {
   });
 
   it("[pipeline:page-anchor] PDF page three is not chunk ordinal two", async () => {
-    const { rows } = await contract.client!.query("SELECT source_page, page_start, page_end, (metadata->>'chunk_index')::int AS ordinal FROM knowledge_entries WHERE doc_id = $1 AND page_start = 3", [DOC]);
+    const { rows } = await contract.client!.query("SELECT source_page, page_start, page_end, (metadata->>'chunk_index')::int AS ordinal FROM knowledge_entries WHERE doc_id = $1 AND page_start = 3 AND (is_private = false OR tenant_id = $2)", [DOC, TENANT]);
     expect(rows).toEqual([{ source_page: 3, page_start: 3, page_end: 3, ordinal: 2 }]);
     expectFact((await retrieve()).chunks);
   });
 
   it("[pipeline:blank] a real blank PDF fails without inserting rows", async () => {
-    const before = await contract.client!.query("SELECT count(*)::int AS n FROM knowledge_entries");
+    const before = await contract.client!.query("SELECT count(*)::int AS n FROM knowledge_entries WHERE (is_private = false OR tenant_id = $1)", [TENANT]);
     await expect(ingest(randomUUID(), "blank.pdf", blank)).rejects.toBeInstanceOf(NoExtractableTextError);
-    const after = await contract.client!.query("SELECT count(*)::int AS n FROM knowledge_entries");
+    const after = await contract.client!.query("SELECT count(*)::int AS n FROM knowledge_entries WHERE (is_private = false OR tenant_id = $1)", [TENANT]);
     expect(after.rows).toEqual(before.rows);
   });
 });
