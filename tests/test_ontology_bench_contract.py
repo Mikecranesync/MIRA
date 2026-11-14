@@ -22,8 +22,8 @@ Where the application honours a clause the test is a plain assertion. Where it d
 not there are TWO tests, the same pattern ``tests/test_ontology_runtime_contract.py``
 uses: a ``pinned`` test asserting today's exact behaviour (so an import or data error
 cannot pass for the defect), and the wanted behaviour as a STRICT xfail. When someone
-repairs the path the xfail becomes an unexpected pass and fails the suite. No dedicated
-issue exists for these five gaps yet; they are tracked under #5528 until one is filed.
+repairs the path the xfail becomes an unexpected pass and fails the suite. The five gaps
+are tracked in #5540 (parent #5528).
 """
 
 from __future__ import annotations
@@ -50,7 +50,7 @@ def _assess(tags: dict) -> str | None:
 # ── Timestamp and quality ─────────────────────────────────────────────────────
 
 OLD = "2001-01-01T00:00:00+00:00"
-GAP = "tracked under #5528 (no dedicated issue filed yet)"
+GAP = "tracked in #5540 (parent #5528)"
 
 
 class TestTimestampAndQuality:

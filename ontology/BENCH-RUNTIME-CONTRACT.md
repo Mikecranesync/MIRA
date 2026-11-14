@@ -13,7 +13,7 @@ honour on the paths the bench pilot uses, and what proves it?*
 |---|---|---|
 | `main` | `20fda901e3ea2c2ca2b4af8556eedc27c202c12f` | — |
 | PR #5530 (ontology coverage gate + runtime mapping) — **the review candidate, untouched** | `c7a21990b391af70e62e4656a7cccc5b6cb4f01c` | draft, 0 behind main, checks green on that head, no GitHub review |
-| This follow-on (local branch `test/ontology-bench-runtime-contract`, stacked on #5530, **not pushed**) | the commit that adds this file (see `git log c7a21990b..`) | tests + mapping only; no production code |
+| This follow-on (local branch `test/ontology-bench-runtime-contract`, stacked on #5530; pushed as draft PR #5539) | the commit that adds this file (see `git log c7a21990b..`) | tests + mapping only; no production code |
 | PR #5504 (bench components) — not mine; its tests executed by me at this head | `e649880b1b51dcc010b539181a74a88f98ef7bea` | draft; last review found 2 HIGH on selection paths, owner repairing locally; migration 115 proposed, applied nowhere |
 | #5504 owner's **local candidate** (not pushed, not reviewed) | `f1be6b8f03a755af4f10ead16608f5cff19c1829` | the owner reports it repairs the two HIGH findings. I re-ran there: its store suite 19/19 on a disposable database, its unit and mocked-route suites 152/152, and my five probes 5/5. Migration 115 file unchanged (sha256 `4b23ca7f…`). |
 
@@ -147,18 +147,19 @@ scope, and the old reading still resolves in history. That is a document fact, n
 
 | Gap | What happens today | Owner | Blocks |
 |---|---|---|---|
-| **#5519** | Approval stores the canonical name (`feeds` → `UPSTREAM_OF`, `has_component` → `HAS_COMPONENT`); readers filter the lowercase one. An approved relationship reaches no reader. Per reader: impact, components, similar and the engine's internal route all miss it. | open, **unclaimed** | Path G — critical |
-| **#5523** | Superseding a fact changes the proposal only. The edge stays `verified`; relationship rows cannot even hold a `deprecated` state; no route fires supersede. Old and new can both be current. | open, **unclaimed** | Path G — critical |
+| **#5519** | Approval stores the canonical name (`feeds` → `UPSTREAM_OF`, `has_component` → `HAS_COMPONENT`); readers filter the lowercase one. An approved relationship reaches no reader. Per reader: impact, components, similar and the engine's internal route all miss it. | open, **claimed by this lane 2026-11-14 (owner-authorized)** | Path G — critical |
+| **#5523** | Superseding a fact changes the proposal only. The edge stays `verified`; relationship rows cannot even hold a `deprecated` state; no route fires supersede. Old and new can both be current. | open, **claimed by this lane 2026-11-14 (owner-authorized)** | Path G — critical |
 | **#5524** | A corrected proposal for the same pair is silently dropped by de-duplication. | open, unclaimed | Path G |
 | **#5527** | The answer context carries no edge id, proposal id or source, and names machines by internal id. | open, unclaimed | Path G |
 | **#5520** | Fault identity is not model-specific in the application. Not exercised here. | open, unclaimed | fault answers |
-| live-data ×3 | Command read as feedback; missing fault reading read as healthy; age never affects quality (seven strict xfails, two of them through the Ignition entry point). Tracked under #5528 — **no dedicated issue filed; filing needs the owner's word.** | none | Ignition "Ask MIRA" for the drive |
-| open-window stale | On Path P, a state window never closed + stale signals → assessment still says "Machine running". Same tracking note. | none | Path P, replay turns — **low**: the state line beside it says stale |
+| live-data ×3 | Command read as feedback; missing fault reading read as healthy; age never affects quality (seven strict xfails, two of them through the Ignition entry point). Filed as **#5540**. | none | Ignition "Ask MIRA" for the drive |
+| open-window stale | On Path P, a state window never closed + stale signals → assessment still says "Machine running". Recorded in #5540. | none | Path P, replay turns — **low**: the state line beside it says stale |
 | model node | No catalog-model node or `INSTANCE_OF` edge is written by the application. | none | Path G |
 
-I repaired none of these. No owner has claimed them, so there was no one to hand a slice to
-or take one from; the tests are the executable contracts a future owner repairs against. When
-a repair lands, the matching known-gap test goes red and says to convert it.
+None of these is repaired in this change. #5519 and #5523 were claimed by this lane on
+2026-11-14 with the owner's authorization; the repairs are a separate change. The others have
+no owner. The tests are the executable contracts a repair is made against: when a repair
+lands, the matching known-gap test goes red and says to convert it.
 
 ## Second-consumer semantics
 
@@ -214,8 +215,12 @@ compliance with any external standard, and nothing here should be quoted that wa
 
 ## Review status
 
-- Independent review required for this work: **not obtained.** A governed Codex round needs
-  the owner's authorization; none was requested or spent.
+- Governed independent review (Codex, owner-authorized): one round on PR #5539 at
+  `83481540053175bbef88d96e2d4e258f3d4e7e3b` returned **GREEN** (0 findings, 2 considered and
+  dismissed; all nine files covered). It ran the Python suite and did **not** execute the Hub
+  suites (no database on its side). That verdict covers that exact commit only — any later
+  commit, including the one carrying this sentence, is unreviewed until a new round runs.
+  PR #5530 itself has had no governed review.
 - One read-only second-model read of this branch **as of `5fdb5f700`** was run as evidence only. The three commits after it (notebook source scope, bench links, these corrections) have had **no** second read; an advisor pass found three over-claims and a read-only second read (same model family, **PARTIAL**, ran no tests) found six more — one tenant test true by its own seed data, a missing positive control, titles that named a reader the test never called. All corrected in the last two commits. That second read did not cover the final corrections themselves, nor the retrieval section added after it. A third read of that section (same terms) found the "route's own call shape" wording overstated and three smaller slips; corrected. Mutation results quoted on this page were run by hand and are not reproducible from the diff. Label: **PARTIAL**
   (same model family as the author). It ran no tests. It found no vacuous test; it did find
   seven places where a test or this page claimed more than it exercised. All seven were

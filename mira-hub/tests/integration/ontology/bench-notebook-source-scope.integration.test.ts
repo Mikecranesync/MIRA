@@ -98,10 +98,10 @@ const SOURCES: Src[] = [
 
 async function cleanup() {
   const both = [TENANT, OTHER_TENANT];
-  await testPool.query(`DELETE FROM equipment_notebook_sources WHERE tenant_id = ANY($1::uuid[])`, [both]);
-  await testPool.query(`DELETE FROM equipment_notebooks WHERE tenant_id = ANY($1::uuid[])`, [both]);
-  await testPool.query(`DELETE FROM knowledge_entries WHERE tenant_id = ANY($1::uuid[])`, [both]);
-  await testPool.query(`DELETE FROM namespace_direct_uploads WHERE tenant_id = ANY($1::uuid[])`, [both]);
+  // This test's own rows only, on a disposable database.
+  for (const t of ["equipment_notebook_sources", "equipment_notebooks", "knowledge_entries", "namespace_direct_uploads"]) {
+    await testPool.query(`DELETE FROM ${t} WHERE tenant_id = ANY($1::uuid[])`, [both]);
+  }
   await testPool.query(`DELETE FROM hub_uploads WHERE tenant_id = ANY($1::text[])`, [both]);
 }
 

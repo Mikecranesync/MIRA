@@ -131,7 +131,7 @@ describe("pilot path: stale data is labelled", () => {
     );
   });
 
-  // KNOWN GAP (tracked under #5528, no dedicated issue): the one-line assessment says
+  // KNOWN GAP (tracked in #5540): the one-line assessment says
   // "Machine running" on stale signals when the last state window was never closed. The
   // state line above it does say "signals stale"; the assessment does not.
   it.fails("an open 'running' window with stale signals is not summarised as running", () => {

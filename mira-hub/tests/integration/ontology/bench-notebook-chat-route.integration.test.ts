@@ -66,6 +66,14 @@ async function cleanup() {
   await testPool.query(`DELETE FROM hub_uploads WHERE tenant_id = $1`, [TENANT]);
 }
 
+/** The stored passage of one of this test's own (private) documents. */
+function storedPassage(doc: string) {
+  return testPool.query(
+    `SELECT content FROM knowledge_entries WHERE is_private = true AND tenant_id = $1::uuid AND doc_id = $2::uuid`,
+    [TENANT, doc],
+  );
+}
+
 let sent: string[] = [];
 
 /** One turn through the real route. Returns the status, the streamed events and what was sent to the provider. */
@@ -213,7 +221,7 @@ describe("pilot path, real chat route: a corrected reading replaces the old one 
       `SELECT superseded_at IS NOT NULL AS superseded FROM equipment_notebook_sources WHERE notebook_id = $1::uuid AND doc_id = $2::uuid`,
       [NB, OLD],
     );
-    const passage = await testPool.query(`SELECT content FROM knowledge_entries WHERE doc_id = $1::uuid`, [OLD]);
+    const passage = await storedPassage(OLD);
     expect(src.rows).toEqual([{ superseded: true }]);
     expect(passage.rows).toEqual([{ content: OLD_TEXT }]);
   });
