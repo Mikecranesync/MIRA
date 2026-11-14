@@ -17,6 +17,7 @@
  */
 import pool from "@/lib/db";
 import type { PoolClient } from "pg";
+import { KG_EDGES_LEGACY } from "@/capabilities/kg-relationship-read-view";
 
 export interface UnsBackfillResult {
   tenantId: string;
@@ -110,9 +111,11 @@ async function loadParentMap(
   tenantId: string,
 ): Promise<Map<string, string>> {
   // parent_of: source = parent, target = child (per traversal.ts §maintenanceContext).
+  // Read through the shared view so a hierarchy edge approved as child LOCATED_IN parent
+  // is seen too (#5519).
   const { rows } = await client.query<ParentEdge>(
     `SELECT r.target_id AS child_id, r.source_id AS parent_id
-       FROM kg_relationships r
+       FROM ${KG_EDGES_LEGACY} r
        WHERE r.tenant_id = $1
          AND r.relationship_type = 'parent_of'`,
     [tenantId],
