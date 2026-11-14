@@ -47,6 +47,9 @@ export const PROPOSAL_TRANSITIONS: Record<ProposalTrigger, HubStatusMap> = {
   flag_review: { aiSuggestion: "pending", relationshipProposal: "reviewed" },
 };
 
+/** The kg_relationships.approval_state a superseded edge moves to (ADR-0017, amended #5523). */
+export const KG_EDGE_STATE_WHEN_SUPERSEDED = "rejected";
+
 /** Minimal query interface — matches the pg client passed by withTenantContext. */
 export interface QueryClient {
   query: (text: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
@@ -69,6 +72,8 @@ export interface ProposalTransitionResult {
   relationshipProposalStatus: string | null;
   aiSuggestionStatus: string | null;
   aiSuggestionRowsUpdated: number;
+  /** kg_relationships rows taken out of the verified set (supersede only). */
+  kgEdgesDemoted: number;
 }
 
 /**
@@ -79,7 +84,9 @@ export interface ProposalTransitionResult {
  * two Hub projections never drift apart — the gap the ADR-0017 canary detects.
  *
  * Engine-side kg_*.approval_state is NOT written here (Python helper / the
- * decide route's kg_relationships upsert own it).
+ * decide route's kg_relationships upsert own it) — with ONE exception, amended
+ * 2026-11-14 (#5523): `supersede` also takes the superseded edge out of the
+ * verified set, in the same transaction, so no reader can serve a corrected fact.
  */
 export async function applyHubProposalTransition(
   client: QueryClient,
@@ -103,6 +110,28 @@ export async function applyHubProposalTransition(
         WHERE id = $4`,
       [map.relationshipProposal, reviewer, reason, input.relationshipProposalId],
     );
+  }
+
+  // 1b) supersede: the edge this proposal verified leaves the verified set (#5523).
+  // kg_relationships cannot hold 'deprecated'; 'rejected' is the allowed non-current state
+  // and the proposal's 'deprecated' status records why. Matched by the proposal link OR by
+  // the proposal's own tenant/endpoints/type, because approval keeps a row's FIRST link.
+  let kgEdges = 0;
+  if (input.trigger === "supersede" && input.relationshipProposalId) {
+    const r = await client.query(
+      `UPDATE kg_relationships k
+          SET approval_state = '${KG_EDGE_STATE_WHEN_SUPERSEDED}'
+         FROM relationship_proposals p
+        WHERE p.id = $1
+          AND k.approval_state = 'verified'
+          AND (k.relationship_proposal_id = p.id
+               OR (k.tenant_id = p.tenant_id
+                   AND k.source_id = p.source_entity_id
+                   AND k.target_id = p.target_entity_id
+                   AND k.relationship_type = p.relationship_type))`,
+      [input.relationshipProposalId],
+    );
+    kgEdges = (r as { rowCount?: number }).rowCount ?? r.rows.length;
   }
 
   // 2) ai_suggestions (Hub queue projection) — keep the paired row in lockstep.
@@ -141,5 +170,6 @@ export async function applyHubProposalTransition(
     relationshipProposalStatus: map.relationshipProposal,
     aiSuggestionStatus: map.aiSuggestion,
     aiSuggestionRowsUpdated: aiRows,
+    kgEdgesDemoted: kgEdges,
   };
 }

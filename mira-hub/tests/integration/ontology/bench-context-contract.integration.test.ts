@@ -596,17 +596,21 @@ describe("5. correcting a fact: old fact out of current answers, kept in history
     expect(await edgeRows(TENANT_A, S.feeds)).toHaveLength(1);
   });
 
-  it("KNOWN GAP #5523: the superseded edge is still verified in the graph", async () => {
-    const state = (await edgeRows(TENANT_A, S.feeds))[0].approval_state;
-    knownGap(
-      "#5523",
-      () => expect(state).toBe("verified"),
-      () => expect(state).not.toBe("verified"),
+  it("#5523 repaired: the superseded edge has left the verified set (row kept, state 'rejected')", async () => {
+    const rows = await edgeRows(TENANT_A, S.feeds);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].approval_state).toBe("rejected");
+    // a reader that queries the table directly with the usual predicate no longer finds it
+    const direct = await admin.query(
+      `SELECT count(*)::int AS n FROM kg_relationships
+        WHERE tenant_id = $1::uuid AND source_id = $2::uuid AND approval_state = 'verified'`,
+      [TENANT_A, A.Q1.nodeId],
     );
+    expect(direct.rows[0].n).toBe(0);
   });
 
   it("#5523 read-side guard: after the supersede, no reader serves the old fact — and the answer context drops it", async () => {
-    // As stored (UPSTREAM_OF, still 'verified' in the table — see the pin above); nothing renamed.
+    // As stored (UPSTREAM_OF); nothing renamed.
     expect(await downstreamNodeIds(TENANT_A, A.Q1)).toEqual([]);
     const block = await buildGraphContext(TENANT_A, IMPACT_QUESTION, A.Q1.assetId);
     expect(block).not.toContain(`Downstream: ${A.VFD1.assetId}`);
@@ -618,10 +622,22 @@ describe("5. correcting a fact: old fact out of current answers, kept in history
     expect((await proposalRow(S.feeds))?.status).toBe("deprecated");
   });
 
-  it("control for the guard: lifting the supersede brings the old fact back to the reader", async () => {
+  it("control: the two protections are independent — the row state alone, and the read guard alone, each keep it out", async () => {
+    // (a) row back to 'verified', proposal still deprecated: the read-side guard alone hides it
+    await admin.query(`UPDATE kg_relationships SET approval_state = 'verified' WHERE id = $1::uuid`, [S.feedsEdge]);
+    try {
+      expect(await downstreamNodeIds(TENANT_A, A.Q1)).toEqual([]);
+      // (b) and with the supersede lifted as well, the fact is read again — so the reader works
+      await admin.query(`UPDATE relationship_proposals SET status = 'verified' WHERE id = $1::uuid`, [S.feeds]);
+      expect(await downstreamNodeIds(TENANT_A, A.Q1)).toEqual([A.VFD1.nodeId]);
+    } finally {
+      await admin.query(`UPDATE relationship_proposals SET status = 'deprecated' WHERE id = $1::uuid`, [S.feeds]);
+      await admin.query(`UPDATE kg_relationships SET approval_state = 'rejected' WHERE id = $1::uuid`, [S.feedsEdge]);
+    }
+    // (c) proposal lifted but row still 'rejected': the row state alone hides it
     await admin.query(`UPDATE relationship_proposals SET status = 'verified' WHERE id = $1::uuid`, [S.feeds]);
     try {
-      expect(await downstreamNodeIds(TENANT_A, A.Q1)).toEqual([A.VFD1.nodeId]);
+      expect(await downstreamNodeIds(TENANT_A, A.Q1)).toEqual([]);
     } finally {
       await admin.query(`UPDATE relationship_proposals SET status = 'deprecated' WHERE id = $1::uuid`, [S.feeds]);
     }
@@ -646,7 +662,7 @@ describe("5. correcting a fact: old fact out of current answers, kept in history
     );
   });
 
-  it("the corrected fact can be proposed and approved; KNOWN GAP #5523: old and new are then both verified", async () => {
+  it("the corrected fact can be proposed and approved; #5523 repaired: only the corrected one is verified", async () => {
     const id = (await propose(TENANT_A, "feeds", A.Q1, A.VFD2, "bench correction: relay feeds drive 2")) as string;
     expect(id).toMatch(/^[0-9a-f-]{36}$/);
     expect((await decide(id, "verify", { tenantId: TENANT_A, userId: ADMIN_A, role: "admin" })).status).toBe(200);
@@ -657,11 +673,7 @@ describe("5. correcting a fact: old fact out of current answers, kept in history
       [TENANT_A, A.Q1.nodeId],
     );
     const current = rows.map((r) => r.target_id);
-    knownGap(
-      "#5523",
-      () => expect(current).toEqual([A.VFD1.nodeId, A.VFD2.nodeId]),
-      () => expect(current).toEqual([A.VFD2.nodeId]),
-    );
+    expect(current).toEqual([A.VFD2.nodeId]);
   });
 
   it("the complete path: after the correction, the reader and the answer name the corrected drive only", async () => {
@@ -694,8 +706,11 @@ describe("5. correcting a fact: old fact out of current answers, kept in history
       );
       expect(link.rows[0].p).toBe(S.feeds); // still linked to the deprecated proposal
       expect((await downstreamNodeIds(TENANT_A, A.Q1)).sort()).toEqual([A.VFD1.nodeId, A.VFD2.nodeId].sort());
+      const state = await admin.query(`SELECT approval_state FROM kg_relationships WHERE id = $1::uuid`, [S.feedsEdge]);
+      expect(state.rows[0].approval_state).toBe("verified"); // approval puts the row back
     } finally {
       await admin.query(`DELETE FROM relationship_proposals WHERE id = $1::uuid`, [again]);
+      await admin.query(`UPDATE kg_relationships SET approval_state = 'rejected' WHERE id = $1::uuid`, [S.feedsEdge]);
     }
     expect(await downstreamNodeIds(TENANT_A, A.Q1)).toEqual([A.VFD2.nodeId]);
   });

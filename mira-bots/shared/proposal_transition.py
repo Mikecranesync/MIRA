@@ -31,7 +31,10 @@ PROPOSAL_TRANSITIONS: dict[str, dict[str, Optional[str]]] = {
     "accept": {"kg_approval_state": "verified", "relationship_proposal": "verified"},
     "reject": {"kg_approval_state": "rejected", "relationship_proposal": "rejected"},
     "defer": {"kg_approval_state": None, "relationship_proposal": None},
-    "supersede": {"kg_approval_state": None, "relationship_proposal": "deprecated"},
+    # Amended 2026-11-14 (#5523): a superseded fact leaves the verified set. kg_relationships
+    # cannot hold 'deprecated', so the row goes to 'rejected'; the proposal's 'deprecated'
+    # status records that it was superseded rather than refused.
+    "supersede": {"kg_approval_state": "rejected", "relationship_proposal": "deprecated"},
     # Engine job finds contradicting evidence: a verified edge goes back to review.
     "contradict": {"kg_approval_state": "needs_review", "relationship_proposal": "contradicted"},
     # Engine flags an edge for a human re-look.

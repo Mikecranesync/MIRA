@@ -110,17 +110,17 @@ class TestTheMappingIsAGate:
 
     def test_runtime_enforcement_cannot_rest_on_a_contract_the_app_fails(self, tmp_path):
         m = _real_mapping()
-        m["shapes"]["SupersededStateShape"] = {
+        m["shapes"]["AssetClassInstanceShape"] = {
             "enforcement": "runtime",
             "scope": "x",
-            "contracts": ["superseded-fact-leaves-the-verified-set"],
+            "contracts": ["fault-code-identity-includes-the-model"],
         }
         r = _run_phase(m, tmp_path)["runtime:shape-mapping"]
-        assert not r.passed and "SupersededStateShape" in r.detail
+        assert not r.passed and "AssetClassInstanceShape" in r.detail
 
     def test_planned_needs_a_tracking_reference(self, tmp_path):
         m = _real_mapping()
-        m["shapes"]["SupersededStateShape"].pop("tracking")
+        m["shapes"]["AssetClassInstanceShape"].pop("tracking")
         r = _run_phase(m, tmp_path)["runtime:shape-mapping"]
         assert not r.passed and "tracking" in r.detail
 
@@ -141,7 +141,7 @@ class TestTheMappingIsAGate:
     def test_an_agreeing_contract_may_not_be_an_expected_failure(self, tmp_path):
         """'agrees' on a test that is marked xfail would be a green claim on red behaviour."""
         m = _real_mapping()
-        m["contracts"]["superseded-fact-leaves-the-verified-set"]["status"] = "agrees"
+        m["contracts"]["fault-code-identity-includes-the-model"]["status"] = "agrees"
         r = _run_phase(m, tmp_path)["runtime:contracts"]
         assert not r.passed and "xfail" in r.detail
 
@@ -377,16 +377,24 @@ class TestRelationshipVocabulary:
         assert writer["feeds"] == "UPSTREAM_OF" and writer["caused_by"] == "CAUSES"
         assert {"feeds", "caused_by"} <= reader
 
-    @pytest.mark.xfail(
-        strict=True,
-        raises=AssertionError,
-        reason="#5519: readers filter on the lowercase names while approval stores the canonical "
-        "ones, so an approved edge is invisible to the traversal that should use it.",
-    )
+    VIEW = "mira-hub/src/capabilities/kg-relationship-read-view.ts"
+
     def test_a_reader_accepts_the_name_approval_actually_stores(self):
+        """#5519 repaired, checked at SOURCE level only (the executed proof is the Hub
+        integration test, which no CI job runs): every name the reader filters on that approval
+        stores differently is one the shared read view translates, and the reader never reads
+        the bare table — so it cannot go around the view."""
+        import re
+
         writer, reader = self._writer_map(), self._reader_types()
         blind = sorted(t for t in reader if t in writer and writer[t] not in reader)
-        assert not blind, blind
+        assert blind, "expected names that differ between writer and reader"
+        text = (REPO_ROOT / self.READER).read_text()
+        assert "kg-relationship-read-view" in text
+        bare = re.findall(r"(?:FROM|JOIN)\s+kg_relationships\b", text)
+        assert not bare, f"{len(bare)} read(s) of the bare table go around the shared view"
+        view = (REPO_ROOT / self.VIEW).read_text()
+        assert "legacyAliasesOfCanonicalEdges" in view  # derived from the writer's own mapping
 
 
 # ── Command versus feedback ───────────────────────────────────────────────────
@@ -450,13 +458,8 @@ class TestSupersession:
         emitted = {kg_approval_for(t) for t in TRIGGERS} - {None}
         assert emitted <= KG_APPROVAL_STATES
 
-    @pytest.mark.xfail(
-        strict=True,
-        raises=AssertionError,
-        reason="#5523: supersede leaves kg approval_state unchanged, so a superseded verified "
-        "edge is still returned by every approval_state = 'verified' reader.",
-    )
     def test_a_superseded_verified_edge_stops_being_served_as_verified(self, pg):
+        """#5523 repaired (ADR-0017 amended): supersede takes the row out of the verified set."""
         from shared.proposal_transition import apply_kg_approval
 
         psycopg2 = pytest.importorskip("psycopg2")

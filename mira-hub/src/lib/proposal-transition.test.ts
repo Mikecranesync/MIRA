@@ -10,6 +10,7 @@ import { describe, it, expect, vi } from "vitest";
 import {
   PROPOSAL_TRANSITIONS,
   applyHubProposalTransition,
+  KG_EDGE_STATE_WHEN_SUPERSEDED,
   type QueryClient,
 } from "@/lib/proposal-transition";
 
@@ -37,6 +38,33 @@ describe("PROPOSAL_TRANSITIONS mapping (ADR-0017)", () => {
       aiSuggestion: "superseded",
       relationshipProposal: "deprecated",
     });
+  });
+});
+
+describe("supersede takes the edge out of the verified set (ADR-0017 amended, #5523)", () => {
+  it("issues one kg_relationships update, scoped to verified rows of that proposal's fact, and reports the count", async () => {
+    const calls: Array<{ text: string; params?: unknown[] }> = [];
+    const client = {
+      query: async (text: string, params?: unknown[]) => {
+        calls.push({ text, params });
+        return { rows: [], rowCount: /UPDATE kg_relationships/.test(text) ? 1 : 0 };
+      },
+    };
+    const out = await applyHubProposalTransition(client, { trigger: "supersede", relationshipProposalId: "rp-1" });
+    const kg = calls.filter((c) => /UPDATE kg_relationships/.test(c.text));
+    expect(kg).toHaveLength(1);
+    expect(kg[0].text).toContain(`approval_state = '${KG_EDGE_STATE_WHEN_SUPERSEDED}'`);
+    expect(kg[0].text).toMatch(/k\.approval_state = 'verified'/);
+    expect(kg[0].params).toEqual(["rp-1"]);
+    expect(out.kgEdgesDemoted).toBe(1);
+  });
+  it("no other trigger touches kg_relationships", async () => {
+    for (const trigger of ["new", "accept", "reject", "defer", "contradict", "flag_review"] as const) {
+      const calls: string[] = [];
+      const client = { query: async (text: string) => (calls.push(text), { rows: [] }) };
+      await applyHubProposalTransition(client, { trigger, relationshipProposalId: "rp-1" });
+      expect(calls.some((t) => /kg_relationships/.test(t))).toBe(false);
+    }
   });
 });
 

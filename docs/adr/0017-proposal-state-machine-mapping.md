@@ -40,7 +40,7 @@ Collapsing into one enum forces every table to carry vocabulary it doesn't need.
 | Admin accepts on Hub | `accepted` | `verified` | `verified` (write/update kg_* row) |
 | Admin rejects on Hub | `rejected` | `rejected` | `rejected` |
 | Admin punts ("ask me later") | `deferred` | unchanged | unchanged |
-| Newer proposal replaces this one | `superseded` | `deprecated` | unchanged |
+| Newer proposal replaces this one | `superseded` | `deprecated` | verified → `rejected` (edge) — amended 2026-11-14, #5523 (owner decision): a superseded fact must leave the verified set. `kg_relationships` cannot hold `deprecated`; the proposal's `deprecated` status records why. |
 | Engine job finds contradicting evidence | back to `pending` (with reason) | `contradicted` | verified → `needs_review` |
 | Engine flags edge for human re-look | `pending` (re-queued) | `reviewed` | `needs_review` |
 
