@@ -521,14 +521,19 @@ const POINTER_WORDS = new Set(["see", "refer", "consult", "use"]);
 function continuesSentence(below: string): boolean {
   const words = wordsOf(below);
   const first = (words[0] ?? "").toLowerCase();
-  // A wrapped sentence starts with an ordinary lower-case word ("is not …",
-  // "and accessories …"). A brand that starts small ("iC7 Series") is not one,
-  // nor is a web address ("http://…" sits under the catalog list on a real cover).
-  if (/^[a-z]+$/.test(words[0] ?? "") && !/^[a-z][a-z0-9+.-]*:\/\//i.test(below.trim())) return true;
-  // "CAN Interface Module" is a part, "Can be found in …" is a sentence.
+  // Predicate, exclusion and pointer semantics win before title recognition.
+  // "CAN Interface Module" is a part; "Can be found ..." is a sentence.
   const acronym = (words[0] ?? "") === "CAN" && /[a-z]/.test(below);
   if ((PREDICATE_WORDS.has(first) && !isMonthMay(words, 0) && !acronym && !isNotationNoun(words, 0)) || isExclusionWord(first)) return true;
-  return POINTER_WORDS.has(first) && modelNumbersIn(below).length === 0;
+  if (POINTER_WORDS.has(first) && modelNumbersIn(below).length === 0) return true;
+  if (/^(?:and|or)$/i.test(first)) return true;
+  // The same strict title-noun test used beside a catalog line applies regardless of
+  // case. Real covers put a lowercase product title below a bare catalog number.
+  // Do not turn that noun phrase into prose merely because its first letter is small.
+  if (isTitleLine(below, true) && hasTitleNoun(below)) return false;
+  // Other lowercase lines continue the sentence. A brand starting small (iC7 Series)
+  // and a web address are not ordinary lowercase words.
+  return /^[a-z]+$/.test(words[0] ?? "") && !/^[a-z][a-z0-9+.-]*:\/\//i.test(below.trim());
 }
 
 const HEADING_REACH = 6;
@@ -835,12 +840,36 @@ export type ExcludedTable = {
    *  nobody's in particular, not because it is another model's. The models are
    *  the whole block's, the record's own key among them. */
   unqualified?: true;
+  /** Layout-bounded section, rather than a model column. */
+  section?: true;
 };
 
 /** Static text plus model keys and page numbers only; no value or wording from
  *  an excluded passage reaches it. The record's own unreadable lines are named
  *  by page only — never as "another model's" table. */
 export function excludedTablesRefusalText(recordNumber: string, excluded: ExcludedTable[]): string {
+  const sections = excluded.filter((e) => e.section && !e.unqualified);
+  const unreadableSections = excluded.filter((e) => e.section && e.unqualified);
+  if (sections.length > 0) {
+    const pages = [...new Set(sections.map((e) => e.page).filter((p): p is number => p !== null))].sort((a, b) => a - b);
+    const where = pages.length === 0 ? "" : ` on ${pages.length === 1 ? "page" : "pages"} ${pages.join(", ")}`;
+    const models = listed([...new Set(sections.flatMap((e) => e.models))]);
+    const otherTables = excluded.filter((e) => !e.section && !e.unqualified);
+    const unresolvedColumns = excluded.filter((e) => e.unqualified && !e.section);
+    const whereOf = (list: ExcludedTable[]) => {
+      const pages = [...new Set(list.map((e) => e.page).filter((p): p is number => p !== null))].sort((a, b) => a - b);
+      return pages.length === 0 ? "" : ` on ${pages.length === 1 ? "page" : "pages"} ${pages.join(", ")}`;
+    };
+    const unresolvedNote = unreadableSections.length > 0 ? ` I also could not read which models the excluded section${whereOf(unreadableSections)} applies to.` : "";
+    const columnNote = unresolvedColumns.length > 0 ? ` Other excluded table values${whereOf(unresolvedColumns)} could not be tied to one model.` : "";
+    const otherNote = otherTables.length > 0 ? ` Other excluded tables cover ${listed([...new Set(otherTables.flatMap((e) => e.models))])}.` : "";
+    return `This manual's section${where} is for other variants (${models}); it does not provide applicable specifications for the ${recordNumber}. I won't use those sections as the ${recordNumber}'s specifications.${otherNote}${unresolvedNote}${columnNote} Check the recorded model and the specification you need against its applicable documentation.`;
+  }
+  if (unreadableSections.length > 0) {
+    const pages = [...new Set(unreadableSections.map((e) => e.page).filter((p): p is number => p !== null))].sort((a, b) => a - b);
+    const where = pages.length === 0 ? "" : ` on ${pages.length === 1 ? "page" : "pages"} ${pages.join(", ")}`;
+    return `I could not read which models this manual's section${where} applies to, so I won't use it to answer for the ${recordNumber}. Add a clearer page that establishes applicability to the ${recordNumber} and the specification in question, then ask again.`;
+  }
   const siblings = excluded.filter((e) => !e.unqualified);
   const unresolved = excluded.filter((e) => e.unqualified);
   const pagesOf = (list: ExcludedTable[]) => [...new Set(list.map((e) => e.page).filter((p): p is number => p !== null))].sort((a, b) => a - b);

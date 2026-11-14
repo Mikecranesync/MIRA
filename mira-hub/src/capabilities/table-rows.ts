@@ -21,7 +21,7 @@ export type TableBlock = {
   top: number;
   bottom: number;
 };
-export type TableChunk = { text: string; models: string[]; unqualified: boolean };
+export type TableChunk = { text: string; models: string[]; unqualified: boolean; sourceTop?: number; sourceCaption?: string; sourceModels?: string[]; scope?: "unresolved" };
 /** A MODEL-KEYED table (one model per line in a left column, attributes as columns — the GS10
  *  Appendix A cable-length table, #5450): its header band + model lines as rendered text, and the
  *  models of its key column. It carries NO rows on purpose: cells merged down a group of models
@@ -604,7 +604,7 @@ function detectModelKeyedTables(lines: readonly Line[], occupied: ReadonlySet<nu
  *  A MODEL-KEYED table (`detectModelKeyedTables`, #5450) also qualifies, as unqualified text only.
  *  Returns null when the page has no qualifying table (the remainder is then just the page as-is,
  *  which callers already have via the flat-text path). */
-export function pageWithTables(items: readonly LayoutItem[]): { remainder: string; chunks: TableChunk[] } | null {
+export function pageWithTables(items: readonly LayoutItem[]): { remainder: string; chunks: TableChunk[]; remainderItems: LayoutItem[] } | null {
   const blocks = detectModelTables(items).filter((b) => b.rows.length >= 2 && b.rows.some((r) => !r.merged));
   const lines = buildLines(items);
   const occupied = new Set<number>();
@@ -615,18 +615,20 @@ export function pageWithTables(items: readonly LayoutItem[]): { remainder: strin
   if (blocks.length === 0 && keyed.length === 0) return null;
 
   const chunks: TableChunk[] = [];
-  for (const block of blocks) chunks.push(...tableChunks(block));
+  for (const block of blocks) chunks.push(...tableChunks(block).map((chunk) => ({ ...chunk, sourceTop: block.top, sourceCaption: block.caption, sourceModels: block.modelKeys })));
   // A model-keyed table is ONE unqualified chunk (split only by the size budget) tagged with every
   // model of its key column, so retrieval withholds it from a record holding a catalog number and
   // reports the page as unresolved — a flat `GS11N-20P2 230 1.8` line never answers for a value
   // again (#5450). No per-model chunk is written: nothing was tied to a column.
   for (const t of keyed) {
     const prefix = t.caption ? `${t.caption} — unqualified` : "unqualified";
-    for (const text of splitRowsIntoChunks(prefix, t.lines)) chunks.push({ text, models: [...t.modelKeys], unqualified: true });
+    for (const text of splitRowsIntoChunks(prefix, t.lines)) chunks.push({ text, models: [...t.modelKeys], unqualified: true, sourceTop: t.top, sourceCaption: t.caption, sourceModels: t.modelKeys });
   }
 
   const spans = [...blocks.map((b) => ({ top: b.top, bottom: b.bottom })), ...keyed.map((t) => ({ top: t.top, bottom: t.bottom }))];
   const kept = lines.filter((l) => !spans.some((s) => l.y <= s.top && l.y >= s.bottom));
   const remainder = kept.map((l) => renderItems(l.items)).join("\n");
-  return { remainder, chunks };
+  // Expose the exact source membership of the remainder. Section boundaries inside removed
+  // blocks still exist, but their absence from the remainder is intentional, not a read failure.
+  return { remainder, chunks, remainderItems: kept.flatMap((l) => l.items) };
 }
