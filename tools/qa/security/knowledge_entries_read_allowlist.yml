@@ -480,18 +480,20 @@ approved:
               WHERE tenant_id = $1
                 AND ($2::text IS NOT NULL)
                 AND ingest_route = 'v2'
-  "mira-hub/src/lib/manual-rag.ts:1907":
+  "mira-hub/src/lib/manual-rag.ts:2005":
     approved_classification: TENANT-ONLY
-    query_sha256: "6d117824bfdf8b7b69aaea6ed6af06bf2786215e056014d2fe88068405f16dca"
+    query_sha256: "3a368c1634e87edc97b86b7c204291a0fcb3e78087ef11be564f5ee2b9c105cd"
     reason: "HASH MIGRATION 2026-11-12 (#5429 Phase 1 tip, Gate 7 cheap-lane r4 HIGH: unresolved table lines withheld from a bound record, :1894->:1907): the idfSql final SELECT list gained `metadata->'table_unqualified' AS table_unqualified` beside table_models (read only by admit()'s per-chunk exclusion); the `scope` CTE and every WHERE predicate are byte-identical, re-reviewed TENANT-ONLY. HASH MIGRATION 2026-11-12 (#5424 Phase 1 PR-2, look-alike table exclusion, :1490->:1894): the idfSql final SELECT list gained `metadata->'table_models' AS table_models` (read only by admit()'s per-chunk table-model exclusion); the `scope` CTE and every WHERE predicate are byte-identical (tenant_id=$1, ingest_route='v2', the same approval/node/doc clauses), re-reviewed TENANT-ONLY. HASH MIGRATION 2026-10-29 (#4979, :1458->:1490): the idfSql SELECT list gained `tsvector_to_array(content_tsv) AS lexemes` (read by the flag-off rerank only); the scope CTE and every WHERE predicate are byte-identical, re-reviewed TENANT-ONLY. RE-APPROVED 2026-10-21 (#4597): the only change in this context is the IDF sum, now `sum(...::numeric)` for an exact, row-order-independent score; the scope predicates were re-read and are unchanged (tenant_id=$1, ingest_route='v2', the same approval/node/doc clauses). NEW (#4513, flag NOTEBOOK_LEXICAL_V2 default off; spec docs/specs/notebook-retrieval-idf-scoring.md): retrieveNodeChunks IDF-sum lexical pass. The `scope` CTE reads ONLY the BM25 pass's pure-tenant scope: tenant_id=$1, ingest_route='v2', and the SAME ${approvalClauseMain} / ${nodeClauseMain} / ${docClause} fragments at the SAME parameter positions ($3 node ids, $4 LIMIT, $5 validated doc scope, $6 server-derived confirmed set) as the ts_rank_cd pass it replaces under the flag. N and df are computed over this CTE only, so no out-of-scope row can shift a score. Node-attached uploads are the caller's own private rows, so this is a pure-tenant surface, not the OEM hybrid — TENANT-ONLY by the same rule as the BM25 pass and the vector lane (:1399)."
+    hash_migration: "#5503 / PR #5510: reviewed 1907 -> 2005; the only normalized-context change is the SELECT projection metadata.table_scope, consumed by the existing per-chunk admission predicate. Tenant, v2 route, approved-source/node/document predicates and bound parameters are unchanged. Original context SHA256 6d117824bfdf8b7b69aaea6ed6af06bf2786215e056014d2fe88068405f16dca retained here. No visibility expansion or checker change."
   "mira-hub/src/lib/manual-rag.ts:1485":
     approved_classification: TENANT-ONLY
     query_sha256: "38ede17090d609673dcb6b633683ec7064c6488077454c8ce74d3c7897df0e9c"
     reason: "NEW (#4513, flag NOTEBOOK_LEXICAL_V2 default off; spec docs/specs/notebook-retrieval-idf-scoring.md): retrieveNodeChunks IDF-sum lexical pass. Final select joins knowledge_entries back to the `scored` CTE by primary key; every id in `scored` comes from the tenant-scoped `scope` CTE, and the explicit `knowledge_entries.tenant_id = $1` repeats the tenant predicate as defence in depth. Never widens scope beyond the BM25 pass. TENANT-ONLY, pure-tenant node-attachment surface."
-  "mira-hub/src/lib/manual-rag.ts:1963":
+  "mira-hub/src/lib/manual-rag.ts:2061":
     approved_classification: TENANT-ONLY
-    query_sha256: "e706957bf04b5626071469dec357c83a3cd1c7c87077e5719a1c6479dc4f3b3e"
+    query_sha256: "227d5b5ea931c3d3bd1e4164f1c80729de502737a04800940903556e9393d23b"
     reason: "HASH MIGRATION 2026-11-12 (#5429 Phase 1 tip, Gate 7 cheap-lane r4 HIGH: unresolved table lines withheld from a bound record, :1950->:1963): the rareTermSql final SELECT list gained `metadata->'table_unqualified' AS table_unqualified` beside table_models (read only by admit()'s per-chunk exclusion); the `scope` CTE and every WHERE predicate are byte-identical, re-reviewed TENANT-ONLY. HASH MIGRATION 2026-11-12 (#5424 Phase 1 PR-2, look-alike table exclusion, :1545->:1950): the rareTermSql final SELECT list gained `metadata->'table_models' AS table_models` (read only by admit()'s per-chunk table-model exclusion); the `scope` CTE and every WHERE predicate are byte-identical, re-reviewed TENANT-ONLY. HASH MIGRATION 2026-10-29 (#4979, :1519->:1545): SELECT list gained `tsvector_to_array(content_tsv) AS lexemes`; the join and the explicit tenant predicate are byte-identical, re-reviewed TENANT-ONLY. NEW (#4513, flag NOTEBOOK_LEXICAL_V2 default off; spec docs/specs/notebook-retrieval-idf-scoring.md): retrieveNodeChunks IDF-sum lexical pass. Same final select as the entry above (the checker reports the join's second line separately); the correlated document_heading subquery it carries is the one already allowlisted for the BM25 pass. TENANT-ONLY, pure-tenant node-attachment surface."
+    hash_migration: "#5503 / PR #5510: reviewed 1963 -> 2061; the only normalized-context change is the SELECT projection metadata.table_scope, consumed by the existing per-chunk admission predicate. Tenant, v2 route, approved-source/node/document predicates and bound parameters are unchanged. Original context SHA256 e706957bf04b5626071469dec357c83a3cd1c7c87077e5719a1c6479dc4f3b3e retained here. No visibility expansion or checker change."
   "mira-hub/src/lib/manual-rag.ts:1575":
     approved_classification: TENANT-ONLY
     query_sha256: "d38d7e923b479cd9edbf1d89ba3ab99060dfe1e1915189c2378dc3f001e42bae"
@@ -1519,3 +1521,18 @@ approved:
     approved_classification: TENANT-ONLY
     query_sha256: "d8e4d3c7a88110744b0bf75b8045da3aae06b6b870153daabd79feabefabb221"
     reason: "Integration test: reads back the rows this test wrote (tenant_id = $1::uuid AND doc_id = $2::uuid) to assert every reprocessed chunk still carries is_private = true (the write law) and the row form. Disposable DB only; pure-tenant by construction; not a product surface. Phase 1 PR-6 (#5427)."
+
+  "mira-hub/src/capabilities/__tests__/micro820-section-scope.integration.test.ts:98":
+    approved_classification: TENANT-ONLY
+    query_sha256: "0f9501f476933194e41253cce6bdc8a7e7a1040bda530239bea4dd023fb6b76c"
+    reason: "#5503 / PR #5510: actual-SQL test readback of stored section metadata for its fixed TENANT and pages18/19. Connection-local TEMP knowledge_entries table created in beforeAll, BEGIN/ROLLBACK only; fixture rows private=true. This is deliberately a private-upload test, not a shared OEM surface; no production pool or corpus data."
+
+  "mira-hub/src/capabilities/__tests__/micro820-section-scope.integration.test.ts:159":
+    approved_classification: TENANT-ONLY
+    query_sha256: "eb524687a8dd10d96a0774bfb3ef47118b3c2197e1ef07c4240b1ebd81a6df29"
+    reason: "#5503 / PR #5510: DELETE (reported by the read scanner) re-ingests only fixed TENANT plus DOCUMENT inside a SAVEPOINT in the actual-SQL layout-failure test. Target is the connection-local TEMP knowledge_entries table; finally ROLLBACK TO/RELEASE restores baseline and outer ROLLBACK drops the table. No production deletion, no OEM surface."
+
+  "mira-hub/src/capabilities/__tests__/micro820-section-scope.integration.test.ts:166":
+    approved_classification: TENANT-ONLY
+    query_sha256: "310cb958faa38cd4f53154f926016c464a115dc72d3c73d09fb7bd433dc2591c"
+    reason: "#5503 / PR #5510: failure-path test readback of unresolved metadata for fixed TENANT/page19 in the connection-local TEMP knowledge_entries table. BEGIN/ROLLBACK and inner SAVEPOINT only, no production corpus access; deliberately tests private-upload isolation, not shared OEM visibility."
