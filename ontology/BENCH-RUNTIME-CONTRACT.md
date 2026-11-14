@@ -164,8 +164,10 @@ branch carries the #5519 reader repair and the #5523 repair (supersede demotes t
 amended), in draft PR #5543; its independent review has not yet returned a clean verdict.
 Still open on #5523: no caller fires supersede, `contradicted` is unchanged, no rollback or
 retry tests. Concurrency: accept and supersede take a per-fact transaction lock, and ONE case is
-tested on two real connections (two supersedes of one fact); accept racing supersede is not
-tested. The others have no owner. The tests are the executable contracts a repair is made against: when a repair
+tested on two real connections in two cases (two supersedes of one fact; an approval racing a
+supersede). Known limit: the decide route locks the proposal row and then the fact, supersede
+locks the fact and then the row, so a decide and a supersede of the SAME proposal at once would
+deadlock and PostgreSQL would abort one; no caller does this. The others have no owner. The tests are the executable contracts a repair is made against: when a repair
 lands, the matching known-gap test goes red and says to convert it.
 
 ## Readers outside the shared view (found by search, 2026-11-14)
@@ -177,7 +179,7 @@ is `rejected`, so what each does with it depends only on its own approval filter
 | Reader | Filters on `verified`? | Serves a superseded row? |
 |---|---|---|
 | `maintenanceContext` recent faults (`traversal.ts`) — deliberate: counts stored `had_fault` OCCURRENCE rows, which the view would mix with approved failure-mode facts | yes | no |
-| `plan-vs-actual.ts` fault occurrences — deliberate, same reason | no (occurrence rows are written `proposed`) | n/a: occurrences are not superseded facts |
+| `plan-vs-actual.ts` fault occurrences — deliberate, same reason | no | n/a: an occurrence is not a superseded fact |
 | `api/mira/ask/route.ts` | yes | no |
 | `mira-bots/shared/interlock_context.py` | yes | no |
 | `lib/i3x/data-access.ts` (external read API) | yes, in application code | no |
@@ -187,6 +189,14 @@ is `rejected`, so what each does with it depends only on its own approval filter
 
 The "no" rows are by reading each query, not by a test per reader; the executed proof is a
 direct `approval_state = 'verified'` query in HUB-G §5 plus the traversal readers.
+
+**Recorded gap (found 2026-11-14, pre-existing, no owner):** no application writer stores a row
+literally named `had_fault`. Conversation extraction proposes the fault link and approval stores
+it as `HAS_FAILURE_MODE`, one row per machine/fault pair with no occurrence time. So both
+occurrence readers above ("Recent faults" in the maintenance context and the PM-interval check)
+have nothing to count from data written today; they only see legacy or seeded rows. This repair
+does not invent an occurrence store. The integration tests insert occurrence rows by hand to
+show the readers count occurrences and do not count approved facts.
 
 ## Second-consumer semantics
 

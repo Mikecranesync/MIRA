@@ -1062,6 +1062,9 @@ describe("10. findings from the second review of the repair (#5543 round 2)", ()
     expect(none.text).not.toContain("1970-01-01");
 
     const when = new Date(Date.now() - 2 * 86400000);
+    // NOTE: no application writer stores a row literally named 'had_fault' today (writers
+    // propose it and approval stores HAS_FAILURE_MODE, one row per pair). This row is the
+    // shape the reader was written for; the missing occurrence writer is a recorded gap.
     await edge("had_fault", { occurred_at: when.toISOString() }); // a real occurrence
     const one = await read();
     expect(one.faults).toHaveLength(1);
@@ -1124,5 +1127,57 @@ describe("10. findings from the second review of the repair (#5543 round 2)", ()
     const state = await admin.query(`SELECT approval_state FROM kg_relationships WHERE id = $1::uuid`, [edgeId]);
     expect(state.rows[0].approval_state).toBe("rejected");
     expect(await downstreamNodeIds(TENANT_A, A.VFD2)).not.toContain(A.RACE.nodeId);
+  });
+  it("an approval and a supersede of one fact running at once take turns, and the newly approved fact stays current", async () => {
+    A.RACE2 = await install(TENANT_A, "RACE2", "race fixture load 2", "FactoryLM bench", "RACE-2");
+    const proposal = async (status: string) =>
+      String(
+        (
+          await admin.query(
+            `INSERT INTO relationship_proposals
+               (tenant_id, source_entity_id, source_entity_type, target_entity_id, target_entity_type,
+                relationship_type, confidence, created_by, reasoning, status)
+             VALUES ($1::uuid, $2::uuid, 'equipment', $3::uuid, 'equipment', 'UPSTREAM_OF', 0.8, 'human',
+                     'bench contract: approval racing a supersede', $4)
+             RETURNING id::text AS id`,
+            [TENANT_A, A.VFD2.nodeId, A.RACE2.nodeId, status],
+          )
+        ).rows[0].id,
+      );
+    const [older, newer] = [await proposal("verified"), await proposal("proposed")];
+    const edgeId = String(
+      (
+        await admin.query(
+          `INSERT INTO kg_relationships
+             (tenant_id, source_id, target_id, relationship_type, approval_state, relationship_proposal_id)
+           VALUES ($1::uuid, $2::uuid, $3::uuid, 'UPSTREAM_OF', 'verified', $4::uuid) RETURNING id::text AS id`,
+          [TENANT_A, A.VFD2.nodeId, A.RACE2.nodeId, older],
+        )
+      ).rows[0].id,
+    );
+
+    const [c1, c2] = [await testPool.connect(), await testPool.connect()];
+    try {
+      await c1.query("BEGIN");
+      await c2.query("BEGIN");
+      await applyHubProposalTransition(c1, { trigger: "accept", relationshipProposalId: newer }); // not committed yet
+      let secondDone = false;
+      const second = applyHubProposalTransition(c2, { trigger: "supersede", relationshipProposalId: older }).then(
+        (r) => ((secondDone = true), r),
+      );
+      await new Promise((r) => setTimeout(r, 400));
+      expect(secondDone).toBe(false); // without the lock it would read "no other approval" and retire the edge
+      await c1.query("COMMIT");
+      expect((await second).kgEdgesDemoted).toBe(0); // the fresh approval outranks the older supersede
+      await c2.query("COMMIT");
+    } finally {
+      await c1.query("ROLLBACK").catch(() => undefined);
+      await c2.query("ROLLBACK").catch(() => undefined);
+      c1.release();
+      c2.release();
+    }
+    const state = await admin.query(`SELECT approval_state FROM kg_relationships WHERE id = $1::uuid`, [edgeId]);
+    expect(state.rows[0].approval_state).toBe("verified");
+    expect(await downstreamNodeIds(TENANT_A, A.VFD2)).toContain(A.RACE2.nodeId);
   });
 });
