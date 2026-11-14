@@ -86,9 +86,58 @@ describe("#5302 pending manuals derived from the project's own files", () => {
   });
 
   it("ignores non-PDFs, legacy upload rows and malformed rows", () => {
-    const body = { files: [pdf({ id: "img", mime_type: "image/jpeg" }), pdf({ id: "legacy", source: "upload" }), { id: 5 }, null] };
+    const body = { files: [pdf({ id: "img", filename: "label.jpg", mime_type: "image/jpeg" }), pdf({ id: "legacy", source: "upload" }), { id: 5 }, null] };
     expect(filedManuals(body, [])).toEqual([]);
     expect(filedManuals({ nope: true }, [])).toEqual([]);
+  });
+});
+
+describe("#5315 a PDF stored with a generic file type is still a pending manual", () => {
+  // The upload route stores an unknown or empty browser type as application/octet-stream
+  // and still reads a file named *.pdf as a PDF (node files route, isPdf).
+  const generic = (patch: Record<string, unknown> = {}) => pdf({ mime_type: "application/octet-stream", ...patch });
+  const input = (approved: string[]) => ({ notebookId: "nb-g", nodeId: "node-g", sources: [], approved: new Set(approved) });
+  const NODE = "GET /api/namespace/node/node-g/files/";
+  const SRC = "POST /api/equipment-notebooks/nb-g/sources/";
+
+  it("lists a .pdf file whose stored type is generic, whatever the case of the extension", () => {
+    expect(filedManuals({ files: [generic(), generic({ id: "f-up", filename: "DRIVE MANUAL.PDF" })] }, [])).toEqual([
+      { fileId: "f-202", filename: "manual.pdf", indexed: false },
+      { fileId: "f-up", filename: "DRIVE MANUAL.PDF", indexed: false },
+    ]);
+  });
+
+  it("a file stored as application/pdf is listed whatever it is called, or with no name at all", () => {
+    expect(filedManuals({ files: [pdf({ filename: "GS10 manual" }), pdf({ id: "f-anon", filename: undefined })] }, [])).toEqual([
+      { fileId: "f-202", filename: "GS10 manual", indexed: false },
+      { fileId: "f-anon", filename: "Document", indexed: false },
+    ]);
+  });
+
+  it("control: a generic-type file that is not named .pdf, or has no name, is not listed", () => {
+    const body = { files: [generic({ id: "bin", filename: "backup.bin" }), generic({ id: "mid", filename: "manual.pdf.zip" }), generic({ id: "anon", filename: "" }), generic({ id: "num", filename: 7 })] };
+    expect(filedManuals(body, [])).toEqual([]);
+  });
+
+  it("same session: reading first, then attached exactly once when indexing finishes", async () => {
+    let reads = 0;
+    const h = harness({
+      [NODE]: () => { reads++; return { status: 200, body: { files: [generic({ indexed: reads >= 2 })] } }; },
+      "GET /api/files/f-202": () => (reads >= 2 ? fileLookup("f-202", "up-late") : fileLookup("f-202", null, true)),
+      [SRC]: { status: 201, body: { ok: true } },
+    });
+    expect((await checkPendingManuals(input(["f-202"]), deps(h.fetch))).pending).toEqual([{ fileId: "f-202", filename: "manual.pdf", docId: null, state: "reading" }]);
+    const second = await checkPendingManuals(input(["f-202"]), deps(h.fetch));
+    expect(second.attached).toEqual(["f-202"]);
+    expect(attaches(h.calls)).toEqual([{ method: "POST", path: "/api/equipment-notebooks/nb-g/sources/", body: { docId: "up-late", sourceRole: "manual" } }]);
+  });
+
+  it("after a reload (no approval): offered as readable, and nothing is written", async () => {
+    const h = harness({ [NODE]: { status: 200, body: { files: [generic({ indexed: true })] } }, "GET /api/files/f-202": fileLookup("f-202", "up-late") });
+    const r = await checkPendingManuals(input([]), deps(h.fetch));
+    expect(r.pending).toEqual([{ fileId: "f-202", filename: "manual.pdf", docId: "up-late", state: "readable" }]);
+    expect(r.attached).toEqual([]);
+    expect(attaches(h.calls)).toHaveLength(0);
   });
 });
 
