@@ -137,6 +137,8 @@ const TYPED_DASH = /\s*(?:[–—―﹘]|-{2,})\s*/g;
 /** A clause "has words" when it holds a letter or a digit; anything else is punctuation. */
 const HAS_WORDS = /[\p{L}\p{N}]/u;
 const LEADING_NON_WORD = /^[^\p{L}\p{N}]+/u;
+/** After asTyped every dash form is "-", so a token of hyphens only is a piece of a dash run. */
+const HYPHENS_ONLY = /^-+$/;
 
 function asTyped(question: string): string {
   return foldForDetection(question).replace(TYPED_ELLIPSIS, "...").replace(TYPED_DASH, " - ");
@@ -147,7 +149,10 @@ export function returnsToRecord(question: string): boolean {
   for (let i = 0; i < parts.length; i += 2) {
     const clause = parts[i];
     if (!RETURN_TO_OWN_UNIT.test(clause)) continue;
-    const rest = clause.replace(RETURN_TO_OWN_UNIT, " ").toLowerCase().split(/\s+/).filter(Boolean);
+    // #5493 (Codex r2 on #5490, F2): a dash run in front of the phrase ("ok—-back", "ok - -back")
+    // leaves a token of hyphens only; it is part of the dash, not a word. Only hyphen tokens are
+    // dropped: other punctuation (a full-width "？") still fails closed.
+    const rest = clause.replace(RETURN_TO_OWN_UNIT, " ").toLowerCase().split(/\s+/).filter((word) => word && !HYPHENS_ONLY.test(word));
     if (!rest.every((word) => CONNECTIVES.has(word))) return false;
     // Codex r4 on #5464 (F1): ".\n" or "..." leaves empty clauses between the separators;
     // the next clause is the next one with words in it. Codex r1 on #5490 (F1): a clause of
