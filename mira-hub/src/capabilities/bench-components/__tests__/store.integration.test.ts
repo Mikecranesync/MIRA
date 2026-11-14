@@ -24,6 +24,7 @@ import {
   addComponent,
   advanceSelectionRevision,
   getSelection,
+  getSelectionState,
   getSelectionVersion,
   listComponents,
   listSelectionTurns,
@@ -207,6 +208,39 @@ run("bench component store (real Postgres, RLS)", () => {
     expect(await getSelection(tenantA, notebookA, USER, thread)).toBeNull();
     const fresh = await setSelection(tenantA, notebookA, USER, thread, { componentId: two, via: "picker", expectedVersion: 2, clientRequestId: uuid() });
     expect(fresh).toMatchObject({ status: "set", selection: { componentId: two, version: 3 } });
+  });
+
+  // #5504 post-cap F9 against the real database: a pick whose transaction has not committed is
+  // invisible to a checklist read, and the same request sent again waits for it and reports its
+  // outcome — so only the re-sent request, never a read, can settle a lost reply.
+  it("a pick still uncommitted: a read sees the old state; the same request re-sent returns the pick once it commits", async () => {
+    const a = await addComponent(tenantA, notebookA, USER, { clientRequestId: uuid(), kind: "drive", origin: "inventory", position: null, revision: rev(GS10, true) });
+    if (a.status !== "created") throw new Error(a.status);
+    const thread = `pending-${uuid().slice(0, 8)}`;
+    // A row exists (picked, then cleared): version 2, nothing selected.
+    await setSelection(tenantA, notebookA, USER, thread, { componentId: a.component.id, via: "picker", expectedVersion: null, clientRequestId: uuid() });
+    await setSelection(tenantA, notebookA, USER, thread, { componentId: null, via: "picker", expectedVersion: 1, clientRequestId: uuid() });
+    expect(await getSelectionState(tenantA, notebookA, USER, thread)).toEqual({ selection: null, version: 2 });
+
+    // Another transaction holds the row, so the pick below stays pending inside its own transaction.
+    const holder = await testPool.connect();
+    try {
+      await holder.query("BEGIN");
+      await holder.query("SELECT 1 FROM notebook_thread_selections WHERE notebook_id = $1::uuid AND thread_key = $2 FOR UPDATE", [notebookA, thread]);
+      const key = uuid();
+      const pick = setSelection(tenantA, notebookA, USER, thread, { componentId: a.component.id, via: "picker", expectedVersion: 2, clientRequestId: key });
+      const resent = setSelection(tenantA, notebookA, USER, thread, { componentId: a.component.id, via: "picker", expectedVersion: 2, clientRequestId: key });
+      await new Promise((r) => setTimeout(r, 150));
+      // The read the tablet's recovery would make: still the old, empty selection.
+      expect(await getSelectionState(tenantA, notebookA, USER, thread)).toEqual({ selection: null, version: 2 });
+      await holder.query("COMMIT");
+      const [first, again] = await Promise.all([pick, resent]);
+      expect(first).toMatchObject({ status: "set", selection: { componentId: a.component.id, version: 3 } });
+      expect(again).toMatchObject({ status: "existing", selection: { componentId: a.component.id, version: 3 } });
+    } finally {
+      holder.release();
+    }
+    expect(await getSelectionState(tenantA, notebookA, USER, thread)).toMatchObject({ selection: { componentId: a.component.id, version: 3 }, version: 3 });
   });
 
   it("control: the same first pick sent twice at once is one selection, and both see it", async () => {

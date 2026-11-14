@@ -111,13 +111,24 @@ export function BenchComponents({
 
   // #5504 Codex r3 F6: the host refuses a send until this read has answered (or the
   // checklist is known to be unavailable), so a saved component is never skipped.
+  // #5504 post-cap F10: a read still in flight when this conversation is left applies nothing.
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
   const load = useCallback(async (): Promise<BenchState | null> => {
     const out = await readBench({
       gate,
       fetch: (url, init) => fetch(url, init),
       url: `${base(notebookId)}?threadId=${encodeURIComponent(threadId)}`,
-      apply: onState,
+      apply: (state) => {
+        if (alive.current) onState(state);
+      },
     });
+    if (!alive.current) return null;
     if (out.kind === "unavailable") {
       setAvailable(false);
       return null;

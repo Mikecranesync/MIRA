@@ -13,6 +13,7 @@ import type { ComponentAction, ComponentTurnFrame } from "@/capabilities/bench-c
 import type { ComponentRevision } from "@/capabilities/bench-components/selection";
 import type { ComponentView } from "@/capabilities/bench-components/view";
 import type { HubSelection } from "./hub-host-logic";
+import { LEGACY_THREAD_ID } from "./notebook-tree";
 
 export type { BenchState, ComponentTurnFrame, ComponentAction, ComponentView };
 
@@ -48,27 +49,86 @@ export function lastAnswerNotice(state: BenchState | null): string | null {
     : `The last answer above was about ${about}, not ${sel ? selectedComponent(state)?.label ?? "this component" : "the whole machine"}.`;
 }
 
-/** What one chat turn carries: the component the header showed and the version read with it. */
-export type ComponentRider = { notebookId: string; threadId: string; componentId: string; selectionVersion: number };
+/**
+ * What one chat turn carries: the component the header showed — or the whole machine
+ * (componentId null) — and the selection version read with it (null: never selected).
+ * #5504 post-cap F9/F10: a whole-machine question says so explicitly, so the server can
+ * refuse it when a component is saved instead of answering it as the whole machine.
+ */
+export type ComponentRider = { notebookId: string; threadId: string; componentId: string | null; selectionVersion: number | null };
 
 export function riderFor(state: BenchState | null, sel: HubSelection | null): ComponentRider | null {
-  if (!sel || !state?.selection) return null;
+  if (!sel || !state) return null;
+  if (!state.selection) return { notebookId: sel.notebookId, threadId: sel.threadId, componentId: null, selectionVersion: state.selectionVersion };
   return { notebookId: sel.notebookId, threadId: sel.threadId, componentId: state.selection.componentId, selectionVersion: state.selection.version };
 }
 
+/** The chat body's scope field: the conversation it was read for, and what the header showed. */
+export type ScopeField = { threadId: string | null; componentId: string | null; selectionVersion: number | null };
+
+/** One conversation's key, the same one the host's gate and the panel's `key` use. */
+export const conversationKey = (sel: HubSelection) => `${sel.notebookId}|${sel.threadId}`;
+
 /**
- * The chat body with the rider applied — only for the conversation it was read
- * for. A component scopes the turn to its documents, so the turn is never sent
- * in general mode (the route refuses that pair).
+ * What each conversation's panel last read, by conversation (#5504 post-cap F10): a read
+ * that answers after its conversation was left writes only its own entry, so it can never
+ * become another conversation's scope. "unavailable" = the checklist answered 404/503.
  */
-export function withComponentRider<B extends { mode?: "general" }>(
+export type BenchScopes = Map<string, ComponentRider | "unavailable">;
+
+export function recordBenchScope(scopes: BenchScopes, sel: HubSelection, state: BenchState | null): void {
+  scopes.set(conversationKey(sel), state ? riderFor(state, sel)! : "unavailable");
+}
+
+/**
+ * The chat body with this conversation's scope on it, or why it cannot be sent. A body
+ * that already carries a scope (a retry of a question that never got an answer) keeps the
+ * one it was asked under. A component scopes the turn to its documents, so that turn is
+ * never sent in general mode; a whole-machine scope keeps the body's mode.
+ */
+export function scopedChatBody<B extends { mode?: "general"; componentSelection?: ScopeField }>(
   body: B,
   sel: HubSelection,
-  rider: ComponentRider | null,
-): B | (Omit<B, "mode"> & { componentSelection: { componentId: string; selectionVersion: number } }) {
-  if (!rider || rider.notebookId !== sel.notebookId || rider.threadId !== sel.threadId) return body;
+  scopes: ReadonlyMap<string, ComponentRider | "unavailable">,
+): { ok: true; body: B } | { ok: false; message: string } {
+  if (body.componentSelection) return { ok: true, body };
+  const entry = scopes.get(conversationKey(sel));
+  if (!entry) return { ok: false, message: SEND_LOADING_MESSAGE };
+  if (entry === "unavailable") return { ok: true, body };
+  if (entry.notebookId !== sel.notebookId || entry.threadId !== sel.threadId) return { ok: false, message: SEND_LOADING_MESSAGE };
+  const componentSelection: ScopeField = {
+    threadId: sel.threadId === LEGACY_THREAD_ID ? null : sel.threadId,
+    componentId: entry.componentId,
+    selectionVersion: entry.selectionVersion,
+  };
+  if (entry.componentId === null) return { ok: true, body: { ...body, componentSelection } };
   const { mode: _mode, ...rest } = body;
-  return { ...rest, componentSelection: { componentId: rider.componentId, selectionVersion: rider.selectionVersion } };
+  return { ok: true, body: { ...rest, componentSelection } as B };
+}
+
+/** The body without its scope, to be scoped again from what the header shows now. */
+export function withoutScope<B extends { componentSelection?: ScopeField }>(body: B): Omit<B, "componentSelection"> {
+  const { componentSelection: _scope, ...rest } = body;
+  return rest;
+}
+
+/**
+ * Everything the host's send() decides before it opens the chat request, in order: a
+ * change still saving or an unresolved write refuses; an unread conversation refuses;
+ * otherwise the body carries this conversation's scope. `forThisGate` is false only for
+ * a project just made from home, which has no saved component (the server checks anyway).
+ */
+export function prepareChatSend<B extends { mode?: "general"; componentSelection?: ScopeField }>(opts: {
+  gate: BenchSendGate;
+  forThisGate: boolean;
+  sel: HubSelection;
+  scopes: ReadonlyMap<string, ComponentRider | "unavailable">;
+  body: B;
+}): { ok: true; body: B } | { ok: false; message: string } {
+  if (!opts.forThisGate) return { ok: true, body: opts.body };
+  const refused = benchSendRefusal(opts.gate);
+  if (refused) return { ok: false, message: refused };
+  return scopedChatBody(opts.body, opts.sel, opts.scopes);
 }
 
 /** The words on one action button. */
@@ -235,6 +295,9 @@ export function componentErrorMessage(code: string): string {
   }
 }
 
+/** How many times one change is sent before it is left pending (the first send included). */
+export const CHANGE_ATTEMPTS = 3;
+
 export const SEND_BLOCKED_MESSAGE = "Saving the component choice — send again in a moment.";
 export const CHANGE_BLOCKED_MESSAGE = "Wait for the answer to finish, then change the component.";
 export const SEND_LOADING_MESSAGE = "Reading the component list — send again in a moment.";
@@ -272,6 +335,14 @@ export type BenchSendGate = {
   invalidate(): void;
   readonly epoch: number;
   markKnown(): void;
+  /**
+   * #5504 post-cap F9: a selection write whose reply never arrived. Its outcome is unknown
+   * (it may still commit), so no checklist read can stand in for it: a GET that answers
+   * before the write commits shows the old selection. Until the SAME request (same request
+   * id) is sent again and answered, Send stays refused and nothing is marked known.
+   */
+  readonly pending: (() => Promise<Response>) | null;
+  setPending(replay: (() => Promise<Response>) | null): void;
 };
 
 export function createBenchSendGate(): BenchSendGate {
@@ -279,6 +350,7 @@ export function createBenchSendGate(): BenchSendGate {
   let sends = 0;
   let known = false;
   let epoch = 0;
+  let pending: (() => Promise<Response>) | null = null;
   return {
     tryBeginChange() {
       if (sends > 0) return false;
@@ -315,12 +387,39 @@ export function createBenchSendGate(): BenchSendGate {
     markKnown() {
       known = true;
     },
+    get pending() {
+      return pending;
+    },
+    setPending(replay) {
+      pending = replay;
+    },
   };
+}
+
+/** A component change whose reply was lost is being confirmed with the server. */
+export const SEND_UNRESOLVED_MESSAGE = "Checking the last component change with the server — send again in a moment.";
+
+/**
+ * Send the unresolved write again, exactly as first sent (the same request id, so the
+ * server replays its outcome, or applies it once). Any HTTP answer resolves it — saved,
+ * replayed, or refused with the current selection; only a lost reply leaves it pending.
+ */
+export async function resolvePendingWrite(gate: BenchSendGate): Promise<boolean> {
+  const replay = gate.pending;
+  if (!replay) return true;
+  try {
+    await replay();
+  } catch {
+    return false;
+  }
+  if (gate.pending === replay) gate.setPending(null);
+  return true;
 }
 
 /** Why a send in this gate's conversation cannot start now, or null when it can. */
 export function benchSendRefusal(gate: BenchSendGate): string | null {
   if (gate.changing) return SEND_BLOCKED_MESSAGE;
+  if (gate.pending) return SEND_UNRESOLVED_MESSAGE;
   if (!gate.known) return SEND_LOADING_MESSAGE;
   return null;
 }
@@ -339,6 +438,8 @@ export async function readBench(opts: {
   url: string;
   apply: (state: BenchState | null) => void;
 }): Promise<{ kind: "loaded"; state: BenchState } | { kind: "unavailable" } | { kind: "failed" } | { kind: "stale" }> {
+  // An unresolved write first (#5504 post-cap F9): this read must not begin before it is settled.
+  if (opts.gate.pending && !(await resolvePendingWrite(opts.gate))) return { kind: "failed" };
   const epoch = opts.gate.epoch;
   try {
     const res = await opts.fetch(opts.url, { cache: "no-store" });
@@ -389,25 +490,39 @@ export async function changeSelection(opts: {
 }): Promise<{ ok: true } | { ok: false; message: string }> {
   if (!opts.gate.tryBeginChange()) return { ok: false, message: CHANGE_BLOCKED_MESSAGE };
   try {
+    // An earlier change whose reply was lost is settled first: this one must not race it.
+    if (opts.gate.pending && !(await resolvePendingWrite(opts.gate))) return { ok: false, message: CONNECTION_MESSAGE };
     let refused: string | null = null;
-    try {
-      const res = await opts.fetch(opts.url, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(opts.body),
-      });
-      if (!res.ok) {
-        let code = "";
-        try {
-          code = String(((await res.json()) as { error?: unknown }).error ?? "");
-        } catch {
-          /* no JSON body */
-        }
-        refused = componentErrorMessage(code);
+    const init: RequestInit = {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(opts.body),
+    };
+    const send = () => opts.fetch(opts.url, init);
+    let res: Response | null = null;
+    // #5504 post-cap F9: a lost reply is answered only by the same request (same request id):
+    // the server returns what that request did. A checklist read cannot tell "not committed
+    // yet" from "never will", so it never settles the write.
+    for (let attempt = 0; attempt < CHANGE_ATTEMPTS && !res; attempt++) {
+      try {
+        res = await send();
+      } catch {
+        res = null;
       }
-    } catch {
-      await reconcileBench(opts.gate, opts.load);
+    }
+    if (!res) {
+      opts.gate.invalidate();
+      opts.gate.setPending(send);
       return { ok: false, message: CONNECTION_MESSAGE };
+    }
+    if (!res.ok) {
+      let code = "";
+      try {
+        code = String(((await res.json()) as { error?: unknown }).error ?? "");
+      } catch {
+        /* no JSON body */
+      }
+      refused = componentErrorMessage(code);
     }
     const read = await reconcileBench(opts.gate, opts.load);
     if (refused) return { ok: false, message: refused };

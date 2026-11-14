@@ -873,3 +873,164 @@ describe("every question's scope is checked against the saved choice", () => {
     noProviderNoRetrieval();
   });
 });
+
+// #5504 post-cap F9/F10, on the actual request path: the tablet's own send and change functions
+// (prepareChatSend / changeSelection / readBench — what hub-host.send and BenchComponents run)
+// build the request, and the real chat route answers it. A small in-memory server holds the saved
+// selection; its write can commit after the tablet has given up on the reply. The assertion is
+// always the same: a provider call happens only under the scope the header showed, otherwise the
+// question is refused and nothing is answered.
+describe("the tablet's request path against the route: intended scope or refusal", () => {
+  type Saved = { componentId: string | null; version: number | null };
+  let saved: Saved;
+  const server = {
+    get state() {
+      return saved.componentId
+        ? { selection: selection(saved.componentId, saved.componentId === VFD ? 2 : 1, saved.version!), version: saved.version }
+        : { selection: null, version: saved.version };
+    },
+  };
+  const TH = null; // the default conversation ("legacy")
+  const SELA = { notebookId: NB, threadId: "legacy" };
+  const benchJson = () =>
+    new Response(JSON.stringify({
+      components: [], lastTurn: null, turnComponents: {}, tallies: {}, documentNumbers: [],
+      selection: server.state.selection ? { ...server.state.selection, current: true } : null,
+      selectionVersion: saved.version,
+    }), { status: 200 });
+  /** Apply a selection write exactly once (by request id), as setSelection does. */
+  const applied = new Set<string>();
+  function commit(body: { componentId: string | null; expectedVersion: number | null; clientRequestId: string }) {
+    if (applied.has(body.clientRequestId)) return new Response("{}", { status: 200 });
+    if (saved.version !== body.expectedVersion) return new Response(JSON.stringify({ error: "selection_changed" }), { status: 409 });
+    applied.add(body.clientRequestId);
+    saved = { componentId: body.componentId, version: (saved.version ?? 0) + 1 };
+    return new Response("{}", { status: 200 });
+  }
+
+  let logic: typeof import("@/factorylm-ui/bench-components-logic");
+  beforeEach(async () => {
+    logic = await import("@/factorylm-ui/bench-components-logic");
+    saved = { componentId: null, version: null };
+    applied.clear();
+    storeMock.getSelectionState.mockImplementation(async () => server.state);
+    storeMock.getSelection.mockImplementation(async () => server.state.selection);
+    ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
+  });
+
+  /** One tablet screen: its gate, what its panel read, and its Send. */
+  function screen() {
+    const gate = logic.createBenchSendGate();
+    const scopes: import("@/factorylm-ui/bench-components-logic").BenchScopes = new Map();
+    const load = () => logic.readBench({ gate, url: "/components", fetch: async () => benchJson(), apply: (st) => logic.recordBenchScope(scopes, SELA, st) });
+    let n = 0;
+    async function send(message: string, retryOf?: Record<string, unknown>) {
+      const body = retryOf ?? { message, sourceDocIds: [DOC_A], history: [], threadId: TH, clientRequestId: `dddddddd-dddd-4ddd-8ddd-${String(++n).padStart(12, "0")}` };
+      const prepared = logic.prepareChatSend({ gate, forThisGate: true, sel: SELA, scopes, body });
+      if (!prepared.ok) return { refused: prepared.message as string, body: null };
+      vi.mocked(fetch).mockClear();
+      ragMock.retrieveNodeChunks.mockClear();
+      const res = await POST(req(prepared.body), params);
+      if (res.status === 200) await frames(res);
+      return { status: res.status, body: prepared.body, providerCalled: vi.mocked(fetch).mock.calls.length > 0, catalog: retrievalOpts()?.catalogNumber };
+    }
+    return { gate, scopes, load, send };
+  }
+  const change = (s: ReturnType<typeof screen>, componentId: string | null, put: (init: RequestInit) => Promise<Response>) =>
+    logic.changeSelection({
+      gate: s.gate, url: "/sel", load: s.load, fetch: (_u, init) => put(init),
+      body: { threadId: "legacy", componentId, via: "picker", expectedVersion: saved.version, clientRequestId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee" },
+    });
+
+  it("F9: lost PUT reply, recovery GET sees the old empty selection, the PUT commits later — Send before and after the commit", async () => {
+    const tab = screen();
+    await tab.load();
+    let pendingBody: { componentId: string | null; expectedVersion: number | null; clientRequestId: string } | null = null;
+    let online = false;
+    // The server takes the write but its transaction has not committed; the reply never arrives.
+    const out = await change(tab, VFD, async (init) => {
+      pendingBody ??= JSON.parse(String(init.body));
+      if (!online) throw new TypeError("reply lost");
+      return commit(pendingBody!);
+    });
+    expect(out.ok).toBe(false);
+    // The panel's refresh reads the OLD empty selection (the write still hasn't committed).
+    await tab.load();
+    expect(saved.componentId).toBeNull();
+    const before = await tab.send("what is the rated current");
+    expect(before.refused).toBe(logic.SEND_UNRESOLVED_MESSAGE);
+
+    commit(pendingBody!); // the delayed commit lands
+    const stillUnresolved = await tab.send("what is the rated current");
+    expect(stillUnresolved.refused).toBe(logic.SEND_UNRESOLVED_MESSAGE);
+
+    // Even a body built by hand from the stale empty read is refused by the route, never answered.
+    const handBuilt = await POST(req({ message: "what is the rated current", sourceDocIds: [DOC_A], clientRequestId: REQ, componentSelection: { threadId: null, componentId: null, selectionVersion: null } }), params);
+    expect(handBuilt.status).toBe(409);
+
+    online = true;
+    await tab.load(); // re-sends the same request: the server replays its outcome
+    const after = await tab.send("what is the rated current");
+    expect(after.status).toBe(200);
+    expect(after.body).toMatchObject({ componentSelection: { threadId: null, componentId: VFD, selectionVersion: 1 } });
+    expect(after.providerCalled).toBe(true);
+    expect(after.catalog).toBe("GS11N-20P2");
+  });
+
+  it("an explicit whole-machine pick (clear) is sent as the whole machine with its version and answered for it", async () => {
+    saved = { componentId: VFD, version: 3 };
+    const tab = screen();
+    await tab.load();
+    await expect(change(tab, null, async (init) => commit(JSON.parse(String(init.body))))).resolves.toEqual({ ok: true });
+    const r = await tab.send("what does the conveyor do");
+    expect(r.body).toMatchObject({ componentSelection: { threadId: null, componentId: null, selectionVersion: 4 } });
+    expect(r.status).toBe(200);
+    expect(r.catalog).toBe("2080-LC20-20QWB");
+  });
+
+  it("two screens: the one that missed a change is refused, never answered under the old component", async () => {
+    saved = { componentId: VFD, version: 3 };
+    const one = screen();
+    const two = screen();
+    await one.load();
+    await two.load();
+    await expect(change(two, K1, async (init) => commit(JSON.parse(String(init.body))))).resolves.toEqual({ ok: true });
+    const stale = await one.send("what is the coil voltage");
+    expect(stale.status).toBe(409);
+    expect(stale.providerCalled).toBe(false);
+    await one.load(); // the host re-reads after a 409
+    const fresh = await one.send("what is the coil voltage");
+    expect(fresh.status).toBe(200);
+    expect(fresh.catalog).toBe("CA3KN22BD");
+  });
+
+  it("a retry keeps the scope it was asked under: moved on another screen meanwhile, it is refused, not answered for the new one", async () => {
+    saved = { componentId: VFD, version: 3 };
+    const tab = screen();
+    const other = screen();
+    await tab.load();
+    await other.load();
+    const prepared = logic.prepareChatSend({ gate: tab.gate, forThisGate: true, sel: SELA, scopes: tab.scopes, body: { message: "rated current?", sourceDocIds: [DOC_A], history: [], threadId: TH, clientRequestId: REQ } });
+    if (!prepared.ok) throw new Error("precondition: the first send is scoped");
+    // That send never reached the server; meanwhile the other screen switched to Q1.
+    await change(other, K1, async (init) => commit(JSON.parse(String(init.body))));
+    const retry = await tab.send("", prepared.body as Record<string, unknown>);
+    expect(retry.status).toBe(409);
+    expect(retry.providerCalled).toBe(false);
+  });
+
+  it("a change while an answer is streaming is refused without a request; a reload starts unread", async () => {
+    saved = { componentId: VFD, version: 3 };
+    const tab = screen();
+    await tab.load();
+    expect(tab.gate.tryBeginSend()).toBe(true); // an answer is streaming
+    const put = vi.fn(async () => new Response("{}", { status: 200 }));
+    await expect(change(tab, K1, put)).resolves.toEqual({ ok: false, message: logic.CHANGE_BLOCKED_MESSAGE });
+    expect(put).not.toHaveBeenCalled();
+    tab.gate.endSend();
+    const reloaded = screen(); // a reload: new gate, nothing read yet
+    expect((await reloaded.send("rated current?")).refused).toBe(logic.SEND_LOADING_MESSAGE);
+    await reloaded.load();
+    expect((await reloaded.send("rated current?")).catalog).toBe("GS11N-20P2");
+  });
+});

@@ -1,14 +1,16 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CHANGE_BLOCKED_MESSAGE,
   SEND_LOADING_MESSAGE,
+  SEND_UNRESOLVED_MESSAGE,
   benchSendRefusal,
   changeSelection,
   createBenchSendGate,
   readBench,
   reconcileBench,
-  riderFor,
-  withComponentRider,
+  prepareChatSend,
+  recordBenchScope,
+  type BenchScopes,
   type BenchState,
 } from "./bench-components-logic";
 
@@ -36,11 +38,20 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-/** The host's send(): checks the gate before anything else, then builds the body from the rider it reads now. */
-function hostSend(gate: ReturnType<typeof createBenchSendGate>, rider: () => ReturnType<typeof riderFor>, chat: (body: unknown) => void): boolean {
-  if (benchSendRefusal(gate) !== null) return false;
+/** What the panel has read for each conversation — the host's map; reset per test. */
+let scopes: BenchScopes = new Map();
+beforeEach(() => {
+  scopes = new Map();
+});
+/** The panel's `apply` (the host's onBenchState): records what it read for SEL's conversation. */
+const record = (s: BenchState | null) => recordBenchScope(scopes, SEL, s);
+
+/** The host's send(): the same prepareChatSend it runs before opening the chat request. */
+function hostSend(gate: ReturnType<typeof createBenchSendGate>, chat: (body: unknown) => void): boolean {
+  const prepared = prepareChatSend({ gate, forThisGate: true, sel: SEL, scopes, body: { message: "and its fuse size?", mode: "general" as const } });
+  if (!prepared.ok) return false;
   if (!gate.tryBeginSend()) return false;
-  chat(withComponentRider({ message: "and its fuse size?", mode: "general" as const }, SEL, rider()));
+  chat(prepared.body);
   return true;
 }
 
@@ -63,29 +74,29 @@ function panelLoad(gate: ReturnType<typeof createBenchSendGate>, get: () => Prom
 describe("a send never overlaps a component change", () => {
   it("A→B change still saving: Send is refused, then after the checklist re-read it carries B's new version", async () => {
     const gate = readGate();
-    let bench = state(A, 3);
+    record(state(A, 3));
     const put = deferred<Response>();
     const reread = deferred<Response>();
     const fetch = vi.fn(() => put.promise);
     const chat = vi.fn();
     const change = changeSelection({
-      gate, fetch, url: "/sel", load: panelLoad(gate, () => reread.promise, (s) => { bench = s as BenchState; }),
+      gate, fetch, url: "/sel", load: panelLoad(gate, () => reread.promise, record),
       body: { threadId: SEL.threadId, componentId: B, via: "picker", expectedVersion: 3, clientRequestId: "r1" },
     });
     expect(fetch).toHaveBeenCalledTimes(1);
 
     // Pressed while the PUT is in flight, and again while the checklist is being re-read.
-    expect(hostSend(gate, () => riderFor(bench, SEL), chat)).toBe(false);
+    expect(hostSend(gate, chat)).toBe(false);
     put.resolve(new Response("{}", { status: 200 }));
     await Promise.resolve();
     await Promise.resolve();
-    expect(hostSend(gate, () => riderFor(bench, SEL), chat)).toBe(false);
+    expect(hostSend(gate, chat)).toBe(false);
     expect(chat).not.toHaveBeenCalled();
 
     reread.resolve(okState(state(B, 4)));
     await expect(change).resolves.toEqual({ ok: true });
-    expect(hostSend(gate, () => riderFor(bench, SEL), chat)).toBe(true);
-    expect(chat).toHaveBeenCalledWith(expect.objectContaining({ componentSelection: { componentId: B, selectionVersion: 4 } }));
+    expect(hostSend(gate, chat)).toBe(true);
+    expect(chat).toHaveBeenCalledWith(expect.objectContaining({ componentSelection: { threadId: "th-1", componentId: B, selectionVersion: 4 } }));
   });
 
   it("an answer still streaming: the change is refused without a request, and allowed once the answer ends", async () => {
@@ -93,7 +104,8 @@ describe("a send never overlaps a component change", () => {
     const fetch = vi.fn(async () => new Response("{}", { status: 200 }));
     const load = panelLoad(gate, async () => okState(state(B, 4)), () => undefined);
     const body = { threadId: SEL.threadId, componentId: B, via: "picker", expectedVersion: 3, clientRequestId: "r1" };
-    expect(hostSend(gate, () => riderFor(state(A, 3), SEL), vi.fn())).toBe(true);
+    record(state(A, 3));
+    expect(hostSend(gate, vi.fn())).toBe(true);
 
     await expect(changeSelection({ gate, fetch, url: "/sel", load, body })).resolves.toEqual({ ok: false, message: CHANGE_BLOCKED_MESSAGE });
     expect(fetch).not.toHaveBeenCalled();
@@ -105,38 +117,56 @@ describe("a send never overlaps a component change", () => {
 
   it("another screen moved it (409): the panel re-reads before Send is allowed, and the send carries the version it read", async () => {
     const gate = readGate();
-    let bench = state(A, 3);
+    record(state(A, 3));
     const chat = vi.fn();
     const out = await changeSelection({
       gate,
       fetch: async () => new Response(JSON.stringify({ error: "selection_changed" }), { status: 409 }),
       url: "/sel",
-      load: panelLoad(gate, async () => okState(state(B, 5)), (s) => { bench = s as BenchState; }),
+      load: panelLoad(gate, async () => okState(state(B, 5)), record),
       body: { threadId: SEL.threadId, componentId: B, via: "picker", expectedVersion: 3, clientRequestId: "r1" },
     });
     expect(out).toMatchObject({ ok: false });
-    expect(hostSend(gate, () => riderFor(bench, SEL), chat)).toBe(true);
-    expect(chat).toHaveBeenCalledWith(expect.objectContaining({ componentSelection: { componentId: B, selectionVersion: 5 } }));
+    expect(hostSend(gate, chat)).toBe(true);
+    expect(chat).toHaveBeenCalledWith(expect.objectContaining({ componentSelection: { threadId: "th-1", componentId: B, selectionVersion: 5 } }));
   });
 
-  it("a change lost on the network, then re-read: Send is released and carries what the server holds", async () => {
+  it("a change lost on the network: a successful checklist read does NOT release Send; re-sending the same request does", async () => {
     const gate = readGate();
-    let bench: BenchState | null = wholeMachine;
+    record(wholeMachine);
     const chat = vi.fn();
+    let online = false;
+    const puts: string[] = [];
     const out = await changeSelection({
-      gate, fetch: async () => { throw new TypeError("offline"); }, url: "/sel",
-      load: panelLoad(gate, async () => okState(state(B, 4)), (s) => { bench = s; }),
+      gate,
+      fetch: async (_url, init) => {
+        puts.push(String(init.body));
+        if (!online) throw new TypeError("offline");
+        return new Response("{}", { status: 200 });
+      },
+      url: "/sel",
+      load: panelLoad(gate, async () => okState(state(B, 4)), record),
       body: { threadId: SEL.threadId, componentId: B, via: "picker", expectedVersion: 3, clientRequestId: "r1" },
     });
     expect(out).toMatchObject({ ok: false });
     expect(gate.changing).toBe(false);
-    expect(hostSend(gate, () => riderFor(bench, SEL), chat)).toBe(true);
-    expect(chat).toHaveBeenCalledWith(expect.objectContaining({ componentSelection: { componentId: B, selectionVersion: 4 } }));
+    expect(gate.pending).not.toBeNull();
+    // A read while the network is still down does not settle the write, however it answers.
+    await expect(panelLoad(gate, async () => okState(wholeMachine), record)()).resolves.toEqual({ kind: "failed" });
+    expect(hostSend(gate, chat)).toBe(false);
+    online = true;
+    await expect(panelLoad(gate, async () => okState(state(B, 4)), record)()).resolves.toMatchObject({ kind: "loaded" });
+    expect(gate.pending).toBeNull();
+    // Every attempt was the same request: same body, same request id.
+    expect(new Set(puts).size).toBe(1);
+    expect(JSON.parse(puts[0]!)).toMatchObject({ clientRequestId: "r1", componentId: B });
+    expect(hostSend(gate, chat)).toBe(true);
+    expect(chat).toHaveBeenCalledWith(expect.objectContaining({ componentSelection: { threadId: "th-1", componentId: B, selectionVersion: 4 } }));
   });
 
   it("control: with nothing pending, Send and a change each go straight through", async () => {
     const gate = readGate();
-    expect(hostSend(gate, () => null, vi.fn())).toBe(true);
+    expect((record(wholeMachine), hostSend(gate, vi.fn()))).toBe(true);
     gate.endSend();
     await expect(changeSelection({
       gate, fetch: async () => new Response("{}", { status: 200 }), url: "/sel",
@@ -153,45 +183,43 @@ describe("nothing is sent until the conversation's component selection has been 
 
   it("checklist still loading: Send is refused, then it carries the saved component B and its version", async () => {
     const gate = createBenchSendGate();
-    let bench: BenchState | null = null;
-    const get = deferred<Response>();
+        const get = deferred<Response>();
     const chat = vi.fn();
-    const read = readBench({ gate, fetch: () => get.promise, url: URL, apply: (s) => { bench = s; } });
+    const read = readBench({ gate, fetch: () => get.promise, url: URL, apply: record });
 
     expect(benchSendRefusal(gate)).toBe(SEND_LOADING_MESSAGE);
-    expect(hostSend(gate, () => riderFor(bench, SEL), chat)).toBe(false);
+    expect(hostSend(gate, chat)).toBe(false);
     expect(chat).not.toHaveBeenCalled();
 
     get.resolve(okState(state(B, 4)));
     await expect(read).resolves.toMatchObject({ kind: "loaded" });
-    expect(hostSend(gate, () => riderFor(bench, SEL), chat)).toBe(true);
-    expect(chat).toHaveBeenCalledWith(expect.objectContaining({ componentSelection: { componentId: B, selectionVersion: 4 } }));
+    expect(hostSend(gate, chat)).toBe(true);
+    expect(chat).toHaveBeenCalledWith(expect.objectContaining({ componentSelection: { threadId: "th-1", componentId: B, selectionVersion: 4 } }));
   });
 
   it("the first read fails on the network: Send stays refused (never whole-machine) until a read succeeds", async () => {
     const gate = createBenchSendGate();
-    let bench: BenchState | null = null;
-    const chat = vi.fn();
-    await expect(readBench({ gate, fetch: async () => { throw new TypeError("offline"); }, url: URL, apply: (s) => { bench = s; } }))
+        const chat = vi.fn();
+    await expect(readBench({ gate, fetch: async () => { throw new TypeError("offline"); }, url: URL, apply: record }))
       .resolves.toEqual({ kind: "failed" });
-    expect(hostSend(gate, () => riderFor(bench, SEL), chat)).toBe(false);
-    await expect(readBench({ gate, fetch: async () => new Response("", { status: 500 }), url: URL, apply: (s) => { bench = s; } }))
+    expect(hostSend(gate, chat)).toBe(false);
+    await expect(readBench({ gate, fetch: async () => new Response("", { status: 500 }), url: URL, apply: record }))
       .resolves.toEqual({ kind: "failed" });
-    expect(hostSend(gate, () => riderFor(bench, SEL), chat)).toBe(false);
+    expect(hostSend(gate, chat)).toBe(false);
     expect(chat).not.toHaveBeenCalled();
 
-    await readBench({ gate, fetch: async () => okState(state(B, 4)), url: URL, apply: (s) => { bench = s; } });
-    expect(hostSend(gate, () => riderFor(bench, SEL), chat)).toBe(true);
-    expect(chat).toHaveBeenCalledWith(expect.objectContaining({ componentSelection: { componentId: B, selectionVersion: 4 } }));
+    await readBench({ gate, fetch: async () => okState(state(B, 4)), url: URL, apply: record });
+    expect(hostSend(gate, chat)).toBe(true);
+    expect(chat).toHaveBeenCalledWith(expect.objectContaining({ componentSelection: { threadId: "th-1", componentId: B, selectionVersion: 4 } }));
   });
 
   it("control: the checklist is not available (503, before migration 115): Send goes through with no component", async () => {
     const gate = createBenchSendGate();
-    let bench: BenchState | null = state(A, 3);
+    record(state(A, 3));
     const chat = vi.fn();
-    await expect(readBench({ gate, fetch: async () => new Response("", { status: 503 }), url: URL, apply: (s) => { bench = s; } }))
+    await expect(readBench({ gate, fetch: async () => new Response("", { status: 503 }), url: URL, apply: record }))
       .resolves.toEqual({ kind: "unavailable" });
-    expect(hostSend(gate, () => riderFor(bench, SEL), chat)).toBe(true);
+    expect(hostSend(gate, chat)).toBe(true);
     expect(chat).toHaveBeenCalledWith({ message: "and its fuse size?", mode: "general" });
   });
 
@@ -207,82 +235,85 @@ describe("nothing is sent until the conversation's component selection has been 
 describe("after an uncertain change, nothing is sent until a fresh read succeeds", () => {
   const body = { threadId: SEL.threadId, componentId: B, via: "picker", expectedVersion: 3, clientRequestId: "r1" };
 
-  it("pick B, the PUT commits but its reply is lost and the re-read fails: Send is refused, then carries B", async () => {
+  it("pick B, the PUT's reply is lost and the re-read fails: Send is refused, then carries B once the PUT is answered", async () => {
     const gate = readGate();
-    let bench: BenchState | null = wholeMachine;
+    record(wholeMachine);
     let server: Response | null = null; // what a checklist read returns; null = the read fails
+    let online = false;
     const chat = vi.fn();
-    const load = panelLoad(gate, async () => { if (!server) throw new TypeError("offline"); return server; }, (s) => { bench = s; });
+    const load = panelLoad(gate, async () => { if (!server) throw new TypeError("offline"); return server; }, record);
+    const put = async () => { if (!online) throw new TypeError("reply lost"); return new Response("{}", { status: 200 }); };
 
-    const out = await changeSelection({ gate, fetch: async () => { throw new TypeError("reply lost"); }, url: "/sel", load, body });
+    const out = await changeSelection({ gate, fetch: put, url: "/sel", load, body });
     expect(out).toMatchObject({ ok: false });
     expect(gate.changing).toBe(false);
-    expect(benchSendRefusal(gate)).toBe(SEND_LOADING_MESSAGE);
-    expect(hostSend(gate, () => riderFor(bench, SEL), chat)).toBe(false);
+    expect(benchSendRefusal(gate)).toBe(SEND_UNRESOLVED_MESSAGE);
+    expect(hostSend(gate, chat)).toBe(false);
     expect(chat).not.toHaveBeenCalled();
 
+    online = true;
     server = okState(state(B, 4)); // the host's refresh, once the connection is back
     await load();
-    expect(hostSend(gate, () => riderFor(bench, SEL), chat)).toBe(true);
+    expect(hostSend(gate, chat)).toBe(true);
     expect(chat).toHaveBeenCalledTimes(1);
-    expect(chat).toHaveBeenCalledWith(expect.objectContaining({ componentSelection: { componentId: B, selectionVersion: 4 } }));
+    expect(chat).toHaveBeenCalledWith(expect.objectContaining({ componentSelection: { threadId: "th-1", componentId: B, selectionVersion: 4 } }));
   });
 
   it("pick B, the PUT succeeds but the re-read gets a 500: the change reports failure and Send is refused", async () => {
     const gate = readGate();
-    let bench: BenchState | null = wholeMachine;
+    record(wholeMachine);
     const chat = vi.fn();
     const out = await changeSelection({
       gate, fetch: async () => new Response("{}", { status: 200 }), url: "/sel",
-      load: panelLoad(gate, async () => new Response("", { status: 500 }), (s) => { bench = s; }), body,
+      load: panelLoad(gate, async () => new Response("", { status: 500 }), record), body,
     });
     expect(out).toMatchObject({ ok: false });
-    expect(hostSend(gate, () => riderFor(bench, SEL), chat)).toBe(false);
+    expect(hostSend(gate, chat)).toBe(false);
     expect(chat).not.toHaveBeenCalled();
   });
 
   it("a read that began before the change and answers after it cannot reopen Send with the old state", async () => {
     const gate = readGate();
-    let bench: BenchState | null = wholeMachine;
+    record(wholeMachine);
     const chat = vi.fn();
     const early = deferred<Response>();
     const put = deferred<Response>();
     const change = changeSelection({
       gate, fetch: () => put.promise, url: "/sel",
-      load: panelLoad(gate, async () => new Response("", { status: 500 }), (s) => { bench = s; }), body,
+      load: panelLoad(gate, async () => new Response("", { status: 500 }), record), body,
     });
     // A refresh fired while the PUT is saving reads the server before the PUT commits.
-    const before = readBench({ gate, fetch: () => early.promise, url: LIST, apply: (s) => { bench = s; } });
+    const before = readBench({ gate, fetch: () => early.promise, url: LIST, apply: record });
     put.resolve(new Response("{}", { status: 200 }));
     await expect(change).resolves.toMatchObject({ ok: false });
     early.resolve(okState(wholeMachine));
     await expect(before).resolves.toEqual({ kind: "stale" });
-    expect(hostSend(gate, () => riderFor(bench, SEL), chat)).toBe(false);
+    expect(hostSend(gate, chat)).toBe(false);
     expect(chat).not.toHaveBeenCalled();
   });
 
   it("an identity revision whose reply is lost reconciles the same way", async () => {
     const gate = readGate();
-    let bench: BenchState | null = state(B, 4);
+    record(state(B, 4));
     const chat = vi.fn();
     // The panel's saveCard: begin, invalidate, POST lost, reconcile.
     expect(gate.tryBeginChange()).toBe(true);
-    await expect(reconcileBench(gate, panelLoad(gate, async () => { throw new TypeError("offline"); }, (s) => { bench = s; }))).resolves.toBe(false);
+    await expect(reconcileBench(gate, panelLoad(gate, async () => { throw new TypeError("offline"); }, record))).resolves.toBe(false);
     gate.endChange();
-    expect(hostSend(gate, () => riderFor(bench, SEL), chat)).toBe(false);
-    await expect(reconcileBench(gate, panelLoad(gate, async () => okState(state(B, 5)), (s) => { bench = s; }))).resolves.toBe(true);
-    expect(hostSend(gate, () => riderFor(bench, SEL), chat)).toBe(true);
-    expect(chat).toHaveBeenCalledWith(expect.objectContaining({ componentSelection: { componentId: B, selectionVersion: 5 } }));
+    expect(hostSend(gate, chat)).toBe(false);
+    await expect(reconcileBench(gate, panelLoad(gate, async () => okState(state(B, 5)), record))).resolves.toBe(true);
+    expect(hostSend(gate, chat)).toBe(true);
+    expect(chat).toHaveBeenCalledWith(expect.objectContaining({ componentSelection: { threadId: "th-1", componentId: B, selectionVersion: 5 } }));
   });
 
   it("control: a change that answers and re-reads cleanly releases Send at once", async () => {
     const gate = readGate();
-    let bench: BenchState | null = wholeMachine;
+    record(wholeMachine);
     const chat = vi.fn();
     await expect(changeSelection({
       gate, fetch: async () => new Response("{}", { status: 200 }), url: "/sel",
-      load: panelLoad(gate, async () => okState(state(B, 4)), (s) => { bench = s; }), body,
+      load: panelLoad(gate, async () => okState(state(B, 4)), record), body,
     })).resolves.toEqual({ ok: true });
-    expect(hostSend(gate, () => riderFor(bench, SEL), chat)).toBe(true);
+    expect(hostSend(gate, chat)).toBe(true);
   });
 });

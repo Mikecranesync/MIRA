@@ -20,9 +20,15 @@ import {
   parseComponentFrames,
   retakeCard,
   revisionBodyFor,
-  riderFor,
+  createBenchSendGate,
+  prepareChatSend,
+  readBench,
+  recordBenchScope,
+  scopedChatBody,
   selectionChangeFor,
-  withComponentRider,
+  withoutScope,
+  SEND_LOADING_MESSAGE,
+  type BenchScopes,
   type BenchState,
   type ComponentTurnFrame,
   type ComponentView,
@@ -79,20 +85,66 @@ describe("the last answer's component (#5504 Codex F1)", () => {
   });
 });
 
-describe("the chat rider", () => {
+describe("every question carries its conversation's scope", () => {
   const body = { message: "what does oC mean", sourceDocIds: [], history: [], clientRequestId: "r", threadId: null, mode: "general" as const };
+  const scopesWith = (st: BenchState | null, sel = SEL): BenchScopes => {
+    const m: BenchScopes = new Map();
+    recordBenchScope(m, sel, st);
+    return m;
+  };
 
   it("carries the component and the version the header showed, and never sends a component turn in general mode", () => {
-    const out = withComponentRider(body, SEL, riderFor(state(selected), SEL));
-    expect(out).toEqual({ message: "what does oC mean", sourceDocIds: [], history: [], clientRequestId: "r", threadId: null, componentSelection: { componentId: VFD, selectionVersion: 3 } });
+    const out = scopedChatBody(body, SEL, scopesWith(state(selected)));
+    expect(out).toEqual({ ok: true, body: { message: "what does oC mean", sourceDocIds: [], history: [], clientRequestId: "r", threadId: null, componentSelection: { threadId: null, componentId: VFD, selectionVersion: 3 } } });
     // The question itself is never rewritten.
-    expect(out.message).toBe(body.message);
+    if (out.ok) expect(out.body.message).toBe(body.message);
   });
 
-  it("control: no selection, or a rider read for another conversation, leaves the body untouched", () => {
-    expect(withComponentRider(body, SEL, riderFor(state(null), SEL))).toBe(body);
-    const other = riderFor(state(selected), { notebookId: NB, threadId: "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa" });
-    expect(withComponentRider(body, SEL, other)).toBe(body);
+  it("the whole machine is said explicitly, with the saved version, and keeps the body's mode", () => {
+    const cleared = { ...state(null), selectionVersion: 7 };
+    expect(scopedChatBody(body, SEL, scopesWith(cleared))).toEqual({ ok: true, body: { ...body, componentSelection: { threadId: null, componentId: null, selectionVersion: 7 } } });
+    expect(scopedChatBody(body, SEL, scopesWith(state(null)))).toEqual({ ok: true, body: { ...body, componentSelection: { threadId: null, componentId: null, selectionVersion: null } } });
+  });
+
+  it("a conversation whose checklist has not been read is refused, never sent without a scope", () => {
+    expect(scopedChatBody(body, SEL, new Map())).toEqual({ ok: false, message: SEND_LOADING_MESSAGE });
+    const other = { notebookId: NB, threadId: "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa" };
+    expect(scopedChatBody(body, SEL, scopesWith(state(selected), other))).toEqual({ ok: false, message: SEND_LOADING_MESSAGE });
+  });
+
+  it("control: the checklist is unavailable (no migration 115): the body is sent as it is", () => {
+    expect(scopedChatBody(body, SEL, scopesWith(null))).toEqual({ ok: true, body });
+  });
+
+  it("a retry keeps the scope it was asked under; after a scope refusal it is scoped again from what the header shows", () => {
+    const asked = scopedChatBody(body, SEL, scopesWith(state(selected)));
+    if (!asked.ok) throw new Error("precondition: the first send is scoped");
+    const now = scopesWith({ ...state(null), selectionVersion: 4 });
+    expect(scopedChatBody(asked.body, SEL, now)).toEqual(asked);
+    const again = scopedChatBody(withoutScope(asked.body), SEL, now);
+    expect(again).toMatchObject({ ok: true, body: { componentSelection: { threadId: null, componentId: null, selectionVersion: 4 } } });
+  });
+
+  // #5504 post-cap F10: A's checklist read answers after the technician moved to B.
+  it("a late read for conversation A cannot become B's scope", async () => {
+    const A_SEL = { notebookId: NB, threadId: "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa" };
+    const B_SEL = { notebookId: NB, threadId: "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb" };
+    const scopes: BenchScopes = new Map();
+    const aGate = createBenchSendGate();
+    const bGate = createBenchSendGate();
+    let releaseA!: (r: Response) => void;
+    const aRead = readBench({
+      gate: aGate, url: "/a", apply: (st) => recordBenchScope(scopes, A_SEL, st),
+      fetch: () => new Promise<Response>((res) => { releaseA = res; }),
+    });
+    // B loads its saved component first…
+    await readBench({ gate: bGate, url: "/b", apply: (st) => recordBenchScope(scopes, B_SEL, st), fetch: async () => new Response(JSON.stringify(state(selected)), { status: 200 }) });
+    // …then A's old read answers (no selection), and then a 503.
+    releaseA(new Response(JSON.stringify(state(null)), { status: 200 }));
+    await aRead;
+    recordBenchScope(scopes, A_SEL, null);
+    const out = prepareChatSend({ gate: bGate, forThisGate: true, sel: B_SEL, scopes, body });
+    expect(out).toMatchObject({ ok: true, body: { componentSelection: { threadId: B_SEL.threadId, componentId: VFD, selectionVersion: 3 } } });
   });
 });
 

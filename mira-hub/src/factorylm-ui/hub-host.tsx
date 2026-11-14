@@ -75,7 +75,7 @@ import { ParkedSources } from "./ParkedSources";
 import { clearSheetDataForSignOut, localStorageStore, parseSheetReceipts } from "./living-sheet-client";
 import { NOTEBOOK_ACTIONS_STYLE } from "./notebook-actions";
 import { BenchComponents } from "./BenchComponents";
-import { SEND_BLOCKED_MESSAGE, benchSendRefusal, createBenchSendGate, parseComponentFrames, riderFor, withComponentRider, type BenchState, type ComponentRider, type ComponentTurnFrame } from "./bench-components-logic";
+import { SEND_BLOCKED_MESSAGE, benchSendRefusal, createBenchSendGate, parseComponentFrames, prepareChatSend, recordBenchScope, withoutScope, type BenchScopes, type BenchState, type ComponentTurnFrame, type ScopeField } from "./bench-components-logic";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
 import { answerTurnId, citationIndex, contextFor, lifecycleFromStream, livePartsWhileRunning, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus, withSettledFollowups, type SettledFollowups } from "./to-interaction";
 import {
@@ -195,7 +195,8 @@ export function HubShellHost() {
   // The technician's message from the moment Send is tapped (outgoing-turn.ts).
   const [outgoing, setOutgoing] = useState<Outgoing | null>(null);
   const [busy, setBusy] = useState(false);
-  const [failedBody, setFailedBody] = useState<{ body: ReturnType<typeof chatBodyFor>; question: string } | null>(null);
+  // A retry re-sends the body as it went out, with the component scope it was asked under (#5504 post-cap).
+  const [failedBody, setFailedBody] = useState<{ body: ReturnType<typeof chatBodyFor> & { componentSelection?: ScopeField }; question: string } | null>(null);
   // TASK-S3: the Living Work Sheet job open for ANY notebook (LivingSheet is
   // mounted per-notebook, but this state belongs to the host, not the panel,
   // so send() can read it without a prop round-trip). `livingSheetJobId`
@@ -203,11 +204,12 @@ export function HubShellHost() {
   // own notebook — switching notebooks never leaks a stale job id.
   const [livingSheetJob, setLivingSheetJob] = useState<{ notebookId: string; jobId: string } | null>(null);
   const [sheetReceipt, setSheetReceipt] = useState<NotebookSheetReceiptFrame | null>(null);
-  // Bench components: the component this conversation's header shows rides the
-  // next chat turn (ref, so send() never reads a stale render), the newest
-  // reply's Return / Switch / Stay / Confirm offers, and a counter that re-reads
-  // the checklist after every turn.
-  const componentRiderRef = useRef<ComponentRider | null>(null);
+  // Bench components: what each conversation's header shows rides that conversation's
+  // next chat turn (by conversation, so a late read from a conversation already left
+  // can never become this one's scope — #5504 post-cap F10; a ref, so send() never
+  // reads a stale render), the newest reply's Return / Switch / Stay / Confirm offers,
+  // and a counter that re-reads the checklist after every turn.
+  const benchScopesRef = useRef<BenchScopes>(new Map());
   const [componentFrame, setComponentFrame] = useState<{ key: string; frame: ComponentTurnFrame } | null>(null);
   const [benchRefresh, setBenchRefresh] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
@@ -475,7 +477,7 @@ export function HubShellHost() {
   }, [gateConversation]);
 
   // --- the send path: the canonical notebook-chat route, streamed ---
-  const send = useCallback(async (body: ReturnType<typeof chatBodyFor>, question: string, sel: HubSelection | null = selection) => {
+  const send = useCallback(async (body: ReturnType<typeof chatBodyFor> & { componentSelection?: ScopeField }, question: string, sel: HubSelection | null = selection) => {
     if (!sel) return;
     // Never while a component change is saving (this send would carry the version the
     // header read before it), and never before this conversation's component selection
@@ -484,8 +486,17 @@ export function HubShellHost() {
     // start. A project just made from home (`sel` is not this gate's conversation) has
     // no saved component and is not held.
     const forThisGate = gateConversation === `${sel.notebookId}|${sel.threadId}`;
-    const refused = forThisGate ? benchSendRefusal(benchGate) : null;
-    if (refused || !benchGate.tryBeginSend()) {
+    // #5504 post-cap F9/F10: every question carries its scope — the component, or the whole
+    // machine — with the version read for THIS conversation; an unread one is refused.
+    const prepared = prepareChatSend({
+      gate: benchGate,
+      forThisGate,
+      sel,
+      scopes: benchScopesRef.current,
+      body: withLivingSheetRider(body, sel.notebookId, livingSheetJob),
+    });
+    const refused = prepared.ok ? null : prepared.message;
+    if (!prepared.ok || !benchGate.tryBeginSend()) {
       if (forThisGate && !benchGate.known && !benchGate.changing) setBenchRefresh((n) => n + 1);
       dropOutgoing(outgoingOwner.current?.id ?? null);
       dispatch({ type: "set-send-error", error: refused ?? SEND_BLOCKED_MESSAGE });
@@ -504,12 +515,16 @@ export function HubShellHost() {
     dispatch({ type: "set-send-error", error: null });
     setLive({ id, question, content: "", citations: [], result: null, stopped: false, startedAt: new Date().toISOString(), outgoingId });
     setBusy(true);
+    let outBody = prepared.body;
+    // The route refused the scope (the selection moved): a retry is asked again under what the
+    // header shows after the re-read, never replayed under the scope that was refused.
+    let scopeRefused = false;
     try {
       // TASK-S3: the rider is applied here, centrally, rather than threaded
       // through every chatBodyFor(...) call site — one enforcement point
       // that can't be forgotten at a future call site, scoped to the turn's
       // own notebook so switching notebooks never sends a stale job id.
-      const outBody = withComponentRider(withLivingSheetRider(body, sel.notebookId, livingSheetJob), sel, componentRiderRef.current);
+      outBody = prepared.body;
       setComponentFrame(null);
       const res = await fetch(`${API_BASE}/api/equipment-notebooks/${encodeURIComponent(sel.notebookId)}/chat/`, {
         // #4687: ask for stage progress; a server without MIRA_CHAT_PROGRESS ignores the header.
@@ -520,6 +535,7 @@ export function HubShellHost() {
         // The route's own error codes, in plain language; never a bare status code.
         let code = "";
         try { code = String(((await res.json()) as { error?: unknown }).error ?? ""); } catch { /* no JSON body */ }
+        scopeRefused = code === "selection_changed" || code === "component_selection_thread_mismatch";
         throw new Error(errorMessageFor(code, res.status));
       }
       // Only tee while a sheet is open for this notebook — zero behavior
@@ -586,7 +602,7 @@ export function HubShellHost() {
         );
         if (!retained.stopped) {
           const message = sendFailureMessage(err);
-          setFailedBody({ body, question });
+          setFailedBody({ body: outBody, question });
           dispatch({ type: "set-send-error", error: message });
         }
         return;
@@ -594,7 +610,7 @@ export function HubShellHost() {
       const message = sendFailureMessage(err);
       setLive((cur) => (cur && cur.id === id ? null : cur));
       dropOutgoing(outgoingId);
-      setFailedBody({ body, question });
+      setFailedBody({ body: scopeRefused ? withoutScope(body) : outBody, question });
       dispatch({ type: "set-send-error", error: message });
       dispatch({ type: "set-draft", draft: question });
     } finally {
@@ -608,9 +624,9 @@ export function HubShellHost() {
   // Stable per conversation, so the panel's read does not re-run on every render.
   const benchNotebookId = selection?.notebookId ?? null;
   const benchThreadId = selection?.threadId ?? null;
+  // Bound to the conversation it was rendered for: a panel left behind writes only its own entry.
   const onBenchState = useCallback((bench: BenchState | null) => {
-    componentRiderRef.current =
-      benchNotebookId && benchThreadId ? riderFor(bench, { notebookId: benchNotebookId, threadId: benchThreadId }) : null;
+    if (benchNotebookId && benchThreadId) recordBenchScope(benchScopesRef.current, { notebookId: benchNotebookId, threadId: benchThreadId }, bench);
   }, [benchNotebookId, benchThreadId]);
 
   /**
