@@ -529,9 +529,10 @@ export async function maintenanceContext(
           ORDER BY e.name LIMIT 30`,
         [tenantId, equipment.id],
       ),
-      // Manuals — both direct references and via references_drawing
+      // Manuals — both direct references and via references_drawing. No name filter here, so
+      // keep the stored rows in their stored direction (BOTH); DISTINCT absorbs the aliases.
       client.query<EntityRow>(
-        `SELECT DISTINCT e.* FROM ${KG_EDGES_LEGACY} r
+        `SELECT DISTINCT e.* FROM ${KG_EDGES_BOTH} r
            JOIN kg_entities e
              ON e.id = r.target_id
             AND e.tenant_id = r.tenant_id
