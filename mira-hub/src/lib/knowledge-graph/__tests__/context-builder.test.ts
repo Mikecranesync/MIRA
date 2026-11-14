@@ -79,8 +79,10 @@ describe("buildGraphContext answer-facing SQL filters", () => {
     expect(entitySql).toMatch(/approval_state\s*=\s*'verified'/i);
 
     const relationshipSql = sqlCalls()
-      .filter((sql) => sql.includes("FROM kg_relationships r"))
+      // Relationship reads go through the shared read view (#5519), aliased `r`.
+      .filter((sql) => sql.includes("FROM kg_relationships") && /\)\s+r\b/.test(sql))
       .join("\n");
+    expect(relationshipSql).not.toBe("");
     expect(relationshipSql).toMatch(/r\.approval_state\s*=\s*'verified'/i);
     expect(relationshipSql).toMatch(/src\.approval_state\s*=\s*'verified'/i);
     expect(relationshipSql).toMatch(/tgt\.approval_state\s*=\s*'verified'/i);

@@ -21,6 +21,7 @@ import {
   rootCauseChain,
   type MaintenanceContext,
 } from "./traversal";
+import { KG_EDGES_LEGACY } from "@/capabilities/kg-relationship-read-view";
 
 // ── DB helpers ─────────────────────────────────────────────────────────────
 
@@ -112,7 +113,7 @@ async function fetchEntityFull(
       `SELECT r.id, r.source_id, r.target_id, r.relationship_type,
               src.entity_id AS source_entity_id, tgt.entity_id AS target_entity_id,
               tgt.name AS target_name, src.name AS source_name
-       FROM kg_relationships r
+       FROM ${KG_EDGES_LEGACY} r
        JOIN kg_entities src
          ON src.id = r.source_id
         AND src.tenant_id = r.tenant_id
@@ -132,7 +133,7 @@ async function fetchEntityFull(
       `SELECT r.id, r.source_id, r.target_id, r.relationship_type,
               src.entity_id AS source_entity_id, tgt.entity_id AS target_entity_id,
               tgt.name AS target_name, src.name AS source_name
-       FROM kg_relationships r
+       FROM ${KG_EDGES_LEGACY} r
        JOIN kg_entities src
          ON src.id = r.source_id
         AND src.tenant_id = r.tenant_id

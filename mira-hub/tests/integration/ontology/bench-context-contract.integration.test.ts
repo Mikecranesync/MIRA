@@ -60,7 +60,7 @@ import { applyHubProposalTransition } from "@/lib/proposal-transition";
 import { mintAssetBridgeNode } from "@/lib/knowledge-graph/asset-bridge";
 import { mapToCanonicalEdge, upsertInferredProposal } from "@/lib/knowledge-graph/proposals-writer";
 import { buildGraphContext, classifyKgIntent } from "@/lib/knowledge-graph/context-builder";
-import { impactAnalysis, maintenanceContext } from "@/lib/knowledge-graph/traversal";
+import { impactAnalysis, maintenanceContext, rootCauseChain, traverseChain } from "@/lib/knowledge-graph/traversal";
 import { POST as decidePOST } from "@/app/api/proposals/[id]/decide/route";
 import { POST as internalKgPOST } from "@/app/api/internal/kg/route";
 
@@ -424,18 +424,29 @@ describe("4. the approved relationship read through the application's own traver
     });
   });
 
-  it("KNOWN GAP #5519: as approval actually stores it (UPSTREAM_OF), the impact reader and the answer context do not see it", async () => {
-    const seen = await downstreamNodeIds(TENANT_A, A.Q1);
+  it("#5519 repaired: as approval actually stores it (UPSTREAM_OF), the impact reader and the answer context see it", async () => {
+    expect((await edgeRows(TENANT_A, S.feeds))[0].relationship_type).toBe("UPSTREAM_OF"); // nothing renamed
+    expect(await downstreamNodeIds(TENANT_A, A.Q1)).toEqual([A.VFD1.nodeId]);
     const block = await buildGraphContext(TENANT_A, IMPACT_QUESTION, A.Q1.assetId);
-    knownGap(
-      "#5519",
-      () => {
-        expect(seen).toEqual([]);
-        expect(block).toContain(`[GRAPH CONTEXT for ${A.Q1.assetId}]`);
-        expect(block).not.toContain("[IMPACT ANALYSIS");
-      },
-      () => expect(seen).toContain(A.VFD1.nodeId),
+    expect(block).toContain(`[IMPACT ANALYSIS for ${A.Q1.assetId}]\nDownstream: ${A.VFD1.assetId}`);
+    expect(block).not.toContain(A.VFD2.assetId); // the other drive of the same model is not implicated
+  });
+
+  it("#5519: an edge present under BOTH names for the same pair is read once, not twice", async () => {
+    await admin.query(
+      `INSERT INTO kg_relationships (tenant_id, source_id, target_id, relationship_type, approval_state)
+       SELECT tenant_id, source_id, target_id, 'feeds', 'verified' FROM kg_relationships WHERE id = $1::uuid`,
+      [S.feedsEdge],
     );
+    try {
+      expect(await downstreamNodeIds(TENANT_A, A.Q1)).toEqual([A.VFD1.nodeId]);
+    } finally {
+      await admin.query(
+        `DELETE FROM kg_relationships WHERE relationship_type = 'feeds' AND tenant_id = $1::uuid
+           AND (source_id, target_id) IN (SELECT source_id, target_id FROM kg_relationships WHERE id = $2::uuid)`,
+        [TENANT_A, S.feedsEdge],
+      );
+    }
   });
 
   // The same mismatch, per reader, for the other bench relationships.
@@ -461,7 +472,7 @@ describe("4. the approved relationship read through the application's own traver
     },
   ];
   for (const c of readerCases) {
-    it(`KNOWN GAP #5519: ${c.reader} asks for '${c.lowercase}', approval stores '${c.stored}'`, async () => {
+    it(`#5519 repaired: ${c.reader} asks for '${c.lowercase}', approval stores '${c.stored}', and the reader sees it`, async () => {
       const id = (await propose(TENANT_A, c.lowercase, c.from(), c.to(), `bench: ${c.lowercase}`)) as string;
       expect(id).toMatch(/^[0-9a-f-]{36}$/);
       expect((await decide(id, "verify", { tenantId: TENANT_A, userId: ADMIN_A, role: "admin" })).status).toBe(200);
@@ -472,16 +483,11 @@ describe("4. the approved relationship read through the application's own traver
       const controlled = await withStoredName(rows[0].id as string, c.lowercase, c.read);
       expect(controlled).toEqual([c.to().nodeId]); // the reader works when the name matches
 
-      const seen = await c.read();
-      knownGap(
-        "#5519",
-        () => expect(seen).toEqual([]),
-        () => expect(seen).toContain(c.to().nodeId),
-      );
+      expect(await c.read()).toEqual([c.to().nodeId]); // as stored, without renaming
     });
   }
 
-  it("the engine's own request (internal route, by plant path) finds the machine; KNOWN GAP #5519: without its approved component", async () => {
+  it("the engine's own request (internal route, by plant path) finds the machine with its approved component (#5519 repaired)", async () => {
     const res = await internalKgPOST(
       new Request("http://hub.test/api/internal/kg", {
         method: "POST",
@@ -497,11 +503,7 @@ describe("4. the approved relationship read through the application's own traver
     const body = (await res.json()) as { ok: boolean; result: { equipment: { id: string }; components: unknown[] } };
     expect(body.ok).toBe(true);
     expect(body.result.equipment.id).toBe(A.CV101.nodeId);
-    knownGap(
-      "#5519",
-      () => expect(body.result.components).toEqual([]),
-      () => expect(body.result.components).toHaveLength(1),
-    );
+    expect(body.result.components).toHaveLength(1);
   });
 
   it("KNOWN GAP #5527: even when read, the answer context names no edge id, proposal, approver or source", async () => {
@@ -534,18 +536,12 @@ describe("4b. the rest of the bench's relationship names, through the real name 
     "has_work_order", "requires_part", "has_pm", "similar_to",
   ];
 
-  it("KNOWN GAP #5519: no name a reader filters on is the name approval stores", () => {
-    const stored = READER_NAMES.map((n) => [n, mapToCanonicalEdge(n)?.type ?? null]);
-    knownGap(
-      "#5519",
-      () => {
-        for (const [name, type] of stored) {
-          expect(type, name as string).not.toBeNull();
-          expect(type, name as string).not.toBe(name);
-        }
-      },
-      () => expect(stored.some(([name, type]) => type === name)).toBe(true),
-    );
+  it("no name a reader filters on is the name approval stores — which is why readers go through the shared read view (#5519)", () => {
+    for (const n of READER_NAMES) {
+      const type = mapToCanonicalEdge(n)?.type ?? null;
+      expect(type, n).not.toBeNull();
+      expect(type, n).not.toBe(n);
+    }
   });
 
   it("OBSERVED: 'controls' and 'protects' (PLC -> drive, breaker -> supply) cannot be proposed at all", () => {
@@ -840,34 +836,46 @@ describe("8. the same contract across more of the bench (provisional inventory, 
     expect(motor).toContain(A.M1.nodeId);
   });
 
-  it("KNOWN GAP #5519: as approved, none of the supply chain is read downstream of CB1, PS1 or VFD1", async () => {
-    const seen = [
-      ...(await downstreamNodeIds(TENANT_A, A.CB1)),
-      ...(await downstreamNodeIds(TENANT_A, A.PS1)),
-      ...(await downstreamNodeIds(TENANT_A, A.VFD1)),
-    ];
-    knownGap(
-      "#5519",
-      () => expect(seen).toEqual([]),
-      () => expect(seen).toEqual(expect.arrayContaining([A.PS1.nodeId, A.PLC1.nodeId, A.M1.nodeId])),
-    );
+  it("#5519 repaired: as approved, the supply chain is read downstream — CB1 -> PS1 -> PLC1, and VFD1 -> M1", async () => {
+    const fromBreaker = await downstreamNodeIds(TENANT_A, A.CB1);
+    expect(fromBreaker).toEqual(expect.arrayContaining([A.PS1.nodeId, A.PLC1.nodeId]));
+    expect(fromBreaker).not.toContain(A.M1.nodeId); // the breaker does not feed the motor
+    expect(await downstreamNodeIds(TENANT_A, A.VFD1)).toContain(A.M1.nodeId);
+    // the REJECTED link (PLC1 feeds VFD1) wrote no edge, so the drive is not downstream of the breaker
+    expect(fromBreaker).not.toContain(A.VFD1.nodeId);
   });
 
-  it("KNOWN GAP #5519: the conveyor's approved controller is not in its component list", async () => {
+  it("#5519 repaired: the conveyor's approved controller is in its component list", async () => {
     const read = async () => (await maintenanceContext(TENANT_A, A.CV101.assetId))?.components.map((e) => e.id) ?? [];
     expect(await withStoredName(made["CV101 has_component PLC1"], "has_component", read)).toContain(A.PLC1.nodeId);
-    const seen = await read();
-    knownGap(
-      "#5519",
-      () => expect(seen).not.toContain(A.PLC1.nodeId),
-      () => expect(seen).toContain(A.PLC1.nodeId),
-    );
+    expect(await read()).toContain(A.PLC1.nodeId);
   });
 
-  it("OBSERVED: the parent link is stored reversed AND renamed (the hierarchy reader is NOT run here)", async () => {
-    // By reading traversal.ts (not by a test): maintenanceContext walks edges named 'parent_of'
-    // whose target is the child. Approval stored child -> parent as LOCATED_IN. This test only
-    // pins what was stored; no reader is called and no control shows the link readable.
+  it("#5519 repaired, FLIPPED name: walking 'parent_of' from the conveyor reaches the motor (stored as motor LOCATED_IN conveyor)", async () => {
+    const down = await traverseChain(TENANT_A, A.CV101.nodeId, ["parent_of"]);
+    expect(down.map((h) => h.entity.id)).toContain(A.M1.nodeId);
+    // direction is respected: the conveyor is not below the motor
+    const wrongWay = await traverseChain(TENANT_A, A.M1.nodeId, ["parent_of"]);
+    expect(wrongWay.map((h) => h.entity.id)).not.toContain(A.CV101.nodeId);
+    // and the stored canonical name still works for a caller that passes it
+    const stored = await traverseChain(TENANT_A, A.M1.nodeId, ["LOCATED_IN"]);
+    expect(stored.map((h) => h.entity.id)).toContain(A.CV101.nodeId);
+  });
+
+  it("#5519 repaired, FLIPPED name: 'VFD1 caused_by CB1' is stored as CB1 CAUSES VFD1 and read as a cause of VFD1, not of CB1", async () => {
+    const id = (await propose(TENANT_A, "caused_by", A.VFD1, A.CB1, "bench: drive trip traced to the breaker")) as string;
+    expect((await decide(id, "verify", { tenantId: TENANT_A, userId: ADMIN_A, role: "admin" })).status).toBe(200);
+    const row = (await edgeRows(TENANT_A, id))[0];
+    expect(row).toMatchObject({ relationship_type: "CAUSES", source_id: A.CB1.nodeId, target_id: A.VFD1.nodeId });
+    const causesOfDrive = await rootCauseChain(TENANT_A, A.VFD1.nodeId);
+    expect(causesOfDrive.chain.map((c) => c.entity.id)).toContain(A.CB1.nodeId);
+    const causesOfBreaker = await rootCauseChain(TENANT_A, A.CB1.nodeId);
+    expect(causesOfBreaker.chain.map((c) => c.entity.id)).not.toContain(A.VFD1.nodeId);
+  });
+
+  it("OBSERVED: the parent link is stored reversed AND renamed (what the read view undoes)", async () => {
+    // maintenanceContext walks edges named 'parent_of' whose target is the child. Approval
+    // stored child -> parent as LOCATED_IN; the test above shows the reader sees it anyway.
     const before = await admin.query(
       `SELECT source_id::text AS s, target_id::text AS t, relationship_type AS r FROM kg_relationships WHERE id = $1::uuid`,
       [made["CV101 parent_of M1"]],

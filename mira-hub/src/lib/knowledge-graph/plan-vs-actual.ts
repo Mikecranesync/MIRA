@@ -14,6 +14,7 @@
 
 import pool from "@/lib/db";
 import type { PoolClient } from "pg";
+import { KG_EDGES_LEGACY } from "@/capabilities/kg-relationship-read-view";
 
 export interface PmMismatch {
   equipmentId: string;            // kg entity_id, e.g. "VFD-07"
@@ -109,7 +110,7 @@ export async function flagPmMismatches(
                 )) / 86400.0 / NULLIF(COUNT(*) - 1, 0)
                 ELSE NULL
            END AS mtbf_days
-         FROM kg_relationships r
+         FROM ${KG_EDGES_LEGACY} r
          JOIN kg_entities eq ON eq.id = r.source_id AND eq.tenant_id = r.tenant_id
          JOIN kg_entities f  ON f.id  = r.target_id AND f.tenant_id  = r.tenant_id
          WHERE r.tenant_id = $1
@@ -126,7 +127,7 @@ export async function flagPmMismatches(
            r.source_id AS equipment_uuid,
            p.name      AS pm_task,
            NULLIF(p.properties->>'interval_days','')::int AS pm_interval_days
-         FROM kg_relationships r
+         FROM ${KG_EDGES_LEGACY} r
          JOIN kg_entities p ON p.id = r.target_id AND p.tenant_id = r.tenant_id
          WHERE r.tenant_id = $1
            AND r.relationship_type = 'has_pm'
