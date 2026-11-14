@@ -20,6 +20,13 @@ const TENANT = "11111111-1111-4111-8111-111111111111";
 const NB = "22222222-2222-4222-8222-222222222222";
 const DOC = "33333333-3333-4333-8333-333333333333";
 
+// #5504 post-cap: the route reads the conversation's saved bench-component selection on every
+// turn. This file's database stand-in answers every query alike, so that read is stood in here:
+// nothing selected (today's path).
+vi.mock("@/capabilities/bench-components/store", async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  getSelectionState: vi.fn(async () => ({ selection: null, version: null })),
+}));
 vi.mock("@/lib/session", () => ({
   sessionOr401: vi.fn(async () => ({ tenantId: TENANT, userId: "u1" })),
 }));

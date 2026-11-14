@@ -32,6 +32,13 @@ const DOC_A = "33333333-3333-4333-8333-333333333333";
 const MACHINE = "44444444-4444-4444-8444-444444444444";
 const OTHER_MACHINE = "66666666-6666-4666-8666-666666666666";
 
+// #5504 post-cap: the route reads the conversation's saved bench-component selection on every
+// turn. This file's database stand-in answers every query alike, so that read is stood in here:
+// nothing selected (today's path).
+vi.mock("@/capabilities/bench-components/store", async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  getSelectionState: vi.fn(async () => ({ selection: null, version: null })),
+}));
 vi.mock("@/lib/session", () => ({
   sessionOr401: vi.fn(async () => ({ tenantId: TENANT, userId: "u1" })),
 }));
