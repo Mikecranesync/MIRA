@@ -20,6 +20,8 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } 
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
+import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import type { Pool, PoolClient } from "pg";
 import { buildPdf } from "@/capabilities/work-packet/__tests__/fixtures/pdf";
 
@@ -30,6 +32,8 @@ const READY = Boolean(
     PDF_PATH &&
     fs.existsSync(PDF_PATH),
 );
+const CONTRACT_READY = Boolean(process.env.TEST_DATABASE_URL
+  && process.env.MIRA_TEST_DB_CONFIRM === "DISPOSABLE");
 
 const { testPool, contract, network } = vi.hoisted(() => {
   // The writer captures this switch on import. Both groups are keyless.
@@ -47,15 +51,17 @@ const { testPool, contract, network } = vi.hoisted(() => {
   };
 });
 
-function requireDisposableDatabase(): void {
-  if (!process.env.TEST_DATABASE_URL || process.env.MIRA_TEST_DB_CONFIRM !== "DISPOSABLE") {
+function requireDisposableDatabase(urlText = process.env.TEST_DATABASE_URL,
+  confirmation = process.env.MIRA_TEST_DB_CONFIRM): void {
+  if (!urlText || confirmation !== "DISPOSABLE") {
     throw new Error("Explicit disposable TEST_DATABASE_URL and MIRA_TEST_DB_CONFIRM required");
   }
   let url: URL;
-  try { url = new URL(process.env.TEST_DATABASE_URL); }
+  try { url = new URL(urlText); }
   catch { throw new Error("TEST_DATABASE_URL must be a valid local PostgreSQL URL"); }
   if (!["postgres:", "postgresql:"].includes(url.protocol)
     || !["127.0.0.1", "localhost"].includes(url.hostname)
+    || Boolean(url.search || url.hash)
     || /prod|prd|staging/i.test(url.pathname)) {
     throw new Error("Only an isolated local disposable PostgreSQL database is permitted");
   }
@@ -303,10 +309,10 @@ if (!READY) {
   });
 }
 
-// Always available: real PDF parser + writer + PostgreSQL queries, without the
+// With disposable DB configuration: real PDF parser + writer + PostgreSQL queries, without the
 // separately fetched T2108/pgvector audit. The connection adapter bypasses RLS;
 // this proves SQL filtering and metadata, not production authorization or UI.
-describe("PDF pipeline contract", () => {
+describe.skipIf(!CONTRACT_READY)("PDF pipeline contract", () => {
   const DOC = randomUUID();
   const OTHER = randomUUID();
   const FOREIGN = randomUUID();
@@ -321,6 +327,8 @@ describe("PDF pipeline contract", () => {
   const bytes = pdf("BX410", "24");
   const unrelated = pdf("BX420", "48");
   const blank = buildPdf([{ texts: [] }]);
+  const sqlErrors: string[] = [];
+  const warnings: unknown[][] = [];
 
   async function ingest(doc = DOC, name = filename, buffer = bytes) {
     expect(buffer.byteLength).toBeLessThan(64 * 1024);
@@ -353,11 +361,26 @@ describe("PDF pipeline contract", () => {
 
   beforeAll(async () => {
     requireDisposableDatabase();
+    const warn = console.warn;
+    vi.spyOn(console, "warn").mockImplementation((...args: unknown[]) => {
+      warnings.push(args);
+      warn(...args);
+    });
     console.info("[pdf-pipeline-fixtures]", JSON.stringify(Object.fromEntries(
       Object.entries({ baseline: bytes, distractor: unrelated, blank }).map(([name, buffer]) =>
         [name, { bytes: buffer.byteLength, sha256: createHash("sha256").update(buffer).digest("hex") }]),
     )));
     contract.client = await testPool.connect();
+    // Observe real query rejections even when production catches a degraded
+    // optional read. Forward all SQL/parameters/results to the actual client.
+    const execute = contract.client.query.bind(contract.client) as (...args: unknown[]) => unknown;
+    vi.spyOn(contract.client, "query").mockImplementation(((...args: unknown[]) => {
+      const result = execute(...args);
+      return result instanceof Promise ? result.catch((error: unknown) => {
+        sqlErrors.push(error instanceof Error ? error.message : String(error));
+        throw error;
+      }) : result;
+    }) as PoolClient["query"]);
     await contract.client.query("BEGIN");
     await contract.client.query("SET LOCAL statement_timeout = '5000ms'");
     await contract.client.query(`CREATE TEMP TABLE knowledge_entries (
@@ -378,6 +401,8 @@ describe("PDF pipeline contract", () => {
   });
 
   beforeEach(async () => {
+    sqlErrors.length = 0;
+    warnings.length = 0;
     vi.stubEnv("MIRA_ENFORCE_APPROVED_RETRIEVAL", "true");
     vi.stubEnv("NOTEBOOK_HYBRID_RETRIEVAL", "0");
     vi.stubEnv("NOTEBOOK_RERANK", "0");
@@ -392,6 +417,9 @@ describe("PDF pipeline contract", () => {
       await contract.client.query("RELEASE SAVEPOINT pdf_case");
     }
     expect(network).not.toHaveBeenCalled();
+    expect(sqlErrors, "production swallowed a real SQL error").toEqual([]);
+    expect(warnings.filter(([message]) => typeof message === "string"
+      && /^\[(retrieveNodeChunks|node-ingest)\]/.test(message)), "production degraded the PDF/SQL path").toEqual([]);
   });
 
   afterAll(async () => {
@@ -404,6 +432,29 @@ describe("PDF pipeline contract", () => {
   });
 
   it("[pipeline:baseline] parses, stores and retrieves actual PDF evidence", async () => {
+    if (process.env.MIRA_PDF_PREFLIGHT_CHILD === "1") throw new Error("Unconfigured child must be skipped");
+    const scratch = fs.mkdtempSync(path.join(tmpdir(), "pdf-unconfigured-"));
+    try {
+      const report = path.join(scratch, "report.json");
+      const child = spawnSync(process.execPath, [
+        path.join(hubRoot, "node_modules/vitest/vitest.mjs"), "run",
+        "--config", "vitest.integration.config.ts", "src/lib/__tests__/t2108-doc-chat.integration.test.ts",
+        "-t", "PDF pipeline contract", "--reporter=json", `--outputFile=${report}`,
+      ], { cwd: hubRoot, env: { ...process.env, TEST_DATABASE_URL: "", MIRA_TEST_DB_CONFIRM: "", MIRA_PDF_PREFLIGHT_CHILD: "1" },
+        encoding: "utf8", timeout: 20000 });
+      expect(child.status, child.stderr).toBe(0);
+      const unconfigured = JSON.parse(fs.readFileSync(report, "utf8"));
+      const cases = unconfigured.testResults[0].assertionResults
+        .filter((a: { title: string }) => a.title.startsWith("[pipeline:"));
+      expect(cases).toHaveLength(8);
+      expect(cases.every((a: { status: string }) => ["pending", "skipped"].includes(a.status))).toBe(true);
+    } finally { fs.rmSync(scratch, { recursive: true, force: true }); }
+    // These exercise the same guard used before every real connection, without
+    // attempting any connection to a deliberately invalid address.
+    for (const url of ["postgres://postgres@remote.invalid/test", "postgres://postgres@127.0.0.1/staging",
+      "postgres://postgres@127.0.0.1/test?host=127.0.0.1"]) {
+      expect(() => requireDisposableDatabase(url, "DISPOSABLE")).toThrow();
+    }
     const { rows } = await contract.client!.query("SELECT count(*)::int AS n, bool_and(is_private AND ingest_route = 'v2') AS private_v2 FROM knowledge_entries WHERE doc_id = $1", [DOC]);
     expect(rows).toEqual([{ n: 3, private_v2: true }]);
     expectFact((await retrieve()).chunks);
@@ -461,6 +512,7 @@ afterAll(async () => {
     await testPool.end();
     expect(network).not.toHaveBeenCalled();
   } finally {
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
   }

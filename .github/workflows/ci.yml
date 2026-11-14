@@ -1786,6 +1786,10 @@ jobs:
         working-directory: mira-hub
         run: |
           set -euo pipefail
+          : "${TEST_DATABASE_URL:?PDF pipeline requires a disposable database}"
+          if [ "${MIRA_TEST_DB_CONFIRM:-}" != DISPOSABLE ]; then
+            echo "::error::PDF pipeline requires MIRA_TEST_DB_CONFIRM=DISPOSABLE"; exit 1
+          fi
           report="$RUNNER_TEMP/pdf-pipeline.json"
           rm -f "$report"
           node node_modules/vitest/vitest.mjs run --config vitest.integration.config.ts \

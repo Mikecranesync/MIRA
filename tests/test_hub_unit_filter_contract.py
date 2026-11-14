@@ -217,7 +217,7 @@ def test_pdf_report_accepts_all_required_cases_and_separates_legacy(tmp_path, le
 @pytest.mark.parametrize("mode", [
     "missing-report", "invalid-json", "zero", "wrong-file", "missing-file", "duplicate-file",
     "missing-case", "duplicate-case", "unknown-case", "skipped-case", "failed-case",
-    "failure-message", "bad-count", "unsuccessful-run", "failed-file", "legacy-pass",
+    "failure-message", "bad-count", "unsuccessful-run", "failed-file", "legacy-pass", "all-skipped",
 ])
 def test_pdf_report_rejects_incomplete_execution(tmp_path, mode):
     report = _pdf_report()
@@ -260,6 +260,11 @@ def test_pdf_report_rejects_incomplete_execution(tmp_path, mode):
         file["status"] = "failed"
     elif mode == "legacy-pass":
         cases[0]["title"] = "passing original-manual expected-miss assertion"
+    elif mode == "all-skipped":
+        for case in cases:
+            case["status"] = "pending"
+        file["status"] = "pending"
+        report.update(numPassedTests=0, numPendingTests=8)
     result = _run_pdf_report_guard(tmp_path, report, raw)
     assert result.returncode != 0, f"guard accepted {mode}"
     assert "PDF pipeline contract:" in result.stderr
