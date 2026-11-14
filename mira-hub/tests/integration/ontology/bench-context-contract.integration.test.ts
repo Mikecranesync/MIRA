@@ -524,6 +524,41 @@ describe("4. the approved relationship read through the application's own traver
   });
 });
 
+describe("4b. the rest of the bench's relationship names, through the real name mapper", () => {
+  // Executed above end to end: feeds, has_component, similar_to. This sweep runs the real
+  // mapToCanonicalEdge over every name a traversal.ts reader filters on, plus the names the
+  // bench one-line needs. It does NOT propose/approve each one; it shows the outcome is the
+  // same for all of them, because approval stores what the mapper returns.
+  const READER_NAMES = [
+    "feeds", "caused_by", "parent_of", "has_component", "had_fault",
+    "has_work_order", "requires_part", "has_pm", "similar_to",
+  ];
+
+  it("KNOWN GAP #5519: no name a reader filters on is the name approval stores", () => {
+    const stored = READER_NAMES.map((n) => [n, mapToCanonicalEdge(n)?.type ?? null]);
+    knownGap(
+      "#5519",
+      () => {
+        for (const [name, type] of stored) {
+          expect(type, name as string).not.toBeNull();
+          expect(type, name as string).not.toBe(name);
+        }
+      },
+      () => expect(stored.some(([name, type]) => type === name)).toBe(true),
+    );
+  });
+
+  it("OBSERVED: 'controls' and 'protects' (PLC -> drive, breaker -> supply) cannot be proposed at all", () => {
+    expect(mapToCanonicalEdge("controls")).toBeNull();
+    expect(mapToCanonicalEdge("protects")).toBeNull();
+  });
+
+  it("OBSERVED: a wired connection maps to WIRED_TO, which no traversal reader filters on", () => {
+    expect(mapToCanonicalEdge("electrically_connected")).toEqual({ type: "WIRED_TO", flip: false });
+    expect(READER_NAMES).not.toContain("electrically_connected");
+  });
+});
+
 describe("5. correcting a fact: old fact out of current answers, kept in history", () => {
   it("positive control, before any correction: a row that leaves 'verified' does drop out of the reader", async () => {
     // Runs BEFORE the supersede step and restores the state it found, so it can never
