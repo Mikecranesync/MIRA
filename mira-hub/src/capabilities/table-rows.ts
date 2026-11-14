@@ -21,7 +21,7 @@ export type TableBlock = {
   top: number;
   bottom: number;
 };
-export type TableChunk = { text: string; models: string[]; unqualified: boolean };
+export type TableChunk = { text: string; models: string[]; unqualified: boolean; sourceTop?: number; sourceCaption?: string; sourceModels?: string[]; scope?: "unresolved" };
 /** A MODEL-KEYED table (one model per line in a left column, attributes as columns — the GS10
  *  Appendix A cable-length table, #5450): its header band + model lines as rendered text, and the
  *  models of its key column. It carries NO rows on purpose: cells merged down a group of models
@@ -615,14 +615,14 @@ export function pageWithTables(items: readonly LayoutItem[]): { remainder: strin
   if (blocks.length === 0 && keyed.length === 0) return null;
 
   const chunks: TableChunk[] = [];
-  for (const block of blocks) chunks.push(...tableChunks(block));
+  for (const block of blocks) chunks.push(...tableChunks(block).map((chunk) => ({ ...chunk, sourceTop: block.top, sourceCaption: block.caption, sourceModels: block.modelKeys })));
   // A model-keyed table is ONE unqualified chunk (split only by the size budget) tagged with every
   // model of its key column, so retrieval withholds it from a record holding a catalog number and
   // reports the page as unresolved — a flat `GS11N-20P2 230 1.8` line never answers for a value
   // again (#5450). No per-model chunk is written: nothing was tied to a column.
   for (const t of keyed) {
     const prefix = t.caption ? `${t.caption} — unqualified` : "unqualified";
-    for (const text of splitRowsIntoChunks(prefix, t.lines)) chunks.push({ text, models: [...t.modelKeys], unqualified: true });
+    for (const text of splitRowsIntoChunks(prefix, t.lines)) chunks.push({ text, models: [...t.modelKeys], unqualified: true, sourceTop: t.top, sourceCaption: t.caption, sourceModels: t.modelKeys });
   }
 
   const spans = [...blocks.map((b) => ({ top: b.top, bottom: b.bottom })), ...keyed.map((t) => ({ top: t.top, bottom: t.bottom }))];

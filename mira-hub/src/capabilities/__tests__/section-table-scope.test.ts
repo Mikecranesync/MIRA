@@ -374,21 +374,21 @@ describe("#5503 scope follows qualified layout and resets at section boundaries"
     splitCaption(scope, "Relay Output Specifications for 2080-LC20-20QWB(R), 2080-LC20-20AWB(R)");
     expect(scope.split("continued relay row", null)).toEqual([{ text: "continued relay row", models: [QWB, AWB], scope: "section" }]);
   });
-  it("an unrelated heading on the same page resets relay scope before its body", () => {
+  it("an unqualified heading on the same page makes continuity unresolved", () => {
     const items = [row("Relay Output Specifications for 2080-LC20-20QWB(R)", 700), row("Attribute Value", 680, 8), row("Life 100000 cycles", 660, 8), row("Maintenance Instructions", 620), row("Common care instructions", 600, 8)];
     const layout = sectionTableLayout(items)!;
     const parts = new SectionTableScope(readOutputTypes(complete())).split(layout.text, layout);
     const common = parts.find((p) => p.text.includes("Common care instructions"))!;
-    expect(common.models).toBeUndefined();
-    expect(common.scope).toBeUndefined();
+    expect(common.models).toEqual([QWB]);
+    expect(common.scope).toBe("unresolved");
   });
-  it("an unrelated next-page heading resets relay scope even without another table caption", () => {
+  it("an unqualified next-page heading cannot release inherited scope", () => {
     const scope = new SectionTableScope(readOutputTypes(complete()));
     splitCaption(scope, "Relay Output Specifications for 2080-LC20-20QWB(R)");
     const items = [row("Maintenance Instructions", 700), row("Common care instructions", 680, 8)];
     const layout = sectionTableLayout(items);
     const parts = scope.split(layout?.text ?? "Maintenance Instructions\nCommon care instructions", layout);
-    expect(parts.find((p) => p.text.includes("Common care instructions"))?.models).toBeUndefined();
+    expect(parts.find((p) => p.text.includes("Common care instructions"))).toMatchObject({ models: [QWB], scope: "unresolved" });
   });
   it("a shared table marker cannot bypass explicit sibling-only prose after an unrelated next-page heading", () => {
     const scope = new SectionTableScope(readOutputTypes(complete()));

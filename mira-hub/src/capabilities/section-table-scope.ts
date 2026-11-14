@@ -8,7 +8,7 @@ import { tableUnit } from "./supporting-quote";
 
 export type SectionScope = "section" | "shared" | "unresolved";
 export type ScopedText = { text: string; models?: string[]; scope?: SectionScope; sharedHeader?: string };
-type Heading = { text: string; at: number; table: boolean; size: number; sharedHeader?: string; headerModels?: string[]; headerUnresolved?: boolean; headerInvalidLabels?: boolean; relayTable?: boolean; sourceLine: number };
+type Heading = { text: string; at: number; table: boolean; size: number; sharedHeader?: string; headerModels?: string[]; headerUnresolved?: boolean; headerInvalidLabels?: boolean; relayTable?: boolean; sourceLine: number; y: number; headerTop?: number; headerBottom?: number; columnUnresolved?: boolean };
 export type SectionLayout = { text: string; headings: Heading[]; hasTables: boolean; retainedLines: string[] };
 type OutputMap = Map<string, boolean | null>;
 
@@ -90,7 +90,7 @@ export function sectionTableLayout(items: readonly LayoutItem[], includeBoundari
       for (const text of annotation.lines) lines.push({ text, y: band[0].y, x: band[0].x, size: 0, columns: [], removed: false, virtual: true });
     }
   }
-  const captions = new Map<number, { text: string; end: number; sharedHeader?: string; headerModels?: string[]; headerUnresolved?: boolean; headerInvalidLabels?: boolean; relayTable: boolean }>();
+  const captions = new Map<number, { text: string; end: number; sharedHeader?: string; headerModels?: string[]; headerUnresolved?: boolean; headerInvalidLabels?: boolean; columnUnresolved?: boolean; headerTop?: number; headerBottom?: number; relayTable: boolean }>();
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (line.virtual || line.text.length > 200) continue;
@@ -126,6 +126,9 @@ export function sectionTableLayout(items: readonly LayoutItem[], includeBoundari
     let headerModels: string[] | undefined;
     let headerUnresolved = false;
     let headerInvalidLabels = false;
+    let columnUnresolved = false;
+    let headerTop: number | undefined;
+    let headerBottom: number | undefined;
     if (header) {
       const attributeColumn = header.columns.findIndex((c) => /^(?:Attribute|Description)$/i.test(c.text));
       const headerAt = lines.indexOf(header);
@@ -158,6 +161,8 @@ export function sectionTableLayout(items: readonly LayoutItem[], includeBoundari
         }
         headerEnd++;
       }
+      headerTop = lines[headerStart].y;
+      headerBottom = lines[headerEnd - 1].y;
       const candidate = lines.slice(headerStart, headerEnd).map((l) => l.text).join("\n");
       const numbers = [...modelNumbersIn(candidate), ...rejectedCatalogs];
       if (numbers.length > 0) {
@@ -196,6 +201,7 @@ export function sectionTableLayout(items: readonly LayoutItem[], includeBoundari
             for (const n of labels) categories[owner].models.add(n.key);
           }
         }
+        columnUnresolved = headerUnresolved || headerInvalidLabels;
         const values = categories.filter((c) => !c.metadata);
         const common = values.filter((c) => c.models.size === 0);
         const commonCategory = (label: string) => /\b(?:inputs?|outputs?|channels?)\b/i.test(label) &&
@@ -214,7 +220,7 @@ export function sectionTableLayout(items: readonly LayoutItem[], includeBoundari
       }
     }
     captions.set(i, { text: lines.slice(i, end + 1).map((l) => l.text).join(" "), end, sharedHeader,
-      headerModels, headerUnresolved, headerInvalidLabels,
+      headerModels, headerUnresolved, headerInvalidLabels, columnUnresolved, headerTop, headerBottom,
       relayTable: isRating || /\brelay\b/i.test(line.text) });
   }
   if (captions.size === 0 && !includeBoundaries) return null;
@@ -237,13 +243,49 @@ export function sectionTableLayout(items: readonly LayoutItem[], includeBoundari
         ...(caption?.relayTable ? { relayTable: true } : {}),
         // The source ordinal applies to retained AND intentionally removed headings.
         // Identical labels and prose references cannot move a physical boundary.
-        sourceLine: lines.slice(0, i).filter((l) => !l.removed).length });
+        sourceLine: lines.slice(0, i).filter((l) => !l.removed).length, y: line.y,
+        ...(caption?.columnUnresolved ? { columnUnresolved: true } : {}),
+        ...(caption?.headerTop !== undefined ? { headerTop: caption.headerTop, headerBottom: caption.headerBottom } : {}) });
       if (caption) continuationEnd = caption.end;
     }
     at += line.text.length + 1;
   }
   const retainedLines = lines.filter((l) => !l.removed).map((l) => l.text);
   return headings.length > 0 ? { text: retainedLines.join("\n"), headings, hasTables: captions.size > 0, retainedLines } : null;
+}
+
+/** Caption and header are independent assertions about this physical table. Neither
+ * wins a contradiction. Different valid per-model columns are NOT a contradiction. */
+function captionModels(h: Pick<Heading, "text">) {
+  const lastFor = [...h.text.matchAll(/\bfor\s+/gi)].at(-1);
+  return lastFor ? modelNumbersIn(h.text.slice(lastFor.index! + lastFor[0].length)) : [];
+}
+function contradictoryTableHeading(h: Pick<Heading, "text" | "headerModels">): boolean {
+  const caption = captionModels(h);
+  const header = (h.headerModels ?? []).flatMap((key) => modelNumbersIn(key));
+  return header.length > 0 && caption.length > 0 &&
+    (header.some((n) => !caption.some((own) => own.key === n.key)) ||
+     caption.some((n) => !sameModelFamily(header[0], n)));
+}
+
+/** Bind each extracted block to its physical caption, even when its source lines have
+ * been removed from the remainder. Coordinates are parser-local; persisted scope is the
+ * same authoritative unresolved marker used by residual sections and retrieval. */
+export function scopeTableChunks(chunks: readonly TableChunk[], layout: SectionLayout | null | undefined): TableChunk[] {
+  return chunks.map((chunk) => {
+    const heading = chunk.sourceTop === undefined ? undefined : layout?.headings
+      .find((h) => h.table && h.headerTop !== undefined && h.headerBottom !== undefined &&
+        chunk.sourceTop! <= h.headerTop + 2.5 && chunk.sourceTop! >= h.headerBottom - 2.5);
+    // Missing geometry cannot qualify a table against its surrounding scope.
+    const source = heading ?? { text: chunk.sourceCaption ?? "", headerModels: chunk.sourceModels };
+    const named = captionModels(source).map((n) => n.key);
+    const header = heading?.headerModels ?? [];
+    const invalid = !layout || chunk.sourceTop === undefined ||
+      contradictoryTableHeading(source) || heading?.columnUnresolved ||
+      (named.length > 0 && chunk.models.some((m) => !named.includes(exactModelKey(m)))) ||
+      (header.length > 0 && chunk.models.some((m) => !header.includes(exactModelKey(m))));
+    return invalid ? { ...chunk, unqualified: true, scope: "unresolved" } : chunk;
+  });
 }
 
 /** Per-document state, never shared across uploads. Captions reset scope; text windows inherit
@@ -280,20 +322,12 @@ export class SectionTableScope {
       this.active = {}; // a mixed-column header's privilege never crosses onto another page
       return [{ text }];
     }
-    const firstBoundary = layout.headings.find((h) => h.size >= this.headingSize);
-    if (!layout.hasTables && this.headingSize > 0 && firstBoundary?.sourceLine === 0 &&
-        layout.retainedLines[0] === firstBoundary.text) {
-      // A retained heading at the physical page top leaves no preceding continuation to
-      // protect. Reset scope while preserving the unrelated page's original text/windows.
-      this.active = {};
-      this.headingSize = firstBoundary.size;
-      return [{ text }];
+    if (!layout.hasTables && layout.headings.some((h) => h.size >= this.headingSize)) {
+      // No qualified boundary exists on this page. Keep its original text/windows, but
+      // do not let a running header or a possible new section release the restriction.
+      this.active = { models: this.active.models ?? [...this.outputs.keys()], scope: "unresolved" };
+      return [{ text, ...this.active }];
     }
-    // An inherited section interrupted by a physical heading needs physical order. PDF
-    // object order can put the new section's body before its heading (real p20 does this).
-    // Unrelated plain pages above retain original bytes; model-table remainders stay grids-out.
-    if (!layout.hasTables && this.headingSize > 0 &&
-        layout.headings.some((h) => h.size >= this.headingSize) && layout.text) text = layout.text;
     // A missing table boundary is uncertainty, never permission to inherit the previous scope.
     // Bind every heading to the exact physical source sequence, never a text occurrence.
     let at = 0;
@@ -310,6 +344,14 @@ export class SectionTableScope {
     for (const h of headings) {
       if (!h.table && (this.headingSize === 0 || h.size < this.headingSize)) continue; // running page furniture
       if (h.at > start) sections.push({ text: text.slice(start, h.at), ...this.active });
+      // Font and page position cannot prove that a model restriction ended. A running
+      // title can be larger than the section caption. Without a qualified table boundary,
+      // continuity is unresolved, including for the formerly eligible model.
+      if (!h.table && this.active.scope) {
+        this.active = { models: this.active.models ?? [...this.outputs.keys()], scope: "unresolved" };
+        start = h.at;
+        continue;
+      }
       this.active = {};
       this.headingSize = h.size;
       if (h.table) {
@@ -323,9 +365,7 @@ export class SectionTableScope {
         const headerNumbers = (h.headerModels ?? []).flatMap((key) => modelNumbersIn(key));
         const headerApplies = headerNumbers.length > 0 && (known.length === 0 || headerNumbers.some((n) => known.some((own) => sameModelFamily(own, n))));
         const headerFamily = headerNumbers.length > 0 && headerNumbers.every((n) => sameModelFamily(headerNumbers[0], n));
-        const captionConflict = headerNumbers.length > 0 && captionNumbers.length > 0 &&
-          (headerNumbers.some((n) => !captionNumbers.some((own) => own.key === n.key)) ||
-           captionNumbers.some((n) => !sameModelFamily(headerNumbers[0], n)));
+        const captionConflict = contradictoryTableHeading(h);
         // A global, pure single-model header can agree with its explicit caption even
         // when it is centred above several channel categories (real ML1100 DWD inputs).
         const singleModelAgreement = !h.headerInvalidLabels && headerNumbers.length === 1 && captionNumbers.length > 0 &&

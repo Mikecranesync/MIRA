@@ -1542,3 +1542,18 @@ approved:
     reason: "#5503 / PR #5510: failure-path test readback of unresolved metadata for fixed TENANT/page19 in the connection-local TEMP knowledge_entries table. BEGIN/ROLLBACK and inner SAVEPOINT only, no production corpus access; deliberately tests private-upload isolation, not shared OEM visibility."
 
     hash_migration: "#5503 / PR #5510: same reviewed TEMP-test context moved intact from mira-hub/src/capabilities/__tests__/micro820-section-scope.integration.test.ts:166 to the CI-selected model-scope suite; recomputed source-path-salted hash only. Original SHA256 310cb958faa38cd4f53154f926016c464a115dc72d3c73d09fb7bd433dc2591c. No query, scope or approval broadening."
+
+  "mira-hub/src/lib/__tests__/manual-rag-model-scope.integration.test.ts:886":
+    approved_classification: TENANT-ONLY
+    query_sha256: "1687af0a6c3f81269fe43237a041dc30bb322882d6972e29dc915a1ab94394e5"
+    reason: "#5503 / PR #5510 F1/F2 regression only: DELETE reuploads synthetic review pages for fixed TENANT and DOCUMENT inside a SAVEPOINT. Connection-local TEMP knowledge_entries created under BEGIN; finally ROLLBACK TO/RELEASE and outer ROLLBACK. Requires MIRA_TEST_DB_CONFIRM=DISPOSABLE. Deliberately private=true test rows, no shared OEM or production access; no checker change."
+
+  "mira-hub/src/lib/__tests__/manual-rag-model-scope.integration.test.ts:910":
+    approved_classification: TENANT-ONLY
+    query_sha256: "5396ad8ee68859b124cfc2c7c3cb092618e07ab4e26e31149d767738788c4c01"
+    reason: "#5503 / PR #5510 F1/F2 regression only: SELECT reads back the synthetic review upload for fixed TENANT and page 19 (running-header continuation). Connection-local TEMP knowledge_entries created under BEGIN; finally ROLLBACK TO/RELEASE and outer ROLLBACK. Requires MIRA_TEST_DB_CONFIRM=DISPOSABLE. Deliberately private=true test rows, no shared OEM or production access; no checker change."
+
+  "mira-hub/src/lib/__tests__/manual-rag-model-scope.integration.test.ts:934":
+    approved_classification: TENANT-ONLY
+    query_sha256: "58300f1e82f700bed428ebac73515155a84eb5bc607b1c08922b590ec129c854"
+    reason: "#5503 / PR #5510 F1/F2 regression only: SELECT reads back the synthetic review upload for fixed TENANT and page 21 (contradictory or compatible extracted columns). Connection-local TEMP knowledge_entries created under BEGIN; finally ROLLBACK TO/RELEASE and outer ROLLBACK. Requires MIRA_TEST_DB_CONFIRM=DISPOSABLE. Deliberately private=true test rows, no shared OEM or production access; no checker change."

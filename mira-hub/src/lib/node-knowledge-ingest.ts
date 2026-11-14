@@ -29,7 +29,7 @@ import { readPageLabelsBounded } from "@/capabilities/pdf-page-label-reader";
 import { pageLayoutItems } from "@/capabilities/pdf-layout-items";
 import { pageWithTables, type TableChunk } from "@/capabilities/table-rows";
 import { contactRatingTable, columnLines, withColumnLines } from "@/capabilities/contact-ratings-table";
-import { SectionTableScope, sectionTableLayout, readOutputTypes, mergeOutputTypes, type ScopedText, type SectionScope } from "@/capabilities/section-table-scope";
+import { SectionTableScope, scopeTableChunks, sectionTableLayout, readOutputTypes, mergeOutputTypes, type ScopedText, type SectionScope } from "@/capabilities/section-table-scope";
 import { hasUnmappedGlyphBetweenDigits } from "@/capabilities/manual-completeness";
 import { uploadIdentity } from "@/capabilities/page-label-backfill";
 
@@ -628,6 +628,7 @@ async function insertChunkRows(
           label: pageLabels?.[p] ?? null,
           tableModels: tc.models,
           tableUnqualified: tc.unqualified,
+          tableScope: tc.scope,
         });
         if (batch.length >= BATCH_ROWS) await flush();
       }
@@ -803,7 +804,6 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
       const table = items.length > 0 ? pageWithTables(items) : null;
       if (table) {
         outputInventoryObserved ||= table.chunks.some((c) => /\bOutput circuit type\b/i.test(c.text));
-        mergeOutputTypes(outputs, readOutputTypes(table.chunks));
       }
       // Boundary detection must not depend on whether the type table is earlier or later.
       let layout: ReturnType<typeof sectionTableLayout>;
@@ -824,6 +824,10 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
       } catch (err) {
         layout = sectionTableLayout(items, true, table?.remainderItems);
         console.warn(`[node-ingest] contact-ratings column read failed on ${rest.filename} p.${p + 1} (page kept without column lines):`, err instanceof Error ? err.message : err);
+      }
+      if (table) {
+        table.chunks = scopeTableChunks(table.chunks, layout);
+        mergeOutputTypes(outputs, readOutputTypes(table.chunks));
       }
       // Geometry is page-local; retain only the text/chunks after deriving source boundaries.
       pageTables.push(table ? { remainder: table.remainder, chunks: table.chunks } : null);
