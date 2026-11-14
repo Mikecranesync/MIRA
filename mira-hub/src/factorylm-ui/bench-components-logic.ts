@@ -264,6 +264,13 @@ export type BenchSendGate = {
    * even when a component is saved, so it is refused. A failed read leaves this false.
    */
   readonly known: boolean;
+  /**
+   * #5504 post-cap F9: a component change (selection or identity revision) may have
+   * committed even when its reply was lost, so it forgets what was known and bumps the
+   * epoch. `readBench` applies and marks known only a read that began under the current epoch.
+   */
+  invalidate(): void;
+  readonly epoch: number;
   markKnown(): void;
 };
 
@@ -271,6 +278,7 @@ export function createBenchSendGate(): BenchSendGate {
   let changes = 0;
   let sends = 0;
   let known = false;
+  let epoch = 0;
   return {
     tryBeginChange() {
       if (sends > 0) return false;
@@ -297,6 +305,13 @@ export function createBenchSendGate(): BenchSendGate {
     get known() {
       return known;
     },
+    invalidate() {
+      known = false;
+      epoch++;
+    },
+    get epoch() {
+      return epoch;
+    },
     markKnown() {
       known = true;
     },
@@ -305,8 +320,8 @@ export function createBenchSendGate(): BenchSendGate {
 
 /** Why a send in this gate's conversation cannot start now, or null when it can. */
 export function benchSendRefusal(gate: BenchSendGate): string | null {
-  if (!gate.known) return SEND_LOADING_MESSAGE;
   if (gate.changing) return SEND_BLOCKED_MESSAGE;
+  if (!gate.known) return SEND_LOADING_MESSAGE;
   return null;
 }
 
@@ -315,16 +330,19 @@ export function benchSendRefusal(gate: BenchSendGate): string | null {
  * to `apply` (the host builds the next turn's rider from it) and only then marks the
  * selection known; so does 404/503 (the checklist is not available, so no turn carries a
  * component). A failed read marks nothing: the next send is refused, never sent as
- * whole-machine.
+ * whole-machine. A read that began before a change (an older epoch) applies nothing and
+ * marks nothing: it may predate the change's commit.
  */
 export async function readBench(opts: {
   gate: BenchSendGate;
   fetch: (url: string, init: RequestInit) => Promise<Response>;
   url: string;
   apply: (state: BenchState | null) => void;
-}): Promise<{ kind: "loaded"; state: BenchState } | { kind: "unavailable" } | { kind: "failed" }> {
+}): Promise<{ kind: "loaded"; state: BenchState } | { kind: "unavailable" } | { kind: "failed" } | { kind: "stale" }> {
+  const epoch = opts.gate.epoch;
   try {
     const res = await opts.fetch(opts.url, { cache: "no-store" });
+    if (opts.gate.epoch !== epoch) return { kind: "stale" };
     if (res.status === 404 || res.status === 503) {
       opts.apply(null);
       opts.gate.markKnown();
@@ -332,6 +350,7 @@ export async function readBench(opts: {
     }
     if (!res.ok) return { kind: "failed" };
     const state = (await res.json()) as BenchState;
+    if (opts.gate.epoch !== epoch) return { kind: "stale" };
     opts.apply(state);
     opts.gate.markKnown();
     return { kind: "loaded", state };
@@ -340,11 +359,26 @@ export async function readBench(opts: {
   }
 }
 
+/**
+ * After a component change settles — answered, refused or lost on the network — forget
+ * what was known (the change may have committed) and re-read. True only when that read
+ * succeeded; otherwise Send stays refused until a later read does (#5504 post-cap F9).
+ */
+export async function reconcileBench(gate: BenchSendGate, load: () => Promise<unknown>): Promise<boolean> {
+  gate.invalidate();
+  try {
+    await load();
+  } catch {
+    /* the gate stays unknown */
+  }
+  return gate.known;
+}
 
 /**
  * One selection change (picker, Return, Switch, Stay, clarify, confirm), exactly as the
  * panel runs it: refused while a send is in flight, and the gate is released only after
- * the checklist has been re-read (`load`), so the next send carries the new version.
+ * the checklist has been re-read (`load`), so the next send carries the new version. A
+ * lost reply or a failed re-read is reported as a failure and leaves Send refused.
  */
 export async function changeSelection(opts: {
   gate: BenchSendGate;
@@ -355,25 +389,30 @@ export async function changeSelection(opts: {
 }): Promise<{ ok: true } | { ok: false; message: string }> {
   if (!opts.gate.tryBeginChange()) return { ok: false, message: CHANGE_BLOCKED_MESSAGE };
   try {
-    const res = await opts.fetch(opts.url, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(opts.body),
-    });
-    if (!res.ok) {
-      let code = "";
-      try {
-        code = String(((await res.json()) as { error?: unknown }).error ?? "");
-      } catch {
-        /* no JSON body */
+    let refused: string | null = null;
+    try {
+      const res = await opts.fetch(opts.url, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(opts.body),
+      });
+      if (!res.ok) {
+        let code = "";
+        try {
+          code = String(((await res.json()) as { error?: unknown }).error ?? "");
+        } catch {
+          /* no JSON body */
+        }
+        refused = componentErrorMessage(code);
       }
-      await opts.load();
-      return { ok: false, message: componentErrorMessage(code) };
+    } catch {
+      await reconcileBench(opts.gate, opts.load);
+      return { ok: false, message: CONNECTION_MESSAGE };
     }
-    await opts.load();
+    const read = await reconcileBench(opts.gate, opts.load);
+    if (refused) return { ok: false, message: refused };
+    if (!read) return { ok: false, message: CONNECTION_MESSAGE };
     return { ok: true };
-  } catch {
-    return { ok: false, message: CONNECTION_MESSAGE };
   } finally {
     opts.gate.endChange();
   }

@@ -4001,9 +4001,13 @@ async function handleChatTurn(
   // — unbound or disputed → nothing (owner: "if no equipment is explicitly
   // bound, return no visual evidence"). Own try/catch: a ledger read failure
   // never drops the document/machine context already built.
+  // #5504 post-cap F7: not on a component turn. These are the bound machine's
+  // nameplate readings (another component's, as often as not), and this section
+  // presents them as facts about THIS machine beside the selected component's
+  // identity — so a PLC's supply voltage would be answered as the VFD's.
   let visualSection = "";
   let visualReadings: string[] = [];
-  if (boundAsset.state === "resolved" && !identityDisputed) {
+  if (boundAsset.state === "resolved" && !identityDisputed && !componentScope) {
     try {
       const visualRows = await withTenantContext(ctx.tenantId, (c) =>
         loadVisualEvidenceForAsset(c, ctx.tenantId, boundAsset.entityId),

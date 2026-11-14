@@ -25,6 +25,7 @@ import {
   changeSelection,
   componentErrorMessage,
   readBench,
+  reconcileBench,
   retakeCard,
   revisionBodyFor,
   selectedComponent,
@@ -125,6 +126,7 @@ export function BenchComponents({
       setMessage("The component list couldn't be read just now.");
       return null;
     }
+    if (out.kind === "stale") return null;
     setAvailable(true);
     setBench(out.state);
     return out.state;
@@ -190,16 +192,23 @@ export function BenchComponents({
         if (!res.ok) {
           const code = await errorCode(res);
           setMessage(componentErrorMessage(code));
+          gate.invalidate();
           const next = await load();
           const now = next?.components.find((c) => c.id === card.componentId);
           if (code === "component_changed" && now) setCard(cardFor(now));
           return;
         }
         setCard(null);
-        await load();
+        // #5504 post-cap F9: a revision may commit even when its reply is lost, so Send stays
+        // refused until a read that began after it settled has succeeded.
+        if (!(await reconcileBench(gate, load))) {
+          setMessage(CONNECTION_MESSAGE);
+          return;
+        }
         setMessage(confirm ? "Confirmed. Questions about it now use what you confirmed." : "Saved — not confirmed yet.");
       } catch {
         setMessage(CONNECTION_MESSAGE);
+        await reconcileBench(gate, load);
       } finally {
         gate.endChange();
         setSaving(false);

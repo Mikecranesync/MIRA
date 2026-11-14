@@ -486,7 +486,7 @@ export function HubShellHost() {
     const forThisGate = gateConversation === `${sel.notebookId}|${sel.threadId}`;
     const refused = forThisGate ? benchSendRefusal(benchGate) : null;
     if (refused || !benchGate.tryBeginSend()) {
-      if (forThisGate && !benchGate.known) setBenchRefresh((n) => n + 1);
+      if (forThisGate && !benchGate.known && !benchGate.changing) setBenchRefresh((n) => n + 1);
       dropOutgoing(outgoingOwner.current?.id ?? null);
       dispatch({ type: "set-send-error", error: refused ?? SEND_BLOCKED_MESSAGE });
       dispatch({ type: "set-draft", draft: question });
@@ -770,7 +770,7 @@ export function HubShellHost() {
     // first read does not leave the conversation unable to send.
     const benchRefused = selection ? benchSendRefusal(benchGate) : null;
     if (benchRefused) {
-      if (!benchGate.known) setBenchRefresh((n) => n + 1);
+      if (!benchGate.known && !benchGate.changing) setBenchRefresh((n) => n + 1);
       throw new Error(benchRefused);
     }
     // Codex #3839 Spec P1: the Composer clears the draft after a hook that

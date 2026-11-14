@@ -83,6 +83,7 @@ vi.mock("@/lib/workspace-files", () => ({ photoLinkedToTarget: vi.fn(async () =>
 const lookMock = vi.hoisted(() => ({
   loadRecentLookObservations: vi.fn(async (): Promise<unknown[]> => []),
   loadVisualEvidenceForPhoto: vi.fn(async (): Promise<unknown> => null),
+  loadVisualEvidenceForAsset: vi.fn(async (): Promise<unknown[]> => []),
 }));
 vi.mock("@/lib/visual-evidence-context", async (orig) => ({ ...(await orig<Record<string, unknown>>()), ...lookMock }));
 const translateMock = vi.hoisted(() => ({ translateForSearch: vi.fn(async (q: string) => q) }));
@@ -620,6 +621,53 @@ describe("earlier photos carry only within the selection they were asked under",
     lookMock.loadRecentLookObservations.mockResolvedValue([look(PHOTO_A, A_MARK)]);
     await frames(await ask("and its rated current?"));
     expect(modelInput()).toContain("ZQX-PHOTO-A-ONLY-4417");
+  });
+});
+
+// #5504 post-cap F7: the bound machine's stored nameplate readings are about the machine (often
+// another component on it), so they never reach an answer about a selected component.
+describe("the bound machine's nameplate readings stay out of component answers", () => {
+  const PLC_MARK = "ZQX-PLC-NAMEPLATE-9931 Micro820 supply 24 VDC";
+  const ASSET = "66666666-6666-4666-8666-666666666666";
+  const reading = {
+    observationId: "obs-plc", sessionId: "s1", text: PLC_MARK, obsKind: "nameplate", trust: "verified", confidence: 0.95,
+    fileId: null, photoHash: null, observedAt: "2026-11-14T04:10:00.000Z", hazards: [],
+  };
+
+  beforeEach(() => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
+    nbMock.resolveBoundAsset.mockResolvedValue({
+      state: "resolved", entityId: ASSET, name: "CV-101", unsPath: "enterprise.garage.demo_cell.cv_101", selectedVia: "picker",
+      confirmedAt: "2026-11-14T01:00:00.000Z", manufacturer: null, model: null, catalogNumber: null,
+    } as never);
+    lookMock.loadVisualEvidenceForAsset.mockResolvedValue([reading]);
+  });
+  afterEach(() => {
+    nbMock.resolveBoundAsset.mockResolvedValue({ state: "unbound" } as never);
+  });
+
+  it("under a confirmed component the machine's nameplate reading is not in the prompt", async () => {
+    await frames(await ask("what supply voltage does it take?", under(VFD, 3)));
+    expect(systemPrompt()).toContain("CV-101"); // the bound machine was resolved for this turn
+    expect(systemPrompt()).not.toContain("ZQX-PLC-NAMEPLATE-9931");
+    expect(systemPrompt()).not.toContain("nameplate photographed on THIS machine");
+  });
+
+  it("after an identity correction (selection on a newer revision) it is still not in the prompt", async () => {
+    storeMock.listComponents.mockResolvedValue([
+      component(VFD, 1, "VFD", rev(VFD, 3, { manufacturer: "AutomationDirect", family: "GS10", catalogNumber: "GS11N-20P5", localTag: "VFD1" })),
+      K1_ROW, B1_ROW,
+    ]);
+    storeMock.getSelection.mockResolvedValue(selection(VFD, 3, 4));
+    await frames(await ask("what supply voltage does it take?", under(VFD, 4)));
+    expect(systemPrompt()).toContain("CV-101");
+    expect(systemPrompt()).not.toContain("ZQX-PLC-NAMEPLATE-9931");
+  });
+
+  it("control: on a whole-machine turn (no component, or after Return) the reading is used as before", async () => {
+    storeMock.getSelection.mockResolvedValue(null);
+    await frames(await ask("what supply voltage does it take?"));
+    expect(systemPrompt()).toContain("ZQX-PLC-NAMEPLATE-9931");
   });
 });
 
