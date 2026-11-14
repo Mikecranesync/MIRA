@@ -19,7 +19,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { buildPdf } from "@/capabilities/work-packet/__tests__/fixtures/pdf";
 
@@ -353,6 +353,10 @@ describe("PDF pipeline contract", () => {
 
   beforeAll(async () => {
     requireDisposableDatabase();
+    console.info("[pdf-pipeline-fixtures]", JSON.stringify(Object.fromEntries(
+      Object.entries({ baseline: bytes, distractor: unrelated, blank }).map(([name, buffer]) =>
+        [name, { bytes: buffer.byteLength, sha256: createHash("sha256").update(buffer).digest("hex") }]),
+    )));
     contract.client = await testPool.connect();
     await contract.client.query("BEGIN");
     await contract.client.query("SET LOCAL statement_timeout = '5000ms'");

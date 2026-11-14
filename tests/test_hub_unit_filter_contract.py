@@ -1,5 +1,4 @@
-"""Guard: the Hub Unit Tests path filter must run the vitest suite whenever a
-source of truth outside ``mira-hub/**`` changes.
+"""Guards for Hub unit-source filters and required PDF/SQL contract execution.
 
 Regression context (#3108): ``mira-hub/src/lib/safety-phrases.ts`` is a
 transcription of ``mira-bots/shared/guardrails.py`` ``SAFETY_KEYWORDS``, and
@@ -24,7 +23,12 @@ pytest + pyyaml only (matches the Architecture Check CI job's deps).
 from __future__ import annotations
 
 from pathlib import Path
+import json
+import re
+import subprocess
+import sys
 
+import pytest
 import yaml
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -39,7 +43,6 @@ _CAPABILITY_CLOSURE = "docs/architecture/convergence/CAPABILITY_CLOSURE.yaml"
 _FLAG_GUARD = (
     _ROOT / "mira-hub" / "src" / "lib" / "__tests__" / "notebook-retrieval-flag-guard.test.ts"
 )
-
 
 def _hub_filter_patterns() -> list[str]:
     """Return the glob list of the Hub Unit Tests job's ``hub`` paths-filter.
@@ -134,3 +137,128 @@ def test_guard_negative_control_runs_with_the_actual_hub_suite():
     assert suite["working-directory"] == control["working-directory"] == "mira-hub"
     gate = workflow["jobs"]["ci-gate"]
     assert "mira-hub-unit" in gate["needs"]
+
+
+_PIPELINE_FILE = "src/lib/__tests__/t2108-doc-chat.integration.test.ts"
+_PIPELINE_CASES = [
+    "baseline", "rename", "unrelated", "order", "wrong-model",
+    "foreign-tenant", "page-anchor", "blank",
+]
+
+
+def _pdf_pipeline_step():
+    jobs = yaml.safe_load(_CI.read_text(encoding="utf-8"))["jobs"]
+    steps = jobs["turn-lifecycle-reconciliation"]["steps"]
+    found = [s for s in steps if s.get("name") == "PDF pipeline contract (must execute all eight)"]
+    assert len(found) == 1, "Real PDF/SQL contract needs a positive execution-proof step"
+    return found[0]
+
+
+def test_pdf_pipeline_is_wired_into_the_required_gate():
+    jobs = yaml.safe_load(_CI.read_text(encoding="utf-8"))["jobs"]
+    step = _pdf_pipeline_step()
+    assert step["if"] == "steps.changes.outputs.lifecycle == 'true'"
+    assert step["working-directory"] == "mira-hub"
+    assert not step.get("continue-on-error", False)
+    assert _PIPELINE_FILE in step["run"]
+    assert "-t 'PDF pipeline contract'" in step["run"]
+    assert "--reporter=json" in step["run"] and "--outputFile=" in step["run"]
+    gate = next(j for j in jobs.values() if j.get("name") == "CI Gate")
+    assert "turn-lifecycle-reconciliation" in gate["needs"]
+    evaluation = next(s for s in gate["steps"] if s.get("name") == "Evaluate gate (fail-closed)")
+    assert evaluation["env"]["LIFECYCLE_RECON_RESULT"] == "${{ needs.turn-lifecycle-reconciliation.result }}"
+    assert re.search(r'^require_success\s+turn-lifecycle-reconciliation\s+"\$LIFECYCLE_RECON_RESULT"$', evaluation["run"], re.M)
+
+
+def test_pdf_pipeline_filter_covers_the_connected_sources():
+    jobs = yaml.safe_load(_CI.read_text(encoding="utf-8"))["jobs"]
+    steps = jobs["turn-lifecycle-reconciliation"]["steps"]
+    filter_step = next(s for s in steps if str(s.get("uses", "")).startswith("dorny/paths-filter"))
+    watched = yaml.safe_load(filter_step["with"]["filters"])["lifecycle"]
+    for path in [
+        "mira-hub/src/lib/**", "mira-hub/src/capabilities/**", "mira-hub/package.json",
+        "mira-hub/bun.lock*", "mira-hub/vitest.integration.config.ts", "mira-hub/tsconfig.json",
+        ".github/workflows/ci.yml", "tests/test_hub_unit_filter_contract.py",
+    ]:
+        assert path in watched, f"PDF pipeline input is not watched: {path}"
+
+
+def _pdf_report(legacy=False):
+    assertions = [
+        {"title": f"[pipeline:{case}]", "status": "passed", "failureMessages": []}
+        for case in _PIPELINE_CASES
+    ]
+    if legacy:
+        assertions.append({"title": "original-manual audit", "status": "pending", "failureMessages": []})
+    return {
+        "success": True, "numTotalTests": len(assertions), "numPassedTests": 8,
+        "numFailedTests": 0, "numPendingTests": int(legacy), "numTodoTests": 0,
+        "testResults": [{"name": f"/checkout/mira-hub/{_PIPELINE_FILE}", "status": "passed", "assertionResults": assertions}],
+    }
+
+
+def _run_pdf_report_guard(tmp_path, report, raw=None):
+    # Execute the actual workflow guard, never a test-side reimplementation.
+    code = _pdf_pipeline_step()["run"].split("<<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
+    path = tmp_path / "report.json"
+    if report is not None:
+        path.write_text(json.dumps(report) if raw is None else raw, encoding="utf-8")
+    return subprocess.run([sys.executable, "-I", "-c", code, str(path)], capture_output=True, text=True)
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_pdf_report_accepts_all_required_cases_and_separates_legacy(tmp_path, legacy):
+    result = _run_pdf_report_guard(tmp_path, _pdf_report(legacy))
+    assert result.returncode == 0, result.stderr
+    assert "8/8" in result.stdout
+
+
+@pytest.mark.parametrize("mode", [
+    "missing-report", "invalid-json", "zero", "wrong-file", "missing-file", "duplicate-file",
+    "missing-case", "duplicate-case", "unknown-case", "skipped-case", "failed-case",
+    "failure-message", "bad-count", "unsuccessful-run", "failed-file", "legacy-pass",
+])
+def test_pdf_report_rejects_incomplete_execution(tmp_path, mode):
+    report = _pdf_report()
+    file = report["testResults"][0]
+    cases = file["assertionResults"]
+    raw = None
+    if mode == "missing-report":
+        report = None
+    elif mode == "invalid-json":
+        raw = '{"success":'
+    elif mode == "zero":
+        cases.clear()
+        report.update(numTotalTests=0, numPassedTests=0)
+    elif mode == "wrong-file":
+        file["name"] = "/another.test.ts"
+    elif mode == "missing-file":
+        report["testResults"] = []
+    elif mode == "duplicate-file":
+        report["testResults"].append(file.copy())
+    elif mode == "missing-case":
+        cases.pop()
+        report.update(numTotalTests=7, numPassedTests=7)
+    elif mode == "duplicate-case":
+        cases[0] = cases[1].copy()
+    elif mode == "unknown-case":
+        cases[0]["title"] = "[pipeline:unexpected]"
+    elif mode == "skipped-case":
+        cases[0]["status"] = "pending"
+        report.update(numPassedTests=7, numPendingTests=1)
+    elif mode == "failed-case":
+        cases[0]["status"] = "failed"
+        report.update(numPassedTests=7, numFailedTests=1, success=False)
+    elif mode == "failure-message":
+        cases[0]["failureMessages"] = ["assertion failed"]
+    elif mode == "bad-count":
+        report["numTotalTests"] = 99
+    elif mode == "unsuccessful-run":
+        report["success"] = False
+    elif mode == "failed-file":
+        file["status"] = "failed"
+    elif mode == "legacy-pass":
+        cases[0]["title"] = "passing original-manual expected-miss assertion"
+    result = _run_pdf_report_guard(tmp_path, report, raw)
+    assert result.returncode != 0, f"guard accepted {mode}"
+    assert "PDF pipeline contract:" in result.stderr
