@@ -2642,6 +2642,13 @@ export async function retrieveNodeChunks(
     if (!recordKey) return null;
     const tagged = tableModelsOf(r);
     if (r.table_scope === "unresolved" && isUnresolvedTableLine(r)) return tagged;
+    if (r.table_scope === "section" && tagged.length > 0) {
+      // A physical caption/header explicitly bound this section to these catalogs.
+      // It cannot become generic merely because an OCR-like substitution changes
+      // its identifier family. Ordinary parameter/accessory table tags below have
+      // no such section assertion and retain their existing family rule.
+      return isUnresolvedTableLine(r) || !tagged.includes(recordKey) ? tagged : null;
+    }
     if (tagged.length > 0) {
       // Codex r1 on #5451 (F1): a table keyed by numbers of ANOTHER family (parameter codes,
       // accessory parts) is nobody's look-alike — for this record it is ordinary text. Only a

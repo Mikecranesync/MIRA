@@ -511,3 +511,31 @@ describe("#5503 scope follows qualified layout and resets at section boundaries"
     expect(second.split("ordinary prose on another upload", null)).toEqual([{ text: "ordinary prose on another upload" }]);
   });
 });
+
+// Section assertions are source evidence in their own right; no circuit row is required.
+describe("explicit model captions without an output-circuit inventory", () => {
+  it("scopes the whole long section and an unheaded continuation from its caption", () => {
+    const scope = new SectionTableScope(new Map());
+    const source = caption("Output Specifications for RX410", "Current 2 A\n".repeat(250));
+    expect(scope.split(source.text, source.layout).every((p) => p.scope === "section" && p.models?.join() === "RX410")).toBe(true);
+    expect(scope.split("continued current 2 A", null)).toEqual([{text:"continued current 2 A",scope:"section",models:["RX410"]}]);
+  });
+  it("an unreadable gap after an explicit model caption does not release it", () => {
+    const scope = new SectionTableScope(new Map());
+    splitCaption(scope, "Output Specifications for RX410");
+    expect(scope.unreadable("uncertain geometry")[0].scope).toBe("unresolved");
+    expect(scope.split("continued current 2 A", null)[0].scope).toBe("unresolved");
+  });
+  it("a compatible subsequent generic table ends the explicit restriction without asserting exact-model certification", () => {
+    const scope = new SectionTableScope(new Map());
+    splitCaption(scope,"Output Specifications for RX410");
+    const generic=splitCaption(scope,"Analog Output Specifications");
+    expect(generic.every((p)=>p.scope === undefined && p.models === undefined)).toBe(true);
+  });
+});
+
+it("a service sentence above a product display/description header cannot declare model scope", () => {
+  const items=[row("For service, contact Northfield technical support.",700,10),row("Description",680,8,100),row("Display on",680,8,300),row("RX410(X)",668,8,300),row("Keypad",656,8,300),row("Fault code",630,8,100),row("E001",630,8,300)];
+  const layout=sectionTableLayout(items);
+  expect(layout?.headings.filter((h)=>h.table) ?? []).toEqual([]);
+});

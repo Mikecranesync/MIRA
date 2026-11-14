@@ -3,7 +3,7 @@
  * scope; a complete per-model output-circuit row supplies relay applicability independently.
  */
 import { exactModelKey, type LayoutItem, type TableChunk } from "./table-rows";
-import { modelNumbersIn, sameModelFamily } from "./manual-applicability";
+import { isTitleLine, modelNumbersIn, sameModelFamily } from "./manual-applicability";
 import { tableUnit } from "./supporting-quote";
 
 export type SectionScope = "section" | "shared" | "unresolved";
@@ -118,6 +118,11 @@ export function sectionTableLayout(items: readonly LayoutItem[], includeBoundari
       /\bContinuous\b/i.test(ratingHeader) && line.size > ratingHeadSize &&
       !lines.slice(end + 1, firstHead).some((l) => l.size > ratingHeadSize);
     const attributeCaption = /\b(?:Specifications|Requirements|Ratings|Relay|Contact)\b/i.test(line.text) &&
+      // A service sentence containing "contact" is not a caption, even above a
+      // Description column in a fault table. Explicit model restrictions remain
+      // observable (including qualifiers such as "only").
+      // A trailing "only" is a scope qualifier on engineering headings.
+      (isTitleLine(line.text.replace(/\bonly(?=\s*(?:[-–—]|$))/gi, "")) || captionModels(line).length > 0) &&
       header && header.size < line.size;
     if (!attributeCaption && !isRating) continue;
     // Unit/annotation columns do not establish another applicability domain. A common
@@ -288,6 +293,19 @@ export function scopeTableChunks(chunks: readonly TableChunk[], layout: SectionL
   });
 }
 
+/** Explicit layout-bound model assertions establish section scope independently of
+ * any output-circuit table. Circuit types are needed only for inferred relay scope. */
+export function modelSectionModels(layout: SectionLayout | null | undefined): string[] {
+  return [...new Set(layout?.headings.filter((h) => h.table).flatMap((h) => [
+    ...captionModels(h).map((n) => n.key),
+    // A product/parameter name in header prose is not a catalog declaration.
+    ...(!h.headerInvalidLabels ? h.headerModels ?? [] : []),
+  ]) ?? [])];
+}
+export function hasModelSectionScope(layout: SectionLayout | null | undefined): boolean {
+  return modelSectionModels(layout).length > 0;
+}
+
 /** Per-document state, never shared across uploads. Captions reset scope; text windows inherit
  * the resulting scope. All-model sections have an explicit shared marker so catalog numbers
  * in a SUB-column (real DC-input table) do not turn the whole section into sibling-only prose.
@@ -296,7 +314,7 @@ export class SectionTableScope {
   private active: Pick<ScopedText, "models" | "scope" | "sharedHeader"> = {};
   private headingSize = 0;
   private hasReadableSection = false;
-  constructor(private readonly outputs: OutputMap, private readonly observed = outputs.size > 0) {}
+  constructor(private readonly outputs: OutputMap, private observed = outputs.size > 0, private readonly sectionModels: readonly string[] = []) {}
 
   unreadable(text: string): ScopedText[] {
     // A missing layout cannot establish that the preceding section continues. Keep its text,
@@ -309,7 +327,8 @@ export class SectionTableScope {
   }
 
   split(text: string, layout: SectionLayout | null): ScopedText[] {
-    if (!this.observed) return [{ text }];
+    if (!this.observed && !hasModelSectionScope(layout)) return [{ text }];
+    this.observed = true;
     if (!layout) {
       // A shared marker suppresses prose model detection; never carry that privilege into a
       // page with no readable layout. An explicit restriction may continue conservatively.
@@ -358,10 +377,13 @@ export class SectionTableScope {
         this.hasReadableSection = true;
         const lastFor = [...h.text.matchAll(/\bfor\s+/gi)].at(-1);
         const afterFor = lastFor ? h.text.slice(lastFor.index! + lastFor[0].length) : "";
-        const known = [...this.outputs.keys()].flatMap((key) => modelNumbersIn(key));
-        const oneFamily = known.length > 0 && known.every((n) => sameModelFamily(known[0], n));
+        const known = [...new Set([...this.outputs.keys(), ...this.sectionModels])].flatMap((key) => modelNumbersIn(key));
+        const sectionFamily = known.length > 0 && known.every((n) => sameModelFamily(known[0], n));
+        // Other section catalogs cannot invalidate independent circuit-type evidence.
+        const outputNumbers = [...this.outputs.keys()].flatMap((key) => modelNumbersIn(key));
+        const oneFamily = outputNumbers.length > 0 && outputNumbers.every((n) => sameModelFamily(outputNumbers[0], n));
         const captionNumbers = modelNumbersIn(afterFor);
-        const named = captionNumbers.filter((n) => known.some((own) => sameModelFamily(own, n)));
+        const named = known.length > 0 ? captionNumbers.filter((n) => known.some((own) => sameModelFamily(own, n))) : captionNumbers;
         const headerNumbers = (h.headerModels ?? []).flatMap((key) => modelNumbersIn(key));
         const headerApplies = headerNumbers.length > 0 && (known.length === 0 || headerNumbers.some((n) => known.some((own) => sameModelFamily(own, n))));
         const headerFamily = headerNumbers.length > 0 && headerNumbers.every((n) => sameModelFamily(headerNumbers[0], n));
@@ -374,7 +396,7 @@ export class SectionTableScope {
           this.active = { models: [...new Set([...this.outputs.keys(), ...(h.headerModels ?? []), ...captionNumbers.map((n) => n.key)])], scope: "unresolved" };
         } else if (headerApplies && !h.sharedHeader) this.active = { models: h.headerModels, scope: "section" };
         else if (named.length > 0) this.active = { models: [...new Set(named.map((n) => n.key))], scope: "section" };
-        else if (h.sharedHeader && (!oneFamily || !headerFamily ||
+        else if (h.sharedHeader && (!sectionFamily || !headerFamily ||
                  !known.every((n) => sameModelFamily(headerNumbers[0], n)))) {
           // A rejected shared proof is uncertainty, not permission to forget the model
           // labels when later windows no longer contain the physical header.
@@ -391,7 +413,7 @@ export class SectionTableScope {
             } else if (!allRelay) {
               this.active = { models: [...this.outputs.keys()], scope: "unresolved" };
             }
-          } else if (oneFamily && h.sharedHeader) {
+          } else if (sectionFamily && h.sharedHeader) {
             this.active = { scope: "shared", sharedHeader: h.sharedHeader };
           }
         }

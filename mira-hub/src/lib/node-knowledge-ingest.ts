@@ -29,7 +29,7 @@ import { readPageLabelsBounded } from "@/capabilities/pdf-page-label-reader";
 import { pageLayoutItems } from "@/capabilities/pdf-layout-items";
 import { pageWithTables, type TableChunk } from "@/capabilities/table-rows";
 import { contactRatingTable, columnLines, withColumnLines } from "@/capabilities/contact-ratings-table";
-import { SectionTableScope, scopeTableChunks, sectionTableLayout, readOutputTypes, mergeOutputTypes, type ScopedText, type SectionScope } from "@/capabilities/section-table-scope";
+import { SectionTableScope, modelSectionModels, scopeTableChunks, sectionTableLayout, readOutputTypes, mergeOutputTypes, type ScopedText, type SectionScope } from "@/capabilities/section-table-scope";
 import { hasUnmappedGlyphBetweenDigits } from "@/capabilities/manual-completeness";
 import { uploadIdentity } from "@/capabilities/page-label-backfill";
 
@@ -841,9 +841,11 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
   if (outputInventoryObserved && (outputs.size === 0 || [...outputs.values()].includes(null))) {
     console.warn(`[node-ingest] output-type applicability unresolved in ${rest.filename}; relay sections with unreadable model applicability are marked unresolved`);
   }
-  const scope = new SectionTableScope(outputs, outputInventoryObserved);
+  const sectionModels = [...new Set(sectionLayouts.flatMap(modelSectionModels))];
+  const sectionScopeObserved = outputInventoryObserved || sectionModels.length > 0;
+  const scope = new SectionTableScope(outputs, sectionScopeObserved, sectionModels);
   for (let p = 0; p < pages.length; p++) {
-    if (!outputInventoryObserved) break;
+    if (!sectionScopeObserved) break;
     const table = pageTables[p];
     const layout = sectionLayouts[p];
     const remainder = layout && (table || layout.hasTables) ? layout.text : table?.remainder ?? pages[p];

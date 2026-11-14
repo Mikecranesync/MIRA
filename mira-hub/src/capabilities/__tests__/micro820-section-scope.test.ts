@@ -782,3 +782,26 @@ describe("#5503: real Micro820 sections from upload through retrieval", () => {
     expect(result.calls.some((sql) => /metadata->>'table_scope'\s+AS table_scope/.test(sql))).toBe(true);
   });
 });
+
+it("an explicit long model section needs no output-circuit table at the actual ingest caller", async () => {
+  const title = "Output Specifications for 2080-LC20-20QWB(R)";
+  const body = "zzinventoryfree Load current max 2 A. ".repeat(100);
+  const item = (str: string, y: number, size: number) => ({ str, x: 100, y, size, w: str.length * size * 0.4 });
+  pdfPages.current = [{ page: 1, text: "Micro820 20-Point Programmable Controllers", items: [item("Micro820 20-Point Programmable Controllers", 740, 12)] },
+    { page: 2, text: `${title}\nAttribute Value\n${body}`, items: [item(title, 740, 12), item("Attribute Value", 720, 8), item(body, 700, 8)] }];
+  let rows: Row[];
+  try { rows = (await ingestFixture()).filter((r) => r.page_start === 2); }
+  finally { pdfPages.current = null; }
+  expect(rows.length).toBeGreaterThan(2);
+  expect(rows.every((r) => r.table_scope === "section" && JSON.stringify(r.table_models) === JSON.stringify(["2080LC2020QWB"]))).toBe(true);
+  expect((await retrieve("20QWB", rows, "zzinventoryfree load current")).text).toContain("zzinventoryfree");
+  expect((await retrieve("20QBB", rows, "zzinventoryfree load current")).chunks).toEqual([]);
+});
+
+it("an explicit section restriction cannot become generic because its catalog resembles an OCR substitution in another family", async () => {
+  const row = { ...stored[0], content: "zzsectionbinding Current max 2 A", table_models: ["RX4I0"], table_scope: "section", table_unqualified: null };
+  expect((await retrieve("20QBB", [row], "zzsectionbinding current")).chunks).toEqual([]);
+  expect((await retrieve("20QBB", [{...row,table_models:["2080LC2020QBB"]}], "zzsectionbinding current")).text).toContain("zzsectionbinding");
+  // Ordinary parameter/accessory table tags never claimed section applicability.
+  expect((await retrieve("20QBB", [{...row,table_scope:null}], "zzsectionbinding current")).text).toContain("zzsectionbinding");
+});
