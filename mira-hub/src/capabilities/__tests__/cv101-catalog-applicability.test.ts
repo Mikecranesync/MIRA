@@ -9,10 +9,10 @@ const TENANT = "52850000-0000-4000-8000-000000000002";
 
 // This fixture tests admission of an already-retrieved passage, not SQL recall,
 // persistence, generation, or a deployed source-byte/revision match.
-function candidate(heading: string) {
+function candidate(heading: string, filename = "gs10usermanual.pdf") {
   return {
     doc_id: DOC,
-    filename: "gs10usermanual.pdf",
+    filename,
     document_heading: heading,
     source_url: "https://test.invalid/gs10usermanual.pdf",
     source_page: 139,
@@ -23,8 +23,8 @@ function candidate(heading: string) {
   };
 }
 
-async function retrieve(heading: string, question = QUESTION, notebookModel?: string, expectCandidate = true) {
-  const row = candidate(heading);
+async function retrieve(heading: string, question = QUESTION, notebookModel?: string, filename?: string, expectCandidate = true) {
+  const row = candidate(heading, filename);
   let offered = 0;
   const query = vi.fn(async (sql: string) => {
     if (sql.includes("WITH ORDINALITY") || sql.includes("names_document")
@@ -69,6 +69,37 @@ afterEach(() => {
 });
 
 describe("CV-101 supported catalog-family admission (#5285)", () => {
+  it.each([
+    "GS11N - which parameter controls acceleration time?",
+    "GS11N-which parameter controls acceleration time?",
+    "GS11N - how is acceleration time configured?",
+    "GS11N - explain acceleration time",
+  ])("#5330: prose after a dash is not a conflicting catalog: %s", async (question) => {
+    expect(await retrieve("GS11N-20P2 AC Drive User Manual", question)).toHaveLength(1);
+  });
+
+  it.each(["GS10-User-Manual.pdf", "GS10-User-Manual-RevC.pdf", "GS11N-20P2-User-Manual.pdf"])(
+    "#5330: a filename fallback does not turn document words into a catalog: %s", async (filename) => {
+      expect(await retrieve("AC Drive User Manual", QUESTION, undefined, filename)).toHaveLength(1);
+    },
+  );
+
+  it("#5330: keeps full numeric catalog identity, including whitespace and case", async () => {
+    expect(await retrieve("GS11N - 20p2 AC Drive User Manual", "gs11n - 20P2 acceleration time")).toHaveLength(1);
+    expect(await retrieve("GS13N-4010 AC Drive User Manual", "GS13N-4010 acceleration time")).toHaveLength(1);
+  });
+
+  it.each(["GS11N-21P0", "GS11N-20P20", "GS11N-20P2X", "GS13N-4010"])(
+    "#5330: never discards a numeric-leading catalog conflict: %s", async (catalog) => {
+      expect(await retrieve(`${catalog} AC Drive User Manual`)).toEqual([]);
+      expect(await retrieve("AC Drive User Manual", QUESTION, undefined, `${catalog}-User-Manual.pdf`)).toEqual([]);
+    },
+  );
+
+  it("#5330: prose does not make a wrong-family filename eligible", async () => {
+    expect(await retrieve("AC Drive User Manual", "GS11N - which parameter controls acceleration time?", undefined, "GS20-User-Manual.pdf")).toEqual([]);
+  });
+
   it("retains the applicable GS10 family passage for the original unhinted question", async () => {
     const hits = await retrieve("DURApulse GS10 AC Drive User Manual");
     expect(hits).toHaveLength(1);
@@ -120,7 +151,7 @@ describe("CV-101 supported catalog-family admission (#5285)", () => {
 
   it("still refuses an unresolved choice between two GS family members", async () => {
     const question = QUESTION.replace("GS11N-20P2", "GS11N or GS13N");
-    expect(await retrieve("DURApulse GS10 AC Drive User Manual", question, undefined, false)).toEqual([]);
+    expect(await retrieve("DURApulse GS10 AC Drive User Manual", question, undefined, undefined, false)).toEqual([]);
   });
 
   it("does not disable the existing GS10 notebook scope when adding family membership", async () => {

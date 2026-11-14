@@ -8,6 +8,7 @@ const CURRENT = "52850000-0000-4000-8000-000000000021";
 const OLD_REVISION = "52850000-0000-4000-8000-000000000022";
 const OTHER_ASSET = "52850000-0000-4000-8000-000000000023";
 const SIBLING = "52850000-0000-4000-8000-000000000024";
+const EXACT_CATALOG = "53300000-0000-4000-8000-000000000001";
 const QUESTION = "For the GS11N-20P2 drive in this project, which parameter controls acceleration time? Explain what it controls and cite the exact manual page. Do not recommend a new setting or assume the present drive settings.";
 let client: Client;
 
@@ -35,6 +36,7 @@ beforeAll(async () => {
     [TENANT, OLD_REVISION, "DURApulse GS10 AC Drive User Manual", "obsolete revision B"],
     [TENANT, OTHER_ASSET, "DURApulse GS10 AC Drive User Manual", "other asset"],
     [TENANT, SIBLING, "GS10 GS13N AC Drive User Manual", "sibling only"],
+    [TENANT, EXACT_CATALOG, "GS11N-20P2 AC Drive User Manual", "exact catalog"],
     [OTHER_TENANT, CURRENT, "DURApulse GS10 AC Drive User Manual", "foreign tenant"],
   ]) {
     for (const [page, text] of [
@@ -100,6 +102,19 @@ function retrieve(question = QUESTION, docIds = [CURRENT], approved = docIds, te
 }
 
 describe("CV101 catalog applicability over actual SQL", () => {
+  it("#5330: dash prose admits the approved exact-catalog manual through real SQL", async () => {
+    const hits = await retrieve("GS11N - which parameter controls acceleration time?", [EXACT_CATALOG]);
+    expect(hits.some((hit) => hit.docId === EXACT_CATALOG && hit.sourcePage === 139 && hit.content.includes("P01.12"))).toBe(true);
+  });
+
+  it("#5330: dash prose never bypasses document approval", async () => {
+    expect(await retrieve("GS11N - which parameter controls acceleration time?", [EXACT_CATALOG], [CURRENT])).toEqual([]);
+  });
+
+  it("#5330: an explicit different catalog still refuses the selected manual", async () => {
+    expect(await retrieve("GS11N-21P0 - which parameter controls acceleration time?", [EXACT_CATALOG])).toEqual([]);
+  });
+
   it("the unhinted question retrieves the selected family's parameter with both locators", async () => {
     const hits = await retrieve();
     expect(hits.some((hit) => hit.docId === CURRENT && hit.sourcePage === 139

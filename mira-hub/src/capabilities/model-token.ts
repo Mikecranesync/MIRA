@@ -116,9 +116,13 @@ const CONJOINED_DIGIT_FAMILIES: ReadonlyArray<readonly [family: string, head: Re
  */
 export function modelIdentitiesInText(text: string): Set<string> {
   const identities = new Set(modelMentionsInText(text).map((m) => m.id));
-  // Retain the admitted exact GS catalog boundary without changing the
-  // canonical close-name mentions or the single-token SQL/query resolver.
-  for (const match of text.matchAll(/\b(GS\d{1,2}[a-z]?\s*-\s*[a-z0-9]+)\b/gi)) {
+  // Retain exact catalog identity for applicability without changing the
+  // single-token SQL/query resolver: GS11N-20P2 is not GS11N-21P0.
+  // GS rating suffixes start with a number. Words after a prose/file-name
+  // dash ("GS11N - which", "GS10-User-Manual.pdf") are not catalogs.
+  // Keep the entire numeric-leading suffix, including unknown variants,
+  // so a specific conflicting catalog cannot collapse to its family.
+  for (const match of text.matchAll(/\b(GS\d{1,2}[a-z]?\s*-\s*\d[a-z0-9]*)\b/gi)) {
     identities.add(match[1].replace(/\s+/g, "").toUpperCase());
   }
   // Mirror resolveModelFromObservationText's COMFORT-is-a-family-hint drop
