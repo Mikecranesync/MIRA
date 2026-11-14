@@ -32,6 +32,7 @@ import {
 } from "../store";
 import { readRevisionInput, type ComponentRevisionInput } from "../validate";
 import { readSubjectUnderSelection } from "../selection";
+import { SEED_USER, runSeed, seedInputs, type InventoryRow } from "../seed";
 
 const MIGRATION = path.resolve(__dirname, "../../../../db/proposed/115_bench_components.sql");
 const USER = "user-tech-1";
@@ -204,6 +205,37 @@ run("bench component store (real Postgres, RLS)", () => {
     const moved = await advanceSelectionRevision(tenantA, notebookA, USER, thread, 1, 2);
     expect(moved).toMatchObject({ revision: 2, selectedVia: "correction", version: 2 });
     expect(await advanceSelectionRevision(tenantA, notebookA, USER, thread, 1, 2)).toBeNull();
+  });
+
+  it("the provisional inventory seeds once: a second run adds nothing, every row unconfirmed; another tenant cannot seed this project", async () => {
+    const inventory = JSON.parse(readFileSync(path.resolve(__dirname, "../../../../scripts/data/cv101-provisional-inventory.json"), "utf8")) as { rows: InventoryRow[] };
+    const nb = await makeNotebook(tenantA);
+    const inputs = seedInputs(nb, inventory.rows);
+    // Each run computes its rows afresh, as a second invocation of the script does.
+    const seed = (tenant: string) =>
+      runSeed(
+        (i) => addComponent(tenant, nb, SEED_USER, { clientRequestId: i.clientRequestId, kind: i.kind, origin: i.origin, position: i.position, revision: i.revision }),
+        seedInputs(nb, inventory.rows),
+      );
+    const first = await seed(tenantA);
+    expect(first.map((o) => o.status)).toEqual(inputs.map(() => "created"));
+    const second = await seed(tenantA);
+    expect(second.map((o) => o.status)).toEqual(inputs.map(() => "existing"));
+    const listed = await listComponents(tenantA, nb);
+    expect(listed).toHaveLength(inventory.rows.length);
+    const revs = await testPool.query(
+      `SELECT count(*)::int AS n FROM notebook_component_revisions r JOIN notebook_components c ON c.id = r.component_id WHERE c.notebook_id = $1::uuid`,
+      [nb],
+    );
+    expect(revs.rows[0].n).toBe(inventory.rows.length);
+    for (const c of listed) {
+      expect(c.current).toMatchObject({ identityStatus: "unknown", rawLabel: null, manufacturer: null, catalogNumber: null, serialNumber: null, confirmedAt: null });
+      expect(c.current!.evidenceNote).toBe(inventory.rows[c.position].note);
+    }
+    expect(listed.map((c) => c.current!.localTag)).toEqual(inventory.rows.map((r) => r.localTag));
+    // Isolation: tenant B cannot write into tenant A's project.
+    expect((await seed(tenantB))[0].status).toBe("notebook_not_found");
+    expect(await listComponents(tenantA, nb)).toHaveLength(inventory.rows.length);
   });
 
   it("the database refuses a confirmed revision without a confirmation time (CHECK)", async () => {

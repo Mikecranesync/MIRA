@@ -101,10 +101,22 @@ export function componentManualsBlocked(rev: ComponentRevision | null): "not_con
  * that run, the start of the run was seen, so the read is complete. Otherwise
  * the ordinary widening rule applies unchanged.
  */
+/**
+ * An ISO instant in microseconds since the epoch. Date.parse keeps milliseconds
+ * only, so the digits after the third are read here: a turn in the same
+ * millisecond as a pick is still exactly before or after it.
+ */
+export function instantMicros(iso: string): number {
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return Number.NaN;
+  const frac = /\.(\d+)(?:Z|[+-]\d{2}:?\d{2})$/.exec(iso)?.[1] ?? "";
+  return ms * 1000 + Number((frac + "000000").slice(3, 6));
+}
+
 export function readSubjectUnderSelection(turns: readonly SelectionTurn[], limit: number, selection: SelectedComponent): SubjectRead {
-  const since = Date.parse(selection.selectedAt);
+  const since = instantMicros(selection.selectedAt);
   const under = (t: SelectionTurn) =>
-    t.componentId === selection.componentId && t.componentRevision === selection.revision && Date.parse(t.createdAt) > since;
+    t.componentId === selection.componentId && t.componentRevision === selection.revision && instantMicros(t.createdAt) > since;
   let start = turns.length;
   while (start > 0 && under(turns[start - 1])) start--;
   const run = turns.slice(start);

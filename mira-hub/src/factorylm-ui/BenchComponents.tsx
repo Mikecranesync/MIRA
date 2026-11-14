@@ -308,6 +308,7 @@ export function ComponentRow({ c, selected, tally, saving, onAsk, onCheck }: {
             : "No attached manual names its number."}
         {tally && ` · answered ${tally.answered} · refused ${tally.refused} in this chat`}
       </div>
+      <div style={{ fontSize: "var(--fl-fs-sm)", color: "var(--fl-muted)" }} data-testid="bench-evidence">Evidence: {c.evidence}</div>
       <button type="button" style={BUTTON_STYLE} disabled={saving || selected} onClick={onAsk}>Ask about this</button>
       <button type="button" style={QUIET_BUTTON} disabled={saving} onClick={onCheck}>{c.status === "confirmed" ? "Edit label" : "Check label"}</button>
     </li>

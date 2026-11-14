@@ -5,6 +5,7 @@ import { readSubject } from "@/capabilities/conversation-subject";
 import {
   componentManualIdentity,
   componentManualsBlocked,
+  instantMicros,
   readSubjectUnderSelection,
   type ComponentRevision,
   type SelectedComponent,
@@ -165,6 +166,18 @@ describe("an explicit selection is the carry boundary (Return to <component>, no
   it("a turn asked under an older revision of the same component never carries (identity was corrected)", () => {
     const corrected = [...conversation, turn("what frame size is the GS11N-20P5?", "2026-11-14T04:11:00.000Z", VFD1, 1)];
     expect(readSubjectUnderSelection(corrected, 6, selected()).questions).toEqual([]);
+  });
+
+  it("the boundary is exact below a millisecond: a turn 300 µs after the pick carries, one 300 µs before does not", () => {
+    // Postgres keeps microseconds; a JS Date keeps milliseconds. Both turns fall in the pick's millisecond.
+    const pick = selected({ selectedAt: "2026-11-14T04:10:00.123400Z" });
+    const before = turn("what about the GS13N-20P2, same thing?", "2026-11-14T04:10:00.123100Z");
+    const after = turn("what about the GS13N-20P2, same thing?", "2026-11-14T04:10:00.123700Z");
+    expect(readSubjectUnderSelection([...conversation, after], 6, pick).questions).toEqual(["what about the GS13N-20P2, same thing?"]);
+    expect(readSubjectUnderSelection([...conversation, before], 6, pick).questions).toEqual([]);
+    // Control: millisecond-only stamps (fixtures, older rows) still compare as before.
+    expect(instantMicros("2026-11-14T04:10:00.123Z")).toBe(Date.parse("2026-11-14T04:10:00.123Z") * 1000);
+    expect(instantMicros("2026-11-14T04:10:00Z")).toBe(Date.parse("2026-11-14T04:10:00Z") * 1000);
   });
 
   it("no boundary in the read window: the ordinary widening rule is kept (complete only if the window was short)", () => {

@@ -29,7 +29,7 @@ export type ComponentRecord = {
   createdAt: string;
   retiredAt: string | null;
   /** The newest revision, or null when the row was added with no description yet. */
-  current: ComponentRevision | null;
+  current: StoredRevision | null;
 };
 
 export type ThreadSelection = SelectedComponent & { selectedVia: SelectedVia; version: number };
@@ -251,7 +251,14 @@ function toSelection(r: Record<string, unknown>): ThreadSelection {
   };
 }
 
-const SELECTION_COLS = `s.component_id::text AS component_id, s.component_revision, s.selected_at, s.selected_via, s.version,
+/**
+ * Timestamps that decide the carry boundary are read at the database's full
+ * (microsecond) precision: a JS Date keeps milliseconds only, and a turn in the
+ * same millisecond as a pick would tie with it (selection.ts compares exactly).
+ */
+const MICROS = (col: string) => `to_char(${col} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
+
+const SELECTION_COLS = `s.component_id::text AS component_id, s.component_revision, ${MICROS("s.selected_at")} AS selected_at, s.selected_via, s.version,
   s.last_request_id::text AS last_request_id`;
 
 export async function getSelection(tenantId: string, notebookId: string, ownerUserId: string, threadKey: string): Promise<ThreadSelection | null> {
@@ -396,7 +403,7 @@ export async function listSelectionTurns(
     const values: unknown[] = [tenantId, notebookId, limit, viewerUserId];
     const threadPredicate = threadId === null ? "AND thread_id IS NULL" : `AND thread_id = $${values.push(threadId)}`;
     const res = await c.query(
-      `SELECT id, question, answer_status, basis, created_at, component_id, component_revision, client_request_id FROM (
+      `SELECT id, question, answer_status, basis, ${MICROS("created_at")} AS created_at_us, component_id, component_revision, client_request_id FROM (
          SELECT id::text AS id, question, answer_status, basis, created_at, component_id::text AS component_id,
                 component_revision, client_request_id::text AS client_request_id
            FROM equipment_notebook_turns
@@ -411,7 +418,7 @@ export async function listSelectionTurns(
       question: str(r.question),
       answerStatus: str(r.answer_status),
       basis: str(r.basis),
-      createdAt: iso(r.created_at) ?? "",
+      createdAt: str(r.created_at_us) ?? "",
       componentId: str(r.component_id),
       componentRevision: r.component_revision == null ? null : Number(r.component_revision),
       clientRequestId: str(r.client_request_id),

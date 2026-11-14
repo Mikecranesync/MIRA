@@ -94,6 +94,7 @@ const seamMock = vi.hoisted(() => ({
 vi.mock("@/lib/inference/canonical-cascade", () => seamMock);
 
 import { POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
+import { noDocumentsForComponentText } from "@/capabilities/bench-components/chat-turn";
 
 function req(body: unknown) {
   return new NextRequest("http://test/api/equipment-notebooks/x/chat", {
@@ -106,6 +107,15 @@ const params = { params: Promise.resolve({ id: NB }) };
 const ask = (message: string, extra: Record<string, unknown> = {}) =>
   POST(req({ message, sourceDocIds: [DOC_A], clientRequestId: REQ, ...extra }), params);
 const under = (componentId: string, selectionVersion: number) => ({ componentSelection: { componentId, selectionVersion } });
+
+const CHUNK = { docId: DOC_A, filename: "gs10usermanual.pdf", page: 26, content: "oC: overcurrent during acceleration." };
+
+/** The system prompt of the provider request this turn sent. */
+function systemPrompt(): string {
+  const call = seamMock.buildRequestBody.mock.calls.at(-1) as unknown as [unknown, { role: string; content: string }[]] | undefined;
+  if (!call) throw new Error("no provider request was built");
+  return call[1][0].content;
+}
 
 async function frames(res: Response): Promise<Record<string, unknown>[]> {
   const text = await res.text();
@@ -149,17 +159,20 @@ afterEach(() => {
 
 describe("no component selected — today's behaviour", () => {
   it("control: the notebook's identity scopes retrieval and the component store is never read", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
     await frames(await ask("what does fault oC mean"));
     expect(storeMock.getSelection).not.toHaveBeenCalled();
     expect(storeMock.listComponents).not.toHaveBeenCalled();
     expect(storeMock.stampTurnComponent).not.toHaveBeenCalled();
     expect(retrievalOpts()?.catalogNumber).toBe("2080-LC20-20QWB");
     expect(storeMock.listSelectionTurns).not.toHaveBeenCalled();
+    expect(systemPrompt()).toContain("- Catalog number on record: 2080-LC20-20QWB.");
   });
 });
 
 describe("a confirmed component is the record for the turn", () => {
   it("retrieval is scoped by the component's catalog number, not the notebook's, and the turn is stamped", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
     await frames(await ask("what does fault oC mean", under(VFD, 3)));
     expect(retrievalOpts()).toMatchObject({
       catalogNumber: "GS11N-20P2",
@@ -167,6 +180,11 @@ describe("a confirmed component is the record for the turn", () => {
       identity: { manufacturer: "AutomationDirect", model: "GS10" },
     });
     expect(storeMock.stampTurnComponent).toHaveBeenCalledWith(TENANT, NB, "u1", REQ, VFD, 2);
+    // The header the model reads names the component, never the project's own machine.
+    const prompt = systemPrompt();
+    expect(prompt).toContain("- Equipment: AutomationDirect GS10");
+    expect(prompt).toContain("- Catalog number on record: GS11N-20P2.");
+    expect(prompt).not.toContain("2080-LC20-20QWB");
   });
 
   it("only questions asked under this selection carry; an earlier question in the same chat does not", async () => {
@@ -198,6 +216,15 @@ describe("a confirmed component is the record for the turn", () => {
     const frame = componentFrame(out)!;
     expect(frame).toMatchObject({ componentId: VFD, revision: 2, selectionVersion: 3, label: "VFD1 · AutomationDirect GS11N-20P2" });
     expect(frame.actions).toEqual([{ action: "return", componentId: VFD, label: "VFD1 · AutomationDirect GS11N-20P2" }]);
+  });
+
+  it("a project with nothing it can search answers nothing about the component, says so, and offers Return", async () => {
+    nbMock.validateChatSources.mockResolvedValue({ ok: true, docIds: [DOC_A], nodeId: null });
+    const out = await frames(await ask("what does fault oC mean", under(VFD, 3)));
+    expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    expect(statusOf(out)).toMatchObject({ status: "insufficient_evidence", message: noDocumentsForComponentText("VFD1 · AutomationDirect GS11N-20P2") });
+    expect(componentFrame(out)!.actions).toEqual([{ action: "return", componentId: VFD, label: "VFD1 · AutomationDirect GS11N-20P2" }]);
   });
 
   it("an identity corrected on another screen is re-checked: the selection advances and the frame carries the new version", async () => {

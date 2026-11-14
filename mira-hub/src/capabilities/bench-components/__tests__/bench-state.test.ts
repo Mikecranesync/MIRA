@@ -36,7 +36,7 @@ beforeEach(() => {
       current: rev(VFD, { manufacturer: "AutomationDirect", family: "GS10", catalogNumber: "GS11N-20P2", localTag: "VFD1" }) },
     // Seeded from the schedule with nothing confirmed: listed, never "ready".
     { id: PS1, notebookId: NB, position: 7, kind: "power_supply", origin: "inventory", createdAt: "x", retiredAt: null,
-      current: rev(PS1, { localTag: "PS1", identityStatus: "unknown", confirmedAt: null }) },
+      current: rev(PS1, { localTag: "PS1", identityStatus: "unknown", confirmedAt: null, inputKind: "schedule", evidenceNote: "Old device schedule (devices.yaml rev A) says model \"Mean Well DIN-rail supply\"." }) },
   ]);
   storeMock.listSelectionTurns.mockResolvedValue([
     turn("t1", VFD, "answered", "workspace_evidence"),
@@ -63,6 +63,20 @@ describe("benchState", () => {
     expect(ps1.statusLabel).toBe("identity not confirmed");
     expect(ps1.hasOwnDocument).toBe(false);
     expect(state.components.map((c) => c.id)).toEqual([VFD, PS1]);
+  });
+
+  it("every row says what it rests on: a confirmation, a schedule note, or plainly nothing", async () => {
+    const state = await benchState("t", NB, "u1", "legacy", []);
+    const byId = new Map(state.components.map((c) => [c.id, c]));
+    expect(byId.get(PS1)!.evidence).toBe('Old device schedule (devices.yaml rev A) says model "Mean Well DIN-rail supply".');
+    // The note is evidence only: it never becomes the label or an identity.
+    expect(byId.get(PS1)!.label).toBe("PS1");
+    expect(byId.get(VFD)!.evidence).toBe("Confirmed by a technician.");
+    storeMock.listComponents.mockResolvedValueOnce([
+      { id: PS1, notebookId: NB, position: 0, kind: "power_supply", origin: "technician", createdAt: "x", retiredAt: null,
+        current: rev(PS1, { localTag: "PS1", identityStatus: "unknown", confirmedAt: null }) },
+    ]);
+    expect((await benchState("t", NB, "u1", "legacy", [])).components[0].evidence).toBe("Nothing recorded yet.");
   });
 
   it("look-alike candidates come only from what an attached document's opening text writes", async () => {

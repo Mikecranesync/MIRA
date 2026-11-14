@@ -17,7 +17,7 @@
 import { manualAnswersFor, manualCoversNumber, modelNumbersIn } from "@/capabilities/manual-applicability";
 import type { NotebookSource } from "@/lib/equipment-notebooks";
 import { componentManualsBlocked, type ComponentRevision } from "./selection";
-import type { ComponentRecord } from "./store";
+import type { ComponentRecord, StoredRevision } from "./store";
 
 export type ComponentStatus = "not_described" | "not_confirmed" | "confirmed_no_model" | "confirmed" | "retired";
 
@@ -50,6 +50,8 @@ export type ComponentView = {
   documents: DocumentFit[];
   /** True when at least one selected, ready document's cover names this component's number. */
   hasOwnDocument: boolean;
+  /** What the record rests on (a confirmation, the schedule, an earlier photo). Evidence, never identity. */
+  evidence: string;
 };
 
 /** "VFD1 · AutomationDirect GS11N-20P2", "B1 (identity not confirmed)", "Component 4". */
@@ -58,6 +60,16 @@ export function componentLabel(c: Pick<ComponentRecord, "position" | "kind">, re
   const name = [rev?.manufacturer, rev?.catalogNumber ?? rev?.family].filter((v) => v && v.trim()).join(" ");
   if (tag && name) return `${tag} · ${name}`;
   return tag || name || (c.kind ? c.kind.replace(/_/g, " ") : `Component ${c.position + 1}`);
+}
+
+export const NO_EVIDENCE = "Nothing recorded yet.";
+
+function evidenceOf(rev: StoredRevision | null): string {
+  if (!rev) return NO_EVIDENCE;
+  const parts: string[] = [];
+  if (rev.identityStatus === "user_confirmed") parts.push("Confirmed by a technician.");
+  if (rev.evidenceNote) parts.push(rev.evidenceNote);
+  return parts.length > 0 ? parts.join(" ") : NO_EVIDENCE;
 }
 
 function statusOf(c: ComponentRecord): { status: ComponentStatus; statusLabel: string } {
@@ -115,5 +127,6 @@ export function componentView(c: ComponentRecord, sources: readonly NotebookSour
     current: c.current,
     documents,
     hasOwnDocument: documents.some((d) => d.selected && d.ready && d.model === "covers"),
+    evidence: evidenceOf(c.current),
   };
 }

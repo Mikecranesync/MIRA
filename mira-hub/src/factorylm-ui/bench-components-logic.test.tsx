@@ -37,7 +37,7 @@ const vfdRev = {
 };
 const view = (over: Partial<ComponentView>): ComponentView => ({
   id: VFD, position: 1, kind: "VFD", origin: "device_schedule", status: "confirmed", statusLabel: "confirmed",
-  label: "VFD1 · AutomationDirect GS11N-20P2", current: vfdRev, documents: [], hasOwnDocument: false, ...over,
+  label: "VFD1 · AutomationDirect GS11N-20P2", current: vfdRev, documents: [], hasOwnDocument: false, evidence: "Confirmed by a technician.", ...over,
 });
 const state = (selection: BenchState["selection"]): BenchState => ({
   components: [view({}), view({ id: PS1, label: "PS1", status: "not_confirmed", statusLabel: "identity not confirmed", current: null })],
@@ -117,7 +117,7 @@ describe("the checklist", () => {
   it("an unconfirmed component is never shown as having a manual (unknown is not ready)", () => {
     const html = renderToStaticMarkup(
       <ComponentRow
-        c={view({ id: PS1, label: "PS1", status: "not_confirmed", statusLabel: "identity not confirmed", current: null, documents: [{ docId: "d", filename: "psu.pdf", selected: true, model: "covers", declared: [], ready: true, readyLabel: "searchable" }] })}
+        c={view({ id: PS1, label: "PS1", status: "not_confirmed", statusLabel: "identity not confirmed", current: null, evidence: "Old device schedule says Mean Well.", documents: [{ docId: "d", filename: "psu.pdf", selected: true, model: "covers", declared: [], ready: true, readyLabel: "searchable" }] })}
         selected={false} tally={{ answered: 0, refused: 1 }} saving={false} onAsk={vi.fn()} onCheck={vi.fn()}
       />,
     );
@@ -125,6 +125,8 @@ describe("the checklist", () => {
     expect(html).toContain("Manuals are not checked until its identity is confirmed.");
     expect(html).not.toContain("psu.pdf");
     expect(html).toContain("answered 0 · refused 1 in this chat");
+    // Every row says what it rests on.
+    expect(html).toContain("Evidence: Old device schedule says Mean Well.");
   });
 });
 
