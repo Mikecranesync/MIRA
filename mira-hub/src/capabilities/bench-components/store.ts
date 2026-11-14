@@ -419,3 +419,24 @@ export async function listSelectionTurns(
   });
 }
 
+
+/**
+ * Each document's opening text — the same "cover" the answer path reads
+ * (manual-rag.ts documentHeadingSql): the first v2 chunk by page, then chunk order.
+ * Tenant-scoped; a document whose text this tenant cannot read has no heading,
+ * which the view shows as "not stated", never as a match.
+ */
+export async function readDocumentHeadings(tenantId: string, docIds: readonly string[]): Promise<Map<string, string>> {
+  if (docIds.length === 0) return new Map();
+  return withTenantContext(tenantId, async (c) => {
+    const res = await c.query(
+      `SELECT DISTINCT ON (doc_id) doc_id::text AS doc_id, left(content, 2000) AS heading
+         FROM knowledge_entries
+        WHERE tenant_id = $1::uuid AND doc_id::text = ANY($2::text[]) AND ingest_route = 'v2'
+        ORDER BY doc_id, page_start NULLS LAST, source_page NULLS LAST,
+                 (metadata->>'chunk_index')::int NULLS LAST, id`,
+      [tenantId, [...docIds]],
+    );
+    return new Map(res.rows.map((r: Record<string, unknown>) => [String(r.doc_id), String(r.heading ?? "")]));
+  });
+}
