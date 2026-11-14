@@ -1,5 +1,5 @@
 /**
- * Bench components — the store (schema: db/proposed/115_bench_components.sql).
+ * Bench components — the store (schema: db/migrations/115_bench_components.sql).
  *
  * Every read and write runs in one withTenantContext transaction (RLS, UUID
  * family). Ownership is checked IN each statement: a component of another

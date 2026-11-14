@@ -1,7 +1,7 @@
 /**
  * Bench component store against real Postgres: the real withTenantContext
  * (SET LOCAL ROLE factorylm_app + RLS) on a disposable database, migration 115
- * applied from db/proposed (twice: idempotency).
+ * applied from db/migrations (twice: idempotency).
  *
  * Run (disposable DB only; the integration schema must already hold 073–089):
  *   TEST_DATABASE_URL=postgres://postgres@127.0.0.1:55441/bench MIRA_TEST_DB_CONFIRM=DISPOSABLE \
@@ -36,7 +36,7 @@ import { readRevisionInput, type ComponentRevisionInput } from "../validate";
 import { readSubjectUnderSelection } from "../selection";
 import { SEED_USER, runSeed, seedInputs, type InventoryRow } from "../seed";
 
-const MIGRATION = path.resolve(__dirname, "../../../../db/proposed/115_bench_components.sql");
+const MIGRATION = path.resolve(__dirname, "../../../../db/migrations/115_bench_components.sql");
 const USER = "user-tech-1";
 
 async function makeNotebook(tenantId: string): Promise<string> {
