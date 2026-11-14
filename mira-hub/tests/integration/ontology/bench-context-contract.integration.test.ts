@@ -671,6 +671,35 @@ describe("5. correcting a fact: old fact out of current answers, kept in history
     expect(block).not.toContain(A.VFD1.assetId);
   });
 
+  it("a superseded fact that a human approves AGAIN is current again (the row keeps its first proposal link)", async () => {
+    // The writer cannot re-propose this pair today (#5524, pinned below), so the second
+    // proposal is inserted directly — the shape a #5524 repair would produce — and then
+    // approved through the real route.
+    const { rows } = await admin.query(
+      `INSERT INTO relationship_proposals
+         (tenant_id, source_entity_id, source_entity_type, target_entity_id, target_entity_type,
+          relationship_type, confidence, created_by, reasoning)
+       VALUES ($1::uuid, $2::uuid, 'equipment', $3::uuid, 'equipment', 'UPSTREAM_OF', 0.8, 'human',
+               'bench contract: re-approved after a supersede')
+       RETURNING id::text AS id`,
+      [TENANT_A, A.Q1.nodeId, A.VFD1.nodeId],
+    );
+    const again = String(rows[0].id);
+    try {
+      expect(await downstreamNodeIds(TENANT_A, A.Q1)).toEqual([A.VFD2.nodeId]); // proposed only: still out
+      expect((await decide(again, "verify", { tenantId: TENANT_A, userId: ADMIN_A, role: "admin" })).status).toBe(200);
+      const link = await admin.query(
+        `SELECT relationship_proposal_id::text AS p FROM kg_relationships WHERE id = $1::uuid`,
+        [S.feedsEdge],
+      );
+      expect(link.rows[0].p).toBe(S.feeds); // still linked to the deprecated proposal
+      expect((await downstreamNodeIds(TENANT_A, A.Q1)).sort()).toEqual([A.VFD1.nodeId, A.VFD2.nodeId].sort());
+    } finally {
+      await admin.query(`DELETE FROM relationship_proposals WHERE id = $1::uuid`, [again]);
+    }
+    expect(await downstreamNodeIds(TENANT_A, A.Q1)).toEqual([A.VFD2.nodeId]);
+  });
+
   it("KNOWN GAP #5524: a revised proposal for the superseded pair is silently dropped", async () => {
     const again = await propose(TENANT_A, "feeds", A.Q1, A.VFD1, "re-proposed with a new sheet revision");
     knownGap(

@@ -18,7 +18,8 @@
  *   that pass relationship names in). `false` yields each mapped canonical edge ONLY under its
  *   legacy name, plus every row that has no legacy meaning — one row per meaning, no repeats.
  * - Superseded facts are not current (#5523): a row whose originating proposal has been moved
- *   to `deprecated` (the supersede transition) is left out of BOTH forms. The row itself is not
+ *   to `deprecated` (the supersede transition) is left out of BOTH forms, unless a later
+ *   proposal for the same fact has been approved. The row itself is not
  *   changed here — history stays in the tables; this is the read-side guard, and it holds
  *   whether or not the row's own approval_state is later demoted too.
  * - The names interpolated below come only from the compiled mapping and are checked to be
@@ -39,10 +40,21 @@ function aliasValues(): string {
   return rows.map(({ canonical, legacy, flip }) => `('${canonical}', '${legacy}', ${flip ? "true" : "false"})`).join(", ");
 }
 
-/** True for a row whose originating proposal was superseded. `alias` is the row's table alias. */
+/**
+ * True for a row whose originating proposal was superseded AND that no later approval has
+ * restored. Approval keeps a row's FIRST proposal link, so a fact that is superseded and then
+ * approved again still points at the deprecated proposal; the second clause brings it back.
+ * `alias` is the row's table alias.
+ */
 function superseded(alias: string): string {
-  return `EXISTS (SELECT 1 FROM relationship_proposals sp
-                   WHERE sp.id = ${alias}.relationship_proposal_id AND sp.status = 'deprecated')`;
+  return `(EXISTS (SELECT 1 FROM relationship_proposals sp
+                    WHERE sp.id = ${alias}.relationship_proposal_id AND sp.status = 'deprecated')
+           AND NOT EXISTS (SELECT 1 FROM relationship_proposals rp
+                            WHERE rp.tenant_id = ${alias}.tenant_id
+                              AND rp.source_entity_id = ${alias}.source_id
+                              AND rp.target_entity_id = ${alias}.target_id
+                              AND rp.relationship_type = ${alias}.relationship_type
+                              AND rp.status = 'verified'))`;
 }
 
 export function kgRelationshipsReadView(opts: { keepCanonical: boolean }): string {
