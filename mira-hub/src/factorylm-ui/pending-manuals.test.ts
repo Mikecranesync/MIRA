@@ -132,6 +132,37 @@ describe("#5315 a PDF stored with a generic file type is still a pending manual"
     expect(attaches(h.calls)).toEqual([{ method: "POST", path: "/api/equipment-notebooks/nb-g/sources/", body: { docId: "up-late", sourceRole: "manual" } }]);
   });
 
+  it("from setup: manual.pdf picked with no browser type, 202, sheet closed; the handed-over file is attached once it is read", async () => {
+    const handed: Array<[string, string[]]> = [];
+    let read = false;
+    const h = harness({
+      "GET /api/equipment-notebooks/nb-g/": { status: 200, body: { notebook: { nodeId: "node-g" }, sources: [] } },
+      "POST /api/namespace/node/node-g/files/": { status: 202, body: { ok: true, indexed: false, indexing: true, fileId: "f-202" } },
+      // The stored row carries the generic type the route gives a file sent with none.
+      [NODE]: () => ({ status: 200, body: { files: [generic({ indexed: read })] } }),
+      "GET /api/files/f-202": () => (read ? fileLookup("f-202", "up-late") : fileLookup("f-202", null, true)),
+      [SRC]: { status: 201, body: { ok: true } },
+    });
+    const c = createNewProjectSetup({ ...deps(h.fetch), getNotebooks: () => [], onPendingManuals: (nb, ids) => handed.push([nb, ids]) });
+    await c.choose({ kind: "general" });
+    c.setName("Bench");
+    await c.next();
+    c.addPdfs([new File(["%PDF"], "manual.pdf", { type: "" })]);
+    expect(c.getState().pdfs).toHaveLength(1); // setup accepts it by name
+    const committing = c.commit();
+    for (let i = 0; i < 30; i++) await Promise.resolve();
+    c.dispose();
+    await committing;
+    expect(handed).toEqual([["nb-g", ["f-202"]]]);
+    const [notebookId, approved] = handed[0]!;
+    const project = { notebookId, nodeId: "node-g", sources: [], approved: new Set(approved) };
+    expect((await checkPendingManuals(project, deps(h.fetch))).pending).toEqual([{ fileId: "f-202", filename: "manual.pdf", docId: null, state: "reading" }]);
+    expect(attaches(h.calls)).toHaveLength(0);
+    read = true;
+    expect((await checkPendingManuals(project, deps(h.fetch))).attached).toEqual(["f-202"]);
+    expect(attaches(h.calls)).toEqual([{ method: "POST", path: "/api/equipment-notebooks/nb-g/sources/", body: { docId: "up-late", sourceRole: "manual" } }]);
+  });
+
   it("after a reload (no approval): offered as readable, and nothing is written", async () => {
     const h = harness({ [NODE]: { status: 200, body: { files: [generic({ indexed: true })] } }, "GET /api/files/f-202": fileLookup("f-202", "up-late") });
     const r = await checkPendingManuals(input([]), deps(h.fetch));
