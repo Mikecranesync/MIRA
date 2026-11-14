@@ -1,5 +1,7 @@
 /** A detection-only view: raw UTF-16 offsets and all surrounding prose stay
  * intact. This is not a model/coverage recognizer or Unicode normalization. */
+import { foldForDetection, HYPHEN_EQUIV_CHARS } from "./detection-fold";
+
 export type IdentifierSpan = { raw: string; start: number; end: number; detected: string };
 
 // Detection only, one UTF-16 unit each: U+2010 hyphen, U+2011 nonbreaking
@@ -8,8 +10,7 @@ export type IdentifierSpan = { raw: string; start: number; end: number; detected
 // en dash is allowed only within the same bounded identifier shapes. U+2014
 // em dash and U+FE58 small em dash remain clause punctuation. No whole NFKC
 // or width-letter transformation, and no folding across a line break.
-const SEPARATOR = /[-\u2010\u2011\u2012\u2013\u2212\uFE63\uFF0D]/g;
-const CHAINS = /[A-Za-z0-9]+(?:[ \t]*[-\u2010\u2011\u2012\u2013\u2212\uFE63\uFF0D][ \t]*[A-Za-z0-9]+)*/g;
+const CHAINS = new RegExp(`[A-Za-z0-9]+(?:[ \\t]*[-${HYPHEN_EQUIV_CHARS}\\u2013][ \\t]*[A-Za-z0-9]+)*`, "g");
 const hasDigit = (value: string) => /[0-9]/.test(value);
 
 export function catalogIdentifierView(raw: string): { text: string; spans: readonly IdentifierSpan[] } {
@@ -37,9 +38,14 @@ export function catalogIdentifierView(raw: string): { text: string; spans: reado
       const end = chain.index + pieces[j].index + pieces[j][0].length;
       const source = raw.slice(start, end);
       if (/[A-Za-z]/.test(source) && hasDigit(source)) {
-        const detected = source.replace(SEPARATOR, "-");
-        spans.push({ raw: source, start, end, detected });
-        for (let at = 0; at < detected.length; at++) chars[start + at] = detected[at];
+        // The shared fold also strips markup/format characters; our bounded
+        // alphabet admits neither. Never apply it to the whole question, and
+        // fail closed if a future shared change would invalidate raw offsets.
+        const detected = foldForDetection(source).replace(/\u2013/g, "-");
+        if (detected.length === source.length) {
+          spans.push({ raw: source, start, end, detected });
+          for (let at = 0; at < detected.length; at++) chars[start + at] = detected[at];
+        }
       }
       i = j;
     }
