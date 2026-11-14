@@ -22,9 +22,11 @@
 //
 // MUTATION CHECKS RUN (and what they do NOT cover): dropping the approval-state filter turns
 // the rejected and unconfirmed tests red; dropping the enabled / superseded filters turns the
-// switched-off and all four supersession tests red. Dropping the tenant/notebook predicate from
-// the source query turns NOTHING red — the notebook lookup and row-level security still hold —
-// so the tenant tests show the outcome, not which layer earns it.
+// switched-off and all four supersession tests red; dropping the successor's approval-state
+// filter turns the "successor never confirmed" test red. Dropping the tenant/notebook predicate
+// from the source query turns NOTHING red — the notebook lookup and row-level security still
+// hold — so the tenant tests show the outcome, not which layer earns it. One of them plants
+// another tenant's confirmed row inside this notebook so the refusal is not true by seed.
 //
 // Nothing here is CI-enforced. Same disposable database as the graph contract.
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -135,6 +137,15 @@ async function seed() {
      VALUES ($1::uuid, $2::uuid, $3::uuid, true, 'user_confirmed')`,
     [OTHER_NB, FOREIGN, OTHER_TENANT],
   );
+  // The attack itself: a confirmed, enabled membership row that sits in THIS tenant's notebook
+  // but belongs to the other tenant (written by the owner connection, as a bug or a bad
+  // migration would). Without it, "foreign source refused" is true merely because the
+  // document is not in the notebook.
+  await c.query(
+    `INSERT INTO equipment_notebook_sources (notebook_id, doc_id, tenant_id, enabled_by_default, match_state)
+     VALUES ($1::uuid, $2::uuid, $3::uuid, true, 'user_confirmed')`,
+    [NB, FOREIGN, OTHER_TENANT],
+  );
   // listSources counts chunks on columns that live in the docs/migrations set, which the
   // Hub fixture does not apply — additive stub, same as the provenance suite.
   await c.query(
@@ -217,14 +228,14 @@ describe("pilot path: a superseded reading is absent from the current answer sco
 });
 
 describe("pilot path: the superseded reading is retained in history", () => {
-  it("it still resolves, marked superseded, with the photograph it came from", async () => {
+  it("it still resolves, marked superseded, carrying the id of the photograph it was read from", async () => {
     const old = await getSourceResolution(TENANT, NB, OLD);
     expect(old?.superseded).toBe(true);
     expect(old?.originFileId).toBe(PHOTO);
     expect((await getSourceResolution(TENANT, NB, NEW))?.superseded).toBe(false);
   });
 
-  it("a citation to the old reading still reaches its photograph", async () => {
+  it("a citation to the old reading still maps to its photograph's id (the file itself is not fetched)", async () => {
     const map = await originFileIdsByDoc(TENANT, NB, [OLD, NEW, ORPHAN]);
     expect(map.get(OLD)).toBe(PHOTO);
     expect(map.get(NEW)).toBe(PHOTO);
@@ -237,7 +248,13 @@ describe("pilot path: another tenant's notebook and sources are out of reach", (
     expect(await validateChatSources(OTHER_TENANT, NB, [NEW])).toEqual({ ok: false, error: "notebook_not_found" });
   });
 
-  it("this tenant cannot pull another tenant's confirmed source into its notebook", async () => {
+  it("a confirmed source row of another tenant, planted inside this notebook, is still refused", async () => {
+    const planted = await testPool.query(
+      `SELECT count(*)::int AS n FROM equipment_notebook_sources WHERE notebook_id = $1::uuid AND doc_id = $2::uuid`,
+      [NB, FOREIGN],
+    );
+    expect(planted.rows[0].n).toBe(1); // the row is really there; the refusal below is isolation
+    expect((await listSources(TENANT, NB)).map((s) => s.docId)).not.toContain(FOREIGN);
     expect(await validateChatSources(TENANT, NB, [FOREIGN])).toEqual({ ok: false, error: "source_not_in_notebook" });
     expect(await validateChatSources(TENANT, OTHER_NB, [FOREIGN])).toEqual({ ok: false, error: "notebook_not_found" });
   });
@@ -253,6 +270,11 @@ describe("pilot path: another tenant's notebook and sources are out of reach", (
   it("history lookups do not cross the tenant line", async () => {
     expect(await getSourceResolution(OTHER_TENANT, NB, OLD)).toBeNull();
     expect((await originFileIdsByDoc(OTHER_TENANT, NB, [OLD])).size).toBe(0);
-    expect(await listSources(OTHER_TENANT, NB)).toEqual([]);
+    // OBSERVED: listSources does not itself check that the notebook belongs to the caller; it
+    // filters source rows by tenant. So the other tenant, asking about this notebook's id, gets
+    // back only the row that is its own (the planted one) and none of this tenant's sources.
+    const theirs = (await listSources(OTHER_TENANT, NB)).map((s) => s.docId);
+    expect(theirs).toEqual([FOREIGN]);
+    for (const s of SOURCES) expect(theirs).not.toContain(s.doc);
   });
 });

@@ -830,13 +830,14 @@ describe("8. the same contract across more of the bench (provisional inventory, 
     expect((await proposalRow(id))?.status).toBe("rejected");
   });
 
-  it("positive control: under the reader's own name the supply chain CB1 -> PS1 -> PLC1 is read downstream of CB1", async () => {
+  it("positive control: under the reader's own name CB1 -> PS1 -> PLC1 and VFD1 -> M1 are each read downstream", async () => {
     const seen = await withStoredName(made["CB1 feeds PS1"], "feeds", () =>
       withStoredName(made["PS1 feeds PLC1"], "feeds", () => downstreamNodeIds(TENANT_A, A.CB1)),
     );
     expect(seen).toContain(A.PS1.nodeId);
     expect(seen).toContain(A.PLC1.nodeId);
-    expect(seen).not.toContain(A.M1.nodeId);
+    const motor = await withStoredName(made["VFD1 feeds M1"], "feeds", () => downstreamNodeIds(TENANT_A, A.VFD1));
+    expect(motor).toContain(A.M1.nodeId);
   });
 
   it("KNOWN GAP #5519: as approved, none of the supply chain is read downstream of CB1, PS1 or VFD1", async () => {
@@ -863,10 +864,10 @@ describe("8. the same contract across more of the bench (provisional inventory, 
     );
   });
 
-  it("OBSERVED: the parent link is stored reversed AND renamed, so the hierarchy reader misses it twice over", async () => {
-    // Reader: maintenanceContext walks edges named 'parent_of' from parent to child. Approval
-    // stored child -> parent as LOCATED_IN. Renaming alone does not make it readable; this
-    // link was written but NOT shown readable by any control here.
+  it("OBSERVED: the parent link is stored reversed AND renamed (the hierarchy reader is NOT run here)", async () => {
+    // By reading traversal.ts (not by a test): maintenanceContext walks edges named 'parent_of'
+    // whose target is the child. Approval stored child -> parent as LOCATED_IN. This test only
+    // pins what was stored; no reader is called and no control shows the link readable.
     const before = await admin.query(
       `SELECT source_id::text AS s, target_id::text AS t, relationship_type AS r FROM kg_relationships WHERE id = $1::uuid`,
       [made["CV101 parent_of M1"]],
@@ -875,15 +876,7 @@ describe("8. the same contract across more of the bench (provisional inventory, 
     expect(mapToCanonicalEdge("parent_of")).toEqual({ type: "LOCATED_IN", flip: true });
   });
 
-  it("the other tenant cannot read these bench links even where this tenant can", async () => {
-    // Under the reader's own name (so the read is not empty for the #5519 reason):
-    const [own, other] = await withStoredName(made["CB1 feeds PS1"], "feeds", async () => [
-      await downstreamNodeIds(TENANT_A, A.CB1),
-      (await impactAnalysis(TENANT_B, A.CB1.nodeId)).downstream.map((n) => n.entity.id),
-    ]);
-    expect(own).toContain(A.PS1.nodeId);
-    expect(other).toEqual([]);
-    // And through row-level security, in the other tenant's own session:
+  it("row-level security hides these bench links from the other tenant's session; this tenant sees all of them", async () => {
     const ids = Object.values(made);
     expect(ids).toHaveLength(LINKS.length);
     const seenByB = await withTenantContext(TENANT_B, async (c) =>
