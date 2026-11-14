@@ -391,8 +391,11 @@ class TestRelationshipVocabulary:
         assert blind, "expected names that differ between writer and reader"
         text = (REPO_ROOT / self.READER).read_text()
         assert "kg-relationship-read-view" in text
-        bare = re.findall(r"(?:FROM|JOIN)\s+kg_relationships\b", text)
-        assert not bare, f"{len(bare)} read(s) of the bare table go around the shared view"
+        # ONE bare read is deliberate: fault OCCURRENCES ('had_fault' rows with their own
+        # time). Every relationship-fact read must go through the view.
+        bare = [m.end() for m in re.finditer(r"(?:FROM|JOIN)\s+kg_relationships\b", text)]
+        assert len(bare) == 1, f"{len(bare)} read(s) of the bare table; exactly one is allowed"
+        assert "r.relationship_type = 'had_fault'" in text[bare[0] : bare[0] + 500]
         view = (REPO_ROOT / self.VIEW).read_text()
         assert "legacyAliasesOfCanonicalEdges" in view  # derived from the writer's own mapping
 

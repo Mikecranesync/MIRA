@@ -57,6 +57,9 @@ export interface QueryClient {
   query: (text: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
 }
 
+/** Triggers that change whether a relationship fact is current; serialized per fact. */
+const FACT_SERIALIZED_TRIGGERS: ReadonlySet<string> = new Set(["accept", "supersede"]);
+
 export interface ProposalTransitionInput {
   trigger: ProposalTrigger;
   /** relationship_proposals.id (for kg_edge proposals). */
@@ -100,6 +103,22 @@ export async function applyHubProposalTransition(
   }
   const reviewer = input.reviewerLabel ?? null;
   const reason = input.reason ?? "";
+
+  // 0) accept / supersede decide whether ONE fact (tenant, endpoints, type) is current, and
+  // each reads the other proposals for that fact. Two such decisions running at once could
+  // each see the other's proposal as still verified and both leave the edge current. A
+  // transaction-scoped advisory lock on the fact makes them take turns; the second then
+  // reads the first one's committed result. Released at commit/rollback.
+  if (FACT_SERIALIZED_TRIGGERS.has(input.trigger) && input.relationshipProposalId) {
+    await client.query(
+      `SELECT pg_advisory_xact_lock(hashtextextended(
+                p.tenant_id::text || '|' || p.source_entity_id::text || '|' ||
+                p.target_entity_id::text || '|' || p.relationship_type, 0))
+         FROM relationship_proposals p
+        WHERE p.id = $1`,
+      [input.relationshipProposalId],
+    );
+  }
 
   // 1) relationship_proposals (kg_edge projection)
   if (map.relationshipProposal && input.relationshipProposalId) {

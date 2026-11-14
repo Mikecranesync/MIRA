@@ -486,11 +486,15 @@ export async function maintenanceContext(
           ORDER BY e.name LIMIT 20`,
         [tenantId, equipment.id],
       ),
-      // Recent faults — count via had_fault relationships in window
+      // Recent faults — count via had_fault relationships in window.
+      // The bare table on purpose (the one read here that does not use the shared view):
+      // each stored 'had_fault' row is one OCCURRENCE with its own time. An approved
+      // HAS_FAILURE_MODE relationship is a fact about the pair, not an occurrence, and the
+      // view would present it as one with no time (review finding on #5543).
       client.query<{ code: string; count: string; last_seen: string }>(
         `SELECT e.entity_id AS code, COUNT(*)::text AS count,
-                MAX((r.properties->>'occurred_at')::timestamptz) AS last_seen
-           FROM ${KG_EDGES_LEGACY} r
+                MAX(COALESCE((r.properties->>'occurred_at')::timestamptz, r.created_at)) AS last_seen
+           FROM kg_relationships r
            JOIN kg_entities e
              ON e.id = r.target_id
             AND e.tenant_id = r.tenant_id

@@ -59,7 +59,7 @@ import { withTenantContext } from "@/lib/tenant-context";
 import { applyHubProposalTransition } from "@/lib/proposal-transition";
 import { mintAssetBridgeNode } from "@/lib/knowledge-graph/asset-bridge";
 import { mapToCanonicalEdge, upsertInferredProposal } from "@/lib/knowledge-graph/proposals-writer";
-import { buildGraphContext, classifyKgIntent } from "@/lib/knowledge-graph/context-builder";
+import { buildGraphContext, classifyKgIntent, formatMaintenanceContext } from "@/lib/knowledge-graph/context-builder";
 import { flagPmMismatches } from "@/lib/knowledge-graph/plan-vs-actual";
 import { impactAnalysis, maintenanceContext, rootCauseChain, traverseChain } from "@/lib/knowledge-graph/traversal";
 import { POST as decidePOST } from "@/app/api/proposals/[id]/decide/route";
@@ -1029,5 +1029,100 @@ describe("9. findings from the independent review of the repair (#5543 round 1)"
     expect(await count()).toEqual(before); // approval alone changes nothing
     await edge("had_fault", fault, "proposed", 1); // a real third occurrence does
     expect(await count()).not.toEqual(before);
+  });
+});
+
+describe("10. findings from the second review of the repair (#5543 round 2)", () => {
+  it("an approved failure-mode fact is not shown as a recent fault; a real dated occurrence is", async () => {
+    const fault = String(
+      (
+        await admin.query(
+          `INSERT INTO kg_entities (tenant_id, entity_type, entity_id, name, approval_state)
+           VALUES ($1::uuid, 'fault_code', 'BENCH-F10', 'BENCH-F10', 'verified') RETURNING id::text AS id`,
+          [TENANT_A],
+        )
+      ).rows[0].id,
+    );
+    const edge = (type: string, props: Record<string, unknown>) =>
+      admin.query(
+        `INSERT INTO kg_relationships (tenant_id, source_id, target_id, relationship_type, approval_state, properties)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'verified', $5::jsonb)`,
+        [TENANT_A, A.VFD2.nodeId, fault, type, JSON.stringify(props)],
+      );
+    const read = async () => {
+      const mc = await maintenanceContext(TENANT_A, A.VFD2.assetId);
+      if (!mc) throw new Error("maintenanceContext returned null");
+      return { faults: mc.recentFaults.filter((f) => f.code === "BENCH-F10"), text: formatMaintenanceContext(mc) };
+    };
+
+    await edge("HAS_FAILURE_MODE", {}); // the approved fact, no occurrence recorded
+    const none = await read();
+    expect(none.faults).toEqual([]);
+    expect(none.text).not.toContain("BENCH-F10");
+    expect(none.text).not.toContain("1970-01-01");
+
+    const when = new Date(Date.now() - 2 * 86400000);
+    await edge("had_fault", { occurred_at: when.toISOString() }); // a real occurrence
+    const one = await read();
+    expect(one.faults).toHaveLength(1);
+    expect(one.faults[0].count).toBe(1); // the fact is still not a second occurrence
+    expect(one.faults[0].lastSeen.toISOString().slice(0, 10)).toBe(when.toISOString().slice(0, 10));
+    expect(one.text).toContain("BENCH-F10");
+  });
+
+  it("two supersedes of one fact running at once take turns, and the edge leaves the verified set", async () => {
+    A.RACE = await install(TENANT_A, "RACE1", "race fixture load", "FactoryLM bench", "RACE-1");
+    const proposal = async () =>
+      String(
+        (
+          await admin.query(
+            `INSERT INTO relationship_proposals
+               (tenant_id, source_entity_id, source_entity_type, target_entity_id, target_entity_type,
+                relationship_type, confidence, created_by, reasoning, status)
+             VALUES ($1::uuid, $2::uuid, 'equipment', $3::uuid, 'equipment', 'UPSTREAM_OF', 0.8, 'human',
+                     'bench contract: concurrent supersede', 'verified')
+             RETURNING id::text AS id`,
+            [TENANT_A, A.VFD2.nodeId, A.RACE.nodeId],
+          )
+        ).rows[0].id,
+      );
+    const [p1, p2] = [await proposal(), await proposal()];
+    const edgeId = String(
+      (
+        await admin.query(
+          `INSERT INTO kg_relationships
+             (tenant_id, source_id, target_id, relationship_type, approval_state, relationship_proposal_id)
+           VALUES ($1::uuid, $2::uuid, $3::uuid, 'UPSTREAM_OF', 'verified', $4::uuid) RETURNING id::text AS id`,
+          [TENANT_A, A.VFD2.nodeId, A.RACE.nodeId, p1],
+        )
+      ).rows[0].id,
+    );
+    expect(await downstreamNodeIds(TENANT_A, A.VFD2)).toContain(A.RACE.nodeId);
+
+    // Two REAL connections, each in its own transaction, as two concurrent requests would be.
+    const [c1, c2] = [await testPool.connect(), await testPool.connect()];
+    try {
+      await c1.query("BEGIN");
+      await c2.query("BEGIN");
+      const first = await applyHubProposalTransition(c1, { trigger: "supersede", relationshipProposalId: p1 });
+      expect(first.kgEdgesDemoted).toBe(0); // p2 is still verified: correctly not demoted yet
+      let secondDone = false;
+      const second = applyHubProposalTransition(c2, { trigger: "supersede", relationshipProposalId: p2 }).then(
+        (r) => ((secondDone = true), r),
+      );
+      await new Promise((r) => setTimeout(r, 400));
+      expect(secondDone).toBe(false); // it waits for the first decision instead of reading around it
+      await c1.query("COMMIT");
+      expect((await second).kgEdgesDemoted).toBe(1); // and then sees the first one's result
+      await c2.query("COMMIT");
+    } finally {
+      await c1.query("ROLLBACK").catch(() => undefined);
+      await c2.query("ROLLBACK").catch(() => undefined);
+      c1.release();
+      c2.release();
+    }
+    const state = await admin.query(`SELECT approval_state FROM kg_relationships WHERE id = $1::uuid`, [edgeId]);
+    expect(state.rows[0].approval_state).toBe("rejected");
+    expect(await downstreamNodeIds(TENANT_A, A.VFD2)).not.toContain(A.RACE.nodeId);
   });
 });

@@ -14,7 +14,7 @@ honour on the paths the bench pilot uses, and what proves it?*
 | `main` | `20fda901e3ea2c2ca2b4af8556eedc27c202c12f` | — |
 | PR #5530 (ontology coverage gate + runtime mapping) — **the review candidate, untouched** | `c7a21990b391af70e62e4656a7cccc5b6cb4f01c` | draft, 0 behind main, checks green on that head, no GitHub review |
 | This follow-on (local branch `test/ontology-bench-runtime-contract`, stacked on #5530; pushed as draft PR #5539) | the commit that adds this file (see `git log c7a21990b..`) | tests + mapping only; no production code |
-| PR #5504 (bench components) — not mine; its tests executed by me at this head | `e649880b1b51dcc010b539181a74a88f98ef7bea` | draft; last review found 2 HIGH on selection paths, owner repairing locally; migration 115 proposed, applied nowhere |
+| PR #5504 (bench components) — not mine; its tests executed by me at this head | `e649880b1b51dcc010b539181a74a88f98ef7bea` | draft; last review found 2 HIGH on selection paths, owner repairing locally; migration 115 proposed, applied nowhere. **The PR has since moved** (head `da033f26a` when checked 2026-11-14 afternoon); my runs were NOT repeated at the newer head |
 | #5504 owner's **local candidate** (not pushed, not reviewed) | `f1be6b8f03a755af4f10ead16608f5cff19c1829` | the owner reports it repairs the two HIGH findings. I re-ran there: its store suite 19/19 on a disposable database, its unit and mocked-route suites 152/152, and my five probes 5/5. Migration 115 file unchanged (sha256 `4b23ca7f…`). |
 
 ## Two paths. Do not merge them in your head.
@@ -161,8 +161,11 @@ scope, and the old reading still resolves in history. That is a document fact, n
 
 #5519 and #5523 were claimed by this lane on 2026-11-14 with the owner's authorization. This
 branch carries the #5519 reader repair and the #5523 repair (supersede demotes the row; ADR-0017
-amended). Neither is pushed or independently reviewed. Still open on #5523: no caller fires
-supersede, `contradicted` is unchanged, no rollback/retry/concurrency tests. The others have no owner. The tests are the executable contracts a repair is made against: when a repair
+amended), in draft PR #5543; its independent review has not yet returned a clean verdict.
+Still open on #5523: no caller fires supersede, `contradicted` is unchanged, no rollback or
+retry tests. Concurrency: accept and supersede take a per-fact transaction lock, and ONE case is
+tested on two real connections (two supersedes of one fact); accept racing supersede is not
+tested. The others have no owner. The tests are the executable contracts a repair is made against: when a repair
 lands, the matching known-gap test goes red and says to convert it.
 
 ## Readers outside the shared view (found by search, 2026-11-14)
@@ -173,6 +176,8 @@ is `rejected`, so what each does with it depends only on its own approval filter
 
 | Reader | Filters on `verified`? | Serves a superseded row? |
 |---|---|---|
+| `maintenanceContext` recent faults (`traversal.ts`) — deliberate: counts stored `had_fault` OCCURRENCE rows, which the view would mix with approved failure-mode facts | yes | no |
+| `plan-vs-actual.ts` fault occurrences — deliberate, same reason | no (occurrence rows are written `proposed`) | n/a: occurrences are not superseded facts |
 | `api/mira/ask/route.ts` | yes | no |
 | `mira-bots/shared/interlock_context.py` | yes | no |
 | `lib/i3x/data-access.ts` (external read API) | yes, in application code | no |
