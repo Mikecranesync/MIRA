@@ -835,12 +835,27 @@ export type ExcludedTable = {
    *  nobody's in particular, not because it is another model's. The models are
    *  the whole block's, the record's own key among them. */
   unqualified?: true;
+  /** Layout-bounded section, rather than a model column. */
+  section?: true;
 };
 
 /** Static text plus model keys and page numbers only; no value or wording from
  *  an excluded passage reaches it. The record's own unreadable lines are named
  *  by page only — never as "another model's" table. */
 export function excludedTablesRefusalText(recordNumber: string, excluded: ExcludedTable[]): string {
+  const sections = excluded.filter((e) => e.section && !e.unqualified);
+  const unreadableSections = excluded.filter((e) => e.section && e.unqualified);
+  if (sections.length > 0) {
+    const pages = [...new Set(sections.map((e) => e.page).filter((p): p is number => p !== null))].sort((a, b) => a - b);
+    const where = pages.length === 0 ? "" : ` on ${pages.length === 1 ? "page" : "pages"} ${pages.join(", ")}`;
+    const models = listed([...new Set(sections.flatMap((e) => e.models))]);
+    return `This manual's section${where} is for other variants (${models}), and its applicability to the ${recordNumber} is not established. I won't use that section to answer for the ${recordNumber}. Add the page that explicitly covers the ${recordNumber} and the specification in question, then ask again.`;
+  }
+  if (unreadableSections.length > 0) {
+    const pages = [...new Set(unreadableSections.map((e) => e.page).filter((p): p is number => p !== null))].sort((a, b) => a - b);
+    const where = pages.length === 0 ? "" : ` on ${pages.length === 1 ? "page" : "pages"} ${pages.join(", ")}`;
+    return `I could not read which models this manual's section${where} applies to, so I won't use it to answer for the ${recordNumber}. Add a clearer page that establishes applicability to the ${recordNumber} and the specification in question, then ask again.`;
+  }
   const siblings = excluded.filter((e) => !e.unqualified);
   const unresolved = excluded.filter((e) => e.unqualified);
   const pagesOf = (list: ExcludedTable[]) => [...new Set(list.map((e) => e.page).filter((p): p is number => p !== null))].sort((a, b) => a - b);

@@ -2026,7 +2026,7 @@ export async function retrieveNodeChunks(
           ${PAGE_LABEL_SQL},
           section_path,
           metadata->>'filename' AS filename,
-          metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified,
+          metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, metadata->>'table_scope' AS table_scope,
           ${documentHeadingSql},
           verified,
           tsvector_to_array(content_tsv) AS lexemes,
@@ -2084,7 +2084,7 @@ export async function retrieveNodeChunks(
           ${PAGE_LABEL_SQL},
           section_path,
           metadata->>'filename' AS filename,
-          metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified,
+          metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, metadata->>'table_scope' AS table_scope,
           ${documentHeadingSql},
           verified,
           tsvector_to_array(content_tsv) AS lexemes,
@@ -2200,7 +2200,7 @@ export async function retrieveNodeChunks(
             ${PAGE_LABEL_SQL},
             section_path,
             metadata->>'filename' AS filename,
-            metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified,
+            metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, metadata->>'table_scope' AS table_scope,
             ${documentHeadingSql},
             verified,
             tsvector_to_array(content_tsv) AS lexemes,
@@ -2373,7 +2373,7 @@ export async function retrieveNodeChunks(
         `SELECT
             content, doc_id::text AS doc_id, source_url, source_page, page_start,
             ${PAGE_LABEL_SQL},
-            section_path, metadata->>'filename' AS filename, metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, verified,
+            section_path, metadata->>'filename' AS filename, metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, metadata->>'table_scope' AS table_scope, verified,
             ${documentHeadingSql},
             tsvector_to_array(content_tsv) AS lexemes,
             0::float4 AS rank
@@ -2651,6 +2651,7 @@ export async function retrieveNodeChunks(
       if (!ofRecordFamily) return null;
       return isUnresolvedTableLine(r) || !tagged.includes(recordKey) ? tagged : null;
     }
+    if (r.table_scope === "shared") return null;
     if (recordFamilyNumbers.length === 0) return null;
     const named = modelNumbersIn(String(r.content ?? ""));
     if (named.some((n) => recordFamilyNumbers.some((own) => own.key === n.key))) return null;
@@ -2671,6 +2672,7 @@ export async function retrieveNodeChunks(
       page: Number.isFinite(page) ? page : null,
       models,
       ...(isUnresolvedTableLine(r) ? { unqualified: true as const } : {}),
+      ...(r.table_scope === "section" || r.table_scope === "unresolved" ? { section: true as const } : {}),
     });
   };
   // Which selected manuals admit() has judged. A manual the search returned no
@@ -2972,7 +2974,7 @@ export async function retrieveNodeChunks(
                 page_start,
                 section_path,
                 metadata->>'filename' AS filename,
-                metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified,
+                metadata->'table_models' AS table_models, metadata->'table_unqualified' AS table_unqualified, metadata->>'table_scope' AS table_scope,
                 ${documentHeadingSql},
                 verified,
                 tsvector_to_array(content_tsv) AS lexemes,

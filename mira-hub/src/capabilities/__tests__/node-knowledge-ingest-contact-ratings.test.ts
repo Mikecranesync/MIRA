@@ -96,10 +96,10 @@ describe("writePdfChunksForNode writes a contact-ratings table's columns under t
     expect(lines[at + 5]).toBe("Analog Output Specifications");
   });
 
-  it("each row's line is written once for the page, and every chunk is stamped extraction version 4", async () => {
+  it("each row's line is written once for the page, and every chunk is stamped extraction version 5", async () => {
     const rows = await write();
     expect(rows.flatMap((r) => r.content.split("\n")).filter((l) => l.startsWith(COLUMN_LINE_MARK))).toHaveLength(4);
-    for (const r of rows) expect(r.metadata.extraction_version).toBe(4);
+    for (const r of rows) expect(r.metadata.extraction_version).toBe(5);
   });
 
   it("nothing of the page's own text is lost or changed: without the column lines it chunks as before", async () => {
