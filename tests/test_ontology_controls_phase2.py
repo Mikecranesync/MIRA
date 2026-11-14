@@ -23,7 +23,9 @@ from pathlib import Path
 import pytest
 
 pytest.importorskip("rdflib", reason="ontology toolchain: pip install -r ontology/requirements.txt")
-pytest.importorskip("pyshacl", reason="ontology toolchain: pip install -r ontology/requirements.txt")
+pytest.importorskip(
+    "pyshacl", reason="ontology toolchain: pip install -r ontology/requirements.txt"
+)
 
 from rdflib import Graph  # noqa: E402
 

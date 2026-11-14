@@ -1,0 +1,380 @@
+{
+  "version": 1,
+  "audited_revision": "20fda901e3ea2c2ca2b4af8556eedc27c202c12f",
+  "description": "Which ontology rules the running application actually enforces. 'runtime' means a contract test executes the real code path and it rejects the bad case, within the stated scope. 'offline_only' means only tools/validate_ontology.py checks it, against fixtures; no live workflow calls the validator. 'planned' means the application does not do this today.",
+  "enforcement_values": [
+    "runtime",
+    "offline_only",
+    "planned"
+  ],
+  "vocabularies": [
+    {
+      "ontology_class": "ApprovalState",
+      "sources": [
+        {
+          "kind": "sql_check",
+          "file": "mira-hub/db/migrations/029_kg_approval_state.sql",
+          "table": "kg_entities",
+          "column": "approval_state"
+        },
+        {
+          "kind": "sql_check",
+          "file": "mira-hub/db/migrations/029_kg_approval_state.sql",
+          "table": "kg_relationships",
+          "column": "approval_state",
+          "ontology_only": [
+            "deprecated"
+          ],
+          "runtime_only": [],
+          "reason": "A relationship row cannot hold 'deprecated'; only an entity row can. Tracked in #5523."
+        },
+        {
+          "kind": "sql_check",
+          "file": "mira-hub/db/migrations/025_tag_entities.sql",
+          "table": "tag_entities",
+          "column": "approval_state",
+          "ontology_only": [
+            "deprecated"
+          ],
+          "runtime_only": [],
+          "reason": "Tag rows have no deprecated state."
+        },
+        {
+          "kind": "sql_check",
+          "file": "mira-hub/db/migrations/026_wiring_connections.sql",
+          "table": "wiring_connections",
+          "column": "approval_state",
+          "ontology_only": [
+            "deprecated"
+          ],
+          "runtime_only": [],
+          "reason": "Wiring rows have no deprecated state."
+        },
+        {
+          "kind": "python_set",
+          "file": "mira-bots/shared/proposal_transition.py",
+          "name": "KG_APPROVAL_STATES",
+          "ontology_only": [
+            "deprecated"
+          ],
+          "runtime_only": [],
+          "reason": "The engine-side writer never emits 'deprecated' (ADR-0017 supersede leaves the row unchanged). Tracked in #5523."
+        }
+      ]
+    },
+    {
+      "ontology_class": "QualityState",
+      "sources": [
+        {
+          "kind": "sql_check",
+          "file": "mira-hub/db/migrations/033_tag_events.sql",
+          "table": "tag_events",
+          "column": "quality"
+        },
+        {
+          "kind": "python_constants",
+          "file": "mira-bots/shared/live_snapshot.py",
+          "names": [
+            "GOOD",
+            "STALE",
+            "UNKNOWN"
+          ],
+          "ontology_only": [
+            "bad",
+            "uncertain"
+          ],
+          "runtime_only": [
+            "unknown"
+          ],
+          "reason": "The live-snapshot decoder uses three bands of its own; it never reports 'bad' or 'uncertain' and calls an undecodable tag 'unknown'. No tracking issue yet; listed as a remaining gap in #5528."
+        }
+      ]
+    },
+    {
+      "ontology_class": "ValueType",
+      "sources": [
+        {
+          "kind": "sql_check",
+          "file": "mira-hub/db/migrations/033_tag_events.sql",
+          "table": "tag_events",
+          "column": "value_type"
+        }
+      ]
+    },
+    {
+      "ontology_class": "FunctionClass",
+      "sources": [
+        {
+          "kind": "sql_check",
+          "file": "mira-hub/db/migrations/026_wiring_connections.sql",
+          "table": "wiring_connections",
+          "column": "function_class"
+        }
+      ]
+    },
+    {
+      "ontology_class": "TrustState",
+      "sources": [
+        {
+          "kind": "python_enum",
+          "file": "printsense/models.py",
+          "name": "TrustState"
+        }
+      ]
+    },
+    {
+      "ontology_class": "ProvenanceTier",
+      "sources": [
+        {
+          "kind": "python_set",
+          "file": "mira-bots/shared/drive_packs/loader.py",
+          "name": "_VALID_PROVENANCE"
+        }
+      ]
+    }
+  ],
+  "contracts": {
+    "stale-drive-data-gives-no-diagnosis": {
+      "status": "agrees",
+      "rule": "A reading taken while drive comms are lost is not used for a live diagnosis or a numeric claim.",
+      "code": [
+        "mira-bots/shared/live_snapshot.py"
+      ],
+      "call_path": "mira-bots/ask_api/app.py -> live_snapshot.normalize / render_status_block; mira-pipeline/ignition_chat.py -> live_snapshot.assess_from_paths",
+      "test": "tests/test_ontology_runtime_contract.py::TestStaleDriveData::test_lost_comms_marks_every_drive_value_stale_and_withholds_the_fault_card"
+    },
+    "fault-code-answer-is-scoped-to-one-drive-family": {
+      "status": "agrees",
+      "rule": "A fault code is answered only from the one drive family the question resolved to; two families in one question is refused.",
+      "code": [
+        "mira-bots/shared/drive_packs/resolver.py",
+        "mira-bots/shared/drive_packs/ask.py"
+      ],
+      "call_path": "mira-bots/ask_api/drive_pack.py and mira-bots/shared/engine.py -> drive_packs.ask.answer_question; mira-bots/shared/chat/fast_paths.py -> resolve_service_pack",
+      "test": "tests/test_ontology_runtime_contract.py::TestFaultFamilyScope::test_the_same_code_means_different_things_and_each_pack_answers_only_its_own"
+    },
+    "command-is-not-feedback": {
+      "status": "agrees",
+      "rule": "A RUN command is never taken as proof the motor is running; the two are separate tags and a mismatch is reported.",
+      "code": [
+        "plc/conv_simple_anomaly/rules_core.py"
+      ],
+      "call_path": "ignition/webdev/FactoryLM/api/diagnose -> rules_core.evaluate (CV-101 in-gateway rules only)",
+      "test": "tests/test_ontology_runtime_contract.py::TestCommandIsNotFeedback::test_run_command_without_run_feedback_is_reported_not_assumed"
+    },
+    "approval-state-vocabulary-is-a-database-check": {
+      "status": "agrees",
+      "rule": "A graph row cannot carry an approval state outside the allowed set.",
+      "code": [
+        "mira-hub/db/migrations/029_kg_approval_state.sql"
+      ],
+      "call_path": "PostgreSQL CHECK constraint on kg_entities / kg_relationships (every writer)",
+      "test": "tests/test_ontology_runtime_contract.py::TestApprovalStateInPostgres::test_migration_029_rejects_states_outside_each_tables_own_set"
+    },
+    "asset-agent-approval-needs-a-named-person": {
+      "status": "agrees",
+      "rule": "An asset agent cannot be approved without a named human actor.",
+      "code": [
+        "mira-bots/shared/asset_agent_transition.py"
+      ],
+      "call_path": "simlab/approval.py -> validate_transition; mira-pipeline/ignition_chat.py -> gate_decision. The Hub route uses the TypeScript twin, which this test does not execute.",
+      "test": "tests/test_ontology_runtime_contract.py::TestAssetAgentApproval::test_approval_without_an_actor_is_refused"
+    },
+    "superseded-fact-leaves-the-verified-set": {
+      "status": "disagrees",
+      "tracking": "#5523",
+      "rule": "A superseded assertion must not remain verified (R14c).",
+      "code": [
+        "mira-bots/shared/proposal_transition.py"
+      ],
+      "call_path": "apply_kg_approval(trigger='supersede') issues no write; readers filter approval_state = 'verified'. Only caller found: demo/factory_difference_engine/pipeline.py.",
+      "test": "tests/test_ontology_runtime_contract.py::TestSupersession::test_a_superseded_verified_edge_stops_being_served_as_verified"
+    },
+    "fault-code-identity-includes-the-model": {
+      "status": "disagrees",
+      "tracking": "#5520",
+      "rule": "Two models' fault codes are different things even when the code text matches (model vs installed-instance identity, R4).",
+      "code": [
+        "mira-crawler/ingest/kg_writer.py"
+      ],
+      "call_path": "mira-crawler ingest -> kg_writer.register_fault_code -> upsert_entity keyed (tenant, type, name)",
+      "test": "tests/test_ontology_runtime_contract.py::TestFaultCodeIdentity::test_two_models_sharing_a_code_get_two_graph_identities"
+    }
+  },
+  "shapes": {
+    "BooleanNotQuantityShape": {
+      "enforcement": "offline_only",
+      "nearest_runtime": "tag_events.value_type CHECK fixes the type vocabulary only"
+    },
+    "ClockProvenanceShape": {
+      "enforcement": "offline_only"
+    },
+    "CommandNotFeedbackShape": {
+      "enforcement": "runtime",
+      "contracts": [
+        "command-is-not-feedback"
+      ],
+      "scope": "CV-101 in-gateway anomaly rules only; no general signal-role check exists at ingest"
+    },
+    "LiveDiagnosisEligibilityShape": {
+      "enforcement": "runtime",
+      "contracts": [
+        "stale-drive-data-gives-no-diagnosis"
+      ],
+      "scope": "GS10 live-snapshot path only, and only the comms-lost case; there is no age-based staleness check"
+    },
+    "MeasurementCompletenessShape": {
+      "enforcement": "offline_only",
+      "nearest_runtime": "tag_events NOT NULL columns and quality CHECK"
+    },
+    "QuantityKindNeedsNonBoolShape": {
+      "enforcement": "offline_only"
+    },
+    "ReadOnlyPolicyShape": {
+      "enforcement": "offline_only",
+      "nearest_runtime": "materialized_evidence.context_contract.validate_context rejects write-shaped actions, but its flag MIRA_CONTEXT_CONTRACT is off by default; mira-bots/tests/test_drive_packs_readonly.py is a static CI gate"
+    },
+    "RegisterInterpretationShape": {
+      "enforcement": "offline_only",
+      "nearest_runtime": "drive_packs schema RegisterEntry"
+    },
+    "ScalingRuleShape": {
+      "enforcement": "offline_only"
+    },
+    "StaleCommsNumericClaimShape": {
+      "enforcement": "runtime",
+      "contracts": [
+        "stale-drive-data-gives-no-diagnosis"
+      ],
+      "scope": "GS10 live-snapshot path only"
+    },
+    "WritableSignalShape": {
+      "enforcement": "offline_only",
+      "nearest_runtime": "same as ReadOnlyPolicyShape"
+    },
+    "AssetClassHasNoUnsPathShape": {
+      "enforcement": "offline_only"
+    },
+    "AssetClassInstanceShape": {
+      "enforcement": "planned",
+      "tracking": "#5520",
+      "reason": "The graph writer keys a fault code by manufacturer and code text, so two models merge into one identity.",
+      "contracts": [
+        "fault-code-identity-includes-the-model"
+      ]
+    },
+    "ContainmentCycleShape": {
+      "enforcement": "offline_only"
+    },
+    "InstanceOfDirectionShape": {
+      "enforcement": "planned",
+      "tracking": "#5528",
+      "reason": "Unreachable under RDFS inference: the range of instance_of types any target as an asset class. Excluded from fixture coverage with a strict-xfail pin."
+    },
+    "SelfParentShape": {
+      "enforcement": "offline_only"
+    },
+    "DriveFamilyIdentityShape": {
+      "enforcement": "offline_only",
+      "nearest_runtime": "drive_packs resolver refuses a manufacturer-only question"
+    },
+    "FaultAppliedToWrongFamilyShape": {
+      "enforcement": "runtime",
+      "contracts": [
+        "fault-code-answer-is-scoped-to-one-drive-family"
+      ],
+      "scope": "Drive-pack answers only. The knowledge-graph path does not enforce it (#5520)"
+    },
+    "FaultCodeScopeShape": {
+      "enforcement": "offline_only"
+    },
+    "FaultCodeScopeTargetShape": {
+      "enforcement": "offline_only"
+    },
+    "ParameterCardCitationShape": {
+      "enforcement": "offline_only",
+      "nearest_runtime": "drive_packs loader; not verified by a contract test"
+    },
+    "RemedySafetyShape": {
+      "enforcement": "offline_only"
+    },
+    "ConductorEndpointsShape": {
+      "enforcement": "offline_only"
+    },
+    "ConnectionPointShape": {
+      "enforcement": "offline_only"
+    },
+    "PrintObservationEvidenceShape": {
+      "enforcement": "offline_only"
+    },
+    "PrintObservationSeparationShape": {
+      "enforcement": "offline_only"
+    },
+    "PromotedSymbolNeedsHumanShape": {
+      "enforcement": "offline_only",
+      "nearest_runtime": "wiring_connections.approval_state CHECK and the wiring_profile trusted() filter; not verified by a contract test"
+    },
+    "TerminalOwnershipShape": {
+      "enforcement": "offline_only"
+    },
+    "VerifiedConductorNoUnresolvedShape": {
+      "enforcement": "offline_only"
+    },
+    "ApprovedAssertionEvidenceShape": {
+      "enforcement": "offline_only",
+      "nearest_runtime": "No database constraint requires an approver, a timestamp or a citation on a verified graph row"
+    },
+    "ApproverIsNotProposerShape": {
+      "enforcement": "offline_only"
+    },
+    "AssertionShape": {
+      "enforcement": "runtime",
+      "contracts": [
+        "approval-state-vocabulary-is-a-database-check"
+      ],
+      "scope": "kg_entities and kg_relationships; each table has its own allowed set"
+    },
+    "CitationCompletenessShape": {
+      "enforcement": "offline_only"
+    },
+    "InferenceCannotSelfApproveShape": {
+      "enforcement": "offline_only",
+      "nearest_runtime": "asset_agent_transition requires a named actor for asset-agent approval (contract asset-agent-approval-needs-a-named-person); nothing equivalent guards a graph assertion"
+    },
+    "InvalidatedNotCurrentShape": {
+      "enforcement": "offline_only"
+    },
+    "MachineVerifiedIsNotApprovedShape": {
+      "enforcement": "offline_only",
+      "nearest_runtime": "printsense TrustState keeps machine_verified and human_verified apart; the graph tables have one flat 'verified'"
+    },
+    "ProvenanceTierIsNotApprovalShape": {
+      "enforcement": "offline_only"
+    },
+    "SupersededNotCurrentShape": {
+      "enforcement": "planned",
+      "tracking": "#5523",
+      "reason": "Readers admit any verified row without checking supersession.",
+      "contracts": [
+        "superseded-fact-leaves-the-verified-set"
+      ]
+    },
+    "SupersededStateShape": {
+      "enforcement": "planned",
+      "tracking": "#5523",
+      "reason": "The supersede transition leaves the graph row verified, and a relationship row cannot hold 'deprecated'.",
+      "contracts": [
+        "superseded-fact-leaves-the-verified-set"
+      ]
+    },
+    "FaultNotFaultCodeShape": {
+      "enforcement": "offline_only"
+    },
+    "ResolutionEvidenceShape": {
+      "enforcement": "offline_only"
+    },
+    "TechnicianObservationActorShape": {
+      "enforcement": "offline_only"
+    }
+  }
+}

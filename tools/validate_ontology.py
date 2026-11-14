@@ -32,6 +32,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import re
 import sys
@@ -86,6 +87,7 @@ class Result:
 class Report:
     results: list[Result] = field(default_factory=list)
     coverage_summary: str = ""
+    runtime_summary: str = ""
 
     def add(self, name: str, passed: bool, detail: str = "", skipped: bool = False) -> None:
         self.results.append(Result(name, passed, detail, skipped))
@@ -103,6 +105,7 @@ class Report:
                 "failed": sum(1 for r in counted if not r.passed),
                 "skipped": sum(1 for r in self.results if r.skipped),
                 "coverage": self.coverage_summary,
+                "runtime": self.runtime_summary,
                 "results": [
                     {"name": r.name, "passed": r.passed, "detail": r.detail, "skipped": r.skipped}
                     for r in self.results
@@ -126,6 +129,8 @@ class Report:
         suffix = f" ({n_skip} skipped)" if n_skip else ""
         if self.coverage_summary:
             lines.append(f"coverage: {self.coverage_summary}")
+        if self.runtime_summary:
+            lines.append(f"runtime:  {self.runtime_summary}")
         lines.append(f"{n_ok}/{len(counted)} checks passed{suffix}")
         return "\n".join(lines)
 
@@ -293,6 +298,7 @@ def run_shacl(data: Graph, onto: Graph, shapes: Graph) -> tuple[bool, Graph, str
 
 
 SH = Namespace("http://www.w3.org/ns/shacl#")
+MIRASH = Namespace("https://ontology.factorylm.com/mira/shapes#")
 
 
 def _local_name(node: URIRef) -> str | None:
@@ -623,18 +629,324 @@ def check_invalid_fixtures(report: Report, onto: Graph, shapes: Graph, root: Pat
 # ── main ───────────────────────────────────────────────────────────────
 
 
+# ── Phase 5: runtime contract (#5528) ──────────────────────────────────
+#
+# The phases above prove the ontology is self-consistent. They say nothing about whether the
+# application agrees with it — nothing in a live workflow calls this validator. This phase
+# checks the one file that records that relationship, ontology/mappings/runtime-contract.v1.json:
+#
+#   * every named shape states whether the application enforces it (runtime), only this tool
+#     checks it (offline_only), or the application does not do it today (planned);
+#   * a `runtime` claim must rest on a contract whose test exists and is not an expected failure;
+#   * each controlled vocabulary is compared, by reading the source, with the database CHECK
+#     constraints and Python constants it is "grounded in". A difference must be declared with a
+#     reason, and a declared difference that is no longer real fails too.
+#
+# It reads files only: no database, no imports of application code, no network.
+
+RUNTIME_CONTRACT = ONTOLOGY_DIR / "mappings" / "runtime-contract.v1.json"
+ENFORCEMENT_VALUES = ("runtime", "offline_only", "planned")
+_TABLE_RE = re.compile(r"(?:CREATE TABLE(?: IF NOT EXISTS)?|ALTER TABLE)\s+(\w+)", re.IGNORECASE)
+
+
+def _sql_check_values(path: Path, table: str, column: str) -> set[str]:
+    """The literals in `CHECK (<column> [IS NULL OR <column>] IN (...))` under `table`."""
+    text = path.read_text(encoding="utf-8")
+    check_re = re.compile(
+        rf"CHECK\s*\(\s*{re.escape(column)}\s+(?:IS NULL OR\s+{re.escape(column)}\s+)?IN\s*\(([^)]*)\)",
+        re.IGNORECASE,
+    )
+    found: list[set[str]] = []
+    for m in check_re.finditer(text):
+        owners = _TABLE_RE.findall(text[: m.start()])
+        if owners and owners[-1].lower() == table.lower():
+            found.append(set(re.findall(r"'([^']*)'", m.group(1))))
+    if len(found) != 1:
+        raise ValueError(f"{len(found)} CHECK constraints on {table}.{column} in {path.name}")
+    return found[0]
+
+
+def _python_values(path: Path, source: dict) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    kind = source["kind"]
+    if kind == "python_enum":
+        for node in tree.body:
+            if isinstance(node, ast.ClassDef) and node.name == source["name"]:
+                return {
+                    ast.literal_eval(st.value)
+                    for st in node.body
+                    if isinstance(st, ast.Assign) and isinstance(st.value, ast.Constant)
+                }
+        raise ValueError(f"no class {source['name']} in {path.name}")
+    wanted = [source["name"]] if kind == "python_set" else list(source["names"])
+    values: dict[str, set[str]] = {}
+    for node in ast.walk(tree):
+        target = None
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target = node.targets[0]
+        elif isinstance(node, ast.AnnAssign):
+            target = node.target
+        if not isinstance(target, ast.Name) or target.id not in wanted or node.value is None:
+            continue
+        value = node.value
+        if isinstance(value, ast.Call) and value.args:  # frozenset({...})
+            value = value.args[0]
+        literal = ast.literal_eval(value)
+        values[target.id] = {literal} if isinstance(literal, str) else set(literal)
+    missing = [n for n in wanted if n not in values]
+    if missing:
+        raise ValueError(f"no literal assignment for {missing} in {path.name}")
+    return set().union(*values.values())
+
+
+def _source_values(source: dict) -> set[str]:
+    path = REPO_ROOT / source["file"]
+    if source["kind"] == "sql_check":
+        return _sql_check_values(path, source["table"], source["column"])
+    if source["kind"] in ("python_set", "python_constants", "python_enum"):
+        return _python_values(path, source)
+    raise ValueError(f"unknown source kind {source['kind']!r}")
+
+
+def _source_label(source: dict) -> str:
+    where = source.get("table") or source.get("name") or "+".join(source.get("names", []))
+    return f"{Path(source['file']).name}:{where}"
+
+
+def check_vocabulary_drift(report: Report, onto: Graph, mapping: dict) -> None:
+    for vocab in mapping.get("vocabularies", []):
+        cls = vocab["ontology_class"]
+        labels = {
+            str(o) for s in onto.subjects(RDF.type, MIRA[cls]) for o in onto.objects(s, RDFS.label)
+        }
+        for source in vocab["sources"]:
+            name = f"vocab:{cls}:{_source_label(source)}"
+            if not labels:
+                report.add(name, False, f"mira:{cls} has no labelled members in the ontology")
+                continue
+            try:
+                runtime = _source_values(source)
+            except (OSError, ValueError, SyntaxError, KeyError) as exc:
+                report.add(name, False, f"cannot read the runtime vocabulary: {exc}")
+                continue
+            only_onto, only_run = sorted(labels - runtime), sorted(runtime - labels)
+            want_onto = sorted(source.get("ontology_only", []))
+            want_run = sorted(source.get("runtime_only", []))
+            problems = []
+            if (only_onto, only_run) != (want_onto, want_run):
+                problems.append(
+                    f"ontology-only {only_onto} / runtime-only {only_run}; "
+                    f"the mapping declares {want_onto} / {want_run}"
+                )
+            if (want_onto or want_run) and len(str(source.get("reason", "")).strip()) < 20:
+                problems.append("a declared difference needs a reason (20+ characters)")
+            report.add(name, not problems, "; ".join(problems))
+
+
+def _test_markers(test_id: str) -> tuple[bool, bool, bool]:
+    """(exists, is_xfail, is_strict) for a `path::Class::function` test id, read with ast."""
+    try:
+        rel, cls_name, fn_name = test_id.split("::")
+        tree = ast.parse((REPO_ROOT / rel).read_text(encoding="utf-8"))
+    except (ValueError, OSError, SyntaxError):
+        return False, False, False
+    for cls in tree.body:
+        if not (isinstance(cls, ast.ClassDef) and cls.name == cls_name):
+            continue
+        for fn in cls.body:
+            if isinstance(fn, ast.FunctionDef) and fn.name == fn_name:
+                decorators = [ast.unparse(d) for d in fn.decorator_list]
+                xfail = [d for d in decorators if "xfail" in d]
+                return True, bool(xfail), any("strict=True" in d for d in xfail)
+    return False, False, False
+
+
+def check_runtime_contract(
+    report: Report, onto: Graph, shapes: Graph, mapping_path: Path = RUNTIME_CONTRACT
+) -> None:
+    try:
+        mapping = json.loads(mapping_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        report.add("runtime:mapping-file", False, f"{mapping_path}: {exc}")
+        return
+
+    contracts: dict = mapping.get("contracts", {})
+    problems = []
+    for cid, c in sorted(contracts.items()):
+        for rel in c.get("code", []):
+            if not (REPO_ROOT / rel).is_file():
+                problems.append(f"{cid}: code path {rel} does not exist")
+        if not c.get("call_path"):
+            problems.append(f"{cid}: no call_path — an unused adapter is not enforcement")
+        exists, xfail, strict = _test_markers(c.get("test", ""))
+        if not exists:
+            problems.append(f"{cid}: test {c.get('test')!r} not found")
+        elif c.get("status") == "agrees" and xfail:
+            problems.append(f"{cid}: status 'agrees' but its test is marked xfail")
+        elif c.get("status") == "disagrees":
+            if not (xfail and strict):
+                problems.append(f"{cid}: status 'disagrees' needs a strict xfail test")
+            if not c.get("tracking"):
+                problems.append(f"{cid}: status 'disagrees' needs a tracking reference")
+        elif c.get("status") not in ("agrees", "disagrees"):
+            problems.append(f"{cid}: status must be agrees|disagrees")
+    report.add("runtime:contracts", not problems, "\n".join(problems))
+
+    declared = declared_shapes(shapes)
+    entries: dict = mapping.get("shapes", {})
+    problems = [f"{s}: no entry in {mapping_path.name}" for s in sorted(declared - set(entries))]
+    problems += [
+        f"{s}: entry for a shape that does not exist" for s in sorted(set(entries) - declared)
+    ]
+    counts = dict.fromkeys(ENFORCEMENT_VALUES, 0)
+    for shape, entry in sorted(entries.items()):
+        status = entry.get("enforcement")
+        if status not in ENFORCEMENT_VALUES:
+            problems.append(f"{shape}: enforcement must be one of {ENFORCEMENT_VALUES}")
+            continue
+        counts[status] += 1
+        refs = entry.get("contracts", [])
+        unknown = [r for r in refs if r not in contracts]
+        if unknown:
+            problems.append(f"{shape}: unknown contract(s) {unknown}")
+        if status == "runtime":
+            if not refs:
+                problems.append(f"{shape}: 'runtime' needs at least one contract test")
+            if any(contracts.get(r, {}).get("status") != "agrees" for r in refs):
+                problems.append(f"{shape}: 'runtime' rests on a contract the application fails")
+            if not entry.get("scope"):
+                problems.append(f"{shape}: 'runtime' must state its scope")
+        if status == "planned" and not entry.get("tracking"):
+            problems.append(f"{shape}: 'planned' needs a tracking reference")
+    report.runtime_summary = (
+        f"{counts['runtime']} enforced at runtime (within a stated scope), "
+        f"{counts['offline_only']} offline-only, {counts['planned']} not done by the application"
+    )
+    report.add("runtime:shape-mapping", not problems, "\n".join(problems))
+    check_vocabulary_drift(report, onto, mapping)
+
+
+# ── Shape inventory (generated document) ───────────────────────────────
+
+INVENTORY_FILE = ONTOLOGY_DIR / "SHAPE-INVENTORY.md"
+_ENFORCEMENT_TEXT = {
+    "runtime": "**Runtime**",
+    "offline_only": "Offline only",
+    "planned": "Not done by the app",
+}
+
+
+def _shape_rule(shapes: Graph, name: str) -> str:
+    node = MIRASH[name]
+    label = shapes.value(node, RDFS.label)
+    if label is None:
+        for holder in [node, *shapes.objects(node, SH.property), *shapes.objects(node, SH.sparql)]:
+            label = shapes.value(holder, SH.message)
+            if label is not None:
+                break
+    text = re.sub(r"\s+", " ", str(label or "")).replace("|", "/").strip()
+    return text if len(text) <= 110 else text[:107] + "..."
+
+
+def render_inventory(shapes: Graph, root: Path, mapping: dict) -> str:
+    """One row per shape: rule, fixtures both ways, and what the application really does."""
+    by_shape: dict[str, dict[str, list[str]]] = {}
+    for kind, regex in (("valid", PROTECTS_RE), ("invalid", EXPECT_RE)):
+        for f in sorted((root / kind).glob("*.ttl")):
+            for shape in _headers(regex, f.read_text(encoding="utf-8")):
+                by_shape.setdefault(shape, {}).setdefault(kind, []).append(f.stem)
+    excluded = {}
+    exclusions = root / EXCLUSIONS_FILE
+    if exclusions.is_file():
+        excluded = {e["shape"]: e for e in json.loads(exclusions.read_text(encoding="utf-8"))}
+    contracts = mapping.get("contracts", {})
+    lines = [
+        "# MIRA ontology: shape inventory",
+        "",
+        "Generated by `python tools/validate_ontology.py --write-inventory`. Do not edit by hand:",
+        "the validator fails when this file is out of date. Sources: the shape files, the fixture",
+        "headers, `fixtures/coverage-exclusions.json` and `mappings/runtime-contract.v1.json`.",
+        "",
+        "**Runtime** means a contract test runs the real application code and it rejects the bad",
+        "case, within the scope stated. **Offline only** means nothing but the validator checks",
+        "the rule, against fixtures; no live workflow calls the validator. **Not done by the app**",
+        "means the application behaves differently today (the tracking issue owns the repair).",
+        "",
+        "| Shape | Rule | Valid example | Invalid example | Enforcement | Runtime counterpart / gap |",
+        "|---|---|---|---|---|---|",
+    ]
+    for name in sorted(declared_shapes(shapes)):
+        entry = mapping.get("shapes", {}).get(name, {})
+        fx = by_shape.get(name, {})
+        cell = lambda items: "<br>".join(f"`{i}`" for i in items) or "none"  # noqa: E731
+        notes = []
+        if entry.get("scope"):
+            notes.append(f"Scope: {entry['scope']}.")
+        for cid in entry.get("contracts", []):
+            c = contracts.get(cid, {})
+            verdict = (
+                "agrees" if c.get("status") == "agrees" else f"DISAGREES ({c.get('tracking')})"
+            )
+            notes.append(f"Contract `{cid}`: app {verdict}.")
+        if entry.get("reason"):
+            notes.append(f"{entry['reason']} ({entry.get('tracking')})")
+        if entry.get("nearest_runtime"):
+            notes.append(f"Nearest runtime check: {entry['nearest_runtime']}.")
+        if name in excluded:
+            notes.append(f"Fixture coverage excluded: {excluded[name]['reason']}")
+        row = [
+            f"`{name}`",
+            _shape_rule(shapes, name),
+            cell(fx.get("valid", [])),
+            cell(fx.get("invalid", [])),
+            _ENFORCEMENT_TEXT.get(entry.get("enforcement", ""), "UNMAPPED"),
+            " ".join(notes).replace("|", "/") or "none",
+        ]
+        lines.append("| " + " | ".join(row) + " |")
+    lines += [
+        "",
+        "## Runtime contracts",
+        "",
+        "| Contract | Rule | App | Call path | Test |",
+        "|---|---|---|---|---|",
+    ]
+    for cid, c in sorted(contracts.items()):
+        verdict = "agrees" if c.get("status") == "agrees" else f"disagrees ({c.get('tracking')})"
+        lines.append(
+            f"| `{cid}` | {c.get('rule', '')} | {verdict} | {c.get('call_path', '')} "
+            f"| `{c.get('test', '').split('::', 1)[-1]}` |"
+        )
+    return "\n".join(lines) + "\n"
+
+
+def check_inventory_current(report: Report, shapes: Graph, root: Path, mapping: dict) -> None:
+    wanted = render_inventory(shapes, root, mapping)
+    current = INVENTORY_FILE.read_text(encoding="utf-8") if INVENTORY_FILE.is_file() else ""
+    report.add(
+        "runtime:inventory-current",
+        current == wanted,
+        f"{INVENTORY_FILE.relative_to(REPO_ROOT)} is out of date; "
+        "run: python tools/validate_ontology.py --write-inventory",
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Validate the MIRA ontology, shapes and fixtures.")
     ap.add_argument("--format", choices=["text", "json"], default="text")
     ap.add_argument("--fixtures", type=Path, default=FIXTURES_DIR, help="fixture root directory")
     ap.add_argument(
         "--only",
-        choices=["syntax", "hygiene", "valid", "invalid"],
+        choices=["syntax", "hygiene", "valid", "invalid", "runtime"],
         action="append",
         help="run only the named phase(s); repeatable",
     )
+    ap.add_argument(
+        "--write-inventory",
+        action="store_true",
+        help=f"regenerate {INVENTORY_FILE.name} from the shapes, fixtures and runtime mapping",
+    )
     args = ap.parse_args(argv)
-    phases = set(args.only or ["syntax", "hygiene", "valid", "invalid"])
+    phases = set(args.only or ["syntax", "hygiene", "valid", "invalid", "runtime"])
 
     report = Report()
     onto, shapes = check_syntax(report)
@@ -653,6 +965,15 @@ def main(argv: list[str] | None = None) -> int:
     if "invalid" in phases:
         check_invalid_fixtures(report, onto, shapes, args.fixtures)
         check_fixture_coverage(report, onto, shapes, args.fixtures)
+    if "runtime" in phases:
+        check_runtime_contract(report, onto, shapes)
+        if RUNTIME_CONTRACT.is_file() and args.fixtures == FIXTURES_DIR:
+            mapping = json.loads(RUNTIME_CONTRACT.read_text(encoding="utf-8"))
+            if args.write_inventory:
+                INVENTORY_FILE.write_text(
+                    render_inventory(shapes, args.fixtures, mapping), encoding="utf-8"
+                )
+            check_inventory_current(report, shapes, args.fixtures, mapping)
 
     print(report.to_json() if args.format == "json" else report.to_text())
     return 0 if report.ok else 1
