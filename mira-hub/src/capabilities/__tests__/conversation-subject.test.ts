@@ -226,6 +226,11 @@ describe("#5485: a phone's spelling reads the same as plain typing", () => {
     "ok back to mine\u2026 what frame size is it",
     "ok back to mine\u2014what frame size is it",
     "let\u2019s go back to mine, what is its rated input current?",
+    // #5493 (Codex r2 on #5490, F2): a mixed dash run BEFORE the phrase is punctuation too.
+    "ok\u2014-back to mine, what frame size is it",
+    "ok\u2013-back to mine, what frame size is it",
+    "ok - -back to mine, what frame size is it",
+    "ok -\u2014back to mine, what frame size is it",
   ])("is a return: %j", (q) => {
     expect(returnsToRecord(q)).toBe(true);
   });
@@ -248,6 +253,15 @@ describe("#5485: a phone's spelling reads the same as plain typing", () => {
     // A single hyphen-equivalent is a hyphen, not a clause break: "mine-ish" is not a return, in any spelling.
     "back to mine\u2011ish what frame size is it",
     "back to mine-ish what frame size is it",
+    // #5493 controls: only punctuation is dropped before the phrase. A word there still has to be a
+    // connective, and the "?" and reversal rules after the phrase still hold behind a dash run.
+    "ok\u2014-not back to mine, what frame size is it",
+    "ok\u2014-x-back to mine, what frame size is it",
+    // Only hyphen tokens are dropped: a full-width question mark beside the phrase still fails closed.
+    "ok\u2014-back to mine \uFF1F",
+    "ok\u2014-back to mine\u2014-? What is its rated input current?",
+    "ok\u2014-back to mine\u2014-actually wait, what is its VT current",
+    "ok\u2014-back to mine what frame size is it",
     // Out of scope, still fails closed: full-width punctuation is not read as a clause break.
     "back to mine\uFF0Cwhat frame size is it",
     "back to mine\uFF1F",
