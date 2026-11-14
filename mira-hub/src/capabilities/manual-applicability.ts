@@ -521,14 +521,19 @@ const POINTER_WORDS = new Set(["see", "refer", "consult", "use"]);
 function continuesSentence(below: string): boolean {
   const words = wordsOf(below);
   const first = (words[0] ?? "").toLowerCase();
-  // A wrapped sentence starts with an ordinary lower-case word ("is not …",
-  // "and accessories …"). A brand that starts small ("iC7 Series") is not one,
-  // nor is a web address ("http://…" sits under the catalog list on a real cover).
-  if (/^[a-z]+$/.test(words[0] ?? "") && !/^[a-z][a-z0-9+.-]*:\/\//i.test(below.trim())) return true;
-  // "CAN Interface Module" is a part, "Can be found in …" is a sentence.
+  // Predicate, exclusion and pointer semantics win before title recognition.
+  // "CAN Interface Module" is a part; "Can be found ..." is a sentence.
   const acronym = (words[0] ?? "") === "CAN" && /[a-z]/.test(below);
   if ((PREDICATE_WORDS.has(first) && !isMonthMay(words, 0) && !acronym && !isNotationNoun(words, 0)) || isExclusionWord(first)) return true;
-  return POINTER_WORDS.has(first) && modelNumbersIn(below).length === 0;
+  if (POINTER_WORDS.has(first) && modelNumbersIn(below).length === 0) return true;
+  if (/^(?:and|or)$/i.test(first)) return true;
+  // The same strict title-noun test used beside a catalog line applies regardless of
+  // case. Real covers put a lowercase product title below a bare catalog number.
+  // Do not turn that noun phrase into prose merely because its first letter is small.
+  if (isTitleLine(below, true) && hasTitleNoun(below)) return false;
+  // Other lowercase lines continue the sentence. A brand starting small (iC7 Series)
+  // and a web address are not ordinary lowercase words.
+  return /^[a-z]+$/.test(words[0] ?? "") && !/^[a-z][a-z0-9+.-]*:\/\//i.test(below.trim());
 }
 
 const HEADING_REACH = 6;

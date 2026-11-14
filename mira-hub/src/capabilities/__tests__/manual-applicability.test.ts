@@ -1424,3 +1424,20 @@ describe("what a cover declares it is for (numbers the detector does not read)",
     expect(text).toMatch(/add the Allen-Bradley Micro820 manual/);
   });
 });
+
+// Real CEF-republished Schneider sheet, printed Oct 6 2022: the lowercase
+// product title is a noun phrase below its catalog line, not a sentence.
+describe("catalog line above a product title has the same meaning in either case", () => {
+  it.each(["control relay, TeSys K, 4P(2NO+2NC), 690V,", "Control relay, TeSys K, 4P(2NO+2NC), 690V,"])("real source title: %s", (title) => {
+    expect(kindOf(verdict("CA3KN22BD coil voltage?", `Product data sheet\nCharacteristics\nCA3KN22BD\n${title}\n24V DC standard coil`, "manual.pdf"))).toBe("answers");
+  });
+  it.each(["compact logic controller", "variable frequency drive", "control relay", "pressure sensor module"])("synthetic product noun phrase: %s", (title) => {
+    for (const text of [title, title.toUpperCase()]) {
+      expect(kindOf(verdict("RX420 supply?", `Product data sheet\nRX420\n${text}`))).toBe("answers");
+      expect(verdict("RX410 supply?", `Product data sheet\nRX420\n${text}`)).toMatchObject({ admit: false });
+    }
+  });
+  it.each(["control relay is not covered", "control relay sold separately", "and relay modules", "or relay modules", "see relay manual", "use relay manual", "not a control relay", "relay excluded from this guide"])("sentence/exclusion still refuses: %s", (continuation) => {
+    expect(verdict("RX420 supply?", `RX420\n${continuation}`)).toMatchObject({ admit: false });
+  });
+});
