@@ -95,7 +95,8 @@ Stated plainly, by where the proof stands:
   shows retrieval itself would return both if handed both, so the exclusion is earned by the
   scope validator. With the approved-retrieval gate on, a private passage whose document is not
   in the approved set is withheld; with the gate **off it is served** (observed — the gate is an
-  environment setting; whether the pilot environment has it on was not checked). Another tenant
+  environment setting: read on 2026-11-14 it is `true` in the staging configuration and unset in
+  the dev configuration, with a compose default of `false`; production was not read). Another tenant
   handing in this tenant's document id retrieves nothing. Text-search lane only: no embeddings,
   no re-ranking, two one-passage documents.
 - **Still not demonstrated:** the chat route itself on a real database, the model call, and a
