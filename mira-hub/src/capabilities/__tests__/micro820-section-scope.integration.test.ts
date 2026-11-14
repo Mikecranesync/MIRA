@@ -68,9 +68,9 @@ beforeAll(async () => {
   // Same document/node identifiers on another tenant must not supply either a hit
   // or the header from which the current tenant's manual applicability is judged.
   await client.query(`INSERT INTO knowledge_entries
-    (tenant_id, content, source_url, doc_id, ingest_route, page_start, metadata)
+    (tenant_id, content, source_url, doc_id, ingest_route, page_start, metadata, is_private)
     VALUES ($1, 'foreignscope sentinel Micro810 relay contact ratings switching time analog output DC input surge current',
-      'node-doc/foreign/manual.pdf', $2, 'v2', 1, $3::jsonb)`,
+      'node-doc/foreign/manual.pdf', $2, 'v2', 1, $3::jsonb, true)`,
   [OTHER_TENANT, DOCUMENT, JSON.stringify({ node_id: NODE, filename: fixture.source })]);
 });
 

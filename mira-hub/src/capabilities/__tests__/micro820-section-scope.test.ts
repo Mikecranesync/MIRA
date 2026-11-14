@@ -40,7 +40,7 @@ async function ingestFixture() {
     filename: fixture.source, buffer: Buffer.from("%PDF source-bound fixture proxy") });
   const rows: Row[] = [];
   for (const { sql, params } of captured) {
-    if (!sql.includes("INSERT INTO knowledge_entries")) continue;
+    if (!sql.includes("INTO knowledge_entries")) continue;
     for (let i = 3; i + 3 < params.length; i += 4) {
       const meta = JSON.parse(params[i + 3] as string);
       rows.push({ id: params[i], content: params[i + 1] as string, page_start: params[i + 2] as number,
