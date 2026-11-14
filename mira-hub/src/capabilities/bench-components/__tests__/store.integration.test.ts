@@ -238,6 +238,40 @@ run("bench component store (real Postgres, RLS)", () => {
     expect(await listComponents(tenantA, nb)).toHaveLength(inventory.rows.length);
   });
 
+  it("a seed rerun after a technician confirmed a row still finds every row; a changed row is a conflict", async () => {
+    const inventory = JSON.parse(readFileSync(path.resolve(__dirname, "../../../../scripts/data/cv101-provisional-inventory.json"), "utf8")) as { rows: InventoryRow[] };
+    const nb = await makeNotebook(tenantA);
+    const seed = (rows: InventoryRow[]) =>
+      runSeed(
+        (i) => addComponent(tenantA, nb, SEED_USER, { clientRequestId: i.clientRequestId, kind: i.kind, origin: i.origin, position: i.position, revision: i.revision }),
+        seedInputs(nb, rows),
+      );
+    await seed(inventory.rows);
+    const vfd = (await listComponents(tenantA, nb)).find((c) => c.current!.localTag === "VFD1")!;
+    const confirmed = await reviseComponent(tenantA, nb, vfd.id, USER, { clientRequestId: uuid(), expectedRevision: 1, revision: rev(GS10, true) });
+    expect(confirmed.status).toBe("created");
+    const again = await seed(inventory.rows);
+    expect(again.map((o) => o.status)).toEqual(inventory.rows.map(() => "existing"));
+    // The confirmation is kept, not rewritten by the seed.
+    expect((await listComponents(tenantA, nb)).find((c) => c.id === vfd.id)!.current).toMatchObject({ revision: 2, identityStatus: "user_confirmed" });
+    // Control: the same request id with a different identity is still refused (the
+    // evidence note is not identity, so editing it alone is not a conflict).
+    const edited = inventory.rows.map((r) => (r.key === "PLC1" ? { ...r, localTag: "PLC9" } : r));
+    expect((await seed(edited))[0].status).toBe("request_id_conflict");
+  });
+
+  it("an add without a first revision, corrected later, is still found when the add is retried", async () => {
+    const request = uuid();
+    const add = () => addComponent(tenantA, notebookA, USER, { clientRequestId: request, kind: "relay", origin: "technician", position: null, revision: null });
+    const added = await add();
+    if (added.status !== "created") throw new Error(added.status);
+    await reviseComponent(tenantA, notebookA, added.component.id, USER, { clientRequestId: uuid(), expectedRevision: 0, revision: rev(GS10, false) });
+    const retried = await add();
+    expect(retried.status).toBe("existing");
+    if (retried.status !== "existing") throw new Error();
+    expect(retried.component.id).toBe(added.component.id);
+  });
+
   it("the database refuses a confirmed revision without a confirmation time (CHECK)", async () => {
     const added = await addComponent(tenantA, notebookA, USER, { clientRequestId: uuid(), kind: "x", origin: "inventory", position: null, revision: null });
     if (added.status !== "created") throw new Error();

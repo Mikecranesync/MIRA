@@ -131,6 +131,19 @@ export function revisionBodyFor(card: Card, confirm: boolean, threadId: string, 
   };
 }
 
+/**
+ * The request id an Add sends. While the draft is unchanged a second tap sends the
+ * same id, so a retry after a lost reply finds the component the first one made
+ * instead of adding another; a changed draft gets a new id.
+ */
+export type AddRequest = { draft: string; id: string };
+export function addRequestFor(prev: AddRequest | null, draft: string, newId: () => string): AddRequest {
+  return prev && prev.draft === draft ? prev : { draft, id: newId() };
+}
+
+/** A save that never reached the server (no reply at all). */
+export const CONNECTION_MESSAGE = "That didn't reach the server. Check the connection, then try again.";
+
 /** True when nothing on the card says what the component is. */
 export const cardIsEmpty = (card: Card) =>
   !card.rawLabel.trim() && CARD_FIELDS.every(([f]) => !card.values[f].trim());

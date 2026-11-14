@@ -144,7 +144,7 @@ import {
 import { ambiguousModelAskText, libraryNotForAskedModelText, namedModelMismatchText, siblingOfRecordAskText, subjectOutOfReachText, type NamedModelMismatch } from "@/capabilities/named-model-mismatch";
 import { readSubject, SUBJECT_READ_STEPS } from "@/capabilities/conversation-subject";
 import { notebookManualIdentity } from "@/capabilities/notebook-manual-identity";
-import { componentTurnFrame, noDocumentsForComponentText, readComponentSelection, resolveComponentTurn, type ComponentTurn } from "@/capabilities/bench-components/chat-turn";
+import { componentTurnFrame, noDocumentsForComponentText, readComponentSelection, resolveComponentTurn, selectionMovedText, type ComponentTurn } from "@/capabilities/bench-components/chat-turn";
 import { readSubjectUnderSelection } from "@/capabilities/bench-components/selection";
 import { listSelectionTurns, stampTurnComponent } from "@/capabilities/bench-components/store";
 import {
@@ -1736,30 +1736,40 @@ async function handleChatTurn(
 
   // Bench components: checked after the claim, so an exact retry still replays
   // its stored answer even if the selection moved since. A selection that no
-  // longer matches what the client showed answers nothing and writes nothing.
+  // longer matches what the client showed answers nothing and writes nothing —
+  // unless the question reports a hazard: an error must never stand in for the
+  // energized-work stop or the safety banner, so that turn is served as a hold
+  // about no component (the stop still wins below).
   let componentTurn: Exclude<ComponentTurn, { kind: "conflict" }> | null = null;
+  let selectionMoved = false;
   if (componentRequest && clientRequestId) {
     const resolved = await releaseClaimOnFailure(() =>
       resolveComponentTurn(ctx.tenantId, notebookId, ctx.userId, threadId ?? LEGACY_THREAD_ID, componentRequest, message),
     );
     if (resolved.kind === "conflict") {
-      await abandonRequestClaim();
-      endRoot();
-      return NextResponse.json(
-        { error: "selection_changed", message: "The component for this chat was changed on another screen.", selection: resolved.selection },
-        { status: 409 },
+      if (!questionSafetyTrigger && !energizedAskEarly) {
+        await abandonRequestClaim();
+        endRoot();
+        return NextResponse.json(
+          { error: "selection_changed", message: "The component for this chat was changed on another screen.", selection: resolved.selection },
+          { status: 409 },
+        );
+      }
+      selectionMoved = true;
+    } else {
+      componentTurn = resolved;
+      const revision = resolved.kind === "hold" ? resolved.revision : resolved.revision.revision;
+      const stamped = await releaseClaimOnFailure(() =>
+        stampTurnComponent(ctx.tenantId, notebookId, ctx.userId, clientRequestId, resolved.component.id, revision),
       );
+      if (!stamped) console.error("[notebook-chat] component stamp matched no turn row (turn kept unlabelled)");
     }
-    componentTurn = resolved;
-    const revision = resolved.kind === "hold" ? resolved.revision : resolved.revision.revision;
-    const stamped = await releaseClaimOnFailure(() =>
-      stampTurnComponent(ctx.tenantId, notebookId, ctx.userId, clientRequestId, resolved.component.id, revision),
-    );
-    if (!stamped) console.error("[notebook-chat] component stamp matched no turn row (turn kept unlabelled)");
   }
-  // A held turn (component not confirmed, no model number, or the question names
-  // another component of this bench) reads no manual and calls no provider.
-  const componentHold = componentTurn?.kind === "hold" ? componentTurn : null;
+  // A held turn (component not confirmed, no model number, the question names
+  // another component of this bench, or the selection moved under a hazard
+  // report) reads no manual and calls no provider — a safety flag included.
+  const componentHold: { text: string; reason: string } | null =
+    componentTurn?.kind === "hold" ? componentTurn : selectionMoved ? { text: selectionMovedText, reason: "selection_changed" } : null;
   const componentScope = componentTurn?.kind === "scoped" ? componentTurn : null;
 
   // PRD §27: no sources selected is an explicit, honest state — not a silent
@@ -2542,7 +2552,7 @@ async function handleChatTurn(
   // A selected component is never answered from the shared library by the
   // notebook's machine: its manuals are the notebook's documents or none.
   const oemRetrieval =
-    !guidedDeadEnd && !componentTurn && !notebookRetrieval && oemManufacturer !== null && !oemIdentity.ambiguous && !oemIdentity.failed;
+    !guidedDeadEnd && !componentTurn && !componentHold && !notebookRetrieval && oemManufacturer !== null && !oemIdentity.ambiguous && !oemIdentity.failed;
   const retrievalExecuted = notebookRetrieval || oemRetrieval;
   // #4687: only when a document search actually runs (Codex #4765 F3).
   if (retrievalExecuted) reportProgress(req, "searching_documentation");
@@ -3678,13 +3688,15 @@ async function handleChatTurn(
   // A flagged hazard turn is never swallowed by this abstain (owner decision
   // 2026-09-27): with no documents it takes the general lane, so the tech gets
   // the hazard banner and an answer instead of "couldn't find that".
-  if (chunks.length === 0 && (!general || libraryNotForAsk || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText) && (componentHold || !groundedMachineEntry) && !safetyTrigger) {
+  if (componentHold || (chunks.length === 0 && (!general || libraryNotForAsk || missingModelManual || noEvidenceForMachine || unidentifiedServiceText || photoPartLookup || photoPartCompatibilityText) && !groundedMachineEntry && !safetyTrigger)) {
     // Gate G — abstain honestly, persist the turn, never call the provider.
     // #4015: "couldn't find that in the documentation I have", not "I don't have
     // the manual" — a zero-hit scoped search does not prove the manual is absent
     // (staging holds 11 GS10 rows; a carrier-frequency query still hit none).
+    // A held component turn keeps the question's safety banner: the hold answers
+    // nothing, and the hazard is still flagged above it.
     const abstainAnswerText = componentHold
-      ? componentHold.text
+      ? withSafetyFlag(componentHold.text, safetyTrigger)
       : componentScope && !notebookRetrieval
       ? noDocumentsForComponentText(componentScope.label)
       : oemRetrievalFailed && (missingModelManual || noEvidenceForMachine)
@@ -3793,6 +3805,9 @@ async function handleChatTurn(
       // history read renders the same card the live turn showed.
       evidence: [
         ...disputeEntries,
+        // A held component turn can carry the energized-electrical notice; it is
+        // persisted so a reload shows the same flag (empty on every other abstain).
+        ...hazardEntries,
         ...(visualEntry ? [visualEntry] : []),
         // #4150 — the pending proposal is what a confirmation is checked against.
         ...(photoPartLookup?.proposal ? [photoPartLookup.proposal] : []),

@@ -100,6 +100,9 @@ export const noModelText = (label: string) =>
 /** The project has no searchable place for its documents (no namespace node), so nothing can be checked for the component. */
 export const noDocumentsForComponentText = (label: string) =>
   `This project's documents can't be searched yet, so I won't answer about ${label} from them. Attach its manual to the project, then ask again.`;
+/** A hazard report sent under a selection that changed on another screen: flagged, answered for no component. */
+export const selectionMovedText =
+  "The component for this chat was changed on another screen, so I won't answer this from any component's manual. Check the header, then ask again.";
 export const otherComponentText = (selectedLabel: string, namedLabel: string, named: string) =>
   `This chat is asking about ${selectedLabel}. Your question names ${named}, which is ${namedLabel} on this bench. Switch to ${namedLabel} to ask about it, or stay on ${selectedLabel}.`;
 

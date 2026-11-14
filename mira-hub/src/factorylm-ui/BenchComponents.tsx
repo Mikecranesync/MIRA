@@ -8,13 +8,15 @@
  * Renders nothing when the components routes are not there (404/503), so a
  * build that reaches a database without migration 115 is unchanged.
  */
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { API_BASE } from "@/lib/config";
 import { exactMatches, lookAlikes, type LookAlike } from "@/capabilities/bench-components/lookalike";
 import {
   CARD_FIELDS,
+  CONNECTION_MESSAGE,
   WHOLE_MACHINE,
   actionLabel,
+  addRequestFor,
   askingAbout,
   cardFor,
   cardIsEmpty,
@@ -24,6 +26,7 @@ import {
   selectedComponent,
   selectionChangeFor,
   statusTone,
+  type AddRequest,
   type BenchState,
   type Card,
   type ComponentAction,
@@ -92,6 +95,7 @@ export function BenchComponents({
   const [saving, setSaving] = useState(false);
   const [adding, setAdding] = useState({ localTag: "", kind: "", rawLabel: "" });
   const [handled, setHandled] = useState<ComponentTurnFrame | null>(null);
+  const addRequest = useRef<AddRequest | null>(null);
 
   const load = useCallback(async (): Promise<BenchState | null> => {
     try {
@@ -134,6 +138,9 @@ export function BenchComponents({
         }
         await load();
         return true;
+      } catch {
+        setMessage(CONNECTION_MESSAGE);
+        return false;
       } finally {
         setSaving(false);
       }
@@ -180,6 +187,8 @@ export function BenchComponents({
         setCard(null);
         await load();
         setMessage(confirm ? "Confirmed. Questions about it now use what you confirmed." : "Saved — not confirmed yet.");
+      } catch {
+        setMessage(CONNECTION_MESSAGE);
       } finally {
         setSaving(false);
       }
@@ -192,26 +201,30 @@ export function BenchComponents({
     setMessage(null);
     try {
       const rawLabel = adding.rawLabel.trim();
+      const draft = {
+        origin: "technician",
+        kind: adding.kind.trim() || null,
+        revision: { rawLabel: rawLabel || null, localTag: adding.localTag.trim() || null, inputKind: "typed" },
+      };
+      const request = addRequestFor(addRequest.current, JSON.stringify(draft), () => crypto.randomUUID());
+      addRequest.current = request;
       const res = await fetch(base(notebookId), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          clientRequestId: crypto.randomUUID(),
-          origin: "technician",
-          kind: adding.kind.trim() || null,
-          position: bench?.components.length ?? 0,
-          revision: { rawLabel: rawLabel || null, localTag: adding.localTag.trim() || null, inputKind: "typed" },
-        }),
+        body: JSON.stringify({ ...draft, clientRequestId: request.id, position: bench?.components.length ?? 0 }),
       });
       if (!res.ok) {
         setMessage(componentErrorMessage(await errorCode(res)));
         return;
       }
+      addRequest.current = null;
       setAdding({ localTag: "", kind: "", rawLabel: "" });
       const next = await load();
       const { componentId } = (await res.json().catch(() => ({}))) as { componentId?: string };
       const created = next?.components.find((c) => c.id === componentId);
       if (created) setCard(cardFor(created));
+    } catch {
+      setMessage(CONNECTION_MESSAGE);
     } finally {
       setSaving(false);
     }

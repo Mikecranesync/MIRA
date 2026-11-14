@@ -94,7 +94,8 @@ const seamMock = vi.hoisted(() => ({
 vi.mock("@/lib/inference/canonical-cascade", () => seamMock);
 
 import { POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
-import { noDocumentsForComponentText } from "@/capabilities/bench-components/chat-turn";
+import { noDocumentsForComponentText, selectionMovedText } from "@/capabilities/bench-components/chat-turn";
+import { ENERGIZED_ELECTRICAL_HAZARD, notebookSafetyTrigger, withSafetyFlag } from "@/lib/safety-classifier";
 
 function req(body: unknown) {
   return new NextRequest("http://test/api/equipment-notebooks/x/chat", {
@@ -280,6 +281,31 @@ describe("a held turn reads no manual and calls no provider", () => {
     expect(content).not.toContain("isn't confirmed yet");
     expect(statusOf(out).message ?? "").not.toContain("isn't confirmed yet");
   });
+
+  it("a safety flag does not lift the hold: the hold text is served under the banner, with no manual and no provider", async () => {
+    storeMock.getSelection.mockResolvedValue(selection(B1, 1, 1));
+    const out = await frames(await ask("I smell burning from the panel, what voltage is this button rated for", under(B1, 1)));
+    expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    expect(statusOf(out)).toMatchObject({
+      status: "insufficient_evidence",
+      message: withSafetyFlag("B1 · IDEC YW1B isn't confirmed yet, so I won't answer from the manuals for it. Check what its label says and tap Confirm, then ask again.", "smell burning"),
+    });
+    expect(componentFrame(out)?.actions).toEqual([{ action: "confirm", componentId: B1, label: "B1 · IDEC YW1B" }]);
+  });
+
+  it("the energized-electrical notice on a held turn is saved with it, so a reload shows the same flag", async () => {
+    const question = "how do I measure the 480V input with a meter while it is live";
+    expect(notebookSafetyTrigger(question)).toBe(ENERGIZED_ELECTRICAL_HAZARD);
+    storeMock.getSelection.mockResolvedValue(selection(B1, 1, 1));
+    const out = await frames(await ask(question, under(B1, 1)));
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    expect(statusOf(out).message).toContain("isn't confirmed yet");
+    expect(nbMock.recordTurn).toHaveBeenCalledWith(TENANT, NB, expect.objectContaining({
+      answerStatus: "insufficient_evidence",
+      evidence: expect.arrayContaining([{ kind: "safety_notice", trigger: ENERGIZED_ELECTRICAL_HAZARD }]),
+    }));
+  });
 });
 
 describe("the selection the client showed is checked, not trusted", () => {
@@ -293,6 +319,26 @@ describe("the selection the client showed is checked, not trusted", () => {
     expect(nbMock.recordTurn).not.toHaveBeenCalled();
     expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
     expect(storeMock.stampTurnComponent).not.toHaveBeenCalled();
+  });
+
+  it("a hazard report under a stale selection is not turned away: the banner is served and nothing is answered for any component", async () => {
+    const res = await ask("I smell burning from the panel, what voltage is this button rated for", under(VFD, 2));
+    expect(res.status).toBe(200);
+    const out = await frames(res);
+    expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    expect(statusOf(out)).toMatchObject({ status: "insufficient_evidence", message: withSafetyFlag(selectionMovedText, "smell burning") });
+    expect(componentFrame(out)).toBeUndefined();
+    expect(storeMock.stampTurnComponent).not.toHaveBeenCalled();
+    expect(nbMock.recordTurn).toHaveBeenCalledWith(TENANT, NB, expect.objectContaining({ answerStatus: "insufficient_evidence", clientRequestId: REQ }));
+  });
+
+  it("an energized-work ask under a stale selection gets the stop, not the 409", async () => {
+    const res = await ask("How do I pull the RFI jumper with it powered?", under(VFD, 2));
+    expect(res.status).toBe(200);
+    const out = await frames(res);
+    expect(out.find((f) => f.kind === "safety")).toBeDefined();
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
   });
 
   it("an exact retry replays its stored answer before the selection is consulted", async () => {

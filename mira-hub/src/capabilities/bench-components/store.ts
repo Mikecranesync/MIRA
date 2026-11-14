@@ -164,10 +164,18 @@ export async function addComponent(
       if (String(prior.rows[0].notebook_id) !== notebookId) return { status: "request_id_conflict" };
       const existing = await readComponent(c, tenantId, notebookId, String(prior.rows[0].id));
       if (!existing) return { status: "request_id_conflict" };
+      // A retry is compared with what the add itself wrote, not the latest revision:
+      // a component confirmed or corrected since is still the same add.
+      const first = await c.query(
+        `SELECT ${REVISION_COLS} FROM notebook_component_revisions r
+          WHERE r.tenant_id = $1::uuid AND r.component_id = $2::uuid AND r.revision = 1`,
+        [tenantId, existing.id],
+      );
+      const added = first.rows[0] && String(first.rows[0].revision_request_id) === input.clientRequestId ? toRevision(first.rows[0]) : null;
       const sameShape =
         existing.kind === input.kind &&
         existing.origin === input.origin &&
-        (input.revision === null ? existing.current === null : existing.current !== null && existing.current.revision === 1 && sameIdentity(existing.current, input.revision));
+        (input.revision === null ? added === null : added !== null && sameIdentity(added, input.revision));
       return sameShape ? { status: "existing", component: existing } : { status: "request_id_conflict" };
     }
     const inserted = await c.query(

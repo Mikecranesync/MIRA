@@ -13,6 +13,7 @@ import { ComponentRow, ConfirmationCard } from "./BenchComponents";
 import {
   WHOLE_MACHINE,
   actionLabel,
+  addRequestFor,
   askingAbout,
   cardFor,
   parseComponentFrames,
@@ -110,6 +111,21 @@ describe("the confirmation card", () => {
     expect(html).toContain("&quot;0&quot; (zero) where you typed &quot;O&quot; (letter O)");
     expect(html).toContain('value="GS11N-2OP2"');
     expect(html).not.toContain("Written exactly like this");
+  });
+});
+
+describe("adding a component", () => {
+  it("a second tap on the same draft sends the same request id, so a lost reply cannot add a copy", () => {
+    const newId = vi.fn(() => "id-1");
+    const first = addRequestFor(null, '{"kind":"relay"}', newId);
+    const retry = addRequestFor(first, '{"kind":"relay"}', vi.fn(() => "id-2"));
+    expect(retry.id).toBe("id-1");
+    expect(newId).toHaveBeenCalledTimes(1);
+  });
+
+  it("control: a changed draft gets a new request id (the old one would be refused as a different add)", () => {
+    const first = addRequestFor(null, '{"kind":"relay"}', () => "id-1");
+    expect(addRequestFor(first, '{"kind":"contactor"}', () => "id-2").id).toBe("id-2");
   });
 });
 

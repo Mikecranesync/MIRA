@@ -96,8 +96,11 @@ export function readRevisionInput(body: Record<string, unknown>, confirm: boolea
   if (requested === "user_confirmed" && !confirm) return { error: "confirmation_required" };
   const hasAny = IDENTITY_FIELDS.some((f) => fields[f]);
   const identityStatus: ComponentIdentityStatus = confirm ? "user_confirmed" : hasAny ? (requested as ComponentIdentityStatus) : "unknown";
-  const evidenceFileId = body.evidenceFileId == null ? null : isUuid(body.evidenceFileId) ? body.evidenceFileId : undefined;
-  if (evidenceFileId === undefined) return { error: "evidence_file_id_invalid" };
+  // No screen attaches a photo yet. The column's foreign key is checked across
+  // tenants, so a caller-supplied id would say whether another tenant's upload
+  // exists; it is refused until the photo path proves the file is this tenant's.
+  if (body.evidenceFileId != null) return { error: "evidence_file_id_unsupported" };
+  const evidenceFileId = null;
   const note = optionalText(body.evidenceNote, 1000, "evidence_note");
   if (isInvalid(note)) return note;
   return { rawLabel, inputKind: kind as ComponentInputKind, ...fields, identityStatus, unresolved, evidenceFileId, evidenceNote: note };
