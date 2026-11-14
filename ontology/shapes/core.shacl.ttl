@@ -44,14 +44,21 @@ mirash:ContainmentCycleShape
 and maintainable in SHACL-SPARQL (rdflib evaluates `mira:has_parent+` natively), so per the task's
 'otherwise document where cycle detection belongs' clause we implement it here rather than deferring.
 Cost is O(nodes x edges) on the validated subgraph — acceptable at the proposal-batch sizes in the
-latency budget (ADR-0032 §9), NOT at whole-plant scale. The budget check enforces that boundary.""" ;
+latency budget (ADR-0032 §9), NOT at whole-plant scale. The budget check enforces that boundary.
+
+Walks BOTH spellings of "up" (#5528 correction). The original path was `mira:has_parent+` only, so
+a loop written from the parent's side (a has_child b, b has_child a) or one mixing the two
+predicates conformed. has_child is the declared owl:inverseOf has_parent and MIRA runs no OWL
+reasoner to derive one from the other, so the path has to name both. A consequence: every direct
+self-loop is now also a one-step cycle, so SelfParentShape (R11a) never fires alone — it is kept
+for its plainer message.""" ;
     sh:sparql [
         sh:message "R11b containment: {$this} reaches itself through a chain of has_parent edges — the UNS hierarchy is a tree, not a cycle." ;
         sh:severity sh:Violation ;
         sh:prefixes mirash:prefixes ;
         sh:select """
             SELECT $this WHERE {
-                $this mira:has_parent+ $this .
+                $this (mira:has_parent|^mira:has_child)+ $this .
             }
         """ ;
     ] .

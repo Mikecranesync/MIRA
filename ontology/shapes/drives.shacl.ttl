@@ -49,18 +49,30 @@ mirash:FaultAppliedToWrongFamilyShape
     a sh:NodeShape ;
     sh:targetClass mira:AssetInstance ;
     rdfs:label "R4c fault code applied to the wrong family" ;
-    rdfs:comment "The failure this whole module exists for: a GS10 fault answered from a PowerFlex pack, or vice versa." ;
+    rdfs:comment """The failure this whole module exists for: a GS10 fault answered from a PowerFlex pack, or vice versa.
+
+Two corrections from #5528, both about inverse properties (MIRA runs no OWL reasoner, so an
+inverse that is declared but not spelled out in the query is simply not seen):
+  * the attribution is matched in BOTH directions (asset has_fault code / code fault_of asset).
+    Before, a wrong-family fault stated from the code's side conformed.
+  * a code scoped to a MODEL is accepted when the asset is `instance_of` that model, not only when
+    the model lists it with `has_instance`. Before, the ordinary instance -> model spelling was
+    rejected as a wrong-family fault, i.e. the rule fired on legitimate data.
+
+KNOWN LIMIT (not fixed here): an asset that declares NO member_of_family is never checked. The
+rule compares two families; with one of them unknown it stays silent.""" ;
     sh:sparql [
         sh:message "R4c wrong family: asset {$this} is attributed a fault code scoped to a different drive family than the one it belongs to. The mnemonic may match by accident; the meaning does not transfer." ;
         sh:severity sh:Violation ;
         sh:prefixes mirash:prefixes ;
         sh:select """
             SELECT $this WHERE {
-                $this mira:member_of_family ?actualFamily ;
-                      mira:has_fault ?code .
+                $this mira:member_of_family ?actualFamily .
+                { $this mira:has_fault ?code } UNION { ?code mira:fault_of $this }
                 ?code mira:scoped_to ?codeFamily .
                 FILTER(?codeFamily != ?actualFamily)
                 FILTER NOT EXISTS { ?codeFamily mira:has_instance $this }
+                FILTER NOT EXISTS { $this mira:instance_of ?codeFamily }
                 FILTER NOT EXISTS { $this mira:member_of_family ?codeFamily }
             }
         """ ;

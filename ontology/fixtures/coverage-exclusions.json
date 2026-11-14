@@ -1,0 +1,7 @@
+[
+  {
+    "shape": "InstanceOfDirectionShape",
+    "reason": "Unreachable as written. Validation runs with RDFS inference and mira:instance_of declares rdfs:range mira:AssetClass, so the object of instance_of is inferred to be an AssetClass before the shape's sh:class check runs and the check can never fail. Instance-to-instance is still rejected, by AssetClassInstanceShape (fixture invalid/core_instance_of_another_instance.ttl). Instance-to-non-asset is NOT rejected by anything. Making the rule reachable means either validating without inference or dropping the range, and both change what every other shape sees, so it is a domain-rule decision and not a fixture.",
+    "tracking": "#5528 (remaining gap: instance_of pointing at a non-asset conforms; pinned by test_instance_of_a_non_asset_is_not_rejected_yet)"
+  }
+]

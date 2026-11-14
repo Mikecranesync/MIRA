@@ -1,0 +1,20 @@
+# PROTECTS: mirash:FaultAppliedToWrongFamilyShape
+#
+# R4c. A code scoped to a MODEL rather than a family, attributed to a drive that is an instance of
+# that model. The link is stated the normal way round (instance_of, drive -> model).
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:automationdirect a mira:Manufacturer .
+ex:rockwell         a mira:Manufacturer .
+ex:gs10 a mira:DriveFamily ; mira:manufactured_by ex:automationdirect .
+ex:pf40 a mira:DriveFamily ; mira:manufactured_by ex:rockwell .
+ex:manual a mira:SourceDocument .
+ex:cite   a mira:Citation ; mira:cite_doc ex:manual ; mira:cite_locator "p.114" .
+ex:gs10_2p0 a mira:DriveModel .
+ex:oc_gs10_2p0 a mira:FaultCode ; mira:fault_mnemonic "oC" ; mira:scoped_to ex:gs10_2p0 ;
+               mira:supported_by ex:cite .
+ex:vfd_101 a mira:AssetInstance ; mira:member_of_family ex:gs10 ; mira:instance_of ex:gs10_2p0 ;
+           mira:has_fault ex:oc_gs10_2p0 .

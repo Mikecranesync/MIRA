@@ -1,0 +1,12 @@
+# EXPECT-VIOLATION: mirash:ContainmentCycleShape
+#
+# R11b. The same two-node loop as core_r11b_two_node_parent_cycle, written from the other end:
+# each node lists the other as its CHILD. has_child is the declared inverse of has_parent, so this
+# is the same loop in the hierarchy and must be rejected the same way.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:line_1 a mira:Line     ; mira:has_child ex:cell_1 .
+ex:cell_1 a mira:WorkCell ; mira:has_child ex:line_1 .

@@ -1,0 +1,11 @@
+# EXPECT-VIOLATION: mirash:AssetClassInstanceShape
+#
+# Model vs installed instance. One node is declared BOTH a reusable model (AssetClass) and a
+# physical thing bolted to the plant (AssetInstance). A model has no location, no live signals and
+# no work orders, so a diagnosis aimed at this node could be answered from either meaning.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:gs10_2p0 a mira:AssetClass , mira:AssetInstance .

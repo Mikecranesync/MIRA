@@ -1,0 +1,16 @@
+# EXPECT-VIOLATION: mirash:SelfParentShape
+# ALSO-FIRES: mirash:ContainmentCycleShape a self-child is a one-step cycle; R11b walks has_child too since #5528
+#
+# R11a. A node lists itself as its own CHILD. R11a checks both spellings of a self-loop; this is
+# the has_child one (the has_parent one is core_r11a_node_is_its_own_parent).
+#
+# STRUCTURAL FINDING (#5528): R11a cannot fire alone. Any direct self-loop is a one-step cycle, so
+# ContainmentCycleShape always fires with it. R11a is kept for its plainer message. Before #5528
+# this fixture DID fire R11a alone, because the cycle rule only walked has_parent and missed every
+# loop written with has_child — that was the defect, not a feature.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:cell_1 a mira:WorkCell ; mira:has_child ex:cell_1 .

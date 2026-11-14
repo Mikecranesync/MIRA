@@ -342,3 +342,72 @@ class TestTheRealTree:
         out = json.loads(capsys.readouterr().out)
         assert out["skipped"] == 0
         assert out["failed"] == 0
+
+
+def _fired(graphs, body: str) -> tuple[bool, set[str]]:
+    from rdflib import Graph
+
+    onto, shapes = graphs
+    data = Graph()
+    data.parse(data=PREFIXES + body, format="turtle")
+    conforms, results, _ = V.run_shacl(data, onto, shapes)
+    return conforms, V.violated_shapes(results, shapes)
+
+
+class TestGapsThatAreKnownAndNotClosed:
+    """Each test states the behaviour we WANT. `strict=True` means the day someone closes the gap
+    the test starts passing, pytest reports that as a failure, and the xfail (and any exclusion)
+    has to be removed — the gap cannot be closed or widened silently."""
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason="#5528: InstanceOfDirectionShape is unreachable under RDFS inference "
+        "(instance_of has rdfs:range AssetClass); see fixtures/coverage-exclusions.json",
+    )
+    def test_instance_of_a_non_asset_is_not_rejected_yet(self, graphs):
+        conforms, _ = _fired(
+            graphs,
+            "ex:rockwell a mira:Manufacturer .\n"
+            "ex:vfd_101 a mira:AssetInstance ; mira:instance_of ex:rockwell .",
+        )
+        assert not conforms, "an installed drive cannot be an instance of a manufacturer"
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason="#5528: R4c compares two families and is silent when the asset declares none. "
+        "Whether an unidentified drive may carry a fault at all is a domain rule, not a fixture.",
+    )
+    def test_a_fault_on_a_drive_of_undeclared_family_is_not_checked_yet(self, graphs):
+        conforms, _ = _fired(
+            graphs,
+            "ex:rockwell a mira:Manufacturer .\n"
+            "ex:pf40 a mira:DriveFamily ; mira:manufactured_by ex:rockwell .\n"
+            "ex:manual a mira:SourceDocument .\n"
+            'ex:cite a mira:Citation ; mira:cite_doc ex:manual ; mira:cite_locator "p.114" .\n'
+            'ex:f007 a mira:FaultCode ; mira:fault_mnemonic "F007" ; mira:scoped_to ex:pf40 ;\n'
+            "        mira:supported_by ex:cite .\n"
+            "ex:vfd_101 a mira:AssetInstance ; mira:has_fault ex:f007 .",
+        )
+        assert not conforms
+
+
+class TestNeighbouringRulesCloseWhatLooksLikeAHole:
+    def test_a_symbol_with_no_trust_state_cannot_be_promoted(self, graphs):
+        """R8c only compares a trust value that EXISTS, so on its own it is silent when the
+        observation has none. It is not a hole in practice: observed_as has rdfs:range
+        PrintObservation, so the object is always a PrintObservation and R8b's `trust minCount 1`
+        rejects it. Pinned so that loosening R8b, or dropping the range, shows up here."""
+        conforms, fired = _fired(
+            graphs,
+            "ex:region a mira:ImageRegion .\n"
+            "ex:k1_symbol mira:supported_by ex:region .\n"
+            "ex:k1 a mira:Component ; mira:observed_as ex:k1_symbol .",
+        )
+        assert not conforms
+        assert fired == {"PrintObservationEvidenceShape"}
+
+    def test_a_warning_only_rule_still_fails_validation(self, graphs):
+        """RemedySafetyShape is sh:Warning. The harness treats that as non-conforming."""
+        conforms, fired = _fired(graphs, "ex:reset a mira:Remedy .")
+        assert not conforms
+        assert fired == {"RemedySafetyShape"}

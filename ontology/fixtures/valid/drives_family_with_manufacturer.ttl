@@ -1,0 +1,10 @@
+# PROTECTS: mirash:DriveFamilyIdentityShape
+#
+# Manufacturer AND series.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:automationdirect a mira:Manufacturer .
+ex:gs10 a mira:DriveFamily ; mira:manufactured_by ex:automationdirect .

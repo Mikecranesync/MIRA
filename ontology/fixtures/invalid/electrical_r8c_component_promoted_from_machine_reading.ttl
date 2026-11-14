@@ -1,0 +1,13 @@
+# EXPECT-VIOLATION: mirash:PromotedSymbolNeedsHumanShape
+#
+# R8c. A component exists in the graph on the strength of a symbol only a machine has checked.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:sheet_4 a mira:Sheet .
+ex:region_k1 a mira:ImageRegion .
+ex:k1_symbol a mira:DeviceSymbol ; mira:supported_by ex:region_k1 ;
+             mira:trust mira:trust_machine_verified .
+ex:k1 a mira:Component ; mira:observed_as ex:k1_symbol .

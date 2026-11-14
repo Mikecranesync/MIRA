@@ -1,0 +1,10 @@
+# PROTECTS: mirash:RemedySafetyShape
+#
+# The remedy names its prerequisite.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:loto a mira:SafetyPrerequisite .
+ex:replace_fan a mira:Remedy ; mira:requires_safety ex:loto .
