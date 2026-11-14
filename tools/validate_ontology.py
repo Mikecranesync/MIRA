@@ -282,7 +282,9 @@ def run_shacl(data: Graph, onto: Graph, shapes: Graph) -> tuple[bool, Graph, str
 
     `ont_graph` supplies rdfs:subClassOf so sh:class checks see the hierarchy;
     `advanced=True` enables SPARQL-based constraints and SPARQL targets.
-    NOTE: no inference is requested (`inference="none"`) — MIRA runs no OWL reasoner.
+    NOTE: RDFS inference IS applied (`inference="rdfs"`): rdfs:domain / rdfs:range / subClassOf
+    add types to data nodes before any shape runs. No OWL reasoner runs, so owl:inverseOf is not
+    expanded. Both facts shape what a rule can and cannot see (#5528).
     """
     conforms, results_graph, results_text = shacl_validate(
         data_graph=data,

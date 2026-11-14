@@ -391,6 +391,22 @@ class TestGapsThatAreKnownAndNotClosed:
         assert not conforms
 
 
+class TestInstanceOfDirectionLimit:
+    @pytest.mark.xfail(
+        strict=True,
+        raises=AssertionError,
+        reason="#5528: the direction rule names manufacturer and installed asset only. An object "
+        "of another unrelated kind (here a signal) is not rejected; widening it to 'any other "
+        "type' produced false alarms from inferred types.",
+    )
+    def test_instance_of_a_signal_is_not_rejected_yet(self, graphs):
+        conforms, _ = _fired(
+            graphs,
+            "ex:sig a mira:Signal .\nex:vfd a mira:AssetInstance ; mira:instance_of ex:sig .",
+        )
+        assert not conforms
+
+
 class TestInstanceOfDirectionCanFire:
     """Was a strict xfail until #5528 made the rule reachable under RDFS inference."""
 
@@ -402,6 +418,17 @@ class TestInstanceOfDirectionCanFire:
         )
         assert not conforms, "an installed drive cannot be an instance of a manufacturer"
         assert fired == {"InstanceOfDirectionShape"}
+
+    def test_a_model_that_carries_an_unrelated_property_is_still_accepted(self, graphs):
+        """Review finding on #5528: RDFS inference types a node from the domain of any property
+        it carries, so a model with an approval state is inferred to be an Assertion too. The
+        direction rule must not treat that inferred type as a wrong declaration."""
+        conforms, fired = _fired(
+            graphs,
+            "ex:gs10 a mira:DriveModel ; mira:approval_state mira:approval_proposed .\n"
+            "ex:vfd a mira:AssetInstance ; mira:instance_of ex:gs10 .",
+        )
+        assert "InstanceOfDirectionShape" not in fired, (conforms, fired)
 
     def test_instance_of_a_model_or_family_is_accepted(self, graphs):
         conforms, fired = _fired(
