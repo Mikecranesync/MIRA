@@ -849,7 +849,16 @@ export function excludedTablesRefusalText(recordNumber: string, excluded: Exclud
     const pages = [...new Set(sections.map((e) => e.page).filter((p): p is number => p !== null))].sort((a, b) => a - b);
     const where = pages.length === 0 ? "" : ` on ${pages.length === 1 ? "page" : "pages"} ${pages.join(", ")}`;
     const models = listed([...new Set(sections.flatMap((e) => e.models))]);
-    return `This manual's section${where} is for other variants (${models}), and its applicability to the ${recordNumber} is not established. I won't use that section to answer for the ${recordNumber}. Add the page that explicitly covers the ${recordNumber} and the specification in question, then ask again.`;
+    const otherTables = excluded.filter((e) => !e.section && !e.unqualified);
+    const unresolvedColumns = excluded.filter((e) => e.unqualified && !e.section);
+    const whereOf = (list: ExcludedTable[]) => {
+      const pages = [...new Set(list.map((e) => e.page).filter((p): p is number => p !== null))].sort((a, b) => a - b);
+      return pages.length === 0 ? "" : ` on ${pages.length === 1 ? "page" : "pages"} ${pages.join(", ")}`;
+    };
+    const unresolvedNote = unreadableSections.length > 0 ? ` I also could not read which models the excluded section${whereOf(unreadableSections)} applies to.` : "";
+    const columnNote = unresolvedColumns.length > 0 ? ` Other excluded table values${whereOf(unresolvedColumns)} could not be tied to one model.` : "";
+    const otherNote = otherTables.length > 0 ? ` Other excluded tables cover ${listed([...new Set(otherTables.flatMap((e) => e.models))])}.` : "";
+    return `This manual's section${where} is for other variants (${models}); it does not provide applicable specifications for the ${recordNumber}. I won't use those sections as the ${recordNumber}'s specifications.${otherNote}${unresolvedNote}${columnNote} Check the recorded model and the specification you need against its applicable documentation.`;
   }
   if (unreadableSections.length > 0) {
     const pages = [...new Set(unreadableSections.map((e) => e.page).filter((p): p is number => p !== null))].sort((a, b) => a - b);

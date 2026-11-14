@@ -878,4 +878,26 @@ describe("#5503 actual upload INSERT through raw retrieval SQL", () => {
   });
 });
 
+  it("a shared header marker cannot admit sibling-only prose over actual SQL", async () => {
+    await client.query("SAVEPOINT f31_shared_prose");
+    try {
+      await client.query(`INSERT INTO knowledge_entries
+        (tenant_id, content, source_url, doc_id, ingest_route, page_start, metadata, is_private)
+        VALUES ($1, '2080-LC20-20QWB(R) only: zzscopevariantonly relay evidence.',
+          'node-doc/f31-prose/manual.pdf', $2, 'v2', 30, $3::jsonb, true)`,
+      [TENANT, DOCUMENT, JSON.stringify({ node_id: NODE, filename: fixture.source,
+        table_scope: "shared", table_header: "Attribute Common inputs Isolated inputs 2080-LC20-20QWB(R)" })]);
+      const own = await retrieve("20QWB", "zzscopevariantonly");
+      expect(own.text).toContain("zzscopevariantonly");
+      const sibling = await retrieve("20QBB", "zzscopevariantonly");
+      expect(sibling.text).not.toContain("zzscopevariantonly");
+      expect(sibling.diagnostics.excludedTables).toEqual(expect.arrayContaining([
+        expect.objectContaining({ page: 30, models: ["2080LC2020QWB"] }),
+      ]));
+    } finally {
+      await client.query("ROLLBACK TO SAVEPOINT f31_shared_prose");
+      await client.query("RELEASE SAVEPOINT f31_shared_prose");
+    }
+  });
+
 });

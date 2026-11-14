@@ -28,7 +28,7 @@ import { ocrExtractPage } from "@/capabilities/garbled-text-ocr";
 import { readPageLabelsBounded } from "@/capabilities/pdf-page-label-reader";
 import { pageLayoutItems } from "@/capabilities/pdf-layout-items";
 import { pageWithTables, type TableChunk } from "@/capabilities/table-rows";
-import { contactRatingColumns, withColumnLines } from "@/capabilities/contact-ratings-table";
+import { contactRatingTable, columnLines, withColumnLines } from "@/capabilities/contact-ratings-table";
 import { SectionTableScope, sectionTableLayout, readOutputTypes, mergeOutputTypes, type ScopedText, type SectionScope } from "@/capabilities/section-table-scope";
 import { hasUnmappedGlyphBetweenDigits } from "@/capabilities/manual-completeness";
 import { uploadIdentity } from "@/capabilities/page-label-backfill";
@@ -528,6 +528,7 @@ async function insertChunkRows(
     tableModels?: string[];
     tableUnqualified?: boolean;
     tableScope?: SectionScope;
+    tableHeader?: string;
   };
   let idx = 0;
   let batch: ChunkRow[] = [];
@@ -562,6 +563,7 @@ async function insertChunkRows(
           ...(r.tableModels ? { table_models: r.tableModels } : {}),
           ...(r.tableUnqualified ? { table_unqualified: true } : {}),
           ...(r.tableScope ? { table_scope: r.tableScope } : {}),
+          ...(r.tableHeader ? { table_header: r.tableHeader } : {}),
         }),
       );
     }
@@ -595,7 +597,13 @@ async function insertChunkRows(
     // tag (`table-rows.test.ts`), so TableChunk.text goes in verbatim.
     const textToChunk = table ? table.remainder : pageText;
     for (const section of table?.sections ?? [{ text: textToChunk }]) {
+      let searchFrom = 0;
+      const headerAt = section.sharedHeader ? section.text.indexOf(section.sharedHeader) : -1;
       for (const piece of chunkText(section.text)) {
+        const pieceAt = section.text.indexOf(piece, searchFrom);
+        searchFrom = pieceAt >= 0 ? pieceAt + 1 : searchFrom;
+        const tableHeader = section.sharedHeader && headerAt >= pieceAt && pieceAt >= 0 &&
+          headerAt + section.sharedHeader.length <= pieceAt + piece.length ? section.sharedHeader : undefined;
         batch.push({
           content: piece,
           page: p + 1,
@@ -604,6 +612,7 @@ async function insertChunkRows(
           label: pageLabels?.[p] ?? null,
           tableModels: section.models,
           tableScope: section.scope,
+          tableHeader,
           tableUnqualified: section.scope === "unresolved",
         });
         if (batch.length >= BATCH_ROWS) await flush();
@@ -780,6 +789,9 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
   // undefined means unreadable/repaired geometry; null means a successful unheaded page.
   const sectionLayouts: Array<ReturnType<typeof sectionTableLayout> | undefined> = [];
   const outputs = new Map<string, boolean | null>();
+  // Even a failed layout read must not erase a visibly present type inventory. Its model
+  // applicability then stays unknown, with a warning and unresolved relay-section metadata.
+  let outputInventoryObserved = pages.some((page) => /(?:^|\n)\s*Output\s+circuit\s+type\b/i.test(page));
   for (let p = 0; p < pages.length; p++) {
     if (repairs[p] !== null) {
       pageTables.push(null);
@@ -789,23 +801,32 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
     try {
       const items = await pageLayoutItems(pdf, p + 1);
       const table = items.length > 0 ? pageWithTables(items) : null;
-      if (table) mergeOutputTypes(outputs, readOutputTypes(table.chunks));
-      const layout = sectionTableLayout(items, outputs.size > 0);
+      if (table) {
+        outputInventoryObserved ||= table.chunks.some((c) => /\bOutput circuit type\b/i.test(c.text));
+        mergeOutputTypes(outputs, readOutputTypes(table.chunks));
+      }
+      // Boundary detection must not depend on whether the type table is earlier or later.
+      let layout: ReturnType<typeof sectionTableLayout>;
       // #5474 item 5: a contact-ratings table's make / break / continuous columns, read from the
       // same positioned items, are written under the table in the page text (and in the table
       // remainder, which is what a page with a model table chunks). The flat rows stay as they
       // were. Its own guard: a failure here must not cost the page its table read.
       try {
-        const columns = contactRatingColumns(items);
-        if (columns) {
-          pages[p] = withColumnLines(pages[p], columns);
-          if (table) table.remainder = withColumnLines(table.remainder, columns);
-          if (layout) layout.text = withColumnLines(layout.text, columns);
+        const rating = contactRatingTable(items);
+        layout = sectionTableLayout(items, true, table?.remainderItems,
+          rating ? { after: rating.lastRow, lines: columnLines(rating.rows) } : undefined);
+        if (rating) {
+          // Preserve the legacy path for documents without an output inventory. The scoped
+          // path below uses the physically attached annotations in layout.text instead.
+          pages[p] = withColumnLines(pages[p], rating.rows);
+          if (table) table.remainder = withColumnLines(table.remainder, rating.rows);
         }
       } catch (err) {
+        layout = sectionTableLayout(items, true, table?.remainderItems);
         console.warn(`[node-ingest] contact-ratings column read failed on ${rest.filename} p.${p + 1} (page kept without column lines):`, err instanceof Error ? err.message : err);
       }
-      pageTables.push(table);
+      // Geometry is page-local; retain only the text/chunks after deriving source boundaries.
+      pageTables.push(table ? { remainder: table.remainder, chunks: table.chunks } : null);
       sectionLayouts.push(items.length > 0 ? layout : undefined);
     } catch (err) {
       console.warn(`[node-ingest] table read failed on ${rest.filename} p.${p + 1} (page kept as flat text):`, err instanceof Error ? err.message : err);
@@ -813,12 +834,15 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
       sectionLayouts.push(undefined);
     }
   }
-  const scope = new SectionTableScope(outputs);
+  if (outputInventoryObserved && (outputs.size === 0 || [...outputs.values()].includes(null))) {
+    console.warn(`[node-ingest] output-type applicability unresolved in ${rest.filename}; relay sections with unreadable model applicability are marked unresolved`);
+  }
+  const scope = new SectionTableScope(outputs, outputInventoryObserved);
   for (let p = 0; p < pages.length; p++) {
-    if (outputs.size === 0) break;
+    if (!outputInventoryObserved) break;
     const table = pageTables[p];
     const layout = sectionLayouts[p];
-    const remainder = table?.remainder ?? layout?.text ?? pages[p];
+    const remainder = layout && (table || layout.hasTables) ? layout.text : table?.remainder ?? pages[p];
     const sections = layout === undefined ? scope.unreadable(remainder) : scope.split(remainder, layout);
     pageTables[p] = { remainder, chunks: table?.chunks ?? [], sections };
   }

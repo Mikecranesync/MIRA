@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { mergeOutputTypes, readOutputTypes, SectionTableScope, sectionTableLayout } from "../section-table-scope";
-import type { LayoutItem, TableChunk } from "../table-rows";
+import { pageWithTables, type LayoutItem, type TableChunk } from "../table-rows";
+import ml1100Ratings from "../__fixtures__/table-rows/ml1100-p114-p120-ratings-scope.json";
+import micro820 from "../__fixtures__/table-rows/micro820-in009-p16-20-scope.json";
+import { columnLines, contactRatingTable } from "../contact-ratings-table";
 
 const AWB = "2080LC2020AWB";
 const QBB = "2080LC2020QBB";
@@ -19,6 +22,18 @@ const splitCaption = (scope: SectionTableScope, title: string, body?: string) =>
   const source = caption(title, body);
   return scope.split(source.text, source.layout);
 };
+function expectUnresolvedRelay(outputs: ReturnType<typeof readOutputTypes>) {
+  const parts = splitCaption(new SectionTableScope(outputs), "Relay Contact Ratings");
+  expect(parts.some((part) => part.scope === "section")).toBe(false);
+  expect(parts.find((part) => part.text.includes("Voltage, max"))).toEqual(expect.objectContaining({ scope: "unresolved" }));
+}
+function splitMixedHeader(scope: SectionTableScope, title: string) {
+  const items = [row(title, 700), row("Attribute", 680, 8, 100), row("Non-isolated inputs", 680, 8, 200), row("Isolated inputs", 680, 8, 340),
+    row("2080-LC20-20QWB(R),", 668, 8, 340), row("2080-LC20-20QBB(R) only", 656, 8, 340),
+    row("Voltage category", 630, 8, 100), row("24V DC Sink", 630, 8, 200), row("24V DC Sink/Source", 630, 8, 340)];
+  const layout = sectionTableLayout(items)!;
+  return scope.split(layout.text, layout);
+}
 
 describe("#5503 complete per-model output circuit evidence", () => {
   it("reads the actual relay / 24V DC source distinction by model", () => {
@@ -34,11 +49,18 @@ describe("#5503 complete per-model output circuit evidence", () => {
   });
   it("a missing circuit-type row in one model column invalidates inference for the whole table", () => {
     const chunks = complete(); chunks[1] = column(QBB, null);
-    expect(readOutputTypes(chunks).size).toBe(0);
+    const outputs = readOutputTypes(chunks);
+    expect(outputs.get(QBB)).toBeNull();
+    expectUnresolvedRelay(outputs);
   });
   it.each(["Unknown", "See note 3", "DC input only; output type unspecified", "FET compatibility is not specified", "Relay compatibility is not specified", "Relay not fitted"])("does not convert uncertain type %s into authoritative non-relay evidence", (value) => {
     const chunks = complete(); chunks[1] = column(QBB, value);
-    expect(readOutputTypes(chunks).size).toBe(0);
+    const outputs = readOutputTypes(chunks);
+    expect(outputs.get(QBB)).toBeNull();
+    expectUnresolvedRelay(outputs);
+  });
+  it("no model has an output-type row, so an unrelated table establishes no output inventory", () => {
+    expect(readOutputTypes([column(AWB, null), column(QBB, null), column(QWB, null)]).size).toBe(0);
   });
   it("a table with only one model cannot establish sibling applicability", () => {
     expect(readOutputTypes([column(AWB, "Relay")]).size).toBe(0);
@@ -46,17 +68,49 @@ describe("#5503 complete per-model output circuit evidence", () => {
   it("multi-model and unqualified chunks do not identify a value for each model", () => {
     const chunks = complete();
     chunks[1] = { ...chunks[1], models: [QBB, QWB] };
-    expect(readOutputTypes(chunks).size).toBe(0);
-    expect(readOutputTypes(complete().map((c) => ({ ...c, unqualified: true }))).size).toBe(0);
+    expect(readOutputTypes(chunks).get(QBB)).toBeNull();
+    expectUnresolvedRelay(readOutputTypes(chunks));
+    const unreadable = readOutputTypes(complete().map((c) => ({ ...c, unqualified: true })));
+    expect([...unreadable.values()]).toEqual([null, null, null]);
+    expectUnresolvedRelay(unreadable);
   });
   it("an unreadable model column cannot silently disappear behind two readable columns", () => {
     const chunks = [column(AWB, "Relay"), column(QBB, "FET"), {
       text: "Output circuit type cannot be assigned", models: [AWB, QBB, QWB], unqualified: true,
     }];
-    expect(readOutputTypes(chunks).size).toBe(0);
+    const outputs = readOutputTypes(chunks);
+    expect(outputs.get(QWB)).toBeNull();
+    expectUnresolvedRelay(outputs);
   });
   it("conflicting duplicate columns cannot use the last value as authoritative", () => {
-    expect(readOutputTypes([...complete(), column(QBB, "Relay")]).size).toBe(0);
+    const outputs = readOutputTypes([...complete(), column(QBB, "Relay")]);
+    expect(outputs.get(QBB)).toBeNull();
+    expectUnresolvedRelay(outputs);
+  });
+  it("same-model continuation chunks without a circuit-type row preserve already-read output types", () => {
+    const chunks = complete();
+    const continued = chunks.flatMap((chunk) => [chunk, column(chunk.models[0], null), column(chunk.models[0], null)]);
+    expect([...readOutputTypes(continued)]).toEqual([[AWB, true], [QBB, false], [QWB, true]]);
+  });
+  it("all-relay and Relay/FET inventories remain relay-capable through continuation chunks", () => {
+    const models = ["1763L16AWA", "1763L16BWA", "1763L16BBB", "1763L16DWD"];
+    const chunks = models.flatMap((model, i) => [column(model, i % 2 === 0 ? "Relay" : "Relay/FET"), column(model, null), column(model, null)]);
+    expect([...readOutputTypes(chunks)]).toEqual(models.map((model) => [model, true]));
+  });
+  it("a model unread in every continuation chunk remains unknown without masking other model readings", () => {
+    const chunks = [column(AWB, "Relay"), column(QWB, "Relay/FET"), column(QBB, null), column(QBB, null), column(QBB, null)];
+    const outputs = readOutputTypes(chunks);
+    expect(outputs.get(AWB)).toBe(true);
+    expect(outputs.get(QWB)).toBe(true);
+    expect(outputs.get(QBB)).toBeNull();
+    expectUnresolvedRelay(outputs);
+  });
+  it.each([["Relay", "24V DC source"], ["24V DC source", "Relay"]])("two circuit-type rows in one model chunk retain contradiction in order %s then %s", (first, second) => {
+    const chunks = complete();
+    chunks[1] = { ...chunks[1], text: `General Specifications — ${QBB}\n${QBB}: Output circuit type ${first}\n${QBB}: Output circuit type ${second}\n` };
+    const outputs = readOutputTypes(chunks);
+    expect(outputs.get(QBB)).toBeNull();
+    expectUnresolvedRelay(outputs);
   });
   it("output maps from separate families are not one sibling table", () => {
     expect(readOutputTypes([column(AWB, "Relay"), column("1763L16BBB", "FET")]).size).toBe(0);
@@ -70,6 +124,95 @@ describe("#5503 complete per-model output circuit evidence", () => {
     expect(target.get(QBB)).toBeNull();
     const section = splitCaption(new SectionTableScope(target), "Relay Contact Ratings");
     expect(section.some((s) => s.scope === "section")).toBe(false);
+  });
+});
+
+describe("#5503 derived contact-column source ownership", () => {
+  it("contact annotations attach to the original last rating-row item", () => {
+    const items = micro820.pages.find((page) => page.page === 19)!.items;
+    const table = contactRatingTable(items)!;
+    expect(table).not.toBeNull();
+    expect(items).toContain(table.lastRow);
+    expect(table.lastRow.str).toBe("125 V DC");
+    const annotation = { after: table.lastRow, lines: columnLines(table.rows) };
+    const layout = sectionTableLayout(items, true, undefined, annotation)!;
+    for (const line of annotation.lines) expect(layout.text).toContain(line);
+    expect(layout.text.indexOf(annotation.lines[0])).toBeLessThan(layout.text.indexOf("Analog Output Specifications"));
+  });
+  it("an equal-valued cloned row cannot impersonate the annotation's source item", () => {
+    const items = micro820.pages.find((page) => page.page === 19)!.items;
+    const table = contactRatingTable(items)!;
+    expect(() => sectionTableLayout(items, true, undefined, { after: { ...table.lastRow }, lines: columnLines(table.rows) })).toThrow(/source row/i);
+  });
+});
+
+describe("#5503 real ML1100 rating-head preservation", () => {
+  it.each(ml1100Ratings.pages.filter((page) => page.page === 114 || page.page === 120))("page $page data and footnote vocabulary cannot become table captions", (page) => {
+    const layout = sectionTableLayout(page.items)!;
+    expect(layout).not.toBeNull();
+    const captions = layout.headings.filter((h) => h.table).map((h) => h.text);
+    expect(captions.some((text) => /^125V DC|^7\.0 A|^168VA/.test(text))).toBe(false);
+    expect(captions.some((text) => /For (?:AC|DC) voltage applications|thermal continuous|DC Make\/Break Voltamperes/i.test(text))).toBe(false);
+    expect(captions.some((text) => /Relay Contact Ratings/.test(text))).toBe(true);
+  });
+  it("remainder geometry contains only retained source items and excludes removed model-table captions", () => {
+    const page = ml1100Ratings.pages.find((p) => p.page === 114)!;
+    const table = pageWithTables(page.items);
+    expect(table).not.toBeNull();
+    expect(table!.remainderItems).toBeDefined();
+    const compact = (value: string) => value.replace(/\s+/g, "");
+    for (const item of table!.remainderItems!) {
+      expect(page.items).toContain(item);
+      expect(compact(table!.remainder)).toContain(compact(item.str));
+    }
+    // p114 prints the same caption twice. String presence cannot prove source
+    // ownership: the first occurrence remains while the second is extracted.
+    const retained = new Set<LayoutItem>(table!.remainderItems);
+    const captions = page.items.filter((item) => item.str === "Relay Contact Ratings");
+    expect(captions).toHaveLength(2);
+    expect(captions.some((caption) => retained.has(caption))).toBe(true);
+    expect(captions.some((caption) => !retained.has(caption))).toBe(true);
+    for (const removed of captions.filter((caption) => !retained.has(caption))) {
+      expect(table!.remainderItems).not.toContain(removed);
+    }
+  });
+  it("the actual p114 table remainder cannot make all-relay ML1100 inventory unresolved through a false data caption", () => {
+    const page = ml1100Ratings.pages.find((p) => p.page === 114)!;
+    const table = pageWithTables(page.items);
+    expect(table).not.toBeNull();
+    const layout = sectionTableLayout(page.items, true, table!.remainderItems)!;
+    const models = ["1763L16AWA", "1763L16BWA", "1763L16BBB", "1763L16DWD"];
+    const outputs = new Map(models.map((model) => [model, true] as const));
+    const parts = new SectionTableScope(outputs).split(table!.remainder, layout);
+    expect(parts.some((part) => part.scope === "unresolved")).toBe(false);
+  });
+});
+
+describe("#5503 runtime-review output inventory controls", () => {
+  it.each(["24V DC sourcing", "Transistor sourcing", "Relay, isolated"])("an observed but unread type %s retains an unresolved model inventory", (value) => {
+    const chunks = complete(); chunks[1] = column(QBB, value);
+    const outputs = readOutputTypes(chunks);
+    expect([...outputs.keys()].sort()).toEqual([AWB, QBB, QWB].sort());
+    expect(outputs.get(QBB)).toBeNull();
+    const parts = splitCaption(new SectionTableScope(outputs), "Relay Contact Ratings");
+    expect(parts.find((part) => part.text.includes("Voltage, max"))).toEqual(expect.objectContaining({ scope: "unresolved", models: expect.arrayContaining([AWB, QBB, QWB]) }));
+  });
+  it("an output table with a missing third column keeps the full unresolved model inventory", () => {
+    const chunks = [column(AWB, "Relay"), column(QBB, "FET"), {
+      text: "Output circuit type cannot be assigned", models: [AWB, QBB, QWB], unqualified: true,
+    }];
+    const outputs = readOutputTypes(chunks);
+    expect([...outputs.keys()].sort()).toEqual([AWB, QBB, QWB].sort());
+    expect(outputs.get(QWB)).toBeNull();
+    const parts = splitCaption(new SectionTableScope(outputs), "Relay Contact Ratings");
+    expect(parts.some((part) => part.scope === "unresolved")).toBe(true);
+  });
+  it("conflicting output rows retain their models and mark the relay section unresolved", () => {
+    const outputs = readOutputTypes([...complete(), column(QBB, "Relay")]);
+    expect(outputs.has(QBB)).toBe(true);
+    expect(outputs.get(QBB)).toBeNull();
+    const parts = splitCaption(new SectionTableScope(outputs), "Relay Contact Ratings");
+    expect(parts.some((part) => part.scope === "unresolved")).toBe(true);
   });
 });
 
@@ -121,7 +264,8 @@ describe("#5503 scope follows qualified layout and resets at section boundaries"
     expect(other.size).toBe(2);
     mergeOutputTypes(outputs, other);
     const parts = splitCaption(new SectionTableScope(outputs), "Relay Contact Ratings");
-    expect(parts.some((p) => p.scope === "section" || p.models !== undefined)).toBe(false);
+    expect(parts.some((p) => p.scope === "section")).toBe(false);
+    expect(parts.some((p) => p.scope === "unresolved")).toBe(true);
   });
   it("foreign/accessory catalog headings never become restrictions for this family", () => {
     const scope = new SectionTableScope(readOutputTypes(complete()));
@@ -136,8 +280,8 @@ describe("#5503 scope follows qualified layout and resets at section boundaries"
     const scope = new SectionTableScope(readOutputTypes(complete()));
     splitCaption(scope, "Relay Output Specifications for 2080-LC20-20QWB(R), 2080-LC20-20AWB(R)");
     for (const title of ["Analog Output Specifications", "DC Input Specifications"]) {
-      const parts = splitCaption(scope, title, "Isolated inputs for 2080-LC20-20QWB(R), 2080-LC20-20QBB(R) only");
-      expect(parts).toEqual([expect.objectContaining({ scope: "shared" })]);
+      const parts = splitMixedHeader(scope, title);
+      expect(parts).toEqual([expect.objectContaining({ scope: "shared", sharedHeader: expect.stringContaining("2080-LC20-20QWB(R)") })]);
       expect(parts[0].models).toBeUndefined();
     }
   });
@@ -164,7 +308,7 @@ describe("#5503 scope follows qualified layout and resets at section boundaries"
   });
   it("a shared table marker cannot bypass explicit sibling-only prose after an unrelated next-page heading", () => {
     const scope = new SectionTableScope(readOutputTypes(complete()));
-    expect(splitCaption(scope, "Analog Output Specifications")[0].scope).toBe("shared");
+    expect(splitMixedHeader(scope, "Analog Output Specifications")[0].scope).toBe("shared");
     const items = [row("Relay Output Data", 700), row("2080-LC20-20QWB(R) only: relay output endurance evidence.", 680, 8)];
     const layout = sectionTableLayout(items)!;
     const parts = scope.split(layout.text, layout);
@@ -174,7 +318,7 @@ describe("#5503 scope follows qualified layout and resets at section boundaries"
   });
   it("a shared table marker clears at a next page whose layout cannot be read", () => {
     const scope = new SectionTableScope(readOutputTypes(complete()));
-    expect(splitCaption(scope, "DC Input Specifications")[0].scope).toBe("shared");
+    expect(splitMixedHeader(scope, "DC Input Specifications")[0].scope).toBe("shared");
     expect(scope.split("2080-LC20-20QWB(R) only: sibling output evidence.", null)).toEqual([
       { text: "2080-LC20-20QWB(R) only: sibling output evidence." },
     ]);
@@ -188,6 +332,93 @@ describe("#5503 scope follows qualified layout and resets at section boundaries"
     expect(scope.split("unheaded continuation", null)[0].scope).toBe("unresolved");
     const restored = splitCaption(scope, "DC Output Specifications for 2080-LC20-20QBB(R)");
     expect(restored).toEqual([expect.objectContaining({ scope: "section", models: [QBB] })]);
+  });
+  it.each(["Table 4 Relay Contact Ratings", "12 Relay Output Specifications", "Relay Outputs", "Contact Ratings (Relay)"])("a noncanonical relay table caption %s remains unresolved rather than shared", (title) => {
+    const source = caption(title);
+    const parts = new SectionTableScope(readOutputTypes(complete())).split(source.text, source.layout);
+    expect(parts.find((part) => part.text.includes("Voltage, max"))).toEqual(expect.objectContaining({ scope: "unresolved", models: expect.arrayContaining([AWB, QBB, QWB]) }));
+  });
+  it("same-baseline prefix fragments cannot convert relay ratings into a shared section", () => {
+    const items = [row("Table 4", 700, 10, 70), row("Relay Contact Ratings", 700, 10, 120), row("Attribute Value", 680, 8), row("Voltage, max 250 V, AC", 660, 8)];
+    const layout = sectionTableLayout(items)!;
+    const parts = new SectionTableScope(readOutputTypes(complete())).split(layout.text, layout);
+    expect(parts.find((part) => part.text.includes("Voltage, max"))?.scope).toBe("unresolved");
+  });
+  it("blank unreadable pages do not expire unresolved scope before a readable caption", () => {
+    const scope = new SectionTableScope(readOutputTypes(complete()));
+    splitCaption(scope, "Relay Output Specifications for 2080-LC20-20QWB(R)");
+    scope.unreadable("");
+    for (let page = 0; page < 100; page++) {
+      expect(scope.split(`unheaded continuation ${page}`, null)[0].scope).toBe("unresolved");
+    }
+    expect(splitCaption(scope, "DC Output Specifications for 2080-LC20-20QBB(R)")[0]).toEqual(expect.objectContaining({ scope: "section", models: [QBB] }));
+  });
+  it("a removed relay caption anchors to its own repeated source line, never an earlier QBB body anchor", () => {
+    const dcCaption = row("DC Output Specifications for 2080-LC20-20QBB(R)", 700);
+    const dcHeader = row("Attribute Value", 680, 8);
+    const earlierAnchor = row("REPEATED ANCHOR", 660, 8);
+    const qbbBody = row("QBB-only current rating 1 A.", 640, 8);
+    const removedCaption = row("Relay Output Specifications for 2080-LC20-20QWB(R), 2080-LC20-20AWB(R)", 600);
+    const removedHeader = row("Attribute Value", 580, 8);
+    const removedBody = row("Extracted relay table row", 560, 8);
+    const laterAnchor = row("REPEATED ANCHOR", 520, 8);
+    const relayBody = row("Relay-only contact current evidence.", 500, 8);
+    const retained = [dcCaption, dcHeader, earlierAnchor, qbbBody, laterAnchor, relayBody];
+    const source = [dcCaption, dcHeader, earlierAnchor, qbbBody, removedCaption, removedHeader, removedBody, laterAnchor, relayBody];
+    const layout = sectionTableLayout(source, true, retained)!;
+    const text = retained.map((item) => item.str).join("\n");
+    const parts = new SectionTableScope(readOutputTypes(complete())).split(text, layout);
+    const qbb = parts.find((part) => part.text.includes(qbbBody.str))!;
+    const relay = parts.find((part) => part.text.includes(relayBody.str))!;
+    expect(qbb).toEqual(expect.objectContaining({ scope: "section", models: [QBB] }));
+    expect(relay).toEqual(expect.objectContaining({ scope: "section", models: [QWB, AWB] }));
+    expect(qbb.text).not.toContain(relayBody.str);
+    expect(relay.text).not.toContain(qbbBody.str);
+  });
+  it.each(["missing", "reordered", "extra"])("a source-owned boundary rejects a %s retained line sequence", (change) => {
+    const first = row("Retained first line.", 620, 8);
+    const second = row("Retained second line.", 600, 8);
+    const source = [row("DC Output Specifications for 2080-LC20-20QBB(R)", 700), row("Attribute Value", 680, 8), row("Extracted QBB table row", 650, 8), first, second];
+    const layout = sectionTableLayout(source, true, [first, second])!;
+    const text = change === "missing" ? first.str : change === "reordered" ? `${second.str}\n${first.str}` : `${first.str}\nUnexpected retained line.\n${second.str}`;
+    const scope = new SectionTableScope(readOutputTypes(complete()));
+    splitCaption(scope, "Relay Output Specifications for 2080-LC20-20QWB(R)");
+    const parts = scope.split(text, layout);
+    expect(parts).toEqual([{ text, scope: "unresolved", models: expect.arrayContaining([AWB, QBB, QWB]) }]);
+    expect(parts.some((part) => part.scope === "section")).toBe(false);
+  });
+  it("a retained heading cannot bind to its earlier inline caption reference", () => {
+    const relayCaption = "Relay Output Specifications for 2080-LC20-20QWB(R), 2080-LC20-20AWB(R)";
+    const qbbBody = "QBB-only current rating 1 A.";
+    const relayBody = "Relay-only contact current evidence.";
+    const items = [row("DC Output Specifications for 2080-LC20-20QBB(R)", 700), row("Attribute Value", 680, 8),
+      row(`For contrast see ${relayCaption} later.`, 660, 8), row(qbbBody, 640, 8),
+      row(relayCaption, 600), row("Attribute Value", 580, 8), row(relayBody, 560, 8)];
+    const layout = sectionTableLayout(items)!;
+    const parts = new SectionTableScope(readOutputTypes(complete())).split(layout.text, layout);
+    const own = parts.find((part) => part.text.includes(qbbBody))!;
+    const relay = parts.find((part) => part.text.includes(relayBody))!;
+    expect(own).toEqual(expect.objectContaining({ scope: "section", models: [QBB] }));
+    expect(relay).toEqual(expect.objectContaining({ scope: "section", models: [QWB, AWB] }));
+    expect(relay.text).not.toContain(qbbBody);
+  });
+  it("a source-owned removed QBB caption resets prior QWB scope at its next retained line", () => {
+    const scope = new SectionTableScope(readOutputTypes(complete()));
+    splitCaption(scope, "Relay Output Specifications for 2080-LC20-20QWB(R), 2080-LC20-20AWB(R)");
+    const kept = row("Retained text after the QBB model table.", 620, 8);
+    const items = [row("DC Output Specifications for 2080-LC20-20QBB(R)", 700), row("Attribute Value", 680, 8), row("Extracted QBB model-table row", 650, 8), kept];
+    const layout = sectionTableLayout(items, true, [kept])!;
+    const parts = scope.split(kept.str, layout);
+    expect(parts).toEqual([{ text: kept.str, scope: "section", models: [QBB] }]);
+    expect(parts[0].models).not.toContain(QWB);
+  });
+  it.each(["shared", "section"])("a missing caption in the table remainder cannot inherit prior %s scope", (previous) => {
+    const scope = new SectionTableScope(readOutputTypes(complete()));
+    splitCaption(scope, previous === "shared" ? "Analog Output Specifications" : "Relay Output Specifications for 2080-LC20-20QWB(R)");
+    const source = caption("DC Output Specifications for 2080-LC20-20QBB(R)");
+    const missingCaptionText = "Attribute Value\nVoltage, max 250 V, AC";
+    const parts = scope.split(missingCaptionText, source.layout);
+    expect(parts.find((part) => part.text.includes("Voltage, max"))).toEqual(expect.objectContaining({ scope: "unresolved", models: expect.arrayContaining([AWB, QBB, QWB]) }));
   });
   it("another document starts without the preceding upload's active scope", () => {
     const first = new SectionTableScope(readOutputTypes(complete()));
