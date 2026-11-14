@@ -10,6 +10,7 @@ import { API_BASE } from "@/lib/config";
 import type { SetupDeps } from "./new-project-setup-logic";
 import { confirmedOn, parkedRows, turnOnAndReread, type ParkedRow, type ParkedSource } from "./parked-sources";
 import { fileUrl } from "./to-interaction";
+import { NoticeLine, useExpiringNotices } from "./expiring-notices";
 
 type Props = {
   notebookId: string;
@@ -37,7 +38,8 @@ const btn = { marginLeft: 8, minHeight: 44, padding: "2px 10px", border: "1px so
 export function ParkedSources({ notebookId, sources, onChanged }: Props) {
   const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
   const [failed, setFailed] = useState<Record<string, string>>({});
-  const [turnedOn, setTurnedOn] = useState<ReadonlyArray<{ docId: string; name: string }>>([]);
+  /** "Now used" confirmations; they clear themselves, since this box floats over the conversation. */
+  const { notices, add: addNotice, drop: dropNotice } = useExpiringNotices();
   /** Synchronous guard: a second tap before the first re-render must not send a second write. */
   const inFlight = useRef(new Set<string>());
   const latest = useRef(onChanged);
@@ -48,19 +50,22 @@ export function ParkedSources({ notebookId, sources, onChanged }: Props) {
     const r = await turnOnAndReread(notebookId, row, inFlight.current, { deps, reread: () => latest.current(), onBusy: () => setBusy(new Set(inFlight.current)) });
     if (!r) return; // a second tap while the first is in flight
     if (r.kind === "failed") setFailed((f) => ({ ...f, [row.docId]: r.message }));
-    else setTurnedOn((list) => [...list.filter((t) => t.docId !== row.docId), { docId: row.docId, name: row.name }]);
-  }, [notebookId]);
+    else addNotice(row.docId, row.name);
+  }, [notebookId, addNotice]);
 
   const rows = parkedRows(sources);
-  return <ParkedSourcesView rows={rows} turnedOn={confirmedOn(turnedOn, sources)} busy={busy} failed={failed} onUse={(row) => void use(row)} />;
+  // Only a source the refreshed list reports as searchable is confirmed (Codex r1 F2, #5488).
+  const turnedOn = notices.filter((n) => confirmedOn([{ docId: n.id, name: n.text }], sources).length === 1).map((n) => ({ id: n.id, name: n.text }));
+  return <ParkedSourcesView rows={rows} turnedOn={turnedOn} busy={busy} failed={failed} onUse={(row) => void use(row)} onDismiss={dropNotice} />;
 }
 
 type ViewProps = {
   rows: ReadonlyArray<ParkedRow>;
-  turnedOn: ReadonlyArray<string>;
+  turnedOn: ReadonlyArray<{ id: string; name: string }>;
   busy: ReadonlySet<string>;
   failed: Readonly<Record<string, string>>;
   onUse: (row: ParkedRow) => void;
+  onDismiss: (id: string) => void;
 };
 
 /**
@@ -71,9 +76,9 @@ type ViewProps = {
  * <details>), and when open the rows scroll inside a bounded region: any
  * number of parked manuals leaves the conversation and the composer usable.
  */
-export function ParkedSourcesView({ rows, turnedOn, busy, failed, onUse }: ViewProps) {
+export function ParkedSourcesView({ rows, turnedOn, busy, failed, onUse, onDismiss }: ViewProps) {
   if (rows.length === 0 && turnedOn.length === 0) return null;
-  const confirmations = turnedOn.map((name, i) => <p key={`on${i}`} style={{ margin: "4px 0" }}>{name} is now used for answers in this project.</p>);
+  const confirmations = turnedOn.map((t) => <NoticeLine key={`on${t.id}`} onDismiss={() => onDismiss(t.id)}>{t.name} is now used for answers in this project.</NoticeLine>);
   if (rows.length === 0) {
     return <section aria-label="Sources not in use" data-testid="parked-sources" style={{ ...box, ...scroll }}>{confirmations}</section>;
   }
