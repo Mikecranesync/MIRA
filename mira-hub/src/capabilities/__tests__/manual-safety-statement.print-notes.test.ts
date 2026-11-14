@@ -7,7 +7,7 @@
  * Run: npx vitest run src/capabilities/__tests__/manual-safety-statement.print-notes.test.ts
  */
 import { describe, expect, it } from "vitest";
-import { extractManualSafetyStatement } from "../manual-safety-statement";
+import { extractManualSafetyStatement, manualSafetyStatementForCitations } from "../manual-safety-statement";
 
 // pdftotext of the real page; lines wrap exactly like this.
 const PRINT_NOTES = `• Monitored outputs are NOT a safety function.
@@ -73,5 +73,39 @@ describe("print-page safety notes (#5370)", () => {
     const hit = extractManualSafetyStatement("WARNING: Hazardous voltage. Lock out first.\n\n" + PRINT_NOTES);
     expect(hit?.marker).toBe("WARNING");
     expect(hit?.statement).toBe("Hazardous voltage. Lock out first.");
+  });
+
+  describe("across cited pages (pre-review of #5512)", () => {
+    const cite = (n: number) => ({ citationId: String(n), docId: `d${n}`, sourceTitle: `t${n}`, page: n });
+    const chunk = (n: number, content: string) => ({ content, sourceUrl: `u${n}`, sourcePage: n });
+    const WEAK = "• Monitored outputs are NOT a safety function.";
+    const STRONG = "• Q1 is NOT a safety-rated disconnect. Always LOTO at CB1 or upstream.";
+    const MARKED = "WARNING: Hazardous voltage is present on the terminals after power is removed.";
+
+    it("a bare 'NOT a safety function' bullet on [1] does not outrank a real WARNING on [2]", () => {
+      const hit = manualSafetyStatementForCitations([cite(1), cite(2)], [chunk(1, WEAK), chunk(2, MARKED)]);
+      expect(hit?.sourceCitationId).toBe("2");
+      expect(hit?.statement).toContain("Hazardous voltage");
+    });
+    it("...but is still surfaced when no cited page has anything stronger", () => {
+      const hit = manualSafetyStatementForCitations([cite(1), cite(2)], [chunk(1, WEAK), chunk(2, "Wire W603 lands on O-02.")]);
+      expect(hit?.sourceCitationId).toBe("1");
+      expect(hit?.statement).toBe("Monitored outputs are NOT a safety function.");
+    });
+    it("CONTROL: the disconnect / LOTO note on [1] keeps its place ahead of a WARNING on [2]", () => {
+      const hit = manualSafetyStatementForCitations([cite(1), cite(2)], [chunk(1, STRONG), chunk(2, MARKED)]);
+      expect(hit?.sourceCitationId).toBe("1");
+      expect(hit?.statement).toContain("LOTO at CB1");
+    });
+  });
+
+  it("an over-long note is cut at a word, with an ellipsis, never mid-word", () => {
+    const long = "• Q1 is NOT a safety-rated disconnect because " + "the relay contacts are small ".repeat(20) + "indeed.";
+    const hit = extractManualSafetyStatement(long);
+    expect(hit).not.toBeNull();
+    expect(hit!.statement.length).toBeLessThanOrEqual(404);
+    expect(hit!.statement.endsWith("...")).toBe(true);
+    expect(long).toContain(hit!.statement.slice(0, -3).trimEnd());
+    expect(/\b(the|relay|contacts|are|small|because)\.\.\.$/.test(hit!.statement)).toBe(true);
   });
 });

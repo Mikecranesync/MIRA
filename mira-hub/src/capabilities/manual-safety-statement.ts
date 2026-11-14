@@ -211,16 +211,23 @@ function matchProseFallback(text: string): ManualSafetyStatement | null {
  * with no WARNING/CAUTION marker. Narrow on purpose — only a sentence saying something is NOT a
  * safety-rated disconnect / safety function, or "do not treat ... as the LOTO isolation point".
  * Returns the sheet's own sentence plus the one that follows it in the same bullet; wrapped lines
- * are joined. Patterns are tried in priority order, so the disconnect / LOTO note wins over a
- * bare "NOT a safety function" bullet that happens to come first on the page.
+ * are joined.
+ *
+ * Two ranks. The disconnect / LOTO note names a specific isolation hazard and ranks with a marked
+ * statement. A bare "NOT a safety function" bullet is WEAK: it is read only when nothing stronger
+ * exists — on the same page, or (in `manualSafetyStatementForCitations`) on any cited page — so it
+ * can never displace a real WARNING that sits on a later citation.
  */
 const PRINT_NOTE_PATTERNS: readonly RegExp[] = [
   /\bNOT\s+an?\s+[^.!?]{0,60}?safety[- ]rated\s+(?:disconnect|isolat\w+|contactor)/,
   /\bdo\s+not\s+treat\b[^.!?]{0,80}?\bas\b[^.!?]{0,40}?\bLOTO\s+isolation\s+point/i,
-  /\bNOT\s+a\s+safety\s+function\b/,
 ];
+const WEAK_PRINT_NOTE_PATTERNS: readonly RegExp[] = [/\bNOT\s+a\s+safety\s+function\b/];
 
-function matchPrintNoteFallback(text: string): ManualSafetyStatement | null {
+function matchPrintNoteFallback(
+  text: string,
+  patterns: readonly RegExp[] = PRINT_NOTE_PATTERNS,
+): ManualSafetyStatement | null {
   // One bullet = one item (a bullet's wrapped lines join); text with no bullets is one item per paragraph.
   const items: string[] = [];
   for (const line of text.split('\n')) {
@@ -233,12 +240,16 @@ function matchPrintNoteFallback(text: string): ManualSafetyStatement | null {
     .map((item) => item.replace(/\s+/g, ' ').trim())
     .filter(Boolean)
     .map((item) => item.split(/(?<=[.!?])\s+(?=[A-Z])/));
-  for (const pattern of PRINT_NOTE_PATTERNS) {
+  for (const pattern of patterns) {
     for (const sentences of sentenceLists) {
       const at = sentences.findIndex((s) => pattern.test(s));
       if (at < 0) continue;
       let statement = sentences.slice(at, at + 2).join(' ');
-      if (statement.length > 400) statement = sentences[at].slice(0, 400);
+      if (statement.length > 400) statement = sentences[at];
+      if (statement.length > 400) {
+        const cut = statement.slice(0, 400);
+        statement = cut.slice(0, Math.max(cut.lastIndexOf(' '), 1)).trimEnd() + '...';
+      }
       return { marker: 'WARNING (manual text)', statement };
     }
   }
@@ -256,6 +267,16 @@ export function extractManualSafetyStatement(text: string): ManualSafetyStatemen
     return null;
   }
 
+  try {
+    return findMarkerAndStatement(text) ?? matchPrintNoteFallback(text, WEAK_PRINT_NOTE_PATTERNS);
+  } catch {
+    return null;
+  }
+}
+
+/** Marked statements, prose hazards and the disconnect / LOTO print note — everything but the weak rank. */
+function extractStrongSafetyStatement(text: string): ManualSafetyStatement | null {
+  if (!text || typeof text !== 'string') return null;
   try {
     return findMarkerAndStatement(text);
   } catch {
@@ -320,19 +341,22 @@ export function manualSafetyStatementForCitations(
     if (i !== undefined) pages[i].push(c.content);
   }
   const ordered = [...citations].sort((a, b) => Number(a.citationId) - Number(b.citationId));
-  for (const c of ordered) {
-    for (const content of pages[Number(c.citationId) - 1] ?? []) {
-      const hit = extractManualSafetyStatement(content);
-      if (hit) {
-        return {
-          kind: 'manual_safety_statement',
-          marker: hit.marker,
-          statement: hit.statement,
-          sourceDocId: c.docId,
-          sourceCitationId: c.citationId,
-          sourceTitle: c.sourceTitle,
-          page: c.page,
-        };
+  // Strong statements across every cited page first; the weak print note only if none exists.
+  for (const extract of [extractStrongSafetyStatement, extractManualSafetyStatement]) {
+    for (const c of ordered) {
+      for (const content of pages[Number(c.citationId) - 1] ?? []) {
+        const hit = extract(content);
+        if (hit) {
+          return {
+            kind: 'manual_safety_statement',
+            marker: hit.marker,
+            statement: hit.statement,
+            sourceDocId: c.docId,
+            sourceCitationId: c.citationId,
+            sourceTitle: c.sourceTitle,
+            page: c.page,
+          };
+        }
       }
     }
   }
