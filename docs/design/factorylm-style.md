@@ -77,11 +77,11 @@ check can later diff the copies against canonical.)
 - Run the app; the picker/table/toolbar must look flat + on-brand; states show the right color.
 - For mira-* web UI changes, follow the repo **Screenshot Rule** (`docs/promo-screenshots/`).
 - Frozen offline tools: confirm `factorylm-tokens.css` is present under `_internal/gui/` after build.
-# Citation and evidence reader — tablet review candidate (#5511)
+# Citation and evidence reader (#5511)
 
-Status: working prototype, pending Mike's tablet visual acceptance. This section
-records the selected Adobe-style interaction direction; final sizing is not yet
-an accepted system-wide restyle.
+Status: Mike accepted the tablet prototype and bold indigo markers on 2026-11-14.
+The Hub adapter connects this treatment to real answer citations and uploaded PDFs;
+deployed/manual acceptance remains a separate check.
 
 - Inline citations are small raised Arabic numerals in the workspace typeface,
   bold (700) and workspace accent indigo (`--fl-workspace-accent`), as requested
@@ -104,3 +104,12 @@ an accepted system-wide restyle.
 Review implementation: `apps/factorylm-ui-lab/evidence.html`; reusable presentation:
 `packages/factorylm-ui/src/EvidenceReader.tsx`. The preview uses synthetic PDF
 content and does not establish correctness of generated answers.
+
+Hub integration: `mira-hub/src/factorylm-ui/cited-answer.tsx` uses the existing
+tenant-authenticated original-file route and PDF.js page renderer. Navigation
+visits each cited source once, in first-mention order. Matching is case-sensitive
+and whitespace-normalized on the cited page, with a unique detailed quote required.
+PDF text runs containing the match are highlighted, which can include adjacent
+words in the same run. Numeric-only fragments, ambiguous matches, missing pages,
+scans without a text layer and non-PDF originals have no invented highlight.
+Opening evidence does not certify manual revision, applicability or answer correctness.

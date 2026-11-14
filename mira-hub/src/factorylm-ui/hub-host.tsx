@@ -56,8 +56,7 @@ import {
   readNotebookStream,
   type PersistedTurn,
 } from "@/components/equipment/notebook-chat-utils";
-import { AnswerMarkdown } from "@/components/equipment/notebook-markdown";
-import { AnswerWithSafety } from "./answer-with-safety";
+import { CitedAnswer } from "./cited-answer";
 import { UserTurnText } from "./user-turn-text";
 import { browserAdapterDeps, createWebAdapter } from "./web-adapter";
 import { HOME_THREAD, createOutgoingOwner, withOutgoing, type Outgoing } from "./outgoing-turn";
@@ -780,11 +779,7 @@ export function HubShellHost() {
       const c = citations.get(part.source.id);
       if (c) own.push(c);
     }
-    // The marker the reader clicks is this turn's "[n]"; the shell source it opens is this turn's.
-    const markdown = (content: string) => <AnswerMarkdown content={content} citations={own} onCite={(c) => openSource(sourceIdFor(turn.id, c.citationId))} />;
-    // #4690: the server's ⚠️ lines above the answer get their own warning block,
-    // the shell's safety styling, instead of reading as the answer's first paragraph.
-    return <AnswerWithSafety text={text} markdown={markdown} />;
+    return <CitedAnswer key={turn.id} text={text} citations={own} onFallback={c => openSource(sourceIdFor(turn.id, c.citationId))} />;
   }, [citations, openSource]);
 
   const onCopy = useCallback((turnId: string) => {
