@@ -65,6 +65,7 @@ const selection = (componentId: string, revision: number, version: number) => ({
 const storeMock = vi.hoisted(() => ({
   listComponents: vi.fn(async (): Promise<unknown[]> => []),
   getSelection: vi.fn(async (): Promise<unknown> => null),
+  getSelectionState: vi.fn(async (): Promise<unknown> => ({ selection: null, version: null })),
   advanceSelectionRevision: vi.fn(async (): Promise<unknown> => null),
   setSelection: vi.fn(),
   stampTurnComponent: vi.fn(async () => true),
@@ -118,7 +119,9 @@ function req(body: unknown) {
 const params = { params: Promise.resolve({ id: NB }) };
 const ask = (message: string, extra: Record<string, unknown> = {}) =>
   POST(req({ message, sourceDocIds: [DOC_A], clientRequestId: REQ, ...extra }), params);
-const under = (componentId: string, selectionVersion: number) => ({ componentSelection: { componentId, selectionVersion } });
+const under = (componentId: string, selectionVersion: number) => ({ componentSelection: { threadId: null, componentId, selectionVersion } });
+/** #5504 post-cap F9/F10: the whole machine, said explicitly, with the version the screen read. */
+const wholeMachine = (selectionVersion: number | null) => ({ componentSelection: { threadId: null, componentId: null, selectionVersion } });
 
 const CHUNK = { docId: DOC_A, filename: "gs10usermanual.pdf", page: 26, content: "oC: overcurrent during acceleration." };
 
@@ -170,9 +173,11 @@ afterEach(() => {
 });
 
 describe("no component selected — today's behaviour", () => {
-  it("control: the notebook's identity scopes retrieval and the component store is never read", async () => {
+  it("control: with nothing saved, the notebook's identity scopes retrieval and no component is read", async () => {
     ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
     await frames(await ask("what does fault oC mean"));
+    // The saved choice is always read (#5504 post-cap F9/F10); nothing saved = today's path.
+    expect(storeMock.getSelectionState).toHaveBeenCalledTimes(1);
     expect(storeMock.getSelection).not.toHaveBeenCalled();
     expect(storeMock.listComponents).not.toHaveBeenCalled();
     expect(storeMock.stampTurnComponent).not.toHaveBeenCalled();
@@ -327,7 +332,7 @@ describe("a confirmed component is the record for the turn", () => {
     ];
     storeMock.listSelectionTurns.mockResolvedValue(turns);
     nbMock.listTurns.mockResolvedValue(turns.map((t) => ({ ...t, ownerUserId: "u1" })));
-    await frames(await ask("and its fuse size?", { ...under(VFD, 3), threadId: THREAD }));
+    await frames(await ask("and its fuse size?", { componentSelection: { threadId: THREAD, componentId: VFD, selectionVersion: 3 }, threadId: THREAD }));
     const all = `${systemPrompt()}\n${providerText()}`;
     expect(all).toContain("PERSISTED TECHNICIAN REPORTS");
     expect(all).toContain("GS13N-20P2 input current");
@@ -498,7 +503,10 @@ describe("the selection the client showed is checked, not trusted", () => {
   });
 
   it.each([
-    ["malformed selection", { componentSelection: { componentId: "VFD1", selectionVersion: 3 } }, "invalid_component_selection"],
+    ["malformed selection", { componentSelection: { threadId: null, componentId: "VFD1", selectionVersion: 3 } }, "invalid_component_selection"],
+    ["scope read for another conversation", { componentSelection: { threadId: "77777777-7777-4777-8777-777777777777", componentId: VFD, selectionVersion: 3 } }, "component_selection_thread_mismatch"],
+    ["whole machine with no conversation named", { componentSelection: { componentId: null, selectionVersion: null } }, "component_selection_thread_mismatch"],
+    ["whole machine with a malformed version", wholeMachine(0), "invalid_component_selection"],
     ["general mode", { ...under(VFD, 3), mode: "general" }, "component_selection_not_general"],
     ["no request id", { ...under(VFD, 3), clientRequestId: undefined }, "client_request_id_required"],
   ])("%s is a 400 before anything is claimed", async (_name, extra, error) => {
@@ -707,5 +715,161 @@ describe("the component id is compared case-insensitively", () => {
     expect(res.status).toBe(200);
     await frames(res);
     expect(retrievalOpts()?.catalogNumber).toBe("GS11N-20P2");
+  });
+});
+
+// #5504 post-cap F9/F10: the server, not the screen, decides whether a question has a component.
+// A question with no scope, or an explicit whole-machine scope, is checked against the saved
+// choice; a saved component is never answered as the whole machine, whatever the screen missed.
+describe("every question's scope is checked against the saved choice", () => {
+  const WM_A = [
+    { role: "user", content: "what is the ZQX-COMPONENT-ONLY-5504 setting" },
+    { role: "assistant", content: "ZQX-COMPONENT-ONLY-5504 answer about the drive." },
+  ];
+  const saved = (id: string, componentId: string | null, question: string, answerText: string) => ({
+    id, question, answerStatus: "answered", basis: "documents", createdAt: "2026-11-14T04:05:00.000Z",
+    componentId, componentRevision: componentId ? 2 : null, clientRequestId: null, answerText, evidence: [],
+  });
+  const providerMessages = () => {
+    const call = seamMock.buildRequestBody.mock.calls.at(-1) as unknown as [unknown, { role: string; content: string }[]] | undefined;
+    if (!call) throw new Error("no provider request was built");
+    return call[1].map((m) => m.content).join("\n");
+  };
+  const noProviderNoRetrieval = () => {
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    expect(ragMock.retrieveNodeChunks).not.toHaveBeenCalled();
+    expect(seamMock.buildRequestBody).not.toHaveBeenCalled();
+  };
+
+  it("a saved component and a question sent with no scope (a lost or late read) is a 409, never answered", async () => {
+    storeMock.getSelectionState.mockResolvedValue({ selection: selection(VFD, 2, 3), version: 3 });
+    const res = await ask("what is the rated current");
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string; selection: { componentId: string; version: number } };
+    expect(body.error).toBe("selection_changed");
+    expect(body.selection).toMatchObject({ componentId: VFD, version: 3 });
+    noProviderNoRetrieval();
+    expect(nbMock.abandonNotebookTurnRequest).toHaveBeenCalled();
+    expect(nbMock.recordTurn).not.toHaveBeenCalled();
+  });
+
+  it("F9: the screen read the old empty selection, the lost pick committed afterwards — the whole-machine send is a 409", async () => {
+    // The screen's recovery read saw nothing selected (version null); the pick of VFD1 then committed.
+    storeMock.getSelectionState.mockResolvedValue({ selection: selection(VFD, 2, 1), version: 1 });
+    const res = await ask("what is the rated current", wholeMachine(null));
+    expect(res.status).toBe(409);
+    noProviderNoRetrieval();
+  });
+
+  it("F9: Send before the delayed commit — still nothing saved — is answered for the whole machine it was labelled", async () => {
+    storeMock.getSelectionState.mockResolvedValue({ selection: null, version: null });
+    ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
+    const res = await ask("what is the rated current", wholeMachine(null));
+    expect(res.status).toBe(200);
+    const out = await frames(res);
+    expect(componentFrame(out)).toBeUndefined();
+    expect(retrievalOpts()?.catalogNumber).toBe("2080-LC20-20QWB");
+    expect(storeMock.stampTurnComponent).not.toHaveBeenCalled();
+  });
+
+  it("F10: a question for B carrying the scope read for conversation A is refused before anything is claimed", async () => {
+    const res = await ask("what is the rated current", {
+      threadId: "88888888-8888-4888-8888-888888888888",
+      componentSelection: { threadId: "77777777-7777-4777-8777-777777777777", componentId: null, selectionVersion: null },
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toBe("component_selection_thread_mismatch");
+    expect(nbMock.claimNotebookTurnRequest).not.toHaveBeenCalled();
+    noProviderNoRetrieval();
+  });
+
+  it("F10: a saved component on B and an explicit whole-machine scope (A's late read) is a 409", async () => {
+    storeMock.getSelectionState.mockResolvedValue({ selection: selection(K1, 1, 2), version: 2 });
+    const res = await ask("what is the rated current", wholeMachine(2));
+    expect(res.status).toBe(409);
+    noProviderNoRetrieval();
+  });
+
+  it("cleared on another screen: the version the screen read must be the saved one", async () => {
+    storeMock.getSelectionState.mockResolvedValue({ selection: null, version: 5 });
+    const stale = await ask("what is the rated current", wholeMachine(4));
+    expect(stale.status).toBe(409);
+    noProviderNoRetrieval();
+    ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
+    const fresh = await ask("what is the rated current", { ...wholeMachine(5), clientRequestId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" });
+    expect(fresh.status).toBe(200);
+    await frames(fresh);
+    expect(retrievalOpts()?.catalogNumber).toBe("2080-LC20-20QWB");
+  });
+
+  it("a hazard report with a missing scope under a saved component gets the banner and answers nothing", async () => {
+    storeMock.getSelectionState.mockResolvedValue({ selection: selection(VFD, 2, 3), version: 3 });
+    const res = await ask("I smell burning from the panel, what voltage is this rated for");
+    expect(res.status).toBe(200);
+    const out = await frames(res);
+    noProviderNoRetrieval();
+    expect(statusOf(out)).toMatchObject({ status: "insufficient_evidence", message: withSafetyFlag(selectionMovedText, "smell burning") });
+  });
+
+  it("an energized-work ask with a missing scope under a saved component still gets the stop", async () => {
+    storeMock.getSelectionState.mockResolvedValue({ selection: selection(VFD, 2, 3), version: 3 });
+    const res = await ask("How do I pull the RFI jumper with it powered?");
+    expect(res.status).toBe(200);
+    const out = await frames(res);
+    expect(out.find((f) => f.kind === "safety")).toBeDefined();
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+  });
+
+  it("an explicit whole-machine question sees only the saved whole-machine turns, never a component's", async () => {
+    storeMock.getSelectionState.mockResolvedValue({ selection: null, version: 4 });
+    storeMock.listSelectionTurns.mockResolvedValue([
+      saved("t1", VFD, "what is the ZQX-COMPONENT-ONLY-5504 setting", "ZQX-COMPONENT-ONLY-5504 answer about the drive."),
+      saved("t2", null, "what does the ZQX-MACHINE-TURN conveyor do", "It moves ZQX-MACHINE-TURN boxes."),
+    ]);
+    ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
+    await frames(await ask("and how fast does it run?", { ...wholeMachine(4), history: WM_A }));
+    expect(providerMessages()).not.toContain("ZQX-COMPONENT-ONLY-5504");
+    expect(String(ragMock.retrieveNodeChunks.mock.calls[0]?.[2] ?? "")).not.toContain("ZQX-COMPONENT-ONLY-5504");
+    expect(providerMessages()).toContain("It moves ZQX-MACHINE-TURN boxes.");
+  });
+
+  it("control: a client that sends no scope on a conversation with nothing saved keeps today's history", async () => {
+    storeMock.getSelectionState.mockResolvedValue({ selection: null, version: null });
+    ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
+    await frames(await ask("and how fast does it run?", { history: WM_A }));
+    expect(providerMessages()).toContain("ZQX-COMPONENT-ONLY-5504");
+    expect(storeMock.listSelectionTurns).not.toHaveBeenCalled();
+  });
+
+  it("an explicit whole-machine scope rides a general-mode turn", async () => {
+    storeMock.getSelectionState.mockResolvedValue({ selection: null, version: 2 });
+    const res = await ask("what is a contactor", { ...wholeMachine(2), mode: "general", sourceDocIds: [] });
+    expect(res.status).not.toBe(400);
+  });
+
+  it("a general-mode turn with no scope under a saved component is a 409 too", async () => {
+    storeMock.getSelectionState.mockResolvedValue({ selection: selection(VFD, 2, 3), version: 3 });
+    const res = await ask("what is a contactor", { mode: "general", sourceDocIds: [] });
+    expect(res.status).toBe(409);
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["no scope", {}],
+    ["explicit whole machine", { componentSelection: { threadId: null, componentId: null, selectionVersion: null } }],
+  ])("control: where migration 115 is not applied (%s), the turn takes today's path", async (_name, extra) => {
+    storeMock.getSelectionState.mockRejectedValue(Object.assign(new Error('relation "notebook_thread_selections" does not exist'), { code: "42P01" }));
+    ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
+    const res = await ask("what does fault oC mean", extra);
+    expect(res.status).toBe(200);
+    await frames(res);
+    expect(retrievalOpts()?.catalogNumber).toBe("2080-LC20-20QWB");
+  });
+
+  it("a selection read that fails for any other reason answers nothing", async () => {
+    storeMock.getSelectionState.mockRejectedValue(new Error("connection reset"));
+    await expect(ask("what does fault oC mean")).rejects.toThrow("connection reset");
+    expect(nbMock.abandonNotebookTurnRequest).toHaveBeenCalled();
+    noProviderNoRetrieval();
   });
 });

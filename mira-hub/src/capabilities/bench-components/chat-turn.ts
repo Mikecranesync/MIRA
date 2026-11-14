@@ -24,20 +24,75 @@ import { modelIdentitiesInText } from "@/capabilities/model-token";
 import type { ManualIdentity } from "@/capabilities/notebook-manual-identity";
 import { componentManualIdentity, componentManualsBlocked, type ComponentRevision } from "./selection";
 import { componentLabel } from "./view";
-import { advanceSelectionRevision, getSelection, listComponents, type ComponentRecord, type ThreadSelection } from "./store";
+import { advanceSelectionRevision, getSelection, getSelectionState, listComponents, type ComponentRecord, type ThreadSelection } from "./store";
+import { componentTablesMissing } from "./http";
 import { isUuid } from "./validate";
 
 export type RequestedComponent = { componentId: string; selectionVersion: number };
 
-/** The chat body's `componentSelection`, or null when absent. */
-export function readComponentSelection(value: unknown): RequestedComponent | null | { error: string } {
+/**
+ * What one question says it is about (#5504 post-cap F9/F10): the conversation it was
+ * asked in, and either the component its header showed or the whole machine, each with
+ * the selection version the screen read (null: this conversation never had a selection).
+ * The server checks it against the saved choice; it never fills in a missing one.
+ */
+export type RequestedScope =
+  | ({ kind: "component"; threadId: string | null } & RequestedComponent)
+  | { kind: "whole_machine"; threadId: string | null; selectionVersion: number | null };
+
+/**
+ * The chat body's `componentSelection`, or null when absent. `threadId` is the body's own
+ * (null for the default conversation): a scope read for another conversation is refused.
+ */
+export function readComponentSelection(value: unknown, threadId: string | null): RequestedScope | null | { error: string } {
   if (value == null) return null;
   if (typeof value !== "object") return { error: "invalid_component_selection" };
-  const v = value as { componentId?: unknown; selectionVersion?: unknown };
+  const v = value as { componentId?: unknown; selectionVersion?: unknown; threadId?: unknown };
+  if (v.threadId !== threadId) return { error: "component_selection_thread_mismatch" };
+  if (v.componentId === null) {
+    if (v.selectionVersion !== null && (!Number.isInteger(v.selectionVersion) || (v.selectionVersion as number) < 1)) {
+      return { error: "invalid_component_selection" };
+    }
+    return { kind: "whole_machine", threadId, selectionVersion: v.selectionVersion as number | null };
+  }
   if (!isUuid(v.componentId)) return { error: "invalid_component_selection" };
   if (!Number.isInteger(v.selectionVersion) || (v.selectionVersion as number) < 1) return { error: "invalid_component_selection" };
   // A UUID is the same id in either letter case; the store returns lower case (#5504 cheap r7).
-  return { componentId: v.componentId.toLowerCase(), selectionVersion: v.selectionVersion as number };
+  return { kind: "component", threadId, componentId: v.componentId.toLowerCase(), selectionVersion: v.selectionVersion as number };
+}
+
+/**
+ * A question asked without a component (explicitly for the whole machine, or by a client
+ * that sends no scope). The saved choice decides, never the client's silence:
+ *  - unavailable: the component tables are not in this database (115 not applied) —
+ *    today's path, no conversation can have a component;
+ *  - whole_machine: nothing is selected, and an explicit scope read the saved version;
+ *  - conflict: a component is selected (the screen missed it: a lost reply, a late
+ *    read from another conversation, another screen), or the version the screen read
+ *    is not the saved one — 409, never answered for the whole machine.
+ */
+export type WholeMachineCheck =
+  | { kind: "unavailable" }
+  | { kind: "whole_machine"; explicit: boolean }
+  | { kind: "conflict"; selection: ThreadSelection | null };
+
+export async function checkWholeMachineScope(
+  tenantId: string,
+  notebookId: string,
+  userId: string,
+  threadKey: string,
+  requested: Extract<RequestedScope, { kind: "whole_machine" }> | null,
+): Promise<WholeMachineCheck> {
+  let saved: Awaited<ReturnType<typeof getSelectionState>>;
+  try {
+    saved = await getSelectionState(tenantId, notebookId, userId, threadKey);
+  } catch (err) {
+    if (componentTablesMissing(err)) return { kind: "unavailable" };
+    throw err;
+  }
+  if (saved.selection) return { kind: "conflict", selection: saved.selection };
+  if (requested && requested.selectionVersion !== saved.version) return { kind: "conflict", selection: null };
+  return { kind: "whole_machine", explicit: requested !== null };
 }
 
 export type ComponentAction =

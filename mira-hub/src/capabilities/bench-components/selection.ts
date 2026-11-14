@@ -152,3 +152,18 @@ export function historyUnderSelection(
   );
   return { history: sanitizeHistory(historyFromSavedTurns(run)), turnIds: new Set(run.map((t) => t.id)) };
 }
+
+/**
+ * What an explicit whole-machine question may see of the conversation before it: only the
+ * saved turns asked about the whole machine (no component), by the same saved-turn rule as
+ * above. A component's answers never carry into a whole-machine question (#5504 follow-up
+ * "whole-machine questions inherit component history"), and `turnIds` scopes prior reports
+ * and photo recall the same way.
+ */
+export function historyForWholeMachine(
+  turns: readonly (SelectionTurn & SavedTurnText & { id: string; clientRequestId?: string | null })[],
+  currentRequestId: string | null,
+): { history: ChatHistoryTurn[]; turnIds: Set<string> } {
+  const run = turns.filter((t) => t.componentId === null && (currentRequestId === null || t.clientRequestId !== currentRequestId));
+  return { history: sanitizeHistory(historyFromSavedTurns(run)), turnIds: new Set(run.map((t) => t.id)) };
+}

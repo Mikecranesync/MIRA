@@ -296,6 +296,29 @@ export async function getSelectionVersion(tenantId: string, notebookId: string, 
   });
 }
 
+/**
+ * Both halves of a conversation's saved choice in one read: the selected component (null
+ * when none or cleared) and the row's version (null when it never had one). The chat route
+ * checks every question's scope against this (#5504 post-cap F9/F10).
+ */
+export async function getSelectionState(
+  tenantId: string,
+  notebookId: string,
+  ownerUserId: string,
+  threadKey: string,
+): Promise<{ selection: ThreadSelection | null; version: number | null }> {
+  return withTenantContext(tenantId, async (c) => {
+    const res = await c.query(
+      `SELECT ${SELECTION_COLS} FROM notebook_thread_selections s
+        WHERE s.tenant_id = $1::uuid AND s.notebook_id = $2::uuid AND s.owner_user_id = $3 AND s.thread_key = $4`,
+      [tenantId, notebookId, ownerUserId, threadKey],
+    );
+    const row = res.rows[0];
+    if (!row) return { selection: null, version: null };
+    return { selection: row.cleared ? null : toSelection(row), version: Number(row.version) };
+  });
+}
+
 export type SetSelectionResult =
   | { status: "set" | "existing"; selection: ThreadSelection }
   | { status: "cleared" }

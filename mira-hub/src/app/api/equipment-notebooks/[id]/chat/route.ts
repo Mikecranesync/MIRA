@@ -145,8 +145,8 @@ import { ambiguousModelAskText, libraryNotForAskedModelText, namedModelMismatchT
 import { readSubject, SUBJECT_READ_STEPS } from "@/capabilities/conversation-subject";
 import { notebookManualIdentity } from "@/capabilities/notebook-manual-identity";
 import { componentAttributionEntry, isComponentAttributionEntry, type ComponentAttributionEntry } from "@/capabilities/bench-components/attribution";
-import { componentTurnFrame, noDocumentsForComponentText, readComponentSelection, resolveComponentTurn, selectionMovedText, type ComponentTurn, type ComponentTurnFrame } from "@/capabilities/bench-components/chat-turn";
-import { historyUnderSelection, readSubjectUnderSelection } from "@/capabilities/bench-components/selection";
+import { checkWholeMachineScope, componentTurnFrame, noDocumentsForComponentText, readComponentSelection, resolveComponentTurn, selectionMovedText, type ComponentTurn, type ComponentTurnFrame } from "@/capabilities/bench-components/chat-turn";
+import { historyForWholeMachine, historyUnderSelection, readSubjectUnderSelection } from "@/capabilities/bench-components/selection";
 import { listSelectionTurns, stampTurnComponent } from "@/capabilities/bench-components/store";
 import {
   excludedTablesRefusalText,
@@ -1339,10 +1339,14 @@ async function handleChatTurn(
   // whole machine". A component scopes the turn's manuals, so it cannot ride a
   // general-mode turn (which reads none), and the turn is stamped with it by
   // its request id, so it needs one.
-  const componentRequest = readComponentSelection(body.componentSelection);
-  if (componentRequest && "error" in componentRequest) {
-    return NextResponse.json({ error: componentRequest.error }, { status: 400 });
+  // #5504 post-cap F9/F10: the scope may also be the whole machine, read with the version
+  // the screen saw, and it must be for this request's own conversation.
+  const scopeRequest = readComponentSelection(body.componentSelection, threadId);
+  if (scopeRequest && "error" in scopeRequest) {
+    return NextResponse.json({ error: scopeRequest.error }, { status: 400 });
   }
+  const componentRequest = scopeRequest?.kind === "component" ? scopeRequest : null;
+  const wholeMachineRequest = scopeRequest?.kind === "whole_machine" ? scopeRequest : null;
   if (componentRequest && general) {
     return NextResponse.json({ error: "component_selection_not_general" }, { status: 400 });
   }
@@ -1750,10 +1754,24 @@ async function handleChatTurn(
   // about no component (the stop still wins below).
   let componentTurn: Exclude<ComponentTurn, { kind: "conflict" }> | null = null;
   let selectionMoved = false;
-  if (componentRequest && clientRequestId) {
-    const resolved = await releaseClaimOnFailure(() =>
-      resolveComponentTurn(ctx.tenantId, notebookId, ctx.userId, threadId ?? LEGACY_THREAD_ID, componentRequest, message, clientRequestId),
+  // #5504 post-cap F9/F10: a question without a component is checked against the saved
+  // choice too. Whatever the screen missed (a lost reply, a late read from another
+  // conversation, a pick on another screen), a saved component is never answered as the
+  // whole machine; an explicit whole-machine scope must have read the saved version.
+  let wholeMachine: Awaited<ReturnType<typeof checkWholeMachineScope>> | null = null;
+  if (!componentRequest) {
+    wholeMachine = await releaseClaimOnFailure(() =>
+      checkWholeMachineScope(ctx.tenantId, notebookId, ctx.userId, threadId ?? LEGACY_THREAD_ID, wholeMachineRequest),
     );
+  }
+  const resolved = componentRequest && clientRequestId
+    ? await releaseClaimOnFailure(() =>
+      resolveComponentTurn(ctx.tenantId, notebookId, ctx.userId, threadId ?? LEGACY_THREAD_ID, componentRequest, message, clientRequestId),
+    )
+    : wholeMachine?.kind === "conflict"
+      ? wholeMachine
+      : null;
+  if (resolved) {
     if (resolved.kind === "conflict") {
       if (!questionSafetyTrigger && !energizedAskEarly) {
         await abandonRequestClaim();
@@ -1764,7 +1782,7 @@ async function handleChatTurn(
         );
       }
       selectionMoved = true;
-    } else {
+    } else if (clientRequestId) {
       componentTurn = resolved;
       const revision = resolved.kind === "hold" ? resolved.revision : resolved.revision.revision;
       const stamped = await releaseClaimOnFailure(() =>
@@ -1801,6 +1819,21 @@ async function handleChatTurn(
       selectionTurnIds = scoped.turnIds;
     } catch (err) {
       console.error("[notebook-chat] selection history read failed (no history carried):", err instanceof Error ? err.message : err);
+      turnHistory = [];
+      selectionTurnIds = new Set();
+    }
+  } else if (wholeMachine?.kind === "whole_machine" && wholeMachine.explicit && !selectionMoved) {
+    // An explicit whole-machine question sees only the conversation asked about the whole
+    // machine: a component's answers never carry into it (the same saved-turn rule).
+    try {
+      const scoped = historyForWholeMachine(
+        await listSelectionTurns(ctx.tenantId, notebookId, ctx.userId, threadId, 50, { withAnswers: true }),
+        clientRequestId ?? null,
+      );
+      turnHistory = scoped.history;
+      selectionTurnIds = scoped.turnIds;
+    } catch (err) {
+      console.error("[notebook-chat] whole-machine history read failed (no history carried):", err instanceof Error ? err.message : err);
       turnHistory = [];
       selectionTurnIds = new Set();
     }
