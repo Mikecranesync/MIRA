@@ -6,7 +6,7 @@ import type { ParkedRow } from "./parked-sources";
 
 const row = (patch: Partial<ParkedRow>): ParkedRow => ({ docId: "d-1", name: "manual.pdf", fileId: "f-1", label: "Not searchable: not turned on", fix: "use", needsApproval: true, ...patch });
 const render = (rows: ParkedRow[], extra: { turnedOn?: string[]; busy?: string[]; failed?: Record<string, string> } = {}) =>
-  renderToStaticMarkup(<ParkedSourcesView rows={rows} turnedOn={extra.turnedOn ?? []} busy={new Set(extra.busy ?? [])} failed={extra.failed ?? {}} onUse={vi.fn()} />);
+  renderToStaticMarkup(<ParkedSourcesView rows={rows} turnedOn={(extra.turnedOn ?? []).map((name, i) => ({ id: `d${i}`, name }))} busy={new Set(extra.busy ?? [])} failed={extra.failed ?? {}} onUse={vi.fn()} onDismiss={vi.fn()} />);
 
 describe("#5456 Sources not in use", () => {
   it("renders nothing when every source is in use", () => {
@@ -48,6 +48,8 @@ describe("#5456 Sources not in use", () => {
   it("confirms a manual that was turned on, with no heading when nothing is left", () => {
     const html = render([], { turnedOn: ["manual.pdf"] });
     expect(html).toContain("manual.pdf is now used for answers in this project.");
+    // It clears itself and can be dismissed: it floats over the conversation (#5488 follow-up).
+    expect(html).toMatch(/<p[^>]*role="status"[^>]*>manual\.pdf is now used[^<]*<button[^>]*min-height:44px[^>]*>Dismiss<\/button>/);
     expect(html).not.toContain("<summary");
     expect(html).not.toContain("<details");
   });
