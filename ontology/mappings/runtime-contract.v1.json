@@ -1,7 +1,7 @@
 {
   "version": 1,
   "audited_revision": "20fda901e3ea2c2ca2b4af8556eedc27c202c12f",
-  "description": "Which ontology rules the running application actually enforces. 'runtime' means a contract test executes the real code path and it rejects the bad case, within the stated scope. 'offline_only' means only tools/validate_ontology.py checks it, against fixtures; no live workflow calls the validator. 'planned' means the application does not do this today.",
+  "description": "Which ontology rules the running application actually enforces. 'runtime' means a contract test executes the real code path and it rejects the bad case, within the stated scope. 'offline_only' means only tools/validate_ontology.py checks it, against fixtures; no live workflow calls the validator. 'planned' means the application does not do this today. A contract can pass and still leave its shape 'offline_only' when no deployed caller of that code is established.",
   "enforcement_values": [
     "runtime",
     "offline_only",
@@ -140,7 +140,7 @@
       "code": [
         "mira-bots/shared/live_snapshot.py"
       ],
-      "call_path": "mira-bots/ask_api/app.py -> live_snapshot.normalize / render_status_block; mira-pipeline/ignition_chat.py -> live_snapshot.assess_from_paths",
+      "call_path": "mira-bots/shared/engine.py -> live_snapshot.normalize + render_machine_evidence -> build_drive_diagnostic; mira-pipeline/ignition_chat.py -> live_snapshot.assess_from_paths -> build_drive_diagnostic; mira-bots/ask_api/app.py -> normalize + render_status_block",
       "test": "tests/test_ontology_runtime_contract.py::TestStaleDriveData::test_lost_comms_marks_every_drive_value_stale_and_withholds_the_fault_card"
     },
     "fault-code-answer-is-scoped-to-one-drive-family": {
@@ -157,9 +157,10 @@
       "status": "agrees",
       "rule": "A RUN command is never taken as proof the motor is running; the two are separate tags and a mismatch is reported.",
       "code": [
-        "plc/conv_simple_anomaly/rules_core.py"
+        "plc/conv_simple_anomaly/rules_core.py",
+        "ignition/webdev/FactoryLM/api/diagnose/diagnose_core.py"
       ],
-      "call_path": "ignition/webdev/FactoryLM/api/diagnose -> rules_core.evaluate (CV-101 in-gateway rules only)",
+      "call_path": "The gateway endpoint ignition/webdev/FactoryLM/api/diagnose/doGet.py calls a vendored copy, diagnose_core.evaluate (the test runs both the source and the copy). No DEPLOYED caller is established: the WebDev module is not installed on the bench gateway, so that endpoint does not answer today.",
       "test": "tests/test_ontology_runtime_contract.py::TestCommandIsNotFeedback::test_run_command_without_run_feedback_is_reported_not_assumed"
     },
     "approval-state-vocabulary-is-a-database-check": {
@@ -187,7 +188,7 @@
       "code": [
         "mira-bots/shared/proposal_transition.py"
       ],
-      "call_path": "apply_kg_approval(trigger='supersede') issues no write; readers filter approval_state = 'verified'. Only caller found: demo/factory_difference_engine/pipeline.py.",
+      "call_path": "apply_kg_approval(trigger='supersede') issues no write; readers filter approval_state = 'verified'. The only importer of proposal_transition.py outside tests is demo/factory_difference_engine/pipeline.py, so no production path applies this transition at all.",
       "test": "tests/test_ontology_runtime_contract.py::TestSupersession::test_a_superseded_verified_edge_stops_being_served_as_verified"
     },
     "fault-code-identity-includes-the-model": {
@@ -210,18 +211,18 @@
       "enforcement": "offline_only"
     },
     "CommandNotFeedbackShape": {
-      "enforcement": "runtime",
+      "enforcement": "offline_only",
       "contracts": [
         "command-is-not-feedback"
       ],
-      "scope": "CV-101 in-gateway anomaly rules only; no general signal-role check exists at ingest"
+      "nearest_runtime": "CV-101 anomaly rule A6 keeps the run command and run feedback apart and the contract test passes on it, but the gateway endpoint that would run it is not installed, so no live workflow is protected today"
     },
     "LiveDiagnosisEligibilityShape": {
       "enforcement": "runtime",
       "contracts": [
         "stale-drive-data-gives-no-diagnosis"
       ],
-      "scope": "GS10 live-snapshot path only, and only the comms-lost case; there is no age-based staleness check"
+      "scope": "GS10 live-snapshot path, when a turn carries live tags; only the comms-lost case. There is no age-based staleness check"
     },
     "MeasurementCompletenessShape": {
       "enforcement": "offline_only",
@@ -246,7 +247,7 @@
       "contracts": [
         "stale-drive-data-gives-no-diagnosis"
       ],
-      "scope": "GS10 live-snapshot path only"
+      "scope": "GS10 live-snapshot path, when a turn carries live tags"
     },
     "WritableSignalShape": {
       "enforcement": "offline_only",
@@ -332,7 +333,7 @@
       "contracts": [
         "approval-state-vocabulary-is-a-database-check"
       ],
-      "scope": "kg_entities and kg_relationships; each table has its own allowed set"
+      "scope": "The approval_state vocabulary only, on kg_entities and kg_relationships (each table has its own allowed set). The shape's other constraints, such as confidence range, are offline only"
     },
     "CitationCompletenessShape": {
       "enforcement": "offline_only"

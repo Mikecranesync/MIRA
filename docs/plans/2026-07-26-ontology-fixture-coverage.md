@@ -37,10 +37,12 @@ real code (`tests/test_ontology_runtime_contract.py`):
 | Approval state must be from the allowed set | PostgreSQL CHECK from migration 029 (run on a throwaway database) |
 | No live diagnosis or numeric claim over lost drive comms | `mira-bots/shared/live_snapshot.py` (GS10 path, comms-lost case only) |
 | A fault code is answered from one drive family only | drive-pack resolver and answerer (drive-pack answers only) |
-| A run command is not run feedback | CV-101 in-gateway anomaly rule A6 |
 
-Everything else (33 shapes) is checked **offline only**: nothing in a live workflow calls the
+Everything else (34 shapes) is checked **offline only**: nothing in a live workflow calls the
 validator, and `materialized_evidence.evidence_from_ontology_validation` has no production caller.
+One of the 34 is close but not live: the CV-101 anomaly rule A6 keeps a run command apart from run
+feedback and its contract test passes on both the source and the gateway copy, but the gateway
+endpoint that would run it is not installed on the bench, so it protects no workflow today.
 Four shapes describe behaviour the application does **not** have today; their tests are strict
 expected failures that name the owning issue:
 

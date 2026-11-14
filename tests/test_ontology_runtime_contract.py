@@ -312,6 +312,7 @@ class TestFaultFamilyScope:
 class TestFaultCodeIdentity:
     @pytest.mark.xfail(
         strict=True,
+        raises=AssertionError,
         reason="#5520: register_fault_code names a fault 'manufacturer / code', leaving the model "
         "out, so two models' codes collapse onto one (tenant, type, name) graph identity.",
     )
@@ -331,26 +332,44 @@ class TestFaultCodeIdentity:
 
         monkeypatch.setattr(kw, "upsert_entity", fake_upsert_entity)
         monkeypatch.setattr(kw, "upsert_relationship", lambda **_: None)
-        for model in ("ModelA", "ModelB"):
-            kw.register_fault_code("t", "eq", "SyntheticMfr", "E01", model=model, conn=object())
+        try:
+            for model in ("ModelA", "ModelB"):
+                kw.register_fault_code("t", "eq", "SyntheticMfr", "E01", model=model, conn=object())
+        finally:
+            # Leave no mira-crawler `ingest` package behind for another suite to trip over.
+            for name in [n for n in sys.modules if n == "ingest" or n.startswith("ingest.")]:
+                sys.modules.pop(name, None)
         assert len(set(keys)) == 2, keys
 
 
 # ── Command versus feedback ───────────────────────────────────────────────────
 
 
-class TestCommandIsNotFeedback:
-    def _evaluate(self, running):
-        rc = _load_by_path("mira_cv101_rules_core", "plc/conv_simple_anomaly/rules_core.py")
+RULE_COPIES = {
+    "source": "plc/conv_simple_anomaly/rules_core.py",
+    "gateway copy": "ignition/webdev/FactoryLM/api/diagnose/diagnose_core.py",
+}
 
+
+class TestCommandIsNotFeedback:
+    """Runs the rule source AND the copy the gateway endpoint would execute.
+
+    Passing here does not mean a live workflow is protected: that endpoint is not installed on
+    the bench gateway today, which is why the mapping leaves the shape offline_only.
+    """
+
+    def _evaluate(self, which, running):
+        rc = _load_by_path("mira_cv101_" + which.replace(" ", "_"), RULE_COPIES[which])
         snap = {rc.T_CMD: 18, rc.T_RUN: running, rc.T_COMM: True}
         return [a.rule_id for a in rc.evaluate(snap, {"cmd_run_for_s": 10.0})]
 
     def test_run_command_without_run_feedback_is_reported_not_assumed(self):
-        assert "A6_DRIVE_NOT_RESPONDING" in self._evaluate(running=False)
+        for which in RULE_COPIES:
+            assert "A6_DRIVE_NOT_RESPONDING" in self._evaluate(which, running=False), which
 
     def test_run_command_with_run_feedback_is_normal(self):
-        assert "A6_DRIVE_NOT_RESPONDING" not in self._evaluate(running=True)
+        for which in RULE_COPIES:
+            assert "A6_DRIVE_NOT_RESPONDING" not in self._evaluate(which, running=True), which
 
 
 # ── Approval ──────────────────────────────────────────────────────────────────
@@ -386,6 +405,7 @@ class TestSupersession:
 
     @pytest.mark.xfail(
         strict=True,
+        raises=AssertionError,
         reason="#5523: supersede leaves kg approval_state unchanged, so a superseded verified "
         "edge is still returned by every approval_state = 'verified' reader.",
     )
