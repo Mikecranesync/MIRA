@@ -110,7 +110,7 @@ before the run. Chosen so a wrong document or a wrong variant gives a visibly wr
 | Component | Reference question | Expected | State |
 |---|---|---|---|
 | VFD1, GS11N-20P2 (baseline) | Which parameter controls acceleration time; explain and cite the page; recommend no setting | P01.12; GS10 manual Rev C printed page 4-69 (PDF 139); that page's cautions | Defined (S5) |
-| Q1, CA3KN22BD | To be keyed from the attached datasheet's own text before the run: the coil voltage and the conventional thermal current of this catalog number, and whether Q1 may be used as the lockout point | Values from the datasheet page, cited; the lockout answer is no, with the print set's CB1 line | NOT KEYED. Needs the datasheet file and its hash from the coordinator |
+| Q1, CA3KN22BD | "What is the coil voltage and the conventional thermal current of the CA3KN22BD in this project, and can I use it as the lockout point for the drive? Cite the page." | From the Schneider datasheet for CA3KN22BD, PDF page 1, printed page 1, dated 2022-10-06 (3 pages, 85768 bytes, SHA-256 `1fb7799f6f50cb4bffadf57b76d67ef21fefaf6c24ecdb5c3521c3e69667ed50`): control circuit voltage 24 V DC; conventional free air thermal current 10 A at 50 °C; a control relay for control circuits, categories AC-15 and DC-13, 2 NO + 2 NC. Stated as catalog values, not as readings. Lockout: no; the 10 A figure approves neither the drive's inrush nor a safety function, and the print set says lock out at CB1. "MLC" is treated as the local label, never as a maker or a catalog number | Defined 2026-11-14, values read from the file's text. Reuses the applicability lane's pre-run expectations (PR #5510, comment 6880249817). Valid only if the file attached in the run has this hash; another revision is keyed again first |
 | Others | Keyed when the item is agreed and a document exists. An item with no document gets the refusal check only | | NOT KEYED |
 
 ## 6. Recovery checks
@@ -190,7 +190,7 @@ interventions is the target; every one is listed, with the step it happened on.
   campaign (#5458) still reads NO-GO.
 - The component screen (PR #5504) is not merged or deployed. Steps O4 and O7 cannot run until a
   candidate includes it.
-- Q1's reference question is not keyed; its datasheet file and hash are not recorded here.
+- Q1's reference question is keyed from a datasheet copy held by the applicability lane. Which file the pilot project will actually hold, and its hash, is not settled; the photo of Q1 on file is an older one, not a fresh confirmation of the installed part.
 - Device lease holder, candidate build and the agreed inventory are the coordinator's to state.
 - Offline, long-duration and production acceptance are separate stages and are not covered.
 - O15 has no keyed case, and parts of O11 and R8 are this runbook's own wording (marked in place).
