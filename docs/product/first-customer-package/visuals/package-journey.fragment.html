@@ -1,0 +1,300 @@
+<div id="flm-package-journey">
+  <style>
+    #flm-package-journey { color: var(--foreground); background: transparent; }
+    #flm-package-journey .flm-heading { margin: 0 100px 8px 0; }
+    #flm-package-journey .flm-caption { margin: 0 0 16px; }
+    #flm-package-journey .flm-controls { margin: 0 0 14px; }
+    #flm-package-journey .flm-figure { margin: 0; min-width: 0; }
+    #flm-package-journey .flm-figure svg { display: block; width: 100%; overflow: visible; }
+    #flm-package-journey .flm-figure text { fill: var(--foreground); font-family: inherit; font-size: var(--font-size-base); font-weight: 400; }
+    #flm-package-journey .flm-figure .flm-node-title { font-weight: 500; }
+    #flm-package-journey .flm-figure .flm-node-sub { fill: var(--muted-foreground); }
+    #flm-package-journey .flm-link { fill: none; stroke: var(--border); stroke-width: 1.5; }
+    #flm-package-journey .flm-link-focus { stroke: var(--viz-series-1); }
+    #flm-package-journey .flm-node-box { fill: var(--card); stroke: var(--border); stroke-width: 1; }
+    #flm-package-journey .flm-focus-box { fill: color-mix(in srgb, var(--viz-series-1) 12%, var(--background)); }
+    #flm-package-journey .flm-future-box { stroke-dasharray: 5 4; fill: transparent; }
+    #flm-package-journey .flm-legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 10px 0 12px; }
+    #flm-package-journey .flm-key { display: inline-flex; align-items: center; gap: 7px; }
+    #flm-package-journey .flm-swatch { width: 18px; height: 10px; display: inline-block; background: color-mix(in srgb, var(--viz-series-1) 16%, transparent); }
+    #flm-package-journey .flm-dash { width: 22px; height: 0; border-top: 1px dashed var(--muted-foreground); }
+    #flm-package-journey .flm-foundation { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 12px; }
+    #flm-package-journey .flm-foundation h3 { margin: 0 0 7px; }
+    #flm-package-journey .flm-foundation p { margin: 0; }
+    #flm-package-journey .flm-detail { margin: 8px 0 12px; }
+    #flm-package-journey .flm-stage-control { margin-bottom: 12px; }
+    #flm-package-journey [hidden] { display: none !important; }
+  </style>
+
+  <h2 class="flm-heading">FactoryLM + MIRA</h2>
+  <p class="text-small text-muted flm-caption">Target package · useful cited next step first · release acceptance pending</p>
+
+  <div class="viz-controls flm-controls" role="group" aria-label="Explore the package">
+    <button type="button" class="btn" data-flm-view="package" aria-pressed="true">Full package</button>
+    <button type="button" class="btn" data-flm-view="journey" aria-pressed="false">Customer journey</button>
+    <button type="button" class="btn" data-flm-view="knowledge" aria-pressed="false">Knowledge lifecycle</button>
+  </div>
+
+  <div class="flm-stage-control" hidden>
+    <label class="form-label" for="flm-journey-stage">Journey stage</label>
+    <select class="form-select" id="flm-journey-stage">
+      <option value="0">1 · Enter the pilot</option>
+      <option value="1">2 · Confirm the machine</option>
+      <option value="2">3 · Establish the evidence</option>
+      <option value="3">4 · Describe the problem</option>
+      <option value="4">5 · Inspect the next step</option>
+      <option value="5">6 · Prepare the work</option>
+      <option value="6">7 · Record and verify the result</option>
+      <option value="7">8 · Hand over and return</option>
+      <option value="8">9 · Demonstrate customer value</option>
+    </select>
+  </div>
+
+  <p class="flm-detail" id="flm-selected-detail" aria-live="polite">Mission 001: confirmed technician observation → UNS event → machine state → informed later answer.</p>
+  <figure class="flm-figure" aria-label="FactoryLM and MIRA architecture"></figure>
+  <div class="flm-legend text-small" aria-label="Diagram legend">
+    <span class="flm-key"><span class="flm-swatch" aria-hidden="true"></span><span id="flm-highlight-label">Mission 001 focus</span></span>
+    <span class="flm-key"><span class="flm-dash" aria-hidden="true"></span>Later qualification / outside first release</span>
+  </div>
+  <div class="flm-foundation">
+    <h3>Across the entire package</h3>
+    <p class="text-small">Tenant and role isolation · private conversations · approved shared asset facts · consent and pilot access · safety and applicability gates · durable cost limits · audit trail · CI, device proof and rollback</p>
+  </div>
+  <script>
+    (() => {
+      const root = document.getElementById('flm-package-journey');
+      const figure = root.querySelector('.flm-figure');
+      const detail = root.querySelector('#flm-selected-detail');
+      const stageControl = root.querySelector('.flm-stage-control');
+      const stageSelect = root.querySelector('#flm-journey-stage');
+      const highlightLabel = root.querySelector('#flm-highlight-label');
+      const views = ['package', 'journey', 'knowledge'];
+      let currentView = 'package';
+      let selectedStage = 0;
+      const NS = 'http://www.w3.org/2000/svg';
+      const measureCanvas = document.createElement('canvas');
+      const measure = measureCanvas.getContext('2d');
+
+      const steps = [
+        {id:'entry', title:'1 · Enter the pilot', sub:'Offer → consent → approval → crew access', detail:'Access: five approved organizations, up to five seats each; 30 days free from approval, with paid continuation separately agreed.'},
+        {id:'identity', title:'2 · Confirm the machine', sub:'Project → asset → model / revision', detail:'Identity: confirm the physical asset and relevant component; a changed or ambiguous asset resets the troubleshooting context.'},
+        {id:'evidence', title:'3 · Establish the evidence', sub:'Manual / photo → applicability → readiness', detail:'Evidence: the supported manual and revision become searchable; failed or unsupported evidence remains visibly unavailable or Unknown.'},
+        {id:'observe', title:'4 · Describe the problem', sub:'Question + confirmed observation → state', detail:'Mission 001: reuse the fault question, confirm its factual interpretation, persist once and show state readback; additional reporting must help the current job.'},
+        {id:'ask', title:'5 · Inspect the next step', sub:'State + approved KB → cited answer', detail:'Answer: inspect the supporting passage, applicability, critical values and complete safety conditions; unsupported claims remain Unknown.'},
+        {id:'prepare', title:'6 · Prepare the work', sub:'Sourced packet → edit → save / PDF', detail:'Work: preserve prerequisites, units and citations through edits and physical-phone export; distinguish source facts from technician changes.'},
+        {id:'verify', title:'7 · Record and verify', sub:'Before / after → outcome → evidence', detail:'Outcome: retain how success was verified—self-report, attestation or measurement; an unverified repair never implies safety clearance.'},
+        {id:'handover', title:'8 · Hand over and return', sub:'Shared asset history → informed next job', detail:'Memory: another authorized technician gets approved asset facts and unresolved issues while each technician’s conversation remains private.'},
+        {id:'value', title:'9 · Demonstrate value', sub:'Completion → corrections → time → repeat use', detail:'Acceptance: proposed Level 3 bars are 4/5 independent completions, benefit for at least 3/5 and zero critical failures; repeat-use evidence follows at Level 4.'}
+      ];
+
+      const packageGraph = {
+        summary: 'Target system. Phone and web share a workspace. Manuals and photos become approved knowledge; confirmed technician reports create UNS events and machine state. Approved knowledge and current state inform MIRA answers and work packets. Verified outcomes feed history and future jobs. Telemetry and permissioned external actions require later qualification.',
+        rows: [
+          [{id:'workspace', title:'Customer workspace', sub:'Pilot access • phone ↔ web • Projects + private threads'}],
+          [
+            {id:'documents', title:'Engineering evidence', sub:'OEM manuals • drawings • tables • photos'},
+            {id:'reports', title:'Technician observations', sub:'Confirm asset + meaning + time', focus:true},
+            {id:'telemetry', title:'Read-only telemetry', sub:'PLC / sensors / historian • later', future:true}
+          ],
+          [
+            {id:'kb', title:'Governed knowledge base', sub:'Citable evidence + model / manual relationships'},
+            {id:'uns', title:'FactoryLM UNS', sub:'Canonical asset address + typed evidence events', focus:true},
+            {id:'state', title:'Machine state + history', sub:'Reported / measured / unknown / contested', focus:true}
+          ],
+          [{id:'mira', title:'MIRA · evidence-grounded reasoning', sub:'Confirmed identity + approved sources + machine facts + permissions', focus:true}],
+          [
+            {id:'answer', title:'Cited answers', sub:'Inspect source • limits • required safety', focus:true},
+            {id:'packet', title:'Work preparation', sub:'Guided checks • editable packet • saved PDF'},
+            {id:'outcome', title:'Verified job outcome', sub:'Before / after • verification • unresolved facts'}
+          ],
+          [{id:'future', title:'Later: permissioned external execution', sub:'CMMS writes / OT control / robotic execution require separate qualification', future:true}]
+        ],
+        edges: [
+          ['workspace','documents'], ['workspace','reports'],
+          ['documents','kb'], ['reports','uns','focus'], ['telemetry','uns','future'],
+          ['uns','state','focus'], ['kb','mira'], ['uns','mira','focus'], ['state','mira','focus'],
+          ['mira','answer','focus'], ['mira','packet'], ['mira','outcome'],
+          ['packet','future','future']
+        ],
+        returnEdge: ['outcome','uns'],
+        footer: 'Recorded outcomes → confirmed asset history → approved experience → next job'
+      };
+
+      const knowledgeGraph = {
+        summary: 'Knowledge lifecycle. Original manuals, photos and reports retain version and provenance. Extraction preserves pages, tables, warnings and conditions. Applicability is confirmed against the asset. Approved evidence and relationships support scoped retrieval. MIRA combines retrieved evidence with machine state. Corrections and outcomes propose reviewed updates rather than automatically becoming universal repair rules.',
+        rows: [
+          [{id:'originals', title:'Original artifacts', sub:'Manuals • drawings • photos • service bulletins • technician reports'}],
+          [
+            {id:'extract', title:'Preserve engineering meaning', sub:'Pages • tables • units • warnings • complete conditions'},
+            {id:'scope', title:'Confirm applicability', sub:'Asset / component • model • variant • revision'}
+          ],
+          [
+            {id:'approved', title:'Approved, citable evidence', sub:'Origin • page • version • approval • uncertainty'},
+            {id:'relationships', title:'Knowledge relationships', sub:'Model ↔ component ↔ manual ↔ fault / procedure'}
+          ],
+          [{id:'retrieval', title:'Scoped retrieval', sub:'Tenant + approval + applicability filters → supporting passages'}],
+          [{id:'reason', title:'MIRA evidence context', sub:'Retrieved knowledge + confirmed UNS asset + current state / history'}],
+          [
+            {id:'response', title:'Supported guidance', sub:'Cited answer / packet • complete prerequisites • explicit Unknowns'},
+            {id:'correction', title:'Reviewed learning', sub:'Corrections + verified outcomes → proposed, versioned updates'}
+          ]
+        ],
+        edges: [
+          ['originals','extract'], ['originals','scope'], ['extract','approved'], ['scope','approved'],
+          ['scope','relationships'], ['approved','retrieval'], ['relationships','retrieval'],
+          ['retrieval','reason'], ['reason','response'], ['reason','correction']
+        ],
+        returnEdge: ['correction','approved'],
+        footer: 'Preserve the original • distinguish approved facts, reports, inference and Unknowns'
+      };
+
+      function svgElement(name, attributes, parent) {
+        const el = document.createElementNS(NS, name);
+        for (const [key,value] of Object.entries(attributes || {})) el.setAttribute(key,String(value));
+        if (parent) parent.appendChild(el);
+        return el;
+      }
+
+      function wrap(text, width) {
+        const words = text.split(/\s+/);
+        const lines = [];
+        let line = '';
+        for (const word of words) {
+          const next = line ? line + ' ' + word : word;
+          if (line && measure.measureText(next).width > width) {
+            lines.push(line); line = word;
+          } else line = next;
+        }
+        if (line) lines.push(line);
+        return lines;
+      }
+
+      function drawText(svg, lines, x, y, cssClass, lineHeight) {
+        const text = svgElement('text', {x, y, 'text-anchor':'middle', class:cssClass}, svg);
+        lines.forEach((line,i) => {
+          const span = svgElement('tspan',{x, dy:i === 0 ? 0 : lineHeight},text);
+          span.textContent = line;
+        });
+      }
+
+      function graphForView() {
+        if (currentView === 'package') return packageGraph;
+        if (currentView === 'knowledge') return knowledgeGraph;
+        return {
+          summary: 'Nine-stage customer journey from pilot entry to demonstrated value. The selected stage is highlighted. A verified outcome feeds machine history and improves the next maintenance job.',
+          rows: [steps.slice(0,3), steps.slice(3,6), steps.slice(6,9)],
+          edges: steps.slice(1).map((step,i) => [steps[i].id,step.id]),
+          returnEdge:['handover','identity'],
+          footer:'The next job starts with evidence from the last one'
+        };
+      }
+
+      function draw() {
+        const width = Math.max(280, Math.round(figure.getBoundingClientRect().width));
+        const compact = width < 560;
+        const graph = graphForView();
+        const computed = getComputedStyle(root);
+        const baseSize = parseFloat(computed.fontSize) || 14;
+        const lh = Math.max(18,baseSize * 1.3);
+        measure.font = `${baseSize}px ${computed.fontFamily}`;
+        const margin = 18;
+        const gap = compact ? 0 : 18;
+        const rowGap = currentView === 'journey' ? 44 : 48;
+        const positions = new Map();
+        const layoutRows = compact ? graph.rows.flat().map(node => [node]) : graph.rows;
+        let y = 8;
+        layoutRows.forEach(row => {
+          const cellWidth = (width - margin * 2 - gap * (row.length - 1)) / row.length;
+          const laidOut = row.map((node,index) => {
+            const titles = wrap(node.title,cellWidth - 24);
+            const subs = wrap(node.sub,cellWidth - 24);
+            const h = 30 + (titles.length + subs.length) * lh + 6;
+            return {...node, x:margin + index*(cellWidth+gap), y, w:cellWidth,h,titles,subs};
+          });
+          const rowHeight = Math.max(...laidOut.map(node => node.h));
+          laidOut.forEach(node => {node.h=rowHeight;positions.set(node.id,node);});
+          y += rowHeight + rowGap;
+        });
+        const footerLines = wrap(graph.footer,width - margin * 2);
+        const height = y - rowGap + 42 + footerLines.length * lh;
+        const svg = svgElement('svg',{viewBox:`0 0 ${width} ${height}`,height,role:'img','aria-labelledby':'flm-graph-title flm-graph-desc'});
+        const title = svgElement('title',{id:'flm-graph-title'},svg);
+        title.textContent = currentView === 'package' ? 'Full FactoryLM and MIRA package' : currentView === 'knowledge' ? 'Knowledge lifecycle' : 'First customer journey';
+        const desc=svgElement('desc',{id:'flm-graph-desc'},svg); desc.textContent=graph.summary;
+        const defs=svgElement('defs',{},svg);
+        ['neutral','focus'].forEach(kind => {
+          const marker = svgElement('marker',{id:`flm-arrow-${kind}`,viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:6,markerHeight:6,orient:'auto-start-reverse'},defs);
+          svgElement('path',{d:'M 0 0 L 10 5 L 0 10 Z',fill:kind==='focus'?'var(--viz-series-1)':'var(--border)'},marker);
+        });
+        const edgesGroup=svgElement('g',{'aria-hidden':'true'},svg);
+        graph.edges.forEach(([fromId,toId,kind]) => {
+          const a=positions.get(fromId),b=positions.get(toId);
+          if (!a || !b) return;
+          let path;
+          if (Math.abs(a.y-b.y)<1) {
+            const fromX=a.x<b.x?a.x+a.w:a.x;
+            const toX=a.x<b.x?b.x:b.x+b.w;
+            path=`M ${fromX} ${a.y+a.h/2} L ${toX} ${b.y+b.h/2}`;
+          } else {
+            const ax=a.x+a.w/2, ay=a.y+a.h, bx=b.x+b.w/2,by=b.y;
+            const mid=ay+(by-ay)/2;
+            path=`M ${ax} ${ay} C ${ax} ${mid}, ${bx} ${mid}, ${bx} ${by}`;
+          }
+          svgElement('path',{d:path,class:`flm-link ${kind==='focus'?'flm-link-focus':''}`,'stroke-dasharray':kind==='future'?'5 4':'none','marker-end':`url(#flm-arrow-${kind==='focus'?'focus':'neutral'})`},edgesGroup);
+        });
+        if (graph.returnEdge) {
+          const a=positions.get(graph.returnEdge[0]), b=positions.get(graph.returnEdge[1]);
+          const edgeX=width-4;
+          const startX=a.x+a.w/2, startY=a.y+a.h;
+          const bottomBus=startY+14, targetBus=b.y+b.h+rowGap*0.42;
+          const targetX=b.x+b.w/2, targetY=b.y+b.h;
+          const path=`M ${startX} ${startY} L ${startX} ${bottomBus} L ${edgeX} ${bottomBus} L ${edgeX} ${targetBus} L ${targetX} ${targetBus} L ${targetX} ${targetY}`;
+          svgElement('path',{d:path,class:'flm-link','marker-end':'url(#flm-arrow-neutral)'},edgesGroup);
+        }
+        const nodesGroup=svgElement('g',{},svg);
+        positions.forEach(node => {
+          const selected=currentView==='journey' && steps[selectedStage].id===node.id;
+          const focus=currentView==='package' && node.focus;
+          const g=svgElement('g',{'data-node-id':node.id},nodesGroup);
+          svgElement('rect',{x:node.x,y:node.y,width:node.w,height:node.h,rx:8,class:`flm-node-box ${selected||focus?'flm-focus-box':''} ${node.future?'flm-future-box':''}`},g);
+          drawText(g,node.titles,node.x+node.w/2,node.y+22,'flm-node-title',lh);
+          drawText(g,node.subs,node.x+node.w/2,node.y+22+node.titles.length*lh+6,'flm-node-sub',lh);
+        });
+        drawText(svg,footerLines,width/2,height-footerLines.length*lh+2,'flm-node-sub',lh);
+        figure.replaceChildren(svg);
+        figure.setAttribute('aria-label',title.textContent);
+      }
+
+      function render() {
+        root.querySelectorAll('[data-flm-view]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.flmView===currentView)));
+        stageControl.hidden=currentView!=='journey';
+        stageSelect.value=String(selectedStage);
+        highlightLabel.textContent=currentView==='journey'?'Selected customer stage':currentView==='package'?'Mission 001 focus':'Evidence retains provenance';
+        const swatch=root.querySelector('.flm-swatch');
+        swatch.parentElement.hidden=currentView==='knowledge';
+        detail.textContent=currentView==='journey'?steps[selectedStage].detail:currentView==='knowledge'?'Knowledge base = approved engineering evidence + relationships; UNS = asset address and event scope; machine state = time-bound facts.':'Mission 001: confirmed technician observation → UNS event → machine state → informed later answer.';
+        draw();
+      }
+
+      function restore(snapshot) {
+        const saved=snapshot?.modelContent;
+        if (!saved || saved.visualization!=='factorylm-package-journey') return;
+        if (views.includes(saved.view)) currentView=saved.view;
+        if (Number.isInteger(saved.stage)&&saved.stage>=0&&saved.stage<steps.length) selectedStage=saved.stage;
+      }
+
+      function remember() {
+        const state={modelContent:{visualization:'factorylm-package-journey',view:currentView,stage:selectedStage,selectedStage:steps[selectedStage].title},privateContent:null};
+        if(window.openai?.setWidgetState) window.openai.setWidgetState(state).catch(()=>{});
+      }
+
+      root.querySelectorAll('[data-flm-view]').forEach(button=>button.addEventListener('click',()=>{currentView=button.dataset.flmView;render();remember();}));
+      stageSelect.addEventListener('change',()=>{selectedStage=Number(stageSelect.value);render();remember();});
+      restore(window.openai?.widgetState);
+      window.addEventListener('openai:set_globals',event=>{restore(event.detail?.globals?.widgetState);render();});
+      let resizeFrame=0;
+      new ResizeObserver(()=>{cancelAnimationFrame(resizeFrame);resizeFrame=requestAnimationFrame(draw);}).observe(figure);
+      render();
+    })();
+  </script>
+</div>
