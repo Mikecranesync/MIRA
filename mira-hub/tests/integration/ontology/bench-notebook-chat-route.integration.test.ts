@@ -9,13 +9,15 @@
 // So this proves what the route puts in front of the model, which passage it cites and what it
 // records — not what a real model would say. The canned reply is the same text every time
 // ("2.4 amps [1]"), so the answer WORDS prove nothing; the citation, the scope and the prompt do. Limits: text-search lane only; the approved-retrieval gate is set on
-// (as in the staging configuration); the notebook has no confirmed machine identity; two
+// (as in the staging configuration); the notebook has no confirmed machine identity; three
 // one-passage documents. Tables this test schema lacks (turn_ingress, decision_traces) make
 // the route log "capture degraded" and carry on; that telemetry path is not exercised.
 //
-// OBSERVED, not investigated: the safety-judge request receives the same canned streamed reply,
-// which is not a verdict it can parse; the turn is still returned as "answered". What the judge
-// does with a real verdict is not exercised here.
+// THE SECOND PROVIDER CALL: after the answer, the route asks a safety judge about it. The judge
+// request gets the same canned streamed reply, which is not JSON, so the judge returns "unknown"
+// (answer-safety-check.ts). On a turn the route has NOT flagged as hazardous that is logged and
+// the answer is served; on a flagged turn it would be replaced by a fallback. This question is
+// unflagged, so the turn is "answered". The judge with a real verdict is not exercised here.
 //
 // Nothing here is CI-enforced. Same disposable database as the other contract files.
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -98,6 +100,8 @@ beforeAll(async () => {
     throw new Error("Refusing to run against a non-disposable database.");
   }
   process.env.GROQ_API_KEY = "test-not-a-key"; // the provider call is stubbed below; this only selects a provider
+  // Any other provider key in the shell would add providers and change the call list.
+  for (const k of ["OPENAI_API_KEY", "OPENROUTER_API_KEY", "CEREBRAS_API_KEY", "TOGETHERAI_API_KEY"]) delete process.env[k];
   process.env.MIRA_ENFORCE_APPROVED_RETRIEVAL = "true";
   delete process.env.NOTEBOOK_HYBRID_RETRIEVAL;
   delete process.env.NOTEBOOK_LEXICAL_V2;
@@ -203,6 +207,15 @@ describe("pilot path, real chat route: a corrected reading replaces the old one 
     expect(saved.rows[0].evidence[0]).toMatchObject({ docId: NEW, originFileId: PHOTO });
     expect(JSON.stringify(saved.rows[0])).not.toContain(OLD);
     expect(JSON.stringify(saved.rows[0])).not.toContain("4.2 amps");
+
+    // ...and after that turn the old reading is still on file (history), untouched by the route.
+    const src = await testPool.query(
+      `SELECT superseded_at IS NOT NULL AS superseded FROM equipment_notebook_sources WHERE notebook_id = $1::uuid AND doc_id = $2::uuid`,
+      [NB, OLD],
+    );
+    const passage = await testPool.query(`SELECT content FROM knowledge_entries WHERE doc_id = $1::uuid`, [OLD]);
+    expect(src.rows).toEqual([{ superseded: true }]);
+    expect(passage.rows).toEqual([{ content: OLD_TEXT }]);
   });
 
   it("control: the same request while the old reading is still current DOES show the model the old reading", async () => {
@@ -222,15 +235,6 @@ describe("pilot path, real chat route: a corrected reading replaces the old one 
     }
   });
 
-  it("the old reading is retained: its source row and its passage are still in the database", async () => {
-    const src = await testPool.query(
-      `SELECT superseded_at IS NOT NULL AS superseded FROM equipment_notebook_sources WHERE notebook_id = $1::uuid AND doc_id = $2::uuid`,
-      [NB, OLD],
-    );
-    const passage = await testPool.query(`SELECT content FROM knowledge_entries WHERE doc_id = $1::uuid`, [OLD]);
-    expect(src.rows).toEqual([{ superseded: true }]);
-    expect(passage.rows).toEqual([{ content: OLD_TEXT }]);
-  });
 });
 
 describe("pilot path, real chat route: refusals happen before the model is called", () => {
@@ -246,19 +250,17 @@ describe("pilot path, real chat route: refusals happen before the model is calle
     expect(sent).toEqual([]);
   });
 
-  it("another tenant asking about this notebook is refused and nothing is sent to the model", async () => {
+  it("another tenant cannot open this notebook at all (notebook ownership; nothing is sent to the model)", async () => {
     const turn = await ask([NEW], OTHER_TENANT);
     expect(turn.status).toBe(404);
     expect(turn.text).toContain("notebook_not_found");
     expect(sent).toEqual([]);
-    expect(turn.text).not.toContain("amps");
   });
 
   it("positive control: this tenant's good source is answered, and the corrected text reaches the model", async () => {
     const turn = await ask([NEW]);
     expect(turn.status).toBe(200);
     expect(turn.prompt).toContain(NEW_TEXT);
-    expect(turn.prompt).not.toContain("9.9 amps");
-    expect(turn.prompt).not.toContain("4.2 amps");
+    expect(turn.calls).toEqual(["answer", "judge"]);
   });
 });

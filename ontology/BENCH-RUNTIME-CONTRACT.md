@@ -42,7 +42,7 @@ Test files: **HUB-G** = `mira-hub/tests/integration/ontology/bench-context-contr
 **HUB-P** = `mira-hub/tests/integration/ontology/bench-pilot-live-evidence.integration.test.ts` (13 pass + 1 expected failure) ·
 **PY** = `tests/test_ontology_bench_contract.py` (18 pass + 7 strict xfail) ·
 **HUB-S** = `mira-hub/tests/integration/ontology/bench-notebook-source-scope.integration.test.ts` (24 tests; approval and supersession tests mutation-checked, tenant tests not — see row 3; the last eight run real retrieval, two of them with the validator's own returned ids and six with hand-built ids as controls) ·
-**HUB-R** = `mira-hub/tests/integration/ontology/bench-notebook-chat-route.integration.test.ts` (8 tests; the real chat route on a real database, session and provider call replaced; supersession tests mutation-checked) ·
+**HUB-R** = `mira-hub/tests/integration/ontology/bench-notebook-chat-route.integration.test.ts` (7 tests; the real chat route on a real database, session and provider call replaced; supersession tests mutation-checked) ·
 **EXIST-P** = `mira-hub/src/app/api/equipment-notebooks/[id]/chat/__tests__/machine-evidence.test.ts` (re-run here: green) ·
 **PROBE-5504** = five probes run at `e649880b1` (two drives of one model; confirm one, the other stays unconfirmed; correction keeps history; history is append-only for the application role; other tenant sees nothing through the store and through row-level security).
 
@@ -119,9 +119,11 @@ Stated plainly, by where the proof stands:
   turn, so the answer wording proves nothing — the prompt, citation and saved scope do. Also not
   run: the vector lane, a notebook with a confirmed machine identity, the turn-capture tables
   (`turn_ingress`, `decision_traces` are absent from this test schema; the route logs that and
-  continues), and any deployed environment Observed, not investigated: the route's second
-  provider call (a safety judge on the candidate answer) receives the same canned reply, which
-  is not a parseable verdict, and the turn is still returned as answered.
+  continues), and any deployed environment The route's second provider call (a safety judge
+  on the candidate answer) receives the same canned reply, so the judge returns "unknown"; on a
+  turn not flagged as hazardous the route logs that and serves the answer, which is what happens
+  here. The judge with a real verdict, and a flagged turn, are not exercised. The cross-tenant
+  case shows notebook ownership (404) only; the other tenant has no rows of its own here.
 - **Not expressible on Path P:** a relationship between two components.
 - Nothing in HUB-G, HUB-P, HUB-S or HUB-R runs in a CI job.
 
