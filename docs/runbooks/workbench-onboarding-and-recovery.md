@@ -196,6 +196,7 @@ interventions is the target; every one is listed, with the step it happened on.
 - Q1's reference question is keyed from a datasheet copy held by the applicability lane. Which file the pilot project will actually hold, and its hash, is not settled; the photo of Q1 on file is an older one, not a fresh confirmation of the installed part.
 - Device lease holder, candidate build and the agreed inventory are the coordinator's to state.
 - Offline, long-duration and production acceptance are separate stages and are not covered.
+- The drive's fault case for O15 is not keyed: the pinned GS10 Rev C file (33,039,142 bytes, SHA-256 beginning 43a66d75) is not on the host where this was written, and a copy with another hash was not used. Q1's datasheet has no fault table, so Q1 gets the no-entry check only.
 - O15 has no keyed case, and parts of O11 and R8 are this runbook's own wording (marked in place).
   They are settled with the owning lanes before the first run, not during it.
 
