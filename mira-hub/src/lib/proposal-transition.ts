@@ -47,10 +47,18 @@ export const PROPOSAL_TRANSITIONS: Record<ProposalTrigger, HubStatusMap> = {
   flag_review: { aiSuggestion: "pending", relationshipProposal: "reviewed" },
 };
 
+import { kgAliasValuesSql } from "@/capabilities/kg-relationship-read-view";
+
+/** The kg_relationships.approval_state a superseded edge moves to (ADR-0017, amended #5523). */
+export const KG_EDGE_STATE_WHEN_SUPERSEDED = "rejected";
+
 /** Minimal query interface — matches the pg client passed by withTenantContext. */
 export interface QueryClient {
   query: (text: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
 }
+
+/** Triggers that change whether a relationship fact is current; serialized per fact. */
+const FACT_SERIALIZED_TRIGGERS: ReadonlySet<string> = new Set(["accept", "supersede"]);
 
 export interface ProposalTransitionInput {
   trigger: ProposalTrigger;
@@ -69,6 +77,8 @@ export interface ProposalTransitionResult {
   relationshipProposalStatus: string | null;
   aiSuggestionStatus: string | null;
   aiSuggestionRowsUpdated: number;
+  /** kg_relationships rows taken out of the verified set (supersede only). */
+  kgEdgesDemoted: number;
 }
 
 /**
@@ -79,7 +89,9 @@ export interface ProposalTransitionResult {
  * two Hub projections never drift apart — the gap the ADR-0017 canary detects.
  *
  * Engine-side kg_*.approval_state is NOT written here (Python helper / the
- * decide route's kg_relationships upsert own it).
+ * decide route's kg_relationships upsert own it) — with ONE exception, amended
+ * 2026-11-14 (#5523): `supersede` also takes the superseded edge out of the
+ * verified set, in the same transaction, so no reader can serve a corrected fact.
  */
 export async function applyHubProposalTransition(
   client: QueryClient,
@@ -92,6 +104,22 @@ export async function applyHubProposalTransition(
   const reviewer = input.reviewerLabel ?? null;
   const reason = input.reason ?? "";
 
+  // 0) accept / supersede decide whether ONE fact (tenant, endpoints, type) is current, and
+  // each reads the other proposals for that fact. Two such decisions running at once could
+  // each see the other's proposal as still verified and both leave the edge current. A
+  // transaction-scoped advisory lock on the fact makes them take turns; the second then
+  // reads the first one's committed result. Released at commit/rollback.
+  if (FACT_SERIALIZED_TRIGGERS.has(input.trigger) && input.relationshipProposalId) {
+    await client.query(
+      `SELECT pg_advisory_xact_lock(hashtextextended(
+                p.tenant_id::text || '|' || p.source_entity_id::text || '|' ||
+                p.target_entity_id::text || '|' || p.relationship_type, 0))
+         FROM relationship_proposals p
+        WHERE p.id = $1`,
+      [input.relationshipProposalId],
+    );
+  }
+
   // 1) relationship_proposals (kg_edge projection)
   if (map.relationshipProposal && input.relationshipProposalId) {
     await client.query(
@@ -103,6 +131,43 @@ export async function applyHubProposalTransition(
         WHERE id = $4`,
       [map.relationshipProposal, reviewer, reason, input.relationshipProposalId],
     );
+  }
+
+  // 1b) supersede: the edge this proposal verified leaves the verified set (#5523).
+  // kg_relationships cannot hold 'deprecated'; 'rejected' is the allowed non-current state
+  // and the proposal's 'deprecated' status records why. Matched by the proposal link OR by
+  // the proposal's own tenant/endpoints/type, because approval keeps a row's FIRST link.
+  let kgEdges = 0;
+  if (input.trigger === "supersede" && input.relationshipProposalId) {
+    const r = await client.query(
+      `UPDATE kg_relationships k
+          SET approval_state = '${KG_EDGE_STATE_WHEN_SUPERSEDED}'
+         FROM relationship_proposals p
+        WHERE p.id = $1
+          AND k.approval_state = 'verified'
+          AND k.tenant_id = p.tenant_id
+          AND (k.relationship_proposal_id = p.id
+               OR (k.source_id = p.source_entity_id
+                   AND k.target_id = p.target_entity_id
+                   AND k.relationship_type = p.relationship_type)
+               -- the same fact stored under its legacy name (endpoints swapped where the
+               -- writer swaps them): a duplicate must not keep a retired fact current
+               OR EXISTS (SELECT 1 FROM (VALUES ${kgAliasValuesSql()}) AS m(canonical, legacy, flip)
+                           WHERE m.canonical = p.relationship_type
+                             AND k.relationship_type = m.legacy
+                             AND k.source_id = CASE WHEN m.flip THEN p.target_entity_id ELSE p.source_entity_id END
+                             AND k.target_id = CASE WHEN m.flip THEN p.source_entity_id ELSE p.target_entity_id END))
+          -- replay-safe: a LATER approval of the same fact outranks this older supersede
+          AND NOT EXISTS (SELECT 1 FROM relationship_proposals p2
+                           WHERE p2.id <> p.id
+                             AND p2.tenant_id = p.tenant_id
+                             AND p2.source_entity_id = p.source_entity_id
+                             AND p2.target_entity_id = p.target_entity_id
+                             AND p2.relationship_type = p.relationship_type
+                             AND p2.status = 'verified')`,
+      [input.relationshipProposalId],
+    );
+    kgEdges = (r as { rowCount?: number }).rowCount ?? r.rows.length;
   }
 
   // 2) ai_suggestions (Hub queue projection) — keep the paired row in lockstep.
@@ -141,5 +206,6 @@ export async function applyHubProposalTransition(
     relationshipProposalStatus: map.relationshipProposal,
     aiSuggestionStatus: map.aiSuggestion,
     aiSuggestionRowsUpdated: aiRows,
+    kgEdgesDemoted: kgEdges,
   };
 }

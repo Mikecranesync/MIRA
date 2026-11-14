@@ -59,8 +59,9 @@ import { withTenantContext } from "@/lib/tenant-context";
 import { applyHubProposalTransition } from "@/lib/proposal-transition";
 import { mintAssetBridgeNode } from "@/lib/knowledge-graph/asset-bridge";
 import { mapToCanonicalEdge, upsertInferredProposal } from "@/lib/knowledge-graph/proposals-writer";
-import { buildGraphContext, classifyKgIntent } from "@/lib/knowledge-graph/context-builder";
-import { impactAnalysis, maintenanceContext } from "@/lib/knowledge-graph/traversal";
+import { buildGraphContext, classifyKgIntent, formatMaintenanceContext } from "@/lib/knowledge-graph/context-builder";
+import { flagPmMismatches } from "@/lib/knowledge-graph/plan-vs-actual";
+import { impactAnalysis, maintenanceContext, rootCauseChain, traverseChain } from "@/lib/knowledge-graph/traversal";
 import { POST as decidePOST } from "@/app/api/proposals/[id]/decide/route";
 import { POST as internalKgPOST } from "@/app/api/internal/kg/route";
 
@@ -424,18 +425,29 @@ describe("4. the approved relationship read through the application's own traver
     });
   });
 
-  it("KNOWN GAP #5519: as approval actually stores it (UPSTREAM_OF), the impact reader and the answer context do not see it", async () => {
-    const seen = await downstreamNodeIds(TENANT_A, A.Q1);
+  it("#5519 repaired: as approval actually stores it (UPSTREAM_OF), the impact reader and the answer context see it", async () => {
+    expect((await edgeRows(TENANT_A, S.feeds))[0].relationship_type).toBe("UPSTREAM_OF"); // nothing renamed
+    expect(await downstreamNodeIds(TENANT_A, A.Q1)).toEqual([A.VFD1.nodeId]);
     const block = await buildGraphContext(TENANT_A, IMPACT_QUESTION, A.Q1.assetId);
-    knownGap(
-      "#5519",
-      () => {
-        expect(seen).toEqual([]);
-        expect(block).toContain(`[GRAPH CONTEXT for ${A.Q1.assetId}]`);
-        expect(block).not.toContain("[IMPACT ANALYSIS");
-      },
-      () => expect(seen).toContain(A.VFD1.nodeId),
+    expect(block).toContain(`[IMPACT ANALYSIS for ${A.Q1.assetId}]\nDownstream: ${A.VFD1.assetId}`);
+    expect(block).not.toContain(A.VFD2.assetId); // the other drive of the same model is not implicated
+  });
+
+  it("#5519: an edge present under BOTH names for the same pair is read once, not twice", async () => {
+    await admin.query(
+      `INSERT INTO kg_relationships (tenant_id, source_id, target_id, relationship_type, approval_state)
+       SELECT tenant_id, source_id, target_id, 'feeds', 'verified' FROM kg_relationships WHERE id = $1::uuid`,
+      [S.feedsEdge],
     );
+    try {
+      expect(await downstreamNodeIds(TENANT_A, A.Q1)).toEqual([A.VFD1.nodeId]);
+    } finally {
+      await admin.query(
+        `DELETE FROM kg_relationships WHERE relationship_type = 'feeds' AND tenant_id = $1::uuid
+           AND (source_id, target_id) IN (SELECT source_id, target_id FROM kg_relationships WHERE id = $2::uuid)`,
+        [TENANT_A, S.feedsEdge],
+      );
+    }
   });
 
   // The same mismatch, per reader, for the other bench relationships.
@@ -461,7 +473,7 @@ describe("4. the approved relationship read through the application's own traver
     },
   ];
   for (const c of readerCases) {
-    it(`KNOWN GAP #5519: ${c.reader} asks for '${c.lowercase}', approval stores '${c.stored}'`, async () => {
+    it(`#5519 repaired: ${c.reader} asks for '${c.lowercase}', approval stores '${c.stored}', and the reader sees it`, async () => {
       const id = (await propose(TENANT_A, c.lowercase, c.from(), c.to(), `bench: ${c.lowercase}`)) as string;
       expect(id).toMatch(/^[0-9a-f-]{36}$/);
       expect((await decide(id, "verify", { tenantId: TENANT_A, userId: ADMIN_A, role: "admin" })).status).toBe(200);
@@ -472,16 +484,11 @@ describe("4. the approved relationship read through the application's own traver
       const controlled = await withStoredName(rows[0].id as string, c.lowercase, c.read);
       expect(controlled).toEqual([c.to().nodeId]); // the reader works when the name matches
 
-      const seen = await c.read();
-      knownGap(
-        "#5519",
-        () => expect(seen).toEqual([]),
-        () => expect(seen).toContain(c.to().nodeId),
-      );
+      expect(await c.read()).toEqual([c.to().nodeId]); // as stored, without renaming
     });
   }
 
-  it("the engine's own request (internal route, by plant path) finds the machine; KNOWN GAP #5519: without its approved component", async () => {
+  it("the engine's own request (internal route, by plant path) finds the machine with its approved component (#5519 repaired)", async () => {
     const res = await internalKgPOST(
       new Request("http://hub.test/api/internal/kg", {
         method: "POST",
@@ -497,11 +504,7 @@ describe("4. the approved relationship read through the application's own traver
     const body = (await res.json()) as { ok: boolean; result: { equipment: { id: string }; components: unknown[] } };
     expect(body.ok).toBe(true);
     expect(body.result.equipment.id).toBe(A.CV101.nodeId);
-    knownGap(
-      "#5519",
-      () => expect(body.result.components).toEqual([]),
-      () => expect(body.result.components).toHaveLength(1),
-    );
+    expect(body.result.components).toHaveLength(1);
   });
 
   it("KNOWN GAP #5527: even when read, the answer context names no edge id, proposal, approver or source", async () => {
@@ -534,18 +537,12 @@ describe("4b. the rest of the bench's relationship names, through the real name 
     "has_work_order", "requires_part", "has_pm", "similar_to",
   ];
 
-  it("KNOWN GAP #5519: no name a reader filters on is the name approval stores", () => {
-    const stored = READER_NAMES.map((n) => [n, mapToCanonicalEdge(n)?.type ?? null]);
-    knownGap(
-      "#5519",
-      () => {
-        for (const [name, type] of stored) {
-          expect(type, name as string).not.toBeNull();
-          expect(type, name as string).not.toBe(name);
-        }
-      },
-      () => expect(stored.some(([name, type]) => type === name)).toBe(true),
-    );
+  it("no name a reader filters on is the name approval stores — which is why readers go through the shared read view (#5519)", () => {
+    for (const n of READER_NAMES) {
+      const type = mapToCanonicalEdge(n)?.type ?? null;
+      expect(type, n).not.toBeNull();
+      expect(type, n).not.toBe(n);
+    }
   });
 
   it("OBSERVED: 'controls' and 'protects' (PLC -> drive, breaker -> supply) cannot be proposed at all", () => {
@@ -600,31 +597,51 @@ describe("5. correcting a fact: old fact out of current answers, kept in history
     expect(await edgeRows(TENANT_A, S.feeds)).toHaveLength(1);
   });
 
-  it("KNOWN GAP #5523: the superseded edge is still verified in the graph", async () => {
-    const state = (await edgeRows(TENANT_A, S.feeds))[0].approval_state;
-    knownGap(
-      "#5523",
-      () => expect(state).toBe("verified"),
-      () => expect(state).not.toBe("verified"),
+  it("#5523 repaired: the superseded edge has left the verified set (row kept, state 'rejected')", async () => {
+    const rows = await edgeRows(TENANT_A, S.feeds);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].approval_state).toBe("rejected");
+    // a reader that queries the table directly with the usual predicate no longer finds it
+    const direct = await admin.query(
+      `SELECT count(*)::int AS n FROM kg_relationships
+        WHERE tenant_id = $1::uuid AND source_id = $2::uuid AND approval_state = 'verified'`,
+      [TENANT_A, A.Q1.nodeId],
     );
+    expect(direct.rows[0].n).toBe(0);
   });
 
-  // CONDITIONAL: today no impact reader sees this edge at all (#5519). This test renames the
-  // stored edge to the reader's spelling first, so it shows what a reader WOULD serve once
-  // #5519 is repaired and #5523 is not — not what any reader serves today.
-  it("KNOWN GAP #5523 (given #5519 repaired): a reader that can see it serves the superseded fact as current", async () => {
-    const { seen, block } = await withStoredName(S.feedsEdge, "feeds", async () => ({
-      seen: await downstreamNodeIds(TENANT_A, A.Q1),
-      block: await buildGraphContext(TENANT_A, IMPACT_QUESTION, A.Q1.assetId),
-    }));
-    knownGap(
-      "#5523",
-      () => {
-        expect(seen).toEqual([A.VFD1.nodeId]);
-        expect(block).toContain(`Downstream: ${A.VFD1.assetId}`);
-      },
-      () => expect(seen).not.toContain(A.VFD1.nodeId),
-    );
+  it("#5523 read-side guard: after the supersede, no reader serves the old fact — and the answer context drops it", async () => {
+    // As stored (UPSTREAM_OF); nothing renamed.
+    expect(await downstreamNodeIds(TENANT_A, A.Q1)).toEqual([]);
+    const block = await buildGraphContext(TENANT_A, IMPACT_QUESTION, A.Q1.assetId);
+    expect(block).not.toContain(`Downstream: ${A.VFD1.assetId}`);
+    expect(block).not.toContain("[IMPACT ANALYSIS");
+    // a caller that passes the stored canonical name does not get it either
+    expect((await traverseChain(TENANT_A, A.Q1.nodeId, ["UPSTREAM_OF"])).map((h) => h.entity.id)).toEqual([]);
+    // history: the row, its proposal link and the deprecated proposal are all still there
+    expect(await edgeRows(TENANT_A, S.feeds)).toHaveLength(1);
+    expect((await proposalRow(S.feeds))?.status).toBe("deprecated");
+  });
+
+  it("control: the two protections are independent — the row state alone, and the read guard alone, each keep it out", async () => {
+    // (a) row back to 'verified', proposal still deprecated: the read-side guard alone hides it
+    await admin.query(`UPDATE kg_relationships SET approval_state = 'verified' WHERE id = $1::uuid`, [S.feedsEdge]);
+    try {
+      expect(await downstreamNodeIds(TENANT_A, A.Q1)).toEqual([]);
+      // (b) and with the supersede lifted as well, the fact is read again — so the reader works
+      await admin.query(`UPDATE relationship_proposals SET status = 'verified' WHERE id = $1::uuid`, [S.feeds]);
+      expect(await downstreamNodeIds(TENANT_A, A.Q1)).toEqual([A.VFD1.nodeId]);
+    } finally {
+      await admin.query(`UPDATE relationship_proposals SET status = 'deprecated' WHERE id = $1::uuid`, [S.feeds]);
+      await admin.query(`UPDATE kg_relationships SET approval_state = 'rejected' WHERE id = $1::uuid`, [S.feedsEdge]);
+    }
+    // (c) proposal lifted but row still 'rejected': the row state alone hides it
+    await admin.query(`UPDATE relationship_proposals SET status = 'verified' WHERE id = $1::uuid`, [S.feeds]);
+    try {
+      expect(await downstreamNodeIds(TENANT_A, A.Q1)).toEqual([]);
+    } finally {
+      await admin.query(`UPDATE relationship_proposals SET status = 'deprecated' WHERE id = $1::uuid`, [S.feeds]);
+    }
   });
 
   // Pins the literal 'deprecated' (the ontology's word, and the proposal's). A repair that
@@ -646,7 +663,7 @@ describe("5. correcting a fact: old fact out of current answers, kept in history
     );
   });
 
-  it("the corrected fact can be proposed and approved; KNOWN GAP #5523: old and new are then both verified", async () => {
+  it("the corrected fact can be proposed and approved; #5523 repaired: only the corrected one is verified", async () => {
     const id = (await propose(TENANT_A, "feeds", A.Q1, A.VFD2, "bench correction: relay feeds drive 2")) as string;
     expect(id).toMatch(/^[0-9a-f-]{36}$/);
     expect((await decide(id, "verify", { tenantId: TENANT_A, userId: ADMIN_A, role: "admin" })).status).toBe(200);
@@ -657,11 +674,55 @@ describe("5. correcting a fact: old fact out of current answers, kept in history
       [TENANT_A, A.Q1.nodeId],
     );
     const current = rows.map((r) => r.target_id);
-    knownGap(
-      "#5523",
-      () => expect(current).toEqual([A.VFD1.nodeId, A.VFD2.nodeId]),
-      () => expect(current).toEqual([A.VFD2.nodeId]),
+    expect(current).toEqual([A.VFD2.nodeId]);
+  });
+
+  it("the complete path: after the correction, the reader and the answer name the corrected drive only", async () => {
+    expect(await downstreamNodeIds(TENANT_A, A.Q1)).toEqual([A.VFD2.nodeId]);
+    const block = await buildGraphContext(TENANT_A, IMPACT_QUESTION, A.Q1.assetId);
+    expect(block).toContain(`[IMPACT ANALYSIS for ${A.Q1.assetId}]\nDownstream: ${A.VFD2.assetId}`);
+    expect(block).not.toContain(A.VFD1.assetId);
+  });
+
+  it("a superseded fact that a human approves AGAIN is current again (the row keeps its first proposal link)", async () => {
+    // The writer cannot re-propose this pair today (#5524, pinned below), so the second
+    // proposal is inserted directly — the shape a #5524 repair would produce — and then
+    // approved through the real route.
+    const { rows } = await admin.query(
+      `INSERT INTO relationship_proposals
+         (tenant_id, source_entity_id, source_entity_type, target_entity_id, target_entity_type,
+          relationship_type, confidence, created_by, reasoning)
+       VALUES ($1::uuid, $2::uuid, 'equipment', $3::uuid, 'equipment', 'UPSTREAM_OF', 0.8, 'human',
+               'bench contract: re-approved after a supersede')
+       RETURNING id::text AS id`,
+      [TENANT_A, A.Q1.nodeId, A.VFD1.nodeId],
     );
+    const again = String(rows[0].id);
+    try {
+      expect(await downstreamNodeIds(TENANT_A, A.Q1)).toEqual([A.VFD2.nodeId]); // proposed only: still out
+      expect((await decide(again, "verify", { tenantId: TENANT_A, userId: ADMIN_A, role: "admin" })).status).toBe(200);
+      const link = await admin.query(
+        `SELECT relationship_proposal_id::text AS p FROM kg_relationships WHERE id = $1::uuid`,
+        [S.feedsEdge],
+      );
+      expect(link.rows[0].p).toBe(S.feeds); // still linked to the deprecated proposal
+      expect((await downstreamNodeIds(TENANT_A, A.Q1)).sort()).toEqual([A.VFD1.nodeId, A.VFD2.nodeId].sort());
+      const state = await admin.query(`SELECT approval_state FROM kg_relationships WHERE id = $1::uuid`, [S.feedsEdge]);
+      expect(state.rows[0].approval_state).toBe("verified"); // approval puts the row back
+      // REPLAY: the old supersede is applied again (a retry). The later approval outranks it.
+      const replay = await withTenantContext(TENANT_A, (c) =>
+        applyHubProposalTransition(c, { trigger: "supersede", relationshipProposalId: S.feeds }),
+      );
+      expect(replay.kgEdgesDemoted).toBe(0);
+      expect((await downstreamNodeIds(TENANT_A, A.Q1)).sort()).toEqual([A.VFD1.nodeId, A.VFD2.nodeId].sort());
+      expect((await traverseChain(TENANT_A, A.Q1.nodeId, ["UPSTREAM_OF"])).map((h) => h.entity.id).sort()).toEqual(
+        [A.VFD1.nodeId, A.VFD2.nodeId].sort(),
+      );
+    } finally {
+      await admin.query(`DELETE FROM relationship_proposals WHERE id = $1::uuid`, [again]);
+      await admin.query(`UPDATE kg_relationships SET approval_state = 'rejected' WHERE id = $1::uuid`, [S.feedsEdge]);
+    }
+    expect(await downstreamNodeIds(TENANT_A, A.Q1)).toEqual([A.VFD2.nodeId]);
   });
 
   it("KNOWN GAP #5524: a revised proposal for the superseded pair is silently dropped", async () => {
@@ -840,34 +901,46 @@ describe("8. the same contract across more of the bench (provisional inventory, 
     expect(motor).toContain(A.M1.nodeId);
   });
 
-  it("KNOWN GAP #5519: as approved, none of the supply chain is read downstream of CB1, PS1 or VFD1", async () => {
-    const seen = [
-      ...(await downstreamNodeIds(TENANT_A, A.CB1)),
-      ...(await downstreamNodeIds(TENANT_A, A.PS1)),
-      ...(await downstreamNodeIds(TENANT_A, A.VFD1)),
-    ];
-    knownGap(
-      "#5519",
-      () => expect(seen).toEqual([]),
-      () => expect(seen).toEqual(expect.arrayContaining([A.PS1.nodeId, A.PLC1.nodeId, A.M1.nodeId])),
-    );
+  it("#5519 repaired: as approved, the supply chain is read downstream — CB1 -> PS1 -> PLC1, and VFD1 -> M1", async () => {
+    const fromBreaker = await downstreamNodeIds(TENANT_A, A.CB1);
+    expect(fromBreaker).toEqual(expect.arrayContaining([A.PS1.nodeId, A.PLC1.nodeId]));
+    expect(fromBreaker).not.toContain(A.M1.nodeId); // the breaker does not feed the motor
+    expect(await downstreamNodeIds(TENANT_A, A.VFD1)).toContain(A.M1.nodeId);
+    // the REJECTED link (PLC1 feeds VFD1) wrote no edge, so the drive is not downstream of the breaker
+    expect(fromBreaker).not.toContain(A.VFD1.nodeId);
   });
 
-  it("KNOWN GAP #5519: the conveyor's approved controller is not in its component list", async () => {
+  it("#5519 repaired: the conveyor's approved controller is in its component list", async () => {
     const read = async () => (await maintenanceContext(TENANT_A, A.CV101.assetId))?.components.map((e) => e.id) ?? [];
     expect(await withStoredName(made["CV101 has_component PLC1"], "has_component", read)).toContain(A.PLC1.nodeId);
-    const seen = await read();
-    knownGap(
-      "#5519",
-      () => expect(seen).not.toContain(A.PLC1.nodeId),
-      () => expect(seen).toContain(A.PLC1.nodeId),
-    );
+    expect(await read()).toContain(A.PLC1.nodeId);
   });
 
-  it("OBSERVED: the parent link is stored reversed AND renamed (the hierarchy reader is NOT run here)", async () => {
-    // By reading traversal.ts (not by a test): maintenanceContext walks edges named 'parent_of'
-    // whose target is the child. Approval stored child -> parent as LOCATED_IN. This test only
-    // pins what was stored; no reader is called and no control shows the link readable.
+  it("#5519 repaired, FLIPPED name: walking 'parent_of' from the conveyor reaches the motor (stored as motor LOCATED_IN conveyor)", async () => {
+    const down = await traverseChain(TENANT_A, A.CV101.nodeId, ["parent_of"]);
+    expect(down.map((h) => h.entity.id)).toContain(A.M1.nodeId);
+    // direction is respected: the conveyor is not below the motor
+    const wrongWay = await traverseChain(TENANT_A, A.M1.nodeId, ["parent_of"]);
+    expect(wrongWay.map((h) => h.entity.id)).not.toContain(A.CV101.nodeId);
+    // and the stored canonical name still works for a caller that passes it
+    const stored = await traverseChain(TENANT_A, A.M1.nodeId, ["LOCATED_IN"]);
+    expect(stored.map((h) => h.entity.id)).toContain(A.CV101.nodeId);
+  });
+
+  it("#5519 repaired, FLIPPED name: 'VFD1 caused_by CB1' is stored as CB1 CAUSES VFD1 and read as a cause of VFD1, not of CB1", async () => {
+    const id = (await propose(TENANT_A, "caused_by", A.VFD1, A.CB1, "bench: drive trip traced to the breaker")) as string;
+    expect((await decide(id, "verify", { tenantId: TENANT_A, userId: ADMIN_A, role: "admin" })).status).toBe(200);
+    const row = (await edgeRows(TENANT_A, id))[0];
+    expect(row).toMatchObject({ relationship_type: "CAUSES", source_id: A.CB1.nodeId, target_id: A.VFD1.nodeId });
+    const causesOfDrive = await rootCauseChain(TENANT_A, A.VFD1.nodeId);
+    expect(causesOfDrive.chain.map((c) => c.entity.id)).toContain(A.CB1.nodeId);
+    const causesOfBreaker = await rootCauseChain(TENANT_A, A.CB1.nodeId);
+    expect(causesOfBreaker.chain.map((c) => c.entity.id)).not.toContain(A.VFD1.nodeId);
+  });
+
+  it("OBSERVED: the parent link is stored reversed AND renamed (what the read view undoes)", async () => {
+    // maintenanceContext walks edges named 'parent_of' whose target is the child. Approval
+    // stored child -> parent as LOCATED_IN; the test above shows the reader sees it anyway.
     const before = await admin.query(
       `SELECT source_id::text AS s, target_id::text AS t, relationship_type AS r FROM kg_relationships WHERE id = $1::uuid`,
       [made["CV101 parent_of M1"]],
@@ -887,5 +960,224 @@ describe("8. the same contract across more of the bench (provisional inventory, 
     );
     expect(seenByB).toBe(0);
     expect(seenByA).toBe(LINKS.length);
+  });
+});
+
+describe("9. findings from the independent review of the repair (#5543 round 1)", () => {
+  it("superseding a fact also retires its legacy-named duplicate, so the duplicate cannot keep it current", async () => {
+    const { rows } = await admin.query(
+      `SELECT k.id::text AS edge, k.relationship_proposal_id::text AS proposal
+         FROM kg_relationships k
+        WHERE k.tenant_id = $1::uuid AND k.source_id = $2::uuid AND k.target_id = $3::uuid
+          AND k.relationship_type = 'UPSTREAM_OF' AND k.approval_state = 'verified'`,
+      [TENANT_A, A.VFD1.nodeId, A.M1.nodeId],
+    );
+    expect(rows).toHaveLength(1);
+    const dup = await admin.query(
+      `INSERT INTO kg_relationships (tenant_id, source_id, target_id, relationship_type, approval_state)
+       VALUES ($1::uuid, $2::uuid, $3::uuid, 'feeds', 'verified') RETURNING id::text AS id`,
+      [TENANT_A, A.VFD1.nodeId, A.M1.nodeId],
+    );
+    const beforeIds = await downstreamNodeIds(TENANT_A, A.VFD1);
+    expect(beforeIds.filter((id) => id === A.M1.nodeId)).toHaveLength(1); // read once while current
+    const out = await withTenantContext(TENANT_A, (c) =>
+      applyHubProposalTransition(c, { trigger: "supersede", relationshipProposalId: String(rows[0].proposal) }),
+    );
+    expect(out.kgEdgesDemoted).toBe(2);
+    expect(await downstreamNodeIds(TENANT_A, A.VFD1)).not.toContain(A.M1.nodeId);
+    expect(await buildGraphContext(TENANT_A, IMPACT_QUESTION, A.VFD1.assetId)).not.toContain(A.M1.assetId);
+    const kept = await admin.query(
+      `SELECT approval_state FROM kg_relationships WHERE id = ANY($1::uuid[]) ORDER BY approval_state`,
+      [[rows[0].edge, dup.rows[0].id]],
+    );
+    expect(kept.rows.map((r) => r.approval_state)).toEqual(["rejected", "rejected"]); // history kept
+  });
+
+  it("an approved fault relationship is not counted as one more fault occurrence in the PM check", async () => {
+    const mk = async (type: string, name: string, props: Record<string, unknown> = {}) =>
+      String(
+        (
+          await admin.query(
+            `INSERT INTO kg_entities (tenant_id, entity_type, entity_id, name, approval_state, properties)
+             VALUES ($1::uuid, $2, $3, $3, 'verified', $4::jsonb) RETURNING id::text AS id`,
+            [TENANT_A, type, name, JSON.stringify(props)],
+          )
+        ).rows[0].id,
+      );
+    const fault = await mk("fault_code", "BENCH-F9");
+    const pm = await mk("pm_task", "bench pm 30d", { interval_days: 30 });
+    const edge = (type: string, target: string, state: string, daysAgo?: number) =>
+      admin.query(
+        `INSERT INTO kg_relationships (tenant_id, source_id, target_id, relationship_type, approval_state, properties)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6::jsonb)`,
+        [
+          TENANT_A,
+          A.VFD2.nodeId,
+          target,
+          type,
+          state,
+          JSON.stringify(daysAgo == null ? {} : { occurred_at: new Date(Date.now() - daysAgo * 86400000).toISOString() }),
+        ],
+      );
+    await edge("had_fault", fault, "proposed", 30);
+    await edge("had_fault", fault, "proposed", 15);
+    await edge("has_pm", pm, "verified");
+    const count = async () =>
+      (await flagPmMismatches(TENANT_A)).filter((m) => m.faultCode === "BENCH-F9").map((m) => m.occurrences);
+    const before = await count();
+    await edge("HAS_FAILURE_MODE", fault, "verified"); // the approval
+    expect(await count()).toEqual(before); // approval alone changes nothing
+    await edge("had_fault", fault, "proposed", 1); // a real third occurrence does
+    expect(await count()).not.toEqual(before);
+  });
+});
+
+describe("10. findings from the second review of the repair (#5543 round 2)", () => {
+  it("an approved failure-mode fact is not shown as a recent fault; a real dated occurrence is", async () => {
+    const fault = String(
+      (
+        await admin.query(
+          `INSERT INTO kg_entities (tenant_id, entity_type, entity_id, name, approval_state)
+           VALUES ($1::uuid, 'fault_code', 'BENCH-F10', 'BENCH-F10', 'verified') RETURNING id::text AS id`,
+          [TENANT_A],
+        )
+      ).rows[0].id,
+    );
+    const edge = (type: string, props: Record<string, unknown>) =>
+      admin.query(
+        `INSERT INTO kg_relationships (tenant_id, source_id, target_id, relationship_type, approval_state, properties)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'verified', $5::jsonb)`,
+        [TENANT_A, A.VFD2.nodeId, fault, type, JSON.stringify(props)],
+      );
+    const read = async () => {
+      const mc = await maintenanceContext(TENANT_A, A.VFD2.assetId);
+      if (!mc) throw new Error("maintenanceContext returned null");
+      return { faults: mc.recentFaults.filter((f) => f.code === "BENCH-F10"), text: formatMaintenanceContext(mc) };
+    };
+
+    await edge("HAS_FAILURE_MODE", {}); // the approved fact, no occurrence recorded
+    const none = await read();
+    expect(none.faults).toEqual([]);
+    expect(none.text).not.toContain("BENCH-F10");
+    expect(none.text).not.toContain("1970-01-01");
+
+    const when = new Date(Date.now() - 2 * 86400000);
+    // NOTE: no application writer stores a row literally named 'had_fault' today (writers
+    // propose it and approval stores HAS_FAILURE_MODE, one row per pair). This row is the
+    // shape the reader was written for; the missing occurrence writer is a recorded gap.
+    await edge("had_fault", { occurred_at: when.toISOString() }); // a real occurrence
+    const one = await read();
+    expect(one.faults).toHaveLength(1);
+    expect(one.faults[0].count).toBe(1); // the fact is still not a second occurrence
+    expect(one.faults[0].lastSeen.toISOString().slice(0, 10)).toBe(when.toISOString().slice(0, 10));
+    expect(one.text).toContain("BENCH-F10");
+  });
+
+  it("two supersedes of one fact running at once take turns, and the edge leaves the verified set", async () => {
+    A.RACE = await install(TENANT_A, "RACE1", "race fixture load", "FactoryLM bench", "RACE-1");
+    const proposal = async () =>
+      String(
+        (
+          await admin.query(
+            `INSERT INTO relationship_proposals
+               (tenant_id, source_entity_id, source_entity_type, target_entity_id, target_entity_type,
+                relationship_type, confidence, created_by, reasoning, status)
+             VALUES ($1::uuid, $2::uuid, 'equipment', $3::uuid, 'equipment', 'UPSTREAM_OF', 0.8, 'human',
+                     'bench contract: concurrent supersede', 'verified')
+             RETURNING id::text AS id`,
+            [TENANT_A, A.VFD2.nodeId, A.RACE.nodeId],
+          )
+        ).rows[0].id,
+      );
+    const [p1, p2] = [await proposal(), await proposal()];
+    const edgeId = String(
+      (
+        await admin.query(
+          `INSERT INTO kg_relationships
+             (tenant_id, source_id, target_id, relationship_type, approval_state, relationship_proposal_id)
+           VALUES ($1::uuid, $2::uuid, $3::uuid, 'UPSTREAM_OF', 'verified', $4::uuid) RETURNING id::text AS id`,
+          [TENANT_A, A.VFD2.nodeId, A.RACE.nodeId, p1],
+        )
+      ).rows[0].id,
+    );
+    expect(await downstreamNodeIds(TENANT_A, A.VFD2)).toContain(A.RACE.nodeId);
+
+    // Two REAL connections, each in its own transaction, as two concurrent requests would be.
+    const [c1, c2] = [await testPool.connect(), await testPool.connect()];
+    try {
+      await c1.query("BEGIN");
+      await c2.query("BEGIN");
+      const first = await applyHubProposalTransition(c1, { trigger: "supersede", relationshipProposalId: p1 });
+      expect(first.kgEdgesDemoted).toBe(0); // p2 is still verified: correctly not demoted yet
+      let secondDone = false;
+      const second = applyHubProposalTransition(c2, { trigger: "supersede", relationshipProposalId: p2 }).then(
+        (r) => ((secondDone = true), r),
+      );
+      await new Promise((r) => setTimeout(r, 400));
+      expect(secondDone).toBe(false); // it waits for the first decision instead of reading around it
+      await c1.query("COMMIT");
+      expect((await second).kgEdgesDemoted).toBe(1); // and then sees the first one's result
+      await c2.query("COMMIT");
+    } finally {
+      await c1.query("ROLLBACK").catch(() => undefined);
+      await c2.query("ROLLBACK").catch(() => undefined);
+      c1.release();
+      c2.release();
+    }
+    const state = await admin.query(`SELECT approval_state FROM kg_relationships WHERE id = $1::uuid`, [edgeId]);
+    expect(state.rows[0].approval_state).toBe("rejected");
+    expect(await downstreamNodeIds(TENANT_A, A.VFD2)).not.toContain(A.RACE.nodeId);
+  });
+  it("an approval and a supersede of one fact running at once take turns, and the newly approved fact stays current", async () => {
+    A.RACE2 = await install(TENANT_A, "RACE2", "race fixture load 2", "FactoryLM bench", "RACE-2");
+    const proposal = async (status: string) =>
+      String(
+        (
+          await admin.query(
+            `INSERT INTO relationship_proposals
+               (tenant_id, source_entity_id, source_entity_type, target_entity_id, target_entity_type,
+                relationship_type, confidence, created_by, reasoning, status)
+             VALUES ($1::uuid, $2::uuid, 'equipment', $3::uuid, 'equipment', 'UPSTREAM_OF', 0.8, 'human',
+                     'bench contract: approval racing a supersede', $4)
+             RETURNING id::text AS id`,
+            [TENANT_A, A.VFD2.nodeId, A.RACE2.nodeId, status],
+          )
+        ).rows[0].id,
+      );
+    const [older, newer] = [await proposal("verified"), await proposal("proposed")];
+    const edgeId = String(
+      (
+        await admin.query(
+          `INSERT INTO kg_relationships
+             (tenant_id, source_id, target_id, relationship_type, approval_state, relationship_proposal_id)
+           VALUES ($1::uuid, $2::uuid, $3::uuid, 'UPSTREAM_OF', 'verified', $4::uuid) RETURNING id::text AS id`,
+          [TENANT_A, A.VFD2.nodeId, A.RACE2.nodeId, older],
+        )
+      ).rows[0].id,
+    );
+
+    const [c1, c2] = [await testPool.connect(), await testPool.connect()];
+    try {
+      await c1.query("BEGIN");
+      await c2.query("BEGIN");
+      await applyHubProposalTransition(c1, { trigger: "accept", relationshipProposalId: newer }); // not committed yet
+      let secondDone = false;
+      const second = applyHubProposalTransition(c2, { trigger: "supersede", relationshipProposalId: older }).then(
+        (r) => ((secondDone = true), r),
+      );
+      await new Promise((r) => setTimeout(r, 400));
+      expect(secondDone).toBe(false); // without the lock it would read "no other approval" and retire the edge
+      await c1.query("COMMIT");
+      expect((await second).kgEdgesDemoted).toBe(0); // the fresh approval outranks the older supersede
+      await c2.query("COMMIT");
+    } finally {
+      await c1.query("ROLLBACK").catch(() => undefined);
+      await c2.query("ROLLBACK").catch(() => undefined);
+      c1.release();
+      c2.release();
+    }
+    const state = await admin.query(`SELECT approval_state FROM kg_relationships WHERE id = $1::uuid`, [edgeId]);
+    expect(state.rows[0].approval_state).toBe("verified");
+    expect(await downstreamNodeIds(TENANT_A, A.VFD2)).toContain(A.RACE2.nodeId);
   });
 });

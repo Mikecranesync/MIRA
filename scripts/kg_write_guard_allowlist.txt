@@ -36,3 +36,9 @@ tools/seeds/demo-conveyor-001.sql                          # demo seed (commente
 tools/seeds/demo-hub-tenant.sql                            # demo seed — ground-truth garage-cell topology (PLC CONTROLS VFD, VFD DRIVES conveyor), not MIRA-inferred
 tools/seeds/northwind-bottling-hub.sql                     # demo seed — Northwind CV-200 line topology (GS10 DRIVES motor, PLC CONTROLS line), not MIRA-inferred
 tests/test_ontology_runtime_contract.py                    # test site — seeds two rows in a throwaway local PostgreSQL to reproduce #5523 through the real apply_kg_approval; no shared DB (#5528)
+
+# Bench runtime contract (integration test, disposable PostgreSQL only). The direct inserts are
+# test CONTROLS: a legacy-named duplicate of an approved edge (#5519 no-double-count, #5523
+# duplicate retired with its fact) and stored fault-occurrence rows for the PM check. Every
+# approved edge in the file still goes through propose -> /api/proposals/[id]/decide.
+mira-hub/tests/integration/ontology/bench-context-contract.integration.test.ts

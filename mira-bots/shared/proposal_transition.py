@@ -31,7 +31,10 @@ PROPOSAL_TRANSITIONS: dict[str, dict[str, Optional[str]]] = {
     "accept": {"kg_approval_state": "verified", "relationship_proposal": "verified"},
     "reject": {"kg_approval_state": "rejected", "relationship_proposal": "rejected"},
     "defer": {"kg_approval_state": None, "relationship_proposal": None},
-    "supersede": {"kg_approval_state": None, "relationship_proposal": "deprecated"},
+    # Amended 2026-11-14 (#5523): a superseded fact leaves the verified set. kg_relationships
+    # cannot hold 'deprecated', so the row goes to 'rejected'; the proposal's 'deprecated'
+    # status records that it was superseded rather than refused.
+    "supersede": {"kg_approval_state": "rejected", "relationship_proposal": "deprecated"},
     # Engine job finds contradicting evidence: a verified edge goes back to review.
     "contradict": {"kg_approval_state": "needs_review", "relationship_proposal": "contradicted"},
     # Engine flags an edge for a human re-look.
@@ -59,13 +62,29 @@ def relationship_proposal_status_for(trigger: str) -> Optional[str]:
     return PROPOSAL_TRANSITIONS[trigger]["relationship_proposal"]
 
 
-def apply_kg_approval(cur, *, table: str, row_id: str, trigger: str, tenant_id: str) -> bool:
+def apply_kg_approval(
+    cur,
+    *,
+    table: str,
+    row_id: str,
+    trigger: str,
+    tenant_id: str,
+    superseded_proposal_id: Optional[str] = None,
+) -> bool:
     """Set ``approval_state`` on a kg_entities / kg_relationships row per the
     ADR-0017 mapping, using the caller's DB cursor (psycopg/SQLAlchemy-style
     ``cur.execute(sql, params)``). Returns True if a write was issued.
 
     ``table`` must be 'kg_entities' or 'kg_relationships' (validated — the value
-    is interpolated into the statement, so it is NOT free-form user input)."""
+    is interpolated into the statement, so it is NOT free-form user input).
+
+    ``supersede`` on kg_relationships retires ONE approval of a fact, so it must
+    name it: ``superseded_proposal_id`` is required (refused without it). The row
+    is demoted only while it is still verified AND no OTHER proposal for the same
+    fact is verified — so replaying an old supersede cannot reject a fact a human
+    approved again (same rule as the Hub helper). It first takes the same
+    transaction-scoped per-fact advisory lock the Hub helper takes, so concurrent
+    decisions on one fact take turns. Returns True only if a row was demoted."""
     if table not in ("kg_entities", "kg_relationships"):
         raise ValueError(f"table must be kg_entities|kg_relationships, got {table!r}")
     target = kg_approval_for(trigger)
@@ -73,6 +92,29 @@ def apply_kg_approval(cur, *, table: str, row_id: str, trigger: str, tenant_id: 
         return False
     if target not in KG_APPROVAL_STATES:  # pragma: no cover - guarded by mapping
         raise ValueError(f"refusing to write unknown approval_state {target!r}")
+    if trigger == "supersede" and table == "kg_relationships":
+        if not superseded_proposal_id:
+            raise ValueError("supersede on kg_relationships requires superseded_proposal_id")
+        cur.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended("
+            "k.tenant_id::text || '|' || k.source_id::text || '|' || "
+            "k.target_id::text || '|' || k.relationship_type, 0)) "
+            "FROM kg_relationships k WHERE k.id = %s AND k.tenant_id = %s",
+            (row_id, tenant_id),
+        )
+        cur.execute(
+            "UPDATE kg_relationships k SET approval_state = %s "
+            "WHERE k.id = %s AND k.tenant_id = %s AND k.approval_state = 'verified' "
+            "AND NOT EXISTS (SELECT 1 FROM relationship_proposals p2 "
+            "WHERE p2.tenant_id = k.tenant_id "
+            "AND p2.source_entity_id = k.source_id "
+            "AND p2.target_entity_id = k.target_id "
+            "AND p2.relationship_type = k.relationship_type "
+            "AND p2.status = 'verified' "
+            "AND p2.id::text <> %s)",
+            (target, row_id, tenant_id, str(superseded_proposal_id)),
+        )
+        return (getattr(cur, "rowcount", 0) or 0) > 0
     cur.execute(
         f"UPDATE {table} SET approval_state = %s WHERE id = %s AND tenant_id = %s",
         (target, row_id, tenant_id),

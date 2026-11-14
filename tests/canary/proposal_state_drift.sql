@@ -48,4 +48,14 @@ FROM kg_relationships k
 JOIN relationship_proposals p
   ON p.id = k.relationship_proposal_id
 WHERE k.relationship_proposal_id IS NOT NULL
-  AND p.status <> 'verified';
+  AND k.approval_state = 'verified'   -- a correctly demoted (superseded/rejected) edge is history, not drift (#5523)
+  AND p.status <> 'verified'
+  -- approval keeps a row's FIRST proposal link: a fact approved again after a supersede is
+  -- vouched for by a later verified proposal for the same fact, not by the linked one.
+  AND NOT EXISTS (
+    SELECT 1 FROM relationship_proposals p2
+     WHERE p2.tenant_id = k.tenant_id
+       AND p2.source_entity_id = k.source_id
+       AND p2.target_entity_id = k.target_id
+       AND p2.relationship_type = k.relationship_type
+       AND p2.status = 'verified');

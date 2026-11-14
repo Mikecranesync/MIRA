@@ -26,7 +26,7 @@
             "deprecated"
           ],
           "runtime_only": [],
-          "reason": "A relationship row cannot hold 'deprecated'; only an entity row can. Tracked in #5523."
+          "reason": "A relationship row cannot hold 'deprecated'; only an entity row can. A superseded relationship row is stored as 'rejected' and its proposal as 'deprecated' (ADR-0017 amended, #5523)."
         },
         {
           "kind": "sql_check",
@@ -58,7 +58,7 @@
             "deprecated"
           ],
           "runtime_only": [],
-          "reason": "The engine-side writer never emits 'deprecated' (ADR-0017 supersede leaves the row unchanged). Tracked in #5523."
+          "reason": "The engine-side writer never emits 'deprecated'; supersede writes 'rejected' on the row (ADR-0017 amended, #5523)."
         }
       ]
     },
@@ -183,14 +183,14 @@
       "test": "tests/test_ontology_runtime_contract.py::TestAssetAgentApproval::test_approval_without_an_actor_is_refused"
     },
     "superseded-fact-leaves-the-verified-set": {
-      "status": "disagrees",
-      "tracking": "#5523",
+      "status": "agrees",
       "rule": "A superseded assertion must not remain verified (R14c).",
       "code": [
         "mira-bots/shared/proposal_transition.py",
-        "mira-hub/src/lib/proposal-transition.test.ts"
+        "mira-hub/src/lib/proposal-transition.ts",
+        "mira-hub/src/capabilities/kg-relationship-read-view.ts"
       ],
-      "call_path": "apply_kg_approval(trigger='supersede') issues no write; readers filter approval_state = 'verified'. The only importer of proposal_transition.py outside tests is demo/factory_difference_engine/pipeline.py, so no production path applies this transition at all. The Hub twin agrees with the Python side: mira-hub/src/lib/proposal-transition.test.ts asserts supersede sets the suggestion to 'superseded' and the proposal to 'deprecated', and writes no graph approval state, so the Hub path has the same gap. EXECUTED since: mira-hub/tests/integration/ontology/bench-context-contract.integration.test.ts runs the real propose -> /api/proposals/[id]/decide -> traversal.ts / /api/internal/kg path on a disposable PostgreSQL built from the Hub migrations and pins the same disagreement per reader (local only; no CI job runs it).",
+      "call_path": "ADR-0017 as amended 2026-11-14 (#5523): the supersede transition moves the relationship row from 'verified' to 'rejected' (a relationship row cannot hold 'deprecated'; the proposal's 'deprecated' status records why). Python: apply_kg_approval(trigger='supersede') writes 'rejected' — executed by the test named here on a real PostgreSQL. Hub: applyHubProposalTransition('supersede') demotes the edge in the same transaction — executed by mira-hub/tests/integration/ontology/bench-context-contract.integration.test.ts (propose -> /api/proposals/[id]/decide -> traversal -> supersede), which runs in NO CI job. LIMITS: no route or scheduled job fires 'supersede' for a graph edge today, so this is a correct transition with no production caller; the only importer of the Python helper outside tests is demo/factory_difference_engine/pipeline.py; readers that apply no approval_state filter still list the retired row.",
       "test": "tests/test_ontology_runtime_contract.py::TestSupersession::test_a_superseded_verified_edge_stops_being_served_as_verified"
     },
     "fault-code-identity-includes-the-model": {
@@ -204,14 +204,14 @@
       "test": "tests/test_ontology_runtime_contract.py::TestFaultCodeIdentity::test_two_models_sharing_a_code_get_two_graph_identities"
     },
     "reader-sees-the-relationship-name-approval-stores": {
-      "status": "disagrees",
-      "tracking": "#5519",
+      "status": "agrees",
       "rule": "An approved relationship must be visible to the reader that is meant to use it.",
       "code": [
         "mira-hub/src/lib/knowledge-graph/proposals-writer.ts",
-        "mira-hub/src/lib/knowledge-graph/traversal.ts"
+        "mira-hub/src/lib/knowledge-graph/traversal.ts",
+        "mira-hub/src/capabilities/kg-relationship-read-view.ts"
       ],
-      "call_path": "Source-level check only: the test reads both TypeScript files and compares the names; it does not execute them. Hub proposal approval stores the canonical name; traversal.ts filters on the lowercase one. EXECUTED since: mira-hub/tests/integration/ontology/bench-context-contract.integration.test.ts runs the real propose -> /api/proposals/[id]/decide -> traversal.ts / /api/internal/kg path on a disposable PostgreSQL built from the Hub migrations and pins the same disagreement per reader (local only; no CI job runs it).",
+      "call_path": "Repaired for #5519 by one shared read view derived from the writer's own name mapping; traversal.ts, context-builder.ts, plan-vs-actual.ts and uns-backfill.ts read through it. The test named here is SOURCE-LEVEL ONLY (it reads the TypeScript files: the reader touches the bare table in exactly one place, the fault-OCCURRENCE count, and the view is built from the writer's mapping). The EXECUTED proof is mira-hub/tests/integration/ontology/bench-context-contract.integration.test.ts on a real PostgreSQL (approved feeds / has_component / similar_to / parent_of / caused_by edges are read in the right direction, once) — it runs in NO CI job. LIMITS: two legacy names share one stored name (located_at and parent_of -> LOCATED_IN; had_fault and exhibited_fault -> HAS_FAILURE_MODE), so a reader cannot tell which was meant; the external read API exposes stored names.",
       "test": "tests/test_ontology_runtime_contract.py::TestRelationshipVocabulary::test_a_reader_accepts_the_name_approval_actually_stores"
     },
     "live-summary-does-not-take-a-command-as-feedback": {
@@ -402,20 +402,18 @@
       "enforcement": "offline_only"
     },
     "SupersededNotCurrentShape": {
-      "enforcement": "planned",
-      "tracking": "#5523",
-      "reason": "Readers admit any verified row without checking supersession.",
+      "enforcement": "runtime",
       "contracts": [
         "superseded-fact-leaves-the-verified-set"
-      ]
+      ],
+      "scope": "The supersede transition only (Python helper and Hub helper). No route or job fires it for a graph edge yet; readers with no approval_state filter still list the row. The Hub half is proven by a local integration test that no CI job runs"
     },
     "SupersededStateShape": {
-      "enforcement": "planned",
-      "tracking": "#5523",
-      "reason": "The supersede transition leaves the graph row verified, and a relationship row cannot hold 'deprecated'.",
+      "enforcement": "runtime",
       "contracts": [
         "superseded-fact-leaves-the-verified-set"
-      ]
+      ],
+      "scope": "The supersede transition only (Python helper and Hub helper). No route or job fires it for a graph edge yet; readers with no approval_state filter still list the row. The Hub half is proven by a local integration test that no CI job runs"
     },
     "FaultNotFaultCodeShape": {
       "enforcement": "offline_only"

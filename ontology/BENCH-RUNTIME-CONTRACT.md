@@ -14,7 +14,7 @@ honour on the paths the bench pilot uses, and what proves it?*
 | `main` | `20fda901e3ea2c2ca2b4af8556eedc27c202c12f` | — |
 | PR #5530 (ontology coverage gate + runtime mapping) — **the review candidate, untouched** | `c7a21990b391af70e62e4656a7cccc5b6cb4f01c` | draft, 0 behind main, checks green on that head, no GitHub review |
 | This follow-on (local branch `test/ontology-bench-runtime-contract`, stacked on #5530; pushed as draft PR #5539) | the commit that adds this file (see `git log c7a21990b..`) | tests + mapping only; no production code |
-| PR #5504 (bench components) — not mine; its tests executed by me at this head | `e649880b1b51dcc010b539181a74a88f98ef7bea` | draft; last review found 2 HIGH on selection paths, owner repairing locally; migration 115 proposed, applied nowhere |
+| PR #5504 (bench components) — not mine; its tests executed by me at this head | `e649880b1b51dcc010b539181a74a88f98ef7bea` | draft; last review found 2 HIGH on selection paths, owner repairing locally; migration 115 proposed, applied nowhere. **The PR has since moved** (head `da033f26a` when checked 2026-11-14 afternoon); my runs were NOT repeated at the newer head |
 | #5504 owner's **local candidate** (not pushed, not reviewed) | `f1be6b8f03a755af4f10ead16608f5cff19c1829` | the owner reports it repairs the two HIGH findings. I re-ran there: its store suite 19/19 on a disposable database, its unit and mocked-route suites 152/152, and my five probes 5/5. Migration 115 file unchanged (sha256 `4b23ca7f…`). |
 
 ## Two paths. Do not merge them in your head.
@@ -54,7 +54,7 @@ Test files: **HUB-G** = `mira-hub/tests/integration/ontology/bench-context-contr
 | 1 | same | P | `notebook_components` + revisions | **Holds at #5504's head.** Two drives with one catalog number are two components, each with its own tag, serial and position; confirming or correcting one leaves the other untouched. There is no separate catalog-model record here either — the model is fields on the revision. | PROBE-5504; #5504 `store.integration.test.ts` (RAN-AT-5504) |
 | 2 | Stable parentage | G | `kg_entities.uns_path` + unique `(tenant_id, entity_type, name)` | Holds for the install rows. | HUB-G §0–1 (LOCAL-PG) |
 | 2 | same | P | component → notebook foreign key | **Holds at #5504's head:** a component of another notebook cannot be selected; a component is not found through another notebook. | #5504 `store.integration.test.ts`; PROBE-5504 (RAN-AT-5504) |
-| 2 | Typed, directed relationships | G | `mapToCanonicalEdge` → `upsertInferredProposal` → decide route → `kg_relationships` | **Written correctly, not readable.** See gap #5519. | HUB-G §3–4 (LOCAL-PG) |
+| 2 | Typed, directed relationships | G | `mapToCanonicalEdge` → `upsertInferredProposal` → decide route → `kg_relationships` | **Readable through the shared read view on this branch** (#5519 repair): the five reader files that go through `kg-relationship-read-view.ts` see an approved edge under the name and direction they ask for, once. Readers that query the table directly are listed under "Readers outside the shared view". | HUB-G §3–4, §8 (LOCAL-PG) |
 | 2 | same | P | — | **Not expressible** on the pilot path. | none |
 | 3 | Tenant isolation | G | RLS on `kg_entities` / `kg_relationships`; `tenant_id` predicate in every reader; internal key on `/api/internal/kg` | Holds: other tenant's admin gets 404 on decide, readers return nothing, RLS counts 0, wrong key 401. Note: the `relationship_proposals` policy also admits rows with a NULL tenant. | HUB-G §3, §6 (LOCAL-PG) |
 | 3 | same | P | tenant-bound SELECT-only re-fetch; 404 for another tenant's notebook | Holds. | HUB-S (LOCAL-PG: another tenant cannot open the notebook's scope or read its history; a confirmed source row of another tenant planted inside this notebook is still refused — **not mutation-proof:** with the tenant/notebook predicate removed from the source query these still pass, because the notebook lookup and row-level security also hold the line; they show the outcome, not which layer earns it); EXIST-P; `asset-binding.test.ts`, `delete.test.ts` (CI); components: PROBE-5504 + #5504 `store.integration.test.ts` (RAN-AT-5504) |
@@ -62,7 +62,7 @@ Test files: **HUB-G** = `mira-hub/tests/integration/ontology/bench-context-contr
 | 4 | same | P | citations on notebook answers; source → origin photograph; component revisions | **Holds.** A source (current or superseded) resolves to the photograph it was read from. "Resolves" means the stored photograph id comes back; the file itself is not fetched. At #5504's head, component revisions are numbered and the application role cannot update or delete one (PROBE-5504 is saved outside the repository because it cannot compile on this branch; it is not reproducible from this branch alone). | HUB-S (LOCAL-PG); PROBE-5504 (RAN-AT-5504) |
 | 5 | Explicit approval | G | `/api/proposals/[id]/decide`, capability `proposals.decide` | Holds: a proposed edge is not served; technician 403; reject keeps history and writes no edge; verify writes one linked edge; re-decide 409. | HUB-G §2–3 (LOCAL-PG) |
 | 5 | same | P | `validateChatSources` (documents); component `identity_status` + `confirmed_at` CHECK | **Holds for documents:** only a human-confirmed, enabled source enters the answer scope; rejected, merely suggested or switched-off sources are refused. **Holds for components at #5504's head:** the gate function `componentManualsBlocked` returns blocked for an unconfirmed component (a pure function; that the chat route obeys it is shown by #5504's mocked route tests only); the database refuses "confirmed" without a confirmation time. That the route passes retrieval the validator's ids (not the client's) is now shown on a real database (HUB-R): the client sends the superseded id, and the prompt, the citation and the saved scope carry the successor's. | HUB-R (LOCAL-PG); HUB-S (LOCAL-PG; mutation-checked: dropping the approval-state filter turns the rejected and unconfirmed tests red, the enabled filter the switched-off one, the successor's approval filter the unconfirmed-successor one); `chat-approved-source-scope.test.ts` (CI, mocked); PROBE-5504 + #5504 suites (RAN-AT-5504) |
-| 6 | Corrected / superseded fact leaves current answers, stays in history | G | `applyHubProposalTransition('supersede')` | **No.** See gap #5523. History is kept; the old edge is still served. | HUB-G §5 (LOCAL-PG) |
+| 6 | Corrected / superseded fact leaves current answers, stays in history | G | `applyHubProposalTransition('supersede')` | **Holds when the supersede transition is applied** (#5523 repair on this branch; ADR-0017 amended by the owner 2026-11-14): the old row moves from `verified` to `rejected` in the same transaction, its proposal to `deprecated`; row, link and evidence are kept. Every reader that filters on `verified` stops serving it; the shared view also guards it. **No route or job fires supersede for a graph edge yet** — the transition is correct but has no production caller. | HUB-G §5 (LOCAL-PG) |
 | 6 | same | P | `validateChatSources` successor rename; identity correction = new revision | **Holds for document sources:** asking for a superseded reading returns its confirmed successor — the old id is not in the returned scope; with no confirmed successor it is refused; the source list hides it; it still resolves in history with its photograph. **Holds for components at #5504's head:** a correction is a new revision, the selection is re-pointed, the old value stays in history only. Correction to an earlier note: the existing `provenance-canonical-evidence.integration.test.ts` fails 1 of 8 because its last assertion predates the successor rename (#3442); that assertion is out of date, not a leak. It is in no CI job. | HUB-R (LOCAL-PG, mutation-checked: route to cited, saved answer); HUB-S (LOCAL-PG, mutation-checked); `equipment-notebooks-domain.test.ts` (CI, mocked SQL); PROBE-5504 + #5504 `store.integration.test.ts` (RAN-AT-5504) |
 | 7 | Timestamp and quality on every reading | P | `renderMachineEvidenceSection` (replay rows) | Holds for the render step: observed time, received time and quality on each row; quality never invented. | HUB-P (LOCAL); EXIST-P (CI) |
 | 7 | same | drive live-snapshot | `live_snapshot.normalize` | **Partly.** Every reading has a quality; the stamp is the receive time (bots, Ask API) or empty (Ignition chat), and age never changes quality. Stale-by-age: **no.** | PY (CI-via-meta) |
@@ -131,10 +131,13 @@ Stated plainly, by where the proof stands:
 
 propose Q1 → VFD1 (`feeds`, from the one-line sheet) → **not served while proposed** → technician
 refused, other tenant refused → admin approves → one verified edge, linked to its proposal →
-**the readers cannot see it** (#5519) → with the stored name altered to the reader's spelling
-(positive control) the impact reader returns it and the answer context includes it → supersede →
-proposal becomes `deprecated`, history kept → **the edge is still verified and still served**
-(#5523) → a revised proposal for the same pair is **dropped** (#5524).
+**the impact reader returns it and the answer CONTEXT includes it** (#5519 repair; "answer
+context" means the text block `buildGraphContext` produces — no asset-chat route or model call
+was run on this path) → supersede → proposal becomes `deprecated`, history kept → **the reader
+and the answer context no longer carry it** (#5523: the row is now `rejected`, its proposal
+`deprecated`) → the corrected fact is proposed, approved and is the only one read → the old
+fact approved again comes back → a revised proposal for the same pair through the writer is
+still **dropped** (#5524).
 
 Negatives covered: two installed instances of one model; a rejected proposal; a second tenant
 with the same device tags and the same path; missing feedback; stale data.
@@ -147,8 +150,8 @@ scope, and the old reading still resolves in history. That is a document fact, n
 
 | Gap | What happens today | Owner | Blocks |
 |---|---|---|---|
-| **#5519** | Approval stores the canonical name (`feeds` → `UPSTREAM_OF`, `has_component` → `HAS_COMPONENT`); readers filter the lowercase one. An approved relationship reaches no reader. Per reader: impact, components, similar and the engine's internal route all miss it. | open, **claimed by this lane 2026-11-14 (owner-authorized)** | Path G — critical |
-| **#5523** | Superseding a fact changes the proposal only. The edge stays `verified`; relationship rows cannot even hold a `deprecated` state; no route fires supersede. Old and new can both be current. | open, **claimed by this lane 2026-11-14 (owner-authorized)** | Path G — critical |
+| **#5519** | Approval stores the canonical name; readers were written against the lowercase one. **Repaired on this branch** by one shared read view (local, unreviewed). Left open: two legacy names share one stored name (`located_at`/`parent_of`, `had_fault`/`exhibited_fault`); no query plan measured. | open, claimed by this lane | Path G |
+| **#5523** | Superseding a fact changed the proposal only. **Repaired on this branch**: supersede now moves the row to `rejected` (owner's decision; ADR-0017 amended). Left open: no route or job fires supersede; `contradicted` unchanged; no rollback/retry/concurrency tests; the canary change is not run against staging. | open, claimed by this lane | Path G |
 | **#5524** | A corrected proposal for the same pair is silently dropped by de-duplication. | open, unclaimed | Path G |
 | **#5527** | The answer context carries no edge id, proposal id or source, and names machines by internal id. | open, unclaimed | Path G |
 | **#5520** | Fault identity is not model-specific in the application. Not exercised here. | open, unclaimed | fault answers |
@@ -156,10 +159,44 @@ scope, and the old reading still resolves in history. That is a document fact, n
 | open-window stale | On Path P, a state window never closed + stale signals → assessment still says "Machine running". Recorded in #5540. | none | Path P, replay turns — **low**: the state line beside it says stale |
 | model node | No catalog-model node or `INSTANCE_OF` edge is written by the application. | none | Path G |
 
-None of these is repaired in this change. #5519 and #5523 were claimed by this lane on
-2026-11-14 with the owner's authorization; the repairs are a separate change. The others have
-no owner. The tests are the executable contracts a repair is made against: when a repair
+#5519 and #5523 were claimed by this lane on 2026-11-14 with the owner's authorization. This
+branch carries the #5519 reader repair and the #5523 repair (supersede demotes the row; ADR-0017
+amended), in draft PR #5543; its independent review has not yet returned a clean verdict.
+Still open on #5523: no caller fires supersede, `contradicted` is unchanged, no rollback or
+retry tests. Concurrency: accept and supersede take a per-fact transaction lock, and ONE case is
+tested on two real connections in two cases (two supersedes of one fact; an approval racing a
+supersede). Known limit: the decide route locks the proposal row and then the fact, supersede
+locks the fact and then the row, so a decide and a supersede of the SAME proposal at once would
+deadlock and PostgreSQL would abort one; no caller does this. The others have no owner. The tests are the executable contracts a repair is made against: when a repair
 lands, the matching known-gap test goes red and says to convert it.
+
+## Readers outside the shared view (found by search, 2026-11-14)
+
+These query `kg_relationships` directly, not through the shared view. None filters by
+relationship name, so #5519 never hid edges from them. After the #5523 repair a superseded row
+is `rejected`, so what each does with it depends only on its own approval filter:
+
+| Reader | Filters on `verified`? | Serves a superseded row? |
+|---|---|---|
+| `maintenanceContext` recent faults (`traversal.ts`) — deliberate: counts stored `had_fault` OCCURRENCE rows, which the view would mix with approved failure-mode facts | yes | no |
+| `plan-vs-actual.ts` fault occurrences — deliberate, same reason | no | n/a: an occurrence is not a superseded fact |
+| `api/mira/ask/route.ts` | yes | no |
+| `mira-bots/shared/interlock_context.py` | yes | no |
+| `lib/i3x/data-access.ts` (external read API) | yes, in application code | no |
+| `api/assets/[id]/chat/route.ts` (edge count) | entities only | counted |
+| `lib/agents/asset-intelligence.ts` | no | listed, state not shown |
+| `api/components/[id]`, `api/namespace/node/[id]`, `api/kg/graph`, `lib/knowledge-graph/queries.ts` | no | listed (screens) |
+
+The "no" rows are by reading each query, not by a test per reader; the executed proof is a
+direct `approval_state = 'verified'` query in HUB-G §5 plus the traversal readers.
+
+**Recorded gap (found 2026-11-14, pre-existing, no owner):** no application writer stores a row
+literally named `had_fault`. Conversation extraction proposes the fault link and approval stores
+it as `HAS_FAILURE_MODE`, one row per machine/fault pair with no occurrence time. So both
+occurrence readers above ("Recent faults" in the maintenance context and the PM-interval check)
+have nothing to count from data written today; they only see legacy or seeded rows. This repair
+does not invent an occurrence store. The integration tests insert occurrence rows by hand to
+show the readers count occurrences and do not count approved facts.
 
 ## Second-consumer semantics
 
@@ -177,19 +214,18 @@ to each further row. Run through propose → decide on the graph path (HUB-G §8
 CB1 → PS1, PS1 → PLC1 and VFD1 → M1 as `feeds`; VFD1 — M1 as a wired connection; CV-101 as
 parent of M1; CV-101 has component PLC1; plus one rejected link. For all six: absent while
 proposed, other tenant refused, one verified edge on approval. **Readers were run for four of
-them** (the three `feeds` links and the component link): none is returned (#5519), with a
-positive control for each showing it is read once the stored name matches. For the other two
-no reader was run: by reading `traversal.ts` (not by a test), nothing filters on the wired
-link's name, and the parent link is stored reversed *and* renamed, so the hierarchy walk would
-miss it even with the name repaired — both written, neither shown readable. `controls` and `protects`
+them** (the three `feeds` links and the component link): on this branch each is returned as
+approved, with a positive control. The parent link (stored reversed and renamed) and a
+`caused_by` link were then run through `traverseChain` / `rootCauseChain` and are read in the
+right direction. No reader filters on the wired link's name — written, not shown readable. `controls` and `protects`
 (PLC → drive, breaker → supply) cannot be proposed at all. Sensors, the selector and the pilot
 light were not run. **The inventory is provisional, not frozen; this is six of its links, not
 all of them.** What does not extend:
 
 - On Path P, relationships between components (PS1 → PLC1, CB1 → PS1, VFD1 → M1 …) cannot be
   stated at all today.
-- On Path G, every further relationship inherits #5519 and #5523 unchanged — adding rows adds
-  no protection until those are repaired.
+- On Path G, every further relationship inherits the limits above: read correctly through the
+  shared view; a superseded one leaves the verified set once the supersede transition is applied.
 - Live-data rows 7–9 were proven for the drive's tags only. Sensors, the selector and the
   pilot light have no decoded tag set in either live path that I exercised.
 

@@ -110,17 +110,17 @@ class TestTheMappingIsAGate:
 
     def test_runtime_enforcement_cannot_rest_on_a_contract_the_app_fails(self, tmp_path):
         m = _real_mapping()
-        m["shapes"]["SupersededStateShape"] = {
+        m["shapes"]["AssetClassInstanceShape"] = {
             "enforcement": "runtime",
             "scope": "x",
-            "contracts": ["superseded-fact-leaves-the-verified-set"],
+            "contracts": ["fault-code-identity-includes-the-model"],
         }
         r = _run_phase(m, tmp_path)["runtime:shape-mapping"]
-        assert not r.passed and "SupersededStateShape" in r.detail
+        assert not r.passed and "AssetClassInstanceShape" in r.detail
 
     def test_planned_needs_a_tracking_reference(self, tmp_path):
         m = _real_mapping()
-        m["shapes"]["SupersededStateShape"].pop("tracking")
+        m["shapes"]["AssetClassInstanceShape"].pop("tracking")
         r = _run_phase(m, tmp_path)["runtime:shape-mapping"]
         assert not r.passed and "tracking" in r.detail
 
@@ -141,7 +141,7 @@ class TestTheMappingIsAGate:
     def test_an_agreeing_contract_may_not_be_an_expected_failure(self, tmp_path):
         """'agrees' on a test that is marked xfail would be a green claim on red behaviour."""
         m = _real_mapping()
-        m["contracts"]["superseded-fact-leaves-the-verified-set"]["status"] = "agrees"
+        m["contracts"]["fault-code-identity-includes-the-model"]["status"] = "agrees"
         r = _run_phase(m, tmp_path)["runtime:contracts"]
         assert not r.passed and "xfail" in r.detail
 
@@ -377,16 +377,27 @@ class TestRelationshipVocabulary:
         assert writer["feeds"] == "UPSTREAM_OF" and writer["caused_by"] == "CAUSES"
         assert {"feeds", "caused_by"} <= reader
 
-    @pytest.mark.xfail(
-        strict=True,
-        raises=AssertionError,
-        reason="#5519: readers filter on the lowercase names while approval stores the canonical "
-        "ones, so an approved edge is invisible to the traversal that should use it.",
-    )
+    VIEW = "mira-hub/src/capabilities/kg-relationship-read-view.ts"
+
     def test_a_reader_accepts_the_name_approval_actually_stores(self):
+        """#5519 repaired, checked at SOURCE level only (the executed proof is the Hub
+        integration test, which no CI job runs): every name the reader filters on that approval
+        stores differently is one the shared read view translates, and the reader never reads
+        the bare table — so it cannot go around the view."""
+        import re
+
         writer, reader = self._writer_map(), self._reader_types()
         blind = sorted(t for t in reader if t in writer and writer[t] not in reader)
-        assert not blind, blind
+        assert blind, "expected names that differ between writer and reader"
+        text = (REPO_ROOT / self.READER).read_text()
+        assert "kg-relationship-read-view" in text
+        # ONE bare read is deliberate: fault OCCURRENCES ('had_fault' rows with their own
+        # time). Every relationship-fact read must go through the view.
+        bare = [m.end() for m in re.finditer(r"(?:FROM|JOIN)\s+kg_relationships\b", text)]
+        assert len(bare) == 1, f"{len(bare)} read(s) of the bare table; exactly one is allowed"
+        assert "r.relationship_type = 'had_fault'" in text[bare[0] : bare[0] + 500]
+        view = (REPO_ROOT / self.VIEW).read_text()
+        assert "legacyAliasesOfCanonicalEdges" in view  # derived from the writer's own mapping
 
 
 # ── Command versus feedback ───────────────────────────────────────────────────
@@ -450,34 +461,122 @@ class TestSupersession:
         emitted = {kg_approval_for(t) for t in TRIGGERS} - {None}
         assert emitted <= KG_APPROVAL_STATES
 
-    @pytest.mark.xfail(
-        strict=True,
-        raises=AssertionError,
-        reason="#5523: supersede leaves kg approval_state unchanged, so a superseded verified "
-        "edge is still returned by every approval_state = 'verified' reader.",
+    # The throwaway database has only (id, tenant_id, approval_state). These columns and the
+    # proposals table are added INSIDE the test's transaction and rolled back with it.
+    _FACT_SCHEMA = (
+        "ALTER TABLE kg_relationships ADD COLUMN source_id TEXT, ADD COLUMN target_id TEXT, "
+        "ADD COLUMN relationship_type TEXT;"
+        "CREATE TABLE relationship_proposals (id TEXT PRIMARY KEY, tenant_id TEXT, "
+        "source_entity_id TEXT, target_entity_id TEXT, relationship_type TEXT, status TEXT);"
     )
+
+    def _connect(self, pg):
+        psycopg2 = pytest.importorskip("psycopg2")
+        return psycopg2.connect(host=pg.sockdir, port=pg.port, user="postgres", dbname="postgres")
+
+    @staticmethod
+    def _verified(cur):
+        cur.execute(
+            "SELECT id FROM kg_relationships "
+            "WHERE tenant_id = 't' AND approval_state = 'verified' ORDER BY id"
+        )
+        return [r[0] for r in cur.fetchall()]
+
     def test_a_superseded_verified_edge_stops_being_served_as_verified(self, pg):
+        """#5523 repaired (ADR-0017 amended): supersede takes the row out of the verified set."""
         from shared.proposal_transition import apply_kg_approval
 
-        psycopg2 = pytest.importorskip("psycopg2")
-        conn = psycopg2.connect(host=pg.sockdir, port=pg.port, user="postgres", dbname="postgres")
+        conn = self._connect(pg)
         try:
             cur = conn.cursor()
+            cur.execute(self._FACT_SCHEMA)
             cur.execute(
-                "INSERT INTO kg_relationships (id, tenant_id, approval_state) "
-                "VALUES ('old', 't', 'verified'), ('new', 't', 'verified')"
-            )
-            apply_kg_approval(
-                cur, table="kg_relationships", row_id="old", trigger="supersede", tenant_id="t"
+                "INSERT INTO kg_relationships "
+                "(id, tenant_id, approval_state, source_id, target_id, relationship_type) VALUES "
+                "('old', 't', 'verified', 'a', 'b', 'UPSTREAM_OF'), "
+                "('new', 't', 'verified', 'a', 'c', 'UPSTREAM_OF')"
             )
             cur.execute(
-                "SELECT id FROM kg_relationships "
-                "WHERE tenant_id = 't' AND approval_state = 'verified' ORDER BY id"
+                "INSERT INTO relationship_proposals VALUES "
+                "('p-old', 't', 'a', 'b', 'UPSTREAM_OF', 'verified')"
             )
-            assert [r[0] for r in cur.fetchall()] == ["new"]
+            wrote = apply_kg_approval(
+                cur,
+                table="kg_relationships",
+                row_id="old",
+                trigger="supersede",
+                tenant_id="t",
+                superseded_proposal_id="p-old",
+            )
+            assert wrote is True
+            assert self._verified(cur) == ["new"]
         finally:
             conn.rollback()
             conn.close()
+
+    def test_replaying_an_old_supersede_does_not_reject_a_fact_approved_again(self, pg):
+        """Review finding F7 on #5543: supersede, re-approve the SAME stored row under a newer
+        proposal, replay the original supersede. The newer approval must survive; superseding
+        the newer approval must still retire the row."""
+        from shared.proposal_transition import apply_kg_approval
+
+        def supersede(cur, proposal):
+            return apply_kg_approval(
+                cur,
+                table="kg_relationships",
+                row_id="e",
+                trigger="supersede",
+                tenant_id="t",
+                superseded_proposal_id=proposal,
+            )
+
+        conn = self._connect(pg)
+        try:
+            cur = conn.cursor()
+            cur.execute(self._FACT_SCHEMA)
+            cur.execute(
+                "INSERT INTO kg_relationships "
+                "(id, tenant_id, approval_state, source_id, target_id, relationship_type) "
+                "VALUES ('e', 't', 'verified', 'a', 'b', 'UPSTREAM_OF')"
+            )
+            cur.execute(
+                "INSERT INTO relationship_proposals VALUES "
+                "('p1', 't', 'a', 'b', 'UPSTREAM_OF', 'verified')"
+            )
+            assert supersede(cur, "p1") is True
+            cur.execute("UPDATE relationship_proposals SET status = 'deprecated' WHERE id = 'p1'")
+            assert self._verified(cur) == []
+
+            # a human approves the same fact again: newer proposal, same stored row
+            cur.execute(
+                "INSERT INTO relationship_proposals VALUES "
+                "('p2', 't', 'a', 'b', 'UPSTREAM_OF', 'verified')"
+            )
+            apply_kg_approval(
+                cur, table="kg_relationships", row_id="e", trigger="accept", tenant_id="t"
+            )
+            assert self._verified(cur) == ["e"]
+
+            assert supersede(cur, "p1") is False  # the replay
+            assert self._verified(cur) == ["e"]
+
+            assert supersede(cur, "p2") is True  # the newer approval can still be retired
+            assert self._verified(cur) == []
+        finally:
+            conn.rollback()
+            conn.close()
+
+    def test_a_supersede_that_does_not_name_the_approval_it_retires_is_refused(self):
+        from shared.proposal_transition import apply_kg_approval
+
+        class _Cur:
+            def execute(self, *a):  # pragma: no cover - must not be reached
+                raise AssertionError("no statement may run")
+
+        with pytest.raises(ValueError):
+            apply_kg_approval(
+                _Cur(), table="kg_relationships", row_id="e", trigger="supersede", tenant_id="t"
+            )
 
 
 # ── Migration 029 on a throwaway PostgreSQL ───────────────────────────────────

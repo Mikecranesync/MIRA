@@ -84,6 +84,21 @@ const LOWERCASE_TO_CANONICAL_EDGE: Record<string, { type: string; flip: boolean 
 };
 
 /**
+ * The same mapping, read the other way: for each canonical edge type, the
+ * legacy lowercase name(s) it stands for and whether the endpoints are swapped.
+ * Readers use this (via capabilities/kg-relationship-read-view) so that an edge
+ * approved under its canonical name is visible to a reader written against the
+ * legacy name (#5519). ONE mapping — do not copy it.
+ */
+export function legacyAliasesOfCanonicalEdges(): Array<{ canonical: string; legacy: string; flip: boolean }> {
+  return Object.entries(LOWERCASE_TO_CANONICAL_EDGE).map(([legacy, { type, flip }]) => ({
+    canonical: type,
+    legacy,
+    flip,
+  }));
+}
+
+/**
  * Resolve any relationship type to a canonical proposal edge. Already-canonical
  * types pass through unflipped; known lowercase types map; everything else
  * returns null (caller skips).

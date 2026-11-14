@@ -16,6 +16,7 @@ import pool from "@/lib/db";
 import type { PoolClient } from "pg";
 import type { KGEntity } from "./types";
 import { flagPmMismatches, type PmMismatch } from "./plan-vs-actual";
+import { KG_EDGES_BOTH, KG_EDGES_LEGACY } from "@/capabilities/kg-relationship-read-view";
 
 // ── Shared transaction helper ──────────────────────────────────────────────
 
@@ -170,7 +171,7 @@ export async function traverseChain(
          SELECT e.id, e.tenant_id, e.entity_type, e.entity_id, e.name, e.properties,
                 e.created_at, e.updated_at, w.depth + 1, w.path || e.id::text
            FROM walk w
-           JOIN kg_relationships r
+           JOIN ${KG_EDGES_BOTH} r
              ON r.source_id = w.id
             AND r.tenant_id = $2
             AND r.relationship_type = ($3::text[])[w.depth + 1]
@@ -227,7 +228,7 @@ export async function impactAnalysis(
          SELECT e.id, e.tenant_id, e.entity_type, e.entity_id, e.name, e.properties,
                 e.created_at, e.updated_at, d.depth + 1, d.path || e.id::text
            FROM downstream d
-           JOIN kg_relationships r
+           JOIN ${KG_EDGES_LEGACY} r
              ON r.source_id = d.id
             AND r.tenant_id = $2
             AND r.relationship_type = 'feeds'
@@ -251,7 +252,7 @@ export async function impactAnalysis(
     if (downstreamIds.length > 0) {
       const { rows: altRows } = await client.query<{ target_id: string }>(
         `SELECT DISTINCT r.target_id
-           FROM kg_relationships r
+           FROM ${KG_EDGES_LEGACY} r
            JOIN kg_entities src
              ON src.id = r.source_id
             AND src.tenant_id = r.tenant_id
@@ -316,7 +317,7 @@ export async function rootCauseChain(
       `WITH RECURSIVE chain(id, tenant_id, entity_type, entity_id, name, properties,
                              created_at, updated_at, depth, path, cum_conf) AS (
          SELECT e.id, e.tenant_id, e.entity_type, e.entity_id, e.name, e.properties,
-                e.created_at, e.updated_at, 0, ARRAY[e.id::text], 1.0
+                e.created_at, e.updated_at, 0, ARRAY[e.id::text], 1.0::double precision
            FROM kg_entities e
            WHERE e.id = $1
              AND e.tenant_id = $2
@@ -326,7 +327,7 @@ export async function rootCauseChain(
                 e.created_at, e.updated_at, c.depth + 1, c.path || e.id::text,
                 c.cum_conf * COALESCE(r.confidence, 1.0)
            FROM chain c
-           JOIN kg_relationships r
+           JOIN ${KG_EDGES_LEGACY} r
              ON r.source_id = c.id
             AND r.tenant_id = $2
             AND r.relationship_type = 'caused_by'
@@ -345,7 +346,7 @@ export async function rootCauseChain(
     // Top-level alternates: all `caused_by` siblings at depth 1
     const { rows: altRows } = await client.query<EntityRow>(
       `SELECT e.*
-         FROM kg_relationships r
+         FROM ${KG_EDGES_LEGACY} r
          JOIN kg_entities e
            ON e.id = r.target_id
           AND e.tenant_id = r.tenant_id
@@ -450,7 +451,7 @@ export async function maintenanceContext(
          SELECT e.id, e.tenant_id, e.entity_type, e.entity_id, e.name, e.properties,
                 e.created_at, e.updated_at, u.depth + 1, u.path || e.id::text
            FROM up u
-           JOIN kg_relationships r
+           JOIN ${KG_EDGES_LEGACY} r
              ON r.target_id = u.id
             AND r.tenant_id = $2
             AND r.relationship_type = 'parent_of'
@@ -475,7 +476,7 @@ export async function maintenanceContext(
     const [components, faults, workOrders, parts, manuals, pmTasks, similar] = await Promise.all([
       // Components
       client.query<EntityRow>(
-        `SELECT e.* FROM kg_relationships r
+        `SELECT e.* FROM ${KG_EDGES_LEGACY} r
            JOIN kg_entities e
              ON e.id = r.target_id
             AND e.tenant_id = r.tenant_id
@@ -485,10 +486,14 @@ export async function maintenanceContext(
           ORDER BY e.name LIMIT 20`,
         [tenantId, equipment.id],
       ),
-      // Recent faults — count via had_fault relationships in window
+      // Recent faults — count via had_fault relationships in window.
+      // The bare table on purpose (the one read here that does not use the shared view):
+      // each stored 'had_fault' row is one OCCURRENCE with its own time. An approved
+      // HAS_FAILURE_MODE relationship is a fact about the pair, not an occurrence, and the
+      // view would present it as one with no time (review finding on #5543).
       client.query<{ code: string; count: string; last_seen: string }>(
         `SELECT e.entity_id AS code, COUNT(*)::text AS count,
-                MAX((r.properties->>'occurred_at')::timestamptz) AS last_seen
+                MAX(COALESCE((r.properties->>'occurred_at')::timestamptz, r.created_at)) AS last_seen
            FROM kg_relationships r
            JOIN kg_entities e
              ON e.id = r.target_id
@@ -506,7 +511,7 @@ export async function maintenanceContext(
       ),
       // Work orders (most recent N)
       client.query<EntityRow>(
-        `SELECT e.* FROM kg_relationships r
+        `SELECT e.* FROM ${KG_EDGES_LEGACY} r
            JOIN kg_entities e
              ON e.id = r.target_id
             AND e.tenant_id = r.tenant_id
@@ -518,7 +523,7 @@ export async function maintenanceContext(
       ),
       // Parts
       client.query<EntityRow>(
-        `SELECT e.* FROM kg_relationships r
+        `SELECT e.* FROM ${KG_EDGES_LEGACY} r
            JOIN kg_entities e
              ON e.id = r.target_id
             AND e.tenant_id = r.tenant_id
@@ -528,9 +533,10 @@ export async function maintenanceContext(
           ORDER BY e.name LIMIT 30`,
         [tenantId, equipment.id],
       ),
-      // Manuals — both direct references and via references_drawing
+      // Manuals — both direct references and via references_drawing. No name filter here, so
+      // keep the stored rows in their stored direction (BOTH); DISTINCT absorbs the aliases.
       client.query<EntityRow>(
-        `SELECT DISTINCT e.* FROM kg_relationships r
+        `SELECT DISTINCT e.* FROM ${KG_EDGES_BOTH} r
            JOIN kg_entities e
              ON e.id = r.target_id
             AND e.tenant_id = r.tenant_id
@@ -544,7 +550,7 @@ export async function maintenanceContext(
       ),
       // PM tasks
       client.query<EntityRow>(
-        `SELECT e.* FROM kg_relationships r
+        `SELECT e.* FROM ${KG_EDGES_LEGACY} r
            JOIN kg_entities e
              ON e.id = r.target_id
             AND e.tenant_id = r.tenant_id
@@ -557,7 +563,7 @@ export async function maintenanceContext(
       // Similar equipment (within tenant only, per resolved decision §12)
       opts.includeSimilar
         ? client.query<EntityRow>(
-            `SELECT e.* FROM kg_relationships r
+            `SELECT e.* FROM ${KG_EDGES_LEGACY} r
                JOIN kg_entities e
                  ON e.id = r.target_id
                 AND e.tenant_id = r.tenant_id
