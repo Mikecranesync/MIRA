@@ -3,6 +3,8 @@
  * about what a request may do lives in validate.ts and store.ts.
  */
 import { NextResponse } from "next/server";
+import { DOCUMENT_BASES } from "@/capabilities/conversation-subject";
+import { modelNumbersIn } from "@/capabilities/manual-applicability";
 import { LEGACY_THREAD_ID, normalizeNotebookThreadId, type NotebookSource } from "@/lib/equipment-notebooks";
 import { isUuid } from "./validate";
 import { componentView, type ComponentView } from "./view";
@@ -28,7 +30,19 @@ export type BenchState = {
   selection: (ThreadSelection & { current: boolean }) | null;
   /** turn id → the component and identity revision it was asked under. */
   turnComponents: Record<string, { componentId: string; revision: number }>;
+  /** Per component, in this conversation: questions answered from a document, and
+   *  questions refused. Two separate counts — a refusal is never coverage. */
+  tallies: Record<string, { answered: number; refused: number }>;
+  /** The model and catalog numbers written in each attached document's opening
+   *  text — the only numbers the confirmation card proposes as look-alikes
+   *  (lookalike.ts). A proposal, never an identity: the technician confirms. */
+  documentNumbers: { label: string; from: string }[];
 };
+
+/** A turn answered from a document — the same rule that closes a carried subject
+ *  (conversation-subject.ts): a safety stop or general reasoning is not one. */
+const answeredFromSource = (t: { answerStatus?: string | null; basis?: string | null }) =>
+  t.answerStatus === "answered" && DOCUMENT_BASES.has(t.basis ?? "");
 
 /**
  * Everything one conversation's component header, picker and history labels need.
@@ -51,12 +65,25 @@ export async function benchState(
   const views = components.map((c) => componentView(c, sources, headings));
   const selected = selection ? components.find((c) => c.id === selection.componentId) : undefined;
   const turnComponents: BenchState["turnComponents"] = {};
+  const tallies: BenchState["tallies"] = {};
   for (const t of turns) {
-    if (t.componentId && t.componentRevision != null) turnComponents[t.id] = { componentId: t.componentId, revision: t.componentRevision };
+    if (!t.componentId || t.componentRevision == null) continue;
+    turnComponents[t.id] = { componentId: t.componentId, revision: t.componentRevision };
+    const tally = (tallies[t.componentId] ??= { answered: 0, refused: 0 });
+    if (answeredFromSource(t)) tally.answered++;
+    else if (t.answerStatus === "insufficient_evidence") tally.refused++;
   }
+  const documentNumbers = sources.flatMap((s) => {
+    const seen = new Set<string>();
+    return modelNumbersIn(headings.get(s.docId) ?? "").flatMap((n) =>
+      seen.has(n.key) ? [] : (seen.add(n.key), [{ label: n.label, from: s.filename ?? "an attached document" }]),
+    );
+  });
   return {
     components: views,
     selection: selection && selected ? { ...selection, current: selected.current?.revision === selection.revision } : null,
     turnComponents,
+    tallies,
+    documentNumbers,
   };
 }

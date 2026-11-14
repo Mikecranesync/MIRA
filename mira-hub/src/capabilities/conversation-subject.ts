@@ -24,7 +24,7 @@ export type PriorTurn = {
 /** An answer that came from a document. Everything else — a refusal, a safety
  *  stop (stored "answered" with no basis), general reasoning, machine history,
  *  an error — leaves the subject of its question open. */
-const DOCUMENT_BASES: ReadonlySet<string> = new Set(["workspace_evidence", "oem_documentation"]);
+export const DOCUMENT_BASES: ReadonlySet<string> = new Set(["workspace_evidence", "oem_documentation"]);
 
 /**
  * How many turns to read, widening only while the open run has no start in
