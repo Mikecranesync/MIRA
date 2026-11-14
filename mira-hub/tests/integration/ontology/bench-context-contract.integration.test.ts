@@ -605,22 +605,26 @@ describe("5. correcting a fact: old fact out of current answers, kept in history
     );
   });
 
-  // CONDITIONAL: today no impact reader sees this edge at all (#5519). This test renames the
-  // stored edge to the reader's spelling first, so it shows what a reader WOULD serve once
-  // #5519 is repaired and #5523 is not — not what any reader serves today.
-  it("KNOWN GAP #5523 (given #5519 repaired): a reader that can see it serves the superseded fact as current", async () => {
-    const { seen, block } = await withStoredName(S.feedsEdge, "feeds", async () => ({
-      seen: await downstreamNodeIds(TENANT_A, A.Q1),
-      block: await buildGraphContext(TENANT_A, IMPACT_QUESTION, A.Q1.assetId),
-    }));
-    knownGap(
-      "#5523",
-      () => {
-        expect(seen).toEqual([A.VFD1.nodeId]);
-        expect(block).toContain(`Downstream: ${A.VFD1.assetId}`);
-      },
-      () => expect(seen).not.toContain(A.VFD1.nodeId),
-    );
+  it("#5523 read-side guard: after the supersede, no reader serves the old fact — and the answer context drops it", async () => {
+    // As stored (UPSTREAM_OF, still 'verified' in the table — see the pin above); nothing renamed.
+    expect(await downstreamNodeIds(TENANT_A, A.Q1)).toEqual([]);
+    const block = await buildGraphContext(TENANT_A, IMPACT_QUESTION, A.Q1.assetId);
+    expect(block).not.toContain(`Downstream: ${A.VFD1.assetId}`);
+    expect(block).not.toContain("[IMPACT ANALYSIS");
+    // a caller that passes the stored canonical name does not get it either
+    expect((await traverseChain(TENANT_A, A.Q1.nodeId, ["UPSTREAM_OF"])).map((h) => h.entity.id)).toEqual([]);
+    // history: the row, its proposal link and the deprecated proposal are all still there
+    expect(await edgeRows(TENANT_A, S.feeds)).toHaveLength(1);
+    expect((await proposalRow(S.feeds))?.status).toBe("deprecated");
+  });
+
+  it("control for the guard: lifting the supersede brings the old fact back to the reader", async () => {
+    await admin.query(`UPDATE relationship_proposals SET status = 'verified' WHERE id = $1::uuid`, [S.feeds]);
+    try {
+      expect(await downstreamNodeIds(TENANT_A, A.Q1)).toEqual([A.VFD1.nodeId]);
+    } finally {
+      await admin.query(`UPDATE relationship_proposals SET status = 'deprecated' WHERE id = $1::uuid`, [S.feeds]);
+    }
   });
 
   // Pins the literal 'deprecated' (the ontology's word, and the proposal's). A repair that
@@ -658,6 +662,13 @@ describe("5. correcting a fact: old fact out of current answers, kept in history
       () => expect(current).toEqual([A.VFD1.nodeId, A.VFD2.nodeId]),
       () => expect(current).toEqual([A.VFD2.nodeId]),
     );
+  });
+
+  it("the complete path: after the correction, the reader and the answer name the corrected drive only", async () => {
+    expect(await downstreamNodeIds(TENANT_A, A.Q1)).toEqual([A.VFD2.nodeId]);
+    const block = await buildGraphContext(TENANT_A, IMPACT_QUESTION, A.Q1.assetId);
+    expect(block).toContain(`[IMPACT ANALYSIS for ${A.Q1.assetId}]\nDownstream: ${A.VFD2.assetId}`);
+    expect(block).not.toContain(A.VFD1.assetId);
   });
 
   it("KNOWN GAP #5524: a revised proposal for the superseded pair is silently dropped", async () => {
