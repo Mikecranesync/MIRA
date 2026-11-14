@@ -203,6 +203,45 @@ function matchProseFallback(text: string): ManualSafetyStatement | null {
     }
   }
 
+  return matchPrintNoteFallback(text);
+}
+
+/**
+ * Prose fallback for an electrical print page's own safety notes (#5370): a bulleted paragraph
+ * with no WARNING/CAUTION marker. Narrow on purpose — only a sentence saying something is NOT a
+ * safety-rated disconnect / safety function, or "do not treat ... as the LOTO isolation point".
+ * Returns the sheet's own sentence plus the one that follows it in the same bullet; wrapped lines
+ * are joined. Patterns are tried in priority order, so the disconnect / LOTO note wins over a
+ * bare "NOT a safety function" bullet that happens to come first on the page.
+ */
+const PRINT_NOTE_PATTERNS: readonly RegExp[] = [
+  /\bNOT\s+an?\s+[^.!?]{0,60}?safety[- ]rated\s+(?:disconnect|isolat\w+|contactor)/,
+  /\bdo\s+not\s+treat\b[^.!?]{0,80}?\bas\b[^.!?]{0,40}?\bLOTO\s+isolation\s+point/i,
+  /\bNOT\s+a\s+safety\s+function\b/,
+];
+
+function matchPrintNoteFallback(text: string): ManualSafetyStatement | null {
+  // One bullet = one item (a bullet's wrapped lines join); text with no bullets is one item per paragraph.
+  const items: string[] = [];
+  for (const line of text.split('\n')) {
+    const bullet = /^\s*[•▪●■◆*-]\s+/.test(line);
+    if (!line.trim()) items.push('');
+    else if (bullet || !items.length || items[items.length - 1] === '') items.push(line.replace(/^\s*[•▪●■◆*-]\s+/, '').trim());
+    else items[items.length - 1] += ' ' + line.trim();
+  }
+  const sentenceLists = items
+    .map((item) => item.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .map((item) => item.split(/(?<=[.!?])\s+(?=[A-Z])/));
+  for (const pattern of PRINT_NOTE_PATTERNS) {
+    for (const sentences of sentenceLists) {
+      const at = sentences.findIndex((s) => pattern.test(s));
+      if (at < 0) continue;
+      let statement = sentences.slice(at, at + 2).join(' ');
+      if (statement.length > 400) statement = sentences[at].slice(0, 400);
+      return { marker: 'WARNING (manual text)', statement };
+    }
+  }
   return null;
 }
 
