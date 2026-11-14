@@ -55,8 +55,11 @@ Two limits of the ontology itself are pinned the same way under #5528: `instance
 with no declared type conforms, and the wrong-family fault rule is silent for a drive with no
 declared family.
 
-Not covered by a contract test here, and still open: running the Hub TypeScript itself (the #5519 check reads source only), any age-based staleness rule, the Hub
-(TypeScript) twins of the approval helpers, and the knowledge-graph side of fault-family scope.
+The Hub (TypeScript) twins of the two approval helpers are not executed by these Python tests;
+they have their own Hub tests, cited in the mapping, which assert the same actor rule and the
+same supersede mapping (so the Hub path has the same #5523 gap).
+
+Not covered by a contract test here, and still open: running the Hub TypeScript itself (the #5519 check reads source only), any age-based staleness rule, and the knowledge-graph side of fault-family scope.
 
 ## Where this starts
 

@@ -176,9 +176,10 @@
       "status": "agrees",
       "rule": "An asset agent cannot be approved without a named human actor.",
       "code": [
-        "mira-bots/shared/asset_agent_transition.py"
+        "mira-bots/shared/asset_agent_transition.py",
+        "mira-hub/src/lib/asset-agent-transition.test.ts"
       ],
-      "call_path": "simlab/approval.py -> validate_transition; mira-pipeline/ignition_chat.py -> gate_decision. The Hub route uses the TypeScript twin, which this test does not execute.",
+      "call_path": "simlab/approval.py -> validate_transition; mira-pipeline/ignition_chat.py -> gate_decision. The Hub route api/assets/[id]/agent-status/transition uses the TypeScript twin, which this test does not execute; the same rule is asserted there by mira-hub/src/lib/asset-agent-transition.test.ts ('approved requires a human actor'), run by the Hub Unit Tests CI job.",
       "test": "tests/test_ontology_runtime_contract.py::TestAssetAgentApproval::test_approval_without_an_actor_is_refused"
     },
     "superseded-fact-leaves-the-verified-set": {
@@ -186,9 +187,10 @@
       "tracking": "#5523",
       "rule": "A superseded assertion must not remain verified (R14c).",
       "code": [
-        "mira-bots/shared/proposal_transition.py"
+        "mira-bots/shared/proposal_transition.py",
+        "mira-hub/src/lib/proposal-transition.test.ts"
       ],
-      "call_path": "apply_kg_approval(trigger='supersede') issues no write; readers filter approval_state = 'verified'. The only importer of proposal_transition.py outside tests is demo/factory_difference_engine/pipeline.py, so no production path applies this transition at all.",
+      "call_path": "apply_kg_approval(trigger='supersede') issues no write; readers filter approval_state = 'verified'. The only importer of proposal_transition.py outside tests is demo/factory_difference_engine/pipeline.py, so no production path applies this transition at all. The Hub twin agrees with the Python side: mira-hub/src/lib/proposal-transition.test.ts asserts supersede sets the suggestion to 'superseded' and the proposal to 'deprecated', and writes no graph approval state, so the Hub path has the same gap.",
       "test": "tests/test_ontology_runtime_contract.py::TestSupersession::test_a_superseded_verified_edge_stops_being_served_as_verified"
     },
     "fault-code-identity-includes-the-model": {
