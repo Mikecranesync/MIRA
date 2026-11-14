@@ -1010,7 +1010,8 @@ describe("the tablet's request path against the route: intended scope or refusal
     const other = screen();
     await tab.load();
     await other.load();
-    const prepared = logic.prepareChatSend({ gate: tab.gate, forThisGate: true, sel: SELA, scopes: tab.scopes, body: { message: "rated current?", sourceDocIds: [DOC_A], history: [], threadId: TH, clientRequestId: REQ } });
+    const asked: { message: string; sourceDocIds: string[]; history: unknown[]; threadId: null; clientRequestId: string } = { message: "rated current?", sourceDocIds: [DOC_A], history: [], threadId: TH, clientRequestId: REQ };
+    const prepared = logic.prepareChatSend({ gate: tab.gate, forThisGate: true, sel: SELA, scopes: tab.scopes, body: asked });
     if (!prepared.ok) throw new Error("precondition: the first send is scoped");
     // That send never reached the server; meanwhile the other screen switched to Q1.
     await change(other, K1, async (init) => commit(JSON.parse(String(init.body))));

@@ -86,12 +86,12 @@ export function recordBenchScope(scopes: BenchScopes, sel: HubSelection, state: 
  * one it was asked under. A component scopes the turn to its documents, so that turn is
  * never sent in general mode; a whole-machine scope keeps the body's mode.
  */
-export function scopedChatBody<B extends { mode?: "general"; componentSelection?: ScopeField }>(
+export function scopedChatBody<B extends object>(
   body: B,
   sel: HubSelection,
   scopes: ReadonlyMap<string, ComponentRider | "unavailable">,
 ): { ok: true; body: B } | { ok: false; message: string } {
-  if (body.componentSelection) return { ok: true, body };
+  if ((body as { componentSelection?: ScopeField }).componentSelection) return { ok: true, body };
   const entry = scopes.get(conversationKey(sel));
   if (!entry) return { ok: false, message: SEND_LOADING_MESSAGE };
   if (entry === "unavailable") return { ok: true, body };
@@ -102,13 +102,13 @@ export function scopedChatBody<B extends { mode?: "general"; componentSelection?
     selectionVersion: entry.selectionVersion,
   };
   if (entry.componentId === null) return { ok: true, body: { ...body, componentSelection } };
-  const { mode: _mode, ...rest } = body;
+  const { mode: _mode, ...rest } = body as B & { mode?: "general" };
   return { ok: true, body: { ...rest, componentSelection } as B };
 }
 
 /** The body without its scope, to be scoped again from what the header shows now. */
-export function withoutScope<B extends { componentSelection?: ScopeField }>(body: B): Omit<B, "componentSelection"> {
-  const { componentSelection: _scope, ...rest } = body;
+export function withoutScope<B extends object>(body: B): Omit<B, "componentSelection"> {
+  const { componentSelection: _scope, ...rest } = body as B & { componentSelection?: ScopeField };
   return rest;
 }
 
@@ -118,7 +118,7 @@ export function withoutScope<B extends { componentSelection?: ScopeField }>(body
  * otherwise the body carries this conversation's scope. `forThisGate` is false only for
  * a project just made from home, which has no saved component (the server checks anyway).
  */
-export function prepareChatSend<B extends { mode?: "general"; componentSelection?: ScopeField }>(opts: {
+export function prepareChatSend<B extends object>(opts: {
   gate: BenchSendGate;
   forThisGate: boolean;
   sel: HubSelection;

@@ -313,7 +313,9 @@ export async function getSelectionState(
         WHERE s.tenant_id = $1::uuid AND s.notebook_id = $2::uuid AND s.owner_user_id = $3 AND s.thread_key = $4`,
       [tenantId, notebookId, ownerUserId, threadKey],
     );
-    const row = res.rows[0];
+    // Every chat turn runs this read; a driver result always has `rows`. Route tests whose
+    // database stand-in answers only the queries they know get "no row" here, as before this read.
+    const row = res?.rows?.[0];
     if (!row) return { selection: null, version: null };
     return { selection: row.cleared ? null : toSelection(row), version: Number(row.version) };
   });

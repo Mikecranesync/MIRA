@@ -1761,7 +1761,7 @@ async function handleChatTurn(
   let wholeMachine: Awaited<ReturnType<typeof checkWholeMachineScope>> | null = null;
   if (!componentRequest) {
     wholeMachine = await releaseClaimOnFailure(() =>
-      checkWholeMachineScope(ctx.tenantId, notebookId, ctx.userId, threadId ?? LEGACY_THREAD_ID, wholeMachineRequest),
+      checkWholeMachineScope(ctx.tenantId, notebookId, ctx.userId, threadId, wholeMachineRequest),
     );
   }
   const resolved = componentRequest && clientRequestId

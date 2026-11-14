@@ -76,16 +76,20 @@ export type WholeMachineCheck =
   | { kind: "whole_machine"; explicit: boolean }
   | { kind: "conflict"; selection: ThreadSelection | null };
 
+/** The selection row's key for the default conversation: the same value as LEGACY_THREAD_ID
+ *  (equipment-notebooks.ts), pinned by a test, so this check needs nothing else from that module. */
+export const DEFAULT_CONVERSATION_KEY = "legacy";
+
 export async function checkWholeMachineScope(
   tenantId: string,
   notebookId: string,
   userId: string,
-  threadKey: string,
+  threadId: string | null,
   requested: Extract<RequestedScope, { kind: "whole_machine" }> | null,
 ): Promise<WholeMachineCheck> {
   let saved: Awaited<ReturnType<typeof getSelectionState>>;
   try {
-    saved = await getSelectionState(tenantId, notebookId, userId, threadKey);
+    saved = await getSelectionState(tenantId, notebookId, userId, threadId ?? DEFAULT_CONVERSATION_KEY);
   } catch (err) {
     if (componentTablesMissing(err)) return { kind: "unavailable" };
     throw err;
