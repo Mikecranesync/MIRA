@@ -28,6 +28,7 @@ import { ocrExtractPage } from "@/capabilities/garbled-text-ocr";
 import { readPageLabelsBounded } from "@/capabilities/pdf-page-label-reader";
 import { pageLayoutItems } from "@/capabilities/pdf-layout-items";
 import { pageWithTables, type TableChunk } from "@/capabilities/table-rows";
+import { contactRatingColumns, withColumnLines } from "@/capabilities/contact-ratings-table";
 import { hasUnmappedGlyphBetweenDigits } from "@/capabilities/manual-completeness";
 import { uploadIdentity } from "@/capabilities/page-label-backfill";
 
@@ -42,8 +43,11 @@ const CHUNK_OVERLAP = 120;
  *   v2 — header-row model tables as one chunk per model column (PR-1, #5430).
  *   v3 — a model-keyed table (one model per line) stored as one unqualified chunk instead of flat
  *        text (#5450); a document stamped v2 is stale and `reprocessNodeDocument` rewrites it.
+ *   v4 — a contact-ratings table's make / break / continuous columns written as lines under the
+ *        table in the page text (#5474 item 5). A document stamped v3 has no such lines, so the
+ *        answer check's WRONG-COLUMN rule cannot run on it until it is reprocessed.
  */
-export const EXTRACTION_VERSION = 3;
+export const EXTRACTION_VERSION = 4;
 
 // Multi-row INSERT batch size. Bounds BOTH the chunk rows held in memory at once
 // (≤ BATCH_ROWS, instead of every chunk of a 1200-page manual accumulated in one
@@ -768,7 +772,21 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
     }
     try {
       const items = await pageLayoutItems(pdf, p + 1);
-      pageTables.push(items.length > 0 ? pageWithTables(items) : null);
+      const table = items.length > 0 ? pageWithTables(items) : null;
+      // #5474 item 5: a contact-ratings table's make / break / continuous columns, read from the
+      // same positioned items, are written under the table in the page text (and in the table
+      // remainder, which is what a page with a model table chunks). The flat rows stay as they
+      // were. Its own guard: a failure here must not cost the page its table read.
+      try {
+        const columns = contactRatingColumns(items);
+        if (columns) {
+          pages[p] = withColumnLines(pages[p], columns);
+          if (table) table.remainder = withColumnLines(table.remainder, columns);
+        }
+      } catch (err) {
+        console.warn(`[node-ingest] contact-ratings column read failed on ${rest.filename} p.${p + 1} (page kept without column lines):`, err instanceof Error ? err.message : err);
+      }
+      pageTables.push(table);
     } catch (err) {
       console.warn(`[node-ingest] table read failed on ${rest.filename} p.${p + 1} (page kept as flat text):`, err instanceof Error ? err.message : err);
       pageTables.push(null);
