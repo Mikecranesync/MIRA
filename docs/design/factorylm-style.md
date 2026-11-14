@@ -77,3 +77,27 @@ check can later diff the copies against canonical.)
 - Run the app; the picker/table/toolbar must look flat + on-brand; states show the right color.
 - For mira-* web UI changes, follow the repo **Screenshot Rule** (`docs/promo-screenshots/`).
 - Frozen offline tools: confirm `factorylm-tokens.css` is present under `_internal/gui/` after build.
+# Citation and evidence reader — tablet review candidate (#5511)
+
+Status: working prototype, pending Mike's tablet visual acceptance. This section
+records the selected Adobe-style interaction direction; final sizing is not yet
+an accepted system-wide restyle.
+
+- Inline citations are small raised Arabic numerals in the workspace typeface,
+  with no filled balloon or border. Keep punctuation attached and line height
+  unchanged. Each marker has an accessible name and visible keyboard focus.
+- Provide a full-size **Review evidence** action as an alternative to tiny taps.
+- A citation opens the original PDF with the supporting passage lightly tinted
+  and outlined. Selection color is not a verified/safe/approved status.
+- Retain the current answer statement above the page. **Previous highlight** and
+  **Next highlight** follow answer order; their counter is separate from PDF page
+  numbering. Disable controls at the ends rather than silently wrapping.
+- **Back to answer**, Escape, and tablet Back restore the reading context. The
+  reader owns focus while open and restores it to the invoking control on close.
+- Preserve table headings and cautions around the passage. Never fabricate an
+  anchor: production must show an explicit unavailable state for unmatched,
+  ambiguous, stale or unsupported source locations.
+
+Review implementation: `apps/factorylm-ui-lab/evidence.html`; reusable presentation:
+`packages/factorylm-ui/src/EvidenceReader.tsx`. The preview uses synthetic PDF
+content and does not establish correctness of generated answers.

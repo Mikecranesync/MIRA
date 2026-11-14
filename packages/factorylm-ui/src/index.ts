@@ -9,6 +9,7 @@ export { PartRenderer, type PartRendererProps, type HostHooks, assertNever, desc
 export { ProjectTree } from "./ProjectTree";
 export { Sidebar } from "./Sidebar";
 export { SourceViewer, type SourceViewerProps } from "./SourceViewer";
+export { CitationMarker, EvidenceReader, type ReaderEvidence } from "./EvidenceReader";
 export { ThreadHeader } from "./ThreadHeader";
 export {
   AssistantThread,

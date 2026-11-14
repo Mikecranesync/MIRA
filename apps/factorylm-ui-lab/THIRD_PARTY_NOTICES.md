@@ -111,6 +111,7 @@ Policy: MIT or Apache-2.0 (PRD §4), plus the maintainer-approved per-version ex
 | typescript@5.7.2 | Apache-2.0 | — |
 | undici-types@6.21.0 | MIT | Copyright (c) Matteo Collina and Undici contributors |
 | undici-types@8.9.0 | MIT | Copyright (c) Matteo Collina and Undici contributors |
+| unpdf@1.6.2 | MIT | Copyright (c) 2023-PRESENT Johann Schopplich |
 | use-callback-ref@1.3.3 | MIT | Copyright (c) 2017 Anton Korzunov |
 | use-composed-ref@1.4.0 | MIT | — |
 | use-isomorphic-layout-effect@1.2.1 | MIT | Copyright (c) Mateusz Burzyński |

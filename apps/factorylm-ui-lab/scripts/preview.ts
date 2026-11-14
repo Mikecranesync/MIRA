@@ -5,8 +5,10 @@ import { resolve } from "node:path";
 // DEV server, which injects an inline HMR script and a websocket — both of
 // which the lab's CSP correctly blocks. This serves dist/ as plain files so
 // the preview exercises exactly what a static host would ship.
-const dist = resolve(import.meta.dir, "../dist");
-if (!existsSync(resolve(dist, "index.html"))) {
+const evidence = process.env.LAB_PREVIEW_PROFILE === "evidence";
+const entry = evidence ? "evidence.html" : "index.html";
+const dist = resolve(import.meta.dir, evidence ? "../dist-evidence" : "../dist");
+if (!existsSync(resolve(dist, entry))) {
   console.error("dist/index.html is missing — run `bun run build` first.");
   process.exit(1);
 }
@@ -18,7 +20,7 @@ Bun.serve({
     const path = new URL(request.url).pathname;
     const candidate = resolve(dist, `.${path}`);
     const inside = candidate.startsWith(dist);
-    const file = inside && existsSync(candidate) && statSync(candidate).isFile() ? candidate : resolve(dist, "index.html");
+    const file = inside && existsSync(candidate) && statSync(candidate).isFile() ? candidate : resolve(dist, entry);
     return new Response(Bun.file(file));
   },
 });
