@@ -32,6 +32,12 @@ export function composerKeyAction(event: ComposerKeyEvent): "send" | "newline" |
   return event.shiftKey ? "newline" : "send";
 }
 
+/** After Send, ignore Stop for this window so a double-tap cannot abort (#4924). */
+export const STOP_ARM_DELAY_MS = 400;
+
+const COMPOSER_HINT_WAITING = "MIRA is still answering — send when it finishes";
+const COMPOSER_HINT_QUEUED = "Will send after this answer";
+
 const OFFLINE_LABEL = { online: "Online", offline: "Offline", syncing: "Syncing", error: "Sync error" } as const;
 
 interface PendingAttachment {
@@ -82,6 +88,11 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
   // a no-op there.
   const fieldRef = useRef<HTMLTextAreaElement>(null);
   const draftAtMount = useRef(state.draft);
+  const stopIgnoreUntilRef = useRef(0);
+  const queuedRef = useRef(false);
+  const [queued, setQueued] = useState(false);
+  const wasBusyRef = useRef(Boolean(hooks?.busy));
+  const sendRef = useRef<() => void>(() => {});
   // Mount only: after mount the field and the state move together through onChange.
   useLayoutEffect(() => {
     const typed = fieldRef.current?.value ?? "";
@@ -166,7 +177,15 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
     // returns normally, which below reads as "sent" and clears the draft and
     // chips -- the technician's next question vanished unsent (#4443). Keep
     // both until the answer finishes, the same as the disabled button.
-    if (!canSend || hooks?.busy) return;
+    // #4798: an explicit send while busy queues one follow-up instead of
+    // dropping it. #4924 ignores Stop for a short window after this send.
+    if (hooks?.busy) {
+      if (!canSend) return;
+      queuedRef.current = true;
+      setQueued(true);
+      return;
+    }
+    if (!canSend) return;
     if (hooks?.onSend) {
       try {
         const sent = visiblePending;
@@ -183,6 +202,9 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
         }
         dispatch({ type: "set-draft", draft: "" });
         dispatch({ type: "set-send-error", error: null });
+        queuedRef.current = false;
+        setQueued(false);
+        stopIgnoreUntilRef.current = Date.now() + STOP_ARM_DELAY_MS;
       } catch (error) {
         // Preserve the question in the composer and show a plain-language error
         // (no status codes or technical details).
@@ -195,6 +217,24 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
       dispatch({ type: "set-send-error", error: null });
     }
   };
+  sendRef.current = send;
+
+  useEffect(() => {
+    if (!state.draft.trim() && queued) {
+      queuedRef.current = false;
+      setQueued(false);
+    }
+  }, [state.draft, queued]);
+
+  useEffect(() => {
+    const nowBusy = Boolean(hooks?.busy);
+    if (wasBusyRef.current && !nowBusy && queuedRef.current) {
+      queuedRef.current = false;
+      setQueued(false);
+      sendRef.current();
+    }
+    wasBusyRef.current = nowBusy;
+  }, [hooks?.busy]);
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -314,6 +354,10 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
       /> : null}
     </Overlay>
 
+    {hooks?.busy && state.draft.trim() ? <p className="fl-composer__hint" role="status" aria-live="polite" data-queued={queued || undefined}>
+      {queued ? COMPOSER_HINT_QUEUED : COMPOSER_HINT_WAITING}
+    </p> : null}
+
     <div className="fl-composer__row">
       <button
         type="button"
@@ -338,7 +382,18 @@ export function Composer({ state, dispatch, adapter, hooks, attachmentTrapsTab =
         onPaste={onPaste}
       />
       {hooks?.busy && hooks.onStop
-        ? <button type="button" className="fl-composer__send" aria-label="Stop" onClick={hooks.onStop}><span aria-hidden="true">■</span><span className="fl-composer__label">Stop</span></button>
+        ? <button
+          type="button"
+          className="fl-composer__send fl-composer__send--stop"
+          aria-label="Stop"
+          onClick={() => {
+            if (Date.now() < stopIgnoreUntilRef.current) return;
+            // Stop ends this answer; it must not flush a queued follow-up.
+            queuedRef.current = false;
+            setQueued(false);
+            hooks.onStop?.();
+          }}
+        ><span aria-hidden="true">■</span><span className="fl-composer__label">Stop</span></button>
         : <button type="submit" className="fl-composer__send" aria-label="Send" disabled={!canSend || Boolean(hooks?.busy)}><span aria-hidden="true">↑</span><span className="fl-composer__label">Send</span></button>}
     </div>
   </form>;
