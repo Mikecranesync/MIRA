@@ -132,6 +132,12 @@ export async function installRoutes(page: Page, scenario: Scenario) {
     if (m === "GET" && p === "/api/assets") {
       return route.fulfill(json([]));
     }
+    // #5504: the bench-components panel reads the open notebook's checklist. Off in this harness, as
+    // the route is until migration 115 is applied (503 components_unavailable); the panel hides and
+    // no chat turn carries a component.
+    if (m === "GET" && p === `${nbPath}/components`) {
+      return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "components_unavailable" }) });
+    }
     cap.unrecognized.push(`${m} ${p}`);
     return route.abort();
   });
