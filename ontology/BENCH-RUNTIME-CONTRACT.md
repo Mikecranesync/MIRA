@@ -150,7 +150,7 @@ scope, and the old reading still resolves in history. That is a document fact, n
 
 | Gap | What happens today | Owner | Blocks |
 |---|---|---|---|
-| **#5519** | Approval stores the canonical name; readers were written against the lowercase one. **Repaired on this branch** by one shared read view (local, unreviewed). Left open: two legacy names share one stored name (`located_at`/`parent_of`, `had_fault`/`exhibited_fault`); a possible double count in plan-vs-actual; no query plan measured. | open, claimed by this lane | Path G |
+| **#5519** | Approval stores the canonical name; readers were written against the lowercase one. **Repaired on this branch** by one shared read view (local, unreviewed). Left open: two legacy names share one stored name (`located_at`/`parent_of`, `had_fault`/`exhibited_fault`); no query plan measured. | open, claimed by this lane | Path G |
 | **#5523** | Superseding a fact changed the proposal only. **Repaired on this branch**: supersede now moves the row to `rejected` (owner's decision; ADR-0017 amended). Left open: no route or job fires supersede; `contradicted` unchanged; no rollback/retry/concurrency tests; the canary change is not run against staging. | open, claimed by this lane | Path G |
 | **#5524** | A corrected proposal for the same pair is silently dropped by de-duplication. | open, unclaimed | Path G |
 | **#5527** | The answer context carries no edge id, proposal id or source, and names machines by internal id. | open, unclaimed | Path G |

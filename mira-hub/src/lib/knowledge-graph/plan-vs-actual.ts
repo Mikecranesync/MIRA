@@ -110,7 +110,10 @@ export async function flagPmMismatches(
                 )) / 86400.0 / NULLIF(COUNT(*) - 1, 0)
                 ELSE NULL
            END AS mtbf_days
-         FROM ${KG_EDGES_LEGACY} r
+         -- The bare table on purpose: each stored 'had_fault' row is one OCCURRENCE with its
+         -- own time. An approved HAS_FAILURE_MODE relationship is a fact about the pair, not
+         -- another occurrence, so it must not be counted here (review finding on #5543).
+         FROM kg_relationships r
          JOIN kg_entities eq ON eq.id = r.source_id AND eq.tenant_id = r.tenant_id
          JOIN kg_entities f  ON f.id  = r.target_id AND f.tenant_id  = r.tenant_id
          WHERE r.tenant_id = $1

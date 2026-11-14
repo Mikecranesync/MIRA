@@ -60,6 +60,7 @@ import { applyHubProposalTransition } from "@/lib/proposal-transition";
 import { mintAssetBridgeNode } from "@/lib/knowledge-graph/asset-bridge";
 import { mapToCanonicalEdge, upsertInferredProposal } from "@/lib/knowledge-graph/proposals-writer";
 import { buildGraphContext, classifyKgIntent } from "@/lib/knowledge-graph/context-builder";
+import { flagPmMismatches } from "@/lib/knowledge-graph/plan-vs-actual";
 import { impactAnalysis, maintenanceContext, rootCauseChain, traverseChain } from "@/lib/knowledge-graph/traversal";
 import { POST as decidePOST } from "@/app/api/proposals/[id]/decide/route";
 import { POST as internalKgPOST } from "@/app/api/internal/kg/route";
@@ -708,6 +709,15 @@ describe("5. correcting a fact: old fact out of current answers, kept in history
       expect((await downstreamNodeIds(TENANT_A, A.Q1)).sort()).toEqual([A.VFD1.nodeId, A.VFD2.nodeId].sort());
       const state = await admin.query(`SELECT approval_state FROM kg_relationships WHERE id = $1::uuid`, [S.feedsEdge]);
       expect(state.rows[0].approval_state).toBe("verified"); // approval puts the row back
+      // REPLAY: the old supersede is applied again (a retry). The later approval outranks it.
+      const replay = await withTenantContext(TENANT_A, (c) =>
+        applyHubProposalTransition(c, { trigger: "supersede", relationshipProposalId: S.feeds }),
+      );
+      expect(replay.kgEdgesDemoted).toBe(0);
+      expect((await downstreamNodeIds(TENANT_A, A.Q1)).sort()).toEqual([A.VFD1.nodeId, A.VFD2.nodeId].sort());
+      expect((await traverseChain(TENANT_A, A.Q1.nodeId, ["UPSTREAM_OF"])).map((h) => h.entity.id).sort()).toEqual(
+        [A.VFD1.nodeId, A.VFD2.nodeId].sort(),
+      );
     } finally {
       await admin.query(`DELETE FROM relationship_proposals WHERE id = $1::uuid`, [again]);
       await admin.query(`UPDATE kg_relationships SET approval_state = 'rejected' WHERE id = $1::uuid`, [S.feedsEdge]);
@@ -950,5 +960,74 @@ describe("8. the same contract across more of the bench (provisional inventory, 
     );
     expect(seenByB).toBe(0);
     expect(seenByA).toBe(LINKS.length);
+  });
+});
+
+describe("9. findings from the independent review of the repair (#5543 round 1)", () => {
+  it("superseding a fact also retires its legacy-named duplicate, so the duplicate cannot keep it current", async () => {
+    const { rows } = await admin.query(
+      `SELECT k.id::text AS edge, k.relationship_proposal_id::text AS proposal
+         FROM kg_relationships k
+        WHERE k.tenant_id = $1::uuid AND k.source_id = $2::uuid AND k.target_id = $3::uuid
+          AND k.relationship_type = 'UPSTREAM_OF' AND k.approval_state = 'verified'`,
+      [TENANT_A, A.VFD1.nodeId, A.M1.nodeId],
+    );
+    expect(rows).toHaveLength(1);
+    const dup = await admin.query(
+      `INSERT INTO kg_relationships (tenant_id, source_id, target_id, relationship_type, approval_state)
+       VALUES ($1::uuid, $2::uuid, $3::uuid, 'feeds', 'verified') RETURNING id::text AS id`,
+      [TENANT_A, A.VFD1.nodeId, A.M1.nodeId],
+    );
+    const beforeIds = await downstreamNodeIds(TENANT_A, A.VFD1);
+    expect(beforeIds.filter((id) => id === A.M1.nodeId)).toHaveLength(1); // read once while current
+    const out = await withTenantContext(TENANT_A, (c) =>
+      applyHubProposalTransition(c, { trigger: "supersede", relationshipProposalId: String(rows[0].proposal) }),
+    );
+    expect(out.kgEdgesDemoted).toBe(2);
+    expect(await downstreamNodeIds(TENANT_A, A.VFD1)).not.toContain(A.M1.nodeId);
+    expect(await buildGraphContext(TENANT_A, IMPACT_QUESTION, A.VFD1.assetId)).not.toContain(A.M1.assetId);
+    const kept = await admin.query(
+      `SELECT approval_state FROM kg_relationships WHERE id = ANY($1::uuid[]) ORDER BY approval_state`,
+      [[rows[0].edge, dup.rows[0].id]],
+    );
+    expect(kept.rows.map((r) => r.approval_state)).toEqual(["rejected", "rejected"]); // history kept
+  });
+
+  it("an approved fault relationship is not counted as one more fault occurrence in the PM check", async () => {
+    const mk = async (type: string, name: string, props: Record<string, unknown> = {}) =>
+      String(
+        (
+          await admin.query(
+            `INSERT INTO kg_entities (tenant_id, entity_type, entity_id, name, approval_state, properties)
+             VALUES ($1::uuid, $2, $3, $3, 'verified', $4::jsonb) RETURNING id::text AS id`,
+            [TENANT_A, type, name, JSON.stringify(props)],
+          )
+        ).rows[0].id,
+      );
+    const fault = await mk("fault_code", "BENCH-F9");
+    const pm = await mk("pm_task", "bench pm 30d", { interval_days: 30 });
+    const edge = (type: string, target: string, state: string, daysAgo?: number) =>
+      admin.query(
+        `INSERT INTO kg_relationships (tenant_id, source_id, target_id, relationship_type, approval_state, properties)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6::jsonb)`,
+        [
+          TENANT_A,
+          A.VFD2.nodeId,
+          target,
+          type,
+          state,
+          JSON.stringify(daysAgo == null ? {} : { occurred_at: new Date(Date.now() - daysAgo * 86400000).toISOString() }),
+        ],
+      );
+    await edge("had_fault", fault, "proposed", 30);
+    await edge("had_fault", fault, "proposed", 15);
+    await edge("has_pm", pm, "verified");
+    const count = async () =>
+      (await flagPmMismatches(TENANT_A)).filter((m) => m.faultCode === "BENCH-F9").map((m) => m.occurrences);
+    const before = await count();
+    await edge("HAS_FAILURE_MODE", fault, "verified"); // the approval
+    expect(await count()).toEqual(before); // approval alone changes nothing
+    await edge("had_fault", fault, "proposed", 1); // a real third occurrence does
+    expect(await count()).not.toEqual(before);
   });
 });

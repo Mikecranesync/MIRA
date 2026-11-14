@@ -30,7 +30,8 @@ import { legacyAliasesOfCanonicalEdges } from "@/lib/knowledge-graph/proposals-w
 const SAFE_NAME = /^[A-Za-z_]+$/;
 const COLUMNS = "id, tenant_id, relationship_type, source_id, target_id, approval_state, confidence, properties, created_at";
 
-function aliasValues(): string {
+/** `(canonical, legacy, flip)` rows of the writer's mapping as a SQL VALUES list. Identifiers only. */
+export function kgAliasValuesSql(): string {
   const rows = legacyAliasesOfCanonicalEdges();
   for (const { canonical, legacy } of rows) {
     if (!SAFE_NAME.test(canonical) || !SAFE_NAME.test(legacy)) {
@@ -58,7 +59,7 @@ function superseded(alias: string): string {
 }
 
 export function kgRelationshipsReadView(opts: { keepCanonical: boolean }): string {
-  const values = aliasValues();
+  const values = kgAliasValuesSql();
   const stored = opts.keepCanonical
     ? `SELECT ${COLUMNS} FROM kg_relationships k0 WHERE NOT ${superseded("k0")}`
     : `SELECT ${COLUMNS} FROM kg_relationships k0

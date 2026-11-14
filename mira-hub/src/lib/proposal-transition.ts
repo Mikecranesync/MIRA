@@ -47,6 +47,8 @@ export const PROPOSAL_TRANSITIONS: Record<ProposalTrigger, HubStatusMap> = {
   flag_review: { aiSuggestion: "pending", relationshipProposal: "reviewed" },
 };
 
+import { kgAliasValuesSql } from "@/capabilities/kg-relationship-read-view";
+
 /** The kg_relationships.approval_state a superseded edge moves to (ADR-0017, amended #5523). */
 export const KG_EDGE_STATE_WHEN_SUPERSEDED = "rejected";
 
@@ -124,11 +126,26 @@ export async function applyHubProposalTransition(
          FROM relationship_proposals p
         WHERE p.id = $1
           AND k.approval_state = 'verified'
+          AND k.tenant_id = p.tenant_id
           AND (k.relationship_proposal_id = p.id
-               OR (k.tenant_id = p.tenant_id
-                   AND k.source_id = p.source_entity_id
+               OR (k.source_id = p.source_entity_id
                    AND k.target_id = p.target_entity_id
-                   AND k.relationship_type = p.relationship_type))`,
+                   AND k.relationship_type = p.relationship_type)
+               -- the same fact stored under its legacy name (endpoints swapped where the
+               -- writer swaps them): a duplicate must not keep a retired fact current
+               OR EXISTS (SELECT 1 FROM (VALUES ${kgAliasValuesSql()}) AS m(canonical, legacy, flip)
+                           WHERE m.canonical = p.relationship_type
+                             AND k.relationship_type = m.legacy
+                             AND k.source_id = CASE WHEN m.flip THEN p.target_entity_id ELSE p.source_entity_id END
+                             AND k.target_id = CASE WHEN m.flip THEN p.source_entity_id ELSE p.target_entity_id END))
+          -- replay-safe: a LATER approval of the same fact outranks this older supersede
+          AND NOT EXISTS (SELECT 1 FROM relationship_proposals p2
+                           WHERE p2.id <> p.id
+                             AND p2.tenant_id = p.tenant_id
+                             AND p2.source_entity_id = p.source_entity_id
+                             AND p2.target_entity_id = p.target_entity_id
+                             AND p2.relationship_type = p.relationship_type
+                             AND p2.status = 'verified')`,
       [input.relationshipProposalId],
     );
     kgEdges = (r as { rowCount?: number }).rowCount ?? r.rows.length;
