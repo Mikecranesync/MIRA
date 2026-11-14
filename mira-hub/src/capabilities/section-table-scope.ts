@@ -263,14 +263,25 @@ export function sectionTableLayout(items: readonly LayoutItem[], includeBoundari
  * wins a contradiction. Different valid per-model columns are NOT a contradiction. */
 function captionModels(h: Pick<Heading, "text">) {
   const lastFor = [...h.text.matchAll(/\bfor\s+/gi)].at(-1);
-  return lastFor ? modelNumbersIn(h.text.slice(lastFor.index! + lastFor[0].length)) : [];
+  // Engineering noun titles also put the catalog directly after Specifications.
+  // Sentence/title discrimination still applies; a catalog in service prose
+  // cannot become an affirmative section declaration through this path.
+  if (lastFor) return modelNumbersIn(h.text.slice(lastFor.index! + lastFor[0].length));
+  if (!isTitleLine(h.text)) return [];
+  const tail = h.text.match(/\b(?:Specifications|Requirements|Ratings)\s+[-–—]?\s*(.+)$/i)?.[1];
+  if (!tail) return [];
+  const numbers = modelNumbersIn(tail);
+  let remainder = tail;
+  for (const n of numbers) remainder = remainder.replace(new RegExp(n.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), "");
+  // Only an enumerated catalog suffix declares scope. Prefix product names,
+  // parameter/service prose and following descriptive words do not qualify.
+  return remainder.replace(/\([A-Z]\)/gi, "").replace(/\b(?:and|or|only|continued)\b/gi, "").replace(/[\s(),;/–—-]/g, "") ? [] : numbers;
 }
 function contradictoryTableHeading(h: Pick<Heading, "text" | "headerModels">): boolean {
   const caption = captionModels(h);
   const header = (h.headerModels ?? []).flatMap((key) => modelNumbersIn(key));
   return header.length > 0 && caption.length > 0 &&
-    (header.some((n) => !caption.some((own) => own.key === n.key)) ||
-     caption.some((n) => !sameModelFamily(header[0], n)));
+    header.some((n) => !caption.some((own) => own.key === n.key));
 }
 
 /** Bind each extracted block to its physical caption, even when its source lines have
@@ -382,7 +393,7 @@ export class SectionTableScope {
         // Other section catalogs cannot invalidate independent circuit-type evidence.
         const outputNumbers = [...this.outputs.keys()].flatMap((key) => modelNumbersIn(key));
         const oneFamily = outputNumbers.length > 0 && outputNumbers.every((n) => sameModelFamily(outputNumbers[0], n));
-        const captionNumbers = modelNumbersIn(afterFor);
+        const captionNumbers = captionModels(h);
         const named = known.length > 0 ? captionNumbers.filter((n) => known.some((own) => sameModelFamily(own, n))) : captionNumbers;
         const headerNumbers = (h.headerModels ?? []).flatMap((key) => modelNumbersIn(key));
         const headerApplies = headerNumbers.length > 0 && (known.length === 0 || headerNumbers.some((n) => known.some((own) => sameModelFamily(own, n))));

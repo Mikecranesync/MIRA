@@ -783,8 +783,8 @@ describe("#5503: real Micro820 sections from upload through retrieval", () => {
   });
 });
 
-it("an explicit long model section needs no output-circuit table at the actual ingest caller", async () => {
-  const title = "Output Specifications for 2080-LC20-20QWB(R)";
+it.each(["for ", ""])("an explicit long model section (%s) needs no output-circuit table at the actual ingest caller", async (prefix) => {
+  const title = `Output Specifications ${prefix}2080-LC20-20QWB(R)`;
   const body = "zzinventoryfree Load current max 2 A. ".repeat(100);
   const item = (str: string, y: number, size: number) => ({ str, x: 100, y, size, w: str.length * size * 0.4 });
   pdfPages.current = [{ page: 1, text: "Micro820 20-Point Programmable Controllers", items: [item("Micro820 20-Point Programmable Controllers", 740, 12)] },

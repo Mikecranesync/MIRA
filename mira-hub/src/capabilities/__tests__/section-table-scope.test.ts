@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mergeOutputTypes, readOutputTypes, SectionTableScope, sectionTableLayout, withoutSharedTableHeader } from "../section-table-scope";
+import { modelSectionModels, mergeOutputTypes, readOutputTypes, SectionTableScope, scopeTableChunks, sectionTableLayout, withoutSharedTableHeader } from "../section-table-scope";
 import { pageWithTables, type LayoutItem, type TableChunk } from "../table-rows";
 import ml1100Ratings from "../__fixtures__/table-rows/ml1100-p114-p120-ratings-scope.json";
 import micro820 from "../__fixtures__/table-rows/micro820-in009-p16-20-scope.json";
@@ -538,4 +538,37 @@ it("a service sentence above a product display/description header cannot declare
   const items=[row("For service, contact Northfield technical support.",700,10),row("Description",680,8,100),row("Display on",680,8,300),row("RX410(X)",668,8,300),row("Keypad",656,8,300),row("Fault code",630,8,100),row("E001",630,8,300)];
   const layout=sectionTableLayout(items);
   expect(layout?.headings.filter((h)=>h.table) ?? []).toEqual([]);
+});
+
+it("a direct catalog noun-title scopes a common Value column and continuation",()=>{
+ const l=sectionTableLayout([row("Input Specifications ZX740-02A",700,12),row("Attribute Value",680),row("Settling interval 12 ms",660)])!;
+ expect(modelSectionModels(l)).toEqual(["ZX74002A"]);
+ const scope=new SectionTableScope(new Map(),true,modelSectionModels(l));
+ expect(scope.split(l.text,l).find(s=>s.text.includes("Settling interval"))).toMatchObject({scope:"section",models:["ZX74002A"]});
+ expect(scope.split("Further timing values continue without a catalog label.",null)[0]).toMatchObject({scope:"section",models:["ZX74002A"]});
+});
+it("a direct title and foreign model header contradict rather than choosing the header",()=>{
+ const l=sectionTableLayout([row("Input Specifications ZX740-02A",700,12),row("Attribute ZX740-08B",680),row("Settling interval 12 ms",660)])!;
+ const scope=new SectionTableScope(new Map(),true,modelSectionModels(l));
+ expect(scope.split(l.text,l).find(s=>s.text.includes("Settling interval"))).toMatchObject({scope:"unresolved"});
+});
+
+it("explicit mixed-family caption lists preserve each agreeing extracted column", () => {
+  const items = [row("Input Specifications ZX740-02A, RQ830-08B", 700, 12),
+    row("Attribute", 680, 10, 100), row("ZX740-02A", 680, 10, 250), row("RQ830-08B", 680, 10, 400),
+    row("Interval", 660, 10, 100), row("12 ms", 660, 10, 250), row("24 ms", 660, 10, 400)];
+  const layout = sectionTableLayout(items)!;
+  const chunks = ["ZX74002A", "RQ83008B"].map((key) => ({ text: `${key}: Interval`, models: [key], unqualified: false, sourceTop: 680 }));
+  expect(scopeTableChunks(chunks, layout).every((c) => !c.unqualified)).toBe(true);
+  // A caption naming just one of those columns contradicts the other header.
+  const conflict = sectionTableLayout([{ ...items[0], str: "Input Specifications ZX740-02A" }, ...items.slice(1)])!;
+  expect(scopeTableChunks(chunks, conflict).every((c) => c.unqualified && c.scope === "unresolved")).toBe(true);
+});
+
+it.each([
+  "ZX740 Control Terminal Specifications",
+  "Input Specifications ZX740-02A service information",
+])("a prefix product or catalog-bearing prose does not become a direct catalog suffix: %s", (title) => {
+  const layout = sectionTableLayout([row(title, 700, 12), row("Attribute Value", 680), row("Interval 12 ms", 660)])!;
+  expect(modelSectionModels(layout)).toEqual([]);
 });
