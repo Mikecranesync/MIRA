@@ -25,6 +25,7 @@ import {
 } from "@/capabilities/manual-applicability";
 import { type PhotoDocumentKind, photoDocumentShape, productWrittenBody } from "@/capabilities/photo-document-text";
 import { exactModelKey } from "@/capabilities/table-rows";
+import { catalogIdentifierView } from "@/capabilities/catalog-identifier";
 import { confirmedCatalogNumber } from "@/capabilities/notebook-manual-identity";
 import { embedQueryDetailed, hybridRetrievalEnabled, rrfMerge, vectorLiteral } from "@/capabilities/hybrid-retrieval";
 import { setSpanAttrs } from "@/capabilities/observability/tracing";
@@ -1884,8 +1885,9 @@ export async function retrieveNodeChunks(
     // elsewhere in the text (Codex r3–r6 on #5451: every rule that did — text-wide prefix,
     // text-wide substring, identity-only prefix — dropped some separately named sibling).
     const identities = [...modelIdentitiesInText(text)];
+    const detected = catalogIdentifierView(text).text;
     const continuesIntoLonger = (m: ModelMention) =>
-      identities.some((id) => id !== m.id && id.startsWith(m.id) && text.slice(m.start).replace(/\s+/g, "").toUpperCase().startsWith(id));
+      identities.some((id) => id !== m.id && id.startsWith(m.id) && detected.slice(m.start).replace(/\s+/g, "").toUpperCase().startsWith(id));
     const mentions = modelMentionsInText(text);
     const rootsOfLonger = new Set(
       mentions.filter((m) => mentions.filter((o) => o.id === m.id).every(continuesIntoLonger)).map((m) => m.id),

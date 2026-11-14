@@ -1,4 +1,5 @@
-import { modelMentionsInText } from "./model-token";
+import { GS_CATALOG_PATTERN, modelMentionsInText } from "./model-token";
+import { catalogIdentifierView } from "./catalog-identifier";
 import {
   NAMEPLATE_BODY_MARK,
   NAMEPLATE_OPENER,
@@ -174,26 +175,53 @@ const UNIT_RE =
 const STANDARD_RE = /^(?:IP|RS|UL|IEC|ISO|EN|NEMA|CAT|DIN|AWG|USB|SIL|ANSI|NFPA|CSA)\d+[A-Z]?$/;
 const CHAIN_RE = /[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*/g;
 const hasDigit = (s: string) => /\d/.test(s);
-const numberFrom = (run: string[]): ModelNumber | null => {
+const numberFrom = (run: string[], rawLabel?: string): ModelNumber | null => {
   const key = run.join("").toUpperCase();
+  const label = rawLabel ?? run.join("-");
   return /[A-Z]/.test(key) && key.length >= 4 && !UNIT_RE.test(key) && !STANDARD_RE.test(key)
-    ? { key, label: run.join("-").toUpperCase() }
+    // Existing ASCII casing is retained; a newly recognized Unicode spelling
+    // remains the literal source label, separate from its comparison key.
+    ? { key, label: /^[\x00-\x7F]*$/.test(label) ? label.toUpperCase() : label }
     : null;
 };
+type NumberRun = { segments: string[]; raw: string };
 
 /** The hyphen-joined runs of a text that could hold a model number: a run of
  *  groups that each carry a digit ("2080-LC20-20QBB"), or a short letter prefix
  *  hyphenated to its number ("RX-420"). */
-function numberRuns(text: string): string[][] {
-  const runs: string[][] = [];
-  for (const chain of text.matchAll(CHAIN_RE)) {
-    const segments = chain[0].split("-");
+function numberRuns(text: string): NumberRun[] {
+  const runs: NumberRun[] = [];
+  const view = catalogIdentifierView(text);
+  let consumed = 0;
+  for (const chain of view.text.matchAll(CHAIN_RE)) {
+    if (chain.index < consumed) continue;
+    // Extend only a model-shaped span the common view actually accepted.
+    // Global optional-space hyphens would join prose/range endpoints too.
+    const span = view.spans.find(span => span.start === chain.index && span.end >= chain.index + chain[0].length);
+    const detected = span?.detected ?? chain[0];
+    const pieces = [...detected.matchAll(/[A-Za-z0-9]+/g)];
+    const segments = pieces.map(piece => piece[0]);
+    // Only a newly joined SPACED count/unit tail ("2 NC - 24 V") is
+    // suppressed. Explicit joined catalogs and spaced inventory without a
+    // following unit ("2 NC-24 indicators", "2 NC - 24 indicators") remain
+    // numbers. Both unit decisions reuse the EXISTING unit grammar.
+    const previousCount = /(?:^|[^A-Za-z0-9])(\d+)[ \t]+$/.exec(text.slice(0, chain.index));
+    const separator = pieces.length > 1 ? detected.slice(pieces[0].index + pieces[0][0].length, pieces[1].index) : "";
+    const numberEnd = pieces.length > 1 ? chain.index + pieces[1].index + pieces[1][0].length : chain.index;
+    const followingUnit = /^[ \t]+([A-Za-z]+)\b/.exec(text.slice(numberEnd));
+    const numericUnitTail = pieces.length > 1 && (UNIT_RE.test(segments[1].toUpperCase())
+      || (followingUnit !== null && UNIT_RE.test(`${segments[1]}${followingUnit[1]}`.toUpperCase())));
+    const countedPrefix = /[ \t]/.test(separator) && numericUnitTail && previousCount !== null
+      && UNIT_RE.test(`${previousCount[1]}${segments[0].toUpperCase()}`);
+    consumed = span?.end ?? chain.index + chain[0].length;
     for (let i = 0; i < segments.length; i++) {
-      const prefixed = /^[A-Za-z]{1,3}$/.test(segments[i]) && /^\d/.test(segments[i + 1] ?? "");
+      const prefixed = !(i === 0 && countedPrefix) && /^[A-Za-z]{1,3}$/.test(segments[i]) && /^\d/.test(segments[i + 1] ?? "");
       if (!hasDigit(segments[i]) && !prefixed) continue;
       let j = i;
       while (j + 1 < segments.length && hasDigit(segments[j + 1])) j++;
-      runs.push(segments.slice(i, j + 1));
+      const start = chain.index + pieces[i].index;
+      const end = chain.index + pieces[j].index + pieces[j][0].length;
+      runs.push({ segments: segments.slice(i, j + 1), raw: text.slice(start, end) });
       i = j;
     }
   }
@@ -204,7 +232,7 @@ function numberRuns(text: string): string[][] {
  *  together, hyphenated groups kept as one ("2080-LC20-20QBB"), and a short
  *  letter prefix hyphenated to its number ("RX-420" is "RX420"). */
 export function modelNumbersIn(text: string): ModelNumber[] {
-  return numberRuns(text).flatMap((run) => numberFrom(run) ?? []);
+  return numberRuns(text).flatMap((run) => numberFrom(run.segments, run.raw) ?? []);
 }
 
 /** The same, as a COVER or a FILENAME is read: every group of a hyphenated run
@@ -214,8 +242,8 @@ export function modelNumbersIn(text: string): ModelNumber[] {
  *  resemble nothing and the manual would look silent about its own family. */
 function coverNumbersIn(text: string): ModelNumber[] {
   return numberRuns(text).flatMap((run) => [
-    ...(numberFrom(run) ? [numberFrom(run)!] : []),
-    ...(run.length > 1 ? run.flatMap((segment) => numberFrom([segment]) ?? []) : []),
+    ...(numberFrom(run.segments, run.raw) ? [numberFrom(run.segments, run.raw)!] : []),
+    ...(run.segments.length > 1 ? run.segments.flatMap((segment) => numberFrom([segment]) ?? []) : []),
   ]);
 }
 
@@ -250,6 +278,7 @@ export const sameModelFamily = sameFamily;
  *  the detector reads is left to the existing check, whole: "GS11N-20P2" must
  *  not come back as a leftover "20P2". */
 export function unlistedModelNumbers(text: string): ModelNumber[] {
+  const view = catalogIdentifierView(text);
   // UTF-16 units, not code points: the detector's positions and `text[i]` below
   // count units, and an emoji is two. Only letters, digits and hyphens are ever
   // blanked, so a surrogate pair is never split.
@@ -257,13 +286,13 @@ export function unlistedModelNumbers(text: string): ModelNumber[] {
   const blank = (start: number, end: number) => {
     let s = start;
     let e = end;
-    while (s > 0 && /[A-Za-z0-9-]/.test(text[s - 1])) s--;
-    while (e < text.length && /[A-Za-z0-9-]/.test(text[e])) e++;
+    while (s > 0 && /[A-Za-z0-9-]/.test(view.text[s - 1])) s--;
+    while (e < text.length && /[A-Za-z0-9-]/.test(view.text[e])) e++;
     for (let i = s; i < e; i++) chars[i] = " ";
   };
   for (const m of modelMentionsInText(text)) blank(m.start, m.end);
   // modelIdentitiesInText also reads a GS catalog number written with spaces round its hyphen.
-  for (const m of text.matchAll(/\bGS\d{1,2}[a-z]?\s*-\s*[a-z0-9]+\b/gi)) blank(m.index, m.index + m[0].length);
+  for (const m of view.text.matchAll(GS_CATALOG_PATTERN)) blank(m.index, m.index + m[0].length);
   const seen = new Set<string>();
   return modelNumbersIn(chars.join("")).filter((n) => !seen.has(n.key) && seen.add(n.key));
 }

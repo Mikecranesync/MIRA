@@ -11,6 +11,7 @@
  */
 
 import gs10Pack from "@/lib/drive-packs/gs10-pack.json";
+import { catalogIdentifierView } from "./catalog-identifier";
 
 // #2178 — model-number detector. Extracts the drive/controller model the user is
 // asking about so retrieval can scope to THAT model's manuals, not every chunk
@@ -33,7 +34,7 @@ export const MODEL_PATTERNS: RegExp[] = [
   // bound OEM retrieval can scope (or refuse) instead of manufacturer-only BM25.
   /\b(tp\s*\d{3,4})\b/i, //              TP700 / TP 1200
   /\b(ktp\s*\d{2,4})\b/i, //             KTP700
-  /\b(6av[0-9a-z.-]+)\b/i, //             6AV2124-0GC01-0AX0
+  /\b(6av[0-9a-z.]+(?:[ \t]*-[ \t]*[0-9a-z.]+)*)\b/i, // 6AV2124-0GC01-0AX0
   /\b(sinamics\s*v\s*20)\b/i, //        SINAMICS V20
   /\b(v20)\b/i, //                        V20 (drive family)
   /\b(comfort)\b/i, //                    Comfort panel family
@@ -43,9 +44,10 @@ export const MODEL_PATTERNS: RegExp[] = [
  * different specific models. Comfort is a family hint; a TP/KTP panel and its
  * 6AV order number can describe the same nameplate. */
 export function resolveModelFromObservationText(text: string): { model: string | null; ambiguous: boolean } {
+  const detected = catalogIdentifierView(text).text;
   const found = new Set<string>();
   for (const pattern of MODEL_PATTERNS) {
-    for (const match of text.matchAll(new RegExp(pattern.source, "gi"))) {
+    for (const match of detected.matchAll(new RegExp(pattern.source, "gi"))) {
       let token = (match[1] ?? match[0]).replace(/\s+/g, "").toUpperCase();
       if (token === "SINAMICSV20") token = "V20";
       found.add(token);
@@ -118,7 +120,7 @@ export function modelIdentitiesInText(text: string): Set<string> {
   const identities = new Set(modelMentionsInText(text).map((m) => m.id));
   // Retain the admitted exact GS catalog boundary without changing the
   // canonical close-name mentions or the single-token SQL/query resolver.
-  for (const match of text.matchAll(/\b(GS\d{1,2}[a-z]?\s*-\s*[a-z0-9]+)\b/gi)) {
+  for (const match of catalogIdentifierView(text).text.matchAll(GS_CATALOG_PATTERN)) {
     identities.add(match[1].replace(/\s+/g, "").toUpperCase());
   }
   // Mirror resolveModelFromObservationText's COMFORT-is-a-family-hint drop
@@ -136,6 +138,8 @@ export function modelIdentitiesInText(text: string): Set<string> {
 
 /** One model mention: its identity (modelIdentitiesInText's shape) and where it sits in the text. */
 export type ModelMention = { id: string; start: number; end: number };
+/** One acceptance boundary for exact GS identities and recognized-span masking. */
+export const GS_CATALOG_PATTERN = /\b(GS\d{1,2}[a-z]?\s*-\s*[a-z0-9]+)\b/gi;
 
 /**
  * #5355 (Codex r2 on #5359): every model mention WITH its position, in text
@@ -145,10 +149,11 @@ export type ModelMention = { id: string; start: number; end: number };
  * question for cue words.
  */
 export function modelMentionsInText(text: string): ModelMention[] {
+  const detected = catalogIdentifierView(text).text;
   const mentions: ModelMention[] = [];
   MODEL_PATTERNS.forEach((pattern, i) => {
     const family = FAMILY_KEYS[i];
-    for (const match of text.matchAll(new RegExp(pattern.source, "gi"))) {
+    for (const match of detected.matchAll(new RegExp(pattern.source, "gi"))) {
       const captured = (match[1] ?? match[0]).replace(/\s+/g, "").toUpperCase();
       const id = captured === "SINAMICSV20" ? "V20" : /^\d+$/.test(captured) ? `${family}${captured}` : captured;
       mentions.push({ id, start: match.index, end: match.index + match[0].length });
@@ -162,7 +167,7 @@ export function modelMentionsInText(text: string): ModelMention[] {
   // Applicability only: resolveModelFromObservationText (the single ILIKE
   // token) is deliberately untouched.
   for (const [family, head] of CONJOINED_DIGIT_FAMILIES) {
-    for (const match of text.matchAll(head)) {
+    for (const match of detected.matchAll(head)) {
       const tailStart = match.index + match[0].length - match[1].length;
       for (const tail of match[1].matchAll(/\d{2,4}/g)) {
         const start = tailStart + tail.index;
@@ -171,7 +176,7 @@ export function modelMentionsInText(text: string): ModelMention[] {
     }
   }
   for (const [family, pattern] of APPLICABILITY_ONLY_PATTERNS) {
-    for (const match of text.matchAll(pattern)) {
+    for (const match of detected.matchAll(pattern)) {
       const end = match.index + match[0].length;
       if (isSpacedRating(match[1], match[2], text.slice(end))) continue;
       mentions.push({ id: `${family}${match[2].toUpperCase()}`, start: match.index, end });
