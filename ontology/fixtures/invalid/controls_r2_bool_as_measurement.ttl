@@ -1,0 +1,25 @@
+# EXPECT-VIOLATION: mirash:BooleanNotQuantityShape
+#
+# R2 — a signal classified as a MeasurementSignal (an engineering quantity) whose observations
+# carry value_type 'bool'. This is the error class that turns "run contact closed" into
+# "speed = 1 Hz". A one-bit contact state can never be an engineering measurement.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:plc     a mira:SourceDocument .
+ex:tag_src a mira:Citation ; mira:cite_doc ex:plc ; mira:cite_locator "enterprise.site.line.cv101.dc_bus" .
+ex:speed_hz a mira:MeasurementSignal .
+
+ex:obs_bool a mira:Observation ;
+    mira:observed_signal ex:speed_hz ;
+    mira:value true ;
+    mira:value_type mira:valuetype_bool ;
+    mira:quantity_kind mira:qk_frequency ;
+    mira:unit "Hz" ;
+    mira:event_timestamp "2026-07-26T14:03:00Z"^^xsd:dateTime ;
+    mira:clock_source mira:clock_plc ;
+    mira:quality mira:quality_good ;
+    mira:freshness mira:freshness_live ;
+    mira:supported_by ex:tag_src .

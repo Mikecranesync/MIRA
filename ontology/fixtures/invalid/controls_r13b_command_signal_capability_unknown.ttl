@@ -1,0 +1,15 @@
+# EXPECT-VIOLATION: mirash:WritableSignalShape
+#
+# R13b FAIL-CLOSED — a command signal declaring NO read_only capability at all.
+#
+# This fixture exists because the shape did NOT catch this before Phase 2. SHACL evaluates
+# `sh:not [ sh:in (false) ]` per VALUE, so a signal with zero values passed vacuously: an
+# undeclared command point read as safe. That is backwards for a capability flag — unknown
+# writability is not permission. Phase 2 added `sh:minCount 1` so the missing case fails closed,
+# matching the default-deny posture of .claude/rules/fieldbus-readonly.md.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:unknown_cmd a mira:CommandSignal .

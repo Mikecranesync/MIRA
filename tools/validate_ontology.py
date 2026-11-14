@@ -9,8 +9,13 @@ What it does, in order:
   3. Enforces inverse completeness: every ObjectProperty either declares owl:inverseOf
      or documents in rdfs:comment why no inverse is modeled.
   4. Runs each fixture under `fixtures/valid/` and expects conformance.
-  5. Runs each fixture under `fixtures/invalid/` and expects the SPECIFIC shapes named
-     in that fixture's `# EXPECT-VIOLATION:` header lines to fire.
+  5. Runs each fixture under `fixtures/invalid/` and expects EXACTLY the shapes named in that
+     fixture's `# EXPECT-VIOLATION:` header lines to fire. A shape that fires without being
+     declared fails the fixture; one that co-fires unavoidably is declared with `# ALSO-FIRES:`.
+  6. Fixture coverage (a GATE, issue #5528): every named shape needs an invalid fixture that
+     pins it AND a valid fixture, declared with `# PROTECTS:`, that the shape actually targets.
+     The only way to leave a shape uncovered is an entry in `fixtures/coverage-exclusions.json`
+     carrying a reason and a tracking reference.
 
 Exit codes:
   0  everything passed
@@ -54,15 +59,22 @@ TERM_STATUS = MIRA["term_status"]
 
 # A `# EXPECT-VIOLATION: mirash:SomeShape` header line in an invalid fixture.
 EXPECT_RE = re.compile(r"^#\s*EXPECT-VIOLATION:\s*(\S+)\s*$", re.MULTILINE)
+# `# ALSO-FIRES: mirash:OtherShape <why>` — a shape that unavoidably fires alongside the expected
+# one (a rule that is subsumed by a neighbour cannot be violated alone). It is checked both ways:
+# an undeclared co-firing shape fails the fixture, and so does a declared one that stays silent.
+ALSO_RE = re.compile(r"^#\s*ALSO-FIRES:\s*(\S+)(?:[ \t].*)?$", re.MULTILINE)
+# `# PROTECTS: mirash:SomeShape` in a VALID fixture names the shape whose legitimate case it is.
+PROTECTS_RE = re.compile(r"^#\s*PROTECTS:\s*(\S+)\s*$", re.MULTILINE)
+EXCLUSIONS_FILE = "coverage-exclusions.json"
 # Comments that legitimately explain an absent inverse.
 NO_INVERSE_RE = re.compile(r"no inverse (is )?modeled|its own inverse", re.IGNORECASE)
 
 
 @dataclass
 class Result:
-    """One check outcome. `skipped` results don't count toward pass/fail totals or exit code —
-    they exist for deliberately-not-yet-built phases (see `check_valid_fixtures` /
-    `check_invalid_fixtures`), not for silently swallowing a real failure."""
+    """One check outcome. `skipped` results don't count toward pass/fail totals or exit code.
+    Nothing in this tool emits one any more (#5528 turned the last two into failures); the field
+    stays so the JSON shape is stable and a future skip is visible in the `skipped` count."""
 
     name: str
     passed: bool
@@ -73,6 +85,7 @@ class Result:
 @dataclass
 class Report:
     results: list[Result] = field(default_factory=list)
+    coverage_summary: str = ""
 
     def add(self, name: str, passed: bool, detail: str = "", skipped: bool = False) -> None:
         self.results.append(Result(name, passed, detail, skipped))
@@ -89,6 +102,7 @@ class Report:
                 "passed": sum(1 for r in counted if r.passed),
                 "failed": sum(1 for r in counted if not r.passed),
                 "skipped": sum(1 for r in self.results if r.skipped),
+                "coverage": self.coverage_summary,
                 "results": [
                     {"name": r.name, "passed": r.passed, "detail": r.detail, "skipped": r.skipped}
                     for r in self.results
@@ -110,6 +124,8 @@ class Report:
         n_skip = len(self.results) - len(counted)
         lines.append("")
         suffix = f" ({n_skip} skipped)" if n_skip else ""
+        if self.coverage_summary:
+            lines.append(f"coverage: {self.coverage_summary}")
         lines.append(f"{n_ok}/{len(counted)} checks passed{suffix}")
         return "\n".join(lines)
 
@@ -324,48 +340,201 @@ def violated_shapes(results_graph: Graph, shapes: Graph) -> set[str]:
     return out
 
 
-def check_fixture_coverage(report: Report, shapes: Graph, root: Path) -> None:
-    """Report how many named shapes have at least one invalid fixture pinning them.
+def _headers(regex: re.Pattern[str], source: str) -> set[str]:
+    return {m.split(":")[-1] for m in regex.findall(source)}
 
-    Informational (never fails the run) but ALWAYS printed, because the dangerous failure mode
-    here is silent: a fixture directory holding 2 fixtures makes every phase green and reads as
-    "the shapes are covered" when 40 rules have never been exercised. Naming the number keeps the
-    gap visible until the fixture phase closes it (ADR-0032 §8).
+
+def declared_shapes(shapes: Graph) -> set[str]:
+    return {n for n in (_local_name(s) for s in shapes.subjects(RDF.type, SH.NodeShape)) if n}
+
+
+PROBE = Namespace("urn:mira-coverage-probe:")
+_TARGET_PREDICATES = (
+    SH.targetClass,
+    SH.targetNode,
+    SH.targetObjectsOf,
+    SH.targetSubjectsOf,
+    SH.target,
+)
+
+
+def targeted_shapes(data: Graph, onto: Graph, shapes: Graph) -> set[str]:
+    """Local names of the named shapes that select at least one focus node in `data`.
+
+    A valid fixture proves nothing about a shape that never looks at it: a graph with no
+    FaultCode in it "conforms" to every fault-code rule. So for each named shape we build a probe
+    shape with the SAME target declarations and one constraint no node can satisfy
+    (`sh:in` over a single impossible value), then run pyshacl exactly as the real validation
+    does. A probe that reports a result means its shape had a focus node. Reusing pyshacl's own
+    target resolution — rather than re-implementing targetClass / targetObjectsOf / SPARQL targets
+    here — keeps this honest under the RDFS inference the real run applies.
     """
-    declared = {
-        n for n in (_local_name(s) for s in shapes.subjects(RDF.type, SH.NodeShape)) if n
+    from rdflib import BNode
+    from rdflib.collection import Collection
+
+    probe_shapes = Graph()
+    for t in shapes:
+        probe_shapes.add(t)
+    for shape in shapes.subjects(RDF.type, SH.NodeShape):
+        name = _local_name(shape) if isinstance(shape, URIRef) else None
+        if not name:
+            continue
+        targets = [(p, o) for p in _TARGET_PREDICATES for o in shapes.objects(shape, p)]
+        if not targets:
+            continue
+        probe = PROBE[name]
+        probe_shapes.add((probe, RDF.type, SH.NodeShape))
+        for p, o in targets:
+            probe_shapes.add((probe, p, o))
+        impossible = BNode()
+        Collection(probe_shapes, impossible, [PROBE["__never__"]])
+        probe_shapes.add((probe, SH["in"], impossible))
+
+    _, results, _ = run_shacl(data, onto, probe_shapes)
+    return {
+        str(src)[len(str(PROBE)) :]
+        for src in results.objects(None, SH.sourceShape)
+        if str(src).startswith(str(PROBE))
     }
-    if not declared:
-        return
+
+
+@dataclass
+class Coverage:
+    """What the fixture tree proves about each named shape.
+
+    pinned     an invalid fixture names it in EXPECT-VIOLATION
+    protected  a CONFORMING valid fixture names it in PROTECTS and the shape targets a node in it
+    covered    both of the above
+    excluded   uncovered on purpose, with a reason and a tracking reference
+    missing    neither covered nor excluded — this is what fails the gate
+    problems   anything that makes the bookkeeping itself untrustworthy
+    """
+
+    declared: set[str] = field(default_factory=set)
+    pinned: set[str] = field(default_factory=set)
+    protected: set[str] = field(default_factory=set)
+    excluded: dict[str, dict] = field(default_factory=dict)
+    problems: list[str] = field(default_factory=list)
+
+    @property
+    def covered(self) -> set[str]:
+        return self.pinned & self.protected
+
+    @property
+    def missing(self) -> list[str]:
+        return sorted(self.declared - self.covered - set(self.excluded))
+
+
+def fixture_coverage(onto: Graph, shapes: Graph, root: Path) -> Coverage:
+    cov = Coverage(declared=declared_shapes(shapes))
+
     invalid_dir = root / "invalid"
-    exercised: set[str] = set()
     if invalid_dir.is_dir():
-        for f in invalid_dir.glob("*.ttl"):
-            exercised |= {
-                m.split(":")[-1] for m in EXPECT_RE.findall(f.read_text(encoding="utf-8"))
-            }
-    covered = declared & exercised
-    uncovered = sorted(declared - exercised)
-    report.add(
-        "shapes:fixture-coverage",
-        True,
-        f"{len(covered)}/{len(declared)} shapes have an invalid fixture pinning them; "
-        f"{len(uncovered)} uncovered (ADR-0032 §8 follow-up).\n"
-        f"uncovered: {', '.join(uncovered)}",
-        skipped=True,
-    )
+        for f in sorted(invalid_dir.glob("*.ttl")):
+            for name in sorted(_headers(EXPECT_RE, f.read_text(encoding="utf-8"))):
+                if name in cov.declared:
+                    cov.pinned.add(name)
+                else:
+                    cov.problems.append(
+                        f"invalid/{f.name}: EXPECT-VIOLATION names unknown shape {name}"
+                    )
+
+    valid_dir = root / "valid"
+    if valid_dir.is_dir():
+        for f in sorted(valid_dir.glob("*.ttl")):
+            claimed = sorted(_headers(PROTECTS_RE, f.read_text(encoding="utf-8")))
+            if not claimed:
+                cov.problems.append(
+                    f"valid/{f.name}: declares no `# PROTECTS: mirash:ShapeName` header — a valid "
+                    "fixture must say which rule's legitimate case it is"
+                )
+                continue
+            try:
+                data = Graph()
+                data.parse(f.as_posix(), format="turtle")
+            except Exception as exc:  # noqa: BLE001
+                cov.problems.append(f"valid/{f.name}: parse error: {exc}")
+                continue
+            conforms, _, _ = run_shacl(data, onto, shapes)
+            targeted = targeted_shapes(data, onto, shapes)
+            for name in claimed:
+                if name not in cov.declared:
+                    cov.problems.append(f"valid/{f.name}: PROTECTS names unknown shape {name}")
+                elif not conforms:
+                    cov.problems.append(
+                        f"valid/{f.name}: does not conform, so it cannot protect {name}"
+                    )
+                elif name not in targeted:
+                    cov.problems.append(
+                        f"valid/{f.name}: claims to protect {name}, but that shape targets no node "
+                        "in this graph — it conforms only because the rule never looked at it"
+                    )
+                else:
+                    cov.protected.add(name)
+
+    exclusions = root / EXCLUSIONS_FILE
+    if exclusions.is_file():
+        try:
+            entries = json.loads(exclusions.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            cov.problems.append(f"{EXCLUSIONS_FILE}: not valid JSON: {exc}")
+            entries = []
+        for entry in entries if isinstance(entries, list) else []:
+            name = str(entry.get("shape", "")) if isinstance(entry, dict) else ""
+            reason = str(entry.get("reason", "")).strip() if isinstance(entry, dict) else ""
+            tracking = str(entry.get("tracking", "")).strip() if isinstance(entry, dict) else ""
+            if name not in cov.declared:
+                cov.problems.append(f"{EXCLUSIONS_FILE}: excludes unknown shape {name!r}")
+            elif len(reason) < 40 or not tracking:
+                cov.problems.append(
+                    f"{EXCLUSIONS_FILE}: exclusion of {name} needs a written reason (40+ chars) "
+                    "and a tracking reference"
+                )
+            elif name in cov.covered:
+                cov.problems.append(
+                    f"{EXCLUSIONS_FILE}: stale exclusion — {name} now has a valid+invalid pair; "
+                    "delete the entry"
+                )
+            else:
+                cov.excluded[name] = entry
+    return cov
+
+
+def check_fixture_coverage(report: Report, onto: Graph, shapes: Graph, root: Path) -> None:
+    """GATE: every named shape has a targeted invalid fixture AND a valid fixture it targets.
+
+    This was an informational SKIP until #5528. The failure mode it now closes is silent: a
+    fixture directory holding two files made every phase green and read as "the shapes are
+    covered" while forty rules had never been exercised. A shape may be left uncovered only by a
+    written exclusion (reason + tracking) in `coverage-exclusions.json`.
+    """
+    cov = fixture_coverage(onto, shapes, root)
+    if not cov.declared:
+        report.add("shapes:fixture-coverage", False, "no named shapes declared")
+        return
+    lines = [
+        f"{len(cov.covered)}/{len(cov.declared)} shapes covered by a valid+invalid pair; "
+        f"{len(cov.excluded)} explicitly excluded; {len(cov.missing)} missing."
+    ]
+    if cov.missing:
+        no_invalid = sorted(set(cov.missing) - cov.pinned)
+        no_valid = sorted(set(cov.missing) - cov.protected)
+        if no_invalid:
+            lines.append("no invalid fixture (EXPECT-VIOLATION): " + ", ".join(no_invalid))
+        if no_valid:
+            lines.append("no valid fixture (PROTECTS): " + ", ".join(no_valid))
+    for name in sorted(cov.excluded):
+        lines.append(f"excluded: {name} — {cov.excluded[name].get('tracking')}")
+    lines.extend(cov.problems)
+    passed = not cov.missing and not cov.problems
+    report.add("shapes:fixture-coverage", passed, "\n".join(lines))
+    report.coverage_summary = lines[0]
 
 
 def check_valid_fixtures(report: Report, onto: Graph, shapes: Graph, root: Path) -> None:
     valid_dir = root / "valid"
     if not valid_dir.is_dir():
-        report.add(
-            "fixtures:valid:present",
-            True,
-            f"{valid_dir} does not exist yet — fixtures are a follow-up phase (ADR-0032 §8), "
-            "not a regression. An empty (but present) directory still FAILs.",
-            skipped=True,
-        )
+        report.add("fixtures:valid:present", False, f"{valid_dir} does not exist")
         return
     files = sorted(valid_dir.glob("*.ttl"))
     if not files:
@@ -389,13 +558,7 @@ def check_valid_fixtures(report: Report, onto: Graph, shapes: Graph, root: Path)
 def check_invalid_fixtures(report: Report, onto: Graph, shapes: Graph, root: Path) -> None:
     invalid_dir = root / "invalid"
     if not invalid_dir.is_dir():
-        report.add(
-            "fixtures:invalid:present",
-            True,
-            f"{invalid_dir} does not exist yet — fixtures are a follow-up phase (ADR-0032 §8), "
-            "not a regression. An empty (but present) directory still FAILs.",
-            skipped=True,
-        )
+        report.add("fixtures:invalid:present", False, f"{invalid_dir} does not exist")
         return
     files = sorted(invalid_dir.glob("*.ttl"))
     if not files:
@@ -403,7 +566,8 @@ def check_invalid_fixtures(report: Report, onto: Graph, shapes: Graph, root: Pat
         return
     for f in files:
         source = f.read_text(encoding="utf-8")
-        expected = {m.split(":")[-1] for m in EXPECT_RE.findall(source)}
+        expected = _headers(EXPECT_RE, source)
+        also = _headers(ALSO_RE, source)
         if not expected:
             report.add(
                 f"fixtures:invalid:{f.name}",
@@ -430,15 +594,29 @@ def check_invalid_fixtures(report: Report, onto: Graph, shapes: Graph, root: Pat
             continue
         fired = violated_shapes(results_graph, shapes)
         unmet = expected - fired
+        silent_also = also - fired
+        undeclared = fired - expected - also
+        problems: list[str] = []
+        if unmet:
+            problems.append(f"expected shapes did not fire: {sorted(unmet)}")
+        if undeclared:
+            problems.append(
+                f"shapes fired that the fixture does not declare: {sorted(undeclared)} — an "
+                "invalid fixture must fail for its declared reason ONLY. Remove the unrelated "
+                "violation, or if the co-firing is unavoidable declare it with "
+                "`# ALSO-FIRES: mirash:ShapeName <why>`"
+            )
+        if silent_also:
+            problems.append(
+                f"declared ALSO-FIRES shapes did not fire: {sorted(silent_also)} — the header "
+                "is a stale statement about the shapes; delete it"
+            )
         report.add(
             f"fixtures:invalid:{f.name}",
-            not unmet,
+            not problems,
             ""
-            if not unmet
-            else (
-                f"expected shapes did not fire: {sorted(unmet)}\n"
-                f"shapes that DID fire: {sorted(fired)}\n{text}"
-            ),
+            if not problems
+            else "\n".join(problems) + f"\nshapes that DID fire: {sorted(fired)}\n{text}",
         )
 
 
@@ -474,7 +652,7 @@ def main(argv: list[str] | None = None) -> int:
         check_valid_fixtures(report, onto, shapes, args.fixtures)
     if "invalid" in phases:
         check_invalid_fixtures(report, onto, shapes, args.fixtures)
-        check_fixture_coverage(report, shapes, args.fixtures)
+        check_fixture_coverage(report, onto, shapes, args.fixtures)
 
     print(report.to_json() if args.format == "json" else report.to_text())
     return 0 if report.ok else 1

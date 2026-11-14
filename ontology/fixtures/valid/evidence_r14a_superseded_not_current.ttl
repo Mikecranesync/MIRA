@@ -1,3 +1,5 @@
+# PROTECTS: mirash:SupersededNotCurrentShape
+#
 # R14a satisfied — the superseded assertion is retained (history is not deleted) but is no longer
 # exposed as current. The replacement carries the present-tense claim.
 
