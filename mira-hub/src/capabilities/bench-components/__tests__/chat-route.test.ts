@@ -79,6 +79,15 @@ vi.mock("@/lib/db", () => ({ default: { query: vi.fn(async () => ({ rows: [] }))
 vi.mock("@/lib/inference/persist-usage", () => ({ persistTurnUsage: vi.fn(async () => undefined) }));
 vi.mock("@/lib/workspace-files", () => ({ photoLinkedToTarget: vi.fn(async () => null) }));
 
+// #5504 Codex r3 F7/F8: the photo ledger and the search translator, observed but otherwise real.
+const lookMock = vi.hoisted(() => ({
+  loadRecentLookObservations: vi.fn(async (): Promise<unknown[]> => []),
+  loadVisualEvidenceForPhoto: vi.fn(async (): Promise<unknown> => null),
+}));
+vi.mock("@/lib/visual-evidence-context", async (orig) => ({ ...(await orig<Record<string, unknown>>()), ...lookMock }));
+const translateMock = vi.hoisted(() => ({ translateForSearch: vi.fn(async (q: string) => q) }));
+vi.mock("@/capabilities/translate-for-search", () => translateMock);
+
 const seamMock = vi.hoisted(() => ({
   canonicalSeamEnabled: vi.fn(() => true),
   canonicalProviders: vi.fn(() => [{ name: "groq", url: "https://x/y", key: "k", model: "m" }]),
@@ -96,6 +105,7 @@ vi.mock("@/lib/inference/canonical-cascade", () => seamMock);
 import { POST } from "@/app/api/equipment-notebooks/[id]/chat/route";
 import { noDocumentsForComponentText, selectionMovedText } from "@/capabilities/bench-components/chat-turn";
 import { ENERGIZED_ELECTRICAL_HAZARD, notebookSafetyTrigger, withSafetyFlag } from "@/lib/safety-classifier";
+import { photoLinkedToTarget } from "@/lib/workspace-files";
 
 function req(body: unknown) {
   return new NextRequest("http://test/api/equipment-notebooks/x/chat", {
@@ -546,5 +556,108 @@ describe("each answer saves the component it was asked under", () => {
     expect(componentFrame(out)).toEqual({ kind: "component", componentId: VFD, revision: 2, selectionVersion: 3, label: "VFD1 · AutomationDirect GS11N-20P2", actions: [] });
     const at = out.findIndex((f) => f.kind === "component");
     expect(at).toBeLessThan(out.findIndex((f) => f.kind === "content"));
+  });
+});
+
+// #5504 Codex r3 F7: a photo read under one component never feeds an answer about another.
+describe("earlier photos carry only within the selection they were asked under", () => {
+  const A_MARK = "ZQX-PHOTO-A-ONLY-4417 rated 480 V";
+  const B_MARK = "ZQX-PHOTO-B-OWN-5528 rated 230 V";
+  const PHOTO_A = "77777777-7777-4777-8777-777777777771";
+  const PHOTO_B = "77777777-7777-4777-8777-777777777772";
+  const look = (fileId: string, text: string) => ({
+    observationId: `obs-${fileId}`, sessionId: "s1", text, obsKind: "nameplate", trust: "candidate", confidence: 0.9,
+    fileId, photoHash: null, observedAt: "2026-11-14T04:10:00.000Z", hazards: [],
+  });
+  const photoTurn = (id: string, fileId: string, extra: Record<string, unknown> = {}) => ({
+    id, question: "read this nameplate", answerStatus: "answered", answerText: "That nameplate reads 480 V.", basis: "documents",
+    createdAt: "2026-11-14T04:10:00.000Z", ownerUserId: "u1",
+    evidence: [{ kind: "visual_observation", fileId, capturedAt: "2026-11-14T04:09:00.000Z", provenance: "phone_photo" }], ...extra,
+  });
+  const modelInput = () => JSON.stringify(ragMock.buildManualUserContent.mock.calls);
+  const savedRun = (id: string, componentId: string, revision: number) => ({
+    id, question: "read this nameplate", answerStatus: "answered", basis: "documents", createdAt: "2026-11-14T04:10:00.000Z",
+    componentId, componentRevision: revision, clientRequestId: null, answerText: "That nameplate reads 230 V.", evidence: [],
+  });
+
+  beforeEach(() => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
+    vi.mocked(photoLinkedToTarget).mockImplementation(async (_t: string, fileId: string) => ({ fileId, capturedAt: "2026-11-14T04:09:00.000Z" }) as never);
+  });
+
+  it("a standalone photo reading (no record of which component it was about) is not recalled under a component", async () => {
+    lookMock.loadRecentLookObservations.mockResolvedValue([look(PHOTO_A, A_MARK)]);
+    await frames(await ask("and its rated current?", under(VFD, 3)));
+    expect(modelInput()).toContain("and its rated current?");
+    expect(modelInput()).not.toContain("ZQX-PHOTO-A-ONLY-4417");
+  });
+
+  it("a photo answered under another component (or before this selection) is not recalled", async () => {
+    nbMock.listTurns.mockResolvedValue([photoTurn("t-a", PHOTO_A)]);
+    lookMock.loadVisualEvidenceForPhoto.mockImplementation(async (...args: unknown[]) => (args[2] === PHOTO_A ? look(PHOTO_A, A_MARK) : null));
+    storeMock.listSelectionTurns.mockResolvedValue([]);
+    await frames(await ask("and its rated current?", under(VFD, 3)));
+    expect(modelInput()).not.toContain("ZQX-PHOTO-A-ONLY-4417");
+  });
+
+  it("after an identity correction the old revision's photo is not recalled", async () => {
+    nbMock.listTurns.mockResolvedValue([photoTurn("t-old", PHOTO_A)]);
+    lookMock.loadVisualEvidenceForPhoto.mockImplementation(async (...args: unknown[]) => (args[2] === PHOTO_A ? look(PHOTO_A, A_MARK) : null));
+    storeMock.listSelectionTurns.mockResolvedValue([savedRun("t-old", VFD, 1)]); // asked under revision 1; the selection is revision 2
+    await frames(await ask("and its rated current?", under(VFD, 3)));
+    expect(modelInput()).not.toContain("ZQX-PHOTO-A-ONLY-4417");
+  });
+
+  it("control: a photo answered under this same selection is still recalled for a follow-up", async () => {
+    nbMock.listTurns.mockResolvedValue([photoTurn("t-b", PHOTO_B)]);
+    lookMock.loadVisualEvidenceForPhoto.mockImplementation(async (...args: unknown[]) => (args[2] === PHOTO_B ? look(PHOTO_B, B_MARK) : null));
+    storeMock.listSelectionTurns.mockResolvedValue([savedRun("t-b", VFD, 2)]);
+    await frames(await ask("and its rated current?", under(VFD, 3)));
+    expect(modelInput()).toContain("ZQX-PHOTO-B-OWN-5528");
+  });
+
+  it("control: with no component selected, earlier photos are recalled as before", async () => {
+    lookMock.loadRecentLookObservations.mockResolvedValue([look(PHOTO_A, A_MARK)]);
+    await frames(await ask("and its rated current?"));
+    expect(modelInput()).toContain("ZQX-PHOTO-A-ONLY-4417");
+  });
+});
+
+// #5504 Codex r3 F8: a held turn needs no inference, so a non-English question is not translated first.
+describe("a held non-English question calls no translation", () => {
+  it("unconfirmed component", async () => {
+    storeMock.getSelection.mockResolvedValue(selection(B1, 1, 1));
+    const out = await frames(await ask("¿Cuál es el voltaje de este botón?", under(B1, 1)));
+    expect(statusOf(out).status).toBe("insufficient_evidence");
+    expect(translateMock.translateForSearch).not.toHaveBeenCalled();
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+  });
+
+  it("the question names another component", async () => {
+    const out = await frames(await ask("¿Qué voltaje de bobina necesita el CA3KN22BD?", under(VFD, 3)));
+    expect(componentFrame(out)?.actions.map((a) => a.action)).toEqual(["switch", "stay"]);
+    expect(translateMock.translateForSearch).not.toHaveBeenCalled();
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+  });
+
+  it("control: a scoped non-English question is still translated for the search", async () => {
+    ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
+    await frames(await ask("¿Qué significa la falla oC?", under(VFD, 3)));
+    expect(translateMock.translateForSearch).toHaveBeenCalled();
+  });
+});
+
+// #5504 cheap review r7: a UUID is the same id in either letter case.
+describe("the component id is compared case-insensitively", () => {
+  it("an upper-case spelling of the selected component's id is the same selection, not a 409", async () => {
+    const LETTERED = "4444abcd-4444-4444-8444-44444444abcd";
+    expect(LETTERED.toUpperCase()).not.toBe(LETTERED); // precondition: the case actually differs
+    storeMock.listComponents.mockResolvedValue([{ ...VFD_ROW, id: LETTERED, current: { ...VFD_ROW.current, componentId: LETTERED } }, K1_ROW, B1_ROW]);
+    storeMock.getSelection.mockResolvedValue(selection(LETTERED, 2, 3));
+    ragMock.retrieveNodeChunks.mockResolvedValue([CHUNK]);
+    const res = await ask("what does fault oC mean", under(LETTERED.toUpperCase(), 3));
+    expect(res.status).toBe(200);
+    await frames(res);
+    expect(retrievalOpts()?.catalogNumber).toBe("GS11N-20P2");
   });
 });

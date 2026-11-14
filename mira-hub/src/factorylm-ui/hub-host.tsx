@@ -75,7 +75,7 @@ import { ParkedSources } from "./ParkedSources";
 import { clearSheetDataForSignOut, localStorageStore, parseSheetReceipts } from "./living-sheet-client";
 import { NOTEBOOK_ACTIONS_STYLE } from "./notebook-actions";
 import { BenchComponents } from "./BenchComponents";
-import { SEND_BLOCKED_MESSAGE, createBenchSendGate, parseComponentFrames, riderFor, withComponentRider, type BenchState, type ComponentRider, type ComponentTurnFrame } from "./bench-components-logic";
+import { SEND_BLOCKED_MESSAGE, benchSendRefusal, createBenchSendGate, parseComponentFrames, riderFor, withComponentRider, type BenchState, type ComponentRider, type ComponentTurnFrame } from "./bench-components-logic";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
 import { answerTurnId, citationIndex, contextFor, lifecycleFromStream, livePartsWhileRunning, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus, withSettledFollowups, type SettledFollowups } from "./to-interaction";
 import {
@@ -477,12 +477,18 @@ export function HubShellHost() {
   // --- the send path: the canonical notebook-chat route, streamed ---
   const send = useCallback(async (body: ReturnType<typeof chatBodyFor>, question: string, sel: HubSelection | null = selection) => {
     if (!sel) return;
-    // Never while a component change is saving: this send would carry the version the
-    // header read before it. Checked before anything else, so an answer already
-    // streaming is not aborted by a send that cannot start.
-    if (!benchGate.tryBeginSend()) {
+    // Never while a component change is saving (this send would carry the version the
+    // header read before it), and never before this conversation's component selection
+    // has been read (#5504 Codex r3 F6: it would go out as whole-machine). Checked before
+    // anything else, so an answer already streaming is not aborted by a send that cannot
+    // start. A project just made from home (`sel` is not this gate's conversation) has
+    // no saved component and is not held.
+    const forThisGate = gateConversation === `${sel.notebookId}|${sel.threadId}`;
+    const refused = forThisGate ? benchSendRefusal(benchGate) : null;
+    if (refused || !benchGate.tryBeginSend()) {
+      if (forThisGate && !benchGate.known) setBenchRefresh((n) => n + 1);
       dropOutgoing(outgoingOwner.current?.id ?? null);
-      dispatch({ type: "set-send-error", error: SEND_BLOCKED_MESSAGE });
+      dispatch({ type: "set-send-error", error: refused ?? SEND_BLOCKED_MESSAGE });
       dispatch({ type: "set-draft", draft: question });
       return;
     }
@@ -597,7 +603,7 @@ export function HubShellHost() {
       // A turn can change the checklist (its tallies) or find the selection moved (409).
       setBenchRefresh((n) => n + 1);
     }
-  }, [selection, loadDetail, loadNotebooks, dropOutgoing, outgoingOwner, livingSheetJob, benchGate]);
+  }, [selection, loadDetail, loadNotebooks, dropOutgoing, outgoingOwner, livingSheetJob, benchGate, gateConversation]);
 
   // Stable per conversation, so the panel's read does not re-run on every render.
   const benchNotebookId = selection?.notebookId ?? null;
@@ -759,8 +765,14 @@ export function HubShellHost() {
     // photo, before anything uploads (Codex #4024 F1/F3).
     const files = pairAttachments(attachments, (id) => adapter.heldFile(id));
     if ((!q && files.length === 0) || busy) return;
-    // #5504 Codex r2: the Composer keeps the draft when this throws.
-    if (benchGate.changing) throw new Error(SEND_BLOCKED_MESSAGE);
+    // #5504 Codex r2/r3: the Composer keeps the draft and the attachments when this throws.
+    // Before the checklist has been read, ask the panel to read it again, so a failed
+    // first read does not leave the conversation unable to send.
+    const benchRefused = selection ? benchSendRefusal(benchGate) : null;
+    if (benchRefused) {
+      if (!benchGate.known) setBenchRefresh((n) => n + 1);
+      throw new Error(benchRefused);
+    }
     // Codex #3839 Spec P1: the Composer clears the draft after a hook that
     // RETURNS, so a send before the data loaded used to discard the
     // technician's question. Throwing is the Composer's documented contract

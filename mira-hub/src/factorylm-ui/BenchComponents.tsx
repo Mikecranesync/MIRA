@@ -24,6 +24,7 @@ import {
   cardIsEmpty,
   changeSelection,
   componentErrorMessage,
+  readBench,
   retakeCard,
   revisionBodyFor,
   selectedComponent,
@@ -107,25 +108,27 @@ export function BenchComponents({
   const [handled, setHandled] = useState<ComponentTurnFrame | null>(null);
   const addRequest = useRef<AddRequest | null>(null);
 
+  // #5504 Codex r3 F6: the host refuses a send until this read has answered (or the
+  // checklist is known to be unavailable), so a saved component is never skipped.
   const load = useCallback(async (): Promise<BenchState | null> => {
-    try {
-      const res = await fetch(`${base(notebookId)}?threadId=${encodeURIComponent(threadId)}`, { cache: "no-store" });
-      if (res.status === 404 || res.status === 503) {
-        setAvailable(false);
-        onState(null);
-        return null;
-      }
-      if (!res.ok) throw new Error(String(res.status));
-      const next = (await res.json()) as BenchState;
-      setAvailable(true);
-      setBench(next);
-      onState(next);
-      return next;
-    } catch {
+    const out = await readBench({
+      gate,
+      fetch: (url, init) => fetch(url, init),
+      url: `${base(notebookId)}?threadId=${encodeURIComponent(threadId)}`,
+      apply: onState,
+    });
+    if (out.kind === "unavailable") {
+      setAvailable(false);
+      return null;
+    }
+    if (out.kind === "failed") {
       setMessage("The component list couldn't be read just now.");
       return null;
     }
-  }, [notebookId, threadId, onState]);
+    setAvailable(true);
+    setBench(out.state);
+    return out.state;
+  }, [notebookId, threadId, onState, gate]);
 
   useEffect(() => {
     void load();

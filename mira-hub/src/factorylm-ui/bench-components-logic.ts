@@ -237,6 +237,7 @@ export function componentErrorMessage(code: string): string {
 
 export const SEND_BLOCKED_MESSAGE = "Saving the component choice — send again in a moment.";
 export const CHANGE_BLOCKED_MESSAGE = "Wait for the answer to finish, then change the component.";
+export const SEND_LOADING_MESSAGE = "Reading the component list — send again in a moment.";
 
 /**
  * Sending and changing the component can never overlap (#5504 Codex r2): a question
@@ -257,11 +258,19 @@ export type BenchSendGate = {
   endSend(): void;
   readonly changing: boolean;
   readonly sending: boolean;
+  /**
+   * The conversation's component selection has been read, or the checklist is known to
+   * be unavailable (#5504 Codex r3 F6). Until then a send would go out as whole-machine
+   * even when a component is saved, so it is refused. A failed read leaves this false.
+   */
+  readonly known: boolean;
+  markKnown(): void;
 };
 
 export function createBenchSendGate(): BenchSendGate {
   let changes = 0;
   let sends = 0;
+  let known = false;
   return {
     tryBeginChange() {
       if (sends > 0) return false;
@@ -285,7 +294,50 @@ export function createBenchSendGate(): BenchSendGate {
     get sending() {
       return sends > 0;
     },
+    get known() {
+      return known;
+    },
+    markKnown() {
+      known = true;
+    },
   };
+}
+
+/** Why a send in this gate's conversation cannot start now, or null when it can. */
+export function benchSendRefusal(gate: BenchSendGate): string | null {
+  if (!gate.known) return SEND_LOADING_MESSAGE;
+  if (gate.changing) return SEND_BLOCKED_MESSAGE;
+  return null;
+}
+
+/**
+ * One checklist read, exactly as the panel runs it. A read that answers hands its state
+ * to `apply` (the host builds the next turn's rider from it) and only then marks the
+ * selection known; so does 404/503 (the checklist is not available, so no turn carries a
+ * component). A failed read marks nothing: the next send is refused, never sent as
+ * whole-machine.
+ */
+export async function readBench(opts: {
+  gate: BenchSendGate;
+  fetch: (url: string, init: RequestInit) => Promise<Response>;
+  url: string;
+  apply: (state: BenchState | null) => void;
+}): Promise<{ kind: "loaded"; state: BenchState } | { kind: "unavailable" } | { kind: "failed" }> {
+  try {
+    const res = await opts.fetch(opts.url, { cache: "no-store" });
+    if (res.status === 404 || res.status === 503) {
+      opts.apply(null);
+      opts.gate.markKnown();
+      return { kind: "unavailable" };
+    }
+    if (!res.ok) return { kind: "failed" };
+    const state = (await res.json()) as BenchState;
+    opts.apply(state);
+    opts.gate.markKnown();
+    return { kind: "loaded", state };
+  } catch {
+    return { kind: "failed" };
+  }
 }
 
 

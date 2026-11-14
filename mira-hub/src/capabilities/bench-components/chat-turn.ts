@@ -36,7 +36,8 @@ export function readComponentSelection(value: unknown): RequestedComponent | nul
   const v = value as { componentId?: unknown; selectionVersion?: unknown };
   if (!isUuid(v.componentId)) return { error: "invalid_component_selection" };
   if (!Number.isInteger(v.selectionVersion) || (v.selectionVersion as number) < 1) return { error: "invalid_component_selection" };
-  return { componentId: v.componentId, selectionVersion: v.selectionVersion as number };
+  // A UUID is the same id in either letter case; the store returns lower case (#5504 cheap r7).
+  return { componentId: v.componentId.toLowerCase(), selectionVersion: v.selectionVersion as number };
 }
 
 export type ComponentAction =

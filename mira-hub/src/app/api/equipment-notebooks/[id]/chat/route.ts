@@ -2039,6 +2039,9 @@ async function handleChatTurn(
       const seen = new Set<string>();
       for (const t of [...recent].reverse()) {
         if (t.answerStatus !== "answered" || !t.answerText?.trim()) continue;
+        // Under a selected component only photos answered under this selection carry
+        // (#5504 Codex r3 F7); a failed selection read carries none.
+        if (selectionTurnIds && !selectionTurnIds.has(t.id)) continue;
         for (const e of t.evidence) {
           if (isVisualObservationEntry(e) && e.fileId && !seen.has(e.fileId)) seen.add(e.fileId);
         }
@@ -2055,7 +2058,9 @@ async function handleChatTurn(
       priorLookRows = await withTenantContext(ctx.tenantId, async (c) => {
         // Standalone LOOK belongs in the observation ledger, not as an empty
         // answered turn. Old actual chat turns remain a compatibility source.
-        const out = await loadRecentLookObservations(c, ctx.tenantId, scope);
+        // A standalone LOOK records no component, so under a component it cannot be
+        // shown to belong to this one and is not recalled (#5504 Codex r3 F7).
+        const out = componentScope ? [] : await loadRecentLookObservations(c, ctx.tenantId, scope);
         for (const fid of linkedHistorical) {
           if (out.some((row) => row.fileId === fid)) continue;
           // App builds before #3968 upload the photo with no threadId, so its
@@ -2433,7 +2438,10 @@ async function handleChatTurn(
   ]);
 
   // Non-English questions search the English corpus in English (answered in their own language).
-  const retrievalQuery = await englishSearchQuery(buildRetrievalQuery(message, turnHistory, lookRow?.text), translateForSearch);
+  // A held turn reads no manual, so it needs no translated search query either (#5504 Codex r3 F8).
+  const retrievalQuery = componentHold
+    ? buildRetrievalQuery(message, turnHistory, lookRow?.text)
+    : await englishSearchQuery(buildRetrievalQuery(message, turnHistory, lookRow?.text), translateForSearch);
   const retrievalSpan = startStage("retrieval.execute");
   // Retrieval policy (docs/plans/2026-09-22-retrieval-routing-evidence-continuity.md):
   //   1. notebook sources validated       → notebook_sources_bm25 (unchanged)

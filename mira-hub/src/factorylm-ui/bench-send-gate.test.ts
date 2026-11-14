@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   CHANGE_BLOCKED_MESSAGE,
+  SEND_LOADING_MESSAGE,
+  benchSendRefusal,
   changeSelection,
   createBenchSendGate,
+  readBench,
   riderFor,
   withComponentRider,
   type BenchState,
@@ -34,14 +37,22 @@ function deferred<T>() {
 
 /** The host's send(): checks the gate before anything else, then builds the body from the rider it reads now. */
 function hostSend(gate: ReturnType<typeof createBenchSendGate>, rider: () => ReturnType<typeof riderFor>, chat: (body: unknown) => void): boolean {
+  if (benchSendRefusal(gate) !== null) return false;
   if (!gate.tryBeginSend()) return false;
   chat(withComponentRider({ message: "and its fuse size?", mode: "general" as const }, SEL, rider()));
   return true;
 }
 
+/** A gate whose conversation's checklist has already been read. */
+function readGate() {
+  const gate = createBenchSendGate();
+  gate.markKnown();
+  return gate;
+}
+
 describe("a send never overlaps a component change", () => {
   it("A→B change still saving: Send is refused, then after the checklist re-read it carries B's new version", async () => {
-    const gate = createBenchSendGate();
+    const gate = readGate();
     let bench = state(A, 3);
     const put = deferred<Response>();
     const reread = deferred<void>();
@@ -68,7 +79,7 @@ describe("a send never overlaps a component change", () => {
   });
 
   it("an answer still streaming: the change is refused without a request, and allowed once the answer ends", async () => {
-    const gate = createBenchSendGate();
+    const gate = readGate();
     const fetch = vi.fn(async () => new Response("{}", { status: 200 }));
     const load = vi.fn(async () => undefined);
     const body = { threadId: SEL.threadId, componentId: B, via: "picker", expectedVersion: 3, clientRequestId: "r1" };
@@ -83,7 +94,7 @@ describe("a send never overlaps a component change", () => {
   });
 
   it("another screen moved it (409): the panel re-reads before Send is allowed, and the send carries the version it read", async () => {
-    const gate = createBenchSendGate();
+    const gate = readGate();
     let bench = state(A, 3);
     const chat = vi.fn();
     const out = await changeSelection({
@@ -99,7 +110,7 @@ describe("a send never overlaps a component change", () => {
   });
 
   it("a change that fails on the network still releases Send", async () => {
-    const gate = createBenchSendGate();
+    const gate = readGate();
     const out = await changeSelection({
       gate, fetch: async () => { throw new TypeError("offline"); }, url: "/sel", load: async () => undefined,
       body: { threadId: SEL.threadId, componentId: B, via: "picker", expectedVersion: 3, clientRequestId: "r1" },
@@ -110,12 +121,68 @@ describe("a send never overlaps a component change", () => {
   });
 
   it("control: with nothing pending, Send and a change each go straight through", async () => {
-    const gate = createBenchSendGate();
+    const gate = readGate();
     expect(hostSend(gate, () => null, vi.fn())).toBe(true);
     gate.endSend();
     await expect(changeSelection({
       gate, fetch: async () => new Response("{}", { status: 200 }), url: "/sel", load: async () => undefined,
       body: { threadId: SEL.threadId, componentId: null, via: "picker", expectedVersion: 3, clientRequestId: "r1" },
     })).resolves.toEqual({ ok: true });
+  });
+});
+
+// #5504 Codex r3 F6: a send before the checklist has been read went out as whole-machine
+// even when a component was saved for the conversation.
+describe("nothing is sent until the conversation's component selection has been read", () => {
+  const URL = "/components?threadId=th-1";
+  const okState = (componentId: string, version: number) => new Response(JSON.stringify(state(componentId, version)), { status: 200 });
+
+  it("checklist still loading: Send is refused, then it carries the saved component B and its version", async () => {
+    const gate = createBenchSendGate();
+    let bench: BenchState | null = null;
+    const get = deferred<Response>();
+    const chat = vi.fn();
+    const read = readBench({ gate, fetch: () => get.promise, url: URL, apply: (s) => { bench = s; } });
+
+    expect(benchSendRefusal(gate)).toBe(SEND_LOADING_MESSAGE);
+    expect(hostSend(gate, () => riderFor(bench, SEL), chat)).toBe(false);
+    expect(chat).not.toHaveBeenCalled();
+
+    get.resolve(okState(B, 4));
+    await expect(read).resolves.toMatchObject({ kind: "loaded" });
+    expect(hostSend(gate, () => riderFor(bench, SEL), chat)).toBe(true);
+    expect(chat).toHaveBeenCalledWith(expect.objectContaining({ componentSelection: { componentId: B, selectionVersion: 4 } }));
+  });
+
+  it("the first read fails on the network: Send stays refused (never whole-machine) until a read succeeds", async () => {
+    const gate = createBenchSendGate();
+    let bench: BenchState | null = null;
+    const chat = vi.fn();
+    await expect(readBench({ gate, fetch: async () => { throw new TypeError("offline"); }, url: URL, apply: (s) => { bench = s; } }))
+      .resolves.toEqual({ kind: "failed" });
+    expect(hostSend(gate, () => riderFor(bench, SEL), chat)).toBe(false);
+    await expect(readBench({ gate, fetch: async () => new Response("", { status: 500 }), url: URL, apply: (s) => { bench = s; } }))
+      .resolves.toEqual({ kind: "failed" });
+    expect(hostSend(gate, () => riderFor(bench, SEL), chat)).toBe(false);
+    expect(chat).not.toHaveBeenCalled();
+
+    await readBench({ gate, fetch: async () => okState(B, 4), url: URL, apply: (s) => { bench = s; } });
+    expect(hostSend(gate, () => riderFor(bench, SEL), chat)).toBe(true);
+    expect(chat).toHaveBeenCalledWith(expect.objectContaining({ componentSelection: { componentId: B, selectionVersion: 4 } }));
+  });
+
+  it("control: the checklist is not available (503, before migration 115): Send goes through with no component", async () => {
+    const gate = createBenchSendGate();
+    let bench: BenchState | null = state(A, 3);
+    const chat = vi.fn();
+    await expect(readBench({ gate, fetch: async () => new Response("", { status: 503 }), url: URL, apply: (s) => { bench = s; } }))
+      .resolves.toEqual({ kind: "unavailable" });
+    expect(hostSend(gate, () => riderFor(bench, SEL), chat)).toBe(true);
+    expect(chat).toHaveBeenCalledWith({ message: "and its fuse size?", mode: "general" });
+  });
+
+  it("a new conversation starts unread, whatever the previous one knew", () => {
+    expect(readGate().known).toBe(true);
+    expect(benchSendRefusal(createBenchSendGate())).toBe(SEND_LOADING_MESSAGE);
   });
 });
