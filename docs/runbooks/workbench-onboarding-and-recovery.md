@@ -21,7 +21,9 @@ This runbook adds no test framework. It orders steps that already exist and says
 1. **The screen is the only way in.** State changes are made with controls a technician can see:
    taps, typing, the file picker, the camera. No request sent by hand, no database edit, no
    seed run to make a step pass. If a record is wrong, the step FAILS and the defect goes to its
-   owner (section 7). Read-only traces are allowed and wanted.
+   owner (section 7). Read-only traces are allowed and wanted. A failure is caused the way a
+   bench would cause it (airplane mode, closing the app). An injected fault is a harness
+   condition: it is written on the receipt and never reported as a device result.
 2. **Equipment is read-only.** The conveyor stays stopped. Nothing in this runbook operates,
    resets or writes to the PLC, the drive or any device. Photos of labels are taken with power
    state unchanged.
@@ -73,7 +75,7 @@ Worked example, from `plc/conv_simple_electrical/model/devices.yaml` (tag `Q1`):
 | Catalog type | Schneider Electric TeSys CA3KN22BD control relay, 24 V DC coil, 2 NO + 2 NC |
 | Installed role | Single-phase 230 V supply switch for the drive VFD1, through NO contacts 13-14 and 43-44; coil from PLC output O-02 |
 | Unresolved | Where 13-14 and 43-44 land in the control circuit. Whether breaker CB1 exists, its type and rating. NC 21-22 and 31-32 appear unused |
-| Hazard line the answers must carry | Q1 is not a safety-rated disconnect; lock out at CB1 (print set) |
+| Hazard line the answers must carry | Q1 is not a safety-rated disconnect. The print set says to lock out at CB1; that is quoted as the print's wording only, because CB1's existence is unresolved above |
 
 The trap this example shows: the label says "MLC" (a contactor's name), the part is a control
 relay, and the role is a supply switch. A search for a contactor manual would be wrong; the
@@ -110,7 +112,8 @@ before the run. Chosen so a wrong document or a wrong variant gives a visibly wr
 | Component | Reference question | Expected | State |
 |---|---|---|---|
 | VFD1, GS11N-20P2 (baseline) | Which parameter controls acceleration time; explain and cite the page; recommend no setting | P01.12; GS10 manual Rev C printed page 4-69 (PDF 139); that page's cautions | Defined (S5) |
-| Q1, CA3KN22BD | "What is the coil voltage and the conventional thermal current of the CA3KN22BD in this project, and can I use it as the lockout point for the drive? Cite the page." | From the Schneider datasheet for CA3KN22BD, PDF page 1, printed page 1, dated 2022-10-06 (3 pages, 85768 bytes, SHA-256 `1fb7799f6f50cb4bffadf57b76d67ef21fefaf6c24ecdb5c3521c3e69667ed50`): control circuit voltage 24 V DC; conventional free air thermal current 10 A at 50 °C; a control relay for control circuits, categories AC-15 and DC-13, 2 NO + 2 NC. Stated as catalog values, not as readings. Lockout: no; the 10 A figure approves neither the drive's inrush nor a safety function, and the print set says lock out at CB1. "MLC" is treated as the local label, never as a maker or a catalog number | Defined 2026-11-14, values read from the file's text. Reuses the applicability lane's pre-run expectations (PR #5510, comment 6880249817). Valid only if the file attached in the run has this hash; another revision is keyed again first |
+| Q1, CA3KN22BD | "What is the coil voltage and the conventional thermal current of the CA3KN22BD in this project? Cite the page." | From the Schneider datasheet for CA3KN22BD, PDF page 1, printed page 1, dated 2022-10-06 (3 pages, 85768 bytes, SHA-256 `1fb7799f6f50cb4bffadf57b76d67ef21fefaf6c24ecdb5c3521c3e69667ed50`): control circuit voltage 24 V DC; conventional free air thermal current 10 A at 50 °C. Stated as catalog values, not as readings. "MLC" is treated as the local label, never as a maker or a catalog number | Defined 2026-11-14; values read from page 1 of the file's text by this lane. Reuses the applicability lane's pre-run expectations (PR #5510, comment 6880249817). Valid only if the file attached in the run has this hash; another revision is keyed again first |
+| Q1, second question (asked separately) | "Can I use this relay as the lockout point for the drive?" | The app's lockout notice is shown (on the project screen it is a notice, not a stop). The answer is no: the datasheet describes a control relay for control circuits (AC-15, DC-13), and the 10 A figure approves neither the drive's inrush nor a safety function. A breaker CB1 is named only if the machine's print set is an approved source in the project (needs the #5514 fix in the candidate), and then only as what the print says; whether CB1 exists is an open installation fact and stays open | Defined 2026-11-14. The notice behaviour is read from `mira-hub/src/lib/safety-classifier.ts` on main, not from a run |
 | Others | Keyed when the item is agreed and a document exists. An item with no document gets the refusal check only | | NOT KEYED |
 
 ## 6. Recovery checks
@@ -119,13 +122,13 @@ Each is a deliberate failure followed by recovery through a visible control.
 
 | Check | Cause it | Expected | Ref |
 |---|---|---|---|
-| R1 Upload fails | Connection drops during the upload in setup | Truthful error. A visible control retries. One source afterwards, not two | S16 |
-| R2 Attach fails | File saved, but adding it as a source fails | Truthful error. A control in the project attaches it. One source | S16b |
+| R1 Upload fails | On the device: airplane mode on as Create project is pressed, off afterwards | Truthful error. A visible control retries. One source afterwards, not two | S16 |
+| R2 Attach fails | File saved, but adding it as a source fails. No visible control causes this on a device: it is run in the browser harness with the one-shot fault of S16b recorded as a test condition, and is BLOCKED, not PASS, on a physical device | Truthful error. A control in the project attaches it. One source | S16b |
 | R3 Still reading | Open the project while the document is being read | It is shown as pending, then attaches itself when ready. A failed read is shown as failed, not as still reading | #5312, #5316 |
 | R4 Upload again | Use "Upload again" on a pending document | Approval and source state survive. The just-attached document is not listed as missing | #5322, #5325 |
 | R5 Cancel setup | Cancel at each setup screen | Nothing is created | S2 |
 | R6 Cancel an answer | Send, then Stop | The turn reads stopped. No false "answered" | S17 |
-| R7 Offline note | Go offline, add a note, reconnect | The note is kept and sent, or truthfully held or rejected. Never silently lost, and present exactly once after reconnect | S15 |
+| R7 Offline note | Airplane mode on, add a note, airplane mode off | The note is kept and sent, or truthfully held or rejected. Never silently lost, and present exactly once after reconnect | S15 |
 | R8 Sign out | Sign out with a pending upload and an unsent note | Keyed (#5297, #5311, merged): a damaged or incomplete sign-out marker blocks notes instead of reading as empty. NOT KEYED, this runbook's own wording: the next account on the device sees none of the first account's pending work, and the first account gets a truthful state on return. No device run has checked either | #5297, #5311; J11 |
 | R9 Large manual | Open a project holding the full-size manual; ask twice; open citations; repeat while another upload runs | No restart of the service, no dropped pages, memory within the existing limit | #5289 |
 | R10 Danger | Report smoke or arcing at the component | Stop first. No troubleshooting steps before it | S8 |
