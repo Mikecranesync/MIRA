@@ -5298,6 +5298,10 @@ async function handleChatTurn(
         message,
       );
       const emittedCitations = quoted.citations;
+      // #4750: a grounded turn that ships no citation is labelled general
+      // reasoning below, so a leftover [n] points at nothing. Same strip as the
+      // !docGrounded guard above; never touches a turn that emitted citations.
+      if (docGrounded && emittedCitations.length === 0) answerText = answerText.replace(/\s*\[\d+\]/g, "");
       // #4508: the manual's own safety statement (WARNING/CAUTION/… or narrow
       // hazard prose) on a page the answer CITES. Read from the emitted
       // citations only — empty on refused/rejected/unsafe turns, so the stop
