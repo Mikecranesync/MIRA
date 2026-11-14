@@ -338,9 +338,24 @@ export async function setSelection(
              selected_at = clock_timestamp(),
              version = s.version + 1,
              last_request_id = EXCLUDED.last_request_id
+         -- FOR UPDATE above locks nothing when there was no row: a first pick made at the
+         -- same moment on another screen inserts one. Overwrite only the version this caller saw.
+         WHERE s.version IS NOT DISTINCT FROM $9::int
        RETURNING ${SELECTION_COLS}`,
-      [tenantId, notebookId, ownerUserId, threadKey, input.componentId, component.current.revision, input.via, input.clientRequestId],
+      [tenantId, notebookId, ownerUserId, threadKey, input.componentId, component.current.revision, input.via, input.clientRequestId, input.expectedVersion],
     );
+    if (!res.rows[0]) {
+      const racedRes = await c.query(
+        `SELECT ${SELECTION_COLS} FROM notebook_thread_selections s
+          WHERE s.tenant_id = $1::uuid AND s.notebook_id = $2::uuid AND s.owner_user_id = $3 AND s.thread_key = $4`,
+        [tenantId, notebookId, ownerUserId, threadKey],
+      );
+      const raced = racedRes.rows[0] ? toSelection(racedRes.rows[0]) : null;
+      if (raced && racedRes.rows[0].last_request_id === input.clientRequestId && raced.componentId === input.componentId) {
+        return { status: "existing", selection: raced };
+      }
+      return { status: "version_conflict", selection: raced };
+    }
     return { status: "set", selection: toSelection(res.rows[0]) };
   });
 }

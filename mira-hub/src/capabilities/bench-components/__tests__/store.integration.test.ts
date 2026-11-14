@@ -160,6 +160,39 @@ run("bench component store (real Postgres, RLS)", () => {
     expect(await getSelection(tenantA, notebookA, USER, thread)).toBeNull();
   });
 
+  it("two first picks on two screens at the same moment: one wins, the other is a conflict, never a silent overwrite", async () => {
+    const make = async (body: Record<string, unknown>) => {
+      const a = await addComponent(tenantA, notebookA, USER, { clientRequestId: uuid(), kind: "drive", origin: "inventory", position: null, revision: rev(body, true) });
+      if (a.status !== "created") throw new Error(a.status);
+      return a.component.id;
+    };
+    const [one, two] = [await make(GS10), await make({ ...GS10, rawLabel: "GS11N-10P2", catalogNumber: "GS11N-10P2", localTag: "VFD2" })];
+    for (let round = 0; round < 5; round++) {
+      const thread = `race-${uuid().slice(0, 8)}`;
+      expect(await getSelection(tenantA, notebookA, USER, thread)).toBeNull(); // precondition: no row yet
+      const results = await Promise.all(
+        [one, two].map((componentId) => setSelection(tenantA, notebookA, USER, thread, { componentId, via: "picker", expectedVersion: null, clientRequestId: uuid() })),
+      );
+      const set = results.filter((r) => r.status === "set");
+      expect(set).toHaveLength(1);
+      expect(results.filter((r) => r.status === "version_conflict")).toHaveLength(1);
+      const stored = await getSelection(tenantA, notebookA, USER, thread);
+      expect(stored).toMatchObject({ componentId: (set[0] as { selection: { componentId: string } }).selection.componentId, version: 1 });
+    }
+  });
+
+  it("control: the same first pick sent twice at once is one selection, and both see it", async () => {
+    const a = await addComponent(tenantA, notebookA, USER, { clientRequestId: uuid(), kind: "drive", origin: "inventory", position: null, revision: rev(GS10, true) });
+    if (a.status !== "created") throw new Error(a.status);
+    const thread = `retry-${uuid().slice(0, 8)}`;
+    const key = uuid();
+    const results = await Promise.all(
+      [0, 1].map(() => setSelection(tenantA, notebookA, USER, thread, { componentId: a.component.id, via: "picker", expectedVersion: null, clientRequestId: key })),
+    );
+    expect(results.map((r) => r.status).sort()).toEqual(["existing", "set"]);
+    expect(await getSelection(tenantA, notebookA, USER, thread)).toMatchObject({ componentId: a.component.id, version: 1 });
+  });
+
   it("a component of another notebook or another tenant cannot be selected", async () => {
     const other = await addComponent(tenantA, otherNotebookA, USER, { clientRequestId: uuid(), kind: "drive", origin: "inventory", position: null, revision: rev(GS10, true) });
     if (other.status !== "created") throw new Error();
