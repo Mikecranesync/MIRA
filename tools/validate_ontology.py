@@ -9,8 +9,13 @@ What it does, in order:
   3. Enforces inverse completeness: every ObjectProperty either declares owl:inverseOf
      or documents in rdfs:comment why no inverse is modeled.
   4. Runs each fixture under `fixtures/valid/` and expects conformance.
-  5. Runs each fixture under `fixtures/invalid/` and expects the SPECIFIC shapes named
-     in that fixture's `# EXPECT-VIOLATION:` header lines to fire.
+  5. Runs each fixture under `fixtures/invalid/` and expects EXACTLY the shapes named in that
+     fixture's `# EXPECT-VIOLATION:` header lines to fire. A shape that fires without being
+     declared fails the fixture; one that co-fires unavoidably is declared with `# ALSO-FIRES:`.
+  6. Fixture coverage (a GATE, issue #5528): every named shape needs an invalid fixture that
+     pins it AND a valid fixture, declared with `# PROTECTS:`, that the shape actually targets.
+     The only way to leave a shape uncovered is an entry in `fixtures/coverage-exclusions.json`
+     carrying a reason and a tracking reference.
 
 Exit codes:
   0  everything passed
@@ -27,6 +32,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import re
 import sys
@@ -54,15 +60,22 @@ TERM_STATUS = MIRA["term_status"]
 
 # A `# EXPECT-VIOLATION: mirash:SomeShape` header line in an invalid fixture.
 EXPECT_RE = re.compile(r"^#\s*EXPECT-VIOLATION:\s*(\S+)\s*$", re.MULTILINE)
+# `# ALSO-FIRES: mirash:OtherShape <why>` — a shape that unavoidably fires alongside the expected
+# one (a rule that is subsumed by a neighbour cannot be violated alone). It is checked both ways:
+# an undeclared co-firing shape fails the fixture, and so does a declared one that stays silent.
+ALSO_RE = re.compile(r"^#\s*ALSO-FIRES:\s*(\S+)(?:[ \t].*)?$", re.MULTILINE)
+# `# PROTECTS: mirash:SomeShape` in a VALID fixture names the shape whose legitimate case it is.
+PROTECTS_RE = re.compile(r"^#\s*PROTECTS:\s*(\S+)\s*$", re.MULTILINE)
+EXCLUSIONS_FILE = "coverage-exclusions.json"
 # Comments that legitimately explain an absent inverse.
 NO_INVERSE_RE = re.compile(r"no inverse (is )?modeled|its own inverse", re.IGNORECASE)
 
 
 @dataclass
 class Result:
-    """One check outcome. `skipped` results don't count toward pass/fail totals or exit code —
-    they exist for deliberately-not-yet-built phases (see `check_valid_fixtures` /
-    `check_invalid_fixtures`), not for silently swallowing a real failure."""
+    """One check outcome. `skipped` results don't count toward pass/fail totals or exit code.
+    Nothing in this tool emits one any more (#5528 turned the last two into failures); the field
+    stays so the JSON shape is stable and a future skip is visible in the `skipped` count."""
 
     name: str
     passed: bool
@@ -73,6 +86,8 @@ class Result:
 @dataclass
 class Report:
     results: list[Result] = field(default_factory=list)
+    coverage_summary: str = ""
+    runtime_summary: str = ""
 
     def add(self, name: str, passed: bool, detail: str = "", skipped: bool = False) -> None:
         self.results.append(Result(name, passed, detail, skipped))
@@ -89,6 +104,8 @@ class Report:
                 "passed": sum(1 for r in counted if r.passed),
                 "failed": sum(1 for r in counted if not r.passed),
                 "skipped": sum(1 for r in self.results if r.skipped),
+                "coverage": self.coverage_summary,
+                "runtime": self.runtime_summary,
                 "results": [
                     {"name": r.name, "passed": r.passed, "detail": r.detail, "skipped": r.skipped}
                     for r in self.results
@@ -110,6 +127,10 @@ class Report:
         n_skip = len(self.results) - len(counted)
         lines.append("")
         suffix = f" ({n_skip} skipped)" if n_skip else ""
+        if self.coverage_summary:
+            lines.append(f"coverage: {self.coverage_summary}")
+        if self.runtime_summary:
+            lines.append(f"runtime:  {self.runtime_summary}")
         lines.append(f"{n_ok}/{len(counted)} checks passed{suffix}")
         return "\n".join(lines)
 
@@ -261,7 +282,9 @@ def run_shacl(data: Graph, onto: Graph, shapes: Graph) -> tuple[bool, Graph, str
 
     `ont_graph` supplies rdfs:subClassOf so sh:class checks see the hierarchy;
     `advanced=True` enables SPARQL-based constraints and SPARQL targets.
-    NOTE: no inference is requested (`inference="none"`) — MIRA runs no OWL reasoner.
+    NOTE: RDFS inference IS applied (`inference="rdfs"`): rdfs:domain / rdfs:range / subClassOf
+    add types to data nodes before any shape runs. No OWL reasoner runs, so owl:inverseOf is not
+    expanded. Both facts shape what a rule can and cannot see (#5528).
     """
     conforms, results_graph, results_text = shacl_validate(
         data_graph=data,
@@ -277,6 +300,7 @@ def run_shacl(data: Graph, onto: Graph, shapes: Graph) -> tuple[bool, Graph, str
 
 
 SH = Namespace("http://www.w3.org/ns/shacl#")
+MIRASH = Namespace("https://ontology.factorylm.com/mira/shapes#")
 
 
 def _local_name(node: URIRef) -> str | None:
@@ -324,48 +348,204 @@ def violated_shapes(results_graph: Graph, shapes: Graph) -> set[str]:
     return out
 
 
-def check_fixture_coverage(report: Report, shapes: Graph, root: Path) -> None:
-    """Report how many named shapes have at least one invalid fixture pinning them.
+def _headers(regex: re.Pattern[str], source: str) -> set[str]:
+    """Shape names from a header. Only the `mirash:` prefix names a shape; any other token is
+    kept whole so it can never equal a real shape name and is reported as unknown."""
+    prefix = "mirash:"
+    return {m[len(prefix) :] if m.startswith(prefix) else m for m in regex.findall(source)}
 
-    Informational (never fails the run) but ALWAYS printed, because the dangerous failure mode
-    here is silent: a fixture directory holding 2 fixtures makes every phase green and reads as
-    "the shapes are covered" when 40 rules have never been exercised. Naming the number keeps the
-    gap visible until the fixture phase closes it (ADR-0032 §8).
+
+def declared_shapes(shapes: Graph) -> set[str]:
+    return {n for n in (_local_name(s) for s in shapes.subjects(RDF.type, SH.NodeShape)) if n}
+
+
+PROBE = Namespace("urn:mira-coverage-probe:")
+_TARGET_PREDICATES = (
+    SH.targetClass,
+    SH.targetNode,
+    SH.targetObjectsOf,
+    SH.targetSubjectsOf,
+    SH.target,
+)
+
+
+def targeted_shapes(data: Graph, onto: Graph, shapes: Graph) -> set[str]:
+    """Local names of the named shapes that select at least one focus node in `data`.
+
+    A valid fixture proves nothing about a shape that never looks at it: a graph with no
+    FaultCode in it "conforms" to every fault-code rule. So for each named shape we build a probe
+    shape with the SAME target declarations and one constraint no node can satisfy
+    (`sh:in` over a single impossible value), then run pyshacl exactly as the real validation
+    does. A probe that reports a result means its shape had a focus node. Reusing pyshacl's own
+    target resolution — rather than re-implementing targetClass / targetObjectsOf / SPARQL targets
+    here — keeps this honest under the RDFS inference the real run applies.
     """
-    declared = {
-        n for n in (_local_name(s) for s in shapes.subjects(RDF.type, SH.NodeShape)) if n
+    from rdflib import BNode
+    from rdflib.collection import Collection
+
+    probe_shapes = Graph()
+    for t in shapes:
+        probe_shapes.add(t)
+    for shape in shapes.subjects(RDF.type, SH.NodeShape):
+        name = _local_name(shape) if isinstance(shape, URIRef) else None
+        if not name:
+            continue
+        targets = [(p, o) for p in _TARGET_PREDICATES for o in shapes.objects(shape, p)]
+        if not targets:
+            continue
+        probe = PROBE[name]
+        probe_shapes.add((probe, RDF.type, SH.NodeShape))
+        for p, o in targets:
+            probe_shapes.add((probe, p, o))
+        impossible = BNode()
+        Collection(probe_shapes, impossible, [PROBE["__never__"]])
+        probe_shapes.add((probe, SH["in"], impossible))
+
+    _, results, _ = run_shacl(data, onto, probe_shapes)
+    return {
+        str(src)[len(str(PROBE)) :]
+        for src in results.objects(None, SH.sourceShape)
+        if str(src).startswith(str(PROBE))
     }
-    if not declared:
-        return
+
+
+@dataclass
+class Coverage:
+    """What the fixture tree proves about each named shape.
+
+    pinned     an invalid fixture names it in EXPECT-VIOLATION
+    protected  a CONFORMING valid fixture names it in PROTECTS and the shape targets a node in it
+    covered    both of the above
+    excluded   uncovered on purpose, with a reason and a tracking reference
+    missing    neither covered nor excluded — this is what fails the gate
+    problems   anything that makes the bookkeeping itself untrustworthy
+    """
+
+    declared: set[str] = field(default_factory=set)
+    pinned: set[str] = field(default_factory=set)
+    protected: set[str] = field(default_factory=set)
+    excluded: dict[str, dict] = field(default_factory=dict)
+    problems: list[str] = field(default_factory=list)
+
+    @property
+    def covered(self) -> set[str]:
+        return self.pinned & self.protected
+
+    @property
+    def missing(self) -> list[str]:
+        return sorted(self.declared - self.covered - set(self.excluded))
+
+
+def fixture_coverage(onto: Graph, shapes: Graph, root: Path) -> Coverage:
+    cov = Coverage(declared=declared_shapes(shapes))
+
     invalid_dir = root / "invalid"
-    exercised: set[str] = set()
     if invalid_dir.is_dir():
-        for f in invalid_dir.glob("*.ttl"):
-            exercised |= {
-                m.split(":")[-1] for m in EXPECT_RE.findall(f.read_text(encoding="utf-8"))
-            }
-    covered = declared & exercised
-    uncovered = sorted(declared - exercised)
-    report.add(
-        "shapes:fixture-coverage",
-        True,
-        f"{len(covered)}/{len(declared)} shapes have an invalid fixture pinning them; "
-        f"{len(uncovered)} uncovered (ADR-0032 §8 follow-up).\n"
-        f"uncovered: {', '.join(uncovered)}",
-        skipped=True,
-    )
+        for f in sorted(invalid_dir.glob("*.ttl")):
+            for name in sorted(_headers(EXPECT_RE, f.read_text(encoding="utf-8"))):
+                if name in cov.declared:
+                    cov.pinned.add(name)
+                else:
+                    cov.problems.append(
+                        f"invalid/{f.name}: EXPECT-VIOLATION names unknown shape {name}"
+                    )
+
+    valid_dir = root / "valid"
+    if valid_dir.is_dir():
+        for f in sorted(valid_dir.glob("*.ttl")):
+            claimed = sorted(_headers(PROTECTS_RE, f.read_text(encoding="utf-8")))
+            if not claimed:
+                cov.problems.append(
+                    f"valid/{f.name}: declares no `# PROTECTS: mirash:ShapeName` header — a valid "
+                    "fixture must say which rule's legitimate case it is"
+                )
+                continue
+            try:
+                data = Graph()
+                data.parse(f.as_posix(), format="turtle")
+            except Exception as exc:  # noqa: BLE001
+                cov.problems.append(f"valid/{f.name}: parse error: {exc}")
+                continue
+            conforms, _, _ = run_shacl(data, onto, shapes)
+            targeted = targeted_shapes(data, onto, shapes)
+            for name in claimed:
+                if name not in cov.declared:
+                    cov.problems.append(f"valid/{f.name}: PROTECTS names unknown shape {name}")
+                elif not conforms:
+                    cov.problems.append(
+                        f"valid/{f.name}: does not conform, so it cannot protect {name}"
+                    )
+                elif name not in targeted:
+                    cov.problems.append(
+                        f"valid/{f.name}: claims to protect {name}, but that shape targets no node "
+                        "in this graph — it conforms only because the rule never looked at it"
+                    )
+                else:
+                    cov.protected.add(name)
+
+    exclusions = root / EXCLUSIONS_FILE
+    if exclusions.is_file():
+        try:
+            entries = json.loads(exclusions.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            cov.problems.append(f"{EXCLUSIONS_FILE}: not valid JSON: {exc}")
+            entries = []
+        for entry in entries if isinstance(entries, list) else []:
+            name = str(entry.get("shape", "")) if isinstance(entry, dict) else ""
+            reason = str(entry.get("reason", "")).strip() if isinstance(entry, dict) else ""
+            tracking = str(entry.get("tracking", "")).strip() if isinstance(entry, dict) else ""
+            if name not in cov.declared:
+                cov.problems.append(f"{EXCLUSIONS_FILE}: excludes unknown shape {name!r}")
+            elif len(reason) < 40 or not tracking:
+                cov.problems.append(
+                    f"{EXCLUSIONS_FILE}: exclusion of {name} needs a written reason (40+ chars) "
+                    "and a tracking reference"
+                )
+            elif name in cov.covered:
+                cov.problems.append(
+                    f"{EXCLUSIONS_FILE}: stale exclusion — {name} now has a valid+invalid pair; "
+                    "delete the entry"
+                )
+            else:
+                cov.excluded[name] = entry
+    return cov
+
+
+def check_fixture_coverage(report: Report, onto: Graph, shapes: Graph, root: Path) -> None:
+    """GATE: every named shape has a targeted invalid fixture AND a valid fixture it targets.
+
+    This was an informational SKIP until #5528. The failure mode it now closes is silent: a
+    fixture directory holding two files made every phase green and read as "the shapes are
+    covered" while forty rules had never been exercised. A shape may be left uncovered only by a
+    written exclusion (reason + tracking) in `coverage-exclusions.json`.
+    """
+    cov = fixture_coverage(onto, shapes, root)
+    if not cov.declared:
+        report.add("shapes:fixture-coverage", False, "no named shapes declared")
+        return
+    lines = [
+        f"{len(cov.covered)}/{len(cov.declared)} shapes covered by a valid+invalid pair; "
+        f"{len(cov.excluded)} explicitly excluded; {len(cov.missing)} missing."
+    ]
+    if cov.missing:
+        no_invalid = sorted(set(cov.missing) - cov.pinned)
+        no_valid = sorted(set(cov.missing) - cov.protected)
+        if no_invalid:
+            lines.append("no invalid fixture (EXPECT-VIOLATION): " + ", ".join(no_invalid))
+        if no_valid:
+            lines.append("no valid fixture (PROTECTS): " + ", ".join(no_valid))
+    for name in sorted(cov.excluded):
+        lines.append(f"excluded: {name} — {cov.excluded[name].get('tracking')}")
+    lines.extend(cov.problems)
+    passed = not cov.missing and not cov.problems
+    report.add("shapes:fixture-coverage", passed, "\n".join(lines))
+    report.coverage_summary = lines[0]
 
 
 def check_valid_fixtures(report: Report, onto: Graph, shapes: Graph, root: Path) -> None:
     valid_dir = root / "valid"
     if not valid_dir.is_dir():
-        report.add(
-            "fixtures:valid:present",
-            True,
-            f"{valid_dir} does not exist yet — fixtures are a follow-up phase (ADR-0032 §8), "
-            "not a regression. An empty (but present) directory still FAILs.",
-            skipped=True,
-        )
+        report.add("fixtures:valid:present", False, f"{valid_dir} does not exist")
         return
     files = sorted(valid_dir.glob("*.ttl"))
     if not files:
@@ -389,13 +569,7 @@ def check_valid_fixtures(report: Report, onto: Graph, shapes: Graph, root: Path)
 def check_invalid_fixtures(report: Report, onto: Graph, shapes: Graph, root: Path) -> None:
     invalid_dir = root / "invalid"
     if not invalid_dir.is_dir():
-        report.add(
-            "fixtures:invalid:present",
-            True,
-            f"{invalid_dir} does not exist yet — fixtures are a follow-up phase (ADR-0032 §8), "
-            "not a regression. An empty (but present) directory still FAILs.",
-            skipped=True,
-        )
+        report.add("fixtures:invalid:present", False, f"{invalid_dir} does not exist")
         return
     files = sorted(invalid_dir.glob("*.ttl"))
     if not files:
@@ -403,7 +577,8 @@ def check_invalid_fixtures(report: Report, onto: Graph, shapes: Graph, root: Pat
         return
     for f in files:
         source = f.read_text(encoding="utf-8")
-        expected = {m.split(":")[-1] for m in EXPECT_RE.findall(source)}
+        expected = _headers(EXPECT_RE, source)
+        also = _headers(ALSO_RE, source)
         if not expected:
             report.add(
                 f"fixtures:invalid:{f.name}",
@@ -430,19 +605,334 @@ def check_invalid_fixtures(report: Report, onto: Graph, shapes: Graph, root: Pat
             continue
         fired = violated_shapes(results_graph, shapes)
         unmet = expected - fired
+        silent_also = also - fired
+        undeclared = fired - expected - also
+        problems: list[str] = []
+        if unmet:
+            problems.append(f"expected shapes did not fire: {sorted(unmet)}")
+        if undeclared:
+            problems.append(
+                f"shapes fired that the fixture does not declare: {sorted(undeclared)} — an "
+                "invalid fixture must fail for its declared reason ONLY. Remove the unrelated "
+                "violation, or if the co-firing is unavoidable declare it with "
+                "`# ALSO-FIRES: mirash:ShapeName <why>`"
+            )
+        if silent_also:
+            problems.append(
+                f"declared ALSO-FIRES shapes did not fire: {sorted(silent_also)} — the header "
+                "is a stale statement about the shapes; delete it"
+            )
         report.add(
             f"fixtures:invalid:{f.name}",
-            not unmet,
+            not problems,
             ""
-            if not unmet
-            else (
-                f"expected shapes did not fire: {sorted(unmet)}\n"
-                f"shapes that DID fire: {sorted(fired)}\n{text}"
-            ),
+            if not problems
+            else "\n".join(problems) + f"\nshapes that DID fire: {sorted(fired)}\n{text}",
         )
 
 
 # ── main ───────────────────────────────────────────────────────────────
+
+
+# ── Phase 5: runtime contract (#5528) ──────────────────────────────────
+#
+# The phases above prove the ontology is self-consistent. They say nothing about whether the
+# application agrees with it — nothing in a live workflow calls this validator. This phase
+# checks the one file that records that relationship, ontology/mappings/runtime-contract.v1.json:
+#
+#   * every named shape states whether the application enforces it (runtime), only this tool
+#     checks it (offline_only), or the application does not do it today (planned);
+#   * a `runtime` claim must rest on a contract whose test exists and is not an expected failure;
+#   * each controlled vocabulary is compared, by reading the source, with the database CHECK
+#     constraints and Python constants it is "grounded in". A difference must be declared with a
+#     reason, and a declared difference that is no longer real fails too.
+#
+# It reads files only: no database, no imports of application code, no network.
+
+RUNTIME_CONTRACT = ONTOLOGY_DIR / "mappings" / "runtime-contract.v1.json"
+ENFORCEMENT_VALUES = ("runtime", "offline_only", "planned")
+_TABLE_RE = re.compile(r"(?:CREATE TABLE(?: IF NOT EXISTS)?|ALTER TABLE)\s+(\w+)", re.IGNORECASE)
+
+
+def _sql_check_values(path: Path, table: str, column: str) -> set[str]:
+    """The literals in `CHECK (<column> [IS NULL OR <column>] IN (...))` under `table`."""
+    text = path.read_text(encoding="utf-8")
+    check_re = re.compile(
+        rf"CHECK\s*\(\s*{re.escape(column)}\s+(?:IS NULL OR\s+{re.escape(column)}\s+)?IN\s*\(([^)]*)\)",
+        re.IGNORECASE,
+    )
+    found: list[set[str]] = []
+    for m in check_re.finditer(text):
+        owners = _TABLE_RE.findall(text[: m.start()])
+        if owners and owners[-1].lower() == table.lower():
+            found.append(set(re.findall(r"'([^']*)'", m.group(1))))
+    if len(found) != 1:
+        raise ValueError(f"{len(found)} CHECK constraints on {table}.{column} in {path.name}")
+    return found[0]
+
+
+def _python_values(path: Path, source: dict) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    kind = source["kind"]
+    if kind == "python_enum":
+        for node in tree.body:
+            if isinstance(node, ast.ClassDef) and node.name == source["name"]:
+                return {
+                    ast.literal_eval(st.value)
+                    for st in node.body
+                    if isinstance(st, ast.Assign) and isinstance(st.value, ast.Constant)
+                }
+        raise ValueError(f"no class {source['name']} in {path.name}")
+    wanted = [source["name"]] if kind == "python_set" else list(source["names"])
+    values: dict[str, set[str]] = {}
+    for node in ast.walk(tree):
+        target = None
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target = node.targets[0]
+        elif isinstance(node, ast.AnnAssign):
+            target = node.target
+        if not isinstance(target, ast.Name) or target.id not in wanted or node.value is None:
+            continue
+        value = node.value
+        if isinstance(value, ast.Call) and value.args:  # frozenset({...})
+            value = value.args[0]
+        literal = ast.literal_eval(value)
+        values[target.id] = {literal} if isinstance(literal, str) else set(literal)
+    missing = [n for n in wanted if n not in values]
+    if missing:
+        raise ValueError(f"no literal assignment for {missing} in {path.name}")
+    return set().union(*values.values())
+
+
+def _source_values(source: dict) -> set[str]:
+    path = REPO_ROOT / source["file"]
+    if source["kind"] == "sql_check":
+        return _sql_check_values(path, source["table"], source["column"])
+    if source["kind"] in ("python_set", "python_constants", "python_enum"):
+        return _python_values(path, source)
+    raise ValueError(f"unknown source kind {source['kind']!r}")
+
+
+def _source_label(source: dict) -> str:
+    where = source.get("table") or source.get("name") or "+".join(source.get("names", []))
+    return f"{Path(source['file']).name}:{where}"
+
+
+def check_vocabulary_drift(report: Report, onto: Graph, mapping: dict) -> None:
+    for vocab in mapping.get("vocabularies", []):
+        cls = vocab["ontology_class"]
+        labels = {
+            str(o) for s in onto.subjects(RDF.type, MIRA[cls]) for o in onto.objects(s, RDFS.label)
+        }
+        for source in vocab["sources"]:
+            name = f"vocab:{cls}:{_source_label(source)}"
+            if not labels:
+                report.add(name, False, f"mira:{cls} has no labelled members in the ontology")
+                continue
+            try:
+                runtime = _source_values(source)
+            except (OSError, ValueError, SyntaxError, KeyError) as exc:
+                report.add(name, False, f"cannot read the runtime vocabulary: {exc}")
+                continue
+            only_onto, only_run = sorted(labels - runtime), sorted(runtime - labels)
+            want_onto = sorted(source.get("ontology_only", []))
+            want_run = sorted(source.get("runtime_only", []))
+            problems = []
+            if (only_onto, only_run) != (want_onto, want_run):
+                problems.append(
+                    f"ontology-only {only_onto} / runtime-only {only_run}; "
+                    f"the mapping declares {want_onto} / {want_run}"
+                )
+            if (want_onto or want_run) and len(str(source.get("reason", "")).strip()) < 20:
+                problems.append("a declared difference needs a reason (20+ characters)")
+            report.add(name, not problems, "; ".join(problems))
+
+
+def _test_markers(test_id: str) -> tuple[bool, bool, bool]:
+    """(exists, is_xfail, is_strict) for a `path::Class::function` test id, read with ast."""
+    try:
+        rel, cls_name, fn_name = test_id.split("::")
+        tree = ast.parse((REPO_ROOT / rel).read_text(encoding="utf-8"))
+    except (ValueError, OSError, SyntaxError):
+        return False, False, False
+    for cls in tree.body:
+        if not (isinstance(cls, ast.ClassDef) and cls.name == cls_name):
+            continue
+        for fn in cls.body:
+            if isinstance(fn, ast.FunctionDef) and fn.name == fn_name:
+                decorators = [ast.unparse(d) for d in fn.decorator_list]
+                xfail = [d for d in decorators if "xfail" in d]
+                return True, bool(xfail), any("strict=True" in d for d in xfail)
+    return False, False, False
+
+
+def check_runtime_contract(
+    report: Report, onto: Graph, shapes: Graph, mapping_path: Path = RUNTIME_CONTRACT
+) -> None:
+    try:
+        mapping = json.loads(mapping_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        report.add("runtime:mapping-file", False, f"{mapping_path}: {exc}")
+        return
+
+    contracts: dict = mapping.get("contracts", {})
+    problems = []
+    for cid, c in sorted(contracts.items()):
+        for rel in c.get("code", []):
+            if not (REPO_ROOT / rel).is_file():
+                problems.append(f"{cid}: code path {rel} does not exist")
+        if not c.get("call_path"):
+            problems.append(f"{cid}: no call_path — an unused adapter is not enforcement")
+        exists, xfail, strict = _test_markers(c.get("test", ""))
+        if not exists:
+            problems.append(f"{cid}: test {c.get('test')!r} not found")
+        elif c.get("status") == "agrees" and xfail:
+            problems.append(f"{cid}: status 'agrees' but its test is marked xfail")
+        elif c.get("status") == "disagrees":
+            if not (xfail and strict):
+                problems.append(f"{cid}: status 'disagrees' needs a strict xfail test")
+            if not c.get("tracking"):
+                problems.append(f"{cid}: status 'disagrees' needs a tracking reference")
+        elif c.get("status") not in ("agrees", "disagrees"):
+            problems.append(f"{cid}: status must be agrees|disagrees")
+    report.add("runtime:contracts", not problems, "\n".join(problems))
+
+    declared = declared_shapes(shapes)
+    entries: dict = mapping.get("shapes", {})
+    problems = [f"{s}: no entry in {mapping_path.name}" for s in sorted(declared - set(entries))]
+    problems += [
+        f"{s}: entry for a shape that does not exist" for s in sorted(set(entries) - declared)
+    ]
+    counts = dict.fromkeys(ENFORCEMENT_VALUES, 0)
+    for shape, entry in sorted(entries.items()):
+        status = entry.get("enforcement")
+        if status not in ENFORCEMENT_VALUES:
+            problems.append(f"{shape}: enforcement must be one of {ENFORCEMENT_VALUES}")
+            continue
+        counts[status] += 1
+        refs = entry.get("contracts", [])
+        unknown = [r for r in refs if r not in contracts]
+        if unknown:
+            problems.append(f"{shape}: unknown contract(s) {unknown}")
+        if status == "runtime":
+            if not refs:
+                problems.append(f"{shape}: 'runtime' needs at least one contract test")
+            if any(contracts.get(r, {}).get("status") != "agrees" for r in refs):
+                problems.append(f"{shape}: 'runtime' rests on a contract the application fails")
+            if not entry.get("scope"):
+                problems.append(f"{shape}: 'runtime' must state its scope")
+        if status == "planned" and not entry.get("tracking"):
+            problems.append(f"{shape}: 'planned' needs a tracking reference")
+    report.runtime_summary = (
+        f"{counts['runtime']} enforced at runtime (within a stated scope), "
+        f"{counts['offline_only']} offline-only, {counts['planned']} not done by the application"
+    )
+    report.add("runtime:shape-mapping", not problems, "\n".join(problems))
+    check_vocabulary_drift(report, onto, mapping)
+
+
+# ── Shape inventory (generated document) ───────────────────────────────
+
+INVENTORY_FILE = ONTOLOGY_DIR / "SHAPE-INVENTORY.md"
+_ENFORCEMENT_TEXT = {
+    "runtime": "**Runtime**",
+    "offline_only": "Offline only",
+    "planned": "Not done by the app",
+}
+
+
+def _shape_rule(shapes: Graph, name: str) -> str:
+    node = MIRASH[name]
+    label = shapes.value(node, RDFS.label)
+    if label is None:
+        for holder in [node, *shapes.objects(node, SH.property), *shapes.objects(node, SH.sparql)]:
+            label = shapes.value(holder, SH.message)
+            if label is not None:
+                break
+    text = re.sub(r"\s+", " ", str(label or "")).replace("|", "/").strip()
+    return text if len(text) <= 110 else text[:107] + "..."
+
+
+def render_inventory(shapes: Graph, root: Path, mapping: dict) -> str:
+    """One row per shape: rule, fixtures both ways, and what the application really does."""
+    by_shape: dict[str, dict[str, list[str]]] = {}
+    for kind, regex in (("valid", PROTECTS_RE), ("invalid", EXPECT_RE)):
+        for f in sorted((root / kind).glob("*.ttl")):
+            for shape in _headers(regex, f.read_text(encoding="utf-8")):
+                by_shape.setdefault(shape, {}).setdefault(kind, []).append(f.stem)
+    excluded = {}
+    exclusions = root / EXCLUSIONS_FILE
+    if exclusions.is_file():
+        excluded = {e["shape"]: e for e in json.loads(exclusions.read_text(encoding="utf-8"))}
+    contracts = mapping.get("contracts", {})
+    lines = [
+        "# MIRA ontology: shape inventory",
+        "",
+        "Generated by `python tools/validate_ontology.py --write-inventory`. Do not edit by hand:",
+        "the validator fails when this file is out of date. Sources: the shape files, the fixture",
+        "headers, `fixtures/coverage-exclusions.json` and `mappings/runtime-contract.v1.json`.",
+        "",
+        "**Runtime** means a contract test runs the real application code and it rejects the bad",
+        "case, within the scope stated. **Offline only** means nothing but the validator checks",
+        "the rule, against fixtures; no live workflow calls the validator. **Not done by the app**",
+        "means the application behaves differently today (the tracking issue owns the repair).",
+        "",
+        "| Shape | Rule | Valid example | Invalid example | Enforcement | Runtime counterpart / gap |",
+        "|---|---|---|---|---|---|",
+    ]
+    for name in sorted(declared_shapes(shapes)):
+        entry = mapping.get("shapes", {}).get(name, {})
+        fx = by_shape.get(name, {})
+        cell = lambda items: "<br>".join(f"`{i}`" for i in items) or "none"  # noqa: E731
+        notes = []
+        if entry.get("scope"):
+            notes.append(f"Scope: {entry['scope']}.")
+        for cid in entry.get("contracts", []):
+            c = contracts.get(cid, {})
+            verdict = (
+                "agrees" if c.get("status") == "agrees" else f"DISAGREES ({c.get('tracking')})"
+            )
+            notes.append(f"Contract `{cid}`: app {verdict}.")
+        if entry.get("reason"):
+            notes.append(f"{entry['reason']} ({entry.get('tracking')})")
+        if entry.get("nearest_runtime"):
+            notes.append(f"Nearest runtime check: {entry['nearest_runtime']}.")
+        if name in excluded:
+            notes.append(f"Fixture coverage excluded: {excluded[name]['reason']}")
+        row = [
+            f"`{name}`",
+            _shape_rule(shapes, name),
+            cell(fx.get("valid", [])),
+            cell(fx.get("invalid", [])),
+            _ENFORCEMENT_TEXT.get(entry.get("enforcement", ""), "UNMAPPED"),
+            " ".join(notes).replace("|", "/") or "none",
+        ]
+        lines.append("| " + " | ".join(row) + " |")
+    lines += [
+        "",
+        "## Runtime contracts",
+        "",
+        "| Contract | Rule | App | Call path | Test |",
+        "|---|---|---|---|---|",
+    ]
+    for cid, c in sorted(contracts.items()):
+        verdict = "agrees" if c.get("status") == "agrees" else f"disagrees ({c.get('tracking')})"
+        lines.append(
+            f"| `{cid}` | {c.get('rule', '')} | {verdict} | {c.get('call_path', '')} "
+            f"| `{c.get('test', '').split('::', 1)[-1]}` |"
+        )
+    return "\n".join(lines) + "\n"
+
+
+def check_inventory_current(report: Report, shapes: Graph, root: Path, mapping: dict) -> None:
+    wanted = render_inventory(shapes, root, mapping)
+    current = INVENTORY_FILE.read_text(encoding="utf-8") if INVENTORY_FILE.is_file() else ""
+    report.add(
+        "runtime:inventory-current",
+        current == wanted,
+        f"{INVENTORY_FILE.relative_to(REPO_ROOT)} is out of date; "
+        "run: python tools/validate_ontology.py --write-inventory",
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -451,12 +941,17 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--fixtures", type=Path, default=FIXTURES_DIR, help="fixture root directory")
     ap.add_argument(
         "--only",
-        choices=["syntax", "hygiene", "valid", "invalid"],
+        choices=["syntax", "hygiene", "valid", "invalid", "runtime"],
         action="append",
         help="run only the named phase(s); repeatable",
     )
+    ap.add_argument(
+        "--write-inventory",
+        action="store_true",
+        help=f"regenerate {INVENTORY_FILE.name} from the shapes, fixtures and runtime mapping",
+    )
     args = ap.parse_args(argv)
-    phases = set(args.only or ["syntax", "hygiene", "valid", "invalid"])
+    phases = set(args.only or ["syntax", "hygiene", "valid", "invalid", "runtime"])
 
     report = Report()
     onto, shapes = check_syntax(report)
@@ -474,7 +969,16 @@ def main(argv: list[str] | None = None) -> int:
         check_valid_fixtures(report, onto, shapes, args.fixtures)
     if "invalid" in phases:
         check_invalid_fixtures(report, onto, shapes, args.fixtures)
-        check_fixture_coverage(report, shapes, args.fixtures)
+        check_fixture_coverage(report, onto, shapes, args.fixtures)
+    if "runtime" in phases:
+        check_runtime_contract(report, onto, shapes)
+        if RUNTIME_CONTRACT.is_file() and args.fixtures == FIXTURES_DIR:
+            mapping = json.loads(RUNTIME_CONTRACT.read_text(encoding="utf-8"))
+            if args.write_inventory:
+                INVENTORY_FILE.write_text(
+                    render_inventory(shapes, args.fixtures, mapping), encoding="utf-8"
+                )
+            check_inventory_current(report, shapes, args.fixtures, mapping)
 
     print(report.to_json() if args.format == "json" else report.to_text())
     return 0 if report.ok else 1

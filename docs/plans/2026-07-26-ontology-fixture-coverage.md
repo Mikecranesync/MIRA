@@ -7,6 +7,60 @@
 
 ---
 
+## Update 2026-11-14 (#5528, audit #5518): coverage is a gate, and the runtime contract is written down
+
+Measured on `main` at `20fda901e3`: 28 checks passed, fixture coverage was a SKIP, and 11 of 42
+shapes had a targeted invalid fixture. After this work (local evidence; see #5528 for the exact
+revision and commands):
+
+- **All 42 shapes** have an invalid fixture that fails for its declared shape and nothing
+  undeclared, plus a conforming valid twin the shape demonstrably targets. No exclusions.
+  `InstanceOfDirectionShape` could never fire under RDFS inference; it was rewritten to look at
+  what the object was declared as, and now rejects `instance_of` a manufacturer or another instance.
+- Missing coverage is a counted **FAIL** in `tools/validate_ontology.py`, not a skip. So are absent
+  fixture directories, a stale exclusion, an invalid fixture that fires a shape it did not declare,
+  and a valid fixture whose shape never looks at it.
+- Phases 5 and 6 below are done differently from the original sketch. The mapping is one JSON file,
+  `ontology/mappings/runtime-contract.v1.json`, and the drift check is a phase of the validator
+  (not a separate `tools/ontology_drift_check.py`), because the CI workflow file is a guarded
+  control path and the validator is already the thing CI runs.
+- `ontology/SHAPE-INVENTORY.md` is the per-shape table (rule, valid example, invalid example,
+  enforcement, runtime counterpart). It is generated, and the validator fails when it is stale.
+
+### Which rules protect a live workflow
+
+Only these, each within the scope stated in the inventory, each backed by a test that runs the
+real code (`tests/test_ontology_runtime_contract.py`):
+
+| Rule | What actually enforces it |
+|---|---|
+| Approval state must be from the allowed set | PostgreSQL CHECK from migration 029 (run on a throwaway database) |
+| No live diagnosis or numeric claim over lost drive comms | `mira-bots/shared/live_snapshot.py` (GS10 path, comms-lost case only) |
+| A fault code is answered from one drive family only | drive-pack resolver and answerer (drive-pack answers only) |
+
+Everything else (35 shapes) is checked **offline only**: nothing in a live workflow calls the
+validator, and `materialized_evidence.evidence_from_ontology_validation` has no production caller.
+One of the 35 is close but not live: the CV-101 anomaly rule A6 keeps a run command apart from run
+feedback and its contract test passes on both the source and the gateway copy, but the gateway
+endpoint that would run it is not installed on the bench, so it protects no workflow today.
+Three shapes describe behaviour the application does **not** have today, and one more
+disagreement has no shape of its own. Their tests are strict expected failures that name the
+owning issue:
+
+- a superseded fact stays verified and keeps being served (#5523, two shapes);
+- two drive models that share a fault code collapse into one graph identity (#5520);
+- readers look for a relationship under a name approval never stores (#5519; source-level check).
+
+Two limits of the ontology itself are pinned the same way under #5528: `instance_of` an object
+with no declared type conforms, and the wrong-family fault rule is silent for a drive with no
+declared family.
+
+The Hub (TypeScript) twins of the two approval helpers are not executed by these Python tests;
+they have their own Hub tests, cited in the mapping, which assert the same actor rule and the
+same supersede mapping (so the Hub path has the same #5523 gap).
+
+Not covered by a contract test here, and still open: running the Hub TypeScript itself (the #5519 check reads source only), any age-based staleness rule, and the knowledge-graph side of fault-family scope.
+
 ## Where this starts
 
 PR #2936 landed the foundation: 6 Turtle modules, 6 SHACL shape files (42 shapes),

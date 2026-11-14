@@ -49,8 +49,8 @@ mira:approval_verified     a mira:ApprovalState ; rdfs:label "verified" ;     mi
 mira:approval_rejected     a mira:ApprovalState ; rdfs:label "rejected" ;     mira:grounded_in "mig 029 CHECK (both tables)" ; mira:term_status "canonical" .
 mira:approval_needs_review a mira:ApprovalState ; rdfs:label "needs_review" ; mira:grounded_in "mig 029 CHECK (both tables)" ; mira:term_status "canonical" .
 mira:approval_deprecated   a mira:ApprovalState ; rdfs:label "deprecated" ;
-    rdfs:comment "kg_relationships ONLY — kg_entities.approval_state has no such value (mig 029 lines 25 vs 31)." ;
-    mira:grounded_in "mig 029 CHECK (kg_relationships only)" ; mira:term_status "canonical" .
+    rdfs:comment "kg_entities ONLY — the kg_relationships CHECK (mig 029 line 25) has no such value; the kg_entities CHECK (line 31) does. So a relationship row cannot be marked deprecated today, and the ADR-0017 supersede trigger leaves kg approval_state unchanged (#5523). Checked against the migration by tools/validate_ontology.py (vocab:ApprovalState) and on a real PostgreSQL by tests/test_ontology_runtime_contract.py." ;
+    mira:grounded_in "mig 029 CHECK (kg_entities only)" ; mira:term_status "canonical" .
 
 ##  Trust state — the PrintSense vocabulary  ###########################
 #  Phase-0 finding F1: PrintSense splits `verified` into machine_verified vs human_verified.

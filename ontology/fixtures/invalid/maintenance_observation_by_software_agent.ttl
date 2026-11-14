@@ -1,0 +1,10 @@
+# EXPECT-VIOLATION: mirash:TechnicianObservationActorShape
+#
+# A "technician observation" whose only author is a software agent.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:mira_bot a mira:SoftwareAgent .
+ex:obs_1 a mira:TechnicianObservation ; mira:proposed_by ex:mira_bot .

@@ -1,0 +1,9 @@
+# EXPECT-VIOLATION: mirash:ResolutionEvidenceShape
+#
+# A resolution no work order closed with: folklore, not plant ground truth.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:tightened_lug a mira:Resolution .

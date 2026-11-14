@@ -1,0 +1,11 @@
+# PROTECTS: mirash:AssetClassHasNoUnsPathShape
+#
+# The model carries no plant address; the installed drive does.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:gs10_2p0 a mira:AssetClass ; mira:display_name "GS10 2.0 hp" .
+ex:vfd_101  a mira:AssetInstance ; mira:instance_of ex:gs10_2p0 ;
+            mira:uns_path "enterprise.garage.demo_cell.cv_101.vfd_101" .

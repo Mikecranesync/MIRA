@@ -1,0 +1,25 @@
+# EXPECT-VIOLATION: mirash:ClockProvenanceShape
+#
+# R12c — the observation was stamped by MIRA's OWN ingest clock, yet presents an
+# event_timestamp as though the PLC had reported one. tag_events carries two clocks
+# (event_timestamp from the device/gateway, ingested_at from MIRA); collapsing them shows a
+# technician an ingest time as if it were the device's.
+#
+# "Unavailable" must stay unavailable — it cannot be converted into an observed PLC timestamp.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:plc     a mira:SourceDocument .
+ex:tag_src a mira:Citation ; mira:cite_doc ex:plc ; mira:cite_locator "enterprise.site.line.cv101.dc_bus" .
+ex:run_status a mira:StatusSignal .
+
+ex:obs_wrongclock a mira:Observation ;
+    mira:observed_signal ex:run_status ;
+    mira:value true ; mira:value_type mira:valuetype_bool ;
+    mira:clock_source mira:clock_ingest ;
+    mira:event_timestamp "2026-07-26T14:03:00Z"^^xsd:dateTime ;
+    mira:quality mira:quality_good ;
+    mira:freshness mira:freshness_live ;
+    mira:supported_by ex:tag_src .

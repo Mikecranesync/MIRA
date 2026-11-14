@@ -1,3 +1,5 @@
+# PROTECTS: mirash:SupersededStateShape
+#
 # R14c satisfied — the superseded assertion has left the verified set (deprecated), so
 # verified-only queries no longer return it.
 

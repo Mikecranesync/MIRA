@@ -169,7 +169,7 @@ mirash:SupersededStateShape
     sh:targetClass mira:Assertion ;
     rdfs:label "R14c superseded assertions leave the verified set" ;
     sh:sparql [
-        sh:message "R14c supersession: assertion {$this} is superseded but still carries approval_state=verified. Per ADR-0017 a supersede trigger moves the row to 'deprecated' — a superseded edge left verified stays in every downstream verified-only query." ;
+        sh:message "R14c supersession: assertion {$this} is superseded but still carries approval_state=verified. A superseded edge left verified stays in every downstream verified-only query. (The application does NOT do this yet: the ADR-0017 supersede trigger deprecates the relationship proposal and leaves the graph row verified — #5523.)" ;
         sh:severity sh:Violation ;
         sh:prefixes mirash:prefixes ;
         sh:select """
@@ -189,7 +189,7 @@ mirash:AssertionShape
     sh:targetClass mira:Assertion ;
     sh:property [
         sh:path mira:approval_state ; sh:maxCount 1 ; sh:class mira:ApprovalState ;
-        sh:message "Assertion {$this} carries an approval_state outside the mig-029 CHECK set (proposed|verified|rejected|needs_review|deprecated)." ;
+        sh:message "Assertion {$this} carries an approval_state outside the approval vocabulary (proposed|verified|rejected|needs_review|deprecated; the database allows 'deprecated' on kg_entities only)." ;
         sh:severity sh:Violation ;
     ] ;
     sh:property [

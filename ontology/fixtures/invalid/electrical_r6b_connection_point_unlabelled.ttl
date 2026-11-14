@@ -1,0 +1,9 @@
+# EXPECT-VIOLATION: mirash:ConnectionPointShape
+#
+# R6b. A landing with no terminal label: the device is known, the screw is not.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:somewhere_on_k1 a mira:ConnectionPoint .

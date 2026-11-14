@@ -1,3 +1,5 @@
+# PROTECTS: mirash:MachineVerifiedIsNotApprovedShape
+#
 # R10c satisfied — machine_verified maps to approval_state=proposed, per the ADR-0032 §7
 # crosswalk. The machine did strong work; it just does not get to call itself verified.
 

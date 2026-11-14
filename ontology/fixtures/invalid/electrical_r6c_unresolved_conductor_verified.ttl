@@ -1,0 +1,19 @@
+# EXPECT-VIOLATION: mirash:VerifiedConductorNoUnresolvedShape
+#
+# R6c. A wire whose far end was never read is marked verified. The approval itself is complete
+# (a technician, a timestamp, a cited sheet) so the R9 approval rule is satisfied and the ONLY thing
+# wrong is what was approved. Anything carrying approval_state is an Assertion to the validator, so a
+# bare "verified" with no approver would trip R9 instead and prove nothing about R6c.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:tech   a mira:Technician .
+ex:sheet4 a mira:SourceDocument .
+ex:cite   a mira:Citation ; mira:cite_doc ex:sheet4 ; mira:cite_locator "sheet 4, zone C3" .
+ex:x1_3 a mira:ConnectionPoint ; mira:terminal_label "X1:3" .
+ex:w101 a mira:Conductor ; mira:wire_number "101" ; mira:terminates_at ex:x1_3 ;
+        mira:endpoint_unresolved true ; mira:approval_state mira:approval_verified ;
+        mira:supported_by ex:cite ; mira:approved_by ex:tech ;
+        mira:approved_at "2026-07-20T14:03:00Z"^^xsd:dateTime .

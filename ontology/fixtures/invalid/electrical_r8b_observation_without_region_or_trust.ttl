@@ -1,0 +1,9 @@
+# EXPECT-VIOLATION: mirash:PrintObservationEvidenceShape
+#
+# R8b. A reading with no region to point at and no trust state.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:k1_symbol a mira:DeviceSymbol .

@@ -209,6 +209,15 @@ follow-up work as fixtures.
 
 ## Follow-ups (tracked, not in this PR)
 
+> **Status of these follow-ups, 2026-11-14 (#5528):** (1) done for all 42 shapes, no exclusions,
+> and missing coverage now fails the validator. (3) done as a
+> validator phase that compares each controlled vocabulary with the migration CHECK constraints
+> and Python constants it is grounded in; it is narrower than "every canonical term". (4) the
+> validator already runs in CI and no longer skips. (2) the QUDT/PROV-O/ISO-14224 crosswalks are
+> still not written; `ontology/mappings/` now holds the runtime contract instead. Current numbers
+> and the list of rules that protect a live workflow: `ontology/SHAPE-INVENTORY.md` and
+> `docs/plans/2026-07-26-ontology-fixture-coverage.md`.
+
 1. Fixture coverage for the remaining 41 shapes (1 of 42 seeded here), each invalid fixture naming
    its expected shape(s). Run `tools/validate_ontology.py` for the current uncovered list.
 2. `ontology/mappings/` + `README.md` — the QUDT/PROV-O/ISO-14224 crosswalks currently only

@@ -1,4 +1,5 @@
 # EXPECT-VIOLATION: mirash:ProvenanceTierIsNotApprovalShape
+# ALSO-FIRES: mirash:ApprovedAssertionEvidenceShape R10d is subsumed by R9: a verified assertion with no approving Technician always violates R9's approved_by rule too
 #
 # R10d — a bench_verified SOURCE treated as a human APPROVAL. drive_packs/schema.py says
 # verbatim: «never bare "verified" (that word is reserved for kg_*.approval_state)». Provenance

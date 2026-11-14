@@ -44,14 +44,21 @@ mirash:ContainmentCycleShape
 and maintainable in SHACL-SPARQL (rdflib evaluates `mira:has_parent+` natively), so per the task's
 'otherwise document where cycle detection belongs' clause we implement it here rather than deferring.
 Cost is O(nodes x edges) on the validated subgraph — acceptable at the proposal-batch sizes in the
-latency budget (ADR-0032 §9), NOT at whole-plant scale. The budget check enforces that boundary.""" ;
+latency budget (ADR-0032 §9), NOT at whole-plant scale. The budget check enforces that boundary.
+
+Walks BOTH spellings of "up" (#5528 correction). The original path was `mira:has_parent+` only, so
+a loop written from the parent's side (a has_child b, b has_child a) or one mixing the two
+predicates conformed. has_child is the declared owl:inverseOf has_parent and MIRA runs no OWL
+reasoner to derive one from the other, so the path has to name both. A consequence: every direct
+self-loop is now also a one-step cycle, so SelfParentShape (R11a) never fires alone — it is kept
+for its plainer message.""" ;
     sh:sparql [
         sh:message "R11b containment: {$this} reaches itself through a chain of has_parent edges — the UNS hierarchy is a tree, not a cycle." ;
         sh:severity sh:Violation ;
         sh:prefixes mirash:prefixes ;
         sh:select """
             SELECT $this WHERE {
-                $this mira:has_parent+ $this .
+                $this (mira:has_parent|^mira:has_child)+ $this .
             }
         """ ;
     ] .
@@ -83,6 +90,25 @@ mirash:InstanceOfDirectionShape
     a sh:NodeShape ;
     sh:targetObjectsOf mira:instance_of ;
     rdfs:label "instance_of points at a class" ;
-    sh:class mira:AssetClass ;
-    sh:message "Direction error: the object of instance_of must be an AssetClass. An instance is never `instance_of` another instance." ;
-    sh:severity sh:Violation .
+    # This used to be a bare `sh:class mira:AssetClass`, which could never fail: validation runs
+    # with RDFS inference and instance_of declares rdfs:range mira:AssetClass, so every object is
+    # inferred to be an AssetClass before the check runs (#5528). Inference ADDS that type; it
+    # does not remove what the node already is. So the rule names the two things an installed
+    # asset gets wrongly pointed at: an installed asset, and a manufacturer.
+    # It is deliberately NOT "any other type": inference also types a node from the domain of
+    # every property it carries (a model with an approval_state reads as an Assertion), and
+    # that must not count as a wrong declaration.
+    # KNOWN LIMITS, pinned in tests/test_ontology_coverage_gate.py: an object with no declared
+    # type conforms (open world), and so does an object of some other unrelated kind (a signal).
+    sh:sparql [
+        sh:message "Direction error: {$this} is the object of instance_of but is a {?kind}, not an asset class. An instance is `instance_of` a model, never a manufacturer or another installed asset." ;
+        sh:severity sh:Violation ;
+        sh:prefixes mirash:prefixes ;
+        sh:select """
+            SELECT DISTINCT $this ?kind WHERE {
+                $this a ?declared .
+                ?declared rdfs:subClassOf* ?kind .
+                FILTER(?kind IN (mira:AssetInstance, mira:Manufacturer))
+            }
+        """ ;
+    ] .

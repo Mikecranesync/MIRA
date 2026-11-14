@@ -1,3 +1,5 @@
+# PROTECTS: mirash:ProvenanceTierIsNotApprovalShape
+#
 # R10d satisfied — a strong provenance tier AND a human approval. The tier describes the source;
 # the Technician provides the sign-off. Both present, neither substituting for the other.
 

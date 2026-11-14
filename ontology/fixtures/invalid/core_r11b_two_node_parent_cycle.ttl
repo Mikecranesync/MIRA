@@ -1,0 +1,11 @@
+# EXPECT-VIOLATION: mirash:ContainmentCycleShape
+#
+# R11b. Two nodes are each other's parent. Neither is its own parent, so the direct self-loop rule
+# (R11a) stays silent and only the cycle rule can catch it.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:line_1 a mira:Line     ; mira:has_parent ex:cell_1 .
+ex:cell_1 a mira:WorkCell ; mira:has_parent ex:line_1 .

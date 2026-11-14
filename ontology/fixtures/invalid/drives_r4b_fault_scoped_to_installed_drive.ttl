@@ -1,0 +1,14 @@
+# EXPECT-VIOLATION: mirash:FaultCodeScopeTargetShape
+#
+# R4b. A fault code is scoped to one installed drive instead of a family or model. A code's meaning
+# belongs to the product line, not to the unit on the wall.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:manual a mira:SourceDocument .
+ex:cite   a mira:Citation ; mira:cite_doc ex:manual ; mira:cite_locator "p.114" .
+ex:vfd_101 a mira:AssetInstance .
+ex:f007 a mira:FaultCode ; mira:fault_mnemonic "F007" ; mira:scoped_to ex:vfd_101 ;
+        mira:supported_by ex:cite .

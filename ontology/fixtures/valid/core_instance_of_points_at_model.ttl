@@ -1,0 +1,10 @@
+# PROTECTS: mirash:AssetClassInstanceShape
+#
+# instance_of runs from the installed thing to its model.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:gs10_2p0 a mira:AssetClass .
+ex:vfd_101  a mira:AssetInstance ; mira:instance_of ex:gs10_2p0 .

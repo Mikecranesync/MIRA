@@ -1,0 +1,11 @@
+# PROTECTS: mirash:VerifiedConductorNoUnresolvedShape
+#
+# R6c. The same half-read wire, left as a proposal.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:x1_3 a mira:ConnectionPoint ; mira:terminal_label "X1:3" .
+ex:w101 a mira:Conductor ; mira:wire_number "101" ; mira:terminates_at ex:x1_3 ;
+        mira:endpoint_unresolved true ; mira:approval_state mira:approval_proposed .

@@ -1,0 +1,15 @@
+# EXPECT-VIOLATION: mirash:TerminalOwnershipShape
+#
+# R7. A properly approved terminal that belongs to no device or strip: nobody can find it in the
+# panel. The approval is complete so only the ownership rule fires.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:tech   a mira:Technician .
+ex:sheet4 a mira:SourceDocument .
+ex:cite   a mira:Citation ; mira:cite_doc ex:sheet4 ; mira:cite_locator "sheet 4, zone C3" .
+ex:t3 a mira:Terminal ; mira:approval_state mira:approval_verified ;
+        mira:supported_by ex:cite ; mira:approved_by ex:tech ;
+        mira:approved_at "2026-07-20T14:03:00Z"^^xsd:dateTime .

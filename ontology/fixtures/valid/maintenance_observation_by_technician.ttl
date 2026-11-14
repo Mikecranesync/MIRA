@@ -1,0 +1,10 @@
+# PROTECTS: mirash:TechnicianObservationActorShape
+#
+# A person made the observation.
+
+@prefix mira: <https://ontology.factorylm.com/mira#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex:   <https://example.org/fx#> .
+
+ex:tech a mira:Technician .
+ex:obs_1 a mira:TechnicianObservation ; mira:proposed_by ex:tech .
