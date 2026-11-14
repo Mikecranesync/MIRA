@@ -6,13 +6,18 @@ import {
   benchSendRefusal,
   changeSelection,
   createBenchSendGate,
+  expectsComponentFrame,
+  isScopeRefusalCode,
   readBench,
   reconcileBench,
   prepareChatSend,
   recordBenchScope,
   type BenchScopes,
   type BenchState,
+  withoutScope,
 } from "./bench-components-logic";
+import { NotebookHttpError } from "@/components/equipment/notebook-chat-utils";
+import { livePartsWhileRunning } from "./to-interaction";
 
 /**
  * #5504 Codex r2: a question sent while a component change is still saving carried the version the
@@ -315,5 +320,113 @@ describe("after an uncertain change, nothing is sent until a fresh read succeeds
       load: panelLoad(gate, async () => okState(state(B, 4)), record), body,
     })).resolves.toEqual({ ok: true });
     expect(hostSend(gate, chat)).toBe(true);
+  });
+});
+
+describe("#5504 Codex post-cap 3: a gateway error never settles an uncertain change (F13, #5535)", () => {
+  const body = { threadId: SEL.threadId, componentId: B, via: "picker", expectedVersion: 3, clientRequestId: "r9" };
+
+  it("pick B, the reply is lost, the re-send gets a 504 while the list still shows the old state: Send stays refused", async () => {
+    const gate = readGate();
+    record(wholeMachine);
+    const chat = vi.fn();
+    let mode: "offline" | "gateway" | "answered" = "offline";
+    const put = async () => {
+      if (mode === "offline") throw new TypeError("offline");
+      if (mode === "gateway") return new Response("upstream timeout", { status: 504 });
+      return new Response("{}", { status: 200 });
+    };
+    const out = await changeSelection({ gate, fetch: put, url: "/sel", load: panelLoad(gate, async () => okState(state(B, 4)), record), body });
+    expect(out).toMatchObject({ ok: false });
+    expect(gate.pending).not.toBeNull();
+    mode = "gateway";
+    // The re-send answers 504 and the list still reads the old whole-machine state.
+    await expect(panelLoad(gate, async () => okState(wholeMachine), record)()).resolves.toEqual({ kind: "failed" });
+    expect(gate.pending).not.toBeNull();
+    expect(benchSendRefusal(gate)).toBe(SEND_UNRESOLVED_MESSAGE);
+    expect(hostSend(gate, chat)).toBe(false);
+    expect(chat).not.toHaveBeenCalled();
+    // The same request finally gets the app's answer: then Send carries B.
+    mode = "answered";
+    await expect(panelLoad(gate, async () => okState(state(B, 4)), record)()).resolves.toMatchObject({ kind: "loaded" });
+    expect(gate.pending).toBeNull();
+    expect(hostSend(gate, chat)).toBe(true);
+    expect(chat).toHaveBeenCalledWith(expect.objectContaining({ componentSelection: { threadId: "th-1", componentId: B, selectionVersion: 4 } }));
+  });
+
+  it("pick B and every attempt gets a 502: the change is left pending, never settled by the old list", async () => {
+    const gate = readGate();
+    record(wholeMachine);
+    const chat = vi.fn();
+    const put = vi.fn(async () => new Response("bad gateway", { status: 502 }));
+    const out = await changeSelection({ gate, fetch: put, url: "/sel", load: panelLoad(gate, async () => okState(wholeMachine), record), body });
+    expect(out).toMatchObject({ ok: false });
+    expect(put).toHaveBeenCalledTimes(3);
+    expect(gate.pending).not.toBeNull();
+    expect(hostSend(gate, chat)).toBe(false);
+  });
+
+  it("control: a definite app refusal (409) on the re-send does settle it, and the re-read decides", async () => {
+    const gate = readGate();
+    record(wholeMachine);
+    const chat = vi.fn();
+    let online = false;
+    const put = async () => {
+      if (!online) throw new TypeError("offline");
+      return new Response(JSON.stringify({ error: "selection_changed" }), { status: 409 });
+    };
+    await changeSelection({ gate, fetch: put, url: "/sel", load: panelLoad(gate, async () => okState(wholeMachine), record), body });
+    online = true;
+    await expect(panelLoad(gate, async () => okState(state(A, 5)), record)()).resolves.toMatchObject({ kind: "loaded" });
+    expect(gate.pending).toBeNull();
+    expect(hostSend(gate, chat)).toBe(true);
+    expect(chat).toHaveBeenCalledWith(expect.objectContaining({ componentSelection: { threadId: "th-1", componentId: A, selectionVersion: 5 } }));
+  });
+});
+
+describe("#5504 Codex post-cap 3: whole-machine answers stream as they arrive (F11, #5533)", () => {
+  it("a whole-machine send does not hold its text for a component frame; a component send does", () => {
+    const gate = readGate();
+    record(wholeMachine);
+    const bodies: object[] = [];
+    expect(hostSend(gate, (b) => bodies.push(b as object))).toBe(true);
+    gate.endSend();
+    expect(bodies[0]).toMatchObject({ componentSelection: { componentId: null } });
+    // What the host's send() puts on the live turn, and what the live render shows mid-stream.
+    const wholeExpected = expectsComponentFrame(bodies[0]!);
+    expect(wholeExpected).toBe(false);
+    expect(livePartsWhileRunning("Rated current is 4.2 A", undefined, { expected: wholeExpected, label: null })).toEqual([
+      { type: "text", text: "Rated current is 4.2 A" },
+    ]);
+    record(state(B, 4));
+    expect(hostSend(gate, (b) => bodies.push(b as object))).toBe(true);
+    const componentExpected = expectsComponentFrame(bodies[1]!);
+    expect(componentExpected).toBe(true);
+    expect(livePartsWhileRunning("Rated current is 4.2 A", undefined, { expected: componentExpected, label: null })).toEqual([]);
+  });
+});
+
+describe("#5504 Codex post-cap 3: a scope refusal inside the progress stream re-scopes the retry (F12, #5534)", () => {
+  it("selection_changed delivered as a stream error: the retry is asked again under what the header shows now", () => {
+    const gate = readGate();
+    record(state(A, 1));
+    const bodies: object[] = [];
+    expect(hostSend(gate, (b) => bodies.push(b as object))).toBe(true);
+    gate.endSend();
+    const sent = bodies[0]!;
+    // The host's catch: the refusal arrives as a NotebookHttpError from the progress stream.
+    const caught: unknown = new NotebookHttpError(409, "selection_changed");
+    const scopeRefused = caught instanceof NotebookHttpError && isScopeRefusalCode(caught.code);
+    expect(scopeRefused).toBe(true);
+    const failed = scopeRefused ? withoutScope(sent) : sent;
+    // The checklist re-read now shows B; Retry re-scopes the kept body from the header.
+    record(state(B, 2));
+    const retried = prepareChatSend({ gate, forThisGate: true, sel: SEL, scopes, body: failed as { message: string } });
+    expect(retried).toMatchObject({ ok: true, body: { componentSelection: { threadId: "th-1", componentId: B, selectionVersion: 2 } } });
+  });
+
+  it("control: other stream errors are not scope refusals, so the retry keeps the scope it was asked under", () => {
+    expect(isScopeRefusalCode("provider_unavailable")).toBe(false);
+    expect(isScopeRefusalCode("component_selection_thread_mismatch")).toBe(true);
   });
 });

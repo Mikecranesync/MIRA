@@ -75,7 +75,7 @@ import { ParkedSources } from "./ParkedSources";
 import { clearSheetDataForSignOut, localStorageStore, parseSheetReceipts } from "./living-sheet-client";
 import { NOTEBOOK_ACTIONS_STYLE } from "./notebook-actions";
 import { BenchComponents } from "./BenchComponents";
-import { SEND_BLOCKED_MESSAGE, benchSendRefusal, createBenchSendGate, parseComponentFrames, prepareChatSend, recordBenchScope, withoutScope, type BenchScopes, type BenchState, type ComponentTurnFrame, type ScopeField } from "./bench-components-logic";
+import { SEND_BLOCKED_MESSAGE, benchSendRefusal, createBenchSendGate, expectsComponentFrame, isScopeRefusalCode, parseComponentFrames, prepareChatSend, recordBenchScope, withoutScope, type BenchScopes, type BenchState, type ComponentTurnFrame, type ScopeField } from "./bench-components-logic";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
 import { answerTurnId, citationIndex, contextFor, lifecycleFromStream, livePartsWhileRunning, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus, withSettledFollowups, type SettledFollowups } from "./to-interaction";
 import {
@@ -535,7 +535,7 @@ export function HubShellHost() {
         // The route's own error codes, in plain language; never a bare status code.
         let code = "";
         try { code = String(((await res.json()) as { error?: unknown }).error ?? ""); } catch { /* no JSON body */ }
-        scopeRefused = code === "selection_changed" || code === "component_selection_thread_mismatch";
+        scopeRefused = isScopeRefusalCode(code);
         throw new Error(errorMessageFor(code, res.status));
       }
       // Only tee while a sheet is open for this notebook — zero behavior
@@ -555,7 +555,7 @@ export function HubShellHost() {
         const [forChat, forComponent] = stream.tee();
         stream = forChat;
         const key = `${sel.notebookId}|${sel.threadId}`;
-        setLive((cur) => (cur && cur.id === id ? { ...cur, componentExpected: true } : cur));
+        if (expectsComponentFrame(outBody)) setLive((cur) => (cur && cur.id === id ? { ...cur, componentExpected: true } : cur));
         componentRead = parseComponentFrames(forComponent, (frame) => {
           setComponentFrame({ key, frame });
           setLive((cur) => (cur && cur.id === id ? { ...cur, componentLabel: frame.label } : cur));
@@ -592,6 +592,8 @@ export function HubShellHost() {
       // #4687: a refusal delivered inside the progress stream is handled exactly
       // like the non-OK response above (signed out, or the route's own message).
       if (caught instanceof NotebookHttpError && caught.status === 401) { setSignedOut(true); return; }
+      // The same refusal inside the progress stream re-scopes the retry too (#5504 F12, #5534).
+      if (caught instanceof NotebookHttpError && isScopeRefusalCode(caught.code)) scopeRefused = true;
       const err = caught instanceof NotebookHttpError ? new Error(errorMessageFor(caught.code, caught.status)) : caught;
       const retained = retainedStreamInterruption(err);
       if (retained) {

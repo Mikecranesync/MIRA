@@ -106,6 +106,21 @@ export function scopedChatBody<B extends object>(
   return { ok: true, body: { ...rest, componentSelection } as B };
 }
 
+/**
+ * Whether this send's answer must name a component before its text is shown: only a scope
+ * that names one. An explicit whole-machine scope (`componentId: null`) gets no component
+ * frame from the server, so its text streams as it arrives (#5504 F11, #5533).
+ */
+export function expectsComponentFrame(body: object): boolean {
+  const scope = (body as { componentSelection?: ScopeField }).componentSelection;
+  return scope !== undefined && scope.componentId !== null;
+}
+
+/** The chat route's refusals that mean the scope the send carried is no longer the saved one. */
+export function isScopeRefusalCode(code: string | null | undefined): boolean {
+  return code === "selection_changed" || code === "component_selection_thread_mismatch";
+}
+
 /** The body without its scope, to be scoped again from what the header shows now. */
 export function withoutScope<B extends object>(body: B): Omit<B, "componentSelection"> {
   const { componentSelection: _scope, ...rest } = body as B & { componentSelection?: ScopeField };
@@ -401,19 +416,32 @@ export const SEND_UNRESOLVED_MESSAGE = "Checking the last component change with 
 
 /**
  * Send the unresolved write again, exactly as first sent (the same request id, so the
- * server replays its outcome, or applies it once). Any HTTP answer resolves it — saved,
- * replayed, or refused with the current selection; only a lost reply leaves it pending.
+ * server replays its outcome, or applies it once). Only the app's own answer resolves it —
+ * saved, replayed, or refused; a lost reply or a gateway/server error leaves it pending.
  */
 export async function resolvePendingWrite(gate: BenchSendGate): Promise<boolean> {
   const replay = gate.pending;
   if (!replay) return true;
+  let res: Response;
   try {
-    await replay();
+    res = await replay();
   } catch {
     return false;
   }
+  if (!isSettlingResponse(res)) return false;
   if (gate.pending === replay) gate.setPending(null);
   return true;
+}
+
+/**
+ * Whether a response to a selection write is the app's own answer: saved (2xx) or a definite
+ * refusal (4xx, other than timeout / rate limit). A 5xx — a gateway timeout, a proxy error,
+ * a server error — says nothing about whether the transaction committed, so the write stays
+ * pending (#5504 F13, #5535).
+ */
+export function isSettlingResponse(res: Response): boolean {
+  if (res.ok) return true;
+  return res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429;
 }
 
 /** Why a send in this gate's conversation cannot start now, or null when it can. */
@@ -503,9 +531,11 @@ export async function changeSelection(opts: {
     // #5504 post-cap F9: a lost reply is answered only by the same request (same request id):
     // the server returns what that request did. A checklist read cannot tell "not committed
     // yet" from "never will", so it never settles the write.
+    // A 5xx (gateway timeout, proxy error) is not that answer either (#5504 F13): send again.
     for (let attempt = 0; attempt < CHANGE_ATTEMPTS && !res; attempt++) {
       try {
-        res = await send();
+        const answer = await send();
+        res = isSettlingResponse(answer) ? answer : null;
       } catch {
         res = null;
       }
