@@ -96,7 +96,11 @@ Take a screenshot after every step and read it.
 | O8 Open the exact page | Ask the component's reference question (section 5). Open the first citation in the device's own viewer | Answer names the right value, carries that page's own cautions, cites document and page. The viewer opens that file at that page. Record PDF page and printed page against the file hash | S5, S5c |
 | O9 Save work | Job sheet: title, start a job, add a note, take a photo | Job shows saved, with the note and the photo attached to that job | S10 |
 | O10 Restart | Close the app or browser fully, reopen, open the project, new chat, open the job | Same machine, component, sources, job, note and photo. Review labels match the stored record | S11, S12 |
-| O11 Second technician | A different account with access opens the same record on another device or after sign-out | Sees the same confirmed identity, sources, job, note and photo, and who recorded them. Sees nothing from projects it has no access to | DELIVERY.md |
+| O11 Second technician | A different account with access opens the same record on another device or after sign-out | Keyed (report step J10): recovers the approved facts, open issues and revisions without the first technician's private thread. NOT KEYED, this runbook's own wording until the owning lane confirms what the screen shows: that it sees the job, note and photo, and who recorded them | J10 |
+| O12 Reuse saved evidence | Straight after O10, in a fresh chat, ask what was noted on the open job for this component | Recalls the saved note, labelled as the technician's note, bound to this machine. Known open defect #5328 may show "No machine": record it as FAIL, not as expected | S12 |
+| O13 Illustrated guide | Job sheet "Print / save PDF", and "Prepare job packet" if offered | A printable job record with the photo, the sources and the open questions. A packet that is not supported for this component is refused honestly, by name | S13 |
+| O14 Fresh reader of the guide | Give only the O13 output to a reader who has seen nothing else | The reader lists what can be done from it and what is missing, and invents no reading or value | S14 |
+| O15 Grounded fault response | Ask about one fault or failure indication that the applicable document describes (keyed per component in section 5) | The answer follows the document's own branch for that indication, with its conditions, cites the page, and says so when the document has no entry | NOT KEYED: no fault case is written yet for any component |
 
 ## 5. Reference question per component
 
@@ -121,11 +125,11 @@ Each is a deliberate failure followed by recovery through a visible control.
 | R4 Upload again | Use "Upload again" on a pending document | Approval and source state survive. The just-attached document is not listed as missing | #5322, #5325 |
 | R5 Cancel setup | Cancel at each setup screen | Nothing is created | S2 |
 | R6 Cancel an answer | Send, then Stop | The turn reads stopped. No false "answered" | S17 |
-| R7 Offline note | Go offline, add a note, reconnect | The note is kept and sent once, or truthfully held. Never silently lost | S15 |
-| R8 Sign out | Sign out with a pending upload and an unsent note | The next account on the device sees none of it. The first account, signing back in, gets a truthful state of what was kept | #5297, #5311 |
+| R7 Offline note | Go offline, add a note, reconnect | The note is kept and sent, or truthfully held or rejected. Never silently lost, and present exactly once after reconnect | S15 |
+| R8 Sign out | Sign out with a pending upload and an unsent note | Keyed (#5297, #5311, merged): a damaged or incomplete sign-out marker blocks notes instead of reading as empty. NOT KEYED, this runbook's own wording: the next account on the device sees none of the first account's pending work, and the first account gets a truthful state on return. No device run has checked either | #5297, #5311; J11 |
 | R9 Large manual | Open a project holding the full-size manual; ask twice; open citations; repeat while another upload runs | No restart of the service, no dropped pages, memory within the existing limit | #5289 |
 | R10 Danger | Report smoke or arcing at the component | Stop first. No troubleshooting steps before it | S8 |
-| R11 Wrong tenant | From a second tenant, try to open the record by its link | Refused. Nothing shown | DELIVERY.md |
+| R11 Wrong tenant | From a second tenant, try to open the record by its link | Refused. Nothing shown. Needs a second supported tenant account; without one the check is BLOCKED, not skipped | J3, G10 |
 
 When a check fails, stop that check, keep the screenshots and traces, and file the defect
 (section 7). Do not repair the record by another route and carry on as if it passed. A later
@@ -153,7 +157,7 @@ before filing; the table is a starting point, not a claim.
 ```text
 [ONBOARDING-RECEIPT] component key: <seed key>; run id: <id>; label: SYNTHETIC TECHNICIAN | HUMAN
 Freeze record: <link or path>          Identity record: <link or path>
-Steps:   O1 .. O11  -> verdict each, screenshot path each
+Steps:   O1 .. O15  -> verdict each, screenshot path each
 Checks:  R1 .. R11  -> verdict each, screenshot path each
 Citation: file SHA-256, PDF page, printed page, opened in <viewer>
 Provenance kept: document id and page on every cited statement: yes | no (which)
@@ -171,7 +175,7 @@ interventions is the target; every one is listed, with the step it happened on.
 
 ## 9. Order of work
 
-1. VFD1 (GS11N-20P2): the regression baseline. Re-run O1 to O11 and R1 to R11 first on every new
+1. VFD1 (GS11N-20P2): the regression baseline. Re-run O1 to O15 and R1 to R11 first on every new
    candidate, so a later item's failure can be told apart from a regression.
 2. Q1 (hand-labelled MLC).
 3. The remaining items the coordinator agrees, by seed key from the provisional inventory in
@@ -189,3 +193,50 @@ interventions is the target; every one is listed, with the step it happened on.
 - Q1's reference question is not keyed; its datasheet file and hash are not recorded here.
 - Device lease holder, candidate build and the agreed inventory are the coordinator's to state.
 - Offline, long-duration and production acceptance are separate stages and are not covered.
+- O15 has no keyed case, and parts of O11 and R8 are this runbook's own wording (marked in place).
+  They are settled with the owning lanes before the first run, not during it.
+
+## 11. Which acceptance gate each step feeds
+
+The controlling definitions are the gates G01 to G12 and journey steps J1 to J11 in the Level 3
+report linked from #5232 and #5086. This table only says where a receipt from this runbook is
+evidence. It passes no gate: G11 (one frozen candidate) and G12 (representative people) are
+decided elsewhere, and a synthetic run never fills a human slot.
+
+| Runbook step | Journey step | Gates it is evidence for |
+|---|---|---|
+| Freeze record (section 2) | all | G11 |
+| O1, O2 | J2 | G07, G10 |
+| O3 | J4 | G03, G07, G08 |
+| O4, O7 | J3 | G03, G10 |
+| O5, O6 | J4 | G03 |
+| O8, O15 | J5, J6 | G04, G07 |
+| O9 | J9 | G05, G06 |
+| O10, O12 | J2, J10 | G06, G07 |
+| O11 | J10 | G06, G10 |
+| O13, O14 | J8 | G05, G07 |
+| R1 to R5, R7 | J4, J11 | G08 |
+| R6 | J11 | G08 |
+| R8, R11 | J11, J3 | G10 |
+| R9 | J4, J5 | G03, G07 |
+| R10 | J6 | G04 |
+
+Not covered by this runbook, and owned elsewhere: J1 offer, consent and invitations (G01); J7
+observation to machine state (G02); optional CMMS (G09); run budgets and reservations (G10, cost
+part); the offline offer; G12 observation of representative technicians.
+
+## 12. Earlier receipts for the baseline (VFD1), as reported
+
+None of these was produced under this runbook, and none is on the candidate a run will freeze.
+Each is labelled REPORTED: it tells an operator what has been seen before, and where, and counts
+for nothing in a new receipt.
+
+| Step | Earlier receipt | What it covered | Label |
+|---|---|---|---|
+| O2, O3, O8 to O10, O12 to O14, R1, R2, R6, R7 | Draft PR #5336 and its run comments (scenarios S1 to S17) | Synthetic technician on staging, with backend traces; later head adds presses on the Pixel | REPORTED, synthetic |
+| O4 to O8 | Limited human pass recorded by the integration owner, 2026-11-14 (drive identified, manual confirmed, cited answer, page opened); one LOW finding #5513 | Drive only. No saved work, restart, second technician or recovery checks. #5458 still reads NO-GO | REPORTED, human, limited |
+| R3 | #5302 comment 6724195401 | FAILED on the tablet: an upload reported as not indexed was shown as still being read and never attached. Follow-up #5318 is open | REPORTED, device, FAIL |
+| R1 | #5302 comment 6728499599 | Upload failing offline during setup lost the file; later repaired by merged setup-retry work | REPORTED, superseded by later fixes, not re-run |
+| R4 | #5322 comment 6743769088 | Upload again on staging in desktop Chrome emulating a phone. Not a physical device | REPORTED, emulated |
+| R8 | #5308 comment 6723733976 | Unit-level proof on main of the sign-out marker rule. No device run | REPORTED, tests only |
+| O11, O15, R5, R9 to R11 | none found | | NOT TESTED |
