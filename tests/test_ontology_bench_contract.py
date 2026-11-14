@@ -12,9 +12,11 @@ Three clauses of the minimum bench contract are exercised:
 * a MISSING observation is shown as unknown, never as a healthy value.
 
 Where the application honours a clause the test is a plain assertion. Where it does
-not, the test is a strict ``known_gap``: it pins today's exact behaviour AND requires
-the wanted assertion to fail. When someone repairs the path the test goes red and says
-so — it cannot silently keep passing. Tracker for these gaps: issue #5528.
+not there are TWO tests, the same pattern ``tests/test_ontology_runtime_contract.py``
+uses: a ``pinned`` test asserting today's exact behaviour (so an import or data error
+cannot pass for the defect), and the wanted behaviour as a STRICT xfail. When someone
+repairs the path the xfail becomes an unexpected pass and fails the suite. No dedicated
+issue exists for these five gaps yet; they are tracked under #5528 until one is filed.
 """
 
 from __future__ import annotations
@@ -24,19 +26,6 @@ import pytest
 UNS = "enterprise.site.line.cv"
 FWD_RUN = 18  # GS10 command word: forward + run
 STOPPED = 0  # GS10 status word: stopped
-
-
-def known_gap(issue: str, pinned, wanted) -> None:
-    """Pin today's behaviour, and require the wanted behaviour to be absent."""
-    pinned()
-    try:
-        wanted()
-    except AssertionError:
-        return
-    pytest.fail(
-        f"{issue} looks REPAIRED: the wanted behaviour now holds. "
-        "Convert this known_gap into a plain assertion."
-    )
 
 
 def _snaps(tags: dict, ts: str = "t0"):
@@ -52,6 +41,9 @@ def _assess(tags: dict) -> str | None:
 
 
 # ── Timestamp and quality ─────────────────────────────────────────────────────
+
+OLD = "2001-01-01T00:00:00+00:00"
+GAP = "tracked under #5528 (no dedicated issue filed yet)"
 
 
 class TestTimestampAndQuality:
@@ -76,46 +68,37 @@ class TestTimestampAndQuality:
         assert lost and all(s.quality == STALE for s in lost)
         assert all(s.quality == GOOD for s in fine)
 
-    def test_KNOWN_GAP_the_timestamp_is_the_callers_clock_not_the_readings(self):
-        """One ``ts`` is stamped on the whole dictionary. Both production callers pass
-        ``datetime.now()``, so the stamp is when MIRA received the tags, not when the
-        drive produced them — an old reading is indistinguishable from a fresh one."""
-        import inspect
+    def test_pinned_a_reading_stamped_decades_ago_is_still_good(self):
+        """One ``ts`` is stamped on the whole dictionary, and both production callers
+        pass ``datetime.now()`` — when MIRA received the tags, not when the drive
+        produced them. Nothing compares that stamp with the present."""
+        snaps = _snaps({"vfd_comm_ok": True, "vfd_frequency": 300}, ts=OLD)
+        assert snaps and all(s.quality == "good" and s.ts == OLD for s in snaps)
 
-        from shared import live_snapshot
+    @pytest.mark.xfail(strict=True, reason=f"age never affects quality — {GAP}")
+    def test_an_old_reading_is_not_reported_as_good(self):
+        snaps = _snaps({"vfd_comm_ok": True, "vfd_frequency": 300}, ts=OLD)
+        assert any(s.quality != "good" for s in snaps)
 
-        params = inspect.signature(live_snapshot.normalize).parameters
+    def test_pinned_without_a_comms_reading_drive_values_are_good(self):
+        """Staleness needs ``vfd_comm_ok`` present AND false."""
+        snaps = _snaps({"vfd_frequency": 300})
+        assert snaps and all(s.quality == "good" for s in snaps)
 
-        def pinned():
-            assert "ts" in params
-            snaps = _snaps(
-                {"vfd_comm_ok": True, "vfd_frequency": 300}, ts="2001-01-01T00:00:00+00:00"
-            )
-            # A reading stamped a quarter-century ago is still "good".
-            assert all(s.quality == "good" for s in snaps)
-
-        def wanted():
-            snaps = _snaps(
-                {"vfd_comm_ok": True, "vfd_frequency": 300}, ts="2001-01-01T00:00:00+00:00"
-            )
-            assert any(s.quality == "stale" for s in snaps)
-
-        known_gap("#5528 age-based staleness", pinned, wanted)
-
-    def test_KNOWN_GAP_unknown_comms_state_is_treated_as_good(self):
-        """Staleness needs ``vfd_comm_ok`` to be present AND false. With the comms tag
-        absent the drive values are reported good, not unknown."""
-
-        def pinned():
-            assert all(s.quality == "good" for s in _snaps({"vfd_frequency": 300}))
-
-        def wanted():
-            assert all(s.quality != "good" for s in _snaps({"vfd_frequency": 300}))
-
-        known_gap("#5528 quality without a comms reading", pinned, wanted)
+    @pytest.mark.xfail(strict=True, reason=f"unknown comms state is treated as good — {GAP}")
+    def test_without_a_comms_reading_drive_values_are_not_good(self):
+        assert all(s.quality != "good" for s in _snaps({"vfd_frequency": 300}))
 
 
 # ── Command is not feedback ───────────────────────────────────────────────────
+
+MISMATCH = {
+    "vfd_comm_ok": True,
+    "vfd_cmd_word": FWD_RUN,
+    "vfd_status_word": STOPPED,
+    "vfd_frequency": 0,
+    "vfd_fault_code": 0,
+}
 
 
 class TestCommandIsNotFeedback:
@@ -138,36 +121,23 @@ class TestCommandIsNotFeedback:
         )
         assert text is not None and "Machine running" in text
 
-    def test_KNOWN_GAP_a_run_command_alone_is_reported_as_the_machine_running(self):
+    def test_pinned_a_run_command_alone_is_summarised_as_running(self):
         """No status word, no frequency, no current — only what the PLC asked for."""
+        assert _assess({"vfd_cmd_word": FWD_RUN}) == "Machine running. No active VFD fault."
 
-        def pinned():
-            assert _assess({"vfd_cmd_word": FWD_RUN}) == "Machine running. No active VFD fault."
+    @pytest.mark.xfail(strict=True, reason=f"a RUN command is taken as feedback — {GAP}")
+    def test_a_run_command_alone_is_not_summarised_as_running(self):
+        assert "Machine running" not in (_assess({"vfd_cmd_word": FWD_RUN}) or "")
 
-        def wanted():
-            assert "Machine running" not in (_assess({"vfd_cmd_word": FWD_RUN}) or "")
-
-        known_gap("#5528 command taken as feedback", pinned, wanted)
-
-    def test_KNOWN_GAP_run_command_overrides_feedback_that_says_stopped(self):
+    def test_pinned_a_run_command_overrides_feedback_that_says_stopped(self):
         """Commanded to run, drive reports STOPPED at 0 Hz — the mismatch a technician
         most needs to see — is summarised as running."""
-        tags = {
-            "vfd_comm_ok": True,
-            "vfd_cmd_word": FWD_RUN,
-            "vfd_status_word": STOPPED,
-            "vfd_frequency": 0,
-            "vfd_fault_code": 0,
-        }
+        text = _assess(MISMATCH)
+        assert text is not None and text.startswith("Machine running") and "0.0 Hz" in text
 
-        def pinned():
-            text = _assess(tags)
-            assert text is not None and text.startswith("Machine running") and "0.0 Hz" in text
-
-        def wanted():
-            assert "Machine running" not in (_assess(tags) or "")
-
-        known_gap("#5528 command/feedback mismatch hidden", pinned, wanted)
+    @pytest.mark.xfail(strict=True, reason=f"a command/feedback mismatch is hidden — {GAP}")
+    def test_a_stopped_drive_with_a_run_command_is_not_summarised_as_running(self):
+        assert "Machine running" not in (_assess(MISMATCH) or "")
 
 
 # ── Missing observations are unknown ──────────────────────────────────────────
@@ -189,20 +159,12 @@ class TestMissingObservationsAreUnknown:
         text = _assess({"vfd_comm_ok": True, "vfd_frequency": 300, "vfd_fault_code": 0})
         assert text is not None and "No active VFD fault" in text
 
-    def test_KNOWN_GAP_no_fault_reading_is_reported_as_no_active_fault(self):
-        """The fault register was never read. The summary still says the drive is
-        fault-free — a missing observation shown as a healthy value."""
+    def test_pinned_an_unread_fault_register_is_summarised_as_no_active_fault(self):
+        """The fault register was never read; the summary still says fault-free."""
+        want = "Machine running (output 3.0 Hz). No active VFD fault."
+        assert _assess({"vfd_frequency": 300}) == want
+        assert _assess({"vfd_frequency": 300, "vfd_fault_code": None}) == want
 
-        def pinned():
-            assert (
-                _assess({"vfd_frequency": 300})
-                == "Machine running (output 3.0 Hz). No active VFD fault."
-            )
-            assert _assess({"vfd_frequency": 300, "vfd_fault_code": None}) == _assess(
-                {"vfd_frequency": 300}
-            )
-
-        def wanted():
-            assert "No active VFD fault" not in (_assess({"vfd_frequency": 300}) or "")
-
-        known_gap("#5528 missing fault reading shown as healthy", pinned, wanted)
+    @pytest.mark.xfail(strict=True, reason=f"a missing fault reading is shown as healthy — {GAP}")
+    def test_an_unread_fault_register_is_not_summarised_as_no_active_fault(self):
+        assert "No active VFD fault" not in (_assess({"vfd_frequency": 300}) or "")
