@@ -1,3 +1,9 @@
+# Tablet evidence integration — 2026-11-14
+
+Issue #5511 / #4689: Mike accepted the Adobe-style reader and bold workspace-indigo superscripts, then requested real answers and uploaded manuals. Branch `codex/tablet-evidence-prototype-5511` now integrates `/v3` answer citations with the authenticated original PDF route, unique quote matching, and previous/next evidence. Synthetic browser tests exercise the real adapter; deployment and real-manual tablet acceptance are separate pending checks. No equipment actions, inference calls or backend/schema changes.
+
+---
+
 # Honest landing Codex round 2 — 2026-10-29
 
 Draft PR #4570 (`cursor/honest-landing-capabilities-ded8`). Codex round 2 on `c08384e0` (ISSUES_FOUND, 4 P2) fixed on the same draft: Drive Commander `/drive-commander/powerflex-525` drops `$197/yr` and checkout, CTA is Talk to Mike / free 30-day pilot; blog articles no longer claim auto work-order creation, a free CMMS tier, or "in seconds"; `provenText()` no longer falls back when a claim is unproven; honest-claims is recursive over public HTML, renders every real blog post plus Drive Commander and marketing renderers, uses semantic bans (auto+CMMS/work order, any `$`, timing promises), and has mutation + notebook-cited-answer flip tests. No merge, deploy, labels, ready, or Codex. mira-web full suite at new tip: 598 pass / 18 fail (21 fail on `origin/main`; the 18 remaining are pre-existing Neon/cookie/admin/DC-Pro).

@@ -112,3 +112,34 @@ decisions for #3514, #3515, #3516, #3587, #3595, #3596) and `docs/component-adap
 - `identity_dispute` as a first-class part (the merged mobile adapter emits it; the shared
   vocabulary has no member for it, so it would degrade to `unknown`). A Task 1/2 contract
   change, listed as a prerequisite for connection capability #3.
+# Evidence reader tablet prototype (#5511 / #4689)
+
+This opt-in preview mounts the real shared FactoryLM shell with authored sample
+answer text and a real, synthetic two-page PDF. No backend, AI provider or live
+equipment is connected. Superscript citations open the PDF at a supplied highlight;
+Previous/Next highlight follows answer order, including multiple regions on one
+page and a transition to another page. Opening evidence does not mark it verified.
+
+Use Bun 1.4.0 from the workspace root for installation. From this directory:
+
+```sh
+bun run build
+bun scripts/build.ts --evidence
+LAB_PREVIEW_PROFILE=evidence PORT=4175 bun scripts/preview.ts
+```
+
+Open the preview host on port 4175 from a tablet on the same network. Stop the
+preview process to remove access. This serves only the static `dist-evidence`
+bundle, never the repository or uploaded documents. The ordinary UI lab bundle
+and its 300 KB compressed-JavaScript budget remain separate from PDF rendering.
+
+Browser checks (installed Chrome):
+
+```sh
+LAB_PREVIEW_PROFILE=evidence bun x playwright test e2e/evidence-prototype.spec.ts
+```
+
+The PDF fixture's anchors are authored coordinates bound to its exact bytes.
+Production integration still requires source identity/revision validation, real
+quote/geometry anchoring, OCR handling, and an explicit unavailable-anchor state.
+The prototype does not claim those backend capabilities or human tablet acceptance.

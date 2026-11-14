@@ -5,12 +5,13 @@ import { resolve } from "node:path";
 // `dist/` directory, then emits index.html + hashed assets via Bun's HTML
 // bundler. No dev server, no network, no environment lookups.
 const root = resolve(import.meta.dir, "..");
-const dist = resolve(root, "dist");
+const evidence = process.argv.includes("--evidence");
+const dist = resolve(root, evidence ? "dist-evidence" : "dist");
 
 await rm(dist, { recursive: true, force: true });
 
 const result = await Bun.build({
-  entrypoints: [resolve(root, "index.html")],
+  entrypoints: [resolve(root, evidence ? "evidence.html" : "index.html")],
   outdir: dist,
   target: "browser",
   minify: true,

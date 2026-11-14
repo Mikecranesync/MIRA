@@ -14,6 +14,7 @@
 import "@factorylm/theme/workspace.css";
 import "@factorylm/ui/shell.css";
 import "@factorylm/ui/conversation.css";
+import "@factorylm/ui/evidence-reader.css";
 import { HubShellHost } from "@/factorylm-ui/hub-host";
 
 export default function V3Page() {
