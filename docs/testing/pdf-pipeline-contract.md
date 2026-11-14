@@ -54,4 +54,4 @@ Every required case failed a meaningful semantic mutation. Missing/unsafe databa
 
 The missing CI step first failed its wiring test. A permissive report-validator stub caused16 negative-control failures; the implemented guard passes all25 workflow-contract tests. Removing the CI Gate dependency/result binding, changing the test-selection flag or removing source watches each fails its relevant test; an always-rejecting guard fails both positive controls. The exact workflow step also passes locally on the real database.
 
-Surrounding Hub unit suite:16,071 passed,53 existing skips,0 failed (separate from the8 integration cases). TypeScript's134 baseline diagnostics were byte-identical to the candidate before the logging-only fixture-manifest addition; focused lint/actionlint passed. This is author evidence, not a governed R3 review or release attestation.
+Surrounding Hub unit suite:16,071 passed,53 existing skips,0 failed (separate from the8 integration cases). Final TypeScript output has the same134 diagnostics as the unchanged base, byte-for-byte; focused lint/actionlint passed. This is author evidence, not a governed R3 review or release attestation.

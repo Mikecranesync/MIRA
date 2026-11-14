@@ -44,6 +44,7 @@ _FLAG_GUARD = (
     _ROOT / "mira-hub" / "src" / "lib" / "__tests__" / "notebook-retrieval-flag-guard.test.ts"
 )
 
+
 def _hub_filter_patterns() -> list[str]:
     """Return the glob list of the Hub Unit Tests job's ``hub`` paths-filter.
 
