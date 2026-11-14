@@ -84,11 +84,14 @@ records the selected Adobe-style interaction direction; final sizing is not yet
 an accepted system-wide restyle.
 
 - Inline citations are small raised Arabic numerals in the workspace typeface,
-  with no filled balloon or border. Keep punctuation attached and line height
+  bold (700) and workspace accent indigo (`--fl-workspace-accent`), as requested
+  in Mike's tablet review. Use the theme's corresponding indigo in dark mode.
+  No filled balloon or border. Keep punctuation attached and line height
   unchanged. Each marker has an accessible name and visible keyboard focus.
 - Provide a full-size **Review evidence** action as an alternative to tiny taps.
 - A citation opens the original PDF with the supporting passage lightly tinted
-  and outlined. Selection color is not a verified/safe/approved status.
+  and outlined using the same workspace accent (12% tint, full-color outline).
+  Selection color is not a verified/safe/approved status.
 - Retain the current answer statement above the page. **Previous highlight** and
   **Next highlight** follow answer order; their counter is separate from PDF page
   numbering. Disable controls at the ends rather than silently wrapping.

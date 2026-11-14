@@ -1,5 +1,5 @@
 .fl-citation-marker { font-size: .72em; line-height: 0; vertical-align: super; margin-inline: .12em; }
-.fl-citation-marker button { appearance: none; border: 0; background: transparent; color: var(--fl-workspace-ink); font: inherit; line-height: 1; padding: .15em .2em; cursor: pointer; border-radius: 2px; }
+.fl-citation-marker button { appearance: none; border: 0; background: transparent; color: var(--fl-workspace-accent); font: inherit; font-weight: 700; line-height: 1; padding: .15em .2em; cursor: pointer; border-radius: 2px; }
 .fl-citation-marker button:hover { color: var(--fl-workspace-accent-ink); background: var(--fl-workspace-accent-tint); }
 .fl-citation-marker button:focus-visible { outline: 2px solid var(--fl-workspace-accent); outline-offset: 3px; }
 .fl-evidence-reader { box-sizing: border-box; width: min(100%, 960px); max-width: 100%; height: 96dvh; max-height: 100dvh; margin: auto; padding: 0; border: 1px solid var(--fl-workspace-line); border-radius: 16px; background: var(--fl-workspace-bg); color: var(--fl-workspace-ink); font: 16px var(--fl-workspace-font); }

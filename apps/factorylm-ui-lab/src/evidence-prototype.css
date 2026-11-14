@@ -10,5 +10,5 @@
 .evidence-sample__tools { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; font-size: 12px; color: var(--fl-workspace-muted); }
 .evidence-sample__paper { position: relative; background: white; box-shadow: 0 1px 8px #0002; }
 .evidence-sample__paper canvas { display: block; width: 100%; height: auto; }
-.evidence-sample__highlight { position: absolute; pointer-events: none; box-sizing: border-box; background: #4f46e51c; outline: 2px solid #4f46e5; border-radius: 2px; }
+.evidence-sample__highlight { position: absolute; pointer-events: none; box-sizing: border-box; background: color-mix(in srgb, var(--fl-workspace-accent) 12%, transparent); outline: 2px solid var(--fl-workspace-accent); border-radius: 2px; }
 .evidence-sample__quote { font-size: 13px; line-height: 1.5; color: var(--fl-workspace-muted); }
