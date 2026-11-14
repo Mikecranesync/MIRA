@@ -267,16 +267,32 @@ function toSelection(r: Record<string, unknown>): ThreadSelection {
 const MICROS = (col: string) => `to_char(${col} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
 
 const SELECTION_COLS = `s.component_id::text AS component_id, s.component_revision, ${MICROS("s.selected_at")} AS selected_at, s.selected_via, s.version,
-  s.last_request_id::text AS last_request_id`;
+  s.last_request_id::text AS last_request_id, s.cleared_at IS NOT NULL AS cleared`;
 
 export async function getSelection(tenantId: string, notebookId: string, ownerUserId: string, threadKey: string): Promise<ThreadSelection | null> {
   return withTenantContext(tenantId, async (c) => {
     const res = await c.query(
       `SELECT ${SELECTION_COLS} FROM notebook_thread_selections s
-        WHERE s.tenant_id = $1::uuid AND s.notebook_id = $2::uuid AND s.owner_user_id = $3 AND s.thread_key = $4`,
+        WHERE s.tenant_id = $1::uuid AND s.notebook_id = $2::uuid AND s.owner_user_id = $3 AND s.thread_key = $4
+          AND s.cleared_at IS NULL`,
       [tenantId, notebookId, ownerUserId, threadKey],
     );
     return res.rows[0] ? toSelection(res.rows[0]) : null;
+  });
+}
+
+/**
+ * The version a client must send with its next pick: the stored row's, cleared or not
+ * (a cleared selection keeps counting), or null when this conversation never had one.
+ */
+export async function getSelectionVersion(tenantId: string, notebookId: string, ownerUserId: string, threadKey: string): Promise<number | null> {
+  return withTenantContext(tenantId, async (c) => {
+    const res = await c.query(
+      `SELECT s.version FROM notebook_thread_selections s
+        WHERE s.tenant_id = $1::uuid AND s.notebook_id = $2::uuid AND s.owner_user_id = $3 AND s.thread_key = $4`,
+      [tenantId, notebookId, ownerUserId, threadKey],
+    );
+    return res.rows[0] ? Number(res.rows[0].version) : null;
   });
 }
 
@@ -291,8 +307,9 @@ export type SetSelectionResult =
  * Point one technician's conversation at a component (or clear it: whole machine).
  * Every explicit pick moves selected_at, re-picking the same component included:
  * "Return to <component>" after a refusal is exactly that case, and it must end
- * the carry. `expectedVersion` (null = "I saw no selection") makes two taps on
- * two devices a conflict instead of a silent overwrite. A retried request with
+ * the carry. `expectedVersion` (the stored version, cleared or not; null only when
+ * this conversation never had a selection) makes two taps on two devices a conflict
+ * instead of a silent overwrite. Clearing keeps the row, so the version never repeats. A retried request with
  * the same request id is a no-op that returns the stored row.
  */
 export async function setSelection(
@@ -309,17 +326,23 @@ export async function setSelection(
         FOR UPDATE`,
       [tenantId, notebookId, ownerUserId, threadKey],
     );
-    const current = currentRes.rows[0] ? toSelection(currentRes.rows[0]) : null;
-    if (current && currentRes.rows[0].last_request_id === input.clientRequestId && current.componentId === input.componentId) {
-      return { status: "existing", selection: current };
+    const row = currentRes.rows[0];
+    // A cleared row is no selection, but its version still counts.
+    const current = row && !row.cleared ? toSelection(row) : null;
+    if (row && row.last_request_id === input.clientRequestId) {
+      if (row.cleared && input.componentId === null) return { status: "cleared" };
+      if (current && current.componentId === input.componentId) return { status: "existing", selection: current };
     }
-    if ((current?.version ?? null) !== input.expectedVersion) return { status: "version_conflict", selection: current };
+    if ((row ? Number(row.version) : null) !== input.expectedVersion) return { status: "version_conflict", selection: current };
     if (input.componentId === null) {
-      await c.query(
-        `DELETE FROM notebook_thread_selections s
-          WHERE s.tenant_id = $1::uuid AND s.notebook_id = $2::uuid AND s.owner_user_id = $3 AND s.thread_key = $4`,
-        [tenantId, notebookId, ownerUserId, threadKey],
-      );
+      if (row) {
+        await c.query(
+          `UPDATE notebook_thread_selections s
+              SET cleared_at = clock_timestamp(), selected_via = $5, version = s.version + 1, last_request_id = $6::uuid
+            WHERE s.tenant_id = $1::uuid AND s.notebook_id = $2::uuid AND s.owner_user_id = $3 AND s.thread_key = $4`,
+          [tenantId, notebookId, ownerUserId, threadKey, input.via, input.clientRequestId],
+        );
+      }
       return { status: "cleared" };
     }
     const component = await readComponent(c, tenantId, notebookId, input.componentId);
@@ -337,7 +360,8 @@ export async function setSelection(
              selected_via = EXCLUDED.selected_via,
              selected_at = clock_timestamp(),
              version = s.version + 1,
-             last_request_id = EXCLUDED.last_request_id
+             last_request_id = EXCLUDED.last_request_id,
+             cleared_at = NULL
          -- FOR UPDATE above locks nothing when there was no row: a first pick made at the
          -- same moment on another screen inserts one. Overwrite only the version this caller saw.
          WHERE s.version IS NOT DISTINCT FROM $9::int
@@ -350,7 +374,7 @@ export async function setSelection(
           WHERE s.tenant_id = $1::uuid AND s.notebook_id = $2::uuid AND s.owner_user_id = $3 AND s.thread_key = $4`,
         [tenantId, notebookId, ownerUserId, threadKey],
       );
-      const raced = racedRes.rows[0] ? toSelection(racedRes.rows[0]) : null;
+      const raced = racedRes.rows[0] && !racedRes.rows[0].cleared ? toSelection(racedRes.rows[0]) : null;
       if (raced && racedRes.rows[0].last_request_id === input.clientRequestId && raced.componentId === input.componentId) {
         return { status: "existing", selection: raced };
       }
@@ -378,7 +402,7 @@ export async function advanceSelectionRevision(
       `UPDATE notebook_thread_selections s
           SET component_revision = $6, selected_via = 'correction', selected_at = clock_timestamp(), version = s.version + 1
         WHERE s.tenant_id = $1::uuid AND s.notebook_id = $2::uuid AND s.owner_user_id = $3 AND s.thread_key = $4
-          AND s.version = $5
+          AND s.version = $5 AND s.cleared_at IS NULL
        RETURNING ${SELECTION_COLS}`,
       [tenantId, notebookId, ownerUserId, threadKey, expectedVersion, revision],
     );

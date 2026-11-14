@@ -8,7 +8,7 @@ import { modelNumbersIn } from "@/capabilities/manual-applicability";
 import { LEGACY_THREAD_ID, normalizeNotebookThreadId, type NotebookSource } from "@/lib/equipment-notebooks";
 import { isUuid } from "./validate";
 import { componentView, type ComponentView } from "./view";
-import { getSelection, listComponents, listSelectionTurns, readDocumentHeadings, type ThreadSelection } from "./store";
+import { getSelection, getSelectionVersion, listComponents, listSelectionTurns, readDocumentHeadings, type ThreadSelection } from "./store";
 
 /** The selection row's key for a conversation: its thread id, or "legacy" for the default one. */
 export function threadKeyOf(value: unknown): string | null {
@@ -39,6 +39,9 @@ export function requestIdOf(body: Record<string, unknown>): string | null {
 export type BenchState = {
   components: ComponentView[];
   selection: (ThreadSelection & { current: boolean }) | null;
+  /** The version the next pick must send: the stored one even after a clear, null if
+   *  this conversation never had a selection. */
+  selectionVersion: number | null;
   /** turn id → the component and identity revision it was asked under. */
   turnComponents: Record<string, { componentId: string; revision: number }>;
   /** Per component, in this conversation: questions answered from a document, and
@@ -67,9 +70,10 @@ export async function benchState(
   threadKey: string,
   sources: readonly NotebookSource[],
 ): Promise<BenchState> {
-  const [components, selection, turns, headings] = await Promise.all([
+  const [components, selection, selectionVersion, turns, headings] = await Promise.all([
     listComponents(tenantId, notebookId),
     getSelection(tenantId, notebookId, userId, threadKey),
+    getSelectionVersion(tenantId, notebookId, userId, threadKey),
     listSelectionTurns(tenantId, notebookId, userId, storedThread(threadKey), 300),
     readDocumentHeadings(tenantId, sources.map((s) => s.docId)),
   ]);
@@ -93,6 +97,7 @@ export async function benchState(
   return {
     components: views,
     selection: selection && selected ? { ...selection, current: selected.current?.revision === selection.revision } : null,
+    selectionVersion,
     turnComponents,
     tallies,
     documentNumbers,

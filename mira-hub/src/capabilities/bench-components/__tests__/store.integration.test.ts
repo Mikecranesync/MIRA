@@ -24,6 +24,7 @@ import {
   addComponent,
   advanceSelectionRevision,
   getSelection,
+  getSelectionVersion,
   listComponents,
   listSelectionTurns,
   reviseComponent,
@@ -179,6 +180,33 @@ run("bench component store (real Postgres, RLS)", () => {
       const stored = await getSelection(tenantA, notebookA, USER, thread);
       expect(stored).toMatchObject({ componentId: (set[0] as { selection: { componentId: string } }).selection.componentId, version: 1 });
     }
+  });
+
+  it("a clear keeps counting: a late retry of the first pick and a screen holding the old version are conflicts", async () => {
+    const make = async (body: Record<string, unknown>) => {
+      const a = await addComponent(tenantA, notebookA, USER, { clientRequestId: uuid(), kind: "drive", origin: "inventory", position: null, revision: rev(body, true) });
+      if (a.status !== "created") throw new Error(a.status);
+      return a.component.id;
+    };
+    const [one, two] = [await make(GS10), await make({ ...GS10, rawLabel: "GS11N-10P2", catalogNumber: "GS11N-10P2", localTag: "VFD2" })];
+    const thread = `clear-${uuid().slice(0, 8)}`;
+    const firstKey = uuid();
+    const first = await setSelection(tenantA, notebookA, USER, thread, { componentId: one, via: "picker", expectedVersion: null, clientRequestId: firstKey });
+    expect(first).toMatchObject({ status: "set", selection: { version: 1 } });
+    const clearKey = uuid();
+    expect(await setSelection(tenantA, notebookA, USER, thread, { componentId: null, via: "picker", expectedVersion: 1, clientRequestId: clearKey })).toEqual({ status: "cleared" });
+    expect(await getSelection(tenantA, notebookA, USER, thread)).toBeNull();
+    expect(await getSelectionVersion(tenantA, notebookA, USER, thread)).toBe(2);
+    // control: the clear itself, retried, is recognised and changes nothing
+    expect(await setSelection(tenantA, notebookA, USER, thread, { componentId: null, via: "picker", expectedVersion: 1, clientRequestId: clearKey })).toEqual({ status: "cleared" });
+    expect(await getSelectionVersion(tenantA, notebookA, USER, thread)).toBe(2);
+    const lateRetry = await setSelection(tenantA, notebookA, USER, thread, { componentId: one, via: "picker", expectedVersion: null, clientRequestId: firstKey });
+    expect(lateRetry).toMatchObject({ status: "version_conflict", selection: null });
+    const staleScreen = await setSelection(tenantA, notebookA, USER, thread, { componentId: two, via: "picker", expectedVersion: 1, clientRequestId: uuid() });
+    expect(staleScreen.status).toBe("version_conflict");
+    expect(await getSelection(tenantA, notebookA, USER, thread)).toBeNull();
+    const fresh = await setSelection(tenantA, notebookA, USER, thread, { componentId: two, via: "picker", expectedVersion: 2, clientRequestId: uuid() });
+    expect(fresh).toMatchObject({ status: "set", selection: { componentId: two, version: 3 } });
   });
 
   it("control: the same first pick sent twice at once is one selection, and both see it", async () => {

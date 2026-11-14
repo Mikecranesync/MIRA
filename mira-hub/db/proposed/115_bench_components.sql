@@ -128,6 +128,10 @@ CREATE TABLE IF NOT EXISTS notebook_thread_selections (
   selected_via        TEXT NOT NULL CHECK (selected_via IN ('picker', 'return', 'clarify', 'confirm', 'correction')),
   selected_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
   version             INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
+  -- Set when the technician cleared the selection (whole machine). The row is kept so
+  -- version keeps counting: a late retry of an earlier pick, or a screen still holding
+  -- an old version, is a conflict instead of reusing a number that was handed out.
+  cleared_at          TIMESTAMPTZ NULL,
   -- The last client request that set this row; a retried request is a no-op.
   last_request_id     UUID NULL,
   PRIMARY KEY (tenant_id, notebook_id, owner_user_id, thread_key),

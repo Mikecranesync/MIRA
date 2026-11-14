@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const storeMock = vi.hoisted(() => ({
   listComponents: vi.fn(async (): Promise<unknown[]> => []),
   getSelection: vi.fn(async (): Promise<unknown> => null),
+  getSelectionVersion: vi.fn(async (): Promise<number | null> => null),
   listSelectionTurns: vi.fn(async (): Promise<unknown[]> => []),
   readDocumentHeadings: vi.fn(async () => new Map<string, string>()),
 }));

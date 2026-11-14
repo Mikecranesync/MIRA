@@ -42,7 +42,7 @@ const view = (over: Partial<ComponentView>): ComponentView => ({
 });
 const state = (selection: BenchState["selection"]): BenchState => ({
   components: [view({}), view({ id: PS1, label: "PS1", status: "not_confirmed", statusLabel: "identity not confirmed", current: null })],
-  selection, turnComponents: {}, tallies: {}, documentNumbers: [],
+  selection, selectionVersion: selection?.version ?? null, turnComponents: {}, tallies: {}, documentNumbers: [],
 });
 const SEL = { notebookId: NB, threadId: "legacy" };
 const selected = { componentId: VFD, revision: 2, selectedAt: "2026-11-14T04:00:00.000Z", selectedVia: "picker" as const, version: 3, current: true };

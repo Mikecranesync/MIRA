@@ -129,7 +129,7 @@ export function BenchComponents({
         const res = await fetch(`${base(notebookId)}selection/`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ threadId, componentId, via, expectedVersion: bench?.selection?.version ?? null, clientRequestId: crypto.randomUUID() }),
+          body: JSON.stringify({ threadId, componentId, via, expectedVersion: bench?.selectionVersion ?? null, clientRequestId: crypto.randomUUID() }),
         });
         if (!res.ok) {
           setMessage(componentErrorMessage(await errorCode(res)));
