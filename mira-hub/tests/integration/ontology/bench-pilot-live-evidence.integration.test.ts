@@ -1,18 +1,19 @@
-// Bench runtime context contract — live/recorded machine evidence ON THE PILOT'S
-// OWN PATH. The equipment-notebook chat route builds its MACHINE section with
-// exactly these three functions (route.ts imports packetFromMachineMemoryResponse
-// + renderMachineEvidenceSection; the summary and state come from
-// deriveContextIntelligence + deriveCurrentState inside buildMachineMemoryResponse).
+// Bench runtime context contract — machine evidence ON THE PILOT'S OWN PATH.
 //
-// Pure: no database, no provider call. It lives beside the graph contract so one
-// command runs both. Nothing here is CI-enforced today.
+// WHAT THIS IS: the pure derivation and render functions behind the equipment-notebook
+// chat's MACHINE section, run on HAND-BUILT inputs. No database, no provider call.
+//   deriveCurrentState + deriveContextIntelligence  (called inside buildMachineMemoryResponse)
+//   packetFromMachineMemoryResponse + renderMachineEvidenceSection (called by the route,
+//     with sanitizeMachineMemoryField — passed here too)
+// WHAT THIS IS NOT: it does not run buildMachineMemoryResponse, so tag decoding
+// (gs10-display), per-tag freshness classification, the freshness roll-up and the
+// state-window fetch are NOT exercised; nor is the upstream historian that derives state
+// windows (mira-crawler/run_engine/state_windows.py). And the route only attaches a MACHINE
+// section on a sensor-REPLAY turn (`machineRequest`); an ordinary document turn has none.
 //
-// Clauses exercised: command is not feedback; a missing observation is unknown;
-// stale data is labelled; timestamp + quality travel with every recorded row and
-// are never invented. Route-level behaviour (empty window refused, tenant-bound
-// SELECT-only re-fetch) is already proven by
-// src/app/api/equipment-notebooks/[id]/chat/__tests__/machine-evidence.test.ts —
-// cited in the matrix, not duplicated here.
+// It lives beside the graph contract so one command runs both. Nothing here is CI-enforced.
+// Route-level behaviour (empty window refused, tenant-bound SELECT-only re-fetch) is proven
+// by src/app/api/equipment-notebooks/[id]/chat/__tests__/machine-evidence.test.ts.
 import { describe, expect, it } from "vitest";
 
 import { deriveContextIntelligence } from "@/lib/machine-context-intelligence";
@@ -23,6 +24,9 @@ import {
   type MachineContextPacket,
 } from "@/lib/machine-context-packet";
 import type { LiveTag, MachineMemoryResponse } from "@/lib/machine-memory-response";
+import { sanitizeMachineMemoryField } from "@/lib/machine-memory-sanitize";
+
+const render = (p: MachineContextPacket) => renderMachineEvidenceSection(p, sanitizeMachineMemoryField);
 
 const NOW = new Date("2026-11-14T12:00:00Z").getTime();
 const TENANT = "00000000-0000-0000-0000-00000be2c401";
@@ -102,7 +106,7 @@ describe("pilot path: a missing observation is unknown, never healthy", () => {
 
   it("no signals and no state window: there is no state at all (not a default one)", () => {
     expect(deriveCurrentState(null, "unknown")).toBeNull();
-    expect(renderMachineEvidenceSection(packet({}))).toBe("");
+    expect(render(packet({}))).toBe("");
   });
 
   it("a recorded tag with a null value renders as a dash, not as zero", () => {
@@ -113,7 +117,27 @@ describe("pilot path: a missing observation is unknown, never healthy", () => {
   });
 });
 
-describe("pilot path: stale data is labelled and never backs a current state", () => {
+describe("pilot path: stale data is labelled", () => {
+  const OPEN_RUNNING = { state: "running", started_at: "2026-11-14T08:00:00Z", ended_at: null };
+
+  it("pinned: an OPEN 'running' window with stale signals keeps its state, marked not fresh", () => {
+    expect(deriveCurrentState(OPEN_RUNNING, "stale")).toEqual({
+      state: "running",
+      since: "2026-11-14T08:00:00Z",
+      fresh: false,
+    });
+    expect(summary(deriveCurrentState(OPEN_RUNNING, "stale"), [])).toBe(
+      "Machine running; no active anomalies on the latest diffs.",
+    );
+  });
+
+  // KNOWN GAP (tracked under #5528, no dedicated issue): the one-line assessment says
+  // "Machine running" on stale signals when the last state window was never closed. The
+  // state line above it does say "signals stale"; the assessment does not.
+  it.fails("an open 'running' window with stale signals is not summarised as running", () => {
+    expect(summary(deriveCurrentState(OPEN_RUNNING, "stale"), [])).not.toMatch(/^Machine running/);
+  });
+
   it("a closed state window with stale signals becomes comm_down, not the old state", () => {
     const state = deriveCurrentState(
       { state: "running", started_at: "2026-11-14T08:00:00Z", ended_at: "2026-11-14T09:00:00Z" },
@@ -153,7 +177,7 @@ describe("pilot path: timestamp and quality travel with every recorded row", () 
       freshness: "stale",
       rows,
     };
-    return renderMachineEvidenceSection(p);
+    return render(p);
   }
 
   it("a row shows when it was observed, when it was received, and its quality", () => {

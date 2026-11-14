@@ -15,7 +15,8 @@
 // the asset chat route prepends to the prompt, not a model's reply.
 //
 // WHAT IS REAL
-//   installed machine  -> mintAssetBridgeNode (the asset-create writer)
+//   installed machine  -> a cmms_equipment row inserted by the test, then the real
+//                         mintAssetBridgeNode (the function asset-create calls)
 //   propose            -> mapToCanonicalEdge + upsertInferredProposal, the exact
 //                         sequence relationship-extractor / cmms-sync /
 //                         hierarchy-backfill run
@@ -513,7 +514,12 @@ describe("4. the approved relationship read through the application's own traver
         expect(block).toContain(`Downstream: ${A.VFD1.assetId}`);
         expect(block).not.toContain("E-002");
       },
-      () => expect(block).toContain(S.feeds),
+      () => {
+        // the whole of #5527, not one field: proposal, approver and cited source
+        expect(block).toContain(S.feeds);
+        expect(block).toContain(ADMIN_A);
+        expect(block).toContain("E-002");
+      },
     );
   });
 });
@@ -568,7 +574,10 @@ describe("5. correcting a fact: old fact out of current answers, kept in history
     );
   });
 
-  it("KNOWN GAP #5523: and a reader that can see it still serves the superseded fact as current", async () => {
+  // CONDITIONAL: today no impact reader sees this edge at all (#5519). This test renames the
+  // stored edge to the reader's spelling first, so it shows what a reader WOULD serve once
+  // #5519 is repaired and #5523 is not — not what any reader serves today.
+  it("KNOWN GAP #5523 (given #5519 repaired): a reader that can see it serves the superseded fact as current", async () => {
     const { seen, block } = await withStoredName(S.feedsEdge, "feeds", async () => ({
       seen: await downstreamNodeIds(TENANT_A, A.Q1),
       block: await buildGraphContext(TENANT_A, IMPACT_QUESTION, A.Q1.assetId),
@@ -583,7 +592,9 @@ describe("5. correcting a fact: old fact out of current answers, kept in history
     );
   });
 
-  it("KNOWN GAP #5523: a graph edge has no state that means superseded", async () => {
+  // Pins the literal 'deprecated' (the ontology's word, and the proposal's). A repair that
+  // adds a differently named state leaves this green: re-read it when #5523 lands.
+  it("KNOWN GAP #5523: a graph edge cannot hold the 'deprecated' state its proposal moves to", async () => {
     let refused: string | null = null;
     await admin.query("BEGIN");
     try {
@@ -657,6 +668,17 @@ describe("6. tenant isolation", () => {
     const body = (await res.json()) as { ok: boolean; result: { equipment: { id: string; tenantId: string } } };
     expect(body.result.equipment.id).toBe(B.VFD1.nodeId);
     expect(body.result.equipment.tenantId).toBe(TENANT_B);
+    // and the other way round, so "first row wins" could not pass this
+    const resA = await internalKgPOST(
+      new Request("http://hub.test/api/internal/kg", {
+        method: "POST",
+        headers: { authorization: `Bearer ${INTERNAL_KEY}`, "content-type": "application/json" },
+        body: JSON.stringify({ op: "maintenance_context", tenantId: TENANT_A, args: { unsPath: A.VFD1.unsPath } }),
+      }) as never,
+    );
+    const bodyA = (await resA.json()) as { result: { equipment: { id: string; tenantId: string } } };
+    expect(bodyA.result.equipment.id).toBe(A.VFD1.nodeId);
+    expect(bodyA.result.equipment.tenantId).toBe(TENANT_A);
   });
 
   it("row-level security hides this tenant's edges, proposals and evidence from the other tenant's session", async () => {

@@ -1,9 +1,16 @@
 """Bench context contract — the live-data half (drive readings on the conveyor bench).
 
 Companion to ``mira-hub/tests/integration/ontology/bench-context-contract.integration.test.ts``
-(the graph half). Everything here executes the REAL ``shared.live_snapshot`` code that
-``mira-bots/shared/engine.py`` and ``mira-bots/ask_api/app.py`` call to turn a tag
-dictionary into the text a technician reads. No source-text checks.
+(the graph half). Everything here executes the REAL ``shared.live_snapshot`` code. No
+source-text checks.
+
+WHO REACHES THIS CODE TODAY (checked by grep, not assumed):
+* ``mira-pipeline/ignition_chat.py`` -> ``assess_from_paths`` — the one deployed caller of the
+  summary. ``TestIgnitionEntryPoint`` runs the gaps through exactly that function.
+* ``mira-bots/ask_api/app.py`` -> ``normalize`` + ``render_status_block`` only (no summary).
+* ``mira-bots/shared/engine.py`` accepts ``live_tags`` and would render the summary, but no
+  caller in this repository passes ``live_tags``; that path is wired, not exercised.
+The other classes call ``normalize`` / ``assess_snapshots`` directly to isolate each clause.
 
 Three clauses of the minimum bench contract are exercised:
 
@@ -75,7 +82,9 @@ class TestTimestampAndQuality:
         snaps = _snaps({"vfd_comm_ok": True, "vfd_frequency": 300}, ts=OLD)
         assert snaps and all(s.quality == "good" and s.ts == OLD for s in snaps)
 
-    @pytest.mark.xfail(strict=True, reason=f"age never affects quality — {GAP}")
+    @pytest.mark.xfail(
+        strict=True, raises=AssertionError, reason=f"age never affects quality — {GAP}"
+    )
     def test_an_old_reading_is_not_reported_as_good(self):
         snaps = _snaps({"vfd_comm_ok": True, "vfd_frequency": 300}, ts=OLD)
         assert any(s.quality != "good" for s in snaps)
@@ -85,7 +94,9 @@ class TestTimestampAndQuality:
         snaps = _snaps({"vfd_frequency": 300})
         assert snaps and all(s.quality == "good" for s in snaps)
 
-    @pytest.mark.xfail(strict=True, reason=f"unknown comms state is treated as good — {GAP}")
+    @pytest.mark.xfail(
+        strict=True, raises=AssertionError, reason=f"unknown comms state is treated as good — {GAP}"
+    )
     def test_without_a_comms_reading_drive_values_are_not_good(self):
         assert all(s.quality != "good" for s in _snaps({"vfd_frequency": 300}))
 
@@ -125,7 +136,9 @@ class TestCommandIsNotFeedback:
         """No status word, no frequency, no current — only what the PLC asked for."""
         assert _assess({"vfd_cmd_word": FWD_RUN}) == "Machine running. No active VFD fault."
 
-    @pytest.mark.xfail(strict=True, reason=f"a RUN command is taken as feedback — {GAP}")
+    @pytest.mark.xfail(
+        strict=True, raises=AssertionError, reason=f"a RUN command is taken as feedback — {GAP}"
+    )
     def test_a_run_command_alone_is_not_summarised_as_running(self):
         assert "Machine running" not in (_assess({"vfd_cmd_word": FWD_RUN}) or "")
 
@@ -135,7 +148,9 @@ class TestCommandIsNotFeedback:
         text = _assess(MISMATCH)
         assert text is not None and text.startswith("Machine running") and "0.0 Hz" in text
 
-    @pytest.mark.xfail(strict=True, reason=f"a command/feedback mismatch is hidden — {GAP}")
+    @pytest.mark.xfail(
+        strict=True, raises=AssertionError, reason=f"a command/feedback mismatch is hidden — {GAP}"
+    )
     def test_a_stopped_drive_with_a_run_command_is_not_summarised_as_running(self):
         assert "Machine running" not in (_assess(MISMATCH) or "")
 
@@ -165,6 +180,73 @@ class TestMissingObservationsAreUnknown:
         assert _assess({"vfd_frequency": 300}) == want
         assert _assess({"vfd_frequency": 300, "vfd_fault_code": None}) == want
 
-    @pytest.mark.xfail(strict=True, reason=f"a missing fault reading is shown as healthy — {GAP}")
+    @pytest.mark.xfail(
+        strict=True,
+        raises=AssertionError,
+        reason=f"a missing fault reading is shown as healthy — {GAP}",
+    )
     def test_an_unread_fault_register_is_not_summarised_as_no_active_fault(self):
         assert "No active VFD fault" not in (_assess({"vfd_frequency": 300}) or "")
+
+
+# ── The deployed entry point: Ignition "Ask MIRA" ─────────────────────────────
+
+IGN = "[default]Bench/VFD/"
+
+
+def _ignition(tags: dict) -> str | None:
+    from shared.live_snapshot import assess_from_paths
+
+    return assess_from_paths({IGN + k: v for k, v in tags.items()})
+
+
+class TestIgnitionEntryPoint:
+    """The same three gaps through ``assess_from_paths``, the function ignition_chat.py calls."""
+
+    def test_nothing_assessable_gives_no_assessment(self):
+        assert _ignition({}) is None
+        # analog leaves are deliberately not assessed on this path
+        assert _ignition({"vfd_frequency": 300}) is None
+
+    def test_lost_comms_is_reported_and_no_fault_is_named(self):
+        text = _ignition({"vfd_comm_ok": False, "vfd_fault_code": 4})
+        assert text is not None and "LOST" in text and "GFF" not in text
+
+    def test_pinned_a_run_command_alone_is_summarised_as_running(self):
+        assert _ignition({"vfd_cmd_word": FWD_RUN}) == "Machine running. No active VFD fault."
+
+    @pytest.mark.xfail(
+        strict=True, raises=AssertionError, reason=f"a RUN command is taken as feedback — {GAP}"
+    )
+    def test_a_run_command_alone_is_not_summarised_as_running(self):
+        assert "Machine running" not in (_ignition({"vfd_cmd_word": FWD_RUN}) or "")
+
+    def test_pinned_run_command_with_stopped_status_is_summarised_as_running(self):
+        text = _ignition(
+            {
+                "vfd_cmd_word": FWD_RUN,
+                "vfd_status_word": STOPPED,
+                "vfd_comm_ok": True,
+                "vfd_fault_code": 0,
+            }
+        )
+        assert text == "Machine running (comms OK, no fault). No active VFD fault."
+
+    def test_pinned_an_unread_fault_register_is_summarised_as_no_active_fault(self):
+        assert _ignition({"vfd_status_word": 3}) == "Machine running. No active VFD fault."
+
+    @pytest.mark.xfail(
+        strict=True,
+        raises=AssertionError,
+        reason=f"a missing fault reading is shown as healthy — {GAP}",
+    )
+    def test_an_unread_fault_register_is_not_summarised_as_no_active_fault(self):
+        assert "No active VFD fault" not in (_ignition({"vfd_status_word": 3}) or "")
+
+    def test_pinned_this_path_stamps_no_time_at_all(self):
+        """``assess_from_paths`` normalises with ``ts=""`` — readings carry no time here."""
+        import inspect
+
+        from shared import live_snapshot
+
+        assert 'ts=""' in inspect.getsource(live_snapshot.assess_from_paths)
