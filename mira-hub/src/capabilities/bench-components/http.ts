@@ -21,6 +21,17 @@ export const storedThread = (key: string): string | null => (key === LEGACY_THRE
 
 export const bad = (error: string, status = 400, extra: Record<string, unknown> = {}) => NextResponse.json({ error, ...extra }, { status });
 
+/**
+ * The component tables (proposed migration 115) are not in this database yet:
+ * Postgres undefined_table / undefined_column. The checklist answers 503 so the
+ * tablet hides it, instead of an error on every project. Any other failure is
+ * not masked.
+ */
+export function componentTablesMissing(err: unknown): boolean {
+  const code = (err as { code?: unknown } | null)?.code;
+  return code === "42P01" || code === "42703";
+}
+
 export function requestIdOf(body: Record<string, unknown>): string | null {
   return isUuid(body.clientRequestId) ? body.clientRequestId : null;
 }

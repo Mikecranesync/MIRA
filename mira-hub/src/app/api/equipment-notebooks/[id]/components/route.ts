@@ -14,7 +14,7 @@ import { sessionOr401 } from "@/lib/session";
 import { getNotebook, listSources } from "@/lib/equipment-notebooks";
 import { addComponent, type ComponentOrigin } from "@/capabilities/bench-components/store";
 import { readRevisionInput } from "@/capabilities/bench-components/validate";
-import { bad, benchState, requestIdOf, threadKeyOf } from "@/capabilities/bench-components/http";
+import { bad, benchState, componentTablesMissing, requestIdOf, threadKeyOf } from "@/capabilities/bench-components/http";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +31,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!threadKey) return bad("invalid_thread_id");
   if (!(await getNotebook(ctx.tenantId, id))) return bad("notebook_not_found", 404);
   const sources = await listSources(ctx.tenantId, id);
-  return NextResponse.json(await benchState(ctx.tenantId, id, ctx.userId, threadKey, sources));
+  try {
+    return NextResponse.json(await benchState(ctx.tenantId, id, ctx.userId, threadKey, sources));
+  } catch (err) {
+    if (componentTablesMissing(err)) return bad("components_unavailable", 503);
+    throw err;
+  }
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
