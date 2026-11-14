@@ -41,7 +41,7 @@ critical gaps in the last section block it.
 Test files: **HUB-G** = `mira-hub/tests/integration/ontology/bench-context-contract.integration.test.ts` (45 tests) ·
 **HUB-P** = `mira-hub/tests/integration/ontology/bench-pilot-live-evidence.integration.test.ts` (13 pass + 1 expected failure) ·
 **PY** = `tests/test_ontology_bench_contract.py` (18 pass + 7 strict xfail) ·
-**HUB-S** = `mira-hub/tests/integration/ontology/bench-notebook-source-scope.integration.test.ts` (15 tests; approval and supersession tests mutation-checked, tenant tests not — see row 3) ·
+**HUB-S** = `mira-hub/tests/integration/ontology/bench-notebook-source-scope.integration.test.ts` (23 tests; approval and supersession tests mutation-checked, tenant tests not — see row 3; the last eight run real retrieval with the validator's ids) ·
 **EXIST-P** = `mira-hub/src/app/api/equipment-notebooks/[id]/chat/__tests__/machine-evidence.test.ts` (re-run here: green) ·
 **PROBE-5504** = five probes run at `e649880b1` (two drives of one model; confirm one, the other stays unconfirmed; correction keeps history; history is append-only for the application role; other tenant sees nothing through the store and through row-level security).
 
@@ -90,11 +90,17 @@ Stated plainly, by where the proof stands:
 - **Demonstrated only at #5504's unaccepted head:** component identity (two of one model),
   component approval, component correction and history. The code there does it; it is not merged,
   has two open HIGH findings on selection paths, and its migration is applied nowhere.
-- **Not demonstrated end to end:** no test here drives the chat route itself on a real database
-  through to a generated answer. The chain is validator (real database) + route hand-off (mocked).
-  I tried the next link — real retrieval given the validator's ids — and stopped at the timebox:
-  the Hub test schema lacks the engine-side search column, and with it stubbed the positive
-  control returned no passages, so nothing can be concluded from it either way.
+- **Validator → retrieval, both real, on a real database (HUB-S, last section):** asked for a
+  superseded reading, the passages retrieved come only from the corrected one — and a control
+  shows retrieval itself would return both if handed both, so the exclusion is earned by the
+  scope validator. With the approved-retrieval gate on, a private passage whose document is not
+  in the approved set is withheld; with the gate **off it is served** (observed — the gate is an
+  environment setting; whether the pilot environment has it on was not checked). Another tenant
+  handing in this tenant's document id retrieves nothing. Text-search lane only: no embeddings,
+  no re-ranking, two one-passage documents.
+- **Still not demonstrated:** the chat route itself on a real database, the model call, and a
+  generated answer. The route's hand-off of the validator's ids to retrieval is shown with a
+  mocked validator only.
 - **Not expressible on Path P:** a relationship between two components.
 - Nothing in HUB-G, HUB-P or HUB-S runs in a CI job.
 
@@ -187,7 +193,7 @@ compliance with any external standard, and nothing here should be quoted that wa
 
 - Independent review required for this work: **not obtained.** A governed Codex round needs
   the owner's authorization; none was requested or spent.
-- One read-only second-model read of this branch **as of `5fdb5f700`** was run as evidence only. The three commits after it (notebook source scope, bench links, these corrections) have had **no** second read; an advisor pass found three over-claims and a read-only second read (same model family, **PARTIAL**, ran no tests) found six more — one tenant test true by its own seed data, a missing positive control, titles that named a reader the test never called. All corrected in the last two commits. That second read did not cover the final corrections themselves. Label: **PARTIAL**
+- One read-only second-model read of this branch **as of `5fdb5f700`** was run as evidence only. The three commits after it (notebook source scope, bench links, these corrections) have had **no** second read; an advisor pass found three over-claims and a read-only second read (same model family, **PARTIAL**, ran no tests) found six more — one tenant test true by its own seed data, a missing positive control, titles that named a reader the test never called. All corrected in the last two commits. That second read did not cover the final corrections themselves, nor the retrieval section added after it. Label: **PARTIAL**
   (same model family as the author). It ran no tests. It found no vacuous test; it did find
   seven places where a test or this page claimed more than it exercised. All seven were
   accepted and corrected (the open-window gap above, the Ignition entry point, the
