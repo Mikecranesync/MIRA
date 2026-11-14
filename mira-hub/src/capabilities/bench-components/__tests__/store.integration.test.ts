@@ -1,0 +1,220 @@
+/**
+ * Bench component store against real Postgres: the real withTenantContext
+ * (SET LOCAL ROLE factorylm_app + RLS) on a disposable database, migration 115
+ * applied from db/proposed (twice: idempotency).
+ *
+ * Run (disposable DB only; the integration schema must already hold 073–089):
+ *   TEST_DATABASE_URL=postgres://postgres@127.0.0.1:55441/bench MIRA_TEST_DB_CONFIRM=DISPOSABLE \
+ *     npx vitest run --config vitest.integration.config.ts src/capabilities/bench-components
+ */
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { randomUUID as uuid } from "node:crypto";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import type { Pool } from "pg";
+
+const { testPool } = vi.hoisted(() => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { Pool: PgPool } = require("pg");
+  return { testPool: new PgPool({ connectionString: process.env.TEST_DATABASE_URL, max: 6 }) as Pool };
+});
+vi.mock("@/lib/db", () => ({ default: testPool }));
+
+import {
+  addComponent,
+  advanceSelectionRevision,
+  getSelection,
+  listComponents,
+  listSelectionTurns,
+  reviseComponent,
+  setSelection,
+  stampTurnComponent,
+} from "../store";
+import { readRevisionInput, type ComponentRevisionInput } from "../validate";
+import { readSubjectUnderSelection } from "../selection";
+
+const MIGRATION = path.resolve(__dirname, "../../../../db/proposed/115_bench_components.sql");
+const USER = "user-tech-1";
+
+async function makeNotebook(tenantId: string): Promise<string> {
+  const res = await testPool.query<{ id: string }>(
+    `INSERT INTO equipment_notebooks (tenant_id, node_id, display_name) VALUES ($1::uuid, $2::uuid, 'bench test')
+     RETURNING id::text AS id`,
+    [tenantId, uuid()],
+  );
+  return res.rows[0]!.id;
+}
+
+function rev(body: Record<string, unknown>, confirm = false): ComponentRevisionInput {
+  const read = readRevisionInput(body, confirm);
+  if ("error" in read) throw new Error(read.error);
+  return read;
+}
+
+const GS10 = { rawLabel: "GS11N-20P2", inputKind: "typed", manufacturer: "AutomationDirect", family: "GS10", catalogNumber: "GS11N-20P2", hardwareRevision: "1.03", localTag: "VFD1" };
+
+/** A completed turn, created at the database's now() exactly as the claim writes it. */
+async function turn(tenantId: string, notebookId: string, question: string, threadId: string | null) {
+  const id = uuid();
+  await testPool.query(
+    `INSERT INTO equipment_notebook_turns (notebook_id, tenant_id, question, answer_status, owner_user_id, thread_id,
+       client_request_id, client_request_state)
+     VALUES ($1::uuid, $2::uuid, $3, 'insufficient_evidence', $4, $5, $6::uuid, 'complete')`,
+    [notebookId, tenantId, question, USER, threadId, id],
+  );
+  return id;
+}
+
+const run = process.env.TEST_DATABASE_URL && process.env.MIRA_TEST_DB_CONFIRM === "DISPOSABLE" ? describe : describe.skip;
+
+run("bench component store (real Postgres, RLS)", () => {
+  const tenantA = uuid();
+  const tenantB = uuid();
+  let notebookA: string;
+  let otherNotebookA: string;
+  let notebookB: string;
+
+  beforeAll(async () => {
+    const sql = readFileSync(MIGRATION, "utf8");
+    await testPool.query(sql);
+    await testPool.query(sql);
+    notebookA = await makeNotebook(tenantA);
+    otherNotebookA = await makeNotebook(tenantA);
+    notebookB = await makeNotebook(tenantB);
+  });
+  afterAll(async () => {
+    await testPool.end();
+  });
+
+  it("adds a component with its first revision once; a retried add returns it and writes nothing", async () => {
+    const key = uuid();
+    const first = await addComponent(tenantA, notebookA, USER, { clientRequestId: key, kind: "drive", origin: "inventory", position: null, revision: rev(GS10) });
+    expect(first.status).toBe("created");
+    const again = await addComponent(tenantA, notebookA, USER, { clientRequestId: key, kind: "drive", origin: "inventory", position: null, revision: rev(GS10) });
+    expect(again.status).toBe("existing");
+    const rows = await testPool.query(`SELECT count(*)::int AS n FROM notebook_components WHERE client_request_id = $1::uuid`, [key]);
+    expect(rows.rows[0].n).toBe(1);
+    const revs = await testPool.query(`SELECT count(*)::int AS n FROM notebook_component_revisions WHERE client_request_id = $1::uuid`, [key]);
+    expect(revs.rows[0].n).toBe(1);
+  });
+
+  it("a reused request id with different content is a conflict, not the earlier success", async () => {
+    const key = uuid();
+    await addComponent(tenantA, notebookA, USER, { clientRequestId: key, kind: "relay", origin: "inventory", position: null, revision: null });
+    const reused = await addComponent(tenantA, notebookA, USER, { clientRequestId: key, kind: "motor", origin: "inventory", position: null, revision: null });
+    expect(reused.status).toBe("request_id_conflict");
+  });
+
+  it("an incomplete observation is saved as it is: unknown fields stay empty and listed", async () => {
+    const added = await addComponent(tenantA, notebookA, USER, {
+      clientRequestId: uuid(), kind: "photo_eye", origin: "device_schedule", position: null,
+      revision: rev({ rawLabel: "B1 beam sensor", inputKind: "schedule", localTag: "B1", unresolved: ["manufacturer", "catalogNumber"], manufacturer: "guess" }),
+    });
+    if (added.status !== "created") throw new Error(added.status);
+    expect(added.component.current).toMatchObject({ manufacturer: null, catalogNumber: null, localTag: "B1", identityStatus: "candidate", unresolved: ["manufacturer", "catalogNumber"] });
+  });
+
+  it("confirm writes one new revision; the same confirmation again writes nothing (not asked twice)", async () => {
+    const added = await addComponent(tenantA, notebookA, USER, { clientRequestId: uuid(), kind: "drive", origin: "inventory", position: null, revision: rev(GS10) });
+    if (added.status !== "created") throw new Error(added.status);
+    const id = added.component.id;
+    const confirmed = await reviseComponent(tenantA, notebookA, id, USER, { clientRequestId: uuid(), expectedRevision: 1, revision: rev(GS10, true) });
+    expect(confirmed.status).toBe("created");
+    if (confirmed.status !== "created") throw new Error();
+    expect(confirmed.component.current).toMatchObject({ revision: 2, identityStatus: "user_confirmed" });
+    expect(confirmed.component.current?.confirmedAt).toBeTruthy();
+    const repeat = await reviseComponent(tenantA, notebookA, id, USER, { clientRequestId: uuid(), expectedRevision: 2, revision: rev(GS10, true) });
+    expect(repeat.status).toBe("unchanged");
+    const count = await testPool.query(`SELECT count(*)::int AS n FROM notebook_component_revisions WHERE component_id = $1::uuid`, [id]);
+    expect(count.rows[0].n).toBe(2);
+  });
+
+  it("a save made against an older view is refused (two devices never silently overwrite)", async () => {
+    const added = await addComponent(tenantA, notebookA, USER, { clientRequestId: uuid(), kind: "drive", origin: "inventory", position: null, revision: rev(GS10) });
+    if (added.status !== "created") throw new Error();
+    await reviseComponent(tenantA, notebookA, added.component.id, USER, { clientRequestId: uuid(), expectedRevision: 1, revision: rev(GS10, true) });
+    const stale = await reviseComponent(tenantA, notebookA, added.component.id, USER, { clientRequestId: uuid(), expectedRevision: 1, revision: rev({ ...GS10, catalogNumber: "GS11N-20P5" }, true) });
+    expect(stale.status).toBe("stale_revision");
+  });
+
+  it("selection: set, re-pick moves the boundary, version conflict, retry is a no-op, clear", async () => {
+    const added = await addComponent(tenantA, notebookA, USER, { clientRequestId: uuid(), kind: "drive", origin: "inventory", position: null, revision: rev(GS10, true) });
+    if (added.status !== "created") throw new Error();
+    const cid = added.component.id;
+    const thread = `t-${uuid().slice(0, 8)}`;
+    const first = await setSelection(tenantA, notebookA, USER, thread, { componentId: cid, via: "picker", expectedVersion: null, clientRequestId: uuid() });
+    if (first.status !== "set") throw new Error(first.status);
+    expect(first.selection).toMatchObject({ componentId: cid, revision: 1, version: 1 });
+    const returnKey = uuid();
+    const back = await setSelection(tenantA, notebookA, USER, thread, { componentId: cid, via: "return", expectedVersion: 1, clientRequestId: returnKey });
+    if (back.status !== "set") throw new Error(back.status);
+    expect(back.selection.version).toBe(2);
+    expect(Date.parse(back.selection.selectedAt)).toBeGreaterThan(Date.parse(first.selection.selectedAt));
+    const retried = await setSelection(tenantA, notebookA, USER, thread, { componentId: cid, via: "return", expectedVersion: 1, clientRequestId: returnKey });
+    expect(retried).toMatchObject({ status: "existing", selection: { version: 2 } });
+    const conflict = await setSelection(tenantA, notebookA, USER, thread, { componentId: cid, via: "picker", expectedVersion: 1, clientRequestId: uuid() });
+    expect(conflict.status).toBe("version_conflict");
+    const cleared = await setSelection(tenantA, notebookA, USER, thread, { componentId: null, via: "picker", expectedVersion: 2, clientRequestId: uuid() });
+    expect(cleared.status).toBe("cleared");
+    expect(await getSelection(tenantA, notebookA, USER, thread)).toBeNull();
+  });
+
+  it("a component of another notebook or another tenant cannot be selected", async () => {
+    const other = await addComponent(tenantA, otherNotebookA, USER, { clientRequestId: uuid(), kind: "drive", origin: "inventory", position: null, revision: rev(GS10, true) });
+    if (other.status !== "created") throw new Error();
+    const wrongNotebook = await setSelection(tenantA, notebookA, USER, "t-x", { componentId: other.component.id, via: "picker", expectedVersion: null, clientRequestId: uuid() });
+    expect(wrongNotebook.status).toBe("component_not_found");
+    const crossTenant = await setSelection(tenantB, notebookB, USER, "t-x", { componentId: other.component.id, via: "picker", expectedVersion: null, clientRequestId: uuid() });
+    expect(crossTenant.status).toBe("component_not_found");
+    expect(await listComponents(tenantB, otherNotebookA)).toEqual([]);
+    const intoForeign = await addComponent(tenantB, notebookA, USER, { clientRequestId: uuid(), kind: "drive", origin: "inventory", position: null, revision: null });
+    expect(intoForeign.status).toBe("notebook_not_found");
+  });
+
+  it("restart: turns are stamped, read back with their component, and the Return boundary holds after a fresh read", async () => {
+    const added = await addComponent(tenantA, notebookA, USER, { clientRequestId: uuid(), kind: "drive", origin: "inventory", position: null, revision: rev(GS10, true) });
+    if (added.status !== "created") throw new Error();
+    const cid = added.component.id;
+    const thread = `t-${uuid().slice(0, 8)}`;
+    const sel = await setSelection(tenantA, notebookA, USER, thread, { componentId: cid, via: "picker", expectedVersion: null, clientRequestId: uuid() });
+    if (sel.status !== "set") throw new Error();
+    const t1 = await turn(tenantA, notebookA, "what about the GS13N-20P2, same thing?", thread);
+    expect(await stampTurnComponent(tenantA, notebookA, USER, t1, cid, 1)).toBe(true);
+    const back = await setSelection(tenantA, notebookA, USER, thread, { componentId: cid, via: "return", expectedVersion: 1, clientRequestId: uuid() });
+    if (back.status !== "set") throw new Error();
+    // A fresh read (as after a restart): the stored selection and stamped turns alone decide the carry.
+    const selection = await getSelection(tenantA, notebookA, USER, thread);
+    const turns = await listSelectionTurns(tenantA, notebookA, USER, thread, 6);
+    expect(turns.map((t) => [t.componentId, t.componentRevision])).toEqual([[cid, 1]]);
+    expect(readSubjectUnderSelection(turns, 6, selection!).questions).toEqual([]);
+    // Control: under the first pick (before the Return) the same stamped turn does carry.
+    expect(readSubjectUnderSelection(turns, 6, sel.selection).questions).toEqual(["what about the GS13N-20P2, same thing?"]);
+  });
+
+  it("an identity correction re-points the selection at the new revision and moves the boundary", async () => {
+    const added = await addComponent(tenantA, notebookA, USER, { clientRequestId: uuid(), kind: "drive", origin: "inventory", position: null, revision: rev(GS10, true) });
+    if (added.status !== "created") throw new Error();
+    const cid = added.component.id;
+    const thread = `t-${uuid().slice(0, 8)}`;
+    const sel = await setSelection(tenantA, notebookA, USER, thread, { componentId: cid, via: "picker", expectedVersion: null, clientRequestId: uuid() });
+    if (sel.status !== "set") throw new Error();
+    const corrected = await reviseComponent(tenantA, notebookA, cid, USER, { clientRequestId: uuid(), expectedRevision: 1, revision: rev({ ...GS10, catalogNumber: "GS11N-20P5" }, true) });
+    if (corrected.status !== "created") throw new Error(corrected.status);
+    expect(corrected.previous?.catalogNumber).toBe("GS11N-20P2");
+    const moved = await advanceSelectionRevision(tenantA, notebookA, USER, thread, 1, 2);
+    expect(moved).toMatchObject({ revision: 2, selectedVia: "correction", version: 2 });
+    expect(await advanceSelectionRevision(tenantA, notebookA, USER, thread, 1, 2)).toBeNull();
+  });
+
+  it("the database refuses a confirmed revision without a confirmation time (CHECK)", async () => {
+    const added = await addComponent(tenantA, notebookA, USER, { clientRequestId: uuid(), kind: "x", origin: "inventory", position: null, revision: null });
+    if (added.status !== "created") throw new Error();
+    await expect(
+      testPool.query(
+        `INSERT INTO notebook_component_revisions (tenant_id, component_id, revision, input_kind, identity_status, client_request_id)
+         VALUES ($1::uuid, $2::uuid, 1, 'typed', 'user_confirmed', $3::uuid)`,
+        [tenantA, added.component.id, uuid()],
+      ),
+    ).rejects.toThrow(/notebook_component_revisions_confirmed_chk/);
+  });
+});
