@@ -1522,17 +1522,23 @@ approved:
     query_sha256: "d8e4d3c7a88110744b0bf75b8045da3aae06b6b870153daabd79feabefabb221"
     reason: "Integration test: reads back the rows this test wrote (tenant_id = $1::uuid AND doc_id = $2::uuid) to assert every reprocessed chunk still carries is_private = true (the write law) and the row form. Disposable DB only; pure-tenant by construction; not a product surface. Phase 1 PR-6 (#5427)."
 
-  "mira-hub/src/capabilities/__tests__/micro820-section-scope.integration.test.ts:98":
+  "mira-hub/src/lib/__tests__/manual-rag-model-scope.integration.test.ts:777":
     approved_classification: TENANT-ONLY
-    query_sha256: "0f9501f476933194e41253cce6bdc8a7e7a1040bda530239bea4dd023fb6b76c"
+    query_sha256: "2d1a32b455f5c3d82891b75bb8b47a4e76b64e11d7eb356d844b709adc5e4e60"
     reason: "#5503 / PR #5510: actual-SQL test readback of stored section metadata for its fixed TENANT and pages18/19. Connection-local TEMP knowledge_entries table created in beforeAll, BEGIN/ROLLBACK only; fixture rows private=true. This is deliberately a private-upload test, not a shared OEM surface; no production pool or corpus data."
 
-  "mira-hub/src/capabilities/__tests__/micro820-section-scope.integration.test.ts:159":
+    hash_migration: "#5503 / PR #5510: same reviewed TEMP-test context moved intact from mira-hub/src/capabilities/__tests__/micro820-section-scope.integration.test.ts:98 to the CI-selected model-scope suite; recomputed source-path-salted hash only. Original SHA256 0f9501f476933194e41253cce6bdc8a7e7a1040bda530239bea4dd023fb6b76c. No query, scope or approval broadening."
+
+  "mira-hub/src/lib/__tests__/manual-rag-model-scope.integration.test.ts:838":
     approved_classification: TENANT-ONLY
-    query_sha256: "eb524687a8dd10d96a0774bfb3ef47118b3c2197e1ef07c4240b1ebd81a6df29"
+    query_sha256: "6bcb34ccfe73e0b3fb6d7ec26ffbab59c21759f661cf626524c5c786fcd0fba6"
     reason: "#5503 / PR #5510: DELETE (reported by the read scanner) re-ingests only fixed TENANT plus DOCUMENT inside a SAVEPOINT in the actual-SQL layout-failure test. Target is the connection-local TEMP knowledge_entries table; finally ROLLBACK TO/RELEASE restores baseline and outer ROLLBACK drops the table. No production deletion, no OEM surface."
 
-  "mira-hub/src/capabilities/__tests__/micro820-section-scope.integration.test.ts:166":
+    hash_migration: "#5503 / PR #5510: same reviewed TEMP-test context moved intact from mira-hub/src/capabilities/__tests__/micro820-section-scope.integration.test.ts:159 to the CI-selected model-scope suite; recomputed source-path-salted hash only. Original SHA256 eb524687a8dd10d96a0774bfb3ef47118b3c2197e1ef07c4240b1ebd81a6df29. No query, scope or approval broadening."
+
+  "mira-hub/src/lib/__tests__/manual-rag-model-scope.integration.test.ts:845":
     approved_classification: TENANT-ONLY
-    query_sha256: "310cb958faa38cd4f53154f926016c464a115dc72d3c73d09fb7bd433dc2591c"
+    query_sha256: "f300a41731200d41450fe67e78eeacda131eb980f31b8eb8fc807e4a1958bf53"
     reason: "#5503 / PR #5510: failure-path test readback of unresolved metadata for fixed TENANT/page19 in the connection-local TEMP knowledge_entries table. BEGIN/ROLLBACK and inner SAVEPOINT only, no production corpus access; deliberately tests private-upload isolation, not shared OEM visibility."
+
+    hash_migration: "#5503 / PR #5510: same reviewed TEMP-test context moved intact from mira-hub/src/capabilities/__tests__/micro820-section-scope.integration.test.ts:166 to the CI-selected model-scope suite; recomputed source-path-salted hash only. Original SHA256 310cb958faa38cd4f53154f926016c464a115dc72d3c73d09fb7bd433dc2591c. No query, scope or approval broadening."
