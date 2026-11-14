@@ -13,10 +13,10 @@ Measured on `main` at `20fda901e3`: 28 checks passed, fixture coverage was a SKI
 shapes had a targeted invalid fixture. After this work (local evidence; see #5528 for the exact
 revision and commands):
 
-- **41 of 42 shapes** have an invalid fixture that fails for its declared shape and nothing
-  undeclared, plus a conforming valid twin the shape demonstrably targets. The 42nd,
-  `InstanceOfDirectionShape`, is excluded with a reason in `ontology/fixtures/coverage-exclusions.json`
-  because it cannot fire under RDFS inference; a strict-xfail test pins that.
+- **All 42 shapes** have an invalid fixture that fails for its declared shape and nothing
+  undeclared, plus a conforming valid twin the shape demonstrably targets. No exclusions.
+  `InstanceOfDirectionShape` could never fire under RDFS inference; it was rewritten to look at
+  what the object was declared as, and now rejects `instance_of` a manufacturer or another instance.
 - Missing coverage is a counted **FAIL** in `tools/validate_ontology.py`, not a skip. So are absent
   fixture directories, a stale exclusion, an invalid fixture that fires a shape it did not declare,
   and a valid fixture whose shape never looks at it.
@@ -38,20 +38,24 @@ real code (`tests/test_ontology_runtime_contract.py`):
 | No live diagnosis or numeric claim over lost drive comms | `mira-bots/shared/live_snapshot.py` (GS10 path, comms-lost case only) |
 | A fault code is answered from one drive family only | drive-pack resolver and answerer (drive-pack answers only) |
 
-Everything else (34 shapes) is checked **offline only**: nothing in a live workflow calls the
+Everything else (35 shapes) is checked **offline only**: nothing in a live workflow calls the
 validator, and `materialized_evidence.evidence_from_ontology_validation` has no production caller.
-One of the 34 is close but not live: the CV-101 anomaly rule A6 keeps a run command apart from run
+One of the 35 is close but not live: the CV-101 anomaly rule A6 keeps a run command apart from run
 feedback and its contract test passes on both the source and the gateway copy, but the gateway
 endpoint that would run it is not installed on the bench, so it protects no workflow today.
-Four shapes describe behaviour the application does **not** have today; their tests are strict
-expected failures that name the owning issue:
+Three shapes describe behaviour the application does **not** have today, and one more
+disagreement has no shape of its own. Their tests are strict expected failures that name the
+owning issue:
 
-- a superseded fact stays verified and keeps being served (#5523);
+- a superseded fact stays verified and keeps being served (#5523, two shapes);
 - two drive models that share a fault code collapse into one graph identity (#5520);
-- `instance_of` pointing at a non-class is not rejected (#5528, excluded shape).
+- readers look for a relationship under a name approval never stores (#5519; source-level check).
 
-Not covered by a contract test here, and still open: the relationship-name mismatch between
-writers and readers (#5519, TypeScript on both sides), any age-based staleness rule, the Hub
+Two limits of the ontology itself are pinned the same way under #5528: `instance_of` an object
+with no declared type conforms, and the wrong-family fault rule is silent for a drive with no
+declared family.
+
+Not covered by a contract test here, and still open: running the Hub TypeScript itself (the #5519 check reads source only), any age-based staleness rule, the Hub
 (TypeScript) twins of the approval helpers, and the knowledge-graph side of fault-family scope.
 
 ## Where this starts

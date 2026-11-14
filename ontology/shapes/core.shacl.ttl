@@ -90,6 +90,24 @@ mirash:InstanceOfDirectionShape
     a sh:NodeShape ;
     sh:targetObjectsOf mira:instance_of ;
     rdfs:label "instance_of points at a class" ;
-    sh:class mira:AssetClass ;
-    sh:message "Direction error: the object of instance_of must be an AssetClass. An instance is never `instance_of` another instance." ;
-    sh:severity sh:Violation .
+    # This used to be a bare `sh:class mira:AssetClass`, which could never fail: validation runs
+    # with RDFS inference and instance_of declares rdfs:range mira:AssetClass, so every object is
+    # inferred to be an AssetClass before the check runs (#5528). Inference ADDS that type; it
+    # does not remove what the node was declared as. So the rule looks for the other type: the
+    # object is rejected when it is also declared as something that is neither an asset class
+    # nor one of its ancestors (a manufacturer, an installed asset, a signal ...).
+    # KNOWN LIMIT: an object with no declared type at all still conforms. Under an open world
+    # "nothing said" cannot be told apart from "is a class"; pinned in the coverage-gate tests.
+    sh:sparql [
+        sh:message "Direction error: {$this} is the object of instance_of but is declared as {?other}, which is not an asset class. An instance is `instance_of` a model, never a manufacturer, another instance or anything else." ;
+        sh:severity sh:Violation ;
+        sh:prefixes mirash:prefixes ;
+        sh:select """
+            SELECT DISTINCT $this ?other WHERE {
+                $this a ?other .
+                FILTER(STRSTARTS(STR(?other), STR(mira:)))
+                FILTER NOT EXISTS { ?other rdfs:subClassOf* mira:AssetClass }
+                FILTER NOT EXISTS { mira:AssetClass rdfs:subClassOf* ?other }
+            }
+        """ ;
+    ] .

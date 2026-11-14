@@ -342,6 +342,52 @@ class TestFaultCodeIdentity:
         assert len(set(keys)) == 2, keys
 
 
+# ── Relationship names: what approval writes versus what readers look for ─────
+
+
+class TestRelationshipVocabulary:
+    """Source-level contract for #5519. It reads the two TypeScript files; it does NOT run them.
+
+    The proposal writer turns a lowercase relationship name into a canonical uppercase one, and
+    approval stores the canonical name. A reader that still filters on the lowercase name can
+    never see an edge that was approved through that path.
+    """
+
+    WRITER = "mira-hub/src/lib/knowledge-graph/proposals-writer.ts"
+    READER = "mira-hub/src/lib/knowledge-graph/traversal.ts"
+
+    def _writer_map(self) -> dict[str, str]:
+        import re
+
+        text = (REPO_ROOT / self.WRITER).read_text()
+        block = text[text.index("const LOWERCASE_TO_CANONICAL_EDGE") :]
+        block = block[: block.index("};")]
+        return dict(re.findall(r"^\s*(\w+):\s*\{\s*type:\s*\"(\w+)\"", block, re.MULTILINE))
+
+    def _reader_types(self) -> set[str]:
+        import re
+
+        text = (REPO_ROOT / self.READER).read_text()
+        return set(re.findall(r"relationship_type\s*=\s*'(\w+)'", text))
+
+    def test_the_parser_really_reads_both_files(self):
+        """Guard against a vacuous pass: both sides must yield the names #5519 cites."""
+        writer, reader = self._writer_map(), self._reader_types()
+        assert writer["feeds"] == "UPSTREAM_OF" and writer["caused_by"] == "CAUSES"
+        assert {"feeds", "caused_by"} <= reader
+
+    @pytest.mark.xfail(
+        strict=True,
+        raises=AssertionError,
+        reason="#5519: readers filter on the lowercase names while approval stores the canonical "
+        "ones, so an approved edge is invisible to the traversal that should use it.",
+    )
+    def test_a_reader_accepts_the_name_approval_actually_stores(self):
+        writer, reader = self._writer_map(), self._reader_types()
+        blind = sorted(t for t in reader if t in writer and writer[t] not in reader)
+        assert not blind, blind
+
+
 # ── Command versus feedback ───────────────────────────────────────────────────
 
 

@@ -1,16 +1,12 @@
 # EXPECT-VIOLATION: mirash:AssetClassInstanceShape
+# ALSO-FIRES: mirash:InstanceOfDirectionShape the object is declared an installed asset, which is exactly what the direction rule rejects; the two rules cannot be separated on this input
 #
 # Direction error: an installed drive is declared instance_of ANOTHER installed drive.
 #
-# This is the case InstanceOfDirectionShape was written for, and that shape does NOT fire here. The
-# validator runs with RDFS inference and mira:instance_of declares rdfs:range mira:AssetClass, so
-# the object is inferred to be an AssetClass before any shape looks at it; the direction check then
-# always passes. What does fire is AssetClassInstanceShape, because vfd_102 now reads as both a
-# model and an installed thing. So the mistake is rejected, by the neighbouring rule.
-#
-# InstanceOfDirectionShape is therefore listed in ../coverage-exclusions.json, and
-# tests/test_ontology_coverage_gate.py pins the part that is NOT rejected (instance_of pointing at
-# something that is not an asset at all).
+# Two rules reject it. RDFS inference types vfd_102 as an asset class (the range of instance_of),
+# so it now reads as both a model and an installed thing: AssetClassInstanceShape. And it was
+# declared an installed asset, which is not an asset class: InstanceOfDirectionShape. The fixture
+# that isolates the direction rule on its own is core_instance_of_a_manufacturer.ttl.
 
 @prefix mira: <https://ontology.factorylm.com/mira#> .
 @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .

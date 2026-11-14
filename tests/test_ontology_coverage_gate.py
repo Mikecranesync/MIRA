@@ -361,16 +361,16 @@ class TestGapsThatAreKnownAndNotClosed:
 
     @pytest.mark.xfail(
         strict=True,
-        reason="#5528: InstanceOfDirectionShape is unreachable under RDFS inference "
-        "(instance_of has rdfs:range AssetClass); see fixtures/coverage-exclusions.json",
+        raises=AssertionError,
+        reason="#5528: an instance_of object with NO declared type conforms. RDFS inference types "
+        "it as an asset class and, under an open world, 'nothing said' cannot be told from 'is a "
+        "class'. Requiring every model to be declared is a domain rule, not a fixture.",
     )
-    def test_instance_of_a_non_asset_is_not_rejected_yet(self, graphs):
+    def test_instance_of_an_undeclared_thing_is_not_rejected_yet(self, graphs):
         conforms, _ = _fired(
-            graphs,
-            "ex:rockwell a mira:Manufacturer .\n"
-            "ex:vfd_101 a mira:AssetInstance ; mira:instance_of ex:rockwell .",
+            graphs, "ex:vfd_101 a mira:AssetInstance ; mira:instance_of ex:never_described ."
         )
-        assert not conforms, "an installed drive cannot be an instance of a manufacturer"
+        assert not conforms
 
     @pytest.mark.xfail(
         strict=True,
@@ -389,6 +389,30 @@ class TestGapsThatAreKnownAndNotClosed:
             "ex:vfd_101 a mira:AssetInstance ; mira:has_fault ex:f007 .",
         )
         assert not conforms
+
+
+class TestInstanceOfDirectionCanFire:
+    """Was a strict xfail until #5528 made the rule reachable under RDFS inference."""
+
+    def test_instance_of_a_manufacturer_is_rejected_by_the_direction_rule(self, graphs):
+        conforms, fired = _fired(
+            graphs,
+            "ex:rockwell a mira:Manufacturer .\n"
+            "ex:vfd_101 a mira:AssetInstance ; mira:instance_of ex:rockwell .",
+        )
+        assert not conforms, "an installed drive cannot be an instance of a manufacturer"
+        assert fired == {"InstanceOfDirectionShape"}
+
+    def test_instance_of_a_model_or_family_is_accepted(self, graphs):
+        conforms, fired = _fired(
+            graphs,
+            "ex:m a mira:Manufacturer .\n"
+            "ex:fam a mira:DeviceFamily ; mira:manufactured_by ex:m .\n"
+            "ex:cls a mira:AssetClass .\n"
+            "ex:a a mira:AssetInstance ; mira:instance_of ex:fam .\n"
+            "ex:b a mira:AssetInstance ; mira:instance_of ex:cls .",
+        )
+        assert conforms, fired
 
 
 class TestNeighbouringRulesCloseWhatLooksLikeAHole:
