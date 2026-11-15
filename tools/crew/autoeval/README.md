@@ -8,12 +8,16 @@ through a metered, budgeted, cached seam. Dry by default. Nothing is written ins
 
 | Path | Role |
 |---|---|
-| `evals/scripts/autoeval.py` | CLI: `run`, `seed`, `status` |
+| `evals/scripts/autoeval.py` | CLI: `run`, `seed`, `status`, `import`, `fixture`, `draft`, `verify` |
 | `evals/scripts/autoeval_run.py` | CLI helpers: keys, budget config, lanes, spend, alert delivery |
 | `evals/scripts/autoeval_budget.py` | Spend ledger and the one metered Claude call |
 | `evals/scripts/autoeval_judge.py` | Verdict cache keyed on the rendered prompt; judge runner; seed replay |
 | `evals/scripts/autoeval_select.py` | Changed-path lane selection; count parsing |
 | `evals/scripts/autoeval_report.py` | Report, transition alerts, Mission Control block |
+| `evals/scripts/autoeval_import.py` | `import`: validates generated answer records into a transcript set (no network) |
+| `evals/scripts/autoeval_fixture_judge.py` | `fixture`: second judge lane, `tests/eval/judge.py` rubric, through `judge_call` |
+| `evals/scripts/autoeval_draft.py` | `draft`: metered drafting of candidate cases from source passages |
+| `evals/scripts/autoeval_verify_cases.py` | `verify`: deterministic verbatim-quote check of candidates (no model) |
 | `evals/autoeval.lanes.json` | Lane table (the exact test files that exist at base) |
 | `tools/crew/autoeval/run.sh` | Wrapper: detached `origin/main` checkout, singleton lock, runs `autoeval run` |
 | `tools/crew/autoeval/com.factorylm.autoeval.plist` | launchd job (not loaded by default) |
@@ -34,6 +38,41 @@ through a metered, budgeted, cached seam. Dry by default. Nothing is written ins
   `verdicts.jsonl` (one row per judged case: model, prompt hash, transcript and runner commit,
   tokens, cost, request id, cache file, and the path of the judge's evidence file)
 - `seed/`: output of `seed`
+
+## Generated-answer lane (import, fixture, draft, verify)
+
+Added for the credit plan. None of these commands is wired into `run`, and none of them touches the
+release-gate transcript sets. `import` and `verify` are pure: no network, no key, no ledger.
+
+```bash
+# 1. validate generated records into a transcript set (refuses duplicates, errors, unknown routes)
+python3.12 evals/scripts/autoeval.py import --records <dir-of-json> --set <name> \
+  --sha <commit-sha> --base-url <https-url> --results-root <dir>
+
+# 2. judge the imported set with the second rubric (tests/eval/judge.py). Dry unless --paid.
+python3.12 evals/scripts/autoeval.py fixture --set-dir <results-root>/<name> [--model M] [--paid]
+
+# 3. draft candidate cases from passages (metered; dry unless --paid). Refuses any passage
+#    not marked "is_private": false, before any cache lookup or key fetch.
+python3.12 evals/scripts/autoeval.py draft --prompt <file> --passages <file.json> \
+  --category <c> --out <candidates.jsonl> [--paid]
+
+# 4. verify each candidate's source_quote verbatim in its own doc and page (no model)
+python3.12 evals/scripts/autoeval.py verify --candidates <candidates.jsonl> \
+  --passages <file.json> --out-dir <dir>      # writes accepted.jsonl and rejected.jsonl
+```
+
+- Generated record: the recorded-transcript shape (`case_id`, `case_type` = `technician`, `case`,
+  `turns` with `turn`, `question`, `answer`, `citations`, `status`, and a null `error`). An optional
+  `retrieved_passages` list (`doc_id`, `page`, `text`) is passed to the fixture judge as the real
+  `rag_context`. Without it the rubric's no-coverage placeholder is used.
+- Passages file: a JSON array of `{doc_id, page, text, is_private}`.
+- Drafting and the fixture lane use the same dry rule as `run`: a cache miss is `paid_required`, no
+  request is made and no key is fetched. Paid drafts are cached under their own CAS stage
+  (`autoeval-draft`), and paid verdicts under the verdict stage, both with the content-addressed key.
+- Verification normalises whitespace only. An empty quote is rejected explicitly.
+- Paid calls book to the same `ledger.jsonl` and obey the same caps. Lane labels are `draft:<category>`
+  for drafting and `autoeval:<set>` for the fixture judge.
 
 ## Operate
 

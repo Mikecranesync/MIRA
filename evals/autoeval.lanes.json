@@ -168,10 +168,14 @@
           "runner": "pytest",
           "files": [
             "tests/eval/test_autoeval_budget.py",
+            "tests/eval/test_autoeval_draft.py",
             "tests/eval/test_autoeval_e2e.py",
+            "tests/eval/test_autoeval_fixture.py",
+            "tests/eval/test_autoeval_import.py",
             "tests/eval/test_autoeval_judge.py",
             "tests/eval/test_autoeval_report.py",
-            "tests/eval/test_autoeval_select.py"
+            "tests/eval/test_autoeval_select.py",
+            "tests/eval/test_autoeval_verify.py"
           ]
         }
       ]
