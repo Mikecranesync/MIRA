@@ -1,0 +1,146 @@
+{
+  "schema": 1,
+  "note": "Lane table for autoeval. Each step runs from its cwd (repo-relative). Test files are the paths that exist at base commit dbbe7b688. A lane's own test files also count as its triggers, so editing a test selects its lane. Trigger entries ending in / are prefixes; others are exact paths.",
+  "lanes": [
+    {
+      "name": "safety",
+      "always": true,
+      "triggers": [
+        "mira-bots/shared/guardrails.py",
+        "mira-hub/src/lib/safety-classifier.ts",
+        "mira-hub/src/lib/safety-phrases.ts",
+        "mira-hub/src/capabilities/energized-work-stop.ts",
+        "mira-hub/src/capabilities/answer-validation.ts",
+        "mira-hub/src/app/api/equipment-notebooks/",
+        "mira-hub/src/app/api/quickstart/ask/"
+      ],
+      "steps": [
+        {
+          "cwd": "mira-hub",
+          "runner": "vitest",
+          "files": [
+            "src/capabilities/__tests__/energized-work-stop.test.ts",
+            "src/app/api/equipment-notebooks/__tests__/chat-safety-stop.test.ts",
+            "src/app/api/quickstart/ask/__tests__/safety-gate.test.ts",
+            "src/lib/safety-classifier.test.ts",
+            "src/lib/safety-phrases.test.ts"
+          ]
+        },
+        {
+          "cwd": ".",
+          "runner": "pytest",
+          "files": [
+            "mira-bots/tests/test_guardrails.py",
+            "tests/test_safety_coverage.py",
+            "tests/bot_regression.py"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "wrong_manual",
+      "always": false,
+      "triggers": [
+        "mira-hub/src/capabilities/named-model-mismatch.ts",
+        "mira-bots/shared/uns_resolver.py"
+      ],
+      "steps": [
+        {
+          "cwd": "mira-hub",
+          "runner": "vitest",
+          "files": [
+            "src/capabilities/__tests__/synthetic-technician/wrong-manual.test.ts",
+            "src/capabilities/__tests__/named-model-mismatch.test.ts"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "catalog_number",
+      "always": false,
+      "triggers": [
+        "mira-hub/src/capabilities/"
+      ],
+      "steps": [
+        {
+          "cwd": "mira-hub",
+          "runner": "vitest",
+          "files": [
+            "src/capabilities/__tests__/answer-is-told-the-catalog-number.route.test.ts",
+            "src/capabilities/__tests__/catalog-identifier-fold.test.ts"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "unsupported",
+      "always": false,
+      "triggers": [
+        "mira-hub/src/capabilities/",
+        "mira-bots/shared/inference/router.py"
+      ],
+      "steps": [
+        {
+          "cwd": "mira-hub",
+          "runner": "vitest",
+          "files": [
+            "src/capabilities/__tests__/uncited-document-claim.route.test.ts",
+            "src/capabilities/quickstart-ungrounded-honesty.test.ts"
+          ]
+        },
+        {
+          "cwd": ".",
+          "runner": "pytest",
+          "files": [
+            "mira-bots/tests/test_unsupported_param_claim.py"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "citation",
+      "always": false,
+      "triggers": [
+        "mira-hub/src/capabilities/citation-title.ts",
+        "mira-hub/src/lib/citation-page.ts",
+        "mira-bots/shared/citation_compliance.py"
+      ],
+      "steps": [
+        {
+          "cwd": "mira-hub",
+          "runner": "vitest",
+          "files": [
+            "src/capabilities/__tests__/citation-source-url.route.test.ts",
+            "src/capabilities/__tests__/citation-title.test.ts",
+            "src/lib/citation-page.test.ts"
+          ]
+        },
+        {
+          "cwd": ".",
+          "runner": "pytest",
+          "files": [
+            "mira-bots/tests/test_citation_gate.py",
+            "tests/test_citation_attribution.py"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "technician",
+      "always": false,
+      "triggers": [
+        "mira-hub/src/capabilities/__tests__/synthetic-technician/",
+        "mira-bots/shared/engine.py"
+      ],
+      "steps": [
+        {
+          "cwd": "mira-hub",
+          "runner": "vitest",
+          "files": [
+            "src/capabilities/__tests__/synthetic-technician/typed-machine.test.ts"
+          ]
+        }
+      ]
+    }
+  ]
+}
