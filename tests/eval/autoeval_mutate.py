@@ -270,6 +270,100 @@ MUTATIONS = [
         "if False:",
         ["test_paid_mode_without_paid_json_refuses_to_start"],
     ),
+    # autoeval_import.py: the importer refuses before it writes anything
+    (
+        "autoeval_import.py",
+        "if field not in record:",
+        "if False:",
+        ["test_importer_rejects_a_record_missing_a_required_field"],
+    ),
+    (
+        "autoeval_import.py",
+        "if case_id in records:",
+        "if False:",
+        ["test_importer_refuses_duplicate_case_ids"],
+    ),
+    (
+        "autoeval_import.py",
+        "if dest.exists():",
+        "if False:",
+        ["test_importer_refuses_an_existing_set_and_leaves_it_untouched"],
+    ),
+    (
+        "autoeval_import.py",
+        '"source": "generated",',
+        '"source": "recorded",',
+        ["test_manifest_is_generated_sourced_and_identical_on_a_second_import"],
+    ),
+    (
+        "autoeval_import.py",
+        'if record["error"] is not None:',
+        "if False:",
+        ["test_importer_refuses_a_record_that_carries_an_error"],
+    ),
+    # autoeval_verify_cases.py: a quote must be verbatim in its own doc and page
+    (
+        "autoeval_verify_cases.py",
+        "if any(wanted in norm(text) for text in texts):",
+        "if True:",
+        ["test_verifier_rejects_a_mutated_quote"],
+    ),
+    (
+        "autoeval_verify_cases.py",
+        'return " ".join(text.split())',
+        "return text",
+        ["test_whitespace_only_differences_are_accepted"],
+    ),
+    (
+        "autoeval_verify_cases.py",
+        "texts = index.get((doc, str(page)))",
+        "texts = [t for (d, _p), ts in index.items() if d == doc for t in ts]",
+        ["test_quote_cited_to_the_wrong_page_is_rejected"],
+    ),
+    (
+        "autoeval_verify_cases.py",
+        "if not isinstance(quote, str) or not norm(quote):",
+        "if not isinstance(quote, str):",
+        ["test_empty_or_missing_quote_is_rejected_explicitly"],
+    ),
+    # autoeval_draft.py: private passages never reach a model
+    (
+        "autoeval_draft.py",
+        'if p.get("is_private") is not False:',
+        'if p.get("is_private") is True:',
+        ["test_drafting_refuses_a_passage_without_is_private_false"],
+    ),
+    (
+        "autoeval_draft.py",
+        "check_passages(passages)  # before the cache, the ledger or any key is touched",
+        "pass  # the refusal is removed",
+        ["test_drafting_refuses_a_private_passage_before_any_request_or_key"],
+    ),
+    # autoeval_fixture_judge.py and autoeval.py: provenance, passages, parse, dry key
+    (
+        "autoeval_fixture_judge.py",
+        "token = jd.CASE.set(ctx)",
+        "token = jd.CASE.set(jd.NO_CASE)",
+        ["test_paid_verdicts_are_cached_with_the_case_provenance"],
+    ),
+    (
+        "autoeval_fixture_judge.py",
+        'passages = record.get("retrieved_passages") or []',
+        "passages = []",
+        ["test_real_passages_reach_rag_context_when_the_record_provides_them"],
+    ),
+    (
+        "autoeval_fixture_judge.py",
+        "except (ValueError, KeyError, TypeError) as e:",
+        "except (KeyError, TypeError) as e:",
+        ["test_unparseable_paid_reply_is_stored_and_never_rebilled"],
+    ),
+    (
+        "autoeval.py",
+        "fkey = KeyOnce(secret)",
+        "fkey = KeyOnce(secret)\n    fkey()  # an eager key fetch, even in dry",
+        ["test_fixture_dry_run_makes_zero_requests_fetches_no_key_and_writes_no_ledger"],
+    ),
 ]
 
 COUNT = re.compile(r"(\d+) (passed|failed|errors?)\b")
@@ -289,6 +383,8 @@ def build(root: pathlib.Path, module: str | None, old: str | None, new: str | No
     shutil.copy(REPO / "tools" / "r2_signal_floor.py", root / "tools" / "r2_signal_floor.py")
     shutil.copytree(REPO / FIXTURE, root / FIXTURE)
     (root / "tests" / "eval").mkdir(parents=True)
+    # the fixture judge loads the second rubric by path; the temp tree must carry it too
+    shutil.copy(REPO / "tests" / "eval" / "judge.py", root / "tests" / "eval" / "judge.py")
     for rel in TEST_FILES:
         shutil.copy(REPO / rel, root / rel)
     for lane in json.loads((REPO / "evals" / "autoeval.lanes.json").read_text())["lanes"]:
