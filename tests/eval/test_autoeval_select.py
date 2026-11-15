@@ -175,8 +175,8 @@ def test_run_lane_invokes_the_declared_cwd_and_files_and_never_runs_real_tests()
     assert res.status == "pass"
     argv, cwd = calls[0]
     assert cwd == str(REPO / "mira-hub")
-    assert argv[:3] == ["npx", "vitest", "run"]
-    assert argv[3].endswith("wrong-manual.test.ts")
+    assert argv[:4] == ["npx", "--no-install", "vitest", "run"]
+    assert argv[4].endswith("wrong-manual.test.ts")
 
 
 def test_safety_lane_is_always_flagged_always_and_has_both_runners():
