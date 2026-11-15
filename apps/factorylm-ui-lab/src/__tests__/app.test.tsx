@@ -255,6 +255,8 @@ describe("equipment-first navigation (nav=equipment)", () => {
     const view = renderApp("?nav=equipment");
     expect(target(view)).toBe("VFD1 on GS10 bench");
     expect(row(view, "c-vfd1-bench").dataset.target).toBe("true");
+    // The target bar lives inside the composer, so it stays with the sticky composer on a phone.
+    expect(view.container.querySelector('form[aria-label="Composer"] [aria-label="Question target"]')).not.toBeNull();
   });
 
   it("browsing another component does NOT change the target; the bar says where questions go", () => {
@@ -297,8 +299,10 @@ describe("equipment-first navigation (nav=equipment)", () => {
     const view = renderApp("?nav=equipment");
     view.click(row(view, "line-2"));
     view.click(row(view, "m-conveyor-2"));
-    expect(row(view, "c-vfd1-bench").textContent).toContain("Lake Wales plant › Garage › Bench line › GS10 bench › Control panel");
-    expect(row(view, "c-vfd1-line2").textContent).toContain("Lake Wales plant › Garage › Line 2 › Conveyor 2");
+    expect(row(view, "c-vfd1-bench").querySelector(".fl-equip__place")?.textContent).toBe("Bench line › GS10 bench");
+    expect(row(view, "c-vfd1-line2").querySelector(".fl-equip__place")?.textContent).toBe("Line 2 › Conveyor 2");
+    // The full path stays available as the row's tooltip.
+    expect(row(view, "c-vfd1-line2").querySelector(".fl-equip__place")?.getAttribute("title")).toBe("Lake Wales plant › Garage › Line 2 › Conveyor 2");
     // Control: a unique tag stays compact.
     expect(row(view, "c-plc1-bench").querySelector(".fl-equip__place")).toBeNull();
   });

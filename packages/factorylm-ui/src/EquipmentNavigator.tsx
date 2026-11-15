@@ -3,6 +3,7 @@ import {
   findEntry,
   indexEquipment,
   placeOf,
+  shortPlaceOf,
   repeatedTagIds,
   sameTarget,
   searchEquipment,
@@ -82,7 +83,7 @@ export function EquipmentNavigator({ roots, target, browsingId, onBrowse, onAskA
     <span className="fl-equip__text">
       <span className="fl-equip__label">{entry.node.label}</span>
       {entry.node.detail ? <span className="fl-equip__detail">{entry.node.detail}</span> : null}
-      {showPlace ? <span className="fl-equip__place">{placeOf(entry)}</span> : null}
+      {showPlace ? <span className="fl-equip__place" title={placeOf(entry)}>{shortPlaceOf(entry) || placeOf(entry)}</span> : null}
     </span>
     {entry.node.id === currentId ? <span className="fl-equip__target-mark">Target</span> : null}
     {entry.node.status ? <span className="fl-tree__status" data-status={entry.node.status} aria-label={`Status: ${entry.node.status}`} /> : null}

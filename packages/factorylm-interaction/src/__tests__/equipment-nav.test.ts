@@ -10,6 +10,7 @@ import {
   repeatedTagIds,
   sameTarget,
   searchEquipment,
+  shortPlaceOf,
   targetFor,
   targetText,
 } from "@factorylm/interaction";
@@ -27,6 +28,11 @@ describe("equipment hierarchy", () => {
       "site-lw", "area-garage", "line-bench", "m-gs10-bench", "asm-panel", "c-vfd1-bench", "c-plc1-bench",
     ]);
     expect(placeOf(entry("c-plc1-bench"))).toBe("Lake Wales plant › Garage › Bench line › GS10 bench › Control panel");
+  });
+
+  it("short place is line and machine: enough to tell two VFD1s apart", () => {
+    expect(shortPlaceOf(entry("c-vfd1-bench"))).toBe("Bench line › GS10 bench");
+    expect(shortPlaceOf(entry("c-vfd1-line2"))).toBe("Line 2 › Conveyor 2");
   });
 
   it("location stops above the machine", () => {

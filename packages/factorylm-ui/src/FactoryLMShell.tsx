@@ -33,7 +33,7 @@ export interface FactoryLMShellProps {
   readonly conversationSurface?: ConversationSurface;
   /** Host-owned navigation body; replaces the project tree when present (see Sidebar). */
   readonly navigationContent?: ReactNode;
-  /** Rendered directly above the composer (e.g. the question target). */
+  /** Rendered at the top of the composer, inside its sticky area (e.g. the question target). */
   readonly composerAccessory?: ReactNode;
 }
 
@@ -220,8 +220,7 @@ export function FactoryLMShell({ state, dispatch, adapter, hooks, onOpenItem, on
         ? <AssistantThread sendRevision={sendRevision} state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} />
         : <Conversation sendRevision={sendRevision} state={state} dispatch={dispatch} adapter={adapter} hooks={hooks} />}
       {state.sendError ? <SendError error={state.sendError} dispatch={dispatch} draft={state.draft} turnId={state.thread.turns.at(-1)?.id} hooks={hooks} /> : null}
-      {composerAccessory}
-      <Composer state={state} dispatch={composerDispatch} adapter={adapter} hooks={composerHooks} attachmentTrapsTab={top === "attachment-menu"} />
+      <Composer state={state} dispatch={composerDispatch} adapter={adapter} hooks={composerHooks} attachmentTrapsTab={top === "attachment-menu"} accessory={composerAccessory} />
     </main>
     <Overlay layer="inspector" active={inspectorOpen(state)} modal={layered} trapsTab={top === "inspector"}>
       <Inspector state={state} />

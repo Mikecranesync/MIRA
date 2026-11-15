@@ -86,6 +86,17 @@ export function placeOf(entry: EquipmentEntry): string {
   return entry.ancestors.map((node) => node.label).join(" › ");
 }
 
+/**
+ * The part of a row's place that tells two same-tag rows apart: its line/cell
+ * and machine (e.g. "Line 2 › Conveyor 2"). The full path goes in a tooltip.
+ */
+export function shortPlaceOf(entry: EquipmentEntry): string {
+  return entry.ancestors
+    .filter((node) => node.level === "line" || node.level === "cell" || node.level === "machine")
+    .map((node) => node.label)
+    .join(" › ");
+}
+
 function tagKey(node: EquipmentNode): string {
   return (node.tag ?? node.label).trim().toLowerCase();
 }
