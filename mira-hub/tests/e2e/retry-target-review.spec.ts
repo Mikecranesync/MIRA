@@ -9,13 +9,16 @@
  * (/look/, so no vision call is spent) and the SECOND chat request, which is captured and
  * answered 503 so no model is called.
  *
- * Must turn red under `if (false && held)` in hub-host.tsx's Send path (the mutation the
- * unit suite does not catch).
+ * Every selection read/write and the page URL use ONE explicit conversation (`threadId` plus
+ * `&thread=`), so the selection the test clears is the one the page sends against (#5556).
  *
- *   HUB_URL=http://localhost:3131/hub PW_CHANNEL=chrome npx playwright test tests/e2e/retry-target-review.spec.ts -c playwright.config.ts
+ * Must turn red under either mutation of hub-host.tsx's Send path (the unit suite catches
+ * neither): `if (false && held)` (the held body is never re-sent) or sending the held body
+ * without its `visualEvidence` (the photo rider is dropped).
  *
- * Status 2026-11-15: written on CHARLIE, NOT yet run (needs the coordinator's local-auth
- * workspace). Selectors for the attach menu are a best guess; fix them, not the assertions.
+ *   HUB_URL=http://127.0.0.1:3131/hub PW_CHANNEL=chrome npx playwright test tests/e2e/retry-target-review.spec.ts -c playwright.config.ts
+ *
+ * Needs a local-auth hub + disposable database (it registers a user); never point it at staging.
  */
 import { test, expect, type Page } from "@playwright/test";
 import * as fs from "node:fs";
@@ -63,8 +66,13 @@ test("a refused 'selected component' question with a photo is held for review, t
     origin: "technician", kind: "drive", position: 0, clientRequestId: crypto.randomUUID(),
     revision: { rawLabel: "AutomationDirect GS10", localTag: "VFD1", inputKind: "typed" },
   }) as { componentId: string };
-  const v0 = (await json(page, "GET", comps)).selectionVersion as number | null;
-  await json(page, "PUT", `${comps}selection/`, { threadId: null, componentId, expectedVersion: v0 });
+  // One explicit conversation for every selection read/write and for the page.
+  const threadId = `retry-${crypto.randomUUID()}`;
+  const readComps = `${comps}?threadId=${encodeURIComponent(threadId)}`;
+  const select = (componentId: string | null, expectedVersion: number | null) =>
+    json(page, "PUT", `${comps}selection/`, { threadId, componentId, expectedVersion, via: "picker", clientRequestId: crypto.randomUUID() });
+  const v0 = (await json(page, "GET", readComps)).selectionVersion as number | null;
+  await select(componentId, v0);
 
   // The photo read is mocked: a parked, linked, persisted observation. Each upload gets its
   // own id, so a re-upload on the fresh Send cannot pass for the held photo.
@@ -83,33 +91,43 @@ test("a refused 'selected component' question with a photo is held for review, t
     return route.fulfill({ status: 503, json: { error: "test_stop" } });
   });
 
-  await page.goto(`${HUB}/v3/?notebook=${encodeURIComponent(nb)}`, { waitUntil: "domcontentloaded", timeout: 120_000 });
+  await page.goto(`${HUB}/v3/?notebook=${encodeURIComponent(nb)}&thread=${encodeURIComponent(threadId)}`, { waitUntil: "domcontentloaded", timeout: 120_000 });
   const box = page.getByRole("textbox", { name: /ask mira/i });
   await expect(box).toBeVisible({ timeout: 120_000 });
   await expect(page.getByText(/VFD1/).first()).toBeVisible({ timeout: 60_000 });
 
-  // Attach a photo (menu labels are a best guess).
+  // Attach a photo through the real Photo button in the attachment menu.
   const chooser = page.waitForEvent("filechooser", { timeout: 15_000 });
   await page.getByRole("button", { name: /attach/i }).first().click();
-  const photoItem = page.getByRole("menuitem", { name: /photo|image|camera/i }).first();
-  if (await photoItem.isVisible().catch(() => false)) await photoItem.click();
+  await page.getByRole("dialog", { name: "Attachment menu" }).getByRole("button", { name: "Photo", exact: true }).click();
   await (await chooser).setFiles({ name: "nameplate.png", mimeType: "image/png", buffer: PNG });
 
   // Another screen clears the selection; this screen still shows VFD1.
-  const v1 = (await json(page, "GET", comps)).selectionVersion as number;
-  await json(page, "PUT", `${comps}selection/`, { threadId: null, componentId: null, expectedVersion: v1 });
-  const v2 = (await json(page, "GET", comps)).selectionVersion as number;
+  const v1 = (await json(page, "GET", readComps)).selectionVersion as number;
+  await select(null, v1);
+  const v2 = (await json(page, "GET", readComps)).selectionVersion as number;
+  expect(v2, "the clear must move the selection version").not.toBe(v1);
 
   const question = "what fuse does the selected component take";
   await box.fill(question);
+  // The first chat request goes to the real route, which must refuse it.
+  const refusal = page.waitForResponse((r) => /\/chat\/?$/.test(new URL(r.url()).pathname) && r.request().method() === "POST");
   await page.getByRole("button", { name: "Send" }).click();
+  const first = await refusal;
+  expect(first.status(), "the real chat route refuses the moved target").toBe(409);
+  expect((await first.json()).error).toBe("selection_changed");
 
   // Held for review: both targets named, no Retry, the question kept.
   await expect(page.getByText(/asked about .*VFD1/i).first()).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText(/now the whole machine/i).first()).toBeVisible();
-  await expect(page.getByRole("button", { name: /retry|try again/i })).toHaveCount(0);
+  // Anchored: the sidebar lists this test's "E2E retry …" project as a button.
+  await expect(page.getByRole("button", { name: /^(?:retry|try again)$/i })).toHaveCount(0);
   await expect(box).toHaveValue(question);
+  // #5562: the composer says the photo is still kept with the question.
+  await expect(page.getByRole("status", { name: "Kept with this question" })).toContainText(/photo is kept/i);
+  await page.waitForTimeout(1_500);
   expect(sent, "nothing may be re-sent before the technician presses Send").toHaveLength(0);
+  expect(chatCalls, "only the refused request has gone out").toBe(1);
   fs.mkdirSync(SHOT_DIR, { recursive: true });
   await page.screenshot({ path: path.join(SHOT_DIR, "2026-11-15_retry-target-review_desktop.png") });
 
@@ -127,4 +145,8 @@ test("a refused 'selected component' question with a photo is held for review, t
   expect(body.componentSelection).toMatchObject({ componentId: null, selectionVersion: v2 });
   expect(body.visualEvidence?.fileId, "the held photo must ride the fresh Send").toBe("f-photo-1");
   expect(looks, "the photo is not uploaded again").toBe(1);
+  // No duplicate send: one fresh Send makes exactly one more chat request.
+  await page.waitForTimeout(1_500);
+  expect(sent, "one fresh Send, one request").toHaveLength(1);
+  expect(chatCalls).toBe(2);
 });
