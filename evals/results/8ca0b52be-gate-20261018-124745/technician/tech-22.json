@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-22",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-22",
+    "category": "mechanical",
+    "mode": "general",
+    "equipment": "Flexible coupling, motor-pump shaft pair",
+    "question": "Flexible coupling between motor and pump shows a 0.5 inch offset between the two shafts. Motor and pump both running smoothly. Is this normal or a problem?",
+    "turns": [],
+    "expected": {
+      "must_cite": false,
+      "key_points": [
+        "Flexible couplings are designed to accommodate minor misalignment; 0.5 inch is significant and suggests either parallel misalignment or axial offset",
+        "Alignment should be checked and corrected to within manufacturer specs (typically 0.002-0.005 inch for modern systems)",
+        "Alignment should be checked and corrected to within manufacturer specs (typically 0.05 inch for modern systems)"
+      ],
+      "wrong_if": [
+        "Claims any flexible coupling can handle 0.5 inch without consequence",
+        "Assumes smooth running means proper alignment",
+        "Recommends replacement without re-alignment attempt"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Flexible coupling between motor and pump shows a 0.5 inch offset between the two shafts. Motor and pump both running smoothly. Is this normal or a problem?",
+      "answer": "A 0.5 inch shaft offset is **not normal** for a motor-pump coupling; if that measurement is real, it\u2019s a likely alignment problem or a bad reading, not something the coupling should simply absorb.\n\n1. **First verify the measurement method** \u2014 if this was eyeballed, recheck with a straightedge/laser and confirm you\u2019re measuring actual shaft centerline offset, not hub or guard position.  \n2. **With the machine de-energized and locked out**, inspect for soft foot, loose base bolts, piping strain, or a shifted mount.  \n3. **Check coupling type and condition** \u2014 a flexible coupling can tolerate some misalignment, but not that much; worn insert, failed spider, or damaged element can mask a problem briefly.  \n4. **If the offset is confirmed, realign the motor to the pump** before continued operation.\n\nIf you want, I can help you distinguish angular vs parallel misalignment from the coupling style you have.",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 5.800386190414429,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-10-18T12:48:27.383570+00:00"
+}

@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-25",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-25",
+    "category": "missing_information",
+    "mode": "abstention",
+    "equipment": "System 7 air compressor, building 3",
+    "question": "What's the optimal setpoint for the compressor pressure relief valve on the System 7 air compressor in building 3?",
+    "turns": [],
+    "expected": {
+      "abstain_correct": true,
+      "key_points": [
+        "Abstention acknowledges that the relief valve setpoint is plant-specific and documented on the compressor nameplate or in facility maintenance records",
+        "The answer should state that the system has no knowledge of this machine's configuration, nameplate, or current pressurized-air system requirements",
+        "Correct abstention offers to help if the technician can provide the compressor nameplate or maintenance history"
+      ],
+      "wrong_if": [
+        "Guesses a generic pressure (e.g., 100 PSI) without qualifying the guess",
+        "Claims relief valves are always set to a standard value",
+        "Suggests the technician 'just check and see' without understanding the safety risks of improper relief setting"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "What's the optimal setpoint for the compressor pressure relief valve on the System 7 air compressor in building 3?",
+      "answer": "I can\u2019t give the optimal relief-valve setpoint for that compressor from general knowledge; it\u2019s plant- and machine-specific.\n\nCheck the compressor nameplate, the OEM maintenance manual, or the site maintenance records for the exact relief setting and any required test procedure. If you can send the exact model and the relief valve tag or nameplate text, I can help interpret it.",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 4.812735080718994,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-10-18T12:48:45.096762+00:00"
+}

@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-20",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-20",
+    "category": "electrical_plc_vfd",
+    "mode": "general",
+    "equipment": "Siemens 3RU2 overload relay, AC induction motor",
+    "question": "Siemens 3RU2 overload relay is set to 10A and motor nameplate is 8A FLA. After a cold start, overload trips. Why?",
+    "turns": [],
+    "expected": {
+      "must_cite": false,
+      "key_points": [
+        "Induction motor inrush current at cold start can be 5\u20137x FLA for 1\u20132 seconds (soft-starters or VFDs not present)",
+        "Overload relay calibrated to 10A may not have sufficient tolerance for inrush if it's time-delayed improperly or if motor is starting under load",
+        "If motor is cold and load is normal, increase overload trip point to ~12A or verify that 3RU2 time-delay curve is appropriate for the motor"
+      ],
+      "wrong_if": [
+        "Assumes the motor is overloaded without checking startup conditions",
+        "Recommends replacing the motor before checking overload settings",
+        "Ignores the difference between FLA and inrush current"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Siemens 3RU2 overload relay is set to 10A and motor nameplate is 8A FLA. After a cold start, overload trips. Why?",
+      "answer": "Lo m\u00e1s probable es que el rel\u00e9 est\u00e9 viendo la **corriente de arranque o un motor/carga que tarda demasiado en acelerar**, as\u00ed que el elemento t\u00e9rmico se calienta y dispara aunque el FLA de placa sea 8 A.\n\nEn general, revisa esto en orden:\n1. **Tiempo hasta el disparo**: si cae en segundos o tras decenas de segundos, eso apunta a arranque pesado o aceleraci\u00f3n lenta, no a FLA normal.\n2. **Carga mec\u00e1nica**: bomba, cinta, compresor, fricci\u00f3n, rodamientos o material atascado pueden hacer que el motor permanezca en alta corriente demasiado tiempo.\n3. **Ajuste del rel\u00e9**: 10 A est\u00e1 por encima de 8 A; si aun as\u00ed dispara, suele ser por sobrecarga real, desbalance de fases o clase/curva de disparo no adecuada para ese arranque.\n4. **Alimentaci\u00f3n y fases**: desbalance, una fase d\u00e9bil o conexiones flojas elevan la corriente en una o dos fases.\n\n\u00bfEl disparo ocurre **casi inmediato** o **despu\u00e9s de varios segundos/minutos**?",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 6.220347881317139,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-10-18T12:48:15.044336+00:00"
+}

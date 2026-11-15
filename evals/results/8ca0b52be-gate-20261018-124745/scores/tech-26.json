@@ -1,0 +1,47 @@
+{
+  "case_id": "tech-26",
+  "case_type": "technician",
+  "category": "missing_information",
+  "mode": "abstention",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 88,
+      "missing_points": [
+        "Explicitly state that a 2-amp increase alone is insufficient without the motor nameplate rating, starting condition (cold vs warm), and historical baseline/trend data",
+        "Explicitly acknowledge that trending requires controlled conditions and that this specific machine's documents/data are not available",
+        "Offer to help if the technician provides motor nameplate, historical current logs, temperature, and load conditions"
+      ],
+      "wrong_if_present": [],
+      "note": "Correctly avoids diagnosing bearing replacement from current alone and points to load/condition checks, but it does not explicitly frame the answer as an abstention due to missing machine-specific baseline/nameplate data."
+    },
+    "grounding": {
+      "score": null,
+      "note": "No citations were provided; the answer is general guidance rather than document-grounded."
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "The response gives plausible troubleshooting steps, but this rubric does not require a separate diagnostic score."
+    },
+    "actionability": {
+      "score": 84,
+      "note": "Gives clear next checks (load change, bearing symptoms, phase currents, alignment/drag) and a follow-up question, though it could better specify what data to collect before deciding."
+    },
+    "uncertainty": {
+      "score": 78,
+      "note": "It shows caution by saying 'probably not yet' and asks for more symptoms, but it does not explicitly state that the available information is insufficient to decide."
+    },
+    "context": {
+      "score": null,
+      "note": "The answer is context-aware in a general sense, but it does not explicitly tie the recommendation to the specific machine's missing baseline and operating context."
+    }
+  },
+  "case_score": 84.8
+}

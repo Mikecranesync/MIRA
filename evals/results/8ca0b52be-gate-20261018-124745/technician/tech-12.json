@@ -1,0 +1,53 @@
+{
+  "case_id": "tech-12",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-12",
+    "category": "manual_grounded",
+    "mode": "grounded",
+    "equipment": null,
+    "question": "Describe the default factory reset procedure for the GS10 drive and what parameter controls this.",
+    "turns": [],
+    "expected": {
+      "key_points": [
+        "Default parameters are reset by setting P053 (Reset Defaults) to value '2' 'Factory Reset'",
+        "After factory reset, all user parameters return to original defaults from the factory",
+        "The drive must be power-cycled to apply the factory reset completely",
+        "GS10 keypad will require re-entry of basic parameters after factory reset (Speed Reference, Control Source, etc.)"
+      ],
+      "wrong_if": [
+        "States that holding the Esc key for 10 seconds performs a factory reset",
+        "Claims factory reset clears stored fault history but retains custom parameter values",
+        "Recommends factory reset as the first troubleshooting step before checking control wiring",
+        "Confuses parameter P053 with P051 or P052 (which are backfill or recovery functions)"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Describe the default factory reset procedure for the GS10 drive and what parameter controls this.",
+      "answer": "P00.02 [Restore to Default] controls the GS10 factory reset, and setting it to 9 resets all parameters to 50 Hz defaults or 10 resets all parameters to 60 Hz defaults [1]. If you need a reset that retains user-defined P13.01~P13.50 values, use 11 for 50 Hz defaults or 12 for 60 Hz defaults [1].",
+      "citations": [
+        {
+          "citationId": "1",
+          "sourceTitle": "GS10_UserManual.pdf",
+          "page": 117,
+          "quote": "\u2026parameters to 60Hz defaults\n11: Reset all parameters to 50Hz defaults (retain user-defined\nparameter values P13.01~P13.50)\n12: Reset all parameters to 60Hz defaults (retain user-defined\nparameter values P13.01~P13.50)\n0\nP00.02 allows the re",
+          "docId": "c4c90216-5466-4d42-8572-183f45ba6249",
+          "fileId": "5fa8311c-a262-4e60-b723-947436397cb3"
+        }
+      ],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "Grounded in this notebook's sources.",
+      "evidence_basis": "oem_documentation",
+      "safety_trigger": null,
+      "latency_s": 5.832499980926514,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-10-18T12:50:22.952198+00:00"
+}

@@ -1,0 +1,48 @@
+{
+  "case_id": "tech-14",
+  "case_type": "technician",
+  "category": "manual_grounded",
+  "mode": "grounded",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 5,
+      "missing_points": [
+        "Type 1 (Auto-Reset/Run) faults can be automatically reset if the fault condition clears; example: F002 Auxiliary Input",
+        "Type 2 (Non-Resettable) faults require drive or motor repair or wiring correction before the fault can be cleared; example: F006 Motor Stalled, F070 Power Unit failure",
+        "Type 1 faults show in the fault log but may not halt operation if auto-reset is enabled",
+        "Type 2 faults always halt the drive and require manual intervention to clear"
+      ],
+      "wrong_if_present": [],
+      "note": "The response correctly avoids unsupported claims, but it does not answer the question or provide the required distinctions/examples."
+    },
+    "grounding": {
+      "score": null,
+      "note": "The answer is explicitly grounded in the absence of supporting excerpts and does not attempt to fabricate details."
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "No diagnostic content is provided beyond stating the documentation is insufficient."
+    },
+    "actionability": {
+      "score": 20,
+      "note": "It tells the user what is needed next (the fault-classification page or table), but does not provide the requested explanation or examples."
+    },
+    "uncertainty": {
+      "score": 95,
+      "note": "High confidence: the response is a refusal to answer from missing evidence, not a substantive explanation."
+    },
+    "context": {
+      "score": null,
+      "note": "No product-specific context is used beyond noting the excerpts are insufficient."
+    }
+  },
+  "case_score": 27.5
+}

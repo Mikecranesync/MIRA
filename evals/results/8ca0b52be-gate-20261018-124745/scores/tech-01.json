@@ -1,0 +1,46 @@
+{
+  "case_id": "tech-01",
+  "case_type": "technician",
+  "category": "general_industrial",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 72,
+      "missing_points": [
+        "AC drives convert incoming AC power to DC, then synthesize it back to variable-frequency AC output",
+        "Provides motor protection functions including overload and thermal monitoring"
+      ],
+      "wrong_if_present": [],
+      "note": "Correctly identifies speed/torque control and soft starting/stopping, but omits the AC-to-DC-to-variable-AC conversion and protection functions."
+    },
+    "grounding": {
+      "score": null,
+      "note": "No citations were provided, and the answer is general guidance rather than document-grounded."
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "The response is broadly correct but incomplete relative to the rubric."
+    },
+    "actionability": {
+      "score": 78,
+      "note": "It answers the question directly and explains the practical effect, but does not fully specify the drive\u2019s internal conversion or protection role."
+    },
+    "uncertainty": {
+      "score": 92,
+      "note": "High confidence because the answer matches the core function of an AC drive, with only omissions rather than contradictions."
+    },
+    "context": {
+      "score": null,
+      "note": "General industrial-control context is appropriate, but no source-specific context is available."
+    }
+  },
+  "case_score": 77.8
+}

@@ -1,0 +1,47 @@
+{
+  "case_id": "tech-06",
+  "case_type": "technician",
+  "category": "troubleshooting",
+  "mode": "grounded",
+  "checks": {
+    "must_cite": false,
+    "has_citations": true,
+    "citation_count": 1,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 55,
+      "missing_points": [
+        "The drive's output current has exceeded the hardware current limit",
+        "Technician should verify connections between motor and load and verify level and time requirements",
+        "Check that the motor load is not excessively high or jammed; reduce load so output current does not exceed the motor overload current parameter"
+      ],
+      "wrong_if_present": [],
+      "note": "Correctly identifies F007 as Motor Overload/internal electronic overload trip, but adds an unsupported A530 [Boost Select] check and omits some rubric-specific troubleshooting details."
+    },
+    "grounding": {
+      "score": 78,
+      "note": "The citation supports F007 Motor Overload, internal electronic overload trip, excessive motor load, and reducing load so output current does not exceed P033."
+    },
+    "diagnostic": {
+      "score": 60,
+      "note": "Gives the main fault meaning and one corrective action, but does not prioritize the most discriminating checks or include the connection/load verification steps requested by the rubric."
+    },
+    "actionability": {
+      "score": 68,
+      "note": "States what the fault means and what to do next, but the guidance is incomplete and includes an unsupported parameter check that may distract from the primary action."
+    },
+    "uncertainty": {
+      "score": 90,
+      "note": "High confidence because the cited manual directly matches the core fault description and corrective action."
+    },
+    "context": {
+      "score": null,
+      "note": "No additional context scoring applied."
+    }
+  },
+  "case_score": 67.7
+}

@@ -1,0 +1,45 @@
+{
+  "case_id": "tech-18",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-18",
+    "category": "electrical_plc_vfd",
+    "mode": "general",
+    "equipment": "Automation Direct GS10 or similar Modbus-enabled VFD",
+    "question": "Modbus register HR 101 on a VFD reads 1050 but motor is running at half speed. What should you check first?",
+    "turns": [],
+    "expected": {
+      "must_cite": false,
+      "key_points": [
+        "GS10 Modbus registers require parameter cross-reference: confirm the exact register mapping in the drive's Modbus register table for your current firmware version",
+        "A discrepancy between register value and actual motor speed suggests: scaling mismatch between setpoint and drive output, frequency command not reaching the drive, or drive mode setting (open-loop vs closed-loop) preventing command execution",
+        "Verification steps: (1) confirm the Modbus parameter being written and its address, (2) check the speed reference source selection (P3xx parameter, depending on control mode), (3) verify three-phase output voltage at motor terminals, (4) confirm the motor is not mechanically stalled or overloaded"
+      ],
+      "wrong_if": [
+        "Assumes register value is the only truth without checking actual wiring, drive output voltage, or motor terminals",
+        "Recommends replacing the VFD immediately without verifying control wiring and parameter configuration",
+        "Ignores the possibility of open-loop vs closed-loop control mode mismatch or incorrect speed reference source",
+        "Treats all Modbus register values as directly representing motor speed without accounting for drive-specific scaling or control logic"
+      ],
+      "cite_family": "Automation Direct GS10"
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Modbus register HR 101 on a VFD reads 1050 but motor is running at half speed. What should you check first?",
+      "answer": "First check whether HR 101 is the **actual speed command scale** or just a raw value being mapped wrong; a scaling or reference-source mismatch is the most common reason a register looks \u201cright\u201d while the motor runs slow.\n\n1. Verify in the drive/PLC mapping that HR 101 is interpreted with the correct units and scale, and that the drive is taking speed from that register.  \n2. Check for any active limiters that can cap speed: max frequency, current limit, torque limit, jog mode, or a speed clamp from another source.  \n3. Compare the drive\u2019s displayed output frequency with the motor speed; if frequency is normal but speed is low, look for slip/load/mechanical drag.\n\nIf you need the exact meaning of HR 101 on this VFD, I need the specific drive model and the Modbus map from the full user manual.",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 7.749781131744385,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-10-18T12:48:00.435084+00:00"
+}

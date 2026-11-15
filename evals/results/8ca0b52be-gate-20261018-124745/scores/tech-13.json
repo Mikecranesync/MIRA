@@ -1,0 +1,46 @@
+{
+  "case_id": "tech-13",
+  "case_type": "technician",
+  "category": "manual_grounded",
+  "mode": "grounded",
+  "checks": {
+    "must_cite": false,
+    "has_citations": true,
+    "citation_count": 1,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 78,
+      "missing_points": [
+        "This is a Type 1 (auto-resettable) fault that can clear if the condition is no longer present",
+        "Corrective action: clear the fault by cycling power to the drive or setting A551 (Fault Clear) to '1' 'Reset Fault'"
+      ],
+      "wrong_if_present": [],
+      "note": "The answer correctly identifies the EEPROM default-write condition and the need to reprogram parameters, but it omits the Type 1/auto-resettable detail and the specific A551 fault-clear option."
+    },
+    "grounding": {
+      "score": 92,
+      "note": "The cited manual excerpt directly supports that F048 means the drive was commanded to write default values to EEPROM and that the drive should be cleared/cycled and reprogrammed."
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "Not applicable for this grading task."
+    },
+    "actionability": {
+      "score": 82,
+      "note": "It states the fault meaning and gives a practical next step, but it does not fully specify the exact reset method or the expected fault-clearing behavior."
+    },
+    "uncertainty": {
+      "score": 90,
+      "note": "High confidence because the answer matches the cited manual closely, with only a few omitted details."
+    },
+    "context": {
+      "score": null,
+      "note": "Not applicable for this grading task."
+    }
+  },
+  "case_score": 84.6
+}

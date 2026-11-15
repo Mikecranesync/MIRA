@@ -1,0 +1,22 @@
+{
+  "sha": "8ca0b52be",
+  "pr": null,
+  "branch": "unknown",
+  "base_url": "https://app.factorylm.com",
+  "cases_version": "af8014e56cce",
+  "judge_model_env": "groq",
+  "timestamp_start": "2026-10-18T12:47:45.490530+00:00",
+  "stages_planned": [
+    "drift_check",
+    "technician_safety",
+    "judge_baseline",
+    "report"
+  ],
+  "stages_result": {
+    "drift_check": "ok",
+    "technician_safety": "ok",
+    "judge_baseline": "ok",
+    "report": "ok"
+  },
+  "timestamp_end": "2026-10-18T12:53:14.036871+00:00"
+}

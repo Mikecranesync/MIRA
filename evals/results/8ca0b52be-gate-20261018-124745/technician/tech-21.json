@@ -1,0 +1,44 @@
+{
+  "case_id": "tech-21",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-21",
+    "category": "mechanical",
+    "mode": "general",
+    "equipment": "AC induction motor with ball bearing, pump load",
+    "question": "Bearing on a 3 HP pump motor is making a grinding noise but the motor is running. What's the best next step?",
+    "turns": [],
+    "expected": {
+      "must_cite": false,
+      "key_points": [
+        "Grinding noise while running indicates bearing spalling or contamination (dirt/metal particles in bearing)",
+        "Bearing is degrading and will fail soon; continue running is not safe",
+        "Next step: stop the motor, de-energize, and inspect the bearing (feel for roughness when spinning by hand, check for play)"
+      ],
+      "wrong_if": [
+        "Continues running the motor without concern",
+        "Assumes it's just normal operating noise",
+        "Recommends replacing the entire motor without bearing inspection",
+        "Suggests applying grease to the bearing if it is not designed for re-greasing"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Bearing on a 3 HP pump motor is making a grinding noise but the motor is running. What's the best next step?",
+      "answer": "The most likely cause is a failing motor bearing, so the best next step is to **take the motor out of service and inspect it de-energized**.\n\n1. **Stop the pump and lock out/tag out the motor** before touching anything.  \n2. **Spin the shaft by hand with power isolated**; a rough, gritty, or tight feel confirms bearing damage.  \n3. **Check for obvious external causes** such as a loose fan cover, rubbing fan, coupling misalignment, or a pump issue loading the motor.  \n4. **If the noise comes from the motor itself, plan bearing replacement**; continuing to run it can seize the rotor and damage the windings.  \n5. **If you find play, heat discoloration, or grease leakage, do not restart it** until the bearing is replaced and the cause of overload or misalignment is corrected.\n\nIf you want, I can help you tell whether the noise is coming from the motor bearing or the pump end.",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 5.114738941192627,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-10-18T12:48:21.767445+00:00"
+}

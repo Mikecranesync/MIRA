@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-03",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-03",
+    "category": "general_industrial",
+    "mode": "general",
+    "equipment": null,
+    "question": "What does a Modbus TCP communication link require to function reliably with an industrial drive?",
+    "turns": [],
+    "expected": {
+      "key_points": [
+        "Network switch or hub with proper Ethernet cabling and RJ45 connectors",
+        "Consistent IP addressing and no address conflicts on the network segment",
+        "Drive firmware must support Modbus TCP protocol version used by the master",
+        "Network latency and packet loss must be within drive specification (typically <100 ms typical response)"
+      ],
+      "wrong_if": [
+        "Suggests that Modbus TCP requires a dedicated industrial protocol license",
+        "Claims that adding a second network card to a drive automatically improves redundancy without configuration",
+        "States that UDP is preferred over TCP for real-time Modbus on factory networks"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "What does a Modbus TCP communication link require to function reliably with an industrial drive?",
+      "answer": "A reliable Modbus TCP link needs a stable Ethernet network, matching IP settings, and both devices configured for the same Modbus client/server roles. In practice, the drive must have a valid IP address, subnet mask, and gateway for the network it\u2019s on, and the controller/SCADA side must poll it at a sensible rate without overloading the link.\n\nReliability also depends on good physical-layer basics: proper cable and connectors, shield/ground practice suited to the site, low noise, and a network switch or topology that isn\u2019t dropping packets. For the control side, the register map, unit ID behavior, timeouts, and retry settings must match what the drive expects.\n\nIf you want, I can explain the difference between Modbus TCP and Modbus RTU in plain terms.",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 5.182183027267456,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-10-18T12:49:30.112728+00:00"
+}

@@ -1,0 +1,44 @@
+{
+  "case_id": "tech-10",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-10",
+    "category": "troubleshooting",
+    "mode": "general",
+    "equipment": null,
+    "question": "A technician reports that every time the drive is powered up, the motor jerks before settling to a steady speed. No fault code appears. What should be investigated?",
+    "turns": [],
+    "expected": {
+      "key_points": [
+        "The jerking indicates a rapid change in acceleration or current draw during initialization",
+        "Soft-start ramp time parameter may be set too short (high acceleration jerk)",
+        "DC bus may be unstable at power-on; check input line voltage stability and any inrush limiting components",
+        "Motor mechanical connection may be loose or have slack in the coupling"
+      ],
+      "wrong_if": [
+        "States that jerking is normal on every startup and requires no investigation",
+        "Recommends immediately replacing the drive without checking acceleration time settings",
+        "Assumes the motor winding is shorted without evidence of electrical fault",
+        "Claims that reducing run command frequency will eliminate mechanical jerk"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "A technician reports that every time the drive is powered up, the motor jerks before settling to a steady speed. No fault code appears. What should be investigated?",
+      "answer": "The first thing to investigate is whether the drive is being given a **run command and speed reference at power-up** that is causing an abrupt start, especially a **preset speed, jog, DC braking, or catch-on-the-fly** behavior.\n\nCheck these in order:\n1. **Startup command logic** \u2014 see whether the drive is configured to auto-run when power is applied.\n2. **Speed reference source** \u2014 confirm the reference isn\u2019t jumping from 0 to a nonzero value at power-up.\n3. **Accel / start settings** \u2014 an overly aggressive start or too-short accel time can cause a jerk.\n4. **DC injection braking or mechanical brake timing** \u2014 if used, it may be releasing or applying too suddenly.\n5. **Motor data / autotune** \u2014 incorrect motor nameplate data or a bad tune can make low-speed startup rough.\n\nIf you want, I can help you narrow it down by whether the jerk happens **before** the motor fully picks up or **right as it starts to turn**.",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 5.691457033157349,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-10-18T12:50:12.069348+00:00"
+}

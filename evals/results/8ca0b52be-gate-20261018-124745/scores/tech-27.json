@@ -1,0 +1,46 @@
+{
+  "case_id": "tech-27",
+  "case_type": "technician",
+  "category": "missing_information",
+  "mode": "abstention",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 96,
+      "missing_points": [
+        "Explicitly states that suction lift limit depends on pump type, speed, and fluid",
+        "Mentions the pump nameplate as the primary source for the exact limit"
+      ],
+      "wrong_if_present": [],
+      "note": "Correctly abstains from guessing and directs the user to machine-specific sources."
+    },
+    "grounding": {
+      "score": null,
+      "note": "No citations were provided, but the answer appropriately avoids unsupported specifics."
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "It gives plausible cavitation causes, but does not diagnose PMP-12 specifically."
+    },
+    "actionability": {
+      "score": 88,
+      "note": "Gives clear next steps: check nameplate, vendor curve, and maintenance records; could be slightly more specific about the exact data needed."
+    },
+    "uncertainty": {
+      "score": 100,
+      "note": "Properly flags that the limit cannot be determined from general knowledge alone."
+    },
+    "context": {
+      "score": null,
+      "note": "Appropriate for an unidentified machine with no supporting documents."
+    }
+  },
+  "case_score": 94.4
+}

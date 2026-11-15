@@ -1,0 +1,45 @@
+{
+  "case_id": "tech-21",
+  "case_type": "technician",
+  "category": "mechanical",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 96,
+      "missing_points": [
+        "Explicitly mentions bearing spalling or contamination (dirt/metal particles) as the likely cause"
+      ],
+      "wrong_if_present": [],
+      "note": "Gives the correct immediate response: stop/de-energize, inspect the bearing by hand, and avoid continued operation; only missing the more specific failure mechanism."
+    },
+    "grounding": {
+      "score": null,
+      "note": "No citations were provided, but the answer is consistent with general maintenance practice and the case rubric."
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "Identifies the likely bearing issue and suggests checking for roughness, play, and external causes, which is diagnostically appropriate."
+    },
+    "actionability": {
+      "score": 95,
+      "note": "Clear next steps are given: stop, lock out/tag out, inspect by hand, check related causes, and do not restart if damage is found."
+    },
+    "uncertainty": {
+      "score": 88,
+      "note": "High confidence because the answer matches the expected maintenance response closely, with only minor specificity missing."
+    },
+    "context": {
+      "score": null,
+      "note": "Uses the pump motor context appropriately and does not overgeneralize beyond the scenario."
+    }
+  },
+  "case_score": 94.1
+}

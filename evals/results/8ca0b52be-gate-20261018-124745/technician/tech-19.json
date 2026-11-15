@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-19",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-19",
+    "category": "electrical_plc_vfd",
+    "mode": "general",
+    "equipment": "480V three-phase system with contactor and AC motor",
+    "question": "Motor is locked rotor (won't turn). Contactor is pulling in, 480V three-phase at contactor input. Zero volts across motor terminals. What's the failure point?",
+    "turns": [],
+    "expected": {
+      "must_cite": false,
+      "key_points": [
+        "Contactor coil energized and contacts pulled in, input voltage present, but output zero \u2192 contactor main contacts are open/pitted or connection failed post-contactor",
+        "Failure is in the contactor itself (welded open, burned contacts) or wiring/lugs from contactor to motor",
+        "Motor coil is likely OK; issue is between contactor and motor"
+      ],
+      "wrong_if": [
+        "Blames the motor as shorted without checking contactor status",
+        "Suggests the PLC control circuit is at fault when the contactor is already pulled in",
+        "Recommends checking upstream breaker without first verifying contactor contacts"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Motor is locked rotor (won't turn). Contactor is pulling in, 480V three-phase at contactor input. Zero volts across motor terminals. What's the failure point?",
+      "answer": "\u26a0\ufe0f **Lockout conflict in a step below:** \u201cWith the feeder locked out and absence of voltage verified, check the contactor output terminals, overload block, and all three conductors to the motor for a lo\u201d. That step mixes locked-out work with power on. Inspect, tighten and replace with the equipment locked out; any check that needs power is a separate step, after a qualified person removes the lockout and restores power under your site's energized-work procedure.\n\nMost likely the open point is **between the contactor and the motor** \u2014 a blown fuse, open overload, bad contact, loose/broken conductor, or an open motor lead \u2014 because you have voltage at the contactor input but none at the motor.\n\n1. **With the feeder locked out and absence of voltage verified,** check the contactor output terminals, overload block, and all three conductors to the motor for a loose lug, burned connection, or broken wire.  \n2. **With power still isolated,** ohm-check continuity from contactor output to motor terminals phase by phase.  \n3. Inspect the overload for trip/open condition and the contactor main poles for pitting or a pole that isn\u2019t closing.  \n4. If the wiring is intact, the fault is likely in the motor itself \u2014 seized bearing, internal open winding, or jammed load.\n\nIf you want, I can help you narrow it down by whether this is a plain contactor starter or a VFD-fed motor.",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 5.855027198791504,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-10-18T12:48:08.687071+00:00"
+}

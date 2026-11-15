@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-02",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-02",
+    "category": "general_industrial",
+    "mode": "general",
+    "equipment": null,
+    "question": "Why would an induction motor not start when given a command signal, even though the drive shows no fault code?",
+    "turns": [],
+    "expected": {
+      "key_points": [
+        "Control signal source may be wired incorrectly or not active",
+        "Motor nameplate FLA may exceed drive current rating, causing startup current limit",
+        "Mechanical load binding or jam prevents acceleration",
+        "Enable or run permissive input (safety circuit, interlock) may not be satisfied"
+      ],
+      "wrong_if": [
+        "Assumes the motor winding is open without checking control wiring first",
+        "Claims DC bus voltage automatically resets if the motor doesn't start within 5 seconds",
+        "States that a missing start signal is always a PLC programming error, not a wiring issue"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Why would an induction motor not start when given a command signal, even though the drive shows no fault code?",
+      "answer": "Most often, the drive is seeing the command but is still inhibited by an enable/interlock, reference, or start-permit condition, so it never actually applies output to the motor. Other common causes are no valid speed reference, local/remote control mismatch, safety circuit open, motor wiring issue, incorrect motor data, or a mechanical load that is jammed or too heavy to start. If the drive has no fault code, that usually means it is not seeing a hard electrical trip; it does **not** mean the motor is being driven.\n\nIf you want, I can help you narrow it down by the exact drive status indications: is it showing \u201cready/running,\u201d and do you hear the contactor or see any output current when the start command is given?",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 4.821407318115234,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-10-18T12:49:24.789108+00:00"
+}

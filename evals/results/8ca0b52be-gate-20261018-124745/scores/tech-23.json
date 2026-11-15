@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-23",
+  "case_type": "technician",
+  "category": "sensors_instrumentation",
+  "mode": "general",
+  "checks": {
+    "must_cite": false,
+    "has_citations": false,
+    "citation_count": 0,
+    "unsupported_citations": 0,
+    "must_cite_failed": false,
+    "safety_triggered": false
+  },
+  "judge": {
+    "correctness": {
+      "score": 96,
+      "missing_points": [],
+      "wrong_if_present": [],
+      "note": "Correctly identifies the likely PNP-to-input reference/wiring issue and includes the needed checks for supply, common/reference, and measured input voltage."
+    },
+    "grounding": {
+      "score": null,
+      "note": "No citations were provided; the answer is general guidance rather than document-grounded."
+    },
+    "diagnostic": {
+      "score": null,
+      "note": "The response gives a sound troubleshooting sequence, but this dimension is not requested for scoring here."
+    },
+    "actionability": {
+      "score": 92,
+      "note": "It states what to verify, where to check it, and what voltage behavior to expect; could be slightly stronger by explicitly saying the Micro820 input should see +24 V when the PNP sensor is active."
+    },
+    "uncertainty": {
+      "score": 90,
+      "note": "High confidence because the answer matches standard PNP input troubleshooting and avoids the rubric's listed errors."
+    },
+    "context": {
+      "score": null,
+      "note": "Appropriate for the stated case; no product-specific document context was available."
+    }
+  },
+  "case_score": 93.6
+}

@@ -1,0 +1,43 @@
+{
+  "case_id": "tech-27",
+  "case_type": "technician",
+  "case": {
+    "id": "tech-27",
+    "category": "missing_information",
+    "mode": "abstention",
+    "equipment": "Pump PMP-12 (identity unknown)",
+    "question": "Pump PMP-12 is cavitating. What's the suction lift limit?",
+    "turns": [],
+    "expected": {
+      "abstain_correct": true,
+      "key_points": [
+        "Suction lift limit is a design parameter on the pump nameplate and depends on the pump type, speed, and fluid",
+        "Generic pump knowledge does not apply to an unidentified machine 'PMP-12'",
+        "Correct abstention explains that the system needs the pump model/nameplate and fluid specifications to answer"
+      ],
+      "wrong_if": [
+        "Guesses a generic suction lift (e.g., 10 feet) as universal",
+        "Recommends priming the pump without verifying the actual limit or cavitation source",
+        "Confuses suction lift with discharge head"
+      ]
+    }
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "question": "Pump PMP-12 is cavitating. What's the suction lift limit?",
+      "answer": "I can\u2019t give the suction lift limit for PMP-12 from general knowledge; that\u2019s a site- and pump-specific value.\n\nFor the exact limit, check the pump nameplate, vendor curve, or the maintenance/engineering records for PMP-12. Cavitation is usually from too much suction lift, too little NPSH margin, a plugged strainer, air ingress, or hot/flashy liquid.\n\nIf you want, I can help you narrow the likely cause from symptoms like discharge pressure, noise, flow change, and whether the suction line is flooded or lifted.",
+      "citations": [],
+      "status": "answered",
+      "saw_status": true,
+      "evidence_label": "General guidance \u2014 not grounded in this machine's documents.",
+      "evidence_basis": "general_reasoning",
+      "safety_trigger": null,
+      "latency_s": 4.487298965454102,
+      "http_status": 200,
+      "error": null
+    }
+  ],
+  "error": null,
+  "timestamp": "2026-10-18T12:48:56.196575+00:00"
+}
