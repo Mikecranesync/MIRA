@@ -65,6 +65,10 @@ test("desktop 1440x900: browsing keeps the target; Ask about moves it; the send 
   await expect(results.locator('[data-equipment-id="c-vfd1-line2"]')).toContainText("Line 2 › Conveyor 2");
   // The browsed row keeps its full label next to the Ask about button.
   await results.locator('[data-equipment-id="c-vfd1-line2"]').click();
+  // Clicking a result only browses it: the target holds, and the result offers Ask about.
+  await expect(results.getByRole("button", { name: "Ask about VFD1" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Questions still go to PLC1 on GS10 bench" })).toBeVisible();
+  await expect(target(page)).toHaveText("PLC1 on GS10 bench");
   const label = results.locator('[data-equipment-id="c-vfd1-line2"] .fl-equip__label');
   expect(await label.evaluate((el) => el.scrollWidth <= el.clientWidth), "label is truncated").toBe(true);
   await page.screenshot({ path: resolve(SHOTS, "2026-11-15_equipment-nav-search_desktop.png") });
