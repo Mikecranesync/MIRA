@@ -73,7 +73,7 @@ import { NewProjectSetup } from "./NewProjectSetup";
 import { PendingManuals } from "./PendingManuals";
 import { ParkedSources } from "./ParkedSources";
 import { clearSheetDataForSignOut, localStorageStore, parseSheetReceipts } from "./living-sheet-client";
-import { NOTEBOOK_ACTIONS_STYLE } from "./notebook-actions";
+import { actionsCoveredByLayer, notebookActionsStyle } from "./notebook-actions";
 import { BenchComponents } from "./BenchComponents";
 import { SEND_BLOCKED_MESSAGE, benchSendRefusal, createBenchSendGate, expectsComponentFrame, isScopeRefusalCode, parseComponentFrames, prepareChatSend, recordBenchScope, withoutScope, type BenchScopes, type BenchState, type ComponentTurnFrame, type ScopeField } from "./bench-components-logic";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
@@ -1078,7 +1078,9 @@ export function HubShellHost() {
     busy,
   };
 
-  useBackClosesLayers(view); // #5069: phone web Back closes the open layer first
+  const layers = useBackClosesLayers(view); // #5069: phone web Back closes the open layer first
+  // #5546: the action column stays off (and out of the taps of) any layer that covers the page.
+  const actionsCovered = actionsCoveredByLayer(layers.top, view.profile.kind === "mobile" || layers.narrow);
 
   if (signedOut) {
     return (
@@ -1142,7 +1144,7 @@ export function HubShellHost() {
       )}
       {/* The notebook's action buttons share one column below the guided-procedure pill, each in its
           own row, so Machine state and Work Packet never cover each other (#5102). */}
-      <div data-testid="notebook-actions" style={NOTEBOOK_ACTIONS_STYLE}>
+      <div data-testid="notebook-actions" data-covered={actionsCovered ? "true" : undefined} aria-hidden={actionsCovered || undefined} style={notebookActionsStyle(actionsCovered)}>
       {/* Bench components: "Asking about …", the checklist and the reply's actions; nothing without migration 115. */}
       {selection && (
         <BenchComponents
