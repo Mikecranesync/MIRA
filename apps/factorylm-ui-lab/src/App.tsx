@@ -124,10 +124,20 @@ export function App({ search = window.location.search, onSearch = replaceSearch 
   const labDispatch = (action: ShellAction) => {
     if (lab.nav === "equipment" && action.type === "mock-send" && stateRef.current.draft.trim()) {
       const current = targetRef.current;
-      adapter.note(`send:target=${current ? `${current.machineId}/${current.componentId ?? "whole-machine"}` : "none"}`);
+      // The target rides the send itself; the log below is read back from the turn it made.
+      dispatch(current ? { type: "mock-send", target: { machineId: current.machineId, componentId: current.componentId } } : action);
+      return;
     }
     dispatch(action);
   };
+  const lastTurn = state.thread.turns.at(-1);
+  const sentTurnId = lab.nav === "equipment" && lastTurn?.role === "user" && lastTurn.id.startsWith("mock-") ? lastTurn.id : null;
+  useEffect(() => {
+    if (!sentTurnId || !lastTurn) return;
+    const { machineId, componentId } = lastTurn.context;
+    adapter.note(`send:target=${machineId ? `${machineId}/${componentId ?? "whole-machine"}` : "none"}`);
+    // Keyed on the turn id: one log line per sent turn.
+  }, [sentTurnId]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = state.theme;

@@ -242,6 +242,30 @@ describe("shared shell reducer", () => {
     );
   });
 
+  it("a mock send with a host-chosen target records that machine and component on the turn", () => {
+    const machine = shellReducer(createShellState(getFixture("machine-ask"), PROFILES.web), { type: "set-draft", draft: "RUN light?" });
+    const sent = shellReducer(machine, { type: "mock-send", target: { machineId: "m-gs10-bench", componentId: "c-plc1-bench" } });
+    const context = sent.thread.turns.at(-1)?.context;
+    expect(context?.machineId).toBe("m-gs10-bench");
+    expect(context?.componentId).toBe("c-plc1-bench");
+    // Another machine's confirmation does not carry over to this one.
+    expect(machine.activeContext.machineId).not.toBe("m-gs10-bench");
+    expect(context?.machineIdentity).toBe("unconfirmed");
+    expect(context?.tenantId).toBe(machine.activeContext.tenantId);
+
+    // Whole machine: no component, and none left over from an earlier target.
+    const whole = shellReducer(
+      shellReducer(sent, { type: "set-draft", draft: "Whole bench?" }),
+      { type: "mock-send", target: { machineId: "m-gs10-bench", componentId: null } },
+    ).thread.turns.at(-1)?.context;
+    expect(whole?.machineId).toBe("m-gs10-bench");
+    expect(whole && "componentId" in whole).toBe(false);
+
+    // Same machine as the active context keeps its identity state.
+    const same = shellReducer(machine, { type: "mock-send", target: { machineId: machine.activeContext.machineId!, componentId: "c-x" } });
+    expect(same.thread.turns.at(-1)?.context.machineIdentity).toBe(machine.activeContext.machineIdentity);
+  });
+
   it("binds mock sends to an active Work run but not an Ask thread", () => {
     const work = shellReducer(
       createShellState(getFixture("work-run"), PROFILES.web),

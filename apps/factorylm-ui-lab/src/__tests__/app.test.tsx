@@ -285,6 +285,34 @@ describe("equipment-first navigation (nav=equipment)", () => {
     expect(log(view)).toContain("send:target=m-gs10-bench/c-plc1-bench");
   });
 
+  // #5561 review F1: the send line is read back from the turn the send made, so
+  // these prove the turn itself carries the target, not just the bar.
+  const lastSend = (view: AppView) => log(view).filter((entry) => entry?.startsWith("send:")).at(-1);
+
+  it("the sent turn records the target, not the scenario's own machine", () => {
+    const view = renderApp("?nav=equipment&scenario=machine-ask");
+    view.click(row(view, "c-plc1-bench"));
+    view.click(must(view.buttonNamed("Ask about PLC1"), "Ask about PLC1"));
+    send(view, "What does the RUN light mean?");
+    expect(lastSend(view)).toBe("send:target=m-gs10-bench/c-plc1-bench");
+  });
+
+  it("browsing the other VFD1 and sending again still sends to PLC1; asking about it moves the next send", () => {
+    const view = renderApp("?nav=equipment");
+    view.click(row(view, "c-plc1-bench"));
+    view.click(must(view.buttonNamed("Ask about PLC1"), "Ask about PLC1"));
+    send(view, "First question");
+    view.click(row(view, "line-2"));
+    view.click(row(view, "m-conveyor-2"));
+    view.click(row(view, "c-vfd1-line2"));
+    send(view, "Second question");
+    expect(lastSend(view)).toBe("send:target=m-gs10-bench/c-plc1-bench");
+    view.click(must(view.buttonNamed("Ask about VFD1"), "Ask about VFD1"));
+    send(view, "Third question");
+    expect(lastSend(view)).toBe("send:target=m-conveyor-2/c-vfd1-line2");
+    expect(log(view).filter((entry) => entry?.startsWith("send:"))).toHaveLength(3);
+  });
+
   it("expanding a line or a machine never changes the target", () => {
     const view = renderApp("?nav=equipment");
     view.click(row(view, "area-garage"));

@@ -59,7 +59,8 @@ export type ShellAction =
   | { readonly type: "set-attachment-menu-visible"; readonly visible: boolean }
   | { readonly type: "select-source"; readonly sourceId: string | null }
   | { readonly type: "set-draft"; readonly draft: string }
-  | { readonly type: "mock-send" }
+  /** `target`: the question target the host chose; the turn records it (equipment nav). */
+  | { readonly type: "mock-send"; readonly target?: { readonly machineId: string; readonly componentId: string | null } }
   | { readonly type: "set-send-error"; readonly error: string | null }
   | { readonly type: "set-theme"; readonly theme: ThemeName }
   | { readonly type: "set-profile"; readonly profile: SurfaceProfile };
@@ -91,6 +92,7 @@ function contextsEqual(left: ContextSnapshot, right: ContextSnapshot): boolean {
     && left.projectId === right.projectId
     && left.folderId === right.folderId
     && left.machineId === right.machineId
+    && left.componentId === right.componentId
     && left.machineIdentity === right.machineIdentity
     && left.evidenceAuthorization === right.evidenceAuthorization
     && left.capturedAt === right.capturedAt;
@@ -197,6 +199,26 @@ export function createShellState(fixture: ShellFixture, profile: SurfaceProfile)
     mode: copy.thread.mode,
     sendError: null,
   });
+}
+
+/**
+ * The context a sent turn captures. With a host-chosen target, the turn records
+ * that machine and component; a machine other than the active one is not a
+ * confirmed identity, whatever the active context said about its own machine.
+ */
+function turnContext(
+  active: ContextSnapshot,
+  target: { readonly machineId: string; readonly componentId: string | null } | undefined,
+): ContextSnapshot {
+  const base = copyValue(active);
+  if (!target) return base;
+  const { componentId: _previous, ...rest } = base;
+  return {
+    ...rest,
+    machineId: target.machineId,
+    ...(target.componentId ? { componentId: target.componentId } : {}),
+    machineIdentity: target.machineId === active.machineId ? active.machineIdentity : "unconfirmed",
+  };
 }
 
 export function shellReducer(state: ShellState, action: ShellAction): ShellState {
@@ -310,7 +332,7 @@ export function shellReducer(state: ShellState, action: ShellAction): ShellState
         role: "user" as const,
         parts: [{ type: "text" as const, text }],
         lifecycle: "accepted" as const,
-        context: copyValue(state.activeContext),
+        context: turnContext(state.activeContext, action.target),
         createdAt: state.thread.updatedAt,
         updatedAt: state.thread.updatedAt,
         ...(state.mode === "work" && state.run ? { runId: state.run.id } : {}),
