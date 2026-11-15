@@ -166,7 +166,8 @@ def run_lane(lane: Lane, repo: Path, runner: Runner = subprocess_runner) -> Lane
         if st.runner == "pytest":
             argv = ["python3.12", "-m", "pytest", *st.files, "-q", "-p", "no:cacheprovider"]
         else:
-            argv = ["npx", "--no-install", "vitest", "run", *st.files]  # never fetch from the registry
+            # --no-install: never fetch from the registry; a missing install is infra_error
+            argv = ["npx", "--no-install", "vitest", "run", *st.files]
         rc, out = runner(argv, cwd)
         counts = parse_counts(st.runner, out)
         status = judge_counts(counts, rc)
