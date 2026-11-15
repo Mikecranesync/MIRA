@@ -46,7 +46,7 @@ export function formatJobSnapshotLine(s: ShiftReportJobSnapshot): string {
 
 const LAYER_STYLE: CSSProperties = {
   position: "fixed", inset: 0, zIndex: 72, overflowY: "auto",
-  background: "var(--fl-surface)", color: "var(--fl-text)", fontFamily: "var(--fl-font)",
+  background: "var(--fl-surface)", color: "var(--fl-ink)", fontFamily: "var(--fl-font)",
   padding: "var(--fl-space-4, 16px)", fontSize: "17px", boxSizing: "border-box",
 };
 const SECTION_STYLE: CSSProperties = {
@@ -57,7 +57,7 @@ const BUTTON_STYLE: CSSProperties = {
   border: "1px solid var(--fl-line)", background: "var(--fl-accent)", color: "var(--fl-surface)",
   cursor: "pointer", fontSize: "17px",
 };
-const GHOST_BUTTON_STYLE: CSSProperties = { ...BUTTON_STYLE, background: "var(--fl-surface)", color: "var(--fl-text)" };
+const GHOST_BUTTON_STYLE: CSSProperties = { ...BUTTON_STYLE, background: "var(--fl-surface)", color: "var(--fl-ink)" };
 
 // Print-isolation technique copied from WorkPacketPanel.tsx (never imported):
 // The print copy is portalled to <body> (see print-portal.tsx): every other

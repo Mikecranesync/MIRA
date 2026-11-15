@@ -23,13 +23,13 @@ import {
 
 const PANEL_STYLE: CSSProperties = {
   position: "fixed", inset: "auto 0 0 0", maxHeight: "80vh", overflowY: "auto", zIndex: 60,
-  background: "var(--fl-surface)", color: "var(--fl-text)", borderTop: "1px solid var(--fl-line)",
+  background: "var(--fl-surface)", color: "var(--fl-ink)", borderTop: "1px solid var(--fl-line)",
   boxShadow: "var(--fl-shadow)", padding: "var(--fl-space-4, 16px)", fontFamily: "var(--fl-font)",
 };
 
 const BUTTON_STYLE: CSSProperties = {
   minHeight: 44, padding: "8px 16px", borderRadius: "var(--fl-radius)", border: "1px solid var(--fl-line)",
-  background: "var(--fl-surface)", color: "var(--fl-text)", cursor: "pointer",
+  background: "var(--fl-surface)", color: "var(--fl-ink)", cursor: "pointer",
 };
 
 const ITEM_STYLE: CSSProperties = {
