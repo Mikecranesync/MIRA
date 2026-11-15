@@ -1101,6 +1101,7 @@ export function HubShellHost() {
     onCreateProject,
     ...(busy ? { onStop } : {}),
     ...(failedBody && retryCheck?.kind === "retry" ? { onRetry } : {}),
+    ...(reviewMessage ? { targetReview: reviewMessage } : {}),
     groundingLine: () => groundingLineFor(detail?.notebook ?? null, docIds.length),
     busy,
   };
