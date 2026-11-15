@@ -80,8 +80,6 @@ def worst_case(price: ModelPrice, prompt: str) -> float:
 
 def threshold_crossings(before: float, after: float, cap: float) -> list[int]:
     """Percent thresholds (50/80/100) that a move from `before` to `after` reached."""
-    if cap <= 0 or after <= before:
-        return []
     return [pct for pct in THRESHOLDS if before < cap * pct / 100 <= after]
 
 
