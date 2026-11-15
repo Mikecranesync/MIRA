@@ -51,7 +51,9 @@ describe("splitLeadingSafetyNotes — #4690 the warning above an answer is its o
   it("is what /v3 renders for every answer turn", () => {
     const host = readFileSync(new URL("./hub-host.tsx", import.meta.url), "utf8");
     const render = host.slice(host.indexOf("const renderText = useCallback"), host.indexOf("const onCopy = useCallback"));
-    expect(render).toContain("return <AnswerWithSafety text={text} markdown={markdown} />;");
+    expect(render).toContain("return <CitedAnswer key={turn.id} text={text} citations={own}");
+    const adapter = readFileSync(new URL("./cited-answer.tsx", import.meta.url), "utf8");
+    expect(adapter).toContain("<AnswerWithSafety text={text} markdown={content => <AnswerMarkdown");
   });
 
   it("styles the block from theme tokens and sets it apart from the answer", () => {

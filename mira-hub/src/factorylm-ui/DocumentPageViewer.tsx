@@ -25,10 +25,13 @@ import {
   type ViewerRequest,
 } from "./document-page-viewer-logic";
 
-type PdfDoc = { numPages: number; getPage(n: number): Promise<PdfPage> };
+import { anchorQuote, type PdfTextRun, type QuoteAnchor } from "./pdf-quote-anchor";
+
+type PdfDoc = { destroy(): Promise<void>; numPages: number; getPage(n: number): Promise<PdfPage> };
 type PdfPage = {
-  getViewport(o: { scale: number }): { width: number; height: number };
-  render(o: { canvas: HTMLCanvasElement; canvasContext: CanvasRenderingContext2D; viewport: unknown }): { promise: Promise<void> };
+  getViewport(o: { scale: number }): { width: number; height: number; convertToViewportPoint(x: number, y: number): number[] };
+  getTextContent(): Promise<{ items: unknown[]; styles: Record<string, { ascent?: number; descent?: number }> }>;
+  render(o: { canvas: HTMLCanvasElement; canvasContext: CanvasRenderingContext2D; viewport: unknown }): { promise: Promise<void>; cancel(): void };
 };
 
 type ViewState =
@@ -50,34 +53,44 @@ const bar: CSSProperties = { display: "flex", flexWrap: "wrap", alignItems: "cen
 const button: CSSProperties = { minHeight: 44, minWidth: 44, padding: "0 var(--fl-workspace-space-3)", border: "1px solid var(--fl-workspace-line)", borderRadius: "var(--fl-workspace-radius-sm)", background: "var(--fl-workspace-surface)", color: "var(--fl-workspace-ink)", font: "inherit" };
 const canvasStyle: CSSProperties = { display: "block", width: "100%", height: "auto", border: "1px solid var(--fl-workspace-line)" };
 
-export function DocumentPageViewer() {
+export function DocumentPageViewer({ evidence }: { evidence?: ViewerRequest & { quote: string | null } } = {}) {
+  const [anchor, setAnchor] = useState<QuoteAnchor | null>(null);
   const [request, setRequest] = useState<ViewerRequest | null | undefined>(undefined);
   const [state, setState] = useState<ViewState>({ kind: "loading" });
   const [doc, setDoc] = useState<PdfDoc | null>(null);
+  const highlightRef = useRef<HTMLSpanElement | null>(null);
+  useEffect(() => { highlightRef.current?.scrollIntoView({ block: "center", behavior: "instant" }); }, [anchor]);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Which file, which page; desktop browsers with a viewer get the file itself.
   useEffect(() => {
-    const req = parseViewerRequest(window.location.search);
+    const req = evidence ?? parseViewerRequest(window.location.search);
     setRequest(req);
     if (!req) {
       setState({ kind: "failed", message: "No document was given to open." });
       return;
     }
-    if (viewerMode(navigator.pdfViewerEnabled) === "native") {
+    if (!evidence && viewerMode(navigator.pdfViewerEnabled) === "native") {
       window.location.replace(nativeFileHref(req.fileId, req.page));
       return;
     }
     let cancelled = false;
+    const controller = new AbortController();
+    let loaded: PdfDoc | null = null;
+    setState({ kind: "loading" });
+    setDoc(null);
+    setAnchor(null);
     void (async () => {
       try {
-        const res = await fetch(nativeFileHref(req.fileId, null), { credentials: "same-origin" });
+        const res = await fetch(nativeFileHref(req.fileId, null), { credentials: "same-origin", signal: controller.signal, cache: evidence ? "no-store" : "default" });
         if (!res.ok) {
           if (!cancelled) setState({ kind: "failed", message: failureMessage(res.status) });
           return;
         }
         if (!isPdf(res.headers.get("content-type"))) {
           // Not a PDF (a photo or other original): let the browser open it.
+          if (cancelled) return;
+          if (evidence) { setState({ kind: "failed", message: "Highlight unavailable: this original is not a PDF." }); return; }
           window.location.replace(nativeFileHref(req.fileId, null));
           return;
         }
@@ -86,24 +99,32 @@ export function DocumentPageViewer() {
         const { getDocumentProxy } = await import("unpdf");
         // The page CSP has no 'unsafe-eval'; tell pdf.js not to probe for it.
         const pdf = (await getDocumentProxy(data, { isEvalSupported: false })) as unknown as PdfDoc;
-        if (cancelled) return;
+        loaded = pdf;
+        if (cancelled) { void pdf.destroy(); return; }
+        if (evidence && (!req.page || !Number.isInteger(req.page) || req.page < 1 || req.page > pdf.numPages)) {
+          setState({ kind: "failed", message: "Highlight unavailable: the citation does not identify a valid PDF page. Open the original to check it." });
+          return;
+        }
         const shown = pageToShow(req.page, pdf.numPages);
         setDoc(pdf);
         setState({ kind: "ready", name, numPages: pdf.numPages, page: shown.page, outOfRange: shown.outOfRange });
       } catch (err) {
-        console.error("[DocumentPageViewer]", err);
+        if (!cancelled) console.error("[DocumentPageViewer]", err);
         if (!cancelled) setState({ kind: "failed", message: failureMessage(500) });
       }
     })();
     return () => {
       cancelled = true;
+      controller.abort();
+      void loaded?.destroy();
     };
-  }, []);
+  }, [evidence?.fileId, evidence?.page, evidence?.quote]);
 
   const page = state.kind === "ready" ? state.page : 0;
   useEffect(() => {
     if (!doc || page < 1) return;
     let cancelled = false;
+    let rendering: { cancel(): void } | undefined;
     void (async () => {
       const canvas = canvasRef.current;
       const context = canvas?.getContext("2d");
@@ -115,20 +136,30 @@ export function DocumentPageViewer() {
       const viewport = p.getViewport({ scale });
       canvas.width = Math.floor(viewport.width);
       canvas.height = Math.floor(viewport.height);
-      await p.render({ canvas, canvasContext: context, viewport }).promise;
+      const renderTask = p.render({ canvas, canvasContext: context, viewport });
+      rendering = renderTask;
+      await renderTask.promise;
+      if (cancelled) return;
+      if (evidence) {
+        const text = await p.getTextContent();
+        if (cancelled) return;
+        const runs = text.items.filter((item): item is PdfTextRun => !!item && typeof item === "object" && "str" in item);
+        setAnchor(anchorQuote(evidence.quote, runs, viewport, text.styles));
+      }
       if (!cancelled) canvas.dataset.renderedPage = String(page);
-    })().catch((err) => console.error("[DocumentPageViewer] render", err));
+    })().catch(() => { if (!cancelled) setState({ kind: "failed", message: "The PDF page could not be rendered. Open the original to check it." }); });
     return () => {
       cancelled = true;
+      rendering?.cancel();
     };
-  }, [doc, page]);
+  }, [doc, page, evidence?.quote]);
 
   const go = (delta: number) =>
     setState((s) => (s.kind === "ready" ? { ...s, page: Math.min(s.numPages, Math.max(1, s.page + delta)), outOfRange: false } : s));
   const openHref = request ? nativeFileHref(request.fileId, request.page) : undefined;
 
   return (
-    <main style={wrap} data-viewer-state={state.kind}>
+    <main style={evidence ? { ...wrap, minHeight: 0 } : wrap} data-viewer-state={state.kind}>
       {state.kind === "loading" ? <p role="status">Opening the cited page…</p> : null}
       {state.kind === "failed" ? (
         <div role="alert">
@@ -146,13 +177,23 @@ export function DocumentPageViewer() {
               The cited page {request.page} isn&apos;t in this file; showing page 1.
             </p>
           ) : null}
-          <nav style={bar} aria-label="Pages">
+          {!evidence ? <nav style={bar} aria-label="Pages">
             <button type="button" style={button} onClick={() => go(-1)} disabled={state.page <= 1}>Previous page</button>
             <button type="button" style={button} onClick={() => go(1)} disabled={state.page >= state.numPages}>Next page</button>
-          </nav>
+          </nav> : <p><a href={openHref} target="_blank" rel="noopener noreferrer">Open original PDF</a></p>}
         </>
       ) : null}
+      {evidence && state.kind === "ready" ? <div aria-live="polite">
+        <p>{anchor?.message ?? "Locating the quoted passage…"}</p>
+        {evidence.quote ? <blockquote>{evidence.quote}</blockquote> : null}
+      </div> : null}
+      <div style={{ position: "relative" }}>
       <canvas ref={canvasRef} style={state.kind === "ready" ? canvasStyle : { display: "none" }} aria-label={state.kind === "ready" ? `Page ${state.page} of ${state.name}` : undefined} />
+      {state.kind === "ready" ? anchor?.rects.map((rect, i) => <span key={i} ref={i === 0 ? highlightRef : undefined} data-evidence-highlight="true" aria-hidden="true" style={{
+        position: "absolute", pointerEvents: "none", left: `${rect.left}%`, top: `${rect.top}%`, width: `${rect.width}%`, height: `${rect.height}%`,
+        background: "color-mix(in srgb, var(--fl-workspace-accent) 12%, transparent)", outline: "1px solid var(--fl-workspace-accent)",
+      }} />) : null}
+      </div>
     </main>
   );
 }

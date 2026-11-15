@@ -7,7 +7,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./shell.css": "./src/shell.css",
-    "./conversation.css": "./src/conversation.css"
+    "./conversation.css": "./src/conversation.css",
+    "./evidence-reader.css": "./src/evidence-reader.css"
   },
   "dependencies": {
     "@factorylm/interaction": "workspace:*",

@@ -29,7 +29,7 @@ export const CITE_HREF_PREFIX = "#mira-cite-";
 
 /** remark plugin: `[n]` in text nodes → `link` node pointing at `#mira-cite-n`
  *  when `n` is a known citation id. Text inside existing links is skipped
- *  (find-and-replace default), so a real markdown link is never mangled. */
+ *  (explicit ancestor filter), so a real markdown link is never mangled. */
 export function remarkCitationChips(options: { citationIds: ReadonlySet<string> }) {
   return (tree: Root) => {
     findAndReplace(tree, [
@@ -38,7 +38,7 @@ export function remarkCitationChips(options: { citationIds: ReadonlySet<string> 
         options.citationIds.has(n)
           ? { type: "link", url: `${CITE_HREF_PREFIX}${n}`, children: [{ type: "text", value: match }] }
           : false,
-    ]);
+    ], { ignore: ["link", "linkReference"] });
   };
 }
 
@@ -139,9 +139,11 @@ export function AnswerMarkdown({
   content,
   citations,
   onCite,
+  renderCitation,
 }: {
   content: string;
   citations: EvidenceCitation[];
+  renderCitation?: (citation: EvidenceCitation) => ReactNode;
   onCite?: (c: EvidenceCitation) => void;
 }) {
   const citationIds = new Set(citations.map((c) => c.citationId));
@@ -150,7 +152,7 @@ export function AnswerMarkdown({
       if (href?.startsWith(CITE_HREF_PREFIX)) {
         const id = href.slice(CITE_HREF_PREFIX.length);
         const c = citations.find((x) => x.citationId === id);
-        if (c) return <CitationChip c={c} onCite={onCite} />;
+        if (c) return renderCitation ? renderCitation(c) : <CitationChip c={c} onCite={onCite} />;
         return <>{children}</>;
       }
       // Ordinary links: open in a new tab; never a same-window navigation away
