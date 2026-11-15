@@ -183,3 +183,21 @@ def test_safety_lane_is_always_flagged_always_and_has_both_runners():
     assert BY_NAME["safety"].always is True
     assert {st.runner for st in BY_NAME["safety"].steps} == {"vitest", "pytest"}
     assert all(not BY_NAME[n].always for n in ALL - {"safety"})
+
+
+def _mixes_conftest_roots(step) -> bool:
+    return len({f.startswith("mira-bots/") for f in step.files}) > 1
+
+
+def test_no_pytest_step_mixes_the_two_conftest_roots():
+    # tests/conftest.py and mira-bots/tests/conftest.py cannot be collected in one invocation
+    # (ImportPathMismatchError); CI runs them as separate invocations too.
+    for ln in LANES:
+        for st in ln.steps:
+            if st.runner == "pytest":
+                assert not _mixes_conftest_roots(st), ln.name
+
+
+def test_control_the_mixed_step_is_detected():
+    assert _mixes_conftest_roots(sel.Step(".", "pytest", ("mira-bots/tests/a.py", "tests/b.py")))
+    assert not _mixes_conftest_roots(sel.Step(".", "pytest", ("tests/a.py", "tests/b.py")))

@@ -30,9 +30,15 @@
           "cwd": ".",
           "runner": "pytest",
           "files": [
-            "mira-bots/tests/test_guardrails.py",
             "tests/test_safety_coverage.py",
             "tests/bot_regression.py"
+          ]
+        },
+        {
+          "cwd": ".",
+          "runner": "pytest",
+          "files": [
+            "mira-bots/tests/test_guardrails.py"
           ]
         }
       ]
@@ -119,8 +125,14 @@
           "cwd": ".",
           "runner": "pytest",
           "files": [
-            "mira-bots/tests/test_citation_gate.py",
             "tests/test_citation_attribution.py"
+          ]
+        },
+        {
+          "cwd": ".",
+          "runner": "pytest",
+          "files": [
+            "mira-bots/tests/test_citation_gate.py"
           ]
         }
       ]
