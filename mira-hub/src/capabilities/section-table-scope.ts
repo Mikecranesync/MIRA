@@ -11,6 +11,7 @@ export type ScopedText = { text: string; models?: string[]; scope?: SectionScope
 type Heading = { text: string; at: number; table: boolean; size: number; sharedHeader?: string; headerModels?: string[]; headerUnresolved?: boolean; headerInvalidLabels?: boolean; relayTable?: boolean; sourceLine: number; y: number; headerTop?: number; headerBottom?: number; columnUnresolved?: boolean };
 export type SectionLayout = { text: string; headings: Heading[]; hasTables: boolean; retainedLines: string[] };
 type OutputMap = Map<string, boolean | null>;
+type ActiveScope = Pick<ScopedText, "models" | "scope" | "sharedHeader">;
 
 /** A complete model-column table, with an explicit circuit type for every column. Unknown or
  * contradictory values prevent inferred relay restrictions. Relay/FET remains relay-capable.
@@ -122,7 +123,7 @@ export function sectionTableLayout(items: readonly LayoutItem[], includeBoundari
       // Description column in a fault table. Explicit model restrictions remain
       // observable (including qualifiers such as "only").
       // A trailing "only" is a scope qualifier on engineering headings.
-      (isTitleLine(line.text.replace(/\bonly(?=\s*(?:[-–—]|$))/gi, "")) || captionModels(line).length > 0) &&
+      (isTitleLine(line.text.replace(/\bonly(?=\s*(?:[-–—]|$))/gi, "")) || observedCaptionModels(line).length > 0) &&
       header && header.size < line.size;
     if (!attributeCaption && !isRating) continue;
     // Unit/annotation columns do not establish another applicability domain. A common
@@ -262,13 +263,14 @@ export function sectionTableLayout(items: readonly LayoutItem[], includeBoundari
 /** Caption and header are independent assertions about this physical table. Neither
  * wins a contradiction. Different valid per-model columns are NOT a contradiction. */
 function captionModels(h: Pick<Heading, "text">) {
+  // A catalog mention is affirmative only in a title, never in an exclusion or sentence.
+  if (!isTitleLine(h.text.replace(/\bonly\b/gi, ""))) return [];
   const lastFor = [...h.text.matchAll(/\bfor\s+/gi)].at(-1);
   // Engineering noun titles also put the catalog directly after Specifications.
   // Sentence/title discrimination still applies; a catalog in service prose
   // cannot become an affirmative section declaration through this path.
-  if (lastFor) return modelNumbersIn(h.text.slice(lastFor.index! + lastFor[0].length));
-  if (!isTitleLine(h.text)) return [];
-  const tail = h.text.match(/\b(?:Specifications|Requirements|Ratings)\s+[-–—]?\s*(.+)$/i)?.[1];
+  const tail = lastFor ? h.text.slice(lastFor.index! + lastFor[0].length)
+    : h.text.match(/\b(?:Specifications|Requirements|Ratings)\s+[-–—]?\s*(.+)$/i)?.[1];
   if (!tail) return [];
   const numbers = modelNumbersIn(tail);
   let remainder = tail;
@@ -276,6 +278,23 @@ function captionModels(h: Pick<Heading, "text">) {
   // Only an enumerated catalog suffix declares scope. Prefix product names,
   // parameter/service prose and following descriptive words do not qualify.
   return remainder.replace(/\([A-Z]\)/gi, "").replace(/\b(?:and|or|only|continued)\b/gi, "").replace(/[\s(),;/–—-]/g, "") ? [] : numbers;
+}
+/** Remember a catalog-bearing engineering boundary even when its suffix is negative or
+ * ambiguous. It must become unresolved, rather than disappear into unscoped text. The
+ * engineering title prefix still rejects service sentences such as "See specifications". */
+function observedCaptionModels(h: Pick<Heading, "text">) {
+  const noun = /\b(?:Specifications|Requirements|Ratings)\b/i.exec(h.text);
+  if (!noun || !isTitleLine(h.text.slice(0, noun.index + noun[0].length))) return [];
+  const affirmative = captionModels(h);
+  if (affirmative.length > 0) return affirmative;
+  const suffix = h.text.slice(noun.index + noun[0].length);
+  // A product named BEFORE the engineering noun, or an arbitrary descriptive
+  // suffix, is not a section declaration. Retain the explicit (possibly negative)
+  // "for" clause without promoting any of its mentions to affirmative coverage.
+  return /\bfor\b/i.test(suffix) ? modelNumbersIn(suffix) : [];
+}
+function uncertainCaption(h: Pick<Heading, "text">): boolean {
+  return observedCaptionModels(h).length > 0 && captionModels(h).length === 0;
 }
 function contradictoryTableHeading(h: Pick<Heading, "text" | "headerModels">): boolean {
   const caption = captionModels(h);
@@ -297,7 +316,7 @@ export function scopeTableChunks(chunks: readonly TableChunk[], layout: SectionL
     const named = captionModels(source).map((n) => n.key);
     const header = heading?.headerModels ?? [];
     const invalid = !layout || chunk.sourceTop === undefined ||
-      contradictoryTableHeading(source) || heading?.columnUnresolved ||
+      uncertainCaption(source) || contradictoryTableHeading(source) || heading?.columnUnresolved ||
       (named.length > 0 && chunk.models.some((m) => !named.includes(exactModelKey(m)))) ||
       (header.length > 0 && chunk.models.some((m) => !header.includes(exactModelKey(m))));
     return invalid ? { ...chunk, unqualified: true, scope: "unresolved" } : chunk;
@@ -308,7 +327,7 @@ export function scopeTableChunks(chunks: readonly TableChunk[], layout: SectionL
  * any output-circuit table. Circuit types are needed only for inferred relay scope. */
 export function modelSectionModels(layout: SectionLayout | null | undefined): string[] {
   return [...new Set(layout?.headings.filter((h) => h.table).flatMap((h) => [
-    ...captionModels(h).map((n) => n.key),
+    ...observedCaptionModels(h).map((n) => n.key),
     // A product/parameter name in header prose is not a catalog declaration.
     ...(!h.headerInvalidLabels ? h.headerModels ?? [] : []),
   ]) ?? [])];
@@ -322,7 +341,7 @@ export function hasModelSectionScope(layout: SectionLayout | null | undefined): 
  * in a SUB-column (real DC-input table) do not turn the whole section into sibling-only prose.
  */
 export class SectionTableScope {
-  private active: Pick<ScopedText, "models" | "scope" | "sharedHeader"> = {};
+  private active: ActiveScope = {};
   private headingSize = 0;
   private hasReadableSection = false;
   constructor(private readonly outputs: OutputMap, private observed = outputs.size > 0, private readonly sectionModels: readonly string[] = []) {}
@@ -337,7 +356,33 @@ export class SectionTableScope {
     return [{ text, ...this.active }];
   }
 
-  split(text: string, layout: SectionLayout | null): ScopedText[] {
+  /** Resolve each extracted block at its own physical position. A later caption must not
+   * retroactively qualify an earlier continuation table on the same page. */
+  splitPage(text: string, layout: SectionLayout | null, chunks: readonly TableChunk[]) {
+    const entry = this.active;
+    const boundaries: Array<{ y: number; active: ActiveScope }> = [];
+    const sections = this.split(text, layout, (heading) => {
+      // Distinct, valid model columns deliberately make the FLAT remainder unresolved.
+      // Their own independently qualified chunks remain usable under this new boundary.
+      const models = captionModels(heading).map((n) => n.key);
+      const qualifiedColumns = heading.table && !uncertainCaption(heading) &&
+        !contradictoryTableHeading(heading) && !heading.columnUnresolved &&
+        (models.length > 0 || (heading.headerModels?.length ?? 0) > 0);
+      boundaries.push({ y: heading.y, active: qualifiedColumns
+        ? { scope: "section", models: models.length > 0 ? models : heading.headerModels } : this.active });
+    });
+    return { sections, chunks: chunks.map((chunk) => {
+      let active = boundaries.length > 0 ? entry : this.active;
+      for (const boundary of boundaries) {
+        if (chunk.sourceTop !== undefined && boundary.y >= chunk.sourceTop - 2.5) active = boundary.active;
+      }
+      const invalid = active.scope === "unresolved" || (active.scope === "section" &&
+        chunk.models.some((model) => !active.models?.includes(exactModelKey(model))));
+      return invalid ? { ...chunk, unqualified: true, scope: "unresolved" as const } : chunk;
+    }) };
+  }
+
+  split(text: string, layout: SectionLayout | null, boundary?: (heading: Heading) => void): ScopedText[] {
     if (!this.observed && !hasModelSectionScope(layout)) return [{ text }];
     this.observed = true;
     if (!layout) {
@@ -379,6 +424,7 @@ export class SectionTableScope {
       // continuity is unresolved, including for the formerly eligible model.
       if (!h.table && this.active.scope) {
         this.active = { models: this.active.models ?? [...this.outputs.keys()], scope: "unresolved" };
+        boundary?.(h);
         start = h.at;
         continue;
       }
@@ -403,8 +449,8 @@ export class SectionTableScope {
         // when it is centred above several channel categories (real ML1100 DWD inputs).
         const singleModelAgreement = !h.headerInvalidLabels && headerNumbers.length === 1 && captionNumbers.length > 0 &&
           captionNumbers.every((n) => n.key === headerNumbers[0].key);
-        if (captionConflict || (headerApplies && ((!singleModelAgreement && h.headerUnresolved) || !headerFamily))) {
-          this.active = { models: [...new Set([...this.outputs.keys(), ...(h.headerModels ?? []), ...captionNumbers.map((n) => n.key)])], scope: "unresolved" };
+        if (uncertainCaption(h) || captionConflict || (headerApplies && ((!singleModelAgreement && h.headerUnresolved) || !headerFamily))) {
+          this.active = { models: [...new Set([...this.outputs.keys(), ...(h.headerModels ?? []), ...observedCaptionModels(h).map((n) => n.key)])], scope: "unresolved" };
         } else if (headerApplies && !h.sharedHeader) this.active = { models: h.headerModels, scope: "section" };
         else if (named.length > 0) this.active = { models: [...new Set(named.map((n) => n.key))], scope: "section" };
         else if (h.sharedHeader && (!sectionFamily || !headerFamily ||
@@ -429,6 +475,7 @@ export class SectionTableScope {
           }
         }
       }
+      boundary?.(h);
       start = h.at;
     }
     sections.push({ text: text.slice(start), ...this.active });

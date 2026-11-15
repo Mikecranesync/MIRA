@@ -805,3 +805,49 @@ it("an explicit section restriction cannot become generic because its catalog re
   // Ordinary parameter/accessory table tags never claimed section applicability.
   expect((await retrieve("20QBB", [{...row,table_scope:null}], "zzsectionbinding current")).text).toContain("zzsectionbinding");
 });
+
+it.each([
+  "Output Specifications for 2080-LC20-20QWB only (not 2080-LC20-20QBB)",
+  "Output Specifications not for 2080-LC20-20QBB",
+])("F4 excluded catalogs cannot become affirmative long-section scope: %s", async (title) => {
+  const item = (str: string, y: number, size: number) => ({ str, x: 100, y, size, w: str.length * size * 0.4 });
+  const body = "zznegativecaption Load current max 2 A. ".repeat(100);
+  pdfPages.current = [{ page: 1, text: "Micro820 20-Point Programmable Controllers", items: [item("Micro820 20-Point Programmable Controllers", 760, 12)] },
+    { page: 2, text: `${title}\nAttribute Value\n${body}`, items: [item(title, 740, 12), item("Attribute Value", 720, 8), item(body, 700, 8)] }];
+  let rows: Row[];
+  try { rows = (await ingestFixture()).filter((r) => r.page_start === 2); } finally { pdfPages.current = null; }
+  expect(rows.length).toBeGreaterThan(2);
+  expect(rows.some((r) => !r.content.includes("2080-LC20"))).toBe(true);
+  expect(rows.every((r) => r.table_scope === "unresolved")).toBe(true);
+  for (const model of ["20QBB", "20QWB"]) expect((await retrieve(model, rows, "zznegativecaption load current")).chunks).toEqual([]);
+});
+
+it.each(["conflict", "conflict-small-header", "compatible", "new-section", "before-new-section"])("F5 extracted continuation columns respect physical document boundaries: %s", async (kind) => {
+  const item = (str: string, x: number, y: number, size = 8) => ({ str, x, y, size, w: str.length * size * 0.4 });
+  const compatible = kind === "compatible";
+  const prior = [item(compatible ? "Output Specifications for 2080-LC20-20QWB, 2080-LC20-20AWB" : "Output Specifications for 2080-LC20-20QBB", 100, 720, 10), item("Attribute Value", 100, 700), item("Controller current 1 A", 100, 680)];
+  const first = "2080-LC20-20QWB(R)";
+  const second = "2080-LC20-20AWB(R)";
+  const columns = [item("Attribute", 100, 680), item(first, 280, 680), item(second, 420, 680),
+    item("zzcontinuation Load current max", 100, 660), item("2.0 A", 280, 660), item("1.5 A", 420, 660),
+    item("Switching time max", 100, 646), item("10 ms", 280, 646), item("8 ms", 420, 646)];
+  const items = [
+    item("Micro820 Programmable Controllers", 100, 760, compatible || kind === "conflict-small-header" ? 9 : 12),
+    ...(kind === "new-section" ? [item("Output Specifications for 2080-LC20-20QWB, 2080-LC20-20AWB", 100, 710, 10)] : []),
+    ...columns,
+    ...(kind === "before-new-section" ? [item("Input Specifications for 2080-LC20-20QWB, 2080-LC20-20AWB", 100, 600, 10), item("Attribute Value", 100, 580), item("Input current 7 A", 100, 560)] : []),
+  ];
+  pdfPages.current = [
+    { page: 1, text: prior.map((i) => i.str).join("\n"), items: prior },
+    { page: 2, text: items.map((i) => i.str).join("\n"), items },
+  ];
+  let rows: Row[];
+  try { rows = (await ingestFixture()).filter((r) => r.page_start === 2 && r.content.includes(": zzcontinuation")); } finally { pdfPages.current = null; }
+  expect(rows.length).toBeGreaterThan(0); // actual extracted model-column chunks, not residual text
+  const allowed = compatible || kind === "new-section";
+  expect(rows.every((r) => r.table_scope === "unresolved")).toBe(!allowed);
+  for (const model of ["20QBB", "20QWB", "20AWB"]) {
+    const expected = allowed && model !== "20QBB";
+    expect((await retrieve(model, rows, "zzcontinuation load current")).text.includes("zzcontinuation")).toBe(expected);
+  }
+});

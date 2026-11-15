@@ -1557,3 +1557,13 @@ approved:
     approved_classification: TENANT-ONLY
     query_sha256: "58300f1e82f700bed428ebac73515155a84eb5bc607b1c08922b590ec129c854"
     reason: "#5503 / PR #5510 F1/F2 regression only: SELECT reads back the synthetic review upload for fixed TENANT and page 21 (contradictory or compatible extracted columns). Connection-local TEMP knowledge_entries created under BEGIN; finally ROLLBACK TO/RELEASE and outer ROLLBACK. Requires MIRA_TEST_DB_CONFIRM=DISPOSABLE. Deliberately private=true test rows, no shared OEM or production access; no checker change."
+
+  "mira-hub/src/lib/__tests__/manual-rag-model-scope.integration.test.ts:957":
+    approved_classification: TENANT-ONLY
+    query_sha256: "e129805fa2e7e52e991e762903d048f62c50fb63309a02affe3cb5fb670fdc31"
+    reason: "#5503 / PR #5510 F4/F5 regression only: inspect private synthetic upload rows for the fixed TENANT and page21/22 in the connection-local TEMP knowledge_entries table, under BEGIN, SAVEPOINT and final ROLLBACK. Requires confirmed disposable PostgreSQL. Production writer/retrieval is exercised separately; no shared OEM visibility policy or checker change."
+
+  "mira-hub/src/lib/__tests__/manual-rag-model-scope.integration.test.ts:982":
+    approved_classification: TENANT-ONLY
+    query_sha256: "f891394efb5278961c51a28e34a2fe9442b499acc3ec8eadee7dca3316197dec"
+    reason: "#5503 / PR #5510 F4/F5 regression only: inspect private synthetic upload rows for the fixed TENANT and page21/22 in the connection-local TEMP knowledge_entries table, under BEGIN, SAVEPOINT and final ROLLBACK. Requires confirmed disposable PostgreSQL. Production writer/retrieval is exercised separately; no shared OEM visibility policy or checker change."

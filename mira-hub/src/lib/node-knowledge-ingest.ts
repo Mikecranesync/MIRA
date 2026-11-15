@@ -849,8 +849,10 @@ async function parsePdfForNode(buffer: Buffer | Uint8Array, rest: NodeChunkOpts)
     const table = pageTables[p];
     const layout = sectionLayouts[p];
     const remainder = layout && (table || layout.hasTables) ? layout.text : table?.remainder ?? pages[p];
-    const sections = layout === undefined ? scope.unreadable(remainder) : scope.split(remainder, layout);
-    pageTables[p] = { remainder, chunks: table?.chunks ?? [], sections };
+    const scoped = layout === undefined
+      ? { sections: scope.unreadable(remainder), chunks: [] }
+      : scope.splitPage(remainder, layout, table?.chunks ?? []);
+    pageTables[p] = { remainder, ...scoped };
   }
   // Garage pilot L2 (plan row 5-A): a page whose numbers carry a replacement
   // character between two digits ("5�1" for 5.1 A — the PDF's ToUnicode

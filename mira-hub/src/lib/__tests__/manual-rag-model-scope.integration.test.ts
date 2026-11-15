@@ -946,6 +946,52 @@ describe("#5503 actual upload INSERT through raw retrieval SQL", () => {
     });
   });
 
+  it.each([
+    "Output Specifications for 2080-LC20-20QWB only (not 2080-LC20-20QBB)",
+    "Output Specifications not for 2080-LC20-20QBB",
+    "Output Specifications for 2080-LC20-20QWB",
+  ])("F4 caption semantics survive long-window storage and real retrieval: %s", async (caption) => {
+    const items = [item(caption, 100, 720, 10), item("Attribute Value", 100, 700),
+      item("zznegativecaption Load current max 2 A. ".repeat(100), 100, 680)];
+    await withPages([...structuredClone(fixture.pages), { page: 21, items, text: items.map((i) => i.str).join("\n") }], async () => {
+      const stored = await client.query("SELECT content, metadata FROM knowledge_entries WHERE tenant_id=$1 AND page_start=21", [TENANT]);
+      expect(stored.rows.length).toBeGreaterThan(2);
+      expect(stored.rows.some((r) => !r.content.includes("2080-LC20"))).toBe(true);
+      const positive = !caption.includes("not");
+      expect(stored.rows.every((r) => r.metadata.table_scope === (positive ? "section" : "unresolved"))).toBe(true);
+      for (const model of ["20QBB", "20QWB", "20AWB"]) {
+        expect((await retrieve(model, "zznegativecaption load current")).text.includes("zznegativecaption")).toBe(positive && model === "20QWB");
+      }
+    });
+  });
+
+  it.each(["conflict", "conflict-small-header", "compatible", "new-section", "before-new-section"])("F5 real stored extracted columns retain document boundaries: %s", async (kind) => {
+    const compatible = kind === "compatible";
+    const prior = [item(compatible ? "Output Specifications for 2080-LC20-20QWB, 2080-LC20-20AWB" : "Output Specifications for 2080-LC20-20QBB", 100, 720, 10),
+      item("Attribute Value", 100, 700), item("Controller current 1 A", 100, 680)];
+    const items = [item("Micro820 Programmable Controllers", 100, 760, compatible || kind === "conflict-small-header" ? 9 : 12),
+      ...(kind === "new-section" ? [item("Output Specifications for 2080-LC20-20QWB, 2080-LC20-20AWB", 100, 710, 10)] : []),
+      item("Attribute", 100, 680), item("2080-LC20-20QWB(R)", 280, 680), item("2080-LC20-20AWB(R)", 420, 680),
+      item("zzcontinuation Load current max", 100, 660), item("2.0 A", 280, 660), item("1.5 A", 420, 660),
+      item("Switching time max", 100, 646), item("10 ms", 280, 646), item("8 ms", 420, 646),
+      ...(kind === "before-new-section" ? [item("Input Specifications for 2080-LC20-20QWB, 2080-LC20-20AWB", 100, 600, 10), item("Attribute Value", 100, 580), item("Input current 7 A", 100, 560)] : []),
+    ];
+    await withPages([...structuredClone(fixture.pages),
+      { page: 21, items: prior, text: prior.map((i) => i.str).join("\n") },
+      { page: 22, items, text: items.map((i) => i.str).join("\n") }], async () => {
+      const stored = await client.query("SELECT content, metadata FROM knowledge_entries WHERE tenant_id=$1 AND page_start=22", [TENANT]);
+      const columns = stored.rows.filter((r) => r.content.includes(": zzcontinuation"));
+      expect(columns).toHaveLength(2); // genuine pageWithTables extraction followed by production INSERTs
+      expect(columns.every((r) => r.metadata.table_models.length === 1)).toBe(true);
+      const allowed = compatible || kind === "new-section";
+      expect(columns.every((r) => r.metadata.table_scope === "unresolved" && r.metadata.table_unqualified)).toBe(!allowed);
+      for (const model of ["20QBB", "20QWB", "20AWB"]) {
+        const result = await retrieve(model, "zzcontinuation load current");
+        expect(result.text.includes("zzcontinuation")).toBe(allowed && model !== "20QBB");
+      }
+    });
+  });
+
   it("a shared header marker cannot admit sibling-only prose over actual SQL", async () => {
     await client.query("SAVEPOINT f31_shared_prose");
     try {
