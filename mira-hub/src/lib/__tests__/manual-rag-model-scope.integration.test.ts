@@ -1047,6 +1047,36 @@ describe("#5503 actual upload INSERT through raw retrieval SQL", () => {
     });
   });
 
+  it.each(["named", "unnamed", "next-page"])("F10 real single-model upload rejects smaller %s sibling headings and headerless continuation", async (kind) => {
+    const items = [item("Output Specifications for 2080-LC20-20QWB", 100, 740, 12),
+      item("Attribute Value", 100, 720), item("zzf10original Load current max 2 A", 100, 706),
+      item(kind === "named" ? "DC Output Data for 2080-LC20-20QBB" : "DC Output Data", 100, 676, 10),
+      item("Attribute Value", 100, 662), item("zzf10adjacent Point current max 9 A", 100, 648),
+      item("zzf10surge Point surge max 11 A", 100, 634)];
+    const cover = "Micro820 Programmable Controllers\n2080-LC20-20QBB, 2080-LC20-20QWB, 2080-LC20-20AWB";
+    const pages = [{ page: 1, items: [item(cover, 100, 760, 12)], text: cover }];
+    for (const body of kind === "next-page" ? [items.slice(0, 3), items.slice(3)] : [items]) {
+      pages.push({ page: pages.length + 1, items: body, text: body.map((i) => i.str).join("\n") });
+    }
+    pages.push({ page: pages.length + 1, items: [item("zzf10continued Point current max 9 A", 100, 720)], text: "zzf10continued Point current max 9 A" });
+    await withPages(pages, async () => {
+      for (const model of ["20QWB", "20AWB", "20QBB"]) {
+        for (const token of ["zzf10adjacent", "zzf10surge", "zzf10continued"]) {
+          expect((await retrieve(model, `${token} Point current max`)).text).not.toContain(token);
+        }
+      }
+      expect((await retrieve("20QWB", "zzf10original Load current max")).text).toContain("2 A");
+      expect((await retrieve("20QBB", "zzf10original Load current max")).text).not.toContain("zzf10original");
+      const stored = await client.query("SELECT content,metadata FROM knowledge_entries WHERE tenant_id=$1 AND doc_id=$2 AND is_private=true", [TENANT,DOCUMENT]);
+      for (const token of ["zzf10adjacent", "zzf10surge", "zzf10continued"]) {
+        const rows = stored.rows.filter((r) => r.content.includes(token));
+        expect(rows.length).toBeGreaterThan(0);
+        expect(rows.every((r) => r.metadata.table_scope === "unresolved")).toBe(true);
+      }
+      expect(stored.rows.some((r) => r.content.includes("zzf10original") && r.metadata.table_scope === "section")).toBe(true);
+    });
+  });
+
   it.each(["catalog", "parameter", "parameter-explicit"])("F7 real SQL preserves interrupted %s column ownership without creating an equipment domain", async (kind) => {
     const items = [item("Attribute", 100, 720), item(kind === "catalog" ? "2080-LC20-20QWB" : "P01.20", 280, 720), item(kind === "catalog" ? "2080-LC20-20AWB" : "P01.21", 420, 720),
       item("zzoriginalsingle Load current max", 100, 706), item("2 A", 280, 706), item("1 A", 420, 706),

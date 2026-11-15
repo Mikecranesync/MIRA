@@ -587,6 +587,38 @@ it.each(["table", "named-smaller", "unnamed-smaller"])("F7 rejects an unsplit bl
 });
 
 
+it.each(["named", "unnamed", "next-page"])("F10 a smaller %s heading interrupts a single-model section without extracted columns", (kind) => {
+  const title = kind === "unnamed" ? "DC Output Data" : "DC Output Data for 2080-LC20-20QBB";
+  const items = [row("Output Specifications for 2080-LC20-20QWB", 740, 12),
+    row("Attribute Value", 720, 8), row("Load current max 2 A", 706, 8),
+    row(title, 676, 10), row("Attribute Value", 662, 8),
+    row("Point current max 9 A", 648, 8), row("Point surge max 11 A", 634, 8)];
+  expect(pageWithTables(items)).toBeNull();
+  const scope = new SectionTableScope(new Map(), true, [QWB]);
+  const original = sectionTableLayout(kind === "next-page" ? items.slice(0, 3) : items)!;
+  const first = scope.splitPage(original.text, original, []);
+  expect(first.sections.find((part) => part.text.includes("Load current max"))).toMatchObject({ models: [QWB], scope: "section" });
+  const next = kind === "next-page" ? sectionTableLayout(items.slice(3))! : null;
+  const result = next ? scope.splitPage(next.text, next, []) : first;
+  const later = result.sections.find((part) => part.text.includes("Point current max"))!;
+  expect(later).toMatchObject({ scope: "unresolved" });
+  expect(later.text).not.toContain("Load current max");
+  expect(scope.split("Point current max 9 A continued", null)[0]).toMatchObject({ scope: "unresolved" });
+});
+
+it("F10 local boundaries neither qualify unrelated tables nor mistake larger grid rows or service prose for headings", () => {
+  const ordinary = sectionTableLayout([row("DC Output Data", 700, 10), row("Attribute Value", 680, 8), row("Point current max 9 A", 660, 8)])!;
+  expect(new SectionTableScope(new Map()).split(ordinary.text, ordinary)).toEqual([{ text: ordinary.text }]);
+  const items = [row("Output Specifications for 2080-LC20-20QWB", 740, 12), row("Attribute Value", 720, 8),
+    row("Load current max", 706, 10), row("2 A", 706, 8, 280), row("Switching time max 10 ms", 692, 8),
+    row("For service, contact technical support.", 676, 10), row("Description Value", 662, 8),
+    row("Operating temperature 50 C", 648, 8), row("1", 620, 4)];
+  const layout = sectionTableLayout(items)!;
+  const parts = new SectionTableScope(new Map(), true, [QWB]).split(layout.text, layout);
+  expect(parts.find((part) => part.text.includes("Switching time max"))).toMatchObject({ models: [QWB], scope: "section" });
+  expect(parts.find((part) => part.text.includes("Operating temperature"))).toMatchObject({ models: [QWB], scope: "section" });
+});
+
 it.each([null, undefined])("F8 distinguishes a successfully headingless page from unreadable geometry (%s)", (layout) => {
   const chunk = { text: "2080-LC20-20QWB: Load current max 2 A", models: [QWB], unqualified: false, sourceTop: 720, sourceBottom: 686, sourceHeaderSize: 8 };
   const result = scopeTableChunks([chunk], layout)[0];

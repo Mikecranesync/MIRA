@@ -10,7 +10,7 @@ export type SectionScope = "section" | "shared" | "unresolved";
 /** columnOnly is internal: independent parameter/accessory columns retain the
  * existing family-domain rule; an explicit catalog section never gains it. */
 export type ScopedText = { columnOnly?: boolean; text: string; models?: string[]; scope?: SectionScope; sharedHeader?: string };
-type Heading = { interruption?: boolean; interruptedModels?: string[]; text: string; at: number; table: boolean; size: number; sharedHeader?: string; headerModels?: string[]; headerUnresolved?: boolean; headerInvalidLabels?: boolean; relayTable?: boolean; sourceLine: number; y: number; headerTop?: number; headerBottom?: number; columnUnresolved?: boolean };
+type Heading = { interruption?: boolean; bodyHeading?: boolean; interruptedModels?: string[]; text: string; at: number; table: boolean; size: number; sharedHeader?: string; headerModels?: string[]; headerUnresolved?: boolean; headerInvalidLabels?: boolean; relayTable?: boolean; sourceLine: number; y: number; headerTop?: number; headerBottom?: number; columnUnresolved?: boolean };
 export type SectionLayout = { text: string; headings: Heading[]; candidates?: Heading[]; hasTables: boolean; retainedLines: string[] };
 type OutputMap = Map<string, boolean | null>;
 type ActiveScope = Pick<ScopedText, "models" | "scope" | "sharedHeader" | "columnOnly">;
@@ -245,7 +245,16 @@ export function sectionTableLayout(items: readonly LayoutItem[], includeBoundari
     const line = lines[i];
     const caption = captions.get(i);
     if (!line.virtual && i > continuationEnd) {
+      const next = lines.slice(i + 1).find((l) => !l.virtual);
+      // A title immediately above its own smaller Attribute/Description header
+      // is a physical section boundary, even without model-column extraction.
+      // It can end inherited scope; font geometry alone never assigns new models.
+      // Use the adjacent header, not a page minimum lowered by tiny footnotes.
+      const bodyHeading = !caption && line.columns.length === 1 && line.text.length < 200 &&
+        isTitleLine(line.text) && next && line.y - next.y <= 60 &&
+        /^(?:Attribute|Description)\b/i.test(next.text) && line.size > next.size + 0.2;
       const heading: Heading = { text: caption?.text ?? line.text, at, table: !!caption, size: line.size,
+        ...(bodyHeading ? { bodyHeading: true } : {}),
         ...(caption?.sharedHeader ? { sharedHeader: caption.sharedHeader } : {}),
         ...(caption?.headerModels ? { headerModels: caption.headerModels } : {}),
         ...(caption?.headerUnresolved ? { headerUnresolved: true } : {}),
@@ -259,7 +268,7 @@ export function sectionTableLayout(items: readonly LayoutItem[], includeBoundari
       // Retain potential local boundaries before a preceding caption's size can
       // discard them. Extraction qualifies these against its own table geometry.
       if (caption || line.text.length < 200) candidates.push(heading);
-      if (caption || (line.size >= captionSize && line.text.length < 200)) headings.push(heading);
+      if (caption || bodyHeading || (line.size >= captionSize && line.text.length < 200)) headings.push(heading);
       if (caption) continuationEnd = caption.end;
     }
     at += line.text.length + 1;
@@ -445,11 +454,12 @@ export class SectionTableScope {
     }
     // With no inherited scope and no table caption, there is no applicability boundary to
     // split. Preserve original text AND window boundaries on unrelated prose pages.
-    if (!layout.hasTables && !layout.headings.some((h) => h.interruption) && (!this.active.scope || this.active.scope === "shared")) {
+    const interruptsInherited = layout.headings.some((h) => h.interruption || (h.bodyHeading && this.active.scope));
+    if (!layout.hasTables && !interruptsInherited && (!this.active.scope || this.active.scope === "shared")) {
       this.active = {}; // a mixed-column header's privilege never crosses onto another page
       return [{ text }];
     }
-    if (!layout.hasTables && !layout.headings.some((h) => h.interruption) && layout.headings.some((h) => h.size >= this.headingSize)) {
+    if (!layout.hasTables && !interruptsInherited && layout.headings.some((h) => h.size >= this.headingSize)) {
       // No qualified boundary exists on this page. Keep its original text/windows, but
       // do not let a running header or a possible new section release the restriction.
       this.active = { models: this.active.models ?? [...this.outputs.keys()], scope: "unresolved",
@@ -470,7 +480,8 @@ export class SectionTableScope {
     const sections: ScopedText[] = [];
     let start = 0;
     for (const h of headings) {
-      if (!h.table && !h.interruption && (this.headingSize === 0 || h.size < this.headingSize)) continue; // running page furniture
+      if (!h.table && !h.interruption && !(h.bodyHeading && this.active.scope) &&
+          (this.headingSize === 0 || h.size < this.headingSize)) continue; // running page furniture
       if (h.at > start) sections.push({ text: text.slice(start, h.at), ...this.active });
       // Font and page position cannot prove that a model restriction ended. A running
       // title can be larger than the section caption. Without a qualified table boundary,
