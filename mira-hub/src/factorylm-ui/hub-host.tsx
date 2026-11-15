@@ -73,9 +73,9 @@ import { NewProjectSetup } from "./NewProjectSetup";
 import { PendingManuals } from "./PendingManuals";
 import { ParkedSources } from "./ParkedSources";
 import { clearSheetDataForSignOut, localStorageStore, parseSheetReceipts } from "./living-sheet-client";
-import { NOTEBOOK_ACTIONS_STYLE } from "./notebook-actions";
+import { actionsCoveredByLayer, notebookActionsStyle } from "./notebook-actions";
 import { BenchComponents } from "./BenchComponents";
-import { SEND_BLOCKED_MESSAGE, benchSendRefusal, createBenchSendGate, expectsComponentFrame, isScopeRefusalCode, parseComponentFrames, prepareChatSend, recordBenchScope, withoutScope, type BenchScopes, type BenchState, type ComponentTurnFrame, type ScopeField } from "./bench-components-logic";
+import { SEND_BLOCKED_MESSAGE, benchSendRefusal, createBenchSendGate, expectsComponentFrame, isScopeRefusalCode, parseComponentFrames, prepareChatSend, heldQuestionForSend, recordBenchScope, retryTargetCheck, targetReviewMessage, withoutScope, type BenchScopes, type BenchState, type ComponentTurnFrame, type ScopeField } from "./bench-components-logic";
 import { LEGACY_THREAD_ID, notebookMachines, notebookProjects, threadRefFromItem, notebookIdFromProject, type HubNotebook } from "./notebook-tree";
 import { answerTurnId, citationIndex, contextFor, lifecycleFromStream, livePartsWhileRunning, partsFromStream, sourceIdFor, threadFromPersisted, withManualSearchStatus, withSettledFollowups, type SettledFollowups } from "./to-interaction";
 import {
@@ -196,7 +196,9 @@ export function HubShellHost() {
   const [outgoing, setOutgoing] = useState<Outgoing | null>(null);
   const [busy, setBusy] = useState(false);
   // A retry re-sends the body as it went out, with the component scope it was asked under (#5504 post-cap).
-  const [failedBody, setFailedBody] = useState<{ body: ReturnType<typeof chatBodyFor> & { componentSelection?: ScopeField }; question: string } | null>(null);
+  const [failedBody, setFailedBody] = useState<{ body: ReturnType<typeof chatBodyFor> & { componentSelection?: ScopeField }; question: string; refusedScope?: ScopeField } | null>(null);
+  // The panel's newest read, by conversation: names the targets when a refused question's target moved.
+  const [benchView, setBenchView] = useState<{ key: string; state: BenchState | null } | null>(null);
   // TASK-S3: the Living Work Sheet job open for ANY notebook (LivingSheet is
   // mounted per-notebook, but this state belongs to the host, not the panel,
   // so send() can read it without a prop round-trip). `livingSheetJobId`
@@ -612,7 +614,11 @@ export function HubShellHost() {
       const message = sendFailureMessage(err);
       setLive((cur) => (cur && cur.id === id ? null : cur));
       dropOutgoing(outgoingId);
-      setFailedBody({ body: scopeRefused ? withoutScope(body) : outBody, question });
+      // A target refusal keeps the target it was asked about; the retry is held for review
+      // until the panel has re-read what is selected now (the old read is stale).
+      const refusedScope = scopeRefused ? (outBody as { componentSelection?: ScopeField }).componentSelection : undefined;
+      if (scopeRefused) setBenchView((cur) => (cur && cur.key === `${sel.notebookId}|${sel.threadId}` ? null : cur));
+      setFailedBody({ body: scopeRefused ? withoutScope(body) : outBody, question, ...(refusedScope ? { refusedScope } : {}) });
       dispatch({ type: "set-send-error", error: message });
       dispatch({ type: "set-draft", draft: question });
     } finally {
@@ -628,8 +634,21 @@ export function HubShellHost() {
   const benchThreadId = selection?.threadId ?? null;
   // Bound to the conversation it was rendered for: a panel left behind writes only its own entry.
   const onBenchState = useCallback((bench: BenchState | null) => {
-    if (benchNotebookId && benchThreadId) recordBenchScope(benchScopesRef.current, { notebookId: benchNotebookId, threadId: benchThreadId }, bench);
+    if (benchNotebookId && benchThreadId) {
+      recordBenchScope(benchScopesRef.current, { notebookId: benchNotebookId, threadId: benchThreadId }, bench);
+      setBenchView({ key: `${benchNotebookId}|${benchThreadId}`, state: bench });
+    }
   }, [benchNotebookId, benchThreadId]);
+
+  // Tablet semantic-retry gap: a question refused because its target moved is never retried
+  // onto the new target silently. Retry shows only when the target is unchanged.
+  const retryCheck = failedBody
+    ? retryTargetCheck(failedBody.refusedScope, benchView && benchView.key === gateConversation ? benchView.state : undefined)
+    : null;
+  const reviewMessage = retryCheck?.kind === "review" ? targetReviewMessage(retryCheck.review) : null;
+  useEffect(() => {
+    if (reviewMessage) dispatch({ type: "set-send-error", error: reviewMessage });
+  }, [reviewMessage]);
 
   /**
    * #4019 — attachments ride the turn they were attached to. Upload through the
@@ -809,13 +828,21 @@ export function HubShellHost() {
       return;
     }
     if (!detail) throw new Error(NO_PROJECT_ERROR);
+    // After the target review, Send asks the held question (with its attachments) again,
+    // scoped from what the header shows now.
+    const held = heldQuestionForSend(failedBody, retryCheck, q, files.length);
+    if (held) {
+      beginOutgoing(shellThreadId(selection));
+      void send(held, q);
+      return;
+    }
     beginOutgoing(shellThreadId(selection));
     if (files.length > 0) {
       void composeAndSend(q, files, selection, detail.notebook.nodeId, docIds, historyRows(detail.turns));
       return;
     }
     void send(chatBodyFor(q, docIds, historyRows(detail.turns), selection), q);
-  }, [adapter, busy, selection, notebooks, detail, docIds, send, sendFromHome, composeAndSend, putOutgoing, benchGate]);
+  }, [adapter, busy, selection, notebooks, detail, docIds, send, sendFromHome, composeAndSend, putOutgoing, benchGate, failedBody, retryCheck]);
 
   // WP-1 guided dead end: sent in general mode with the session id; the route confirms it.
   const onGuidedDeadEnd = useCallback((question: string, sessionId: string) => {
@@ -826,7 +853,7 @@ export function HubShellHost() {
   }, [busy, selection, detail, send, putOutgoing]);
 
   const onStop = useCallback(() => { abortRef.current?.abort(); uploadAbortRef.current?.abort(); }, []);
-  const onRetry = useCallback(() => { if (failedBody) void send(failedBody.body, failedBody.question); }, [failedBody, send]);
+  const onRetry = useCallback(() => { if (failedBody && retryCheck?.kind === "retry") void send(failedBody.body, failedBody.question); }, [failedBody, retryCheck, send]);
 
   /** New chat: a fresh thread in the open notebook; from HOME, HOME is already the blank chat. */
   const onNewChat = useCallback(() => {
@@ -1073,12 +1100,14 @@ export function HubShellHost() {
     onNewChat,
     onCreateProject,
     ...(busy ? { onStop } : {}),
-    ...(failedBody ? { onRetry } : {}),
+    ...(failedBody && retryCheck?.kind === "retry" ? { onRetry } : {}),
     groundingLine: () => groundingLineFor(detail?.notebook ?? null, docIds.length),
     busy,
   };
 
-  useBackClosesLayers(view); // #5069: phone web Back closes the open layer first
+  const layers = useBackClosesLayers(view); // #5069: phone web Back closes the open layer first
+  // #5546: the action column stays off (and out of the taps of) any layer that covers the page.
+  const actionsCovered = actionsCoveredByLayer(layers.top, view.profile.kind === "mobile" || layers.narrow);
 
   if (signedOut) {
     return (
@@ -1142,7 +1171,7 @@ export function HubShellHost() {
       )}
       {/* The notebook's action buttons share one column below the guided-procedure pill, each in its
           own row, so Machine state and Work Packet never cover each other (#5102). */}
-      <div data-testid="notebook-actions" style={NOTEBOOK_ACTIONS_STYLE}>
+      <div data-testid="notebook-actions" data-covered={actionsCovered ? "true" : undefined} aria-hidden={actionsCovered || undefined} style={notebookActionsStyle(actionsCovered)}>
       {/* Bench components: "Asking about …", the checklist and the reply's actions; nothing without migration 115. */}
       {selection && (
         <BenchComponents

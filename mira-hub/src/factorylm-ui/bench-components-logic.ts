@@ -128,6 +128,48 @@ export function withoutScope<B extends object>(body: B): Omit<B, "componentSelec
 }
 
 /**
+ * A question the server refused because its target was no longer the saved one (another
+ * screen moved or cleared the selection). Its retry is re-scoped from what the header shows
+ * now — so when that is a different target (another component, or the whole machine), the
+ * retry must not go out on its own: the question stays in the box with its attachments, both
+ * targets are named, and only a fresh Send asks it about the new one. Same target (only the
+ * version moved): retry as before. The server still validates the version on every send.
+ */
+export type TargetReview = { from: string; to: string };
+
+export function retryTargetCheck(
+  refused: ScopeField | undefined,
+  current: BenchState | null | undefined,
+): { kind: "retry" } | { kind: "loading" } | { kind: "review"; review: TargetReview } {
+  if (!refused) return { kind: "retry" };
+  if (current === undefined) return { kind: "loading" };
+  const now = current?.selection?.componentId ?? null;
+  if (now === refused.componentId) return { kind: "retry" };
+  const name = (id: string | null) =>
+    id === null ? "the whole machine" : current?.components.find((c) => c.id === id)?.label ?? "the component it was asked about";
+  return { kind: "review", review: { from: name(refused.componentId), to: name(now) } };
+}
+
+/**
+ * The held question a fresh Send asks after the review: the refused body (its scope removed,
+ * its attachment rider kept), but only when the box still holds that question and no new
+ * attachment was added. Anything else is a new question and goes the ordinary way.
+ */
+export function heldQuestionForSend<B extends object>(
+  failed: { body: B; question: string; refusedScope?: ScopeField } | null,
+  check: ReturnType<typeof retryTargetCheck> | null,
+  text: string,
+  newFiles: number,
+): B | null {
+  if (!failed?.refusedScope || check?.kind !== "review" || newFiles > 0) return null;
+  return text.trim() === failed.question.trim() ? failed.body : null;
+}
+
+export function targetReviewMessage(r: TargetReview): string {
+  return `This question was asked about ${r.from}. The question target is now ${r.to}. Check the target, then press Send to ask about ${r.to}.`;
+}
+
+/**
  * Everything the host's send() decides before it opens the chat request, in order: a
  * change still saving or an unresolved write refuses; an unread conversation refuses;
  * otherwise the body carries this conversation's scope. `forThisGate` is false only for
