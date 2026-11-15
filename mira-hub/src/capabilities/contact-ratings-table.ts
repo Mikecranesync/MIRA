@@ -89,6 +89,11 @@ const isWord = (item: LayoutItem, word: RatingColumn) => item.str.trim().toLower
 
 /** The table's rows with each figure's column, or null when the page holds no such table. */
 export function contactRatingColumns(items: readonly LayoutItem[]): ColumnRow[] | null {
+  return contactRatingTable(items)?.rows ?? null;
+}
+
+/** The same column read, with the last source row so derived text stays inside its table. */
+export function contactRatingTable(items: readonly LayoutItem[]): { rows: ColumnRow[]; lastRow: LayoutItem } | null {
   const lines = linesOf(items);
   const headAt = lines.findIndex((l) => l.items.some((i) => isWord(i, "make")) && l.items.some((i) => isWord(i, "break")));
   if (headAt === -1) return null;
@@ -100,6 +105,7 @@ export function contactRatingColumns(items: readonly LayoutItem[]): ColumnRow[] 
   if (!heads.some((h) => h.column === "continuous")) return null;
 
   const rows: ColumnRow[] = [];
+  let lastRow: LayoutItem | undefined;
   for (const line of lines.slice(headAt + 1)) {
     const label = line.items[0].str.trim();
     if (!VOLTAGE_CELL_RE.test(label)) break;
@@ -117,9 +123,10 @@ export function contactRatingColumns(items: readonly LayoutItem[]): ColumnRow[] 
       if (continuous) row.continuous = continuous;
     } else row.unread.push(...cells.map((c) => c.str.trim()));
     rows.push(row);
+    lastRow = line.items[0];
   }
   if (new Set(rows.map((r) => r.label)).size !== rows.length) return null;
-  return rows.some((r) => r.make || r.continuous) ? rows : null;
+  return lastRow && rows.some((r) => r.make || r.continuous) ? { rows, lastRow } : null;
 }
 
 /** The lines stored with the page text: one per row that has a figure. "No column read for" a
