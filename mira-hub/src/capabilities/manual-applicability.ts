@@ -212,7 +212,10 @@ function numberRuns(text: string, view = catalogIdentifierView(text).text): Numb
  *  together, hyphenated groups kept as one ("2080-LC20-20QBB"), and a short
  *  letter prefix hyphenated to its number ("RX-420" is "RX420"). */
 export function modelNumbersIn(text: string): ModelNumber[] {
-  return numberRuns(text).flatMap((run) => numberFrom(run.segments, run.raw) ?? []);
+  // Read as WRITTEN, exactly as before this change: this reader also decides
+  // which passages of an admitted manual are left out, and there a folded
+  // reading would replace the one that excludes a sibling's passage.
+  return numberRuns(text, text).flatMap((run) => numberFrom(run.segments) ?? []);
 }
 
 /** The same, as a COVER or a FILENAME is read: every group of a hyphenated run

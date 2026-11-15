@@ -35,7 +35,10 @@ describe.each(SPELLINGS)("[repair] an identifier written with hyphen %j", (separ
   const ascii = separator === "-";
   it("has the ASCII comparison key, and keeps the label as written", () => {
     const raw = spell(OWN, separator);
-    expect(modelNumbersIn(`Unit ${raw} label`)).toEqual([{ key: KEY, label: raw }]);
+    // The shared passage reader keeps the WRITTEN reading (round 4, F5): only the
+    // admission readers add the folded one. ASCII is one number, as on main.
+    expect(modelNumbersIn(`Unit ${raw} label`)).toEqual(ascii ? [{ key: KEY, label: raw }] : [{ key: "ZX731", label: "ZX731" }]);
+    expect(keys(ask(raw))).toContain(KEY);
     expect(exactModelKey(raw)).toBe(KEY);
   });
   it("the reading the text already had is kept beside the folded one", () => {
@@ -73,10 +76,22 @@ describe.each(SPELLINGS)("[repair] an identifier written with hyphen %j", (separ
     expect(resolveModelFromObservationText(second)).toEqual({ model: "6AV3182-0HX02-1BZ4", ambiguous: false });
   });
   it("a counted inventory item is read, and its neighbour is refused", () => {
-    expect(modelNumbersIn(`Inventory: 2 NC${separator}24 indicators`)).toEqual([{ key: "NC24", label: `NC${separator}24` }]);
+    expect(modelNumbersIn(`Inventory: 2 NC${separator}24 indicators`)).toEqual(separator === "-" ? [{ key: "NC24", label: "NC-24" }] : []);
     const heading = "NC-24 Indicator Module\nUser Manual";
     expect(answers(`For 2 NC${separator}24 indicators, which legend applies?`, heading, "NC-24.pdf")).toBe(true);
     expect(answers(`For 2 NC${separator}28 indicators, which legend applies?`, heading, "NC-24.pdf")).toBe(false);
+  });
+});
+
+describe.each(SUPPORTED)("[repair] round 4 (F5): the passage reader keeps the written reading for %j", (separator) => {
+  // manual-rag.ts leaves out an untagged passage of an admitted manual when it names a
+  // sibling of the record's number. Main reads "ZX731<h>04A" there as ZX731, a sibling of
+  // ZX735. A folded reading substituted here (ZX73104A, a sibling of nothing) let that
+  // passage through. The reader must return exactly what main returns.
+  it("a sibling's passage still reads as the sibling", () => {
+    const passage = `ZX731${separator}04A Rated current 10 A`;
+    expect(modelNumbersIn(passage)).toEqual([{ key: "ZX731", label: "ZX731" }]);
+    expect(modelNumbersIn(passage)).toEqual(modelNumbersIn(passage.replace(separator, " ")));
   });
 });
 

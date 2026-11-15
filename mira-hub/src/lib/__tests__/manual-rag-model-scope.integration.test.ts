@@ -695,6 +695,13 @@ const NODE = "catalog-fold-current", BODY = "UNIT_FICTIONAL_LEGEND: indicator le
 const variants = ["-", "\u2010", "\u2011", "\u2012", "\u2212", "\uFE63", "\uFF0D"];
 const unsupported = [" - ", " \u2011 ", "\u2013", " \u2013 "];
 const BARE_DOC = doc(10), OTHER_FAMILY_DOC = doc(11);
+// Round 4 (F5): one ZX735 manual per hyphen, holding its own rating passage and an untagged
+// passage that names the sibling ZX731 with that hyphen.
+const supportedHyphens = variants.filter((separator) => separator !== "-");
+const PASSAGE_OWN = "ZX735 UNIT_FICTIONAL_RATING: rated current reference value 12 A. No physical setting is asserted.";
+const passageSibling = (separator: string) => `ZX731${separator}04A UNIT_FICTIONAL_RATING: rated current reference value 10 A. No physical setting is asserted.`;
+const passageDoc = (separator: string) => doc(60 + variants.indexOf(separator));
+const ASCII_PASSAGE_DOC = doc(59);
 const spell = (identifier: string, separator: string) => identifier.replaceAll("-", separator);
 let client: Client;
 
@@ -745,6 +752,19 @@ beforeAll(async () => {
     await insert(TENANT, doc(40 + index), `${OWN} Logic Controller\nUser Manual`, `${spell(SIBLING, separator)}.pdf`);
   }
 });
+beforeAll(async () => {
+  const passages = async (document: string, sibling: string) => {
+    for (const [page, content] of [[1, "ZX735 Logic Controller\nUser Manual"], [8, PASSAGE_OWN], [9, sibling]] as const) {
+      await client.query(`INSERT INTO knowledge_entries
+        (tenant_id, content, source_url, source_page, page_start, metadata, doc_id, ingest_route, verified, is_private)
+        VALUES ($1,$2,$3,$4,$4,$5::jsonb,$6,'v2',false,true)`,
+      [TENANT, content, `https://manual.unit.invalid/${document}`, page,
+        JSON.stringify({ node_id: NODE, filename: "ZX735.pdf", chunk_index: page + 10 }), document]);
+    }
+  };
+  for (const separator of supportedHyphens) await passages(passageDoc(separator), passageSibling(separator));
+  await passages(ASCII_PASSAGE_DOC, passageSibling("-"));
+});
 afterAll(async () => { if (client) { await client.query("ROLLBACK"); await client.end(); } });
 beforeEach(() => {
   for (const [key, value] of Object.entries({ MIRA_ENFORCE_APPROVED_RETRIEVAL: "true", NOTEBOOK_HYBRID_RETRIEVAL: "0",
@@ -770,6 +790,25 @@ function hasLegend(hits: Awaited<ReturnType<typeof retrieve>>, expected: string)
   expect(hits.some((hit) => hit.docId === expected && hit.sourcePage === 7 && hit.content === BODY)).toBe(true);
   expect(hits.every((hit) => hit.docId === expected)).toBe(true);
 }
+
+describe("round 4 (F5): an untagged sibling passage inside the record's own manual — real SQL", () => {
+  const ask = "What is the rated current reference value?";
+  it.each(supportedHyphens)("the sibling's passage written with %j never returns; the record's own does", async (separator) => {
+    const hits = await retrieve(ask, [passageDoc(separator)], record("ZX735"));
+    expect(hits.some((hit) => hit.content === PASSAGE_OWN)).toBe(true);
+    expect(hits.filter((hit) => hit.content.includes("10 A"))).toEqual([]);
+    expect(hits.every((hit) => hit.docId === passageDoc(separator))).toBe(true);
+  });
+  it("control: without a confirmed record nothing is left out, so the passage is retrievable at all", async () => {
+    const hits = await retrieve(ask, [passageDoc(supportedHyphens[0])]);
+    expect(hits.some((hit) => hit.content.includes("10 A"))).toBe(true);
+  });
+  it("OPEN, as on main: the ASCII spelling of the same passage is one long number and is not left out", async () => {
+    const hits = await retrieve(ask, [ASCII_PASSAGE_DOC], record("ZX735"));
+    expect(hits.some((hit) => hit.content === PASSAGE_OWN)).toBe(true);
+    expect(hits.some((hit) => hit.content.includes("10 A"))).toBe(true);
+  });
+});
 
 describe.each(variants)("identifier folding over actual SQL: separator %j", (separator) => {
   it("retains own fictional catalog question without a confirmed record", async () => {
