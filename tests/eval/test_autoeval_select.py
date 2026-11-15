@@ -87,6 +87,31 @@ def test_a_change_to_the_runner_itself_selects_the_runner_lane_not_every_lane():
     assert _reason(got, "runner") == "trigger"
 
 
+def test_a_rubric_change_is_not_docs_only_and_selects_the_runner_lane():
+    got = sel.select(["evals/rubrics/technician-scoring.md"], full=False, lanes=LANES)
+    assert _names(got) == {"safety", "runner"} and _reason(got, "runner") == "trigger"
+
+
+def test_markdown_outside_docs_and_wiki_is_not_docs_only():
+    # prompts, rubrics and simulated manuals are .md files in this repo
+    for path in ("plc/PLC_BRINGUP_PROMPT.md", "simlab/docs/airsystem01/troubleshooting.md"):
+        got = sel.select([path], full=False, lanes=LANES)
+        assert _names(got) == ALL and got.unmapped == (path,), path
+
+
+def test_data_and_code_under_docs_is_not_docs_only():
+    for path in ("docs/eval/cases.json", "docs/migrations/004_kg_entities.sql", "docs/m.pdf"):
+        got = sel.select([path], full=False, lanes=LANES)
+        assert _names(got) == ALL, path
+
+
+def test_control_prose_and_screenshots_stay_docs_only():
+    paths = ["docs/a.md", "wiki/hot.md", "README.md", "mira-hub/README.md", "CLAUDE.md"]
+    paths += ["docs/promo-screenshots/2026-11-15_x_desktop.png", ".claude/rules/x.md"]
+    got = sel.select(paths, full=False, lanes=LANES)
+    assert _names(got) == {"safety"} and got.unmapped == ()
+
+
 def test_full_selects_every_lane_with_reason_full():
     s = sel.select([], full=True, lanes=LANES)
     assert _names(s) == ALL

@@ -147,6 +147,24 @@ MUTATIONS = [
     # autoeval_select.py: selection and count judgement
     (
         "autoeval_select.py",
+        'return path.endswith((".md", *_MEDIA))',
+        "return True",
+        ["test_data_and_code_under_docs_is_not_docs_only"],
+    ),
+    (
+        "autoeval_select.py",
+        'return posixpath.basename(path) in _PROSE_NAMES or ("/" not in path and path.endswith(".md"))',
+        'return path.endswith(".md")',
+        ["test_markdown_outside_docs_and_wiki_is_not_docs_only"],
+    ),
+    (
+        "autoeval_select.py",
+        "if path.startswith(_PROSE_ROOTS):",
+        "if False:",
+        ["test_control_prose_and_screenshots_stay_docs_only"],
+    ),
+    (
+        "autoeval_select.py",
         "if ln.always:",
         "if False:",
         ["test_docs_only_change_selects_only_the_always_safety_lane"],

@@ -4,7 +4,7 @@ select(): the always-on safety lane runs on every change, including docs-only on
 A lane also runs when a changed path matches one of its triggers or one of its own
 test files. A changed CODE path that matches no lane selects every lane (reason
 "unmapped"), so an unknown path can never silently skip the suite. Docs-only changes
-(*.md, docs/, wiki/) add nothing beyond the always lanes. Each reason is recorded
+(prose and screenshots: see is_docs_only) add nothing beyond the always lanes. Each reason is recorded
 together with the paths that matched, so "selected" is never an unexplained claim.
 
 run_lane(): executes each step and reads the pass/fail/skip COUNT from the output.
@@ -66,8 +66,17 @@ def _matches(path: str, trigger: str) -> bool:
     return path.startswith(trigger) if trigger.endswith("/") else path == trigger
 
 
+_PROSE_ROOTS = ("docs/", "wiki/", ".claude/")
+_PROSE_NAMES = ("README.md", "CHANGELOG.md", "CLAUDE.md", "AGENTS.md")
+_MEDIA = (".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".mp4")
+
+
 def is_docs_only(path: str) -> bool:
-    return path.endswith(".md") or path.startswith(("docs/", "wiki/"))
+    """Prose and screenshots only. Rubrics, prompts and simulated manuals are .md files in this
+    repo, and docs/ holds eval data and SQL, so neither `.md` nor `docs/` alone means docs."""
+    if path.startswith(_PROSE_ROOTS):
+        return path.endswith((".md", *_MEDIA))
+    return posixpath.basename(path) in _PROSE_NAMES or ("/" not in path and path.endswith(".md"))
 
 
 def risk_classes(paths: list[str], r2_path: Path = R2_PATH) -> dict[str, str]:

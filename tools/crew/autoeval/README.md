@@ -49,7 +49,11 @@ python3.12 evals/scripts/autoeval.py seed --recorded <set>/scores --inputs <set>
 python3.12 evals/scripts/autoeval.py run --paid --sets <set-dir> --models claude-sonnet-4-6
 ```
 
-`--full` selects every lane. Without it, lanes are selected from `git diff <last_ok_sha>..HEAD`.
+`--full` selects every lane. Without it, lanes are selected from `git diff <last_ok_sha>..HEAD`:
+`safety` always runs; a lane runs when a changed path matches its triggers or its own test files;
+a changed path that matches no lane selects every lane. Only prose and screenshots count as
+docs-only (`.md` and images under `docs/`, `wiki/`, `.claude/`, plus READMEs and root-level `.md`).
+Rubrics, prompts and simulated manuals are `.md` files elsewhere, so they are treated as code.
 With no state file the run is full. `state.json` moves forward only when every selected lane passed.
 
 ## paid.json
@@ -61,12 +65,14 @@ Required for `--paid`. Refused without it.
   "total_cap_usd": 25.0,
   "daily_cap_usd": 10.0,
   "spent_before_usd": 0.0,
-  "paid_not_after": "2026-11-17T19:00:00+00:00",
+  "paid_not_after": "2026-11-17T19:00:00-05:00",
   "expect_org": "<billing org id, confirmed in the Console>",
   "key_secret": "ANTHROPIC_API_KEY_EVAL_PROMO"
 }
 ```
 
+`paid_not_after` carries its own UTC offset (the sample is 19:00 EST). The ledger of a new state
+dir starts at zero: put any earlier spend that the total cap should also cover in `spent_before_usd`.
 Optional `prices` overrides the pinned list prices. A model absent from the table is refused.
 The key is fetched from Doppler `factorylm/dev` at the first real paid call only and is never printed.
 
